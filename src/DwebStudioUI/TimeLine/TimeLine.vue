@@ -1,7 +1,23 @@
 <template>
 	<div class="tl-shell">
 		<div class="tl-toolbar">
+			<div class="tl-play-controls">
+				<button class="tl-mini-btn" type="button" :disabled="isPlaying" @click="onPlay">播放</button>
+				<button class="tl-mini-btn" type="button" :disabled="!isPlaying" @click="onPause">暂停</button>
+				<button class="tl-mini-btn" type="button" @click="onStop">停止</button>
+				<button class="tl-mini-btn" type="button" :class="{ active: loopEnabled }" @click="toggleLoop">循环</button>
+				<div class="tl-time-jump">
+					<button class="tl-mini-btn" type="button" @click="onJumpByTime">按时间跳转</button>
+					<input v-model="jumpHH" class="tl-time-input" type="number" min="0" step="1" @change="normalizeJumpTime" />
+					<span class="tl-time-sep">:</span>
+					<input v-model="jumpMM" class="tl-time-input" type="number" min="0" max="59" step="1" @change="normalizeJumpTime" />
+					<span class="tl-time-sep">:</span>
+					<input v-model="jumpSS" class="tl-time-input" type="number" min="0" max="59" step="1" @change="normalizeJumpTime" />
+				</div>
+			</div>
 			<div class="tl-meta">
+				<span class="tl-meta-label">FPS</span>
+				<input v-model.number="inputFps" class="tl-input tl-input-fps" type="number" min="1" max="240" step="1" @change="applyFps" />
 				<span class="tl-meta-label">当前帧</span>
 				<input v-model.number="inputCurrentFrame" class="tl-input" type="number" min="0" :max="Math.max(0, frameCount - 1)" step="1" @change="applyCurrentFrame" />
 				<span class="tl-meta-sep">/</span>
@@ -35,6 +51,8 @@
 				<div class="tl-playhead" :style="{ transform: `translateX(${playheadX}px)` }">
 					<div class="tl-playhead-line" />
 				</div>
+				<!-- 指针线命中区：允许在播放过程中拖拽调整当前帧 -->
+				<div class="tl-playhead-hit" :style="{ transform: `translateX(${playheadX}px)` }" @pointerdown.stop.prevent="onPlayheadPointerDown" />
 
 				<!-- 框选覆盖层（只覆盖图层矩阵区域） -->
 				<div
@@ -137,9 +155,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { TimelineKey, type TimelineState } from '../../store/timeline'
-import { VideoSceneStore } from '../../store/videoscene'
+import { VideoSceneStore, type VideoSceneNodeProps, type VideoSceneNodeTransform, type VideoSceneTreeNode } from '../../store/videoscene'
 import { containsFrame, getPrevNext, rangeFullyCovered, rangeIntersects, type TimelineFrameSpan } from '../../store/timeline/spans'
 import { VuexTimelineDataManager } from './core/VuexTimelineDataManager'
+import { TimelineTicker } from './core/TimelineTicker'
 import TimeLineContextMenu from './components/TimeLineContextMenu.vue'
 import TimeLineEasingCurveEditor from './components/TimeLineEasingCurveEditor.vue'
 import TimeLineFrameCanvasRow from './components/TimeLineFrameCanvasRow.vue'
@@ -167,6 +186,39 @@ const timelineWidth = computed(() => frameCount.value * frameWidth.value + timel
 
 const inputCurrentFrame = ref<number>(0)
 const inputFrameCount = ref<number>(120)
+const inputFps = ref<number>(30)
+
+const jumpHH = ref<string>('00')
+const jumpMM = ref<string>('00')
+const jumpSS = ref<string>('00')
+
+const isPlaying = ref(false)
+const loopEnabled = ref(false)
+let ticker: TimelineTicker | null = null
+
+const clampInt = (n: number, min: number, max: number) => Math.max(min, Math.min(max, Math.floor(n)))
+
+const pad2 = (n: number) => String(clampInt(n, 0, 99)).padStart(2, '0')
+
+const normalizeJumpTime = () => {
+	const hh = clampInt(Number(jumpHH.value || 0), 0, 99)
+	const mm = clampInt(Number(jumpMM.value || 0), 0, 59)
+	const ss = clampInt(Number(jumpSS.value || 0), 0, 59)
+	jumpHH.value = pad2(hh)
+	jumpMM.value = pad2(mm)
+	jumpSS.value = pad2(ss)
+}
+
+const onJumpByTime = () => {
+	normalizeJumpTime()
+	const hh = clampInt(Number(jumpHH.value || 0), 0, 99)
+	const mm = clampInt(Number(jumpMM.value || 0), 0, 59)
+	const ss = clampInt(Number(jumpSS.value || 0), 0, 59)
+	const totalSeconds = hh * 3600 + mm * 60 + ss
+	const fps = clampInt(Number(inputFps.value || 30), 1, 240)
+	const targetFrame = totalSeconds * fps
+	setCurrentFrame(targetFrame)
+}
 
 watch(
 	() => currentFrame.value,
@@ -201,12 +253,49 @@ const applyFrameCount = () => {
 	store.dispatch('setFrameCount', { frameCount: next })
 }
 
+const applyFps = () => {
+	const next = clampInt(Number(inputFps.value || 30), 1, 240)
+	inputFps.value = next
+	ticker?.setFps(next)
+}
+
 const applyCurrentFrame = () => {
 	store.dispatch('setCurrentFrame', { frameIndex: Number(inputCurrentFrame.value) || 0 })
 }
 
 const setCurrentFrame = (frameIndex: number) => {
-	store.dispatch('setCurrentFrame', { frameIndex })
+	const fc = Math.max(0, frameCount.value)
+	const next = fc > 0 ? Math.max(0, Math.min(fc - 1, Math.floor(frameIndex))) : 0
+	store.dispatch('setCurrentFrame', { frameIndex: next })
+}
+
+const onPlay = () => ticker?.play()
+const onPause = () => ticker?.pause()
+const onStop = () => ticker?.stop()
+const toggleLoop = () => {
+	loopEnabled.value = !loopEnabled.value
+	ticker?.setLoop(loopEnabled.value)
+}
+
+const ensurePlayheadVisibleWhilePlaying = (fi: number) => {
+	if (!isPlaying.value) return
+	const el = viewportRef.value
+	if (!el) return
+	const vw = Math.max(0, Math.floor(el.clientWidth))
+	if (vw <= 0) return
+	const fw = Math.max(1, frameWidth.value)
+	const worldX = Math.round(fi * fw)
+	// playheadX = worldX - scrollLeft
+	const x = worldX - scrollLeft.value
+	// 超出右侧：把 playhead 拉回可视区第一帧（x=0）
+	if (x > vw - fw) {
+		commitScrollLeft(worldX)
+		return
+	}
+	// 超出左侧（例如用户拖拽/跳帧后）：也拉回到第一帧
+	if (x < 0) {
+		commitScrollLeft(worldX)
+	}
 }
 
 const isActiveFrame = (frameIndex: number) => currentFrame.value === frameIndex
@@ -498,6 +587,37 @@ const closeMenu = () => {
 	menu.value = null
 }
 
+type NodeSnapshot = { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }
+
+const cloneJsonSafe = <T,>(v: T): T => {
+	try {
+		return (globalThis as any).structuredClone ? (globalThis as any).structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T)
+	} catch {
+		return v
+	}
+}
+
+const collectUserNodeSnapshots = (nodes: VideoSceneTreeNode[] | undefined, out: Record<string, NodeSnapshot>) => {
+	if (!nodes) return
+	for (const n of nodes) {
+		if (n.category === 'user') {
+			out[n.id] = {
+				transform: n.transform ? { ...n.transform } : undefined,
+				props: n.props ? cloneJsonSafe(n.props) : undefined,
+			}
+		}
+		if (n.children?.length) collectUserNodeSnapshots(n.children, out)
+	}
+}
+
+const captureLayerSnapshot = (layerId: string): Record<string, NodeSnapshot> => {
+	const layer = VideoSceneStore.state.layers.find((l) => l.id === layerId)
+	if (!layer) return {}
+	const out: Record<string, NodeSnapshot> = {}
+	collectUserNodeSnapshots(layer.nodeTree, out)
+	return out
+}
+
 const parseCellKey = (key: string): { layerId: string; frameIndex: number } | null => {
 	const parts = key.split(':')
 	if (parts.length !== 2) return null
@@ -541,10 +661,12 @@ const onFrameDblClick = (payload: { layerId: string; frameIndex: number; ev: Mou
 const onMenuAddKeyframe = () => {
 	if (!menu.value) return
 	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
+		const nodesById = captureLayerSnapshot(layerId)
 		for (const s of spans) {
 			const a = typeof s === 'number' ? s : s.start
 			const b = typeof s === 'number' ? s : s.end
 			store.dispatch('addKeyframeRange', { layerId, startFrame: a, endFrame: b })
+			store.dispatch('setNodeKeyframeSnapshotRange', { layerId, startFrame: a, endFrame: b, nodesById })
 		}
 	}
 	closeMenu()
@@ -687,6 +809,12 @@ const scrollLeft = ref(0)
 const viewportWidth = ref(0)
 const maxScrollLeft = computed(() => Math.max(0, timelineWidth.value - viewportWidth.value))
 
+const scrollByHalfViewport = (dir: -1 | 1) => {
+	// 步长固定为“可视区域的一半”，随缩放（frameWidth/viewportWidth）自动变化
+	const step = Math.max(1, Math.floor(viewportWidth.value / 2))
+	commitScrollLeft(scrollLeft.value + dir * step)
+}
+
 const playheadWorldX = computed(() => Math.round(currentFrame.value * frameWidth.value))
 const playheadX = computed(() => Math.round(playheadWorldX.value - scrollLeft.value))
 
@@ -726,6 +854,39 @@ const onZoomWheel = (ev: WheelEvent) => {
 
 // 指针线拖动（手柄在第一行）
 let playheadDragging = false
+
+const onPlayheadPointerDown = (ev: PointerEvent) => {
+	closeMenu()
+	if (ev.button !== 0) return
+	playheadDragging = true
+	try {
+		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
+	} catch {
+		// ignore
+	}
+	setCurrentFrame(calcFrameFromClientX(ev.clientX))
+
+	const onMove = (e: PointerEvent) => {
+		if (!playheadDragging) return
+		setCurrentFrame(calcFrameFromClientX(e.clientX))
+	}
+	const onUp = (e: PointerEvent) => {
+		playheadDragging = false
+		try {
+			;(ev.currentTarget as HTMLElement)?.releasePointerCapture?.(ev.pointerId)
+		} catch {
+			// ignore
+		}
+		window.removeEventListener('pointermove', onMove)
+		window.removeEventListener('pointerup', onUp)
+		window.removeEventListener('pointercancel', onUp)
+		// 没拖动：当作点击
+		if (!Number.isNaN(e.clientX)) setCurrentFrame(calcFrameFromClientX(e.clientX))
+	}
+	window.addEventListener('pointermove', onMove)
+	window.addEventListener('pointerup', onUp)
+	window.addEventListener('pointercancel', onUp)
+}
 
 // 刻度区拖拽：选择“所有图层对应帧块”
 let tickDragging = false
@@ -1042,20 +1203,47 @@ const onFramePointerDown = (layerId: string, frameIndex: number, ev: PointerEven
 onMounted(() => {
 	syncViewportMetrics()
 	onLayersScroll()
+	// 播放 tick 管理器（默认 30fps）
+	ticker = new TimelineTicker({
+		getFrameCount: () => frameCount.value,
+		getCurrentFrame: () => currentFrame.value,
+		setCurrentFrame: (fi) => setCurrentFrame(fi),
+		fps: inputFps.value,
+		loop: loopEnabled.value,
+		onPlayingChange: (p) => (isPlaying.value = p),
+		onTick: (fi) => ensurePlayheadVisibleWhilePlaying(fi),
+	})
+	// 兜底：用户在播放中拖拽/跳帧时也要保持可视
+	watch(
+		() => currentFrame.value,
+		(fi) => ensurePlayheadVisibleWhilePlaying(fi)
+	)
 	window.addEventListener('resize', syncViewportMetrics)
 	window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
 	window.addEventListener('keydown', onGlobalKeydown, { capture: true })
 	window.addEventListener('resize', onLayersScroll)
+	window.addEventListener('dweb:timeline-nav', onTimelineNav as any)
 })
 
 onBeforeUnmount(() => {
 	if (scrollRaf) cancelAnimationFrame(scrollRaf)
+	ticker?.dispose()
+	ticker = null
 	window.removeEventListener('resize', syncViewportMetrics)
 	window.removeEventListener('resize', onLayersScroll)
 	window.removeEventListener('pointerdown', onGlobalPointerDown, { capture: true } as any)
 	window.removeEventListener('keydown', onGlobalKeydown, { capture: true } as any)
+	window.removeEventListener('dweb:timeline-nav', onTimelineNav as any)
 	closeMenu()
 })
+
+const onTimelineNav = (ev: Event) => {
+	const ce = ev as CustomEvent<{ dir: number }>
+	const dir = ce?.detail?.dir
+	if (dir !== -1 && dir !== 1) return
+	closeMenu()
+	scrollByHalfViewport(dir)
+}
 
 watch(
 	() => [timelineWidth.value, frameWidth.value] as const,
@@ -1107,6 +1295,49 @@ watch(
 }
 
 .tl-btn:hover {
+	background: var(--vscode-hover-bg);
+}
+
+.tl-play-controls {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.tl-time-jump {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.tl-time-input {
+	width: 46px;
+	height: 24px;
+	padding: 0 6px;
+	border-radius: 6px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	font-size: 12px;
+	outline: none;
+}
+
+.tl-time-input:focus {
+	border-color: var(--vscode-border-accent);
+}
+
+.tl-time-sep {
+	color: var(--vscode-fg-muted);
+	opacity: 0.8;
+	font-size: 12px;
+}
+
+.tl-input-fps {
+	width: 60px;
+}
+
+.tl-mini-btn.active {
+	border-color: var(--vscode-border-accent);
 	background: var(--vscode-hover-bg);
 }
 
@@ -1171,6 +1402,19 @@ watch(
 	left: 180px;
 	pointer-events: none;
 	z-index: 5;
+}
+
+.tl-playhead-hit {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 180px;
+	width: 10px;
+	transform: translateX(-5px);
+	cursor: ew-resize;
+	background: transparent;
+	pointer-events: auto;
+	z-index: 6;
 }
 
 .tl-select-overlay {

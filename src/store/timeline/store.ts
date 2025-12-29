@@ -11,6 +11,8 @@ import {
   type TimelineFrameSpan,
 } from './spans'
 
+import type { VideoSceneNodeProps, VideoSceneNodeTransform } from '../videoscene'
+
 export type TimelineLayer = { id: string; name: string }
 
 export type TimelineCellKey = string // `${layerId}:${frameIndex}`
@@ -34,6 +36,14 @@ export interface TimelineState {
 
   // 缓动曲线：key 为 easingSegmentKey；value 为三次贝塞尔控制点（0..1）
   easingCurves: Record<string, { x1: number; y1: number; x2: number; y2: number; preset?: string }>
+
+  // 舞台节点关键帧快照：layerId -> frameIndex(string) -> nodeId -> {transform, props}
+  // 说明：frameIndex 用 string key 以便序列化；快照用于按帧应用动画/未来导出。
+  nodeKeyframesByLayer: Record<
+	string,
+	Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>>
+  >
+  nodeKeyframeVersion: number
 }
 
 const clampInt = (v: unknown, min: number, max: number) => {
@@ -80,7 +90,21 @@ const createDefaultState = (): TimelineState => ({
   keyframeVersion: 0,
   easingSegmentKeys: [],
   easingCurves: {},
+
+  nodeKeyframesByLayer: {},
+  nodeKeyframeVersion: 0,
 })
+
+const frameKey = (frameIndex: number) => String(Math.floor(frameIndex))
+
+const cloneJsonSafe = <T>(v: T): T => {
+  try {
+    // structuredClone in modern browsers; fallback to JSON for plain data
+    return (globalThis as any).structuredClone ? (globalThis as any).structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T)
+  } catch {
+    return v
+  }
+}
 
 const getLayerSpans = (map: Record<string, TimelineFrameSpan[]>, layerId: string) => map[layerId] ?? []
 const setLayerSpans = (map: Record<string, TimelineFrameSpan[]>, layerId: string, spans: TimelineFrameSpan[]) => {
@@ -131,6 +155,21 @@ export const TimelineStore = createStore<TimelineState>({
 	  }
 	  state.keyframeSpansByLayer = nextKf
 	  state.keyframeVersion++
+
+    // 裁剪节点关键帧快照（移除越界帧）
+    const nextNodeKf: TimelineState['nodeKeyframesByLayer'] = {}
+    for (const [layerId, map] of Object.entries(state.nodeKeyframesByLayer)) {
+      const out: Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>> = {}
+      for (const [k, v] of Object.entries(map)) {
+        const fi = Math.floor(Number(k))
+        if (!Number.isFinite(fi)) continue
+        if (fi < 0 || fi > next - 1) continue
+        out[String(fi)] = v
+      }
+      if (Object.keys(out).length) nextNodeKf[layerId] = out
+    }
+    state.nodeKeyframesByLayer = nextNodeKf
+    state.nodeKeyframeVersion++
 
       // 裁剪缓动段：
       // 1) start/end 需要在范围内
@@ -191,6 +230,10 @@ export const TimelineStore = createStore<TimelineState>({
 		  delete state.keyframeSpansByLayer[payload.layerId]
 		  state.keyframeVersion++
 	  }
+    if (state.nodeKeyframesByLayer[payload.layerId]) {
+      delete state.nodeKeyframesByLayer[payload.layerId]
+      state.nodeKeyframeVersion++
+    }
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
         const seg = parseSegment(k)
         return !seg ? false : seg.layerId !== payload.layerId
@@ -226,6 +269,15 @@ export const TimelineStore = createStore<TimelineState>({
       }
     }
     if (kfChanged) state.keyframeVersion++
+
+	  let nodeKfChanged = false
+	  for (const layerId of toRemove) {
+		  if (state.nodeKeyframesByLayer[layerId]) {
+			  delete state.nodeKeyframesByLayer[layerId]
+			  nodeKfChanged = true
+		  }
+	  }
+	  if (nodeKfChanged) state.nodeKeyframeVersion++
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
         const seg = parseSegment(k)
         return !seg ? false : !toRemove.has(seg.layerId)
@@ -322,6 +374,19 @@ export const TimelineStore = createStore<TimelineState>({
 	  else delete nextMap[payload.layerId]
 	  state.keyframeSpansByLayer = nextMap
 	  state.keyframeVersion++
+
+    // 同步删除节点快照
+    const fk = frameKey(frameIndex)
+    const layerMap = state.nodeKeyframesByLayer[payload.layerId]
+    if (layerMap && layerMap[fk]) {
+      const nextNodeMap = { ...state.nodeKeyframesByLayer }
+      const nextLayerMap = { ...layerMap }
+      delete nextLayerMap[fk]
+      if (Object.keys(nextLayerMap).length) nextNodeMap[payload.layerId] = nextLayerMap
+      else delete nextNodeMap[payload.layerId]
+      state.nodeKeyframesByLayer = nextNodeMap
+      state.nodeKeyframeVersion++
+    }
       // 删除关键帧会导致相邻段变化：移除引用该关键帧的缓动段
 	  const beforeSegs = state.easingSegmentKeys
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
@@ -421,6 +486,20 @@ export const TimelineStore = createStore<TimelineState>({
     state.keyframeSpansByLayer = nextMap
     state.keyframeVersion++
 
+    // 同步删除节点快照
+    const layerMap = state.nodeKeyframesByLayer[payload.layerId]
+    if (layerMap) {
+      const nextNodeMap = { ...state.nodeKeyframesByLayer }
+      const nextLayerMap = { ...layerMap }
+      for (let f = a; f <= b; f++) {
+        delete nextLayerMap[frameKey(f)]
+      }
+      if (Object.keys(nextLayerMap).length) nextNodeMap[payload.layerId] = nextLayerMap
+      else delete nextNodeMap[payload.layerId]
+      state.nodeKeyframesByLayer = nextNodeMap
+      state.nodeKeyframeVersion++
+    }
+
     // 关键帧删除会使端点不再成立：移除引用被删除关键帧的缓动段（端点必须是关键帧）
     const beforeSegs = state.easingSegmentKeys
     state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
@@ -434,6 +513,30 @@ export const TimelineStore = createStore<TimelineState>({
     for (const k of beforeSegs) {
       if (!state.easingSegmentKeys.includes(k)) delete state.easingCurves[k]
     }
+  },
+
+  // --- 舞台节点关键帧快照 ---
+  setNodeKeyframeSnapshotRange(
+    state,
+    payload: {
+      layerId: string
+      startFrame: number
+      endFrame: number
+      nodesById: Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>
+    }
+  ) {
+    const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
+    const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
+    if (b < a) return
+    const nodesById = cloneJsonSafe(payload.nodesById ?? {})
+    const nextMap: TimelineState['nodeKeyframesByLayer'] = { ...state.nodeKeyframesByLayer }
+    const layerMap = { ...(nextMap[payload.layerId] ?? {}) }
+    for (let f = a; f <= b; f++) {
+      layerMap[frameKey(f)] = nodesById
+    }
+    nextMap[payload.layerId] = layerMap
+    state.nodeKeyframesByLayer = nextMap
+    state.nodeKeyframeVersion++
   },
   },
   actions: {
@@ -492,5 +595,19 @@ export const TimelineStore = createStore<TimelineState>({
   removeKeyframeRange({ commit }, payload: { layerId: string; startFrame: number; endFrame: number }) {
     commit('removeKeyframeRange', payload)
   },
+
+  // --- 舞台节点关键帧快照 ---
+  setNodeKeyframeSnapshotRange(
+    { commit },
+    payload: {
+      layerId: string
+      startFrame: number
+      endFrame: number
+      nodesById: Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>
+    }
+  ) {
+    commit('setNodeKeyframeSnapshotRange', payload)
+  },
   },
 })
+

@@ -1,6 +1,7 @@
 import type { Store } from 'vuex'
 import type { TimelineState } from '../../../store/timeline'
 import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
+import { VideoSceneStore, type VideoSceneNodeProps, type VideoSceneNodeTransform, type VideoSceneTreeNode } from '../../../store/videoscene'
 import { TimelineDataManager, type FrameCellPayload } from './TimelineDataManager'
 
 const clampInt = (v: unknown, min: number, max: number) => {
@@ -11,6 +12,37 @@ const clampInt = (v: unknown, min: number, max: number) => {
 
 const cellKey = (layerId: string, frameIndex: number) => `${layerId}:${frameIndex}`
 const segmentKey = (layerId: string, startFrame: number, endFrame: number) => `${layerId}:${startFrame}:${endFrame}`
+
+type NodeSnapshot = { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }
+
+const cloneJsonSafe = <T,>(v: T): T => {
+	try {
+		return (globalThis as any).structuredClone ? (globalThis as any).structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T)
+	} catch {
+		return v
+	}
+}
+
+const collectUserNodeSnapshots = (nodes: VideoSceneTreeNode[] | undefined, out: Record<string, NodeSnapshot>) => {
+	if (!nodes) return
+	for (const n of nodes) {
+		if (n.category === 'user') {
+			out[n.id] = {
+				transform: n.transform ? { ...n.transform } : undefined,
+				props: n.props ? cloneJsonSafe(n.props) : undefined,
+			}
+		}
+		if (n.children?.length) collectUserNodeSnapshots(n.children, out)
+	}
+}
+
+const captureLayerSnapshot = (layerId: string): Record<string, NodeSnapshot> => {
+	const layer = VideoSceneStore.state.layers.find((l) => l.id === layerId)
+	if (!layer) return {}
+	const out: Record<string, NodeSnapshot> = {}
+	collectUserNodeSnapshots(layer.nodeTree, out)
+	return out
+}
 
 const parseFrameIndexFromKey = (key: string) => {
 	const parts = key.split(':')
@@ -34,7 +66,11 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 	}
 
 	addKeyframe(layerId: string, frameIndex: number): void {
-		this.store.dispatch('addKeyframe', { layerId, frameIndex })
+		const fi = clampInt(frameIndex, 0, this.store.state.frameCount - 1)
+		this.store.dispatch('addKeyframe', { layerId, frameIndex: fi })
+		// 同步捕获舞台节点快照，供播放/拖拽指针时按帧应用
+		const nodesById = captureLayerSnapshot(layerId)
+		this.store.dispatch('setNodeKeyframeSnapshotRange', { layerId, startFrame: fi, endFrame: fi, nodesById })
 	}
 
 	removeKeyframe(layerId: string, frameIndex: number): void {
