@@ -53,17 +53,8 @@
 					</div>
 					<div class="tl-right">
 						<div ref="viewportRef" class="tl-viewport" @pointerdown="onTickPointerDown" @wheel.prevent="onZoomWheel">
+								<TimeLineTickCanvas :frame-count="frameCount" :frame-width="frameWidth" :scroll-left="scrollLeft" />
 							<div class="tl-track" :style="{ width: timelineWidth + 'px', transform: `translateX(${-scrollLeft}px)` }">
-								<!-- 帧数刻度（恢复显示） -->
-								<div
-									v-for="fi in visibleFrameIndices"
-									:key="'tick-' + fi"
-									class="tl-tick"
-									:class="{ major: fi % 10 === 0 }"
-									:style="{ left: fi * frameWidth + 'px' }"
-								>
-									<span v-if="fi % 10 === 0" class="tl-tick-label">{{ fi }}</span>
-								</div>
 								<!-- 手柄只在第一行显示 -->
 									<div class="tl-playhead-handle" :style="{ left: playheadWorldX + 'px' }" />
 							</div>
@@ -73,36 +64,34 @@
 
 				<!-- 图层行（可垂直滚动） -->
 				<div ref="layersScrollRef" class="tl-layers-scroll" @scroll="onLayersScroll">
-					<div class="tl-layers">
+					<div class="tl-layers" :style="{ height: totalLayersHeight + 'px' }">
 						<div v-if="layers.length === 0" class="tl-empty">点击“新建”开始创建图层</div>
-						<div v-for="layer in layers" :key="layer.id" class="tl-row" :style="{ height: layerRowHeight(layer.id) + 'px' }" @click="selectLayer(layer.id)">
+						<div v-if="layers.length > 0" :style="{ height: beforeLayersHeight + 'px' }" />
+						<div v-for="layer in visibleLayers" :key="layer.id" class="tl-row" :style="{ height: layerRowHeight(layer.id) + 'px' }" @click="selectLayer(layer.id)">
 							<div class="tl-left tl-layer-left" :class="{ selected: isLayerSelected(layer.id) }">
 								<span class="tl-layer-name">{{ layer.name }}</span>
 								<button class="tl-del" type="button" @click.stop="removeLayer(layer.id)">删除</button>
 							</div>
 							<div class="tl-right">
 								<div class="tl-viewport tl-frames-viewport" @wheel.prevent="onZoomWheel">
-									<div class="tl-track" :style="{ width: timelineWidth + 'px', transform: `translateX(${-scrollLeft}px)` }">
-										<TimeLineFrameCell
-											v-for="frameIndex in visibleFrameIndices"
-											:key="frameIndex"
-											:layer-id="layer.id"
-											:frame-index="frameIndex"
-											:left="frameIndex * frameWidth"
-											:width="frameWidth"
-											:active="isActiveFrame(frameIndex)"
-											:selected="isFrameSelected(layer.id, frameIndex)"
-											:keyframe="timelineData.isKeyframe(layer.id, frameIndex)"
-											:between="isBetweenKeyframes(layer.id, frameIndex)"
-											:join-left="isBetweenKeyframes(layer.id, frameIndex) && isBetweenKeyframes(layer.id, frameIndex - 1)"
-											:join-right="isBetweenKeyframes(layer.id, frameIndex) && isBetweenKeyframes(layer.id, frameIndex + 1)"
-											:easing="timelineData.isEasingEnabled(layer.id, frameIndex)"
-											:easing-arrow="timelineData.isEasingEnabled(layer.id, frameIndex) && isBetweenKeyframes(layer.id, frameIndex) && timelineData.isKeyframe(layer.id, frameIndex + 1)"
-											@pointerdown="({ layerId, frameIndex, ev }) => onFramePointerDown(layerId, frameIndex, ev)"
-											@dblclick="onFrameDblClick"
-											@contextmenu="onFrameContextMenu"
-										/>
-									</div>
+									<TimeLineFrameCanvasRow
+										:layer-id="layer.id"
+										:frame-count="frameCount"
+										:frame-width="frameWidth"
+										:scroll-left="scrollLeft"
+										:current-frame="currentFrame"
+										:selection-version="selectionVersion"
+										:keyframe-version="keyframeVersion"
+										:easing-segment-keys="easingSegmentKeys"
+										:is-frame-selected="isFrameSelected"
+										:is-keyframe="(lid, fi) => timelineData.isKeyframe(lid, fi)"
+										:is-between="isBetweenKeyframes"
+										:is-easing-enabled="(lid, fi) => timelineData.isEasingEnabled(lid, fi)"
+										:is-easing-arrow="(lid, fi) => timelineData.isEasingEnabled(lid, fi) && isBetweenKeyframes(lid, fi) && timelineData.isKeyframe(lid, fi + 1)"
+										@pointerdown="({ layerId, frameIndex, ev }) => onFramePointerDown(layerId, frameIndex, ev)"
+										@dblclick="onFrameDblClick"
+										@contextmenu="onFrameContextMenu"
+									/>
 								</div>
 								<div
 									v-if="(openEasingEditorsByLayer[layer.id] ?? []).length > 0"
@@ -123,6 +112,7 @@
 								</div>
 							</div>
 						</div>
+						<div v-if="layers.length > 0" :style="{ height: afterLayersHeight + 'px' }" />
 					</div>
 				</div>
 			</div>
@@ -148,10 +138,12 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { TimelineKey, type TimelineState } from '../../store/timeline'
 import { VideoSceneStore } from '../../store/videoscene'
+import { containsFrame, getPrevNext, rangeFullyCovered, rangeIntersects, type TimelineFrameSpan } from '../../store/timeline/spans'
 import { VuexTimelineDataManager } from './core/VuexTimelineDataManager'
-import TimeLineFrameCell from './components/TimeLineFrameCell.vue'
 import TimeLineContextMenu from './components/TimeLineContextMenu.vue'
 import TimeLineEasingCurveEditor from './components/TimeLineEasingCurveEditor.vue'
+import TimeLineFrameCanvasRow from './components/TimeLineFrameCanvasRow.vue'
+import TimeLineTickCanvas from './components/TimeLineTickCanvas.vue'
 
 const store = useStore<TimelineState>(TimelineKey)
 
@@ -162,9 +154,16 @@ const frameCount = computed(() => store.state.frameCount)
 const currentFrame = computed(() => store.state.currentFrame)
 const frameWidth = computed(() => store.state.frameWidth)
 const selectedLayerIds = computed(() => store.state.selectedLayerIds)
-const selectedCellKeys = computed(() => store.state.selectedCellKeys)
+const selectedSpansByLayer = computed(() => store.state.selectedSpansByLayer)
+const selectionVersion = computed(() => store.state.selectionVersion)
+const keyframeSpansByLayer = computed(() => store.state.keyframeSpansByLayer)
+const keyframeVersion = computed(() => store.state.keyframeVersion)
+const easingSegmentKeys = computed(() => store.state.easingSegmentKeys)
 
-const timelineWidth = computed(() => frameCount.value * frameWidth.value)
+// 右侧预留空间：让最后一帧不贴边（避免被底部滚动条/操作区域影响点击）
+// 注意：该宽度同时用于刻度行与各图层行的“世界宽度”，保证滚动/绘制同步。
+const timelineRightPaddingPx = 160
+const timelineWidth = computed(() => frameCount.value * frameWidth.value + timelineRightPaddingPx)
 
 const inputCurrentFrame = ref<number>(0)
 const inputFrameCount = ref<number>(120)
@@ -231,14 +230,17 @@ watch(
 )
 
 const isFrameSelected = (layerId: string, frameIndex: number) => {
-	return selectedCellKeys.value.includes(`${layerId}:${frameIndex}`)
+	const spans = selectedSpansByLayer.value[layerId] ?? []
+	return containsFrame(spans, frameIndex)
 }
 
 const layersScrollRef = ref<HTMLDivElement | null>(null)
 const layersScrollTop = ref(0)
+const layersViewportHeight = ref(0)
 const onLayersScroll = () => {
 	const el = layersScrollRef.value
 	layersScrollTop.value = el ? Math.max(0, Math.floor(el.scrollTop)) : 0
+ 	layersViewportHeight.value = el ? Math.max(0, Math.floor(el.clientHeight)) : 0
 }
 
 const baseRowHeight = 34
@@ -274,6 +276,82 @@ const layerRowHeight = (layerId: string) => {
 	return baseRowHeight + (count > 0 ? easingEditorHeight : 0)
 }
 
+const totalLayersHeight = computed(() => {
+	if (layers.value.length === 0) return 0
+	const layout = layerLayout.value
+	const last = layout[layout.length - 1]
+	return last ? last.top + last.height : 0
+})
+
+const findFirstRowIndexByY = (y: number) => {
+	const layout = layerLayout.value
+	if (layout.length === 0) return 0
+	let lo = 0
+	let hi = layout.length - 1
+	let ans = layout.length
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1
+		const row = layout[mid]
+		if (row.top + row.height > y) {
+			ans = mid
+			hi = mid - 1
+		} else {
+			lo = mid + 1
+		}
+	}
+	return Math.max(0, Math.min(layout.length - 1, ans === layout.length ? layout.length - 1 : ans))
+}
+
+const findLastRowIndexByY = (y: number) => {
+	const layout = layerLayout.value
+	if (layout.length === 0) return 0
+	let lo = 0
+	let hi = layout.length - 1
+	let ans = -1
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1
+		const row = layout[mid]
+		if (row.top < y) {
+			ans = mid
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	return Math.max(0, Math.min(layout.length - 1, ans < 0 ? 0 : ans))
+}
+
+const visibleLayerRange = computed(() => {
+	const count = layers.value.length
+	if (count === 0) return { start: 0, end: -1 }
+	const overscanPx = 240
+	const top = Math.max(0, layersScrollTop.value - overscanPx)
+	const bottom = layersScrollTop.value + layersViewportHeight.value + overscanPx
+	const start = findFirstRowIndexByY(top)
+	const end = findLastRowIndexByY(bottom)
+	return { start, end: Math.max(start, end) }
+})
+
+const visibleLayers = computed(() => {
+	const { start, end } = visibleLayerRange.value
+	if (end < start) return []
+	return layers.value.slice(start, end + 1)
+})
+
+const beforeLayersHeight = computed(() => {
+	const { start } = visibleLayerRange.value
+	const layout = layerLayout.value
+	return layout[start]?.top ?? 0
+})
+
+const afterLayersHeight = computed(() => {
+	const { end } = visibleLayerRange.value
+	const layout = layerLayout.value
+	if (layout.length === 0) return 0
+	const afterTop = (layout[end]?.top ?? 0) + (layout[end]?.height ?? 0)
+	return Math.max(0, totalLayersHeight.value - afterTop)
+})
+
 const easingCurveFor = (segmentKey: SegmentKey) => {
 	return store.state.easingCurves?.[segmentKey] ?? { x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' }
 }
@@ -305,9 +383,9 @@ const isValidOpenEasingEditor = (segmentKey: SegmentKey) => {
 	const parsed = parseSegmentKey(segmentKey)
 	if (!parsed) return false
 	if (!store.state.easingSegmentKeys.includes(segmentKey)) return false
-	const arr = keyframeIndexMap.value.get(parsed.layerId)
-	if (!arr || arr.length < 2) return false
-	if (!arr.includes(parsed.startKeyframe) || !arr.includes(parsed.endKeyframe)) return false
+	// 段两端必须仍是关键帧
+	if (!timelineData.isKeyframe(parsed.layerId, parsed.startKeyframe)) return false
+	if (!timelineData.isKeyframe(parsed.layerId, parsed.endKeyframe)) return false
 	if (parsed.startKeyframe + 1 > parsed.endKeyframe - 1) return false
 	return true
 }
@@ -324,51 +402,13 @@ const easingEditorStyle = (segmentKey: SegmentKey) => {
 	}
 }
 
-// 两个关键帧之间的普通帧：用于“合并样式”提示
-const keyframeIndexMap = computed(() => {
-	const map = new Map<string, number[]>()
-	for (const k of store.state.keyframeKeys) {
-		const parts = k.split(':')
-		if (parts.length !== 2) continue
-		const layerId = parts[0]
-		const fi = Math.floor(Number(parts[1]))
-		if (!Number.isFinite(fi)) continue
-		const arr = map.get(layerId)
-		if (arr) arr.push(fi)
-		else map.set(layerId, [fi])
-	}
-	for (const [layerId, arr] of map) {
-		arr.sort((a, b) => a - b)
-		// 去重
-		const uniq: number[] = []
-		let last: number | null = null
-		for (const n of arr) {
-			if (last === n) continue
-			uniq.push(n)
-			last = n
-		}
-		map.set(layerId, uniq)
-	}
-	return map
-})
-
 const isBetweenKeyframes = (layerId: string, frameIndex: number) => {
 	const fi = Math.floor(Number(frameIndex))
 	if (!Number.isFinite(fi)) return false
 	// 关键帧本身不算“中间帧”
 	if (timelineData.isKeyframe(layerId, fi)) return false
-	const arr = keyframeIndexMap.value.get(layerId)
-	if (!arr || arr.length < 2) return false
-	// lowerBound: 第一个 >= fi 的位置
-	let lo = 0
-	let hi = arr.length
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1
-		if (arr[mid] < fi) lo = mid + 1
-		else hi = mid
-	}
-	const next = arr[lo]
-	const prev = lo > 0 ? arr[lo - 1] : undefined
+	const spans = keyframeSpansByLayer.value[layerId] ?? []
+	const { prev, next } = getPrevNext(spans, fi)
 	return prev != null && next != null && prev < fi && fi < next
 }
 
@@ -381,15 +421,41 @@ const menuY = computed(() => menu.value?.y ?? 0)
 
 const menuCanCopy = computed(() => menu.value != null)
 const menuCanPaste = computed(() => timelineData.canPaste())
+const menuSelectedSpansByLayer = computed<Record<string, TimelineFrameSpan[]>>(() => {
+	const out: Record<string, TimelineFrameSpan[]> = {}
+	for (const [layerId, spans] of Object.entries(store.state.selectedSpansByLayer)) {
+		if (spans && spans.length) out[layerId] = spans
+	}
+	// 没有选中时，降级为菜单锚点单个
+	if (Object.keys(out).length === 0 && menu.value) out[menu.value.layerId] = [menu.value.frameIndex]
+	return out
+})
+
 const menuCanAddKeyframe = computed(() => {
 	if (!menu.value) return false
-	// 批量：只要选区里存在“非关键帧”，就允许设置关键帧
-	return menuSelectedTargets.value.some((t) => !timelineData.isKeyframe(t.layerId, t.frameIndex))
+	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
+		const kf = keyframeSpansByLayer.value[layerId] ?? []
+		for (const s of spans) {
+			const a = typeof s === 'number' ? s : s.start
+			const b = typeof s === 'number' ? s : s.end
+			if (!rangeFullyCovered(kf, a, b)) return true
+		}
+	}
+	return false
 })
 const menuCanRemoveKeyframe = computed(() => {
 	if (!menu.value) return false
-	// 批量：只要选区里存在“关键帧”，就允许取消关键帧
-	return menuSelectedTargets.value.some((t) => timelineData.isKeyframe(t.layerId, t.frameIndex))
+	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
+		const kf = keyframeSpansByLayer.value[layerId] ?? []
+		for (const s of spans) {
+			if (typeof s === 'number') {
+				if (containsFrame(kf, s)) return true
+			} else {
+				if (rangeIntersects(kf, s.start, s.end)) return true
+			}
+		}
+	}
+	return false
 })
 const menuCanEnableEasing = computed(() => {
 	if (!menu.value) return false
@@ -401,31 +467,23 @@ const menuCanDisableEasing = computed(() => {
 })
 
 const selectedSingleSegmentKey = computed<SegmentKey | null>(() => {
-	const keys = store.state.selectedCellKeys
-	if (keys.length === 0) return null
-
-	const parsed0 = parseCellKey(keys[0])
-	if (!parsed0) return null
-	const seg = getKeyframeSegmentBounds(parsed0.layerId, parsed0.frameIndex)
+	const entries = Object.entries(store.state.selectedSpansByLayer).filter(([, spans]) => spans && spans.length)
+	if (entries.length !== 1) return null
+	const layerId = entries[0][0]
+	const spans = entries[0][1]
+	if (!spans || spans.length === 0) return null
+	const anyFrame = typeof spans[0] === 'number' ? spans[0] : spans[0].start
+	const seg = getKeyframeSegmentBounds(layerId, anyFrame)
 	if (!seg) return null
 
 	const expectedStart = seg.startKeyframe + 1
 	const expectedEnd = seg.endKeyframe - 1
 	if (expectedStart > expectedEnd) return null
-	const expectedCount = expectedEnd - expectedStart + 1
-	if (keys.length !== expectedCount) return null
-
-	const set = new Set<number>()
-	for (const k of keys) {
-		const p = parseCellKey(k)
-		if (!p) return null
-		if (p.layerId !== parsed0.layerId) return null
-		if (p.frameIndex < expectedStart || p.frameIndex > expectedEnd) return null
-		set.add(p.frameIndex)
-	}
-	if (set.size !== expectedCount) return null
-	for (let f = expectedStart; f <= expectedEnd; f++) if (!set.has(f)) return null
-	return makeSegmentKey(parsed0.layerId, seg.startKeyframe, seg.endKeyframe)
+	// selection 必须“恰好等于”该段：覆盖完整 expected 区间，且不包含区间外的帧
+	if (!rangeFullyCovered(spans, expectedStart, expectedEnd)) return null
+	if (expectedStart > 0 && rangeIntersects(spans, 0, expectedStart - 1)) return null
+	if (expectedEnd < frameCount.value - 1 && rangeIntersects(spans, expectedEnd + 1, frameCount.value - 1)) return null
+	return makeSegmentKey(layerId, seg.startKeyframe, seg.endKeyframe)
 })
 
 const menuCanEditEasingCurve = computed(() => {
@@ -449,43 +507,20 @@ const parseCellKey = (key: string): { layerId: string; frameIndex: number } | nu
 	return { layerId, frameIndex: Math.floor(frameIndex) }
 }
 
-const menuSelectedTargets = computed(() => {
-	const keys = store.state.selectedCellKeys
-	const out: { layerId: string; frameIndex: number }[] = []
-	for (const k of keys) {
-		const parsed = parseCellKey(k)
-		if (parsed) out.push(parsed)
-	}
-	// 没有选中时，降级为菜单锚点单个
-	if (out.length === 0 && menu.value) out.push({ layerId: menu.value.layerId, frameIndex: menu.value.frameIndex })
-	return out
-})
-
 const getKeyframeSegmentBounds = (layerId: string, frameIndex: number): { startKeyframe: number; endKeyframe: number } | null => {
 	const fi = Math.floor(Number(frameIndex))
 	if (!Number.isFinite(fi)) return null
 	if (timelineData.isKeyframe(layerId, fi)) return null
-	const arr = keyframeIndexMap.value.get(layerId)
-	if (!arr || arr.length < 2) return null
-	// lowerBound: first >= fi
-	let lo = 0
-	let hi = arr.length
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1
-		if (arr[mid] < fi) lo = mid + 1
-		else hi = mid
-	}
-	const endKeyframe = arr[lo]
-	const startKeyframe = lo > 0 ? arr[lo - 1] : undefined
-	if (startKeyframe == null || endKeyframe == null) return null
-	if (!(startKeyframe < fi && fi < endKeyframe)) return null
-	return { startKeyframe, endKeyframe }
+	const spans = keyframeSpansByLayer.value[layerId] ?? []
+	const { prev, next } = getPrevNext(spans, fi)
+	if (prev == null || next == null) return null
+	if (!(prev < fi && fi < next)) return null
+	return { startKeyframe: prev, endKeyframe: next }
 }
 
 const onFrameContextMenu = (payload: { layerId: string; frameIndex: number; clientX: number; clientY: number }) => {
 	// 右键：不取消多选；若右键点在未选中格子上，则切换为单选该格子
-	const key = `${payload.layerId}:${payload.frameIndex}`
-	if (!selectedCellKeys.value.includes(key)) {
+	if (!isFrameSelected(payload.layerId, payload.frameIndex)) {
 		// 合并段内也允许“单帧右键单选”，便于对某一帧单独设置关键帧
 		store.dispatch('toggleCellSelection', { layerId: payload.layerId, frameIndex: payload.frameIndex, additive: false })
 	}
@@ -505,13 +540,25 @@ const onFrameDblClick = (payload: { layerId: string; frameIndex: number; ev: Mou
 
 const onMenuAddKeyframe = () => {
 	if (!menu.value) return
-	for (const t of menuSelectedTargets.value) timelineData.addKeyframe(t.layerId, t.frameIndex)
+	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
+		for (const s of spans) {
+			const a = typeof s === 'number' ? s : s.start
+			const b = typeof s === 'number' ? s : s.end
+			store.dispatch('addKeyframeRange', { layerId, startFrame: a, endFrame: b })
+		}
+	}
 	closeMenu()
 }
 
 const onMenuRemoveKeyframe = () => {
 	if (!menu.value) return
-	for (const t of menuSelectedTargets.value) timelineData.removeKeyframe(t.layerId, t.frameIndex)
+	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
+		for (const s of spans) {
+			const a = typeof s === 'number' ? s : s.start
+			const b = typeof s === 'number' ? s : s.end
+			store.dispatch('removeKeyframeRange', { layerId, startFrame: a, endFrame: b })
+		}
+	}
 	closeMenu()
 }
 
@@ -523,13 +570,61 @@ const onMenuCopy = () => {
 
 const onMenuPaste = () => {
 	if (!menu.value) return
-	for (const t of menuSelectedTargets.value) timelineData.pasteFrame(t.layerId, t.frameIndex)
+	const targets: { layerId: string; frameIndex: number }[] = []
+	const maxTargets = 2000
+	let truncated = false
+	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
+		for (const s of spans) {
+			if (typeof s === 'number') {
+				targets.push({ layerId, frameIndex: s })
+				if (targets.length >= maxTargets) {
+					truncated = true
+					break
+				}
+				continue
+			}
+			for (let f = s.start; f <= s.end; f++) {
+				targets.push({ layerId, frameIndex: f })
+				if (targets.length >= maxTargets) {
+					truncated = true
+					break
+				}
+			}
+			if (truncated) break
+		}
+		if (truncated) break
+	}
+	for (const t of targets) timelineData.pasteFrame(t.layerId, t.frameIndex)
 	closeMenu()
 }
 
 const onMenuEnableEasing = () => {
 	if (!menu.value) return
-	for (const t of menuSelectedTargets.value) {
+	const targets: { layerId: string; frameIndex: number }[] = []
+	const maxTargets = 2000
+	let truncated = false
+	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
+		for (const s of spans) {
+			if (typeof s === 'number') {
+				targets.push({ layerId, frameIndex: s })
+				if (targets.length >= maxTargets) {
+					truncated = true
+					break
+				}
+				continue
+			}
+			for (let f = s.start; f <= s.end; f++) {
+				targets.push({ layerId, frameIndex: f })
+				if (targets.length >= maxTargets) {
+					truncated = true
+					break
+				}
+			}
+			if (truncated) break
+		}
+		if (truncated) break
+	}
+	for (const t of targets) {
 		if (!timelineData.canEnableEasing(t.layerId, t.frameIndex)) continue
 		timelineData.enableEasing(t.layerId, t.frameIndex)
 	}
@@ -538,7 +633,31 @@ const onMenuEnableEasing = () => {
 
 const onMenuDisableEasing = () => {
 	if (!menu.value) return
-	for (const t of menuSelectedTargets.value) timelineData.disableEasing(t.layerId, t.frameIndex)
+	const targets: { layerId: string; frameIndex: number }[] = []
+	const maxTargets = 2000
+	let truncated = false
+	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
+		for (const s of spans) {
+			if (typeof s === 'number') {
+				targets.push({ layerId, frameIndex: s })
+				if (targets.length >= maxTargets) {
+					truncated = true
+					break
+				}
+				continue
+			}
+			for (let f = s.start; f <= s.end; f++) {
+				targets.push({ layerId, frameIndex: f })
+				if (targets.length >= maxTargets) {
+					truncated = true
+					break
+				}
+			}
+			if (truncated) break
+		}
+		if (truncated) break
+	}
+	for (const t of targets) timelineData.disableEasing(t.layerId, t.frameIndex)
 	closeMenu()
 }
 
@@ -570,30 +689,6 @@ const maxScrollLeft = computed(() => Math.max(0, timelineWidth.value - viewportW
 
 const playheadWorldX = computed(() => Math.round(currentFrame.value * frameWidth.value))
 const playheadX = computed(() => Math.round(playheadWorldX.value - scrollLeft.value))
-
-// 可视窗口：仅渲染当前可见帧范围（带缓冲），避免上万帧导致巨量 DOM
-const visibleRange = computed(() => {
-	const total = Math.max(0, frameCount.value)
-	if (total <= 0) return { start: 0, end: -1 }
-	const fw = Math.max(1, Number(frameWidth.value) || 1)
-	const vw = Math.max(0, Number(viewportWidth.value) || 0)
-	const sl = Math.max(0, Math.floor(Number(scrollLeft.value) || 0))
-	const start0 = Math.floor(sl / fw)
-	const end0 = Math.ceil((sl + vw) / fw)
-	// 额外缓冲：快速拖动滚动条时减少频繁重建
-	const buffer = Math.max(20, Math.ceil(vw / fw))
-	const start = clamp(start0 - buffer, 0, Math.max(0, total - 1))
-	const end = clamp(end0 + buffer, 0, Math.max(0, total - 1))
-	return { start, end }
-})
-
-const visibleFrameIndices = computed<number[]>(() => {
-	const { start, end } = visibleRange.value
-	if (end < start) return []
-	const out: number[] = []
-	for (let i = start; i <= end; i++) out.push(i)
-	return out
-})
 
 const syncViewportMetrics = () => {
 	const el = viewportRef.value
@@ -644,7 +739,8 @@ const calcFrameFromClientX = (clientX: number) => {
 	const rect = el.getBoundingClientRect()
 	const x = clientX - rect.left
 	const worldX = x + scrollLeft.value
-	return Math.round(worldX / frameWidth.value)
+	const fi = Math.round(worldX / frameWidth.value)
+	return Math.max(0, Math.min(frameCount.value - 1, fi))
 }
 
 const onTickPointerDown = (ev: PointerEvent) => {
@@ -730,22 +826,44 @@ const layerLayout = computed(() => {
 	})
 })
 
-type BoxRect = { x: number; y: number; w: number; h: number }
-const boxRect = ref<BoxRect | null>(null)
+type BoxWorldRect = { x0: number; y0: number; x1: number; y1: number }
+const boxRect = ref<BoxWorldRect | null>(null)
 
 const boxRectStyle = computed(() => {
 	const r = boxRect.value
-	if (!r) return {}
+	const overlay = getOverlayRect()
+	if (!r || !overlay) return { display: 'none' }
+
+	const xMin = Math.min(r.x0, r.x1)
+	const xMax = Math.max(r.x0, r.x1)
+	const yMin = Math.min(r.y0, r.y1)
+	const yMax = Math.max(r.y0, r.y1)
+
+	// world -> view
+	const vx0 = xMin - scrollLeft.value
+	const vx1 = xMax - scrollLeft.value
+	const vy0 = yMin - layersScrollTop.value
+	const vy1 = yMax - layersScrollTop.value
+
+	// intersect with viewport
+	const ix0 = Math.max(0, Math.min(overlay.width, Math.min(vx0, vx1)))
+	const ix1 = Math.max(0, Math.min(overlay.width, Math.max(vx0, vx1)))
+	const iy0 = Math.max(0, Math.min(overlay.height, Math.min(vy0, vy1)))
+	const iy1 = Math.max(0, Math.min(overlay.height, Math.max(vy0, vy1)))
+
+	const w = ix1 - ix0
+	const h = iy1 - iy0
+	if (w <= 0 || h <= 0) return { display: 'none' }
 	return {
-		left: 180 + r.x + 'px',
-		top: baseRowHeight + r.y + 'px',
-		width: r.w + 'px',
-		height: r.h + 'px',
+		left: 180 + ix0 + 'px',
+		top: baseRowHeight + iy0 + 'px',
+		width: w + 'px',
+		height: h + 'px',
 	}
 })
 
 let boxDragging = false
-let boxStart: { x: number; y: number } | null = null
+let boxStartWorld: { x: number; y: number } | null = null
 let boxMoved = false
 let boxAdditive = false
 let boxShiftMode = false
@@ -791,17 +909,18 @@ const getOverlayRect = () => {
 	}
 }
 
-const frameAt = (x: number) => clamp(Math.floor((x + scrollLeft.value) / frameWidth.value), 0, frameCount.value - 1)
+const frameAtWorldX = (worldX: number) => clamp(Math.floor(worldX / frameWidth.value), 0, frameCount.value - 1)
 
-const layerIndexAt = (y: number) => {
-	// y 为 overlay 内相对坐标，从 0 开始
-	const yy = Math.max(0, y) + layersScrollTop.value
-	const layout = layerLayout.value
-	for (let i = 0; i < layout.length; i++) {
-		const row = layout[i]
-		if (yy >= row.top && yy < row.top + row.height) return i
+const layerIndexAtWorldY = (worldY: number) => {
+	const yy = Math.max(0, worldY)
+	return findFirstRowIndexByY(yy)
+}
+
+const hasAnySelectedCells = () => {
+	for (const spans of Object.values(store.state.selectedSpansByLayer)) {
+		if (spans && spans.length) return true
 	}
-	return Math.max(0, layout.length - 1)
+	return false
 }
 
 const onFramePointerDown = (layerId: string, frameIndex: number, ev: PointerEvent) => {
@@ -820,52 +939,56 @@ const onFramePointerDown = (layerId: string, frameIndex: number, ev: PointerEven
 	boxAdditive = ev.ctrlKey
 
 	// Shift：区域多选（默认包含最后选中帧块）
-	if (ev.shiftKey && store.state.selectedCellKeys.length > 0 && store.state.lastSelectedCellKey) {
+	if (ev.shiftKey && hasAnySelectedCells() && store.state.lastSelectedCellKey) {
 		const parsed = parseCellKey(store.state.lastSelectedCellKey)
 		if (parsed) {
 			const li = layers.value.findIndex((l) => l.id === parsed.layerId)
 			if (li >= 0) {
 				boxShiftMode = true
 				boxAdditive = false
-				const anchorX = clamp(parsed.frameIndex * frameWidth.value - scrollLeft.value, 0, overlay.width)
-				const anchorY = clamp((layerLayout.value[li]?.top ?? 0) - layersScrollTop.value, 0, overlay.height)
-				boxStart = { x: anchorX, y: anchorY }
-				boxRect.value = { x: anchorX, y: anchorY, w: frameWidth.value, h: baseRowHeight }
+				const anchorXWorld = parsed.frameIndex * frameWidth.value
+				const anchorYWorld = layerLayout.value[li]?.top ?? 0
+				boxStartWorld = { x: anchorXWorld, y: anchorYWorld }
+				boxRect.value = { x0: anchorXWorld, y0: anchorYWorld, x1: anchorXWorld + frameWidth.value, y1: anchorYWorld + baseRowHeight }
 				boxMoved = true
 			}
 		}
 	}
 
-	if (!boxStart) {
-		boxStart = {
-			x: clamp(ev.clientX - overlay.left, 0, overlay.width),
-			y: clamp(ev.clientY - overlay.top, 0, overlay.height),
-		}
+	if (!boxStartWorld) {
+		const x = clamp(ev.clientX - overlay.left, 0, overlay.width)
+		const y = clamp(ev.clientY - overlay.top, 0, overlay.height)
+		const worldX = x + scrollLeft.value
+		const worldY = y + layersScrollTop.value
+		boxStartWorld = { x: worldX, y: worldY }
 		boxRect.value = null
 	}
 	;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
 
 	const onMove = (e: PointerEvent) => {
-		if (!boxDragging || !boxStart) return
+		if (!boxDragging || !boxStartWorld) return
 		const x2 = clamp(e.clientX - overlay.left, 0, overlay.width)
 		const y2 = clamp(e.clientY - overlay.top, 0, overlay.height)
-		const dx = x2 - boxStart.x
-		const dy = y2 - boxStart.y
+		const worldX2 = x2 + scrollLeft.value
+		const worldY2 = y2 + layersScrollTop.value
+		const dx = worldX2 - boxStartWorld.x
+		const dy = worldY2 - boxStartWorld.y
 		const threshold2 = 4 * 4
 		if (!boxMoved && dx * dx + dy * dy < threshold2) return
 		boxMoved = true
 
-		const x = Math.min(boxStart.x, x2)
-		const y = Math.min(boxStart.y, y2)
-		const w = Math.abs(x2 - boxStart.x)
-		const h = Math.abs(y2 - boxStart.y)
-		boxRect.value = { x, y, w, h }
+		boxRect.value = { x0: boxStartWorld.x, y0: boxStartWorld.y, x1: worldX2, y1: worldY2 }
 		if (layers.value.length === 0) return
 
-		const startFrame = frameAt(x)
-		const endFrame = frameAt(x + w)
-		const li0 = clamp(layerIndexAt(y), 0, Math.max(0, layers.value.length - 1))
-		const li1 = clamp(layerIndexAt(y + h), 0, Math.max(0, layers.value.length - 1))
+		const xMin = Math.min(boxStartWorld.x, worldX2)
+		const xMax = Math.max(boxStartWorld.x, worldX2)
+		const yMin = Math.min(boxStartWorld.y, worldY2)
+		const yMax = Math.max(boxStartWorld.y, worldY2)
+
+		const startFrame = frameAtWorldX(xMin)
+		const endFrame = frameAtWorldX(xMax)
+		const li0 = clamp(layerIndexAtWorldY(yMin), 0, Math.max(0, layers.value.length - 1))
+		const li1 = clamp(layerIndexAtWorldY(yMax), 0, Math.max(0, layers.value.length - 1))
 		const a = Math.min(li0, li1)
 		const b = Math.max(li0, li1)
 		const layerIds = layers.value.slice(a, b + 1).map((l) => l.id)
@@ -878,12 +1001,31 @@ const onFramePointerDown = (layerId: string, frameIndex: number, ev: PointerEven
 	const onUp = (e: PointerEvent) => {
 		// 没移动：点击选择（合并段作为整体；不移动指针）
 		if (!boxMoved && framePointer) {
-			// 单击：始终允许单帧选择（便于段内设置关键帧）
-			store.dispatch('toggleCellSelection', { layerId: framePointer.layerId, frameIndex: framePointer.frameIndex, additive: boxAdditive })
+			// Shift 单击：矩形范围选择（从上次选中到当前，跨图层+跨帧）
+			if (e.shiftKey && store.state.lastSelectedCellKey) {
+				const anchor = parseCellKey(store.state.lastSelectedCellKey)
+				if (anchor) {
+					const li0 = layers.value.findIndex((l) => l.id === anchor.layerId)
+					const li1 = layers.value.findIndex((l) => l.id === framePointer!.layerId)
+					if (li0 >= 0 && li1 >= 0) {
+						const a = Math.min(li0, li1)
+						const b = Math.max(li0, li1)
+						const layerIds = layers.value.slice(a, b + 1).map((l) => l.id)
+						store.dispatch('addRangeSelection', { layerIds, startFrame: anchor.frameIndex, endFrame: framePointer.frameIndex, additive: false })
+					} else {
+						store.dispatch('toggleCellSelection', { layerId: framePointer.layerId, frameIndex: framePointer.frameIndex, additive: boxAdditive })
+					}
+				} else {
+					store.dispatch('toggleCellSelection', { layerId: framePointer.layerId, frameIndex: framePointer.frameIndex, additive: boxAdditive })
+				}
+			} else {
+				// 单击：始终允许单帧选择（便于段内设置关键帧）
+				store.dispatch('toggleCellSelection', { layerId: framePointer.layerId, frameIndex: framePointer.frameIndex, additive: boxAdditive })
+			}
 		}
 
 		boxDragging = false
-		boxStart = null
+		boxStartWorld = null
 		boxRect.value = null
 		boxMoved = false
 		boxShiftMode = false
@@ -903,11 +1045,13 @@ onMounted(() => {
 	window.addEventListener('resize', syncViewportMetrics)
 	window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
 	window.addEventListener('keydown', onGlobalKeydown, { capture: true })
+	window.addEventListener('resize', onLayersScroll)
 })
 
 onBeforeUnmount(() => {
 	if (scrollRaf) cancelAnimationFrame(scrollRaf)
 	window.removeEventListener('resize', syncViewportMetrics)
+	window.removeEventListener('resize', onLayersScroll)
 	window.removeEventListener('pointerdown', onGlobalPointerDown, { capture: true } as any)
 	window.removeEventListener('keydown', onGlobalKeydown, { capture: true } as any)
 	closeMenu()
@@ -919,7 +1063,7 @@ watch(
 )
 
 watch(
-	() => [store.state.keyframeKeys.length, store.state.easingSegmentKeys.length, frameCount.value] as const,
+	() => [store.state.keyframeVersion, store.state.easingSegmentKeys.length, frameCount.value] as const,
 	() => {
 		const next = openEasingEditors.value.filter((k) => isValidOpenEasingEditor(k))
 		if (next.length !== openEasingEditors.value.length) openEasingEditors.value = next

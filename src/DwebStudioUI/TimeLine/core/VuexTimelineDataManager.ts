@@ -1,5 +1,6 @@
 import type { Store } from 'vuex'
 import type { TimelineState } from '../../../store/timeline'
+import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
 import { TimelineDataManager, type FrameCellPayload } from './TimelineDataManager'
 
 const clampInt = (v: unknown, min: number, max: number) => {
@@ -28,7 +29,8 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 
 	isKeyframe(layerId: string, frameIndex: number): boolean {
 		const fi = clampInt(frameIndex, 0, this.store.state.frameCount - 1)
-		return this.store.state.keyframeKeys.includes(cellKey(layerId, fi))
+		const spans = this.store.state.keyframeSpansByLayer?.[layerId] ?? []
+		return containsFrame(spans, fi)
 	}
 
 	addKeyframe(layerId: string, frameIndex: number): void {
@@ -59,30 +61,11 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		// 关键帧本身不属于段内
 		if (this.isKeyframe(layerId, fi)) return null
 
-		// 取该层所有关键帧索引
-		const indices: number[] = []
-		for (const k of this.store.state.keyframeKeys) {
-			if (!k.startsWith(layerId + ':')) continue
-			const n = parseFrameIndexFromKey(k)
-			if (n == null) continue
-			indices.push(n)
-		}
-		if (indices.length < 2) return null
-		indices.sort((a, b) => a - b)
-
-		// lowerBound: first >= fi
-		let lo = 0
-		let hi = indices.length
-		while (lo < hi) {
-			const mid = (lo + hi) >> 1
-			if (indices[mid] < fi) lo = mid + 1
-			else hi = mid
-		}
-		const endFrame = indices[lo]
-		const startFrame = lo > 0 ? indices[lo - 1] : undefined
-		if (startFrame == null || endFrame == null) return null
-		if (!(startFrame < fi && fi < endFrame)) return null
-		return { startFrame, endFrame }
+		const spans = this.store.state.keyframeSpansByLayer?.[layerId] ?? []
+		const { prev, next } = getPrevNext(spans, fi)
+		if (prev == null || next == null) return null
+		if (!(prev < fi && fi < next)) return null
+		return { startFrame: prev, endFrame: next }
 	}
 
 	enableEasing(layerId: string, frameIndex: number): void {

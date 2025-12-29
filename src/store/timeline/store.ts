@@ -1,6 +1,16 @@
 import { createStore, type Store } from 'vuex'
 import type { InjectionKey } from 'vue'
 
+import {
+  addRange,
+  clipSpans,
+  containsFrame,
+  normalizeSpans,
+  removeRange,
+  toggleRange,
+  type TimelineFrameSpan,
+} from './spans'
+
 export type TimelineLayer = { id: string; name: string }
 
 export type TimelineCellKey = string // `${layerId}:${frameIndex}`
@@ -11,11 +21,13 @@ export interface TimelineState {
   frameWidth: number
   layers: TimelineLayer[]
   selectedLayerIds: string[]
-  selectedCellKeys: TimelineCellKey[]
+  selectedSpansByLayer: Record<string, TimelineFrameSpan[]>
+  selectionVersion: number
   lastSelectedCellKey: TimelineCellKey | null
 
   // 关键帧/缓动（占位）：都用 cellKey(`${layerId}:${frameIndex}`) 存储，便于序列化
-  keyframeKeys: TimelineCellKey[]
+  keyframeSpansByLayer: Record<string, TimelineFrameSpan[]>
+  keyframeVersion: number
 
   // 缓动（段）：`${layerId}:${startKeyframeFrame}:${endKeyframeFrame}`
   easingSegmentKeys: string[]
@@ -60,13 +72,25 @@ const createDefaultState = (): TimelineState => ({
   frameWidth: 14,
   layers: [{ id: 'layer-1', name: '图层1' }],
   selectedLayerIds: ['layer-1'],
-  selectedCellKeys: [],
+  selectedSpansByLayer: {},
+  selectionVersion: 0,
   lastSelectedCellKey: null,
 
-  keyframeKeys: [],
+  keyframeSpansByLayer: {},
+  keyframeVersion: 0,
   easingSegmentKeys: [],
   easingCurves: {},
 })
+
+const getLayerSpans = (map: Record<string, TimelineFrameSpan[]>, layerId: string) => map[layerId] ?? []
+const setLayerSpans = (map: Record<string, TimelineFrameSpan[]>, layerId: string, spans: TimelineFrameSpan[]) => {
+	map[layerId] = normalizeSpans(spans)
+}
+
+const isKeyframeAt = (state: TimelineState, layerId: string, frameIndex: number) => {
+	const spans = getLayerSpans(state.keyframeSpansByLayer, layerId)
+	return containsFrame(spans, frameIndex)
+}
 
 export const TimelineKey: InjectionKey<Store<TimelineState>> = Symbol('TimelineStore')
 
@@ -77,16 +101,15 @@ export const TimelineStore = createStore<TimelineState>({
       const next = Math.max(1, Math.floor(Number(payload.frameCount) || 1))
       state.frameCount = next
       if (state.currentFrame > next - 1) state.currentFrame = next - 1
-      // 裁剪 cell selection（移除越界帧）
-      const nextKeys: TimelineCellKey[] = []
-      for (const k of state.selectedCellKeys) {
-        const parts = k.split(':')
-        if (parts.length !== 2) continue
-        const layerId = parts[0]
-        const frame = clampInt(parts[1], 0, next - 1)
-        nextKeys.push(cellKey(layerId, frame))
-      }
-      state.selectedCellKeys = uniq(nextKeys)
+
+	  // 裁剪 selection spans（移除越界帧）
+	  const nextSel: Record<string, TimelineFrameSpan[]> = {}
+	  for (const [layerId, spans] of Object.entries(state.selectedSpansByLayer)) {
+		  const clipped = clipSpans(spans, 0, next - 1)
+		  if (clipped.length) nextSel[layerId] = clipped
+	  }
+	  state.selectedSpansByLayer = nextSel
+	  state.selectionVersion++
 
       // lastSelectedCellKey 也需要裁剪
       if (state.lastSelectedCellKey) {
@@ -100,25 +123,19 @@ export const TimelineStore = createStore<TimelineState>({
         }
       }
 
-      // 裁剪关键帧（移除越界帧）
-      const clipCellKeys = (keys: TimelineCellKey[]) => {
-        const out: TimelineCellKey[] = []
-        for (const k of keys) {
-          const parts = k.split(':')
-          if (parts.length !== 2) continue
-          const layerId = parts[0]
-          const frame = clampInt(parts[1], 0, next - 1)
-          out.push(cellKey(layerId, frame))
-        }
-        return uniq(out)
-      }
-      state.keyframeKeys = clipCellKeys(state.keyframeKeys)
+	  // 裁剪关键帧 spans（移除越界帧）
+	  const nextKf: Record<string, TimelineFrameSpan[]> = {}
+	  for (const [layerId, spans] of Object.entries(state.keyframeSpansByLayer)) {
+		  const clipped = clipSpans(spans, 0, next - 1)
+		  if (clipped.length) nextKf[layerId] = clipped
+	  }
+	  state.keyframeSpansByLayer = nextKf
+	  state.keyframeVersion++
 
       // 裁剪缓动段：
       // 1) start/end 需要在范围内
       // 2) start < end
       // 3) start/end 必须仍然是关键帧（否则段无意义）
-      const keyframeSet = new Set(state.keyframeKeys)
       const nextSegs: string[] = []
       for (const k of state.easingSegmentKeys) {
         const seg = parseSegment(k)
@@ -126,8 +143,8 @@ export const TimelineStore = createStore<TimelineState>({
         const startFrame = clampInt(seg.startFrame, 0, next - 1)
         const endFrame = clampInt(seg.endFrame, 0, next - 1)
         if (!(startFrame < endFrame)) continue
-        if (!keyframeSet.has(cellKey(seg.layerId, startFrame))) continue
-        if (!keyframeSet.has(cellKey(seg.layerId, endFrame))) continue
+		if (!isKeyframeAt(state, seg.layerId, startFrame)) continue
+		if (!isKeyframeAt(state, seg.layerId, endFrame)) continue
         nextSegs.push(segmentKey(seg.layerId, startFrame, endFrame))
       }
       state.easingSegmentKeys = uniq(nextSegs)
@@ -161,13 +178,19 @@ export const TimelineStore = createStore<TimelineState>({
       if (idx < 0) return
       state.layers.splice(idx, 1)
       state.selectedLayerIds = state.selectedLayerIds.filter((id) => id !== payload.layerId)
-      state.selectedCellKeys = state.selectedCellKeys.filter((k) => parseLayerIdFromKey(k) !== payload.layerId)
+	  if (state.selectedSpansByLayer[payload.layerId]) {
+		  delete state.selectedSpansByLayer[payload.layerId]
+		  state.selectionVersion++
+	  }
 
       if (state.lastSelectedCellKey && parseLayerIdFromKey(state.lastSelectedCellKey) === payload.layerId) {
         state.lastSelectedCellKey = null
       }
 
-      state.keyframeKeys = state.keyframeKeys.filter((k) => parseLayerIdFromKey(k) !== payload.layerId)
+	  if (state.keyframeSpansByLayer[payload.layerId]) {
+		  delete state.keyframeSpansByLayer[payload.layerId]
+		  state.keyframeVersion++
+	  }
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
         const seg = parseSegment(k)
         return !seg ? false : seg.layerId !== payload.layerId
@@ -182,13 +205,27 @@ export const TimelineStore = createStore<TimelineState>({
       if (toRemove.size === 0) return
       state.layers = state.layers.filter((l) => !toRemove.has(l.id))
       state.selectedLayerIds = []
-      state.selectedCellKeys = state.selectedCellKeys.filter((k) => !toRemove.has(parseLayerIdFromKey(k)))
+    let selChanged = false
+    for (const layerId of toRemove) {
+      if (state.selectedSpansByLayer[layerId]) {
+        delete state.selectedSpansByLayer[layerId]
+        selChanged = true
+      }
+    }
+    if (selChanged) state.selectionVersion++
 
       if (state.lastSelectedCellKey && toRemove.has(parseLayerIdFromKey(state.lastSelectedCellKey))) {
         state.lastSelectedCellKey = null
       }
 
-      state.keyframeKeys = state.keyframeKeys.filter((k) => !toRemove.has(parseLayerIdFromKey(k)))
+    let kfChanged = false
+    for (const layerId of toRemove) {
+      if (state.keyframeSpansByLayer[layerId]) {
+        delete state.keyframeSpansByLayer[layerId]
+        kfChanged = true
+      }
+    }
+    if (kfChanged) state.keyframeVersion++
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
         const seg = parseSegment(k)
         return !seg ? false : !toRemove.has(seg.layerId)
@@ -206,7 +243,8 @@ export const TimelineStore = createStore<TimelineState>({
       }
     },
     clearSelection(state) {
-      state.selectedCellKeys = []
+	  state.selectedSpansByLayer = {}
+	  state.selectionVersion++
       state.lastSelectedCellKey = null
     },
     toggleCellSelection(state, payload: { layerId: string; frameIndex: number; additive?: boolean }) {
@@ -214,16 +252,22 @@ export const TimelineStore = createStore<TimelineState>({
       const key = cellKey(payload.layerId, frameIndex)
 
       if (!payload.additive) {
-        state.selectedCellKeys = [key]
+		state.selectedSpansByLayer = { [payload.layerId]: [frameIndex] }
+		state.selectionVersion++
         state.selectedLayerIds = [payload.layerId]
         state.lastSelectedCellKey = key
         return
       }
 
-      const set = new Set(state.selectedCellKeys)
-      if (set.has(key)) set.delete(key)
-      else set.add(key)
-      state.selectedCellKeys = Array.from(set)
+	  const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.selectedSpansByLayer }
+	  const before = getLayerSpans(nextMap, payload.layerId)
+	  const next = containsFrame(before, frameIndex)
+		? removeRange(before, frameIndex, frameIndex)
+		: addRange(before, frameIndex, frameIndex)
+	  if (next.length) nextMap[payload.layerId] = next
+	  else delete nextMap[payload.layerId]
+	  state.selectedSpansByLayer = nextMap
+	  state.selectionVersion++
       state.selectedLayerIds = uniq([payload.layerId, ...state.selectedLayerIds])
       state.lastSelectedCellKey = key
     },
@@ -232,11 +276,13 @@ export const TimelineStore = createStore<TimelineState>({
       const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
       const layerIds = uniq(payload.layerIds)
 
-      const next = payload.additive ? new Set(state.selectedCellKeys) : new Set<TimelineCellKey>()
-      for (const layerId of layerIds) {
-        for (let f = a; f <= b; f++) next.add(cellKey(layerId, f))
-      }
-      state.selectedCellKeys = Array.from(next)
+	  const nextMap: Record<string, TimelineFrameSpan[]> = payload.additive ? { ...state.selectedSpansByLayer } : {}
+	  for (const layerId of layerIds) {
+		  const before = getLayerSpans(nextMap, layerId)
+		  nextMap[layerId] = addRange(before, a, b)
+	  }
+	  state.selectedSpansByLayer = nextMap
+	  state.selectionVersion++
       state.selectedLayerIds = payload.additive ? uniq([...state.selectedLayerIds, ...layerIds]) : layerIds
 
       // 约定：范围选择的 lastSelected 取 endFrame（更贴近用户拖拽方向）
@@ -246,34 +292,45 @@ export const TimelineStore = createStore<TimelineState>({
     // --- 关键帧 ---
     addKeyframe(state, payload: { layerId: string; frameIndex: number }) {
       const frameIndex = clampInt(payload.frameIndex, 0, state.frameCount - 1)
-      const key = cellKey(payload.layerId, frameIndex)
-      if (state.keyframeKeys.includes(key)) return
-      state.keyframeKeys = [...state.keyframeKeys, key]
+    // const key = cellKey(payload.layerId, frameIndex)
+	  const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
+    const beforeSpans = getLayerSpans(nextMap, payload.layerId)
+    if (containsFrame(beforeSpans, frameIndex)) return
+    setLayerSpans(nextMap, payload.layerId, addRange(beforeSpans, frameIndex, frameIndex))
+	  state.keyframeSpansByLayer = nextMap
+	  state.keyframeVersion++
       // 新增关键帧会“切段”：移除该层中被插入点切开的缓动段
-      const before = state.easingSegmentKeys
+    const beforeSegs = state.easingSegmentKeys
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
         const seg = parseSegment(k)
         if (!seg) return false
         if (seg.layerId !== payload.layerId) return true
         return !(seg.startFrame < frameIndex && frameIndex < seg.endFrame)
       })
-	  for (const k of before) {
+    for (const k of beforeSegs) {
 		  if (!state.easingSegmentKeys.includes(k)) delete state.easingCurves[k]
 	  }
     },
     removeKeyframe(state, payload: { layerId: string; frameIndex: number }) {
       const frameIndex = clampInt(payload.frameIndex, 0, state.frameCount - 1)
-      const key = cellKey(payload.layerId, frameIndex)
-      state.keyframeKeys = state.keyframeKeys.filter((k) => k !== key)
+    // const key = cellKey(payload.layerId, frameIndex)
+	  const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
+	  const beforeSpans = getLayerSpans(nextMap, payload.layerId)
+	  if (!containsFrame(beforeSpans, frameIndex)) return
+	  const nextSpans = removeRange(beforeSpans, frameIndex, frameIndex)
+	  if (nextSpans.length) nextMap[payload.layerId] = nextSpans
+	  else delete nextMap[payload.layerId]
+	  state.keyframeSpansByLayer = nextMap
+	  state.keyframeVersion++
       // 删除关键帧会导致相邻段变化：移除引用该关键帧的缓动段
-      const before = state.easingSegmentKeys
+	  const beforeSegs = state.easingSegmentKeys
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
         const seg = parseSegment(k)
         if (!seg) return false
         if (seg.layerId !== payload.layerId) return true
         return !(seg.startFrame === frameIndex || seg.endFrame === frameIndex)
       })
-	  for (const k of before) {
+	  for (const k of beforeSegs) {
 		  if (!state.easingSegmentKeys.includes(k)) delete state.easingCurves[k]
 	  }
     },
@@ -284,8 +341,8 @@ export const TimelineStore = createStore<TimelineState>({
       const endFrame = clampInt(payload.endFrame, 0, state.frameCount - 1)
       if (!(startFrame < endFrame)) return
       // 段两端必须是关键帧
-      if (!state.keyframeKeys.includes(cellKey(payload.layerId, startFrame))) return
-      if (!state.keyframeKeys.includes(cellKey(payload.layerId, endFrame))) return
+	  if (!isKeyframeAt(state, payload.layerId, startFrame)) return
+	  if (!isKeyframeAt(state, payload.layerId, endFrame)) return
       const key = segmentKey(payload.layerId, startFrame, endFrame)
       if (state.easingSegmentKeys.includes(key)) return
       state.easingSegmentKeys = [...state.easingSegmentKeys, key]
@@ -314,28 +371,70 @@ export const TimelineStore = createStore<TimelineState>({
     toggleRangeSelection(state, payload: { layerId: string; startFrame: number; endFrame: number }) {
       const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
       const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
-      const keys: TimelineCellKey[] = []
-      for (let f = a; f <= b; f++) keys.push(cellKey(payload.layerId, f))
-      if (keys.length === 0) return
-
-      const set = new Set(state.selectedCellKeys)
-      let allSelected = true
-      for (const k of keys) {
-        if (!set.has(k)) {
-          allSelected = false
-          break
-        }
-      }
-
-      if (allSelected) {
-        for (const k of keys) set.delete(k)
-      } else {
-        for (const k of keys) set.add(k)
-      }
-      state.selectedCellKeys = Array.from(set)
+    const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.selectedSpansByLayer }
+    const before = getLayerSpans(nextMap, payload.layerId)
+    const next = toggleRange(before, a, b)
+    if (next.length) nextMap[payload.layerId] = next
+    else delete nextMap[payload.layerId]
+    state.selectedSpansByLayer = nextMap
+    state.selectionVersion++
       state.selectedLayerIds = uniq([payload.layerId, ...state.selectedLayerIds])
       state.lastSelectedCellKey = cellKey(payload.layerId, b)
     },
+
+  // --- 关键帧：范围 ---
+  addKeyframeRange(state, payload: { layerId: string; startFrame: number; endFrame: number }) {
+    const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
+    const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
+    const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
+    const before = getLayerSpans(nextMap, payload.layerId)
+    const next = addRange(before, a, b)
+    if (next.length) nextMap[payload.layerId] = next
+    else delete nextMap[payload.layerId]
+    state.keyframeSpansByLayer = nextMap
+    state.keyframeVersion++
+
+    // 关键帧新增可能切段：凡是段内出现新关键帧，则移除该段
+    const beforeSegs = state.easingSegmentKeys
+    state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
+      const seg = parseSegment(k)
+      if (!seg) return false
+      if (seg.layerId !== payload.layerId) return true
+      // 只要 [a,b] 与 (seg.start, seg.end) 有交集，就会切段
+      const innerStart = seg.startFrame + 1
+      const innerEnd = seg.endFrame - 1
+      if (innerStart > innerEnd) return true
+      return !(a <= innerEnd && b >= innerStart)
+    })
+    for (const k of beforeSegs) {
+      if (!state.easingSegmentKeys.includes(k)) delete state.easingCurves[k]
+    }
+  },
+  removeKeyframeRange(state, payload: { layerId: string; startFrame: number; endFrame: number }) {
+    const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
+    const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
+    const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
+    const before = getLayerSpans(nextMap, payload.layerId)
+    const next = removeRange(before, a, b)
+    if (next.length) nextMap[payload.layerId] = next
+    else delete nextMap[payload.layerId]
+    state.keyframeSpansByLayer = nextMap
+    state.keyframeVersion++
+
+    // 关键帧删除会使端点不再成立：移除引用被删除关键帧的缓动段（端点必须是关键帧）
+    const beforeSegs = state.easingSegmentKeys
+    state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
+      const seg = parseSegment(k)
+      if (!seg) return false
+      if (seg.layerId !== payload.layerId) return true
+      if (!isKeyframeAt(state, seg.layerId, seg.startFrame)) return false
+      if (!isKeyframeAt(state, seg.layerId, seg.endFrame)) return false
+      return true
+    })
+    for (const k of beforeSegs) {
+      if (!state.easingSegmentKeys.includes(k)) delete state.easingCurves[k]
+    }
+  },
   },
   actions: {
     setFrameCount({ commit }, payload: { frameCount: number }) {
@@ -387,5 +486,11 @@ export const TimelineStore = createStore<TimelineState>({
 	setEasingCurve({ commit }, payload: { segmentKey: string; curve: { x1: number; y1: number; x2: number; y2: number; preset?: string } }) {
 		commit('setEasingCurve', payload)
 	},
+  addKeyframeRange({ commit }, payload: { layerId: string; startFrame: number; endFrame: number }) {
+    commit('addKeyframeRange', payload)
+  },
+  removeKeyframeRange({ commit }, payload: { layerId: string; startFrame: number; endFrame: number }) {
+    commit('removeKeyframeRange', payload)
+  },
   },
 })
