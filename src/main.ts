@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
 import router from './router'
+import { editorPersistence } from './utils/editorPersistence'
 
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
 window.addEventListener('contextmenu', (e) => {
@@ -16,10 +17,33 @@ const dispatchTimelineNav = (dir: -1 | 1) => {
 window.addEventListener(
 	'keydown',
 	(e) => {
+		const target = e.target as HTMLElement | null
+		const tag = (target?.tagName || '').toLowerCase()
+		const isEditable =
+			tag === 'input' ||
+			tag === 'textarea' ||
+			(target as any)?.isContentEditable === true
+
 		// Ctrl+S / Cmd+S: 阻止浏览器“保存网页”
 		if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
 			e.preventDefault()
 			e.stopPropagation()
+			void editorPersistence.save()
+			return
+		}
+
+		// Ctrl+Z/Ctrl+Y: 撤销/重做（输入框内交给浏览器原生文本撤销）
+		if (!isEditable && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+			e.preventDefault()
+			e.stopPropagation()
+			editorPersistence.undo()
+			return
+		}
+		if (!isEditable && (e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+			e.preventDefault()
+			e.stopPropagation()
+			editorPersistence.redo()
+			return
 		}
 
 		// 屏蔽浏览器“上一页/下一页”快捷键，并转为时间轴水平滚动

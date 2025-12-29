@@ -1,8 +1,9 @@
 import { NodeBase, type NodeBaseDTO, type NodeType } from './NodeBase'
 
 export type ImageNodeProps = {
+	imageId?: string
 	imagePath: string
-	scale: number
+	imageFit: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'
 }
 
 export type ImageNodeDTO = Omit<NodeBaseDTO, 'type' | 'props'> & {
@@ -15,8 +16,9 @@ export class ImageNode extends NodeBase {
 
 	static defaultProps(): ImageNodeProps {
 		return {
+			imageId: '',
 			imagePath: '',
-			scale: 1,
+			imageFit: 'contain',
 		}
 	}
 

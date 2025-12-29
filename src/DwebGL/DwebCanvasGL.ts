@@ -236,6 +236,58 @@ export class DwebCanvasGL {
 		return this.gl
 	}
 
+	/**
+	 * 受控的 shader 预览编译：仅编译+链接，返回 ok/log。
+	 * 不会缓存 program，也不执行绘制。
+	 */
+	compileAndLinkProgram(vertexSource: string, fragmentSource: string): { ok: boolean; log: string } {
+		const gl = this.gl
+		let vs: WebGLShader | null = null
+		let fs: WebGLShader | null = null
+		let program: WebGLProgram | null = null
+		try {
+			vs = gl.createShader(gl.VERTEX_SHADER)
+			if (!vs) return { ok: false, log: 'createShader(VERTEX_SHADER) failed' }
+			gl.shaderSource(vs, String(vertexSource ?? ''))
+			gl.compileShader(vs)
+			if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+				const log = gl.getShaderInfoLog(vs) || 'vertex compile failed'
+				return { ok: false, log }
+			}
+
+			fs = gl.createShader(gl.FRAGMENT_SHADER)
+			if (!fs) return { ok: false, log: 'createShader(FRAGMENT_SHADER) failed' }
+			gl.shaderSource(fs, String(fragmentSource ?? ''))
+			gl.compileShader(fs)
+			if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+				const log = gl.getShaderInfoLog(fs) || 'fragment compile failed'
+				return { ok: false, log }
+			}
+
+			program = gl.createProgram()
+			if (!program) return { ok: false, log: 'createProgram failed' }
+			gl.attachShader(program, vs)
+			gl.attachShader(program, fs)
+			gl.linkProgram(program)
+			if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+				const log = gl.getProgramInfoLog(program) || 'link failed'
+				return { ok: false, log }
+			}
+
+			return { ok: true, log: gl.getProgramInfoLog(program) || '' }
+		} catch (e: any) {
+			return { ok: false, log: String(e?.message ?? e) }
+		} finally {
+			try {
+				if (program) gl.deleteProgram(program)
+				if (vs) gl.deleteShader(vs)
+				if (fs) gl.deleteShader(fs)
+			} catch {
+				// ignore
+			}
+		}
+	}
+
 	getThemeColor(name: '--vscode-border-accent' | '--vscode-border' | '--dweb-defualt-dark' | '--dweb-defualt') {
 		if (name === '--vscode-border-accent') return cssVarColor(name, '#3aa8b4')
 		if (name === '--vscode-border') return cssVarColor(name, '#2b2b2b')

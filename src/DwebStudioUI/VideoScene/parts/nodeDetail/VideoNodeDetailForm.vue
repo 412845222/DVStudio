@@ -240,39 +240,265 @@
 			<div v-else-if="draft.type === 'image'" class="vs-group">
 				<div class="vs-group-title">图片</div>
 				<label class="vs-row">
-					<span class="vs-k">路径</span>
-					<input v-model="draft.imagePath" class="vs-input wide" type="text" @change="applyProps('image')" />
+					<span class="vs-k">图片</span>
+					<div class="vs-image-pick">
+						<div v-if="currentImageUrl" class="vs-image-preview" :title="draft.imageName || ''">
+							<img :src="currentImageUrl" alt="" />
+						</div>
+						<div class="vs-image-meta">
+							<div class="vs-image-name">{{ draft.imageName || '未选择图片' }}</div>
+							<button class="vs-btn" type="button" @click="openNodeImagePicker">选择图片</button>
+							<input ref="nodeImageInputRef" class="vs-hidden-input" type="file" accept="image/*" @change="onPickNodeImageFile" />
+						</div>
+					</div>
 				</label>
 				<label class="vs-row">
-					<span class="vs-k">缩放</span>
-					<input
-						v-model.number="draft.scale"
-						class="vs-input vs-scrub"
-						type="number"
-						min="0.01"
-						step="0.01"
-						@change="applyProps('image')"
-						@dblclick.stop="onNumberInputDblClick"
-						@focus="onNumberInputFocus"
-						@blur="onNumberInputBlur"
-						@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.scale, (v) => (draft.scale = v), { step: 0.01, min: 0.01, max: 999999, onCommit: () => applyProps('image') })"
-					/>
+					<span class="vs-k">适配</span>
+					<div class="vs-quick">
+						<button class="vs-quick-btn" type="button" :class="{ active: draft.imageFit === 'contain' }" title="contain" @click="setImageFit('contain')">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm2 2h8v6H8V9z"/></svg>
+						</button>
+						<button class="vs-quick-btn" type="button" :class="{ active: draft.imageFit === 'cover' }" title="cover" @click="setImageFit('cover')">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm1 1h10v8H7V8z"/></svg>
+						</button>
+						<button class="vs-quick-btn" type="button" :class="{ active: draft.imageFit === 'fill' }" title="fill" @click="setImageFit('fill')">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5zm2 2v10h12V7H6z"/></svg>
+						</button>
+						<button class="vs-quick-btn" type="button" :class="{ active: draft.imageFit === 'none' }" title="none" @click="setImageFit('none')">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5zm7 5h2v4h-2v-4z"/></svg>
+						</button>
+						<button class="vs-quick-btn" type="button" :class="{ active: draft.imageFit === 'scale-down' }" title="scale-down" @click="setImageFit('scale-down')">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm5 2h2v6h-2V9z"/></svg>
+						</button>
+					</div>
 				</label>
+			</div>
+
+			<div class="vs-group vs-filters">
+				<div class="vs-group-title vs-filter-title">
+					<span>滤镜</span>
+					<div class="vs-filter-title-actions">
+						<button class="vs-quick-btn" type="button" title="添加滤镜" @click="filterMenuOpen = !filterMenuOpen">+</button>
+					</div>
+					<div v-if="filterMenuOpen" class="vs-filter-menu" @click.stop>
+						<button class="vs-filter-menu-item" type="button" @click="addFilter('blur')">模糊</button>
+						<button class="vs-filter-menu-item" type="button" @click="addFilter('glow')">发光</button>
+						<button class="vs-filter-menu-item" type="button" @click="addFilter('customShader')">自定义 Shader</button>
+					</div>
+				</div>
+
+				<div v-if="filtersUi.length === 0" class="vs-filter-empty">暂无滤镜</div>
+
+				<div
+					v-for="f in filtersUi"
+					:key="f.id"
+					class="vs-filter-item"
+					:draggable="true"
+					@dragstart="(e) => onFilterDragStart(e, f.id)"
+					@dragend="onFilterDragEnd"
+					@dragover="onFilterDragOver"
+					@drop="(e) => onFilterDrop(e, f.id)"
+				>
+					<div class="vs-filter-item-header">
+						<div class="vs-filter-item-title">
+							<span class="vs-filter-drag">≡</span>
+							<span v-if="f.type === 'blur'">模糊</span>
+							<span v-else-if="f.type === 'glow'">发光</span>
+							<span v-else>自定义 Shader</span>
+						</div>
+						<div class="vs-filter-item-actions">
+							<button class="vs-filter-icon-btn" type="button" title="上移" @click="moveFilter(f.id, -1)">↑</button>
+							<button class="vs-filter-icon-btn" type="button" title="下移" @click="moveFilter(f.id, 1)">↓</button>
+							<button class="vs-filter-icon-btn" type="button" title="删除" @click="deleteFilter(f.id)">×</button>
+						</div>
+					</div>
+
+					<div v-if="f.type === 'blur'" class="vs-filter-item-body">
+						<label class="vs-row">
+							<span class="vs-k">质量</span>
+							<select class="vs-input" :value="f.quality" @change="(e) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+								<option value="low">低</option>
+								<option value="mid">中</option>
+								<option value="high">高</option>
+							</select>
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">模糊X</span>
+							<input
+								:value="f.blurX"
+								class="vs-input vs-scrub"
+								type="number"
+								min="0"
+								step="1"
+								@change="(e) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)"
+								@dblclick.stop="onNumberInputDblClick"
+								@focus="onNumberInputFocus"
+								@blur="onNumberInputBlur"
+								@pointerdown="(e) => onFilterNumberScrubPointerDown(e, () => f.blurX, (v) => patchFilter(f.id, { blurX: v }), { step: 1, min: 0, max: 999999 })"
+							/>
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">模糊Y</span>
+							<input
+								:value="f.blurY"
+								class="vs-input vs-scrub"
+								type="number"
+								min="0"
+								step="1"
+								@change="(e) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)"
+								@dblclick.stop="onNumberInputDblClick"
+								@focus="onNumberInputFocus"
+								@blur="onNumberInputBlur"
+								@pointerdown="(e) => onFilterNumberScrubPointerDown(e, () => f.blurY, (v) => patchFilter(f.id, { blurY: v }), { step: 1, min: 0, max: 999999 })"
+							/>
+						</label>
+					</div>
+
+					<div v-else-if="f.type === 'glow'" class="vs-filter-item-body">
+						<label class="vs-row">
+							<span class="vs-k">质量</span>
+							<select class="vs-input" :value="f.quality" @change="(e) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+								<option value="low">低</option>
+								<option value="mid">中</option>
+								<option value="high">高</option>
+							</select>
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">颜色</span>
+							<input :value="f.color" class="vs-input" type="text" placeholder="#ffffff" @change="(e) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })" />
+							<input :value="f.color" class="vs-color" type="color" @input="(e) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })" />
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">强度</span>
+							<input
+								:value="f.intensity"
+								class="vs-input vs-scrub"
+								type="number"
+								min="0"
+								step="0.01"
+								@change="(e) => patchFilterNumber(f.id, 'intensity', (e.target as HTMLInputElement).value)"
+								@dblclick.stop="onNumberInputDblClick"
+								@focus="onNumberInputFocus"
+								@blur="onNumberInputBlur"
+								@pointerdown="(e) => onFilterNumberScrubPointerDown(e, () => f.intensity, (v) => patchFilter(f.id, { intensity: v }), { step: 0.01, min: 0, max: 999999 })"
+							/>
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">模糊X</span>
+							<input
+								:value="f.blurX"
+								class="vs-input vs-scrub"
+								type="number"
+								min="0"
+								step="1"
+								@change="(e) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)"
+								@dblclick.stop="onNumberInputDblClick"
+								@focus="onNumberInputFocus"
+								@blur="onNumberInputBlur"
+								@pointerdown="(e) => onFilterNumberScrubPointerDown(e, () => f.blurX, (v) => patchFilter(f.id, { blurX: v }), { step: 1, min: 0, max: 999999 })"
+							/>
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">模糊Y</span>
+							<input
+								:value="f.blurY"
+								class="vs-input vs-scrub"
+								type="number"
+								min="0"
+								step="1"
+								@change="(e) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)"
+								@dblclick.stop="onNumberInputDblClick"
+								@focus="onNumberInputFocus"
+								@blur="onNumberInputBlur"
+								@pointerdown="(e) => onFilterNumberScrubPointerDown(e, () => f.blurY, (v) => patchFilter(f.id, { blurY: v }), { step: 1, min: 0, max: 999999 })"
+							/>
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">内发光</span>
+							<input :checked="f.inner" type="checkbox" @change="(e) => patchFilter(f.id, { inner: (e.target as HTMLInputElement).checked })" />
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">挖空</span>
+							<input :checked="f.knockout" type="checkbox" @change="(e) => patchFilter(f.id, { knockout: (e.target as HTMLInputElement).checked })" />
+						</label>
+					</div>
+
+					<div v-else class="vs-filter-item-body">
+						<label class="vs-row">
+							<span class="vs-k">质量</span>
+							<select class="vs-input" :value="f.quality" @change="(e) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+								<option value="low">低</option>
+								<option value="mid">中</option>
+								<option value="high">高</option>
+							</select>
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">顶点</span>
+							<textarea
+								:value="f.vertex"
+								class="vs-input vs-textarea wide"
+								rows="6"
+								@input="(e) => patchFilter(f.id, { vertex: (e.target as HTMLTextAreaElement).value })"
+							/>
+						</label>
+						<label class="vs-row">
+							<span class="vs-k">片段</span>
+							<textarea
+								:value="f.fragment"
+								class="vs-input vs-textarea wide"
+								rows="6"
+								@input="(e) => patchFilter(f.id, { fragment: (e.target as HTMLTextAreaElement).value })"
+							/>
+						</label>
+						<div class="vs-filter-shader-actions">
+							<button class="vs-filter-btn" type="button" @click="compileCustomShader(f)">预览编译</button>
+						</div>
+						<div v-if="shaderLogsById[f.id] && shaderOkById[f.id] === false" class="vs-filter-log">
+							<pre class="vs-filter-log-pre">{{ shaderLogsById[f.id] }}</pre>
+						</div>
+					</div>
+				</div>
 			</div>
 		</form>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState, type VideoSceneTreeNode, type VideoSceneUserNodeType } from '../../../../store/videoscene'
 import { VideoStudioKey, type VideoStudioState } from '../../../../store/videostudio'
+import { DwebCanvasGLKey } from '../../VideoSceneRuntime'
 
 defineOptions({ name: 'VideoNodeDetailForm' })
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 const studioStore = useStore<VideoStudioState>(VideoStudioKey)
+
+type VideoNodeFilterType = 'blur' | 'glow' | 'customShader'
+type VideoNodeFilterBase = { id: string; type: VideoNodeFilterType; qualityV2?: boolean }
+type FilterQuality = 'low' | 'mid' | 'high'
+type VideoNodeBlurFilter = VideoNodeFilterBase & { type: 'blur'; quality: FilterQuality; blurX: number; blurY: number }
+type VideoNodeGlowFilter = VideoNodeFilterBase & {
+	type: 'glow'
+	quality: FilterQuality
+	color: string
+	intensity: number
+	blurX: number
+	blurY: number
+	inner: boolean
+	knockout: boolean
+}
+type VideoNodeCustomShaderFilter = VideoNodeFilterBase & { type: 'customShader'; quality: FilterQuality; vertex: string; fragment: string }
+type VideoNodeFilter = VideoNodeBlurFilter | VideoNodeGlowFilter | VideoNodeCustomShaderFilter
+
+const createId = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+
+const dwebCanvasRef = inject(DwebCanvasGLKey, null)
+const filterMenuOpen = ref(false)
+const draggingFilterId = ref<string | null>(null)
+const shaderLogsById = reactive<Record<string, string>>({})
+const shaderOkById = reactive<Record<string, boolean>>({})
 
 type SelectedInfo = { layerId: string; node: VideoSceneTreeNode; parent: VideoSceneTreeNode | null }
 
@@ -293,6 +519,170 @@ const findSelected = (): SelectedInfo | null => {
 
 const selected = computed(() => findSelected())
 
+const normalizeQualityV2 = (q: any): FilterQuality => {
+	if (q === 'low' || q === 'mid' || q === 'high') return q
+	return 'mid'
+}
+
+const normalizeQualityForUi = (f: any): FilterQuality => {
+	// UI 展示使用与渲染端一致的“读时兼容”逻辑，但不写回 store。
+	const q = (f as any)?.quality
+	const v2 = !!(f as any)?.qualityV2
+	if (v2) return normalizeQualityV2(q)
+	// Legacy (v1) 映射：high -> mid, mid -> low。
+	if (q === 'high') return 'mid'
+	if (q === 'mid') return 'low'
+	if (q === 'low') return 'low'
+	return 'mid'
+}
+
+const filters = computed<VideoNodeFilter[]>(() => {
+	const s = selected.value
+	if (!s) return []
+	const p: any = s.node.props ?? {}
+	return Array.isArray(p.filters) ? (p.filters as VideoNodeFilter[]) : []
+})
+
+const filtersUi = computed<VideoNodeFilter[]>(() => {
+	return filters.value.map((f) => ({ ...(f as any), quality: normalizeQualityForUi(f) })) as any
+})
+
+const patchNodeProps = (patch: Record<string, any>) => {
+	const s = selected.value
+	if (!s) return
+	store.dispatch('updateNodeProps', { layerId: s.layerId, nodeId: s.node.id, patch })
+	// Ensure immediate visual feedback (avoid stale frame residue)
+	dwebCanvasRef?.value?.requestRender?.()
+}
+
+const updateFilters = (next: VideoNodeFilter[]) => {
+	patchNodeProps({ filters: next })
+}
+
+const addFilter = (type: VideoNodeFilterType) => {
+	const next = [...filters.value]
+	const id = createId()
+	if (type === 'blur') {
+		next.push({ id, type, quality: 'mid', qualityV2: true, blurX: 5, blurY: 5 } as any)
+	} else if (type === 'glow') {
+		next.push({ id, type, quality: 'mid', qualityV2: true, color: '#ffffff', intensity: 1, blurX: 5, blurY: 5, inner: false, knockout: false } as any)
+	} else {
+		next.push({
+			id,
+			type,
+			quality: 'mid',
+			qualityV2: true,
+			vertex: `#version 300 es\nprecision highp float;\n\nin vec2 a_position;\nout vec2 v_uv;\n\nvoid main(){\n  // v=0 is BOTTOM (OpenGL convention; consistent with post-process passes)\n  v_uv = (a_position + 1.0) * 0.5;\n  gl_Position = vec4(a_position, 0.0, 1.0);\n}`,
+			fragment: `#version 300 es\nprecision highp float;\n\nin vec2 v_uv;\nout vec4 outColor;\n\nvoid main(){\n  outColor = vec4(v_uv, 0.0, 1.0);\n}`,
+		} as any)
+	}
+	updateFilters(next)
+	filterMenuOpen.value = false
+}
+
+const deleteFilter = (id: string) => {
+	const next = filters.value.filter((f) => f.id !== id)
+	delete shaderLogsById[id]
+	delete shaderOkById[id]
+	updateFilters(next)
+}
+
+const moveFilter = (id: string, dir: -1 | 1) => {
+	const list = [...filters.value]
+	const idx = list.findIndex((f) => f.id === id)
+	if (idx < 0) return
+	const target = idx + dir
+	if (target < 0 || target >= list.length) return
+	const tmp = list[idx]
+	list[idx] = list[target]
+	list[target] = tmp
+	updateFilters(list)
+}
+
+const patchFilter = (id: string, patch: Record<string, any>) => {
+	const list = filters.value.map((f) => {
+		if (f.id !== id) return f
+		const next: any = { ...(f as any), ...patch }
+		// 用户一旦触发 quality 修改，就使用 v2 语义持久化，避免后续被 legacy 映射影响。
+		if (Object.prototype.hasOwnProperty.call(patch, 'quality')) {
+			next.quality = normalizeQualityV2((patch as any).quality)
+			next.qualityV2 = true
+		}
+		return next
+	})
+	updateFilters(list)
+}
+
+const patchFilterNumber = (id: string, key: string, v: string) => {
+	const n = Number(v)
+	if (!Number.isFinite(n)) return
+	patchFilter(id, { [key]: n })
+}
+
+const onFilterDragStart = (e: DragEvent, id: string) => {
+	draggingFilterId.value = id
+	try {
+		e.dataTransfer?.setData('text/plain', id)
+		e.dataTransfer?.setData('application/x-vs-filter-id', id)
+		e.dataTransfer!.effectAllowed = 'move'
+	} catch {
+		// ignore
+	}
+}
+
+const onFilterDragEnd = () => {
+	draggingFilterId.value = null
+}
+
+const onFilterDragOver = (e: DragEvent) => {
+	e.preventDefault()
+	if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+}
+
+const onFilterDrop = (e: DragEvent, targetId: string) => {
+	e.preventDefault()
+	const fromId = e.dataTransfer?.getData('application/x-vs-filter-id') || e.dataTransfer?.getData('text/plain') || draggingFilterId.value
+	if (!fromId || fromId === targetId) return
+	const list = [...filters.value]
+	const fromIdx = list.findIndex((f) => f.id === fromId)
+	const toIdx = list.findIndex((f) => f.id === targetId)
+	if (fromIdx < 0 || toIdx < 0) return
+	const [moved] = list.splice(fromIdx, 1)
+	list.splice(toIdx, 0, moved)
+	updateFilters(list)
+}
+
+const onFilterNumberScrubPointerDown = (e: PointerEvent, get: () => number, commit: (v: number) => void, opt: { step: number; min: number; max: number }) => {
+	let latest = Number(get()) || 0
+	const setLocal = (v: number) => {
+		latest = v
+		const target = e.currentTarget as HTMLInputElement | null
+		if (target) target.value = String(v)
+	}
+	onNumberScrubPointerDown(e, () => Number(get()) || 0, setLocal, { step: opt.step, min: opt.min, max: opt.max, onCommit: () => commit(latest) })
+}
+
+const compileCustomShader = (f: VideoNodeCustomShaderFilter) => {
+	const canvas = dwebCanvasRef?.value
+	if (!canvas) {
+		shaderOkById[f.id] = false
+		shaderLogsById[f.id] = 'WebGL 上下文未就绪：请先确保舞台已初始化。'
+		return
+	}
+	const res = (canvas as any).compileAndLinkProgram?.(f.vertex, f.fragment)
+	if (!res || typeof res !== 'object') {
+		shaderOkById[f.id] = false
+		shaderLogsById[f.id] = '当前运行时不支持预览编译（缺少 compileAndLinkProgram 接口）。'
+		return
+	}
+	shaderOkById[f.id] = !!res.ok
+	shaderLogsById[f.id] = String(res.log ?? '')
+	if (shaderOkById[f.id]) {
+		// 成功时隐藏日志
+		delete shaderLogsById[f.id]
+	}
+}
+
 const draft = reactive({
 	name: '',
 	type: 'base' as VideoSceneUserNodeType,
@@ -312,9 +702,59 @@ const draft = reactive({
 	fontSize: 24,
 	fontColor: '#ffffff',
 	fontStyle: 'normal',
+	imageId: '',
 	imagePath: '',
-	scale: 1,
+	imageName: '',
+	imageFit: 'contain' as 'contain' | 'cover' | 'fill' | 'none' | 'scale-down',
 })
+
+const nodeImageInputRef = ref<HTMLInputElement | null>(null)
+
+const currentImageUrl = computed(() => {
+	const id = String(draft.imageId || '').trim()
+	if (id) {
+		const asset: any = (store.state as any).imageAssets?.[id]
+		const u = String(asset?.url ?? '').trim()
+		if (u) return u
+	}
+	return String(draft.imagePath || '').trim()
+})
+
+const openNodeImagePicker = () => {
+	try {
+		nodeImageInputRef.value?.click()
+	} catch {
+		// ignore
+	}
+}
+
+const genImageAssetId = () => `img-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+const onPickNodeImageFile = (e: Event) => {
+	const input = e.target as HTMLInputElement | null
+	const file = input?.files?.[0]
+	if (!file) return
+	const url = URL.createObjectURL(file)
+	const id = genImageAssetId()
+
+	store.dispatch('upsertImageAsset', { id, url, name: file.name })
+	draft.imageId = id
+	draft.imagePath = url
+	draft.imageName = file.name
+	applyProps('image')
+
+	// allow picking the same file again
+	try {
+		if (input) input.value = ''
+	} catch {
+		// ignore
+	}
+}
+
+const setImageFit = (fit: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down') => {
+	draft.imageFit = fit
+	applyProps('image')
+}
 
 const syncFromStore = () => {
 	const s = selected.value
@@ -340,8 +780,13 @@ const syncFromStore = () => {
 	draft.fontSize = Number(p.fontSize ?? draft.fontSize)
 	draft.fontColor = p.fontColor ?? draft.fontColor
 	draft.fontStyle = p.fontStyle ?? draft.fontStyle
-	draft.imagePath = p.imagePath ?? draft.imagePath
-	draft.scale = Number(p.scale ?? draft.scale)
+	draft.imageId = String(p.imageId ?? draft.imageId)
+	const fromAsset = draft.imageId ? (store.state as any).imageAssets?.[draft.imageId] : null
+	const assetUrl = String(fromAsset?.url ?? '').trim()
+	const assetName = String(fromAsset?.name ?? '').trim()
+	draft.imagePath = assetUrl || String(p.imagePath ?? '').trim()
+	draft.imageName = assetName || String(p.imageName ?? '').trim()
+	draft.imageFit = (p.imageFit ?? draft.imageFit) as any
 }
 
 watch(
@@ -379,7 +824,8 @@ watch(
 			fontColor: p.fontColor,
 			fontStyle: p.fontStyle,
 			imagePath: p.imagePath,
-			scale: p.scale,
+			imageFit: p.imageFit,
+			imageId: p.imageId,
 		})
 	},
 	() => syncFromStore(),
@@ -479,7 +925,11 @@ const applyProps = (kind: 'rect' | 'text' | 'image') => {
 		store.dispatch('updateNodeProps', { layerId: s.layerId, nodeId: s.node.id, patch: { textContent: draft.textContent, fontSize: draft.fontSize, fontColor: draft.fontColor, fontStyle: draft.fontStyle } })
 		return
 	}
-	store.dispatch('updateNodeProps', { layerId: s.layerId, nodeId: s.node.id, patch: { imagePath: draft.imagePath, scale: draft.scale } })
+	store.dispatch('updateNodeProps', {
+		layerId: s.layerId,
+		nodeId: s.node.id,
+		patch: { imageId: draft.imageId, imagePath: draft.imagePath, imageFit: draft.imageFit, imageName: draft.imageName },
+	})
 }
 
 type NumberScrubOptions = {
@@ -643,6 +1093,52 @@ onBeforeUnmount(() => {
 	flex: 0 0 auto;
 }
 
+.vs-image-pick {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	flex: 1;
+	min-width: 0;
+}
+
+.vs-image-preview {
+	width: 56px;
+	height: 56px;
+	border-radius: 10px;
+	border: 1px solid var(--vscode-border);
+	overflow: hidden;
+	background: var(--dweb-defualt);
+	flex: 0 0 auto;
+}
+
+.vs-image-preview img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	display: block;
+}
+
+.vs-image-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+	flex: 1;
+}
+
+.vs-image-name {
+	font-size: 12px;
+	color: var(--vscode-fg);
+	opacity: 0.9;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.vs-hidden-input {
+	display: none;
+}
+
 .vs-input {
 	flex: 1 1 0;
 	min-width: 0;
@@ -733,5 +1229,142 @@ onBeforeUnmount(() => {
 	height: 16px;
 	fill: currentColor;
 	opacity: 0.9;
+}
+
+.vs-filter-title {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	position: relative;
+}
+
+.vs-filter-title-actions {
+	flex: 0 0 auto;
+}
+
+.vs-filter-menu {
+	position: absolute;
+	right: 0;
+	top: 24px;
+	min-width: 140px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	box-shadow: var(--dweb-shadow);
+	z-index: 10;
+	display: flex;
+	flex-direction: column;
+}
+
+.vs-filter-menu-item {
+	text-align: left;
+	padding: 6px 8px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-fg);
+	cursor: pointer;
+}
+
+.vs-filter-menu-item:hover {
+	background: var(--dweb-defualt-dark);
+}
+
+.vs-filter-empty {
+	padding: 6px 0;
+	color: var(--vscode-fg-muted);
+}
+
+.vs-filter-item {
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.vs-filter-item + .vs-filter-item {
+	margin-top: 8px;
+}
+
+.vs-filter-item-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.vs-filter-item-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--vscode-fg);
+}
+
+.vs-filter-drag {
+	color: var(--vscode-fg-muted);
+	cursor: grab;
+	user-select: none;
+}
+
+.vs-filter-item-actions {
+	display: inline-flex;
+	gap: 6px;
+}
+
+.vs-filter-icon-btn {
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+}
+
+.vs-filter-icon-btn:hover {
+	border-color: var(--vscode-border-accent);
+}
+
+.vs-filter-icon-btn:focus {
+	outline: none;
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
+}
+
+.vs-filter-item-body {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.vs-filter-shader-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.vs-filter-btn {
+	padding: 6px 10px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+}
+
+.vs-filter-btn:hover {
+	border-color: var(--vscode-border-accent);
+}
+
+.vs-filter-log {
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	padding: 8px;
+}
+
+.vs-filter-log-pre {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--vscode-fg);
 }
 </style>

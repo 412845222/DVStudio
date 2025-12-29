@@ -15,11 +15,38 @@ const segmentKey = (layerId: string, startFrame: number, endFrame: number) => `$
 
 type NodeSnapshot = { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }
 
+const deepCloneFallback = <T,>(value: T, seen = new WeakMap<object, any>()): T => {
+	if (value == null) return value
+	if (typeof value !== 'object') return value
+	if (value instanceof Date) return new Date(value.getTime()) as any
+
+	const obj = value as unknown as object
+	const cached = seen.get(obj)
+	if (cached) return cached
+
+	if (Array.isArray(value)) {
+		const out: any[] = []
+		seen.set(obj, out)
+		for (const item of value as any[]) out.push(deepCloneFallback(item, seen))
+		return out as any
+	}
+
+	const proto = Object.getPrototypeOf(obj)
+	const out: any = proto === null ? Object.create(null) : {}
+	seen.set(obj, out)
+	for (const k of Object.keys(obj as any)) out[k] = deepCloneFallback((obj as any)[k], seen)
+	return out
+}
+
 const cloneJsonSafe = <T,>(v: T): T => {
 	try {
-		return (globalThis as any).structuredClone ? (globalThis as any).structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T)
+		return JSON.parse(JSON.stringify(v)) as T
 	} catch {
-		return v
+		try {
+			return (globalThis as any).structuredClone ? ((globalThis as any).structuredClone(v) as T) : deepCloneFallback(v)
+		} catch {
+			return deepCloneFallback(v)
+		}
 	}
 }
 
@@ -68,9 +95,9 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 	addKeyframe(layerId: string, frameIndex: number): void {
 		const fi = clampInt(frameIndex, 0, this.store.state.frameCount - 1)
 		this.store.dispatch('addKeyframe', { layerId, frameIndex: fi })
-		// 同步捕获舞台节点快照，供播放/拖拽指针时按帧应用
-		const nodesById = captureLayerSnapshot(layerId)
-		this.store.dispatch('setNodeKeyframeSnapshotRange', { layerId, startFrame: fi, endFrame: fi, nodesById })
+		// 同步捕获“全画布快照”，供播放/拖拽指针时按帧完全还原
+		const stageLayers = cloneJsonSafe(VideoSceneStore.state.layers)
+		this.store.dispatch('setStageKeyframeSnapshotRange', { startFrame: fi, endFrame: fi, layers: stageLayers })
 	}
 
 	removeKeyframe(layerId: string, frameIndex: number): void {

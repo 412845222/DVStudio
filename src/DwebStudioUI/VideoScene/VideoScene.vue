@@ -107,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, shallowRef, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import RulerOverlay from './ruler/RulerOverlay.vue'
 import { VideoStudioKey, type VideoStudioState } from '../../store/videostudio'
@@ -117,112 +117,8 @@ import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
 import { DwebCanvasGL } from '../../DwebGL/DwebCanvasGL'
 import { DwebVideoScene } from '../../DwebGL/DwebVideoScene'
 import { TimelineStore } from '../../store/timeline'
-import { containsFrame, getPrevNext } from '../../store/timeline/spans'
-import { canInterpolateNumber, cubicBezierYforX, lerpNumber } from '../TimeLine/core/curveTick'
-
-type NodeSnapshot = { transform?: any; props?: Record<string, any> }
-
-const makeSegmentKey = (layerId: string, startFrame: number, endFrame: number) => `${layerId}:${startFrame}:${endFrame}`
-
-const buildNodeIndex = (nodes: VideoSceneTreeNode[] | undefined, out: Map<string, VideoSceneTreeNode>) => {
-	if (!nodes) return
-	for (const n of nodes) {
-		out.set(n.id, n)
-		if (n.children?.length) buildNodeIndex(n.children, out)
-	}
-}
-
-const getLayerNodeSnapshotAt = (layerId: string, frameIndex: number): Record<string, NodeSnapshot> | null => {
-	const map = (TimelineStore.state as any).nodeKeyframesByLayer?.[layerId]
-	if (!map) return null
-	const snap = map[String(Math.floor(frameIndex))]
-	return snap ?? null
-}
-
-const getNumeric = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
-
-const applySnapshotToLayer = (layerId: string, snap: Record<string, NodeSnapshot>) => {
-	const layer = VideoSceneStore.state.layers.find((l) => l.id === layerId)
-	if (!layer) return
-	const index = new Map<string, VideoSceneTreeNode>()
-	buildNodeIndex(layer.nodeTree, index)
-
-	for (const [nodeId, s] of Object.entries(snap)) {
-		const node = index.get(nodeId)
-		if (!node || node.category !== 'user') continue
-
-		const targetT = s.transform as any
-		if (targetT && typeof targetT === 'object') {
-			const cur = node.transform
-			const patch: any = {}
-			if (getNumeric(targetT.x) != null && targetT.x !== cur?.x) patch.x = targetT.x
-			if (getNumeric(targetT.y) != null && targetT.y !== cur?.y) patch.y = targetT.y
-			if (getNumeric(targetT.width) != null && targetT.width !== cur?.width) patch.width = targetT.width
-			if (getNumeric(targetT.height) != null && targetT.height !== cur?.height) patch.height = targetT.height
-			if (getNumeric(targetT.rotation) != null && (targetT.rotation as any) !== (cur as any)?.rotation) patch.rotation = targetT.rotation
-			if (getNumeric(targetT.opacity) != null && (targetT.opacity as any) !== (cur as any)?.opacity) patch.opacity = targetT.opacity
-			if (Object.keys(patch).length) VideoSceneStore.dispatch('updateNodeTransform', { layerId, nodeId, patch })
-		}
-
-		const targetP = s.props
-		if (targetP && typeof targetP === 'object') {
-			const curP = node.props ?? {}
-			const patch: Record<string, any> = {}
-			for (const [k, v] of Object.entries(targetP)) {
-				if ((curP as any)[k] !== v) patch[k] = v
-			}
-			if (Object.keys(patch).length) VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
-		}
-	}
-}
-
-const interpolateSnapshots = (
-	a: Record<string, NodeSnapshot>,
-	b: Record<string, NodeSnapshot>,
-	t: number
-): Record<string, NodeSnapshot> => {
-	const out: Record<string, NodeSnapshot> = {}
-	const ids = new Set<string>([...Object.keys(a), ...Object.keys(b)])
-	for (const nodeId of ids) {
-		const sa = a[nodeId]
-		const sb = b[nodeId]
-		const ta = sa?.transform as any
-		const tb = sb?.transform as any
-		const pa = (sa?.props ?? {}) as Record<string, any>
-		const pb = (sb?.props ?? {}) as Record<string, any>
-
-		const next: NodeSnapshot = {}
-		if (ta || tb) {
-			const keys = ['x', 'y', 'width', 'height', 'rotation', 'opacity'] as const
-			const tt: any = {}
-			for (const k of keys) {
-				const va = ta ? ta[k] : undefined
-				const vb = tb ? tb[k] : undefined
-				const na = getNumeric(va)
-				const nb = getNumeric(vb)
-				if (na != null && nb != null) tt[k] = lerpNumber(na, nb, t)
-				else if (nb != null) tt[k] = nb
-				else if (na != null) tt[k] = na
-			}
-			next.transform = tt
-		}
-
-		const propKeys = new Set<string>([...Object.keys(pa), ...Object.keys(pb)])
-		if (propKeys.size) {
-			const tp: Record<string, any> = {}
-			for (const k of propKeys) {
-				const va = pa[k]
-				const vb = pb[k]
-				if (canInterpolateNumber(va) && canInterpolateNumber(vb)) tp[k] = lerpNumber(va, vb, t)
-				else tp[k] = vb !== undefined ? vb : va
-			}
-			next.props = tp
-		}
-
-		out[nodeId] = next
-	}
-	return out
-}
+import { DwebCanvasGLKey } from './VideoSceneRuntime'
+import { applyTimelineAnimationAtFrame } from './anim/timelineAnimation'
 
 let applyAnimRaf: number | null = null
 const scheduleApplyTimelineAnimation = () => {
@@ -233,60 +129,12 @@ const scheduleApplyTimelineAnimation = () => {
 	})
 }
 
-const applyTimelineAnimationAtFrame = (frameIndex: number) => {
-	const fi = Math.floor(Number(frameIndex))
-	if (!Number.isFinite(fi)) return
-
-	for (const layer of TimelineStore.state.layers) {
-		const layerId = layer.id
-		const spans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
-		if (spans.length === 0) continue
-
-		// keyframe: 直接应用
-		if (containsFrame(spans, fi)) {
-			const snap = getLayerNodeSnapshotAt(layerId, fi)
-			if (snap) applySnapshotToLayer(layerId, snap)
-			continue
-		}
-
-		const { prev, next } = getPrevNext(spans, fi)
-		if (prev == null) continue
-		const prevSnap = getLayerNodeSnapshotAt(layerId, prev)
-		if (!prevSnap) continue
-
-		if (next == null) {
-			applySnapshotToLayer(layerId, prevSnap)
-			continue
-		}
-		if (!(prev < fi && fi < next)) {
-			// between segments: fallback to prev
-			applySnapshotToLayer(layerId, prevSnap)
-			continue
-		}
-
-		const segKey = makeSegmentKey(layerId, prev, next)
-		const easingEnabled = TimelineStore.state.easingSegmentKeys.includes(segKey)
-		if (!easingEnabled) {
-			applySnapshotToLayer(layerId, prevSnap)
-			continue
-		}
-		const nextSnap = getLayerNodeSnapshotAt(layerId, next)
-		if (!nextSnap) {
-			applySnapshotToLayer(layerId, prevSnap)
-			continue
-		}
-
-		const rawT = (fi - prev) / (next - prev)
-		const curve = TimelineStore.state.easingCurves[segKey] ?? { x1: 0, y1: 0, x2: 1, y2: 1 }
-		const easedT = cubicBezierYforX(curve as any, rawT)
-		const snap = interpolateSnapshots(prevSnap, nextSnap, easedT)
-		applySnapshotToLayer(layerId, snap)
-	}
-}
-
 const store = useStore<VideoStudioState>(VideoStudioKey)
 
 provide(VideoSceneKey, VideoSceneStore)
+
+const dwebCanvasRef = shallowRef<DwebCanvasGL | null>(null)
+provide(DwebCanvasGLKey, dwebCanvasRef)
 const showSizePanel = computed(() => VideoSceneStore.state.showSizePanel)
 const showBackgroundPanel = computed(() => VideoSceneStore.state.showBackgroundPanel)
 const shellRef = ref<HTMLDivElement | null>(null)
@@ -318,6 +166,33 @@ const bgOpacity = ref<number>(1)
 let dwebCanvas: DwebCanvasGL | null = null
 let scene: DwebVideoScene | null = null
 let unsubscribeVideoScene: (() => void) | null = null
+let onEditorRestored: (() => void) | null = null
+
+let liveRenderRaf: number | null = null
+const startLiveRender = () => {
+	if (liveRenderRaf != null) return
+	const tick = () => {
+		liveRenderRaf = window.requestAnimationFrame(tick)
+		// Continuous render when selected: reduces filter ghosting during edits.
+		dwebCanvas?.render()
+	}
+	liveRenderRaf = window.requestAnimationFrame(tick)
+}
+
+const stopLiveRender = () => {
+	if (liveRenderRaf == null) return
+	window.cancelAnimationFrame(liveRenderRaf)
+	liveRenderRaf = null
+}
+
+watch(
+	() => VideoSceneStore.state.selectedNodeId,
+	(id) => {
+		if (id) startLiveRender()
+		else stopLiveRender()
+	},
+	{ immediate: true }
+)
 
 watch(
 	() => TimelineStore.state.currentFrame,
@@ -329,6 +204,14 @@ watch(
 
 watch(
 	() => (TimelineStore.state as any).nodeKeyframeVersion,
+	() => {
+		scheduleApplyTimelineAnimation()
+	},
+	{ immediate: true }
+)
+
+watch(
+	() => (TimelineStore.state as any).stageKeyframeVersion,
 	() => {
 		scheduleApplyTimelineAnimation()
 	},
@@ -396,7 +279,10 @@ let resizeObserver: ResizeObserver | null = null
 const ensureCanvas = () => {
 	const canvasEl = canvasRef.value
 	if (!canvasEl) return
-	if (!dwebCanvas) dwebCanvas = new DwebCanvasGL(canvasEl)
+	if (!dwebCanvas) {
+		dwebCanvas = new DwebCanvasGL(canvasEl)
+		dwebCanvasRef.value = dwebCanvas
+	}
 	return dwebCanvas
 }
 
@@ -487,12 +373,11 @@ const collectSnapTargets = (layerId: string, excludeNodeId: string): SnapTarget[
 				: parentWorld
 			const nextParentWorld = hasT ? world : parentWorld
 			if (n.category === 'user' && n.transform && n.id !== excludeNodeId) {
-				const scale = n.userType === 'image' ? Math.max(0.01, Number((n.props as any)?.scale ?? 1)) : 1
 				out.push({
 					cx: world.x,
 					cy: world.y,
-					w: Math.max(1, Number(n.transform.width ?? 1)) * scale,
-					h: Math.max(1, Number(n.transform.height ?? 1)) * scale,
+					w: Math.max(1, Number(n.transform.width ?? 1)),
+					h: Math.max(1, Number(n.transform.height ?? 1)),
 				})
 			}
 			if (n.children?.length) walk(n.children, nextParentWorld)
@@ -951,9 +836,8 @@ const onPointerMove = (ev: PointerEvent) => {
 			const t = findUserNodeTransform(drag.value.nodeId) as any
 			const w0 = Math.max(1, Number(t?.width ?? 1))
 			const h0 = Math.max(1, Number(t?.height ?? 1))
-			const scale = hit?.node?.userType === 'image' ? Math.max(0.01, Number((hit?.node?.props as any)?.scale ?? 1)) : 1
-			const w = w0 * scale
-			const h = h0 * scale
+			const w = w0
+			const h = h0
 			const rawWorldCx = parentWorld.x + localX
 			const rawWorldCy = parentWorld.y + localY
 			const threshold = 6 / Math.max(0.0001, canvas.viewport.zoom)
@@ -1064,6 +948,17 @@ onMounted(() => {
 		canvas.requestRender()
 		updateOverlay()
 	})
+
+	// 撤销/重做使用 replaceState，不会触发 subscribe；这里补一条“外部恢复事件”强制同步舞台
+	onEditorRestored = () => {
+		if (!scene) return
+		const c = ensureCanvas()
+		if (!c) return
+		scene.setState(VideoSceneStore.state)
+		c.requestRender()
+		updateOverlay()
+	}
+	window.addEventListener('dweb:editor-state-restored', onEditorRestored)
 	canvas.onViewportChange = (vp) => {
 		store.dispatch('setViewport', { panX: vp.pan.x, panY: vp.pan.y, zoom: vp.zoom })
 		updateOverlay()
@@ -1101,6 +996,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+	stopLiveRender()
 	if (bgApplyTimer != null) window.clearTimeout(bgApplyTimer)
 	if (applyAnimRaf != null) {
 		window.cancelAnimationFrame(applyAnimRaf)
@@ -1120,8 +1016,13 @@ onBeforeUnmount(() => {
 	resizeObserver = null
 	unsubscribeVideoScene?.()
 	unsubscribeVideoScene = null
+	if (onEditorRestored) {
+		window.removeEventListener('dweb:editor-state-restored', onEditorRestored)
+		onEditorRestored = null
+	}
 	dwebCanvas?.dispose()
 	dwebCanvas = null
+	dwebCanvasRef.value = null
 	scene = null
 })
 

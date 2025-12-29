@@ -4,6 +4,11 @@
 		<button class="vs-tool-btn" type="button" :class="{ active: showBackgroundPanel }" @click="onBackground">背景</button>
 		<button class="vs-tool-btn" type="button" @click="addBase">添加</button>
 		<button class="vs-tool-btn" type="button" disabled>导入</button>
+		<div class="vs-toolbar-spacer" />
+		<button class="vs-tool-btn vs-icon-btn" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)" @click="undo">↶</button>
+		<button class="vs-tool-btn vs-icon-btn" type="button" :disabled="!canRedo" title="重做 (Ctrl+Y)" @click="redo">↷</button>
+		<span class="vs-save-time">最后保存：{{ lastSavedText }}</span>
+		<button class="vs-tool-btn" type="button" title="保存 (Ctrl+S)" @click="save">保存</button>
 	</div>
 </template>
 
@@ -11,6 +16,7 @@
 import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
+import { editorPersistence } from '../../../utils/editorPersistence'
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 
@@ -19,6 +25,19 @@ defineExpose({ rootEl })
 
 const showSizePanel = computed(() => store.state.showSizePanel)
 const showBackgroundPanel = computed(() => store.state.showBackgroundPanel)
+
+const canUndo = computed(() => editorPersistence.canUndo.value)
+const canRedo = computed(() => editorPersistence.canRedo.value)
+
+const lastSavedText = computed(() => {
+	const ts = editorPersistence.lastSavedAt.value
+	if (!ts) return '未保存'
+	try {
+		return new Date(ts).toLocaleTimeString()
+	} catch {
+		return String(ts)
+	}
+})
 
 const addBase = () => {
 	store.dispatch('addBaseNode')
@@ -30,6 +49,18 @@ const onSize = () => {
 
 const onBackground = () => {
 	store.dispatch('toggleBackgroundPanel')
+}
+
+const save = () => {
+	void editorPersistence.save()
+}
+
+const undo = () => {
+	editorPersistence.undo()
+}
+
+const redo = () => {
+	editorPersistence.redo()
 }
 
 </script>
@@ -48,6 +79,25 @@ const onBackground = () => {
 	border-top: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt);
 	z-index: 3;
+}
+
+.vs-toolbar-spacer {
+	flex: 1;
+	min-width: 0;
+}
+
+.vs-icon-btn {
+	width: 34px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.vs-save-time {
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	white-space: nowrap;
 }
 
 .vs-tool-btn {

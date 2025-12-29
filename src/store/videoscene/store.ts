@@ -64,6 +64,13 @@ export type VideoSceneRenderStep = {
   path: string[]
 }
 
+export type VideoSceneImageAsset = {
+	id: string
+	url: string
+	name: string
+	createdAt: number
+}
+
 export interface VideoSceneState {
   showSizePanel: boolean
 	showBackgroundPanel: boolean
@@ -72,6 +79,7 @@ export interface VideoSceneState {
   selectedNodeId: string | null
 	focusedNodeId: string | null
   layoutInsets: VideoSceneLayoutInsets
+	imageAssets: Record<string, VideoSceneImageAsset>
 }
 
 const clampPx = (v: unknown, fallback: number) => {
@@ -118,6 +126,13 @@ const findNode = (root: VideoSceneTreeNode[], nodeId: string): VideoSceneTreeNod
     }
   })
   return found
+}
+
+const nodeExistsInAnyLayer = (layers: VideoSceneLayer[], nodeId: string) => {
+  for (const layer of layers) {
+    if (findNode(layer.nodeTree, nodeId)) return true
+  }
+  return false
 }
 
 const collectAllNames = (root: VideoSceneTreeNode[]) => {
@@ -230,6 +245,7 @@ const createDefaultState = (): VideoSceneState => ({
   selectedNodeId: null,
 	focusedNodeId: null,
   layoutInsets: { rightPanelWidth: 240, bottomToolbarHeight: 40 },
+  imageAssets: {},
 })
 
 export const VideoSceneKey: InjectionKey<Store<VideoSceneState>> = Symbol('VideoSceneStore')
@@ -237,6 +253,22 @@ export const VideoSceneKey: InjectionKey<Store<VideoSceneState>> = Symbol('Video
 export const VideoSceneStore = createStore<VideoSceneState>({
   state: createDefaultState,
   mutations: {
+    upsertImageAsset(state, payload: { id: string; url: string; name?: string }) {
+      const id = String(payload.id || '').trim()
+      const url = String(payload.url || '').trim()
+      if (!id || !url) return
+      state.imageAssets[id] = {
+        id,
+        url,
+        name: String(payload.name ?? ''),
+        createdAt: Date.now(),
+      }
+    },
+    removeImageAsset(state, payload: { id: string }) {
+      const id = String(payload.id || '').trim()
+      if (!id) return
+      delete state.imageAssets[id]
+    },
     toggleSizePanel(state) {
       state.showSizePanel = !state.showSizePanel
       if (state.showSizePanel) state.showBackgroundPanel = false
@@ -422,8 +454,30 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     node.transform.rotation = upgraded.transform.rotation
     node.transform.opacity = upgraded.transform.opacity
   },
+
+  applyStageSnapshot(state, payload: { layers: VideoSceneLayer[] }) {
+    const nextLayers = Array.isArray(payload.layers) ? payload.layers : []
+    state.layers = nextLayers
+    // activeLayerId 必须存在
+    if (!state.layers.find((l) => l.id === state.activeLayerId)) {
+      state.activeLayerId = state.layers[0]?.id ?? state.activeLayerId
+    }
+    // selected/focused 节点若已不存在，清空，避免 UI/舞台不一致
+    if (state.selectedNodeId && !nodeExistsInAnyLayer(state.layers, state.selectedNodeId)) {
+      state.selectedNodeId = null
+    }
+    if (state.focusedNodeId && !nodeExistsInAnyLayer(state.layers, state.focusedNodeId)) {
+      state.focusedNodeId = null
+    }
+  },
   },
   actions: {
+    upsertImageAsset({ commit }, payload: { id: string; url: string; name?: string }) {
+      commit('upsertImageAsset', payload)
+    },
+    removeImageAsset({ commit }, payload: { id: string }) {
+      commit('removeImageAsset', payload)
+    },
     toggleSizePanel({ commit }) {
       commit('toggleSizePanel')
     },
@@ -485,5 +539,9 @@ export const VideoSceneStore = createStore<VideoSceneState>({
   updateNodeProps({ commit, state }, payload: { nodeId: string; patch: Record<string, any>; layerId?: string }) {
     commit('updateNodeProps', { layerId: payload.layerId ?? state.activeLayerId, nodeId: payload.nodeId, patch: payload.patch })
   },
+
+	applyStageSnapshot({ commit }, payload: { layers: VideoSceneLayer[] }) {
+		commit('applyStageSnapshot', payload)
+	},
   },
 })

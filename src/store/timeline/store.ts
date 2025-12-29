@@ -11,7 +11,7 @@ import {
   type TimelineFrameSpan,
 } from './spans'
 
-import type { VideoSceneNodeProps, VideoSceneNodeTransform } from '../videoscene'
+import type { VideoSceneLayer, VideoSceneNodeProps, VideoSceneNodeTransform } from '../videoscene'
 
 export type TimelineLayer = { id: string; name: string }
 
@@ -44,6 +44,11 @@ export interface TimelineState {
 	Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>>
   >
   nodeKeyframeVersion: number
+
+  // 舞台关键帧快照（全画布）：frameIndex(string) -> { layers }
+  // 说明：关键帧记录“当时舞台真实存在的图层/节点树”；指针/播放到该帧时应完全还原。
+  stageKeyframesByFrame: Record<string, { layers: VideoSceneLayer[] }>
+  stageKeyframeVersion: number
 }
 
 const clampInt = (v: unknown, min: number, max: number) => {
@@ -93,16 +98,46 @@ const createDefaultState = (): TimelineState => ({
 
   nodeKeyframesByLayer: {},
   nodeKeyframeVersion: 0,
+
+  stageKeyframesByFrame: {},
+  stageKeyframeVersion: 0,
 })
 
 const frameKey = (frameIndex: number) => String(Math.floor(frameIndex))
 
+const deepCloneFallback = <T>(value: T, seen = new WeakMap<object, any>()): T => {
+  if (value == null) return value
+  if (typeof value !== 'object') return value
+  if (value instanceof Date) return new Date(value.getTime()) as any
+
+  const obj = value as unknown as object
+  const cached = seen.get(obj)
+  if (cached) return cached
+
+  if (Array.isArray(value)) {
+    const out: any[] = []
+    seen.set(obj, out)
+    for (const item of value as any[]) out.push(deepCloneFallback(item, seen))
+    return out as any
+  }
+
+  const proto = Object.getPrototypeOf(obj)
+  const out: any = proto === null ? Object.create(null) : {}
+  seen.set(obj, out)
+  for (const k of Object.keys(obj as any)) out[k] = deepCloneFallback((obj as any)[k], seen)
+  return out
+}
+
 const cloneJsonSafe = <T>(v: T): T => {
+  // Must never return original reference (snapshots must be immutable-by-convention).
   try {
-    // structuredClone in modern browsers; fallback to JSON for plain data
-    return (globalThis as any).structuredClone ? (globalThis as any).structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T)
+    return JSON.parse(JSON.stringify(v)) as T
   } catch {
-    return v
+    try {
+      return (globalThis as any).structuredClone ? ((globalThis as any).structuredClone(v) as T) : deepCloneFallback(v)
+    } catch {
+      return deepCloneFallback(v)
+    }
   }
 }
 
@@ -114,6 +149,13 @@ const setLayerSpans = (map: Record<string, TimelineFrameSpan[]>, layerId: string
 const isKeyframeAt = (state: TimelineState, layerId: string, frameIndex: number) => {
 	const spans = getLayerSpans(state.keyframeSpansByLayer, layerId)
 	return containsFrame(spans, frameIndex)
+}
+
+const isAnyKeyframeAt = (state: TimelineState, frameIndex: number) => {
+  for (const spans of Object.values(state.keyframeSpansByLayer)) {
+    if (containsFrame(spans ?? [], frameIndex)) return true
+  }
+  return false
 }
 
 export const TimelineKey: InjectionKey<Store<TimelineState>> = Symbol('TimelineStore')
@@ -170,6 +212,17 @@ export const TimelineStore = createStore<TimelineState>({
     }
     state.nodeKeyframesByLayer = nextNodeKf
     state.nodeKeyframeVersion++
+
+    // 裁剪舞台关键帧快照（移除越界帧）
+    const nextStage: TimelineState['stageKeyframesByFrame'] = {}
+    for (const [k, v] of Object.entries(state.stageKeyframesByFrame)) {
+      const fi = Math.floor(Number(k))
+      if (!Number.isFinite(fi)) continue
+      if (fi < 0 || fi > next - 1) continue
+      nextStage[String(fi)] = v
+    }
+    state.stageKeyframesByFrame = nextStage
+    state.stageKeyframeVersion++
 
       // 裁剪缓动段：
       // 1) start/end 需要在范围内
@@ -351,6 +404,13 @@ export const TimelineStore = createStore<TimelineState>({
     setLayerSpans(nextMap, payload.layerId, addRange(beforeSpans, frameIndex, frameIndex))
 	  state.keyframeSpansByLayer = nextMap
 	  state.keyframeVersion++
+
+    // 若该帧已不再是“任何图层”的关键帧，则移除全画布快照
+    const fk2 = frameKey(frameIndex)
+    if (!isAnyKeyframeAt(state, frameIndex) && state.stageKeyframesByFrame[fk2]) {
+      delete state.stageKeyframesByFrame[fk2]
+      state.stageKeyframeVersion++
+    }
       // 新增关键帧会“切段”：移除该层中被插入点切开的缓动段
     const beforeSegs = state.easingSegmentKeys
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
@@ -374,6 +434,13 @@ export const TimelineStore = createStore<TimelineState>({
 	  else delete nextMap[payload.layerId]
 	  state.keyframeSpansByLayer = nextMap
 	  state.keyframeVersion++
+
+    // 若区间内帧已不再是“任何图层”的关键帧，则移除对应全画布快照
+    const fk2 = frameKey(frameIndex)
+    if (!isAnyKeyframeAt(state, frameIndex) && state.stageKeyframesByFrame[fk2]) {
+      delete state.stageKeyframesByFrame[fk2]
+      state.stageKeyframeVersion++
+    }
 
     // 同步删除节点快照
     const fk = frameKey(frameIndex)
@@ -486,6 +553,18 @@ export const TimelineStore = createStore<TimelineState>({
     state.keyframeSpansByLayer = nextMap
     state.keyframeVersion++
 
+    // 若区间内帧已不再是“任何图层”的关键帧，则移除对应全画布快照
+    let removedStage = false
+    for (let f = a; f <= b; f++) {
+      if (isAnyKeyframeAt(state, f)) continue
+      const k = frameKey(f)
+      if (state.stageKeyframesByFrame[k]) {
+        delete state.stageKeyframesByFrame[k]
+        removedStage = true
+      }
+    }
+    if (removedStage) state.stageKeyframeVersion++
+
     // 同步删除节点快照
     const layerMap = state.nodeKeyframesByLayer[payload.layerId]
     if (layerMap) {
@@ -532,11 +611,27 @@ export const TimelineStore = createStore<TimelineState>({
     const nextMap: TimelineState['nodeKeyframesByLayer'] = { ...state.nodeKeyframesByLayer }
     const layerMap = { ...(nextMap[payload.layerId] ?? {}) }
     for (let f = a; f <= b; f++) {
-      layerMap[frameKey(f)] = nodesById
+	  // 内存优先：只允许在“确实是关键帧”的格子记录快照；普通帧/过渡帧不落数据
+	  if (!isKeyframeAt(state, payload.layerId, f)) continue
+	  layerMap[frameKey(f)] = nodesById
     }
     nextMap[payload.layerId] = layerMap
     state.nodeKeyframesByLayer = nextMap
     state.nodeKeyframeVersion++
+  },
+
+  // --- 舞台关键帧快照（全画布） ---
+  setStageKeyframeSnapshotRange(state, payload: { startFrame: number; endFrame: number; layers: VideoSceneLayer[] }) {
+    const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
+    const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
+    if (b < a) return
+    const layers = cloneJsonSafe(payload.layers ?? [])
+    for (let f = a; f <= b; f++) {
+      // 只在该帧确实为关键帧时记录快照
+      if (!isAnyKeyframeAt(state, f)) continue
+      state.stageKeyframesByFrame[frameKey(f)] = { layers: cloneJsonSafe(layers) }
+    }
+    state.stageKeyframeVersion++
   },
   },
   actions: {
@@ -608,6 +703,13 @@ export const TimelineStore = createStore<TimelineState>({
   ) {
     commit('setNodeKeyframeSnapshotRange', payload)
   },
+
+	setStageKeyframeSnapshotRange(
+		{ commit },
+		payload: { startFrame: number; endFrame: number; layers: VideoSceneLayer[] }
+	) {
+		commit('setStageKeyframeSnapshotRange', payload)
+	},
   },
 })
 

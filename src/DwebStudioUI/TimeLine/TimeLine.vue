@@ -589,11 +589,38 @@ const closeMenu = () => {
 
 type NodeSnapshot = { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }
 
+const deepCloneFallback = <T,>(value: T, seen = new WeakMap<object, any>()): T => {
+	if (value == null) return value
+	if (typeof value !== 'object') return value
+	if (value instanceof Date) return new Date(value.getTime()) as any
+
+	const obj = value as unknown as object
+	const cached = seen.get(obj)
+	if (cached) return cached
+
+	if (Array.isArray(value)) {
+		const out: any[] = []
+		seen.set(obj, out)
+		for (const item of value as any[]) out.push(deepCloneFallback(item, seen))
+		return out as any
+	}
+
+	const proto = Object.getPrototypeOf(obj)
+	const out: any = proto === null ? Object.create(null) : {}
+	seen.set(obj, out)
+	for (const k of Object.keys(obj as any)) out[k] = deepCloneFallback((obj as any)[k], seen)
+	return out
+}
+
 const cloneJsonSafe = <T,>(v: T): T => {
 	try {
-		return (globalThis as any).structuredClone ? (globalThis as any).structuredClone(v) : (JSON.parse(JSON.stringify(v)) as T)
+		return JSON.parse(JSON.stringify(v)) as T
 	} catch {
-		return v
+		try {
+			return (globalThis as any).structuredClone ? ((globalThis as any).structuredClone(v) as T) : deepCloneFallback(v)
+		} catch {
+			return deepCloneFallback(v)
+		}
 	}
 }
 
@@ -660,13 +687,14 @@ const onFrameDblClick = (payload: { layerId: string; frameIndex: number; ev: Mou
 
 const onMenuAddKeyframe = () => {
 	if (!menu.value) return
+	// 关键帧遵循“全画布快照”规则：记录当时舞台的所有图层/节点树
+	const stageLayers = cloneJsonSafe(VideoSceneStore.state.layers)
 	for (const [layerId, spans] of Object.entries(menuSelectedSpansByLayer.value)) {
-		const nodesById = captureLayerSnapshot(layerId)
 		for (const s of spans) {
 			const a = typeof s === 'number' ? s : s.start
 			const b = typeof s === 'number' ? s : s.end
 			store.dispatch('addKeyframeRange', { layerId, startFrame: a, endFrame: b })
-			store.dispatch('setNodeKeyframeSnapshotRange', { layerId, startFrame: a, endFrame: b, nodesById })
+			store.dispatch('setStageKeyframeSnapshotRange', { startFrame: a, endFrame: b, layers: stageLayers })
 		}
 	}
 	closeMenu()
