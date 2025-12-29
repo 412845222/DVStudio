@@ -424,8 +424,49 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 			return
 		}
 		// image
+		const src = (n.imageSrc ?? '').trim()
 		const tex = this.getImageTexture(gl, canvas, n)
-		this.drawLocalTex(gl, { w: t.w, h: t.h }, 0, 0, nodeW, nodeH, tex, 1, rotation)
+		const size = src ? this.imagePool.getSize(src) : null
+		const imgW = Math.max(1, size?.width ?? 1)
+		const imgH = Math.max(1, size?.height ?? 1)
+		const fit = ((n.props as any)?.imageFit ?? 'contain') as 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'
+		const w = Math.max(1, nodeW)
+		const h = Math.max(1, nodeH)
+
+		if (fit === 'fill') {
+			this.drawLocalTex(gl, { w: t.w, h: t.h }, 0, 0, w, h, tex, 1, rotation)
+			return
+		}
+
+		if (fit === 'cover') {
+			const scale = Math.max(w / imgW, h / imgH)
+			const scaledW = imgW * scale
+			const scaledH = imgH * scale
+			const visU = Math.min(1, w / scaledW)
+			const visV = Math.min(1, h / scaledH)
+			const u0 = (1 - visU) / 2
+			const v0 = (1 - visV) / 2
+			this.drawLocalTexUv(gl, { w: t.w, h: t.h }, 0, 0, w, h, tex, 1, rotation, { u0, v0, u1: u0 + visU, v1: v0 + visV })
+			return
+		}
+
+		if (fit === 'none') {
+			if (imgW <= w && imgH <= h) {
+				this.drawLocalTex(gl, { w: t.w, h: t.h }, 0, 0, imgW, imgH, tex, 1, rotation)
+				return
+			}
+			const visU = Math.min(1, w / imgW)
+			const visV = Math.min(1, h / imgH)
+			const u0 = (1 - visU) / 2
+			const v0 = (1 - visV) / 2
+			this.drawLocalTexUv(gl, { w: t.w, h: t.h }, 0, 0, w, h, tex, 1, rotation, { u0, v0, u1: u0 + visU, v1: v0 + visV })
+			return
+		}
+
+		// contain / scale-down (default)
+		let scale = Math.min(w / imgW, h / imgH)
+		if (fit === 'scale-down') scale = Math.min(1, scale)
+		this.drawLocalTex(gl, { w: t.w, h: t.h }, 0, 0, imgW * scale, imgH * scale, tex, 1, rotation)
 	}
 
 	private resolveFilterQuality(filter: any): 'low' | 'mid' | 'high' {
@@ -607,6 +648,72 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 			p3.y,
 			0,
 			1,
+		])
+		gl.useProgram(this.nodeProgTex.program)
+		const uRes = gl.getUniformLocation(this.nodeProgTex.program, 'u_resolution')
+		const uAlpha = gl.getUniformLocation(this.nodeProgTex.program, 'u_alpha')
+		gl.uniform2f(uRes!, size.w, size.h)
+		gl.uniform1f(uAlpha!, alpha)
+		gl.activeTexture(gl.TEXTURE0)
+		gl.bindTexture(gl.TEXTURE_2D, tex)
+		gl.uniform1i(this.nodeProgTex.uSampler!, 0)
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.nodeVbo)
+		gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW)
+		gl.enableVertexAttribArray(this.nodeProgTex.aPos)
+		gl.vertexAttribPointer(this.nodeProgTex.aPos, 2, gl.FLOAT, false, 16, 0)
+		const aUv = gl.getAttribLocation(this.nodeProgTex.program, 'a_uv')
+		gl.enableVertexAttribArray(aUv)
+		gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8)
+		gl.drawArrays(gl.TRIANGLES, 0, 6)
+	}
+
+	private drawLocalTexUv(
+		gl: WebGL2RenderingContext,
+		size: { w: number; h: number },
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		tex: WebGLTexture,
+		alpha: number,
+		rotation: number,
+		uv: { u0: number; v0: number; u1: number; v1: number }
+	) {
+		if (!this.nodeProgTex || !this.nodeVbo) return
+		const hw = w / 2
+		const hh = h / 2
+		const cos = Math.cos(rotation)
+		const sin = Math.sin(rotation)
+		const rot = (dx: number, dy: number) => ({ x: x + dx * cos - dy * sin, y: y + dx * sin + dy * cos })
+		const p0 = rot(-hw, -hh)
+		const p1 = rot(hw, -hh)
+		const p2 = rot(hw, hh)
+		const p3 = rot(-hw, hh)
+		const verts = new Float32Array([
+			p0.x,
+			p0.y,
+			uv.u0,
+			uv.v0,
+			p1.x,
+			p1.y,
+			uv.u1,
+			uv.v0,
+			p2.x,
+			p2.y,
+			uv.u1,
+			uv.v1,
+			p0.x,
+			p0.y,
+			uv.u0,
+			uv.v0,
+			p2.x,
+			p2.y,
+			uv.u1,
+			uv.v1,
+			p3.x,
+			p3.y,
+			uv.u0,
+			uv.v1,
 		])
 		gl.useProgram(this.nodeProgTex.program)
 		const uRes = gl.getUniformLocation(this.nodeProgTex.program, 'u_resolution')
@@ -812,11 +919,53 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 						const blurX = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor
 						const blurY = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor
 						const iterations = p.baseIterations
-						// blur into tex2, keep currentTex as the base texture
-						this.blurInto(gl, t, currentTex, t.fbo2, t.tex2, t.fbo1, t.tex1, blurX, blurY, iterations, p.maxStepPx, p.maxIterations)
+						// ping-pong to avoid read/write same texture when stacking glows
+						let blurDstFbo: WebGLFramebuffer
+						let blurDstTex: WebGLTexture
+						let blurTmpFbo: WebGLFramebuffer
+						let blurTmpTex: WebGLTexture
+						let outFbo: WebGLFramebuffer
+						let outTex: WebGLTexture
+						if (currentTex === t.tex0) {
+							blurDstFbo = t.fbo2
+							blurDstTex = t.tex2
+							blurTmpFbo = t.fbo1
+							blurTmpTex = t.tex1
+							outFbo = t.fbo1
+							outTex = t.tex1
+						} else if (currentTex === t.tex1) {
+							blurDstFbo = t.fbo0
+							blurDstTex = t.tex0
+							blurTmpFbo = t.fbo2
+							blurTmpTex = t.tex2
+							outFbo = t.fbo2
+							outTex = t.tex2
+						} else {
+							blurDstFbo = t.fbo1
+							blurDstTex = t.tex1
+							blurTmpFbo = t.fbo0
+							blurTmpTex = t.tex0
+							outFbo = t.fbo0
+							outTex = t.tex0
+						}
 
-						// composite current + blur(tex2) into tex1
-						gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo1)
+						const blurredTex = this.blurInto(
+							gl,
+							t,
+							currentTex,
+							blurDstFbo,
+							blurDstTex,
+							blurTmpFbo,
+							blurTmpTex,
+							blurX,
+							blurY,
+							iterations,
+							p.maxStepPx,
+							p.maxIterations
+						)
+
+						// composite current + blurred into outTex
+						gl.bindFramebuffer(gl.FRAMEBUFFER, outFbo)
 						gl.viewport(0, 0, t.w, t.h)
 						gl.useProgram(this.postProgGlowComposite.program)
 						// fullscreen quad
@@ -829,7 +978,7 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 						gl.bindTexture(gl.TEXTURE_2D, currentTex)
 						gl.uniform1i(this.postProgGlowComposite.uSampler!, 0)
 						gl.activeTexture(gl.TEXTURE1)
-						gl.bindTexture(gl.TEXTURE_2D, t.tex2)
+						gl.bindTexture(gl.TEXTURE_2D, blurredTex)
 						gl.uniform1i(this.postProgGlowComposite.uSampler2!, 1)
 						const color = this.parseHexColor(String(f.color ?? '#ffffff'), 1)
 						gl.uniform3f(this.postProgGlowComposite.uColor!, color.r, color.g, color.b)
@@ -837,17 +986,29 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 						gl.uniform1f(this.postProgGlowComposite.uInner!, f.inner ? 1 : 0)
 						gl.uniform1f(this.postProgGlowComposite.uKnockout!, f.knockout ? 1 : 0)
 						gl.drawArrays(gl.TRIANGLES, 0, 6)
-						currentTex = t.tex1
+						currentTex = outTex
 						continue
 					}
 					if (ft === 'customShader') {
 						const code = this.getCustomProgram(gl, String(f.vertex ?? ''), String(f.fragment ?? '')) as any
 						if (!code?.ok || !code?.prog) continue
-						this.drawPostPass(gl, code.prog, currentTex, t.fbo2, t.w, t.h, () => {
+						let dstFbo: WebGLFramebuffer
+						let dstTex: WebGLTexture
+						if (currentTex === t.tex0) {
+							dstFbo = t.fbo2
+							dstTex = t.tex2
+						} else if (currentTex === t.tex1) {
+							dstFbo = t.fbo0
+							dstTex = t.tex0
+						} else {
+							dstFbo = t.fbo1
+							dstTex = t.tex1
+						}
+						this.drawPostPass(gl, code.prog, currentTex, dstFbo, t.w, t.h, () => {
 							// optional u_texel
 							if (code.prog.uTexel) gl.uniform2f(code.prog.uTexel, 1 / t.w, 1 / t.h)
 						})
-						currentTex = t.tex2
+						currentTex = dstTex
 						continue
 					}
 				}

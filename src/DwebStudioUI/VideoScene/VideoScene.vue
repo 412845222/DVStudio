@@ -117,15 +117,57 @@ import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
 import { DwebCanvasGL } from '../../DwebGL/DwebCanvasGL'
 import { DwebVideoScene } from '../../DwebGL/DwebVideoScene'
 import { TimelineStore } from '../../store/timeline'
+import { containsFrame, type TimelineFrameSpan } from '../../store/timeline/spans'
 import { DwebCanvasGLKey } from './VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from './anim/timelineAnimation'
 
 let applyAnimRaf: number | null = null
+let isApplyingTimelineAnimation = false
 const scheduleApplyTimelineAnimation = () => {
 	if (applyAnimRaf != null) return
 	applyAnimRaf = window.requestAnimationFrame(() => {
 		applyAnimRaf = null
+		isApplyingTimelineAnimation = true
 		applyTimelineAnimationAtFrame(TimelineStore.state.currentFrame)
+		isApplyingTimelineAnimation = false
+	})
+}
+
+const getSingleSelectedKeyframeCell = (): { layerId: string; frameIndex: number } | null => {
+	const entries = Object.entries(TimelineStore.state.selectedSpansByLayer).filter(([, spans]) => spans && spans.length)
+	if (entries.length !== 1) return null
+	const layerId = entries[0][0]
+	const spans = entries[0][1] as TimelineFrameSpan[]
+	if (!spans || spans.length !== 1) return null
+	const s = spans[0]
+	const frameIndex = typeof s === 'number' ? Math.floor(s) : s && typeof s === 'object' && s.start === s.end ? Math.floor(s.start) : null
+	if (frameIndex == null || !Number.isFinite(frameIndex)) return null
+	// 必须是该图层的关键帧格子
+	const kfSpans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
+	if (!containsFrame(kfSpans, frameIndex)) return null
+	return { layerId, frameIndex }
+}
+
+let keyframeWriteRaf: number | null = null
+let pendingKeyframeWrite: { layerId: string; frameIndex: number } | null = null
+const scheduleWriteBackSelectedKeyframe = (layerId: string) => {
+	if (isApplyingTimelineAnimation) return
+	const selected = getSingleSelectedKeyframeCell()
+	if (!selected) return
+	if (selected.layerId !== layerId) return
+	pendingKeyframeWrite = selected
+	if (keyframeWriteRaf != null) return
+	keyframeWriteRaf = window.requestAnimationFrame(() => {
+		keyframeWriteRaf = null
+		const p = pendingKeyframeWrite
+		pendingKeyframeWrite = null
+		if (!p) return
+		// 写回“全画布快照”；TimelineStore 内部会做深拷贝，并只在该帧确实为关键帧时落盘
+		TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
+			startFrame: p.frameIndex,
+			endFrame: p.frameIndex,
+			layers: VideoSceneStore.state.layers,
+		})
 	})
 }
 
@@ -944,6 +986,15 @@ onMounted(() => {
 	scene.setState(VideoSceneStore.state)
 	canvas.setScene(scene)
 	unsubscribeVideoScene = VideoSceneStore.subscribe((_m, state) => {
+		const m: any = _m as any
+		// 关键帧编辑：当且仅当“时间轴单选关键帧格子”且同图层时，把当前舞台写回该关键帧快照
+		if (!isApplyingTimelineAnimation) {
+			const type = String(m?.type ?? '')
+			if (type === 'updateNodeTransform' || type === 'updateNodeProps' || type === 'updateNodeName' || type === 'setNodeType' || type === 'moveNode') {
+				const lid = String(m?.payload?.layerId ?? '')
+				if (lid) scheduleWriteBackSelectedKeyframe(lid)
+			}
+		}
 		scene?.setState(state)
 		canvas.requestRender()
 		updateOverlay()
@@ -1001,6 +1052,11 @@ onBeforeUnmount(() => {
 	if (applyAnimRaf != null) {
 		window.cancelAnimationFrame(applyAnimRaf)
 		applyAnimRaf = null
+	}
+	if (keyframeWriteRaf != null) {
+		window.cancelAnimationFrame(keyframeWriteRaf)
+		keyframeWriteRaf = null
+		pendingKeyframeWrite = null
 	}
 	const canvasEl = canvasRef.value
 	if (canvasEl) {
