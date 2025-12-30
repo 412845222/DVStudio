@@ -21,10 +21,12 @@ export class FilterTargetsPool {
 		contentW: number,
 		contentH: number,
 		padX: number,
-		padY: number
+		padY: number,
+		scale: number
 	): FilterTargets {
-		const cw = Math.max(1, Math.min(4096, Math.floor(contentW + padX * 2)))
-		const ch = Math.max(1, Math.min(4096, Math.floor(contentH + padY * 2)))
+		const s = Math.max(1e-3, Number(scale) || 1)
+		const cw = Math.max(1, Math.min(4096, Math.floor((contentW + padX * 2) * s)))
+		const ch = Math.max(1, Math.min(4096, Math.floor((contentH + padY * 2) * s)))
 		const existing = this.map.get(id)
 		if (
 			existing &&
@@ -33,7 +35,8 @@ export class FilterTargetsPool {
 			existing.padX === padX &&
 			existing.padY === padY &&
 			existing.contentW === contentW &&
-			existing.contentH === contentH
+			existing.contentH === contentH &&
+			existing.scale === s
 		)
 			return existing
 
@@ -65,7 +68,7 @@ export class FilterTargetsPool {
 		const fbo2 = mkFbo(tex2)
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
-		const t: FilterTargets = { w: cw, h: ch, padX, padY, contentW, contentH, tex0, tex1, tex2, fbo0, fbo1, fbo2 }
+		const t: FilterTargets = { w: cw, h: ch, padX, padY, contentW, contentH, scale: s, tex0, tex1, tex2, fbo0, fbo1, fbo2 }
 		this.map.set(id, t)
 		return t
 	}

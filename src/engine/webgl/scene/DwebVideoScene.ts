@@ -254,6 +254,8 @@ export class DwebVideoScene implements IDwebGLScene {
 		canvas.drawRect(-this.stageSize.width / 2 + borderW / 2, 0, borderW, this.stageSize.height, themeRgba.border(1))
 		canvas.drawRect(this.stageSize.width / 2 - borderW / 2, 0, borderW, this.stageSize.height, themeRgba.border(1))
 
+		const zoom = Math.max(1e-3, canvas.viewport.zoom)
+		const dpr = Math.max(1, canvas.getPixelRatio())
 		// user nodes in order
 		const skipped = new Set<string>()
 		for (const n of this.renderOrder) {
@@ -261,39 +263,61 @@ export class DwebVideoScene implements IDwebGLScene {
 			const rotation = (n.transform as any).rotation ?? 0
 			const opacity = Math.max(0, Math.min(1, (n.transform as any).opacity ?? 1))
 			const nodeFilters: any[] = Array.isArray((n.props as any)?.filters) ? ((n.props as any).filters as any[]) : []
-			const hasFilters = nodeFilters.length > 0
 			const nodeW = Math.max(1, Number(n.transform.width ?? 1))
 			const nodeH = Math.max(1, Number(n.transform.height ?? 1))
-			if (hasFilters) {
+			if (nodeFilters.length > 0) {
 				// compute required padding so blur/glow can extend outside node bounds (Flash-like)
-				let maxX = 0
-				let maxY = 0
-				let maxQuality = 1
+				let maxXpx = 0
+				let maxYpx = 0
 				const normalizedFilters = nodeFilters
 					.map((f) => (f && typeof f === 'object' ? { ...(f as any) } : f))
-					.filter(Boolean) as any[]
+					.filter(Boolean)
+					.filter((f: any) => {
+						const ft = String(f?.type || '')
+						if (ft === 'blur') {
+							const bx = Math.max(0, Number(f.blurX ?? 0) || 0)
+							const by = Math.max(0, Number(f.blurY ?? 0) || 0)
+							return bx > 0 || by > 0
+						}
+						if (ft === 'glow') {
+							const intensity = Math.max(0, Number(f.intensity ?? 1))
+							const bx = Math.max(0, Number(f.blurX ?? 0) || 0)
+							const by = Math.max(0, Number(f.blurY ?? 0) || 0)
+							return intensity > 0 && (bx > 0 || by > 0)
+						}
+						return true
+					}) as any[]
+				const hasFilters = normalizedFilters.length > 0
+				if (!hasFilters) {
+					this.getRenderer(n.type).renderWorld(canvas, n, { opacity, rotation })
+					continue
+				}
 
 				for (const f of normalizedFilters) {
 					const ft = String(f?.type || '')
 					if (ft === 'blur' || ft === 'glow') {
 						const p = this.getBlurParams(f)
-						const blurX = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor
-						const blurY = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor
-						maxX = Math.max(maxX, blurX)
-						maxY = Math.max(maxY, blurY)
-						maxQuality = Math.max(maxQuality, p.factor)
+						// blurX/blurY are UI pixels (Flash-like). Keep appearance stable in screen space.
+						const blurXpx = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor
+						const blurYpx = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor
+						maxXpx = Math.max(maxXpx, blurXpx)
+						maxYpx = Math.max(maxYpx, blurYpx)
 
 						// scene 只负责预归一化参数；具体执行由 canvas/postprocess 实现
-						f.__blurX = blurX
-						f.__blurY = blurY
+						// post-process uses device pixels
+						f.__blurX = blurXpx * dpr
+						f.__blurY = blurYpx * dpr
 						f.__iterations = p.baseIterations
-						f.__maxStepPx = p.maxStepPx
+						f.__maxStepPx = p.maxStepPx * dpr
 						f.__maxIterations = p.maxIterations
 					}
 				}
 
-				const padX = Math.min(512, Math.ceil(maxX * maxQuality) + 6)
-				const padY = Math.min(512, Math.ceil(maxY * maxQuality) + 6)
+				// padding expressed in world units; clamp in screen px to avoid runaway.
+				const padXpx = Math.min(512, Math.ceil(maxXpx) + 6)
+				const padYpx = Math.min(512, Math.ceil(maxYpx) + 6)
+				const padX = padXpx / zoom
+				const padY = padYpx / zoom
 				const tex = canvas.applyFilters(n.id, nodeW, nodeH, padX, padY, normalizedFilters, (target) => {
 					this.renderSubtreeIntoLocalTarget(canvas, target as LocalTargetSize, n.id, true)
 				})
@@ -345,43 +369,62 @@ export class DwebVideoScene implements IDwebGLScene {
 		const entry = this.nodesById.get(nodeId)
 		if (!entry) return
 
+		const zoom = Math.max(1e-3, canvas.viewport.zoom)
+		const dpr = Math.max(1, canvas.getPixelRatio())
+
 		const localW = Math.max(1, Number(entry.localTransform.width ?? 1))
 		const localH = Math.max(1, Number(entry.localTransform.height ?? 1))
 		const nodeOpacity = Math.max(0, Math.min(1, Number((entry.localTransform as any).opacity ?? 1)))
 		const nodeRotation = Number((entry.localTransform as any).rotation ?? 0)
 
 		const childFilters: any[] = Array.isArray((entry.props as any)?.filters) ? (((entry.props as any).filters as any[]) ?? []) : []
-		const hasSelfFilters = childFilters.length > 0
+		const normalizedChildFilters = childFilters
+			.map((f) => (f && typeof f === 'object' ? { ...(f as any) } : f))
+			.filter(Boolean)
+			.filter((f: any) => {
+				const ft = String(f?.type || '')
+				if (ft === 'blur') {
+					const bx = Math.max(0, Number(f.blurX ?? 0) || 0)
+					const by = Math.max(0, Number(f.blurY ?? 0) || 0)
+					return bx > 0 || by > 0
+				}
+				if (ft === 'glow') {
+					const intensity = Math.max(0, Number(f.intensity ?? 1))
+					const bx = Math.max(0, Number(f.blurX ?? 0) || 0)
+					const by = Math.max(0, Number(f.blurY ?? 0) || 0)
+					return intensity > 0 && (bx > 0 || by > 0)
+				}
+				return true
+			}) as any[]
+		const hasSelfFilters = normalizedChildFilters.length > 0
 
 		if (hasSelfFilters && !ignoreSelfOpacityRotation) {
 			// 子节点自身带滤镜：先离屏渲染该节点子树，再把结果贴回到当前 target。
-			let maxX = 0
-			let maxY = 0
-			let maxQuality = 1
-			const normalizedFilters = childFilters
-				.map((f) => (f && typeof f === 'object' ? { ...(f as any) } : f))
-				.filter(Boolean) as any[]
+			let maxXpx = 0
+			let maxYpx = 0
+			const normalizedFilters = normalizedChildFilters
 
 			for (const f of normalizedFilters) {
 				const ft = String(f?.type || '')
 				if (ft === 'blur' || ft === 'glow') {
 					const p = this.getBlurParams(f)
-					const blurX = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor
-					const blurY = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor
-					maxX = Math.max(maxX, blurX)
-					maxY = Math.max(maxY, blurY)
-					maxQuality = Math.max(maxQuality, p.factor)
+					const blurXpx = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor
+					const blurYpx = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor
+					maxXpx = Math.max(maxXpx, blurXpx)
+					maxYpx = Math.max(maxYpx, blurYpx)
 
-					f.__blurX = blurX
-					f.__blurY = blurY
+					f.__blurX = blurXpx * dpr
+					f.__blurY = blurYpx * dpr
 					f.__iterations = p.baseIterations
-					f.__maxStepPx = p.maxStepPx
+					f.__maxStepPx = p.maxStepPx * dpr
 					f.__maxIterations = p.maxIterations
 				}
 			}
 
-			const padX = Math.min(512, Math.ceil(maxX * maxQuality) + 6)
-			const padY = Math.min(512, Math.ceil(maxY * maxQuality) + 6)
+			const padXpx = Math.min(512, Math.ceil(maxXpx) + 6)
+			const padYpx = Math.min(512, Math.ceil(maxYpx) + 6)
+			const padX = padXpx / zoom
+			const padY = padYpx / zoom
 			const tex = canvas.applyFilters(entry.id, localW, localH, padX, padY, normalizedFilters, (childTarget) => {
 				this.renderSubtreeIntoLocalTargetImpl(canvas, childTarget as LocalTargetSize, entry.id, 0, 0, true)
 			})

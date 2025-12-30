@@ -21,4 +21,9 @@ export type LocalTargetSize = {
 	h: number
 	contentW: number
 	contentH: number
+	/**
+	 * Local render scale factor.
+	 * When > 1, 1 world unit maps to `scale` pixels in the offscreen target.
+	 */
+	scale?: number
 }

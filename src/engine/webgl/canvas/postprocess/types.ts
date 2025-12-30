@@ -19,6 +19,8 @@ export type FilterTargets = {
 	padY: number
 	contentW: number
 	contentH: number
+	/** pixels-per-world-unit used when allocating and rendering */
+	scale: number
 	tex0: WebGLTexture
 	tex1: WebGLTexture
 	tex2: WebGLTexture

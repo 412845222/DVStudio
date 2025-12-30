@@ -41,10 +41,10 @@ export class CanvasPostProcess {
 		padX: number,
 		padY: number,
 		filters: any[],
-		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number }) => void
+		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number; scale?: number }) => void
 	): WebGLTexture {
 		this.ensureResources(gl)
-		const t = this.targets.ensureWithPadding(gl, id, contentW, contentH, padX, padY)
+		const t = this.targets.ensureWithPadding(gl, id, contentW, contentH, padX, padY, canvas.getFilterScale())
 
 		const prevBlend = gl.isEnabled(gl.BLEND)
 		gl.disable(gl.BLEND)
@@ -54,7 +54,7 @@ export class CanvasPostProcess {
 		gl.viewport(0, 0, t.w, t.h)
 		gl.clearColor(0, 0, 0, 0)
 		gl.clear(gl.COLOR_BUFFER_BIT)
-		renderLocal({ w: t.w, h: t.h, contentW: t.contentW, contentH: t.contentH })
+		renderLocal({ w: t.w, h: t.h, contentW: t.contentW, contentH: t.contentH, scale: t.scale })
 
 		let currentTex: WebGLTexture = t.tex0
 		for (const f of filters) {

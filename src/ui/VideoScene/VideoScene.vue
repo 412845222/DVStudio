@@ -13,7 +13,8 @@
 		/>
 
 		<VideoStudioRightPanel ref="rightPanelRef" />
-		<VideoSceneToolbar ref="toolbarRef" />
+		<VideoSceneToolbar ref="toolbarRef" :ai-open="aiChatOpen" :ai-minimized="aiChatMinimized" @toggle-ai="onToggleAi" />
+		<AIChatDialog v-model:open="aiChatOpen" v-model:minimized="aiChatMinimized" :anchor="aiChatAnchor" />
 
 		<!-- HTML overlay for selection resize handles -->
 		<div class="vs-overlay">
@@ -133,6 +134,7 @@ import { VideoStudioKey, type VideoStudioState } from '../../store/videostudio'
 import { VideoSceneKey, VideoSceneStore } from '../../store/videoscene'
 import VideoSceneToolbar from './parts/VideoSceneToolbar.vue'
 import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
+import AIChatDialog from '../AIChat/AIChatDialog.vue'
 import { DwebCanvasGL } from '../../engine/webgl'
 import { DwebVideoScene } from '../../engine/webgl'
 import { TimelineStore } from '../../store/timeline'
@@ -255,6 +257,25 @@ const shellRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const toolbarRef = ref<InstanceType<typeof VideoSceneToolbar> | null>(null)
 const rightPanelRef = ref<InstanceType<typeof VideoStudioRightPanel> | null>(null)
+
+const aiChatOpen = ref(false)
+const aiChatMinimized = ref(false)
+const aiChatAnchor = ref<{ x: number; y: number } | null>(null)
+
+const onToggleAi = (p: { anchor: { x: number; y: number } | null }) => {
+	if (p?.anchor) aiChatAnchor.value = p.anchor
+	if (!aiChatOpen.value) {
+		aiChatOpen.value = true
+		aiChatMinimized.value = false
+		return
+	}
+	// open already
+	if (aiChatMinimized.value) {
+		aiChatMinimized.value = false
+		return
+	}
+	aiChatMinimized.value = true
+}
 
 const stageWidth = computed(() => store.state.stage.width)
 const stageHeight = computed(() => store.state.stage.height)

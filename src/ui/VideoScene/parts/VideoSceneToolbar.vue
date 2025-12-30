@@ -4,6 +4,16 @@
 		<button class="vs-tool-btn" type="button" :class="{ active: showBackgroundPanel }" @click="onBackground">背景</button>
 		<button class="vs-tool-btn" type="button" @click="addBase">添加</button>
 		<button class="vs-tool-btn" type="button" @click="onImport">导入</button>
+		<button
+			ref="aiBtnRef"
+			class="vs-tool-btn"
+			type="button"
+			:class="{ active: aiOpen && !aiMinimized }"
+			:title="aiMinimized ? 'AI助手（已最小化）' : 'AI助手'"
+			@click="toggleAi"
+		>
+			AI助手
+		</button>
 		<input ref="importInputEl" class="vs-import-input" type="file" accept="application/json,.json" @change="onImportFile" />
 		<div class="vs-toolbar-spacer" />
 		<button class="vs-tool-btn vs-icon-btn" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)" @click="undo">↶</button>
@@ -20,15 +30,23 @@ import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import { editorPersistence } from '../../../adapters/editorPersistence'
 import { componentTemplateApi } from '../../../core/components'
 
+const props = defineProps<{ aiOpen?: boolean; aiMinimized?: boolean }>()
+const emit = defineEmits<{ 'toggle-ai': [{ anchor: { x: number; y: number } | null }] }>()
+
 const store = useStore<VideoSceneState>(VideoSceneKey)
 
 const rootEl = ref<HTMLElement | null>(null)
 defineExpose({ rootEl })
 
+const aiBtnRef = ref<HTMLButtonElement | null>(null)
+
 const importInputEl = ref<HTMLInputElement | null>(null)
 
 const showSizePanel = computed(() => store.state.showSizePanel)
 const showBackgroundPanel = computed(() => store.state.showBackgroundPanel)
+
+const aiOpen = computed(() => !!props.aiOpen)
+const aiMinimized = computed(() => !!props.aiMinimized)
 
 const canUndo = computed(() => editorPersistence.canUndo.value)
 const canRedo = computed(() => editorPersistence.canRedo.value)
@@ -57,6 +75,16 @@ const onBackground = () => {
 
 const onImport = () => {
 	importInputEl.value?.click()
+}
+
+const toggleAi = () => {
+	const rect = aiBtnRef.value?.getBoundingClientRect()
+	if (!rect) {
+		emit('toggle-ai', { anchor: null })
+		return
+	}
+	// viewport coordinates (fixed-position dialog)
+	emit('toggle-ai', { anchor: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } })
 }
 
 const onImportFile = async (e: Event) => {

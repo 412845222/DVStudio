@@ -177,6 +177,19 @@ export class DwebCanvasGL {
 		this.requestRender()
 	}
 
+	getPixelRatio() {
+		return this.dpr
+	}
+
+	/**
+	 * Offscreen filter targets scale in pixels-per-world-unit.
+	 * We use viewport zoom to keep filter results stable in screen space,
+	 * and DPR to keep results crisp on HiDPI.
+	 */
+	getFilterScale() {
+		return Math.max(1e-3, this.viewport.zoom * this.dpr)
+	}
+
 	get size() {
 		return { width: this.canvas.width / this.dpr, height: this.canvas.height / this.dpr }
 	}
@@ -362,12 +375,12 @@ export class DwebCanvasGL {
 
 	// ----- Local drawing helpers (for offscreen targets) -----
 
-	drawLocalRect(target: { w: number; h: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
+	drawLocalRect(target: { w: number; h: number; scale?: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
 		this.drawLocalQuad(target, x, y, w, h, color, rotation)
 	}
 
 	drawLocalTexturedRect(
-		target: { w: number; h: number },
+		target: { w: number; h: number; scale?: number },
 		x: number,
 		y: number,
 		w: number,
@@ -383,12 +396,12 @@ export class DwebCanvasGL {
 		gl.activeTexture(gl.TEXTURE0)
 		gl.bindTexture(gl.TEXTURE_2D, texture)
 		gl.uniform1i(this.localProgTex.uSampler!, 0)
-		this.uploadLocalQuadVerts(this.localProgTex, x, y, w, h, rotation)
+		this.uploadLocalQuadVerts(this.localProgTex, x, y, w, h, rotation, undefined, target.scale)
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
 	drawLocalTexturedRectUv(
-		target: { w: number; h: number },
+		target: { w: number; h: number; scale?: number },
 		x: number,
 		y: number,
 		w: number,
@@ -405,12 +418,12 @@ export class DwebCanvasGL {
 		gl.activeTexture(gl.TEXTURE0)
 		gl.bindTexture(gl.TEXTURE_2D, texture)
 		gl.uniform1i(this.localProgTex.uSampler!, 0)
-		this.uploadLocalQuadVerts(this.localProgTex, x, y, w, h, rotation, uv)
+		this.uploadLocalQuadVerts(this.localProgTex, x, y, w, h, rotation, uv, target.scale)
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
 	drawLocalRoundedRect(
-		target: { w: number; h: number },
+		target: { w: number; h: number; scale?: number },
 		x: number,
 		y: number,
 		w: number,
@@ -421,15 +434,16 @@ export class DwebCanvasGL {
 		borderWidth: number,
 		rotation = 0
 	) {
+		const scale = Math.max(1e-3, target.scale ?? 1)
 		const gl = this.gl
 		gl.useProgram(this.localProgRoundedRect.program)
 		gl.uniform2f(this.localProgRoundedRect.uResolution!, target.w, target.h)
-		gl.uniform2f(this.localProgRoundedRect.uSize!, Math.max(1, w), Math.max(1, h))
-		gl.uniform1f(this.localProgRoundedRect.uRadius!, Math.max(0, radius))
-		gl.uniform1f(this.localProgRoundedRect.uBorderWidth!, Math.max(0, borderWidth))
+		gl.uniform2f(this.localProgRoundedRect.uSize!, Math.max(1, w * scale), Math.max(1, h * scale))
+		gl.uniform1f(this.localProgRoundedRect.uRadius!, Math.max(0, radius * scale))
+		gl.uniform1f(this.localProgRoundedRect.uBorderWidth!, Math.max(0, borderWidth * scale))
 		gl.uniform4f(this.localProgRoundedRect.uFillColor!, fillColor.r, fillColor.g, fillColor.b, fillColor.a)
 		gl.uniform4f(this.localProgRoundedRect.uBorderColor!, borderColor.r, borderColor.g, borderColor.b, borderColor.a)
-		this.uploadLocalQuadVerts(this.localProgRoundedRect, x, y, w, h, rotation)
+		this.uploadLocalQuadVerts(this.localProgRoundedRect, x, y, w, h, rotation, undefined, target.scale)
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
@@ -630,12 +644,12 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		return { program, aPos, aUv, uResolution, uColor, uSampler, uAlpha, uSize, uRadius, uBorderWidth, uFillColor, uBorderColor }
 	}
 
-	private drawLocalQuad(target: { w: number; h: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
+	private drawLocalQuad(target: { w: number; h: number; scale?: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
 		const gl = this.gl
 		gl.useProgram(this.localProgColor.program)
 		gl.uniform2f(this.localProgColor.uResolution!, target.w, target.h)
 		gl.uniform4f(this.localProgColor.uColor!, color.r, color.g, color.b, color.a)
-		this.uploadLocalQuadVerts(this.localProgColor, x, y, w, h, rotation)
+		this.uploadLocalQuadVerts(this.localProgColor, x, y, w, h, rotation, undefined, target.scale)
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
@@ -646,14 +660,18 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		w: number,
 		h: number,
 		rotation = 0,
-		uv: UvRect = { u0: 0, v0: 0, u1: 1, v1: 1 }
+		uv: UvRect = { u0: 0, v0: 0, u1: 1, v1: 1 },
+		scaleMaybe?: number
 	) {
 		const gl = this.gl
-		const hw = w / 2
-		const hh = h / 2
+		const s = Math.max(1e-3, scaleMaybe ?? 1)
+		const x0 = x * s
+		const y0 = y * s
+		const hw = (w * s) / 2
+		const hh = (h * s) / 2
 		const cos = Math.cos(rotation)
 		const sin = Math.sin(rotation)
-		const rot = (dx: number, dy: number) => ({ x: x + dx * cos - dy * sin, y: y + dx * sin + dy * cos })
+		const rot = (dx: number, dy: number) => ({ x: x0 + dx * cos - dy * sin, y: y0 + dx * sin + dy * cos })
 		const p0 = rot(-hw, -hh)
 		const p1 = rot(hw, -hh)
 		const p2 = rot(hw, hh)
