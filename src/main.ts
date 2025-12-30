@@ -3,16 +3,14 @@ import './style.css'
 import App from './App.vue'
 import router from './router'
 import { editorPersistence } from './utils/editorPersistence'
+import { dispatchDvsTimelineNav } from './adapters/windowEventBridge'
 
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
 window.addEventListener('contextmenu', (e) => {
 	e.preventDefault()
 })
 
-// 统一派发“时间轴前进/后退”事件（用于把浏览器 Back/Forward 映射为时间轴滚动）
-const dispatchTimelineNav = (dir: -1 | 1) => {
-	window.dispatchEvent(new CustomEvent('dweb:timeline-nav', { detail: { dir } }))
-}
+
 
 window.addEventListener(
 	'keydown',
@@ -55,7 +53,7 @@ window.addEventListener(
 		if (isBack || isForward) {
 			e.preventDefault()
 			e.stopPropagation()
-			dispatchTimelineNav(isBack ? -1 : 1)
+			dispatchDvsTimelineNav(isBack ? -1 : 1, 'keyboard')
 		}
 	},
 	{ capture: true }
@@ -77,7 +75,7 @@ const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	e.stopPropagation()
 	// 更强的阻断，尽量在浏览器历史导航前截住
 	;(e as any).stopImmediatePropagation?.()
-	dispatchTimelineNav(isBack ? -1 : 1)
+	dispatchDvsTimelineNav(isBack ? -1 : 1, 'browser')
 }
 
 window.addEventListener('pointerdown', onMouseNav, { capture: true })
@@ -108,7 +106,7 @@ const enableHistoryBackTrap = () => {
 			} catch {
 				// ignore
 			}
-			dispatchTimelineNav(-1)
+			dispatchDvsTimelineNav(-1, 'browser')
 		},
 		{ capture: true } as any
 	)

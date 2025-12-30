@@ -1,87 +1,52 @@
 import { createStore, type Store } from 'vuex'
 import type { InjectionKey } from 'vue'
-import { NodeBase, type NodeBaseDTO, type NodeType, upgradeNodeType } from '../../DwebStudioUI/VideoScene/nodesType'
 
-export type VideoSceneProjectNodeKind = 'group' | 'stage' | 'grid' | 'unknown'
-export type VideoSceneUserNodeType = 'base' | 'rect' | 'text' | 'image' | 'line'
-export type VideoSceneNodeCategory = 'project' | 'user'
+import {
+  addRenderableNodeToLayer,
+  buildRenderPipeline,
+  clearSelection as clearSelectionPatch,
+  collectAllNames,
+  findLayer,
+  findNode,
+  moveNodeInLayer,
+  makeUniqueName,
+  nodeExistsInAnyLayer,
+  reconcileSelectionAcrossLayers,
+  reconcileSelectionForActiveLayer,
+  setUserNodeType,
+  setMultiSelection,
+  setSingleSelection,
+  updateNodeName as updateNodeNameCore,
+  updateUserNodeProps,
+  updateUserNodeTransform,
+} from '../../core/scene'
 
-export type VideoSceneNodeTransform = {
-  x: number
-  y: number
-  width: number
-  height: number
-	rotation: number
-	opacity: number
-}
+import type {
+  VideoSceneLayer,
+  VideoSceneLayoutInsets,
+  VideoSceneNodeTransform,
+  VideoSceneState,
+  VideoSceneTreeNode,
+  VideoSceneUserNodeType,
+} from '../../core/scene'
 
-export type VideoSceneNodeProps = {
-	// base/rect/text/image 不同类型使用不同字段
-	[key: string]: any
-}
+import type { NodePropsPatch } from '../../core/scene'
 
-export type VideoSceneTreeNode = {
-  id: string
-  name: string
-  category: VideoSceneNodeCategory
-  projectKind?: VideoSceneProjectNodeKind
-  userType?: VideoSceneUserNodeType
-  transform?: VideoSceneNodeTransform
-  props?: VideoSceneNodeProps
-  children?: VideoSceneTreeNode[]
-}
+import { createDefaultVideoSceneState, createVideoSceneLayer } from '../../core/scene'
 
-export type VideoSceneLayer = {
-  id: string
-  name: string
-  nodeTree: VideoSceneTreeNode[]
-}
-
-const createLayer = (layerId: string, name: string): VideoSceneLayer => ({
-  id: layerId,
-  name,
-  nodeTree: [
-    {
-      id: 'root',
-      name,
-      category: 'project',
-      projectKind: 'group',
-      children: [],
-    },
-  ],
-})
-
-export type VideoSceneLayoutInsets = {
-  rightPanelWidth: number
-  bottomToolbarHeight: number
-}
-
-export type VideoSceneRenderStep = {
-  layerId: string
-  nodeId: string
-  category: VideoSceneNodeCategory
-  type: VideoSceneProjectNodeKind | VideoSceneUserNodeType
-  path: string[]
-}
-
-export type VideoSceneImageAsset = {
-	id: string
-	url: string
-	name: string
-	createdAt: number
-}
-
-export interface VideoSceneState {
-  showSizePanel: boolean
-	showBackgroundPanel: boolean
-  layers: VideoSceneLayer[]
-  activeLayerId: string
-  selectedNodeId: string | null
-  selectedNodeIds: string[]
-	focusedNodeId: string | null
-  layoutInsets: VideoSceneLayoutInsets
-	imageAssets: Record<string, VideoSceneImageAsset>
-}
+export type {
+  VideoSceneImageAsset,
+  VideoSceneLayer,
+  VideoSceneLayoutInsets,
+  VideoSceneNodeCategory,
+  VideoSceneNodeProps,
+  VideoSceneNodeTransform,
+  VideoSceneProjectNodeKind,
+  VideoSceneRenderStep,
+  VideoSceneState,
+  VideoSceneTreeNode,
+  VideoSceneUserNodeType,
+} from '../../core/scene'
 
 const clampPx = (v: unknown, fallback: number) => {
   const n = Math.floor(Number(v))
@@ -89,174 +54,10 @@ const clampPx = (v: unknown, fallback: number) => {
   return Math.max(0, n)
 }
 
-const findLayer = (state: VideoSceneState, layerId: string) => state.layers.find((l) => l.id === layerId)
-
-const walkTree = (
-  nodes: VideoSceneTreeNode[],
-  visit: (node: VideoSceneTreeNode, parent: VideoSceneTreeNode | null, list: VideoSceneTreeNode[]) => boolean | void,
-  parent: VideoSceneTreeNode | null = null
-): boolean => {
-  for (const node of nodes) {
-    const stop = visit(node, parent, nodes)
-    if (stop === true) return true
-    if (node.children?.length) {
-      const done = walkTree(node.children, visit, node)
-      if (done) return true
-    }
-  }
-  return false
-}
-
-const detachNode = (root: VideoSceneTreeNode[], nodeId: string): VideoSceneTreeNode | null => {
-  let removed: VideoSceneTreeNode | null = null
-  walkTree(root, (node, _parent, list) => {
-    if (node.id !== nodeId) return
-    const idx = list.findIndex((n) => n.id === nodeId)
-    if (idx >= 0) removed = list.splice(idx, 1)[0]
-    return true
-  })
-  return removed
-}
-
-const findNode = (root: VideoSceneTreeNode[], nodeId: string): VideoSceneTreeNode | null => {
-  let found: VideoSceneTreeNode | null = null
-  walkTree(root, (node) => {
-    if (node.id === nodeId) {
-      found = node
-      return true
-    }
-  })
-  return found
-}
-
-const nodeExistsInAnyLayer = (layers: VideoSceneLayer[], nodeId: string) => {
-  for (const layer of layers) {
-    if (findNode(layer.nodeTree, nodeId)) return true
-  }
-  return false
-}
-
-const collectAllNames = (root: VideoSceneTreeNode[]) => {
-  const names: string[] = []
-  walkTree(root, (node) => {
-    names.push(String(node.name ?? ''))
-  })
-  return names
-}
-
-const makeUniqueName = (existingNames: string[], baseName: string) => {
-  const desired = String(baseName || 'Node').trim() || 'Node'
-  if (!existingNames.includes(desired)) return desired
-  const re = new RegExp(`^${desired.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}(?:\\s+(\\d+))?$`)
-  let maxN = 1
-  for (const n of existingNames) {
-    const m = re.exec(String(n || '').trim())
-    if (!m) continue
-    const k = m[1] ? Number(m[1]) : 1
-    if (Number.isFinite(k)) maxN = Math.max(maxN, k)
-  }
-  return `${desired} ${maxN + 1}`
-}
-
-const isDescendant = (root: VideoSceneTreeNode[], maybeAncestorId: string, nodeId: string) => {
-	const ancestor = findNode(root, maybeAncestorId)
-	if (!ancestor) return false
-	const children = ancestor.children
-	if (!children || children.length === 0) return false
-	return !!findNode(children, nodeId)
-}
-
-type WorldPosResult = {
-  node: VideoSceneTreeNode
-  parentWorld: { x: number; y: number }
-  world: { x: number; y: number }
-}
-
-const findWorldPos = (root: VideoSceneTreeNode[], nodeId: string): WorldPosResult | null => {
-  const dfs = (nodes: VideoSceneTreeNode[], parentWorld: { x: number; y: number }): WorldPosResult | null => {
-    for (const n of nodes) {
-      const hasT = !!n.transform
-      const world = hasT
-        ? { x: parentWorld.x + (n.transform?.x ?? 0), y: parentWorld.y + (n.transform?.y ?? 0) }
-        : parentWorld
-      const nextParentWorld = hasT ? world : parentWorld
-      if (n.id === nodeId) return { node: n, parentWorld, world }
-      if (n.children?.length) {
-        const hit = dfs(n.children, nextParentWorld)
-        if (hit) return hit
-      }
-    }
-    return null
-  }
-  return dfs(root, { x: 0, y: 0 })
-}
-
-export const buildRenderPipeline = (state: VideoSceneState): VideoSceneRenderStep[] => {
-  const steps: VideoSceneRenderStep[] = []
-  for (const layer of state.layers) {
-    const dfs = (nodes: VideoSceneTreeNode[], path: string[]) => {
-      for (const n of nodes) {
-        const category = n.category
-        const type = (n.category === 'user' ? (n.userType ?? 'rect') : (n.projectKind ?? 'unknown')) as
-      | VideoSceneProjectNodeKind
-      | VideoSceneUserNodeType
-        steps.push({ layerId: layer.id, nodeId: n.id, category, type, path: [...path, n.id] })
-        if (n.children?.length) dfs(n.children, [...path, n.id])
-      }
-    }
-    dfs(layer.nodeTree, [])
-  }
-  return steps
-}
-
-const genId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-
-const createRenderableNode = (type: VideoSceneUserNodeType): VideoSceneTreeNode => {
-	const id = genId(type)
-  const base: NodeBaseDTO = NodeBase.create(
-    id,
-    type === 'base' ? 'Node' : type === 'rect' ? 'Rect' : type === 'text' ? 'Text' : type === 'image' ? 'Image' : 'Line'
-  )
-	const upgraded = upgradeNodeType(base, type as NodeType)
-	return {
-		id: upgraded.id,
-		name: upgraded.name,
-		category: 'user',
-		userType: upgraded.type as VideoSceneUserNodeType,
-		transform: {
-			x: upgraded.transform.x,
-			y: upgraded.transform.y,
-			width: upgraded.transform.width,
-			height: upgraded.transform.height,
-			rotation: upgraded.transform.rotation,
-			opacity: upgraded.transform.opacity,
-		},
-		props: upgraded.props ?? {},
-	}
-}
-
-const createDefaultState = (): VideoSceneState => ({
-  showSizePanel: false,
-	showBackgroundPanel: false,
-  layers: [
-    {
-      id: 'layer-1',
-      name: '图层1',
-      nodeTree: createLayer('layer-1', '图层1').nodeTree,
-    },
-  ],
-  activeLayerId: 'layer-1',
-  selectedNodeId: null,
-  selectedNodeIds: [],
-	focusedNodeId: null,
-  layoutInsets: { rightPanelWidth: 240, bottomToolbarHeight: 40 },
-  imageAssets: {},
-})
-
 export const VideoSceneKey: InjectionKey<Store<VideoSceneState>> = Symbol('VideoSceneStore')
 
 export const VideoSceneStore = createStore<VideoSceneState>({
-  state: createDefaultState,
+  state: createDefaultVideoSceneState,
   mutations: {
     upsertImageAsset(state, payload: { id: string; url: string; name?: string }) {
       const id = String(payload.id || '').trim()
@@ -294,44 +95,16 @@ export const VideoSceneStore = createStore<VideoSceneState>({
       const layer = findLayer(state, payload.layerId)
       if (!layer) return
       state.activeLayerId = payload.layerId
-
-      // 若当前选中节点不在新图层中，则清空选中/焦点，避免节点树与舞台状态不一致
-      // 同时维护多选列表：selectedNodeIds（多选） + selectedNodeId（最后选中的节点）
-      const baselineSelectedIds: string[] = []
-      if (Array.isArray(state.selectedNodeIds) && state.selectedNodeIds.length) {
-          baselineSelectedIds.push(...state.selectedNodeIds)
-      } else if (state.selectedNodeId) {
-          baselineSelectedIds.push(state.selectedNodeId)
-      }
-      const filteredSelectedIds = baselineSelectedIds.filter((id) => !!findNode(layer.nodeTree, id))
-      state.selectedNodeIds = filteredSelectedIds
-      state.selectedNodeId = filteredSelectedIds[filteredSelectedIds.length - 1] ?? null
-      state.focusedNodeId = state.selectedNodeId
+      Object.assign(state, reconcileSelectionForActiveLayer(layer.nodeTree, state))
     },
     setSelectedNode(state, payload: { nodeId: string | null }) {
-      state.selectedNodeId = payload.nodeId
-      state.selectedNodeIds = payload.nodeId ? [payload.nodeId] : []
-      state.focusedNodeId = payload.nodeId
+      Object.assign(state, setSingleSelection(payload.nodeId))
     },
 		setSelectedNodes(state, payload: { nodeIds: string[] }) {
-			const nextIds = Array.isArray(payload.nodeIds)
-				? payload.nodeIds.map((s) => String(s || '').trim()).filter(Boolean)
-				: []
-			const uniq: string[] = []
-			const seen = new Set<string>()
-			for (const id of nextIds) {
-				if (seen.has(id)) continue
-				seen.add(id)
-				uniq.push(id)
-			}
-			state.selectedNodeIds = uniq
-			state.selectedNodeId = uniq[uniq.length - 1] ?? null
-			state.focusedNodeId = state.selectedNodeId
+      Object.assign(state, setMultiSelection(payload.nodeIds))
 		},
 		clearSelection(state) {
-			state.selectedNodeId = null
-			state.selectedNodeIds = []
-			state.focusedNodeId = null
+      Object.assign(state, clearSelectionPatch())
 		},
 		setFocusedNode(state, payload: { nodeId: string | null }) {
 			state.focusedNodeId = payload.nodeId
@@ -344,7 +117,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     },
   addLayer(state, payload: { layerId: string; name: string }) {
     if (state.layers.some((l) => l.id === payload.layerId)) return
-    state.layers.push(createLayer(payload.layerId, payload.name))
+	state.layers.push(createVideoSceneLayer(payload.layerId, payload.name))
     state.activeLayerId = payload.layerId
     state.selectedNodeId = null
     state.selectedNodeIds = []
@@ -367,126 +140,39 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     ) {
       const layer = findLayer(state, payload.layerId)
       if (!layer) return
-      if (payload.targetParentId && payload.targetParentId === payload.nodeId) return
-      if (payload.targetParentId && isDescendant(layer.nodeTree, payload.nodeId, payload.targetParentId)) return
-
-    // 让节点的 transform 作为“相对父节点的局部坐标”，同时在重设父子关系时尽量保持节点的 world 位置不变
-    const before = findWorldPos(layer.nodeTree, payload.nodeId)
-    const targetParentWorld = (() => {
-      if (!payload.targetParentId) return { x: 0, y: 0 }
-      if (payload.targetParentId === 'root') return { x: 0, y: 0 }
-      const r = findWorldPos(layer.nodeTree, payload.targetParentId)
-      return r?.world ?? { x: 0, y: 0 }
-    })()
-
-    const moved = detachNode(layer.nodeTree, payload.nodeId)
-      if (!moved) return
-    if (before?.node?.transform && moved.transform) {
-      moved.transform = {
-        ...moved.transform,
-        x: before.world.x - targetParentWorld.x,
-        y: before.world.y - targetParentWorld.y,
-      }
-    }
-
-      if (payload.targetParentId) {
-        const parent = findNode(layer.nodeTree, payload.targetParentId)
-        if (!parent) {
-          // parent 不存在则放回根
-          layer.nodeTree.push(moved)
-          return
-        }
-        if (!parent.children) parent.children = []
-        const idx =
-          typeof payload.targetIndex === 'number'
-            ? Math.max(0, Math.min(parent.children.length, Math.floor(payload.targetIndex)))
-            : parent.children.length
-        parent.children.splice(idx, 0, moved)
-        return
-      }
-
-      const rootIdx =
-        typeof payload.targetIndex === 'number'
-          ? Math.max(0, Math.min(layer.nodeTree.length, Math.floor(payload.targetIndex)))
-          : layer.nodeTree.length
-      layer.nodeTree.splice(rootIdx, 0, moved)
+      moveNodeInLayer({
+        layer,
+        nodeId: payload.nodeId,
+        targetParentId: payload.targetParentId,
+        targetIndex: payload.targetIndex,
+      })
     },
   addRenderableNode(state, payload: { layerId: string; type: VideoSceneUserNodeType; parentId?: string | null }) {
     const layer = findLayer(state, payload.layerId)
     if (!layer) return
-    const node = createRenderableNode(payload.type)
-		// 默认命名：同名递增后缀（Node / Node 2 / Node 3...）
-		const existingNames = collectAllNames(layer.nodeTree)
-		node.name = makeUniqueName(existingNames, node.name)
-    // 默认插入到 root(Scene) 下；若找不到则插入顶层
-    const root = findNode(layer.nodeTree, payload.parentId ?? 'root')
-    if (root) {
-      if (!root.children) root.children = []
-      root.children.push(node)
-    } else {
-      layer.nodeTree.push(node)
-    }
-    state.selectedNodeId = node.id
-    state.selectedNodeIds = [node.id]
-    state.focusedNodeId = node.id
+		const r = addRenderableNodeToLayer({ state, layerId: payload.layerId, type: payload.type, parentId: payload.parentId })
+		if (!r) return
+		Object.assign(state, r.selection)
   },
   updateNodeTransform(state, payload: { layerId: string; nodeId: string; patch: Partial<VideoSceneNodeTransform> }) {
     const layer = findLayer(state, payload.layerId)
     if (!layer) return
-    const node = findNode(layer.nodeTree, payload.nodeId)
-    if (!node || node.category !== 'user') return
-    const prev = node.transform ?? { x: 0, y: 0, width: 10, height: 10, rotation: 0, opacity: 1 }
-    node.transform = {
-      x: Number.isFinite(payload.patch.x as any) ? Number(payload.patch.x) : prev.x,
-      y: Number.isFinite(payload.patch.y as any) ? Number(payload.patch.y) : prev.y,
-      width: Number.isFinite(payload.patch.width as any) ? Math.max(1, Number(payload.patch.width)) : prev.width,
-      height: Number.isFinite(payload.patch.height as any) ? Math.max(1, Number(payload.patch.height)) : prev.height,
-    rotation: Number.isFinite(payload.patch.rotation as any) ? Number(payload.patch.rotation) : prev.rotation,
-    opacity: Number.isFinite(payload.patch.opacity as any) ? Math.max(0, Math.min(1, Number(payload.patch.opacity))) : prev.opacity,
-    }
+		updateUserNodeTransform(layer, payload.nodeId, payload.patch)
   },
   updateNodeName(state, payload: { layerId: string; nodeId: string; name: string }) {
     const layer = findLayer(state, payload.layerId)
     if (!layer) return
-    const node = findNode(layer.nodeTree, payload.nodeId)
-    if (!node) return
-    node.name = String(payload.name ?? '')
+		updateNodeNameCore(layer, payload.nodeId, payload.name)
   },
-  updateNodeProps(state, payload: { layerId: string; nodeId: string; patch: Record<string, any> }) {
+  updateNodeProps(state, payload: { layerId: string; nodeId: string; patch: NodePropsPatch }) {
     const layer = findLayer(state, payload.layerId)
     if (!layer) return
-    const node = findNode(layer.nodeTree, payload.nodeId)
-    if (!node || node.category !== 'user') return
-    if (!node.props) node.props = {}
-    Object.assign(node.props, payload.patch)
+		updateUserNodeProps(layer, payload.nodeId, payload.patch)
   },
   setNodeType(state, payload: { layerId: string; nodeId: string; type: VideoSceneUserNodeType }) {
     const layer = findLayer(state, payload.layerId)
     if (!layer) return
-    const node = findNode(layer.nodeTree, payload.nodeId)
-    if (!node || node.category !== 'user') return
-    const current: NodeBaseDTO = NodeBase.normalize({
-      id: node.id,
-      name: node.name,
-      type: (node.userType ?? 'base') as any,
-      transform: {
-        x: node.transform?.x ?? 0,
-        y: node.transform?.y ?? 0,
-        width: node.transform?.width ?? 200,
-        height: node.transform?.height ?? 120,
-        rotation: (node.transform as any)?.rotation ?? 0,
-        opacity: (node.transform as any)?.opacity ?? 1,
-      },
-      props: node.props ?? {},
-    })
-    const upgraded = upgradeNodeType(current, payload.type as any)
-    node.userType = upgraded.type as any
-    node.props = upgraded.props ?? {}
-    if (!node.transform) node.transform = { x: 0, y: 0, width: 10, height: 10, rotation: 0, opacity: 1 }
-    node.transform.width = upgraded.transform.width
-    node.transform.height = upgraded.transform.height
-    node.transform.rotation = upgraded.transform.rotation
-    node.transform.opacity = upgraded.transform.opacity
+		setUserNodeType(layer, payload.nodeId, payload.type)
   },
 
   applyStageSnapshot(state, payload: { layers: VideoSceneLayer[] }) {
@@ -496,24 +182,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     if (!state.layers.find((l) => l.id === state.activeLayerId)) {
       state.activeLayerId = state.layers[0]?.id ?? state.activeLayerId
     }
-    // selected/focused 节点若已不存在，清空，避免 UI/舞台不一致
-    if (state.selectedNodeId && !nodeExistsInAnyLayer(state.layers, state.selectedNodeId)) {
-      state.selectedNodeId = null
-    }
-    if (state.focusedNodeId && !nodeExistsInAnyLayer(state.layers, state.focusedNodeId)) {
-      state.focusedNodeId = null
-    }
-    // 同步维护 selectedNodeIds（多选列表）
-    const baselineSelectedIds: string[] = []
-    if (Array.isArray(state.selectedNodeIds) && state.selectedNodeIds.length) {
-      baselineSelectedIds.push(...state.selectedNodeIds)
-    } else if (state.selectedNodeId) {
-      baselineSelectedIds.push(state.selectedNodeId)
-    }
-    const filteredSelectedIds = baselineSelectedIds.filter((id) => nodeExistsInAnyLayer(state.layers, id))
-    state.selectedNodeIds = filteredSelectedIds
-    state.selectedNodeId = filteredSelectedIds[filteredSelectedIds.length - 1] ?? null
-    state.focusedNodeId = state.selectedNodeId
+      Object.assign(state, reconcileSelectionAcrossLayers(state.layers, state))
   },
   },
   actions: {
@@ -587,7 +256,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
   updateNodeName({ commit, state }, payload: { nodeId: string; name: string; layerId?: string }) {
     commit('updateNodeName', { layerId: payload.layerId ?? state.activeLayerId, nodeId: payload.nodeId, name: payload.name })
   },
-  updateNodeProps({ commit, state }, payload: { nodeId: string; patch: Record<string, any>; layerId?: string }) {
+  updateNodeProps({ commit, state }, payload: { nodeId: string; patch: NodePropsPatch; layerId?: string }) {
     commit('updateNodeProps', { layerId: payload.layerId ?? state.activeLayerId, nodeId: payload.nodeId, patch: payload.patch })
   },
 

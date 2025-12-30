@@ -18,8 +18,8 @@
 </template>
 
 <script setup lang="ts">
-import VideoScene from '../DwebStudioUI/VideoScene/VideoScene.vue'
-import TimeLine from '../DwebStudioUI/TimeLine/TimeLine.vue'
+import VideoScene from '../ui/VideoScene/VideoScene.vue'
+import TimeLine from '../ui/TimeLine/TimeLine.vue'
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 

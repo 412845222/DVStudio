@@ -1,0 +1,133 @@
+{
+  "videoScene": {
+    "showSizePanel": false,
+    "showBackgroundPanel": false,
+    "layers": [
+      {
+        "id": "layer-1",
+        "name": "图层1",
+        "nodeTree": [
+          {
+            "id": "root",
+            "name": "图层1",
+            "category": "project",
+            "projectKind": "group",
+            "children": [
+              {
+                "id": "rect-1",
+                "name": "Rect",
+                "category": "user",
+                "userType": "rect",
+                "transform": { "x": 200, "y": 160, "width": 240, "height": 140, "rotation": 0, "opacity": 1 },
+                "props": {
+                  "fillColor": "#3aa1ff",
+                  "fillOpacity": 1,
+                  "borderColor": "#9cdcfe",
+                  "borderOpacity": 1,
+                  "borderWidth": 2,
+                  "cornerRadius": 0
+                }
+              },
+              {
+                "id": "text-1",
+                "name": "Text",
+                "category": "user",
+                "userType": "text",
+                "transform": { "x": 560, "y": 160, "width": 260, "height": 80, "rotation": 0, "opacity": 1 },
+                "props": {
+                  "textContent": "Text",
+                  "fontSize": 24,
+                  "fontColor": "#ffffff",
+                  "fontStyle": "normal"
+                }
+              },
+              {
+                "id": "image-1",
+                "name": "Image",
+                "category": "user",
+                "userType": "image",
+                "transform": { "x": 200, "y": 380, "width": 240, "height": 180, "rotation": 0, "opacity": 1 },
+                "props": {
+                  "imageId": "",
+                  "imagePath": "",
+                  "imageFit": "contain"
+                }
+              },
+              {
+                "id": "line-1",
+                "name": "Line",
+                "category": "user",
+                "userType": "line",
+                "transform": { "x": 560, "y": 380, "width": 260, "height": 180, "rotation": 0, "opacity": 1 },
+                "props": {
+                  "startX": -118,
+                  "startY": 0,
+                  "endX": 118,
+                  "endY": 0,
+                  "anchorX": 0,
+                  "anchorY": -45,
+                  "lineColor": "#ffffff",
+                  "lineWidth": 4,
+                  "lineStyle": "solid"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "activeLayerId": "layer-1",
+    "selectedNodeId": null,
+    "selectedNodeIds": [],
+    "focusedNodeId": null,
+    "layoutInsets": { "rightPanelWidth": 240, "bottomToolbarHeight": 40 },
+    "imageAssets": {}
+  },
+  "videoStudio": {
+    "stage": {
+      "width": 1920,
+      "height": 1080,
+      "background": {
+        "type": "color",
+        "color": "#111111",
+        "opacity": 1,
+        "imageSrc": "",
+        "imageFit": "contain",
+        "repeat": false
+      },
+      "fitRequestedAt": 0,
+      "viewport": { "panX": 0, "panY": 0, "zoom": 1 },
+      "showGuides": false,
+      "snapEnabled": false
+    },
+    "timeline": {
+      "frameCount": 120,
+      "currentFrame": 0,
+      "frameWidth": 14,
+      "layers": [],
+      "selected": { "layerId": null, "frameIndex": null }
+    }
+  },
+  "timeline": {
+    "frameCount": 120,
+    "currentFrame": 0,
+    "frameWidth": 14,
+    "layers": [{ "id": "layer-1", "name": "图层1" }],
+    "selectedLayerIds": ["layer-1"],
+    "selectedSpansByLayer": {},
+    "selectionVersion": 0,
+    "lastSelectedCellKey": null,
+
+    "keyframeSpansByLayer": {},
+    "keyframeVersion": 0,
+
+    "easingSegmentKeys": [],
+    "easingCurves": {},
+
+    "nodeKeyframesByLayer": {},
+    "nodeKeyframeVersion": 0,
+
+    "stageKeyframesByFrame": {},
+    "stageKeyframeVersion": 0
+  }
+}

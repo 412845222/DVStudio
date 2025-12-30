@@ -152,6 +152,7 @@
 </template>
 
 <script setup lang="ts">
+import { DVS_EVENTS, type DvsTimelineNavDetail } from '../../core/events/dvsEvents'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { TimelineKey, type TimelineState } from '../../store/timeline'
@@ -1250,7 +1251,7 @@ onMounted(() => {
 	window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
 	window.addEventListener('keydown', onGlobalKeydown, { capture: true })
 	window.addEventListener('resize', onLayersScroll)
-	window.addEventListener('dweb:timeline-nav', onTimelineNav as any)
+	window.addEventListener(DVS_EVENTS.TimelineNav, onTimelineNav)
 })
 
 onBeforeUnmount(() => {
@@ -1259,14 +1260,14 @@ onBeforeUnmount(() => {
 	ticker = null
 	window.removeEventListener('resize', syncViewportMetrics)
 	window.removeEventListener('resize', onLayersScroll)
-	window.removeEventListener('pointerdown', onGlobalPointerDown, { capture: true } as any)
-	window.removeEventListener('keydown', onGlobalKeydown, { capture: true } as any)
-	window.removeEventListener('dweb:timeline-nav', onTimelineNav as any)
+	window.removeEventListener('pointerdown', onGlobalPointerDown, { capture: true })
+	window.removeEventListener('keydown', onGlobalKeydown, { capture: true })
+	window.removeEventListener(DVS_EVENTS.TimelineNav, onTimelineNav)
 	closeMenu()
 })
 
 const onTimelineNav = (ev: Event) => {
-	const ce = ev as CustomEvent<{ dir: number }>
+	const ce = ev as CustomEvent<DvsTimelineNavDetail>
 	const dir = ce?.detail?.dir
 	if (dir !== -1 && dir !== 1) return
 	closeMenu()

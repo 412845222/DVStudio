@@ -130,7 +130,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, shal
 import { useStore } from 'vuex'
 import RulerOverlay from './ruler/RulerOverlay.vue'
 import { VideoStudioKey, type VideoStudioState } from '../../store/videostudio'
-import { VideoSceneKey, VideoSceneStore, type VideoSceneTreeNode } from '../../store/videoscene'
+import { VideoSceneKey, VideoSceneStore } from '../../store/videoscene'
 import VideoSceneToolbar from './parts/VideoSceneToolbar.vue'
 import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
 import { DwebCanvasGL } from '../../DwebGL/DwebCanvasGL'
@@ -141,6 +141,26 @@ import { DwebCanvasGLKey } from './VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from './anim/timelineAnimation'
 import ResizeControlPoints, { type Corner } from './parts/nodeControlPoints/ResizeControlPoints.vue'
 import LineControlPoints, { type LinePointKind } from './parts/nodeControlPoints/LineControlPoints.vue'
+import {
+	buildStartXYByIdForMove,
+	beginMoveSnapSessionForNode,
+	beginResizeSnapSessionForNode,
+ 	computeLinePointPatchFromWorld,
+	computeMovableSelectionIds,
+	buildNodeOverlayGeometry,
+	getLayerNodeTree,
+	findLayerIdByNodeIdInLayers,
+	findUserNodeTransformInLayers,
+	findUserNodeWithWorldInLayers,
+	getNodeLocalXY,
+	resolveMarqueeSelection,
+	stepMoveSnapSession,
+	stepResizeSnapSession,
+	shouldCollapseMultiSelectionOnPointerUp,
+	type MoveSnapSession,
+	type ResizeSnapSession,
+	worldToLocalRotated,
+} from '../../core/scene'
 
 const isCtrlDown = ref(false)
 const onKeyDown = (ev: KeyboardEvent) => {
@@ -447,108 +467,8 @@ const toggleSnap = () => {
 }
 
 const snapGuides = reactive<{ x: number | null; y: number | null }>({ x: null, y: null })
-
-type SnapLock = {
-	x?: { target: number; mode: 'l' | 'c' | 'r' }
-	y?: { target: number; mode: 't' | 'c' | 'b' }
-}
-const snapLock = ref<SnapLock | null>(null)
-
-type SnapTarget = { cx: number; cy: number; w: number; h: number }
-const collectSnapTargets = (layerId: string, excludeNodeId: string): SnapTarget[] => {
-	const out: SnapTarget[] = []
-	const layer = VideoSceneStore.state.layers.find((l) => l.id === layerId)
-	if (!layer) return out
-	const walk = (nodes: VideoSceneTreeNode[], parentWorld: { x: number; y: number }) => {
-		for (const n of nodes) {
-			const hasT = !!n.transform
-			const world = hasT
-				? { x: parentWorld.x + (n.transform?.x ?? 0), y: parentWorld.y + (n.transform?.y ?? 0) }
-				: parentWorld
-			const nextParentWorld = hasT ? world : parentWorld
-			if (n.category === 'user' && n.transform && n.id !== excludeNodeId) {
-				out.push({
-					cx: world.x,
-					cy: world.y,
-					w: Math.max(1, Number(n.transform.width ?? 1)),
-					h: Math.max(1, Number(n.transform.height ?? 1)),
-				})
-			}
-			if (n.children?.length) walk(n.children, nextParentWorld)
-		}
-	}
-	for (const root of layer.nodeTree) walk([root], { x: 0, y: 0 })
-	return out
-}
-
-const buildSnapLines = (targets: SnapTarget[]) => {
-	const xs: number[] = []
-	const ys: number[] = []
-	for (const t of targets) {
-		xs.push(t.cx - t.w / 2, t.cx, t.cx + t.w / 2)
-		ys.push(t.cy - t.h / 2, t.cy, t.cy + t.h / 2)
-	}
-	return { xs, ys }
-}
-
-const applySnapAxis = (
-	axis: 'x' | 'y',
-	center: number,
-	size: number,
-	lines: number[],
-	threshold: number,
-	lock: SnapLock | null,
-	opt?: {
-		candidates?: Array<
-			| { mode: 'l' | 'c' | 'r'; v: number }
-			| { mode: 't' | 'c' | 'b'; v: number }
-		>
-	}
-) => {
-	const sticky = threshold * 2
-	if (axis === 'x' && lock?.x) {
-		const line = lock.x.target
-		const next = lock.x.mode === 'l' ? line + size / 2 : lock.x.mode === 'r' ? line - size / 2 : line
-		const dist = Math.abs(next - center)
-		if (dist <= sticky) return { center: next, snappedLine: line, lock: lock.x, dist }
-	}
-	if (axis === 'y' && lock?.y) {
-		const line = lock.y.target
-		const next = lock.y.mode === 't' ? line + size / 2 : lock.y.mode === 'b' ? line - size / 2 : line
-		const dist = Math.abs(next - center)
-		if (dist <= sticky) return { center: next, snappedLine: line, lock: lock.y, dist }
-	}
-
-	let best: { dist: number; line: number; mode: any } | null = null
-	const candidates = (opt?.candidates ??
-		(axis === 'x'
-			? ([
-				{ mode: 'l' as const, v: center - size / 2 },
-				{ mode: 'c' as const, v: center },
-				{ mode: 'r' as const, v: center + size / 2 },
-			] as const)
-			: ([
-				{ mode: 't' as const, v: center - size / 2 },
-				{ mode: 'c' as const, v: center },
-				{ mode: 'b' as const, v: center + size / 2 },
-			] as const))) as any
-
-	for (const c of candidates) {
-		for (const line of lines) {
-			const dist = Math.abs(c.v - line)
-			if (dist > threshold) continue
-			if (!best || dist < best.dist) best = { dist, line, mode: c.mode }
-		}
-	}
-	if (!best) return { center, snappedLine: null as number | null, lock: null as any, dist: Number.POSITIVE_INFINITY }
-	const next =
-		best.mode === 'l' || best.mode === 't'
-			? best.line + size / 2
-			: best.mode === 'r' || best.mode === 'b'
-				? best.line - size / 2
-				: best.line
-	return { center: next, snappedLine: best.line, lock: { target: best.line, mode: best.mode }, dist: best.dist }
-}
+const moveSnapSession = shallowRef<MoveSnapSession | null>(null)
+const resizeSnapSession = shallowRef<ResizeSnapSession | null>(null)
 
 // 鼠标交互：命中节点则拖拽移动；空白处拖拽平移；滚轴缩放
 type DragMode = 'none' | 'pan' | 'move'
@@ -581,37 +501,6 @@ const updateMarqueeStyle = () => {
 		width: `${Math.round(Math.max(0, x1 - x0))}px`,
 		height: `${Math.round(Math.max(0, y1 - y0))}px`,
 	}
-}
-
-const getActiveLayerTree = () => {
-	const layerId = VideoSceneStore.state.activeLayerId
-	return VideoSceneStore.state.layers.find((l) => l.id === layerId)?.nodeTree ?? []
-}
-
-const buildParentMap = (nodes: VideoSceneTreeNode[]) => {
-	const parent = new Map<string, string | null>()
-	const walk = (list: VideoSceneTreeNode[], parentId: string | null) => {
-		for (const n of list) {
-			parent.set(n.id, parentId)
-			if (n.children?.length) walk(n.children, n.id)
-		}
-	}
-	walk(nodes, null)
-	return parent
-}
-
-const filterMovableSelection = (nodeIds: string[]) => {
-	const uniq = Array.from(new Set(nodeIds))
-	const selected = new Set(uniq)
-	const parent = buildParentMap(getActiveLayerTree())
-	return uniq.filter((id) => {
-		let p = parent.get(id) ?? null
-		while (p) {
-			if (selected.has(p)) return false
-			p = parent.get(p) ?? null
-		}
-		return true
-	})
 }
 
 const multiControlPoints = reactive(
@@ -687,56 +576,9 @@ const getLocalPointFromClient = (clientX: number, clientY: number) => {
 	return { x: clientX - rect.left, y: clientY - rect.top }
 }
 
-const findUserNodeTransform = (nodeId: string) => {
-	for (const layer of VideoSceneStore.state.layers) {
-		const stack = [...layer.nodeTree]
-		while (stack.length) {
-			const n = stack.shift()!
-			if (n.id === nodeId) return n.category === 'user' ? n.transform ?? null : null
-			if (n.children?.length) stack.unshift(...n.children)
-		}
-	}
-	return null
-}
-
-const findUserNodeWithWorld = (nodeId: string) => {
-	type Hit = { layerId: string; node: VideoSceneTreeNode; parentWorld: { x: number; y: number }; world: { x: number; y: number } }
-	const walk = (nodes: VideoSceneTreeNode[], parentWorld: { x: number; y: number }): Hit | null => {
-		for (const n of nodes) {
-			const hasT = !!n.transform
-			const world = hasT
-				? { x: parentWorld.x + (n.transform?.x ?? 0), y: parentWorld.y + (n.transform?.y ?? 0) }
-				: parentWorld
-			const nextParentWorld = hasT ? world : parentWorld
-			if (n.id === nodeId) return { layerId: '', node: n, parentWorld, world }
-			if (n.children?.length) {
-				const hit = walk(n.children, nextParentWorld)
-				if (hit) return hit
-			}
-		}
-		return null
-	}
-
-	for (const layer of VideoSceneStore.state.layers) {
-		const hit = walk(layer.nodeTree, { x: 0, y: 0 })
-		if (hit && hit.node?.category === 'user' && hit.node?.transform) {
-			return { ...hit, layerId: layer.id }
-		}
-	}
-	return null
-}
-
-const findLayerIdByNodeId = (nodeId: string) => {
-	for (const layer of VideoSceneStore.state.layers) {
-		const stack = [...layer.nodeTree]
-		while (stack.length) {
-			const n = stack.shift()!
-			if (n.id === nodeId) return layer.id
-			if (n.children?.length) stack.unshift(...n.children)
-		}
-	}
-	return null
-}
+const findUserNodeTransform = (nodeId: string) => findUserNodeTransformInLayers(VideoSceneStore.state.layers, nodeId)
+const findUserNodeWithWorld = (nodeId: string) => findUserNodeWithWorldInLayers(VideoSceneStore.state.layers, nodeId)
+const findLayerIdByNodeId = (nodeId: string) => findLayerIdByNodeIdInLayers(VideoSceneStore.state.layers, nodeId)
 
 const updateOverlay = () => {
 	const canvas = dwebCanvas
@@ -750,22 +592,18 @@ const updateOverlay = () => {
 			const hit = findUserNodeWithWorld(id)
 			if (!hit) continue
 			const t = hit.node.transform as any
-			const cx = hit.world.x
-			const cy = hit.world.y
-			const w = Number(t.width ?? 0)
-			const h = Number(t.height ?? 0)
-			const rotation = Number((t as any).rotation ?? 0)
-			const cos = Math.cos(rotation)
-			const sin = Math.sin(rotation)
-			const rot = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
-			const tlw = rot(-w / 2, -h / 2)
-			const trw = rot(w / 2, -h / 2)
-			const blw = rot(-w / 2, h / 2)
-			const brw = rot(w / 2, h / 2)
-			const tl = canvas.worldToScreen(tlw)
-			const tr = canvas.worldToScreen(trw)
-			const bl = canvas.worldToScreen(blw)
-			const br = canvas.worldToScreen(brw)
+			const geom = buildNodeOverlayGeometry({
+				worldCenter: hit.world,
+				width: Number(t.width ?? 0),
+				height: Number(t.height ?? 0),
+				rotation: Number((t as any).rotation ?? 0),
+				userType: (hit.node as any)?.userType,
+				props: (hit.node as any)?.props,
+			})
+			const tl = canvas.worldToScreen(geom.corners.tl)
+			const tr = canvas.worldToScreen(geom.corners.tr)
+			const bl = canvas.worldToScreen(geom.corners.bl)
+			const br = canvas.worldToScreen(geom.corners.br)
 			const px = (v: number) => `${Math.round(v)}px`
 			const entry: (typeof multiControlPoints)[number] = {
 				nodeId: id,
@@ -777,21 +615,10 @@ const updateOverlay = () => {
 				},
 			}
 
-			if ((hit.node as any)?.userType === 'line') {
-				const p = (hit.node as any)?.props ?? {}
-				const startX = Number(p.startX ?? -w / 2)
-				const startY = Number(p.startY ?? 0)
-				const endX = Number(p.endX ?? w / 2)
-				const endY = Number(p.endY ?? 0)
-				const anchorX = Number(p.anchorX ?? 0)
-				const anchorY = Number(p.anchorY ?? -h / 4)
-				const rot0 = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
-				const sW = rot0(startX, startY)
-				const aW = rot0(anchorX, anchorY)
-				const eW = rot0(endX, endY)
-				const sS = canvas.worldToScreen(sW)
-				const aS = canvas.worldToScreen(aW)
-				const eS = canvas.worldToScreen(eW)
+			if (geom.linePoints) {
+				const sS = canvas.worldToScreen(geom.linePoints.start)
+				const aS = canvas.worldToScreen(geom.linePoints.anchor)
+				const eS = canvas.worldToScreen(geom.linePoints.end)
 				entry.lineHandleStyles = {
 					start: { left: px(sS.x), top: px(sS.y) },
 					anchor: { left: px(aS.x), top: px(aS.y) },
@@ -822,47 +649,32 @@ const updateOverlay = () => {
 		return
 	}
 	const t = hit.node.transform as any
-	const cx = hit.world.x
-	const cy = hit.world.y
-	const w = Number(t.width ?? 0)
-	const h = Number(t.height ?? 0)
-	const rotation = Number((t as any).rotation ?? 0)
-	const cos = Math.cos(rotation)
-	const sin = Math.sin(rotation)
-	const rot = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
-	const tlw = rot(-w / 2, -h / 2)
-	const trw = rot(w / 2, -h / 2)
-	const blw = rot(-w / 2, h / 2)
-	const brw = rot(w / 2, h / 2)
-	const tl = canvas.worldToScreen(tlw)
-	const tr = canvas.worldToScreen(trw)
-	const bl = canvas.worldToScreen(blw)
-	const br = canvas.worldToScreen(brw)
+	const geom = buildNodeOverlayGeometry({
+		worldCenter: hit.world,
+		width: Number(t.width ?? 0),
+		height: Number(t.height ?? 0),
+		rotation: Number((t as any).rotation ?? 0),
+		userType: (hit.node as any)?.userType,
+		props: (hit.node as any)?.props,
+	})
+	const tl = canvas.worldToScreen(geom.corners.tl)
+	const tr = canvas.worldToScreen(geom.corners.tr)
+	const bl = canvas.worldToScreen(geom.corners.bl)
+	const br = canvas.worldToScreen(geom.corners.br)
 	const px = (v: number) => `${Math.round(v)}px`
 	overlay.visible = true
 	overlay.handleStyles.tl = { left: px(tl.x), top: px(tl.y) }
 	overlay.handleStyles.tr = { left: px(tr.x), top: px(tr.y) }
 	overlay.handleStyles.bl = { left: px(bl.x), top: px(bl.y) }
 	overlay.handleStyles.br = { left: px(br.x), top: px(br.y) }
-	overlay.sizeText = `${Math.round(w)}×${Math.round(h)}`
+	overlay.sizeText = geom.sizeText
 	overlay.sizeStyle = { left: px(tl.x + 10), top: px(tl.y - 18) }
 
 	// line control points (start/end/anchor)
-	if ((hit.node as any)?.userType === 'line') {
-		const p = (hit.node as any)?.props ?? {}
-		const startX = Number(p.startX ?? -w / 2)
-		const startY = Number(p.startY ?? 0)
-		const endX = Number(p.endX ?? w / 2)
-		const endY = Number(p.endY ?? 0)
-		const anchorX = Number(p.anchorX ?? 0)
-		const anchorY = Number(p.anchorY ?? -h / 4)
-		const rot0 = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
-		const sW = rot0(startX, startY)
-		const aW = rot0(anchorX, anchorY)
-		const eW = rot0(endX, endY)
-		const sS = canvas.worldToScreen(sW)
-		const aS = canvas.worldToScreen(aW)
-		const eS = canvas.worldToScreen(eW)
+	if (geom.linePoints) {
+		const sS = canvas.worldToScreen(geom.linePoints.start)
+		const aS = canvas.worldToScreen(geom.linePoints.anchor)
+		const eS = canvas.worldToScreen(geom.linePoints.end)
 		lineOverlay.visible = true
 		lineOverlay.handleStyles.start = { left: px(sS.x), top: px(sS.y) }
 		lineOverlay.handleStyles.anchor = { left: px(aS.x), top: px(aS.y) }
@@ -886,13 +698,18 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 	const w = Number(t.width ?? 0)
 	const h = Number(t.height ?? 0)
 	const rotation = Number((t as any).rotation ?? 0)
-	const cos = Math.cos(rotation)
-	const sin = Math.sin(rotation)
-	const rot = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
-	const tl = rot(-w / 2, -h / 2)
-	const tr = rot(w / 2, -h / 2)
-	const bl = rot(-w / 2, h / 2)
-	const br = rot(w / 2, h / 2)
+	const geom = buildNodeOverlayGeometry({
+		worldCenter: { x: cx, y: cy },
+		width: w,
+		height: h,
+		rotation,
+		userType: (hit.node as any)?.userType,
+		props: (hit.node as any)?.props,
+	})
+	const tl = geom.corners.tl
+	const tr = geom.corners.tr
+	const bl = geom.corners.bl
+	const br = geom.corners.br
 	const anchorWorld = (() => {
 		if (corner === 'tl') return br
 		if (corner === 'tr') return bl
@@ -901,6 +718,16 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 	})()
 	resize.value = { active: true, corner, nodeId, layerId, anchorWorld, parentWorld: hit.parentWorld }
 	overlay.showSize = true
+	resizeSnapSession.value = snapEnabled.value
+		? beginResizeSnapSessionForNode({
+				state: VideoSceneStore.state,
+				nodeId,
+				stageWidth: stageWidth.value,
+				stageHeight: stageHeight.value,
+				zoom: canvas.viewport.zoom,
+				basePx: 6,
+			})
+		: null
 	try {
 		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
 	} catch {
@@ -940,23 +767,7 @@ const onDocPointerMove = (ev: PointerEvent) => {
 		if (!nodeId || !layerId || !kind || !worldCenter || rotation == null) return
 		const p = getLocalPointFromClient(ev.clientX, ev.clientY)
 		const w = canvas.screenToWorld(p)
-		const dx = w.x - worldCenter.x
-		const dy = w.y - worldCenter.y
-		const cosR = Math.cos(-rotation)
-		const sinR = Math.sin(-rotation)
-		const lx = dx * cosR - dy * sinR
-		const ly = dx * sinR + dy * cosR
-		const patch: Record<string, any> = {}
-		if (kind === 'start') {
-			patch.startX = lx
-			patch.startY = ly
-		} else if (kind === 'end') {
-			patch.endX = lx
-			patch.endY = ly
-		} else {
-			patch.anchorX = lx
-			patch.anchorY = ly
-		}
+		const patch = computeLinePointPatchFromWorld({ kind, worldPoint: w, worldCenter, rotation })
 		VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
 		return
 	}
@@ -986,102 +797,43 @@ const onDocPointerMove = (ev: PointerEvent) => {
 	// snap during resize: adjust moving edge (and center/size accordingly)
 	const focusedId = VideoSceneStore.state.focusedNodeId
 	if (snapEnabled.value && focusedId && focusedId === nodeId && corner) {
-		const threshold = 6 / Math.max(0.0001, canvas.viewport.zoom)
-		const sticky = threshold * 2
-		const stageLeft = -stageWidth.value / 2
-		const stageRight = stageWidth.value / 2
-		const stageTop = -stageHeight.value / 2
-		const stageBottom = stageHeight.value / 2
+		const session =
+			resizeSnapSession.value ??
+			beginResizeSnapSessionForNode({
+				state: VideoSceneStore.state,
+				nodeId,
+				stageWidth: stageWidth.value,
+				stageHeight: stageHeight.value,
+				zoom: canvas.viewport.zoom,
+				basePx: 6,
+			})
+		const stepped = stepResizeSnapSession({
+			session,
+			corner,
+			anchorWorld,
+			movingX,
+			movingY,
+			cx,
+			cy,
+			minSize,
+		})
+		resizeSnapSession.value = stepped.session
+		const snapped = stepped.result
+		movingX = snapped.movingX
+		movingY = snapped.movingY
+		width = snapped.width
+		height = snapped.height
+		cx = snapped.cx
+		cy = snapped.cy
 
-		const targets = collectSnapTargets(layerId, nodeId)
-		const { xs, ys } = buildSnapLines(targets)
-		const lock = snapLock.value
-
-		type ResizeSnapResult = {
-			center: number
-			size: number
-			moving: number
-			snappedLine: number | null
-			lock: any
-			dist: number
-		}
-
-		const applyResizeSnapAxis = (
-			axis: 'x' | 'y',
-			fixed: number,
-			moving: number,
-			lines: number[],
-			cand: Array<{ mode: any; v: number }>
-		): ResizeSnapResult => {
-			const axisLock = axis === 'x' ? lock?.x : lock?.y
-			if (axisLock) {
-				const line = axisLock.target
-				const mode = axisLock.mode
-				const current = cand.find((c) => c.mode === mode)
-				if (current) {
-					const dist0 = Math.abs(current.v - line)
-					if (dist0 <= sticky) {
-						const nextMoving = mode === 'c' ? 2 * line - fixed : line
-						const nextSize = Math.max(minSize, Math.abs(fixed - nextMoving))
-						const nextCenter = (fixed + nextMoving) / 2
-						return { center: nextCenter, size: nextSize, moving: nextMoving, snappedLine: line, lock: axisLock, dist: dist0 }
-					}
-				}
-			}
-
-			let best: { dist: number; line: number; mode: any } | null = null
-			for (const c of cand) {
-				for (const line of lines) {
-					const dist = Math.abs(c.v - line)
-					if (dist > threshold) continue
-					if (!best || dist < best.dist) best = { dist, line, mode: c.mode }
-				}
-			}
-			if (!best) return { center: (fixed + moving) / 2, size: Math.max(minSize, Math.abs(fixed - moving)), moving, snappedLine: null, lock: null, dist: Number.POSITIVE_INFINITY }
-			const nextMoving = best.mode === 'c' ? 2 * best.line - fixed : best.line
-			const nextSize = Math.max(minSize, Math.abs(fixed - nextMoving))
-			const nextCenter = (fixed + nextMoving) / 2
-			return { center: nextCenter, size: nextSize, moving: nextMoving, snappedLine: best.line, lock: { target: best.line, mode: best.mode }, dist: best.dist }
-		}
-
-		// axis candidates: snap moving edge, and (for node lines) allow snapping center as well
-		const movingModeX = (corner === 'tl' || corner === 'bl') ? 'l' : 'r'
-		const movingModeY = (corner === 'tl' || corner === 'tr') ? 't' : 'b'
-		const candNodesX = [{ mode: movingModeX, v: movingX }, { mode: 'c', v: cx }]
-		const candNodesY = [{ mode: movingModeY, v: movingY }, { mode: 'c', v: cy }]
-		const candStageX = [{ mode: movingModeX, v: movingX }]
-		const candStageY = [{ mode: movingModeY, v: movingY }]
-
-		const sxNodes = applyResizeSnapAxis('x', anchorWorld.x, movingX, xs, candNodesX)
-		const syNodes = applyResizeSnapAxis('y', anchorWorld.y, movingY, ys, candNodesY)
-		const sxStage = applyResizeSnapAxis('x', anchorWorld.x, movingX, [stageLeft, stageRight], candStageX)
-		const syStage = applyResizeSnapAxis('y', anchorWorld.y, movingY, [stageTop, stageBottom], candStageY)
-
-		const sx = (sxStage.dist ?? Infinity) < (sxNodes.dist ?? Infinity) ? sxStage : sxNodes
-		const sy = (syStage.dist ?? Infinity) < (syNodes.dist ?? Infinity) ? syStage : syNodes
-
-		movingX = sx.moving
-		movingY = sy.moving
-		width = sx.size
-		height = sy.size
-		cx = sx.center
-		cy = sy.center
-
-		const nextLock: SnapLock = { ...(lock ?? {}) }
-		if (sx.lock) nextLock.x = sx.lock
-		else delete nextLock.x
-		if (sy.lock) nextLock.y = sy.lock
-		else delete nextLock.y
-		snapLock.value = nextLock
-
-		if (showGuides.value && sx.snappedLine != null) {
-			const sp = canvas.worldToScreen({ x: sx.snappedLine, y: cy })
+		if (showGuides.value && snapped.snappedLineX != null) {
+			const sp = canvas.worldToScreen({ x: snapped.snappedLineX, y: cy })
 			snapGuides.x = Math.round(sp.x)
 		} else {
 			snapGuides.x = null
 		}
-		if (showGuides.value && sy.snappedLine != null) {
-			const sp = canvas.worldToScreen({ x: cx, y: sy.snappedLine })
+		if (showGuides.value && snapped.snappedLineY != null) {
+			const sp = canvas.worldToScreen({ x: cx, y: snapped.snappedLineY })
 			snapGuides.y = Math.round(sp.y)
 		} else {
 			snapGuides.y = null
@@ -1090,7 +842,7 @@ const onDocPointerMove = (ev: PointerEvent) => {
 		// not snapping during resize
 		snapGuides.x = null
 		snapGuides.y = null
-		snapLock.value = null
+		resizeSnapSession.value = null
 	}
 	// 写回局部坐标：local = world - parentWorld
 	VideoSceneStore.dispatch('updateNodeTransform', {
@@ -1111,7 +863,7 @@ const onDocPointerUp = () => {
 	overlay.showSize = false
 	snapGuides.x = null
 	snapGuides.y = null
-	snapLock.value = null
+	resizeSnapSession.value = null
 	flushDirtyKeyframeWriteBack()
 }
 
@@ -1140,20 +892,17 @@ const onPointerDown = (ev: PointerEvent) => {
 		const isHitSelected = isMulti && selectedIds.includes(hit.nodeId)
 		if (isHitSelected) {
 			const activeLayerId = VideoSceneStore.state.activeLayerId
+			const activeLayerTree = getLayerNodeTree(VideoSceneStore.state, activeLayerId)
 			const sameLayerIds = selectedIds.filter((id) => findLayerIdByNodeId(id) === activeLayerId)
-			const movableIds = filterMovableSelection(sameLayerIds)
-			const startXYById: Record<string, { x: number; y: number }> = {}
-			for (const id of movableIds) {
-				const t = findUserNodeTransform(id)
-				if (!t) continue
-				startXYById[id] = { x: t.x, y: t.y }
-			}
+			const movableIds = computeMovableSelectionIds(activeLayerTree, sameLayerIds)
+			const startXYById = buildStartXYByIdForMove(activeLayerTree, movableIds)
 			drag.value = { mode: 'move', nodeId: hit.nodeId, nodeIds: movableIds, startScreen: p, startWorld: world, startXYById }
 		} else {
 			// 点击任意节点：清空多选，单选该节点
 			VideoSceneStore.dispatch('setSelectedNode', { nodeId: hit.nodeId })
 			VideoSceneStore.dispatch('setFocusedNode', { nodeId: hit.nodeId })
-			const t = findUserNodeTransform(hit.nodeId)
+			const hitLayerTree = getLayerNodeTree(VideoSceneStore.state, hit.layerId)
+			const t = getNodeLocalXY(hitLayerTree, hit.nodeId)
 			drag.value = {
 				mode: 'move',
 				nodeId: hit.nodeId,
@@ -1161,10 +910,22 @@ const onPointerDown = (ev: PointerEvent) => {
 				startWorld: world,
 				startXY: { x: t?.x ?? 0, y: t?.y ?? 0 },
 			}
+			moveSnapSession.value = snapEnabled.value
+				? beginMoveSnapSessionForNode({
+						state: VideoSceneStore.state,
+						nodeId: hit.nodeId,
+						stageWidth: stageWidth.value,
+						stageHeight: stageHeight.value,
+						zoom: canvas.viewport.zoom,
+						basePx: 6,
+					})
+				: null
 		}
 	} else {
 		VideoSceneStore.dispatch('setSelectedNode', { nodeId: null })
 		drag.value = { mode: 'pan', last: { x: ev.clientX, y: ev.clientY } }
+		moveSnapSession.value = null
+		resizeSnapSession.value = null
 	}
 	;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
 }
@@ -1217,7 +978,6 @@ const onPointerMove = (ev: PointerEvent) => {
 		const focusedId = VideoSceneStore.state.focusedNodeId
 		if (snapEnabled.value && focusedId && focusedId === drag.value.nodeId) {
 			const hit = findUserNodeWithWorld(drag.value.nodeId)
-			const layerId = hit?.layerId ?? findLayerIdByNodeId(drag.value.nodeId)
 			const parentWorld = hit?.parentWorld ?? { x: 0, y: 0 }
 			const t = findUserNodeTransform(drag.value.nodeId) as any
 			const w0 = Math.max(1, Number(t?.width ?? 1))
@@ -1226,57 +986,42 @@ const onPointerMove = (ev: PointerEvent) => {
 			const h = h0
 			const rawWorldCx = parentWorld.x + localX
 			const rawWorldCy = parentWorld.y + localY
-			const threshold = 6 / Math.max(0.0001, canvas.viewport.zoom)
-
-			if (layerId) {
-				const targets = collectSnapTargets(layerId, drag.value.nodeId)
-				const { xs, ys } = buildSnapLines(targets)
-				const lock = snapLock.value
-				const sxNodes = applySnapAxis('x', rawWorldCx, w, xs, threshold, lock)
-				const syNodes = applySnapAxis('y', rawWorldCy, h, ys, threshold, lock)
-				// stage edge snapping (world-space stage bounds)
-				const stageLeft = -stageWidth.value / 2
-				const stageRight = stageWidth.value / 2
-				const stageTop = -stageHeight.value / 2
-				const stageBottom = stageHeight.value / 2
-				const sxStage = applySnapAxis('x', rawWorldCx, w, [stageLeft, stageRight], threshold, lock, {
-					candidates: [
-						{ mode: 'l', v: rawWorldCx - w / 2 },
-						{ mode: 'r', v: rawWorldCx + w / 2 },
-					],
+			const session =
+				moveSnapSession.value ??
+				beginMoveSnapSessionForNode({
+					state: VideoSceneStore.state,
+					nodeId: drag.value.nodeId,
+					stageWidth: stageWidth.value,
+					stageHeight: stageHeight.value,
+					zoom: canvas.viewport.zoom,
+					basePx: 6,
 				})
-				const syStage = applySnapAxis('y', rawWorldCy, h, [stageTop, stageBottom], threshold, lock, {
-					candidates: [
-						{ mode: 't', v: rawWorldCy - h / 2 },
-						{ mode: 'b', v: rawWorldCy + h / 2 },
-					],
-				})
-				const sx = (sxStage.dist ?? Infinity) < (sxNodes.dist ?? Infinity) ? sxStage : sxNodes
-				const sy = (syStage.dist ?? Infinity) < (syNodes.dist ?? Infinity) ? syStage : syNodes
-				const nextLock: SnapLock = { ...(lock ?? {}) }
-				if (sx.lock) nextLock.x = sx.lock
-				else delete nextLock.x
-				if (sy.lock) nextLock.y = sy.lock
-				else delete nextLock.y
-				snapLock.value = nextLock
+			const stepped = stepMoveSnapSession({
+				session,
+				rawWorldCx,
+				rawWorldCy,
+				width: w,
+				height: h,
+			})
+			moveSnapSession.value = stepped.session
+			const snapped = stepped.result
 
-				// guides only when snapped and guides enabled
-				if (showGuides.value && sx.snappedLine != null) {
-					const sp = canvas.worldToScreen({ x: sx.snappedLine, y: rawWorldCy })
-					snapGuides.x = Math.round(sp.x)
-				} else {
-					snapGuides.x = null
-				}
-				if (showGuides.value && sy.snappedLine != null) {
-					const sp = canvas.worldToScreen({ x: rawWorldCx, y: sy.snappedLine })
-					snapGuides.y = Math.round(sp.y)
-				} else {
-					snapGuides.y = null
-				}
-
-				localX = sx.center - parentWorld.x
-				localY = sy.center - parentWorld.y
+			// guides only when snapped and guides enabled
+			if (showGuides.value && snapped.snappedLineX != null) {
+				const sp = canvas.worldToScreen({ x: snapped.snappedLineX, y: rawWorldCy })
+				snapGuides.x = Math.round(sp.x)
+			} else {
+				snapGuides.x = null
 			}
+			if (showGuides.value && snapped.snappedLineY != null) {
+				const sp = canvas.worldToScreen({ x: rawWorldCx, y: snapped.snappedLineY })
+				snapGuides.y = Math.round(sp.y)
+			} else {
+				snapGuides.y = null
+			}
+
+			localX = snapped.worldCx - parentWorld.x
+			localY = snapped.worldCy - parentWorld.y
 		}
 
 		VideoSceneStore.dispatch('updateNodeTransform', {
@@ -1306,28 +1051,28 @@ const endPan = (ev: PointerEvent) => {
 		const w = Math.abs(x1 - x0)
 		const h = Math.abs(y1 - y0)
 
-		// 没有真实拖拽：视为普通点击（清空多选）
-		if (w < 4 && h < 4) {
-			const hit = scene?.hitTest(canvas, marquee.end) ?? null
-			if (hit) {
-				if (hit.layerId && hit.layerId !== VideoSceneStore.state.activeLayerId) {
-					VideoSceneStore.dispatch('setActiveLayer', { layerId: hit.layerId })
-					TimelineStore.dispatch('selectLayer', { layerId: hit.layerId })
-				}
-				VideoSceneStore.dispatch('setSelectedNode', { nodeId: hit.nodeId })
-				VideoSceneStore.dispatch('setFocusedNode', { nodeId: hit.nodeId })
-			} else {
-				VideoSceneStore.dispatch('setSelectedNode', { nodeId: null })
+		const activeLayerId = VideoSceneStore.state.activeLayerId
+		const isClick = w < 4 && h < 4
+		const hit = isClick ? (scene?.hitTest(canvas, marquee.end) ?? null) : null
+		const w0 = isClick ? null : canvas.screenToWorld({ x: x0, y: y0 })
+		const w1 = isClick ? null : canvas.screenToWorld({ x: x1, y: y1 })
+		const hits = isClick ? [] : scene?.queryNodesInWorldRect({ x0: w0!.x, y0: w0!.y, x1: w1!.x, y1: w1!.y }) ?? []
+		const r = resolveMarqueeSelection({ activeLayerId, isClick, hit, hits })
+
+		if (r.type === 'single') {
+			if (r.layerId && r.layerId !== activeLayerId) {
+				VideoSceneStore.dispatch('setActiveLayer', { layerId: r.layerId })
+				TimelineStore.dispatch('selectLayer', { layerId: r.layerId })
 			}
+			VideoSceneStore.dispatch('setSelectedNode', { nodeId: r.nodeId })
+			VideoSceneStore.dispatch('setFocusedNode', { nodeId: r.nodeId })
 			return
 		}
-
-		const w0 = canvas.screenToWorld({ x: x0, y: y0 })
-		const w1 = canvas.screenToWorld({ x: x1, y: y1 })
-		const hits = scene?.queryNodesInWorldRect({ x0: w0.x, y0: w0.y, x1: w1.x, y1: w1.y }) ?? []
-		const activeLayerId = VideoSceneStore.state.activeLayerId
-		const ids = hits.filter((h) => h.layerId === activeLayerId).map((h) => h.nodeId)
-		VideoSceneStore.dispatch('setSelectedNodes', { nodeIds: ids })
+		if (r.type === 'multi') {
+			VideoSceneStore.dispatch('setSelectedNodes', { nodeIds: r.nodeIds })
+			return
+		}
+		VideoSceneStore.dispatch('setSelectedNode', { nodeId: null })
 		return
 	}
 
@@ -1337,7 +1082,8 @@ const endPan = (ev: PointerEvent) => {
 	drag.value = { mode: 'none' }
 	snapGuides.x = null
 	snapGuides.y = null
-	snapLock.value = null
+	moveSnapSession.value = null
+	resizeSnapSession.value = null
 	try {
 		;(ev.currentTarget as HTMLElement)?.releasePointerCapture?.(ev.pointerId)
 	} catch {
@@ -1349,7 +1095,7 @@ const endPan = (ev: PointerEvent) => {
 		if (canvas) {
 			const p = getLocalPoint(ev)
 			const movedPx = Math.hypot(p.x - prev.startScreen.x, p.y - prev.startScreen.y)
-			if (movedPx < 3) {
+			if (shouldCollapseMultiSelectionOnPointerUp({ movedPx, thresholdPx: 3 })) {
 				VideoSceneStore.dispatch('setSelectedNode', { nodeId: prev.nodeId })
 				VideoSceneStore.dispatch('setFocusedNode', { nodeId: prev.nodeId })
 			}
@@ -1414,7 +1160,7 @@ onMounted(() => {
 		c.requestRender()
 		updateOverlay()
 	}
-	window.addEventListener('dweb:editor-state-restored', onEditorRestored)
+	window.addEventListener('dvs:editor/state-restored', onEditorRestored)
 	canvas.onViewportChange = (vp) => {
 		store.dispatch('setViewport', { panX: vp.pan.x, panY: vp.pan.y, zoom: vp.zoom })
 		updateOverlay()
@@ -1484,7 +1230,7 @@ onBeforeUnmount(() => {
 	unsubscribeVideoScene?.()
 	unsubscribeVideoScene = null
 	if (onEditorRestored) {
-		window.removeEventListener('dweb:editor-state-restored', onEditorRestored)
+		window.removeEventListener('dvs:editor/state-restored', onEditorRestored)
 		onEditorRestored = null
 	}
 	dwebCanvas?.dispose()

@@ -791,6 +791,8 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		if (node.category === 'user' && node.transform) {
 			const type = (node.userType ?? 'base') as VideoSceneUserNodeType
 			const props: any = node.props ?? {}
+			const textContent = typeof node.props?.textContent === 'string' ? node.props.textContent : undefined
+			const fontSize = typeof node.props?.fontSize === 'number' ? node.props.fontSize : undefined
 			let imageSrc = props?.imagePath
 			const imageId = String(props?.imageId ?? '').trim()
 			if (imageId && this.state?.imageAssets?.[imageId]?.url) {
@@ -808,8 +810,8 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 					opacity: (node.transform as any).opacity ?? 1,
 				},
 				props,
-				text: node.props?.textContent,
-				fontSize: node.props?.fontSize,
+				text: textContent,
+				fontSize,
 				imageSrc,
 			})
 		}

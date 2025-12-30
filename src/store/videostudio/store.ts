@@ -1,66 +1,15 @@
 import { createStore, type Store } from 'vuex'
 import type { InjectionKey } from 'vue'
 
-export interface VideoStudioState {
-  stage: {
-    width: number
-    height: number
-		background: {
-			type: 'color' | 'image'
-			color: string
-      opacity: number
-			imageSrc: string
-			imageFit: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'
-			repeat: boolean
-		}
-    fitRequestedAt: number
-    viewport: {
-      panX: number
-      panY: number
-      zoom: number
-    }
-    showGuides: boolean
-    snapEnabled: boolean
-  }
-  timeline: {
-    frameCount: number
-    currentFrame: number
-    frameWidth: number
-    layers: Array<{ id: string; name: string }>
-    selected: { layerId: string | null; frameIndex: number | null }
-  }
-}
+import type { VideoStudioState } from '../../core/studio'
+import { createDefaultVideoStudioState } from '../../core/studio'
 
-const createDefaultState = (): VideoStudioState => ({
-  stage: {
-    width: 1920,
-    height: 1080,
-		background: {
-			type: 'color',
-			color: '#111111',
-      opacity: 1,
-			imageSrc: '',
-			imageFit: 'contain',
-			repeat: false,
-		},
-    fitRequestedAt: 0,
-    viewport: { panX: 0, panY: 0, zoom: 1 },
-    showGuides: false,
-    snapEnabled: false,
-  },
-  timeline: {
-    frameCount: 120,
-    currentFrame: 0,
-    frameWidth: 14,
-    layers: [],
-    selected: { layerId: null, frameIndex: null },
-  },
-})
+export type { VideoStudioState } from '../../core/studio'
 
 export const VideoStudioKey: InjectionKey<Store<VideoStudioState>> = Symbol('VideoStudioStore')
 
 export const VideoStudioStore = createStore<VideoStudioState>({
-  state: createDefaultState,
+  state: createDefaultVideoStudioState,
   mutations: {
     setStageSize(state, payload: { width: number; height: number }) {
       const width = Number(payload.width)

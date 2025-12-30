@@ -13,43 +13,11 @@ import {
 
 import type { VideoSceneLayer, VideoSceneNodeProps, VideoSceneNodeTransform } from '../videoscene'
 
-export type TimelineLayer = { id: string; name: string }
+import type { TimelineCellKey, TimelineLayer, TimelineState } from '../../core/timeline'
+import { createDefaultTimelineState } from '../../core/timeline'
+import { cloneJsonSafe } from '../../core/shared/cloneJsonSafe'
 
-export type TimelineCellKey = string // `${layerId}:${frameIndex}`
-
-export interface TimelineState {
-  frameCount: number
-  currentFrame: number
-  frameWidth: number
-  layers: TimelineLayer[]
-  selectedLayerIds: string[]
-  selectedSpansByLayer: Record<string, TimelineFrameSpan[]>
-  selectionVersion: number
-  lastSelectedCellKey: TimelineCellKey | null
-
-  // 关键帧/缓动（占位）：都用 cellKey(`${layerId}:${frameIndex}`) 存储，便于序列化
-  keyframeSpansByLayer: Record<string, TimelineFrameSpan[]>
-  keyframeVersion: number
-
-  // 缓动（段）：`${layerId}:${startKeyframeFrame}:${endKeyframeFrame}`
-  easingSegmentKeys: string[]
-
-  // 缓动曲线：key 为 easingSegmentKey；value 为三次贝塞尔控制点（0..1）
-  easingCurves: Record<string, { x1: number; y1: number; x2: number; y2: number; preset?: string }>
-
-  // 舞台节点关键帧快照：layerId -> frameIndex(string) -> nodeId -> {transform, props}
-  // 说明：frameIndex 用 string key 以便序列化；快照用于按帧应用动画/未来导出。
-  nodeKeyframesByLayer: Record<
-	string,
-	Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>>
-  >
-  nodeKeyframeVersion: number
-
-  // 舞台关键帧快照（全画布）：frameIndex(string) -> { layers }
-  // 说明：关键帧记录“当时舞台真实存在的图层/节点树”；指针/播放到该帧时应完全还原。
-  stageKeyframesByFrame: Record<string, { layers: VideoSceneLayer[] }>
-  stageKeyframeVersion: number
-}
+export type { TimelineCellKey, TimelineLayer, TimelineState } from '../../core/timeline'
 
 const clampInt = (v: unknown, min: number, max: number) => {
   const n = Math.floor(Number(v))
@@ -81,65 +49,9 @@ const clamp01 = (v: unknown) => {
 
 const defaultEasingCurve = () => ({ x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' })
 
-const createDefaultState = (): TimelineState => ({
-  frameCount: 120,
-  currentFrame: 0,
-  frameWidth: 14,
-  layers: [{ id: 'layer-1', name: '图层1' }],
-  selectedLayerIds: ['layer-1'],
-  selectedSpansByLayer: {},
-  selectionVersion: 0,
-  lastSelectedCellKey: null,
-
-  keyframeSpansByLayer: {},
-  keyframeVersion: 0,
-  easingSegmentKeys: [],
-  easingCurves: {},
-
-  nodeKeyframesByLayer: {},
-  nodeKeyframeVersion: 0,
-
-  stageKeyframesByFrame: {},
-  stageKeyframeVersion: 0,
-})
-
 const frameKey = (frameIndex: number) => String(Math.floor(frameIndex))
 
-const deepCloneFallback = <T>(value: T, seen = new WeakMap<object, any>()): T => {
-  if (value == null) return value
-  if (typeof value !== 'object') return value
-  if (value instanceof Date) return new Date(value.getTime()) as any
-
-  const obj = value as unknown as object
-  const cached = seen.get(obj)
-  if (cached) return cached
-
-  if (Array.isArray(value)) {
-    const out: any[] = []
-    seen.set(obj, out)
-    for (const item of value as any[]) out.push(deepCloneFallback(item, seen))
-    return out as any
-  }
-
-  const proto = Object.getPrototypeOf(obj)
-  const out: any = proto === null ? Object.create(null) : {}
-  seen.set(obj, out)
-  for (const k of Object.keys(obj as any)) out[k] = deepCloneFallback((obj as any)[k], seen)
-  return out
-}
-
-const cloneJsonSafe = <T>(v: T): T => {
-  // Must never return original reference (snapshots must be immutable-by-convention).
-  try {
-    return JSON.parse(JSON.stringify(v)) as T
-  } catch {
-    try {
-      return (globalThis as any).structuredClone ? ((globalThis as any).structuredClone(v) as T) : deepCloneFallback(v)
-    } catch {
-      return deepCloneFallback(v)
-    }
-  }
-}
+// cloneJsonSafe moved to core/shared for reuse.
 
 const getLayerSpans = (map: Record<string, TimelineFrameSpan[]>, layerId: string) => map[layerId] ?? []
 const setLayerSpans = (map: Record<string, TimelineFrameSpan[]>, layerId: string, spans: TimelineFrameSpan[]) => {
@@ -161,7 +73,7 @@ const isAnyKeyframeAt = (state: TimelineState, frameIndex: number) => {
 export const TimelineKey: InjectionKey<Store<TimelineState>> = Symbol('TimelineStore')
 
 export const TimelineStore = createStore<TimelineState>({
-  state: createDefaultState,
+  state: createDefaultTimelineState,
   mutations: {
     setFrameCount(state, payload: { frameCount: number }) {
       const next = Math.max(1, Math.floor(Number(payload.frameCount) || 1))

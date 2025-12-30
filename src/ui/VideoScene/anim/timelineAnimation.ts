@@ -4,6 +4,7 @@ import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
 import { canInterpolateNumber, cubicBezierYforX, lerpNumber } from '../../TimeLine/core/curveTick'
 import { cloneJsonSafe } from '../../../utils/history/clone'
 import { interpolateColorString } from './color'
+import type { JsonValue } from '../../../core/shared/json'
 
 type NodeSnapshot = { transform?: any; props?: Record<string, any> }
 
@@ -32,8 +33,8 @@ const isPlainObject = (v: unknown): v is Record<string, any> => {
 	return proto === Object.prototype || proto === null
 }
 
-const interpolateFilterList = (a: unknown, b: unknown, t: number) => {
-	if (!Array.isArray(a) || !Array.isArray(b)) return b !== undefined ? b : a
+const interpolateFilterList = (a: JsonValue, b: JsonValue, t: number): JsonValue => {
+	if (!Array.isArray(a) || !Array.isArray(b)) return b
 
 	const keyOf = (f: any, index: number) => {
 		const id = f && typeof f === 'object' ? (f as any).id : null
@@ -52,7 +53,7 @@ const interpolateFilterList = (a: unknown, b: unknown, t: number) => {
 		if (!order.includes(k)) order.push(k)
 	}
 
-	const out: any[] = []
+	const out: JsonValue[] = []
 	for (const k of order) {
 		const fa = mapA.get(k)
 		const fb = mapB.get(k)
@@ -70,11 +71,11 @@ const interpolateFilterList = (a: unknown, b: unknown, t: number) => {
 		}
 
 		// 同类型滤镜：对同名数值/颜色字段做 lerp；其它字段跟随 b
-		const next: Record<string, any> = {}
+		const next: Record<string, JsonValue> = {}
 		const keys = new Set<string>([...Object.keys(fa), ...Object.keys(fb)])
 		for (const kk of keys) {
-			const va = (fa as any)[kk]
-			const vb = (fb as any)[kk]
+			const va = (fa as Record<string, JsonValue>)[kk]
+			const vb = (fb as Record<string, JsonValue>)[kk]
 			const cc = interpolateColorString(va, vb, t)
 			if (cc != null) next[kk] = cc
 			else if (canInterpolateNumber(va) && canInterpolateNumber(vb)) next[kk] = lerpNumber(va, vb, t)
