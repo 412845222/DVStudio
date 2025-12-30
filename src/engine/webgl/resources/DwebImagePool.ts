@@ -1,4 +1,4 @@
-import type { DwebCanvasGL } from './DwebCanvasGL'
+import type { DwebCanvasGL } from '../canvas/DwebCanvasGL'
 
 export type DwebImageWrapMode = 'clamp' | 'repeat'
 

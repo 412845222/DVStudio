@@ -2,7 +2,7 @@ import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
 import router from './router'
-import { editorPersistence } from './utils/editorPersistence'
+import { editorPersistence } from './adapters/editorPersistence'
 import { dispatchDvsTimelineNav } from './adapters/windowEventBridge'
 
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
@@ -20,7 +20,7 @@ window.addEventListener(
 		const isEditable =
 			tag === 'input' ||
 			tag === 'textarea' ||
-			(target as any)?.isContentEditable === true
+			(target as { isContentEditable?: boolean } | null)?.isContentEditable === true
 
 		// Ctrl+S / Cmd+S: 阻止浏览器“保存网页”
 		if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
@@ -66,7 +66,7 @@ window.addEventListener(
 const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	const me = e as MouseEvent
 	const btn = me.button
-	const mask = typeof (me as any).buttons === 'number' ? (me as any).buttons : 0
+	const mask = typeof (me as { buttons?: unknown }).buttons === 'number' ? (me as { buttons: number }).buttons : 0
 	const isBack = btn === 3 || (mask & 8) === 8
 	const isForward = btn === 4 || (mask & 16) === 16
 	if (!isBack && !isForward) return
@@ -74,7 +74,7 @@ const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	e.preventDefault()
 	e.stopPropagation()
 	// 更强的阻断，尽量在浏览器历史导航前截住
-	;(e as any).stopImmediatePropagation?.()
+	;(e as { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.()
 	dispatchDvsTimelineNav(isBack ? -1 : 1, 'browser')
 }
 
@@ -99,7 +99,7 @@ const enableHistoryBackTrap = () => {
 		(e) => {
 			// 尽量阻止路由/其它监听器处理
 			e.stopPropagation()
-			;(e as any).stopImmediatePropagation?.()
+			;(e as { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.()
 			// 回到当前页，避免真正发生历史回退
 			try {
 				history.go(1)
@@ -108,7 +108,7 @@ const enableHistoryBackTrap = () => {
 			}
 			dispatchDvsTimelineNav(-1, 'browser')
 		},
-		{ capture: true } as any
+		{ capture: true }
 	)
 }
 

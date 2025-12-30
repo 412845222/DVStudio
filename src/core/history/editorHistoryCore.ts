@@ -1,5 +1,6 @@
 import type { EditorSavePayload, EditorSnapshot } from '../editor/types'
 import type { TimeoutId } from '../shared/time'
+import { exportSnapshotToProjectPackageV1String } from '../project/package'
 
 export type EditorSaveHandler = (payload: EditorSavePayload) => void | Promise<void>
 
@@ -106,7 +107,12 @@ export const createEditorHistoryCore = (args: {
 		const savedAt = now()
 		const snapshot = args.captureSnapshot()
 		const json = JSON.stringify(snapshot)
-		const payload: EditorSavePayload = { savedAt, snapshot, json }
+		const payload: EditorSavePayload = {
+			savedAt,
+			snapshot,
+			json,
+			projectPackageJson: exportSnapshotToProjectPackageV1String(snapshot),
+		}
 
 		args.onSaved?.(payload)
 		if (saveHandler) await saveHandler(payload)

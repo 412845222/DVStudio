@@ -2,7 +2,7 @@ import { TimelineStore } from '../../../store/timeline'
 import { VideoSceneStore, type VideoSceneTreeNode } from '../../../store/videoscene'
 import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
 import { canInterpolateNumber, cubicBezierYforX, lerpNumber } from '../../TimeLine/core/curveTick'
-import { cloneJsonSafe } from '../../../utils/history/clone'
+import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 import { interpolateColorString } from './color'
 import type { JsonValue } from '../../../core/shared/json'
 

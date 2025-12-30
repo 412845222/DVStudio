@@ -3,7 +3,8 @@
 		<button class="vs-tool-btn" type="button" :class="{ active: showSizePanel }" @click="onSize">尺寸</button>
 		<button class="vs-tool-btn" type="button" :class="{ active: showBackgroundPanel }" @click="onBackground">背景</button>
 		<button class="vs-tool-btn" type="button" @click="addBase">添加</button>
-		<button class="vs-tool-btn" type="button" disabled>导入</button>
+		<button class="vs-tool-btn" type="button" @click="onImport">导入</button>
+		<input ref="importInputEl" class="vs-import-input" type="file" accept="application/json,.json" @change="onImportFile" />
 		<div class="vs-toolbar-spacer" />
 		<button class="vs-tool-btn vs-icon-btn" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)" @click="undo">↶</button>
 		<button class="vs-tool-btn vs-icon-btn" type="button" :disabled="!canRedo" title="重做 (Ctrl+Y)" @click="redo">↷</button>
@@ -16,12 +17,15 @@
 import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
-import { editorPersistence } from '../../../utils/editorPersistence'
+import { editorPersistence } from '../../../adapters/editorPersistence'
+import { importProjectPackageV1String } from '../../../core/project/package'
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 
 const rootEl = ref<HTMLElement | null>(null)
 defineExpose({ rootEl })
+
+const importInputEl = ref<HTMLInputElement | null>(null)
 
 const showSizePanel = computed(() => store.state.showSizePanel)
 const showBackgroundPanel = computed(() => store.state.showBackgroundPanel)
@@ -49,6 +53,25 @@ const onSize = () => {
 
 const onBackground = () => {
 	store.dispatch('toggleBackgroundPanel')
+}
+
+const onImport = () => {
+	importInputEl.value?.click()
+}
+
+const onImportFile = async (e: Event) => {
+	const input = e.target as HTMLInputElement
+	const file = input.files?.[0]
+	input.value = ''
+	if (!file) return
+	try {
+		const text = await file.text()
+		const result = importProjectPackageV1String(text, { existingSnapshot: editorPersistence.getSnapshot() })
+		editorPersistence.replace(result.snapshot)
+	} catch (err) {
+		console.error('[dvs] import failed', err)
+		window.alert('导入失败：文件格式不正确或版本不兼容')
+	}
 }
 
 const save = () => {
@@ -118,6 +141,10 @@ const redo = () => {
 .vs-tool-btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+.vs-import-input {
+	display: none;
 }
 
 .vs-tool-btn.active {

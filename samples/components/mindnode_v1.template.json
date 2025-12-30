@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "templateId": "mindnode_v1",
+  "name": "Mind Node",
+  "description": "一个最小的思维导图节点：group + rect + text",
+  "params": [
+    {"key": "title", "type": "string", "default": "Topic"},
+    {"key": "x", "type": "number", "default": 0},
+    {"key": "y", "type": "number", "default": 0}
+  ],
+  "rootLocalId": "g0",
+  "nodes": [
+    {
+      "localId": "g0",
+      "type": "group",
+      "transform": {"x": "{{x}}", "y": "{{y}}"},
+      "props": {}
+    },
+    {
+      "localId": "rect1",
+      "type": "rect",
+      "parentLocalId": "g0",
+      "transform": {"width": 240, "height": 60},
+      "props": {"cornerRadius": 12}
+    },
+    {
+      "localId": "text1",
+      "type": "text",
+      "parentLocalId": "g0",
+      "transform": {"width": 240, "height": 60},
+      "props": {"textContent": "{{title}}", "fontSize": 20}
+    }
+  ]
+}

@@ -1,14 +1,13 @@
 import { computed, ref } from 'vue'
-import { TimelineStore } from '../../store/timeline'
-import { VideoSceneStore } from '../../store/videoscene'
-import { VideoStudioStore } from '../../store/videostudio'
-import { cloneJsonSafe } from './clone'
-import type { EditorSavePayload, EditorSnapshot } from '../../core/editor/types'
-import { dispatchDvsEditorSaved, dispatchDvsEditorStateRestored } from '../../adapters/windowEventBridge'
-import { createEditorHistoryCore } from '../../core/history'
+import { TimelineStore } from '../store/timeline'
+import { VideoSceneStore } from '../store/videoscene'
+import { VideoStudioStore } from '../store/videostudio'
+import type { EditorSavePayload, EditorSnapshot } from '../core/editor/types'
+import { cloneJsonSafe } from '../core/shared/cloneJsonSafe'
+import { createEditorHistoryCore } from '../core/history'
+import { dispatchDvsEditorSaved, dispatchDvsEditorStateRestored } from './windowEventBridge'
 
-// 兼容导出：历史上其它模块会从 editorHistory 直接 re-export 这些类型。
-export type { EditorSavePayload, EditorSnapshot } from '../../core/editor/types'
+export type { EditorSavePayload, EditorSnapshot } from '../core/editor/types'
 
 export type EditorSaveHandler = (payload: EditorSavePayload) => void | Promise<void>
 
@@ -56,6 +55,15 @@ const save = async () => {
 	lastSavedAt.value = historyCore.getLastSavedAt()
 }
 
+const getSnapshot = (): EditorSnapshot => {
+	return captureSnapshot()
+}
+
+const replace = (snapshot: EditorSnapshot) => {
+	historyCore.replaceCurrent(cloneJsonSafe(snapshot))
+	lastSavedAt.value = null
+}
+
 const undo = () => {
 	historyCore.undo()
 }
@@ -68,8 +76,10 @@ export const setEditorSaveHandler = (handler: EditorSaveHandler | null) => {
 	saveHandler = handler
 }
 
-export const editorHistory = {
+export const editorPersistence = {
 	lastSavedAt,
+	getSnapshot,
+	replace,
 	canUndo: computed(() => {
 		void historyVersion.value
 		return historyCore.canUndo()

@@ -1,8 +1,9 @@
-import type { VideoSceneState, VideoSceneTreeNode, VideoSceneUserNodeType, VideoSceneNodeTransform } from '../store/videoscene'
-import { DwebCanvasGL, themeRgba, type IDwebGLScene, type Vec2 } from './DwebCanvasGL'
-import { DwebImagePool } from './DwebImagePool'
-import { vsPostBlur, fsPostBlur } from './shaders/postBlur'
-import { vsPostGlowComposite, fsPostGlowComposite } from './shaders/postGlowComposite'
+import type { VideoSceneState, VideoSceneTreeNode, VideoSceneUserNodeType, VideoSceneNodeTransform } from '../../../core/scene'
+import { DwebCanvasGL, themeRgba, type IDwebGLScene, type Vec2 } from '../canvas/DwebCanvasGL'
+import { DwebImagePool } from '../resources/DwebImagePool'
+import { vsPostBlur, fsPostBlur } from '../shaders/postBlur'
+import { vsPostGlowComposite, fsPostGlowComposite } from '../shaders/postGlowComposite'
+import { hitTestRotatedRects, queryRotatedRectsInWorldRect, type PickableRectNode } from '../picking'
 
 export type HitTestResult = {
 	layerId: string
@@ -14,7 +15,7 @@ type RenderNode = {
 	id: string
 	type: VideoSceneUserNodeType
 	transform: VideoSceneNodeTransform
-	props?: Record<string, any>
+	props?: Record<string, unknown>
 	text?: string
 	fontSize?: number
 	imageSrc?: string
@@ -122,8 +123,8 @@ export class DwebVideoScene implements IDwebGLScene {
 		radius: number,
 		mode: 'fill' | 'stroke'
 	): WebGLTexture {
-		const fillColor = this.parseHexColor(n.props?.fillColor ?? '#3aa1ff', 1)
-		const borderColor = this.parseHexColor(n.props?.borderColor ?? '#9cdcfe', 1)
+		const fillColor = this.parseHexColor(String(n.props?.fillColor ?? '#3aa1ff'), 1)
+		const borderColor = this.parseHexColor(String(n.props?.borderColor ?? '#9cdcfe'), 1)
 		const borderW = Math.max(0, Number(n.props?.borderWidth ?? 0))
 		const w = Math.max(1, Math.floor(n.transform.width))
 		const h = Math.max(1, Math.floor(n.transform.height))
@@ -324,7 +325,7 @@ uniform float u_alpha;
 out vec4 outColor;
 void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 	}
-	// post-process shaders moved to src/DwebGL/shaders/*
+	// post-process shaders moved to src/engine/webgl/shaders/*
 
 	private createProgram(
 		gl: WebGL2RenderingContext,
@@ -403,14 +404,14 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 				return
 			}
 			if (fillA > 0) {
-				const fillColor = this.parseHexColor(n.props?.fillColor ?? '#3aa1ff', fillA)
+				const fillColor = this.parseHexColor(String(n.props?.fillColor ?? '#3aa1ff'), fillA)
 				this.drawLocalRect(gl, { w: t.w, h: t.h }, 0, 0, nodeW, nodeH, fillColor, rotation)
 			}
 			const borderPx = Math.max(0, Number(n.props?.borderWidth ?? 1))
 			let bw = borderPx / canvas.viewport.zoom
 			bw = Math.max(0, Math.min(bw, Math.min(nodeW, nodeH) / 2))
 			if (bw > 0 && borderA > 0) {
-				const borderColor = this.parseHexColor(n.props?.borderColor ?? '#9cdcfe', borderA)
+				const borderColor = this.parseHexColor(String(n.props?.borderColor ?? '#9cdcfe'), borderA)
 				this.drawLocalRect(gl, { w: t.w, h: t.h }, 0, -nodeH / 2 + bw / 2, nodeW, bw, borderColor, rotation)
 				this.drawLocalRect(gl, { w: t.w, h: t.h }, 0, nodeH / 2 - bw / 2, nodeW, bw, borderColor, rotation)
 				this.drawLocalRect(gl, { w: t.w, h: t.h }, -nodeW / 2 + bw / 2, 0, bw, nodeH, borderColor, rotation)
@@ -1070,7 +1071,7 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 					continue
 				}
 				if (fillA > 0) {
-					const fillColor = this.parseHexColor(n.props?.fillColor ?? '#3aa1ff', fillA)
+					const fillColor = this.parseHexColor(String(n.props?.fillColor ?? '#3aa1ff'), fillA)
 					canvas.drawRect(cx, cy, w, h, fillColor, rotation)
 				}
 
@@ -1078,7 +1079,7 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 				let bw = borderPx / canvas.viewport.zoom
 				bw = Math.max(0, Math.min(bw, Math.min(w, h) / 2))
 				if (bw > 0 && borderA > 0) {
-					const borderColor = this.parseHexColor(n.props?.borderColor ?? '#9cdcfe', borderA)
+					const borderColor = this.parseHexColor(String(n.props?.borderColor ?? '#9cdcfe'), borderA)
 					const cos = Math.cos(rotation)
 					const sin = Math.sin(rotation)
 					const ro = (ox: number, oy: number) => ({ x: cx + ox * cos - oy * sin, y: cy + ox * sin + oy * cos })
@@ -1291,66 +1292,11 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 
 	hitTest(canvas: DwebCanvasGL, screenPoint: Vec2): HitTestResult | null {
 		const world = canvas.screenToWorld(screenPoint)
-		for (let i = this.renderOrder.length - 1; i >= 0; i--) {
-			const n = this.renderOrder[i]
-			if ((n.props as any)?.locked) continue
-			const rotation = (n.transform as any).rotation ?? 0
-			const w = n.transform.width
-			const h = n.transform.height
-			// hitTest: 旋转矩形，先把点旋回局部坐标再做 AABB
-			const cos = Math.cos(-rotation)
-			const sin = Math.sin(-rotation)
-			const dx = world.x - n.transform.x
-			const dy = world.y - n.transform.y
-			const lx = dx * cos - dy * sin
-			const ly = dx * sin + dy * cos
-			const x0 = -w / 2
-			const x1 = w / 2
-			const y0 = -h / 2
-			const y1 = h / 2
-			if (lx >= x0 && lx <= x1 && ly >= y0 && ly <= y1) return { layerId: n.layerId, nodeId: n.id }
-		}
-		return null
+		return hitTestRotatedRects(this.renderOrder as unknown as PickableRectNode[], world)
 	}
 
 	queryNodesInWorldRect(worldRect: { x0: number; y0: number; x1: number; y1: number }): HitTestResult[] {
-		const x0 = Math.min(worldRect.x0, worldRect.x1)
-		const x1 = Math.max(worldRect.x0, worldRect.x1)
-		const y0 = Math.min(worldRect.y0, worldRect.y1)
-		const y1 = Math.max(worldRect.y0, worldRect.y1)
-
-		const hits: HitTestResult[] = []
-		for (const n of this.renderOrder) {
-			if ((n.props as any)?.locked) continue
-			const rotation = (n.transform as any).rotation ?? 0
-			const cx = n.transform.x
-			const cy = n.transform.y
-			const w = n.transform.width
-			const h = n.transform.height
-
-			let nx0 = cx - w / 2
-			let nx1 = cx + w / 2
-			let ny0 = cy - h / 2
-			let ny1 = cy + h / 2
-			if (rotation) {
-				const cos = Math.cos(rotation)
-				const sin = Math.sin(rotation)
-				const rot = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
-				const p1 = rot(-w / 2, -h / 2)
-				const p2 = rot(w / 2, -h / 2)
-				const p3 = rot(-w / 2, h / 2)
-				const p4 = rot(w / 2, h / 2)
-				nx0 = Math.min(p1.x, p2.x, p3.x, p4.x)
-				nx1 = Math.max(p1.x, p2.x, p3.x, p4.x)
-				ny0 = Math.min(p1.y, p2.y, p3.y, p4.y)
-				ny1 = Math.max(p1.y, p2.y, p3.y, p4.y)
-			}
-
-			const intersects = nx0 <= x1 && nx1 >= x0 && ny0 <= y1 && ny1 >= y0
-			if (!intersects) continue
-			hits.push({ layerId: n.layerId, nodeId: n.id })
-		}
-		return hits
+		return queryRotatedRectsInWorldRect(this.renderOrder as unknown as PickableRectNode[], worldRect)
 	}
 
 	private getTextTexture(gl: WebGL2RenderingContext, canvas: DwebCanvasGL, n: RenderNode): WebGLTexture {

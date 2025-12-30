@@ -12,4 +12,5 @@ export type EditorSavePayload = {
 	savedAt: number
 	snapshot: EditorSnapshot
 	json: string
+	projectPackageJson?: string
 }
