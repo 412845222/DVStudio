@@ -9,8 +9,10 @@ import {
 	type ViewportState,
 } from '../camera'
 import { previewCompileAndLinkProgram, compileShader, linkProgram } from '../pipeline'
-import { fsBasicColor, fsBasicTexture, vsBasic2d } from '../material'
-import { createSolidTexture, setTextureWrap, updateTextureFromCanvas } from '../texture'
+import { fsBasicColor, fsBasicTexture, fsRoundedRect, vsBasic2d } from '../material'
+import { DwebImagePool, type DwebImageWrapMode } from '../resources/DwebImagePool'
+import { createSolidTexture, setTextureWrap as setTextureWrapImpl, updateTextureFromCanvas as updateTextureFromCanvasImpl } from '../texture'
+import { CanvasPostProcess } from './postprocess/pipeline'
 
 export type { Vec2, ViewportInset, ViewportState } from '../camera'
 
@@ -36,6 +38,21 @@ export interface IDwebGLScene {
 	render(canvas: DwebCanvasGL): void
 }
 
+type LocalProgramInfo = {
+	program: WebGLProgram
+	aPos: number
+	aUv: number
+	uResolution: WebGLUniformLocation
+	uColor?: WebGLUniformLocation
+	uSampler?: WebGLUniformLocation
+	uAlpha?: WebGLUniformLocation
+	uSize?: WebGLUniformLocation
+	uRadius?: WebGLUniformLocation
+	uBorderWidth?: WebGLUniformLocation
+	uFillColor?: WebGLUniformLocation
+	uBorderColor?: WebGLUniformLocation
+}
+
 type ProgramInfo = {
 	program: WebGLProgram
 	aPos: number
@@ -46,6 +63,20 @@ type ProgramInfo = {
 	uColor?: WebGLUniformLocation
 	uSampler?: WebGLUniformLocation
 	uAlpha?: WebGLUniformLocation
+}
+
+type RoundedRectProgramInfo = {
+	program: WebGLProgram
+	aPos: number
+	aUv: number
+	uResolution: WebGLUniformLocation
+	uPan: WebGLUniformLocation
+	uZoom: WebGLUniformLocation
+	uSize: WebGLUniformLocation
+	uRadius: WebGLUniformLocation
+	uBorderWidth: WebGLUniformLocation
+	uFillColor: WebGLUniformLocation
+	uBorderColor: WebGLUniformLocation
 }
 
 export class DwebCanvasGL {
@@ -64,7 +95,16 @@ export class DwebCanvasGL {
 	private vbo: WebGLBuffer
 	private colorProg: ProgramInfo
 	private texProg: ProgramInfo
+	private roundedRectProg: RoundedRectProgramInfo
 	private whiteTex: WebGLTexture
+	private imagePool = new DwebImagePool()
+	private postprocess = new CanvasPostProcess()
+
+	// local-space programs (for offscreen filter targets)
+	private localVbo: WebGLBuffer
+	private localProgColor: LocalProgramInfo
+	private localProgTex: LocalProgramInfo
+	private localProgRoundedRect: LocalProgramInfo
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.canvas = canvas
@@ -73,8 +113,13 @@ export class DwebCanvasGL {
 		this.gl = gl
 
 		this.vbo = gl.createBuffer()!
+		this.localVbo = gl.createBuffer()!
 		this.colorProg = this.createProgram(vsBasic2d, fsBasicColor, true)
 		this.texProg = this.createProgram(vsBasic2d, fsBasicTexture, false)
+		this.roundedRectProg = this.createRoundedRectProgram(vsBasic2d, fsRoundedRect)
+		this.localProgColor = this.createLocalProgram(this.vsLocal2d(), this.fsLocalColor(), { kind: 'color' })
+		this.localProgTex = this.createLocalProgram(this.vsLocal2d(), this.fsLocalTex(), { kind: 'tex' })
+		this.localProgRoundedRect = this.createLocalProgram(this.vsLocal2d(), fsRoundedRect, { kind: 'roundedRect' })
 
 		this.whiteTex = this.createSolidTexture({ r: 1, g: 1, b: 1, a: 1 })
 		gl.enable(gl.BLEND)
@@ -86,13 +131,35 @@ export class DwebCanvasGL {
 		if (this.rafId != null) cancelAnimationFrame(this.rafId)
 		this.rafId = null
 		try {
+			this.postprocess.dispose(this.gl)
 			this.gl.deleteBuffer(this.vbo)
+			this.gl.deleteBuffer(this.localVbo)
 			this.gl.deleteTexture(this.whiteTex)
 			this.gl.deleteProgram(this.colorProg.program)
 			this.gl.deleteProgram(this.texProg.program)
+			this.gl.deleteProgram(this.roundedRectProg.program)
+			this.gl.deleteProgram(this.localProgColor.program)
+			this.gl.deleteProgram(this.localProgTex.program)
+			this.gl.deleteProgram(this.localProgRoundedRect.program)
 		} catch {
 			// ignore
 		}
+	}
+
+	pruneFilterTargets(validNodeIds: Set<string>) {
+		this.postprocess.prune(this.gl, validNodeIds)
+	}
+
+	applyFilters(
+		id: string,
+		contentW: number,
+		contentH: number,
+		padX: number,
+		padY: number,
+		filters: any[],
+		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number }) => void
+	): WebGLTexture {
+		return this.postprocess.applyFilters(this.gl, this, id, contentW, contentH, padX, padY, filters, renderLocal)
 	}
 
 	setScene(scene: IDwebGLScene | null) {
@@ -160,9 +227,7 @@ export class DwebCanvasGL {
 
 	// ----- Drawing helpers -----
 
-	getGL() {
-		return this.gl
-	}
+	// 不再对外暴露 gl：scene 层不应该直接操作 WebGL。
 
 	/**
 	 * 受控的 shader 预览编译：仅编译+链接，返回 ok/log。
@@ -177,6 +242,58 @@ export class DwebCanvasGL {
 		if (name === '--vscode-border') return cssVarColor(name, '#2b2b2b')
 		if (name === '--dweb-defualt-dark') return cssVarColor(name, '#1f1f1f')
 		return cssVarColor(name, '#111111')
+	}
+
+	parseHexColor(hex: string, alpha = 1): RGBA {
+		const h = (hex || '').trim()
+		const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(h)
+		if (!m) return themeRgba.accent(alpha)
+		return hexToRgba(m[0].startsWith('#') ? m[0] : `#${m[0]}`, alpha)
+	}
+
+	createTexture(): WebGLTexture {
+		return this.gl.createTexture()!
+	}
+
+	deleteTexture(tex: WebGLTexture) {
+		try {
+			this.gl.deleteTexture(tex)
+		} catch {
+			// ignore
+		}
+	}
+
+	updateTextureFromImage(tex: WebGLTexture, img: TexImageSource, options?: { wrap?: TextureWrapMode }) {
+		const gl = this.gl
+		gl.bindTexture(gl.TEXTURE_2D, tex)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+		const wrap = options?.wrap ?? 'clamp'
+		const mode = wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
+		gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+	}
+
+	initTexture1x1Transparent(tex: WebGLTexture, wrap: TextureWrapMode = 'clamp') {
+		const gl = this.gl
+		gl.bindTexture(gl.TEXTURE_2D, tex)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+		const mode = wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
+		gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
+	}
+
+	getImageTexture(src: string, wrap: DwebImageWrapMode = 'clamp'): WebGLTexture {
+		return this.imagePool.getTexture(this.gl, this, src, wrap)
+	}
+
+	getImageSize(src: string): { width: number; height: number } | null {
+		return this.imagePool.getSize(src)
 	}
 
 	drawRect(x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
@@ -216,12 +333,112 @@ export class DwebCanvasGL {
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
+	/**
+	 * 纯 WebGL 圆角矩形：支持 fill + border（无需 Canvas2D）。
+	 * - size/radius/borderWidth 均为 world units（stage units）。
+	 */
+	drawRoundedRect(
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		radius: number,
+		fillColor: RGBA,
+		borderColor: RGBA,
+		borderWidth: number,
+		rotation = 0
+	) {
+		const gl = this.gl
+		this.useRoundedRectProgram(this.roundedRectProg)
+		this.setCommonUniforms(this.roundedRectProg)
+		gl.uniform2f(this.roundedRectProg.uSize, Math.max(1, w), Math.max(1, h))
+		gl.uniform1f(this.roundedRectProg.uRadius, Math.max(0, radius))
+		gl.uniform1f(this.roundedRectProg.uBorderWidth, Math.max(0, borderWidth))
+		gl.uniform4f(this.roundedRectProg.uFillColor, fillColor.r, fillColor.g, fillColor.b, fillColor.a)
+		gl.uniform4f(this.roundedRectProg.uBorderColor, borderColor.r, borderColor.g, borderColor.b, borderColor.a)
+		this.uploadQuadVerts(x, y, w, h, rotation)
+		gl.drawArrays(gl.TRIANGLES, 0, 6)
+	}
+
+	// ----- Local drawing helpers (for offscreen targets) -----
+
+	drawLocalRect(target: { w: number; h: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
+		this.drawLocalQuad(target, x, y, w, h, color, rotation)
+	}
+
+	drawLocalTexturedRect(
+		target: { w: number; h: number },
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		texture: WebGLTexture,
+		opacity = 1,
+		rotation = 0
+	) {
+		const gl = this.gl
+		gl.useProgram(this.localProgTex.program)
+		gl.uniform2f(this.localProgTex.uResolution!, target.w, target.h)
+		gl.uniform1f(this.localProgTex.uAlpha!, opacity)
+		gl.activeTexture(gl.TEXTURE0)
+		gl.bindTexture(gl.TEXTURE_2D, texture)
+		gl.uniform1i(this.localProgTex.uSampler!, 0)
+		this.uploadLocalQuadVerts(this.localProgTex, x, y, w, h, rotation)
+		gl.drawArrays(gl.TRIANGLES, 0, 6)
+	}
+
+	drawLocalTexturedRectUv(
+		target: { w: number; h: number },
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		texture: WebGLTexture,
+		opacity: number,
+		rotation: number,
+		uv: UvRect
+	) {
+		const gl = this.gl
+		gl.useProgram(this.localProgTex.program)
+		gl.uniform2f(this.localProgTex.uResolution!, target.w, target.h)
+		gl.uniform1f(this.localProgTex.uAlpha!, opacity)
+		gl.activeTexture(gl.TEXTURE0)
+		gl.bindTexture(gl.TEXTURE_2D, texture)
+		gl.uniform1i(this.localProgTex.uSampler!, 0)
+		this.uploadLocalQuadVerts(this.localProgTex, x, y, w, h, rotation, uv)
+		gl.drawArrays(gl.TRIANGLES, 0, 6)
+	}
+
+	drawLocalRoundedRect(
+		target: { w: number; h: number },
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		radius: number,
+		fillColor: RGBA,
+		borderColor: RGBA,
+		borderWidth: number,
+		rotation = 0
+	) {
+		const gl = this.gl
+		gl.useProgram(this.localProgRoundedRect.program)
+		gl.uniform2f(this.localProgRoundedRect.uResolution!, target.w, target.h)
+		gl.uniform2f(this.localProgRoundedRect.uSize!, Math.max(1, w), Math.max(1, h))
+		gl.uniform1f(this.localProgRoundedRect.uRadius!, Math.max(0, radius))
+		gl.uniform1f(this.localProgRoundedRect.uBorderWidth!, Math.max(0, borderWidth))
+		gl.uniform4f(this.localProgRoundedRect.uFillColor!, fillColor.r, fillColor.g, fillColor.b, fillColor.a)
+		gl.uniform4f(this.localProgRoundedRect.uBorderColor!, borderColor.r, borderColor.g, borderColor.b, borderColor.a)
+		this.uploadLocalQuadVerts(this.localProgRoundedRect, x, y, w, h, rotation)
+		gl.drawArrays(gl.TRIANGLES, 0, 6)
+	}
+
 	createSolidTexture(color: RGBA) {
 		return createSolidTexture(this.gl, color)
 	}
 
 	setTextureWrap(tex: WebGLTexture, wrap: TextureWrapMode) {
-		setTextureWrap(this.gl, tex, wrap)
+		setTextureWrapImpl(this.gl, tex, wrap)
 	}
 
 	create1x1TransparentCanvas() {
@@ -234,7 +451,7 @@ export class DwebCanvasGL {
 	}
 
 	updateTextureFromCanvas(tex: WebGLTexture, canvas: HTMLCanvasElement, options?: { wrap?: TextureWrapMode }) {
-		updateTextureFromCanvas(this.gl, tex, canvas, options)
+		updateTextureFromCanvasImpl(this.gl, tex, canvas, options)
 	}
 
 	getWhiteTexture() {
@@ -318,6 +535,10 @@ export class DwebCanvasGL {
 		this.gl.useProgram(p.program)
 	}
 
+	private useRoundedRectProgram(p: RoundedRectProgramInfo) {
+		this.gl.useProgram(p.program)
+	}
+
 	private createProgram(vsSrc: string, fsSrc: string, withColor: boolean): ProgramInfo {
 		const gl = this.gl
 		const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc)
@@ -342,6 +563,161 @@ export class DwebCanvasGL {
 		const uSampler = !withColor ? gl.getUniformLocation(program, 'u_sampler')! : undefined
 		const uAlpha = !withColor ? gl.getUniformLocation(program, 'u_alpha')! : undefined
 		return { program, aPos, aUv, uResolution, uPan, uZoom, uColor, uSampler, uAlpha }
+	}
+
+	private vsLocal2d() {
+		return `#version 300 es
+precision highp float;
+in vec2 a_pos;
+in vec2 a_uv;
+uniform vec2 u_resolution;
+out vec2 v_uv;
+void main(){
+  vec2 screen = a_pos + u_resolution * 0.5;
+  vec2 clip = vec2((screen.x / u_resolution.x) * 2.0 - 1.0, 1.0 - (screen.y / u_resolution.y) * 2.0);
+  gl_Position = vec4(clip, 0.0, 1.0);
+  v_uv = a_uv;
+}`
+	}
+
+	private fsLocalColor() {
+		return `#version 300 es
+precision highp float;
+uniform vec4 u_color;
+out vec4 outColor;
+void main(){ outColor = u_color; }`
+	}
+
+	private fsLocalTex() {
+		return `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_sampler;
+uniform float u_alpha;
+out vec4 outColor;
+void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
+	}
+
+	private createLocalProgram(
+		vsSrc: string,
+		fsSrc: string,
+		opt: { kind: 'color' | 'tex' | 'roundedRect' }
+	): LocalProgramInfo {
+		const gl = this.gl
+		const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc)
+		const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc)
+		let program: WebGLProgram
+		try {
+			program = linkProgram(gl, vs, fs)
+		} catch (e) {
+			gl.deleteShader(vs)
+			gl.deleteShader(fs)
+			throw e
+		}
+		gl.deleteShader(vs)
+		gl.deleteShader(fs)
+		const aPos = gl.getAttribLocation(program, 'a_pos')
+		const aUv = gl.getAttribLocation(program, 'a_uv')
+		const uResolution = gl.getUniformLocation(program, 'u_resolution')!
+		const uColor = opt.kind === 'color' ? gl.getUniformLocation(program, 'u_color')! : undefined
+		const uSampler = opt.kind !== 'color' ? gl.getUniformLocation(program, 'u_sampler')! : undefined
+		const uAlpha = opt.kind !== 'color' ? gl.getUniformLocation(program, 'u_alpha')! : undefined
+		const uSize = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_size')! : undefined
+		const uRadius = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_radius')! : undefined
+		const uBorderWidth = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_borderWidth')! : undefined
+		const uFillColor = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_fillColor')! : undefined
+		const uBorderColor = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_borderColor')! : undefined
+		return { program, aPos, aUv, uResolution, uColor, uSampler, uAlpha, uSize, uRadius, uBorderWidth, uFillColor, uBorderColor }
+	}
+
+	private drawLocalQuad(target: { w: number; h: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
+		const gl = this.gl
+		gl.useProgram(this.localProgColor.program)
+		gl.uniform2f(this.localProgColor.uResolution!, target.w, target.h)
+		gl.uniform4f(this.localProgColor.uColor!, color.r, color.g, color.b, color.a)
+		this.uploadLocalQuadVerts(this.localProgColor, x, y, w, h, rotation)
+		gl.drawArrays(gl.TRIANGLES, 0, 6)
+	}
+
+	private uploadLocalQuadVerts(
+		prog: Pick<LocalProgramInfo, 'program' | 'aPos' | 'aUv'>,
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		rotation = 0,
+		uv: UvRect = { u0: 0, v0: 0, u1: 1, v1: 1 }
+	) {
+		const gl = this.gl
+		const hw = w / 2
+		const hh = h / 2
+		const cos = Math.cos(rotation)
+		const sin = Math.sin(rotation)
+		const rot = (dx: number, dy: number) => ({ x: x + dx * cos - dy * sin, y: y + dx * sin + dy * cos })
+		const p0 = rot(-hw, -hh)
+		const p1 = rot(hw, -hh)
+		const p2 = rot(hw, hh)
+		const p3 = rot(-hw, hh)
+		const verts = new Float32Array([
+			p0.x,
+			p0.y,
+			uv.u0,
+			uv.v0,
+			p1.x,
+			p1.y,
+			uv.u1,
+			uv.v0,
+			p2.x,
+			p2.y,
+			uv.u1,
+			uv.v1,
+			p0.x,
+			p0.y,
+			uv.u0,
+			uv.v0,
+			p2.x,
+			p2.y,
+			uv.u1,
+			uv.v1,
+			p3.x,
+			p3.y,
+			uv.u0,
+			uv.v1,
+		])
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.localVbo)
+		gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW)
+		gl.enableVertexAttribArray(prog.aPos)
+		gl.vertexAttribPointer(prog.aPos, 2, gl.FLOAT, false, 16, 0)
+		gl.enableVertexAttribArray(prog.aUv)
+		gl.vertexAttribPointer(prog.aUv, 2, gl.FLOAT, false, 16, 8)
+	}
+
+	private createRoundedRectProgram(vsSrc: string, fsSrc: string): RoundedRectProgramInfo {
+		const gl = this.gl
+		const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc)
+		const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc)
+		let program: WebGLProgram
+		try {
+			program = linkProgram(gl, vs, fs)
+		} catch (e) {
+			gl.deleteShader(vs)
+			gl.deleteShader(fs)
+			throw e
+		}
+		gl.deleteShader(vs)
+		gl.deleteShader(fs)
+
+		const aPos = gl.getAttribLocation(program, 'a_pos')
+		const aUv = gl.getAttribLocation(program, 'a_uv')
+		const uResolution = gl.getUniformLocation(program, 'u_resolution')!
+		const uPan = gl.getUniformLocation(program, 'u_pan')!
+		const uZoom = gl.getUniformLocation(program, 'u_zoom')!
+		const uSize = gl.getUniformLocation(program, 'u_size')!
+		const uRadius = gl.getUniformLocation(program, 'u_radius')!
+		const uBorderWidth = gl.getUniformLocation(program, 'u_borderWidth')!
+		const uFillColor = gl.getUniformLocation(program, 'u_fillColor')!
+		const uBorderColor = gl.getUniformLocation(program, 'u_borderColor')!
+		return { program, aPos, aUv, uResolution, uPan, uZoom, uSize, uRadius, uBorderWidth, uFillColor, uBorderColor }
 	}
 }
 

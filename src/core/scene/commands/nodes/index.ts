@@ -65,6 +65,39 @@ export const addRenderableNodeToLayer = (args: {
 	return { node, selection: setSingleSelection(node.id) }
 }
 
+const ensureUniqueNamesForTree = (root: VideoSceneTreeNode, existingNames: string[]) => {
+	const desired = String(root.name ?? '').trim() || 'Node'
+	root.name = makeUniqueName(existingNames, desired)
+	existingNames.push(root.name)
+	if (root.children?.length) {
+		for (const c of root.children) ensureUniqueNamesForTree(c, existingNames)
+	}
+}
+
+export const addNodeTreeToLayer = (args: {
+	state: { layers: VideoSceneLayer[]; activeLayerId: string }
+	layerId: string
+	node: VideoSceneTreeNode
+	parentId?: string | null
+}): { node: VideoSceneTreeNode; selection: SelectionPatch } | null => {
+	const layer = findLayer(args.state, args.layerId)
+	if (!layer) return null
+	const node = args.node
+
+	const existingNames = collectAllNames(layer.nodeTree)
+	ensureUniqueNamesForTree(node, existingNames)
+
+	const root = findNode(layer.nodeTree, args.parentId ?? 'root')
+	if (root) {
+		if (!root.children) root.children = []
+		root.children.push(node)
+	} else {
+		layer.nodeTree.push(node)
+	}
+
+	return { node, selection: setSingleSelection(node.id) }
+}
+
 const normalizeTransformPatch = (prev: VideoSceneNodeTransform, patch: NodeTransformPatch): VideoSceneNodeTransform => {
 	const x = typeof patch.x === 'number' && Number.isFinite(patch.x) ? patch.x : prev.x
 	const y = typeof patch.y === 'number' && Number.isFinite(patch.y) ? patch.y : prev.y

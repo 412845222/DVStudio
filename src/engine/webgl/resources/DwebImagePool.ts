@@ -42,8 +42,15 @@ export class DwebImagePool {
 		}
 
 		const tex = gl.createTexture()!
-		// 先塞一个 1x1 透明像素，避免未完成时采样报错
-		canvas.updateTextureFromCanvas(tex, canvas.create1x1TransparentCanvas(), { wrap })
+		// 先塞一个 1x1 透明像素，避免未完成时采样报错（不依赖 Canvas2D）
+		gl.bindTexture(gl.TEXTURE_2D, tex)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+		const initMode = wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, initMode)
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, initMode)
+		gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
 
 		const entry: CacheEntry = { src: key, tex, width: 1, height: 1, wrap, status: 'loading' }
 		this.entries.set(key, entry)
@@ -54,13 +61,14 @@ export class DwebImagePool {
 			entry.width = Math.max(1, img.naturalWidth || 1)
 			entry.height = Math.max(1, img.naturalHeight || 1)
 			entry.status = 'ready'
-			const tmp = document.createElement('canvas')
-			tmp.width = entry.width
-			tmp.height = entry.height
-			const ctx = tmp.getContext('2d')!
-			ctx.clearRect(0, 0, tmp.width, tmp.height)
-			ctx.drawImage(img, 0, 0)
-			canvas.updateTextureFromCanvas(tex, tmp, { wrap: entry.wrap })
+			gl.bindTexture(gl.TEXTURE_2D, tex)
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+			const mode = entry.wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode)
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
+			gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
 			canvas.requestRender()
 		}
 		img.onerror = () => {

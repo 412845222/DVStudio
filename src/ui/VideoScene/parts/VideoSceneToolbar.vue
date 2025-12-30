@@ -18,7 +18,7 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import { editorPersistence } from '../../../adapters/editorPersistence'
-import { importProjectPackageV1String } from '../../../core/project/package'
+import { componentTemplateApi } from '../../../core/components'
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 
@@ -66,11 +66,12 @@ const onImportFile = async (e: Event) => {
 	if (!file) return
 	try {
 		const text = await file.text()
-		const result = importProjectPackageV1String(text, { existingSnapshot: editorPersistence.getSnapshot() })
-		editorPersistence.replace(result.snapshot)
+		const parsed: unknown = JSON.parse(text)
+		const instantiated = componentTemplateApi.instantiateTemplate(parsed)
+		store.dispatch('addNodeTree', { node: instantiated.root })
 	} catch (err) {
 		console.error('[dvs] import failed', err)
-		window.alert('导入失败：文件格式不正确或版本不兼容')
+		window.alert('导入失败：文件格式不正确或不是高级组件模板（ComponentTemplate）')
 	}
 }
 

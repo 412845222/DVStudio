@@ -2,6 +2,7 @@ import { createStore, type Store } from 'vuex'
 import type { InjectionKey } from 'vue'
 
 import {
+	addNodeTreeToLayer,
   addRenderableNodeToLayer,
   buildRenderPipeline,
   clearSelection as clearSelectionPatch,
@@ -109,6 +110,13 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		setFocusedNode(state, payload: { nodeId: string | null }) {
 			state.focusedNodeId = payload.nodeId
 		},
+    addNodeTree(state, payload: { layerId: string; node: VideoSceneTreeNode; parentId?: string | null }) {
+      const layer = findLayer(state, payload.layerId)
+      if (!layer) return
+      const r = addNodeTreeToLayer({ state, layerId: payload.layerId, node: payload.node, parentId: payload.parentId })
+      if (!r) return
+      Object.assign(state, r.selection)
+    },
     setLayoutInsets(state, payload: Partial<VideoSceneLayoutInsets>) {
       state.layoutInsets = {
         rightPanelWidth: clampPx(payload.rightPanelWidth, state.layoutInsets.rightPanelWidth),
@@ -219,6 +227,16 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 	setFocusedNode({ commit }, payload: { nodeId: string | null }) {
 		commit('setFocusedNode', payload)
 	},
+  addNodeTree(
+    { commit, state },
+    payload: { node: VideoSceneTreeNode; layerId?: string; parentId?: string | null }
+  ) {
+    commit('addNodeTree', {
+      layerId: payload.layerId ?? state.activeLayerId,
+      node: payload.node,
+      parentId: payload.parentId,
+    })
+  },
     setLayoutInsets({ commit }, payload: Partial<VideoSceneLayoutInsets>) {
       commit('setLayoutInsets', payload)
     },
