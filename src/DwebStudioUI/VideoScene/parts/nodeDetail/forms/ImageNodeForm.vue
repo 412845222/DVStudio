@@ -9,7 +9,7 @@
 				</div>
 				<div class="vs-image-meta">
 					<div class="vs-image-name">{{ draft.imageName || '未选择图片' }}</div>
-					<button class="vs-btn" type="button" @click="openPicker">选择图片</button>
+					<button class="vs-image-btn" type="button" @click="openPicker">选择图片</button>
 					<input ref="inputRef" class="vs-hidden-input" type="file" accept="image/*" @change="onPick" />
 				</div>
 			</div>
@@ -80,3 +80,19 @@ const onPick = (e: Event) => {
 	emit('pick-file', file)
 }
 </script>
+
+<style scoped>
+.vs-image-btn {
+	padding: 6px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	cursor: pointer;
+}
+
+.vs-image-btn:hover {
+	background: var(--vscode-hover-bg);
+	border-color: var(--vscode-border-accent);
+}
+</style>

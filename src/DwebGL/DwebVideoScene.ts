@@ -1097,6 +1097,91 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 				canvas.drawTexturedRect(n.transform.x, n.transform.y, n.transform.width, n.transform.height, tex, opacity, rotation)
 				continue
 			}
+			if (n.type === 'line') {
+				const cx = n.transform.x
+				const cy = n.transform.y
+				const w = Math.max(1, Number(n.transform.width ?? 1))
+				const h = Math.max(1, Number(n.transform.height ?? 1))
+				const startX = Number((n.props as any)?.startX ?? -w / 2)
+				const startY = Number((n.props as any)?.startY ?? 0)
+				const endX = Number((n.props as any)?.endX ?? w / 2)
+				const endY = Number((n.props as any)?.endY ?? 0)
+				const anchorX = Number((n.props as any)?.anchorX ?? 0)
+				const anchorY = Number((n.props as any)?.anchorY ?? -h / 4)
+				const lineWidthPx = Math.max(1, Number((n.props as any)?.lineWidth ?? 4))
+				const lineStyle = String((n.props as any)?.lineStyle ?? 'solid')
+				const color = this.parseHexColor(String((n.props as any)?.lineColor ?? '#ffffff'), opacity)
+				const thickness = lineWidthPx / Math.max(0.0001, canvas.viewport.zoom)
+
+				// approximate quadratic bezier by polyline
+				const p0 = { x: startX, y: startY }
+				const p1 = { x: anchorX, y: anchorY }
+				const p2 = { x: endX, y: endY }
+				const d01 = Math.hypot(p1.x - p0.x, p1.y - p0.y)
+				const d12 = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+				const approxLen = d01 + d12
+				const segCount = Math.max(8, Math.min(96, Math.floor(approxLen / 18) + 12))
+
+				const cosR = Math.cos(rotation)
+				const sinR = Math.sin(rotation)
+				const toWorld = (lx: number, ly: number) => ({ x: cx + lx * cosR - ly * sinR, y: cy + lx * sinR + ly * cosR })
+
+				const pts: { x: number; y: number }[] = []
+				for (let i = 0; i <= segCount; i++) {
+					const t = i / segCount
+					const mt = 1 - t
+					const lx = mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x
+					const ly = mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y
+					pts.push(toWorld(lx, ly))
+				}
+
+				const drawSegment = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+					const dx = b.x - a.x
+					const dy = b.y - a.y
+					const len = Math.hypot(dx, dy)
+					if (len < 0.001) return
+					const mx = (a.x + b.x) / 2
+					const my = (a.y + b.y) / 2
+					const ang = Math.atan2(dy, dx)
+					canvas.drawRect(mx, my, len, thickness, color, ang)
+				}
+
+				if (lineStyle === 'dashed') {
+					// dash pattern in screen px, converted to world units
+					const dashLen = 14 / Math.max(0.0001, canvas.viewport.zoom)
+					const gapLen = 10 / Math.max(0.0001, canvas.viewport.zoom)
+					const period = Math.max(0.001, dashLen + gapLen)
+
+					let s = 0
+					for (let i = 0; i < pts.length - 1; i++) {
+						const a = pts[i]
+						const b = pts[i + 1]
+						const segLen = Math.hypot(b.x - a.x, b.y - a.y)
+						if (segLen < 0.001) continue
+
+						let localPos = 0
+						while (localPos < segLen - 1e-6) {
+							const globalPos = s + localPos
+							const phase = globalPos % period
+							const inDash = phase < dashLen
+							const run = inDash ? dashLen - phase : period - phase
+							const step = Math.min(run, segLen - localPos)
+							if (inDash && step > 0.001) {
+								const t0 = localPos / segLen
+								const t1 = (localPos + step) / segLen
+								const pA = { x: a.x + (b.x - a.x) * t0, y: a.y + (b.y - a.y) * t0 }
+								const pB = { x: a.x + (b.x - a.x) * t1, y: a.y + (b.y - a.y) * t1 }
+								drawSegment(pA, pB)
+							}
+							localPos += step
+						}
+						s += segLen
+					}
+				} else {
+					for (let i = 0; i < pts.length - 1; i++) drawSegment(pts[i], pts[i + 1])
+				}
+				continue
+			}
 			// image
 			const src = (n.imageSrc ?? '').trim()
 			const tex = this.getImageTexture(gl, canvas, n)
@@ -1206,6 +1291,7 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		const world = canvas.screenToWorld(screenPoint)
 		for (let i = this.renderOrder.length - 1; i >= 0; i--) {
 			const n = this.renderOrder[i]
+			if ((n.props as any)?.locked) continue
 			const rotation = (n.transform as any).rotation ?? 0
 			const w = n.transform.width
 			const h = n.transform.height
@@ -1223,6 +1309,46 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 			if (lx >= x0 && lx <= x1 && ly >= y0 && ly <= y1) return { layerId: n.layerId, nodeId: n.id }
 		}
 		return null
+	}
+
+	queryNodesInWorldRect(worldRect: { x0: number; y0: number; x1: number; y1: number }): HitTestResult[] {
+		const x0 = Math.min(worldRect.x0, worldRect.x1)
+		const x1 = Math.max(worldRect.x0, worldRect.x1)
+		const y0 = Math.min(worldRect.y0, worldRect.y1)
+		const y1 = Math.max(worldRect.y0, worldRect.y1)
+
+		const hits: HitTestResult[] = []
+		for (const n of this.renderOrder) {
+			if ((n.props as any)?.locked) continue
+			const rotation = (n.transform as any).rotation ?? 0
+			const cx = n.transform.x
+			const cy = n.transform.y
+			const w = n.transform.width
+			const h = n.transform.height
+
+			let nx0 = cx - w / 2
+			let nx1 = cx + w / 2
+			let ny0 = cy - h / 2
+			let ny1 = cy + h / 2
+			if (rotation) {
+				const cos = Math.cos(rotation)
+				const sin = Math.sin(rotation)
+				const rot = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
+				const p1 = rot(-w / 2, -h / 2)
+				const p2 = rot(w / 2, -h / 2)
+				const p3 = rot(-w / 2, h / 2)
+				const p4 = rot(w / 2, h / 2)
+				nx0 = Math.min(p1.x, p2.x, p3.x, p4.x)
+				nx1 = Math.max(p1.x, p2.x, p3.x, p4.x)
+				ny0 = Math.min(p1.y, p2.y, p3.y, p4.y)
+				ny1 = Math.max(p1.y, p2.y, p3.y, p4.y)
+			}
+
+			const intersects = nx0 <= x1 && nx1 >= x0 && ny0 <= y1 && ny1 >= y0
+			if (!intersects) continue
+			hits.push({ layerId: n.layerId, nodeId: n.id })
+		}
+		return hits
 	}
 
 	private getTextTexture(gl: WebGL2RenderingContext, canvas: DwebCanvasGL, n: RenderNode): WebGLTexture {

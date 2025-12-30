@@ -154,6 +154,7 @@ const interpolateSnapshots = (a: Record<string, NodeSnapshot>, b: Record<string,
 				const va = pa[k]
 				const vb = pb[k]
 				if (k === 'filters') tp[k] = interpolateFilterList(va, vb, t)
+				else if (k === 'lineStyle') tp[k] = va !== undefined ? va : vb
 				else {
 					const cc = interpolateColorString(va, vb, t)
 					if (cc != null) tp[k] = cc

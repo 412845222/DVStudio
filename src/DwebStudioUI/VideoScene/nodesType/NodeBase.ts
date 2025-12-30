@@ -1,4 +1,4 @@
-export type NodeType = 'base' | 'rect' | 'text' | 'image'
+export type NodeType = 'base' | 'rect' | 'text' | 'image' | 'line'
 
 export type NodeTransform = {
 	x: number

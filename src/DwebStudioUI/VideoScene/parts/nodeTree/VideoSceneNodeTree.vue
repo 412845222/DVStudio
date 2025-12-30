@@ -8,7 +8,8 @@
 				:key="n.id"
 				class="vs-tree-item"
 				:class="{
-					selected: selectedNodeId === n.id,
+					selected: selectedNodeIds.includes(n.id),
+					locked: isLocked(n.id),
 					'drag-over':
 						draggingNodeId && dropMode === 'child' && dragOverNodeId === n.id && draggingNodeId !== n.id,
 				}"
@@ -37,7 +38,29 @@
 				</template>
 				<template v-else>
 					<span class="vs-tree-name">{{ n.name }}</span>
-					<button class="vs-tree-action" type="button" @click.stop.prevent="startRename(n.id, n.name)">重命名</button>
+					<div class="vs-tree-actions">
+						<button
+							class="vs-tree-lock"
+							type="button"
+							:title="isLocked(n.id) ? '解锁：允许舞台点击选中' : '锁定：舞台点击将忽略该节点'"
+							@pointerdown.stop
+							@click.stop.prevent="toggleLock(n.id)"
+						>
+							<svg v-if="isLocked(n.id)" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+								<path
+									fill="currentColor"
+									d="M17 10h-1V8a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V8Zm2 10a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"
+								/>
+							</svg>
+							<svg v-else viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+								<path
+									fill="currentColor"
+									d="M17 8h-1V7a4 4 0 0 0-8 0v1H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Zm-7-1a2 2 0 1 1 4 0v1h-4V7Zm2 11a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"
+								/>
+							</svg>
+						</button>
+						<button class="vs-tree-action" type="button" @click.stop.prevent="startRename(n.id, n.name)">重命名</button>
+					</div>
 				</template>
 			</div>
 		</div>
@@ -56,13 +79,37 @@ defineOptions({ name: 'VideoSceneNodeTree' })
 const store = useStore<VideoSceneState>(VideoSceneKey)
 const controller = new VideoSceneNodeTreeController(store)
 
-const selectedNodeId = computed(() => store.state.selectedNodeId)
+const selectedNodeIds = computed(() => store.state.selectedNodeIds ?? [])
 const rootEl = ref<HTMLElement | null>(null)
 const bodyEl = ref<HTMLElement | null>(null)
 defineExpose({ rootEl })
 
 const activeLayerName = computed(() => controller.getActiveLayer()?.name ?? '图层')
 const flatNodes = computed(() => controller.flatten(controller.getActiveElements(), 'root'))
+
+const nodeIndex = computed(() => {
+	const out = new Map<string, any>()
+	const walk = (list: any[]) => {
+		for (const n of list) {
+			out.set(String(n.id), n)
+			if (n.children?.length) walk(n.children)
+		}
+	}
+	walk(controller.getActiveElements() as any)
+	return out
+})
+
+const isLocked = (nodeId: string) => {
+	const n = nodeIndex.value.get(String(nodeId))
+	if (!n || n.category !== 'user') return false
+	return !!(n.props && (n.props as any).locked)
+}
+
+const toggleLock = (nodeId: string) => {
+	const n = nodeIndex.value.get(String(nodeId))
+	if (!n || n.category !== 'user') return
+	store.dispatch('updateNodeProps', { nodeId, patch: { locked: !isLocked(nodeId) } })
+}
 
 const draggingNodeId = ref<string>('')
 const dragOverNodeId = ref<string>('')
@@ -257,9 +304,25 @@ const onDropRoot = (ev: DragEvent) => {
 	position: relative;
 }
 
-.vs-tree-action {
+.vs-tree-name {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.vs-tree-actions {
 	margin-left: auto;
-	margin-right: 8px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding-right: 8px;
+}
+
+.vs-tree-action {
+	margin-left: 0;
+	margin-right: 0;
 	padding: 2px 6px;
 	border-radius: 6px;
 	border: 1px solid var(--vscode-border);
@@ -271,8 +334,30 @@ const onDropRoot = (ev: DragEvent) => {
 	cursor: pointer;
 }
 
+
+.vs-tree-lock {
+	width: 26px;
+	height: 20px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: transparent;
+	color: var(--vscode-fg-muted);
+	opacity: 1;
+	cursor: pointer;
+}
+
+.vs-tree-item.locked .vs-tree-lock {
+	color: var(--vscode-success);
+}
+
 .vs-tree-item:hover .vs-tree-action {
 	opacity: 1;
+}
+
+.vs-tree-item.locked .vs-tree-name {
+	opacity: 0.8;
 }
 
 .vs-rename {

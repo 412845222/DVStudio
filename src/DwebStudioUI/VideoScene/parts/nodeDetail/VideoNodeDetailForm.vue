@@ -15,6 +15,7 @@
 					<option value="rect">矩形</option>
 					<option value="text">文本</option>
 					<option value="image">图片</option>
+					<option value="line">线条</option>
 				</select>
 			</label>
 
@@ -56,6 +57,16 @@
 				@set-fit="setImageFit"
 			/>
 
+			<LineNodeForm
+				v-else-if="draft.type === 'line'"
+				:draft="draft"
+				:applyLine="applyLine"
+				:onNumberScrubPointerDown="onNumberScrubPointerDown"
+				:onNumberInputDblClick="onNumberInputDblClick"
+				:onNumberInputFocus="onNumberInputFocus"
+				:onNumberInputBlur="onNumberInputBlur"
+			/>
+
 			<NodeFiltersForm :layerId="selected.layerId" :nodeId="selected.node.id" :filters="filters" />
 		</form>
 	</div>
@@ -68,6 +79,7 @@ import { VideoSceneKey, type VideoSceneState, type VideoSceneTreeNode, type Vide
 import { VideoStudioKey, type VideoStudioState } from '../../../../store/videostudio'
 import CommonTransformForm from './forms/CommonTransformForm.vue'
 import ImageNodeForm from './forms/ImageNodeForm.vue'
+import LineNodeForm from './forms/LineNodeForm.vue'
 import NodeFiltersForm from './forms/NodeFiltersForm.vue'
 import RectNodeForm from './forms/RectNodeForm.vue'
 import TextNodeForm from './forms/TextNodeForm.vue'
@@ -124,6 +136,15 @@ const draft = reactive({
 	imagePath: '',
 	imageName: '',
 	imageFit: 'contain' as 'contain' | 'cover' | 'fill' | 'none' | 'scale-down',
+	startX: -88,
+	startY: 0,
+	endX: 88,
+	endY: 0,
+	anchorX: 0,
+	anchorY: -30,
+	lineColor: '#ffffff',
+	lineWidth: 4,
+	lineStyle: 'solid' as 'solid' | 'dashed',
 })
 
 const currentImageUrl = computed(() => {
@@ -185,6 +206,16 @@ const syncFromStore = () => {
 	draft.imagePath = assetUrl || String(p.imagePath ?? '').trim()
 	draft.imageName = assetName || String(p.imageName ?? '').trim()
 	draft.imageFit = (p.imageFit ?? draft.imageFit) as any
+	// line
+	draft.startX = Number(p.startX ?? draft.startX)
+	draft.startY = Number(p.startY ?? draft.startY)
+	draft.endX = Number(p.endX ?? draft.endX)
+	draft.endY = Number(p.endY ?? draft.endY)
+	draft.anchorX = Number(p.anchorX ?? draft.anchorX)
+	draft.anchorY = Number(p.anchorY ?? draft.anchorY)
+	draft.lineColor = p.lineColor ?? draft.lineColor
+	draft.lineWidth = Math.max(1, Number(p.lineWidth ?? draft.lineWidth))
+	draft.lineStyle = (p.lineStyle === 'dashed' ? 'dashed' : 'solid') as any
 }
 
 watch(
@@ -225,6 +256,15 @@ watch(
 			imageFit: p.imageFit,
 			imageId: p.imageId,
 			imageName: p.imageName,
+			startX: p.startX,
+			startY: p.startY,
+			endX: p.endX,
+			endY: p.endY,
+			anchorX: p.anchorX,
+			anchorY: p.anchorY,
+			lineColor: p.lineColor,
+			lineWidth: p.lineWidth,
+			lineStyle: p.lineStyle,
 		})
 	},
 	() => syncFromStore(),
@@ -302,7 +342,7 @@ const applyQuick = (action: QuickAction) => {
 	})
 }
 
-const applyProps = (kind: 'rect' | 'text' | 'image') => {
+const applyProps = (kind: 'rect' | 'text' | 'image' | 'line') => {
 	const s = selected.value
 	if (!s) return
 	if (kind === 'rect') {
@@ -324,12 +364,32 @@ const applyProps = (kind: 'rect' | 'text' | 'image') => {
 		store.dispatch('updateNodeProps', { layerId: s.layerId, nodeId: s.node.id, patch: { textContent: draft.textContent, fontSize: draft.fontSize, fontColor: draft.fontColor, fontStyle: draft.fontStyle } })
 		return
 	}
+	if (kind === 'line') {
+		store.dispatch('updateNodeProps', {
+			layerId: s.layerId,
+			nodeId: s.node.id,
+			patch: {
+				startX: draft.startX,
+				startY: draft.startY,
+				endX: draft.endX,
+				endY: draft.endY,
+				anchorX: draft.anchorX,
+				anchorY: draft.anchorY,
+				lineColor: draft.lineColor,
+				lineWidth: draft.lineWidth,
+				lineStyle: draft.lineStyle,
+			},
+		})
+		return
+	}
 	store.dispatch('updateNodeProps', {
 		layerId: s.layerId,
 		nodeId: s.node.id,
 		patch: { imageId: draft.imageId, imagePath: draft.imagePath, imageFit: draft.imageFit, imageName: draft.imageName },
 	})
 }
+
+const applyLine = () => applyProps('line')
 
 
 const filters = computed<VideoNodeFilter[]>(() => {

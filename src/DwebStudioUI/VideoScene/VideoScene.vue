@@ -1,6 +1,6 @@
 <template>
 	<div ref="shellRef" class="vs-shell">
-		<canvas ref="canvasRef" class="vs-canvas" />
+		<canvas ref="canvasRef" class="vs-canvas" :class="{ selecting: isCtrlDown }" />
 		<RulerOverlay
 			:width="shellSize.width"
 			:height="shellSize.height"
@@ -17,17 +17,36 @@
 
 		<!-- HTML overlay for selection resize handles -->
 		<div class="vs-overlay">
+			<div v-if="marquee.active" class="vs-marquee" :style="marquee.style" />
 			<template v-if="showGuides">
 				<div v-if="snapGuides.x != null" class="vs-snap-line v" :style="{ left: snapGuides.x + 'px' }" />
 				<div v-if="snapGuides.y != null" class="vs-snap-line h" :style="{ top: snapGuides.y + 'px' }" />
 			</template>
-			<template v-if="overlay.visible">
-				<div class="vs-handle tl" :style="overlay.handleStyles.tl" @pointerdown.stop.prevent="onHandleDown('tl', $event)" />
-				<div class="vs-handle tr" :style="overlay.handleStyles.tr" @pointerdown.stop.prevent="onHandleDown('tr', $event)" />
-				<div class="vs-handle bl" :style="overlay.handleStyles.bl" @pointerdown.stop.prevent="onHandleDown('bl', $event)" />
-				<div class="vs-handle br" :style="overlay.handleStyles.br" @pointerdown.stop.prevent="onHandleDown('br', $event)" />
-				<div v-if="overlay.showSize" class="vs-size" :style="overlay.sizeStyle">{{ overlay.sizeText }}</div>
+			<template v-if="multiControlPoints.length">
+				<div v-for="cp in multiControlPoints" :key="cp.nodeId" class="vs-cp-passive">
+					<ResizeControlPoints
+						:handle-styles="cp.handleStyles"
+						:show-size="false"
+						:size-text="''"
+						:size-style="{ left: '0px', top: '0px' }"
+						@handle-down="() => {}"
+					/>
+					<LineControlPoints
+						v-if="cp.lineHandleStyles"
+						:handle-styles="cp.lineHandleStyles"
+						@point-down="() => {}"
+					/>
+				</div>
 			</template>
+			<ResizeControlPoints
+				v-if="overlay.visible"
+				:handle-styles="overlay.handleStyles"
+				:show-size="overlay.showSize"
+				:size-text="overlay.sizeText"
+				:size-style="overlay.sizeStyle"
+				@handle-down="onHandleDown"
+			/>
+			<LineControlPoints v-if="lineOverlay.visible" :handle-styles="lineOverlay.handleStyles" @point-down="onLinePointDown" />
 		</div>
 
 		<div class="vs-tools">
@@ -120,6 +139,19 @@ import { TimelineStore } from '../../store/timeline'
 import { containsFrame, type TimelineFrameSpan } from '../../store/timeline/spans'
 import { DwebCanvasGLKey } from './VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from './anim/timelineAnimation'
+import ResizeControlPoints, { type Corner } from './parts/nodeControlPoints/ResizeControlPoints.vue'
+import LineControlPoints, { type LinePointKind } from './parts/nodeControlPoints/LineControlPoints.vue'
+
+const isCtrlDown = ref(false)
+const onKeyDown = (ev: KeyboardEvent) => {
+	if (ev.key === 'Control') isCtrlDown.value = true
+}
+const onKeyUp = (ev: KeyboardEvent) => {
+	if (ev.key === 'Control') isCtrlDown.value = false
+}
+const onBlur = () => {
+	isCtrlDown.value = false
+}
 
 let applyAnimRaf: number | null = null
 let isApplyingTimelineAnimation = false
@@ -150,6 +182,26 @@ const getSingleSelectedKeyframeCell = (): { layerId: string; frameIndex: number 
 
 let keyframeWriteRaf: number | null = null
 let pendingKeyframeWrite: { layerId: string; frameIndex: number } | null = null
+
+// 高频交互（拖拽/缩放）期间不落盘快照：只标记 dirty，并在结束时写回一次
+const keyframeDirtyLayerIds = new Set<string>()
+const isHighFreqEditing = () => {
+	return drag.value.mode === 'move' || resize.value.active || lineDrag.value.active
+}
+
+const flushDirtyKeyframeWriteBack = () => {
+	if (isApplyingTimelineAnimation) return
+	if (keyframeDirtyLayerIds.size === 0) return
+	const selected = getSingleSelectedKeyframeCell()
+	if (!selected) {
+		keyframeDirtyLayerIds.clear()
+		return
+	}
+	// 仅对“当前单选关键帧格子”的图层写回
+	if (keyframeDirtyLayerIds.has(selected.layerId)) scheduleWriteBackSelectedKeyframe(selected.layerId)
+	keyframeDirtyLayerIds.clear()
+}
+
 const scheduleWriteBackSelectedKeyframe = (layerId: string) => {
 	if (isApplyingTimelineAnimation) return
 	const selected = getSingleSelectedKeyframeCell()
@@ -500,11 +552,85 @@ const applySnapAxis = (
 
 // 鼠标交互：命中节点则拖拽移动；空白处拖拽平移；滚轴缩放
 type DragMode = 'none' | 'pan' | 'move'
-const drag = ref<{ mode: DragMode; last?: { x: number; y: number }; nodeId?: string; startWorld?: { x: number; y: number }; startXY?: { x: number; y: number } }>(
-	{ mode: 'none' }
+const drag = ref<{
+	mode: DragMode
+	last?: { x: number; y: number }
+	nodeId?: string
+	nodeIds?: string[]
+	startScreen?: { x: number; y: number }
+	startWorld?: { x: number; y: number }
+	startXY?: { x: number; y: number }
+	startXYById?: Record<string, { x: number; y: number }>
+}>({ mode: 'none' })
+
+const marquee = reactive({
+	active: false,
+	start: { x: 0, y: 0 },
+	end: { x: 0, y: 0 },
+	style: { left: '0px', top: '0px', width: '0px', height: '0px' } as Record<string, string>,
+})
+
+const updateMarqueeStyle = () => {
+	const x0 = Math.min(marquee.start.x, marquee.end.x)
+	const y0 = Math.min(marquee.start.y, marquee.end.y)
+	const x1 = Math.max(marquee.start.x, marquee.end.x)
+	const y1 = Math.max(marquee.start.y, marquee.end.y)
+	marquee.style = {
+		left: `${Math.round(x0)}px`,
+		top: `${Math.round(y0)}px`,
+		width: `${Math.round(Math.max(0, x1 - x0))}px`,
+		height: `${Math.round(Math.max(0, y1 - y0))}px`,
+	}
+}
+
+const getActiveLayerTree = () => {
+	const layerId = VideoSceneStore.state.activeLayerId
+	return VideoSceneStore.state.layers.find((l) => l.id === layerId)?.nodeTree ?? []
+}
+
+const buildParentMap = (nodes: VideoSceneTreeNode[]) => {
+	const parent = new Map<string, string | null>()
+	const walk = (list: VideoSceneTreeNode[], parentId: string | null) => {
+		for (const n of list) {
+			parent.set(n.id, parentId)
+			if (n.children?.length) walk(n.children, n.id)
+		}
+	}
+	walk(nodes, null)
+	return parent
+}
+
+const filterMovableSelection = (nodeIds: string[]) => {
+	const uniq = Array.from(new Set(nodeIds))
+	const selected = new Set(uniq)
+	const parent = buildParentMap(getActiveLayerTree())
+	return uniq.filter((id) => {
+		let p = parent.get(id) ?? null
+		while (p) {
+			if (selected.has(p)) return false
+			p = parent.get(p) ?? null
+		}
+		return true
+	})
+}
+
+const multiControlPoints = reactive(
+	[] as Array<{
+		nodeId: string
+		handleStyles: {
+			tl: Record<string, string>
+			tr: Record<string, string>
+			bl: Record<string, string>
+			br: Record<string, string>
+		}
+		lineHandleStyles?: {
+			start: Record<string, string>
+			anchor: Record<string, string>
+			end: Record<string, string>
+		}
+	}>
 )
 
-type Corner = 'tl' | 'tr' | 'bl' | 'br'
 const resize = ref<{
 	active: boolean
 	corner?: Corner
@@ -528,6 +654,26 @@ const overlay = reactive({
 	},
 	sizeStyle: { left: '0px', top: '0px' } as Record<string, string>,
 })
+
+const lineOverlay = reactive({
+	visible: false,
+	handleStyles: {
+		start: { left: '0px', top: '0px' } as Record<string, string>,
+		anchor: { left: '0px', top: '0px' } as Record<string, string>,
+		end: { left: '0px', top: '0px' } as Record<string, string>,
+	},
+})
+
+const lineDrag = ref<{
+	active: boolean
+	kind?: LinePointKind
+	nodeId?: string
+	layerId?: string
+	worldCenter?: { x: number; y: number }
+	rotation?: number
+}>(
+	{ active: false }
+)
 
 const getLocalPoint = (ev: PointerEvent) => {
 	const rect = (ev.currentTarget as HTMLCanvasElement).getBoundingClientRect()
@@ -595,15 +741,84 @@ const findLayerIdByNodeId = (nodeId: string) => {
 const updateOverlay = () => {
 	const canvas = dwebCanvas
 	const nodeId = VideoSceneStore.state.selectedNodeId
+	const selectedIds = VideoSceneStore.state.selectedNodeIds ?? []
+
+	// multi-select: show control points for all selected nodes (display-only)
+	if (canvas && selectedIds.length > 1) {
+		multiControlPoints.splice(0, multiControlPoints.length)
+		for (const id of selectedIds) {
+			const hit = findUserNodeWithWorld(id)
+			if (!hit) continue
+			const t = hit.node.transform as any
+			const cx = hit.world.x
+			const cy = hit.world.y
+			const w = Number(t.width ?? 0)
+			const h = Number(t.height ?? 0)
+			const rotation = Number((t as any).rotation ?? 0)
+			const cos = Math.cos(rotation)
+			const sin = Math.sin(rotation)
+			const rot = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
+			const tlw = rot(-w / 2, -h / 2)
+			const trw = rot(w / 2, -h / 2)
+			const blw = rot(-w / 2, h / 2)
+			const brw = rot(w / 2, h / 2)
+			const tl = canvas.worldToScreen(tlw)
+			const tr = canvas.worldToScreen(trw)
+			const bl = canvas.worldToScreen(blw)
+			const br = canvas.worldToScreen(brw)
+			const px = (v: number) => `${Math.round(v)}px`
+			const entry: (typeof multiControlPoints)[number] = {
+				nodeId: id,
+				handleStyles: {
+					tl: { left: px(tl.x), top: px(tl.y) },
+					tr: { left: px(tr.x), top: px(tr.y) },
+					bl: { left: px(bl.x), top: px(bl.y) },
+					br: { left: px(br.x), top: px(br.y) },
+				},
+			}
+
+			if ((hit.node as any)?.userType === 'line') {
+				const p = (hit.node as any)?.props ?? {}
+				const startX = Number(p.startX ?? -w / 2)
+				const startY = Number(p.startY ?? 0)
+				const endX = Number(p.endX ?? w / 2)
+				const endY = Number(p.endY ?? 0)
+				const anchorX = Number(p.anchorX ?? 0)
+				const anchorY = Number(p.anchorY ?? -h / 4)
+				const rot0 = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
+				const sW = rot0(startX, startY)
+				const aW = rot0(anchorX, anchorY)
+				const eW = rot0(endX, endY)
+				const sS = canvas.worldToScreen(sW)
+				const aS = canvas.worldToScreen(aW)
+				const eS = canvas.worldToScreen(eW)
+				entry.lineHandleStyles = {
+					start: { left: px(sS.x), top: px(sS.y) },
+					anchor: { left: px(aS.x), top: px(aS.y) },
+					end: { left: px(eS.x), top: px(eS.y) },
+				}
+			}
+
+			multiControlPoints.push(entry)
+		}
+		overlay.visible = false
+		overlay.showSize = false
+		lineOverlay.visible = false
+		return
+	}
+
+	multiControlPoints.splice(0, multiControlPoints.length)
 	if (!canvas || !nodeId) {
 		overlay.visible = false
 		overlay.showSize = false
+		lineOverlay.visible = false
 		return
 	}
 	const hit = findUserNodeWithWorld(nodeId)
 	if (!hit) {
 		overlay.visible = false
 		overlay.showSize = false
+		lineOverlay.visible = false
 		return
 	}
 	const t = hit.node.transform as any
@@ -631,6 +846,30 @@ const updateOverlay = () => {
 	overlay.handleStyles.br = { left: px(br.x), top: px(br.y) }
 	overlay.sizeText = `${Math.round(w)}×${Math.round(h)}`
 	overlay.sizeStyle = { left: px(tl.x + 10), top: px(tl.y - 18) }
+
+	// line control points (start/end/anchor)
+	if ((hit.node as any)?.userType === 'line') {
+		const p = (hit.node as any)?.props ?? {}
+		const startX = Number(p.startX ?? -w / 2)
+		const startY = Number(p.startY ?? 0)
+		const endX = Number(p.endX ?? w / 2)
+		const endY = Number(p.endY ?? 0)
+		const anchorX = Number(p.anchorX ?? 0)
+		const anchorY = Number(p.anchorY ?? -h / 4)
+		const rot0 = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
+		const sW = rot0(startX, startY)
+		const aW = rot0(anchorX, anchorY)
+		const eW = rot0(endX, endY)
+		const sS = canvas.worldToScreen(sW)
+		const aS = canvas.worldToScreen(aW)
+		const eS = canvas.worldToScreen(eW)
+		lineOverlay.visible = true
+		lineOverlay.handleStyles.start = { left: px(sS.x), top: px(sS.y) }
+		lineOverlay.handleStyles.anchor = { left: px(aS.x), top: px(aS.y) }
+		lineOverlay.handleStyles.end = { left: px(eS.x), top: px(eS.y) }
+	} else {
+		lineOverlay.visible = false
+	}
 }
 
 const onHandleDown = (corner: Corner, ev: PointerEvent) => {
@@ -669,7 +908,58 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 	}
 }
 
+const onLinePointDown = (kind: LinePointKind, ev: PointerEvent) => {
+	const canvas = ensureCanvas()
+	if (!canvas) return
+	const nodeId = VideoSceneStore.state.selectedNodeId
+	if (!nodeId) return
+	const hit = findUserNodeWithWorld(nodeId)
+	if (!hit) return
+	if ((hit.node as any)?.userType !== 'line') return
+	const rotation = Number(((hit.node.transform as any) ?? {}).rotation ?? 0)
+	lineDrag.value = {
+		active: true,
+		kind,
+		nodeId,
+		layerId: hit.layerId,
+		worldCenter: { x: hit.world.x, y: hit.world.y },
+		rotation,
+	}
+	try {
+		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
+	} catch {
+		// ignore
+	}
+}
+
 const onDocPointerMove = (ev: PointerEvent) => {
+	if (lineDrag.value.active) {
+		const canvas = ensureCanvas()
+		if (!canvas) return
+		const { nodeId, layerId, kind, worldCenter, rotation } = lineDrag.value
+		if (!nodeId || !layerId || !kind || !worldCenter || rotation == null) return
+		const p = getLocalPointFromClient(ev.clientX, ev.clientY)
+		const w = canvas.screenToWorld(p)
+		const dx = w.x - worldCenter.x
+		const dy = w.y - worldCenter.y
+		const cosR = Math.cos(-rotation)
+		const sinR = Math.sin(-rotation)
+		const lx = dx * cosR - dy * sinR
+		const ly = dx * sinR + dy * cosR
+		const patch: Record<string, any> = {}
+		if (kind === 'start') {
+			patch.startX = lx
+			patch.startY = ly
+		} else if (kind === 'end') {
+			patch.endX = lx
+			patch.endY = ly
+		} else {
+			patch.anchorX = lx
+			patch.anchorY = ly
+		}
+		VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
+		return
+	}
 	if (!resize.value.active) return
 	const canvas = ensureCanvas()
 	if (!canvas) return
@@ -811,12 +1101,18 @@ const onDocPointerMove = (ev: PointerEvent) => {
 }
 
 const onDocPointerUp = () => {
+	if (lineDrag.value.active) {
+		lineDrag.value = { active: false }
+		flushDirtyKeyframeWriteBack()
+		return
+	}
 	if (!resize.value.active) return
 	resize.value = { active: false }
 	overlay.showSize = false
 	snapGuides.x = null
 	snapGuides.y = null
 	snapLock.value = null
+	flushDirtyKeyframeWriteBack()
 }
 
 const onPointerDown = (ev: PointerEvent) => {
@@ -824,21 +1120,47 @@ const onPointerDown = (ev: PointerEvent) => {
 	const canvas = ensureCanvas()
 	if (!canvas) return
 	const p = getLocalPoint(ev)
+	if (ev.ctrlKey) {
+		marquee.active = true
+		marquee.start = { x: p.x, y: p.y }
+		marquee.end = { x: p.x, y: p.y }
+		updateMarqueeStyle()
+		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
+		return
+	}
 	const hit = scene?.hitTest(canvas, p) ?? null
 	if (hit) {
 		if (hit.layerId && hit.layerId !== VideoSceneStore.state.activeLayerId) {
 			VideoSceneStore.dispatch('setActiveLayer', { layerId: hit.layerId })
 			TimelineStore.dispatch('selectLayer', { layerId: hit.layerId })
 		}
-		VideoSceneStore.dispatch('setSelectedNode', { nodeId: hit.nodeId })
-		VideoSceneStore.dispatch('setFocusedNode', { nodeId: hit.nodeId })
-		const t = findUserNodeTransform(hit.nodeId)
 		const world = canvas.screenToWorld(p)
-		drag.value = {
-			mode: 'move',
-			nodeId: hit.nodeId,
-			startWorld: world,
-			startXY: { x: t?.x ?? 0, y: t?.y ?? 0 },
+		const selectedIds = VideoSceneStore.state.selectedNodeIds ?? []
+		const isMulti = selectedIds.length > 1
+		const isHitSelected = isMulti && selectedIds.includes(hit.nodeId)
+		if (isHitSelected) {
+			const activeLayerId = VideoSceneStore.state.activeLayerId
+			const sameLayerIds = selectedIds.filter((id) => findLayerIdByNodeId(id) === activeLayerId)
+			const movableIds = filterMovableSelection(sameLayerIds)
+			const startXYById: Record<string, { x: number; y: number }> = {}
+			for (const id of movableIds) {
+				const t = findUserNodeTransform(id)
+				if (!t) continue
+				startXYById[id] = { x: t.x, y: t.y }
+			}
+			drag.value = { mode: 'move', nodeId: hit.nodeId, nodeIds: movableIds, startScreen: p, startWorld: world, startXYById }
+		} else {
+			// 点击任意节点：清空多选，单选该节点
+			VideoSceneStore.dispatch('setSelectedNode', { nodeId: hit.nodeId })
+			VideoSceneStore.dispatch('setFocusedNode', { nodeId: hit.nodeId })
+			const t = findUserNodeTransform(hit.nodeId)
+			drag.value = {
+				mode: 'move',
+				nodeId: hit.nodeId,
+				startScreen: p,
+				startWorld: world,
+				startXY: { x: t?.x ?? 0, y: t?.y ?? 0 },
+			}
 		}
 	} else {
 		VideoSceneStore.dispatch('setSelectedNode', { nodeId: null })
@@ -848,6 +1170,13 @@ const onPointerDown = (ev: PointerEvent) => {
 }
 
 const onPointerMove = (ev: PointerEvent) => {
+	if (marquee.active) {
+		const p = getLocalPoint(ev)
+		marquee.end = { x: p.x, y: p.y }
+		updateMarqueeStyle()
+		return
+	}
+
 	if (drag.value.mode === 'none') return
 	const canvas = ensureCanvas()
 	if (!canvas) return
@@ -860,11 +1189,26 @@ const onPointerMove = (ev: PointerEvent) => {
 		return
 	}
 	if (drag.value.mode === 'move') {
-		if (!drag.value.nodeId || !drag.value.startWorld || !drag.value.startXY) return
+		if (!drag.value.nodeId || !drag.value.startWorld) return
 		const p = getLocalPoint(ev)
 		const world = canvas.screenToWorld(p)
 		const dx = world.x - drag.value.startWorld.x
 		const dy = world.y - drag.value.startWorld.y
+
+		// 多选拖动：整体移动
+		if (drag.value.nodeIds?.length && drag.value.startXYById) {
+			for (const nodeId of drag.value.nodeIds) {
+				const start = drag.value.startXYById[nodeId]
+				if (!start) continue
+				VideoSceneStore.dispatch('updateNodeTransform', {
+					nodeId,
+					patch: { x: start.x + dx, y: start.y + dy },
+				})
+			}
+			return
+		}
+
+		if (!drag.value.startXY) return
 
 		let localX = drag.value.startXY.x + dx
 		let localY = drag.value.startXY.y + dy
@@ -944,7 +1288,52 @@ const onPointerMove = (ev: PointerEvent) => {
 }
 
 const endPan = (ev: PointerEvent) => {
+	if (marquee.active) {
+		const canvas = ensureCanvas()
+		if (!canvas) return
+		marquee.active = false
+		updateMarqueeStyle()
+		try {
+			;(ev.currentTarget as HTMLElement)?.releasePointerCapture?.(ev.pointerId)
+		} catch {
+			// ignore
+		}
+
+		const x0 = Math.min(marquee.start.x, marquee.end.x)
+		const y0 = Math.min(marquee.start.y, marquee.end.y)
+		const x1 = Math.max(marquee.start.x, marquee.end.x)
+		const y1 = Math.max(marquee.start.y, marquee.end.y)
+		const w = Math.abs(x1 - x0)
+		const h = Math.abs(y1 - y0)
+
+		// 没有真实拖拽：视为普通点击（清空多选）
+		if (w < 4 && h < 4) {
+			const hit = scene?.hitTest(canvas, marquee.end) ?? null
+			if (hit) {
+				if (hit.layerId && hit.layerId !== VideoSceneStore.state.activeLayerId) {
+					VideoSceneStore.dispatch('setActiveLayer', { layerId: hit.layerId })
+					TimelineStore.dispatch('selectLayer', { layerId: hit.layerId })
+				}
+				VideoSceneStore.dispatch('setSelectedNode', { nodeId: hit.nodeId })
+				VideoSceneStore.dispatch('setFocusedNode', { nodeId: hit.nodeId })
+			} else {
+				VideoSceneStore.dispatch('setSelectedNode', { nodeId: null })
+			}
+			return
+		}
+
+		const w0 = canvas.screenToWorld({ x: x0, y: y0 })
+		const w1 = canvas.screenToWorld({ x: x1, y: y1 })
+		const hits = scene?.queryNodesInWorldRect({ x0: w0.x, y0: w0.y, x1: w1.x, y1: w1.y }) ?? []
+		const activeLayerId = VideoSceneStore.state.activeLayerId
+		const ids = hits.filter((h) => h.layerId === activeLayerId).map((h) => h.nodeId)
+		VideoSceneStore.dispatch('setSelectedNodes', { nodeIds: ids })
+		return
+	}
+
 	if (drag.value.mode === 'none') return
+	const prev = drag.value
+	const wasMove = prev.mode === 'move'
 	drag.value = { mode: 'none' }
 	snapGuides.x = null
 	snapGuides.y = null
@@ -954,6 +1343,19 @@ const endPan = (ev: PointerEvent) => {
 	} catch {
 		// ignore
 	}
+	// 多选状态下在已选节点上“点击”（无拖动）时：清空多选，收敛为单选该节点
+	if (wasMove && prev.nodeIds?.length && prev.startWorld && prev.startScreen && prev.nodeId) {
+		const canvas = ensureCanvas()
+		if (canvas) {
+			const p = getLocalPoint(ev)
+			const movedPx = Math.hypot(p.x - prev.startScreen.x, p.y - prev.startScreen.y)
+			if (movedPx < 3) {
+				VideoSceneStore.dispatch('setSelectedNode', { nodeId: prev.nodeId })
+				VideoSceneStore.dispatch('setFocusedNode', { nodeId: prev.nodeId })
+			}
+		}
+	}
+	if (wasMove) flushDirtyKeyframeWriteBack()
 }
 const onWheel = (ev: WheelEvent) => {
 	const canvas = ensureCanvas()
@@ -992,7 +1394,10 @@ onMounted(() => {
 			const type = String(m?.type ?? '')
 			if (type === 'updateNodeTransform' || type === 'updateNodeProps' || type === 'updateNodeName' || type === 'setNodeType' || type === 'moveNode') {
 				const lid = String(m?.payload?.layerId ?? '')
-				if (lid) scheduleWriteBackSelectedKeyframe(lid)
+					if (lid) {
+						if (isHighFreqEditing()) keyframeDirtyLayerIds.add(lid)
+						else scheduleWriteBackSelectedKeyframe(lid)
+					}
 			}
 		}
 		scene?.setState(state)
@@ -1044,6 +1449,9 @@ onMounted(() => {
 	canvasEl.addEventListener('wheel', onWheel, { passive: false })
 	document.addEventListener('pointermove', onDocPointerMove)
 	document.addEventListener('pointerup', onDocPointerUp)
+	window.addEventListener('keydown', onKeyDown)
+	window.addEventListener('keyup', onKeyUp)
+	window.addEventListener('blur', onBlur)
 })
 
 onBeforeUnmount(() => {
@@ -1068,6 +1476,9 @@ onBeforeUnmount(() => {
 	}
 	document.removeEventListener('pointermove', onDocPointerMove)
 	document.removeEventListener('pointerup', onDocPointerUp)
+	window.removeEventListener('keydown', onKeyDown)
+	window.removeEventListener('keyup', onKeyUp)
+	window.removeEventListener('blur', onBlur)
 	resizeObserver?.disconnect()
 	resizeObserver = null
 	unsubscribeVideoScene?.()
@@ -1098,7 +1509,7 @@ watch(
 )
 
 watch(
-	() => [VideoSceneStore.state.selectedNodeId, viewport.value.panX, viewport.value.panY, viewport.value.zoom, shellSize.value.width, shellSize.value.height] as const,
+	() => [VideoSceneStore.state.selectedNodeId, (VideoSceneStore.state.selectedNodeIds ?? []).join('|'), viewport.value.panX, viewport.value.panY, viewport.value.zoom, shellSize.value.width, shellSize.value.height] as const,
 	() => {
 		updateOverlay()
 	}
@@ -1123,11 +1534,33 @@ watch(
 	cursor: grab;
 }
 
+.vs-canvas.selecting {
+	cursor: default;
+}
+
 .vs-overlay {
 	position: absolute;
 	inset: 0;
 	pointer-events: none;
 	z-index: 4;
+}
+
+.vs-cp-passive {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+:deep(.vs-cp-passive .vs-handle) {
+	pointer-events: none !important;
+}
+
+.vs-marquee {
+	position: absolute;
+	border: 1px solid var(--vscode-border-accent);
+	background: var(--vscode-border-accent);
+	opacity: 0.15;
+	pointer-events: none;
 }
 
 .vs-snap-line {
@@ -1147,35 +1580,6 @@ watch(
 	left: 0;
 	right: 0;
 	height: 1px;
-}
-
-.vs-handle {
-	position: absolute;
-	width: 10px;
-	height: 10px;
-	border-radius: 50%;
-	background: var(--dweb-defualt-dark);
-	border: 2px solid var(--vscode-border-accent);
-	transform: translate(-50%, -50%);
-	pointer-events: auto;
-	cursor: nwse-resize;
-}
-
-.vs-handle.tr,
-.vs-handle.bl {
-	cursor: nesw-resize;
-}
-
-.vs-size {
-	position: absolute;
-	padding: 2px 6px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	font-size: 12px;
-	line-height: 16px;
-	pointer-events: none;
 }
 
 .vs-tools {

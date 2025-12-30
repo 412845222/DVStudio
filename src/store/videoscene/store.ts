@@ -3,7 +3,7 @@ import type { InjectionKey } from 'vue'
 import { NodeBase, type NodeBaseDTO, type NodeType, upgradeNodeType } from '../../DwebStudioUI/VideoScene/nodesType'
 
 export type VideoSceneProjectNodeKind = 'group' | 'stage' | 'grid' | 'unknown'
-export type VideoSceneUserNodeType = 'base' | 'rect' | 'text' | 'image'
+export type VideoSceneUserNodeType = 'base' | 'rect' | 'text' | 'image' | 'line'
 export type VideoSceneNodeCategory = 'project' | 'user'
 
 export type VideoSceneNodeTransform = {
@@ -77,6 +77,7 @@ export interface VideoSceneState {
   layers: VideoSceneLayer[]
   activeLayerId: string
   selectedNodeId: string | null
+  selectedNodeIds: string[]
 	focusedNodeId: string | null
   layoutInsets: VideoSceneLayoutInsets
 	imageAssets: Record<string, VideoSceneImageAsset>
@@ -212,7 +213,10 @@ const genId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.r
 
 const createRenderableNode = (type: VideoSceneUserNodeType): VideoSceneTreeNode => {
 	const id = genId(type)
-	const base: NodeBaseDTO = NodeBase.create(id, type === 'base' ? 'Node' : type === 'rect' ? 'Rect' : type === 'text' ? 'Text' : 'Image')
+  const base: NodeBaseDTO = NodeBase.create(
+    id,
+    type === 'base' ? 'Node' : type === 'rect' ? 'Rect' : type === 'text' ? 'Text' : type === 'image' ? 'Image' : 'Line'
+  )
 	const upgraded = upgradeNodeType(base, type as NodeType)
 	return {
 		id: upgraded.id,
@@ -243,6 +247,7 @@ const createDefaultState = (): VideoSceneState => ({
   ],
   activeLayerId: 'layer-1',
   selectedNodeId: null,
+  selectedNodeIds: [],
 	focusedNodeId: null,
   layoutInsets: { rightPanelWidth: 240, bottomToolbarHeight: 40 },
   imageAssets: {},
@@ -289,22 +294,48 @@ export const VideoSceneStore = createStore<VideoSceneState>({
       const layer = findLayer(state, payload.layerId)
       if (!layer) return
       state.activeLayerId = payload.layerId
-    // 若当前选中节点不在新图层中，则清空选中/焦点，避免节点树与舞台状态不一致
-    if (state.selectedNodeId) {
-      const exists = findNode(layer.nodeTree, state.selectedNodeId)
-      if (!exists) {
-        state.selectedNodeId = null
-        state.focusedNodeId = null
+
+      // 若当前选中节点不在新图层中，则清空选中/焦点，避免节点树与舞台状态不一致
+      // 同时维护多选列表：selectedNodeIds（多选） + selectedNodeId（最后选中的节点）
+      const baselineSelectedIds: string[] = []
+      if (Array.isArray(state.selectedNodeIds) && state.selectedNodeIds.length) {
+          baselineSelectedIds.push(...state.selectedNodeIds)
+      } else if (state.selectedNodeId) {
+          baselineSelectedIds.push(state.selectedNodeId)
       }
-    }
+      const filteredSelectedIds = baselineSelectedIds.filter((id) => !!findNode(layer.nodeTree, id))
+      state.selectedNodeIds = filteredSelectedIds
+      state.selectedNodeId = filteredSelectedIds[filteredSelectedIds.length - 1] ?? null
+      state.focusedNodeId = state.selectedNodeId
     },
     setSelectedNode(state, payload: { nodeId: string | null }) {
       state.selectedNodeId = payload.nodeId
-    state.focusedNodeId = payload.nodeId
+      state.selectedNodeIds = payload.nodeId ? [payload.nodeId] : []
+      state.focusedNodeId = payload.nodeId
     },
-  setFocusedNode(state, payload: { nodeId: string | null }) {
-    state.focusedNodeId = payload.nodeId
-  },
+		setSelectedNodes(state, payload: { nodeIds: string[] }) {
+			const nextIds = Array.isArray(payload.nodeIds)
+				? payload.nodeIds.map((s) => String(s || '').trim()).filter(Boolean)
+				: []
+			const uniq: string[] = []
+			const seen = new Set<string>()
+			for (const id of nextIds) {
+				if (seen.has(id)) continue
+				seen.add(id)
+				uniq.push(id)
+			}
+			state.selectedNodeIds = uniq
+			state.selectedNodeId = uniq[uniq.length - 1] ?? null
+			state.focusedNodeId = state.selectedNodeId
+		},
+		clearSelection(state) {
+			state.selectedNodeId = null
+			state.selectedNodeIds = []
+			state.focusedNodeId = null
+		},
+		setFocusedNode(state, payload: { nodeId: string | null }) {
+			state.focusedNodeId = payload.nodeId
+		},
     setLayoutInsets(state, payload: Partial<VideoSceneLayoutInsets>) {
       state.layoutInsets = {
         rightPanelWidth: clampPx(payload.rightPanelWidth, state.layoutInsets.rightPanelWidth),
@@ -316,6 +347,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     state.layers.push(createLayer(payload.layerId, payload.name))
     state.activeLayerId = payload.layerId
     state.selectedNodeId = null
+    state.selectedNodeIds = []
     state.focusedNodeId = null
   },
   removeLayer(state, payload: { layerId: string }) {
@@ -325,6 +357,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     if (state.activeLayerId === payload.layerId) {
       state.activeLayerId = state.layers[0]?.id ?? ''
       state.selectedNodeId = null
+      state.selectedNodeIds = []
       state.focusedNodeId = null
     }
   },
@@ -394,6 +427,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
       layer.nodeTree.push(node)
     }
     state.selectedNodeId = node.id
+    state.selectedNodeIds = [node.id]
     state.focusedNodeId = node.id
   },
   updateNodeTransform(state, payload: { layerId: string; nodeId: string; patch: Partial<VideoSceneNodeTransform> }) {
@@ -469,6 +503,17 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     if (state.focusedNodeId && !nodeExistsInAnyLayer(state.layers, state.focusedNodeId)) {
       state.focusedNodeId = null
     }
+    // 同步维护 selectedNodeIds（多选列表）
+    const baselineSelectedIds: string[] = []
+    if (Array.isArray(state.selectedNodeIds) && state.selectedNodeIds.length) {
+      baselineSelectedIds.push(...state.selectedNodeIds)
+    } else if (state.selectedNodeId) {
+      baselineSelectedIds.push(state.selectedNodeId)
+    }
+    const filteredSelectedIds = baselineSelectedIds.filter((id) => nodeExistsInAnyLayer(state.layers, id))
+    state.selectedNodeIds = filteredSelectedIds
+    state.selectedNodeId = filteredSelectedIds[filteredSelectedIds.length - 1] ?? null
+    state.focusedNodeId = state.selectedNodeId
   },
   },
   actions: {
@@ -495,6 +540,12 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     },
     setSelectedNode({ commit }, payload: { nodeId: string | null }) {
       commit('setSelectedNode', payload)
+    },
+    setSelectedNodes({ commit }, payload: { nodeIds: string[] }) {
+      commit('setSelectedNodes', payload)
+    },
+    clearSelection({ commit }) {
+      commit('clearSelection')
     },
 	setFocusedNode({ commit }, payload: { nodeId: string | null }) {
 		commit('setFocusedNode', payload)
