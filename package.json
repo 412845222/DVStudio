@@ -1,7 +1,38 @@
 {
   "name": "dweb-video-studio",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "description": "DVStudio (Dweb Video Studio) - Vite + Vue 3 + TypeScript + WebGL2 视频动画模板/编辑器，支持时间轴关键帧与 AI 对话辅助生成/修改场景。",
+  "license": "MIT",
+  "author": "DwebStudio",
+  "homepage": "https://www.dweb.club/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/412845222/DVStudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/412845222/DVStudio/issues"
+  },
+  "funding": {
+    "type": "url",
+    "url": "https://space.bilibili.com/22690066"
+  },
+  "keywords": [
+    "DVStudio",
+    "dweb",
+    "video",
+    "animation",
+    "editor",
+    "timeline",
+    "keyframes",
+    "webgl2",
+    "vue",
+    "vite",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

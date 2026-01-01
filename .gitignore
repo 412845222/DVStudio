@@ -12,15 +12,68 @@ dist
 dist-ssr
 *.local
 *.sw?
-aidoc
+
+# Local planning docs (not part of repo)
+/aidoc/
+
+# --- Python / Django ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Django
+*.sqlite3
+db.sqlite3
+local_settings.py
+media/
+staticfiles/
+
+# Tests / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Secrets (never commit)
+.env
+.env.*
+*.key
+*.pem
+**/deepseek_secrets.py
+django-app/dwebapp/deepseek_secrets.py
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
+
+# Temp / backup files
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.rej
+*.patch
+*.swp
+*.swo
+
+# Misc local caches
+.cache/
 
