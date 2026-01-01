@@ -4,6 +4,9 @@ import App from './App.vue'
 import router from './router'
 import { editorPersistence } from './adapters/editorPersistence'
 import { dispatchDvsTimelineNav } from './adapters/windowEventBridge'
+import { DVS_EVENTS, type DvsEditorNodeDeleteDetail, type DvsEditorNodePatchDetail } from './core/events/dvsEvents'
+import { VideoSceneStore } from './store/videoscene'
+import { TimelineStore } from './store/timeline'
 
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
 window.addEventListener('contextmenu', (e) => {
@@ -44,6 +47,17 @@ window.addEventListener(
 			return
 		}
 
+		// Backspace/Delete: 删除选中节点（仅在非输入框且确实有舞台选中时触发）
+		if (!isEditable && (e.key === 'Backspace' || e.key === 'Delete')) {
+			const selected = Array.isArray(VideoSceneStore.state.selectedNodeIds) ? VideoSceneStore.state.selectedNodeIds : []
+			if (selected.length) {
+				e.preventDefault()
+				e.stopPropagation()
+				void VideoSceneStore.dispatch('deleteSelectedNodes')
+				return
+			}
+		}
+
 		// 屏蔽浏览器“上一页/下一页”快捷键，并转为时间轴水平滚动
 		// - Alt + ← / →
 		// - BrowserBack / BrowserForward
@@ -58,6 +72,40 @@ window.addEventListener(
 	},
 	{ capture: true }
 )
+
+// Agent/UI 或外部集成：通过 window 事件执行节点“修改/删除”
+window.addEventListener(DVS_EVENTS.EditorNodePatched, (e) => {
+	const detail = (e as CustomEvent<DvsEditorNodePatchDetail>).detail
+	if (!detail || typeof detail.nodeId !== 'string' || !detail.nodeId.trim()) return
+	void VideoSceneStore.dispatch('patchNodeById', {
+		nodeId: detail.nodeId,
+		layerId: detail.layerId,
+		patch: {
+			name: detail.patch?.name as any,
+			userType: detail.patch?.userType as any,
+			transform: (detail.patch?.transform as any) ?? undefined,
+			props: (detail.patch?.props as any) ?? undefined,
+		},
+	})
+})
+
+window.addEventListener(DVS_EVENTS.EditorNodeDeleted, (e) => {
+	const detail = (e as CustomEvent<DvsEditorNodeDeleteDetail>).detail
+	if (!detail || typeof detail.nodeId !== 'string' || !detail.nodeId.trim()) return
+	void VideoSceneStore.dispatch('deleteNodeById', { nodeId: detail.nodeId, layerId: detail.layerId })
+})
+
+// 删除节点时，同步清理时间轴里引用该 nodeId 的所有快照数据
+VideoSceneStore.subscribe((mutation) => {
+	if (mutation.type !== 'deleteNodesById') return
+	const payload = (mutation as any).payload as any
+	const raw = Array.isArray(payload?.purgeNodeIds)
+		? payload.purgeNodeIds
+		: (Array.isArray(payload?.nodeIds) ? payload.nodeIds : [])
+	const nodeIds = raw.map((s: any) => String(s || '').trim()).filter(Boolean)
+	if (!nodeIds.length) return
+	void TimelineStore.dispatch('purgeNodeIds', { nodeIds })
+})
 
 // 鼠标侧键（上一页/下一页）拦截：
 // - MouseEvent.button: 3/4 通常对应 Back/Forward

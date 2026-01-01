@@ -7,6 +7,7 @@ import {
   buildRenderPipeline,
   clearSelection as clearSelectionPatch,
   collectAllNames,
+  detachNode,
   findLayer,
   findNode,
   moveNodeInLayer,
@@ -20,6 +21,8 @@ import {
   updateNodeName as updateNodeNameCore,
   updateUserNodeProps,
   updateUserNodeTransform,
+  getLayerNodeTree,
+  computeMovableSelectionIds,
 } from '../../core/scene'
 
 import type {
@@ -53,6 +56,19 @@ const clampPx = (v: unknown, fallback: number) => {
   const n = Math.floor(Number(v))
   if (!Number.isFinite(n)) return fallback
   return Math.max(0, n)
+}
+
+const normalizeNodeIdentityInPlace = (node: any) => {
+  if (!node || typeof node !== 'object') return
+  if (typeof node.id !== 'string' || !node.id.trim()) {
+    node.id = `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  }
+  if (typeof node.createdAt !== 'number' || !Number.isFinite(node.createdAt)) {
+    node.createdAt = Date.now()
+  }
+  if (Array.isArray(node.children)) {
+    for (const c of node.children) normalizeNodeIdentityInPlace(c)
+  }
 }
 
 export const VideoSceneKey: InjectionKey<Store<VideoSceneState>> = Symbol('VideoSceneStore')
@@ -185,6 +201,12 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 
   applyStageSnapshot(state, payload: { layers: VideoSceneLayer[] }) {
     const nextLayers = Array.isArray(payload.layers) ? payload.layers : []
+		for (const layer of nextLayers) {
+			if (!layer || typeof layer !== 'object') continue
+			if (Array.isArray((layer as any).nodeTree)) {
+				for (const n of (layer as any).nodeTree) normalizeNodeIdentityInPlace(n)
+			}
+		}
     state.layers = nextLayers
     // activeLayerId 必须存在
     if (!state.layers.find((l) => l.id === state.activeLayerId)) {
@@ -192,6 +214,83 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     }
       Object.assign(state, reconcileSelectionAcrossLayers(state.layers, state))
   },
+    patchNodeById(
+      state,
+      payload: {
+        nodeId: string
+        layerId?: string
+        patch: {
+          name?: string
+          userType?: VideoSceneUserNodeType
+          transform?: Partial<VideoSceneNodeTransform>
+          props?: NodePropsPatch
+        }
+      }
+    ) {
+      const nodeId = String(payload.nodeId || '').trim()
+      if (!nodeId) return
+      const explicitLayerId = typeof payload.layerId === 'string' && payload.layerId.trim() ? payload.layerId.trim() : ''
+      const findLayerId = () => {
+        if (explicitLayerId) {
+          const layer = findLayer(state, explicitLayerId)
+          if (layer && findNode(layer.nodeTree, nodeId)) return explicitLayerId
+        }
+        for (const layer of state.layers) {
+          if (findNode(layer.nodeTree, nodeId)) return layer.id
+        }
+        return ''
+      }
+      const layerId = findLayerId()
+      if (!layerId) return
+      const layer = findLayer(state, layerId)
+      if (!layer) return
+
+      const p = payload.patch || ({} as any)
+      if (typeof p.userType === 'string' && p.userType.trim()) {
+        setUserNodeType(layer, nodeId, p.userType as VideoSceneUserNodeType)
+      }
+      if (p.transform && typeof p.transform === 'object') {
+        updateUserNodeTransform(layer, nodeId, p.transform)
+      }
+      if (p.props && typeof p.props === 'object') {
+        updateUserNodeProps(layer, nodeId, p.props)
+      }
+      if (typeof p.name === 'string' && p.name.trim()) {
+        updateNodeNameCore(layer, nodeId, p.name.trim())
+      }
+    },
+    deleteNodesById(state, payload: { nodeIds: string[]; layerId?: string }) {
+      const rawIds = Array.isArray(payload.nodeIds) ? payload.nodeIds : []
+      const ids = Array.from(new Set(rawIds.map((s) => String(s || '').trim()).filter(Boolean)))
+      if (!ids.length) return
+      const explicitLayerId = typeof payload.layerId === 'string' && payload.layerId.trim() ? payload.layerId.trim() : ''
+
+      const deleteInLayer = (layerId: string, nodeId: string) => {
+        const layer = findLayer(state, layerId)
+        if (!layer) return
+        detachNode(layer.nodeTree, nodeId)
+      }
+
+      for (const nodeId of ids) {
+        let layerId = ''
+        if (explicitLayerId) {
+          const layer = findLayer(state, explicitLayerId)
+          if (layer && findNode(layer.nodeTree, nodeId)) layerId = explicitLayerId
+        }
+        if (!layerId) {
+          for (const layer of state.layers) {
+            if (findNode(layer.nodeTree, nodeId)) {
+              layerId = layer.id
+              break
+            }
+          }
+        }
+        if (!layerId) continue
+        deleteInLayer(layerId, nodeId)
+        if (state.focusedNodeId === nodeId) state.focusedNodeId = null
+      }
+      Object.assign(state, reconcileSelectionAcrossLayers(state.layers, state))
+    },
   },
   actions: {
     upsertImageAsset({ commit }, payload: { id: string; url: string; name?: string }) {
@@ -281,5 +380,67 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 	applyStageSnapshot({ commit }, payload: { layers: VideoSceneLayer[] }) {
 		commit('applyStageSnapshot', payload)
 	},
+  patchNodeById(
+    { commit },
+    payload: {
+      nodeId: string
+      layerId?: string
+      patch: { name?: string; userType?: VideoSceneUserNodeType; transform?: Partial<VideoSceneNodeTransform>; props?: NodePropsPatch }
+    }
+  ) {
+    commit('patchNodeById', payload)
+  },
+  deleteNodesById({ commit, state }, payload: { nodeIds: string[]; layerId?: string }) {
+    const rawIds = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
+    const ids = Array.from(new Set(rawIds.map((s) => String(s || '').trim()).filter(Boolean)))
+    if (!ids.length) return
+    const explicitLayerId = typeof payload.layerId === 'string' && payload.layerId.trim() ? payload.layerId.trim() : ''
+
+    const collectSubtreeIds = (node: VideoSceneTreeNode | null | undefined, out: Set<string>) => {
+      if (!node) return
+      const id = String((node as any).id ?? '').trim()
+      if (id) out.add(id)
+      const children = (node as any).children
+      if (Array.isArray(children) && children.length) {
+        for (const c of children) collectSubtreeIds(c, out)
+      }
+    }
+
+    const purge = new Set<string>()
+    for (const nodeId of ids) {
+      let layerId = ''
+      if (explicitLayerId) {
+        const layer = findLayer(state, explicitLayerId)
+        if (layer && findNode(layer.nodeTree, nodeId)) layerId = explicitLayerId
+      }
+      if (!layerId) {
+        for (const layer of state.layers as VideoSceneLayer[]) {
+          if (findNode(layer.nodeTree, nodeId)) {
+            layerId = layer.id
+            break
+          }
+        }
+      }
+      if (!layerId) continue
+      const layer = findLayer(state, layerId)
+      if (!layer) continue
+      const n = findNode(layer.nodeTree, nodeId)
+      collectSubtreeIds(n, purge)
+    }
+
+    commit('deleteNodesById', { ...payload, nodeIds: ids, purgeNodeIds: Array.from(purge) } as any)
+  },
+  deleteNodeById({ dispatch }, payload: { nodeId: string; layerId?: string }) {
+    dispatch('deleteNodesById', { nodeIds: [payload.nodeId], layerId: payload.layerId })
+  },
+  deleteSelectedNodes({ dispatch, state }) {
+    const layerId = String(state.activeLayerId || '')
+    const ids = Array.isArray(state.selectedNodeIds) ? state.selectedNodeIds : []
+    if (!layerId || !ids.length) return
+    const tree = getLayerNodeTree(state, layerId)
+    const filtered = computeMovableSelectionIds(tree, ids)
+    if (!filtered.length) return
+    dispatch('deleteNodesById', { nodeIds: filtered, layerId })
+  },
   },
 })

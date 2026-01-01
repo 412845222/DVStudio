@@ -6,6 +6,7 @@ export const createVideoSceneLayer = (layerId: string, name: string): VideoScene
 	nodeTree: [
 		{
 			id: 'root',
+			createdAt: Date.now(),
 			name,
 			category: 'project',
 			projectKind: 'group',

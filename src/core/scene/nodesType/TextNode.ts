@@ -10,6 +10,7 @@ export class TextNode extends NodeBase {
 			fontSize: 24,
 			fontColor: '#ffffff',
 			fontStyle: 'normal',
+			textAlign: 'center',
 		}
 	}
 
@@ -19,6 +20,7 @@ export class TextNode extends NodeBase {
 		const fontSize = Number(base.fontSize)
 		const fontColor = typeof base.fontColor === 'string' ? base.fontColor : '#ffffff'
 		const fontStyle = typeof base.fontStyle === 'string' ? base.fontStyle : 'normal'
+		const textAlign = base.textAlign === 'left' || base.textAlign === 'right' || base.textAlign === 'center' ? base.textAlign : 'center'
 		return {
 			id: dto.id,
 			name: dto.name,
@@ -29,6 +31,7 @@ export class TextNode extends NodeBase {
 				fontSize: Number.isFinite(fontSize) ? fontSize : 24,
 				fontColor,
 				fontStyle,
+				textAlign,
 			},
 		}
 	}

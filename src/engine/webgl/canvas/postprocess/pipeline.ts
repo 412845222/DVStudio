@@ -42,9 +42,14 @@ export class CanvasPostProcess {
 		padY: number,
 		filters: any[],
 		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number; scale?: number }) => void
-	): WebGLTexture {
+	): { tex: WebGLTexture; padX: number; padY: number } {
 		this.ensureResources(gl)
-		const t = this.targets.ensureWithPadding(gl, id, contentW, contentH, padX, padY, canvas.getFilterScale())
+
+		// Desired pixels-per-world-unit for stable screen-space appearance.
+		// Note: we may clamp it below this to avoid runaway allocations under extreme zoom.
+		const desiredScale = canvas.getFilterScale()
+		const safe = this.computeSafeScaleAndPad(gl, contentW, contentH, padX, padY, desiredScale)
+		const t = this.targets.ensureWithPadding(gl, id, contentW, contentH, safe.padX, safe.padY, safe.scale)
 
 		const prevBlend = gl.isEnabled(gl.BLEND)
 		gl.disable(gl.BLEND)
@@ -173,7 +178,49 @@ export class CanvasPostProcess {
 		gl.viewport(0, 0, (gl.canvas as HTMLCanvasElement).width, (gl.canvas as HTMLCanvasElement).height)
 		if (prevBlend) gl.enable(gl.BLEND)
 
-		return currentTex
+		return { tex: currentTex, padX: t.padX, padY: t.padY }
+	}
+
+	private computeSafeScaleAndPad(
+		gl: WebGL2RenderingContext,
+		contentW: number,
+		contentH: number,
+		padX: number,
+		padY: number,
+		desiredScale: number
+	): { scale: number; padX: number; padY: number } {
+		const sDesired = Math.max(1e-3, Number(desiredScale) || 1)
+		let effectivePadX = Math.max(0, Number(padX) || 0)
+		let effectivePadY = Math.max(0, Number(padY) || 0)
+		let scale = sDesired
+
+		// Guardrails:
+		// - cap max dimension to keep worst-case single-target costs bounded
+		// - cap max pixels to avoid huge allocations even if within MAX_TEXTURE_SIZE
+		const gpuMaxTexSize = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 4096
+		const maxDimPx = Math.max(256, Math.min(gpuMaxTexSize, 1536))
+		const maxPixels = 1_200_000 // per texture; target allocates 3 textures
+
+		const clampScale = (padXw: number, padYw: number, s: number) => {
+			const s0 = Math.max(1e-3, Number(s) || 1)
+			const bw = Math.max(1e-3, (Number(contentW) || 0) + 2 * Math.max(0, Number(padXw) || 0))
+			const bh = Math.max(1e-3, (Number(contentH) || 0) + 2 * Math.max(0, Number(padYw) || 0))
+			const byDim = Math.min(maxDimPx / bw, maxDimPx / bh)
+			const byPixels = Math.sqrt(maxPixels / (bw * bh))
+			return Math.max(1e-3, Math.min(s0, byDim, byPixels))
+		}
+
+		// Iterate a few times to keep pad in *pixels* stable when we clamp scale.
+		// desiredPadPx = padWorld * desiredScale; when scale is clamped down, increase padWorld.
+		for (let i = 0; i < 3; i++) {
+			const nextScale = clampScale(effectivePadX, effectivePadY, scale)
+			const padFactor = Math.max(1, sDesired / nextScale)
+			effectivePadX = (Math.max(0, Number(padX) || 0) || 0) * padFactor
+			effectivePadY = (Math.max(0, Number(padY) || 0) || 0) * padFactor
+			scale = nextScale
+		}
+
+		return { scale, padX: effectivePadX, padY: effectivePadY }
 	}
 
 	private ensureResources(gl: WebGL2RenderingContext) {

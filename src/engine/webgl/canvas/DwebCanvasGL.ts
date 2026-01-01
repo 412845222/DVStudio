@@ -99,6 +99,7 @@ export class DwebCanvasGL {
 	private whiteTex: WebGLTexture
 	private imagePool = new DwebImagePool()
 	private postprocess = new CanvasPostProcess()
+	private filterNodePressure = 0
 
 	// local-space programs (for offscreen filter targets)
 	private localVbo: WebGLBuffer
@@ -158,7 +159,7 @@ export class DwebCanvasGL {
 		padY: number,
 		filters: any[],
 		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number }) => void
-	): WebGLTexture {
+	): { tex: WebGLTexture; padX: number; padY: number } {
 		return this.postprocess.applyFilters(this.gl, this, id, contentW, contentH, padX, padY, filters, renderLocal)
 	}
 
@@ -187,7 +188,21 @@ export class DwebCanvasGL {
 	 * and DPR to keep results crisp on HiDPI.
 	 */
 	getFilterScale() {
-		return Math.max(1e-3, this.viewport.zoom * this.dpr)
+		const base = this.viewport.zoom * this.dpr
+		// Under heavy filter load (e.g. many glow/blur lines), clamp scale to prevent
+		// runaway offscreen allocations and GPU time. This is a controlled quality downgrade.
+		let cap = Number.POSITIVE_INFINITY
+		if (this.filterNodePressure >= 80) cap = 1.25 * this.dpr
+		else if (this.filterNodePressure >= 40) cap = 1.75 * this.dpr
+		return Math.max(1e-3, Math.min(base, cap))
+	}
+
+	/**
+	 * Hint current frame filter pressure (number of nodes with expensive filters).
+	 * Used to auto-downgrade offscreen scale for stability.
+	 */
+	setFilterNodePressure(count: number) {
+		this.filterNodePressure = Math.max(0, Math.floor(Number(count) || 0))
 	}
 
 	get size() {

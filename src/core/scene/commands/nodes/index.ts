@@ -6,6 +6,7 @@ import type { NodePropsPatch, NodeTransformPatch } from './types'
 import type { SelectionPatch } from '../selection/types'
 import { setSingleSelection } from '../selection'
 import { genId } from './utils'
+import { computeTextAutoSize } from './textAutoSize'
 
 export type { AddRenderableNodeArgs, AddRenderableNodeResult, NodePropsPatch, NodeTransformPatch } from './types'
 
@@ -26,6 +27,7 @@ export const createRenderableNode = (type: VideoSceneUserNodeType): VideoSceneTr
 	const upgraded = upgradeNodeType(base, type as unknown as NodeType)
 	return {
 		id: upgraded.id,
+		createdAt: Date.now(),
 		name: upgraded.name,
 		category: 'user',
 		userType: upgraded.type as unknown as VideoSceneUserNodeType,
@@ -84,6 +86,52 @@ export const addNodeTreeToLayer = (args: {
 	if (!layer) return null
 	const node = args.node
 
+	const normalizeNodeTreeInPlace = (n: any) => {
+		if (!n || typeof n !== 'object') return
+		if (typeof n.id !== 'string' || !n.id.trim()) n.id = genId('node')
+		if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt)) n.createdAt = Date.now()
+		if (typeof n.name !== 'string' || !n.name.trim()) n.name = 'Node'
+		// Ensure category is present (default to user because addNodeTreeToLayer is mainly for renderables).
+		if (n.category !== 'user' && n.category !== 'project') n.category = 'user'
+
+		if (n.category === 'user') {
+			// Match createRenderableNode() output shape.
+			if (!n.transform || typeof n.transform !== 'object') {
+				n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
+			} else {
+				const t = n.transform as any
+				n.transform = {
+					x: typeof t.x === 'number' && Number.isFinite(t.x) ? t.x : 0,
+					y: typeof t.y === 'number' && Number.isFinite(t.y) ? t.y : 0,
+					width: typeof t.width === 'number' && Number.isFinite(t.width) ? Math.max(1, t.width) : 200,
+					height: typeof t.height === 'number' && Number.isFinite(t.height) ? Math.max(1, t.height) : 120,
+					rotation: typeof t.rotation === 'number' && Number.isFinite(t.rotation) ? t.rotation : 0,
+					opacity:
+						typeof t.opacity === 'number' && Number.isFinite(t.opacity) ? Math.max(0, Math.min(1, t.opacity)) : 1,
+				}
+			}
+			if (!n.props || typeof n.props !== 'object' || Array.isArray(n.props)) n.props = {}
+
+			// Text autosize: always derive w/h from text + font on insertion.
+			const t = String((n as any).userType ?? (n as any).type ?? '')
+			if (t === 'text') {
+				const size = computeTextAutoSize(n.props ?? {})
+				if (size) {
+					n.transform.width = size.width
+					n.transform.height = size.height
+				}
+			}
+		}
+
+		if (Array.isArray(n.children)) {
+			for (const c of n.children) normalizeNodeTreeInPlace(c)
+		} else if (n.children !== undefined) {
+			delete n.children
+		}
+	}
+
+	normalizeNodeTreeInPlace(node)
+
 	const existingNames = collectAllNames(layer.nodeTree)
 	ensureUniqueNamesForTree(node, existingNames)
 
@@ -129,6 +177,20 @@ export const updateUserNodeProps = (layer: VideoSceneLayer, nodeId: string, patc
 	if (!node || node.category !== 'user') return false
 	if (!node.props) node.props = {}
 	Object.assign(node.props, patch)
+
+	// Text autosize: any time text/font changes, recompute width/height.
+	if (String(node.userType ?? '') === 'text' && node.transform) {
+		const hasTextChange = Object.prototype.hasOwnProperty.call(patch, 'textContent')
+		const hasFontChange = Object.prototype.hasOwnProperty.call(patch, 'fontSize') || Object.prototype.hasOwnProperty.call(patch, 'fontStyle')
+		const hasAlignChange = Object.prototype.hasOwnProperty.call(patch, 'textAlign')
+		if (hasTextChange || hasFontChange || hasAlignChange) {
+			const size = computeTextAutoSize(node.props as any)
+			if (size) {
+				node.transform.width = size.width
+				node.transform.height = size.height
+			}
+		}
+	}
 	return true
 }
 
@@ -157,5 +219,12 @@ export const setUserNodeType = (layer: VideoSceneLayer, nodeId: string, type: Vi
 	node.transform.height = upgraded.transform.height
 	node.transform.rotation = upgraded.transform.rotation
 	node.transform.opacity = upgraded.transform.opacity
+	if (type === 'text') {
+		const size = computeTextAutoSize(node.props as any)
+		if (size) {
+			node.transform.width = size.width
+			node.transform.height = size.height
+		}
+	}
 	return true
 }

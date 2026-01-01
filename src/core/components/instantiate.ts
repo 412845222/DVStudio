@@ -99,13 +99,14 @@ const defaultNameForType = (userType: VideoSceneUserNodeType) =>
 					: 'Node'
 
 const createUserNode = (
+	forcedId: string | undefined,
 	userType: VideoSceneUserNodeType,
 	name: string,
 	props: Record<string, JsonValue>,
 	transformPatch: TemplateNodeTransform | undefined,
 	genId: (prefix: string) => string
 ): VideoSceneTreeNode => {
-	const id = genId(userType)
+	const id = typeof forcedId === 'string' && forcedId.trim() ? forcedId.trim() : genId(userType)
 	const base: NodeBaseDTO = NodeBase.create(id, name)
 	const upgraded = upgradeNodeType(base, userType as unknown as NodeType)
 	const baseTransform: VideoSceneNodeTransform = {
@@ -119,6 +120,7 @@ const createUserNode = (
 	const transform = applyTransformPatch(baseTransform, transformPatch)
 	return {
 		id: upgraded.id,
+		createdAt: Date.now(),
 		name: upgraded.name,
 		category: 'user',
 		userType: upgraded.type as unknown as VideoSceneUserNodeType,
@@ -147,6 +149,7 @@ export function instantiateValidatedTemplate(
 
 	const fallbackUserType = options.fallbackUserType ?? 'base'
 	const genId = options.genId ?? defaultGenId
+	const getNodeId = options.getNodeId
 
 	const params: Record<string, JsonValue> = {
 		...buildDefaults(template),
@@ -166,8 +169,8 @@ export function instantiateValidatedTemplate(
 
 		const substitutedTransform = n.transform ? (deepSubstitute(n.transform as unknown as JsonValue, params) as JsonValue) : undefined
 		const transformPatch = substitutedTransform && isRecord(substitutedTransform) ? (substitutedTransform as unknown as TemplateNodeTransform) : n.transform
-
-		const node = createUserNode(userType, name, props, transformPatch, genId)
+		const forcedId = getNodeId ? getNodeId({ templateId: template.templateId, localId: n.localId, userType }) : undefined
+		const node = createUserNode(forcedId, userType, name, props, transformPatch, genId)
 		localIdToNode[n.localId] = node
 		localIdToNodeId[n.localId] = node.id
 		parentLocalIdByLocalId[n.localId] = n.parentLocalId

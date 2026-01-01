@@ -29,6 +29,38 @@
 			<span class="vs-k">样式</span>
 			<input v-model="draft.fontStyle" class="vs-input" type="text" placeholder="normal" @change="applyText" />
 		</label>
+		<label class="vs-row">
+			<span class="vs-k">对齐</span>
+			<div class="vs-quick">
+				<button
+					class="vs-quick-btn"
+					type="button"
+					:class="{ active: draft.textAlign === 'left' }"
+					title="左对齐"
+					@click.stop.prevent="draft.textAlign = 'left'; applyText()"
+				>
+					L
+				</button>
+				<button
+					class="vs-quick-btn"
+					type="button"
+					:class="{ active: draft.textAlign === 'center' }"
+					title="居中"
+					@click.stop.prevent="draft.textAlign = 'center'; applyText()"
+				>
+					C
+				</button>
+				<button
+					class="vs-quick-btn"
+					type="button"
+					:class="{ active: draft.textAlign === 'right' }"
+					title="右对齐"
+					@click.stop.prevent="draft.textAlign = 'right'; applyText()"
+				>
+					R
+				</button>
+			</div>
+		</label>
 	</div>
 </template>
 
@@ -40,6 +72,7 @@ type DraftText = {
 	fontSize: number
 	fontColor: string
 	fontStyle: string
+	textAlign: 'left' | 'center' | 'right'
 }
 
 defineProps<{

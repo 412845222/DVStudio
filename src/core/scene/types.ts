@@ -19,6 +19,7 @@ export type VideoSceneNodeProps = {
 
 export type VideoSceneTreeNode = {
 	id: string
+	createdAt?: number
 	name: string
 	category: VideoSceneNodeCategory
 	projectKind?: VideoSceneProjectNodeKind

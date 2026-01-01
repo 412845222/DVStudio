@@ -47,6 +47,11 @@ export type InstantiateTemplateOptions = {
 	 */
 	genId?: (prefix: string) => string
 	/**
+	 * 为模板节点生成 nodeId（可用于让舞台节点 id 可由 templateId/localId 推导）。
+	 * 如果提供，将优先于 genId。
+	 */
+	getNodeId?: (args: { templateId: string; localId: string; userType: VideoSceneUserNodeType }) => string
+	/**
 	 * 当 TemplateNode.type 无法映射到已知 userType 时使用。
 	 */
 	fallbackUserType?: VideoSceneUserNodeType

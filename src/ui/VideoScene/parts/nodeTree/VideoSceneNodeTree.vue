@@ -59,6 +59,15 @@
 								/>
 							</svg>
 						</button>
+						<button
+							class="vs-tree-delete"
+							type="button"
+							title="删除"
+							@pointerdown.stop
+							@click.stop.prevent="deleteNode(n.id)"
+						>
+							×
+						</button>
 						<button class="vs-tree-action" type="button" @click.stop.prevent="startRename(n.id, n.name)">重命名</button>
 					</div>
 				</template>
@@ -109,6 +118,11 @@ const toggleLock = (nodeId: string) => {
 	const n = nodeIndex.value.get(String(nodeId))
 	if (!n || n.category !== 'user') return
 	store.dispatch('updateNodeProps', { nodeId, patch: { locked: !isLocked(nodeId) } })
+}
+
+const deleteNode = (nodeId: string) => {
+	if (renamingId.value) return
+	store.dispatch('deleteNodeById', { nodeId })
 }
 
 const draggingNodeId = ref<string>('')
@@ -346,6 +360,21 @@ const onDropRoot = (ev: DragEvent) => {
 	color: var(--vscode-fg-muted);
 	opacity: 1;
 	cursor: pointer;
+}
+
+.vs-tree-delete {
+	width: 22px;
+	height: 20px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: transparent;
+	color: var(--vscode-fg-muted);
+	opacity: 1;
+	cursor: pointer;
+	font-size: 14px;
+	line-height: 1;
 }
 
 .vs-tree-item.locked .vs-tree-lock {

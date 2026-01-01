@@ -38,6 +38,7 @@ export type TextNodeProps = {
 	fontSize: number
 	fontColor: string
 	fontStyle: string
+	textAlign: 'left' | 'center' | 'right'
 }
 
 export type TextNodeDTO = Omit<NodeBaseDTO, 'type' | 'props'> & {

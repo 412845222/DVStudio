@@ -132,6 +132,7 @@ const draft = reactive({
 	fontSize: 24,
 	fontColor: '#ffffff',
 	fontStyle: 'normal',
+	textAlign: 'center' as 'left' | 'center' | 'right',
 	imageId: '',
 	imagePath: '',
 	imageName: '',
@@ -199,6 +200,7 @@ const syncFromStore = () => {
 	draft.fontSize = Number(p.fontSize ?? draft.fontSize)
 	draft.fontColor = p.fontColor ?? draft.fontColor
 	draft.fontStyle = p.fontStyle ?? draft.fontStyle
+	draft.textAlign = (p.textAlign === 'left' || p.textAlign === 'right' || p.textAlign === 'center' ? p.textAlign : draft.textAlign) as any
 	draft.imageId = String(p.imageId ?? draft.imageId)
 	const fromAsset = draft.imageId ? (store.state as any).imageAssets?.[draft.imageId] : null
 	const assetUrl = String(fromAsset?.url ?? '').trim()
@@ -252,6 +254,7 @@ watch(
 			fontSize: p.fontSize,
 			fontColor: p.fontColor,
 			fontStyle: p.fontStyle,
+			textAlign: p.textAlign,
 			imagePath: p.imagePath,
 			imageFit: p.imageFit,
 			imageId: p.imageId,
@@ -361,7 +364,17 @@ const applyProps = (kind: 'rect' | 'text' | 'image' | 'line') => {
 		return
 	}
 	if (kind === 'text') {
-		store.dispatch('updateNodeProps', { layerId: s.layerId, nodeId: s.node.id, patch: { textContent: draft.textContent, fontSize: draft.fontSize, fontColor: draft.fontColor, fontStyle: draft.fontStyle } })
+		store.dispatch('updateNodeProps', {
+			layerId: s.layerId,
+			nodeId: s.node.id,
+			patch: {
+				textContent: draft.textContent,
+				fontSize: draft.fontSize,
+				fontColor: draft.fontColor,
+				fontStyle: draft.fontStyle,
+				textAlign: draft.textAlign,
+			},
+		})
 		return
 	}
 	if (kind === 'line') {
@@ -580,6 +593,11 @@ const filters = computed<VideoNodeFilter[]>(() => {
 
 .vs-quick-btn:hover {
 	border-color: var(--vscode-border-accent);
+}
+
+.vs-quick-btn.active {
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-quick-btn:focus {

@@ -17,6 +17,8 @@ import type { TimelineCellKey, TimelineLayer, TimelineState } from '../../core/t
 import { createDefaultTimelineState } from '../../core/timeline'
 import { cloneJsonSafe } from '../../core/shared/cloneJsonSafe'
 
+import type { VideoSceneTreeNode } from '../../core/scene'
+
 export type { TimelineCellKey, TimelineLayer, TimelineState } from '../../core/timeline'
 
 const clampInt = (v: unknown, min: number, max: number) => {
@@ -50,6 +52,36 @@ const clamp01 = (v: unknown) => {
 const defaultEasingCurve = () => ({ x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' })
 
 const frameKey = (frameIndex: number) => String(Math.floor(frameIndex))
+
+const purgeTreeNodesById = (
+  root: VideoSceneTreeNode[] | undefined,
+  ids: Set<string>
+): { nodes: VideoSceneTreeNode[]; changed: boolean } => {
+  const src = Array.isArray(root) ? root : []
+  let changed = false
+  const out: VideoSceneTreeNode[] = []
+  for (const n of src) {
+    if (!n || typeof n !== 'object') continue
+    const id = String((n as any).id ?? '')
+    if (id && ids.has(id)) {
+      changed = true
+      continue
+    }
+    const children = (n as any).children
+    if (Array.isArray(children) && children.length) {
+      const r = purgeTreeNodesById(children, ids)
+      if (r.changed) {
+        changed = true
+        out.push({ ...(n as any), children: r.nodes })
+      } else {
+        out.push(n)
+      }
+    } else {
+      out.push(n)
+    }
+  }
+  return { nodes: out, changed }
+}
 
 // cloneJsonSafe moved to core/shared for reuse.
 
@@ -545,6 +577,76 @@ export const TimelineStore = createStore<TimelineState>({
     }
     state.stageKeyframeVersion++
   },
+
+  // --- 节点删除：清理时间轴快照中的 nodeId ---
+  purgeNodeIds(state, payload: { nodeIds: string[] }) {
+    const raw = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
+    const nodeIds = raw.map((s) => String(s || '').trim()).filter(Boolean)
+    if (!nodeIds.length) return
+    const ids = new Set(nodeIds)
+
+    // 1) 清理 nodeKeyframesByLayer[layerId][frame] 的 nodesById
+    let nodeKfChanged = false
+    const nextNodeKf: TimelineState['nodeKeyframesByLayer'] = {}
+    for (const [layerId, layerMap] of Object.entries(state.nodeKeyframesByLayer)) {
+      let layerChanged = false
+      const nextLayerMap: Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>> = {}
+      for (const [fk, nodesById] of Object.entries(layerMap ?? {})) {
+        const before = nodesById ?? {}
+        let frameChanged = false
+        const nextNodes: Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }> = {}
+        for (const [nid, snap] of Object.entries(before)) {
+          if (ids.has(nid)) {
+            frameChanged = true
+            continue
+          }
+          nextNodes[nid] = snap
+        }
+        if (frameChanged) layerChanged = true
+        if (Object.keys(nextNodes).length) nextLayerMap[fk] = nextNodes
+        else if (Object.keys(before).length) layerChanged = true
+      }
+      if (Object.keys(nextLayerMap).length) nextNodeKf[layerId] = layerChanged ? nextLayerMap : (layerMap as any)
+      if (layerChanged) nodeKfChanged = true
+    }
+    if (nodeKfChanged) {
+      state.nodeKeyframesByLayer = nextNodeKf
+      state.nodeKeyframeVersion++
+    }
+
+    // 2) 清理 stageKeyframesByFrame[frame].layers[].nodeTree
+    let stageChanged = false
+    const nextStage: TimelineState['stageKeyframesByFrame'] = {}
+    for (const [fk, v] of Object.entries(state.stageKeyframesByFrame ?? {})) {
+      const layers = Array.isArray((v as any)?.layers) ? ((v as any).layers as any[]) : []
+      let frameChanged = false
+      const nextLayers: any[] = []
+      for (const layer of layers) {
+        if (!layer || typeof layer !== 'object') {
+          nextLayers.push(layer)
+          continue
+        }
+        const tree = (layer as any).nodeTree
+        if (Array.isArray(tree) && tree.length) {
+          const r = purgeTreeNodesById(tree, ids)
+          if (r.changed) {
+            frameChanged = true
+            nextLayers.push({ ...(layer as any), nodeTree: r.nodes })
+          } else {
+            nextLayers.push(layer)
+          }
+        } else {
+          nextLayers.push(layer)
+        }
+      }
+      nextStage[fk] = frameChanged ? ({ ...(v as any), layers: nextLayers } as any) : v
+      if (frameChanged) stageChanged = true
+    }
+    if (stageChanged) {
+      state.stageKeyframesByFrame = nextStage
+      state.stageKeyframeVersion++
+    }
+  },
   },
   actions: {
     setFrameCount({ commit }, payload: { frameCount: number }) {
@@ -622,6 +724,9 @@ export const TimelineStore = createStore<TimelineState>({
 	) {
 		commit('setStageKeyframeSnapshotRange', payload)
 	},
+  purgeNodeIds({ commit }, payload: { nodeIds: string[] }) {
+    commit('purgeNodeIds', payload)
+  },
   },
 })
 

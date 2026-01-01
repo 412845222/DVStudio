@@ -47,6 +47,77 @@ export class DwebVideoScene implements IDwebGLScene {
 		['line', this.lineRenderer],
 	])
 
+	private frameFilterQualityMax: 'low' | 'mid' | 'high' = 'high'
+
+	private getLineFilterContentSize(
+		node: { transform: { width?: number; height?: number }; props?: Record<string, unknown> },
+		zoom: number
+	): { w: number; h: number } {
+		const zoomSafe = Math.max(1e-3, Number(zoom) || 1)
+		const baseW = Math.max(1, Number(node.transform?.width ?? 1))
+		const baseH = Math.max(1, Number(node.transform?.height ?? 1))
+
+		const p = (node.props as any) ?? {}
+		const startX = Number(p?.startX ?? -baseW / 2)
+		const startY = Number(p?.startY ?? 0)
+		const endX = Number(p?.endX ?? baseW / 2)
+		const endY = Number(p?.endY ?? 0)
+		const anchorX = Number(p?.anchorX ?? 0)
+		const anchorY = Number(p?.anchorY ?? -baseH / 4)
+		const lineWidthPx = Math.max(1, Number(p?.lineWidth ?? 4))
+		const thickness = lineWidthPx / zoomSafe
+		const halfT = Math.max(0, thickness / 2)
+
+		const p0 = { x: startX, y: startY }
+		const p1 = { x: anchorX, y: anchorY }
+		const p2 = { x: endX, y: endY }
+		const d01 = Math.hypot(p1.x - p0.x, p1.y - p0.y)
+		const d12 = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+		const approxLen = d01 + d12
+		const segCount = Math.max(8, Math.min(96, Math.floor(approxLen / 18) + 12))
+
+		let minX = Number.POSITIVE_INFINITY
+		let minY = Number.POSITIVE_INFINITY
+		let maxX = Number.NEGATIVE_INFINITY
+		let maxY = Number.NEGATIVE_INFINITY
+		for (let i = 0; i <= segCount; i++) {
+			const t = i / segCount
+			const mt = 1 - t
+			const lx = mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x
+			const ly = mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y
+			if (!Number.isFinite(lx) || !Number.isFinite(ly)) continue
+			minX = Math.min(minX, lx)
+			minY = Math.min(minY, ly)
+			maxX = Math.max(maxX, lx)
+			maxY = Math.max(maxY, ly)
+		}
+
+		if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+			return { w: baseW, h: baseH }
+		}
+
+		minX -= halfT
+		minY -= halfT
+		maxX += halfT
+		maxY += halfT
+
+		// Offscreen targets are centered at (0,0). Use symmetric extents to ensure
+		// lines remain visible even if anchors are moved outside the default node box.
+		const maxAbsX = Math.max(Math.abs(minX), Math.abs(maxX))
+		const maxAbsY = Math.max(Math.abs(minY), Math.abs(maxY))
+		return { w: Math.max(1, 2 * maxAbsX), h: Math.max(1, 2 * maxAbsY) }
+	}
+
+	private getFilterContentSize(
+		node: { type: string; transform: { width?: number; height?: number }; props?: Record<string, unknown> },
+		zoom: number
+	): { w: number; h: number } {
+		const w = Math.max(1, Number(node.transform?.width ?? 1))
+		const h = Math.max(1, Number(node.transform?.height ?? 1))
+		if (node.type === 'line') return this.getLineFilterContentSize(node, zoom)
+		return { w, h }
+	}
+
 	// rounded-rect now uses pure WebGL (see drawRoundedRect*)
 
 	setStageSize(size: { width: number; height: number }) {
@@ -134,14 +205,23 @@ export class DwebVideoScene implements IDwebGLScene {
 		return 'mid'
 	}
 
+	private clampQuality(q: 'low' | 'mid' | 'high', max: 'low' | 'mid' | 'high') {
+		if (max === 'high') return q
+		if (max === 'mid') return q === 'high' ? 'mid' : q
+		return 'low'
+	}
+
 	private getBlurParams(filter: any): { factor: number; baseIterations: number; maxStepPx: number; maxIterations: number } {
-		const q = this.resolveFilterQuality(filter)
+		const q0 = this.resolveFilterQuality(filter)
+		const q = this.clampQuality(q0, this.frameFilterQualityMax)
 		if (q === 'high') {
 			return { factor: 6, baseIterations: 6, maxStepPx: 6, maxIterations: 14 }
 		}
 		if (q === 'mid') {
 			return { factor: 4, baseIterations: 4, maxStepPx: 8, maxIterations: 12 }
 		}
+		// extra-low tuning under extreme load
+		if (this.frameFilterQualityMax === 'low') return { factor: 1.5, baseIterations: 1, maxStepPx: 12, maxIterations: 8 }
 		return { factor: 2, baseIterations: 2, maxStepPx: 10, maxIterations: 10 }
 	}
 
@@ -217,6 +297,17 @@ export class DwebVideoScene implements IDwebGLScene {
 		canvas.pruneFilterTargets(new Set(this.renderOrder.map((n) => n.id)))
 		this.textRenderer.prune(canvas, new Set(this.renderOrder.map((n) => n.id)))
 
+		// Frame filter pressure: used to auto-downgrade quality for stability.
+		let filterNodeCount = 0
+		for (const n of this.renderOrder) {
+			const list: any[] = Array.isArray((n.props as any)?.filters) ? ((n.props as any).filters as any[]) : []
+			if (!list.length) continue
+			// count only expensive filters
+			if (list.some((f: any) => String(f?.type || '') === 'glow' || String(f?.type || '') === 'blur')) filterNodeCount++
+		}
+		canvas.setFilterNodePressure(filterNodeCount)
+		this.frameFilterQualityMax = filterNodeCount >= 80 ? 'low' : filterNodeCount >= 40 ? 'mid' : 'high'
+
 		// --- canvas background grid (for positioning) ---
 		const { width: screenW, height: screenH } = canvas.size
 		const tl = canvas.screenToWorld({ x: 0, y: 0 })
@@ -263,8 +354,9 @@ export class DwebVideoScene implements IDwebGLScene {
 			const rotation = (n.transform as any).rotation ?? 0
 			const opacity = Math.max(0, Math.min(1, (n.transform as any).opacity ?? 1))
 			const nodeFilters: any[] = Array.isArray((n.props as any)?.filters) ? ((n.props as any).filters as any[]) : []
-			const nodeW = Math.max(1, Number(n.transform.width ?? 1))
-			const nodeH = Math.max(1, Number(n.transform.height ?? 1))
+			const contentSize = this.getFilterContentSize(n as any, zoom)
+			const nodeW = contentSize.w
+			const nodeH = contentSize.h
 			if (nodeFilters.length > 0) {
 				// compute required padding so blur/glow can extend outside node bounds (Flash-like)
 				let maxXpx = 0
@@ -318,27 +410,89 @@ export class DwebVideoScene implements IDwebGLScene {
 				const padYpx = Math.min(512, Math.ceil(maxYpx) + 6)
 				const padX = padXpx / zoom
 				const padY = padYpx / zoom
-				const tex = canvas.applyFilters(n.id, nodeW, nodeH, padX, padY, normalizedFilters, (target) => {
-					this.renderSubtreeIntoLocalTarget(canvas, target as LocalTargetSize, n.id, true)
+				const out = canvas.applyFilters(n.id, nodeW, nodeH, padX, padY, normalizedFilters, (target) => {
+					// Filters should affect only the node's own visuals, not its children.
+					// Rendering the full subtree into the offscreen target causes child artifacts
+					// (inner-glow, clipping to black, text box bleed).
+					this.renderNodeSelfIntoLocalTarget(canvas, target as LocalTargetSize, n.id, 0, 0, true)
 				})
 				this.drawFilteredTextureToWorld(
 					canvas,
 					n.transform.x,
 					n.transform.y,
-					nodeW + padX * 2,
-					nodeH + padY * 2,
-					tex,
+					nodeW + out.padX * 2,
+					nodeH + out.padY * 2,
+					out.tex,
 					opacity,
 					rotation
 				)
-
-				// 父节点滤镜：输出应覆盖整棵子树，避免子节点后续重复绘制。
-				this.markDescendantsSkipped(n.id, skipped)
 				continue
 			}
 
 			this.getRenderer(n.type).renderWorld(canvas, n, { opacity, rotation })
 		}
+
+		// --- selection overlay for base nodes ---
+		// Base nodes are structural containers and are invisible by default.
+		// When selected, draw a border as a top-most overlay (not affected by filters).
+		if (this.state) {
+			const ids: string[] = []
+			if (this.state.selectedNodeIds?.length) ids.push(...this.state.selectedNodeIds)
+			else if (this.state.selectedNodeId) ids.push(this.state.selectedNodeId)
+			if (ids.length) {
+				const zoom2 = Math.max(1e-3, canvas.viewport.zoom)
+				const borderW2 = 1 / zoom2
+				const borderColor = themeRgba.border(0.95)
+				const transparent = { r: 0, g: 0, b: 0, a: 0 }
+				for (const id of ids) {
+					const entry = this.nodesById.get(id)
+					if (!entry) continue
+					if (entry.type !== 'base') continue
+					const w = Math.max(1, Number(entry.transform.width ?? 1))
+					const h = Math.max(1, Number(entry.transform.height ?? 1))
+					const rot = Number((entry.transform as any).rotation ?? 0)
+					canvas.drawRoundedRect(entry.transform.x, entry.transform.y, w, h, 0, transparent, borderColor, borderW2, rot)
+				}
+			}
+		}
+	}
+
+	private renderNodeSelfIntoLocalTarget(
+		canvas: DwebCanvasGL,
+		target: LocalTargetSize,
+		nodeId: string,
+		x: number,
+		y: number,
+		ignoreSelfOpacityRotation: boolean
+	) {
+		const entry = this.nodesById.get(nodeId)
+		if (!entry) return
+
+		const localW = Math.max(1, Number(entry.localTransform.width ?? 1))
+		const localH = Math.max(1, Number(entry.localTransform.height ?? 1))
+		const nodeOpacity = Math.max(0, Math.min(1, Number((entry.localTransform as any).opacity ?? 1)))
+		const nodeRotation = Number((entry.localTransform as any).rotation ?? 0)
+
+		const visualOpacity = ignoreSelfOpacityRotation ? 1 : nodeOpacity
+		const visualRotation = ignoreSelfOpacityRotation ? 0 : nodeRotation
+		const localNode: RenderNode = {
+			...entry,
+			transform: {
+				...entry.localTransform,
+				x,
+				y,
+				width: localW,
+				height: localH,
+				rotation: visualRotation,
+				opacity: visualOpacity,
+			},
+		}
+		this.getRenderer(entry.type).renderLocal(
+			canvas,
+			target,
+			localNode,
+			{ opacity: visualOpacity, rotation: visualRotation } satisfies RenderContext
+		)
 	}
 
 	private markDescendantsSkipped(rootId: string, skipped: Set<string>) {
@@ -377,6 +531,15 @@ export class DwebVideoScene implements IDwebGLScene {
 		const nodeOpacity = Math.max(0, Math.min(1, Number((entry.localTransform as any).opacity ?? 1)))
 		const nodeRotation = Number((entry.localTransform as any).rotation ?? 0)
 
+		// For lines, the visual path can extend outside the default node box.
+		// When applying glow/blur, allocate offscreen targets based on the real path bounds.
+		const filterContentSize = this.getFilterContentSize(
+			{ type: entry.type, transform: { width: localW, height: localH }, props: entry.props as any },
+			zoom
+		)
+		const filterW = filterContentSize.w
+		const filterH = filterContentSize.h
+
 		const childFilters: any[] = Array.isArray((entry.props as any)?.filters) ? (((entry.props as any).filters as any[]) ?? []) : []
 		const normalizedChildFilters = childFilters
 			.map((f) => (f && typeof f === 'object' ? { ...(f as any) } : f))
@@ -399,7 +562,8 @@ export class DwebVideoScene implements IDwebGLScene {
 		const hasSelfFilters = normalizedChildFilters.length > 0
 
 		if (hasSelfFilters && !ignoreSelfOpacityRotation) {
-			// 子节点自身带滤镜：先离屏渲染该节点子树，再把结果贴回到当前 target。
+			// 节点自身带滤镜：只渲染“自身视觉”到离屏，然后贴回。
+			// 不把 children 渲染进离屏，否则会产生子节点被父滤镜影响/裁切等问题。
 			let maxXpx = 0
 			let maxYpx = 0
 			const normalizedFilters = normalizedChildFilters
@@ -425,10 +589,31 @@ export class DwebVideoScene implements IDwebGLScene {
 			const padYpx = Math.min(512, Math.ceil(maxYpx) + 6)
 			const padX = padXpx / zoom
 			const padY = padYpx / zoom
-			const tex = canvas.applyFilters(entry.id, localW, localH, padX, padY, normalizedFilters, (childTarget) => {
-				this.renderSubtreeIntoLocalTargetImpl(canvas, childTarget as LocalTargetSize, entry.id, 0, 0, true)
+			const out = canvas.applyFilters(entry.id, filterW, filterH, padX, padY, normalizedFilters, (childTarget) => {
+				this.renderNodeSelfIntoLocalTarget(canvas, childTarget as LocalTargetSize, entry.id, 0, 0, true)
 			})
-			this.drawFilteredTextureToLocal(canvas, target, x, y, localW + padX * 2, localH + padY * 2, tex, nodeOpacity, nodeRotation)
+			this.drawFilteredTextureToLocal(
+				canvas,
+				target,
+				x,
+				y,
+				filterW + out.padX * 2,
+				filterH + out.padY * 2,
+				out.tex,
+				nodeOpacity,
+				nodeRotation
+			)
+
+			// children should render normally on top of the filtered parent
+			if (entry.children?.length) {
+				for (const childId of entry.children) {
+					const child = this.nodesById.get(childId)
+					if (!child) continue
+					const dx = Number(child.localTransform.x ?? 0)
+					const dy = Number(child.localTransform.y ?? 0)
+					this.renderSubtreeIntoLocalTargetImpl(canvas, target, childId, x + dx, y + dy, false)
+				}
+			}
 			return
 		}
 

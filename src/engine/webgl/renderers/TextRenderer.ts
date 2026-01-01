@@ -44,7 +44,11 @@ export class TextRenderer extends NodeRenderer {
 	private getTextTexture(canvas: DwebCanvasGL, node: RenderNode): WebGLTexture {
 		const fontColor = node.props?.fontColor ?? '#ffffff'
 		const fontStyle = node.props?.fontStyle ?? 'normal'
-		const key = `text:${node.id}:${node.text ?? ''}:${node.fontSize ?? 24}:${fontColor}:${fontStyle}:${node.transform.width}:${node.transform.height}`
+		const textAlignRaw = String((node.props as any)?.textAlign ?? 'center')
+		const textAlign: CanvasTextAlign =
+			textAlignRaw === 'left' || textAlignRaw === 'right' || textAlignRaw === 'center' ? (textAlignRaw as any) : 'center'
+		// NOTE: key must include layout-affecting props (e.g. textAlign), otherwise cache will keep old layout.
+		const key = `text:${node.id}:${node.text ?? ''}:${node.fontSize ?? 24}:${fontColor}:${fontStyle}:${textAlign}:${node.transform.width}:${node.transform.height}`
 		let tex = this.textures.get(key)
 		if (tex) return tex
 
@@ -66,11 +70,24 @@ export class TextRenderer extends NodeRenderer {
 		const ctx2d = this.textCtx
 		ctx2d.clearRect(0, 0, w, h)
 		ctx2d.textBaseline = 'middle'
-		ctx2d.textAlign = 'center'
+		ctx2d.textAlign = textAlign
 		const fontSize = Math.max(1, Number(node.fontSize ?? 24))
 		ctx2d.font = `${String(fontStyle)} ${fontSize}px sans-serif`
 		ctx2d.fillStyle = String(fontColor)
-		ctx2d.fillText(String(node.text ?? ''), w / 2, h / 2)
+
+		// Multiline support: split by newline and draw line by line.
+		const rawText = String(node.text ?? '')
+		const lines = rawText.split(/\r?\n/g)
+		const lineHeight = fontSize * 1.4
+		const totalH = lines.length * lineHeight
+		// center the block vertically
+		let y = h / 2 - totalH / 2 + lineHeight / 2
+		const padX = Math.max(2, Math.round(fontSize * 0.6))
+		const x = textAlign === 'left' ? padX : textAlign === 'right' ? w - padX : w / 2
+		for (const line of lines) {
+			ctx2d.fillText(line, x, y)
+			y += lineHeight
+		}
 
 		canvas.updateTextureFromCanvas(tex, this.textCanvas, { wrap: 'clamp' })
 		this.textures.set(key, tex)

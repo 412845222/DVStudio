@@ -1,4 +1,11 @@
-import { DVS_EVENTS, type DvsEditorSavedDetail, type DvsEditorStateRestoredDetail, type DvsTimelineNavDetail } from '../core/events/dvsEvents'
+import {
+	DVS_EVENTS,
+	type DvsEditorNodeDeleteDetail,
+	type DvsEditorNodePatchDetail,
+	type DvsEditorSavedDetail,
+	type DvsEditorStateRestoredDetail,
+	type DvsTimelineNavDetail,
+} from '../core/events/dvsEvents'
 
 export const dispatchDvsTimelineNav = (dir: -1 | 1, reason: DvsTimelineNavDetail['reason'] = 'program') => {
 	const detail: DvsTimelineNavDetail = {
@@ -16,4 +23,12 @@ export const dispatchDvsEditorStateRestored = (reason: DvsEditorStateRestoredDet
 
 export const dispatchDvsEditorSaved = (payload: DvsEditorSavedDetail) => {
 	window.dispatchEvent(new CustomEvent(DVS_EVENTS.EditorSaved, { detail: payload }))
+}
+
+export const dispatchDvsEditorNodePatched = (detail: DvsEditorNodePatchDetail) => {
+	window.dispatchEvent(new CustomEvent(DVS_EVENTS.EditorNodePatched, { detail }))
+}
+
+export const dispatchDvsEditorNodeDeleted = (detail: DvsEditorNodeDeleteDetail) => {
+	window.dispatchEvent(new CustomEvent(DVS_EVENTS.EditorNodeDeleted, { detail }))
 }
