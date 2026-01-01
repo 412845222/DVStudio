@@ -16,6 +16,10 @@ dist-ssr
 # Local planning docs (not part of repo)
 /aidoc/
 
+# Repo meta folders you don't want to publish
+/.github/
+/.vscode/
+
 # --- Python / Django ---
 __pycache__/
 *.py[cod]
@@ -51,8 +55,6 @@ coverage.xml
 django-app/dwebapp/deepseek_secrets.py
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
 .idea
 .DS_Store
 Thumbs.db
