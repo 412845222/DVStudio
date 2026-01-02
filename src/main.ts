@@ -111,6 +111,8 @@ VideoSceneStore.subscribe((mutation) => {
 // - MouseEvent.button: 3/4 通常对应 Back/Forward
 // - MouseEvent.buttons: bitmask 8/16 对应 XButton1/XButton2
 // 备注：不同浏览器/驱动可能只触发 auxclick。
+let lastMouseNavAt = 0
+let lastMouseNavDir: -1 | 1 | 0 = 0
 const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	const me = e as MouseEvent
 	const btn = me.button
@@ -119,16 +121,22 @@ const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	const isForward = btn === 4 || (mask & 16) === 16
 	if (!isBack && !isForward) return
 
+	// One physical click can fire multiple events (e.g. pointerdown + auxclick, or down/up pairs)
+	// depending on browser/driver. De-dupe to avoid scrolling twice.
+	const dir: -1 | 1 = isBack ? -1 : 1
+	const now = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+	if (dir === lastMouseNavDir && now - lastMouseNavAt < 250) return
+	lastMouseNavAt = now
+	lastMouseNavDir = dir
+
 	e.preventDefault()
 	e.stopPropagation()
 	// 更强的阻断，尽量在浏览器历史导航前截住
 	;(e as { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.()
-	dispatchDvsTimelineNav(isBack ? -1 : 1, 'browser')
+	dispatchDvsTimelineNav(dir, 'browser')
 }
 
 window.addEventListener('pointerdown', onMouseNav, { capture: true })
-window.addEventListener('mousedown', onMouseNav, { capture: true })
-window.addEventListener('mouseup', onMouseNav, { capture: true })
 window.addEventListener('auxclick', onMouseNav as any, { capture: true })
 
 // 兜底：某些浏览器/鼠标驱动会直接触发“历史回退”而吞掉页面可监听的鼠标事件。

@@ -237,6 +237,66 @@ const getPrevNextStageKeyframe = (sortedFrames: number[], frameIndex: number): {
 	return { prev, next }
 }
 
+const applySubtitleLayersAtFrame = (frameIndex: number) => {
+	const fi = Math.floor(Number(frameIndex))
+	if (!Number.isFinite(fi)) return
+
+	for (const layer of TimelineStore.state.layers) {
+		const layerId = layer.id
+		const kind = (TimelineStore.state as any).layerKindById?.[layerId] ?? 'normal'
+		if (kind !== 'subtitle') continue
+
+		const spans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
+		if (spans.length === 0) {
+			applySubtitleEmptyOutsideCue(layerId, fi)
+			continue
+		}
+
+		if (containsFrame(spans, fi)) {
+			const snap = getLayerNodeSnapshotAt(layerId, fi)
+			if (snap) {
+				applySnapshotToLayer(layerId, snap)
+			} else {
+				// Subtitles can have manually added keyframes (spans) without corresponding node snapshots.
+				// In that case, hold the previous subtitle snapshot instead of blanking text.
+				const { prev } = getPrevNext(spans, fi)
+				if (prev != null) {
+					const prevSnap = getLayerNodeSnapshotAt(layerId, prev)
+					if (prevSnap) applySnapshotToLayer(layerId, prevSnap)
+				}
+			}
+			applySubtitleEmptyOutsideCue(layerId, fi)
+			continue
+		}
+
+		const { prev, next } = getPrevNext(spans, fi)
+		if (prev == null) {
+			applySubtitleEmptyOutsideCue(layerId, fi)
+			continue
+		}
+		const prevSnap = getLayerNodeSnapshotAt(layerId, prev)
+		if (!prevSnap) {
+			applySubtitleEmptyOutsideCue(layerId, fi)
+			continue
+		}
+
+		if (next == null) {
+			applySnapshotToLayer(layerId, prevSnap)
+			applySubtitleEmptyOutsideCue(layerId, fi)
+			continue
+		}
+		if (!(prev < fi && fi < next)) {
+			applySnapshotToLayer(layerId, prevSnap)
+			applySubtitleEmptyOutsideCue(layerId, fi)
+			continue
+		}
+
+		// Subtitles are discrete by nature; keep previous snapshot until next keyframe.
+		applySnapshotToLayer(layerId, prevSnap)
+		applySubtitleEmptyOutsideCue(layerId, fi)
+	}
+}
+
 const applyTimelineAnimationAtFrameLegacy = (frameIndex: number) => {
 	const fi = Math.floor(Number(frameIndex))
 	if (!Number.isFinite(fi)) return
@@ -305,30 +365,44 @@ export const applyTimelineAnimationAtFrame = (frameIndex: number) => {
 	const onKeyframeLayers = getStageSnapshotLayersAt(fi)
 	if (onKeyframeLayers) {
 		VideoSceneStore.dispatch('applyStageSnapshot', { layers: cloneJsonSafe(onKeyframeLayers) })
+		applySubtitleLayersAtFrame(fi)
 		return
 	}
 
 	const { prev, next } = getPrevNextStageKeyframe(stageFrames, fi)
-	if (prev == null) return
+	if (prev == null) {
+		// Before the first stage keyframe: hold the first snapshot so the stage is deterministic,
+		// then re-apply subtitle keyframes (textContent is stripped from stage snapshots).
+		if (next != null) {
+			const nextLayers = getStageSnapshotLayersAt(next)
+			if (nextLayers) VideoSceneStore.dispatch('applyStageSnapshot', { layers: cloneJsonSafe(nextLayers) })
+			applySubtitleLayersAtFrame(fi)
+		}
+		return
+	}
 	const prevLayers = getStageSnapshotLayersAt(prev)
 	if (!prevLayers) return
 	if (next == null) {
 		VideoSceneStore.dispatch('applyStageSnapshot', { layers: cloneJsonSafe(prevLayers) })
+		applySubtitleLayersAtFrame(fi)
 		return
 	}
 	if (!(prev < fi && fi < next)) {
 		VideoSceneStore.dispatch('applyStageSnapshot', { layers: cloneJsonSafe(prevLayers) })
+		applySubtitleLayersAtFrame(fi)
 		return
 	}
 	const nextLayers = getStageSnapshotLayersAt(next)
 	if (!nextLayers) {
 		VideoSceneStore.dispatch('applyStageSnapshot', { layers: cloneJsonSafe(prevLayers) })
+		applySubtitleLayersAtFrame(fi)
 		return
 	}
 
 	const rawT = (fi - prev) / (next - prev)
 	if (!(rawT > 0 && rawT < 1)) {
 		VideoSceneStore.dispatch('applyStageSnapshot', { layers: cloneJsonSafe(prevLayers) })
+		applySubtitleLayersAtFrame(fi)
 		return
 	}
 
@@ -398,4 +472,5 @@ export const applyTimelineAnimationAtFrame = (frameIndex: number) => {
 	}
 
 	VideoSceneStore.dispatch('applyStageSnapshot', { layers: outLayers })
+	applySubtitleLayersAtFrame(fi)
 }

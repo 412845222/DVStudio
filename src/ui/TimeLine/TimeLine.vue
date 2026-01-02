@@ -159,6 +159,7 @@
 
 <script setup lang="ts">
 import { DVS_EVENTS, type DvsSubtitleCueSelectDetail, type DvsTimelineNavDetail } from '../../core/events/dvsEvents'
+import { stripSubtitleTextContentFromNodeSnapshots, stripSubtitleTextContentFromStageLayers } from '../../core/subtitle/sanitizeStageSnapshot'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { TimelineKey, type TimelineState } from '../../store/timeline'
@@ -802,7 +803,15 @@ const onMenuAddKeyframe = () => {
 			const a = typeof s === 'number' ? s : s.start
 			const b = typeof s === 'number' ? s : s.end
 			store.dispatch('addKeyframeRange', { layerId, startFrame: a, endFrame: b })
-			store.dispatch('setStageKeyframeSnapshotRange', { startFrame: a, endFrame: b, layers: stageLayers })
+			const layersForSnapshot = isSubtitleLayer(layerId)
+				? stripSubtitleTextContentFromStageLayers(cloneJsonSafe(stageLayers), layerId)
+				: stageLayers
+			store.dispatch('setStageKeyframeSnapshotRange', { startFrame: a, endFrame: b, layers: layersForSnapshot })
+
+			if (isSubtitleLayer(layerId)) {
+				const nodesById = stripSubtitleTextContentFromNodeSnapshots(captureLayerSnapshot(layerId))
+				store.dispatch('setNodeKeyframeSnapshotRange', { layerId, startFrame: a, endFrame: b, nodesById })
+			}
 		}
 	}
 	closeMenu()

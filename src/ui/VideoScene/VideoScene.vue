@@ -135,6 +135,8 @@ import { useStore } from 'vuex'
 import RulerOverlay from './ruler/RulerOverlay.vue'
 import { VideoStudioKey, type VideoStudioState } from '../../store/videostudio'
 import { VideoSceneKey, VideoSceneStore } from '../../store/videoscene'
+import { cloneJsonSafe } from '../../core/shared/cloneJsonSafe'
+import { stripSubtitleTextContentFromStageLayers } from '../../core/subtitle/sanitizeStageSnapshot'
 import VideoSceneToolbar from './parts/VideoSceneToolbar.vue'
 import VideoStudioLeftPanel from './panels/VideoStudioLeftPanel.vue'
 import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
@@ -240,11 +242,15 @@ const scheduleWriteBackSelectedKeyframe = (layerId: string) => {
 		const p = pendingKeyframeWrite
 		pendingKeyframeWrite = null
 		if (!p) return
+		const isSubtitle = (TimelineStore.state.layerKindById?.[p.layerId] ?? 'normal') === 'subtitle'
+		const layersForSnapshot = isSubtitle
+			? stripSubtitleTextContentFromStageLayers(cloneJsonSafe(VideoSceneStore.state.layers), p.layerId)
+			: VideoSceneStore.state.layers
 		// 写回“全画布快照”；TimelineStore 内部会做深拷贝，并只在该帧确实为关键帧时落盘
 		TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
 			startFrame: p.frameIndex,
 			endFrame: p.frameIndex,
-			layers: VideoSceneStore.state.layers,
+			layers: layersForSnapshot,
 		})
 	})
 }

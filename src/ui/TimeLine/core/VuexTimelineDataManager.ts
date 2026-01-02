@@ -3,6 +3,7 @@ import type { TimelineState } from '../../../store/timeline'
 import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
 import { VideoSceneStore, type VideoSceneNodeProps, type VideoSceneNodeTransform, type VideoSceneTreeNode } from '../../../store/videoscene'
 import { TimelineDataManager, type FrameCellPayload } from './TimelineDataManager'
+import { stripSubtitleTextContentFromNodeSnapshots, stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
 
 const clampInt = (v: unknown, min: number, max: number) => {
 	const n = Math.floor(Number(v))
@@ -97,7 +98,15 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		this.store.dispatch('addKeyframe', { layerId, frameIndex: fi })
 		// 同步捕获“全画布快照”，供播放/拖拽指针时按帧完全还原
 		const stageLayers = cloneJsonSafe(VideoSceneStore.state.layers)
-		this.store.dispatch('setStageKeyframeSnapshotRange', { startFrame: fi, endFrame: fi, layers: stageLayers })
+		const isSubtitle = (this.store.state.layerKindById?.[layerId] ?? 'normal') === 'subtitle'
+		const layersForSnapshot = isSubtitle ? stripSubtitleTextContentFromStageLayers(stageLayers, layerId) : stageLayers
+		this.store.dispatch('setStageKeyframeSnapshotRange', { startFrame: fi, endFrame: fi, layers: layersForSnapshot })
+
+		// Subtitle layers: also record a node snapshot (without textContent) so manual keyframes can carry style/transform.
+		if (isSubtitle) {
+			const nodesById = stripSubtitleTextContentFromNodeSnapshots(captureLayerSnapshot(layerId))
+			this.store.dispatch('setNodeKeyframeSnapshotRange', { layerId, startFrame: fi, endFrame: fi, nodesById })
+		}
 	}
 
 	removeKeyframe(layerId: string, frameIndex: number): void {

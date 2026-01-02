@@ -47,6 +47,7 @@ const title = computed(() => {
 
 const SPLITTER_WIDTH = 6
 const MIN_WIDTH = 280
+const SUBTITLE_MIN_WIDTH = 500
 
 const widthPx = ref<number>(Math.max(MIN_WIDTH, Math.round(window.innerWidth * 0.4)))
 const isDragging = ref(false)
@@ -56,11 +57,14 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 
 const applyDefaultWidth = () => {
 	const vw = Math.max(1, document.documentElement.clientWidth || window.innerWidth || 1)
-	// 默认占整个网页宽度的 40%
-	const target = Math.round(vw * 0.4)
-	// 允许拖拽扩展到更大，但保留至少一点舞台空间
-	const maxW = Math.max(MIN_WIDTH, Math.floor(vw * 0.8))
-	widthPx.value = clamp(target, MIN_WIDTH, maxW)
+	const isSubtitle = mode.value === 'subtitle'
+	// 字幕：默认 25% 宽；若屏幕较窄导致 25% 过小，则尽量保证至少 500px（受限于视口宽度）
+	// 其他：默认占 40% 宽
+	const preferred = Math.round(vw * (isSubtitle ? 0.25 : 0.4))
+	const minW = Math.min(vw, isSubtitle ? SUBTITLE_MIN_WIDTH : MIN_WIDTH)
+	// 允许拖拽扩展到更大；字幕模式允许更宽以确保编辑区可用
+	const maxW = Math.max(minW, Math.floor(vw * (isSubtitle ? 0.95 : 0.8)))
+	widthPx.value = clamp(preferred, minW, maxW)
 }
 
 let cleanupMoveUp: (() => void) | null = null
@@ -110,9 +114,9 @@ onBeforeUnmount(() => {
 })
 
 watch(
-	() => open.value,
-	(v) => {
-		if (!v) return
+	() => [open.value, mode.value] as const,
+	([isOpen]) => {
+		if (!isOpen) return
 		if (!hasUserResized.value) applyDefaultWidth()
 	}
 )

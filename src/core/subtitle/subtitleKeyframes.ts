@@ -56,17 +56,18 @@ export const buildSubtitleGeneratedKeyframes = (args: {
 		if (endFrame < startFrame) continue
 
 		const style = { ...args.defaultStyle, ...(overrides[String(i)] ?? {}) } as SubtitleTextStyle
-		write(
-			startFrame,
-			{
-				textContent: String(cue?.text ?? ''),
-				fontSize: style.fontSize,
-				fontColor: style.fontColor,
-				fontStyle: style.fontStyle,
-				textAlign: style.textAlign,
-			},
-			args.nodeTransform
-		)
+		const props: VideoSceneNodeProps = {
+			textContent: String(cue?.text ?? ''),
+			fontSize: style.fontSize,
+			fontColor: style.fontColor,
+			fontStyle: style.fontStyle,
+			textAlign: style.textAlign,
+		}
+		write(startFrame, props, args.nodeTransform)
+
+		// Ensure the LAST cue has a closing keyframe so the timeline can form a segment (prev/next).
+		// We intentionally do NOT write end keyframes for all cues to avoid dense keyframes.
+		if (i === n - 1 && endFrame > startFrame) write(endFrame, props, args.nodeTransform)
 	}
 
 	const outFrames = Array.from(frames)
