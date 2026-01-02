@@ -20,6 +20,9 @@ const props = defineProps<{
 	selectionVersion: number
 	keyframeVersion: number
 	easingSegmentKeys: string[]
+	isSubtitleFrame?: (layerId: string, frameIndex: number) => boolean
+	isSubtitleCueStart?: (layerId: string, frameIndex: number) => boolean
+	getSubtitleTextAtFrame?: (layerId: string, frameIndex: number) => string | null
 	isFrameSelected: (layerId: string, frameIndex: number) => boolean
 	isKeyframe: (layerId: string, frameIndex: number) => boolean
 	isBetween: (layerId: string, frameIndex: number) => boolean
@@ -71,18 +74,25 @@ const getThemeColors = () => {
 	const cellBg = cssVar('--dweb-defualt-light') || '#23272e'
 	const border = cssVar('--vscode-border') || '#3c3c3c'
 	const borderAccent = cssVar('--vscode-border-accent') || cssVar('--dweb-accent') || '#3aa8b4'
+	const fg = cssVar('--vscode-fg') || '#d4d4d4'
+	const fgMuted = cssVar('--vscode-fg-muted') || 'rgba(212,212,212,0.72)'
 	const red = parseHexColor(cssVar('--dweb-red') || '#d74f4e') ?? { r: 215, g: 79, b: 78 }
 	const orange = parseHexColor(cssVar('--dweb-orange') || '#d77f4f') ?? { r: 215, g: 127, b: 79 }
+	const accent = parseHexColor(borderAccent) ?? orange
 
 	return {
 		rowBg,
 		cellBg,
 		border,
 		borderAccent,
+		fg,
+		fgMuted,
 		betweenBg: rgba(red, 0.14),
 		betweenBorder: rgba(red, 0.55),
 		keyframeBg: rgba(red, 0.36),
 		keyframeBorder: rgba(red, 1),
+		subtitleBg: rgba(accent, 0.14),
+		subtitleBorder: rgba(accent, 0.75),
 		activeBg: rgba(orange, 0.22),
 		activeBorder: rgba(orange, 1),
 		selectedBg: 'rgba(255, 255, 255, 0.06)',
@@ -92,13 +102,31 @@ const getThemeColors = () => {
 	}
 }
 
+const truncateText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number) => {
+	const t = String(text ?? '').replace(/\s+/g, ' ').trim()
+	if (!t) return ''
+	if (ctx.measureText(t).width <= maxWidth) return t
+	const ell = '…'
+	let lo = 0
+	let hi = t.length
+	while (lo < hi) {
+		const mid = Math.floor((lo + hi) / 2)
+		const s = t.slice(0, mid) + ell
+		if (ctx.measureText(s).width <= maxWidth) lo = mid + 1
+		else hi = mid
+	}
+	const n = Math.max(0, lo - 1)
+	return t.slice(0, n) + ell
+}
+
 const getFrameAtClientX = (clientX: number) => {
 	const el = canvasRef.value
 	if (!el) return 0
 	const rect = el.getBoundingClientRect()
 	const x = clientX - rect.left
 	const worldX = x + props.scrollLeft
-	return Math.max(0, Math.min(props.frameCount - 1, Math.floor(worldX / Math.max(1, props.frameWidth))))
+	const fw = Math.max(0.0001, Number(props.frameWidth) || 0)
+	return Math.max(0, Math.min(props.frameCount - 1, Math.floor(worldX / fw)))
 }
 
 const scheduleDraw = () => {
@@ -145,21 +173,30 @@ const draw = () => {
 	ctx.fillStyle = colors.rowBg
 	ctx.fillRect(0, 0, cssW, cssH)
 
-	const fw = Math.max(1, props.frameWidth)
+	const fw = Math.max(0.0001, Number(props.frameWidth) || 0)
+	// When zoomed out (fw < 1), drawing per-frame is too expensive. Draw by buckets so each bucket is >= 1px.
+	const step = fw < 1 ? Math.ceil(1 / fw) : 1
+	const bucketW = fw * step
 	const start = Math.max(0, Math.floor(props.scrollLeft / fw))
 	const end = Math.min(props.frameCount - 1, Math.ceil((props.scrollLeft + cssW) / fw))
 
 	const midY = Math.floor(cssH / 2) + 0.5
 
-	// cells
-	for (let fi = start; fi <= end; fi++) {
+	// cells (bucketed)
+	const first = Math.max(0, Math.floor(start / step) * step)
+	for (let fi = first; fi <= end; fi += step) {
 		const x0 = fi * fw - props.scrollLeft
-		const x1 = x0 + fw
+		const x1 = x0 + bucketW
 		if (x1 < 0 || x0 > cssW) continue
 
 		const between = props.isBetween(props.layerId, fi)
-		const joinLeft = between && props.isBetween(props.layerId, fi - 1)
-		const joinRight = between && props.isBetween(props.layerId, fi + 1)
+		const subtitle = props.isSubtitleFrame?.(props.layerId, fi) ?? false
+		const joinLeft =
+			(between && props.isBetween(props.layerId, fi - step)) ||
+			(subtitle && (props.isSubtitleFrame?.(props.layerId, fi - step) ?? false))
+		const joinRight =
+			(between && props.isBetween(props.layerId, fi + step)) ||
+			(subtitle && (props.isSubtitleFrame?.(props.layerId, fi + step) ?? false))
 
 		const selected = props.isFrameSelected(props.layerId, fi)
 		const active = props.currentFrame === fi
@@ -167,6 +204,7 @@ const draw = () => {
 
 		// fill: keep consistent with DOM order
 		let fill: string = colors.cellBg
+		if (subtitle) fill = colors.subtitleBg
 		if (between) fill = colors.betweenBg
 		if (keyframe) fill = colors.keyframeBg
 		if (active) fill = colors.activeBg
@@ -174,10 +212,11 @@ const draw = () => {
 		if (active && selected) fill = colors.activeBg
 
 		ctx.fillStyle = fill
-		ctx.fillRect(x0, 0, fw, cssH)
+		ctx.fillRect(x0, 0, bucketW, cssH)
 
 		// border color
 		let stroke: string = colors.border
+		if (subtitle) stroke = colors.subtitleBorder
 		if (between) stroke = colors.betweenBorder
 		if (keyframe) stroke = colors.keyframeBorder
 		if (active) stroke = colors.activeBorder
@@ -205,6 +244,35 @@ const draw = () => {
 			ctx.lineTo(x1 - 0.5, cssH)
 		}
 		ctx.stroke()
+
+		// subtitle text preview
+		// - If isSubtitleCueStart is provided, draw at cue start so every paragraph shows preview reliably.
+		// - Otherwise fallback to legacy "draw once per merged segment" (subtitle && !joinLeft).
+		const shouldDrawSubtitlePreview =
+			subtitle &&
+			props.getSubtitleTextAtFrame &&
+			(props.isSubtitleCueStart ? props.isSubtitleCueStart(props.layerId, fi) : !joinLeft)
+		if (shouldDrawSubtitlePreview) {
+			const raw = props.getSubtitleTextAtFrame(props.layerId, fi)
+			const txt = String(raw ?? '').trim()
+			if (txt) {
+				let segEnd = fi
+				while (segEnd <= end && (props.isSubtitleFrame?.(props.layerId, segEnd) ?? false)) segEnd += step
+				const segW = (segEnd - fi) * fw
+				if (segW >= 36 && fw >= 2) {
+					ctx.save()
+					ctx.beginPath()
+					ctx.rect(x0 + 2, 2, Math.max(0, segW - 4), Math.max(0, cssH - 4))
+					ctx.clip()
+					ctx.font = '11px sans-serif'
+					ctx.textBaseline = 'middle'
+					ctx.fillStyle = colors.fgMuted
+					const maxW = Math.max(0, segW - 10)
+					ctx.fillText(truncateText(ctx, txt, maxW), x0 + 6, cssH / 2)
+					ctx.restore()
+				}
+			}
+		}
 
 		// keyframe dot (matches CSS: 6x6 with border)
 		if (keyframe) {

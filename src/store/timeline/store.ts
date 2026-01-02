@@ -13,13 +13,29 @@ import {
 
 import type { VideoSceneLayer, VideoSceneNodeProps, VideoSceneNodeTransform } from '../videoscene'
 
-import type { TimelineCellKey, TimelineLayer, TimelineState } from '../../core/timeline'
+import type {
+  SubtitleCue,
+  SubtitleCueRange,
+  SubtitleTextStyle,
+  TimelineCellKey,
+  TimelineLayer,
+  TimelineLayerKind,
+  TimelineState,
+} from '../../core/timeline'
 import { createDefaultTimelineState } from '../../core/timeline'
 import { cloneJsonSafe } from '../../core/shared/cloneJsonSafe'
 
 import type { VideoSceneTreeNode } from '../../core/scene'
 
-export type { TimelineCellKey, TimelineLayer, TimelineState } from '../../core/timeline'
+export type {
+  SubtitleCue,
+  SubtitleCueRange,
+  SubtitleTextStyle,
+  TimelineCellKey,
+  TimelineLayer,
+  TimelineLayerKind,
+  TimelineState,
+} from '../../core/timeline'
 
 const clampInt = (v: unknown, min: number, max: number) => {
   const n = Math.floor(Number(v))
@@ -47,6 +63,38 @@ const clamp01 = (v: unknown) => {
   const n = Number(v)
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.min(1, n))
+}
+
+const clampFrameWidth = (v: unknown) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return 8
+  // allow ultra-zoom-out for very long timelines
+  // max zoom-in should be limited to keep tick labels and cells readable
+  const clamped = Math.max(0.0001, Math.min(15, n))
+  // keep more precision when zoomed out; avoid quantizing away the ability to fit full duration
+  const digits = clamped < 1 ? 4 : 2
+  const pow = Math.pow(10, digits)
+  return Math.round(clamped * pow) / pow
+}
+
+const normalizeSubtitleStyle = (s: Partial<SubtitleTextStyle> | null | undefined): SubtitleTextStyle => {
+  // Keep defaults aligned with TextNodeForm expectations: readable by default.
+  const rawSize = (s as any)?.fontSize
+  const fontSize = Number.isFinite(Number(rawSize)) ? Number(rawSize) : 36
+  return {
+    fontSize: clampInt(fontSize, 6, 256),
+    fontColor: typeof (s as any)?.fontColor === 'string' ? String((s as any).fontColor) : '#ffffff',
+    fontStyle: typeof (s as any)?.fontStyle === 'string' ? String((s as any).fontStyle) : 'normal',
+    textAlign:
+      (s as any)?.textAlign === 'left' || (s as any)?.textAlign === 'right' || (s as any)?.textAlign === 'center'
+        ? ((s as any).textAlign as any)
+        : 'center',
+  }
+}
+
+const mergeSubtitleStyle = (base: SubtitleTextStyle, override?: Partial<SubtitleTextStyle> | null): SubtitleTextStyle => {
+  if (!override) return base
+  return normalizeSubtitleStyle({ ...base, ...override })
 }
 
 const defaultEasingCurve = () => ({ x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' })
@@ -100,6 +148,11 @@ const isAnyKeyframeAt = (state: TimelineState, frameIndex: number) => {
     if (containsFrame(spans ?? [], frameIndex)) return true
   }
   return false
+}
+
+const defaultLayerKind: TimelineLayerKind = 'normal'
+const layerKindOf = (state: TimelineState, layerId: string): TimelineLayerKind => {
+	return (state.layerKindById?.[layerId] as TimelineLayerKind) ?? defaultLayerKind
 }
 
 export const TimelineKey: InjectionKey<Store<TimelineState>> = Symbol('TimelineStore')
@@ -191,14 +244,42 @@ export const TimelineStore = createStore<TimelineState>({
       nextCurveMap[k] = state.easingCurves[k] ?? defaultEasingCurve()
     }
     state.easingCurves = nextCurveMap
+
+    // 裁剪字幕 spans（移除越界帧）
+    const nextSub: Record<string, TimelineFrameSpan[]> = {}
+    for (const [layerId, spans] of Object.entries(state.subtitleSpansByLayer ?? {})) {
+      const clipped = clipSpans(spans ?? [], 0, next - 1)
+      if (clipped.length) nextSub[layerId] = clipped
+    }
+    state.subtitleSpansByLayer = nextSub
+
+    // 裁剪字幕 cueRanges（移除越界段）
+    const nextRanges: Record<string, SubtitleCueRange[]> = {}
+    for (const [layerId, ranges] of Object.entries(state.subtitleCueRangesByLayer ?? {})) {
+      const list = Array.isArray(ranges) ? ranges : []
+      const out: SubtitleCueRange[] = []
+      for (const r of list) {
+        const a = clampInt((r as any)?.startFrame, 0, next - 1)
+        const b = clampInt((r as any)?.endFrame, 0, next - 1)
+        if (a <= b) out.push({ startFrame: a, endFrame: b })
+      }
+      if (out.length) nextRanges[layerId] = out
+    }
+    state.subtitleCueRangesByLayer = nextRanges
+    state.subtitleVersion++
     },
     setCurrentFrame(state, payload: { frameIndex: number }) {
       state.currentFrame = clampInt(payload.frameIndex, 0, state.frameCount - 1)
     },
+  jumpToFrameCentered(state, payload: { frameIndex: number }) {
+    const fi = clampInt(payload.frameIndex, 0, state.frameCount - 1)
+    state.currentFrame = fi
+    state.uiJumpToFrame = fi
+    state.uiJumpVersion++
+  },
     setFrameWidth(state, payload: { frameWidth: number }) {
-      const w = Number(payload.frameWidth)
-      if (!Number.isFinite(w)) return
-      state.frameWidth = Math.max(5, Math.min(20, Math.round(w)))
+		// 更大范围缩放：允许足够小以容纳超长时间轴，也允许更大以便精细编辑
+      state.frameWidth = clampFrameWidth(payload.frameWidth)
     },
     addLayer(state) {
       const nextIndex = state.layers.length + 1
@@ -207,12 +288,25 @@ export const TimelineStore = createStore<TimelineState>({
         name: `图层${nextIndex}`,
       }
       state.layers.push(layer)
+      state.layerKindById[layer.id] = 'normal'
       state.selectedLayerIds = [layer.id]
     },
+  addSubtitleLayer(state, payload?: { name?: string }) {
+    const subtitleCount = state.layers.filter((l) => layerKindOf(state, l.id) === 'subtitle').length
+    const nextIndex = subtitleCount + 1
+    const layer: TimelineLayer = {
+      id: `layer-${Date.now()}-subtitle-${nextIndex}`,
+      name: String(payload?.name || '').trim() || `字幕${nextIndex}`,
+    }
+    state.layers.push(layer)
+    state.layerKindById[layer.id] = 'subtitle'
+    state.selectedLayerIds = [layer.id]
+  },
     removeLayer(state, payload: { layerId: string }) {
       const idx = state.layers.findIndex((l) => l.id === payload.layerId)
       if (idx < 0) return
       state.layers.splice(idx, 1)
+	  if (state.layerKindById[payload.layerId]) delete state.layerKindById[payload.layerId]
       state.selectedLayerIds = state.selectedLayerIds.filter((id) => id !== payload.layerId)
 	  if (state.selectedSpansByLayer[payload.layerId]) {
 		  delete state.selectedSpansByLayer[payload.layerId]
@@ -227,6 +321,36 @@ export const TimelineStore = createStore<TimelineState>({
 		  delete state.keyframeSpansByLayer[payload.layerId]
 		  state.keyframeVersion++
 	  }
+    let subtitleChanged = false
+    if (state.subtitleSpansByLayer?.[payload.layerId]) {
+      delete state.subtitleSpansByLayer[payload.layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleCuesByLayer?.[payload.layerId]) {
+      delete state.subtitleCuesByLayer[payload.layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleCueRangesByLayer?.[payload.layerId]) {
+      delete state.subtitleCueRangesByLayer[payload.layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleFpsByLayer?.[payload.layerId]) {
+      delete state.subtitleFpsByLayer[payload.layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleTextNodeIdByLayer?.[payload.layerId]) {
+      delete state.subtitleTextNodeIdByLayer[payload.layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleDefaultStyleByLayer?.[payload.layerId]) {
+      delete state.subtitleDefaultStyleByLayer[payload.layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleOverrideStyleByLayer?.[payload.layerId]) {
+      delete state.subtitleOverrideStyleByLayer[payload.layerId]
+      subtitleChanged = true
+    }
+    if (subtitleChanged) state.subtitleVersion++
     if (state.nodeKeyframesByLayer[payload.layerId]) {
       delete state.nodeKeyframesByLayer[payload.layerId]
       state.nodeKeyframeVersion++
@@ -245,6 +369,9 @@ export const TimelineStore = createStore<TimelineState>({
       if (toRemove.size === 0) return
       state.layers = state.layers.filter((l) => !toRemove.has(l.id))
       state.selectedLayerIds = []
+	  for (const layerId of toRemove) {
+		  if (state.layerKindById[layerId]) delete state.layerKindById[layerId]
+	  }
     let selChanged = false
     for (const layerId of toRemove) {
       if (state.selectedSpansByLayer[layerId]) {
@@ -257,6 +384,39 @@ export const TimelineStore = createStore<TimelineState>({
       if (state.lastSelectedCellKey && toRemove.has(parseLayerIdFromKey(state.lastSelectedCellKey))) {
         state.lastSelectedCellKey = null
       }
+
+  let subtitleChanged = false
+  for (const layerId of toRemove) {
+    if (state.subtitleSpansByLayer?.[layerId]) {
+      delete state.subtitleSpansByLayer[layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleCuesByLayer?.[layerId]) {
+      delete state.subtitleCuesByLayer[layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleCueRangesByLayer?.[layerId]) {
+      delete state.subtitleCueRangesByLayer[layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleFpsByLayer?.[layerId]) {
+      delete state.subtitleFpsByLayer[layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleTextNodeIdByLayer?.[layerId]) {
+      delete state.subtitleTextNodeIdByLayer[layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleDefaultStyleByLayer?.[layerId]) {
+      delete state.subtitleDefaultStyleByLayer[layerId]
+      subtitleChanged = true
+    }
+    if (state.subtitleOverrideStyleByLayer?.[layerId]) {
+      delete state.subtitleOverrideStyleByLayer[layerId]
+      subtitleChanged = true
+    }
+  }
+  if (subtitleChanged) state.subtitleVersion++
 
     let kfChanged = false
     for (const layerId of toRemove) {
@@ -647,8 +807,121 @@ export const TimelineStore = createStore<TimelineState>({
       state.stageKeyframeVersion++
     }
   },
+
+  // --- 字幕数据 ---
+  setSubtitleTrack(
+  state,
+  payload: { layerId: string; cues: SubtitleCue[]; cueRanges: SubtitleCueRange[]; spans: TimelineFrameSpan[]; fps?: number }
+  ) {
+    const layerId = String(payload.layerId || '').trim()
+    if (!layerId) return
+    state.subtitleCuesByLayer[layerId] = Array.isArray(payload.cues) ? payload.cues : []
+    state.subtitleCueRangesByLayer[layerId] = Array.isArray(payload.cueRanges) ? payload.cueRanges : []
+    state.subtitleSpansByLayer[layerId] = normalizeSpans(Array.isArray(payload.spans) ? payload.spans : [])
+  if (payload.fps != null) state.subtitleFpsByLayer[layerId] = clampInt(payload.fps, 1, 240)
+  if (!state.subtitleDefaultStyleByLayer[layerId]) state.subtitleDefaultStyleByLayer[layerId] = normalizeSubtitleStyle(null)
+  if (!state.subtitleOverrideStyleByLayer[layerId]) state.subtitleOverrideStyleByLayer[layerId] = {}
+    state.subtitleVersion++
+  },
+
+  setSubtitleTextNodeId(state, payload: { layerId: string; nodeId: string }) {
+  const layerId = String(payload.layerId || '').trim()
+  const nodeId = String(payload.nodeId || '').trim()
+  if (!layerId || !nodeId) return
+  state.subtitleTextNodeIdByLayer[layerId] = nodeId
+  state.subtitleVersion++
+  },
+
+  setSubtitleDefaultStyle(state, payload: { layerId: string; style: Partial<SubtitleTextStyle> }) {
+  const layerId = String(payload.layerId || '').trim()
+  if (!layerId) return
+  state.subtitleDefaultStyleByLayer[layerId] = normalizeSubtitleStyle(payload.style)
+  state.subtitleVersion++
+  },
+
+  setSubtitleOverrideStyle(state, payload: { layerId: string; cueIndex: number; style: Partial<SubtitleTextStyle> | null }) {
+  const layerId = String(payload.layerId || '').trim()
+  if (!layerId) return
+  const idx = Math.floor(Number(payload.cueIndex))
+  if (!Number.isFinite(idx) || idx < 0) return
+  const map = { ...(state.subtitleOverrideStyleByLayer[layerId] ?? {}) }
+  if (payload.style && typeof payload.style === 'object') map[String(idx)] = { ...(map[String(idx)] ?? {}), ...payload.style }
+  else delete map[String(idx)]
+  state.subtitleOverrideStyleByLayer[layerId] = map
+  state.subtitleVersion++
+  },
+
+  setSubtitleCueText(state, payload: { layerId: string; cueIndex: number; text: string }) {
+  const layerId = String(payload.layerId || '').trim()
+  if (!layerId) return
+  const idx = Math.floor(Number(payload.cueIndex))
+  if (!Number.isFinite(idx) || idx < 0) return
+  const cues = state.subtitleCuesByLayer[layerId]
+  if (!Array.isArray(cues) || idx >= cues.length) return
+  const next = cues.slice()
+  next[idx] = { ...next[idx], text: String(payload.text ?? '') }
+  state.subtitleCuesByLayer[layerId] = next
+  state.subtitleVersion++
+  },
+
+  applySubtitleStyleToAll(state, payload: { layerId: string; style: Partial<SubtitleTextStyle> }) {
+  const layerId = String(payload.layerId || '').trim()
+  if (!layerId) return
+  state.subtitleDefaultStyleByLayer[layerId] = normalizeSubtitleStyle(payload.style)
+  state.subtitleOverrideStyleByLayer[layerId] = {}
+  state.subtitleVersion++
+  },
+
+  setSubtitleGeneratedKeyframes(
+  state,
+  payload: {
+    layerId: string
+    frames: number[]
+    nodeKeyframesByFrame: Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>>
+  }
+  ) {
+  const layerId = String(payload.layerId || '').trim()
+  if (!layerId) return
+  const frames = Array.isArray(payload.frames) ? payload.frames : []
+  const validFrames = Array.from(new Set(frames.map((n) => clampInt(n as any, 0, state.frameCount - 1)))).sort((a, b) => a - b)
+
+  // 1) keyframe spans
+  const nextKeyframeMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
+  if (validFrames.length) nextKeyframeMap[layerId] = normalizeSpans(validFrames)
+  else delete nextKeyframeMap[layerId]
+  state.keyframeSpansByLayer = nextKeyframeMap
+  state.keyframeVersion++
+
+  // 2) node keyframes
+  const nextNodeMap: TimelineState['nodeKeyframesByLayer'] = { ...state.nodeKeyframesByLayer }
+  const layerMap: Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>> = {}
+  for (const f of validFrames) {
+    const fk = frameKey(f)
+    const nodesById = payload.nodeKeyframesByFrame?.[fk]
+    if (!nodesById || typeof nodesById !== 'object') continue
+    layerMap[fk] = nodesById
+  }
+  if (Object.keys(layerMap).length) nextNodeMap[layerId] = layerMap
+  else delete nextNodeMap[layerId]
+  state.nodeKeyframesByLayer = nextNodeMap
+  state.nodeKeyframeVersion++
+
+  // 3) subtitles should not carry easing (avoid string props issues)
+  const beforeSegs = state.easingSegmentKeys
+  state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
+    const seg = parseSegment(k)
+    if (!seg) return false
+    return seg.layerId !== layerId
+  })
+  for (const k of beforeSegs) {
+    if (!state.easingSegmentKeys.includes(k)) delete state.easingCurves[k]
+  }
+  },
   },
   actions: {
+      jumpToFrameCentered({ commit }, payload: { frameIndex: number }) {
+        commit('jumpToFrameCentered', payload)
+      },
     setFrameCount({ commit }, payload: { frameCount: number }) {
       commit('setFrameCount', payload)
     },
@@ -661,6 +934,9 @@ export const TimelineStore = createStore<TimelineState>({
     addLayer({ commit }) {
       commit('addLayer')
     },
+	addSubtitleLayer({ commit }, payload?: { name?: string }) {
+		commit('addSubtitleLayer', payload)
+	},
     removeLayer({ commit }, payload: { layerId: string }) {
       commit('removeLayer', payload)
     },
@@ -726,6 +1002,40 @@ export const TimelineStore = createStore<TimelineState>({
 	},
   purgeNodeIds({ commit }, payload: { nodeIds: string[] }) {
     commit('purgeNodeIds', payload)
+  },
+  setSubtitleTrack(
+    { commit },
+    payload: { layerId: string; cues: SubtitleCue[]; cueRanges: SubtitleCueRange[]; spans: TimelineFrameSpan[]; fps?: number }
+  ) {
+    commit('setSubtitleTrack', payload)
+  },
+  setSubtitleTextNodeId({ commit }, payload: { layerId: string; nodeId: string }) {
+    commit('setSubtitleTextNodeId', payload)
+  },
+  setSubtitleDefaultStyle({ commit }, payload: { layerId: string; style: Partial<SubtitleTextStyle> }) {
+    commit('setSubtitleDefaultStyle', payload)
+  },
+  setSubtitleOverrideStyle(
+    { commit },
+    payload: { layerId: string; cueIndex: number; style: Partial<SubtitleTextStyle> | null }
+  ) {
+    commit('setSubtitleOverrideStyle', payload)
+  },
+  setSubtitleCueText({ commit }, payload: { layerId: string; cueIndex: number; text: string }) {
+    commit('setSubtitleCueText', payload)
+  },
+  applySubtitleStyleToAll({ commit }, payload: { layerId: string; style: Partial<SubtitleTextStyle> }) {
+    commit('applySubtitleStyleToAll', payload)
+  },
+  setSubtitleGeneratedKeyframes(
+    { commit },
+    payload: {
+      layerId: string
+      frames: number[]
+      nodeKeyframesByFrame: Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>>
+    }
+  ) {
+    commit('setSubtitleGeneratedKeyframes', payload)
   },
   },
 })

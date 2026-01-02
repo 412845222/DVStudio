@@ -60,8 +60,8 @@ const draw = () => {
 		return
 	}
 
-	const fw = Math.max(1, Math.floor(props.frameWidth))
-	const sl = Math.max(0, Math.floor(props.scrollLeft))
+	const fw = Math.max(0.0001, Number(props.frameWidth) || 0)
+	const sl = Math.max(0, Number(props.scrollLeft) || 0)
 
 	const start = Math.max(0, Math.floor(sl / fw))
 	const end = Math.min(frameCount - 1, Math.ceil((sl + cssW) / fw))
@@ -74,11 +74,33 @@ const draw = () => {
 	ctx.textBaseline = 'top'
 	ctx.font = '11px sans-serif'
 
-	for (let fi = start; fi <= end; fi++) {
-		const x = fi * fw - sl
-		if (x < -fw || x > cssW + fw) continue
+	const niceStep = (minFrames: number) => {
+		const m = Math.max(1, Math.floor(minFrames))
+		let base = 1
+		while (base * 10 <= m) base *= 10
+		const cands = [base, base * 2, base * 5, base * 10]
+		for (const c of cands) {
+			if (c >= m) return c
+		}
+		return base * 10
+	}
 
-		const isMajor = fi % 10 === 0
+	// Estimate label width based on the largest frame index visible.
+	const maxDigits = String(Math.max(0, end)).length
+	const sample = '9'.repeat(Math.max(1, maxDigits))
+	const labelW = Math.ceil(ctx.measureText(sample).width)
+	const minPxSpacing = labelW + 12
+	const minFramesForLabel = Math.ceil(minPxSpacing / fw)
+	const labelStep = niceStep(minFramesForLabel)
+	const minorStep = Math.max(1, Math.floor(labelStep / 10))
+
+	// draw ticks by step (avoid huge per-frame loops when fw < 1)
+	const first = Math.max(0, Math.floor(start / minorStep) * minorStep)
+	for (let fi = first; fi <= end; fi += minorStep) {
+		const x = fi * fw - sl
+		if (x < -2 || x > cssW + 2) continue
+
+		const isMajor = fi % labelStep === 0
 		ctx.strokeStyle = isMajor ? major : minor
 		ctx.lineWidth = 1
 		ctx.beginPath()

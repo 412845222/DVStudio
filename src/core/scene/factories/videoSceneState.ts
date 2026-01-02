@@ -18,6 +18,7 @@ export const createVideoSceneLayer = (layerId: string, name: string): VideoScene
 export const createDefaultVideoSceneState = (): VideoSceneState => ({
 	showSizePanel: false,
 	showBackgroundPanel: false,
+	leftPanel: { open: false, mode: null, layerId: null },
 	layers: [
 		{
 			id: 'layer-1',
@@ -29,6 +30,6 @@ export const createDefaultVideoSceneState = (): VideoSceneState => ({
 	selectedNodeId: null,
 	selectedNodeIds: [],
 	focusedNodeId: null,
-	layoutInsets: { rightPanelWidth: 240, bottomToolbarHeight: 40 },
+	layoutInsets: { leftPanelWidth: 0, rightPanelWidth: 240, bottomToolbarHeight: 40 },
 	imageAssets: {},
 })

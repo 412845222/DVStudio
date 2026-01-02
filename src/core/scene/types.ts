@@ -36,8 +36,17 @@ export type VideoSceneLayer = {
 }
 
 export type VideoSceneLayoutInsets = {
+	leftPanelWidth: number
 	rightPanelWidth: number
 	bottomToolbarHeight: number
+}
+
+export type VideoSceneLeftPanelMode = 'subtitle'
+
+export type VideoSceneLeftPanelState = {
+	open: boolean
+	mode: VideoSceneLeftPanelMode | null
+	layerId: string | null
 }
 
 export type VideoSceneRenderStep = {
@@ -58,6 +67,7 @@ export type VideoSceneImageAsset = {
 export interface VideoSceneState {
 	showSizePanel: boolean
 	showBackgroundPanel: boolean
+	leftPanel: VideoSceneLeftPanelState
 	layers: VideoSceneLayer[]
 	activeLayerId: string
 	selectedNodeId: string | null

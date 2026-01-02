@@ -1,61 +1,60 @@
 <template>
 	<div ref="shellRef" class="vs-shell">
-		<canvas ref="canvasRef" class="vs-canvas" :class="{ selecting: isCtrlDown }" />
-		<RulerOverlay
-			:width="shellSize.width"
-			:height="shellSize.height"
-			:pan-x="viewport.panX"
-			:pan-y="viewport.panY"
-			:zoom="viewport.zoom"
-			:origin-x="stageOrigin.x"
-			:origin-y="stageOrigin.y"
-			:ruler-size="RULER_SIZE"
-		/>
-
-		<VideoStudioRightPanel ref="rightPanelRef" />
-		<VideoSceneToolbar ref="toolbarRef" :ai-open="aiChatOpen" :ai-minimized="aiChatMinimized" @toggle-ai="onToggleAi" />
-		<AIChatDialog v-model:open="aiChatOpen" v-model:minimized="aiChatMinimized" :anchor="aiChatAnchor" />
-
-		<!-- HTML overlay for selection resize handles -->
-		<div class="vs-overlay">
-			<div v-if="marquee.active" class="vs-marquee" :style="marquee.style" />
-			<template v-if="showGuides">
-				<div v-if="snapGuides.x != null" class="vs-snap-line v" :style="{ left: snapGuides.x + 'px' }" />
-				<div v-if="snapGuides.y != null" class="vs-snap-line h" :style="{ top: snapGuides.y + 'px' }" />
-			</template>
-			<template v-if="multiControlPoints.length">
-				<div v-for="cp in multiControlPoints" :key="cp.nodeId" class="vs-cp-passive">
-					<ResizeControlPoints
-						:handle-styles="cp.handleStyles"
-						:show-size="false"
-						:size-text="''"
-						:size-style="{ left: '0px', top: '0px' }"
-						@handle-down="() => {}"
-					/>
-					<LineControlPoints
-						v-if="cp.lineHandleStyles"
-						:handle-styles="cp.lineHandleStyles"
-						@point-down="() => {}"
-					/>
-				</div>
-			</template>
-			<ResizeControlPoints
-				v-if="overlay.visible"
-				:handle-styles="overlay.handleStyles"
-				:show-size="overlay.showSize"
-				:size-text="overlay.sizeText"
-				:size-style="overlay.sizeStyle"
-				@handle-down="onHandleDown"
+		<VideoStudioLeftPanel ref="leftPanelRef" />
+		<div ref="stageRef" class="vs-stage" :style="{ left: leftPanelWidthPx + 'px' }">
+			<canvas ref="canvasRef" class="vs-canvas" :class="{ selecting: isCtrlDown }" />
+			<RulerOverlay
+				:width="stageSize.width"
+				:height="stageSize.height"
+				:pan-x="viewport.panX"
+				:pan-y="viewport.panY"
+				:zoom="viewport.zoom"
+				:origin-x="stageOrigin.x"
+				:origin-y="stageOrigin.y"
+				:ruler-size="RULER_SIZE"
 			/>
-			<LineControlPoints v-if="lineOverlay.visible" :handle-styles="lineOverlay.handleStyles" @point-down="onLinePointDown" />
-		</div>
 
-		<div class="vs-tools">
-			<button class="vs-tool" type="button" :class="{ active: showGuides }" @click="toggleGuides">辅助线</button>
-			<button class="vs-tool" type="button" :class="{ active: snapEnabled }" @click="toggleSnap">磁吸</button>
-		</div>
+			<VideoSceneToolbar ref="toolbarRef" :ai-open="aiChatOpen" :ai-minimized="aiChatMinimized" @toggle-ai="onToggleAi" />
+			<!-- HTML overlay for selection resize handles -->
+			<div class="vs-overlay">
+				<div v-if="marquee.active" class="vs-marquee" :style="marquee.style" />
+				<template v-if="showGuides">
+					<div v-if="snapGuides.x != null" class="vs-snap-line v" :style="{ left: snapGuides.x + 'px' }" />
+					<div v-if="snapGuides.y != null" class="vs-snap-line h" :style="{ top: snapGuides.y + 'px' }" />
+				</template>
+				<template v-if="multiControlPoints.length">
+					<div v-for="cp in multiControlPoints" :key="cp.nodeId" class="vs-cp-passive">
+						<ResizeControlPoints
+							:handle-styles="cp.handleStyles"
+							:show-size="false"
+							:size-text="''"
+							:size-style="{ left: '0px', top: '0px' }"
+							@handle-down="() => {}"
+						/>
+						<LineControlPoints
+							v-if="cp.lineHandleStyles"
+							:handle-styles="cp.lineHandleStyles"
+							@point-down="() => {}"
+						/>
+					</div>
+				</template>
+				<ResizeControlPoints
+					v-if="overlay.visible"
+					:handle-styles="overlay.handleStyles"
+					:show-size="overlay.showSize"
+					:size-text="overlay.sizeText"
+					:size-style="overlay.sizeStyle"
+					@handle-down="onHandleDown"
+				/>
+				<LineControlPoints v-if="lineOverlay.visible" :handle-styles="lineOverlay.handleStyles" @point-down="onLinePointDown" />
+			</div>
 
-		<form v-if="showSizePanel" class="vs-form" @submit.prevent>
+			<div class="vs-tools">
+				<button class="vs-tool" type="button" :class="{ active: showGuides }" @click="toggleGuides">辅助线</button>
+				<button class="vs-tool" type="button" :class="{ active: snapEnabled }" @click="toggleSnap">磁吸</button>
+			</div>
+
+			<form v-if="showSizePanel" class="vs-form" @submit.prevent>
 			<label class="vs-label">
 				<span>宽</span>
 				<input v-model.number="inputWidth" class="vs-input" type="number" min="1" step="1" @change="applySize" />
@@ -67,7 +66,7 @@
 			<button class="vs-btn" type="button" @click="fitStage">屏幕适配</button>
 		</form>
 
-		<form v-if="showBackgroundPanel" class="vs-form vs-bg-form" @submit.prevent>
+			<form v-if="showBackgroundPanel" class="vs-form vs-bg-form" @submit.prevent>
 			<label class="vs-label">
 				<span>类型</span>
 				<select v-model="bgType" class="vs-select" @change="applyBackground">
@@ -122,7 +121,11 @@
 					</select>
 				</label>
 			</template>
-		</form>
+			</form>
+		</div>
+
+		<VideoStudioRightPanel ref="rightPanelRef" />
+		<AIChatDialog v-model:open="aiChatOpen" v-model:minimized="aiChatMinimized" :anchor="aiChatAnchor" />
 	</div>
 </template>
 
@@ -133,6 +136,7 @@ import RulerOverlay from './ruler/RulerOverlay.vue'
 import { VideoStudioKey, type VideoStudioState } from '../../store/videostudio'
 import { VideoSceneKey, VideoSceneStore } from '../../store/videoscene'
 import VideoSceneToolbar from './parts/VideoSceneToolbar.vue'
+import VideoStudioLeftPanel from './panels/VideoStudioLeftPanel.vue'
 import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
 import AIChatDialog from '../AIChat/AIChatDialog.vue'
 import { DwebCanvasGL } from '../../engine/webgl'
@@ -408,8 +412,13 @@ watch(
 	{ immediate: true, deep: true }
 )
 
-const shellSize = ref({ width: 0, height: 0 })
+const stageSize = ref({ width: 0, height: 0 })
 let resizeObserver: ResizeObserver | null = null
+
+const leftPanelRef = ref<InstanceType<typeof VideoStudioLeftPanel> | null>(null)
+const leftPanelWidthPx = computed(() => Math.max(0, VideoSceneStore.state.layoutInsets?.leftPanelWidth ?? 0))
+
+const stageRef = ref<HTMLElement | null>(null)
 
 const ensureCanvas = () => {
 	const canvasEl = canvasRef.value
@@ -459,9 +468,10 @@ const onPickBgFile = (ev: Event) => {
 }
 
 const measureInsets = () => {
+	const leftPanelWidth = Math.round(leftPanelRef.value?.rootEl?.getBoundingClientRect().width ?? 0)
 	const rightPanelWidth = Math.round(rightPanelRef.value?.rootEl?.getBoundingClientRect().width ?? 0)
 	const bottomToolbarHeight = Math.round(toolbarRef.value?.rootEl?.getBoundingClientRect().height ?? 0)
-	VideoSceneStore.dispatch('setLayoutInsets', { rightPanelWidth, bottomToolbarHeight })
+	VideoSceneStore.dispatch('setLayoutInsets', { leftPanelWidth, rightPanelWidth, bottomToolbarHeight })
 }
 
 const getFitInsets = () => {
@@ -1137,8 +1147,9 @@ const onWheel = (ev: WheelEvent) => {
 
 onMounted(() => {
 	const shell = shellRef.value
+	const stageEl = stageRef.value
 	const canvasEl = canvasRef.value
-	if (!shell || !canvasEl) return
+	if (!shell || !stageEl || !canvasEl) return
 
 	const canvas = ensureCanvas()
 	if (!canvas) return
@@ -1191,8 +1202,8 @@ onMounted(() => {
 	const updateSize = async () => {
 		await nextTick()
 		measureInsets()
-		shellSize.value = { width: shell.clientWidth, height: shell.clientHeight }
-		canvas.setSize(shell.clientWidth, shell.clientHeight)
+		stageSize.value = { width: stageEl.clientWidth, height: stageEl.clientHeight }
+		canvas.setSize(stageEl.clientWidth, stageEl.clientHeight)
 		if (!didInitialFit) {
 			// 关键修复：必须在 setSize 之后 fit，否则会按默认 300x150 计算导致初始缩放过小
 			didInitialFit = true
@@ -1203,7 +1214,8 @@ onMounted(() => {
 	resizeObserver = new ResizeObserver(() => {
 		void updateSize()
 	})
-	resizeObserver.observe(shell)
+	resizeObserver.observe(stageEl)
+	if (leftPanelRef.value?.rootEl) resizeObserver.observe(leftPanelRef.value.rootEl)
 	if (rightPanelRef.value?.rootEl) resizeObserver.observe(rightPanelRef.value.rootEl)
 	if (toolbarRef.value?.rootEl) resizeObserver.observe(toolbarRef.value.rootEl)
 	void updateSize()
@@ -1276,7 +1288,7 @@ watch(
 )
 
 watch(
-	() => [VideoSceneStore.state.selectedNodeId, (VideoSceneStore.state.selectedNodeIds ?? []).join('|'), viewport.value.panX, viewport.value.panY, viewport.value.zoom, shellSize.value.width, shellSize.value.height] as const,
+	() => [VideoSceneStore.state.selectedNodeId, (VideoSceneStore.state.selectedNodeIds ?? []).join('|'), viewport.value.panX, viewport.value.panY, viewport.value.zoom, stageSize.value.width, stageSize.value.height] as const,
 	() => {
 		updateOverlay()
 	}
@@ -1291,6 +1303,15 @@ watch(
 	min-height: 0;
 	overflow: hidden;
 	background: var(--dweb-defualt);
+}
+
+.vs-stage {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	min-width: 0;
+	overflow: hidden;
 }
 
 .vs-canvas {

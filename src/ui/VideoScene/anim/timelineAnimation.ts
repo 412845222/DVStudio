@@ -160,7 +160,12 @@ const interpolateSnapshots = (a: Record<string, NodeSnapshot>, b: Record<string,
 					const cc = interpolateColorString(va, vb, t)
 					if (cc != null) tp[k] = cc
 					else if (canInterpolateNumber(va) && canInterpolateNumber(vb)) tp[k] = lerpNumber(va, vb, t)
-					else tp[k] = vb !== undefined ? vb : va
+					else {
+						// Discrete fallback (strings/enums/objects): hold previous until reaching next keyframe.
+						if (vb === undefined) tp[k] = va
+						else if (va === undefined) tp[k] = vb
+						else tp[k] = t >= 1 ? vb : va
+					}
 				}
 			}
 			next.props = tp
@@ -169,6 +174,30 @@ const interpolateSnapshots = (a: Record<string, NodeSnapshot>, b: Record<string,
 		out[nodeId] = next
 	}
 	return out
+}
+
+const findNodeInLayer = (layerId: string, nodeId: string): VideoSceneTreeNode | null => {
+	const layer = VideoSceneStore.state.layers.find((l) => l.id === layerId)
+	if (!layer) return null
+	const index = new Map<string, VideoSceneTreeNode>()
+	buildNodeIndex(layer.nodeTree, index)
+	return index.get(nodeId) ?? null
+}
+
+const applySubtitleEmptyOutsideCue = (layerId: string, frameIndex: number) => {
+	const kind = (TimelineStore.state as any).layerKindById?.[layerId] ?? 'normal'
+	if (kind !== 'subtitle') return
+	const spans = (TimelineStore.state as any).subtitleSpansByLayer?.[layerId] ?? []
+	const inCue = containsFrame(spans, Math.floor(frameIndex))
+	if (inCue) return
+	const nodeId = String((TimelineStore.state as any).subtitleTextNodeIdByLayer?.[layerId] ?? '').trim()
+	if (!nodeId) return
+	const node = findNodeInLayer(layerId, nodeId)
+	if (!node || node.category !== 'user') return
+	const cur = (node.props as any)?.textContent
+	if (String(cur ?? '') !== '') {
+		VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch: { textContent: '' } })
+	}
 }
 
 const getStageSnapshotLayersAt = (frameIndex: number) => {
@@ -220,6 +249,7 @@ const applyTimelineAnimationAtFrameLegacy = (frameIndex: number) => {
 		if (containsFrame(spans, fi)) {
 			const snap = getLayerNodeSnapshotAt(layerId, fi)
 			if (snap) applySnapshotToLayer(layerId, snap)
+			applySubtitleEmptyOutsideCue(layerId, fi)
 			continue
 		}
 
@@ -230,10 +260,12 @@ const applyTimelineAnimationAtFrameLegacy = (frameIndex: number) => {
 
 		if (next == null) {
 			applySnapshotToLayer(layerId, prevSnap)
+			applySubtitleEmptyOutsideCue(layerId, fi)
 			continue
 		}
 		if (!(prev < fi && fi < next)) {
 			applySnapshotToLayer(layerId, prevSnap)
+			applySubtitleEmptyOutsideCue(layerId, fi)
 			continue
 		}
 
@@ -241,11 +273,13 @@ const applyTimelineAnimationAtFrameLegacy = (frameIndex: number) => {
 		const easingEnabled = TimelineStore.state.easingSegmentKeys.includes(segKey)
 		if (!easingEnabled) {
 			applySnapshotToLayer(layerId, prevSnap)
+			applySubtitleEmptyOutsideCue(layerId, fi)
 			continue
 		}
 		const nextSnap = getLayerNodeSnapshotAt(layerId, next)
 		if (!nextSnap) {
 			applySnapshotToLayer(layerId, prevSnap)
+			applySubtitleEmptyOutsideCue(layerId, fi)
 			continue
 		}
 
@@ -254,6 +288,7 @@ const applyTimelineAnimationAtFrameLegacy = (frameIndex: number) => {
 		const easedT = cubicBezierYforX(curve as any, rawT)
 		const snap = interpolateSnapshots(prevSnap, nextSnap, easedT)
 		applySnapshotToLayer(layerId, snap)
+		applySubtitleEmptyOutsideCue(layerId, fi)
 	}
 }
 

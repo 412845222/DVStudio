@@ -20,6 +20,8 @@
 				<input v-model.number="inputFps" class="tl-input tl-input-fps" type="number" min="1" max="240" step="1" @change="applyFps" />
 				<span class="tl-meta-label">当前帧</span>
 				<input v-model.number="inputCurrentFrame" class="tl-input" type="number" min="0" :max="Math.max(0, frameCount - 1)" step="1" @change="applyCurrentFrame" />
+				<span class="tl-meta-label">时间</span>
+				<span class="tl-meta-time">{{ currentTimeText }}</span>
 				<span class="tl-meta-sep">/</span>
 				<span class="tl-meta-label">总帧数</span>
 				<input v-model.number="inputFrameCount" class="tl-input" type="number" min="1" step="1" @change="applyFrameCount" />
@@ -88,6 +90,7 @@
 						<div v-for="layer in visibleLayers" :key="layer.id" class="tl-row" :style="{ height: layerRowHeight(layer.id) + 'px' }" @click="selectLayer(layer.id)">
 							<div class="tl-left tl-layer-left" :class="{ selected: isLayerSelected(layer.id) }">
 								<span class="tl-layer-name">{{ layer.name }}</span>
+								<button v-if="isSubtitleLayer(layer.id)" class="tl-subtitle" type="button" @click.stop="openSubtitlePanel(layer.id)">字幕</button>
 								<button class="tl-del" type="button" @click.stop="removeLayer(layer.id)">删除</button>
 							</div>
 							<div class="tl-right">
@@ -101,6 +104,9 @@
 										:selection-version="selectionVersion"
 										:keyframe-version="keyframeVersion"
 										:easing-segment-keys="easingSegmentKeys"
+										:is-subtitle-frame="isSubtitleFrame"
+										:is-subtitle-cue-start="isSubtitleCueStart"
+										:get-subtitle-text-at-frame="getSubtitleTextAtFrame"
 										:is-frame-selected="isFrameSelected"
 										:is-keyframe="(lid, fi) => timelineData.isKeyframe(lid, fi)"
 										:is-between="isBetweenKeyframes"
@@ -152,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { DVS_EVENTS, type DvsTimelineNavDetail } from '../../core/events/dvsEvents'
+import { DVS_EVENTS, type DvsSubtitleCueSelectDetail, type DvsTimelineNavDetail } from '../../core/events/dvsEvents'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { TimelineKey, type TimelineState } from '../../store/timeline'
@@ -180,6 +186,76 @@ const keyframeSpansByLayer = computed(() => store.state.keyframeSpansByLayer)
 const keyframeVersion = computed(() => store.state.keyframeVersion)
 const easingSegmentKeys = computed(() => store.state.easingSegmentKeys)
 
+const isSubtitleLayer = (layerId: string) => (store.state.layerKindById?.[layerId] ?? 'normal') === 'subtitle'
+
+const isSubtitleFrame = (layerId: string, frameIndex: number) => {
+	const spans = store.state.subtitleSpansByLayer?.[layerId] ?? []
+	return containsFrame(spans, frameIndex)
+}
+
+const subtitleCueStartSetByLayer = computed(() => {
+	const out: Record<string, Set<number>> = {}
+	const map = store.state.subtitleCueRangesByLayer ?? {}
+	for (const [layerId, ranges] of Object.entries(map)) {
+		const set = new Set<number>()
+		const list = Array.isArray(ranges) ? ranges : []
+		for (const r of list as any[]) {
+			const s = Math.floor(Number((r as any)?.startFrame))
+			if (Number.isFinite(s)) set.add(s)
+		}
+		out[layerId] = set
+	}
+	return out
+})
+
+const subtitleCueIndexByStartFrameByLayer = computed(() => {
+	const out: Record<string, Record<number, number>> = {}
+	const map = store.state.subtitleCueRangesByLayer ?? {}
+	for (const [layerId, ranges] of Object.entries(map)) {
+		const dict: Record<number, number> = {}
+		const list = Array.isArray(ranges) ? ranges : []
+		for (let i = 0; i < list.length; i++) {
+			const s = Math.floor(Number((list as any)[i]?.startFrame))
+			if (!Number.isFinite(s)) continue
+			dict[s] = i
+		}
+		out[layerId] = dict
+	}
+	return out
+})
+
+const isSubtitleCueStart = (layerId: string, frameIndex: number) => {
+	if (!isSubtitleLayer(layerId)) return false
+	const set = subtitleCueStartSetByLayer.value[layerId]
+	return !!set && set.has(frameIndex)
+}
+
+const getSubtitleTextAtFrame = (layerId: string, frameIndex: number): string | null => {
+	if (!isSubtitleLayer(layerId)) return null
+	const cues = store.state.subtitleCuesByLayer?.[layerId] ?? []
+	const ranges = store.state.subtitleCueRangesByLayer?.[layerId] ?? []
+	if (!Array.isArray(cues) || !Array.isArray(ranges) || !ranges.length) return null
+
+	// binary search: last range with startFrame <= frameIndex
+	let lo = 0
+	let hi = Math.min(ranges.length, cues.length) - 1
+	let hit = -1
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1
+		const s = Number(ranges[mid]?.startFrame ?? 0)
+		if (s <= frameIndex) {
+			hit = mid
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	if (hit < 0) return null
+	const end = Number(ranges[hit]?.endFrame ?? -1)
+	if (frameIndex > end) return null
+	return typeof cues[hit]?.text === 'string' ? cues[hit].text : null
+}
+
 // 右侧预留空间：让最后一帧不贴边（避免被底部滚动条/操作区域影响点击）
 // 注意：该宽度同时用于刻度行与各图层行的“世界宽度”，保证滚动/绘制同步。
 const timelineRightPaddingPx = 160
@@ -200,6 +276,19 @@ let ticker: TimelineTicker | null = null
 const clampInt = (n: number, min: number, max: number) => Math.max(min, Math.min(max, Math.floor(n)))
 
 const pad2 = (n: number) => String(clampInt(n, 0, 99)).padStart(2, '0')
+
+const formatTimeByFrame = (frameIndex: number, fps: number) => {
+	const fi = Math.max(0, Math.floor(Number(frameIndex) || 0))
+	const f = clampInt(Number(fps || 30), 1, 240)
+	const totalMs = Math.floor((fi * 1000) / f)
+	const hh = Math.floor(totalMs / 3600000)
+	const mm = Math.floor((totalMs % 3600000) / 60000)
+	const ss = Math.floor((totalMs % 60000) / 1000)
+	const mmm = totalMs % 1000
+	return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}.${String(mmm).padStart(3, '0')}`
+}
+
+const currentTimeText = computed(() => formatTimeByFrame(currentFrame.value, inputFps.value))
 
 const normalizeJumpTime = () => {
 	const hh = clampInt(Number(jumpHH.value || 0), 0, 99)
@@ -247,6 +336,10 @@ const removeSelectedLayers = () => {
 const removeLayer = (layerId: string) => {
 	store.dispatch('removeLayer', { layerId })
 	VideoSceneStore.dispatch('removeLayer', { layerId })
+}
+
+const openSubtitlePanel = (layerId: string) => {
+	void VideoSceneStore.dispatch('openLeftPanel', { mode: 'subtitle', layerId })
 }
 
 const applyFrameCount = () => {
@@ -684,6 +777,20 @@ const onFrameDblClick = (payload: { layerId: string; frameIndex: number; ev: Mou
 	const endFrame = seg.endKeyframe - 1
 	if (startFrame > endFrame) return
 	store.dispatch('addRangeSelection', { layerIds: [payload.layerId], startFrame, endFrame, additive: false })
+
+	// Subtitle linkage: dblclick easing segment -> select & scroll to matching cue in left subtitle editor
+	if (isSubtitleLayer(payload.layerId)) {
+		openSubtitlePanel(payload.layerId)
+		const idx = subtitleCueIndexByStartFrameByLayer.value[payload.layerId]?.[seg.startKeyframe]
+		if (Number.isFinite(idx)) {
+			const detail: DvsSubtitleCueSelectDetail = {
+				layerId: payload.layerId,
+				cueIndex: Math.max(0, Math.floor(Number(idx))),
+				reason: 'timeline',
+			}
+			window.dispatchEvent(new CustomEvent(DVS_EVENTS.SubtitleCueSelect, { detail }))
+		}
+	}
 }
 
 const onMenuAddKeyframe = () => {
@@ -860,6 +967,14 @@ const commitScrollLeft = (v: number) => {
 	scrollLeft.value = Math.max(0, Math.min(maxScrollLeft.value, Math.floor(v)))
 }
 
+const centerOnFrame = (frameIndex: number) => {
+	const fw = Number(frameWidth.value) || 0
+	if (!Number.isFinite(fw) || fw <= 0) return
+	const vw = Math.max(1, Math.floor(viewportWidth.value) || 1)
+	const worldX = frameIndex * fw
+	commitScrollLeft(worldX - vw / 2)
+}
+
 const onScrollBarInput = (evt: Event) => {
 	const value = Number((evt.target as HTMLInputElement).value)
 	pendingScrollLeft = value
@@ -872,13 +987,23 @@ const onScrollBarInput = (evt: Event) => {
 	})
 }
 
-// 滚轮缩放：改变每帧宽度（5px~20px）
+// 滚轮缩放：改变每帧宽度（允许缩到 < 1px 以全览超长时间轴）
 const onZoomWheel = (ev: WheelEvent) => {
 	closeMenu()
-	const delta = ev.deltaY
-	const dir = delta > 0 ? -1 : 1
-	const next = frameWidth.value + dir
-	store.dispatch('setFrameWidth', { frameWidth: next })
+	const zoomIn = ev.deltaY < 0
+	const base = zoomIn ? 1.12 : 1 / 1.12
+	const fast = ev.ctrlKey || ev.metaKey ? (zoomIn ? 1.25 : 1 / 1.25) : 1
+	const nextFw = frameWidth.value * base * fast
+	store.dispatch('setFrameWidth', { frameWidth: nextFw })
+	// keep the visual center at playhead
+	// note: we compute with nextFw so it feels immediate
+	const clampedFw = Math.max(0.0001, Math.min(15, Number(nextFw) || 0))
+	const vw = Math.max(1, Math.floor(viewportWidth.value) || 1)
+	const worldX = currentFrame.value * clampedFw
+	const nextTimelineWidth = frameCount.value * clampedFw + timelineRightPaddingPx
+	const nextMaxScrollLeft = Math.max(0, nextTimelineWidth - vw)
+	const nextScroll = Math.max(0, Math.min(nextMaxScrollLeft, worldX - vw / 2))
+	scrollLeft.value = Math.floor(nextScroll)
 }
 
 // 指针线拖动（手柄在第一行）
@@ -1254,6 +1379,17 @@ onMounted(() => {
 	window.addEventListener(DVS_EVENTS.TimelineNav, onTimelineNav)
 })
 
+watch(
+	() => store.state.uiJumpVersion,
+	() => {
+		const target = store.state.uiJumpToFrame
+		if (typeof target !== 'number' || !Number.isFinite(target)) return
+		// ensure metrics are up-to-date
+		syncViewportMetrics()
+		centerOnFrame(Math.max(0, Math.min(frameCount.value - 1, Math.floor(target))))
+	}
+)
+
 onBeforeUnmount(() => {
 	if (scrollRaf) cancelAnimationFrame(scrollRaf)
 	ticker?.dispose()
@@ -1584,6 +1720,20 @@ watch(
 	cursor: pointer;
 }
 
+.tl-subtitle {
+	border: 1px solid var(--vscode-border);
+	background: transparent;
+	color: var(--vscode-fg);
+	font-size: 12px;
+	height: 24px;
+	padding: 0 10px;
+	cursor: pointer;
+}
+
+.tl-subtitle:hover {
+	border-color: var(--vscode-border-accent);
+}
+
 .tl-del:hover {
 	color: var(--vscode-fg);
 	border-color: var(--vscode-border-accent);
@@ -1622,6 +1772,12 @@ watch(
 	color: var(--vscode-fg-muted);
 	font-size: 12px;
 }
+	.tl-meta-time {
+		min-width: 92px;
+		font-size: 12px;
+		color: var(--vscode-fg-muted);
+		white-space: nowrap;
+	}
 
 .tl-scrollbar {
 	height: 24px;

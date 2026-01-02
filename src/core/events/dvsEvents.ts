@@ -2,6 +2,7 @@ import type { EditorSavePayload } from '../editor/types'
 
 export const DVS_EVENTS = {
 	TimelineNav: 'dvs:timeline/nav',
+	SubtitleCueSelect: 'dvs:subtitle/cue-select',
 	EditorStateRestored: 'dvs:editor/state-restored',
 	EditorSaved: 'dvs:editor/saved',
 	EditorNodePatched: 'dvs:editor/node/patched',
@@ -12,6 +13,14 @@ export type DvsTimelineNavDetail = {
 	dir: -1 | 1
 	direction: 'back' | 'forward'
 	reason?: 'browser' | 'keyboard' | 'ui' | 'program'
+}
+
+export type DvsSubtitleCueSelectDetail = {
+	layerId: string
+	cueIndex: number
+	reason?: 'timeline' | 'ui' | 'program'
+	/** 让选中项离容器上下边缘保留的最小像素距离（不足则只选中不滚动） */
+	paddingPx?: number
 }
 
 export type DvsEditorStateRestoredDetail = {

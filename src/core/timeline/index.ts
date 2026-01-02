@@ -3,6 +3,10 @@ export type {
 	TimelineEasingCurve,
 	TimelineFrameSpan,
 	TimelineLayer,
+	TimelineLayerKind,
+	SubtitleCue,
+	SubtitleCueRange,
+	SubtitleTextStyle,
 	TimelineState,
 } from './types'
 

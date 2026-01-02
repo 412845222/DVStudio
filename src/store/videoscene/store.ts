@@ -135,10 +135,21 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     },
     setLayoutInsets(state, payload: Partial<VideoSceneLayoutInsets>) {
       state.layoutInsets = {
+    leftPanelWidth: clampPx(payload.leftPanelWidth, state.layoutInsets.leftPanelWidth),
         rightPanelWidth: clampPx(payload.rightPanelWidth, state.layoutInsets.rightPanelWidth),
         bottomToolbarHeight: clampPx(payload.bottomToolbarHeight, state.layoutInsets.bottomToolbarHeight),
       }
     },
+  openLeftPanel(state, payload: { mode: 'subtitle'; layerId?: string | null }) {
+    state.leftPanel.open = true
+    state.leftPanel.mode = payload.mode
+    state.leftPanel.layerId = payload.layerId ? String(payload.layerId) : null
+  },
+  closeLeftPanel(state) {
+    state.leftPanel.open = false
+    state.leftPanel.mode = null
+    state.leftPanel.layerId = null
+  },
   addLayer(state, payload: { layerId: string; name: string }) {
     if (state.layers.some((l) => l.id === payload.layerId)) return
 	state.layers.push(createVideoSceneLayer(payload.layerId, payload.name))
@@ -339,6 +350,12 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     setLayoutInsets({ commit }, payload: Partial<VideoSceneLayoutInsets>) {
       commit('setLayoutInsets', payload)
     },
+  openLeftPanel({ commit }, payload: { mode: 'subtitle'; layerId?: string | null }) {
+    commit('openLeftPanel', payload)
+  },
+  closeLeftPanel({ commit }) {
+    commit('closeLeftPanel')
+  },
   addLayer({ commit }, payload: { layerId: string; name: string }) {
     commit('addLayer', payload)
   },
