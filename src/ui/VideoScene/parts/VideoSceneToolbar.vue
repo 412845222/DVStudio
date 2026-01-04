@@ -15,6 +15,15 @@
 		>
 			AI助手
 		</button>
+		<button
+			class="vs-tool-btn"
+			type="button"
+			data-dvs="component-library-btn"
+			:class="{ active: componentLibraryOpen }"
+			@click="openComponentLibrary"
+		>
+			组件库
+		</button>
 		<input ref="importSubtitleInputEl" class="vs-import-input" type="file" accept=".srt,text/plain" @change="onImportSubtitleFile" />
 		<input ref="importInputEl" class="vs-import-input" type="file" accept="application/json,.json" @change="onImportFile" />
 		<div class="vs-toolbar-spacer" />
@@ -59,6 +68,8 @@ const showBackgroundPanel = computed(() => store.state.showBackgroundPanel)
 const aiOpen = computed(() => !!props.aiOpen)
 const aiMinimized = computed(() => !!props.aiMinimized)
 
+const componentLibraryOpen = computed(() => store.state.leftPanel.open && store.state.leftPanel.mode === 'component-library')
+
 const canUndo = computed(() => editorPersistence.canUndo.value)
 const canRedo = computed(() => editorPersistence.canRedo.value)
 
@@ -100,6 +111,10 @@ const toggleAi = () => {
 	}
 	// viewport coordinates (fixed-position dialog)
 	emit('toggle-ai', { anchor: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } })
+}
+
+const openComponentLibrary = () => {
+	store.dispatch('openLeftPanel', { mode: 'component-library', layerId: store.state.activeLayerId })
 }
 
 const onImportFile = async (e: Event) => {

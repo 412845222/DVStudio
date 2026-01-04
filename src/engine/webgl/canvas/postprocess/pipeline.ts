@@ -81,6 +81,8 @@ export class CanvasPostProcess {
 			}
 			if (ft === 'glow') {
 				if (!this.postProgGlowComposite) continue
+				const intensity = Math.max(0, Number((f as any).intensity ?? 1))
+				if (intensity <= 1e-4) continue
 				const blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
 				const blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
 				const iterations = Math.max(1, Math.floor(Number((f as any).__iterations ?? f.iterations ?? 1) || 1))
@@ -143,7 +145,7 @@ export class CanvasPostProcess {
 				gl.uniform1i(this.postProgGlowComposite.uSampler2!, 1)
 				const color = canvas.parseHexColor(String(f.color ?? '#ffffff'), 1)
 				gl.uniform3f(this.postProgGlowComposite.uColor!, color.r, color.g, color.b)
-				gl.uniform1f(this.postProgGlowComposite.uIntensity!, Math.max(0, Number(f.intensity ?? 1)))
+				gl.uniform1f(this.postProgGlowComposite.uIntensity!, intensity)
 				gl.uniform1f(this.postProgGlowComposite.uInner!, f.inner ? 1 : 0)
 				gl.uniform1f(this.postProgGlowComposite.uKnockout!, f.knockout ? 1 : 0)
 				gl.drawArrays(gl.TRIANGLES, 0, 6)
@@ -277,6 +279,7 @@ export class CanvasPostProcess {
 		const baseIt = Math.max(1, Math.floor(iterations))
 		const rx = Math.max(0, Number(radiusX) || 0)
 		const ry = Math.max(0, Number(radiusY) || 0)
+		if (rx <= 1e-4 && ry <= 1e-4) return srcTex
 		const step = Math.max(1e-3, Number(maxStepPx) || 8)
 		let it = Math.max(baseIt, Math.ceil((3 * rx) / step), Math.ceil((3 * ry) / step))
 		it = Math.max(1, Math.min(it, Math.max(1, Math.floor(maxIterations))))

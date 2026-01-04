@@ -28,6 +28,7 @@ import {
 import type {
   VideoSceneLayer,
   VideoSceneLayoutInsets,
+  VideoSceneLeftPanelMode,
   VideoSceneNodeTransform,
   VideoSceneState,
   VideoSceneTreeNode,
@@ -140,15 +141,17 @@ export const VideoSceneStore = createStore<VideoSceneState>({
         bottomToolbarHeight: clampPx(payload.bottomToolbarHeight, state.layoutInsets.bottomToolbarHeight),
       }
     },
-  openLeftPanel(state, payload: { mode: 'subtitle'; layerId?: string | null }) {
+  openLeftPanel(state, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null }) {
     state.leftPanel.open = true
     state.leftPanel.mode = payload.mode
     state.leftPanel.layerId = payload.layerId ? String(payload.layerId) : null
+		state.leftPanel.refreshToken = (state.leftPanel.refreshToken ?? 0) + 1
   },
   closeLeftPanel(state) {
     state.leftPanel.open = false
     state.leftPanel.mode = null
     state.leftPanel.layerId = null
+		state.leftPanel.refreshToken = (state.leftPanel.refreshToken ?? 0) + 1
   },
   addLayer(state, payload: { layerId: string; name: string }) {
     if (state.layers.some((l) => l.id === payload.layerId)) return
@@ -350,7 +353,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     setLayoutInsets({ commit }, payload: Partial<VideoSceneLayoutInsets>) {
       commit('setLayoutInsets', payload)
     },
-  openLeftPanel({ commit }, payload: { mode: 'subtitle'; layerId?: string | null }) {
+  openLeftPanel({ commit }, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null }) {
     commit('openLeftPanel', payload)
   },
   closeLeftPanel({ commit }) {

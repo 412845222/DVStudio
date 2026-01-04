@@ -12,6 +12,8 @@
 			<button class="vs-left-close" type="button" @click="close">关闭</button>
 		</div>
 		<SubtitleEditorPanel v-if="mode === 'subtitle'" :layer-id="layerId" />
+		<AiSubtitleUnderstandingPanel v-else-if="mode === 'subtitle-ai'" :layer-id="layerId" />
+		<ComponentLibraryPanel v-else-if="mode === 'component-library'" :key="refreshToken" :layer-id="layerId" />
 		<div
 			class="vs-left-splitter"
 			:class="{ dragging: isDragging }"
@@ -28,6 +30,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import SubtitleEditorPanel from './SubtitleEditorPanel.vue'
+import AiSubtitleUnderstandingPanel from './AiSubtitleUnderstandingPanel.vue'
+import ComponentLibraryPanel from './ComponentLibraryPanel.vue'
 
 defineOptions({ name: 'VideoStudioLeftPanel' })
 
@@ -39,15 +43,19 @@ defineExpose({ rootEl })
 const open = computed(() => !!store.state.leftPanel?.open)
 const mode = computed(() => store.state.leftPanel?.mode ?? null)
 const layerId = computed(() => store.state.leftPanel?.layerId ?? null)
+const refreshToken = computed(() => store.state.leftPanel?.refreshToken ?? 0)
 
 const title = computed(() => {
 	if (mode.value === 'subtitle') return '字幕'
+	if (mode.value === 'subtitle-ai') return 'AI总结'
+	if (mode.value === 'component-library') return '组件库'
 	return '面板'
 })
 
 const SPLITTER_WIDTH = 6
 const MIN_WIDTH = 280
 const SUBTITLE_MIN_WIDTH = 500
+const AI_PREFERRED_RATIO = 0.35
 
 const widthPx = ref<number>(Math.max(MIN_WIDTH, Math.round(window.innerWidth * 0.4)))
 const isDragging = ref(false)
@@ -58,13 +66,25 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 const applyDefaultWidth = () => {
 	const vw = Math.max(1, document.documentElement.clientWidth || window.innerWidth || 1)
 	const isSubtitle = mode.value === 'subtitle'
+	const isSubtitleAi = mode.value === 'subtitle-ai'
 	// 字幕：默认 25% 宽；若屏幕较窄导致 25% 过小，则尽量保证至少 500px（受限于视口宽度）
 	// 其他：默认占 40% 宽
-	const preferred = Math.round(vw * (isSubtitle ? 0.25 : 0.4))
-	const minW = Math.min(vw, isSubtitle ? SUBTITLE_MIN_WIDTH : MIN_WIDTH)
+	const preferred = Math.round(vw * (isSubtitleAi ? AI_PREFERRED_RATIO : isSubtitle ? 0.25 : 0.4))
+	const minW = Math.min(vw, isSubtitle || isSubtitleAi ? SUBTITLE_MIN_WIDTH : MIN_WIDTH)
 	// 允许拖拽扩展到更大；字幕模式允许更宽以确保编辑区可用
-	const maxW = Math.max(minW, Math.floor(vw * (isSubtitle ? 0.95 : 0.8)))
+	const maxW = Math.max(minW, Math.floor(vw * (isSubtitle || isSubtitleAi ? 0.95 : 0.8)))
 	widthPx.value = clamp(preferred, minW, maxW)
+}
+
+const ensureAiMinWidth = () => {
+	if (mode.value !== 'subtitle-ai') return
+	const vw = Math.max(1, document.documentElement.clientWidth || window.innerWidth || 1)
+	const preferred = Math.round(vw * AI_PREFERRED_RATIO)
+	const minW = Math.min(vw, SUBTITLE_MIN_WIDTH)
+	const maxW = Math.max(minW, Math.floor(vw * 0.95))
+	const target = clamp(preferred, minW, maxW)
+	// 只增不减：进入 AI 界面时保证至少 35% 宽，不会压缩用户手动加宽
+	if (widthPx.value < target) widthPx.value = target
 }
 
 let cleanupMoveUp: (() => void) | null = null
@@ -118,6 +138,7 @@ watch(
 	([isOpen]) => {
 		if (!isOpen) return
 		if (!hasUserResized.value) applyDefaultWidth()
+		ensureAiMinWidth()
 	}
 )
 

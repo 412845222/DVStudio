@@ -40,11 +40,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "js-yaml": "^4.1.1",
+    "markdown-it": "^14.1.0",
     "vue": "^3.2.41",
     "vue-router": "^4.5.0",
     "vuex": "^4.1.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/markdown-it": "^14.1.2",
     "@vitejs/plugin-vue": "^3.2.0",
     "typescript": "^4.6.4",
     "vite": "^3.2.3",

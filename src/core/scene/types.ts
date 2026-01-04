@@ -41,12 +41,14 @@ export type VideoSceneLayoutInsets = {
 	bottomToolbarHeight: number
 }
 
-export type VideoSceneLeftPanelMode = 'subtitle'
+export type VideoSceneLeftPanelMode = 'subtitle' | 'subtitle-ai' | 'component-library'
 
 export type VideoSceneLeftPanelState = {
 	open: boolean
 	mode: VideoSceneLeftPanelMode | null
 	layerId: string | null
+	/** increments whenever openLeftPanel is called, used to force-refresh UI */
+	refreshToken: number
 }
 
 export type VideoSceneRenderStep = {

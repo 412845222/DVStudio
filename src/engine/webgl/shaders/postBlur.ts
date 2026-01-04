@@ -23,12 +23,28 @@ out vec4 outColor;
 void main(){
   // 7-tap gaussian (normalized)
   vec2 off = u_dir * u_texel * max(0.0, u_radius);
-  vec4 c = texture(u_sampler, v_uv) * 0.217;
-  c += texture(u_sampler, v_uv + 1.0 * off) * 0.190;
-  c += texture(u_sampler, v_uv - 1.0 * off) * 0.190;
-  c += texture(u_sampler, v_uv + 2.0 * off) * 0.131;
-  c += texture(u_sampler, v_uv - 2.0 * off) * 0.131;
-  c += texture(u_sampler, v_uv + 3.0 * off) * 0.070;
-  c += texture(u_sampler, v_uv - 3.0 * off) * 0.070;
+  // Premultiplied blur to avoid black/dirty fringes when blurring over transparent.
+  vec4 s0 = texture(u_sampler, v_uv);
+  s0.rgb *= s0.a;
+  vec4 c = s0 * 0.217;
+
+  vec4 s1p = texture(u_sampler, v_uv + 1.0 * off); s1p.rgb *= s1p.a;
+  vec4 s1n = texture(u_sampler, v_uv - 1.0 * off); s1n.rgb *= s1n.a;
+  c += s1p * 0.190;
+  c += s1n * 0.190;
+
+  vec4 s2p = texture(u_sampler, v_uv + 2.0 * off); s2p.rgb *= s2p.a;
+  vec4 s2n = texture(u_sampler, v_uv - 2.0 * off); s2n.rgb *= s2n.a;
+  c += s2p * 0.131;
+  c += s2n * 0.131;
+
+  vec4 s3p = texture(u_sampler, v_uv + 3.0 * off); s3p.rgb *= s3p.a;
+  vec4 s3n = texture(u_sampler, v_uv - 3.0 * off); s3n.rgb *= s3n.a;
+  c += s3p * 0.070;
+  c += s3n * 0.070;
+
+  // Un-premultiply back to straight alpha for standard SRC_ALPHA blending.
+  float a = max(c.a, 1e-5);
+  c.rgb /= a;
   outColor = c;
 }`

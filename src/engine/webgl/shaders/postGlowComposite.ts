@@ -39,10 +39,18 @@ void main(){
   float a = 1.0 - pow(1.0 - s, gain * 2.5);
   a = clamp(a, 0.0, 1.0);
 
-  vec4 glow = vec4(u_glowColor * a, a);
-  vec4 res = base;
-  res.rgb = clamp(res.rgb + glow.rgb, 0.0, 1.0);
-  res.a = clamp(max(res.a, glow.a), 0.0, 1.0);
-  if (u_knockout > 0.5) res = glow;
-  outColor = res;
+  // Compose in premultiplied space then convert back to straight-alpha.
+  // This avoids dirty/black fringes on light backgrounds under standard SRC_ALPHA blending.
+  vec3 premulBase = base.rgb * base.a;
+  vec3 premulGlow = u_glowColor * a;
+  vec3 premul = premulBase + premulGlow;
+  float outA = clamp(base.a + a - base.a * a, 0.0, 1.0);
+  vec3 outRgb = (outA > 1e-5) ? (premul / outA) : vec3(0.0);
+  outRgb = clamp(outRgb, 0.0, 1.0);
+
+  if (u_knockout > 0.5) {
+    outColor = vec4(u_glowColor, a);
+  } else {
+    outColor = vec4(outRgb, outA);
+  }
 }`

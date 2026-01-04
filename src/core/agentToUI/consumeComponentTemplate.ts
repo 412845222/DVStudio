@@ -9,7 +9,7 @@ export type ConsumeComponentTemplateResult =
 	| {
 			ok: true
 			message: AgentToUiComponentTemplateMessage
-			intent: 'preview' | 'insert' | undefined
+			intent: 'preview' | 'insert' | 'template' | undefined
 			template: ComponentTemplate
 			params: Record<string, JsonValue>
 			instantiated: ReturnType<typeof instantiateValidatedTemplate>

@@ -7,6 +7,7 @@ import type {
 	AgentToUiComponentTemplateMessage,
 	AgentToUiErrorMessage,
 	AgentToUiMessage,
+	AgentToUiSubtitleSummaryDeltaMessage,
 	AgentToUiTaskStatusMessage,
 	AgentToUiTextMessage,
 } from './types'
@@ -34,17 +35,30 @@ export function isAgentToUiMessage(v: unknown): v is AgentToUiMessage {
 			return isAgentToUiComponentTemplateMessage(v)
 		case 'agentToUi/taskStatus':
 			return isAgentToUiTaskStatusMessage(v)
+		case 'agentToUi/subtitleSummaryDelta':
+			return isAgentToUiSubtitleSummaryDeltaMessage(v)
 		case 'agentToUi/applyFilter':
 			return isAgentToUiApplyFilterMessage(v)
-			case 'agentToUi/insertNode':
-				return isAgentToUiInsertNodeMessage(v)
-			case 'agentToUi/patchNode':
-				return isAgentToUiPatchNodeMessage(v)
-			case 'agentToUi/deleteNode':
-				return isAgentToUiDeleteNodeMessage(v)
+		case 'agentToUi/insertNode':
+			return isAgentToUiInsertNodeMessage(v)
+		case 'agentToUi/patchNode':
+			return isAgentToUiPatchNodeMessage(v)
+		case 'agentToUi/deleteNode':
+			return isAgentToUiDeleteNodeMessage(v)
 		default:
 			return false
 	}
+}
+
+export function isAgentToUiSubtitleSummaryDeltaMessage(v: unknown): v is AgentToUiSubtitleSummaryDeltaMessage {
+	if (!isRecord(v)) return false
+	if (v.schemaVersion !== 1) return false
+	if (v.type !== 'agentToUi/subtitleSummaryDelta') return false
+	if (!isRecord(v.payload)) return false
+	const section = (v.payload as any).section
+	if (!isString(section) || !section.trim()) return false
+	if (!('data' in (v.payload as any))) return false
+	return true
 }
 
 export function isAgentToUiPatchNodeMessage(v: unknown): v is AgentToUiPatchNodeMessage {
@@ -180,7 +194,7 @@ export function isAgentToUiComponentTemplateMessage(v: unknown): v is AgentToUiC
 	if (!('template' in v.payload)) return false
 
 	const intent = v.payload.intent
-	if (intent !== undefined && intent !== 'preview' && intent !== 'insert') return false
+	if (intent !== undefined && intent !== 'preview' && intent !== 'insert' && intent !== 'template') return false
 
 	const params = v.payload.params
 	if (params !== undefined && !isRecord(params)) return false

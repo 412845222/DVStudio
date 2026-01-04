@@ -4,6 +4,7 @@
 			<div class="vs-subtitle-head">
 				<div class="vs-subtitle-title">字幕段落</div>
 				<div class="vs-subtitle-meta">{{ cues.length }} 条</div>
+				<button v-if="showAiSummaryBtn" class="vs-btn vs-ai-summary-btn" type="button" @click="openAiSummary">AI总结</button>
 			</div>
 			<div ref="listEl" class="vs-subtitle-list">
 				<button
@@ -115,6 +116,14 @@ const props = defineProps<{ layerId: string | null }>()
 
 const cues = computed(() => (props.layerId ? (TimelineStore.state.subtitleCuesByLayer?.[props.layerId] ?? []) : []))
 const cueRanges = computed(() => (props.layerId ? (TimelineStore.state.subtitleCueRangesByLayer?.[props.layerId] ?? []) : []))
+
+const showAiSummaryBtn = computed(() => !!props.layerId && cues.value.length > 0)
+
+const openAiSummary = () => {
+	if (!props.layerId) return
+	if (!cues.value.length) return
+	void VideoSceneStore.dispatch('openLeftPanel', { mode: 'subtitle-ai', layerId: props.layerId })
+}
 
 const boundNodeId = computed(() => (props.layerId ? (TimelineStore.state.subtitleTextNodeIdByLayer?.[props.layerId] ?? null) : null))
 const boundNode = computed(() => {
@@ -582,6 +591,10 @@ const applyToAll = async () => {
 
 .vs-btn:hover {
 	border-color: var(--vscode-border-accent);
+}
+
+.vs-ai-summary-btn {
+	margin-left: auto;
 }
 
 .vs-actions-hint {

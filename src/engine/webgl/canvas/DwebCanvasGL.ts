@@ -245,6 +245,103 @@ export class DwebCanvasGL {
 		})
 	}
 
+	/**
+	 * Capture a PNG (data URL) from the current framebuffer.
+	 * - `rect` is in CSS pixels in the same coordinate space as `worldToScreen()` (origin: canvas top-left).
+	 * - Crops to the rect and optionally downscales for thumbnails.
+	 */
+	async capturePngFromScreenRect(
+		rect: { x: number; y: number; width: number; height: number },
+		opts?: { maxSidePx?: number; padPx?: number }
+	): Promise<{ dataUrl: string; width: number; height: number } | null> {
+		if (this.isDisposed) return null
+		const pad = Math.max(0, Math.floor(Number(opts?.padPx ?? 0) || 0))
+		const maxSide = Math.max(32, Math.floor(Number(opts?.maxSidePx ?? 0) || 0))
+		const dpr = Math.max(1, this.dpr)
+		const canvasW = Math.max(1, this.canvas.width)
+		const canvasH = Math.max(1, this.canvas.height)
+
+		// Expand rect by pad in CSS px
+		const x0Css = Math.floor((Number(rect.x) || 0) - pad)
+		const y0Css = Math.floor((Number(rect.y) || 0) - pad)
+		const x1Css = Math.ceil((Number(rect.x) || 0) + (Number(rect.width) || 0) + pad)
+		const y1Css = Math.ceil((Number(rect.y) || 0) + (Number(rect.height) || 0) + pad)
+		const wCss = Math.max(1, x1Css - x0Css)
+		const hCss = Math.max(1, y1Css - y0Css)
+
+		// Convert to device pixels (WebGL default framebuffer origin is bottom-left)
+		let xPx = Math.floor(x0Css * dpr)
+		let yPxFromTop = Math.floor(y0Css * dpr)
+		let wPx = Math.max(1, Math.floor(wCss * dpr))
+		let hPx = Math.max(1, Math.floor(hCss * dpr))
+		if (xPx < 0) {
+			wPx += xPx
+			xPx = 0
+		}
+		if (yPxFromTop < 0) {
+			hPx += yPxFromTop
+			yPxFromTop = 0
+		}
+		wPx = Math.min(wPx, canvasW - xPx)
+		hPx = Math.min(hPx, canvasH - yPxFromTop)
+		if (wPx <= 1 || hPx <= 1) return null
+		const yPx = Math.max(0, canvasH - (yPxFromTop + hPx))
+
+		// Ensure we capture the latest frame.
+		this.render()
+
+		const gl = this.gl
+		const pixels = new Uint8Array(wPx * hPx * 4)
+		try {
+			gl.readPixels(xPx, yPx, wPx, hPx, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+		} catch {
+			return null
+		}
+
+		// Flip vertically to match Canvas2D top-left origin.
+		const rowStride = wPx * 4
+		const flipped = new Uint8ClampedArray(wPx * hPx * 4)
+		for (let row = 0; row < hPx; row++) {
+			const srcStart = (hPx - 1 - row) * rowStride
+			const dstStart = row * rowStride
+			flipped.set(pixels.subarray(srcStart, srcStart + rowStride), dstStart)
+		}
+		const imgData = new ImageData(flipped, wPx, hPx)
+
+		const c = document.createElement('canvas')
+		c.width = wPx
+		c.height = hPx
+		const ctx = c.getContext('2d')
+		if (!ctx) return null
+		ctx.putImageData(imgData, 0, 0)
+
+		let outCanvas = c
+		if (maxSide > 0) {
+			const longSide = Math.max(wPx, hPx)
+			if (longSide > maxSide) {
+				const scale = maxSide / longSide
+				const tw = Math.max(1, Math.round(wPx * scale))
+				const th = Math.max(1, Math.round(hPx * scale))
+				const c2 = document.createElement('canvas')
+				c2.width = tw
+				c2.height = th
+				const ctx2 = c2.getContext('2d')
+				if (ctx2) {
+					ctx2.imageSmoothingEnabled = true
+					ctx2.imageSmoothingQuality = 'high'
+					ctx2.drawImage(c, 0, 0, wPx, hPx, 0, 0, tw, th)
+					outCanvas = c2
+				}
+			}
+		}
+
+		return {
+			dataUrl: outCanvas.toDataURL('image/png'),
+			width: outCanvas.width,
+			height: outCanvas.height,
+		}
+	}
+
 	render() {
 		const gl = this.gl
 		gl.viewport(0, 0, this.canvas.width, this.canvas.height)

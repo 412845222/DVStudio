@@ -47,7 +47,13 @@ export type AgentToUiComponentTemplatePayload = {
 	 * 可选：指定插入到哪个 layer。未提供则使用当前 activeLayer。
 	 */
 	layerId?: string
-	intent?: 'preview' | 'insert'
+	/**
+	 * intent:
+	 * - preview: 用于生成预览层
+	 * - insert: 用于插入到舞台
+	 * - template: 后端历史值（等价于 preview 语义），前端应兼容
+	 */
+	intent?: 'preview' | 'insert' | 'template'
 	params?: Record<string, unknown>
 }
 
@@ -67,6 +73,18 @@ export type AgentToUiComponentTemplateMessage = AgentToUiEnvelope<
 >
 
 export type AgentToUiTaskStatusMessage = AgentToUiEnvelope<'agentToUi/taskStatus', AgentToUiTaskStatusPayload>
+
+export type AgentToUiSubtitleSummaryDeltaPayload = {
+	/** which module is being updated */
+	section: 'outline' | 'style' | 'templates' | 'plans' | 'meta' | 'all'
+	/** structured data; typically includes html + typed fields */
+	data: unknown
+}
+
+export type AgentToUiSubtitleSummaryDeltaMessage = AgentToUiEnvelope<
+	'agentToUi/subtitleSummaryDelta',
+	AgentToUiSubtitleSummaryDeltaPayload
+>
 
 export type AgentToUiApplyFilterPayload = {
 	/**
@@ -140,6 +158,7 @@ export type AgentToUiMessage =
 	| AgentToUiErrorMessage
 	| AgentToUiComponentTemplateMessage
 	| AgentToUiTaskStatusMessage
+	| AgentToUiSubtitleSummaryDeltaMessage
 	| AgentToUiApplyFilterMessage
 	| AgentToUiInsertNodeMessage
 	| AgentToUiPatchNodeMessage

@@ -9,14 +9,14 @@ type Entry = {
 const BYTES_PER_PIXEL = 4
 const TEX_COUNT_PER_TARGET = 3
 
-const DEFAULT_MAX_DIM_PX = 1536
-const DEFAULT_MAX_PIXELS_PER_TEX = 1_200_000
-const SCALE_QUANT_STEP = 1 / 32
+const DEFAULT_MAX_DIM_PX = 1024
+const DEFAULT_MAX_PIXELS_PER_TEX = 800_000
+const DIM_QUANT_STEP = 32
 
 // Conservative defaults: avoid GPU OOM when many nodes enable glow/blur.
 // Each target allocates 3x RGBA textures.
-const DEFAULT_MAX_TARGETS = 64
-const DEFAULT_MAX_BYTES = 256 * 1024 * 1024
+const DEFAULT_MAX_TARGETS = 48
+const DEFAULT_MAX_BYTES = 192 * 1024 * 1024
 
 export class FilterTargetsPool {
 	private map = new Map<string, Entry>()
@@ -46,9 +46,7 @@ export class FilterTargetsPool {
 		scale: number
 	): FilterTargets {
 		this.tick++
-		const sRaw = Math.max(1e-3, Number(scale) || 1)
-		// Quantize scale to reduce allocation churn while zooming.
-		const s = Math.max(1e-3, Math.round(sRaw / SCALE_QUANT_STEP) * SCALE_QUANT_STEP)
+		const s = Math.max(1e-3, Number(scale) || 1)
 		const gpuMax = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 4096
 		const maxDim = Math.max(256, Math.min(gpuMax, this.maxDimPx))
 		const bw = Math.max(1e-3, (Number(contentW) || 0) + (Number(padX) || 0) * 2)
@@ -66,8 +64,12 @@ export class FilterTargetsPool {
 			cw = Math.max(1, Math.min(maxDim, Math.floor(cw * k)))
 			ch = Math.max(1, Math.min(maxDim, Math.floor(ch * k)))
 		}
-		// Cache by allocation size + scale. Metadata (pad/content) is updated per use.
-		const key = `${cw}x${ch}@${s.toFixed(3)}`
+		// Quantize dimensions to reduce re-allocation churn while zooming.
+		cw = Math.max(1, Math.min(maxDim, Math.round(cw / DIM_QUANT_STEP) * DIM_QUANT_STEP))
+		ch = Math.max(1, Math.min(maxDim, Math.round(ch / DIM_QUANT_STEP) * DIM_QUANT_STEP))
+		// Cache strictly by allocation size. Scale is derived from allocated pixels.
+		const key = `${cw}x${ch}`
+		const effectiveScale = Math.max(1e-3, Math.min(cw / bw, ch / bh))
 		const existing = this.map.get(key)
 		if (existing) {
 			existing.usedAt = this.tick
@@ -75,7 +77,7 @@ export class FilterTargetsPool {
 			existing.t.padY = padY
 			existing.t.contentW = contentW
 			existing.t.contentH = contentH
-			existing.t.scale = s
+			existing.t.scale = effectiveScale
 			return existing.t
 		}
 
@@ -105,7 +107,7 @@ export class FilterTargetsPool {
 		const fbo2 = mkFbo(tex2)
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
-		const t: FilterTargets = { w: cw, h: ch, padX, padY, contentW, contentH, scale: s, tex0, tex1, tex2, fbo0, fbo1, fbo2 }
+		const t: FilterTargets = { w: cw, h: ch, padX, padY, contentW, contentH, scale: effectiveScale, tex0, tex1, tex2, fbo0, fbo1, fbo2 }
 		const bytes = cw * ch * BYTES_PER_PIXEL * TEX_COUNT_PER_TARGET
 		this.map.set(key, { t, usedAt: this.tick, bytes })
 		this.enforceBudget(gl, key)

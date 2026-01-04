@@ -302,6 +302,15 @@ export const TimelineStore = createStore<TimelineState>({
     state.layerKindById[layer.id] = 'subtitle'
     state.selectedLayerIds = [layer.id]
   },
+  renameLayer(state, payload: { layerId: string; name: string }) {
+    const layerId = String(payload.layerId || '').trim()
+    if (!layerId) return
+    const name = String(payload.name || '').trim()
+    if (!name) return
+    const layer = state.layers.find((l) => l.id === layerId)
+    if (!layer) return
+    layer.name = name
+  },
     removeLayer(state, payload: { layerId: string }) {
       const idx = state.layers.findIndex((l) => l.id === payload.layerId)
       if (idx < 0) return
@@ -937,6 +946,9 @@ export const TimelineStore = createStore<TimelineState>({
 	addSubtitleLayer({ commit }, payload?: { name?: string }) {
 		commit('addSubtitleLayer', payload)
 	},
+  renameLayer({ commit }, payload: { layerId: string; name: string }) {
+    commit('renameLayer', payload)
+  },
     removeLayer({ commit }, payload: { layerId: string }) {
       commit('removeLayer', payload)
     },

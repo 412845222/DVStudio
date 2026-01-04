@@ -1,0 +1,611 @@
+<template>
+	<div class="vs-cl">
+		<div class="vs-cl-head">
+			<div class="vs-cl-title">组件库</div>
+			<div class="vs-cl-meta">当前关键帧：{{ selectedKeyframeCell ? `${selectedKeyframeCell.layerId}@${selectedKeyframeCell.frameIndex}` : '未选择' }}</div>
+		</div>
+
+		<div v-if="!componentLibrary.length" class="vs-cl-empty">暂无已保存组件</div>
+
+		<div v-else class="vs-cl-body">
+			<div class="vs-cl-list">
+				<button
+					v-for="c in componentLibrary"
+					:key="c.id"
+					type="button"
+					class="vs-cl-item"
+					:class="{ active: c.id === selectedComponentId }"
+					@click="selectComponent(c.id)"
+				>
+					<div class="vs-cl-item-row">
+						<img v-if="getThumbUrl(c)" class="vs-cl-thumb" :src="String(getThumbUrl(c))" alt="" />
+						<div class="vs-cl-item-text">
+							<div class="vs-cl-item-name">{{ c.name }}</div>
+							<div class="vs-cl-item-id">{{ c.templateId }}</div>
+						</div>
+					</div>
+				</button>
+			</div>
+
+			<div class="vs-cl-detail">
+				<div v-if="!selectedComponent" class="vs-cl-empty">请选择一个组件</div>
+				<div v-else class="vs-cl-card">
+					<div class="vs-cl-card-head">
+						<div class="vs-cl-card-title">参数</div>
+					</div>
+					<div v-if="!selectedParamDefs.length" class="vs-cl-empty">该组件没有可配置参数</div>
+					<div v-else class="vs-cl-fields">
+						<div v-for="p in selectedParamDefs" :key="p.key" class="vs-cl-field">
+							<div class="vs-cl-field-label">{{ p.key }}</div>
+							<input
+								v-if="p.type === 'string' || p.type === 'asset:image'"
+								class="vs-cl-input"
+								type="text"
+								:value="String(getParamValue(selectedComponent.id, p.key) ?? '')"
+								@input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+							/>
+							<input
+								v-else-if="p.type === 'number'"
+								class="vs-cl-input"
+								type="number"
+								:value="String(getParamValue(selectedComponent.id, p.key) ?? '')"
+								@input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+							/>
+							<input
+								v-else-if="p.type === 'color'"
+								class="vs-cl-color"
+								type="color"
+								:value="String(getParamValue(selectedComponent.id, p.key) ?? '#ffffff')"
+								@input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+							/>
+							<input
+								v-else-if="p.type === 'boolean'"
+								class="vs-cl-checkbox"
+								type="checkbox"
+								:checked="!!getParamValue(selectedComponent.id, p.key)"
+								@change="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).checked)"
+							/>
+						</div>
+					</div>
+
+					<div class="vs-cl-actions">
+						<button class="vs-btn" type="button" :disabled="!canAddToKeyframe" @click="insertSelectedComponent">
+							添加到当前关键帧
+						</button>
+						<button class="vs-btn" type="button" :disabled="busy" @click="removeSelectedComponent">移除该组件</button>
+						<div v-if="addHint" class="vs-cl-hint">{{ addHint }}</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { useStore } from 'vuex'
+import { componentTemplateApi } from '../../../core/components'
+import { nodeExistsInAnyLayer } from '../../../core/scene'
+import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
+import { stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
+import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
+import { TimelineStore } from '../../../store/timeline'
+import { containsFrame, type TimelineFrameSpan } from '../../../store/timeline/spans'
+
+defineOptions({ name: 'ComponentLibraryPanel' })
+
+defineProps<{ layerId: string | null }>()
+
+const store = useStore<VideoSceneState>(VideoSceneKey)
+
+type SavedComponent = {
+	id: string
+	createdAt: string
+	templateId: string
+	name: string
+	template: any
+	savedAt: string
+	thumbAssetId?: string
+	thumbDataUrl?: string
+}
+
+type ParamDef = { key: string; type: 'string' | 'number' | 'boolean' | 'color' | 'asset:image' }
+
+const COMPONENT_LIBRARY_KEY = 'dvs.componentLibrary.v1'
+
+const componentLibrary = ref<SavedComponent[]>([])
+const selectedComponentId = ref<string>('')
+const componentParamValuesById = ref<Record<string, Record<string, any>>>({})
+const busy = ref(false)
+
+const getSingleSelectedKeyframeCell = (): { layerId: string; frameIndex: number } | null => {
+	// Read versions to ensure reactivity when nested maps mutate.
+	const _selV = (TimelineStore.state as any).selectionVersion
+	const _kfV = (TimelineStore.state as any).keyframeVersion
+	void _selV
+	void _kfV
+	const entries = Object.entries(TimelineStore.state.selectedSpansByLayer).filter(([, spans]) => spans && spans.length)
+	if (entries.length !== 1) return null
+	const layerId = entries[0][0]
+	const spans = entries[0][1] as TimelineFrameSpan[]
+	if (!spans || spans.length !== 1) return null
+	const s = spans[0]
+	const frameIndex = typeof s === 'number' ? Math.floor(s) : s && typeof s === 'object' && (s as any).start === (s as any).end ? Math.floor((s as any).start) : null
+	if (frameIndex == null || !Number.isFinite(frameIndex)) return null
+	// Must be a keyframe cell on that layer.
+	const kfSpans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
+	if (!containsFrame(kfSpans, frameIndex)) return null
+	return { layerId, frameIndex }
+}
+
+const selectedKeyframeCell = computed(() => getSingleSelectedKeyframeCell())
+
+const canAddToKeyframe = computed(() => {
+	if (busy.value) return false
+	if (!selectedComponent.value) return false
+	return !!selectedKeyframeCell.value
+})
+
+const addHint = computed(() => {
+	if (busy.value) return ''
+	if (selectedKeyframeCell.value) return ''
+	return '请在时间轴选择一个关键帧格子（或先创建关键帧）'
+})
+
+const loadComponentLibrary = () => {
+	try {
+		const raw = localStorage.getItem(COMPONENT_LIBRARY_KEY)
+		if (!raw) {
+			componentLibrary.value = []
+			selectedComponentId.value = ''
+			return
+		}
+		const parsed = JSON.parse(raw)
+		if (!Array.isArray(parsed)) return
+		const list: SavedComponent[] = parsed
+			.filter((x) => x && typeof x === 'object')
+			.map((x: any) => ({
+				id:
+					typeof x.id === 'string' && x.id.trim()
+						? x.id
+						: `${typeof x.templateId === 'string' ? x.templateId : ''}::${typeof x.savedAt === 'string' ? x.savedAt : ''}`,
+				createdAt: typeof x.createdAt === 'string' ? x.createdAt : (typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString()),
+				templateId: typeof x.templateId === 'string' ? x.templateId : '',
+				name: typeof x.name === 'string' ? x.name : '',
+				template: x.template,
+				savedAt: typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString(),
+				thumbAssetId: typeof x.thumbAssetId === 'string' ? x.thumbAssetId : undefined,
+				thumbDataUrl: typeof x.thumbDataUrl === 'string' ? x.thumbDataUrl : undefined,
+			}))
+			.filter((x) => x.id && x.templateId && x.name)
+		componentLibrary.value = list
+		// Re-hydrate thumbnail data into the imageAssets pool for UI usage.
+		for (const it of list) {
+			if (!it.thumbAssetId || !it.thumbDataUrl) continue
+			store.commit('upsertImageAsset', { id: it.thumbAssetId, url: it.thumbDataUrl, name: it.name })
+		}
+		if (!selectedComponentId.value && list.length) selectedComponentId.value = list[0].id
+	} catch {
+		// ignore
+	}
+}
+
+const persistComponentLibrary = () => {
+	try {
+		localStorage.setItem(COMPONENT_LIBRARY_KEY, JSON.stringify(componentLibrary.value))
+	} catch {
+		// ignore
+	}
+}
+
+loadComponentLibrary()
+
+const getThumbUrl = (c: SavedComponent): string | null => {
+	const id = String(c.thumbAssetId || '').trim()
+	if (!id) return null
+	const url = store.state.imageAssets?.[id]?.url
+	return typeof url === 'string' && url.trim() ? url : (typeof c.thumbDataUrl === 'string' && c.thumbDataUrl.trim() ? c.thumbDataUrl : null)
+}
+
+watch(
+	() => componentLibrary.value,
+	() => {
+		persistComponentLibrary()
+	},
+	{ deep: true }
+)
+
+const selectComponent = (componentId: string) => {
+	selectedComponentId.value = componentId
+}
+
+const selectedComponent = computed(() => {
+	const id = String(selectedComponentId.value || '').trim()
+	if (!id) return null
+	return componentLibrary.value.find((c) => c.id === id) || null
+})
+
+const extractParamKeysFromNodes = (template: any): string[] => {
+	try {
+		const nodes = Array.isArray(template?.nodes) ? template.nodes : []
+		const str = JSON.stringify(nodes)
+		const re = /\{\{\s*([^}]+?)\s*\}\}/g
+		const out: string[] = []
+		let m: RegExpExecArray | null
+		while ((m = re.exec(str))) {
+			const key = String(m[1] || '').trim()
+			if (key) out.push(key)
+		}
+		return out
+	} catch {
+		return []
+	}
+}
+
+const normalizeParamKey = (k: unknown) => String(k ?? '').trim().replace(/\s+/g, '')
+
+const buildDefaultTemplateParams = (template: any, opts: { title?: string; subtitle?: string; body?: string; text?: string }) => {
+	const params: Record<string, any> = {}
+	const list = Array.isArray(template?.params) ? template.params : []
+	const title = String(opts.title ?? '').trim()
+	const subtitle = String(opts.subtitle ?? '').trim()
+	const body = String(opts.body ?? '').trim()
+	const text = String(opts.text ?? '').trim()
+	for (const it of list) {
+		const keyRaw = typeof it?.key === 'string' ? it.key : ''
+		const key = keyRaw.trim()
+		if (!key) continue
+		const nk = normalizeParamKey(key).toLowerCase()
+		if (params[key] !== undefined) continue
+
+		if (nk === 'title' || nk.endsWith('.title') || nk.includes('title')) params[key] = title || subtitle || 'Title'
+		else if (nk === 'subtitle' || nk.includes('sub')) params[key] = subtitle || ''
+		else if (nk === 'body' || nk === 'text' || nk === 'content' || nk.includes('desc') || nk.includes('summary')) params[key] = body || text || ''
+		else if (it?.default !== undefined) params[key] = it.default
+	}
+	return params
+}
+
+const deriveParamDefs = (template: any): ParamDef[] => {
+	const keys = new Set<string>()
+	const list = Array.isArray(template?.params) ? template.params : []
+	for (const p of list) {
+		const k = typeof p?.key === 'string' ? p.key.trim() : ''
+		if (k) keys.add(k)
+	}
+	for (const k of extractParamKeysFromNodes(template)) keys.add(k)
+
+	const paramTypeByKey = new Map<string, ParamDef['type']>()
+	for (const p of list) {
+		const k = typeof p?.key === 'string' ? p.key.trim() : ''
+		if (!k) continue
+		const t = typeof p?.type === 'string' ? p.type.trim() : ''
+		const ok = new Set<ParamDef['type']>(['string', 'number', 'boolean', 'color', 'asset:image'])
+		if (ok.has(t as any)) paramTypeByKey.set(k, t as any)
+	}
+
+	return Array.from(keys)
+		.map((k) => {
+			const type = paramTypeByKey.get(k) || 'string'
+			return { key: k, type }
+		})
+		.sort((a, b) => a.key.localeCompare(b.key))
+}
+
+const selectedParamDefs = computed(() => {
+	const c = selectedComponent.value
+	if (!c) return [] as ParamDef[]
+	return deriveParamDefs(c.template)
+})
+
+const ensureParamBag = (componentId: string) => {
+	if (componentParamValuesById.value[componentId]) return
+	const c = componentLibrary.value.find((x) => x.id === componentId)
+	const defaults = c ? buildDefaultTemplateParams(c.template, { title: c.name, subtitle: '', body: '', text: '' }) : {}
+	componentParamValuesById.value = { ...componentParamValuesById.value, [componentId]: defaults }
+}
+
+const getParamValue = (componentId: string, key: string) => {
+	ensureParamBag(componentId)
+	return componentParamValuesById.value?.[componentId]?.[key]
+}
+
+const setParamValue = (componentId: string, key: string, value: any) => {
+	ensureParamBag(componentId)
+	const bag = { ...(componentParamValuesById.value[componentId] || {}) }
+	bag[key] = value
+	componentParamValuesById.value = { ...componentParamValuesById.value, [componentId]: bag }
+}
+
+const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
+
+const instantiateIntoLayerWithParams = async (layerId: string, template: any, params: Record<string, any>) => {
+	const instantiated = componentTemplateApi.instantiateTemplate(template as any, params ?? {}, {
+		getNodeId: ({ templateId, localId }) => {
+			const base = safeIdPart(`${templateId}:${localId}`)
+			let id = base
+			let i = 1
+			while (nodeExistsInAnyLayer(store.state.layers, id)) id = `${base}__${i++}`
+			return id
+		},
+	})
+	await store.dispatch('addNodeTree', { node: instantiated.root, layerId })
+	return instantiated.root?.id as string
+}
+
+const setOpacityKeyframes = async (layerId: string, nodeId: string, frames: Array<{ frame: number; opacity: number }>) => {
+	for (const it of frames) {
+		await TimelineStore.dispatch('addKeyframeRange', { layerId, startFrame: it.frame, endFrame: it.frame })
+		await TimelineStore.dispatch('setNodeKeyframeSnapshotRange', {
+			layerId,
+			startFrame: it.frame,
+			endFrame: it.frame,
+			nodesById: {
+				[nodeId]: { transform: { opacity: it.opacity } },
+			},
+		})
+	}
+}
+
+const insertSelectedComponent = async () => {
+	const selected = selectedKeyframeCell.value
+	if (!selected) return
+	const layerId = selected.layerId
+	const frameIndex = selected.frameIndex
+	const c = selectedComponent.value
+	if (!c) return
+	busy.value = true
+	try {
+		ensureParamBag(c.id)
+		const rawParams = componentParamValuesById.value[c.id] || {}
+		const defs = deriveParamDefs(c.template)
+		const params: Record<string, any> = {}
+		for (const d of defs) {
+			const v = rawParams[d.key]
+			if (d.type === 'number') {
+				const n = typeof v === 'number' ? v : Number(String(v ?? '').trim())
+				params[d.key] = Number.isFinite(n) ? n : 0
+			} else if (d.type === 'boolean') {
+				params[d.key] = !!v
+			} else {
+				params[d.key] = v
+			}
+		}
+
+		// Ensure the target keyframe exists and bind the insertion to it.
+		await TimelineStore.dispatch('addKeyframeRange', { layerId, startFrame: frameIndex, endFrame: frameIndex })
+		const rootId = await instantiateIntoLayerWithParams(layerId, c.template, params)
+		await setOpacityKeyframes(layerId, rootId, [{ frame: frameIndex, opacity: 1 }])
+
+		// Write back stage snapshot for this keyframe so timeline animation has a stable source of truth.
+		const isSubtitle = (TimelineStore.state.layerKindById?.[layerId] ?? 'normal') === 'subtitle'
+		const stageLayers = cloneJsonSafe(store.state.layers)
+		const layersForSnapshot = isSubtitle ? stripSubtitleTextContentFromStageLayers(stageLayers as any, layerId) : stageLayers
+		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
+			startFrame: frameIndex,
+			endFrame: frameIndex,
+			layers: layersForSnapshot as any,
+		})
+	} finally {
+		busy.value = false
+	}
+}
+
+const removeSelectedComponent = () => {
+	const c = selectedComponent.value
+	if (!c) return
+	const id = c.id
+	componentLibrary.value = componentLibrary.value.filter((x) => x.id !== id)
+	const nextParams = { ...componentParamValuesById.value }
+	delete nextParams[id]
+	componentParamValuesById.value = nextParams
+	if (selectedComponentId.value === id) selectedComponentId.value = componentLibrary.value[0]?.id || ''
+}
+</script>
+
+<style scoped>
+.vs-cl {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+	min-height: 0;
+	padding: 10px;
+}
+
+.vs-cl-head {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+}
+
+.vs-cl-title {
+	font-size: 13px;
+	color: var(--vscode-fg);
+}
+
+.vs-cl-meta {
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+}
+
+.vs-cl-empty {
+	padding: 10px;
+	border: 1px dashed var(--vscode-border);
+	color: var(--vscode-fg-muted);
+	background: var(--dweb-defualt);
+}
+
+.vs-cl-body {
+	flex: 1 1 auto;
+	display: grid;
+	grid-template-columns: 220px 1fr;
+	gap: 10px;
+	min-height: 0;
+}
+
+.vs-cl-list {
+	overflow: auto;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+}
+
+.vs-cl-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 8px 10px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-fg);
+	cursor: pointer;
+	border-bottom: 1px solid var(--vscode-border);
+}
+
+.vs-cl-item-row {
+	display: grid;
+	grid-template-columns: 64px 1fr;
+	gap: 10px;
+	align-items: center;
+}
+
+.vs-cl-thumb {
+	width: 64px;
+	height: 40px;
+	object-fit: cover;
+	border-radius: 4px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+}
+
+.vs-cl-item-text {
+	min-width: 0;
+}
+
+.vs-cl-item.active {
+	outline: 1px solid var(--vscode-border-accent);
+	outline-offset: -1px;
+}
+
+.vs-cl-item-name {
+	font-size: 12px;
+}
+
+.vs-cl-item-id {
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	margin-top: 2px;
+	word-break: break-all;
+}
+
+.vs-cl-detail {
+	min-width: 0;
+	min-height: 0;
+}
+
+.vs-cl-card {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	padding: 10px;
+	min-height: 0;
+}
+
+.vs-cl-card-head {
+	display: flex;
+	align-items: center;
+}
+
+.vs-cl-card-title {
+	font-size: 12px;
+	color: var(--vscode-fg);
+}
+
+.vs-cl-fields {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+	overflow: auto;
+	min-height: 0;
+}
+
+.vs-cl-field {
+	display: grid;
+	grid-template-columns: 140px 1fr;
+	gap: 8px;
+	align-items: center;
+}
+
+.vs-cl-field-label {
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	word-break: break-all;
+}
+
+.vs-cl-input {
+	flex: 1 1 0;
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	outline: none;
+	height: 28px;
+	line-height: 16px;
+	transition: border-color 120ms ease;
+}
+
+.vs-cl-input:hover {
+	border-color: var(--vscode-hover-border);
+}
+
+.vs-cl-input:focus {
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
+}
+
+.vs-cl-input:disabled {
+	background: var(--vscode-disabled-bg);
+	color: var(--vscode-disabled-fg);
+}
+
+.vs-cl-color {
+	flex: 0 0 auto;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: transparent;
+	box-sizing: border-box;
+}
+
+.vs-cl-color:focus {
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
+}
+
+.vs-cl-checkbox {
+	width: 18px;
+	height: 18px;
+	accent-color: var(--dweb-green-main);
+}
+
+.vs-cl-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.vs-cl-hint {
+	width: 100%;
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+}
+</style>
