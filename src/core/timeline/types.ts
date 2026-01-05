@@ -22,6 +22,8 @@ export type TimelineEasingCurve = { x1: number; y1: number; x2: number; y2: numb
 export type TimelineFrameSpan = number | { start: number; end: number } // inclusive
 
 export type TimelineState = {
+	/** Project FPS (used by playback and export). */
+	fps: number
 	frameCount: number
 	currentFrame: number
 	frameWidth: number

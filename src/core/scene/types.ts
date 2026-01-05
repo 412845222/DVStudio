@@ -69,6 +69,7 @@ export type VideoSceneImageAsset = {
 export interface VideoSceneState {
 	showSizePanel: boolean
 	showBackgroundPanel: boolean
+	showExportPanel: boolean
 	leftPanel: VideoSceneLeftPanelState
 	layers: VideoSceneLayer[]
 	activeLayerId: string

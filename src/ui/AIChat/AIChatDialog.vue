@@ -1,77 +1,108 @@
 <template>
-	<div
-		v-if="open && (!minimized || animating)"
-		ref="shellRef"
-		class="ai-chat"
-		:class="{ entering, minimizing }"
-		:style="shellStyle"
-		@pointerdown.stop
-	>
-		<div class="ai-chat__title" @pointerdown.prevent="onTitlePointerDown">
-			<div class="ai-chat__title-left">
-				<span class="ai-chat__title-text">AI助手</span>
-				<span v-if="sending" class="ai-chat__title-status">{{ taskStatusLabel }}</span>
-			</div>
-			<div class="ai-chat__title-actions">
-				<button
-					class="ai-chat__icon"
-					type="button"
-					:title="deepMode ? '深度思考模式：开' : '深度思考模式：关'"
-					@click="toggleDeepMode"
-				>
-					{{ deepMode ? '深' : '浅' }}
-				</button>
-				<button v-if="sending" class="ai-chat__icon" type="button" title="停止" @click="stopTask">⏹</button>
-				<button class="ai-chat__icon" type="button" title="最小化" @click="onMinimize">—</button>
-				<button class="ai-chat__icon" type="button" title="关闭" @click="onClose">×</button>
-			</div>
-		</div>
+  <div
+    v-if="open && (!minimized || animating)"
+    ref="shellRef"
+    class="ai-chat"
+    :class="{ entering, minimizing }"
+    :style="shellStyle"
+    @pointerdown.stop
+  >
+    <div class="ai-chat__title" @pointerdown.prevent="onTitlePointerDown">
+      <div class="ai-chat__title-left">
+        <span class="ai-chat__title-text">AI助手</span>
+        <span v-if="sending" class="ai-chat__title-status">{{ taskStatusLabel }}</span>
+      </div>
+      <div class="ai-chat__title-actions">
+        <button
+          class="ai-chat__icon"
+          type="button"
+          :title="deepMode ? '深度思考模式：开' : '深度思考模式：关'"
+          @click="toggleDeepMode"
+        >
+          {{ deepMode ? "深" : "浅" }}
+        </button>
+        <button
+          v-if="sending"
+          class="ai-chat__icon"
+          type="button"
+          title="停止"
+          @click="stopTask"
+        >
+          ⏹
+        </button>
+        <button class="ai-chat__icon" type="button" title="最小化" @click="onMinimize">
+          —
+        </button>
+        <button class="ai-chat__icon" type="button" title="关闭" @click="onClose">
+          ×
+        </button>
+      </div>
+    </div>
 
-		<div class="ai-chat__body">
-			<div ref="listRef" class="ai-chat__list" @scroll.passive="onListScroll">
-				<div v-for="m in messages" :key="m.id" class="ai-chat__msg" :class="[m.role]">
-					<div class="ai-chat__bubble">
-						<div class="ai-chat__role">{{ m.role === 'user' ? '我' : 'AI' }}</div>
-						<div class="ai-chat__text">{{ m.text }}</div>
-						<div v-if="isRunning(m) && taskStatusLabel" class="ai-chat__phase">{{ taskStatusLabel }}</div>
-						<div v-if="isRunning(m)" class="ai-chat__typing" aria-label="AI 正在处理">
-							<span class="ai-chat__dot" />
-							<span class="ai-chat__dot" />
-							<span class="ai-chat__dot" />
-						</div>
-						<div v-if="showStageActions(m)" class="ai-chat__actions">
-							<button class="ai-chat__action-btn" type="button" :disabled="sending" @click="regenerateLast">
-								重新生成
-							</button>
-							<button class="ai-chat__action-btn" type="button" :disabled="sending" @click="undoStage">
-								撤回
-							</button>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
+    <div class="ai-chat__body">
+      <div ref="listRef" class="ai-chat__list" @scroll.passive="onListScroll">
+        <div v-for="m in messages" :key="m.id" class="ai-chat__msg" :class="[m.role]">
+          <div class="ai-chat__bubble">
+            <div class="ai-chat__role">{{ m.role === "user" ? "我" : "AI" }}</div>
+            <div class="ai-chat__text">{{ m.text }}</div>
+            <div v-if="isRunning(m) && taskStatusLabel" class="ai-chat__phase">
+              {{ taskStatusLabel }}
+            </div>
+            <div v-if="isRunning(m)" class="ai-chat__typing" aria-label="AI 正在处理">
+              <span class="ai-chat__dot" />
+              <span class="ai-chat__dot" />
+              <span class="ai-chat__dot" />
+            </div>
+            <div v-if="showStageActions(m)" class="ai-chat__actions">
+              <button
+                class="ai-chat__action-btn"
+                type="button"
+                :disabled="sending"
+                @click="regenerateLast"
+              >
+                重新生成
+              </button>
+              <button
+                class="ai-chat__action-btn"
+                type="button"
+                :disabled="sending"
+                @click="undoStage"
+              >
+                撤回
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-		<form class="ai-chat__input" @submit.prevent="send">
-			<input
-				v-model="draft"
-				class="ai-chat__text-input"
-				type="text"
-				placeholder="输入问题..."
-				:disabled="sending"
-				@keydown.enter.exact.prevent="send"
-			/>
-			<button class="ai-chat__send" type="submit" :disabled="!canSend">发送</button>
-		</form>
+    <form class="ai-chat__input" @submit.prevent="send">
+      <input
+        v-model="draft"
+        class="ai-chat__text-input"
+        type="text"
+        placeholder="输入问题..."
+        :disabled="sending"
+        @keydown.enter.exact.prevent="send"
+      />
+      <button class="ai-chat__send" type="submit" :disabled="!canSend">发送</button>
+    </form>
 
-		<div class="ai-chat__thought" :class="{ open: thoughtOpen }" aria-label="思考面板">
-			<div class="ai-chat__thought-head">
-				<div class="ai-chat__thought-title">思考</div>
-				<button class="ai-chat__thought-close" type="button" title="关闭思考" @click="closeThought">×</button>
-			</div>
-			<div class="ai-chat__thought-text">{{ thoughtText }}</div>
-		</div>
-	</div>
+    <div class="ai-chat__thought" :class="{ open: thoughtOpen }" aria-label="思考面板">
+      <div class="ai-chat__thought-head">
+        <div class="ai-chat__thought-title">思考</div>
+        <button
+          class="ai-chat__thought-close"
+          type="button"
+          title="关闭思考"
+          @click="closeThought"
+        >
+          ×
+        </button>
+      </div>
+      <div class="ai-chat__thought-text">{{ thoughtText }}</div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -1283,324 +1314,324 @@ const isRunning = (m: ChatMessage) => {
 
 <style scoped>
 .ai-chat {
-	position: fixed;
-	left: 12px;
-	top: 12px;
-	width: 360px;
-	height: 420px;
-	border: 1px solid var(--vscode-border);
-	border-radius: 0;
-	background: var(--dweb-defualt);
-	color: var(--vscode-fg);
-	z-index: 6;
-	display: flex;
-	flex-direction: column;
-	overflow: visible;
-	opacity: 1;
-	transform: translate(0, 0) scale(1);
-	transition: transform 180ms ease, opacity 180ms ease;
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  width: 360px;
+  height: 420px;
+  border: 1px solid var(--vscode-border);
+  border-radius: 0;
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  opacity: 1;
+  transform: translate(0, 0) scale(1);
+  transition: transform 180ms ease, opacity 180ms ease;
 }
 
 .ai-chat.entering {
-	opacity: 0;
-	transform: translate(0, 8px) scale(0.98);
+  opacity: 0;
+  transform: translate(0, 8px) scale(0.98);
 }
 
 .ai-chat__title {
-	height: 36px;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 0 10px;
-	background: var(--dweb-defualt-dark);
-	border-bottom: 1px solid var(--vscode-border);
-	cursor: move;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background: var(--dweb-defualt-dark);
+  border-bottom: 1px solid var(--vscode-border);
+  cursor: move;
 }
 
 .ai-chat__title-left {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .ai-chat__title-status {
-	font-size: 11px;
-	color: var(--vscode-fg-muted);
-	white-space: nowrap;
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+  white-space: nowrap;
 }
 
 .ai-chat__title-text {
-	font-size: 12px;
-	font-weight: 600;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .ai-chat__title-actions {
-	display: flex;
-	gap: 6px;
+  display: flex;
+  gap: 6px;
 }
 
 .ai-chat__icon {
-	width: 26px;
-	height: 24px;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
-	color: var(--vscode-fg);
-	cursor: pointer;
-	font-size: 14px;
-	line-height: 1;
+  width: 26px;
+  height: 24px;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .ai-chat__icon:hover {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__list {
-	flex: 1;
-	min-height: 0;
-	overflow: auto;
-	padding: 10px;
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .ai-chat__msg {
-	display: flex;
+  display: flex;
 }
 
 .ai-chat__msg.user {
-	justify-content: flex-end;
+  justify-content: flex-end;
 }
 
 .ai-chat__msg.assistant {
-	justify-content: flex-start;
+  justify-content: flex-start;
 }
 
 .ai-chat__bubble {
-	max-width: 90%;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	border-radius: 0;
-	padding: 8px 10px;
-	font-size: 12px;
-	white-space: pre-wrap;
-	word-break: break-word;
+  max-width: 90%;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  border-radius: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ai-chat__msg.thought .ai-chat__bubble {
-	border-style: dashed;
-	opacity: 0.85;
+  border-style: dashed;
+  opacity: 0.85;
 }
 
 .ai-chat__msg.thought .ai-chat__text {
-	font-size: 11px;
-	color: var(--vscode-fg-muted);
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
 }
 
 .ai-chat__text {
-	white-space: pre-wrap;
-	word-break: break-word;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ai-chat__phase {
-	margin-top: 6px;
-	font-size: 11px;
-	color: var(--vscode-fg-muted);
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
 }
 
 .ai-chat__typing {
-	height: 16px;
-	display: flex;
-	align-items: center;
-	gap: 6px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .ai-chat__dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: var(--vscode-fg-muted);
-	opacity: 0.25;
-	animation: ai-chat-dot 900ms infinite ease-in-out;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vscode-fg-muted);
+  opacity: 0.25;
+  animation: ai-chat-dot 900ms infinite ease-in-out;
 }
 
 .ai-chat__dot:nth-child(2) {
-	animation-delay: 150ms;
+  animation-delay: 150ms;
 }
 
 .ai-chat__dot:nth-child(3) {
-	animation-delay: 300ms;
+  animation-delay: 300ms;
 }
 
 @keyframes ai-chat-dot {
-	0%,
-	100% {
-		opacity: 0.25;
-	}
-	50% {
-		opacity: 1;
-	}
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .ai-chat__msg.user .ai-chat__bubble {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__msg.assistant .ai-chat__bubble {
-	border-color: var(--vscode-border);
+  border-color: var(--vscode-border);
 }
 
 .ai-chat__role {
-	font-size: 11px;
-	color: var(--vscode-fg-muted);
-	margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+  margin-bottom: 4px;
 }
 
 .ai-chat__actions {
-	margin-top: 8px;
-	display: flex;
-	gap: 8px;
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
 }
 
 .ai-chat__action-btn {
-	height: 24px;
-	padding: 0 10px;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
-	color: var(--vscode-fg);
-	cursor: pointer;
-	font-size: 12px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .ai-chat__action-btn:hover {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__action-btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ai-chat__input {
-	height: 44px;
-	display: flex;
-	gap: 8px;
-	align-items: center;
-	padding: 8px;
-	border-top: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+  height: 44px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-top: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
 }
 
 .ai-chat__text-input {
-	flex: 1;
-	min-width: 0;
-	height: 28px;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	padding: 0 10px;
-	font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .ai-chat__text-input:focus {
-	outline: none;
-	border-color: var(--vscode-border-accent);
+  outline: none;
+  border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__send {
-	height: 28px;
-	padding: 0 10px;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	cursor: pointer;
-	font-size: 12px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .ai-chat__send:hover {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__send:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .ai-chat__body {
-	position: relative;
-	flex: 1;
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .ai-chat__thought {
-	position: absolute;
-	left: 0;
-	right: 0;
-	top: 100%;
-	margin-top: 6px;
-	max-height: 220px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	padding: 8px;
-	box-sizing: border-box;
-	transform: translateY(-8px);
-	opacity: 0;
-	transition: transform 180ms ease, opacity 180ms ease;
-	z-index: 3;
-	overflow: auto;
-	pointer-events: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 6px;
+  max-height: 220px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  padding: 8px;
+  box-sizing: border-box;
+  transform: translateY(-8px);
+  opacity: 0;
+  transition: transform 180ms ease, opacity 180ms ease;
+  z-index: 3;
+  overflow: auto;
+  pointer-events: none;
 }
 
 .ai-chat__thought.open {
-	transform: translateY(0);
-	opacity: 1;
-	pointer-events: auto;
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .ai-chat__thought-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-	margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .ai-chat__thought-title {
-	font-size: 12px;
-	opacity: 0.8;
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .ai-chat__thought-close {
-	width: 24px;
-	height: 24px;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
-	color: var(--vscode-fg);
-	cursor: pointer;
-	line-height: 1;
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  cursor: pointer;
+  line-height: 1;
 }
 
 .ai-chat__thought-close:hover {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__thought-text {
-	white-space: pre-wrap;
-	word-break: break-word;
-	font-size: 12px;
-	line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .ai-chat__list {
-	min-height: 0;
-	position: relative;
-	z-index: 2;
+  min-height: 0;
+  position: relative;
+  z-index: 2;
 }
 </style>

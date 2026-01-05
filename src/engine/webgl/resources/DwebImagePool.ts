@@ -55,27 +55,65 @@ export class DwebImagePool {
 		const entry: CacheEntry = { src: key, tex, width: 1, height: 1, wrap, status: 'loading' }
 		this.entries.set(key, entry)
 
-		const img = new Image()
-		img.crossOrigin = 'anonymous'
-		img.onload = () => {
-			entry.width = Math.max(1, img.naturalWidth || 1)
-			entry.height = Math.max(1, img.naturalHeight || 1)
-			entry.status = 'ready'
-			gl.bindTexture(gl.TEXTURE_2D, tex)
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-			const mode = entry.wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode)
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
-			gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
-			canvas.requestRender()
+		const loadViaDomImage = () => {
+			const img = new Image()
+			img.crossOrigin = 'anonymous'
+			img.onload = () => {
+				entry.width = Math.max(1, img.naturalWidth || 1)
+				entry.height = Math.max(1, img.naturalHeight || 1)
+				entry.status = 'ready'
+				gl.bindTexture(gl.TEXTURE_2D, tex)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+				const mode = entry.wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
+				gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+				canvas.requestRender()
+			}
+			img.onerror = () => {
+				entry.status = 'error'
+				canvas.requestRender()
+			}
+			img.src = key
 		}
-		img.onerror = () => {
+
+		const loadViaFetchImageBitmap = async () => {
+			try {
+				const res = await fetch(key, { mode: 'cors', credentials: 'omit', cache: 'force-cache' as any })
+				if (!res.ok) throw new Error(`HTTP ${res.status}`)
+				const blob = await res.blob()
+				const bmp = await createImageBitmap(blob)
+				entry.width = Math.max(1, (bmp as any).width || 1)
+				entry.height = Math.max(1, (bmp as any).height || 1)
+				entry.status = 'ready'
+				gl.bindTexture(gl.TEXTURE_2D, tex)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+				const mode = entry.wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
+				gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp)
+				try {
+					;(bmp as any).close?.()
+				} catch {
+					// ignore
+				}
+				canvas.requestRender()
+			} catch {
+				entry.status = 'error'
+				canvas.requestRender()
+			}
+		}
+
+		if (typeof Image !== 'undefined') loadViaDomImage()
+		else if (typeof fetch !== 'undefined' && typeof createImageBitmap !== 'undefined') void loadViaFetchImageBitmap()
+		else {
 			entry.status = 'error'
 			canvas.requestRender()
 		}
-		img.src = key
 
 		return tex
 	}

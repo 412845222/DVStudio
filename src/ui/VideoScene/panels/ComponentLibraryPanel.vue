@@ -1,84 +1,109 @@
 <template>
-	<div class="vs-cl">
-		<div class="vs-cl-head">
-			<div class="vs-cl-title">组件库</div>
-			<div class="vs-cl-meta">当前关键帧：{{ selectedKeyframeCell ? `${selectedKeyframeCell.layerId}@${selectedKeyframeCell.frameIndex}` : '未选择' }}</div>
-		</div>
+  <div class="vs-cl">
+    <div class="vs-cl-head">
+      <div class="vs-cl-title">组件库</div>
+      <div class="vs-cl-meta">
+        当前关键帧：{{
+          selectedKeyframeCell
+            ? `${selectedKeyframeCell.layerId}@${selectedKeyframeCell.frameIndex}`
+            : "未选择"
+        }}
+      </div>
+    </div>
 
-		<div v-if="!componentLibrary.length" class="vs-cl-empty">暂无已保存组件</div>
+    <div v-if="!componentLibrary.length" class="vs-cl-empty">暂无已保存组件</div>
 
-		<div v-else class="vs-cl-body">
-			<div class="vs-cl-list">
-				<button
-					v-for="c in componentLibrary"
-					:key="c.id"
-					type="button"
-					class="vs-cl-item"
-					:class="{ active: c.id === selectedComponentId }"
-					@click="selectComponent(c.id)"
-				>
-					<div class="vs-cl-item-row">
-						<img v-if="getThumbUrl(c)" class="vs-cl-thumb" :src="String(getThumbUrl(c))" alt="" />
-						<div class="vs-cl-item-text">
-							<div class="vs-cl-item-name">{{ c.name }}</div>
-							<div class="vs-cl-item-id">{{ c.templateId }}</div>
-						</div>
-					</div>
-				</button>
-			</div>
+    <div v-else class="vs-cl-body">
+      <div class="vs-cl-list">
+        <button
+          v-for="c in componentLibrary"
+          :key="c.id"
+          type="button"
+          class="vs-cl-item"
+          :class="{ active: c.id === selectedComponentId }"
+          @click="selectComponent(c.id)"
+        >
+          <div class="vs-cl-item-row">
+            <img
+              v-if="getThumbUrl(c)"
+              class="vs-cl-thumb"
+              :src="String(getThumbUrl(c))"
+              alt=""
+            />
+            <div class="vs-cl-item-text">
+              <div class="vs-cl-item-name">{{ c.name }}</div>
+              <div class="vs-cl-item-id">{{ c.templateId }}</div>
+            </div>
+          </div>
+        </button>
+      </div>
 
-			<div class="vs-cl-detail">
-				<div v-if="!selectedComponent" class="vs-cl-empty">请选择一个组件</div>
-				<div v-else class="vs-cl-card">
-					<div class="vs-cl-card-head">
-						<div class="vs-cl-card-title">参数</div>
-					</div>
-					<div v-if="!selectedParamDefs.length" class="vs-cl-empty">该组件没有可配置参数</div>
-					<div v-else class="vs-cl-fields">
-						<div v-for="p in selectedParamDefs" :key="p.key" class="vs-cl-field">
-							<div class="vs-cl-field-label">{{ p.key }}</div>
-							<input
-								v-if="p.type === 'string' || p.type === 'asset:image'"
-								class="vs-cl-input"
-								type="text"
-								:value="String(getParamValue(selectedComponent.id, p.key) ?? '')"
-								@input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
-							/>
-							<input
-								v-else-if="p.type === 'number'"
-								class="vs-cl-input"
-								type="number"
-								:value="String(getParamValue(selectedComponent.id, p.key) ?? '')"
-								@input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
-							/>
-							<input
-								v-else-if="p.type === 'color'"
-								class="vs-cl-color"
-								type="color"
-								:value="String(getParamValue(selectedComponent.id, p.key) ?? '#ffffff')"
-								@input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
-							/>
-							<input
-								v-else-if="p.type === 'boolean'"
-								class="vs-cl-checkbox"
-								type="checkbox"
-								:checked="!!getParamValue(selectedComponent.id, p.key)"
-								@change="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).checked)"
-							/>
-						</div>
-					</div>
+      <div class="vs-cl-detail">
+        <div v-if="!selectedComponent" class="vs-cl-empty">请选择一个组件</div>
+        <div v-else class="vs-cl-card">
+          <div class="vs-cl-card-head">
+            <div class="vs-cl-card-title">参数</div>
+          </div>
+          <div v-if="!selectedParamDefs.length" class="vs-cl-empty">
+            该组件没有可配置参数
+          </div>
+          <div v-else class="vs-cl-fields">
+            <div v-for="p in selectedParamDefs" :key="p.key" class="vs-cl-field">
+              <div class="vs-cl-field-label">{{ p.key }}</div>
+              <input
+                v-if="p.type === 'string' || p.type === 'asset:image'"
+                class="vs-cl-input"
+                type="text"
+                :value="String(getParamValue(selectedComponent.id, p.key) ?? '')"
+                @input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+              />
+              <input
+                v-else-if="p.type === 'number'"
+                class="vs-cl-input"
+                type="number"
+                :value="String(getParamValue(selectedComponent.id, p.key) ?? '')"
+                @input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+              />
+              <input
+                v-else-if="p.type === 'color'"
+                class="vs-cl-color"
+                type="color"
+                :value="String(getParamValue(selectedComponent.id, p.key) ?? '#ffffff')"
+                @input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+              />
+              <input
+                v-else-if="p.type === 'boolean'"
+                class="vs-cl-checkbox"
+                type="checkbox"
+                :checked="!!getParamValue(selectedComponent.id, p.key)"
+                @change="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).checked)"
+              />
+            </div>
+          </div>
 
-					<div class="vs-cl-actions">
-						<button class="vs-btn" type="button" :disabled="!canAddToKeyframe" @click="insertSelectedComponent">
-							添加到当前关键帧
-						</button>
-						<button class="vs-btn" type="button" :disabled="busy" @click="removeSelectedComponent">移除该组件</button>
-						<div v-if="addHint" class="vs-cl-hint">{{ addHint }}</div>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
+          <div class="vs-cl-actions">
+            <button
+              class="vs-btn"
+              type="button"
+              :disabled="!canAddToKeyframe"
+              @click="insertSelectedComponent"
+            >
+              添加到当前关键帧
+            </button>
+            <button
+              class="vs-btn"
+              type="button"
+              :disabled="busy"
+              @click="removeSelectedComponent"
+            >
+              移除该组件
+            </button>
+            <div v-if="addHint" class="vs-cl-hint">{{ addHint }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -405,207 +430,228 @@ const removeSelectedComponent = () => {
 
 <style scoped>
 .vs-cl {
-	flex: 1 1 auto;
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-	min-width: 0;
-	min-height: 0;
-	padding: 10px;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
 }
 
 .vs-cl-head {
-	display: flex;
-	align-items: baseline;
-	gap: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
 
 .vs-cl-title {
-	font-size: 13px;
-	color: var(--vscode-fg);
+  font-size: 13px;
+  color: var(--vscode-fg);
 }
 
 .vs-cl-meta {
-	font-size: 12px;
-	color: var(--vscode-fg-muted);
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
 }
 
 .vs-cl-empty {
-	padding: 10px;
-	border: 1px dashed var(--vscode-border);
-	color: var(--vscode-fg-muted);
-	background: var(--dweb-defualt);
+  padding: 10px;
+  border: 1px dashed var(--vscode-border);
+  color: var(--vscode-fg-muted);
+  background: var(--dweb-defualt);
 }
 
 .vs-cl-body {
-	flex: 1 1 auto;
-	display: grid;
-	grid-template-columns: 220px 1fr;
-	gap: 10px;
-	min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 10px;
+  min-height: 0;
 }
 
 .vs-cl-list {
-	overflow: auto;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+  overflow: auto;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
 }
 
 .vs-cl-item {
-	display: block;
-	width: 100%;
-	text-align: left;
-	padding: 8px 10px;
-	border: none;
-	background: transparent;
-	color: var(--vscode-fg);
-	cursor: pointer;
-	border-bottom: 1px solid var(--vscode-border);
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-fg);
+  cursor: pointer;
+  border-bottom: 1px solid var(--vscode-border);
 }
 
 .vs-cl-item-row {
-	display: grid;
-	grid-template-columns: 64px 1fr;
-	gap: 10px;
-	align-items: center;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 10px;
+  align-items: center;
 }
 
 .vs-cl-thumb {
-	width: 64px;
-	height: 40px;
-	object-fit: cover;
-	border-radius: 4px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
+  width: 64px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
 }
 
 .vs-cl-item-text {
-	min-width: 0;
+  min-width: 0;
 }
 
 .vs-cl-item.active {
-	outline: 1px solid var(--vscode-border-accent);
-	outline-offset: -1px;
+  outline: 1px solid var(--vscode-border-accent);
+  outline-offset: -1px;
 }
 
 .vs-cl-item-name {
-	font-size: 12px;
+  font-size: 12px;
 }
 
 .vs-cl-item-id {
-	font-size: 11px;
-	color: var(--vscode-fg-muted);
-	margin-top: 2px;
-	word-break: break-all;
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+  margin-top: 2px;
+  word-break: break-all;
 }
 
 .vs-cl-detail {
-	min-width: 0;
-	min-height: 0;
+  min-width: 0;
+  min-height: 0;
 }
 
 .vs-cl-card {
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
-	padding: 10px;
-	min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  padding: 10px;
+  min-height: 0;
 }
 
 .vs-cl-card-head {
-	display: flex;
-	align-items: center;
+  display: flex;
+  align-items: center;
 }
 
 .vs-cl-card-title {
-	font-size: 12px;
-	color: var(--vscode-fg);
+  font-size: 12px;
+  color: var(--vscode-fg);
 }
 
 .vs-cl-fields {
-	display: grid;
-	grid-template-columns: 1fr;
-	gap: 8px;
-	overflow: auto;
-	min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  overflow: auto;
+  min-height: 0;
 }
 
 .vs-cl-field {
-	display: grid;
-	grid-template-columns: 140px 1fr;
-	gap: 8px;
-	align-items: center;
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px;
+  align-items: center;
 }
 
 .vs-cl-field-label {
-	font-size: 12px;
-	color: var(--vscode-fg-muted);
-	word-break: break-all;
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
+  word-break: break-all;
 }
 
 .vs-cl-input {
-	flex: 1 1 0;
-	min-width: 0;
-	max-width: 100%;
-	box-sizing: border-box;
-	padding: 6px 8px;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
-	color: var(--vscode-fg);
-	outline: none;
-	height: 28px;
-	line-height: 16px;
-	transition: border-color 120ms ease;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  outline: none;
+  height: 28px;
+  line-height: 16px;
+  transition: border-color 120ms ease;
 }
 
 .vs-cl-input:hover {
-	border-color: var(--vscode-hover-border);
+  border-color: var(--vscode-hover-border);
 }
 
 .vs-cl-input:focus {
-	border-color: var(--dweb-green-main);
-	box-shadow: var(--dweb-shadow);
+  border-color: var(--dweb-green-main);
+  box-shadow: var(--dweb-shadow);
 }
 
 .vs-cl-input:disabled {
-	background: var(--vscode-disabled-bg);
-	color: var(--vscode-disabled-fg);
+  background: var(--vscode-disabled-bg);
+  color: var(--vscode-disabled-fg);
 }
 
 .vs-cl-color {
-	flex: 0 0 auto;
-	width: 28px;
-	height: 28px;
-	padding: 0;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border);
-	background: transparent;
-	box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border);
+  background: transparent;
+  box-sizing: border-box;
 }
 
 .vs-cl-color:focus {
-	border-color: var(--dweb-green-main);
-	box-shadow: var(--dweb-shadow);
+  border-color: var(--dweb-green-main);
+  box-shadow: var(--dweb-shadow);
 }
 
 .vs-cl-checkbox {
-	width: 18px;
-	height: 18px;
-	accent-color: var(--dweb-green-main);
+  width: 18px;
+  height: 18px;
+  accent-color: var(--dweb-green-main);
 }
 
 .vs-cl-actions {
-	display: flex;
-	gap: 8px;
-	flex-wrap: wrap;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Local button skin: keep consistent with editor panels, no rounded corners */
+.vs-btn {
+  padding: 6px 10px;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border-accent);
+  background: transparent;
+  color: var(--vscode-fg);
+  cursor: pointer;
+}
+
+.vs-btn:hover {
+  background: var(--vscode-hover-bg);
+}
+
+.vs-btn:disabled {
+  background: var(--vscode-disabled-bg);
+  color: var(--vscode-disabled-fg);
+  border-color: var(--vscode-border);
+  cursor: not-allowed;
 }
 
 .vs-cl-hint {
-	width: 100%;
-	font-size: 12px;
-	color: var(--vscode-fg-muted);
+  width: 100%;
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
 }
 </style>

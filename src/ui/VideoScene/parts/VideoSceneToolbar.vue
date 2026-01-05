@@ -24,6 +24,7 @@
 		>
 			组件库
 		</button>
+		<button class="vs-tool-btn" type="button" :class="{ active: showExportPanel }" @click="onExport">导出视频</button>
 		<input ref="importSubtitleInputEl" class="vs-import-input" type="file" accept=".srt,text/plain" @change="onImportSubtitleFile" />
 		<input ref="importInputEl" class="vs-import-input" type="file" accept="application/json,.json" @change="onImportFile" />
 		<div class="vs-toolbar-spacer" />
@@ -64,6 +65,7 @@ const DEFAULT_SUBTITLE_FPS = 30
 
 const showSizePanel = computed(() => store.state.showSizePanel)
 const showBackgroundPanel = computed(() => store.state.showBackgroundPanel)
+const showExportPanel = computed(() => store.state.showExportPanel)
 
 const aiOpen = computed(() => !!props.aiOpen)
 const aiMinimized = computed(() => !!props.aiMinimized)
@@ -101,6 +103,10 @@ const onImportComponent = () => {
 
 const onImportSubtitle = () => {
 	importSubtitleInputEl.value?.click()
+}
+
+const onExport = () => {
+	store.dispatch('toggleExportPanel')
 }
 
 const toggleAi = () => {

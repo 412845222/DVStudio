@@ -1,132 +1,227 @@
 <template>
-	<div ref="shellRef" class="vs-shell">
-		<VideoStudioLeftPanel ref="leftPanelRef" />
-		<div ref="stageRef" class="vs-stage" :style="{ left: leftPanelWidthPx + 'px' }">
-			<canvas ref="canvasRef" class="vs-canvas" :class="{ selecting: isCtrlDown }" />
-			<RulerOverlay
-				:width="stageSize.width"
-				:height="stageSize.height"
-				:pan-x="viewport.panX"
-				:pan-y="viewport.panY"
-				:zoom="viewport.zoom"
-				:origin-x="stageOrigin.x"
-				:origin-y="stageOrigin.y"
-				:ruler-size="RULER_SIZE"
-			/>
+  <div ref="shellRef" class="vs-shell">
+    <VideoStudioLeftPanel ref="leftPanelRef" />
+    <div ref="stageRef" class="vs-stage" :style="{ left: leftPanelWidthPx + 'px' }">
+      <canvas ref="canvasRef" class="vs-canvas" :class="{ selecting: isCtrlDown }" />
+      <RulerOverlay
+        :width="stageSize.width"
+        :height="stageSize.height"
+        :pan-x="viewport.panX"
+        :pan-y="viewport.panY"
+        :zoom="viewport.zoom"
+        :origin-x="stageOrigin.x"
+        :origin-y="stageOrigin.y"
+        :ruler-size="RULER_SIZE"
+      />
 
-			<VideoSceneToolbar ref="toolbarRef" :ai-open="aiChatOpen" :ai-minimized="aiChatMinimized" @toggle-ai="onToggleAi" />
-			<!-- HTML overlay for selection resize handles -->
-			<div class="vs-overlay">
-				<div v-if="marquee.active" class="vs-marquee" :style="marquee.style" />
-				<template v-if="showGuides">
-					<div v-if="snapGuides.x != null" class="vs-snap-line v" :style="{ left: snapGuides.x + 'px' }" />
-					<div v-if="snapGuides.y != null" class="vs-snap-line h" :style="{ top: snapGuides.y + 'px' }" />
-				</template>
-				<template v-if="multiControlPoints.length">
-					<div v-for="cp in multiControlPoints" :key="cp.nodeId" class="vs-cp-passive">
-						<ResizeControlPoints
-							:handle-styles="cp.handleStyles"
-							:show-size="false"
-							:size-text="''"
-							:size-style="{ left: '0px', top: '0px' }"
-							@handle-down="() => {}"
-						/>
-						<LineControlPoints
-							v-if="cp.lineHandleStyles"
-							:handle-styles="cp.lineHandleStyles"
-							@point-down="() => {}"
-						/>
-					</div>
-				</template>
-				<ResizeControlPoints
-					v-if="overlay.visible"
-					:handle-styles="overlay.handleStyles"
-					:show-size="overlay.showSize"
-					:size-text="overlay.sizeText"
-					:size-style="overlay.sizeStyle"
-					@handle-down="onHandleDown"
-				/>
-				<LineControlPoints v-if="lineOverlay.visible" :handle-styles="lineOverlay.handleStyles" @point-down="onLinePointDown" />
-			</div>
+      <VideoSceneToolbar
+        ref="toolbarRef"
+        :ai-open="aiChatOpen"
+        :ai-minimized="aiChatMinimized"
+        @toggle-ai="onToggleAi"
+      />
+      <!-- HTML overlay for selection resize handles -->
+      <div class="vs-overlay">
+        <div v-if="marquee.active" class="vs-marquee" :style="marquee.style" />
+        <template v-if="showGuides">
+          <div
+            v-if="snapGuides.x != null"
+            class="vs-snap-line v"
+            :style="{ left: snapGuides.x + 'px' }"
+          />
+          <div
+            v-if="snapGuides.y != null"
+            class="vs-snap-line h"
+            :style="{ top: snapGuides.y + 'px' }"
+          />
+        </template>
+        <template v-if="multiControlPoints.length">
+          <div v-for="cp in multiControlPoints" :key="cp.nodeId" class="vs-cp-passive">
+            <ResizeControlPoints
+              :handle-styles="cp.handleStyles"
+              :show-size="false"
+              :size-text="''"
+              :size-style="{ left: '0px', top: '0px' }"
+              @handle-down="() => {}"
+            />
+            <LineControlPoints
+              v-if="cp.lineHandleStyles"
+              :handle-styles="cp.lineHandleStyles"
+              @point-down="() => {}"
+            />
+          </div>
+        </template>
+        <ResizeControlPoints
+          v-if="overlay.visible"
+          :handle-styles="overlay.handleStyles"
+          :show-size="overlay.showSize"
+          :size-text="overlay.sizeText"
+          :size-style="overlay.sizeStyle"
+          @handle-down="onHandleDown"
+        />
+        <LineControlPoints
+          v-if="lineOverlay.visible"
+          :handle-styles="lineOverlay.handleStyles"
+          @point-down="onLinePointDown"
+        />
+      </div>
 
-			<div class="vs-tools">
-				<button class="vs-tool" type="button" :class="{ active: showGuides }" @click="toggleGuides">辅助线</button>
-				<button class="vs-tool" type="button" :class="{ active: snapEnabled }" @click="toggleSnap">磁吸</button>
-			</div>
+      <div class="vs-tools">
+        <button
+          class="vs-tool"
+          type="button"
+          :class="{ active: showGuides }"
+          @click="toggleGuides"
+        >
+          辅助线
+        </button>
+        <button
+          class="vs-tool"
+          type="button"
+          :class="{ active: snapEnabled }"
+          @click="toggleSnap"
+        >
+          磁吸
+        </button>
+      </div>
 
-			<form v-if="showSizePanel" class="vs-form" @submit.prevent>
-			<label class="vs-label">
-				<span>宽</span>
-				<input v-model.number="inputWidth" class="vs-input" type="number" min="1" step="1" @change="applySize" />
-			</label>
-			<label class="vs-label">
-				<span>高</span>
-				<input v-model.number="inputHeight" class="vs-input" type="number" min="1" step="1" @change="applySize" />
-			</label>
-			<button class="vs-btn" type="button" @click="fitStage">屏幕适配</button>
-		</form>
+      <form v-if="showSizePanel" class="vs-form" @submit.prevent>
+        <label class="vs-label">
+          <span>宽</span>
+          <input
+            v-model.number="inputWidth"
+            class="vs-input"
+            type="number"
+            min="1"
+            step="1"
+            @change="applySize"
+          />
+        </label>
+        <label class="vs-label">
+          <span>高</span>
+          <input
+            v-model.number="inputHeight"
+            class="vs-input"
+            type="number"
+            min="1"
+            step="1"
+            @change="applySize"
+          />
+        </label>
+        <button class="vs-btn" type="button" @click="fitStage">屏幕适配</button>
+      </form>
 
-			<form v-if="showBackgroundPanel" class="vs-form vs-bg-form" @submit.prevent>
-			<label class="vs-label">
-				<span>类型</span>
-				<select v-model="bgType" class="vs-select" @change="applyBackground">
-					<option value="color">颜色</option>
-					<option value="image">图片</option>
-				</select>
-			</label>
+      <form v-if="showBackgroundPanel" class="vs-form vs-bg-form" @submit.prevent>
+        <label class="vs-label">
+          <span>类型</span>
+          <select v-model="bgType" class="vs-select" @change="applyBackground">
+            <option value="color">颜色</option>
+            <option value="image">图片</option>
+          </select>
+        </label>
 
-			<label class="vs-label">
-				<span>透明</span>
-				<input v-model.number="bgOpacity" class="vs-input" type="number" min="0" max="1" step="0.05" @input="applyBackground" />
-			</label>
+        <label class="vs-label">
+          <span>透明</span>
+          <input
+            v-model.number="bgOpacity"
+            class="vs-input"
+            type="number"
+            min="0"
+            max="1"
+            step="0.05"
+            @input="applyBackground"
+          />
+        </label>
 
-			<template v-if="bgType === 'color'">
-				<label class="vs-label">
-					<span>颜色</span>
-					<input v-model="bgColor" class="vs-input" type="text" @input="scheduleApplyBackground" />
-				</label>
-				<input v-model="bgColor" class="vs-color" type="color" @input="applyBackground" />
-			</template>
+        <template v-if="bgType === 'color'">
+          <label class="vs-label">
+            <span>颜色</span>
+            <input
+              v-model="bgColor"
+              class="vs-input"
+              type="text"
+              @input="scheduleApplyBackground"
+            />
+          </label>
+          <input
+            v-model="bgColor"
+            class="vs-color"
+            type="color"
+            @input="applyBackground"
+          />
+        </template>
 
-			<template v-else>
-				<label class="vs-label" style="flex: 1; min-width: 0">
-					<span>图片</span>
-					<input
-						v-model="bgImageSrc"
-						class="vs-input"
-						type="text"
-						placeholder="https://... 或 blob:..."
-						@input="scheduleApplyBackground"
-					/>
-				</label>
-				<label class="vs-file">
-					<input class="vs-file-input" type="file" accept="image/*" @change="onPickBgFile" />
-					<span class="vs-file-btn">选择</span>
-				</label>
-				<label class="vs-label">
-					<span>适配</span>
-					<select v-model="bgFit" class="vs-select" @change="applyBackground">
-						<option value="contain">contain</option>
-						<option value="cover">cover</option>
-						<option value="fill">fill</option>
-						<option value="none">none</option>
-						<option value="scale-down">scale-down</option>
-					</select>
-				</label>
-				<label class="vs-label">
-					<span>重复</span>
-					<select v-model="bgRepeat" class="vs-select" @change="applyBackground">
-						<option :value="false">不重复</option>
-						<option :value="true">重复</option>
-					</select>
-				</label>
-			</template>
-			</form>
-		</div>
+        <template v-else>
+          <label class="vs-label" style="flex: 1; min-width: 0">
+            <span>图片</span>
+            <input
+              v-model="bgImageSrc"
+              class="vs-input"
+              type="text"
+              placeholder="https://... 或 blob:..."
+              @input="scheduleApplyBackground"
+            />
+          </label>
+          <label class="vs-file">
+            <input
+              class="vs-file-input"
+              type="file"
+              accept="image/*"
+              @change="onPickBgFile"
+            />
+            <span class="vs-file-btn">选择</span>
+          </label>
+          <label class="vs-label">
+            <span>适配</span>
+            <select v-model="bgFit" class="vs-select" @change="applyBackground">
+              <option value="contain">contain</option>
+              <option value="cover">cover</option>
+              <option value="fill">fill</option>
+              <option value="none">none</option>
+              <option value="scale-down">scale-down</option>
+            </select>
+          </label>
+          <label class="vs-label">
+            <span>重复</span>
+            <select v-model="bgRepeat" class="vs-select" @change="applyBackground">
+              <option :value="false">不重复</option>
+              <option :value="true">重复</option>
+            </select>
+          </label>
+        </template>
+      </form>
 
-		<VideoStudioRightPanel ref="rightPanelRef" />
-		<AIChatDialog v-model:open="aiChatOpen" v-model:minimized="aiChatMinimized" :anchor="aiChatAnchor" />
-	</div>
+      <ExportDialog
+        :open="showExportPanel"
+        :format="exportFormat"
+        :concurrency="exportConcurrency"
+		:ignore-stage-background="exportIgnoreStageBackground"
+        :status="exportStatus"
+        :client-progress="exportClientProgress"
+        :server-progress="exportServerProgress"
+        :server-path="exportServerPath"
+        :error-text="exportError"
+        @reset="resetExportResult"
+        @update:format="(v) => (exportFormat = v)"
+        @update:concurrency="(v) => (exportConcurrency = v)"
+		@update:ignoreStageBackground="(v) => (exportIgnoreStageBackground = v)"
+        @start="startExport"
+        @close="
+          () => {
+            resetExportResult();
+            void VideoSceneStore.dispatch('setExportPanelVisible', { visible: false });
+          }
+        "
+      />
+    </div>
+
+    <VideoStudioRightPanel ref="rightPanelRef" />
+    <AIChatDialog
+      v-model:open="aiChatOpen"
+      v-model:minimized="aiChatMinimized"
+      :anchor="aiChatAnchor"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -141,12 +236,15 @@ import VideoSceneToolbar from './parts/VideoSceneToolbar.vue'
 import VideoStudioLeftPanel from './panels/VideoStudioLeftPanel.vue'
 import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
 import AIChatDialog from '../AIChat/AIChatDialog.vue'
+import ExportDialog from './dialogs/ExportDialog.vue'
 import { DwebCanvasGL } from '../../engine/webgl'
 import { DwebVideoScene } from '../../engine/webgl'
 import { TimelineStore } from '../../store/timeline'
 import { containsFrame, type TimelineFrameSpan } from '../../store/timeline/spans'
 import { DwebCanvasGLKey } from './VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from './anim/timelineAnimation'
+import { editorPersistence } from '../../adapters/editorPersistence'
+import { ExportService, type ExportFormat } from '../../network/ExportService'
 import ResizeControlPoints, { type Corner } from './parts/nodeControlPoints/ResizeControlPoints.vue'
 import LineControlPoints, { type LinePointKind } from './parts/nodeControlPoints/LineControlPoints.vue'
 import {
@@ -263,6 +361,7 @@ const dwebCanvasRef = shallowRef<DwebCanvasGL | null>(null)
 provide(DwebCanvasGLKey, dwebCanvasRef)
 const showSizePanel = computed(() => VideoSceneStore.state.showSizePanel)
 const showBackgroundPanel = computed(() => VideoSceneStore.state.showBackgroundPanel)
+const showExportPanel = computed(() => VideoSceneStore.state.showExportPanel)
 const shellRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const toolbarRef = ref<InstanceType<typeof VideoSceneToolbar> | null>(null)
@@ -307,6 +406,217 @@ const bgImageSrc = ref<string>('')
 const bgFit = ref<'contain' | 'cover' | 'fill' | 'none' | 'scale-down'>('contain')
 const bgRepeat = ref<boolean>(false)
 const bgOpacity = ref<number>(1)
+
+const exportFormat = ref<ExportFormat>('mp4')
+const exportConcurrency = ref<4 | 8 | 16>(8)
+const exportIgnoreStageBackground = ref<boolean>(false)
+const exportStatus = ref<'idle' | 'running' | 'done' | 'error'>('idle')
+const exportClientProgress = ref(0)
+const exportServerProgress = ref(0)
+const exportJobId = ref<string | null>(null)
+const exportDownloadUrl = ref<string>('')
+const exportServerPath = ref<string>('')
+const exportError = ref<string>('')
+
+let exportStreamCloser: { close: () => void } | null = null
+const stopExportStream = () => {
+	try {
+		exportStreamCloser?.close()
+	} catch {
+		// ignore
+	}
+	exportStreamCloser = null
+}
+
+const resetExportResult = () => {
+	exportStatus.value = 'idle'
+	exportClientProgress.value = 0
+	exportServerProgress.value = 0
+	exportJobId.value = null
+	exportDownloadUrl.value = ''
+	exportServerPath.value = ''
+	exportError.value = ''
+}
+
+const startExport = async () => {
+	resetExportResult()
+	exportStatus.value = 'running'
+	try {
+		// Use the real stage size from the bottom size form/store.
+		const width = Math.max(1, Math.round(stageWidth.value))
+		const height = Math.max(1, Math.round(stageHeight.value))
+		const fps = Math.max(1, Math.min(240, Math.floor(Number((TimelineStore.state as any).fps ?? 60) || 60)))
+		const frameCount = Math.max(1, Math.floor(Number(TimelineStore.state.frameCount) || 1))
+
+		const created = await ExportService.createJob({
+			format: exportFormat.value,
+			width,
+			height,
+			fps,
+			frameCount,
+			ignoreStageBackground: exportFormat.value === 'mov' ? !!exportIgnoreStageBackground.value : false,
+			// Keep snapshot optional for potential debugging; backend ignores it.
+			snapshot: editorPersistence.getSnapshot(),
+		})
+		exportJobId.value = created.jobId
+
+		stopExportStream()
+		exportStreamCloser = ExportService.openJobStream(created.jobId, (info) => {
+			if (info?.downloadUrl) exportDownloadUrl.value = String(info.downloadUrl)
+			if (info?.serverPath) exportServerPath.value = String(info.serverPath)
+			exportServerProgress.value = Math.max(0, Math.min(100, Number(info.progress ?? 0) || 0))
+			if (info.status === 'done') {
+				exportStatus.value = 'done'
+				exportServerProgress.value = 100
+				stopExportStream()
+			} else if (info.status === 'error') {
+				exportStatus.value = 'error'
+				exportError.value = String(info.error ?? '未知错误')
+				stopExportStream()
+			}
+		})
+
+		// Offscreen canvas for export
+		const originalFrame = Math.floor(Number(TimelineStore.state.currentFrame) || 0)
+		try {
+			// Worker pool for concurrent render+upload (default 8; user can choose 4/16)
+			const concurrency = exportConcurrency.value === 4 ? 4 : exportConcurrency.value === 16 ? 16 : 8
+			const maxInFlight = Math.max(1, concurrency)
+			type WorkerOut =
+				| { type: 'ready' }
+				| { type: 'uploaded'; frameIndex: number }
+				| { type: 'error'; frameIndex: number; message: string }
+
+			const workerUrl = new URL('../../workers/exportRenderUploadWorker.ts', import.meta.url)
+			const workers: Worker[] = []
+			const idle: Worker[] = []
+			const queue: Array<{ frameIndex: number }> = []
+			let inFlight = 0
+			let uploaded = 0
+			let aborted: Error | null = null
+			let resolveOne: (() => void) | null = null
+
+			const waitOne = () =>
+				new Promise<void>((resolve, reject) => {
+					if (aborted) return reject(aborted)
+					resolveOne = () => {
+						resolveOne = null
+						if (aborted) reject(aborted)
+						else resolve()
+					}
+				})
+
+			const pump = () => {
+				while (!aborted && idle.length && queue.length) {
+					const w = idle.pop()!
+					const task = queue.shift()!
+					inFlight++
+					w.postMessage({ type: 'renderUpload', frameIndex: task.frameIndex })
+				}
+			}
+
+			const onWorkerMessage = (w: Worker, msg: WorkerOut) => {
+				if (msg.type === 'ready') {
+					idle.push(w)
+					pump()
+					return
+				}
+				if (msg.type === 'uploaded') {
+					uploaded++
+					inFlight = Math.max(0, inFlight - 1)
+					exportClientProgress.value = Math.max(0, Math.min(100, Math.round((uploaded * 100) / frameCount)))
+					idle.push(w)
+					pump()
+					resolveOne?.()
+					return
+				}
+				if (msg.type === 'error') {
+					aborted = new Error(msg.message || '上传失败')
+					resolveOne?.()
+					return
+				}
+			}
+
+			for (let wi = 0; wi < concurrency; wi++) {
+				const w = new Worker(workerUrl, { type: 'module' })
+				w.onmessage = (ev) => onWorkerMessage(w, (ev as MessageEvent).data as any)
+				w.postMessage({
+					type: 'init',
+					jobId: created.jobId,
+					width,
+					height,
+					frameCount,
+					ignoreStageBackground: exportFormat.value === 'mov' ? !!exportIgnoreStageBackground.value : false,
+					stageBackground: {
+						type: stageBackground.value.type,
+						color: stageBackground.value.color,
+						opacity: stageBackground.value.opacity,
+						imageSrc: stageBackground.value.imageSrc,
+						imageFit: stageBackground.value.imageFit,
+						repeat: stageBackground.value.repeat,
+					},
+					baseSceneState: cloneJsonSafe(VideoSceneStore.state),
+					timelineState: cloneJsonSafe(TimelineStore.state as any),
+				})
+				workers.push(w)
+			}
+
+			try {
+				for (let i = 0; i < frameCount; i++) {
+					if (aborted) throw aborted
+					while (!aborted && inFlight >= maxInFlight) await waitOne()
+					if (aborted) throw aborted
+					queue.push({ frameIndex: i })
+					pump()
+					// allow UI to breathe
+					await new Promise((r) => setTimeout(r, 0))
+				}
+
+				// Drain all uploads
+				while (!aborted && (inFlight > 0 || queue.length > 0)) {
+					pump()
+					await waitOne()
+				}
+				if (aborted) throw aborted
+
+				// Upload finished; wait for SSE to switch status to done/error.
+				exportClientProgress.value = 100
+				try {
+					await ExportService.finalize(created.jobId)
+				} catch {
+					// ignore; SSE will reflect final state if encoding already started.
+				}
+			} finally {
+				for (const w of workers) {
+					try {
+						w.terminate()
+					} catch {
+						// ignore
+					}
+				}
+			}
+		} finally {
+			try {
+				// Restore editor view state
+				isApplyingTimelineAnimation = true
+				applyTimelineAnimationAtFrame(originalFrame)
+				isApplyingTimelineAnimation = false
+			} catch {
+				// ignore
+			}
+		}
+	} catch (e) {
+		exportStatus.value = 'error'
+		exportError.value = String((e as any)?.message ?? e)
+		stopExportStream()
+	}
+}
+
+watch(showExportPanel, (open) => {
+	if (!open) {
+		stopExportStream()
+	}
+})
 
 let dwebCanvas: DwebCanvasGL | null = null
 let scene: DwebVideoScene | null = null
@@ -1303,197 +1613,210 @@ watch(
 
 <style scoped>
 .vs-shell {
-	position: relative;
-	width: 100%;
-	height: 100%;
-	min-height: 0;
-	overflow: hidden;
-	background: var(--dweb-defualt);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--dweb-defualt);
 }
 
 .vs-stage {
-	position: absolute;
-	top: 0;
-	right: 0;
-	bottom: 0;
-	min-width: 0;
-	overflow: hidden;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .vs-canvas {
-	position: absolute;
-	inset: 0;
-	width: 100%;
-	height: 100%;
-	cursor: grab;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
 }
 
 .vs-canvas.selecting {
-	cursor: default;
+  cursor: default;
 }
 
 .vs-overlay {
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
-	z-index: 4;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
 }
 
 .vs-cp-passive {
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 :deep(.vs-cp-passive .vs-handle) {
-	pointer-events: none !important;
+  pointer-events: none !important;
 }
 
 .vs-marquee {
-	position: absolute;
-	border: 1px solid var(--vscode-border-accent);
-	background: var(--vscode-border-accent);
-	opacity: 0.15;
-	pointer-events: none;
+  position: absolute;
+  border: 1px solid var(--vscode-border-accent);
+  background: var(--vscode-border-accent);
+  opacity: 0.15;
+  pointer-events: none;
 }
 
 .vs-snap-line {
-	position: absolute;
-	background: var(--vscode-border-accent);
-	opacity: 0.9;
-	pointer-events: none;
+  position: absolute;
+  background: var(--vscode-border-accent);
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .vs-snap-line.v {
-	top: 0;
-	bottom: 0;
-	width: 1px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
 }
 
 .vs-snap-line.h {
-	left: 0;
-	right: 0;
-	height: 1px;
+  left: 0;
+  right: 0;
+  height: 1px;
 }
 
 .vs-tools {
-	position: absolute;
-	top: calc(24px + 12px);
-	left: calc(24px + 12px);
-	display: flex;
-	gap: 8px;
-	z-index: 2;
+  position: absolute;
+  top: calc(24px + 12px);
+  left: calc(24px + 12px);
+  display: flex;
+  gap: 8px;
+  z-index: 2;
 }
 
 .vs-tool {
-	pointer-events: auto;
-	padding: 6px 10px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	cursor: pointer;
-	font-size: 12px;
+  pointer-events: auto;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .vs-tool.active {
-	border-color: var(--vscode-border-accent);
-	background: var(--vscode-selected-bg);
+  border-color: var(--vscode-border-accent);
+  background: var(--vscode-selected-bg);
 }
 
 .vs-tool:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .vs-form {
-	position: absolute;
-	left: 16px;
-	bottom: 56px;
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 10px 12px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	border-radius: 10px;
+  position: absolute;
+  left: 16px;
+  bottom: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  border-radius: 10px;
 }
 
 .vs-bg-form {
-	bottom: 56px;
+  bottom: 56px;
+}
+
+.vs-export-form {
+  bottom: 56px;
+}
+
+.vs-link {
+  color: var(--vscode-border-accent);
+  text-decoration: none;
+}
+
+.vs-link:hover {
+  text-decoration: underline;
 }
 
 .vs-label {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 12px;
-	color: var(--vscode-fg-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
 }
 
 .vs-input {
-	width: 96px;
-	padding: 6px 8px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	outline: none;
+  width: 96px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  outline: none;
 }
 
 .vs-select {
-	width: 120px;
-	padding: 6px 8px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	outline: none;
+  width: 120px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  outline: none;
 }
 
 .vs-color {
-	width: 28px;
-	height: 28px;
-	padding: 0;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: transparent;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-border);
+  background: transparent;
 }
 
 .vs-file {
-	position: relative;
-	display: inline-flex;
-	align-items: center;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 }
 
 .vs-file-input {
-	position: absolute;
-	inset: 0;
-	opacity: 0;
-	cursor: pointer;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .vs-file-btn {
-	height: 28px;
-	padding: 0 10px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	font-size: 12px;
-	line-height: 28px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  font-size: 12px;
+  line-height: 28px;
 }
 
 .vs-btn {
-	padding: 6px 10px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border-accent);
-	background: transparent;
-	color: var(--vscode-fg);
-	cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-border-accent);
+  background: transparent;
+  color: var(--vscode-fg);
+  cursor: pointer;
 }
 
 .vs-btn:hover {
-	background: var(--vscode-hover-bg);
+  background: var(--vscode-hover-bg);
 }
 </style>

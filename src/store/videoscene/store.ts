@@ -95,19 +95,45 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     },
     toggleSizePanel(state) {
       state.showSizePanel = !state.showSizePanel
-      if (state.showSizePanel) state.showBackgroundPanel = false
+      if (state.showSizePanel) {
+        state.showBackgroundPanel = false
+        state.showExportPanel = false
+      }
     },
     setSizePanelVisible(state, payload: { visible: boolean }) {
       state.showSizePanel = !!payload.visible
-      if (state.showSizePanel) state.showBackgroundPanel = false
+      if (state.showSizePanel) {
+        state.showBackgroundPanel = false
+        state.showExportPanel = false
+      }
     },
     toggleBackgroundPanel(state) {
       state.showBackgroundPanel = !state.showBackgroundPanel
-      if (state.showBackgroundPanel) state.showSizePanel = false
+      if (state.showBackgroundPanel) {
+        state.showSizePanel = false
+        state.showExportPanel = false
+      }
     },
     setBackgroundPanelVisible(state, payload: { visible: boolean }) {
       state.showBackgroundPanel = !!payload.visible
-      if (state.showBackgroundPanel) state.showSizePanel = false
+      if (state.showBackgroundPanel) {
+        state.showSizePanel = false
+        state.showExportPanel = false
+      }
+    },
+    toggleExportPanel(state) {
+      state.showExportPanel = !state.showExportPanel
+      if (state.showExportPanel) {
+        state.showSizePanel = false
+        state.showBackgroundPanel = false
+      }
+    },
+    setExportPanelVisible(state, payload: { visible: boolean }) {
+      state.showExportPanel = !!payload.visible
+      if (state.showExportPanel) {
+        state.showSizePanel = false
+        state.showBackgroundPanel = false
+      }
     },
     setActiveLayer(state, payload: { layerId: string }) {
       const layer = findLayer(state, payload.layerId)
@@ -325,6 +351,12 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		setBackgroundPanelVisible({ commit }, payload: { visible: boolean }) {
 			commit('setBackgroundPanelVisible', payload)
 		},
+    toggleExportPanel({ commit }) {
+      commit('toggleExportPanel')
+    },
+    setExportPanelVisible({ commit }, payload: { visible: boolean }) {
+      commit('setExportPanelVisible', payload)
+    },
     setActiveLayer({ commit }, payload: { layerId: string }) {
       commit('setActiveLayer', payload)
     },

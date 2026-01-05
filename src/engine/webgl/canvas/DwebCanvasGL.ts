@@ -23,8 +23,13 @@ export type TextureWrapMode = 'clamp' | 'repeat'
 export type UvRect = { u0: number; v0: number; u1: number; v1: number }
 
 const cssVarColor = (name: string, fallbackHex: string): string => {
-	const v = (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim()
-	return v || fallbackHex
+	try {
+		if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined') return fallbackHex
+		const v = (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim()
+		return v || fallbackHex
+	} catch {
+		return fallbackHex
+	}
 }
 
 const hexToRgba = (hex: string, alpha = 1): RGBA => {
@@ -80,7 +85,7 @@ type RoundedRectProgramInfo = {
 }
 
 export class DwebCanvasGL {
-	private canvas: HTMLCanvasElement
+	private canvas: HTMLCanvasElement | OffscreenCanvas
 	private gl: WebGL2RenderingContext
 	private dpr = 1
 
@@ -88,6 +93,7 @@ export class DwebCanvasGL {
 	onViewportChange?: (viewport: ViewportState) => void
 
 	private rafId: number | null = null
+	private rafKind: 'raf' | 'timeout' | null = null
 	private isDisposed = false
 
 	private scene: IDwebGLScene | null = null
@@ -107,9 +113,9 @@ export class DwebCanvasGL {
 	private localProgTex: LocalProgramInfo
 	private localProgRoundedRect: LocalProgramInfo
 
-	constructor(canvas: HTMLCanvasElement) {
+	constructor(canvas: HTMLCanvasElement | OffscreenCanvas) {
 		this.canvas = canvas
-		const gl = canvas.getContext('webgl2', { alpha: true, antialias: true, premultipliedAlpha: false })
+		const gl = canvas.getContext('webgl2', { alpha: true, antialias: true, premultipliedAlpha: false }) as WebGL2RenderingContext | null
 		if (!gl) throw new Error('WebGL2 context is not available')
 		this.gl = gl
 
@@ -129,8 +135,16 @@ export class DwebCanvasGL {
 
 	dispose() {
 		this.isDisposed = true
-		if (this.rafId != null) cancelAnimationFrame(this.rafId)
+		if (this.rafId != null) {
+			try {
+				if (this.rafKind === 'raf' && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(this.rafId)
+				else if (this.rafKind === 'timeout') clearTimeout(this.rafId)
+			} catch {
+				// ignore
+			}
+		}
 		this.rafId = null
+		this.rafKind = null
 		try {
 			this.postprocess.dispose(this.gl)
 			this.gl.deleteBuffer(this.vbo)
@@ -168,12 +182,16 @@ export class DwebCanvasGL {
 		this.requestRender()
 	}
 
-	setSize(width: number, height: number, dpr = window.devicePixelRatio || 1) {
+	setSize(width: number, height: number, dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1) {
 		this.dpr = dpr
+		// Both HTMLCanvasElement and OffscreenCanvas have width/height.
 		this.canvas.width = Math.max(1, Math.floor(width * dpr))
 		this.canvas.height = Math.max(1, Math.floor(height * dpr))
-		this.canvas.style.width = `${Math.max(1, Math.floor(width))}px`
-		this.canvas.style.height = `${Math.max(1, Math.floor(height))}px`
+		// Only HTMLCanvasElement has style.
+		if ('style' in this.canvas) {
+			this.canvas.style.width = `${Math.max(1, Math.floor(width))}px`
+			this.canvas.style.height = `${Math.max(1, Math.floor(height))}px`
+		}
 		this.gl.viewport(0, 0, this.canvas.width, this.canvas.height)
 		this.requestRender()
 	}
@@ -239,10 +257,21 @@ export class DwebCanvasGL {
 	requestRender() {
 		if (this.isDisposed) return
 		if (this.rafId != null) return
-		this.rafId = requestAnimationFrame(() => {
+		if (typeof requestAnimationFrame !== 'undefined') {
+			this.rafKind = 'raf'
+			this.rafId = requestAnimationFrame(() => {
+				this.rafId = null
+				this.rafKind = null
+				this.render()
+			})
+			return
+		}
+		this.rafKind = 'timeout'
+		this.rafId = setTimeout(() => {
 			this.rafId = null
+			this.rafKind = null
 			this.render()
-		})
+		}, 0) as any
 	}
 
 	/**
@@ -254,6 +283,8 @@ export class DwebCanvasGL {
 		rect: { x: number; y: number; width: number; height: number },
 		opts?: { maxSidePx?: number; padPx?: number }
 	): Promise<{ dataUrl: string; width: number; height: number } | null> {
+		// dataUrl generation depends on HTMLCanvasElement; keep this API main-thread only.
+		if (typeof document === 'undefined') return null
 		if (this.isDisposed) return null
 		const pad = Math.max(0, Math.floor(Number(opts?.padPx ?? 0) || 0))
 		const maxSide = Math.max(32, Math.floor(Number(opts?.maxSidePx ?? 0) || 0))
@@ -340,6 +371,134 @@ export class DwebCanvasGL {
 			width: outCanvas.width,
 			height: outCanvas.height,
 		}
+	}
+
+	/**
+	 * Capture a PNG Blob from the current framebuffer.
+	 * Prefer this for export flows to avoid huge data URLs.
+	 */
+	async capturePngBlobFromScreenRect(
+		rect: { x: number; y: number; width: number; height: number },
+		opts?: { maxSidePx?: number; padPx?: number }
+	): Promise<{ blob: Blob; width: number; height: number } | null> {
+		if (this.isDisposed) return null
+		const pad = Math.max(0, Math.floor(Number(opts?.padPx ?? 0) || 0))
+		const maxSide = Math.max(0, Math.floor(Number(opts?.maxSidePx ?? 0) || 0))
+		const dpr = Math.max(1, this.dpr)
+		const canvasW = Math.max(1, this.canvas.width)
+		const canvasH = Math.max(1, this.canvas.height)
+
+		const x0Css = Math.floor((Number(rect.x) || 0) - pad)
+		const y0Css = Math.floor((Number(rect.y) || 0) - pad)
+		const x1Css = Math.ceil((Number(rect.x) || 0) + (Number(rect.width) || 0) + pad)
+		const y1Css = Math.ceil((Number(rect.y) || 0) + (Number(rect.height) || 0) + pad)
+		const wCss = Math.max(1, x1Css - x0Css)
+		const hCss = Math.max(1, y1Css - y0Css)
+
+		let xPx = Math.floor(x0Css * dpr)
+		let yPxFromTop = Math.floor(y0Css * dpr)
+		let wPx = Math.max(1, Math.floor(wCss * dpr))
+		let hPx = Math.max(1, Math.floor(hCss * dpr))
+		if (xPx < 0) {
+			wPx += xPx
+			xPx = 0
+		}
+		if (yPxFromTop < 0) {
+			hPx += yPxFromTop
+			yPxFromTop = 0
+		}
+		wPx = Math.min(wPx, canvasW - xPx)
+		hPx = Math.min(hPx, canvasH - yPxFromTop)
+		if (wPx <= 1 || hPx <= 1) return null
+		const yPx = Math.max(0, canvasH - (yPxFromTop + hPx))
+
+		// Ensure we capture the latest frame.
+		this.render()
+
+		const gl = this.gl
+		const pixels = new Uint8Array(wPx * hPx * 4)
+		try {
+			gl.readPixels(xPx, yPx, wPx, hPx, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+		} catch {
+			return null
+		}
+
+		const rowStride = wPx * 4
+		const flipped = new Uint8ClampedArray(wPx * hPx * 4)
+		for (let row = 0; row < hPx; row++) {
+			const srcStart = (hPx - 1 - row) * rowStride
+			const dstStart = row * rowStride
+			flipped.set(pixels.subarray(srcStart, srcStart + rowStride), dstStart)
+		}
+		const imgData = new ImageData(flipped, wPx, hPx)
+
+		const make2dCanvas = (
+			w: number,
+			h: number
+		): { canvas: HTMLCanvasElement | OffscreenCanvas; ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D } | null => {
+			try {
+				if (typeof document !== 'undefined') {
+					const cc = document.createElement('canvas')
+					cc.width = w
+					cc.height = h
+					const cctx = cc.getContext('2d') as CanvasRenderingContext2D | null
+					if (!cctx) return null
+					return { canvas: cc, ctx: cctx }
+				}
+				if (typeof OffscreenCanvas !== 'undefined') {
+					const cc = new OffscreenCanvas(w, h)
+					const cctx = cc.getContext('2d') as OffscreenCanvasRenderingContext2D | null
+					if (!cctx) return null
+					return { canvas: cc, ctx: cctx }
+				}
+				return null
+			} catch {
+				return null
+			}
+		}
+
+		const c0 = make2dCanvas(wPx, hPx)
+		if (!c0) return null
+		c0.ctx.putImageData(imgData, 0, 0)
+
+		let outCanvas: HTMLCanvasElement | OffscreenCanvas = c0.canvas
+		let outW = wPx
+		let outH = hPx
+		if (maxSide > 0) {
+			const longSide = Math.max(wPx, hPx)
+			if (longSide > maxSide) {
+				const scale = maxSide / longSide
+				const tw = Math.max(1, Math.round(wPx * scale))
+				const th = Math.max(1, Math.round(hPx * scale))
+				const c2 = make2dCanvas(tw, th)
+				if (c2) {
+					;(c2.ctx as any).imageSmoothingEnabled = true
+					;(c2.ctx as any).imageSmoothingQuality = 'high'
+					;(c2.ctx as any).drawImage(outCanvas as any, 0, 0, outW, outH, 0, 0, tw, th)
+					outCanvas = c2.canvas
+					outW = tw
+					outH = th
+				}
+			}
+		}
+
+		const blob = await (async () => {
+			try {
+				if (typeof (outCanvas as any).convertToBlob === 'function') return await (outCanvas as any).convertToBlob({ type: 'image/png' })
+				if (typeof (outCanvas as any).toBlob === 'function') {
+					return await new Promise<Blob | null>((resolve) => {
+						;(outCanvas as any).toBlob((b: Blob | null) => resolve(b), 'image/png')
+					})
+				}
+				return null
+			} catch {
+				return null
+			}
+		})()
+		if (!blob) return null
+		const widthOut = (outCanvas as any).width ?? outW
+		const heightOut = (outCanvas as any).height ?? outH
+		return { blob, width: widthOut, height: heightOut }
 	}
 
 	render() {
@@ -568,15 +727,24 @@ export class DwebCanvasGL {
 	}
 
 	create1x1TransparentCanvas() {
-		const c = document.createElement('canvas')
-		c.width = 1
-		c.height = 1
-		const ctx = c.getContext('2d')
-		if (ctx) ctx.clearRect(0, 0, 1, 1)
-		return c
+		if (typeof document !== 'undefined') {
+			const c = document.createElement('canvas')
+			c.width = 1
+			c.height = 1
+			const ctx = c.getContext('2d')
+			if (ctx) ctx.clearRect(0, 0, 1, 1)
+			return c
+		}
+		if (typeof OffscreenCanvas !== 'undefined') {
+			const c = new OffscreenCanvas(1, 1)
+			const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D | null
+			if (ctx) ctx.clearRect(0, 0, 1, 1)
+			return c as any
+		}
+		throw new Error('No canvas implementation available')
 	}
 
-	updateTextureFromCanvas(tex: WebGLTexture, canvas: HTMLCanvasElement, options?: { wrap?: TextureWrapMode }) {
+	updateTextureFromCanvas(tex: WebGLTexture, canvas: TexImageSource, options?: { wrap?: TextureWrapMode }) {
 		updateTextureFromCanvasImpl(this.gl, tex, canvas, options)
 	}
 

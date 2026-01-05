@@ -160,6 +160,10 @@ export const TimelineKey: InjectionKey<Store<TimelineState>> = Symbol('TimelineS
 export const TimelineStore = createStore<TimelineState>({
   state: createDefaultTimelineState,
   mutations: {
+	setFps(state, payload: { fps: number }) {
+		state.fps = clampInt(payload.fps, 1, 240)
+	},
+
     setFrameCount(state, payload: { frameCount: number }) {
       const next = Math.max(1, Math.floor(Number(payload.frameCount) || 1))
       state.frameCount = next
@@ -172,7 +176,8 @@ export const TimelineStore = createStore<TimelineState>({
 		  if (clipped.length) nextSel[layerId] = clipped
 	  }
 	  state.selectedSpansByLayer = nextSel
-	  state.selectionVersion++
+
+    state.selectionVersion++
 
       // lastSelectedCellKey 也需要裁剪
       if (state.lastSelectedCellKey) {
@@ -928,6 +933,9 @@ export const TimelineStore = createStore<TimelineState>({
   },
   },
   actions: {
+		setFps({ commit }, payload: { fps: number }) {
+			commit('setFps', payload)
+		},
       jumpToFrameCentered({ commit }, payload: { frameIndex: number }) {
         commit('jumpToFrameCentered', payload)
       },
@@ -1049,6 +1057,6 @@ export const TimelineStore = createStore<TimelineState>({
   ) {
     commit('setSubtitleGeneratedKeyframes', payload)
   },
-  },
+  }
 })
 

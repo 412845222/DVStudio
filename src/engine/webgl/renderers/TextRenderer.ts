@@ -5,8 +5,17 @@ import type { LocalTargetSize, RenderContext, RenderNode } from './types'
 export class TextRenderer extends NodeRenderer {
 	readonly type = 'text' as const
 
-	private textCanvas = document.createElement('canvas')
-	private textCtx = this.textCanvas.getContext('2d')!
+	private textCanvas: HTMLCanvasElement | OffscreenCanvas = (() => {
+		if (typeof document !== 'undefined') return document.createElement('canvas')
+		if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(1, 1)
+		// Fallback: should not happen in supported environments.
+		throw new Error('No canvas implementation available')
+	})()
+	private textCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D = (() => {
+		const ctx = (this.textCanvas as any).getContext?.('2d')
+		if (!ctx) throw new Error('2D context is not available')
+		return ctx
+	})()
 	private textures = new Map<string, WebGLTexture>()
 
 	prune(canvas: DwebCanvasGL, validNodeIds: Set<string>) {

@@ -48,6 +48,11 @@ export class DwebVideoScene implements IDwebGLScene {
 	])
 
 	private frameFilterQualityMax: 'low' | 'mid' | 'high' = 'high'
+	private exportTransparent = false
+
+	setExportTransparent(v: boolean) {
+		this.exportTransparent = !!v
+	}
 
 	private getLineFilterContentSize(
 		node: { transform: { width?: number; height?: number }; props?: Record<string, unknown> },
@@ -308,42 +313,50 @@ export class DwebVideoScene implements IDwebGLScene {
 		canvas.setFilterNodePressure(filterNodeCount)
 		this.frameFilterQualityMax = filterNodeCount >= 80 ? 'low' : filterNodeCount >= 40 ? 'mid' : 'high'
 
-		// --- canvas background grid (for positioning) ---
-		const { width: screenW, height: screenH } = canvas.size
-		const tl = canvas.screenToWorld({ x: 0, y: 0 })
-		const br = canvas.screenToWorld({ x: screenW, y: screenH })
-		const minX = Math.min(tl.x, br.x)
-		const maxX = Math.max(tl.x, br.x)
-		const minY = Math.min(tl.y, br.y)
-		const maxY = Math.max(tl.y, br.y)
-		canvas.drawRect((minX + maxX) / 2, (minY + maxY) / 2, maxX - minX, maxY - minY, themeRgba.bg(1))
-		const gridStep = 80
-		const gridColor = themeRgba.border(0.35)
-		const gridW = 1 / canvas.viewport.zoom
-		const startX = Math.floor(minX / gridStep) * gridStep
-		const endX = Math.ceil(maxX / gridStep) * gridStep
-		for (let x = startX; x <= endX; x += gridStep) {
-			canvas.drawRect(x, (minY + maxY) / 2, gridW, maxY - minY, gridColor)
-		}
-		const startY = Math.floor(minY / gridStep) * gridStep
-		const endY = Math.ceil(maxY / gridStep) * gridStep
-		for (let y = startY; y <= endY; y += gridStep) {
-			canvas.drawRect((minX + maxX) / 2, y, maxX - minX, gridW, gridColor)
+		let minX = 0
+		let maxX = 0
+		let minY = 0
+		let maxY = 0
+		if (!this.exportTransparent) {
+			// --- canvas background grid (for positioning) ---
+			const { width: screenW, height: screenH } = canvas.size
+			const tl = canvas.screenToWorld({ x: 0, y: 0 })
+			const br = canvas.screenToWorld({ x: screenW, y: screenH })
+			minX = Math.min(tl.x, br.x)
+			maxX = Math.max(tl.x, br.x)
+			minY = Math.min(tl.y, br.y)
+			maxY = Math.max(tl.y, br.y)
+			canvas.drawRect((minX + maxX) / 2, (minY + maxY) / 2, maxX - minX, maxY - minY, themeRgba.bg(1))
+			const gridStep = 80
+			const gridColor = themeRgba.border(0.35)
+			const gridW = 1 / canvas.viewport.zoom
+			const startX = Math.floor(minX / gridStep) * gridStep
+			const endX = Math.ceil(maxX / gridStep) * gridStep
+			for (let x = startX; x <= endX; x += gridStep) {
+				canvas.drawRect(x, (minY + maxY) / 2, gridW, maxY - minY, gridColor)
+			}
+			const startY = Math.floor(minY / gridStep) * gridStep
+			const endY = Math.ceil(maxY / gridStep) * gridStep
+			for (let y = startY; y <= endY; y += gridStep) {
+				canvas.drawRect((minX + maxX) / 2, y, maxX - minX, gridW, gridColor)
+			}
 		}
 
-		// --- stage background (aspect ratio / size defined by stageSize) ---
-		const bgOpacity = Math.max(0, Math.min(1, Number(this.stageBackground.opacity ?? 1)))
-		const stageBgColor = canvas.parseHexColor(this.stageBackground.color || '#111111', bgOpacity)
-		canvas.drawRect(0, 0, this.stageSize.width, this.stageSize.height, stageBgColor)
-		if (this.stageBackground.type === 'image') {
-			this.drawStageBackgroundImage(canvas, bgOpacity)
+		if (!this.exportTransparent) {
+			// --- stage background (aspect ratio / size defined by stageSize) ---
+			const bgOpacity = Math.max(0, Math.min(1, Number(this.stageBackground.opacity ?? 1)))
+			const stageBgColor = canvas.parseHexColor(this.stageBackground.color || '#111111', bgOpacity)
+			canvas.drawRect(0, 0, this.stageSize.width, this.stageSize.height, stageBgColor)
+			if (this.stageBackground.type === 'image') {
+				this.drawStageBackgroundImage(canvas, bgOpacity)
+			}
+			// stage border (1px in screen space)
+			const borderW = 1 / canvas.viewport.zoom
+			canvas.drawRect(0, -this.stageSize.height / 2 + borderW / 2, this.stageSize.width, borderW, themeRgba.border(1))
+			canvas.drawRect(0, this.stageSize.height / 2 - borderW / 2, this.stageSize.width, borderW, themeRgba.border(1))
+			canvas.drawRect(-this.stageSize.width / 2 + borderW / 2, 0, borderW, this.stageSize.height, themeRgba.border(1))
+			canvas.drawRect(this.stageSize.width / 2 - borderW / 2, 0, borderW, this.stageSize.height, themeRgba.border(1))
 		}
-		// stage border (1px in screen space)
-		const borderW = 1 / canvas.viewport.zoom
-		canvas.drawRect(0, -this.stageSize.height / 2 + borderW / 2, this.stageSize.width, borderW, themeRgba.border(1))
-		canvas.drawRect(0, this.stageSize.height / 2 - borderW / 2, this.stageSize.width, borderW, themeRgba.border(1))
-		canvas.drawRect(-this.stageSize.width / 2 + borderW / 2, 0, borderW, this.stageSize.height, themeRgba.border(1))
-		canvas.drawRect(this.stageSize.width / 2 - borderW / 2, 0, borderW, this.stageSize.height, themeRgba.border(1))
 
 		const zoom = Math.max(1e-3, canvas.viewport.zoom)
 		const dpr = Math.max(1, canvas.getPixelRatio())

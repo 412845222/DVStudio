@@ -264,7 +264,7 @@ const timelineWidth = computed(() => frameCount.value * frameWidth.value + timel
 
 const inputCurrentFrame = ref<number>(0)
 const inputFrameCount = ref<number>(120)
-const inputFps = ref<number>(30)
+const inputFps = ref<number>(60)
 
 const jumpHH = ref<string>('00')
 const jumpMM = ref<string>('00')
@@ -290,6 +290,18 @@ const formatTimeByFrame = (frameIndex: number, fps: number) => {
 }
 
 const currentTimeText = computed(() => formatTimeByFrame(currentFrame.value, inputFps.value))
+
+watch(
+	() => (store.state as any).fps,
+	(v) => {
+		const next = clampInt(Number(v ?? 60), 1, 240)
+		if (inputFps.value !== next) {
+			inputFps.value = next
+			ticker?.setFps(next)
+		}
+	},
+	{ immediate: true }
+)
 
 const normalizeJumpTime = () => {
 	const hh = clampInt(Number(jumpHH.value || 0), 0, 99)
@@ -351,6 +363,7 @@ const applyFrameCount = () => {
 const applyFps = () => {
 	const next = clampInt(Number(inputFps.value || 30), 1, 240)
 	inputFps.value = next
+	store.dispatch('setFps', { fps: next })
 	ticker?.setFps(next)
 }
 
@@ -1371,7 +1384,7 @@ onMounted(() => {
 		getFrameCount: () => frameCount.value,
 		getCurrentFrame: () => currentFrame.value,
 		setCurrentFrame: (fi) => setCurrentFrame(fi),
-		fps: inputFps.value,
+		fps: clampInt(Number((store.state as any).fps ?? inputFps.value ?? 60), 1, 240),
 		loop: loopEnabled.value,
 		onPlayingChange: (p) => (isPlaying.value = p),
 		onTick: (fi) => ensurePlayheadVisibleWhilePlaying(fi),

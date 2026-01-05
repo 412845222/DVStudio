@@ -22,7 +22,11 @@ const captureSnapshot = (): EditorSnapshot => {
 const applySnapshot = (snap: EditorSnapshot) => {
 	VideoSceneStore.replaceState(cloneJsonSafe(snap.videoScene))
 	VideoStudioStore.replaceState(cloneJsonSafe(snap.videoStudio))
-	TimelineStore.replaceState(cloneJsonSafe(snap.timeline))
+	const nextTimeline: any = cloneJsonSafe(snap.timeline)
+	const rawFps = nextTimeline && typeof nextTimeline === 'object' ? (nextTimeline as any).fps : null
+	const fps = Math.max(1, Math.min(240, Math.floor(Number(rawFps ?? 60) || 60)))
+	if (nextTimeline && typeof nextTimeline === 'object') (nextTimeline as any).fps = fps
+	TimelineStore.replaceState(nextTimeline)
 }
 
 const historyVersion = ref(0)

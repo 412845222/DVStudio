@@ -18,6 +18,7 @@ export const createVideoSceneLayer = (layerId: string, name: string): VideoScene
 export const createDefaultVideoSceneState = (): VideoSceneState => ({
 	showSizePanel: false,
 	showBackgroundPanel: false,
+	showExportPanel: false,
 	leftPanel: { open: false, mode: null, layerId: null, refreshToken: 0 },
 	layers: [
 		{

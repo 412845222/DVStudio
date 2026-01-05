@@ -1,6 +1,7 @@
 import type { TimelineState } from './types'
 
 export const createDefaultTimelineState = (): TimelineState => ({
+	fps: 60,
 	frameCount: 120,
 	currentFrame: 0,
 	frameWidth: 14,
