@@ -33,17 +33,29 @@ export class TextRenderer extends NodeRenderer {
 
 	renderWorld(canvas: DwebCanvasGL, node: RenderNode, ctx: RenderContext): void {
 		const tex = this.getTextTexture(canvas, node)
-		canvas.drawTexturedRect(node.transform.x, node.transform.y, node.transform.width, node.transform.height, tex, ctx.opacity, ctx.rotation)
+		const w = Math.max(1, Number(node.transform.width ?? 1))
+		const h = Math.max(1, Number(node.transform.height ?? 1))
+		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
+		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const cx = node.transform.x + (0.5 - px) * w
+		const cy = node.transform.y + (0.5 - py) * h
+		canvas.drawTexturedRect(cx, cy, w, h, tex, ctx.opacity, ctx.rotation)
 	}
 
 	renderLocal(canvas: DwebCanvasGL, target: LocalTargetSize, node: RenderNode, ctx: RenderContext): void {
 		const tex = this.getTextTexture(canvas, node)
+		const w = Math.max(1, Number(node.transform.width ?? 1))
+		const h = Math.max(1, Number(node.transform.height ?? 1))
+		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
+		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const cx = node.transform.x + (0.5 - px) * w
+		const cy = node.transform.y + (0.5 - py) * h
 		canvas.drawLocalTexturedRect(
 			target,
-			node.transform.x,
-			node.transform.y,
-			Math.max(1, Number(node.transform.width ?? 1)),
-			Math.max(1, Number(node.transform.height ?? 1)),
+			cx,
+			cy,
+			w,
+			h,
 			tex,
 			ctx.opacity,
 			ctx.rotation

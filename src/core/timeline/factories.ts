@@ -33,4 +33,7 @@ export const createDefaultTimelineState = (): TimelineState => ({
 
 	stageKeyframesByFrame: {},
 	stageKeyframeVersion: 0,
+
+	progressBarByLayerId: {},
+	progressVersion: 0,
 })

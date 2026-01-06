@@ -122,6 +122,8 @@ const draft = reactive({
 	height: 120,
 	rotation: 0,
 	opacity: 1,
+	pivotX: 0.5,
+	pivotY: 0.5,
 	fillColor: '#3aa1ff',
 	fillOpacity: 1,
 	borderColor: '#9cdcfe',
@@ -189,6 +191,8 @@ const syncFromStore = () => {
 	draft.height = Number(t.height ?? 120)
 	draft.rotation = Number(t.rotation ?? 0)
 	draft.opacity = Number(t.opacity ?? 1)
+	draft.pivotX = Number.isFinite((t as any).pivotX) ? Math.max(0, Math.min(1, Number((t as any).pivotX))) : 0.5
+	draft.pivotY = Number.isFinite((t as any).pivotY) ? Math.max(0, Math.min(1, Number((t as any).pivotY))) : 0.5
 	const p: any = n.props ?? {}
 	draft.fillColor = p.fillColor ?? draft.fillColor
 	draft.fillOpacity = Number.isFinite(p.fillOpacity as any) ? Math.max(0, Math.min(1, Number(p.fillOpacity))) : draft.fillOpacity
@@ -244,6 +248,8 @@ watch(
 			height: t.height ?? 120,
 			rotation: t.rotation ?? 0,
 			opacity: t.opacity ?? 1,
+			pivotX: (t as any).pivotX ?? 0.5,
+			pivotY: (t as any).pivotY ?? 0.5,
 			fillColor: p.fillColor,
 			fillOpacity: p.fillOpacity,
 			borderColor: p.borderColor,
@@ -301,6 +307,8 @@ const applyTransform = () => {
 			height: draft.height,
 			rotation: draft.rotation,
 			opacity: draft.opacity,
+			pivotX: Math.max(0, Math.min(1, Number(draft.pivotX))),
+			pivotY: Math.max(0, Math.min(1, Number(draft.pivotY))),
 		},
 	})
 }
@@ -314,22 +322,24 @@ const applyQuick = (action: QuickAction) => {
 	const parentH = s.parent?.transform?.height ?? studioStore.state.stage.height
 	const w = Math.max(1, Number(t.width ?? draft.width))
 	const h = Math.max(1, Number(t.height ?? draft.height))
+	const px = Number.isFinite((t as any).pivotX) ? Math.max(0, Math.min(1, Number((t as any).pivotX))) : Math.max(0, Math.min(1, Number(draft.pivotX)))
+	const py = Number.isFinite((t as any).pivotY) ? Math.max(0, Math.min(1, Number((t as any).pivotY))) : Math.max(0, Math.min(1, Number(draft.pivotY)))
 
 	let nextX = Number(t.x ?? draft.x)
 	let nextY = Number(t.y ?? draft.y)
 	let nextW = w
 	let nextH = h
 
-	if (action === 'left') nextX = -parentW / 2 + w / 2
-	if (action === 'right') nextX = parentW / 2 - w / 2
-	if (action === 'hcenter') nextX = 0
-	if (action === 'vcenter') nextY = 0
+	if (action === 'left') nextX = -parentW / 2 + w * px
+	if (action === 'right') nextX = parentW / 2 - w * (1 - px)
+	if (action === 'hcenter') nextX = -(0.5 - px) * w
+	if (action === 'vcenter') nextY = -(0.5 - py) * h
 	if (action === 'fillW') {
-		nextX = 0
+		nextX = -(0.5 - px) * Math.max(1, Number(parentW) || 1)
 		nextW = Math.max(1, Number(parentW) || 1)
 	}
 	if (action === 'fillH') {
-		nextY = 0
+		nextY = -(0.5 - py) * Math.max(1, Number(parentH) || 1)
 		nextH = Math.max(1, Number(parentH) || 1)
 	}
 

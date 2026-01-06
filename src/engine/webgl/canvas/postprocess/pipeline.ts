@@ -5,6 +5,7 @@ import { FilterTargetsPool } from './targets'
 import type { FilterTargets, PostProg } from './types'
 
 type CustomCached = { prog: PostProg; ok: true; log: string } | { prog: null; ok: false; log: string }
+type UvRect = { u0: number; v0: number; u1: number; v1: number }
 
 export class CanvasPostProcess {
 	private postVbo: WebGLBuffer | null = null
@@ -42,7 +43,7 @@ export class CanvasPostProcess {
 		padY: number,
 		filters: any[],
 		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number; scale?: number }) => void
-	): { tex: WebGLTexture; padX: number; padY: number } {
+	): { tex: WebGLTexture; padX: number; padY: number; uv: UvRect } {
 		this.ensureResources(gl)
 
 		// Desired pixels-per-world-unit for stable screen-space appearance.
@@ -50,6 +51,15 @@ export class CanvasPostProcess {
 		const desiredScale = canvas.getFilterScale()
 		const safe = this.computeSafeScaleAndPad(gl, contentW, contentH, padX, padY, desiredScale)
 		const t = this.targets.ensureWithPadding(gl, id, contentW, contentH, safe.padX, safe.padY, safe.scale)
+		// IMPORTANT: the targets pool may further clamp allocation (e.g. maxDim/pixel budget)
+		// beyond what computeSafeScaleAndPad anticipated. If we render with a scale larger
+		// than the *effective* allocated scale, we will draw past the FBO bounds, which
+		// eats padding and causes sudden stretching/clipping artifacts.
+		const targetScale = Math.max(1e-3, Number(t.scale) || 1)
+		const renderScale = Math.max(1e-3, Math.min(Number(safe.scale) || 1, targetScale))
+		// If we had to clamp the offscreen scale, keeping blur radius in pixels would enlarge
+		// it in world space. Adjust blur parameters based on the *actual* render scale.
+		const scaleAdjust = Math.max(1e-3, Math.min(1, renderScale / Math.max(1e-3, Number(desiredScale) || 1)))
 
 		const prevBlend = gl.isEnabled(gl.BLEND)
 		gl.disable(gl.BLEND)
@@ -59,17 +69,20 @@ export class CanvasPostProcess {
 		gl.viewport(0, 0, t.w, t.h)
 		gl.clearColor(0, 0, 0, 0)
 		gl.clear(gl.COLOR_BUFFER_BIT)
-		renderLocal({ w: t.w, h: t.h, contentW: t.contentW, contentH: t.contentH, scale: t.scale })
+		renderLocal({ w: t.w, h: t.h, contentW: t.contentW, contentH: t.contentH, scale: renderScale })
 
 		let currentTex: WebGLTexture = t.tex0
 		for (const f of filters) {
 			const ft = String(f?.type || '')
 			if (ft === 'blur') {
-				const blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
-				const blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
+				let blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
+				let blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
 				const iterations = Math.max(1, Math.floor(Number((f as any).__iterations ?? f.iterations ?? 1) || 1))
-				const maxStepPx = Math.max(1e-3, Number((f as any).__maxStepPx ?? 8) || 8)
+				let maxStepPx = Math.max(1e-3, Number((f as any).__maxStepPx ?? 8) || 8)
 				const maxIterations = Math.max(1, Math.floor(Number((f as any).__maxIterations ?? 12) || 12))
+				blurX *= scaleAdjust
+				blurY *= scaleAdjust
+				maxStepPx *= scaleAdjust
 				if (currentTex === t.tex0) {
 					currentTex = this.blurInto(gl, t, currentTex, t.fbo1, t.tex1, t.fbo2, t.tex2, blurX, blurY, iterations, maxStepPx, maxIterations)
 				} else if (currentTex === t.tex1) {
@@ -83,11 +96,14 @@ export class CanvasPostProcess {
 				if (!this.postProgGlowComposite) continue
 				const intensity = Math.max(0, Number((f as any).intensity ?? 1))
 				if (intensity <= 1e-4) continue
-				const blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
-				const blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
+				let blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
+				let blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
 				const iterations = Math.max(1, Math.floor(Number((f as any).__iterations ?? f.iterations ?? 1) || 1))
-				const maxStepPx = Math.max(1e-3, Number((f as any).__maxStepPx ?? 8) || 8)
+				let maxStepPx = Math.max(1e-3, Number((f as any).__maxStepPx ?? 8) || 8)
 				const maxIterations = Math.max(1, Math.floor(Number((f as any).__maxIterations ?? 12) || 12))
+				blurX *= scaleAdjust
+				blurY *= scaleAdjust
+				maxStepPx *= scaleAdjust
 
 				let blurDstFbo: WebGLFramebuffer
 				let blurDstTex: WebGLTexture
@@ -180,7 +196,23 @@ export class CanvasPostProcess {
 		gl.viewport(0, 0, (gl.canvas as HTMLCanvasElement).width, (gl.canvas as HTMLCanvasElement).height)
 		if (prevBlend) gl.enable(gl.BLEND)
 
-		return { tex: currentTex, padX: t.padX, padY: t.padY }
+		// When target dimensions are quantized or clamped, t.w/t.h may be larger than the
+		// actual rendered bounds (content + padding) in pixels. If we sample 0..1 UV,
+		// the extra transparent slack gets stretched into the final quad, causing
+		// visible geometry jitter (especially while width/height animates rapidly).
+		const bw = Math.max(1e-3, (Number(contentW) || 0) + 2 * Math.max(0, Number(t.padX) || 0))
+		const bh = Math.max(1e-3, (Number(contentH) || 0) + 2 * Math.max(0, Number(t.padY) || 0))
+		const expectedWpx = Math.min(Math.max(1, t.w), Math.max(1, bw * renderScale))
+		const expectedHpx = Math.min(Math.max(1, t.h), Math.max(1, bh * renderScale))
+		const slackX = Math.max(0, t.w - expectedWpx)
+		const slackY = Math.max(0, t.h - expectedHpx)
+		const u0 = Math.max(0, Math.min(0.5, (slackX * 0.5) / t.w))
+		const u1 = 1 - u0
+		const v0raw = Math.max(0, Math.min(0.5, (slackY * 0.5) / t.h))
+		const v1raw = 1 - v0raw
+		// Our draw helpers use flipped-V UVs for offscreen textures.
+		const uv: UvRect = { u0, u1, v0: v1raw, v1: v0raw }
+		return { tex: currentTex, padX: t.padX, padY: t.padY, uv }
 	}
 
 	private computeSafeScaleAndPad(

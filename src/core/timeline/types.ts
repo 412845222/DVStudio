@@ -2,7 +2,7 @@ import type { VideoSceneLayer, VideoSceneNodeProps, VideoSceneNodeTransform } fr
 
 export type TimelineLayer = { id: string; name: string }
 
-export type TimelineLayerKind = 'normal' | 'subtitle'
+export type TimelineLayerKind = 'normal' | 'subtitle' | 'progress'
 
 export type SubtitleCue = { startMs: number; endMs: number; text: string }
 
@@ -13,6 +13,54 @@ export type SubtitleTextStyle = {
 	fontColor: string
 	fontStyle: string
 	textAlign: 'left' | 'center' | 'right'
+}
+
+export type ProgressMarkerShape = 'circle' | 'square'
+
+export type ProgressMarkerStyle = {
+	shape: ProgressMarkerShape
+	size: number
+	color: string
+	borderColor: string
+}
+
+export type NodeFilterSpec = Record<string, unknown>
+
+export type ProgressBarStyle = {
+	backgroundColor: string
+	borderColor: string
+	textColor: string
+	marker: ProgressMarkerStyle
+	playedOverlayColor: string
+	playedOverlayBorderColor: string
+	/** 背景（root rect）滤镜 */
+	backgroundFilters?: NodeFilterSpec[]
+	/** 段落矩形（segment rects）滤镜 */
+	segmentFilters?: NodeFilterSpec[]
+	/** 段落标题文字（title texts）滤镜 */
+	titleFilters?: NodeFilterSpec[]
+	/** 已播放矩形（played overlay rect）滤镜 */
+	playedOverlayFilters?: NodeFilterSpec[]
+}
+
+export type ProgressBarSegment = {
+	startFrame: number
+	endFrame: number
+	title: string
+}
+
+export type ProgressBarNodeIds = {
+	rootId: string
+	playedOverlayId: string
+	segmentIds: string[]
+	titleIds: string[]
+	markerIds: string[]
+}
+
+export type ProgressBarSpec = {
+	style: ProgressBarStyle
+	segments: ProgressBarSegment[]
+	nodeIds: ProgressBarNodeIds
 }
 
 export type TimelineCellKey = string // `${layerId}:${frameIndex}`
@@ -60,4 +108,7 @@ export type TimelineState = {
 
 	stageKeyframesByFrame: Record<string, { layers: VideoSceneLayer[] }>
 	stageKeyframeVersion: number
+
+	progressBarByLayerId: Record<string, ProgressBarSpec>
+	progressVersion: number
 }

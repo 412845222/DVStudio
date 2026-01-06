@@ -14,10 +14,13 @@ export class RectRenderer extends NodeRenderer {
 		const borderA = clamp01(ctx.opacity * borderOpacity)
 		const cornerRadius = Math.max(0, Number(node.props?.cornerRadius ?? 0))
 
-		const cx = node.transform.x
-		const cy = node.transform.y
 		const w = node.transform.width
 		const h = node.transform.height
+		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
+		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		// Canvas drawRect API is center-based; convert pivot-based (x,y) to center.
+		const cx = node.transform.x + (0.5 - px) * w
+		const cy = node.transform.y + (0.5 - py) * h
 
 		if (cornerRadius > 0.5) {
 			const fillColor = canvas.parseHexColor(String(node.props?.fillColor ?? '#3aa1ff'), fillA)
@@ -63,8 +66,10 @@ export class RectRenderer extends NodeRenderer {
 
 		const nodeW = Math.max(1, Number(node.transform.width ?? 1))
 		const nodeH = Math.max(1, Number(node.transform.height ?? 1))
-		const cx = node.transform.x
-		const cy = node.transform.y
+		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
+		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const cx = node.transform.x + (0.5 - px) * nodeW
+		const cy = node.transform.y + (0.5 - py) * nodeH
 
 		if (cornerRadius > 0.5) {
 			const fillColor = canvas.parseHexColor(String(node.props?.fillColor ?? '#3aa1ff'), fillA)

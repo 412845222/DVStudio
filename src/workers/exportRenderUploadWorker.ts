@@ -46,14 +46,17 @@ const ensureInit = () => {
 	if (!canvas || !scene || !baseSceneState || !timelineState || !jobId) throw new Error('worker 未初始化')
 }
 
-const uploadFrame = async (jobId0: string, frameIndex: number, blob: Blob) => {
-	const fd = new FormData()
-	fd.set('frameIndex', String(Math.floor(frameIndex)))
-	fd.set('file', blob, `frame_${String(Math.floor(frameIndex)).padStart(6, '0')}.png`)
-	const res = await fetch(`/api/export/jobs/${encodeURIComponent(jobId0)}/frames`, { method: 'POST', body: fd })
+const uploadFrameRaw = async (jobId0: string, frameIndex: number, pixels: Uint8Array) => {
+	const fi = Math.floor(frameIndex)
+	const url = `/api/export/jobs/${encodeURIComponent(jobId0)}/frames:raw?frameIndex=${encodeURIComponent(String(fi))}`
+	const res = await fetch(url, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/octet-stream' },
+		body: pixels,
+	})
 	if (!res.ok) {
 		const text = await res.text().catch(() => '')
-		throw new Error(`上传帧失败：${res.status} ${res.statusText} ${(text || '').slice(0, 200)}`)
+		throw new Error(`上传 raw 帧失败：${res.status} ${res.statusText} ${(text || '').slice(0, 200)}`)
 	}
 }
 
@@ -95,9 +98,12 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 			const stateAt = computeSceneStateAtFrame(baseSceneState!, timelineState, fi)
 			scene!.setState(stateAt)
 			canvas!.render()
-			const cap = await canvas!.capturePngBlobFromScreenRect({ x: 0, y: 0, width, height })
+			const cap = canvas!.captureRgbaBytesFromScreenRect({ x: 0, y: 0, width, height })
 			if (!cap) throw new Error('抓帧失败（capture 返回空）')
-			await uploadFrame(jobId, fi, cap.blob)
+			if (cap.width !== width || cap.height !== height) {
+				throw new Error(`抓帧尺寸不一致：got ${cap.width}x${cap.height} expected ${width}x${height}`)
+			}
+			await uploadFrameRaw(jobId, fi, cap.pixels)
 			;(self as any).postMessage({ type: 'uploaded', frameIndex: fi } satisfies OutMsg)
 			return
 		}

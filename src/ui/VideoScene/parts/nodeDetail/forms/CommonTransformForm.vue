@@ -91,6 +91,38 @@
 				/>
 			</label>
 			<label class="vs-row">
+				<span class="vs-k">锚点X</span>
+				<input
+					v-model.number="draft.pivotX"
+					class="vs-input vs-scrub"
+					type="number"
+					min="0"
+					max="1"
+					step="0.01"
+					@change="applyTransform"
+					@dblclick.stop="onNumberInputDblClick"
+					@focus="onNumberInputFocus"
+					@blur="onNumberInputBlur"
+					@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.pivotX, (v) => (draft.pivotX = v), { step: 0.01, min: 0, max: 1, onCommit: applyTransform })"
+				/>
+			</label>
+			<label class="vs-row">
+				<span class="vs-k">锚点Y</span>
+				<input
+					v-model.number="draft.pivotY"
+					class="vs-input vs-scrub"
+					type="number"
+					min="0"
+					max="1"
+					step="0.01"
+					@change="applyTransform"
+					@dblclick.stop="onNumberInputDblClick"
+					@focus="onNumberInputFocus"
+					@blur="onNumberInputBlur"
+					@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.pivotY, (v) => (draft.pivotY = v), { step: 0.01, min: 0, max: 1, onCommit: applyTransform })"
+				/>
+			</label>
+			<label class="vs-row">
 				<span class="vs-k">快捷</span>
 				<div class="vs-quick">
 					<button class="vs-quick-btn" type="button" title="靠左" @click="applyQuick('left')">
@@ -127,6 +159,8 @@ type DraftTransform = {
 	height: number
 	rotation: number
 	opacity: number
+	pivotX: number
+	pivotY: number
 }
 
 type QuickAction = 'left' | 'right' | 'hcenter' | 'vcenter' | 'fillW' | 'fillH'

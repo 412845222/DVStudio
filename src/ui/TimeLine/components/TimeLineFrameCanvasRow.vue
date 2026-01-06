@@ -174,11 +174,29 @@ const draw = () => {
 	ctx.fillRect(0, 0, cssW, cssH)
 
 	const fw = Math.max(0.0001, Number(props.frameWidth) || 0)
-	// When zoomed out (fw < 1), drawing per-frame is too expensive. Draw by buckets so each bucket is >= 1px.
-	const step = fw < 1 ? Math.ceil(1 / fw) : 1
-	const bucketW = fw * step
+	// Match TimeLineTickCanvas.vue density so frame cells don't look denser than ticks.
+	ctx.textBaseline = 'top'
+	ctx.font = '11px sans-serif'
 	const start = Math.max(0, Math.floor(props.scrollLeft / fw))
 	const end = Math.min(props.frameCount - 1, Math.ceil((props.scrollLeft + cssW) / fw))
+	const niceStep = (minFrames: number) => {
+		const m = Math.max(1, Math.floor(minFrames))
+		let base = 1
+		while (base * 10 <= m) base *= 10
+		const cands = [base, base * 2, base * 5, base * 10]
+		for (const c of cands) {
+			if (c >= m) return c
+		}
+		return base * 10
+	}
+	const maxDigits = String(Math.max(0, end)).length
+	const sample = '9'.repeat(Math.max(1, maxDigits))
+	const labelW = Math.ceil(ctx.measureText(sample).width)
+	const minPxSpacing = labelW + 12
+	const minFramesForLabel = Math.ceil(minPxSpacing / fw)
+	const labelStep = niceStep(minFramesForLabel)
+	const step = Math.max(1, Math.floor(labelStep / 10))
+	const bucketW = fw * step
 
 	const midY = Math.floor(cssH / 2) + 0.5
 

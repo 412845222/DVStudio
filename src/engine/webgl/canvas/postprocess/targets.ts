@@ -6,11 +6,13 @@ type Entry = {
 	bytes: number
 }
 
-const BYTES_PER_PIXEL = 4
 const TEX_COUNT_PER_TARGET = 3
 
-const DEFAULT_MAX_DIM_PX = 1024
-const DEFAULT_MAX_PIXELS_PER_TEX = 800_000
+// Keep these defaults aligned with CanvasPostProcess guardrails (pipeline.ts)
+// to avoid step-wise behavior differences between "safe" scale computation
+// and the actual pool allocation limits.
+const DEFAULT_MAX_DIM_PX = 1536
+const DEFAULT_MAX_PIXELS_PER_TEX = 1_200_000
 const DIM_QUANT_STEP = 32
 
 // Conservative defaults: avoid GPU OOM when many nodes enable glow/blur.
@@ -25,6 +27,94 @@ export class FilterTargetsPool {
 	private maxBytes = DEFAULT_MAX_BYTES
 	private maxDimPx = DEFAULT_MAX_DIM_PX
 	private maxPixelsPerTex = DEFAULT_MAX_PIXELS_PER_TEX
+	private texCfg:
+		| {
+			internalFormat: number
+			format: number
+			type: number
+			minFilter: number
+			magFilter: number
+			bytesPerPixel: number
+		}
+		| null = null
+
+	private ensureTexCfg(gl: WebGL2RenderingContext) {
+		if (this.texCfg) return
+		// Default: RGBA8 UNORM.
+		const rgba8 = {
+			internalFormat: gl.RGBA,
+			format: gl.RGBA,
+			type: gl.UNSIGNED_BYTE,
+			minFilter: gl.LINEAR,
+			magFilter: gl.LINEAR,
+			bytesPerPixel: 4,
+		}
+
+		// Try RGBA16F (half float) to reduce banding in blur/glow gradients.
+		// Requires renderable float/half-float color buffers; if unsupported, fall back.
+		let canRender16f = false
+		try {
+			canRender16f = !!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float')
+		} catch {
+			canRender16f = false
+		}
+		if (!canRender16f) {
+			this.texCfg = rgba8
+			return
+		}
+
+		const hasFloatLinear = (() => {
+			try {
+				return !!gl.getExtension('OES_texture_float_linear') || !!gl.getExtension('OES_texture_half_float_linear')
+			} catch {
+				return false
+			}
+		})()
+
+		const rgba16f = {
+			internalFormat: gl.RGBA16F,
+			format: gl.RGBA,
+			type: gl.HALF_FLOAT,
+			minFilter: hasFloatLinear ? gl.LINEAR : gl.NEAREST,
+			magFilter: hasFloatLinear ? gl.LINEAR : gl.NEAREST,
+			bytesPerPixel: 8,
+		}
+
+		// Validate framebuffer completeness once.
+		let ok = false
+		let tex: WebGLTexture | null = null
+		let fbo: WebGLFramebuffer | null = null
+		try {
+			tex = gl.createTexture()
+			fbo = gl.createFramebuffer()
+			if (tex && fbo) {
+				gl.bindTexture(gl.TEXTURE_2D, tex)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, rgba16f.minFilter)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, rgba16f.magFilter)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+				gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+				gl.texImage2D(gl.TEXTURE_2D, 0, rgba16f.internalFormat, 4, 4, 0, rgba16f.format, rgba16f.type, null)
+
+				gl.bindFramebuffer(gl.FRAMEBUFFER, fbo)
+				gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
+				ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE
+			}
+		} catch {
+			ok = false
+		} finally {
+			try {
+				gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+				gl.bindTexture(gl.TEXTURE_2D, null)
+				if (fbo) gl.deleteFramebuffer(fbo)
+				if (tex) gl.deleteTexture(tex)
+			} catch {
+				// ignore
+			}
+		}
+
+		this.texCfg = ok ? rgba16f : rgba8
+	}
 
 	prune(gl: WebGL2RenderingContext, _validIds: Set<string>) {
 		// Targets are cached by size (not by nodeId). Keep entries and rely on LRU budget.
@@ -45,6 +135,7 @@ export class FilterTargetsPool {
 		padY: number,
 		scale: number
 	): FilterTargets {
+		this.ensureTexCfg(gl)
 		this.tick++
 		const s = Math.max(1e-3, Number(scale) || 1)
 		const gpuMax = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 4096
@@ -65,8 +156,9 @@ export class FilterTargetsPool {
 			ch = Math.max(1, Math.min(maxDim, Math.floor(ch * k)))
 		}
 		// Quantize dimensions to reduce re-allocation churn while zooming.
-		cw = Math.max(1, Math.min(maxDim, Math.round(cw / DIM_QUANT_STEP) * DIM_QUANT_STEP))
-		ch = Math.max(1, Math.min(maxDim, Math.round(ch / DIM_QUANT_STEP) * DIM_QUANT_STEP))
+		// Use ceil quantization so we never undershoot and accidentally clip content.
+		cw = Math.max(1, Math.min(maxDim, Math.ceil(cw / DIM_QUANT_STEP) * DIM_QUANT_STEP))
+		ch = Math.max(1, Math.min(maxDim, Math.ceil(ch / DIM_QUANT_STEP) * DIM_QUANT_STEP))
 		// Cache strictly by allocation size. Scale is derived from allocated pixels.
 		const key = `${cw}x${ch}`
 		const effectiveScale = Math.max(1e-3, Math.min(cw / bw, ch / bh))
@@ -81,15 +173,16 @@ export class FilterTargetsPool {
 			return existing.t
 		}
 
+		const cfg = this.texCfg!
 		const mkTex = () => {
 			const tex = gl.createTexture()!
 			gl.bindTexture(gl.TEXTURE_2D, tex)
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, cfg.minFilter)
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, cfg.magFilter)
 			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 			gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, cw, ch, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+			gl.texImage2D(gl.TEXTURE_2D, 0, cfg.internalFormat, cw, ch, 0, cfg.format, cfg.type, null)
 			return tex
 		}
 		const mkFbo = (tex: WebGLTexture) => {
@@ -108,7 +201,7 @@ export class FilterTargetsPool {
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
 		const t: FilterTargets = { w: cw, h: ch, padX, padY, contentW, contentH, scale: effectiveScale, tex0, tex1, tex2, fbo0, fbo1, fbo2 }
-		const bytes = cw * ch * BYTES_PER_PIXEL * TEX_COUNT_PER_TARGET
+		const bytes = cw * ch * cfg.bytesPerPixel * TEX_COUNT_PER_TARGET
 		this.map.set(key, { t, usedAt: this.tick, bytes })
 		this.enforceBudget(gl, key)
 		return t

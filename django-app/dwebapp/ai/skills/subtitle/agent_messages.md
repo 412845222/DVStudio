@@ -15,6 +15,8 @@
 - `cue_ranges_json`（string）：cueRanges(JSON)
 - `summary_json`（string）：当前 summary(JSON)
 - `text`（string）：用于生成配色的提示文本
+- `segments_json`（string）：段落边界(JSON)
+- `cue_samples_json`（string）：cue 样本(JSON)
 
 ## Output
 输出为“可拼装的 message 片段内容”，其结构示例：
@@ -46,6 +48,13 @@ cueRanges(JSON):
 
 当前 summary(JSON):
 {{summary_json}}
+
+## User: segments_context
+段落边界(JSON)（必须原样回填 startCue/endCue，不要改边界）：
+{{segments_json}}
+
+cue 样本(JSON)（只用于理解，不要照抄原文）：
+{{cue_samples_json}}
 
 ## System Addon: deep_mode
 深度思考模式：

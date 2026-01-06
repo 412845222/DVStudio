@@ -123,6 +123,21 @@ export class DwebVideoScene implements IDwebGLScene {
 		return { w, h }
 	}
 
+	private getLocalFilterRenderPivotPos(
+		transform: { pivotX?: number; pivotY?: number },
+		w: number,
+		h: number,
+		type: string
+	): { x: number; y: number } {
+		// Offscreen targets are centered at (0,0). For pivot != 0.5, the node's local geometry
+		// is not symmetric around the pivot. If we render with pivot at (0,0), half can be clipped.
+		// So we place the pivot so that the geometry center ends up at (0,0).
+		if (type === 'line') return { x: 0, y: 0 }
+		const px = typeof transform.pivotX === 'number' && Number.isFinite(transform.pivotX) ? Math.max(0, Math.min(1, transform.pivotX)) : 0.5
+		const py = typeof transform.pivotY === 'number' && Number.isFinite(transform.pivotY) ? Math.max(0, Math.min(1, transform.pivotY)) : 0.5
+		return { x: (px - 0.5) * w, y: (py - 0.5) * h }
+	}
+
 	// rounded-rect now uses pure WebGL (see drawRoundedRect*)
 
 	setStageSize(size: { width: number; height: number }) {
@@ -165,6 +180,14 @@ export class DwebVideoScene implements IDwebGLScene {
 		return this.rendererByType.get(type) ?? this.baseRenderer
 	}
 
+	private getPivotCenter(t: any): { cx: number; cy: number } {
+		const w = Math.max(1, Number(t?.width ?? 1))
+		const h = Math.max(1, Number(t?.height ?? 1))
+		const px = typeof t?.pivotX === 'number' && Number.isFinite(t.pivotX) ? Math.max(0, Math.min(1, Number(t.pivotX))) : 0.5
+		const py = typeof t?.pivotY === 'number' && Number.isFinite(t.pivotY) ? Math.max(0, Math.min(1, Number(t.pivotY))) : 0.5
+		return { cx: Number(t?.x ?? 0) + (0.5 - px) * w, cy: Number(t?.y ?? 0) + (0.5 - py) * h }
+	}
+
 	private drawFilteredTextureToWorld(
 		canvas: DwebCanvasGL,
 		x: number,
@@ -173,9 +196,10 @@ export class DwebVideoScene implements IDwebGLScene {
 		h: number,
 		texture: WebGLTexture,
 		opacity: number,
-		rotation: number
+		rotation: number,
+		uv?: { u0: number; v0: number; u1: number; v1: number }
 	) {
-		canvas.drawTexturedRectUv(x, y, w, h, texture, opacity, rotation, { u0: 0, v0: 1, u1: 1, v1: 0 })
+		canvas.drawTexturedRectUv(x, y, w, h, texture, opacity, rotation, uv ?? { u0: 0, v0: 1, u1: 1, v1: 0 })
 	}
 
 	private drawFilteredTextureToLocal(
@@ -187,9 +211,10 @@ export class DwebVideoScene implements IDwebGLScene {
 		h: number,
 		texture: WebGLTexture,
 		opacity: number,
-		rotation: number
+		rotation: number,
+		uv?: { u0: number; v0: number; u1: number; v1: number }
 	) {
-		canvas.drawLocalTexturedRectUv(target, x, y, w, h, texture, opacity, rotation, { u0: 0, v0: 1, u1: 1, v1: 0 })
+		canvas.drawLocalTexturedRectUv(target, x, y, w, h, texture, opacity, rotation, uv ?? { u0: 0, v0: 1, u1: 1, v1: 0 })
 	}
 
 	private resolveFilterQuality(filter: any): 'low' | 'mid' | 'high' {
@@ -418,26 +443,54 @@ export class DwebVideoScene implements IDwebGLScene {
 					}
 				}
 
-				// padding expressed in world units; clamp in screen px to avoid runaway.
-				const padXpx = Math.min(512, Math.ceil(maxXpx) + 6)
-				const padYpx = Math.min(512, Math.ceil(maxYpx) + 6)
+				// padding expressed in world units.
+				// IMPORTANT: hard-capping padding here causes glow/blur to be clipped.
+				// Instead, cap to the offscreen target's max dimension and (if needed)
+				// proportionally downscale blur so we never truncate the effect.
+				const MAX_FILTER_TARGET_DIM_PX = 1536 // must stay in sync with CanvasPostProcess guardrails
+				const desiredPadXpx0 = Math.ceil(maxXpx) + 6
+				const desiredPadYpx0 = Math.ceil(maxYpx) + 6
+				const contentDevW = nodeW * (canvas.getFilterScale() || (zoom * dpr))
+				const contentDevH = nodeH * (canvas.getFilterScale() || (zoom * dpr))
+				const maxPadDevX = Math.max(0, (MAX_FILTER_TARGET_DIM_PX - contentDevW) / 2 - 2)
+				const maxPadDevY = Math.max(0, (MAX_FILTER_TARGET_DIM_PX - contentDevH) / 2 - 2)
+				const maxPadXpx = maxPadDevX / dpr
+				const maxPadYpx = maxPadDevY / dpr
+				const padXpx = Math.max(0, Math.min(desiredPadXpx0, maxPadXpx))
+				const padYpx = Math.max(0, Math.min(desiredPadYpx0, maxPadYpx))
+				const capX = desiredPadXpx0 > 1e-3 ? Math.min(1, padXpx / desiredPadXpx0) : 1
+				const capY = desiredPadYpx0 > 1e-3 ? Math.min(1, padYpx / desiredPadYpx0) : 1
+				if (capX < 0.999 || capY < 0.999) {
+					for (const f of normalizedFilters) {
+						const ft = String(f?.type || '')
+						if (ft !== 'blur' && ft !== 'glow') continue
+						if (typeof f.__blurX === 'number') f.__blurX *= capX
+						if (typeof f.__blurY === 'number') f.__blurY *= capY
+						if (typeof f.__maxStepPx === 'number') f.__maxStepPx *= Math.min(capX, capY)
+					}
+				}
 				const padX = padXpx / zoom
 				const padY = padYpx / zoom
 				const out = canvas.applyFilters(n.id, nodeW, nodeH, padX, padY, normalizedFilters, (target) => {
 					// Filters should affect only the node's own visuals, not its children.
 					// Rendering the full subtree into the offscreen target causes child artifacts
 					// (inner-glow, clipping to black, text box bleed).
-					this.renderNodeSelfIntoLocalTarget(canvas, target as LocalTargetSize, n.id, 0, 0, true)
+					const entry = this.nodesById.get(n.id)
+					const t = (entry?.localTransform as any) ?? (n.transform as any)
+					const p = this.getLocalFilterRenderPivotPos(t, nodeW, nodeH, n.type)
+					this.renderNodeSelfIntoLocalTarget(canvas, target as LocalTargetSize, n.id, p.x, p.y, true)
 				})
+				const c = this.getPivotCenter(n.transform as any)
 				this.drawFilteredTextureToWorld(
 					canvas,
-					n.transform.x,
-					n.transform.y,
+					c.cx,
+					c.cy,
 					nodeW + out.padX * 2,
 					nodeH + out.padY * 2,
 					out.tex,
 					opacity,
-					rotation
+					rotation,
+					out.uv
 				)
 				continue
 			}
@@ -464,7 +517,8 @@ export class DwebVideoScene implements IDwebGLScene {
 					const w = Math.max(1, Number(entry.transform.width ?? 1))
 					const h = Math.max(1, Number(entry.transform.height ?? 1))
 					const rot = Number((entry.transform as any).rotation ?? 0)
-					canvas.drawRoundedRect(entry.transform.x, entry.transform.y, w, h, 0, transparent, borderColor, borderW2, rot)
+						const c = this.getPivotCenter(entry.transform as any)
+						canvas.drawRoundedRect(c.cx, c.cy, w, h, 0, transparent, borderColor, borderW2, rot)
 				}
 			}
 		}
@@ -598,23 +652,54 @@ export class DwebVideoScene implements IDwebGLScene {
 				}
 			}
 
-			const padXpx = Math.min(512, Math.ceil(maxXpx) + 6)
-			const padYpx = Math.min(512, Math.ceil(maxYpx) + 6)
+			// padding expressed in world units.
+			// IMPORTANT: hard-capping padding here causes glow/blur to be clipped.
+			// Instead, cap to the offscreen target's max dimension and (if needed)
+			// proportionally downscale blur so we never truncate the effect.
+			const MAX_FILTER_TARGET_DIM_PX = 1536 // must stay in sync with CanvasPostProcess guardrails
+			const desiredPadXpx0 = Math.ceil(maxXpx) + 6
+			const desiredPadYpx0 = Math.ceil(maxYpx) + 6
+			const desiredScale = canvas.getFilterScale() || (zoom * dpr)
+			const contentDevW = filterW * desiredScale
+			const contentDevH = filterH * desiredScale
+			const maxPadDevX = Math.max(0, (MAX_FILTER_TARGET_DIM_PX - contentDevW) / 2 - 2)
+			const maxPadDevY = Math.max(0, (MAX_FILTER_TARGET_DIM_PX - contentDevH) / 2 - 2)
+			const maxPadXpx = maxPadDevX / dpr
+			const maxPadYpx = maxPadDevY / dpr
+			const padXpx = Math.max(0, Math.min(desiredPadXpx0, maxPadXpx))
+			const padYpx = Math.max(0, Math.min(desiredPadYpx0, maxPadYpx))
+			const capX = desiredPadXpx0 > 1e-3 ? Math.min(1, padXpx / desiredPadXpx0) : 1
+			const capY = desiredPadYpx0 > 1e-3 ? Math.min(1, padYpx / desiredPadYpx0) : 1
+			if (capX < 0.999 || capY < 0.999) {
+				for (const f of normalizedFilters) {
+					const ft = String(f?.type || '')
+					if (ft !== 'blur' && ft !== 'glow') continue
+					if (typeof f.__blurX === 'number') f.__blurX *= capX
+					if (typeof f.__blurY === 'number') f.__blurY *= capY
+					if (typeof f.__maxStepPx === 'number') f.__maxStepPx *= Math.min(capX, capY)
+				}
+			}
 			const padX = padXpx / zoom
 			const padY = padYpx / zoom
 			const out = canvas.applyFilters(entry.id, filterW, filterH, padX, padY, normalizedFilters, (childTarget) => {
-				this.renderNodeSelfIntoLocalTarget(canvas, childTarget as LocalTargetSize, entry.id, 0, 0, true)
+				const p = this.getLocalFilterRenderPivotPos(entry.localTransform as any, filterW, filterH, entry.type)
+				this.renderNodeSelfIntoLocalTarget(canvas, childTarget as LocalTargetSize, entry.id, p.x, p.y, true)
 			})
+			const px = typeof (entry.localTransform as any).pivotX === 'number' ? (entry.localTransform as any).pivotX : 0.5
+			const py = typeof (entry.localTransform as any).pivotY === 'number' ? (entry.localTransform as any).pivotY : 0.5
+			const cx = x + (0.5 - px) * filterW
+			const cy = y + (0.5 - py) * filterH
 			this.drawFilteredTextureToLocal(
 				canvas,
 				target,
-				x,
-				y,
+				cx,
+				cy,
 				filterW + out.padX * 2,
 				filterH + out.padY * 2,
 				out.tex,
 				nodeOpacity,
-				nodeRotation
+				nodeRotation,
+				out.uv
 			)
 
 			// children should render normally on top of the filtered parent

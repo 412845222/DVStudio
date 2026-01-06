@@ -46,6 +46,8 @@ export const normalizeSnapshotV1 = (snapshot: EditorSnapshot): EditorSnapshot =>
 				transform: {
 					x: toNumber(tr.x, 0),
 					y: toNumber(tr.y, 0),
+					pivotX: toNumber((tr as any).pivotX, 0.5),
+					pivotY: toNumber((tr as any).pivotY, 0.5),
 					width: toNumber(tr.width, 200),
 					height: toNumber(tr.height, 120),
 					rotation: toNumber(tr.rotation, 0),

@@ -15,6 +15,7 @@ type TimelineStateLike = {
 	subtitleSpansByLayer?: Record<string, any[]>
 	subtitleTextNodeIdByLayer?: Record<string, string>
 	stageKeyframesByFrame?: Record<string, { layers: any[] }>
+	progressBarByLayerId?: Record<string, any>
 	easingSegmentKeys: string[]
 	easingCurves: Record<string, any>
 }
@@ -129,6 +130,104 @@ const findNodeInLayers = (layers: any[], layerId: string, nodeId: string): any |
 	const index = new Map<string, any>()
 	buildNodeIndex((layer as any).nodeTree, index as any)
 	return index.get(nodeId) ?? null
+}
+
+const applyProgressStyleFromSpecToLayers = (timeline: TimelineStateLike, layers: any[]) => {
+	const map = (timeline as any).progressBarByLayerId
+	if (!map || typeof map !== 'object') return
+
+	for (const [layerIdRaw, specRaw] of Object.entries(map as Record<string, any>)) {
+		const layerId = String(layerIdRaw ?? '').trim()
+		if (!layerId) continue
+		const spec = specRaw && typeof specRaw === 'object' ? specRaw : null
+		if (!spec) continue
+		const style = (spec as any).style ?? {}
+		const nodeIds = (spec as any).nodeIds ?? {}
+		const rootId = String(nodeIds.rootId ?? '').trim()
+		const playedId = String(nodeIds.playedOverlayId ?? '').trim()
+		const segmentIds: string[] = Array.isArray(nodeIds.segmentIds) ? nodeIds.segmentIds : []
+		const titleIds: string[] = Array.isArray(nodeIds.titleIds) ? nodeIds.titleIds : []
+		const markerIds: string[] = Array.isArray(nodeIds.markerIds) ? nodeIds.markerIds : []
+
+		const bg = typeof style.backgroundColor === 'string' ? style.backgroundColor : null
+		const border = typeof style.borderColor === 'string' ? style.borderColor : null
+		const text = typeof style.textColor === 'string' ? style.textColor : null
+		const played = typeof style.playedOverlayColor === 'string' ? style.playedOverlayColor : null
+		const playedBorder = typeof style.playedOverlayBorderColor === 'string' ? style.playedOverlayBorderColor : null
+		const bgFilters = Array.isArray(style.backgroundFilters) ? style.backgroundFilters : null
+		const segFilters = Array.isArray(style.segmentFilters) ? style.segmentFilters : null
+		const titleFilters = Array.isArray(style.titleFilters) ? style.titleFilters : null
+		const playedFilters = Array.isArray(style.playedOverlayFilters) ? style.playedOverlayFilters : null
+
+		const patchPropsIf = (nodeId: string, patch: Record<string, any>) => {
+			const id = String(nodeId ?? '').trim()
+			if (!id) return
+			const node = findNodeInLayers(layers, layerId, id)
+			if (!node || node.category !== 'user') return
+			node.props = node.props ?? {}
+			for (const [k, v] of Object.entries(patch)) {
+				if (v === undefined) continue
+				;(node.props as any)[k] = v
+			}
+		}
+
+		if (rootId) patchPropsIf(rootId, { fillColor: bg ?? undefined, borderColor: border ?? undefined, filters: bgFilters ?? undefined })
+		for (const id of segmentIds) patchPropsIf(id, { fillColor: bg ?? undefined, borderColor: border ?? undefined, filters: segFilters ?? undefined })
+		for (const id of titleIds) patchPropsIf(id, { fontColor: text ?? undefined, filters: titleFilters ?? undefined })
+		if (playedId) {
+			patchPropsIf(playedId, {
+				fillColor: played ?? undefined,
+				borderColor: playedBorder ?? undefined,
+				borderWidth: 1,
+				borderOpacity: 0.55,
+				filters: playedFilters ?? undefined,
+			})
+		}
+
+		const marker = (style as any).marker ?? {}
+		const mShape = String(marker.shape ?? 'circle') === 'square' ? 'square' : 'circle'
+		const mSize = Math.max(1, Math.min(64, Math.floor(Number(marker.size ?? 6) || 6)))
+		const mColor = typeof marker.color === 'string' ? marker.color : null
+		const mBorder = typeof marker.borderColor === 'string' ? marker.borderColor : null
+		const cr = mShape === 'circle' ? 999 : 0
+		for (const id of markerIds) {
+			const mid = String(id ?? '').trim()
+			if (!mid) continue
+			const node = findNodeInLayers(layers, layerId, mid)
+			if (!node || node.category !== 'user') continue
+			node.transform = node.transform ?? {}
+			;(node.transform as any).width = mSize
+			;(node.transform as any).height = mSize
+			node.props = node.props ?? {}
+			if (mColor != null) (node.props as any).fillColor = mColor
+			if (mBorder != null) (node.props as any).borderColor = mBorder
+			;(node.props as any).borderWidth = 1
+			;(node.props as any).borderOpacity = 0.85
+			;(node.props as any).cornerRadius = cr
+		}
+	}
+}
+
+const snapProgressPlayedOverlayForExport = (timeline: TimelineStateLike, layers: any[]) => {
+	const map = (timeline as any).progressBarByLayerId
+	if (!map || typeof map !== 'object') return
+
+	for (const [layerIdRaw, specRaw] of Object.entries(map as Record<string, any>)) {
+		const layerId = String(layerIdRaw ?? '').trim()
+		if (!layerId) continue
+		const kind = (timeline as any).layerKindById?.[layerId] ?? 'normal'
+		if (kind !== 'progress') continue
+		const spec = specRaw && typeof specRaw === 'object' ? specRaw : null
+		if (!spec) continue
+		const playedId = String((spec as any)?.nodeIds?.playedOverlayId ?? '').trim()
+		if (!playedId) continue
+		const node = findNodeInLayers(layers, layerId, playedId)
+		if (!node || node.category !== 'user') continue
+		node.transform = node.transform ?? {}
+		const t = node.transform as any
+		if (typeof t.width === 'number' && Number.isFinite(t.width)) t.width = Math.max(0, Math.round(t.width))
+		if (typeof t.height === 'number' && Number.isFinite(t.height)) t.height = Math.max(0, Math.round(t.height))
+	}
 }
 
 const applySubtitleEmptyOutsideCue = (timeline: TimelineStateLike, layers: any[], layerId: string, frameIndex: number) => {
@@ -324,12 +423,19 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 	if (stageFrames.length === 0) {
 		const layers = cloneJsonSafe((baseState as any).layers ?? []) as any[]
 		applyLegacyNodeKeyframesAtFrame(timelineState, layers, fi)
+		applyProgressStyleFromSpecToLayers(timelineState, layers)
+		snapProgressPlayedOverlayForExport(timelineState, layers)
 		return { ...(baseState as any), layers }
 	}
 
 	const onKeyframeLayers = getStageSnapshotLayersAt(timelineState, fi)
 	if (onKeyframeLayers) {
 		const layers = cloneJsonSafe(onKeyframeLayers) as any[]
+		// In stage snapshot mode, we still need to apply per-layer node keyframes
+		// (e.g. progress played overlay width / filters, subtitle node overrides).
+		applyLegacyNodeKeyframesAtFrame(timelineState, layers, fi)
+		applyProgressStyleFromSpecToLayers(timelineState, layers)
+		snapProgressPlayedOverlayForExport(timelineState, layers)
 		applySubtitleLayersAtFrame(timelineState, layers, fi)
 		return { ...(baseState as any), layers }
 	}
@@ -340,6 +446,9 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 			const nextLayers = getStageSnapshotLayersAt(timelineState, next)
 			if (nextLayers) {
 				const layers = cloneJsonSafe(nextLayers) as any[]
+				applyLegacyNodeKeyframesAtFrame(timelineState, layers, fi)
+				applyProgressStyleFromSpecToLayers(timelineState, layers)
+				snapProgressPlayedOverlayForExport(timelineState, layers)
 				applySubtitleLayersAtFrame(timelineState, layers, fi)
 				return { ...(baseState as any), layers }
 			}
@@ -350,12 +459,18 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 	if (!prevLayers) return baseState
 	if (next == null || !(prev < fi && fi < next)) {
 		const layers = cloneJsonSafe(prevLayers) as any[]
+		applyLegacyNodeKeyframesAtFrame(timelineState, layers, fi)
+		applyProgressStyleFromSpecToLayers(timelineState, layers)
+		snapProgressPlayedOverlayForExport(timelineState, layers)
 		applySubtitleLayersAtFrame(timelineState, layers, fi)
 		return { ...(baseState as any), layers }
 	}
 	const nextLayers = getStageSnapshotLayersAt(timelineState, next)
 	if (!nextLayers) {
 		const layers = cloneJsonSafe(prevLayers) as any[]
+		applyLegacyNodeKeyframesAtFrame(timelineState, layers, fi)
+		applyProgressStyleFromSpecToLayers(timelineState, layers)
+		snapProgressPlayedOverlayForExport(timelineState, layers)
 		applySubtitleLayersAtFrame(timelineState, layers, fi)
 		return { ...(baseState as any), layers }
 	}
@@ -363,6 +478,9 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 	const rawT = (fi - prev) / (next - prev)
 	if (!(rawT > 0 && rawT < 1)) {
 		const layers = cloneJsonSafe(prevLayers) as any[]
+		applyLegacyNodeKeyframesAtFrame(timelineState, layers, fi)
+		applyProgressStyleFromSpecToLayers(timelineState, layers)
+		snapProgressPlayedOverlayForExport(timelineState, layers)
 		applySubtitleLayersAtFrame(timelineState, layers, fi)
 		return { ...(baseState as any), layers }
 	}
@@ -432,6 +550,12 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 		}
 	}
 
+	// After stage snapshot interpolation, re-apply node-level keyframes (progress/subtitle/etc)
+	// so export matches preview runtime behavior. Then re-apply progress style spec (filters/colors)
+	// which may not be included in stage snapshots.
+	applyLegacyNodeKeyframesAtFrame(timelineState, outLayers, fi)
+	applyProgressStyleFromSpecToLayers(timelineState, outLayers)
+	snapProgressPlayedOverlayForExport(timelineState, outLayers)
 	applySubtitleLayersAtFrame(timelineState, outLayers, fi)
 	return { ...(baseState as any), layers: outLayers }
 }

@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict, List
 
 from . import understanding_json as subtitle_prompts
+from . import segments_titles as segments_prompts
 from .._md_prompts import load_prompt_section
 
 
@@ -18,6 +19,26 @@ def build_understand_outline_messages(*, cues: List[Dict[str, Any]], cue_ranges:
         variables={
             "cues_json": json.dumps(cues, ensure_ascii=False),
             "cue_ranges_json": json.dumps(cue_ranges, ensure_ascii=False),
+        },
+    )
+
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+
+def build_segments_messages(*, segments: List[Dict[str, Any]], cue_samples: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Generate short titles for each segment boundary (progress bar)."""
+
+    system = segments_prompts.segments_stage_system_prompt()
+    user = load_prompt_section(
+        relative_to=__file__,
+        filename="agent_messages.md",
+        heading="User: segments_context",
+        variables={
+            "segments_json": json.dumps(segments, ensure_ascii=False),
+            "cue_samples_json": json.dumps(cue_samples, ensure_ascii=False),
         },
     )
 

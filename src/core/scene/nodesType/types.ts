@@ -5,6 +5,8 @@ export type NodeType = 'base' | 'rect' | 'text' | 'image' | 'line'
 export type NodeTransform = {
 	x: number
 	y: number
+	pivotX: number
+	pivotY: number
 	width: number
 	height: number
 	rotation: number

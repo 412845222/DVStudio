@@ -173,7 +173,7 @@ export class DwebCanvasGL {
 		padY: number,
 		filters: any[],
 		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number }) => void
-	): { tex: WebGLTexture; padX: number; padY: number } {
+	): { tex: WebGLTexture; padX: number; padY: number; uv: { u0: number; v0: number; u1: number; v1: number } } {
 		return this.postprocess.applyFilters(this.gl, this, id, contentW, contentH, padX, padY, filters, renderLocal)
 	}
 
@@ -499,6 +499,63 @@ export class DwebCanvasGL {
 		const widthOut = (outCanvas as any).width ?? outW
 		const heightOut = (outCanvas as any).height ?? outH
 		return { blob, width: widthOut, height: heightOut }
+	}
+
+	/**
+	 * Capture raw RGBA bytes (top-left origin) from the current framebuffer.
+	 * This avoids PNG encode cost and is suitable for piping into ffmpeg.
+	 */
+	captureRgbaBytesFromScreenRect(rect: { x: number; y: number; width: number; height: number }, opts?: { padPx?: number }): { pixels: Uint8Array; width: number; height: number } | null {
+		if (this.isDisposed) return null
+		const pad = Math.max(0, Math.floor(Number(opts?.padPx ?? 0) || 0))
+		const dpr = Math.max(1, this.dpr)
+		const canvasW = Math.max(1, this.canvas.width)
+		const canvasH = Math.max(1, this.canvas.height)
+
+		const x0Css = Math.floor((Number(rect.x) || 0) - pad)
+		const y0Css = Math.floor((Number(rect.y) || 0) - pad)
+		const x1Css = Math.ceil((Number(rect.x) || 0) + (Number(rect.width) || 0) + pad)
+		const y1Css = Math.ceil((Number(rect.y) || 0) + (Number(rect.height) || 0) + pad)
+		const wCss = Math.max(1, x1Css - x0Css)
+		const hCss = Math.max(1, y1Css - y0Css)
+
+		let xPx = Math.floor(x0Css * dpr)
+		let yPxFromTop = Math.floor(y0Css * dpr)
+		let wPx = Math.max(1, Math.floor(wCss * dpr))
+		let hPx = Math.max(1, Math.floor(hCss * dpr))
+		if (xPx < 0) {
+			wPx += xPx
+			xPx = 0
+		}
+		if (yPxFromTop < 0) {
+			hPx += yPxFromTop
+			yPxFromTop = 0
+		}
+		wPx = Math.min(wPx, canvasW - xPx)
+		hPx = Math.min(hPx, canvasH - yPxFromTop)
+		if (wPx <= 1 || hPx <= 1) return null
+		const yPx = Math.max(0, canvasH - (yPxFromTop + hPx))
+
+		// Ensure we capture the latest frame.
+		this.render()
+
+		const gl = this.gl
+		const pixelsBottomLeft = new Uint8Array(wPx * hPx * 4)
+		try {
+			gl.readPixels(xPx, yPx, wPx, hPx, gl.RGBA, gl.UNSIGNED_BYTE, pixelsBottomLeft)
+		} catch {
+			return null
+		}
+
+		// Flip vertically to top-left origin.
+		const rowStride = wPx * 4
+		const flipped = new Uint8Array(wPx * hPx * 4)
+		for (let row = 0; row < hPx; row++) {
+			const srcStart = (hPx - 1 - row) * rowStride
+			const dstStart = row * rowStride
+			flipped.set(pixelsBottomLeft.subarray(srcStart, srcStart + rowStride), dstStart)
+		}
+		return { pixels: flipped, width: wPx, height: hPx }
 	}
 
 	render() {

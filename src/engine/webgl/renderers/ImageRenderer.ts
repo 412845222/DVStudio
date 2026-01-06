@@ -22,10 +22,12 @@ export class ImageRenderer extends NodeRenderer {
 		const imgH = Math.max(1, size?.height ?? 1)
 		const fit = ((node.props as any)?.imageFit ?? 'contain') as 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'
 
-		const cx = node.transform.x
-		const cy = node.transform.y
 		const w = Math.max(1, Number(node.transform.width ?? 1))
 		const h = Math.max(1, Number(node.transform.height ?? 1))
+		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
+		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const cx = node.transform.x + (0.5 - px) * w
+		const cy = node.transform.y + (0.5 - py) * h
 		const rotation = ctx.rotation
 
 		const drawTex = (dw: number, dh: number) => {

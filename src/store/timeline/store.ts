@@ -17,6 +17,8 @@ import type {
   SubtitleCue,
   SubtitleCueRange,
   SubtitleTextStyle,
+  ProgressBarSpec,
+  ProgressBarStyle,
   TimelineCellKey,
   TimelineLayer,
   TimelineLayerKind,
@@ -160,6 +162,13 @@ export const TimelineKey: InjectionKey<Store<TimelineState>> = Symbol('TimelineS
 export const TimelineStore = createStore<TimelineState>({
   state: createDefaultTimelineState,
   mutations: {
+  setLayerKind(state, payload: { layerId: string; kind: TimelineLayerKind }) {
+    const layerId = String(payload.layerId || '').trim()
+    if (!layerId) return
+    const kind = payload.kind
+    if (kind !== 'normal' && kind !== 'subtitle' && kind !== 'progress') return
+    state.layerKindById[layerId] = kind
+  },
 	setFps(state, payload: { fps: number }) {
 		state.fps = clampInt(payload.fps, 1, 240)
 	},
@@ -321,6 +330,10 @@ export const TimelineStore = createStore<TimelineState>({
       if (idx < 0) return
       state.layers.splice(idx, 1)
 	  if (state.layerKindById[payload.layerId]) delete state.layerKindById[payload.layerId]
+	  if ((state as any).progressBarByLayerId?.[payload.layerId]) {
+		  delete (state as any).progressBarByLayerId[payload.layerId]
+		  ;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
+	  }
       state.selectedLayerIds = state.selectedLayerIds.filter((id) => id !== payload.layerId)
 	  if (state.selectedSpansByLayer[payload.layerId]) {
 		  delete state.selectedSpansByLayer[payload.layerId]
@@ -615,6 +628,37 @@ export const TimelineStore = createStore<TimelineState>({
       y2: clamp01(payload.curve.y2),
       preset: payload.curve.preset,
     }
+	},
+
+	setProgressBarSpec(state, payload: { layerId: string; spec: ProgressBarSpec }) {
+		const layerId = String(payload.layerId || '').trim()
+		if (!layerId) return
+		if (!payload.spec || typeof payload.spec !== 'object') return
+		;(state as any).progressBarByLayerId[layerId] = payload.spec
+		;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
+	},
+
+	updateProgressBarStyle(state, payload: { layerId: string; style: Partial<ProgressBarStyle> }) {
+		const layerId = String(payload.layerId || '').trim()
+		if (!layerId) return
+		const map = (state as any).progressBarByLayerId as Record<string, ProgressBarSpec>
+		const prev = map?.[layerId]
+		if (!prev) return
+		const next: ProgressBarSpec = { ...prev, style: { ...prev.style, ...(payload.style as any) } }
+		map[layerId] = next
+		;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
+	},
+
+  updateProgressBarSegments(state, payload: { layerId: string; segments: ProgressBarSpec['segments'] }) {
+    const layerId = String(payload.layerId || '').trim()
+    if (!layerId) return
+    const map = (state as any).progressBarByLayerId as Record<string, ProgressBarSpec>
+    const prev = map?.[layerId]
+    if (!prev) return
+    const segments = Array.isArray(payload.segments) ? payload.segments : []
+    const next: ProgressBarSpec = { ...prev, segments: segments as any }
+    map[layerId] = next
+    ;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
   },
 
     // --- 选择：按范围 toggle（用于合并段整体选择） ---
@@ -933,6 +977,20 @@ export const TimelineStore = createStore<TimelineState>({
   },
   },
   actions: {
+    setProgressBarSpec({ commit }, payload: { layerId: string; spec: ProgressBarSpec }) {
+  	commit('setProgressBarSpec', payload)
+    },
+
+    updateProgressBarStyle({ commit }, payload: { layerId: string; style: Partial<ProgressBarStyle> }) {
+  	commit('updateProgressBarStyle', payload)
+    },
+
+  updateProgressBarSegments({ commit }, payload: { layerId: string; segments: ProgressBarSpec['segments'] }) {
+    commit('updateProgressBarSegments', payload)
+  },
+  setLayerKind({ commit }, payload: { layerId: string; kind: TimelineLayerKind }) {
+    commit('setLayerKind', payload)
+  },
 		setFps({ commit }, payload: { fps: number }) {
 			commit('setFps', payload)
 		},

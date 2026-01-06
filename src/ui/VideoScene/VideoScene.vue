@@ -195,7 +195,7 @@
         :open="showExportPanel"
         :format="exportFormat"
         :concurrency="exportConcurrency"
-		:ignore-stage-background="exportIgnoreStageBackground"
+        :ignore-stage-background="exportIgnoreStageBackground"
         :status="exportStatus"
         :client-progress="exportClientProgress"
         :server-progress="exportServerProgress"
@@ -204,7 +204,7 @@
         @reset="resetExportResult"
         @update:format="(v) => (exportFormat = v)"
         @update:concurrency="(v) => (exportConcurrency = v)"
-		@update:ignoreStageBackground="(v) => (exportIgnoreStageBackground = v)"
+        @update:ignoreStageBackground="(v) => (exportIgnoreStageBackground = v)"
         @start="startExport"
         @close="
           () => {
@@ -454,6 +454,7 @@ const startExport = async () => {
 			height,
 			fps,
 			frameCount,
+			uploadMode: 'pipe',
 			ignoreStageBackground: exportFormat.value === 'mov' ? !!exportIgnoreStageBackground.value : false,
 			// Keep snapshot optional for potential debugging; backend ignores it.
 			snapshot: editorPersistence.getSnapshot(),
@@ -479,8 +480,8 @@ const startExport = async () => {
 		// Offscreen canvas for export
 		const originalFrame = Math.floor(Number(TimelineStore.state.currentFrame) || 0)
 		try {
-			// Worker pool for concurrent render+upload (default 8; user can choose 4/16)
-			const concurrency = exportConcurrency.value === 4 ? 4 : exportConcurrency.value === 16 ? 16 : 8
+			// Rawvideo stdin piping requires in-order delivery; default to sequential uploads.
+			const concurrency = 1
 			const maxInFlight = Math.max(1, concurrency)
 			type WorkerOut =
 				| { type: 'ready' }
@@ -874,6 +875,14 @@ const resize = ref<{
 	layerId?: string
 	anchorWorld?: { x: number; y: number }
 	parentWorld?: { x: number; y: number }
+	rotation?: number
+	pivotX?: number
+	pivotY?: number
+	startLocalX?: number
+	startLocalY?: number
+	startW?: number
+	startH?: number
+	pivotWorld?: { x: number; y: number }
 }>({
 	active: false,
 })
@@ -940,10 +949,12 @@ const updateOverlay = () => {
 			if (!hit) continue
 			const t = hit.node.transform as any
 			const geom = buildNodeOverlayGeometry({
-				worldCenter: hit.world,
+				worldPivot: hit.world,
 				width: Number(t.width ?? 0),
 				height: Number(t.height ?? 0),
 				rotation: Number((t as any).rotation ?? 0),
+				pivotX: Number((t as any).pivotX ?? 0.5),
+				pivotY: Number((t as any).pivotY ?? 0.5),
 				userType: (hit.node as any)?.userType,
 				props: (hit.node as any)?.props,
 			})
@@ -997,10 +1008,12 @@ const updateOverlay = () => {
 	}
 	const t = hit.node.transform as any
 	const geom = buildNodeOverlayGeometry({
-		worldCenter: hit.world,
+		worldPivot: hit.world,
 		width: Number(t.width ?? 0),
 		height: Number(t.height ?? 0),
 		rotation: Number((t as any).rotation ?? 0),
+		pivotX: Number((t as any).pivotX ?? 0.5),
+		pivotY: Number((t as any).pivotY ?? 0.5),
 		userType: (hit.node as any)?.userType,
 		props: (hit.node as any)?.props,
 	})
@@ -1045,11 +1058,15 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 	const w = Number(t.width ?? 0)
 	const h = Number(t.height ?? 0)
 	const rotation = Number((t as any).rotation ?? 0)
+	const pivotX = Number((t as any).pivotX ?? 0.5)
+	const pivotY = Number((t as any).pivotY ?? 0.5)
 	const geom = buildNodeOverlayGeometry({
-		worldCenter: { x: cx, y: cy },
+		worldPivot: { x: cx, y: cy },
 		width: w,
 		height: h,
 		rotation,
+		pivotX,
+		pivotY,
 		userType: (hit.node as any)?.userType,
 		props: (hit.node as any)?.props,
 	})
@@ -1063,7 +1080,8 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 		if (corner === 'bl') return tr
 		return tl
 	})()
-	resize.value = { active: true, corner, nodeId, layerId, anchorWorld, parentWorld: hit.parentWorld }
+
+	resize.value = { active: true, corner, nodeId, layerId, anchorWorld, parentWorld: hit.parentWorld, rotation, pivotX, pivotY }
 	overlay.showSize = true
 	resizeSnapSession.value = snapEnabled.value
 		? beginResizeSnapSessionForNode({
@@ -1121,25 +1139,32 @@ const onDocPointerMove = (ev: PointerEvent) => {
 	if (!resize.value.active) return
 	const canvas = ensureCanvas()
 	if (!canvas) return
-	const { nodeId, layerId, anchorWorld, parentWorld, corner } = resize.value
-	if (!nodeId || !layerId || !anchorWorld || !parentWorld) return
+	const { nodeId, layerId, anchorWorld, parentWorld, corner, pivotX, pivotY, rotation } = resize.value
+	if (!nodeId || !layerId || !anchorWorld || !parentWorld || !corner) return
 	const p = getLocalPointFromClient(ev.clientX, ev.clientY)
 	const w = canvas.screenToWorld(p)
 
-	// resize happens in world space (axis-aligned) and then written back to local = world - parentWorld
+	// Resize in node-rotated local axes (anchor-relative). This keeps the dragged corner
+	// under the cursor even when rotation != 0 and/or pivot != 0.5.
 	const minSize = 1
-	let movingX = w.x
-	let movingY = w.y
-	// prevent flipping across anchor: keep moving corner on its side
-	if (corner === 'tl' || corner === 'bl') movingX = Math.min(movingX, anchorWorld.x - minSize)
-	if (corner === 'tr' || corner === 'br') movingX = Math.max(movingX, anchorWorld.x + minSize)
-	if (corner === 'tl' || corner === 'tr') movingY = Math.min(movingY, anchorWorld.y - minSize)
-	if (corner === 'bl' || corner === 'br') movingY = Math.max(movingY, anchorWorld.y + minSize)
+	const rot = Number(rotation ?? 0) || 0
+	const cos = Math.cos(rot)
+	const sin = Math.sin(rot)
+	const signX = corner === 'tl' || corner === 'bl' ? -1 : 1
+	const signY = corner === 'tl' || corner === 'tr' ? -1 : 1
 
-	let width = Math.max(minSize, Math.abs(anchorWorld.x - movingX))
-	let height = Math.max(minSize, Math.abs(anchorWorld.y - movingY))
+	let local = worldToLocalRotated(w, anchorWorld, rot)
+	local = {
+		x: signX * Math.max(minSize, Math.abs(local.x)),
+		y: signY * Math.max(minSize, Math.abs(local.y)),
+	}
+
+	let movingX = anchorWorld.x + local.x * cos - local.y * sin
+	let movingY = anchorWorld.y + local.x * sin + local.y * cos
 	let cx = (anchorWorld.x + movingX) / 2
 	let cy = (anchorWorld.y + movingY) / 2
+	let width = Math.max(minSize, Math.abs(local.x))
+	let height = Math.max(minSize, Math.abs(local.y))
 
 	// snap during resize: adjust moving edge (and center/size accordingly)
 	const focusedId = VideoSceneStore.state.focusedNodeId
@@ -1168,10 +1193,20 @@ const onDocPointerMove = (ev: PointerEvent) => {
 		const snapped = stepped.result
 		movingX = snapped.movingX
 		movingY = snapped.movingY
-		width = snapped.width
-		height = snapped.height
 		cx = snapped.cx
 		cy = snapped.cy
+		// For rotated nodes, resolve width/height in rotated local axes after snapping.
+		let snappedLocal = worldToLocalRotated({ x: movingX, y: movingY }, anchorWorld, rot)
+		snappedLocal = {
+			x: signX * Math.max(minSize, Math.abs(snappedLocal.x)),
+			y: signY * Math.max(minSize, Math.abs(snappedLocal.y)),
+		}
+		movingX = anchorWorld.x + snappedLocal.x * cos - snappedLocal.y * sin
+		movingY = anchorWorld.y + snappedLocal.x * sin + snappedLocal.y * cos
+		cx = (anchorWorld.x + movingX) / 2
+		cy = (anchorWorld.y + movingY) / 2
+		width = Math.max(minSize, Math.abs(snappedLocal.x))
+		height = Math.max(minSize, Math.abs(snappedLocal.y))
 
 		if (showGuides.value && snapped.snappedLineX != null) {
 			const sp = canvas.worldToScreen({ x: snapped.snappedLineX, y: cy })
@@ -1191,11 +1226,21 @@ const onDocPointerMove = (ev: PointerEvent) => {
 		snapGuides.y = null
 		resizeSnapSession.value = null
 	}
-	// 写回局部坐标：local = world - parentWorld
+
+	// Write back pivot position from the resized bbox so any pivot works,
+	// while the dragged corner stays under the cursor.
+	const px0 = Number(pivotX)
+	const py0 = Number(pivotY)
+	const px = Number.isFinite(px0) ? Math.max(0, Math.min(1, px0)) : 0.5
+	const py = Number.isFinite(py0) ? Math.max(0, Math.min(1, py0)) : 0.5
+	const offX = (0.5 - px) * width
+	const offY = (0.5 - py) * height
+	const pivotWorldX = cx - (offX * cos - offY * sin)
+	const pivotWorldY = cy - (offX * sin + offY * cos)
 	VideoSceneStore.dispatch('updateNodeTransform', {
 		layerId,
 		nodeId,
-		patch: { x: cx - parentWorld.x, y: cy - parentWorld.y, width, height },
+		patch: { x: pivotWorldX - parentWorld.x, y: pivotWorldY - parentWorld.y, width, height },
 	})
 }
 

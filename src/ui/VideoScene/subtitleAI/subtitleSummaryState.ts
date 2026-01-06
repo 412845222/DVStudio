@@ -6,6 +6,10 @@ export type SubtitleOutlineItem = {
 	endTimeMs?: number | null
 }
 
+export type SubtitleSegments = {
+	items: SubtitleOutlineItem[]
+}
+
 export type SubtitleStyle = {
 	palette: Record<string, string>
 	notes?: string[]
@@ -42,6 +46,7 @@ export type SubtitleSummaryState = {
 		generatedAt?: string
 	}
 	understanding: SubtitleUnderstanding
+	segments: SubtitleSegments
 	outline: {
 		items: SubtitleOutlineItem[]
 	}
@@ -53,6 +58,7 @@ export type SubtitleSummaryState = {
 export const createEmptySubtitleSummaryState = (): SubtitleSummaryState => ({
 	meta: {},
 	understanding: { summary: '', points: [] },
+	segments: { items: [] },
 	outline: { items: [] },
 	style: { palette: {}, notes: [] },
 	templates: [],
@@ -62,6 +68,14 @@ export const createEmptySubtitleSummaryState = (): SubtitleSummaryState => ({
 const isRecord = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v)
 
 const normalizeOutline = (v: unknown): SubtitleSummaryState['outline'] => {
+	if (!isRecord(v)) return { items: [] }
+	return {
+		...v,
+		items: Array.isArray((v as any).items) ? (v as any).items : [],
+	}
+}
+
+const normalizeSegments = (v: unknown): SubtitleSegments => {
 	if (!isRecord(v)) return { items: [] }
 	return {
 		...v,
@@ -99,6 +113,7 @@ export const applySubtitleSummaryDelta = (
 		return {
 			meta: isRecord((data as any).meta) ? (data as any).meta : state.meta,
 			understanding: (data as any).understanding ? normalizeUnderstanding((data as any).understanding) : state.understanding,
+			segments: (data as any).segments ? normalizeSegments((data as any).segments) : state.segments,
 			outline: (data as any).outline ? normalizeOutline((data as any).outline) : state.outline,
 			style: (data as any).style ? normalizeStyle((data as any).style) : state.style,
 			templates: Array.isArray((data as any).templates) ? (data as any).templates : state.templates,
@@ -109,6 +124,7 @@ export const applySubtitleSummaryDelta = (
 	if (section === 'meta' && isRecord(data)) return { ...state, meta: { ...state.meta, ...(data as any) } }
 	if (section === 'understanding' && isRecord(data))
 		return { ...state, understanding: normalizeUnderstanding({ ...state.understanding, ...(data as any) }) }
+	if (section === 'segments' && isRecord(data)) return { ...state, segments: normalizeSegments({ ...state.segments, ...(data as any) }) }
 	if (section === 'outline' && isRecord(data)) return { ...state, outline: normalizeOutline({ ...state.outline, ...(data as any) }) }
 	if (section === 'style' && isRecord(data)) return { ...state, style: normalizeStyle({ ...state.style, ...(data as any) }) }
 	if (section === 'templates' && Array.isArray(data)) return { ...state, templates: data as any }

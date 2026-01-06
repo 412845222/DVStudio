@@ -9,7 +9,7 @@ export class NodeBase {
 			id,
 			name,
 			type: 'base',
-			transform: { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 },
+			transform: { x: 0, y: 0, pivotX: 0.5, pivotY: 0.5, width: 200, height: 120, rotation: 0, opacity: 1 },
 			props: {},
 		}
 	}
@@ -21,6 +21,8 @@ export class NodeBase {
 			transform: {
 				x: toNumber(dto.transform?.x, 0),
 				y: toNumber(dto.transform?.y, 0),
+				pivotX: clamp01(dto.transform?.pivotX, 0.5),
+				pivotY: clamp01(dto.transform?.pivotY, 0.5),
 				width: clampPx(dto.transform?.width, 200),
 				height: clampPx(dto.transform?.height, 120),
 				rotation: toNumber(dto.transform?.rotation, 0),

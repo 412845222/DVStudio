@@ -199,7 +199,7 @@ const onImportSubtitleFile = async (e: Event) => {
 				fontSize: Math.max(6, Number((rawDefaultStyle as any).fontSize ?? 36) || 36),
 			}
 			// Subtitle text node should be visible by default.
-			const nodeTransform = { x: 0, y: boxY, width: boxW, height: boxH, rotation: 0, opacity: 1 }
+			const nodeTransform = { x: 0, y: boxY, pivotX: 0.5, pivotY: 0.5, width: boxW, height: boxH, rotation: 0, opacity: 1 }
 
 			await store.dispatch('updateNodeTransform', { layerId: layer.id, nodeId: subtitleNodeId, patch: nodeTransform })
 			await store.dispatch('updateNodeProps', {

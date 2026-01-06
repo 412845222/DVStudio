@@ -24,6 +24,7 @@ type CreateExportJobRequest = {
 	height: number
 	fps: number
 	frameCount: number
+	uploadMode?: 'disk' | 'pipe'
 	ignoreStageBackground?: boolean
 	snapshot?: unknown
 }

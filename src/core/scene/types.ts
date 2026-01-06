@@ -7,6 +7,13 @@ export type VideoSceneNodeCategory = 'project' | 'user'
 export type VideoSceneNodeTransform = {
 	x: number
 	y: number
+	/**
+	 * Pivot in local space, normalized to [0..1].
+	 * - 0.5 means the node's (x,y) is at its center (legacy behavior)
+	 * - 0 means the node's (x,y) is at its left/top edge
+	 */
+	pivotX: number
+	pivotY: number
 	width: number
 	height: number
 	rotation: number

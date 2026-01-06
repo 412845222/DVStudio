@@ -1,6 +1,7 @@
 from django.urls import include, path
 
 from . import views
+from . import export_api
 from .ai.api import chat_api
 from .ai.api import subtitle_understanding_api
 
@@ -59,6 +60,17 @@ urlpatterns = [
         subtitle_understanding_api.stream_template,
         name="ai-subtitle-template-stream",
     ),
+
+    # Export APIs
+    path("export/jobs", export_api.create_job, name="export-create-job"),
+    # NOTE: must be before `export/jobs/<str:job_id>` because `<str:job_id>`
+    # will also match values like `exp-xxx:stream` and steal the route.
+    path("export/jobs/<str:job_id>:stream", export_api.stream_job_sse, name="export-stream-job"),
+    path("export/jobs/<str:job_id>", export_api.get_job, name="export-get-job"),
+    path("export/jobs/<str:job_id>/frames", export_api.upload_frame, name="export-upload-frame"),
+    path("export/jobs/<str:job_id>/frames:raw", export_api.upload_frame_raw, name="export-upload-frame-raw"),
+    path("export/jobs/<str:job_id>/finalize", export_api.finalize_job, name="export-finalize-job"),
+    path("export/jobs/<str:job_id>/file", export_api.download_job_file, name="export-download-file"),
     # Generated / user-defined APIs live here
     path("", include("dwebapp.dweb_urls")),
 ]

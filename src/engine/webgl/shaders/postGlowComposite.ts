@@ -22,6 +22,15 @@ uniform float u_inner;
 uniform float u_knockout;
 out vec4 outColor;
 
+// Simple stable hash noise in screen space.
+// Used as dithering to reduce visible banding in 8-bit alpha gradients.
+float dvs_hash(vec2 p) {
+  // https://www.shadertoy.com/view/4djSRW (classic hash), adapted.
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
 void main(){
   // Adobe/Flash-like glow: driven by alpha silhouette, glowColor independent from source RGB.
   vec4 base = texture(u_sampler, v_uv);
@@ -32,12 +41,23 @@ void main(){
   float inner = max(0.0, base.a - blur.a);
   float strength = mix(outer, inner, step(0.5, u_inner));
 
-  // Non-linear intensity mapping:
-  // For small strength values (common with thin lines), linear gain feels too weak.
-  float gain = max(0.0, u_intensity);
+  // Softer intensity mapping (avoid hard opaque "light柱" near edges).
+  // Use a smooth saturating curve so small values still lift but mid-values don't instantly clamp.
+  float gain = clamp(u_intensity, 0.0, 64.0);
   float s = clamp(strength, 0.0, 1.0);
-  float a = 1.0 - pow(1.0 - s, gain * 2.5);
+  float x = s * (gain * 2.0);
+  float a = x / (1.0 + x);
   a = clamp(a, 0.0, 1.0);
+
+  // When exporting with transparency, the glow lives mainly in alpha and gets quantized to 8-bit
+  // (readPixels -> PNG). This can show as stepped "light柱" banding after compositing.
+  // Apply a tiny dither to the glow alpha only when the base alpha is not opaque.
+  if (base.a < 0.999) {
+    float n = dvs_hash(gl_FragCoord.xy);
+    // +/- 0.5 LSB in 8-bit space (slightly stronger to mask compression), scaled by edge strength.
+    float amp = (1.25 / 255.0) * clamp(a, 0.0, 1.0);
+    a = clamp(a + (n - 0.5) * 2.0 * amp, 0.0, 1.0);
+  }
 
   // Compose in premultiplied space then convert back to straight-alpha.
   // This avoids dirty/black fringes on light backgrounds under standard SRC_ALPHA blending.

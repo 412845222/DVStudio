@@ -112,6 +112,8 @@ const createUserNode = (
 	const baseTransform: VideoSceneNodeTransform = {
 		x: upgraded.transform.x,
 		y: upgraded.transform.y,
+		pivotX: (upgraded.transform as any).pivotX ?? 0.5,
+		pivotY: (upgraded.transform as any).pivotY ?? 0.5,
 		width: upgraded.transform.width,
 		height: upgraded.transform.height,
 		rotation: upgraded.transform.rotation,

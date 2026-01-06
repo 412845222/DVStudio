@@ -14,10 +14,12 @@ export class LineRenderer extends NodeRenderer {
 	}
 
 	private draw(canvas: DwebCanvasGL, node: RenderNode, ctx: RenderContext, space: 'world' | 'local', target?: LocalTargetSize) {
-		const cx = node.transform.x
-		const cy = node.transform.y
 		const w = Math.max(1, Number(node.transform.width ?? 1))
 		const h = Math.max(1, Number(node.transform.height ?? 1))
+		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
+		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const cx = node.transform.x + (0.5 - px) * w
+		const cy = node.transform.y + (0.5 - py) * h
 		const startX = Number((node.props as any)?.startX ?? -w / 2)
 		const startY = Number((node.props as any)?.startY ?? 0)
 		const endX = Number((node.props as any)?.endX ?? w / 2)

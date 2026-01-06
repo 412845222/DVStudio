@@ -1,160 +1,330 @@
 <template>
-	<div class="tl-shell">
-		<div class="tl-toolbar">
-			<div class="tl-play-controls">
-				<button class="tl-mini-btn" type="button" :disabled="isPlaying" @click="onPlay">播放</button>
-				<button class="tl-mini-btn" type="button" :disabled="!isPlaying" @click="onPause">暂停</button>
-				<button class="tl-mini-btn" type="button" @click="onStop">停止</button>
-				<button class="tl-mini-btn" type="button" :class="{ active: loopEnabled }" @click="toggleLoop">循环</button>
-				<div class="tl-time-jump">
-					<button class="tl-mini-btn" type="button" @click="onJumpByTime">按时间跳转</button>
-					<input v-model="jumpHH" class="tl-time-input" type="number" min="0" step="1" @change="normalizeJumpTime" />
-					<span class="tl-time-sep">:</span>
-					<input v-model="jumpMM" class="tl-time-input" type="number" min="0" max="59" step="1" @change="normalizeJumpTime" />
-					<span class="tl-time-sep">:</span>
-					<input v-model="jumpSS" class="tl-time-input" type="number" min="0" max="59" step="1" @change="normalizeJumpTime" />
-				</div>
-			</div>
-			<div class="tl-meta">
-				<span class="tl-meta-label">FPS</span>
-				<input v-model.number="inputFps" class="tl-input tl-input-fps" type="number" min="1" max="240" step="1" @change="applyFps" />
-				<span class="tl-meta-label">当前帧</span>
-				<input v-model.number="inputCurrentFrame" class="tl-input" type="number" min="0" :max="Math.max(0, frameCount - 1)" step="1" @change="applyCurrentFrame" />
-				<span class="tl-meta-label">时间</span>
-				<span class="tl-meta-time">{{ currentTimeText }}</span>
-				<span class="tl-meta-sep">/</span>
-				<span class="tl-meta-label">总帧数</span>
-				<input v-model.number="inputFrameCount" class="tl-input" type="number" min="1" step="1" @change="applyFrameCount" />
-			</div>
-		</div>
+  <div class="tl-shell">
+    <div class="tl-toolbar">
+      <div class="tl-play-controls">
+        <button class="tl-mini-btn" type="button" :disabled="isPlaying" @click="onPlay">
+          播放
+        </button>
+        <button class="tl-mini-btn" type="button" :disabled="!isPlaying" @click="onPause">
+          暂停
+        </button>
+        <button class="tl-mini-btn" type="button" @click="onStop">停止</button>
+        <button
+          class="tl-mini-btn"
+          type="button"
+          :class="{ active: loopEnabled }"
+          @click="toggleLoop"
+        >
+          循环
+        </button>
+        <div class="tl-time-jump">
+          <button class="tl-mini-btn" type="button" @click="onJumpByTime">
+            按时间跳转
+          </button>
+          <input
+            v-model="jumpHH"
+            class="tl-time-input"
+            type="number"
+            min="0"
+            step="1"
+            @change="normalizeJumpTime"
+          />
+          <span class="tl-time-sep">:</span>
+          <input
+            v-model="jumpMM"
+            class="tl-time-input"
+            type="number"
+            min="0"
+            max="59"
+            step="1"
+            @change="normalizeJumpTime"
+          />
+          <span class="tl-time-sep">:</span>
+          <input
+            v-model="jumpSS"
+            class="tl-time-input"
+            type="number"
+            min="0"
+            max="59"
+            step="1"
+            @change="normalizeJumpTime"
+          />
+        </div>
+      </div>
+      <div class="tl-meta">
+        <span class="tl-meta-label">FPS</span>
+        <input
+          v-model.number="inputFps"
+          class="tl-input tl-input-fps"
+          type="number"
+          min="1"
+          max="240"
+          step="1"
+          @change="applyFps"
+        />
+        <span class="tl-meta-label">当前帧</span>
+        <input
+          v-model.number="inputCurrentFrame"
+          class="tl-input"
+          type="number"
+          min="0"
+          :max="Math.max(0, frameCount - 1)"
+          step="1"
+          @change="applyCurrentFrame"
+        />
+        <span class="tl-meta-label">时间</span>
+        <span class="tl-meta-time">{{ currentTimeText }}</span>
+        <span class="tl-meta-sep">/</span>
+        <span class="tl-meta-label">总帧数</span>
+        <input
+          v-model.number="inputFrameCount"
+          class="tl-input"
+          type="number"
+          min="1"
+          step="1"
+          @change="applyFrameCount"
+        />
+      </div>
+    </div>
 
-		<div class="tl-body">
-			<div ref="tracksRef" class="tl-tracks">
-				<TimeLineContextMenu
-					:visible="menuVisible"
-					:x="menuX"
-					:y="menuY"
-					:can-add-keyframe="menuCanAddKeyframe"
-					:can-remove-keyframe="menuCanRemoveKeyframe"
-					:can-copy="menuCanCopy"
-					:can-paste="menuCanPaste"
-					:can-enable-easing="menuCanEnableEasing"
-					:can-disable-easing="menuCanDisableEasing"
-					:can-edit-easing-curve="menuCanEditEasingCurve"
-					@add-keyframe="onMenuAddKeyframe"
-					@remove-keyframe="onMenuRemoveKeyframe"
-					@copy="onMenuCopy"
-					@paste="onMenuPaste"
-					@enable-easing="onMenuEnableEasing"
-					@disable-easing="onMenuDisableEasing"
-					@edit-easing-curve="onMenuEditEasingCurve"
-				/>
-				<!-- 指针线：显示在所有图层之上 -->
-				<div class="tl-playhead" :style="{ transform: `translateX(${playheadX}px)` }">
-					<div class="tl-playhead-line" />
-				</div>
-				<!-- 指针线命中区：允许在播放过程中拖拽调整当前帧 -->
-				<div class="tl-playhead-hit" :style="{ transform: `translateX(${playheadX}px)` }" @pointerdown.stop.prevent="onPlayheadPointerDown" />
+    <div class="tl-body">
+      <div ref="tracksRef" class="tl-tracks">
+        <TimeLineContextMenu
+          :visible="menuVisible"
+          :x="menuX"
+          :y="menuY"
+          :can-add-keyframe="menuCanAddKeyframe"
+          :can-remove-keyframe="menuCanRemoveKeyframe"
+          :can-copy="menuCanCopy"
+          :can-paste="menuCanPaste"
+          :can-enable-easing="menuCanEnableEasing"
+          :can-disable-easing="menuCanDisableEasing"
+          :can-edit-easing-curve="menuCanEditEasingCurve"
+          @add-keyframe="onMenuAddKeyframe"
+          @remove-keyframe="onMenuRemoveKeyframe"
+          @copy="onMenuCopy"
+          @paste="onMenuPaste"
+          @enable-easing="onMenuEnableEasing"
+          @disable-easing="onMenuDisableEasing"
+          @edit-easing-curve="onMenuEditEasingCurve"
+        />
+        <!-- 指针线：显示在所有图层之上 -->
+        <div class="tl-playhead" :style="{ transform: `translateX(${playheadX}px)` }">
+          <div class="tl-playhead-line" />
+        </div>
+        <!-- 指针线命中区：允许在播放过程中拖拽调整当前帧 -->
+        <div
+          class="tl-playhead-hit"
+          :style="{ transform: `translateX(${playheadX}px)` }"
+          @pointerdown.stop.prevent="onPlayheadPointerDown"
+        />
 
-				<!-- 框选覆盖层（只覆盖图层矩阵区域） -->
-				<div
-					class="tl-select-overlay"
-					:style="{ top: baseRowHeight + 'px' }"
-					@pointerdown.prevent
-				/>
-				<div v-if="boxRect" class="tl-box" :style="boxRectStyle" />
+        <!-- 框选覆盖层（只覆盖图层矩阵区域） -->
+        <div
+          class="tl-select-overlay"
+          :style="{ top: baseRowHeight + 'px' }"
+          @pointerdown.prevent
+        />
+        <div v-if="boxRect" class="tl-box" :style="boxRectStyle" />
 
-				<!-- 图像管理行（不显示滚动条样式） -->
-				<div class="tl-row tl-manage">
-					<div class="tl-left tl-manage-left">
-						<span class="tl-manage-title">图层</span>
-						<button class="tl-mini-btn" type="button" @click="addLayer">新建</button>
-						<button class="tl-mini-btn" type="button" :disabled="selectedLayerIds.length === 0" @click="removeSelectedLayers">删除</button>
-					</div>
-					<div class="tl-right">
-						<div ref="viewportRef" class="tl-viewport" @pointerdown="onTickPointerDown" @wheel.prevent="onZoomWheel">
-								<TimeLineTickCanvas :frame-count="frameCount" :frame-width="frameWidth" :scroll-left="scrollLeft" />
-							<div class="tl-track" :style="{ width: timelineWidth + 'px', transform: `translateX(${-scrollLeft}px)` }">
-								<!-- 手柄只在第一行显示 -->
-									<div class="tl-playhead-handle" :style="{ left: playheadWorldX + 'px' }" />
-							</div>
-						</div>
-					</div>
-				</div>
+        <!-- 图像管理行（不显示滚动条样式） -->
+        <div class="tl-row tl-manage">
+          <div class="tl-left tl-manage-left">
+            <span class="tl-manage-title">图层</span>
+            <button class="tl-mini-btn" type="button" @click="addLayer">新建</button>
+            <button
+              class="tl-mini-btn"
+              type="button"
+              :disabled="selectedLayerIds.length === 0"
+              @click="removeSelectedLayers"
+            >
+              删除
+            </button>
+          </div>
+          <div class="tl-right">
+            <div
+              ref="viewportRef"
+              class="tl-viewport"
+              @pointerdown="onTickPointerDown"
+              @wheel.prevent="onZoomWheel"
+            >
+              <TimeLineTickCanvas
+                :frame-count="frameCount"
+                :frame-width="frameWidth"
+                :scroll-left="scrollLeft"
+              />
+              <div
+                class="tl-track"
+                :style="{
+                  width: timelineWidth + 'px',
+                  transform: `translateX(${-scrollLeft}px)`,
+                }"
+              >
+                <!-- 手柄只在第一行显示 -->
+                <div
+                  class="tl-playhead-handle"
+                  :style="{ left: playheadWorldX + 'px' }"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
-				<!-- 图层行（可垂直滚动） -->
-				<div ref="layersScrollRef" class="tl-layers-scroll" @scroll="onLayersScroll">
-					<div class="tl-layers" :style="{ height: totalLayersHeight + 'px' }">
-						<div v-if="layers.length === 0" class="tl-empty">点击“新建”开始创建图层</div>
-						<div v-if="layers.length > 0" :style="{ height: beforeLayersHeight + 'px' }" />
-						<div v-for="layer in visibleLayers" :key="layer.id" class="tl-row" :style="{ height: layerRowHeight(layer.id) + 'px' }" @click="selectLayer(layer.id)">
-							<div class="tl-left tl-layer-left" :class="{ selected: isLayerSelected(layer.id) }">
-								<span class="tl-layer-name">{{ layer.name }}</span>
-								<button v-if="isSubtitleLayer(layer.id)" class="tl-subtitle" type="button" @click.stop="openSubtitlePanel(layer.id)">字幕</button>
-								<button class="tl-del" type="button" @click.stop="removeLayer(layer.id)">删除</button>
-							</div>
-							<div class="tl-right">
-								<div class="tl-viewport tl-frames-viewport" @wheel.prevent="onZoomWheel">
-									<TimeLineFrameCanvasRow
-										:layer-id="layer.id"
-										:frame-count="frameCount"
-										:frame-width="frameWidth"
-										:scroll-left="scrollLeft"
-										:current-frame="currentFrame"
-										:selection-version="selectionVersion"
-										:keyframe-version="keyframeVersion"
-										:easing-segment-keys="easingSegmentKeys"
-										:is-subtitle-frame="isSubtitleFrame"
-										:is-subtitle-cue-start="isSubtitleCueStart"
-										:get-subtitle-text-at-frame="getSubtitleTextAtFrame"
-										:is-frame-selected="isFrameSelected"
-										:is-keyframe="(lid, fi) => timelineData.isKeyframe(lid, fi)"
-										:is-between="isBetweenKeyframes"
-										:is-easing-enabled="(lid, fi) => timelineData.isEasingEnabled(lid, fi)"
-										:is-easing-arrow="(lid, fi) => timelineData.isEasingEnabled(lid, fi) && isBetweenKeyframes(lid, fi) && timelineData.isKeyframe(lid, fi + 1)"
-										@pointerdown="({ layerId, frameIndex, ev }) => onFramePointerDown(layerId, frameIndex, ev)"
-										@dblclick="onFrameDblClick"
-										@contextmenu="onFrameContextMenu"
-									/>
-								</div>
-								<div
-									v-if="(openEasingEditorsByLayer[layer.id] ?? []).length > 0"
-									class="tl-viewport tl-easing-viewport"
-									:style="{ height: easingEditorHeight + 'px' }"
-								>
-									<div class="tl-track" :style="{ width: timelineWidth + 'px', transform: `translateX(${-scrollLeft}px)` }">
-										<TimeLineEasingCurveEditor
-											v-for="segmentKey in (openEasingEditorsByLayer[layer.id] ?? [])"
-											:key="segmentKey"
-											:width="easingEditorWidth(segmentKey)"
-											:curve="easingCurveFor(segmentKey)"
-											:style="easingEditorStyle(segmentKey)"
-											@change="(curve) => setEasingCurveFor(segmentKey, curve)"
-											@close="() => closeEasingEditor(segmentKey)"
-										/>
-									</div>
-								</div>
-							</div>
-						</div>
-						<div v-if="layers.length > 0" :style="{ height: afterLayersHeight + 'px' }" />
-					</div>
-				</div>
-			</div>
+        <!-- 图层行（可垂直滚动） -->
+        <div ref="layersScrollRef" class="tl-layers-scroll" @scroll="onLayersScroll">
+          <div class="tl-layers" :style="{ height: totalLayersHeight + 'px' }">
+            <div v-if="layers.length === 0" class="tl-empty">点击“新建”开始创建图层</div>
+            <div
+              v-if="layers.length > 0"
+              :style="{ height: beforeLayersHeight + 'px' }"
+            />
+            <div
+              v-for="layer in visibleLayers"
+              :key="layer.id"
+              class="tl-row"
+              :style="{ height: layerRowHeight(layer.id) + 'px' }"
+              @click="selectLayer(layer.id)"
+            >
+              <div
+                class="tl-left tl-layer-left"
+                :class="{ selected: isLayerSelected(layer.id) }"
+              >
+                <span class="tl-layer-name">{{ layer.name }}</span>
+                <button
+                  v-if="isSubtitleLayer(layer.id)"
+                  class="tl-subtitle"
+                  type="button"
+                  @click.stop="openSubtitlePanel(layer.id)"
+                >
+                  字幕
+                </button>
+                <button
+                  v-if="isProgressLayer(layer.id)"
+                  class="tl-mini-btn"
+                  type="button"
+                  @click.stop="toggleProgressDialog(layer.id)"
+                >
+                  编辑
+                </button>
+                <ProgressBarEditDialog
+                  :open="openProgressDialogLayerId === layer.id"
+                  :layer-id="layer.id"
+                  @close="closeProgressDialog"
+                />
+                <button class="tl-del" type="button" @click.stop="removeLayer(layer.id)">
+                  删除
+                </button>
+              </div>
+              <div class="tl-right">
+                <div class="tl-viewport tl-frames-viewport" @wheel.prevent="onZoomWheel">
+                  <TimeLineProgressCanvasRow
+                    v-if="isProgressLayer(layer.id)"
+                    :layer-id="layer.id"
+                    :frame-count="frameCount"
+                    :frame-width="frameWidth"
+                    :scroll-left="scrollLeft"
+                    :current-frame="currentFrame"
+                    :selection-version="selectionVersion"
+                    :keyframe-version="keyframeVersion"
+                    :easing-segment-keys="easingSegmentKeys"
+                    :progress-segments="progressSegmentsFor(layer.id)"
+                    :progress-version="progressVersion"
+                    :is-frame-selected="isFrameSelected"
+                    :is-keyframe="(lid, fi) => timelineData.isKeyframe(lid, fi)"
+                    :is-between="isBetweenKeyframes"
+                    :is-easing-enabled="
+                      (lid, fi) => timelineData.isEasingEnabled(lid, fi)
+                    "
+                    :is-easing-arrow="
+                      (lid, fi) =>
+                        timelineData.isEasingEnabled(lid, fi) &&
+                        isBetweenKeyframes(lid, fi) &&
+                        timelineData.isKeyframe(lid, fi + 1)
+                    "
+                    @pointerdown="
+                      ({ layerId, frameIndex, ev }) =>
+                        onFramePointerDown(layerId, frameIndex, ev)
+                    "
+                    @dblclick="onFrameDblClick"
+                    @contextmenu="onFrameContextMenu"
+                  />
+                  <TimeLineFrameCanvasRow
+                    v-else
+                    :layer-id="layer.id"
+                    :frame-count="frameCount"
+                    :frame-width="frameWidth"
+                    :scroll-left="scrollLeft"
+                    :current-frame="currentFrame"
+                    :selection-version="selectionVersion"
+                    :keyframe-version="keyframeVersion"
+                    :easing-segment-keys="easingSegmentKeys"
+                    :is-subtitle-frame="isSubtitleFrame"
+                    :is-subtitle-cue-start="isSubtitleCueStart"
+                    :get-subtitle-text-at-frame="getSubtitleTextAtFrame"
+                    :is-frame-selected="isFrameSelected"
+                    :is-keyframe="(lid, fi) => timelineData.isKeyframe(lid, fi)"
+                    :is-between="isBetweenKeyframes"
+                    :is-easing-enabled="
+                      (lid, fi) => timelineData.isEasingEnabled(lid, fi)
+                    "
+                    :is-easing-arrow="
+                      (lid, fi) =>
+                        timelineData.isEasingEnabled(lid, fi) &&
+                        isBetweenKeyframes(lid, fi) &&
+                        timelineData.isKeyframe(lid, fi + 1)
+                    "
+                    @pointerdown="
+                      ({ layerId, frameIndex, ev }) =>
+                        onFramePointerDown(layerId, frameIndex, ev)
+                    "
+                    @dblclick="onFrameDblClick"
+                    @contextmenu="onFrameContextMenu"
+                  />
+                </div>
+                <div
+                  v-if="(openEasingEditorsByLayer[layer.id] ?? []).length > 0"
+                  class="tl-viewport tl-easing-viewport"
+                  :style="{ height: easingEditorHeight + 'px' }"
+                >
+                  <div
+                    class="tl-track"
+                    :style="{
+                      width: timelineWidth + 'px',
+                      transform: `translateX(${-scrollLeft}px)`,
+                    }"
+                  >
+                    <TimeLineEasingCurveEditor
+                      v-for="segmentKey in openEasingEditorsByLayer[layer.id] ?? []"
+                      :key="segmentKey"
+                      :width="easingEditorWidth(segmentKey)"
+                      :curve="easingCurveFor(segmentKey)"
+                      :style="easingEditorStyle(segmentKey)"
+                      @change="(curve) => setEasingCurveFor(segmentKey, curve)"
+                      @close="() => closeEasingEditor(segmentKey)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-if="layers.length > 0" :style="{ height: afterLayersHeight + 'px' }" />
+          </div>
+        </div>
+      </div>
 
-			<!-- 底部水平滚动条：控制整体左右滚动 -->
-			<div class="tl-scrollbar">
-				<input
-					class="tl-range"
-					type="range"
-					:min="0"
-					:max="Math.max(0, maxScrollLeft)"
-					:step="1"
-					:value="scrollLeft"
-					@input="onScrollBarInput"
-				/>
-			</div>
-		</div>
-	</div>
+      <!-- 底部水平滚动条：控制整体左右滚动 -->
+      <div class="tl-scrollbar">
+        <input
+          class="tl-range"
+          type="range"
+          :min="0"
+          :max="Math.max(0, maxScrollLeft)"
+          :step="1"
+          :value="scrollLeft"
+          @input="onScrollBarInput"
+        />
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -171,6 +341,8 @@ import TimeLineContextMenu from './components/TimeLineContextMenu.vue'
 import TimeLineEasingCurveEditor from './components/TimeLineEasingCurveEditor.vue'
 import TimeLineFrameCanvasRow from './components/TimeLineFrameCanvasRow.vue'
 import TimeLineTickCanvas from './components/TimeLineTickCanvas.vue'
+import TimeLineProgressCanvasRow from './progress/TimeLineProgressCanvasRow.vue'
+import ProgressBarEditDialog from '../VideoScene/dialogs/ProgressBarEditDialog.vue'
 
 const store = useStore<TimelineState>(TimelineKey)
 
@@ -187,7 +359,24 @@ const keyframeSpansByLayer = computed(() => store.state.keyframeSpansByLayer)
 const keyframeVersion = computed(() => store.state.keyframeVersion)
 const easingSegmentKeys = computed(() => store.state.easingSegmentKeys)
 
+const progressVersion = computed(() => (store.state as any).progressVersion ?? 0)
+
 const isSubtitleLayer = (layerId: string) => (store.state.layerKindById?.[layerId] ?? 'normal') === 'subtitle'
+
+const isProgressLayer = (layerId: string) => (store.state.layerKindById?.[layerId] ?? 'normal') === 'progress'
+
+const progressSegmentsFor = (layerId: string) => {
+	const spec = (store.state as any).progressBarByLayerId?.[layerId]
+	return Array.isArray(spec?.segments) ? spec.segments : []
+}
+
+const openProgressDialogLayerId = ref<string | null>(null)
+const toggleProgressDialog = (layerId: string) => {
+	openProgressDialogLayerId.value = openProgressDialogLayerId.value === layerId ? null : layerId
+}
+const closeProgressDialog = () => {
+	openProgressDialogLayerId.value = null
+}
 
 const isSubtitleFrame = (layerId: string, frameIndex: number) => {
 	const spans = store.state.subtitleSpansByLayer?.[layerId] ?? []
@@ -1448,369 +1637,370 @@ watch(
 
 <style scoped>
 .tl-shell {
-	width: 100%;
-	height: 100%;
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
-	background: var(--dweb-defualt-dark);
-	border-top: 1px solid var(--vscode-border);
-	user-select: none;
-	-webkit-user-select: none;
-	-ms-user-select: none;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--dweb-defualt-dark);
+  border-top: 1px solid var(--vscode-border);
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
 }
 
 .tl-toolbar {
-	height: 44px;
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	padding: 0 12px;
-	border-bottom: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
 }
 
 .tl-btn {
-	border: 1px solid var(--vscode-border-accent);
-	background: transparent;
-	color: var(--vscode-fg);
-	font-weight: 600;
-	padding: 6px 12px;
-	border-radius: 8px;
-	cursor: pointer;
-	font-size: 12px;
+  border: 1px solid var(--vscode-border-accent);
+  background: transparent;
+  color: var(--vscode-fg);
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .tl-btn:hover {
-	background: var(--vscode-hover-bg);
+  background: var(--vscode-hover-bg);
 }
 
 .tl-play-controls {
-	display: flex;
-	align-items: center;
-	gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .tl-time-jump {
-	display: flex;
-	align-items: center;
-	gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .tl-time-input {
-	width: 46px;
-	height: 24px;
-	padding: 0 6px;
-	border-radius: 6px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	font-size: 12px;
-	outline: none;
+  width: 46px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  font-size: 12px;
+  outline: none;
 }
 
 .tl-time-input:focus {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .tl-time-sep {
-	color: var(--vscode-fg-muted);
-	opacity: 0.8;
-	font-size: 12px;
+  color: var(--vscode-fg-muted);
+  opacity: 0.8;
+  font-size: 12px;
 }
 
 .tl-input-fps {
-	width: 60px;
+  width: 60px;
 }
 
 .tl-mini-btn.active {
-	border-color: var(--vscode-border-accent);
-	background: var(--vscode-hover-bg);
+  border-color: var(--vscode-border-accent);
+  background: var(--vscode-hover-bg);
 }
 
 .tl-meta {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-left: auto;
-	color: var(--vscode-fg-muted);
-	font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--vscode-fg-muted);
+  font-size: 12px;
 }
 
 .tl-meta-label {
-	color: var(--vscode-fg-muted);
+  color: var(--vscode-fg-muted);
 }
 
 .tl-meta-sep {
-	opacity: 0.7;
+  opacity: 0.7;
 }
 
 .tl-input {
-	width: 84px;
-	height: 28px;
-	padding: 0 8px;
-	border-radius: 6px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	font-size: 12px;
-	outline: none;
+  width: 84px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  font-size: 12px;
+  outline: none;
 }
 
 .tl-input:focus {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .tl-body {
-	flex: 1;
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tl-tracks {
-	position: relative;
-	flex: 1;
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tl-layers-scroll {
-	flex: 1;
-	min-height: 0;
-	overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .tl-playhead {
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	left: 180px;
-	pointer-events: none;
-	z-index: 5;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 180px;
+  pointer-events: none;
+  z-index: 5;
 }
 
 .tl-playhead-hit {
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	left: 180px;
-	width: 10px;
-	transform: translateX(-5px);
-	cursor: ew-resize;
-	background: transparent;
-	pointer-events: auto;
-	z-index: 6;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 180px;
+  width: 10px;
+  transform: translateX(-5px);
+  cursor: ew-resize;
+  background: transparent;
+  pointer-events: auto;
+  z-index: 6;
 }
 
 .tl-select-overlay {
-	position: absolute;
-	left: 180px;
-	right: 0;
-	bottom: 0;
-	background: transparent;
-	z-index: 1;
-	pointer-events: none;
+  position: absolute;
+  left: 180px;
+  right: 0;
+  bottom: 0;
+  background: transparent;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .tl-box {
-	position: absolute;
-	left: 180px;
-	top: 34px;
-	border: 1px dashed var(--dweb-accent);
-	background: transparent;
-	pointer-events: none;
-	z-index: 4;
+  position: absolute;
+  left: 180px;
+  top: 34px;
+  border: 1px dashed var(--dweb-accent);
+  background: transparent;
+  pointer-events: none;
+  z-index: 4;
 }
 
 .tl-playhead-line {
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	left: 0;
-	width: 1px;
-	background: var(--dweb-accent);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--dweb-accent);
 }
 
 .tl-row {
-	min-height: 34px;
-	display: flex;
-	border-bottom: 1px solid var(--vscode-divider);
+  min-height: 34px;
+  display: flex;
+  border-bottom: 1px solid var(--vscode-divider);
 }
 
 .tl-manage {
-	background: var(--dweb-defualt);
+  background: var(--dweb-defualt);
 }
 
 .tl-left {
-	width: 180px;
-	flex: 0 0 180px;
-	display: flex;
-	align-items: center;
-	padding: 0 10px;
-	color: var(--vscode-fg-muted);
-	border-right: 1px solid var(--vscode-border);
-	box-sizing: border-box;
-	background: var(--dweb-defualt);
+  width: 180px;
+  flex: 0 0 180px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--vscode-fg-muted);
+  border-right: 1px solid var(--vscode-border);
+  box-sizing: border-box;
+  background: var(--dweb-defualt);
 }
 
 .tl-left.selected {
-	background: var(--vscode-selected-bg);
+  background: var(--vscode-selected-bg);
 }
 
 .tl-right {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tl-viewport {
-	flex: 1;
-	min-width: 0;
-	position: relative;
-	overflow: hidden; /* 不显示滚动条 */
-	background: var(--dweb-defualt-dark);
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden; /* 不显示滚动条 */
+  background: var(--dweb-defualt-dark);
 }
 
 .tl-frames-viewport {
-	flex: 0 0 34px;
-	height: 34px;
+  flex: 0 0 34px;
+  height: 34px;
 }
 
 .tl-easing-viewport {
-	flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 .tl-track {
-	position: relative;
-	height: 100%;
-	z-index: 2;
+  position: relative;
+  height: 100%;
+  z-index: 2;
 }
 
 .tl-playhead-handle {
-	position: absolute;
-	top: 0;
-	width: 10px;
-	height: 12px;
-	transform: translateX(-5px);
-	background: var(--dweb-accent);
-	border-bottom-left-radius: 2px;
-	border-bottom-right-radius: 2px;
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 12px;
+  transform: translateX(-5px);
+  background: var(--dweb-accent);
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
 }
 
 .tl-tick {
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	width: 1px;
-	background: rgba(255, 255, 255, 0.08);
-	pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
 }
 
 .tl-tick.major {
-	background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .tl-tick-label {
-	position: absolute;
-	top: 2px;
-	left: 2px;
-	font-size: 11px;
-	color: rgba(255, 255, 255, 0.55);
-	white-space: nowrap;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
 }
 
 .tl-layer-left {
-	gap: 8px;
+  gap: 8px;
+  position: relative;
 }
 
 .tl-layer-name {
-	color: var(--vscode-fg);
-	font-size: 12px;
+  color: var(--vscode-fg);
+  font-size: 12px;
 }
 
 .tl-del {
-	margin-left: auto;
-	border: 1px solid var(--vscode-border);
-	background: transparent;
-	color: var(--vscode-fg-muted);
-	font-size: 12px;
-	height: 24px;
-	padding: 0 10px;
-	cursor: pointer;
+  margin-left: auto;
+  border: 1px solid var(--vscode-border);
+  background: transparent;
+  color: var(--vscode-fg-muted);
+  font-size: 12px;
+  height: 24px;
+  padding: 0 10px;
+  cursor: pointer;
 }
 
 .tl-subtitle {
-	border: 1px solid var(--vscode-border);
-	background: transparent;
-	color: var(--vscode-fg);
-	font-size: 12px;
-	height: 24px;
-	padding: 0 10px;
-	cursor: pointer;
+  border: 1px solid var(--vscode-border);
+  background: transparent;
+  color: var(--vscode-fg);
+  font-size: 12px;
+  height: 24px;
+  padding: 0 10px;
+  cursor: pointer;
 }
 
 .tl-subtitle:hover {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .tl-del:hover {
-	color: var(--vscode-fg);
-	border-color: var(--vscode-border-accent);
+  color: var(--vscode-fg);
+  border-color: var(--vscode-border-accent);
 }
 
 .tl-manage-left {
-	gap: 8px;
+  gap: 8px;
 }
 
 .tl-manage-title {
-	color: var(--vscode-fg);
-	font-size: 12px;
+  color: var(--vscode-fg);
+  font-size: 12px;
 }
 
 .tl-mini-btn {
-	border: 1px solid var(--vscode-border);
-	background: transparent;
-	color: var(--vscode-fg);
-	font-size: 12px;
-	height: 24px;
-	padding: 0 10px;
-	cursor: pointer;
+  border: 1px solid var(--vscode-border);
+  background: transparent;
+  color: var(--vscode-fg);
+  font-size: 12px;
+  height: 24px;
+  padding: 0 10px;
+  cursor: pointer;
 }
 
 .tl-mini-btn:hover {
-	border-color: var(--vscode-border-accent);
+  border-color: var(--vscode-border-accent);
 }
 
 .tl-mini-btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .tl-empty {
-	padding: 12px;
-	color: var(--vscode-fg-muted);
-	font-size: 12px;
+  padding: 12px;
+  color: var(--vscode-fg-muted);
+  font-size: 12px;
 }
-	.tl-meta-time {
-		min-width: 92px;
-		font-size: 12px;
-		color: var(--vscode-fg-muted);
-		white-space: nowrap;
-	}
+.tl-meta-time {
+  min-width: 92px;
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
+  white-space: nowrap;
+}
 
 .tl-scrollbar {
-	height: 24px;
-	display: flex;
-	align-items: center;
-	padding: 0 12px;
-	border-top: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+  height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-top: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
 }
 
 .tl-range {
-	width: 100%;
+  width: 100%;
 }
 </style>

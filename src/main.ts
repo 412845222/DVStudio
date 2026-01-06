@@ -29,7 +29,9 @@ window.addEventListener(
 		if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
 			e.preventDefault()
 			e.stopPropagation()
-			void editorPersistence.save()
+			// Allow dialogs to override save behavior (e.g., apply changes)
+			const ok = window.dispatchEvent(new CustomEvent('dvs:shortcut/save', { cancelable: true }))
+			if (ok) void editorPersistence.save()
 			return
 		}
 

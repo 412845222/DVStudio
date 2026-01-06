@@ -11,6 +11,9 @@ from __future__ import annotations
 import json
 import datetime
 import uuid
+import threading
+import queue
+import time
 from typing import Any, Dict, Generator, List, Optional
 
 from django.http import HttpRequest, HttpResponseNotAllowed, StreamingHttpResponse
@@ -39,6 +42,7 @@ from ..skills.subtitle.agent import (
     build_chat_messages as _build_chat_messages_skill,
     build_palette_messages as _build_palette_messages_skill,
     build_understand_outline_messages as _build_understand_outline_messages_skill,
+    build_segments_messages as _build_segments_messages_skill,
 )
 
 from .subtitle_understanding.utils import (
@@ -778,6 +782,10 @@ def _build_palette_messages(*, text: str) -> List[Dict[str, str]]:
     return _build_palette_messages_skill(text=text)
 
 
+def _build_segments_messages(*, segments: List[Dict[str, Any]], cue_samples: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    return _build_segments_messages_skill(segments=segments, cue_samples=cue_samples)
+
+
 def _build_chat_messages(
     *,
     cues: List[Dict[str, Any]],
@@ -857,91 +865,227 @@ def stream_understand(request: HttpRequest) -> HttpResponseBase:
             yield _sse("msg", _agent_to_ui_task_status("connect", message="连接")).encode("utf-8")
             yield _sse("msg", _agent_to_ui_task_status("submit", message="传入前导词")).encode("utf-8")
 
-            try:
-                yield _sse("msg", _agent_to_ui_task_status("understanding_gen", message="生成字幕整体理解")).encode("utf-8")
+            out_q: "queue.Queue[tuple[str, Any]]" = queue.Queue()
+            flags = {"understanding": False, "segments": False, "understanding_ok": True}
+            understanding_done_at: Optional[float] = None
 
-                cue_texts_for_sum: List[str] = []
-                for c in cues_list:
-                    if not isinstance(c, dict):
-                        continue
-                    s = _to_safe_str(c.get("text")).strip()
-                    if s:
-                        cue_texts_for_sum.append(s)
-                    if len(cue_texts_for_sum) >= 24:
+            def _emit(envelope: Dict[str, Any]) -> None:
+                out_q.put(("msg", envelope))
+
+            def _mark_done(kind: str) -> None:
+                out_q.put(("done", kind))
+
+            def _compute_segments_boundaries(cues_in: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                n = len(cues_in)
+                if n <= 0:
+                    return []
+
+                # Target ~12 cues per segment, clamp to 4..8, and never exceed n.
+                seg_count = max(4, min(8, int(round(n / 12)) or 1))
+                seg_count = min(seg_count, n)
+                seg_size = max(1, int((n + seg_count - 1) / seg_count))
+
+                out: List[Dict[str, Any]] = []
+                start = 0
+                while start < n:
+                    end = min(n - 1, start + seg_size - 1)
+                    c0 = cues_in[start] if start < n else {}
+                    c1 = cues_in[end] if end < n else {}
+                    seg: Dict[str, Any] = {"startCue": start, "endCue": end}
+                    try:
+                        sm = c0.get("startMs")
+                        em = c1.get("endMs")
+                        if isinstance(sm, (int, float)):
+                            seg["startTimeMs"] = int(sm)
+                        if isinstance(em, (int, float)):
+                            seg["endTimeMs"] = int(em)
+                    except Exception:
+                        pass
+                    out.append(seg)
+                    start = end + 1
+
+                # Merge tiny tail if any.
+                if len(out) >= 2:
+                    last = out[-1]
+                    prev = out[-2]
+                    if (last.get("endCue", 0) - last.get("startCue", 0)) <= 1:
+                        prev["endCue"] = last.get("endCue", prev.get("endCue"))
+                        if "endTimeMs" in last:
+                            prev["endTimeMs"] = last.get("endTimeMs")
+                        out.pop()
+                return out
+
+            def _worker_understanding() -> None:
+                try:
+                    _emit(_agent_to_ui_task_status("understanding_gen", message="生成字幕整体理解"))
+
+                    cue_texts_for_sum: List[str] = []
+                    for c in cues_list:
+                        if not isinstance(c, dict):
+                            continue
+                        s = _to_safe_str(c.get("text")).strip()
+                        if s:
+                            cue_texts_for_sum.append(s)
+                        if len(cue_texts_for_sum) >= 24:
+                            break
+
+                    sys = "\n".join(
+                        [
+                            "你是字幕理解助手。",
+                            "任务：基于字幕内容给出‘字幕整体理解’的简短归纳。",
+                            "强约束：不要逐句复述字幕原文，不要引用长句，不要输出任何 JSON 以外的内容。",
+                            "输出必须是单一 JSON 对象：{\"summary\":\"...\",\"points\":[...]}。",
+                            "summary：1-2 句中文，概括主题/场景/核心信息；不要写标题。",
+                            "points：可选 2-4 条要点（短句），不能是原句照抄。",
+                        ]
+                    )
+                    user = "字幕片段（仅供理解，不可照抄原文）：\n" + "\n".join([f"- {t}" for t in cue_texts_for_sum])
+                    sum_msgs = [
+                        {"role": "system", "content": sys},
+                        {"role": "user", "content": user},
+                    ]
+
+                    buf = ""
+                    for d2 in _openai_stream_chat(
+                        base_url=cfg["base_url"],
+                        api_key=cfg["api_key"],
+                        model=cfg["model"],
+                        messages=sum_msgs,
+                        response_format={"type": "json_object"},
+                        timeout_s=25,
+                    ):
+                        if d2:
+                            buf += d2
+
+                    obj2 = _try_parse_json(buf)
+                    understanding_summary = ""
+                    understanding_points: List[str] = []
+                    if _is_record(obj2):
+                        s2 = _to_safe_str(obj2.get("summary")).strip()
+                        if s2:
+                            understanding_summary = s2
+                        pts2_any: Any = obj2.get("points")
+                        pts2_in: List[Any] = pts2_any if isinstance(pts2_any, list) else []
+                        understanding_points = [str(x).strip() for x in pts2_in if isinstance(x, str) and x.strip()][:6]
+
+                    if not understanding_summary:
+                        topics = _extract_top_bigrams(cue_texts_for_sum, limit=5)
+                        if topics:
+                            understanding_summary = "主要内容：围绕“" + "、".join(topics[:4]) + "”等主题展开。"
+                            if not understanding_points:
+                                understanding_points = [f"关键词：{t}" for t in topics[:4]]
+                        else:
+                            understanding_summary = "主要内容：围绕多个主题展开的讲解与要点梳理。"
+
+                    _emit(
+                        _agent_to_ui_subtitle_summary_delta(
+                            "understanding",
+                            {
+                                "summary": understanding_summary,
+                                "points": understanding_points,
+                            },
+                        )
+                    )
+                    _emit(_agent_to_ui_task_status("understanding_done", message="字幕整体理解完成"))
+                except Exception as e:
+                    flags["understanding_ok"] = False
+                    _emit(_agent_to_ui_error("upstream_error", str(e), details={"preview": ""}))
+                    _emit(_agent_to_ui_task_status("error", message="字幕整体理解失败"))
+                finally:
+                    _mark_done("understanding")
+
+            def _worker_segments() -> None:
+                try:
+                    _emit(_agent_to_ui_task_status("segments_gen", message="生成段落标题（进度条）"))
+                    segments = _compute_segments_boundaries(cues_list)
+                    if not segments:
+                        _mark_done("segments")
+                        return
+
+                    cue_samples: List[Dict[str, Any]] = []
+                    for c in cues_list[:24]:
+                        if not isinstance(c, dict):
+                            continue
+                        t = _to_safe_str(c.get("text")).strip()
+                        if not t:
+                            continue
+                        cue_samples.append({"text": t})
+                    msgs = _build_segments_messages(segments=segments, cue_samples=cue_samples)
+
+                    buf = ""
+                    for d in _openai_stream_chat(
+                        base_url=cfg["base_url"],
+                        api_key=cfg["api_key"],
+                        model=cfg["model"],
+                        messages=msgs,
+                        response_format={"type": "json_object"},
+                        timeout_s=25,
+                    ):
+                        if d:
+                            buf += d
+
+                    obj = _try_parse_json(buf)
+                    items_out: List[Dict[str, Any]] = []
+                    if _is_record(obj):
+                        items_any = obj.get("items")
+                        if isinstance(items_any, list):
+                            for i, it in enumerate(items_any):
+                                if not isinstance(it, dict):
+                                    continue
+                                title = _to_safe_str(it.get("title")).strip()
+                                if not title:
+                                    continue
+                                items_out.append({"title": title})
+
+                    # Ensure length matches boundaries; fill missing with fallback.
+                    final_items: List[Dict[str, Any]] = []
+                    for i, seg in enumerate(segments):
+                        title = ""
+                        if i < len(items_out):
+                            title = _to_safe_str(items_out[i].get("title")).strip()
+                        if not title:
+                            title = f"段落{i + 1}"
+                        out = dict(seg)
+                        out["title"] = title
+                        final_items.append(out)
+
+                    _emit(_agent_to_ui_subtitle_summary_delta("segments", {"items": final_items}))
+                    _emit(_agent_to_ui_task_status("segments_done", message="段落标题已生成"))
+                except Exception:
+                    # Swallow segments errors to avoid blocking overall UX.
+                    _emit(_agent_to_ui_task_status("segments_error", message="段落标题生成失败（已忽略）"))
+                finally:
+                    _mark_done("segments")
+
+            t_under = threading.Thread(target=_worker_understanding, daemon=True)
+            t_seg = threading.Thread(target=_worker_segments, daemon=True)
+            t_under.start()
+            t_seg.start()
+
+            segments_timeout_s = 28.0
+            while True:
+                try:
+                    kind, payload = out_q.get(timeout=0.2)
+                except queue.Empty:
+                    pass
+                else:
+                    if kind == "msg":
+                        yield _sse("msg", payload).encode("utf-8")
+                    elif kind == "done":
+                        flags[payload] = True
+                        if payload == "understanding":
+                            understanding_done_at = time.time()
+
+                if flags.get("understanding"):
+                    if not flags.get("understanding_ok"):
+                        break
+                    if flags.get("segments"):
+                        break
+                    if understanding_done_at is not None and (time.time() - understanding_done_at) >= segments_timeout_s:
                         break
 
-                sys = "\n".join(
-                    [
-                        "你是字幕理解助手。",
-                        "任务：基于字幕内容给出‘字幕整体理解’的简短归纳。",
-                        "强约束：不要逐句复述字幕原文，不要引用长句，不要输出任何 JSON 以外的内容。",
-                        "输出必须是单一 JSON 对象：{\"summary\":\"...\",\"points\":[...]}。",
-                        "summary：1-2 句中文，概括主题/场景/核心信息；不要写标题。",
-                        "points：可选 2-4 条要点（短句），不能是原句照抄。",
-                    ]
-                )
-                user = "字幕片段（仅供理解，不可照抄原文）：\n" + "\n".join([f"- {t}" for t in cue_texts_for_sum])
-                sum_msgs = [
-                    {"role": "system", "content": sys},
-                    {"role": "user", "content": user},
-                ]
-
-                buf = ""
-                for d2 in _openai_stream_chat(
-                    base_url=cfg["base_url"],
-                    api_key=cfg["api_key"],
-                    model=cfg["model"],
-                    messages=sum_msgs,
-                    response_format={"type": "json_object"},
-                    timeout_s=25,
-                ):
-                    if d2:
-                        buf += d2
-
-                obj2 = _try_parse_json(buf)
-                understanding_summary = ""
-                understanding_points: List[str] = []
-                if _is_record(obj2):
-                    s2 = _to_safe_str(obj2.get("summary")).strip()
-                    if s2:
-                        understanding_summary = s2
-                    pts2_any: Any = obj2.get("points")
-                    pts2_in: List[Any] = pts2_any if isinstance(pts2_any, list) else []
-                    understanding_points = [str(x).strip() for x in pts2_in if isinstance(x, str) and x.strip()][:6]
-
-                if not understanding_summary:
-                    topics = _extract_top_bigrams(cue_texts_for_sum, limit=5)
-                    if topics:
-                        understanding_summary = "主要内容：围绕“" + "、".join(topics[:4]) + "”等主题展开。"
-                        if not understanding_points:
-                            understanding_points = [f"关键词：{t}" for t in topics[:4]]
-                    else:
-                        understanding_summary = "主要内容：围绕多个主题展开的讲解与要点梳理。"
-
-                yield _sse(
-                    "msg",
-                    _agent_to_ui_subtitle_summary_delta(
-                        "understanding",
-                        {
-                            "summary": understanding_summary,
-                            "points": understanding_points,
-                        },
-                    ),
-                ).encode("utf-8")
-
-                yield _sse("msg", _agent_to_ui_task_status("done", message="字幕整体理解完成")).encode("utf-8")
-                yield _sse("done", "{}").encode("utf-8")
-            except Exception as e:
-                yield _sse(
-                    "msg",
-                    _agent_to_ui_error(
-                        "upstream_error",
-                        str(e),
-                        details={"preview": ""},
-                    ),
-                ).encode("utf-8")
-                yield _sse("msg", _agent_to_ui_task_status("error", message="字幕整体理解失败")).encode("utf-8")
-                yield _sse("done", "{}").encode("utf-8")
+            yield _sse("msg", _agent_to_ui_task_status("done", message="字幕整体理解完成")).encode("utf-8")
+            yield _sse("done", "{}").encode("utf-8")
             return
 
         # Phase list expected by the front-end:
@@ -1436,7 +1580,7 @@ def stream_style(request: HttpRequest) -> HttpResponseBase:
 
     def gen() -> Generator[bytes, None, None]:
         yield _sse("msg", _agent_to_ui_task_status("started", message="已开始")).encode("utf-8")
-        yield _sse("msg", _agent_to_ui_task_status("writing", message="生成说明")).encode("utf-8")
+        yield _sse("msg", _agent_to_ui_task_status("template_gen", message="生成可复用高级组件候选…")).encode("utf-8")
 
         try:
             u_sum = _to_safe_str(understanding.get("summary")).strip()
@@ -1461,6 +1605,8 @@ def stream_style(request: HttpRequest) -> HttpResponseBase:
                 {"role": "system", "content": sys},
                 {"role": "user", "content": user},
             ]
+
+            yield _sse("msg", _agent_to_ui_task_status("template_desc_gen", message="细化组件描述…")).encode("utf-8")
 
             buf = ""
             for delta in _openai_stream_chat(
@@ -1645,6 +1791,8 @@ def stream_templates(request: HttpRequest) -> HttpResponseBase:
                     },
                 ]
 
+
+            yield _sse("msg", _agent_to_ui_task_status("template_out", message="输出组件建议…")).encode("utf-8")
             yield _sse("msg", _agent_to_ui_subtitle_summary_delta("templates", templates_out)).encode("utf-8")
             yield _sse("msg", _agent_to_ui_task_status("done", message="完成")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
