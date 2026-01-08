@@ -16,156 +16,182 @@
             class="dvs-pbed-close vs-btn"
             type="button"
             aria-label="关闭"
-			@click="emit('close')"
+            @click="emit('close')"
           >
             ×
           </button>
         </div>
 
-		<div class="dvs-pbed-body">
-			<div class="dvs-pbed-row1">
-				<div class="dvs-pbed-col">
-					<div class="dvs-pbed-col-head">段落配置</div>
-					<div v-if="!spec" class="dvs-pbed-empty">未找到该图层的进度条数据（请先生成进度条）。</div>
-					<div v-else class="dvs-pbed-list">
-						<div v-for="(seg, idx) in segmentsDraft" :key="idx" class="dvs-pbed-row">
-							<label class="vs-label" style="flex: 1; min-width: 0">
-								<span>标题</span>
-								<input v-model="seg.title" class="vs-input" type="text" />
-							</label>
-							<label class="vs-label" style="width: 120px">
-								<span>开始帧</span>
-								<input
-									v-model.number="seg.startFrame"
-									class="vs-input"
-									type="number"
-									:min="0"
-									:max="Math.max(0, frameCount - 1)"
-									step="1"
-									@input="onSegmentStartEdit(idx)"
-									@change="onSegmentStartEdit(idx)"
-								/>
-							</label>
-							<label class="vs-label" style="width: 120px">
-								<span>结束帧</span>
-								<input
-									v-model.number="seg.endFrame"
-									class="vs-input"
-									type="number"
-									:min="0"
-									:max="Math.max(0, frameCount - 1)"
-									step="1"
-									@input="onSegmentEndEdit(idx)"
-									@change="onSegmentEndEdit(idx)"
-								/>
-							</label>
-						</div>
-					</div>
-				</div>
+        <div class="dvs-pbed-body">
+          <div class="dvs-pbed-row1">
+            <div class="dvs-pbed-col">
+              <div class="dvs-pbed-col-head">段落配置</div>
+              <div v-if="!spec" class="dvs-pbed-empty">
+                未找到该图层的进度条数据（请先生成进度条）。
+              </div>
+              <div v-else class="dvs-pbed-list">
+                <div v-for="(seg, idx) in segmentsDraft" :key="idx" class="dvs-pbed-row">
+                  <label class="vs-label" style="flex: 1; min-width: 0">
+                    <span>标题</span>
+                    <input v-model="seg.title" class="vs-input" type="text" />
+                  </label>
+                  <label class="vs-label" style="width: 120px">
+                    <span>开始帧</span>
+                    <input
+                      v-model.number="seg.startFrame"
+                      class="vs-input"
+                      type="number"
+                      :min="0"
+                      :max="Math.max(0, frameCount - 1)"
+                      step="1"
+                      @change="onSegmentStartEdit(idx)"
+                    />
+                  </label>
+                  <label class="vs-label" style="width: 120px">
+                    <span>结束帧</span>
+                    <input
+                      v-model.number="seg.endFrame"
+                      class="vs-input"
+                      type="number"
+                      :min="0"
+                      :max="Math.max(0, frameCount - 1)"
+                      step="1"
+                      @change="onSegmentEndEdit(idx)"
+                    />
+                  </label>
+                  <button
+                    class="vs-btn dvs-pbed-seg-del"
+                    type="button"
+                    :title="segmentsDraft.length <= 1 ? '至少保留 1 段' : '删除此段'"
+                    :disabled="segmentsDraft.length <= 1"
+                    @click="removeSegment(idx)"
+                  >
+                    删除
+                  </button>
+                </div>
+                <button
+                  class="vs-btn dvs-pbed-seg-add"
+                  type="button"
+                  :disabled="segmentsDraft.length >= frameCount"
+                  @click="addSegment"
+                >
+                  添加段落
+                </button>
+              </div>
+            </div>
 
-				<div class="dvs-pbed-col">
-					<div class="dvs-pbed-col-head">样式</div>
-					<div v-if="!spec" class="dvs-pbed-empty">—</div>
-					<div v-else class="dvs-pbed-style">
-						<label class="vs-label">
-							<span>背景色</span>
-							<input v-model="bg" class="vs-input vs-color" type="color" />
-						</label>
-						<label class="vs-label">
-							<span>边框色</span>
-							<input v-model="border" class="vs-input vs-color" type="color" />
-						</label>
-						<label class="vs-label">
-							<span>文字色</span>
-							<input v-model="text" class="vs-input vs-color" type="color" />
-						</label>
+            <div class="dvs-pbed-col">
+              <div class="dvs-pbed-col-head">样式</div>
+              <div v-if="!spec" class="dvs-pbed-empty">—</div>
+              <div v-else class="dvs-pbed-style">
+                <label class="vs-label">
+                  <span>背景色</span>
+                  <input v-model="bg" class="vs-input vs-color" type="color" />
+                </label>
+                <label class="vs-label">
+                  <span>边框色</span>
+                  <input v-model="border" class="vs-input vs-color" type="color" />
+                </label>
+                <label class="vs-label">
+                  <span>文字色</span>
+                  <input v-model="text" class="vs-input vs-color" type="color" />
+                </label>
 
-						<div class="dvs-pbed-divider" />
+                <div class="dvs-pbed-divider" />
 
-						<label class="vs-label">
-							<span>已播放颜色</span>
-							<input v-model="played" class="vs-input vs-color" type="color" />
-						</label>
-						<label class="vs-label">
-							<span>已播放边框</span>
-							<input v-model="playedBorder" class="vs-input vs-color" type="color" />
-						</label>
+                <label class="vs-label">
+                  <span>已播放颜色</span>
+                  <input v-model="played" class="vs-input vs-color" type="color" />
+                </label>
+                <label class="vs-label">
+                  <span>已播放边框</span>
+                  <input v-model="playedBorder" class="vs-input vs-color" type="color" />
+                </label>
 
-						<div class="dvs-pbed-divider" />
+                <div class="dvs-pbed-divider" />
 
-						<label class="vs-label">
-							<span>标记形状</span>
-							<select v-model="markerShape" class="vs-select">
-								<option value="circle">圆</option>
-								<option value="square">方</option>
-							</select>
-						</label>
-						<label class="vs-label">
-							<span>标记大小</span>
-							<input v-model.number="markerSize" class="vs-input" type="number" min="1" max="64" step="1" />
-						</label>
-						<label class="vs-label">
-							<span>标记颜色</span>
-							<input v-model="markerColor" class="vs-input vs-color" type="color" />
-						</label>
-						<label class="vs-label">
-							<span>标记边框</span>
-							<input v-model="markerBorder" class="vs-input vs-color" type="color" />
-						</label>
-					</div>
-				</div>
-			</div>
+                <label class="vs-label">
+                  <span>标记形状</span>
+                  <select v-model="markerShape" class="vs-select">
+                    <option value="circle">圆</option>
+                    <option value="square">方</option>
+                  </select>
+                </label>
+                <label class="vs-label">
+                  <span>标记大小</span>
+                  <input
+                    v-model.number="markerSize"
+                    class="vs-input"
+                    type="number"
+                    min="1"
+                    max="64"
+                    step="1"
+                  />
+                </label>
+                <label class="vs-label">
+                  <span>标记颜色</span>
+                  <input v-model="markerColor" class="vs-input vs-color" type="color" />
+                </label>
+                <label class="vs-label">
+                  <span>标记边框</span>
+                  <input v-model="markerBorder" class="vs-input vs-color" type="color" />
+                </label>
+              </div>
+            </div>
+          </div>
 
-			<div class="dvs-pbed-row2 dvs-pbed-filters">
-				<div v-if="!spec" class="dvs-pbed-empty">—</div>
-				<template v-else>
-					<div class="dvs-pbed-filter-block">
-						<div class="dvs-pbed-filter-label">背景（root）</div>
-						<NodeFiltersForm
-							v-if="filtersNodeIds.rootId"
-							:layer-id="String(props.layerId)"
-							:node-id="filtersNodeIds.rootId"
-							:filters="filtersByNodeId(filtersNodeIds.rootId)"
-						/>
-					</div>
-					<div class="dvs-pbed-filter-block">
-						<div class="dvs-pbed-filter-label">段落矩形（segments）</div>
-						<NodeFiltersForm
-							v-if="filtersNodeIds.segmentRepId"
-							:layer-id="String(props.layerId)"
-							:node-id="filtersNodeIds.segmentRepId"
-							:filters="filtersByNodeId(filtersNodeIds.segmentRepId)"
-						/>
-					</div>
-					<div class="dvs-pbed-filter-block">
-						<div class="dvs-pbed-filter-label">段落文字（titles）</div>
-						<NodeFiltersForm
-							v-if="filtersNodeIds.titleRepId"
-							:layer-id="String(props.layerId)"
-							:node-id="filtersNodeIds.titleRepId"
-							:filters="filtersByNodeId(filtersNodeIds.titleRepId)"
-						/>
-					</div>
-					<div class="dvs-pbed-filter-block">
-						<div class="dvs-pbed-filter-label">已播放（played overlay）</div>
-						<NodeFiltersForm
-							v-if="filtersNodeIds.playedOverlayId"
-							:layer-id="String(props.layerId)"
-							:node-id="filtersNodeIds.playedOverlayId"
-							:filters="filtersByNodeId(filtersNodeIds.playedOverlayId)"
-						/>
-					</div>
-				</template>
-			</div>
-		</div>
+          <div class="dvs-pbed-row2 dvs-pbed-filters">
+            <div v-if="!spec" class="dvs-pbed-empty">—</div>
+            <template v-else>
+              <div class="dvs-pbed-filter-block">
+                <div class="dvs-pbed-filter-label">背景（root）</div>
+                <NodeFiltersForm
+                  v-if="filtersNodeIds.rootId"
+                  :layer-id="String(props.layerId)"
+                  :node-id="filtersNodeIds.rootId"
+                  :filters="filtersByNodeId(filtersNodeIds.rootId)"
+                />
+              </div>
+              <div class="dvs-pbed-filter-block">
+                <div class="dvs-pbed-filter-label">段落矩形（segments）</div>
+                <NodeFiltersForm
+                  v-if="filtersNodeIds.segmentRepId"
+                  :layer-id="String(props.layerId)"
+                  :node-id="filtersNodeIds.segmentRepId"
+                  :filters="filtersByNodeId(filtersNodeIds.segmentRepId)"
+                />
+              </div>
+              <div class="dvs-pbed-filter-block">
+                <div class="dvs-pbed-filter-label">段落文字（titles）</div>
+                <NodeFiltersForm
+                  v-if="filtersNodeIds.titleRepId"
+                  :layer-id="String(props.layerId)"
+                  :node-id="filtersNodeIds.titleRepId"
+                  :filters="filtersByNodeId(filtersNodeIds.titleRepId)"
+                />
+              </div>
+              <div class="dvs-pbed-filter-block">
+                <div class="dvs-pbed-filter-label">已播放（played overlay）</div>
+                <NodeFiltersForm
+                  v-if="filtersNodeIds.playedOverlayId"
+                  :layer-id="String(props.layerId)"
+                  :node-id="filtersNodeIds.playedOverlayId"
+                  :filters="filtersByNodeId(filtersNodeIds.playedOverlayId)"
+                />
+              </div>
+            </template>
+          </div>
+        </div>
 
-		<div class="dvs-pbed-foot">
-			<button class="vs-btn" type="button" :disabled="!spec" @click="applyAll">应用（Ctrl+S）</button>
-			<button class="vs-btn" type="button" @click="emit('close')">关闭</button>
-		</div>
-	</div>
-	</div>
-	</Teleport>
+        <div class="dvs-pbed-foot">
+          <button class="vs-btn" type="button" :disabled="!spec" @click="applyAll">
+            应用（Ctrl+S）
+          </button>
+          <button class="vs-btn" type="button" @click="emit('close')">关闭</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -175,6 +201,7 @@ import NodeFiltersForm from '../parts/nodeDetail/forms/NodeFiltersForm.vue'
 import { DwebCanvasGLKey } from '../VideoSceneRuntime'
 import { TimelineKey, type TimelineState } from '../../../store/timeline'
 import { VideoSceneStore } from '../../../store/videoscene'
+import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 
 defineOptions({ name: 'ProgressBarEditDialog' })
 
@@ -264,10 +291,255 @@ const syncFiltersToNodeIds = (nodeIds: string[], filters: any[], excludeId?: str
 		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: nid, patch: { filters } })
 	}
 	dwebCanvasRef?.value?.requestRender?.()
+	scheduleWriteBackToFirstKeyframeSoon()
+	scheduleCommitStyleToStore()
+}
+
+// --- live commit filters to timeline spec (microtask coalesced) ---
+let pendingFilterStylePatch: Record<string, any> | null = null
+let filterCommitMicrotask = false
+const scheduleCommitFiltersToStoreSoon = (patch: Record<string, any>) => {
+	if (!props.open) return
+	if (!spec.value) return
+	const lid = String(props.layerId || '').trim()
+	if (!lid) return
+	if (!patch || typeof patch !== 'object') return
+	pendingFilterStylePatch = { ...(pendingFilterStylePatch ?? {}), ...patch }
+	if (filterCommitMicrotask) return
+	filterCommitMicrotask = true
+	queueMicrotask(() => {
+		filterCommitMicrotask = false
+		const merged = pendingFilterStylePatch
+		pendingFilterStylePatch = null
+		if (!merged || Object.keys(merged).length === 0) return
+		void store.dispatch('updateProgressBarStyle', { layerId: lid, style: merged as any })
+	})
 }
 
 type SegmentDraft = { title: string; startFrame: number; endFrame: number }
 const segmentsDraft = ref<SegmentDraft[]>([])
+
+const getMinKeyframeFrameForLayer = (layerId: string): number | null => {
+	const lid = String(layerId || '').trim()
+	if (!lid) return null
+	const spans = (store.state as any).keyframeSpansByLayer?.[lid] ?? []
+	if (!Array.isArray(spans) || spans.length === 0) return null
+	let min: number | null = null
+	for (const s of spans) {
+		const a = typeof s === 'number' ? Math.floor(s) : s && typeof s === 'object' ? Math.floor((s as any).start) : null
+		if (a == null || !Number.isFinite(a)) continue
+		if (min == null || a < min) min = a
+	}
+	return min
+}
+
+let writeBackFirstKfRaf: number | null = null
+const scheduleWriteBackToFirstKeyframe = () => {
+	if (!spec.value) return
+	if (writeBackFirstKfRaf != null) return
+	writeBackFirstKfRaf = window.requestAnimationFrame(() => {
+		writeBackFirstKfRaf = null
+		void writeBackToFirstKeyframe()
+	})
+}
+
+let writeBackFirstKfMicrotask = false
+const scheduleWriteBackToFirstKeyframeSoon = () => {
+	if (!spec.value) return
+	if (writeBackFirstKfMicrotask) return
+	writeBackFirstKfMicrotask = true
+	queueMicrotask(() => {
+		writeBackFirstKfMicrotask = false
+		void writeBackToFirstKeyframe()
+	})
+}
+
+const writeBackToFirstKeyframe = async () => {
+	const lid = String(props.layerId || '').trim()
+	if (!lid) return
+	let first = getMinKeyframeFrameForLayer(lid)
+	if (first == null) {
+		// progress bar layer should always have a stable base keyframe; if missing, create one at frame 0.
+		await store.dispatch('addKeyframeRange', { layerId: lid, startFrame: 0, endFrame: 0 })
+		first = 0
+	}
+	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === lid)
+	if (!layer) return
+	await store.dispatch('setStageKeyframeSnapshotRange', {
+		startFrame: first,
+		endFrame: first,
+		layers: [cloneJsonSafe(layer)] as any,
+	})
+}
+
+const patchNodeFiltersInLayerSnapshot = (layerSnap: any, nodeId: string, filters: any[]) => {
+	const id = String(nodeId ?? '').trim()
+	if (!id) return
+	const dfs = (nodes: any[] | undefined): boolean => {
+		const list = Array.isArray(nodes) ? nodes : []
+		for (const n of list) {
+			if (!n || typeof n !== 'object') continue
+			if (String((n as any).id ?? '') === id) {
+				;(n as any).props = { ...((n as any).props ?? {}), filters: cloneJsonSafe(filters) }
+				return true
+			}
+			if (dfs((n as any).children)) return true
+		}
+		return false
+	}
+	dfs(layerSnap?.nodeTree)
+}
+
+const writeBackToFirstKeyframeWithPatchedFilters = async (nodeId: string, filters: any[]) => {
+	const lid = String(props.layerId || '').trim()
+	if (!lid) return
+	let first = getMinKeyframeFrameForLayer(lid)
+	if (first == null) {
+		await store.dispatch('addKeyframeRange', { layerId: lid, startFrame: 0, endFrame: 0 })
+		first = 0
+	}
+	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === lid)
+	if (!layer) return
+	const snap = cloneJsonSafe(layer)
+	patchNodeFiltersInLayerSnapshot(snap, nodeId, filters)
+	await store.dispatch('setStageKeyframeSnapshotRange', {
+		startFrame: first,
+		endFrame: first,
+		layers: [snap] as any,
+	})
+}
+
+const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: number) => {
+	const s = spec.value as any
+	if (!s) return
+	const ids = s.nodeIds
+	if (!ids) return
+	const rootId = String(ids.rootId ?? '').trim()
+	const playedId = String(ids.playedOverlayId ?? '').trim()
+	if (!rootId || !playedId) return
+
+	const n = Math.max(1, Math.floor(Number(segCount) || 1))
+	const desiredSegmentIds = Array.from({ length: n }, (_, i) => `${rootId}-seg-${i}`)
+	const desiredTitleIds = Array.from({ length: n }, (_, i) => `${rootId}-seg-title-${i}`)
+	const desiredMarkerIds = Array.from({ length: Math.max(0, n - 1) }, (_, k) => `${rootId}-marker-${k + 1}`)
+
+	const curSegIds: string[] = Array.isArray(ids.segmentIds) ? ids.segmentIds.map((x: any) => String(x ?? '').trim()).filter(Boolean) : []
+	const curTitleIds: string[] = Array.isArray(ids.titleIds) ? ids.titleIds.map((x: any) => String(x ?? '').trim()).filter(Boolean) : []
+	const curMarkerIds: string[] = Array.isArray(ids.markerIds) ? ids.markerIds.map((x: any) => String(x ?? '').trim()).filter(Boolean) : []
+
+	const desiredSet = new Set([...desiredSegmentIds, ...desiredTitleIds, ...desiredMarkerIds])
+	const toDelete = [...curSegIds, ...curTitleIds, ...curMarkerIds].filter((id) => id && !desiredSet.has(id))
+	if (toDelete.length) {
+		VideoSceneStore.dispatch('deleteNodesById', { layerId: lid, nodeIds: toDelete })
+	}
+
+	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === lid)
+	if (!layer) return
+	const root = findNodeInLayer(lid, rootId)
+	if (!root) return
+
+	const barH = Math.max(1, Math.round(Number((root as any).transform?.height ?? 40)))
+	const baseFontSize = (() => {
+		const repTitleId = String(curTitleIds[0] ?? '').trim()
+		const rep = repTitleId ? findNodeInLayer(lid, repTitleId) : null
+		const fs = Number((rep as any)?.props?.fontSize)
+		if (Number.isFinite(fs) && fs > 0) return Math.round(fs)
+		return Math.max(12, Math.min(28, Math.round(barH * 0.42)))
+	})()
+
+	const segFilters = filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []
+	const titleFilters = filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []
+	const bgFilters = filtersNodeIds.value.rootId ? filtersByNodeId(filtersNodeIds.value.rootId) : []
+	const playedFilters = filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []
+
+	const addChildIfMissing = (node: any) => {
+		const id = String(node?.id ?? '').trim()
+		if (!id) return
+		if (findNodeInLayer(lid, id)) return
+		VideoSceneStore.dispatch('addNodeTree', { layerId: lid, parentId: rootId, node })
+	}
+
+	// Ensure base nodes keep their filters (root/played) if user edited filters.
+	if (rootId) {
+		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: rootId, patch: { filters: bgFilters } })
+	}
+	if (playedId) {
+		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: playedId, patch: { filters: playedFilters } })
+	}
+
+	// Add missing segment/title/marker nodes.
+	for (let i = 0; i < n; i++) {
+		const segId = desiredSegmentIds[i]
+		const titleId = desiredTitleIds[i]
+		addChildIfMissing({
+			id: segId,
+			name: `Segment ${i + 1}`,
+			category: 'user',
+			userType: 'rect',
+			transform: { x: 0, y: 0, width: 10, height: barH, rotation: 0, opacity: 1 },
+			props: {
+				fillColor: border.value,
+				fillOpacity: 0.18,
+				borderColor: border.value,
+				borderOpacity: 0.35,
+				borderWidth: 1,
+				cornerRadius: 0,
+				filters: segFilters,
+			},
+		})
+		addChildIfMissing({
+			id: titleId,
+			name: `Segment Title ${i + 1}`,
+			category: 'user',
+			userType: 'text',
+			transform: { x: 0, y: 0, width: 10, height: barH, rotation: 0, opacity: 1 },
+			props: {
+				textContent: String(segmentsDraft.value[i]?.title ?? '').trim() || `段落${i + 1}`,
+				textAlign: 'center',
+				fontSize: baseFontSize,
+				fontColor: text.value,
+				fontStyle: 'normal',
+				filters: titleFilters,
+			},
+		})
+		if (i > 0) {
+			const mid = desiredMarkerIds[i - 1]
+			const cr = markerShape.value === 'circle' ? 999 : 0
+			addChildIfMissing({
+				id: mid,
+				name: `Marker ${i + 1}`,
+				category: 'user',
+				userType: 'rect',
+				transform: { x: 0, y: 0, width: markerSize.value, height: markerSize.value, rotation: 0, opacity: 1 },
+				props: {
+					fillColor: markerColor.value,
+					fillOpacity: 1,
+					borderColor: markerBorder.value,
+					borderOpacity: 0.85,
+					borderWidth: 1,
+					cornerRadius: cr,
+				},
+			})
+		}
+	}
+
+	// Update timeline spec.nodeIds to reflect new arrays.
+	const prevSpec = spec.value as any
+	if (!prevSpec) return
+	await store.dispatch('setProgressBarSpec', {
+		layerId: lid,
+		spec: {
+			...cloneJsonSafe(prevSpec),
+			nodeIds: {
+				rootId,
+				playedOverlayId: playedId,
+				segmentIds: desiredSegmentIds,
+				titleIds: desiredTitleIds,
+				markerIds: desiredMarkerIds,
+			},
+		} as any,
+	})
+}
 
 const toHexOr = (v: unknown, fallback: string) => {
 	const s = String(v ?? '').trim()
@@ -412,6 +684,95 @@ const recomputeSegmentsWithAnchor = (anchorIndex: number, mode: 'start' | 'end')
 	segmentsDraft.value = next
 }
 
+const normalizeSegmentsToFullRange = (items: SegmentDraft[]) => {
+	const maxFrame = Math.max(0, frameCount.value - 1)
+	const list = (items ?? []).map((x) => ({
+		title: String(x?.title ?? '').trim(),
+		startFrame: 0,
+		endFrame: 0,
+	}))
+	const n = list.length
+	if (n <= 0) {
+		segmentsDraft.value = []
+		return
+	}
+	// Each segment consumes at least 1 frame; cap count.
+	if (n > frameCount.value) list.splice(frameCount.value)
+	const lens = (items ?? []).slice(0, list.length).map((x) => Math.max(1, Math.floor((x?.endFrame ?? 0) - (x?.startFrame ?? 0) + 1)))
+	const weights = lens.length === list.length ? lens : new Array(list.length).fill(1)
+	const alloc = allocateByWeights(frameCount.value, weights)
+	let cursor = 0
+	for (let i = 0; i < list.length; i++) {
+		const len = Math.max(1, alloc[i] ?? 1)
+		list[i].startFrame = cursor
+		list[i].endFrame = Math.min(maxFrame, cursor + len - 1)
+		cursor = list[i].endFrame + 1
+	}
+	list[0].startFrame = 0
+	list[list.length - 1].endFrame = maxFrame
+	for (let i = 1; i < list.length; i++) {
+		list[i].startFrame = Math.max(list[i].startFrame, list[i - 1].endFrame + 1)
+		if (list[i].endFrame < list[i].startFrame) list[i].endFrame = list[i].startFrame
+	}
+	segmentsDraft.value = list
+}
+
+const removeSegment = (idx: number) => {
+	if (!spec.value) return
+	const list = segmentsDraft.value.slice()
+	if (list.length <= 1) return
+	const i = Math.max(0, Math.min(list.length - 1, Math.floor(idx)))
+	list.splice(i, 1)
+	normalizeSegmentsToFullRange(list)
+	void syncSegmentsDraftToLayer({ rebuildOverlayKeyframes: true })
+}
+
+const addSegment = () => {
+	if (!spec.value) return
+	const maxAdd = frameCount.value
+	const list = segmentsDraft.value.slice()
+	if (list.length >= maxAdd) return
+	const nextIdx = list.length + 1
+	const avgLen = list.length ? Math.max(1, Math.floor(frameCount.value / (list.length + 1))) : frameCount.value
+	list.push({ title: `段落${nextIdx}`, startFrame: 0, endFrame: Math.max(0, avgLen - 1) })
+	normalizeSegmentsToFullRange(list)
+	void syncSegmentsDraftToLayer({ rebuildOverlayKeyframes: true })
+}
+
+let segmentsSyncBusy = false
+let segmentsSyncPending = false
+const syncSegmentsDraftToLayer = async (opts?: { rebuildOverlayKeyframes?: boolean }) => {
+	if (segmentsSyncBusy) {
+		segmentsSyncPending = true
+		return
+	}
+	segmentsSyncBusy = true
+	try {
+		const s = spec.value as any
+		if (!s) return
+		const lid = String(props.layerId || '').trim()
+		if (!lid) return
+		const segs = segmentsDraft.value.map((x) => ({
+			title: String(x.title ?? '').trim(),
+			startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.startFrame ?? 0)))),
+			endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0)))),
+		}))
+		await ensureProgressBarNodesForSegmentCount(lid, segs.length)
+		await store.dispatch('updateProgressBarSegments', { layerId: lid, segments: segs as any })
+		applySegmentsToStageNodes()
+		if (opts?.rebuildOverlayKeyframes) {
+			await rebuildPlayedOverlayKeyframes(lid, segs)
+		}
+		await writeBackToFirstKeyframe()
+	} finally {
+		segmentsSyncBusy = false
+		if (segmentsSyncPending) {
+			segmentsSyncPending = false
+			void syncSegmentsDraftToLayer(opts)
+		}
+	}
+}
+
 const onSegmentStartEdit = (idx: number) => {
 	if (!spec.value) return
 	recomputeSegmentsWithAnchor(idx, 'start')
@@ -424,29 +785,61 @@ const onSegmentEndEdit = (idx: number) => {
 
 watch(
 	() => spec.value,
-	(s) => {
-		if (!s) {
-			segmentsDraft.value = []
-			return
-		}
-		const segs = Array.isArray((s as any).segments) ? (s as any).segments : []
-		segmentsDraft.value = segs.map((x: any) => ({
-			title: String(x?.title ?? '').trim(),
-			startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.startFrame ?? 0)))),
-			endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.endFrame ?? 0)))),
-		}))
-
-		bg.value = toHexOr((s as any).style?.backgroundColor, bg.value)
-		border.value = toHexOr((s as any).style?.borderColor, border.value)
-		text.value = toHexOr((s as any).style?.textColor, text.value)
-		played.value = toHexOr((s as any).style?.playedOverlayColor, played.value)
-		playedBorder.value = toHexOr((s as any).style?.playedOverlayBorderColor, playedBorder.value)
-		markerShape.value = ((s as any).style?.marker?.shape === 'square' ? 'square' : 'circle')
-		markerSize.value = Math.max(1, Math.min(64, Math.floor(Number((s as any).style?.marker?.size ?? markerSize.value))))
-		markerColor.value = toHexOr((s as any).style?.marker?.color, markerColor.value)
-		markerBorder.value = toHexOr((s as any).style?.marker?.borderColor, markerBorder.value)
+	() => {
+		// no-op: draft hydration is handled below.
 	},
 	{ immediate: true }
+)
+
+// Hydrate drafts only when opening dialog / switching layer.
+// Otherwise, applying style (which updates spec.style) would overwrite the user's segment edits.
+let hydratedKey = ''
+const hydrateFromSpecIfNeeded = () => {
+	if (!props.open) return
+	const lid = String(props.layerId || '').trim()
+	const s = spec.value as any
+	if (!lid || !s) return
+	const key = `${lid}:${String(s?.nodeIds?.rootId ?? '')}`
+	if (hydratedKey === key) return
+	hydratedKey = key
+
+	const segs = Array.isArray((s as any).segments) ? (s as any).segments : []
+	segmentsDraft.value = segs.map((x: any) => ({
+		title: String(x?.title ?? '').trim(),
+		startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.startFrame ?? 0)))),
+		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.endFrame ?? 0)))),
+	}))
+
+	bg.value = toHexOr((s as any).style?.backgroundColor, bg.value)
+	border.value = toHexOr((s as any).style?.borderColor, border.value)
+	text.value = toHexOr((s as any).style?.textColor, text.value)
+	played.value = toHexOr((s as any).style?.playedOverlayColor, played.value)
+	playedBorder.value = toHexOr((s as any).style?.playedOverlayBorderColor, playedBorder.value)
+	markerShape.value = ((s as any).style?.marker?.shape === 'square' ? 'square' : 'circle')
+	markerSize.value = Math.max(1, Math.min(64, Math.floor(Number((s as any).style?.marker?.size ?? markerSize.value))))
+	markerColor.value = toHexOr((s as any).style?.marker?.color, markerColor.value)
+	markerBorder.value = toHexOr((s as any).style?.marker?.borderColor, markerBorder.value)
+}
+
+watch(
+	() => [props.open, String(props.layerId || '').trim()] as const,
+	([o]) => {
+		if (!o) {
+			hydratedKey = ''
+			return
+		}
+		hydratedKey = ''
+		hydrateFromSpecIfNeeded()
+	},
+	{ immediate: true }
+)
+
+watch(
+	() => spec.value,
+	() => {
+		// If spec becomes available after open, hydrate once.
+		hydrateFromSpecIfNeeded()
+	}
 )
 
 // --- draggable dialog ---
@@ -498,6 +891,18 @@ onBeforeUnmount(() => {
 	window.removeEventListener('pointerup', onUp)
 	window.removeEventListener('resize', clampPos)
 	window.removeEventListener('dvs:shortcut/save', onSaveShortcut as any)
+	if (styleCommitTimer != null) {
+		window.clearTimeout(styleCommitTimer)
+		styleCommitTimer = null
+	}
+	if (stylePreviewRaf != null) {
+		window.cancelAnimationFrame(stylePreviewRaf)
+		stylePreviewRaf = null
+	}
+	if (writeBackFirstKfRaf != null) {
+		window.cancelAnimationFrame(writeBackFirstKfRaf)
+		writeBackFirstKfRaf = null
+	}
 })
 
 watch(
@@ -545,6 +950,7 @@ const applyPlayedOverlayLayout = () => {
 		patch: { y: 0, height: rh, x: leftX, pivotX: 0, pivotY: 0.5 },
 	})
 	// width is controlled by keyframes during playback; keep as-is
+	scheduleWriteBackToFirstKeyframeSoon()
 }
 
 const clamp01 = (v: unknown, fallback = 0.5) => {
@@ -762,6 +1168,7 @@ const applySegmentsToStageNodes = () => {
 
 	reorderChildren()
 	applyPlayedOverlayLayout()
+	scheduleWriteBackToFirstKeyframeSoon()
 }
 
 // --- live preview for style changes ---
@@ -800,7 +1207,7 @@ const applyStyleToStageNodesOnly = () => {
 		VideoSceneStore.dispatch('updateNodeProps', {
 			layerId: lid,
 			nodeId: sid,
-			patch: { fillColor: bg.value, borderColor: border.value },
+			patch: { fillColor: border.value, borderColor: border.value },
 		})
 	}
 	for (const id of titleIds) {
@@ -834,6 +1241,50 @@ const applyStyleToStageNodesOnly = () => {
 	}
 
 	dwebCanvasRef?.value?.requestRender?.()
+	scheduleWriteBackToFirstKeyframeSoon()
+}
+
+// --- live commit style to timeline spec (debounced) ---
+let styleCommitTimer: number | null = null
+const scheduleCommitStyleToStore = () => {
+	if (!props.open) return
+	if (!spec.value) return
+	if (styleCommitTimer != null) window.clearTimeout(styleCommitTimer)
+	styleCommitTimer = window.setTimeout(() => {
+		styleCommitTimer = null
+		void commitStyleToStore()
+	}, 120)
+}
+
+const commitStyleToStore = async () => {
+	const s = spec.value as any
+	if (!s) return
+	const lid = String(props.layerId || '').trim()
+	if (!lid) return
+	const bgFilters = filtersNodeIds.value.rootId ? filtersByNodeId(filtersNodeIds.value.rootId) : []
+	const segFilters = filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []
+	const titleFilters = filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []
+	const playedFilters = filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []
+	await store.dispatch('updateProgressBarStyle', {
+		layerId: lid,
+		style: {
+			backgroundColor: bg.value,
+			borderColor: border.value,
+			textColor: text.value,
+			marker: {
+				shape: markerShape.value,
+				size: Math.max(1, Math.min(64, Math.floor(markerSize.value))),
+				color: markerColor.value,
+				borderColor: markerBorder.value,
+			},
+			playedOverlayColor: played.value,
+			playedOverlayBorderColor: playedBorder.value,
+			backgroundFilters: bgFilters as any,
+			segmentFilters: segFilters as any,
+			titleFilters: titleFilters as any,
+			playedOverlayFilters: playedFilters as any,
+		},
+	})
 }
 
 watch(
@@ -842,6 +1293,7 @@ watch(
 		if (!props.open) return
 		if (!spec.value) return
 		scheduleStylePreview()
+		scheduleCommitStyleToStore()
 	}
 )
 
@@ -863,6 +1315,7 @@ watch(
 		if (json === lastSegFiltersJson) return
 		lastSegFiltersJson = json
 		syncFiltersToNodeIds(filtersNodeIds.value.segmentIds, next, repId)
+		scheduleCommitFiltersToStoreSoon({ segmentFilters: cloneJsonSafe(next) as any })
 	},
 	{ deep: true }
 )
@@ -884,6 +1337,52 @@ watch(
 		if (json === lastTitleFiltersJson) return
 		lastTitleFiltersJson = json
 		syncFiltersToNodeIds(filtersNodeIds.value.titleIds, next, repId)
+		scheduleCommitFiltersToStoreSoon({ titleFilters: cloneJsonSafe(next) as any })
+	},
+	{ deep: true }
+)
+
+// root / played overlay filter edits should also write back to first keyframe
+let lastRootFiltersJson = ''
+watch(
+	() => filtersNodeIds.value.rootId,
+	() => {
+		lastRootFiltersJson = ''
+	}
+)
+watch(
+	() => (filtersNodeIds.value.rootId ? filtersByNodeId(filtersNodeIds.value.rootId) : []),
+	(next) => {
+		if (!props.open) return
+		const id = filtersNodeIds.value.rootId
+		if (!id) return
+		const json = jsonStable(next)
+		if (json === lastRootFiltersJson) return
+		lastRootFiltersJson = json
+		scheduleCommitFiltersToStoreSoon({ backgroundFilters: cloneJsonSafe(next) as any })
+		queueMicrotask(() => void writeBackToFirstKeyframeWithPatchedFilters(id, next))
+	},
+	{ deep: true }
+)
+
+let lastPlayedFiltersJson = ''
+watch(
+	() => filtersNodeIds.value.playedOverlayId,
+	() => {
+		lastPlayedFiltersJson = ''
+	}
+)
+watch(
+	() => (filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []),
+	(next) => {
+		if (!props.open) return
+		const id = filtersNodeIds.value.playedOverlayId
+		if (!id) return
+		const json = jsonStable(next)
+		if (json === lastPlayedFiltersJson) return
+		lastPlayedFiltersJson = json
+		scheduleCommitFiltersToStoreSoon({ playedOverlayFilters: cloneJsonSafe(next) as any })
+		queueMicrotask(() => void writeBackToFirstKeyframeWithPatchedFilters(id, next))
 	},
 	{ deep: true }
 )
@@ -898,9 +1397,11 @@ const applySegments = async () => {
 		startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.startFrame ?? 0)))),
 		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0)))),
 	}))
+	await ensureProgressBarNodesForSegmentCount(lid, segs.length)
 	await store.dispatch('updateProgressBarSegments', { layerId: lid, segments: segs as any })
 	applySegmentsToStageNodes()
 	await rebuildPlayedOverlayKeyframes(lid, segs)
+	await writeBackToFirstKeyframe()
 }
 
 const applyStyle = async () => {
@@ -954,7 +1455,7 @@ const applyStyle = async () => {
 		VideoSceneStore.dispatch('updateNodeProps', {
 			layerId: lid,
 			nodeId: sid,
-			patch: { fillColor: bg.value, borderColor: border.value },
+			patch: { fillColor: border.value, borderColor: border.value },
 		})
 	}
 	for (const id of titleIds) {
@@ -990,12 +1491,13 @@ const applyStyle = async () => {
 
 	reorderChildren()
 	applyPlayedOverlayLayout()
+	await writeBackToFirstKeyframe()
 }
 
 const applyAll = async () => {
 	if (!spec.value) return
-	await applyStyle()
 	await applySegments()
+	await applyStyle()
 }
 
 const onSaveShortcut = (e: Event) => {
@@ -1046,34 +1548,34 @@ const onSaveShortcut = (e: Event) => {
   line-height: 26px;
   text-align: center;
   font-size: 18px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .dvs-pbed-body {
   flex: 1 1 auto;
   min-height: 0;
-	display: flex;
-	flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 
 .dvs-pbed-row1 {
-	flex: 0 0 auto;
-	min-height: 0;
-	display: grid;
-	grid-template-columns: 1fr 280px;
+  flex: 0 0 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 280px;
 }
 
 .dvs-pbed-row2 {
-	flex: 1 1 auto;
-	min-height: 0;
-	border-top: 1px solid var(--vscode-border);
-	padding: 10px;
-	overflow: auto;
-	display: grid;
-	grid-template-columns: repeat(4, minmax(0, 1fr));
-	gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-top: 1px solid var(--vscode-border);
+  padding: 10px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .dvs-pbed-col {
@@ -1116,35 +1618,35 @@ const onSaveShortcut = (e: Event) => {
 }
 
 .dvs-pbed-filter-block {
-	border: 1px solid var(--vscode-border);
-	border-radius: 6px;
-	padding: 8px;
-	min-width: 0;
-	background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--vscode-border);
+  border-radius: 6px;
+  padding: 8px;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .dvs-pbed-filter-label {
-	color: var(--vscode-fg);
-	font-size: 12px;
-	font-weight: 600;
-	margin-bottom: 6px;
+  color: var(--vscode-fg);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
 }
 
 /* shrink NodeFiltersForm typography inside this dialog */
 .dvs-pbed-filters :deep(.vs-filter-title) {
-	font-size: 12px;
+  font-size: 12px;
 }
 
 .dvs-pbed-filters :deep(.vs-filter-item-title) {
-	font-size: 12px;
+  font-size: 12px;
 }
 
 .dvs-pbed-filters :deep(.vs-row .vs-k) {
-	font-size: 12px;
+  font-size: 12px;
 }
 
 .dvs-pbed-filters :deep(.vs-filter-empty) {
-	font-size: 12px;
+  font-size: 12px;
 }
 
 .dvs-pbed-style {

@@ -8,6 +8,14 @@ export type VideoSceneNodeTransform = {
 	x: number
 	y: number
 	/**
+	 * Node scale in local space, clamped to [0..1].
+	 * - scaleX/scaleY are the canonical fields.
+	 */
+	scaleX: number
+	scaleY: number
+	/** @deprecated legacy uniform scale; loader/normalizer will map it to scaleX/scaleY */
+	scale?: number
+	/**
 	 * Pivot in local space, normalized to [0..1].
 	 * - 0.5 means the node's (x,y) is at its center (legacy behavior)
 	 * - 0 means the node's (x,y) is at its left/top edge

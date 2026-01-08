@@ -194,18 +194,22 @@
       <ExportDialog
         :open="showExportPanel"
         :format="exportFormat"
+				:quality="exportQuality"
         :concurrency="exportConcurrency"
         :ignore-stage-background="exportIgnoreStageBackground"
         :status="exportStatus"
         :client-progress="exportClientProgress"
         :server-progress="exportServerProgress"
         :server-path="exportServerPath"
+				:estimated-size-text="exportEstimatedSizeText"
         :error-text="exportError"
         @reset="resetExportResult"
         @update:format="(v) => (exportFormat = v)"
+				@update:quality="(v) => (exportQuality = v)"
         @update:concurrency="(v) => (exportConcurrency = v)"
         @update:ignoreStageBackground="(v) => (exportIgnoreStageBackground = v)"
-        @start="startExport"
+				@exportFrames="exportFrames"
+				@renderVideo="renderVideo"
         @close="
           () => {
             resetExportResult();
@@ -213,6 +217,13 @@
           }
         "
       />
+
+			<LoadRecentEditDialog
+				:open="showLoadRecentEditDialog"
+				:saved-at="recentEditSavedAt"
+				@load="loadRecentEdit"
+				@discard="discardRecentEdit"
+			/>
     </div>
 
     <VideoStudioRightPanel ref="rightPanelRef" />
@@ -237,6 +248,7 @@ import VideoStudioLeftPanel from './panels/VideoStudioLeftPanel.vue'
 import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
 import AIChatDialog from '../AIChat/AIChatDialog.vue'
 import ExportDialog from './dialogs/ExportDialog.vue'
+import LoadRecentEditDialog from './dialogs/LoadRecentEditDialog.vue'
 import { DwebCanvasGL } from '../../engine/webgl'
 import { DwebVideoScene } from '../../engine/webgl'
 import { TimelineStore } from '../../store/timeline'
@@ -244,7 +256,8 @@ import { containsFrame, type TimelineFrameSpan } from '../../store/timeline/span
 import { DwebCanvasGLKey } from './VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from './anim/timelineAnimation'
 import { editorPersistence } from '../../adapters/editorPersistence'
-import { ExportService, type ExportFormat } from '../../network/ExportService'
+import { editorRecentCache } from '../../adapters/editorRecentCache'
+import { ExportService, type ExportFormat, type ExportQuality } from '../../network/ExportService'
 import ResizeControlPoints, { type Corner } from './parts/nodeControlPoints/ResizeControlPoints.vue'
 import LineControlPoints, { type LinePointKind } from './parts/nodeControlPoints/LineControlPoints.vue'
 import {
@@ -399,6 +412,9 @@ const stageOrigin = computed(() => ({ x: -stageWidth.value / 2, y: -stageHeight.
 const inputWidth = ref<number>(1920)
 const inputHeight = ref<number>(1080)
 
+const showLoadRecentEditDialog = ref(false)
+const recentEditSavedAt = ref<number | null>(null)
+
 const stageBackground = computed(() => store.state.stage.background)
 const bgType = ref<'color' | 'image'>('color')
 const bgColor = ref<string>('#111111')
@@ -408,15 +424,44 @@ const bgRepeat = ref<boolean>(false)
 const bgOpacity = ref<number>(1)
 
 const exportFormat = ref<ExportFormat>('mp4')
+const exportQuality = ref<ExportQuality>('medium')
 const exportConcurrency = ref<4 | 8 | 16>(8)
 const exportIgnoreStageBackground = ref<boolean>(false)
-const exportStatus = ref<'idle' | 'running' | 'done' | 'error'>('idle')
+const exportFramesIgnoreStageBackground = ref<boolean | null>(null)
+const exportFramesQuality = ref<ExportQuality | null>(null)
+const exportStatus = ref<'idle' | 'frames' | 'framesDone' | 'render' | 'done' | 'error'>('idle')
 const exportClientProgress = ref(0)
 const exportServerProgress = ref(0)
 const exportJobId = ref<string | null>(null)
 const exportDownloadUrl = ref<string>('')
 const exportServerPath = ref<string>('')
 const exportError = ref<string>('')
+
+const exportEstimatedSizeText = computed(() => {
+	try {
+		const width = Math.max(1, Math.round(stageWidth.value))
+		const height = Math.max(1, Math.round(stageHeight.value))
+		const fps = Math.max(1, Math.min(240, Math.floor(Number((TimelineStore.state as any).fps ?? 60) || 60)))
+		const frameCount = Math.max(1, Math.floor(Number(TimelineStore.state.frameCount) || 1))
+		const durationSec = frameCount / Math.max(1, fps)
+		const baseline = (1920 * 1080 * 30)
+		const scale = (width * height * fps) / baseline
+		const isAlphaMov = exportFormat.value === 'mov' && !!exportIgnoreStageBackground.value
+
+		// Very rough Mbps estimates at 1080p30.
+		const mp4Mbps = exportQuality.value === 'high' ? 12 : exportQuality.value === 'low' ? 3 : 6
+		const movAlphaMbps = exportQuality.value === 'high' ? 18 : exportQuality.value === 'low' ? 6 : 10
+		const movNoAlphaMbps = exportQuality.value === 'high' ? 13 : exportQuality.value === 'low' ? 3.5 : 6.5
+		const baseMbps = exportFormat.value === 'mp4' ? mp4Mbps : isAlphaMov ? movAlphaMbps : movNoAlphaMbps
+		const bitrateMbps = Math.max(0.5, baseMbps * Math.max(0.2, scale))
+		const sizeMB = (bitrateMbps * durationSec) / 8
+		if (!Number.isFinite(sizeMB) || sizeMB <= 0) return ''
+		if (sizeMB >= 1024) return `约 ${(sizeMB / 1024).toFixed(2)} GB`
+		return `约 ${Math.max(1, Math.round(sizeMB))} MB`
+	} catch {
+		return ''
+	}
+})
 
 let exportStreamCloser: { close: () => void } | null = null
 const stopExportStream = () => {
@@ -433,15 +478,55 @@ const resetExportResult = () => {
 	exportClientProgress.value = 0
 	exportServerProgress.value = 0
 	exportJobId.value = null
+	exportFramesIgnoreStageBackground.value = null
+	exportFramesQuality.value = null
 	exportDownloadUrl.value = ''
 	exportServerPath.value = ''
 	exportError.value = ''
 }
 
-const startExport = async () => {
-	resetExportResult()
-	exportStatus.value = 'running'
+const resetRenderResultKeepFrames = () => {
+	// Keep frames state; only clear render-related outputs.
+	exportServerProgress.value = 0
+	exportDownloadUrl.value = ''
+	exportServerPath.value = ''
+	exportError.value = ''
+	if (exportClientProgress.value >= 100 && exportJobId.value) {
+		if (exportStatus.value === 'done' || exportStatus.value === 'error' || exportStatus.value === 'render') {
+			exportStatus.value = 'framesDone'
+		}
+	}
+}
+
+const loadRecentEdit = () => {
+	const cached = editorRecentCache.read()
+	if (!cached) {
+		showLoadRecentEditDialog.value = false
+		recentEditSavedAt.value = null
+		return
+	}
 	try {
+		editorPersistence.replace(cached.snapshot)
+	} finally {
+		showLoadRecentEditDialog.value = false
+		recentEditSavedAt.value = cached.savedAt
+	}
+}
+
+const discardRecentEdit = () => {
+	editorRecentCache.clear()
+	showLoadRecentEditDialog.value = false
+	recentEditSavedAt.value = null
+}
+
+const exportFrames = async () => {
+	resetExportResult()
+	exportStatus.value = 'frames'
+	try {
+		if (exportFormat.value === 'mov' && !exportIgnoreStageBackground.value) {
+			throw new Error('导出 mov 透明背景需要勾选“忽略舞台背景”，否则序列帧会带背景，后续无法得到透明通道。')
+		}
+
 		// Use the real stage size from the bottom size form/store.
 		const width = Math.max(1, Math.round(stageWidth.value))
 		const height = Math.max(1, Math.round(stageHeight.value))
@@ -454,8 +539,9 @@ const startExport = async () => {
 			height,
 			fps,
 			frameCount,
+			quality: exportQuality.value,
 			uploadMode: 'pipe',
-			ignoreStageBackground: exportFormat.value === 'mov' ? !!exportIgnoreStageBackground.value : false,
+			ignoreStageBackground: !!exportIgnoreStageBackground.value,
 			// Keep snapshot optional for potential debugging; backend ignores it.
 			snapshot: editorPersistence.getSnapshot(),
 		})
@@ -480,18 +566,21 @@ const startExport = async () => {
 		// Offscreen canvas for export
 		const originalFrame = Math.floor(Number(TimelineStore.state.currentFrame) || 0)
 		try {
-			// Rawvideo stdin piping requires in-order delivery; default to sequential uploads.
-			const concurrency = 1
+			// Pipe mode: render raw RGBA in workers, upload as batched octet-stream.
+			const concurrency = exportConcurrency.value
 			const maxInFlight = Math.max(1, concurrency)
 			type WorkerOut =
 				| { type: 'ready' }
 				| { type: 'uploaded'; frameIndex: number }
+				| { type: 'uploadedBatch'; startIndex: number; count: number }
 				| { type: 'error'; frameIndex: number; message: string }
 
 			const workerUrl = new URL('../../workers/exportRenderUploadWorker.ts', import.meta.url)
 			const workers: Worker[] = []
 			const idle: Worker[] = []
-			const queue: Array<{ frameIndex: number }> = []
+			const uploadMode: 'disk' | 'pipe' = 'pipe'
+			const batchSize = 4
+			const queue: Array<{ startIndex: number; count: number }> = []
 			let inFlight = 0
 			let uploaded = 0
 			let aborted: Error | null = null
@@ -512,7 +601,11 @@ const startExport = async () => {
 					const w = idle.pop()!
 					const task = queue.shift()!
 					inFlight++
-					w.postMessage({ type: 'renderUpload', frameIndex: task.frameIndex })
+					if (uploadMode === 'pipe') {
+						w.postMessage({ type: 'renderUploadBatch', startIndex: task.startIndex, count: task.count })
+					} else {
+						w.postMessage({ type: 'renderUpload', frameIndex: task.startIndex })
+					}
 				}
 			}
 
@@ -524,6 +617,15 @@ const startExport = async () => {
 				}
 				if (msg.type === 'uploaded') {
 					uploaded++
+					inFlight = Math.max(0, inFlight - 1)
+					exportClientProgress.value = Math.max(0, Math.min(100, Math.round((uploaded * 100) / frameCount)))
+					idle.push(w)
+					pump()
+					resolveOne?.()
+					return
+				}
+				if (msg.type === 'uploadedBatch') {
+					uploaded += Math.max(0, Math.floor(msg.count) || 0)
 					inFlight = Math.max(0, inFlight - 1)
 					exportClientProgress.value = Math.max(0, Math.min(100, Math.round((uploaded * 100) / frameCount)))
 					idle.push(w)
@@ -547,7 +649,8 @@ const startExport = async () => {
 					width,
 					height,
 					frameCount,
-					ignoreStageBackground: exportFormat.value === 'mov' ? !!exportIgnoreStageBackground.value : false,
+					uploadMode,
+					ignoreStageBackground: !!exportIgnoreStageBackground.value,
 					stageBackground: {
 						type: stageBackground.value.type,
 						color: stageBackground.value.color,
@@ -563,11 +666,14 @@ const startExport = async () => {
 			}
 
 			try {
-				for (let i = 0; i < frameCount; i++) {
+				let i = 0
+				while (i < frameCount) {
 					if (aborted) throw aborted
 					while (!aborted && inFlight >= maxInFlight) await waitOne()
 					if (aborted) throw aborted
-					queue.push({ frameIndex: i })
+					const c = uploadMode === 'pipe' ? Math.min(batchSize, frameCount - i) : 1
+					queue.push({ startIndex: i, count: c })
+					i += c
 					pump()
 					// allow UI to breathe
 					await new Promise((r) => setTimeout(r, 0))
@@ -580,13 +686,11 @@ const startExport = async () => {
 				}
 				if (aborted) throw aborted
 
-				// Upload finished; wait for SSE to switch status to done/error.
+				// Frames finished; render step is explicit.
 				exportClientProgress.value = 100
-				try {
-					await ExportService.finalize(created.jobId)
-				} catch {
-					// ignore; SSE will reflect final state if encoding already started.
-				}
+				exportFramesIgnoreStageBackground.value = !!exportIgnoreStageBackground.value
+				exportFramesQuality.value = exportQuality.value
+				exportStatus.value = 'framesDone'
 			} finally {
 				for (const w of workers) {
 					try {
@@ -613,10 +717,47 @@ const startExport = async () => {
 	}
 }
 
+const renderVideo = async () => {
+	const jobId = String(exportJobId.value || '').trim()
+	if (!jobId) return
+	if (exportStatus.value !== 'framesDone' && exportStatus.value !== 'render') return
+	if (exportFormat.value === 'mov' && !exportIgnoreStageBackground.value) {
+		exportStatus.value = 'error'
+		exportError.value = '渲染 mov 透明背景需要勾选“忽略舞台背景”。'
+		return
+	}
+	if (exportFramesIgnoreStageBackground.value != null && exportFramesIgnoreStageBackground.value !== !!exportIgnoreStageBackground.value) {
+		exportStatus.value = 'error'
+		exportError.value = '“忽略舞台背景”与序列帧导出阶段不一致。为获得透明 mov，请重新导出序列帧后再渲染视频。'
+		return
+	}
+	if (exportFramesQuality.value != null && exportFramesQuality.value !== exportQuality.value) {
+		exportStatus.value = 'error'
+		exportError.value = '“质量”与序列帧导出阶段不一致。当前导出使用 pipe 模式（实时编码），请重新导出序列帧后再渲染视频。'
+		return
+	}
+	exportStatus.value = 'render'
+	try {
+		await ExportService.finalize(jobId, {
+			format: exportFormat.value,
+			quality: exportQuality.value,
+			ignoreStageBackground: !!exportIgnoreStageBackground.value,
+		})
+	} catch (e) {
+		exportStatus.value = 'error'
+		exportError.value = String((e as any)?.message ?? e)
+	}
+}
+
 watch(showExportPanel, (open) => {
 	if (!open) {
 		stopExportStream()
 	}
+})
+
+watch([exportFormat, exportQuality, exportIgnoreStageBackground], () => {
+	// Changing render options should not wipe exported frames.
+	resetRenderResultKeepFrames()
 })
 
 let dwebCanvas: DwebCanvasGL | null = null
@@ -874,10 +1015,12 @@ const resize = ref<{
 	nodeId?: string
 	layerId?: string
 	anchorWorld?: { x: number; y: number }
-	parentWorld?: { x: number; y: number }
+	parentWorld?: { x: number; y: number; scaleX: number; scaleY: number }
 	rotation?: number
 	pivotX?: number
 	pivotY?: number
+	nodeScaleX?: number
+	nodeScaleY?: number
 	startLocalX?: number
 	startLocalY?: number
 	startW?: number
@@ -916,6 +1059,8 @@ const lineDrag = ref<{
 	layerId?: string
 	worldCenter?: { x: number; y: number }
 	rotation?: number
+	scaleX?: number
+	scaleY?: number
 }>(
 	{ active: false }
 )
@@ -952,7 +1097,9 @@ const updateOverlay = () => {
 				worldPivot: hit.world,
 				width: Number(t.width ?? 0),
 				height: Number(t.height ?? 0),
-				rotation: Number((t as any).rotation ?? 0),
+				scaleX: Number((hit.world as any).scaleX ?? 1),
+				scaleY: Number((hit.world as any).scaleY ?? 1),
+				rotation: Number((hit.world as any).rotation ?? 0),
 				pivotX: Number((t as any).pivotX ?? 0.5),
 				pivotY: Number((t as any).pivotY ?? 0.5),
 				userType: (hit.node as any)?.userType,
@@ -1011,7 +1158,9 @@ const updateOverlay = () => {
 		worldPivot: hit.world,
 		width: Number(t.width ?? 0),
 		height: Number(t.height ?? 0),
-		rotation: Number((t as any).rotation ?? 0),
+		scaleX: Number((hit.world as any).scaleX ?? 1),
+		scaleY: Number((hit.world as any).scaleY ?? 1),
+		rotation: Number((hit.world as any).rotation ?? 0),
 		pivotX: Number((t as any).pivotX ?? 0.5),
 		pivotY: Number((t as any).pivotY ?? 0.5),
 		userType: (hit.node as any)?.userType,
@@ -1057,13 +1206,15 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 	const cy = hit.world.y
 	const w = Number(t.width ?? 0)
 	const h = Number(t.height ?? 0)
-	const rotation = Number((t as any).rotation ?? 0)
+	const rotation = Number((hit.world as any).rotation ?? 0)
 	const pivotX = Number((t as any).pivotX ?? 0.5)
 	const pivotY = Number((t as any).pivotY ?? 0.5)
 	const geom = buildNodeOverlayGeometry({
 		worldPivot: { x: cx, y: cy },
 		width: w,
 		height: h,
+		scaleX: Number((hit.world as any).scaleX ?? 1),
+		scaleY: Number((hit.world as any).scaleY ?? 1),
 		rotation,
 		pivotX,
 		pivotY,
@@ -1081,7 +1232,15 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 		return tl
 	})()
 
-	resize.value = { active: true, corner, nodeId, layerId, anchorWorld, parentWorld: hit.parentWorld, rotation, pivotX, pivotY }
+	const clampScale = (v: unknown, fallback = 1) => {
+		const n = Number(v)
+		if (!Number.isFinite(n)) return fallback
+		return Math.max(0, Math.min(100, n))
+	}
+	const legacyScale = clampScale((t as any).scale, 1)
+	const nodeScaleX = clampScale((t as any).scaleX, legacyScale)
+	const nodeScaleY = clampScale((t as any).scaleY, legacyScale)
+	resize.value = { active: true, corner, nodeId, layerId, anchorWorld, parentWorld: hit.parentWorld as any, rotation, pivotX, pivotY, nodeScaleX, nodeScaleY }
 	overlay.showSize = true
 	resizeSnapSession.value = snapEnabled.value
 		? beginResizeSnapSessionForNode({
@@ -1108,7 +1267,7 @@ const onLinePointDown = (kind: LinePointKind, ev: PointerEvent) => {
 	const hit = findUserNodeWithWorld(nodeId)
 	if (!hit) return
 	if ((hit.node as any)?.userType !== 'line') return
-	const rotation = Number(((hit.node.transform as any) ?? {}).rotation ?? 0)
+	const rotation = Number((hit.world as any).rotation ?? 0)
 	lineDrag.value = {
 		active: true,
 		kind,
@@ -1116,6 +1275,8 @@ const onLinePointDown = (kind: LinePointKind, ev: PointerEvent) => {
 		layerId: hit.layerId,
 		worldCenter: { x: hit.world.x, y: hit.world.y },
 		rotation,
+		scaleX: Number((hit.world as any).scaleX ?? 1),
+		scaleY: Number((hit.world as any).scaleY ?? 1),
 	}
 	try {
 		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
@@ -1128,18 +1289,18 @@ const onDocPointerMove = (ev: PointerEvent) => {
 	if (lineDrag.value.active) {
 		const canvas = ensureCanvas()
 		if (!canvas) return
-		const { nodeId, layerId, kind, worldCenter, rotation } = lineDrag.value
+		const { nodeId, layerId, kind, worldCenter, rotation, scaleX, scaleY } = lineDrag.value
 		if (!nodeId || !layerId || !kind || !worldCenter || rotation == null) return
 		const p = getLocalPointFromClient(ev.clientX, ev.clientY)
 		const w = canvas.screenToWorld(p)
-		const patch = computeLinePointPatchFromWorld({ kind, worldPoint: w, worldCenter, rotation })
+		const patch = computeLinePointPatchFromWorld({ kind, worldPoint: w, worldCenter, rotation, scaleX: scaleX ?? 1, scaleY: scaleY ?? 1 })
 		VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
 		return
 	}
 	if (!resize.value.active) return
 	const canvas = ensureCanvas()
 	if (!canvas) return
-	const { nodeId, layerId, anchorWorld, parentWorld, corner, pivotX, pivotY, rotation } = resize.value
+	const { nodeId, layerId, anchorWorld, parentWorld, corner, pivotX, pivotY, rotation, nodeScaleX, nodeScaleY } = resize.value
 	if (!nodeId || !layerId || !anchorWorld || !parentWorld || !corner) return
 	const p = getLocalPointFromClient(ev.clientX, ev.clientY)
 	const w = canvas.screenToWorld(p)
@@ -1163,8 +1324,8 @@ const onDocPointerMove = (ev: PointerEvent) => {
 	let movingY = anchorWorld.y + local.x * sin + local.y * cos
 	let cx = (anchorWorld.x + movingX) / 2
 	let cy = (anchorWorld.y + movingY) / 2
-	let width = Math.max(minSize, Math.abs(local.x))
-	let height = Math.max(minSize, Math.abs(local.y))
+	let widthWorld = Math.max(minSize, Math.abs(local.x))
+	let heightWorld = Math.max(minSize, Math.abs(local.y))
 
 	// snap during resize: adjust moving edge (and center/size accordingly)
 	const focusedId = VideoSceneStore.state.focusedNodeId
@@ -1205,8 +1366,8 @@ const onDocPointerMove = (ev: PointerEvent) => {
 		movingY = anchorWorld.y + snappedLocal.x * sin + snappedLocal.y * cos
 		cx = (anchorWorld.x + movingX) / 2
 		cy = (anchorWorld.y + movingY) / 2
-		width = Math.max(minSize, Math.abs(snappedLocal.x))
-		height = Math.max(minSize, Math.abs(snappedLocal.y))
+		widthWorld = Math.max(minSize, Math.abs(snappedLocal.x))
+		heightWorld = Math.max(minSize, Math.abs(snappedLocal.y))
 
 		if (showGuides.value && snapped.snappedLineX != null) {
 			const sp = canvas.worldToScreen({ x: snapped.snappedLineX, y: cy })
@@ -1233,14 +1394,27 @@ const onDocPointerMove = (ev: PointerEvent) => {
 	const py0 = Number(pivotY)
 	const px = Number.isFinite(px0) ? Math.max(0, Math.min(1, px0)) : 0.5
 	const py = Number.isFinite(py0) ? Math.max(0, Math.min(1, py0)) : 0.5
-	const offX = (0.5 - px) * width
-	const offY = (0.5 - py) * height
+	const offX = (0.5 - px) * widthWorld
+	const offY = (0.5 - py) * heightWorld
 	const pivotWorldX = cx - (offX * cos - offY * sin)
 	const pivotWorldY = cy - (offX * sin + offY * cos)
+	const psx = Math.max(1e-6, Number((parentWorld as any).scaleX ?? 1))
+	const psy = Math.max(1e-6, Number((parentWorld as any).scaleY ?? 1))
+	const prot = Number((parentWorld as any).rotation ?? 0) || 0
+	const cosP = Math.cos(-prot)
+	const sinP = Math.sin(-prot)
+	const nsx = Math.max(1e-6, Number(nodeScaleX ?? 1))
+	const nsy = Math.max(1e-6, Number(nodeScaleY ?? 1))
+	const width = Math.max(1, widthWorld / (psx * nsx))
+	const height = Math.max(1, heightWorld / (psy * nsy))
+	const wx = pivotWorldX - parentWorld.x
+	const wy = pivotWorldY - parentWorld.y
+	const rx = wx * cosP - wy * sinP
+	const ry = wx * sinP + wy * cosP
 	VideoSceneStore.dispatch('updateNodeTransform', {
 		layerId,
 		nodeId,
-		patch: { x: pivotWorldX - parentWorld.x, y: pivotWorldY - parentWorld.y, width, height },
+		patch: { x: rx / psx, y: ry / psy, width, height },
 	})
 }
 
@@ -1353,31 +1527,56 @@ const onPointerMove = (ev: PointerEvent) => {
 			for (const nodeId of drag.value.nodeIds) {
 				const start = drag.value.startXYById[nodeId]
 				if (!start) continue
+				const hit = findUserNodeWithWorld(nodeId)
+				const psx = Math.max(1e-6, Number((hit?.parentWorld as any)?.scaleX ?? 1))
+				const psy = Math.max(1e-6, Number((hit?.parentWorld as any)?.scaleY ?? 1))
+				const prot = Number((hit?.parentWorld as any)?.rotation ?? 0) || 0
+				const cosP = Math.cos(-prot)
+				const sinP = Math.sin(-prot)
+				const rdx = dx * cosP - dy * sinP
+				const rdy = dx * sinP + dy * cosP
 				VideoSceneStore.dispatch('updateNodeTransform', {
 					nodeId,
-					patch: { x: start.x + dx, y: start.y + dy },
+					patch: { x: start.x + rdx / psx, y: start.y + rdy / psy },
 				})
 			}
 			return
 		}
 
 		if (!drag.value.startXY) return
+		const hit0 = findUserNodeWithWorld(drag.value.nodeId)
+		const psx0 = Math.max(1e-6, Number((hit0?.parentWorld as any)?.scaleX ?? 1))
+		const psy0 = Math.max(1e-6, Number((hit0?.parentWorld as any)?.scaleY ?? 1))
+		const prot0 = Number((hit0?.parentWorld as any)?.rotation ?? 0) || 0
+		const cosP0 = Math.cos(-prot0)
+		const sinP0 = Math.sin(-prot0)
+		const rdx0 = dx * cosP0 - dy * sinP0
+		const rdy0 = dx * sinP0 + dy * cosP0
 
-		let localX = drag.value.startXY.x + dx
-		let localY = drag.value.startXY.y + dy
+		let localX = drag.value.startXY.x + rdx0 / psx0
+		let localY = drag.value.startXY.y + rdy0 / psy0
 
 		// snap: only when focused
 		const focusedId = VideoSceneStore.state.focusedNodeId
 		if (snapEnabled.value && focusedId && focusedId === drag.value.nodeId) {
 			const hit = findUserNodeWithWorld(drag.value.nodeId)
-			const parentWorld = hit?.parentWorld ?? { x: 0, y: 0 }
+			const parentWorld = (hit?.parentWorld as any) ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }
+			const psx = Math.max(1e-6, Number(parentWorld.scaleX ?? 1))
+			const psy = Math.max(1e-6, Number(parentWorld.scaleY ?? 1))
+			const prot = Number(parentWorld.rotation ?? 0) || 0
+			const cosP = Math.cos(prot)
+			const sinP = Math.sin(prot)
 			const t = findUserNodeTransform(drag.value.nodeId) as any
 			const w0 = Math.max(1, Number(t?.width ?? 1))
 			const h0 = Math.max(1, Number(t?.height ?? 1))
-			const w = w0
-			const h = h0
-			const rawWorldCx = parentWorld.x + localX
-			const rawWorldCy = parentWorld.y + localY
+			const wsx = Number((hit?.world as any)?.scaleX ?? 1)
+			const wsy = Number((hit?.world as any)?.scaleY ?? 1)
+			const w = w0 * wsx
+			const h = h0 * wsy
+			const tx = localX * psx
+			const ty = localY * psy
+			const rawWorldCx = parentWorld.x + (tx * cosP - ty * sinP)
+			const rawWorldCy = parentWorld.y + (tx * sinP + ty * cosP)
 			const session =
 				moveSnapSession.value ??
 				beginMoveSnapSessionForNode({
@@ -1412,8 +1611,15 @@ const onPointerMove = (ev: PointerEvent) => {
 				snapGuides.y = null
 			}
 
-			localX = snapped.worldCx - parentWorld.x
-			localY = snapped.worldCy - parentWorld.y
+			// snapped world center -> parent local (inv rotate, then inv scale)
+			const wx = snapped.worldCx - parentWorld.x
+			const wy = snapped.worldCy - parentWorld.y
+			const cosInv = Math.cos(-prot)
+			const sinInv = Math.sin(-prot)
+			const rx = wx * cosInv - wy * sinInv
+			const ry = wx * sinInv + wy * cosInv
+			localX = rx / psx
+			localY = ry / psy
 		}
 
 		VideoSceneStore.dispatch('updateNodeTransform', {
@@ -1502,11 +1708,45 @@ const onWheel = (ev: WheelEvent) => {
 	const rect = (ev.currentTarget as HTMLCanvasElement).getBoundingClientRect()
 	const x = ev.clientX - rect.left
 	const y = ev.clientY - rect.top
-	const factor = ev.deltaY < 0 ? 1.08 : 1 / 1.08
-	canvas.zoomAt({ x, y }, canvas.viewport.zoom * factor)
+	queueWheelZoom(canvas, { x, y }, ev.deltaY)
+}
+
+let wheelZoomRaf: number | null = null
+let wheelZoomDeltaY = 0
+let wheelZoomPoint: { x: number; y: number } | null = null
+let wheelZoomCanvas: any | null = null
+
+const queueWheelZoom = (canvas: any, p: { x: number; y: number }, deltaY: number) => {
+	wheelZoomCanvas = canvas
+	wheelZoomPoint = p
+	wheelZoomDeltaY += Number(deltaY) || 0
+	if (wheelZoomRaf != null) return
+	wheelZoomRaf = window.requestAnimationFrame(() => {
+		wheelZoomRaf = null
+		const c = wheelZoomCanvas
+		const pt = wheelZoomPoint
+		const dy = wheelZoomDeltaY
+		wheelZoomCanvas = null
+		wheelZoomPoint = null
+		wheelZoomDeltaY = 0
+		if (!c || !pt) return
+		// Map accumulated wheel delta to a smooth zoom factor.
+		// Keep behavior close to the old 1.08-per-tick while reducing churn.
+		const base = 1.08
+		const ticks = Math.max(-40, Math.min(40, -(dy / 100)))
+		const factor = Math.max(0.05, Math.min(20, Math.pow(base, ticks)))
+		c.zoomAt(pt, c.viewport.zoom * factor)
+	})
 }
 
 onMounted(() => {
+	// 刷新时：若检测到最近保存的编辑历史，先询问是否加载
+	const cachedAt = editorRecentCache.peekSavedAt()
+	if (cachedAt) {
+		recentEditSavedAt.value = cachedAt
+		showLoadRecentEditDialog.value = true
+	}
+
 	const shell = shellRef.value
 	const stageEl = stageRef.value
 	const canvasEl = canvasRef.value
@@ -1531,12 +1771,25 @@ onMounted(() => {
 		// 关键帧编辑：当且仅当“时间轴单选关键帧格子”且同图层时，把当前舞台写回该关键帧快照
 		if (!isApplyingTimelineAnimation) {
 			const type = String(m?.type ?? '')
-			if (type === 'updateNodeTransform' || type === 'updateNodeProps' || type === 'updateNodeName' || type === 'setNodeType' || type === 'moveNode') {
-				const lid = String(m?.payload?.layerId ?? '')
-					if (lid) {
-						if (isHighFreqEditing()) keyframeDirtyLayerIds.add(lid)
-						else scheduleWriteBackSelectedKeyframe(lid)
-					}
+			const isKeyframeMutation =
+				type === 'updateNodeTransform' ||
+				type === 'updateNodeProps' ||
+				type === 'updateNodeName' ||
+				type === 'setNodeType' ||
+				type === 'moveNode' ||
+				// 关键修复：删除/新增节点也属于“关键帧内容编辑”，必须写回当前关键帧快照
+				type === 'deleteNodesById' ||
+				type === 'addNodeTree' ||
+				type === 'addRenderableNode' ||
+				type === 'pasteNodeTreeAsSibling'
+			if (isKeyframeMutation) {
+				const selected = getSingleSelectedKeyframeCell()
+				// 优先用“当前单选关键帧格子”的 layerId，避免依赖 mutation payload（删除时可能无 layerId）
+				const lid = String(selected?.layerId ?? m?.payload?.layerId ?? '')
+				if (lid) {
+					if (isHighFreqEditing()) keyframeDirtyLayerIds.add(lid)
+					else scheduleWriteBackSelectedKeyframe(lid)
+				}
 			}
 		}
 		scene?.setState(state)

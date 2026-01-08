@@ -12,14 +12,20 @@ export const buildNodeOverlayGeometry = (args: {
 	worldPivot: { x: number; y: number }
 	width: number
 	height: number
+	scaleX?: number
+	scaleY?: number
 	rotation: number
 	pivotX?: number
 	pivotY?: number
 	userType?: string
 	props?: VideoSceneNodeProps
 }): NodeOverlayGeometry => {
-	const w = Number(args.width ?? 0)
-	const h = Number(args.height ?? 0)
+	const w0 = Number(args.width ?? 0)
+	const h0 = Number(args.height ?? 0)
+	const sx = Number.isFinite(Number(args.scaleX)) ? Number(args.scaleX) : 1
+	const sy = Number.isFinite(Number(args.scaleY)) ? Number(args.scaleY) : 1
+	const w = w0 * sx
+	const h = h0 * sy
 	const rotation = Number(args.rotation ?? 0)
 	const pivotX = Number.isFinite(Number(args.pivotX)) ? Math.max(0, Math.min(1, Number(args.pivotX))) : 0.5
 	const pivotY = Number.isFinite(Number(args.pivotY)) ? Math.max(0, Math.min(1, Number(args.pivotY))) : 0.5
@@ -40,12 +46,13 @@ export const buildNodeOverlayGeometry = (args: {
 
 	if (args.userType === 'line') {
 		const p = args.props ?? {}
-		const startX = Number(p.startX ?? -w / 2)
-		const startY = Number(p.startY ?? 0)
-		const endX = Number(p.endX ?? w / 2)
-		const endY = Number(p.endY ?? 0)
-		const anchorX = Number(p.anchorX ?? 0)
-		const anchorY = Number(p.anchorY ?? -h / 4)
+		// props are stored in *unscaled local* units; apply scaleX/scaleY here to match rendering.
+		const startX = Number(p.startX ?? -w0 / 2) * sx
+		const startY = Number(p.startY ?? 0) * sy
+		const endX = Number(p.endX ?? w0 / 2) * sx
+		const endY = Number(p.endY ?? 0) * sy
+		const anchorX = Number(p.anchorX ?? 0) * sx
+		const anchorY = Number(p.anchorY ?? -h0 / 4) * sy
 		const linePoints = lineControlPointsWorld(
 			center,
 			rotation,

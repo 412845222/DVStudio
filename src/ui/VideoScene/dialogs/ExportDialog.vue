@@ -13,12 +13,43 @@
         </button>
       </div>
       <div class="dvs-export-row">
+        <label class="vs-label" style="width: 160px">
+          <span>并发</span>
+          <select
+            :value="concurrency"
+            class="vs-select"
+            :disabled="isBusy"
+            @change="onChangeConcurrency"
+          >
+            <option :value="4">4</option>
+            <option :value="8">8</option>
+            <option :value="16">16</option>
+          </select>
+        </label>
+
         <label class="vs-label" style="flex: 1; min-width: 0">
-          <span>格式</span>
+          <span>忽略舞台背景</span>
+          <input
+            class="vs-checkbox"
+            type="checkbox"
+            :checked="ignoreStageBackground"
+            :disabled="isBusy"
+            @change="onToggleIgnoreStageBackground"
+          />
+        </label>
+
+        <button class="vs-btn" type="button" :disabled="isBusy" @click="$emit('exportFrames')">
+          导出序列帧
+        </button>
+      </div>
+
+      <div class="dvs-export-row" style="margin-top: 10px">
+        <label class="vs-label" style="flex: 1; min-width: 0">
+          <span>输出格式</span>
           <select
             :value="format"
             class="vs-select"
-            :disabled="status === 'running'"
+            :disabled="isBusy"
             @change="onChangeFormat"
           >
             <option value="mp4">mp4</option>
@@ -27,45 +58,28 @@
         </label>
 
         <label class="vs-label" style="width: 160px">
-          <span>并发</span>
+          <span>质量</span>
           <select
-            :value="concurrency"
+            :value="quality"
             class="vs-select"
-            :disabled="status === 'running'"
-            @change="onChangeConcurrency"
+            :disabled="isBusy"
+            @change="onChangeQuality"
           >
-            <option :value="4">4</option>
-            <option :value="8">8</option>
-            <option :value="16">16</option>
+            <option value="high">高</option>
+            <option value="medium">中</option>
+            <option value="low">低</option>
           </select>
         </label>
-        <button
-          class="vs-btn"
-          type="button"
-          :disabled="status === 'running'"
-          @click="$emit('start')"
-        >
-          开始导出
-        </button>
       </div>
 
-      <div v-if="format === 'mov'" class="dvs-export-row" style="margin-top: 8px">
-        <label class="vs-label" style="flex: 1; min-width: 0">
-          <span>忽略舞台背景</span>
-          <input
-            class="vs-checkbox"
-            type="checkbox"
-            :checked="ignoreStageBackground"
-            :disabled="status === 'running'"
-            @change="onToggleIgnoreStageBackground"
-          />
-        </label>
+      <div v-if="estimatedSizeText" class="dvs-export-row" style="margin-top: 6px">
+        <div class="dvs-export-estimate">预估大小：{{ estimatedSizeText }}</div>
       </div>
 
       <div class="dvs-export-progress">
         <div class="dvs-export-progress-item">
           <div class="dvs-export-progress-head">
-            <span>上传</span>
+            <span>导出序列帧</span>
             <span class="dvs-export-progress-pct">{{ clampPct(clientProgress) }}%</span>
           </div>
           <div class="dvs-export-progress-track">
@@ -78,7 +92,15 @@
 
         <div class="dvs-export-progress-item">
           <div class="dvs-export-progress-head">
-            <span>编码</span>
+            <span>渲染视频</span>
+            <button
+              class="vs-btn"
+              type="button"
+              :disabled="isBusy || !hasFrames"
+              @click="$emit('renderVideo')"
+            >
+              渲染视频
+            </button>
             <span class="dvs-export-progress-pct">{{ clampPct(serverProgress) }}%</span>
           </div>
           <div class="dvs-export-progress-track">
@@ -116,26 +138,36 @@
 import { computed, ref } from "vue";
 import type { ExportFormat, ExportJobStatus } from "../../../network/ExportService";
 
+export type ExportUIStatus = ExportJobStatus | "idle" | "frames" | "framesDone" | "render";
+export type ExportQuality = "high" | "medium" | "low";
+
 const props = defineProps<{
   open: boolean;
   format: ExportFormat;
+  quality: ExportQuality;
   concurrency: 4 | 8 | 16;
   ignoreStageBackground: boolean;
-  status: ExportJobStatus | "idle";
+  status: ExportUIStatus;
   clientProgress: number;
   serverProgress: number;
   serverPath: string;
+  estimatedSizeText: string;
   errorText: string;
 }>();
 
 const emit = defineEmits<{
   (e: "update:format", v: ExportFormat): void;
+  (e: "update:quality", v: ExportQuality): void;
   (e: "update:concurrency", v: 4 | 8 | 16): void;
   (e: "update:ignoreStageBackground", v: boolean): void;
   (e: "reset"): void;
-  (e: "start"): void;
+  (e: "exportFrames"): void;
+  (e: "renderVideo"): void;
   (e: "close"): void;
 }>();
+
+const isBusy = computed(() => props.status === "frames" || props.status === "render");
+const hasFrames = computed(() => props.status === "framesDone" || props.status === "render" || props.status === "done");
 
 const clampPct = (v: number) => {
   const n = Number(v);
@@ -145,8 +177,13 @@ const clampPct = (v: number) => {
 
 const onChangeFormat = (ev: Event) => {
   const v = String((ev.target as HTMLSelectElement)?.value || "mp4") as ExportFormat;
-  emit("reset");
   emit("update:format", v);
+};
+
+const onChangeQuality = (ev: Event) => {
+  const raw = String((ev.target as HTMLSelectElement)?.value || "medium");
+  const v: ExportQuality = raw === "high" ? "high" : raw === "low" ? "low" : "medium";
+  emit("update:quality", v);
 };
 
 const onChangeConcurrency = (ev: Event) => {
@@ -158,7 +195,6 @@ const onChangeConcurrency = (ev: Event) => {
 
 const onToggleIgnoreStageBackground = (ev: Event) => {
   const v = !!(ev.target as HTMLInputElement)?.checked;
-  emit("reset");
   emit("update:ignoreStageBackground", v);
 };
 
@@ -355,6 +391,11 @@ const onOpenOrCopy = async () => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.dvs-export-estimate {
+  color: var(--vscode-fg-muted);
+  font-size: 12px;
 }
 
 .dvs-export-progress {

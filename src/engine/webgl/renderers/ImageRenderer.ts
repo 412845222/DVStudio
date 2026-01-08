@@ -30,13 +30,87 @@ export class ImageRenderer extends NodeRenderer {
 		const cy = node.transform.y + (0.5 - py) * h
 		const rotation = ctx.rotation
 
+		if (!tex) return
+		const mask = ctx.roundedMask
 		const drawTex = (dw: number, dh: number) => {
-			if (space === 'world') canvas.drawTexturedRect(cx, cy, dw, dh, tex, ctx.opacity, rotation)
-			else canvas.drawLocalTexturedRect(target!, cx, cy, dw, dh, tex, ctx.opacity, rotation)
+			if (!mask) {
+				if (space === 'world') canvas.drawTexturedRect(cx, cy, dw, dh, tex, ctx.opacity, rotation)
+				else canvas.drawLocalTexturedRect(target!, cx, cy, dw, dh, tex, ctx.opacity, rotation)
+				return
+			}
+			if (space === 'world') {
+				canvas.drawTexturedRectWithRoundedMask(
+					cx,
+					cy,
+					dw,
+					dh,
+					tex,
+					ctx.opacity,
+					rotation,
+					mask.cx,
+					mask.cy,
+					mask.width,
+					mask.height,
+					mask.radius
+				)
+			} else {
+				canvas.drawLocalTexturedRectWithRoundedMask(
+					target!,
+					cx,
+					cy,
+					dw,
+					dh,
+					tex,
+					ctx.opacity,
+					rotation,
+					mask.cx,
+					mask.cy,
+					mask.width,
+					mask.height,
+					mask.radius
+				)
+			}
 		}
 		const drawTexUv = (uv: { u0: number; v0: number; u1: number; v1: number }) => {
-			if (space === 'world') canvas.drawTexturedRectUv(cx, cy, w, h, tex, ctx.opacity, rotation, uv)
-			else canvas.drawLocalTexturedRectUv(target!, cx, cy, w, h, tex, ctx.opacity, rotation, uv)
+			if (!mask) {
+				if (space === 'world') canvas.drawTexturedRectUv(cx, cy, w, h, tex, ctx.opacity, rotation, uv)
+				else canvas.drawLocalTexturedRectUv(target!, cx, cy, w, h, tex, ctx.opacity, rotation, uv)
+				return
+			}
+			if (space === 'world') {
+				canvas.drawTexturedRectWithRoundedMask(
+					cx,
+					cy,
+					w,
+					h,
+					tex,
+					ctx.opacity,
+					rotation,
+					mask.cx,
+					mask.cy,
+					mask.width,
+					mask.height,
+					mask.radius,
+					uv
+				)
+			} else {
+				canvas.drawLocalTexturedRectWithRoundedMask(
+					target!,
+					cx,
+					cy,
+					w,
+					h,
+					tex,
+					ctx.opacity,
+					rotation,
+					mask.cx,
+					mask.cy,
+					mask.width,
+					mask.height,
+					mask.radius,
+					uv
+				)
+			}
 		}
 
 		if (fit === 'fill') {

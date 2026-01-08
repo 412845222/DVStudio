@@ -112,7 +112,8 @@ import { useStore } from 'vuex'
 import { componentTemplateApi } from '../../../core/components'
 import { nodeExistsInAnyLayer } from '../../../core/scene'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
-import { stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
+import { stripSubtitleTextContentFromNodeSnapshots, stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
+import { applyTimelineAnimationAtFrame } from '../anim/timelineAnimation'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import { TimelineStore } from '../../../store/timeline'
 import { containsFrame, type TimelineFrameSpan } from '../../../store/timeline/spans'
@@ -344,6 +345,39 @@ const setParamValue = (componentId: string, key: string, value: any) => {
 
 const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
 
+type NodeSnapshot = { transform?: any; props?: Record<string, any> }
+
+const collectUserNodeSnapshots = (nodes: any[] | undefined, out: Record<string, NodeSnapshot>) => {
+  if (!nodes) return
+  for (const n of nodes) {
+    if (n && typeof n === 'object' && (n as any).category === 'user') {
+      out[String((n as any).id)] = {
+        transform: (n as any).transform ? { ...(n as any).transform } : undefined,
+        props: (n as any).props ? cloneJsonSafe((n as any).props) : undefined,
+      }
+    }
+    const children = (n as any)?.children
+    if (Array.isArray(children) && children.length) collectUserNodeSnapshots(children, out)
+  }
+}
+
+const captureLayerSnapshot = (layerId: string): Record<string, NodeSnapshot> => {
+  const layer = store.state.layers.find((l) => l.id === layerId)
+  if (!layer) return {}
+  const out: Record<string, NodeSnapshot> = {}
+  collectUserNodeSnapshots((layer as any).nodeTree, out)
+  return out
+}
+
+const ensureVideoSceneLayerExists = async (layerId: string) => {
+  const id = String(layerId || '').trim()
+  if (!id) return
+  if (store.state.layers.some((l) => l.id === id)) return
+  const name = TimelineStore.state.layers.find((l) => l.id === id)?.name || id
+  await store.dispatch('addLayer', { layerId: id, name })
+  await TimelineStore.dispatch('ensureStageSnapshotsContainLayer', { layerId: id, name })
+}
+
 const instantiateIntoLayerWithParams = async (layerId: string, template: any, params: Record<string, any>) => {
 	const instantiated = componentTemplateApi.instantiateTemplate(template as any, params ?? {}, {
 		getNodeId: ({ templateId, localId }) => {
@@ -379,8 +413,12 @@ const insertSelectedComponent = async () => {
 	const frameIndex = selected.frameIndex
 	const c = selectedComponent.value
 	if (!c) return
+  const playheadFrame = Math.floor(Number((TimelineStore.state as any).currentFrame ?? 0))
 	busy.value = true
 	try {
+    await ensureVideoSceneLayerExists(layerId)
+    // Ensure the node tree panel is showing the target layer.
+    await store.dispatch('setActiveLayer', { layerId })
 		ensureParamBag(c.id)
 		const rawParams = componentParamValuesById.value[c.id] || {}
 		const defs = deriveParamDefs(c.template)
@@ -402,15 +440,32 @@ const insertSelectedComponent = async () => {
 		const rootId = await instantiateIntoLayerWithParams(layerId, c.template, params)
 		await setOpacityKeyframes(layerId, rootId, [{ frame: frameIndex, opacity: 1 }])
 
-		// Write back stage snapshot for this keyframe so timeline animation has a stable source of truth.
-		const isSubtitle = (TimelineStore.state.layerKindById?.[layerId] ?? 'normal') === 'subtitle'
-		const stageLayers = cloneJsonSafe(store.state.layers)
-		const layersForSnapshot = isSubtitle ? stripSubtitleTextContentFromStageLayers(stageLayers as any, layerId) : stageLayers
+    // Write back PER-LAYER stage snapshot for this keyframe.
+    // Do NOT capture the whole stage, otherwise other layers can be overwritten.
+    const kind = (TimelineStore.state.layerKindById?.[layerId] ?? 'normal') as any
+    const isSubtitle = kind === 'subtitle'
+    const baseLayer = store.state.layers.find((l) => l.id === layerId)
+    const snapLayer = baseLayer ? (cloneJsonSafe(baseLayer) as any) : ({ id: layerId, name: layerId } as any)
+    const layersForSnapshot = isSubtitle ? stripSubtitleTextContentFromStageLayers([snapLayer] as any, layerId) : ([snapLayer] as any)
 		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
 			startFrame: frameIndex,
 			endFrame: frameIndex,
 			layers: layersForSnapshot as any,
 		})
+
+    if (kind === 'subtitle' || kind === 'progress') {
+      const nodesById = kind === 'subtitle' ? stripSubtitleTextContentFromNodeSnapshots(captureLayerSnapshot(layerId) as any) : captureLayerSnapshot(layerId)
+      await TimelineStore.dispatch('setNodeKeyframeSnapshotRange', {
+        layerId,
+        startFrame: frameIndex,
+        endFrame: frameIndex,
+        nodesById: nodesById as any,
+      })
+    }
+
+    // If we inserted into a keyframe that is NOT the current playhead,
+    // restore stage to what should be rendered at the current frame.
+    if (playheadFrame !== frameIndex) applyTimelineAnimationAtFrame(playheadFrame)
 	} finally {
 		busy.value = false
 	}

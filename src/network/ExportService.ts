@@ -1,5 +1,7 @@
 export type ExportFormat = 'mp4' | 'mov'
 
+export type ExportQuality = 'high' | 'medium' | 'low'
+
 export type ExportJobStatus = 'queued' | 'running' | 'done' | 'error'
 
 export type ExportJobInfo = {
@@ -24,6 +26,7 @@ type CreateExportJobRequest = {
 	height: number
 	fps: number
 	frameCount: number
+	quality?: ExportQuality
 	uploadMode?: 'disk' | 'pipe'
 	ignoreStageBackground?: boolean
 	snapshot?: unknown
@@ -68,11 +71,40 @@ export const ExportService = {
 		return (await safeJson(res)) as ExportJobInfo
 	},
 
-	async finalize(jobId: string): Promise<ExportJobInfo> {
+	async uploadFramesRawBatch(jobId: string, startIndex: number, count: number, bytes: Uint8Array): Promise<ExportJobInfo> {
+		const si = Math.floor(Number(startIndex) || 0)
+		const c = Math.floor(Number(count) || 0)
+		const url = `/api/export/jobs/${encodeURIComponent(jobId)}/frames:raw-batch?startIndex=${encodeURIComponent(String(si))}&count=${encodeURIComponent(String(c))}`
+		const buf = bytes.buffer
+		const body: ArrayBuffer = buf instanceof ArrayBuffer ? buf.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : new Uint8Array(bytes).buffer
+		const res = await fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/octet-stream' },
+			body,
+		})
+		if (!res.ok) {
+			const payload = await safeJson(res).catch((e) => ({ error: String(e?.message ?? e) }))
+			throw new Error((payload as any)?.error ?? `上传 raw batch 失败：${res.status} ${res.statusText}`)
+		}
+		return (await safeJson(res)) as ExportJobInfo
+	},
+
+	async finalize(
+		jobId: string,
+		opts?: {
+			format?: ExportFormat
+			quality?: ExportQuality
+			ignoreStageBackground?: boolean
+		}
+	): Promise<ExportJobInfo> {
 		const res = await fetch(`/api/export/jobs/${encodeURIComponent(jobId)}/finalize`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({}),
+			body: JSON.stringify({
+				format: opts?.format,
+				quality: opts?.quality,
+				ignoreStageBackground: opts?.ignoreStageBackground,
+			}),
 		})
 		if (!res.ok) {
 			const payload = await safeJson(res).catch((e) => ({ error: String(e?.message ?? e) }))

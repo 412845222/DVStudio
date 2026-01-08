@@ -34,6 +34,8 @@ export const createRenderableNode = (type: VideoSceneUserNodeType): VideoSceneTr
 		transform: {
 			x: upgraded.transform.x,
 			y: upgraded.transform.y,
+			scaleX: (upgraded.transform as any).scaleX ?? (upgraded.transform as any).scale ?? 1,
+			scaleY: (upgraded.transform as any).scaleY ?? (upgraded.transform as any).scale ?? 1,
 			pivotX: (upgraded.transform as any).pivotX ?? 0.5,
 			pivotY: (upgraded.transform as any).pivotY ?? 0.5,
 			width: upgraded.transform.width,
@@ -89,6 +91,11 @@ export const addNodeTreeToLayer = (args: {
 	const node = args.node
 
 	const normalizeNodeTreeInPlace = (n: any) => {
+		const clampScale = (v: unknown, fallback = 1) => {
+			const x = Number(v)
+			if (!Number.isFinite(x)) return fallback
+			return Math.max(0, Math.min(100, x))
+		}
 		if (!n || typeof n !== 'object') return
 		if (typeof n.id !== 'string' || !n.id.trim()) n.id = genId('node')
 		if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt)) n.createdAt = Date.now()
@@ -99,12 +106,18 @@ export const addNodeTreeToLayer = (args: {
 		if (n.category === 'user') {
 			// Match createRenderableNode() output shape.
 			if (!n.transform || typeof n.transform !== 'object') {
-				n.transform = { x: 0, y: 0, pivotX: 0.5, pivotY: 0.5, width: 200, height: 120, rotation: 0, opacity: 1 }
+				n.transform = { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 200, height: 120, rotation: 0, opacity: 1 }
 			} else {
 				const t = n.transform as any
+				const legacyScale = clampScale(t.scale, 1)
+				const sx = clampScale(t.scaleX, legacyScale)
+				const sy = clampScale(t.scaleY, legacyScale)
 				n.transform = {
 					x: typeof t.x === 'number' && Number.isFinite(t.x) ? t.x : 0,
 					y: typeof t.y === 'number' && Number.isFinite(t.y) ? t.y : 0,
+					scaleX: sx,
+					scaleY: sy,
+					scale: legacyScale,
 					pivotX:
 						typeof t.pivotX === 'number' && Number.isFinite(t.pivotX) ? Math.max(0, Math.min(1, t.pivotX)) : 0.5,
 					pivotY:
@@ -153,8 +166,19 @@ export const addNodeTreeToLayer = (args: {
 }
 
 const normalizeTransformPatch = (prev: VideoSceneNodeTransform, patch: NodeTransformPatch): VideoSceneNodeTransform => {
+	const clampScale = (v: unknown, fallback = 1) => {
+		const x = Number(v)
+		if (!Number.isFinite(x)) return fallback
+		return Math.max(0, Math.min(100, x))
+	}
 	const x = typeof patch.x === 'number' && Number.isFinite(patch.x) ? patch.x : prev.x
 	const y = typeof patch.y === 'number' && Number.isFinite(patch.y) ? patch.y : prev.y
+	const legacyScaleRaw = (patch as any).scale
+	const legacyScale = clampScale(legacyScaleRaw, (prev as any).scale ?? 1)
+	const sxRaw = (patch as any).scaleX
+	const syRaw = (patch as any).scaleY
+	const scaleX = typeof sxRaw === 'number' && Number.isFinite(sxRaw) ? clampScale(sxRaw, 1) : prev.scaleX ?? legacyScale ?? 1
+	const scaleY = typeof syRaw === 'number' && Number.isFinite(syRaw) ? clampScale(syRaw, 1) : prev.scaleY ?? legacyScale ?? 1
 	const pivotX = typeof (patch as any).pivotX === 'number' && Number.isFinite((patch as any).pivotX) ? Math.max(0, Math.min(1, (patch as any).pivotX)) : (prev as any).pivotX
 	const pivotY = typeof (patch as any).pivotY === 'number' && Number.isFinite((patch as any).pivotY) ? Math.max(0, Math.min(1, (patch as any).pivotY)) : (prev as any).pivotY
 	const width = typeof patch.width === 'number' && Number.isFinite(patch.width) ? Math.max(1, patch.width) : prev.width
@@ -162,13 +186,13 @@ const normalizeTransformPatch = (prev: VideoSceneNodeTransform, patch: NodeTrans
 	const rotation = typeof patch.rotation === 'number' && Number.isFinite(patch.rotation) ? patch.rotation : prev.rotation
 	const opacity =
 		typeof patch.opacity === 'number' && Number.isFinite(patch.opacity) ? Math.max(0, Math.min(1, patch.opacity)) : prev.opacity
-	return { x, y, pivotX: pivotX ?? 0.5, pivotY: pivotY ?? 0.5, width, height, rotation, opacity }
+	return { x, y, scaleX, scaleY, scale: legacyScale ?? 1, pivotX: pivotX ?? 0.5, pivotY: pivotY ?? 0.5, width, height, rotation, opacity }
 }
 
 export const updateUserNodeTransform = (layer: VideoSceneLayer, nodeId: string, patch: NodeTransformPatch): boolean => {
 	const node = findNode(layer.nodeTree, nodeId)
 	if (!node || node.category !== 'user') return false
-	const prev: VideoSceneNodeTransform = (node.transform as any) ?? { x: 0, y: 0, pivotX: 0.5, pivotY: 0.5, width: 10, height: 10, rotation: 0, opacity: 1 }
+	const prev: VideoSceneNodeTransform = (node.transform as any) ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 10, height: 10, rotation: 0, opacity: 1 }
 	node.transform = normalizeTransformPatch(prev, patch)
 	return true
 }
@@ -212,6 +236,8 @@ export const setUserNodeType = (layer: VideoSceneLayer, nodeId: string, type: Vi
 		transform: {
 			x: node.transform?.x ?? 0,
 			y: node.transform?.y ?? 0,
+			scaleX: (node.transform as any)?.scaleX ?? (node.transform as any)?.scale ?? 1,
+			scaleY: (node.transform as any)?.scaleY ?? (node.transform as any)?.scale ?? 1,
 			pivotX: (node.transform as any)?.pivotX ?? 0.5,
 			pivotY: (node.transform as any)?.pivotY ?? 0.5,
 			width: node.transform?.width ?? 200,
@@ -224,7 +250,11 @@ export const setUserNodeType = (layer: VideoSceneLayer, nodeId: string, type: Vi
 	const upgraded = upgradeNodeType(current, type as unknown as NodeType)
 	node.userType = upgraded.type as unknown as VideoSceneUserNodeType
 	node.props = upgraded.props ?? {}
-	const tr: any = (node.transform ??= { x: 0, y: 0, pivotX: 0.5, pivotY: 0.5, width: 10, height: 10, rotation: 0, opacity: 1 })
+	const tr: any = (node.transform ??= { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 10, height: 10, rotation: 0, opacity: 1 })
+	const legacyScale = (upgraded.transform as any).scale ?? tr.scale ?? 1
+	tr.scaleX = (upgraded.transform as any).scaleX ?? legacyScale
+	tr.scaleY = (upgraded.transform as any).scaleY ?? legacyScale
+	tr.scale = legacyScale
 	tr.width = upgraded.transform.width
 	tr.height = upgraded.transform.height
 	tr.rotation = upgraded.transform.rotation

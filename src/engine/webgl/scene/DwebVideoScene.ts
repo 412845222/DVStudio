@@ -170,10 +170,22 @@ export class DwebVideoScene implements IDwebGLScene {
 		const list: RenderNode[] = []
 		for (const layer of this.state.layers) {
 			for (const root of layer.nodeTree) {
-				this.walkBuildRenderOrder(layer.id, root, { x: 0, y: 0 }, list, null)
+				this.walkBuildRenderOrder(layer.id, root, { x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 }, list, null)
 			}
 		}
 		this.renderOrder = list as RenderNodeEx[]
+	}
+
+	private clampScale(v: unknown, fallback = 1): number {
+		const n = Number(v)
+		if (!Number.isFinite(n)) return fallback
+		return Math.max(0, Math.min(100, n))
+	}
+
+	private clampOpacity(v: unknown, fallback = 1): number {
+		const n = Number(v)
+		if (!Number.isFinite(n)) return fallback
+		return Math.max(0, Math.min(1, n))
 	}
 
 	private getRenderer(type: VideoSceneUserNodeType): NodeRenderer {
@@ -258,14 +270,30 @@ export class DwebVideoScene implements IDwebGLScene {
 	private walkBuildRenderOrder(
 		layerId: string,
 		node: VideoSceneTreeNode,
-		parentWorld: Vec2,
+		parentWorld: Vec2 & { scaleX: number; scaleY: number; opacity: number },
 		out: RenderNode[],
 		parentUserId: string | null
 	) {
 		const hasTransform = !!node.transform
+
+		const dx = hasTransform ? Number(node.transform?.x ?? 0) : 0
+		const dy = hasTransform ? Number(node.transform?.y ?? 0) : 0
+		const localScaleLegacy = hasTransform ? this.clampScale((node.transform as any)?.scale, 1) : 1
+		const localScaleX = hasTransform ? this.clampScale((node.transform as any)?.scaleX, localScaleLegacy) : 1
+		const localScaleY = hasTransform ? this.clampScale((node.transform as any)?.scaleY, localScaleLegacy) : 1
+		const localOpacity = hasTransform ? this.clampOpacity((node.transform as any)?.opacity, 1) : 1
+
 		const nodeWorld = hasTransform
-			? { x: parentWorld.x + (node.transform?.x ?? 0), y: parentWorld.y + (node.transform?.y ?? 0) }
+			?
+				{
+					x: parentWorld.x + dx * parentWorld.scaleX,
+					y: parentWorld.y + dy * parentWorld.scaleY,
+					scaleX: parentWorld.scaleX * localScaleX,
+					scaleY: parentWorld.scaleY * localScaleY,
+					opacity: this.clampOpacity(parentWorld.opacity * localOpacity, 1),
+				}
 			: parentWorld
+
 		const nextParentWorld = hasTransform ? nodeWorld : parentWorld
 		let nextParentUserId = parentUserId
 
@@ -284,8 +312,15 @@ export class DwebVideoScene implements IDwebGLScene {
 				x: node.transform.x ?? 0,
 				y: node.transform.y ?? 0,
 				rotation: (node.transform as any).rotation ?? 0,
-				opacity: (node.transform as any).opacity ?? 1,
+				opacity: this.clampOpacity((node.transform as any).opacity, 1),
+				scaleX: this.clampScale((node.transform as any).scaleX, this.clampScale((node.transform as any).scale, 1)),
+				scaleY: this.clampScale((node.transform as any).scaleY, this.clampScale((node.transform as any).scale, 1)),
 			}
+
+			const baseW = Math.max(1, Number(node.transform.width ?? 1))
+			const baseH = Math.max(1, Number(node.transform.height ?? 1))
+			const worldW = Math.max(1, baseW * nodeWorld.scaleX)
+			const worldH = Math.max(1, baseH * nodeWorld.scaleY)
 			const entry: RenderNodeEx = {
 				layerId,
 				id: node.id,
@@ -294,8 +329,12 @@ export class DwebVideoScene implements IDwebGLScene {
 					...node.transform,
 					x: nodeWorld.x,
 					y: nodeWorld.y,
+					width: worldW,
+					height: worldH,
 					rotation: (node.transform as any).rotation ?? 0,
-					opacity: (node.transform as any).opacity ?? 1,
+					opacity: nodeWorld.opacity,
+					scaleX: nodeWorld.scaleX,
+					scaleY: nodeWorld.scaleY,
 				},
 				props,
 				text: textContent,
@@ -391,6 +430,15 @@ export class DwebVideoScene implements IDwebGLScene {
 			if (skipped.has(n.id)) continue
 			const rotation = (n.transform as any).rotation ?? 0
 			const opacity = Math.max(0, Math.min(1, (n.transform as any).opacity ?? 1))
+			const sx0 = Number((n.transform as any)?.scaleX ?? 1)
+			const sy0 = Number((n.transform as any)?.scaleY ?? 1)
+			const sxNode = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
+			const syNode = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
+			if (opacity <= 1e-5 || sxNode <= 1e-5 || syNode <= 1e-5) {
+				skipped.add(n.id)
+				this.markDescendantsSkipped(n.id, skipped)
+				continue
+			}
 			const nodeFilters: any[] = Array.isArray((n.props as any)?.filters) ? ((n.props as any).filters as any[]) : []
 			const contentSize = this.getFilterContentSize(n as any, zoom)
 			const nodeW = contentSize.w
@@ -427,9 +475,14 @@ export class DwebVideoScene implements IDwebGLScene {
 					const ft = String(f?.type || '')
 					if (ft === 'blur' || ft === 'glow') {
 						const p = this.getBlurParams(f)
+						const sx0 = Number((n.transform as any)?.scaleX ?? 1)
+						const sy0 = Number((n.transform as any)?.scaleY ?? 1)
+						const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
+						const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
 						// blurX/blurY are UI pixels (Flash-like). Keep appearance stable in screen space.
-						const blurXpx = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor
-						const blurYpx = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor
+						// When the node is scaled, the filter should scale with it.
+						const blurXpx = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor * sx
+						const blurYpx = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor * sy
 						maxXpx = Math.max(maxXpx, blurXpx)
 						maxYpx = Math.max(maxYpx, blurYpx)
 
@@ -478,24 +531,53 @@ export class DwebVideoScene implements IDwebGLScene {
 					const entry = this.nodesById.get(n.id)
 					const t = (entry?.localTransform as any) ?? (n.transform as any)
 					const p = this.getLocalFilterRenderPivotPos(t, nodeW, nodeH, n.type)
-					this.renderNodeSelfIntoLocalTarget(canvas, target as LocalTargetSize, n.id, p.x, p.y, true)
+					const sx0 = Number((n.transform as any)?.scaleX ?? 1)
+					const sy0 = Number((n.transform as any)?.scaleY ?? 1)
+					const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
+					const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
+					this.renderNodeSelfIntoLocalTarget(canvas, target as LocalTargetSize, n.id, p.x, p.y, true, {
+						width: nodeW,
+						height: nodeH,
+						scaleX: sx,
+						scaleY: sy,
+					})
 				})
 				const c = this.getPivotCenter(n.transform as any)
-				this.drawFilteredTextureToWorld(
-					canvas,
-					c.cx,
-					c.cy,
-					nodeW + out.padX * 2,
-					nodeH + out.padY * 2,
-					out.tex,
-					opacity,
-					rotation,
-					out.uv
-				)
+				const roundedMask = this.getRoundedMaskForWorld(n)
+				if (roundedMask) {
+					canvas.drawTexturedRectWithRoundedMask(
+						c.cx,
+						c.cy,
+						nodeW + out.padX * 2,
+						nodeH + out.padY * 2,
+						out.tex,
+						opacity,
+						rotation,
+						roundedMask.cx,
+						roundedMask.cy,
+						roundedMask.width,
+						roundedMask.height,
+						roundedMask.radius,
+						out.uv ?? { u0: 0, v0: 1, u1: 1, v1: 0 }
+					)
+				} else {
+					this.drawFilteredTextureToWorld(
+						canvas,
+						c.cx,
+						c.cy,
+						nodeW + out.padX * 2,
+						nodeH + out.padY * 2,
+						out.tex,
+						opacity,
+						rotation,
+						out.uv
+					)
+				}
 				continue
 			}
 
-			this.getRenderer(n.type).renderWorld(canvas, n, { opacity, rotation })
+			const roundedMask = this.getRoundedMaskForWorld(n)
+			this.getRenderer(n.type).renderWorld(canvas, n, { opacity, rotation, roundedMask })
 		}
 
 		// --- selection overlay for base nodes ---
@@ -530,13 +612,16 @@ export class DwebVideoScene implements IDwebGLScene {
 		nodeId: string,
 		x: number,
 		y: number,
-		ignoreSelfOpacityRotation: boolean
+		ignoreSelfOpacityRotation: boolean,
+		overrideTransform?: Partial<Pick<VideoSceneNodeTransform, 'width' | 'height' | 'scaleX' | 'scaleY'>>
 	) {
 		const entry = this.nodesById.get(nodeId)
 		if (!entry) return
 
-		const localW = Math.max(1, Number(entry.localTransform.width ?? 1))
-		const localH = Math.max(1, Number(entry.localTransform.height ?? 1))
+		const localW0 = Number(entry.localTransform.width ?? 1)
+		const localH0 = Number(entry.localTransform.height ?? 1)
+		const localW = Math.max(1, Number(overrideTransform?.width ?? localW0) || 1)
+		const localH = Math.max(1, Number(overrideTransform?.height ?? localH0) || 1)
 		const nodeOpacity = Math.max(0, Math.min(1, Number((entry.localTransform as any).opacity ?? 1)))
 		const nodeRotation = Number((entry.localTransform as any).rotation ?? 0)
 
@@ -550,10 +635,16 @@ export class DwebVideoScene implements IDwebGLScene {
 				y,
 				width: localW,
 				height: localH,
+				scaleX: Number(overrideTransform?.scaleX ?? (entry.transform as any)?.scaleX ?? (entry.localTransform as any)?.scaleX ?? 1),
+				scaleY: Number(overrideTransform?.scaleY ?? (entry.transform as any)?.scaleY ?? (entry.localTransform as any)?.scaleY ?? 1),
 				rotation: visualRotation,
 				opacity: visualOpacity,
 			},
 		}
+
+		// NOTE: do not apply parent mask in the offscreen (filter) pass.
+		// Masking (rounded-rect parent clips image child) is applied at world draw time,
+		// including when the node has filters (see drawTexturedRectWithRoundedMask above).
 		this.getRenderer(entry.type).renderLocal(
 			canvas,
 			target,
@@ -639,8 +730,12 @@ export class DwebVideoScene implements IDwebGLScene {
 				const ft = String(f?.type || '')
 				if (ft === 'blur' || ft === 'glow') {
 					const p = this.getBlurParams(f)
-					const blurXpx = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor
-					const blurYpx = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor
+					const sx0 = Number((entry.transform as any)?.scaleX ?? 1)
+					const sy0 = Number((entry.transform as any)?.scaleY ?? 1)
+					const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
+					const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
+					const blurXpx = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor * sx
+					const blurYpx = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor * sy
 					maxXpx = Math.max(maxXpx, blurXpx)
 					maxYpx = Math.max(maxYpx, blurYpx)
 
@@ -730,7 +825,13 @@ export class DwebVideoScene implements IDwebGLScene {
 				opacity: visualOpacity,
 			},
 		}
-		this.getRenderer(entry.type).renderLocal(canvas, target, localNode, { opacity: visualOpacity, rotation: visualRotation } satisfies RenderContext)
+		const roundedMask = this.getRoundedMaskForLocal(entry, x, y)
+		this.getRenderer(entry.type).renderLocal(
+			canvas,
+			target,
+			localNode,
+			{ opacity: visualOpacity, rotation: visualRotation, roundedMask } satisfies RenderContext
+		)
 
 		// 绘制子节点：在当前 target 内按“本地平移”累加；子节点自身滤镜在本函数内递归处理。
 		if (entry.children?.length) {
@@ -742,6 +843,41 @@ export class DwebVideoScene implements IDwebGLScene {
 				this.renderSubtreeIntoLocalTargetImpl(canvas, target, childId, x + dx, y + dy, false)
 			}
 		}
+	}
+
+	private getRoundedMaskForWorld(node: RenderNodeEx): RenderContext['roundedMask'] | undefined {
+		if (node.type !== 'image' || !node.parentId) return undefined
+		const parent = this.nodesById.get(node.parentId)
+		if (!parent || parent.type !== 'rect') return undefined
+		const parentW = Math.max(1, Number(parent.transform.width ?? 1))
+		const parentH = Math.max(1, Number(parent.transform.height ?? 1))
+		const parentCenter = this.getPivotCenter(parent.transform as any)
+		const baseRadius = Math.max(0, Number((parent.props as any)?.cornerRadius ?? 0))
+		const sx = Number((parent.transform as any)?.scaleX ?? 1)
+		const sy = Number((parent.transform as any)?.scaleY ?? 1)
+		const rScale = Number.isFinite(sx) && Number.isFinite(sy) ? Math.max(0, Math.min(100, Math.min(sx, sy))) : 1
+		const radius = baseRadius * rScale
+		return { cx: parentCenter.cx, cy: parentCenter.cy, width: parentW, height: parentH, radius }
+	}
+
+	private getRoundedMaskForLocal(node: RenderNodeEx, localX: number, localY: number): RenderContext['roundedMask'] | undefined {
+		if (node.type !== 'image' || !node.parentId) return undefined
+		const parent = this.nodesById.get(node.parentId)
+		if (!parent || parent.type !== 'rect') return undefined
+		const parentW = Math.max(1, Number(parent.localTransform.width ?? 1))
+		const parentH = Math.max(1, Number(parent.localTransform.height ?? 1))
+		const parentPivotX = typeof (parent.localTransform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((parent.localTransform as any).pivotX))) : 0.5
+		const parentPivotY = typeof (parent.localTransform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((parent.localTransform as any).pivotY))) : 0.5
+		const childLocalX = Number(node.localTransform.x ?? 0)
+		const childLocalY = Number(node.localTransform.y ?? 0)
+		const deltaX = localX - childLocalX
+		const deltaY = localY - childLocalY
+		const parentBaseX = Number(parent.localTransform.x ?? 0)
+		const parentBaseY = Number(parent.localTransform.y ?? 0)
+		const parentCx = parentBaseX + deltaX + (0.5 - parentPivotX) * parentW
+		const parentCy = parentBaseY + deltaY + (0.5 - parentPivotY) * parentH
+		const radius = Math.max(0, Number((parent.props as any)?.cornerRadius ?? 0))
+		return { cx: parentCx, cy: parentCy, width: parentW, height: parentH, radius }
 	}
 
 	private drawStageBackgroundImage(canvas: DwebCanvasGL, opacity: number) {

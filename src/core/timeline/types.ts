@@ -2,7 +2,20 @@ import type { VideoSceneLayer, VideoSceneNodeProps, VideoSceneNodeTransform } fr
 
 export type TimelineLayer = { id: string; name: string }
 
-export type TimelineLayerKind = 'normal' | 'subtitle' | 'progress'
+export type TimelineLayerKind = 'normal' | 'subtitle' | 'progress' | 'audio'
+
+export type AudioTrack = {
+	/** Object URL for <audio> element playback (created from imported File). */
+	objectUrl: string
+	/** Original file name (for display/debug). */
+	fileName: string
+	/** Duration (seconds). */
+	durationSec: number
+	/** Waveform sampling density (points per second). */
+	pointsPerSecond: number
+	/** Normalized peak amplitudes in [0,1]. */
+	peaks: number[]
+}
 
 export type SubtitleCue = { startMs: number; endMs: number; text: string }
 
@@ -75,6 +88,8 @@ export type TimelineState = {
 	frameCount: number
 	currentFrame: number
 	frameWidth: number
+	/** UI-only focus marker: which area user last interacted with. */
+	uiFocus: 'timeline' | 'stage' | null
 	/** UI: 请求时间轴视图跳转并居中到指定帧（由 TimeLine.vue 消费） */
 	uiJumpToFrame: number | null
 	uiJumpVersion: number
@@ -111,4 +126,8 @@ export type TimelineState = {
 
 	progressBarByLayerId: Record<string, ProgressBarSpec>
 	progressVersion: number
+
+	/** Editor-only audio tracks for timeline scrubbing (not part of export). */
+	audioByLayerId: Record<string, AudioTrack>
+	audioVersion: number
 }

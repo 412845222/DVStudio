@@ -5,6 +5,11 @@ export type NodeType = 'base' | 'rect' | 'text' | 'image' | 'line'
 export type NodeTransform = {
 	x: number
 	y: number
+	/** Node scale in local space, clamped to [0..1]. */
+	scaleX: number
+	scaleY: number
+	/** @deprecated legacy uniform scale */
+	scale?: number
 	pivotX: number
 	pivotY: number
 	width: number

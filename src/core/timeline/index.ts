@@ -4,6 +4,7 @@ export type {
 	TimelineFrameSpan,
 	TimelineLayer,
 	TimelineLayerKind,
+	AudioTrack,
 	ProgressBarSpec,
 	ProgressBarStyle,
 	ProgressBarSegment,

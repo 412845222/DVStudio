@@ -71,6 +71,9 @@ export function validateComponentTemplate(v: unknown): ValidateResult<ComponentT
 					}
 					allow('x')
 					allow('y')
+					allow('scaleX')
+					allow('scaleY')
+					allow('scale')
 					allow('width')
 					allow('height')
 					allow('rotation')

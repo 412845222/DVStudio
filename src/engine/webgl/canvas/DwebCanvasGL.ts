@@ -9,7 +9,7 @@ import {
 	type ViewportState,
 } from '../camera'
 import { previewCompileAndLinkProgram, compileShader, linkProgram } from '../pipeline'
-import { fsBasicColor, fsBasicTexture, fsRoundedRect, vsBasic2d } from '../material'
+import { fsBasicColor, fsBasicTexture, fsRoundedRect, fsRoundedMaskTexture, vsBasic2d } from '../material'
 import { DwebImagePool, type DwebImageWrapMode } from '../resources/DwebImagePool'
 import { createSolidTexture, setTextureWrap as setTextureWrapImpl, updateTextureFromCanvas as updateTextureFromCanvasImpl } from '../texture'
 import { CanvasPostProcess } from './postprocess/pipeline'
@@ -56,6 +56,8 @@ type LocalProgramInfo = {
 	uBorderWidth?: WebGLUniformLocation
 	uFillColor?: WebGLUniformLocation
 	uBorderColor?: WebGLUniformLocation
+	uImageSize?: WebGLUniformLocation
+	uOffset?: WebGLUniformLocation
 }
 
 type ProgramInfo = {
@@ -84,6 +86,21 @@ type RoundedRectProgramInfo = {
 	uBorderColor: WebGLUniformLocation
 }
 
+type RoundedMaskTextureProgramInfo = {
+	program: WebGLProgram
+	aPos: number
+	aUv: number
+	uResolution: WebGLUniformLocation
+	uPan: WebGLUniformLocation
+	uZoom: WebGLUniformLocation
+	uMaskSize: WebGLUniformLocation
+	uImageSize: WebGLUniformLocation
+	uOffset: WebGLUniformLocation
+	uRadius: WebGLUniformLocation
+	uSampler: WebGLUniformLocation
+	uAlpha: WebGLUniformLocation
+}
+
 export class DwebCanvasGL {
 	private canvas: HTMLCanvasElement | OffscreenCanvas
 	private gl: WebGL2RenderingContext
@@ -102,6 +119,7 @@ export class DwebCanvasGL {
 	private colorProg: ProgramInfo
 	private texProg: ProgramInfo
 	private roundedRectProg: RoundedRectProgramInfo
+	private roundedMaskTexProg: RoundedMaskTextureProgramInfo
 	private whiteTex: WebGLTexture
 	private imagePool = new DwebImagePool()
 	private postprocess = new CanvasPostProcess()
@@ -112,6 +130,7 @@ export class DwebCanvasGL {
 	private localProgColor: LocalProgramInfo
 	private localProgTex: LocalProgramInfo
 	private localProgRoundedRect: LocalProgramInfo
+	private localProgRoundedMaskTex: LocalProgramInfo
 
 	constructor(canvas: HTMLCanvasElement | OffscreenCanvas) {
 		this.canvas = canvas
@@ -124,9 +143,11 @@ export class DwebCanvasGL {
 		this.colorProg = this.createProgram(vsBasic2d, fsBasicColor, true)
 		this.texProg = this.createProgram(vsBasic2d, fsBasicTexture, false)
 		this.roundedRectProg = this.createRoundedRectProgram(vsBasic2d, fsRoundedRect)
+		this.roundedMaskTexProg = this.createRoundedMaskTextureProgram(vsBasic2d, fsRoundedMaskTexture)
 		this.localProgColor = this.createLocalProgram(this.vsLocal2d(), this.fsLocalColor(), { kind: 'color' })
 		this.localProgTex = this.createLocalProgram(this.vsLocal2d(), this.fsLocalTex(), { kind: 'tex' })
 		this.localProgRoundedRect = this.createLocalProgram(this.vsLocal2d(), fsRoundedRect, { kind: 'roundedRect' })
+		this.localProgRoundedMaskTex = this.createLocalProgram(this.vsLocal2d(), fsRoundedMaskTexture, { kind: 'roundedMaskTex' })
 
 		this.whiteTex = this.createSolidTexture({ r: 1, g: 1, b: 1, a: 1 })
 		gl.enable(gl.BLEND)
@@ -153,9 +174,11 @@ export class DwebCanvasGL {
 			this.gl.deleteProgram(this.colorProg.program)
 			this.gl.deleteProgram(this.texProg.program)
 			this.gl.deleteProgram(this.roundedRectProg.program)
+			this.gl.deleteProgram(this.roundedMaskTexProg.program)
 			this.gl.deleteProgram(this.localProgColor.program)
 			this.gl.deleteProgram(this.localProgTex.program)
 			this.gl.deleteProgram(this.localProgRoundedRect.program)
+			this.gl.deleteProgram(this.localProgRoundedMaskTex.program)
 		} catch {
 			// ignore
 		}
@@ -207,9 +230,11 @@ export class DwebCanvasGL {
 	 */
 	getFilterScale() {
 		const base = this.viewport.zoom * this.dpr
+		// Absolute cap: beyond this, extra offscreen resolution rarely improves perceived quality,
+		// but can cause large/rapid reallocations while zooming.
+		let cap = 3.0 * this.dpr
 		// Under heavy filter load (e.g. many glow/blur lines), clamp scale to prevent
 		// runaway offscreen allocations and GPU time. This is a controlled quality downgrade.
-		let cap = Number.POSITIVE_INFINITY
 		if (this.filterNodePressure >= 80) cap = 1.25 * this.dpr
 		else if (this.filterNodePressure >= 40) cap = 1.75 * this.dpr
 		return Math.max(1e-3, Math.min(base, cap))
@@ -564,6 +589,8 @@ export class DwebCanvasGL {
 		gl.clearColor(0, 0, 0, 0)
 		gl.clear(gl.COLOR_BUFFER_BIT)
 		this.scene?.render(this)
+		// Throttled perf summary for diagnosing zoom/filter stability.
+		this.postprocess.maybeLogPerf(gl, this)
 	}
 
 	// ----- Drawing helpers -----
@@ -701,6 +728,54 @@ export class DwebCanvasGL {
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
+	/**
+	 * Draw a textured rectangle with rounded mask clipping.
+	 * @param x, y, w, h - position and size of the image rectangle in world coordinates
+	 * @param texture - WebGL texture to draw
+	 * @param opacity - alpha multiplier
+	 * @param rotation - rotation in radians
+	 * @param maskCx, maskCy - center position of the mask (parent rect center)
+	 * @param maskW, maskH - size of the rounded mask (parent rect size)
+	 * @param maskRadius - corner radius of the mask
+	 */
+	drawTexturedRectWithRoundedMask(
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		texture: WebGLTexture,
+		opacity: number,
+		rotation: number,
+		maskCx: number,
+		maskCy: number,
+		maskW: number,
+		maskH: number,
+		maskRadius: number,
+		uv?: UvRect
+	) {
+		const gl = this.gl
+		this.useRoundedMaskTextureProgram(this.roundedMaskTexProg)
+		this.setCommonUniforms(this.roundedMaskTexProg)
+		gl.activeTexture(gl.TEXTURE0)
+		gl.bindTexture(gl.TEXTURE_2D, texture)
+		gl.uniform1i(this.roundedMaskTexProg.uSampler, 0)
+		gl.uniform1f(this.roundedMaskTexProg.uAlpha, opacity)
+		gl.uniform2f(this.roundedMaskTexProg.uMaskSize, Math.max(1, maskW), Math.max(1, maskH))
+		gl.uniform2f(this.roundedMaskTexProg.uImageSize, Math.max(1, w), Math.max(1, h))
+		// Calculate offset: image center relative to mask center
+		const offsetX = x - maskCx
+		const offsetY = y - maskCy
+		gl.uniform2f(this.roundedMaskTexProg.uOffset, offsetX, offsetY)
+		gl.uniform1f(this.roundedMaskTexProg.uRadius, Math.max(0, maskRadius))
+		this.uploadQuadVerts(x, y, w, h, rotation, uv)
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo)
+		gl.enableVertexAttribArray(this.roundedMaskTexProg.aPos)
+		gl.vertexAttribPointer(this.roundedMaskTexProg.aPos, 2, gl.FLOAT, false, 16, 0)
+		gl.enableVertexAttribArray(this.roundedMaskTexProg.aUv)
+		gl.vertexAttribPointer(this.roundedMaskTexProg.aUv, 2, gl.FLOAT, false, 16, 8)
+		gl.drawArrays(gl.TRIANGLES, 0, 6)
+	}
+
 	// ----- Local drawing helpers (for offscreen targets) -----
 
 	drawLocalRect(target: { w: number; h: number; scale?: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
@@ -772,6 +847,44 @@ export class DwebCanvasGL {
 		gl.uniform4f(this.localProgRoundedRect.uFillColor!, fillColor.r, fillColor.g, fillColor.b, fillColor.a)
 		gl.uniform4f(this.localProgRoundedRect.uBorderColor!, borderColor.r, borderColor.g, borderColor.b, borderColor.a)
 		this.uploadLocalQuadVerts(this.localProgRoundedRect, x, y, w, h, rotation, undefined, target.scale)
+		gl.drawArrays(gl.TRIANGLES, 0, 6)
+	}
+
+	/**
+	 * Draw a textured rectangle with rounded mask clipping in local space (for offscreen targets).
+	 */
+	drawLocalTexturedRectWithRoundedMask(
+		target: { w: number; h: number; scale?: number },
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		texture: WebGLTexture,
+		opacity: number,
+		rotation: number,
+		maskCx: number,
+		maskCy: number,
+		maskW: number,
+		maskH: number,
+		maskRadius: number,
+		uv?: UvRect
+	) {
+		const scale = Math.max(1e-3, target.scale ?? 1)
+		const gl = this.gl
+		gl.useProgram(this.localProgRoundedMaskTex.program)
+		gl.uniform2f(this.localProgRoundedMaskTex.uResolution!, target.w, target.h)
+		gl.activeTexture(gl.TEXTURE0)
+		gl.bindTexture(gl.TEXTURE_2D, texture)
+		gl.uniform1i(this.localProgRoundedMaskTex.uSampler!, 0)
+		gl.uniform1f(this.localProgRoundedMaskTex.uAlpha!, opacity)
+		gl.uniform2f(this.localProgRoundedMaskTex.uSize!, Math.max(1, maskW * scale), Math.max(1, maskH * scale))
+		gl.uniform2f(this.localProgRoundedMaskTex.uImageSize!, Math.max(1, w * scale), Math.max(1, h * scale))
+		// Calculate offset in local space
+		const offsetX = x - maskCx
+		const offsetY = y - maskCy
+		gl.uniform2f(this.localProgRoundedMaskTex.uOffset!, offsetX * scale, offsetY * scale)
+		gl.uniform1f(this.localProgRoundedMaskTex.uRadius!, Math.max(0, maskRadius * scale))
+		this.uploadLocalQuadVerts(this.localProgRoundedMaskTex, x, y, w, h, rotation, uv, target.scale)
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
@@ -890,6 +1003,10 @@ export class DwebCanvasGL {
 		this.gl.useProgram(p.program)
 	}
 
+	private useRoundedMaskTextureProgram(p: RoundedMaskTextureProgramInfo) {
+		this.gl.useProgram(p.program)
+	}
+
 	private createProgram(vsSrc: string, fsSrc: string, withColor: boolean): ProgramInfo {
 		const gl = this.gl
 		const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc)
@@ -952,7 +1069,7 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 	private createLocalProgram(
 		vsSrc: string,
 		fsSrc: string,
-		opt: { kind: 'color' | 'tex' | 'roundedRect' }
+		opt: { kind: 'color' | 'tex' | 'roundedRect' | 'roundedMaskTex' }
 	): LocalProgramInfo {
 		const gl = this.gl
 		const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc)
@@ -973,12 +1090,14 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		const uColor = opt.kind === 'color' ? gl.getUniformLocation(program, 'u_color')! : undefined
 		const uSampler = opt.kind !== 'color' ? gl.getUniformLocation(program, 'u_sampler')! : undefined
 		const uAlpha = opt.kind !== 'color' ? gl.getUniformLocation(program, 'u_alpha')! : undefined
-		const uSize = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_size')! : undefined
-		const uRadius = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_radius')! : undefined
+		const uSize = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_size')! : (opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_maskSize')! : undefined)
+		const uRadius = opt.kind === 'roundedRect' || opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_radius')! : undefined
+		const uImageSize = opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_imageSize')! : undefined
+		const uOffset = opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_offset')! : undefined
 		const uBorderWidth = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_borderWidth')! : undefined
 		const uFillColor = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_fillColor')! : undefined
 		const uBorderColor = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_borderColor')! : undefined
-		return { program, aPos, aUv, uResolution, uColor, uSampler, uAlpha, uSize, uRadius, uBorderWidth, uFillColor, uBorderColor }
+		return { program, aPos, aUv, uResolution, uColor, uSampler, uAlpha, uSize, uRadius, uBorderWidth, uFillColor, uBorderColor, uImageSize, uOffset }
 	}
 
 	private drawLocalQuad(target: { w: number; h: number; scale?: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
@@ -1073,6 +1192,35 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		const uFillColor = gl.getUniformLocation(program, 'u_fillColor')!
 		const uBorderColor = gl.getUniformLocation(program, 'u_borderColor')!
 		return { program, aPos, aUv, uResolution, uPan, uZoom, uSize, uRadius, uBorderWidth, uFillColor, uBorderColor }
+	}
+
+	private createRoundedMaskTextureProgram(vsSrc: string, fsSrc: string): RoundedMaskTextureProgramInfo {
+		const gl = this.gl
+		const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc)
+		const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc)
+		let program: WebGLProgram
+		try {
+			program = linkProgram(gl, vs, fs)
+		} catch (e) {
+			gl.deleteShader(vs)
+			gl.deleteShader(fs)
+			throw e
+		}
+		gl.deleteShader(vs)
+		gl.deleteShader(fs)
+
+		const aPos = gl.getAttribLocation(program, 'a_pos')
+		const aUv = gl.getAttribLocation(program, 'a_uv')
+		const uResolution = gl.getUniformLocation(program, 'u_resolution')!
+		const uPan = gl.getUniformLocation(program, 'u_pan')!
+		const uZoom = gl.getUniformLocation(program, 'u_zoom')!
+		const uMaskSize = gl.getUniformLocation(program, 'u_maskSize')!
+		const uImageSize = gl.getUniformLocation(program, 'u_imageSize')!
+		const uOffset = gl.getUniformLocation(program, 'u_offset')!
+		const uRadius = gl.getUniformLocation(program, 'u_radius')!
+		const uSampler = gl.getUniformLocation(program, 'u_sampler')!
+		const uAlpha = gl.getUniformLocation(program, 'u_alpha')!
+		return { program, aPos, aUv, uResolution, uPan, uZoom, uMaskSize, uImageSize, uOffset, uRadius, uSampler, uAlpha }
 	}
 }
 

@@ -1,6 +1,6 @@
 <template>
 	<div ref="rootEl" class="videostudio-page bg-vscode">
-		<div class="videostudio-stage" :style="{ height: `${stageHeightPx}px` }">
+		<div class="videostudio-stage" :style="{ height: `${stageHeightPx}px` }" @pointerdown.capture="onStagePointerDown">
 			<VideoScene />
 		</div>
 		<div
@@ -11,7 +11,7 @@
 			aria-label="调整舞台与时间轴高度"
 			@pointerdown.stop.prevent="onSplitterPointerDown"
 		/>
-		<div class="videostudio-timeline" :style="{ height: `${timelineHeight}px` }">
+		<div class="videostudio-timeline" :style="{ height: `${timelineHeight}px` }" @pointerdown.capture="onTimelinePointerDown">
 			<TimeLine />
 		</div>
 	</div>
@@ -22,6 +22,7 @@ import VideoScene from '../ui/VideoScene/VideoScene.vue'
 import TimeLine from '../ui/TimeLine/TimeLine.vue'
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { TimelineStore } from '../store/timeline'
 
 const rootEl = ref<HTMLElement | null>(null)
 
@@ -31,6 +32,14 @@ const MIN_TIMELINE = 220
 
 const timelineHeight = ref(320)
 const isDragging = ref(false)
+
+const onStagePointerDown = () => {
+	TimelineStore.dispatch('setUiFocus', { focus: 'stage' })
+}
+
+const onTimelinePointerDown = () => {
+	TimelineStore.dispatch('setUiFocus', { focus: 'timeline' })
+}
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 

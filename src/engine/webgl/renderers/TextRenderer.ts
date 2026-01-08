@@ -63,13 +63,18 @@ export class TextRenderer extends NodeRenderer {
 	}
 
 	private getTextTexture(canvas: DwebCanvasGL, node: RenderNode): WebGLTexture {
+		const localT: any = (node as any)?.localTransform ?? (node as any)?.transform ?? {}
+		const localW = Math.max(1, Math.floor(Number(localT.width ?? node.transform.width ?? 1)))
+		const localH = Math.max(1, Math.floor(Number(localT.height ?? node.transform.height ?? 1)))
+
 		const fontColor = node.props?.fontColor ?? '#ffffff'
 		const fontStyle = node.props?.fontStyle ?? 'normal'
 		const textAlignRaw = String((node.props as any)?.textAlign ?? 'center')
 		const textAlign: CanvasTextAlign =
 			textAlignRaw === 'left' || textAlignRaw === 'right' || textAlignRaw === 'center' ? (textAlignRaw as any) : 'center'
 		// NOTE: key must include layout-affecting props (e.g. textAlign), otherwise cache will keep old layout.
-		const key = `text:${node.id}:${node.text ?? ''}:${node.fontSize ?? 24}:${fontColor}:${fontStyle}:${textAlign}:${node.transform.width}:${node.transform.height}`
+		// IMPORTANT: texture is generated in *unscaled local* space; do NOT include world width/height in the cache key.
+		const key = `text:${node.id}:${node.text ?? ''}:${node.fontSize ?? 24}:${fontColor}:${fontStyle}:${textAlign}:${localW}:${localH}`
 		let tex = this.textures.get(key)
 		if (tex) return tex
 
@@ -83,8 +88,8 @@ export class TextRenderer extends NodeRenderer {
 		}
 
 		tex = canvas.createTexture()
-		const w = Math.max(1, Math.floor(node.transform.width))
-		const h = Math.max(1, Math.floor(node.transform.height))
+		const w = localW
+		const h = localH
 		this.textCanvas.width = w
 		this.textCanvas.height = h
 

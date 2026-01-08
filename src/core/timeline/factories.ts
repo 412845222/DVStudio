@@ -5,6 +5,7 @@ export const createDefaultTimelineState = (): TimelineState => ({
 	frameCount: 120,
 	currentFrame: 0,
 	frameWidth: 14,
+	uiFocus: null,
 	uiJumpToFrame: null,
 	uiJumpVersion: 0,
 	layers: [{ id: 'layer-1', name: '图层1' }],
@@ -36,4 +37,7 @@ export const createDefaultTimelineState = (): TimelineState => ({
 
 	progressBarByLayerId: {},
 	progressVersion: 0,
+
+	audioByLayerId: {},
+	audioVersion: 0,
 })

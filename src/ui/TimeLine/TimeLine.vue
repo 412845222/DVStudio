@@ -217,8 +217,18 @@
               </div>
               <div class="tl-right">
                 <div class="tl-viewport tl-frames-viewport" @wheel.prevent="onZoomWheel">
+                  <TimeLineAudioWaveRow
+                    v-if="isAudioLayer(layer.id)"
+                    :layer-id="layer.id"
+                    :frame-count="frameCount"
+                    :frame-width="frameWidth"
+                    :scroll-left="scrollLeft"
+                    :fps="fps"
+                    :audio-track="audioTrackFor(layer.id)"
+                    :audio-version="audioVersion"
+                  />
                   <TimeLineProgressCanvasRow
-                    v-if="isProgressLayer(layer.id)"
+                    v-else-if="isProgressLayer(layer.id)"
                     :layer-id="layer.id"
                     :frame-count="frameCount"
                     :frame-width="frameWidth"
@@ -342,6 +352,7 @@ import TimeLineEasingCurveEditor from './components/TimeLineEasingCurveEditor.vu
 import TimeLineFrameCanvasRow from './components/TimeLineFrameCanvasRow.vue'
 import TimeLineTickCanvas from './components/TimeLineTickCanvas.vue'
 import TimeLineProgressCanvasRow from './progress/TimeLineProgressCanvasRow.vue'
+import TimeLineAudioWaveRow from './audio/TimeLineAudioWaveRow.vue'
 import ProgressBarEditDialog from '../VideoScene/dialogs/ProgressBarEditDialog.vue'
 
 const store = useStore<TimelineState>(TimelineKey)
@@ -352,6 +363,7 @@ const layers = computed(() => store.state.layers)
 const frameCount = computed(() => store.state.frameCount)
 const currentFrame = computed(() => store.state.currentFrame)
 const frameWidth = computed(() => store.state.frameWidth)
+const fps = computed(() => store.state.fps)
 const selectedLayerIds = computed(() => store.state.selectedLayerIds)
 const selectedSpansByLayer = computed(() => store.state.selectedSpansByLayer)
 const selectionVersion = computed(() => store.state.selectionVersion)
@@ -364,6 +376,11 @@ const progressVersion = computed(() => (store.state as any).progressVersion ?? 0
 const isSubtitleLayer = (layerId: string) => (store.state.layerKindById?.[layerId] ?? 'normal') === 'subtitle'
 
 const isProgressLayer = (layerId: string) => (store.state.layerKindById?.[layerId] ?? 'normal') === 'progress'
+
+const isAudioLayer = (layerId: string) => (store.state.layerKindById?.[layerId] ?? 'normal') === 'audio'
+
+const audioVersion = computed(() => (store.state as any).audioVersion ?? 0)
+const audioTrackFor = (layerId: string) => ((store.state as any).audioByLayerId?.[layerId] ?? null)
 
 const progressSegmentsFor = (layerId: string) => {
 	const spec = (store.state as any).progressBarByLayerId?.[layerId]
@@ -531,13 +548,36 @@ const addLayer = () => {
 
 const removeSelectedLayers = () => {
 	const ids = [...store.state.selectedLayerIds]
+	const audioUrls: string[] = []
+	for (const id of ids) {
+		if (!isAudioLayer(id)) continue
+		const url = (store.state as any).audioByLayerId?.[id]?.objectUrl
+		if (typeof url === 'string' && url.trim()) audioUrls.push(url)
+	}
 	store.dispatch('removeSelectedLayers')
-	for (const id of ids) VideoSceneStore.dispatch('removeLayer', { layerId: id })
+	for (const url of audioUrls) {
+		try {
+			URL.revokeObjectURL(url)
+		} catch {
+			// ignore
+		}
+	}
+	for (const id of ids) {
+		if (isAudioLayer(id)) continue
+		VideoSceneStore.dispatch('removeLayer', { layerId: id })
+	}
 }
 
-const removeLayer = (layerId: string) => {
-	store.dispatch('removeLayer', { layerId })
-	VideoSceneStore.dispatch('removeLayer', { layerId })
+const removeLayer = async (layerId: string) => {
+	const url = await store.dispatch('removeLayer', { layerId })
+	if (typeof url === 'string' && url.trim()) {
+		try {
+			URL.revokeObjectURL(url)
+		} catch {
+			// ignore
+		}
+	}
+	if (!isAudioLayer(layerId)) VideoSceneStore.dispatch('removeLayer', { layerId })
 }
 
 const openSubtitlePanel = (layerId: string) => {
@@ -566,9 +606,19 @@ const setCurrentFrame = (frameIndex: number) => {
 	store.dispatch('setCurrentFrame', { frameIndex: next })
 }
 
-const onPlay = () => ticker?.play()
-const onPause = () => ticker?.pause()
-const onStop = () => ticker?.stop()
+const onPlay = () => {
+	// 尽量在用户手势内触发音频播放，减少 autoplay 限制的概率
+	void startTimelineAudio()
+	ticker?.play()
+}
+const onPause = () => {
+	ticker?.pause()
+	pauseTimelineAudio()
+}
+const onStop = () => {
+	ticker?.stop()
+	pauseTimelineAudio()
+}
 const toggleLoop = () => {
 	loopEnabled.value = !loopEnabled.value
 	ticker?.setLoop(loopEnabled.value)
@@ -580,19 +630,18 @@ const ensurePlayheadVisibleWhilePlaying = (fi: number) => {
 	if (!el) return
 	const vw = Math.max(0, Math.floor(el.clientWidth))
 	if (vw <= 0) return
-	const fw = Math.max(1, frameWidth.value)
-	const worldX = Math.round(fi * fw)
+	// 允许缩到 <1px；这里必须使用真实 frameWidth，否则会把 scrollLeft clamp 到 max 导致“瞬移到最右”。
+	const fw = Math.max(0.0001, Number(frameWidth.value) || 0)
+	const worldX = fi * fw
 	// playheadX = worldX - scrollLeft
 	const x = worldX - scrollLeft.value
-	// 超出右侧：把 playhead 拉回可视区第一帧（x=0）
+	// 超出右侧：最小滚动让指针落在可视区右侧边缘附近
 	if (x > vw - fw) {
-		commitScrollLeft(worldX)
+		commitScrollLeft(worldX - (vw - fw))
 		return
 	}
-	// 超出左侧（例如用户拖拽/跳帧后）：也拉回到第一帧
-	if (x < 0) {
-		commitScrollLeft(worldX)
-	}
+	// 超出左侧：最小滚动让指针落在可视区左侧边缘
+	if (x < 0) commitScrollLeft(worldX)
 }
 
 const isActiveFrame = (frameIndex: number) => currentFrame.value === frameIndex
@@ -601,7 +650,7 @@ const isLayerSelected = (layerId: string) => selectedLayerIds.value.includes(lay
 
 const selectLayer = (layerId: string) => {
 	store.dispatch('selectLayer', { layerId })
-	VideoSceneStore.dispatch('setActiveLayer', { layerId })
+	if (!isAudioLayer(layerId)) VideoSceneStore.dispatch('setActiveLayer', { layerId })
 }
 
 // 时间轴选中变化 -> 同步舞台当前图层
@@ -609,6 +658,7 @@ watch(
 	() => store.state.selectedLayerIds[0] ?? null,
 	(layerId) => {
 		if (!layerId) return
+		if (isAudioLayer(layerId)) return
 		if (VideoSceneStore.state.activeLayerId === layerId) return
 		VideoSceneStore.dispatch('setActiveLayer', { layerId })
 	},
@@ -805,8 +855,27 @@ const menuVisible = computed(() => menu.value != null)
 const menuX = computed(() => menu.value?.x ?? 0)
 const menuY = computed(() => menu.value?.y ?? 0)
 
-const menuCanCopy = computed(() => menu.value != null)
-const menuCanPaste = computed(() => timelineData.canPaste())
+// Clipboard in VuexTimelineDataManager is not reactive; bump this to refresh menu enablement.
+const clipboardVersion = ref(0)
+
+const menuCanCopy = computed(() => {
+	if (!menu.value) return false
+	// Only support copying a SINGLE keyframe cell for now.
+	if (!timelineData.isKeyframe(menu.value.layerId, menu.value.frameIndex)) return false
+	const entries = Object.entries(store.state.selectedSpansByLayer).filter(([, spans]) => spans && spans.length)
+	if (entries.length !== 1) return false
+	const layerId = entries[0][0]
+	const spans = entries[0][1]
+	if (layerId !== menu.value.layerId) return false
+	if (!spans || spans.length !== 1) return false
+	const s = spans[0]
+	if (typeof s !== 'number') return false
+	return Math.floor(s) === Math.floor(menu.value.frameIndex)
+})
+const menuCanPaste = computed(() => {
+	void clipboardVersion.value
+	return timelineData.canPaste()
+})
 const menuSelectedSpansByLayer = computed<Record<string, TimelineFrameSpan[]>>(() => {
 	const out: Record<string, TimelineFrameSpan[]> = {}
 	for (const [layerId, spans] of Object.entries(store.state.selectedSpansByLayer)) {
@@ -1034,6 +1103,7 @@ const onMenuRemoveKeyframe = () => {
 const onMenuCopy = () => {
 	if (!menu.value) return
 	timelineData.copyFrame(menu.value.layerId, menu.value.frameIndex)
+	clipboardVersion.value++
 	closeMenu()
 }
 
@@ -1064,6 +1134,7 @@ const onMenuPaste = () => {
 		if (truncated) break
 	}
 	for (const t of targets) timelineData.pasteFrame(t.layerId, t.frameIndex)
+	clipboardVersion.value++
 	closeMenu()
 }
 
@@ -1218,6 +1289,96 @@ const onZoomWheel = (ev: WheelEvent) => {
 }
 
 // 指针线拖动（手柄在第一行）
+const uiFocus = computed(() => (store.state as any).uiFocus ?? null)
+
+const activeAudioLayerId = computed(() => {
+	const sel = store.state.selectedLayerIds?.[0]
+	if (sel && isAudioLayer(sel)) return sel
+	for (const l of store.state.layers) {
+		if (isAudioLayer(l.id)) return l.id
+	}
+	return null
+})
+
+const activeAudioTrack = computed(() => {
+	const id = activeAudioLayerId.value
+	if (!id) return null
+	return (store.state as any).audioByLayerId?.[id] ?? null
+})
+
+const audioEl = ref<HTMLAudioElement | null>(null)
+
+const syncAudioToFrame = (fi: number, force = false) => {
+	const el = audioEl.value
+	const track = activeAudioTrack.value as any
+	if (!el || !track) return
+	const f = Math.max(1, Math.floor(Number(fps.value) || 60))
+	const dur = Math.max(0, Number(track.durationSec) || 0)
+	if (!(dur > 0)) return
+	const t = Math.max(0, fi) / f
+	const next = Math.max(0, Math.min(dur, t))
+	const threshold = force ? 0 : 0.06
+	if (Math.abs((el.currentTime || 0) - next) > threshold) {
+		try {
+			el.currentTime = next
+		} catch {
+			// ignore
+		}
+	}
+}
+
+const startTimelineAudio = async () => {
+	if (!activeAudioTrack.value) return
+	const el = audioEl.value
+	if (!el) return
+	syncAudioToFrame(currentFrame.value, true)
+	try {
+		await el.play()
+	} catch {
+		// ignore autoplay restrictions
+	}
+}
+
+const pauseTimelineAudio = () => {
+	const el = audioEl.value
+	if (!el) return
+	try {
+		el.pause()
+	} catch {
+		// ignore
+	}
+}
+
+watch(
+	() => activeAudioTrack.value?.objectUrl ?? null,
+	(url) => {
+		const prev = audioEl.value
+		if (prev) {
+			try {
+				prev.pause()
+			} catch {
+				// ignore
+			}
+		}
+		if (typeof url !== 'string' || !url.trim()) {
+			audioEl.value = null
+			return
+		}
+		const el = new Audio(url)
+		el.preload = 'auto'
+		audioEl.value = el
+	},
+	{ immediate: true }
+)
+
+watch(
+	() => activeAudioTrack.value?.objectUrl ?? null,
+	() => {
+		// 资源切换时，若正在播放则尝试立即同步一次
+		if (isPlaying.value) void startTimelineAudio()
+	}
+)
+
 let playheadDragging = false
 
 const onPlayheadPointerDown = (ev: PointerEvent) => {
@@ -1418,6 +1579,18 @@ const onGlobalPointerDown = (e: PointerEvent) => {
 
 const onGlobalKeydown = (e: KeyboardEvent) => {
 	if (e.key === 'Escape') closeMenu()
+
+	const target = e.target as any
+	const isTyping =
+		target instanceof HTMLInputElement ||
+		target instanceof HTMLTextAreaElement ||
+		(target instanceof HTMLElement && target.isContentEditable)
+
+	if ((e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') && uiFocus.value === 'timeline' && !isTyping) {
+		e.preventDefault()
+		if (isPlaying.value) onPause()
+		else onPlay()
+	}
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
@@ -1575,8 +1748,15 @@ onMounted(() => {
 		setCurrentFrame: (fi) => setCurrentFrame(fi),
 		fps: clampInt(Number((store.state as any).fps ?? inputFps.value ?? 60), 1, 240),
 		loop: loopEnabled.value,
-		onPlayingChange: (p) => (isPlaying.value = p),
-		onTick: (fi) => ensurePlayheadVisibleWhilePlaying(fi),
+		onPlayingChange: (p) => {
+			isPlaying.value = p
+			if (p) void startTimelineAudio()
+			else pauseTimelineAudio()
+		},
+		onTick: (fi) => {
+			ensurePlayheadVisibleWhilePlaying(fi)
+			if (isPlaying.value) syncAudioToFrame(fi)
+		},
 	})
 	// 兜底：用户在播放中拖拽/跳帧时也要保持可视
 	watch(

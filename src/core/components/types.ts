@@ -15,6 +15,10 @@ export type TemplateNodeTransform = {
 	// 支持 number 或 string（例如 "{{x}}"），实例化时会尝试转换为 number。
 	x?: JsonValue
 	y?: JsonValue
+	scaleX?: JsonValue
+	scaleY?: JsonValue
+	/** @deprecated legacy uniform scale */
+	scale?: JsonValue
 	width?: JsonValue
 	height?: JsonValue
 	rotation?: JsonValue

@@ -17,6 +17,7 @@ import type {
   SubtitleCue,
   SubtitleCueRange,
   SubtitleTextStyle,
+  AudioTrack,
   ProgressBarSpec,
   ProgressBarStyle,
   TimelineCellKey,
@@ -28,11 +29,14 @@ import { createDefaultTimelineState } from '../../core/timeline'
 import { cloneJsonSafe } from '../../core/shared/cloneJsonSafe'
 
 import type { VideoSceneTreeNode } from '../../core/scene'
+import { createVideoSceneLayer } from '../../core/scene'
+import { VideoSceneStore } from '../videoscene'
 
 export type {
   SubtitleCue,
   SubtitleCueRange,
   SubtitleTextStyle,
+  AudioTrack,
   TimelineCellKey,
   TimelineLayer,
   TimelineLayerKind,
@@ -77,6 +81,49 @@ const clampFrameWidth = (v: unknown) => {
   const digits = clamped < 1 ? 4 : 2
   const pow = Math.pow(10, digits)
   return Math.round(clamped * pow) / pow
+}
+
+const stageSnapshotsEnsureLayer = (state: TimelineState, payload: { layerId: string; name: string }) => {
+  const layerId = String(payload.layerId || '').trim()
+  if (!layerId) return false
+  const name = String(payload.name || '').trim() || layerId
+  let changed = false
+  const map = state.stageKeyframesByFrame ?? ({} as any)
+  for (const [fk, v] of Object.entries(map as any)) {
+    const entry = v as any
+    const layers = Array.isArray(entry?.layers) ? (entry.layers as any[]) : null
+    if (!layers) continue
+    if (layers.some((l) => String((l as any)?.id) === layerId)) continue
+    layers.push({ id: layerId, name, nodeTree: createVideoSceneLayer(layerId, name).nodeTree } as any)
+    changed = true
+    ;(map as any)[fk] = { ...(entry ?? {}), layers }
+  }
+  return changed
+}
+
+const stageSnapshotsPurgeLayers = (state: TimelineState, layerIds: string[]) => {
+  const ids = new Set(layerIds.map((s) => String(s || '').trim()).filter(Boolean))
+  if (ids.size === 0) return false
+  const map = state.stageKeyframesByFrame ?? ({} as any)
+  let changed = false
+  for (const [fk, v] of Object.entries(map as any)) {
+    const entry = v as any
+    const layers = Array.isArray(entry?.layers) ? (entry.layers as any[]) : null
+    if (!layers) continue
+    const nextLayers = layers.filter((l) => !ids.has(String((l as any)?.id ?? '')))
+    if (nextLayers.length === layers.length) continue
+
+    changed = true
+    if (nextLayers.length === 0) {
+      // If this stage snapshot no longer contains any layers, drop it.
+      // (Normally this only happens when deleting the last remaining layer.)
+      delete (map as any)[fk]
+      continue
+    }
+
+    ;(map as any)[fk] = { ...(entry ?? {}), layers: nextLayers }
+  }
+  return changed
 }
 
 const normalizeSubtitleStyle = (s: Partial<SubtitleTextStyle> | null | undefined): SubtitleTextStyle => {
@@ -162,11 +209,16 @@ export const TimelineKey: InjectionKey<Store<TimelineState>> = Symbol('TimelineS
 export const TimelineStore = createStore<TimelineState>({
   state: createDefaultTimelineState,
   mutations: {
+	setUiFocus(state, payload: { focus: 'timeline' | 'stage' | null }) {
+		const f = payload?.focus ?? null
+		if (f !== 'timeline' && f !== 'stage' && f !== null) return
+		;(state as any).uiFocus = f
+	},
   setLayerKind(state, payload: { layerId: string; kind: TimelineLayerKind }) {
     const layerId = String(payload.layerId || '').trim()
     if (!layerId) return
     const kind = payload.kind
-    if (kind !== 'normal' && kind !== 'subtitle' && kind !== 'progress') return
+    if (kind !== 'normal' && kind !== 'subtitle' && kind !== 'progress' && kind !== 'audio') return
     state.layerKindById[layerId] = kind
   },
 	setFps(state, payload: { fps: number }) {
@@ -316,6 +368,28 @@ export const TimelineStore = createStore<TimelineState>({
     state.layerKindById[layer.id] = 'subtitle'
     state.selectedLayerIds = [layer.id]
   },
+	addAudioLayer(state, payload?: { name?: string }) {
+		const audioCount = state.layers.filter((l) => layerKindOf(state, l.id) === 'audio').length
+		const nextIndex = audioCount + 1
+		const layer: TimelineLayer = {
+			id: `layer-${Date.now()}-audio-${nextIndex}`,
+			name: String(payload?.name || '').trim() || `音频${nextIndex}`,
+		}
+		state.layers.push(layer)
+		state.layerKindById[layer.id] = 'audio'
+		state.selectedLayerIds = [layer.id]
+	},
+
+  // Ensure all recorded stage snapshots contain this layer so applying older keyframes
+  // won't wipe newly created layers.
+  ensureStageSnapshotsContainLayer(state, payload: { layerId: string; name: string }) {
+    // NOTE: Previously we injected the new layer into ALL old stage snapshots to avoid
+    // wiping it when applying older snapshots. After switching `applyStageSnapshot` to
+    // merge-by-layerId, this is no longer needed.
+    // Keeping the old injection logic would actually be harmful: injected empty nodeTree
+    // can overwrite the real content of that layer when old snapshots are applied.
+    void payload
+  },
   renameLayer(state, payload: { layerId: string; name: string }) {
     const layerId = String(payload.layerId || '').trim()
     if (!layerId) return
@@ -330,6 +404,10 @@ export const TimelineStore = createStore<TimelineState>({
       if (idx < 0) return
       state.layers.splice(idx, 1)
 	  if (state.layerKindById[payload.layerId]) delete state.layerKindById[payload.layerId]
+    if ((state as any).audioByLayerId?.[payload.layerId]) {
+      delete (state as any).audioByLayerId[payload.layerId]
+      ;(state as any).audioVersion = ((state as any).audioVersion ?? 0) + 1
+    }
 	  if ((state as any).progressBarByLayerId?.[payload.layerId]) {
 		  delete (state as any).progressBarByLayerId[payload.layerId]
 		  ;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
@@ -382,6 +460,11 @@ export const TimelineStore = createStore<TimelineState>({
       delete state.nodeKeyframesByLayer[payload.layerId]
       state.nodeKeyframeVersion++
     }
+
+    // Deleting a layer must also purge it from stage snapshots,
+    // otherwise playback/seek may re-apply old snapshots and resurrect the layer.
+    if (stageSnapshotsPurgeLayers(state, [payload.layerId])) state.stageKeyframeVersion++
+
       state.easingSegmentKeys = state.easingSegmentKeys.filter((k) => {
         const seg = parseSegment(k)
         return !seg ? false : seg.layerId !== payload.layerId
@@ -470,6 +553,9 @@ export const TimelineStore = createStore<TimelineState>({
 		  const seg = parseSegment(k)
 		  if (seg && toRemove.has(seg.layerId)) delete state.easingCurves[k]
 	  }
+
+      // Also purge removed layers from stage snapshots to avoid resurrecting them during playback.
+      if (stageSnapshotsPurgeLayers(state, Array.from(toRemove))) state.stageKeyframeVersion++
     },
     selectLayer(state, payload: { layerId: string; additive?: boolean }) {
       if (payload.additive) {
@@ -638,6 +724,20 @@ export const TimelineStore = createStore<TimelineState>({
 		;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
 	},
 
+  setAudioTrack(state, payload: { layerId: string; track: AudioTrack }) {
+    const layerId = String(payload.layerId || '').trim()
+    if (!layerId) return
+    const track = payload.track
+    if (!track || typeof track !== 'object') return
+    if (typeof (track as any).objectUrl !== 'string' || !(track as any).objectUrl.trim()) return
+    if (typeof (track as any).fileName !== 'string') return
+    if (!Number.isFinite(Number((track as any).durationSec))) return
+    if (!Number.isFinite(Number((track as any).pointsPerSecond))) return
+    if (!Array.isArray((track as any).peaks)) return
+    ;(state as any).audioByLayerId[layerId] = track
+    ;(state as any).audioVersion = ((state as any).audioVersion ?? 0) + 1
+  },
+
 	updateProgressBarStyle(state, payload: { layerId: string; style: Partial<ProgressBarStyle> }) {
 		const layerId = String(payload.layerId || '').trim()
 		if (!layerId) return
@@ -787,13 +887,45 @@ export const TimelineStore = createStore<TimelineState>({
     const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     if (b < a) return
-    const layers = cloneJsonSafe(payload.layers ?? [])
+
+    // IMPORTANT: Stage snapshots are treated as *per-layer* snapshots.
+    // - Only layers that are keyframes at this frame are recorded.
+    // - Multiple layers can share the same frame; we MERGE by layerId instead of overwriting.
+    const incoming = cloneJsonSafe(payload.layers ?? [])
+    let changed = false
     for (let f = a; f <= b; f++) {
-      // 只在该帧确实为关键帧时记录快照
-      if (!isAnyKeyframeAt(state, f)) continue
-      state.stageKeyframesByFrame[frameKey(f)] = { layers: cloneJsonSafe(layers) }
+      const fk = frameKey(f)
+      const entry = (state.stageKeyframesByFrame as any)[fk] as any
+      const beforeLayers = Array.isArray(entry?.layers) ? (entry.layers as any[]) : []
+      let nextLayers = beforeLayers
+      let frameChanged = false
+
+      for (const layer of incoming as any[]) {
+        const layerId = String(layer?.id ?? '').trim()
+        if (!layerId) continue
+        // Only record for frames where THIS layer is a keyframe.
+        if (!isKeyframeAt(state, layerId, f)) continue
+
+        if (nextLayers === beforeLayers) nextLayers = beforeLayers.slice()
+
+        // Replace existing entry (and dedupe any accidental duplicates).
+        const firstIdx = nextLayers.findIndex((x) => String((x as any)?.id ?? '') === layerId)
+        if (firstIdx >= 0) {
+          nextLayers[firstIdx] = layer
+          for (let i = nextLayers.length - 1; i > firstIdx; i--) {
+            if (String((nextLayers[i] as any)?.id ?? '') === layerId) nextLayers.splice(i, 1)
+          }
+        } else {
+          nextLayers.push(layer)
+        }
+        frameChanged = true
+      }
+
+      if (!frameChanged) continue
+      ;(state.stageKeyframesByFrame as any)[fk] = { ...(entry ?? {}), layers: nextLayers }
+      changed = true
     }
-    state.stageKeyframeVersion++
+    if (changed) state.stageKeyframeVersion++
   },
 
   // --- 节点删除：清理时间轴快照中的 nodeId ---
@@ -977,6 +1109,9 @@ export const TimelineStore = createStore<TimelineState>({
   },
   },
   actions: {
+  setUiFocus({ commit }, payload: { focus: 'timeline' | 'stage' | null }) {
+    commit('setUiFocus', payload)
+  },
     setProgressBarSpec({ commit }, payload: { layerId: string; spec: ProgressBarSpec }) {
   	commit('setProgressBarSpec', payload)
     },
@@ -1006,18 +1141,44 @@ export const TimelineStore = createStore<TimelineState>({
     setFrameWidth({ commit }, payload: { frameWidth: number }) {
       commit('setFrameWidth', payload)
     },
-    addLayer({ commit }) {
+    addLayer({ commit, state }) {
       commit('addLayer')
+    const layer = state.layers[state.layers.length - 1]
+    if (layer) {
+      // Keep videoscene layers in sync with timeline layers.
+      VideoSceneStore.dispatch('addLayer', { layerId: layer.id, name: layer.name })
+      commit('ensureStageSnapshotsContainLayer', { layerId: layer.id, name: layer.name })
+    }
     },
-	addSubtitleLayer({ commit }, payload?: { name?: string }) {
-		commit('addSubtitleLayer', payload)
-	},
+  addSubtitleLayer({ commit, state }, payload?: { name?: string }) {
+    commit('addSubtitleLayer', payload)
+    const layer = state.layers[state.layers.length - 1]
+    if (layer) {
+      VideoSceneStore.dispatch('addLayer', { layerId: layer.id, name: layer.name })
+      commit('ensureStageSnapshotsContainLayer', { layerId: layer.id, name: layer.name })
+    }
+  },
+  addAudioLayer({ commit }, payload?: { name?: string }) {
+    commit('addAudioLayer', payload)
+  },
   renameLayer({ commit }, payload: { layerId: string; name: string }) {
     commit('renameLayer', payload)
   },
-    removeLayer({ commit }, payload: { layerId: string }) {
+  ensureStageSnapshotsContainLayer({ commit }, payload: { layerId: string; name: string }) {
+    commit('ensureStageSnapshotsContainLayer', payload)
+  },
+    removeLayer({ state, commit }, payload: { layerId: string }) {
+	  const layerId = String(payload.layerId || '').trim()
+    const kind = layerId ? (state.layerKindById?.[layerId] ?? 'normal') : 'normal'
+	  const url = layerId ? (state as any).audioByLayerId?.[layerId]?.objectUrl : null
       commit('removeLayer', payload)
+    // Non-audio layers should exist in videoscene as well.
+    if (layerId && kind !== 'audio') VideoSceneStore.dispatch('removeLayer', { layerId })
+	  return typeof url === 'string' && url.trim() ? url : null
     },
+	setAudioTrack({ commit }, payload: { layerId: string; track: AudioTrack }) {
+		commit('setAudioTrack', payload)
+	},
     removeSelectedLayers({ commit }) {
       commit('removeSelectedLayers')
     },

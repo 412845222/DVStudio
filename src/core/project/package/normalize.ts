@@ -38,7 +38,10 @@ export const normalizeSnapshotV1 = (snapshot: EditorSnapshot): EditorSnapshot =>
 		walkTree(layer.nodeTree, (node) => {
 			if (node.category !== 'user') return
 			const t = (node.userType ?? 'base') as unknown as NodeType
-			const tr = node.transform ?? { x: 0, y: 0, width: 10, height: 10, rotation: 0, opacity: 1 }
+			const tr = node.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 10, height: 10, rotation: 0, opacity: 1 }
+			const legacyScale = toNumber((tr as any).scale, 1)
+			const scaleX = toNumber((tr as any).scaleX, legacyScale)
+			const scaleY = toNumber((tr as any).scaleY, legacyScale)
 			const dto: NodeBaseDTO = {
 				id: node.id,
 				name: node.name,
@@ -46,6 +49,9 @@ export const normalizeSnapshotV1 = (snapshot: EditorSnapshot): EditorSnapshot =>
 				transform: {
 					x: toNumber(tr.x, 0),
 					y: toNumber(tr.y, 0),
+					scaleX,
+					scaleY,
+					scale: legacyScale,
 					pivotX: toNumber((tr as any).pivotX, 0.5),
 					pivotY: toNumber((tr as any).pivotY, 0.5),
 					width: toNumber(tr.width, 200),

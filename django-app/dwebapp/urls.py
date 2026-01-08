@@ -69,6 +69,7 @@ urlpatterns = [
     path("export/jobs/<str:job_id>", export_api.get_job, name="export-get-job"),
     path("export/jobs/<str:job_id>/frames", export_api.upload_frame, name="export-upload-frame"),
     path("export/jobs/<str:job_id>/frames:raw", export_api.upload_frame_raw, name="export-upload-frame-raw"),
+    path("export/jobs/<str:job_id>/frames:raw-batch", export_api.upload_frames_raw_batch, name="export-upload-frames-raw-batch"),
     path("export/jobs/<str:job_id>/finalize", export_api.finalize_job, name="export-finalize-job"),
     path("export/jobs/<str:job_id>/file", export_api.download_job_file, name="export-download-file"),
     # Generated / user-defined APIs live here

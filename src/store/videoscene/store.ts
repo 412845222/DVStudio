@@ -72,6 +72,30 @@ const normalizeNodeIdentityInPlace = (node: any) => {
   }
 }
 
+const deepCloneJson = <T,>(v: T): T => {
+  try {
+    // @ts-ignore
+    if (typeof structuredClone === 'function') return structuredClone(v)
+  } catch {
+    // ignore
+  }
+  return JSON.parse(JSON.stringify(v)) as T
+}
+
+const cloneNodeTreeWithFreshIds = (node: any): any => {
+  const n = deepCloneJson(node)
+  const walk = (x: any) => {
+    if (!x || typeof x !== 'object') return
+    x.id = `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    x.createdAt = Date.now()
+    if (Array.isArray(x.children) && x.children.length) {
+      for (const c of x.children) walk(c)
+    }
+  }
+  walk(n)
+  return n
+}
+
 export const VideoSceneKey: InjectionKey<Store<VideoSceneState>> = Symbol('VideoSceneStore')
 
 export const VideoSceneStore = createStore<VideoSceneState>({
@@ -233,6 +257,30 @@ export const VideoSceneStore = createStore<VideoSceneState>({
     if (!layer) return
 		updateUserNodeProps(layer, payload.nodeId, payload.patch)
   },
+  updateNodesPropsBatch(state, payload: { layerId: string; nodeIds: string[]; patch: NodePropsPatch }) {
+    const layer = findLayer(state, payload.layerId)
+    if (!layer) return
+    const rawIds = Array.isArray(payload.nodeIds) ? payload.nodeIds : []
+    const ids = Array.from(new Set(rawIds.map((s) => String(s || '').trim()).filter(Boolean)))
+    if (!ids.length) return
+    const patch = payload.patch && typeof payload.patch === 'object' ? payload.patch : ({} as any)
+    for (const nodeId of ids) updateUserNodeProps(layer, nodeId, patch)
+  },
+  pasteNodeTreeAsSibling(
+    state,
+    payload: { layerId: string; targetParentId: string; targetIndex: number; node: VideoSceneTreeNode }
+  ) {
+    const layer = findLayer(state, payload.layerId)
+    if (!layer) return
+    const targetParentId = String(payload.targetParentId || 'root').trim() || 'root'
+    const targetIndex = Number.isFinite(payload.targetIndex) ? Math.max(0, Math.floor(payload.targetIndex)) : 0
+    if (!payload.node || typeof payload.node !== 'object') return
+    const cloned = cloneNodeTreeWithFreshIds(payload.node as any) as VideoSceneTreeNode
+    const r = addNodeTreeToLayer({ state, layerId: payload.layerId, node: cloned, parentId: targetParentId })
+    if (!r) return
+    moveNodeInLayer({ layer, nodeId: r.node.id, targetParentId, targetIndex })
+    Object.assign(state, r.selection)
+  },
   setNodeType(state, payload: { layerId: string; nodeId: string; type: VideoSceneUserNodeType }) {
     const layer = findLayer(state, payload.layerId)
     if (!layer) return
@@ -240,14 +288,48 @@ export const VideoSceneStore = createStore<VideoSceneState>({
   },
 
   applyStageSnapshot(state, payload: { layers: VideoSceneLayer[] }) {
-    const nextLayers = Array.isArray(payload.layers) ? payload.layers : []
-		for (const layer of nextLayers) {
+    const incomingLayers = Array.isArray(payload.layers) ? payload.layers : []
+		for (const layer of incomingLayers) {
 			if (!layer || typeof layer !== 'object') continue
 			if (Array.isArray((layer as any).nodeTree)) {
 				for (const n of (layer as any).nodeTree) normalizeNodeIdentityInPlace(n)
 			}
 		}
-    state.layers = nextLayers
+
+    // Merge-by-layerId instead of replacing the entire stage.
+    // Rationale: timeline stage snapshots may be partial; we must not delete other layers as that causes
+    // cross-layer keyframe interference (layers unexpectedly disappear).
+    const current = Array.isArray(state.layers) ? state.layers : []
+    const incomingById = new Map<string, VideoSceneLayer>()
+    for (const l of incomingLayers) {
+      const id = String((l as any)?.id ?? '').trim()
+      if (!id) continue
+      incomingById.set(id, l)
+    }
+
+    const out: VideoSceneLayer[] = []
+    const seen = new Set<string>()
+    // Keep existing order, replacing layers that are present in the incoming snapshot.
+    for (const l of current) {
+      const id = String((l as any)?.id ?? '').trim()
+      if (!id) continue
+      const next = incomingById.get(id)
+      out.push(next ?? l)
+      seen.add(id)
+    }
+
+    // Only append unknown layers when the scene is empty (initialization).
+    // Otherwise, unknown layers are likely stale snapshots and must not resurrect deleted layers.
+    if (current.length === 0) {
+			for (const l of incomingLayers) {
+				const id = String((l as any)?.id ?? '').trim()
+				if (!id || seen.has(id)) continue
+				out.push(l)
+				seen.add(id)
+			}
+    }
+
+    state.layers = out
     // activeLayerId 必须存在
     if (!state.layers.find((l) => l.id === state.activeLayerId)) {
       state.activeLayerId = state.layers[0]?.id ?? state.activeLayerId
@@ -427,6 +509,20 @@ export const VideoSceneStore = createStore<VideoSceneState>({
   },
   updateNodeProps({ commit, state }, payload: { nodeId: string; patch: NodePropsPatch; layerId?: string }) {
     commit('updateNodeProps', { layerId: payload.layerId ?? state.activeLayerId, nodeId: payload.nodeId, patch: payload.patch })
+  },
+  updateNodesPropsBatch({ commit, state }, payload: { nodeIds: string[]; patch: NodePropsPatch; layerId?: string }) {
+    commit('updateNodesPropsBatch', { layerId: payload.layerId ?? state.activeLayerId, nodeIds: payload.nodeIds, patch: payload.patch })
+  },
+  pasteNodeTreeAsSibling(
+    { commit, state },
+    payload: { targetParentId: string; targetIndex: number; node: VideoSceneTreeNode; layerId?: string }
+  ) {
+    commit('pasteNodeTreeAsSibling', {
+      layerId: payload.layerId ?? state.activeLayerId,
+      targetParentId: payload.targetParentId,
+      targetIndex: payload.targetIndex,
+      node: payload.node,
+    })
   },
 
 	applyStageSnapshot({ commit }, payload: { layers: VideoSceneLayer[] }) {

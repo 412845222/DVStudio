@@ -11,9 +11,18 @@ export type RenderNode = {
 	imageSrc?: string
 }
 
+export type RoundedMaskInfo = {
+	cx: number
+	cy: number
+	width: number
+	height: number
+	radius: number
+}
+
 export type RenderContext = {
 	opacity: number
 	rotation: number
+	roundedMask?: RoundedMaskInfo
 }
 
 export type LocalTargetSize = {

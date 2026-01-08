@@ -31,6 +31,38 @@
 				/>
 			</label>
 			<label class="vs-row">
+				<span class="vs-k">缩放X</span>
+				<input
+					v-model.number="draft.scaleX"
+					class="vs-input vs-scrub"
+					type="number"
+					min="0"
+					max="100"
+					step="0.01"
+					@change="applyTransform"
+					@dblclick.stop="onNumberInputDblClick"
+					@focus="onNumberInputFocus"
+					@blur="onNumberInputBlur"
+					@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.scaleX, (v) => (draft.scaleX = v), { step: 0.01, min: 0, max: 100, onCommit: applyTransform })"
+				/>
+			</label>
+			<label class="vs-row">
+				<span class="vs-k">缩放Y</span>
+				<input
+					v-model.number="draft.scaleY"
+					class="vs-input vs-scrub"
+					type="number"
+					min="0"
+					max="100"
+					step="0.01"
+					@change="applyTransform"
+					@dblclick.stop="onNumberInputDblClick"
+					@focus="onNumberInputFocus"
+					@blur="onNumberInputBlur"
+					@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.scaleY, (v) => (draft.scaleY = v), { step: 0.01, min: 0, max: 100, onCommit: applyTransform })"
+				/>
+			</label>
+			<label class="vs-row">
 				<span class="vs-k">宽</span>
 				<input
 					v-model.number="draft.width"
@@ -66,12 +98,12 @@
 					v-model.number="draft.rotation"
 					class="vs-input vs-scrub"
 					type="number"
-					step="0.01"
+					step="1"
 					@change="applyTransform"
 					@dblclick.stop="onNumberInputDblClick"
 					@focus="onNumberInputFocus"
 					@blur="onNumberInputBlur"
-					@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.rotation, (v) => (draft.rotation = v), { step: 0.01, min: -999999, max: 999999, onCommit: applyTransform })"
+					@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.rotation, (v) => (draft.rotation = v), { step: 1, min: -999999, max: 999999, onCommit: applyTransform })"
 				/>
 			</label>
 			<label class="vs-row">
@@ -155,6 +187,8 @@ import type { NumberScrubOptions } from './useNumberScrub'
 type DraftTransform = {
 	x: number
 	y: number
+	scaleX: number
+	scaleY: number
 	width: number
 	height: number
 	rotation: number

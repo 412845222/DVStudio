@@ -108,7 +108,14 @@ const applySnapshotToLayer = (layers: any[], layerId: string, snap: Record<strin
 		const targetT = s.transform as any
 		if (targetT && typeof targetT === 'object') {
 			node.transform = node.transform ?? {}
-			const keys = ['x', 'y', 'width', 'height', 'rotation', 'opacity'] as const
+			// Backward-compat: legacy uniform scale.
+			if (typeof targetT.scale === 'number' && Number.isFinite(targetT.scale)) {
+				const legacy = Math.max(0, Math.min(1, targetT.scale))
+				if (!(typeof targetT.scaleX === 'number' && Number.isFinite(targetT.scaleX))) (node.transform as any).scaleX = legacy
+				if (!(typeof targetT.scaleY === 'number' && Number.isFinite(targetT.scaleY))) (node.transform as any).scaleY = legacy
+				;(node.transform as any).scale = legacy
+			}
+			const keys = ['x', 'y', 'scaleX', 'scaleY', 'width', 'height', 'rotation', 'opacity'] as const
 			for (const k of keys) {
 				if (typeof targetT[k] === 'number' && Number.isFinite(targetT[k])) (node.transform as any)[k] = targetT[k]
 			}
@@ -381,11 +388,19 @@ const applyLegacyNodeKeyframesAtFrame = (timeline: TimelineStateLike, layers: an
 			const pb = (sb?.props ?? {}) as Record<string, any>
 			const next: NodeSnapshot = {}
 			if (ta || tb) {
-				const keys = ['x', 'y', 'width', 'height', 'rotation', 'opacity'] as const
+				const keys = ['x', 'y', 'scaleX', 'scaleY', 'width', 'height', 'rotation', 'opacity'] as const
 				const tt: any = {}
 				for (const k of keys) {
-					const va = ta ? ta[k] : undefined
-					const vb = tb ? tb[k] : undefined
+					let va = ta ? ta[k] : undefined
+					let vb = tb ? tb[k] : undefined
+					if (k === 'scaleX') {
+						if (va === undefined && ta && canInterpolateNumber(ta.scale)) va = ta.scale
+						if (vb === undefined && tb && canInterpolateNumber(tb.scale)) vb = tb.scale
+					}
+					if (k === 'scaleY') {
+						if (va === undefined && ta && canInterpolateNumber(ta.scale)) va = ta.scale
+						if (vb === undefined && tb && canInterpolateNumber(tb.scale)) vb = tb.scale
+					}
 					if (canInterpolateNumber(va) && canInterpolateNumber(vb)) tt[k] = lerpNumber(va, vb, easedT)
 					else if (vb != null) tt[k] = vb
 					else if (va != null) tt[k] = va
@@ -515,10 +530,18 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 			const ot = outNode.transform as any
 			const nt = nextNode.transform as any
 			if (ot && nt) {
-				const keys = ['x', 'y', 'width', 'height', 'rotation', 'opacity'] as const
+				const keys = ['x', 'y', 'scaleX', 'scaleY', 'width', 'height', 'rotation', 'opacity'] as const
 				for (const k of keys) {
-					const va = ot[k]
-					const vb = nt[k]
+					let va = ot[k]
+					let vb = nt[k]
+					if (k === 'scaleX') {
+						if (va === undefined && canInterpolateNumber(ot.scale)) va = ot.scale
+						if (vb === undefined && canInterpolateNumber(nt.scale)) vb = nt.scale
+					}
+					if (k === 'scaleY') {
+						if (va === undefined && canInterpolateNumber(ot.scale)) va = ot.scale
+						if (vb === undefined && canInterpolateNumber(nt.scale)) vb = nt.scale
+					}
 					if (canInterpolateNumber(va) && canInterpolateNumber(vb)) ot[k] = lerpNumber(va, vb, easedT)
 				}
 			}

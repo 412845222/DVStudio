@@ -2,7 +2,8 @@ import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
 import router from './router'
-import { editorPersistence } from './adapters/editorPersistence'
+import { editorPersistence, setEditorSaveHandler } from './adapters/editorPersistence'
+import { editorRecentCache } from './adapters/editorRecentCache'
 import { dispatchDvsTimelineNav } from './adapters/windowEventBridge'
 import { DVS_EVENTS, type DvsEditorNodeDeleteDetail, type DvsEditorNodePatchDetail } from './core/events/dvsEvents'
 import { VideoSceneStore } from './store/videoscene'
@@ -11,6 +12,11 @@ import { TimelineStore } from './store/timeline'
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
 window.addEventListener('contextmenu', (e) => {
 	e.preventDefault()
+})
+
+// 保存：将当前项目（含时间轴所有图层数据）写入网页缓存（localStorage）
+setEditorSaveHandler((payload) => {
+	editorRecentCache.save(payload)
 })
 
 
@@ -97,17 +103,10 @@ window.addEventListener(DVS_EVENTS.EditorNodeDeleted, (e) => {
 	void VideoSceneStore.dispatch('deleteNodeById', { nodeId: detail.nodeId, layerId: detail.layerId })
 })
 
-// 删除节点时，同步清理时间轴里引用该 nodeId 的所有快照数据
-VideoSceneStore.subscribe((mutation) => {
-	if (mutation.type !== 'deleteNodesById') return
-	const payload = (mutation as any).payload as any
-	const raw = Array.isArray(payload?.purgeNodeIds)
-		? payload.purgeNodeIds
-		: (Array.isArray(payload?.nodeIds) ? payload.nodeIds : [])
-	const nodeIds = raw.map((s: any) => String(s || '').trim()).filter(Boolean)
-	if (!nodeIds.length) return
-	void TimelineStore.dispatch('purgeNodeIds', { nodeIds })
-})
+// NOTE:
+// 不要在“删除节点”时全局清理时间轴里所有快照对该 nodeId 的引用。
+// 关键帧语义：每个关键帧的内容应彼此独立；删除前一个关键帧里的节点不应影响后续关键帧。
+// 当前实现改为：由 VideoScene 在“当前单选关键帧格子”下按需写回该关键帧快照。
 
 // 鼠标侧键（上一页/下一页）拦截：
 // - MouseEvent.button: 3/4 通常对应 Back/Forward

@@ -90,11 +90,38 @@ export const isDescendant = (root: VideoSceneTreeNode[], maybeAncestorId: string
 }
 
 export const findWorldPos = (root: VideoSceneTreeNode[], nodeId: string): WorldPosResult | null => {
-	const dfs = (nodes: VideoSceneTreeNode[], parentWorld: { x: number; y: number }): WorldPosResult | null => {
+	const clampScale = (v: unknown, fallback = 1) => {
+		const n = Number(v)
+		if (!Number.isFinite(n)) return fallback
+		return Math.max(0, Math.min(100, n))
+	}
+	const dfs = (
+		nodes: VideoSceneTreeNode[],
+		parentWorld: { x: number; y: number; scaleX: number; scaleY: number; rotation: number }
+	): WorldPosResult | null => {
 		for (const n of nodes) {
 			const hasT = !!n.transform
+			const dx = hasT ? Number(n.transform?.x ?? 0) : 0
+			const dy = hasT ? Number(n.transform?.y ?? 0) : 0
+			const localRotation = hasT ? Number((n.transform as any)?.rotation ?? 0) : 0
+			const localScaleLegacy = hasT ? clampScale((n.transform as any)?.scale, 1) : 1
+			const localScaleX = hasT ? clampScale((n.transform as any)?.scaleX, localScaleLegacy) : 1
+			const localScaleY = hasT ? clampScale((n.transform as any)?.scaleY, localScaleLegacy) : 1
+			const cos = Math.cos(parentWorld.rotation)
+			const sin = Math.sin(parentWorld.rotation)
+			const tdx = dx * parentWorld.scaleX
+			const tdy = dy * parentWorld.scaleY
+			const rdx = tdx * cos - tdy * sin
+			const rdy = tdx * sin + tdy * cos
 			const world = hasT
-				? { x: parentWorld.x + (n.transform?.x ?? 0), y: parentWorld.y + (n.transform?.y ?? 0) }
+				?
+					{
+						x: parentWorld.x + rdx,
+						y: parentWorld.y + rdy,
+						scaleX: parentWorld.scaleX * localScaleX,
+						scaleY: parentWorld.scaleY * localScaleY,
+						rotation: parentWorld.rotation + localRotation,
+					}
 				: parentWorld
 			const nextParentWorld = hasT ? world : parentWorld
 			if (n.id === nodeId) return { node: n, parentWorld, world }
@@ -105,7 +132,7 @@ export const findWorldPos = (root: VideoSceneTreeNode[], nodeId: string): WorldP
 		}
 		return null
 	}
-	return dfs(root, { x: 0, y: 0 })
+	return dfs(root, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
 }
 
 export const buildRenderPipeline = (state: Pick<VideoSceneState, 'layers'>): VideoSceneRenderStep[] => {
@@ -149,8 +176,8 @@ export const findUserNodeTransformInLayers = (layers: VideoSceneLayer[], nodeId:
 export type UserNodeWithWorldHit = {
 	layerId: string
 	node: VideoSceneTreeNode
-	parentWorld: { x: number; y: number }
-	world: { x: number; y: number }
+	parentWorld: { x: number; y: number; scaleX: number; scaleY: number; rotation: number }
+	world: { x: number; y: number; scaleX: number; scaleY: number; rotation: number }
 }
 
 export const findUserNodeWithWorldInLayers = (layers: VideoSceneLayer[], nodeId: string): UserNodeWithWorldHit | null => {

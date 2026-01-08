@@ -58,6 +58,14 @@
                 class="ai-chat__action-btn"
                 type="button"
                 :disabled="sending"
+                @click="(e) => saveToComponentLibrary(m, e)"
+              >
+                保存到组件库
+              </button>
+              <button
+                class="ai-chat__action-btn"
+                type="button"
+                :disabled="sending"
                 @click="regenerateLast"
               >
                 重新生成
@@ -111,11 +119,12 @@ import { useStore } from 'vuex'
 import { aiChatService } from '../../network/AIChatService'
 import type { AgentToUiMessage } from '../../core/agentToUI'
 import { componentTemplateApi } from '../../core/components'
-import { findLayer, findNode, nodeExistsInAnyLayer } from '../../core/scene'
+import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners } from '../../core/scene'
 import { VideoSceneKey, type VideoSceneState } from '../../store/videoscene'
 import { editorPersistence } from '../../adapters/editorPersistence'
 import { dispatchDvsEditorNodeDeleted, dispatchDvsEditorNodePatched } from '../../adapters/windowEventBridge'
 import { DwebCanvasGLKey } from '../VideoScene/VideoSceneRuntime'
+import { flyThumbnailPng } from '../VideoScene/parts/flyThumbnail'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -125,6 +134,7 @@ type ChatMessage = {
 	text: string
 	at: number
 	hasStageResult?: boolean
+	stageOps?: { insertedNodeIds: string[] }
 }
 
 const props = defineProps<{ open: boolean; minimized: boolean; anchor?: { x: number; y: number } | null }>()
@@ -774,7 +784,7 @@ const sendText = async (text: string) => {
 
 	const assistantId = `a-${Date.now()}`
 	activeAssistantId.value = assistantId
-	messages.value.push({ id: assistantId, role: 'assistant', text: '', at: Date.now() })
+	messages.value.push({ id: assistantId, role: 'assistant', text: '', at: Date.now(), stageOps: { insertedNodeIds: [] } })
 	await scrollToBottom({ force: true })
 
 	try {
@@ -905,7 +915,14 @@ const sendText = async (text: string) => {
 
 						// best-effort: collect inserted ids if present
 						try {
-							lastStageOps.value.insertedNodeIds.push(...collectNodeIds(n))
+							const inserted = collectNodeIds(n)
+							lastStageOps.value.insertedNodeIds.push(...inserted)
+							const idx2 = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx2 >= 0) {
+								const ops = messages.value[idx2].stageOps ?? { insertedNodeIds: [] }
+								ops.insertedNodeIds.push(...inserted)
+								messages.value[idx2].stageOps = ops
+							}
 						} catch {
 							// ignore
 						}
@@ -1053,7 +1070,16 @@ const sendText = async (text: string) => {
 							}
 						}
 						await store.dispatch('addNodeTree', { node: instantiated.root, layerId: finalLayerId, parentId: finalParentId })
-						lastStageOps.value.insertedNodeIds.push(...collectNodeIds(instantiated.root))
+						{
+							const inserted = collectNodeIds(instantiated.root)
+							lastStageOps.value.insertedNodeIds.push(...inserted)
+							const idx2 = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx2 >= 0) {
+								const ops = messages.value[idx2].stageOps ?? { insertedNodeIds: [] }
+								ops.insertedNodeIds.push(...inserted)
+								messages.value[idx2].stageOps = ops
+							}
+						}
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) {
 							messages.value[idx].hasStageResult = true
@@ -1273,6 +1299,222 @@ const sendText = async (text: string) => {
 		if (taskPhase.value !== 'stopped' && taskPhase.value !== 'error') taskPhase.value = 'done'
 		activeAssistantId.value = null
 		await scrollToBottom()
+	}
+}
+
+type SavedComponent = {
+	id: string
+	createdAt: string
+	templateId: string
+	name: string
+	template: any
+	savedAt: string
+	thumbAssetId?: string
+	thumbDataUrl?: string
+}
+
+const COMPONENT_LIBRARY_KEY = 'dvs.componentLibrary.v1'
+
+const safeNowId = () => `tpl_${Date.now().toString(36)}`
+
+const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
+
+const findLayerIdForNodeId = (nodeId: string): string | null => {
+	const id = String(nodeId || '').trim()
+	if (!id) return null
+	for (const layer of store.state.layers) {
+		try {
+			if (findNode(layer.nodeTree, id)) return layer.id
+		} catch {
+			// ignore
+		}
+	}
+	return null
+}
+
+const ensureTemplateTextParams = (template: any) => {
+	if (!template || typeof template !== 'object') return template
+	if (!Array.isArray((template as any).params)) (template as any).params = []
+	if (!Array.isArray((template as any).nodes)) return template
+
+	const used = new Set<string>((template as any).params.map((p: any) => (typeof p?.key === 'string' ? p.key : '')).filter(Boolean))
+	const baseKeys = ['title', 'subtitle', 'text']
+	let seq = 0
+	const nextKey = () => {
+		seq += 1
+		let k = baseKeys[seq - 1] || `text${seq - 2}`
+		k = String(k)
+		let i = 2
+		while (used.has(k)) {
+			k = `${k}_${i++}`
+		}
+		used.add(k)
+		return k
+	}
+
+	for (const n of (template as any).nodes) {
+		if (!n || typeof n !== 'object') continue
+		if (String((n as any).type || '') !== 'text') continue
+		const props = (n as any).props
+		if (!props || typeof props !== 'object') continue
+		const v = (props as any).textContent
+		if (typeof v !== 'string') continue
+		const text = v.trim()
+		if (!text) continue
+		const key = nextKey()
+		;(template as any).params.push({ key, type: 'string', default: v })
+		;(props as any).textContent = `{{ ${key} }}`
+	}
+	return template
+}
+
+const loadComponentLibrary = (): SavedComponent[] => {
+	try {
+		const raw = localStorage.getItem(COMPONENT_LIBRARY_KEY)
+		if (!raw) return []
+		const parsed = JSON.parse(raw)
+		if (!Array.isArray(parsed)) return []
+		return parsed as SavedComponent[]
+	} catch {
+		return []
+	}
+}
+
+const persistComponentLibrary = (list: SavedComponent[]) => {
+	try {
+		localStorage.setItem(COMPONENT_LIBRARY_KEY, JSON.stringify(list))
+	} catch {
+		// ignore
+	}
+}
+
+const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
+	try {
+		const idsRaw = m.stageOps?.insertedNodeIds ?? []
+		const ids = Array.from(new Set(idsRaw.map((x) => String(x || '').trim()).filter(Boolean)))
+		if (!ids.length) {
+			m.text = (m.text || '') + '\n\n保存失败：未找到本次生成的节点。'
+			return
+		}
+
+		const layerIds = Array.from(
+			new Set(ids.map((id) => findLayerIdForNodeId(id)).filter((x): x is string => typeof x === 'string' && !!x.trim()))
+		)
+		if (layerIds.length !== 1) {
+			m.text = (m.text || '') + '\n\n保存失败：本次生成的节点跨多个图层，暂不支持一键保存。'
+			return
+		}
+		const layerId = layerIds[0]
+		const layer = findLayer(store.state, layerId)
+		if (!layer) {
+			m.text = (m.text || '') + '\n\n保存失败：找不到目标图层。'
+			return
+		}
+
+		const existing = loadComponentLibrary()
+		const existingNames = existing.map((x) => x.name)
+		const existingTemplateIds = new Set(existing.map((x) => x.templateId))
+
+		const makeUniqueName = (baseName: string) => {
+			const desired = String(baseName || 'Component').trim() || 'Component'
+			if (!existingNames.includes(desired)) return desired
+			let i = 2
+			while (existingNames.includes(`${desired} ${i}`)) i++
+			return `${desired} ${i}`
+		}
+		const makeUniqueTemplateId = (baseId: string) => {
+			const desired = safeIdPart(String(baseId || 'tpl').trim() || 'tpl')
+			if (!existingTemplateIds.has(desired)) return desired
+			let i = 2
+			while (existingTemplateIds.has(`${desired}__${i}`)) i++
+			return `${desired}__${i}`
+		}
+
+		const createdAt = new Date().toISOString()
+		const baseTplId = safeNowId()
+		const templateId = makeUniqueTemplateId(baseTplId)
+		const name = makeUniqueName(`AI组件-${templateId}`)
+
+		let template: any = componentTemplateApi.exportTemplateFromSelection({
+			layerNodeTree: layer.nodeTree,
+			selectedNodeIds: ids,
+			templateId,
+			name,
+		})
+		template = ensureTemplateTextParams(template)
+
+		// Best-effort thumbnail capture from current WebGL canvas (nodes area, not whole stage).
+		let thumbAssetId: string | undefined
+		let thumbDataUrl: string | undefined
+		try {
+			const dwebCanvas = dwebCanvasRef?.value ?? null
+			if (dwebCanvas) {
+				const pts: { x: number; y: number }[] = []
+				for (const nodeId of ids) {
+					const n = findNode(layer.nodeTree ?? [], nodeId) as any
+					const tr: any = n?.transform
+					if (!tr || typeof tr.x !== 'number' || typeof tr.y !== 'number' || typeof tr.width !== 'number' || typeof tr.height !== 'number') continue
+					const corners = rotatedRectCorners(
+						{ x: tr.x, y: tr.y },
+						{ width: Math.max(1, tr.width), height: Math.max(1, tr.height) },
+						Number(tr.rotation ?? 0)
+					)
+					const sp = [corners.tl, corners.tr, corners.bl, corners.br].map((p: any) => dwebCanvas.worldToScreen(p))
+					pts.push(...sp)
+				}
+				if (pts.length) {
+					const xs = pts.map((p) => p.x)
+					const ys = pts.map((p) => p.y)
+					const minX = Math.min(...xs)
+					const maxX = Math.max(...xs)
+					const minY = Math.min(...ys)
+					const maxY = Math.max(...ys)
+					const shot = await dwebCanvas.capturePngFromScreenRect(
+						{ x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+						{ maxSidePx: 240, padPx: 10 }
+					)
+					if (shot?.dataUrl) {
+						thumbAssetId = `thumb:${templateId}:${Date.now().toString(36)}`
+						thumbDataUrl = shot.dataUrl
+						store.commit('upsertImageAsset', { id: thumbAssetId, url: thumbDataUrl, name })
+						const fromEl = (ev?.currentTarget as HTMLElement | null) ?? null
+						const fromRect = fromEl?.getBoundingClientRect?.()
+						const toEl = document.querySelector('[data-dvs="component-library-btn"]') as HTMLElement | null
+						const toRect = toEl?.getBoundingClientRect?.()
+						if (fromRect && toRect) {
+							void flyThumbnailPng({
+								dataUrl: shot.dataUrl,
+								from: { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 },
+								to: { x: toRect.left + toRect.width / 2, y: toRect.top + toRect.height / 2 },
+								initialSize: { width: 160, height: 100 },
+								ms: 360,
+							})
+						}
+					}
+				}
+			}
+		} catch {
+			// ignore
+		}
+
+		const savedAt = new Date().toISOString()
+		const entry: SavedComponent = {
+			id: `cmp_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+			createdAt,
+			templateId,
+			name,
+			template,
+			savedAt,
+			thumbAssetId,
+			thumbDataUrl,
+		}
+
+		const list = loadComponentLibrary()
+		list.unshift(entry)
+		persistComponentLibrary(list)
+		m.text = (m.text || '') + `\n\n已保存到组件库：${name}`
+	} catch (e) {
+		m.text = (m.text || '') + `\n\n保存失败：${e instanceof Error ? e.message : String(e)}`
 	}
 }
 

@@ -68,11 +68,38 @@ const coerceNumber = (v: JsonValue): number | null => {
 const applyTransformPatch = (base: VideoSceneNodeTransform, patch?: TemplateNodeTransform): VideoSceneNodeTransform => {
 	if (!patch) return base
 	const next: VideoSceneNodeTransform = { ...base }
+	const clampScale = (v: unknown) => {
+		const n = Number(v)
+		if (!Number.isFinite(n)) return null
+		return Math.max(0, Math.min(100, n))
+	}
 
 	const x = patch.x !== undefined ? coerceNumber(patch.x) : null
 	if (x !== null) next.x = x
 	const y = patch.y !== undefined ? coerceNumber(patch.y) : null
 	if (y !== null) next.y = y
+
+	const legacyScale = patch.scale !== undefined ? coerceNumber(patch.scale) : null
+	const scaleX = patch.scaleX !== undefined ? coerceNumber(patch.scaleX) : null
+	const scaleY = patch.scaleY !== undefined ? coerceNumber(patch.scaleY) : null
+	if (scaleX !== null) {
+		const v = clampScale(scaleX)
+		if (v !== null) next.scaleX = v
+	} else if (legacyScale !== null) {
+		const v = clampScale(legacyScale)
+		if (v !== null) next.scaleX = v
+	}
+	if (scaleY !== null) {
+		const v = clampScale(scaleY)
+		if (v !== null) next.scaleY = v
+	} else if (legacyScale !== null) {
+		const v = clampScale(legacyScale)
+		if (v !== null) next.scaleY = v
+	}
+	if (legacyScale !== null) {
+		const v = clampScale(legacyScale)
+		if (v !== null) next.scale = v
+	}
 
 	const width = patch.width !== undefined ? coerceNumber(patch.width) : null
 	if (width !== null) next.width = Math.max(1, width)
@@ -112,6 +139,9 @@ const createUserNode = (
 	const baseTransform: VideoSceneNodeTransform = {
 		x: upgraded.transform.x,
 		y: upgraded.transform.y,
+		scaleX: (upgraded.transform as any).scaleX ?? (upgraded.transform as any).scale ?? 1,
+		scaleY: (upgraded.transform as any).scaleY ?? (upgraded.transform as any).scale ?? 1,
+		scale: (upgraded.transform as any).scale ?? 1,
 		pivotX: (upgraded.transform as any).pivotX ?? 0.5,
 		pivotY: (upgraded.transform as any).pivotY ?? 0.5,
 		width: upgraded.transform.width,

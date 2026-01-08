@@ -5,4 +5,6 @@ export type ComputeLinePointPatchArgs = {
 	worldPoint: { x: number; y: number }
 	worldCenter: { x: number; y: number }
 	rotation: number
+	scaleX?: number
+	scaleY?: number
 }

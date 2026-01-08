@@ -13,6 +13,8 @@ export class CanvasPostProcess {
 	private postProgGlowComposite: PostProg | null = null
 	private postProgCustomCache = new Map<string, CustomCached>()
 	private targets = new FilterTargetsPool()
+	private lastPerfLogAt = 0
+	private lastPerfSig = ''
 
 	dispose(gl: WebGL2RenderingContext) {
 		try {
@@ -31,6 +33,58 @@ export class CanvasPostProcess {
 
 	prune(gl: WebGL2RenderingContext, validIds: Set<string>) {
 		this.targets.prune(gl, validIds)
+	}
+
+	maybeLogPerf(gl: WebGL2RenderingContext, canvas: DwebCanvasGL) {
+		// Keep logs low-volume to avoid adding pressure during heavy frames.
+		const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+		const intervalMs = 1500
+		if (now - this.lastPerfLogAt < intervalMs) {
+			// Still consume frame stats to reset counters.
+			this.targets.consumeFrameStats()
+			return
+		}
+		const s = this.targets.consumeFrameStats()
+		const { frame, total } = s
+		const interesting =
+			frame.alloc > 0 ||
+			frame.evict > 0 ||
+			frame.clampBudget > 0 ||
+			frame.clampDim > 0 ||
+			frame.clampPixels > 0
+		if (!interesting) return
+		const mb = (n: number) => Math.round((n / (1024 * 1024)) * 10) / 10
+		const sig = [
+			Math.round(canvas.viewport.zoom * 1000) / 1000,
+			canvas.getPixelRatio(),
+			total.targets,
+			Math.round(mb(total.bytes) * 10) / 10,
+			`${total.maxW}x${total.maxH}`,
+			total.format,
+			frame.alloc,
+			frame.evict,
+			frame.reuse,
+			frame.clampBudget,
+			frame.clampDim,
+			frame.clampPixels,
+		].join('|')
+		if (sig === this.lastPerfSig && now - this.lastPerfLogAt < intervalMs * 3) return
+		this.lastPerfSig = sig
+		this.lastPerfLogAt = now
+		try {
+			console.log('[DVS][render][postprocess]', {
+				zoom: Math.round(canvas.viewport.zoom * 1000) / 1000,
+				dpr: canvas.getPixelRatio(),
+				targets: total.targets,
+				bytesMB: mb(total.bytes),
+				maxTarget: `${total.maxW}x${total.maxH}`,
+				tex: total.format,
+				frame,
+				budget: { maxTargets: total.maxTargets, maxBytesMB: mb(total.maxBytes) },
+			})
+		} catch {
+			// ignore
+		}
 	}
 
 	applyFilters(
@@ -232,8 +286,8 @@ export class CanvasPostProcess {
 		// - cap max dimension to keep worst-case single-target costs bounded
 		// - cap max pixels to avoid huge allocations even if within MAX_TEXTURE_SIZE
 		const gpuMaxTexSize = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 4096
-		const maxDimPx = Math.max(256, Math.min(gpuMaxTexSize, 1536))
-		const maxPixels = 1_200_000 // per texture; target allocates 3 textures
+		const maxDimPx = Math.max(256, Math.min(gpuMaxTexSize, 1280))
+		const maxPixels = 1_000_000 // per texture; target allocates 3 textures
 
 		const clampScale = (padXw: number, padYw: number, s: number) => {
 			const s0 = Math.max(1e-3, Number(s) || 1)

@@ -6,7 +6,7 @@ import os
 import subprocess
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from queue import Queue
 from typing import Any, Dict, Optional
@@ -31,6 +31,7 @@ class ExportJob:
     receivedFrames: int = 0
     uploadMode: str = "disk"  # disk|pipe
     ignoreStageBackground: bool = False
+    quality: Optional[str] = None  # high|medium|low（pipe 模式需要在启动 ffmpeg 前确定）
     fileName: Optional[str] = None
     downloadUrl: Optional[str] = None
     serverPath: Optional[str] = None
@@ -48,13 +49,51 @@ _EXPORT_ENCODE_STARTED: set[str] = set()
 class _PipeEncoder:
     proc: subprocess.Popen
     stdin_lock: threading.Lock
+    ingress_lock: threading.Lock
     out_path: Path
     duration_us: int
     last_pct: int = -1
     stdin_closed: bool = False
+    next_index: int = 0
+    pending: Dict[int, bytes] = field(default_factory=dict)
+    pending_bytes: int = 0
+    max_pending_bytes: int = 0
 
 
 _EXPORT_PIPE_ENCODERS: Dict[str, _PipeEncoder] = {}
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(str(os.environ.get(name, str(default))).strip())
+    except Exception:
+        return default
+
+
+def _pipe_max_pending_bytes() -> int:
+    # Bound memory usage for out-of-order buffering.
+    # Default: 512MB.
+    mb = max(32, _env_int("DWEB_EXPORT_PIPE_PENDING_MB", 512))
+    return int(mb) * 1024 * 1024
+
+
+def _pipe_batch_max_frames() -> int:
+    # Limit frames per HTTP request to avoid overly large bodies.
+    # Default: 8 frames.
+    return max(1, _env_int("DWEB_EXPORT_PIPE_BATCH_MAX_FRAMES", 8))
+
+
+def _pipe_batch_max_bytes() -> int:
+    # Default: 64MB.
+    mb = max(4, _env_int("DWEB_EXPORT_PIPE_BATCH_MAX_MB", 64))
+    return int(mb) * 1024 * 1024
+
+
+def _quality_or_default(v: Any) -> str:
+    s = str(v or "").strip().lower()
+    if s in ("high", "medium", "low"):
+        return s
+    return "medium"
 
 
 def _exports_dir() -> Path:
@@ -128,6 +167,9 @@ def _has_ffmpeg() -> bool:
 _FFMPEG_ENCODER_CACHE: dict[str, bool] = {}
 
 
+_FFMPEG_X265_ALPHA_CACHE: Optional[bool] = None
+
+
 def _ffmpeg_has_encoder(name: str) -> bool:
     key = (name or "").strip().lower()
     if not key:
@@ -142,6 +184,86 @@ def _ffmpeg_has_encoder(name: str) -> bool:
         return ok
     except Exception:
         _FFMPEG_ENCODER_CACHE[key] = False
+        return False
+
+
+def _ffprobe_pix_fmt(path: Path) -> str:
+    try:
+        p = subprocess.run(
+            [
+                "ffprobe",
+                "-hide_banner",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=pix_fmt",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if p.returncode != 0:
+            return ""
+        return (p.stdout or "").strip()
+    except Exception:
+        return ""
+
+
+def _ffmpeg_x265_supports_alpha() -> bool:
+    """Return True only if libx265 output keeps yuva* pixel format.
+
+    Some FFmpeg/libx265 builds accept -pix_fmt yuva420p10le but still output yuv420p10le
+    (alpha silently dropped). We probe once and cache.
+    """
+
+    global _FFMPEG_X265_ALPHA_CACHE
+    if _FFMPEG_X265_ALPHA_CACHE is not None:
+        return bool(_FFMPEG_X265_ALPHA_CACHE)
+
+    if not _has_ffmpeg() or not _ffmpeg_has_encoder("libx265"):
+        _FFMPEG_X265_ALPHA_CACHE = False
+        return False
+
+    try:
+        tmp_dir = _exports_dir() / ".probe"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        out_path = (tmp_dir / "probe_x265_alpha.mov").resolve()
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=color=black@0.0:s=2x2:r=1,format=rgba",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "libx265",
+            "-pix_fmt",
+            "yuva420p10le",
+            "-tag:v",
+            "hvc1",
+            str(out_path),
+        ]
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        if p.returncode != 0:
+            _FFMPEG_X265_ALPHA_CACHE = False
+            return False
+
+        pix_fmt = _ffprobe_pix_fmt(out_path)
+        ok = pix_fmt.lower().startswith("yuva")
+        _FFMPEG_X265_ALPHA_CACHE = bool(ok)
+        return bool(ok)
+    except Exception:
+        _FFMPEG_X265_ALPHA_CACHE = False
         return False
 
 
@@ -213,6 +335,7 @@ def _start_pipe_encoder(job_id: str) -> None:
         w = max(1, int(job2.width or 1))
         h = max(1, int(job2.height or 1))
         ignore_stage_bg = bool(getattr(job2, "ignoreStageBackground", False))
+        quality = _quality_or_default(getattr(job2, "quality", None))
 
     export_dir = _job_dir(job_id)
     out_name = f"{job_id}.{fmt}"
@@ -239,21 +362,57 @@ def _start_pipe_encoder(job_id: str) -> None:
     ]
 
     if fmt == "mov" and ignore_stage_bg:
-        # Transparent MOV: use ProRes 4444 for broad compatibility.
-        cmd += [
-            "-c:v",
-            "prores_ks",
-            "-profile:v",
-            "4",
-            "-pix_fmt",
-            "yuva444p10le",
-            "-qscale:v",
-            "13",
-        ]
+        # Transparent MOV: prefer HEVC-with-alpha only if our ffmpeg/libx265 truly preserves alpha.
+        # Otherwise force ProRes 4444 (reliable alpha).
+        if _ffmpeg_x265_supports_alpha():
+            crf = "24"
+            if quality == "high":
+                crf = "18"
+            elif quality == "low":
+                crf = "30"
+            cmd += [
+                "-c:v",
+                "libx265",
+                "-pix_fmt",
+                "yuva420p10le",
+                "-preset",
+                "medium",
+                "-crf",
+                crf,
+                "-tag:v",
+                "hvc1",
+                "-movflags",
+                "+faststart",
+            ]
+        else:
+            qscale = "14"
+            if quality == "high":
+                qscale = "8"
+            elif quality == "low":
+                qscale = "28"
+            cmd += [
+                "-c:v",
+                "prores_ks",
+                "-profile:v",
+                "4",
+                "-pix_fmt",
+                "yuva444p10le",
+                "-qscale:v",
+                qscale,
+            ]
     else:
+        crf = "23"
+        if quality == "high":
+            crf = "18"
+        elif quality == "low":
+            crf = "28"
         cmd += [
             "-c:v",
             "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            crf,
             "-pix_fmt",
             "yuv420p",
             "-movflags",
@@ -288,8 +447,10 @@ def _start_pipe_encoder(job_id: str) -> None:
     encoder = _PipeEncoder(
         proc=proc,
         stdin_lock=threading.Lock(),
+        ingress_lock=threading.Lock(),
         out_path=out_path,
         duration_us=_duration_us(frame_count, fps),
+        max_pending_bytes=_pipe_max_pending_bytes(),
     )
     with _EXPORT_JOB_LOCK:
         _EXPORT_PIPE_ENCODERS[job_id] = encoder
@@ -453,6 +614,7 @@ def _start_encode_if_ready(job_id: str) -> None:
         w = 0
         h = 0
         ignore_stage_bg = False
+        quality = "medium"
         with _EXPORT_JOB_LOCK:
             job2 = _EXPORT_JOBS.get(job_id)
             if not job2:
@@ -463,6 +625,16 @@ def _start_encode_if_ready(job_id: str) -> None:
             w = max(1, int(job2.width or 1))
             h = max(1, int(job2.height or 1))
             ignore_stage_bg = bool(getattr(job2, "ignoreStageBackground", False))
+            quality = str(getattr(job2, "quality", "medium") or "medium")
+
+        if quality not in ("high", "medium", "low"):
+            quality = "medium"
+
+        # Quality knobs (rough defaults)
+        x264_preset = "fast" if quality == "medium" else "medium" if quality == "high" else "veryfast"
+        x264_crf = "20" if quality == "high" else "23" if quality == "medium" else "28"
+        x265_crf = "18" if quality == "high" else "22" if quality == "medium" else "28"
+        prores_qscale = "8" if quality == "high" else "14" if quality == "medium" else "28"
 
         out_name = f"{job_id}.{fmt}"
         out_path = (export_dir / out_name).resolve()
@@ -478,18 +650,18 @@ def _start_encode_if_ready(job_id: str) -> None:
             "error",
             "-framerate",
             str(fps),
+            "-start_number",
+            "0",
             "-i",
             str((frames_dir / "frame_%06d.png")),
             "-vf",
-            f"scale={w}:{h}",
+            f"scale={w}:{h},format=rgba",
         ]
 
         candidates: list[list[str]] = []
 
         if fmt == "mov" and ignore_stage_bg:
-            # Transparent MOV: try HEVC-with-alpha first for much smaller size.
-            # Fallback to ProRes 4444 for broad editor compatibility.
-            if _ffmpeg_has_encoder("libx265"):
+            if _ffmpeg_x265_supports_alpha():
                 candidates.append(
                     base_cmd
                     + [
@@ -500,7 +672,7 @@ def _start_encode_if_ready(job_id: str) -> None:
                         "-preset",
                         "medium",
                         "-crf",
-                        "26",
+                        x265_crf,
                         "-tag:v",
                         "hvc1",
                         "-movflags",
@@ -517,7 +689,7 @@ def _start_encode_if_ready(job_id: str) -> None:
                     "-pix_fmt",
                     "yuva444p10le",
                     "-qscale:v",
-                    "13",
+                    prores_qscale,
                 ]
             )
         else:
@@ -527,6 +699,10 @@ def _start_encode_if_ready(job_id: str) -> None:
                 + [
                     "-c:v",
                     "libx264",
+                    "-preset",
+                    x264_preset,
+                    "-crf",
+                    x264_crf,
                     "-pix_fmt",
                     "yuv420p",
                     "-movflags",
@@ -732,6 +908,7 @@ def create_job(request: Request) -> Response:
     frame_count = int((payload or {}).get("frameCount") or 0)
     upload_mode = str((payload or {}).get("uploadMode") or "disk").strip().lower()
     ignore_stage_bg = _parse_bool((payload or {}).get("ignoreStageBackground"))
+    quality = _quality_or_default((payload or {}).get("quality"))
     if width <= 0 or height <= 0:
         return _json_error("缺少有效的 width/height")
     if frame_count <= 0:
@@ -757,6 +934,7 @@ def create_job(request: Request) -> Response:
         receivedFrames=0,
         uploadMode=upload_mode,
         ignoreStageBackground=ignore_stage_bg,
+        quality=quality,
         fileName=None,
         serverPath=None,
         downloadUrl=None,
@@ -844,6 +1022,130 @@ def upload_frame_raw(request: Request, job_id: str) -> Response:
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
+def upload_frames_raw_batch(request: Request, job_id: str) -> Response:
+    """Pipe-mode batch uploader.
+
+    - Allows out-of-order uploads.
+    - Buffers a bounded number of frames in memory.
+    - Flushes contiguous frames to ffmpeg stdin in-order.
+
+    Query params:
+      - startIndex: int
+      - count: int
+
+    Body: application/octet-stream (RGBA concatenated)
+    """
+
+    job_id = str(job_id or "").strip()
+    if not job_id:
+        return _json_error("jobId 不能为空")
+
+    try:
+        start_index = int(str((request.query_params or {}).get("startIndex")))
+        count = int(str((request.query_params or {}).get("count")))
+    except Exception:
+        return _json_error("startIndex/count 必须为整数")
+
+    if start_index < 0:
+        return _json_error("startIndex 越界")
+    if count <= 0:
+        return _json_error("count 必须大于 0")
+    max_frames = _pipe_batch_max_frames()
+    if count > max_frames:
+        return _json_error(f"count 过大：max={max_frames}")
+
+    with _EXPORT_JOB_LOCK:
+        job = _EXPORT_JOBS.get(job_id)
+        encoder = _EXPORT_PIPE_ENCODERS.get(job_id)
+    if not job:
+        return _json_error("未找到该导出任务", status=404)
+    if str(getattr(job, "uploadMode", "disk")) != "pipe":
+        return _json_error("该任务不是 pipe 模式")
+    if job.status in ("done", "error"):
+        return _json_error(f"任务已结束：{job.status}")
+    if job.frameCount > 0 and (start_index + count) > int(job.frameCount):
+        return _json_error("startIndex/count 越界")
+    if not encoder or not encoder.proc or encoder.proc.poll() is not None:
+        return _json_error("ffmpeg 管道不可用（进程未启动或已退出）", status=500)
+
+    body = bytes(getattr(request, "body", b"") or b"")
+    max_bytes = _pipe_batch_max_bytes()
+    if len(body) > max_bytes:
+        return _json_error(f"batch body 过大：maxBytes={max_bytes}", status=413)
+
+    frame_len = max(1, int(job.width or 1)) * max(1, int(job.height or 1)) * 4
+    expect_total = frame_len * count
+    if len(body) != expect_total:
+        return _json_error(f"raw batch 长度不匹配：got {len(body)} expected {expect_total}")
+
+    try:
+        with encoder.ingress_lock:
+            new_frames = 0
+            for i in range(count):
+                idx = start_index + i
+                if idx < encoder.next_index:
+                    continue
+                if idx in encoder.pending:
+                    continue
+                new_frames += 1
+
+            add_bytes = new_frames * frame_len
+            if encoder.pending_bytes + add_bytes > int(encoder.max_pending_bytes or 0):
+                return _json_error(
+                    f"pipe 缓冲区已满：pendingBytes={encoder.pending_bytes} addBytes={add_bytes} maxBytes={encoder.max_pending_bytes}",
+                    status=429,
+                )
+
+            mv = memoryview(body)
+            for i in range(count):
+                idx = start_index + i
+                if idx < encoder.next_index:
+                    continue
+                if idx in encoder.pending:
+                    continue
+                off = i * frame_len
+                encoder.pending[idx] = bytes(mv[off : off + frame_len])
+                encoder.pending_bytes += frame_len
+
+            while True:
+                b = encoder.pending.pop(encoder.next_index, None)
+                if b is None:
+                    break
+                encoder.pending_bytes = max(0, int(encoder.pending_bytes) - frame_len)
+                with encoder.stdin_lock:
+                    if encoder.stdin_closed:
+                        encoder.pending[encoder.next_index] = b
+                        encoder.pending_bytes += frame_len
+                        return _json_error("ffmpeg stdin 已关闭", status=409)
+                    assert encoder.proc.stdin is not None
+                    encoder.proc.stdin.write(b)
+                with _EXPORT_JOB_LOCK:
+                    job2 = _EXPORT_JOBS.get(job_id)
+                    if job2:
+                        job2.receivedFrames = int(job2.receivedFrames or 0) + 1
+                        _EXPORT_RECEIVED.setdefault(job_id, set()).add(int(encoder.next_index))
+                encoder.next_index += 1
+    except Exception as e:
+        with _EXPORT_JOB_LOCK:
+            job2 = _EXPORT_JOBS.get(job_id)
+            if job2:
+                job2.status = "error"
+                job2.error = f"写入 ffmpeg stdin 失败：{e}"
+        with _EXPORT_JOB_LOCK:
+            job2 = _EXPORT_JOBS.get(job_id)
+        if job2:
+            _sse_send(job_id, _job_public(job2))
+        return _json_error(f"写入 ffmpeg stdin 失败：{e}", status=500)
+
+    with _EXPORT_JOB_LOCK:
+        job2 = _EXPORT_JOBS.get(job_id) or job
+    _sse_send(job_id, _job_public(job2))
+    return Response(_job_public(job2))
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def upload_frame(request: Request, job_id: str) -> Response:
     job_id = str(job_id or "").strip()
     if not job_id:
@@ -912,7 +1214,7 @@ def upload_frame(request: Request, job_id: str) -> Response:
             pass
         return _json_error(f"写入帧失败：{e}", status=500)
 
-    should_start = False
+    # Export is now two-step: upload (store frames) -> finalize (render video).
     with _EXPORT_JOB_LOCK:
         job2 = _EXPORT_JOBS.get(job_id)
         if not job2:
@@ -920,15 +1222,9 @@ def upload_frame(request: Request, job_id: str) -> Response:
         received = _EXPORT_RECEIVED.setdefault(job_id, set())
         received.add(int(frame_index))
         job2.receivedFrames = len(received)
-        # If all frames arrived, kick off encoding.
-        if job2.frameCount > 0 and job2.receivedFrames >= job2.frameCount:
-            should_start = True
 
     # Optional: notify SSE listeners about receive count (frontend still shows its own upload progress).
     _sse_send(job_id, _job_public(job2))
-
-    if should_start:
-        _start_encode_if_ready(job_id)
 
     return Response(_job_public(job2))
 
@@ -947,7 +1243,28 @@ def finalize_job(request: Request, job_id: str) -> Response:
     if job.status in ("done", "error"):
         return Response(_job_public(job))
 
+    # Allow overriding output options at finalize time (two-step export).
+    try:
+        payload = getattr(request, "data", None) or {}
+        fmt = payload.get("format")
+        quality = payload.get("quality")
+        ignore_stage_bg = payload.get("ignoreStageBackground")
+    except Exception:
+        fmt = None
+        quality = None
+        ignore_stage_bg = None
+
     if str(getattr(job, "uploadMode", "disk")) == "pipe":
+        # Pipe mode starts ffmpeg immediately at create_job, so output options must be immutable.
+        job_fmt = str(getattr(job, "format", ""))
+        job_q = _quality_or_default(getattr(job, "quality", None))
+        job_bg = bool(getattr(job, "ignoreStageBackground", False))
+        if fmt in ("mp4", "mov") and str(fmt) != job_fmt:
+            return _json_error("pipe 模式不允许在 finalize 更改 format", status=409)
+        if quality in ("high", "medium", "low") and _quality_or_default(quality) != job_q:
+            return _json_error("pipe 模式不允许在 finalize 更改 quality", status=409)
+        if ignore_stage_bg is not None and bool(ignore_stage_bg) != job_bg:
+            return _json_error("pipe 模式不允许在 finalize 更改 ignoreStageBackground", status=409)
         with _EXPORT_JOB_LOCK:
             encoder = _EXPORT_PIPE_ENCODERS.get(job_id)
             job2 = _EXPORT_JOBS.get(job_id) or job
@@ -968,6 +1285,26 @@ def finalize_job(request: Request, job_id: str) -> Response:
         with _EXPORT_JOB_LOCK:
             job2 = _EXPORT_JOBS.get(job_id) or job
         return Response(_job_public(job2))
+
+    # Disk mode: allow overriding output options at finalize time.
+    with _EXPORT_JOB_LOCK:
+        jobx = _EXPORT_JOBS.get(job_id)
+        if jobx:
+            if fmt in ("mp4", "mov"):
+                jobx.format = fmt
+            if quality in ("high", "medium", "low"):
+                setattr(jobx, "quality", quality)
+            if ignore_stage_bg is not None:
+                setattr(jobx, "ignoreStageBackground", bool(ignore_stage_bg))
+
+    # Disk mode: must have all frames before encoding.
+    with _EXPORT_JOB_LOCK:
+        job2 = _EXPORT_JOBS.get(job_id) or job
+    if int(getattr(job2, "receivedFrames", 0) or 0) < int(getattr(job2, "frameCount", 0) or 0):
+        return _json_error(
+            f"仍有帧未上传：received={int(getattr(job2, 'receivedFrames', 0) or 0)} frameCount={int(getattr(job2, 'frameCount', 0) or 0)}",
+            status=409,
+        )
 
     # Try start regardless; encoder will re-check readiness.
     _start_encode_if_ready(job_id)

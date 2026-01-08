@@ -14,20 +14,29 @@ export const moveNodeInLayer = (args: MoveNodeArgs): boolean => {
 
 	const before = findWorldPos(layer.nodeTree, nodeId)
 	const targetParentWorld = (() => {
-		if (!targetParentId) return { x: 0, y: 0 }
-		if (targetParentId === 'root') return { x: 0, y: 0 }
+		if (!targetParentId) return { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }
+		if (targetParentId === 'root') return { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }
 		const r = findWorldPos(layer.nodeTree, targetParentId)
-		return r?.world ?? { x: 0, y: 0 }
+		return r?.world ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }
 	})()
 
 	const moved = detachNode(layer.nodeTree, nodeId)
 	if (!moved) return false
 
 	if (before?.node?.transform && moved.transform) {
+		const psx = Math.max(1e-6, Number(targetParentWorld.scaleX ?? 1))
+		const psy = Math.max(1e-6, Number(targetParentWorld.scaleY ?? 1))
+		const prot = Number(targetParentWorld.rotation ?? 0) || 0
+		const cos = Math.cos(-prot)
+		const sin = Math.sin(-prot)
+		const wx = before.world.x - targetParentWorld.x
+		const wy = before.world.y - targetParentWorld.y
+		const rx = wx * cos - wy * sin
+		const ry = wx * sin + wy * cos
 		moved.transform = {
 			...moved.transform,
-			x: before.world.x - targetParentWorld.x,
-			y: before.world.y - targetParentWorld.y,
+			x: rx / psx,
+			y: ry / psy,
 		}
 	}
 

@@ -16,20 +16,44 @@ export class LineRenderer extends NodeRenderer {
 	private draw(canvas: DwebCanvasGL, node: RenderNode, ctx: RenderContext, space: 'world' | 'local', target?: LocalTargetSize) {
 		const w = Math.max(1, Number(node.transform.width ?? 1))
 		const h = Math.max(1, Number(node.transform.height ?? 1))
+		const sx0 = Number((node.transform as any)?.scaleX ?? 1)
+		const sy0 = Number((node.transform as any)?.scaleY ?? 1)
+		const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
+		const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
+		const sAvg = Math.max(0, (sx + sy) / 2)
 		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
 		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
-		const startX = Number((node.props as any)?.startX ?? -w / 2)
-		const startY = Number((node.props as any)?.startY ?? 0)
-		const endX = Number((node.props as any)?.endX ?? w / 2)
-		const endY = Number((node.props as any)?.endY ?? 0)
-		const anchorX = Number((node.props as any)?.anchorX ?? 0)
-		const anchorY = Number((node.props as any)?.anchorY ?? -h / 4)
+		const pObj = (node.props as any) ?? {}
+		const hasStartX = pObj && typeof pObj === 'object' && 'startX' in pObj
+		const hasStartY = pObj && typeof pObj === 'object' && 'startY' in pObj
+		const hasEndX = pObj && typeof pObj === 'object' && 'endX' in pObj
+		const hasEndY = pObj && typeof pObj === 'object' && 'endY' in pObj
+		const hasAnchorX = pObj && typeof pObj === 'object' && 'anchorX' in pObj
+		const hasAnchorY = pObj && typeof pObj === 'object' && 'anchorY' in pObj
+
+		// Line geometry is often stored directly in props (start/end/anchor). When the node is scaled
+		// (e.g. by a parent group), those local-space control points should scale too.
+		// To avoid double-scaling defaults (which are derived from w/h), only scale when the prop exists.
+		const startX = hasStartX ? Number(pObj?.startX ?? 0) * sx : Number(-w / 2)
+		const startY = hasStartY ? Number(pObj?.startY ?? 0) * sy : Number(0)
+		const endX = hasEndX ? Number(pObj?.endX ?? 0) * sx : Number(w / 2)
+		const endY = hasEndY ? Number(pObj?.endY ?? 0) * sy : Number(0)
+		const anchorX = hasAnchorX ? Number(pObj?.anchorX ?? 0) * sx : Number(0)
+		const anchorY = hasAnchorY ? Number(pObj?.anchorY ?? 0) * sy : Number(-h / 4)
 		const lineWidthPx = Math.max(1, Number((node.props as any)?.lineWidth ?? 4))
 		const lineStyle = String((node.props as any)?.lineStyle ?? 'solid')
 		const color = canvas.parseHexColor(String((node.props as any)?.lineColor ?? '#ffffff'), ctx.opacity)
-		const thickness = lineWidthPx / Math.max(0.0001, canvas.viewport.zoom)
+		// For offscreen filter rendering, the effective pixels-per-world-unit may be clamped.
+		// Using viewport.zoom directly can make dash segments explode in count under extreme zoom,
+		// which is a common crash vector when combined with glow/blur.
+		const zoomWorldToCssPx = Math.max(1e-3, canvas.viewport.zoom)
+		const zoomForStyle =
+			space === 'local'
+				? Math.max(1e-3, Number(((target as any)?.scale ?? canvas.getFilterScale()) || (zoomWorldToCssPx * canvas.getPixelRatio())) / Math.max(1, canvas.getPixelRatio()))
+				: zoomWorldToCssPx
+		const thickness = (lineWidthPx / zoomForStyle) * sAvg
 
 		// approximate quadratic bezier by polyline
 		const p0 = { x: startX, y: startY }
@@ -73,33 +97,63 @@ export class LineRenderer extends NodeRenderer {
 		}
 
 		if (lineStyle === 'dashed') {
-			const dashLen = 14 / Math.max(0.0001, canvas.viewport.zoom)
-			const gapLen = 10 / Math.max(0.0001, canvas.viewport.zoom)
-			const period = Math.max(0.001, dashLen + gapLen)
+			let dashLen = (14 / zoomForStyle) * sAvg
+			let gapLen = (10 / zoomForStyle) * sAvg
+			let period = Math.max(1e-4, dashLen + gapLen)
 
+			// Cap dash draw calls: under high zoom, dashLen/gapLen shrink in world units,
+			// which can produce thousands of tiny segments and crash the browser.
+			// Keep the pattern but scale it up in world units when needed.
+			let totalLen = 0
+			for (let i = 0; i < pts.length - 1; i++) totalLen += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+			const maxDashes = space === 'local' ? 180 : 320
+			const estDashes = period > 1e-6 ? totalLen / period : Number.POSITIVE_INFINITY
+			if (estDashes > maxDashes && Number.isFinite(estDashes)) {
+				const k = Math.max(1, estDashes / maxDashes)
+				dashLen *= k
+				gapLen *= k
+				period = Math.max(0.001, dashLen + gapLen)
+			}
+
+			// Robust dash rendering:
+			// Avoid incremental stepping with tiny "step" (can stall at extreme zoom and freeze/crash).
+			// Instead, intersect the segment distance range with dash ranges per period.
 			let s = 0
+			const minDashWorld = 1e-4
+			dashLen = Math.max(0, dashLen)
+			gapLen = Math.max(0, gapLen)
+			period = Math.max(1e-4, dashLen + gapLen)
+			if (dashLen < minDashWorld) {
+				// Too small to be meaningful; draw as solid for stability.
+				for (let i = 0; i < pts.length - 1; i++) drawSegment(pts[i], pts[i + 1])
+				return
+			}
+
 			for (let i = 0; i < pts.length - 1; i++) {
 				const a = pts[i]
 				const b = pts[i + 1]
 				const segLen = Math.hypot(b.x - a.x, b.y - a.y)
-				if (segLen < 0.001) continue
+				if (segLen < 1e-6) continue
 
-				let localPos = 0
-				while (localPos < segLen - 1e-6) {
-					const globalPos = s + localPos
-					const phase = globalPos % period
-					const inDash = phase < dashLen
-					const run = inDash ? dashLen - phase : period - phase
-					const step = Math.min(run, segLen - localPos)
-					if (inDash && step > 0.001) {
-						const t0 = localPos / segLen
-						const t1 = (localPos + step) / segLen
-						const pA = { x: a.x + (b.x - a.x) * t0, y: a.y + (b.y - a.y) * t0 }
-						const pB = { x: a.x + (b.x - a.x) * t1, y: a.y + (b.y - a.y) * t1 }
-						drawSegment(pA, pB)
-					}
-					localPos += step
+				const startPos = s
+				const endPos = s + segLen
+				// Iterate periods overlapping this segment.
+				const k0 = Math.floor(startPos / period)
+				const k1 = Math.floor(endPos / period) + 1
+				for (let k = k0; k <= k1; k++) {
+					const dashStart = k * period
+					const dashEnd = dashStart + dashLen
+					const i0 = Math.max(startPos, dashStart)
+					const i1 = Math.min(endPos, dashEnd)
+					if (i1 <= i0 + 1e-4) continue
+					const t0 = (i0 - startPos) / segLen
+					const t1 = (i1 - startPos) / segLen
+					if (t1 <= t0) continue
+					const pA = { x: a.x + (b.x - a.x) * t0, y: a.y + (b.y - a.y) * t0 }
+					const pB = { x: a.x + (b.x - a.x) * t1, y: a.y + (b.y - a.y) * t1 }
+					drawSegment(pA, pB)
 				}
+
 				s += segLen
 			}
 		} else {

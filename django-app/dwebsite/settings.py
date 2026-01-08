@@ -1,6 +1,7 @@
 """Minimal Django settings for the Dweb Studio backend template."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -91,3 +92,14 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Dweb Studio APIs tend to omit trailing slashes; disable auto-redirects that break POST bodies
 APPEND_SLASH = False
+
+# Export pipeline may upload raw/compressed frames as request bodies.
+# Django defaults are too small and will reject large POST bodies.
+# Make these limits configurable for local dev and CI.
+_DEFAULT_UPLOAD_LIMIT_MB = 256
+_UPLOAD_LIMIT_BYTES = int(os.getenv("DWEB_UPLOAD_LIMIT_BYTES", str(_DEFAULT_UPLOAD_LIMIT_MB * 1024 * 1024)))
+
+# Max in-memory request body size before Django raises RequestDataTooBig.
+DATA_UPLOAD_MAX_MEMORY_SIZE = _UPLOAD_LIMIT_BYTES
+# Max in-memory upload size before switching to a temp file handler.
+FILE_UPLOAD_MAX_MEMORY_SIZE = _UPLOAD_LIMIT_BYTES
