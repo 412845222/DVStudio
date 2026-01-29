@@ -346,6 +346,7 @@
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { componentTemplateApi, validateComponentTemplate } from '../../../core/components'
+import { ComponentLibraryService } from '../../../network/ComponentLibraryService'
 import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners } from '../../../core/scene'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 import { stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
@@ -2088,9 +2089,11 @@ type SavedComponent = {
 	savedAt: string
 	thumbAssetId?: string
 	thumbDataUrl?: string
+	thumbUrl?: string
 }
 
 const COMPONENT_LIBRARY_KEY = 'dvs.componentLibrary.v1'
+const componentService = new ComponentLibraryService()
 
 const loadComponentLibrary = (): SavedComponent[] => {
 	try {
@@ -2111,6 +2114,7 @@ const loadComponentLibrary = (): SavedComponent[] => {
 				savedAt: typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString(),
 				thumbAssetId: typeof x.thumbAssetId === 'string' ? x.thumbAssetId : undefined,
 				thumbDataUrl: typeof x.thumbDataUrl === 'string' ? x.thumbDataUrl : undefined,
+				thumbUrl: typeof x.thumbUrl === 'string' ? x.thumbUrl : undefined,
 			}))
 			.filter((x: SavedComponent) => x.id && x.templateId && x.name)
 	} catch {
@@ -2297,7 +2301,28 @@ const saveTemplateAsComponent = async (t: TemplateItem, ev?: MouseEvent) => {
 		thumbAssetId,
 		thumbDataUrl,
 	}
-	persistComponentToLocalStorage(saved)
+	let finalSaved = saved
+	try {
+		const res = await componentService.upsertComponent({
+			templateId: saved.templateId,
+			name: saved.name,
+			template: saved.template,
+			thumbAssetId: saved.thumbAssetId,
+			thumbDataUrl: saved.thumbDataUrl,
+			clientId: saved.id,
+			createdAt: saved.createdAt,
+		})
+		finalSaved = {
+			...saved,
+			id: res.item.id || saved.id,
+			createdAt: res.item.createdAt || saved.createdAt,
+			savedAt: res.item.savedAt || saved.savedAt,
+			thumbUrl: res.item.thumbUrl,
+		}
+	} catch {
+		// fallback to local storage only
+	}
+	persistComponentToLocalStorage(finalSaved)
 	savedComponentMap.value = { ...savedComponentMap.value, [t.key]: true }
 	closePreviewLayerForTemplate(t.templateId)
 	statusText.value = '已保存到组件库（可在组件库查看与使用）'

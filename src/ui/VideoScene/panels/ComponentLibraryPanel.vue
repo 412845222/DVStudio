@@ -2,6 +2,9 @@
   <div class="vs-cl">
     <div class="vs-cl-head">
       <div class="vs-cl-title">组件库</div>
+      <button class="vs-btn" type="button" :disabled="busy" @click="syncLocalToServer">
+        同步保存
+      </button>
       <div class="vs-cl-meta">
         当前关键帧：{{
           selectedKeyframeCell
@@ -107,13 +110,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { componentTemplateApi } from '../../../core/components'
 import { nodeExistsInAnyLayer } from '../../../core/scene'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 import { stripSubtitleTextContentFromNodeSnapshots, stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
 import { applyTimelineAnimationAtFrame } from '../anim/timelineAnimation'
+import { ComponentLibraryService } from '../../../network/ComponentLibraryService'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import { TimelineStore } from '../../../store/timeline'
 import { containsFrame, type TimelineFrameSpan } from '../../../store/timeline/spans'
@@ -133,6 +137,7 @@ type SavedComponent = {
 	savedAt: string
 	thumbAssetId?: string
 	thumbDataUrl?: string
+  thumbUrl?: string
 }
 
 type ParamDef = { key: string; type: 'string' | 'number' | 'boolean' | 'color' | 'asset:image' }
@@ -143,6 +148,7 @@ const componentLibrary = ref<SavedComponent[]>([])
 const selectedComponentId = ref<string>('')
 const componentParamValuesById = ref<Record<string, Record<string, any>>>({})
 const busy = ref(false)
+const componentService = new ComponentLibraryService()
 
 const getSingleSelectedKeyframeCell = (): { layerId: string; frameIndex: number } | null => {
 	// Read versions to ensure reactivity when nested maps mutate.
@@ -184,10 +190,10 @@ const loadComponentLibrary = () => {
 		if (!raw) {
 			componentLibrary.value = []
 			selectedComponentId.value = ''
-			return
+      return [] as SavedComponent[]
 		}
 		const parsed = JSON.parse(raw)
-		if (!Array.isArray(parsed)) return
+    if (!Array.isArray(parsed)) return [] as SavedComponent[]
 		const list: SavedComponent[] = parsed
 			.filter((x) => x && typeof x === 'object')
 			.map((x: any) => ({
@@ -202,17 +208,22 @@ const loadComponentLibrary = () => {
 				savedAt: typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString(),
 				thumbAssetId: typeof x.thumbAssetId === 'string' ? x.thumbAssetId : undefined,
 				thumbDataUrl: typeof x.thumbDataUrl === 'string' ? x.thumbDataUrl : undefined,
+        thumbUrl: typeof x.thumbUrl === 'string' ? x.thumbUrl : undefined,
 			}))
 			.filter((x) => x.id && x.templateId && x.name)
 		componentLibrary.value = list
 		// Re-hydrate thumbnail data into the imageAssets pool for UI usage.
 		for (const it of list) {
-			if (!it.thumbAssetId || !it.thumbDataUrl) continue
-			store.commit('upsertImageAsset', { id: it.thumbAssetId, url: it.thumbDataUrl, name: it.name })
+      if (!it.thumbAssetId) continue
+      const url = it.thumbUrl || it.thumbDataUrl
+      if (!url) continue
+      store.commit('upsertImageAsset', { id: it.thumbAssetId, url, name: it.name })
 		}
 		if (!selectedComponentId.value && list.length) selectedComponentId.value = list[0].id
+    return list
 	} catch {
 		// ignore
+    return [] as SavedComponent[]
 	}
 }
 
@@ -224,13 +235,107 @@ const persistComponentLibrary = () => {
 	}
 }
 
-loadComponentLibrary()
+const localSnapshot = loadComponentLibrary()
 
 const getThumbUrl = (c: SavedComponent): string | null => {
 	const id = String(c.thumbAssetId || '').trim()
-	if (!id) return null
+  if (!id) return typeof c.thumbUrl === 'string' && c.thumbUrl.trim() ? c.thumbUrl : null
 	const url = store.state.imageAssets?.[id]?.url
-	return typeof url === 'string' && url.trim() ? url : (typeof c.thumbDataUrl === 'string' && c.thumbDataUrl.trim() ? c.thumbDataUrl : null)
+  if (typeof url === 'string' && url.trim()) return url
+  if (typeof c.thumbUrl === 'string' && c.thumbUrl.trim()) return c.thumbUrl
+  return typeof c.thumbDataUrl === 'string' && c.thumbDataUrl.trim() ? c.thumbDataUrl : null
+}
+
+const applyServerList = (items: any[]) => {
+  const list: SavedComponent[] = items
+    .filter((x) => x && typeof x === 'object')
+    .map((x: any) => ({
+      id: typeof x.id === 'string' ? x.id : '',
+      createdAt: typeof x.createdAt === 'string' ? x.createdAt : new Date().toISOString(),
+      templateId: typeof x.templateId === 'string' ? x.templateId : '',
+      name: typeof x.name === 'string' ? x.name : '',
+      template: x.template,
+      savedAt: typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString(),
+      thumbAssetId: typeof x.thumbAssetId === 'string' ? x.thumbAssetId : undefined,
+      thumbUrl: typeof x.thumbUrl === 'string' ? x.thumbUrl : undefined,
+    }))
+    .filter((x) => x.id && x.templateId && x.name)
+  componentLibrary.value = list
+  for (const it of list) {
+    if (!it.thumbAssetId || !it.thumbUrl) continue
+    store.commit('upsertImageAsset', { id: it.thumbAssetId, url: it.thumbUrl, name: it.name })
+  }
+  if (!selectedComponentId.value && list.length) selectedComponentId.value = list[0].id
+}
+
+const refreshFromServer = async () => {
+  try {
+    const res = await componentService.listComponents({ limit: 500, offset: 0 })
+    if (res.items && res.items.length) {
+      applyServerList(res.items)
+      persistComponentLibrary()
+      return
+    }
+    if (localSnapshot.length) {
+      await componentService.importComponents(localSnapshot.map((x) => ({
+        templateId: x.templateId,
+        name: x.name,
+        template: x.template,
+        thumbAssetId: x.thumbAssetId,
+        thumbDataUrl: x.thumbDataUrl,
+        createdAt: x.createdAt,
+      })))
+      const after = await componentService.listComponents({ limit: 500, offset: 0 })
+      if (after.items) {
+        applyServerList(after.items)
+        persistComponentLibrary()
+      }
+    }
+  } catch {
+    // ignore: fall back to local cache
+  }
+}
+
+onMounted(() => {
+  void refreshFromServer()
+  window.addEventListener('dvs:componentLibrary/refresh', onExternalRefresh as any)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('dvs:componentLibrary/refresh', onExternalRefresh as any)
+})
+
+const onExternalRefresh = () => {
+  void refreshFromServer()
+}
+
+const syncLocalToServer = async () => {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const list = loadComponentLibrary()
+    if (!list.length) {
+      busy.value = false
+      window.alert('本地暂无可同步组件')
+      return
+    }
+    await componentService.importComponents(
+      list.map((x) => ({
+        templateId: x.templateId,
+        name: x.name,
+        template: x.template,
+        thumbAssetId: x.thumbAssetId,
+        thumbDataUrl: x.thumbDataUrl,
+        createdAt: x.createdAt,
+      }))
+    )
+    await refreshFromServer()
+    window.alert('同步完成')
+  } catch {
+    window.alert('同步失败：后端不可用或出错')
+  } finally {
+    busy.value = false
+  }
 }
 
 watch(
@@ -438,6 +543,20 @@ const insertSelectedComponent = async () => {
 		// Ensure the target keyframe exists and bind the insertion to it.
 		await TimelineStore.dispatch('addKeyframeRange', { layerId, startFrame: frameIndex, endFrame: frameIndex })
 		const rootId = await instantiateIntoLayerWithParams(layerId, c.template, params)
+    if (rootId) {
+      await store.dispatch('updateNodeProps', {
+        layerId,
+        nodeId: rootId,
+        patch: {
+          __dvsComponentRoot: true,
+          __dvsComponentLibraryId: c.id,
+          __dvsComponentTemplateId: c.templateId,
+          __dvsComponentName: c.name,
+          __dvsComponentParams: cloneJsonSafe(params),
+        },
+      }
+      )
+    }
 		await setOpacityKeyframes(layerId, rootId, [{ frame: frameIndex, opacity: 1 }])
 
     // Write back PER-LAYER stage snapshot for this keyframe.
@@ -471,15 +590,25 @@ const insertSelectedComponent = async () => {
 	}
 }
 
-const removeSelectedComponent = () => {
-	const c = selectedComponent.value
-	if (!c) return
-	const id = c.id
-	componentLibrary.value = componentLibrary.value.filter((x) => x.id !== id)
-	const nextParams = { ...componentParamValuesById.value }
-	delete nextParams[id]
-	componentParamValuesById.value = nextParams
-	if (selectedComponentId.value === id) selectedComponentId.value = componentLibrary.value[0]?.id || ''
+const removeSelectedComponent = async () => {
+  const c = selectedComponent.value
+  if (!c) return
+  const id = c.id
+  if (!id) return
+  busy.value = true
+  try {
+    await componentService.deleteComponent(id)
+  } catch {
+    busy.value = false
+    window.alert('移除失败：后端不可用或出错')
+    return
+  }
+  componentLibrary.value = componentLibrary.value.filter((x) => x.id !== id)
+  const nextParams = { ...componentParamValuesById.value }
+  delete nextParams[id]
+  componentParamValuesById.value = nextParams
+  if (selectedComponentId.value === id) selectedComponentId.value = componentLibrary.value[0]?.id || ''
+  busy.value = false
 }
 </script>
 

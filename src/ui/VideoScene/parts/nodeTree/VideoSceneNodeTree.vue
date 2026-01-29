@@ -37,6 +37,7 @@
         @dragleave.stop="onDragLeave(n, $event)"
         @drop.stop.prevent="onDropOnNode(n, $event)"
         @click="onSelect(n.id)"
+        @contextmenu.stop.prevent="onContextMenu(n, $event)"
       >
         <template v-if="renamingId === n.id">
           <input
@@ -73,6 +74,7 @@
           </button>
           <span v-else class="vs-tree-toggle-spacer" />
           <span class="vs-tree-name">{{ n.name }}</span>
+          <span v-if="isComponentRoot(n.id)" class="vs-tree-badge">组件</span>
           <div class="vs-tree-actions">
             <button
               v-if="hasChildren(n.id)"
@@ -148,20 +150,40 @@
         </template>
       </div>
     </div>
+    <div
+      v-if="menu.visible"
+      class="vs-tree-menu"
+      :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
+      @pointerdown.stop
+      @click.stop
+    >
+      <button class="vs-tree-menu-item" type="button" @click="onSyncComponent">
+        同步组件库数据
+      </button>
+      <button class="vs-tree-menu-item" type="button" @click="onPushComponent">
+        更新组件库数据
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState } from '../../../../store/videoscene'
 import { VideoSceneNodeTreeController } from './VideoSceneNodeTreeController'
 import type { FlatNode } from './NodeTreeController'
+import { DwebCanvasGLKey } from '../../VideoSceneRuntime'
+import { ComponentLibraryService } from '../../../../network/ComponentLibraryService'
+import { componentTemplateApi } from '../../../../core/components'
 
 defineOptions({ name: 'VideoSceneNodeTree' })
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 const controller = new VideoSceneNodeTreeController(store)
+const dwebCanvasRef = inject<any>(DwebCanvasGLKey, null)
+const componentService = new ComponentLibraryService()
+const COMPONENT_LIBRARY_KEY = 'dvs.componentLibrary.v1'
 
 const selectedNodeIds = computed(() => store.state.selectedNodeIds ?? [])
 const rootEl = ref<HTMLElement | null>(null)
@@ -193,6 +215,21 @@ const nodeIndex = computed(() => {
 	walk(controller.getActiveElements() as any)
 	return out
 })
+
+const getComponentMeta = (nodeId: string) => {
+  const n = nodeIndex.value.get(String(nodeId))
+  const props = (n as any)?.props
+  if (!props || typeof props !== 'object') return null
+  const templateId = typeof (props as any).__dvsComponentTemplateId === 'string' ? String((props as any).__dvsComponentTemplateId).trim() : ''
+  if (!templateId) return null
+  const componentId = typeof (props as any).__dvsComponentLibraryId === 'string' ? String((props as any).__dvsComponentLibraryId).trim() : ''
+  const params = (props as any).__dvsComponentParams && typeof (props as any).__dvsComponentParams === 'object' ? (props as any).__dvsComponentParams : {}
+  return { templateId, componentId, params, props }
+}
+
+const isComponentRoot = (nodeId: string) => {
+  return !!getComponentMeta(nodeId)
+}
 
 const hasChildren = (nodeId: string) => {
 	const n = nodeIndex.value.get(String(nodeId))
@@ -348,10 +385,12 @@ const onGlobalKeyDown = (ev: KeyboardEvent) => {
 
 onMounted(() => {
 	window.addEventListener('keydown', onGlobalKeyDown, { capture: true })
+  window.addEventListener('pointerdown', closeMenu, { passive: true })
 })
 
 onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onGlobalKeyDown, { capture: true } as any)
+  window.removeEventListener('pointerdown', closeMenu as any)
 })
 
 const startRename = async (nodeId: string, currentName: string) => {
@@ -470,6 +509,158 @@ const onDropRoot = (ev: DragEvent) => {
 	if (!nodeId) return
 	controller.moveToRoot(nodeId)
 	onDragEnd()
+}
+
+const menu = ref({ visible: false, x: 0, y: 0, nodeId: '' })
+
+const closeMenu = () => {
+  menu.value = { visible: false, x: 0, y: 0, nodeId: '' }
+}
+
+const onContextMenu = (node: FlatNode, ev: MouseEvent) => {
+  if (!isComponentRoot(node.id)) {
+    closeMenu()
+    return
+  }
+  menu.value = { visible: true, x: ev.clientX, y: ev.clientY, nodeId: node.id }
+}
+
+const onSyncComponent = async () => {
+  const nodeId = String(menu.value.nodeId || '').trim()
+  closeMenu()
+  if (!nodeId) return
+  const meta = getComponentMeta(nodeId)
+  if (!meta) return
+  const layerId = controller.getActiveLayer()?.id
+  if (!layerId) return
+  const currentNode = nodeIndex.value.get(nodeId)
+  if (!currentNode) return
+  const currentTransform = (currentNode as any)?.transform ? { ...(currentNode as any).transform } : undefined
+  const currentName = String((currentNode as any)?.name ?? '').trim()
+  let latest: any | null = null
+  try {
+    const res = await componentService.listComponents({ q: meta.templateId, limit: 50, offset: 0 })
+    const items = Array.isArray(res.items) ? res.items : []
+    latest = items.find((x: any) => typeof x?.templateId === 'string' && String(x.templateId).trim() === meta.templateId) || null
+  } catch {
+    window.alert('同步失败：无法读取组件库数据')
+    return
+  }
+  if (!latest?.template) {
+    window.alert('同步失败：未找到该组件的最新数据')
+    return
+  }
+  updateLocalComponentCache(latest, latest.template)
+  let instantiated
+  try {
+    instantiated = componentTemplateApi.instantiateTemplate(latest.template, meta.params ?? {}, {
+      getNodeId: ({ templateId, localId }) => {
+        const base = String(templateId).trim() ? `${templateId}:${localId}` : localId
+        return base.replace(/[^a-zA-Z0-9:_\-]/g, '_')
+      },
+    })
+  } catch {
+    window.alert('同步失败：组件模板无效')
+    return
+  }
+  const newRoot = instantiated?.root
+  if (!newRoot) return
+  if (currentTransform) (newRoot as any).transform = { ...currentTransform }
+  if (currentName) (newRoot as any).name = currentName
+  ;(newRoot as any).props = {
+    ...((newRoot as any).props ?? {}),
+    __dvsComponentRoot: true,
+    __dvsComponentLibraryId: latest.id || meta.componentId,
+    __dvsComponentTemplateId: meta.templateId,
+    __dvsComponentName: typeof latest.name === 'string' ? latest.name : currentName,
+    __dvsComponentParams: meta.params ?? {},
+  }
+
+  const target = visibleFlatNodes.value.find((x) => x.id === nodeId)
+  const parentId = target?.parentId ?? 'root'
+  const index = Math.max(0, target?.index ?? 0)
+
+  await store.dispatch('deleteNodesById', { nodeIds: [nodeId], layerId })
+  await store.dispatch('addNodeTree', { node: newRoot, layerId, parentId })
+  await store.dispatch('moveNode', { nodeId: newRoot.id, layerId, targetParentId: parentId, targetIndex: index })
+  await store.dispatch('setSelectedNode', { nodeId: newRoot.id })
+  ;
+  dwebCanvasRef?.value?.requestRender?.()
+}
+
+const onPushComponent = async () => {
+  const nodeId = String(menu.value.nodeId || '').trim()
+  closeMenu()
+  if (!nodeId) return
+  const meta = getComponentMeta(nodeId)
+  if (!meta) return
+  const layer = controller.getActiveLayer()
+  if (!layer) return
+  const currentNode = nodeIndex.value.get(nodeId)
+  const name = String((currentNode as any)?.name ?? (meta.props as any)?.__dvsComponentName ?? meta.templateId).trim() || meta.templateId
+  let template
+  try {
+    template = componentTemplateApi.exportTemplateFromSelection({
+      layerNodeTree: (layer as any).nodeTree ?? [],
+      selectedNodeIds: [nodeId],
+      templateId: meta.templateId,
+      name,
+    })
+  } catch {
+    window.alert('更新失败：无法导出组件模板')
+    return
+  }
+  let res
+  try {
+    res = await componentService.upsertComponent({
+      templateId: meta.templateId,
+      name,
+      template,
+      thumbAssetId: typeof (meta.props as any)?.__dvsComponentThumbAssetId === 'string' ? (meta.props as any).__dvsComponentThumbAssetId : undefined,
+    })
+  } catch {
+    window.alert('更新失败：写入组件库失败')
+    return
+  }
+  if (res?.item) updateLocalComponentCache(res.item, template)
+  const nextId = res?.item?.id || meta.componentId
+  await store.dispatch('updateNodeProps', {
+    layerId: layer.id,
+    nodeId,
+    patch: {
+      __dvsComponentRoot: true,
+      __dvsComponentLibraryId: nextId,
+      __dvsComponentTemplateId: meta.templateId,
+      __dvsComponentName: name,
+    },
+  })
+  dwebCanvasRef?.value?.requestRender?.()
+}
+
+const updateLocalComponentCache = (item: any, templateOverride?: any) => {
+  try {
+    const raw = localStorage.getItem(COMPONENT_LIBRARY_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    const list = Array.isArray(parsed) ? parsed : []
+    const templateId = typeof item?.templateId === 'string' ? String(item.templateId).trim() : ''
+    if (!templateId) return
+    const nextItem = {
+      id: typeof item?.id === 'string' ? item.id : `${templateId}::${Date.now()}`,
+      createdAt: typeof item?.createdAt === 'string' ? item.createdAt : new Date().toISOString(),
+      savedAt: typeof item?.savedAt === 'string' ? item.savedAt : new Date().toISOString(),
+      templateId,
+      name: typeof item?.name === 'string' ? item.name : templateId,
+      template: templateOverride ?? item?.template,
+      thumbAssetId: typeof item?.thumbAssetId === 'string' ? item.thumbAssetId : undefined,
+      thumbUrl: typeof item?.thumbUrl === 'string' ? item.thumbUrl : undefined,
+    }
+    const next = list.filter((x: any) => String(x?.templateId ?? '').trim() !== templateId)
+    next.unshift(nextItem)
+    localStorage.setItem(COMPONENT_LIBRARY_KEY, JSON.stringify(next))
+    window.dispatchEvent(new CustomEvent('dvs:componentLibrary/refresh', { detail: { templateId } }))
+  } catch {
+    // ignore
+  }
 }
 </script>
 
@@ -677,5 +868,40 @@ const onDropRoot = (ev: DragEvent) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.vs-tree-badge {
+  margin-left: 6px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 12px;
+  border: 1px solid var(--vscode-border);
+  color: var(--vscode-fg-muted);
+}
+
+.vs-tree-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 140px;
+  background: var(--dweb-defualt);
+  border: 1px solid var(--vscode-border);
+  box-shadow: var(--dweb-shadow);
+  padding: 6px;
+}
+
+.vs-tree-menu-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 6px 8px;
+  color: var(--vscode-fg);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.vs-tree-menu-item:hover {
+  background: var(--vscode-hover-bg);
 }
 </style>
