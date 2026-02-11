@@ -14,9 +14,8 @@ const cropToUv = (crop: WorkflowImageCrop | null | undefined): UvRect => {
 	const y0 = clamp01(c.y, 0)
 	const x1 = clamp01(x0 + clamp01(c.width, 1), 1)
 	const y1 = clamp01(y0 + clamp01(c.height, 1), 1)
-	// NOTE: WebGL texture v=0 is bottom, but our UI crop y=0 is top.
-	// So we flip v here.
-	return { u0: x0, u1: x1, v0: 1 - y0, v1: 1 - y1 }
+	// UI crop y=0 is top; keep it consistent with workflow preview rendering.
+	return { u0: x0, u1: x1, v0: y0, v1: y1 }
 }
 
 /**
@@ -36,21 +35,26 @@ export const exportWorkflowImageOutputPng = async (payload: {
 	if (!outputWidth || !outputHeight) return null
 	if (typeof document === 'undefined') return null
 
-	const canvasEl = document.createElement('canvas')
-	canvasEl.width = outputWidth
-	canvasEl.height = outputHeight
-	const glCanvas = new DwebCanvasGL(canvasEl)
-	glCanvas.setSize(outputWidth, outputHeight, 1)
-
 	const uv = cropToUv(payload.crop)
+
+	// outputWidth/outputHeight represent the "quality" size of the full image.
+	// We export the cropped region WITHOUT scaling it back up to full output.
+	const cropW = Math.max(1, Math.floor((uv.u1 - uv.u0) * outputWidth))
+	const cropH = Math.max(1, Math.floor((uv.v1 - uv.v0) * outputHeight))
+
+	const canvasEl = document.createElement('canvas')
+	canvasEl.width = cropW
+	canvasEl.height = cropH
+	const glCanvas = new DwebCanvasGL(canvasEl)
+	glCanvas.setSize(cropW, cropH, 1)
 
 	glCanvas.setScene({
 		render: (c) => {
 			const tex = c.getImageTexture(src, 'clamp')
 			if (!tex) return
-			const target = { w: outputWidth, h: outputHeight, scale: 1 }
-			// Fill the whole output with the cropped region.
-			c.drawLocalTexturedRectUv(target, 0, 0, outputWidth, outputHeight, tex, 1, 0, uv)
+			const target = { w: cropW, h: cropH, scale: 1 }
+			// Fill the output with the cropped region at 1:1 scale (no upscale to full image).
+			c.drawLocalTexturedRectUv(target, 0, 0, cropW, cropH, tex, 1, 0, uv)
 		},
 	})
 

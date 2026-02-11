@@ -172,6 +172,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						outputHeight: Number.isFinite(Number((rawImg as any).outputHeight)) ? Math.max(1, Math.floor(Number((rawImg as any).outputHeight))) : undefined,
 						naturalWidth: Number.isFinite(Number((rawImg as any).naturalWidth)) ? Math.max(1, Math.floor(Number((rawImg as any).naturalWidth))) : undefined,
 						naturalHeight: Number.isFinite(Number((rawImg as any).naturalHeight)) ? Math.max(1, Math.floor(Number((rawImg as any).naturalHeight))) : undefined,
+						cropEnabled: typeof (rawImg as any).cropEnabled === 'boolean' ? Boolean((rawImg as any).cropEnabled) : undefined,
 						crop: (rawImg as any).crop && typeof (rawImg as any).crop === 'object'
 							? {
 								x: Number.isFinite(Number((rawImg as any).crop.x)) ? Math.max(0, Math.min(1, Number((rawImg as any).crop.x))) : 0,
@@ -182,6 +183,15 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 							: undefined,
 					}
 					: undefined
+				const rawVideo = (n as any).videoSettings
+				const videoSettings = rawVideo && typeof rawVideo === 'object'
+					? {
+						outputWidth: Number.isFinite(Number((rawVideo as any).outputWidth)) ? Math.max(1, Math.floor(Number((rawVideo as any).outputWidth))) : undefined,
+						outputHeight: Number.isFinite(Number((rawVideo as any).outputHeight)) ? Math.max(1, Math.floor(Number((rawVideo as any).outputHeight))) : undefined,
+						naturalWidth: Number.isFinite(Number((rawVideo as any).naturalWidth)) ? Math.max(1, Math.floor(Number((rawVideo as any).naturalWidth))) : undefined,
+						naturalHeight: Number.isFinite(Number((rawVideo as any).naturalHeight)) ? Math.max(1, Math.floor(Number((rawVideo as any).naturalHeight))) : undefined,
+					}
+					: undefined
 				nextNodesById[nodeId] = {
 					id: nodeId,
 					type,
@@ -189,6 +199,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					alias,
 					subtitle: typeof n.subtitle === 'string' ? n.subtitle : '',
 					imageSettings,
+					videoSettings,
+					storySettings: (() => {
+						const rawStory = (n as any).storySettings
+						if (!rawStory || typeof rawStory !== 'object') return undefined
+						const pw = Number((rawStory as any).previewWidth)
+						const ph = Number((rawStory as any).previewHeight)
+						return {
+							previewWidth: Number.isFinite(pw) ? Math.max(1, Math.floor(pw)) : undefined,
+							previewHeight: Number.isFinite(ph) ? Math.max(1, Math.floor(ph)) : undefined,
+						}
+					})(),
 					worldX: Number.isFinite(Number(n.worldX)) ? Number(n.worldX) : 0,
 					worldY: Number.isFinite(Number(n.worldY)) ? Number(n.worldY) : 0,
 					width: Number.isFinite(Number(n.width)) ? Math.max(80, Math.min(1000, Number(n.width))) : 240,
@@ -362,13 +383,21 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const prevDefaultAlias = defaultAliasForType(prevType)
 			n.type = payload.type
 			if (payload.type !== 'image') n.imageSettings = undefined
+			if (payload.type !== 'video') n.videoSettings = undefined
+			if (payload.type !== 'story') n.storySettings = undefined
 			if (payload.type === 'base') n.resourceId = null
 			if (payload.type !== 'story') {
 				n.branches = undefined
 				n.inputs = [{ id: 'in-0', label: '入口' }]
 				n.outputs = [{ id: 'out-0', label: '出口' }]
 			}
-			if (payload.type === 'story') syncStoryAnchors(n)
+			if (payload.type === 'story') {
+				n.storySettings = n.storySettings ?? { previewWidth: 1920, previewHeight: 1080 }
+				syncStoryAnchors(n)
+			}
+			if (payload.type === 'video') {
+				n.videoSettings = n.videoSettings ?? { outputWidth: 1920, outputHeight: 1080 }
+			}
 			if (!String(n.alias ?? '').trim() || String(n.alias) === prevDefaultAlias) {
 				n.alias = defaultAliasForType(payload.type)
 			}
@@ -416,6 +445,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					outputHeight?: number
 					naturalWidth?: number
 					naturalHeight?: number
+					cropEnabled?: boolean
 					crop?: { x: number; y: number; width: number; height: number }
 				}
 			}
@@ -432,6 +462,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const outH = next.outputHeight != null ? Math.max(1, Math.floor(Number(next.outputHeight) || 1)) : undefined
 			const natW = next.naturalWidth != null ? Math.max(1, Math.floor(Number(next.naturalWidth) || 1)) : undefined
 			const natH = next.naturalHeight != null ? Math.max(1, Math.floor(Number(next.naturalHeight) || 1)) : undefined
+			const cropEnabled = typeof next.cropEnabled === 'boolean' ? Boolean(next.cropEnabled) : undefined
 
 			const cropRaw = next.crop
 			const crop =
@@ -450,7 +481,54 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				...(outH != null ? { outputHeight: outH } : {}),
 				...(natW != null ? { naturalWidth: natW } : {}),
 				...(natH != null ? { naturalHeight: natH } : {}),
+				...(cropEnabled != null ? { cropEnabled } : {}),
 				...(crop ? { crop } : {}),
+			}
+		},
+		setNodeVideoSettings(
+			state,
+			payload: {
+				nodeId: string
+				videoSettings: { outputWidth?: number; outputHeight?: number; naturalWidth?: number; naturalHeight?: number }
+			}
+		) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id]
+			if (!n || n.type !== 'video') return
+			const next = payload?.videoSettings
+			if (!next || typeof next !== 'object') return
+			const outW = next.outputWidth != null ? Math.max(1, Math.floor(Number(next.outputWidth) || 1)) : undefined
+			const outH = next.outputHeight != null ? Math.max(1, Math.floor(Number(next.outputHeight) || 1)) : undefined
+			const natW = next.naturalWidth != null ? Math.max(1, Math.floor(Number(next.naturalWidth) || 1)) : undefined
+			const natH = next.naturalHeight != null ? Math.max(1, Math.floor(Number(next.naturalHeight) || 1)) : undefined
+			n.videoSettings = {
+				...(n.videoSettings ?? {}),
+				...(outW != null ? { outputWidth: outW } : {}),
+				...(outH != null ? { outputHeight: outH } : {}),
+				...(natW != null ? { naturalWidth: natW } : {}),
+				...(natH != null ? { naturalHeight: natH } : {}),
+			}
+		},
+		setNodeStorySettings(
+			state,
+			payload: {
+				nodeId: string
+				storySettings: { previewWidth?: number; previewHeight?: number }
+			}
+		) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id]
+			if (!n || n.type !== 'story') return
+			const next = payload?.storySettings
+			if (!next || typeof next !== 'object') return
+			const pw = next.previewWidth != null ? Math.max(1, Math.floor(Number(next.previewWidth) || 1)) : undefined
+			const ph = next.previewHeight != null ? Math.max(1, Math.floor(Number(next.previewHeight) || 1)) : undefined
+			n.storySettings = {
+				...(n.storySettings ?? {}),
+				...(pw != null ? { previewWidth: pw } : {}),
+				...(ph != null ? { previewHeight: ph } : {}),
 			}
 		},
 		setNodeResource(state, payload: { nodeId: string; resourceId: string | null }) {

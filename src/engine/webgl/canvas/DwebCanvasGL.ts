@@ -619,18 +619,6 @@ export class DwebCanvasGL {
 		return hexToRgba(m[0].startsWith('#') ? m[0] : `#${m[0]}`, alpha)
 	}
 
-	createTexture(): WebGLTexture {
-		return this.gl.createTexture()!
-	}
-
-	deleteTexture(tex: WebGLTexture) {
-		try {
-			this.gl.deleteTexture(tex)
-		} catch {
-			// ignore
-		}
-	}
-
 	updateTextureFromImage(tex: WebGLTexture, img: TexImageSource, options?: { wrap?: TextureWrapMode }) {
 		const gl = this.gl
 		gl.bindTexture(gl.TEXTURE_2D, tex)
@@ -654,6 +642,23 @@ export class DwebCanvasGL {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
 		gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
+	}
+
+	/** Create a dynamic texture that can be updated via updateTextureFromImage (e.g. HTMLVideoElement). */
+	createTexture(options?: { wrap?: TextureWrapMode }): WebGLTexture {
+		const tex = this.gl.createTexture()
+		if (!tex) throw new Error('Failed to create texture')
+		this.initTexture1x1Transparent(tex, options?.wrap ?? 'clamp')
+		return tex
+	}
+
+	deleteTexture(tex: WebGLTexture | null | undefined) {
+		if (!tex) return
+		try {
+			this.gl.deleteTexture(tex)
+		} catch {
+			// ignore
+		}
 	}
 
 	getImageTexture(src: string, wrap: DwebImageWrapMode = 'clamp'): WebGLTexture {

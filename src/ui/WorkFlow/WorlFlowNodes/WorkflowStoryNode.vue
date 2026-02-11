@@ -27,17 +27,62 @@
     @resize="(payload) => emit('resize', payload)"
   >
     <template #body>
-      <div class="wf-story-preview">
-        <img v-if="previewKind === 'image' && previewUrl" :src="previewUrl" alt="剧情预览" />
-        <video v-else-if="previewKind === 'video' && previewUrl" :src="previewUrl" muted loop playsinline />
-        <div v-else class="wf-story-placeholder">
-          <div class="wf-story-placeholder-title">暂无画面预览</div>
-          <div class="wf-story-placeholder-sub">连接图片或视频输入节点</div>
+      <div class="wf-story-body">
+        <div ref="playerWrapEl" class="wf-story-player-wrap">
+          <div class="wf-story-player" :style="playerStyle">
+            <div class="wf-story-preview">
+              <div
+                v-if="previewKind === 'image' && previewUrl"
+                class="wf-story-preview-img"
+                :class="{ cropped: !!previewCropEnabled && !!previewCrop }"
+              >
+                <img :src="previewUrl" alt="剧情预览" :style="previewImgStyle" />
+              </div>
+              <video
+                v-else-if="previewKind === 'video' && previewUrl"
+                :src="previewUrl"
+                muted
+                loop
+                playsinline
+              />
+              <div v-else class="wf-story-placeholder">
+                <div class="wf-story-placeholder-title">暂无画面预览</div>
+                <div class="wf-story-placeholder-sub">连接图片或视频输入节点</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wf-story-preview-settings" @pointerdown.stop>
+          <div class="wf-story-preview-settings-title">画面预览</div>
+          <label class="wf-story-preview-field">
+            <span class="wf-story-preview-label">宽</span>
+            <input
+              class="wf-story-preview-input"
+              type="number"
+              min="1"
+              step="1"
+              :value="previewWidthDisplay"
+              @change="onPreviewWidthChange"
+            />
+          </label>
+          <label class="wf-story-preview-field">
+            <span class="wf-story-preview-label">高</span>
+            <input
+              class="wf-story-preview-input"
+              type="number"
+              min="1"
+              step="1"
+              :value="previewHeightDisplay"
+              @change="onPreviewHeightChange"
+            />
+          </label>
+          <div class="wf-story-preview-aspect">{{ previewAspectText }}</div>
         </div>
       </div>
     </template>
     <template #footer>
-      <div class="wf-story-branches">
+      <div class="wf-story-branches" @pointerdown.stop>
         <div class="wf-story-branches-header">
           <div class="wf-story-branches-title">剧情分支</div>
           <button class="wf-story-branches-add" type="button" @click="emit('add-branch')">
@@ -61,7 +106,14 @@
                 stroke="currentColor"
                 stroke-width="1.1"
               />
-              <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.1" />
+              <circle
+                cx="8"
+                cy="8"
+                r="2.2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.1"
+              />
             </svg>
           </button>
           <button
@@ -75,7 +127,16 @@
         </div>
       </div>
     </template>
-    <template #anchors="{ inputAnchors, outputAnchors, endLink, startLink, isInputHover, isOutputHover }">
+    <template
+      #anchors="{
+        inputAnchors,
+        outputAnchors,
+        endLink,
+        startLink,
+        isInputHover,
+        isOutputHover,
+      }"
+    >
       <div class="wf-story-anchor-inputs">
         <div
           class="wf-story-anchor-in flow"
@@ -115,81 +176,230 @@
 </template>
 
 <script setup lang="ts">
-import WorkflowNodeBase from '../WorkflowNodeBase.vue'
-import type { WorkflowStoryBranch } from '../../../aiworkflow/types'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import WorkflowNodeBase from "../WorkflowNodeBase.vue";
+import type { WorkflowStoryBranch } from "../../../aiworkflow/types";
 
 type AnchorSpec = {
-  id: string
-  label?: string
-  offsetY?: number
-}
+  id: string;
+  label?: string;
+  offsetY?: number;
+};
 
-type PreviewKind = 'image' | 'video' | null
+type PreviewKind = "image" | "video" | null;
 
 const props = defineProps<{
-  nodeId: string
-  title: string
-  alias?: string
-  nodeType: string
-  subtitle?: string
-  style?: Record<string, string>
-  width: number
-  height: number
-  zoom: number
-  worldX: number
-  worldY: number
-  inputs?: AnchorSpec[]
-  outputs?: AnchorSpec[]
-  selected?: boolean
-  hoverInputAnchorId?: string | null
-  hoverOutputAnchorId?: string | null
-  branches: WorkflowStoryBranch[]
-  previewUrl?: string | null
-  previewKind?: PreviewKind
-}>()
+  nodeId: string;
+  title: string;
+  alias?: string;
+  nodeType: string;
+  subtitle?: string;
+  style?: Record<string, string>;
+  width: number;
+  height: number;
+  zoom: number;
+  worldX: number;
+  worldY: number;
+  inputs?: AnchorSpec[];
+  outputs?: AnchorSpec[];
+  selected?: boolean;
+  hoverInputAnchorId?: string | null;
+  hoverOutputAnchorId?: string | null;
+  branches: WorkflowStoryBranch[];
+  previewUrl?: string | null;
+  previewKind?: PreviewKind;
+  previewCropEnabled?: boolean;
+  previewCrop?: { x: number; y: number; width: number; height: number } | null;
+  previewWidth?: number;
+  previewHeight?: number;
+}>();
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+const previewImgStyle = computed(() => {
+  const enabled = !!props.previewCropEnabled;
+  const c = props.previewCrop;
+  if (!enabled || !c) return {};
+  const w = Math.max(0.01, clamp01(Number(c.width) || 0));
+  const h = Math.max(0.01, clamp01(Number(c.height) || 0));
+  const x = clamp01(Number(c.x) || 0);
+  const y = clamp01(Number(c.y) || 0);
+  const scaleW = 100 / w;
+  const scaleH = 100 / h;
+  return {
+    width: `${scaleW}%`,
+    height: `${scaleH}%`,
+    left: `${-x * scaleW}%`,
+    top: `${-y * scaleH}%`,
+  } as Record<string, string>;
+});
+
+const previewW = computed(() => {
+  const v = Number(props.previewWidth);
+  return Number.isFinite(v) && v > 0 ? Math.max(1, Math.floor(v)) : 1920;
+});
+
+const previewH = computed(() => {
+  const v = Number(props.previewHeight);
+  return Number.isFinite(v) && v > 0 ? Math.max(1, Math.floor(v)) : 1080;
+});
+
+const previewWidthDisplay = computed(() => String(previewW.value));
+const previewHeightDisplay = computed(() => String(previewH.value));
+const previewAspectText = computed(() => {
+  const w = previewW.value;
+  const h = previewH.value;
+  if (!w || !h) return "";
+  const r = w / h;
+  return `${w}×${h} (${r.toFixed(3)}:1)`;
+});
 
 const emit = defineEmits<{
-  (e: 'update:worldX', v: number): void
-  (e: 'update:worldY', v: number): void
-  (e: 'select', nodeId: string): void
-  (e: 'start-link', payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }): void
-  (e: 'end-link', payload: { nodeId: string; anchorId: string; anchorIndex: number }): void
-  (e: 'copy'): void
-  (e: 'delete'): void
-  (e: 'set-type', v: 'base' | 'image' | 'video' | 'story'): void
-  (e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
-  (e: 'update-branch', payload: { branchId: string; text: string }): void
-  (e: 'add-branch'): void
-  (e: 'remove-branch', branchId: string): void
-}>()
+  (e: "update:worldX", v: number): void;
+  (e: "update:worldY", v: number): void;
+  (e: "select", nodeId: string): void;
+  (
+    e: "start-link",
+    payload: {
+      nodeId: string;
+      anchorId: string;
+      anchorIndex: number;
+      event: PointerEvent;
+    }
+  ): void;
+  (
+    e: "end-link",
+    payload: { nodeId: string; anchorId: string; anchorIndex: number }
+  ): void;
+  (e: "copy"): void;
+  (e: "delete"): void;
+  (e: "set-type", v: "base" | "image" | "video" | "story"): void;
+  (
+    e: "resize",
+    payload: { width: number; height: number; worldX: number; worldY: number }
+  ): void;
+  (e: "update-branch", payload: { branchId: string; text: string }): void;
+  (e: "add-branch"): void;
+  (e: "remove-branch", branchId: string): void;
+  (
+    e: "update-preview-settings",
+    payload: { previewWidth?: number; previewHeight?: number }
+  ): void;
+}>();
+
+const onPreviewWidthChange = (e: Event) => {
+  const raw = Number((e.target as HTMLInputElement).value);
+  if (!Number.isFinite(raw) || raw <= 0) return;
+  emit("update-preview-settings", { previewWidth: Math.max(1, Math.floor(raw)) });
+};
+
+const onPreviewHeightChange = (e: Event) => {
+  const raw = Number((e.target as HTMLInputElement).value);
+  if (!Number.isFinite(raw) || raw <= 0) return;
+  emit("update-preview-settings", { previewHeight: Math.max(1, Math.floor(raw)) });
+};
+
+const playerWrapEl = ref<HTMLElement | null>(null);
+const playerPx = ref<{ w: number; h: number }>({ w: 0, h: 0 });
+
+const computePlayerSize = () => {
+  const el = playerWrapEl.value;
+  if (!el) return;
+  const cw = Math.max(0, el.clientWidth);
+  const ch = Math.max(0, el.clientHeight);
+  if (!cw || !ch) {
+    playerPx.value = { w: 0, h: 0 };
+    return;
+  }
+  const targetRatio = previewW.value / previewH.value;
+  const containerRatio = cw / ch;
+  let w = cw;
+  let h = ch;
+  if (containerRatio > targetRatio) {
+    h = ch;
+    w = Math.floor(h * targetRatio);
+  } else {
+    w = cw;
+    h = Math.floor(w / targetRatio);
+  }
+  playerPx.value = { w: Math.max(1, w), h: Math.max(1, h) };
+};
+
+let ro: ResizeObserver | null = null;
+onMounted(() => {
+  computePlayerSize();
+  ro = new ResizeObserver(() => computePlayerSize());
+  if (playerWrapEl.value) ro.observe(playerWrapEl.value);
+});
+
+onBeforeUnmount(() => {
+  if (ro) ro.disconnect();
+  ro = null;
+});
+
+watch([previewW, previewH], () => computePlayerSize());
+
+const playerStyle = computed(() => {
+  const s = playerPx.value;
+  if (!s.w || !s.h) return {};
+  return { width: `${s.w}px`, height: `${s.h}px` } as Record<string, string>;
+});
 
 const onBranchInput = (branchId: string, e: Event) => {
-  const v = (e.target as HTMLInputElement).value
-  emit('update-branch', { branchId, text: v })
-}
+  const v = (e.target as HTMLInputElement).value;
+  emit("update-branch", { branchId, text: v });
+};
 
 const flowInputId = (inputAnchors: AnchorSpec[]) => {
-  const match = inputAnchors.find((a) => a.id === 'in-flow')
-  return match?.id || inputAnchors[0]?.id
-}
+  const match = inputAnchors.find((a) => a.id === "in-flow");
+  return match?.id || inputAnchors[0]?.id;
+};
 
 const resourceInputId = (inputAnchors: AnchorSpec[]) => {
-  const match = inputAnchors.find((a) => a.id === 'in-resource')
-  return match?.id || inputAnchors[1]?.id || inputAnchors[0]?.id
-}
+  const match = inputAnchors.find((a) => a.id === "in-resource");
+  return match?.id || inputAnchors[1]?.id || inputAnchors[0]?.id;
+};
 
-const onInputEnd = (anchorId: string | undefined, endLink: (anchorId: string, anchorIndex: number) => void) => {
-  if (!anchorId) return
-  const index = anchorId === 'in-resource' ? 1 : 0
-  endLink(anchorId, index)
-}
+const onInputEnd = (
+  anchorId: string | undefined,
+  endLink: (anchorId: string, anchorIndex: number) => void
+) => {
+  if (!anchorId) return;
+  const index = anchorId === "in-resource" ? 1 : 0;
+  endLink(anchorId, index);
+};
 
 const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
   top: `calc(50% + ${a.offsetY ?? 0}px)`,
-})
+});
 </script>
 
 <style scoped>
+.wf-story-body {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.wf-story-player-wrap {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wf-story-player {
+  flex: 0 0 auto;
+  min-width: 1px;
+  min-height: 1px;
+}
+
 .wf-story-preview {
   width: 100%;
   height: 100%;
@@ -200,6 +410,59 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.wf-story-preview-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+}
+
+.wf-story-preview-settings-title {
+  color: var(--vscode-fg-muted);
+}
+
+.wf-story-preview-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wf-story-preview-label {
+  min-width: 14px;
+  text-align: right;
+}
+
+.wf-story-preview-input {
+  width: 92px;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.wf-story-preview-aspect {
+  margin-left: auto;
+  color: var(--vscode-fg-muted);
+  font-size: 11px;
+}
+
+.wf-story-preview-img {
+  width: 100%;
+  height: 100%;
+}
+
+.wf-story-preview-img.cropped {
+  position: relative;
+  overflow: hidden;
+}
+
+.wf-story-preview-img.cropped img {
+  position: absolute;
 }
 
 .wf-story-preview img,
@@ -223,7 +486,6 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
   font-size: 11px;
   margin-top: 4px;
 }
-
 
 .wf-story-branches {
   display: flex;

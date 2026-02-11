@@ -17,6 +17,12 @@ export type WorkflowStoryBranch = {
 	text: string
 }
 
+export type WorkflowStoryNodeSettings = {
+	/** preview resolution of the story "player" in pixels */
+	previewWidth?: number
+	previewHeight?: number
+}
+
 export type WorkflowImageCrop = {
 	/** normalized in [0..1] in source image space (origin: top-left) */
 	x: number
@@ -32,8 +38,19 @@ export type WorkflowImageNodeSettings = {
 	/** source image natural size in pixels (used for aspect-safe crop constraints) */
 	naturalWidth?: number
 	naturalHeight?: number
+	/** whether crop should be applied to node output / downstream preview */
+	cropEnabled?: boolean
 	/** crop rect in normalized source space */
 	crop?: WorkflowImageCrop
+}
+
+export type WorkflowVideoNodeSettings = {
+	/** desired screenshot/output resolution in pixels */
+	outputWidth?: number
+	outputHeight?: number
+	/** source video natural size in pixels */
+	naturalWidth?: number
+	naturalHeight?: number
 }
 
 export type WorkflowNode = {
@@ -43,6 +60,8 @@ export type WorkflowNode = {
 	alias?: string
 	subtitle?: string
 	imageSettings?: WorkflowImageNodeSettings
+	videoSettings?: WorkflowVideoNodeSettings
+	storySettings?: WorkflowStoryNodeSettings
 	worldX: number
 	worldY: number
 	width: number

@@ -63,6 +63,9 @@
         @update-branch="onStoryBranchUpdate(node.id, $event)"
         @add-branch="onStoryBranchAdd(node.id)"
         @remove-branch="onStoryBranchRemove(node.id, $event)"
+        @update-preview-settings="onStoryPreviewSettingsUpdate(node.id, $event)"
+        @update-video-settings="onNodeVideoSettingsUpdate(node.id, $event)"
+        @screenshot="onVideoScreenshot(node.id, $event)"
       />
 
       <BottomChatDock v-model="chatDraft" @send="onSend" />
@@ -252,26 +255,26 @@ const resourceUsed = (resourceId: string) => {
 
 const releaseResourceIfUnused = (resourceId: string | null) => {
   if (!resourceId) return
-  if (resourceUsed(resourceId)) return
-  const url = objectUrls.get(resourceId)
-  if (url) {
-    URL.revokeObjectURL(url)
-    objectUrls.delete(resourceId)
-  }
-  if (store.state.resourcesById[resourceId]) {
-    store.commit('removeResource', { resourceId })
-  }
+  // NOTE: resources should NOT be auto-removed when nodes clear/replace.
+  // They remain in ResourceManager for future reuse.
+  // Only explicit "删除" in ResourceManagerPanel will remove them.
 }
 
 const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video') => {
   const node = store.state.nodesById[nodeId]
   if (!node || node.sizeCustomized) return
   const targetWidth = 450
+  // Node height includes header/body/footer paddings + action buttons + footer toolbar.
+  // We add a small constant so the visible preview area matches the media aspect.
+  const chromeHeight = 140
   if (kind === 'image') {
     const img = new Image()
     img.onload = () => {
-      const aspect = img.width && img.height ? img.width / img.height : 1
-      const height = Math.max(160, Math.round(targetWidth / Math.max(0.1, aspect)))
+      const w = Math.max(1, Math.floor((img as any).naturalWidth || img.width || 1))
+      const h = Math.max(1, Math.floor((img as any).naturalHeight || img.height || 1))
+      const aspect = w && h ? w / h : 1
+      const previewHeight = Math.round(targetWidth / Math.max(0.1, aspect))
+      const height = Math.max(220, previewHeight + chromeHeight)
       store.commit('setNodeSize', { nodeId, width: targetWidth, height, customized: false })
     }
     img.src = url
@@ -281,7 +284,8 @@ const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video')
   video.preload = 'metadata'
   video.onloadedmetadata = () => {
     const aspect = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 1
-    const height = Math.max(160, Math.round(targetWidth / Math.max(0.1, aspect)))
+    const previewHeight = Math.round(targetWidth / Math.max(0.1, aspect))
+    const height = Math.max(220, previewHeight + chromeHeight)
     store.commit('setNodeSize', { nodeId, width: targetWidth, height, customized: false })
   }
   video.src = url
@@ -324,16 +328,36 @@ const onNodeUploadResource = (nodeId: string, file: File, kind: 'image' | 'video
     img.src = url
   }
 
+  // When a video is uploaded, initialize output resolution from the source video.
+  if (kind === 'video') {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      const w = Math.max(1, Math.floor(video.videoWidth || 1))
+      const h = Math.max(1, Math.floor(video.videoHeight || 1))
+      store.commit('setNodeVideoSettings', {
+        nodeId,
+        videoSettings: {
+          outputWidth: w,
+          outputHeight: h,
+          naturalWidth: w,
+          naturalHeight: h,
+        },
+      })
+    }
+    video.src = url
+    video.load()
+  }
+
   autoSizeMediaNode(nodeId, url, kind)
-  releaseResourceIfUnused(prevId)
+  // do not auto-remove previous resource
 }
 
 const onNodeClearResource = (nodeId: string) => {
   const node = store.state.nodesById[nodeId]
   if (!node?.resourceId) return
-  const prevId = node.resourceId
   store.commit('setNodeResource', { nodeId, resourceId: null })
-  releaseResourceIfUnused(prevId)
+  // do not auto-remove resources when clearing from node
 }
 
 const onNodeResize = (
@@ -349,6 +373,55 @@ const onNodeImageSettingsUpdate = (
 	payload: { outputWidth?: number; outputHeight?: number; naturalWidth?: number; naturalHeight?: number; crop?: { x: number; y: number; width: number; height: number } }
 ) => {
 	store.commit('setNodeImageSettings', { nodeId, imageSettings: payload })
+}
+
+const onNodeVideoSettingsUpdate = (
+  nodeId: string,
+  payload: { outputWidth?: number; outputHeight?: number; naturalWidth?: number; naturalHeight?: number }
+) => {
+  store.commit('setNodeVideoSettings', { nodeId, videoSettings: payload })
+}
+
+const firstConnectedImageTargetFromVideo = (videoNodeId: string) => {
+  const outIds = store.state.nodesById[videoNodeId]?.outputs?.map((o) => o.id) ?? []
+  if (!outIds.length) return null
+  for (const e of edges.value) {
+    if (e.fromNodeId !== videoNodeId) continue
+    if (!outIds.includes(e.fromAnchorId)) continue
+    const to = store.state.nodesById[e.toNodeId]
+    if (to?.type === 'image') return to.id
+  }
+  return null
+}
+
+const onVideoScreenshot = (
+  videoNodeId: string,
+  payload: { dataUrl: string; width: number; height: number; time: number }
+) => {
+  const targetImageNodeId = firstConnectedImageTargetFromVideo(videoNodeId)
+  if (!targetImageNodeId) return
+  const resourceId = makeResourceId()
+  const name = `screenshot_${Math.max(0, payload.time).toFixed(3)}.png`
+  store.commit('addResource', {
+    id: resourceId,
+    kind: 'image',
+    name,
+    url: payload.dataUrl,
+    createdAt: Date.now(),
+  })
+  store.commit('setNodeResource', { nodeId: targetImageNodeId, resourceId })
+  store.commit('setNodeImageSettings', {
+    nodeId: targetImageNodeId,
+    imageSettings: {
+      outputWidth: payload.width,
+      outputHeight: payload.height,
+      naturalWidth: payload.width,
+      naturalHeight: payload.height,
+      cropEnabled: false,
+      crop: { x: 0, y: 0, width: 1, height: 1 },
+    },
+  })
+  autoSizeMediaNode(targetImageNodeId, payload.dataUrl, 'image')
 }
 
 const onStoryBranchUpdate = (nodeId: string, payload: { branchId: string; text: string }) => {
@@ -493,15 +566,43 @@ const nodeResourceName = (node: WorkflowNode) => {
 const storyPreview = (node: WorkflowNode) => {
   const resourceInput = node.inputs?.find((a) => a.id === 'in-resource')
   const inputId = resourceInput?.id || node.inputs?.[0]?.id
-  if (!inputId) return { kind: null as null, url: null as string | null }
-  const edge = edges.value.find((e) => e.toNodeId === node.id && e.toAnchorId === inputId)
-  if (!edge) return { kind: null as null, url: null as string | null }
-  const fromNode = store.state.nodesById[edge.fromNodeId]
-  if (!fromNode) return { kind: null as null, url: null as string | null }
-  if (fromNode.type === 'image' || fromNode.type === 'video') {
-    return { kind: fromNode.type, url: nodeResourceUrl(fromNode) }
+  if (!inputId) {
+    return {
+      kind: null as null,
+      url: null as string | null,
+      cropEnabled: false,
+      crop: null as null | { x: number; y: number; width: number; height: number },
+    }
   }
-  return { kind: null as null, url: null as string | null }
+  const edge = edges.value.find((e) => e.toNodeId === node.id && e.toAnchorId === inputId)
+  if (!edge) {
+    return {
+      kind: null as null,
+      url: null as string | null,
+      cropEnabled: false,
+      crop: null as null | { x: number; y: number; width: number; height: number },
+    }
+  }
+  const fromNode = store.state.nodesById[edge.fromNodeId]
+  if (!fromNode) {
+    return {
+      kind: null as null,
+      url: null as string | null,
+      cropEnabled: false,
+      crop: null as null | { x: number; y: number; width: number; height: number },
+    }
+  }
+  if (fromNode.type === 'image' || fromNode.type === 'video') {
+    const cropEnabled = !!fromNode.imageSettings?.cropEnabled
+    const crop = fromNode.type === 'image' ? (fromNode.imageSettings?.crop ?? null) : null
+    return { kind: fromNode.type, url: nodeResourceUrl(fromNode), cropEnabled, crop }
+  }
+  return {
+    kind: null as null,
+    url: null as string | null,
+    cropEnabled: false,
+    crop: null as null | { x: number; y: number; width: number; height: number },
+  }
 }
 
 const nodeComponent = (node: WorkflowNode) => {
@@ -514,10 +615,16 @@ const nodeComponent = (node: WorkflowNode) => {
 const nodeExtraProps = (node: WorkflowNode) => {
   if (node.type === 'story') {
     const preview = storyPreview(node)
+    const pw = node.storySettings?.previewWidth
+    const ph = node.storySettings?.previewHeight
     return {
       branches: node.branches || [],
       previewUrl: preview.url,
       previewKind: preview.kind,
+      previewCropEnabled: preview.kind === 'image' ? preview.cropEnabled : false,
+      previewCrop: preview.kind === 'image' ? preview.crop : null,
+			previewWidth: Number.isFinite(Number(pw)) ? Number(pw) : 1920,
+			previewHeight: Number.isFinite(Number(ph)) ? Number(ph) : 1080,
     }
   }
   if (node.type === 'image' || node.type === 'video') {
@@ -525,9 +632,22 @@ const nodeExtraProps = (node: WorkflowNode) => {
       resourceUrl: nodeResourceUrl(node),
       resourceName: nodeResourceName(node),
 			...(node.type === 'image' ? { imageSettings: node.imageSettings ?? null } : {}),
+      ...(node.type === 'video'
+        ? {
+            videoSettings: node.videoSettings ?? null,
+            screenshotEnabled: Boolean(firstConnectedImageTargetFromVideo(node.id)),
+          }
+        : {}),
     }
   }
   return {}
+}
+
+const onStoryPreviewSettingsUpdate = (
+  nodeId: string,
+  payload: { previewWidth?: number; previewHeight?: number }
+) => {
+  store.commit('setNodeStorySettings', { nodeId, storySettings: payload })
 }
 
 const NODE_WIDTH = 240

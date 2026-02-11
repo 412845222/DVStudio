@@ -28,7 +28,12 @@
   >
     <template #body>
       <div class="wf-media">
-        <div v-if="resourceUrl" ref="previewWrap" class="wf-media-preview" :style="previewWrapStyle">
+        <div
+          v-if="resourceUrl"
+          ref="previewWrap"
+          class="wf-media-preview"
+          :style="previewWrapStyle"
+        >
           <canvas ref="mainCanvas" class="wf-media-canvas" />
 
           <div v-if="cropMode" class="wf-crop-overlay" @pointerdown.stop>
@@ -42,13 +47,22 @@
               :style="cropBoxStyle"
               @pointerdown.stop="onCropPointerDown($event, 'move')"
             >
-              <div class="wf-crop-preview" :style="cropPreviewStyle" @pointerdown.stop>
-                <canvas ref="previewCanvas" class="wf-crop-preview-canvas" />
-              </div>
-              <div class="wf-crop-handle nw" @pointerdown.stop="onCropPointerDown($event, 'nw')" />
-              <div class="wf-crop-handle ne" @pointerdown.stop="onCropPointerDown($event, 'ne')" />
-              <div class="wf-crop-handle sw" @pointerdown.stop="onCropPointerDown($event, 'sw')" />
-              <div class="wf-crop-handle se" @pointerdown.stop="onCropPointerDown($event, 'se')" />
+              <div
+                class="wf-crop-handle nw"
+                @pointerdown.stop="onCropPointerDown($event, 'nw')"
+              />
+              <div
+                class="wf-crop-handle ne"
+                @pointerdown.stop="onCropPointerDown($event, 'ne')"
+              />
+              <div
+                class="wf-crop-handle sw"
+                @pointerdown.stop="onCropPointerDown($event, 'sw')"
+              />
+              <div
+                class="wf-crop-handle se"
+                @pointerdown.stop="onCropPointerDown($event, 'se')"
+              />
             </div>
           </div>
         </div>
@@ -58,7 +72,33 @@
           <div class="wf-media-sub">点击按钮选择文件</div>
         </div>
 
-        <div class="wf-media-toolbar" @pointerdown.stop>
+        <div class="wf-media-actions" @pointerdown.stop>
+          <button class="wf-media-btn" type="button" @click.stop="onUploadClick">
+            {{ resourceUrl ? "更换资源" : "上传资源" }}
+          </button>
+          <button
+            v-if="resourceUrl"
+            class="wf-media-btn ghost"
+            type="button"
+            @click.stop="emit('clear-resource')"
+          >
+            清空
+          </button>
+        </div>
+
+        <input
+          ref="fileInput"
+          class="wf-file-input"
+          type="file"
+          accept="image/*"
+          @change="onFileChange"
+        />
+      </div>
+    </template>
+
+    <template #footer>
+      <div class="wf-media-footer" @pointerdown.stop>
+        <div class="wf-media-toolbar">
           <button
             class="wf-toolbar-btn"
             type="button"
@@ -96,616 +136,549 @@
             />
           </div>
         </div>
-
-        <div class="wf-media-actions" @pointerdown.stop>
-          <button class="wf-media-btn" type="button" @click.stop="onUploadClick">
-            {{ resourceUrl ? '更换资源' : '上传资源' }}
-          </button>
-          <button
-            v-if="resourceUrl"
-            class="wf-media-btn ghost"
-            type="button"
-            @click.stop="emit('clear-resource')"
-          >
-            清空
-          </button>
-        </div>
-
-        <input
-          ref="fileInput"
-          class="wf-file-input"
-          type="file"
-          accept="image/*"
-          @change="onFileChange"
-        />
       </div>
     </template>
   </WorkflowNodeBase>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import WorkflowNodeBase from '../WorkflowNodeBase.vue'
-import { DwebCanvasGL } from '../../../engine/webgl/canvas/DwebCanvasGL'
-import { exportWorkflowImageOutputPng } from '../../../aiworkflow/imageOutput'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import WorkflowNodeBase from "../WorkflowNodeBase.vue";
+import { DwebCanvasGL } from "../../../engine/webgl/canvas/DwebCanvasGL";
+import { exportWorkflowImageOutputPng } from "../../../aiworkflow/imageOutput";
 
 type AnchorSpec = {
-  id: string
-  label?: string
-  offsetY?: number
-}
+  id: string;
+  label?: string;
+  offsetY?: number;
+};
 
 const props = defineProps<{
-  nodeId: string
-  title: string
-  alias?: string
-  nodeType: string
-  subtitle?: string
-  style?: Record<string, string>
-  resourceUrl?: string | null
-  resourceName?: string | null
+  nodeId: string;
+  title: string;
+  alias?: string;
+  nodeType: string;
+  subtitle?: string;
+  style?: Record<string, string>;
+  resourceUrl?: string | null;
+  resourceName?: string | null;
   imageSettings?: {
-    outputWidth?: number
-    outputHeight?: number
-    naturalWidth?: number
-    naturalHeight?: number
-    crop?: { x: number; y: number; width: number; height: number }
-  } | null
-  width: number
-  height: number
-  zoom: number
-  worldX: number
-  worldY: number
-  inputs?: AnchorSpec[]
-  outputs?: AnchorSpec[]
-  selected?: boolean
-  hoverInputAnchorId?: string | null
-  hoverOutputAnchorId?: string | null
-}>()
+    outputWidth?: number;
+    outputHeight?: number;
+    naturalWidth?: number;
+    naturalHeight?: number;
+    cropEnabled?: boolean;
+    crop?: { x: number; y: number; width: number; height: number };
+  } | null;
+  width: number;
+  height: number;
+  zoom: number;
+  worldX: number;
+  worldY: number;
+  inputs?: AnchorSpec[];
+  outputs?: AnchorSpec[];
+  selected?: boolean;
+  hoverInputAnchorId?: string | null;
+  hoverOutputAnchorId?: string | null;
+}>();
 
 const emit = defineEmits<{
-  (e: 'update:worldX', v: number): void
-  (e: 'update:worldY', v: number): void
-  (e: 'select', nodeId: string): void
-  (e: 'start-link', payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }): void
-  (e: 'end-link', payload: { nodeId: string; anchorId: string; anchorIndex: number }): void
-  (e: 'copy'): void
-  (e: 'delete'): void
-  (e: 'set-type', v: 'base' | 'image' | 'video' | 'story'): void
-  (e: 'upload-resource', payload: { file: File; kind: 'image' | 'video' }): void
-  (e: 'clear-resource'): void
-  (e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
-  (e: 'update-image-settings', payload: {
-    outputWidth?: number
-    outputHeight?: number
-    naturalWidth?: number
-    naturalHeight?: number
-    crop?: { x: number; y: number; width: number; height: number }
-  }): void
-}>()
+  (e: "update:worldX", v: number): void;
+  (e: "update:worldY", v: number): void;
+  (e: "select", nodeId: string): void;
+  (
+    e: "start-link",
+    payload: {
+      nodeId: string;
+      anchorId: string;
+      anchorIndex: number;
+      event: PointerEvent;
+    }
+  ): void;
+  (
+    e: "end-link",
+    payload: { nodeId: string; anchorId: string; anchorIndex: number }
+  ): void;
+  (e: "copy"): void;
+  (e: "delete"): void;
+  (e: "set-type", v: "base" | "image" | "video" | "story"): void;
+  (e: "upload-resource", payload: { file: File; kind: "image" | "video" }): void;
+  (e: "clear-resource"): void;
+  (
+    e: "resize",
+    payload: { width: number; height: number; worldX: number; worldY: number }
+  ): void;
+  (
+    e: "update-image-settings",
+    payload: {
+      outputWidth?: number;
+      outputHeight?: number;
+      naturalWidth?: number;
+      naturalHeight?: number;
+      cropEnabled?: boolean;
+      crop?: { x: number; y: number; width: number; height: number };
+    }
+  ): void;
+}>();
 
-const fileInput = ref<HTMLInputElement | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null);
 
-const previewWrap = ref<HTMLElement | null>(null)
-const mainCanvas = ref<HTMLCanvasElement | null>(null)
-const previewCanvas = ref<HTMLCanvasElement | null>(null)
+const previewWrap = ref<HTMLElement | null>(null);
+const mainCanvas = ref<HTMLCanvasElement | null>(null);
+let glMain: DwebCanvasGL | null = null;
+let ro: ResizeObserver | null = null;
 
-let glMain: DwebCanvasGL | null = null
-let glPreview: DwebCanvasGL | null = null
-let ro: ResizeObserver | null = null
+const wrapSize = ref({ w: 1, h: 1 });
 
-const wrapSize = ref({ w: 1, h: 1 })
-
-const clamp01 = (n: number) => Math.max(0, Math.min(1, n))
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
 const outputWidth = computed(() => {
-  const v = props.imageSettings?.outputWidth
-  return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null
-})
+  const v = props.imageSettings?.outputWidth;
+  return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null;
+});
 const outputHeight = computed(() => {
-  const v = props.imageSettings?.outputHeight
-  return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null
-})
+  const v = props.imageSettings?.outputHeight;
+  return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null;
+});
 const outputAspect = computed(() => {
-  if (!outputWidth.value || !outputHeight.value) return null
-  return Math.max(1e-6, outputWidth.value / outputHeight.value)
-})
+  const w = naturalWidth.value;
+  const h = naturalHeight.value;
+  if (!w || !h) return null;
+  return Math.max(1e-6, w / h);
+});
 
 const naturalWidth = computed(() => {
-  const v = props.imageSettings?.naturalWidth
-  return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null
-})
+  const v = props.imageSettings?.naturalWidth;
+  return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null;
+});
 const naturalHeight = computed(() => {
-  const v = props.imageSettings?.naturalHeight
-  return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null
-})
+  const v = props.imageSettings?.naturalHeight;
+  return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null;
+});
 
-const hasAspectLock = computed(() => !!(outputWidth.value && outputHeight.value))
+const hasAspectLock = computed(() => false);
 
 const crop = computed(() => {
-  const c = props.imageSettings?.crop
-  if (!c) return { x: 0, y: 0, width: 1, height: 1 }
+  const c = props.imageSettings?.crop;
+  if (!c) return { x: 0, y: 0, width: 1, height: 1 };
   return {
     x: clamp01(Number(c.x) || 0),
     y: clamp01(Number(c.y) || 0),
     width: clamp01(Number(c.width) || 1),
     height: clamp01(Number(c.height) || 1),
-  }
-})
+  };
+});
 
-const cropMode = ref(false)
+const cropMode = ref(false);
+const cropEnabled = computed(() => Boolean(props.imageSettings?.cropEnabled));
 
-const outputWidthDisplay = computed(() => (outputWidth.value != null ? String(outputWidth.value) : ''))
-const outputHeightDisplay = computed(() => (outputHeight.value != null ? String(outputHeight.value) : ''))
+watch(
+  () => cropEnabled.value,
+  (v) => {
+    cropMode.value = v;
+  },
+  { immediate: true }
+);
+
+const outputWidthDisplay = computed(() =>
+  outputWidth.value != null ? String(outputWidth.value) : ""
+);
+const outputHeightDisplay = computed(() =>
+  outputHeight.value != null ? String(outputHeight.value) : ""
+);
 
 const previewWrapStyle = computed(() => {
-  // Once resolution is set, lock displayed content aspect ratio.
-  if (outputAspect.value) return { aspectRatio: `${outputAspect.value}` }
-  return {}
-})
+  // Lock preview canvas aspect to source image, so when node width changes
+  // the canvas height follows proportionally (prevents half-render/cropping).
+  if (naturalWidth.value && naturalHeight.value) {
+    const a = Math.max(1e-6, naturalWidth.value / naturalHeight.value);
+    return { aspectRatio: `${a}` };
+  }
+  return {};
+});
 
-type DisplayRect = { x: number; y: number; w: number; h: number }
+type DisplayRect = { x: number; y: number; w: number; h: number };
 
 const displayRect = computed<DisplayRect>(() => {
-  const w = Math.max(1, wrapSize.value.w)
-  const h = Math.max(1, wrapSize.value.h)
-  const imgW = naturalWidth.value ?? 1
-  const imgH = naturalHeight.value ?? 1
-  const scale = Math.min(w / Math.max(1, imgW), h / Math.max(1, imgH))
-  const dw = Math.max(1, imgW * scale)
-  const dh = Math.max(1, imgH * scale)
-  return { x: (w - dw) / 2, y: (h - dh) / 2, w: dw, h: dh }
-})
+  const w = Math.max(1, wrapSize.value.w);
+  const h = Math.max(1, wrapSize.value.h);
+  const imgW = naturalWidth.value ?? 1;
+  const imgH = naturalHeight.value ?? 1;
+  const scale = Math.min(w / Math.max(1, imgW), h / Math.max(1, imgH));
+  const dw = Math.max(1, imgW * scale);
+  const dh = Math.max(1, imgH * scale);
+  return { x: (w - dw) / 2, y: (h - dh) / 2, w: dw, h: dh };
+});
 
 const cropBoxPx = computed(() => {
-  if (!cropMode.value) return null
-  const dr = displayRect.value
-  const c = crop.value
+  if (!cropMode.value) return null;
+  const dr = displayRect.value;
+  const c = crop.value;
   return {
     x: dr.x + c.x * dr.w,
     y: dr.y + c.y * dr.h,
     w: c.width * dr.w,
     h: c.height * dr.h,
-  }
-})
+  };
+});
 
 const cropBoxStyle = computed(() => {
-  const b = cropBoxPx.value
-  if (!b) return { display: 'none' }
-  return { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` }
-})
+  const b = cropBoxPx.value;
+  if (!b) return { display: "none" };
+  return { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` };
+});
 
 const maskTopStyle = computed(() => {
-  const b = cropBoxPx.value
-  if (!b) return { display: 'none' }
-  return { left: '0px', top: '0px', width: '100%', height: `${Math.max(0, b.y)}px` }
-})
+  const b = cropBoxPx.value;
+  if (!b) return { display: "none" };
+  return { left: "0px", top: "0px", width: "100%", height: `${Math.max(0, b.y)}px` };
+});
 const maskBottomStyle = computed(() => {
-  const b = cropBoxPx.value
-  if (!b) return { display: 'none' }
-  const y = b.y + b.h
-  return { left: '0px', top: `${y}px`, width: '100%', height: `${Math.max(0, wrapSize.value.h - y)}px` }
-})
-const maskLeftStyle = computed(() => {
-  const b = cropBoxPx.value
-  if (!b) return { display: 'none' }
-  return { left: '0px', top: `${b.y}px`, width: `${Math.max(0, b.x)}px`, height: `${b.h}px` }
-})
-const maskRightStyle = computed(() => {
-  const b = cropBoxPx.value
-  if (!b) return { display: 'none' }
-  const x = b.x + b.w
-  return { left: `${x}px`, top: `${b.y}px`, width: `${Math.max(0, wrapSize.value.w - x)}px`, height: `${b.h}px` }
-})
-
-const cropPreviewStyle = computed(() => {
-  const b = cropBoxPx.value
-  if (!b) return { display: 'none' }
-  const aspect = outputAspect.value ?? 1
-  const maxW = Math.max(48, Math.min(160, b.w * 0.65))
-  const w = maxW
-  const h = Math.max(32, w / Math.max(1e-6, aspect))
-  const pad = 6
+  const b = cropBoxPx.value;
+  if (!b) return { display: "none" };
+  const y = b.y + b.h;
   return {
-    right: `${pad}px`,
-    top: `${pad}px`,
-    width: `${Math.min(w, Math.max(24, b.w - pad * 2))}px`,
-    height: `${Math.min(h, Math.max(24, b.h - pad * 2))}px`,
-  }
-})
+    left: "0px",
+    top: `${y}px`,
+    width: "100%",
+    height: `${Math.max(0, wrapSize.value.h - y)}px`,
+  };
+});
+const maskLeftStyle = computed(() => {
+  const b = cropBoxPx.value;
+  if (!b) return { display: "none" };
+  return {
+    left: "0px",
+    top: `${b.y}px`,
+    width: `${Math.max(0, b.x)}px`,
+    height: `${b.h}px`,
+  };
+});
+const maskRightStyle = computed(() => {
+  const b = cropBoxPx.value;
+  if (!b) return { display: "none" };
+  const x = b.x + b.w;
+  return {
+    left: `${x}px`,
+    top: `${b.y}px`,
+    width: `${Math.max(0, wrapSize.value.w - x)}px`,
+    height: `${b.h}px`,
+  };
+});
 
 const cropToUv = (c: { x: number; y: number; width: number; height: number }) => {
-  const x0 = clamp01(c.x)
-  const y0 = clamp01(c.y)
-  const x1 = clamp01(x0 + clamp01(c.width))
-  const y1 = clamp01(y0 + clamp01(c.height))
-  return { u0: x0, u1: x1, v0: 1 - y0, v1: 1 - y1 }
-}
+  const x0 = clamp01(c.x);
+  const y0 = clamp01(c.y);
+  const x1 = clamp01(x0 + clamp01(c.width));
+  const y1 = clamp01(y0 + clamp01(c.height));
+  // DwebCanvasGL UV uses top-left origin (v=0 at top).
+  // So we should NOT flip v here, otherwise the image becomes vertically inverted.
+  return { u0: x0, u1: x1, v0: y0, v1: y1 };
+};
 
 const requestRender = () => {
-  glMain?.requestRender()
-  glPreview?.requestRender()
-}
-
-const resizePreviewCanvas = () => {
-  if (!previewCanvas.value || !glPreview) return
-  const r = previewCanvas.value.getBoundingClientRect()
-  const w = Math.max(1, Math.floor(r.width))
-  const h = Math.max(1, Math.floor(r.height))
-  glPreview.setSize(w, h)
-}
+  glMain?.requestRender();
+};
 
 const ensureNaturalSizeFallback = async () => {
-  if (!props.resourceUrl) return
-  if (naturalWidth.value && naturalHeight.value) return
+  if (!props.resourceUrl) return;
+  if (naturalWidth.value && naturalHeight.value) return;
   await new Promise<void>((resolve) => {
-    const img = new Image()
+    const img = new Image();
     img.onload = () => {
-      const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1))
-      const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1))
-      emit('update-image-settings', { naturalWidth: w, naturalHeight: h })
+      const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1));
+      const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1));
+      emit("update-image-settings", { naturalWidth: w, naturalHeight: h });
       if (!outputWidth.value || !outputHeight.value) {
-        emit('update-image-settings', {
+        emit("update-image-settings", {
           outputWidth: w,
           outputHeight: h,
           crop: { x: 0, y: 0, width: 1, height: 1 },
-        })
+        });
       }
-      resolve()
-    }
-    img.onerror = () => resolve()
-    img.src = props.resourceUrl || ''
-  })
-}
+      resolve();
+    };
+    img.onerror = () => resolve();
+    img.src = props.resourceUrl || "";
+  });
+};
 
 const toggleCropMode = async () => {
-  if (!props.resourceUrl) return
-  cropMode.value = !cropMode.value
-  if (cropMode.value) {
-    await nextTick()
-    await ensureNaturalSizeFallback()
+  if (!props.resourceUrl) return;
+  const next = !cropMode.value;
+  cropMode.value = next;
+  emit("update-image-settings", { cropEnabled: next });
+  if (next) {
+    await nextTick();
+    await ensureNaturalSizeFallback();
   }
-  requestRender()
-}
+  requestRender();
+};
 
-const applyOutputWidthHeight = (nextW: number | null, nextH: number | null) => {
-  if (!nextW || !nextH) return
-  const w = Math.max(1, Math.floor(nextW))
-  const h = Math.max(1, Math.floor(nextH))
-  emit('update-image-settings', { outputWidth: w, outputHeight: h })
+const applyOutputQualityByWidth = async (nextW: number) => {
+  await ensureNaturalSizeFallback();
+  const natW = naturalWidth.value;
+  const natH = naturalHeight.value;
+  if (!natW || !natH) return;
+  const w = Math.max(1, Math.floor(nextW));
+  const h = Math.max(1, Math.round((w * natH) / Math.max(1e-6, natW)));
+  emit("update-image-settings", { outputWidth: w, outputHeight: h });
+};
 
-  // Keep crop aspect aligned with output aspect if we have natural size.
-  const natW = naturalWidth.value
-  const natH = naturalHeight.value
-  if (!natW || !natH) return
-  const aspect = Math.max(1e-6, w / h)
-  const cur = crop.value
-  const cx = cur.x + cur.width / 2
-  const cy = cur.y + cur.height / 2
-  let cropW = cur.width
-  let cropH = cur.height
-  // Adjust crop to target aspect in pixel space.
-  const curPxW = cropW * natW
-  const curPxH = cropH * natH
-  const curAspect = curPxW / Math.max(1e-6, curPxH)
-  if (curAspect > aspect) {
-    // too wide -> reduce width
-    const desiredPxW = curPxH * aspect
-    cropW = clamp01(desiredPxW / natW)
-  } else {
-    // too tall -> reduce height
-    const desiredPxH = curPxW / Math.max(1e-6, aspect)
-    cropH = clamp01(desiredPxH / natH)
-  }
-  let x = clamp01(cx - cropW / 2)
-  let y = clamp01(cy - cropH / 2)
-  if (x + cropW > 1) x = 1 - cropW
-  if (y + cropH > 1) y = 1 - cropH
-  emit('update-image-settings', { crop: { x, y, width: cropW, height: cropH } })
-}
+const applyOutputQualityByHeight = async (nextH: number) => {
+  await ensureNaturalSizeFallback();
+  const natW = naturalWidth.value;
+  const natH = naturalHeight.value;
+  if (!natW || !natH) return;
+  const h = Math.max(1, Math.floor(nextH));
+  const w = Math.max(1, Math.round((h * natW) / Math.max(1e-6, natH)));
+  emit("update-image-settings", { outputWidth: w, outputHeight: h });
+};
 
 const onOutputWidthChange = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const v = Math.max(1, Math.floor(Number(input.value) || 0))
-  if (!v) return
-  applyOutputWidthHeight(v, outputHeight.value)
-}
+  const input = e.target as HTMLInputElement;
+  const v = Math.max(1, Math.floor(Number(input.value) || 0));
+  if (!v) return;
+  void applyOutputQualityByWidth(v);
+};
 
 const onOutputHeightChange = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const v = Math.max(1, Math.floor(Number(input.value) || 0))
-  if (!v) return
-  applyOutputWidthHeight(outputWidth.value, v)
-}
+  const input = e.target as HTMLInputElement;
+  const v = Math.max(1, Math.floor(Number(input.value) || 0));
+  if (!v) return;
+  void applyOutputQualityByHeight(v);
+};
 
-type CropDragMode = 'move' | 'nw' | 'ne' | 'sw' | 'se'
+type CropDragMode = "move" | "nw" | "ne" | "sw" | "se";
 
-let drag:
-  | {
-    mode: CropDragMode
-    startClientX: number
-    startClientY: number
-    startCrop: { x: number; y: number; width: number; height: number }
-    startBox: { x: number; y: number; w: number; h: number }
-  }
-  | null = null
+let drag: {
+  mode: CropDragMode;
+  startClientX: number;
+  startClientY: number;
+  startCrop: { x: number; y: number; width: number; height: number };
+  startBox: { x: number; y: number; w: number; h: number };
+} | null = null;
 
 const emitCrop = (next: { x: number; y: number; width: number; height: number }) => {
-  const x = clamp01(next.x)
-  const y = clamp01(next.y)
-  const w = Math.max(0.01, clamp01(next.width))
-  const h = Math.max(0.01, clamp01(next.height))
-  let nx = x
-  let ny = y
-  let nw = w
-  let nh = h
-  if (nx + nw > 1) nx = 1 - nw
-  if (ny + nh > 1) ny = 1 - nh
-  emit('update-image-settings', { crop: { x: nx, y: ny, width: nw, height: nh } })
-}
+  const x = clamp01(next.x);
+  const y = clamp01(next.y);
+  const w = Math.max(0.01, clamp01(next.width));
+  const h = Math.max(0.01, clamp01(next.height));
+  let nx = x;
+  let ny = y;
+  let nw = w;
+  let nh = h;
+  if (nx + nw > 1) nx = 1 - nw;
+  if (ny + nh > 1) ny = 1 - nh;
+  emit("update-image-settings", { crop: { x: nx, y: ny, width: nw, height: nh } });
+};
 
 const onCropPointerDown = (ev: PointerEvent, mode: CropDragMode) => {
-  if (!cropBoxPx.value) return
-  const b = cropBoxPx.value
+  if (!cropBoxPx.value) return;
+  const b = cropBoxPx.value;
   drag = {
     mode,
     startClientX: ev.clientX,
     startClientY: ev.clientY,
     startCrop: { ...crop.value },
     startBox: { ...b },
-  }
-  ;(ev.target as HTMLElement | null)?.setPointerCapture?.(ev.pointerId)
+  };
+  (ev.target as HTMLElement | null)?.setPointerCapture?.(ev.pointerId);
   const onMove = (e: PointerEvent) => {
-    if (!drag || !cropBoxPx.value) return
-    const dr = displayRect.value
-    const dxPx = e.clientX - drag.startClientX
-    const dyPx = e.clientY - drag.startClientY
-    const dxN = dxPx / Math.max(1, dr.w)
-    const dyN = dyPx / Math.max(1, dr.h)
-    const aspect = outputAspect.value
-    const natW = naturalWidth.value
-    const natH = naturalHeight.value
+    if (!drag || !cropBoxPx.value) return;
+    const dr = displayRect.value;
+    const dxPx = e.clientX - drag.startClientX;
+    const dyPx = e.clientY - drag.startClientY;
+    const dxN = dxPx / Math.max(1, dr.w);
+    const dyN = dyPx / Math.max(1, dr.h);
+    const natW = naturalWidth.value;
+    const natH = naturalHeight.value;
 
-    if (drag.mode === 'move') {
+    if (drag.mode === "move") {
       emitCrop({
         x: drag.startCrop.x + dxN,
         y: drag.startCrop.y + dyN,
         width: drag.startCrop.width,
         height: drag.startCrop.height,
-      })
-      requestRender()
-      return
+      });
+      requestRender();
+      return;
     }
 
-    let x0 = drag.startCrop.x
-    let y0 = drag.startCrop.y
-    let x1 = drag.startCrop.x + drag.startCrop.width
-    let y1 = drag.startCrop.y + drag.startCrop.height
-    if (drag.mode === 'nw' || drag.mode === 'sw') x0 += dxN
-    if (drag.mode === 'ne' || drag.mode === 'se') x1 += dxN
-    if (drag.mode === 'nw' || drag.mode === 'ne') y0 += dyN
-    if (drag.mode === 'sw' || drag.mode === 'se') y1 += dyN
+    let x0 = drag.startCrop.x;
+    let y0 = drag.startCrop.y;
+    let x1 = drag.startCrop.x + drag.startCrop.width;
+    let y1 = drag.startCrop.y + drag.startCrop.height;
+    if (drag.mode === "nw" || drag.mode === "sw") x0 += dxN;
+    if (drag.mode === "ne" || drag.mode === "se") x1 += dxN;
+    if (drag.mode === "nw" || drag.mode === "ne") y0 += dyN;
+    if (drag.mode === "sw" || drag.mode === "se") y1 += dyN;
 
-    x0 = clamp01(x0)
-    y0 = clamp01(y0)
-    x1 = clamp01(x1)
-    y1 = clamp01(y1)
-    let w = Math.max(0.01, x1 - x0)
-    let h = Math.max(0.01, y1 - y0)
+    x0 = clamp01(x0);
+    y0 = clamp01(y0);
+    x1 = clamp01(x1);
+    y1 = clamp01(y1);
+    let w = Math.max(0.01, x1 - x0);
+    let h = Math.max(0.01, y1 - y0);
 
-    // Lock crop aspect to output resolution when set.
-    if (hasAspectLock.value && aspect && natW && natH) {
-      const curPxW = w * natW
-      const curPxH = h * natH
-      const curA = curPxW / Math.max(1e-6, curPxH)
-      if (curA > aspect) {
-        // too wide -> adjust width based on height
-        const desiredPxW = curPxH * aspect
-        w = clamp01(desiredPxW / natW)
-      } else {
-        // too tall -> adjust height based on width
-        const desiredPxH = curPxW / Math.max(1e-6, aspect)
-        h = clamp01(desiredPxH / natH)
-      }
-      // Anchor the opposite corner depending on handle.
-      if (drag.mode === 'nw') {
-        x0 = clamp01(x1 - w)
-        y0 = clamp01(y1 - h)
-      } else if (drag.mode === 'ne') {
-        x1 = clamp01(x0 + w)
-        y0 = clamp01(y1 - h)
-      } else if (drag.mode === 'sw') {
-        x0 = clamp01(x1 - w)
-        y1 = clamp01(y0 + h)
-      } else {
-        x1 = clamp01(x0 + w)
-        y1 = clamp01(y0 + h)
-      }
-      w = Math.max(0.01, x1 - x0)
-      h = Math.max(0.01, y1 - y0)
-    }
+    // Free-form crop: no aspect lock. Output resolution is only quality scaling.
 
-    emitCrop({ x: x0, y: y0, width: w, height: h })
-    requestRender()
-  }
+    emitCrop({ x: x0, y: y0, width: w, height: h });
+    requestRender();
+  };
   const onUp = () => {
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
-    window.removeEventListener('pointercancel', onUp)
-    drag = null
-  }
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp)
-  window.addEventListener('pointercancel', onUp)
-}
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+    drag = null;
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+};
 
 const onUploadClick = () => {
-  fileInput.value?.click()
-}
+  fileInput.value?.click();
+};
 
 const onFileChange = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  emit('upload-resource', { file, kind: 'image' })
-  input.value = ''
-}
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  emit("upload-resource", { file, kind: "image" });
+  input.value = "";
+};
 
 const initWebgl = () => {
-  if (!previewWrap.value || !mainCanvas.value) return
-  if (glMain) return
-  glMain = new DwebCanvasGL(mainCanvas.value)
+  if (!previewWrap.value || !mainCanvas.value) return;
+  if (glMain) return;
+  glMain = new DwebCanvasGL(mainCanvas.value);
   glMain.setScene({
     render: (c) => {
-      const src = String(props.resourceUrl ?? '').trim()
-      if (!src) return
-      const tex = c.getImageTexture(src, 'clamp')
-      if (!tex) return
-      const W = Math.max(1, c.size.width)
-      const H = Math.max(1, c.size.height)
-      const target = { w: W, h: H, scale: 1 }
+      const src = String(props.resourceUrl ?? "").trim();
+      if (!src) return;
+      const tex = c.getImageTexture(src, "clamp");
+      if (!tex) return;
+      const W = Math.max(1, c.size.width);
+      const H = Math.max(1, c.size.height);
+      const target = { w: W, h: H, scale: 1 };
 
-      const imgW = naturalWidth.value ?? c.getImageSize(src)?.width ?? 1
-      const imgH = naturalHeight.value ?? c.getImageSize(src)?.height ?? 1
+      // Full image UV (no vertical flip).
+      const uvFull = { u0: 0, u1: 1, v0: 0, v1: 1 };
 
-      // Full image UV with v-flip.
-      const uvFull = { u0: 0, u1: 1, v0: 1, v1: 0 }
-
+      // Rendering strategy:
+      // - cropMode: contain (show full source image, centered)
+      // - normal: cover (fill render area with FULL image, no black bars)
       if (cropMode.value) {
-        // Show original image (contain, centered) during cropping.
-        const dr = displayRect.value
-        c.drawLocalTexturedRectUv(target, dr.x, dr.y, dr.w, dr.h, tex, 1, 0, uvFull)
-        return
+        const dr = displayRect.value;
+        c.drawLocalTexturedRectUv(target, dr.x, dr.y, dr.w, dr.h, tex, 1, 0, uvFull);
+        return;
       }
 
-      // Show node output (cropped) when not in crop mode.
-      const uv = cropToUv(crop.value)
-      c.drawLocalTexturedRectUv(target, 0, 0, W, H, tex, 1, 0, uv)
+      // Full image cover (no real crop applied when UI is closed).
+      const imgW = naturalWidth.value ?? c.getImageSize(src)?.width ?? 1;
+      const imgH = naturalHeight.value ?? c.getImageSize(src)?.height ?? 1;
+      const scale = Math.max(W / Math.max(1, imgW), H / Math.max(1, imgH));
+      const dw = Math.max(1, imgW * scale);
+      const dh = Math.max(1, imgH * scale);
+      const dx = (W - dw) / 2;
+      const dy = (H - dh) / 2;
+      c.drawLocalTexturedRectUv(target, dx, dy, dw, dh, tex, 1, 0, uvFull);
     },
-  })
+  });
 
   ro = new ResizeObserver((entries) => {
-    const r = entries[0]?.contentRect
-    if (!r) return
-    const w = Math.max(1, Math.floor(r.width))
-    const h = Math.max(1, Math.floor(r.height))
-    wrapSize.value = { w, h }
-    glMain?.setSize(w, h)
-    // Resize preview canvas too if visible.
-    if (previewCanvas.value && glPreview) {
-      const ps = cropPreviewStyle.value as any
-      const pw = Math.max(1, Math.floor(Number(String(ps.width).replace('px', '')) || 1))
-      const ph = Math.max(1, Math.floor(Number(String(ps.height).replace('px', '')) || 1))
-      glPreview.setSize(pw, ph)
-    }
-  })
-  ro.observe(previewWrap.value)
+    const r = entries[0]?.contentRect;
+    if (!r) return;
+    const w = Math.max(1, Math.floor(r.width));
+    const h = Math.max(1, Math.floor(r.height));
+    wrapSize.value = { w, h };
+    glMain?.setSize(w, h);
+  });
+  ro.observe(previewWrap.value);
 
   wrapSize.value = {
-    w: Math.max(1, Math.floor(previewWrap.value.getBoundingClientRect().width)),
-    h: Math.max(1, Math.floor(previewWrap.value.getBoundingClientRect().height)),
-  }
-  glMain.setSize(wrapSize.value.w, wrapSize.value.h)
-}
-
-const ensurePreviewWebgl = () => {
-  if (!previewCanvas.value) return
-  if (glPreview) return
-  glPreview = new DwebCanvasGL(previewCanvas.value)
-  glPreview.setScene({
-    render: (c) => {
-      const src = String(props.resourceUrl ?? '').trim()
-      if (!src) return
-      const tex = c.getImageTexture(src, 'clamp')
-      if (!tex) return
-      const W = Math.max(1, c.size.width)
-      const H = Math.max(1, c.size.height)
-      const target = { w: W, h: H, scale: 1 }
-      const uv = cropToUv(crop.value)
-      c.drawLocalTexturedRectUv(target, 0, 0, W, H, tex, 1, 0, uv)
-    },
-  })
-  // Will be resized by ResizeObserver after next tick.
-  glPreview.setSize(120, 80)
-  const src = String(props.resourceUrl ?? '').trim()
-  if (src) {
-    glPreview
-      .preloadImages([{ src, wrap: 'clamp' }], { timeoutMs: 6000 })
-      .then(() => glPreview?.requestRender())
-      .catch(() => {})
-  }
-}
+    // Use layout size (exclude CSS transforms like viewport zoom scaling).
+    w: Math.max(1, Math.floor(previewWrap.value.clientWidth || 1)),
+    h: Math.max(1, Math.floor(previewWrap.value.clientHeight || 1)),
+  };
+  glMain.setSize(wrapSize.value.w, wrapSize.value.h);
+};
 
 watch(
   () => props.resourceUrl,
   async () => {
-    await nextTick()
+    await nextTick();
     if (!props.resourceUrl) {
-      cropMode.value = false
-      return
+      cropMode.value = false;
+      return;
     }
-    initWebgl()
-    await ensureNaturalSizeFallback()
+    initWebgl();
+    await ensureNaturalSizeFallback();
     try {
-      await glMain?.preloadImages([{ src: props.resourceUrl, wrap: 'clamp' }], { timeoutMs: 6000 })
+      await glMain?.preloadImages([{ src: props.resourceUrl, wrap: "clamp" }], {
+        timeoutMs: 6000,
+      });
     } catch {
       // ignore
     }
-    requestRender()
+    requestRender();
   },
   { immediate: true }
-)
+);
 
 watch(
-  () => [cropMode.value, crop.value.x, crop.value.y, crop.value.width, crop.value.height, outputWidth.value, outputHeight.value],
+  () => [
+    cropMode.value,
+    crop.value.x,
+    crop.value.y,
+    crop.value.width,
+    crop.value.height,
+    outputWidth.value,
+    outputHeight.value,
+  ],
   async () => {
-    await nextTick()
-    if (cropMode.value) {
-      ensurePreviewWebgl()
-      await nextTick()
-      resizePreviewCanvas()
-    }
-    requestRender()
+    await nextTick();
+    requestRender();
   },
-  { flush: 'post' }
-)
+  { flush: "post" }
+);
 
 defineExpose({
   /** Export the node output PNG (WebGL rendered, cropped + scaled to output resolution). */
   exportPngBlob: async () => {
-    const src = String(props.resourceUrl ?? '').trim()
-    if (!src) return null
-    const w = outputWidth.value
-    const h = outputHeight.value
-    if (!w || !h) return null
-    return exportWorkflowImageOutputPng({ src, outputWidth: w, outputHeight: h, crop: crop.value })
+    const src = String(props.resourceUrl ?? "").trim();
+    if (!src) return null;
+    const w = outputWidth.value;
+    const h = outputHeight.value;
+    if (!w || !h) return null;
+    return exportWorkflowImageOutputPng({
+      src,
+      outputWidth: w,
+      outputHeight: h,
+      crop: cropEnabled.value ? crop.value : null,
+    });
   },
-})
+});
 
 onMounted(() => {
-  initWebgl()
-})
+  initWebgl();
+});
 
 onBeforeUnmount(() => {
   try {
-    ro?.disconnect()
+    ro?.disconnect();
   } catch {
     // ignore
   }
-  ro = null
+  ro = null;
   try {
-    glMain?.dispose()
+    glMain?.dispose();
   } catch {
     // ignore
   }
-  try {
-    glPreview?.dispose()
-  } catch {
-    // ignore
-  }
-  glMain = null
-  glPreview = null
-})
+  glMain = null;
+});
 </script>
 
 <style scoped>
@@ -716,12 +689,14 @@ onBeforeUnmount(() => {
   gap: 8px;
   flex: 1;
   min-height: 0;
+  height: 100%;
+  align-self: stretch;
 }
 
 .wf-media-preview {
   width: 100%;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  height: auto;
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--vscode-border);
@@ -784,19 +759,6 @@ onBeforeUnmount(() => {
   cursor: nwse-resize;
 }
 
-.wf-crop-preview {
-  position: absolute;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  overflow: hidden;
-}
-
-.wf-crop-preview-canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
 .wf-media-empty {
   border: 1px dashed var(--vscode-border);
   border-radius: 6px;
@@ -818,12 +780,19 @@ onBeforeUnmount(() => {
 .wf-media-actions {
   display: flex;
   gap: 8px;
+  flex: 0 0 auto;
+}
+
+.wf-media-footer {
+  width: 100%;
+  margin-top: 6px;
 }
 
 .wf-media-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
 }
 
 .wf-toolbar-btn {
