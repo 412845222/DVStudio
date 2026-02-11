@@ -664,6 +664,10 @@ export class DwebCanvasGL {
 		return this.imagePool.getSize(src)
 	}
 
+	preloadImages(items: Array<{ src: string; wrap?: DwebImageWrapMode }>, opts?: { timeoutMs?: number }): Promise<void> {
+		return this.imagePool.preload(this.gl, this, items, opts)
+	}
+
 	drawRect(x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
 		this.drawQuad(x, y, w, h, color, rotation)
 	}

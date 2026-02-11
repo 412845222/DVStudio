@@ -160,6 +160,25 @@ export class DwebVideoScene implements IDwebGLScene {
 		this.rebuildRenderOrder()
 	}
 
+	collectImageSources(): Array<{ src: string; wrap: 'repeat' | 'clamp' }> {
+		const out = new Map<string, { src: string; wrap: 'repeat' | 'clamp' }>()
+		if (this.stageBackground.type === 'image') {
+			const src = (this.stageBackground.imageSrc || '').trim()
+			if (src) {
+				const wrap = this.stageBackground.repeat ? 'repeat' : 'clamp'
+				out.set(`${wrap}|${src}`, { src, wrap })
+			}
+		}
+		for (const n of this.renderOrder) {
+			if (n.type !== 'image') continue
+			const src = (n.imageSrc || '').trim()
+			if (!src) continue
+			const wrap = (n.props as any)?.repeat ? 'repeat' : 'clamp'
+			out.set(`${wrap}|${src}`, { src, wrap })
+		}
+		return Array.from(out.values())
+	}
+
 	private rebuildRenderOrder() {
 		if (!this.state) {
 			this.renderOrder = []

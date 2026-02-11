@@ -46,6 +46,7 @@ let timelineState: any = null
 
 let canvas: DwebCanvasGL | null = null
 let scene: DwebVideoScene | null = null
+let lastImageKey = ''
 
 const ensureInit = () => {
 	if (!canvas || !scene || !baseSceneState || !timelineState || !jobId) throw new Error('worker 未初始化')
@@ -122,6 +123,15 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 
 			const stateAt = computeSceneStateAtFrame(baseSceneState!, timelineState, fi)
 			scene!.setState(stateAt)
+			const images = scene!.collectImageSources()
+			const imageKey = images
+				.map((item) => `${item.wrap}|${item.src}`)
+				.sort()
+				.join('||')
+			if (imageKey !== lastImageKey) {
+				lastImageKey = imageKey
+				await canvas!.preloadImages(images, { timeoutMs: 8000 })
+			}
 			if (uploadMode === 'pipe') {
 				const cap = canvas!.captureRgbaBytesFromScreenRect({ x: 0, y: 0, width, height })
 				if (!cap?.pixels) throw new Error('抓帧失败（capture rgba bytes 返回空）')
@@ -150,6 +160,15 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 				const fi = si + i
 				const stateAt = computeSceneStateAtFrame(baseSceneState!, timelineState, fi)
 				scene!.setState(stateAt)
+				const images = scene!.collectImageSources()
+				const imageKey = images
+					.map((item) => `${item.wrap}|${item.src}`)
+					.sort()
+					.join('||')
+				if (imageKey !== lastImageKey) {
+					lastImageKey = imageKey
+					await canvas!.preloadImages(images, { timeoutMs: 8000 })
+				}
 				const cap = canvas!.captureRgbaBytesFromScreenRect({ x: 0, y: 0, width, height })
 				if (!cap?.pixels) throw new Error('抓帧失败（capture rgba bytes 返回空）')
 				if (cap.pixels.byteLength !== frameBytes) throw new Error('raw 帧长度异常')

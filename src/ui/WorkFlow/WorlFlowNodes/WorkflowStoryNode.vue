@@ -1,0 +1,366 @@
+<template>
+  <WorkflowNodeBase
+    :nodeId="nodeId"
+    :title="title"
+    :alias="alias"
+    :nodeType="nodeType"
+    :subtitle="subtitle"
+    :style="style"
+    :width="width"
+    :height="height"
+    :zoom="zoom"
+    :worldX="worldX"
+    :worldY="worldY"
+    :inputs="inputs"
+    :outputs="outputs"
+    :selected="selected"
+    :hoverInputAnchorId="hoverInputAnchorId"
+    :hoverOutputAnchorId="hoverOutputAnchorId"
+    @update:worldX="(v) => emit('update:worldX', v)"
+    @update:worldY="(v) => emit('update:worldY', v)"
+    @select="(id) => emit('select', id)"
+    @start-link="(payload) => emit('start-link', payload)"
+    @end-link="(payload) => emit('end-link', payload)"
+    @copy="() => emit('copy')"
+    @delete="() => emit('delete')"
+    @set-type="(type) => emit('set-type', type)"
+    @resize="(payload) => emit('resize', payload)"
+  >
+    <template #body>
+      <div class="wf-story-preview">
+        <img v-if="previewKind === 'image' && previewUrl" :src="previewUrl" alt="剧情预览" />
+        <video v-else-if="previewKind === 'video' && previewUrl" :src="previewUrl" muted loop playsinline />
+        <div v-else class="wf-story-placeholder">
+          <div class="wf-story-placeholder-title">暂无画面预览</div>
+          <div class="wf-story-placeholder-sub">连接图片或视频输入节点</div>
+        </div>
+      </div>
+    </template>
+    <template #footer>
+      <div class="wf-story-branches">
+        <div class="wf-story-branches-header">
+          <div class="wf-story-branches-title">剧情分支</div>
+          <button class="wf-story-branches-add" type="button" @click="emit('add-branch')">
+            新增分支
+          </button>
+        </div>
+        <div v-for="(branch, idx) in branches" :key="branch.id" class="wf-story-branch">
+          <div class="wf-story-index">{{ idx + 1 }}</div>
+          <input
+            class="wf-story-input"
+            type="text"
+            :value="branch.text"
+            placeholder="剧情分支描述"
+            @input="onBranchInput(branch.id, $event)"
+          />
+          <button class="wf-story-action" type="button" title="设置">
+            <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-story-icon">
+              <path
+                d="M7 1h2l.4 1.5 1.6.7 1.3-.8 1.4 1.4-.8 1.3.7 1.6L15 7v2l-1.5.4-.7 1.6.8 1.3-1.4 1.4-1.3-.8-1.6.7L9 15H7l-.4-1.5-1.6-.7-1.3.8-1.4-1.4.8-1.3-.7-1.6L1 9V7l1.5-.4.7-1.6-.8-1.3L3.8 2.3l1.3.8 1.6-.7L7 1z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.1"
+              />
+              <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.1" />
+            </svg>
+          </button>
+          <button
+            class="wf-story-action danger"
+            type="button"
+            title="删除"
+            @click="emit('remove-branch', branch.id)"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+    </template>
+    <template #anchors="{ inputAnchors, outputAnchors, endLink, startLink, isInputHover, isOutputHover }">
+      <div class="wf-story-anchor-inputs">
+        <div
+          class="wf-story-anchor-in flow"
+          :class="{ hovered: isInputHover(flowInputId(inputAnchors)) }"
+          :data-wf-node-id="nodeId"
+          :data-wf-anchor-id="flowInputId(inputAnchors)"
+          data-wf-dir="in"
+          data-wf-anchor-index="0"
+          @pointerup.stop="onInputEnd(flowInputId(inputAnchors), endLink)"
+        />
+        <div
+          class="wf-story-anchor-in resource"
+          :class="{ hovered: isInputHover(resourceInputId(inputAnchors)) }"
+          :data-wf-node-id="nodeId"
+          :data-wf-anchor-id="resourceInputId(inputAnchors)"
+          data-wf-dir="in"
+          data-wf-anchor-index="1"
+          @pointerup.stop="onInputEnd(resourceInputId(inputAnchors), endLink)"
+        />
+      </div>
+      <div class="wf-story-anchors-out">
+        <div
+          v-for="a in outputAnchors"
+          :key="a.id"
+          class="wf-story-anchor-out"
+          :class="{ hovered: isOutputHover(a.id) }"
+          :style="anchorStyle(a)"
+          :data-wf-node-id="nodeId"
+          :data-wf-anchor-id="a.id"
+          data-wf-dir="out"
+          :data-wf-anchor-index="a.index"
+          @pointerdown.stop.prevent="startLink(a.id, a.index, $event)"
+        />
+      </div>
+    </template>
+  </WorkflowNodeBase>
+</template>
+
+<script setup lang="ts">
+import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import type { WorkflowStoryBranch } from '../../../aiworkflow/types'
+
+type AnchorSpec = {
+  id: string
+  label?: string
+  offsetY?: number
+}
+
+type PreviewKind = 'image' | 'video' | null
+
+const props = defineProps<{
+  nodeId: string
+  title: string
+  alias?: string
+  nodeType: string
+  subtitle?: string
+  style?: Record<string, string>
+  width: number
+  height: number
+  zoom: number
+  worldX: number
+  worldY: number
+  inputs?: AnchorSpec[]
+  outputs?: AnchorSpec[]
+  selected?: boolean
+  hoverInputAnchorId?: string | null
+  hoverOutputAnchorId?: string | null
+  branches: WorkflowStoryBranch[]
+  previewUrl?: string | null
+  previewKind?: PreviewKind
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:worldX', v: number): void
+  (e: 'update:worldY', v: number): void
+  (e: 'select', nodeId: string): void
+  (e: 'start-link', payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }): void
+  (e: 'end-link', payload: { nodeId: string; anchorId: string; anchorIndex: number }): void
+  (e: 'copy'): void
+  (e: 'delete'): void
+  (e: 'set-type', v: 'base' | 'image' | 'video' | 'story'): void
+  (e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
+  (e: 'update-branch', payload: { branchId: string; text: string }): void
+  (e: 'add-branch'): void
+  (e: 'remove-branch', branchId: string): void
+}>()
+
+const onBranchInput = (branchId: string, e: Event) => {
+  const v = (e.target as HTMLInputElement).value
+  emit('update-branch', { branchId, text: v })
+}
+
+const flowInputId = (inputAnchors: AnchorSpec[]) => {
+  const match = inputAnchors.find((a) => a.id === 'in-flow')
+  return match?.id || inputAnchors[0]?.id
+}
+
+const resourceInputId = (inputAnchors: AnchorSpec[]) => {
+  const match = inputAnchors.find((a) => a.id === 'in-resource')
+  return match?.id || inputAnchors[1]?.id || inputAnchors[0]?.id
+}
+
+const onInputEnd = (anchorId: string | undefined, endLink: (anchorId: string, anchorIndex: number) => void) => {
+  if (!anchorId) return
+  const index = anchorId === 'in-resource' ? 1 : 0
+  endLink(anchorId, index)
+}
+
+const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
+  top: `calc(50% + ${a.offsetY ?? 0}px)`,
+})
+</script>
+
+<style scoped>
+.wf-story-preview {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wf-story-preview img,
+.wf-story-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.wf-story-placeholder {
+  text-align: center;
+  color: var(--vscode-fg-muted);
+}
+
+.wf-story-placeholder-title {
+  font-size: 12px;
+}
+
+.wf-story-placeholder-sub {
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+
+.wf-story-branches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+.wf-story-branches-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wf-story-branches-title {
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
+}
+
+.wf-story-branches-add {
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.wf-story-branches-add:hover {
+  border-color: var(--vscode-hover-border);
+  background: var(--vscode-hover-bg);
+}
+
+.wf-story-branch {
+  display: grid;
+  grid-template-columns: 22px 1fr 26px 48px;
+  gap: 6px;
+  align-items: center;
+  min-height: 32px;
+  position: relative;
+}
+
+.wf-story-index {
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
+  text-align: center;
+}
+
+.wf-story-input {
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.wf-story-action {
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  padding: 4px;
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wf-story-action:hover {
+  border-color: var(--vscode-hover-border);
+  background: var(--vscode-hover-bg);
+}
+
+.wf-story-action.danger {
+  width: auto;
+  padding: 4px 6px;
+  color: var(--vscode-fg-muted);
+}
+
+.wf-story-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.wf-story-anchors-out {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -10px;
+}
+
+.wf-story-anchor-out {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid #f29d38;
+  background: #f29d38;
+  cursor: crosshair;
+  position: absolute;
+  transform: translateY(-50%);
+}
+
+.wf-story-anchor-out.hovered {
+  box-shadow: 0 0 8px rgba(242, 157, 56, 0.65);
+}
+
+.wf-story-anchor-inputs {
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wf-story-anchor-in {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 2px solid #f29d38;
+  background: #f29d38;
+  cursor: crosshair;
+}
+
+.wf-story-anchor-in.resource {
+  border-color: var(--dweb-blue);
+  background: var(--dweb-blue);
+}
+
+.wf-story-anchor-in.hovered {
+  box-shadow: 0 0 8px rgba(242, 157, 56, 0.65);
+}
+
+.wf-story-anchor-in.resource.hovered {
+  box-shadow: 0 0 8px rgba(58, 168, 180, 0.65);
+}
+</style>

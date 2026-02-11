@@ -119,6 +119,7 @@ import { useStore } from 'vuex'
 import { aiChatService } from '../../network/AIChatService'
 import type { AgentToUiMessage } from '../../core/agentToUI'
 import { componentTemplateApi } from '../../core/components'
+import { ComponentLibraryService } from '../../network/ComponentLibraryService'
 import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners } from '../../core/scene'
 import { VideoSceneKey, type VideoSceneState } from '../../store/videoscene'
 import { editorPersistence } from '../../adapters/editorPersistence'
@@ -1311,9 +1312,11 @@ type SavedComponent = {
 	savedAt: string
 	thumbAssetId?: string
 	thumbDataUrl?: string
+	thumbUrl?: string
 }
 
 const COMPONENT_LIBRARY_KEY = 'dvs.componentLibrary.v1'
+const componentService = new ComponentLibraryService()
 
 const safeNowId = () => `tpl_${Date.now().toString(36)}`
 
@@ -1498,7 +1501,7 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		}
 
 		const savedAt = new Date().toISOString()
-		const entry: SavedComponent = {
+		let entry: SavedComponent = {
 			id: `cmp_${Date.now()}_${Math.random().toString(16).slice(2)}`,
 			createdAt,
 			templateId,
@@ -1508,10 +1511,31 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 			thumbAssetId,
 			thumbDataUrl,
 		}
+		try {
+			const res = await componentService.upsertComponent({
+				templateId,
+				name,
+				template,
+				thumbAssetId,
+				thumbDataUrl,
+				clientId: entry.id,
+				createdAt: entry.createdAt,
+			})
+			entry = {
+				...entry,
+				id: res.item.id || entry.id,
+				createdAt: res.item.createdAt || entry.createdAt,
+				savedAt: res.item.savedAt || entry.savedAt,
+				thumbUrl: res.item.thumbUrl,
+			}
+		} catch {
+			// fallback to local storage only
+		}
 
-		const list = loadComponentLibrary()
+		const list = loadComponentLibrary().filter((x) => x.templateId !== entry.templateId)
 		list.unshift(entry)
 		persistComponentLibrary(list)
+		window.dispatchEvent(new CustomEvent('dvs:componentLibrary/refresh', { detail: { templateId } }))
 		m.text = (m.text || '') + `\n\n已保存到组件库：${name}`
 	} catch (e) {
 		m.text = (m.text || '') + `\n\n保存失败：${e instanceof Error ? e.message : String(e)}`

@@ -23,19 +23,20 @@ export function validateComponentTemplate(v: unknown): ValidateResult<ComponentT
 
 	const paramKeySet = new Set<string>()
 	if (isArray(params)) {
-		for (const p of params) {
+		for (let i = 0; i < params.length; i++) {
+			const p = params[i]
 			if (!isRecord(p)) {
-				errors.push('params[] must be objects')
+				errors.push(`params[${i}] must be object`)
 				continue
 			}
 			if (!isString(p.key) || !p.key.trim()) {
-				errors.push('param.key must be non-empty string')
+				errors.push(`params[${i}].key must be non-empty string`)
 				continue
 			}
-			if (paramKeySet.has(p.key)) errors.push(`param.key duplicated: ${p.key}`)
+			if (paramKeySet.has(p.key)) errors.push(`params[${i}].key duplicated: ${p.key}`)
 			paramKeySet.add(p.key)
 			if (!isString(p.type) || !paramTypes.includes(p.type as ComponentTemplateParamType)) {
-				errors.push(`param.type invalid: ${String(p.type)}`)
+				errors.push(`params[${i}].type invalid for key=${p.key}: ${String(p.type)}`)
 			}
 		}
 	}
