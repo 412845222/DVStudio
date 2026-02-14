@@ -52,7 +52,17 @@ coverage.xml
 *.key
 *.pem
 **/deepseek_secrets.py
+**/nanobanana_secrets.py
 django-app/dwebapp/deepseek_secrets.py
+django-app/dwebapp/nanobanana_secrets.py
+
+# Copied backend workspace artifacts (frontend repo keeps backend source only)
+django-app/db.sqlite3
+django-app/media/
+django-app/staticfiles/
+django-app/.dweb_exports/
+django-app/.dweb-deps.lock
+django-app/**/__pycache__/
 
 # Editor directories and files
 .idea

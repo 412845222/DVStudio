@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Django
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+
+# Secrets (never commit)
+.env
+.env.*
+dwebapp/deepseek_secrets.py
+dwebapp/nanobanana_secrets.py

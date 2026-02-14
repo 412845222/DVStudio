@@ -22,14 +22,25 @@
     @start-link="(payload) => emit('start-link', payload)"
     @end-link="(payload) => emit('end-link', payload)"
     @copy="() => emit('copy')"
+    @refresh="() => emit('refresh')"
     @delete="() => emit('delete')"
     @set-type="(type) => emit('set-type', type)"
     @resize="(payload) => emit('resize', payload)"
   >
     <template #body>
       <div class="wf-media">
-        <div v-if="resourceUrl" class="wf-media-preview">
-          <video ref="videoEl" class="wf-media-video" muted playsinline preload="auto" />
+        <div
+          v-if="resourceUrl"
+          class="wf-media-preview"
+          @contextmenu.stop.prevent="onPreviewContextMenu"
+        >
+          <video
+            ref="videoEl"
+            class="wf-media-video"
+            playsinline
+            preload="metadata"
+            :poster="props.posterUrl || undefined"
+          />
         </div>
         <div v-else class="wf-media-empty">
           <div class="wf-media-hint">未上传视频资源</div>
@@ -62,15 +73,19 @@
       <div class="wf-media-footer" @pointerdown.stop>
         <div class="wf-video-toolbar">
           <div class="wf-video-row">
-            <button
-              class="wf-toolbar-btn"
-              type="button"
-              :disabled="!resourceUrl"
-              @click.stop="togglePlay"
-              :title="playing ? '暂停' : '播放'"
-            >
-              {{ playing ? "暂停" : "播放" }}
-            </button>
+            <VideoController
+              class="wf-video-controller"
+              :disabled="!resourceUrl || !durationDisplay"
+              :playing="playing"
+              :duration="durationDisplay"
+              :currentTime="seekValue"
+              :volume="volume"
+              :loop="loopEnabled"
+              @toggle-play="togglePlay"
+              @toggle-loop="toggleLoop"
+              @seek="seekByOverviewTime"
+              @update-volume="onControllerVolumeChange"
+            />
             <button
               class="wf-toolbar-btn"
               type="button"
@@ -80,15 +95,6 @@
             >
               截图
             </button>
-
-            <canvas
-              ref="overviewCanvas"
-              class="wf-overview-canvas"
-              :class="{ disabled: !resourceUrl || !durationDisplay }"
-              @pointerdown.stop="onOverviewPointerDown"
-              @wheel.prevent.stop="onOverviewWheel"
-              title="整体时间轴：显示当前位置与当前缩放窗口"
-            />
           </div>
 
           <div class="wf-video-row wf-video-row2">
@@ -131,6 +137,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import WorkflowNodeBase from "../WorkflowNodeBase.vue";
+import VideoController from "../../UIComponent/VideoController.vue";
 import { DwebCanvasGL } from "../../../engine/webgl/canvas/DwebCanvasGL";
 
 type AnchorSpec = {
@@ -147,6 +154,7 @@ const props = defineProps<{
   subtitle?: string;
   style?: Record<string, string>;
   resourceUrl?: string | null;
+  posterUrl?: string | null;
   resourceName?: string | null;
   videoSettings?: {
     outputWidth?: number;
@@ -171,6 +179,7 @@ const emit = defineEmits<{
   (e: "update:worldX", v: number): void;
   (e: "update:worldY", v: number): void;
   (e: "select", nodeId: string): void;
+  (e: "preview-contextmenu", payload: { clientX: number; clientY: number }): void;
   (
     e: "start-link",
     payload: {
@@ -185,8 +194,12 @@ const emit = defineEmits<{
     payload: { nodeId: string; anchorId: string; anchorIndex: number }
   ): void;
   (e: "copy"): void;
+  (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "image" | "video" | "story"): void;
+  (
+    e: "set-type",
+    v: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui"
+  ): void;
   (e: "upload-resource", payload: { file: File; kind: "image" | "video" }): void;
   (e: "clear-resource"): void;
   (
@@ -206,27 +219,30 @@ const emit = defineEmits<{
     e: "screenshot",
     payload: { dataUrl: string; width: number; height: number; time: number }
   ): void;
+  (e: "media-ready"): void;
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
+const onPreviewContextMenu = (e: MouseEvent) => {
+  emit("select", props.nodeId);
+  emit("preview-contextmenu", { clientX: e.clientX, clientY: e.clientY });
+};
+
 const videoEl = ref<HTMLVideoElement | null>(null);
 const timelineCanvas = ref<HTMLCanvasElement | null>(null);
-const overviewCanvas = ref<HTMLCanvasElement | null>(null);
 
 const playing = ref(false);
 const duration = ref(0);
 const seekTime = ref(0);
 const timelineZoom = ref(6);
+const volume = ref(1);
+const loopEnabled = ref(false);
 let rafId: number | null = null;
 
 let tlCtx: CanvasRenderingContext2D | null = null;
 let tlRo: ResizeObserver | null = null;
 let tlPointerActive = false;
-
-let ovCtx: CanvasRenderingContext2D | null = null;
-let ovRo: ResizeObserver | null = null;
-let ovPointerActive = false;
 
 const screenshotEnabled = computed(() => Boolean(props.screenshotEnabled));
 
@@ -274,17 +290,12 @@ const stopRaf = () => {
   rafId = null;
 };
 
-const drawAllTimelines = () => {
-  drawTimeline();
-  drawOverviewTimeline();
-};
-
 const tick = () => {
   stopRaf();
   const v = videoEl.value;
   if (!v || !playing.value) return;
   seekTime.value = v.currentTime;
-  drawAllTimelines();
+  drawTimeline();
   rafId = requestAnimationFrame(tick);
 };
 
@@ -298,6 +309,21 @@ const applyVideoSrc = async () => {
     v.load();
   } catch {
     // ignore
+  }
+  applyLoop();
+};
+
+let lastReadySrc = "";
+const tryEmitMediaReady = () => {
+  const v = videoEl.value;
+  if (!v) return;
+  const src = String(props.resourceUrl ?? "").trim();
+  if (!src) return;
+  if (src === lastReadySrc) return;
+  // HAVE_CURRENT_DATA (2) means the first frame is available for rendering.
+  if ((v.readyState || 0) >= 2) {
+    lastReadySrc = src;
+    emit("media-ready");
   }
 };
 
@@ -338,21 +364,39 @@ const onLoadedMetadata = () => {
   duration.value = Math.max(0, Number(v.duration) || 0);
   const w = Math.max(1, Math.floor(v.videoWidth || 1));
   const h = Math.max(1, Math.floor(v.videoHeight || 1));
-  emit("update-video-settings", {
-    naturalWidth: w,
-    naturalHeight: h,
-    outputWidth: outputWidth.value ?? w,
-    outputHeight: outputHeight.value ?? h,
-  });
+
+  // Avoid emitting redundant settings updates (can cause large update storms on project load).
+  const nextOutputW = outputWidth.value ?? w;
+  const nextOutputH = outputHeight.value ?? h;
+  const prev = props.videoSettings ?? null;
+  const sameNatural =
+    Number(prev?.naturalWidth) === w && Number(prev?.naturalHeight) === h;
+  const sameOutput =
+    Number(prev?.outputWidth) === nextOutputW &&
+    Number(prev?.outputHeight) === nextOutputH;
+  if (!sameNatural || !sameOutput) {
+    emit("update-video-settings", {
+      naturalWidth: w,
+      naturalHeight: h,
+      outputWidth: nextOutputW,
+      outputHeight: nextOutputH,
+    });
+  }
   seekTime.value = Math.min(seekValue.value, duration.value || seekValue.value);
-  drawAllTimelines();
+  drawTimeline();
 };
+
+let srcWatchRunId = 0;
 
 const togglePlay = async () => {
   const v = videoEl.value;
   if (!v) return;
   if (!playing.value) {
     try {
+      // default enable sound
+      v.muted = false;
+      const vv = Number(volume.value);
+      v.volume = Number.isFinite(vv) ? Math.max(0, Math.min(1, vv)) : 1;
       await v.play();
       playing.value = true;
       tick();
@@ -368,10 +412,34 @@ const togglePlay = async () => {
   }
   playing.value = false;
   stopRaf();
-  drawAllTimelines();
+  drawTimeline();
 };
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+const applyVolume = () => {
+  const v = videoEl.value;
+  if (!v) return;
+  v.muted = false;
+  const vv = Number(volume.value);
+  v.volume = Number.isFinite(vv) ? clamp(vv, 0, 1) : 1;
+};
+
+const applyLoop = () => {
+  const v = videoEl.value;
+  if (!v) return;
+  v.loop = Boolean(loopEnabled.value);
+};
+
+const toggleLoop = () => {
+  loopEnabled.value = !loopEnabled.value;
+  applyLoop();
+};
+
+const onControllerVolumeChange = (vv: number) => {
+  volume.value = clamp(Number(vv) || 0, 0, 1);
+  applyVolume();
+};
 
 const getTimelineWindow = () => {
   const d = durationDisplay.value;
@@ -410,22 +478,7 @@ const resizeTimelineCanvas = () => {
   if (!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   tlCtx = ctx;
-  drawAllTimelines();
-};
-
-const resizeOverviewCanvas = () => {
-  const el = overviewCanvas.value;
-  if (!el) return;
-  const dpr = (typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1;
-  const w = Math.max(1, Math.floor(el.clientWidth || 1));
-  const h = Math.max(1, Math.floor(el.clientHeight || 1));
-  el.width = Math.max(1, Math.floor(w * dpr));
-  el.height = Math.max(1, Math.floor(h * dpr));
-  const ctx = el.getContext("2d");
-  if (!ctx) return;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ovCtx = ctx;
-  drawAllTimelines();
+  drawTimeline();
 };
 
 const drawTimeline = () => {
@@ -504,78 +557,6 @@ const drawTimeline = () => {
   ctx.fillText(info, 8, h - 8);
 };
 
-const drawOverviewTimeline = () => {
-  const el = overviewCanvas.value;
-  const ctx = ovCtx;
-  if (!el || !ctx) return;
-  const w = Math.max(1, Math.floor(el.clientWidth || 1));
-  const h = Math.max(1, Math.floor(el.clientHeight || 1));
-  ctx.clearRect(0, 0, w, h);
-
-  const border =
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--vscode-border")
-      .trim() || "#2b2b2b";
-  const bg =
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--dweb-defualt")
-      .trim() || "#111111";
-  const fg =
-    getComputedStyle(document.documentElement).getPropertyValue("--vscode-fg").trim() ||
-    "#ffffff";
-  const muted =
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--vscode-fg-muted")
-      .trim() || "rgba(255,255,255,0.6)";
-  const accent =
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--vscode-border-accent")
-      .trim() || "#3aa8b4";
-
-  ctx.fillStyle = bg;
-  ctx.fillRect(0.5, 0.5, w - 1, h - 1);
-  ctx.strokeStyle = border;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
-
-  const d = durationDisplay.value;
-  if (!d || !props.resourceUrl) {
-    ctx.fillStyle = muted;
-    ctx.font = "12px sans-serif";
-    ctx.fillText("整体", 8, Math.floor(h / 2) + 4);
-    return;
-  }
-
-  // window range highlight
-  const { start, end } = getTimelineWindow();
-  const x0 = clamp((start / d) * w, 0, w);
-  const x1 = clamp((end / d) * w, 0, w);
-  ctx.fillStyle = accent;
-  ctx.globalAlpha = 0.18;
-  ctx.fillRect(Math.min(x0, x1), 1, Math.max(1, Math.abs(x1 - x0)), h - 2);
-  ctx.globalAlpha = 1;
-
-  // pointer line (current selection)
-  const t = clamp(seekValue.value, 0, d);
-  const x = (t / d) * w;
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(Math.round(x) + 0.5, 0);
-  ctx.lineTo(Math.round(x) + 0.5, h);
-  ctx.stroke();
-
-  // current label
-  ctx.fillStyle = fg;
-  ctx.font = "11px sans-serif";
-  const label = `${t.toFixed(2)}s / ${d.toFixed(2)}s`;
-  const lw = ctx.measureText(label).width;
-  ctx.fillText(label, Math.max(8, w - 8 - lw), 14);
-  ctx.fillStyle = muted;
-  ctx.font = "11px sans-serif";
-  ctx.fillText(`窗口 ${Math.max(0, end - start).toFixed(2)}s`, 8, 14);
-};
-
 const seekByTimelineX = (clientX: number) => {
   const el = timelineCanvas.value;
   if (!el) return;
@@ -593,26 +574,22 @@ const seekByTimelineX = (clientX: number) => {
   } catch {
     // ignore
   }
-  drawAllTimelines();
+  drawTimeline();
 };
 
-const seekByOverviewX = (clientX: number) => {
-  const el = overviewCanvas.value;
-  if (!el) return;
-  const rect = el.getBoundingClientRect();
-  const x = clamp(clientX - rect.left, 0, rect.width);
+const seekByOverviewTime = (t: number) => {
   const d = durationDisplay.value;
   if (!d) return;
-  const t = clamp((x / Math.max(1, rect.width)) * d, 0, d);
-  seekTime.value = t;
+  const next = clamp(Number(t) || 0, 0, d);
+  seekTime.value = next;
   const v = videoEl.value;
   if (!v) return;
   try {
-    v.currentTime = t;
+    v.currentTime = next;
   } catch {
     // ignore
   }
-  drawAllTimelines();
+  drawTimeline();
 };
 
 const onTimelinePointerDown = (e: PointerEvent) => {
@@ -637,28 +614,6 @@ const onTimelinePointerDown = (e: PointerEvent) => {
   window.addEventListener("pointercancel", onUp);
 };
 
-const onOverviewPointerDown = (e: PointerEvent) => {
-  if (!props.resourceUrl || !durationDisplay.value) return;
-  const el = overviewCanvas.value;
-  if (!el) return;
-  ovPointerActive = true;
-  el.setPointerCapture(e.pointerId);
-  seekByOverviewX(e.clientX);
-  const onMove = (ev: PointerEvent) => {
-    if (!ovPointerActive) return;
-    seekByOverviewX(ev.clientX);
-  };
-  const onUp = () => {
-    ovPointerActive = false;
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
-    window.removeEventListener("pointercancel", onUp);
-  };
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp);
-  window.addEventListener("pointercancel", onUp);
-};
-
 const onTimelineWheel = (e: WheelEvent) => {
   if (!props.resourceUrl || !durationDisplay.value) return;
   const delta = e.deltaY;
@@ -666,12 +621,7 @@ const onTimelineWheel = (e: WheelEvent) => {
   const next = clamp(cur + (delta > 0 ? -1 : 1), 1, 20);
   if (next === cur) return;
   timelineZoom.value = next;
-  drawAllTimelines();
-};
-
-const onOverviewWheel = (e: WheelEvent) => {
-  // same behavior as detail timeline
-  onTimelineWheel(e);
+  drawTimeline();
 };
 
 const onOutputWidthChange = (e: Event) => {
@@ -805,38 +755,68 @@ const onFileChange = (e: Event) => {
 watch(
   () => props.resourceUrl,
   async () => {
-    await nextTick();
-    if (!props.resourceUrl) {
-      playing.value = false;
-      stopRaf();
-      duration.value = 0;
-      seekTime.value = 0;
-      drawAllTimelines();
-      return;
+    const runId = ++srcWatchRunId;
+    try {
+      await nextTick();
+      if (runId !== srcWatchRunId) return;
+
+      if (!props.resourceUrl) {
+        playing.value = false;
+        stopRaf();
+        duration.value = 0;
+        seekTime.value = 0;
+        drawTimeline();
+        lastReadySrc = "";
+        return;
+      }
+
+      // Reset ready marker when src changes.
+      lastReadySrc = "";
+      await applyVideoSrc();
+      if (runId !== srcWatchRunId) return;
+      await ensureMetadata();
+      if (runId !== srcWatchRunId) return;
+      applyVolume();
+      applyLoop();
+      drawTimeline();
+      // Metadata ready doesn't guarantee a visible frame; try to emit when data is available.
+      tryEmitMediaReady();
+    } catch (err) {
+      // Never let async watcher errors bubble to global app error handler.
+      // Resource might be missing / permission denied during recovery.
+      console.warn("[WorkflowVideoNode] resource watcher failed", err);
     }
-    await applyVideoSrc();
-    await ensureMetadata();
-    drawAllTimelines();
   },
   { immediate: true }
 );
 
+watch(
+  () => volume.value,
+  () => {
+    applyVolume();
+  }
+);
+
 onMounted(() => {
   if (videoEl.value) {
+    applyLoop();
+    applyVolume();
     videoEl.value.addEventListener("loadedmetadata", onLoadedMetadata);
+    videoEl.value.addEventListener("loadeddata", tryEmitMediaReady);
+    videoEl.value.addEventListener("canplay", tryEmitMediaReady);
     videoEl.value.addEventListener("timeupdate", () => {
       const v = videoEl.value;
       if (!v) return;
       seekTime.value = v.currentTime;
-      drawAllTimelines();
+      drawTimeline();
     });
     videoEl.value.addEventListener("seeked", () => {
-      drawAllTimelines();
+      drawTimeline();
     });
     videoEl.value.addEventListener("pause", () => {
       playing.value = false;
       stopRaf();
-      drawAllTimelines();
+      drawTimeline();
     });
     videoEl.value.addEventListener("play", () => {
       playing.value = true;
@@ -850,25 +830,25 @@ onMounted(() => {
     tlRo = new ResizeObserver(() => resizeTimelineCanvas());
     tlRo.observe(timelineCanvas.value);
   }
-  if (overviewCanvas.value) {
-    resizeOverviewCanvas();
-    ovRo = new ResizeObserver(() => resizeOverviewCanvas());
-    ovRo.observe(overviewCanvas.value);
-  }
 });
 
 onBeforeUnmount(() => {
   stopRaf();
   try {
+    if (videoEl.value) {
+      videoEl.value.removeEventListener("loadeddata", tryEmitMediaReady);
+      videoEl.value.removeEventListener("canplay", tryEmitMediaReady);
+    }
+  } catch {
+    // ignore
+  }
+  try {
     tlRo?.disconnect();
-    ovRo?.disconnect();
   } catch {
     // ignore
   }
   tlRo = null;
-  ovRo = null;
   tlCtx = null;
-  ovCtx = null;
 });
 </script>
 
@@ -959,18 +939,9 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
-.wf-overview-canvas {
+.wf-video-controller {
   flex: 1;
-  min-width: 180px;
-  height: 26px;
-  border-radius: 4px;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.wf-overview-canvas.disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  min-width: 320px;
 }
 
 .wf-video-row2 {

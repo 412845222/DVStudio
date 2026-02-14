@@ -2,10 +2,12 @@ import { createStore, type Store } from 'vuex'
 import type { InjectionKey } from 'vue'
 import type {
 	WorkflowEdge,
+	WorkflowAnchorSpec,
 	WorkflowNode,
 	WorkflowState,
 	WorkflowViewport,
 	WorkflowStoryBranch,
+	WorkflowComfyUINodeSettings,
 } from '../../aiworkflow/types'
 import type { WorkflowResource, ResourceKind } from '../../aiworkflow/resource/types'
 
@@ -77,25 +79,59 @@ const makeId = (prefix: string) => {
 
 const defaultAliasForType = (type: string) => {
 	switch (type) {
+		case 'text':
+			return '文本节点'
+		case 'text-merge':
+			return '文本整合节点'
 		case 'image':
 			return '图片节点'
 		case 'video':
 			return '视频节点'
 		case 'story':
 			return '剧情节点'
+		case 'comfyui':
+			return 'ComfyUI 节点'
 		case 'base':
 		default:
 			return '工作流节点'
 	}
 }
 
-const anchorKindFor = (node: WorkflowNode, anchorId: string, direction: 'in' | 'out') => {
+type AnchorKind = 'flow' | 'resource' | 'image' | 'video' | 'text'
+
+const normalizeMediaType = (v: any): WorkflowAnchorSpec['mediaType'] | undefined => {
+	const s = typeof v === 'string' ? v : ''
+	if (s === 'generic' || s === 'image' || s === 'video' || s === 'text' || s === 'flow') return s
+	return undefined
+}
+
+const anchorKindFor = (node: WorkflowNode, anchorId: string, direction: 'in' | 'out'): AnchorKind => {
 	if (node.type === 'story') {
 		if (direction === 'in') return anchorId === 'in-resource' ? 'resource' : 'flow'
 		return 'flow'
 	}
-	if (node.type === 'image' || node.type === 'video') return 'resource'
+	const list = direction === 'in' ? node.inputs : node.outputs
+	const anchor = Array.isArray(list) ? list.find((a) => a.id === anchorId) : undefined
+	if (anchor?.mediaType === 'image') return 'image'
+	if (anchor?.mediaType === 'video') return 'video'
+	if (anchor?.mediaType === 'text') return 'text'
+	if (anchor?.mediaType === 'flow') return 'flow'
+	if (node.type === 'text') return 'text'
+	if (node.type === 'image') {
+		if (direction === 'in') return 'resource'
+		return 'image'
+	}
+	if (node.type === 'video') {
+		if (direction === 'in') return 'resource'
+		return 'video'
+	}
 	return 'resource'
+}
+
+const canLinkKinds = (fromKind: AnchorKind, toKind: AnchorKind) => {
+	if (fromKind === toKind) return true
+	if (toKind === 'resource' && (fromKind === 'resource' || fromKind === 'image' || fromKind === 'video')) return true
+	return false
 }
 
 const hasAnchor = (node: WorkflowNode, direction: 'in' | 'out', anchorId: string) => {
@@ -123,19 +159,53 @@ const ensureStoryBranches = (node: WorkflowNode) => {
 	}
 }
 
+const ensureTextMergeItems = (node: WorkflowNode) => {
+	const raw = (node as any).textMergeItems
+	if (!Array.isArray(raw)) {
+		;(node as any).textMergeItems = [{ id: makeId('merge') }]
+		return
+	}
+	// allow empty list, but normalize shape
+	;(node as any).textMergeItems = raw
+		.map((x: any) => ({ id: String(x?.id ?? '').trim() }))
+		.filter((x: any) => x.id)
+}
+
+const syncTextMergeAnchors = (node: WorkflowNode) => {
+	ensureTextMergeItems(node)
+	const items = Array.isArray((node as any).textMergeItems) ? (node as any).textMergeItems : []
+	node.inputs = items.map((it: any, idx: number) => ({
+		id: `in-${String(it.id)}`,
+		label: `拼接${idx + 1}`,
+		mediaType: 'text',
+	}))
+	node.outputs = [{ id: 'out-text', label: '整合文本', mediaType: 'text' }]
+}
+
 const syncStoryAnchors = (node: WorkflowNode) => {
 	ensureStoryBranches(node)
 	const height = Number.isFinite(node.height) ? node.height : 160
 	const inputOffset = (STORY_INPUT_SIZE + STORY_INPUT_GAP) / 2
 	node.inputs = [
-		{ id: 'in-flow', label: '剧情流程', offsetY: -inputOffset },
+		{ id: 'in-flow', label: '剧情流程', offsetY: -inputOffset, mediaType: 'flow' },
 		{ id: 'in-resource', label: '资源来源', offsetY: inputOffset },
 	]
 	node.outputs = node.branches!.map((b, idx) => ({
 		id: `out-${b.id}`,
 		label: b.text ? b.text : `分支${idx + 1}`,
 		offsetY: storyBranchOffset(idx, node.branches!.length, height),
+		mediaType: 'flow',
 	}))
+}
+
+const COMFY_PROMPT_POSITIVE_ANCHOR_ID = 'in-positive'
+const COMFY_PROMPT_NEGATIVE_ANCHOR_ID = 'in-negative'
+
+const comfyPromptAnchors = (): WorkflowAnchorSpec[] => {
+	return [
+		{ id: COMFY_PROMPT_POSITIVE_ANCHOR_ID, label: '正向提示词', mediaType: 'text' },
+		{ id: COMFY_PROMPT_NEGATIVE_ANCHOR_ID, label: '负向提示词', mediaType: 'text' },
+	]
 }
 
 export const AIWorkflowKey: InjectionKey<Store<WorkflowState>> = Symbol('AIWorkflowStore')
@@ -198,6 +268,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					title: String(n.title ?? '工作流节点'),
 					alias,
 					subtitle: typeof n.subtitle === 'string' ? n.subtitle : '',
+					resourcePath: typeof (n as any).resourcePath === 'string' ? String((n as any).resourcePath) : undefined,
 					imageSettings,
 					videoSettings,
 					storySettings: (() => {
@@ -222,14 +293,70 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 							.filter((b: any) => b.id)
 						: undefined,
 					inputs: Array.isArray(n.inputs)
-						? n.inputs.map((a: any) => ({ id: String(a?.id ?? '').trim(), label: typeof a?.label === 'string' ? a.label : undefined, offsetY: typeof a?.offsetY === 'number' ? a.offsetY : undefined })).filter((a: any) => a.id)
+						? n.inputs.map((a: any) => ({
+							id: String(a?.id ?? '').trim(),
+							label: typeof a?.label === 'string' ? a.label : undefined,
+							offsetY: typeof a?.offsetY === 'number' ? a.offsetY : undefined,
+							mediaType: normalizeMediaType(a?.mediaType),
+						})).filter((a: any) => a.id)
 						: [{ id: 'in-0', label: '入口' }],
 					outputs: Array.isArray(n.outputs)
-						? n.outputs.map((a: any) => ({ id: String(a?.id ?? '').trim(), label: typeof a?.label === 'string' ? a.label : undefined, offsetY: typeof a?.offsetY === 'number' ? a.offsetY : undefined })).filter((a: any) => a.id)
+						? n.outputs.map((a: any) => ({
+							id: String(a?.id ?? '').trim(),
+							label: typeof a?.label === 'string' ? a.label : undefined,
+							offsetY: typeof a?.offsetY === 'number' ? a.offsetY : undefined,
+							mediaType: normalizeMediaType(a?.mediaType),
+						})).filter((a: any) => a.id)
 						: [{ id: 'out-0', label: '出口' }],
 					createdAt: Number.isFinite(Number(n.createdAt)) ? Number(n.createdAt) : Date.now(),
+					textValue: typeof (n as any).textValue === 'string' ? String((n as any).textValue) : undefined,
+					textMergeItems: Array.isArray((n as any).textMergeItems)
+						? (n as any).textMergeItems
+							.map((x: any) => ({ id: String(x?.id ?? '').trim() }))
+							.filter((x: any) => x.id)
+						: undefined,
+					comfyuiSettings: ((rawSettings: any) => {
+						if (!rawSettings || typeof rawSettings !== 'object') return undefined
+						const s0 = rawSettings as any
+						const workflows = Array.isArray(s0.workflows)
+							? s0.workflows
+								.map((w: any) => ({ path: String(w?.path ?? ''), name: String(w?.name ?? '') }))
+								.filter((w: any) => w.path)
+							: undefined
+						const outputs = Array.isArray(s0.outputs)
+							? s0.outputs
+								.map((o: any) => ({
+									kind: o?.kind === 'video' ? 'video' : 'image',
+									url: String(o?.url ?? ''),
+									filename: typeof o?.filename === 'string' ? o.filename : undefined,
+									anchorId: typeof o?.anchorId === 'string' ? o.anchorId : undefined,
+									nodeId: typeof o?.nodeId === 'string' ? o.nodeId : undefined,
+									sourcePath: typeof o?.sourcePath === 'string' ? o.sourcePath : undefined,
+									subfolder: typeof o?.subfolder === 'string' ? o.subfolder : undefined,
+									type: typeof o?.type === 'string' ? o.type : undefined,
+								}))
+								.filter((o: any) => o.url)
+							: undefined
+						return {
+							baseUrl: typeof s0.baseUrl === 'string' ? s0.baseUrl : undefined,
+							status: s0.status === 'connecting' || s0.status === 'connected' || s0.status === 'error' ? s0.status : 'idle',
+							message: typeof s0.message === 'string' ? s0.message : undefined,
+							lastCheckedAt: Number.isFinite(Number(s0.lastCheckedAt)) ? Number(s0.lastCheckedAt) : undefined,
+							workflows,
+							workflowPath: typeof s0.workflowPath === 'string' ? s0.workflowPath : undefined,
+							positivePrompt: typeof s0.positivePrompt === 'string' ? s0.positivePrompt : undefined,
+							negativePrompt: typeof s0.negativePrompt === 'string' ? s0.negativePrompt : undefined,
+							runStatus: s0.runStatus,
+							promptId: typeof s0.promptId === 'string' ? s0.promptId : undefined,
+							progress: Number.isFinite(Number(s0.progress)) ? Number(s0.progress) : undefined,
+							statusText: typeof s0.statusText === 'string' ? s0.statusText : undefined,
+							outputs,
+							lastUpdateAt: Number.isFinite(Number(s0.lastUpdateAt)) ? Number(s0.lastUpdateAt) : undefined,
+						} as WorkflowComfyUINodeSettings
+					})((n as any).comfyuiSettings),
 				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'text-merge') syncTextMergeAnchors(nextNodesById[nodeId])
 			}
 
 			const rawNodeOrder = Array.isArray(s.nodeOrder) ? (s.nodeOrder as any[]) : []
@@ -299,7 +426,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 				const fromKind = anchorKindFor(fromNode, e.fromAnchorId, 'out')
 				const toKind = anchorKindFor(toNode, e.toAnchorId, 'in')
-				if (fromKind !== toKind) delete nextEdgesById[edgeId]
+				if (!canLinkKinds(fromKind, toKind)) delete nextEdgesById[edgeId]
 			}
 			state.edgesById = nextEdgesById
 			state.edgeOrder = edgeOrder.filter((id) => !!state.edgesById[id])
@@ -357,6 +484,26 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.resourcesById[id] = payload
 			if (!state.resourceOrder.includes(id)) state.resourceOrder.push(id)
 		},
+		patchResource(state, payload: { resourceId: string; patch: Partial<WorkflowResource> }) {
+			const id = String(payload?.resourceId ?? '').trim()
+			if (!id) return
+			const r = state.resourcesById[id]
+			if (!r) return
+			const patch = (payload?.patch ?? {}) as Partial<WorkflowResource>
+			state.resourcesById[id] = { ...(r as any), ...(patch as any), id }
+		},
+		patchResourcesBatch(state, payload: { patches: Array<{ resourceId: string; patch: Partial<WorkflowResource> }> }) {
+			const list = Array.isArray(payload?.patches) ? payload.patches : []
+			if (!list.length) return
+			for (const item of list) {
+				const id = String((item as any)?.resourceId ?? '').trim()
+				if (!id) continue
+				const r = state.resourcesById[id]
+				if (!r) continue
+				const patch = (((item as any)?.patch ?? {}) as Partial<WorkflowResource>)
+				state.resourcesById[id] = { ...(r as any), ...(patch as any), id }
+			}
+		},
 		removeResource(state, payload: { resourceId: string }) {
 			const id = String(payload?.resourceId ?? '').trim()
 			if (!id) return
@@ -373,23 +520,32 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!n) return
 			n.alias = String(payload?.alias ?? '')
 		},
-		setNodeType(state, payload: { nodeId: string; type: 'base' | 'image' | 'video' | 'story' }) {
+		setNodeType(state, payload: { nodeId: string; type: 'base' | 'text' | 'text-merge' | 'image' | 'video' | 'story' | 'comfyui' }) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
 			if (!n) return
-			if (payload.type !== 'base' && payload.type !== 'image' && payload.type !== 'video' && payload.type !== 'story') return
+			if (payload.type !== 'base' && payload.type !== 'text' && payload.type !== 'text-merge' && payload.type !== 'image' && payload.type !== 'video' && payload.type !== 'story' && payload.type !== 'comfyui') return
 			const prevType = String(n.type ?? 'base')
 			const prevDefaultAlias = defaultAliasForType(prevType)
 			n.type = payload.type
 			if (payload.type !== 'image') n.imageSettings = undefined
 			if (payload.type !== 'video') n.videoSettings = undefined
 			if (payload.type !== 'story') n.storySettings = undefined
-			if (payload.type === 'base') n.resourceId = null
-			if (payload.type !== 'story') {
-				n.branches = undefined
-				n.inputs = [{ id: 'in-0', label: '入口' }]
-				n.outputs = [{ id: 'out-0', label: '出口' }]
+			if (payload.type !== 'comfyui') n.comfyuiSettings = undefined
+			if (payload.type !== 'text') n.textValue = undefined
+			if (payload.type !== 'text-merge') (n as any).textMergeItems = undefined
+			if (payload.type === 'base' || payload.type === 'text' || payload.type === 'text-merge' || payload.type === 'comfyui') n.resourceId = null
+			if (payload.type !== 'story') n.branches = undefined
+			if (payload.type !== 'story' && payload.type !== 'comfyui') {
+				n.inputs = payload.type === 'text' ? [] : [{ id: 'in-0', label: '入口' }]
+				n.outputs = payload.type === 'text'
+				? [{ id: 'out-text', label: '文本', mediaType: 'text' }]
+				: [{ id: 'out-0', label: '出口' }]
+			}
+			if (payload.type === 'text-merge') {
+				;(n as any).textMergeItems = Array.isArray((n as any).textMergeItems) ? (n as any).textMergeItems : [{ id: makeId('merge') }]
+				syncTextMergeAnchors(n)
 			}
 			if (payload.type === 'story') {
 				n.storySettings = n.storySettings ?? { previewWidth: 1920, previewHeight: 1080 }
@@ -397,14 +553,54 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 			if (payload.type === 'video') {
 				n.videoSettings = n.videoSettings ?? { outputWidth: 1920, outputHeight: 1080 }
+				n.inputs = [{ id: 'in-resource', label: '视频资源' }]
+				n.outputs = [{ id: 'out-video', label: '视频输出', mediaType: 'video' }]
+			}
+			if (payload.type === 'image') {
+				n.imageSettings = n.imageSettings ?? { outputWidth: 1920, outputHeight: 1080 }
+				n.inputs = [{ id: 'in-resource', label: '图片资源' }]
+				n.outputs = [{ id: 'out-image', label: '图片输出', mediaType: 'image' }]
+			}
+			if (payload.type === 'text') {
+				n.textValue = typeof n.textValue === 'string' ? n.textValue : ''
+				n.inputs = []
+				n.outputs = [{ id: 'out-text', label: '文本', mediaType: 'text' }]
+			}
+			if (payload.type === 'comfyui') {
+				n.comfyuiSettings = n.comfyuiSettings ?? {
+					baseUrl: '',
+					status: 'idle',
+					message: '',
+					workflows: [],
+					workflowPath: '',
+					positivePrompt: '',
+					negativePrompt: '',
+					runStatus: 'idle',
+					promptId: '',
+					progress: 0,
+					statusText: '',
+					outputs: [],
+				} as WorkflowComfyUINodeSettings
+				const baseInputs: WorkflowAnchorSpec[] = [
+					...comfyPromptAnchors(),
+					{ id: 'in-0', label: '图片输入', mediaType: 'image' },
+				]
+				n.inputs = baseInputs
+				n.outputs = [{ id: 'out-0', label: '产物输出', mediaType: 'generic' }]
 			}
 			if (!String(n.alias ?? '').trim() || String(n.alias) === prevDefaultAlias) {
 				n.alias = defaultAliasForType(payload.type)
 			}
 			if (!n.sizeCustomized) {
-				if (payload.type === 'image' || payload.type === 'video' || payload.type === 'story') {
+				if (payload.type === 'image' || payload.type === 'video' || payload.type === 'story' || payload.type === 'comfyui') {
 					n.width = 450
 					n.height = 300
+				} else if (payload.type === 'text-merge') {
+					n.width = 420
+					n.height = 320
+				} else if (payload.type === 'text') {
+					n.width = 360
+					n.height = 260
 				} else {
 					n.width = 240
 					n.height = 160
@@ -428,13 +624,119 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 				const fromKind = anchorKindFor(fromNode, e.fromAnchorId, 'out')
 				const toKind = anchorKindFor(toNode, e.toAnchorId, 'in')
-				if (fromKind !== toKind) removeIds.push(edgeId)
+				if (!canLinkKinds(fromKind, toKind)) removeIds.push(edgeId)
 			}
 			if (removeIds.length) {
 				for (const edgeId of removeIds) delete state.edgesById[edgeId]
 				state.edgeOrder = state.edgeOrder.filter((edgeId) => !!state.edgesById[edgeId])
 				if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
 			}
+		},
+		textMergeAddItem(state, payload: { nodeId: string }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id] as any
+			if (!n || n.type !== 'text-merge') return
+			const list = Array.isArray(n.textMergeItems) ? n.textMergeItems : []
+			list.push({ id: makeId('merge') })
+			n.textMergeItems = list
+			syncTextMergeAnchors(n)
+		},
+		textMergeRemoveItem(state, payload: { nodeId: string; itemId: string }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			const itemId = String(payload?.itemId ?? '').trim()
+			if (!id || !itemId) return
+			const n = state.nodesById[id] as any
+			if (!n || n.type !== 'text-merge') return
+			const anchorId = `in-${itemId}`
+			const list = Array.isArray(n.textMergeItems) ? n.textMergeItems : []
+			n.textMergeItems = list.filter((x: any) => String(x?.id ?? '').trim() !== itemId)
+			syncTextMergeAnchors(n)
+
+			// cleanup edges bound to the removed input anchor
+			const removeIds: string[] = []
+			for (const edgeId of state.edgeOrder) {
+				const e = state.edgesById[edgeId]
+				if (!e) continue
+				if (e.toNodeId === id && e.toAnchorId === anchorId) removeIds.push(edgeId)
+			}
+			if (removeIds.length) {
+				for (const edgeId of removeIds) delete state.edgesById[edgeId]
+				state.edgeOrder = state.edgeOrder.filter((edgeId) => !!state.edgesById[edgeId])
+				if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
+			}
+		},
+		textMergeMoveItem(state, payload: { nodeId: string; itemId: string; dir: 'up' | 'down' }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			const itemId = String(payload?.itemId ?? '').trim()
+			const dir = payload?.dir
+			if (!id || !itemId) return
+			const n = state.nodesById[id] as any
+			if (!n || n.type !== 'text-merge') return
+			const list = Array.isArray(n.textMergeItems) ? [...n.textMergeItems] : []
+			const idx = list.findIndex((x: any) => String(x?.id ?? '').trim() === itemId)
+			if (idx < 0) return
+			const nextIdx = dir === 'up' ? idx - 1 : idx + 1
+			if (nextIdx < 0 || nextIdx >= list.length) return
+			const tmp = list[idx]
+			list[idx] = list[nextIdx]
+			list[nextIdx] = tmp
+			n.textMergeItems = list
+			syncTextMergeAnchors(n)
+		},
+		setNodeTextValue(state, payload: { nodeId: string; textValue: string }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id]
+			if (!n || n.type !== 'text') return
+			n.textValue = typeof payload?.textValue === 'string' ? payload.textValue : String(payload?.textValue ?? '')
+		},
+		setNodeComfyUISettings(state, payload: { nodeId: string; comfyuiSettings: Partial<WorkflowComfyUINodeSettings> }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id]
+			if (!n || n.type !== 'comfyui') return
+			const next = payload?.comfyuiSettings
+			if (!next || typeof next !== 'object') return
+			n.comfyuiSettings = {
+				...(n.comfyuiSettings ?? {}),
+				...next,
+			} as WorkflowComfyUINodeSettings
+		},
+		setNodeComfyUIWorkflowIO(
+			state,
+			payload: {
+				nodeId: string
+				workflowPath: string
+				inputs: WorkflowAnchorSpec[]
+				outputs: WorkflowAnchorSpec[]
+			}
+		) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id]
+			if (!n || n.type !== 'comfyui') return
+			const inputsRaw = Array.isArray(payload?.inputs) ? payload.inputs : []
+			const outputsRaw = Array.isArray(payload?.outputs) ? payload.outputs : []
+			const prompt = comfyPromptAnchors()
+			const inputs = inputsRaw
+				.map((a: any) => ({
+					id: String(a?.id ?? '').trim(),
+					label: typeof a?.label === 'string' ? a.label : undefined,
+					offsetY: typeof a?.offsetY === 'number' ? a.offsetY : undefined,
+					mediaType: normalizeMediaType(a?.mediaType),
+				}))
+				.filter((a: any) => a.id && a.id !== COMFY_PROMPT_POSITIVE_ANCHOR_ID && a.id !== COMFY_PROMPT_NEGATIVE_ANCHOR_ID)
+			const outputs = outputsRaw
+				.map((a: any) => ({
+					id: String(a?.id ?? '').trim(),
+					label: typeof a?.label === 'string' ? a.label : undefined,
+					offsetY: typeof a?.offsetY === 'number' ? a.offsetY : undefined,
+					mediaType: normalizeMediaType(a?.mediaType),
+				}))
+				.filter((a: any) => a.id)
+			n.inputs = [...prompt, ...inputs]
+			n.outputs = outputs.length ? outputs : [{ id: 'out-0', label: '产物输出', mediaType: 'generic' }]
 		},
 		setNodeImageSettings(
 			state,
@@ -537,8 +839,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const n = state.nodesById[id]
 			if (!n) return
 			const rid = payload?.resourceId
-			n.resourceId = rid ? String(rid) : null
+				n.resourceId = rid ? String(rid) : null
+				if (!n.resourceId) n.resourcePath = undefined
 		},
+			setNodeResourcePath(state, payload: { nodeId: string; resourcePath?: string | null }) {
+				const id = String(payload?.nodeId ?? '').trim()
+				if (!id) return
+				const n = state.nodesById[id]
+				if (!n) return
+				const p = payload?.resourcePath
+				const next = typeof p === 'string' ? p.trim() : ''
+				n.resourcePath = next ? next : undefined
+			},
 		setNodeSize(state, payload: { nodeId: string; width?: number; height?: number; customized?: boolean }) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
@@ -794,13 +1106,23 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const toNodeId = String(payload?.toNodeId ?? '').trim()
 			if (!fromNodeId || !toNodeId) return
 			if (!state.nodesById[fromNodeId] || !state.nodesById[toNodeId]) return
+			// input anchor accepts a single connection; replace existing.
+			const toAnchorId = String(payload?.toAnchorId ?? 'in-0')
+			for (const edgeId of state.edgeOrder.slice()) {
+				const e = state.edgesById[edgeId]
+				if (!e) continue
+				if (e.toNodeId === toNodeId && e.toAnchorId === toAnchorId) {
+					delete state.edgesById[edgeId]
+				}
+			}
+			state.edgeOrder = state.edgeOrder.filter((edgeId) => !!state.edgesById[edgeId])
 			const id = makeId('wf-edge')
 			const edge: WorkflowEdge = {
 				id,
 				fromNodeId,
 				fromAnchorId: String(payload?.fromAnchorId ?? 'out-0'),
 				toNodeId,
-				toAnchorId: String(payload?.toAnchorId ?? 'in-0'),
+				toAnchorId,
 				createdAt: Date.now(),
 			}
 			state.edgesById[id] = edge

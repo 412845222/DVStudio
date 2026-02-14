@@ -22,6 +22,7 @@
     @start-link="(payload) => emit('start-link', payload)"
     @end-link="(payload) => emit('end-link', payload)"
     @copy="() => emit('copy')"
+    @refresh="() => emit('refresh')"
     @delete="() => emit('delete')"
     @set-type="(type) => emit('set-type', type)"
     @resize="(payload) => emit('resize', payload)"
@@ -33,6 +34,7 @@
           ref="previewWrap"
           class="wf-media-preview"
           :style="previewWrapStyle"
+          @contextmenu.stop.prevent="onPreviewContextMenu"
         >
           <canvas ref="mainCanvas" class="wf-media-canvas" />
 
@@ -186,6 +188,7 @@ const emit = defineEmits<{
   (e: "update:worldX", v: number): void;
   (e: "update:worldY", v: number): void;
   (e: "select", nodeId: string): void;
+  (e: "preview-contextmenu", payload: { clientX: number; clientY: number }): void;
   (
     e: "start-link",
     payload: {
@@ -200,8 +203,9 @@ const emit = defineEmits<{
     payload: { nodeId: string; anchorId: string; anchorIndex: number }
   ): void;
   (e: "copy"): void;
+  (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "image" | "video" | "story"): void;
+  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui"): void;
   (e: "upload-resource", payload: { file: File; kind: "image" | "video" }): void;
   (e: "clear-resource"): void;
   (
@@ -219,9 +223,15 @@ const emit = defineEmits<{
       crop?: { x: number; y: number; width: number; height: number };
     }
   ): void;
+  (e: "media-ready"): void;
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
+
+const onPreviewContextMenu = (e: MouseEvent) => {
+  emit("select", props.nodeId);
+  emit("preview-contextmenu", { clientX: e.clientX, clientY: e.clientY });
+};
 
 const previewWrap = ref<HTMLElement | null>(null);
 const mainCanvas = ref<HTMLCanvasElement | null>(null);
@@ -623,6 +633,7 @@ watch(
       // ignore
     }
     requestRender();
+		emit("media-ready");
   },
   { immediate: true }
 );

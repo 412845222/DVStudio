@@ -1,8 +1,11 @@
 # DVStudio (Dweb Video Studio)
 
-🎬 一个基于 **WebGL2** 的「视频动画模板/编辑器」项目。
+🎬 一个基于 **WebGL2** 的视频编辑与 AI 工作流蓝图项目。
 
-✨ 目标：让用户通过编辑节点（矩形/文字/图片/线条）与时间轴关键帧，快速生成可用于视频的动画与“思维导图”视觉效果，并提供 🤖 AI 对话辅助生成/修改场景。
+本仓库当前包含两条核心能力：
+
+- **AI 工作流蓝图**：资源 → 剧情/分支 → ComfyUI 推理 → 输出媒体
+- **视频编辑器**：舞台节点 + 时间轴关键帧 + AI 对话辅助
 
 🔗 开源仓库：<https://github.com/412845222/DVStudio>
 
@@ -12,42 +15,34 @@
 
 ---
 
-## 🚀 快速开始（前端）
+## 🚀 快速开始
 
-### ✅ 环境要求
+### 前端
 
 | 项目 | 版本建议 |
 |---|---|
 | Node.js | 16+（建议 18+） |
 | npm | 与 Node.js 配套 |
 
-### 📦 安装 & 启动
-
 ```bash
 npm install
 npm run dev
 ```
 
-### 🏗 构建
+构建：
 
 ```bash
 npm run build
 ```
 
----
+### 后端（Django SSE / AI 接入）
 
-## 🧩 后端（Django SSE / AI 接入）
-
-后端目录位于：`django-app/`
-
-### ✅ 环境要求
+后端目录：`django-app/`
 
 | 项目 | 版本建议 |
 |---|---|
-| Python | 3.9+（在 Django 4.2 支持范围内） |
+| Python | 3.9+（Django 4.2） |
 | pip | 最新即可 |
-
-### 📦 安装依赖
 
 Windows（PowerShell）：
 
@@ -65,90 +60,110 @@ source .venv/bin/activate
 pip install -r django-app/requirements.txt
 ```
 
-### ▶️ 运行服务
+运行：
 
 ```bash
 python django-app/manage.py migrate
 python django-app/manage.py runserver 5800
 ```
 
-### 🔌 端口说明（前端需要）
+前端通过 [vite.config.ts](vite.config.ts) 将 `/api` 代理到 `http://127.0.0.1:5800`。
 
-- 本仓库的前端开发服务（Vite）在 [vite.config.ts](vite.config.ts) 中将 `/api` 代理到 `http://127.0.0.1:5800`。
-- 因此本地开发时建议 Django 按上面命令运行在 `5800` 端口，否则前端的 `/api/...` 请求会连不上。
-- 如需改端口：
-	- 方式 A：改 [vite.config.ts](vite.config.ts) 里的代理 `target`
-	- 方式 B：设置前端后端地址（优先级：`window.__DWEB_BACKEND_BASE_URL` → `VITE_BACKEND_BASE_URL` → `localStorage:dweb.backendBaseUrl`）
+---
 
-### 🔐 DeepSeek 配置（务必不要提交密钥）
+## 🔐 AI 秘钥配置（DeepSeek + NanoBanana）
 
-本项目会读取以下环境变量（推荐）：
+### 方式一：环境变量（推荐）
 
 | 变量 | 示例 | 说明 |
 |---|---|---|
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | OpenAI 兼容接口 base url |
-| `DEEPSEEK_API_KEY` | `sk-...` | API Key（不要提交） |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | 默认模型 |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek OpenAI 兼容 base URL |
+| `DEEPSEEK_API_KEY` | `sk-...` | DeepSeek API Key |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | DeepSeek 默认模型 |
+| `NANOBANANA_API_KEY` | `AIza...` | NanoBanana/Gemini API Key |
+| `NANOBANANA_MODEL` | `gemini-2.5-flash-image` | 图像模型（默认该值） |
+| `NANOBANANA_API_BASE` | `https://generativelanguage.googleapis.com/v1beta` | Gemini API base |
+| `NANOBANANA_GENERATE_URL` | `https://...:generateContent` | 可选，覆盖完整生成 URL |
+| `NANOBANANA_STREAM_URL` | `https://...:streamGenerateContent` | 可选，覆盖完整流式 URL |
+| `NANOBANANA_TIMEOUT_SEC` | `120` | 请求超时秒数 |
 
-如需本地快速跑通，也可在 `django-app/dwebapp/deepseek_secrets.py` 填写（该文件已在 `.gitignore` 中忽略）。
+> NanoBanana API Key 获取：<https://aistudio.google.com/apikey>
+
+### 方式二：本地 secrets 文件（仅本地调试）
+
+- DeepSeek：创建 `django-app/dwebapp/deepseek_secrets.py`
+- NanoBanana：复制 [django-app/dwebapp/nanobanana_secrets.example.py](django-app/dwebapp/nanobanana_secrets.example.py) 为 `django-app/dwebapp/nanobanana_secrets.py` 并填写
+
+这两个真实 secrets 文件都应保持在 `.gitignore` 忽略状态，**不要提交到仓库**。
 
 ---
 
-## 🧱 节点类型（4 种）
+## 📘 使用文档一：AI 工作流蓝图（优先）
 
-项目当前主要提供 4 类节点：
+工作流页面入口见 [src/views/AIWorkflow.vue](src/views/AIWorkflow.vue)。
 
-| 节点 | 用途 | 常见操作 |
+### 1) 画布基础操作
+
+- 鼠标滚轮：缩放（以鼠标位置为中心）
+- 右键拖拽：平移画布
+- 左键拖拽空白区域：框选节点
+- 点击空白区域：清空选择
+
+### 2) 资源与项目
+
+- 在资源面板导入图片/视频资源
+- 资源可绑定到图片/视频节点
+- 支持项目保存、加载、导入/导出 JSON
+
+### 3) 连线规则
+
+- 连线从节点输出锚点拖到输入锚点
+- 仅允许同类型连线（如资源→资源、流程→流程、文本→文本）
+- 不合法连接会被过滤并提示
+
+### 4) 当前工作流节点说明
+
+| 节点类型 | 作用 | 典型输入/输出 |
 |---|---|---|
-| 🟦 矩形（Rect） | 卡片/背景/容器 | 位置/尺寸/圆角/颜色/透明度 |
-| 🔤 文字（Text） | 标题/正文/标注 | 内容/字号/对齐/颜色/透明度 |
-| 🖼 图片（Image） | 头像/插图/图标 | 替换图片/缩放/裁剪(视实现)/透明度 |
-| ✏️ 线条（Line） | 连接/指向/思维导图连线 | 起点/终点/控制点/线宽/颜色/滤镜 |
+| `text` 文本节点 | 保存多行文本资源（提示词/文案） | 输出 `text` |
+| `text-merge` 文本拼接节点 | 将多个文本输入按顺序拼接 | 输入 `text`，输出 `text` |
+| `image` 图片节点 | 承载图片资源，可做尺寸/裁剪相关设置 | 输入 `resource`，输出 `image` |
+| `video` 视频节点 | 承载视频资源，可读取尺寸并生成缩略图 | 输入 `resource`，输出 `video` |
+| `story` 剧情节点 | 流程与分支编排（可新增/删除分支） | 输入 `flow/resource`，输出多分支 `flow` |
+| `comfyui` 节点 | 连接 ComfyUI、选择工作流并执行推理 | 输入资源/文本，输出图片或视频 |
 
-🎨 滤镜能力：线条/节点支持 blur、glow 以及自定义 shader（以当前工程实现为准）。
+### 5) ComfyUI 典型流程
 
----
-
-## ⏱ 时间轴动画使用方法
-
-时间轴位于页面底部（见 [src/views/VideoStudio.vue](src/views/VideoStudio.vue)），支持：播放/暂停/停止、循环、FPS/总帧数设置、关键帧与缓动曲线。
-
-### 1) 创建图层
-
-🧱 在时间轴左侧点击「新建」创建图层（Layer）。
-
-### 2) 设置帧数与 FPS
-
-🎛 在顶部工具条设置：
-
-- `FPS`
-- `总帧数`
-- `当前帧`
-
-### 3) 添加关键帧
-
-📌 在图层的帧格上通过右键菜单/双击（以实际 UI 为准）添加关键帧。
-
-### 4) 设置缓动（Easing）
-
-📈 在两个关键帧之间，可以启用缓动段并编辑曲线（时间轴内置曲线编辑器）。
-
-### 5) 播放预览
-
-▶️ 点击「播放」，时间轴会驱动舞台按帧插值更新节点属性（位置/尺寸/旋转/透明度等），并同步滤镜参数。
+1. 新建 `comfyui` 节点并填写 ComfyUI 地址（例如 `http://127.0.0.1:8188`）
+2. 点击连接并加载工作流列表
+3. 选择工作流，按输入锚点接入 `image/video/text` 节点
+4. 点击运行，等待输出回流到资源池与下游节点
 
 ---
 
-## 🤖 AI 智能对话辅助
+## 📗 使用文档二：视频编辑器（原有能力）
 
-编辑器内置「AI助手」对话框（可在舞台工具栏打开/最小化），用于：
+视频编辑页面见 [src/views/VideoStudio.vue](src/views/VideoStudio.vue)，布局为舞台 + 时间轴。
 
-- 🧠 根据自然语言生成节点与布局
-- 🛠 批量修改属性（例如统一颜色/尺寸/对齐）
-- 🧩 为节点添加滤镜（如 glow/blur）
-- 🧾 输出可复现的结构化指令（由后端 SSE 推送给前端并逐步执行）
+### 1) 时间轴使用
 
-📡 通信方式：后端 Django 提供 SSE 流式接口，前端实时消费并将结构化消息应用到舞台/时间轴。
+- 创建图层（Layer）
+- 设置 FPS、总帧数、当前帧
+- 在帧格中添加关键帧
+- 在关键帧之间设置缓动曲线
+- 播放预览并观察舞台插值变化
+
+### 2) 舞台与节点
+
+编辑器支持常用舞台节点（矩形/文字/图片/线条）及属性面板编辑。
+
+### 3) AI 辅助
+
+AI 助手可用于：
+
+- 根据自然语言生成布局
+- 批量修改样式/属性
+- 辅助生成滤镜与结构化修改指令
 
 ---
 
@@ -157,24 +172,22 @@ python django-app/manage.py runserver 5800
 | 路径 | 说明 |
 |---|---|
 | `src/` | 前端主代码（Vue 3 + TS） |
+| `src/views/AIWorkflow.vue` | AI 工作流蓝图页面 |
+| `src/views/VideoStudio.vue` | 视频编辑器页面 |
 | `src/engine/` | WebGL2 渲染引擎与滤镜管线 |
-| `src/ui/` | UI 组件（舞台/时间轴/AI 对话框等） |
-| `src/store/` | Vuex Store（视频场景/时间轴/编辑器状态） |
+| `src/ui/` | UI 组件（舞台/时间轴/蓝图等） |
+| `src/store/` | Vuex Store（视频场景/时间轴/蓝图状态） |
 | `django-app/` | Django 后端（SSE + AI 接入） |
 
 ---
 
-## 🧑‍💻 开发建议
-
-✅ 推荐 IDE：VS Code
-
-✅ 常用命令：
+## 🧑‍💻 常用命令
 
 | 命令 | 作用 |
 |---|---|
 | `npm run dev` | 启动前端开发服务 |
 | `npm run build` | 前端构建 |
-| `python django-app/manage.py runserver` | 启动后端 |
+| `python django-app/manage.py runserver 5800` | 启动后端 |
 
 ---
 

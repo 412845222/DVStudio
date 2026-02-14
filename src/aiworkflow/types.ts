@@ -10,6 +10,7 @@ export type WorkflowAnchorSpec = {
 	id: string
 	label?: string
 	offsetY?: number
+	mediaType?: 'generic' | 'image' | 'video' | 'text' | 'flow'
 }
 
 export type WorkflowStoryBranch = {
@@ -53,15 +54,63 @@ export type WorkflowVideoNodeSettings = {
 	naturalHeight?: number
 }
 
+export type WorkflowComfyUINodeSettings = {
+	/** ComfyUI base URL, e.g. http://127.0.0.1:8188 */
+	baseUrl?: string
+	/** UI status for connection check */
+	status?: 'idle' | 'connecting' | 'connected' | 'error'
+	/** last error message (if any) */
+	message?: string
+	/** epoch ms */
+	lastCheckedAt?: number
+	/** available workflow files under user workflows dir */
+	workflows?: { path: string; name: string }[]
+	/** selected workflow file path, e.g. workflows/xxx.json */
+	workflowPath?: string
+	/** optional override text for positive CLIP prompt nodes */
+	positivePrompt?: string
+	/** optional override text for negative CLIP prompt nodes */
+	negativePrompt?: string
+
+	/** execution status for the loaded workflow */
+	runStatus?: 'idle' | 'running' | 'canceling' | 'completed' | 'failed' | 'cancelled'
+	/** prompt/job id returned by ComfyUI */
+	promptId?: string
+	/** 0-100 (may be coarse if polling-only) */
+	progress?: number
+	/** human-readable status text */
+	statusText?: string
+	/** extracted output media urls from history */
+	outputs?: Array<{
+		kind: 'image' | 'video'
+		url: string
+		filename?: string
+		anchorId?: string
+		nodeId?: string
+		sourcePath?: string
+		subfolder?: string
+		type?: string
+	}>
+	/** epoch ms */
+	lastUpdateAt?: number
+}
+
 export type WorkflowNode = {
 	id: string
 	type: string
 	title: string
 	alias?: string
 	subtitle?: string
+	/** For text resource nodes: user-entered multi-line text */
+	textValue?: string
+	/** For text-merge nodes: ordered list of merge slots */
+	textMergeItems?: Array<{ id: string }>
+	/** Absolute path of the bound asset on host OS (desktop/dev usage) */
+	resourcePath?: string
 	imageSettings?: WorkflowImageNodeSettings
 	videoSettings?: WorkflowVideoNodeSettings
 	storySettings?: WorkflowStoryNodeSettings
+	comfyuiSettings?: WorkflowComfyUINodeSettings
 	worldX: number
 	worldY: number
 	width: number

@@ -22,6 +22,7 @@
     @start-link="(payload) => emit('start-link', payload)"
     @end-link="(payload) => emit('end-link', payload)"
     @copy="() => emit('copy')"
+    @refresh="() => emit('refresh')"
     @delete="() => emit('delete')"
     @set-type="(type) => emit('set-type', type)"
     @resize="(payload) => emit('resize', payload)"
@@ -40,10 +41,15 @@
               </div>
               <video
                 v-else-if="previewKind === 'video' && previewUrl"
+                ref="previewVideoEl"
                 :src="previewUrl"
-                muted
+                :muted="previewMuted"
                 loop
                 playsinline
+                @loadedmetadata="onPreviewVideoLoadedMetadata"
+                @timeupdate="onPreviewVideoTimeUpdate"
+                @pause="onPreviewVideoPause"
+                @play="onPreviewVideoPlay"
               />
               <div v-else class="wf-story-placeholder">
                 <div class="wf-story-placeholder-title">暂无画面预览</div>
@@ -78,6 +84,23 @@
             />
           </label>
           <div class="wf-story-preview-aspect">{{ previewAspectText }}</div>
+        </div>
+
+        <div
+          v-if="previewKind === 'video' && previewUrl"
+          class="wf-story-video-controls"
+          @pointerdown.stop
+        >
+          <VideoController
+            :disabled="!previewVideoDuration"
+            :playing="previewVideoPlaying"
+            :duration="previewVideoDuration"
+            :currentTime="previewVideoCurrentTime"
+            :volume="previewVideoVolume"
+            @toggle-play="togglePreviewVideoPlay"
+            @seek="seekPreviewVideo"
+            @update-volume="onPreviewVideoVolumeChange"
+          />
         </div>
       </div>
     </template>
@@ -178,6 +201,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import WorkflowNodeBase from "../WorkflowNodeBase.vue";
+import VideoController from "../../UIComponent/VideoController.vue";
 import type { WorkflowStoryBranch } from "../../../aiworkflow/types";
 
 type AnchorSpec = {
@@ -272,8 +296,12 @@ const emit = defineEmits<{
     payload: { nodeId: string; anchorId: string; anchorIndex: number }
   ): void;
   (e: "copy"): void;
+  (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "image" | "video" | "story"): void;
+  (
+    e: "set-type",
+    v: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui"
+  ): void;
   (
     e: "resize",
     payload: { width: number; height: number; worldX: number; worldY: number }
@@ -297,6 +325,91 @@ const onPreviewHeightChange = (e: Event) => {
   const raw = Number((e.target as HTMLInputElement).value);
   if (!Number.isFinite(raw) || raw <= 0) return;
   emit("update-preview-settings", { previewHeight: Math.max(1, Math.floor(raw)) });
+};
+
+const previewVideoEl = ref<HTMLVideoElement | null>(null);
+const previewVideoPlaying = ref(false);
+const previewVideoDuration = ref(0);
+const previewVideoCurrentTime = ref(0);
+const previewVideoVolume = ref(1);
+
+const previewMuted = computed(() => previewVideoVolume.value <= 0.001);
+
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+const applyPreviewVolume = () => {
+  const v = previewVideoEl.value;
+  if (!v) return;
+  v.muted = previewMuted.value;
+  v.volume = clamp(Number(previewVideoVolume.value) || 0, 0, 1);
+};
+
+const onPreviewVideoLoadedMetadata = () => {
+  const v = previewVideoEl.value;
+  if (!v) return;
+  previewVideoDuration.value = Math.max(0, Number(v.duration) || 0);
+  previewVideoCurrentTime.value = clamp(
+    Number(v.currentTime) || 0,
+    0,
+    previewVideoDuration.value || 0
+  );
+  applyPreviewVolume();
+};
+
+const onPreviewVideoTimeUpdate = () => {
+  const v = previewVideoEl.value;
+  if (!v) return;
+  previewVideoCurrentTime.value = clamp(
+    Number(v.currentTime) || 0,
+    0,
+    previewVideoDuration.value || 0
+  );
+};
+
+const onPreviewVideoPause = () => {
+  previewVideoPlaying.value = false;
+};
+
+const onPreviewVideoPlay = () => {
+  previewVideoPlaying.value = true;
+};
+
+const togglePreviewVideoPlay = async () => {
+  const v = previewVideoEl.value;
+  if (!v || !props.previewUrl) return;
+  if (!previewVideoPlaying.value) {
+    try {
+      applyPreviewVolume();
+      await v.play();
+      previewVideoPlaying.value = true;
+    } catch {
+      previewVideoPlaying.value = false;
+    }
+    return;
+  }
+  try {
+    v.pause();
+  } catch {
+    // ignore
+  }
+  previewVideoPlaying.value = false;
+};
+
+const seekPreviewVideo = (t: number) => {
+  const v = previewVideoEl.value;
+  if (!v || !previewVideoDuration.value) return;
+  const next = clamp(Number(t) || 0, 0, previewVideoDuration.value);
+  previewVideoCurrentTime.value = next;
+  try {
+    v.currentTime = next;
+  } catch {
+    // ignore
+  }
+};
+
+const onPreviewVideoVolumeChange = (vv: number) => {
+  previewVideoVolume.value = clamp(Number(vv) || 0, 0, 1);
+  applyPreviewVolume();
 };
 
 const playerWrapEl = ref<HTMLElement | null>(null);
@@ -336,6 +449,28 @@ onBeforeUnmount(() => {
   if (ro) ro.disconnect();
   ro = null;
 });
+
+watch(
+  () => props.previewUrl,
+  async () => {
+    const v = previewVideoEl.value;
+    if (!v || !props.previewUrl) {
+      previewVideoPlaying.value = false;
+      previewVideoDuration.value = 0;
+      previewVideoCurrentTime.value = 0;
+      return;
+    }
+    previewVideoPlaying.value = false;
+    previewVideoCurrentTime.value = 0;
+    try {
+      v.pause();
+    } catch {
+      // ignore
+    }
+    applyPreviewVolume();
+  },
+  { immediate: true }
+);
 
 watch([previewW, previewH], () => computePlayerSize());
 
@@ -449,6 +584,10 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
   margin-left: auto;
   color: var(--vscode-fg-muted);
   font-size: 11px;
+}
+
+.wf-story-video-controls {
+  flex: 0 0 auto;
 }
 
 .wf-story-preview-img {

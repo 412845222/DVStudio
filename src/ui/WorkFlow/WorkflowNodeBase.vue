@@ -30,6 +30,12 @@
           <button class="wf-node-type-item" type="button" @click="onSetType('base')">
             基础
           </button>
+          <button class="wf-node-type-item" type="button" @click="onSetType('text')">
+            文本
+          </button>
+          <button class="wf-node-type-item" type="button" @click="onSetType('text-merge')">
+            文本整合
+          </button>
           <button class="wf-node-type-item" type="button" @click="onSetType('image')">
             图片
           </button>
@@ -38,6 +44,9 @@
           </button>
           <button class="wf-node-type-item" type="button" @click="onSetType('story')">
             剧情
+          </button>
+          <button class="wf-node-type-item" type="button" @click="onSetType('comfyui')">
+            ComfyUI
           </button>
         </div>
       </div>
@@ -62,6 +71,30 @@
             fill="none"
             stroke="currentColor"
             stroke-width="1.2"
+          />
+        </svg>
+      </button>
+      <button
+        class="wf-node-btn"
+        type="button"
+        title="刷新输入资源"
+        @click="emit('refresh')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
+          <path
+            d="M13.5 8a5.5 5.5 0 1 1-1.2-3.4"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+          />
+          <path
+            d="M10.8 1.9h3.3v3.3"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
           />
         </svg>
       </button>
@@ -117,7 +150,7 @@
           v-for="a in inputAnchors"
           :key="a.id"
           class="wf-anchor-hit"
-          :class="{ hovered: isInputHover(a.id) }"
+          :class="[anchorClass(a), { hovered: isInputHover(a.id) }]"
           :title="a.label || '入口'"
           :style="anchorStyle(a)"
           :data-wf-node-id="nodeId"
@@ -132,7 +165,7 @@
           v-for="a in outputAnchors"
           :key="a.id"
           class="wf-anchor-hit"
-          :class="{ hovered: isOutputHover(a.id) }"
+          :class="[anchorClass(a), { hovered: isOutputHover(a.id) }]"
           :title="a.label || '出口'"
           :style="anchorStyle(a)"
           :data-wf-node-id="nodeId"
@@ -153,6 +186,12 @@ type AnchorSpec = {
   id: string;
   label?: string;
   offsetY?: number;
+  mediaType?: "generic" | "image" | "video" | "text" | "flow";
+};
+
+type NormalizedAnchor = AnchorSpec & {
+  index: number;
+  offsetY: number;
 };
 
 const props = defineProps<{
@@ -192,8 +231,9 @@ const emit = defineEmits<{
     payload: { nodeId: string; anchorId: string; anchorIndex: number }
   ): void;
   (e: "copy"): void;
+  (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "image" | "video" | "story"): void;
+  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui"): void;
   (
     e: "resize",
     payload: { width: number; height: number; worldX: number; worldY: number }
@@ -210,13 +250,24 @@ const defaultOffsets = (idx: number, count: number) => {
   return start + idx * gap;
 };
 
-const normalizeAnchors = (anchors: AnchorSpec[] | undefined, fallbackId: string) => {
-  const list = Array.isArray(anchors) && anchors.length ? anchors : [{ id: fallbackId }];
+const normalizeAnchors = (
+  anchors: AnchorSpec[] | undefined,
+  fallbackId: string
+): NormalizedAnchor[] => {
+  if (Array.isArray(anchors)) {
+    if (!anchors.length) return [];
+    return anchors.map((a, index) => ({
+      ...a,
+      index,
+      offsetY:
+        typeof a.offsetY === "number" ? a.offsetY : defaultOffsets(index, anchors.length),
+    }));
+  }
+  const list: AnchorSpec[] = [{ id: fallbackId }];
   return list.map((a, index) => ({
     ...a,
     index,
-    offsetY:
-      typeof a.offsetY === "number" ? a.offsetY : defaultOffsets(index, list.length),
+    offsetY: defaultOffsets(index, list.length),
   }));
 };
 
@@ -226,9 +277,12 @@ const outputAnchors = computed(() => normalizeAnchors(props.outputs, "out-0"));
 const typeMenuOpen = ref(false);
 
 const typeLabel = computed(() => {
+  if (props.nodeType === "text") return "文本";
+  if (props.nodeType === "text-merge") return "文本整合";
   if (props.nodeType === "image") return "图片";
   if (props.nodeType === "video") return "视频";
   if (props.nodeType === "story") return "剧情";
+  if (props.nodeType === "comfyui") return "ComfyUI";
   return "基础";
 });
 
@@ -242,7 +296,7 @@ const toggleTypeMenu = () => {
   window.addEventListener("pointerdown", closeTypeMenu, { once: true });
 };
 
-const onSetType = (type: "base" | "image" | "video" | "story") => {
+const onSetType = (type: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui") => {
   emit("set-type", type);
   closeTypeMenu();
 };
@@ -250,6 +304,14 @@ const onSetType = (type: "base" | "image" | "video" | "story") => {
 const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
   top: `calc(50% + ${a.offsetY ?? 0}px)`,
 });
+
+const anchorClass = (a: AnchorSpec) => {
+  if (a.mediaType === "image") return "wf-anchor-image";
+  if (a.mediaType === "video") return "wf-anchor-video";
+  if (a.mediaType === "text") return "wf-anchor-text";
+  if (a.mediaType === "flow") return "wf-anchor-flow";
+  return "wf-anchor-resource";
+};
 
 watch(
   () => props.selected,
@@ -684,8 +746,24 @@ const isOutputHover = (anchorId: string) => {
   background: var(--dweb-blue);
 }
 
-.wf-anchors-out .wf-anchor-hit::before {
+.wf-anchor-hit.wf-anchor-resource::before {
+  background: var(--dweb-blue);
+}
+
+.wf-anchor-hit.wf-anchor-image::before {
+  background: var(--dweb-purple);
+}
+
+.wf-anchor-hit.wf-anchor-video::before {
   background: var(--dweb-green-main);
+}
+
+.wf-anchor-hit.wf-anchor-text::before {
+  background: var(--dweb-yellow);
+}
+
+.wf-anchor-hit.wf-anchor-flow::before {
+  background: var(--dweb-orange);
 }
 
 .wf-anchor-hit:hover::before,
