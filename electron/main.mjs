@@ -133,7 +133,7 @@ function makeProgressBar(frame) {
 	return `[${out}]`
 }
 
-function runSyncWithLogs(cmd, args, { cwd, label } = {}) {
+function runSyncWithLogs(cmd, args, { cwd, label, timeoutMs = 0 } = {}) {
 	const displayLabel = String(label || `${cmd} ${Array.isArray(args) ? args.join(' ') : ''}`).trim()
 	const startedAt = Date.now()
 	let frame = 0
@@ -151,6 +151,29 @@ function runSyncWithLogs(cmd, args, { cwd, label } = {}) {
 	})
 	let stdout = ''
 	let stderr = ''
+	let finished = false
+	let timeoutId = null
+
+	const finalize = (payload) => {
+		if (finished) return
+		finished = true
+		if (timeoutId) {
+			clearTimeout(timeoutId)
+			timeoutId = null
+		}
+		clearInterval(ticker)
+		const elapsed = Math.max(1, Math.floor((Date.now() - startedAt) / 1000))
+		const ok = !!payload?.ok
+		pushBackendLog(`[cmd] ${ok ? '[##############]' : '[!!!!!FAILED!!!]'} ${displayLabel} (${elapsed}s)`)
+		return {
+			ok,
+			code: Number(payload?.code ?? 1),
+			stdout,
+			stderr,
+			error: payload?.error || '',
+			timedOut: !!payload?.timedOut,
+		}
+	}
 
 	r.stdout?.on('data', (s) => {
 		stdout += String(s || '')
@@ -162,14 +185,51 @@ function runSyncWithLogs(cmd, args, { cwd, label } = {}) {
 	})
 
 	return new Promise((resolve) => {
-		r.once('exit', (code) => {
-			clearInterval(ticker)
-			const elapsed = Math.max(1, Math.floor((Date.now() - startedAt) / 1000))
-			const ok = code === 0
-			pushBackendLog(`[cmd] ${ok ? '[##############]' : '[!!!!!FAILED!!!]'} ${displayLabel} (${elapsed}s)`)
-			resolve({ ok, code: Number(code || 0), stdout, stderr })
+		r.once('error', (err) => {
+			stderr += `\n${String(err?.message || err || 'spawn failed')}`
+			resolve(finalize({ ok: false, code: 1, error: String(err?.message || err || 'spawn failed') }))
 		})
+		r.once('exit', (code) => {
+			resolve(finalize({ ok: code === 0, code: Number(code || 0) }))
+		})
+
+		if (Number(timeoutMs) > 0) {
+			timeoutId = setTimeout(() => {
+				try {
+					r.kill('SIGKILL')
+				} catch {
+					// ignore
+				}
+				stderr += `\nTimeout after ${timeoutMs}ms`
+				resolve(finalize({ ok: false, code: 124, timedOut: true, error: `timeout ${timeoutMs}ms` }))
+			}, Number(timeoutMs))
+		}
 	})
+}
+
+async function tryInstallPythonOnWindows() {
+	if (process.platform !== 'win32') {
+		return { ok: false, reason: 'unsupported-platform' }
+	}
+
+	const wingetCheck = await runSyncWithLogs('winget', ['--version'], {
+		label: '检测 winget',
+		timeoutMs: 10000,
+	})
+	if (!wingetCheck.ok) {
+		return { ok: false, reason: 'winget-not-found' }
+	}
+
+	const install = await runSyncWithLogs(
+		'winget',
+		['install', '-e', '--id', 'Python.Python.3.12', '--accept-source-agreements', '--accept-package-agreements'],
+		{ label: '自动安装 Python（3.12）', timeoutMs: 20 * 60 * 1000 },
+	)
+	if (!install.ok) {
+		return { ok: false, reason: 'python-install-failed' }
+	}
+
+	return { ok: true }
 }
 
 function pushBackendLog(line) {
@@ -407,13 +467,29 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		setStep('python', { status: 'running', progress: 25, detail: '正在检测 Python 版本...' })
 		pyInfo = detectPythonInfo({ minMajor: 3, minMinor: 11 })
 		if (!pyInfo.ok || !pyInfo.meetsRequirement) {
+			const missingPython = !pyInfo.command
+			setStep('python', {
+				status: 'running',
+				progress: 55,
+				detail: missingPython
+					? '不存在 Python 环境，正在尝试自动安装（Windows）...'
+					: `Python 版本不满足要求（当前：${pyInfo.detail || 'unknown'}），正在尝试自动安装（Windows）...`,
+			})
+
+			const autoInstall = await tryInstallPythonOnWindows()
+			if (autoInstall.ok) {
+				pyInfo = detectPythonInfo({ minMajor: 3, minMinor: 11 })
+			}
+		}
+		if (!pyInfo.ok || !pyInfo.meetsRequirement) {
 			setStep('python', {
 				status: 'error',
 				progress: 100,
-				detail:
-					pyInfo.detail || 'Python 版本不满足要求，请安装 Python 3.11 及以上（推荐 3.11）后重试。',
+				detail: !pyInfo.command
+					? '不存在 Python 环境。请安装 Python 3.11 及以上版本后重试。'
+					: pyInfo.detail || 'Python 版本不满足要求，请安装 Python 3.11 及以上（推荐 3.11）后重试。',
 			})
-			pushBackendLog('[建议] 请先安装 Python 3.11+，再点击“重试”。')
+			pushBackendLog('[建议] 不存在可用 Python 环境：请安装 Python 3.11+ 后重试。')
 			return { ok: false, state: getSetupState(), error: 'python-check-failed' }
 		}
 		setStep('python', {
@@ -636,7 +712,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		}
 
 		setStep('ffmpeg', { status: 'running', progress: 60, detail: '检测 ffmpeg（可选）...' })
-		const ff = await runSyncWithLogs('ffmpeg', ['-version'], { label: '检测 ffmpeg（可选）' })
+		const ff = await runSyncWithLogs('ffmpeg', ['-version'], { label: '检测 ffmpeg（可选）', timeoutMs: 8000 })
 		if (ff.ok) {
 			const line = splitLines(ff.stdout || ff.stderr)[0] || 'ffmpeg detected'
 			setStep('ffmpeg', { status: 'ok', progress: 100, detail: line })
@@ -644,9 +720,9 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			setStep('ffmpeg', {
 				status: 'warn',
 				progress: 100,
-				detail: '未检测到 ffmpeg（非必须，导出视频时建议安装）。',
+				detail: '未检测到 ffmpeg（仅影响动画编辑器导出视频，不阻断流程）。',
 			})
-			pushBackendLog('[提醒] 未检测到 ffmpeg：不影响基础使用，但视频导出能力建议安装后再试。')
+			pushBackendLog('[提醒] 未检测到 ffmpeg：不阻断流程，但动画编辑器无法导出视频。')
 		}
 
 		pushBackendLog('[setup] 环境准备完成。')

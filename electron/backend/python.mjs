@@ -44,7 +44,7 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 			ok: false,
 			meetsRequirement: false,
 			recommended: false,
-			detail: '未检测到 Python。请安装 Python 3.11 及以上版本（推荐 3.11）。',
+			detail: '不存在 Python 环境（未检测到 python/py 命令）。',
 		}
 	}
 

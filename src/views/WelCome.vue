@@ -158,7 +158,8 @@ function enqueueLogs(lines: string[]) {
 
     // Coalesce high-frequency progress bars of the same command to reduce flicker/spam.
     const curr = isCmdProgressLine(line);
-    const last = pendingLogQueue.length > 0 ? pendingLogQueue[pendingLogQueue.length - 1] : "";
+    const last =
+      pendingLogQueue.length > 0 ? pendingLogQueue[pendingLogQueue.length - 1] : "";
     const prev = isCmdProgressLine(last);
     if (curr && prev && curr.key === prev.key) {
       pendingLogQueue[pendingLogQueue.length - 1] = line;
@@ -253,7 +254,7 @@ async function runSetup(reason: string, retryKey = "") {
 function getRetrySuggestion(stepKey: string): string {
   switch (stepKey) {
     case "python":
-      return "建议安装 Python 3.11+，并确认 python/py 命令可用后重试。";
+      return "建议优先使用 winget 自动安装 Python；若本机无 winget，请手动安装 Python 3.11+ 并确认 python/py 命令可用后重试。";
     case "venv":
       return "建议检查 DVSResource 目录权限和磁盘空间，再重试创建虚拟环境。";
     case "django":
@@ -269,7 +270,9 @@ async function handleRetryStep(stepKey: string) {
   retryingStepKey.value = stepKey;
   await runSetup("retry", stepKey);
   await refreshLogs();
-  const failed = (setupState.value.steps || []).find((s) => s.key === stepKey && s.status === "error");
+  const failed = (setupState.value.steps || []).find(
+    (s) => s.key === stepKey && s.status === "error"
+  );
   if (failed) {
     appendLocalLog(`重试失败：${failed.label}。${getRetrySuggestion(stepKey)}`);
   }
@@ -289,7 +292,9 @@ async function handleCleanupOldProject() {
 
   const r = await cleanupOldProject();
   if (r?.ok) {
-    appendLocalLog("清理旧项目完成：已删除 .venv / django-app / BackendData（存在则删除）。");
+    appendLocalLog(
+      "清理旧项目完成：已删除 .venv / django-app / BackendData（存在则删除）。"
+    );
   } else {
     appendLocalLog(`清理旧项目失败：${r?.error || "未知错误"}`);
   }
@@ -375,11 +380,21 @@ onBeforeUnmount(() => {
             <button class="btn" type="button" @click="handleCleanupOldProject">
               清理旧项目
             </button>
-            <button class="btn" type="button" :disabled="!!backendActionBusy" @click="handleStartBackend">
-              {{ backendActionBusy === 'start' ? '启动中...' : '手动启动后端' }}
+            <button
+              class="btn"
+              type="button"
+              :disabled="!!backendActionBusy"
+              @click="handleStartBackend"
+            >
+              {{ backendActionBusy === "start" ? "启动中..." : "手动启动后端" }}
             </button>
-            <button class="btn" type="button" :disabled="!!backendActionBusy" @click="handleRestartBackend">
-              {{ backendActionBusy === 'restart' ? '重启中...' : '重启后端' }}
+            <button
+              class="btn"
+              type="button"
+              :disabled="!!backendActionBusy"
+              @click="handleRestartBackend"
+            >
+              {{ backendActionBusy === "restart" ? "重启中..." : "重启后端" }}
             </button>
             <button
               class="btn"
