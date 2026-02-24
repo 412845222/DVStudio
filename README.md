@@ -2,6 +2,20 @@
 
 🎬 一个基于 **WebGL2** 的视频编辑与 AI 工作流蓝图项目。
 
+## 📦 首个安装包（推荐先看）
+
+- 下载入口（Release）：<https://github.com/412845222/DVStudio/releases/latest>
+- 安装与免安装使用说明：[docs/INSTALL_PACKAGE.md](docs/INSTALL_PACKAGE.md)
+- 首版发布说明：[docs/RELEASE_v0.1.0.md](docs/RELEASE_v0.1.0.md)
+
+首个安装包 zip 内同时包含“安装版 + 免安装版”。
+
+首次启动会自动执行环境流程：
+
+- Python 3.11+ 检测（缺失时 Windows 下自动尝试安装）
+- Django 运行时初始化与依赖检查/补装
+- ffmpeg 可选检查（缺失仅告警，不阻断启动；仅影响视频导出）
+
 本仓库当前包含两条核心能力：
 
 - **AI 工作流蓝图**：资源 → 剧情/分支 → ComfyUI 推理 → 输出媒体
@@ -16,6 +30,8 @@
 ---
 
 ## 🚀 快速开始
+
+> 如果你只是使用客户端，请优先阅读 [docs/INSTALL_PACKAGE.md](docs/INSTALL_PACKAGE.md)。
 
 ### 前端
 
