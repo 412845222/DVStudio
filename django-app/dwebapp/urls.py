@@ -1,14 +1,27 @@
 from django.urls import include, path
 
 from . import views
+from . import legal_api
 from . import export_api
 from .ai.api import chat_api
 from .ai.api import subtitle_understanding_api
+from .ai.api import credentials_api
 
 urlpatterns = [
     # Legacy sample endpoints (kept for quick smoke tests)
     path("health/", views.health, name="dweb-health"),
     path("echo/", views.echo, name="dweb-echo"),
+
+    # Legal / agreement docs
+    path(
+        "legal/user-agreement-and-security.md",
+        legal_api.user_agreement_and_security_md,
+        name="legal-user-agreement-and-security-md",
+    ),
+
+    # Encrypted credentials storage (local)
+    path("ai/credentials/status", credentials_api.credentials_status, name="ai-credentials-status"),
+    path("ai/credentials", credentials_api.upsert_credentials, name="ai-credentials-upsert"),
 
     # AI chat APIs
     path("chat/conversations", chat_api.create_conversation, name="chat-create-conversation"),

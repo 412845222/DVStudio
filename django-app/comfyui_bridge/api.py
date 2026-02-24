@@ -1329,7 +1329,7 @@ def blueprint_chat(request: Request) -> Response:
         return Response(
             {
                 "ok": False,
-                "error": "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
+                "error": "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
                 "need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"],
             },
             status=500,
@@ -1458,7 +1458,7 @@ def nanobanana_generate(_: Request) -> Response:
         return Response(
             {
                 "ok": False,
-                "error": "NanoBanana config missing. Please fill dwebapp/nanobanana_secrets.py or set env vars.",
+                "error": "Gemini API Key missing. Please set it in Settings (encrypted DB), or set env vars NANOBANANA_API_KEY/GEMINI_API_KEY.",
                 "need": ["NANOBANANA_API_KEY"],
             },
             status=500,
@@ -1512,7 +1512,7 @@ def nanobanana_generate(_: Request) -> Response:
 
 
 def _nanobanana_cfg() -> Dict[str, str]:
-    """Load NanoBanana (Gemini) config from env or dwebapp/nanobanana_secrets.py (ignored by git).
+    """Load NanoBanana (Gemini) config from env or encrypted DB storage.
 
     Official API key: https://aistudio.google.com/apikey
     Official endpoints (REST):
@@ -1520,29 +1520,28 @@ def _nanobanana_cfg() -> Dict[str, str]:
         - POST https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent
     """
 
-    secrets = None
-    try:
-        from dwebapp import nanobanana_secrets as _nb
-
-        secrets = _nb
-    except Exception:
-        secrets = None
-
-    def _env_or_secret(name: str, fallback: str) -> str:
+    def _env_or_default(name: str, fallback: str) -> str:
         v = os.environ.get(name)
         return v if v else fallback
 
-    api_key = _env_or_secret("NANOBANANA_API_KEY", getattr(secrets, "NANOBANANA_API_KEY", "")).strip()
-    model = _env_or_secret("NANOBANANA_MODEL", getattr(secrets, "NANOBANANA_MODEL", "gemini-2.5-flash-image")).strip() or "gemini-2.5-flash-image"
-    api_base = _env_or_secret(
+    api_key = _env_or_default("NANOBANANA_API_KEY", "").strip()
+    if not api_key:
+        try:
+            from dwebapp.ai.credentials_store import get_gemini_api_key
+
+            api_key = (get_gemini_api_key() or "").strip()
+        except Exception:
+            api_key = ""
+    model = _env_or_default("NANOBANANA_MODEL", "gemini-2.5-flash-image").strip() or "gemini-2.5-flash-image"
+    api_base = _env_or_default(
         "NANOBANANA_API_BASE",
-        getattr(secrets, "NANOBANANA_API_BASE", "https://generativelanguage.googleapis.com/v1beta"),
+        "https://generativelanguage.googleapis.com/v1beta",
     ).strip() or "https://generativelanguage.googleapis.com/v1beta"
-    timeout_sec = _env_or_secret("NANOBANANA_TIMEOUT_SEC", str(getattr(secrets, "NANOBANANA_TIMEOUT_SEC", "120"))).strip() or "120"
+    timeout_sec = _env_or_default("NANOBANANA_TIMEOUT_SEC", "120").strip() or "120"
 
     # Optional overrides.
-    generate_url = _env_or_secret("NANOBANANA_GENERATE_URL", getattr(secrets, "NANOBANANA_GENERATE_URL", "")).strip()
-    stream_url = _env_or_secret("NANOBANANA_STREAM_URL", getattr(secrets, "NANOBANANA_STREAM_URL", "")).strip()
+    generate_url = _env_or_default("NANOBANANA_GENERATE_URL", "").strip()
+    stream_url = _env_or_default("NANOBANANA_STREAM_URL", "").strip()
     if not generate_url:
         generate_url = api_base.rstrip("/") + f"/models/{model}:generateContent"
     if not stream_url:
@@ -2286,7 +2285,7 @@ def nanobanana_generate_stream(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "NanoBanana config missing. Please fill dwebapp/nanobanana_secrets.py or set env vars.",
+                    "Gemini API Key missing. Please set it in Settings (encrypted DB), or set env vars NANOBANANA_API_KEY/GEMINI_API_KEY.",
                     details={"need": ["NANOBANANA_API_KEY"]},
                 ),
             ).encode("utf-8")
@@ -2543,7 +2542,7 @@ def blueprint_chat_stream(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
                     details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
                 ),
             ).encode("utf-8")

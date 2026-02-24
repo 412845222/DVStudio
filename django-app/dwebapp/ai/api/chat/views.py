@@ -152,8 +152,8 @@ def send_message(request: Request, conversation_id: str) -> Response:
         return Response(
             _agent_to_ui_error(
                 "missing_config",
-                "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                details={"need": ["DEEPSEEK_API_KEY"]},
             ),
             status=500,
         )
@@ -254,8 +254,8 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                    details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                    details={"need": ["DEEPSEEK_API_KEY"]},
                 ),
             ).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")

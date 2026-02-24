@@ -134,8 +134,8 @@ def stream_template(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                    details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                    details={"need": ["DEEPSEEK_API_KEY"]},
                 ),
             ).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -846,8 +846,8 @@ def stream_understand(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                    details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                    details={"need": ["DEEPSEEK_API_KEY"]},
                 ),
             ).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -1568,8 +1568,8 @@ def stream_style(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                    details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                    details={"need": ["DEEPSEEK_API_KEY"]},
                 ),
             ).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -1692,8 +1692,8 @@ def stream_templates(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                    details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                    details={"need": ["DEEPSEEK_API_KEY"]},
                 ),
             ).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -1863,8 +1863,8 @@ def stream_palette(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                    details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                    details={"need": ["DEEPSEEK_API_KEY"]},
                 ),
             ).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -1973,8 +1973,8 @@ def stream_chat(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                    details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                    details={"need": ["DEEPSEEK_API_KEY"]},
                 ),
             ).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -2085,8 +2085,8 @@ def stream_panel_chat(request: HttpRequest) -> HttpResponseBase:
                 "msg",
                 _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek config missing. Please fill dwebapp/deepseek_secrets.py or set env vars.",
-                    details={"need": ["DEEPSEEK_BASE_URL", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL"]},
+                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+                    details={"need": ["DEEPSEEK_API_KEY"]},
                 ),
             ).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")

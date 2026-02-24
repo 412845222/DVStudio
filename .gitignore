@@ -10,6 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+DVSResource/
+release/
+release-*/
+release-*.zip
 *.local
 *.sw?
 
@@ -51,6 +55,8 @@ coverage.xml
 .env.*
 *.key
 *.pem
+django_secret_key.txt
+**/django_secret_key.txt
 **/deepseek_secrets.py
 **/nanobanana_secrets.py
 django-app/dwebapp/deepseek_secrets.py

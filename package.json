@@ -2,6 +2,7 @@
   "name": "dweb-video-studio",
   "private": true,
   "version": "0.0.1",
+  "main": "electron/main.mjs",
   "description": "DVStudio (Dweb Video Studio) - Vite + Vue 3 + TypeScript + WebGL2 视频动画模板/编辑器，支持时间轴关键帧与 AI 对话辅助生成/修改场景。",
   "license": "MIT",
   "author": "DwebStudio",
@@ -36,7 +37,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:vite:5173": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:electron:app": "npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/welcome npx --no-install electron electron/main.mjs",
+    "dev:electron:app:empty": "npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_SIMULATE_EMPTY_ENV=1 ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/welcome npx --no-install electron electron/main.mjs",
+    "dev:electron": "concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/welcome npx --no-install electron electron/main.mjs\"",
+    "dev:electron:empty": "concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_SIMULATE_EMPTY_ENV=1 ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/welcome npx --no-install electron electron/main.mjs\"",
+    "clean:runtime-django": "node scripts/clean-runtime-django.mjs",
     "build": "vue-tsc && vite build",
+    "gen:win-icon": "node scripts/gen-win-icon.mjs",
+    "prepack:win": "npm run gen:win-icon",
+    "pack:win": "npm run build && electron-builder --dir -w",
+    "predist:win": "npm run gen:win-icon",
+    "dist:win": "node scripts/dist-win.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -50,8 +62,59 @@
     "@types/js-yaml": "^4.0.9",
     "@types/markdown-it": "^14.1.2",
     "@vitejs/plugin-vue": "^3.2.0",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "28.2.0",
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^2.1.8",
     "typescript": "^4.6.4",
     "vite": "^3.2.3",
+    "wait-on": "^8.0.4",
     "vue-tsc": "^1.0.9"
+  },
+  "build": {
+    "appId": "club.dweb.dvstudio",
+    "productName": "Dweb Video Studio",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "public/favicon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "django-app",
+        "to": "django-app"
+      },
+      {
+        "from": "electron/static",
+        "to": "static"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Dweb Video Studio",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    }
   }
 }

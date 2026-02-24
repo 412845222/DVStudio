@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "platform": {
+    "win32": {
+      "installer": {
+        "entry": "bootstrap/windows/install.cmd",
+        "notes": "Uses winget to install Python and ffmpeg."
+      }
+    }
+  }
+}

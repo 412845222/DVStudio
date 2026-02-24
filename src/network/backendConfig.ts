@@ -16,7 +16,13 @@ const normalizeBaseUrl = (url: string) => {
  */
 export const getBackendBaseUrl = (): string => {
 	const w = window as any
-	const fromWindow = typeof w?.__DWEB_BACKEND_BASE_URL === 'string' ? w.__DWEB_BACKEND_BASE_URL : ''
+	const isElectronRuntime =
+		w?.__DWEB_RUNTIME__?.platform === 'electron' || typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
+
+	// Electron 下 __DWEB_BACKEND_BASE_URL 由 preload 注入，通常是只读且不应在渲染层改写；
+	// 因此 Electron 下优先使用 localStorage（由 electronBridge 同步），避免只读变量导致无法更新。
+	const fromWindow =
+		!isElectronRuntime && typeof w?.__DWEB_BACKEND_BASE_URL === 'string' ? w.__DWEB_BACKEND_BASE_URL : ''
 	const fromEnv = (import.meta as any)?.env?.VITE_BACKEND_BASE_URL ?? ''
 	const fromStorage = localStorage.getItem(STORAGE_KEY) ?? ''
 	return normalizeBaseUrl(fromWindow || fromEnv || fromStorage || DEFAULT_BACKEND_BASE_URL)

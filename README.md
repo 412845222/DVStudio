@@ -41,7 +41,7 @@ npm run build
 
 | 项目 | 版本建议 |
 |---|---|
-| Python | 3.9+（Django 4.2） |
+| Python | 3.11+（推荐 3.11，与 Electron 内置检查一致） |
 | pip | 最新即可 |
 
 Windows（PowerShell）：
@@ -89,14 +89,28 @@ python django-app/manage.py runserver 5800
 
 > NanoBanana API Key 获取：<https://aistudio.google.com/apikey>
 
-### 方式二：本地 secrets 文件（仅本地调试）
+### 方式二：应用内设置（Electron 版本）
 
-- DeepSeek：创建 `django-app/dwebapp/deepseek_secrets.py`
-- NanoBanana：复制 [django-app/dwebapp/nanobanana_secrets.example.py](django-app/dwebapp/nanobanana_secrets.example.py) 为 `django-app/dwebapp/nanobanana_secrets.py` 并填写
-
-这两个真实 secrets 文件都应保持在 `.gitignore` 忽略状态，**不要提交到仓库**。
+Electron 版本会把秘钥写入 `DVSResource/UserSettings/settings.json`，并由后端以“环境变量方式”读取（不会要求你创建任何 `*_secrets.py` 文件）。
 
 ---
+
+## 📦 Windows 一键安装包（Electron / NSIS）
+
+仓库已配置 `electron-builder`，可直接生成 Windows 安装包。
+
+```bash
+npm install
+npm run dist:win
+```
+
+产物输出到 `release/`。
+
+运行时数据目录：打包后的应用会把运行目录放到 Electron 的 `userData` 下（例如 `%APPDATA%` 里），并在其中创建 `DVSResource/`（包含 `.venv`、`django-app` runtime、`BackendData`、`UserSettings` 等）。
+
+说明：
+- `electron/static/bootstrap/windows/install.cmd` 会随安装包一起带上，必要时可在 Welcome 页触发，用于通过 winget 安装 Python/ffmpeg（开发期最小闭环）。
+- 后续如果要做“完全离线的一键包”，建议在安装包内置 Python（embeddable）和 wheels，再把 pip 安装改为 `--no-index --find-links`。
 
 ## 📘 使用文档一：AI 工作流蓝图（优先）
 

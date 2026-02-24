@@ -24,8 +24,6 @@
         @request-export="onRequestExportProject"
       />
 
-      <SideNavDock :items="navItems" @select="onNavSelect" />
-
       <WorkflowEdgeLayer
         :edges="edgeRenders(vp.worldToScreen)"
         :selectedEdgeId="selectedEdgeId"
@@ -244,7 +242,6 @@ import BlueprintProjectToolbar, { type BlueprintProjectListItem } from '../ui/Wo
 import ResourceManagerPanel from '../ui/WorkFlow/ResourceManagerPanel.vue'
 import WorkflowInspectorPanel from '../ui/UIComponent/WorkflowInspectorPanel.vue'
 import BottomChatDock, { type BottomChatMessage, type NanoBananaConfig } from '../ui/UIComponent/BottomChatDock.vue'
-import SideNavDock, { type SideNavItem } from '../ui/UIComponent/SideNavDock.vue'
 import ContextMenu, { type ContextMenuSection } from '../ui/UIComponent/ContextMenu.vue'
 import ToastStack, { type ToastItem } from '../ui/UIComponent/ToastStack.vue'
 import FullscreenProgressOverlay from '../ui/UIComponent/FullscreenProgressOverlay.vue'
@@ -272,16 +269,6 @@ import { resolveBackendUrl } from '../network/backendConfig'
 
 const router = useRouter()
 const route = useRoute()
-
-const navItems = computed<SideNavItem[]>(() => [
-	{ key: 'workflow', label: '工作流', icon: 'WF', active: true },
-	{ key: 'studio', label: 'DVStudio 动画工作台', icon: 'VS' },
-])
-
-const onNavSelect = (key: string) => {
-	if (key === 'studio') void router.push({ name: 'VideoStudio' })
-	if (key === 'workflow') void router.push({ name: 'AIWorkflow' })
-}
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
 
@@ -736,7 +723,7 @@ const normalizePastedNodeResources = (nodeIds: string[]) => {
 
 const pasteNodesWithResourceDedupe = (payload?: { worldX?: number; worldY?: number }) => {
   store.commit('pasteNode', payload ?? {})
-  normalizePastedNodeResources(store.state.selectedNodeIds)
+  // Keep resources unique per pasted node.
 }
 
 const onNodePaste = (nodeId: string) => {
@@ -761,6 +748,23 @@ const onNodeSetType = (nodeId: string, type: 'base' | 'image' | 'video' | 'story
 
 const makeResourceId = () => `wf-res-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 const objectUrls = new Map<string, string>()
+
+const snapshotRemoteImageToObjectUrl = async (inputUrl: string, resourceId: string) => {
+  const url = String(inputUrl || '').trim()
+  if (!url) return ''
+  if (url.startsWith('blob:') || url.startsWith('data:')) return url
+  try {
+    const resp = await fetch(url, { cache: 'no-store' })
+    if (!resp.ok) return url
+    const blob = await resp.blob()
+    const objUrl = URL.createObjectURL(blob)
+    const rid = String(resourceId || '').trim()
+    if (rid) objectUrls.set(rid, objUrl)
+    return objUrl
+  } catch {
+    return url
+  }
+}
 
 const normalizeSourcePathKey = (raw: unknown) => {
   const v = String(raw ?? '').trim()
@@ -1247,23 +1251,6 @@ const onNodeUploadResource = (
   const node = store.state.nodesById[nodeId]
   if (!node) return
   const sourcePath = typeof (file as any)?.path === 'string' ? String((file as any).path).trim() : ''
-  const existingId = findExistingResourceIdByUniqueIndex({
-    kind,
-    sourcePath,
-  })
-  if (existingId) {
-    store.commit('setNodeResource', { nodeId, resourceId: existingId })
-    const existing = store.state.resourcesById[existingId] as any
-    const existingUrl = String(existing?.url || '').trim()
-    if (existingUrl) autoSizeMediaNode(nodeId, existingUrl, kind)
-    if (kind === 'video' && existingUrl && !String(existing?.posterUrl || '').trim()) {
-      void ensureVideoResourcePoster(existingId, existingUrl)
-    }
-    if (kind === 'image' && opts?.autoDistribute !== false) {
-      void autoDistributeImageOutputToConnectedNodes(nodeId)
-    }
-    return
-  }
 
   const resourceId = makeResourceId()
   const url = URL.createObjectURL(file)
@@ -1627,7 +1614,7 @@ const onVideoScreenshot = (
 }
 
 const videoPosterGenerating = new Set<string>()
-let posterAutoSaveTimer: ReturnType<typeof setTimeout> | null = null
+let posterAutoSaveTimer: ReturnType<typeof setTimeout> | number | null = null
 let posterAutoSaveQueued = false
 let posterAutoSaveRunning = false
 
@@ -1744,28 +1731,6 @@ const bindMediaResourceToNode = (
 ) => {
   const node = store.state.nodesById[nodeId]
   if (!node) return
-  const existingId = findExistingResourceIdByUniqueIndex({
-    kind,
-    sourcePath: opts?.sourcePath,
-    url,
-  })
-  if (existingId) {
-    const patch: any = {}
-    if (opts?.posterUrl) patch.posterUrl = String(opts.posterUrl)
-    if (opts?.sourcePath) patch.sourcePath = String(opts.sourcePath)
-    if (Object.keys(patch).length) {
-      store.commit('patchResource', { resourceId: existingId, patch })
-    }
-    store.commit('setNodeResource', { nodeId, resourceId: existingId })
-    const cur = store.state.resourcesById[existingId] as any
-    const effectiveUrl = String(cur?.url || url || '').trim()
-    if (effectiveUrl) autoSizeMediaNode(nodeId, effectiveUrl, kind)
-    if (kind === 'video' && effectiveUrl && !String(cur?.posterUrl || '').trim()) {
-      void ensureVideoResourcePoster(existingId, effectiveUrl)
-    }
-    return
-  }
-
   const resourceId = makeResourceId()
   store.commit('addResource', {
     id: resourceId,
@@ -2342,40 +2307,28 @@ const createMediaNodesFromFiles = async (opts: { files: DroppedFile[]; worldX: n
     const sourceSize = Number(m.file?.size || 0)
     const sourceLastModified = Number(m.file?.lastModified || 0)
     const sourceFingerprint = normalizeFileSignatureKey(sourceName, sourceSize, sourceLastModified)
-    const existingId = findExistingResourceIdByUniqueIndex({
-      kind: m.kind,
-      sourcePath: absPath,
-      sourceFingerprint,
-      sourceName,
-      sourceSize,
-      sourceLastModified,
-    })
-
-    let resourceId = existingId || makeResourceId()
-
-    if (!existingId) {
-      const localFileKey = m.fsHandle
-        ? `lfh:${m.kind}:${sourceFingerprint || `${String(resourceId)}`}`
-        : ''
-      if (localFileKey) {
-        // best-effort persist the handle so refresh can recover without backend storage.
-        void putLocalFileHandle(localFileKey, m.fsHandle)
-      }
-      // 1) 先创建资源占位（url 为空），避免批量时立刻触发 <img>/<video> 解码/预加载。
-      store.commit('addResource', {
-        id: resourceId,
-        kind: m.kind,
-        name,
-        url: '',
-        sourcePath: absPath || undefined,
-        localFileKey: localFileKey || undefined,
-        sourceFingerprint: sourceFingerprint || undefined,
-        sourceName: sourceName || undefined,
-        sourceSize: Number.isFinite(sourceSize) ? Math.max(0, Math.floor(sourceSize)) : undefined,
-        sourceLastModified: Number.isFinite(sourceLastModified) ? Math.max(0, Math.floor(sourceLastModified)) : undefined,
-        createdAt: Date.now(),
-      })
+    const resourceId = makeResourceId()
+    const localFileKey = m.fsHandle
+      ? `lfh:${m.kind}:${sourceFingerprint || `${String(resourceId)}`}`
+      : ''
+    if (localFileKey) {
+      // best-effort persist the handle so refresh can recover without backend storage.
+      void putLocalFileHandle(localFileKey, m.fsHandle)
     }
+    // 1) 先创建资源占位（url 为空），避免批量时立刻触发 <img>/<video> 解码/预加载。
+    store.commit('addResource', {
+      id: resourceId,
+      kind: m.kind,
+      name,
+      url: '',
+      sourcePath: absPath || undefined,
+      localFileKey: localFileKey || undefined,
+      sourceFingerprint: sourceFingerprint || undefined,
+      sourceName: sourceName || undefined,
+      sourceSize: Number.isFinite(sourceSize) ? Math.max(0, Math.floor(sourceSize)) : undefined,
+      sourceLastModified: Number.isFinite(sourceLastModified) ? Math.max(0, Math.floor(sourceLastModified)) : undefined,
+      createdAt: Date.now(),
+    })
 
     store.commit('addNodeAt', { worldX, worldY, title: m.kind === 'image' ? '图片' : '视频' })
     const nodeId = store.state.selectedNodeId
@@ -2386,18 +2339,7 @@ const createMediaNodesFromFiles = async (opts: { files: DroppedFile[]; worldX: n
     if (absPath) store.commit('setNodeResourcePath', { nodeId, resourcePath: absPath })
     resourceIdToNode.set(resourceId, { nodeId, kind: m.kind })
     nodeIdToResourceId.set(nodeId, resourceId)
-    if (!existingId) {
-      importTasks.push({ resourceId, kind: m.kind, name, file: m.file })
-    } else {
-      const existing = store.state.resourcesById[resourceId] as any
-      const existingUrl = String(existing?.url || '').trim()
-      if (existingUrl) {
-        autoSizeMediaNode(nodeId, existingUrl, m.kind)
-        if (m.kind === 'video' && !String(existing?.posterUrl || '').trim()) {
-          void ensureVideoResourcePoster(resourceId, existingUrl)
-        }
-      }
-    }
+    importTasks.push({ resourceId, kind: m.kind, name, file: m.file })
   }
 
   if (createdNodeIds.length) {
@@ -2572,7 +2514,22 @@ const onCanvasDrop = async (e: DragEvent) => {
       const nodeId = store.state.selectedNodeId
       if (nodeId) {
         store.commit('setNodeType', { nodeId, type: draggedResource.kind })
-        store.commit('setNodeResource', { nodeId, resourceId: draggedResource.resourceId })
+        // Create a unique resource record for the new node.
+        const resourceId = makeResourceId()
+        store.commit('addResource', {
+          id: resourceId,
+          kind: draggedResource.kind,
+          name: String(r?.name || draggedResource.name || (draggedResource.kind === 'image' ? '图片资源' : '视频资源')),
+          url: String(r?.url || draggedResource.url || '').trim(),
+          ...(String(r?.sourcePath || draggedResource.sourcePath || '').trim()
+            ? { sourcePath: String(r?.sourcePath || draggedResource.sourcePath).trim() }
+            : {}),
+          ...((draggedResource.kind === 'video' && String((r as any)?.posterUrl || '').trim())
+            ? { posterUrl: String((r as any).posterUrl).trim() }
+            : {}),
+          createdAt: Date.now(),
+        } as any)
+        store.commit('setNodeResource', { nodeId, resourceId })
         const srcPath = String(r?.sourcePath || draggedResource.sourcePath || '').trim()
         if (srcPath) store.commit('setNodeResourcePath', { nodeId, resourcePath: srcPath })
         const mediaUrl = String(r?.url || draggedResource.url || '').trim()
@@ -2601,11 +2558,12 @@ const onCanvasDrop = async (e: DragEvent) => {
 
   const url = resolveBackendUrl(urlRaw)
   const resourceId = `wf-res-nanobanana-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const frozenUrl = await snapshotRemoteImageToObjectUrl(url, resourceId)
   store.commit('addResource', {
     id: resourceId,
     kind: 'image',
     name: `NanoBanana_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`,
-    url,
+    url: frozenUrl || url,
     createdAt: Date.now(),
   })
   store.commit('addNodeAt', { worldX, worldY, title: '图片' })
@@ -4305,7 +4263,10 @@ const tryAutoLoadLastProject = async () => {
   const id = Number(raw)
   if (!Number.isFinite(id) || id <= 0) return
   // Not fully silent: if local resources cannot be recovered, we need to prompt user to rebind/authorize.
-  await loadProjectById(id, { silent: false })
+  const ok = await loadProjectById(id, { silent: false })
+  if (!ok) {
+    localStorage.removeItem(AIWF_LAST_PROJECT_STORAGE_KEY)
+  }
 }
 
 const onGlobalShortcutSave = async (ev: Event) => {
@@ -4315,13 +4276,10 @@ const onGlobalShortcutSave = async (ev: Event) => {
   ;(ev as any).stopImmediatePropagation?.()
 
   // Ctrl/Cmd+S: persist blueprint project to backend (DB + JSON file).
-  let name = String(currentProjectName.value ?? '').trim()
+  const name = String(currentProjectName.value ?? '').trim()
   if (!name) {
-    const input = window.prompt('请输入新建项目名称：', '')
-    name = String(input ?? '').trim()
-  }
-  if (!name) {
-    pushToast('已取消保存：未输入项目名称。', 'warn')
+    projectToolbarRef.value?.openSaveDialog?.()
+    pushToast('请先输入项目名称，再执行保存。', 'info')
     return
   }
   await saveProjectToBackend(name)
@@ -4956,6 +4914,10 @@ const onAliasChange = (nodeId: string, alias: string) => {
 	store.commit('setNodeAlias', { nodeId, alias })
 }
 
+const onContentResize = () => {
+  scheduleAnchorLayoutRefresh()
+}
+
 onBeforeUnmount(() => {
   reuseRecordConfirm.value = null
 	cancelActiveImportSession({ cleanupUnresolved: false })
@@ -4971,6 +4933,7 @@ onBeforeUnmount(() => {
   anchorLayoutRaf = 0
 	window.removeEventListener('dvs:shortcut/save', onGlobalShortcutSave as EventListener, true)
 	window.removeEventListener('keydown', onWorkflowKeyDown, true)
+  window.removeEventListener('dweb:content/resize', onContentResize as EventListener, true)
   window.removeEventListener('pointerup', flushPendingImageDistribute, true)
   window.removeEventListener('pointercancel', flushPendingImageDistribute, true)
   for (const timer of toastTimers.values()) window.clearTimeout(timer)
@@ -4992,6 +4955,7 @@ onMounted(() => {
 	// Take over global Ctrl/Cmd+S only on this page.
   window.addEventListener('dvs:shortcut/save', onGlobalShortcutSave as EventListener, true)
 	window.addEventListener('keydown', onWorkflowKeyDown, true)
+  window.addEventListener('dweb:content/resize', onContentResize as EventListener, true)
   window.addEventListener('pointerup', flushPendingImageDistribute, true)
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
   void refreshProjectList()
@@ -5001,7 +4965,7 @@ onMounted(() => {
 
 <style scoped>
 .aiwf-page {
-  height: 100vh;
+  height: 100%;
   position: relative;
   overflow: hidden;
 }

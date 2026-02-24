@@ -1,11 +1,32 @@
-"""Minimal Django settings for the Dweb Studio backend template."""
+"""Minimal Django settings for the Dweb Studio backend template.
+
+Runtime data (SECRET_KEY / sqlite db) is written under DWEB_DATA_DIR,
+so copied runtime projects can be safely re-created on a fresh machine.
+"""
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = "dev-secret-key-change-me"
+
+_DWEB_DATA_DIR = Path(os.getenv("DWEB_DATA_DIR", str(BASE_DIR))).resolve()
+_DWEB_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+_SECRET_FILE = _DWEB_DATA_DIR / "django_secret_key.txt"
+if _SECRET_FILE.exists():
+    SECRET_KEY = _SECRET_FILE.read_text(encoding="utf-8").strip() or ""
+else:
+    SECRET_KEY = ""
+
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_urlsafe(48)
+    try:
+        _SECRET_FILE.write_text(SECRET_KEY, encoding="utf-8")
+    except Exception:
+        pass
+
 DEBUG = True
 ALLOWED_HOSTS = ["*", "127.0.0.1", "localhost"]
 
@@ -31,10 +52,11 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
-    "django.middleware.clickjacking.XFrameOptionsMiddleware", 
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 ROOT_URLCONF = "dwebsite.urls"
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -56,7 +78,7 @@ WSGI_APPLICATION = "dwebsite.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": _DWEB_DATA_DIR / "db.sqlite3",
     }
 }
 
@@ -73,9 +95,9 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "static"
+STATIC_ROOT = _DWEB_DATA_DIR / "static"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = _DWEB_DATA_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
@@ -90,20 +112,11 @@ REST_FRAMEWORK = {
     ],
 }
 
-# CORS: allow local devtools/frontends to call generated APIs
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
-
-# Dweb Studio APIs tend to omit trailing slashes; disable auto-redirects that break POST bodies
 APPEND_SLASH = False
 
-# Export pipeline may upload raw/compressed frames as request bodies.
-# Django defaults are too small and will reject large POST bodies.
-# Make these limits configurable for local dev and CI.
 _DEFAULT_UPLOAD_LIMIT_MB = 256
 _UPLOAD_LIMIT_BYTES = int(os.getenv("DWEB_UPLOAD_LIMIT_BYTES", str(_DEFAULT_UPLOAD_LIMIT_MB * 1024 * 1024)))
-
-# Max in-memory request body size before Django raises RequestDataTooBig.
 DATA_UPLOAD_MAX_MEMORY_SIZE = _UPLOAD_LIMIT_BYTES
-# Max in-memory upload size before switching to a temp file handler.
 FILE_UPLOAD_MAX_MEMORY_SIZE = _UPLOAD_LIMIT_BYTES

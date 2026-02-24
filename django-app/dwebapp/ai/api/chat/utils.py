@@ -8,30 +8,21 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
-import os
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.http import StreamingHttpResponse
 
-from .... import deepseek_secrets
+from ...credentials_store import get_deepseek_cfg
 
 
 def _iso_now() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
-def _env_or_secret(name: str, fallback: str) -> str:
-    v = os.environ.get(name)
-    return v if v else fallback
-
-
 def _deepseek_cfg() -> Dict[str, str]:
-    base_url = _env_or_secret("DEEPSEEK_BASE_URL", deepseek_secrets.DEEPSEEK_BASE_URL).rstrip("/")
-    api_key = _env_or_secret("DEEPSEEK_API_KEY", deepseek_secrets.DEEPSEEK_API_KEY)
-    model = _env_or_secret("DEEPSEEK_MODEL", deepseek_secrets.DEEPSEEK_MODEL)
-    return {"base_url": base_url, "api_key": api_key, "model": model}
+    return get_deepseek_cfg()
 
 
 def _agent_to_ui_text(delta: str, *, source_model: Optional[str] = None) -> Dict[str, Any]:

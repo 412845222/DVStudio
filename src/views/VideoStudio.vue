@@ -94,6 +94,7 @@ const clampToViewport = () => {
 
 onMounted(() => {
 	clampToViewport()
+	window.addEventListener('dweb:content/resize', clampToViewport as EventListener, true)
 	if ('ResizeObserver' in window) {
 		ro = new ResizeObserver(() => clampToViewport())
 		if (rootEl.value) ro.observe(rootEl.value)
@@ -101,6 +102,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+	window.removeEventListener('dweb:content/resize', clampToViewport as EventListener, true)
 	if (cleanupMoveUp) cleanupMoveUp()
 	ro?.disconnect()
 	ro = null
@@ -109,7 +111,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .videostudio-page {
-	height: 100vh;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
 	min-height: 0;

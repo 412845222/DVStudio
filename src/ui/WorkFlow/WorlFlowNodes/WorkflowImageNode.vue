@@ -36,7 +36,16 @@
           :style="previewWrapStyle"
           @contextmenu.stop.prevent="onPreviewContextMenu"
         >
-          <canvas ref="mainCanvas" class="wf-media-canvas" />
+          <img
+            ref="previewImg"
+            class="wf-media-img"
+            :src="resourceUrl || ''"
+            :style="previewImageStyle"
+            alt="image preview"
+            draggable="false"
+            @load="onPreviewImageLoad"
+            @error="onPreviewImageError"
+          />
 
           <div v-if="cropMode" class="wf-crop-overlay" @pointerdown.stop>
             <div class="wf-crop-mask" :style="maskTopStyle" />
@@ -146,7 +155,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import WorkflowNodeBase from "../WorkflowNodeBase.vue";
-import { DwebCanvasGL } from "../../../engine/webgl/canvas/DwebCanvasGL";
 import { exportWorkflowImageOutputPng } from "../../../aiworkflow/imageOutput";
 
 type AnchorSpec = {
@@ -234,8 +242,7 @@ const onPreviewContextMenu = (e: MouseEvent) => {
 };
 
 const previewWrap = ref<HTMLElement | null>(null);
-const mainCanvas = ref<HTMLCanvasElement | null>(null);
-let glMain: DwebCanvasGL | null = null;
+const previewImg = ref<HTMLImageElement | null>(null);
 let ro: ResizeObserver | null = null;
 
 const wrapSize = ref({ w: 1, h: 1 });
@@ -320,6 +327,19 @@ const displayRect = computed<DisplayRect>(() => {
   return { x: (w - dw) / 2, y: (h - dh) / 2, w: dw, h: dh };
 });
 
+const previewImageStyle = computed(() => {
+  if (cropMode.value) {
+    return {
+      objectFit: "contain",
+      objectPosition: "center",
+    } as Record<string, string>;
+  }
+  return {
+    objectFit: "cover",
+    objectPosition: "center",
+  } as Record<string, string>;
+});
+
 const cropBoxPx = computed(() => {
   if (!cropMode.value) return null;
   const dr = displayRect.value;
@@ -386,10 +406,6 @@ const cropToUv = (c: { x: number; y: number; width: number; height: number }) =>
   return { u0: x0, u1: x1, v0: y0, v1: y1 };
 };
 
-const requestRender = () => {
-  glMain?.requestRender();
-};
-
 const ensureNaturalSizeFallback = async () => {
   if (!props.resourceUrl) return;
   if (naturalWidth.value && naturalHeight.value) return;
@@ -422,7 +438,6 @@ const toggleCropMode = async () => {
     await nextTick();
     await ensureNaturalSizeFallback();
   }
-  requestRender();
 };
 
 const applyOutputQualityByWidth = async (nextW: number) => {
@@ -511,7 +526,6 @@ const onCropPointerDown = (ev: PointerEvent, mode: CropDragMode) => {
         width: drag.startCrop.width,
         height: drag.startCrop.height,
       });
-      requestRender();
       return;
     }
 
@@ -534,7 +548,6 @@ const onCropPointerDown = (ev: PointerEvent, mode: CropDragMode) => {
     // Free-form crop: no aspect lock. Output resolution is only quality scaling.
 
     emitCrop({ x: x0, y: y0, width: w, height: h });
-    requestRender();
   };
   const onUp = () => {
     window.removeEventListener("pointermove", onMove);
@@ -559,51 +572,15 @@ const onFileChange = (e: Event) => {
   input.value = "";
 };
 
-const initWebgl = () => {
-  if (!previewWrap.value || !mainCanvas.value) return;
-  if (glMain) return;
-  glMain = new DwebCanvasGL(mainCanvas.value);
-  glMain.setScene({
-    render: (c) => {
-      const src = String(props.resourceUrl ?? "").trim();
-      if (!src) return;
-      const tex = c.getImageTexture(src, "clamp");
-      if (!tex) return;
-      const W = Math.max(1, c.size.width);
-      const H = Math.max(1, c.size.height);
-      const target = { w: W, h: H, scale: 1 };
-
-      // Full image UV (no vertical flip).
-      const uvFull = { u0: 0, u1: 1, v0: 0, v1: 1 };
-
-      // Rendering strategy:
-      // - cropMode: contain (show full source image, centered)
-      // - normal: cover (fill render area with FULL image, no black bars)
-      if (cropMode.value) {
-        const dr = displayRect.value;
-        c.drawLocalTexturedRectUv(target, dr.x, dr.y, dr.w, dr.h, tex, 1, 0, uvFull);
-        return;
-      }
-
-      // Full image cover (no real crop applied when UI is closed).
-      const imgW = naturalWidth.value ?? c.getImageSize(src)?.width ?? 1;
-      const imgH = naturalHeight.value ?? c.getImageSize(src)?.height ?? 1;
-      const scale = Math.max(W / Math.max(1, imgW), H / Math.max(1, imgH));
-      const dw = Math.max(1, imgW * scale);
-      const dh = Math.max(1, imgH * scale);
-      const dx = (W - dw) / 2;
-      const dy = (H - dh) / 2;
-      c.drawLocalTexturedRectUv(target, dx, dy, dw, dh, tex, 1, 0, uvFull);
-    },
-  });
-
+const initPreviewLayoutObserver = () => {
+  if (!previewWrap.value) return;
+  if (ro) return;
   ro = new ResizeObserver((entries) => {
     const r = entries[0]?.contentRect;
     if (!r) return;
     const w = Math.max(1, Math.floor(r.width));
     const h = Math.max(1, Math.floor(r.height));
     wrapSize.value = { w, h };
-    glMain?.setSize(w, h);
   });
   ro.observe(previewWrap.value);
 
@@ -612,7 +589,15 @@ const initWebgl = () => {
     w: Math.max(1, Math.floor(previewWrap.value.clientWidth || 1)),
     h: Math.max(1, Math.floor(previewWrap.value.clientHeight || 1)),
   };
-  glMain.setSize(wrapSize.value.w, wrapSize.value.h);
+};
+
+const onPreviewImageLoad = () => {
+  void ensureNaturalSizeFallback();
+  emit("media-ready");
+};
+
+const onPreviewImageError = () => {
+  emit("media-ready");
 };
 
 watch(
@@ -623,17 +608,9 @@ watch(
       cropMode.value = false;
       return;
     }
-    initWebgl();
+    initPreviewLayoutObserver();
     await ensureNaturalSizeFallback();
-    try {
-      await glMain?.preloadImages([{ src: props.resourceUrl, wrap: "clamp" }], {
-        timeoutMs: 6000,
-      });
-    } catch {
-      // ignore
-    }
-    requestRender();
-		emit("media-ready");
+    emit("media-ready");
   },
   { immediate: true }
 );
@@ -650,7 +627,6 @@ watch(
   ],
   async () => {
     await nextTick();
-    requestRender();
   },
   { flush: "post" }
 );
@@ -673,7 +649,7 @@ defineExpose({
 });
 
 onMounted(() => {
-  initWebgl();
+  initPreviewLayoutObserver();
 });
 
 onBeforeUnmount(() => {
@@ -683,12 +659,7 @@ onBeforeUnmount(() => {
     // ignore
   }
   ro = null;
-  try {
-    glMain?.dispose();
-  } catch {
-    // ignore
-  }
-  glMain = null;
+  previewImg.value = null;
 });
 </script>
 
@@ -716,7 +687,7 @@ onBeforeUnmount(() => {
   display: block;
 }
 
-.wf-media-canvas {
+.wf-media-img {
   position: absolute;
   inset: 0;
   width: 100%;

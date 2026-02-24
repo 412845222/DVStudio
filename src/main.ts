@@ -9,6 +9,12 @@ import { DVS_EVENTS, type DvsEditorNodeDeleteDetail, type DvsEditorNodePatchDeta
 import { VideoSceneStore } from './store/videoscene'
 import { TimelineStore } from './store/timeline'
 
+// 运行环境标记：Web 模式默认注入；Electron 模式由 preload 注入（且可能是只读属性）。
+const w = window as any
+if (!w.__DWEB_RUNTIME__) {
+	w.__DWEB_RUNTIME__ = { platform: 'web', isElectron: false }
+}
+
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
 window.addEventListener('contextmenu', (e) => {
 	e.preventDefault()
