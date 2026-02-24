@@ -18,6 +18,8 @@ import { setBackendBaseUrl } from '../network/backendConfig'
 
 const w = window as any
 
+let clientSettingsCache: ClientSettings | null = null
+
 export const isElectron = (): boolean => {
 	return w?.__DWEB_RUNTIME__?.platform === 'electron' || !!w?.dweb?.common
 }
@@ -130,6 +132,7 @@ export async function cleanupOldProject(): Promise<CleanupOldProjectResult | nul
 
 export async function getClientSettings(): Promise<ClientSettingsResult | null> {
 	if (w?.dweb?.common?.getClientSettings) return w.dweb.common.getClientSettings()
+	if (clientSettingsCache) return { ok: true, data: clientSettingsCache }
 	const local = w?.__DWEB_CLIENT_SETTINGS
 	if (local) return { ok: true, data: local as ClientSettings }
 	return { ok: false, error: 'Not running in Electron.' }
@@ -139,7 +142,16 @@ export async function saveClientSettings(payload: ClientSettings): Promise<Clien
 	if (!w?.dweb?.common?.saveClientSettings) return { ok: false, error: 'Not running in Electron.' }
 	const r: ClientSettingsResult = await w.dweb.common.saveClientSettings(payload)
 	if (r?.ok && r.data) {
-		w.__DWEB_CLIENT_SETTINGS = r.data
+		clientSettingsCache = r.data
+		// In Electron, preload may expose __DWEB_CLIENT_SETTINGS via contextBridge as a read-only getter.
+		// Only update window when it's actually writable or has a setter.
+		try {
+			const desc = Object.getOwnPropertyDescriptor(w, '__DWEB_CLIENT_SETTINGS')
+			const canAssign = !desc || ('writable' in desc ? Boolean((desc as any).writable) : typeof (desc as any).set === 'function')
+			if (canAssign) w.__DWEB_CLIENT_SETTINGS = r.data
+		} catch {
+			// ignore
+		}
 	}
 	return r
 }

@@ -266,6 +266,7 @@ import { VideoMetadataReadQueue } from '../aiworkflow/VideoMetadataReadQueue'
 import { createVideoFirstFrameThumbnail } from '../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
 import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../aiworkflow/localFileHandleDb'
 import { resolveBackendUrl } from '../network/backendConfig'
+import { isElectron } from '../electronBridge'
 
 const router = useRouter()
 const route = useRoute()
@@ -3629,13 +3630,20 @@ const fileFromUrl = async (url: string, fileNameBase: string): Promise<File> => 
 const uploadLocalResourceAndGetUrl = async (
   localUrl: string,
   kind: 'image' | 'video',
-  resourceName: string
+  resourceName: string,
+  opts?: { projectId?: number | null }
 ): Promise<{ url: string; absolutePath: string }> => {
-  const cached = localUrlUploadedAssetCache.get(localUrl)
+  const projectId = Number(opts?.projectId ?? currentProjectId.value ?? 0)
+  const cacheKey = `${Number.isFinite(projectId) && projectId > 0 ? projectId : 0}|${localUrl}`
+  const cached = localUrlUploadedAssetCache.get(cacheKey)
   if (cached) return cached
 
   const file = await fileFromUrl(localUrl, String(resourceName || kind || 'resource').replace(/\.[^.]+$/, ''))
-  const uploaded = await blueprintProjectService.uploadAsset(file, kind)
+  const uploaded = await blueprintProjectService.uploadAsset(
+    file,
+    kind,
+    (Number.isFinite(projectId) && projectId > 0) ? { projectId } : undefined
+  )
   if (!uploaded.ok) {
     throw new Error(String(uploaded.error || 'upload failed'))
   }
@@ -3645,7 +3653,7 @@ const uploadLocalResourceAndGetUrl = async (
     absolutePath: String(asset.absolutePath || ''),
   }
   if (!next.url) throw new Error('empty uploaded asset url')
-  localUrlUploadedAssetCache.set(localUrl, next)
+  localUrlUploadedAssetCache.set(cacheKey, next)
   return next
 }
 
@@ -3685,7 +3693,9 @@ const buildPersistableSnapshotWithOptions = async (opts?: { uploadLocalResources
     let backendAbsolutePath = ''
     const kind = ((r as any).kind === 'video' ? 'video' : 'image') as 'image' | 'video'
     if (uploadLocal && (rawUrl.startsWith('blob:') || rawUrl.startsWith('data:'))) {
-      const uploaded = await uploadLocalResourceAndGetUrl(rawUrl, kind, String((r as any).name || kind))
+        const uploaded = await uploadLocalResourceAndGetUrl(rawUrl, kind, String((r as any).name || kind), {
+          projectId: currentProjectId.value,
+        })
       persistUrl = uploaded.url
       backendAbsolutePath = uploaded.absolutePath
       uploadedCount += 1
@@ -4099,10 +4109,14 @@ const saveProjectToBackend = async (nameInput?: string, opts?: { silent?: boolea
   const persisted = await persistUnstableImagesForSave()
   if (!persisted) return false
 
+  // Electron packaged build cannot reliably restore FileSystemHandle permissions across restarts.
+  // Persist local blob/data media into backend storage on save so reopening a project restores the last import.
+  const uploadLocalResources = isElectron()
+
   let snapshot: AIWorkflowDraftSnapshot
   try {
     // Ctrl+S 保存只落盘结构，不触发本地 blob/data 资源上传。
-    snapshot = await buildPersistableSnapshotWithOptions({ uploadLocalResources: false })
+    snapshot = await buildPersistableSnapshotWithOptions({ uploadLocalResources })
   } catch (err: any) {
     if (!silent) pushToast('保存项目失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
     return false
@@ -4127,7 +4141,7 @@ const saveProjectToBackend = async (nameInput?: string, opts?: { silent?: boolea
     const migrated = await migrateCurrentResourcesToProjectScope(projectId, { silent })
     if (migrated.changed > 0) {
       try {
-        const migratedSnapshot = await buildPersistableSnapshotWithOptions({ uploadLocalResources: false })
+        const migratedSnapshot = await buildPersistableSnapshotWithOptions({ uploadLocalResources })
         const second = await blueprintProjectService.saveProject({
           name: currentProjectName.value,
           snapshot: migratedSnapshot,
@@ -4532,7 +4546,7 @@ const isTemporaryThumbnailRef = (input: { url?: unknown; sourcePath?: unknown })
 }
 
 const importAssetIntoProjectScope = async (payload: {
-  kind: 'image'
+  kind: 'image' | 'video'
   name: string
   projectId: number
   sourcePath?: string
@@ -4592,6 +4606,59 @@ const migrateCurrentResourcesToProjectScope = async (
     const kind = (String(r.kind || '').toLowerCase() === 'video' ? 'video' : 'image') as 'image' | 'video'
     const name = String(r.name || `${kind}_${rid}`).trim() || `${kind}_${rid}`
 
+    // 1) Migrate main asset (image/video) into project-scoped bucket so it can be restored
+    // without relying on FileSystemHandle permissions (important for Electron packaged builds).
+    const rawUrl = String(r?.url || '').trim()
+    const rawSourcePath = String(r?.sourcePath || '').trim()
+    const mediaRef = { url: rawUrl, sourcePath: rawSourcePath }
+    const mediaIsProjectScoped = isProjectScopedMediaRef(pid, mediaRef)
+    const urlLooksLocal = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')
+    const sourceUrlForImport = rawUrl && !rawUrl.startsWith('file:') ? rawUrl : ''
+    const mediaNeedsMigration =
+      !mediaIsProjectScoped &&
+      (Boolean(rawSourcePath) || urlLooksLocal || isDjangoManagedResource(mediaRef))
+    if (mediaNeedsMigration) {
+      const imported = await importAssetIntoProjectScope({
+        kind,
+        name,
+        projectId: pid,
+        sourcePath: rawSourcePath || undefined,
+        sourceUrl: sourceUrlForImport || undefined,
+        bucket: 'assets',
+      })
+
+      if (!imported) {
+        failed += 1
+      } else {
+        const nextUrl = resolveBackendUrl(String((imported as any).url || ''))
+        const nextSourcePath = String((imported as any).sourcePath || (imported as any).absolutePath || '').trim()
+        if (nextUrl || nextSourcePath) {
+          store.commit('patchResource', {
+            resourceId: rid,
+            patch: {
+              url: nextUrl || rawUrl,
+              sourcePath: nextSourcePath || rawSourcePath || undefined,
+              // Once project-scoped, do not rely on IndexedDB handles.
+              localFileKey: undefined,
+            } as any,
+          })
+
+          if (isDjangoManagedResource(mediaRef) && (rawUrl || rawSourcePath)) {
+            await blueprintProjectService.deleteAsset({
+              projectId: pid,
+              url: rawUrl || undefined,
+              sourcePath: rawSourcePath || undefined,
+              relativePath: mediaRelativePathFromUrl(rawUrl) || undefined,
+            })
+          }
+
+          changed += 1
+        } else {
+          failed += 1
+        }
+      }
+    }
+
     const latest = store.state.resourcesById?.[rid] as any
     const posterUrl = String((latest as any)?.posterUrl || '').trim()
     const posterSourcePath = String((latest as any)?.posterSourcePath || '').trim()
@@ -4648,10 +4715,10 @@ const migrateCurrentResourcesToProjectScope = async (
   }
 
   if (!opts?.silent && changed > 0) {
-    pushToast(`已迁移 ${changed} 条临时缩略图到项目专属目录。`, 'info')
+    pushToast(`已迁移 ${changed} 条资源到项目专属目录。`, 'info')
   }
   if (!opts?.silent && failed > 0) {
-    pushToast(`有 ${failed} 条临时缩略图迁移失败，已保留原路径。`, 'warn')
+    pushToast(`有 ${failed} 条资源迁移失败，已保留原路径。`, 'warn')
   }
   return { changed, failed }
 }
