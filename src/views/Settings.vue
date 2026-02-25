@@ -9,7 +9,7 @@ import MarkdownViewer from "../ui/UIComponent/MarkdownViewer.vue";
 
 const FIXED_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const FIXED_DEEPSEEK_MODEL = "deepseek-chat";
-const FIXED_GEMINI_MODEL = "gemini-2.0-flash";
+const FIXED_GEMINI_MODEL = "gemini-2.5-flash-image";
 
 const PAGE_HINT_TEXT =
   "API Key 属于你的私有资产。为降低泄露风险，本软件会在本地后端数据库中加密保存；但无法保证在电脑被入侵等极端情况下的绝对安全。";

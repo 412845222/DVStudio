@@ -1520,6 +1520,31 @@ def _nanobanana_cfg() -> Dict[str, str]:
         - POST https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent
     """
 
+    NANOBANANA_DEFAULT_MODEL = "gemini-2.5-flash-image"
+    NANOBANANA_PRO_MODEL = "gemini-3-pro-image-preview"
+    NANOBANANA_ALLOWED_MODELS = {NANOBANANA_DEFAULT_MODEL, NANOBANANA_PRO_MODEL}
+
+    def _nanobanana_normalize_model(raw: str) -> str:
+        m = str(raw or "").strip()
+        if not m:
+            return NANOBANANA_DEFAULT_MODEL
+        if m in NANOBANANA_ALLOWED_MODELS:
+            return m
+
+        # Backward-compat: older app builds hard-coded deprecated text-only models.
+        legacy_map = {
+            "gemini-2.0-flash": NANOBANANA_DEFAULT_MODEL,
+            "gemini-2.0-flash-lite": NANOBANANA_DEFAULT_MODEL,
+            "gemini-2.5-flash": NANOBANANA_DEFAULT_MODEL,
+            "gemini-2.5-flash-lite": NANOBANANA_DEFAULT_MODEL,
+        }
+        if m in legacy_map:
+            return legacy_map[m]
+
+        # Any other model string is treated as unsupported for this endpoint,
+        # because we rely on Gemini native image generation returning inline images.
+        return NANOBANANA_DEFAULT_MODEL
+
     def _env_or_default(name: str, fallback: str) -> str:
         v = os.environ.get(name)
         return v if v else fallback
@@ -1532,7 +1557,7 @@ def _nanobanana_cfg() -> Dict[str, str]:
             api_key = (get_gemini_api_key() or "").strip()
         except Exception:
             api_key = ""
-    model = _env_or_default("NANOBANANA_MODEL", "gemini-2.5-flash-image").strip() or "gemini-2.5-flash-image"
+    model = _nanobanana_normalize_model(_env_or_default("NANOBANANA_MODEL", NANOBANANA_DEFAULT_MODEL))
     api_base = _env_or_default(
         "NANOBANANA_API_BASE",
         "https://generativelanguage.googleapis.com/v1beta",
@@ -1567,9 +1592,13 @@ def _nanobanana_truthy(v: Any) -> bool:
 
 
 def _nanobanana_cfg_with_model(cfg: Dict[str, str], model: str) -> Dict[str, str]:
+    # Keep in sync with _nanobanana_cfg() model rules.
+    allowed = {"gemini-2.5-flash-image", "gemini-3-pro-image-preview"}
     m = str(model or "").strip()
     if not m:
         return cfg
+    if m not in allowed:
+        m = "gemini-2.5-flash-image"
     api_base = str(cfg.get("api_base") or "https://generativelanguage.googleapis.com/v1beta").strip() or "https://generativelanguage.googleapis.com/v1beta"
     next_cfg = dict(cfg)
     next_cfg["model"] = m

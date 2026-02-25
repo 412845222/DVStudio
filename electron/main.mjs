@@ -29,7 +29,9 @@ let clientSettings = null
 
 const FIXED_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
-const FIXED_GEMINI_MODEL = 'gemini-2.0-flash'
+// Nano Banana image generation requires an image-capable model.
+// Ref: https://ai.google.dev/gemini-api/docs/image-generation
+const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 
 let bootstrapProc = null
 
