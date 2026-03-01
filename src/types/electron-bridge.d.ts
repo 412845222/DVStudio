@@ -103,6 +103,7 @@ declare global {
 				clearBackendLogs(): Promise<{ ok: boolean }>
 				collectDiagnostics(): Promise<{ ok: boolean; data?: any; error?: string }>
 				revealUserDataDir(): Promise<{ ok: true }>
+				openFolderForPath(payload: { path: string }): Promise<{ ok: boolean; error?: string }>
 					runBootstrapInstaller(): Promise<{ ok: boolean; started?: boolean; running?: boolean; error?: string }>
 			}
 			window?: {

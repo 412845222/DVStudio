@@ -91,6 +91,7 @@
         @cancel-comfyui="onComfyUICancel(node.id)"
         @preview-contextmenu="onNodePreviewContextMenu(node.id, $event)"
         @media-ready="onNodeMediaReady(node.id)"
+        @update-rotate-output="onRotateImageOutput(node.id, $event)"
       />
 
       <BottomChatDock
@@ -100,8 +101,11 @@
         :collapsed="chatCollapsed"
         :taskStatus="chatTaskStatus"
         :modelKey="chatModelKey"
+        :nanoPreviewUrls="nanoPreviewUrls"
+        :nanoPreviewLoadingStates="nanoPreviewLoadingStates"
         :nanoPreviewUrl="nanoPreviewUrl"
         :nanoStatus="nanoStatus"
+        :nanoDetail="nanoDetail"
         :nanoBilling="nanoBilling"
         :nanoModelUsed="nanoModelUsed"
         :nanoAnchorNodeId="NANO_ANCHOR_NODE_ID"
@@ -235,6 +239,7 @@ import WorkflowEdgeLayer from '../ui/WorkFlow/WorkflowEdgeLayer.vue'
 import WorkflowTextNode from '../ui/WorkFlow/WorlFlowNodes/WorkflowTextNode.vue'
 import WorkflowTextMergeNode from '../ui/WorkFlow/WorlFlowNodes/WorkflowTextMergeNode.vue'
 import WorkflowImageNode from '../ui/WorkFlow/WorlFlowNodes/WorkflowImageNode.vue'
+import WorkflowRotateImageNode from '../ui/WorkFlow/WorlFlowNodes/WorkflowRotateImageNode.vue'
 import WorkflowVideoNode from '../ui/WorkFlow/WorlFlowNodes/WorkflowVideoNode.vue'
 import WorkflowStoryNode from '../ui/WorkFlow/WorlFlowNodes/WorkflowStoryNode.vue'
 import WorkflowComfyUINode from '../ui/WorkFlow/WorlFlowNodes/WorkflowComfyUINode.vue'
@@ -266,7 +271,7 @@ import { VideoMetadataReadQueue } from '../aiworkflow/VideoMetadataReadQueue'
 import { createVideoFirstFrameThumbnail } from '../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
 import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../aiworkflow/localFileHandleDb'
 import { resolveBackendUrl } from '../network/backendConfig'
-import { isElectron } from '../electronBridge'
+import { isElectron, openFolderForPath } from '../electronBridge'
 
 const router = useRouter()
 const route = useRoute()
@@ -380,9 +385,18 @@ const chatSending = ref(false)
 const chatCollapsed = ref(true)
 
 const nanoPreviewUrl = ref<string>('')
+const nanoPreviewUrls = ref<string[]>([])
+const nanoPreviewLoadingStates = ref<boolean[]>([])
 const nanoStatus = ref<string>('')
 const nanoBilling = ref<string>('')
 const nanoModelUsed = ref<string>('')
+const nanoDetail = ref<string>('')
+
+const appendNanoDetail = (line: string) => {
+  const text = String(line || '').trim()
+  if (!text) return
+  nanoDetail.value = nanoDetail.value ? `${nanoDetail.value}\n${text}` : text
+}
 
 const disconnectNanoRefEdges = () => {
   const removeIds: string[] = []
@@ -505,6 +519,15 @@ const onNanoBananaGenerate = async (payload: { prompt: string; config: NanoBanan
   nanoStatus.value = '准备中…'
   nanoBilling.value = ''
   nanoModelUsed.value = ''
+  nanoDetail.value = ''
+  nanoPreviewUrl.value = ''
+  const requestedCountRaw = Number((payload?.config as any)?.quantity ?? 1)
+  const requestCount = Number.isFinite(requestedCountRaw)
+    ? Math.max(1, Math.min(4, Math.floor(requestedCountRaw)))
+    : 1
+  nanoPreviewUrls.value = Array.from({ length: requestCount }, () => '')
+  nanoPreviewLoadingStates.value = Array.from({ length: requestCount }, () => true)
+  nanoStatus.value = `并发请求中（0/${requestCount}）`
   try {
     const svc = new ComfyUIBridgeService()
 
@@ -516,6 +539,7 @@ const onNanoBananaGenerate = async (payload: { prompt: string; config: NanoBanan
 
     // Collect reference images from workflow edges connected to the NanoBanana pseudo node.
     const refFiles: Array<{ idx: number; file: File }> = []
+    const refSources: Array<{ idx: number; nodeType: WorkflowNode['type'] }> = []
     const pseudo = store.state.nodesById[NANO_ANCHOR_NODE_ID]
     const inputAnchors = Array.isArray(pseudo?.inputs) ? pseudo!.inputs : ([] as WorkflowAnchorSpec[])
     const sortedAnchors = [...inputAnchors].sort((a, b) => anchorIndexFromId(a.id) - anchorIndexFromId(b.id))
@@ -525,11 +549,12 @@ const onNanoBananaGenerate = async (payload: { prompt: string; config: NanoBanan
       if (!edge) continue
       const fromNode = store.state.nodesById[edge.fromNodeId]
       if (!fromNode) continue
-      if (fromNode.type !== 'image') {
-        pushToast(`NanoBanana 参考图仅支持连接「图片节点」输出（当前：${fromNode.type}）。`, 'warn')
+      const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
+      if (!isImageSource) {
+        pushToast(`NanoBanana 参考图仅支持连接「图片节点/旋转图片节点」输出（当前：${fromNode.type}）。`, 'warn')
         continue
       }
-      const url = nodeResourceUrl(fromNode)
+      let url = nodeResourceUrl(fromNode)
       if (!url) {
         pushToast('NanoBanana 参考图来源节点缺少图片资源。', 'warn')
         continue
@@ -537,27 +562,79 @@ const onNanoBananaGenerate = async (payload: { prompt: string; config: NanoBanan
       const nameBase = String(nodeResourceName(fromNode) ?? fromNode.alias ?? fromNode.title ?? 'ref').trim() || 'ref'
       const idx = anchorIndexFromId(a.id)
 
+      // For rotate-image output, persist local/blob/data URL to backend asset first,
+      // then cache refs for NanoBanana so HTTP payload always has concrete files.
+      if (
+        fromNode.type === 'rotate-image' &&
+        (String(url).startsWith('blob:') || String(url).startsWith('data:') || String(url).startsWith('file:') || String(url).startsWith('/'))
+      ) {
+        try {
+          const uploaded = await uploadLocalResourceAndGetUrl(
+            String(url),
+            'image',
+            `${nameBase}_rot`,
+            { projectId: currentProjectId.value }
+          )
+          const rid = String((fromNode as any).resourceId ?? '').trim()
+          if (rid) {
+            store.commit('patchResource', {
+              resourceId: rid,
+              patch: {
+                url: uploaded.url,
+                sourcePath: uploaded.absolutePath || undefined,
+              } as any,
+            })
+          }
+          url = uploaded.url
+        } catch {
+          // fallback to original local/blob/data URL below
+        }
+      }
+
       let file: File | null = null
       try {
-        // Prefer node-output (cropped) file if crop is enabled.
-        file = await buildCroppedImageTransferFile(fromNode, url, nameBase)
+        // Image node: prefer node-output (cropped) file if crop is enabled.
+        // Rotate-image node: directly use current rotated output image file.
+        if (fromNode.type === 'image') {
+          file = await buildCroppedImageTransferFile(fromNode, url, nameBase)
+        }
         if (!file) file = await fileFromUrl(url, nameBase)
       } catch {
         file = null
       }
 
-      if (file) refFiles.push({ idx, file })
+      if (file) {
+        refFiles.push({ idx, file })
+        refSources.push({ idx, nodeType: fromNode.type })
+      }
     }
 
     refFiles.sort((a, b) => a.idx - b.idx)
+    refSources.sort((a, b) => a.idx - b.idx)
 
-    const form = new FormData()
-    form.set('prompt', prompt)
+    const rotateRefIdx = refSources.filter((s) => s.nodeType === 'rotate-image').map((s) => s.idx)
+    const imageRefIdx = refSources.filter((s) => s.nodeType === 'image').map((s) => s.idx)
+    let finalPrompt = prompt
+    if (rotateRefIdx.length) {
+      const relLines: string[] = []
+      relLines.push('[Reference Relation Rules]')
+      if (imageRefIdx.length) {
+        relLines.push(`- Original refs: #${imageRefIdx.join(', #')}.`)
+      }
+      relLines.push(`- Rotated refs: #${rotateRefIdx.join(', #')} (these are rotated-view references generated from the same original content).`)
+      relLines.push('- REQUIRED: Keep the exact identical BACKGROUND, environment, and lighting from original refs.')
+      relLines.push('- REQUIRED: Keep exact identity/texture/structure of the subject from original refs, and ONLY align the camera/view/framing to rotated refs.')
+      relLines.push('- Do not replace the subject, do not alter the background, do not invent new materials or elements.')
+      finalPrompt = `${prompt}\n\n${relLines.join('\n')}`
+    }
+
     const ar = String(payload?.config?.aspectRatio ?? '').trim()
-    if (ar) form.set('aspectRatio', ar)
-    if (payload?.config && (payload as any).config?.usePro) form.set('usePro', '1')
+    const selectedImageModel = String((payload as any)?.config?.imageModel ?? '').trim()
+    const useProByModel = selectedImageModel === 'gemini-3-pro-image-preview'
 
     // Cache ref images to Django first, then pass ordered cache ids.
+    let cachedRefIds: string[] = []
+    let useDirectRefUpload = false
     if (refFiles.length) {
       const cacheForm = new FormData()
       for (const r of refFiles) {
@@ -567,57 +644,96 @@ const onNanoBananaGenerate = async (payload: { prompt: string; config: NanoBanan
       }
       const cacheRes = await svc.nanoBananaCacheRefImages(cacheForm)
       if (cacheRes.ok && Array.isArray((cacheRes as any).cacheIds)) {
-        for (const cid of (cacheRes as any).cacheIds as string[]) {
-          form.append('refCacheIds', String(cid || ''))
-        }
+        cachedRefIds = ((cacheRes as any).cacheIds as string[]).map((v) => String(v || '')).filter(Boolean)
       } else {
         // Fallback: direct upload if cache endpoint fails.
-        pushToast('NanoBanana：参考图缓存失败，已回退为直接上传。', 'warn')
+        const warnMsg = '参考图缓存失败，已回退为直接上传。'
+        appendNanoDetail(`警告：${warnMsg}`)
+        pushToast(`NanoBanana：${warnMsg}`, 'warn')
+        useDirectRefUpload = true
+      }
+    }
+    let completedCount = 0
+    let failedCount = 0
+    const updateProgressStatus = () => {
+      nanoStatus.value = `并发请求中（${completedCount}/${requestCount}）`
+      if (completedCount >= requestCount) {
+        const successCount = requestCount - failedCount
+        nanoStatus.value = failedCount > 0 ? `完成（成功 ${successCount}，失败 ${failedCount}）` : '完成'
+      }
+    }
+
+    const runSingleRequest = async (index: number) => {
+      const requestNo = index + 1
+      const form = new FormData()
+      form.set('prompt', finalPrompt)
+      if (ar) form.set('aspectRatio', ar)
+      if (selectedImageModel) form.set('imageModel', selectedImageModel)
+      if (useProByModel || (payload?.config && (payload as any).config?.usePro)) form.set('usePro', '1')
+      if (useDirectRefUpload) {
         for (const r of refFiles) form.append('refImages', r.file, r.file.name)
-      }
-    }
-
-    for await (const ev of svc.nanoBananaGenerateStream(form)) {
-      if (ev.type === 'done') break
-      if (ev.type === 'error') {
-        nanoStatus.value = '失败'
-        pushToast('NanoBanana 生成失败：' + String(ev.error?.message ?? 'unknown'), 'warn')
-        break
+      } else {
+        for (const cid of cachedRefIds) form.append('refCacheIds', cid)
       }
 
-      const m = ev.message
-      if (m.type === 'agentToUi/taskStatus') {
-        const phase = String((m as any)?.payload?.phase ?? '')
-        const msg = (m as any)?.payload?.message
-        nanoStatus.value = String(typeof msg === 'string' && msg.trim() ? msg.trim() : phase || '处理中')
-        continue
-      }
-
-      if (m.type === 'agentToUi/chatMessage') {
-        const content = String((m as any)?.payload?.content ?? '')
-        try {
-          const obj = JSON.parse(content)
-          if (obj && typeof obj === 'object') {
-            if (typeof (obj as any).imageUrl === 'string') nanoPreviewUrl.value = resolveBackendUrl(String((obj as any).imageUrl))
-            if (typeof (obj as any).billing === 'string') nanoBilling.value = String((obj as any).billing)
-            if (typeof (obj as any).model === 'string') nanoModelUsed.value = String((obj as any).model)
+      let requestFailed = false
+      try {
+        for await (const ev of svc.nanoBananaGenerateStream(form)) {
+          if (ev.type === 'done') break
+          if (ev.type === 'error') {
+            const errMsg = String(ev.error?.message ?? 'unknown')
+            requestFailed = true
+            appendNanoDetail(`请求 ${requestNo} 错误：${errMsg}`)
+            pushToast(`NanoBanana 第 ${requestNo} 张失败：` + errMsg, 'warn')
+            break
           }
-        } catch {
-          // ignore
-        }
-        continue
-      }
 
-      if (m.type === 'agentToUi/error') {
-        const msg = (m as any)?.payload?.message
-        nanoStatus.value = '失败'
-        pushToast('NanoBanana 生成失败：' + String(typeof msg === 'string' ? msg : 'unknown'), 'warn')
-        break
+          const m = ev.message
+          if (m.type === 'agentToUi/chatMessage') {
+            const content = String((m as any)?.payload?.content ?? '')
+            try {
+              const obj = JSON.parse(content)
+              if (obj && typeof obj === 'object') {
+                if (typeof (obj as any).imageUrl === 'string') {
+                  const nextUrl = resolveBackendUrl(String((obj as any).imageUrl))
+                  if (nextUrl) {
+                    nanoPreviewUrls.value = nanoPreviewUrls.value.map((v, i) => (i === index ? nextUrl : v))
+                    nanoPreviewLoadingStates.value = nanoPreviewLoadingStates.value.map((v, i) => (i === index ? false : v))
+                    if (!nanoPreviewUrl.value) nanoPreviewUrl.value = nextUrl
+                  }
+                }
+                if (typeof (obj as any).billing === 'string') nanoBilling.value = String((obj as any).billing)
+                if (typeof (obj as any).model === 'string') nanoModelUsed.value = String((obj as any).model)
+              }
+            } catch {
+              // ignore
+            }
+            continue
+          }
+
+          if (m.type === 'agentToUi/error') {
+            const msg = (m as any)?.payload?.message
+            const errMsg = String(typeof msg === 'string' ? msg : 'unknown')
+            requestFailed = true
+            appendNanoDetail(`请求 ${requestNo} 错误：${errMsg}`)
+            pushToast(`NanoBanana 第 ${requestNo} 张失败：` + errMsg, 'warn')
+            break
+          }
+        }
+      } finally {
+        nanoPreviewLoadingStates.value = nanoPreviewLoadingStates.value.map((v, i) => (i === index ? false : v))
+        if (requestFailed) failedCount += 1
+        completedCount += 1
+        updateProgressStatus()
       }
     }
+
+    await Promise.all(Array.from({ length: requestCount }, (_, idx) => runSingleRequest(idx)))
   } catch (err: any) {
+    const errMsg = String(err?.message ?? err ?? 'unknown')
     nanoStatus.value = '失败'
-    pushToast('NanoBanana 生成失败：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+    appendNanoDetail(`错误：${errMsg}`)
+    pushToast('NanoBanana 生成失败：' + errMsg, 'warn')
   } finally {
     // Ensure the preview loading animation is visible even if backend is disconnected and fails fast.
     const minShowMs = 900
@@ -625,6 +741,7 @@ const onNanoBananaGenerate = async (payload: { prompt: string; config: NanoBanan
     if (elapsed < minShowMs) {
       await new Promise((r) => setTimeout(r, minShowMs - elapsed))
     }
+    nanoPreviewLoadingStates.value = nanoPreviewLoadingStates.value.map(() => false)
     chatSending.value = false
   }
 }
@@ -743,7 +860,7 @@ const onNodeDelete = (nodeId: string) => {
   void removeSelectedNodesWithResourceCleanup([nodeId])
 }
 
-const onNodeSetType = (nodeId: string, type: 'base' | 'image' | 'video' | 'story' | 'comfyui') => {
+const onNodeSetType = (nodeId: string, type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'story' | 'comfyui') => {
   store.commit('setNodeType', { nodeId, type })
 }
 
@@ -1612,6 +1729,51 @@ const onVideoScreenshot = (
     },
   })
   autoSizeMediaNode(targetImageNodeId, payload.dataUrl, 'image')
+}
+
+const onRotateImageOutput = (
+  nodeId: string,
+  payload: { dataUrl: string; promptText: string; yaw: number; pitch: number; width: number; height: number }
+) => {
+  const node = store.state.nodesById[nodeId] as any
+  if (!node || node.type !== 'rotate-image') return
+
+  const promptText = String(payload?.promptText ?? '')
+  store.commit('setNodeRotatePromptText', { nodeId, text: promptText })
+
+  const dataUrl = String(payload?.dataUrl ?? '').trim()
+  if (!dataUrl) return
+
+  const name = `rotate_${nodeId}.png`
+  const existingRid = String(node.resourceId ?? '').trim()
+  let outputRid = existingRid
+  const existing = existingRid ? (store.state.resourcesById[existingRid] as any) : null
+
+  if (existing && existing.kind === 'image') {
+    store.commit('patchResource', {
+      resourceId: existingRid,
+      patch: { name, url: dataUrl } as any,
+    })
+  } else {
+    outputRid = makeResourceId()
+    store.commit('addResource', {
+      id: outputRid,
+      kind: 'image',
+      name,
+      url: dataUrl,
+      createdAt: Date.now(),
+    })
+    store.commit('setNodeResource', { nodeId, resourceId: outputRid })
+  }
+
+  for (const e of edges.value) {
+    if (e.fromNodeId !== nodeId) continue
+    if (e.fromAnchorId !== 'out-image') continue
+    const toNode = store.state.nodesById[e.toNodeId]
+    if (!toNode || toNode.type !== 'image') continue
+    store.commit('setNodeResource', { nodeId: toNode.id, resourceId: outputRid })
+    autoSizeMediaNode(toNode.id, dataUrl, 'image')
+  }
 }
 
 const videoPosterGenerating = new Set<string>()
@@ -2700,6 +2862,30 @@ const inferSelectedResourceFilename = (node: WorkflowNode) => {
   return `image-${node.id}.png`
 }
 
+const selectedNodeLocalResourcePath = computed(() => {
+  if (!selectedNodeId.value) return ''
+  const node = store.state.nodesById[selectedNodeId.value]
+  if (!node || (node.type !== 'image' && node.type !== 'video')) return ''
+  const rid = String((node as any)?.resourceId ?? '').trim()
+  if (!rid) return ''
+  const resource = store.state.resourcesById[rid] as any
+  if (!resource) return ''
+
+  const sourcePath = String(resource?.sourcePath ?? '').trim()
+  if (/^[a-zA-Z]:[\\/]/.test(sourcePath) || sourcePath.startsWith('/')) return sourcePath
+
+  const rawUrl = String(resource?.url ?? '').trim()
+  if (/^file:\/\//i.test(rawUrl)) {
+    const urlObj = new URL(rawUrl)
+    return decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1')
+  }
+  return ''
+})
+
+const canOpenSelectedNodeFolder = computed(() => {
+  return Boolean(isElectron() && selectedNodeLocalResourcePath.value)
+})
+
 const onNodePreviewContextMenu = (nodeId: string, payload: { clientX: number; clientY: number }) => {
   const node = store.state.nodesById[nodeId]
   const worldX = node ? node.worldX : 0
@@ -2749,11 +2935,41 @@ const storyPreview = (node: WorkflowNode) => {
   }
 }
 
+const rotateImagePreviewUrl = (node: WorkflowNode) => {
+  const inputId = node.inputs?.[0]?.id
+  if (!inputId) return null as string | null
+  const edge = edges.value.find((e) => e.toNodeId === node.id && e.toAnchorId === inputId)
+  if (!edge) return null as string | null
+  const fromNode = store.state.nodesById[edge.fromNodeId]
+  if (!fromNode) return null as string | null
+
+  const rid = String((fromNode as any).resourceId ?? '').trim()
+  if (rid) {
+    const r = store.state.resourcesById[rid] as any
+    if (r && String(r.kind ?? '').trim() === 'image') {
+      const url = String(r.url ?? '').trim()
+      if (url) return url
+    }
+  }
+
+  if (fromNode.type === 'comfyui') {
+    const outputs = Array.isArray(fromNode.comfyuiSettings?.outputs)
+      ? (fromNode.comfyuiSettings!.outputs! as ComfyLocalizedOutput[])
+      : []
+    const media = comfyOutputForAnchor(outputs, String((edge as any).fromAnchorId ?? ''), 'image')
+    const url = String((media as any)?.url ?? '').trim()
+    if (url) return url
+  }
+
+  return null as string | null
+}
+
 const nodeComponent = (node: WorkflowNode) => {
   if (node.type === 'story') return WorkflowStoryNode
   if (node.type === 'text') return WorkflowTextNode
   if (node.type === 'text-merge') return WorkflowTextMergeNode
   if (node.type === 'image') return WorkflowImageNode
+  if (node.type === 'rotate-image') return WorkflowRotateImageNode
   if (node.type === 'video') return WorkflowVideoNode
   if (node.type === 'comfyui') return WorkflowComfyUINode
   return WorkflowNodeBase
@@ -2767,6 +2983,7 @@ function getTextOutputForNode(nodeId: string, visited?: Set<string>): string {
   const n = store.state.nodesById[nodeId] as any
   if (!n) return ''
   if (n.type === 'text') return String(n.textValue ?? '')
+  if (n.type === 'rotate-image') return String(n.rotatePromptText ?? '')
   if (n.type === 'text-merge') return computeMergedText(nodeId, v)
   return ''
 }
@@ -2836,6 +3053,12 @@ const nodeExtraProps = (node: WorkflowNode) => {
             screenshotEnabled: Boolean(firstConnectedImageTargetFromVideo(node.id)),
           }
         : {}),
+    }
+  }
+  if (node.type === 'rotate-image') {
+    return {
+      inputUrl: rotateImagePreviewUrl(node),
+      rotatePromptText: String((node as any).rotatePromptText ?? ''),
     }
   }
   if (node.type === 'comfyui') {
@@ -4404,12 +4627,37 @@ const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: num
     dropTarget.value = null
     return
   }
+  const fromNodeId = linkDraft.value.fromNodeId
+  const fromAnchorId = linkDraft.value.fromAnchorId
+  const toNodeId = payload.nodeId
+  const toAnchorId = payload.anchorId
+
   store.commit('addEdge', {
     fromNodeId: linkDraft.value.fromNodeId,
     fromAnchorId: linkDraft.value.fromAnchorId,
     toNodeId: payload.nodeId,
     toAnchorId: payload.anchorId,
   })
+
+  // Immediate sync for rotate-image -> image nodes (out-image -> in-resource)
+  const fromNode = store.state.nodesById[fromNodeId] as any
+  const toNode = store.state.nodesById[toNodeId] as any
+  if (
+    fromNode &&
+    toNode &&
+    fromNode.type === 'rotate-image' &&
+    fromAnchorId === 'out-image' &&
+    toNode.type === 'image'
+  ) {
+    const rid = String(fromNode.resourceId ?? '').trim()
+    if (rid) {
+      const r = store.state.resourcesById[rid] as any
+      const url = String(r?.url ?? '').trim()
+      store.commit('setNodeResource', { nodeId: toNodeId, resourceId: rid })
+      if (url) autoSizeMediaNode(toNodeId, url, 'image')
+    }
+  }
+
   if (cleanupLink) cleanupLink()
   cleanupLink = null
   linkDraft.value = null
@@ -4851,6 +5099,11 @@ const contextMenuSections = computed<ContextMenuSection[]>(() => {
         label: node.type === 'image' ? '图片另存为' : '视频另存为',
         disabled: !String(url ?? '').trim(),
       })
+      actionItems.push({
+        id: 'open-image-folder',
+        label: '文件夹打开',
+        disabled: !canOpenSelectedNodeFolder.value,
+      })
     }
   }
 
@@ -4883,6 +5136,7 @@ const contextMenuSections = computed<ContextMenuSection[]>(() => {
             { id: 'set-type:text', label: '文本' },
             { id: 'set-type:text-merge', label: '文本整合' },
             { id: 'set-type:image', label: '图片' },
+            { id: 'set-type:rotate-image', label: '旋转图片' },
             { id: 'set-type:video', label: '视频' },
             { id: 'set-type:story', label: '剧情' },
             { id: 'set-type:comfyui', label: 'ComfyUI' },
@@ -4904,6 +5158,30 @@ const onContextMenuSelect = (id: string) => {
           .then(() => pushToast('已开始下载。', 'info'))
           .catch((err: any) => pushToast('下载失败：' + String(err?.message ?? err ?? 'unknown'), 'error'))
       }
+    }
+  }
+  if (id === 'open-image-folder' && selectedNodeId.value) {
+    const filePath = selectedNodeLocalResourcePath.value
+    if (filePath) {
+      openFolderForPath(filePath)
+        .then((res) => {
+          if (!res?.ok) {
+            const msg = String((res as any)?.error || 'unknown')
+            if (/No handler registered/i.test(msg)) {
+              pushToast('打开文件夹失败：Electron 主进程未加载新 IPC，请重启桌面端后重试。', 'warn')
+              return
+            }
+            pushToast('打开文件夹失败：' + msg, 'warn')
+          }
+        })
+        .catch((err: any) => {
+          const msg = String(err?.message ?? err ?? 'unknown')
+          if (/No handler registered/i.test(msg)) {
+            pushToast('打开文件夹失败：Electron 主进程未加载新 IPC，请重启桌面端后重试。', 'warn')
+            return
+          }
+          pushToast('打开文件夹失败：' + msg, 'warn')
+        })
     }
   }
   if (id === 'add-node') {
@@ -4930,6 +5208,9 @@ const onContextMenuSelect = (id: string) => {
   }
   if (id === 'set-type:image' && selectedNodeId.value) {
     store.commit('setNodeType', { nodeId: selectedNodeId.value, type: 'image' })
+  }
+  if (id === 'set-type:rotate-image' && selectedNodeId.value) {
+    store.commit('setNodeType', { nodeId: selectedNodeId.value, type: 'rotate-image' })
   }
   if (id === 'set-type:video' && selectedNodeId.value) {
     store.commit('setNodeType', { nodeId: selectedNodeId.value, type: 'video' })

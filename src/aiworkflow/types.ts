@@ -101,6 +101,8 @@ export type WorkflowNode = {
 	title: string
 	alias?: string
 	subtitle?: string
+	/** For rotate-image nodes: generated camera prompt text */
+	rotatePromptText?: string
 	/** For text resource nodes: user-entered multi-line text */
 	textValue?: string
 	/** For text-merge nodes: ordered list of merge slots */

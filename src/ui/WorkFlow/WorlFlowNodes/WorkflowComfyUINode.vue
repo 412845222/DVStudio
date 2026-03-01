@@ -258,7 +258,7 @@ const emit = defineEmits<{
   (e: "copy"): void;
   (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui"): void;
+  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"): void;
   (
     e: "resize",
     payload: { width: number; height: number; worldX: number; worldY: number }

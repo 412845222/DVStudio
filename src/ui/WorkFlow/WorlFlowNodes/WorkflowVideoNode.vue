@@ -198,7 +198,7 @@ const emit = defineEmits<{
   (e: "delete"): void;
   (
     e: "set-type",
-    v: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui"
+    v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"
   ): void;
   (e: "upload-resource", payload: { file: File; kind: "image" | "video" }): void;
   (e: "clear-resource"): void;

@@ -5,6 +5,7 @@ import binascii
 import json
 import mimetypes
 import os
+import random
 import shutil
 from pathlib import Path
 import re
@@ -1441,6 +1442,7 @@ def nanobanana_generate(_: Request) -> Response:
             - prompt: string
             - aspectRatio: string (optional; e.g. "16:9")
             - imageSize: string (optional; "1K"/"2K"/"4K"; only for gemini-3-pro-image-preview)
+            - imageModel/model: string (optional; gemini-2.5-flash-image | gemini-3.1-flash-image-preview | gemini-3-pro-image-preview)
             - usePro: bool (optional; when true, uses gemini-3-pro-image-preview)
 
     Response:
@@ -1469,9 +1471,13 @@ def nanobanana_generate(_: Request) -> Response:
     raw_size = payload.get("imageSize") or payload.get("image_size")
     image_size = _nanobanana_coerce_image_size(raw_size)
 
-    use_pro = _nanobanana_truthy(payload.get("usePro") or payload.get("use_pro") or payload.get("pro"))
-    if use_pro:
-        cfg = _nanobanana_cfg_with_model(cfg, "gemini-3-pro-image-preview")
+    requested_model = str(payload.get("imageModel") or payload.get("image_model") or payload.get("model") or "").strip()
+    if requested_model:
+        cfg = _nanobanana_cfg_with_model(cfg, requested_model)
+    else:
+        use_pro = _nanobanana_truthy(payload.get("usePro") or payload.get("use_pro") or payload.get("pro"))
+        if use_pro:
+            cfg = _nanobanana_cfg_with_model(cfg, "gemini-3-pro-image-preview")
 
     # Backward-compatible fallback: if old clients still send width/height, infer the closest allowed aspect ratio.
     if not aspect_ratio:
@@ -1521,8 +1527,9 @@ def _nanobanana_cfg() -> Dict[str, str]:
     """
 
     NANOBANANA_DEFAULT_MODEL = "gemini-2.5-flash-image"
+    NANOBANANA_FLASH31_MODEL = "gemini-3.1-flash-image-preview"
     NANOBANANA_PRO_MODEL = "gemini-3-pro-image-preview"
-    NANOBANANA_ALLOWED_MODELS = {NANOBANANA_DEFAULT_MODEL, NANOBANANA_PRO_MODEL}
+    NANOBANANA_ALLOWED_MODELS = {NANOBANANA_DEFAULT_MODEL, NANOBANANA_FLASH31_MODEL, NANOBANANA_PRO_MODEL}
 
     def _nanobanana_normalize_model(raw: str) -> str:
         m = str(raw or "").strip()
@@ -1593,7 +1600,7 @@ def _nanobanana_truthy(v: Any) -> bool:
 
 def _nanobanana_cfg_with_model(cfg: Dict[str, str], model: str) -> Dict[str, str]:
     # Keep in sync with _nanobanana_cfg() model rules.
-    allowed = {"gemini-2.5-flash-image", "gemini-3-pro-image-preview"}
+    allowed = {"gemini-2.5-flash-image", "gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview"}
     m = str(model or "").strip()
     if not m:
         return cfg
@@ -1745,7 +1752,8 @@ def _nanobanana_call_gemini_once(cfg: Dict[str, str], payload: Dict[str, Any], *
         ref_count = 0
 
     last_err: Optional[str] = None
-    for attempt in range(2):
+    max_attempts = 3
+    for attempt in range(max_attempts):
         raw, err = _request_raw(
             "POST",
             url,
@@ -1768,9 +1776,16 @@ def _nanobanana_call_gemini_once(cfg: Dict[str, str], payload: Dict[str, Any], *
             "TLS",
             "EOF",
         )
-        if attempt == 0 and any(s in last_err for s in transient_signals):
+        is_transient = any(s in last_err for s in transient_signals)
+        is_unavailable = _nanobanana_is_temporarily_unavailable_error(last_err)
+        if attempt < (max_attempts - 1) and (is_transient or is_unavailable):
+            wait_s = (
+                _nanobanana_backoff_seconds(attempt, base=1.2, cap=8.0)
+                if is_unavailable
+                else _nanobanana_backoff_seconds(attempt, base=0.8, cap=3.0)
+            )
             try:
-                time.sleep(0.8)
+                time.sleep(wait_s)
             except Exception:
                 pass
             continue
@@ -1850,7 +1865,8 @@ def _nanobanana_iter_gemini_stream(cfg: Dict[str, str], payload: Dict[str, Any])
                 yield obj
 
     last_err: Optional[str] = None
-    for attempt in range(2):
+    max_attempts = 3
+    for attempt in range(max_attempts):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as res:
                 while True:
@@ -1875,9 +1891,16 @@ def _nanobanana_iter_gemini_stream(cfg: Dict[str, str], payload: Dict[str, Any])
                 "TLS",
                 "EOF",
             )
-            if attempt == 0 and any(s in last_err for s in transient_signals):
+            is_transient = any(s in last_err for s in transient_signals)
+            is_unavailable = _nanobanana_is_temporarily_unavailable_error(last_err)
+            if attempt < (max_attempts - 1) and (is_transient or is_unavailable):
+                wait_s = (
+                    _nanobanana_backoff_seconds(attempt, base=1.2, cap=8.0)
+                    if is_unavailable
+                    else _nanobanana_backoff_seconds(attempt, base=0.8, cap=3.0)
+                )
                 try:
-                    time.sleep(0.8)
+                    time.sleep(wait_s)
                 except Exception:
                     pass
                 continue
@@ -2088,6 +2111,37 @@ def _nanobanana_is_rate_limited_error(err_text: str) -> bool:
     return False
 
 
+def _nanobanana_is_temporarily_unavailable_error(err_text: str) -> bool:
+    """Detect transient high-demand/service unavailable errors (503 UNAVAILABLE)."""
+
+    t = str(err_text or "")
+    if not t:
+        return False
+
+    # Common shapes:
+    # - our _request_raw: "http 503: {\"error\":{...\"status\":\"UNAVAILABLE\"}}"
+    # - urllib: "HTTP Error 503: Service Unavailable"
+    if "http 503" in t or "HTTP Error 503" in t:
+        return True
+    if "UNAVAILABLE" in t and '"status"' in t:
+        return True
+    if "high demand" in t.lower():
+        return True
+    return False
+
+
+def _nanobanana_backoff_seconds(attempt: int, *, base: float, cap: float) -> float:
+    """Jittered exponential backoff."""
+
+    a = max(0, int(attempt))
+    base_s = float(base)
+    cap_s = float(cap)
+    delay = min(cap_s, base_s * (2.0**a))
+    # Full jitter in [0.5x, 1.0x] to avoid thundering herd.
+    jitter = 0.5 + random.random() * 0.5
+    return max(0.2, delay * jitter)
+
+
 def _nanobanana_parse_retry_after_seconds(err_text: str) -> Optional[float]:
     t = str(err_text or "")
     if not t:
@@ -2283,6 +2337,7 @@ def nanobanana_generate_stream(request: HttpRequest) -> HttpResponseBase:
       - prompt: string
     - aspectRatio: string (optional; e.g. "16:9")
     - imageSize: string (optional; "1K"/"2K"/"4K"; only for gemini-3-pro-image-preview)
+        - imageModel/model: string (optional; gemini-2.5-flash-image | gemini-3.1-flash-image-preview | gemini-3-pro-image-preview)
     - usePro: bool (optional; when true, uses gemini-3-pro-image-preview)
     - refImages/refImage: file(s) (optional)
 
@@ -2336,9 +2391,13 @@ def nanobanana_generate_stream(request: HttpRequest) -> HttpResponseBase:
     raw_size = request.POST.get("imageSize") or request.POST.get("image_size")
     image_size = _nanobanana_coerce_image_size(raw_size)
 
-    use_pro = _nanobanana_truthy(request.POST.get("usePro") or request.POST.get("use_pro") or request.POST.get("pro"))
-    if use_pro:
-        cfg = _nanobanana_cfg_with_model(cfg, "gemini-3-pro-image-preview")
+    requested_model = str(request.POST.get("imageModel") or request.POST.get("image_model") or request.POST.get("model") or "").strip()
+    if requested_model:
+        cfg = _nanobanana_cfg_with_model(cfg, requested_model)
+    else:
+        use_pro = _nanobanana_truthy(request.POST.get("usePro") or request.POST.get("use_pro") or request.POST.get("pro"))
+        if use_pro:
+            cfg = _nanobanana_cfg_with_model(cfg, "gemini-3-pro-image-preview")
 
     # Backward-compatible fallback: infer aspect ratio from width/height if present.
     if not aspect_ratio:
@@ -2410,115 +2469,73 @@ def nanobanana_generate_stream(request: HttpRequest) -> HttpResponseBase:
                 model=str(cfg.get("model") or ""),
             )
 
-            for attempt in range(2):
-                try:
-                    if attempt == 0:
-                        yield _sse("msg", _agent_to_ui_task_status("started", message="NanoBanana：开始生成…")).encode("utf-8")
-                    else:
-                        yield _sse("msg", _agent_to_ui_task_status("streaming", message="NanoBanana：开始重试…")).encode("utf-8")
+            yield _sse("msg", _agent_to_ui_task_status("started", message="NanoBanana：开始生成…")).encode("utf-8")
+            yield _sse("msg", _agent_to_ui_task_status("streaming", message="NanoBanana：请求 Gemini 中…")).encode("utf-8")
 
-                    # Gemini streamGenerateContent.
-                    yield _sse("msg", _agent_to_ui_task_status("streaming", message="NanoBanana：请求 Gemini 中…")).encode("utf-8")
+            upstream_obj: Any = None
+            inline_img: Optional[Tuple[str, bytes]] = None
+            last_progress_ts = 0.0
 
-                    upstream_obj: Any = None
-                    inline_img: Optional[Tuple[str, bytes]] = None
-                    last_progress_ts = 0.0
+            for obj in _nanobanana_iter_gemini_stream(cfg, payload_obj):
+                bt = _nanobanana_extract_billing_text(obj)
+                if bt:
+                    billing_text = bt
+                inline_img = _nanobanana_extract_inline_image(obj)
+                if inline_img:
+                    upstream_obj = obj
+                    break
 
-                    try:
-                        for obj in _nanobanana_iter_gemini_stream(cfg, payload_obj):
-                            bt = _nanobanana_extract_billing_text(obj)
-                            if bt:
-                                billing_text = bt
-                            inline_img = _nanobanana_extract_inline_image(obj)
-                            if inline_img:
-                                upstream_obj = obj
-                                break
+                progress_msg = None
+                if isinstance(obj, dict):
+                    for k in ("message", "status", "phase"):
+                        v = obj.get(k)
+                        if isinstance(v, str) and v.strip():
+                            progress_msg = v.strip()
+                            break
+                    for k in ("progress", "percent", "percentage"):
+                        v = obj.get(k)
+                        if isinstance(v, (int, float)):
+                            progress_msg = f"{progress_msg + ' ' if progress_msg else ''}{v}%"
+                            break
 
-                            # Best-effort progress update (throttled).
-                            progress_msg = None
-                            if isinstance(obj, dict):
-                                for k in ("message", "status", "phase"):
-                                    v = obj.get(k)
-                                    if isinstance(v, str) and v.strip():
-                                        progress_msg = v.strip()
-                                        break
-                                for k in ("progress", "percent", "percentage"):
-                                    v = obj.get(k)
-                                    if isinstance(v, (int, float)):
-                                        progress_msg = f"{progress_msg + ' ' if progress_msg else ''}{v}%"
-                                        break
-
-                            if progress_msg:
-                                now = time.time()
-                                if now - last_progress_ts >= 0.6:
-                                    last_progress_ts = now
-                                    suffix = f"；计费：{billing_text}" if billing_text else ""
-                                    yield _sse(
-                                        "msg",
-                                        _agent_to_ui_task_status("streaming", message=f"NanoBanana：{progress_msg}{suffix}"),
-                                    ).encode("utf-8")
-                    except Exception:
-                        upstream_obj = None
-                        inline_img = None
-
-                    if not inline_img:
-                        # Fallback to non-stream generateContent.
+                if progress_msg:
+                    now = time.time()
+                    if now - last_progress_ts >= 0.6:
+                        last_progress_ts = now
+                        suffix = f"；计费：{billing_text}" if billing_text else ""
                         yield _sse(
                             "msg",
-                            _agent_to_ui_task_status("streaming", message="NanoBanana：流式未返回图片，改用 generateContent…"),
+                            _agent_to_ui_task_status("streaming", message=f"NanoBanana：{progress_msg}{suffix}"),
                         ).encode("utf-8")
-                        upstream_obj = _nanobanana_call_gemini_once(cfg, payload_obj, stream=False)
-                        bt = _nanobanana_extract_billing_text(upstream_obj)
-                        if bt:
-                            billing_text = bt
-                        inline_img = _nanobanana_extract_inline_image(upstream_obj)
 
-                    if not inline_img:
-                        yield _sse(
-                            "msg",
-                            _agent_to_ui_error(
-                                "gemini_no_inline_image",
-                                "gemini did not return inline image",
-                                details={"upstream": upstream_obj if isinstance(upstream_obj, dict) else {"value": str(upstream_obj)}},
-                            ),
-                        ).encode("utf-8")
-                        yield _sse("done", "{}").encode("utf-8")
-                        return
+            if not inline_img:
+                yield _sse(
+                    "msg",
+                    _agent_to_ui_error(
+                        "gemini_no_inline_image",
+                        "gemini did not return inline image",
+                        details={"upstream": upstream_obj if isinstance(upstream_obj, dict) else {"value": str(upstream_obj)}},
+                    ),
+                ).encode("utf-8")
+                yield _sse("done", "{}").encode("utf-8")
+                return
 
-                    yield _sse("msg", _agent_to_ui_task_status("streaming", message="NanoBanana：保存图片并落盘…")).encode("utf-8")
-                    mime_type, data = inline_img
-                    local_url = _nanobanana_save_inline_image(mime_type, data)
+            yield _sse("msg", _agent_to_ui_task_status("streaming", message="NanoBanana：保存图片并落盘…")).encode("utf-8")
+            mime_type, data = inline_img
+            local_url = _nanobanana_save_inline_image(mime_type, data)
 
-                    result_payload = {
-                        "imageUrl": local_url,
-                        "model": str(cfg.get("model") or ""),
-                        "usePro": str(cfg.get("model") or "") == "gemini-3-pro-image-preview",
-                    }
-                    if billing_text:
-                        result_payload["billing"] = billing_text
+            result_payload = {
+                "imageUrl": local_url,
+                "model": str(cfg.get("model") or ""),
+                "usePro": str(cfg.get("model") or "") == "gemini-3-pro-image-preview",
+            }
+            if billing_text:
+                result_payload["billing"] = billing_text
 
-                    yield _sse("msg", _agent_to_ui_chat_message(json.dumps(result_payload, ensure_ascii=False))).encode("utf-8")
-                    yield _sse("msg", _agent_to_ui_task_status("done", message="NanoBanana：完成")).encode("utf-8")
-                    yield _sse("done", "{}").encode("utf-8")
-                    return
-                except Exception as e:
-                    msg = str(e) or "unknown error"
-                    if attempt == 0 and _nanobanana_is_rate_limited_error(msg):
-                        retry_after = _nanobanana_parse_retry_after_seconds(msg) or 6.0
-                        retry_after = max(1.0, min(60.0, float(retry_after)))
-                        yield _sse(
-                            "msg",
-                            _agent_to_ui_task_status(
-                                "streaming",
-                                message=f"NanoBanana：触发限流/配额不足，等待 {retry_after:.0f}s 后自动重试一次…",
-                            ),
-                        ).encode("utf-8")
-                        try:
-                            time.sleep(retry_after)
-                        except Exception:
-                            pass
-                        continue
-                    raise
+            yield _sse("msg", _agent_to_ui_chat_message(json.dumps(result_payload, ensure_ascii=False))).encode("utf-8")
+            yield _sse("msg", _agent_to_ui_task_status("done", message="NanoBanana：完成")).encode("utf-8")
+            yield _sse("done", "{}").encode("utf-8")
+            return
         except Exception as e:
             yield _sse("msg", _agent_to_ui_error("nanobanana_error", str(e) or "unknown error")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")

@@ -16,8 +16,8 @@
         <div class="chat-history-bar" @pointerdown="onDockDragStart">
           <div class="chat-history-title">
             <template v-if="modelKey === 'nanobanana'">
-              <span>NanoBanana</span>
-              <span class="nano-title-tag">{{ nanoProSelected ? "Pro" : "普通" }}</span>
+              <span>Gemini 图片生成</span>
+              <span class="nano-title-tag">{{ nanoInterfaceLabel }}</span>
               <span v-if="nanoModelTag" class="nano-title-tag"
                 >实际：{{ nanoModelTag }}</span
               >
@@ -105,22 +105,27 @@
                     <option value="21:9">21:9</option>
                   </select>
                   <div class="nano-hint">
-                    尺寸使用 NanoBanana 默认值（不需要手写宽高）。
+                    按 Gemini 官方 imageConfig 提交比例；两张参考图 + 文本提示词。
                   </div>
-                  <button
-                    class="nano-pro-btn"
-                    type="button"
-                    :disabled="sending"
-                    @click="toggleNanoPro"
-                  >
-                    {{ nanoProSelected ? "切回普通" : "使用 NanoBananaPro" }}
-                  </button>
+                </div>
+
+                <div class="nano-field">
+                  <div class="nano-label">数量</div>
+                  <select class="nano-input" :disabled="sending" v-model.number="nanoConfig.quantity">
+                    <option :value="1">1</option>
+                    <option :value="2">2</option>
+                    <option :value="3">3</option>
+                    <option :value="4">4</option>
+                  </select>
                 </div>
 
                 <div class="chat-history-status" aria-live="polite">
                   执行状态：{{
-                    nanoStatus || (sending ? "NanoBanana：生成中…" : "NanoBanana：待生成")
+                    nanoStatus || (sending ? "Gemini：生成中…" : "Gemini：待生成")
                   }}
+                </div>
+                <div v-if="nanoDetail" class="nano-detail" aria-live="polite">
+                  {{ nanoDetail }}
                 </div>
                 <div class="nano-billing" aria-live="polite">
                   用时：{{ nanoElapsedText }}；预计：{{ nanoEstimateText }}
@@ -132,16 +137,20 @@
 
               <div class="nano-right">
                 <div class="nano-preview">
-                  <img
-                    v-if="nanoPreviewUrl"
-                    :src="nanoPreviewUrl"
-                    alt="preview"
-                    draggable="true"
-                    @dragstart="onNanoPreviewDragStart"
-                    :class="{ loading: !!sending }"
-                  />
-                  <div v-if="sending" class="nano-preview-loading" aria-hidden="true" />
-                  <div v-else class="nano-preview-empty">暂无预览图</div>
+                  <div class="nano-preview-grid" :class="`count-${nanoPreviewSlots.length}`">
+                    <div v-for="(slot, idx) in nanoPreviewSlots" :key="`slot-${idx}`" class="nano-preview-item" :class="{ loading: !!slot.loading }">
+                      <img
+                        v-if="slot.url"
+                        :src="slot.url"
+                        :alt="`preview-${idx + 1}`"
+                        draggable="true"
+                        @dragstart="onNanoPreviewDragStart($event, slot.url)"
+                        :class="{ loading: !!slot.loading && !slot.url }"
+                      />
+                      <div v-else class="nano-preview-empty">暂无预览图 {{ idx + 1 }}</div>
+                      <div v-if="slot.loading && !slot.url" class="nano-preview-item-loading" aria-hidden="true" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -193,7 +202,19 @@
               @change="onModelChange"
             >
               <option value="deepseek">DeepSeek</option>
-              <option value="nanobanana">NanoBanana</option>
+              <option value="nanobanana">Gemini（NanoBanana）</option>
+            </select>
+          </div>
+          <div v-if="modelKey === 'nanobanana'" class="chat-dock-toolbar-item">
+            <div class="chat-dock-toolbar-label">图片接口</div>
+            <select
+              class="chat-dock-toolbar-select"
+              v-model="nanoConfig.imageModel"
+              :disabled="sending"
+            >
+              <option value="gemini-2.5-flash-image">NanoBanana（Gemini 2.5 Flash Image）</option>
+              <option value="gemini-3.1-flash-image-preview">NanoBanana 2（Gemini 3.1 Flash Image 预览版）</option>
+              <option value="gemini-3-pro-image-preview">NanoBanana Pro（Gemini 3 Pro Image 预览版）</option>
             </select>
           </div>
         </div>
@@ -205,7 +226,7 @@
           rows="3"
           :placeholder="
             modelKey === 'nanobanana'
-              ? '输入生成图片的提示词（Prompt）…'
+              ? '输入 Gemini 图片提示词（两图参考+角度描述）…'
               : '在这里输入需求，后续会驱动工作流生成…'
           "
           :disabled="sending"
@@ -247,6 +268,8 @@ export type BottomChatMessage = {
 export type NanoBananaConfig = {
   aspectRatio: string;
   usePro?: boolean;
+  quantity?: 1 | 2 | 3 | 4;
+  imageModel?: "gemini-2.5-flash-image" | "gemini-3.1-flash-image-preview" | "gemini-3-pro-image-preview";
 };
 
 export type NanoBananaRefAnchor = {
@@ -263,8 +286,11 @@ const props = defineProps<{
   collapsed?: boolean;
   taskStatus?: string;
   modelKey?: "deepseek" | "nanobanana";
+  nanoPreviewUrls?: string[];
+  nanoPreviewLoadingStates?: boolean[];
   nanoPreviewUrl?: string;
   nanoStatus?: string;
+  nanoDetail?: string;
   nanoBilling?: string;
   nanoModelUsed?: string;
 
@@ -330,19 +356,55 @@ const modelKey = computed(
 const nanoConfig = ref<NanoBananaConfig>({
   aspectRatio: "1:1",
   usePro: false,
+  quantity: 1,
+  imageModel: "gemini-2.5-flash-image",
 });
 
-const nanoProSelected = computed(() => !!nanoConfig.value.usePro);
+const normalizedNanoQuantity = computed(() => {
+  const n = Number(nanoConfig.value.quantity ?? 1);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(4, Math.floor(n)));
+});
+
+const nanoPreviewUrls = computed(() => {
+  const list = Array.isArray(props.nanoPreviewUrls)
+    ? props.nanoPreviewUrls.map((v) => String(v ?? "").trim())
+    : [];
+  if (list.length) return list;
+  const single = String(props.nanoPreviewUrl ?? "").trim();
+  return single ? [single] : [];
+});
+
+const nanoPreviewSlots = computed(() => {
+  const count = normalizedNanoQuantity.value;
+  const urls = nanoPreviewUrls.value;
+  const loadingStates = Array.isArray(props.nanoPreviewLoadingStates)
+    ? props.nanoPreviewLoadingStates.map((v) => !!v)
+    : [];
+  return Array.from({ length: count }, (_, idx) => ({
+    url: urls[idx] || "",
+    loading: !!loadingStates[idx],
+  }));
+});
+
+const nanoProSelected = computed(
+  () => String(nanoConfig.value.imageModel || "").trim() === "gemini-3-pro-image-preview"
+);
+
+const nanoInterfaceLabel = computed(() => {
+  const model = String(nanoConfig.value.imageModel || "").trim();
+  if (model === "gemini-3-pro-image-preview") return "NanoBanana Pro";
+  if (model === "gemini-3.1-flash-image-preview") return "NanoBanana 2";
+  return "NanoBanana";
+});
 
 const nanoModelTag = computed(() => {
   const model = String(props.nanoModelUsed || "").trim();
   if (!model) return "";
-  return model === "gemini-3-pro-image-preview" ? "Pro" : "普通";
+  if (model === "gemini-3-pro-image-preview") return "Pro";
+  if (model === "gemini-3.1-flash-image-preview") return "NanoBanana 2";
+  return "NanoBanana";
 });
-
-const toggleNanoPro = () => {
-  nanoConfig.value = { ...nanoConfig.value, usePro: !nanoConfig.value.usePro };
-};
 
 const nanoStartAt = ref<number | null>(null);
 const nanoElapsedSec = ref(0);
@@ -464,7 +526,19 @@ const onModelChange = (e: Event) => {
 const emitGenerate = () => {
   const prompt = String(props.modelValue || "").trim();
   if (!prompt) return;
-  emit("nanobanana-generate", { prompt, config: { ...nanoConfig.value } });
+  const selected = String(nanoConfig.value.imageModel || "").trim();
+  const imageModel =
+    selected === "gemini-3-pro-image-preview"
+      ? "gemini-3-pro-image-preview"
+      : selected === "gemini-3.1-flash-image-preview"
+      ? "gemini-3.1-flash-image-preview"
+      : "gemini-2.5-flash-image";
+  const usePro = imageModel === "gemini-3-pro-image-preview";
+  const quantity = normalizedNanoQuantity.value as 1 | 2 | 3 | 4;
+  emit("nanobanana-generate", {
+    prompt,
+    config: { ...nanoConfig.value, imageModel, usePro, quantity },
+  });
 };
 
 const onEnterSend = () => {
@@ -477,8 +551,8 @@ const onClickSend = () => {
   else emit("send");
 };
 
-const onNanoPreviewDragStart = (e: DragEvent) => {
-  const url = String(props.nanoPreviewUrl || "").trim();
+const onNanoPreviewDragStart = (e: DragEvent, inputUrl?: string) => {
+  const url = String(inputUrl || "").trim();
   if (!url) return;
   try {
     e.dataTransfer?.setData("application/x-dweb-nanobanana-preview", url);
@@ -771,6 +845,18 @@ watch(
   color: var(--vscode-fg-muted);
 }
 
+.nano-detail {
+  font-size: 12px;
+  color: var(--vscode-fg);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.45);
+  border: 1px solid var(--vscode-border);
+  padding: 8px;
+  white-space: pre-wrap;
+  line-height: 1.35;
+  max-height: 92px;
+  overflow: auto;
+}
+
 .nano-preview {
   position: relative;
   flex: 1;
@@ -784,27 +870,52 @@ watch(
   overflow: hidden;
 }
 
-.nano-preview img {
+.nano-preview-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.nano-preview-grid.count-1 {
+  grid-template-columns: 1fr;
+}
+
+.nano-preview-item {
+  position: relative;
+  min-height: 0;
+  border: 1px solid var(--vscode-border);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.3);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.nano-preview-item img {
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
 
-.nano-preview img.loading {
+.nano-preview-item img.loading {
   filter: blur(6px);
 }
 
-.nano-preview-loading {
+.nano-preview-item-loading {
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
   background: rgb(from var(--dweb-defualt) r g b / 0.12);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
 }
 
-.nano-preview-loading::before,
-.nano-preview-loading::after {
+.nano-preview-item-loading::before,
+.nano-preview-item-loading::after {
   content: "";
   position: absolute;
   inset: -30%;
@@ -814,7 +925,7 @@ watch(
   will-change: background-position, opacity, transform;
 }
 
-.nano-preview-loading::before {
+.nano-preview-item-loading::before {
   background-image: linear-gradient(
     135deg,
     rgb(from var(--dweb-blue) r g b / 0.85),
@@ -826,7 +937,7 @@ watch(
     nanoPreviewGlassFadeA 4.8s ease-in-out infinite;
 }
 
-.nano-preview-loading::after {
+.nano-preview-item-loading::after {
   background-image: linear-gradient(
     135deg,
     rgb(from var(--dweb-pink) r g b / 0.8),

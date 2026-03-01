@@ -9,6 +9,7 @@ import type {
 	ClientSettings,
 	ClientSettingsResult,
 	DiagnosticsResult,
+	OpenFolderResult,
 	SetupRunResult,
 	SetupState,
 	CleanupOldProjectResult,
@@ -103,6 +104,11 @@ export async function collectDiagnostics(): Promise<DiagnosticsResult | null> {
 export async function revealUserDataDir(): Promise<{ ok: boolean } | null> {
 	if (!w?.dweb?.common?.revealUserDataDir) return null
 	return w.dweb.common.revealUserDataDir()
+}
+
+export async function openFolderForPath(path: string): Promise<OpenFolderResult | null> {
+	if (!w?.dweb?.common?.openFolderForPath) return null
+	return w.dweb.common.openFolderForPath({ path: String(path || '') })
 }
 
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {

@@ -39,6 +39,9 @@
           <button class="wf-node-type-item" type="button" @click="onSetType('image')">
             图片
           </button>
+          <button class="wf-node-type-item" type="button" @click="onSetType('rotate-image')">
+            旋转图片
+          </button>
           <button class="wf-node-type-item" type="button" @click="onSetType('video')">
             视频
           </button>
@@ -233,7 +236,7 @@ const emit = defineEmits<{
   (e: "copy"): void;
   (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui"): void;
+  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"): void;
   (
     e: "resize",
     payload: { width: number; height: number; worldX: number; worldY: number }
@@ -280,6 +283,7 @@ const typeLabel = computed(() => {
   if (props.nodeType === "text") return "文本";
   if (props.nodeType === "text-merge") return "文本整合";
   if (props.nodeType === "image") return "图片";
+  if (props.nodeType === "rotate-image") return "旋转图片";
   if (props.nodeType === "video") return "视频";
   if (props.nodeType === "story") return "剧情";
   if (props.nodeType === "comfyui") return "ComfyUI";
@@ -296,7 +300,7 @@ const toggleTypeMenu = () => {
   window.addEventListener("pointerdown", closeTypeMenu, { once: true });
 };
 
-const onSetType = (type: "base" | "text" | "text-merge" | "image" | "video" | "story" | "comfyui") => {
+const onSetType = (type: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui") => {
   emit("set-type", type);
   closeTypeMenu();
 };

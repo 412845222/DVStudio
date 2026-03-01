@@ -36,6 +36,7 @@ const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 let bootstrapProc = null
 
 const BACKEND_LOG_MAX_LINES = 2000
+const BACKEND_HEALTH_PING_INTERVAL_MS = 15_000
 const backendLogLines = []
 
 let setupRunning = false
@@ -866,7 +867,7 @@ function ensureBackendHealthMonitor() {
 	if (backendHealthTimer != null) return
 	backendHealthTimer = setInterval(() => {
 		void refreshBackendHealth()
-	}, 3000)
+	}, BACKEND_HEALTH_PING_INTERVAL_MS)
 }
 
 async function withBackendOpLock(task) {
@@ -1144,6 +1145,23 @@ function registerIpc() {
 	ipcMain.handle('dweb:app:revealUserDataDir', async () => {
 		await shell.openPath(getUserDataDir())
 		return { ok: true }
+	})
+
+	ipcMain.handle('dweb:app:openFolderForPath', async (_e, payload) => {
+		try {
+			const raw = String(payload?.path || '').trim()
+			if (!raw) return { ok: false, error: 'empty path' }
+			const normalized = path.normalize(raw)
+			const target = fs.existsSync(normalized)
+				? normalized
+				: path.dirname(normalized)
+			if (!target || !fs.existsSync(target)) return { ok: false, error: 'path not found' }
+			const openErr = await shell.openPath(target)
+			if (openErr) return { ok: false, error: String(openErr) }
+			return { ok: true }
+		} catch (e) {
+			return { ok: false, error: String(e?.message || e) }
+		}
 	})
 
 	ipcMain.handle('dweb:aiworkflow:selectMediaFiles', async (_e, options) => {

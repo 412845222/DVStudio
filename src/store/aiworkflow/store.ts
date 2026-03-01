@@ -85,6 +85,8 @@ const defaultAliasForType = (type: string) => {
 			return '文本整合节点'
 		case 'image':
 			return '图片节点'
+		case 'rotate-image':
+			return '旋转图片节点'
 		case 'video':
 			return '视频节点'
 		case 'story':
@@ -309,6 +311,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						})).filter((a: any) => a.id)
 						: [{ id: 'out-0', label: '出口' }],
 					createdAt: Number.isFinite(Number(n.createdAt)) ? Number(n.createdAt) : Date.now(),
+					rotatePromptText: typeof (n as any).rotatePromptText === 'string' ? String((n as any).rotatePromptText) : undefined,
 					textValue: typeof (n as any).textValue === 'string' ? String((n as any).textValue) : undefined,
 					textMergeItems: Array.isArray((n as any).textMergeItems)
 						? (n as any).textMergeItems
@@ -520,12 +523,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!n) return
 			n.alias = String(payload?.alias ?? '')
 		},
-		setNodeType(state, payload: { nodeId: string; type: 'base' | 'text' | 'text-merge' | 'image' | 'video' | 'story' | 'comfyui' }) {
+		setNodeType(state, payload: { nodeId: string; type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'story' | 'comfyui' }) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
 			if (!n) return
-			if (payload.type !== 'base' && payload.type !== 'text' && payload.type !== 'text-merge' && payload.type !== 'image' && payload.type !== 'video' && payload.type !== 'story' && payload.type !== 'comfyui') return
+			if (payload.type !== 'base' && payload.type !== 'text' && payload.type !== 'text-merge' && payload.type !== 'image' && payload.type !== 'rotate-image' && payload.type !== 'video' && payload.type !== 'story' && payload.type !== 'comfyui') return
 			const prevType = String(n.type ?? 'base')
 			const prevDefaultAlias = defaultAliasForType(prevType)
 			n.type = payload.type
@@ -533,15 +536,24 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (payload.type !== 'video') n.videoSettings = undefined
 			if (payload.type !== 'story') n.storySettings = undefined
 			if (payload.type !== 'comfyui') n.comfyuiSettings = undefined
+				if (payload.type !== 'rotate-image') (n as any).rotatePromptText = undefined
 			if (payload.type !== 'text') n.textValue = undefined
 			if (payload.type !== 'text-merge') (n as any).textMergeItems = undefined
-			if (payload.type === 'base' || payload.type === 'text' || payload.type === 'text-merge' || payload.type === 'comfyui') n.resourceId = null
+			if (payload.type === 'base' || payload.type === 'text' || payload.type === 'text-merge' || payload.type === 'comfyui' || payload.type === 'rotate-image') n.resourceId = null
 			if (payload.type !== 'story') n.branches = undefined
-			if (payload.type !== 'story' && payload.type !== 'comfyui') {
+			if (payload.type !== 'story' && payload.type !== 'comfyui' && payload.type !== 'rotate-image') {
 				n.inputs = payload.type === 'text' ? [] : [{ id: 'in-0', label: '入口' }]
 				n.outputs = payload.type === 'text'
 				? [{ id: 'out-text', label: '文本', mediaType: 'text' }]
 				: [{ id: 'out-0', label: '出口' }]
+			}
+			if (payload.type === 'rotate-image') {
+				n.inputs = [{ id: 'in-image', label: '图片输入', mediaType: 'image' }]
+					n.outputs = [
+						{ id: 'out-image', label: '图片输出', mediaType: 'image' },
+						{ id: 'out-text', label: '镜头提示词', mediaType: 'text' },
+					]
+					;(n as any).rotatePromptText = typeof (n as any).rotatePromptText === 'string' ? String((n as any).rotatePromptText) : ''
 			}
 			if (payload.type === 'text-merge') {
 				;(n as any).textMergeItems = Array.isArray((n as any).textMergeItems) ? (n as any).textMergeItems : [{ id: makeId('merge') }]
@@ -592,7 +604,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				n.alias = defaultAliasForType(payload.type)
 			}
 			if (!n.sizeCustomized) {
-				if (payload.type === 'image' || payload.type === 'video' || payload.type === 'story' || payload.type === 'comfyui') {
+				if (payload.type === 'image' || payload.type === 'rotate-image' || payload.type === 'video' || payload.type === 'story' || payload.type === 'comfyui') {
 					n.width = 450
 					n.height = 300
 				} else if (payload.type === 'text-merge') {
@@ -690,6 +702,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const n = state.nodesById[id]
 			if (!n || n.type !== 'text') return
 			n.textValue = typeof payload?.textValue === 'string' ? payload.textValue : String(payload?.textValue ?? '')
+		},
+		setNodeRotatePromptText(state, payload: { nodeId: string; text: string }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id] as any
+			if (!n || n.type !== 'rotate-image') return
+			n.rotatePromptText = typeof payload?.text === 'string' ? payload.text : String(payload?.text ?? '')
 		},
 		setNodeComfyUISettings(state, payload: { nodeId: string; comfyuiSettings: Partial<WorkflowComfyUINodeSettings> }) {
 			const id = String(payload?.nodeId ?? '').trim()
