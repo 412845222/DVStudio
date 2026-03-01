@@ -425,29 +425,45 @@ const buildNanoPrompt = (yawRad: number, pitchRad: number) => {
   const yawDeg = normalizeDeg(toDeg(yawRad));
   const pitchDeg = clamp(toDeg(pitchRad), -89, 89);
 
+  const yawHint =
+    yawDeg > 0
+      ? "right-side orbit"
+      : yawDeg < 0
+      ? "left-side orbit"
+      : "front-aligned orbit";
+  const pitchHint =
+    pitchDeg > 0
+      ? "high-angle view"
+      : pitchDeg < 0
+      ? "low-angle view"
+      : "eye-level view";
+
   return [
-    "--- CAMERA TRANSFORM CONTROL SETUP ---",
-    "Image A is the canonical visual world state.",
-    "Image B provides camera orientation reference only.",
-    "Image B must never appear in the output.",
-    "---------------------------------------",
-    `Camera transform parameters: azimuth ${yawDeg}°, elevation ${pitchDeg}° (observer-space rotation).`,
-    "Apply a virtual camera orbital transform in 3D space.",
-    "Only the observer position and orientation change.",
-    "The world coordinate system remains fixed.",
-    "No object rotation.",
-    "No subject rotation.",
-    "No scene rotation.",
-    "No 2D plane rotation.",
-    "Do not rotate or skew the canvas.",
-    "Re-render the world from the new observer coordinates.",
-    "Apply perspective reprojection consistent with the specified azimuth and elevation.",
-    "Maintain full visual continuity with Image A.",
-    "Preserve structural geometry and spatial depth relationships.",
-    "If new spatial regions become visible due to observer displacement,",
-    "generate physically coherent spatial continuation beyond original frame boundaries.",
-    "Outpaint seamlessly using the same material logic, color space, and lighting model as Image A.",
-    "Do not import or replicate any structural elements from Image B.",
+    "Task intent: produce a camera-reframed variant for storyboard previsualization while preserving the original world identity.",
+    "Use descriptive scene-level reasoning, not keyword fragments.",
+    "",
+    "Input roles:",
+    "- Image A = canonical visual source of truth (subject identity, environment, composition logic, materials, lighting, color style).",
+    "- Image B = camera orientation guide only.",
+    "- Never render, copy, or blend Image B as visible content.",
+    "",
+    "Camera control:",
+    `- Apply a virtual 3D camera orbit only: azimuth ${yawDeg}°, elevation ${pitchDeg}° (observer-space rotation).`,
+    `- Shot interpretation: ${yawHint}, ${pitchHint}.`,
+    "- Keep world coordinates fixed and re-render perspective from the new camera position.",
+    "",
+    "Step-by-step execution:",
+    "1) Read Image A and lock core invariants: character identity, pose semantics, garment details, background layout, lighting direction, and material response.",
+    "2) Apply the target camera orbit and perspective reprojection with physically coherent depth.",
+    "3) Preserve continuity of structure, scale, and spatial relationships across all visible elements.",
+    "4) If camera movement reveals unseen regions, outpaint those regions seamlessly with the same style, illumination model, and geometry logic from Image A.",
+    "5) Return one coherent final frame that matches Image A's artistic intent and production quality.",
+    "",
+    "Semantic constraints:",
+    "- Camera moves; subjects and scene stay in their canonical orientation from Image A.",
+    "- Keep canvas upright with no 2D rotation, skew, or tilt artifacts.",
+    "- Avoid introducing new objects, text, logos, or unrelated style changes.",
+    "- Do not import structural content from Image B.",
   ].join("\n");
 };
 
