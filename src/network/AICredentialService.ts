@@ -3,11 +3,13 @@ import { resolveBackendUrl } from './backendConfig'
 export type CredentialProvidersStatus = {
   deepseek: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
   gemini: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
+  bytedance: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 }
 
 export const saveEncryptedAICredentials = async (payload: {
   deepseekApiKey?: string
   geminiApiKey?: string
+  bytedanceApiKey?: string
 }): Promise<{ ok: boolean; providers?: CredentialProvidersStatus; error?: string }> => {
   try {
     const url = resolveBackendUrl('/api/ai/credentials')

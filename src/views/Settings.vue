@@ -36,6 +36,7 @@ const form = reactive<ClientSettings>({
   deepseekModel: FIXED_DEEPSEEK_MODEL,
   geminiApiKey: "",
   geminiModel: FIXED_GEMINI_MODEL,
+  bytedanceApiKey: "",
 });
 
 async function load() {
@@ -53,6 +54,7 @@ async function load() {
   // Key 不从 settings.json 回显：避免前端/磁盘明文暴露。
   form.deepseekApiKey = "";
   form.geminiApiKey = "";
+  form.bytedanceApiKey = "";
 
   loading.value = false;
 }
@@ -70,9 +72,15 @@ async function doSubmit() {
   // 1) API Key 写入后端（加密存储）
   const deepseekKey = String(form.deepseekApiKey || "").trim();
   const geminiKey = String(form.geminiApiKey || "").trim();
-  const keyPayload: { deepseekApiKey?: string; geminiApiKey?: string } = {};
+  const bytedanceKey = String(form.bytedanceApiKey || "").trim();
+  const keyPayload: {
+    deepseekApiKey?: string;
+    geminiApiKey?: string;
+    bytedanceApiKey?: string;
+  } = {};
   if (deepseekKey) keyPayload.deepseekApiKey = deepseekKey;
   if (geminiKey) keyPayload.geminiApiKey = geminiKey;
+  if (bytedanceKey) keyPayload.bytedanceApiKey = bytedanceKey;
 
   if (Object.keys(keyPayload).length > 0) {
     const keyRes = await saveEncryptedAICredentials(keyPayload);
@@ -88,6 +96,7 @@ async function doSubmit() {
     ...form,
     deepseekApiKey: "",
     geminiApiKey: "",
+    bytedanceApiKey: "",
     deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
     deepseekModel: FIXED_DEEPSEEK_MODEL,
     geminiModel: FIXED_GEMINI_MODEL,
@@ -98,6 +107,7 @@ async function doSubmit() {
   if (r?.ok) {
     form.deepseekApiKey = "";
     form.geminiApiKey = "";
+    form.bytedanceApiKey = "";
   }
 
   saving.value = false;
@@ -143,12 +153,17 @@ async function confirmClearCredentials() {
   clearing.value = true;
   saveMsg.value = "";
 
-  const r = await saveEncryptedAICredentials({ deepseekApiKey: "", geminiApiKey: "" });
+  const r = await saveEncryptedAICredentials({
+    deepseekApiKey: "",
+    geminiApiKey: "",
+    bytedanceApiKey: "",
+  });
   if (!r.ok) saveMsg.value = `清空失败：${r.error || "后端写入失败"}`;
   else saveMsg.value = "已清空已保存的 API Key";
 
   form.deepseekApiKey = "";
   form.geminiApiKey = "";
+  form.bytedanceApiKey = "";
 
   clearing.value = false;
   clearOpen.value = false;
@@ -200,6 +215,16 @@ onMounted(() => {
             class="input"
             type="password"
             placeholder="AIza..."
+          />
+        </label>
+
+        <label class="field">
+          <span class="label">字节方舟 API Key (ARK_API_KEY)</span>
+          <input
+            v-model.trim="form.bytedanceApiKey"
+            class="input"
+            type="password"
+            placeholder="ark_..."
           />
         </label>
 
@@ -261,7 +286,7 @@ onMounted(() => {
     >
       <div class="agreement-body">
         <div class="agreement-loading">
-          该操作会清空本机后端数据库中加密保存的 DeepSeek/Gemini API Key。清空后，相关 AI 功能将无法使用，直到你重新保存 Key。
+          该操作会清空本机后端数据库中加密保存的 DeepSeek/Gemini/字节方舟 API Key。清空后，相关 AI 功能将无法使用，直到你重新保存 Key。
         </div>
       </div>
     </ModalDialog>

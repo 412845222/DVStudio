@@ -385,6 +385,7 @@ function getDefaultClientSettings() {
 		deepseekModel: FIXED_DEEPSEEK_MODEL,
 		geminiApiKey: '',
 		geminiModel: FIXED_GEMINI_MODEL,
+		bytedanceApiKey: '',
 	}
 }
 
@@ -438,6 +439,8 @@ function getBackendSettingsEnv() {
 		GEMINI_API_KEY: String(s.geminiApiKey || ''),
 		NANOBANANA_API_KEY: String(s.geminiApiKey || ''),
 		NANOBANANA_MODEL: FIXED_GEMINI_MODEL,
+		ARK_API_KEY: String(s.bytedanceApiKey || ''),
+		BYTEDANCE_API_KEY: String(s.bytedanceApiKey || ''),
 		DWEB_DEFAULT_RESOLUTION: String(s.defaultResolution || ''),
 		DWEB_CLIENT_SETTINGS_JSON: JSON.stringify({
 			...s,

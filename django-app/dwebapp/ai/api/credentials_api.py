@@ -39,6 +39,7 @@ def credentials_status(_: HttpRequest) -> JsonResponse:
                 "providers": {
                     "deepseek": _provider_status("deepseek"),
                     "gemini": _provider_status("gemini"),
+                    "bytedance": _provider_status("bytedance"),
                 },
                 "serverTime": timezone.now().isoformat(),
             }
@@ -55,6 +56,7 @@ def upsert_credentials(request: HttpRequest) -> JsonResponse:
     body = _json_body(request)
     deepseek_key = body.get("deepseekApiKey")
     gemini_key = body.get("geminiApiKey")
+    bytedance_key = body.get("bytedanceApiKey")
 
     try:
         changed = []
@@ -70,9 +72,16 @@ def upsert_credentials(request: HttpRequest) -> JsonResponse:
             row.save(update_fields=["key_encrypted", "key_fingerprint", "updated_at"])
             changed.append("gemini")
 
+        if bytedance_key is not None:
+            row, _ = ApiKeySecret.objects.get_or_create(provider="bytedance")
+            row.set_plaintext_key(str(bytedance_key or ""))
+            row.save(update_fields=["key_encrypted", "key_fingerprint", "updated_at"])
+            changed.append("bytedance")
+
         return JsonResponse({"ok": True, "changed": changed, "providers": {
             "deepseek": _provider_status("deepseek"),
             "gemini": _provider_status("gemini"),
+            "bytedance": _provider_status("bytedance"),
         }})
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)

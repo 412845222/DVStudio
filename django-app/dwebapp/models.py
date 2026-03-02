@@ -5,6 +5,7 @@ from django.db import models
 class ApiProvider(models.TextChoices):
 	DEEPSEEK = "deepseek", "DeepSeek"
 	GEMINI = "gemini", "Gemini"
+	BYTEDANCE = "bytedance", "字节跳动(方舟)"
 
 
 class ApiKeySecret(models.Model):

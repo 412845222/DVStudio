@@ -15,8 +15,8 @@
       <div class="chat-history">
         <div class="chat-history-bar" @pointerdown="onDockDragStart">
           <div class="chat-history-title">
-            <template v-if="modelKey === 'nanobanana'">
-              <span>Gemini 图片生成</span>
+            <template v-if="isVisualGenMode">
+              <span>{{ visualPanelTitle }}</span>
               <span class="nano-title-tag">{{ nanoInterfaceLabel }}</span>
               <span v-if="nanoModelTag" class="nano-title-tag"
                 >实际：{{ nanoModelTag }}</span
@@ -51,9 +51,9 @@
         <div
           ref="historyBodyRef"
           class="chat-history-body"
-          :class="{ nanobanana: modelKey === 'nanobanana' }"
+          :class="{ nanobanana: isVisualGenMode }"
         >
-          <template v-if="modelKey === 'nanobanana'">
+          <template v-if="isVisualGenMode">
             <div class="nano-panel">
               <div
                 v-if="nanoAnchorNodeId && nanoRefAnchors?.length"
@@ -86,7 +86,7 @@
               </div>
 
               <div class="nano-left">
-                <div class="nano-field">
+                <div class="nano-field" v-if="modelKey === 'nanobanana'">
                   <div class="nano-label">比例</div>
                   <select
                     class="nano-input"
@@ -111,17 +111,120 @@
 
                 <div class="nano-field">
                   <div class="nano-label">数量</div>
-                  <select class="nano-input" :disabled="sending" v-model.number="nanoConfig.quantity">
+                  <select
+                    v-if="modelKey === 'nanobanana'"
+                    class="nano-input"
+                    :disabled="sending"
+                    v-model.number="nanoConfig.quantity"
+                  >
                     <option :value="1">1</option>
                     <option :value="2">2</option>
                     <option :value="3">3</option>
                     <option :value="4">4</option>
                   </select>
+                  <select
+                    v-else
+                    class="nano-input"
+                    :disabled="sending"
+                    v-model.number="seedanceConfig.referenceCount"
+                  >
+                    <option :value="1">1（优先首帧）</option>
+                    <option :value="2">2（首帧+尾帧）</option>
+                    <option :value="3">3</option>
+                    <option :value="4">4</option>
+                  </select>
                 </div>
+
+                <template v-if="modelKey === 'seedance'">
+                  <div class="nano-field">
+                    <div class="nano-label">时长</div>
+                    <select
+                      class="nano-input"
+                      :disabled="sending"
+                      v-model.number="seedanceConfig.duration"
+                    >
+                      <option :value="2">2s</option>
+                      <option :value="3">3s</option>
+                      <option :value="4">4s</option>
+                      <option :value="5">5s</option>
+                      <option :value="6">6s</option>
+                      <option :value="8">8s</option>
+                      <option :value="10">10s</option>
+                      <option :value="12">12s</option>
+                    </select>
+                  </div>
+
+                  <div class="nano-field">
+                    <div class="nano-label">分辨率</div>
+                    <select
+                      class="nano-input"
+                      :disabled="sending"
+                      v-model="seedanceConfig.resolution"
+                    >
+                      <option value="">模型默认</option>
+                      <option value="480p">480p</option>
+                      <option value="720p">720p</option>
+                      <option value="1080p">1080p</option>
+                    </select>
+                  </div>
+
+                  <div class="nano-field">
+                    <div class="nano-label">宽高比</div>
+                    <select
+                      class="nano-input"
+                      :disabled="sending"
+                      v-model="seedanceConfig.ratio"
+                    >
+                      <option value="adaptive">adaptive</option>
+                      <option value="1:1">1:1</option>
+                      <option value="4:3">4:3</option>
+                      <option value="16:9">16:9</option>
+                      <option value="3:4">3:4</option>
+                      <option value="9:16">9:16</option>
+                      <option value="21:9">21:9</option>
+                    </select>
+                  </div>
+
+                  <div class="nano-field">
+                    <div class="nano-label">参考图模式</div>
+                    <select
+                      class="nano-input"
+                      :disabled="sending"
+                      v-model="seedanceConfig.refMode"
+                    >
+                      <option value="auto">自动</option>
+                      <option value="first">首帧</option>
+                      <option value="first-last">首尾帧</option>
+                      <option value="reference">参考图</option>
+                    </select>
+                  </div>
+
+                  <div class="nano-field">
+                    <div class="nano-label">附加</div>
+                    <select
+                      class="nano-input"
+                      :disabled="sending"
+                      v-model="seedanceConfig.flags"
+                    >
+                      <option value="none">无</option>
+                      <option value="audio">生成音频</option>
+                      <option value="watermark">带水印</option>
+                      <option value="camera-fixed">固定镜头</option>
+                      <option value="draft">Draft 模式</option>
+                    </select>
+                  </div>
+                </template>
 
                 <div class="chat-history-status" aria-live="polite">
                   执行状态：{{
-                    nanoStatus || (sending ? "Gemini：生成中…" : "Gemini：待生成")
+                    nanoStatus ||
+                    (sending
+                      ? modelKey === "seedance"
+                        ? "Seedance：生成中…"
+                        : "Gemini：生成中…"
+                      : modelKey === "seedance"
+                      ? "Seedance：待生成"
+                      : "Gemini：待生成")
                   }}
                 </div>
                 <div v-if="nanoDetail" class="nano-detail" aria-live="polite">
@@ -137,18 +240,43 @@
 
               <div class="nano-right">
                 <div class="nano-preview">
-                  <div class="nano-preview-grid" :class="`count-${nanoPreviewSlots.length}`">
-                    <div v-for="(slot, idx) in nanoPreviewSlots" :key="`slot-${idx}`" class="nano-preview-item" :class="{ loading: !!slot.loading }">
-                      <img
-                        v-if="slot.url"
-                        :src="slot.url"
-                        :alt="`preview-${idx + 1}`"
-                        draggable="true"
-                        @dragstart="onNanoPreviewDragStart($event, slot.url)"
-                        :class="{ loading: !!slot.loading && !slot.url }"
+                  <div
+                    class="nano-preview-grid"
+                    :class="`count-${nanoPreviewSlots.length}`"
+                  >
+                    <div
+                      v-for="(slot, idx) in nanoPreviewSlots"
+                      :key="`slot-${idx}`"
+                      class="nano-preview-item"
+                      :class="{ loading: !!slot.loading }"
+                    >
+                      <template v-if="slot.url">
+                        <video
+                          v-if="modelKey === 'seedance'"
+                          :src="slot.url"
+                          controls
+                          preload="metadata"
+                          draggable="true"
+                          @dragstart="onNanoPreviewDragStart($event, slot.url, 'video')"
+                          class="nano-preview-video"
+                        />
+                        <img
+                          v-else
+                          :src="slot.url"
+                          :alt="`preview-${idx + 1}`"
+                          draggable="true"
+                          @dragstart="onNanoPreviewDragStart($event, slot.url, 'image')"
+                          :class="{ loading: !!slot.loading && !slot.url }"
+                        />
+                      </template>
+                      <div v-else class="nano-preview-empty">
+                        暂无预览图 {{ idx + 1 }}
+                      </div>
+                      <div
+                        v-if="slot.loading && !slot.url"
+                        class="nano-preview-item-loading"
+                        aria-hidden="true"
                       />
-                      <div v-else class="nano-preview-empty">暂无预览图 {{ idx + 1 }}</div>
-                      <div v-if="slot.loading && !slot.url" class="nano-preview-item-loading" aria-hidden="true" />
                     </div>
                   </div>
                 </div>
@@ -203,6 +331,7 @@
             >
               <option value="deepseek">DeepSeek</option>
               <option value="nanobanana">Gemini（NanoBanana）</option>
+              <option value="seedance">字节（Seedance 生视频）</option>
             </select>
           </div>
           <div v-if="modelKey === 'nanobanana'" class="chat-dock-toolbar-item">
@@ -212,9 +341,35 @@
               v-model="nanoConfig.imageModel"
               :disabled="sending"
             >
-              <option value="gemini-2.5-flash-image">NanoBanana（Gemini 2.5 Flash Image）</option>
-              <option value="gemini-3.1-flash-image-preview">NanoBanana 2（Gemini 3.1 Flash Image 预览版）</option>
-              <option value="gemini-3-pro-image-preview">NanoBanana Pro（Gemini 3 Pro Image 预览版）</option>
+              <option value="gemini-2.5-flash-image">
+                NanoBanana（Gemini 2.5 Flash Image）
+              </option>
+              <option value="gemini-3.1-flash-image-preview">
+                NanoBanana 2（Gemini 3.1 Flash Image 预览版）
+              </option>
+              <option value="gemini-3-pro-image-preview">
+                NanoBanana Pro（Gemini 3 Pro Image 预览版）
+              </option>
+            </select>
+          </div>
+          <div v-if="modelKey === 'seedance'" class="chat-dock-toolbar-item">
+            <div class="chat-dock-toolbar-label">视频接口</div>
+            <select
+              class="chat-dock-toolbar-select"
+              v-model="seedanceConfig.model"
+              :disabled="sending"
+            >
+              <option value="doubao-seedance-1-5-pro-251215">Seedance 1.5 Pro</option>
+              <option value="doubao-seedance-1-0-pro-250528">Seedance 1.0 Pro</option>
+              <option value="doubao-seedance-1-0-pro-fast-251015">
+                Seedance 1.0 Pro Fast
+              </option>
+              <option value="doubao-seedance-1-0-lite-i2v-250428">
+                Seedance 1.0 Lite I2V
+              </option>
+              <option value="doubao-seedance-1-0-lite-t2v-250428">
+                Seedance 1.0 Lite T2V
+              </option>
             </select>
           </div>
         </div>
@@ -227,6 +382,8 @@
           :placeholder="
             modelKey === 'nanobanana'
               ? '输入 Gemini 图片提示词（两图参考+角度描述）…'
+              : modelKey === 'seedance'
+              ? '输入 Seedance 生视频提示词（支持文字+参考图）…'
               : '在这里输入需求，后续会驱动工作流生成…'
           "
           :disabled="sending"
@@ -243,10 +400,10 @@
         >
           {{
             sending
-              ? modelKey === "nanobanana"
+              ? modelKey === "nanobanana" || modelKey === "seedance"
                 ? "生成中…"
                 : "发送中…"
-              : modelKey === "nanobanana"
+              : modelKey === "nanobanana" || modelKey === "seedance"
               ? "生成"
               : "发送"
           }}
@@ -269,7 +426,20 @@ export type NanoBananaConfig = {
   aspectRatio: string;
   usePro?: boolean;
   quantity?: 1 | 2 | 3 | 4;
-  imageModel?: "gemini-2.5-flash-image" | "gemini-3.1-flash-image-preview" | "gemini-3-pro-image-preview";
+  imageModel?:
+    | "gemini-2.5-flash-image"
+    | "gemini-3.1-flash-image-preview"
+    | "gemini-3-pro-image-preview";
+};
+
+export type SeedanceConfig = {
+  model: string;
+  ratio: string;
+  resolution: string;
+  duration: number;
+  refMode: "auto" | "first" | "first-last" | "reference";
+  referenceCount: number;
+  flags: "none" | "audio" | "watermark" | "camera-fixed" | "draft";
 };
 
 export type NanoBananaRefAnchor = {
@@ -285,7 +455,7 @@ const props = defineProps<{
   sending?: boolean;
   collapsed?: boolean;
   taskStatus?: string;
-  modelKey?: "deepseek" | "nanobanana";
+  modelKey?: "deepseek" | "nanobanana" | "seedance";
   nanoPreviewUrls?: string[];
   nanoPreviewLoadingStates?: boolean[];
   nanoPreviewUrl?: string;
@@ -305,8 +475,9 @@ const emit = defineEmits<{
   (e: "request-expand"): void;
   (e: "request-collapse"): void;
   (e: "focus-input"): void;
-  (e: "update:modelKey", v: "deepseek" | "nanobanana"): void;
+  (e: "update:modelKey", v: "deepseek" | "nanobanana" | "seedance"): void;
   (e: "nanobanana-generate", v: { prompt: string; config: NanoBananaConfig }): void;
+  (e: "seedance-generate", v: { prompt: string; config: SeedanceConfig }): void;
   (
     e: "workflow-end-link",
     v: { nodeId: string; anchorId: string; anchorIndex: number }
@@ -350,7 +521,11 @@ const dockStyle = computed(() => {
 });
 
 const modelKey = computed(
-  () => (props.modelKey ?? "deepseek") as "deepseek" | "nanobanana"
+  () => (props.modelKey ?? "deepseek") as "deepseek" | "nanobanana" | "seedance"
+);
+
+const isVisualGenMode = computed(
+  () => modelKey.value === "nanobanana" || modelKey.value === "seedance"
 );
 
 const nanoConfig = ref<NanoBananaConfig>({
@@ -360,7 +535,18 @@ const nanoConfig = ref<NanoBananaConfig>({
   imageModel: "gemini-2.5-flash-image",
 });
 
+const seedanceConfig = ref<SeedanceConfig>({
+  model: "doubao-seedance-1-5-pro-251215",
+  ratio: "adaptive",
+  resolution: "",
+  duration: 5,
+  refMode: "auto",
+  referenceCount: 4,
+  flags: "none",
+});
+
 const normalizedNanoQuantity = computed(() => {
+  if (modelKey.value === "seedance") return 1;
   const n = Number(nanoConfig.value.quantity ?? 1);
   if (!Number.isFinite(n)) return 1;
   return Math.max(1, Math.min(4, Math.floor(n)));
@@ -392,6 +578,7 @@ const nanoProSelected = computed(
 );
 
 const nanoInterfaceLabel = computed(() => {
+  if (modelKey.value === "seedance") return "Seedance";
   const model = String(nanoConfig.value.imageModel || "").trim();
   if (model === "gemini-3-pro-image-preview") return "NanoBanana Pro";
   if (model === "gemini-3.1-flash-image-preview") return "NanoBanana 2";
@@ -399,6 +586,11 @@ const nanoInterfaceLabel = computed(() => {
 });
 
 const nanoModelTag = computed(() => {
+  if (modelKey.value === "seedance") {
+    const model = String(props.nanoModelUsed || "").trim();
+    if (!model) return "";
+    return model;
+  }
   const model = String(props.nanoModelUsed || "").trim();
   if (!model) return "";
   if (model === "gemini-3-pro-image-preview") return "Pro";
@@ -424,6 +616,10 @@ const nanoConnectedCount = computed(() => {
 });
 
 const nanoEstimateText = computed(() => {
+  if (modelKey.value === "seedance") {
+    const sec = Math.max(8, Number(seedanceConfig.value.duration || 5) * 3);
+    return `${sec}-${sec + 24}s（估算）`;
+  }
   // No official ETA API. Provide a lightweight heuristic based on ref count.
   const n = nanoConnectedCount.value;
   const low = 8 + n * 2;
@@ -517,15 +713,24 @@ const onInput = (e: Event) => {
 
 const onModelChange = (e: Event) => {
   const v = String((e.target as HTMLSelectElement).value || "deepseek");
-  const next = (v === "nanobanana" ? "nanobanana" : "deepseek") as
-    | "deepseek"
-    | "nanobanana";
+  const next = (v === "nanobanana"
+    ? "nanobanana"
+    : v === "seedance"
+    ? "seedance"
+    : "deepseek") as "deepseek" | "nanobanana" | "seedance";
   emit("update:modelKey", next);
 };
 
 const emitGenerate = () => {
   const prompt = String(props.modelValue || "").trim();
   if (!prompt) return;
+  if (modelKey.value === "seedance") {
+    emit("seedance-generate", {
+      prompt,
+      config: { ...seedanceConfig.value },
+    });
+    return;
+  }
   const selected = String(nanoConfig.value.imageModel || "").trim();
   const imageModel =
     selected === "gemini-3-pro-image-preview"
@@ -542,20 +747,32 @@ const emitGenerate = () => {
 };
 
 const onEnterSend = () => {
-  if (modelKey.value === "nanobanana") emitGenerate();
+  if (modelKey.value === "nanobanana" || modelKey.value === "seedance") emitGenerate();
   else emit("send");
 };
 
 const onClickSend = () => {
-  if (modelKey.value === "nanobanana") emitGenerate();
+  if (modelKey.value === "nanobanana" || modelKey.value === "seedance") emitGenerate();
   else emit("send");
 };
 
-const onNanoPreviewDragStart = (e: DragEvent, inputUrl?: string) => {
+const visualPanelTitle = computed(() =>
+  modelKey.value === "seedance" ? "Seedance 生视频" : "Gemini 图片生成"
+);
+
+const onNanoPreviewDragStart = (
+  e: DragEvent,
+  inputUrl?: string,
+  kind: "image" | "video" = "image"
+) => {
   const url = String(inputUrl || "").trim();
   if (!url) return;
   try {
     e.dataTransfer?.setData("application/x-dweb-nanobanana-preview", url);
+    e.dataTransfer?.setData(
+      "application/x-dweb-nanobanana-preview-meta",
+      JSON.stringify({ url, kind })
+    );
     e.dataTransfer?.setData("text/uri-list", url);
     e.dataTransfer?.setData("text/plain", url);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
@@ -605,7 +822,8 @@ window.addEventListener("resize", () => {
 watch(
   () => [props.sending, props.modelKey] as const,
   ([sending, mk], [prevSending]) => {
-    const isNano = (mk ?? "deepseek") === "nanobanana";
+    const isNano =
+      (mk ?? "deepseek") === "nanobanana" || (mk ?? "deepseek") === "seedance";
     if (!isNano) return;
     if (sending && !prevSending) {
       nanoStartAt.value = Date.now();
@@ -898,6 +1116,13 @@ watch(
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.nano-preview-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.3);
 }
 
 .nano-preview-item img.loading {

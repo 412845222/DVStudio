@@ -58,3 +58,17 @@ def get_gemini_api_key() -> str:
     if api_key:
         return api_key
     return _safe_db_get_plaintext_key("gemini").strip()
+
+
+def get_bytedance_api_key() -> str:
+    """Return ByteDance Ark API key.
+
+    Priority:
+    1) env var ARK_API_KEY / BYTEDANCE_API_KEY
+    2) local encrypted DB storage (provider=bytedance)
+    """
+
+    api_key = (os.environ.get("ARK_API_KEY") or os.environ.get("BYTEDANCE_API_KEY") or "").strip()
+    if api_key:
+        return api_key
+    return _safe_db_get_plaintext_key("bytedance").strip()

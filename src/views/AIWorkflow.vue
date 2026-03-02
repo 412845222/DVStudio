@@ -114,6 +114,7 @@
         @send="onSend"
         @update:modelKey="chatModelKey = $event"
         @nanobanana-generate="onNanoBananaGenerate"
+        @seedance-generate="onSeedanceGenerate"
         @workflow-end-link="onEndLink"
         @request-expand="chatCollapsed = false"
         @request-collapse="chatCollapsed = true"
@@ -246,7 +247,11 @@ import WorkflowComfyUINode from '../ui/WorkFlow/WorlFlowNodes/WorkflowComfyUINod
 import BlueprintProjectToolbar, { type BlueprintProjectListItem } from '../ui/WorkFlow/BlueprintProjectToolbar.vue'
 import ResourceManagerPanel from '../ui/WorkFlow/ResourceManagerPanel.vue'
 import WorkflowInspectorPanel from '../ui/UIComponent/WorkflowInspectorPanel.vue'
-import BottomChatDock, { type BottomChatMessage, type NanoBananaConfig } from '../ui/UIComponent/BottomChatDock.vue'
+import BottomChatDock, {
+  type BottomChatMessage,
+  type NanoBananaConfig,
+  type SeedanceConfig,
+} from '../ui/UIComponent/BottomChatDock.vue'
 import ContextMenu, { type ContextMenuSection } from '../ui/UIComponent/ContextMenu.vue'
 import ToastStack, { type ToastItem } from '../ui/UIComponent/ToastStack.vue'
 import FullscreenProgressOverlay from '../ui/UIComponent/FullscreenProgressOverlay.vue'
@@ -315,7 +320,7 @@ watch(
 )
 
 // NOTE: must be declared before any watch/computed that references it.
-const chatModelKey = ref<'deepseek' | 'nanobanana'>('deepseek')
+const chatModelKey = ref<'deepseek' | 'nanobanana' | 'seedance'>('deepseek')
 
 const nodes = computed(() => store.state.nodeOrder.map((id) => store.state.nodesById[id]).filter(Boolean))
 const NANO_ANCHOR_NODE_ID = 'wf-nanobanana-ref-input'
@@ -361,7 +366,7 @@ const renderNodes = computed(() => nodes.value.filter((n) => n.id !== NANO_ANCHO
 const edges = computed(() => store.state.edgeOrder.map((id) => store.state.edgesById[id]).filter(Boolean))
 const renderEdges = computed(() => {
   // Only show NanoBanana reference edges when in NanoBanana mode and dock is expanded.
-  if (chatModelKey.value === 'nanobanana' && !chatCollapsed.value) return edges.value
+  if ((chatModelKey.value === 'nanobanana' || chatModelKey.value === 'seedance') && !chatCollapsed.value) return edges.value
   return edges.value.filter((e) => e.toNodeId !== NANO_ANCHOR_NODE_ID && e.fromNodeId !== NANO_ANCHOR_NODE_ID)
 })
 const selectedNodeId = computed(() => store.state.selectedNodeId)
@@ -409,7 +414,7 @@ const disconnectNanoRefEdges = () => {
 }
 
 const onDockLayoutChanged = () => {
-  if (chatModelKey.value !== 'nanobanana') return
+  if (chatModelKey.value !== 'nanobanana' && chatModelKey.value !== 'seedance') return
   if (chatCollapsed.value) return
   scheduleAnchorLayoutRefresh()
 }
@@ -417,14 +422,16 @@ const onDockLayoutChanged = () => {
 watch(
   () => chatModelKey.value,
   (mk, prev) => {
-    if (prev === 'nanobanana' && mk !== 'nanobanana') disconnectNanoRefEdges()
+    const wasVisual = prev === 'nanobanana' || prev === 'seedance'
+    const isVisual = mk === 'nanobanana' || mk === 'seedance'
+    if (wasVisual && !isVisual) disconnectNanoRefEdges()
   }
 )
 
 watch(
   () => chatCollapsed.value,
   (v) => {
-    if (v && chatModelKey.value === 'nanobanana') disconnectNanoRefEdges()
+    if (v && (chatModelKey.value === 'nanobanana' || chatModelKey.value === 'seedance')) disconnectNanoRefEdges()
   }
 )
 
@@ -451,7 +458,7 @@ const makeChatId = () => `aiwf-chat-${Date.now().toString(36)}-${Math.random().t
 
 const onSend = async () => {
   // DeepSeek chat only. NanoBanana uses a dedicated generate event.
-  if (chatModelKey.value === 'nanobanana') return
+  if (chatModelKey.value === 'nanobanana' || chatModelKey.value === 'seedance') return
   const content = String(chatDraft.value || '').trim()
   if (!content) return
 
@@ -736,6 +743,135 @@ const onNanoBananaGenerate = async (payload: { prompt: string; config: NanoBanan
     pushToast('NanoBanana 生成失败：' + errMsg, 'warn')
   } finally {
     // Ensure the preview loading animation is visible even if backend is disconnected and fails fast.
+    const minShowMs = 900
+    const elapsed = Date.now() - sendingStartAt
+    if (elapsed < minShowMs) {
+      await new Promise((r) => setTimeout(r, minShowMs - elapsed))
+    }
+    nanoPreviewLoadingStates.value = nanoPreviewLoadingStates.value.map(() => false)
+    chatSending.value = false
+  }
+}
+
+const onSeedanceGenerate = async (payload: { prompt: string; config: SeedanceConfig }) => {
+  if (chatSending.value) return
+  const prompt = String(payload?.prompt ?? '').trim()
+  if (!prompt) return
+
+  const sendingStartAt = Date.now()
+  chatSending.value = true
+  nanoStatus.value = '准备中…'
+  nanoBilling.value = ''
+  nanoModelUsed.value = ''
+  nanoDetail.value = ''
+  nanoPreviewUrl.value = ''
+  nanoPreviewUrls.value = ['']
+  nanoPreviewLoadingStates.value = [true]
+
+  try {
+    const svc = new ComfyUIBridgeService()
+
+    const anchorIndexFromId = (id: string) => {
+      const m = String(id || '').match(/(\d+)/)
+      const n = m ? Number(m[1]) : NaN
+      return Number.isFinite(n) ? n : 0
+    }
+
+    const refFiles: Array<{ idx: number; file: File }> = []
+    const pseudo = store.state.nodesById[NANO_ANCHOR_NODE_ID]
+    const inputAnchors = Array.isArray(pseudo?.inputs) ? pseudo!.inputs : ([] as WorkflowAnchorSpec[])
+    const sortedAnchors = [...inputAnchors].sort((a, b) => anchorIndexFromId(a.id) - anchorIndexFromId(b.id))
+    for (const a of sortedAnchors) {
+      if (refFiles.length >= 4) break
+      const edge = edges.value.find((e) => e.toNodeId === NANO_ANCHOR_NODE_ID && e.toAnchorId === a.id)
+      if (!edge) continue
+      const fromNode = store.state.nodesById[edge.fromNodeId]
+      if (!fromNode) continue
+      const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
+      if (!isImageSource) continue
+      let url = nodeResourceUrl(fromNode)
+      if (!url) continue
+      const nameBase = String(nodeResourceName(fromNode) ?? fromNode.alias ?? fromNode.title ?? 'ref').trim() || 'ref'
+      let file: File | null = null
+      try {
+        if (fromNode.type === 'image') {
+          file = await buildCroppedImageTransferFile(fromNode, url, nameBase)
+        }
+        if (!file) file = await fileFromUrl(url, nameBase)
+      } catch {
+        file = null
+      }
+      if (file) refFiles.push({ idx: anchorIndexFromId(a.id), file })
+    }
+    refFiles.sort((a, b) => a.idx - b.idx)
+
+    const form = new FormData()
+    form.set('prompt', prompt)
+    form.set('model', String(payload?.config?.model ?? 'doubao-seedance-1-5-pro-251215'))
+    form.set('ratio', String(payload?.config?.ratio ?? 'adaptive'))
+    if (String(payload?.config?.resolution ?? '').trim()) {
+      form.set('resolution', String(payload?.config?.resolution ?? '').trim())
+    }
+    form.set('duration', String(Number(payload?.config?.duration ?? 5) || 5))
+    form.set('refMode', String(payload?.config?.refMode ?? 'auto'))
+    form.set('referenceCount', String(Number(payload?.config?.referenceCount ?? 4) || 4))
+
+    const flag = String(payload?.config?.flags ?? 'none')
+    if (flag === 'audio') form.set('generateAudio', '1')
+    else if (flag === 'watermark') form.set('watermark', '1')
+    else if (flag === 'camera-fixed') form.set('cameraFixed', '1')
+    else if (flag === 'draft') form.set('draft', '1')
+
+    for (const rf of refFiles) form.append('refImages', rf.file, rf.file.name)
+
+    for await (const ev of svc.seedanceGenerateStream(form)) {
+      if (ev.type === 'done') break
+      if (ev.type === 'error') {
+        const errMsg = String(ev.error?.message ?? 'unknown')
+        nanoStatus.value = '失败'
+        appendNanoDetail(`错误：${errMsg}`)
+        pushToast('Seedance 生成失败：' + errMsg, 'warn')
+        break
+      }
+      const m = ev.message
+      if (m.type === 'agentToUi/chatMessage') {
+        const content = String((m as any)?.payload?.content ?? '')
+        try {
+          const obj = JSON.parse(content)
+          if (obj && typeof obj === 'object') {
+            const nextUrl = resolveBackendUrl(String((obj as any).videoUrl || ''))
+            if (nextUrl) {
+              nanoPreviewUrls.value = [nextUrl]
+              nanoPreviewLoadingStates.value = [false]
+              nanoPreviewUrl.value = nextUrl
+            }
+            if (typeof (obj as any).billing === 'string') nanoBilling.value = String((obj as any).billing)
+            if (typeof (obj as any).model === 'string') nanoModelUsed.value = String((obj as any).model)
+          }
+        } catch {
+          // ignore
+        }
+        continue
+      }
+      if (m.type === 'agentToUi/taskStatus') {
+        const msg = String((m as any)?.payload?.message ?? '').trim()
+        if (msg) nanoStatus.value = msg
+        continue
+      }
+      if (m.type === 'agentToUi/error') {
+        const msg = String((m as any)?.payload?.message ?? 'unknown')
+        nanoStatus.value = '失败'
+        appendNanoDetail(`错误：${msg}`)
+        pushToast('Seedance 生成失败：' + msg, 'warn')
+        break
+      }
+    }
+  } catch (err: any) {
+    const errMsg = String(err?.message ?? err ?? 'unknown')
+    nanoStatus.value = '失败'
+    appendNanoDetail(`错误：${errMsg}`)
+    pushToast('Seedance 生成失败：' + errMsg, 'warn')
+  } finally {
     const minShowMs = 900
     const elapsed = Date.now() - sendingStartAt
     if (elapsed < minShowMs) {
@@ -2269,7 +2405,7 @@ const onCanvasPointerDown = (e: PointerEvent) => {
   if (inUi) return
   store.commit('clearSelection')
   inspectorOpen.value = false
-  if (chatModelKey.value !== 'nanobanana') chatCollapsed.value = true
+  if (chatModelKey.value !== 'nanobanana' && chatModelKey.value !== 'seedance') chatCollapsed.value = true
 }
 
 const getDraggedNanoPreviewUrl = (e: DragEvent): string | null => {
@@ -2281,6 +2417,23 @@ const getDraggedNanoPreviewUrl = (e: DragEvent): string | null => {
     dt.getData('text/plain')
   const v = String(url || '').trim()
   return v ? v : null
+}
+
+const getDraggedNanoPreviewMeta = (e: DragEvent): { url: string; kind: 'image' | 'video' } | null => {
+  const dt = e.dataTransfer
+  if (!dt) return null
+  const raw = dt.getData('application/x-dweb-nanobanana-preview-meta')
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as any
+    const url = String(parsed?.url || '').trim()
+    const kindText = String(parsed?.kind || '').trim().toLowerCase()
+    const kind = kindText === 'video' ? 'video' : kindText === 'image' ? 'image' : null
+    if (!url || !kind) return null
+    return { url, kind }
+  } catch {
+    return null
+  }
 }
 
 const getDraggedResourceItem = (e: DragEvent): {
@@ -2644,7 +2797,8 @@ const onCanvasDragOver = (e: DragEvent) => {
   const dt = e.dataTransfer
   const hasFiles = !!dt && ((dt.items && Array.from(dt.items).some((it) => it.kind === 'file')) || (dt.files && dt.files.length > 0))
   const resourceItem = getDraggedResourceItem(e)
-  const url = getDraggedNanoPreviewUrl(e)
+  const nanoMeta = getDraggedNanoPreviewMeta(e)
+  const url = nanoMeta?.url || getDraggedNanoPreviewUrl(e)
   if (!hasFiles && !url && !resourceItem) return
   try {
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
@@ -2716,24 +2870,34 @@ const onCanvasDrop = async (e: DragEvent) => {
     }
   }
 
-  const urlRaw = getDraggedNanoPreviewUrl(e)
+  const nanoMeta = getDraggedNanoPreviewMeta(e)
+  const urlRaw = nanoMeta?.url || getDraggedNanoPreviewUrl(e)
   if (!urlRaw) return
 
   const url = resolveBackendUrl(urlRaw)
+  const kind: 'image' | 'video' = nanoMeta?.kind === 'video' ? 'video' : 'image'
   const resourceId = `wf-res-nanobanana-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const frozenUrl = await snapshotRemoteImageToObjectUrl(url, resourceId)
+  let storedUrl = url
+  if (kind === 'image') {
+    const frozenUrl = await snapshotRemoteImageToObjectUrl(url, resourceId)
+    storedUrl = frozenUrl || url
+  }
   store.commit('addResource', {
     id: resourceId,
-    kind: 'image',
-    name: `NanoBanana_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`,
-    url: frozenUrl || url,
+    kind,
+    name:
+      kind === 'video'
+        ? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
+        : `NanoBanana_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`,
+    url: storedUrl,
     createdAt: Date.now(),
   })
-  store.commit('addNodeAt', { worldX, worldY, title: '图片' })
+  store.commit('addNodeAt', { worldX, worldY, title: kind === 'video' ? '视频' : '图片' })
   const nodeId = store.state.selectedNodeId
   if (!nodeId) return
-  store.commit('setNodeType', { nodeId, type: 'image' })
+  store.commit('setNodeType', { nodeId, type: kind })
   store.commit('setNodeResource', { nodeId, resourceId })
+  autoSizeMediaNode(nodeId, storedUrl, kind)
 }
 
 const onNodeX = (nodeId: string, v: number) => {
@@ -3702,7 +3866,7 @@ const dropTarget = ref<{ nodeId: string; anchorId: string; anchorIndex: number }
 let cleanupLink: (() => void) | null = null
 
 const nanoHoverAnchorId = computed(() => {
-  if (chatModelKey.value !== 'nanobanana') return null
+  if (chatModelKey.value !== 'nanobanana' && chatModelKey.value !== 'seedance') return null
   if (!dropTarget.value) return null
   if (dropTarget.value.nodeId !== NANO_ANCHOR_NODE_ID) return null
   return dropTarget.value.anchorId

@@ -89,6 +89,7 @@ export type ClientSettings = {
 	deepseekModel: string
 	geminiApiKey: string
 	geminiModel: string
+	bytedanceApiKey: string
 }
 
 export type ClientSettingsResult = {

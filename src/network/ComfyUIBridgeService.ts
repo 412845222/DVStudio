@@ -134,6 +134,7 @@ type NanoBananaCacheRefsResponse =
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
 export type NanoBananaGenerateStreamEvent = BlueprintChatStreamEvent
+export type SeedanceGenerateStreamEvent = BlueprintChatStreamEvent
 
 type JobResponse =
 	| {
@@ -432,6 +433,103 @@ export class ComfyUIBridgeService {
 				}
 			}
 			// default to msg
+			try {
+				const obj = JSON.parse(data)
+				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
+				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
+			} catch (e) {
+				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+			}
+		}
+
+		try {
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+				buffer += decoder.decode(value, { stream: true })
+
+				let idx = buffer.indexOf('\n')
+				while (idx >= 0) {
+					const line = buffer.slice(0, idx)
+					buffer = buffer.slice(idx + 1)
+					idx = buffer.indexOf('\n')
+
+					const l = line.replace(/\r$/, '')
+					if (!l.trim()) {
+						for (const ev of flush()) yield ev
+						continue
+					}
+					if (l.startsWith('event:')) {
+						eventName = l.slice('event:'.length).trim()
+						continue
+					}
+					if (l.startsWith('data:')) {
+						dataLines.push(l.slice('data:'.length).trimStart())
+						continue
+					}
+				}
+			}
+		} finally {
+			try {
+				reader.releaseLock()
+			} catch {
+				// ignore
+			}
+		}
+
+		for (const ev of flush()) yield ev
+	}
+
+	/**
+	 * Seedance video generation (SSE stream).
+	 * Backend: POST /api/workflow/seedance/generate:stream
+	 */
+	async *seedanceGenerateStream(
+		form: FormData,
+		signal?: AbortSignal
+	): AsyncGenerator<SeedanceGenerateStreamEvent, void, void> {
+		const headers: Record<string, string> = {
+			Accept: 'text/event-stream',
+		}
+		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
+
+		const res = await fetch(this.url('/api/workflow/seedance/generate:stream'), {
+			method: 'POST',
+			headers,
+			body: form,
+			signal,
+		})
+
+		if (!res.ok || !res.body) {
+			const body = await safeJson(res)
+			throw new Error(
+				`seedance/generate:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
+		}
+
+		const reader = res.body.getReader()
+		const decoder = new TextDecoder('utf-8')
+
+		let buffer = ''
+		let eventName: string | undefined
+		let dataLines: string[] = []
+
+		const flush = (): SeedanceGenerateStreamEvent[] => {
+			if (dataLines.length === 0 && !eventName) return []
+			const data = dataLines.join('\n')
+			const name = eventName
+			eventName = undefined
+			dataLines = []
+
+			if (name === 'done') return [{ type: 'done' }]
+			if (name === 'error') {
+				try {
+					const obj = JSON.parse(data)
+					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
+				} catch {
+					return [{ type: 'error', error: { message: data || 'error' } }]
+				}
+			}
 			try {
 				const obj = JSON.parse(data)
 				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]

@@ -11,6 +11,7 @@ urlpatterns = [
     path("nanobanana/ref-cache", api.nanobanana_ref_cache, name="comfyui-nanobanana-ref-cache"),
 	path("nanobanana/generate", api.nanobanana_generate, name="comfyui-nanobanana-generate"),
     path("nanobanana/generate:stream", api.nanobanana_generate_stream, name="comfyui-nanobanana-generate-stream"),
+    path("seedance/generate:stream", api.seedance_generate_stream, name="comfyui-seedance-generate-stream"),
     path("prompt", api.prompt, name="comfyui-prompt"),
     path("history/<str:prompt_id>", api.history, name="comfyui-history"),
     path("view", api.view, name="comfyui-view"),

@@ -13,6 +13,7 @@ declare global {
 			deepseekModel: string
 			geminiApiKey: string
 			geminiModel: string
+			bytedanceApiKey: string
 		} | null
 		dweb?: {
 			common: {

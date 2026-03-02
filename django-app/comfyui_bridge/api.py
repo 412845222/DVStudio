@@ -2545,6 +2545,410 @@ def nanobanana_generate_stream(request: HttpRequest) -> HttpResponseBase:
     return resp
 
 
+def _seedance_cfg() -> Dict[str, str]:
+    def _env_or_default(name: str, fallback: str) -> str:
+        v = os.environ.get(name)
+        return v if v else fallback
+
+    api_key = (_env_or_default("ARK_API_KEY", "") or _env_or_default("BYTEDANCE_API_KEY", "")).strip()
+    if not api_key:
+        try:
+            from dwebapp.ai.credentials_store import get_bytedance_api_key
+
+            api_key = (get_bytedance_api_key() or "").strip()
+        except Exception:
+            api_key = ""
+
+    model = _env_or_default("SEEDANCE_MODEL", "doubao-seedance-1-5-pro-251215").strip() or "doubao-seedance-1-5-pro-251215"
+    api_base = _env_or_default("SEEDANCE_API_BASE", "https://ark.cn-beijing.volces.com/api/v3").strip() or "https://ark.cn-beijing.volces.com/api/v3"
+    timeout_sec = _env_or_default("SEEDANCE_TIMEOUT_SEC", "120").strip() or "120"
+    poll_interval_sec = _env_or_default("SEEDANCE_POLL_INTERVAL_SEC", "3").strip() or "3"
+    poll_timeout_sec = _env_or_default("SEEDANCE_POLL_TIMEOUT_SEC", "600").strip() or "600"
+
+    create_url = _env_or_default("SEEDANCE_CREATE_URL", "").strip()
+    if not create_url:
+        create_url = api_base.rstrip("/") + "/contents/generations/tasks"
+
+    return {
+        "api_key": api_key,
+        "model": model,
+        "api_base": api_base,
+        "create_url": create_url,
+        "timeout_sec": timeout_sec,
+        "poll_interval_sec": poll_interval_sec,
+        "poll_timeout_sec": poll_timeout_sec,
+    }
+
+
+def _seedance_truthy(v: Any) -> bool:
+    if v is None:
+        return False
+    if isinstance(v, bool):
+        return bool(v)
+    s = str(v).strip().lower()
+    return s in ("1", "true", "yes", "y", "on")
+
+
+def _seedance_coerce_int(v: Any, default_value: int, *, min_value: int, max_value: int) -> int:
+    try:
+        n = int(str(v).strip())
+    except Exception:
+        n = int(default_value)
+    return max(min_value, min(max_value, n))
+
+
+def _seedance_data_url_from_image(content: bytes, content_type: str) -> str:
+    mime_type = str(content_type or "image/png").split(";")[0].strip().lower() or "image/png"
+    b64 = base64.b64encode(content or b"").decode("ascii")
+    return f"data:{mime_type};base64,{b64}"
+
+
+def _seedance_extract_usage_text(obj: Any) -> Optional[str]:
+    if not isinstance(obj, dict):
+        return None
+    usage = obj.get("usage")
+    if isinstance(usage, dict):
+        total = usage.get("total_tokens")
+        completion = usage.get("completion_tokens")
+        out: List[str] = []
+        if isinstance(total, int):
+            out.append(f"total={total}")
+        if isinstance(completion, int):
+            out.append(f"completion={completion}")
+        if out:
+            return "tokens: " + ", ".join(out)
+    return None
+
+
+def _seedance_save_video_from_url(raw_url: str) -> str:
+    url = str(raw_url or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise ValueError("invalid video url")
+
+    req = urllib.request.Request(url, headers={"Accept": "video/*,application/octet-stream"}, method="GET")
+    with urllib.request.urlopen(req, timeout=60.0) as res:
+        content_type = str(res.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        data = res.read()
+
+    ext = mimetypes.guess_extension(content_type) if content_type else None
+    if not ext:
+        parsed = urllib.parse.urlparse(url)
+        ext = os.path.splitext(parsed.path)[1] or ".mp4"
+    if not ext.startswith("."):
+        ext = "." + ext
+    if ext.lower() not in (".mp4", ".mov", ".webm", ".mkv", ".avi"):
+        ext = ".mp4"
+
+    ym = time.strftime("%Y%m")
+    rel_dir = Path("seedance_outputs") / ym
+    media_root = Path(getattr(settings, "MEDIA_ROOT", "") or Path(__file__).resolve().parents[1] / "media")
+    out_dir = media_root / rel_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{uuid.uuid4().hex}{ext}"
+    out_path = out_dir / filename
+    out_path.write_bytes(data)
+
+    media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
+    if not media_url.endswith("/"):
+        media_url += "/"
+    return media_url + str((rel_dir / filename).as_posix())
+
+
+def _seedance_get_task(cfg: Dict[str, str], task_id: str) -> Dict[str, Any]:
+    api_base = str(cfg.get("api_base") or "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
+    url = f"{api_base}/contents/generations/tasks/{urllib.parse.quote(str(task_id or '').strip(), safe='')}"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    api_key = str(cfg.get("api_key") or "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}" if not api_key.lower().startswith("bearer ") else api_key
+    raw, err = _request_raw("GET", url, data=None, headers=headers, timeout_sec=float(cfg.get("timeout_sec") or 120))
+    if err or raw is None:
+        raise ValueError(f"Seedance get task failed: {err or 'unknown error'}")
+    try:
+        text = raw.decode("utf-8")
+    except Exception:
+        text = raw.decode("utf-8", errors="ignore")
+    return json.loads(text) if text else {}
+
+
+def _seedance_build_content(prompt: str, ref_images: List[Tuple[str, bytes, str]], ref_mode: str, ref_count: int) -> List[Dict[str, Any]]:
+    content: List[Dict[str, Any]] = [{"type": "text", "text": str(prompt or "")}]
+    if not ref_images:
+        return content
+
+    refs = ref_images[: max(0, min(len(ref_images), ref_count))]
+    if not refs:
+        return content
+
+    mode = str(ref_mode or "auto").strip().lower()
+    if mode not in ("auto", "reference", "first", "first-last"):
+        mode = "auto"
+
+    for idx, (_, data, content_type) in enumerate(refs):
+        item: Dict[str, Any] = {
+            "type": "image_url",
+            "image_url": {"url": _seedance_data_url_from_image(data, content_type)},
+        }
+        role: Optional[str] = None
+        if mode == "reference":
+            # "reference_image" may trigger r2v task type upstream.
+            # For broader model compatibility, keep first image as first_frame and
+            # leave others without explicit role.
+            role = "first_frame" if idx == 0 else None
+        elif mode == "first":
+            role = "first_frame" if idx == 0 else None
+        elif mode == "first-last":
+            if idx == 0:
+                role = "first_frame"
+            elif idx == 1:
+                role = "last_frame"
+            else:
+                role = "reference_image"
+        else:
+            # auto
+            if len(refs) == 1:
+                role = "first_frame"
+            elif len(refs) >= 2:
+                if idx == 0:
+                    role = "first_frame"
+                elif idx == 1:
+                    role = "last_frame"
+                else:
+                    role = "reference_image"
+        if role:
+            item["role"] = role
+        content.append(item)
+
+    return content
+
+
+def _seedance_pick_task_type(model: str, ref_images: List[Tuple[str, bytes, str]], ref_mode: str, requested_task_type: str) -> str:
+    model_text = str(model or "").strip().lower()
+    mode = str(ref_mode or "").strip().lower()
+    req = str(requested_task_type or "").strip().lower()
+
+    if req in ("t2v", "i2v", "r2v"):
+        # Guard against known unsupported combination from user report.
+        if req == "r2v" and "seedance-1-5-pro" in model_text:
+            return "i2v" if ref_images else "t2v"
+        return req
+
+    # Auto mode: as long as there are images, prefer i2v for compatibility.
+    if ref_images:
+        return "i2v"
+
+    if mode in ("reference", "first", "first-last", "auto"):
+        return "t2v"
+    return "t2v"
+
+
+@csrf_exempt
+def seedance_generate_stream(request: HttpRequest) -> HttpResponseBase:
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    prompt = str(request.POST.get("prompt") or "").strip()
+    if not prompt:
+
+        def bad_req() -> Generator[bytes, None, None]:
+            yield _sse("error", {"message": "prompt is required"}).encode("utf-8")
+            yield _sse("done", "{}").encode("utf-8")
+
+        resp = StreamingHttpResponse(bad_req(), content_type="text/event-stream")
+        _apply_sse_headers(resp)
+        return resp
+
+    cfg = _seedance_cfg()
+    if not cfg.get("api_key"):
+
+        def missing_cfg() -> Generator[bytes, None, None]:
+            yield _sse(
+                "msg",
+                _agent_to_ui_error(
+                    "missing_config",
+                    "字节方舟 API Key 缺失。请在设置页保存，或设置环境变量 ARK_API_KEY。",
+                    details={"need": ["ARK_API_KEY"]},
+                ),
+            ).encode("utf-8")
+            yield _sse("done", "{}").encode("utf-8")
+
+        resp = StreamingHttpResponse(missing_cfg(), content_type="text/event-stream")
+        _apply_sse_headers(resp)
+        return resp
+
+    model = str(request.POST.get("model") or cfg.get("model") or "").strip() or str(cfg.get("model") or "")
+    ratio = str(request.POST.get("ratio") or "adaptive").strip() or "adaptive"
+    resolution = str(request.POST.get("resolution") or "").strip()
+    duration = _seedance_coerce_int(request.POST.get("duration"), 5, min_value=2, max_value=12)
+    seed_raw = str(request.POST.get("seed") or "").strip()
+    seed_val: Optional[int] = None
+    if seed_raw:
+        try:
+            seed_val = int(seed_raw)
+        except Exception:
+            seed_val = None
+    generate_audio = _seedance_truthy(request.POST.get("generateAudio") or request.POST.get("generate_audio"))
+    watermark = _seedance_truthy(request.POST.get("watermark"))
+    camera_fixed = _seedance_truthy(request.POST.get("cameraFixed") or request.POST.get("camera_fixed"))
+    draft = _seedance_truthy(request.POST.get("draft"))
+    ref_mode = str(request.POST.get("refMode") or "auto").strip().lower() or "auto"
+    requested_task_type = str(request.POST.get("taskType") or request.POST.get("task_type") or "").strip().lower()
+    ref_count = _seedance_coerce_int(request.POST.get("referenceCount"), 4, min_value=1, max_value=4)
+
+    ref_uploads: List[Any] = []
+    try:
+        ref_uploads = list(request.FILES.getlist("refImages") or [])
+    except Exception:
+        ref_uploads = []
+    if not ref_uploads:
+        ref_single = request.FILES.get("refImage")
+        if ref_single is not None:
+            ref_uploads = [ref_single]
+
+    ref_images: List[Tuple[str, bytes, str]] = []
+    for ref_upload in ref_uploads:
+        if ref_upload is None:
+            continue
+        try:
+            ref_bytes = ref_upload.read()
+            if not ref_bytes:
+                continue
+            ref_name = str(getattr(ref_upload, "name", "ref.png") or "ref.png")
+            ref_ct = str(getattr(ref_upload, "content_type", "") or "")
+            if not ref_ct:
+                ref_ct = mimetypes.guess_type(ref_name)[0] or "image/png"
+            ref_images.append((ref_name, ref_bytes, ref_ct))
+        except Exception:
+            continue
+
+    def gen() -> Generator[bytes, None, None]:
+        try:
+            yield _sse("msg", _agent_to_ui_task_status("started", message="Seedance：创建任务中…")).encode("utf-8")
+
+            model_text = str(model or "").strip().lower()
+            effective_ref_mode = ref_mode
+            if effective_ref_mode == "reference" and "seedance-1-5-pro" in model_text:
+                effective_ref_mode = "auto"
+                yield _sse(
+                    "msg",
+                    _agent_to_ui_task_status("streaming", message="Seedance：当前模型不支持参考图专用模式，已自动切换为自动模式"),
+                ).encode("utf-8")
+
+            task_type = _seedance_pick_task_type(model, ref_images, effective_ref_mode, requested_task_type)
+            content_obj = _seedance_build_content(prompt, ref_images, effective_ref_mode, ref_count)
+            create_payload: Dict[str, Any] = {
+                "model": model,
+                "content": content_obj,
+                "task_type": task_type,
+                "ratio": ratio,
+                "duration": duration,
+                "watermark": watermark,
+            }
+            if resolution:
+                create_payload["resolution"] = resolution
+            if seed_val is not None:
+                create_payload["seed"] = seed_val
+            if generate_audio:
+                create_payload["generate_audio"] = True
+            if camera_fixed:
+                create_payload["camera_fixed"] = True
+            if draft:
+                create_payload["draft"] = True
+
+            create_url = str(cfg.get("create_url") or "").strip()
+            timeout_sec = float(cfg.get("timeout_sec") or 120)
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            api_key = str(cfg.get("api_key") or "").strip()
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}" if not api_key.lower().startswith("bearer ") else api_key
+
+            raw, err = _request_raw(
+                "POST",
+                create_url,
+                data=json.dumps(create_payload, ensure_ascii=False).encode("utf-8"),
+                headers=headers,
+                timeout_sec=timeout_sec,
+            )
+            if err or raw is None:
+                raise ValueError(f"Seedance create task failed: {err or 'unknown error'}")
+            try:
+                create_text = raw.decode("utf-8")
+            except Exception:
+                create_text = raw.decode("utf-8", errors="ignore")
+            create_obj = json.loads(create_text) if create_text else {}
+            task_id = str((create_obj or {}).get("id") or "").strip()
+            if not task_id:
+                raise ValueError(f"Seedance create task failed: invalid response {str(create_obj)[:500]}")
+
+            yield _sse("msg", _agent_to_ui_task_status("streaming", message=f"Seedance：任务已创建（{task_id}），等待生成…")).encode("utf-8")
+
+            started_at = time.time()
+            poll_interval_sec = max(1.0, float(cfg.get("poll_interval_sec") or 3))
+            poll_timeout_sec = max(30.0, float(cfg.get("poll_timeout_sec") or 600))
+            billing_text: Optional[str] = None
+
+            while True:
+                task_obj = _seedance_get_task(cfg, task_id)
+                status = str(task_obj.get("status") or "").strip().lower()
+                if status in ("succeeded", "success"):
+                    content_val = task_obj.get("content") if isinstance(task_obj, dict) else None
+                    video_url_remote = ""
+                    if isinstance(content_val, dict):
+                        video_url_remote = str(content_val.get("video_url") or "").strip()
+                    if not video_url_remote:
+                        raise ValueError("Seedance succeeded but content.video_url is empty")
+
+                    billing_text = _seedance_extract_usage_text(task_obj) or billing_text
+                    video_url_local = _seedance_save_video_from_url(video_url_remote)
+                    out_payload: Dict[str, Any] = {
+                        "taskId": task_id,
+                        "videoUrl": video_url_local,
+                        "videoUrlRemote": video_url_remote,
+                        "model": model,
+                        "status": status,
+                    }
+                    if billing_text:
+                        out_payload["billing"] = billing_text
+
+                    yield _sse("msg", _agent_to_ui_chat_message(json.dumps(out_payload, ensure_ascii=False))).encode("utf-8")
+                    yield _sse("msg", _agent_to_ui_task_status("done", message="Seedance：完成")).encode("utf-8")
+                    yield _sse("done", "{}").encode("utf-8")
+                    return
+
+                if status in ("failed", "error", "expired", "cancelled"):
+                    err_obj = task_obj.get("error") if isinstance(task_obj, dict) else None
+                    raise ValueError(f"Seedance task failed: status={status}, error={err_obj}")
+
+                billing_text = _seedance_extract_usage_text(task_obj) or billing_text
+                elapsed = int(max(0, time.time() - started_at))
+                suffix = f"；计费：{billing_text}" if billing_text else ""
+                yield _sse(
+                    "msg",
+                    _agent_to_ui_task_status("streaming", message=f"Seedance：{status or 'running'}（{elapsed}s）{suffix}"),
+                ).encode("utf-8")
+
+                if time.time() - started_at >= poll_timeout_sec:
+                    raise ValueError(f"Seedance task timeout after {int(poll_timeout_sec)}s")
+                try:
+                    time.sleep(poll_interval_sec)
+                except Exception:
+                    pass
+        except Exception as e:
+            yield _sse("msg", _agent_to_ui_error("seedance_error", str(e) or "unknown error")).encode("utf-8")
+            yield _sse("done", "{}").encode("utf-8")
+
+    resp = StreamingHttpResponse(gen(), content_type="text/event-stream")
+    _apply_sse_headers(resp)
+    return resp
+
+
 @csrf_exempt
 def blueprint_chat_stream(request: HttpRequest) -> HttpResponseBase:
     """Stream chat endpoint for Blueprint / AIWorkflow UI (SSE).
