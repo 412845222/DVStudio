@@ -76,6 +76,9 @@ export class VideoMetadataReadQueue {
 
     const el = document.createElement('video')
     el.preload = 'metadata'
+    if (!String(task.url || '').startsWith('blob:') && !String(task.url || '').startsWith('data:')) {
+      el.crossOrigin = 'anonymous'
+    }
     // playsinline is harmless here; some browsers behave better.
     ;(el as any).playsInline = true
     this.activeEls.set(task.id, el)

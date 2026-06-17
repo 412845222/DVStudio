@@ -45,6 +45,55 @@ export function copyDjangoTemplateToRuntime({ templateDir, runtimeDir, log = () 
 	return { copied: true }
 }
 
+/**
+ * Dev-mode incremental sync: only copy files that are missing or newer in the template.
+ * Preserves any files already in runtimeDir that are not in templateDir (e.g. manually added).
+ */
+export function syncDjangoTemplateToRuntime({ templateDir, runtimeDir, log = () => {} }) {
+	if (!templateDir || !runtimeDir) throw new Error('syncDjangoTemplateToRuntime: missing dir')
+	if (!fs.existsSync(templateDir)) throw new Error(`Django template dir not found: ${templateDir}`)
+
+	fs.mkdirSync(runtimeDir, { recursive: true })
+	log(`[django-project] dev-sync template=${templateDir}`)
+	log(`[django-project] dev-sync runtime=${runtimeDir}`)
+
+	let copied = 0
+	let skipped = 0
+
+	_walkFiles(templateDir, (srcFull) => {
+		const rel = path.relative(templateDir, srcFull)
+		const relPosix = toPosix(rel)
+		if (shouldIgnoreRel(relPosix)) return
+
+		const dstFull = path.resolve(runtimeDir, rel)
+		let needsCopy = true
+
+		if (fs.existsSync(dstFull)) {
+			try {
+				const srcStat = fs.statSync(srcFull)
+				const dstStat = fs.statSync(dstFull)
+				// Skip if destination is same size and not older than source
+				if (srcStat.size === dstStat.size && srcStat.mtimeMs <= dstStat.mtimeMs) {
+					needsCopy = false
+				}
+			} catch {
+				// stat failed — fall through to copy
+			}
+		}
+
+		if (needsCopy) {
+			fs.mkdirSync(path.dirname(dstFull), { recursive: true })
+			fs.copyFileSync(srcFull, dstFull)
+			copied++
+		} else {
+			skipped++
+		}
+	})
+
+	log(`[django-project] dev-sync complete: copied=${copied}, skipped=${skipped}.`)
+	return { copied, skipped }
+}
+
 function _walkFiles(rootDir, onFile) {
 	const stack = [rootDir]
 	while (stack.length > 0) {

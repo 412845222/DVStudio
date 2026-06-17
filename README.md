@@ -2,20 +2,6 @@
 
 🎬 一个基于 **WebGL2** 的视频编辑与 AI 工作流蓝图项目。
 
-## 📦 首个安装包（推荐先看）
-
-- 下载入口（Release）：<https://github.com/412845222/DVStudio/releases/latest>
-- 安装与免安装使用说明：[docs/INSTALL_PACKAGE.md](docs/INSTALL_PACKAGE.md)
-- 首版发布说明：[docs/RELEASE_v0.1.0.md](docs/RELEASE_v0.1.0.md)
-
-首个安装包 zip 内同时包含“安装版 + 免安装版”。
-
-首次启动会自动执行环境流程：
-
-- Python 3.11+ 检测（缺失时 Windows 下自动尝试安装）
-- Django 运行时初始化与依赖检查/补装
-- ffmpeg 可选检查（缺失仅告警，不阻断启动；仅影响视频导出）
-
 本仓库当前包含两条核心能力：
 
 - **AI 工作流蓝图**：资源 → 剧情/分支 → ComfyUI 推理 → 输出媒体
@@ -31,7 +17,28 @@
 
 ## 🚀 快速开始
 
-> 如果你只是使用客户端，请优先阅读 [docs/INSTALL_PACKAGE.md](docs/INSTALL_PACKAGE.md)。
+解压后最小启动方式：
+
+```bash
+npm install
+npm run dev
+```
+
+推荐先配置镜像（macOS）：
+
+```bash
+npm config set registry https://registry.npmmirror.com/ --global
+python3 -m pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+python3 -m pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn
+```
+
+后端单独启动：
+
+```bash
+pip install -r django-app/requirements.txt
+python django-app/manage.py migrate
+python django-app/manage.py runserver 5800
+```
 
 ### 前端
 
@@ -118,6 +125,19 @@ Electron 版本会把秘钥写入 `DVSResource/UserSettings/settings.json`，并
 ```bash
 npm install
 npm run dist:win
+```
+
+macOS 打包（zip + dmg）：
+
+```bash
+npm install
+npm run dist:mac
+```
+
+仅生成 unpacked 目录（调试构建）：
+
+```bash
+npm run pack:mac
 ```
 
 产物输出到 `release/`。
@@ -217,6 +237,8 @@ AI 助手可用于：
 |---|---|
 | `npm run dev` | 启动前端开发服务 |
 | `npm run build` | 前端构建 |
+| `npm run pack:lan` | 生成适合局域网传输的项目压缩包（保留 `.git`） |
+| `npm run pack:git-bundle` | 导出完整 Git 历史的 `.bundle` 文件 |
 | `python django-app/manage.py runserver 5800` | 启动后端 |
 
 ---

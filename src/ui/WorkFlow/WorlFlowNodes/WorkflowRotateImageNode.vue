@@ -28,7 +28,6 @@
     @resize="(payload) => emit('resize', payload)"
   >
     <template #body>
-      <div ref="wrap" class="wf-rotate-wrap" @pointerdown.stop>
         <canvas
           ref="canvas"
           class="wf-rotate-canvas"
@@ -98,7 +97,6 @@
             复位
           </button>
         </div>
-      </div>
     </template>
 
     <template #footer>
@@ -171,9 +169,15 @@ const emit = defineEmits<{
       | "text-merge"
       | "image"
       | "video"
+      | "scene-understanding"
+      | "scene-decompose"
+      | "scene-layout"
       | "story"
       | "comfyui"
       | "rotate-image"
+      | "unreal-export"
+      | "model3d"
+      | "meshy"
   ): void;
   (
     e: "resize",
@@ -983,7 +987,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   display: block;
-  border-radius: 6px;
+  border-radius: 0;
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt);
   cursor: grab;
@@ -1010,7 +1014,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--vscode-border);
   background: color-mix(in srgb, var(--dweb-defualt-dark) 80%, transparent);
   backdrop-filter: blur(2px);
-  border-radius: 6px;
+  border-radius: 0;
 }
 
 .wf-cube-graphic {
@@ -1102,7 +1106,7 @@ onBeforeUnmount(() => {
   background: var(--dweb-defualt);
   color: var(--vscode-fg);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 0;
   font-size: 11px;
 }
 

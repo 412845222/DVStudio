@@ -1,0 +1,4907 @@
+<template>
+  <div class="aiwf-page bg-vscode">
+    <!-- 蓝图节点容器 -->
+    <div class="aiwf-blueprint-container">
+      <BlueprintCanvas
+        class="aiwf-canvas"
+        :viewport="viewport"
+        @update:viewport="onViewportUpdate"
+        @canvas-contextmenu="onCanvasContextMenu"
+        @canvas-dblclick="onCanvasDblClick"
+        @box-select="onBoxSelect"
+        @pointerdown="onCanvasPointerDown"
+        @dragover.prevent="onCanvasDragOver"
+        @drop.prevent="onCanvasDrop"
+        v-slot="vp"
+      >
+        <WorkflowEdgeLayer
+          :edges="asyncEdgeRenders"
+          :selectedEdgeId="selectedEdgeId"
+          :draft="asyncDraftRender"
+          :motionActive="viewportMotionActive"
+          :zoom="viewport.zoom"
+          @select-edge="onSelectEdge"
+        />
+
+        <div v-for="node in safeVisibleRenderNodes" :key="node.id" class="aiwf-node-host">
+          <div
+            v-if="shouldRenderCompactNode(vp.zoom, node)"
+            :class="[compactNodeClass(node), compactNodeStateClass(node)]"
+            :style="
+              compactNodeStyle(
+                vp.worldToScreen,
+                node.worldX,
+                node.worldY,
+                vp.zoom,
+                node.width,
+                node.height
+              )
+            "
+            class="aiwf-node-compact"
+            :title="compactNodeTooltip(node)"
+            aria-hidden="true"
+            @pointerdown="onCompactNodePointerDown(node.id, $event, vp.screenToWorld)"
+          >
+            <div v-if="compactNodeImageUrl(node)" class="aiwf-node-compact-thumb">
+              <img
+                :src="compactNodeImageUrl(node) || undefined"
+                :alt="compactNodeDisplayName(node)"
+                class="aiwf-node-compact-thumb-img"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+            <div class="aiwf-node-compact-body">
+              <div class="aiwf-node-compact-chip">{{ compactNodeBadge(node) }}</div>
+              <div class="aiwf-node-compact-title">{{ compactNodeDisplayName(node) }}</div>
+              <div class="aiwf-node-compact-meta">{{ compactNodeMeta(node) }}</div>
+              <div v-if="compactNodeStateLabel(node)" class="aiwf-node-compact-state">
+                {{ compactNodeStateLabel(node) }}
+              </div>
+            </div>
+          </div>
+
+          <component
+            v-else
+            :is="nodeComponent(node)"
+            :ref="setWorkflowNodeComponentRef(node.id, node.type)"
+            :alias="node.alias"
+            :height="node.height"
+            :hoverInputAnchorId="hoverInputAnchorId(node.id)"
+            :hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
+            :inputs="node.inputs"
+            :nodeId="node.id"
+            :nodeType="node.type"
+            :outputs="node.outputs"
+            :selected="selectedNodeIds.includes(node.id)"
+            :isPrimarySelected="selectedNodeId === node.id"
+            :isSecondarySelected="selectedNodeIds.includes(node.id) && selectedNodeId !== node.id"
+            :visualStatus="resolveNodeRuntimeVisualState(node)"
+            :node-chat-visible="nodeChatDialog.visible && nodeChatDialog.nodeId === node.id && selectedNodeId === node.id"
+            :node-chat-node-type="nodeChatDialog.nodeId === node.id ? nodeChatDialog.nodeType : null"
+            :node-chat-draft="nodeChatDialog.nodeId === node.id ? nodeChatDialog.draft : ''"
+            :node-chat-submitting="nodeChatDialog.nodeId === node.id ? nodeChatDialog.submitting : false"
+            :node-chat-params="nodeChatDialog.nodeId === node.id ? nodeChatDialog.params : {}"
+            :node-chat-node-width="node.width"
+            :style="
+              nodeStyle(
+                vp.worldToScreen,
+                node.worldX,
+                node.worldY,
+                vp.zoom,
+                node.width,
+                node.height
+              )
+            "
+            :subtitle="node.subtitle"
+            :title="node.title"
+            :width="node.width"
+            :worldX="node.worldX"
+            :worldY="node.worldY"
+            :zoom="vp.zoom"
+            v-bind="nodeExtraProps(node)"
+            @add-branch="onStoryBranchAdd(node.id)"
+            @add-merge-item="onTextMergeItemAdd(node.id)"
+            @await-unreal-connection="onNodeAwaitUnrealConnection(node.id)"
+            @cancel-comfyui="onComfyUICancel(node.id)"
+            @cancel-scene-understanding="onNodeCancelSceneUnderstanding(node.id)"
+            @clear-resource="onNodeClearResource(node.id)"
+            @clear-scene-layout-model-binding="
+              onNodeClearSceneLayoutModelBinding(node.id, $event.objectId)
+            "
+            @connect-comfyui="onComfyUIConnect(node.id, $event)"
+            @copy="() => onNodeCopy(node.id)"
+            @clear-node="() => onNodeClear(node.id)"
+            @delete="() => onNodeDelete(node.id)"
+            @delete-meshy-task="onNodeDeleteMeshyTask(node.id)"
+            @end-link="onEndLink"
+            @export-unreal-lighting="onNodeExportUnrealLighting(node.id)"
+            @export-unreal-scene="onNodeExportUnrealScene(node.id)"
+            @generate-meshy="onNodeGenerateMeshy(node.id)"
+            @media-ready="onNodeMediaReady(node.id)"
+            @move-merge-item="onTextMergeItemMove(node.id, $event)"
+            @preview-contextmenu="onNodePreviewContextMenu(node.id, $event)"
+            @pull-meshy-output="onNodePullMeshyOutput(node.id)"
+            @refresh="() => onNodeRefresh(node.id)"
+            @refresh-meshy-task="onNodeRefreshMeshyTask(node.id)"
+            @remove-branch="onStoryBranchRemove(node.id, $event)"
+            @remove-merge-item="onTextMergeItemRemove(node.id, $event)"
+            @request-scene-models="onNodeRequestSceneModels(node.id)"
+            @resize="onNodeResize(node.id, $event)"
+            @restart-meshy-task="onNodeRestartMeshyTask(node.id)"
+            @run-comfyui="onComfyUIRun(node.id)"
+            @run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
+            @run-scene-decompose="onNodeRunSceneDecompose(node.id)"
+            @run-scene-layout="onNodeRunSceneLayout(node.id)"
+            @run-scene-understanding="onNodeRunSceneUnderstanding(node.id)"
+            @screenshot="onVideoScreenshot(node.id, $event)"
+            @select="onSelectNode"
+            @select-workflow="onComfyUISelectWorkflow(node.id, $event)"
+            @set-selected-placeholder-output="
+              onNodeSceneLayoutSelectedPlaceholderOutput(node.id, $event)
+            "
+            @set-type="onNodeSetType(node.id, $event)"
+            @start-link="onStartLink($event, vp.screenToWorld)"
+            @stop-meshy-task="onNodeStopMeshyTask(node.id)"
+            @start-three-preview="onNodeStartThreePreview(node.id)"
+            @three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
+            @three-preview-ready="onNodeThreePreviewReady(node.id)"
+            @three-preview-error="onNodeThreePreviewError(node.id)"
+            @node-chat-update-draft="onNodeChatDraftUpdate"
+            @node-chat-update-params="onNodeChatParamsUpdate"
+            @node-chat-close="onNodeChatClose"
+            @node-chat-submit="onNodeChatSubmit"
+            @node-chat-remove-param-ref="onNodeChatRemoveParamRef"
+            @update-branch="onStoryBranchUpdate(node.id, $event)"
+            @update-comfyui-settings="onComfyUISettingsUpdate(node.id, $event)"
+            @update-hide-placeholder-cubes="
+              onNodeSceneLayoutHidePlaceholdersUpdate(node.id, $event)
+            "
+            @update-image-settings="onNodeImageSettingsUpdate(node.id, $event)"
+            @update-layout-items="onNodeSceneLayoutItemsUpdate(node.id, $event)"
+            @update-lighting-controls="
+              onNodeSceneLayoutLightingControlsUpdate(node.id, $event)
+            "
+            @update-lighting-debug="onNodeSceneLayoutLightingDebugUpdate(node.id, $event)"
+            @update-lighting-preview="
+              onNodeSceneLayoutLightingPreviewUpdate(node.id, $event)
+            "
+            @update-meshy-settings="onNodeMeshySettingsUpdate(node.id, $event)"
+            @update-model3d-settings="onNodeModel3DSettingsUpdate(node.id, $event)"
+            @update-preview-mode="onNodeSceneLayoutPreviewModeUpdate(node.id, $event)"
+            @update-preview-settings="onStoryPreviewSettingsUpdate(node.id, $event)"
+            @update-rotate-output="onRotateImageOutput(node.id, $event)"
+            @update-scene-understanding-settings="
+              onNodeSceneUnderstandingSettingsUpdate(node.id, $event)
+            "
+            @update-selected-layout-item="
+              onNodeSceneLayoutSelectedItemUpdate(node.id, $event)
+            "
+            @update-text-value="onNodeTextValueUpdate(node.id, $event)"
+            @update-video-settings="onNodeVideoSettingsUpdate(node.id, $event)"
+            @update:worldX="onNodeX(node.id, $event)"
+            @update:worldY="onNodeY(node.id, $event)"
+            @upload-model-file="onNodeUploadModel3DFile(node.id, $event.file)"
+            @upload-resource="onNodeUploadResource(node.id, $event.file, $event.kind)"
+            @upload-scene-layout-model-file="
+              onNodeUploadSceneLayoutModelFile(node.id, $event.file, $event.objectId)
+            "
+          />
+        </div>
+
+        <ContextMenu
+          :visible="contextMenu.open"
+          :x="contextMenu.x"
+          :y="contextMenu.y"
+          :sections="contextMenuSections"
+          @select="onContextMenuSelect"
+        />
+
+        <DwebCanvasNodeSearchMenu
+          :visible="nodeSearchMenuVisible"
+          :items="NEWUI2_NODE_CATALOG"
+          :categories="NEWUI2_NODE_CATALOG_CATEGORIES"
+          :top-categories="NEWUI2_NODE_TOP_CATEGORIES"
+          :special-groups="NEWUI2_NODE_SPECIAL_GROUPS"
+          @select="onNodeSearchMenuSelect"
+          @upload-file="onNodeSearchMenuUploadFile"
+          @close="closeNodeSearchMenu"
+        />
+      </BlueprintCanvas>
+    </div>
+
+    <!-- UI按钮容器 -->
+    <div class="aiwf-ui-container">
+      <BottomChatDock
+        class="aiwf-chat-dock"
+        v-model="chatDraft"
+        :messages="chatMessages"
+        :sending="chatSending"
+        :runState="chatRunState"
+        :collapsed="chatCollapsed"
+        :taskStatus="chatTaskStatus"
+        placement="right-drawer"
+        :panelMode="chatPanelMode"
+        :agentMode="agentConversationMode"
+        :localExecStreamMode="localExecStreamMode"
+        :agentWorkingDirectory="agentWorkingDirectory"
+        :modelKey="chatModelKey"
+        :nanoPreviewUrls="nanoPreviewUrls"
+        :nanoPreviewFallbackUrls="nanoPreviewFallbackUrls"
+        :nanoPreviewSourcePaths="nanoPreviewSourcePaths"
+        :nanoPreviewLoadingStates="nanoPreviewLoadingStates"
+        :nanoPreviewDownloadStatuses="nanoPreviewDownloadStatuses"
+        :nanoPreviewDownloadProgresses="nanoPreviewDownloadProgresses"
+        :nanoPreviewLocalReadyStates="nanoPreviewLocalReadyStates"
+        :nanoPreviewUrl="nanoPreviewUrl"
+        :nanoStatus="nanoStatus"
+        :nanoDetail="nanoDetail"
+        :nanoBilling="nanoBilling"
+        :nanoModelUsed="nanoModelUsed"
+        :nanoAnchorNodeId="NANO_ANCHOR_NODE_ID"
+        :nanoRefAnchors="nanoRefDockAnchors"
+        :nanoHoverAnchorId="nanoHoverAnchorId"
+        :codexSessions="codexSessions"
+        :codexActiveSessionId="codexActiveSessionId"
+        :codexFlowEvents="codexFlowEvents"
+        @send="onSend"
+        @stop="onStop"
+        @update:panelMode="chatPanelMode = $event"
+        @update:agentMode="agentConversationMode = $event"
+        @update:localExecStreamMode="localExecStreamMode = $event"
+        @update:modelKey="chatModelKey = $event"
+        @update:activeModelId="chatModelId = $event"
+        @nanobanana-generate="onNanoBananaGenerate"
+        @seedance-generate="onSeedanceGenerate"
+        @codex-create-session="onCodexCreateSession"
+        @codex-select-session="onCodexSelectSession"
+        @codex-delete-session="onCodexDeleteSession"
+        @codex-rename-session="onCodexRenameSession"
+        @codex-approval="onCodexApproval"
+        @workflow-end-link="onEndLink"
+        @request-expand="chatCollapsed = false"
+        @request-collapse="chatCollapsed = true"
+        @focus-input="chatCollapsed = false"
+        @layout-changed="onDockLayoutChanged"
+        @safe-area-changed="onDockSafeAreaChanged"
+      />
+
+      <div class="aiwf-overlay-top-left">
+        <BlueprintProjectToolbar
+          ref="projectToolbarRef"
+          :projects="projectList"
+          :currentProjectName="currentProjectName"
+          :performancePriorityMode="performancePriorityMode"
+          :resources="resources"
+          :nodeLibraryOpen="false"
+          :promptLibraryOpen="false"
+          :electronReady="isElectron()"
+          @quick-add="onRailQuickAdd"
+          @toggle-node-library="onRailToggleNodeLibrary"
+          @open-prompt-library="onRailOpenPromptLibrary"
+          @toggle-backend-log="onRailToggleBackendLog"
+          @open-resource-manager="openResourceDialog"
+          @open-meshy-task="openMeshyTaskDialog"
+          @open-video-task="openVideoTaskDialog"
+          @open-task-placeholder="onRailOpenTaskPlaceholder"
+          @request-new="onRequestNewProject"
+          @request-repair-assets="onRequestRepairProjectAssets"
+          @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
+          @request-export-performance-diagnostics="onExportPerfDiagnostics"
+          @request-save="onRequestSaveProject"
+          @request-load-list="refreshProjectList"
+          @request-load-project="onRequestLoadProject"
+          @request-delete-project="onRequestDeleteProject"
+          @request-import-local="onRequestImportLocalProject"
+          @request-import-package="onRequestImportProjectPackage"
+          @request-export="onRequestExportProject"
+          @request-export-package="onRequestExportProjectPackage"
+        />
+
+        <div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
+          <div class="aiwf-perf-stats-title">性能监控</div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">FPS</span>
+            <span class="aiwf-perf-stats-value">{{ perfFpsText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">帧耗时</span>
+            <span class="aiwf-perf-stats-value">{{ perfFrameText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">平均帧</span>
+            <span class="aiwf-perf-stats-value">{{ perfAvgFrameText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">最差帧</span>
+            <span class="aiwf-perf-stats-value">{{ perfWorstFrameText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row aiwf-perf-stats-sep">
+            <span class="aiwf-perf-stats-label">边计算</span>
+            <span class="aiwf-perf-stats-value">{{ perfEdgeComputeText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">输入边</span>
+            <span class="aiwf-perf-stats-value">{{ perfEdgeInputCountText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">渲染边</span>
+            <span class="aiwf-perf-stats-value">{{ perfEdgeRenderedText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">裁剪边</span>
+            <span class="aiwf-perf-stats-value">{{ perfEdgeCulledText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">裁剪率</span>
+            <span class="aiwf-perf-stats-value">{{ perfEdgeCullHitRateText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row aiwf-perf-stats-sep">
+            <span class="aiwf-perf-stats-label">节点</span>
+            <span class="aiwf-perf-stats-value">{{ perfNodeSummary }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">长任务</span>
+            <span class="aiwf-perf-stats-value">{{ perfLongTaskSummary }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">缩放</span>
+            <span class="aiwf-perf-stats-value">{{ perfZoomText }}</span>
+          </div>
+          <div class="aiwf-perf-stats-row">
+            <span class="aiwf-perf-stats-label">状态</span>
+            <span class="aiwf-perf-stats-value" :class="perfHealthLabel === '稳定' ? 'is-good' : perfHealthLabel === '轻微掉帧' ? 'is-warn' : 'is-bad'">{{ perfHealthLabel }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="aiwf-overlay-top-right" :style="overlayTopRightStyle">
+        <button
+          class="aiwf-inspector-toggle"
+          type="button"
+          @pointerdown.stop
+          @click.stop="toggleInspector"
+        >
+          属性
+        </button>
+      </div>
+
+      <div class="aiwf-overlay-floating">
+        <WorkflowInspectorPanel
+          :open="inspectorOpen"
+          :selectedNode="selectedNode"
+          :selectedEdge="selectedEdge"
+          :selectedNodeResource="selectedNodeResource"
+          :actions="selectionActions"
+          @update-alias="onAliasChange"
+          @update-size="onNodeSizeChange"
+          @upload-resource="onInspectorUploadResource"
+          @clear-resource="onInspectorClearResource"
+          @focus-node="onFocusNode"
+          @add-branch="onStoryBranchAdd"
+          @remove-branch="onStoryBranchRemove"
+          @update-branch="onStoryBranchUpdateFromInspector"
+          @action="applyAction"
+        />
+
+      </div>
+
+      <div class="aiwf-overlay-floating aiwf-overlay-floating-utility">
+        <ResourceManagerPanel
+          :open="resourceDialogOpen"
+          :resources="resources"
+          @close="closeResourceDialog"
+          @remove="onRemoveResource"
+          @preview="onPreviewResource"
+          @refresh-missing="onRefreshMissingResourceRecords"
+        />
+
+        <MeshyTaskPanel
+          :open="meshyTaskDialogOpen"
+          :tasks="meshyTaskItems"
+          :data-status-text="meshyTaskPanelStatusText"
+          :balance-text="meshyBalanceText"
+          :balance-detail="meshyBalanceDetail"
+          :balance-tone="meshyBalanceTone"
+          :refresh-busy="meshyTaskRemoteLoading"
+          :detail-task-id="meshyTaskDetailTaskId"
+          :detail-task="meshyTaskDetail"
+          :detail-loading="meshyTaskDetailLoading"
+          :action-busy-task-id="meshyTaskActionBusyTaskId"
+          :action-busy-type="meshyTaskActionBusyType"
+          @close="closeMeshyTaskDialog"
+          @refresh="onRefreshMeshyTaskPanel"
+          @preview-task="onPreviewMeshyTask"
+          @task-action="onMeshyTaskPanelAction"
+        />
+
+        <VideoTaskPanel
+          :open="videoTaskDialogOpen"
+          :tasks="videoTaskItems"
+          :data-status-text="videoTaskPanelStatusText"
+          :refresh-busy="videoTaskLoading"
+          :sync-busy="videoTaskSyncing"
+          :detail-task-id="videoTaskDetailTaskId"
+          :detail-task="videoTaskDetail"
+          :detail-loading="videoTaskDetailLoading"
+          @close="closeVideoTaskDialog"
+          @refresh="refreshVideoTaskItems"
+          @sync-remote="syncRemoteVideoTasks"
+          @select-task="selectVideoTask"
+          @media-error="onVideoTaskPanelMediaError"
+        />
+
+        <ToastStack :items="toasts" @close="removeToast" @hover="setToastHovering" />
+      </div>
+
+      <div class="aiwf-overlay-alerts" :style="overlayAlertStyle">
+        <div
+          v-if="importLimitAlertMessage"
+          class="aiwf-import-limit-alert"
+          @pointerdown.stop
+        >
+          <div class="aiwf-import-limit-alert-title">批量导入超限</div>
+          <div class="aiwf-import-limit-alert-body">{{ importLimitAlertMessage }}</div>
+          <div class="aiwf-import-limit-alert-actions">
+            <button
+              class="aiwf-import-limit-alert-btn"
+              type="button"
+              @click="onConfirmImportLimitAlert"
+            >
+              确认
+            </button>
+          </div>
+        </div>
+
+        <div v-if="reuseRecordConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
+          <div class="aiwf-reuse-alert-title">检测到 Django 记录可复用</div>
+          <div class="aiwf-reuse-alert-body">
+            模板：{{ reuseRecordConfirm.workflowName || "未知模板" }}
+            <br />
+            记录时间：{{ formatReuseRecordTime(reuseRecordConfirm.savedAt) }}
+          </div>
+          <div class="aiwf-reuse-alert-actions">
+            <button class="aiwf-reuse-alert-btn" type="button" @click="onCancelReuseRecord">
+              取消
+            </button>
+            <button
+              class="aiwf-reuse-alert-btn primary"
+              type="button"
+              @click="onConfirmReuseRecord"
+            >
+              确认复用并运行
+            </button>
+          </div>
+        </div>
+
+        <div v-if="meshyTextureConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
+          <div class="aiwf-reuse-alert-title">生成贴图前确认</div>
+          <div class="aiwf-reuse-alert-body">
+            当前未检测到新的贴图提示词或贴图参考图。
+            <br />
+            若继续提交，将复用当前主模型已有提示词和任务结果来发起贴图。
+          </div>
+          <div class="aiwf-reuse-alert-actions">
+            <button
+              class="aiwf-reuse-alert-btn"
+              type="button"
+              @click="cancelMeshyTextureConfirm"
+            >
+              取消
+            </button>
+            <button
+              class="aiwf-reuse-alert-btn primary"
+              type="button"
+              @click="confirmMeshyTextureFollowup"
+            >
+              确认复用并贴图
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <FullscreenProgressOverlay
+        :open="importOverlayOpen"
+        :title="importOverlayTitle"
+        :detail="importOverlayDetail"
+        :progress="importOverlayProgress"
+        :cancellable="true"
+        @cancel="onCancelImportOverlay"
+      />
+
+      <FullscreenProgressOverlay
+        :open="recoveryOverlayOpen"
+        :title="recoveryOverlayTitle"
+        :detail="recoveryOverlayDetail"
+        :progress="recoveryOverlayProgress"
+        :cancellable="false"
+      />
+
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import * as THREE from 'three'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useStore } from 'vuex'
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
+import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
+import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
+import BlueprintProjectToolbar, { type BlueprintProjectListItem } from '../../ui/WorkFlow/BlueprintProjectToolbar.vue'
+import ResourceManagerPanel from '../../ui/WorkFlow/ResourceManagerPanel.vue'
+import MeshyTaskPanel, { type MeshyTaskPanelAction, type MeshyTaskPanelDetail, type MeshyTaskPanelItem } from '../../ui/WorkFlow/MeshyTaskPanel.vue'
+import VideoTaskPanel from '../../ui/WorkFlow/VideoTaskPanel.vue'
+import WorkflowInspectorPanel from '../../ui/UIComponent/WorkflowInspectorPanel.vue'
+import BottomChatDock, {
+  type BottomChatMessage,
+  type ChatPanelMode,
+  type LocalExecFlowEvent,
+  type LocalExecSessionItem,
+  type NanoBananaConfig,
+  type SeedanceConfig,
+} from '../../ui/UIComponent/BottomChatDock.vue'
+import ContextMenu from '../../ui/UIComponent/ContextMenu.vue'
+import ToastStack from '../../ui/UIComponent/ToastStack.vue'
+import FullscreenProgressOverlay from '../../ui/UIComponent/FullscreenProgressOverlay.vue'
+import DwebCanvasNodeSearchMenu from '../../ui/UIComponent/DwebCanvasNodeSearchMenu.vue'
+import { buildDeleteAction, type WorkflowAction } from '../../aiworkflow/actions'
+import { exportWorkflowImageOutputPng } from '../../aiworkflow/imageOutput'
+import type {
+  WorkflowAnchorSpec,
+  WorkflowEdge,
+  WorkflowImageCrop,
+  WorkflowUnrealResolvedLayoutExport,
+  WorkflowNode,
+  WorkflowSceneDecomposeOutput,
+  WorkflowSelectionTarget,
+  WorkflowState,
+} from '../../aiworkflow/types'
+import {
+  buildSnapshotFromState,
+  isValidBlueprintSnapshot,
+  normalizeSnapshotResourceUrls,
+} from '../../aiworkflow/persistence/blueprintSnapshot'
+import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
+import { AIWorkflowKey } from '../../store/aiworkflow'
+import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
+import { ComfyUIBridgeService } from '../../network/ComfyUIBridgeService'
+import type { SeedanceTaskMirrorItem } from '../../network/ComfyUIBridgeService'
+import { createLocalExecChatService } from '../../network/LocalExecChatService'
+import { BlueprintProjectService, type BlueprintAssetKind } from '../../network/BlueprintProjectService'
+import { SceneSkillService } from '../../network/SceneSkillService'
+import { UnrealExportService } from '../../network/UnrealExportService'
+import { MediaResourceImportManager } from '../../aiworkflow/MediaResourceImportManager'
+import { VideoMetadataReadQueue } from '../../aiworkflow/VideoMetadataReadQueue'
+import { createVideoFirstFrameThumbnail } from '../../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
+import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../../aiworkflow/localFileHandleDb'
+import { resolveBackendUrl } from '../../network/backendConfig'
+import { isElectron, openFolderForPath } from '../../electronBridge'
+import { useAIWorkflowEdgeRenderer } from './blueprint-core/useAIWorkflowEdgeRenderer'
+import { useAIWorkflowEdgeIndex } from './blueprint-core/useAIWorkflowEdgeIndex'
+import { useAIWorkflowNodeVisibility } from './blueprint-core/useAIWorkflowNodeVisibility'
+import {
+  useAIWorkflowCanvasInteraction,
+} from './blueprint-core/canvas-interaction/useAIWorkflowCanvasInteraction'
+import { useAIWorkflowLinking } from './blueprint-core/linking/useAIWorkflowLinking'
+import { useAIWorkflowNodePresentation } from './node-business/presentation/useAIWorkflowNodePresentation'
+import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
+import { useAIWorkflowVideoScreenshot } from './node-business/presentation/useAIWorkflowVideoScreenshot'
+import { useAIWorkflowPerfMonitor } from './blueprint-core/useAIWorkflowPerfMonitor'
+import { useAIWorkflowSelectionState } from './blueprint-core/useAIWorkflowSelectionState'
+import { useAIWorkflowThreejsLifecycleManager } from './blueprint-core/useAIWorkflowThreejsLifecycleManager'
+import { useAIWorkflowToastState } from './bridge/feedback/useAIWorkflowToastState'
+import { useAIWorkflowViewport } from './blueprint-core/useAIWorkflowViewport'
+import { useAIWorkflowContextMenu } from './bridge/component-events/useAIWorkflowContextMenu'
+import { useAIWorkflowKeyboardAndResize } from './bridge/component-events/useAIWorkflowKeyboardAndResize'
+import { useAIWorkflowNodePreviewContextMenu } from './bridge/component-events/useAIWorkflowNodePreviewContextMenu'
+import { useAIWorkflowResourceActions } from './bridge/component-events/useAIWorkflowResourceActions'
+import { useAIWorkflowAssetPersistence } from './assets/useAIWorkflowAssetPersistence'
+import { useAIWorkflowObjectUrlRegistry } from './assets/useAIWorkflowObjectUrlRegistry'
+import { useAIWorkflowImportRecoveryState } from './assets/useAIWorkflowImportRecoveryState'
+import { useAIWorkflowNodeAssetBinding } from './assets/useAIWorkflowNodeAssetBinding'
+import { useAIWorkflowBatchMediaImport } from './assets/useAIWorkflowBatchMediaImport'
+import { useAIWorkflowDropAssets } from './assets/useAIWorkflowDropAssets'
+import { useAIWorkflowLocalResourceRecovery } from './assets/useAIWorkflowLocalResourceRecovery'
+import { useAIWorkflowNodeResourceCleanup } from './assets/useAIWorkflowNodeResourceCleanup'
+import { useAIWorkflowResourceRecordCleanup } from './assets/useAIWorkflowResourceRecordCleanup'
+import { useAIWorkflowResourceMigration } from './assets/useAIWorkflowResourceMigration'
+import { useAIWorkflowSceneLayoutModelBinding } from './assets/useAIWorkflowSceneLayoutModelBinding'
+import {
+  buildMeshyNodePresentationSettings,
+  getMeshyDisplayThumbnailUrl,
+  getMeshyEffectiveImageSource,
+  getMeshyEffectiveModelSource,
+  isMeshyRemoteUrl,
+  pickMeshyEffectiveOutput,
+  pickMeshyPreferredFormat,
+  pickMeshyPreferredImageUrl,
+  pickMeshyPreferredModelUrl,
+} from './node-business/meshy/useAIWorkflowMeshyAssets'
+import { useAIWorkflowMeshyDrop } from './node-business/meshy/useAIWorkflowMeshyDrop'
+import { useAIWorkflowMeshyCommands } from './node-business/meshy/useAIWorkflowMeshyCommands'
+import { useAIWorkflowMeshyInputResolver } from './node-business/meshy/useAIWorkflowMeshyInputResolver'
+import { useAIWorkflowMeshyRequest } from './node-business/meshy/useAIWorkflowMeshyRequest'
+import { useAIWorkflowMeshyTaskPanelController } from './node-business/meshy/useAIWorkflowMeshyTaskPanelController'
+import { useAIWorkflowMeshyRuntime } from './node-business/meshy/useAIWorkflowMeshyRuntime'
+import { useAIWorkflowVideoTaskPanelController } from './node-business/chat/useAIWorkflowVideoTaskPanelController'
+import { fileExtensionFromUrl, normalizeMeshyTaskStatus } from './node-business/meshy/meshyRuntimeUtils'
+import {
+  AIWF_PROJECT_PACKAGE_ENTRY,
+  sanitizeFileNamePart,
+  setValueByJsonPointer,
+} from './node-business/project/projectPackage'
+import { useAIWorkflowProjectIdentity } from './node-business/project/useAIWorkflowProjectIdentity'
+import { useAIWorkflowProjectPersistence } from './node-business/project/useAIWorkflowProjectPersistence'
+import { useAIWorkflowProjectCatalogImport } from './node-business/project/useAIWorkflowProjectCatalogImport'
+import { useAIWorkflowProjectPackageExport } from './node-business/project/useAIWorkflowProjectPackageExport'
+import { useAIWorkflowProjectRequests } from './node-business/project/useAIWorkflowProjectRequests'
+import { useAIWorkflowProjectSnapshotBuilder } from './node-business/project/useAIWorkflowProjectSnapshotBuilder'
+import { useAIWorkflowProjectSnapshotRuntime } from './node-business/project/useAIWorkflowProjectSnapshotRuntime'
+import { useAIWorkflowProjectTransfer } from './node-business/project/useAIWorkflowProjectTransfer'
+import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useAIWorkflowProjectUnrealSnapshot'
+import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
+import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
+import {
+  comfyOutputForAnchor,
+  type ComfyLocalizedOutput,
+} from './node-business/comfy/comfyOutputResolver'
+import { useAIWorkflowComfyConnection } from './node-business/comfy/useAIWorkflowComfyConnection'
+import { useAIWorkflowComfyOutputRouter } from './node-business/comfy/useAIWorkflowComfyOutputRouter'
+import { useAIWorkflowComfyRuntime } from './node-business/comfy/useAIWorkflowComfyRuntime'
+import { useAIWorkflowNodeRefresh } from './node-business/useAIWorkflowNodeRefresh'
+import { useAIWorkflowNodeActions } from './node-business/useAIWorkflowNodeActions'
+import { useAIWorkflowNodeSettings } from './node-business/useAIWorkflowNodeSettings'
+import { useAIWorkflowTextMergeCommands } from './node-business/useAIWorkflowTextMergeCommands'
+import { useAIWorkflowMediaPreviewSources } from './node-business/presentation/useAIWorkflowMediaPreviewSources'
+import { useAIWorkflowNodeExtraProps } from './node-business/presentation/useAIWorkflowNodeExtraProps'
+import { useAIWorkflowTextOutputResolver, type InputParamPreviewRef } from './node-business/presentation/useAIWorkflowTextOutputResolver'
+import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
+import { useAIWorkflowSceneDecomposeAutoExpand } from './node-business/scene/useAIWorkflowSceneDecomposeAutoExpand'
+import { useAIWorkflowSceneDecomposeController } from './node-business/scene/useAIWorkflowSceneDecomposeController'
+import { useAIWorkflowSceneImageInputs } from './node-business/scene/useAIWorkflowSceneImageInputs'
+import { slugSceneLayoutPlaceholderModelName } from './node-business/scene/sceneLayoutPlaceholderModelUtils'
+import { useAIWorkflowSceneLayoutModelBindings } from './node-business/scene/useAIWorkflowSceneLayoutModelBindings'
+import { useAIWorkflowSceneLayoutMetadata } from './node-business/scene/useAIWorkflowSceneLayoutMetadata'
+import { useAIWorkflowSceneLayoutController } from './node-business/scene/useAIWorkflowSceneLayoutController'
+import { useAIWorkflowSceneLayoutSettings } from './node-business/scene/useAIWorkflowSceneLayoutSettings'
+import { useAIWorkflowSceneUnderstandingController } from './node-business/scene/useAIWorkflowSceneUnderstandingController'
+import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
+
+const router = useRouter()
+const route = useRoute()
+
+const store = useStore<WorkflowState>(AIWorkflowKey)
+
+const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
+
+const {
+  viewport,
+  onViewportUpdate,
+  viewportMotionActive,
+  markViewportMotion,
+  canvasViewportSize,
+} = useAIWorkflowViewport(store, {
+  canvasSelector: '.aiwf-canvas',
+  motionResetMs: 140,
+})
+
+const performancePriorityMode = ref(false)
+const compactThresholdNormal = 0.3
+const compactThresholdPerf = 0.35
+const compactThreshold = computed(() => {
+  if (!performancePriorityMode.value) return compactThresholdNormal
+  const count = nodes.value.length
+  if (count >= 320) return Math.max(compactThresholdPerf, 0.65)
+  if (count >= 220) return compactThresholdPerf
+  return 0.48
+})
+
+const shouldCollapseChatDrawerByViewport = () => true
+
+// NOTE: must be declared before any watch/computed that references it.
+const chatModelKey = ref<'deepseek' | 'nanobanana' | 'seedance' | 'codex'>('codex')
+const chatModelId = ref<string>('auto')
+const chatPanelMode = ref<ChatPanelMode>('regular')
+const agentConversationMode = ref<'agent' | 'ask' | 'plan'>('agent')
+const chatCollapsed = ref(shouldCollapseChatDrawerByViewport())
+
+const nodes = computed(() => store.state.nodeOrder.map((id) => store.state.nodesById[id]).filter(Boolean))
+const NANO_ANCHOR_NODE_ID = 'wf-nanobanana-ref-input'
+const NANO_REF_IMAGE_MAX = 14
+
+const {
+  selectedNodeId,
+  selectedNodeIds,
+  selectedEdgeId,
+  selectedNode,
+  selectedEdge,
+  selectedNodeResource,
+  active3DPreviewNodeId,
+} = useAIWorkflowSelectionState(store)
+
+const {
+  getNodePreviewState,
+  startPreviewSession,
+  updatePreviewProgress,
+  completePreviewSession,
+  failPreviewSession,
+} = useAIWorkflowThreejsLifecycleManager({
+  active3DPreviewNodeId,
+  selectedNodeIds,
+})
+
+const {
+  nodeStyle,
+  compactNodeStyle,
+  nodeComponent,
+  nodeImagePreviewUrl,
+  nodeImagePreviewVersion,
+  nodeResourceUrl,
+  nodeResourceName,
+  compactNodeImageUrl,
+} = useAIWorkflowNodePresentation(store)
+
+const ensureNanoAnchorNode = () => {
+  const existing = store.state.nodesById[NANO_ANCHOR_NODE_ID]
+  const inputs: WorkflowAnchorSpec[] = Array.from({ length: NANO_REF_IMAGE_MAX }, (_, i) => ({
+    id: `ref-${i + 1}`,
+    label: `参考图 ${i + 1}`,
+    mediaType: 'image',
+  }))
+  const node: WorkflowNode = {
+    id: NANO_ANCHOR_NODE_ID,
+    type: existing?.type || 'base',
+    title: 'NanoBanana 参考图输入',
+    alias: existing?.alias,
+    subtitle: '仅用于对话面板参考图锚点（不在画布显示）',
+    worldX: existing?.worldX ?? 0,
+    worldY: existing?.worldY ?? 0,
+    width: existing?.width ?? 240,
+    height: existing?.height ?? 160,
+    sizeCustomized: true,
+    resourceId: null,
+    inputs,
+    outputs: [],
+    createdAt: existing?.createdAt ?? Date.now(),
+  }
+  store.commit('upsertNode', { node })
+}
+
+watch(
+  () => chatModelKey.value,
+  () => {
+    // Ensure the pseudo node exists so edges can be created/persisted.
+    ensureNanoAnchorNode()
+  },
+  { immediate: true }
+)
+
+const {
+  renderNodes,
+  visibleRenderNodeIds,
+  visibleRenderNodes,
+  compactNodeDisplayName,
+  compactNodeBadge,
+  compactNodeMeta,
+  compactNodeTooltip,
+  compactNodeClass,
+  shouldRenderCompactNode,
+  compactVisibleNodeCount,
+  fullVisibleNodeCount,
+} = useAIWorkflowNodeVisibility({
+  nodes,
+  viewport,
+  canvasViewportSize,
+  selectedNodeIds,
+  viewportMotionActive,
+  hiddenNodeIds: [NANO_ANCHOR_NODE_ID],
+  compactZoomThreshold: compactThreshold,
+  screenMargin: 360,
+  motionRecomputeMinIntervalMs: 90,
+})
+
+const safeVisibleRenderNodes = computed(() => {
+  const seen = new Set<string>()
+  const safe: WorkflowNode[] = []
+  for (const node of visibleRenderNodes.value) {
+    const nodeId = String(node?.id ?? '').trim()
+    if (!nodeId || seen.has(nodeId)) continue
+    seen.add(nodeId)
+    safe.push(node)
+  }
+  return safe
+})
+
+type NodeRuntimeVisualState = 'idle' | 'running' | 'error'
+
+const normalizeRuntimeStatus = (value: unknown): NodeRuntimeVisualState => {
+  const raw = String(value ?? '').trim().toLowerCase()
+  if (!raw) return 'idle'
+  if (raw === 'error' || raw === 'failed') return 'error'
+  if (
+    raw === 'running'
+    || raw === 'loading-models'
+    || raw === 'connecting'
+    || raw === 'waiting'
+    || raw === 'exporting'
+    || raw === 'pending'
+    || raw === 'downloading'
+    || raw === 'importing'
+    || raw === 'assembling-actor'
+    || raw === 'applying-lighting'
+    || raw === 'canceling'
+  ) {
+    return 'running'
+  }
+  return 'idle'
+}
+
+const resolveNodeRuntimeVisualState = (node: WorkflowNode): NodeRuntimeVisualState => {
+  const statuses: NodeRuntimeVisualState[] = []
+  statuses.push(normalizeRuntimeStatus(node.sceneUnderstandingSettings?.status))
+  statuses.push(normalizeRuntimeStatus(node.sceneLayoutSettings?.status))
+  statuses.push(normalizeRuntimeStatus(node.sceneDecomposeSettings?.status))
+  statuses.push(normalizeRuntimeStatus(node.unrealExportSettings?.connectionStatus))
+  statuses.push(normalizeRuntimeStatus(node.unrealExportSettings?.lastExportStatus))
+  statuses.push(normalizeRuntimeStatus(node.comfyuiSettings?.status))
+  statuses.push(normalizeRuntimeStatus(node.comfyuiSettings?.runStatus))
+  statuses.push(normalizeRuntimeStatus(node.meshySettings?.meshyTaskStatus))
+  if (statuses.includes('error')) return 'error'
+  if (statuses.includes('running')) return 'running'
+  return 'idle'
+}
+
+const compactNodeStateClass = (node: WorkflowNode) => {
+  const isPrimarySelected = selectedNodeId.value === node.id
+  const isSelected = selectedNodeIds.value.includes(node.id)
+  const state = resolveNodeRuntimeVisualState(node)
+  return {
+    'is-primary-selected': isPrimarySelected,
+    'is-secondary-selected': isSelected && !isPrimarySelected,
+    'is-running': state === 'running',
+    'is-error': state === 'error',
+  }
+}
+
+const compactNodeStateLabel = (node: WorkflowNode) => {
+  const state = resolveNodeRuntimeVisualState(node)
+  if (state === 'running') return '运行中'
+  if (state === 'error') return '异常'
+  return ''
+}
+
+const edgeWorkerMutationEpoch = computed(() => {
+  const selected = selectedNodeIds.value.join('|')
+  const visible = safeVisibleRenderNodes.value
+    .map((node) => `${String(node.id ?? '').trim()}:${String(node.type ?? '').trim()}`)
+    .join('|')
+  return `${selected}::${visible}`
+})
+
+const {
+  edges,
+  renderEdges,
+  getIncomingEdges,
+  getOutgoingEdges,
+  getFirstIncomingEdge,
+  hasIncomingEdge,
+  hasOutgoingEdge,
+  hasExactEdge,
+} = useAIWorkflowEdgeIndex({
+  store,
+  visibleRenderNodeIds,
+  chatModelKey,
+  chatCollapsed,
+  nanoAnchorNodeId: NANO_ANCHOR_NODE_ID,
+})
+
+const hasNanoDockEdge = computed(() =>
+  edges.value.some((edge) => edge.toNodeId === NANO_ANCHOR_NODE_ID || edge.fromNodeId === NANO_ANCHOR_NODE_ID)
+)
+const edgeWorkerEnabled = computed(
+  () => !hasNanoDockEdge.value && viewportMotionActive.value === true && selectedNodeIds.value.length === 0
+)
+
+const chatDraft = computed({
+  get: () => store.state.chatDraft ?? '',
+  set: (v: string) => store.commit('setChatDraft', { text: v }),
+})
+
+const nodeChatDialog = computed(() => store.state.nodeChatDialog)
+
+const onNodeChatDraftUpdate = (text: string) => {
+  store.commit('setNodeChatDraft', { text })
+}
+
+const onNodeChatParamsUpdate = (params: Record<string, any>) => {
+  store.commit('setNodeChatParams', { params })
+}
+
+const onNodeChatClose = () => {
+  store.dispatch('closeNodeChatDialog')
+}
+
+const onNodeChatSubmit = (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
+  store.dispatch('submitNodeChat', payload)
+}
+
+const onNodeChatRemoveParamRef = (item: InputParamPreviewRef) => {
+  if (item.edgeId) {
+    store.dispatch('removeEdge', item.edgeId)
+  } else if (item.fromNodeId && item.fromAnchorId) {
+    const edge = getFirstIncomingEdge(item.fromNodeId, item.fromAnchorId)
+    if (edge?.id) {
+      store.dispatch('removeEdge', edge.id)
+    }
+  }
+}
+
+watch(
+  () => [selectedNodeId.value, store.state.nodeChatDialog.visible, store.state.nodeChatDialog.nodeId] as const,
+  ([selectedId, visible, chatNodeId]) => {
+    if (!visible) return
+    if (!chatNodeId || selectedId !== chatNodeId) {
+      store.dispatch('closeNodeChatDialog')
+      return
+    }
+    const node = store.state.nodesById[chatNodeId]
+    const type = node?.type
+    if (type !== 'text' && type !== 'image' && type !== 'video' && type !== 'model3d') {
+      store.dispatch('closeNodeChatDialog')
+    }
+  }
+)
+
+const chatMessages = ref<BottomChatMessage[]>([])
+const chatSending = ref(false)
+const chatRunState = ref<'idle' | 'sending' | 'stopping' | 'error'>('idle')
+const codexSessions = ref<LocalExecSessionItem[]>([])
+const codexActiveSessionId = ref<string>('')
+const codexFlowEvents = ref<LocalExecFlowEvent[]>([])
+
+const nanoPreviewUrl = ref<string>('')
+const nanoPreviewUrls = ref<string[]>([])
+const nanoPreviewFallbackUrls = ref<string[]>([])
+const nanoPreviewSourcePaths = ref<string[]>([])
+const nanoPreviewLoadingStates = ref<boolean[]>([])
+const nanoPreviewDownloadStatuses = ref<string[]>([])
+const nanoPreviewDownloadProgresses = ref<number[]>([])
+const nanoPreviewLocalReadyStates = ref<boolean[]>([])
+const nanoStatus = ref<string>('')
+const nanoBilling = ref<string>('')
+const nanoModelUsed = ref<string>('')
+const nanoDetail = ref<string>('')
+const nodeMediaReloadTokenById = ref<Record<string, number>>({})
+
+const nodeMediaReloadToken = (nodeId: string) => {
+  const id = String(nodeId || '').trim()
+  if (!id) return 0
+  return Number(nodeMediaReloadTokenById.value[id] || 0)
+}
+
+const forceRefreshCurrentMediaNode = (nodeId: string) => {
+  const id = String(nodeId || '').trim()
+  if (!id) return
+  nodeMediaReloadTokenById.value = {
+    ...nodeMediaReloadTokenById.value,
+    [id]: Number(nodeMediaReloadTokenById.value[id] || 0) + 1,
+  }
+}
+
+const disconnectNanoRefEdges = () => {
+  const removeIds: string[] = []
+  for (const edgeId of store.state.edgeOrder.slice()) {
+    const e = store.state.edgesById[edgeId]
+    if (!e) continue
+    if (e.toNodeId === NANO_ANCHOR_NODE_ID || e.fromNodeId === NANO_ANCHOR_NODE_ID) removeIds.push(edgeId)
+  }
+  for (const edgeId of removeIds) store.commit('removeEdge', { edgeId })
+}
+
+const onDockLayoutChanged = () => {
+  if (chatModelKey.value !== 'nanobanana' && chatModelKey.value !== 'seedance') return
+  if (chatCollapsed.value) return
+  scheduleAsyncEdgeRender()
+}
+
+const dockSafeArea = ref<{ width: number; height: number; right: number; top: number } | null>(null);
+const onDockSafeAreaChanged = (rect: { width: number; height: number; right: number; top: number }) => {
+  dockSafeArea.value = rect
+  // Future: Notify BlueprintCanvas to adjust safe interaction zone
+  // This prevents drawer from obscuring critical nodes when expanded in right-drawer mode
+}
+
+const overlaySafeRight = computed(() => {
+  const safeWidth = Number(dockSafeArea.value?.width ?? 0)
+  if (!Number.isFinite(safeWidth)) return 0
+  return Math.max(0, Math.round(safeWidth))
+})
+
+const overlayTopRightStyle = computed(() => {
+  const right = overlaySafeRight.value > 0 ? overlaySafeRight.value + 12 : 16
+  return {
+    right: `${right}px`,
+  } as Record<string, string>
+})
+
+const overlayAlertStyle = computed(() => {
+  const right = overlaySafeRight.value > 0 ? overlaySafeRight.value + 20 : 20
+  return {
+    right: `${right}px`,
+  } as Record<string, string>
+})
+
+const parseCssPx = (raw: string) => {
+  const text = String(raw || '').trim()
+  const parsed = Number.parseFloat(text)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.max(0, parsed)
+}
+
+const resolveAppShellTitlebarHeight = () => {
+  const shell = document.querySelector('.app-shell') as HTMLElement | null
+  if (!shell) return 0
+  return parseCssPx(getComputedStyle(shell).getPropertyValue('--titlebar-height'))
+}
+
+const syncGlobalSafeAreaCssVars = () => {
+  const titlebarTop = resolveAppShellTitlebarHeight()
+  const dockTopRaw = Number(dockSafeArea.value?.top ?? 0)
+  const dockTop = Number.isFinite(dockTopRaw) ? Math.max(0, dockTopRaw) : 0
+  const safeTop = Math.max(titlebarTop, dockTop)
+  document.documentElement.style.setProperty('--aiwf-safe-top', `${Math.round(safeTop)}px`)
+  document.documentElement.style.setProperty('--aiwf-safe-right', `${overlaySafeRight.value}px`)
+}
+
+watch(
+  () => [overlaySafeRight.value, Number(dockSafeArea.value?.top ?? 0)],
+  () => {
+    syncGlobalSafeAreaCssVars()
+  },
+  { immediate: true }
+)
+
+onMounted(() => {
+  syncGlobalSafeAreaCssVars()
+  window.addEventListener('resize', syncGlobalSafeAreaCssVars, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncGlobalSafeAreaCssVars)
+  const fallbackTop = resolveAppShellTitlebarHeight()
+  document.documentElement.style.setProperty('--aiwf-safe-top', `${Math.round(fallbackTop)}px`)
+  document.documentElement.style.setProperty('--aiwf-safe-right', '0px')
+})
+
+watch(
+  () => chatModelKey.value,
+  (mk, prev) => {
+    const wasVisual = prev === 'nanobanana' || prev === 'seedance'
+    const isVisual = mk === 'nanobanana' || mk === 'seedance'
+    if (wasVisual && !isVisual) disconnectNanoRefEdges()
+  }
+)
+
+watch(
+  () => chatCollapsed.value,
+  (v) => {
+    if (v && (chatModelKey.value === 'nanobanana' || chatModelKey.value === 'seedance')) disconnectNanoRefEdges()
+  }
+)
+
+const nanoRefDockAnchors = computed(() => {
+  const pseudo = store.state.nodesById[NANO_ANCHOR_NODE_ID]
+  const ins = Array.isArray(pseudo?.inputs) ? pseudo!.inputs : []
+  return ins.map((a, idx) => {
+    const edge = getFirstIncomingEdge(NANO_ANCHOR_NODE_ID, String(a.id ?? ''))
+    const fromNode = edge ? store.state.nodesById[edge.fromNodeId] : null
+    const fromTitle = fromNode ? String(fromNode.alias || fromNode.title || fromNode.id) : ''
+    return {
+      id: a.id,
+      label: a.label || `参考图 ${idx + 1}`,
+      connected: !!edge,
+      connectedFrom: fromTitle,
+    }
+  })
+})
+
+const chatTaskStatusText = ref('')
+const chatTaskStatus = computed(() => {
+  if (chatTaskStatusText.value) return chatTaskStatusText.value
+  if (chatRunState.value === 'stopping') return 'AI 任务：正在停止…'
+  if (chatRunState.value === 'error') return 'AI 任务：错误'
+  return chatSending.value ? 'AI 任务：生成中…' : 'AI 任务：空闲'
+})
+
+const isElectronRuntime = (window as any)?.__DWEB_RUNTIME__?.isElectron === true
+
+const buildProjectAssetRuntimeUrl = (projectId: number, projectRelativePath: string, fallbackUrl?: string) => {
+  const pid = Number(projectId)
+  const rel = String(projectRelativePath || '').trim()
+  if (isElectronRuntime && Number.isFinite(pid) && pid > 0 && rel) {
+    return `dweb://project-assets?projectId=${encodeURIComponent(String(Math.floor(pid)))}&path=${encodeURIComponent(rel)}`
+  }
+  return String(fallbackUrl || '').trim()
+}
+const shouldAutoHelloOnLaunch = (() => {
+  const envFlag = String((import.meta as any)?.env?.VITE_AIWF_AUTO_HELLO || '').trim().toLowerCase()
+  if (envFlag === '1' || envFlag === 'true' || envFlag === 'yes' || envFlag === 'on') return true
+  const winFlag = String((window as any)?.__DWEB_AIWF_AUTO_HELLO || '').trim().toLowerCase()
+  if (winFlag === '1' || winFlag === 'true' || winFlag === 'yes' || winFlag === 'on') return true
+  return false
+})()
+const resolveAutoHelloText = () => {
+  const envText = String((import.meta as any)?.env?.VITE_AIWF_AUTO_HELLO_TEXT || '').trim()
+  if (envText) return envText
+  const winText = String((window as any)?.__DWEB_AIWF_AUTO_HELLO_TEXT || '').trim()
+  if (winText) return winText
+  return '你好'
+}
+let autoHelloSent = false
+
+const mapCodexSession = (row: any): LocalExecSessionItem => ({
+  id: String(row?.id || '').trim(),
+  title: String(row?.title || 'Copilot CLI 会话').trim() || 'Copilot CLI 会话',
+  status: String(row?.status || 'active').trim() || 'active',
+  modelName: String(row?.model_name || '').trim(),
+  source: 'copilot-cli',
+})
+
+const ensureProjectForLocalExec = async (opts?: { silent?: boolean }): Promise<number | null> => {
+  const existing = Number(currentProjectId.value ?? 0)
+  if (Number.isFinite(existing) && existing > 0) return existing
+
+  const fallbackName = String(currentProjectName.value || '').trim() || 'AI Workflow Auto Session'
+  currentProjectName.value = fallbackName
+  const ok = await saveProjectToBackend(fallbackName, { silent: Boolean(opts?.silent) })
+  if (!ok) return null
+
+  const nextId = Number(currentProjectId.value ?? 0)
+  if (Number.isFinite(nextId) && nextId > 0) return nextId
+  return null
+}
+
+const loadCodexSessions = async () => {
+  const projectId = await ensureProjectForLocalExec({ silent: true })
+  if (projectId == null) {
+    codexSessions.value = []
+    codexActiveSessionId.value = ''
+    return
+  }
+  try {
+    const res = await localExecChatService.localExecListSessions(projectId)
+    const items = Array.isArray((res as any)?.items) ? (res as any).items : []
+    codexSessions.value = items.map(mapCodexSession).filter((s: LocalExecSessionItem) => !!s.id)
+    if (!codexActiveSessionId.value && codexSessions.value.length) {
+      codexActiveSessionId.value = codexSessions.value[0].id
+    }
+  } catch {
+    codexSessions.value = []
+  }
+}
+
+const onCodexCreateSession = async () => {
+  const projectId = await ensureProjectForLocalExec()
+  if (projectId == null) {
+    pushToast('无法创建 Copilot CLI 会话：自动保存项目失败。', 'warn')
+    return
+  }
+  try {
+    const created = await localExecChatService.localExecCreateSession({
+      title: 'AI Workflow Copilot CLI 会话',
+      model: chatModelId.value,
+      projectId,
+    })
+    if ((created as any)?.error) {
+      pushToast('创建 Copilot CLI 会话失败：' + String((created as any).error), 'warn')
+      return
+    }
+    const item = mapCodexSession(created)
+    if (!item.id) {
+      pushToast('创建 Copilot CLI 会话失败：返回会话ID为空', 'warn')
+      return
+    }
+    codexSessions.value = [item, ...codexSessions.value.filter((s) => s.id !== item.id)]
+    codexActiveSessionId.value = item.id
+    chatMessages.value = []
+  } catch (err: any) {
+    pushToast('创建 Copilot CLI 会话失败：' + String(err?.message || err || 'unknown'), 'warn')
+  }
+}
+
+const onCodexSelectSession = async (sessionId: string) => {
+  const projectId = await ensureProjectForLocalExec()
+  if (projectId == null) {
+    pushToast('无法加载会话：自动保存项目失败。', 'warn')
+    return
+  }
+  const sid = String(sessionId || '').trim()
+  if (!sid) return
+  codexActiveSessionId.value = sid
+  codexFlowEvents.value = []
+  try {
+    const data = await localExecChatService.localExecListMessages(sid, projectId)
+    const items = Array.isArray((data as any)?.items) ? (data as any).items : []
+    chatMessages.value = items
+      .map((m: any) => ({
+        id: String(m?.id || makeChatId()),
+        role: (m?.role === 'assistant' || m?.role === 'system') ? m.role : 'user',
+        content: String(m?.content || ''),
+      }))
+  } catch {
+    chatMessages.value = []
+  }
+}
+
+const onCodexApproval = async (payloadValue: { messageId: string; decision: 'accept' | 'decline' }) => {
+  const projectId = await ensureProjectForLocalExec()
+  if (projectId == null) {
+    pushToast('无法提交审批：自动保存项目失败。', 'warn')
+    return
+  }
+  const sid = String(codexActiveSessionId.value || '').trim()
+  if (!sid) {
+    pushToast('请先选择 Copilot CLI 会话。', 'warn')
+    return
+  }
+  try {
+    const result = await localExecChatService.localExecSubmitApproval({
+      sessionId: sid,
+      messageId: payloadValue.messageId,
+      decision: payloadValue.decision,
+      projectId,
+    })
+    if ((result as any)?.error) {
+      pushToast('审批提交失败：' + String((result as any).error), 'warn')
+      return
+    }
+    pushToast('审批已提交。', 'info')
+  } catch (err: any) {
+    pushToast('审批提交失败：' + String(err?.message || err || 'unknown'), 'warn')
+  }
+}
+
+const onCodexDeleteSession = async (sessionId: string) => {
+  const projectId = await ensureProjectForLocalExec()
+  if (projectId == null) {
+    pushToast('无法删除会话：自动保存项目失败。', 'warn')
+    return
+  }
+  const sid = String(sessionId || '').trim()
+  if (!sid) return
+  const ok = window.confirm('确认删除该 Copilot CLI 会话吗？')
+  if (!ok) return
+  const result = await localExecChatService.localExecDeleteSession({ sessionId: sid, projectId })
+  if ((result as any)?.error) {
+    pushToast('删除会话失败：' + String((result as any).error), 'warn')
+    return
+  }
+  codexSessions.value = codexSessions.value.filter((s) => s.id !== sid)
+  if (codexActiveSessionId.value === sid) {
+    codexActiveSessionId.value = codexSessions.value[0]?.id || ''
+    if (codexActiveSessionId.value) {
+      void onCodexSelectSession(codexActiveSessionId.value)
+    } else {
+      chatMessages.value = []
+      codexFlowEvents.value = []
+    }
+  }
+}
+
+const onCodexRenameSession = async (payloadValue: { sessionId: string; title: string }) => {
+  const projectId = await ensureProjectForLocalExec()
+  if (projectId == null) {
+    pushToast('无法重命名会话：自动保存项目失败。', 'warn')
+    return
+  }
+  const sid = String(payloadValue.sessionId || '').trim()
+  const title = String(payloadValue.title || '').trim()
+  if (!sid || !title) return
+  const result = await localExecChatService.localExecUpdateSession({ sessionId: sid, projectId, title })
+  if ((result as any)?.error) {
+    pushToast('会话改名失败：' + String((result as any).error), 'warn')
+    return
+  }
+  codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
+}
+
+const makeChatId = () => `aiwf-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+let removeResourceByPolicyBridge: null | ((
+  resourceId: string,
+  opts?: { silent?: boolean }
+) => Promise<{ removed: boolean; reason: 'record' | 'django-file' | 'skip' | 'error' }>) = null
+let revokeNodeModel3DObjectUrlBridge = (_nodeId: string) => {}
+let revokeSceneLayoutManualModelObjectUrlBridge = (_nodeId: string, _objectId?: string) => {}
+
+const {
+  resourceUsed,
+  removeSelectedNodesWithResourceCleanup,
+  setNodeResourceWithCleanup,
+} = useAIWorkflowNodeResourceCleanup({
+  store,
+  selectedNodeIds,
+  revokeNodeModel3DObjectUrl: (nodeId) => {
+    revokeNodeModel3DObjectUrlBridge(nodeId)
+  },
+  revokeSceneLayoutManualModelObjectUrl: (nodeId, objectId) => {
+    revokeSceneLayoutManualModelObjectUrlBridge(nodeId, objectId)
+  },
+  removeResourceByPolicy: (resourceId, opts) => {
+    if (!removeResourceByPolicyBridge) {
+      return Promise.resolve({ removed: false, reason: 'skip' as const })
+    }
+    return removeResourceByPolicyBridge(resourceId, opts)
+  },
+})
+
+const normalizePastedNodeResources = (nodeIds: string[]) => {
+  const ids = Array.from(new Set((nodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)))
+  if (!ids.length) return
+
+  const canonicalByUniqueKey = new Map<string, string>()
+  for (const rid of store.state.resourceOrder) {
+    const r = store.state.resourcesById[rid] as any
+    if (!r) continue
+    const key = resourceUniqueIndexKey({
+      kind: r.kind,
+      sourcePath: r.sourcePath,
+      url: r.url,
+      sourceFingerprint: (r as any).sourceFingerprint,
+      localFileKey: (r as any).localFileKey,
+      sourceName: (r as any).sourceName,
+      sourceSize: (r as any).sourceSize,
+      sourceLastModified: (r as any).sourceLastModified,
+    })
+    if (!key) continue
+    if (!canonicalByUniqueKey.has(key)) canonicalByUniqueKey.set(key, rid)
+  }
+
+  const maybeRedundantResourceIds = new Set<string>()
+
+  for (const nodeId of ids) {
+    const node = store.state.nodesById[nodeId]
+    if (!node || (node.type !== 'image' && node.type !== 'video')) continue
+    const resourceId = String(node.resourceId ?? '').trim()
+    if (!resourceId) continue
+    const resource = store.state.resourcesById[resourceId] as any
+    if (!resource) continue
+
+    const key = resourceUniqueIndexKey({
+      kind: resource.kind,
+      sourcePath: resource.sourcePath,
+      url: resource.url,
+      sourceFingerprint: (resource as any).sourceFingerprint,
+      localFileKey: (resource as any).localFileKey,
+      sourceName: (resource as any).sourceName,
+      sourceSize: (resource as any).sourceSize,
+      sourceLastModified: (resource as any).sourceLastModified,
+    })
+    if (!key) continue
+
+    const canonicalResourceId = canonicalByUniqueKey.get(key) ?? resourceId
+    if (!canonicalByUniqueKey.has(key)) canonicalByUniqueKey.set(key, resourceId)
+
+    if (canonicalResourceId !== resourceId) {
+      store.commit('setNodeResource', { nodeId, resourceId: canonicalResourceId })
+      maybeRedundantResourceIds.add(resourceId)
+    }
+  }
+
+  for (const rid of maybeRedundantResourceIds) {
+    if (!resourceUsed(rid)) removeResourceRecordOnly(rid)
+  }
+}
+
+const pasteNodesWithResourceDedupe = (payload?: { worldX?: number; worldY?: number }) => {
+  store.commit('pasteNode', payload ?? {})
+  // Keep resources unique per pasted node.
+}
+
+const {
+  onNodeCopy,
+  onNodePaste,
+  onNodeDelete,
+  onNodeSetType,
+} = useAIWorkflowNodeActions({
+  store,
+  selectedNodeIds,
+  pasteNodesWithResourceDedupe,
+  removeSelectedNodesWithResourceCleanup,
+})
+
+const makeResourceId = () => `wf-res-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+const {
+  getObjectUrl,
+  setObjectUrl,
+  revokeObjectUrl,
+  revokeObjectUrlsByPrefix,
+  revokeTrackedObjectUrlsForResource,
+  getEntries: getTrackedObjectUrlEntries,
+  clearAllObjectUrls,
+} = useAIWorkflowObjectUrlRegistry()
+
+const normalizeSourcePathKey = (raw: unknown) => {
+  const v = String(raw ?? '').trim()
+  if (!v) return ''
+  return v.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase()
+}
+
+const normalizeFileSignatureKey = (rawName: unknown, rawSize: unknown, rawLastModified: unknown) => {
+  const name = String(rawName ?? '').trim().toLowerCase()
+  const size = Number(rawSize)
+  const lastModified = Number(rawLastModified)
+  if (!name) return ''
+  if (!Number.isFinite(size) || size < 0) return ''
+  if (!Number.isFinite(lastModified) || lastModified < 0) return ''
+  return `${name}|${Math.floor(size)}|${Math.floor(lastModified)}`
+}
+
+const normalizeStableUrlKey = (raw: unknown) => {
+  const v = String(raw ?? '').trim()
+  if (!v) return ''
+  if (v.startsWith('blob:') || v.startsWith('data:')) return ''
+  try {
+    const u = new URL(v, window.location.origin)
+    u.hash = ''
+    // drop common cache-busting params
+    u.searchParams.delete('t')
+    u.searchParams.delete('ts')
+    u.searchParams.delete('_t')
+    u.searchParams.delete('_ts')
+    return `${u.origin}${u.pathname}${u.search}`.toLowerCase()
+  } catch {
+    return v.toLowerCase()
+  }
+}
+
+const resourceUniqueIndexKey = (input: {
+  kind?: string
+  sourcePath?: unknown
+  url?: unknown
+  sourceFingerprint?: unknown
+  localFileKey?: unknown
+  sourceName?: unknown
+  sourceSize?: unknown
+  sourceLastModified?: unknown
+}) => {
+  const kind = String(input.kind ?? '').trim().toLowerCase()
+  const sourcePathKey = normalizeSourcePathKey(input.sourcePath)
+  if (sourcePathKey) return `${kind}|p:${sourcePathKey}`
+  const urlKey = normalizeStableUrlKey(input.url)
+  if (urlKey) return `${kind}|u:${urlKey}`
+  const sourceFingerprint = String(input.sourceFingerprint ?? '').trim().toLowerCase()
+  if (sourceFingerprint) return `${kind}|f:${sourceFingerprint}`
+  const localFileKey = String(input.localFileKey ?? '').trim().toLowerCase()
+  if (localFileKey) return `${kind}|k:${localFileKey}`
+  const fileSig = normalizeFileSignatureKey(input.sourceName, input.sourceSize, input.sourceLastModified)
+  if (fileSig) return `${kind}|s:${fileSig}`
+  return ''
+}
+
+const findExistingResourceIdByUniqueIndex = (input: {
+  kind?: string
+  sourcePath?: unknown
+  url?: unknown
+  sourceFingerprint?: unknown
+  localFileKey?: unknown
+  sourceName?: unknown
+  sourceSize?: unknown
+  sourceLastModified?: unknown
+}) => {
+  const key = resourceUniqueIndexKey(input)
+  if (!key) return null
+  for (const rid of store.state.resourceOrder) {
+    const r = store.state.resourcesById[rid] as any
+    if (!r) continue
+    const cur = resourceUniqueIndexKey({
+      kind: r.kind,
+      sourcePath: r.sourcePath,
+      url: r.url,
+      sourceFingerprint: r.sourceFingerprint,
+      localFileKey: r.localFileKey,
+      sourceName: r.sourceName,
+      sourceSize: r.sourceSize,
+      sourceLastModified: r.sourceLastModified,
+    })
+    if (cur && cur === key) return rid
+  }
+  return null
+}
+
+const isComfyForwardResource = (resource: any) => {
+  const url = String(resource?.url ?? '').trim().toLowerCase()
+  return /\/api\/workflow\/(view|outputs)(\?|$)/.test(url)
+}
+
+const isDjangoManagedResource = (resource: any) => {
+  if (!resource) return false
+  if (isComfyForwardResource(resource)) return false
+  const sp = normalizeSourcePathKey(resource?.sourcePath)
+  if (sp.includes('/media/')) return true
+  const projectRelativePath = String(resource?.projectRelativePath ?? '').trim()
+  if (projectRelativePath) return true
+  const url = String(resource?.url ?? '').trim()
+  if (!url) return false
+  if (url.toLowerCase().startsWith('dweb://project-assets')) return true
+  try {
+    const u = new URL(url, window.location.origin)
+    if (/\/media\//.test(u.pathname)) return true
+    if (/\/api\/workflow\/projects\/assets\/local(\?|$)/.test(u.pathname + u.search)) return true
+  } catch {
+    if (/\/media\//.test(url)) return true
+  }
+  return false
+}
+
+const mediaImportManager = new MediaResourceImportManager({
+  batchSize: 50,
+  maxWorkers: 16,
+  // Spec: if exceeding 16*10, queue the rest.
+  maxInFlight: 16 * 10,
+})
+
+let videoMetadataQueue: VideoMetadataReadQueue | null = new VideoMetadataReadQueue({ concurrency: 2, timeoutMs: 8000 })
+
+const autoSizeVideoNodeFromDims = (nodeId: string, w: number, h: number) => {
+  const node = store.state.nodesById[nodeId]
+  if (!node || node.sizeCustomized) return
+  const width = Math.max(1, Math.floor(Number(w) || 1))
+  const height = Math.max(1, Math.floor(Number(h) || 1))
+  const targetWidth = 450
+  const chromeHeight = 140
+  const aspect = width && height ? width / height : 1
+  const previewHeight = Math.round(targetWidth / Math.max(0.1, aspect))
+  const nextH = Math.max(220, previewHeight + chromeHeight)
+  store.commit('setNodeSize', { nodeId, width: targetWidth, height: nextH, customized: false })
+}
+
+const scheduleVideoMetadataRead = (payload: { sessionId?: string; resourceId: string; nodeId: string; url: string }) => {
+  if (!payload.url) return
+  if (!videoMetadataQueue) {
+    videoMetadataQueue = new VideoMetadataReadQueue({ concurrency: 2, timeoutMs: 8000 })
+  }
+  const localQueue = videoMetadataQueue
+
+  localQueue.enqueue([
+    {
+      id: payload.resourceId,
+      url: payload.url,
+      onResult: (res) => {
+        if (!store.state.nodesById[payload.nodeId]) return
+
+        const w = Number((res as any).width)
+        const h = Number((res as any).height)
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return
+
+        const ww = Math.max(1, Math.floor(w))
+        const hh = Math.max(1, Math.floor(h))
+        store.commit('setNodeVideoSettings', {
+          nodeId: payload.nodeId,
+          videoSettings: {
+            outputWidth: ww,
+            outputHeight: hh,
+            naturalWidth: ww,
+            naturalHeight: hh,
+          },
+        })
+        autoSizeVideoNodeFromDims(payload.nodeId, ww, hh)
+        void ensureVideoResourcePoster(payload.resourceId, payload.url)
+      },
+    },
+  ])
+}
+
+const cancelActiveImportSession = (opts?: { cleanupUnresolved?: boolean }) => {
+  clearActiveImportSession({
+    onBeforeClear: (session) => {
+      mediaImportManager.cancel()
+      try {
+        videoMetadataQueue?.cancel()
+      } catch {
+        // ignore
+      }
+      videoMetadataQueue = new VideoMetadataReadQueue({ concurrency: 2, timeoutMs: 8000 })
+
+      if (!opts?.cleanupUnresolved) return
+      for (const [rid, info] of session.resourceIdToNode.entries()) {
+        const st = session.resourceState.get(rid)
+        if (st?.done) continue
+
+        if (store.state.nodesById[info.nodeId]) store.commit('removeNode', { nodeId: info.nodeId })
+        if (store.state.resourcesById[rid]) {
+          revokeTrackedObjectUrlsForResource(rid)
+          store.commit('removeResource', { resourceId: rid })
+        }
+      }
+    },
+  })
+}
+
+const onCancelImportOverlay = () => {
+  cancelActiveImportSession({ cleanupUnresolved: true })
+  pushToast('已取消导入：保留已完成的节点/资源，清理未完成项。', 'info')
+}
+
+const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video') => {
+  const node = store.state.nodesById[nodeId]
+  if (!node || node.sizeCustomized) return
+  const targetWidth = 450
+  // Node height includes header/body/footer paddings + action buttons + footer toolbar.
+  // We add a small constant so the visible preview area matches the media aspect.
+  const chromeHeight = 140
+  if (kind === 'image') {
+    const img = new Image()
+    img.onload = () => {
+      const w = Math.max(1, Math.floor((img as any).naturalWidth || img.width || 1))
+      const h = Math.max(1, Math.floor((img as any).naturalHeight || img.height || 1))
+      const aspect = w && h ? w / h : 1
+      const previewHeight = Math.round(targetWidth / Math.max(0.1, aspect))
+      const height = Math.max(220, previewHeight + chromeHeight)
+      store.commit('setNodeSize', { nodeId, width: targetWidth, height, customized: false })
+    }
+    img.src = url
+    return
+  }
+  // video: use limited-concurrency metadata queue to avoid mass <video> allocations.
+  const rid = String(store.state.nodesById[nodeId]?.resourceId ?? '').trim()
+  scheduleVideoMetadataRead({ resourceId: rid || nodeId, nodeId, url })
+}
+
+const autoSizeImageNodeFromDims = (nodeId: string, w: number, h: number) => {
+  const node = store.state.nodesById[nodeId]
+  if (!node || node.sizeCustomized) return
+  const width = Math.max(1, Math.floor(Number(w) || 1))
+  const height = Math.max(1, Math.floor(Number(h) || 1))
+  const targetWidth = 450
+  const chromeHeight = 140
+  const aspect = width && height ? width / height : 1
+  const previewHeight = Math.round(targetWidth / Math.max(0.1, aspect))
+  const nextH = Math.max(220, previewHeight + chromeHeight)
+  store.commit('setNodeSize', { nodeId, width: targetWidth, height: nextH, customized: false })
+}
+
+const onNodeClearResource = (nodeId: string) => {
+  const node = store.state.nodesById[nodeId]
+  if (!node) return
+  if (node.type === 'model3d') {
+    revokeNodeModel3DObjectUrl(nodeId)
+    store.commit('setNodeModel3DSettings', {
+      nodeId,
+      model3dSettings: {
+        modelUrl: '',
+        modelSourceName: '',
+        modelSourcePath: '',
+        modelAssetUrl: '',
+        modelAssetPath: '',
+        lastInputSignature: '',
+        lastInputNodeId: '',
+        lastInputSourceUrl: '',
+        lastInputSourcePath: '',
+        lastInputSourceName: '',
+      },
+    })
+    return
+  }
+  if (!node.resourceId) return
+  setNodeResourceWithCleanup({ nodeId, resourceId: null })
+}
+
+const onNodeClear = (nodeId: string) => {
+  const node = store.state.nodesById[nodeId]
+  if (!node) return
+  if (node.type === 'text') {
+    store.commit('setNodeTextValue', { nodeId, textValue: '' })
+    return
+  }
+  if (node.type === 'image' || node.type === 'video' || node.type === 'rotate-image' || node.type === 'model3d') {
+    onNodeClearResource(nodeId)
+  }
+}
+
+const revokeNodeModel3DObjectUrl = (nodeId: string) => {
+  const objectKey = `model3d:${nodeId}`
+  revokeObjectUrl(objectKey)
+}
+
+const sceneLayoutManualModelObjectKey = (nodeId: string, objectId: string) => `scene-layout-model:${nodeId}:${objectId}`
+
+const revokeSceneLayoutManualModelObjectUrl = (nodeId: string, objectId?: string) => {
+  const normalizedNodeId = String(nodeId ?? '').trim()
+  if (!normalizedNodeId) return
+  const normalizedObjectId = String(objectId ?? '').trim()
+  if (normalizedObjectId) {
+    const key = sceneLayoutManualModelObjectKey(normalizedNodeId, normalizedObjectId)
+    revokeObjectUrl(key)
+    return
+  }
+
+  const prefix = `scene-layout-model:${normalizedNodeId}:`
+  revokeObjectUrlsByPrefix(prefix)
+}
+revokeNodeModel3DObjectUrlBridge = revokeNodeModel3DObjectUrl
+revokeSceneLayoutManualModelObjectUrlBridge = revokeSceneLayoutManualModelObjectUrl
+
+const buildCroppedImageTransferFile = async (
+  fromNode: WorkflowNode,
+  sourceUrl: string,
+  sourceName: string
+): Promise<File | null> => {
+  if (fromNode.type !== 'image') return null
+  const imageSettings = fromNode.imageSettings
+  if (!imageSettings?.cropEnabled || !imageSettings.crop) return null
+  const outputWidth = Math.max(1, Math.floor(Number(imageSettings.outputWidth ?? imageSettings.naturalWidth ?? 0)))
+  const outputHeight = Math.max(1, Math.floor(Number(imageSettings.outputHeight ?? imageSettings.naturalHeight ?? 0)))
+  if (!outputWidth || !outputHeight) return null
+
+  const blob = await exportWorkflowImageOutputPng({
+    src: sourceUrl,
+    outputWidth,
+    outputHeight,
+    crop: imageSettings.crop,
+  })
+  if (!blob) return null
+
+  const baseName = String(sourceName || 'image').replace(/\.[^./\\]+$/, '')
+  return new File([blob], `${baseName}_crop.png`, { type: 'image/png' })
+}
+
+const buildImageTransferFileFromCrop = async (payload: {
+  sourceUrl: string
+  sourceName: string
+  crop: WorkflowImageCrop
+  outputWidth?: number
+  outputHeight?: number
+  suffix?: string
+}) => {
+  const outputWidth = Math.max(1, Math.floor(Number(payload.outputWidth ?? 0) || 1))
+  const outputHeight = Math.max(1, Math.floor(Number(payload.outputHeight ?? 0) || 1))
+  const blob = await exportWorkflowImageOutputPng({
+    src: payload.sourceUrl,
+    outputWidth,
+    outputHeight,
+    crop: payload.crop,
+  })
+  if (!blob) return null
+  const baseName = String(payload.sourceName || 'image').replace(/\.[^./\\]+$/, '') || 'image'
+  const suffix = String(payload.suffix || 'crop').trim() || 'crop'
+  return new File([blob], `${baseName}_${suffix}.png`, { type: 'image/png' })
+}
+
+const addGeneratedImageResource = (file: File) => {
+  const resourceId = makeResourceId()
+  const url = URL.createObjectURL(file)
+  setObjectUrl(resourceId, url)
+  store.commit('addResource', {
+    id: resourceId,
+    kind: 'image',
+    name: file.name || 'scene_decompose.png',
+    url,
+    createdAt: Date.now(),
+  })
+  return { resourceId, url }
+}
+
+const connectedImageTargetsFromImageNode = (fromNodeId: string) => {
+  const outIds = store.state.nodesById[fromNodeId]?.outputs?.map((o) => o.id) ?? []
+  if (!outIds.length) return [] as string[]
+  const outSet = new Set(outIds)
+  const targets: string[] = []
+  for (const e of edges.value) {
+    if (e.fromNodeId !== fromNodeId) continue
+    if (!outSet.has(e.fromAnchorId)) continue
+    const to = store.state.nodesById[e.toNodeId]
+    if (to?.type === 'image') targets.push(to.id)
+  }
+  return Array.from(new Set(targets))
+}
+
+const autoDistributeImageOutputToConnectedNodes = async (fromNodeId: string) => {
+  const fromNode = store.state.nodesById[fromNodeId]
+  if (!fromNode || fromNode.type !== 'image') return
+  const targets = connectedImageTargetsFromImageNode(fromNodeId)
+  if (!targets.length) return
+
+  const rid = String(fromNode.resourceId ?? '').trim()
+  if (!rid) return
+  const sourceResource = store.state.resourcesById[rid]
+  if (!sourceResource || sourceResource.kind !== 'image') return
+
+  const sourceUrl = String((sourceResource as any).url ?? '').trim()
+  if (!sourceUrl) return
+  const sourceName = String((sourceResource as any).name ?? 'image')
+
+  let croppedFile: File | null = null
+  try {
+    croppedFile = await buildCroppedImageTransferFile(fromNode, sourceUrl, sourceName)
+  } catch {
+    croppedFile = null
+  }
+
+  for (const targetId of targets) {
+    if (targetId === fromNodeId) continue
+    if (croppedFile) {
+      const cloned = new File([croppedFile], croppedFile.name, {
+        type: croppedFile.type || 'image/png',
+      })
+      onNodeUploadResource(targetId, cloned, 'image', { autoDistribute: false })
+      continue
+    }
+    try {
+      const cloned = await fileFromUrl(sourceUrl, sourceName.replace(/\.[^.]+$/, '') || 'image')
+      onNodeUploadResource(targetId, cloned, 'image', { autoDistribute: false })
+      autoSizeMediaNode(targetId, sourceUrl, 'image')
+    } catch {
+      // ignore clone failures for downstream copy
+    }
+  }
+}
+
+const pendingImageDistributeNodeIds = new Set<string>()
+
+const flushPendingImageDistribute = () => {
+  if (!pendingImageDistributeNodeIds.size) return
+  const ids = Array.from(pendingImageDistributeNodeIds)
+  pendingImageDistributeNodeIds.clear()
+  for (const id of ids) {
+    void autoDistributeImageOutputToConnectedNodes(id)
+  }
+}
+
+const queueImageDistributeOnPointerUp = (nodeId: string) => {
+  pendingImageDistributeNodeIds.add(nodeId)
+}
+
+const {
+  onNodeResize,
+  onNodeTextValueUpdate,
+  onNodeImageSettingsUpdate,
+  onNodeVideoSettingsUpdate,
+  onNodeModel3DSettingsUpdate,
+  onNodeMeshySettingsUpdate,
+} = useAIWorkflowNodeSettings({
+  store,
+  markViewportMotion,
+  scheduleAsyncEdgeRender: () => scheduleAsyncEdgeRender(),
+  queueImageDistributeOnPointerUp,
+  autoDistributeImageOutputToConnectedNodes,
+})
+
+const {
+  onTextMergeItemAdd,
+  onTextMergeItemRemove,
+  onTextMergeItemMove,
+} = useAIWorkflowTextMergeCommands({
+  store,
+})
+
+const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
+  const placeholderPayload = getSceneLayoutSelectedPlaceholderPayload(nodeId)
+  if (!placeholderPayload) return null
+
+  const positive = (value: unknown, fallback: number) => {
+    const next = Number(value)
+    return Number.isFinite(next) && next > 0 ? next : fallback
+  }
+  const signed = (value: unknown, fallback = 0) => {
+    const next = Number(value)
+    return Number.isFinite(next) ? next : fallback
+  }
+
+  const width = Math.max(0.05, positive((placeholderPayload as any)?.size?.width, 1) * Math.max(0.01, Math.abs(signed((placeholderPayload as any)?.scale?.x, 1))))
+  const height = Math.max(0.05, positive((placeholderPayload as any)?.size?.height, 1) * Math.max(0.01, Math.abs(signed((placeholderPayload as any)?.scale?.y, 1))))
+  const depth = Math.max(0.05, positive((placeholderPayload as any)?.size?.depth, 1) * Math.max(0.01, Math.abs(signed((placeholderPayload as any)?.scale?.z, 1))))
+  const yaw = signed((placeholderPayload as any)?.rotation?.yaw, 0)
+  const pitch = signed((placeholderPayload as any)?.rotation?.pitch, 0)
+  const roll = signed((placeholderPayload as any)?.rotation?.roll, 0)
+  const placeholderId = String((placeholderPayload as any)?.objectId ?? '').trim()
+  const placeholderName = String((placeholderPayload as any)?.name ?? placeholderId ?? 'placeholder').trim() || 'placeholder'
+  const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
+  const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
+
+  const geometry = new THREE.BoxGeometry(width, height, depth)
+  const material = new THREE.MeshStandardMaterial({
+    color: String((placeholderPayload as any)?.color ?? '').trim() || '#94a3b8',
+    roughness: 0.88,
+    metalness: 0.08,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.name = placeholderName
+  mesh.position.set(0, height * 0.5, 0)
+  mesh.rotation.set((pitch * Math.PI) / 180, (yaw * Math.PI) / 180, (roll * Math.PI) / 180, 'XYZ')
+
+  const root = new THREE.Group()
+  root.name = placeholderName
+  root.userData = {
+    source: 'scene-layout-placeholder',
+    nodeId,
+    objectId: placeholderId,
+  }
+  root.add(mesh)
+  root.updateMatrixWorld(true)
+
+  const exporter = new GLTFExporter()
+  try {
+    const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      exporter.parse(
+        root,
+        (result: any) => {
+          if (result instanceof ArrayBuffer) {
+            resolve(result)
+            return
+          }
+          reject(new Error('placeholder glb export returned non-binary payload'))
+        },
+        (error: any) => reject(error instanceof Error ? error : new Error(String(error ?? 'placeholder glb export failed'))),
+        { binary: true, onlyVisible: true }
+      )
+    })
+
+    const fileName = `${slugSceneLayoutPlaceholderModelName(`${placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
+    const file = new File([arrayBuffer], fileName, { type: 'model/gltf-binary' })
+    return {
+      file,
+      signature,
+      placeholderId,
+      placeholderJson,
+      placeholderName,
+    }
+  } finally {
+    geometry.dispose()
+    material.dispose()
+  }
+}
+
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result ?? '')
+      if (result.startsWith('data:')) {
+        resolve(result)
+        return
+      }
+      reject(new Error('read blob as data url failed'))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('read blob failed'))
+    reader.readAsDataURL(blob)
+  })
+
+const resolveGeneratedModelTransferSource = async (file: File) => {
+  let assetUrl = ''
+  let assetPath = ''
+
+  try {
+    const projectId = Number(currentProjectId.value ?? 0)
+    if (projectId > 0) {
+      const uploaded = await blueprintProjectService.uploadAsset(file, 'file', { projectId })
+      if (uploaded.ok) {
+        const asset = (uploaded as any).asset ?? {}
+        assetUrl = resolveBackendUrl(String(asset.url || ''))
+        assetPath = String(asset.absolutePath || '').trim()
+      }
+    }
+  } catch {
+    // fall back to local data url below
+  }
+
+  return {
+    transferUrl: assetUrl || await blobToDataUrl(file),
+    assetUrl,
+    assetPath,
+  }
+}
+
+const escapeAttrSelectorValue = (value: string) => String(value ?? '').replace(/"/g, '\\"')
+
+const captureModel3DNodeCanvasPreview = (nodeId: string) => {
+  const safeNodeId = escapeAttrSelectorValue(String(nodeId ?? '').trim())
+  if (!safeNodeId) return ''
+  const canvas = document.querySelector(
+    `canvas[data-wf-model3d-canvas-node-id="${safeNodeId}"]`
+  ) as HTMLCanvasElement | null
+  if (!canvas) return ''
+  const width = Number(canvas.width ?? 0)
+  const height = Number(canvas.height ?? 0)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return ''
+  }
+  try {
+    return canvas.toDataURL('image/png')
+  } catch {
+    return ''
+  }
+}
+
+const {
+  connectedMeshyPrompt,
+  connectedImageOutputUrl,
+  connectedMeshyImageUrls,
+  connectedMeshyImageInputs,
+  connectedMeshyModelInput,
+  connectedMeshySourcePreview,
+  normalizeMeshyImageInputValue,
+  buildMeshyImageInputFromNode,
+  hasConnectedMeshyConsumer,
+  meshyImageOutputCount,
+  missingMeshyImageOutputAnchors,
+} = useAIWorkflowMeshyInputResolver({
+  store,
+  getFirstIncomingEdge,
+  getIncomingEdges,
+  getOutgoingEdges,
+  hasOutgoingEdge,
+  getTextOutputForNode: (nodeId) => getTextOutputForNode(nodeId),
+  nodeResourceUrl,
+  nodeResourceName,
+  getMeshyEffectiveImageSource,
+  getMeshyEffectiveModelSource,
+  getMeshyDisplayThumbnailUrl,
+  getSceneDecomposeImageUrl: (fromNode, fromAnchorId) => {
+    const settings = fromNode.sceneDecomposeSettings
+    const rawOutputs = settings?.outputs
+    const outputs: WorkflowSceneDecomposeOutput[] = Array.isArray(rawOutputs) ? rawOutputs : []
+    const item = outputs.find((entry) => String(entry?.imageAnchorId ?? '') === fromAnchorId)
+    if (!item?.generatedResourceId) return ''
+    const resource = store.state.resourcesById[item.generatedResourceId]
+    return String((resource as any)?.url ?? '').trim()
+  },
+  getComfyImageUrl: (fromNode, fromAnchorId) => {
+    const outputs = Array.isArray(fromNode.comfyuiSettings?.outputs)
+      ? (fromNode.comfyuiSettings!.outputs! as ComfyLocalizedOutput[])
+      : []
+    const media = comfyOutputForAnchor(outputs, fromAnchorId, 'image')
+    return String((media as any)?.url ?? '').trim()
+  },
+  blobToDataUrl,
+  resolveBackendUrl,
+  buildCroppedImageTransferFile,
+  createSceneLayoutPlaceholderModelFile,
+  resolveGeneratedModelTransferSource,
+  captureModel3DNodeCanvasPreview,
+})
+
+const { buildMeshyRequestPayload } = useAIWorkflowMeshyRequest({
+  connectedMeshyPrompt,
+  connectedMeshyImageInputs,
+  connectedMeshyModelInput,
+  buildMeshyImageInputFromNode,
+  normalizeMeshyImageInputValue,
+  hasConnectedMeshyConsumer,
+  missingMeshyImageOutputAnchors,
+  meshyImageOutputCount,
+})
+
+const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: boolean }) => {
+  const node = store.state.nodesById[nodeId]
+  if (!node || node.type !== 'model3d') return false
+
+  const incoming = getIncomingEdges(nodeId, 'in-model')
+  for (const edge of incoming) {
+    const fromNode = store.state.nodesById[String((edge as any).fromNodeId ?? '')]
+    if (!fromNode) continue
+    const fromAnchorId = String((edge as any).fromAnchorId ?? '').trim()
+
+    if (fromNode.type === 'meshy') {
+      const settings = fromNode.meshySettings ?? {}
+      const effective = getMeshyEffectiveModelSource(settings)
+      const sourceUrl = effective.preferredUrl || effective.assetUrl
+      if (!sourceUrl) continue
+      const format = effective.format
+      const name = `meshy_${String(settings.meshyTaskId ?? fromNode.id).trim() || fromNode.id}.${format}`
+      const persisted = await persistExternalAssetToProject({
+        kind: 'file',
+        name,
+        sourceUrl,
+        sourcePath: effective.assetPath || undefined,
+      })
+      revokeNodeModel3DObjectUrl(nodeId)
+      const finalModelUrl = String(persisted?.url || effective.assetUrl || sourceUrl)
+      if (isMeshyRemoteUrl(finalModelUrl)) {
+        console.warn('[DVS:syncModel3D] meshy asset not yet localized, skipping commit — node:', nodeId)
+        continue
+      }
+      store.commit('setNodeModel3DSettings', {
+        nodeId,
+        model3dSettings: {
+          modelUrl: finalModelUrl,
+          modelFormat: format,
+          modelSourceName: name,
+          modelSourcePath: String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
+          modelProjectRelativePath: String((persisted as any)?.projectRelativePath || '').trim() || undefined,
+          modelAssetUrl: String(persisted?.url || ''),
+          modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+          modelAssetProjectRelativePath: String((persisted as any)?.projectRelativePath || '').trim() || undefined,
+          lastInputSignature: `${fromNode.id}:${String(settings.meshyTaskId ?? '')}:${sourceUrl}`,
+          lastInputNodeId: fromNode.id,
+          lastInputSourceUrl: sourceUrl,
+          lastInputSourcePath: effective.assetPath || undefined,
+          lastInputSourceName: name,
+        },
+      })
+      return true
+    }
+
+    if (fromNode.type === 'model3d') {
+      const settings = fromNode.model3dSettings ?? {}
+      const preferredUrl = String(settings.modelAssetUrl ?? settings.modelUrl ?? '').trim()
+      if (!preferredUrl) continue
+      const format = settings.modelFormat === 'gltf' ? 'gltf' : 'glb'
+      const name = String(settings.modelSourceName ?? '').trim() || `model_${fromNode.id}.${format}`
+      const persisted = await persistExternalAssetToProject({
+        kind: 'file',
+        name,
+        sourceUrl: preferredUrl,
+        sourcePath: String(settings.modelAssetPath ?? settings.modelSourcePath ?? '').trim() || undefined,
+      })
+      revokeNodeModel3DObjectUrl(nodeId)
+      store.commit('setNodeModel3DSettings', {
+        nodeId,
+        model3dSettings: {
+          modelUrl: String(persisted?.url || preferredUrl),
+          modelFormat: format,
+          modelSourceName: name,
+          modelSourcePath: String(persisted?.absolutePath || settings.modelAssetPath || settings.modelSourcePath || '').trim() || undefined,
+          modelProjectRelativePath: String((persisted as any)?.projectRelativePath || (settings as any)?.modelAssetProjectRelativePath || (settings as any)?.modelProjectRelativePath || '').trim() || undefined,
+          modelAssetUrl: String(persisted?.url || ''),
+          modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+          modelAssetProjectRelativePath: String((persisted as any)?.projectRelativePath || (settings as any)?.modelAssetProjectRelativePath || (settings as any)?.modelProjectRelativePath || '').trim() || undefined,
+          lastInputSignature: `${fromNode.id}:${preferredUrl}`,
+          lastInputNodeId: fromNode.id,
+          lastInputSourceUrl: preferredUrl,
+          lastInputSourcePath: String(settings.modelAssetPath ?? settings.modelSourcePath ?? '').trim() || undefined,
+          lastInputSourceName: name,
+        },
+      })
+      return true
+    }
+
+    if (fromNode.type === 'scene-layout' && fromAnchorId === 'out-selected-placeholder') {
+      const generated = await createSceneLayoutPlaceholderModelFile(fromNode.id)
+      if (!generated) continue
+      const nextSignature = generated.signature
+      const currentSettings = node.model3dSettings ?? {}
+      if (String(currentSettings.lastInputSignature ?? '').trim() === nextSignature && String(currentSettings.modelUrl ?? '').trim()) {
+        return true
+      }
+
+      const objectUrl = URL.createObjectURL(generated.file)
+      const transfer = await resolveGeneratedModelTransferSource(generated.file)
+      revokeNodeModel3DObjectUrl(nodeId)
+      setObjectUrl(`model3d:${nodeId}`, objectUrl)
+      store.commit('setNodeModel3DSettings', {
+        nodeId,
+        model3dSettings: {
+          modelUrl: String(transfer.assetUrl || objectUrl),
+          modelFormat: 'glb',
+          modelSourceName: generated.file.name,
+          modelSourcePath: String(transfer.assetPath || '').trim() || undefined,
+          modelAssetUrl: transfer.transferUrl,
+          modelAssetPath: String(transfer.assetPath || '').trim() || undefined,
+          lastInputSignature: nextSignature,
+          lastInputNodeId: fromNode.id,
+          lastInputSourceUrl: transfer.transferUrl,
+          lastInputSourcePath: String(transfer.assetPath || '').trim() || undefined,
+          lastInputSourceName: `占位体 ${generated.placeholderName}`,
+          lastInputPlaceholderId: generated.placeholderId || undefined,
+          lastInputPlaceholderJson: generated.placeholderJson || undefined,
+        },
+      })
+      return true
+    }
+  }
+
+  if (opts?.warn) pushToast('未找到可用的上游模型输出。', 'warn')
+  return false
+}
+
+const syncConnectedModel3DTargets = async (fromNodeId: string) => {
+  const targets = getOutgoingEdges(fromNodeId)
+    .filter((e: any) => String(e.toAnchorId ?? '') === 'in-model')
+    .map((e: any) => String(e.toNodeId ?? '').trim())
+    .filter((id: string, index: number, arr: string[]) => !!id && arr.indexOf(id) === index)
+
+  for (const nodeId of targets) {
+    await syncModel3DInputFromUpstream(nodeId)
+  }
+}
+
+const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
+  const fromNode = store.state.nodesById[fromNodeId]
+  if (!fromNode || fromNode.type !== 'meshy') return false
+  const settings = fromNode.meshySettings ?? {}
+  const effective = getMeshyEffectiveImageSource(settings)
+  const imageUrls = Array.isArray(effective.imageUrls)
+    ? effective.imageUrls.map((x: any) => String(x ?? '').trim()).filter(Boolean).slice(0, 4)
+    : []
+  const fallbackUrl = String(effective.assetUrl || effective.preferredUrl || '').trim()
+  if (!imageUrls.length && !fallbackUrl) return false
+
+  const outputEdges = getOutgoingEdges(fromNodeId).filter((e: any) => {
+    if (!e) return false
+    const fromAnchorId = String(e.fromAnchorId ?? '')
+    const toAnchorId = String(e.toAnchorId ?? '')
+    return /^out-image(?:-\d+)?$/.test(fromAnchorId) && (toAnchorId === 'in-image' || toAnchorId === 'in-resource')
+  })
+  if (!outputEdges.length) return false
+
+  const resolveOutputUrlByAnchor = (fromAnchorId: string) => {
+    const m = /^out-image-(\d+)$/.exec(String(fromAnchorId))
+    const idx = m ? Math.max(1, Math.min(4, Number(m[1]) || 1)) - 1 : 0
+    const fromList = imageUrls[idx]
+    return String(fromList || fallbackUrl || imageUrls[0] || '').trim()
+  }
+
+  for (const e of outputEdges) {
+    const targetNodeId = String((e as any).toNodeId ?? '').trim()
+    const targetNode = store.state.nodesById[targetNodeId]
+    if (!targetNode || targetNode.type !== 'image') continue
+
+    const sourceUrl = resolveOutputUrlByAnchor(String((e as any).fromAnchorId ?? ''))
+    if (!sourceUrl) continue
+
+    const ext = fileExtensionFromUrl(sourceUrl, '.png')
+    const anchorSuffix = String((e as any).fromAnchorId ?? 'out-image').replace(/[^a-zA-Z0-9_-]/g, '_')
+    const fileNameBase = `meshy_${String(settings.meshyTaskId ?? fromNode.id).trim() || fromNode.id}_${anchorSuffix}_${targetNodeId}`
+    const fileName = `${fileNameBase}${ext}`
+
+    let cloned: File | null = null
+    try {
+      cloned = await fileFromUrl(sourceUrl, fileNameBase)
+    } catch {
+      cloned = null
+    }
+
+    if (!cloned) {
+      const persisted = await persistExternalAssetToProject({
+        kind: 'image',
+        name: fileName,
+        sourceUrl,
+        sourcePath: effective.assetPath || undefined,
+      })
+      const outputUrl = String(persisted?.url || sourceUrl).trim()
+      const outputPath = String(persisted?.absolutePath || effective.assetPath || '').trim()
+      if (!outputUrl) continue
+
+      try {
+        cloned = await fileFromUrl(outputUrl, fileNameBase)
+      } catch {
+        cloned = null
+      }
+
+      if (!cloned) {
+        bindMediaResourceToNode(targetNodeId, 'image', outputUrl, fileName, {
+          sourcePath: outputPath || undefined,
+          projectRelativePath: String((persisted as any)?.projectRelativePath || '').trim() || undefined,
+        })
+        autoSizeMediaNode(targetNodeId, outputUrl, 'image')
+        continue
+      }
+    }
+
+    onNodeUploadResource(targetNodeId, cloned, 'image', { autoDistribute: false })
+  }
+  return true
+}
+
+const onNodeMediaReady = (nodeId: string) => {
+  markNodeMediaReady(nodeId)
+}
+
+const videoPosterGenerating = new Set<string>()
+let posterAutoSaveTimer: ReturnType<typeof setTimeout> | number | null = null
+let posterAutoSaveQueued = false
+let posterAutoSaveRunning = false
+
+const flushPosterAutoSave = async () => {
+  if (posterAutoSaveRunning) return
+  if (!posterAutoSaveQueued) return
+  if (!currentProjectId.value || !String(currentProjectName.value || '').trim()) {
+    posterAutoSaveQueued = false
+    return
+  }
+  posterAutoSaveRunning = true
+  try {
+    while (posterAutoSaveQueued) {
+      posterAutoSaveQueued = false
+      await saveProjectToBackend(currentProjectName.value, { silent: true })
+    }
+  } finally {
+    posterAutoSaveRunning = false
+  }
+}
+
+const scheduleAutoSaveAfterPosterReady = () => {
+  if (!currentProjectId.value || !String(currentProjectName.value || '').trim()) return
+  posterAutoSaveQueued = true
+  if (posterAutoSaveTimer) {
+    window.clearTimeout(posterAutoSaveTimer)
+    posterAutoSaveTimer = null
+  }
+  posterAutoSaveTimer = window.setTimeout(() => {
+    posterAutoSaveTimer = null
+    void flushPosterAutoSave()
+  }, 700)
+}
+
+const ensureVideoResourcePoster = async (resourceId: string, url: string) => {
+  const rid = String(resourceId || '').trim()
+  const rawUrl = String(url || '').trim()
+  if (!rid || !rawUrl) return
+  if (videoPosterGenerating.has(rid)) return
+
+  const cur = store.state.resourcesById?.[rid] as any
+  const existedPoster = typeof cur?.posterUrl === 'string' ? String(cur.posterUrl).trim() : ''
+  if (existedPoster) return
+
+  videoPosterGenerating.add(rid)
+  try {
+    const thumb = await createVideoFirstFrameThumbnail({
+      url: rawUrl,
+      targetWidth: 360,
+      mime: 'image/jpeg',
+      quality: 0.86,
+      timeoutMs: 12000,
+    })
+
+    let nextPosterUrl = ''
+    let nextPosterSourcePath = ''
+    try {
+      const file = new File([thumb.blob], `thumb_${rid}.jpg`, { type: thumb.mime || 'image/jpeg' })
+      const uploaded = await blueprintProjectService.uploadAsset(file, 'image', {
+        projectId: currentProjectId.value,
+        bucket: 'thumbnails',
+      })
+      if (uploaded.ok) {
+        const asset = (uploaded as any).asset ?? {}
+        nextPosterUrl = resolveBackendUrl(String(asset?.url || ''))
+        nextPosterSourcePath = String(asset?.absolutePath || '').trim()
+        const nextPosterProjectRelativePath = String(asset?.projectRelativePath || asset?.relativePath || '').trim()
+        if (nextPosterProjectRelativePath) {
+          store.commit('patchResource', {
+            resourceId: rid,
+            patch: {
+              posterProjectRelativePath: nextPosterProjectRelativePath,
+            } as any,
+          })
+        }
+      }
+    } catch {
+      // fallback to local objectURL below
+    }
+
+    if (!nextPosterUrl) {
+      try {
+        nextPosterUrl = URL.createObjectURL(thumb.blob)
+        setObjectUrl(`wf-poster:${rid}`, nextPosterUrl)
+      } catch {
+        nextPosterUrl = ''
+      }
+    }
+
+    if (nextPosterUrl) {
+      const prevPoster = String((store.state.resourcesById?.[rid] as any)?.posterUrl || '').trim()
+      if (prevPoster && prevPoster.startsWith('blob:') && prevPoster !== nextPosterUrl) {
+        try {
+          URL.revokeObjectURL(prevPoster)
+        } catch {
+          // ignore
+        }
+      }
+      store.commit('patchResource', {
+        resourceId: rid,
+        patch: {
+          posterUrl: nextPosterUrl,
+          posterSourcePath: nextPosterSourcePath || undefined,
+        } as any,
+      })
+    }
+  } catch {
+    // ignore thumbnail failures; resource itself remains usable
+  } finally {
+    videoPosterGenerating.delete(rid)
+    if (!videoPosterGenerating.size) {
+      scheduleAutoSaveAfterPosterReady()
+    }
+  }
+}
+
+const onStoryBranchUpdate = (nodeId: string, payload: { branchId: string; text: string }) => {
+  store.commit('updateStoryBranch', { nodeId, branchId: payload.branchId, text: payload.text })
+}
+
+const onStoryBranchAdd = (nodeId: string) => {
+  store.commit('addStoryBranch', { nodeId })
+}
+
+const onStoryBranchRemove = (nodeId: string, branchId: string) => {
+  store.commit('removeStoryBranch', { nodeId, branchId })
+}
+
+const onStoryBranchUpdateFromInspector = (nodeId: string, branchId: string, text: string) => {
+  store.commit('updateStoryBranch', { nodeId, branchId, text })
+}
+
+const onInspectorUploadResource = (nodeId: string, file: File, kind: 'image' | 'video') => {
+  onNodeUploadResource(nodeId, file, kind)
+}
+
+const onInspectorClearResource = (nodeId: string) => {
+  onNodeClearResource(nodeId)
+}
+
+const {
+  downloadUrlAsBlob,
+  inferSelectedResourceFilename,
+  selectedNodeLocalResourcePath,
+  canOpenSelectedNodeFolder,
+} = useAIWorkflowResourceActions({
+  store,
+  selectedNodeId,
+  isElectron,
+  nodeResourceName,
+})
+
+const {
+  storyPreview,
+  rotateImagePreviewUrl,
+  connectedImageInputUrl,
+  connectedImageInputSource,
+} = useAIWorkflowMediaPreviewSources({
+  store,
+  getFirstIncomingEdge,
+  nodeResourceUrl,
+  connectedImageOutputUrl,
+  comfyOutputForAnchor,
+})
+
+const {
+  connectedSceneUnderstandImageInputs,
+  connectedSceneUnderstandImageInputRefs,
+  connectedSceneDecomposeImageInputs,
+  connectedSceneDecomposeImageInputRefs,
+  sceneDecomposeImageInputAnchorId,
+  connectedSceneDecomposeImageInputAt,
+  connectedSceneDecomposeImageInputRefAt,
+} = useAIWorkflowSceneImageInputs({
+  store,
+  getFirstIncomingEdge,
+  connectedImageInputSource,
+})
+
+const {
+  sceneLayoutModelInputAnchorId,
+  connectedSceneLayoutModelBindings,
+} = useAIWorkflowSceneLayoutModelBindings({
+  store,
+  isSceneLayoutModelTargetItem,
+  getIncomingEdges,
+  getMeshyEffectiveModelSource,
+})
+
+const {
+  extractSceneLayoutSourceItems,
+  parseSceneLayoutMetadataItems,
+  mergeSceneLayoutItemsWithMetadata,
+  getSceneLayoutSelectedPlaceholderPayload,
+  serializeSceneLayoutSelectedPlaceholder,
+  serializeSceneLayoutOutput,
+} = useAIWorkflowSceneLayoutMetadata({
+  store,
+})
+
+const {
+  connectedTextInputValue,
+  sceneDecomposeTextOutputForAnchor,
+  getTextOutputForNode,
+  computeMergedText,
+  getInputParamPreviewRefs,
+} = useAIWorkflowTextOutputResolver({
+  store,
+  getFirstIncomingEdge,
+  getIncomingEdges,
+  serializeSceneLayoutSelectedPlaceholder,
+  serializeSceneLayoutOutput,
+  nodeResourceUrl,
+  nodeImagePreviewUrl,
+})
+
+const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
+  store,
+  connectedTextInputValue,
+  computeMergedText,
+  getInputParamPreviewRefs,
+  storyPreview,
+  nodeImagePreviewUrl,
+  nodeImagePreviewVersion,
+  nodeResourceUrl,
+  nodeResourceName,
+  connectedImageTargetsFromVideo: (videoNodeId) => connectedImageTargetsFromVideo(videoNodeId),
+  rotateImagePreviewUrl,
+  connectedSceneUnderstandImageInputs,
+  connectedImageInputUrl,
+  connectedSceneDecomposeImageInputs,
+  connectedSceneLayoutModelBindings,
+  viewportMotionActive,
+  active3DPreviewNodeId,
+  getThreePreviewState: getNodePreviewState,
+  performancePriorityMode,
+  nodeCount: computed(() => nodes.value.length),
+  connectedMeshySourcePreview,
+  buildMeshyNodePresentationSettings,
+  connectedMeshyPrompt,
+  connectedMeshyImageUrls,
+  nodeMediaReloadToken,
+})
+
+const onNodeStartThreePreview = (nodeId: string) => {
+  startPreviewSession(nodeId)
+}
+
+const onNodeThreePreviewProgress = (
+  nodeId: string,
+  payloadValue?: WorkflowThreePreviewProgressPayload
+) => {
+  updatePreviewProgress(nodeId, payloadValue)
+}
+
+const onNodeThreePreviewReady = (nodeId: string) => {
+  completePreviewSession(nodeId)
+}
+
+const onNodeThreePreviewError = (nodeId: string) => {
+  failPreviewSession(nodeId)
+}
+
+const resolveLocalExecBasePath = () => {
+  const w = window as any
+  const fromWindow = typeof w?.__DWEB_LOCAL_EXEC_BASE_PATH === 'string' ? String(w.__DWEB_LOCAL_EXEC_BASE_PATH) : ''
+  const fromEnv = String((import.meta as any)?.env?.VITE_LOCAL_EXEC_BASE_PATH || '')
+  const fromStorage = String(localStorage.getItem('dweb.localExecBasePath') || '')
+  if (!fromWindow && !fromEnv && fromStorage.trim().toLowerCase() === 'codex') return 'copilot'
+  const candidate = String(fromWindow || fromEnv || fromStorage || 'copilot').trim()
+  return candidate || 'copilot'
+}
+
+const resolveLocalExecStreamMode = (): 'real' | 'mock' => {
+  const w = window as any
+  const fromWindow = typeof w?.__DWEB_LOCAL_EXEC_STREAM_MODE === 'string' ? String(w.__DWEB_LOCAL_EXEC_STREAM_MODE) : ''
+  const fromEnv = String((import.meta as any)?.env?.VITE_LOCAL_EXEC_STREAM_MODE || '')
+  const fromStorage = String(localStorage.getItem('dweb.localExecStreamMode') || '')
+  const candidate = String(fromWindow || fromEnv || fromStorage || 'real').trim().toLowerCase()
+  return candidate === 'mock' ? 'mock' : 'real'
+}
+
+const comfyService = new ComfyUIBridgeService({
+  localExecBasePath: resolveLocalExecBasePath(),
+})
+const localExecChatService = createLocalExecChatService(comfyService)
+const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())
+localExecChatService.setLocalExecStreamMode(localExecStreamMode.value)
+watch(
+  () => localExecStreamMode.value,
+  (mode) => {
+    localExecChatService.setLocalExecStreamMode(mode)
+    try {
+      localStorage.setItem('dweb.localExecStreamMode', mode)
+    } catch {
+      // ignore storage failures
+    }
+  },
+  { immediate: true }
+)
+const sceneSkillService = new SceneSkillService()
+const blueprintProjectService = new BlueprintProjectService()
+const unrealExportService = new UnrealExportService()
+let unrealExportPollTimer: number | null = null
+let unrealExportSyncRunning = false
+let unrealExportPollStopped = false
+let unrealExportPollConsecutiveFailures = 0
+
+const UNREAL_EXPORT_POLL_BASE_MS = 3000
+const UNREAL_EXPORT_POLL_MAX_MS = 30000
+const UNREAL_EXPORT_POLL_IDLE_EXTRA_MS = 1000
+const UNREAL_EXPORT_POLL_JITTER_MS = 400
+
+const buildResetUnrealExportSettings = (settings?: Record<string, any> | null) => ({
+  connectionStatus: 'idle' as const,
+  statusText: '未建立连接',
+  message: '已清除旧项目中的 Unreal 会话与任务状态，请重新点击“等待连接”。',
+  targetSessionId: undefined,
+  connectedSession: null,
+  lastHeartbeatAt: undefined,
+  lastExportMode: undefined,
+  lastExportJobId: undefined,
+  lastExportStatus: undefined,
+  lastExportStage: undefined,
+  lastExportProgress: undefined,
+  lastExportMessage: undefined,
+  lastBlueprintAssetPath: undefined,
+  lastModelsAssetPath: undefined,
+  lastSpawnedLightCount: undefined,
+  lastLightingTargetActor: undefined,
+  lastExportAt: undefined,
+  autoPoll: settings?.autoPoll !== false,
+})
+
+const {
+  stripUnrealExportRuntimeFromNodes,
+  stripUnrealExportRuntimeFromSnapshot,
+} = useAIWorkflowProjectUnrealSnapshot({
+  buildResetUnrealExportSettings,
+})
+
+const resetCurrentUnrealExportNodeRuntimeState = () => {
+  for (const nodeId of store.state.nodeOrder) {
+    const node = store.state.nodesById[nodeId] as any
+    if (!node || node.type !== 'unreal-export') continue
+    store.commit('setNodeUnrealExportSettings', {
+      nodeId,
+      unrealExportSettings: buildResetUnrealExportSettings(node.unrealExportSettings ?? null),
+    })
+  }
+}
+
+const getUnrealExportSourceSceneLayoutNode = (nodeId: string) => {
+  const edge = getFirstIncomingEdge(nodeId, 'in-layout-json')
+  if (!edge) return null
+  const fromNode = store.state.nodesById[String(edge.fromNodeId ?? '')]
+  if (!fromNode || fromNode.type !== 'scene-layout') return null
+  return fromNode
+}
+
+const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?: string }) => {
+  const targetNodeId = String(opts?.nodeId ?? '').trim()
+  const nodesToSync = renderNodes.value.filter((node) => node.type === 'unreal-export' && (!targetNodeId || node.id === targetNodeId))
+  if (!nodesToSync.length || unrealExportSyncRunning) {
+    return { ok: true, hasRunningJob: false, skipped: true }
+  }
+  let hasRunningJob = false
+  unrealExportSyncRunning = true
+  try {
+    const res = await unrealExportService.listSessions()
+    if (!res.ok) {
+      if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${res.error || 'unknown'}`, 'warn')
+      return { ok: false, hasRunningJob: false, skipped: false }
+    }
+    const sessions = Array.isArray(res.sessions) ? res.sessions : []
+    const activeSessions = sessions.filter((item) => String(item?.status ?? 'connected') !== 'stale')
+    const latestConnected = activeSessions[0] ?? sessions[0] ?? null
+    for (const node of nodesToSync) {
+      const current = (node as any).unrealExportSettings ?? {}
+      const lastExportJobId = String(current.lastExportJobId ?? '').trim()
+      const targetSessionId = String(current.targetSessionId ?? '').trim()
+      const currentProjectPath = String(current.connectedSession?.projectPath ?? '').trim()
+      const currentProjectName = String(current.connectedSession?.projectName ?? '').trim()
+      const exactSession = targetSessionId ? sessions.find((item) => String(item.sessionId ?? '') === targetSessionId) ?? null : null
+      const replacementSession = activeSessions.find((item) => {
+        const itemProjectPath = String(item?.projectPath ?? '').trim()
+        const itemProjectName = String(item?.projectName ?? '').trim()
+        if (currentProjectPath && itemProjectPath && itemProjectPath === currentProjectPath) return true
+        if (currentProjectName && itemProjectName && itemProjectName === currentProjectName) return true
+        return false
+      }) ?? latestConnected
+      const matchedSession = exactSession && String(exactSession.status ?? 'connected') !== 'stale'
+        ? exactSession
+        : replacementSession
+      let latestJob: any = null
+      let latestJobMissing = false
+      if (lastExportJobId) {
+        const jobRes = await unrealExportService.getJob(lastExportJobId)
+        if (jobRes.ok) latestJob = jobRes.job
+        else if (jobRes.status === 404) latestJobMissing = true
+      }
+      if (matchedSession && String(matchedSession.status ?? 'connected') !== 'stale') {
+        const latestJobStatus = String(latestJob?.status ?? '').trim()
+        const latestJobMessage = String(latestJob?.message ?? '').trim()
+        const latestJobResult = latestJob?.resultData && typeof latestJob.resultData === 'object' ? latestJob.resultData : null
+        const nodeHasRunningJob = latestJobStatus === 'queued' || latestJobStatus === 'picked' || latestJobStatus === 'downloading' || latestJobStatus === 'importing' || latestJobStatus === 'assembling-actor' || latestJobStatus === 'applying-lighting'
+        const hasFailedJob = latestJobStatus === 'failed'
+        if (nodeHasRunningJob) hasRunningJob = true
+        store.commit('setNodeUnrealExportSettings', {
+          nodeId: node.id,
+          unrealExportSettings: {
+            connectionStatus: hasFailedJob ? 'error' : nodeHasRunningJob ? 'exporting' : 'connected',
+            statusText: hasFailedJob
+              ? '导出任务执行失败'
+              : nodeHasRunningJob
+                ? '虚幻插件正在执行导出任务'
+                : `已连接 ${String(matchedSession.projectName ?? matchedSession.displayName ?? matchedSession.sessionId).trim() || matchedSession.sessionId}`,
+            targetSessionId: String(matchedSession.sessionId ?? '').trim(),
+            connectedSession: matchedSession,
+            lastHeartbeatAt: Number(matchedSession.lastSeenAt ?? 0) || undefined,
+            message: latestJobMissing
+              ? '旧导出任务已不存在，已清理历史轮询状态。'
+              : latestJobMessage || (nodeHasRunningJob ? '虚幻插件已拉取任务，正在生成场景。' : '虚幻插件已在线，可直接发送导出任务。'),
+            lastExportMode: latestJobMissing
+              ? undefined
+              : (String(latestJob?.exportPayload?.exportMode ?? '').trim() === 'lighting-only' ? 'lighting-only' : 'scene-layout'),
+            lastExportJobId: latestJobMissing ? undefined : (latestJob?.jobId ?? current.lastExportJobId),
+            lastExportStatus: latestJobMissing ? undefined : (latestJobStatus || current.lastExportStatus),
+            lastExportStage: latestJobMissing ? undefined : (String(latestJobResult?.stage ?? '').trim() || current.lastExportStage),
+            lastExportProgress: latestJobMissing
+              ? undefined
+              : (Number.isFinite(Number(latestJobResult?.progress)) ? Number(latestJobResult.progress) : current.lastExportProgress),
+            lastExportMessage: latestJobMissing ? undefined : (latestJobMessage || current.lastExportMessage),
+            lastBlueprintAssetPath: latestJobMissing ? undefined : (String(latestJobResult?.blueprintAssetPath ?? '').trim() || current.lastBlueprintAssetPath),
+            lastModelsAssetPath: latestJobMissing ? undefined : (String(latestJobResult?.modelsAssetPath ?? '').trim() || current.lastModelsAssetPath),
+            lastActorBaseClass: latestJobMissing ? undefined : (String(latestJobResult?.actorBaseClass ?? '').trim() || current.lastActorBaseClass),
+            lastSpawnedLightCount: latestJobMissing
+              ? undefined
+              : (Number.isFinite(Number(latestJobResult?.spawnedLightCount)) ? Number(latestJobResult.spawnedLightCount) : current.lastSpawnedLightCount),
+            lastLightingTargetActor: latestJobMissing
+              ? undefined
+              : (String(latestJobResult?.lightingTargetActorLabel ?? latestJobResult?.lightingTargetActorPath ?? '').trim() || current.lastLightingTargetActor),
+            lastLayoutProtocolVersion: latestJobMissing
+              ? undefined
+              : (Number.isFinite(Number(latestJobResult?.layoutProtocolVersion)) ? Number(latestJobResult.layoutProtocolVersion) : current.lastLayoutProtocolVersion),
+            lastSlotCount: latestJobMissing
+              ? undefined
+              : (Number.isFinite(Number(latestJobResult?.slotCount)) ? Number(latestJobResult.slotCount) : current.lastSlotCount),
+            lastAppliedSlotCount: latestJobMissing
+              ? undefined
+              : (Number.isFinite(Number(latestJobResult?.appliedSlotCount)) ? Number(latestJobResult.appliedSlotCount) : current.lastAppliedSlotCount),
+            lastMaterialOverrideCount: latestJobMissing
+              ? undefined
+              : (Number.isFinite(Number(latestJobResult?.materialOverrideCount)) ? Number(latestJobResult.materialOverrideCount) : current.lastMaterialOverrideCount),
+            lastExportAt: latestJobMissing ? undefined : (Number(latestJob?.updatedAt ?? latestJob?.createdAt ?? current.lastExportAt ?? 0) || current.lastExportAt),
+          },
+        })
+        continue
+      }
+      if (current.connectionStatus === 'waiting' || current.connectionStatus === 'connected' || current.connectionStatus === 'exporting' || current.connectionStatus === 'error') {
+        store.commit('setNodeUnrealExportSettings', {
+          nodeId: node.id,
+          unrealExportSettings: {
+            connectionStatus: 'waiting',
+            statusText: '等待虚幻插件连接',
+            connectedSession: null,
+            message: '请在 Unreal 插件面板点击“连接工作流”。',
+            targetSessionId: undefined,
+            lastHeartbeatAt: undefined,
+            lastExportJobId: undefined,
+            lastExportStatus: undefined,
+            lastExportStage: undefined,
+            lastExportProgress: undefined,
+            lastExportMessage: undefined,
+            lastBlueprintAssetPath: undefined,
+            lastModelsAssetPath: undefined,
+            lastExportAt: undefined,
+          },
+        })
+      }
+    }
+    return { ok: true, hasRunningJob, skipped: false }
+  } catch (err: any) {
+    if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${String(err?.message ?? err ?? 'unknown')}`, 'warn')
+    return { ok: false, hasRunningJob: false, skipped: false }
+  } finally {
+    unrealExportSyncRunning = false
+  }
+}
+
+const syncUnrealExportNodes = async (opts?: { silent?: boolean; nodeId?: string }) => {
+  await syncUnrealExportNodesInternal(opts)
+}
+
+const getNextUnrealExportPollDelayMs = (opts?: { hasRunningJob?: boolean }) => {
+  const exp = Math.min(4, Math.max(0, unrealExportPollConsecutiveFailures))
+  const baseDelay = Math.min(UNREAL_EXPORT_POLL_MAX_MS, UNREAL_EXPORT_POLL_BASE_MS * Math.pow(2, exp))
+  const idleExtra = opts?.hasRunningJob ? 0 : UNREAL_EXPORT_POLL_IDLE_EXTRA_MS
+  const jitter = Math.round((Math.random() * 2 - 1) * UNREAL_EXPORT_POLL_JITTER_MS)
+  return Math.max(1000, baseDelay + idleExtra + jitter)
+}
+
+const clearUnrealExportPollTimer = () => {
+  if (unrealExportPollTimer != null) {
+    window.clearTimeout(unrealExportPollTimer)
+    unrealExportPollTimer = null
+  }
+}
+
+const scheduleUnrealExportPoll = (delayMs: number) => {
+  clearUnrealExportPollTimer()
+  if (unrealExportPollStopped) return
+  unrealExportPollTimer = window.setTimeout(() => {
+    void runUnrealExportPollLoop()
+  }, Math.max(0, delayMs))
+}
+
+const runUnrealExportPollLoop = async () => {
+  if (unrealExportPollStopped) return
+  const result = await syncUnrealExportNodesInternal({ silent: true })
+  if (!result.ok) unrealExportPollConsecutiveFailures += 1
+  else if (!result.skipped) unrealExportPollConsecutiveFailures = 0
+  scheduleUnrealExportPoll(getNextUnrealExportPollDelayMs({ hasRunningJob: result.hasRunningJob }))
+}
+
+const startUnrealExportPolling = () => {
+  unrealExportPollStopped = false
+  unrealExportPollConsecutiveFailures = 0
+  scheduleUnrealExportPoll(0)
+}
+
+const stopUnrealExportPolling = () => {
+  unrealExportPollStopped = true
+  clearUnrealExportPollTimer()
+}
+
+const onNodeAwaitUnrealConnection = async (nodeId: string) => {
+  const node = store.state.nodesById[nodeId] as any
+  if (!node || node.type !== 'unreal-export') return
+  store.commit('setNodeUnrealExportSettings', {
+    nodeId,
+    unrealExportSettings: {
+      connectionStatus: 'waiting',
+      statusText: '等待虚幻插件连接',
+      message: '请在 Unreal 编辑器中打开 DwebWorkflowBridge 插件并点击“连接工作流”。',
+      autoPoll: true,
+    },
+  })
+  await syncUnrealExportNodes({ silent: true, nodeId })
+}
+
+type SceneLayoutNodeExpose = {
+  getResolvedLayoutForUnreal: () => Promise<
+    | { ok: true; exportData: WorkflowUnrealResolvedLayoutExport }
+    | { ok: false; error: string }
+  >
+}
+
+const sceneLayoutNodeComponentRefs = new Map<string, SceneLayoutNodeExpose>()
+
+const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
+  return (instance: unknown | null) => {
+    if (nodeType !== 'scene-layout') return
+    if (instance && typeof (instance as SceneLayoutNodeExpose).getResolvedLayoutForUnreal === 'function') {
+      sceneLayoutNodeComponentRefs.set(nodeId, instance as SceneLayoutNodeExpose)
+      return
+    }
+    sceneLayoutNodeComponentRefs.delete(nodeId)
+  }
+}
+
+const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
+  const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+  if (!normalizedNodeId) {
+    return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+  }
+  const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
+  if (!instance || typeof instance.getResolvedLayoutForUnreal !== 'function') {
+    return { ok: false as const, error: '未找到场景布局预览实例，请先打开并完成预览加载。' }
+  }
+  try {
+    return await instance.getResolvedLayoutForUnreal()
+  } catch (err: any) {
+    return { ok: false as const, error: String(err?.message ?? err ?? 'unknown') }
+  }
+}
+
+const projectToolbarRef = ref<{ openSaveDialog: () => void } | null>(null)
+const projectList = ref<BlueprintProjectListItem[]>([])
+const currentProjectId = ref<number | null>(null)
+const currentProjectName = ref('')
+const agentWorkingDirectory = computed(() => {
+  const projectName = String(currentProjectName.value || '').trim()
+  if (projectName) return `/Users/dweb/Desktop/dweb-video-studio · ${projectName}`
+  return '/Users/dweb/Desktop/dweb-video-studio'
+})
+
+watch(
+  () => chatModelKey.value,
+  (v, prev) => {
+    if (v === 'codex') {
+      chatPanelMode.value = 'agent'
+    } else if (prev === 'codex') {
+      chatPanelMode.value = 'regular'
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => chatModelKey.value,
+  (v) => {
+    if (v !== 'codex') return
+    void loadCodexSessions()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => currentProjectId.value,
+  () => {
+    if (chatPanelMode.value !== 'agent') return
+    void loadCodexSessions()
+  }
+)
+
+const {
+  setSavedProject,
+  setUnsavedProject,
+  readLastProjectId,
+  forgetLastProjectId,
+} = useAIWorkflowProjectIdentity({
+  currentProjectId,
+  currentProjectName,
+  lastProjectStorageKey: AIWF_LAST_PROJECT_STORAGE_KEY,
+})
+
+let pushToastBridge = (_message: string, _tone?: 'info' | 'warn' | 'error') => {}
+
+const {
+  onComfyUISettingsUpdate,
+  onComfyUIConnect,
+  onComfyUISelectWorkflow,
+} = useAIWorkflowComfyConnection({
+  store,
+  comfyService,
+  pushToast: (message, tone) => pushToastBridge(message, tone),
+})
+
+const {
+  onNodeSceneLayoutLightingPreviewUpdate,
+  onNodeSceneLayoutLightingDebugUpdate,
+  onNodeSceneLayoutLightingControlsUpdate,
+  onNodeSceneLayoutPreviewModeUpdate,
+  onNodeSceneLayoutSelectedItemUpdate,
+  onNodeSceneLayoutHidePlaceholdersUpdate,
+} = useAIWorkflowSceneLayoutSettings({
+  store,
+})
+
+const {
+  onNodeRunSceneLayout,
+  onNodeSceneLayoutItemsUpdate,
+  onNodeSceneLayoutSelectedPlaceholderOutput,
+} = useAIWorkflowSceneLayoutController({
+  store,
+  connectedTextInputValue,
+  extractSceneLayoutSourceItems,
+  parseSceneLayoutMetadataItems,
+  mergeSceneLayoutItemsWithMetadata,
+  runSceneLayout: ({ nodeId, inputJson }) => sceneSkillService.runSceneLayout({ nodeId, inputJson }),
+  syncConnectedModel3DTargets,
+  pushToast: (message, tone) => pushToast(message, tone),
+})
+
+const { autoExpandSceneDecomposeOutputs } = useAIWorkflowSceneDecomposeAutoExpand({
+  store,
+  getIncomingEdges,
+  connectedTextInputValue,
+  hasExactEdge,
+  onNodeRunSceneLayout,
+  sceneLayoutModelInputAnchorId,
+  connectedSceneDecomposeImageInputRefAt,
+  onNodeUploadResource: (nodeId, file, kind, opts) => onNodeUploadResource(nodeId, file, kind, opts),
+})
+
+const comfyAnchorAssignments = new Map<string, Map<string, string>>()
+const comfyAnchorLocalizedOutputs = new Map<string, Map<string, ComfyLocalizedOutput>>()
+const clearComfyRouteCache = (nodeId: string) => {
+  comfyAnchorAssignments.delete(nodeId)
+  comfyAnchorLocalizedOutputs.delete(nodeId)
+}
+
+const { routeComfyOutputsToConnectedNodes } = useAIWorkflowComfyOutputRouter({
+  store,
+  getOutgoingEdges,
+  comfyAnchorAssignments,
+  comfyAnchorLocalizedOutputs,
+  blueprintProjectService,
+  currentProjectId,
+  resolveBackendUrl,
+  bindMediaResourceToNode: (nodeId, kind, url, name, meta) =>
+    bindMediaResourceToNode(nodeId, kind, url, name, meta),
+  pushToast: (message, tone) => pushToast(message, tone),
+})
+
+const getIncomingTextValue = (toNodeId: string, toAnchorId: string) => {
+	for (const e of edges.value) {
+		if (e.toNodeId !== toNodeId) continue
+		if (e.toAnchorId !== toAnchorId) continue
+    return getTextOutputForNode(e.fromNodeId)
+	}
+	return ''
+}
+
+const {
+  reuseRecordConfirm,
+  formatReuseRecordTime,
+  onCancelReuseRecord,
+  onConfirmReuseRecord,
+  onComfyUIRun,
+  onComfyUICancel,
+  recoverComfyUIRunStates,
+  disposeComfyRuntime,
+} = useAIWorkflowComfyRuntime({
+  store,
+  comfyService,
+  pushToast: (message, tone) => pushToastBridge(message, tone),
+  routeComfyOutputsToConnectedNodes,
+  clearComfyRouteCache,
+  getIncomingTextValue,
+})
+
+const onStoryPreviewSettingsUpdate = (
+  nodeId: string,
+  payload: { previewWidth?: number; previewHeight?: number }
+) => {
+  store.commit('setNodeStorySettings', { nodeId, storySettings: payload })
+}
+
+const NODE_WIDTH = 240
+const ANCHOR_GAP = 14
+
+// NOTE: anchors are rendered as DOM elements (absolute positioned + scaled with node).
+// To avoid fragile "magic" offsets (like 25), we will resolve the exact anchor center
+// from DOM (getBoundingClientRect) and convert it into BlueprintCanvas-local coords.
+// The constants below are only used as a fallback when the DOM is not available.
+const ANCHOR_SIDE_INSET_PX = 10
+const ANCHOR_IN_SIZE = 18
+const ANCHOR_OUT_SIZE = 18
+const STORY_ANCHOR_IN_SIZE = 9
+const STORY_ANCHOR_OUT_SIZE = 10
+
+const ANCHOR_IN_X_OFFSET = -ANCHOR_SIDE_INSET_PX + ANCHOR_IN_SIZE / 2
+const ANCHOR_OUT_X_OFFSET = ANCHOR_SIDE_INSET_PX - ANCHOR_OUT_SIZE / 2
+const STORY_ANCHOR_IN_X_OFFSET = -ANCHOR_SIDE_INSET_PX + STORY_ANCHOR_IN_SIZE / 2
+const STORY_ANCHOR_OUT_X_OFFSET = ANCHOR_SIDE_INSET_PX - STORY_ANCHOR_OUT_SIZE / 2
+
+const getCanvasWrapRect = () => {
+  const el = document.querySelector<HTMLElement>('.bp-wrap.aiwf-canvas')
+  return el?.getBoundingClientRect() ?? null
+}
+
+const clientToCanvasPoint = (client: { x: number; y: number }) => {
+  const r = getCanvasWrapRect()
+  if (!r) return null
+  return { x: client.x - r.left, y: client.y - r.top }
+}
+
+const escapeAttrValue = (raw: string) => String(raw ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+
+const queryWorkflowAnchorElement = (nodeId: string, anchorId: string, dir: 'in' | 'out') => {
+  const nid = String(nodeId ?? '').trim()
+  const aid = String(anchorId ?? '').trim()
+  if (!nid || !aid) return null
+  const selector = `[data-wf-node-id="${escapeAttrValue(nid)}"][data-wf-anchor-id="${escapeAttrValue(aid)}"][data-wf-dir="${dir}"]`
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>(selector))
+  if (!candidates.length) return null
+  for (const el of candidates) {
+    const rect = el.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) return el
+  }
+  return candidates[0] ?? null
+}
+
+const resolveAnchorCanvasPointByDom = (nodeId: string, anchorId: string, dir: 'in' | 'out') => {
+  const anchorEl = queryWorkflowAnchorElement(nodeId, anchorId, dir)
+  const wrapRect = getCanvasWrapRect()
+  if (!anchorEl || !wrapRect) return null
+  const rect = anchorEl.getBoundingClientRect()
+  return {
+    x: rect.left + rect.width / 2 - wrapRect.left,
+    y: rect.top + rect.height / 2 - wrapRect.top,
+  }
+}
+
+const anchorWorld = (
+  node: WorkflowNode,
+  kind: 'in' | 'out',
+  anchorIndex: number,
+  anchorCount: number,
+  anchor?: { offsetY?: number }
+) => {
+  const count = Math.max(1, anchorCount)
+  const start = -((count - 1) * ANCHOR_GAP) / 2
+  const offset = typeof anchor?.offsetY === 'number' ? anchor.offsetY : start + anchorIndex * ANCHOR_GAP
+  const y = node.worldY + offset
+  const width = Number.isFinite(node.width) ? node.width : NODE_WIDTH
+  const xOffset =
+    kind === 'in'
+      ? node.type === 'story'
+        ? STORY_ANCHOR_IN_X_OFFSET
+        : ANCHOR_IN_X_OFFSET
+      : node.type === 'story'
+        ? STORY_ANCHOR_OUT_X_OFFSET
+        : ANCHOR_OUT_X_OFFSET
+  const x = node.worldX + (kind === 'out' ? width / 2 : -width / 2) + xOffset
+  return { x, y }
+}
+
+const buildPath = (start: { x: number; y: number }, end: { x: number; y: number }) => {
+  const dx = Math.max(80, Math.abs(end.x - start.x) * 0.5)
+  const c1 = { x: start.x + dx, y: start.y }
+  const c2 = { x: end.x - dx, y: end.y }
+  return `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`
+}
+
+const anchorIndexByNodeId = computed(() => {
+  const next = new Map<string, { input: Map<string, number>; output: Map<string, number> }>()
+  for (const node of renderNodes.value) {
+    const input = new Map<string, number>()
+    const output = new Map<string, number>()
+    const ins = Array.isArray(node.inputs) ? node.inputs : []
+    const outs = Array.isArray(node.outputs) ? node.outputs : []
+    for (let i = 0; i < ins.length; i += 1) input.set(String(ins[i]?.id ?? ''), i)
+    for (let i = 0; i < outs.length; i += 1) output.set(String(outs[i]?.id ?? ''), i)
+    next.set(node.id, { input, output })
+  }
+  return next
+})
+
+const edgeRenders = (worldToScreen: (p: { x: number; y: number }) => { x: number; y: number }) => {
+  return renderEdges.value.map((e) => {
+    const fromNode = store.state.nodesById[e.fromNodeId]
+    const toNode = store.state.nodesById[e.toNodeId]
+    const fromAnchorIndex = anchorIndexByNodeId.value.get(String(e.fromNodeId ?? ''))
+    const toAnchorIndex = anchorIndexByNodeId.value.get(String(e.toNodeId ?? ''))
+    const fromIndex = fromAnchorIndex?.output.get(String(e.fromAnchorId ?? '')) ?? 0
+    const toIndex = toAnchorIndex?.input.get(String(e.toAnchorId ?? '')) ?? 0
+    const fromAnchor = fromNode?.outputs?.[Math.max(0, fromIndex)]
+    const toAnchor = toNode?.inputs?.[Math.max(0, toIndex)]
+    const start = fromNode
+      ? (e.fromNodeId === NANO_ANCHOR_NODE_ID
+          ? resolveAnchorCanvasPointByDom(e.fromNodeId, String(e.fromAnchorId ?? ''), 'out')
+          : null) ?? worldToScreen(anchorWorld(fromNode, 'out', Math.max(0, fromIndex), fromNode.outputs.length, fromAnchor))
+      : { x: 0, y: 0 }
+    const end = toNode
+      ? (e.toNodeId === NANO_ANCHOR_NODE_ID
+          ? resolveAnchorCanvasPointByDom(e.toNodeId, String(e.toAnchorId ?? ''), 'in')
+          : null) ?? worldToScreen(anchorWorld(toNode, 'in', Math.max(0, toIndex), toNode.inputs.length, toAnchor))
+      : { x: 0, y: 0 }
+    const isStory = fromNode?.type === 'story'
+    return {
+      id: e.id,
+      start,
+      end,
+      path: buildPath(start, end),
+      stroke: isStory ? '#f29d38' : undefined,
+      strokeWidth: isStory ? 3.5 : undefined,
+    }
+  })
+}
+
+const buildEdgeWorkerInput = () => {
+  const nodeIds = new Set<string>()
+  for (const edge of renderEdges.value) {
+    const fromNodeId = String(edge.fromNodeId ?? '').trim()
+    const toNodeId = String(edge.toNodeId ?? '').trim()
+    if (fromNodeId) nodeIds.add(fromNodeId)
+    if (toNodeId) nodeIds.add(toNodeId)
+  }
+
+  const nodes = Array.from(nodeIds)
+    .map((id) => store.state.nodesById[id])
+    .filter(Boolean)
+    .map((node) => ({
+      id: String(node.id ?? ''),
+      type: String(node.type ?? ''),
+      worldX: Number(node.worldX) || 0,
+      worldY: Number(node.worldY) || 0,
+      width: Number(node.width) || NODE_WIDTH,
+      inputs: (Array.isArray(node.inputs) ? node.inputs : []).map((anchor) => ({
+        id: String(anchor?.id ?? ''),
+        offsetY: typeof anchor?.offsetY === 'number' ? Number(anchor.offsetY) : undefined,
+      })),
+      outputs: (Array.isArray(node.outputs) ? node.outputs : []).map((anchor) => ({
+        id: String(anchor?.id ?? ''),
+        offsetY: typeof anchor?.offsetY === 'number' ? Number(anchor.offsetY) : undefined,
+      })),
+    }))
+
+  const edges = renderEdges.value.map((edge) => ({
+    id: String(edge.id ?? ''),
+    fromNodeId: String(edge.fromNodeId ?? ''),
+    fromAnchorId: String(edge.fromAnchorId ?? ''),
+    toNodeId: String(edge.toNodeId ?? ''),
+    toAnchorId: String(edge.toAnchorId ?? ''),
+  }))
+
+  return { nodes, edges }
+}
+
+const {
+  toasts,
+  pushToast,
+  removeToast,
+  setToastHovering,
+} = useAIWorkflowToastState({ durationMs: 2600 })
+pushToastBridge = pushToast
+
+const {
+  buildUnrealExportPayload,
+  onNodeExportUnrealScene,
+  onNodeExportUnrealLighting,
+} = useAIWorkflowUnrealExportActions({
+  store,
+  unrealExportService,
+  connectedTextInputValue,
+  getUnrealExportSourceSceneLayoutNode,
+  getResolvedLayoutForUnreal,
+  connectedSceneLayoutModelBindings,
+  pushToast,
+})
+
+const {
+  resetSceneUnderstandingNodeState,
+  onNodeCancelSceneUnderstanding,
+  onNodeSceneUnderstandingSettingsUpdate,
+  onNodeRequestSceneModels,
+  onNodeRunSceneUnderstanding,
+  cleanupSceneUnderstandingRuntime,
+} = useAIWorkflowSceneUnderstandingController({
+  store,
+  sceneSkillService,
+  connectedSceneUnderstandImageInputs,
+  connectedImageInputUrl,
+  connectedTextInputValue,
+  normalizeMeshyImageInputValue,
+  pushToast,
+})
+
+const {
+  onNodeRunSceneDecompose,
+} = useAIWorkflowSceneDecomposeController({
+  store,
+  connectedTextInputValue,
+  connectedSceneDecomposeImageInputs,
+  connectedSceneDecomposeImageInputAt,
+  buildImageTransferFileFromCrop,
+  addGeneratedImageResource,
+  autoExpandSceneDecomposeOutputs,
+  pushToast,
+})
+
+const {
+  importOverlayOpen,
+  importOverlayTitle,
+  importOverlayDetail,
+  importOverlayProgress,
+  activeImportSession,
+  recoveryOverlayOpen,
+  recoveryOverlayTitle,
+  recoveryOverlayDetail,
+  recoveryOverlayProgress,
+  activeRecoverySession,
+  startImportSession,
+  updateImportProgressIfNeeded,
+  cancelActiveImportSession: clearActiveImportSession,
+  cancelActiveRecoverySession,
+  refreshRecoveryUrlReady,
+  finalizeRecoverySessionAfterUrlRecoveryAttempt,
+  startRecoverySessionFromCurrentState,
+  markNodeMediaReady,
+} = useAIWorkflowImportRecoveryState({
+  pushToast: (message, tone) => pushToast(message, tone),
+})
+
+const {
+  uploadNodeResource,
+  bindMediaResourceToNode,
+  uploadNodeModel3DFile,
+} = useAIWorkflowNodeAssetBinding({
+  store,
+  makeResourceId,
+  setObjectUrl,
+  revokeTrackedObjectUrlsForResource,
+  resolveBackendUrl,
+  blueprintProjectService,
+  getCurrentProjectId: () => currentProjectId.value,
+  setNodeResourceWithCleanup,
+  autoSizeMediaNode,
+  autoSizeImageNodeFromDims,
+  scheduleVideoMetadataRead,
+  ensureVideoResourcePoster,
+  revokeNodeModel3DObjectUrl,
+  isDjangoManagedResource,
+})
+
+const {
+  onNodeUploadSceneLayoutModelFile,
+  onNodeClearSceneLayoutModelBinding,
+} = useAIWorkflowSceneLayoutModelBinding({
+  store,
+  pushToast,
+  revokeSceneLayoutManualModelObjectUrl,
+  sceneLayoutManualModelObjectKey,
+  setObjectUrl,
+  currentProjectId,
+  blueprintProjectService,
+  resolveBackendUrl,
+})
+
+const {
+  createNodeFromDraggedResource,
+  createNodeFromNanoPreview,
+  inferMediaKindFromFile,
+  collectDroppedFilesFromHandle,
+  onCanvasDragOver,
+  onCanvasDrop,
+} = useAIWorkflowDropAssets({
+  store,
+  makeResourceId,
+  setObjectUrl,
+  resolveBackendUrl,
+  autoSizeMediaNode,
+  bindMediaResourceToNode,
+  resolveDropWorldFromEvent: (e) => {
+    const wrap = e.currentTarget as HTMLElement | null
+    const rect = wrap?.getBoundingClientRect() ?? null
+    if (!rect) return null
+
+    const z = Number(viewport.value.zoom) || 1
+    const panX = Number(viewport.value.panX) || 0
+    const panY = Number(viewport.value.panY) || 0
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    const cx = rect.width / 2
+    const cy = rect.height / 2
+    return {
+      worldX: (sx - cx - panX) / z,
+      worldY: (sy - cy - panY) / z,
+    }
+  },
+  createBatchMediaNodesFromFiles: (payload) => createBatchMediaNodesFromFiles(payload),
+  createNodeFromDraggedMeshyTask: (payload) => createNodeFromDraggedMeshyTask(payload),
+  pushToast: (message, tone) => pushToast(message, tone),
+})
+
+const { recoverLocalResourcesFromHandles } = useAIWorkflowLocalResourceRecovery({
+  store,
+  pushToast,
+  setObjectUrl,
+  autoSizeMediaNode,
+  getLocalFileHandle,
+  ensureReadPermission,
+  canUseFileSystemHandles,
+  collectDroppedFilesFromHandle,
+  putLocalFileHandle,
+})
+
+const { createNodeFromDraggedMeshyTask } = useAIWorkflowMeshyDrop({
+  store,
+  pushToast: (message, tone) => pushToast(message, tone),
+})
+
+const {
+  stopMeshyPoll,
+  applyMeshyTaskResult,
+  startMeshyPoll,
+  clearMeshyRuntime,
+} = useAIWorkflowMeshyRuntime({
+  store,
+  getComfyService: () => comfyService,
+  pushToast: (message, tone) => pushToast(message, tone),
+  normalizeMeshyTaskStatus,
+  pickMeshyPreferredModelUrl,
+  pickMeshyPreferredFormat,
+  fileExtensionFromUrl,
+  persistExternalAssetToProject: (payload) => persistExternalAssetToProject(payload),
+  syncConnectedImageTargetsFromMeshy: (nodeId) => syncConnectedImageTargetsFromMeshy(nodeId),
+  syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId),
+  refreshMeshyTaskItems: (opts) => refreshMeshyTaskItems(opts),
+  shouldRefreshMeshyTaskItems: () => meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value,
+})
+
+const {
+  meshyTextureConfirm,
+  cancelMeshyTextureConfirm,
+  confirmMeshyTextureFollowup,
+  onNodeGenerateMeshy,
+  onNodeRunMeshyFollowup,
+  onNodeRestartMeshyTask,
+} = useAIWorkflowMeshyCommands({
+  store,
+  getComfyService: () => comfyService,
+  pushToast: (message, tone) => pushToast(message, tone),
+  stopMeshyPoll,
+  startMeshyPoll,
+  buildMeshyRequestPayload,
+  hasIncomingEdge,
+  connectedMeshyImageUrls,
+  normalizeMeshyTaskStatus,
+  refreshMeshyTaskItems: (opts) => refreshMeshyTaskItems(opts),
+  shouldRefreshMeshyTaskItems: () => meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value,
+})
+
+const importLimitAlertMessage = ref('')
+const MAX_BATCH_IMPORT_MEDIA_COUNT = 100
+
+const onNodeUploadResource = (
+  nodeId: string,
+  file: File,
+  kind: 'image' | 'video',
+  opts?: { autoDistribute?: boolean }
+) => {
+  uploadNodeResource(nodeId, file, kind, {
+    autoDistribute: opts?.autoDistribute,
+    onAfterBind: () => {
+      if (kind === 'image' && opts?.autoDistribute !== false) {
+        void autoDistributeImageOutputToConnectedNodes(nodeId)
+      }
+    },
+  })
+}
+
+const onNodeUploadModel3DFile = async (nodeId: string, file: File) => {
+  await uploadNodeModel3DFile(nodeId, file)
+}
+
+const onConfirmImportLimitAlert = () => {
+  importLimitAlertMessage.value = ''
+}
+
+const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkflowBatchMediaImport({
+  store,
+  makeResourceId,
+  maxBatchImportMediaCount: MAX_BATCH_IMPORT_MEDIA_COUNT,
+  inferMediaKindFromFile,
+  normalizeFileSignatureKey,
+  putLocalFileHandle,
+  cancelActiveImportSession,
+  startImportSession,
+  getActiveImportSession: () => activeImportSession.value,
+  updateImportProgressIfNeeded,
+  mediaImportManager,
+  setObjectUrl,
+  scheduleVideoMetadataRead,
+  autoSizeImageNodeFromDims,
+  onLimitExceeded: (count, limit) => {
+    importLimitAlertMessage.value = `本次检测到 ${count} 个媒体文件，超过批量导入上限 ${limit} 个。请减少后再导入。`
+  },
+})
+
+
+const extFromMime = (mime: string): string => {
+  const m = String(mime || '').toLowerCase()
+  if (m.includes('gltf-binary')) return '.glb'
+  if (m.includes('gltf+json')) return '.gltf'
+  if (m.includes('model/gltf')) return '.gltf'
+  if (m.includes('png')) return '.png'
+  if (m.includes('jpeg') || m.includes('jpg')) return '.jpg'
+  if (m.includes('webp')) return '.webp'
+  if (m.includes('gif')) return '.gif'
+  if (m.includes('bmp')) return '.bmp'
+  if (m.includes('svg')) return '.svg'
+  if (m.includes('mp4')) return '.mp4'
+  if (m.includes('webm')) return '.webm'
+  if (m.includes('quicktime')) return '.mov'
+  if (m.includes('ogg')) return '.ogg'
+  return ''
+}
+
+const fileFromUrl = async (url: string, fileNameBase: string): Promise<File> => {
+  const resp = await fetch(url)
+  if (!resp.ok) throw new Error(`fetch local url failed: ${resp.status}`)
+  const blob = await resp.blob()
+  const ext = extFromMime(blob.type)
+  const fileName = `${fileNameBase || 'resource'}${ext}`
+  return new File([blob], fileName, { type: blob.type || 'application/octet-stream' })
+}
+
+const dataUrlToBlob = (dataUrl: string): Blob => {
+  const raw = String(dataUrl || '').trim()
+  const m = raw.match(/^data:([^;,]+)?(?:;base64)?,(.*)$/i)
+  if (!m) return new Blob([], { type: 'application/octet-stream' })
+  const mime = String(m[1] || 'application/octet-stream').trim() || 'application/octet-stream'
+  const body = String(m[2] || '')
+  try {
+    const bytes = Uint8Array.from(atob(body), (c) => c.charCodeAt(0))
+    return new Blob([bytes], { type: mime })
+  } catch {
+    return new Blob([], { type: mime })
+  }
+}
+
+const { onRotateImageOutput } = useAIWorkflowRotateImageOutput({
+  getNode: (nodeId) => store.state.nodesById[nodeId],
+  getResource: (resourceId) => store.state.resourcesById[resourceId],
+  getEdges: () => edges.value,
+  commitSetRotatePromptText: ({ nodeId, text }) => {
+    store.commit('setNodeRotatePromptText', { nodeId, text })
+  },
+  makeResourceId,
+  setNodeResourceWithCleanup,
+  onNodeUploadResource,
+  autoSizeMediaNode,
+  dataUrlToBlob,
+  commitPatchResource: ({ resourceId, patch }) => {
+    store.commit('patchResource', { resourceId, patch })
+  },
+  commitAddResource: (resource) => {
+    store.commit('addResource', resource)
+  },
+})
+
+const { connectedImageTargetsFromVideo, onVideoScreenshot } = useAIWorkflowVideoScreenshot({
+  getNode: (nodeId) => store.state.nodesById[nodeId],
+  getEdges: () => edges.value,
+  dataUrlToBlob,
+  onNodeUploadResource,
+  autoSizeMediaNode,
+  commitSetNodeImageSettings: ({ nodeId, imageSettings }) => {
+    store.commit('setNodeImageSettings', { nodeId, imageSettings })
+  },
+})
+
+const {
+  uploadLocalResourceAndGetUrl,
+  persistExternalAssetToProject,
+} = useAIWorkflowAssetPersistence({
+  blueprintProjectService,
+  getCurrentProjectId: () => currentProjectId.value,
+  resolveBackendUrl,
+  fileFromUrl,
+  importAssetIntoProjectScope: (payload) => importAssetIntoProjectScope(payload),
+})
+
+const {
+  onSend,
+  onStop,
+  onNanoBananaGenerate,
+  onSeedanceGenerate,
+} = useAIWorkflowChatGeneration({
+  store,
+  chatModelKey,
+  chatDraft,
+  chatModelId,
+  chatMessages,
+  chatSending,
+  chatRunState,
+  chatTaskStatusText,
+  localExecStreamMode,
+  agentConversationMode,
+  codexSessions,
+  codexActiveSessionId,
+  codexFlowEvents,
+  nanoPreviewUrl,
+  nanoPreviewUrls,
+  nanoPreviewFallbackUrls,
+  nanoPreviewSourcePaths,
+  nanoPreviewLoadingStates,
+  nanoPreviewDownloadStatuses,
+  nanoPreviewDownloadProgresses,
+  nanoPreviewLocalReadyStates,
+  nanoStatus,
+  nanoBilling,
+  nanoModelUsed,
+  nanoDetail,
+  currentProjectId,
+  ensureProjectId: ensureProjectForLocalExec,
+  NANO_ANCHOR_NODE_ID,
+  NANO_REF_IMAGE_MAX,
+  pushToast,
+  getFirstIncomingEdge,
+  nodeResourceUrl,
+  nodeResourceName,
+  buildCroppedImageTransferFile,
+  fileFromUrl,
+  uploadLocalResourceAndGetUrl,
+  resolveBackendUrl,
+  getChatService: () => localExecChatService,
+  onSeedanceTaskObserved: (...args) => void onSeedanceTaskObserved(...args),
+})
+
+const {
+  buildPersistableSnapshotWithOptions,
+} = useAIWorkflowProjectSnapshotBuilder({
+  store,
+  currentProjectId,
+  resolveBackendUrl,
+  uploadLocalResourceAndGetUrl,
+  persistExternalAssetToProject,
+  pushToast,
+  stripUnrealExportRuntimeFromNodes,
+})
+
+const {
+  sanitizeBlueprintSnapshotForRuntime,
+  hydrateBlueprintSnapshotSafely,
+} = useAIWorkflowProjectSnapshotRuntime({
+  store,
+  currentProjectId,
+  isElectronRuntime,
+  pushToast,
+})
+
+const {
+  refreshProjectList,
+  onRequestImportLocalProject,
+} = useAIWorkflowProjectCatalogImport({
+  blueprintProjectService,
+  pushToast,
+  projectList,
+  isValidBlueprintSnapshot,
+  stripUnrealExportRuntimeFromSnapshot,
+  sanitizeBlueprintSnapshotForRuntime,
+  hydrateBlueprintSnapshotSafely,
+  resetCurrentUnrealExportNodeRuntimeState,
+  setUnsavedProject,
+  recoverComfyUIRunStates,
+})
+
+const {
+  loadProjectById,
+  saveProjectToBackend,
+  tryAutoLoadLastProject,
+  repairProjectAssetsNow,
+} = useAIWorkflowProjectPersistence({
+  blueprintProjectService,
+  currentProjectId,
+  currentProjectName,
+  setSavedProject,
+  readLastProjectId,
+  forgetLastProjectId,
+  refreshProjectList,
+  pushToast,
+  isValidBlueprintSnapshot,
+  stripUnrealExportRuntimeFromSnapshot,
+  normalizeSnapshotResourceUrls,
+  sanitizeBlueprintSnapshotForRuntime,
+  hydrateBlueprintSnapshotSafely,
+  resetCurrentUnrealExportNodeRuntimeState,
+  resolveBackendUrl,
+  toProjectAssetRuntimeUrl: buildProjectAssetRuntimeUrl,
+  cancelActiveRecoverySession,
+  startRecoverySessionFromCurrentState,
+  refreshRecoveryUrlReady,
+  finalizeRecoverySessionAfterUrlRecoveryAttempt,
+  recoverLocalResourcesFromHandles,
+  migrateCurrentResourcesToProjectScope: (...args) => migrateCurrentResourcesToProjectScope(...args),
+  buildPersistableSnapshotWithOptions,
+  isElectron,
+  activeRecoverySession,
+  store,
+  uploadLocalResourceAndGetUrl,
+})
+
+const {
+  onRequestSaveProject,
+  onRequestNewProject,
+  onRequestLoadProject,
+  onRequestDeleteProject,
+  onRequestRepairProjectAssets,
+} = useAIWorkflowProjectRequests({
+  activeRecoverySession,
+  pushToast,
+  cancelActiveRecoverySession,
+  createEmptyDraftSnapshot: () => buildSnapshotFromState(createDefaultAIWorkflowState()),
+  store,
+  setUnsavedProject,
+  reuseRecordConfirm,
+  resetComfyRuntime: disposeComfyRuntime,
+  comfyAnchorAssignments,
+  comfyAnchorLocalizedOutputs,
+  loadProjectById,
+  recoverComfyUIRunStates,
+  blueprintProjectService,
+  currentProjectId,
+  refreshProjectList,
+  saveProjectToBackend,
+  currentProjectName,
+  repairProjectAssetsNow,
+})
+
+const onPreviewResource = (resourceId: string) => {
+  const r = store.state.resourcesById?.[String(resourceId)] as any
+  if (!r) return
+  const kind = String(r.kind || '').toLowerCase()
+  const url = kind === 'video'
+    ? String(r.url || '').trim() || String(r.posterUrl || '').trim()
+    : String(r.url || '').trim()
+  if (!url) {
+    pushToast('资源预览失败：URL 为空。', 'warn')
+    return
+  }
+  try {
+    window.open(url, '_blank')
+  } catch {
+    // ignore
+  }
+}
+
+const { onRequestExportProjectPackage } = useAIWorkflowProjectPackageExport({
+  pushToast,
+  buildPersistableSnapshotWithOptions,
+  stripUnrealExportRuntimeFromSnapshot,
+  currentProjectName,
+})
+
+const {
+  onRequestImportProjectPackage,
+  onRequestExportProject,
+} = useAIWorkflowProjectTransfer({
+  pushToast,
+  buildPersistableSnapshotWithOptions,
+  currentProjectName,
+  AIWF_PROJECT_PACKAGE_ENTRY,
+  isValidBlueprintSnapshot,
+  store,
+  revokeTrackedObjectUrlsForResource,
+  getTrackedObjectUrlEntries,
+  revokeObjectUrl,
+  stripUnrealExportRuntimeFromSnapshot,
+  getObjectUrl,
+  setObjectUrl,
+  setValueByJsonPointer,
+  sanitizeBlueprintSnapshotForRuntime,
+  hydrateBlueprintSnapshotSafely,
+  resetCurrentUnrealExportNodeRuntimeState,
+  setUnsavedProject,
+  sanitizeFileNamePart,
+  recoverComfyUIRunStates,
+})
+
+const onGlobalShortcutSave = async (ev: Event) => {
+  // Only take over save behavior on AIWorkflow route.
+  if (route.name !== 'AIWorkflow') return
+  ;(ev as any).preventDefault?.()
+  ;(ev as any).stopImmediatePropagation?.()
+
+  // Ctrl/Cmd+S: persist blueprint project to backend (DB + JSON file).
+  const name = String(currentProjectName.value ?? '').trim()
+  if (!name) {
+    projectToolbarRef.value?.openSaveDialog?.()
+    pushToast('请先输入项目名称，再执行保存。', 'info')
+    return
+  }
+  await saveProjectToBackend(name)
+}
+
+const getCanvasCenterWorld = () => {
+  const r = getCanvasWrapRect()
+  if (!r) return { worldX: 0, worldY: 0 }
+  const z = Number(viewport.value.zoom) || 1
+  const panX = Number(viewport.value.panX) || 0
+  const panY = Number(viewport.value.panY) || 0
+  const sx = r.width / 2
+  const sy = r.height / 2
+  const cx = r.width / 2
+  const cy = r.height / 2
+  const worldX = (sx - cx - panX) / z
+  const worldY = (sy - cy - panY) / z
+  return { worldX, worldY }
+}
+
+const noopWorkflowWorldToCanvas = (point: { x: number; y: number }) => point
+let getLinkWorkflowWorldToCanvas = () => noopWorkflowWorldToCanvas
+let scheduleLinkEdgeRender = () => {}
+
+const {
+  mountWindowEvents,
+  unmountWindowEvents,
+} = useAIWorkflowKeyboardAndResize({
+  isRouteActive: () => route.name === 'AIWorkflow',
+  getSelectedNodeIds: () => selectedNodeIds.value,
+  getSelectedEdgeId: () => selectedEdgeId.value,
+  selectAllNodes: () => {
+    const ids = store.state.nodeOrder.slice()
+    store.commit('setSelectedNodes', { nodeIds: ids, primaryNodeId: ids[0] ?? null })
+  },
+  pasteNodesAtCanvasCenter: () => {
+    const { worldX, worldY } = getCanvasCenterWorld()
+    pasteNodesWithResourceDedupe({ worldX, worldY })
+  },
+  removeSelectedNodes: (nodeIds) => {
+    void removeSelectedNodesWithResourceCleanup(nodeIds)
+  },
+  removeSelectedEdge: (edgeId) => {
+    store.commit('removeEdge', { edgeId })
+  },
+  scheduleAsyncEdgeRender: () => scheduleLinkEdgeRender(),
+})
+
+const applyAction = (action: WorkflowAction) => {
+  if (action.id === 'delete') {
+    if (selectedNodeIds.value.length) {
+      void removeSelectedNodesWithResourceCleanup(selectedNodeIds.value)
+      return
+    }
+    if (selectedEdgeId.value) store.commit('removeEdge', { edgeId: selectedEdgeId.value })
+  }
+}
+
+const selectionActions = computed<WorkflowAction[]>(() => {
+  if (selectedNodeIds.value.length) {
+    return [{
+      id: 'delete',
+      label: selectedNodeIds.value.length > 1 ? `删除所选节点（${selectedNodeIds.value.length}）` : '删除',
+      target: { kind: 'none' },
+    }]
+  }
+  const target: WorkflowSelectionTarget = selectedEdgeId.value
+    ? { kind: 'edge', id: selectedEdgeId.value }
+    : { kind: 'none' }
+  const del = buildDeleteAction(target)
+  return del ? [del] : []
+})
+
+const {
+  contextMenu,
+  inspectorOpen,
+  toggleInspector,
+  onCanvasContextMenu,
+  onContextMenuSelect,
+  contextMenuSections,
+  nodeSearchMenuVisible,
+  nodeSearchMenuPosition,
+  closeNodeSearchMenu,
+  onNodeSearchMenuSelect,
+  onNodeSearchMenuUploadFile,
+  onLinkDropOnCanvas,
+  openNodeSearchMenu,
+  NEWUI2_NODE_CATALOG,
+  NEWUI2_NODE_CATALOG_CATEGORIES,
+  NEWUI2_NODE_TOP_CATEGORIES,
+  NEWUI2_NODE_SPECIAL_GROUPS,
+} = useAIWorkflowContextMenu({
+  store,
+  selectedNodeId,
+  selectedNodeIds,
+  selectedEdgeId,
+  canOpenSelectedNodeFolder,
+  selectedNodeLocalResourcePath,
+  selectionActions,
+  nodeResourceUrl,
+  inferSelectedResourceFilename,
+  downloadUrlAsBlob,
+  pasteNodesWithResourceDedupe,
+  applyAction,
+  pushToast,
+  openFolderForPath,
+})
+
+const linkInteraction = useAIWorkflowLinking({
+  store,
+  nodes,
+  chatModelKey,
+  nanoAnchorNodeId: NANO_ANCHOR_NODE_ID,
+  scheduleAsyncEdgeRender: () => scheduleLinkEdgeRender(),
+  clientToCanvasPoint,
+  getWorkflowWorldToCanvas: () => getLinkWorkflowWorldToCanvas(),
+  resolveInputAnchorCanvasPoint: ({ nodeId, anchorId }) => {
+    if (nodeId !== NANO_ANCHOR_NODE_ID) return null
+    return resolveAnchorCanvasPointByDom(nodeId, anchorId, 'in')
+  },
+  anchorWorld,
+  buildPath,
+  pushToast,
+  onLinkConnected: ({ fromNodeId, fromAnchorId, toNodeId, toAnchorId }) => {
+    const fromNode = store.state.nodesById[fromNodeId] as any
+    const toNode = store.state.nodesById[toNodeId] as any
+    if (
+      fromNode
+      && toNode
+      && fromNode.type === 'rotate-image'
+      && fromAnchorId === 'out-image'
+      && toNode.type === 'image'
+    ) {
+      const rid = String(fromNode.resourceId ?? '').trim()
+      if (rid) {
+        const resource = store.state.resourcesById[rid] as any
+        const url = String(resource?.url ?? '').trim()
+        if (url) {
+          void (async () => {
+            const fallbackName = String(resource?.name || `rotate_${fromNodeId}_${toNodeId}.png`).trim() || `rotate_${fromNodeId}_${toNodeId}.png`
+            try {
+              const cloned = await fileFromUrl(url, fallbackName.replace(/\.[^.]+$/, '') || `rotate_${fromNodeId}_${toNodeId}`)
+              onNodeUploadResource(toNodeId, cloned, 'image', { autoDistribute: false })
+              return
+            } catch {
+              // fallback below
+            }
+            const sourcePath = String(resource?.sourcePath ?? '').trim()
+            bindMediaResourceToNode(toNodeId, 'image', url, fallbackName, {
+              sourcePath: sourcePath || undefined,
+              projectRelativePath: String((resource as any)?.projectRelativePath || '').trim() || undefined,
+            })
+            autoSizeMediaNode(toNodeId, url, 'image')
+          })()
+        }
+      }
+    }
+
+    if (toNode && toNode.type === 'model3d' && toAnchorId === 'in-model') {
+      void syncModel3DInputFromUpstream(toNodeId)
+    }
+    if (
+      fromNode
+      && fromNode.type === 'meshy'
+      && /^out-image(?:-\d+)?$/.test(String(fromAnchorId ?? ''))
+      && toNode
+      && toNode.type === 'image'
+      && (toAnchorId === 'in-image' || toAnchorId === 'in-resource')
+    ) {
+      void syncConnectedImageTargetsFromMeshy(fromNodeId)
+    }
+  },
+  onLinkDropOnCanvas,
+})
+
+const {
+  asyncEdgeRenders,
+  asyncDraftRender,
+  perfEdgeComputeMs,
+  perfEdgeCulledCount,
+  perfEdgeRenderedCount,
+  perfEdgeInputCount,
+  workflowWorldToCanvas,
+  scheduleAsyncEdgeRender,
+} = useAIWorkflowEdgeRenderer({
+  viewport,
+  canvasViewportSize,
+  viewportMotionActive,
+  renderEdges,
+  edgeRenders,
+  draftRender: linkInteraction.draftRender,
+  keepEdgeIds: computed(() => {
+    const ids: string[] = []
+    const selectedEdgeId = String(store.state.selectedEdgeId ?? '').trim()
+    if (selectedEdgeId) ids.push(selectedEdgeId)
+    const selectedNodeSet = new Set(selectedNodeIds.value.map((id) => String(id ?? '').trim()).filter(Boolean))
+    if (!selectedNodeSet.size) return ids
+    for (const edge of edges.value) {
+      const fromId = String(edge.fromNodeId ?? '').trim()
+      const toId = String(edge.toNodeId ?? '').trim()
+      if (!fromId || !toId) continue
+      if (!selectedNodeSet.has(fromId) && !selectedNodeSet.has(toId)) continue
+      const edgeId = String(edge.id ?? '').trim()
+      if (!edgeId) continue
+      ids.push(edgeId)
+    }
+    return Array.from(new Set(ids))
+  }),
+  preferWorker: edgeWorkerEnabled,
+  workerMutationEpoch: edgeWorkerMutationEpoch,
+  buildEdgeWorkerInput,
+})
+getLinkWorkflowWorldToCanvas = () => workflowWorldToCanvas
+scheduleLinkEdgeRender = scheduleAsyncEdgeRender
+
+const {
+  perfFpsText,
+  perfFrameText,
+  perfAvgFrameText,
+  perfWorstFrameText,
+  perfLongTaskSummary,
+  perfNodeSummary,
+  perfEdgeSummary,
+  perfEdgeComputeText,
+  perfEdgeInputCountText,
+  perfEdgeRenderedText,
+  perfEdgeCulledText,
+  perfEdgeCullHitRateText,
+  perfZoomText,
+  perfHealthLabel,
+  buildPerfDiagnosticPayload,
+} = useAIWorkflowPerfMonitor({
+  nodesCount: computed(() => nodes.value.length),
+  visibleNodesCount: computed(() => visibleRenderNodes.value.length),
+  compactVisibleNodeCount: compactVisibleNodeCount,
+  fullVisibleNodeCount: fullVisibleNodeCount,
+  renderEdgesCount: computed(() => renderEdges.value.length),
+  edgesCount: computed(() => edges.value.length),
+  zoom: computed(() => Number(viewport.value.zoom) || 0),
+  edgeComputeMs: perfEdgeComputeMs,
+  edgeInputCount: perfEdgeInputCount,
+  edgeRenderedCount: perfEdgeRenderedCount,
+  edgeCulledCount: perfEdgeCulledCount,
+})
+
+const onExportPerfDiagnostics = () => {
+  try {
+    const payload = buildPerfDiagnosticPayload()
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `aiworkflow-perf-${stamp}.json`
+    anchor.click()
+    setTimeout(() => {
+      URL.revokeObjectURL(url)
+    }, 0)
+    pushToast('已导出性能诊断日志。', 'info')
+  } catch (err: any) {
+    pushToast(`导出性能诊断日志失败：${String(err?.message ?? err ?? 'unknown')}`, 'warn')
+  }
+}
+
+const resourceDialogOpen = ref(false)
+const resources = computed(() =>
+  store.state.resourceOrder.map((id) => store.state.resourcesById[id]).filter(Boolean)
+)
+
+const {
+  meshyTaskDialogOpen,
+  meshyTaskItems,
+  meshyTaskPanelStatusText,
+  meshyBalanceText,
+  meshyBalanceDetail,
+  meshyBalanceTone,
+  meshyTaskRemoteLoaded,
+  meshyTaskRemoteLoading,
+  meshyTaskDetail,
+  meshyTaskDetailTaskId,
+  meshyTaskDetailLoading,
+  meshyTaskActionBusyTaskId,
+  meshyTaskActionBusyType,
+  openMeshyTaskDialog,
+  closeMeshyTaskDialog,
+  onRefreshMeshyTaskPanel,
+  onMeshyTaskPanelAction,
+  onPreviewMeshyTask,
+  onNodeRefreshMeshyTask,
+  onNodePullMeshyOutput,
+  onNodeStopMeshyTask,
+  onNodeDeleteMeshyTask,
+  refreshMeshyTaskItems,
+  refreshMeshyBalance,
+  refreshMeshyTaskToNode,
+  onMeshyTaskDialogOpenChanged,
+} = useAIWorkflowMeshyTaskPanelController({
+  store,
+  renderNodes,
+  comfyService,
+  pushToast,
+  getMeshyDisplayThumbnailUrl,
+  pickMeshyEffectiveOutput,
+  applyMeshyTaskResult,
+  stopMeshyPoll,
+})
+
+const {
+  videoTaskDialogOpen,
+  videoTaskItems,
+  videoTaskLoading,
+  videoTaskSyncing,
+  videoTaskDetail,
+  videoTaskDetailTaskId,
+  videoTaskDetailLoading,
+  videoTaskPanelStatusText,
+  openVideoTaskDialog,
+  closeVideoTaskDialog,
+  refreshVideoTaskItems,
+  syncRemoteVideoTasks,
+  recoverVideoTaskMedia,
+  selectVideoTask,
+  onVideoTaskDialogOpenChanged,
+} = useAIWorkflowVideoTaskPanelController({
+  comfyService,
+  pushToast,
+  getCurrentProjectId: () => currentProjectId.value,
+})
+
+const onSeedanceTaskObserved = async (taskId: string, stage: 'created' | 'completed') => {
+  const nextTaskId = String(taskId || '').trim()
+  if (!nextTaskId) return
+  await refreshVideoTaskItems({ silent: true })
+  if (videoTaskDialogOpen.value || stage === 'completed') {
+    await selectVideoTask(nextTaskId, { silent: true })
+  }
+  currentSeedancePreviewTaskId.value = nextTaskId
+  await syncSeedancePreviewFromTaskId(nextTaskId)
+}
+
+const currentSeedancePreviewTaskId = ref('')
+let seedancePreviewPollTimer = 0
+
+const clearSeedancePreviewPoll = () => {
+  if (!seedancePreviewPollTimer) return
+  window.clearTimeout(seedancePreviewPollTimer)
+  seedancePreviewPollTimer = 0
+}
+
+const syncSeedancePreviewFromTaskItem = (item: SeedanceTaskMirrorItem | null | undefined) => {
+  if (!item) return false
+  const remoteUrl = resolveBackendUrl(String(item.videoUrlRemote || '').trim())
+  const localUrl = resolveBackendUrl(String(item.videoUrlLocal || '').trim())
+  const sourcePath = String(item.videoSourcePathLocal || '').trim()
+  const status = String(item.downloadStatus || '').trim() || 'pending'
+  const progressRaw = Number(item.downloadProgress ?? 0)
+  const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, Math.round(progressRaw))) : 0
+  const localReady = !!localUrl && status === 'ready'
+  const displayUrl = localReady ? localUrl : (remoteUrl || localUrl)
+  nanoPreviewUrls.value = [displayUrl]
+  nanoPreviewFallbackUrls.value = [remoteUrl]
+  nanoPreviewSourcePaths.value = [localReady ? sourcePath : '']
+  nanoPreviewLoadingStates.value = [!displayUrl]
+  nanoPreviewDownloadStatuses.value = [status]
+  nanoPreviewDownloadProgresses.value = [progress]
+  nanoPreviewLocalReadyStates.value = [localReady]
+  if (displayUrl) nanoPreviewUrl.value = displayUrl
+  return status === 'pending' || status === 'downloading' || (!localReady && !!remoteUrl)
+}
+
+const scheduleSeedancePreviewPoll = (taskId: string, delay = 1200) => {
+  clearSeedancePreviewPoll()
+  const nextTaskId = String(taskId || '').trim()
+  if (!nextTaskId) return
+  seedancePreviewPollTimer = window.setTimeout(() => {
+    void syncSeedancePreviewFromTaskId(nextTaskId)
+  }, delay)
+}
+
+const syncSeedancePreviewFromTaskId = async (taskId: string) => {
+  const nextTaskId = String(taskId || '').trim()
+  if (!nextTaskId) return
+  try {
+    const res = await comfyService.seedanceTaskDetail(nextTaskId)
+    if (!(res as any)?.ok || !(res as any)?.item) {
+      scheduleSeedancePreviewPoll(nextTaskId, 1500)
+      return
+    }
+    const shouldContinue = syncSeedancePreviewFromTaskItem((res as any).item as SeedanceTaskMirrorItem)
+    if (currentSeedancePreviewTaskId.value === nextTaskId && shouldContinue) {
+      scheduleSeedancePreviewPoll(nextTaskId)
+      return
+    }
+    clearSeedancePreviewPoll()
+  } catch {
+    if (currentSeedancePreviewTaskId.value === nextTaskId) {
+      scheduleSeedancePreviewPoll(nextTaskId, 1800)
+    }
+  }
+}
+
+onBeforeUnmount(() => {
+  clearSeedancePreviewPoll()
+})
+
+const onVideoTaskPanelMediaError = (taskId: string) => {
+  void recoverVideoTaskMedia(taskId)
+}
+
+const onRailQuickAdd = (event: MouseEvent) => {
+  const worldX = (event.clientX - viewport.value.panX) / viewport.value.zoom
+  const worldY = (event.clientY - viewport.value.panY) / viewport.value.zoom
+  store.commit('addNodeAt', { worldX, worldY })
+}
+
+const onRailToggleNodeLibrary = () => {
+  const wrapEl = document.querySelector('.bp-wrap')
+  if (wrapEl) {
+    const rect = wrapEl.getBoundingClientRect()
+    const screenCenter = { x: rect.width / 2, y: rect.height / 2 }
+    const z = viewport.value.zoom
+    const worldX = (screenCenter.x - screenCenter.x - viewport.value.panX) / z
+    const worldY = (screenCenter.y - screenCenter.y - viewport.value.panY) / z
+    openNodeSearchMenu({
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      worldX,
+      worldY,
+    })
+  }
+}
+
+const onRailOpenPromptLibrary = () => {
+  pushToast('提示词库面板即将接入。', 'info')
+}
+
+const onRailToggleBackendLog = () => {
+  pushToast('日志面板即将接入。', 'info')
+}
+
+const onRailOpenTaskPlaceholder = () => {
+  pushToast('该任务入口将于下一阶段接入。', 'info')
+}
+
+const { onNodeRefresh } = useAIWorkflowNodeRefresh({
+  store,
+  pushToast,
+  resetSceneUnderstandingNodeState,
+  getIncomingEdges,
+  syncModel3DInputFromUpstream,
+  refreshMeshyTaskToNode,
+  connectedTextInputValue,
+  onNodeRunSceneLayout,
+  syncUnrealExportNodes,
+  setNodeResourceWithCleanup,
+  autoSizeMediaNode,
+  buildCroppedImageTransferFile,
+  onNodeUploadResource,
+  fileFromUrl,
+  forceRefreshCurrentMediaNode,
+  bindMediaResourceToNode,
+  comfyOutputForAnchor,
+  connectedImageOutputUrl,
+})
+
+const openResourceDialog = () => {
+  resourceDialogOpen.value = true
+}
+
+const closeResourceDialog = () => {
+  resourceDialogOpen.value = false
+}
+watch(meshyTaskDialogOpen, (open) => {
+  onMeshyTaskDialogOpenChanged(open)
+})
+watch(videoTaskDialogOpen, (open) => {
+  onVideoTaskDialogOpenChanged(open)
+})
+
+const removeResourceRecordOnly = (resourceId: string) => {
+  revokeTrackedObjectUrlsForResource(resourceId)
+  store.commit('removeResource', { resourceId })
+}
+
+const importAssetIntoProjectScope = async (payload: {
+  kind: BlueprintAssetKind
+  name: string
+  projectId: number
+  sourcePath?: string
+  sourceUrl?: string
+  bucket?: 'assets' | 'thumbnails'
+}) => {
+  const sourcePath = String(payload.sourcePath || '').trim()
+  const sourceUrl = String(payload.sourceUrl || '').trim()
+  if (!sourcePath && !sourceUrl) return null
+
+  if (sourcePath) {
+    const byPath = await blueprintProjectService.importAsset({
+      kind: payload.kind,
+      name: payload.name,
+      sourcePath,
+      projectId: payload.projectId,
+      bucket: payload.bucket,
+    })
+    if (byPath.ok) return (byPath as any).asset ?? null
+  }
+
+  if (sourceUrl) {
+    const byUrl = await blueprintProjectService.importAsset({
+      kind: payload.kind,
+      name: payload.name,
+      sourceUrl,
+      projectId: payload.projectId,
+      bucket: payload.bucket,
+    })
+    if (byUrl.ok) return (byUrl as any).asset ?? null
+  }
+
+  return null
+}
+
+const {
+  mediaRelativePathFromUrl,
+  migrateCurrentResourcesToProjectScope,
+} = useAIWorkflowResourceMigration({
+  store,
+  resolveBackendUrl,
+  normalizeSourcePathKey,
+  isDjangoManagedResource,
+  importAssetIntoProjectScope: (payload) => importAssetIntoProjectScope(payload),
+  deleteAsset: (payload) => blueprintProjectService.deleteAsset(payload),
+  pushToast,
+})
+
+const {
+  removeResourceByPolicy,
+  onRemoveResource,
+  onRefreshMissingResourceRecords,
+} = useAIWorkflowResourceRecordCleanup({
+  store,
+  currentProjectId,
+  blueprintProjectService,
+  pushToast,
+  isComfyForwardResource,
+  isDjangoManagedResource,
+  mediaRelativePathFromUrl,
+  removeResourceRecordOnly,
+})
+removeResourceByPolicyBridge = removeResourceByPolicy
+
+const onAliasChange = (nodeId: string, alias: string) => {
+	store.commit('setNodeAlias', { nodeId, alias })
+}
+
+const onCanvasDblClick = (payload: { clientX: number; clientY: number; worldX: number; worldY: number }) => {
+  openNodeSearchMenu(payload)
+}
+
+const { onNodePreviewContextMenu } = useAIWorkflowNodePreviewContextMenu({
+  enabled: true,
+  getNodeWorld: (nodeId) => {
+    const node = store.state.nodesById[nodeId]
+    return node ? { worldX: node.worldX, worldY: node.worldY } : null
+  },
+  onCanvasContextMenu,
+})
+
+const canvasInteraction = useAIWorkflowCanvasInteraction({
+  store,
+  selectedNodeIds,
+  inspectorOpen,
+  chatModelKey,
+  chatCollapsed,
+  markViewportMotion,
+  scheduleAsyncEdgeRender,
+})
+
+const onStartLink = linkInteraction.onStartLink
+const onEndLink = linkInteraction.onEndLink
+const nanoHoverAnchorId = linkInteraction.nanoHoverAnchorId
+const hoverInputAnchorId = linkInteraction.hoverInputAnchorId
+const hoverOutputAnchorId = linkInteraction.hoverOutputAnchorId
+
+const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
+const onNodeX = canvasInteraction.onNodeX
+const onNodeY = canvasInteraction.onNodeY
+const onSelectNode = canvasInteraction.onSelectNode
+const onSelectEdge = canvasInteraction.onSelectEdge
+const onCompactNodePointerDown = canvasInteraction.onCompactNodePointerDown
+const onBoxSelect = canvasInteraction.onBoxSelect
+const onNodeSizeChange = canvasInteraction.onNodeSizeChange
+const onFocusNode = canvasInteraction.onFocusNode
+
+onBeforeUnmount(() => {
+	cancelActiveImportSession({ cleanupUnresolved: false })
+	mediaImportManager.dispose()
+  try {
+    videoMetadataQueue?.cancel()
+  } catch {
+    // ignore
+  }
+	window.removeEventListener('dvs:shortcut/save', onGlobalShortcutSave as EventListener, true)
+  unmountWindowEvents()
+  window.removeEventListener('pointerup', flushPendingImageDistribute, true)
+  window.removeEventListener('pointercancel', flushPendingImageDistribute, true)
+  disposeComfyRuntime()
+  cleanupSceneUnderstandingRuntime()
+  clearMeshyRuntime()
+  stopUnrealExportPolling()
+  if (posterAutoSaveTimer) {
+    window.clearTimeout(posterAutoSaveTimer)
+    posterAutoSaveTimer = null
+  }
+  posterAutoSaveQueued = false
+  posterAutoSaveRunning = false
+  pendingImageDistributeNodeIds.clear()
+  clearAllObjectUrls()
+})
+
+onMounted(() => {
+	// Take over global Ctrl/Cmd+S only on this page.
+  window.addEventListener('dvs:shortcut/save', onGlobalShortcutSave as EventListener, true)
+  mountWindowEvents()
+  window.addEventListener('pointerup', flushPendingImageDistribute, true)
+  window.addEventListener('pointercancel', flushPendingImageDistribute, true)
+  startUnrealExportPolling()
+  void refreshProjectList()
+  void tryAutoLoadLastProject().then(() => recoverComfyUIRunStates({ silent: true }))
+
+  if (isElectronRuntime) {
+    chatModelKey.value = 'codex'
+    agentConversationMode.value = 'agent'
+  }
+
+  if (isElectronRuntime && shouldAutoHelloOnLaunch && !autoHelloSent) {
+    autoHelloSent = true
+    window.setTimeout(() => {
+      if (chatSending.value) return
+      if (chatModelKey.value !== 'codex') chatModelKey.value = 'codex'
+      agentConversationMode.value = 'agent'
+      chatCollapsed.value = false
+      chatPanelMode.value = 'agent'
+      if (!String(chatDraft.value || '').trim()) {
+        store.commit('setChatDraft', { text: resolveAutoHelloText() })
+      }
+      void onSend()
+    }, 900)
+  }
+})
+
+</script>
+
+<style scoped>
+.aiwf-page {
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: var(--aiwf-page-background, var(--dweb-defualt));
+}
+
+.aiwf-blueprint-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--aiwf-canvas-z-index, 1);
+}
+
+.aiwf-ui-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--aiwf-overlay-z-index, 10);
+  pointer-events: none;
+}
+
+.aiwf-overlay-top-left,
+.aiwf-overlay-top-right,
+.aiwf-overlay-floating,
+.aiwf-overlay-alerts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.aiwf-overlay-top-left {
+  z-index: var(--aiwf-chrome-z-index, 20);
+}
+
+.aiwf-overlay-top-right {
+  z-index: var(--aiwf-chrome-z-index, 20);
+}
+
+.aiwf-overlay-floating {
+  z-index: var(--aiwf-floating-z-index, 101);
+}
+
+.aiwf-overlay-floating-utility {
+  z-index: var(--aiwf-overlay-utility-z-index, 80);
+}
+
+.aiwf-overlay-alerts {
+  z-index: var(--aiwf-alert-z-index, 130);
+}
+
+.aiwf-overlay-top-left > *,
+.aiwf-overlay-top-right > *,
+.aiwf-overlay-floating > *,
+.aiwf-overlay-alerts > * {
+  pointer-events: auto;
+}
+
+.aiwf-chat-dock {
+  pointer-events: auto;
+}
+
+/* 智能位置调整 */
+.bp-toolbar-wrap {
+  transition: left var(--aiwf-shell-transition, 220ms cubic-bezier(0.22, 0.61, 0.36, 1));
+}
+
+/* 当导航栏展开时，调整左侧按钮位置 */
+body[data-side-nav-expanded="true"] .bp-toolbar-wrap {
+  left: var(--aiwf-shell-left-expanded, 180px) !important;
+}
+
+/* 当导航栏收起时，按钮位置避开导航栏 (46px + 10px间距) */
+body[data-side-nav-expanded="false"] .bp-toolbar-wrap {
+  left: var(--aiwf-shell-left-collapsed, 56px) !important;
+}
+
+.aiwf-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.aiwf-node-host {
+  display: contents;
+}
+
+.aiwf-inspector-toggle {
+  position: absolute;
+  top: var(--aiwf-inspector-toggle-top, 16px);
+  right: 0;
+  z-index: var(--aiwf-floating-z-index, 101);
+  border: 1px solid var(--aiwf-inspector-toggle-border, var(--vscode-border));
+  background: var(--aiwf-inspector-toggle-bg, var(--dweb-defualt-dark));
+  color: var(--aiwf-inspector-toggle-text, var(--vscode-fg));
+  padding: 6px 10px;
+  cursor: pointer;
+  box-shadow: var(--aiwf-inspector-toggle-shadow, var(--vscode-shadow));
+}
+
+.aiwf-inspector-toggle:hover {
+  border-color: var(--aiwf-inspector-toggle-border-hover, var(--vscode-hover-border));
+  background: var(--aiwf-inspector-toggle-bg-hover, var(--vscode-hover-bg));
+}
+
+.aiwf-package-progress {
+  position: absolute;
+  top: 56px;
+  right: 0;
+  z-index: var(--aiwf-floating-z-index, 101);
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px 12px 10px;
+  border: 1px solid var(--wf-panel-border, rgba(255, 255, 255, 0.12));
+  background: var(--wf-panel-bg-solid, rgba(8, 11, 16, 0.94));
+  backdrop-filter: blur(var(--wf-overlay-blur, 10px));
+  box-shadow: var(--wf-panel-shadow, 0 16px 40px rgba(0, 0, 0, 0.28));
+}
+
+.aiwf-package-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aiwf-package-progress-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--vscode-fg);
+}
+
+.aiwf-package-progress-percent {
+  font-size: 12px;
+  color: #9ad1ff;
+}
+
+.aiwf-package-progress-stage {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--vscode-fg);
+}
+
+.aiwf-package-progress-bar {
+  margin-top: 8px;
+  height: 8px;
+  border-radius: 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.aiwf-package-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4cb1ff, #7ef0c4);
+  transition: width 0.18s ease;
+}
+
+.aiwf-package-progress-detail {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+}
+
+
+.aiwf-perf-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 0;
+  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.aiwf-perf-badge.is-good {
+  color: #bbf7d0;
+  background: rgba(22, 101, 52, 0.24);
+}
+
+.aiwf-perf-badge.is-warn {
+  color: #fde68a;
+  background: rgba(133, 77, 14, 0.26);
+}
+
+.aiwf-perf-badge.is-bad {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.28);
+}
+
+.aiwf-perf-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--vscode-fg-muted);
+}
+
+.aiwf-perf-grid > div:nth-child(2n) {
+  color: var(--vscode-fg);
+  word-break: break-word;
+}
+
+.aiwf-node-compact {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--wf-node-border);
+  border-radius: 8px;
+  background: var(--wf-node-bg);
+  box-shadow: var(--wf-node-shadow);
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.aiwf-node-compact:active {
+  cursor: grabbing;
+}
+
+.aiwf-node-compact.is-selected {
+  border-color: var(--wf-state-selected-border);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-state-selected-border) 32%, transparent), var(--wf-node-shadow-selected);
+}
+
+.aiwf-node-compact.is-primary-selected {
+  border-color: var(--wf-state-selected-border);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-state-selected-border) 36%, transparent), var(--wf-node-shadow-selected);
+}
+
+.aiwf-node-compact.is-secondary-selected {
+  border-color: color-mix(in srgb, var(--wf-state-selected-border) 68%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-state-selected-border) 26%, transparent), var(--wf-node-shadow);
+}
+
+.aiwf-node-compact.is-running {
+  border-color: var(--wf-state-running-border);
+}
+
+.aiwf-node-compact.is-error {
+  border-color: var(--wf-state-error-border);
+}
+
+.aiwf-node-compact.is-media {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--wf-info) 20%, transparent), rgba(255, 255, 255, 0.02)), var(--wf-node-bg);
+}
+
+.aiwf-node-compact.is-scene {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--wf-warning) 20%, transparent), rgba(255, 255, 255, 0.02)), var(--wf-node-bg);
+}
+
+.aiwf-node-compact.is-3d {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--wf-primary) 18%, transparent), rgba(255, 255, 255, 0.02)), var(--wf-node-bg);
+}
+
+.aiwf-node-compact.is-story {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--wf-accent) 22%, transparent), rgba(255, 255, 255, 0.02)), var(--wf-node-bg);
+}
+
+.aiwf-node-compact-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  padding: 0 7px;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--wf-text) 12%, transparent);
+  color: var(--wf-text);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.aiwf-node-compact-title {
+  width: 100%;
+  color: var(--wf-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aiwf-node-compact-meta {
+  width: 100%;
+  color: var(--wf-text-muted);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aiwf-node-compact-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding: 0 6px;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--wf-text) 12%, transparent);
+  color: var(--wf-text);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.aiwf-node-compact.is-running .aiwf-node-compact-state {
+  background: var(--wf-state-running-bg);
+  color: var(--wf-text);
+}
+
+.aiwf-node-compact.is-error .aiwf-node-compact-state {
+  background: var(--wf-state-error-bg);
+  color: var(--wf-text);
+}
+
+.aiwf-node-compact-thumb {
+  width: 100%;
+  aspect-ratio: 4/3;
+  border-radius: 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--wf-text) 6%, transparent);
+  flex-shrink: 0;
+}
+
+.aiwf-node-compact-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.aiwf-node-compact-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.aiwf-reuse-alert {
+  position: absolute;
+  right: 0;
+  bottom: 20px;
+  z-index: var(--aiwf-alert-z-index, 130);
+  width: min(360px, 68vw);
+  border: 1px solid var(--dweb-orange);
+  background: var(--dweb-defualt-dark);
+  color: var(--vscode-fg);
+  box-shadow: var(--vscode-shadow);
+  padding: 12px;
+}
+
+.aiwf-reuse-alert-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.aiwf-reuse-alert-body {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--vscode-fg-muted);
+}
+
+.aiwf-reuse-alert-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.aiwf-reuse-alert-btn {
+  border: 1px solid var(--vscode-border);
+  background: transparent;
+  color: var(--vscode-fg);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.aiwf-reuse-alert-btn.primary {
+  border-color: var(--dweb-orange);
+  color: var(--vscode-fg);
+}
+
+.aiwf-reuse-alert-btn:hover {
+  border-color: var(--vscode-hover-border);
+  background: var(--vscode-hover-bg);
+}
+
+.aiwf-import-limit-alert {
+  position: absolute;
+  right: 0;
+  bottom: 20px;
+  z-index: var(--aiwf-alert-z-index, 130);
+  width: min(380px, 72vw);
+  border: 1px solid rgba(220, 86, 86, 0.78);
+  background: rgba(220, 86, 86, 0.14);
+  color: var(--vscode-fg);
+  box-shadow: var(--vscode-shadow);
+  padding: 12px;
+}
+
+.aiwf-import-limit-alert-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.aiwf-import-limit-alert-body {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--vscode-fg);
+}
+
+.aiwf-import-limit-alert-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.aiwf-import-limit-alert-btn {
+  border: 1px solid rgba(220, 86, 86, 0.9);
+  background: transparent;
+  color: var(--vscode-fg);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.aiwf-import-limit-alert-btn:hover {
+  border-color: var(--vscode-hover-border);
+  background: var(--vscode-hover-bg);
+}
+
+.aiwf-perf-stats-panel {
+  position: absolute;
+  top: 52px;
+  right: 8px;
+  min-width: 180px;
+  padding: 8px 10px;
+  background: var(--aiwf-perf-panel-bg, var(--dweb-defualt-dark));
+  border: 1px solid var(--aiwf-perf-panel-border, var(--vscode-border));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--aiwf-perf-panel-text, var(--vscode-fg));
+  user-select: none;
+}
+
+.aiwf-perf-stats-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--aiwf-perf-panel-border, var(--vscode-border));
+  font-size: 12px;
+}
+
+.aiwf-perf-stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.aiwf-perf-stats-sep {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--aiwf-perf-panel-border, var(--vscode-border));
+}
+
+.aiwf-perf-stats-label {
+  color: var(--aiwf-perf-panel-label, var(--vscode-fg-dim));
+  flex-shrink: 0;
+}
+
+.aiwf-perf-stats-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.aiwf-perf-stats-value.is-good {
+  color: var(--aiwf-perf-good, #4ec9b0);
+}
+
+.aiwf-perf-stats-value.is-warn {
+  color: var(--aiwf-perf-warn, #dcdcaa);
+}
+
+.aiwf-perf-stats-value.is-bad {
+  color: var(--aiwf-perf-bad, #f14c4c);
+}
+</style>

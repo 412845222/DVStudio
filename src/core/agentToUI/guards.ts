@@ -10,6 +10,7 @@ import type {
 	AgentToUiSubtitleSummaryDeltaMessage,
 	AgentToUiTaskStatusMessage,
 	AgentToUiTextMessage,
+	AgentToUiVideoScenePlanMessage,
 } from './types'
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -29,6 +30,8 @@ export function isAgentToUiMessage(v: unknown): v is AgentToUiMessage {
 			return isAgentToUiTextMessage(v)
 		case 'agentToUi/chatMessage':
 			return isAgentToUiChatMessage(v)
+		case 'agentToUi/videoScenePlan':
+			return isAgentToUiVideoScenePlanMessage(v)
 		case 'agentToUi/error':
 			return isAgentToUiErrorMessage(v)
 		case 'agentToUi/componentTemplate':
@@ -147,8 +150,13 @@ export function isAgentToUiTaskStatusMessage(v: unknown): v is AgentToUiTaskStat
 	const phase = v.payload.phase
 	if (
 		phase !== 'started' &&
+		phase !== 'prepare_input' &&
+		phase !== 'connect' &&
+		phase !== 'submit' &&
 		phase !== 'streaming' &&
 		phase !== 'writing' &&
+		phase !== 'parse' &&
+		phase !== 'rewrite' &&
 		phase !== 'template' &&
 		phase !== 'done' &&
 		phase !== 'canceled' &&
@@ -157,6 +165,8 @@ export function isAgentToUiTaskStatusMessage(v: unknown): v is AgentToUiTaskStat
 		return false
 	const msg = v.payload.message
 	if (msg !== undefined && !isString(msg)) return false
+	const details = (v.payload as any).details
+	if (details !== undefined && !isRecord(details)) return false
 	return true
 }
 
@@ -166,6 +176,19 @@ export function isAgentToUiChatMessage(v: unknown): v is AgentToUiChatMessage {
 	if (v.type !== 'agentToUi/chatMessage') return false
 	if (!isRecord(v.payload)) return false
 	return isString(v.payload.content)
+}
+
+export function isAgentToUiVideoScenePlanMessage(v: unknown): v is AgentToUiVideoScenePlanMessage {
+	if (!isRecord(v)) return false
+	if (v.schemaVersion !== 1) return false
+	if (v.type !== 'agentToUi/videoScenePlan') return false
+	if (!isRecord(v.payload)) return false
+	if (!('plan' in v.payload)) return false
+	const summary = (v.payload as any).summary
+	if (summary !== undefined && !isString(summary)) return false
+	const intent = (v.payload as any).intent
+	if (intent !== undefined && intent !== 'preview' && intent !== 'insert') return false
+	return true
 }
 
 export function isAgentToUiTextMessage(v: unknown): v is AgentToUiTextMessage {

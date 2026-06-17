@@ -42,6 +42,7 @@ export type DiagnosticsPayload = {
 export type DiagnosticsResult = { ok: boolean; data?: DiagnosticsPayload; error?: string }
 
 export type OpenFolderResult = { ok: boolean; error?: string }
+export type DirectoryPickResult = { canceled: boolean; filePaths: string[] }
 
 export type BootstrapInstallResult = { ok: boolean; started?: boolean; running?: boolean; error?: string }
 
@@ -90,6 +91,9 @@ export type ClientSettings = {
 	geminiApiKey: string
 	geminiModel: string
 	bytedanceApiKey: string
+	meshyApiKey: string
+	jimengAccessKeyId: string
+	jimengSecretKey: string
 }
 
 export type ClientSettingsResult = {

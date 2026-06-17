@@ -39,9 +39,11 @@
           <img
             ref="previewImg"
             class="wf-media-img"
-            :src="resourceUrl || ''"
+            :src="displayResourceUrl"
             :style="previewImageStyle"
             alt="image preview"
+            loading="lazy"
+            decoding="async"
             draggable="false"
             @load="onPreviewImageLoad"
             @error="onPreviewImageError"
@@ -171,6 +173,9 @@ const props = defineProps<{
   subtitle?: string;
   style?: Record<string, string>;
   resourceUrl?: string | null;
+  resourcePreviewUrl320?: string | null;
+  resourcePreviewUrl640?: string | null;
+  resourcePreviewVersion?: string | null;
   resourceName?: string | null;
   imageSettings?: {
     outputWidth?: number;
@@ -213,7 +218,7 @@ const emit = defineEmits<{
   (e: "copy"): void;
   (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"): void;
+  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "scene-understanding" | "scene-decompose" | "scene-layout" | "unreal-export" | "story" | "comfyui" | "model3d" | "meshy"): void;
   (e: "upload-resource", payload: { file: File; kind: "image" | "video" }): void;
   (e: "clear-resource"): void;
   (
@@ -244,6 +249,43 @@ const onPreviewContextMenu = (e: MouseEvent) => {
 const previewWrap = ref<HTMLElement | null>(null);
 const previewImg = ref<HTMLImageElement | null>(null);
 let ro: ResizeObserver | null = null;
+const lastResourceUrl = ref("");
+const pendingResourceReset = ref(false);
+const failedPreviewUrl = ref("");
+
+const normalizedResourceUrl = computed(() => String(props.resourceUrl ?? "").trim());
+const normalizedPreview320 = computed(() => String(props.resourcePreviewUrl320 ?? "").trim());
+const normalizedPreview640 = computed(() => String(props.resourcePreviewUrl640 ?? "").trim());
+
+const desiredPreviewTier = computed(() => {
+  if (cropMode.value || props.selected) return 0;
+  const zoom = Math.max(0.01, Number(props.zoom) || 1);
+  if (zoom <= 0.36) return 320;
+  if (zoom <= 0.65) return 640;
+  return 0;
+});
+
+const activePreviewUrl = computed(() => {
+  const tier = desiredPreviewTier.value;
+  if (tier === 320) return normalizedPreview320.value || normalizedPreview640.value;
+  if (tier === 640) return normalizedPreview640.value || normalizedPreview320.value;
+  return "";
+});
+
+const displayResourceUrl = computed(() => {
+  const source = normalizedResourceUrl.value;
+  if (!source) return "";
+  const preview = activePreviewUrl.value;
+  if (!preview) return source;
+  if (preview === failedPreviewUrl.value) return source;
+  return preview;
+});
+
+const usingPreviewResource = computed(() => {
+  const source = normalizedResourceUrl.value;
+  if (!source) return false;
+  return displayResourceUrl.value === activePreviewUrl.value && displayResourceUrl.value !== source;
+});
 
 const wrapSize = ref({ w: 1, h: 1 });
 
@@ -256,12 +298,6 @@ const outputWidth = computed(() => {
 const outputHeight = computed(() => {
   const v = props.imageSettings?.outputHeight;
   return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null;
-});
-const outputAspect = computed(() => {
-  const w = naturalWidth.value;
-  const h = naturalHeight.value;
-  if (!w || !h) return null;
-  return Math.max(1e-6, w / h);
 });
 
 const naturalWidth = computed(() => {
@@ -297,20 +333,37 @@ watch(
   { immediate: true }
 );
 
+const effectiveOutputWidth = computed(() => {
+  const base = outputWidth.value ?? naturalWidth.value;
+  if (!base) return null;
+  if (!cropEnabled.value) return base;
+  return Math.max(1, Math.round(base * Math.max(0.01, crop.value.width)));
+});
+
+const effectiveOutputHeight = computed(() => {
+  const base = outputHeight.value ?? naturalHeight.value;
+  if (!base) return null;
+  if (!cropEnabled.value) return base;
+  return Math.max(1, Math.round(base * Math.max(0.01, crop.value.height)));
+});
+
+const outputAspect = computed(() => {
+  const w = cropMode.value ? naturalWidth.value : effectiveOutputWidth.value;
+  const h = cropMode.value ? naturalHeight.value : effectiveOutputHeight.value;
+  if (!w || !h) return null;
+  return Math.max(1e-6, w / h);
+});
+
 const outputWidthDisplay = computed(() =>
-  outputWidth.value != null ? String(outputWidth.value) : ""
+  effectiveOutputWidth.value != null ? String(effectiveOutputWidth.value) : ""
 );
 const outputHeightDisplay = computed(() =>
-  outputHeight.value != null ? String(outputHeight.value) : ""
+  effectiveOutputHeight.value != null ? String(effectiveOutputHeight.value) : ""
 );
 
 const previewWrapStyle = computed(() => {
-  // Lock preview canvas aspect to source image, so when node width changes
-  // the canvas height follows proportionally (prevents half-render/cropping).
-  if (naturalWidth.value && naturalHeight.value) {
-    const a = Math.max(1e-6, naturalWidth.value / naturalHeight.value);
-    return { aspectRatio: `${a}` };
-  }
+  const aspect = outputAspect.value;
+  if (aspect) return { aspectRatio: `${aspect}` };
   return {};
 });
 
@@ -330,12 +383,35 @@ const displayRect = computed<DisplayRect>(() => {
 const previewImageStyle = computed(() => {
   if (cropMode.value) {
     return {
+      left: "0px",
+      top: "0px",
+      width: "100%",
+      height: "100%",
       objectFit: "contain",
       objectPosition: "center",
     } as Record<string, string>;
   }
+  if (cropEnabled.value) {
+    const c = crop.value;
+    const w = Math.max(0.01, clamp01(Number(c.width) || 0));
+    const h = Math.max(0.01, clamp01(Number(c.height) || 0));
+    const x = clamp01(Number(c.x) || 0);
+    const y = clamp01(Number(c.y) || 0);
+    const scaleW = 100 / w;
+    const scaleH = 100 / h;
+    return {
+      left: `${-x * scaleW}%`,
+      top: `${-y * scaleH}%`,
+      width: `${scaleW}%`,
+      height: `${scaleH}%`,
+    } as Record<string, string>;
+  }
   return {
-    objectFit: "cover",
+    left: "0px",
+    top: "0px",
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
     objectPosition: "center",
   } as Record<string, string>;
 });
@@ -407,25 +483,27 @@ const cropToUv = (c: { x: number; y: number; width: number; height: number }) =>
 };
 
 const ensureNaturalSizeFallback = async () => {
-  if (!props.resourceUrl) return;
-  if (naturalWidth.value && naturalHeight.value) return;
+  const sourceUrl = normalizedResourceUrl.value;
+  if (!sourceUrl) return;
+  if (naturalWidth.value && naturalHeight.value && !pendingResourceReset.value) return;
   await new Promise<void>((resolve) => {
     const img = new Image();
     img.onload = () => {
       const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1));
       const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1));
-      emit("update-image-settings", { naturalWidth: w, naturalHeight: h });
-      if (!outputWidth.value || !outputHeight.value) {
-        emit("update-image-settings", {
-          outputWidth: w,
-          outputHeight: h,
-          crop: { x: 0, y: 0, width: 1, height: 1 },
-        });
+      const patch: Record<string, any> = { naturalWidth: w, naturalHeight: h };
+      if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
+        patch.outputWidth = w;
+        patch.outputHeight = h;
+        patch.cropEnabled = false;
+        patch.crop = { x: 0, y: 0, width: 1, height: 1 };
       }
+      emit("update-image-settings", patch);
+      pendingResourceReset.value = false;
       resolve();
     };
     img.onerror = () => resolve();
-    img.src = props.resourceUrl || "";
+    img.src = sourceUrl;
   });
 };
 
@@ -445,7 +523,8 @@ const applyOutputQualityByWidth = async (nextW: number) => {
   const natW = naturalWidth.value;
   const natH = naturalHeight.value;
   if (!natW || !natH) return;
-  const w = Math.max(1, Math.floor(nextW));
+  const cropWidth = cropEnabled.value ? Math.max(0.01, crop.value.width) : 1;
+  const w = Math.max(1, Math.round(Math.max(1, nextW) / cropWidth));
   const h = Math.max(1, Math.round((w * natH) / Math.max(1e-6, natW)));
   emit("update-image-settings", { outputWidth: w, outputHeight: h });
 };
@@ -455,7 +534,8 @@ const applyOutputQualityByHeight = async (nextH: number) => {
   const natW = naturalWidth.value;
   const natH = naturalHeight.value;
   if (!natW || !natH) return;
-  const h = Math.max(1, Math.floor(nextH));
+  const cropHeight = cropEnabled.value ? Math.max(0.01, crop.value.height) : 1;
+  const h = Math.max(1, Math.round(Math.max(1, nextH) / cropHeight));
   const w = Math.max(1, Math.round((h * natW) / Math.max(1e-6, natH)));
   emit("update-image-settings", { outputWidth: w, outputHeight: h });
 };
@@ -592,21 +672,65 @@ const initPreviewLayoutObserver = () => {
 };
 
 const onPreviewImageLoad = () => {
-  void ensureNaturalSizeFallback();
+  if (usingPreviewResource.value) {
+    if (!naturalWidth.value || !naturalHeight.value || pendingResourceReset.value) {
+      void ensureNaturalSizeFallback();
+    }
+    emit("media-ready");
+    return;
+  }
+
+  const img = previewImg.value;
+  if (img) {
+    const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1));
+    const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1));
+    const patch: Record<string, any> = { naturalWidth: w, naturalHeight: h };
+    if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
+      patch.outputWidth = w;
+      patch.outputHeight = h;
+      patch.cropEnabled = false;
+      patch.crop = { x: 0, y: 0, width: 1, height: 1 };
+    }
+    emit("update-image-settings", patch);
+    pendingResourceReset.value = false;
+  } else {
+    void ensureNaturalSizeFallback();
+  }
   emit("media-ready");
 };
 
 const onPreviewImageError = () => {
+  if (usingPreviewResource.value) {
+    failedPreviewUrl.value = activePreviewUrl.value;
+    return;
+  }
   emit("media-ready");
 };
 
 watch(
+  () => [props.resourcePreviewUrl320, props.resourcePreviewUrl640],
+  () => {
+    failedPreviewUrl.value = "";
+  }
+);
+
+watch(
   () => props.resourceUrl,
-  async () => {
+  async (nextUrl, prevUrl) => {
     await nextTick();
-    if (!props.resourceUrl) {
+    const next = String(nextUrl ?? "").trim();
+    const prev = String(prevUrl ?? "").trim();
+    if (!next) {
       cropMode.value = false;
+      pendingResourceReset.value = false;
+      lastResourceUrl.value = "";
+      failedPreviewUrl.value = "";
       return;
+    }
+    if (next !== prev || next !== lastResourceUrl.value) {
+      pendingResourceReset.value = true;
+      lastResourceUrl.value = next;
+      failedPreviewUrl.value = "";
     }
     initPreviewLayoutObserver();
     await ensureNaturalSizeFallback();
@@ -632,9 +756,9 @@ watch(
 );
 
 defineExpose({
-  /** Export the node output PNG (WebGL rendered, cropped + scaled to output resolution). */
+  /** Export the node output PNG (offscreen canvas render, cropped + scaled to output resolution). */
   exportPngBlob: async () => {
-    const src = String(props.resourceUrl ?? "").trim();
+    const src = normalizedResourceUrl.value;
     if (!src) return null;
     const w = outputWidth.value;
     const h = outputHeight.value;
@@ -679,7 +803,7 @@ onBeforeUnmount(() => {
   width: 100%;
   flex: 0 0 auto;
   height: auto;
-  border-radius: 6px;
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt);
@@ -689,10 +813,8 @@ onBeforeUnmount(() => {
 
 .wf-media-img {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
   display: block;
+  max-width: none;
 }
 
 .wf-crop-overlay {
@@ -743,7 +865,7 @@ onBeforeUnmount(() => {
 
 .wf-media-empty {
   border: 1px dashed var(--vscode-border);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 10px;
   text-align: center;
   color: var(--vscode-fg-muted);

@@ -6,6 +6,10 @@ class ApiProvider(models.TextChoices):
 	DEEPSEEK = "deepseek", "DeepSeek"
 	GEMINI = "gemini", "Gemini"
 	BYTEDANCE = "bytedance", "字节跳动(方舟)"
+	CODEX = "codex", "Codex"
+	MESHY = "meshy", "Meshy"
+	JIMENG_ACCESS_KEY_ID = "jimeng_access_key_id", "即梦 AccessKey ID"
+	JIMENG_SECRET_KEY = "jimeng_secret_key", "即梦 SecretAccessKey"
 
 
 class ApiKeySecret(models.Model):

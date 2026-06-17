@@ -37,6 +37,8 @@ const backendLastError = ref("");
 const backendPort = ref<number | null>(null);
 const setupState = ref<SetupState>({ running: false, updatedAt: 0, steps: [] });
 const retryingStepKey = ref("");
+const startupSetupHintVisible = ref(false);
+const startupSetupCompletedHintVisible = ref(false);
 
 const pingOk = ref<"ok" | "error" | "unknown">("unknown");
 const pingDetail = ref("");
@@ -84,6 +86,16 @@ const setupProgressText = computed(() => {
   const hasError = setupState.value.steps.some((s) => s.status === "error");
   if (hasError) return "存在失败项，可在左侧逐项重试";
   return "环境流程完成";
+});
+
+const startupSetupHintText = computed(() => {
+  if (setupState.value.running) {
+    return "应用启动后正在自动准备本地 DVSResource 运行环境，并同步 Django 源码到运行时目录。";
+  }
+  if (startupSetupCompletedHintVisible.value) {
+    return "应用启动时已自动检查本地运行环境；如需重建运行态，可手动再次执行环境流程。";
+  }
+  return "";
 });
 
 const isReadyToEnter = computed(() => backendRunning.value && pingOk.value === "ok");
@@ -238,7 +250,16 @@ async function handleEnterProject() {
 async function refreshSetupStateOnly() {
   const st = await getSetupState();
   if (!st) return;
+  const wasRunning = setupState.value.running;
   setupState.value = st;
+  if (st.running) {
+    startupSetupHintVisible.value = true;
+    startupSetupCompletedHintVisible.value = false;
+    return;
+  }
+  if (wasRunning) {
+    startupSetupCompletedHintVisible.value = true;
+  }
 }
 
 async function runSetup(reason: string, retryKey = "") {
@@ -373,6 +394,13 @@ onBeforeUnmount(() => {
         <div class="rightTop">
           <div class="topTitle">后端控制</div>
           <div class="topSub">{{ backendStatusText }} ｜ {{ setupProgressText }}</div>
+          <div
+            v-if="startupSetupHintVisible || startupSetupCompletedHintVisible"
+            class="setup-startup-banner"
+            :class="{ done: startupSetupCompletedHintVisible && !setupState.running }"
+          >
+            {{ startupSetupHintText }}
+          </div>
           <div class="buttons">
             <button class="btn" type="button" @click="handleRunSetupWorkflow">
               执行环境流程
@@ -432,9 +460,20 @@ onBeforeUnmount(() => {
 
 .layout {
   height: 100%;
-  padding: 12px;
+  padding: 12px 12px 12px 68px;
   box-sizing: border-box;
   min-height: 0;
+  transition: padding-left 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* 当导航栏展开时，调整左侧padding */
+body[data-side-nav-expanded="true"] .layout {
+  padding-left: 192px;
+}
+
+/* 当导航栏收起时，恢复默认padding */
+body[data-side-nav-expanded="false"] .layout {
+  padding-left: 68px;
 }
 
 .left,
@@ -454,6 +493,21 @@ onBeforeUnmount(() => {
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt-light);
   padding: 12px;
+}
+
+.setup-startup-banner {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(60, 148, 255, 0.32);
+  background: rgba(60, 148, 255, 0.12);
+  color: var(--vscode-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.setup-startup-banner.done {
+  border-color: rgba(94, 196, 127, 0.28);
+  background: rgba(94, 196, 127, 0.12);
 }
 
 .topTitle {

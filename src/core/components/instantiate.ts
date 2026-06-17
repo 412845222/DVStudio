@@ -1,7 +1,10 @@
 import type { JsonValue } from '../shared/json'
 import { NodeBase, type NodeBaseDTO, type NodeType, upgradeNodeType } from '../scene/nodesType'
 import type { VideoSceneNodeTransform, VideoSceneTreeNode, VideoSceneUserNodeType } from '../scene'
+import { normalizeLineLocalPoints } from '../scene/geometry'
+import { computeTextAutoSize } from '../scene/commands/nodes/textAutoSize'
 import { genId as defaultGenId } from '../scene/commands/nodes/utils'
+import { normalizeTextNodeProps } from '../scene/nodesType/TextNode'
 
 import type { ComponentTemplate, InstantiateTemplateOptions, InstantiateTemplateResult, TemplateNodeTransform } from './types'
 import { validateComponentTemplate } from './validate'
@@ -150,6 +153,17 @@ const createUserNode = (
 		opacity: upgraded.transform.opacity,
 	}
 	const transform = applyTransformPatch(baseTransform, transformPatch)
+	const finalProps: Record<string, JsonValue> = { ...(upgraded.props ?? {}), ...props }
+	if (userType === 'text') {
+		Object.assign(finalProps, normalizeTextNodeProps(finalProps as any))
+		const size = computeTextAutoSize(finalProps as any)
+		if (size) {
+			transform.width = size.width
+			transform.height = size.height
+		}
+	} else if (userType === 'line') {
+		Object.assign(finalProps, normalizeLineLocalPoints({ props: finalProps as any, width: transform.width, height: transform.height }))
+	}
 	return {
 		id: upgraded.id,
 		createdAt: Date.now(),
@@ -157,7 +171,7 @@ const createUserNode = (
 		category: 'user',
 		userType: upgraded.type as unknown as VideoSceneUserNodeType,
 		transform,
-		props: { ...(upgraded.props ?? {}), ...props },
+		props: finalProps,
 	}
 }
 

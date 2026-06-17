@@ -30,7 +30,7 @@ const router = createRouter({
 	routes,
 })
 
-const PROTECTED_ROUTES = new Set(['AIWorkflow', 'VideoStudio'])
+const PROTECTED_ROUTES = new Set(['VideoStudio'])
 const REQUIRED_SETUP_STEP_KEYS = [
 	'python',
 	'resource',

@@ -8,6 +8,7 @@ import { RectRenderer } from '../renderers/RectRenderer'
 import { TextRenderer } from '../renderers/TextRenderer'
 import { ImageRenderer } from '../renderers/ImageRenderer'
 import { LineRenderer } from '../renderers/LineRenderer'
+import { normalizeLineLocalPoints } from '../../../core/scene/geometry'
 
 export type HitTestResult = {
 	layerId: string
@@ -62,14 +63,15 @@ export class DwebVideoScene implements IDwebGLScene {
 		const baseW = Math.max(1, Number(node.transform?.width ?? 1))
 		const baseH = Math.max(1, Number(node.transform?.height ?? 1))
 
-		const p = (node.props as any) ?? {}
-		const startX = Number(p?.startX ?? -baseW / 2)
-		const startY = Number(p?.startY ?? 0)
-		const endX = Number(p?.endX ?? baseW / 2)
-		const endY = Number(p?.endY ?? 0)
-		const anchorX = Number(p?.anchorX ?? 0)
-		const anchorY = Number(p?.anchorY ?? -baseH / 4)
-		const lineWidthPx = Math.max(1, Number(p?.lineWidth ?? 4))
+		const props = (node.props as any) ?? {}
+		const p = normalizeLineLocalPoints({ props, width: baseW, height: baseH })
+		const startX = p.startX
+		const startY = p.startY
+		const endX = p.endX
+		const endY = p.endY
+		const anchorX = p.anchorX
+		const anchorY = p.anchorY
+		const lineWidthPx = Math.max(1, Number(props?.lineWidth ?? 4))
 		const thickness = lineWidthPx / zoomSafe
 		const halfT = Math.max(0, thickness / 2)
 
@@ -320,7 +322,8 @@ export class DwebVideoScene implements IDwebGLScene {
 			const type = (node.userType ?? 'base') as VideoSceneUserNodeType
 			const props: any = node.props ?? {}
 			const textContent = typeof node.props?.textContent === 'string' ? node.props.textContent : undefined
-			const fontSize = typeof node.props?.fontSize === 'number' ? node.props.fontSize : undefined
+			const rawFontSize = Number(node.props?.fontSize)
+			const fontSize = Number.isFinite(rawFontSize) ? rawFontSize : undefined
 			let imageSrc = props?.imagePath
 			const imageId = String(props?.imageId ?? '').trim()
 			if (imageId && this.state?.imageAssets?.[imageId]?.url) {

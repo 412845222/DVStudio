@@ -48,6 +48,7 @@
         v-else-if="draft.type === 'text'"
         :draft="draft"
         :applyText="() => applyProps('text')"
+		:applyTextToAllFrames="applyTextToAllFrames"
         :onNumberScrubPointerDown="onNumberScrubPointerDown"
         :onNumberInputDblClick="onNumberInputDblClick"
         :onNumberInputFocus="onNumberInputFocus"
@@ -85,6 +86,7 @@
 import { computed, reactive, watch } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState, type VideoSceneTreeNode, type VideoSceneUserNodeType } from '../../../../store/videoscene'
+import { TimelineStore } from '../../../../store/timeline'
 import { VideoStudioKey, type VideoStudioState } from '../../../../store/videostudio'
 import CommonTransformForm from './forms/CommonTransformForm.vue'
 import ImageNodeForm from './forms/ImageNodeForm.vue'
@@ -444,6 +446,23 @@ const applyProps = (kind: 'rect' | 'text' | 'image' | 'line') => {
 }
 
 const applyLine = () => applyProps('line')
+
+const applyTextToAllFrames = () => {
+	const s = selected.value
+	if (!s || draft.type !== 'text') return
+	store.dispatch('updateNodeProps', {
+		layerId: s.layerId,
+		nodeId: s.node.id,
+		patch: {
+			textContent: draft.textContent,
+		},
+	})
+	TimelineStore.dispatch('applyNodeTextContentAcrossKeyframes', {
+		layerId: s.layerId,
+		nodeId: s.node.id,
+		textContent: draft.textContent,
+	})
+}
 
 
 const filters = computed<VideoNodeFilter[]>(() => {

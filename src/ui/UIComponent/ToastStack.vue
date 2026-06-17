@@ -90,7 +90,7 @@ const emit = defineEmits<{
   position: fixed;
   right: 20px;
   bottom: 20px;
-  z-index: 80;
+  z-index: 101;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -102,7 +102,7 @@ const emit = defineEmits<{
   background: var(--dweb-defualt-dark);
   color: var(--vscode-fg);
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 0;
   box-shadow: var(--vscode-shadow);
   display: flex;
   align-items: flex-start;

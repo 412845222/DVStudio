@@ -5,6 +5,10 @@
 			<span class="vs-k">内容</span>
 			<textarea v-model="draft.textContent" class="vs-input vs-textarea wide" rows="4" @change="applyText" />
 		</label>
+		<div class="vs-row vs-row-actions">
+			<span class="vs-k" />
+			<button class="vs-quick-btn vs-text-action" type="button" @click="applyTextToAllFrames">应用所有帧</button>
+		</div>
 		<label class="vs-row">
 			<span class="vs-k">字号</span>
 			<input
@@ -78,9 +82,20 @@ type DraftText = {
 defineProps<{
 	draft: DraftText
 	applyText: () => void
+	applyTextToAllFrames: () => void
 	onNumberScrubPointerDown: (e: PointerEvent, get: () => number, set: (v: number) => void, opt: NumberScrubOptions) => void
 	onNumberInputDblClick: (e: MouseEvent) => void
 	onNumberInputFocus: (e: FocusEvent) => void
 	onNumberInputBlur: (e: FocusEvent) => void
 }>()
 </script>
+
+<style scoped>
+.vs-row-actions {
+	align-items: flex-start;
+}
+
+.vs-text-action {
+	min-width: 120px;
+}
+</style>

@@ -1,0 +1,74 @@
+{
+  "renderer": {
+    "toneMapping": "ACESFilmicToneMapping",
+    "exposureRange": [0.42, 1.12],
+    "recommendedExposureRange": [0.55, 0.95]
+  },
+  "atmosphere": {
+    "intensityScaleRange": [0.45, 1.8],
+    "recommendedIntensityScaleRange": [0.72, 1.15],
+    "environmentIntensityRange": [0.02, 0.28],
+    "recommendedEnvironmentIntensityRange": [0.02, 0.18]
+  },
+  "lightCaps": {
+    "ambient": 0.4,
+    "hemisphere": 0.58,
+    "directional": 2.2,
+    "point": 4.2,
+    "spot": 5.2,
+    "rect-area": 18.0
+  },
+  "roleBias": {
+    "fill": 1.04,
+    "accent": 1.22,
+    "practical": 1.36,
+    "key": 1.0,
+    "rim": 0.72,
+    "backlight": 0.72
+  },
+  "previewBehavior": {
+    "spotAccentExtraBoost": 1.5,
+    "pointAccentExtraBoost": 1.35,
+    "spotAngleMultiplier": 1.15,
+    "spotPenumbraAdded": 0.3,
+    "selfEmissiveOnlyDoesNotIlluminateScene": true
+  },
+  "rectAreaBehavior": {
+    "widthHeightClamp": [0.02, 24.0],
+    "thinStripThreshold": {
+      "width": 0.18,
+      "height": 0.12
+    },
+    "roleBoost": {
+      "key": 7.2,
+      "fill": 6.8,
+      "accent": 9.6,
+      "practical": 10.5,
+      "default": 6.2
+    },
+    "warning": "RectAreaLight 会在前端预览中被额外增强，因此原始 intensity 必须保持低值。"
+  },
+  "recommendedRawRanges": {
+    "ambient": [0.0, 0.05],
+    "hemisphere": [0.02, 0.12],
+    "directional": [0.18, 0.9],
+    "point": [0.08, 0.8],
+    "spot": [0.18, 2.4],
+    "rect-area": [0.03, 0.9]
+  },
+  "recommendedWorldUnits": {
+    "ceilingPanelWidth": [0.4, 1.6],
+    "ceilingPanelHeight": [0.12, 0.9],
+    "stripWidth": [0.3, 1.2],
+    "stripHeight": [0.03, 0.12],
+    "spotDistance": [0.8, 4.5],
+    "pointDistance": [0.6, 3.6]
+  },
+  "antiPatterns": [
+    "不要把 40cm 直接写成 width=40",
+    "不要把 220cm 直接写成 distance=220",
+    "不要把 screen/self-emissive panel 当作主照明灯",
+    "不要给 rect-area 写 5、10、12 这类过大原始 intensity",
+    "不要只用一个总环境光覆盖所有局部灯具"
+  ]
+}

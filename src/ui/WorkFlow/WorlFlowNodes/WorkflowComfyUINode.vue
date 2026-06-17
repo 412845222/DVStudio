@@ -258,7 +258,7 @@ const emit = defineEmits<{
   (e: "copy"): void;
   (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"): void;
+  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "scene-understanding" | "scene-decompose" | "scene-layout" | "unreal-export" | "story" | "comfyui" | "model3d" | "meshy"): void;
   (
     e: "resize",
     payload: { width: number; height: number; worldX: number; worldY: number }
@@ -437,7 +437,7 @@ onMounted(() => {
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt-dark);
   color: var(--vscode-foreground);
-  border-radius: 6px;
+  border-radius: 0;
   outline: none;
 }
 
@@ -449,7 +449,7 @@ onMounted(() => {
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt-dark);
   color: var(--vscode-foreground);
-  border-radius: 6px;
+  border-radius: 0;
   outline: none;
   resize: vertical;
   font-family: inherit;
@@ -468,7 +468,7 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: 0;
   cursor: crosshair;
   flex: 0 0 auto;
   margin-top: 4px;
@@ -478,7 +478,7 @@ onMounted(() => {
   content: "";
   width: 10px;
   height: 10px;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--dweb-yellow);
   border: 1px solid transparent;
   box-sizing: border-box;
@@ -516,7 +516,7 @@ onMounted(() => {
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt-dark);
   color: var(--vscode-foreground);
-  border-radius: 6px;
+  border-radius: 0;
   outline: none;
 }
 
@@ -541,7 +541,7 @@ onMounted(() => {
 .wf-comfy-progress-track {
   width: 100%;
   height: 8px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt-dark);
   overflow: hidden;
@@ -584,7 +584,7 @@ onMounted(() => {
   background: var(--dweb-defualt-dark);
   color: var(--vscode-foreground);
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
 }
 
@@ -641,14 +641,14 @@ onMounted(() => {
   gap: 8px;
   padding: 6px 8px;
   border: 1px solid var(--vscode-border);
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--dweb-defualt-dark);
 }
 
 .wf-comfy-input-index {
   width: 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid var(--vscode-border);
   display: inline-flex;
   align-items: center;

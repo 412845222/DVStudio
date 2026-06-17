@@ -38,6 +38,46 @@
         </button>
       </div>
     </div>
+    <div
+      class="ai-chat__resize ai-chat__resize--right"
+      @pointerdown.stop.prevent="onResizePointerDown($event, 'right')"
+    />
+    <div
+      class="ai-chat__resize ai-chat__resize--bottom"
+      @pointerdown.stop.prevent="onResizePointerDown($event, 'bottom')"
+    />
+    <div
+      class="ai-chat__resize ai-chat__resize--corner"
+      @pointerdown.stop.prevent="onResizePointerDown($event, 'corner')"
+    />
+
+    <div class="ai-chat__controls">
+      <label class="ai-chat__control">
+        <span class="ai-chat__control-label">来源</span>
+        <select v-model="modelApiSource" class="ai-chat__select" :disabled="sending">
+          <option
+            v-for="source in textApiSourceOptions"
+            :key="source.value"
+            :value="source.value"
+          >
+            {{ source.label }}
+          </option>
+        </select>
+      </label>
+      <label class="ai-chat__control ai-chat__control--grow">
+        <span class="ai-chat__control-label">模型</span>
+        <select
+          v-model="textModelId"
+          class="ai-chat__select"
+          :disabled="sending || !textModelOptions.length"
+        >
+          <option v-if="!textModelOptions.length" value="">当前组合暂无模型</option>
+          <option v-for="model in textModelOptions" :key="model.id" :value="model.id">
+            {{ model.label }}
+          </option>
+        </select>
+      </label>
+    </div>
 
     <div class="ai-chat__body">
       <div ref="listRef" class="ai-chat__list" @scroll.passive="onListScroll">
@@ -53,8 +93,27 @@
               <span class="ai-chat__dot" />
               <span class="ai-chat__dot" />
             </div>
-            <div v-if="showStageActions(m)" class="ai-chat__actions">
+            <div v-if="showStageActions(m) || !!m.scenePlanJson" class="ai-chat__actions">
               <button
+                v-if="canGenerateScenePlanAnimation(m)"
+                class="ai-chat__action-btn ai-chat__action-btn--primary"
+                type="button"
+                :disabled="sending"
+                @click="onClickGenerateAnimation(m)"
+              >
+                生成动画
+              </button>
+              <button
+                v-if="m.scenePlanJson"
+                class="ai-chat__action-btn"
+                type="button"
+                :disabled="sending"
+                @click="copyScenePlanJson(m)"
+              >
+                复制场景计划JSON
+              </button>
+              <button
+                v-if="showStageActions(m)"
                 class="ai-chat__action-btn"
                 type="button"
                 :disabled="sending"
@@ -63,6 +122,7 @@
                 保存到组件库
               </button>
               <button
+                v-if="showStageActions(m)"
                 class="ai-chat__action-btn"
                 type="button"
                 :disabled="sending"
@@ -71,6 +131,7 @@
                 重新生成
               </button>
               <button
+                v-if="showStageActions(m)"
                 class="ai-chat__action-btn"
                 type="button"
                 :disabled="sending"
@@ -118,13 +179,26 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { aiChatService } from '../../network/AIChatService'
 import type { AgentToUiMessage } from '../../core/agentToUI'
+import {
+	compileVideoScenePlan,
+	normalizeVideoScenePlan,
+	type VideoScenePlan,
+} from '../../core/agentToUI/videoScenePlan'
+import {
+	CHAT_API_SOURCE_OPTIONS,
+	getChatModelById,
+	getChatModelOptions,
+	type ChatApiSource,
+} from '../../ai/models/chatModels'
 import { componentTemplateApi } from '../../core/components'
 import { ComponentLibraryService } from '../../network/ComponentLibraryService'
 import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners } from '../../core/scene'
+import { TimelineStore } from '../../store/timeline'
 import { VideoSceneKey, type VideoSceneState } from '../../store/videoscene'
 import { editorPersistence } from '../../adapters/editorPersistence'
 import { dispatchDvsEditorNodeDeleted, dispatchDvsEditorNodePatched } from '../../adapters/windowEventBridge'
 import { DwebCanvasGLKey } from '../VideoScene/VideoSceneRuntime'
+import { applyTimelineAnimationAtFrame } from '../VideoScene/anim/timelineAnimation'
 import { flyThumbnailPng } from '../VideoScene/parts/flyThumbnail'
 
 type ChatRole = 'user' | 'assistant'
@@ -136,6 +210,9 @@ type ChatMessage = {
 	at: number
 	hasStageResult?: boolean
 	stageOps?: { insertedNodeIds: string[] }
+	scenePlanJson?: string
+	scenePlanData?: VideoScenePlan
+	scenePlanApplyStatus?: 'pending' | 'applied' | 'skipped'
 }
 
 const props = defineProps<{ open: boolean; minimized: boolean; anchor?: { x: number; y: number } | null }>()
@@ -166,10 +243,16 @@ const closeThought = () => {
 	thoughtDismissed.value = true
 }
 
-const DIALOG_W = 360
-const DIALOG_H = 420
+const DEFAULT_DIALOG_W = 560
+const DEFAULT_DIALOG_H = 500
+const MIN_DIALOG_W = 460
+const MIN_DIALOG_H = 420
+const MAX_DIALOG_W = 920
+const MAX_DIALOG_H = 760
+const DIALOG_SIZE_KEY = 'dvs.aiChat.dialogSize'
 
 const pos = ref<{ x: number; y: number }>({ x: 12, y: 12 })
+const dialogSize = ref<{ width: number; height: number }>({ width: DEFAULT_DIALOG_W, height: DEFAULT_DIALOG_H })
 const dragged = ref(false)
 const entering = ref(false)
 const minimizing = ref(false)
@@ -178,22 +261,60 @@ const animTransform = ref<string>('')
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
+const getDialogWidth = () => clamp(dialogSize.value.width, MIN_DIALOG_W, Math.min(MAX_DIALOG_W, window.innerWidth - 16))
+const getDialogHeight = () => clamp(dialogSize.value.height, MIN_DIALOG_H, Math.min(MAX_DIALOG_H, window.innerHeight - 16))
+
+const clampDialogPosition = (next: { x: number; y: number }) => {
+	const w = getDialogWidth()
+	const h = getDialogHeight()
+	return {
+		x: clamp(next.x, 8, Math.max(8, window.innerWidth - w - 8)),
+		y: clamp(next.y, 8, Math.max(8, window.innerHeight - h - 8)),
+	}
+}
+
+const loadDialogSize = () => {
+	try {
+		const raw = window.localStorage.getItem(DIALOG_SIZE_KEY)
+		if (!raw) return
+		const parsed = JSON.parse(raw)
+		dialogSize.value = {
+			width: clamp(Number(parsed?.width) || DEFAULT_DIALOG_W, MIN_DIALOG_W, MAX_DIALOG_W),
+			height: clamp(Number(parsed?.height) || DEFAULT_DIALOG_H, MIN_DIALOG_H, MAX_DIALOG_H),
+		}
+	} catch {
+		dialogSize.value = { width: DEFAULT_DIALOG_W, height: DEFAULT_DIALOG_H }
+	}
+}
+
+const persistDialogSize = () => {
+	try {
+		window.localStorage.setItem(DIALOG_SIZE_KEY, JSON.stringify(dialogSize.value))
+	} catch {
+		// ignore
+	}
+}
+
+loadDialogSize()
+
 const placeNearAnchor = () => {
+	const w = getDialogWidth()
+	const h = getDialogHeight()
 	const a = props.anchor
 	if (!a) {
-		pos.value = { x: 12, y: window.innerHeight - DIALOG_H - 52 }
+		pos.value = clampDialogPosition({ x: 12, y: window.innerHeight - h - 52 })
 		return
 	}
-	const x = clamp(a.x - DIALOG_W + 24, 8, window.innerWidth - DIALOG_W - 8)
-	const y = clamp(a.y - DIALOG_H - 12, 8, window.innerHeight - DIALOG_H - 52)
+	const x = clamp(a.x - w + 24, 8, Math.max(8, window.innerWidth - w - 8))
+	const y = clamp(a.y - h - 12, 8, Math.max(8, window.innerHeight - h - 52))
 	pos.value = { x, y }
 }
 
 const computeMinimizeTransform = () => {
 	const a = props.anchor
 	if (!a) return 'scale(0.05)'
-	const cx = pos.value.x + DIALOG_W / 2
-	const cy = pos.value.y + DIALOG_H / 2
+	const cx = pos.value.x + getDialogWidth() / 2
+	const cy = pos.value.y + getDialogHeight() / 2
 	const dx = a.x - cx
 	const dy = a.y - cy
 	return `translate(${dx}px, ${dy}px) scale(0.05)`
@@ -203,6 +324,8 @@ const shellStyle = computed(() => {
 	return {
 		left: `${pos.value.x}px`,
 		top: `${pos.value.y}px`,
+		width: `${getDialogWidth()}px`,
+		height: `${getDialogHeight()}px`,
 		transform: minimizing.value ? animTransform.value : '',
 	} as any
 })
@@ -211,7 +334,7 @@ const messages = ref<ChatMessage[]>([
 	{
 		id: 'm0',
 		role: 'assistant',
-		text: '你好，我是 AI 助手（待接入模型）。你可以先输入问题，我会把它显示在对话记录中。',
+		text: '你好，我是 VideoStudio AI 助手。你可以描述要生成的 WebGL 视频界面与预设动画。',
 		at: Date.now(),
 	},
 ])
@@ -240,6 +363,70 @@ const toggleDeepMode = () => {
 }
 
 loadDeepMode()
+
+const modelApiSource = ref<ChatApiSource>('all')
+const textModelId = ref('deepseek-chat')
+
+const loadModelPrefs = () => {
+	try {
+		const savedSource = window.localStorage.getItem('dvs.aiChat.modelApiSource')
+		const savedModel = window.localStorage.getItem('dvs.aiChat.textModelId')
+		if (savedSource === 'all' || savedSource === 'deepseek' || savedSource === 'gemini' || savedSource === 'bytedance') {
+			modelApiSource.value = savedSource
+		}
+		if (typeof savedModel === 'string' && savedModel.trim()) textModelId.value = savedModel.trim()
+	} catch {
+		modelApiSource.value = 'all'
+		textModelId.value = 'deepseek-chat'
+	}
+}
+
+const persistModelPrefs = () => {
+	try {
+		window.localStorage.setItem('dvs.aiChat.modelApiSource', modelApiSource.value)
+		window.localStorage.setItem('dvs.aiChat.textModelId', textModelId.value)
+	} catch {
+		// ignore
+	}
+}
+
+const textApiSourceOptions = CHAT_API_SOURCE_OPTIONS.filter((item) => item.value === 'all' || item.value === 'deepseek' || item.value === 'bytedance')
+
+const textModelOptions = computed(() => getChatModelOptions('text', modelApiSource.value).filter((item) => item.apiSource === 'deepseek' || item.apiSource === 'bytedance'))
+
+const activeTextModel = computed(() => getChatModelById(textModelId.value))
+const activeProvider = computed(() => (activeTextModel.value?.apiSource === 'bytedance' ? 'bytedance' : 'deepseek'))
+
+const normalizeTextModelSelection = () => {
+	let list = textModelOptions.value
+	if (!list.length && modelApiSource.value !== 'all') {
+		modelApiSource.value = 'all'
+		list = textModelOptions.value
+	}
+	if (!list.length) {
+		textModelId.value = ''
+		return
+	}
+	if (!list.some((model) => model.id === textModelId.value)) {
+		textModelId.value = list[0].id
+	}
+}
+
+loadModelPrefs()
+normalizeTextModelSelection()
+
+watch(
+	() => [modelApiSource.value, textModelOptions.value.map((item) => item.id).join('|')] as const,
+	() => {
+		normalizeTextModelSelection()
+		persistModelPrefs()
+	},
+	{ immediate: true }
+)
+
+watch(textModelId, () => {
+	persistModelPrefs()
+})
 
 const conversationId = ref<string | null>(null)
 const sending = ref(false)
@@ -451,6 +638,36 @@ const buildContextPack = () => {
 		selectedNodes,
 		activeLayer: layer ? { id: layer.id, name: (layer as any).name, nodeTree: layer.nodeTree } : null,
 		lastStageOps: lastStageOps.value,
+	}
+}
+
+const buildVideoGuiPromptInput = (text: string) => {
+	const contextPack = buildContextPack()
+	const viewport = getViewportContext()
+	const activeLayer = contextPack.activeLayer
+	const selectedNodes = Array.isArray(contextPack.selectedNodes) ? contextPack.selectedNodes : []
+	return {
+		task: String(text || '').trim(),
+		scene: 'video-scene-editor',
+		goal: 'generate-video-scene-gui-plan',
+		deepMode: deepMode.value,
+		activeLayer: activeLayer
+			? {
+				id: activeLayer.id,
+				name: activeLayer.name,
+				nodeCount: Array.isArray(activeLayer.nodeTree) ? activeLayer.nodeTree.length : 0,
+			}
+			: null,
+		selectedNodeIds: contextPack.selectedNodeIds,
+		selectedNodes,
+		viewport,
+		lastStageOps: contextPack.lastStageOps,
+		requirements: {
+			output: ['componentTemplate', 'videoScenePlan'],
+			animationMode: 'preset-only',
+			preferPalette: true,
+			preferIncrementalEdit: selectedNodes.length > 0,
+		},
 	}
 }
 
@@ -716,6 +933,13 @@ const onClose = () => {
 
 // ----- dragging -----
 let dragging: { px: number; py: number; ox: number; oy: number } | null = null
+let resizing: {
+	mode: 'right' | 'bottom' | 'corner'
+	startX: number
+	startY: number
+	startWidth: number
+	startHeight: number
+} | null = null
 
 const onTitlePointerDown = (e: PointerEvent) => {
 	if (props.minimized) return
@@ -726,22 +950,56 @@ const onTitlePointerDown = (e: PointerEvent) => {
 	dragged.value = true
 }
 
+const onResizePointerDown = (e: PointerEvent, mode: 'right' | 'bottom' | 'corner') => {
+	if (props.minimized) return
+	resizing = {
+		mode,
+		startX: e.clientX,
+		startY: e.clientY,
+		startWidth: getDialogWidth(),
+		startHeight: getDialogHeight(),
+	}
+	;(e.target as HTMLElement)?.setPointerCapture?.(e.pointerId)
+}
+
 const onPointerMove = (e: PointerEvent) => {
-	if (!dragging) return
-	const dx = e.clientX - dragging.px
-	const dy = e.clientY - dragging.py
-	pos.value = { x: dragging.ox + dx, y: dragging.oy + dy }
+	if (dragging) {
+		const dx = e.clientX - dragging.px
+		const dy = e.clientY - dragging.py
+		pos.value = clampDialogPosition({ x: dragging.ox + dx, y: dragging.oy + dy })
+		return
+	}
+	if (!resizing) return
+	const dx = e.clientX - resizing.startX
+	const dy = e.clientY - resizing.startY
+	const nextWidth = resizing.mode === 'bottom'
+		? resizing.startWidth
+		: clamp(resizing.startWidth + dx, MIN_DIALOG_W, Math.min(MAX_DIALOG_W, window.innerWidth - pos.value.x - 8))
+	const nextHeight = resizing.mode === 'right'
+		? resizing.startHeight
+		: clamp(resizing.startHeight + dy, MIN_DIALOG_H, Math.min(MAX_DIALOG_H, window.innerHeight - pos.value.y - 8))
+	dialogSize.value = { width: nextWidth, height: nextHeight }
 }
 
 const onPointerUp = () => {
 	dragging = null
+	if (resizing) persistDialogSize()
+	resizing = null
+}
+
+const onWindowResize = () => {
+	dialogSize.value = { width: getDialogWidth(), height: getDialogHeight() }
+	pos.value = clampDialogPosition(pos.value)
+	persistDialogSize()
 }
 
 window.addEventListener('pointermove', onPointerMove)
 window.addEventListener('pointerup', onPointerUp)
+window.addEventListener('resize', onWindowResize)
 onBeforeUnmount(() => {
 	window.removeEventListener('pointermove', onPointerMove)
 	window.removeEventListener('pointerup', onPointerUp)
+	window.removeEventListener('resize', onWindowResize)
 	stopTyping()
 	aborter?.abort()
 })
@@ -798,8 +1056,11 @@ const sendText = async (text: string) => {
 			conversationId: conversationId.value,
 			content: text,
 			contextPack: buildContextPack(),
-			provider: 'deepseek',
+			provider: activeProvider.value,
+			model: textModelId.value || undefined,
 			responseMode: 'agentToUi-jsonl',
+			promptPreset: 'video_scene_plan_v1',
+			promptInput: buildVideoGuiPromptInput(text),
 			viewport: getViewportContext() ?? undefined,
 			signal: aborter.signal,
 		})) {
@@ -998,6 +1259,30 @@ const sendText = async (text: string) => {
 					if (typeof content === 'string') pushStreamText(assistantId, content)
 					continue
 				}
+				if (m.type === 'agentToUi/videoScenePlan') {
+					taskPhase.value = 'template'
+					receivedAnyText.value = true
+					const payloadAny: any = (m as any).payload
+					const normalizedPlan = normalizeVideoScenePlan(payloadAny?.plan)
+					const summary = typeof payloadAny?.summary === 'string' && payloadAny.summary.trim()
+						? payloadAny.summary.trim()
+						: '已生成一份 VideoScene 场景计划 JSON，可用于后续动画编译。'
+					let scenePlanJson = ''
+					try {
+						scenePlanJson = JSON.stringify(payloadAny?.plan ?? null, null, 2)
+					} catch {
+						scenePlanJson = ''
+					}
+					const idx = messages.value.findIndex((x) => x.id === assistantId)
+					if (idx >= 0) {
+						messages.value[idx].scenePlanJson = scenePlanJson || undefined
+						messages.value[idx].scenePlanData = normalizedPlan ?? undefined
+						messages.value[idx].scenePlanApplyStatus = normalizedPlan ? 'pending' : 'skipped'
+						messages.value[idx].text = (messages.value[idx].text || '') + `\n\n${summary}`
+					}
+					updateScenePlanReadyHint(assistantId)
+					continue
+				}
 				if (m.type === 'agentToUi/error') {
 					taskPhase.value = 'error'
 					stopTyping()
@@ -1088,6 +1373,7 @@ const sendText = async (text: string) => {
 								(messages.value[idx].text || '') +
 								`\n\n已插入舞台节点（intent=${m.payload.intent ?? 'insert'}${finalParentId !== undefined ? `, parentId=${String(finalParentId)}` : ''}${finalLayerId ? `, layerId=${finalLayerId}` : ''}）。`
 						}
+						updateScenePlanReadyHint(assistantId)
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) messages.value[idx].text = `模板插入失败：${err instanceof Error ? err.message : String(err)}`
@@ -1128,7 +1414,8 @@ const sendText = async (text: string) => {
 						'2) 文本节点是否会被裁切：text 节点通常不需要强行写 transform.width/height；如果写了也要足够容纳 textContent（含\\n换行）。\n' +
 							'3) 如果发现问题：优先使用 agentToUi/patchNode 或 agentToUi/deleteNode 按 nodeId 精确修改/删除（避免新建导致错乱）；仅在确实需要新增内容时才用 agentToUi/insertNode 或 agentToUi/componentTemplate(intent="insert")；也可用 agentToUi/applyFilter 做轻量修正；如果无需修改，输出一条 chatMessage 说明“自检通过”。',
 					contextPack: buildContextPack(),
-					provider: 'deepseek',
+						provider: activeProvider.value,
+						model: textModelId.value || undefined,
 					responseMode: 'agentToUi-jsonl',
 					viewport: getViewportContext() ?? undefined,
 					signal: aborter.signal,
@@ -1333,6 +1620,131 @@ const findLayerIdForNodeId = (nodeId: string): string | null => {
 		}
 	}
 	return null
+}
+
+const easingCurveForPreset = (preset?: string) => {
+	switch (String(preset || '').trim().toLowerCase()) {
+		case 'ease-out':
+			return { x1: 0.16, y1: 1, x2: 0.3, y2: 1, preset: 'ease-out' }
+		case 'ease-in-out':
+			return { x1: 0.4, y1: 0, x2: 0.2, y2: 1, preset: 'ease-in-out' }
+		case 'overshoot':
+			return { x1: 0.18, y1: 0.9, x2: 0.2, y2: 1, preset: 'overshoot' }
+		case 'linear':
+		default:
+			return { x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' }
+	}
+}
+
+const layerHasExistingTimelineData = (layerId: string) => {
+	const spans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
+	if (Array.isArray(spans) && spans.length) return true
+	const nodeMap = (TimelineStore.state.nodeKeyframesByLayer as any)?.[layerId]
+	if (nodeMap && Object.keys(nodeMap).length) return true
+	for (const entry of Object.values(TimelineStore.state.stageKeyframesByFrame ?? {})) {
+		const layers = Array.isArray((entry as any)?.layers) ? (entry as any).layers : []
+		if (layers.some((layer: any) => String(layer?.id ?? '') === layerId)) return true
+	}
+	return false
+}
+
+const appendUniqueMessageNote = (m: ChatMessage, note: string) => {
+	const text = String(m.text || '')
+	if (text.includes(note)) return
+	m.text = text.trim() ? `${text}\n\n${note}` : note
+}
+
+const canGenerateScenePlanAnimation = (m: ChatMessage) => {
+	if (m.role !== 'assistant') return false
+	if (!m.scenePlanData) return false
+	const insertedNodeIds = Array.from(new Set((m.stageOps?.insertedNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)))
+	if (!insertedNodeIds.length) return false
+	return m.scenePlanApplyStatus !== 'applied' && m.scenePlanApplyStatus !== 'skipped'
+}
+
+const updateScenePlanReadyHint = (assistantId: string) => {
+	const idx = messages.value.findIndex((x) => x.id === assistantId)
+	if (idx < 0) return
+	const message = messages.value[idx]
+	if (!canGenerateScenePlanAnimation(message)) return
+	appendUniqueMessageNote(message, '场景计划已就绪，点击“生成动画”可在当前静态布局基础上写入关键帧。')
+}
+
+const generateScenePlanAnimations = async (message: ChatMessage) => {
+	if (!message.scenePlanData) return
+	if (message.scenePlanApplyStatus === 'applied' || message.scenePlanApplyStatus === 'skipped') return
+	const insertedNodeIds = Array.from(new Set((message.stageOps?.insertedNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)))
+	if (!insertedNodeIds.length) {
+		message.scenePlanApplyStatus = 'skipped'
+		appendUniqueMessageNote(message, '动画生成失败：未找到本次生成的节点。')
+		return
+	}
+
+	const layerIds = Array.from(new Set(insertedNodeIds.map((id) => findLayerIdForNodeId(id)).filter((id): id is string => !!id)))
+	if (layerIds.length !== 1) {
+		message.scenePlanApplyStatus = 'skipped'
+		appendUniqueMessageNote(message, '动画生成失败：本次生成的节点分布在多个图层，暂不支持一键编译。')
+		return
+	}
+
+	const layerId = layerIds[0]
+	if (layerHasExistingTimelineData(layerId)) {
+		message.scenePlanApplyStatus = 'skipped'
+		appendUniqueMessageNote(message, '动画生成失败：目标图层已有时间轴数据，为避免覆盖现有关键帧，本次仅保留场景计划 JSON。')
+		return
+	}
+
+	const layer = findLayer(store.state, layerId)
+	if (!layer) {
+		message.scenePlanApplyStatus = 'skipped'
+		appendUniqueMessageNote(message, '动画生成失败：找不到目标图层。')
+		return
+	}
+
+	const compiled = compileVideoScenePlan({
+		layer,
+		insertedNodeIds,
+		rootNodeId: insertedNodeIds[0],
+		plan: message.scenePlanData,
+	})
+	if (!compiled || !compiled.appliedPlanCount) {
+		message.scenePlanApplyStatus = 'skipped'
+		appendUniqueMessageNote(message, '动画生成失败：未找到可匹配的动画目标节点。')
+		return
+	}
+
+	for (const item of compiled.keyframes) {
+		await TimelineStore.dispatch('addKeyframeRange', { layerId, startFrame: item.frame, endFrame: item.frame })
+		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
+			startFrame: item.frame,
+			endFrame: item.frame,
+			layers: [item.layerSnapshot],
+		})
+	}
+	for (const seg of compiled.easingSegments) {
+		await TimelineStore.dispatch('enableEasingSegment', { layerId, startFrame: seg.startFrame, endFrame: seg.endFrame })
+		await TimelineStore.dispatch('setEasingCurve', {
+			segmentKey: `${layerId}:${seg.startFrame}:${seg.endFrame}`,
+			curve: easingCurveForPreset(seg.easingPreset),
+		})
+	}
+
+	await store.dispatch('setActiveLayer', { layerId })
+	await store.dispatch('setSelectedNodes', { nodeIds: compiled.appliedTargetNodeIds })
+	await TimelineStore.dispatch('jumpToFrameCentered', { frameIndex: compiled.firstFrame })
+	applyTimelineAnimationAtFrame(TimelineStore.state.currentFrame)
+
+	message.scenePlanApplyStatus = 'applied'
+	message.hasStageResult = true
+	appendUniqueMessageNote(
+		message,
+		`已生成预设动画：${compiled.appliedPlanCount} 条计划，作用于 ${compiled.appliedTargetNodeIds.length} 个节点。`
+	)
+}
+
+const onClickGenerateAnimation = async (m: ChatMessage) => {
+	if (sending.value) return
+	await generateScenePlanAnimations(m)
 }
 
 const ensureTemplateTextParams = (template: any) => {
@@ -1542,6 +1954,17 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 	}
 }
 
+const copyScenePlanJson = async (m: ChatMessage) => {
+	const text = String(m.scenePlanJson || '').trim()
+	if (!text) return
+	try {
+		await navigator.clipboard.writeText(text)
+		m.text = (m.text || '') + '\n\n场景计划 JSON 已复制到剪贴板。'
+	} catch {
+		m.text = (m.text || '') + '\n\n场景计划 JSON 复制失败，请检查浏览器剪贴板权限。'
+	}
+}
+
 const send = async () => {
 	if (sending.value) return
 	const text = draft.value.trim()
@@ -1583,8 +2006,8 @@ const isRunning = (m: ChatMessage) => {
   position: fixed;
   left: 12px;
   top: 12px;
-  width: 360px;
-  height: 420px;
+  min-width: 460px;
+  min-height: 420px;
   border: 1px solid var(--vscode-border);
   border-radius: 0;
   background: var(--dweb-defualt);
@@ -1596,6 +2019,35 @@ const isRunning = (m: ChatMessage) => {
   opacity: 1;
   transform: translate(0, 0) scale(1);
   transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.ai-chat__resize {
+  position: absolute;
+  z-index: 2;
+}
+
+.ai-chat__resize--right {
+  top: 36px;
+  right: -2px;
+  width: 8px;
+  height: calc(100% - 36px);
+  cursor: ew-resize;
+}
+
+.ai-chat__resize--bottom {
+  left: 0;
+  bottom: -2px;
+  width: 100%;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.ai-chat__resize--corner {
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
 }
 
 .ai-chat.entering {
@@ -1653,6 +2105,47 @@ const isRunning = (m: ChatMessage) => {
   border-color: var(--vscode-border-accent);
 }
 
+.ai-chat__controls {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--vscode-border);
+  background: color-mix(in srgb, var(--dweb-defualt-dark) 72%, transparent);
+}
+
+.ai-chat__control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 0 106px;
+}
+
+.ai-chat__control--grow {
+  flex: 1 1 auto;
+}
+
+.ai-chat__control-label {
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+}
+
+.ai-chat__select {
+  width: 100%;
+  height: 28px;
+  border-radius: 0;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.ai-chat__select:focus {
+  outline: none;
+  border-color: var(--vscode-border-accent);
+}
+
 .ai-chat__list {
   flex: 1;
   min-height: 0;
@@ -1676,7 +2169,7 @@ const isRunning = (m: ChatMessage) => {
 }
 
 .ai-chat__bubble {
-  max-width: 90%;
+  max-width: 96%;
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt-dark);
   border-radius: 0;
@@ -1759,17 +2252,19 @@ const isRunning = (m: ChatMessage) => {
   margin-top: 8px;
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .ai-chat__action-btn {
-  height: 24px;
-  padding: 0 10px;
+  min-height: 24px;
+  padding: 4px 10px;
   border-radius: 0;
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt);
   color: var(--vscode-fg);
   cursor: pointer;
   font-size: 12px;
+  white-space: normal;
 }
 
 .ai-chat__action-btn:hover {

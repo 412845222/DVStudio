@@ -1,0 +1,133 @@
+import type { BlueprintAssetKind, BlueprintProjectService } from '../../../network/BlueprintProjectService'
+
+type PersistedAssetReference = {
+	url: string
+	absolutePath: string
+	projectRelativePath?: string
+}
+
+type ImportAssetIntoProjectScopePayload = {
+	kind: BlueprintAssetKind
+	name: string
+	projectId: number
+	sourcePath?: string
+	sourceUrl?: string
+	bucket?: 'assets' | 'thumbnails'
+}
+
+type UseAIWorkflowAssetPersistenceOptions = {
+	blueprintProjectService: Pick<BlueprintProjectService, 'uploadAsset'>
+	getCurrentProjectId: () => number | null | undefined
+	resolveBackendUrl: (value: string) => string
+	fileFromUrl: (url: string, fileNameBase: string) => Promise<File>
+	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<any>
+}
+
+export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersistenceOptions) => {
+	const localUrlUploadedAssetCache = new Map<string, PersistedAssetReference>()
+
+	const uploadLocalResourceAndGetUrl = async (
+		localUrl: string,
+		kind: BlueprintAssetKind,
+		resourceName: string,
+		opts?: { projectId?: number | null },
+	): Promise<PersistedAssetReference> => {
+		const currentProjectId = Number(opts?.projectId ?? options.getCurrentProjectId() ?? 0)
+		const projectId = Number.isFinite(currentProjectId) && currentProjectId > 0 ? currentProjectId : 0
+		const cacheKey = `${projectId}|${localUrl}`
+		const cached = localUrlUploadedAssetCache.get(cacheKey)
+		if (cached) return cached
+
+		const file = await options.fileFromUrl(
+			localUrl,
+			String(resourceName || kind || 'resource').replace(/\.[^.]+$/, ''),
+		)
+		const uploaded = await options.blueprintProjectService.uploadAsset(
+			file,
+			kind,
+			projectId > 0 ? { projectId } : undefined,
+		)
+		if (!uploaded.ok) {
+			throw new Error(String((uploaded as any).error || 'upload failed'))
+		}
+		const asset = (uploaded as any).asset ?? {}
+		const next = {
+			url: options.resolveBackendUrl(String(asset.url || '')),
+			absolutePath: String(asset.absolutePath || ''),
+			projectRelativePath: String(asset.projectRelativePath || asset.relativePath || '').trim() || undefined,
+		}
+		if (!next.url) throw new Error('empty uploaded asset url')
+		localUrlUploadedAssetCache.set(cacheKey, next)
+		return next
+	}
+
+	const persistExternalAssetToProject = async (payload: {
+		kind: BlueprintAssetKind
+		name: string
+		sourceUrl?: string
+		sourcePath?: string
+	}) => {
+		const currentProjectId = Number(options.getCurrentProjectId() ?? 0)
+		const projectId = Number.isFinite(currentProjectId) && currentProjectId > 0 ? currentProjectId : 0
+		let sourceUrl = String(payload.sourceUrl ?? '').trim()
+		let sourcePath = String(payload.sourcePath ?? '').trim()
+		if (sourceUrl) {
+			sourceUrl = options.resolveBackendUrl(sourceUrl)
+		}
+		if (!sourceUrl && /^https?:\/\//i.test(sourcePath)) {
+			sourceUrl = sourcePath
+			sourcePath = ''
+		}
+		if (sourcePath && !/^[a-zA-Z]:[\\/]/.test(sourcePath) && !sourcePath.startsWith('/')) {
+			sourcePath = ''
+		}
+		if (!sourceUrl && !sourcePath) return null
+
+		if (sourceUrl && (sourceUrl.startsWith('blob:') || sourceUrl.startsWith('data:'))) {
+			const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, payload.name, { projectId })
+			return {
+				url: uploaded.url,
+				absolutePath: uploaded.absolutePath,
+				projectRelativePath: uploaded.projectRelativePath,
+			}
+		}
+
+		if (projectId > 0) {
+			const imported = await options.importAssetIntoProjectScope({
+				kind: payload.kind,
+				name: payload.name,
+				projectId,
+				sourcePath: sourcePath || undefined,
+				sourceUrl: sourceUrl || undefined,
+				bucket: 'assets',
+			})
+			if (imported) {
+				return {
+					url: options.resolveBackendUrl(String((imported as any).url || '')),
+					absolutePath: String((imported as any).sourcePath || (imported as any).absolutePath || '').trim(),
+					projectRelativePath: String((imported as any).projectRelativePath || (imported as any).relativePath || '').trim() || undefined,
+				}
+			}
+		}
+
+		if (sourceUrl) {
+			try {
+				const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, payload.name, { projectId })
+				return {
+					url: uploaded.url,
+					absolutePath: uploaded.absolutePath || sourcePath,
+					projectRelativePath: uploaded.projectRelativePath,
+				}
+			} catch {
+				// Keep original sourceUrl below if fetch/import fails.
+			}
+		}
+
+		return sourceUrl ? { url: sourceUrl, absolutePath: sourcePath, projectRelativePath: undefined } : null
+	}
+
+	return {
+		uploadLocalResourceAndGetUrl,
+		persistExternalAssetToProject,
+	}
+}

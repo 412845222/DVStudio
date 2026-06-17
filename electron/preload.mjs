@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', BACKEND_BASE_URL)
 const CLIENT_SETTINGS = await invoke('dweb:settings:get')
 contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', CLIENT_SETTINGS?.ok ? CLIENT_SETTINGS.data : null)
 
+contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO', process.env.DWEB_AIWF_AUTO_HELLO || '')
+contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO_TEXT', process.env.DWEB_AIWF_AUTO_HELLO_TEXT || '')
+
 // 运行环境标记：用于区分 Web 部署 vs Electron 客户端
 contextBridge.exposeInMainWorld('__DWEB_RUNTIME__', {
 	platform: 'electron',
@@ -80,6 +83,7 @@ contextBridge.exposeInMainWorld('dweb', {
 	aiworkflow: {
 		pingBackend: () => invoke('dweb:backend:ping'),
 		selectMediaFiles: (options) => invoke('dweb:aiworkflow:selectMediaFiles', options),
+		selectProjectFolder: () => invoke('dweb:aiworkflow:selectProjectFolder'),
 	},
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),

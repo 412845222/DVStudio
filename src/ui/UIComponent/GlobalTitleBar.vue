@@ -8,6 +8,20 @@
     <div class="backend-status-wrap" title="后端状态">
       <span class="backend-status-dot" :class="backendStatusClass" aria-hidden="true" />
       <span class="backend-status-text">{{ backendStatusText }}</span>
+      <div
+        class="setup-progress-chip"
+        :class="{ running: setupRunning }"
+        :title="setupProgressTitle"
+        role="progressbar"
+        :aria-valuenow="setupPercent"
+        aria-valuemin="0"
+        aria-valuemax="100"
+      >
+        <span class="setup-progress-label">环境 {{ setupPercent }}%</span>
+        <span class="setup-progress-track" aria-hidden="true">
+          <span class="setup-progress-fill" :style="{ width: setupPercent + '%' }" />
+        </span>
+      </div>
       <button class="titlebar-btn status-jump" type="button" @click="goWelcome">环境检查</button>
     </div>
 
@@ -28,7 +42,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getBackendRuntimeState, onBackendRuntimeStateChanged } from '../../electronBridge'
+import { getBackendRuntimeState, getSetupState, onBackendRuntimeStateChanged } from '../../electronBridge'
 
 const w = window as any
 const router = useRouter()
@@ -43,7 +57,62 @@ const backendRuntime = ref<{
   updatedAt: number
 } | null>(null)
 
+const setupState = ref<{
+  running: boolean
+  updatedAt: number
+  steps: Array<{ key: string; label: string; status: string; detail?: string; progress?: number }>
+} | null>(null)
+
 let offRuntimeListener: (() => void) | null = null
+let setupPollTimer: number | null = null
+
+const setupPercent = computed(() => {
+  const steps = Array.isArray(setupState.value?.steps) ? setupState.value!.steps : []
+  if (!steps.length) return 0
+  let sum = 0
+  for (const step of steps) {
+    const status = String(step?.status || '').trim().toLowerCase()
+    if (status === 'ok') {
+      sum += 1
+      continue
+    }
+    if (status === 'running') {
+      const pRaw = Number(step?.progress ?? 0)
+      const p = Number.isFinite(pRaw) ? Math.max(0, Math.min(100, pRaw)) : 0
+      sum += p / 100
+      continue
+    }
+    if (status === 'failed') {
+      sum += 0
+      continue
+    }
+    const pRaw = Number(step?.progress ?? 0)
+    const p = Number.isFinite(pRaw) ? Math.max(0, Math.min(100, pRaw)) : 0
+    sum += p / 100
+  }
+  return Math.max(0, Math.min(100, Math.round((sum / steps.length) * 100)))
+})
+
+const setupRunning = computed(() => Boolean(setupState.value?.running))
+
+const setupProgressTitle = computed(() => {
+  const steps = Array.isArray(setupState.value?.steps) ? setupState.value!.steps : []
+  const running = steps.find((step) => String(step?.status || '').trim().toLowerCase() === 'running')
+  if (running) {
+    const detail = String(running.detail || '').trim()
+    return detail ? `${running.label}：${detail}` : running.label
+  }
+  return setupRunning.value ? '环境流程执行中' : '环境流程待机'
+})
+
+const refreshSetupState = async () => {
+  try {
+    const st = await getSetupState()
+    if (st) setupState.value = st as any
+  } catch {
+    // ignore
+  }
+}
 
 const backendStatusClass = computed(() => {
   const st = backendRuntime.value
@@ -63,14 +132,22 @@ const backendStatusText = computed(() => {
 onMounted(async () => {
   const st = await getBackendRuntimeState()
   if (st) backendRuntime.value = st as any
+  await refreshSetupState()
   offRuntimeListener = onBackendRuntimeStateChanged((next) => {
     backendRuntime.value = next as any
   })
+  setupPollTimer = window.setInterval(() => {
+    void refreshSetupState()
+  }, 1000)
 })
 
 onBeforeUnmount(() => {
   offRuntimeListener?.()
   offRuntimeListener = null
+  if (setupPollTimer != null) {
+    window.clearInterval(setupPollTimer)
+    setupPollTimer = null
+  }
 })
 
 async function onMinimize() {
@@ -177,6 +254,43 @@ function goWelcome() {
   font-size: 12px;
   color: var(--vscode-fg-muted);
   white-space: nowrap;
+}
+
+.setup-progress-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 128px;
+  max-width: 180px;
+  padding: 2px 6px;
+  border: 1px solid var(--vscode-border);
+  background: color-mix(in srgb, var(--dweb-defualt) 72%, transparent);
+}
+
+.setup-progress-chip.running {
+  border-color: color-mix(in srgb, var(--vscode-success) 56%, var(--vscode-border));
+}
+
+.setup-progress-label {
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+  white-space: nowrap;
+}
+
+.setup-progress-track {
+  position: relative;
+  width: 64px;
+  height: 6px;
+  background: color-mix(in srgb, var(--vscode-fg-muted) 18%, transparent);
+  overflow: hidden;
+}
+
+.setup-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--vscode-success) 82%, #6fd1a0), var(--vscode-success));
 }
 
 .global-title-bar-logo {

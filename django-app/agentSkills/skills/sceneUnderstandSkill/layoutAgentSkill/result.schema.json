@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "sceneSummary": { "type": "string" },
+    "sceneType": { "type": "string" },
+    "keyElements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "role": { "type": "string" },
+          "fixed": { "type": "boolean" },
+          "mountType": { "type": "string" },
+          "priority": { "type": "number" },
+          "relationTags": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["id", "type"],
+        "additionalProperties": true
+      }
+    },
+    "roomShell": {
+      "type": "object",
+      "properties": {
+        "centerX": { "type": "number" },
+        "centerZ": { "type": "number" },
+        "width": { "type": "number" },
+        "depth": { "type": "number" },
+        "height": { "type": "number" },
+        "wallThickness": { "type": "number" },
+        "hasFloor": { "type": "boolean" },
+        "hasCeiling": { "type": "boolean" },
+        "detectedWalls": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "confidence": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "analysisPriority": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "camera": {
+      "type": "object",
+      "properties": {
+        "view": {
+          "type": ["string", "array"],
+          "items": { "type": "string" }
+        },
+        "openWallRole": { "type": "string" },
+        "fovEstimate": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "sourceImageIndex": { "type": "integer", "minimum": 1 },
+          "observedImageIndices": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1 },
+            "minItems": 1
+          },
+          "isKeyElement": { "type": "boolean" },
+          "keyElementType": { "type": "string" },
+          "fixedInRoom": { "type": "boolean" },
+          "semanticRole": { "type": "string" },
+          "mountType": { "type": "string" },
+          "shouldTouchGround": { "type": "boolean" },
+          "groundReason": { "type": "string" },
+          "relationTags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "layoutPriority": { "type": "number" },
+          "name": { "type": "string" },
+          "category": { "type": "string" },
+          "subCategory": { "type": "string" },
+          "material": { "type": "string" },
+          "surfaceType": { "type": "string" },
+          "wallRole": { "type": "string" },
+          "sameTypeGroupId": { "type": "string" },
+          "sameTypeGroupLabel": { "type": "string" },
+          "sameTypeReason": { "type": "string" },
+          "parentId": { "type": "string" },
+          "placement": { "type": "string" },
+          "supportSurface": { "type": "string" },
+          "anchor": { "type": "string" },
+          "proximityGroupId": { "type": "string" },
+          "relationReason": { "type": "string" },
+          "inferred": { "type": "boolean" },
+          "position": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            },
+            "required": ["x", "y", "z"],
+            "additionalProperties": true
+          },
+          "rotation": {
+            "type": "object",
+            "properties": {
+              "yaw": { "type": "number" },
+              "pitch": { "type": "number" },
+              "roll": { "type": "number" }
+            },
+            "additionalProperties": true
+          },
+          "scale": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            },
+            "additionalProperties": true
+          },
+          "size": {
+            "type": "object",
+            "properties": {
+              "width": { "type": "number" },
+              "height": { "type": "number" },
+              "depth": { "type": "number" }
+            },
+            "required": ["width", "height", "depth"],
+            "additionalProperties": true
+          },
+          "imageRect": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number", "minimum": 0, "maximum": 1 },
+              "y": { "type": "number", "minimum": 0, "maximum": 1 },
+              "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+              "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+            },
+            "required": ["x", "y", "width", "height"],
+            "additionalProperties": true
+          },
+          "imageRectPixels": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "integer" },
+              "y": { "type": "integer" },
+              "width": { "type": "integer" },
+              "height": { "type": "integer" },
+              "imageWidth": { "type": "integer" },
+              "imageHeight": { "type": "integer" }
+            },
+            "additionalProperties": true
+          },
+          "description": { "type": "string" }
+        },
+        "required": [
+          "id",
+          "name",
+          "position",
+          "size",
+          "sourceImageIndex",
+          "observedImageIndices",
+          "imageRect"
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": ["sceneSummary", "objects"],
+  "additionalProperties": true
+}

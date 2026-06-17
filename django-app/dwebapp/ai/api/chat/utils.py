@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from django.http import StreamingHttpResponse
 
-from ...credentials_store import get_deepseek_cfg
+from ...credentials_store import get_bytedance_text_cfg, get_deepseek_cfg
 
 
 def _iso_now() -> str:
@@ -25,13 +25,17 @@ def _deepseek_cfg() -> Dict[str, str]:
     return get_deepseek_cfg()
 
 
-def _agent_to_ui_text(delta: str, *, source_model: Optional[str] = None) -> Dict[str, Any]:
+def _bytedance_text_cfg() -> Dict[str, str]:
+    return get_bytedance_text_cfg()
+
+
+def _agent_to_ui_text(delta: str, *, source_model: Optional[str] = None, source_name: str = "deepseek") -> Dict[str, Any]:
     return {
         "schemaVersion": 1,
         "type": "agentToUi/text",
         "id": str(uuid.uuid4()),
         "createdAt": _iso_now(),
-        "source": {"agentName": "deepseek", "model": source_model} if source_model else {"agentName": "deepseek"},
+        "source": {"agentName": source_name, "model": source_model} if source_model else {"agentName": source_name},
         "payload": {"text": delta},
     }
 
@@ -50,7 +54,7 @@ def _agent_to_ui_error(code: str, message: str, *, details: Optional[Dict[str, A
     return out
 
 
-def _agent_to_ui_task_status(phase: str, *, message: Optional[str] = None) -> Dict[str, Any]:
+def _agent_to_ui_task_status(phase: str, *, message: Optional[str] = None, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "schemaVersion": 1,
         "type": "agentToUi/taskStatus",
@@ -61,16 +65,18 @@ def _agent_to_ui_task_status(phase: str, *, message: Optional[str] = None) -> Di
     }
     if message:
         out["payload"]["message"] = message
+    if details is not None:
+        out["payload"]["details"] = details
     return out
 
 
-def _agent_to_ui_chat_message(content: str, *, source_model: Optional[str] = None) -> Dict[str, Any]:
+def _agent_to_ui_chat_message(content: str, *, source_model: Optional[str] = None, source_name: str = "deepseek") -> Dict[str, Any]:
     return {
         "schemaVersion": 1,
         "type": "agentToUi/chatMessage",
         "id": str(uuid.uuid4()),
         "createdAt": _iso_now(),
-        "source": {"agentName": "deepseek", "model": source_model} if source_model else {"agentName": "deepseek"},
+        "source": {"agentName": source_name, "model": source_model} if source_model else {"agentName": source_name},
         "payload": {"content": content},
     }
 
@@ -102,7 +108,9 @@ def _is_agent_to_ui_envelope(v: Any) -> bool:
     return True
 
 
-def _wrap_short_agent_to_ui(obj: Dict[str, Any], *, source_model: Optional[str] = None) -> Dict[str, Any]:
+def _wrap_short_agent_to_ui(
+    obj: Dict[str, Any], *, source_model: Optional[str] = None, source_name: str = "deepseek"
+) -> Dict[str, Any]:
     """Accept short-form {type, payload, ...} and wrap into a full AgentToUI envelope."""
 
     payload_any: Any = obj.get("payload")
@@ -120,7 +128,7 @@ def _wrap_short_agent_to_ui(obj: Dict[str, Any], *, source_model: Optional[str] 
         "createdAt": _iso_now(),
         "payload": obj.get("payload"),
     }
-    out["source"] = {"agentName": "deepseek", "model": source_model} if source_model else {"agentName": "deepseek"}
+    out["source"] = {"agentName": source_name, "model": source_model} if source_model else {"agentName": source_name}
     meta = obj.get("meta")
     if isinstance(meta, dict):
         out["meta"] = meta
@@ -134,7 +142,7 @@ def _openai_stream_chat(
     model: str,
     messages: List[Dict[str, str]],
     response_format: Optional[Dict[str, Any]] = None,
-    timeout_s: int = 60,
+    timeout_s: Optional[float] = 60,
 ) -> Iterable[str]:
     """Yield delta text from an OpenAI-compatible streaming endpoint."""
 
@@ -156,7 +164,11 @@ def _openai_stream_chat(
         },
     )
 
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+    open_kwargs: Dict[str, Any] = {}
+    if timeout_s is not None and float(timeout_s) > 0:
+        open_kwargs["timeout"] = float(timeout_s)
+
+    with urllib.request.urlopen(req, **open_kwargs) as resp:
         for raw in resp:
             try:
                 line = raw.decode("utf-8", errors="ignore").strip()
@@ -193,7 +205,7 @@ def _openai_chat(
     model: str,
     messages: List[Dict[str, str]],
     response_format: Optional[Dict[str, Any]] = None,
-    timeout_s: int = 60,
+    timeout_s: Optional[float] = 60,
 ) -> str:
     import urllib.request
 
@@ -213,7 +225,11 @@ def _openai_chat(
         },
     )
 
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+    open_kwargs: Dict[str, Any] = {}
+    if timeout_s is not None and float(timeout_s) > 0:
+        open_kwargs["timeout"] = float(timeout_s)
+
+    with urllib.request.urlopen(req, **open_kwargs) as resp:
         data = resp.read().decode("utf-8", errors="ignore")
     obj = json.loads(data)
     choices = obj.get("choices") or []

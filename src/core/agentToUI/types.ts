@@ -24,6 +24,23 @@ export type AgentToUiChatMessagePayload = {
 	content: string
 }
 
+export type AgentToUiVideoScenePlanPayload = {
+	/**
+	 * VideoScene GUI/动画计划 JSON。
+	 * 第一阶段只要求是可序列化对象，具体 schema 由前后端后续逐步收敛。
+	 */
+	plan: unknown
+	/**
+	 * 给用户可读的简短说明。
+	 */
+	summary?: string
+	/**
+	 * preview: 仅供检查/确认
+	 * insert: 后续可用于直接编译落地到舞台
+	 */
+	intent?: 'preview' | 'insert'
+}
+
 export type AgentToUiErrorPayload = {
 	code: string
 	message: string
@@ -57,15 +74,32 @@ export type AgentToUiComponentTemplatePayload = {
 	params?: Record<string, unknown>
 }
 
-export type AgentToUiTaskStatusPhase = 'started' | 'streaming' | 'writing' | 'template' | 'done' | 'canceled' | 'error'
+export type AgentToUiTaskStatusPhase =
+	| 'started'
+	| 'prepare_input'
+	| 'connect'
+	| 'submit'
+	| 'streaming'
+	| 'writing'
+	| 'parse'
+	| 'rewrite'
+	| 'template'
+	| 'done'
+	| 'canceled'
+	| 'error'
 
 export type AgentToUiTaskStatusPayload = {
 	phase: AgentToUiTaskStatusPhase
 	message?: string
+	details?: Record<string, unknown>
 }
 
 export type AgentToUiTextMessage = AgentToUiEnvelope<'agentToUi/text', AgentToUiTextPayload>
 export type AgentToUiChatMessage = AgentToUiEnvelope<'agentToUi/chatMessage', AgentToUiChatMessagePayload>
+export type AgentToUiVideoScenePlanMessage = AgentToUiEnvelope<
+	'agentToUi/videoScenePlan',
+	AgentToUiVideoScenePlanPayload
+>
 export type AgentToUiErrorMessage = AgentToUiEnvelope<'agentToUi/error', AgentToUiErrorPayload>
 export type AgentToUiComponentTemplateMessage = AgentToUiEnvelope<
 	'agentToUi/componentTemplate',
@@ -155,6 +189,7 @@ export type AgentToUiDeleteNodeMessage = AgentToUiEnvelope<'agentToUi/deleteNode
 export type AgentToUiMessage =
 	| AgentToUiTextMessage
 	| AgentToUiChatMessage
+	| AgentToUiVideoScenePlanMessage
 	| AgentToUiErrorMessage
 	| AgentToUiComponentTemplateMessage
 	| AgentToUiTaskStatusMessage

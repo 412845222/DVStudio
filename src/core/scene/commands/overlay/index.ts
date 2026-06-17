@@ -1,4 +1,4 @@
-import { lineControlPointsWorld, rotatedRectCorners } from '../../geometry'
+import { lineControlPointsWorld, normalizeLineLocalPoints, rotatedRectCorners, scaleLineLocalPoints } from '../../geometry'
 import type { VideoSceneNodeProps } from '../../types'
 import type { NodeOverlayGeometry } from './types'
 
@@ -45,18 +45,12 @@ export const buildNodeOverlayGeometry = (args: {
 	const sizeText = `${Math.round(w)}×${Math.round(h)}`
 
 	if (args.userType === 'line') {
-		const p = args.props ?? {}
-		// props are stored in *unscaled local* units; apply scaleX/scaleY here to match rendering.
-		const startX = Number(p.startX ?? -w0 / 2) * sx
-		const startY = Number(p.startY ?? 0) * sy
-		const endX = Number(p.endX ?? w0 / 2) * sx
-		const endY = Number(p.endY ?? 0) * sy
-		const anchorX = Number(p.anchorX ?? 0) * sx
-		const anchorY = Number(p.anchorY ?? -h0 / 4) * sy
+		const p = normalizeLineLocalPoints({ props: args.props as any, width: w0, height: h0 })
+		const scaled = scaleLineLocalPoints(p, sx, sy)
 		const linePoints = lineControlPointsWorld(
 			center,
 			rotation,
-			{ startX, startY, endX, endY, anchorX, anchorY }
+			scaled
 		)
 		return { corners, sizeText, linePoints }
 	}

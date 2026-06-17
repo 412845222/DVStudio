@@ -1,6 +1,12 @@
 {
   "schemaVersion": 1,
   "platform": {
+    "darwin": {
+      "installer": {
+        "entry": "bootstrap/mac/install.sh",
+        "notes": "Checks Python and ffmpeg availability and prints install hints for Homebrew."
+      }
+    },
     "win32": {
       "installer": {
         "entry": "bootstrap/windows/install.cmd",

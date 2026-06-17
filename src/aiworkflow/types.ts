@@ -10,7 +10,10 @@ export type WorkflowAnchorSpec = {
 	id: string
 	label?: string
 	offsetY?: number
-	mediaType?: 'generic' | 'image' | 'video' | 'text' | 'flow'
+	mediaType?: 'generic' | 'image' | 'video' | 'text' | 'flow' | 'model3d' | 'audio' | 'meta'
+	legacyKind?: 'generic' | 'resource' | 'flow'
+	acceptedMediaTypes?: Array<'image' | 'video' | 'text' | 'model3d' | 'audio'>
+	multiInput?: boolean
 }
 
 export type WorkflowStoryBranch = {
@@ -26,6 +29,13 @@ export type WorkflowStoryNodeSettings = {
 
 export type WorkflowImageCrop = {
 	/** normalized in [0..1] in source image space (origin: top-left) */
+	x: number
+	y: number
+	width: number
+	height: number
+}
+
+export type WorkflowPixelRect = {
 	x: number
 	y: number
 	width: number
@@ -52,6 +62,414 @@ export type WorkflowVideoNodeSettings = {
 	/** source video natural size in pixels */
 	naturalWidth?: number
 	naturalHeight?: number
+}
+
+export type WorkflowSceneUnderstandModelOption = {
+	id: string
+	label: string
+	supportsVision?: boolean
+	supportsStructuredOutput?: boolean
+	recommended?: boolean
+	vendor?: string
+}
+
+export type WorkflowSceneUnderstandingNodeSettings = {
+	mode?: 'scene-layout' | 'scene-lighting'
+	selectedModel?: string
+	availableModels?: WorkflowSceneUnderstandModelOption[]
+	status?: 'idle' | 'loading-models' | 'running' | 'completed' | 'error' | 'canceled'
+	message?: string
+	statusText?: string
+	progress?: number
+	provider?: string
+	providerStatusText?: string
+	remoteStatusCode?: number
+	outputJson?: string
+	rawOutput?: string
+	resultSummary?: string
+	lastRunAt?: number
+	lastInputImageUrl?: string
+	lastInputImageUrls?: string[]
+	lastInputPrompt?: string
+	lastInputLayoutJson?: string
+	rewriteUsed?: boolean
+	rewriteAttempts?: number
+	mock?: boolean
+}
+
+export type WorkflowSceneLightConfig = {
+	id: string
+	name?: string
+	type: 'ambient' | 'hemisphere' | 'directional' | 'point' | 'spot' | 'rect-area'
+	role?: string
+	anchorObjectId?: string
+	color?: string
+	groundColor?: string
+	intensity?: number
+	distance?: number
+	decay?: number
+	angle?: number
+	penumbra?: number
+	width?: number
+	height?: number
+	castShadow?: boolean
+	position?: { x?: number; y?: number; z?: number }
+	target?: { x?: number; y?: number; z?: number }
+	direction?: { x?: number; y?: number; z?: number }
+	rotation?: { x?: number; y?: number; z?: number }
+	reason?: string
+}
+
+export type WorkflowSceneLightingPreviewConfig = {
+	sceneSummary?: string
+	lightingStyle?: string
+	atmosphere?: {
+		preset?: string
+		brightness?: string
+		contrast?: string
+		warmth?: string
+		intensityScale?: number
+		notes?: string
+	}
+	globalSettings?: {
+		exposure?: number
+		environmentIntensity?: number
+		intensityScale?: number
+		notes?: string
+	}
+	ambientLight?: {
+		color?: string
+		intensity?: number
+	}
+	hemisphereLight?: {
+		skyColor?: string
+		groundColor?: string
+		intensity?: number
+	}
+	mainDirectionalLight?: {
+		color?: string
+		intensity?: number
+		position?: { x?: number; y?: number; z?: number }
+		target?: { x?: number; y?: number; z?: number }
+	}
+	lights?: WorkflowSceneLightConfig[]
+}
+
+export type WorkflowSceneLayoutLightingControls = {
+	masterIntensity?: number
+	exposure?: number
+	ambient?: number
+	hemisphere?: number
+	directional?: number
+	point?: number
+	spot?: number
+	rectArea?: number
+}
+
+export type WorkflowSceneLayoutMaterialOverride = {
+	materialSlotName?: string
+	materialAssetPath?: string
+	enabled?: boolean
+	source?: string
+}
+
+export type WorkflowSceneLayoutItem = {
+	id: string
+	name?: string
+	previewScaleMode?: 'placeholder' | 'model'
+	orientationFix?: WorkflowSceneLayoutOrientationFix
+	materialOverrides?: WorkflowSceneLayoutMaterialOverride[]
+	fillMode?: 'single' | 'fill-x' | 'fill-y' | 'fill-z'
+	fillCount?: number
+	fillAxisScale?: number
+	fillUpdatedAt?: number
+	fitMode?: 'normal' | 'oriented' | 'filled' | 'forced'
+	fitMessage?: string
+	fitUpdatedAt?: number
+	description?: string
+	category?: string
+	subCategory?: string
+	material?: string
+	surfaceType?: string
+	color?: string
+	sameTypeGroupId?: string
+	sameTypeGroupLabel?: string
+	isKeyElement?: boolean
+	keyElementType?: string
+	fixedInRoom?: boolean
+	semanticRole?: string
+	mountType?: string
+	shouldTouchGround?: boolean
+	groundReason?: string
+	relationTags?: string[]
+	layoutPriority?: number
+	parentId?: string
+	placement?: string
+	supportSurface?: string
+	anchor?: string
+	wallRole?: string
+	proximityGroupId?: string
+	relationReason?: string
+	inferred?: boolean
+	sourceImageIndex?: number
+	observedImageIndices?: number[]
+	imageRect?: WorkflowImageCrop
+	imageRectPixels?: WorkflowPixelRect
+	position: { x: number; y: number; z: number }
+	size: { width: number; height: number; depth: number }
+	rotation?: { yaw?: number; pitch?: number; roll?: number }
+	scale?: { x?: number; y?: number; z?: number }
+}
+
+export type WorkflowSceneLayoutOrientationFix = {
+	mode?: 'auto' | 'manual'
+	yaw?: number
+	pitch?: number
+	roll?: number
+	confidence?: 'low' | 'high'
+	updatedAt?: number
+}
+
+export type WorkflowSceneLayoutNodeSettings = {
+	status?: 'idle' | 'running' | 'completed' | 'error'
+	message?: string
+	inputJson?: string
+	lastRunAt?: number
+	previewMode?: boolean
+	lightingPreviewEnabled?: boolean
+	lightingDebugEnabled?: boolean
+	lightingControls?: WorkflowSceneLayoutLightingControls
+	hidePlaceholderCubes?: boolean
+	selectedLayoutItemId?: string
+	selectedPlaceholderOutput?: string
+	layoutItems?: WorkflowSceneLayoutItem[]
+	manualModelBindings?: WorkflowSceneLayoutManualModelBinding[]
+	camera?: {
+		position?: { x: number; y: number; z: number }
+		target?: { x: number; y: number; z: number }
+	}
+}
+
+export type WorkflowResolvedVector3 = {
+	x: number
+	y: number
+	z: number
+}
+
+export type WorkflowResolvedRotation = {
+	yaw: number
+	pitch: number
+	roll: number
+}
+
+export type WorkflowResolvedQuaternion = {
+	x: number
+	y: number
+	z: number
+	w: number
+}
+
+export type WorkflowResolvedBounds = {
+	min: WorkflowResolvedVector3
+	max: WorkflowResolvedVector3
+	center: WorkflowResolvedVector3
+	size: WorkflowResolvedVector3
+}
+
+export type WorkflowResolvedTransform = {
+	position: WorkflowResolvedVector3
+	rotation: WorkflowResolvedRotation
+	quaternion?: WorkflowResolvedQuaternion
+	scale: WorkflowResolvedVector3
+}
+
+export type WorkflowResolvedReferenceAnchor = 'center' | 'base' | 'top' | 'surface' | 'unknown'
+
+export type WorkflowUnrealResolvedSurfaceSemantics = {
+	category: 'floor' | 'wall' | 'ceiling' | 'object' | 'unknown'
+	placement?: string
+	supportSurface?: string
+	mountType?: string
+	wallRole?: string
+	anchor?: string
+	semanticRole?: string
+}
+
+export type WorkflowUnrealResolvedParentReference = {
+	mode: 'root' | 'parent-slot'
+	targetObjectId?: string
+	targetSlotId?: string
+	parentAnchor?: WorkflowResolvedReferenceAnchor
+	childAnchor?: WorkflowResolvedReferenceAnchor
+	relativeTransform?: WorkflowResolvedTransform | null
+}
+
+export type WorkflowUnrealResolvedConstraintDiagnostics = {
+	exportMode: 'root-relative' | 'parent-relative'
+	notes?: string[]
+}
+
+export type WorkflowUnrealResolvedModelBinding = {
+	sourceNodeId?: string
+	sourceNodeType?: 'model3d' | 'meshy' | 'manual'
+	modelUrl?: string
+	modelAssetUrl?: string
+	modelSourcePath?: string
+	modelAssetPath?: string
+	modelProjectRelativePath?: string
+	modelAssetProjectRelativePath?: string
+	modelSourceName?: string
+	modelFormat?: 'glb' | 'gltf'
+}
+
+export type WorkflowUnrealResolvedLayoutSlot = {
+	slotId: string
+	sourceSlotId: string
+	parentSlotId?: string
+	parentSourceObjectId?: string
+	sourceObjectId: string
+	sourceObjectName?: string
+	displayName: string
+	cloneIndex: number
+	cloneCount: number
+	isClone: boolean
+	previewScaleMode?: 'placeholder' | 'model'
+	fitMode?: 'normal' | 'oriented' | 'filled' | 'forced'
+	fillMode?: 'single' | 'fill-x' | 'fill-y' | 'fill-z'
+	fillCount?: number
+	fillAxisScale?: number
+	materialOverrides?: WorkflowSceneLayoutMaterialOverride[]
+	relationTags?: string[]
+	notes?: string
+	surfaceSemantics?: WorkflowUnrealResolvedSurfaceSemantics
+	parentReference?: WorkflowUnrealResolvedParentReference
+	constraintDiagnostics?: WorkflowUnrealResolvedConstraintDiagnostics
+	modelBinding?: WorkflowUnrealResolvedModelBinding | null
+	slotTransform: WorkflowResolvedTransform
+	meshTransform: WorkflowResolvedTransform
+	previewInstanceTransform: WorkflowResolvedTransform
+	previewInstanceWorldTransform: WorkflowResolvedTransform
+	worldTransform: WorkflowResolvedTransform
+	relativeTransform: WorkflowResolvedTransform
+	worldBounds: WorkflowResolvedBounds | null
+	placeholderTransform: WorkflowResolvedTransform | null
+	placeholderBounds: WorkflowResolvedBounds | null
+	manualAdjustmentApplied?: boolean
+	manualAdjustment?: {
+		orientationMode?: 'auto' | 'manual'
+		fitMode?: 'normal' | 'oriented' | 'filled' | 'forced'
+		fillMode?: 'single' | 'fill-x' | 'fill-y' | 'fill-z'
+	}
+}
+
+export type WorkflowUnrealResolvedLayoutExport = {
+	generatedAt: number
+	sourceItemCount: number
+	slotCount: number
+	actorOrigin: WorkflowResolvedVector3
+	warnings: string[]
+	slots: WorkflowUnrealResolvedLayoutSlot[]
+}
+
+export type WorkflowUnrealExportSessionInfo = {
+	sessionId: string
+	displayName?: string
+	projectName?: string
+	projectPath?: string
+	saveDirectory?: string
+	assetRootPath?: string
+	pluginVersion?: string
+	lastSeenAt?: number
+	connectedAt?: number
+	status?: 'connected' | 'stale'
+}
+
+export type WorkflowUnrealExportNodeSettings = {
+	connectionStatus?: 'idle' | 'waiting' | 'connected' | 'exporting' | 'error'
+	statusText?: string
+	message?: string
+	targetSessionId?: string
+	connectedSession?: WorkflowUnrealExportSessionInfo | null
+	lastHeartbeatAt?: number
+	lastExportMode?: 'scene-layout' | 'lighting-only'
+	lastExportJobId?: string
+	lastExportStatus?: 'queued' | 'picked' | 'downloading' | 'importing' | 'assembling-actor' | 'applying-lighting' | 'completed' | 'failed'
+	lastExportStage?: string
+	lastExportProgress?: number
+	lastExportMessage?: string
+	lastBlueprintAssetPath?: string
+	lastModelsAssetPath?: string
+	lastActorBaseClass?: string
+	lastSpawnedLightCount?: number
+	lastLightingTargetActor?: string
+	lastLayoutProtocolVersion?: number
+	lastSlotCount?: number
+	lastAppliedSlotCount?: number
+	lastMaterialOverrideCount?: number
+	lastExportAt?: number
+	autoPoll?: boolean
+}
+
+export type WorkflowSceneLayoutManualModelBinding = {
+	objectId: string
+	modelUrl?: string
+	modelAssetUrl?: string
+	modelSourceName?: string
+	modelSourcePath?: string
+	modelAssetPath?: string
+	modelProjectRelativePath?: string
+	modelAssetProjectRelativePath?: string
+	modelFormat?: 'glb' | 'gltf'
+}
+
+export type WorkflowSceneLayoutModelBinding = {
+	objectId: string
+	objectName?: string
+	inputAnchorId: string
+	connected: boolean
+	sourceNodeId?: string
+	sourceNodeType?: 'model3d' | 'meshy' | 'manual'
+	modelUrl?: string
+	modelAssetUrl?: string
+	modelSourcePath?: string
+	modelAssetPath?: string
+	modelProjectRelativePath?: string
+	modelAssetProjectRelativePath?: string
+	modelSourceName?: string
+	modelFormat?: 'glb' | 'gltf'
+}
+
+export type WorkflowSceneDecomposeOutput = {
+	id: string
+	objectId?: string
+	name?: string
+	description?: string
+	cropMode?: 'cropped' | 'fallback'
+	sourceImageIndex: number
+	observedImageIndices?: number[]
+	imageRect?: WorkflowImageCrop
+	imageRectPixels?: WorkflowPixelRect
+	imageAnchorId: string
+	textAnchorId: string
+	generatedResourceId?: string
+	outputWidth?: number
+	outputHeight?: number
+}
+
+export type WorkflowSceneDecomposeNodeSettings = {
+	status?: 'idle' | 'running' | 'completed' | 'error'
+	message?: string
+	progress?: number
+	currentStep?: string
+	totalTasks?: number
+	completedTasks?: number
+	croppedCount?: number
+	fallbackCount?: number
+	inputJson?: string
+	lastRunAt?: number
+	outputs?: WorkflowSceneDecomposeOutput[]
+	lastExpandedAt?: number
+	lastExpandedCount?: number
 }
 
 export type WorkflowComfyUINodeSettings = {
@@ -95,6 +513,140 @@ export type WorkflowComfyUINodeSettings = {
 	lastUpdateAt?: number
 }
 
+export type WorkflowModel3DNodeSettings = {
+	modelUrl?: string
+	modelFormat?: 'glb' | 'gltf'
+	modelSourceName?: string
+	modelSourcePath?: string
+	modelProjectRelativePath?: string
+	modelAssetUrl?: string
+	modelAssetPath?: string
+	modelAssetProjectRelativePath?: string
+	backgroundColor?: string
+	lightIntensity?: number
+	gridVisible?: boolean
+	axesVisible?: boolean
+	autoRotate?: boolean
+	renderWidth?: number
+	renderHeight?: number
+	lastInputSignature?: string
+	lastInputNodeId?: string
+	lastInputSourceUrl?: string
+	lastInputSourcePath?: string
+	lastInputSourceName?: string
+	lastInputPlaceholderId?: string
+	lastInputPlaceholderJson?: string
+}
+
+export type WorkflowMeshyTaskTarget = '3d' | 'image'
+
+export type WorkflowMeshyTaskFamily =
+	| 'text-to-3d'
+	| 'image-to-3d'
+	| 'multi-image-to-3d'
+	| 'refine'
+	| 'retexture'
+	| 'remesh'
+	| 'text-to-image'
+	| 'image-to-image'
+
+export type WorkflowMeshyTaskStatus = 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+
+export type WorkflowMeshyRelationKind = 'model' | 'texture' | 'rigging' | 'animation' | 'remesh'
+
+export type WorkflowMeshyCapability = 'model' | 'textured' | 'rigged' | 'animated'
+
+export type WorkflowMeshyInputSummary = {
+	promptSource?: 'manual' | 'linked' | 'none'
+	promptText?: string
+	imageCount?: number
+	modelInputConnected?: boolean
+	lastValidatedAt?: number
+}
+
+export type WorkflowMeshyOutputSummary = {
+	outputKind?: '3d-model' | 'image'
+	preferredUrl?: string
+	imageUrls?: string[]
+	assetUrl?: string
+	assetPath?: string
+	thumbnailUrl?: string
+	format?: string
+}
+
+export type WorkflowMeshyRelationSummary = {
+	relationKind?: WorkflowMeshyRelationKind
+	rootTaskId?: string
+	parentTaskId?: string
+	capabilities?: WorkflowMeshyCapability[]
+	hasTextureChild?: boolean
+	hasRiggingChild?: boolean
+	hasAnimationChild?: boolean
+	effectiveTaskId?: string
+	effectiveRelationKind?: WorkflowMeshyRelationKind
+	effectiveStatus?: WorkflowMeshyTaskStatus
+	effectiveProgress?: number
+	effectivePreferredModelUrl?: string
+	effectivePreferredImageUrl?: string
+	effectiveLocalAssetUrl?: string
+	effectiveLocalAssetPath?: string
+	effectiveThumbnailUrl?: string
+}
+
+export type WorkflowMeshyNodeSettings = {
+	meshyApiSource?: 'meshy'
+	meshyTaskTarget?: WorkflowMeshyTaskTarget
+	meshyTaskFamily?: WorkflowMeshyTaskFamily
+	meshyRelationKind?: WorkflowMeshyRelationKind
+	meshyRootTaskId?: string
+	meshyParentTaskId?: string
+	meshyCapabilities?: WorkflowMeshyCapability[]
+	meshyHelpTopic?: string
+	meshyMode?: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d'
+	meshyStage?: 'preview' | 'refine'
+	meshyPrompt?: string
+	meshyNegativePrompt?: string
+	meshyPreviewTaskId?: string
+	meshyImageUrl?: string
+	meshyImageUrls?: string[]
+	meshyTexturePrompt?: string
+	meshyTextureImageUrl?: string
+	meshyModelType?: 'standard' | 'lowpoly'
+	meshyAiModel?: 'latest' | 'meshy-6' | 'meshy-5' | 'nano-banana' | 'nano-banana-pro'
+	meshyAspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4'
+	meshyGenerateMultiView?: boolean
+	meshyOutputImageCount?: 1 | 2 | 3 | 4
+	meshyImageInputCount?: number
+	meshySeed?: number
+	meshyAnimationActionId?: number
+	meshyTopology?: 'triangle' | 'quad'
+	meshyTargetPolycount?: number
+	meshySymmetryMode?: 'off' | 'auto' | 'on'
+	meshyShouldRemesh?: boolean
+	meshySavePreRemeshedModel?: boolean
+	meshyShouldTexture?: boolean
+	meshyEnablePbr?: boolean
+	meshyPoseMode?: '' | 'a-pose' | 't-pose'
+	meshyModeration?: boolean
+	meshyImageEnhancement?: boolean
+	meshyRemoveLighting?: boolean
+	meshyAutoSize?: boolean
+	meshyOriginAt?: 'bottom' | 'center'
+	meshyTargetFormats?: Array<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz'>
+	meshyTaskId?: string
+	meshyTaskStatus?: WorkflowMeshyTaskStatus
+	meshyProgress?: number
+	meshyStatusText?: string
+	meshyThumbnailUrl?: string
+	meshyModelUrls?: Partial<Record<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz' | 'pre_remeshed_glb', string>>
+	meshyOutputAssetUrl?: string
+	meshyOutputAssetPath?: string
+	meshyErrorMessage?: string
+	meshyInputSummary?: WorkflowMeshyInputSummary
+	meshyOutputSummary?: WorkflowMeshyOutputSummary
+	meshyRelationSummary?: WorkflowMeshyRelationSummary
+}
+
 export type WorkflowNode = {
 	id: string
 	type: string
@@ -111,8 +663,14 @@ export type WorkflowNode = {
 	resourcePath?: string
 	imageSettings?: WorkflowImageNodeSettings
 	videoSettings?: WorkflowVideoNodeSettings
+	sceneUnderstandingSettings?: WorkflowSceneUnderstandingNodeSettings
+	sceneLayoutSettings?: WorkflowSceneLayoutNodeSettings
+	unrealExportSettings?: WorkflowUnrealExportNodeSettings
+	sceneDecomposeSettings?: WorkflowSceneDecomposeNodeSettings
 	storySettings?: WorkflowStoryNodeSettings
 	comfyuiSettings?: WorkflowComfyUINodeSettings
+	model3dSettings?: WorkflowModel3DNodeSettings
+	meshySettings?: WorkflowMeshyNodeSettings
 	worldX: number
 	worldY: number
 	width: number
@@ -134,6 +692,70 @@ export type WorkflowEdge = {
 	createdAt: number
 }
 
+export type WorkflowNodeChatType = 'text' | 'image' | 'video' | 'model3d'
+
+export type WorkflowNodeChatImageParams = {
+	modelId?: string
+	resolution?: string
+	aspectRatio?: string
+	quantity?: number
+}
+
+export type WorkflowNodeChatVideoParams = {
+	modelId?: string
+	mode?: 'auto' | 'text_to_video' | 'image_to_video' | 'first-last' | 'reference'
+	resolution?: string
+	ratio?: string
+	duration?: number
+	seed?: number
+	generateAudio?: boolean
+	watermark?: boolean
+}
+
+export type WorkflowNodeChatModel3DParams = {
+	provider?: 'tripo3d' | 'hunyuan3d' | 'rodin3d'
+	tripoProvider?: 'dreammaker' | 'official'
+	tripoMode?: 'image-to-3d' | 'multi-image-to-3d' | 'retopo'
+	tripoOutputFormat?: 'fbx' | 'glb'
+	tripoTextureQuality?: 'standard' | 'detailed'
+	tripoModelVersion?: string
+	hunyuanMode?: 'image-to-3d' | 'multi-image-to-3d' | 'hunyuan-reduce-face'
+	hunyuanFaceLevel?: 'high' | 'medium' | 'low'
+	hunyuanPolygonType?: 'triangle' | 'quadrilateral'
+	hunyuanOutputFormat?: 'fbx' | 'glb'
+	rodinTier?: string
+	rodinQuality?: 'high' | 'medium' | 'low' | 'extra-low'
+	rodinOutputFormat?: 'glb' | 'usdz' | 'fbx' | 'obj' | 'stl'
+}
+
+export type WorkflowNodeChatTextParams = {
+	modelId?: string
+	speed?: 'fast' | 'normal' | 'slow'
+}
+
+export type WorkflowNodeChatParams = {
+	text?: WorkflowNodeChatTextParams
+	image?: WorkflowNodeChatImageParams
+	video?: WorkflowNodeChatVideoParams
+	model3d?: WorkflowNodeChatModel3DParams
+}
+
+export type WorkflowNodeChatSubmitPayload = {
+	nodeId: string
+	nodeType: WorkflowNodeChatType
+	prompt: string
+	params: Record<string, any>
+}
+
+export type WorkflowNodeChatDialog = {
+	visible: boolean
+	nodeId: string | null
+	nodeType: WorkflowNodeChatType | null
+	draft: string
+	submitting: boolean
+	params: WorkflowNodeChatParams
+}
+
 export type WorkflowState = {
 	viewport: WorkflowViewport
 	nodesById: Record<string, WorkflowNode>
@@ -142,7 +764,6 @@ export type WorkflowState = {
 	edgeOrder: string[]
 	resourcesById: Record<string, WorkflowResource>
 	resourceOrder: string[]
-	// Primary selection (for inspector) + multi selection (for batch operations)
 	selectedNodeId: string | null
 	selectedNodeIds: string[]
 	selectedEdgeId: string | null
@@ -150,6 +771,7 @@ export type WorkflowState = {
 	clipboardNodes: WorkflowNode[] | null
 	clipboardPrimaryNodeId: string | null
 	chatDraft: string
+	nodeChatDialog: WorkflowNodeChatDialog
 }
 
 export type WorkflowSelectionTarget =

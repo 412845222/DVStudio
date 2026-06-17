@@ -33,11 +33,16 @@
           <div class="wf-story-player" :style="playerStyle">
             <div class="wf-story-preview">
               <div
-                v-if="previewKind === 'image' && previewUrl"
+                v-if="previewKind === 'image' && safePreviewImageUrl"
                 class="wf-story-preview-img"
                 :class="{ cropped: !!previewCropEnabled && !!previewCrop }"
               >
-                <img :src="previewUrl" alt="剧情预览" :style="previewImgStyle" />
+                <img
+                  :src="safePreviewImageUrl"
+                  alt="剧情预览"
+                  :style="previewImgStyle"
+                  @error="onPreviewImageError"
+                />
               </div>
               <video
                 v-else-if="previewKind === 'video' && previewUrl"
@@ -162,20 +167,26 @@
     >
       <div class="wf-story-anchor-inputs">
         <div
-          class="wf-story-anchor-in flow"
+          class="wf-story-anchor-in wf-anchor-hit wf-anchor-flow"
           :class="{ hovered: isInputHover(flowInputId(inputAnchors)) }"
           :data-wf-node-id="nodeId"
           :data-wf-anchor-id="flowInputId(inputAnchors)"
+          data-wf-anchor-type="flow"
           data-wf-dir="in"
+          data-anchor-direction="in"
+          data-anchor-side="left"
           data-wf-anchor-index="0"
           @pointerup.stop="onInputEnd(flowInputId(inputAnchors), endLink)"
         />
         <div
-          class="wf-story-anchor-in resource"
+          class="wf-story-anchor-in wf-anchor-hit wf-anchor-resource"
           :class="{ hovered: isInputHover(resourceInputId(inputAnchors)) }"
           :data-wf-node-id="nodeId"
           :data-wf-anchor-id="resourceInputId(inputAnchors)"
+          data-wf-anchor-type="resource"
           data-wf-dir="in"
+          data-anchor-direction="in"
+          data-anchor-side="left"
           data-wf-anchor-index="1"
           @pointerup.stop="onInputEnd(resourceInputId(inputAnchors), endLink)"
         />
@@ -184,12 +195,15 @@
         <div
           v-for="a in outputAnchors"
           :key="a.id"
-          class="wf-story-anchor-out"
+          class="wf-story-anchor-out wf-anchor-hit wf-anchor-flow"
           :class="{ hovered: isOutputHover(a.id) }"
           :style="anchorStyle(a)"
           :data-wf-node-id="nodeId"
           :data-wf-anchor-id="a.id"
+          data-wf-anchor-type="flow"
           data-wf-dir="out"
+          data-anchor-direction="out"
+          data-anchor-side="right"
           :data-wf-anchor-index="a.index"
           @pointerdown.stop.prevent="startLink(a.id, a.index, $event)"
         />
@@ -300,7 +314,7 @@ const emit = defineEmits<{
   (e: "delete"): void;
   (
     e: "set-type",
-    v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"
+    v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "scene-understanding" | "scene-decompose" | "scene-layout" | "unreal-export" | "story" | "comfyui" | "model3d" | "meshy"
   ): void;
   (
     e: "resize",
@@ -332,8 +346,23 @@ const previewVideoPlaying = ref(false);
 const previewVideoDuration = ref(0);
 const previewVideoCurrentTime = ref(0);
 const previewVideoVolume = ref(1);
+const previewImageFailedUrl = ref("");
+
+const safePreviewImageUrl = computed(() => {
+  const raw = String(props.previewUrl ?? "").trim();
+  if (!raw) return "";
+  if (String(props.previewKind ?? "") !== "image") return "";
+  return raw === String(previewImageFailedUrl.value || "").trim() ? "" : raw;
+});
 
 const previewMuted = computed(() => previewVideoVolume.value <= 0.001);
+
+const onPreviewImageError = (event: Event) => {
+  const img = event.target as HTMLImageElement | null;
+  const failed = String(img?.currentSrc || img?.src || props.previewUrl || "").trim();
+  if (!failed) return;
+  previewImageFailedUrl.value = failed;
+};
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 
@@ -453,6 +482,7 @@ onBeforeUnmount(() => {
 watch(
   () => props.previewUrl,
   async () => {
+    previewImageFailedUrl.value = "";
     const v = previewVideoEl.value;
     if (!v || !props.previewUrl) {
       previewVideoPlaying.value = false;
@@ -538,7 +568,7 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
 .wf-story-preview {
   width: 100%;
   height: 100%;
-  border-radius: 6px;
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt);
@@ -715,27 +745,24 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
   position: absolute;
   top: 0;
   bottom: 0;
-  right: -10px;
+  right: 0;
+  width: 0;
 }
 
 .wf-story-anchor-out {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  border: 2px solid #f29d38;
-  background: #f29d38;
-  cursor: crosshair;
   position: absolute;
-  transform: translateY(-50%);
-}
-
-.wf-story-anchor-out.hovered {
-  box-shadow: 0 0 8px rgba(242, 157, 56, 0.65);
+  right: 0;
+  left: auto;
+  transform: translate(
+      calc(50% + var(--wf-anchor-side-offset, 0px) + var(--wf-anchor-magnet-x, 0px)),
+      calc(-50% + var(--wf-anchor-magnet-y, 0px))
+    );
 }
 
 .wf-story-anchor-inputs {
   position: absolute;
-  left: -10px;
+  left: 0;
+  width: 0;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -744,24 +771,10 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
 }
 
 .wf-story-anchor-in {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  border: 2px solid #f29d38;
-  background: #f29d38;
-  cursor: crosshair;
-}
-
-.wf-story-anchor-in.resource {
-  border-color: var(--dweb-blue);
-  background: var(--dweb-blue);
-}
-
-.wf-story-anchor-in.hovered {
-  box-shadow: 0 0 8px rgba(242, 157, 56, 0.65);
-}
-
-.wf-story-anchor-in.resource.hovered {
-  box-shadow: 0 0 8px rgba(58, 168, 180, 0.65);
+  position: relative;
+  transform: translate(
+      calc(-50% - var(--wf-anchor-side-offset, 0px) + var(--wf-anchor-magnet-x, 0px)),
+      var(--wf-anchor-magnet-y, 0px)
+    );
 }
 </style>

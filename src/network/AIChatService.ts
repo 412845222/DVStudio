@@ -90,6 +90,8 @@ export class AIChatService {
 		contextPack?: unknown
 		provider?: string
 		model?: string
+		promptPreset?: string
+		promptInput?: unknown
 	}): Promise<SendMessageResponse> {
 		const res = await fetch(
 			this.url(`/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages`),
@@ -101,6 +103,8 @@ export class AIChatService {
 				contextPack: params.contextPack,
 				provider: params.provider,
 				model: params.model,
+				promptPreset: params.promptPreset,
+				promptInput: params.promptInput,
 			}),
 			}
 		)
@@ -127,6 +131,8 @@ export class AIChatService {
 		provider?: string
 		model?: string
 		responseMode?: string
+		promptPreset?: string
+		promptInput?: unknown
 		signal?: AbortSignal
 	}): AsyncGenerator<AIChatStreamEvent, void, void> {
 		const res = await fetch(this.url(`/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages:stream`), {
@@ -142,6 +148,8 @@ export class AIChatService {
 				provider: params.provider,
 				model: params.model,
 				responseMode: params.responseMode ?? 'agentToUi-jsonl',
+				promptPreset: params.promptPreset,
+				promptInput: params.promptInput,
 			}),
 			signal: params.signal,
 		})

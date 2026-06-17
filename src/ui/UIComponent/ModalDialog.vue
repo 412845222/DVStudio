@@ -43,38 +43,43 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'close'): void }>()
 <style scoped>
 .dvs-modal-overlay {
   position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: var(--aiwf-safe-top, 0px);
+  background: var(--aiwf-dialog-mask-bg, rgba(0, 0, 0, 0.35));
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 18px;
+  padding: var(--aiwf-dialog-padding, 18px);
   box-sizing: border-box;
-  z-index: 50;
+  z-index: var(--aiwf-popover-z-index, 120);
 }
 
 .dvs-modal {
   width: 100%;
   max-width: 860px;
-  max-height: calc(100vh - 36px);
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-light);
-  box-shadow: var(--vscode-shadow);
+  max-height: calc(100vh - var(--aiwf-safe-top, 0px) - var(--aiwf-dialog-max-height-gap, 36px));
+  border: 1px solid var(--aiwf-dialog-border, var(--wf-panel-border, var(--vscode-border)));
+  border-radius: var(--aiwf-dialog-radius, var(--wf-panel-radius, 8px));
+  background: var(--aiwf-dialog-bg, var(--wf-panel-bg-solid, var(--dweb-defualt-light)));
+  box-shadow: var(--aiwf-dialog-shadow, var(--wf-panel-shadow, var(--vscode-shadow)));
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .dvs-modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 12px;
+  padding: var(--aiwf-dialog-head-padding, 12px 14px);
   border-bottom: 1px solid var(--vscode-border);
 }
 
 .dvs-modal-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--aiwf-dialog-title-size, 14px);
+  font-weight: var(--aiwf-dialog-title-weight, 600);
   color: var(--vscode-fg);
 }
 
@@ -91,25 +96,26 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'close'): void }>()
 }
 
 .dvs-modal-body {
-  padding: 12px;
+  padding: var(--aiwf-dialog-body-padding, 12px 14px);
   overflow: auto;
   min-height: 0;
 }
 
 .dvs-modal-actions {
-  padding: 10px 12px;
+  padding: var(--aiwf-dialog-actions-padding, 10px 14px);
   border-top: 1px solid var(--vscode-border);
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--aiwf-dialog-actions-gap, 10px);
 }
 
 .btn {
   appearance: none;
   -webkit-appearance: none;
   border: none;
-  border-radius: 0;
-  padding: 8px 12px;
+  border-radius: var(--aiwf-dialog-button-radius, var(--aiwf-radius-md, 6px));
+  min-height: var(--aiwf-dialog-button-height, 32px);
+  padding: var(--aiwf-dialog-button-padding, 0 12px);
   background: var(--dweb-defualt-dark);
   color: var(--vscode-fg);
   cursor: pointer;

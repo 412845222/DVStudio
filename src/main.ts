@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import './style.css'
+import './styles/workflow/index.css'
 import App from './App.vue'
 import router from './router'
 import { editorPersistence, setEditorSaveHandler } from './adapters/editorPersistence'

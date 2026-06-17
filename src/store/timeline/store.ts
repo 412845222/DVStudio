@@ -126,6 +126,41 @@ const stageSnapshotsPurgeLayers = (state: TimelineState, layerIds: string[]) => 
   return changed
 }
 
+const updateNodeTextContentInTree = (
+  nodes: VideoSceneTreeNode[] | undefined,
+  nodeId: string,
+  textContent: string
+): { nodes: VideoSceneTreeNode[]; changed: boolean } => {
+  if (!Array.isArray(nodes) || nodes.length === 0) return { nodes: Array.isArray(nodes) ? nodes : [], changed: false }
+  let changed = false
+  const nextNodes = nodes.map((node) => {
+    if (!node || typeof node !== 'object') return node
+    let nextNode = node
+    if (String(node.id ?? '') === nodeId) {
+      const props = (node.props ?? {}) as Record<string, unknown>
+      if (String(props.textContent ?? '') !== textContent) {
+        nextNode = {
+          ...node,
+          props: {
+            ...props,
+            textContent,
+          },
+        }
+        changed = true
+      }
+    }
+    if (Array.isArray(nextNode.children) && nextNode.children.length) {
+      const childRes = updateNodeTextContentInTree(nextNode.children, nodeId, textContent)
+      if (childRes.changed) {
+        nextNode = { ...nextNode, children: childRes.nodes }
+        changed = true
+      }
+    }
+    return nextNode
+  })
+  return { nodes: changed ? nextNodes : nodes, changed }
+}
+
 const normalizeSubtitleStyle = (s: Partial<SubtitleTextStyle> | null | undefined): SubtitleTextStyle => {
   // Keep defaults aligned with TextNodeForm expectations: readable by default.
   const rawSize = (s as any)?.fontSize
@@ -902,6 +937,7 @@ export const TimelineStore = createStore<TimelineState>({
 
       for (const layer of incoming as any[]) {
         const layerId = String(layer?.id ?? '').trim()
+
         if (!layerId) continue
         // Only record for frames where THIS layer is a keyframe.
         if (!isKeyframeAt(state, layerId, f)) continue
@@ -926,6 +962,63 @@ export const TimelineStore = createStore<TimelineState>({
       changed = true
     }
     if (changed) state.stageKeyframeVersion++
+  },
+
+  applyNodeTextContentAcrossKeyframes(state, payload: { layerId: string; nodeId: string; textContent: string }) {
+  const layerId = String(payload.layerId || '').trim()
+  const nodeId = String(payload.nodeId || '').trim()
+  const textContent = String(payload.textContent ?? '')
+  if (!layerId || !nodeId) return
+
+  let stageChanged = false
+  for (const [fk, entryRaw] of Object.entries(state.stageKeyframesByFrame ?? {})) {
+    const entry = entryRaw as any
+    const layers = Array.isArray(entry?.layers) ? (entry.layers as VideoSceneLayer[]) : []
+    let frameChanged = false
+    const nextLayers = layers.map((layer) => {
+      if (String(layer?.id ?? '') !== layerId) return layer
+      const res = updateNodeTextContentInTree(layer.nodeTree, nodeId, textContent)
+      if (!res.changed) return layer
+      frameChanged = true
+      return { ...layer, nodeTree: res.nodes }
+    })
+    if (!frameChanged) continue
+    state.stageKeyframesByFrame[fk] = { ...(entry ?? {}), layers: nextLayers }
+    stageChanged = true
+  }
+
+  const layerMap = state.nodeKeyframesByLayer[layerId]
+  let nodeChanged = false
+  if (layerMap) {
+    const nextLayerMap = { ...layerMap }
+    for (const [fk, nodesByIdRaw] of Object.entries(layerMap)) {
+      const nodesById = nodesByIdRaw as Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>
+      const snap = nodesById?.[nodeId]
+      if (!snap) continue
+      const curText = String((snap.props as any)?.textContent ?? '')
+      if (curText === textContent) continue
+      nextLayerMap[fk] = {
+        ...nodesById,
+        [nodeId]: {
+          ...snap,
+          props: {
+            ...(snap.props ?? {}),
+            textContent,
+          },
+        },
+      }
+      nodeChanged = true
+    }
+    if (nodeChanged) {
+      state.nodeKeyframesByLayer = {
+        ...state.nodeKeyframesByLayer,
+        [layerId]: nextLayerMap,
+      }
+    }
+  }
+
+  if (stageChanged) state.stageKeyframeVersion++
+  if (nodeChanged) state.nodeKeyframeVersion++
   },
 
   // --- 节点删除：清理时间轴快照中的 nodeId ---
@@ -1239,6 +1332,12 @@ export const TimelineStore = createStore<TimelineState>({
 	) {
 		commit('setStageKeyframeSnapshotRange', payload)
 	},
+  applyNodeTextContentAcrossKeyframes(
+    { commit },
+    payload: { layerId: string; nodeId: string; textContent: string }
+  ) {
+    commit('applyNodeTextContentAcrossKeyframes', payload)
+  },
   purgeNodeIds({ commit }, payload: { nodeIds: string[] }) {
     commit('purgeNodeIds', payload)
   },

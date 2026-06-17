@@ -40,6 +40,10 @@ def credentials_status(_: HttpRequest) -> JsonResponse:
                     "deepseek": _provider_status("deepseek"),
                     "gemini": _provider_status("gemini"),
                     "bytedance": _provider_status("bytedance"),
+                    "codex": _provider_status("codex"),
+                    "meshy": _provider_status("meshy"),
+                    "jimengAccessKeyId": _provider_status("jimeng_access_key_id"),
+                    "jimengSecretKey": _provider_status("jimeng_secret_key"),
                 },
                 "serverTime": timezone.now().isoformat(),
             }
@@ -57,6 +61,10 @@ def upsert_credentials(request: HttpRequest) -> JsonResponse:
     deepseek_key = body.get("deepseekApiKey")
     gemini_key = body.get("geminiApiKey")
     bytedance_key = body.get("bytedanceApiKey")
+    codex_key = body.get("codexApiKey")
+    meshy_key = body.get("meshyApiKey")
+    jimeng_access_key_id = body.get("jimengAccessKeyId")
+    jimeng_secret_key = body.get("jimengSecretKey")
 
     try:
         changed = []
@@ -78,10 +86,38 @@ def upsert_credentials(request: HttpRequest) -> JsonResponse:
             row.save(update_fields=["key_encrypted", "key_fingerprint", "updated_at"])
             changed.append("bytedance")
 
+        if codex_key is not None:
+            row, _ = ApiKeySecret.objects.get_or_create(provider="codex")
+            row.set_plaintext_key(str(codex_key or ""))
+            row.save(update_fields=["key_encrypted", "key_fingerprint", "updated_at"])
+            changed.append("codex")
+
+        if meshy_key is not None:
+            row, _ = ApiKeySecret.objects.get_or_create(provider="meshy")
+            row.set_plaintext_key(str(meshy_key or ""))
+            row.save(update_fields=["key_encrypted", "key_fingerprint", "updated_at"])
+            changed.append("meshy")
+
+        if jimeng_access_key_id is not None:
+            row, _ = ApiKeySecret.objects.get_or_create(provider="jimeng_access_key_id")
+            row.set_plaintext_key(str(jimeng_access_key_id or ""))
+            row.save(update_fields=["key_encrypted", "key_fingerprint", "updated_at"])
+            changed.append("jimengAccessKeyId")
+
+        if jimeng_secret_key is not None:
+            row, _ = ApiKeySecret.objects.get_or_create(provider="jimeng_secret_key")
+            row.set_plaintext_key(str(jimeng_secret_key or ""))
+            row.save(update_fields=["key_encrypted", "key_fingerprint", "updated_at"])
+            changed.append("jimengSecretKey")
+
         return JsonResponse({"ok": True, "changed": changed, "providers": {
             "deepseek": _provider_status("deepseek"),
             "gemini": _provider_status("gemini"),
             "bytedance": _provider_status("bytedance"),
+            "codex": _provider_status("codex"),
+            "meshy": _provider_status("meshy"),
+            "jimengAccessKeyId": _provider_status("jimeng_access_key_id"),
+            "jimengSecretKey": _provider_status("jimeng_secret_key"),
         }})
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)

@@ -1,0 +1,52 @@
+:root {
+  --wf-page-bg: var(--aiwf-color-graphite-950);
+  --wf-page-bg-muted: var(--aiwf-color-graphite-900);
+
+  --wf-surface-base: rgba(21, 24, 28, 0.94);
+  --wf-surface-raised: rgba(29, 34, 39, 0.94);
+  --wf-surface-muted: rgba(36, 42, 48, 0.9);
+  --wf-surface-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)), rgba(21, 24, 28, 0.82);
+
+  --wf-text: var(--aiwf-color-text);
+  --wf-text-muted: var(--aiwf-color-text-muted);
+  --wf-text-subtle: var(--aiwf-color-text-subtle);
+
+  --wf-border-subtle: var(--aiwf-border-subtle);
+  --wf-border: var(--aiwf-border-default);
+  --wf-border-strong: var(--aiwf-border-strong);
+  --wf-border-focus: rgba(31, 157, 132, 0.58);
+
+  --wf-primary: var(--aiwf-color-primary);
+  --wf-primary-hover: var(--aiwf-color-primary-hover);
+  --wf-primary-soft: var(--aiwf-color-primary-soft);
+  --wf-accent: var(--aiwf-color-accent);
+  --wf-accent-soft: var(--aiwf-color-accent-soft);
+  --wf-info: var(--aiwf-color-info);
+  --wf-info-soft: var(--aiwf-color-info-soft);
+  --wf-danger: var(--aiwf-color-danger);
+  --wf-danger-soft: var(--aiwf-color-danger-soft);
+  --wf-success: var(--aiwf-color-success);
+  --wf-success-soft: var(--aiwf-color-success-soft);
+  --wf-warning: var(--aiwf-color-warning);
+  --wf-warning-soft: var(--aiwf-color-warning-soft);
+
+  --wf-control-bg: rgba(29, 34, 39, 0.92);
+  --wf-control-bg-hover: rgba(36, 42, 48, 0.96);
+  --wf-control-border: var(--wf-border);
+  --wf-control-border-hover: var(--wf-border-focus);
+  --wf-control-text: var(--wf-text);
+
+  --wf-state-selected-bg: rgba(31, 157, 132, 0.16);
+  --wf-state-selected-border: rgba(31, 157, 132, 0.58);
+  --wf-state-running-bg: var(--wf-info-soft);
+  --wf-state-running-border: rgba(79, 183, 197, 0.58);
+  --wf-state-error-bg: var(--wf-danger-soft);
+  --wf-state-error-border: rgba(207, 90, 70, 0.62);
+  --wf-state-warning-bg: var(--wf-warning-soft);
+  --wf-state-warning-border: rgba(217, 173, 74, 0.62);
+
+  --wf-overlay-bg: rgba(8, 11, 16, 0.68);
+  --wf-overlay-blur: 10px;
+  --wf-panel-shadow: var(--aiwf-shadow-md);
+  --wf-panel-shadow-strong: var(--aiwf-shadow-lg);
+}

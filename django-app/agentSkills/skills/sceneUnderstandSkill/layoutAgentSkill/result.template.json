@@ -1,0 +1,88 @@
+{
+  "sceneSummary": "",
+  "sceneType": "interior-design",
+  "keyElements": [],
+  "roomShell": {
+    "centerX": 0.0,
+    "centerZ": 0.0,
+    "width": 4.8,
+    "depth": 6.2,
+    "height": 2.9,
+    "wallThickness": 0.15,
+    "hasFloor": true,
+    "hasCeiling": true,
+    "detectedWalls": ["left", "right", "back"],
+    "confidence": 0.75
+  },
+  "analysisPriority": [
+    "room-shell",
+    "key-elements",
+    "large-furniture",
+    "wall-attached-objects",
+    "small-props"
+  ],
+  "camera": {
+    "view": ["front-perspective"],
+    "openWallRole": "front",
+    "fovEstimate": 60
+  },
+  "objects": [
+    {
+      "id": "example-object-1",
+      "sourceImageIndex": 1,
+      "observedImageIndices": [1],
+      "isKeyElement": false,
+      "keyElementType": "",
+      "fixedInRoom": false,
+      "semanticRole": "furniture",
+      "mountType": "floor",
+      "shouldTouchGround": true,
+      "groundReason": "floor cabinet",
+      "relationTags": ["floor-supported"],
+      "layoutPriority": 0.8,
+      "name": "示例柜体",
+      "category": "furniture",
+      "subCategory": "cabinet",
+      "material": "wood",
+      "surfaceType": "painted-wood",
+      "wallRole": "back",
+      "sameTypeGroupId": "",
+      "sameTypeGroupLabel": "",
+      "sameTypeReason": "",
+      "parentId": "",
+      "placement": "on-floor",
+      "supportSurface": "floor",
+      "anchor": "center",
+      "proximityGroupId": "",
+      "relationReason": "落地放置在后墙附近。",
+      "inferred": false,
+      "position": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": -1.8
+      },
+      "rotation": {
+        "yaw": 180,
+        "pitch": 0,
+        "roll": 0
+      },
+      "scale": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "size": {
+        "width": 1.4,
+        "height": 0.9,
+        "depth": 0.45
+      },
+      "imageRect": {
+        "x": 0.36,
+        "y": 0.42,
+        "width": 0.22,
+        "height": 0.31
+      },
+      "description": "示例占位对象，用于说明 result.json 的对象字段结构。"
+    }
+  ]
+}

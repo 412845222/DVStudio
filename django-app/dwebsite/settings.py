@@ -11,7 +11,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-_DWEB_DATA_DIR = Path(os.getenv("DWEB_DATA_DIR", str(BASE_DIR))).resolve()
+# Use DWEB_DATA_DIR if set to a non-empty value; fall back to BASE_DIR.
+# Treats empty string the same as unset to guard against Electron passing '' by mistake.
+_DWEB_DATA_DIR = Path(os.getenv("DWEB_DATA_DIR") or str(BASE_DIR)).resolve()
 _DWEB_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 _SECRET_FILE = _DWEB_DATA_DIR / "django_secret_key.txt"
@@ -40,7 +42,11 @@ INSTALLED_APPS = [
     "rest_framework",
     "dwebapp",
     "dvs_editor",
+    "aiworkflow_project",
     "comfyui_bridge",
+    "third_party_api_gateway",
+    "codex_bridge",
+    "agentSkills",
     "corsheaders",
 ]
 
@@ -120,3 +126,74 @@ _DEFAULT_UPLOAD_LIMIT_MB = 256
 _UPLOAD_LIMIT_BYTES = int(os.getenv("DWEB_UPLOAD_LIMIT_BYTES", str(_DEFAULT_UPLOAD_LIMIT_MB * 1024 * 1024)))
 DATA_UPLOAD_MAX_MEMORY_SIZE = _UPLOAD_LIMIT_BYTES
 FILE_UPLOAD_MAX_MEMORY_SIZE = _UPLOAD_LIMIT_BYTES
+
+def _read_alias_env(primary: str, fallback: str, default: str = "") -> str:
+    v = os.getenv(primary)
+    if v is not None and str(v).strip() != "":
+        return str(v)
+    v2 = os.getenv(fallback)
+    if v2 is not None and str(v2).strip() != "":
+        return str(v2)
+    return default
+
+
+# Legacy CODEX_* keeps the existing app-server bridge available for old callers.
+CODEX_ENABLED = os.getenv("CODEX_ENABLED", "true").strip().lower() == "true"
+CODEX_MODEL = os.getenv("CODEX_MODEL", "doubao-seed-2.0-Pro")
+CODEX_PROVIDER = os.getenv("CODEX_PROVIDER", "openai")
+CODEX_BASE_URL = os.getenv("CODEX_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
+CODEX_ENV_KEY_NAME = os.getenv("CODEX_ENV_KEY_NAME", "ARK_API_KEY")
+CODEX_WORKSPACE_ROOT = os.getenv("CODEX_WORKSPACE_ROOT", str(BASE_DIR.parent.parent / "Claw-code"))
+CODEX_SANDBOX_MODE = os.getenv("CODEX_SANDBOX_MODE", "workspace-write")
+CODEX_APPROVAL_POLICY = os.getenv("CODEX_APPROVAL_POLICY", "on-request")
+CODEX_COMMAND = os.getenv("CODEX_COMMAND", "codex")
+CODEX_HOME_ROOT = os.getenv("CODEX_HOME_ROOT", "")
+CODEX_STARTUP_TIMEOUT_MS = int(os.getenv("CODEX_STARTUP_TIMEOUT_MS", "12000"))
+
+# GitHub Copilot CLI is the primary provider for /api/workflow/copilot/*.
+COPILOT_CLI_ENABLED = os.getenv("COPILOT_CLI_ENABLED", "true").strip().lower() == "true"
+COPILOT_CLI_MODEL = os.getenv("COPILOT_CLI_MODEL", "auto")
+COPILOT_CLI_PROVIDER = "copilot-cli"
+COPILOT_CLI_BASE_URL = ""
+COPILOT_CLI_ENV_KEY_NAME = ""
+COPILOT_CLI_WORKSPACE_ROOT = os.getenv("COPILOT_CLI_WORKSPACE_ROOT", str(BASE_DIR.parent))
+COPILOT_CLI_SANDBOX_MODE = os.getenv("COPILOT_CLI_SANDBOX_MODE", "workspace-write")
+COPILOT_CLI_APPROVAL_POLICY = os.getenv("COPILOT_CLI_APPROVAL_POLICY", "on-request")
+COPILOT_CLI_COMMAND = os.getenv("COPILOT_CLI_COMMAND", "copilot")
+COPILOT_CLI_HOME_ROOT = os.getenv("COPILOT_CLI_HOME_ROOT", "")
+COPILOT_CLI_STARTUP_TIMEOUT_MS = int(os.getenv("COPILOT_CLI_STARTUP_TIMEOUT_MS", "12000"))
+
+_DWEB_LOG_DIR = _DWEB_DATA_DIR / "logs"
+try:
+    _DWEB_LOG_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+        "codex_file": {
+            "class": "logging.FileHandler",
+            "filename": str(_DWEB_LOG_DIR / "codex_bridge.log"),
+            "formatter": "standard",
+            "encoding": "utf-8",
+        },
+    },
+    "loggers": {
+        "codex_bridge": {
+            "handlers": ["console", "codex_file"],
+            "level": os.getenv("CODEX_LOG_LEVEL", "INFO").strip().upper() or "INFO",
+            "propagate": False,
+        }
+    },
+}

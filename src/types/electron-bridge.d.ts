@@ -14,6 +14,8 @@ declare global {
 			geminiApiKey: string
 			geminiModel: string
 			bytedanceApiKey: string
+			jimengAccessKeyId: string
+			jimengSecretKey: string
 		} | null
 		dweb?: {
 			common: {
@@ -121,6 +123,7 @@ declare global {
 					canceled: boolean
 					filePaths: string[]
 				}>
+				selectProjectFolder(): Promise<{ canceled: boolean; filePaths: string[] }>
 			}
 			videostudio: {
 				pingBackend(): Promise<{ ok: boolean; status?: number; error?: string }>

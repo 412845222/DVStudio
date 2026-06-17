@@ -60,6 +60,12 @@ const menuEl = ref<HTMLElement | null>(null)
 const pos = ref({ x: 0, y: 0 })
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+const safeTopInset = () => {
+	const raw = getComputedStyle(document.documentElement).getPropertyValue('--aiwf-safe-top')
+	const parsed = Number.parseFloat(String(raw || '').trim())
+	if (!Number.isFinite(parsed)) return 0
+	return Math.max(0, parsed)
+}
 
 const updatePosition = async () => {
 	if (!props.visible) return
@@ -69,11 +75,12 @@ const updatePosition = async () => {
 	if (!el) return
 	const rect = el.getBoundingClientRect()
 	const pad = 8
+	const minY = Math.max(pad, Math.round(safeTopInset()) + 4)
 	const maxX = Math.max(pad, window.innerWidth - rect.width - pad)
-	const maxY = Math.max(pad, window.innerHeight - rect.height - pad)
+	const maxY = Math.max(minY, window.innerHeight - rect.height - pad)
 	pos.value = {
 		x: clamp(props.x, pad, maxX),
-		y: clamp(props.y, pad, maxY),
+		y: clamp(props.y, minY, maxY),
 	}
 }
 
@@ -102,7 +109,7 @@ const onClick = (item: ContextMenuItem) => {
 <style scoped>
 .ctx-menu {
 	position: fixed;
-	z-index: 30;
+	z-index: var(--aiwf-floating-z-index, 101);
 	min-width: 220px;
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt-dark);

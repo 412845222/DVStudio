@@ -17,13 +17,14 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ...skills.protocol.message_builder import build_messages
+from ...skills.protocol.message_builder import build_messages, build_messages_from_preset
 
 from .utils import (
     _agent_to_ui_error,
     _agent_to_ui_task_status,
     _agent_to_ui_text,
     _apply_sse_headers,
+    _bytedance_text_cfg,
     _deepseek_cfg,
     _is_agent_to_ui_envelope,
     _openai_chat,
@@ -113,13 +114,80 @@ def _build_messages(
     *,
     default_intent: str = "insert",
     viewport: Optional[Dict[str, Any]] = None,
+    prompt_preset: Optional[str] = None,
+    prompt_input: Any = None,
 ) -> List[Dict[str, str]]:
+    if isinstance(prompt_preset, str) and prompt_preset.strip():
+        return build_messages_from_preset(
+            preset=prompt_preset.strip(),
+            prompt_input=prompt_input,
+            context_pack=context_pack,
+            response_mode=response_mode,
+            default_intent=default_intent,
+            viewport=viewport,
+        )
     return build_messages(
         content=content,
         context_pack=context_pack,
         response_mode=response_mode,
         default_intent=default_intent,
         viewport=viewport,
+    )
+
+
+_SUPPORTED_PROVIDERS = {"deepseek", "bytedance"}
+
+
+def _provider_cfg(provider: str) -> Dict[str, str]:
+    if provider == "bytedance":
+        return _bytedance_text_cfg()
+    return _deepseek_cfg()
+
+
+def _provider_missing_config_error(provider: str) -> Dict[str, Any]:
+    if provider == "bytedance":
+        return _agent_to_ui_error(
+            "missing_config",
+            "火山方舟 API Key 缺失。请先在 Settings 中保存火山引擎 Key。",
+            details={"need": ["bytedanceApiKey"], "provider": provider},
+        )
+    return _agent_to_ui_error(
+        "missing_config",
+        "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
+        details={"need": ["deepseekApiKey"], "provider": provider},
+    )
+
+
+def _resolve_provider_model(provider: str, requested_model: str, cfg: Dict[str, str]) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+    model_key = str(requested_model or cfg.get("model") or "").strip()
+    if model_key:
+        return model_key, None
+    return None, _agent_to_ui_error(
+        "bad_request",
+        "model is required",
+        details={"provider": provider},
+    )
+
+
+def _provider_upstream_error(provider: str, model: str, err: Exception) -> Dict[str, Any]:
+    message = str(err or "")
+    if provider == "bytedance":
+        if "HTTP Error 404" in message:
+            return _agent_to_ui_error(
+                "upstream_error",
+                "火山方舟未找到该模型，或当前账号尚未开通该模型。请确认模型 ID 可用并已在方舟控制台开通。",
+                details={"provider": provider, "model": model, "upstream": message},
+            )
+        if "HTTP Error 401" in message or "HTTP Error 403" in message:
+            return _agent_to_ui_error(
+                "upstream_error",
+                "火山方舟鉴权失败。请确认 Settings 中保存的字节方舟 API Key 有效。",
+                details={"provider": provider, "model": model, "upstream": message},
+            )
+    return _agent_to_ui_error(
+        "upstream_error",
+        message,
+        details={"provider": provider, "model": model},
     )
 
 
@@ -140,30 +208,34 @@ def send_message(request: Request, conversation_id: str) -> Response:
     provider = str(body.get("provider") or "deepseek")
     model_override = body.get("model")
     response_mode = str(body.get("responseMode") or "text")
+    prompt_preset = body.get("promptPreset")
+    prompt_input = body.get("promptInput")
 
     if not content.strip():
         return Response(_agent_to_ui_error("bad_request", "content is required"), status=400)
 
-    if provider != "deepseek":
+    if provider not in _SUPPORTED_PROVIDERS:
         return Response(_agent_to_ui_error("bad_request", f"unsupported provider: {provider}"), status=400)
 
-    cfg = _deepseek_cfg()
+    cfg = _provider_cfg(provider)
     if not cfg["base_url"] or not cfg["api_key"] or not cfg["model"]:
-        return Response(
-            _agent_to_ui_error(
-                "missing_config",
-                "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
-                details={"need": ["DEEPSEEK_API_KEY"]},
-            ),
-            status=500,
-        )
+        return Response(_provider_missing_config_error(provider), status=500)
 
-    model = str(model_override) if isinstance(model_override, str) and model_override else cfg["model"]
-    msgs = _build_messages(content, context_pack, response_mode)
+    requested_model = str(model_override) if isinstance(model_override, str) and model_override else cfg["model"]
+    model, model_error = _resolve_provider_model(provider, requested_model, cfg)
+    if model_error is not None or not model:
+        return Response(model_error or _agent_to_ui_error("bad_request", "model is required"), status=500)
+    msgs = _build_messages(
+        content,
+        context_pack,
+        response_mode,
+        prompt_preset=prompt_preset if isinstance(prompt_preset, str) else None,
+        prompt_input=prompt_input,
+    )
 
     try:
         use_json_output = response_mode == "agentToUi-json"
-        response_format = {"type": "json_object"} if (provider == "deepseek" and use_json_output) else None
+        response_format = {"type": "json_object"} if use_json_output else None
 
         text = _openai_chat(
             base_url=cfg["base_url"],
@@ -199,13 +271,16 @@ def send_message(request: Request, conversation_id: str) -> Response:
             if isinstance(envs, list) and envs:
                 first = envs[0]
                 if isinstance(first, dict):
-                    env = first if _is_agent_to_ui_envelope(first) else _wrap_short_agent_to_ui(first, source_model=model)
+                    env = first if _is_agent_to_ui_envelope(first) else _wrap_short_agent_to_ui(first, source_model=model, source_name=provider)
                     env = _postprocess_component_template_envelope(env)
                     return Response({"conversationId": conversation_id, "assistant": env})
 
-        return Response({"conversationId": conversation_id, "assistant": _agent_to_ui_text(text, source_model=model)})
+        return Response({
+            "conversationId": conversation_id,
+            "assistant": _agent_to_ui_text(text, source_model=model, source_name=provider),
+        })
     except Exception as e:
-        return Response(_agent_to_ui_error("upstream_error", str(e)), status=502)
+        return Response(_provider_upstream_error(provider, model, e), status=502)
 
 
 @csrf_exempt
@@ -225,6 +300,8 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
     provider = str(body.get("provider") or "deepseek")
     model_override = body.get("model")
     response_mode = str(body.get("responseMode") or "agentToUi-jsonl")
+    prompt_preset = body.get("promptPreset")
+    prompt_input = body.get("promptInput")
 
     if not content.strip():
 
@@ -236,7 +313,7 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
         _apply_sse_headers(resp)
         return resp
 
-    if provider != "deepseek":
+    if provider not in _SUPPORTED_PROVIDERS:
 
         def bad_provider() -> Generator[bytes, None, None]:
             yield _sse("error", {"message": f"unsupported provider: {provider}"}).encode("utf-8")
@@ -246,27 +323,39 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
         _apply_sse_headers(resp)
         return resp
 
-    cfg = _deepseek_cfg()
+    cfg = _provider_cfg(provider)
     if not cfg["base_url"] or not cfg["api_key"] or not cfg["model"]:
 
         def missing_cfg() -> Generator[bytes, None, None]:
-            yield _sse(
-                "msg",
-                _agent_to_ui_error(
-                    "missing_config",
-                    "DeepSeek API Key missing. Please set it in Settings (encrypted DB), or set env var DEEPSEEK_API_KEY.",
-                    details={"need": ["DEEPSEEK_API_KEY"]},
-                ),
-            ).encode("utf-8")
+            yield _sse("msg", _provider_missing_config_error(provider)).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
 
         resp = StreamingHttpResponse(missing_cfg(), content_type="text/event-stream")
         _apply_sse_headers(resp)
         return resp
 
-    model = str(model_override) if isinstance(model_override, str) and model_override else cfg["model"]
+    requested_model = str(model_override) if isinstance(model_override, str) and model_override else cfg["model"]
+    model, model_error = _resolve_provider_model(provider, requested_model, cfg)
+    if model_error is not None or not model:
+
+        def bad_model() -> Generator[bytes, None, None]:
+            yield _sse("msg", model_error or _agent_to_ui_error("bad_request", "model is required")).encode("utf-8")
+            yield _sse("done", "{}").encode("utf-8")
+
+        resp = StreamingHttpResponse(bad_model(), content_type="text/event-stream")
+        _apply_sse_headers(resp)
+        return resp
+
     viewport_dict = viewport if isinstance(viewport, dict) else None
-    msgs = _build_messages(content, context_pack, response_mode, default_intent="insert", viewport=viewport_dict)
+    msgs = _build_messages(
+        content,
+        context_pack,
+        response_mode,
+        default_intent="insert",
+        viewport=viewport_dict,
+        prompt_preset=prompt_preset if isinstance(prompt_preset, str) else None,
+        prompt_input=prompt_input,
+    )
 
     def gen() -> Generator[bytes, None, None]:
         current_phase: Optional[str] = None
@@ -316,7 +405,9 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
                     if isinstance(t0, str) and t0.startswith("agentToUi/") and "payload" in obj:
                         return _ensure_agent_to_ui_envelope_fields(obj)
                     if isinstance(obj.get("type"), str) and "payload" in obj:
-                        return _ensure_agent_to_ui_envelope_fields(_wrap_short_agent_to_ui(obj, source_model=model))
+                        return _ensure_agent_to_ui_envelope_fields(
+                            _wrap_short_agent_to_ui(obj, source_model=model, source_name=provider)
+                        )
                     return None
 
                 def drive_phase_by_type(t0: Optional[str]) -> Generator[bytes, None, None]:
@@ -408,7 +499,7 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
                     if tail:
                         for out in emit_phase("writing", message="生成说明"):
                             yield out
-                        yield _sse("msg", _agent_to_ui_text(tail[:8000], source_model=model)).encode("utf-8")
+                        yield _sse("msg", _agent_to_ui_text(tail[:8000], source_model=model, source_name=provider)).encode("utf-8")
 
                 for out in emit_phase("done", message="完成"):
                     yield out
@@ -515,7 +606,7 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
                                                     continue
                                                 seen_ids.add(env_id)
 
-                                            wrapped = _wrap_short_agent_to_ui(env0, source_model=model)
+                                            wrapped = _wrap_short_agent_to_ui(env0, source_model=model, source_name=provider)
                                             t0 = wrapped.get("type") if isinstance(wrapped.get("type"), str) else None
                                             if t0 == "agentToUi/componentTemplate":
                                                 wrapped = _postprocess_component_template_envelope(wrapped)
@@ -572,7 +663,7 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
                 elif not emitted_any:
                     tail = buf.strip()
                     if tail:
-                        yield _sse("msg", _agent_to_ui_text(tail[:8000], source_model=model)).encode("utf-8")
+                        yield _sse("msg", _agent_to_ui_text(tail[:8000], source_model=model, source_name=provider)).encode("utf-8")
 
                 for out in emit_phase("done", message="完成"):
                     yield out
@@ -593,7 +684,7 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
                         yield out
                     for out in emit_phase("writing", message="生成说明"):
                         yield out
-                yield _sse("msg", _agent_to_ui_text(delta, source_model=model)).encode("utf-8")
+                yield _sse("msg", _agent_to_ui_text(delta, source_model=model, source_name=provider)).encode("utf-8")
 
             for out in emit_phase("done", message="完成"):
                 yield out
@@ -603,7 +694,7 @@ def stream_message(request: HttpRequest, conversation_id: str) -> HttpResponseBa
         except Exception as e:
             for out in emit_phase("error", message="发生错误"):
                 yield out
-            yield _sse("msg", _agent_to_ui_error("upstream_error", str(e))).encode("utf-8")
+            yield _sse("msg", _provider_upstream_error(provider, model, e)).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
 
     resp = StreamingHttpResponse(gen(), content_type="text/event-stream")

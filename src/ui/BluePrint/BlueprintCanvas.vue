@@ -4,6 +4,7 @@
     class="bp-wrap"
     @pointerdown="onWrapPointerDown"
     @wheel="onWheel"
+    @dblclick="onDblClick"
     @contextmenu.prevent="onContextMenu"
   >
     <canvas ref="canvasEl" class="bp-grid-canvas" />
@@ -39,6 +40,10 @@ const emit = defineEmits<{
   (e: "update:viewport", v: BlueprintViewport): void;
   (
     e: "canvas-contextmenu",
+    payload: { clientX: number; clientY: number; worldX: number; worldY: number }
+  ): void;
+  (
+    e: "canvas-dblclick",
     payload: { clientX: number; clientY: number; worldX: number; worldY: number }
   ): void;
   (
@@ -87,6 +92,7 @@ const screenToWorld = (p: { x: number; y: number }) => {
 };
 
 let raf = 0;
+const GRID_DPR = 1;
 const requestDraw = () => {
   if (raf) return;
   raf = requestAnimationFrame(() => {
@@ -99,7 +105,7 @@ const resizeCanvasToWrap = () => {
   const canvas = canvasEl.value;
   const wrap = wrapEl.value;
   if (!canvas || !wrap) return;
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const dpr = GRID_DPR;
   const r = wrap.getBoundingClientRect();
   const w = Math.max(1, Math.floor(r.width));
   const h = Math.max(1, Math.floor(r.height));
@@ -119,7 +125,7 @@ const drawGrid = () => {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const dpr = GRID_DPR;
   const r = wrap.getBoundingClientRect();
   const w = Math.max(1, Math.floor(r.width));
   const h = Math.max(1, Math.floor(r.height));
@@ -138,7 +144,7 @@ const drawGrid = () => {
 
   const z = viewportZoom.value;
   const stepWorld = 80;
-  const stepPx = Math.max(12, stepWorld * z);
+  const stepPx = Math.max(16, stepWorld * z);
   const majorStepPx = stepPx * 5;
   const c = { x: w / 2 + viewportPanPx.value.x, y: h / 2 + viewportPanPx.value.y };
 
@@ -241,6 +247,9 @@ const onWrapPointerDown = (e: PointerEvent) => {
   const wrap = wrapEl.value;
   if (!wrap) return;
 
+  const target = e.target as HTMLElement | null;
+  if (target?.closest('[data-bp-ui-overlay="true"]')) return;
+
   // Right button: pan viewport
   if (e.button === 2) {
     e.preventDefault();
@@ -332,11 +341,36 @@ const onWheel = (e: WheelEvent) => {
   emit("update:viewport", { zoom: z1, panX: panX1, panY: panY1 });
 };
 
+const onDblClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  const path = e.composedPath();
+  const isOnNode = path.some((el) => {
+    if (el instanceof HTMLElement) {
+      return el.classList.contains('wf-node') || el.hasAttribute('data-wf-node-id');
+    }
+    return false;
+  });
+  if (isOnNode) return;
+  const world = screenToWorld({ x: e.clientX, y: e.clientY });
+  emit("canvas-dblclick", {
+    clientX: e.clientX,
+    clientY: e.clientY,
+    worldX: world.x,
+    worldY: world.y,
+  });
+};
+
 const onContextMenu = (e: MouseEvent) => {
-  if (suppressContextMenuOnce) {
-    suppressContextMenuOnce = false;
-    return;
-  }
+  // 只在节点上触发右键菜单，空白区域不触发
+  const target = e.target as HTMLElement;
+  const path = e.composedPath();
+  const isOnNode = path.some((el) => {
+    if (el instanceof HTMLElement) {
+      return el.classList.contains('wf-node') || el.hasAttribute('data-wf-node-id');
+    }
+    return false;
+  });
+  if (!isOnNode) return;
   const world = screenToWorld({ x: e.clientX, y: e.clientY });
   emit("canvas-contextmenu", {
     clientX: e.clientX,

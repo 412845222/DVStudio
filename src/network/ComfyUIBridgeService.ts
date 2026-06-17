@@ -5,6 +5,16 @@ import type { AgentToUiMessage } from '../core/agentToUI'
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
 	devToken?: string
+	localExecBasePath?: string
+}
+
+const normalizeLocalExecBasePath = (raw: unknown) => {
+	const text = String(raw ?? '').trim()
+	if (!text) return '/api/workflow/codex'
+	if (text === 'codex') return '/api/workflow/codex'
+	if (text === 'copilot') return '/api/workflow/copilot'
+	const withLeadingSlash = text.startsWith('/') ? text : `/${text}`
+	return withLeadingSlash.replace(/\/+$/, '') || '/api/workflow/codex'
 }
 
 type PingResponse =
@@ -125,6 +135,26 @@ export type BlueprintChatStreamEvent =
 	| { type: 'done' }
 	| { type: 'error'; error: { message: string; details?: unknown } }
 
+export type CodexSessionDto = {
+	id: string
+	title: string
+	status?: string
+	model_name?: string
+	provider_thread_id?: string
+	cwd?: string
+}
+
+export type CodexListSessionsResponse = { items: CodexSessionDto[] } | { error: string }
+
+export type CodexCreateSessionResponse = CodexSessionDto | { error: string }
+
+export type CodexApprovalResponse = { message?: any; error?: string }
+
+export type CodexStreamEvent =
+	| { type: 'event'; event: string; data: any }
+	| { type: 'error'; error: { message: string; details?: unknown } }
+	| { type: 'done' }
+
 type NanoBananaGenerateResponse =
 	| { ok: true; imageUrl: string; baseUrl?: string }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
@@ -135,6 +165,177 @@ type NanoBananaCacheRefsResponse =
 
 export type NanoBananaGenerateStreamEvent = BlueprintChatStreamEvent
 export type SeedanceGenerateStreamEvent = BlueprintChatStreamEvent
+export type JimengGenerateStreamEvent = BlueprintChatStreamEvent
+
+export type SeedanceTaskMirrorItem = {
+	id: number
+	taskId: string
+	provider: string
+	model: string
+	taskType?: string
+	source?: string
+	status: string
+	prompt: string
+	ratio?: string
+	resolution?: string
+	duration?: number
+	seed?: number | null
+	generateAudio?: boolean
+	watermark?: boolean
+	cameraFixed?: boolean
+	serviceTier?: string
+	tools?: any[]
+	usage?: Record<string, any>
+	videoUrlRemote?: string
+	videoUrlLocal?: string
+	videoSourcePathLocal?: string
+	lastFrameUrlRemote?: string
+	lastFrameUrlLocal?: string
+	lastFrameSourcePathLocal?: string
+	downloadStatus?: string
+	downloadProgress?: number
+	downloadError?: string
+	errorMessage?: string
+	statusText?: string
+	projectId?: number | null
+	remoteCreatedAt?: number | null
+	remoteUpdatedAt?: number | null
+	requestPayload?: Record<string, any>
+	responsePayload?: Record<string, any>
+	createdAt: string
+	updatedAt: string
+	syncedAt: string
+}
+
+type SeedanceTasksListResponse =
+	| {
+			ok: true
+			items: SeedanceTaskMirrorItem[]
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type SeedanceTaskDetailResponse =
+	| {
+			ok: true
+			item: SeedanceTaskMirrorItem
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type SeedanceSyncTasksResponse =
+	| {
+			ok: true
+			item?: SeedanceTaskMirrorItem
+			items?: SeedanceTaskMirrorItem[]
+			total?: number
+			remote?: Record<string, any>
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type MeshyGenerateResponse =
+	| { ok: true; mode: string; taskId: string; status: string; raw?: any }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type MeshyTaskResponse =
+	| {
+			ok: true
+			mode: string
+			taskId: string
+			status: string
+			progress: number
+			thumbnailUrl: string
+			modelUrls: Record<string, string>
+			imageUrls?: string[]
+			preferredImageUrl?: string
+			sourceImageUrl?: string
+			preferredModelUrl: string
+			sourceModelUrl?: string
+			statusText?: string
+			errorMessage?: string
+			raw?: any
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+export type MeshyTaskRelationKind = 'model' | 'texture' | 'rigging' | 'animation' | 'remesh'
+
+export type MeshyTaskCapability = 'model' | 'textured' | 'rigged' | 'animated'
+
+export type MeshyTaskMirrorItem = {
+	id: number
+	taskId: string
+	mode: string
+	target: '3d' | 'image'
+	family: string
+	relationKind?: MeshyTaskRelationKind
+	rootTaskId?: string
+	parentTaskId?: string
+	capabilities?: MeshyTaskCapability[]
+	status: string
+	progress: number
+	prompt: string
+	negativePrompt: string
+	imageCount: number
+	thumbnailUrl?: string
+	preferredModelUrl?: string
+	localAssetUrl?: string
+	localAssetPath?: string
+	sourceModelUrl?: string
+	errorMessage?: string
+	statusText?: string
+	lastNodeId?: string
+	projectId?: number | null
+	remoteCreatedAt?: string
+	remoteFinishedAt?: string
+	createdAt: string
+	updatedAt: string
+	children?: MeshyTaskMirrorItem[]
+	hasTextureChild?: boolean
+	hasRiggingChild?: boolean
+	hasAnimationChild?: boolean
+	effectiveTaskId?: string
+	effectiveRelationKind?: MeshyTaskRelationKind
+	effectiveStatus?: string
+	effectiveProgress?: number
+	effectivePreferredModelUrl?: string
+	effectiveLocalAssetUrl?: string
+	effectiveLocalAssetPath?: string
+	effectiveThumbnailUrl?: string
+	selectedTaskId?: string
+	requestPayload?: Record<string, any>
+	responsePayload?: Record<string, any>
+}
+
+type MeshyTasksListResponse =
+	| {
+			ok: true
+			items: MeshyTaskMirrorItem[]
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type MeshyTaskDetailResponse =
+	| {
+			ok: true
+			item: MeshyTaskMirrorItem
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type MeshyTaskActionResponse =
+	| {
+			ok: true
+			taskId: string
+			status?: string
+			deleted?: boolean
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+export type MeshyBalanceResponse =
+	| {
+			ok: true
+			available: boolean
+			configured: boolean
+			displayText: string
+			detail?: string
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
 
 type JobResponse =
 	| {
@@ -170,6 +371,7 @@ const safeJson = async (res: Response) => {
 export class ComfyUIBridgeService {
 	private readonly getBaseUrl: () => string
 	private readonly devToken?: string
+	private readonly localExecBasePath: string
 
 	constructor(opts: ServiceOptions = {}) {
 		if (typeof opts.baseUrl === 'function') this.getBaseUrl = opts.baseUrl
@@ -180,6 +382,7 @@ export class ComfyUIBridgeService {
 			this.getBaseUrl = getBackendBaseUrl
 		}
 		this.devToken = opts.devToken
+		this.localExecBasePath = normalizeLocalExecBasePath(opts.localExecBasePath)
 	}
 
 	private url(path: string) {
@@ -187,6 +390,11 @@ export class ComfyUIBridgeService {
 		if (!base) return path
 		if (path.startsWith('/')) return `${base}${path}`
 		return `${base}/${path}`
+	}
+
+	private localExecUrl(path: string) {
+		const normalized = path.startsWith('/') ? path : `/${path}`
+		return this.url(`${this.localExecBasePath}${normalized}`)
 	}
 
 	async blueprintChat(payload: {
@@ -325,6 +533,210 @@ export class ComfyUIBridgeService {
 		for (const ev of flush()) yield ev
 	}
 
+	async codexHealth(): Promise<any> {
+		const res = await fetch(this.localExecUrl('/health'), {
+			method: 'GET',
+			headers: jsonHeaders(this.devToken),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return { ok: false, error: `codex/health failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+		}
+		return await res.json()
+	}
+
+	async codexListSessions(projectId: number | null): Promise<CodexListSessionsResponse> {
+		const pid = Number.isFinite(projectId as number) ? Number(projectId) : NaN
+		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
+		const res = await fetch(this.localExecUrl(`/sessions${query}`), {
+			method: 'GET',
+			headers: jsonHeaders(this.devToken),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return { error: `codex/sessions failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+		}
+		return (await res.json()) as CodexListSessionsResponse
+	}
+
+	async codexCreateSession(payload: { title?: string; cwd?: string; model?: string; projectId?: number | null } = {}): Promise<CodexCreateSessionResponse> {
+		const res = await fetch(this.localExecUrl('/sessions'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload ?? {}),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return { error: `codex/create-session failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+		}
+		return (await res.json()) as CodexCreateSessionResponse
+	}
+
+	async codexListMessages(sessionId: string, projectId: number | null): Promise<{ items?: any[]; error?: string }> {
+		const sid = String(sessionId || '').trim()
+		if (!sid) return { error: 'sessionId is required' }
+		const pid = Number.isFinite(projectId as number) ? Number(projectId) : NaN
+		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
+		const res = await fetch(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/messages${query}`), {
+			method: 'GET',
+			headers: jsonHeaders(this.devToken),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return { error: `codex/messages failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+		}
+		return await res.json()
+	}
+
+	async codexUpdateSession(payload: { sessionId: string; projectId: number | null; title: string }): Promise<{ error?: string; [k: string]: any }> {
+		const sid = String(payload.sessionId || '').trim()
+		if (!sid) return { error: 'sessionId is required' }
+		const res = await fetch(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}`), {
+			method: 'PATCH',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify({ title: payload.title, projectId: payload.projectId }),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return { error: `codex/session patch failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+		}
+		return await res.json()
+	}
+
+	async codexDeleteSession(payload: { sessionId: string; projectId: number | null }): Promise<{ ok?: boolean; error?: string }> {
+		const sid = String(payload.sessionId || '').trim()
+		if (!sid) return { error: 'sessionId is required' }
+		const pid = Number.isFinite(payload.projectId as number) ? Number(payload.projectId) : NaN
+		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
+		const res = await fetch(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}${query}`), {
+			method: 'DELETE',
+			headers: jsonHeaders(this.devToken),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return { error: `codex/session delete failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+		}
+		return { ok: true }
+	}
+
+	async codexSubmitApproval(payload: { sessionId: string; messageId: string; decision: 'accept' | 'decline'; projectId?: number | null }): Promise<CodexApprovalResponse> {
+		const sid = String(payload.sessionId || '').trim()
+		if (!sid) return { error: 'sessionId is required' }
+		const res = await fetch(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/approvals`), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify({ message_id: payload.messageId, decision: payload.decision, projectId: (payload as any).projectId ?? null }),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return { error: `codex/approvals failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+		}
+		return (await res.json()) as CodexApprovalResponse
+	}
+
+	async *codexStreamMessage(
+		sessionId: string,
+		payload: {
+			content: string
+			references?: Array<{ path: string; kind?: string; name?: string }>
+			projectId?: number | null
+			skillHints?: string[]
+			executionHints?: string[]
+			agentMode?: 'agent' | 'ask' | 'plan'
+			permissionProfile?: string
+		},
+		signal?: AbortSignal,
+		useTestStream = false
+	): AsyncGenerator<CodexStreamEvent, void, void> {
+		const sid = String(sessionId || '').trim()
+		if (!sid) {
+			yield { type: 'error', error: { message: 'sessionId is required' } }
+			return
+		}
+		const streamPath = useTestStream
+			? `/sessions/${encodeURIComponent(sid)}/messages:stream-test`
+			: `/sessions/${encodeURIComponent(sid)}/messages:stream`
+		const res = await fetch(this.localExecUrl(streamPath), {
+			method: 'POST',
+			headers: {
+				...jsonHeaders(this.devToken),
+				Accept: 'text/event-stream',
+			},
+			body: JSON.stringify(payload ?? {}),
+			signal,
+		})
+
+		if (!res.ok || !res.body) {
+			const body = await safeJson(res)
+			yield {
+				type: 'error',
+				error: { message: `local-exec/messages:stream failed: ${res.status}`, details: body.ok ? body.value : body.text },
+			}
+			return
+		}
+
+		const reader = res.body.getReader()
+		const decoder = new TextDecoder('utf-8')
+
+		let buffer = ''
+		let eventName: string | undefined
+		let dataLines: string[] = []
+
+		const flush = (): CodexStreamEvent[] => {
+			if (dataLines.length === 0 && !eventName) return []
+			const dataText = dataLines.join('\n')
+			const ev = eventName || 'message'
+			eventName = undefined
+			dataLines = []
+			if (ev === 'done') return [{ type: 'done' }]
+			let parsed: any = dataText
+			try {
+				parsed = dataText ? JSON.parse(dataText) : {}
+			} catch {
+				parsed = { raw: dataText }
+			}
+			return [{ type: 'event', event: ev, data: parsed }]
+		}
+
+		try {
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+				buffer += decoder.decode(value, { stream: true })
+
+				let idx = buffer.indexOf('\n')
+				while (idx >= 0) {
+					const line = buffer.slice(0, idx)
+					buffer = buffer.slice(idx + 1)
+					idx = buffer.indexOf('\n')
+
+					const l = line.replace(/\r$/, '')
+					if (!l.trim()) {
+						for (const ev of flush()) yield ev
+						continue
+					}
+					if (l.startsWith('event:')) {
+						eventName = l.slice('event:'.length).trim()
+						continue
+					}
+					if (l.startsWith('data:')) {
+						dataLines.push(l.slice('data:'.length).trimStart())
+						continue
+					}
+				}
+			}
+		} finally {
+			try {
+				reader.releaseLock()
+			} catch {
+				// ignore
+			}
+		}
+
+		for (const ev of flush()) yield ev
+		yield { type: 'done' }
+	}
+
 	/**
 	 * Cache NanoBanana ref images on Django backend before generation.
 	 * Backend: POST /api/workflow/nanobanana/ref-cache
@@ -345,6 +757,31 @@ export class ComfyUIBridgeService {
 				ok: false,
 				status: res.status,
 				error: `nanobanana/ref-cache failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+			}
+		}
+		return (await res.json()) as NanoBananaCacheRefsResponse
+	}
+
+	/**
+	 * Cache Seedream ref images on Django backend before generation.
+	 * Backend: POST /api/workflow/seedream/ref-cache
+	 */
+	async seedreamCacheRefImages(formData: FormData): Promise<NanoBananaCacheRefsResponse> {
+		const headers: Record<string, string> = {
+			Accept: 'application/json',
+		}
+		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
+		const res = await fetch(this.url('/api/workflow/seedream/ref-cache'), {
+			method: 'POST',
+			headers,
+			body: formData,
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: `seedream/ref-cache failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
 			}
 		}
 		return (await res.json()) as NanoBananaCacheRefsResponse
@@ -481,6 +918,101 @@ export class ComfyUIBridgeService {
 	}
 
 	/**
+	 * Seedream image generation (SSE stream).
+	 * Backend: POST /api/workflow/seedream/generate:stream
+	 */
+	async *seedreamGenerateStream(
+		form: FormData,
+		signal?: AbortSignal
+	): AsyncGenerator<NanoBananaGenerateStreamEvent, void, void> {
+		const headers: Record<string, string> = {
+			Accept: 'text/event-stream',
+		}
+		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
+
+		const res = await fetch(this.url('/api/workflow/seedream/generate:stream'), {
+			method: 'POST',
+			headers,
+			body: form,
+			signal,
+		})
+
+		if (!res.ok || !res.body) {
+			const body = await safeJson(res)
+			throw new Error(`seedream/generate:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+		}
+
+		const reader = res.body.getReader()
+		const decoder = new TextDecoder('utf-8')
+
+		let buffer = ''
+		let eventName: string | undefined
+		let dataLines: string[] = []
+
+		const flush = (): NanoBananaGenerateStreamEvent[] => {
+			if (dataLines.length === 0 && !eventName) return []
+			const data = dataLines.join('\n')
+			const name = eventName
+			eventName = undefined
+			dataLines = []
+
+			if (name === 'done') return [{ type: 'done' }]
+			if (name === 'error') {
+				try {
+					const obj = JSON.parse(data)
+					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
+				} catch {
+					return [{ type: 'error', error: { message: data || 'error' } }]
+				}
+			}
+			try {
+				const obj = JSON.parse(data)
+				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
+				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
+			} catch (e) {
+				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+			}
+		}
+
+		try {
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+				buffer += decoder.decode(value, { stream: true })
+
+				let idx = buffer.indexOf('\n')
+				while (idx >= 0) {
+					const line = buffer.slice(0, idx)
+					buffer = buffer.slice(idx + 1)
+					idx = buffer.indexOf('\n')
+
+					const l = line.replace(/\r$/, '')
+					if (!l.trim()) {
+						for (const ev of flush()) yield ev
+						continue
+					}
+					if (l.startsWith('event:')) {
+						eventName = l.slice('event:'.length).trim()
+						continue
+					}
+					if (l.startsWith('data:')) {
+						dataLines.push(l.slice('data:'.length).trimStart())
+						continue
+					}
+				}
+			}
+		} finally {
+			try {
+				reader.releaseLock()
+			} catch {
+				// ignore
+			}
+		}
+
+		for (const ev of flush()) yield ev
+	}
+
+	/**
 	 * Seedance video generation (SSE stream).
 	 * Backend: POST /api/workflow/seedance/generate:stream
 	 */
@@ -515,6 +1047,200 @@ export class ComfyUIBridgeService {
 		let dataLines: string[] = []
 
 		const flush = (): SeedanceGenerateStreamEvent[] => {
+			if (dataLines.length === 0 && !eventName) return []
+			const data = dataLines.join('\n')
+			const name = eventName
+			eventName = undefined
+			dataLines = []
+
+			if (name === 'done') return [{ type: 'done' }]
+			if (name === 'error') {
+				try {
+					const obj = JSON.parse(data)
+					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
+				} catch {
+					return [{ type: 'error', error: { message: data || 'error' } }]
+				}
+			}
+			try {
+				const obj = JSON.parse(data)
+				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
+				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
+			} catch (e) {
+				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+			}
+		}
+
+		try {
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+				buffer += decoder.decode(value, { stream: true })
+
+				let idx = buffer.indexOf('\n')
+				while (idx >= 0) {
+					const line = buffer.slice(0, idx)
+					buffer = buffer.slice(idx + 1)
+					idx = buffer.indexOf('\n')
+
+					const l = line.replace(/\r$/, '')
+					if (!l.trim()) {
+						for (const ev of flush()) yield ev
+						continue
+					}
+					if (l.startsWith('event:')) {
+						eventName = l.slice('event:'.length).trim()
+						continue
+					}
+					if (l.startsWith('data:')) {
+						dataLines.push(l.slice('data:'.length).trimStart())
+						continue
+					}
+				}
+			}
+		} finally {
+			try {
+				reader.releaseLock()
+			} catch {
+				// ignore
+			}
+		}
+
+		for (const ev of flush()) yield ev
+	}
+
+	/**
+	 * Jimeng image generation (SSE stream).
+	 * Backend: POST /api/workflow/jimeng/image/generate:stream
+	 */
+	async *jimengImageGenerateStream(
+		form: FormData,
+		signal?: AbortSignal
+	): AsyncGenerator<JimengGenerateStreamEvent, void, void> {
+		const headers: Record<string, string> = {
+			Accept: 'text/event-stream',
+		}
+		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
+
+		const res = await fetch(this.url('/api/workflow/jimeng/image/generate:stream'), {
+			method: 'POST',
+			headers,
+			body: form,
+			signal,
+		})
+
+		if (!res.ok || !res.body) {
+			const body = await safeJson(res)
+			throw new Error(
+				`jimeng/image/generate:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
+		}
+
+		const reader = res.body.getReader()
+		const decoder = new TextDecoder('utf-8')
+
+		let buffer = ''
+		let eventName: string | undefined
+		let dataLines: string[] = []
+
+		const flush = (): JimengGenerateStreamEvent[] => {
+			if (dataLines.length === 0 && !eventName) return []
+			const data = dataLines.join('\n')
+			const name = eventName
+			eventName = undefined
+			dataLines = []
+
+			if (name === 'done') return [{ type: 'done' }]
+			if (name === 'error') {
+				try {
+					const obj = JSON.parse(data)
+					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
+				} catch {
+					return [{ type: 'error', error: { message: data || 'error' } }]
+				}
+			}
+			try {
+				const obj = JSON.parse(data)
+				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
+				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
+			} catch (e) {
+				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+			}
+		}
+
+		try {
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+				buffer += decoder.decode(value, { stream: true })
+
+				let idx = buffer.indexOf('\n')
+				while (idx >= 0) {
+					const line = buffer.slice(0, idx)
+					buffer = buffer.slice(idx + 1)
+					idx = buffer.indexOf('\n')
+
+					const l = line.replace(/\r$/, '')
+					if (!l.trim()) {
+						for (const ev of flush()) yield ev
+						continue
+					}
+					if (l.startsWith('event:')) {
+						eventName = l.slice('event:'.length).trim()
+						continue
+					}
+					if (l.startsWith('data:')) {
+						dataLines.push(l.slice('data:'.length).trimStart())
+						continue
+					}
+				}
+			}
+		} finally {
+			try {
+				reader.releaseLock()
+			} catch {
+				// ignore
+			}
+		}
+
+		for (const ev of flush()) yield ev
+	}
+
+	/**
+	 * Jimeng video generation (SSE stream).
+	 * Backend: POST /api/workflow/jimeng/video/generate:stream
+	 */
+	async *jimengVideoGenerateStream(
+		form: FormData,
+		signal?: AbortSignal
+	): AsyncGenerator<JimengGenerateStreamEvent, void, void> {
+		const headers: Record<string, string> = {
+			Accept: 'text/event-stream',
+		}
+		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
+
+		const res = await fetch(this.url('/api/workflow/jimeng/video/generate:stream'), {
+			method: 'POST',
+			headers,
+			body: form,
+			signal,
+		})
+
+		if (!res.ok || !res.body) {
+			const body = await safeJson(res)
+			throw new Error(
+				`jimeng/video/generate:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
+		}
+
+		const reader = res.body.getReader()
+		const decoder = new TextDecoder('utf-8')
+
+		let buffer = ''
+		let eventName: string | undefined
+		let dataLines: string[] = []
+
+		const flush = (): JimengGenerateStreamEvent[] => {
 			if (dataLines.length === 0 && !eventName) return []
 			const data = dataLines.join('\n')
 			const name = eventName
@@ -690,6 +1416,201 @@ export class ComfyUIBridgeService {
 			}
 		}
 		return (await res.json()) as OutputsResponse
+	}
+
+	async meshyGenerate(payload: Record<string, any>): Promise<MeshyGenerateResponse> {
+		const res = await fetch(this.url('/api/workflow/meshy/generate'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload || {}),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `meshy/generate failed: ${res.status}`) : `meshy/generate failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as MeshyGenerateResponse
+	}
+
+	async meshyTask(taskId: string, mode: string): Promise<MeshyTaskResponse> {
+		const res = await fetch(this.url('/api/workflow/meshy/task'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify({ taskId, mode }),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `meshy/task failed: ${res.status}`) : `meshy/task failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as MeshyTaskResponse
+	}
+
+	async meshyTasks(query?: {
+		status?: string
+		target?: '3d' | 'image' | 'all'
+		family?: string
+		limit?: number
+	}): Promise<MeshyTasksListResponse> {
+		const search = new URLSearchParams()
+		if (query?.status) search.set('status', String(query.status).trim())
+		if (query?.target && query.target !== 'all') search.set('target', query.target)
+		if (query?.family) search.set('family', String(query.family).trim())
+		if (Number.isFinite(query?.limit)) search.set('limit', String(query?.limit))
+		const suffix = search.size ? `?${search.toString()}` : ''
+		const res = await fetch(this.url(`/api/workflow/meshy/tasks${suffix}`), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `meshy/tasks failed: ${res.status}`) : `meshy/tasks failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as MeshyTasksListResponse
+	}
+
+	async meshyTaskDetail(taskId: string): Promise<MeshyTaskDetailResponse> {
+		const search = new URLSearchParams({ taskId })
+		const res = await fetch(this.url(`/api/workflow/meshy/task-detail?${search.toString()}`), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `meshy/task-detail failed: ${res.status}`) : `meshy/task-detail failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as MeshyTaskDetailResponse
+	}
+
+	async seedanceTasks(query?: {
+		status?: string
+		model?: string
+		limit?: number
+	}): Promise<SeedanceTasksListResponse> {
+		const search = new URLSearchParams()
+		if (query?.status) search.set('status', String(query.status).trim())
+		if (query?.model) search.set('model', String(query.model).trim())
+		if (Number.isFinite(query?.limit)) search.set('limit', String(query?.limit))
+		const suffix = search.size ? `?${search.toString()}` : ''
+		const res = await fetch(this.url(`/api/workflow/seedance/tasks${suffix}`), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `seedance/tasks failed: ${res.status}`) : `seedance/tasks failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as SeedanceTasksListResponse
+	}
+
+	async seedanceTaskDetail(taskId: string): Promise<SeedanceTaskDetailResponse> {
+		const search = new URLSearchParams({ taskId })
+		const res = await fetch(this.url(`/api/workflow/seedance/task-detail?${search.toString()}`), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `seedance/task-detail failed: ${res.status}`) : `seedance/task-detail failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as SeedanceTaskDetailResponse
+	}
+
+	async seedanceSyncTasks(payload?: {
+		taskId?: string
+		status?: string
+		model?: string
+		pageNum?: number
+		pageSize?: number
+		projectId?: number
+		saveMedia?: boolean
+	}): Promise<SeedanceSyncTasksResponse> {
+		const res = await fetch(this.url('/api/workflow/seedance/tasks:sync'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload || {}),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `seedance/tasks:sync failed: ${res.status}`) : `seedance/tasks:sync failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as SeedanceSyncTasksResponse
+	}
+
+	async meshyStop(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {
+		const res = await fetch(this.url('/api/workflow/meshy/stop'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify({ taskId, mode }),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `meshy/stop failed: ${res.status}`) : `meshy/stop failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as MeshyTaskActionResponse
+	}
+
+	async meshyDelete(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {
+		const res = await fetch(this.url('/api/workflow/meshy/delete'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify({ taskId, mode }),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `meshy/delete failed: ${res.status}`) : `meshy/delete failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as MeshyTaskActionResponse
+	}
+
+	async meshyBalance(): Promise<MeshyBalanceResponse> {
+		const res = await fetch(this.url('/api/workflow/meshy/balance'), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `meshy/balance failed: ${res.status}`) : `meshy/balance failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as MeshyBalanceResponse
 	}
 
 	async cancel(comfyBaseUrl: string, promptId: string): Promise<CancelResponse> {

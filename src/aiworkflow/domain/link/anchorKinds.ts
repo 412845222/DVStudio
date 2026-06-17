@@ -1,6 +1,59 @@
-import type { WorkflowNode, WorkflowState } from '../../types'
+import type { WorkflowAnchorSpec, WorkflowNode, WorkflowState } from '../../types'
 
-export type AnchorKind = 'flow' | 'resource' | 'image' | 'video' | 'text'
+export type CanonicalAnchorMediaType = 'image' | 'video' | 'text' | 'model3d' | 'audio'
+export type AnchorKind = 'flow' | 'resource' | 'meta' | CanonicalAnchorMediaType
+
+const BASIC_MEDIA_NODE_TYPES = new Set<string>(['text', 'image', 'video', 'audio'])
+
+type AnchorMediaContext = {
+  node?: WorkflowNode
+  nodeType?: string
+  anchorId?: string
+}
+
+const normalizeNodeType = (node: WorkflowNode | undefined, fallback?: string) => (
+  String(node?.type ?? fallback ?? '').trim().toLowerCase()
+)
+
+const isBasicMediaNode = (node: WorkflowNode | undefined) =>
+  BASIC_MEDIA_NODE_TYPES.has(normalizeNodeType(node))
+
+const canLinkBasicMediaNodes = (fromNode: WorkflowNode | undefined, toNode: WorkflowNode | undefined) => {
+  if (!isBasicMediaNode(fromNode) || !isBasicMediaNode(toNode)) return false
+  const fromType = normalizeNodeType(fromNode)
+  const toType = normalizeNodeType(toNode)
+  if (toType === 'video') return fromType === 'image' || fromType === 'video' || fromType === 'text'
+  return fromType === 'text' || fromType === 'image'
+}
+
+const shouldRejectBasicMediaNodes = (fromNode: WorkflowNode | undefined, toNode: WorkflowNode | undefined) => {
+  if (!isBasicMediaNode(fromNode) || !isBasicMediaNode(toNode)) return false
+  const fromType = normalizeNodeType(fromNode)
+  const toType = normalizeNodeType(toNode)
+  if (toType === 'video') return fromType !== 'image' && fromType !== 'video' && fromType !== 'text'
+  if (fromType === 'video') return toType !== 'video'
+  return fromType === 'audio'
+}
+
+const looksLikeModelAnchor = (anchorId: string) => /(^|[-_])model(3d)?($|[-_])|3d/i.test(anchorId)
+
+export const normalizeAnchorMediaType = (
+  mediaType: unknown,
+  context: AnchorMediaContext = {},
+): WorkflowAnchorSpec['mediaType'] | undefined => {
+  const raw = typeof mediaType === 'string' ? mediaType.trim().toLowerCase() : ''
+  if (raw === 'image' || raw === 'video' || raw === 'text' || raw === 'flow' || raw === 'model3d' || raw === 'audio' || raw === 'meta') {
+    return raw
+  }
+
+  const nodeType = normalizeNodeType(context.node, context.nodeType)
+  const anchorId = String(context.anchorId ?? '').trim().toLowerCase()
+  if (raw === 'generic') {
+    if (looksLikeModelAnchor(anchorId) || nodeType === 'model3d' || nodeType === 'meshy') return 'model3d'
+    return 'generic'
+  }
+  return undefined
+}
 
 export const anchorKind = (
   node: WorkflowNode | undefined,
@@ -14,19 +67,25 @@ export const anchorKind = (
     return 'flow'
   }
 
-  if (node.type === 'image' && direction === 'in') return 'resource'
-
   const list = direction === 'in' ? node.inputs : node.outputs
   const anchor = Array.isArray(list) ? list.find((a) => a.id === anchorId) : undefined
+  const mediaType = normalizeAnchorMediaType(anchor?.mediaType, { node, anchorId })
 
-  if (anchor?.mediaType === 'image') return 'image'
-  if (anchor?.mediaType === 'video') return 'video'
-  if (anchor?.mediaType === 'text') return 'text'
-  if (anchor?.mediaType === 'flow') return 'flow'
+  if (mediaType === 'image') return 'image'
+  if (mediaType === 'video') return 'video'
+  if (mediaType === 'text') return 'text'
+  if (mediaType === 'flow') return 'flow'
+  if (mediaType === 'model3d') return 'model3d'
+  if (mediaType === 'audio') return 'audio'
+  if (mediaType === 'meta') return 'meta'
+
+  if ((node.type === 'image' || node.type === 'video') && direction === 'in') return 'resource'
 
   if (node.type === 'text') return 'text'
   if (node.type === 'image') return 'image'
   if (node.type === 'video') return 'video'
+  if (node.type === 'model3d') return 'model3d'
+  if (node.type === 'audio') return 'audio'
 
   return 'resource'
 }
@@ -43,8 +102,13 @@ export const canLinkAnchors = (
   const fromKind = anchorKind(fromNode, fromAnchorId, 'out')
   const toKind = anchorKind(toNode, toAnchorId, 'in')
   if (!fromKind || !toKind) return false
+  if (canLinkBasicMediaNodes(fromNode, toNode)) return true
+  if (shouldRejectBasicMediaNodes(fromNode, toNode)) return false
   if (fromKind === toKind) return true
-  if (toKind === 'resource' && (fromKind === 'resource' || fromKind === 'image' || fromKind === 'video')) {
+  if (
+    toKind === 'resource'
+    && (fromKind === 'resource' || fromKind === 'image' || fromKind === 'video' || fromKind === 'model3d' || fromKind === 'audio')
+  ) {
     return true
   }
   return false
@@ -55,6 +119,9 @@ export const anchorKindLabel = (kind: AnchorKind | null) => {
   if (kind === 'resource') return 'resource'
   if (kind === 'image') return 'image'
   if (kind === 'video') return 'video'
+  if (kind === 'model3d') return 'model3d'
+  if (kind === 'audio') return 'audio'
   if (kind === 'text') return 'text'
+  if (kind === 'meta') return 'meta'
   return 'unknown'
 }

@@ -59,6 +59,7 @@ B) agentToUi/insertNode：用于快速追加一个节点或一小棵节点树（
 建议：大模块用 componentTemplate，小修补/单节点追加用 insertNode。
 C) agentToUi/patchNode：用于按 nodeId 精确修改已存在节点（patch 语义：只改提供的字段），用于自检修正时必须优先使用。
 D) agentToUi/deleteNode：用于按 nodeId 精确删除已存在节点（避免自检时通过新增覆盖导致错乱）。
+E) agentToUi/videoScenePlan：用于返回一份更高层的 VideoScene GUI/动画计划 JSON，承载 palette、layout、animationPlan、editorHints 等结构化结果。该消息用于“返回可复制 JSON”和后续动画编译，不直接替代 componentTemplate 的静态落地职责。
 
 节点精确修改/删除（用于自检修正；强制优先）：
 - 当你在自检阶段发现问题（尺寸、位置、样式、文案等），你必须优先使用以下消息按 id 修正，而不是新建节点：
@@ -79,6 +80,9 @@ D) agentToUi/deleteNode：用于按 nodeId 精确删除已存在节点（避免�
   - text.props：textContent, fontSize, fontColor, fontStyle, textAlign(left|center|right)。
   - image.props：imageId, imagePath, imageName, imageFit（建议：contain/cover/fill/none/scale-down）。
   - line.props：startX, startY, endX, endY, anchorX, anchorY, lineColor, lineWidth, lineStyle（solid/dashed）。
+    - startX/startY/endX/endY/anchorX/anchorY 六个字段必须同时提供，禁止只给起点终点而省略锚点。
+    - 这六个坐标都是以 line 节点中心为原点的 local 坐标，不是世界坐标，也不是父容器左上角坐标。
+    - anchorX/anchorY 应优先按“start/end 中点 + 法线偏移”方式生成；即使是轻微曲线，也必须显式给出锚点。
 关键校验规则：每个节点都必须包含 props 字段，且 props 必须是对象（即使为空也要 props:{}）。
 注意：不要使用不存在的字段名，否则模板会校验失败。
 

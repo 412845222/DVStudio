@@ -92,7 +92,7 @@ const emit = defineEmits<{
   (e: "copy"): void;
   (e: "refresh"): void;
   (e: "delete"): void;
-  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"): void;
+  (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "scene-understanding" | "scene-decompose" | "scene-layout" | "unreal-export" | "story" | "comfyui" | "model3d" | "meshy"): void;
   (
     e: "resize",
     payload: { width: number; height: number; worldX: number; worldY: number }
@@ -141,7 +141,7 @@ const onTextInput = (e: Event) => {
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt-dark);
   color: var(--vscode-foreground);
-  border-radius: 6px;
+  border-radius: 0;
   outline: none;
   resize: none;
   font-family: inherit;

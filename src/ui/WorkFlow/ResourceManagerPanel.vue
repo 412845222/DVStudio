@@ -210,6 +210,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { WorkflowResource } from "../../aiworkflow/resource/types";
+import { sanitizeWorkflowMediaUrl } from "../../aiworkflow/domain/resource/safeWorkflowUrl";
 
 const props = defineProps<{
   open: boolean;
@@ -344,9 +345,9 @@ const thumbSrc = (r: WorkflowResource) => {
   if (!r) return "";
   if (r.kind === "video") {
     const poster = String((r as any).posterUrl ?? "").trim();
-    return poster || "";
+    return sanitizeWorkflowMediaUrl(poster);
   }
-  return String((r as any).url ?? "").trim();
+  return sanitizeWorkflowMediaUrl(String((r as any).url ?? "").trim());
 };
 
 const resourceMissingThumb = (r: WorkflowResource) => {
@@ -394,29 +395,38 @@ const onTileDragStart = (event: DragEvent, r: WorkflowResource) => {
 };
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const safeTopInset = () => {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--aiwf-safe-top');
+  const parsed = Number.parseFloat(String(raw || '').trim());
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, parsed);
+};
+const minTopBound = (pad = 16) => Math.max(pad, Math.round(safeTopInset()) + 8);
 const MIN_WIDTH = 320;
 const MIN_HEIGHT = 220;
 
 const MINIMIZED_HEIGHT = 36;
 
 const resetPosition = () => {
-  const w = size.value.w;
-  const h = size.value.h;
-  const pad = 16;
-  const nextX = pad;
-  const nextY = clamp(window.innerHeight - h - 64, pad, window.innerHeight - h - pad);
-  position.value = { x: nextX, y: nextY };
+	const w = size.value.w;
+	const h = size.value.h;
+	const pad = 16;
+  const minTop = minTopBound(pad);
+	const nextX = 56;
+  const nextY = clamp(window.innerHeight - h - 64, minTop, Math.max(minTop, window.innerHeight - h - pad));
+	position.value = { x: nextX, y: nextY };
 };
 
 const dockMinimized = () => {
-  const pad = 16;
-  const nextX = pad;
-  const nextY = clamp(
-    window.innerHeight - MINIMIZED_HEIGHT - pad,
-    pad,
-    window.innerHeight - MINIMIZED_HEIGHT - pad
-  );
-  position.value = { x: nextX, y: nextY };
+	const pad = 16;
+  const minTop = minTopBound(pad);
+	const nextX = 56;
+	const nextY = clamp(
+		window.innerHeight - MINIMIZED_HEIGHT - pad,
+    minTop,
+    Math.max(minTop, window.innerHeight - MINIMIZED_HEIGHT - pad)
+	);
+	position.value = { x: nextX, y: nextY };
 };
 
 watch(
@@ -532,11 +542,12 @@ const toggleMaximize = () => {
 
 const panelStyle = computed(() => {
   if (maximized.value) {
+    const topInset = minTopBound(16);
     return {
       left: "16px",
-      top: "16px",
+      top: `${topInset}px`,
       width: `${window.innerWidth - 32}px`,
-      height: `${window.innerHeight - 32}px`,
+      height: `${Math.max(MIN_HEIGHT, window.innerHeight - topInset - 16)}px`,
     };
   }
   const h = minimized.value ? MINIMIZED_HEIGHT : size.value.h;
@@ -578,16 +589,17 @@ const onHeaderPointerDown = (e: PointerEvent) => {
   };
   const onMove = (ev: PointerEvent) => {
     if (!drag) return;
+    const minTop = minTopBound(16);
     const nextX = drag.originX + (ev.clientX - drag.startX);
     const nextY = drag.originY + (ev.clientY - drag.startY);
     const maxX = Math.max(16, window.innerWidth - size.value.w - 16);
     const maxY = Math.max(
-      16,
+      minTop,
       window.innerHeight - (minimized.value ? 40 : size.value.h) - 16
     );
     position.value = {
       x: clamp(nextX, 16, maxX),
-      y: clamp(nextY, 16, maxY),
+      y: clamp(nextY, minTop, maxY),
     };
   };
   const onUp = () => {
@@ -678,10 +690,11 @@ const onResizeStart = (dir: string, e: PointerEvent) => {
     nextW = Math.max(MIN_WIDTH, nextW);
     nextH = Math.max(MIN_HEIGHT, nextH);
 
+    const minTop = minTopBound(16);
     const maxLeft = window.innerWidth - nextW - 16;
     const maxTop = window.innerHeight - nextH - 16;
     nextLeft = clamp(nextLeft, 16, Math.max(16, maxLeft));
-    nextTop = clamp(nextTop, 16, Math.max(16, maxTop));
+    nextTop = clamp(nextTop, minTop, Math.max(minTop, maxTop));
 
     size.value = { w: nextW, h: nextH };
     position.value = { x: nextLeft, y: nextTop };
@@ -709,7 +722,7 @@ const onResizeStart = (dir: string, e: PointerEvent) => {
   box-shadow: var(--vscode-shadow);
   display: flex;
   flex-direction: column;
-  z-index: 2000;
+  z-index: var(--aiwf-overlay-utility-z-index, 80);
 }
 
 .wf-resource-panel.animating {

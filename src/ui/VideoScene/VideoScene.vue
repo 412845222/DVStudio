@@ -194,22 +194,22 @@
       <ExportDialog
         :open="showExportPanel"
         :format="exportFormat"
-				:quality="exportQuality"
+        :quality="exportQuality"
         :concurrency="exportConcurrency"
         :ignore-stage-background="exportIgnoreStageBackground"
         :status="exportStatus"
         :client-progress="exportClientProgress"
         :server-progress="exportServerProgress"
         :server-path="exportServerPath"
-				:estimated-size-text="exportEstimatedSizeText"
+        :estimated-size-text="exportEstimatedSizeText"
         :error-text="exportError"
         @reset="resetExportResult"
         @update:format="(v) => (exportFormat = v)"
-				@update:quality="(v) => (exportQuality = v)"
+        @update:quality="(v) => (exportQuality = v)"
         @update:concurrency="(v) => (exportConcurrency = v)"
         @update:ignoreStageBackground="(v) => (exportIgnoreStageBackground = v)"
-				@exportFrames="exportFrames"
-				@renderVideo="renderVideo"
+        @exportFrames="exportFrames"
+        @renderVideo="renderVideo"
         @close="
           () => {
             resetExportResult();
@@ -218,12 +218,12 @@
         "
       />
 
-			<LoadRecentEditDialog
-				:open="showLoadRecentEditDialog"
-				:saved-at="recentEditSavedAt"
-				@load="loadRecentEdit"
-				@discard="discardRecentEdit"
-			/>
+      <LoadRecentEditDialog
+        :open="showLoadRecentEditDialog"
+        :saved-at="recentEditSavedAt"
+        @load="loadRecentEdit"
+        @discard="discardRecentEdit"
+      />
     </div>
 
     <VideoStudioRightPanel ref="rightPanelRef" />

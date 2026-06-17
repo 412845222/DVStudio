@@ -2,7 +2,8 @@
   <div
     ref="dockRef"
     class="chat-dock"
-    :class="{ 'history-expanded': historyExpanded, collapsed: !!collapsed }"
+    data-bp-ui-overlay="true"
+    :class="{ 'history-expanded': historyExpanded, collapsed: !!collapsed, 'right-drawer': isRightDrawer }"
     :style="dockStyle"
     @pointerdown.stop
     @wheel.stop
@@ -13,15 +14,36 @@
 
     <div class="chat-content" :aria-hidden="collapsed ? 'true' : 'false'">
       <div class="chat-history">
-        <div class="chat-history-bar" @pointerdown="onDockDragStart">
+        <div class="chat-history-bar" @pointerdown.stop="onDockDragStart">
           <div class="chat-history-title">
-            <template v-if="isVisualGenMode">
+            <div class="chat-panel-tabs">
+              <button
+                class="chat-panel-tab"
+                :class="{ active: isRegularMode }"
+                type="button"
+                @pointerdown.stop
+                @click.stop="onSwitchPanelMode('regular')"
+              >
+                常规
+              </button>
+              <button
+                class="chat-panel-tab"
+                :class="{ active: isAgentMode }"
+                type="button"
+                @pointerdown.stop
+                @click.stop="onSwitchPanelMode('agent')"
+              >
+                Agent对话
+              </button>
+            </div>
+            <template v-if="isRegularMode && isVisualGenMode">
               <span>{{ visualPanelTitle }}</span>
               <span class="nano-title-tag">{{ nanoInterfaceLabel }}</span>
               <span v-if="nanoModelTag" class="nano-title-tag"
                 >实际：{{ nanoModelTag }}</span
               >
             </template>
+            <template v-else-if="isAgentMode">Conversation</template>
             <template v-else>对话历史</template>
           </div>
           <button
@@ -53,7 +75,7 @@
           class="chat-history-body"
           :class="{ nanobanana: isVisualGenMode }"
         >
-          <template v-if="isVisualGenMode">
+          <template v-if="isRegularMode && isVisualGenMode">
             <div class="nano-panel">
               <div
                 v-if="nanoAnchorNodeId && nanoRefAnchors?.length"
@@ -105,14 +127,13 @@
                     <option value="21:9">21:9</option>
                   </select>
                   <div class="nano-hint">
-                    按 Gemini 官方 imageConfig 提交比例；两张参考图 + 文本提示词。
+                    按 Seedream 接口自动映射输出尺寸；支持参考图 + 文本提示词。
                   </div>
                 </div>
 
-                <div class="nano-field">
+                <div class="nano-field" v-if="modelKey === 'nanobanana'">
                   <div class="nano-label">数量</div>
                   <select
-                    v-if="modelKey === 'nanobanana'"
                     class="nano-input"
                     :disabled="sending"
                     v-model.number="nanoConfig.quantity"
@@ -122,98 +143,14 @@
                     <option :value="3">3</option>
                     <option :value="4">4</option>
                   </select>
-                  <select
-                    v-else
-                    class="nano-input"
-                    :disabled="sending"
-                    v-model.number="seedanceConfig.referenceCount"
-                  >
-                    <option :value="1">1（优先首帧）</option>
-                    <option :value="2">2（首帧+尾帧）</option>
-                    <option :value="3">3</option>
-                    <option :value="4">4</option>
-                  </select>
                 </div>
 
-                <template v-if="modelKey === 'seedance'">
-                  <div class="nano-field">
-                    <div class="nano-label">时长</div>
-                    <select
-                      class="nano-input"
-                      :disabled="sending"
-                      v-model.number="seedanceConfig.duration"
-                    >
-                      <option :value="2">2s</option>
-                      <option :value="3">3s</option>
-                      <option :value="4">4s</option>
-                      <option :value="5">5s</option>
-                      <option :value="6">6s</option>
-                      <option :value="8">8s</option>
-                      <option :value="10">10s</option>
-                      <option :value="12">12s</option>
-                    </select>
-                  </div>
-
-                  <div class="nano-field">
-                    <div class="nano-label">分辨率</div>
-                    <select
-                      class="nano-input"
-                      :disabled="sending"
-                      v-model="seedanceConfig.resolution"
-                    >
-                      <option value="">模型默认</option>
-                      <option value="480p">480p</option>
-                      <option value="720p">720p</option>
-                      <option value="1080p">1080p</option>
-                    </select>
-                  </div>
-
-                  <div class="nano-field">
-                    <div class="nano-label">宽高比</div>
-                    <select
-                      class="nano-input"
-                      :disabled="sending"
-                      v-model="seedanceConfig.ratio"
-                    >
-                      <option value="adaptive">adaptive</option>
-                      <option value="1:1">1:1</option>
-                      <option value="4:3">4:3</option>
-                      <option value="16:9">16:9</option>
-                      <option value="3:4">3:4</option>
-                      <option value="9:16">9:16</option>
-                      <option value="21:9">21:9</option>
-                    </select>
-                  </div>
-
-                  <div class="nano-field">
-                    <div class="nano-label">参考图模式</div>
-                    <select
-                      class="nano-input"
-                      :disabled="sending"
-                      v-model="seedanceConfig.refMode"
-                    >
-                      <option value="auto">自动</option>
-                      <option value="first">首帧</option>
-                      <option value="first-last">首尾帧</option>
-                      <option value="reference">参考图</option>
-                    </select>
-                  </div>
-
-                  <div class="nano-field">
-                    <div class="nano-label">附加</div>
-                    <select
-                      class="nano-input"
-                      :disabled="sending"
-                      v-model="seedanceConfig.flags"
-                    >
-                      <option value="none">无</option>
-                      <option value="audio">生成音频</option>
-                      <option value="watermark">带水印</option>
-                      <option value="camera-fixed">固定镜头</option>
-                      <option value="draft">Draft 模式</option>
-                    </select>
-                  </div>
-                </template>
+                <SeedanceVideoForm
+                  v-if="modelKey === 'seedance'"
+                  :config="seedanceConfig"
+                  :sending="sending"
+                  @update:config="onSeedanceConfigChange"
+                />
 
                 <div class="chat-history-status" aria-live="polite">
                   执行状态：{{
@@ -221,10 +158,10 @@
                     (sending
                       ? modelKey === "seedance"
                         ? "Seedance：生成中…"
-                        : "Gemini：生成中…"
+                        : "Seedream：生成中…"
                       : modelKey === "seedance"
                       ? "Seedance：待生成"
-                      : "Gemini：待生成")
+                      : "Seedream：待生成")
                   }}
                 </div>
                 <div v-if="nanoDetail" class="nano-detail" aria-live="polite">
@@ -248,7 +185,9 @@
                       v-for="(slot, idx) in nanoPreviewSlots"
                       :key="`slot-${idx}`"
                       class="nano-preview-item"
-                      :class="{ loading: !!slot.loading }"
+                      :class="{ loading: !!slot.loading, 'video-pending': modelKey === 'seedance' && !slot.localReady, 'video-ready': modelKey === 'seedance' && slot.localReady }"
+                      :draggable="modelKey === 'seedance' ? !!slot.url && !!slot.localReady : !!slot.url"
+                      @dragstart="slot.url ? onNanoPreviewDragStart($event, slot.url, modelKey === 'seedance' ? 'video' : 'image', slot.fallbackUrl, slot.sourcePath, slot.localReady ? slot.url : '', slot.fallbackUrl, slot.downloadStatus, slot.localReady) : undefined"
                     >
                       <template v-if="slot.url">
                         <video
@@ -256,16 +195,14 @@
                           :src="slot.url"
                           controls
                           preload="metadata"
-                          draggable="true"
-                          @dragstart="onNanoPreviewDragStart($event, slot.url, 'video')"
+                          draggable="false"
                           class="nano-preview-video"
                         />
                         <img
                           v-else
                           :src="slot.url"
                           :alt="`preview-${idx + 1}`"
-                          draggable="true"
-                          @dragstart="onNanoPreviewDragStart($event, slot.url, 'image')"
+                          draggable="false"
                           :class="{ loading: !!slot.loading && !slot.url }"
                         />
                       </template>
@@ -277,7 +214,111 @@
                         class="nano-preview-item-loading"
                         aria-hidden="true"
                       />
+                      <div v-if="modelKey === 'seedance' && slot.url" class="nano-preview-status">
+                        <div class="nano-preview-status-text">
+                          {{ slot.localReady ? '已落地到项目资源' : '下载到项目中' }}
+                          <span>{{ slot.downloadProgress }}%</span>
+                        </div>
+                        <div class="nano-preview-progress-track">
+                          <div class="nano-preview-progress-fill" :style="{ width: `${slot.downloadProgress}%` }" />
+                        </div>
+                      </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template v-else-if="isAgentMode">
+            <div class="agent-panel">
+              <div class="agent-session-bar">
+                <div class="agent-session-row">
+                  <div class="agent-session-label">对话</div>
+                  <button class="codex-mini-btn" type="button" @click="emit('codex-create-session')">
+                    New Conversation
+                  </button>
+                </div>
+                <div class="agent-session-controls">
+                  <select
+                    class="chat-dock-toolbar-select agent-session-select"
+                    :value="codexActiveSessionId"
+                    @change="onAgentSessionChange"
+                  >
+                    <option v-if="!codexSessions.length" value="">New Conversation</option>
+                    <option v-for="s in codexSessions" :key="s.id" :value="s.id">
+                      {{ s.title || 'New Conversation' }}
+                    </option>
+                  </select>
+                  <select
+                    class="chat-dock-toolbar-select agent-mode-select"
+                    :value="agentMode"
+                    @change="onAgentModeChange"
+                  >
+                    <option value="agent">Agent</option>
+                    <option value="ask">Ask</option>
+                    <option value="plan">Plan</option>
+                  </select>
+                  <select
+                    class="chat-dock-toolbar-select agent-stream-mode-select"
+                    :value="localExecStreamMode"
+                    @change="onLocalExecStreamModeChange"
+                  >
+                    <option value="real">SSE Real</option>
+                    <option value="mock">SSE Mock</option>
+                  </select>
+                  <button
+                    class="codex-mini-btn"
+                    type="button"
+                    :disabled="!codexActiveSessionId"
+                    @click.stop="onRenameActiveAgentSession"
+                  >
+                    改名
+                  </button>
+                  <button
+                    class="codex-mini-btn danger"
+                    type="button"
+                    :disabled="!codexActiveSessionId"
+                    @click.stop="onDeleteActiveAgentSession"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="!messages?.length" class="agent-empty-state">
+                Start a new Agent conversation.
+              </div>
+              <div v-else class="chat-history-list agent-chat-list">
+                <div
+                  v-for="m in messages"
+                  :key="m.id"
+                  class="chat-msg"
+                  :class="m.role === 'user' ? 'user' : m.role === 'assistant' ? 'assistant' : 'system'"
+                >
+                  <div class="chat-msg-bubble">
+                    <div class="chat-msg-role">{{ m.role === "user" ? "你" : m.role === "assistant" ? "Agent" : "系统" }}</div>
+                    <div class="chat-msg-content">{{ m.content }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="agentApprovalEvents.length" class="agent-flow-list">
+                <div
+                  v-for="ev in agentApprovalEvents"
+                  :key="ev.id"
+                  class="codex-flow-item pending"
+                >
+                  <div class="codex-flow-title">{{ ev.title || '等待审批' }}</div>
+                  <div class="codex-flow-meta">
+                    {{ agentFlowDetail(ev) || '需要你确认后继续执行' }}
+                  </div>
+                  <div
+                    v-if="ev.approvalRequestId && ev.messageId"
+                    class="codex-approval-row"
+                  >
+                    <button class="codex-mini-btn" type="button" @click="onCodexApproval(ev.messageId, 'accept')">同意</button>
+                    <button class="codex-mini-btn danger" type="button" @click="onCodexApproval(ev.messageId, 'decline')">拒绝</button>
                   </div>
                 </div>
               </div>
@@ -312,76 +353,33 @@
               </div>
             </div>
 
-            <div class="chat-history-status" aria-live="polite">
-              {{ taskStatus || (sending ? "AI 任务：生成中…" : "AI 任务：空闲") }}
-            </div>
           </template>
         </div>
       </div>
 
       <div class="chat-dock-body">
-        <div class="chat-dock-toolbar">
-          <div class="chat-dock-toolbar-item">
-            <div class="chat-dock-toolbar-label">模型</div>
-            <select
-              class="chat-dock-toolbar-select"
-              :value="modelKey"
-              :disabled="sending"
-              @change="onModelChange"
-            >
-              <option value="deepseek">DeepSeek</option>
-              <option value="nanobanana">Gemini（NanoBanana）</option>
-              <option value="seedance">字节（Seedance 生视频）</option>
-            </select>
-          </div>
-          <div v-if="modelKey === 'nanobanana'" class="chat-dock-toolbar-item">
-            <div class="chat-dock-toolbar-label">图片接口</div>
-            <select
-              class="chat-dock-toolbar-select"
-              v-model="nanoConfig.imageModel"
-              :disabled="sending"
-            >
-              <option value="gemini-2.5-flash-image">
-                NanoBanana（Gemini 2.5 Flash Image）
-              </option>
-              <option value="gemini-3.1-flash-image-preview">
-                NanoBanana 2（Gemini 3.1 Flash Image 预览版）
-              </option>
-              <option value="gemini-3-pro-image-preview">
-                NanoBanana Pro（Gemini 3 Pro Image 预览版）
-              </option>
-            </select>
-          </div>
-          <div v-if="modelKey === 'seedance'" class="chat-dock-toolbar-item">
-            <div class="chat-dock-toolbar-label">视频接口</div>
-            <select
-              class="chat-dock-toolbar-select"
-              v-model="seedanceConfig.model"
-              :disabled="sending"
-            >
-              <option value="doubao-seedance-1-5-pro-251215">Seedance 1.5 Pro</option>
-              <option value="doubao-seedance-1-0-pro-250528">Seedance 1.0 Pro</option>
-              <option value="doubao-seedance-1-0-pro-fast-251015">
-                Seedance 1.0 Pro Fast
-              </option>
-              <option value="doubao-seedance-1-0-lite-i2v-250428">
-                Seedance 1.0 Lite I2V
-              </option>
-              <option value="doubao-seedance-1-0-lite-t2v-250428">
-                Seedance 1.0 Lite T2V
-              </option>
-            </select>
-          </div>
+        <div v-if="isAgentMode" class="agent-working-dir">
+          <span>Working Directory</span>
+          <span class="agent-working-dir-path">{{ agentWorkingDirectory }}</span>
+        </div>
+
+        <div class="chat-dock-status" aria-live="polite">
+          <span class="chat-dock-status-text">{{ displayTaskStatus }}</span>
+          <span v-if="showStatusPulse" class="chat-status-dots" aria-hidden="true">
+            <span>.</span><span>.</span><span>.</span>
+          </span>
         </div>
 
         <textarea
           ref="inputRef"
           :value="modelValue"
           class="chat-dock-input"
-          rows="3"
+          rows="2"
           :placeholder="
-            modelKey === 'nanobanana'
-              ? '输入 Gemini 图片提示词（两图参考+角度描述）…'
+            isAgentMode
+              ? 'Type a message. Press Enter to send, Shift+Enter for new line.'
+              : modelKey === 'nanobanana'
+              ? '输入 Seedream 图片提示词（支持参考图）…'
               : modelKey === 'seedance'
               ? '输入 Seedance 生视频提示词（支持文字+参考图）…'
               : '在这里输入需求，后续会驱动工作流生成…'
@@ -392,29 +390,84 @@
           @keydown.enter.exact.prevent="onEnterSend"
           @keydown.enter.shift.exact.stop
         />
-        <button
-          class="chat-dock-send"
-          type="button"
-          :disabled="sending"
-          @click="onClickSend"
-        >
-          {{
-            sending
-              ? modelKey === "nanobanana" || modelKey === "seedance"
-                ? "生成中…"
-                : "发送中…"
-              : modelKey === "nanobanana" || modelKey === "seedance"
-              ? "生成"
-              : "发送"
-          }}
-        </button>
+
+        <div class="chat-dock-footer">
+          <div class="chat-dock-footer-left">
+            <div class="chat-dock-toolbar-item chat-dock-toolbar-item-model">
+              <div class="chat-dock-toolbar-label">模型</div>
+              <select
+                v-if="isAgentMode"
+                class="chat-dock-toolbar-select"
+                :value="activeModelId"
+                :disabled="sending || !modelOptions.length"
+                @change="onAgentModelSelectionChange"
+              >
+                <option v-if="!modelOptions.length" value="">Copilot CLI 默认模型</option>
+                <option v-for="model in modelOptions" :key="model.id" :value="model.id">
+                  {{ model.label }}
+                </option>
+              </select>
+              <select
+                v-else
+                class="chat-dock-toolbar-select"
+                :value="activeModelId"
+                :disabled="sending || !modelOptions.length"
+                @change="onModelSelectionChange"
+              >
+                <option v-if="!modelOptions.length" value="">当前组合暂无模型</option>
+                <option v-for="model in modelOptions" :key="model.id" :value="model.id">
+                  {{ model.label }}
+                </option>
+              </select>
+            </div>
+
+            <div v-if="!isAgentMode" class="chat-dock-toolbar-item chat-dock-toolbar-item-mini">
+              <div class="chat-dock-toolbar-label">来源</div>
+              <select
+                class="chat-dock-toolbar-select"
+                :value="apiSource"
+                :disabled="sending"
+                @change="onApiSourceChange"
+              >
+                <option
+                  v-for="source in visibleApiSourceOptions"
+                  :key="source.value"
+                  :value="source.value"
+                >
+                  {{ source.label }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            class="chat-dock-send"
+            :class="{ stopping: isStoppingState }"
+            type="button"
+            :disabled="sendButtonDisabled"
+            @click="onClickSend"
+          >
+            {{ sendButtonLabel }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideoForm.vue'
+import {
+	CHAT_API_SOURCE_OPTIONS,
+	CHAT_MODEL_CATALOG,
+	getChatModelOptions,
+	legacyModelFromNeedType,
+	needTypeFromLegacyModel,
+	type ChatApiSource,
+	type ChatLegacyModelKey,
+	type ChatNeedType,
+} from '../../ai/models/chatModels'
 
 export type BottomChatMessage = {
   id: string;
@@ -429,18 +482,15 @@ export type NanoBananaConfig = {
   imageModel?:
     | "gemini-2.5-flash-image"
     | "gemini-3.1-flash-image-preview"
-    | "gemini-3-pro-image-preview";
+    | "gemini-3-pro-image-preview"
+    | "doubao-seedream-3-0-t2i-250415"
+    | "doubao-seedream-4-0-250828"
+    | "doubao-seedream-5-0-260128"
+    | "jimeng-image-3.0"
+    | "jimeng-image-4.0";
 };
 
-export type SeedanceConfig = {
-  model: string;
-  ratio: string;
-  resolution: string;
-  duration: number;
-  refMode: "auto" | "first" | "first-last" | "reference";
-  referenceCount: number;
-  flags: "none" | "audio" | "watermark" | "camera-fixed" | "draft";
-};
+export type SeedanceConfig = SeedanceVideoFormConfig;
 
 export type NanoBananaRefAnchor = {
   id: string;
@@ -449,15 +499,54 @@ export type NanoBananaRefAnchor = {
   connectedFrom?: string;
 };
 
+export type LocalExecSource = "copilot-cli" | "legacy-codex";
+
+export type ChatPanelMode = "regular" | "agent";
+export type AgentConversationMode = "agent" | "ask" | "plan";
+
+export type LocalExecSessionItem = {
+  id: string;
+  title: string;
+  status?: string;
+  modelName?: string;
+  source?: LocalExecSource;
+};
+
+export type LocalExecFlowEvent = {
+  id: string;
+  kind: string;
+  title: string;
+  detail?: string;
+  status?: "pending" | "completed" | "failed";
+  messageId?: string;
+  approvalRequestId?: string;
+  source?: LocalExecSource;
+  payload?: Record<string, any> | null;
+};
+
+export type CodexSessionItem = LocalExecSessionItem;
+export type CodexFlowEvent = LocalExecFlowEvent;
+
 const props = defineProps<{
   modelValue: string;
   messages?: BottomChatMessage[];
   sending?: boolean;
+  runState?: 'idle' | 'sending' | 'stopping' | 'error';
   collapsed?: boolean;
   taskStatus?: string;
-  modelKey?: "deepseek" | "nanobanana" | "seedance";
+  placement?: 'bottom' | 'right-drawer';
+  panelMode?: ChatPanelMode;
+  agentMode?: AgentConversationMode;
+  localExecStreamMode?: "real" | "mock";
+  agentWorkingDirectory?: string;
+  modelKey?: ChatLegacyModelKey;
   nanoPreviewUrls?: string[];
+  nanoPreviewFallbackUrls?: string[];
+  nanoPreviewSourcePaths?: string[];
   nanoPreviewLoadingStates?: boolean[];
+  nanoPreviewDownloadStatuses?: string[];
+  nanoPreviewDownloadProgresses?: number[];
+  nanoPreviewLocalReadyStates?: boolean[];
   nanoPreviewUrl?: string;
   nanoStatus?: string;
   nanoDetail?: string;
@@ -467,23 +556,37 @@ const props = defineProps<{
   nanoAnchorNodeId?: string;
   nanoRefAnchors?: NanoBananaRefAnchor[];
   nanoHoverAnchorId?: string | null;
+  codexSessions?: CodexSessionItem[];
+  codexActiveSessionId?: string;
+  codexFlowEvents?: CodexFlowEvent[];
 }>();
 
 const emit = defineEmits<{
   (e: "update:modelValue", v: string): void;
   (e: "send"): void;
+  (e: "stop"): void;
   (e: "request-expand"): void;
   (e: "request-collapse"): void;
   (e: "focus-input"): void;
-  (e: "update:modelKey", v: "deepseek" | "nanobanana" | "seedance"): void;
+  (e: "update:panelMode", v: ChatPanelMode): void;
+  (e: "update:agentMode", v: AgentConversationMode): void;
+  (e: "update:localExecStreamMode", v: "real" | "mock"): void;
+  (e: "update:modelKey", v: ChatLegacyModelKey): void;
+  (e: "update:activeModelId", v: string): void;
   (e: "nanobanana-generate", v: { prompt: string; config: NanoBananaConfig }): void;
   (e: "seedance-generate", v: { prompt: string; config: SeedanceConfig }): void;
   (
     e: "workflow-end-link",
     v: { nodeId: string; anchorId: string; anchorIndex: number }
   ): void;
+  (e: "codex-create-session"): void;
+  (e: "codex-select-session", sessionId: string): void;
+  (e: "codex-delete-session", sessionId: string): void;
+  (e: "codex-rename-session", v: { sessionId: string; title: string }): void;
+  (e: "codex-approval", v: { messageId: string; decision: "accept" | "decline" }): void;
   (e: "layout-changed"): void;
-}>();
+  (e: "safe-area-changed", rect: { width: number; height: number; right: number; top: number }): void;
+}>()
 
 const historyExpanded = ref(false);
 const historyBodyRef = ref<HTMLElement | null>(null);
@@ -494,15 +597,6 @@ const dockRef = ref<HTMLElement | null>(null);
 const dockLeftPx = ref<number | null>(null);
 let dragCleanup: (() => void) | null = null;
 
-let layoutRaf = 0;
-const emitLayoutChanged = () => {
-  if (layoutRaf) return;
-  layoutRaf = window.requestAnimationFrame(() => {
-    layoutRaf = 0;
-    emit("layout-changed");
-  });
-};
-
 const clampDockLeft = (left: number) => {
   const w = window.innerWidth || 0;
   const rect = dockRef.value?.getBoundingClientRect();
@@ -512,7 +606,11 @@ const clampDockLeft = (left: number) => {
   return Math.max(min, Math.min(max, left));
 };
 
+const dockPlacement = computed(() => (props.placement ?? 'bottom') as 'bottom' | 'right-drawer');
+const isRightDrawer = computed(() => dockPlacement.value === 'right-drawer');
+
 const dockStyle = computed(() => {
+  if (isRightDrawer.value) return {} as Record<string, string>;
   if (dockLeftPx.value == null) return {} as Record<string, string>;
   return {
     left: `${dockLeftPx.value}px`,
@@ -520,12 +618,119 @@ const dockStyle = computed(() => {
   } as Record<string, string>;
 });
 
+const MODEL_CATALOG = CHAT_MODEL_CATALOG;
+const apiSourceOptions = CHAT_API_SOURCE_OPTIONS;
+
+const normalizePanelMode = (raw: unknown): ChatPanelMode => {
+  const text = String(raw || '').trim().toLowerCase();
+  return text === 'agent' ? 'agent' : 'regular';
+};
+
+let layoutRaf = 0;
+const emitLayoutChanged = () => {
+  if (layoutRaf) return;
+  layoutRaf = window.requestAnimationFrame(() => {
+    layoutRaf = 0;
+    emit("layout-changed");
+    if (dockPlacement.value === 'right-drawer' && dockRef.value) {
+      if (!!props.collapsed) {
+        emit('safe-area-changed', {
+          width: 0,
+          height: 0,
+          right: 0,
+          top: 0,
+        });
+        return;
+      }
+      const rect = dockRef.value.getBoundingClientRect();
+      emit('safe-area-changed', {
+        width: rect.width,
+        height: rect.height,
+        right: window.innerWidth - rect.right,
+        top: rect.top,
+      });
+    }
+  });
+};
+
+const visibleApiSourceOptions = computed(() => {
+  if (isAgentMode.value) return apiSourceOptions.filter((item) => item.value === 'local-exec');
+  return apiSourceOptions.filter((item) => item.value !== 'local-exec');
+});
+
 const modelKey = computed(
-  () => (props.modelKey ?? "deepseek") as "deepseek" | "nanobanana" | "seedance"
+  () => (props.modelKey ?? "deepseek") as ChatLegacyModelKey
 );
 
+const resolvedPanelMode = computed<ChatPanelMode>(() => {
+  if (props.panelMode === 'regular' || props.panelMode === 'agent') {
+    return normalizePanelMode(props.panelMode);
+  }
+  return modelKey.value === 'codex' ? 'agent' : 'regular';
+});
+
+const isAgentMode = computed(() => resolvedPanelMode.value === 'agent');
+const isRegularMode = computed(() => resolvedPanelMode.value === 'regular');
+
+const agentWorkingDirectory = computed(() => {
+  const text = String(props.agentWorkingDirectory || '').trim();
+  if (text) return text;
+  return '当前项目';
+});
+
+const localExecStreamMode = computed<'real' | 'mock'>(() => {
+  const mode = String(props.localExecStreamMode || '').trim().toLowerCase();
+  return mode === 'mock' ? 'mock' : 'real';
+});
+
+const runState = computed<'idle' | 'sending' | 'stopping' | 'error'>(() => {
+  const text = String(props.runState || '').trim().toLowerCase();
+  if (text === 'sending' || text === 'stopping' || text === 'error') return text;
+  return 'idle';
+});
+
+const isStoppingState = computed(() => runState.value === 'stopping');
+const isSendingState = computed(() => runState.value === 'sending' || (runState.value === 'idle' && !!props.sending));
+const showStatusPulse = computed(() => isSendingState.value || isStoppingState.value);
+
+const displayTaskStatus = computed(() => {
+  const status = String(props.taskStatus || '').trim();
+  if (status) return status;
+  if (isStoppingState.value) return '正在停止';
+  if (isSendingState.value) return '正在生成';
+  if (runState.value === 'error') return '发生错误';
+  return '就绪';
+});
+
+const sendButtonDisabled = computed(() => {
+  if (isStoppingState.value) return true;
+  if (isAgentMode.value && isSendingState.value) return false;
+  return !!props.sending || (isVisualGenMode.value && !activeModelOption.value);
+});
+
+const sendButtonLabel = computed(() => {
+  if (isAgentMode.value) {
+    if (isStoppingState.value) return '正在停止…';
+    if (isSendingState.value) return '停止';
+    return '发送';
+  }
+  if (modelKey.value === 'nanobanana' || modelKey.value === 'seedance') {
+    return props.sending ? '生成中…' : '生成';
+  }
+  return props.sending ? '发送中…' : '发送';
+});
+
+const agentMode = computed<AgentConversationMode>(() => {
+  const mode = String(props.agentMode || '').trim().toLowerCase();
+  if (mode === 'ask' || mode === 'plan') return mode;
+  return 'agent';
+});
+
+const needType = ref<ChatNeedType>(needTypeFromLegacyModel(modelKey.value));
+const apiSource = ref<ChatApiSource>("all");
+
 const isVisualGenMode = computed(
-  () => modelKey.value === "nanobanana" || modelKey.value === "seedance"
+  () => isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance")
 );
 
 const nanoConfig = ref<NanoBananaConfig>({
@@ -536,14 +741,117 @@ const nanoConfig = ref<NanoBananaConfig>({
 });
 
 const seedanceConfig = ref<SeedanceConfig>({
-  model: "doubao-seedance-1-5-pro-251215",
+  model: "doubao-seedance-2-0-260128",
   ratio: "adaptive",
   resolution: "",
-  duration: 5,
   refMode: "auto",
-  referenceCount: 4,
-  flags: "none",
+  useFrames: false,
+  duration: 5,
+  frames: '',
+  seed: '',
+  templateId: '',
+  cameraStrength: 'medium',
+  generateAudio: false,
+  watermark: false,
+  cameraFixed: false,
+  draft: false,
+  returnLastFrame: false,
+  serviceTier: '',
+  executionExpiresAfter: '',
 });
+
+const onSeedanceConfigChange = (nextConfig: SeedanceConfig) => {
+  seedanceConfig.value = { ...nextConfig };
+};
+
+const textModel = ref("auto");
+
+const modelOptions = computed(() => {
+  if (isAgentMode.value) {
+    return getChatModelOptions('text', 'local-exec');
+  }
+  return getChatModelOptions(needType.value, apiSource.value);
+});
+
+const activeModelId = computed(() => {
+  if (isAgentMode.value) return String(textModel.value || "").trim();
+  if (needType.value === "image") return String(nanoConfig.value.imageModel || "").trim();
+  if (needType.value === "video") return String(seedanceConfig.value.model || "").trim();
+  return String(textModel.value || "").trim();
+});
+
+const activeModelOption = computed(() => {
+  const id = activeModelId.value;
+  return modelOptions.value.find((m) => m.id === id) ?? null;
+});
+
+watch(
+  () => activeModelId.value,
+  (v) => {
+    emit("update:activeModelId", String(v || "").trim());
+  },
+  { immediate: true }
+);
+
+const applyModelSelection = (modelId: string) => {
+  const id = String(modelId || "").trim();
+  if (!id) return;
+  if (isAgentMode.value) {
+    textModel.value = id;
+    return;
+  }
+  if (needType.value === "image") {
+    if (
+      id === "gemini-2.5-flash-image" ||
+      id === "gemini-3.1-flash-image-preview" ||
+      id === "gemini-3-pro-image-preview" ||
+      id === "doubao-seedream-3-0-t2i-250415" ||
+      id === "doubao-seedream-4-0-250828" ||
+      id === "doubao-seedream-5-0-260128" ||
+      id === "jimeng-image-3.0" ||
+      id === "jimeng-image-4.0"
+    ) {
+      nanoConfig.value.imageModel = id;
+    }
+    return;
+  }
+  if (needType.value === "video") {
+    const isVideoModel = MODEL_CATALOG.some(
+      (item) => item.needType === "video" && item.id === id
+    );
+    if (isVideoModel) {
+      seedanceConfig.value.model = id;
+    }
+    return;
+  }
+  textModel.value = id;
+};
+
+const normalizeModelSelection = () => {
+  if (isAgentMode.value) {
+    needType.value = 'text';
+    if (apiSource.value !== 'local-exec') apiSource.value = 'local-exec';
+    const list = modelOptions.value;
+    if (!list.length) return;
+    if (!list.some((m) => m.id === activeModelId.value)) {
+      textModel.value = list[0].id;
+    }
+    return;
+  }
+
+  if (apiSource.value === 'local-exec') {
+    apiSource.value = 'all';
+  }
+  let list = modelOptions.value;
+  if (!list.length && apiSource.value !== "all") {
+    apiSource.value = "all";
+    list = modelOptions.value;
+  }
+  if (!list.length) return;
+  if (!list.some((m) => m.id === activeModelId.value)) {
+    applyModelSelection(list[0].id);
+  }
+};
 
 const normalizedNanoQuantity = computed(() => {
   if (modelKey.value === "seedance") return 1;
@@ -564,12 +872,35 @@ const nanoPreviewUrls = computed(() => {
 const nanoPreviewSlots = computed(() => {
   const count = normalizedNanoQuantity.value;
   const urls = nanoPreviewUrls.value;
+  const fallbackUrls = Array.isArray(props.nanoPreviewFallbackUrls)
+    ? props.nanoPreviewFallbackUrls.map((v) => String(v ?? "").trim())
+    : [];
+  const sourcePaths = Array.isArray(props.nanoPreviewSourcePaths)
+    ? props.nanoPreviewSourcePaths.map((v) => String(v ?? "").trim())
+    : [];
   const loadingStates = Array.isArray(props.nanoPreviewLoadingStates)
     ? props.nanoPreviewLoadingStates.map((v) => !!v)
     : [];
+  const downloadStatuses = Array.isArray(props.nanoPreviewDownloadStatuses)
+    ? props.nanoPreviewDownloadStatuses.map((v) => String(v ?? "").trim())
+    : [];
+  const downloadProgresses = Array.isArray(props.nanoPreviewDownloadProgresses)
+    ? props.nanoPreviewDownloadProgresses.map((v) => {
+        const n = Number(v ?? 0);
+        return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 0;
+      })
+    : [];
+  const localReadyStates = Array.isArray(props.nanoPreviewLocalReadyStates)
+    ? props.nanoPreviewLocalReadyStates.map((v) => !!v)
+    : [];
   return Array.from({ length: count }, (_, idx) => ({
     url: urls[idx] || "",
+    fallbackUrl: fallbackUrls[idx] || "",
+    sourcePath: sourcePaths[idx] || "",
     loading: !!loadingStates[idx],
+    downloadStatus: downloadStatuses[idx] || "",
+    downloadProgress: downloadProgresses[idx] || 0,
+    localReady: modelKey.value === 'seedance' ? !!localReadyStates[idx] : true,
   }));
 });
 
@@ -582,7 +913,12 @@ const nanoInterfaceLabel = computed(() => {
   const model = String(nanoConfig.value.imageModel || "").trim();
   if (model === "gemini-3-pro-image-preview") return "NanoBanana Pro";
   if (model === "gemini-3.1-flash-image-preview") return "NanoBanana 2";
-  return "NanoBanana";
+  if (model === "gemini-2.5-flash-image") return "NanoBanana";
+  if (model === "doubao-seedream-3-0-t2i-250415") return "Seedream 3.0";
+  if (model === "doubao-seedream-4-0-250828") return "Seedream 4.0";
+  if (model === "jimeng-image-3.0") return "即梦 图片 3.0";
+  if (model === "jimeng-image-4.0") return "即梦 图片 4.0";
+  return "Seedream 5.0";
 });
 
 const nanoModelTag = computed(() => {
@@ -593,9 +929,17 @@ const nanoModelTag = computed(() => {
   }
   const model = String(props.nanoModelUsed || "").trim();
   if (!model) return "";
-  if (model === "gemini-3-pro-image-preview") return "Pro";
+  if (model === "gemini-3-pro-image-preview") return "NanoBanana Pro";
   if (model === "gemini-3.1-flash-image-preview") return "NanoBanana 2";
-  return "NanoBanana";
+  if (model === "gemini-2.5-flash-image") return "NanoBanana";
+  if (model === "doubao-seedream-3-0-t2i-250415") return "Seedream 3.0";
+  if (model === "doubao-seedream-4-0-250828") return "Seedream 4.0";
+  if (model === "doubao-seedream-5-0-260128") return "Seedream 5.0";
+  if (model === "jimeng-image-3.0") return "即梦 图片 3.0";
+  if (model === "jimeng-image-4.0") return "即梦 图片 4.0";
+  if (model === "jimeng-video-3.0") return "即梦 视频 3.0";
+  if (model === "jimeng-video-3.0-pro") return "即梦 视频 3.0 Pro";
+  return model;
 });
 
 const nanoStartAt = ref<number | null>(null);
@@ -617,7 +961,10 @@ const nanoConnectedCount = computed(() => {
 
 const nanoEstimateText = computed(() => {
   if (modelKey.value === "seedance") {
-    const sec = Math.max(8, Number(seedanceConfig.value.duration || 5) * 3);
+    const secBase = seedanceConfig.value.useFrames
+      ? Math.max(2, Math.floor((Number(seedanceConfig.value.frames || 121) || 121) / 24))
+      : Math.max(2, Number(seedanceConfig.value.duration || 5) || 5)
+    const sec = Math.max(8, secBase * 3);
     return `${sec}-${sec + 24}s（估算）`;
   }
   // No official ETA API. Provide a lightweight heuristic based on ref count.
@@ -628,10 +975,23 @@ const nanoEstimateText = computed(() => {
 });
 
 const onDockDragStart = (ev: PointerEvent) => {
+  if (isRightDrawer.value) return;
+  ev.stopPropagation();
   const target = ev.target as HTMLElement | null;
   // Don't hijack clicks on interactive controls.
   if (target?.closest("button,select,input,textarea,a")) return;
   if (!dockRef.value) return;
+
+  ev.preventDefault();
+
+  const handle = ev.currentTarget as HTMLElement | null;
+  if (!handle) return;
+
+  try {
+    handle.setPointerCapture(ev.pointerId);
+  } catch {
+    // ignore
+  }
 
   if (dockLeftPx.value == null) {
     dockLeftPx.value = window.innerWidth / 2;
@@ -645,6 +1005,11 @@ const onDockDragStart = (ev: PointerEvent) => {
     emitLayoutChanged();
   };
   const onUp = () => {
+    try {
+      handle.releasePointerCapture(ev.pointerId);
+    } catch {
+      // ignore
+    }
     if (dragCleanup) dragCleanup();
     dragCleanup = null;
   };
@@ -681,13 +1046,44 @@ watch(
 watch(
   () => props.modelKey,
   () => {
+    if (!isAgentMode.value) {
+      needType.value = needTypeFromLegacyModel(modelKey.value);
+    }
+    normalizeModelSelection();
     void scrollHistoryToBottom();
+    void nextTick().then(() => emitLayoutChanged());
   }
+);
+
+watch(
+  () => [needType.value, apiSource.value, resolvedPanelMode.value] as const,
+  () => {
+    normalizeModelSelection();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => resolvedPanelMode.value,
+  (mode) => {
+    if (mode === 'agent') {
+      needType.value = 'text';
+      if (apiSource.value !== 'local-exec') apiSource.value = 'local-exec';
+      if (modelKey.value !== 'codex') emit('update:modelKey', 'codex');
+    } else {
+      if (apiSource.value === 'local-exec') apiSource.value = 'all';
+      if (modelKey.value === 'codex') emit('update:modelKey', 'deepseek');
+    }
+    normalizeModelSelection();
+    void nextTick().then(() => emitLayoutChanged());
+  },
+  { immediate: true }
 );
 
 watch(
   () => !!props.collapsed,
   (v) => {
+    void nextTick().then(() => emitLayoutChanged());
     if (v) return;
     if (!pendingFocus.value) return;
     pendingFocus.value = false;
@@ -711,19 +1107,67 @@ const onInput = (e: Event) => {
   emit("update:modelValue", v);
 };
 
-const onModelChange = (e: Event) => {
-  const v = String((e.target as HTMLSelectElement).value || "deepseek");
-  const next = (v === "nanobanana"
-    ? "nanobanana"
-    : v === "seedance"
-    ? "seedance"
-    : "deepseek") as "deepseek" | "nanobanana" | "seedance";
-  emit("update:modelKey", next);
+const onNeedTypeChange = (e: Event) => {
+  if (!isRegularMode.value) return;
+  const v = String((e.target as HTMLSelectElement).value || "text");
+  const nextNeedType =
+    v === "image" ? "image" : v === "video" ? "video" : "text";
+  needType.value = nextNeedType;
+  const legacy = legacyModelFromNeedType(nextNeedType);
+  emit("update:modelKey", legacy);
+};
+
+const onApiSourceChange = (e: Event) => {
+  if (!isRegularMode.value) return;
+  const v = String((e.target as HTMLSelectElement).value || "all");
+  apiSource.value =
+    v === "deepseek"
+      ? "deepseek"
+      : v === "gemini"
+      ? "gemini"
+      : v === "bytedance"
+      ? "bytedance"
+      : "all";
+  normalizeModelSelection();
+};
+
+const onModelSelectionChange = (e: Event) => {
+  if (!isRegularMode.value) return;
+  const id = String((e.target as HTMLSelectElement).value || "").trim();
+  if (!id) return;
+  applyModelSelection(id);
+  const selected = modelOptions.value.find((m) => m.id === id);
+  if (selected && selected.legacyModelKey !== modelKey.value) {
+    emit("update:modelKey", selected.legacyModelKey);
+  }
+};
+
+const onAgentModelSelectionChange = (e: Event) => {
+  const id = String((e.target as HTMLSelectElement).value || '').trim();
+  if (!id) return;
+  textModel.value = id;
+  emit('update:modelKey', 'codex');
+};
+
+const onSwitchPanelMode = (mode: ChatPanelMode) => {
+  if (mode === resolvedPanelMode.value) return;
+  emit('update:panelMode', mode);
+};
+
+const onLocalExecStreamModeChange = (e: Event) => {
+  const value = String((e.target as HTMLSelectElement).value || '').trim().toLowerCase();
+  emit('update:localExecStreamMode', value === 'mock' ? 'mock' : 'real');
+};
+
+const onAgentModeChange = (e: Event) => {
+  const value = String((e.target as HTMLSelectElement).value || '').trim().toLowerCase();
+  emit('update:agentMode', value === 'ask' || value === 'plan' ? value : 'agent');
 };
 
 const emitGenerate = () => {
   const prompt = String(props.modelValue || "").trim();
   if (!prompt) return;
+  if (!activeModelOption.value) return;
   if (modelKey.value === "seedance") {
     emit("seedance-generate", {
       prompt,
@@ -733,11 +1177,21 @@ const emitGenerate = () => {
   }
   const selected = String(nanoConfig.value.imageModel || "").trim();
   const imageModel =
-    selected === "gemini-3-pro-image-preview"
-      ? "gemini-3-pro-image-preview"
+    selected === "gemini-2.5-flash-image"
+      ? "gemini-2.5-flash-image"
       : selected === "gemini-3.1-flash-image-preview"
       ? "gemini-3.1-flash-image-preview"
-      : "gemini-2.5-flash-image";
+      : selected === "gemini-3-pro-image-preview"
+      ? "gemini-3-pro-image-preview"
+      : selected === "doubao-seedream-3-0-t2i-250415"
+      ? "doubao-seedream-3-0-t2i-250415"
+      : selected === "doubao-seedream-4-0-250828"
+      ? "doubao-seedream-4-0-250828"
+      : selected === "jimeng-image-3.0"
+      ? "jimeng-image-3.0"
+      : selected === "jimeng-image-4.0"
+      ? "jimeng-image-4.0"
+      : "doubao-seedream-5-0-260128";
   const usePro = imageModel === "gemini-3-pro-image-preview";
   const quantity = normalizedNanoQuantity.value as 1 | 2 | 3 | 4;
   emit("nanobanana-generate", {
@@ -747,31 +1201,64 @@ const emitGenerate = () => {
 };
 
 const onEnterSend = () => {
-  if (modelKey.value === "nanobanana" || modelKey.value === "seedance") emitGenerate();
+  if (isAgentMode.value && isSendingState.value) {
+    if (!isStoppingState.value) emit('stop');
+    return;
+  }
+  if (isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance")) emitGenerate();
   else emit("send");
 };
 
 const onClickSend = () => {
-  if (modelKey.value === "nanobanana" || modelKey.value === "seedance") emitGenerate();
+  if (isAgentMode.value && isSendingState.value) {
+    if (!isStoppingState.value) emit('stop');
+    return;
+  }
+  if (isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance")) emitGenerate();
   else emit("send");
 };
 
 const visualPanelTitle = computed(() =>
-  modelKey.value === "seedance" ? "Seedance 生视频" : "Gemini 图片生成"
+  modelKey.value === "seedance" ? "Seedance 生视频" : "图片生成"
 );
 
 const onNanoPreviewDragStart = (
   e: DragEvent,
   inputUrl?: string,
-  kind: "image" | "video" = "image"
+  kind: "image" | "video" = "image",
+  fallbackUrl?: string,
+  sourcePath?: string,
+  localUrl?: string,
+  remoteUrl?: string,
+  downloadStatus?: string,
+  localReady?: boolean,
 ) => {
   const url = String(inputUrl || "").trim();
+  const backupUrl = String(fallbackUrl || "").trim();
+  const localSourcePath = String(sourcePath || "").trim();
+  const localVideoUrl = String(localUrl || "").trim();
+  const remoteVideoUrl = String(remoteUrl || "").trim();
+  const statusText = String(downloadStatus || "").trim();
+  const isLocalReady = !!localReady;
+  if (kind === 'video' && (!isLocalReady || !localVideoUrl)) {
+    e.preventDefault();
+    return;
+  }
   if (!url) return;
   try {
     e.dataTransfer?.setData("application/x-dweb-nanobanana-preview", url);
     e.dataTransfer?.setData(
       "application/x-dweb-nanobanana-preview-meta",
-      JSON.stringify({ url, kind })
+      JSON.stringify({
+        url,
+        kind,
+        fallbackUrl: backupUrl || undefined,
+        sourcePath: localSourcePath || undefined,
+        localUrl: localVideoUrl || undefined,
+        remoteUrl: remoteVideoUrl || undefined,
+        downloadStatus: statusText || undefined,
+        localReady: isLocalReady,
+      })
     );
     e.dataTransfer?.setData("text/uri-list", url);
     e.dataTransfer?.setData("text/plain", url);
@@ -791,6 +1278,79 @@ const nanoRefAnchors = computed(
 const nanoHoverAnchorId = computed(() =>
   props.nanoHoverAnchorId == null ? null : String(props.nanoHoverAnchorId)
 );
+
+const codexSessions = computed(() =>
+  Array.isArray(props.codexSessions) ? props.codexSessions : []
+);
+const codexFlowEvents = computed(() =>
+  Array.isArray(props.codexFlowEvents) ? props.codexFlowEvents : []
+);
+
+const agentApprovalEvents = computed(() =>
+  codexFlowEvents.value
+    .filter((item) => {
+      const kind = String(item?.kind || '').trim();
+      return kind === 'approval' && !!String(item?.approvalRequestId || '').trim();
+    })
+    .slice(-3)
+);
+
+const agentFlowDetail = (ev: CodexFlowEvent) => {
+  const direct = String(ev.detail || '').trim();
+  if (direct) return direct;
+  const payloadValue = (ev.payload || {}) as Record<string, any>;
+  if (ev.kind === 'command' && Array.isArray(payloadValue.command)) {
+    return payloadValue.command.map((item: unknown) => String(item || '')).join(' ').trim();
+  }
+  if (ev.kind === 'fileChange' && Array.isArray(payloadValue.changes)) {
+    return `${payloadValue.changes.length} 项`;
+  }
+  return '';
+};
+const codexActiveSessionId = computed(() =>
+  String(props.codexActiveSessionId || "").trim()
+);
+
+const onSelectCodexSession = (sessionId: string) => {
+  const id = String(sessionId || "").trim();
+  if (!id) return;
+  emit("codex-select-session", id);
+};
+
+const onAgentSessionChange = (e: Event) => {
+  const id = String((e.target as HTMLSelectElement).value || '').trim();
+  if (!id) return;
+  onSelectCodexSession(id);
+};
+
+const onRenameCodexSession = (sessionId: string, currentTitle: string) => {
+  const id = String(sessionId || '').trim();
+  if (!id) return;
+  const next = window.prompt('请输入新的会话名称', String(currentTitle || '').trim() || 'Copilot CLI 会话');
+  if (next == null) return;
+  const title = String(next || '').trim();
+  if (!title) return;
+  emit('codex-rename-session', { sessionId: id, title });
+};
+
+const onCodexApproval = (messageId: string, decision: "accept" | "decline") => {
+  const id = String(messageId || "").trim();
+  if (!id) return;
+  emit("codex-approval", { messageId: id, decision });
+};
+
+const onRenameActiveAgentSession = () => {
+  const sid = codexActiveSessionId.value;
+  if (!sid) return;
+  const item = codexSessions.value.find((s) => String(s.id || '').trim() === sid);
+  onRenameCodexSession(sid, item?.title || 'Copilot CLI 会话');
+};
+
+const onDeleteActiveAgentSession = () => {
+  const sid = codexActiveSessionId.value;
+  if (!sid) return;
+  emit('codex-delete-session', sid);
+};
 
 const emitWorkflowEndLink = (anchorId: string, anchorIndex: number) => {
   const nodeId = nanoAnchorNodeId.value;
@@ -813,10 +1373,31 @@ watch(
   { immediate: true }
 );
 
-window.addEventListener("resize", () => {
+const onWindowResize = () => {
   if (dockLeftPx.value == null) return;
   dockLeftPx.value = clampDockLeft(dockLeftPx.value);
   emitLayoutChanged();
+};
+
+onMounted(() => {
+  window.addEventListener("resize", onWindowResize, { passive: true });
+  emitLayoutChanged();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", onWindowResize);
+  if (dragCleanup) {
+    dragCleanup();
+    dragCleanup = null;
+  }
+  if (layoutRaf) {
+    window.cancelAnimationFrame(layoutRaf);
+    layoutRaf = 0;
+  }
+  if (nanoTimer != null) {
+    window.clearInterval(nanoTimer);
+    nanoTimer = null;
+  }
 });
 
 watch(
@@ -859,11 +1440,50 @@ watch(
   user-select: text;
   display: flex;
   flex-direction: column;
+  z-index: 101;
+}
+
+.chat-dock.right-drawer {
+  position: fixed;
+  left: auto;
+  right: 10px;
+  top: var(--aiwf-safe-top, 0px);
+  bottom: 10px;
+  transform: translateX(0);
+  width: min(520px, calc(100vw - 20px));
+  height: calc(100vh - var(--aiwf-safe-top, 0px) - 10px);
+  max-height: none;
+  border-radius: 0;
+  border-left: 1px solid var(--vscode-border-accent);
+  border-bottom: 1px solid var(--vscode-border-accent);
+  box-shadow: -12px 12px 36px rgba(0, 0, 0, 0.35);
+  flex-direction: column;
+  z-index: 120;
 }
 
 .chat-dock.collapsed {
   border: none;
   box-shadow: none;
+  width: auto;
+  height: auto;
+  background: transparent;
+  overflow: visible;
+}
+
+.chat-dock.right-drawer.collapsed {
+  top: var(--aiwf-safe-top, 0px);
+  right: 10px;
+  bottom: 10px;
+  width: min(520px, calc(100vw - 20px));
+  height: calc(100vh - var(--aiwf-safe-top, 0px) - 10px);
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
 }
 
 .chat-collapsed-handle {
@@ -881,6 +1501,16 @@ watch(
   transition: opacity 180ms ease;
 }
 
+.chat-dock.right-drawer.collapsed .chat-collapsed-handle {
+  pointer-events: auto;
+  margin: 0;
+  position: absolute;
+  right: calc(12px + var(--chat-collapsed-safe-right-offset, 0px));
+  bottom: 16px;
+  min-width: 140px;
+  box-shadow: var(--dweb-shadow);
+}
+
 .chat-collapsed-handle:hover {
   background: var(--vscode-hover-bg);
 }
@@ -891,14 +1521,24 @@ watch(
 
 .chat-content {
   order: 1;
-  display: grid;
-  grid-template-rows: auto auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   /* Avoid clipping on tall screens when history is maximized. */
   max-height: calc(100vh - 24px);
   opacity: 1;
   transform: translateY(0);
   overflow: hidden;
   transition: max-height 220ms ease, opacity 200ms ease, transform 220ms ease;
+}
+
+.chat-dock.right-drawer .chat-content {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  transform: translateX(0);
+  background: transparent;
+  transition: opacity 220ms ease, transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .chat-dock.collapsed .chat-content {
@@ -908,7 +1548,18 @@ watch(
   pointer-events: none;
 }
 
+.chat-dock.right-drawer.collapsed .chat-content {
+  max-height: none;
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
 .chat-dock:hover {
+  border-color: var(--vscode-hover-border);
+}
+
+.chat-dock.right-drawer:hover {
   border-color: var(--vscode-hover-border);
 }
 
@@ -917,8 +1568,8 @@ watch(
   background: rgb(from var(--dweb-defualt) r g b / 0.52);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  /* 默认高度 600px；但要适配小屏幕 */
-  height: min(600px, calc(100vh - 140px));
+  flex: 1;
+  min-height: 220px;
   display: grid;
   grid-template-rows: auto 1fr;
   transition: height 220ms ease;
@@ -992,7 +1643,7 @@ watch(
 .nano-ref-dot {
   width: 12px;
   height: 12px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid var(--vscode-border);
   background: var(--dweb-purple);
 }
@@ -1003,6 +1654,149 @@ watch(
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+}
+
+.codex-panel {
+  display: grid;
+  grid-template-columns: 240px 1fr 300px;
+  min-height: 0;
+  height: 100%;
+}
+
+.codex-col {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.codex-sessions-col,
+.codex-chat-col {
+  border-right: 1px solid var(--vscode-border);
+}
+
+.codex-col-head {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
+  border-bottom: 1px solid var(--vscode-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.codex-sessions-list,
+.codex-flow-list {
+  padding: 8px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.codex-session-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  padding: 6px;
+  margin-bottom: 8px;
+}
+
+.codex-session-main {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 2px;
+}
+
+.codex-session-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+}
+
+.codex-session-item.active {
+  border-color: var(--vscode-border-accent);
+}
+
+.codex-session-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.codex-session-meta,
+.codex-flow-meta {
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+  margin-top: 2px;
+}
+
+.codex-chat-list {
+  padding-right: 8px;
+}
+
+.codex-flow-item {
+  border: 1px solid var(--vscode-border);
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--dweb-defualt);
+}
+
+.codex-flow-item.completed {
+  border-color: #3c8f4a;
+}
+
+.codex-flow-item.failed {
+  border-color: #b34a4a;
+}
+
+.codex-flow-title {
+  font-size: 12px;
+  color: var(--vscode-fg);
+}
+
+.codex-approval-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.codex-mini-btn {
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.codex-mini-btn.danger {
+  border-color: #b34a4a;
+}
+
+.codex-empty {
+  color: var(--vscode-fg-muted);
+  font-size: 12px;
+  padding: 10px 4px;
+}
+
+@media (max-width: 1200px) {
+  .codex-panel {
+    grid-template-columns: 200px 1fr 240px;
+  }
+}
+
+@media (max-width: 900px) {
+  .codex-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .codex-sessions-col,
+  .codex-chat-col {
+    border-right: none;
+    border-bottom: 1px solid var(--vscode-border);
+  }
 }
 
 .nano-field {
@@ -1036,6 +1830,13 @@ watch(
   font-size: 12px;
   color: var(--vscode-fg-muted);
   white-space: nowrap;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px dashed rgb(from var(--vscode-border) r g b / 0.9);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.24);
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--vscode-fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1110,6 +1911,14 @@ watch(
   display: grid;
   place-items: center;
   overflow: hidden;
+}
+
+.nano-preview-item.video-pending {
+  cursor: progress;
+}
+
+.nano-preview-item.video-ready {
+  cursor: grab;
 }
 
 .nano-preview-item img {
@@ -1216,9 +2025,44 @@ watch(
   color: var(--vscode-fg-muted);
 }
 
+.nano-preview-status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.72));
+}
+
+.nano-preview-status-text {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #f3f5f7;
+}
+
+.nano-preview-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.nano-preview-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6ed7ff, #64f2b8);
+}
+
 .chat-dock.history-expanded .chat-history {
-  /* 仅放大历史区高度，不放大输入区 */
-  height: calc(100vh - 140px);
+  min-height: 320px;
 }
 
 .chat-history-bar {
@@ -1227,11 +2071,39 @@ watch(
   align-items: center;
   padding: 8px 10px;
   border-bottom: 1px solid var(--vscode-border);
+  touch-action: none;
+  user-select: none;
 }
 
 .chat-history-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 12px;
   color: var(--vscode-fg);
+}
+
+.chat-panel-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--vscode-border);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.45);
+}
+
+.chat-panel-tab {
+  border: none;
+  background: transparent;
+  color: var(--vscode-fg-muted);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chat-panel-tab.active {
+  color: var(--vscode-fg);
+  background: rgb(from var(--dweb-defualt-light) r g b / 0.6);
 }
 
 .chat-history-expand {
@@ -1296,8 +2168,172 @@ watch(
   gap: 10px;
 }
 
+.agent-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.agent-session-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--vscode-border);
+}
+
+.agent-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-session-label {
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
+}
+
+.agent-session-controls {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto auto auto auto;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.agent-session-select {
+  width: 100%;
+  min-width: 160px;
+}
+
+.agent-mode-select {
+  min-width: 84px;
+}
+
+.agent-stream-mode-select {
+  min-width: 92px;
+}
+
+.agent-session-controls .codex-mini-btn {
+  min-width: 44px;
+  padding: 3px 6px;
+}
+
+.agent-empty-state {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  color: rgb(from var(--vscode-fg-muted) r g b / 0.45);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.agent-chat-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.agent-runtime-card {
+  margin: 0 10px 10px;
+  border: 1px solid var(--vscode-border);
+  background: rgb(from var(--dweb-defualt-light) r g b / 0.4);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-runtime-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.agent-runtime-title {
+  font-size: 12px;
+  color: var(--vscode-fg);
+  font-weight: 600;
+}
+
+.agent-runtime-mode {
+  border: 1px solid var(--vscode-border);
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+}
+
+.agent-runtime-mode.mock {
+  border-color: #3c8f4a;
+  color: #9ad0a5;
+}
+
+.agent-runtime-meta {
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+}
+
+.agent-runtime-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-skill-badge {
+  border: 1px solid var(--vscode-border);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.35);
+  color: var(--vscode-fg);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.agent-skill-list {
+  margin: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-skill-card {
+  border: 1px solid var(--vscode-border);
+  background: rgb(from var(--dweb-defualt-light) r g b / 0.33);
+  padding: 8px;
+}
+
+.agent-skill-card.completed {
+  border-color: #3c8f4a;
+}
+
+.agent-skill-card.failed {
+  border-color: #b34a4a;
+}
+
+.agent-skill-title {
+  font-size: 12px;
+  color: var(--vscode-fg);
+}
+
+.agent-skill-meta {
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+  margin-top: 4px;
+}
+
+.agent-flow-list {
+  max-height: 128px;
+  overflow: auto;
+  padding: 0 8px 8px;
+  border-top: 1px solid var(--vscode-border);
+}
+
 .chat-msg {
-  max-width: min(760px, 86%);
+  max-width: min(720px, 84%);
   display: flex;
   flex-direction: column;
 }
@@ -1319,24 +2355,46 @@ watch(
   background: rgb(from var(--dweb-defualt-light) r g b / 0.55);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
 
 .chat-msg.user .chat-msg-bubble {
   border-color: var(--vscode-border-accent);
 }
 
-.chat-history-status {
-  position: sticky;
-  bottom: 0;
-  margin-top: auto;
-  padding: 8px 10px;
-  border: 1px solid var(--vscode-border);
-  background: rgb(from var(--dweb-defualt) r g b / 0.48);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  font-size: 12px;
+.chat-dock-status {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+  padding: 0 1px;
+  margin-top: 0;
+  font-size: 11px;
   color: var(--vscode-fg-muted);
+}
+
+.chat-dock-status-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-status-dots {
+  display: inline-flex;
+  letter-spacing: 1px;
+}
+
+.chat-status-dots span {
+  animation: chatStatusDotFade 1.2s infinite ease-in-out;
+}
+
+.chat-status-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.chat-status-dots span:nth-child(3) {
+  animation-delay: 0.4s;
 }
 
 .nano-title-tag {
@@ -1345,21 +2403,21 @@ watch(
   padding: 2px 6px;
   margin-left: 8px;
   border: 1px solid var(--vscode-border);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--vscode-fg-muted);
 }
 
 .chat-msg-role {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--vscode-fg-muted);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .chat-msg-content {
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--vscode-fg);
 }
 
@@ -1369,40 +2427,102 @@ watch(
 
 .chat-dock-body {
   display: grid;
-  grid-template-columns: 1fr 96px;
-  grid-template-rows: auto auto;
-  gap: 10px;
-  padding: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 6px 8px;
   border-top: 1px solid var(--vscode-border);
   background: rgb(from var(--dweb-defualt) r g b / 0.52);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
 
-.chat-dock-toolbar {
+.chat-dock-footer {
   grid-column: 1 / -1;
   display: flex;
-  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chat-dock-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
 }
 
 .chat-dock-toolbar-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+}
+
+.chat-dock-toolbar-item-model {
+  min-width: 200px;
+  flex: 1;
+}
+
+.chat-dock-toolbar-item-mini {
+  min-width: 84px;
 }
 
 .chat-dock-toolbar-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--vscode-fg-muted);
+}
+
+.chat-dock-model-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-dock-footer .chat-dock-toolbar-item-model,
+.chat-dock-footer .chat-dock-toolbar-item-mini {
+  flex-shrink: 0;
+}
+
+.agent-working-dir {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px dashed rgb(from var(--vscode-border) r g b / 0.9);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.24);
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--vscode-fg-muted);
+}
+
+.agent-working-dir > span:first-child {
+  color: rgb(from var(--vscode-fg-muted) r g b / 0.9);
+}
+
+.agent-working-dir-path {
+  color: var(--vscode-fg);
+  font-size: 11px;
+  line-height: 1.2;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-dock-toolbar-select {
   border: 1px solid var(--vscode-border);
   background: rgb(from var(--dweb-defualt) r g b / 0.55);
   color: var(--vscode-fg);
-  padding: 6px 8px;
+  padding: 4px 8px;
   outline: none;
   border-radius: 0;
+  font-size: 11px;
 }
 
 .chat-dock-toolbar-select:focus {
@@ -1415,9 +2535,11 @@ watch(
   border: 1px solid var(--vscode-border);
   background: rgb(from var(--dweb-defualt) r g b / 0.55);
   color: var(--vscode-fg);
-  padding: 10px 12px;
+  padding: 8px 10px;
   outline: none;
   border-radius: 0;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .chat-dock-input:focus {
@@ -1430,6 +2552,15 @@ watch(
   color: var(--vscode-fg);
   cursor: pointer;
   border-radius: 0;
+  padding: 0 12px;
+  font-size: 11px;
+  min-width: 72px;
+  height: 28px;
+}
+
+.chat-dock-send.stopping {
+  border-color: var(--vscode-border);
+  background: rgb(from var(--dweb-defualt-light) r g b / 0.6);
 }
 
 .chat-dock-send:hover {
@@ -1440,5 +2571,18 @@ watch(
 .chat-dock-input:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+@keyframes chatStatusDotFade {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
 }
 </style>

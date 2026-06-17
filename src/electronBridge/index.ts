@@ -13,6 +13,7 @@ import type {
 	SetupRunResult,
 	SetupState,
 	CleanupOldProjectResult,
+	DirectoryPickResult,
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -109,6 +110,11 @@ export async function revealUserDataDir(): Promise<{ ok: boolean } | null> {
 export async function openFolderForPath(path: string): Promise<OpenFolderResult | null> {
 	if (!w?.dweb?.common?.openFolderForPath) return null
 	return w.dweb.common.openFolderForPath({ path: String(path || '') })
+}
+
+export async function selectProjectFolder(): Promise<DirectoryPickResult | null> {
+	if (!w?.dweb?.aiworkflow?.selectProjectFolder) return null
+	return w.dweb.aiworkflow.selectProjectFolder()
 }
 
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {

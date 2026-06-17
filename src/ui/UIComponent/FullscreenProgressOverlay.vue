@@ -41,25 +41,29 @@ const clampedProgress = computed(() => {
 <style scoped>
 .fsprog-mask {
   position: fixed;
-  inset: 0;
-  z-index: 9999;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: var(--aiwf-safe-top, 0px);
+  z-index: var(--aiwf-alert-z-index, 130);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--aiwf-dialog-mask-bg, rgba(0, 0, 0, 0.55));
 }
 
 .fsprog-panel {
   width: min(520px, calc(100vw - 48px));
-  border: 1px solid var(--vscode-border);
-  border-radius: 10px;
-  background: var(--dweb-defualt);
-  padding: 14px 14px 12px;
+  border: 1px solid var(--aiwf-dialog-border, var(--wf-panel-border, var(--vscode-border)));
+  border-radius: var(--aiwf-dialog-radius, var(--wf-panel-radius, 10px));
+  background: var(--aiwf-dialog-bg, var(--wf-panel-bg-solid, var(--dweb-defualt)));
+  box-shadow: var(--aiwf-dialog-shadow-strong, var(--wf-panel-shadow-strong, var(--vscode-shadow)));
+  padding: var(--aiwf-dialog-body-padding, 12px 14px);
 }
 
 .fsprog-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--aiwf-dialog-title-size, 14px);
+  font-weight: var(--aiwf-dialog-title-weight, 600);
   color: var(--vscode-fg);
 }
 
@@ -99,15 +103,16 @@ const clampedProgress = computed(() => {
 .fsprog-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 10px;
+  margin-top: var(--aiwf-dialog-actions-gap, 10px);
 }
 
 .fsprog-cancel {
   border: 1px solid var(--vscode-border);
-  border-radius: 8px;
+  border-radius: var(--aiwf-dialog-button-radius, var(--aiwf-radius-md, 6px));
   background: transparent;
   color: var(--vscode-fg);
-  padding: 6px 10px;
+  min-height: var(--aiwf-dialog-button-height, 32px);
+  padding: var(--aiwf-dialog-button-padding, 0 12px);
   cursor: pointer;
 }
 

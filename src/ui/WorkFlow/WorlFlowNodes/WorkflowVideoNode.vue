@@ -163,6 +163,7 @@ const props = defineProps<{
     naturalHeight?: number;
   } | null;
   screenshotEnabled?: boolean;
+  reloadToken?: number | null;
   width: number;
   height: number;
   zoom: number;
@@ -198,7 +199,21 @@ const emit = defineEmits<{
   (e: "delete"): void;
   (
     e: "set-type",
-    v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"
+    v:
+      | "base"
+      | "text"
+      | "text-merge"
+      | "image"
+      | "rotate-image"
+      | "video"
+      | "scene-understanding"
+      | "scene-decompose"
+      | "scene-layout"
+      | "unreal-export"
+      | "story"
+      | "comfyui"
+      | "model3d"
+      | "meshy"
   ): void;
   (e: "upload-resource", payload: { file: File; kind: "image" | "video" }): void;
   (e: "clear-resource"): void;
@@ -243,8 +258,67 @@ let rafId: number | null = null;
 let tlCtx: CanvasRenderingContext2D | null = null;
 let tlRo: ResizeObserver | null = null;
 let tlPointerActive = false;
+let pendingSeekTime: number | null = null;
+let pendingSeekRetryCount = 0;
+let pendingSeekRequestedAt = 0;
+let noCrossOriginFallbackSrc = "";
+let localMediaRetryTimer: number | null = null;
+let localMediaRetryCount = 0;
 
 const screenshotEnabled = computed(() => Boolean(props.screenshotEnabled));
+
+const resetMediaRuntimeState = () => {
+  playing.value = false;
+  stopRaf();
+  duration.value = 0;
+  seekTime.value = 0;
+  pendingSeekTime = null;
+  pendingSeekRetryCount = 0;
+  pendingSeekRequestedAt = 0;
+  clearLocalMediaRetry();
+  noCrossOriginFallbackSrc = "";
+  lastReadySrc = "";
+  drawTimeline();
+};
+
+const isLikelyLocalMediaUrl = (src: string) => {
+  const text = String(src || "").trim();
+  if (!text) return false;
+  try {
+    const parsed = new URL(text, window.location.href);
+    return /\/media\//i.test(parsed.pathname);
+  } catch {
+    return /\/media\//i.test(text);
+  }
+};
+
+const clearLocalMediaRetry = () => {
+  if (localMediaRetryTimer != null) {
+    try {
+      window.clearTimeout(localMediaRetryTimer);
+    } catch {
+      // ignore
+    }
+  }
+  localMediaRetryTimer = null;
+  localMediaRetryCount = 0;
+};
+
+const scheduleLocalMediaRetry = (src: string) => {
+  if (!isLikelyLocalMediaUrl(src)) return false;
+  if (localMediaRetryTimer != null) return true;
+  if (localMediaRetryCount >= 6) return false;
+  localMediaRetryCount += 1;
+  const delay = Math.min(3000, 250 * localMediaRetryCount);
+  localMediaRetryTimer = window.setTimeout(() => {
+    localMediaRetryTimer = null;
+    void applyVideoSrc({
+      reload: true,
+      forceNoCrossOrigin: noCrossOriginFallbackSrc === src,
+    });
+  }, delay);
+  return true;
+};
 
 const naturalWidth = computed(() => {
   const v = props.videoSettings?.naturalWidth;
@@ -290,21 +364,89 @@ const stopRaf = () => {
   rafId = null;
 };
 
+const nowMs = () =>
+  typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+
 const tick = () => {
   stopRaf();
   const v = videoEl.value;
   if (!v || !playing.value) return;
-  seekTime.value = v.currentTime;
+  const cur = Number(v.currentTime) || 0;
+  if (pendingSeekTime != null) {
+    const target = pendingSeekTime;
+    if (Math.abs(cur - target) <= 0.08) {
+      pendingSeekTime = null;
+      pendingSeekRetryCount = 0;
+      pendingSeekRequestedAt = 0;
+      seekTime.value = cur;
+    } else {
+      drawTimeline();
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
+  } else {
+    seekTime.value = cur;
+  }
   drawTimeline();
   rafId = requestAnimationFrame(tick);
 };
 
-const applyVideoSrc = async () => {
+const shouldUseAnonymousCrossOrigin = (src: string) => {
+  const text = String(src || "").trim();
+  if (!text) return false;
+  if (text.startsWith("blob:") || text.startsWith("data:")) return false;
+  if (noCrossOriginFallbackSrc === text) return false;
+  return true;
+};
+
+const applyVideoCrossOriginMode = (
+  v: HTMLVideoElement,
+  src: string,
+  opts?: { forceNoCrossOrigin?: boolean }
+) => {
+  const useAnonymous = !opts?.forceNoCrossOrigin && shouldUseAnonymousCrossOrigin(src);
+  if (useAnonymous) {
+    v.crossOrigin = "anonymous";
+    v.setAttribute("crossorigin", "anonymous");
+    return;
+  }
+  try {
+    v.removeAttribute("crossorigin");
+  } catch {
+    // ignore
+  }
+  try {
+    v.crossOrigin = "";
+  } catch {
+    // ignore
+  }
+};
+
+const applyVideoSrc = async (opts?: {
+  forceNoCrossOrigin?: boolean;
+  reload?: boolean;
+}) => {
   const v = videoEl.value;
   if (!v) return;
   const src = String(props.resourceUrl ?? "").trim();
   if (!src) return;
-  if (v.src !== src) v.src = src;
+  applyVideoCrossOriginMode(v, src, opts);
+  if (opts?.reload) {
+    try {
+      v.pause();
+    } catch {
+      // ignore
+    }
+    try {
+      v.removeAttribute("src");
+      v.load();
+    } catch {
+      // ignore
+    }
+  }
+  if (v.src !== src || opts?.reload) v.src = src;
   try {
     v.load();
   } catch {
@@ -382,7 +524,17 @@ const onLoadedMetadata = () => {
       outputHeight: nextOutputH,
     });
   }
-  seekTime.value = Math.min(seekValue.value, duration.value || seekValue.value);
+  if (pendingSeekTime != null) {
+    const target = clamp(pendingSeekTime, 0, duration.value || 0);
+    seekTime.value = target;
+    try {
+      v.currentTime = target;
+    } catch {
+      // ignore
+    }
+  } else {
+    seekTime.value = Math.min(seekValue.value, duration.value || seekValue.value);
+  }
   drawTimeline();
 };
 
@@ -416,6 +568,56 @@ const togglePlay = async () => {
 };
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+const requestVideoSeek = (targetTime: number) => {
+  const d = durationDisplay.value;
+  if (!d) return;
+  const bounded = clamp(Number(targetTime) || 0, 0, d);
+  seekTime.value = bounded;
+  pendingSeekTime = bounded;
+  pendingSeekRetryCount = 0;
+  pendingSeekRequestedAt = nowMs();
+  const v = videoEl.value;
+  if (v && (v.readyState || 0) >= 1 && Number(v.duration) > 0) {
+    try {
+      if (typeof v.fastSeek === "function") v.fastSeek(bounded);
+      else v.currentTime = bounded;
+    } catch {
+      try {
+        v.currentTime = bounded;
+      } catch {
+        // ignore
+      }
+    }
+  }
+  drawTimeline();
+};
+
+const retryPendingSeek = (v: HTMLVideoElement, opts?: { force?: boolean }) => {
+  if (pendingSeekTime == null) return false;
+  if ((v.readyState || 0) < 1 || !(Number(v.duration) > 0)) return false;
+  const target = clamp(pendingSeekTime, 0, duration.value || 0);
+  const cur = Number(v.currentTime) || 0;
+  if (Math.abs(cur - target) <= 0.08) {
+    pendingSeekTime = null;
+    pendingSeekRetryCount = 0;
+    pendingSeekRequestedAt = 0;
+    seekTime.value = cur;
+    return true;
+  }
+  if (!opts?.force && cur <= 0.001 && target > 0.12) {
+    return false;
+  }
+  if (pendingSeekRetryCount >= 2) return false;
+  pendingSeekRetryCount += 1;
+  try {
+    v.currentTime = target;
+    pendingSeekRequestedAt = nowMs();
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const applyVolume = () => {
   const v = videoEl.value;
@@ -566,30 +768,14 @@ const seekByTimelineX = (clientX: number) => {
   if (!d) return;
   const { start, len } = getTimelineWindow();
   const t = clamp(start + (x / Math.max(1, rect.width)) * len, 0, d);
-  seekTime.value = t;
-  const v = videoEl.value;
-  if (!v) return;
-  try {
-    v.currentTime = t;
-  } catch {
-    // ignore
-  }
-  drawTimeline();
+  requestVideoSeek(t);
 };
 
 const seekByOverviewTime = (t: number) => {
   const d = durationDisplay.value;
   if (!d) return;
   const next = clamp(Number(t) || 0, 0, d);
-  seekTime.value = next;
-  const v = videoEl.value;
-  if (!v) return;
-  try {
-    v.currentTime = next;
-  } catch {
-    // ignore
-  }
-  drawTimeline();
+  requestVideoSeek(next);
 };
 
 const onTimelinePointerDown = (e: PointerEvent) => {
@@ -705,8 +891,8 @@ const onScreenshot = () => {
         height: canvas.height,
         time: v.currentTime || seekValue.value,
       });
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn("[WorkflowVideoNode] screenshot capture failed", err);
     } finally {
       try {
         if (gl && tex) gl.deleteTexture(tex);
@@ -761,17 +947,12 @@ watch(
       if (runId !== srcWatchRunId) return;
 
       if (!props.resourceUrl) {
-        playing.value = false;
-        stopRaf();
-        duration.value = 0;
-        seekTime.value = 0;
-        drawTimeline();
-        lastReadySrc = "";
+        resetMediaRuntimeState();
         return;
       }
 
       // Reset ready marker when src changes.
-      lastReadySrc = "";
+      resetMediaRuntimeState();
       await applyVideoSrc();
       if (runId !== srcWatchRunId) return;
       await ensureMetadata();
@@ -797,20 +978,109 @@ watch(
   }
 );
 
+watch(
+  () => props.reloadToken,
+  async (nextValue, prevValue) => {
+    if (nextValue === prevValue) return;
+    if (!props.resourceUrl) return;
+    const runId = ++srcWatchRunId;
+    try {
+      resetMediaRuntimeState();
+      await nextTick();
+      if (runId !== srcWatchRunId) return;
+      await applyVideoSrc({ reload: true });
+      if (runId !== srcWatchRunId) return;
+      await ensureMetadata();
+      if (runId !== srcWatchRunId) return;
+      applyVolume();
+      applyLoop();
+      drawTimeline();
+      tryEmitMediaReady();
+    } catch (err) {
+      console.warn("[WorkflowVideoNode] reload token refresh failed", err);
+    }
+  }
+);
+
 onMounted(() => {
   if (videoEl.value) {
     applyLoop();
     applyVolume();
     videoEl.value.addEventListener("loadedmetadata", onLoadedMetadata);
-    videoEl.value.addEventListener("loadeddata", tryEmitMediaReady);
-    videoEl.value.addEventListener("canplay", tryEmitMediaReady);
+    videoEl.value.addEventListener("loadeddata", () => {
+      const v = videoEl.value;
+      if (v) retryPendingSeek(v, { force: true });
+      clearLocalMediaRetry();
+      tryEmitMediaReady();
+    });
+    videoEl.value.addEventListener("canplay", () => {
+      const v = videoEl.value;
+      if (v) retryPendingSeek(v, { force: true });
+      clearLocalMediaRetry();
+      tryEmitMediaReady();
+    });
+    videoEl.value.addEventListener("error", () => {
+      const v = videoEl.value;
+      const src = String(props.resourceUrl ?? "").trim();
+      if (!v || !src) return;
+      if (isLikelyLocalMediaUrl(src)) {
+        if (shouldUseAnonymousCrossOrigin(src) && noCrossOriginFallbackSrc !== src) {
+          noCrossOriginFallbackSrc = src;
+          void applyVideoSrc({ forceNoCrossOrigin: true, reload: true });
+        }
+        if (scheduleLocalMediaRetry(src)) return;
+      }
+      if (!shouldUseAnonymousCrossOrigin(src)) return;
+      noCrossOriginFallbackSrc = src;
+      void applyVideoSrc({ forceNoCrossOrigin: true, reload: true });
+    });
     videoEl.value.addEventListener("timeupdate", () => {
       const v = videoEl.value;
       if (!v) return;
-      seekTime.value = v.currentTime;
+      const cur = Number(v.currentTime) || 0;
+      if (pendingSeekTime != null) {
+        const target = pendingSeekTime;
+        if (Math.abs(cur - target) <= 0.08) {
+          pendingSeekTime = null;
+          pendingSeekRetryCount = 0;
+          pendingSeekRequestedAt = 0;
+          seekTime.value = cur;
+          drawTimeline();
+          return;
+        }
+        if (cur <= 0.001 && target > 0.12) {
+          retryPendingSeek(v, { force: true });
+          drawTimeline();
+          return;
+        }
+        if (nowMs() - pendingSeekRequestedAt <= 1500) {
+          if (pendingSeekRetryCount < 2) retryPendingSeek(v, { force: true });
+          drawTimeline();
+          return;
+        }
+        pendingSeekTime = null;
+        pendingSeekRetryCount = 0;
+        pendingSeekRequestedAt = 0;
+      }
+      seekTime.value = cur;
       drawTimeline();
     });
     videoEl.value.addEventListener("seeked", () => {
+      const v = videoEl.value;
+      if (!v) return;
+      const cur = Number(v.currentTime) || 0;
+      if (pendingSeekTime != null) {
+        const target = pendingSeekTime;
+        if (Math.abs(cur - target) > 0.12) {
+          if (retryPendingSeek(v, { force: true })) {
+            return;
+          }
+        }
+        pendingSeekTime = null;
+        pendingSeekRetryCount = 0;
+        pendingSeekRequestedAt = 0;
+      }
+      seekTime.value = cur;
       drawTimeline();
     });
     videoEl.value.addEventListener("pause", () => {
@@ -823,6 +1093,20 @@ onMounted(() => {
       tick();
     });
   }
+  if (props.resourceUrl && videoEl.value) {
+    void (async () => {
+      try {
+        await applyVideoSrc();
+        await ensureMetadata();
+        applyVolume();
+        applyLoop();
+        drawTimeline();
+        tryEmitMediaReady();
+      } catch (err) {
+        console.warn("[WorkflowVideoNode] mounted resource init failed", err);
+      }
+    })();
+  }
   // In case resourceUrl was already set and metadata arrived before listeners attached.
   void ensureMetadata();
   if (timelineCanvas.value) {
@@ -834,6 +1118,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopRaf();
+  clearLocalMediaRetry();
   try {
     if (videoEl.value) {
       videoEl.value.removeEventListener("loadeddata", tryEmitMediaReady);
@@ -971,7 +1256,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 220px;
   height: 28px;
-  border-radius: 4px;
+  border-radius: 0;
   overflow: hidden;
   cursor: pointer;
 }

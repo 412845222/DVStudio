@@ -1,0 +1,131 @@
+:root {
+  --wf-chat-dock-width: min(520px, calc(100vw - 20px));
+  --wf-chat-dock-inset: 10px;
+  --wf-chat-dock-bg: var(--wf-surface-glass);
+  --wf-chat-dock-border: var(--wf-border);
+  --wf-chat-dock-radius: var(--aiwf-radius-lg);
+  --wf-chat-dock-shadow: var(--wf-panel-shadow-strong);
+  --wf-chat-dock-blur: var(--wf-overlay-blur);
+  --wf-chat-column-bg: rgba(21, 24, 28, 0.62);
+  --wf-chat-column-border: var(--wf-border-subtle);
+  --wf-chat-message-user-bg: var(--wf-primary-soft);
+  --wf-chat-message-assistant-bg: rgba(237, 242, 244, 0.07);
+  --wf-chat-flow-pending-bg: var(--wf-warning-soft);
+  --wf-chat-flow-complete-bg: var(--wf-success-soft);
+  --wf-chat-flow-error-bg: var(--wf-danger-soft);
+}
+
+/* Bottom chat dock + right drawer visual baseline */
+.chat-dock:not(.collapsed) {
+  border: 1px solid var(--wf-chat-dock-border) !important;
+  background: var(--wf-chat-dock-bg) !important;
+  border-radius: var(--wf-chat-dock-radius) !important;
+  box-shadow: var(--wf-chat-dock-shadow) !important;
+  backdrop-filter: blur(var(--wf-chat-dock-blur));
+  -webkit-backdrop-filter: blur(var(--wf-chat-dock-blur));
+}
+
+.chat-dock:not(.collapsed):hover {
+  border-color: var(--wf-border-focus) !important;
+}
+
+.chat-dock:not(.collapsed) .chat-history {
+  border-bottom: 1px solid var(--wf-chat-dock-border) !important;
+  background: var(--wf-chat-column-bg) !important;
+}
+
+.chat-dock:not(.collapsed) .chat-history-bar,
+.chat-dock:not(.collapsed) .chat-dock-body,
+.chat-dock:not(.collapsed) .chat-dock-toolbar {
+  border-color: var(--wf-chat-column-border) !important;
+}
+
+.chat-collapsed-handle,
+.chat-history-minimize,
+.chat-history-expand,
+.chat-dock-send,
+.chat-dock-toolbar-select,
+.chat-dock-input,
+.codex-mini-btn {
+  border: 1px solid var(--wf-control-border) !important;
+  background: var(--wf-control-bg) !important;
+  color: var(--wf-text) !important;
+  border-radius: var(--aiwf-radius-md) !important;
+}
+
+.chat-panel-tabs {
+  border: 1px solid var(--wf-control-border) !important;
+  background: rgba(9, 12, 16, 0.55) !important;
+}
+
+.chat-panel-tab.active {
+  border: 1px solid var(--wf-control-border) !important;
+  background: var(--wf-control-bg) !important;
+}
+
+.agent-session-bar,
+.agent-flow-list {
+  border-color: var(--wf-chat-column-border) !important;
+}
+
+.agent-empty-state {
+  color: rgba(219, 226, 233, 0.24) !important;
+}
+
+.agent-working-dir {
+  border-color: var(--wf-chat-column-border) !important;
+  background: rgba(16, 20, 24, 0.45) !important;
+}
+
+.chat-collapsed-handle:hover,
+.chat-history-minimize:hover,
+.chat-history-expand:hover,
+.chat-dock-send:hover,
+.codex-mini-btn:hover {
+  border-color: var(--wf-control-border-hover) !important;
+  background: var(--wf-control-bg-hover) !important;
+}
+
+.chat-msg.user .chat-msg-content {
+  background: var(--wf-chat-message-user-bg) !important;
+}
+
+.chat-msg.assistant .chat-msg-content {
+  background: var(--wf-chat-message-assistant-bg) !important;
+}
+
+.codex-panel,
+.codex-col,
+.codex-chat-list,
+.codex-flow-list,
+.codex-sessions-list {
+  border-color: var(--wf-chat-column-border) !important;
+}
+
+.codex-col {
+  background: rgba(21, 24, 28, 0.42) !important;
+}
+
+.codex-session-item,
+.codex-flow-item,
+.chat-msg {
+  border: 1px solid var(--wf-chat-column-border) !important;
+  border-radius: var(--aiwf-radius-md);
+}
+
+.codex-session-item.active {
+  border-color: var(--wf-state-selected-border) !important;
+  background: var(--wf-state-selected-bg) !important;
+}
+
+.codex-flow-item.pending {
+  background: var(--wf-chat-flow-pending-bg) !important;
+}
+
+.codex-flow-item.completed {
+  background: var(--wf-chat-flow-complete-bg) !important;
+}
+
+.codex-flow-item.failed {
+  background: var(--wf-chat-flow-error-bg) !important;
+}

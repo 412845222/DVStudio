@@ -37,6 +37,9 @@ const form = reactive<ClientSettings>({
   geminiApiKey: "",
   geminiModel: FIXED_GEMINI_MODEL,
   bytedanceApiKey: "",
+  meshyApiKey: "",
+  jimengAccessKeyId: "",
+  jimengSecretKey: "",
 });
 
 async function load() {
@@ -55,13 +58,20 @@ async function load() {
   form.deepseekApiKey = "";
   form.geminiApiKey = "";
   form.bytedanceApiKey = "";
+  form.meshyApiKey = "";
+  form.jimengAccessKeyId = "";
+  form.jimengSecretKey = "";
 
   loading.value = false;
 }
 
 function needsAgreement() {
   return Boolean(
-    String(form.deepseekApiKey || "").trim() || String(form.geminiApiKey || "").trim()
+    String(form.deepseekApiKey || "").trim() ||
+      String(form.geminiApiKey || "").trim() ||
+      String(form.meshyApiKey || "").trim() ||
+      String(form.jimengAccessKeyId || "").trim() ||
+      String(form.jimengSecretKey || "").trim()
   );
 }
 
@@ -73,14 +83,23 @@ async function doSubmit() {
   const deepseekKey = String(form.deepseekApiKey || "").trim();
   const geminiKey = String(form.geminiApiKey || "").trim();
   const bytedanceKey = String(form.bytedanceApiKey || "").trim();
+  const meshyKey = String(form.meshyApiKey || "").trim();
+  const jimengAccessKeyId = String(form.jimengAccessKeyId || "").trim();
+  const jimengSecretKey = String(form.jimengSecretKey || "").trim();
   const keyPayload: {
     deepseekApiKey?: string;
     geminiApiKey?: string;
     bytedanceApiKey?: string;
+    meshyApiKey?: string;
+    jimengAccessKeyId?: string;
+    jimengSecretKey?: string;
   } = {};
   if (deepseekKey) keyPayload.deepseekApiKey = deepseekKey;
   if (geminiKey) keyPayload.geminiApiKey = geminiKey;
   if (bytedanceKey) keyPayload.bytedanceApiKey = bytedanceKey;
+  if (meshyKey) keyPayload.meshyApiKey = meshyKey;
+  if (jimengAccessKeyId) keyPayload.jimengAccessKeyId = jimengAccessKeyId;
+  if (jimengSecretKey) keyPayload.jimengSecretKey = jimengSecretKey;
 
   if (Object.keys(keyPayload).length > 0) {
     const keyRes = await saveEncryptedAICredentials(keyPayload);
@@ -97,6 +116,9 @@ async function doSubmit() {
     deepseekApiKey: "",
     geminiApiKey: "",
     bytedanceApiKey: "",
+    meshyApiKey: "",
+    jimengAccessKeyId: "",
+    jimengSecretKey: "",
     deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
     deepseekModel: FIXED_DEEPSEEK_MODEL,
     geminiModel: FIXED_GEMINI_MODEL,
@@ -108,6 +130,9 @@ async function doSubmit() {
     form.deepseekApiKey = "";
     form.geminiApiKey = "";
     form.bytedanceApiKey = "";
+    form.meshyApiKey = "";
+    form.jimengAccessKeyId = "";
+    form.jimengSecretKey = "";
   }
 
   saving.value = false;
@@ -157,6 +182,9 @@ async function confirmClearCredentials() {
     deepseekApiKey: "",
     geminiApiKey: "",
     bytedanceApiKey: "",
+    meshyApiKey: "",
+    jimengAccessKeyId: "",
+    jimengSecretKey: "",
   });
   if (!r.ok) saveMsg.value = `清空失败：${r.error || "后端写入失败"}`;
   else saveMsg.value = "已清空已保存的 API Key";
@@ -164,6 +192,9 @@ async function confirmClearCredentials() {
   form.deepseekApiKey = "";
   form.geminiApiKey = "";
   form.bytedanceApiKey = "";
+  form.meshyApiKey = "";
+  form.jimengAccessKeyId = "";
+  form.jimengSecretKey = "";
 
   clearing.value = false;
   clearOpen.value = false;
@@ -219,12 +250,42 @@ onMounted(() => {
         </label>
 
         <label class="field">
-          <span class="label">字节方舟 API Key (ARK_API_KEY)</span>
+          <span class="label">字节方舟 API Key</span>
           <input
             v-model.trim="form.bytedanceApiKey"
             class="input"
             type="password"
             placeholder="ark_..."
+          />
+        </label>
+
+        <label class="field">
+          <span class="label">Meshy API Key</span>
+          <input
+            v-model.trim="form.meshyApiKey"
+            class="input"
+            type="password"
+            placeholder="mshy_..."
+          />
+        </label>
+
+        <label class="field">
+          <span class="label">即梦 AccessKey ID（不是账号ID）</span>
+          <input
+            v-model.trim="form.jimengAccessKeyId"
+            class="input"
+            type="password"
+            placeholder="AK..."
+          />
+        </label>
+
+        <label class="field">
+          <span class="label">即梦 SecretAccessKey</span>
+          <input
+            v-model.trim="form.jimengSecretKey"
+            class="input"
+            type="password"
+            placeholder="SK..."
           />
         </label>
 
@@ -286,7 +347,7 @@ onMounted(() => {
     >
       <div class="agreement-body">
         <div class="agreement-loading">
-          该操作会清空本机后端数据库中加密保存的 DeepSeek/Gemini/字节方舟 API Key。清空后，相关 AI 功能将无法使用，直到你重新保存 Key。
+          该操作会清空本机后端数据库中加密保存的 DeepSeek/Gemini/字节方舟/Meshy/即梦 API 凭证。清空后，相关 AI 功能将无法使用，直到你重新保存 Key。
         </div>
       </div>
     </ModalDialog>
@@ -298,8 +359,19 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   overflow: auto;
-  padding: 18px;
+  padding: 18px 18px 18px 74px;
   box-sizing: border-box;
+  transition: padding-left 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* 当导航栏展开时，调整左侧padding */
+body[data-side-nav-expanded="true"] .settings-page {
+  padding-left: 198px;
+}
+
+/* 当导航栏收起时，恢复默认padding */
+body[data-side-nav-expanded="false"] .settings-page {
+  padding-left: 74px;
 }
 
 .settings-shell {

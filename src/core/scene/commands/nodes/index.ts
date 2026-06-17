@@ -1,6 +1,8 @@
 import { NodeBase, type NodeBaseDTO, type NodeType, upgradeNodeType } from '../../nodesType'
+import { normalizeLineLocalPoints } from '../../geometry'
 import { collectAllNames, findLayer, findNode, makeUniqueName } from '../../tree'
 import type { VideoSceneLayer, VideoSceneNodeTransform, VideoSceneTreeNode, VideoSceneUserNodeType } from '../../types'
+import { normalizeTextNodeProps } from '../../nodesType/TextNode'
 
 import type { NodePropsPatch, NodeTransformPatch } from './types'
 import type { SelectionPatch } from '../selection/types'
@@ -134,11 +136,14 @@ export const addNodeTreeToLayer = (args: {
 			// Text autosize: always derive w/h from text + font on insertion.
 			const t = String((n as any).userType ?? (n as any).type ?? '')
 			if (t === 'text') {
+				n.props = normalizeTextNodeProps(n.props ?? {}) as any
 				const size = computeTextAutoSize(n.props ?? {})
 				if (size) {
 					n.transform.width = size.width
 					n.transform.height = size.height
 				}
+			} else if (t === 'line') {
+				Object.assign(n.props, normalizeLineLocalPoints({ props: n.props as any, width: n.transform.width, height: n.transform.height }))
 			}
 		}
 
@@ -212,6 +217,7 @@ export const updateUserNodeProps = (layer: VideoSceneLayer, nodeId: string, patc
 
 	// Text autosize: any time text/font changes, recompute width/height.
 	if (String(node.userType ?? '') === 'text' && node.transform) {
+		node.props = normalizeTextNodeProps(node.props ?? {}) as any
 		const hasTextChange = Object.prototype.hasOwnProperty.call(patch, 'textContent')
 		const hasFontChange = Object.prototype.hasOwnProperty.call(patch, 'fontSize') || Object.prototype.hasOwnProperty.call(patch, 'fontStyle')
 		const hasAlignChange = Object.prototype.hasOwnProperty.call(patch, 'textAlign')

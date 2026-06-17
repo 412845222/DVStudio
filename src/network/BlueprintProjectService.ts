@@ -28,16 +28,23 @@ type DeleteProjectResponse =
   | { ok: true; id: number }
   | { ok: false; error: string; status?: number }
 
+type OpenProjectFolderResponse =
+  | { ok: true; project: BlueprintProjectItem }
+  | { ok: false; error: string; status?: number }
+
 export type BlueprintUploadedAsset = {
   kind: string
   name: string
   contentType?: string
   size?: number
   relativePath: string
+  projectRelativePath?: string
   absolutePath: string
   url: string
   sourcePath?: string
 }
+
+export type BlueprintAssetKind = 'image' | 'video' | 'file' | 'model'
 
 type UploadAssetResponse =
   | { ok: true; asset: BlueprintUploadedAsset }
@@ -49,6 +56,14 @@ type ImportAssetResponse =
 
 type DeleteAssetResponse =
   | { ok: true; fileDeleted: boolean; path?: string }
+  | { ok: false; error: string; status?: number }
+
+type ResolveAssetResponse =
+  | { ok: true; resolved: boolean; asset?: BlueprintUploadedAsset; reason?: string }
+  | { ok: false; error: string; status?: number }
+
+type RepairAssetResponse =
+  | { ok: true; repaired: boolean; asset?: BlueprintUploadedAsset; reason?: string }
   | { ok: false; error: string; status?: number }
 
 const jsonHeaders = {
@@ -146,9 +161,26 @@ export class BlueprintProjectService {
     return (await res.json()) as DeleteProjectResponse
   }
 
+  async openProjectFolder(payload: { rootPath: string; name?: string; create?: boolean }): Promise<OpenProjectFolderResponse> {
+    const res = await fetch(this.url('/api/workflow/projects/folder/open'), {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload ?? {}),
+    })
+    if (!res.ok) {
+      const body = await safeJson(res)
+      return {
+        ok: false,
+        status: res.status,
+        error: `projects/folder/open failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+      }
+    }
+    return (await res.json()) as OpenProjectFolderResponse
+  }
+
   async uploadAsset(
     file: File,
-    kind: 'image' | 'video',
+    kind: BlueprintAssetKind,
     opts?: { projectId?: number | null; bucket?: 'assets' | 'thumbnails' }
   ): Promise<UploadAssetResponse> {
     const fd = new FormData()
@@ -174,7 +206,7 @@ export class BlueprintProjectService {
   }
 
   async importAsset(payload: {
-    kind: 'image' | 'video'
+    kind: BlueprintAssetKind
     name?: string
     sourcePath?: string
     sourceUrl?: string
@@ -207,6 +239,7 @@ export class BlueprintProjectService {
     url?: string
     sourcePath?: string
     relativePath?: string
+    projectRelativePath?: string
   }): Promise<DeleteAssetResponse> {
     const res = await fetch(this.url('/api/workflow/projects/assets/delete'), {
       method: 'POST',
@@ -222,5 +255,51 @@ export class BlueprintProjectService {
       }
     }
     return (await res.json()) as DeleteAssetResponse
+  }
+
+  async resolveAsset(payload: {
+    projectId?: number | null
+    kind?: BlueprintAssetKind
+    name?: string
+    sourcePath?: string
+    sourceUrl?: string
+    projectRelativePath?: string
+  }): Promise<ResolveAssetResponse> {
+    const res = await fetch(this.url('/api/workflow/projects/assets/resolve'), {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload ?? {}),
+    })
+    if (!res.ok) {
+      const body = await safeJson(res)
+      return {
+        ok: false,
+        status: res.status,
+        error: `projects/assets/resolve failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+      }
+    }
+    return (await res.json()) as ResolveAssetResponse
+  }
+
+  async repairAsset(payload: {
+    projectId?: number | null
+    kind?: BlueprintAssetKind
+    name?: string
+    projectRelativePath?: string
+  }): Promise<RepairAssetResponse> {
+    const res = await fetch(this.url('/api/workflow/projects/assets/repair'), {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload ?? {}),
+    })
+    if (!res.ok) {
+      const body = await safeJson(res)
+      return {
+        ok: false,
+        status: res.status,
+        error: `projects/assets/repair failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+      }
+    }
+    return (await res.json()) as RepairAssetResponse
   }
 }

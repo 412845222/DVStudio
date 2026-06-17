@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from ..component_template.presets import build_component_template_preview_system_parts
+from ..video_gui.presets import build_video_scene_plan_system_parts
 from .._md_prompts import load_prompt_section
 from .agent_to_ui_jsonl import build_agent_to_ui_jsonl_system_parts
 
@@ -106,6 +107,24 @@ def build_messages_from_preset(
     # `subtitle_template_preview` is intentionally an alias for the same behavior.
     if preset_norm in ("subtitle_template_preview", "component_template_preview"):
         system_parts.extend(build_component_template_preview_system_parts(prompt_input=prompt_input))
+
+        if context_pack is not None:
+            system_parts.append(_context_pack_prefix(context_pack_json=json.dumps(context_pack, ensure_ascii=False)))
+
+        user_content = _prompt_input_prefix(
+            prompt_input_json=json.dumps(
+                {"preset": preset_norm, "promptInput": prompt_input},
+                ensure_ascii=False,
+            )
+        )
+
+        return [
+            {"role": "system", "content": "\n".join(system_parts)},
+            {"role": "user", "content": user_content},
+        ]
+
+    if preset_norm in ("video_scene_plan_v1", "video_gui_scene_v1", "video_gui_blueprint_v1"):
+        system_parts.extend(build_video_scene_plan_system_parts(prompt_input=prompt_input))
 
         if context_pack is not None:
             system_parts.append(_context_pack_prefix(context_pack_json=json.dumps(context_pack, ensure_ascii=False)))

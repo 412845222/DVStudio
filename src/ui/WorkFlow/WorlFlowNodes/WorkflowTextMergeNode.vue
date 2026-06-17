@@ -31,11 +31,20 @@
       <div class="wf-merge" @pointerdown.stop>
         <div class="wf-merge-label">整合后的文本（只读）</div>
         <textarea
-          class="wf-merge-textarea"
-          :value="mergedText"
+          v-if="hasRenderedText"
+          ref="viewportEl"
+          class="wf-merge-output wf-merge-textarea"
+          tabindex="0"
+          data-aiwf-text-selectable="true"
           readonly
-          placeholder="连接下方的文本输入后，这里会显示拼接结果…"
+          spellcheck="false"
+          :value="renderedText"
+          @scroll="onViewportScroll"
+          @keydown="onViewportKeyDown"
         />
+        <div v-else class="wf-merge-output wf-merge-placeholder" data-aiwf-text-selectable="true">
+          连接下方的文本输入后，这里会显示拼接结果…
+        </div>
       </div>
     </template>
 
@@ -113,7 +122,10 @@
           :style="inputAnchorStyle(it.id)"
           :data-wf-node-id="nodeId"
           :data-wf-anchor-id="anchorId(it.id)"
+          data-wf-anchor-type="text"
           data-wf-dir="in"
+          data-anchor-direction="in"
+          data-anchor-side="left"
           :data-wf-anchor-index="idx"
           @pointerup.stop="endLink(anchorId(it.id), idx)"
         />
@@ -130,7 +142,10 @@
           :style="anchorStyle(a)"
           :data-wf-node-id="nodeId"
           :data-wf-anchor-id="a.id"
+          :data-wf-anchor-type="anchorTypeAttr(a)"
           data-wf-dir="out"
+          data-anchor-direction="out"
+          data-anchor-side="right"
           :data-wf-anchor-index="a.index"
           @pointerdown.stop.prevent="startLink(a.id, a.index, $event)"
         />
@@ -147,7 +162,7 @@ type AnchorSpec = {
   id: string;
   label?: string;
   offsetY?: number;
-  mediaType?: "generic" | "image" | "video" | "text" | "flow";
+  mediaType?: "generic" | "image" | "video" | "text" | "flow" | "model3d";
 };
 
 type MergeItem = { id: string };
@@ -195,7 +210,21 @@ const emit = defineEmits<{
   (e: "delete"): void;
   (
     e: "set-type",
-    v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "story" | "comfyui"
+    v:
+      | "base"
+      | "text"
+      | "text-merge"
+      | "image"
+      | "rotate-image"
+      | "video"
+      | "scene-understanding"
+      | "scene-decompose"
+      | "scene-layout"
+      | "unreal-export"
+      | "story"
+      | "comfyui"
+      | "model3d"
+      | "meshy"
   ): void;
   (
     e: "resize",
@@ -213,11 +242,48 @@ const hoverInputAnchorId = computed(() => props.hoverInputAnchorId ?? null);
 const hoverOutputAnchorId = computed(() => props.hoverOutputAnchorId ?? null);
 
 const mergedText = computed(() => String(props.mergedText ?? ""));
+const renderedText = ref("");
+const hasRenderedText = computed(() => renderedText.value.length > 0);
 const mergeItems = computed(() =>
   Array.isArray(props.mergeItems) ? props.mergeItems : []
 );
+const viewportEl = ref<HTMLTextAreaElement | null>(null);
+const shouldAutoFollow = ref(true);
 
 const anchorId = (itemId: string) => `in-${itemId}`;
+
+const isNearViewportBottom = (el: HTMLElement | null) => {
+  if (!el) return true;
+  return el.scrollHeight - el.clientHeight - el.scrollTop <= 24;
+};
+
+const scrollViewportToBottom = (force = false) => {
+  const el = viewportEl.value;
+  if (!el) return;
+  if (!force && !shouldAutoFollow.value) return;
+  el.scrollTop = el.scrollHeight;
+};
+
+const onViewportScroll = () => {
+  shouldAutoFollow.value = isNearViewportBottom(viewportEl.value);
+};
+
+const selectViewportContent = () => {
+  const el = viewportEl.value;
+  if (!el) return;
+  el.focus();
+  el.select();
+  el.setSelectionRange(0, el.value.length);
+};
+
+const onViewportKeyDown = (event: KeyboardEvent) => {
+  const key = String(event.key || "").toLowerCase();
+  const mod = event.ctrlKey || event.metaKey;
+  if (!mod || key !== "a") return;
+  event.preventDefault();
+  event.stopPropagation();
+  selectViewportContent();
+};
 
 // IMPORTANT: do NOT store template refs in reactive state.
 // Mutating a ref inside a template ref callback can trigger recursive updates.
@@ -258,8 +324,10 @@ const scheduleMeasure = () => {
 };
 
 onMounted(() => {
+  renderedText.value = mergedText.value;
   scheduleMeasure();
   window.addEventListener("resize", scheduleMeasure);
+  nextTick(() => scrollViewportToBottom(true));
 });
 
 onBeforeUnmount(() => {
@@ -281,6 +349,19 @@ watch(
   { flush: "post" }
 );
 
+watch(
+  () => mergedText.value,
+  (next, prev) => {
+    renderedText.value = next;
+    const keepFollowing =
+      shouldAutoFollow.value || !prev || isNearViewportBottom(viewportEl.value);
+    nextTick(() => {
+      if (keepFollowing) scrollViewportToBottom(true);
+    });
+  },
+  { flush: "post" }
+);
+
 const inputAnchorStyle = (itemId: string) => {
   const top = inputAnchorTopByItemId.value[itemId];
   // Fallback makes anchor usable before first measure.
@@ -296,11 +377,16 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
 });
 
 const anchorClass = (a: AnchorSpec) => {
-  if (a.mediaType === "image") return "wf-anchor-image";
-  if (a.mediaType === "video") return "wf-anchor-video";
-  if (a.mediaType === "text") return "wf-anchor-text";
-  if (a.mediaType === "flow") return "wf-anchor-flow";
   return "wf-anchor-resource";
+};
+
+const anchorTypeAttr = (a: AnchorSpec) => {
+  if (a.mediaType === "image") return "image";
+  if (a.mediaType === "video") return "video";
+  if (a.mediaType === "text") return "text";
+  if (a.mediaType === "flow") return "flow";
+  if (a.mediaType === "model3d") return "model3d";
+  return "resource";
 };
 </script>
 
@@ -322,7 +408,7 @@ const anchorClass = (a: AnchorSpec) => {
   opacity: 0.9;
 }
 
-.wf-merge-textarea {
+.wf-merge-output {
   width: 100%;
   box-sizing: border-box;
   flex: 1;
@@ -331,11 +417,38 @@ const anchorClass = (a: AnchorSpec) => {
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt-dark);
   color: var(--vscode-foreground);
-  border-radius: 6px;
-  outline: none;
-  resize: none;
-  font-family: inherit;
+  border-radius: 0;
+  overflow: auto;
+  font-family: var(--vscode-editor-font-family, Consolas, "Courier New", monospace);
   font-size: 12px;
+  line-height: 1.5;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.wf-merge-textarea {
+  resize: none;
+  border: 1px solid var(--vscode-border);
+}
+
+.wf-merge-pre {
+  margin: 0;
+  min-height: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.wf-merge-placeholder {
+  color: var(--vscode-fg-muted);
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .wf-merge-footer {
@@ -438,66 +551,33 @@ const anchorClass = (a: AnchorSpec) => {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -10px;
+  left: 0;
+  width: 0;
 }
 
 .wf-merge-anchors-out {
   position: absolute;
   top: 0;
   bottom: 0;
-  right: -10px;
+  right: 0;
+  width: 0;
 }
 
-/* Anchor visuals: WorkflowNodeBase styles are scoped to that component,
-   so slotted/custom anchors must define their own hit/inner-dot styles here. */
-.wf-anchor-hit {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  cursor: crosshair;
-  position: relative;
-}
-
-.wf-anchor-hit::before {
-  content: "";
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--dweb-blue);
-}
-
-.wf-anchor-hit.wf-anchor-resource::before {
-  background: var(--dweb-blue);
-}
-
-.wf-anchor-hit.wf-anchor-image::before {
-  background: var(--dweb-purple);
-}
-
-.wf-anchor-hit.wf-anchor-video::before {
-  background: var(--dweb-green-main);
-}
-
-.wf-anchor-hit.wf-anchor-text::before {
-  background: var(--dweb-yellow);
-}
-
-.wf-anchor-hit.wf-anchor-flow::before {
-  background: var(--dweb-orange);
-}
-
-.wf-anchor-hit:hover::before,
-.wf-anchor-hit.hovered::before {
-  border-color: #ffffff;
-}
-
-/* Output anchors still need absolute positioning to follow offsetY */
+/* Slot anchors reuse global .wf-anchor-hit skin; here we only keep geometry. */
 .wf-merge-anchors-in .wf-anchor-hit,
 .wf-merge-anchors-out .wf-anchor-hit {
   position: absolute;
-  transform: translateY(-50%);
+}
+
+.wf-merge-anchors-in .wf-anchor-hit {
+  left: 0;
+  right: auto;
+  --wf-anchor-base-x: calc(-50% - var(--wf-anchor-side-offset, 0px));
+}
+
+.wf-merge-anchors-out .wf-anchor-hit {
+  right: 0;
+  left: auto;
+  --wf-anchor-base-x: calc(50% + var(--wf-anchor-side-offset, 0px));
 }
 </style>

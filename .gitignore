@@ -20,10 +20,17 @@ release-*.7z
 
 # Local planning docs (not part of repo)
 /aidoc/
+/docs/
+/Doc/
+/doc/
+*.plan.md
+.tmp-perf/
+.tmp-*/
 
 # Repo meta folders you don't want to publish
 /.github/
 /.vscode/
+/.cloudbase/
 
 # --- Python / Django ---
 __pycache__/

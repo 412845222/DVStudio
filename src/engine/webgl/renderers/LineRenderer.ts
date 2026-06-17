@@ -1,6 +1,7 @@
 import type { DwebCanvasGL } from '../canvas/DwebCanvasGL'
 import { NodeRenderer } from './NodeRenderer'
 import type { LocalTargetSize, RenderContext, RenderNode } from './types'
+import { normalizeLineLocalPoints, scaleLineLocalPoints } from '../../../core/scene/geometry'
 
 export class LineRenderer extends NodeRenderer {
 	readonly type = 'line' as const
@@ -26,22 +27,14 @@ export class LineRenderer extends NodeRenderer {
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
 		const pObj = (node.props as any) ?? {}
-		const hasStartX = pObj && typeof pObj === 'object' && 'startX' in pObj
-		const hasStartY = pObj && typeof pObj === 'object' && 'startY' in pObj
-		const hasEndX = pObj && typeof pObj === 'object' && 'endX' in pObj
-		const hasEndY = pObj && typeof pObj === 'object' && 'endY' in pObj
-		const hasAnchorX = pObj && typeof pObj === 'object' && 'anchorX' in pObj
-		const hasAnchorY = pObj && typeof pObj === 'object' && 'anchorY' in pObj
-
-		// Line geometry is often stored directly in props (start/end/anchor). When the node is scaled
-		// (e.g. by a parent group), those local-space control points should scale too.
-		// To avoid double-scaling defaults (which are derived from w/h), only scale when the prop exists.
-		const startX = hasStartX ? Number(pObj?.startX ?? 0) * sx : Number(-w / 2)
-		const startY = hasStartY ? Number(pObj?.startY ?? 0) * sy : Number(0)
-		const endX = hasEndX ? Number(pObj?.endX ?? 0) * sx : Number(w / 2)
-		const endY = hasEndY ? Number(pObj?.endY ?? 0) * sy : Number(0)
-		const anchorX = hasAnchorX ? Number(pObj?.anchorX ?? 0) * sx : Number(0)
-		const anchorY = hasAnchorY ? Number(pObj?.anchorY ?? 0) * sy : Number(-h / 4)
+		const local = normalizeLineLocalPoints({ props: pObj, width: w, height: h })
+		const scaled = scaleLineLocalPoints(local, sx, sy)
+		const startX = scaled.startX
+		const startY = scaled.startY
+		const endX = scaled.endX
+		const endY = scaled.endY
+		const anchorX = scaled.anchorX
+		const anchorY = scaled.anchorY
 		const lineWidthPx = Math.max(1, Number((node.props as any)?.lineWidth ?? 4))
 		const lineStyle = String((node.props as any)?.lineStyle ?? 'solid')
 		const color = canvas.parseHexColor(String((node.props as any)?.lineColor ?? '#ffffff'), ctx.opacity)

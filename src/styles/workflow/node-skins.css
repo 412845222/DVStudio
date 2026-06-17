@@ -1,0 +1,152 @@
+:root {
+  --wf-node-bg: var(--wf-surface-glass);
+  --wf-node-bg-solid: var(--wf-surface-raised);
+  --wf-node-border: var(--wf-border);
+  --wf-node-border-selected: var(--wf-state-selected-border);
+  --wf-node-border-running: var(--wf-state-running-border);
+  --wf-node-border-error: var(--wf-state-error-border);
+  --wf-node-radius: var(--aiwf-radius-lg);
+  --wf-node-shadow: var(--aiwf-shadow-sm);
+  --wf-node-shadow-selected: var(--aiwf-shadow-focus);
+  --wf-node-padding-x: 10px;
+  --wf-node-padding-y: 8px;
+  --wf-node-title: var(--wf-text);
+  --wf-node-subtitle: var(--wf-text-muted);
+  --wf-node-anchor-bg: var(--wf-surface-raised);
+  --wf-node-anchor-border: var(--wf-border-strong);
+  --wf-node-anchor-hover: var(--wf-primary);
+}
+
+/* Node shell baseline */
+.wf-node {
+  border: 1px solid var(--wf-node-border) !important;
+  border-radius: var(--wf-node-radius);
+  background: var(--wf-node-bg) !important;
+  box-shadow: var(--wf-node-shadow);
+}
+
+.wf-node.selected {
+  border-color: var(--wf-node-border-selected) !important;
+  box-shadow: var(--wf-node-shadow-selected) !important;
+}
+
+.wf-node.is-primary-selected {
+  border-color: var(--wf-node-border-selected) !important;
+  box-shadow: var(--wf-node-shadow-selected) !important;
+}
+
+.wf-node.is-secondary-selected {
+  border-color: color-mix(in srgb, var(--wf-node-border-selected) 56%, transparent) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-node-border-selected) 28%, transparent) !important;
+}
+
+.wf-node.is-secondary-selected .wf-node-toolbar {
+  display: none !important;
+}
+
+.wf-node.wf-node-running {
+  border-color: var(--wf-node-border-running) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-node-border-running) 34%, transparent), 0 0 16px color-mix(in srgb, var(--wf-node-border-running) 26%, transparent) !important;
+}
+
+.wf-node.wf-node-error {
+  border-color: var(--wf-node-border-error) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-node-border-error) 34%, transparent), 0 0 16px color-mix(in srgb, var(--wf-node-border-error) 22%, transparent) !important;
+}
+
+.wf-node-toolbar {
+  border: 1px solid var(--wf-border) !important;
+  background: var(--wf-surface-raised) !important;
+  border-radius: var(--aiwf-radius-md);
+}
+
+.wf-node-btn,
+.wf-node-type-item,
+.wf-media-btn,
+.wf-inline-btn,
+.wf-quick-action {
+  color: var(--wf-text) !important;
+}
+
+.wf-node-type-dropdown {
+  border: 1px solid var(--wf-border) !important;
+  background: var(--wf-surface-raised) !important;
+  border-radius: var(--aiwf-radius-md);
+}
+
+.wf-node-type-item,
+.wf-media-btn {
+  border: 1px solid var(--wf-control-border) !important;
+  background: var(--wf-control-bg) !important;
+}
+
+.wf-node-type-item:hover,
+.wf-media-btn:hover {
+  border-color: var(--wf-control-border-hover) !important;
+  background: var(--wf-control-bg-hover) !important;
+}
+
+.wf-node-title {
+  color: var(--wf-node-title) !important;
+}
+
+.wf-node-type,
+.wf-media-sub,
+.wf-image-meta,
+.wf-video-meta {
+  color: var(--wf-node-subtitle) !important;
+}
+
+.wf-media-preview,
+.wf-media-empty,
+.wf-node-body {
+  border-color: var(--wf-border-subtle) !important;
+  background: var(--wf-surface-base) !important;
+}
+
+.wf-anchor,
+.wf-input-anchor,
+.wf-output-anchor,
+.wf-node-anchor,
+.nano-ref-dot {
+  border-color: var(--wf-node-anchor-border) !important;
+  background: var(--wf-node-anchor-bg) !important;
+}
+
+.wf-anchor-hit {
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.wf-anchor-hit::after {
+  border-color: color-mix(in srgb, var(--wf-node-anchor-border) 82%, rgba(255, 255, 255, 0.2));
+}
+
+.wf-anchor-hit.wf-anchor-image::before {
+  background: var(--dweb-purple) !important;
+}
+
+.wf-anchor-hit.wf-anchor-video::before {
+  background: var(--dweb-green-main) !important;
+}
+
+.wf-anchor-hit.wf-anchor-text::before {
+  background: var(--dweb-yellow) !important;
+}
+
+.wf-anchor-hit.wf-anchor-flow::before {
+  background: var(--dweb-orange) !important;
+}
+
+.wf-anchor-hit.wf-anchor-model3d::before {
+  background: var(--dweb-blue) !important;
+}
+
+.wf-anchor:hover,
+.wf-input-anchor:hover,
+.wf-output-anchor:hover,
+.wf-node-anchor:hover,
+.wf-anchor-hit:hover,
+.wf-anchor-hit.hovered {
+  border-color: var(--wf-node-anchor-hover) !important;
+}

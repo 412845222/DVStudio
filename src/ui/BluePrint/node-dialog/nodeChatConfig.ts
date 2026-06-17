@@ -1,0 +1,211 @@
+import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
+
+export const NODE_CHAT_TYPE_LABELS: Record<WorkflowNodeChatType, string> = {
+  text: '文本生成',
+  image: '图片生成',
+  video: '视频生成',
+  model3d: '3D模型生成',
+}
+
+export const NODE_CHAT_TYPE_COLORS: Record<WorkflowNodeChatType, string> = {
+  text: '#f59e0b',
+  image: '#3b82f6',
+  video: '#22c55e',
+  model3d: '#a855f7',
+}
+
+export const NODE_CHAT_TYPE_ICONS: Record<WorkflowNodeChatType, string> = {
+  text: '📝',
+  image: '🖼️',
+  video: '🎬',
+  model3d: '🧊',
+}
+
+export const NODE_CHAT_PLACEHOLDERS: Record<WorkflowNodeChatType, string> = {
+  text: '输入文本内容或描述...',
+  image: '描述你想生成的图片，如：a beautiful sunset over the ocean...',
+  video: '描述你想生成的视频内容，如：a cat running across the beach...',
+  model3d: '描述你想生成的3D模型，如：a medieval castle with towers...',
+}
+
+export const NODE_CHAT_TYPE_DESCRIPTIONS: Record<WorkflowNodeChatType, string> = {
+  text: '输入提示词，AI 将生成文本内容',
+  image: '输入提示词，AI 将生成图片',
+  video: '输入提示词，AI 将生成视频',
+  model3d: '输入提示词，AI 将生成3D模型',
+}
+
+export const NODE_CHAT_ASPECT_RATIO_OPTIONS = [
+  { value: '1:1', label: '1:1 正方形' },
+  { value: '16:9', label: '16:9 宽屏' },
+  { value: '9:16', label: '9:16 竖屏' },
+  { value: '4:3', label: '4:3 标准' },
+  { value: '3:4', label: '3:4 竖版' },
+  { value: '21:9', label: '21:9 超宽' },
+]
+
+export const NODE_CHAT_RESOLUTION_OPTIONS = [
+  { value: '512x512', label: '512×512' },
+  { value: '768x768', label: '768×768' },
+  { value: '1024x1024', label: '1024×1024' },
+  { value: '1536x1024', label: '1536×1024' },
+  { value: '2048x2048', label: '2048×2048' },
+]
+
+export const NODE_CHAT_QUANTITY_OPTIONS = [1, 2, 4, 6, 8]
+
+export const NODE_CHAT_VIDEO_MODE_OPTIONS = [
+  { value: 'auto', label: '自动' },
+  { value: 'text_to_video', label: '文生视频' },
+  { value: 'image_to_video', label: '首帧图生' },
+  { value: 'first-last', label: '首尾帧' },
+  { value: 'reference', label: '多模态参考' },
+]
+
+export const NODE_CHAT_VIDEO_DURATION_OPTIONS = [
+  { value: -1, label: '自动' },
+  { value: 4, label: '4秒' },
+  { value: 5, label: '5秒' },
+  { value: 6, label: '6秒' },
+  { value: 8, label: '8秒' },
+  { value: 10, label: '10秒' },
+  { value: 12, label: '12秒' },
+  { value: 15, label: '15秒' },
+]
+
+export const NODE_CHAT_VIDEO_RATIO_OPTIONS = [
+  { value: 'adaptive', label: '自适应' },
+  { value: '16:9', label: '16:9' },
+  { value: '9:16', label: '9:16' },
+  { value: '1:1', label: '1:1' },
+  { value: '4:3', label: '4:3' },
+  { value: '3:4', label: '3:4' },
+]
+
+export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [
+  { value: 'tripo3d', label: 'Tripo3D' },
+  { value: 'hunyuan3d', label: 'Hunyuan3D' },
+  { value: 'rodin3d', label: 'Rodin 3D' },
+]
+
+export const NODE_CHAT_TRIPO_MODE_OPTIONS = [
+  { value: 'image-to-3d', label: '单图生成' },
+  { value: 'multi-image-to-3d', label: '多图生成' },
+  { value: 'retopo', label: '模型重拓扑' },
+]
+
+export const NODE_CHAT_TRIPO_OUTPUT_FORMAT_OPTIONS = [
+  { value: 'fbx', label: 'FBX' },
+  { value: 'glb', label: 'GLB' },
+]
+
+export const NODE_CHAT_TRIPO_TEXTURE_QUALITY_OPTIONS = [
+  { value: 'standard', label: '标准贴图' },
+  { value: 'detailed', label: '精细贴图' },
+]
+
+export const NODE_CHAT_HUNYUAN_MODE_OPTIONS = [
+  { value: 'image-to-3d', label: '单图生模' },
+  { value: 'multi-image-to-3d', label: '多图生模' },
+  { value: 'hunyuan-reduce-face', label: '减面重拓扑' },
+]
+
+export const NODE_CHAT_HUNYUAN_FACE_LEVEL_OPTIONS = [
+  { value: 'high', label: '高精度' },
+  { value: 'medium', label: '均衡' },
+  { value: 'low', label: '轻量' },
+]
+
+export const NODE_CHAT_HUNYUAN_POLYGON_TYPE_OPTIONS = [
+  { value: 'triangle', label: '三角面' },
+  { value: 'quadrilateral', label: '四边面' },
+]
+
+export const NODE_CHAT_HUNYUAN_OUTPUT_FORMAT_OPTIONS = [
+  { value: 'fbx', label: 'FBX' },
+  { value: 'glb', label: 'GLB' },
+]
+
+export const NODE_CHAT_RODIN_TIER_OPTIONS = [
+  { value: '', label: '默认（让DM/Rodin决定）' },
+  { value: 'Gen-2.5-Extreme-Low', label: 'Extreme-Low' },
+  { value: 'Gen-2.5-Low', label: 'Low' },
+  { value: 'Gen-2.5-Medium', label: 'Medium' },
+  { value: 'Gen-2.5-High', label: 'High' },
+  { value: 'Gen-2.5-Extreme-High', label: 'Extreme-High' },
+]
+
+export const NODE_CHAT_RODIN_QUALITY_OPTIONS = [
+  { value: 'extra-low', label: 'extra-low' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+]
+
+export const NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS = [
+  { value: 'glb', label: 'GLB' },
+  { value: 'usdz', label: 'USDZ' },
+  { value: 'fbx', label: 'FBX' },
+  { value: 'obj', label: 'OBJ' },
+  { value: 'stl', label: 'STL' },
+]
+
+export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
+  { value: 'fast', label: '快速' },
+  { value: 'normal', label: '标准' },
+  { value: 'slow', label: '精细' },
+]
+
+export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
+  switch (type) {
+    case 'text':
+      return { modelId: undefined, speed: 'normal' }
+    case 'image':
+      return {
+        modelId: undefined,
+        resolution: '1024x1024',
+        aspectRatio: '1:1',
+        quantity: 1,
+      }
+    case 'video':
+      return {
+        modelId: undefined,
+        mode: 'auto',
+        resolution: '720p',
+        ratio: '16:9',
+        duration: 5,
+        seed: -1,
+        generateAudio: false,
+        watermark: false,
+      }
+    case 'model3d':
+      return {
+        provider: 'tripo3d',
+        tripoProvider: 'dreammaker',
+        tripoMode: 'image-to-3d',
+        tripoOutputFormat: 'glb',
+        tripoTextureQuality: 'standard',
+        tripoModelVersion: undefined,
+        hunyuanMode: 'image-to-3d',
+        hunyuanFaceLevel: 'medium',
+        hunyuanPolygonType: 'triangle',
+        hunyuanOutputFormat: 'glb',
+        rodinTier: '',
+        rodinQuality: 'medium',
+        rodinOutputFormat: 'glb',
+      }
+    default:
+      return {}
+  }
+}
+
+export const isNodeChatTypeSupported = (type: string): boolean => {
+  return type === 'text' || type === 'image' || type === 'video' || type === 'model3d'
+}
+
+export const normalizeNodeChatType = (type: string): WorkflowNodeChatType | null => {
+  if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d') {
+    return type
+  }
+  return null
+}
