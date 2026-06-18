@@ -411,6 +411,7 @@ const onResizeStart = (corner: "nw" | "ne" | "sw" | "se", e: PointerEvent) => {
   el.setPointerCapture(e.pointerId);
 
   const onMove = (ev: PointerEvent) => {
+    ev.preventDefault();
     const dx = (ev.clientX - start.clientX) / z;
     const dy = (ev.clientY - start.clientY) / z;
     let nextW = start.width;
@@ -475,6 +476,7 @@ const onPointerDown = (e: PointerEvent) => {
 
   const onMove = (ev: PointerEvent) => {
     if (!drag) return;
+    ev.preventDefault();
     const dx = ev.clientX - drag.startClient.x;
     const dy = ev.clientY - drag.startClient.y;
     emit("update:worldX", drag.startWorld.x + dx / z);
@@ -533,6 +535,9 @@ const isOutputHover = (anchorId: string) => {
   flex-direction: column;
   z-index: 1;
   overflow: visible;
+  touch-action: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .wf-node.selected {
@@ -862,6 +867,9 @@ const isOutputHover = (anchorId: string) => {
   position: absolute;
   background: transparent;
   border: 0;
+  touch-action: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   transform: translate(
       calc(var(--wf-anchor-base-x, 0px) + var(--wf-anchor-magnet-x, 0px)),
       calc(-50% + var(--wf-anchor-magnet-y, 0px))

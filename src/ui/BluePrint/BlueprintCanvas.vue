@@ -268,6 +268,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
     wrap.setPointerCapture(e.pointerId);
     const onMove = (ev: PointerEvent) => {
       if (!bgDrag) return;
+      ev.preventDefault();
       const dx = ev.clientX - bgDrag.start.x;
       const dy = ev.clientY - bgDrag.start.y;
       if (!moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) moved = true;
@@ -289,7 +290,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
       }
       if (moved) suppressContextMenuOnce = true;
     };
-    wrap.addEventListener("pointermove", onMove);
+    wrap.addEventListener("pointermove", onMove, { passive: false });
     wrap.addEventListener("pointerup", onUp, { once: true });
     wrap.addEventListener("pointercancel", onUp, { once: true });
     return;
@@ -307,6 +308,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
     wrap.setPointerCapture(e.pointerId);
     const onMove = (ev: PointerEvent) => {
       if (!touchDrag || ev.pointerId !== touchDrag.pointerId) return;
+      ev.preventDefault();
       const dx = ev.clientX - touchDrag.start.x;
       const dy = ev.clientY - touchDrag.start.y;
       const next = {
@@ -327,7 +329,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
         // ignore
       }
     };
-    wrap.addEventListener("pointermove", onMove);
+    wrap.addEventListener("pointermove", onMove, { passive: false });
     wrap.addEventListener("pointerup", onUp, { once: true });
     wrap.addEventListener("pointercancel", onUp, { once: true });
     return;
@@ -433,6 +435,9 @@ const onContextMenu = (e: MouseEvent) => {
   height: 100%;
   overflow: hidden;
   user-select: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .bp-boxsel {

@@ -375,6 +375,7 @@ export const useAIWorkflowLinking = (payload: {
 
     const onMove = (event: PointerEvent) => {
       if (!linkDraft.value) return
+      event.preventDefault()
       const next = payload.clientToCanvasPoint({ x: event.clientX, y: event.clientY })
       if (!next) return
       applySourceDragVisual({ x: event.clientX, y: event.clientY })
@@ -419,7 +420,7 @@ export const useAIWorkflowLinking = (payload: {
       clearLinkInteraction()
     }
 
-    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointermove', onMove, { passive: false })
     window.addEventListener('pointerup', onUp, { once: true })
     window.addEventListener('pointercancel', onUp, { once: true })
     cleanupLink = () => {

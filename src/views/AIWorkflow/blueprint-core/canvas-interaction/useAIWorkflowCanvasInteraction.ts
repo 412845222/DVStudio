@@ -124,6 +124,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
     let prevDy = 0
 
     const onMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault()
       const fromWorld = screenToWorld(startClient)
       const toWorld = screenToWorld({ x: moveEvent.clientX, y: moveEvent.clientY })
       const dx = toWorld.x - fromWorld.x
@@ -164,7 +165,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
       cleanup()
     }
 
-    window.addEventListener('pointermove', onMove, true)
+    window.addEventListener('pointermove', onMove, { capture: true, passive: false })
     window.addEventListener('pointerup', onUp, true)
     window.addEventListener('pointercancel', onUp, true)
   }
