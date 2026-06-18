@@ -214,6 +214,13 @@ let bgDrag: null | {
   startPan: { x: number; y: number };
 } = null;
 
+// Touch/pen panning state (single finger/stylus on blank area)
+let touchDrag: null | {
+  start: { x: number; y: number };
+  startPan: { x: number; y: number };
+  pointerId: number;
+} = null;
+
 const DRAG_THRESHOLD_PX = 4;
 let suppressContextMenuOnce = false;
 
@@ -288,7 +295,45 @@ const onWrapPointerDown = (e: PointerEvent) => {
     return;
   }
 
-  // Left button: box select
+  // Touch or pen: pan viewport (single finger/stylus drag on blank area)
+  const isTouchOrPen = e.pointerType === 'touch' || e.pointerType === 'pen';
+  if (isTouchOrPen && e.button === 0) {
+    e.preventDefault();
+    touchDrag = {
+      start: { x: e.clientX, y: e.clientY },
+      startPan: { ...viewportPanPx.value },
+      pointerId: e.pointerId,
+    };
+    wrap.setPointerCapture(e.pointerId);
+    const onMove = (ev: PointerEvent) => {
+      if (!touchDrag || ev.pointerId !== touchDrag.pointerId) return;
+      const dx = ev.clientX - touchDrag.start.x;
+      const dy = ev.clientY - touchDrag.start.y;
+      const next = {
+        x: touchDrag.startPan.x + dx,
+        y: touchDrag.startPan.y + dy,
+      };
+      emit("update:viewport", { zoom: viewportZoom.value, panX: next.x, panY: next.y });
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (touchDrag && ev.pointerId !== touchDrag.pointerId) return;
+      touchDrag = null;
+      wrap.removeEventListener("pointermove", onMove);
+      wrap.removeEventListener("pointerup", onUp);
+      wrap.removeEventListener("pointercancel", onUp);
+      try {
+        wrap.releasePointerCapture(ev.pointerId);
+      } catch {
+        // ignore
+      }
+    };
+    wrap.addEventListener("pointermove", onMove);
+    wrap.addEventListener("pointerup", onUp, { once: true });
+    wrap.addEventListener("pointercancel", onUp, { once: true });
+    return;
+  }
+
+  // Left button: box select (mouse only)
   if (e.button === 0) {
     const start = toLocal(wrap, { x: e.clientX, y: e.clientY });
     let moved = false;

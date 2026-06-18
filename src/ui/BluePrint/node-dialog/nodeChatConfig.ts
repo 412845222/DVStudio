@@ -200,7 +200,13 @@ export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [
 ]
 
 export const NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS = [
+  { value: 'doubao-seedance-2-0-260128', label: 'Seedance 2.0' },
+  { value: 'doubao-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast' },
   { value: 'doubao-seedance-1-5-pro-251215', label: 'Seedance v1.5 Pro' },
+  { value: 'doubao-seedance-1-0-pro-250312', label: 'Seedance v1.0 Pro' },
+  { value: 'doubao-seedance-1-0-pro-fast-250312', label: 'Seedance v1.0 Pro Fast' },
+  { value: 'doubao-seedance-1-0-lite-i2v-250312', label: 'Seedance v1.0 Lite I2V' },
+  { value: 'doubao-seedance-1-0-lite-t2v-250312', label: 'Seedance v1.0 Lite T2V' },
 ]
 
 export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
@@ -220,7 +226,7 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
       return {
         modelId: undefined,
         model: 'seedance',
-        seedanceModelVersion: 'doubao-seedance-1-5-pro-251215',
+        seedanceModelVersion: 'doubao-seedance-2-0-260128',
         mode: 'auto',
         resolution: '720p',
         ratio: '16:9',
