@@ -10,11 +10,11 @@
 		<div v-for="(section, idx) in sections" :key="idx" class="ctx-section">
 			<div v-if="section.title" class="ctx-section-title">{{ section.title }}</div>
 			<div v-for="item in section.items" :key="item.id" class="ctx-item" :class="itemClass(item)">
-				<button class="ctx-button" type="button" :disabled="item.disabled" @click="onClick(item)">
+				<button class="ctx-button" type="button" :disabled="item.disabled" @click="onClick(item)" @mouseenter="item.children?.length && getSubmenuStyle(item.id, $event)">
 					<span class="ctx-label">{{ item.label }}</span>
 					<span v-if="item.children?.length" class="ctx-arrow">▶</span>
 				</button>
-				<div v-if="item.children?.length" class="ctx-submenu">
+				<div v-if="item.children?.length" class="ctx-submenu" :style="submenuPositions[item.id] ? { left: `${submenuPositions[item.id].x}px`, top: `${submenuPositions[item.id].y}px` } : {}">
 					<button
 						v-for="child in item.children"
 						:key="child.id"
@@ -58,6 +58,7 @@ const emit = defineEmits<{
 
 const menuEl = ref<HTMLElement | null>(null)
 const pos = ref({ x: 0, y: 0 })
+const submenuPositions = ref<Record<string, { x: number; y: number }>>({})
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 const safeTopInset = () => {
@@ -90,6 +91,32 @@ const style = computed(() => ({
 	left: `${pos.value.x}px`,
 	top: `${pos.value.y}px`,
 }))
+
+const getSubmenuStyle = (itemId: string, event: MouseEvent) => {
+	const target = event.currentTarget as HTMLElement
+	if (!target) return {}
+	const itemRect = target.getBoundingClientRect()
+	const submenuWidth = 180
+	const submenuHeight = 280
+	const pad = 8
+	const safeTop = safeTopInset()
+
+	let x = itemRect.right + pad
+	if (x + submenuWidth > window.innerWidth) {
+		x = itemRect.left - submenuWidth - pad
+	}
+
+	let y = itemRect.top
+	if (y + submenuHeight > window.innerHeight) {
+		y = Math.max(safeTop + pad, window.innerHeight - submenuHeight - pad)
+	}
+
+	submenuPositions.value[itemId] = { x, y }
+	return {
+		left: `${x}px`,
+		top: `${y}px`,
+	}
+}
 
 onBeforeUnmount(() => {
 	menuEl.value = null
@@ -166,9 +193,7 @@ const onClick = (item: ContextMenuItem) => {
 }
 
 .ctx-submenu {
-	position: absolute;
-	left: 100%;
-	top: 0;
+	position: fixed;
 	min-width: 180px;
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt-dark);

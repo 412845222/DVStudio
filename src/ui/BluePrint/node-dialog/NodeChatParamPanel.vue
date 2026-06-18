@@ -20,6 +20,22 @@
     <div v-show="!collapsed" class="bp-node-chat-param-body">
       <template v-if="nodeType === 'text'">
         <div class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">模型接口</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in textModelOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.model === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('model', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">生成速度</span>
           <div class="bp-node-chat-param-options">
             <button
@@ -38,6 +54,38 @@
       </template>
 
       <template v-else-if="nodeType === 'image'">
+        <div class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">模型接口</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in imageModelOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.model === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('model', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">型号</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in seedreamModelVersionOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.seedreamModelVersion === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('seedreamModelVersion', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
         <div class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">尺寸</span>
           <div class="bp-node-chat-param-options">
@@ -89,6 +137,38 @@
       </template>
 
       <template v-else-if="nodeType === 'video'">
+        <div class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">模型接口</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in videoModelOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.model === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('model', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'seedance'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">型号</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in seedanceModelVersionOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.seedanceModelVersion === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('seedanceModelVersion', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
         <div class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">视频模式</span>
           <div class="bp-node-chat-param-options">
@@ -358,6 +438,57 @@
             </div>
           </div>
         </template>
+
+        <template v-else-if="params.provider === 'meshy'">
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">生成模式</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyModeOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyMode === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyMode', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">阶段</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyStageOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyStage === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyStage', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">输出格式</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyOutputFormatOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyOutputFormat === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyOutputFormat', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+        </template>
       </template>
     </div>
   </div>
@@ -385,6 +516,14 @@ import {
   NODE_CHAT_RODIN_QUALITY_OPTIONS,
   NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS,
   NODE_CHAT_TEXT_SPEED_OPTIONS,
+  NODE_CHAT_TEXT_MODEL_OPTIONS,
+  NODE_CHAT_IMAGE_MODEL_OPTIONS,
+  NODE_CHAT_VIDEO_MODEL_OPTIONS,
+  NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS,
+  NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS,
+  NODE_CHAT_MESHY_MODE_OPTIONS,
+  NODE_CHAT_MESHY_STAGE_OPTIONS,
+  NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
 } from './nodeChatConfig'
 
 const props = defineProps<{
@@ -414,6 +553,9 @@ const updateProvider = (provider: string) => {
 }
 
 const textSpeedOptions = NODE_CHAT_TEXT_SPEED_OPTIONS
+const textModelOptions = NODE_CHAT_TEXT_MODEL_OPTIONS
+const imageModelOptions = NODE_CHAT_IMAGE_MODEL_OPTIONS
+const videoModelOptions = NODE_CHAT_VIDEO_MODEL_OPTIONS
 const resolutionOptions = NODE_CHAT_RESOLUTION_OPTIONS
 const aspectRatioOptions = NODE_CHAT_ASPECT_RATIO_OPTIONS
 const quantityOptions = NODE_CHAT_QUANTITY_OPTIONS
@@ -431,6 +573,11 @@ const hunyuanOutputFormatOptions = NODE_CHAT_HUNYUAN_OUTPUT_FORMAT_OPTIONS
 const rodinTierOptions = NODE_CHAT_RODIN_TIER_OPTIONS
 const rodinQualityOptions = NODE_CHAT_RODIN_QUALITY_OPTIONS
 const rodinOutputFormatOptions = NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS
+const meshyModeOptions = NODE_CHAT_MESHY_MODE_OPTIONS
+const meshyStageOptions = NODE_CHAT_MESHY_STAGE_OPTIONS
+const meshyOutputFormatOptions = NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS
+const seedreamModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
+const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 </script>
 
 <style scoped>

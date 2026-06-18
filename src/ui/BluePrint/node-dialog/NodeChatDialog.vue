@@ -123,6 +123,7 @@
 
       <NodeChatParamPanel
         v-if="showParams"
+        :key="`param-panel-${JSON.stringify(currentParams)}`"
         class="bp-node-chat-param-popover"
         :node-type="nodeType"
         :params="currentParams"
@@ -325,7 +326,7 @@ onBeforeUnmount(() => {
   position: absolute;
   left: 50%;
   top: 100%;
-  z-index: 100;
+  z-index: 1000;
   margin-top: 16px;
   max-width: min(420px, calc(100vw - 40px));
   min-width: 320px;
@@ -548,8 +549,8 @@ onBeforeUnmount(() => {
   top: calc(100% + 8px);
   transform: translateX(-50%);
   width: min(360px, calc(100vw - 48px));
-  max-height: 360px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   border: 1px solid color-mix(in srgb, var(--vscode-border) 70%, transparent);
   border-radius: 0;
   background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 96%, transparent);

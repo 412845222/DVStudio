@@ -86,6 +86,28 @@ export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [
   { value: 'tripo3d', label: 'Tripo3D' },
   { value: 'hunyuan3d', label: 'Hunyuan3D' },
   { value: 'rodin3d', label: 'Rodin 3D' },
+  { value: 'meshy', label: 'Meshy' },
+]
+
+export const NODE_CHAT_MESHY_MODE_OPTIONS = [
+  { value: 'text-to-3d', label: '文本生成' },
+  { value: 'image-to-3d', label: '单图生成' },
+  { value: 'multi-image-to-3d', label: '多图生成' },
+  { value: 'retexture', label: '重新纹理化' },
+  { value: 'remesh', label: '重新网格化' },
+]
+
+export const NODE_CHAT_MESHY_STAGE_OPTIONS = [
+  { value: 'preview', label: '预览' },
+  { value: 'refine', label: '精修' },
+]
+
+export const NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS = [
+  { value: 'glb', label: 'GLB' },
+  { value: 'fbx', label: 'FBX' },
+  { value: 'obj', label: 'OBJ' },
+  { value: 'stl', label: 'STL' },
+  { value: 'usdz', label: 'USDZ' },
 ]
 
 export const NODE_CHAT_TRIPO_MODE_OPTIONS = [
@@ -156,13 +178,40 @@ export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
   { value: 'slow', label: '精细' },
 ]
 
+export const NODE_CHAT_TEXT_MODEL_OPTIONS = [
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'bytedance', label: '字节火山方舟' },
+]
+
+export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
+  { value: 'nanobanana', label: 'NanoBanana (Gemini)' },
+  { value: 'seedream', label: 'Seedream (字节方舟)' },
+]
+
+export const NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS = [
+  { value: 'doubao-seedream-3-0-t2i-250415', label: 'Seedream v3.0' },
+  { value: 'doubao-seedream-4-0-250828', label: 'Seedream v4.0' },
+  { value: 'doubao-seedream-5-0-260128', label: 'Seedream v5.0' },
+  { value: 'doubao-seedream-5-0-lite-260128', label: 'Seedream v5.0 Lite' },
+]
+
+export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [
+  { value: 'seedance', label: 'Seedance (字节方舟)' },
+]
+
+export const NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS = [
+  { value: 'doubao-seedance-1-5-pro-251215', label: 'Seedance v1.5 Pro' },
+]
+
 export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
   switch (type) {
     case 'text':
-      return { modelId: undefined, speed: 'normal' }
+      return { modelId: undefined, model: 'deepseek', speed: 'normal' }
     case 'image':
       return {
         modelId: undefined,
+        model: 'nanobanana',
+        seedreamModelVersion: 'doubao-seedream-5-0-260128',
         resolution: '1024x1024',
         aspectRatio: '1:1',
         quantity: 1,
@@ -170,6 +219,8 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
     case 'video':
       return {
         modelId: undefined,
+        model: 'seedance',
+        seedanceModelVersion: 'doubao-seedance-1-5-pro-251215',
         mode: 'auto',
         resolution: '720p',
         ratio: '16:9',
@@ -193,6 +244,9 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
         rodinTier: '',
         rodinQuality: 'medium',
         rodinOutputFormat: 'glb',
+        meshyMode: 'text-to-3d',
+        meshyStage: 'preview',
+        meshyOutputFormat: 'glb',
       }
     default:
       return {}

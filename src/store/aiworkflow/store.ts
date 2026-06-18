@@ -2365,9 +2365,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.nodeChatDialog.visible = true
 			state.nodeChatDialog.nodeId = payload.nodeId
 			state.nodeChatDialog.nodeType = payload.nodeType
-			state.nodeChatDialog.draft = ''
+			const node = state.nodesById[payload.nodeId]
+			state.nodeChatDialog.draft = node?.nodeChatDraft ?? ''
 			state.nodeChatDialog.submitting = false
-			state.nodeChatDialog.params = {}
+			state.nodeChatDialog.params = node?.nodeChatParams ?? {}
 		},
 		closeNodeChatDialog(state) {
 			state.nodeChatDialog.visible = false
@@ -2378,9 +2379,21 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		},
 		setNodeChatDraft(state, payload: { text: string }) {
 			state.nodeChatDialog.draft = payload.text
+			if (state.nodeChatDialog.nodeId) {
+				const node = state.nodesById[state.nodeChatDialog.nodeId]
+				if (node) {
+					node.nodeChatDraft = payload.text
+				}
+			}
 		},
 		setNodeChatParams(state, payload: { params: Record<string, any> }) {
 			state.nodeChatDialog.params = payload.params
+			if (state.nodeChatDialog.nodeId) {
+				const node = state.nodesById[state.nodeChatDialog.nodeId]
+				if (node) {
+					node.nodeChatParams = payload.params
+				}
+			}
 		},
 		setNodeChatSubmitting(state, payload: { submitting: boolean }) {
 			state.nodeChatDialog.submitting = payload.submitting

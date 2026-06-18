@@ -1,6 +1,7 @@
 <template>
   <div
     class="wf-node"
+    :data-node-id="nodeId"
     :class="[
       { selected: selected },
       {
@@ -9,6 +10,7 @@
         'wf-node-running': visualStatus === 'running',
         'wf-node-error': visualStatus === 'error',
       },
+      { 'wf-node-chat-open': nodeChatVisibleResolved },
       `wf-node-${nodeType}`,
     ]"
     :style="style"
@@ -16,71 +18,25 @@
     @click.stop="onSelect"
   >
     <div v-if="selected && isPrimarySelectedResolved" class="wf-node-toolbar" @pointerdown.stop>
-      <div class="wf-node-type-menu" @pointerdown.stop>
-        <button
-          class="wf-node-btn"
-          type="button"
-          title="编辑节点类型"
-          @click.stop="toggleTypeMenu"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
-            <path
-              d="M4.2 11.8 11.4 4.6l1.6 1.6-7.2 7.2-2.3.7.7-2.3Z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-          <span class="wf-node-type-label">编辑</span>
-          <span class="wf-node-type-caret">▾</span>
-        </button>
-        <div v-if="typeMenuOpen" class="wf-node-type-dropdown" @pointerdown.stop>
-          <button class="wf-node-type-item" type="button" @click="onSetType('base')">
-            基础
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('text')">
-            文本
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('text-merge')">
-            文本整合
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('image')">
-            图片
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('rotate-image')">
-            旋转图片
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('video')">
-            视频
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('scene-understanding')">
-            场景理解
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('scene-decompose')">
-            场景分解
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('scene-layout')">
-            场景布局
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('unreal-export')">
-            虚幻导出
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('story')">
-            剧情
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('comfyui')">
-            ComfyUI
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('model3d')">
-            3D模型
-          </button>
-          <button class="wf-node-type-item" type="button" @click="onSetType('meshy')">
-            Meshy模型生成
-          </button>
-        </div>
-      </div>
+      <button
+        class="wf-node-btn"
+        type="button"
+        title="切换节点类型"
+        @click.stop="onOpenNodeLibrary"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
+          <path
+            d="M4.2 11.8 11.4 4.6l1.6 1.6-7.2 7.2-2.3.7.7-2.3Z"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <span class="wf-node-type-label">{{ typeLabel }}</span>
+        <span class="wf-node-type-caret">▾</span>
+      </button>
       <button class="wf-node-btn" type="button" title="清空节点内容" @click="emit('clear-node')">
         <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
           <path
@@ -252,7 +208,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useSlots, watch } from "vue";
+import { computed, useSlots } from "vue";
 import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload } from "../../aiworkflow/types";
 import { NodeChatDialog, type InputParamPreviewRef } from "../BluePrint/node-dialog";
 
@@ -318,6 +274,7 @@ const emit = defineEmits<{
   (e: "refresh"): void;
   (e: "delete"): void;
   (e: "set-type", v: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "scene-understanding" | "scene-decompose" | "scene-layout" | "unreal-export" | "story" | "comfyui" | "model3d" | "meshy"): void;
+  (e: "open-node-library"): void;
   (
     e: "resize",
     payload: { width: number; height: number; worldX: number; worldY: number }
@@ -362,8 +319,6 @@ const normalizeAnchors = (
 
 const inputAnchors = computed(() => normalizeAnchors(props.inputs, "in-0"));
 const outputAnchors = computed(() => normalizeAnchors(props.outputs, "out-0"));
-
-const typeMenuOpen = ref(false);
 
 const isPrimarySelectedResolved = computed(() => {
   if (typeof props.isPrimarySelected === "boolean") return props.isPrimarySelected;
@@ -412,26 +367,15 @@ const typeLabel = computed(() => {
   return "基础";
 });
 
-const closeTypeMenu = () => {
-  typeMenuOpen.value = false;
-};
-
-const toggleTypeMenu = () => {
-  typeMenuOpen.value = !typeMenuOpen.value;
-  if (!typeMenuOpen.value) return;
-  window.addEventListener("pointerdown", closeTypeMenu, { once: true });
-};
-
-const onSetType = (type: "base" | "text" | "text-merge" | "image" | "rotate-image" | "video" | "scene-understanding" | "scene-decompose" | "scene-layout" | "unreal-export" | "story" | "comfyui" | "model3d" | "meshy") => {
-  emit("set-type", type);
-  closeTypeMenu();
+const onOpenNodeLibrary = () => {
+  emit("open-node-library");
 };
 
 const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
   top: `calc(50% + ${a.offsetY ?? 0}px)`,
 });
 
-const anchorClass = (a: AnchorSpec) => {
+const anchorClass = (_a: AnchorSpec) => {
   return "wf-anchor-resource";
 };
 
@@ -443,17 +387,6 @@ const anchorTypeAttr = (a: AnchorSpec) => {
   if (a.mediaType === "flow") return "flow";
   return "resource";
 };
-
-watch(
-  () => [props.selected, isPrimarySelectedResolved.value] as const,
-  ([selected, isPrimary]) => {
-    if (!selected || !isPrimary) closeTypeMenu();
-  }
-);
-
-onBeforeUnmount(() => {
-  closeTypeMenu();
-});
 
 let drag: null | {
   startClient: { x: number; y: number };
@@ -598,11 +531,21 @@ const isOutputHover = (anchorId: string) => {
   cursor: grab;
   display: flex;
   flex-direction: column;
+  z-index: 1;
+  overflow: visible;
 }
 
 .wf-node.selected {
   border-color: var(--wf-node-border-selected);
   box-shadow: var(--wf-node-shadow-selected);
+}
+
+.wf-node.is-primary-selected {
+  z-index: 10;
+}
+
+.wf-node.wf-node-chat-open {
+  z-index: 1000;
 }
 
 .wf-node-toolbar {
@@ -619,7 +562,7 @@ const isOutputHover = (anchorId: string) => {
   padding: 5px 8px;
   border: 1px solid color-mix(in srgb, var(--wf-border) 78%, transparent);
   background: color-mix(in srgb, var(--wf-surface-raised) 92%, transparent);
-  border-radius: 14px;
+  border-radius: 0;
   box-shadow: 0 12px 28px color-mix(in srgb, black 32%, transparent), inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -632,7 +575,7 @@ const isOutputHover = (anchorId: string) => {
   border: 1px solid transparent;
   background: transparent;
   color: var(--wf-text);
-  border-radius: 9px;
+  border-radius: 0;
   padding: 4px 6px;
   cursor: pointer;
   display: inline-flex;
@@ -683,7 +626,7 @@ const isOutputHover = (anchorId: string) => {
   min-width: 132px;
   border: 1px solid var(--wf-border);
   background: var(--wf-surface-raised);
-  border-radius: 8px;
+  border-radius: 0;
   box-shadow: var(--aiwf-shadow-sm);
   padding: 6px;
   display: flex;
@@ -696,7 +639,7 @@ const isOutputHover = (anchorId: string) => {
   border: 1px solid var(--wf-control-border);
   background: var(--wf-control-bg);
   color: var(--wf-text);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 6px 8px;
   cursor: pointer;
 }

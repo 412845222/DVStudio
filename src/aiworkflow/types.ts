@@ -671,6 +671,10 @@ export type WorkflowNode = {
 	comfyuiSettings?: WorkflowComfyUINodeSettings
 	model3dSettings?: WorkflowModel3DNodeSettings
 	meshySettings?: WorkflowMeshyNodeSettings
+	/** For chat dialog: user-entered draft text */
+	nodeChatDraft?: string
+	/** For chat dialog: user-configured params */
+	nodeChatParams?: Record<string, any>
 	worldX: number
 	worldY: number
 	width: number

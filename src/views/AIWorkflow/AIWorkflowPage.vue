@@ -141,6 +141,7 @@
               onNodeSceneLayoutSelectedPlaceholderOutput(node.id, $event)
             "
             @set-type="onNodeSetType(node.id, $event)"
+            @open-node-library="onNodeOpenLibrary(node.id)"
             @start-link="onStartLink($event, vp.screenToWorld)"
             @stop-meshy-task="onNodeStopMeshyTask(node.id)"
             @start-three-preview="onNodeStartThreePreview(node.id)"
@@ -1149,18 +1150,21 @@ const mapCodexSession = (row: any): LocalExecSessionItem => ({
   source: 'copilot-cli',
 })
 
-const ensureProjectForLocalExec = async (opts?: { silent?: boolean }): Promise<number | null> => {
+let _saveProjectToBackend: ((name?: string, opts?: { silent?: boolean }) => Promise<boolean>) | null = null
+
+function ensureProjectForLocalExec(opts?: { silent?: boolean }): Promise<number | null> {
   const existing = Number(currentProjectId.value ?? 0)
-  if (Number.isFinite(existing) && existing > 0) return existing
+  if (Number.isFinite(existing) && existing > 0) return Promise.resolve(existing)
 
   const fallbackName = String(currentProjectName.value || '').trim() || 'AI Workflow Auto Session'
   currentProjectName.value = fallbackName
-  const ok = await saveProjectToBackend(fallbackName, { silent: Boolean(opts?.silent) })
-  if (!ok) return null
-
-  const nextId = Number(currentProjectId.value ?? 0)
-  if (Number.isFinite(nextId) && nextId > 0) return nextId
-  return null
+  if (!_saveProjectToBackend) return Promise.resolve(null)
+  return _saveProjectToBackend(fallbackName, { silent: Boolean(opts?.silent) }).then((ok) => {
+    if (!ok) return null
+    const nextId = Number(currentProjectId.value ?? 0)
+    if (Number.isFinite(nextId) && nextId > 0) return nextId
+    return null
+  })
 }
 
 const loadCodexSessions = async () => {
@@ -3627,7 +3631,7 @@ const {
 
 const {
   loadProjectById,
-  saveProjectToBackend,
+  saveProjectToBackend: _saveProjectToBackendFn,
   tryAutoLoadLastProject,
   repairProjectAssetsNow,
 } = useAIWorkflowProjectPersistence({
@@ -3659,6 +3663,9 @@ const {
   store,
   uploadLocalResourceAndGetUrl,
 })
+
+const saveProjectToBackend = _saveProjectToBackendFn
+_saveProjectToBackend = _saveProjectToBackendFn
 
 const {
   onRequestSaveProject,
@@ -4176,6 +4183,24 @@ const onRailToggleNodeLibrary = () => {
       clientY: rect.top + rect.height / 2,
       worldX,
       worldY,
+    })
+  }
+}
+
+const onNodeOpenLibrary = (nodeId: string) => {
+  const node = store.state.nodesById[nodeId]
+  if (!node) return
+  const wrapEl = document.querySelector('.bp-wrap')
+  if (wrapEl) {
+    const rect = wrapEl.getBoundingClientRect()
+    const z = viewport.value.zoom
+    const screenX = node.worldX * z + viewport.value.panX + rect.left
+    const screenY = node.worldY * z + viewport.value.panY + rect.top
+    openNodeSearchMenu({
+      clientX: screenX,
+      clientY: screenY,
+      worldX: node.worldX,
+      worldY: node.worldY,
     })
   }
 }
