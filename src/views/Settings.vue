@@ -69,6 +69,7 @@ function needsAgreement() {
   return Boolean(
     String(form.deepseekApiKey || "").trim() ||
       String(form.geminiApiKey || "").trim() ||
+      String(form.bytedanceApiKey || "").trim() ||
       String(form.meshyApiKey || "").trim() ||
       String(form.jimengAccessKeyId || "").trim() ||
       String(form.jimengSecretKey || "").trim()
@@ -234,7 +235,7 @@ onMounted(() => {
           <input
             v-model.trim="form.deepseekApiKey"
             class="input"
-            type="password"
+            type="text"
             placeholder="sk-..."
           />
         </label>
@@ -244,7 +245,7 @@ onMounted(() => {
           <input
             v-model.trim="form.geminiApiKey"
             class="input"
-            type="password"
+            type="text"
             placeholder="AIza..."
           />
         </label>
@@ -254,7 +255,7 @@ onMounted(() => {
           <input
             v-model.trim="form.bytedanceApiKey"
             class="input"
-            type="password"
+            type="text"
             placeholder="ark_..."
           />
         </label>
@@ -264,7 +265,7 @@ onMounted(() => {
           <input
             v-model.trim="form.meshyApiKey"
             class="input"
-            type="password"
+            type="text"
             placeholder="mshy_..."
           />
         </label>
@@ -274,7 +275,7 @@ onMounted(() => {
           <input
             v-model.trim="form.jimengAccessKeyId"
             class="input"
-            type="password"
+            type="text"
             placeholder="AK..."
           />
         </label>
@@ -284,7 +285,7 @@ onMounted(() => {
           <input
             v-model.trim="form.jimengSecretKey"
             class="input"
-            type="password"
+            type="text"
             placeholder="SK..."
           />
         </label>
