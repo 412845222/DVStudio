@@ -183,6 +183,35 @@ export const NODE_CHAT_TEXT_MODEL_OPTIONS = [
   { value: 'bytedance', label: '字节火山方舟' },
 ]
 
+// Seed 2.0 模型版本选项（字节方舟）
+export const NODE_CHAT_SEED_MODEL_VERSION_OPTIONS = [
+  { value: 'doubao-seed-2-0-pro-260215', label: 'Seed 2.0 Pro（深度思考）' },
+  { value: 'doubao-seed-2-0-lite-260428', label: 'Seed 2.0 Lite（平衡）' },
+  { value: 'doubao-seed-2-0-mini-260428', label: 'Seed 2.0 Mini（快速）' },
+  { value: 'doubao-seed-2-0-code-preview-260215', label: 'Seed 2.0 Code（代码增强）' },
+  { value: 'doubao-seed-1-8-251228', label: 'Seed 1.8（兼容旧版）' },
+]
+
+// 深度思考开关
+export const NODE_CHAT_TEXT_THINKING_OPTIONS = [
+  { value: 'enabled', label: '开启深度思考' },
+  { value: 'disabled', label: '关闭深度思考' },
+]
+
+// 输出格式选项
+export const NODE_CHAT_TEXT_RESPONSE_FORMAT_OPTIONS = [
+  { value: 'text', label: '文本' },
+  { value: 'json_object', label: 'JSON 对象' },
+]
+
+// 最大输出长度选项
+export const NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS = [
+  { value: 2048, label: '2048 tokens' },
+  { value: 4096, label: '4096 tokens' },
+  { value: 8192, label: '8192 tokens' },
+  { value: 16384, label: '16384 tokens' },
+]
+
 export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
   { value: 'nanobanana', label: 'NanoBanana (Gemini)' },
   { value: 'seedream', label: 'Seedream (字节方舟)' },
@@ -212,7 +241,15 @@ export const NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS = [
 export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
   switch (type) {
     case 'text':
-      return { modelId: undefined, model: 'deepseek', speed: 'normal' }
+      return {
+        modelId: undefined,
+        model: 'bytedance',
+        textModelVersion: 'doubao-seed-2-0-pro-260215',
+        speed: 'normal',
+        thinking: 'enabled',
+        responseFormat: 'text',
+        maxTokens: 4096,
+      }
     case 'image':
       return {
         modelId: undefined,

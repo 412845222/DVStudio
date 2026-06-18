@@ -35,6 +35,22 @@
             </button>
           </div>
         </div>
+        <div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">Seed 版本</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in seedModelVersionOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.textModelVersion === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('textModelVersion', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
         <div class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">生成速度</span>
           <div class="bp-node-chat-param-options">
@@ -46,6 +62,54 @@
               :class="{ 'is-active': params.speed === opt.value }"
               :disabled="disabled"
               @click="updateParam('speed', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">深度思考</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in textThinkingOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.thinking === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('thinking', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">输出格式</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in textResponseFormatOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.responseFormat === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('responseFormat', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">最大输出</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in textMaxTokensOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.maxTokens === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('maxTokens', opt.value)"
             >
               {{ opt.label }}
             </button>
@@ -517,10 +581,14 @@ import {
   NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS,
   NODE_CHAT_TEXT_SPEED_OPTIONS,
   NODE_CHAT_TEXT_MODEL_OPTIONS,
+  NODE_CHAT_TEXT_THINKING_OPTIONS,
+  NODE_CHAT_TEXT_RESPONSE_FORMAT_OPTIONS,
+  NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS,
   NODE_CHAT_IMAGE_MODEL_OPTIONS,
   NODE_CHAT_VIDEO_MODEL_OPTIONS,
   NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS,
   NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS,
+  NODE_CHAT_SEED_MODEL_VERSION_OPTIONS,
   NODE_CHAT_MESHY_MODE_OPTIONS,
   NODE_CHAT_MESHY_STAGE_OPTIONS,
   NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
@@ -554,6 +622,10 @@ const updateProvider = (provider: string) => {
 
 const textSpeedOptions = NODE_CHAT_TEXT_SPEED_OPTIONS
 const textModelOptions = NODE_CHAT_TEXT_MODEL_OPTIONS
+const textThinkingOptions = NODE_CHAT_TEXT_THINKING_OPTIONS
+const textResponseFormatOptions = NODE_CHAT_TEXT_RESPONSE_FORMAT_OPTIONS
+const textMaxTokensOptions = NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS
+const seedModelVersionOptions = NODE_CHAT_SEED_MODEL_VERSION_OPTIONS
 const imageModelOptions = NODE_CHAT_IMAGE_MODEL_OPTIONS
 const videoModelOptions = NODE_CHAT_VIDEO_MODEL_OPTIONS
 const resolutionOptions = NODE_CHAT_RESOLUTION_OPTIONS
