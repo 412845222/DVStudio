@@ -579,7 +579,7 @@ import { MediaResourceImportManager } from '../../aiworkflow/MediaResourceImport
 import { VideoMetadataReadQueue } from '../../aiworkflow/VideoMetadataReadQueue'
 import { createVideoFirstFrameThumbnail } from '../../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
 import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../../aiworkflow/localFileHandleDb'
-import { resolveBackendUrl } from '../../network/backendConfig'
+import { resolveBackendUrl, getBackendBaseUrl } from '../../network/backendConfig'
 import { isElectron, openFolderForPath } from '../../electronBridge'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
@@ -2625,6 +2625,9 @@ const resolveLocalExecStreamMode = (): 'real' | 'mock' => {
 
 const comfyService = new ComfyUIBridgeService({
   localExecBasePath: resolveLocalExecBasePath(),
+  // web 模式下不写 baseUrl，让路径保持相对路径走 Vite proxy (/api/* → http://127.0.0.1:5800)，
+  // 避免浏览器因跨域而在测试环境出现 "Failed to fetch"。
+  baseUrl: getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl(),
 })
 const localExecChatService = createLocalExecChatService(comfyService)
 const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())

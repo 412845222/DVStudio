@@ -20,9 +20,9 @@ const makeTaskId = () => `node-gen-${Date.now().toString(36)}-${Math.random().to
 
 const getComfyService = (deps: NodeGenerationApiDeps) => {
   if (deps.comfyService) return deps.comfyService
-  return new ComfyUIBridgeService({
-    baseUrl: '/api/workflow',
-  })
+  // 页面已经传入 comfyService，通常不会走到这里；
+  // 兜底构造的服务不写 baseUrl，以避免路径拼接错误（例如 /api/workflow/api/workflow/...）。
+  return new ComfyUIBridgeService({ baseUrl: '' })
 }
 
 const pushToast = (deps: NodeGenerationApiDeps, message: string, tone: 'info' | 'warn' | 'error' = 'warn') => {
@@ -98,7 +98,18 @@ export const runNodeGenerationTask = async (
       runModel3dStub(deps, task, payload)
     }
   } catch (err: any) {
-    const message = err?.message ? String(err.message) : String(err ?? '生成任务异常')
+    const raw = err?.message ? String(err.message) : String(err ?? '生成任务异常')
+    // 典型的浏览器网络错误（后端未启、CORS 被拒、或断网）给出更明确的中文提示。
+    const looksLikeNetworkError =
+      /Failed to fetch/i.test(raw) ||
+      /NetworkError/i.test(raw) ||
+      /TypeError.*fetch/i.test(raw) ||
+      /CORS/i.test(raw) ||
+      /Failed to connect/i.test(raw) ||
+      /ECONNREFUSED/i.test(raw)
+    const message = looksLikeNetworkError
+      ? `后端不可达（${raw}）。请确认 django-app 已在 127.0.0.1:5800 启动，或在 Settings 页面设置正确的后端地址。`
+      : raw
     appendDetail(deps, task.id, message)
     updateTask(deps, task.id, { status: 'error', statusText: `失败：${message}`, errorMessage: message, finishedAt: Date.now() })
     pushToast(deps, `${labelForType(payload.nodeType)}生成失败：${message}`, 'error')

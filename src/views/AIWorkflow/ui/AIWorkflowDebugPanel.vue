@@ -11,6 +11,45 @@ const collapsed = ref(true)
 
 const platformInfo = computed(() => runtimeDescription())
 
+const backendPingStatus = ref<'idle' | 'checking' | 'reachable' | 'unreachable'>('idle')
+const backendPingMessage = ref('未检测')
+const lastBackendCheck = ref<number | null>(null)
+
+const checkBackend = async () => {
+  backendPingStatus.value = 'checking'
+  backendPingMessage.value = '正在测试后端连通性…'
+  const start = Date.now()
+  try {
+    const res = await fetch('/api/workflow/ping', {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store',
+    })
+    if (res.ok) {
+      backendPingStatus.value = 'reachable'
+      backendPingMessage.value = `后端可达（HTTP ${res.status}，${Date.now() - start}ms）`
+    } else {
+      backendPingStatus.value = 'unreachable'
+      backendPingMessage.value = `后端返回 HTTP ${res.status}（${Date.now() - start}ms），请检查 django-app 是否已启动。`
+    }
+  } catch (err: any) {
+    backendPingStatus.value = 'unreachable'
+    const msg = err?.message ? String(err.message) : String(err ?? '未知网络错误')
+    backendPingMessage.value = `后端不可达：${msg}。请确认 django-app 已在 http://127.0.0.1:5800 启动，或在 Settings 调整后端地址后重试。`
+  } finally {
+    lastBackendCheck.value = Date.now()
+  }
+}
+
+// 面板首次展开时自动 ping 一次
+let hasAutoPingDone = false
+const onPanelToggle = () => {
+  if (!collapsed.value && !hasAutoPingDone) {
+    hasAutoPingDone = true
+    checkBackend()
+  }
+}
+
 const taskCount = computed(() => {
   const map = props.store?.state?.nodeGenerationTasksById as Record<string, any> | undefined
   if (!map) return 0
@@ -70,6 +109,7 @@ onUnmounted(() => {
 
 const toggleCollapsed = () => {
   collapsed.value = !collapsed.value
+  onPanelToggle()
 }
 </script>
 
@@ -80,6 +120,20 @@ const toggleCollapsed = () => {
       <span class="dv-debug-panel-toggle">{{ collapsed ? '▸' : '▾' }}</span>
     </div>
     <div v-if="!collapsed" class="dv-debug-panel-body">
+      <div class="dv-debug-section">
+        <h4>后端连通性</h4>
+        <div class="dv-debug-backend-row">
+          <span class="dv-debug-backend-status" :class="`dv-debug-backend-status-${backendPingStatus}`">{{ backendPingStatus }}</span>
+          <span class="dv-debug-backend-msg">{{ backendPingMessage }}</span>
+          <button class="dv-debug-backend-btn" type="button" @click.stop="checkBackend" :disabled="backendPingStatus === 'checking'">
+            {{ backendPingStatus === 'checking' ? '检测中…' : '重新检测' }}
+          </button>
+        </div>
+        <div class="dv-debug-backend-hint">
+          web 模式下：前端请求走 Vite proxy <code>/api/* → http://127.0.0.1:5800</code>。
+          请确认 <code>python django-app/manage.py runserver 5800</code> 或 <code>npm run dev:django</code> 已启动。
+        </div>
+      </div>
       <div class="dv-debug-section">
         <h4>运行环境</h4>
         <dl>
@@ -185,6 +239,86 @@ const toggleCollapsed = () => {
 .dv-debug-wrap {
   word-break: break-all;
   white-space: normal;
+}
+
+.dv-debug-backend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.dv-debug-backend-status {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(150, 160, 180, 0.25);
+}
+
+.dv-debug-backend-status-reachable {
+  background: rgba(34, 197, 94, 0.5);
+}
+
+.dv-debug-backend-status-unreachable {
+  background: rgba(239, 68, 68, 0.55);
+}
+
+.dv-debug-backend-status-checking {
+  background: rgba(59, 130, 246, 0.5);
+  animation: dv-pulse 1.2s ease-in-out infinite;
+}
+
+.dv-debug-backend-status-idle {
+  background: rgba(150, 160, 180, 0.25);
+}
+
+.dv-debug-backend-msg {
+  color: #c9d2e5;
+  font-size: 11px;
+  flex: 1;
+  min-width: 160px;
+}
+
+.dv-debug-backend-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  background: rgba(120, 160, 220, 0.2);
+  color: #cfe1ff;
+  border: 1px solid rgba(120, 160, 220, 0.35);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dv-debug-backend-btn:hover:not(:disabled) {
+  background: rgba(120, 160, 220, 0.35);
+  color: #fff;
+}
+
+.dv-debug-backend-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dv-debug-backend-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #a8b0c0;
+  line-height: 1.5;
+}
+
+.dv-debug-backend-hint code {
+  background: rgba(120, 160, 220, 0.15);
+  border: 1px solid rgba(120, 160, 220, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: #cfe1ff;
+  font-size: 11px;
+}
+
+@keyframes dv-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .dv-debug-empty {
