@@ -20,55 +20,45 @@ export default defineConfig({
     __DWEB_REPO_URL__: JSON.stringify(REPO_URL),
   },
   server: {
+    // Vite DevServer HTTP server 配置：
+    // Seedance 视频生成 SSE 流可能持续十几分钟，
+    // 必须显式设置 keepAliveTimeout > headersTimeout，
+    // 防止浏览器或中间层因 idle 断开长连接。
+    http: {
+      // keepAliveTimeout：Socket 在响应完成后保持 open 的最大时间，设为 20 分钟。
+      // headersTimeout：Socket 在等待 headers 时的最大时间，设为 25 分钟。
+      // 这确保 Vite DevServer 不会因 idle 超时而主动关闭 SSE 长连接。
+      maxConnections: 100,
+      keepAliveTimeout: 1_200_000, // 20 min
+      headersTimeout: 1_500_000, // 25 min
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5800',
         changeOrigin: true,
-        // 字节方舟 Seedance 视频生成任务通常需要 30~600 秒，
-        // 完全禁用代理层超时，让后端 SSE 流保持长连接。
+        // Seedance 视频生成可能需要十几分钟，
+        // 完全禁用代理层超时，让 SSE 流保持长连接。
         timeout: 0,
         proxyTimeout: 0,
-        // 手动处理响应以确保 SSE / 流式数据零缓冲透传。
-        selfHandleResponse: true,
+        // SSE / 流式响应配置：设置 Connection: keep-alive，
+        // 告知 Django 和浏览器端不要关闭连接。
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req, res) => {
+            // 确保 HTTP 长连接不断开。
             proxyReq.setHeader('Connection', 'keep-alive')
-            // text/event-stream 必须禁用中间层缓冲
+            // 告诉上游（Django）和中间层不要缓冲 SSE 响应。
             res.setHeader('X-Accel-Buffering', 'no')
             res.setHeader('Cache-Control', 'no-cache, no-transform')
-          })
-          proxy.on('proxyRes', (proxyRes, req, res) => {
-            // 手动 pipe：零缓冲透传流式响应（SSE / 视频 / 图片）。
-            // 这样 http-proxy 不会干预连接生命周期，避免主动断开。
-            const statusCode = proxyRes.statusCode || 200
-            const headers = proxyRes.headers || {}
-            // 复制响应头（保证 Transfer-Encoding / Content-Type 正确）
-            for (const [key, value] of Object.entries(headers)) {
-              if (Array.isArray(value)) {
-                for (const v of value) res.setHeader(key, v as string)
-              } else if (value != null) {
-                res.setHeader(key, value as string)
-              }
-            }
-            // 若后端没有写 Connection 头，显式写 keep-alive
-            if (!res.getHeader('Connection')) {
-              res.setHeader('Connection', 'keep-alive')
-            }
-            if (!res.getHeader('X-Accel-Buffering')) {
-              res.setHeader('X-Accel-Buffering', 'no')
-            }
-            res.writeHead(statusCode)
-            proxyRes.pipe(res)
           })
           proxy.on('error', (err, req, res) => {
             try {
               const msg = err?.message || String(err || 'unknown')
-              if (!(res as any).writableEnded && !(res as any).finished) {
-                if (!res.headersSent) {
-                  res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
+              if (res && !(res as any).writableEnded && !(res as any).finished) {
+                if (!(res as any).headersSent) {
+                  ;(res as any).writeHead?.(502, { 'Content-Type': 'text/plain; charset=utf-8' })
                 }
-                res.write(`Proxy error: ${msg}`)
-                res.end()
+                ;(res as any).write?.(`Proxy error: ${msg}`)
+                ;(res as any).end?.()
               }
             } catch {}
           })
