@@ -1346,17 +1346,20 @@ def _seedream_download_and_save(url: str) -> str:
     return media_url + str((rel_dir / filename).as_posix())
 
 
-def _seedream_strip_doubao_prefix(model: str) -> str:
-    """Strip the 'doubao-' vendor prefix from model IDs.
+def _seedream_ensure_doubao_prefix(model: str) -> str:
+    """Ensure the model ID starts with 'doubao-' for the Volcengine Ark API.
 
-    The ByteDance Ark API expects bare model IDs (e.g. 'seedream-3-0-t2i-250415')
-    while the UI shows 'doubao-seedream-3-0-t2i-250415'.  Remove the prefix before
-    sending the model name to the upstream API.
+    The Volcengine / 火山引擎 Ark image generation API only accepts model IDs
+    with the 'doubao-' vendor prefix (e.g. 'doubao-seedream-5-0-260128').
+    This normalises all input to the expected format regardless of whether the
+    caller has already been prefixed.
     """
     m = str(model or "").strip()
+    if not m:
+        return m
     if m.lower().startswith("doubao-"):
-        m = m[len("doubao-"):]
-    return m
+        return m
+    return f"doubao-{m}"
 
 
 def _seedream_cfg() -> Dict[str, str]:
@@ -1371,8 +1374,8 @@ def _seedream_cfg() -> Dict[str, str]:
     except Exception:
         api_key = ""
 
-    raw_model = _env_or_default("SEEDREAM_MODEL", "seedream-3-0-t2i-250415").strip() or "seedream-3-0-t2i-250415"
-    model = _seedream_strip_doubao_prefix(raw_model)
+    raw_model = _env_or_default("SEEDREAM_MODEL", "doubao-seedream-5-0-260128").strip() or "doubao-seedream-5-0-260128"
+    model = _seedream_ensure_doubao_prefix(raw_model)
     api_base = _env_or_default("SEEDREAM_API_BASE", "https://ark.cn-beijing.volces.com/api/v3").strip() or "https://ark.cn-beijing.volces.com/api/v3"
     timeout_sec = _env_or_default("SEEDREAM_TIMEOUT_SEC", "120").strip() or "120"
 
@@ -1389,7 +1392,7 @@ def _seedream_cfg_with_model(cfg: Dict[str, str], model: str) -> Dict[str, str]:
         return cfg
     api_base = str(cfg.get("api_base") or "https://ark.cn-beijing.volces.com/api/v3").strip() or "https://ark.cn-beijing.volces.com/api/v3"
     next_cfg = dict(cfg)
-    next_cfg["model"] = _seedream_strip_doubao_prefix(m)
+    next_cfg["model"] = _seedream_ensure_doubao_prefix(m)
     next_cfg["generate_url"] = api_base.rstrip("/") + "/images/generations"
     return next_cfg
 
@@ -1438,27 +1441,38 @@ def _seedream_headers(cfg: Dict[str, str]) -> Dict[str, str]:
 
 
 def _seedream_size_from_aspect_ratio(model: str, aspect_ratio: Optional[str]) -> str:
+    """Return a Volcengine-compatible `size` value.
+
+    The upstream API only accepts `WIDTHxHEIGHT` or the presets `2K/3K/4K` for
+    `size`.  Aspect ratios therefore must be translated to exact pixel
+    dimensions that fall within each model's supported resolution band.
+    """
     ar = str(aspect_ratio or "").strip()
     if not ar:
-        return "1024x1024"
+        return "2K"
     model_text = str(model or "").strip().lower()
-    if "seedream-4-0" in model_text:
-        # Seedream 4.0 uses "1K"/"2K" format
-        table_v4 = {"1:1": "1K", "2:3": "1K", "3:2": "1K", "3:4": "1K", "4:3": "1K", "4:5": "1K", "5:4": "1K", "9:16": "1K", "16:9": "1K", "21:9": "1K"}
-        return table_v4.get(ar, "1K")
     if "seedream-5-0" in model_text:
-        # Seedream 5.0 (if available) uses pixel dimensions
-        table = {"1:1": "2048x2048", "2:3": "1344x2048", "3:2": "2048x1344", "3:4": "1536x2048", "4:3": "2048x1536", "4:5": "1664x2048", "5:4": "2048x1664", "9:16": "1152x2048", "16:9": "2048x1152", "21:9": "2048x896"}
-        return table.get(ar, "2048x2048")
-    # Seedream 3.0 uses pixel dimensions
-    table_v3 = {"1:1": "1024x1024", "2:3": "832x1216", "3:2": "1216x832", "3:4": "896x1152", "4:3": "1152x896", "4:5": "896x1152", "5:4": "1152x896", "9:16": "832x1472", "16:9": "1472x832", "21:9": "1536x640"}
-    return table_v3.get(ar, "1024x1024")
+        table = {"1:1": "2048x2048", "2:3": "1344x2048", "3:2": "2048x1344", "3:4": "1536x2048", "4:3": "2048x1536", "4:5": "1664x2048", "5:4": "2048x1664", "9:16": "1152x2048", "16:9": "2848x1600", "21:9": "3136x1344"}
+        return table.get(ar, "2K")
+    # Seedream 4.x / 3.x: use 1K / 2K pixel resolutions that are officially supported
+    if "seedream-4" in model_text:
+        table = {"1:1": "2048x2048", "2:3": "1344x2048", "3:2": "2048x1344", "3:4": "1536x2048", "4:3": "2048x1536", "4:5": "1664x2048", "5:4": "2048x1664", "9:16": "1152x2048", "16:9": "2848x1600", "21:9": "3136x1344"}
+        return table.get(ar, "2K")
+    table = {"1:1": "1024x1024", "2:3": "832x1216", "3:2": "1216x832", "3:4": "896x1152", "4:3": "1152x896", "4:5": "896x1152", "5:4": "1152x896", "9:16": "832x1472", "16:9": "1472x832", "21:9": "1512x640"}
+    return table.get(ar, "2K")
 
 
 def _seedream_build_payload(*, prompt: str, model: str, aspect_ratio: Optional[str], ref_images: Optional[List[Tuple[str, bytes, str]]]) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {"model": str(model or "").strip(), "prompt": str(prompt or ""), "size": _seedream_size_from_aspect_ratio(model, aspect_ratio), "response_format": "url", "watermark": False}
+    normalized_model = _seedream_ensure_doubao_prefix(str(model or "").strip())
+    payload: Dict[str, Any] = {
+        "model": normalized_model,
+        "prompt": str(prompt or ""),
+        "size": _seedream_size_from_aspect_ratio(normalized_model, aspect_ratio),
+        "response_format": "url",
+        "watermark": False,
+    }
 
-    model_text = str(model or "").strip().lower()
+    model_text = normalized_model.lower()
     if "seedream-5-0" in model_text:
         payload["output_format"] = "png"
 
