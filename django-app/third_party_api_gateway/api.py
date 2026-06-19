@@ -43,6 +43,49 @@ from dwebapp.ai.api.chat.utils import (
 )
 from dwebapp.ai.credentials_store import get_meshy_api_key
 
+try:
+    from comfyui_bridge.api import (
+        _seedance_cfg,
+        _seedance_headers,
+        _seedance_coerce_int,
+        _seedance_truthy,
+        _seedance_pick_task_type,
+        _seedance_build_content,
+        _seedance_upsert_task_mirror,
+        _seedance_sync_remote_task,
+        _seedance_get_task,
+        _seedance_extract_content_urls,
+        _seedance_extract_usage_text,
+        _seedance_reconcile_local_media,
+        _seedance_model_supports_service_tier,
+        _seedance_data_url_from_image,
+        _seedance_save_media_from_url,
+        _jimeng_cfg,
+        _jimeng_hmac_sha256,
+        _jimeng_sha256_hex,
+        _jimeng_signing_key,
+        _jimeng_signed_post,
+        _jimeng_extract_task_id,
+        _jimeng_extract_status,
+        _jimeng_extract_result_urls,
+        _jimeng_req_key_from_model,
+        _jimeng_normalize_resolution,
+        _jimeng_normalize_ref_mode,
+        _jimeng_normalize_aspect_ratio,
+    )
+except Exception:
+    pass
+
+
+def _jimeng_with_key(url: str, api_key: str) -> str:
+    if not url:
+        return url
+    key = str(api_key or "").strip()
+    if not key:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}api_key={urllib.parse.quote(key)}"
+
 
 _seedance_download_lock = threading.Lock()
 _seedance_active_download_ids: Set[int] = set()
@@ -1315,7 +1358,7 @@ def _seedream_cfg() -> Dict[str, str]:
     except Exception:
         api_key = ""
 
-    model = _env_or_default("SEEDREAM_MODEL", "doubao-seedream-5-0").strip() or "doubao-seedream-5-0"
+    model = _env_or_default("SEEDREAM_MODEL", "doubao-seedream-5-0-260128").strip() or "doubao-seedream-5-0-260128"
     api_base = _env_or_default("SEEDREAM_API_BASE", "https://ark.cn-beijing.volces.com/api/v3").strip() or "https://ark.cn-beijing.volces.com/api/v3"
     timeout_sec = _env_or_default("SEEDREAM_TIMEOUT_SEC", "120").strip() or "120"
 
@@ -1372,14 +1415,22 @@ def _seedream_with_key(url: str, api_key: str) -> str:
     return f"{url}{sep}api_key={urllib.parse.quote(key)}"
 
 
+def _seedream_headers(cfg: Dict[str, str]) -> Dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    api_key = str(cfg.get("api_key") or "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}" if not api_key.lower().startswith("bearer ") else api_key
+    return headers
+
+
 def _seedream_size_from_aspect_ratio(model: str, aspect_ratio: Optional[str]) -> str:
     ar = str(aspect_ratio or "").strip()
     if not ar:
-        return "1024x1024"
+        return "2048x2048"
     model_text = str(model or "").strip().lower()
     if "seedream-5-0" in model_text:
-        table = {"1:1": "1024x1024", "2:3": "832x1280", "3:2": "1280x832", "3:4": "896x1152", "4:3": "1152x896", "4:5": "960x1184", "5:4": "1184x960", "9:16": "800x1408", "16:9": "1408x800", "21:9": "1600x688"}
-        return table.get(ar, "1024x1024")
+        table = {"1:1": "2048x2048", "2:3": "1344x2048", "3:2": "2048x1344", "3:4": "1536x2048", "4:3": "2048x1536", "4:5": "1664x2048", "5:4": "2048x1664", "9:16": "1152x2048", "16:9": "2048x1152", "21:9": "2048x896"}
+        return table.get(ar, "2048x2048")
     table_v3 = {"1:1": "1024x1024", "2:3": "832x1216", "3:2": "1216x832", "3:4": "896x1152", "4:3": "1152x896", "4:5": "896x1152", "5:4": "1152x896", "9:16": "832x1472", "16:9": "1472x832", "21:9": "1536x640"}
     return table_v3.get(ar, "1024x1024")
 
@@ -1909,11 +1960,9 @@ def nanobanana_generate_stream(request: HttpRequest) -> HttpResponseBase:
                 model = str(cfg.get("model") or "").strip() or "seedream-3-0"
                 payload = _seedream_build_payload(prompt=prompt, model=model, aspect_ratio=aspect_ratio, ref_images=ref_images)
                 url = str(cfg.get("generate_url") or "").strip()
-                api_key = str(cfg.get("api_key") or "").strip()
-                url = _seedream_with_key(url, api_key)
                 timeout = float(cfg.get("timeout_sec") or 120)
                 body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-                raw, err = _request_raw("POST", url, data=body, headers={"Content-Type": "application/json"}, timeout_sec=timeout)
+                raw, err = _request_raw("POST", url, data=body, headers=_seedream_headers(cfg), timeout_sec=timeout)
                 if err or raw is None:
                     raise ValueError(f"Seedream request failed: {err or 'unknown error'}")
                 try:
@@ -2004,11 +2053,9 @@ def nanobanana_generate(request: Request) -> Response:
             model = str(cfg.get("model") or "").strip() or "seedream-3-0"
             payload = _seedream_build_payload(prompt=prompt, model=model, aspect_ratio=aspect_ratio, ref_images=ref_images)
             url = str(cfg.get("generate_url") or "").strip()
-            api_key = str(cfg.get("api_key") or "").strip()
-            url = _seedream_with_key(url, api_key)
             timeout = float(cfg.get("timeout_sec") or 120)
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            raw, err = _request_raw("POST", url, data=body, headers={"Content-Type": "application/json"}, timeout_sec=timeout)
+            raw, err = _request_raw("POST", url, data=body, headers=_seedream_headers(cfg), timeout_sec=timeout)
             if err or raw is None:
                 return Response({"error": f"Seedream request failed: {err or 'unknown error'}"}, status=500)
             try:
@@ -2103,11 +2150,9 @@ def seedream_generate_stream(request: HttpRequest) -> HttpResponseBase:
             model = str(cfg.get("model") or "").strip() or "seedream-3-0"
             payload = _seedream_build_payload(prompt=prompt, model=model, aspect_ratio=aspect_ratio, ref_images=ref_images)
             url = str(cfg.get("generate_url") or "").strip()
-            api_key = str(cfg.get("api_key") or "").strip()
-            url = _seedream_with_key(url, api_key)
             timeout = float(cfg.get("timeout_sec") or 120)
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            raw, err = _request_raw("POST", url, data=body, headers={"Content-Type": "application/json"}, timeout_sec=timeout)
+            raw, err = _request_raw("POST", url, data=body, headers=_seedream_headers(cfg), timeout_sec=timeout)
             if err or raw is None:
                 raise ValueError(f"Seedream request failed: {err or 'unknown error'}")
             try:
