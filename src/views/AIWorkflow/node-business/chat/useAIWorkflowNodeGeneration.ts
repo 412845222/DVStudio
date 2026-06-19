@@ -45,6 +45,11 @@ const normalizeImageModel = (params: Record<string, any>) => {
   const rawModel = String(params?.imageModel ?? params?.model ?? '').trim()
   if (rawModel.startsWith('jimeng')) return { kind: 'jimeng', model: rawModel }
   if (rawModel.startsWith('nanobanana')) return { kind: 'nanobanana', model: rawModel }
+  // When user picks 'seedream' as the interface, the actual model ID is in seedreamModelVersion.
+  if (rawModel === 'seedream') {
+    const seedreamVersion = String(params?.seedreamModelVersion ?? '').trim()
+    return { kind: 'seedream', model: seedreamVersion || 'doubao-seedream-4-5-251128' }
+  }
   // Default to seedream (Doubao / 字节方舟) when the user did not pick a provider.
   return { kind: 'seedream', model: rawModel || 'doubao-seedream-4-5-251128' }
 }
@@ -52,6 +57,11 @@ const normalizeImageModel = (params: Record<string, any>) => {
 const normalizeVideoModel = (params: Record<string, any>) => {
   const rawModel = String(params?.videoModel ?? params?.model ?? '').trim()
   if (rawModel.startsWith('jimeng')) return { kind: 'jimeng', model: rawModel }
+  // When user picks 'seedance' as the interface, the actual model ID is in seedanceModelVersion.
+  if (rawModel === 'seedance') {
+    const seedanceVersion = String(params?.seedanceModelVersion ?? '').trim()
+    return { kind: 'seedance', model: seedanceVersion || 'doubao-seedance-2-0-260128' }
+  }
   // Default to seedance (Doubao / 字节方舟) when the user did not pick a provider.
   return { kind: 'seedance', model: rawModel || 'doubao-seedance-2-0-260128' }
 }
@@ -146,7 +156,7 @@ const runTextTask = async (
 
   let accumulated = ''
 	try {
-		for await (const ev of svc.blueprintChatStream({ content: String(body.content ?? ''), history: body.history })) {
+		for await (const ev of svc.blueprintChatStream({ content: String(body.content ?? ''), history: body.history, provider: body.provider, modelId: body.modelId })) {
       if (ev.type === 'done') break
       if (ev.type === 'error') {
         throw new Error(String(ev.error?.message ?? 'unknown'))
