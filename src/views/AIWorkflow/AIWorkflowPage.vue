@@ -83,6 +83,7 @@
             :node-chat-submitting="nodeChatDialog.nodeId === node.id ? nodeChatDialog.submitting : false"
             :node-chat-params="nodeChatDialog.nodeId === node.id ? nodeChatDialog.params : {}"
             :node-chat-node-width="node.width"
+            :node-generation-task="latestGenerationTaskByNodeId(node.id)"
             :style="
               nodeStyle(
                 vp.worldToScreen,
@@ -519,6 +520,7 @@
       />
 
     </div>
+    <AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
   </div>
 </template>
 
@@ -579,6 +581,8 @@ import { createVideoFirstFrameThumbnail } from '../../aiworkflow/domain/resource
 import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../../aiworkflow/localFileHandleDb'
 import { resolveBackendUrl } from '../../network/backendConfig'
 import { isElectron, openFolderForPath } from '../../electronBridge'
+import { getRuntimePlatform } from '../../network/runtimePlatform'
+import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import { useAIWorkflowEdgeRenderer } from './blueprint-core/useAIWorkflowEdgeRenderer'
 import { useAIWorkflowEdgeIndex } from './blueprint-core/useAIWorkflowEdgeIndex'
 import { useAIWorkflowNodeVisibility } from './blueprint-core/useAIWorkflowNodeVisibility'
@@ -924,8 +928,39 @@ const onNodeChatClose = () => {
   store.dispatch('closeNodeChatDialog')
 }
 
-const onNodeChatSubmit = (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
+const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
   store.dispatch('submitNodeChat', payload)
+  const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
+  const castPayload = payload as unknown as Parameters<typeof runNodeGenerationTask>[1]
+  await runNodeGenerationTask(
+    {
+      store,
+      comfyService,
+      resolveBackendUrl,
+      pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
+        chatMessages.value = [
+          ...chatMessages.value,
+          { id: `sys-${Date.now()}`, role: 'system', message, tone, createdAt: Date.now() },
+        ] as any
+      },
+      bindImageResultToNode: (nodeId: string, url: string) => {
+        const node = store.state.nodesById[nodeId]
+        if (!node) return
+        const imageSettings = { ...(node.imageSettings ?? {}), lastGeneratedImageUrl: url }
+        store.commit('updateNode', { id: nodeId, patch: { imageSettings } })
+      },
+      bindVideoResultToNode: (nodeId: string, url: string) => {
+        const node = store.state.nodesById[nodeId]
+        if (!node) return
+        const videoSettings = { ...(node.videoSettings ?? {}), lastGeneratedVideoUrl: url }
+        store.commit('updateNode', { id: nodeId, patch: { videoSettings } })
+      },
+      bindTextResultToNode: (nodeId: string, text: string) => {
+        store.commit('updateNode', { id: nodeId, patch: { textValue: text } })
+      },
+    },
+    castPayload,
+  )
 }
 
 const onNodeChatRemoveParamRef = (item: InputParamPreviewRef) => {
@@ -2449,6 +2484,8 @@ const {
   nodeResourceName,
 })
 
+const isWebEnvironment = () => getRuntimePlatform() === 'web'
+
 const {
   storyPreview,
   rotateImagePreviewUrl,
@@ -2540,6 +2577,13 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
   connectedMeshyImageUrls,
   nodeMediaReloadToken,
 })
+
+const latestGenerationTaskByNodeId = (nodeId: string) => {
+  const ids = store.state.nodeGenerationTaskIdsByNodeId?.[nodeId]
+  if (!Array.isArray(ids) || !ids.length) return null
+  const firstId = ids[0]
+  return store.state.nodeGenerationTasksById?.[firstId] || null
+}
 
 const onNodeStartThreePreview = (nodeId: string) => {
   startPreviewSession(nodeId)
