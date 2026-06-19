@@ -30,6 +30,11 @@ from rest_framework.response import Response
 
 from .models import BlueprintProject
 
+try:
+    from third_party_api_gateway.models import VideoGenerationTaskMirror
+except Exception:
+    VideoGenerationTaskMirror = None
+
 from dwebapp.ai.api.chat.utils import (
     _agent_to_ui_chat_message,
     _agent_to_ui_error,

@@ -442,7 +442,7 @@ export class ComfyUIBridgeService {
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<BlueprintChatStreamEvent, void, void> {
-		const res = await fetch(this.url('/api/workflow/blueprint/chat:stream'), {
+		const res = await fetch(this.url('/api/third-party/blueprint/chat:stream'), {
 			method: 'POST',
 			headers: {
 				...jsonHeaders(this.devToken),
@@ -746,7 +746,7 @@ export class ComfyUIBridgeService {
 			Accept: 'application/json',
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
-		const res = await fetch(this.url('/api/workflow/nanobanana/ref-cache'), {
+		const res = await fetch(this.url('/api/third-party/nanobanana/ref-cache'), {
 			method: 'POST',
 			headers,
 			body: formData,
@@ -798,7 +798,7 @@ export class ComfyUIBridgeService {
 		width?: number
 		height?: number
 	}): Promise<NanoBananaGenerateResponse> {
-		const res = await fetch(this.url('/api/workflow/nanobanana/generate'), {
+		const res = await fetch(this.url('/api/third-party/nanobanana/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload ?? {}),
@@ -832,7 +832,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/workflow/nanobanana/generate:stream'), {
+		const res = await fetch(this.url('/api/third-party/nanobanana/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -1419,7 +1419,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyGenerate(payload: Record<string, any>): Promise<MeshyGenerateResponse> {
-		const res = await fetch(this.url('/api/workflow/meshy/generate'), {
+		const res = await fetch(this.url('/api/third-party/meshy/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload || {}),
@@ -1436,7 +1436,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyTask(taskId: string, mode: string): Promise<MeshyTaskResponse> {
-		const res = await fetch(this.url('/api/workflow/meshy/task'), {
+		const res = await fetch(this.url('/api/third-party/meshy/task'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ taskId, mode }),
@@ -1464,7 +1464,7 @@ export class ComfyUIBridgeService {
 		if (query?.family) search.set('family', String(query.family).trim())
 		if (Number.isFinite(query?.limit)) search.set('limit', String(query?.limit))
 		const suffix = search.size ? `?${search.toString()}` : ''
-		const res = await fetch(this.url(`/api/workflow/meshy/tasks${suffix}`), {
+		const res = await fetch(this.url(`/api/third-party/meshy/tasks${suffix}`), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1481,7 +1481,7 @@ export class ComfyUIBridgeService {
 
 	async meshyTaskDetail(taskId: string): Promise<MeshyTaskDetailResponse> {
 		const search = new URLSearchParams({ taskId })
-		const res = await fetch(this.url(`/api/workflow/meshy/task-detail?${search.toString()}`), {
+		const res = await fetch(this.url(`/api/third-party/meshy/task/detail?${search.toString()}`), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1506,7 +1506,7 @@ export class ComfyUIBridgeService {
 		if (query?.model) search.set('model', String(query.model).trim())
 		if (Number.isFinite(query?.limit)) search.set('limit', String(query?.limit))
 		const suffix = search.size ? `?${search.toString()}` : ''
-		const res = await fetch(this.url(`/api/workflow/seedance/tasks${suffix}`), {
+		const res = await fetch(this.url(`/api/third-party/seedance/tasks${suffix}`), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1523,7 +1523,7 @@ export class ComfyUIBridgeService {
 
 	async seedanceTaskDetail(taskId: string): Promise<SeedanceTaskDetailResponse> {
 		const search = new URLSearchParams({ taskId })
-		const res = await fetch(this.url(`/api/workflow/seedance/task-detail?${search.toString()}`), {
+		const res = await fetch(this.url(`/api/third-party/seedance/task/detail?${search.toString()}`), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1547,7 +1547,7 @@ export class ComfyUIBridgeService {
 		projectId?: number
 		saveMedia?: boolean
 	}): Promise<SeedanceSyncTasksResponse> {
-		const res = await fetch(this.url('/api/workflow/seedance/tasks:sync'), {
+		const res = await fetch(this.url('/api/third-party/seedance/sync-tasks'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload || {}),
@@ -1564,7 +1564,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyStop(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {
-		const res = await fetch(this.url('/api/workflow/meshy/stop'), {
+		const res = await fetch(this.url('/api/third-party/meshy/stop'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ taskId, mode }),
@@ -1581,7 +1581,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyDelete(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {
-		const res = await fetch(this.url('/api/workflow/meshy/delete'), {
+		const res = await fetch(this.url('/api/third-party/meshy/delete'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ taskId, mode }),
@@ -1598,7 +1598,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyBalance(): Promise<MeshyBalanceResponse> {
-		const res = await fetch(this.url('/api/workflow/meshy/balance'), {
+		const res = await fetch(this.url('/api/third-party/meshy/balance'), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})

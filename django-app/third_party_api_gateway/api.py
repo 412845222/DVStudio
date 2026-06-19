@@ -21,7 +21,7 @@ import urllib.request
 from typing import Any, Dict, Generator, Iterable, List, Optional, Set, Tuple, cast
 
 from django.conf import settings
-from django.http import HttpRequest, HttpResponseNotAllowed, JsonResponse, StreamingHttpResponse
+from django.http import HttpRequest, HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse, StreamingHttpResponse
 from django.http.response import HttpResponseBase
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
@@ -2787,23 +2787,54 @@ def blueprint_chat_stream(request: HttpRequest) -> HttpResponseBase:
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 
-    messages_raw = request.POST.get("messages") or request.POST.get("payload") or ""
     try:
-        messages = json.loads(str(messages_raw)) if messages_raw else []
+        raw = request.body.decode("utf-8") if request.body else ""
+        data_any: Any = json.loads(raw) if raw else {}
     except Exception:
-        messages = []
-
-    if not isinstance(messages, list) or not messages:
-        return HttpResponseBadRequest("invalid messages")
+        data_any = {}
+    payload = data_any if isinstance(data_any, dict) else {}
+    content = str(payload.get("content") or payload.get("message") or "").strip()
+    hist_raw = payload.get("history") or payload.get("messages") or []
+    messages = hist_raw if isinstance(hist_raw, list) else []
+    if not messages and not content:
+        return HttpResponseBadRequest("invalid messages: content or messages required")
 
     def gen() -> Generator[bytes, None, None]:
         try:
             yield _sse("msg", _agent_to_ui_task_status("started", message="蓝图对话：处理中…")).encode("utf-8")
-            from dwebapp.ai.blueprint_chat import blueprint_chat_stream_impl
-            for chunk in blueprint_chat_stream_impl(messages):
-                if isinstance(chunk, dict):
-                    yield _sse("msg", json.dumps(chunk, ensure_ascii=False)).encode("utf-8")
-            yield _sse("msg", _agent_to_ui_task_status("done", message="蓝图对话：完成")).encode("utf-8")
+            cfg = _deepseek_cfg()
+            if not cfg.get("base_url") or not cfg.get("api_key") or not cfg.get("model"):
+                yield _sse("msg", _agent_to_ui_error(
+                    "missing_config",
+                    "DeepSeek API Key missing. Please save it in Settings.",
+                    details={"need": ["deepseekApiKey"]},
+                )).encode("utf-8")
+                yield _sse("done", "{}").encode("utf-8")
+                return
+
+            msgs: List[Dict[str, str]] = [
+                {"role": "system", "content": "你是 Dweb Video Studio 的蓝图工作流助手。请用简洁中文回答。"}
+            ]
+            for it in messages[-30:]:
+                if not isinstance(it, dict):
+                    continue
+                role = str(it.get("role", ""))
+                msg = str(it.get("content", "")).strip()
+                if role in ("user", "assistant", "system") and msg:
+                    msgs.append({"role": role, "content": msg})
+            if content:
+                msgs.append({"role": "user", "content": content})
+
+            yield _sse("msg", _agent_to_ui_task_status("streaming", message="生成中…")).encode("utf-8")
+            for delta in _openai_stream_chat(
+                base_url=str(cfg["base_url"]),
+                api_key=str(cfg["api_key"]),
+                model=str(cfg["model"]),
+                messages=msgs,
+            ):
+                if isinstance(delta, str) and delta:
+                    yield _sse("msg", _agent_to_ui_text(delta, source_model=str(cfg["model"]))).encode("utf-8")
+            yield _sse("msg", _agent_to_ui_task_status("done", message="完成")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
         except Exception as e:
             yield _sse("msg", _agent_to_ui_error("blueprint_chat_error", str(e) or "unknown error")).encode("utf-8")
