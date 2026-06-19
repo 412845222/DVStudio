@@ -65,9 +65,7 @@ const resolveDwebProjectAssetUrl = (raw: string): string => {
 		w?.__DWEB_RUNTIME__?.platform === 'electron' || typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
 	if (isElectronRuntime) return text
 
-	const base = getBackendBaseUrl()
-	if (!base) return text
-	return `${base}/api/workflow/projects/assets/file?projectId=${encodeURIComponent(String(Math.floor(pid)))}&path=${encodeURIComponent(relPath)}`
+	return `/api/workflow/projects/assets/file?projectId=${encodeURIComponent(String(Math.floor(pid)))}&path=${encodeURIComponent(relPath)}`
 }
 
 export const resolveBackendUrl = (pathOrUrl: string): string => {
@@ -82,6 +80,17 @@ export const resolveBackendUrl = (pathOrUrl: string): string => {
 	if (SUSPICIOUS_RELATIVE_INPUT_RE.test(raw)) return ''
 
 	const base = getBackendBaseUrl()
+
+	// Web / 浏览器环境下，优先走 Vite 开发代理(或生产部署的同源 API)，
+	// 直接使用相对路径，避免跨域或 IP 可达性问题。
+	const w = window as any
+	const isElectronRuntime =
+		w?.__DWEB_RUNTIME__?.platform === 'electron' ||
+		typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
+	if (!isElectronRuntime) {
+		return raw.startsWith('/') ? raw : `/${raw}`
+	}
+
 	if (!base) return raw
 
 	if (raw.startsWith('/')) return `${base}${raw}`
