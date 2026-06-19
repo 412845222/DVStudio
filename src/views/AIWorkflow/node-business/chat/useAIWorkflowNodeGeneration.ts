@@ -41,6 +41,76 @@ const appendResult = (deps: NodeGenerationApiDeps, taskId: string, result: Workf
   deps.store.commit('appendNodeGenerationResult', { taskId, result })
 }
 
+/**
+ * Collect reference images from the input anchors of a node.
+ *
+ * Walks the incoming edges of the node. For each edge whose source node
+ * carries an image / video resource (identified via `resourceId`),
+ * fetches the media as a Blob so it can be uploaded to the backend API.
+ *
+ * The resolved url is also run through `deps.resolveBackendUrl` to ensure
+ * any relative / project-internal URLs are resolved correctly.
+ */
+const collectReferenceImages = async (
+  deps: NodeGenerationApiDeps,
+  nodeId: string,
+  maxRefs: number = 4,
+): Promise<Array<{ name: string; blob: Blob }>> => {
+  const state = deps.store.state as {
+    nodesById: Record<string, any>
+    edgesById: Record<string, any>
+    edgeOrder: string[]
+    resourcesById: Record<string, any>
+  }
+  const node = state.nodesById[nodeId]
+  if (!node) return []
+
+  // Find all incoming edges to this node.
+  const incoming: Array<any> = []
+  for (const edgeId of state.edgeOrder) {
+    const edge = state.edgesById[edgeId]
+    if (!edge) continue
+    if (String(edge.toNodeId ?? '') === String(nodeId)) incoming.push(edge)
+  }
+
+  const refs: Array<{ name: string; blob: Blob }> = []
+  for (const edge of incoming) {
+    if (refs.length >= maxRefs) break
+    const sourceNode = state.nodesById[edge.fromNodeId]
+    if (!sourceNode) continue
+
+    // Prefer an explicit resource on the source node.
+    const resourceRid = String(sourceNode.resourceId ?? '').trim()
+    let candidateUrl: string = ''
+    if (resourceRid) {
+      const res = state.resourcesById[resourceRid]
+      candidateUrl = typeof res?.url === 'string' ? String(res.url) : ''
+    }
+    if (!candidateUrl) {
+      // Fallback: try the "last generated" image url if available for image nodes.
+      const imageSettings = sourceNode.imageSettings ?? {}
+      const lastGenerated = typeof imageSettings?.lastGeneratedImageUrl === 'string'
+        ? String(imageSettings.lastGeneratedImageUrl)
+        : ''
+      candidateUrl = lastGenerated
+    }
+    if (!candidateUrl) continue
+
+    const resolved = deps.resolveBackendUrl(candidateUrl)
+    try {
+      const resp = await fetch(resolved)
+      if (!resp.ok) continue
+      const blob = await resp.blob()
+      if (!blob || blob.size === 0) continue
+      const name = `ref-${sourceNode.type || 'image'}-${edge.fromNodeId}-${Date.now()}.png`
+      refs.push({ name, blob })
+    } catch {
+      continue
+    }
+  }
+  return refs
+}
+
 const normalizeImageModel = (params: Record<string, any>) => {
   const rawModel = String(params?.imageModel ?? params?.model ?? '').trim()
   if (rawModel.startsWith('jimeng')) return { kind: 'jimeng', model: rawModel }
@@ -216,6 +286,12 @@ const runImageTask = async (
   const quantity = Number(params.quantity ?? 1)
   if (Number.isFinite(quantity) && quantity > 0) form.set('quantity', String(Math.min(8, Math.max(1, Math.floor(quantity)))))
 
+  // Collect connected reference images (anchor-based input) for seedream image-to-image.
+  if (kind === 'seedream') {
+    const refs = await collectReferenceImages(deps, payload.nodeId, 4)
+    for (const ref of refs) form.append('refImages', ref.blob, ref.name)
+  }
+
   const stream = kind === 'jimeng'
     ? (svc as any).jimengImageGenerateStream(form)
     : kind === 'nanobanana'
@@ -288,6 +364,22 @@ const runVideoTask = async (
   if (typeof params.seed === 'number' && Number.isFinite(params.seed)) form.set('seed', String(params.seed))
   form.set('generateAudio', params.generateAudio ? '1' : '0')
   form.set('watermark', params.watermark ? '1' : '0')
+
+  // Collect connected reference images from input anchors for seedance i2v/r2v.
+  if (kind === 'seedance') {
+    const refs = await collectReferenceImages(deps, payload.nodeId, 4)
+    for (const ref of refs) form.append('refImages', ref.blob, ref.name)
+    // Map the panel's "video mode" to the backend refMode semantics:
+    //   image_to_video → first (use single anchor image as first frame)
+    //   first-last     → first-last
+    //   reference      → reference (multi-reference, e.g. consistent character)
+    //   text_to_video / auto → auto
+    const rawMode = typeof params.mode === 'string' ? params.mode : ''
+    if (rawMode === 'image_to_video') form.set('refMode', 'first')
+    else if (rawMode === 'first-last') form.set('refMode', 'first-last')
+    else if (rawMode === 'reference') form.set('refMode', 'reference')
+    else form.set('refMode', 'auto')
+  }
 
   const stream = kind === 'jimeng' ? (svc as any).jimengVideoGenerateStream(form) : (svc as any).seedanceGenerateStream(form)
 
