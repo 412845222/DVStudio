@@ -40,6 +40,8 @@
     "dev:vite:5173": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "dev:web": "cross-env VITE_PLATFORM=web VITE_BACKEND_BASE_URL=http://127.0.0.1:5800 DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
     "dev:web:empty": "cross-env VITE_PLATFORM=web DWEB_SIMULATE_EMPTY_ENV=1 VITE_BACKEND_BASE_URL=http://127.0.0.1:5800 DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:web:all": "concurrently -k -n vite,django -c blue,yellow \"npm run dev:web\" \"npm run dev:django\"",
+    "dev:web:all:py3": "concurrently -k -n vite,django -c blue,yellow \"npm run dev:web\" \"python3 django-app/manage.py runserver 5800\"",
     "dev:django": "python django-app/manage.py runserver 5800",
     "dev:backend:mac": "if [ -x ../../.venv/bin/python ]; then ../../.venv/bin/python django-app/manage.py runserver 5800; elif [ -x ../.venv/bin/python ]; then ../.venv/bin/python django-app/manage.py runserver 5800; else python django-app/manage.py runserver 5800; fi",
     "setup:django:mac": "if [ -x ../../.venv/bin/python ]; then ../../.venv/bin/python django-app/manage.py migrate; elif [ -x ../.venv/bin/python ]; then ../.venv/bin/python django-app/manage.py migrate; else python django-app/manage.py migrate; fi",
