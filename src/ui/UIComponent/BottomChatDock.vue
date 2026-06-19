@@ -483,7 +483,7 @@ export type NanoBananaConfig = {
     | "gemini-2.5-flash-image"
     | "gemini-3.1-flash-image-preview"
     | "gemini-3-pro-image-preview"
-    | "doubao-seedream-3-0-t2i-250415"
+    | "doubao-seedream-4-5-251128"
     | "doubao-seedream-4-0-250828"
     | "doubao-seedream-5-0-260128"
     | "jimeng-image-3.0"
@@ -805,7 +805,7 @@ const applyModelSelection = (modelId: string) => {
       id === "gemini-2.5-flash-image" ||
       id === "gemini-3.1-flash-image-preview" ||
       id === "gemini-3-pro-image-preview" ||
-      id === "doubao-seedream-3-0-t2i-250415" ||
+      id === "doubao-seedream-4-5-251128" ||
       id === "doubao-seedream-4-0-250828" ||
       id === "doubao-seedream-5-0-260128" ||
       id === "jimeng-image-3.0" ||
@@ -914,7 +914,7 @@ const nanoInterfaceLabel = computed(() => {
   if (model === "gemini-3-pro-image-preview") return "NanoBanana Pro";
   if (model === "gemini-3.1-flash-image-preview") return "NanoBanana 2";
   if (model === "gemini-2.5-flash-image") return "NanoBanana";
-  if (model === "doubao-seedream-3-0-t2i-250415") return "Seedream 3.0";
+  if (model === "doubao-seedream-4-5-251128") return "Seedream 4.5";
   if (model === "doubao-seedream-4-0-250828") return "Seedream 4.0";
   if (model === "jimeng-image-3.0") return "即梦 图片 3.0";
   if (model === "jimeng-image-4.0") return "即梦 图片 4.0";
@@ -932,7 +932,7 @@ const nanoModelTag = computed(() => {
   if (model === "gemini-3-pro-image-preview") return "NanoBanana Pro";
   if (model === "gemini-3.1-flash-image-preview") return "NanoBanana 2";
   if (model === "gemini-2.5-flash-image") return "NanoBanana";
-  if (model === "doubao-seedream-3-0-t2i-250415") return "Seedream 3.0";
+  if (model === "doubao-seedream-4-5-251128") return "Seedream 4.5";
   if (model === "doubao-seedream-4-0-250828") return "Seedream 4.0";
   if (model === "doubao-seedream-5-0-260128") return "Seedream 5.0";
   if (model === "jimeng-image-3.0") return "即梦 图片 3.0";
@@ -1183,15 +1183,15 @@ const emitGenerate = () => {
       ? "gemini-3.1-flash-image-preview"
       : selected === "gemini-3-pro-image-preview"
       ? "gemini-3-pro-image-preview"
-      : selected === "doubao-seedream-3-0-t2i-250415"
-      ? "doubao-seedream-3-0-t2i-250415"
+      : selected === "doubao-seedream-4-5-251128"
+      ? "doubao-seedream-4-5-251128"
       : selected === "doubao-seedream-4-0-250828"
       ? "doubao-seedream-4-0-250828"
       : selected === "jimeng-image-3.0"
       ? "jimeng-image-3.0"
       : selected === "jimeng-image-4.0"
       ? "jimeng-image-4.0"
-      : "doubao-seedream-3-0-t2i-250415";
+      : "doubao-seedream-4-5-251128";
   const usePro = imageModel === "gemini-3-pro-image-preview";
   const quantity = normalizedNanoQuantity.value as 1 | 2 | 3 | 4;
   emit("nanobanana-generate", {

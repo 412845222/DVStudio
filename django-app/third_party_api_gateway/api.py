@@ -41,7 +41,7 @@ from dwebapp.ai.api.chat.utils import (
     _openai_stream_chat,
     _sse,
 )
-from dwebapp.ai.credentials_store import get_meshy_api_key
+from dwebapp.ai.credentials_store import get_bytedance_text_cfg, get_meshy_api_key
 
 try:
     from comfyui_bridge.api import (
@@ -2833,15 +2833,30 @@ def blueprint_chat_stream(request: HttpRequest) -> HttpResponseBase:
     if not messages and not content:
         return HttpResponseBadRequest("invalid messages: content or messages required")
 
+    provider = str(payload.get("provider") or "bytedance").lower().strip()
+    model_id_override = str(payload.get("modelId") or payload.get("model_id") or "").strip()
+
     def gen() -> Generator[bytes, None, None]:
         try:
             yield _sse("msg", _agent_to_ui_task_status("started", message="蓝图对话：处理中…")).encode("utf-8")
-            cfg = _deepseek_cfg()
-            if not cfg.get("base_url") or not cfg.get("api_key") or not cfg.get("model"):
+
+            if provider == "deepseek":
+                cfg = _deepseek_cfg()
+                missing_key_msg = "DeepSeek API Key missing. Please save it in Settings."
+            else:
+                cfg = get_bytedance_text_cfg()
+                missing_key_msg = "字节方舟 API Key 缺失。请在设置页保存。"
+
+            # Apply model override if provided
+            effective_model = model_id_override if model_id_override else str(cfg.get("model") or "")
+            if not effective_model:
+                effective_model = "doubao-seed-2-0-pro-260215"
+
+            if not cfg.get("base_url") or not cfg.get("api_key"):
                 yield _sse("msg", _agent_to_ui_error(
                     "missing_config",
-                    "DeepSeek API Key missing. Please save it in Settings.",
-                    details={"need": ["deepseekApiKey"]},
+                    missing_key_msg,
+                    details={"need": ["bytedanceApiKey" if provider != "deepseek" else "deepseekApiKey"]},
                 )).encode("utf-8")
                 yield _sse("done", "{}").encode("utf-8")
                 return
@@ -2863,11 +2878,11 @@ def blueprint_chat_stream(request: HttpRequest) -> HttpResponseBase:
             for delta in _openai_stream_chat(
                 base_url=str(cfg["base_url"]),
                 api_key=str(cfg["api_key"]),
-                model=str(cfg["model"]),
+                model=effective_model,
                 messages=msgs,
             ):
                 if isinstance(delta, str) and delta:
-                    yield _sse("msg", _agent_to_ui_text(delta, source_model=str(cfg["model"]))).encode("utf-8")
+                    yield _sse("msg", _agent_to_ui_text(delta, source_model=effective_model)).encode("utf-8")
             yield _sse("msg", _agent_to_ui_task_status("done", message="完成")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
         except Exception as e:
