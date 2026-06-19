@@ -24,27 +24,52 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:5800',
         changeOrigin: true,
-        // 字节方舟的视频/图片生成任务需要长时间保持连接（30-60 秒），
-        // 显式关闭代理超时，禁止 http-proxy 主动断开发起端连接。
-        timeout: 600000,
-        proxyTimeout: 600000,
-        // text/event-stream 是流式响应，不要缓冲，直接透传。
+        // 字节方舟 Seedance 视频生成任务通常需要 30~600 秒，
+        // 完全禁用代理层超时，让后端 SSE 流保持长连接。
+        timeout: 0,
+        proxyTimeout: 0,
+        // 手动处理响应以确保 SSE / 流式数据零缓冲透传。
+        selfHandleResponse: true,
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req, res) => {
-            // 让后端知道连接来自代理长轮询。
             proxyReq.setHeader('Connection', 'keep-alive')
-            // 流式响应的 Content-Type 由后端决定（text/event-stream），
-            // 不要让中间层做 chunked 以外的缓冲。
+            // text/event-stream 必须禁用中间层缓冲
             res.setHeader('X-Accel-Buffering', 'no')
             res.setHeader('Cache-Control', 'no-cache, no-transform')
           })
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            // 手动 pipe：零缓冲透传流式响应（SSE / 视频 / 图片）。
+            // 这样 http-proxy 不会干预连接生命周期，避免主动断开。
+            const statusCode = proxyRes.statusCode || 200
+            const headers = proxyRes.headers || {}
+            // 复制响应头（保证 Transfer-Encoding / Content-Type 正确）
+            for (const [key, value] of Object.entries(headers)) {
+              if (Array.isArray(value)) {
+                for (const v of value) res.setHeader(key, v as string)
+              } else if (value != null) {
+                res.setHeader(key, value as string)
+              }
+            }
+            // 若后端没有写 Connection 头，显式写 keep-alive
+            if (!res.getHeader('Connection')) {
+              res.setHeader('Connection', 'keep-alive')
+            }
+            if (!res.getHeader('X-Accel-Buffering')) {
+              res.setHeader('X-Accel-Buffering', 'no')
+            }
+            res.writeHead(statusCode)
+            proxyRes.pipe(res)
+          })
           proxy.on('error', (err, req, res) => {
             try {
-              if (!res.headersSent) {
-                res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
+              const msg = err?.message || String(err || 'unknown')
+              if (!(res as any).writableEnded && !(res as any).finished) {
+                if (!res.headersSent) {
+                  res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
+                }
+                res.write(`Proxy error: ${msg}`)
+                res.end()
               }
-              res.write(`Proxy error: ${err?.message || err || 'unknown'}`)
-              res.end()
             } catch {}
           })
         },
@@ -52,8 +77,8 @@ export default defineConfig({
       '/media': {
         target: 'http://127.0.0.1:5800',
         changeOrigin: true,
-        timeout: 600000,
-        proxyTimeout: 600000,
+        timeout: 0,
+        proxyTimeout: 0,
       },
     },
   },

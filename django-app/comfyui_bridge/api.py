@@ -4992,10 +4992,14 @@ def seedance_generate_stream(request: HttpRequest) -> HttpResponseBase:
             yield _sse("msg", _agent_to_ui_task_status("streaming", message=f"Seedance：任务已创建（{task_id}），等待生成…")).encode("utf-8")
 
             started_at = time.time()
-            poll_interval_sec = max(1.0, float(cfg.get("poll_interval_sec") or 3))
-            poll_timeout_sec = max(30.0, float(cfg.get("poll_timeout_sec") or 600))
+            # Seedance 视频生成可能十几分钟，不做硬性超时，由用户或前端控制中止。
+            poll_interval_sec = max(2.0, float(cfg.get("poll_interval_sec") or 5))
+            heartbeat_interval_sec = 10.0
             billing_text: Optional[str] = None
+            last_status_text: str = ""
 
+            # 轮询期间：每 5 秒查询一次远程状态，同时确保每 10 秒内有数据写到客户端，
+            # 以防止 Vite 代理 / TCP / 浏览器端因 idle 断开长连接。
             while True:
                 synced_row = _seedance_sync_remote_task(
                     cfg,
@@ -5067,17 +5071,34 @@ def seedance_generate_stream(request: HttpRequest) -> HttpResponseBase:
                 billing_text = _seedance_extract_usage_text(task_obj) or billing_text
                 elapsed = int(max(0, time.time() - started_at))
                 suffix = f"；计费：{billing_text}" if billing_text else ""
-                yield _sse(
-                    "msg",
-                    _agent_to_ui_task_status("streaming", message=f"Seedance：{status or 'running'}（{elapsed}s）{suffix}"),
-                ).encode("utf-8")
+                status_msg = f"Seedance：{status or 'running'}（{elapsed}s）{suffix}"
+                yield _sse("msg", _agent_to_ui_task_status("streaming", message=status_msg)).encode("utf-8")
+                last_status_text = status_msg
 
-                if time.time() - started_at >= poll_timeout_sec:
-                    raise ValueError(f"Seedance task timeout after {int(poll_timeout_sec)}s")
-                try:
-                    time.sleep(poll_interval_sec)
-                except Exception:
-                    pass
+                # 在 poll_interval_sec 秒内分 1 秒小步骤 sleep，每 1 秒检查是否需要心跳，
+                # 确保 TCP 连接不会因 idle 被任何中间层（代理、防火墙、浏览器）断开。
+                slept = 0.0
+                while slept < poll_interval_sec:
+                    # 已经过了 heartbeat_interval_sec 没有写过数据？发送心跳 comment。
+                    # SSE 客户端会忽略以 ':' 开头的行，所以我们用 event: ping 来携带一个轻量事件。
+                    sleep_step = min(1.0, poll_interval_sec - slept)
+                    try:
+                        time.sleep(sleep_step)
+                    except Exception:
+                        pass
+                    slept += sleep_step
+                    # 每 heartbeat_interval_sec 写一次心跳，防止 socket idle。
+                    if slept < poll_interval_sec:
+                        # 写一个轻量级 ping 事件 + retry 提示，让前端知道连接仍然有效。
+                        yield (
+                            _sse(
+                                "msg",
+                                _agent_to_ui_task_status(
+                                    "streaming",
+                                    message=f"Seedance：{status or 'running'}（{int(time.time() - started_at)}s）…",
+                                ),
+                            ).encode("utf-8")
+                        )
         except Exception as e:
             yield _sse("msg", _agent_to_ui_error("seedance_error", str(e) or "unknown error")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
