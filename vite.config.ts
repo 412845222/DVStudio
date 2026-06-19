@@ -36,19 +36,39 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:5800',
         changeOrigin: true,
+        ws: false,
         // Seedance 视频生成可能需要十几分钟，
         // 完全禁用代理层超时，让 SSE 流保持长连接。
         timeout: 0,
         proxyTimeout: 0,
-        // SSE / 流式响应配置：设置 Connection: keep-alive，
-        // 告知 Django 和浏览器端不要关闭连接。
-        configure: (proxy) => {
+        followRedirects: true,
+        configure: (proxy, _options) => {
+          // proxyReq：在代理请求发送到 Django 前调用。
+          // 在这里只能修改请求头，不能修改客户端响应头。
           proxy.on('proxyReq', (proxyReq, req, res) => {
             // 确保 HTTP 长连接不断开。
             proxyReq.setHeader('Connection', 'keep-alive')
-            // 告诉上游（Django）和中间层不要缓冲 SSE 响应。
-            res.setHeader('X-Accel-Buffering', 'no')
-            res.setHeader('Cache-Control', 'no-cache, no-transform')
+            // 告诉上游 Django 不要压缩 / 缓冲 SSE 响应。
+            proxyReq.setHeader('X-Accel-Buffering', 'no')
+            proxyReq.setHeader('Accept-Encoding', 'identity')
+          })
+          // proxyRes：在收到 Django 响应后调用。
+          // 这是正确设置客户端响应头的位置，确保 SSE 流到达浏览器时带有正确的头部。
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            // 仅设置响应头，让 http-proxy 默认的管道机制自动传递 SSE 数据流。
+            if (!res.headersSent) {
+              // 如果上游已经设置了 content-type，保留它；
+              // 否则标注为 text/event-stream。
+              const existingCT = proxyRes.headers['content-type']
+              if (existingCT) {
+                res.setHeader('Content-Type', existingCT)
+              } else {
+                res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+              }
+              res.setHeader('Cache-Control', 'no-cache, no-transform')
+              res.setHeader('X-Accel-Buffering', 'no')
+              res.setHeader('Connection', 'keep-alive')
+            }
           })
           proxy.on('error', (err, req, res) => {
             try {
