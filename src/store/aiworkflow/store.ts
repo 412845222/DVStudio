@@ -25,6 +25,7 @@ import type {
 	WorkflowNodeChatType,
 	WorkflowNodeChatParams,
 	WorkflowNodeChatSubmitPayload,
+	WorkflowNodeGenerationTask,
 } from '../../aiworkflow/types'
 import type { WorkflowResource, ResourceKind } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
@@ -100,6 +101,8 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 			submitting: false,
 			params: {},
 		},
+		nodeGenerationTasksById: {},
+		nodeGenerationTaskIdsByNodeId: {},
 	}
 }
 
@@ -2398,6 +2401,32 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		setNodeChatSubmitting(state, payload: { submitting: boolean }) {
 			state.nodeChatDialog.submitting = payload.submitting
 		},
+		registerNodeGenerationTask(state, payload: { task: WorkflowNodeGenerationTask }) {
+			const task = payload.task
+			if (!task?.id || !task.nodeId) return
+			state.nodeGenerationTasksById[task.id] = task
+			const list = state.nodeGenerationTaskIdsByNodeId[task.nodeId] || []
+			if (!list.includes(task.id)) {
+				state.nodeGenerationTaskIdsByNodeId[task.nodeId] = [task.id, ...list]
+			}
+		},
+		patchNodeGenerationTask(state, payload: { taskId: string; patch: Partial<WorkflowNodeGenerationTask> }) {
+			const task = state.nodeGenerationTasksById[payload.taskId]
+			if (!task) return
+			Object.assign(task, payload.patch)
+		},
+		appendNodeGenerationDetail(state, payload: { taskId: string; line: string }) {
+			const task = state.nodeGenerationTasksById[payload.taskId]
+			if (!task) return
+			const line = String(payload.line ?? '').trim()
+			if (!line) return
+			task.detailLines = [...task.detailLines, line].slice(-120)
+		},
+		appendNodeGenerationResult(state, payload: { taskId: string; result: WorkflowNodeGenerationTask['results'][number] }) {
+			const task = state.nodeGenerationTasksById[payload.taskId]
+			if (!task) return
+			task.results = [...task.results, payload.result]
+		},
 	},
 	actions: {
 		setChatDraft({ commit }, payload: { text: string }) {
@@ -2452,13 +2481,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		setNodeChatParams({ commit }, payload: { params: Record<string, any> }) {
 			commit('setNodeChatParams', payload)
 		},
-		submitNodeChat({ commit, state }, payload: WorkflowNodeChatSubmitPayload) {
+		submitNodeChat({ commit }, payload: WorkflowNodeChatSubmitPayload) {
 			commit('setNodeChatSubmitting', { submitting: true })
+			// The actual API wiring lives in the page-level handler (see AIWorkflowPage.vue)
+			// so the store stays free of DOM / runtime-specific dependencies. The page will
+			// call runNodeGenerationTask (useAIWorkflowNodeGeneration.ts) after this commit
+			// and eventually release the submitting flag on completion.
 			console.log('[AIWorkflow] submitNodeChat:', payload)
-			setTimeout(() => {
-				commit('setNodeChatSubmitting', { submitting: false })
-				commit('closeNodeChatDialog')
-			}, 1500)
+		},
+		async submitNodeChatWithDeps(_, args: { deps: Record<string, any>; payload: WorkflowNodeChatSubmitPayload }) {
+			const mod = await import('../../views/AIWorkflow/node-business/chat/useAIWorkflowNodeGeneration')
+			await mod.runNodeGenerationTask(args.deps as any, args.payload)
 		},
 	},
 })

@@ -21,7 +21,7 @@ import urllib.request
 from typing import Any, Dict, Generator, Iterable, List, Optional, Set, Tuple, cast
 
 from django.conf import settings
-from django.http import HttpRequest, HttpResponseNotAllowed, JsonResponse, StreamingHttpResponse
+from django.http import HttpRequest, HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse, StreamingHttpResponse
 from django.http.response import HttpResponseBase
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
@@ -41,7 +41,50 @@ from dwebapp.ai.api.chat.utils import (
     _openai_stream_chat,
     _sse,
 )
-from dwebapp.ai.credentials_store import get_meshy_api_key
+from dwebapp.ai.credentials_store import get_bytedance_text_cfg, get_meshy_api_key
+
+try:
+    from comfyui_bridge.api import (
+        _seedance_cfg,
+        _seedance_headers,
+        _seedance_coerce_int,
+        _seedance_truthy,
+        _seedance_pick_task_type,
+        _seedance_build_content,
+        _seedance_upsert_task_mirror,
+        _seedance_sync_remote_task,
+        _seedance_get_task,
+        _seedance_extract_content_urls,
+        _seedance_extract_usage_text,
+        _seedance_reconcile_local_media,
+        _seedance_model_supports_service_tier,
+        _seedance_data_url_from_image,
+        _seedance_save_media_from_url,
+        _jimeng_cfg,
+        _jimeng_hmac_sha256,
+        _jimeng_sha256_hex,
+        _jimeng_signing_key,
+        _jimeng_signed_post,
+        _jimeng_extract_task_id,
+        _jimeng_extract_status,
+        _jimeng_extract_result_urls,
+        _jimeng_req_key_from_model,
+        _jimeng_normalize_resolution,
+        _jimeng_normalize_ref_mode,
+        _jimeng_normalize_aspect_ratio,
+    )
+except Exception:
+    pass
+
+
+def _jimeng_with_key(url: str, api_key: str) -> str:
+    if not url:
+        return url
+    key = str(api_key or "").strip()
+    if not key:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}api_key={urllib.parse.quote(key)}"
 
 
 _seedance_download_lock = threading.Lock()
@@ -1303,6 +1346,22 @@ def _seedream_download_and_save(url: str) -> str:
     return media_url + str((rel_dir / filename).as_posix())
 
 
+def _seedream_ensure_doubao_prefix(model: str) -> str:
+    """Ensure the model ID starts with 'doubao-' for the Volcengine Ark API.
+
+    The Volcengine / 火山引擎 Ark image generation API only accepts model IDs
+    with the 'doubao-' vendor prefix (e.g. 'doubao-seedream-5-0-260128').
+    This normalises all input to the expected format regardless of whether the
+    caller has already been prefixed.
+    """
+    m = str(model or "").strip()
+    if not m:
+        return m
+    if m.lower().startswith("doubao-"):
+        return m
+    return f"doubao-{m}"
+
+
 def _seedream_cfg() -> Dict[str, str]:
     def _env_or_default(name: str, fallback: str) -> str:
         v = os.environ.get(name)
@@ -1315,7 +1374,8 @@ def _seedream_cfg() -> Dict[str, str]:
     except Exception:
         api_key = ""
 
-    model = _env_or_default("SEEDREAM_MODEL", "doubao-seedream-5-0").strip() or "doubao-seedream-5-0"
+    raw_model = _env_or_default("SEEDREAM_MODEL", "doubao-seedream-5-0-260128").strip() or "doubao-seedream-5-0-260128"
+    model = _seedream_ensure_doubao_prefix(raw_model)
     api_base = _env_or_default("SEEDREAM_API_BASE", "https://ark.cn-beijing.volces.com/api/v3").strip() or "https://ark.cn-beijing.volces.com/api/v3"
     timeout_sec = _env_or_default("SEEDREAM_TIMEOUT_SEC", "120").strip() or "120"
 
@@ -1332,27 +1392,87 @@ def _seedream_cfg_with_model(cfg: Dict[str, str], model: str) -> Dict[str, str]:
         return cfg
     api_base = str(cfg.get("api_base") or "https://ark.cn-beijing.volces.com/api/v3").strip() or "https://ark.cn-beijing.volces.com/api/v3"
     next_cfg = dict(cfg)
-    next_cfg["model"] = m
+    next_cfg["model"] = _seedream_ensure_doubao_prefix(m)
     next_cfg["generate_url"] = api_base.rstrip("/") + "/images/generations"
     return next_cfg
 
 
+_SEEDREAM_ALLOWED_ASPECT_RATIOS = {
+    (1, 1),
+    (2, 3),
+    (3, 2),
+    (3, 4),
+    (4, 3),
+    (4, 5),
+    (5, 4),
+    (9, 16),
+    (16, 9),
+    (21, 9),
+}
+
+
+def _seedream_coerce_aspect_ratio(raw: Any) -> Optional[str]:
+    v = str(raw or "").strip()
+    if not v:
+        return None
+    allowed = {f"{w}:{h}" for (w, h) in _SEEDREAM_ALLOWED_ASPECT_RATIOS}
+    return v if v in allowed else None
+
+
+def _seedream_with_key(url: str, api_key: str) -> str:
+    if not url:
+        return url
+    if "?" in url:
+        sep = "&"
+    else:
+        sep = "?"
+    key = str(api_key or "").strip()
+    if not key:
+        return url
+    return f"{url}{sep}api_key={urllib.parse.quote(key)}"
+
+
+def _seedream_headers(cfg: Dict[str, str]) -> Dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    api_key = str(cfg.get("api_key") or "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}" if not api_key.lower().startswith("bearer ") else api_key
+    return headers
+
+
 def _seedream_size_from_aspect_ratio(model: str, aspect_ratio: Optional[str]) -> str:
+    """Return a Volcengine-compatible `size` value.
+
+    The upstream API only accepts `WIDTHxHEIGHT` or the presets `2K/3K/4K` for
+    `size`.  Aspect ratios therefore must be translated to exact pixel
+    dimensions that fall within each model's supported resolution band.
+    """
     ar = str(aspect_ratio or "").strip()
     if not ar:
-        return "1024x1024"
+        return "2K"
     model_text = str(model or "").strip().lower()
     if "seedream-5-0" in model_text:
-        table = {"1:1": "1024x1024", "2:3": "832x1280", "3:2": "1280x832", "3:4": "896x1152", "4:3": "1152x896", "4:5": "960x1184", "5:4": "1184x960", "9:16": "800x1408", "16:9": "1408x800", "21:9": "1600x688"}
-        return table.get(ar, "1024x1024")
-    table_v3 = {"1:1": "1024x1024", "2:3": "832x1216", "3:2": "1216x832", "3:4": "896x1152", "4:3": "1152x896", "4:5": "896x1152", "5:4": "1152x896", "9:16": "832x1472", "16:9": "1472x832", "21:9": "1536x640"}
-    return table_v3.get(ar, "1024x1024")
+        table = {"1:1": "2048x2048", "2:3": "1344x2048", "3:2": "2048x1344", "3:4": "1536x2048", "4:3": "2048x1536", "4:5": "1664x2048", "5:4": "2048x1664", "9:16": "1152x2048", "16:9": "2848x1600", "21:9": "3136x1344"}
+        return table.get(ar, "2K")
+    # Seedream 4.x / 3.x: use 1K / 2K pixel resolutions that are officially supported
+    if "seedream-4" in model_text:
+        table = {"1:1": "2048x2048", "2:3": "1344x2048", "3:2": "2048x1344", "3:4": "1536x2048", "4:3": "2048x1536", "4:5": "1664x2048", "5:4": "2048x1664", "9:16": "1152x2048", "16:9": "2848x1600", "21:9": "3136x1344"}
+        return table.get(ar, "2K")
+    table = {"1:1": "1024x1024", "2:3": "832x1216", "3:2": "1216x832", "3:4": "896x1152", "4:3": "1152x896", "4:5": "896x1152", "5:4": "1152x896", "9:16": "832x1472", "16:9": "1472x832", "21:9": "1512x640"}
+    return table.get(ar, "2K")
 
 
 def _seedream_build_payload(*, prompt: str, model: str, aspect_ratio: Optional[str], ref_images: Optional[List[Tuple[str, bytes, str]]]) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {"model": str(model or "").strip(), "prompt": str(prompt or ""), "size": _seedream_size_from_aspect_ratio(model, aspect_ratio), "response_format": "url", "watermark": False}
+    normalized_model = _seedream_ensure_doubao_prefix(str(model or "").strip())
+    payload: Dict[str, Any] = {
+        "model": normalized_model,
+        "prompt": str(prompt or ""),
+        "size": _seedream_size_from_aspect_ratio(normalized_model, aspect_ratio),
+        "response_format": "url",
+        "watermark": False,
+    }
 
-    model_text = str(model or "").strip().lower()
+    model_text = normalized_model.lower()
     if "seedream-5-0" in model_text:
         payload["output_format"] = "png"
 
@@ -1874,11 +1994,9 @@ def nanobanana_generate_stream(request: HttpRequest) -> HttpResponseBase:
                 model = str(cfg.get("model") or "").strip() or "seedream-3-0"
                 payload = _seedream_build_payload(prompt=prompt, model=model, aspect_ratio=aspect_ratio, ref_images=ref_images)
                 url = str(cfg.get("generate_url") or "").strip()
-                api_key = str(cfg.get("api_key") or "").strip()
-                url = _seedream_with_key(url, api_key)
                 timeout = float(cfg.get("timeout_sec") or 120)
                 body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-                raw, err = _request_raw("POST", url, data=body, headers={"Content-Type": "application/json"}, timeout_sec=timeout)
+                raw, err = _request_raw("POST", url, data=body, headers=_seedream_headers(cfg), timeout_sec=timeout)
                 if err or raw is None:
                     raise ValueError(f"Seedream request failed: {err or 'unknown error'}")
                 try:
@@ -1969,11 +2087,9 @@ def nanobanana_generate(request: Request) -> Response:
             model = str(cfg.get("model") or "").strip() or "seedream-3-0"
             payload = _seedream_build_payload(prompt=prompt, model=model, aspect_ratio=aspect_ratio, ref_images=ref_images)
             url = str(cfg.get("generate_url") or "").strip()
-            api_key = str(cfg.get("api_key") or "").strip()
-            url = _seedream_with_key(url, api_key)
             timeout = float(cfg.get("timeout_sec") or 120)
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            raw, err = _request_raw("POST", url, data=body, headers={"Content-Type": "application/json"}, timeout_sec=timeout)
+            raw, err = _request_raw("POST", url, data=body, headers=_seedream_headers(cfg), timeout_sec=timeout)
             if err or raw is None:
                 return Response({"error": f"Seedream request failed: {err or 'unknown error'}"}, status=500)
             try:
@@ -2068,11 +2184,9 @@ def seedream_generate_stream(request: HttpRequest) -> HttpResponseBase:
             model = str(cfg.get("model") or "").strip() or "seedream-3-0"
             payload = _seedream_build_payload(prompt=prompt, model=model, aspect_ratio=aspect_ratio, ref_images=ref_images)
             url = str(cfg.get("generate_url") or "").strip()
-            api_key = str(cfg.get("api_key") or "").strip()
-            url = _seedream_with_key(url, api_key)
             timeout = float(cfg.get("timeout_sec") or 120)
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            raw, err = _request_raw("POST", url, data=body, headers={"Content-Type": "application/json"}, timeout_sec=timeout)
+            raw, err = _request_raw("POST", url, data=body, headers=_seedream_headers(cfg), timeout_sec=timeout)
             if err or raw is None:
                 raise ValueError(f"Seedream request failed: {err or 'unknown error'}")
             try:
@@ -2297,7 +2411,8 @@ def seedance_generate_stream(request: HttpRequest) -> HttpResponseBase:
             yield _sse("msg", _agent_to_ui_task_status("streaming", message=f"Seedance：任务已创建（{task_id}），等待生成…")).encode("utf-8")
 
             started_at = time.time()
-            poll_interval_sec = max(1.0, float(cfg.get("poll_interval_sec") or 3))
+            poll_interval_sec = max(2.0, float(cfg.get("poll_interval_sec") or 5))
+            heartbeat_interval_sec = 10.0
             poll_timeout_sec = max(30.0, float(cfg.get("poll_timeout_sec") or 600))
             billing_text: Optional[str] = None
 
@@ -2372,17 +2487,35 @@ def seedance_generate_stream(request: HttpRequest) -> HttpResponseBase:
                 billing_text = _seedance_extract_usage_text(task_obj) or billing_text
                 elapsed = int(max(0, time.time() - started_at))
                 suffix = f"；计费：{billing_text}" if billing_text else ""
+                status_msg = f"Seedance：{status or 'running'}（{elapsed}s）{suffix}"
                 yield _sse(
                     "msg",
-                    _agent_to_ui_task_status("streaming", message=f"Seedance：{status or 'running'}（{elapsed}s）{suffix}"),
+                    _agent_to_ui_task_status("streaming", message=status_msg),
                 ).encode("utf-8")
 
                 if time.time() - started_at >= poll_timeout_sec:
                     raise ValueError(f"Seedance task timeout after {int(poll_timeout_sec)}s")
-                try:
-                    time.sleep(poll_interval_sec)
-                except Exception:
-                    pass
+
+                # 在 poll_interval_sec 秒内分 1 秒小步骤 sleep，
+                # 分段期间写心跳事件，防止 Vite 代理 / TCP / 浏览器端因 idle 断开长连接。
+                slept = 0.0
+                while slept < poll_interval_sec:
+                    sleep_step = min(1.0, poll_interval_sec - slept)
+                    try:
+                        time.sleep(sleep_step)
+                    except Exception:
+                        pass
+                    slept += sleep_step
+                    if slept < poll_interval_sec:
+                        yield (
+                            _sse(
+                                "msg",
+                                _agent_to_ui_task_status(
+                                    "streaming",
+                                    message=f"Seedance：{status or 'running'}（{int(time.time() - started_at)}s）…",
+                                ),
+                            ).encode("utf-8")
+                        )
         except Exception as e:
             yield _sse("msg", _agent_to_ui_error("seedance_error", str(e) or "unknown error")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -2642,7 +2775,7 @@ def jimeng_video_generate_stream(request: HttpRequest) -> HttpResponseBase:
             yield _sse("msg", _agent_to_ui_task_status("streaming", message=f"即梦视频：任务已创建（{task_id}），等待生成…")).encode("utf-8")
 
             started_at = time.time()
-            poll_interval_sec = max(1.0, float(cfg.get("poll_interval_sec") or 3))
+            poll_interval_sec = max(2.0, float(cfg.get("poll_interval_sec") or 5))
             poll_timeout_sec = max(30.0, float(cfg.get("poll_timeout_sec") or 600))
 
             while True:
@@ -2689,10 +2822,26 @@ def jimeng_video_generate_stream(request: HttpRequest) -> HttpResponseBase:
 
                 if time.time() - started_at >= poll_timeout_sec:
                     raise ValueError(f"即梦视频任务超时: {int(poll_timeout_sec)}s")
-                try:
-                    time.sleep(poll_interval_sec)
-                except Exception:
-                    pass
+
+                # 分段 sleep + 心跳，防止 Vite 代理 / TCP 空闲断开。
+                slept = 0.0
+                while slept < poll_interval_sec:
+                    sleep_step = min(1.0, poll_interval_sec - slept)
+                    try:
+                        time.sleep(sleep_step)
+                    except Exception:
+                        pass
+                    slept += sleep_step
+                    if slept < poll_interval_sec:
+                        yield (
+                            _sse(
+                                "msg",
+                                _agent_to_ui_task_status(
+                                    "streaming",
+                                    message=f"即梦视频：{status or 'running'}（{int(time.time() - started_at)}s）…",
+                                ),
+                            ).encode("utf-8")
+                        )
         except Exception as e:
             yield _sse("msg", _agent_to_ui_error("jimeng_video_error", str(e) or "unknown error")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -2707,23 +2856,69 @@ def blueprint_chat_stream(request: HttpRequest) -> HttpResponseBase:
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 
-    messages_raw = request.POST.get("messages") or request.POST.get("payload") or ""
     try:
-        messages = json.loads(str(messages_raw)) if messages_raw else []
+        raw = request.body.decode("utf-8") if request.body else ""
+        data_any: Any = json.loads(raw) if raw else {}
     except Exception:
-        messages = []
+        data_any = {}
+    payload = data_any if isinstance(data_any, dict) else {}
+    content = str(payload.get("content") or payload.get("message") or "").strip()
+    hist_raw = payload.get("history") or payload.get("messages") or []
+    messages = hist_raw if isinstance(hist_raw, list) else []
+    if not messages and not content:
+        return HttpResponseBadRequest("invalid messages: content or messages required")
 
-    if not isinstance(messages, list) or not messages:
-        return HttpResponseBadRequest("invalid messages")
+    provider = str(payload.get("provider") or "bytedance").lower().strip()
+    model_id_override = str(payload.get("modelId") or payload.get("model_id") or "").strip()
 
     def gen() -> Generator[bytes, None, None]:
         try:
             yield _sse("msg", _agent_to_ui_task_status("started", message="蓝图对话：处理中…")).encode("utf-8")
-            from dwebapp.ai.blueprint_chat import blueprint_chat_stream_impl
-            for chunk in blueprint_chat_stream_impl(messages):
-                if isinstance(chunk, dict):
-                    yield _sse("msg", json.dumps(chunk, ensure_ascii=False)).encode("utf-8")
-            yield _sse("msg", _agent_to_ui_task_status("done", message="蓝图对话：完成")).encode("utf-8")
+
+            if provider == "deepseek":
+                cfg = _deepseek_cfg()
+                missing_key_msg = "DeepSeek API Key missing. Please save it in Settings."
+            else:
+                cfg = get_bytedance_text_cfg()
+                missing_key_msg = "字节方舟 API Key 缺失。请在设置页保存。"
+
+            # Apply model override if provided
+            effective_model = model_id_override if model_id_override else str(cfg.get("model") or "")
+            if not effective_model:
+                effective_model = "doubao-seed-2-0-pro-260215"
+
+            if not cfg.get("base_url") or not cfg.get("api_key"):
+                yield _sse("msg", _agent_to_ui_error(
+                    "missing_config",
+                    missing_key_msg,
+                    details={"need": ["bytedanceApiKey" if provider != "deepseek" else "deepseekApiKey"]},
+                )).encode("utf-8")
+                yield _sse("done", "{}").encode("utf-8")
+                return
+
+            msgs: List[Dict[str, str]] = [
+                {"role": "system", "content": "你是 Dweb Video Studio 的蓝图工作流助手。请用简洁中文回答。"}
+            ]
+            for it in messages[-30:]:
+                if not isinstance(it, dict):
+                    continue
+                role = str(it.get("role", ""))
+                msg = str(it.get("content", "")).strip()
+                if role in ("user", "assistant", "system") and msg:
+                    msgs.append({"role": role, "content": msg})
+            if content:
+                msgs.append({"role": "user", "content": content})
+
+            yield _sse("msg", _agent_to_ui_task_status("streaming", message="生成中…")).encode("utf-8")
+            for delta in _openai_stream_chat(
+                base_url=str(cfg["base_url"]),
+                api_key=str(cfg["api_key"]),
+                model=effective_model,
+                messages=msgs,
+            ):
+                if isinstance(delta, str) and delta:
+                    yield _sse("msg", _agent_to_ui_text(delta, source_model=effective_model)).encode("utf-8")
+            yield _sse("msg", _agent_to_ui_task_status("done", message="完成")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
         except Exception as e:
             yield _sse("msg", _agent_to_ui_error("blueprint_chat_error", str(e) or "unknown error")).encode("utf-8")

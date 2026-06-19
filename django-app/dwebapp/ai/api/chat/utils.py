@@ -246,5 +246,12 @@ def _sse(event: str, data: Any) -> str:
 
 
 def _apply_sse_headers(resp: StreamingHttpResponse) -> None:
-    resp["Cache-Control"] = "no-cache"
+    # SSE 必需的响应头：告诉浏览器和代理不要缓冲这个流。
+    resp["Cache-Control"] = "no-cache, no-transform"
     resp["X-Accel-Buffering"] = "no"
+    # 显式声明 text/event-stream，确保浏览器正确识别为事件流。
+    if not resp.get("Content-Type"):
+        resp["Content-Type"] = "text/event-stream; charset=utf-8"
+    # 注意：不要设置 Connection: keep-alive
+    # Connection 是 hop-by-hop header，Django WSGI server 会拒绝它导致 500 错误。
+    # 现代浏览器和 HTTP/1.1 默认就是 keep-alive，不需要显式声明。

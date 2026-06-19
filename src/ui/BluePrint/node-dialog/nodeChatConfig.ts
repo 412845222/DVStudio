@@ -218,7 +218,7 @@ export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
 ]
 
 export const NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS = [
-  { value: 'doubao-seedream-3-0-t2i-250415', label: 'Seedream v3.0' },
+  { value: 'doubao-seedream-4-5-251128', label: 'Seedream v4.5 (推荐)' },
   { value: 'doubao-seedream-4-0-250828', label: 'Seedream v4.0' },
   { value: 'doubao-seedream-5-0-260128', label: 'Seedream v5.0' },
   { value: 'doubao-seedream-5-0-lite-260128', label: 'Seedream v5.0 Lite' },
@@ -253,8 +253,8 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
     case 'image':
       return {
         modelId: undefined,
-        model: 'nanobanana',
-        seedreamModelVersion: 'doubao-seedream-5-0-260128',
+        model: 'seedream',
+        seedreamModelVersion: 'doubao-seedream-4-5-251128',
         resolution: '1024x1024',
         aspectRatio: '1:1',
         quantity: 1,
