@@ -2411,7 +2411,8 @@ def seedance_generate_stream(request: HttpRequest) -> HttpResponseBase:
             yield _sse("msg", _agent_to_ui_task_status("streaming", message=f"Seedance：任务已创建（{task_id}），等待生成…")).encode("utf-8")
 
             started_at = time.time()
-            poll_interval_sec = max(1.0, float(cfg.get("poll_interval_sec") or 3))
+            poll_interval_sec = max(2.0, float(cfg.get("poll_interval_sec") or 5))
+            heartbeat_interval_sec = 10.0
             poll_timeout_sec = max(30.0, float(cfg.get("poll_timeout_sec") or 600))
             billing_text: Optional[str] = None
 
@@ -2486,17 +2487,35 @@ def seedance_generate_stream(request: HttpRequest) -> HttpResponseBase:
                 billing_text = _seedance_extract_usage_text(task_obj) or billing_text
                 elapsed = int(max(0, time.time() - started_at))
                 suffix = f"；计费：{billing_text}" if billing_text else ""
+                status_msg = f"Seedance：{status or 'running'}（{elapsed}s）{suffix}"
                 yield _sse(
                     "msg",
-                    _agent_to_ui_task_status("streaming", message=f"Seedance：{status or 'running'}（{elapsed}s）{suffix}"),
+                    _agent_to_ui_task_status("streaming", message=status_msg),
                 ).encode("utf-8")
 
                 if time.time() - started_at >= poll_timeout_sec:
                     raise ValueError(f"Seedance task timeout after {int(poll_timeout_sec)}s")
-                try:
-                    time.sleep(poll_interval_sec)
-                except Exception:
-                    pass
+
+                # 在 poll_interval_sec 秒内分 1 秒小步骤 sleep，
+                # 分段期间写心跳事件，防止 Vite 代理 / TCP / 浏览器端因 idle 断开长连接。
+                slept = 0.0
+                while slept < poll_interval_sec:
+                    sleep_step = min(1.0, poll_interval_sec - slept)
+                    try:
+                        time.sleep(sleep_step)
+                    except Exception:
+                        pass
+                    slept += sleep_step
+                    if slept < poll_interval_sec:
+                        yield (
+                            _sse(
+                                "msg",
+                                _agent_to_ui_task_status(
+                                    "streaming",
+                                    message=f"Seedance：{status or 'running'}（{int(time.time() - started_at)}s）…",
+                                ),
+                            ).encode("utf-8")
+                        )
         except Exception as e:
             yield _sse("msg", _agent_to_ui_error("seedance_error", str(e) or "unknown error")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
@@ -2756,7 +2775,7 @@ def jimeng_video_generate_stream(request: HttpRequest) -> HttpResponseBase:
             yield _sse("msg", _agent_to_ui_task_status("streaming", message=f"即梦视频：任务已创建（{task_id}），等待生成…")).encode("utf-8")
 
             started_at = time.time()
-            poll_interval_sec = max(1.0, float(cfg.get("poll_interval_sec") or 3))
+            poll_interval_sec = max(2.0, float(cfg.get("poll_interval_sec") or 5))
             poll_timeout_sec = max(30.0, float(cfg.get("poll_timeout_sec") or 600))
 
             while True:
@@ -2803,10 +2822,26 @@ def jimeng_video_generate_stream(request: HttpRequest) -> HttpResponseBase:
 
                 if time.time() - started_at >= poll_timeout_sec:
                     raise ValueError(f"即梦视频任务超时: {int(poll_timeout_sec)}s")
-                try:
-                    time.sleep(poll_interval_sec)
-                except Exception:
-                    pass
+
+                # 分段 sleep + 心跳，防止 Vite 代理 / TCP 空闲断开。
+                slept = 0.0
+                while slept < poll_interval_sec:
+                    sleep_step = min(1.0, poll_interval_sec - slept)
+                    try:
+                        time.sleep(sleep_step)
+                    except Exception:
+                        pass
+                    slept += sleep_step
+                    if slept < poll_interval_sec:
+                        yield (
+                            _sse(
+                                "msg",
+                                _agent_to_ui_task_status(
+                                    "streaming",
+                                    message=f"即梦视频：{status or 'running'}（{int(time.time() - started_at)}s）…",
+                                ),
+                            ).encode("utf-8")
+                        )
         except Exception as e:
             yield _sse("msg", _agent_to_ui_error("jimeng_video_error", str(e) or "unknown error")).encode("utf-8")
             yield _sse("done", "{}").encode("utf-8")
