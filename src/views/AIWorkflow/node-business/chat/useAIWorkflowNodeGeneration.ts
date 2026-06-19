@@ -146,7 +146,7 @@ const runTextTask = async (
 
   // Default provider is "bytedance" (Doubao). User params may override to "deepseek".
   const params = payload.params ?? {}
-  const provider = String(params.provider ?? params.textModel ?? 'bytedance').toLowerCase()
+  const provider = String(params.model ?? params.provider ?? 'bytedance').toLowerCase()
   const modelId = String(params.modelId ?? params.textModelVersion ?? '').trim() || (provider === 'deepseek' ? 'deepseek-chat' : 'doubao-seed-2-0-pro-260215')
   const body: Record<string, any> = { content: payload.prompt, provider, modelId }
   if (params.speed) body.speed = params.speed

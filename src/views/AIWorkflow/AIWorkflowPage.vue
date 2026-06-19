@@ -943,20 +943,32 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
           { id: `sys-${Date.now()}`, role: 'system', message, tone, createdAt: Date.now() },
         ] as any
       },
+      bindTextResultToNode: (nodeId: string, text: string) => {
+        store.commit('setNodeTextValue', { nodeId, textValue: text })
+      },
       bindImageResultToNode: (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
         if (!node) return
-        const imageSettings = { ...(node.imageSettings ?? {}), lastGeneratedImageUrl: url }
-        store.commit('updateNode', { id: nodeId, patch: { imageSettings } })
+        const resourceId = `gen-img-${nodeId}-${Date.now()}`
+        store.commit('addResource', {
+          id: resourceId,
+          kind: 'image',
+          name: `AI 生成图片 ${resourceId.slice(-6)}`,
+          url: url,
+        })
+        store.commit('setNodeResource', { nodeId, resourceId })
       },
       bindVideoResultToNode: (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
         if (!node) return
-        const videoSettings = { ...(node.videoSettings ?? {}), lastGeneratedVideoUrl: url }
-        store.commit('updateNode', { id: nodeId, patch: { videoSettings } })
-      },
-      bindTextResultToNode: (nodeId: string, text: string) => {
-        store.commit('updateNode', { id: nodeId, patch: { textValue: text } })
+        const resourceId = `gen-video-${nodeId}-${Date.now()}`
+        store.commit('addResource', {
+          id: resourceId,
+          kind: 'video',
+          name: `AI 生成视频 ${resourceId.slice(-6)}`,
+          url: url,
+        })
+        store.commit('setNodeResource', { nodeId, resourceId })
       },
     },
     castPayload,
