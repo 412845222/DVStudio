@@ -46,7 +46,7 @@ const normalizeImageModel = (params: Record<string, any>) => {
   if (rawModel.startsWith('jimeng')) return { kind: 'jimeng', model: rawModel }
   if (rawModel.startsWith('nanobanana')) return { kind: 'nanobanana', model: rawModel }
   // Default to seedream (Doubao / 字节方舟) when the user did not pick a provider.
-  return { kind: 'seedream', model: rawModel || 'doubao-seedream-5-0-260128' }
+  return { kind: 'seedream', model: rawModel || 'doubao-seedream-3-0-t2i-250415' }
 }
 
 const normalizeVideoModel = (params: Record<string, any>) => {

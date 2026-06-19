@@ -254,7 +254,7 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
       return {
         modelId: undefined,
         model: 'nanobanana',
-        seedreamModelVersion: 'doubao-seedream-5-0-260128',
+        seedreamModelVersion: 'doubao-seedream-3-0-t2i-250415',
         resolution: '1024x1024',
         aspectRatio: '1:1',
         quantity: 1,

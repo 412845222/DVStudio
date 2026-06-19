@@ -1191,7 +1191,7 @@ const emitGenerate = () => {
       ? "jimeng-image-3.0"
       : selected === "jimeng-image-4.0"
       ? "jimeng-image-4.0"
-      : "doubao-seedream-5-0-260128";
+      : "doubao-seedream-3-0-t2i-250415";
   const usePro = imageModel === "gemini-3-pro-image-preview";
   const quantity = normalizedNanoQuantity.value as 1 | 2 | 3 | 4;
   emit("nanobanana-generate", {
