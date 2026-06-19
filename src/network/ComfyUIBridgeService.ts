@@ -771,7 +771,7 @@ export class ComfyUIBridgeService {
 			Accept: 'application/json',
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
-		const res = await fetch(this.url('/api/workflow/seedream/ref-cache'), {
+		const res = await fetch(this.url('/api/third-party/seedream/ref-cache'), {
 			method: 'POST',
 			headers,
 			body: formData,
@@ -930,7 +930,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/workflow/seedream/generate:stream'), {
+		const res = await fetch(this.url('/api/third-party/seedream/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -1025,7 +1025,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/workflow/seedance/generate:stream'), {
+		const res = await fetch(this.url('/api/third-party/seedance/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -1122,7 +1122,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/workflow/jimeng/image/generate:stream'), {
+		const res = await fetch(this.url('/api/third-party/jimeng/image/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,

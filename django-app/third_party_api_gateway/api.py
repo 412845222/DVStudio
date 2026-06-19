@@ -1337,6 +1337,41 @@ def _seedream_cfg_with_model(cfg: Dict[str, str], model: str) -> Dict[str, str]:
     return next_cfg
 
 
+_SEEDREAM_ALLOWED_ASPECT_RATIOS = {
+    (1, 1),
+    (2, 3),
+    (3, 2),
+    (3, 4),
+    (4, 3),
+    (4, 5),
+    (5, 4),
+    (9, 16),
+    (16, 9),
+    (21, 9),
+}
+
+
+def _seedream_coerce_aspect_ratio(raw: Any) -> Optional[str]:
+    v = str(raw or "").strip()
+    if not v:
+        return None
+    allowed = {f"{w}:{h}" for (w, h) in _SEEDREAM_ALLOWED_ASPECT_RATIOS}
+    return v if v in allowed else None
+
+
+def _seedream_with_key(url: str, api_key: str) -> str:
+    if not url:
+        return url
+    if "?" in url:
+        sep = "&"
+    else:
+        sep = "?"
+    key = str(api_key or "").strip()
+    if not key:
+        return url
+    return f"{url}{sep}api_key={urllib.parse.quote(key)}"
+
+
 def _seedream_size_from_aspect_ratio(model: str, aspect_ratio: Optional[str]) -> str:
     ar = str(aspect_ratio or "").strip()
     if not ar:
