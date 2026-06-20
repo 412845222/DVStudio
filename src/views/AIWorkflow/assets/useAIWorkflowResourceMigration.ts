@@ -55,7 +55,7 @@ export const useAIWorkflowResourceMigration = (
 
   const isProjectScopedMediaRef = (
     projectId: number,
-    input: { url?: unknown; sourcePath?: unknown }
+    input: { url?: unknown; sourcePath?: unknown; projectRootPath?: unknown }
   ) => {
     const pid = Number(projectId)
     if (!Number.isFinite(pid) || pid <= 0) return false
@@ -64,8 +64,27 @@ export const useAIWorkflowResourceMigration = (
     const sourcePathKey = options.normalizeSourcePathKey(input?.sourcePath)
     if (sourcePathKey && sourcePathKey.includes(marker)) return true
 
+    // 如果传入了项目根目录（Electron 客户端），则检查 sourcePath 是否位于该根目录之内
+    // 典型路径：<root>/Content/Media/xxx.ext
+    const rawRoot = typeof input?.projectRootPath === 'string' ? String(input.projectRootPath).trim() : ''
+    const normRoot = rawRoot ? rawRoot.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() : ''
+    if (normRoot && sourcePathKey && sourcePathKey.startsWith(normRoot + '/')) return true
+
     const url = String(input?.url ?? '').trim()
     if (!url) return false
+
+    // Electron dweb://project-assets?projectId=<pid>&path=... 视为项目根目录内资源
+    const lowerUrl = url.toLowerCase()
+    if (lowerUrl.startsWith('dweb://project-assets')) {
+      try {
+        const u = new URL(url)
+        const p = Number(u.searchParams.get('projectId') || '0')
+        if (Number.isFinite(p) && p > 0 && p === Math.floor(pid)) return true
+      } catch {
+        // fall through
+      }
+    }
+
     try {
       const u = new URL(url, window.location.origin)
       return `${u.pathname}${u.search}`.toLowerCase().includes(marker)
@@ -98,10 +117,12 @@ export const useAIWorkflowResourceMigration = (
 
   const migrateCurrentResourcesToProjectScope = async (
     projectId: number,
-    opts?: { silent?: boolean }
+    opts?: { silent?: boolean; projectRootPath?: string }
   ): Promise<{ changed: number; failed: number }> => {
     const pid = Number(projectId)
     if (!Number.isFinite(pid) || pid <= 0) return { changed: 0, failed: 0 }
+
+    const projectRootPath = typeof opts?.projectRootPath === 'string' ? opts.projectRootPath : ''
 
     let changed = 0
     let failed = 0
@@ -116,7 +137,7 @@ export const useAIWorkflowResourceMigration = (
       const sourcePath = String(payload.sourcePath || '').trim()
       const sourceUrl = String(payload.sourceUrl || '').trim()
       const currentUrl = String(payload.currentUrl || '').trim()
-      const ref = { url: currentUrl, sourcePath }
+      const ref = { url: currentUrl, sourcePath, projectRootPath }
       const needsMigration =
         !isProjectScopedMediaRef(payload.projectId, ref) &&
         (Boolean(sourcePath)
@@ -143,7 +164,7 @@ export const useAIWorkflowResourceMigration = (
 
       const rawUrl = String(r?.url || '').trim()
       const rawSourcePath = String(r?.sourcePath || '').trim()
-      const mediaRef = { url: rawUrl, sourcePath: rawSourcePath }
+      const mediaRef = { url: rawUrl, sourcePath: rawSourcePath, projectRootPath }
       const mediaIsProjectScoped = isProjectScopedMediaRef(pid, mediaRef)
       const urlLooksLocal = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')
       const sourceUrlForImport = rawUrl && !rawUrl.startsWith('file:') ? rawUrl : ''
@@ -196,7 +217,7 @@ export const useAIWorkflowResourceMigration = (
       const posterSourcePath = String((latest as any)?.posterSourcePath || '').trim()
       if (!(posterUrl || posterSourcePath)) continue
 
-      const posterRef = { url: posterUrl, sourcePath: posterSourcePath }
+      const posterRef = { url: posterUrl, sourcePath: posterSourcePath, projectRootPath }
       const posterRefDjangoManaged = options.isDjangoManagedResource(posterRef)
       const posterIsTemporary = isTemporaryThumbnailRef(posterRef)
       const posterNeedsMigration =
