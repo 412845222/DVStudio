@@ -3956,6 +3956,7 @@ const {
   currentProjectId,
   resolveBackendUrl,
   uploadLocalResourceAndGetUrl,
+  toProjectAssetRuntimeUrl: buildProjectAssetRuntimeUrl,
   persistExternalAssetToProject,
   pushToast,
   stripUnrealExportRuntimeFromNodes,

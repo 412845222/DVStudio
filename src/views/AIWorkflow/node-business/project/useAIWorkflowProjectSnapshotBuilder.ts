@@ -24,6 +24,7 @@ export const useAIWorkflowProjectSnapshotBuilder = (payload: {
     resourceName: string,
     opts?: { projectId?: number | null },
   ) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string }>
+  toProjectAssetRuntimeUrl?: (projectId: number, projectRelativePath: string, fallbackUrl?: string) => string
   persistExternalAssetToProject: (payload: {
     kind: 'image' | 'file'
     name: string
@@ -68,6 +69,15 @@ export const useAIWorkflowProjectSnapshotBuilder = (payload: {
     const uploadLocal = opts?.uploadLocalResources === true
     const omittedResourceIds = new Set<string>()
 
+    const projectAssetRuntimeUrl = (projectRelativePath: string, fallbackUrl = '') => {
+      const pid = Number(payload.currentProjectId.value || 0)
+      const rel = String(projectRelativePath || '').trim()
+      if (!Number.isFinite(pid) || pid <= 0 || !rel) return fallbackUrl
+      return payload.toProjectAssetRuntimeUrl
+        ? payload.toProjectAssetRuntimeUrl(pid, rel, fallbackUrl)
+        : `dweb://project-assets?projectId=${encodeURIComponent(String(Math.floor(pid)))}&path=${encodeURIComponent(rel)}`
+    }
+
     for (const rid of payload.store.state.resourceOrder) {
       const resource = payload.store.state.resourcesById[rid]
       if (!resource) continue
@@ -78,8 +88,8 @@ export const useAIWorkflowProjectSnapshotBuilder = (payload: {
         : ''
       const localFileKey = typeof (resource as any).localFileKey === 'string' ? String((resource as any).localFileKey).trim() : ''
 
-      // Keep resource if it has either a usable url or an absolute sourcePath.
-      if (!rawUrl && !sourcePath && !localFileKey) continue
+      // Keep resource if it has a usable url, an absolute sourcePath, a project asset path, or an IndexedDB handle.
+      if (!rawUrl && !sourcePath && !projectRelativePath && !localFileKey) continue
 
       const isLocal = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')
       if (isLocal && !uploadLocal) {
@@ -96,13 +106,28 @@ export const useAIWorkflowProjectSnapshotBuilder = (payload: {
       let backendProjectRelativePath = projectRelativePath
       const kind = ((resource as any).kind === 'video' ? 'video' : 'image') as 'image' | 'video'
       if (uploadLocal && isLocal) {
-        const uploaded = await payload.uploadLocalResourceAndGetUrl(rawUrl, kind, String((resource as any).name || kind), {
-          projectId: payload.currentProjectId.value,
-        })
-        persistUrl = uploaded.url
-        backendAbsolutePath = uploaded.absolutePath
-        backendProjectRelativePath = String(uploaded.projectRelativePath || '').trim() || backendProjectRelativePath
-        uploadedCount += 1
+        if (backendProjectRelativePath) {
+          persistUrl = projectAssetRuntimeUrl(backendProjectRelativePath, '')
+        } else {
+          try {
+            const uploaded = await payload.uploadLocalResourceAndGetUrl(rawUrl, kind, String((resource as any).name || kind), {
+              projectId: payload.currentProjectId.value,
+            })
+            persistUrl = uploaded.url
+            backendAbsolutePath = uploaded.absolutePath
+            backendProjectRelativePath = String(uploaded.projectRelativePath || '').trim() || backendProjectRelativePath
+            uploadedCount += 1
+          } catch {
+            if (sourcePath || localFileKey) {
+              persistUrl = ''
+            } else if (rawUrl.startsWith('data:')) {
+              persistUrl = rawUrl
+            } else {
+              omittedResourceIds.add(rid)
+              continue
+            }
+          }
+        }
       }
 
       // When not uploading local resources but sourcePath exists, do not persist blob/data urls.

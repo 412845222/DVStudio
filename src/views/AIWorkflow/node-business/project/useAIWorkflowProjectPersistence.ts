@@ -209,8 +209,9 @@ export const useAIWorkflowProjectPersistence = (payload: {
       if (!url.startsWith('data:') && !url.startsWith('blob:')) continue
 
       const sourcePath = typeof r.sourcePath === 'string' ? String(r.sourcePath).trim() : ''
+      const projectRelativePath = typeof r.projectRelativePath === 'string' ? String(r.projectRelativePath).trim() : ''
       const localFileKey = typeof r.localFileKey === 'string' ? String(r.localFileKey).trim() : ''
-      if (sourcePath || localFileKey) continue
+      if (sourcePath || projectRelativePath || localFileKey) continue
 
       const name = String(r.name ?? `image_${rid}`).trim() || `image_${rid}`
       toUpload.push({ id: String(rid), url, name })
@@ -225,11 +226,17 @@ export const useAIWorkflowProjectPersistence = (payload: {
           patch: {
             url: uploaded.url,
             sourcePath: uploaded.absolutePath || undefined,
+            projectRelativePath: uploaded.projectRelativePath || undefined,
           },
         })
       } catch {
-        payload.pushToast(`保存前图片读取失败：${item.name}`, 'error')
-        return false
+        payload.pushToast(`保存前图片读取失败，已跳过临时预览并继续保存：${item.name}`, 'warn')
+        blueprintLog.append(`保存前图片读取失败，跳过临时预览：${item.name}`, {
+          category: 'operation',
+          level: 'WARN',
+          tag: 'project-save',
+          detail: { resourceId: item.id, name: item.name },
+        })
       }
     }
 
