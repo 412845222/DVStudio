@@ -24,7 +24,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
   }
   currentProjectId: Ref<number | null>
   currentProjectName: Ref<string>
-  setSavedProject: (project: { id?: unknown; name?: unknown }, fallbackName?: string) => void
+  setSavedProject: (project: { id?: unknown; name?: unknown }, fallbackName?: string) => Promise<void>
   readLastProjectId: () => number | null
   forgetLastProjectId: () => void
   refreshProjectList: () => Promise<void>
@@ -49,7 +49,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
     missingHandle: number
     permissionDenied: number
   } | null | undefined>
-  migrateCurrentResourcesToProjectScope: (projectId: number, opts?: { silent?: boolean }) => Promise<{ changed: number }>
+  migrateCurrentResourcesToProjectScope: (projectId: number, opts?: { silent?: boolean; projectRootPath?: string }) => Promise<{ changed: number }>
   buildPersistableSnapshotWithOptions: (opts: { uploadLocalResources: boolean }) => Promise<AIWorkflowDraftSnapshot>
   isElectron: () => boolean
   activeRecoverySession: Ref<any>
@@ -68,6 +68,8 @@ export const useAIWorkflowProjectPersistence = (payload: {
     resourceName: string,
     opts?: { projectId?: number | null },
   ) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string }>
+  // 可选：在 Electron 中解析当前已注册的项目根目录（用于避免重复复制）
+  getCurrentProjectRootPath?: () => string
 }) => {
   const resolveOrRepairProjectScopedResources = async (projectId: number, opts?: { silent?: boolean }) => {
     const pid = Number(projectId)
@@ -263,7 +265,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     const project = (res as any).project ?? {}
-    payload.setSavedProject(project)
+    await payload.setSavedProject(project)
 
     const normalizedSnapshot = payload.stripUnrealExportRuntimeFromSnapshot(
       payload.normalizeSnapshotResourceUrls((res as any).snapshot, payload.resolveBackendUrl)
@@ -319,7 +321,8 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     if (Number.isFinite(loadedProjectId) && loadedProjectId > 0) {
-      const migratedOnLoad = await payload.migrateCurrentResourcesToProjectScope(loadedProjectId, { silent: true })
+      const projectRootPath = typeof payload.getCurrentProjectRootPath === 'function' ? payload.getCurrentProjectRootPath() : ''
+      const migratedOnLoad = await payload.migrateCurrentResourcesToProjectScope(loadedProjectId, { silent: true, projectRootPath })
       if (migratedOnLoad.changed > 0) {
         try {
           const migratedSnapshot = await payload.buildPersistableSnapshotWithOptions({ uploadLocalResources: false })
@@ -393,11 +396,12 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     const project = (res as any).project ?? {}
-    payload.setSavedProject(project, nextName)
+    await payload.setSavedProject(project, nextName)
 
     const projectId = Number(payload.currentProjectId.value || 0)
     if (wasUnsavedProject && Number.isFinite(projectId) && projectId > 0) {
-      const migrated = await payload.migrateCurrentResourcesToProjectScope(projectId, { silent })
+      const projectRootPath = typeof payload.getCurrentProjectRootPath === 'function' ? payload.getCurrentProjectRootPath() : ''
+      const migrated = await payload.migrateCurrentResourcesToProjectScope(projectId, { silent, projectRootPath })
       if (migrated.changed > 0) {
         try {
           const migratedSnapshot = await payload.buildPersistableSnapshotWithOptions({ uploadLocalResources })

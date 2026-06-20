@@ -253,3 +253,48 @@ export async function saveClientSettings(payload: ClientSettings): Promise<Clien
 	}
 	return r
 }
+
+export async function minimizeWindow(): Promise<{ ok: boolean; error?: string }> {
+	if (!w?.dweb?.window?.minimize) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.minimize()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}
+
+export async function toggleMaximizeWindow(): Promise<{ ok: boolean; maximized?: boolean; error?: string }> {
+	if (!w?.dweb?.window?.toggleMaximize) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.toggleMaximize()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}
+
+export async function closeWindow(): Promise<{ ok: boolean; error?: string }> {
+	if (!w?.dweb?.window?.close) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.close()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}
+
+export async function reloadWindow(): Promise<{ ok: boolean; error?: string }> {
+	if (!w?.dweb?.window?.reload) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.reload()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}
+
+export async function openDevTools(): Promise<{ ok: boolean; opened?: boolean; error?: string }> {
+	if (!w?.dweb?.window?.openDevTools) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.openDevTools()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}

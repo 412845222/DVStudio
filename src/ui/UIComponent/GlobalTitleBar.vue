@@ -50,7 +50,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getBackendRuntimeState, getSetupState, onBackendRuntimeStateChanged } from '../../electronBridge'
+import {
+	getBackendRuntimeState,
+	getSetupState,
+	onBackendRuntimeStateChanged,
+	minimizeWindow,
+	toggleMaximizeWindow,
+	closeWindow,
+	reloadWindow,
+	openDevTools,
+} from '../../electronBridge'
 import { ThemeStore } from '../../store/theme'
 
 const backendRuntime = ref<{
@@ -158,7 +167,7 @@ onBeforeUnmount(() => {
 
 async function onMinimize() {
   try {
-    await w?.dweb?.window?.minimize?.()
+    await minimizeWindow()
   } catch {
     // ignore
   }
@@ -166,7 +175,7 @@ async function onMinimize() {
 
 async function onReload() {
   try {
-    await w?.dweb?.window?.reload?.()
+    await reloadWindow()
   } catch {
     // ignore
   }
@@ -174,7 +183,7 @@ async function onReload() {
 
 async function onOpenDevTools() {
   try {
-    await w?.dweb?.window?.openDevTools?.()
+    await openDevTools()
   } catch {
     // ignore
   }
@@ -182,7 +191,7 @@ async function onOpenDevTools() {
 
 async function onToggleMaximize() {
   try {
-    await w?.dweb?.window?.toggleMaximize?.()
+    await toggleMaximizeWindow()
   } catch {
     // ignore
   }
@@ -190,7 +199,7 @@ async function onToggleMaximize() {
 
 async function onClose() {
   try {
-    await w?.dweb?.window?.close?.()
+    await closeWindow()
   } catch {
     // ignore
   }

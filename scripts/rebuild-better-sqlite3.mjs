@@ -41,9 +41,12 @@ const ELECTRON_MODULE_VERSION = {
   // Electron 31
   '31.0.0': 124, '31.0.2': 124, '31.1.0': 124, '31.2.0': 124,
   '31.2.1': 124, '31.3.0': 124, '31.3.1': 124,
-  // Electron 32 / 33
-  '32.0.0': 127, '32.1.0': 127, '32.2.0': 127,
-  '33.0.0': 131, '33.2.0': 131,
+  // Electron 32 / 33 (Chromium 128+ / Node 22).
+  // Note: NODE_MODULE_VERSION inside Electron differs from upstream Node 22 (127)
+  // because Electron pins its own ABI value. The actual runtime value (discovered
+  // by the electron probe below) is what matters — this table is only informational.
+  '32.0.0': 127, '32.1.0': 127, '32.2.0': 127, '32.3.0': 127,
+  '33.0.0': 130, '33.2.0': 130, '33.4.0': 130, '33.4.11': 130,
 }
 
 function lookUpExpectedModuleVersion(electronVersion) {
