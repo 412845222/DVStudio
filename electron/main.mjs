@@ -22,6 +22,8 @@ import {
 	setProjectRoot,
 	clearProjectRoot,
 	getProjectRootSnapshot,
+	downloadUrlToProjectRoot,
+	getProjectRootById,
 } from './backend/projectAssetProtocol.mjs'
 import { initLocalDb, getRepos } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
@@ -1389,6 +1391,25 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:aiworkflow:getProjectRootSnapshot', async () => {
 		return getProjectRootSnapshot()
+	})
+
+	ipcMain.handle('dweb:aiworkflow:getProjectRootById', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) return null
+		return getProjectRootById(projectId)
+	})
+
+	ipcMain.handle('dweb:aiworkflow:downloadUrlToProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		const url = String(payload?.url || '').trim()
+		const desiredFilename = payload?.desiredFilename ? String(payload.desiredFilename) : undefined
+		if (!Number.isFinite(projectId) || projectId <= 0) return { ok: false, error: 'projectId is invalid' }
+		if (!url) return { ok: false, error: 'url is empty' }
+		try {
+			return await downloadUrlToProjectRoot(projectId, url, desiredFilename)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
 	})
 
 	try {

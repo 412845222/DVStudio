@@ -253,4 +253,159 @@ export function getProjectRootSnapshot() {
   return result
 }
 
+// 通过已注册的 projectId 获取项目根目录（供主进程其他模块使用）
+export function getProjectRootById(projectId) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) return null
+  return projectRootById.get(id) || null
+}
+
+// 将远程 URL 的文件下载到指定项目根目录下的 generated-assets 子目录。
+// 返回绝对路径（absolutePath）和相对根目录的相对路径（relativePath）。
+export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilename) {
+  const id = Number(projectId)
+  const url = String(rawUrl || '').trim()
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+  if (!url) return { ok: false, error: 'url is empty' }
+
+  const root = projectRootById.get(id)
+  if (!root) return { ok: false, error: `project root not registered for projectId=${id}` }
+
+  const safeName = sanitizeFilename(desiredFilename || url)
+  const ext = inferExtension(safeName, url)
+  const base = safeName.replace(/\.[^.]+$/, '') || `asset-${Date.now()}`
+  const filename = `${base}${ext}`
+
+  const subDir = path.resolve(root, 'generated-assets')
+  try {
+    fs.mkdirSync(subDir, { recursive: true })
+  } catch (err) {
+    return { ok: false, error: `mkdir failed: ${String(err?.message || err)}` }
+  }
+
+  const absolutePath = path.resolve(subDir, filename)
+  const relativePath = path.relative(root, absolutePath)
+
+  try {
+    await fetchRemoteUrl(url, absolutePath)
+  } catch (err) {
+    return { ok: false, error: `download failed: ${String(err?.message || err)}` }
+  }
+
+  try {
+    const st = fs.statSync(absolutePath)
+    if (!st.isFile() || st.size === 0) {
+      return { ok: false, error: 'downloaded file is empty or not a regular file' }
+    }
+  } catch (err) {
+    return { ok: false, error: `stat failed: ${String(err?.message || err)}` }
+  }
+
+  return {
+    ok: true,
+    absolutePath,
+    relativePath,
+    size: fs.statSync(absolutePath).size,
+  }
+}
+
+function sanitizeFilename(name) {
+  const raw = String(name || '').trim()
+  if (!raw) return `asset-${Date.now()}`
+  let safe = raw.split('?')[0].split('#')[0]
+  const idx = Math.max(safe.lastIndexOf('/'), safe.lastIndexOf('\\'))
+  if (idx >= 0) safe = safe.slice(idx + 1)
+  safe = safe.replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_')
+  safe = safe.replace(/^[\s.]+/, '')
+  if (!safe) return `asset-${Date.now()}`
+  const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i
+  if (reserved.test(safe)) return `asset-${safe}-${Date.now()}`
+  if (safe.length > 128) safe = safe.slice(0, 120) + '-' + Date.now().toString(36)
+  return safe
+}
+
+function inferExtension(safeName, rawUrl) {
+  const lower = String(safeName || '').toLowerCase()
+  const dotIdx = lower.lastIndexOf('.')
+  if (dotIdx > 0 && dotIdx >= lower.length - 8) return lower.slice(dotIdx)
+  const urlLower = String(rawUrl || '').toLowerCase()
+  const extMap = {
+    jpg: '.jpg',
+    jpeg: '.jpg',
+    png: '.png',
+    webp: '.webp',
+    gif: '.gif',
+    bmp: '.bmp',
+    mp4: '.mp4',
+    mov: '.mov',
+    webm: '.webm',
+    mkv: '.mkv',
+    m4v: '.m4v',
+  }
+  for (const [key, ext] of Object.entries(extMap)) {
+    if (urlLower.includes(`.${key}`)) return ext
+  }
+  return '.bin'
+}
+
+function fetchRemoteUrl(rawUrl, targetPath) {
+  return new Promise((resolve, reject) => {
+    let urlObj
+    try {
+      urlObj = new URL(rawUrl)
+    } catch (err) {
+      reject(new Error(`invalid url: ${String(err)}`))
+      return
+    }
+
+    const module = urlObj.protocol === 'https:' ? https : http
+    const options = {
+      method: 'GET',
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      headers: {
+        'User-Agent': 'DwebVideoStudio/1.0 (Electron)',
+      },
+      timeout: 120 * 1000,
+    }
+
+    const tmpPath = targetPath + '.part'
+    const handleError = (err) => {
+      try { fs.unlinkSync(tmpPath) } catch {}
+      reject(err)
+    }
+
+    const req = module.request(options, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        fetchRemoteUrl(String(res.headers.location), targetPath).then(resolve, reject)
+        return
+      }
+      if (!res.statusCode || res.statusCode >= 400) {
+        handleError(new Error(`HTTP ${res.statusCode}`))
+        return
+      }
+      const file = fs.createWriteStream(tmpPath)
+      file.on('finish', () => {
+        file.close(() => {
+          try {
+            fs.renameSync(tmpPath, targetPath)
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        })
+      })
+      file.on('error', handleError)
+      res.on('error', handleError)
+      res.pipe(file)
+    })
+    req.on('error', handleError)
+    req.on('timeout', () => {
+      req.destroy(new Error('request timeout'))
+    })
+    req.end()
+  })
+}
+
 export { DWEB_PROJECT_ASSET_HOST }

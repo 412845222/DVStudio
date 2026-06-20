@@ -136,6 +136,26 @@ export async function getProjectRootSnapshot(): Promise<Record<string, string> |
 	return w.dweb.aiworkflow.getProjectRootSnapshot()
 }
 
+export async function getProjectRootById(projectId: number): Promise<string | null> {
+	if (!w?.dweb?.aiworkflow?.getProjectRootById) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return null
+	const result = await w.dweb.aiworkflow.getProjectRootById({ projectId: pid })
+	return result ? String(result) : null
+}
+
+export async function downloadUrlToProjectRoot(
+	projectId: number,
+	url: string,
+	desiredFilename?: string,
+): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.downloadUrlToProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	const result = await w.dweb.aiworkflow.downloadUrlToProjectRoot({ projectId: pid, url: String(url || ''), desiredFilename })
+	return result
+}
+
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {
 	if (!w?.dweb?.common?.runBootstrapInstaller) return null
 	return w.dweb.common.runBootstrapInstaller()
