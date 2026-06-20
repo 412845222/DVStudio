@@ -156,6 +156,18 @@ export async function downloadUrlToProjectRoot(
 	return result
 }
 
+export async function copyFileToProjectRoot(
+	projectId: number,
+	sourcePath: string,
+	desiredFilename?: string,
+): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.copyFileToProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	const result = await w.dweb.aiworkflow.copyFileToProjectRoot({ projectId: pid, sourcePath: String(sourcePath || ''), desiredFilename })
+	return result
+}
+
 export async function fetchAsArrayBuffer(url: string): Promise<{ ok: boolean; buffer?: Uint8Array; mime?: string; error?: string } | null> {
 	if (!w?.dweb?.aiworkflow?.fetchAsArrayBuffer) return null
 	const result = await w.dweb.aiworkflow.fetchAsArrayBuffer({ url: String(url || '') })

@@ -14,6 +14,8 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
     importAsset: (params: any) => Promise<any>
   }
   currentProjectId: { value: number | null }
+  isElectron: () => boolean
+  downloadUrlToProjectRoot?: (projectId: number, url: string, desiredFilename?: string) => Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null>
   resolveBackendUrl: (url: string) => string
   bindMediaResourceToNode: (
     nodeId: string,
@@ -169,40 +171,76 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
         }
 
         if (!localizedOutput) {
-          const imported = await payload.blueprintProjectService.importAsset({
-            kind: inferredMediaType,
-            name: String(selectedMedia.filename || `comfy_${inferredMediaType}_${Date.now()}`),
-            sourceUrl: String(selectedMedia.url || ''),
-            baseUrl: String(comfyNode.comfyuiSettings?.baseUrl || '').trim() || undefined,
-            filename: String(selectedMedia.filename || '').trim() || undefined,
-            subfolder: String((selectedMedia as any).subfolder || '').trim() || undefined,
-            type: String((selectedMedia as any).type || '').trim() || undefined,
-            projectId: payload.currentProjectId.value,
-          })
+          const pid = Number(payload.currentProjectId.value ?? 0)
+          const selectedUrl = String(selectedMedia.url || '').trim()
+          const desiredName = String(selectedMedia.filename || `comfy_${inferredMediaType}_${Date.now()}`).trim()
+          let localizedFromElectron = false
 
-          if (!imported.ok) {
-            alerts.add(`ComfyUI 产物入库失败：锚点「${fromAnchorLabel}」未入库（${String((imported as any).error || 'unknown')}）`)
+          if (payload.isElectron() && Number.isFinite(pid) && pid > 0 && selectedUrl && typeof payload.downloadUrlToProjectRoot === 'function') {
+            try {
+              const dl = await payload.downloadUrlToProjectRoot(pid, selectedUrl, desiredName)
+              const rel = String(dl?.relativePath || '').trim()
+              const abs = String(dl?.absolutePath || '').trim()
+              if (dl?.ok && rel && abs) {
+                localizedOutput = {
+                  kind: inferredMediaType,
+                  url: `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`,
+                  filename: desiredName,
+                  anchorId,
+                  nodeId: String((selectedMedia as any).nodeId ?? '').trim() || undefined,
+                  sourcePath: abs,
+                  subfolder: String((selectedMedia as any).subfolder || '').trim() || undefined,
+                  type: String((selectedMedia as any).type || '').trim() || undefined,
+                }
+                importedByMediaKey.set(key, localizedOutput)
+                localizedFromElectron = true
+              }
+            } catch {
+              // ignore and fallback
+            }
+          }
+
+          if (!localizedFromElectron && payload.isElectron()) {
+            alerts.add(`ComfyUI 产物入库失败：锚点「${fromAnchorLabel}」主进程下载失败。`)
             continue
           }
 
-          const asset = (imported as any).asset ?? {}
-          const importedUrl = payload.resolveBackendUrl(String(asset.url || ''))
-          if (!String(importedUrl || '').trim()) {
-            alerts.add(`ComfyUI 产物入库失败：锚点「${fromAnchorLabel}」返回了空地址。`)
-            continue
-          }
+          if (!localizedFromElectron) {
+            const imported = await payload.blueprintProjectService.importAsset({
+              kind: inferredMediaType,
+              name: desiredName,
+              sourceUrl: selectedUrl,
+              baseUrl: String(comfyNode.comfyuiSettings?.baseUrl || '').trim() || undefined,
+              filename: String(selectedMedia.filename || '').trim() || undefined,
+              subfolder: String((selectedMedia as any).subfolder || '').trim() || undefined,
+              type: String((selectedMedia as any).type || '').trim() || undefined,
+              projectId: payload.currentProjectId.value,
+            })
 
-          localizedOutput = {
-            kind: inferredMediaType,
-            url: importedUrl,
-            filename: String(asset.name || selectedMedia.filename || `comfy_${inferredMediaType}_${Date.now()}`),
-            anchorId,
-            nodeId: String((selectedMedia as any).nodeId ?? '').trim() || undefined,
-            sourcePath: String(asset.sourcePath || asset.absolutePath || '').trim() || undefined,
-            subfolder: String((selectedMedia as any).subfolder || '').trim() || undefined,
-            type: String((selectedMedia as any).type || '').trim() || undefined,
+            if (!imported.ok) {
+              alerts.add(`ComfyUI 产物入库失败：锚点「${fromAnchorLabel}」未入库（${String((imported as any).error || 'unknown')}）`)
+              continue
+            }
+
+            const asset = (imported as any).asset ?? {}
+            const importedUrl = payload.resolveBackendUrl(String(asset.url || ''))
+            if (!String(importedUrl || '').trim()) {
+              alerts.add(`ComfyUI 产物入库失败：锚点「${fromAnchorLabel}」返回了空地址。`)
+              continue
+            }
+
+            localizedOutput = {
+              kind: inferredMediaType,
+              url: importedUrl,
+              filename: String(asset.name || selectedMedia.filename || `comfy_${inferredMediaType}_${Date.now()}`),
+              anchorId,
+              nodeId: String((selectedMedia as any).nodeId ?? '').trim() || undefined,
+              sourcePath: String(asset.sourcePath || asset.absolutePath || '').trim() || undefined,
+              subfolder: String((selectedMedia as any).subfolder || '').trim() || undefined,
+              type: String((selectedMedia as any).type || '').trim() || undefined,
+            }
+            importedByMediaKey.set(key, localizedOutput)
           }
-          importedByMediaKey.set(key, localizedOutput)
         }
 
         assignMap.set(anchorId, key)

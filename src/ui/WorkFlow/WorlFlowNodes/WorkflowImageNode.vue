@@ -194,6 +194,7 @@ const props = defineProps<{
   subtitle?: string;
   style?: Record<string, string>;
   resourceUrl?: string | null;
+  resourceSourcePath?: string | null;
   resourcePreviewUrl320?: string | null;
   resourcePreviewUrl640?: string | null;
   resourcePreviewVersion?: string | null;
@@ -269,10 +270,11 @@ const onPreviewContextMenu = (e: MouseEvent) => {
 };
 
 const onPreviewClick = () => {
-  if (!normalizedResourceUrl.value) return;
+  const src = effectiveSourceUrl.value;
+  if (!src) return;
   emit("select", props.nodeId);
-  console.log('[WorkflowImageNode] preview click → nodeId:', props.nodeId, 'url:', normalizedResourceUrl.value);
-  emit("preview-request", { imageUrl: normalizedResourceUrl.value });
+  console.log('[WorkflowImageNode] preview click → nodeId:', props.nodeId, 'url:', src);
+  emit("preview-request", { imageUrl: src });
 };
 
 const previewWrap = ref<HTMLElement | null>(null);
@@ -281,8 +283,15 @@ let ro: ResizeObserver | null = null;
 const lastResourceUrl = ref("");
 const pendingResourceReset = ref(false);
 const failedPreviewUrl = ref("");
+const resourceFallbackUrl = ref("");
 
 const normalizedResourceUrl = computed(() => String(props.resourceUrl ?? "").trim());
+const normalizedResourceSourcePath = computed(() => String(props.resourceSourcePath ?? "").trim());
+const effectiveSourceUrl = computed(() => {
+  const fallback = String(resourceFallbackUrl.value || "").trim();
+  if (fallback) return fallback;
+  return normalizedResourceUrl.value;
+});
 const normalizedPreview320 = computed(() => String(props.resourcePreviewUrl320 ?? "").trim());
 const normalizedPreview640 = computed(() => String(props.resourcePreviewUrl640 ?? "").trim());
 
@@ -302,7 +311,7 @@ const activePreviewUrl = computed(() => {
 });
 
 const displayResourceUrl = computed(() => {
-  const source = normalizedResourceUrl.value;
+  const source = effectiveSourceUrl.value;
   if (!source) return "";
   const preview = activePreviewUrl.value;
   if (!preview) return source;
@@ -311,7 +320,7 @@ const displayResourceUrl = computed(() => {
 });
 
 const usingPreviewResource = computed(() => {
-  const source = normalizedResourceUrl.value;
+  const source = effectiveSourceUrl.value;
   if (!source) return false;
   return displayResourceUrl.value === activePreviewUrl.value && displayResourceUrl.value !== source;
 });
@@ -512,7 +521,7 @@ const cropToUv = (c: { x: number; y: number; width: number; height: number }) =>
 };
 
 const ensureNaturalSizeFallback = async () => {
-  const sourceUrl = normalizedResourceUrl.value;
+  const sourceUrl = effectiveSourceUrl.value;
   if (!sourceUrl) return;
   if (naturalWidth.value && naturalHeight.value && !pendingResourceReset.value) return;
   await new Promise<void>((resolve) => {
@@ -534,6 +543,16 @@ const ensureNaturalSizeFallback = async () => {
     img.onerror = () => resolve();
     img.src = sourceUrl;
   });
+};
+
+const toFileUrl = (sourcePath: string) => {
+  const raw = String(sourcePath || "").trim();
+  if (!raw) return "";
+  const normalized = raw.replace(/\\/g, "/");
+  const isDrivePath = /^[a-zA-Z]:\//.test(normalized);
+  if (!isDrivePath) return "";
+  const encoded = encodeURI(normalized);
+  return `file:///${encoded}`;
 };
 
 const toggleCropMode = async () => {
@@ -733,6 +752,14 @@ const onPreviewImageError = () => {
     failedPreviewUrl.value = activePreviewUrl.value;
     return;
   }
+  const sourceFilePath = normalizedResourceSourcePath.value;
+  if (!resourceFallbackUrl.value && sourceFilePath) {
+    const fileUrl = toFileUrl(sourceFilePath);
+    if (fileUrl) {
+      resourceFallbackUrl.value = fileUrl;
+      return;
+    }
+  }
   emit("media-ready");
 };
 
@@ -754,12 +781,14 @@ watch(
       pendingResourceReset.value = false;
       lastResourceUrl.value = "";
       failedPreviewUrl.value = "";
+      resourceFallbackUrl.value = "";
       return;
     }
     if (next !== prev || next !== lastResourceUrl.value) {
       pendingResourceReset.value = true;
       lastResourceUrl.value = next;
       failedPreviewUrl.value = "";
+      resourceFallbackUrl.value = "";
     }
     initPreviewLayoutObserver();
     await ensureNaturalSizeFallback();
@@ -787,7 +816,7 @@ watch(
 defineExpose({
   /** Export the node output PNG (offscreen canvas render, cropped + scaled to output resolution). */
   exportPngBlob: async () => {
-    const src = normalizedResourceUrl.value;
+    const src = effectiveSourceUrl.value;
     if (!src) return null;
     const w = outputWidth.value;
     const h = outputHeight.value;
