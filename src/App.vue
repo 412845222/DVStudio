@@ -9,6 +9,7 @@
     <main ref="contentEl" class="app-content">
       <router-view />
     </main>
+    <StartupProgressBar :state="startupProgressState" @dismiss="hideStartupProgress" />
   </div>
 </template>
 
@@ -20,6 +21,8 @@ import { AIWorkflowKey, AIWorkflowStore } from "./store/aiworkflow";
 import { ThemeKey, ThemeStore } from "./store/theme";
 import GlobalSideNav from "./ui/UIComponent/GlobalSideNav.vue";
 import GlobalTitleBar from "./ui/UIComponent/GlobalTitleBar.vue";
+import StartupProgressBar from "./ui/UIComponent/StartupProgressBar.vue";
+import { useStartupProgress } from "./composables/useStartupProgress";
 
 provide(VideoStudioKey, VideoStudioStore);
 provide(TimelineKey, TimelineStore);
@@ -30,6 +33,8 @@ const contentEl = ref<HTMLElement | null>(null);
 const navExpanded = ref(false);
 const isElectronRuntime = (window as any)?.__DWEB_RUNTIME__?.isElectron === true;
 let ro: ResizeObserver | null = null;
+
+const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress();
 
 function onNavExpandChange(expanded: boolean) {
   navExpanded.value = expanded;

@@ -1,19 +1,59 @@
-import { getRepos } from '../index.mjs'
+import { getRepos, getReposSafe, ensureLocalDbInitialized } from '../index.mjs'
+import os from 'node:os'
 
-function safe(handler) {
-	return async (_e, payload) => {
-		try {
-			const result = await handler(payload || {})
-			if (result && typeof result === 'object' && 'ok' in result) return result
-			return { ok: true, value: result }
-		} catch (err) {
-			return { ok: false, error: String(err?.message || err) }
+let _initOptions = {}
+
+/**
+ * @param {import('electron').IpcMain} ipcMain
+ * @param {{ backendDataDir?: string, userDataDir?: string, appSecret?: string }} initOptions
+ */
+export function registerLocalDbIpc(ipcMain, initOptions = {}) {
+	const tmpDir = os.tmpdir()
+	const backendDir = String(initOptions?.backendDataDir || '').trim()
+	const userDir = String(initOptions?.userDataDir || '').trim()
+	_initOptions = {
+		backendDataDir: backendDir || userDir || tmpDir,
+		userDataDir: userDir || backendDir || tmpDir,
+		appSecret: initOptions?.appSecret || backendDir || userDir || 'localdb',
+	}
+
+	function safe(handler) {
+		return async (_e, payload) => {
+			try {
+				const repoStatus = getReposSafe()
+				if (!repoStatus.ok) {
+					// 确保 _initOptions 至少包含有效路径，绝不传给 ensureLocalDbInitialized 一个空对象
+					const opts = {
+						backendDataDir: _initOptions.backendDataDir || os.tmpdir(),
+						userDataDir: _initOptions.userDataDir || os.tmpdir(),
+						appSecret: _initOptions.appSecret || 'localdb',
+					}
+					const retry = ensureLocalDbInitialized(opts)
+					if (!retry.ok) return { ok: false, error: `${repoStatus.error}（重试后：${retry.error}）` }
+				}
+				const result = await handler(payload || {})
+				if (result && typeof result === 'object' && 'ok' in result) return result
+				return { ok: true, value: result }
+			} catch (err) {
+				return { ok: false, error: String(err?.message || err) }
+			}
 		}
 	}
-}
-
-export function registerLocalDbIpc(ipcMain) {
 	const handlers = {
+		// ---- status / init ----
+		'dweb:localdb:getInitState':
+			safe(() => {
+				const r = getReposSafe()
+				if (!r.ok) return { ok: false, error: r.error }
+				return {
+					ok: true,
+					dbFilePath: r.repos.dbFilePath,
+					schemaInfo: r.repos.schemaInfo,
+					tag: r.repos.tag || '',
+				}
+			}),
+		'dweb:localdb:ensureInitialized':
+			safe((payload) => ensureLocalDbInitialized(payload || {})),
 		// ---- projects ----
 		'dweb:localdb:projects:list':
 			safe(() => getRepos().projects.list()),

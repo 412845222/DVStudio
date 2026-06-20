@@ -1,5 +1,12 @@
 <template>
   <div class="aiwf-page bg-vscode">
+    <div v-if="noProjectSelected" class="no-project-guide">
+      <div class="no-project-card">
+        <h2>请先选择或新建项目</h2>
+        <p>从左侧「项目列表」选择已有项目，或点击「新建项目」创建一个新项目。</p>
+        <button @click="noProjectSelected = false; void $router.push({ name: 'ProjectList' })">去项目列表</button>
+      </div>
+    </div>
     <!-- 蓝图节点容器 -->
     <div class="aiwf-blueprint-container">
       <BlueprintCanvas
@@ -276,16 +283,12 @@
           :performancePriorityMode="performancePriorityMode"
           :resources="resources"
           :nodeLibraryOpen="false"
-          :promptLibraryOpen="false"
+          :backendLogOpen="blueprintLogPanelOpen"
           :electronReady="isElectron()"
           @quick-add="onRailQuickAdd"
           @toggle-node-library="onRailToggleNodeLibrary"
-          @open-prompt-library="onRailOpenPromptLibrary"
           @toggle-backend-log="onRailToggleBackendLog"
           @open-resource-manager="openResourceDialog"
-          @open-meshy-task="openMeshyTaskDialog"
-          @open-video-task="openVideoTaskDialog"
-          @open-task-placeholder="onRailOpenTaskPlaceholder"
           @request-new="onRequestNewProject"
           @request-repair-assets="onRequestRepairProjectAssets"
           @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
@@ -520,6 +523,7 @@
       />
 
     </div>
+    <BlueprintLogPanel v-model:open="blueprintLogPanelOpen" />
     <AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
   </div>
 </template>
@@ -580,9 +584,12 @@ import { VideoMetadataReadQueue } from '../../aiworkflow/VideoMetadataReadQueue'
 import { createVideoFirstFrameThumbnail } from '../../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
 import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../../aiworkflow/localFileHandleDb'
 import { resolveBackendUrl, getBackendBaseUrl } from '../../network/backendConfig'
-import { isElectron, openFolderForPath, downloadUrlToProjectRoot } from '../../electronBridge'
+import { isElectron, openFolderForPath,downloadUrlToProjectRoot, pingBackend, startBackend } from '../../electronBridge'
+import { useStartupProgress } from '../../composables/useStartupProgress'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
+import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
+import { blueprintLog } from './blueprint-core/blueprintLog'
 import { useAIWorkflowEdgeRenderer } from './blueprint-core/useAIWorkflowEdgeRenderer'
 import { useAIWorkflowEdgeIndex } from './blueprint-core/useAIWorkflowEdgeIndex'
 import { useAIWorkflowNodeVisibility } from './blueprint-core/useAIWorkflowNodeVisibility'
@@ -676,6 +683,7 @@ import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/Worl
 
 const router = useRouter()
 const route = useRoute()
+const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
 
@@ -2980,6 +2988,7 @@ const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
 const currentProjectRootPath = ref('')
+const noProjectSelected = ref(false)
 const agentWorkingDirectory = computed(() => {
   const projectName = String(currentProjectName.value || '').trim()
   if (projectName) return `/Users/dweb/Desktop/dweb-video-studio · ${projectName}`
@@ -4114,6 +4123,7 @@ const onExportPerfDiagnostics = () => {
 }
 
 const resourceDialogOpen = ref(false)
+const blueprintLogPanelOpen = ref(false)
 const resources = computed(() =>
   store.state.resourceOrder.map((id) => store.state.resourcesById[id]).filter(Boolean)
 )
@@ -4299,16 +4309,8 @@ const onNodeOpenLibrary = (nodeId: string) => {
   }
 }
 
-const onRailOpenPromptLibrary = () => {
-  pushToast('提示词库面板即将接入。', 'info')
-}
-
 const onRailToggleBackendLog = () => {
-  pushToast('日志面板即将接入。', 'info')
-}
-
-const onRailOpenTaskPlaceholder = () => {
-  pushToast('该任务入口将于下一阶段接入。', 'info')
+  blueprintLogPanelOpen.value = !blueprintLogPanelOpen.value
 }
 
 const { onNodeRefresh } = useAIWorkflowNodeRefresh({
@@ -4494,6 +4496,11 @@ onMounted(() => {
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
   startUnrealExportPolling()
   void refreshProjectList()
+  blueprintLog.append('蓝图页面已加载，日志面板就绪', {
+    category: 'system',
+    level: 'INFO',
+    tag: 'init',
+  })
 
   const rawProjectId = String((route.query as Record<string, unknown>)?.projectId ?? '').trim()
   const parsedProjectId = Number(rawProjectId)
@@ -4505,16 +4512,19 @@ onMounted(() => {
 
   void (async () => {
     if (resolvedProjectId) {
-      const ok = await loadProjectById(resolvedProjectId)
-      if (ok) await recoverComfyUIRunStates({ silent: true })
+      await runProjectEnterSequence({ kind: 'open', projectId: resolvedProjectId })
       return
     }
     if (hasNewProjectQuery && rawRootPath) {
-      await onRequestNewProjectFromPath(rawRootPath)
+      // 直接用 newProject query 进入已不再支持，跳回项目列表
+      noProjectSelected.value = true
       return
     }
     await tryAutoLoadLastProject()
     await recoverComfyUIRunStates({ silent: true })
+    if (!currentProjectId.value) {
+      noProjectSelected.value = true
+    }
   })()
 
   if (isElectronRuntime) {
@@ -4538,6 +4548,74 @@ onMounted(() => {
   }
 })
 
+async function runProjectEnterSequence(
+  request:
+    | { kind: 'open'; projectId: number }
+    | { kind: 'new'; rootPath: string },
+) {
+  if (isElectron()) {
+    startupProgress.show('进入蓝图项目', 2500)
+    startupProgress.reset('进入蓝图项目')
+  }
+
+  // Step 1. 读取本地项目数据
+  let projectReady = false
+  if (request.kind === 'open') {
+    await startupProgress.runStep('project.load', '读取项目数据', async () => {
+      const ok = await loadProjectById(request.projectId)
+      if (!ok) throw new Error('项目数据加载失败')
+      projectReady = true
+      return true
+    }, { errorDetailOnFailure: true })
+  } else {
+    await startupProgress.runStep('project.new', '初始化项目', async () => {
+      await onRequestNewProjectFromPath(request.rootPath)
+      projectReady = true
+      return true
+    }, { errorDetailOnFailure: true })
+  }
+
+  // Step 2. 加载静态资产（根据当前快照中的资源记录做一次运行状态梳理）
+  if (projectReady) {
+    await startupProgress.runStep('project.assets', '加载静态资产', async () => {
+      try {
+        await recoverComfyUIRunStates({ silent: true })
+      } catch {
+        // 资源恢复失败不阻断主流程，仅记录
+      }
+      const resourcesTotal = Number(Array.isArray((store.state as any)?.resources) ? (store.state as any).resources.length : (store.state as any)?.resourcesById ? Object.keys((store.state as any).resourcesById).length : 0)
+      return resourcesTotal
+    }, { errorDetailOnFailure: true })
+  }
+
+  // Step 3. 检查/拉起 Django 后端
+  if (isElectron()) {
+    await startupProgress.runStep('backend.django', '检查 Django 后端', async () => {
+      try {
+        const ping = await pingBackend()
+        if (ping?.ok) return '已就绪'
+      } catch {
+        // 继续尝试启动
+      }
+      // 后端未就绪，尝试启动
+      try {
+        const r = await startBackend()
+        if (!r?.ok) throw new Error(r?.error || '后端启动失败')
+      } catch (e) {
+        const msg = String((e as any)?.message ?? e ?? '后端启动失败')
+        throw new Error(msg)
+      }
+      // 等待 ping 通过
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        const p = await pingBackend()
+        if (p?.ok) return '已启动'
+      }
+      throw new Error('Django 后端仍未响应')
+    }, { errorDetailOnFailure: true })
+  }
+}
+
 </script>
 
 <style scoped>
@@ -4546,6 +4624,56 @@ onMounted(() => {
   position: relative;
   overflow: hidden;
   background: var(--aiwf-page-background, var(--dweb-defualt));
+}
+
+.no-project-guide {
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 15, 21, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.no-project-card {
+  background: var(--dweb-defualt-dark);
+  border: 1px solid var(--vscode-border);
+  border-radius: 12px;
+  padding: 32px 40px;
+  max-width: 420px;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+.no-project-card h2 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--vscode-fg);
+}
+
+.no-project-card p {
+  margin: 0 0 20px 0;
+  font-size: 13px;
+  color: var(--vscode-fg-muted);
+  line-height: 1.6;
+}
+
+.no-project-card button {
+  padding: 8px 20px;
+  background: var(--vscode-border-accent);
+  border: 1px solid var(--vscode-border-accent);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.no-project-card button:hover {
+  opacity: 0.9;
 }
 
 .aiwf-blueprint-container {

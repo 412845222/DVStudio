@@ -1,4 +1,5 @@
 import { getBackendBaseUrl } from './backendConfig'
+import { logBlueprintRequest } from './blueprintRequestLog'
 
 type ServiceOptions = {
   baseUrl?: string | (() => string)
@@ -92,6 +93,27 @@ export class BlueprintProjectService {
     }
   }
 
+  private async _ensureElectronLocalDb(): Promise<boolean> {
+    const bridge = (window as any)?.dweb?.aiworkflow?.db
+    if (!bridge) return false
+    try {
+      const state = await bridge._initState?.()
+      if (state?.ok) return true
+      const retry = await bridge._ensureInitialized?.()
+      return Boolean(retry?.ok)
+    } catch {
+      return false
+    }
+  }
+
+  private async electronDb<T>(fn: () => Promise<T>): Promise<T | null> {
+    const bridge = (window as any)?.dweb?.aiworkflow?.db?.projects
+    if (typeof bridge !== 'object') return null
+    const ready = await this._ensureElectronLocalDb()
+    if (!ready) return null
+    return fn().catch(() => null)
+  }
+
   private url(path: string) {
     const base = (this.getBaseUrl?.() ?? '').trim().replace(/\/$/, '')
     if (!base) return path
@@ -99,8 +121,49 @@ export class BlueprintProjectService {
     return `${base}/${path}`
   }
 
+  private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const url = typeof input === 'string' ? input : (input as Request).url || String(input)
+    const method = String(init?.method || (typeof input !== 'string' && 'method' in (input as any) ? (input as any).method : '') || 'GET').toUpperCase()
+    const start = typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now()
+    try {
+      const res = await fetch(input as any, init)
+      const end = typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now()
+      logBlueprintRequest({
+        url,
+        method,
+        status: res.status,
+        durationMs: Math.max(0, Math.round(end - start)),
+        tag: 'project',
+      })
+      return res
+    } catch (err) {
+      const end = typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now()
+      logBlueprintRequest({
+        url,
+        method,
+        durationMs: Math.max(0, Math.round(end - start)),
+        errorMessage: err instanceof Error ? err.message : String(err),
+        tag: 'project',
+      })
+      throw err
+    }
+  }
+
   async listProjects(): Promise<ListProjectsResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/list'), { method: 'GET' })
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.list()
+    )
+    if (electronResult !== null) {
+      const rows = Array.isArray(electronResult) ? electronResult : (electronResult as any)?.projects || []
+      return { ok: true, projects: rows as any }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/list'), { method: 'GET' })
     if (!res.ok) {
       const body = await safeJson(res)
       return {
@@ -113,7 +176,17 @@ export class BlueprintProjectService {
   }
 
   async saveProject(payload: { name: string; snapshot: any; projectId?: number | null }): Promise<SaveProjectResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/save'), {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.save({
+        projectId: payload.projectId,
+        snapshot: payload.snapshot,
+        name: payload.name,
+      })
+    )
+    if (electronResult !== null) {
+      return { ok: true, project: electronResult.project ?? electronResult }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/save'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -130,7 +203,18 @@ export class BlueprintProjectService {
   }
 
   async loadProject(projectId: number): Promise<LoadProjectResponse> {
-    const res = await fetch(this.url(`/api/workflow/projects/load?id=${encodeURIComponent(String(projectId))}`), {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.load({ id: projectId })
+    )
+    if (electronResult !== null) {
+      // Electron returns { ok, project, snapshot } with snapshot at root level
+      return {
+        ok: true,
+        project: electronResult.project ?? electronResult,
+        snapshot: electronResult.snapshot,
+      }
+    }
+    const res = await this.fetchWithLog(this.url(`/api/workflow/projects/load?id=${encodeURIComponent(String(projectId))}`), {
       method: 'GET',
     })
     if (!res.ok) {
@@ -145,7 +229,16 @@ export class BlueprintProjectService {
   }
 
   async deleteProject(projectId: number): Promise<DeleteProjectResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/delete'), {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.delete({ id: projectId })
+    )
+    if (electronResult !== null) {
+      if ((electronResult as any).ok === false) {
+        return { ok: false, error: String((electronResult as any).error || 'delete failed') }
+      }
+      return { ok: true, id: projectId }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/delete'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({ id: projectId }),
@@ -162,7 +255,17 @@ export class BlueprintProjectService {
   }
 
   async openProjectFolder(payload: { rootPath: string; name?: string; create?: boolean }): Promise<OpenProjectFolderResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/folder/open'), {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.openFolder({
+        rootPath: payload.rootPath,
+        name: payload.name,
+        create: payload.create,
+      })
+    )
+    if (electronResult !== null) {
+      return { ok: true, project: electronResult.project ?? electronResult }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/folder/open'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
@@ -190,7 +293,7 @@ export class BlueprintProjectService {
       fd.append('projectId', String(Number(opts.projectId)))
     }
     if (opts?.bucket === 'thumbnails') fd.append('bucket', 'thumbnails')
-    const res = await fetch(this.url('/api/workflow/projects/assets/upload'), {
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/upload'), {
       method: 'POST',
       body: fd,
     })
@@ -217,7 +320,7 @@ export class BlueprintProjectService {
     projectId?: number | null
     bucket?: 'assets' | 'thumbnails'
   }): Promise<ImportAssetResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/assets/import'), {
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/import'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
@@ -241,7 +344,7 @@ export class BlueprintProjectService {
     relativePath?: string
     projectRelativePath?: string
   }): Promise<DeleteAssetResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/assets/delete'), {
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/delete'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
@@ -265,7 +368,7 @@ export class BlueprintProjectService {
     sourceUrl?: string
     projectRelativePath?: string
   }): Promise<ResolveAssetResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/assets/resolve'), {
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/resolve'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
@@ -287,7 +390,7 @@ export class BlueprintProjectService {
     name?: string
     projectRelativePath?: string
   }): Promise<RepairAssetResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/assets/repair'), {
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/repair'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
