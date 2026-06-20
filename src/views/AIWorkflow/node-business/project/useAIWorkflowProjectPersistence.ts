@@ -50,6 +50,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
     permissionDenied: number
   } | null | undefined>
   migrateCurrentResourcesToProjectScope: (projectId: number, opts?: { silent?: boolean; projectRootPath?: string }) => Promise<{ changed: number }>
+  repairAllProjectAssetsBeforeHydrate?: (projectId: number, snapshot: AIWorkflowDraftSnapshot) => Promise<AIWorkflowDraftSnapshot>
   buildPersistableSnapshotWithOptions: (opts: { uploadLocalResources: boolean }) => Promise<AIWorkflowDraftSnapshot>
   isElectron: () => boolean
   activeRecoverySession: Ref<any>
@@ -270,7 +271,15 @@ export const useAIWorkflowProjectPersistence = (payload: {
     const normalizedSnapshot = payload.stripUnrealExportRuntimeFromSnapshot(
       payload.normalizeSnapshotResourceUrls((res as any).snapshot, payload.resolveBackendUrl)
     )
-    const runtimeSafeSnapshot = payload.sanitizeBlueprintSnapshotForRuntime(normalizedSnapshot)
+    let runtimeSafeSnapshot = payload.sanitizeBlueprintSnapshotForRuntime(normalizedSnapshot)
+    const projectIdForAssetRepair = Number((project as any)?.id || payload.currentProjectId.value || projectId || 0)
+    if (typeof payload.repairAllProjectAssetsBeforeHydrate === 'function' && Number.isFinite(projectIdForAssetRepair) && projectIdForAssetRepair > 0) {
+      try {
+        runtimeSafeSnapshot = await payload.repairAllProjectAssetsBeforeHydrate(projectIdForAssetRepair, runtimeSafeSnapshot)
+      } catch {
+        // keep load flow resilient if static asset canonicalization fails
+      }
+    }
     if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, '加载项目')) return false
     payload.resetCurrentUnrealExportNodeRuntimeState()
 

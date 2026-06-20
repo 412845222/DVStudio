@@ -174,6 +174,19 @@ export async function fetchAsArrayBuffer(url: string): Promise<{ ok: boolean; bu
 	return result
 }
 
+export async function repairAllProjectAssets(payload: {
+	projectId: number
+	resourcesById: Record<string, any>
+}): Promise<{ ok: boolean; patches?: Record<string, any>; failed?: string[]; changed?: number; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.projectAssets?.repairAll) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.projectAssets.repairAll({
+		projectId: pid,
+		resourcesById: payload?.resourcesById || {},
+	})
+}
+
 
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {
 	if (!w?.dweb?.common?.runBootstrapInstaller) return null

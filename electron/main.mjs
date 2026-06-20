@@ -27,12 +27,16 @@ import {
 	downloadUrlToProjectRoot,
 	copyFileToProjectRoot,
 	getProjectRootById,
-	uploadProjectAsset,
-	importProjectAsset,
-	deleteProjectAsset,
-	resolveProjectAsset,
 	repairProjectAsset,
 } from './backend/projectAssetProtocol.mjs'
+import {
+	uploadBufferProjectAsset,
+	importUrlProjectAsset,
+	importFileProjectAsset,
+	deleteStaticProjectAsset,
+	resolveStaticProjectAsset,
+	repairAllProjectAssets,
+} from './backend/projectStaticAssets/service.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
 import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
@@ -1503,7 +1507,7 @@ function registerIpc() {
 	// Project asset operations (local only; replaces Django backend assets/* API)
 	ipcMain.handle('dweb:aiworkflow:uploadProjectAsset', async (_e, payload) => {
 		try {
-			return uploadProjectAsset(payload || {})
+			return uploadBufferProjectAsset(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1511,7 +1515,9 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:aiworkflow:importProjectAsset', async (_e, payload) => {
 		try {
-			return await importProjectAsset(payload || {})
+			const p = payload || {}
+			if (p.sourcePath || p.path) return await importFileProjectAsset(p)
+			return await importUrlProjectAsset(p)
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1519,7 +1525,7 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:aiworkflow:deleteProjectAsset', async (_e, payload) => {
 		try {
-			return deleteProjectAsset(payload || {})
+			return deleteStaticProjectAsset(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1527,7 +1533,7 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:aiworkflow:resolveProjectAsset', async (_e, payload) => {
 		try {
-			return resolveProjectAsset(payload || {})
+			return resolveStaticProjectAsset(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1536,6 +1542,14 @@ function registerIpc() {
 	ipcMain.handle('dweb:aiworkflow:repairProjectAsset', async (_e, payload) => {
 		try {
 			return repairProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:projectAssets:repairAll', async (_e, payload) => {
+		try {
+			return await repairAllProjectAssets(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}

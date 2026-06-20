@@ -131,6 +131,9 @@ contextBridge.exposeInMainWorld('dweb', {
 				remove: (payload) => invoke('dweb:localdb:apiKeys:remove', payload || {}),
 			},
 		},
+		projectAssets: {
+			repairAll: (payload) => invoke('dweb:aiworkflow:projectAssets:repairAll', payload || {}),
+		},
 		migrateFromDjango: (payload) => invoke('dweb:localdb:migrateFromDjango', payload || {}),
 		// ---- 图片预览原生窗口（Electron BrowserWindow） ----
 		openImageMarkupPreview: (payload) => {

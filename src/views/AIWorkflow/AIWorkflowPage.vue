@@ -590,7 +590,7 @@ import {
   resolveBackendFetchUrl,
   isWorkflowLocalAssetUrl,
 } from '../../network/backendConfig'
-import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot } from '../../electronBridge'
+import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets } from '../../electronBridge'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -3987,6 +3987,28 @@ const {
   recoverComfyUIRunStates,
 })
 
+const repairProjectAssetsBeforeHydrate = async (projectId: number, snapshot: any) => {
+  if (!isElectron()) return snapshot
+  const pid = Number(projectId)
+  if (!Number.isFinite(pid) || pid <= 0) return snapshot
+  const resourcesById = snapshot && typeof snapshot === 'object' && snapshot.resourcesById && typeof snapshot.resourcesById === 'object'
+    ? snapshot.resourcesById
+    : {}
+  try {
+    const repaired = await repairAllProjectAssets({ projectId: pid, resourcesById })
+    if (!repaired?.ok || !repaired.patches || Object.keys(repaired.patches).length === 0) return snapshot
+    return {
+      ...snapshot,
+      resourcesById: {
+        ...resourcesById,
+        ...repaired.patches,
+      },
+    }
+  } catch {
+    return snapshot
+  }
+}
+
 const {
   loadProjectById,
   saveProjectToBackend: _saveProjectToBackendFn,
@@ -4015,6 +4037,7 @@ const {
   finalizeRecoverySessionAfterUrlRecoveryAttempt,
   recoverLocalResourcesFromHandles,
   migrateCurrentResourcesToProjectScope: (...args) => migrateCurrentResourcesToProjectScope(...args),
+  repairAllProjectAssetsBeforeHydrate: repairProjectAssetsBeforeHydrate,
   buildPersistableSnapshotWithOptions,
   isElectron,
   activeRecoverySession,
