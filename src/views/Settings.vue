@@ -111,7 +111,8 @@ async function doSubmit() {
     }
   }
 
-  // 2) settings.json 仅保存“非敏感配置”（不落盘 API Key）
+  // 2) settings.json 仅保存"非敏感配置"（不落盘 API Key）
+  // Web 模式下 saveClientSettings 不可用，跳过即可（只在 Electron 中需要）
   const r = await saveClientSettings({
     ...form,
     deepseekApiKey: "",
@@ -124,7 +125,9 @@ async function doSubmit() {
     deepseekModel: FIXED_DEEPSEEK_MODEL,
     geminiModel: FIXED_GEMINI_MODEL,
   });
+  // r 为 null 表示非 Electron 环境，直接视为成功（credentials 已保存到后端）
   if (r?.ok) saveMsg.value = "保存成功";
+  else if (r === null) saveMsg.value = "保存成功（本地设置已在浏览器中保存）";
   else saveMsg.value = `保存失败：${r?.error || "未知错误"}`;
 
   if (r?.ok) {

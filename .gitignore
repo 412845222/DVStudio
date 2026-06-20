@@ -103,3 +103,29 @@ ehthumbs.db
 # Misc local caches
 .cache/
 
+# Temporary and test files in root directory
+test_*.js
+test_*.mjs
+test_*.ts
+test_*.py
+temp-*.ts
+temp-*.js
+temp-*.py
+*.tmp
+*.temp
+count_lines.py
+
+# External code folders (Claw-code, etc.)
+Claw-code/
+*-code/
+.codex-runtime/
+
+# AI/LLM runtime artifacts
+*.sqlite
+*.jsonl
+session_index.jsonl
+state_*.sqlite
+logs_*.sqlite
+.personality_migration
+config.toml
+

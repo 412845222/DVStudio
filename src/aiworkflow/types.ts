@@ -751,6 +751,22 @@ export type WorkflowNodeChatSubmitPayload = {
 	params: Record<string, any>
 }
 
+export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error'
+
+export type WorkflowNodeGenerationTask = {
+	id: string
+	nodeId: string
+	nodeType: WorkflowNodeChatType
+	status: WorkflowNodeGenerationStatus
+	statusText: string
+	progress: number
+	startedAt: number
+	finishedAt?: number
+	errorMessage?: string
+	results: Array<{ url: string; label?: string; kind: 'image' | 'video' | 'text' | 'model3d' }>
+	detailLines: string[]
+}
+
 export type WorkflowNodeChatDialog = {
 	visible: boolean
 	nodeId: string | null
@@ -776,6 +792,8 @@ export type WorkflowState = {
 	clipboardPrimaryNodeId: string | null
 	chatDraft: string
 	nodeChatDialog: WorkflowNodeChatDialog
+	nodeGenerationTasksById: Record<string, WorkflowNodeGenerationTask>
+	nodeGenerationTaskIdsByNodeId: Record<string, string[]>
 }
 
 export type WorkflowSelectionTarget =

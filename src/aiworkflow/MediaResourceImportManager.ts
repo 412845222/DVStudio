@@ -29,7 +29,10 @@ type WorkerSlot = {
   busy: boolean
 }
 
-const FAILSAFE_TIMEOUT_MS = 15_000
+// 媒体资源导入 Web Worker 的容错超时。
+// 原始值 15 秒对于视频节点的大型资源导入不足。
+// 提升到 120 秒，以确保在网络慢或资源体积大的场景下仍能完成。
+const FAILSAFE_TIMEOUT_MS = 120_000
 
 export class MediaResourceImportManager {
   private readonly batchSize: number

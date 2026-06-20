@@ -286,6 +286,13 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		legacyModelKey: 'nanobanana',
 	},
 	{
+		id: 'doubao-seedream-4-5-251128',
+		label: 'Seedream 4.5 (推荐)',
+		needType: 'image',
+		apiSource: 'bytedance',
+		legacyModelKey: 'nanobanana',
+	},
+	{
 		id: 'doubao-seedream-3-0-t2i-250415',
 		label: 'Seedream 3.0',
 		needType: 'image',

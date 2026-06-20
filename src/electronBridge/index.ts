@@ -151,7 +151,7 @@ export async function getClientSettings(): Promise<ClientSettingsResult | null> 
 }
 
 export async function saveClientSettings(payload: ClientSettings): Promise<ClientSettingsResult | null> {
-	if (!w?.dweb?.common?.saveClientSettings) return { ok: false, error: 'Not running in Electron.' }
+	if (!w?.dweb?.common?.saveClientSettings) return null // Web 模式返回 null，由调用方判断
 	const r: ClientSettingsResult = await w.dweb.common.saveClientSettings(payload)
 	if (r?.ok && r.data) {
 		clientSettingsCache = r.data

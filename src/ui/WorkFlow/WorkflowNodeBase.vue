@@ -113,6 +113,27 @@
     <div class="wf-node-header">
       <div class="wf-node-title">{{ alias || title }}</div>
       <div class="wf-node-type">{{ nodeType }}</div>
+      <div
+        v-if="nodeGenerationTask && nodeGenerationTask.status !== 'idle'"
+        class="wf-node-generation"
+        :class="[`wf-node-generation-${nodeGenerationTask.status}`]"
+      >
+        <div class="wf-node-generation-label">
+          <span class="wf-node-generation-status">{{ generationStatusLabel }}</span>
+          <span v-if="nodeGenerationTask.statusText && nodeGenerationTask.statusText !== generationStatusLabel" class="wf-node-generation-text">
+            · {{ nodeGenerationTask.statusText }}
+          </span>
+        </div>
+        <div class="wf-node-generation-bar">
+          <div
+            class="wf-node-generation-bar-fill"
+            :style="{ width: `${Math.max(2, Math.min(100, Number(nodeGenerationTask.progress) || 0))}%` }"
+          />
+        </div>
+        <div v-if="nodeGenerationTask.results && nodeGenerationTask.results.length" class="wf-node-generation-results">
+          <span>已生成 {{ nodeGenerationTask.results.length }} 项</span>
+        </div>
+      </div>
     </div>
     <div class="wf-node-body">
       <slot name="body">内容占位</slot>
@@ -209,7 +230,7 @@
 
 <script setup lang="ts">
 import { computed, useSlots } from "vue";
-import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload } from "../../aiworkflow/types";
+import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from "../../aiworkflow/types";
 import { NodeChatDialog, type InputParamPreviewRef } from "../BluePrint/node-dialog";
 
 type AnchorSpec = {
@@ -250,6 +271,7 @@ const props = defineProps<{
   nodeChatSubmitting?: boolean;
   nodeChatParams?: Record<string, any>;
   inputParamPreviewRefs?: InputParamPreviewRef[];
+  nodeGenerationTask?: WorkflowNodeGenerationTask | null;
 }>();
 
 const emit = defineEmits<{
@@ -365,6 +387,15 @@ const typeLabel = computed(() => {
   if (props.nodeType === "model3d") return "3D模型";
   if (props.nodeType === "meshy") return "Meshy模型生成";
   return "基础";
+});
+
+const generationStatusLabel = computed(() => {
+  const status = props.nodeGenerationTask?.status;
+  if (status === "submitting") return "任务提交中";
+  if (status === "running") return "生成中";
+  if (status === "completed") return "已完成";
+  if (status === "error") return "生成失败";
+  return "空闲";
 });
 
 const onOpenNodeLibrary = () => {
@@ -671,10 +702,100 @@ const isOutputHover = (anchorId: string) => {
 
 .wf-node-header {
   display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.wf-node-header > .wf-node-title,
+.wf-node-header > .wf-node-type {
+  display: inline-block;
+}
+
+.wf-node-header > .wf-node-title + .wf-node-type {
+  display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+}
+
+.wf-node-generation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 40%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--wf-primary) 10%, transparent);
+  font-size: 11px;
+  color: var(--wf-text-muted);
+  animation: wf-gen-in 160ms ease-out both;
+}
+
+.wf-node-generation-running,
+.wf-node-generation-submitting {
+  border-color: color-mix(in srgb, var(--wf-primary) 50%, transparent);
+}
+
+.wf-node-generation-completed {
+  border-color: color-mix(in srgb, #2ea44f 50%, transparent);
+  background: color-mix(in srgb, #2ea44f 10%, transparent);
+}
+
+.wf-node-generation-error {
+  border-color: color-mix(in srgb, #e74c3c 60%, transparent);
+  background: color-mix(in srgb, #e74c3c 12%, transparent);
+  color: color-mix(in srgb, #e74c3c 90%, black);
+}
+
+.wf-node-generation-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.wf-node-generation-status {
+  font-weight: 600;
+  color: var(--wf-text);
+}
+
+.wf-node-generation-text {
+  color: var(--wf-text-muted);
+  opacity: 0.9;
+}
+
+.wf-node-generation-bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--wf-border) 60%, transparent);
+  overflow: hidden;
+}
+
+.wf-node-generation-bar-fill {
+  height: 100%;
+  background: var(--wf-primary);
+  transition: width 180ms ease;
+}
+
+.wf-node-generation-completed .wf-node-generation-bar-fill {
+  background: #2ea44f;
+}
+
+.wf-node-generation-error .wf-node-generation-bar-fill {
+  background: #e74c3c;
+}
+
+.wf-node-generation-results {
+  font-size: 11px;
+  color: var(--wf-text-muted);
+}
+
+@keyframes wf-gen-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .wf-node-body {

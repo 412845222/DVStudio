@@ -83,6 +83,7 @@
             :node-chat-submitting="nodeChatDialog.nodeId === node.id ? nodeChatDialog.submitting : false"
             :node-chat-params="nodeChatDialog.nodeId === node.id ? nodeChatDialog.params : {}"
             :node-chat-node-width="node.width"
+            :node-generation-task="latestGenerationTaskByNodeId(node.id)"
             :style="
               nodeStyle(
                 vp.worldToScreen,
@@ -519,6 +520,7 @@
       />
 
     </div>
+    <AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
   </div>
 </template>
 
@@ -577,8 +579,10 @@ import { MediaResourceImportManager } from '../../aiworkflow/MediaResourceImport
 import { VideoMetadataReadQueue } from '../../aiworkflow/VideoMetadataReadQueue'
 import { createVideoFirstFrameThumbnail } from '../../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
 import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../../aiworkflow/localFileHandleDb'
-import { resolveBackendUrl } from '../../network/backendConfig'
+import { resolveBackendUrl, getBackendBaseUrl } from '../../network/backendConfig'
 import { isElectron, openFolderForPath } from '../../electronBridge'
+import { getRuntimePlatform } from '../../network/runtimePlatform'
+import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import { useAIWorkflowEdgeRenderer } from './blueprint-core/useAIWorkflowEdgeRenderer'
 import { useAIWorkflowEdgeIndex } from './blueprint-core/useAIWorkflowEdgeIndex'
 import { useAIWorkflowNodeVisibility } from './blueprint-core/useAIWorkflowNodeVisibility'
@@ -924,8 +928,51 @@ const onNodeChatClose = () => {
   store.dispatch('closeNodeChatDialog')
 }
 
-const onNodeChatSubmit = (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
+const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
   store.dispatch('submitNodeChat', payload)
+  const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
+  const castPayload = payload as unknown as Parameters<typeof runNodeGenerationTask>[1]
+  await runNodeGenerationTask(
+    {
+      store,
+      comfyService,
+      resolveBackendUrl,
+      pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
+        chatMessages.value = [
+          ...chatMessages.value,
+          { id: `sys-${Date.now()}`, role: 'system', message, tone, createdAt: Date.now() },
+        ] as any
+      },
+      bindTextResultToNode: (nodeId: string, text: string) => {
+        store.commit('setNodeTextValue', { nodeId, textValue: text })
+      },
+      bindImageResultToNode: (nodeId: string, url: string) => {
+        const node = store.state.nodesById[nodeId]
+        if (!node) return
+        const resourceId = `gen-img-${nodeId}-${Date.now()}`
+        store.commit('addResource', {
+          id: resourceId,
+          kind: 'image',
+          name: `AI 生成图片 ${resourceId.slice(-6)}`,
+          url: url,
+        })
+        store.commit('setNodeResource', { nodeId, resourceId })
+      },
+      bindVideoResultToNode: (nodeId: string, url: string) => {
+        const node = store.state.nodesById[nodeId]
+        if (!node) return
+        const resourceId = `gen-video-${nodeId}-${Date.now()}`
+        store.commit('addResource', {
+          id: resourceId,
+          kind: 'video',
+          name: `AI 生成视频 ${resourceId.slice(-6)}`,
+          url: url,
+        })
+        store.commit('setNodeResource', { nodeId, resourceId })
+      },
+    },
+    castPayload,
+  )
 }
 
 const onNodeChatRemoveParamRef = (item: InputParamPreviewRef) => {
@@ -2449,6 +2496,8 @@ const {
   nodeResourceName,
 })
 
+const isWebEnvironment = () => getRuntimePlatform() === 'web'
+
 const {
   storyPreview,
   rotateImagePreviewUrl,
@@ -2541,6 +2590,13 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
   nodeMediaReloadToken,
 })
 
+const latestGenerationTaskByNodeId = (nodeId: string) => {
+  const ids = store.state.nodeGenerationTaskIdsByNodeId?.[nodeId]
+  if (!Array.isArray(ids) || !ids.length) return null
+  const firstId = ids[0]
+  return store.state.nodeGenerationTasksById?.[firstId] || null
+}
+
 const onNodeStartThreePreview = (nodeId: string) => {
   startPreviewSession(nodeId)
 }
@@ -2581,6 +2637,9 @@ const resolveLocalExecStreamMode = (): 'real' | 'mock' => {
 
 const comfyService = new ComfyUIBridgeService({
   localExecBasePath: resolveLocalExecBasePath(),
+  // web 模式下不写 baseUrl，让路径保持相对路径走 Vite proxy (/api/* → http://127.0.0.1:5800)，
+  // 避免浏览器因跨域而在测试环境出现 "Failed to fetch"。
+  baseUrl: getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl(),
 })
 const localExecChatService = createLocalExecChatService(comfyService)
 const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())
