@@ -940,6 +940,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
       store,
       comfyService,
       resolveBackendUrl,
+      getBackendBaseUrl: () => getBackendBaseUrl(),
       pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
         chatMessages.value = [
           ...chatMessages.value,
@@ -949,30 +950,63 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
       bindTextResultToNode: (nodeId: string, text: string) => {
         store.commit('setNodeTextValue', { nodeId, textValue: text })
       },
-      bindImageResultToNode: (nodeId: string, url: string) => {
+      bindImageResultToNode: async (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
         if (!node) return
+        let finalUrl = url
+        let sourcePath = ''
+        try {
+          const persisted = await persistExternalAssetToProject({
+            kind: 'image',
+            name: `ai-gen-${nodeId}-${Date.now()}.png`,
+            sourceUrl: url,
+          })
+          if (persisted?.url) {
+            finalUrl = persisted.url
+            sourcePath = persisted.absolutePath || ''
+          }
+        } catch {
+          // 如果持久化失败，仍然用原始 URL 绑定
+        }
         const resourceId = `gen-img-${nodeId}-${Date.now()}`
         store.commit('addResource', {
           id: resourceId,
           kind: 'image',
           name: `AI 生成图片 ${resourceId.slice(-6)}`,
-          url: url,
+          url: finalUrl,
+          ...(sourcePath ? { sourcePath } : null) as any,
         })
         store.commit('setNodeResource', { nodeId, resourceId })
       },
-      bindVideoResultToNode: (nodeId: string, url: string) => {
+      bindVideoResultToNode: async (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
         if (!node) return
+        let finalUrl = url
+        let sourcePath = ''
+        try {
+          const persisted = await persistExternalAssetToProject({
+            kind: 'video',
+            name: `ai-gen-${nodeId}-${Date.now()}.mp4`,
+            sourceUrl: url,
+          })
+          if (persisted?.url) {
+            finalUrl = persisted.url
+            sourcePath = persisted.absolutePath || ''
+          }
+        } catch {
+          // 如果持久化失败，仍然用原始 URL 绑定
+        }
         const resourceId = `gen-video-${nodeId}-${Date.now()}`
         store.commit('addResource', {
           id: resourceId,
           kind: 'video',
           name: `AI 生成视频 ${resourceId.slice(-6)}`,
-          url: url,
+          url: finalUrl,
+          ...(sourcePath ? { sourcePath } : null) as any,
         })
         store.commit('setNodeResource', { nodeId, resourceId })
       },
+      persistExternalAssetToProject,
     },
     castPayload,
   )
@@ -2487,6 +2521,11 @@ const onInspectorClearResource = (nodeId: string) => {
   onNodeClearResource(nodeId)
 }
 
+// 使用 ref 包装 persistExternalAssetToProject，避免 TDZ 问题。
+// 闭包捕获的是 ref 变量本身（不是 .value），ref 变量在声明时已存在，
+// .value 的访问发生在 getter 函数被调用时，此时 useAIWorkflowAssetPersistence 已执行完毕。
+const persistExternalAssetToProjectRef = ref<((payload: any) => Promise<any>) | null>(null)
+
 const {
   downloadUrlAsBlob,
   inferSelectedResourceFilename,
@@ -2497,6 +2536,7 @@ const {
   selectedNodeId,
   isElectron,
   nodeResourceName,
+  getPersistExternalAssetToProject: () => persistExternalAssetToProjectRef.value ?? undefined,
 })
 
 const isWebEnvironment = () => getRuntimePlatform() === 'web'
@@ -3542,7 +3582,8 @@ const extFromMime = (mime: string): string => {
 }
 
 const fileFromUrl = async (url: string, fileNameBase: string): Promise<File> => {
-  const resp = await fetch(url)
+  const resolvedUrl = resolveBackendUrl(url)
+  const resp = await fetch(resolvedUrl)
   if (!resp.ok) throw new Error(`fetch local url failed: ${resp.status}`)
   const blob = await resp.blob()
   const ext = extFromMime(blob.type)
@@ -3605,6 +3646,8 @@ const {
   fileFromUrl,
   importAssetIntoProjectScope: (payload) => importAssetIntoProjectScope(payload),
 })
+// 将函数写入 ref，使 useAIWorkflowResourceActions 中的 late-binding getter 能访问到。
+persistExternalAssetToProjectRef.value = persistExternalAssetToProject
 
 const {
   onSend,

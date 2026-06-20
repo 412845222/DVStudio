@@ -30,7 +30,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:5800',
+        target: process.env.VITE_BACKEND_BASE_URL || 'http://127.0.0.1:5800',
         changeOrigin: true,
         ws: false,
         // 完全禁用代理层超时：Seedance 视频生成可能十几分钟。
@@ -104,7 +104,7 @@ export default defineConfig({
         },
       },
       '/media': {
-        target: 'http://127.0.0.1:5800',
+        target: process.env.VITE_BACKEND_BASE_URL || 'http://127.0.0.1:5800',
         changeOrigin: true,
         timeout: 0,
         proxyTimeout: 0,

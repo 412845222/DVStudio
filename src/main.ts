@@ -16,6 +16,16 @@ if (!w.__DWEB_RUNTIME__) {
 	w.__DWEB_RUNTIME__ = { platform: 'web', isElectron: false }
 }
 
+// Web 模式下显式设置后端 baseUrl（从 Vite 环境变量或 localStorage 读取）。
+// Electron 模式下由 preload 注入动态值，不要覆盖。
+if (w?.__DWEB_RUNTIME__?.platform !== 'electron' && !w.dweb) {
+	const viteBackendBaseUrl = (import.meta as any)?.env?.VITE_BACKEND_BASE_URL ?? ''
+	const fallback = viteBackendBaseUrl || 'http://127.0.0.1:5800'
+	if (typeof w.__DWEB_BACKEND_BASE_URL__ !== 'string') {
+		w.__DWEB_BACKEND_BASE_URL__ = fallback
+	}
+}
+
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
 window.addEventListener('contextmenu', (e) => {
 	e.preventDefault()
