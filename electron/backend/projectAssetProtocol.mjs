@@ -183,37 +183,36 @@ function handleProjectAssetRequest(request) {
     // ignore
   }
 
-  // 统一处理路径分隔符（Windows \ -> /），并规范化路径
   const rel = String(parsed.relPath || '').trim().replace(/\\/g, '/')
+  let cleanRel = rel
+  if (cleanRel.startsWith('Content/Media/')) {
+    cleanRel = cleanRel.slice('Content/Media/'.length)
+  } else if (cleanRel.startsWith('content/media/')) {
+    cleanRel = cleanRel.slice('content/media/'.length)
+  } else if (cleanRel.startsWith('Media/')) {
+    cleanRel = cleanRel.slice('Media/'.length)
+  } else if (cleanRel.startsWith('media/')) {
+    cleanRel = cleanRel.slice('media/'.length)
+  }
 
-  // 候选路径列表：优先使用原始路径，然后尝试新旧目录的等价路径
-  // 例如：generated-assets/img-xxx.jpg -> Content/Media/img-xxx.jpg
-  // 反之亦然：Content/Media/img-xxx.jpg -> generated-assets/img-xxx.jpg
-  const candidates = [rel]
+  const candidates = [rel, cleanRel]
 
-  // 提取文件名（最基础的文件名），用于在新旧目录中查找
   const parts = rel.split('/').filter((p) => p && p !== '.')
   if (parts.length >= 2) {
     const firstDir = parts[0].toLowerCase()
     const restPath = parts.slice(1).join('/')
     const fileName = parts[parts.length - 1]
 
-    // 旧项目：路径以 generated-assets 开头
     if (firstDir === 'generated-assets') {
-      // 尝试在新目录 Content/Media 下查找
       candidates.push('Content/Media/' + restPath)
-      // 也尝试 Content/Media/ + 文件名（资源可能没有子目录）
       if (restPath !== fileName) {
         candidates.push('Content/Media/' + fileName)
       }
     }
-    // 新项目：路径以 Content 或 Media 开头
     if (firstDir === 'content' || firstDir === 'media' || firstDir === 'thumbnails') {
-      // 尝试在旧目录 generated-assets 下查找
       candidates.push('generated-assets/' + fileName)
     }
   } else if (parts.length === 1) {
-    // 只给出文件名时，尝试多个常见目录
     candidates.push('Content/Media/' + parts[0])
     candidates.push('generated-assets/' + parts[0])
   }
@@ -221,7 +220,6 @@ function handleProjectAssetRequest(request) {
   if (parts.length >= 2) {
     const firstDir = parts[0].toLowerCase()
     const secondDir = parts[1]?.toLowerCase()
-    // 当 root 已经是 Content/Media 目录时，直接尝试去掉前缀
     if (firstDir === 'content' && secondDir === 'media' && parts.length >= 3) {
       candidates.push(parts.slice(2).join('/'))
     } else if (firstDir === 'media' && parts.length >= 2) {
@@ -229,7 +227,13 @@ function handleProjectAssetRequest(request) {
     }
   }
 
-  // 解析并检查每个候选路径（支持多个 root 候选，提升项目根映射容错）
+  const cleanParts = cleanRel.split('/').filter((p) => p && p !== '.')
+  if (cleanParts.length >= 1) {
+    const fileName = cleanParts[cleanParts.length - 1]
+    candidates.push('Content/Media/' + fileName)
+    candidates.push('Content/Media/' + cleanRel)
+  }
+
   let resolvedPath = null
   let resolvedFromRoot = ''
   for (const rootCandidate of rootCandidates) {
@@ -252,7 +256,6 @@ function handleProjectAssetRequest(request) {
     if (resolvedPath) break
   }
 
-  // 如果所有候选都找不到，则使用原始路径返回 404（给用户明确的错误信息）
   let filePath = resolvedPath
   if (!filePath) {
     for (const rootCandidate of rootCandidates) {
@@ -674,6 +677,266 @@ function fetchRemoteUrl(rawUrl, targetPath) {
     })
     req.end()
   })
+}
+
+function buildAssetPayload(projectId, absolutePath, root, { kind, name, contentType, sourcePath }) {
+  const resolvedRoot = String(root || '').trim()
+  const rel = path.relative(resolvedRoot, absolutePath).split(path.sep).join('/')
+  const mimeType = String(contentType || '').trim() || guessMimeType(absolutePath)
+  const size = Number(fs.statSync(absolutePath).size || 0)
+  const url = 'dweb://project-assets?projectId=' + encodeURIComponent(String(projectId)) + '&path=' + encodeURIComponent(rel)
+  return {
+    kind: String(kind || 'file').toLowerCase(),
+    name: String(name || path.basename(absolutePath)),
+    contentType: mimeType,
+    size,
+    relativePath: rel,
+    projectRelativePath: rel,
+    absolutePath,
+    url,
+    sourcePath: sourcePath || absolutePath,
+  }
+}
+
+function resolveAssetTargetDir(projectId, bucket) {
+  const root = projectRootById.get(projectId)
+  if (!root) return null
+  const safeBucket = String(bucket || 'assets').trim().toLowerCase()
+  if (safeBucket === 'thumbnails') {
+    const p = path.resolve(root, 'Content', 'Media', 'thumbnails')
+    fs.mkdirSync(p, { recursive: true })
+    return { root, kind: 'image', targetDir: p }
+  }
+  const p = path.resolve(root, 'Content', 'Media')
+  fs.mkdirSync(p, { recursive: true })
+  return { root, kind: 'file', targetDir: p }
+}
+
+function makeUniqueFilename(targetDir, baseName, ext) {
+  const cleanBase = String(baseName || 'asset').slice(0, 80)
+  const primary = path.resolve(targetDir, cleanBase + ext)
+  if (!fs.existsSync(primary)) return primary
+  const stamp = Date.now()
+  const rand = Math.random().toString(36).slice(2, 8)
+  return path.resolve(targetDir, `${cleanBase}_${stamp}_${rand}${ext}`)
+}
+
+export function uploadProjectAsset({ projectId, kind, name, arrayBuffer, contentType, bucket }) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+  if (!arrayBuffer || !(arrayBuffer instanceof ArrayBuffer || (arrayBuffer && typeof arrayBuffer.byteLength === 'number'))) {
+    return { ok: false, error: 'file content is required' }
+  }
+  const target = resolveAssetTargetDir(id, bucket)
+  if (!target) return { ok: false, error: 'project root not registered' }
+
+  const extension = path.extname(String(name || 'file')) || '.bin'
+  const base = path.basename(String(name || 'file'), extension) || 'asset'
+  const finalPath = makeUniqueFilename(target.targetDir, base, extension)
+
+  try {
+    fs.writeFileSync(finalPath, Buffer.from(arrayBuffer))
+  } catch (err) {
+    return { ok: false, error: 'write file failed: ' + String(err?.message || err) }
+  }
+
+  const asset = buildAssetPayload(id, finalPath, target.root, {
+    kind: kind || target.kind,
+    name,
+    contentType,
+    sourcePath: finalPath,
+  })
+  return { ok: true, asset }
+}
+
+export async function importProjectAsset({ projectId, kind, name, sourcePath, sourceUrl, bucket }) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+
+  const target = resolveAssetTargetDir(id, bucket)
+  if (!target) return { ok: false, error: 'project root not registered' }
+
+  const rawSourcePath = String(sourcePath || '').trim()
+  const rawSourceUrl = String(sourceUrl || '').trim()
+
+  if (rawSourcePath) {
+    try {
+      const src = path.normalize(rawSourcePath)
+      if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
+        return { ok: false, error: 'sourcePath not found' }
+      }
+      const ext = path.extname(src) || '.bin'
+      const base = path.basename(src, ext) || 'asset'
+      const finalPath = makeUniqueFilename(target.targetDir, base, ext)
+      if (path.resolve(src) !== finalPath) {
+        fs.copyFileSync(src, finalPath)
+      }
+      const asset = buildAssetPayload(id, finalPath, target.root, {
+        kind: kind || 'file',
+        name: name || path.basename(src),
+        contentType: null,
+        sourcePath: src,
+      })
+      return { ok: true, asset }
+    } catch (err) {
+      return { ok: false, error: 'import from sourcePath failed: ' + String(err?.message || err) }
+    }
+  }
+
+  if (rawSourceUrl) {
+    try {
+      const nameHint = String(name || '').trim() || path.basename(rawSourceUrl.split('?')[0].split('#')[0]) || 'asset'
+      const ext = path.extname(nameHint) || inferExtension(nameHint, rawSourceUrl) || '.bin'
+      const base = path.basename(nameHint, ext) || 'asset'
+      const finalPath = makeUniqueFilename(target.targetDir, base, ext)
+      await fetchRemoteUrl(rawSourceUrl, finalPath)
+      const asset = buildAssetPayload(id, finalPath, target.root, {
+        kind: kind || 'file',
+        name: nameHint,
+        contentType: null,
+        sourcePath: finalPath,
+      })
+      asset.sourceUrl = rawSourceUrl
+      return { ok: true, asset }
+    } catch (err) {
+      return { ok: false, error: 'download sourceUrl failed: ' + String(err?.message || err) }
+    }
+  }
+
+  return { ok: false, error: 'sourcePath or sourceUrl is required' }
+}
+
+export function deleteProjectAsset({ projectId, relativePath, url, sourcePath }) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+
+  const root = projectRootById.get(id)
+  if (!root) return { ok: false, error: 'project root not registered' }
+
+  let rel = String(relativePath || '').trim()
+  if (!rel && url) {
+    try {
+      const u = new URL(String(url))
+      if (u.hostname === DWEB_PROJECT_ASSET_HOST) {
+        rel = String(u.searchParams.get('path') || '').trim()
+      }
+    } catch {
+      // ignore
+    }
+  }
+  if (!rel && sourcePath) {
+    try {
+      const abs = path.resolve(String(sourcePath))
+      const candidate = path.relative(root, abs).split(path.sep).join('/')
+      if (!candidate.startsWith('..')) rel = candidate
+    } catch {
+      // ignore
+    }
+  }
+  if (!rel) return { ok: true, fileDeleted: false, reason: 'no target path provided' }
+
+  const candidate = safeResolveProjectFile(root, rel)
+  if (!candidate) return { ok: false, error: 'invalid target path' }
+  if (!fs.existsSync(candidate)) return { ok: true, fileDeleted: false, path: candidate }
+
+  try {
+    fs.unlinkSync(candidate)
+    return { ok: true, fileDeleted: true, path: candidate }
+  } catch (err) {
+    return { ok: false, error: 'delete failed: ' + String(err?.message || err) }
+  }
+}
+
+export function resolveProjectAsset({ projectId, kind, name, projectRelativePath, sourcePath }) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+
+  const root = projectRootById.get(id)
+  if (!root) return { ok: false, error: 'project root not registered' }
+
+  const rel = String(projectRelativePath || '').trim()
+  if (rel) {
+    const candidate = safeResolveProjectFile(root, rel)
+    if (candidate && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      const asset = buildAssetPayload(id, candidate, root, {
+        kind: kind || 'file',
+        name: name || path.basename(candidate),
+        contentType: null,
+        sourcePath: candidate,
+      })
+      return { ok: true, resolved: true, asset }
+    }
+  }
+
+  const src = String(sourcePath || '').trim()
+  if (src) {
+    const abs = path.resolve(src)
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+      const candidate = path.relative(root, abs).split(path.sep).join('/')
+      if (!candidate.startsWith('..')) {
+        const asset = buildAssetPayload(id, abs, root, {
+          kind: kind || 'file',
+          name: name || path.basename(abs),
+          contentType: null,
+          sourcePath: abs,
+        })
+        asset.projectRelativePath = candidate
+        asset.relativePath = candidate
+        return { ok: true, resolved: true, asset }
+      }
+    }
+  }
+
+  return { ok: true, resolved: false, reason: 'not_found' }
+}
+
+function scanDirForName(dir, targetName) {
+  if (!dir || !fs.existsSync(dir)) return null
+  try {
+    const stack = [dir]
+    while (stack.length) {
+      const current = stack.pop()
+      let entries
+      try {
+        entries = fs.readdirSync(current, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      for (const entry of entries) {
+        const full = path.resolve(current, entry.name)
+        if (entry.isFile() && entry.name === targetName) return full
+        if (entry.isDirectory()) stack.push(full)
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+export function repairProjectAsset({ projectId, kind, name, projectRelativePath }) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+
+  const root = projectRootById.get(id)
+  if (!root) return { ok: false, error: 'project root not registered' }
+
+  const targetName = String(name || '').trim() || path.basename(String(projectRelativePath || '')).trim()
+  if (!targetName) return { ok: false, error: 'name or projectRelativePath is required' }
+
+  const mediaRoot = path.resolve(root, 'Content', 'Media')
+  const generatedRoot = path.resolve(root, 'Content', 'Generated')
+
+  const hit = scanDirForName(mediaRoot, targetName) || scanDirForName(generatedRoot, targetName)
+  if (!hit) return { ok: true, repaired: false, reason: 'not_found' }
+
+  const asset = buildAssetPayload(id, hit, root, {
+    kind: kind || 'file',
+    name: targetName,
+    contentType: null,
+    sourcePath: hit,
+  })
+  return { ok: true, repaired: true, asset }
 }
 
 export { DWEB_PROJECT_ASSET_HOST }

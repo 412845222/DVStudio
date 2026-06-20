@@ -20,8 +20,5 @@ urlpatterns = [
     path("projects/save", api.save_project, name="comfyui-projects-save"),
     path("projects/load", api.load_project, name="comfyui-projects-load"),
     path("projects/delete", api.delete_project, name="comfyui-projects-delete"),
-    path("projects/assets/upload", api.upload_project_asset, name="comfyui-projects-assets-upload"),
-    path("projects/assets/import", api.import_project_asset, name="comfyui-projects-assets-import"),
-    path("projects/assets/delete", api.delete_project_asset, name="comfyui-projects-assets-delete"),
     path("projects/assets/local", api.get_local_project_asset, name="comfyui-projects-assets-local"),
 ]

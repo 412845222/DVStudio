@@ -27,6 +27,11 @@ import {
 	downloadUrlToProjectRoot,
 	copyFileToProjectRoot,
 	getProjectRootById,
+	uploadProjectAsset,
+	importProjectAsset,
+	deleteProjectAsset,
+	resolveProjectAsset,
+	repairProjectAsset,
 } from './backend/projectAssetProtocol.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
@@ -1490,6 +1495,47 @@ function registerIpc() {
 		if (!sourcePath) return { ok: false, error: 'sourcePath is empty' }
 		try {
 			return await copyFileToProjectRoot(projectId, sourcePath, desiredFilename)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// Project asset operations (local only; replaces Django backend assets/* API)
+	ipcMain.handle('dweb:aiworkflow:uploadProjectAsset', async (_e, payload) => {
+		try {
+			return uploadProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:importProjectAsset', async (_e, payload) => {
+		try {
+			return await importProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:deleteProjectAsset', async (_e, payload) => {
+		try {
+			return deleteProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:resolveProjectAsset', async (_e, payload) => {
+		try {
+			return resolveProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:repairProjectAsset', async (_e, payload) => {
+		try {
+			return repairProjectAsset(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
