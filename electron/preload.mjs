@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		clearBackendLogs: () => invoke('dweb:backend:clearLogs'),
 		collectDiagnostics: () => invoke('dweb:diagnostics:collect'),
 		revealUserDataDir: () => invoke('dweb:app:revealUserDataDir'),
+		openExternalUrl: (payload) => invoke('dweb:app:openExternalUrl', payload),
 		openFolderForPath: (payload) => invoke('dweb:app:openFolderForPath', payload),
 		runBootstrapInstaller: () => invoke('dweb:bootstrap:install'),
 	},

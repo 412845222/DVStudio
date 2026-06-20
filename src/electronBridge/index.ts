@@ -112,6 +112,34 @@ export async function openFolderForPath(path: string): Promise<OpenFolderResult 
 	return w.dweb.common.openFolderForPath({ path: String(path || '') })
 }
 
+/**
+ * 在用户的默认浏览器中打开外部 URL。
+ * 优先使用 Electron 的 shell.openExternal；非 Electron 环境回落到 window.open。
+ */
+export function openExternalUrl(url: string): Promise<{ ok: boolean; error?: string }> {
+	const trimmed = String(url || '').trim()
+	if (!trimmed) return Promise.resolve({ ok: false, error: 'empty url' })
+	if (w?.dweb?.common?.openExternalUrl) {
+		try {
+			const r = w.dweb.common.openExternalUrl({ url: trimmed })
+			if (r && typeof r.then === 'function') {
+				return r.catch((e: any) => ({ ok: false, error: String(e?.message || e) }))
+			}
+			if (r && (r as any).ok) return Promise.resolve({ ok: true })
+		} catch (e: any) {
+			return Promise.resolve({ ok: false, error: String(e?.message || e) })
+		}
+	}
+	// 非 Electron 环境：用原生 window.open 在新窗口/浏览器中打开
+	try {
+		const win = window.open(trimmed, '_blank', 'noopener,noreferrer')
+		if (!win) return Promise.resolve({ ok: false, error: 'blocked by browser' })
+		return Promise.resolve({ ok: true })
+	} catch (e: any) {
+		return Promise.resolve({ ok: false, error: String(e?.message || e) })
+	}
+}
+
 export async function selectProjectFolder(): Promise<DirectoryPickResult | null> {
 	if (!w?.dweb?.aiworkflow?.selectProjectFolder) return null
 	return w.dweb.aiworkflow.selectProjectFolder()
