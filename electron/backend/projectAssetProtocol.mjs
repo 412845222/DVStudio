@@ -556,6 +556,13 @@ function sanitizeFilename(name) {
   let safe = raw.split('?')[0].split('#')[0]
   const idx = Math.max(safe.lastIndexOf('/'), safe.lastIndexOf('\\'))
   if (idx >= 0) safe = safe.slice(idx + 1)
+  // Check for non-ASCII characters (e.g. Chinese/Japanese/Korean) and replace with safe fallback
+  if (/[^\x00-\x7F]/.test(safe)) {
+    const hash = Math.abs(
+      Array.from(safe).reduce((acc, c) => acc + c.charCodeAt(0), 0) % 100000
+    )
+    safe = `asset_${hash}_${Date.now().toString(36)}`
+  }
   safe = safe.replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_')
   safe = safe.replace(/^[\s.]+/, '')
   if (!safe) return `asset-${Date.now()}`

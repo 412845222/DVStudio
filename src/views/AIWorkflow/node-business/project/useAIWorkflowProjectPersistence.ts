@@ -72,12 +72,18 @@ export const useAIWorkflowProjectPersistence = (payload: {
   // 可选：在 Electron 中解析当前已注册的项目根目录（用于避免重复复制）
   getCurrentProjectRootPath?: () => string
 }) => {
-  const resolveOrRepairProjectScopedResources = async (projectId: number, opts?: { silent?: boolean }) => {
+  const resolveOrRepairProjectScopedResources = async (projectId: number, opts?: { silent?: boolean; projectRootPath?: string }) => {
     const pid = Number(projectId)
     if (!Number.isFinite(pid) || pid <= 0) return { changed: 0, failed: 0 }
 
     const patches: Array<{ resourceId: string; patch: any }> = []
     let failed = 0
+    const projectRoot = typeof opts?.projectRootPath === 'string' ? opts.projectRootPath.replace(/\\/g, '/').replace(/\/+$/, '') : ''
+
+    const buildDwebUrl = (relPath: string): string => {
+      if (!relPath || !Number.isFinite(pid) || pid <= 0) return ''
+      return `dweb://project-assets?projectId=${encodeURIComponent(String(pid))}&path=${encodeURIComponent(relPath)}`
+    }
 
     for (const rid of payload.store.state.resourceOrder) {
       const resource = payload.store.state.resourcesById?.[rid] as any
@@ -85,34 +91,91 @@ export const useAIWorkflowProjectPersistence = (payload: {
 
       const kindRaw = String(resource.kind ?? '').trim().toLowerCase()
       const kind = (kindRaw === 'video' ? 'video' : kindRaw === 'image' ? 'image' : 'file') as 'image' | 'video' | 'file'
-      const name = String(resource.name || '').trim()
-      const sourcePath = String(resource.sourcePath || '').trim()
-      const sourceUrl = String(resource.url || '').trim()
+      const rawName = String(resource.name || '').trim()
+      const sourcePath = String(resource.sourcePath || '').replace(/\\/g, '/').trim()
+      const rawUrl = String(resource.url || '').trim()
       const projectRelativePath = String(resource.projectRelativePath || '').trim()
-      const posterSourcePath = String(resource.posterSourcePath || '').trim()
+      const posterSourcePath = String(resource.posterSourcePath || '').replace(/\\/g, '/').trim()
       const posterUrl = String(resource.posterUrl || '').trim()
       const posterProjectRelativePath = String(resource.posterProjectRelativePath || '').trim()
 
       const nextPatch: any = {}
 
-      const needsResourceFix = !sourceUrl || sourceUrl.startsWith('blob:') || sourceUrl.startsWith('data:')
-      if (needsResourceFix && (projectRelativePath || sourcePath || sourceUrl)) {
+      // 清洗资源名称，确保不包含中文
+      const hasChineseInName = /[\u4e00-\u9fff]/.test(rawName)
+      if (hasChineseInName || !rawName) {
+        const safeName = `${kind}_${String(rid).slice(-8)}`
+        nextPatch.name = safeName
+      }
+
+      // 检测 file:// 协议 URL
+      const isFileProtocol = rawUrl.toLowerCase().startsWith('file://')
+
+      // 从 sourcePath 推断 projectRelativePath
+      let inferredRelPath = projectRelativePath
+      if (!inferredRelPath && sourcePath && projectRoot) {
+        const normalizedSource = sourcePath.toLowerCase()
+        const normalizedRoot = projectRoot.toLowerCase()
+        if (normalizedSource.startsWith(normalizedRoot + '/')) {
+          inferredRelPath = sourcePath.slice(projectRoot.length + 1)
+        }
+      }
+
+      // 如果有 projectRelativePath 但没有正确的 dweb URL，或者 URL 是 file:// 协议，则修复
+      const needsUrlFromRelPath = (inferredRelPath && (!rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:') || isFileProtocol))
+      const needsFileProtocolFix = isFileProtocol
+      const needsUrlFix = needsUrlFromRelPath || needsFileProtocolFix
+
+      if (needsUrlFix) {
+        if (inferredRelPath) {
+          nextPatch.url = buildDwebUrl(inferredRelPath)
+          nextPatch.projectRelativePath = inferredRelPath
+        } else if (sourcePath) {
+          try {
+            const resolved = await payload.blueprintProjectService.resolveAsset({
+              projectId: pid,
+              kind,
+              name: rawName || undefined,
+              sourcePath: sourcePath || undefined,
+              projectRelativePath: projectRelativePath || undefined,
+            })
+            const asset = (resolved as any)?.ok && (resolved as any)?.resolved ? (resolved as any)?.asset : null
+            if (asset) {
+              const nextUrl = String(asset.url || '').trim()
+              const nextRel = String(asset.projectRelativePath || asset.relativePath || '').trim()
+              if (nextUrl) {
+                nextPatch.url = payload.toProjectAssetRuntimeUrl
+                  ? payload.toProjectAssetRuntimeUrl(pid, nextRel || inferredRelPath, payload.resolveBackendUrl(nextUrl))
+                  : payload.resolveBackendUrl(nextUrl)
+              }
+              if (nextRel) nextPatch.projectRelativePath = nextRel
+              if (asset.absolutePath) nextPatch.sourcePath = String(asset.absolutePath)
+            }
+          } catch {
+            failed += 1
+          }
+        }
+      }
+
+      // 基础资源修复：原本的逻辑
+      const needsResourceFix = !rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:') || isFileProtocol
+      if (needsResourceFix && !needsUrlFix && (projectRelativePath || sourcePath || rawUrl)) {
         try {
           const resolved = await payload.blueprintProjectService.resolveAsset({
             projectId: pid,
             kind,
-            name: name || undefined,
+            name: rawName || undefined,
             sourcePath: sourcePath || undefined,
-            sourceUrl: sourceUrl || undefined,
+            sourceUrl: !isFileProtocol ? rawUrl : undefined,
             projectRelativePath: projectRelativePath || undefined,
           })
           let asset = (resolved as any)?.ok && (resolved as any)?.resolved ? (resolved as any)?.asset : null
 
-          if (!asset) {
+          if (!asset && projectRelativePath) {
             const repaired = await payload.blueprintProjectService.repairAsset({
               projectId: pid,
               kind,
-              name: name || undefined,
+              name: rawName || undefined,
               projectRelativePath: projectRelativePath || undefined,
             })
             asset = (repaired as any)?.ok && (repaired as any)?.repaired ? (repaired as any)?.asset : null
@@ -136,44 +199,63 @@ export const useAIWorkflowProjectPersistence = (payload: {
         }
       }
 
-      const needsPosterFix = kind === 'video' && (!posterUrl || posterUrl.startsWith('blob:') || posterUrl.startsWith('data:'))
+      // 海报 URL 同样处理
+      const posterIsFileProtocol = posterUrl.toLowerCase().startsWith('file://')
+      const needsPosterUrlFix = posterIsFileProtocol
+      const posterHasNoValidUrl = !posterUrl || posterUrl.startsWith('blob:') || posterUrl.startsWith('data:')
+      const needsPosterFix = kind === 'video' && (posterHasNoValidUrl || needsPosterUrlFix)
       if (needsPosterFix && (posterProjectRelativePath || posterSourcePath || posterUrl)) {
-        try {
-          const posterResolved = await payload.blueprintProjectService.resolveAsset({
-            projectId: pid,
-            kind: 'image',
-            name: `poster_${name || rid}.jpg`,
-            sourcePath: posterSourcePath || undefined,
-            sourceUrl: posterUrl || undefined,
-            projectRelativePath: posterProjectRelativePath || undefined,
-          })
-          let posterAsset = (posterResolved as any)?.ok && (posterResolved as any)?.resolved ? (posterResolved as any)?.asset : null
+        // 从 posterSourcePath 推断 posterProjectRelativePath
+        let inferredPosterRelPath = posterProjectRelativePath
+        if (!inferredPosterRelPath && posterSourcePath && projectRoot) {
+          const normalizedSource = posterSourcePath.toLowerCase()
+          const normalizedRoot = projectRoot.toLowerCase()
+          if (normalizedSource.startsWith(normalizedRoot + '/')) {
+            inferredPosterRelPath = posterSourcePath.slice(projectRoot.length + 1)
+          }
+        }
 
-          if (!posterAsset && posterProjectRelativePath) {
-            const posterRepaired = await payload.blueprintProjectService.repairAsset({
+        if (inferredPosterRelPath && (needsPosterUrlFix || !posterUrl)) {
+          nextPatch.posterUrl = buildDwebUrl(inferredPosterRelPath)
+          nextPatch.posterProjectRelativePath = inferredPosterRelPath
+        } else {
+          try {
+            const posterResolved = await payload.blueprintProjectService.resolveAsset({
               projectId: pid,
               kind: 'image',
-              name: `poster_${name || rid}.jpg`,
-              projectRelativePath: posterProjectRelativePath,
+              name: `poster_${String(rid).slice(-8)}.jpg`,
+              sourcePath: posterSourcePath || undefined,
+              sourceUrl: !posterIsFileProtocol ? posterUrl : undefined,
+              projectRelativePath: posterProjectRelativePath || undefined,
             })
-            posterAsset = (posterRepaired as any)?.ok && (posterRepaired as any)?.repaired ? (posterRepaired as any)?.asset : null
-          }
+            let posterAsset = (posterResolved as any)?.ok && (posterResolved as any)?.resolved ? (posterResolved as any)?.asset : null
 
-          if (posterAsset) {
-            const nextPosterUrl = String(posterAsset.url || '').trim()
-            const nextPosterAbs = String(posterAsset.absolutePath || '').trim()
-            const nextPosterRel = String(posterAsset.projectRelativePath || posterAsset.relativePath || '').trim()
-            if (nextPosterUrl) {
-              const resolvedPosterHttpUrl = payload.resolveBackendUrl(nextPosterUrl)
-              nextPatch.posterUrl = payload.toProjectAssetRuntimeUrl
-                ? payload.toProjectAssetRuntimeUrl(pid, nextPosterRel || posterProjectRelativePath, resolvedPosterHttpUrl)
-                : resolvedPosterHttpUrl
+            if (!posterAsset && posterProjectRelativePath) {
+              const posterRepaired = await payload.blueprintProjectService.repairAsset({
+                projectId: pid,
+                kind: 'image',
+                name: `poster_${String(rid).slice(-8)}.jpg`,
+                projectRelativePath: posterProjectRelativePath,
+              })
+              posterAsset = (posterRepaired as any)?.ok && (posterRepaired as any)?.repaired ? (posterRepaired as any)?.asset : null
             }
-            if (nextPosterAbs) nextPatch.posterSourcePath = nextPosterAbs
-            if (nextPosterRel) nextPatch.posterProjectRelativePath = nextPosterRel
+
+            if (posterAsset) {
+              const nextPosterUrl = String(posterAsset.url || '').trim()
+              const nextPosterAbs = String(posterAsset.absolutePath || '').trim()
+              const nextPosterRel = String(posterAsset.projectRelativePath || posterAsset.relativePath || '').trim()
+              if (nextPosterUrl) {
+                const resolvedPosterHttpUrl = payload.resolveBackendUrl(nextPosterUrl)
+                nextPatch.posterUrl = payload.toProjectAssetRuntimeUrl
+                  ? payload.toProjectAssetRuntimeUrl(pid, nextPosterRel || posterProjectRelativePath, resolvedPosterHttpUrl)
+                  : resolvedPosterHttpUrl
+              }
+              if (nextPosterAbs) nextPatch.posterSourcePath = nextPosterAbs
+              if (nextPosterRel) nextPatch.posterProjectRelativePath = nextPosterRel
+            }
+          } catch {
+            failed += 1
           }
-        } catch {
-          failed += 1
         }
       }
 
@@ -307,7 +389,8 @@ export const useAIWorkflowProjectPersistence = (payload: {
     const loadedProjectId = Number(payload.currentProjectId.value || 0)
     if (Number.isFinite(loadedProjectId) && loadedProjectId > 0) {
       try {
-        await resolveOrRepairProjectScopedResources(loadedProjectId, { silent: true })
+        const projectRoot = typeof payload.getCurrentProjectRootPath === 'function' ? payload.getCurrentProjectRootPath() : ''
+        await resolveOrRepairProjectScopedResources(loadedProjectId, { silent: true, projectRootPath: projectRoot })
       } catch {
         // keep load flow resilient if auto repair fails
       }
