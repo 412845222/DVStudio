@@ -12,6 +12,9 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
   getSelectedEdgeId: () => string | null
   selectAllNodes: () => void
   pasteNodesAtCanvasCenter: () => void
+  copySelectedNodes: (primaryNodeId: string) => void
+  undo: () => void
+  redo: () => void
   removeSelectedNodes: (nodeIds: string[]) => void
   removeSelectedEdge: (edgeId: string) => void
   scheduleAsyncEdgeRender: () => void
@@ -32,9 +35,34 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
       return
     }
 
+    if (mod && key === 'c') {
+      ev.preventDefault()
+      const selected = payload.getSelectedNodeIds()
+      if (selected.length > 0) {
+        payload.copySelectedNodes(selected[0])
+      }
+      return
+    }
+
     if (mod && key === 'v') {
       ev.preventDefault()
       payload.pasteNodesAtCanvasCenter()
+      return
+    }
+
+    if (mod && key === 'z') {
+      ev.preventDefault()
+      if (ev.shiftKey) {
+        payload.redo()
+      } else {
+        payload.undo()
+      }
+      return
+    }
+
+    if (mod && key === 'y') {
+      ev.preventDefault()
+      payload.redo()
       return
     }
 

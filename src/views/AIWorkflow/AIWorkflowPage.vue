@@ -575,6 +575,7 @@ import {
 import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
 import { AIWorkflowKey } from '../../store/aiworkflow'
 import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
+import { aiWorkflowHistory, ensureAIWorkflowHistory } from '../../adapters/aiWorkflowPersistence'
 import { ComfyUIBridgeService } from '../../network/ComfyUIBridgeService'
 import type { SeedanceTaskMirrorItem } from '../../network/ComfyUIBridgeService'
 import { createLocalExecChatService } from '../../network/LocalExecChatService'
@@ -692,6 +693,7 @@ const route = useRoute()
 const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
+ensureAIWorkflowHistory()
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 
@@ -4216,6 +4218,15 @@ const {
   pasteNodesAtCanvasCenter: () => {
     const { worldX, worldY } = getCanvasCenterWorld()
     pasteNodesWithResourceDedupe({ worldX, worldY })
+  },
+  copySelectedNodes: (primaryNodeId) => {
+    store.commit('copyNode', { nodeId: primaryNodeId })
+  },
+  undo: () => {
+    aiWorkflowHistory.undo()
+  },
+  redo: () => {
+    aiWorkflowHistory.redo()
   },
   removeSelectedNodes: (nodeIds) => {
     void removeSelectedNodesWithResourceCleanup(nodeIds)
