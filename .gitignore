@@ -32,6 +32,9 @@ release-*.7z
 /.vscode/
 /.cloudbase/
 
+# Git hooks (managed locally, not in repo)
+/.githooks/
+
 # --- Python / Django ---
 __pycache__/
 *.py[cod]
