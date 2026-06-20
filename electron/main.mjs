@@ -23,6 +23,9 @@ import {
 	clearProjectRoot,
 	getProjectRootSnapshot,
 } from './backend/projectAssetProtocol.mjs'
+import { initLocalDb, getRepos } from './localdb/index.mjs'
+import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
+import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
 
 const isDev = !!process.env.ELECTRON_DEV || !app.isPackaged
 
@@ -1387,6 +1390,26 @@ function registerIpc() {
 	ipcMain.handle('dweb:aiworkflow:getProjectRootSnapshot', async () => {
 		return getProjectRootSnapshot()
 	})
+
+	try {
+		registerLocalDbIpc(ipcMain)
+	} catch (err) {
+		console.error('[main] localdb ipc register failed:', err)
+	}
+
+	ipcMain.handle('dweb:localdb:migrateFromDjango', async (_e, payload) => {
+		try {
+			const legacy = String(payload?.legacyDbPath || '').trim() || path.resolve(getBackendDataDir(), 'db.sqlite3')
+			const result = runLegacyDbMigration({
+				legacyDbPath: legacy,
+				backendDataDir: payload?.backendDataDir || getBackendDataDir(),
+				force: Boolean(payload?.force),
+			})
+			return result
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
 }
 
 async function stopBackend() {
@@ -1444,6 +1467,16 @@ async function main() {
 	ensureBackendHealthMonitor()
 	ensureClientResourceLayout()
 	loadClientSettings()
+
+	try {
+		const backendDir = getBackendDataDir() || getUserDataDir()
+		initLocalDb({ backendDataDir: backendDir, userDataDir: getUserDataDir(), appSecret: backendDir })
+		const repos = getRepos()
+		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (schema=${repos.schemaInfo?.currentVersion})`)
+	} catch (err) {
+		appendRuntimeLog(`[app] localdb init failed: ${String(err?.message || err)}`)
+	}
+
 	registerIpc()
 	appendRuntimeLog(`[app] isPackaged=${app.isPackaged} platform=${process.platform} execPath=${process.execPath}`)
 

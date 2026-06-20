@@ -83,6 +83,7 @@
     "postinstall": "npm run git:setup-hooks 2>/dev/null || true"
   },
   "dependencies": {
+    "better-sqlite3": "^11.3.0",
     "js-yaml": "^4.1.1",
     "jszip": "^3.10.1",
     "markdown-it": "^14.1.0",

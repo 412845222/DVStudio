@@ -87,6 +87,37 @@ contextBridge.exposeInMainWorld('dweb', {
 		registerProjectRoot: (payload) => invoke('dweb:aiworkflow:registerProjectRoot', payload || {}),
 		clearProjectRoot: (payload) => invoke('dweb:aiworkflow:clearProjectRoot', payload || {}),
 		getProjectRootSnapshot: () => invoke('dweb:aiworkflow:getProjectRootSnapshot'),
+		// ---- 本地化存储（取代 Django 的项目/任务镜像/API key 管理） ----
+		db: {
+			projects: {
+				list: () => invoke('dweb:localdb:projects:list'),
+				get: (payload) => invoke('dweb:localdb:projects:get', payload || {}),
+				save: (payload) => invoke('dweb:localdb:projects:save', payload || {}),
+				load: (payload) => invoke('dweb:localdb:projects:load', payload || {}),
+				delete: (payload) => invoke('dweb:localdb:projects:delete', payload || {}),
+				openFolder: (payload) => invoke('dweb:localdb:projects:openFolder', payload || {}),
+			},
+			meshy: {
+				list: (payload) => invoke('dweb:localdb:meshy:list', payload || {}),
+				get: (payload) => invoke('dweb:localdb:meshy:get', payload || {}),
+				upsert: (payload) => invoke('dweb:localdb:meshy:upsert', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:meshy:remove', payload || {}),
+			},
+			video: {
+				list: (payload) => invoke('dweb:localdb:video:list', payload || {}),
+				get: (payload) => invoke('dweb:localdb:video:get', payload || {}),
+				upsert: (payload) => invoke('dweb:localdb:video:upsert', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:video:remove', payload || {}),
+			},
+			apiKeys: {
+				list: () => invoke('dweb:localdb:apiKeys:list'),
+				get: (payload) => invoke('dweb:localdb:apiKeys:get', payload || {}),
+				set: (payload) => invoke('dweb:localdb:apiKeys:set', payload || {}),
+				getPlaintext: (payload) => invoke('dweb:localdb:apiKeys:getPlaintext', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:apiKeys:remove', payload || {}),
+			},
+		},
+		migrateFromDjango: (payload) => invoke('dweb:localdb:migrateFromDjango', payload || {}),
 	},
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),
