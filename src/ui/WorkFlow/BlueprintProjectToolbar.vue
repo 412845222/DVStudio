@@ -40,20 +40,6 @@
         <span class="aiwf-floating-rail__label">节点库</span>
       </button>
 
-      <button
-        class="aiwf-floating-rail__btn"
-        :class="{ active: promptLibraryOpen }"
-        type="button"
-        title="提示词库"
-        @click.stop="$emit('open-prompt-library')"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M3.5 3h7a1.5 1.5 0 0 1 1.5 1.5v9.2L8 11.6l-4 2.1V4.5A1.5 1.5 0 0 1 3.5 3Z" />
-          <path d="M5.5 6h3.5M5.5 8h2.4" />
-        </svg>
-        <span class="aiwf-floating-rail__label">提示词库</span>
-      </button>
-
       <button class="aiwf-floating-rail__btn is-primary" type="button" title="添加节点" @click.stop="$emit('quick-add', $event)">
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <path d="M8 3v10M3 8h10" />
@@ -80,20 +66,11 @@
 
       <button
         class="aiwf-floating-rail__btn"
-        :class="{ active: activePanel === 'tasks' }"
+        :class="{ active: backendLogOpen }"
         type="button"
-        title="任务"
-        @click.stop="togglePanel('tasks')"
+        title="日志"
+        @click.stop="$emit('toggle-backend-log')"
       >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M3.5 3.5h9v9h-9z" />
-          <path d="M5.5 6h5M5.5 8h5M5.5 10h3.2" />
-        </svg>
-        <span class="aiwf-floating-rail__label">任务</span>
-        <span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
-      </button>
-
-      <button class="aiwf-floating-rail__btn" type="button" title="日志" @click.stop="$emit('toggle-backend-log')">
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <path d="M3 3h10v10H3z" />
           <path d="M5 6h6M5 8.5h4M5 11h3" />
@@ -149,17 +126,6 @@
           <button class="aiwf-floating-rail-popover__item is-footer" type="button" @click="emitThenClose('open-resource-manager')">
             打开完整资源管理器
           </button>
-        </template>
-
-        <template v-else-if="activePanel === 'tasks'">
-          <div class="aiwf-floating-rail-task-grid">
-            <button type="button" @click="emitThenClose('open-meshy-task')">Meshy</button>
-            <button type="button" @click="emitThenClose('open-video-task')">视频任务</button>
-            <button type="button" @click="emitThenClose('open-task-placeholder')">Tripo3D</button>
-            <button type="button" @click="emitThenClose('open-task-placeholder')">Hunyuan3D</button>
-            <button type="button" @click="emitThenClose('open-task-placeholder')">Fal视频</button>
-            <button type="button" @click="emitThenClose('open-task-placeholder')">WorldPlay</button>
-          </div>
         </template>
       </section>
     </Transition>
@@ -278,7 +244,7 @@ export type BlueprintProjectListItem = {
   updatedAt?: number | null
 }
 
-type FloatingPanel = '' | 'project' | 'resources' | 'tasks'
+type FloatingPanel = '' | 'project' | 'resources'
 
 const props = defineProps<{
   projects: BlueprintProjectListItem[]
@@ -287,18 +253,14 @@ const props = defineProps<{
   electronReady?: boolean
   resources?: Array<{ id: string }>
   nodeLibraryOpen?: boolean
-  promptLibraryOpen?: boolean
+  backendLogOpen?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'quick-add', event: MouseEvent): void
   (e: 'toggle-node-library'): void
-  (e: 'open-prompt-library'): void
   (e: 'toggle-backend-log'): void
   (e: 'open-resource-manager'): void
-  (e: 'open-meshy-task'): void
-  (e: 'open-video-task'): void
-  (e: 'open-task-placeholder'): void
   (e: 'request-new'): void
   (e: 'request-save', payload?: { name?: string }): void
   (e: 'request-repair-assets'): void
@@ -326,7 +288,7 @@ const saveInputRef = ref<HTMLInputElement | null>(null)
 
 const resources = computed(() => (Array.isArray(props.resources) ? props.resources : []))
 const nodeLibraryOpen = computed(() => props.nodeLibraryOpen === true)
-const promptLibraryOpen = computed(() => props.promptLibraryOpen === true)
+const backendLogOpen = computed(() => props.backendLogOpen === true)
 
 const hasProjectName = computed(() => String(props.currentProjectName ?? '').trim().length > 0)
 const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || '未保存项目')
@@ -396,10 +358,7 @@ const emitThenClose = (
     | 'request-export-package'
     | 'request-toggle-performance-priority'
     | 'request-export-performance-diagnostics'
-    | 'open-resource-manager'
-    | 'open-meshy-task'
-    | 'open-video-task'
-    | 'open-task-placeholder',
+    | 'open-resource-manager',
 ) => {
   ;(emit as any)(eventName)
   activePanel.value = ''
@@ -662,11 +621,6 @@ defineExpose({
   width: 302px;
 }
 
-.aiwf-floating-rail-popover.is-tasks {
-  width: 260px;
-  padding: 6px;
-}
-
 .aiwf-floating-rail-popover__head {
   min-height: 28px;
   display: flex;
@@ -730,29 +684,6 @@ defineExpose({
   color: var(--vscode-fg-muted);
   text-align: center;
   font-size: 12px;
-}
-
-.aiwf-floating-rail-task-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-}
-
-.aiwf-floating-rail-task-grid button {
-  height: 30px;
-  border: 1px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--vscode-fg);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.aiwf-floating-rail-task-grid button:hover,
-.aiwf-floating-rail-task-grid button:focus-visible {
-  border-color: var(--vscode-border);
-  background: var(--vscode-hover-bg);
-  outline: none;
 }
 
 .aiwf-floating-rail-popover-enter-active,

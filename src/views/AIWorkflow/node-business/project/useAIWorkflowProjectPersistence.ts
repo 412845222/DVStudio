@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
+import { blueprintLog } from '../../blueprint-core/blueprintLog'
 
 export const useAIWorkflowProjectPersistence = (payload: {
   blueprintProjectService: {
@@ -242,10 +243,22 @@ export const useAIWorkflowProjectPersistence = (payload: {
       if (!opts?.suppressErrorToast) {
         payload.pushToast('加载项目失败：' + String(res.error || 'unknown'), 'error')
       }
+      blueprintLog.append(`加载项目失败：${String(res.error || 'unknown')}`, {
+        category: 'operation',
+        level: 'ERROR',
+        tag: 'project-load',
+        detail: { projectId },
+      })
       return false
     }
     if (!payload.isValidBlueprintSnapshot((res as any).snapshot)) {
       payload.pushToast('加载项目失败：项目文件数据结构无效。', 'error')
+      blueprintLog.append('加载项目失败：项目文件数据结构无效。', {
+        category: 'operation',
+        level: 'ERROR',
+        tag: 'project-load',
+        detail: { projectId },
+      })
       return false
     }
 
@@ -322,6 +335,12 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     if (!opts?.silent) payload.pushToast(`已加载项目：${payload.currentProjectName.value || `#${projectId}`}`, 'info')
+    blueprintLog.append(`已加载项目：${payload.currentProjectName.value || `#${projectId}`}`, {
+      category: 'operation',
+      level: 'INFO',
+      tag: 'project-load',
+      detail: { projectId },
+    })
     return true
   }
 
@@ -364,6 +383,12 @@ export const useAIWorkflowProjectPersistence = (payload: {
     })
     if (!res.ok) {
       if (!silent) payload.pushToast('保存项目失败：' + String(res.error || 'unknown'), 'error')
+      blueprintLog.append(`保存项目失败：${String(res.error || 'unknown')}`, {
+        category: 'operation',
+        level: 'ERROR',
+        tag: 'project-save',
+        detail: { name: nextName, projectId: payload.currentProjectId.value },
+      })
       return false
     }
 
@@ -383,6 +408,12 @@ export const useAIWorkflowProjectPersistence = (payload: {
           })
           if (!second.ok && !silent) {
             payload.pushToast('迁移后回写项目失败：' + String(second.error || 'unknown'), 'warn')
+            blueprintLog.append('迁移后回写项目失败：' + String(second.error || 'unknown'), {
+              category: 'operation',
+              level: 'WARN',
+              tag: 'project-save',
+              detail: { projectId },
+            })
           }
         } catch (err: any) {
           if (!silent) {
@@ -394,6 +425,12 @@ export const useAIWorkflowProjectPersistence = (payload: {
 
     await payload.refreshProjectList()
     if (!silent) payload.pushToast(`项目已保存：${payload.currentProjectName.value}`, 'info')
+    blueprintLog.append(`项目已保存：${payload.currentProjectName.value || nextName}`, {
+      category: 'operation',
+      level: 'INFO',
+      tag: 'project-save',
+      detail: { projectId: payload.currentProjectId.value, name: nextName },
+    })
     return true
   }
 
