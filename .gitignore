@@ -32,6 +32,9 @@ release-*.7z
 /.vscode/
 /.cloudbase/
 
+# Git hooks (managed locally, not in repo)
+/.githooks/
+
 # --- Python / Django ---
 __pycache__/
 *.py[cod]
@@ -115,10 +118,12 @@ temp-*.py
 *.temp
 count_lines.py
 
+
 # External code folders (Claw-code, etc.)
 Claw-code/
 *-code/
 .codex-runtime/
+.tmp-e2e/
 
 # AI/LLM runtime artifacts
 *.sqlite
