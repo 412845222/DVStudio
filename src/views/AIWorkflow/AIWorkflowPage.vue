@@ -3729,6 +3729,7 @@ _saveProjectToBackend = _saveProjectToBackendFn
 const {
   onRequestSaveProject,
   onRequestNewProject,
+  onRequestNewProjectFromPath,
   onRequestLoadProject,
   onRequestDeleteProject,
   onRequestRepairProjectAssets,
@@ -4459,7 +4460,28 @@ onMounted(() => {
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
   startUnrealExportPolling()
   void refreshProjectList()
-  void tryAutoLoadLastProject().then(() => recoverComfyUIRunStates({ silent: true }))
+
+  const rawProjectId = String((route.query as Record<string, unknown>)?.projectId ?? '').trim()
+  const parsedProjectId = Number(rawProjectId)
+  const hasNewProjectQuery =
+    String((route.query as Record<string, unknown>)?.newProject ?? '').trim() === '1'
+  const rawRootPath = String((route.query as Record<string, unknown>)?.rootPath ?? '').trim()
+
+  const resolvedProjectId = Number.isFinite(parsedProjectId) && parsedProjectId > 0 ? Math.floor(parsedProjectId) : null
+
+  void (async () => {
+    if (resolvedProjectId) {
+      const ok = await loadProjectById(resolvedProjectId)
+      if (ok) await recoverComfyUIRunStates({ silent: true })
+      return
+    }
+    if (hasNewProjectQuery && rawRootPath) {
+      await onRequestNewProjectFromPath(rawRootPath)
+      return
+    }
+    await tryAutoLoadLastProject()
+    await recoverComfyUIRunStates({ silent: true })
+  })()
 
   if (isElectronRuntime) {
     chatModelKey.value = 'codex'

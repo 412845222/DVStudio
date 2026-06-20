@@ -84,6 +84,7 @@ class CopilotCliBridgeClient:
                 text=True,
                 timeout=5,
                 check=False,
+                env=self._build_env(),
             )
         except (OSError, subprocess.SubprocessError) as exc:
             error_message = str(exc)
@@ -282,20 +283,59 @@ class CopilotCliBridgeClient:
         raise RuntimeError("Copilot CLI approval forwarding is not available in this adapter yet")
 
     def _build_command(self, command_path: str, prompt: str, agent_mode: str, permission_profile: str) -> list[str]:
-        command = [
-            command_path,
-            "-p",
-            prompt,
-            "--output-format",
-            "json",
-            "--stream",
-            "on",
-            "--no-alt-screen",
-            "--no-color",
-            "--no-auto-update",
-            "--log-level",
-            "error",
-        ]
+        command = []
+        use_npx = Path(command_path).name.lower() in {"npx", "npx.cmd", "npx.exe"}
+        use_node = Path(command_path).name.lower() in {"node", "node.exe"}
+        if use_npx:
+            command = [
+                command_path,
+                "--yes",
+                "@github/copilot",
+                "-p",
+                prompt,
+                "--output-format",
+                "json",
+                "--stream",
+                "on",
+                "--no-alt-screen",
+                "--no-color",
+                "--no-auto-update",
+                "--log-level",
+                "error",
+            ]
+        elif use_node:
+            workspace_root = Path(self.config.workspace_root) if self.config.workspace_root else Path.cwd()
+            npm_loader = workspace_root / "node_modules" / "@github" / "copilot" / "npm-loader.js"
+            command = [
+                command_path,
+                str(npm_loader),
+                "-p",
+                prompt,
+                "--output-format",
+                "json",
+                "--stream",
+                "on",
+                "--no-alt-screen",
+                "--no-color",
+                "--no-auto-update",
+                "--log-level",
+                "error",
+            ]
+        else:
+            command = [
+                command_path,
+                "-p",
+                prompt,
+                "--output-format",
+                "json",
+                "--stream",
+                "on",
+                "--no-alt-screen",
+                "--no-color",
+                "--no-auto-update",
+                "--log-level",
+                "error",
+            ]
         model = self._normalized_model(self.config.model)
         if model and model != "auto":
             command.extend(["--model", model])
@@ -442,21 +482,84 @@ class CopilotCliBridgeClient:
             return found
         if Path(command).exists():
             return command
-        if Path(command).name != "copilot":
+        name = Path(command).name.lower()
+        if name not in {"copilot", "copilot.exe"}:
             return ""
+        base_name = "copilot"
+
+        workspace_root = Path(self.config.workspace_root) if self.config.workspace_root else Path.cwd()
+        local_node_modules_bin = workspace_root / "node_modules" / ".bin"
+        if local_node_modules_bin.exists():
+            if os.name == "nt":
+                npm_loader = workspace_root / "node_modules" / "@github" / f"{base_name}" / "npm-loader.js"
+                if npm_loader.exists():
+                    node_exe = shutil.which("node")
+                    if node_exe:
+                        return node_exe
+            for ext in ("", ".cmd", ".exe"):
+                candidate = local_node_modules_bin / f"{base_name}{ext}"
+                if candidate.exists() and os.access(candidate, os.X_OK):
+                    return str(candidate)
+
         nvm_root = Path.home() / ".nvm" / "versions" / "node"
-        if not nvm_root.exists():
-            return ""
-        candidates = sorted(nvm_root.glob("*/bin/copilot"), key=lambda item: item.as_posix(), reverse=True)
-        for item in candidates:
-            if item.exists() and os.access(item, os.X_OK):
-                return str(item)
+        if nvm_root.exists():
+            candidates = sorted(nvm_root.glob("*/bin/copilot"), key=lambda item: item.as_posix(), reverse=True)
+            for item in candidates:
+                if item.exists() and os.access(item, os.X_OK):
+                    return str(item)
+
+        npm_global = Path.home() / "AppData" / "Roaming" / "npm"
+        if npm_global.exists():
+            for ext in ("", ".cmd", ".exe"):
+                candidate = npm_global / f"{base_name}{ext}"
+                if candidate.exists() and os.access(candidate, os.X_OK):
+                    return str(candidate)
+
+        scoop_root = Path.home() / "scoop" / "apps" / "github-copilot-cli"
+        if scoop_root.exists():
+            for version_dir in sorted(scoop_root.iterdir(), reverse=True):
+                if version_dir.is_dir():
+                    for ext in ("", ".cmd", ".exe"):
+                        candidate = version_dir / "current" / f"{base_name}{ext}"
+                        if candidate.exists() and os.access(candidate, os.X_OK):
+                            return str(candidate)
+                        candidate = version_dir / f"{base_name}{ext}"
+                        if candidate.exists() and os.access(candidate, os.X_OK):
+                            return str(candidate)
+
+        winget_copilot = Path(r"C:\Program Files\GitHub\Copilot CLI")
+        if winget_copilot.exists():
+            for ext in ("", ".cmd", ".exe"):
+                candidate = winget_copilot / f"{base_name}{ext}"
+                if candidate.exists() and os.access(candidate, os.X_OK):
+                    return str(candidate)
+
+        npx_candidate = shutil.which("npx")
+        if npx_candidate:
+            try:
+                probe = subprocess.run(
+                    [npx_candidate, "--yes", "@github/copilot", "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                    check=False,
+                )
+                if probe.returncode == 0:
+                    return npx_candidate
+            except (OSError, subprocess.SubprocessError):
+                pass
+
         return ""
 
     def _build_env(self) -> dict[str, str]:
         env = os.environ.copy()
         if self.config.home_root.strip():
             env["COPILOT_HOME"] = self.config.home_root.strip()
+        else:
+            copilot_home = Path(self.config.workspace_root) / ".copilot" if self.config.workspace_root else Path.cwd() / ".copilot"
+            if not copilot_home.exists():
+                copilot_home.mkdir(parents=True, exist_ok=True)
+            env["COPILOT_HOME"] = str(copilot_home)
         env.setdefault("COPILOT_AUTO_UPDATE", "false")
         return env
 
