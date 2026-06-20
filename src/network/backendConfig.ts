@@ -42,30 +42,70 @@ const SUSPICIOUS_RELATIVE_INPUT_RE = /[\s;]|^(?:ak|code|requestid|message|action
 
 const DWEB_PROJECT_ASSET_PREFIX = 'dweb://project-assets'
 
+export const parseDwebProjectAssetUrl = (raw: string): { projectId: number; path: string } | null => {
+	const text = String(raw || '').trim()
+	if (!text.toLowerCase().startsWith(DWEB_PROJECT_ASSET_PREFIX)) return null
+	try {
+		const u = new URL(text)
+		if (String(u.hostname || '').toLowerCase() !== 'project-assets') return null
+		const projectId = Number(String(u.searchParams.get('projectId') || '').trim())
+		const relPath = String(u.searchParams.get('path') || '').trim()
+		if (!Number.isFinite(projectId) || projectId <= 0 || !relPath) return null
+		return { projectId: Math.floor(projectId), path: relPath }
+	} catch {
+		return null
+	}
+}
+
+export const toProjectAssetApiUrl = (raw: string): string => {
+	const parsed = parseDwebProjectAssetUrl(raw)
+	if (!parsed) return String(raw || '').trim()
+	return `/api/workflow/projects/assets/file?projectId=${encodeURIComponent(String(parsed.projectId))}&path=${encodeURIComponent(parsed.path)}`
+}
+
+export const resolveBackendFetchUrl = (pathOrUrl: string): string => {
+	const text = String(pathOrUrl || '').trim()
+	if (!text) return ''
+	if (text.toLowerCase().startsWith(DWEB_PROJECT_ASSET_PREFIX)) return toProjectAssetApiUrl(text)
+	return resolveBackendUrl(text)
+}
+
+export const isWorkflowLocalAssetUrl = (pathOrUrl: string): boolean => {
+	const text = String(pathOrUrl || '').trim()
+	if (!text) return false
+	if (/^(?:blob:|data:)/i.test(text)) return true
+	if (text.toLowerCase().startsWith(DWEB_PROJECT_ASSET_PREFIX)) return true
+	if (/^\/api\/workflow\/projects\/assets\/file(?:\?|$)/i.test(text)) return true
+	if (/^\/media\//i.test(text)) return true
+	if (/^https?:\/\//i.test(text)) {
+		try {
+			const u = new URL(text)
+			const host = String(u.hostname || '').toLowerCase()
+			const pathname = String(u.pathname || '').toLowerCase()
+			const isLocalHost = host === '127.0.0.1' || host === 'localhost'
+			if (isLocalHost && (/\/api\/workflow\/projects\/assets\/file\/?$/.test(pathname) || pathname.startsWith('/media/'))) {
+				return true
+			}
+		} catch {
+			return false
+		}
+	}
+	return false
+}
+
 const resolveDwebProjectAssetUrl = (raw: string): string => {
 	const text = String(raw || '').trim()
 	if (!text.toLowerCase().startsWith(DWEB_PROJECT_ASSET_PREFIX)) return text
 
-	let projectId = ''
-	let relPath = ''
-	try {
-		const u = new URL(text)
-		if (String(u.hostname || '').toLowerCase() !== 'project-assets') return text
-		projectId = String(u.searchParams.get('projectId') || '').trim()
-		relPath = String(u.searchParams.get('path') || '').trim()
-	} catch {
-		return text
-	}
-
-	const pid = Number(projectId)
-	if (!Number.isFinite(pid) || pid <= 0 || !relPath) return text
+	const parsed = parseDwebProjectAssetUrl(text)
+	if (!parsed) return text
 
 	const w = window as any
 	const isElectronRuntime =
 		w?.__DWEB_RUNTIME__?.platform === 'electron' || typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
 	if (isElectronRuntime) return text
 
-	return `/api/workflow/projects/assets/file?projectId=${encodeURIComponent(String(Math.floor(pid)))}&path=${encodeURIComponent(relPath)}`
+	return toProjectAssetApiUrl(text)
 }
 
 export const resolveBackendUrl = (pathOrUrl: string): string => {

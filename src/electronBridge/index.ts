@@ -156,6 +156,13 @@ export async function downloadUrlToProjectRoot(
 	return result
 }
 
+export async function fetchAsArrayBuffer(url: string): Promise<{ ok: boolean; buffer?: Uint8Array; mime?: string; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.fetchAsArrayBuffer) return null
+	const result = await w.dweb.aiworkflow.fetchAsArrayBuffer({ url: String(url || '') })
+	return result
+}
+
+
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {
 	if (!w?.dweb?.common?.runBootstrapInstaller) return null
 	return w.dweb.common.runBootstrapInstaller()
