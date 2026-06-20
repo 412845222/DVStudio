@@ -2494,6 +2494,8 @@ const {
   selectedNodeId,
   isElectron,
   nodeResourceName,
+  getProjectId: () => currentProjectId.value,
+  getProjectRootPath: (_projectId?: number) => currentProjectRootPath.value,
 })
 
 const isWebEnvironment = () => getRuntimePlatform() === 'web'
@@ -2947,6 +2949,7 @@ const projectToolbarRef = ref<{ openSaveDialog: () => void } | null>(null)
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
+const currentProjectRootPath = ref('')
 const agentWorkingDirectory = computed(() => {
   const projectName = String(currentProjectName.value || '').trim()
   if (projectName) return `/Users/dweb/Desktop/dweb-video-studio · ${projectName}`
@@ -2990,6 +2993,7 @@ const {
 } = useAIWorkflowProjectIdentity({
   currentProjectId,
   currentProjectName,
+  currentProjectRootPath,
   lastProjectStorageKey: AIWF_LAST_PROJECT_STORAGE_KEY,
 })
 
