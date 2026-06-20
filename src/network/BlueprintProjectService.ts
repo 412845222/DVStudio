@@ -71,6 +71,30 @@ const jsonHeaders = {
   'Content-Type': 'application/json',
 }
 
+const normalizeForIpc = (input: any): any => {
+  const seen = new WeakSet<object>()
+  const walk = (value: any): any => {
+    if (value === null) return null
+    const t = typeof value
+    if (t === 'string' || t === 'number' || t === 'boolean') return value
+    if (t === 'bigint') return Number(value)
+    if (t === 'undefined' || t === 'function' || t === 'symbol') return null
+    if (t !== 'object') return null
+
+    if (value instanceof Date) return value.toISOString()
+    if (Array.isArray(value)) return value.map((item) => walk(item))
+
+    if (seen.has(value)) return null
+    seen.add(value)
+    const out: Record<string, any> = {}
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = walk(v)
+    }
+    return out
+  }
+  return walk(input)
+}
+
 const safeJson = async (res: Response) => {
   const text = await res.text()
   try {
@@ -106,12 +130,21 @@ export class BlueprintProjectService {
     }
   }
 
-  private async electronDb<T>(fn: () => Promise<T>): Promise<T | null> {
+  private isElectronRuntime(): boolean {
+    const w = window as any
+    return w?.__DWEB_RUNTIME__?.platform === 'electron' || typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
+  }
+
+  private async electronDb<T>(fn: () => Promise<T> | T): Promise<T | null> {
     const bridge = (window as any)?.dweb?.aiworkflow?.db?.projects
     if (typeof bridge !== 'object') return null
     const ready = await this._ensureElectronLocalDb()
     if (!ready) return null
-    return fn().catch(() => null)
+    try {
+      return await Promise.resolve(fn())
+    } catch {
+      return null
+    }
   }
 
   private url(path: string) {
@@ -163,6 +196,9 @@ export class BlueprintProjectService {
       const rows = Array.isArray(electronResult) ? electronResult : (electronResult as any)?.projects || []
       return { ok: true, projects: rows as any }
     }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/list requires localdb in Electron runtime' }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/list'), { method: 'GET' })
     if (!res.ok) {
       const body = await safeJson(res)
@@ -176,15 +212,19 @@ export class BlueprintProjectService {
   }
 
   async saveProject(payload: { name: string; snapshot: any; projectId?: number | null }): Promise<SaveProjectResponse> {
+    const safeSnapshot = normalizeForIpc(payload.snapshot)
     const electronResult = await this.electronDb(() =>
       (window as any).dweb.aiworkflow.db.projects.save({
         projectId: payload.projectId,
-        snapshot: payload.snapshot,
+        snapshot: safeSnapshot,
         name: payload.name,
       })
     )
     if (electronResult !== null) {
       return { ok: true, project: electronResult.project ?? electronResult }
+    }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/save requires localdb in Electron runtime' }
     }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/save'), {
       method: 'POST',
@@ -214,6 +254,9 @@ export class BlueprintProjectService {
         snapshot: electronResult.snapshot,
       }
     }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/load requires localdb in Electron runtime' }
+    }
     const res = await this.fetchWithLog(this.url(`/api/workflow/projects/load?id=${encodeURIComponent(String(projectId))}`), {
       method: 'GET',
     })
@@ -237,6 +280,9 @@ export class BlueprintProjectService {
         return { ok: false, error: String((electronResult as any).error || 'delete failed') }
       }
       return { ok: true, id: projectId }
+    }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/delete requires localdb in Electron runtime' }
     }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/delete'), {
       method: 'POST',
@@ -264,6 +310,9 @@ export class BlueprintProjectService {
     )
     if (electronResult !== null) {
       return { ok: true, project: electronResult.project ?? electronResult }
+    }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/folder/open requires localdb in Electron runtime' }
     }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/folder/open'), {
       method: 'POST',

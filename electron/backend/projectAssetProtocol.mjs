@@ -171,6 +171,18 @@ function handleProjectAssetRequest(request) {
     return new Response('Project Root Not Registered', { status: 404, statusText: 'Project Root Not Registered' })
   }
 
+  const rootCandidates = [root]
+  try {
+    const normalizedRoot = String(root || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    if (normalizedRoot.endsWith('/content/media')) {
+      rootCandidates.push(path.resolve(String(root || ''), '..', '..'))
+    } else if (normalizedRoot.endsWith('/generated-assets')) {
+      rootCandidates.push(path.resolve(String(root || ''), '..'))
+    }
+  } catch {
+    // ignore
+  }
+
   // 统一处理路径分隔符（Windows \ -> /），并规范化路径
   const rel = String(parsed.relPath || '').trim().replace(/\\/g, '/')
 
@@ -206,35 +218,60 @@ function handleProjectAssetRequest(request) {
     candidates.push('generated-assets/' + parts[0])
   }
 
-  // 解析并检查每个候选路径
+  if (parts.length >= 2) {
+    const firstDir = parts[0].toLowerCase()
+    const secondDir = parts[1]?.toLowerCase()
+    // 当 root 已经是 Content/Media 目录时，直接尝试去掉前缀
+    if (firstDir === 'content' && secondDir === 'media' && parts.length >= 3) {
+      candidates.push(parts.slice(2).join('/'))
+    } else if (firstDir === 'media' && parts.length >= 2) {
+      candidates.push(parts.slice(1).join('/'))
+    }
+  }
+
+  // 解析并检查每个候选路径（支持多个 root 候选，提升项目根映射容错）
   let resolvedPath = null
-  for (const candidate of candidates) {
-    if (!candidate) continue
-    const p = safeResolveProjectFile(root, candidate)
-    if (p && fs.existsSync(p)) {
-      try {
-        const st = fs.statSync(p)
-        if (st && st.isFile()) {
-          resolvedPath = p
-          break
+  let resolvedFromRoot = ''
+  for (const rootCandidate of rootCandidates) {
+    for (const candidate of candidates) {
+      if (!candidate) continue
+      const p = safeResolveProjectFile(rootCandidate, candidate)
+      if (p && fs.existsSync(p)) {
+        try {
+          const st = fs.statSync(p)
+          if (st && st.isFile()) {
+            resolvedPath = p
+            resolvedFromRoot = String(rootCandidate || '')
+            break
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
       }
     }
+    if (resolvedPath) break
   }
 
   // 如果所有候选都找不到，则使用原始路径返回 404（给用户明确的错误信息）
   let filePath = resolvedPath
   if (!filePath) {
-    filePath = safeResolveProjectFile(root, rel)
+    for (const rootCandidate of rootCandidates) {
+      filePath = safeResolveProjectFile(rootCandidate, rel)
+      if (filePath) {
+        resolvedFromRoot = String(rootCandidate || '')
+        break
+      }
+    }
     if (!filePath) {
       return new Response('Invalid Asset Path', { status: 400 })
     }
   }
 
   if (!fs.existsSync(filePath)) {
-    return new Response('Asset Not Found: ' + rel, { status: 404 })
+    return new Response(
+      'Asset Not Found: ' + rel + ' ; root=' + String(root || '') + ' ; resolvedRoot=' + String(resolvedFromRoot || ''),
+      { status: 404 }
+    )
   }
   let stat
   try {
@@ -394,6 +431,89 @@ export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilenam
     absolutePath,
     relativePath,
     size: fs.statSync(absolutePath).size,
+  }
+}
+
+function normalizeLocalSourcePath(rawSourcePath) {
+  const raw = String(rawSourcePath || '').trim()
+  if (!raw) return ''
+  if (/^file:\/\//i.test(raw)) {
+    try {
+      return decodeURI(raw.replace(/^file:\/\//i, '').replace(/^\/+/, '').replace(/\//g, path.sep))
+    } catch {
+      return raw.replace(/^file:\/\//i, '').replace(/^\/+/, '').replace(/\//g, path.sep)
+    }
+  }
+  return raw
+}
+
+export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFilename) {
+  const id = Number(projectId)
+  const sourcePath = normalizeLocalSourcePath(rawSourcePath)
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+  if (!sourcePath) return { ok: false, error: 'sourcePath is empty' }
+
+  const root = projectRootById.get(id)
+  if (!root) return { ok: false, error: `project root not registered for projectId=${id}` }
+
+  let sourceStat
+  try {
+    sourceStat = fs.statSync(sourcePath)
+  } catch {
+    return { ok: false, error: 'sourcePath not found' }
+  }
+  if (!sourceStat?.isFile?.()) return { ok: false, error: 'sourcePath is not a file' }
+
+  const sourceBaseName = path.basename(sourcePath)
+  const safeName = sanitizeFilename(desiredFilename || sourceBaseName)
+  const sourceExt = (path.extname(sourceBaseName) || '').toLowerCase()
+  const ext = sourceExt || inferExtension(safeName, sourceBaseName)
+  const base = safeName.replace(/\.[^.]+$/, '') || `asset-${Date.now()}`
+  const filename = `${base}${ext}`
+
+  const subDir = path.resolve(root, 'Content', 'Media')
+  try {
+    fs.mkdirSync(subDir, { recursive: true })
+  } catch (err) {
+    return { ok: false, error: `mkdir failed: ${String(err?.message || err)}` }
+  }
+
+  let absolutePath = path.resolve(subDir, filename)
+  if (path.resolve(sourcePath) === path.resolve(absolutePath)) {
+    const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
+    return {
+      ok: true,
+      absolutePath,
+      relativePath,
+      size: sourceStat.size,
+    }
+  }
+
+  if (fs.existsSync(absolutePath)) {
+    const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    absolutePath = path.resolve(subDir, `${base}_${suffix}${ext}`)
+  }
+
+  try {
+    fs.copyFileSync(sourcePath, absolutePath)
+  } catch (err) {
+    return { ok: false, error: `copy failed: ${String(err?.message || err)}` }
+  }
+
+  try {
+    const st = fs.statSync(absolutePath)
+    if (!st.isFile() || st.size === 0) {
+      return { ok: false, error: 'copied file is empty or not a regular file' }
+    }
+    const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
+    return {
+      ok: true,
+      absolutePath,
+      relativePath,
+      size: st.size,
+    }
+  } catch (err) {
+    return { ok: false, error: `stat failed: ${String(err?.message || err)}` }
   }
 }
 

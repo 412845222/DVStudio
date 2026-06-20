@@ -589,9 +589,8 @@ import {
   resolveBackendUrl,
   resolveBackendFetchUrl,
   isWorkflowLocalAssetUrl,
-  getBackendBaseUrl,
 } from '../../network/backendConfig'
-import { isElectron, openFolderForPath, downloadUrlToProjectRoot, fetchAsArrayBuffer } from '../../electronBridge'
+import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot } from '../../electronBridge'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -686,6 +685,7 @@ import { useAIWorkflowSceneLayoutController } from './node-business/scene/useAIW
 import { useAIWorkflowSceneLayoutSettings } from './node-business/scene/useAIWorkflowSceneLayoutSettings'
 import { useAIWorkflowSceneUnderstandingController } from './node-business/scene/useAIWorkflowSceneUnderstandingController'
 import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
+import { useStartupProgress } from '../../composables/useStartupProgress'
 
 const router = useRouter()
 const route = useRoute()
@@ -942,6 +942,107 @@ const onNodeChatClose = () => {
   store.dispatch('closeNodeChatDialog')
 }
 
+const toFileUrlFromSourcePath = (sourcePath: string): string => {
+  const raw = String(sourcePath || '').trim()
+  if (!raw) return ''
+  const normalized = raw.replace(/\\/g, '/')
+  if (!/^[a-zA-Z]:\//.test(normalized)) return ''
+  return `file:///${encodeURI(normalized)}`
+}
+
+const isStrictLocalRenderableUrl = (rawUrl: string): boolean => {
+  const text = String(rawUrl || '').trim()
+  if (!text) return false
+  if (text.toLowerCase().startsWith('dweb://project-assets')) return true
+  if (text.toLowerCase().startsWith('file://')) return true
+  return false
+}
+
+const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
+  const rel = String(base?.projectRelativePath || '').trim()
+  const sourcePath = String(base?.sourcePath || '').trim()
+  const currentUrl = String(base?.url || '').trim()
+
+  if (rel) {
+    base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
+    return
+  }
+  if (isStrictLocalRenderableUrl(currentUrl)) {
+    base.url = currentUrl
+    return
+  }
+  if (sourcePath) {
+    const fileUrl = toFileUrlFromSourcePath(sourcePath)
+    if (fileUrl) {
+      base.url = fileUrl
+      return
+    }
+  }
+  base.url = ''
+}
+
+const downloadAssetViaElectron = async (
+  projectId: number,
+  sourceUrl: string,
+  desiredFilename: string,
+): Promise<{ sourcePath: string; projectRelativePath: string; url: string; size: number } | null> => {
+  if (!isElectron()) return null
+  const pid = Number(projectId)
+  const url = String(sourceUrl || '').trim()
+  if (!Number.isFinite(pid) || pid <= 0 || !url) return null
+  try {
+    const dl = await downloadUrlToProjectRoot(pid, url, desiredFilename)
+    const relPath = String(dl?.relativePath || '').trim()
+    const absolutePath = String(dl?.absolutePath || '').trim()
+    if (!(dl?.ok) || !relPath || !absolutePath) return null
+    return {
+      sourcePath: absolutePath,
+      projectRelativePath: relPath,
+      url: `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(relPath)}`,
+      size: Number(dl?.size || 0),
+    }
+  } catch {
+    return null
+  }
+}
+
+const ensureActiveProjectRootRegistered = async (projectId: number): Promise<string> => {
+  const pid = Number(projectId)
+  if (!Number.isFinite(pid) || pid <= 0) return ''
+
+  let rootPath = String(currentProjectRootPath.value || '').trim()
+
+  // Use localdb-backed project list as authoritative source to avoid stale in-memory rootPath.
+  try {
+    const listed = await blueprintProjectService.listProjects()
+    if (listed?.ok && Array.isArray((listed as any).projects)) {
+      const hit = (listed as any).projects.find((p: any) => Number(p?.id) === pid)
+      const listedRoot = String(hit?.rootPath || '').trim()
+      if (listedRoot && listedRoot !== rootPath) {
+        console.warn('[AIWorkflow] project root corrected by projectId', {
+          projectId: pid,
+          previousRoot: rootPath,
+          correctedRoot: listedRoot,
+        })
+        rootPath = listedRoot
+        currentProjectRootPath.value = listedRoot
+      }
+    }
+  } catch {
+    // ignore and keep current in-memory rootPath
+  }
+
+  if (isElectron() && rootPath) {
+    try {
+      await registerProjectRoot(pid, rootPath)
+    } catch {
+      // ignore
+    }
+  }
+
+  return rootPath
+}
+
 const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
   store.dispatch('submitNodeChat', payload)
   const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
@@ -977,46 +1078,48 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
           pushToast('图片生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
           return false
         }
+        const rootPath = await ensureActiveProjectRootRegistered(pid)
+        if (isElectron() && !rootPath) {
+          pushToast('图片导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+          return false
+        }
         if (pid > 0 && sourceUrl) {
           let downloaded = false
 
-          // 方案一：通过 Django 后端代理下载，绕过 CDN 的 CORS 限制
-          try {
-            const result = await blueprintProjectService.importAsset({
-              projectId: pid,
-              kind: 'image',
-              sourceUrl,
-              name: `img-${resourceId}`,
-              bucket: 'assets',
-            })
-            if (result?.ok && result.asset) {
-              base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
-              base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
-              base.url = (result.asset as any).url || ''
-              base.contentType = (result.asset as any).contentType || ''
-              base.size = (result.asset as any).size || 0
+          // Electron: localdb authoritative. Prefer main-process download to local project root.
+          if (!downloaded && isElectron()) {
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, `img-${resourceId}`)
+            if (dl) {
+              base.sourcePath = dl.sourcePath
+              base.projectRelativePath = dl.projectRelativePath
+              base.url = dl.url
+              base.size = dl.size
               downloaded = true
             }
-          } catch {
-            // ignore
           }
 
-          // 方案二（Django 失败时备用）：Electron 主进程直接下载
-          if (!downloaded && isElectron()) {
+          // 方案一：通过 Django 后端代理下载，绕过 CDN 的 CORS 限制
+          if (!downloaded && !isElectron()) {
             try {
-              const dl = await downloadUrlToProjectRoot(pid, sourceUrl, `img-${resourceId}`)
-              const relPath = String(dl?.relativePath || '').trim()
-              if (dl?.ok && relPath) {
-                base.sourcePath = dl.absolutePath
-                base.projectRelativePath = relPath
-                base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(relPath)}`
+              const result = await blueprintProjectService.importAsset({
+                projectId: pid,
+                kind: 'image',
+                sourceUrl,
+                name: `img-${resourceId}`,
+                bucket: 'assets',
+              })
+              if (result?.ok && result.asset) {
+                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
+                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
+                base.url = (result.asset as any).url || ''
+                base.contentType = (result.asset as any).contentType || ''
+                base.size = (result.asset as any).size || 0
                 downloaded = true
               }
             } catch {
               // ignore
             }
           }
-<<<<<<< HEAD
 
           // 如果下载成功但没有 dweb URL，手动构建
           if (downloaded && !base.url && base.projectRelativePath) {
@@ -1024,12 +1127,11 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
           }
         }
 
+        finalizeGeneratedResourceLocalUrl(base, pid)
         base.url = String(base.url || '').trim()
-        if (!base.url || !isWorkflowLocalAssetUrl(base.url)) {
+        if (!base.url || !isStrictLocalRenderableUrl(base.url) || !isWorkflowLocalAssetUrl(base.url)) {
           pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
           return false
-=======
->>>>>>> 7128659630564225d66933f883476fdfe19f6123
         }
         store.commit('addResource', base)
         store.commit('setNodeResource', { nodeId, resourceId })
@@ -1043,7 +1145,6 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
           id: resourceId,
           kind: 'video',
           name: `AI 生成视频 ${resourceId.slice(-6)}`,
-<<<<<<< HEAD
           url: '',
         }
         const pid = Number(currentProjectId.value ?? 0)
@@ -1052,58 +1153,48 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
           pushToast('视频生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
           return false
         }
+        const rootPath = await ensureActiveProjectRootRegistered(pid)
+        if (isElectron() && !rootPath) {
+          pushToast('视频导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+          return false
+        }
         if (pid > 0 && sourceUrl) {
           let downloaded = false
 
-          // 方案一：通过 Django 后端代理下载，绕过 CDN 的 CORS 限制
-          try {
-            const result = await blueprintProjectService.importAsset({
-              projectId: pid,
-              kind: 'video',
-              sourceUrl,
-              name: `video-${resourceId}`,
-              bucket: 'assets',
-            })
-            if (result?.ok && result.asset) {
-              base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
-              base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
-              base.url = (result.asset as any).url || ''
-              base.contentType = (result.asset as any).contentType || ''
-              base.size = (result.asset as any).size || 0
+          // Electron: localdb authoritative. Prefer main-process download to local project root.
+          if (!downloaded && isElectron()) {
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, `video-${resourceId}`)
+            if (dl) {
+              base.sourcePath = dl.sourcePath
+              base.projectRelativePath = dl.projectRelativePath
+              base.url = dl.url
+              base.size = dl.size
               downloaded = true
             }
-          } catch {
-            // ignore
           }
 
-          // 方案二（Django 失败时备用）：Electron 主进程直接下载
-          if (!downloaded && isElectron()) {
+          // 方案一：通过 Django 后端代理下载，绕过 CDN 的 CORS 限制
+          if (!downloaded && !isElectron()) {
             try {
-              const dl = await downloadUrlToProjectRoot(pid, sourceUrl, `video-${resourceId}`)
-              const relPath = String(dl?.relativePath || '').trim()
-              if (dl?.ok && relPath) {
-                base.sourcePath = dl.absolutePath
-                base.projectRelativePath = relPath
-                base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(relPath)}`
+              const result = await blueprintProjectService.importAsset({
+                projectId: pid,
+                kind: 'video',
+                sourceUrl,
+                name: `video-${resourceId}`,
+                bucket: 'assets',
+              })
+              if (result?.ok && result.asset) {
+                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
+                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
+                base.url = (result.asset as any).url || ''
+                base.contentType = (result.asset as any).contentType || ''
+                base.size = (result.asset as any).size || 0
                 downloaded = true
-=======
-          url: url,
-        }
-        if (isElectron()) {
-          const pid = Number(currentProjectId.value ?? 0)
-          if (pid > 0 && url) {
-            try {
-              const dl = await downloadUrlToProjectRoot(pid, url, `video-${resourceId}`)
-              if (dl?.ok) {
-                base.sourcePath = dl.absolutePath
-                base.projectRelativePath = dl.relativePath
->>>>>>> 7128659630564225d66933f883476fdfe19f6123
               }
             } catch {
               // ignore
             }
           }
-<<<<<<< HEAD
 
           // 如果下载成功但没有 dweb URL，手动构建
           if (downloaded && !base.url && base.projectRelativePath) {
@@ -1111,12 +1202,11 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
           }
         }
 
+        finalizeGeneratedResourceLocalUrl(base, pid)
         base.url = String(base.url || '').trim()
-        if (!base.url || !isWorkflowLocalAssetUrl(base.url)) {
+        if (!base.url || !isStrictLocalRenderableUrl(base.url) || !isWorkflowLocalAssetUrl(base.url)) {
           pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
           return false
-=======
->>>>>>> 7128659630564225d66933f883476fdfe19f6123
         }
         store.commit('addResource', base)
         store.commit('setNodeResource', { nodeId, resourceId })
@@ -1125,38 +1215,16 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
       downloadUrlAsBlob: async (url: string): Promise<Blob | null> => {
         const pid = Number(currentProjectId.value ?? 0)
         if (pid > 0 && url) {
-          try {
-            const result = await blueprintProjectService.importAsset({
-              projectId: pid,
-              kind: 'image',
-              sourceUrl: url,
-              name: `blob-${Date.now()}`,
-              bucket: 'assets',
-            })
-            if (result?.ok && result.asset) {
-              const assetPath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
-              if (assetPath && isElectron()) {
-                try {
-                  const r = await fetchAsArrayBuffer(assetPath)
-                  if (r?.ok && r.buffer) {
-                    return new Blob([r.buffer], { type: r.mime || (result.asset as any).contentType || 'application/octet-stream' })
-                  }
-                } catch {
-                  // ignore
-                }
+          const dl = await downloadAssetViaElectron(pid, url, `blob-${Date.now()}`)
+          if (dl) {
+            try {
+              const r = await fetchAsArrayBuffer(dl.sourcePath)
+              if (r?.ok && r.buffer) {
+                return new Blob([r.buffer], { type: r.mime || 'application/octet-stream' })
               }
-              const dwebUrl = (result.asset as any).url
-              if (dwebUrl) {
-                try {
-                  const resp = await fetch(dwebUrl)
-                  if (resp.ok) return await resp.blob()
-                } catch {
-                  // ignore
-                }
-              }
+            } catch {
+              // ignore
             }
-          } catch {
-            // ignore
           }
         }
 
@@ -3173,10 +3241,7 @@ const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
 const currentProjectRootPath = ref('')
-<<<<<<< HEAD
-=======
 const noProjectSelected = ref(false)
->>>>>>> 7128659630564225d66933f883476fdfe19f6123
 const agentWorkingDirectory = computed(() => {
   const projectName = String(currentProjectName.value || '').trim()
   if (projectName) return `/Users/dweb/Desktop/dweb-video-studio · ${projectName}`
@@ -3287,6 +3352,9 @@ const { routeComfyOutputsToConnectedNodes } = useAIWorkflowComfyOutputRouter({
   comfyAnchorLocalizedOutputs,
   blueprintProjectService,
   currentProjectId,
+  isElectron: () => isElectron(),
+  downloadUrlToProjectRoot: (projectId, url, desiredFilename) =>
+    downloadUrlToProjectRoot(projectId, url, desiredFilename),
   resolveBackendUrl,
   bindMediaResourceToNode: (nodeId, kind, url, name, meta) =>
     bindMediaResourceToNode(nodeId, kind, url, name, meta),
@@ -4681,6 +4749,25 @@ const importAssetIntoProjectScope = async (payload: {
   if (!sourcePath && !sourceUrl) return null
 
   if (sourcePath) {
+    if (isElectron()) {
+      const copied = await copyFileToProjectRoot(payload.projectId, sourcePath, payload.name)
+      const rel = String(copied?.relativePath || '').trim()
+      const abs = String(copied?.absolutePath || '').trim()
+      if (copied?.ok && rel && abs) {
+        return {
+          kind: payload.kind,
+          name: payload.name,
+          size: Number(copied?.size || 0),
+          projectRelativePath: rel,
+          relativePath: rel,
+          absolutePath: abs,
+          sourcePath: abs,
+          url: `dweb://project-assets?projectId=${payload.projectId}&path=${encodeURIComponent(rel)}`,
+        }
+      }
+      return null
+    }
+
     const byPath = await blueprintProjectService.importAsset({
       kind: payload.kind,
       name: payload.name,
@@ -4692,6 +4779,23 @@ const importAssetIntoProjectScope = async (payload: {
   }
 
   if (sourceUrl) {
+    if (isElectron()) {
+      const dl = await downloadAssetViaElectron(payload.projectId, sourceUrl, payload.name)
+      if (dl) {
+        return {
+          kind: payload.kind,
+          name: payload.name,
+          size: dl.size,
+          projectRelativePath: dl.projectRelativePath,
+          relativePath: dl.projectRelativePath,
+          absolutePath: dl.sourcePath,
+          sourcePath: dl.sourcePath,
+          url: dl.url,
+        }
+      }
+      return null
+    }
+
     const byUrl = await blueprintProjectService.importAsset({
       kind: payload.kind,
       name: payload.name,

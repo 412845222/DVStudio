@@ -25,6 +25,7 @@ import {
 	clearProjectRoot,
 	getProjectRootSnapshot,
 	downloadUrlToProjectRoot,
+	copyFileToProjectRoot,
 	getProjectRootById,
 } from './backend/projectAssetProtocol.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
@@ -1476,6 +1477,19 @@ function registerIpc() {
 		if (!url) return { ok: false, error: 'url is empty' }
 		try {
 			return await downloadUrlToProjectRoot(projectId, url, desiredFilename)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:copyFileToProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		const sourcePath = String(payload?.sourcePath || '').trim()
+		const desiredFilename = payload?.desiredFilename ? String(payload.desiredFilename) : undefined
+		if (!Number.isFinite(projectId) || projectId <= 0) return { ok: false, error: 'projectId is invalid' }
+		if (!sourcePath) return { ok: false, error: 'sourcePath is empty' }
+		try {
+			return await copyFileToProjectRoot(projectId, sourcePath, desiredFilename)
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}

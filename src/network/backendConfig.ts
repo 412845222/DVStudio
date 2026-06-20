@@ -57,16 +57,10 @@ export const parseDwebProjectAssetUrl = (raw: string): { projectId: number; path
 	}
 }
 
-export const toProjectAssetApiUrl = (raw: string): string => {
-	const parsed = parseDwebProjectAssetUrl(raw)
-	if (!parsed) return String(raw || '').trim()
-	return `/api/workflow/projects/assets/file?projectId=${encodeURIComponent(String(parsed.projectId))}&path=${encodeURIComponent(parsed.path)}`
-}
-
 export const resolveBackendFetchUrl = (pathOrUrl: string): string => {
 	const text = String(pathOrUrl || '').trim()
 	if (!text) return ''
-	if (text.toLowerCase().startsWith(DWEB_PROJECT_ASSET_PREFIX)) return toProjectAssetApiUrl(text)
+	if (text.toLowerCase().startsWith(DWEB_PROJECT_ASSET_PREFIX)) return text
 	return resolveBackendUrl(text)
 }
 
@@ -75,7 +69,7 @@ export const isWorkflowLocalAssetUrl = (pathOrUrl: string): boolean => {
 	if (!text) return false
 	if (/^(?:blob:|data:)/i.test(text)) return true
 	if (text.toLowerCase().startsWith(DWEB_PROJECT_ASSET_PREFIX)) return true
-	if (/^\/api\/workflow\/projects\/assets\/file(?:\?|$)/i.test(text)) return true
+	if (/^file:\/\//i.test(text)) return true
 	if (/^\/media\//i.test(text)) return true
 	if (/^https?:\/\//i.test(text)) {
 		try {
@@ -83,7 +77,7 @@ export const isWorkflowLocalAssetUrl = (pathOrUrl: string): boolean => {
 			const host = String(u.hostname || '').toLowerCase()
 			const pathname = String(u.pathname || '').toLowerCase()
 			const isLocalHost = host === '127.0.0.1' || host === 'localhost'
-			if (isLocalHost && (/\/api\/workflow\/projects\/assets\/file\/?$/.test(pathname) || pathname.startsWith('/media/'))) {
+			if (isLocalHost && pathname.startsWith('/media/')) {
 				return true
 			}
 		} catch {
@@ -96,16 +90,8 @@ export const isWorkflowLocalAssetUrl = (pathOrUrl: string): boolean => {
 const resolveDwebProjectAssetUrl = (raw: string): string => {
 	const text = String(raw || '').trim()
 	if (!text.toLowerCase().startsWith(DWEB_PROJECT_ASSET_PREFIX)) return text
-
-	const parsed = parseDwebProjectAssetUrl(text)
-	if (!parsed) return text
-
-	const w = window as any
-	const isElectronRuntime =
-		w?.__DWEB_RUNTIME__?.platform === 'electron' || typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
-	if (isElectronRuntime) return text
-
-	return toProjectAssetApiUrl(text)
+	if (!parseDwebProjectAssetUrl(text)) return text
+	return text
 }
 
 export const resolveBackendUrl = (pathOrUrl: string): string => {

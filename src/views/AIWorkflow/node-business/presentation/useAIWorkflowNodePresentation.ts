@@ -82,10 +82,8 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
       const u = new URL(text, base)
       const protocol = String(u.protocol || '').toLowerCase()
       const host = String(u.hostname || '').toLowerCase()
-      const path = String(u.pathname || '').toLowerCase()
       const isDwebAsset = protocol === 'dweb:' && host === 'project-assets'
-      const isApiAsset = /\/api\/workflow\/projects\/assets\/file\/?$/.test(path)
-      if (!isDwebAsset && !isApiAsset) return null
+      if (!isDwebAsset) return null
       const projectId = String(u.searchParams.get('projectId') || '').trim()
       const relPath = String(u.searchParams.get('path') || '').trim()
       if (!projectId || !relPath) return null
