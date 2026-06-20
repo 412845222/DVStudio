@@ -83,7 +83,6 @@
     "postinstall": "node scripts/rebuild-better-sqlite3.mjs && node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch(e){}\""
   },
   "dependencies": {
-    "@github/copilot": "^0.0.326",
     "better-sqlite3": "^11.3.0",
     "js-yaml": "^4.1.1",
     "jszip": "^3.10.1",

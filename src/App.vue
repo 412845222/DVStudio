@@ -18,6 +18,7 @@ import { onBeforeUnmount, onMounted, provide, ref } from "vue";
 import { VideoStudioKey, VideoStudioStore } from "./store/videostudio";
 import { TimelineKey, TimelineStore } from "./store/timeline";
 import { AIWorkflowKey, AIWorkflowStore } from "./store/aiworkflow";
+import { ThemeKey, ThemeStore } from "./store/theme";
 import GlobalSideNav from "./ui/UIComponent/GlobalSideNav.vue";
 import GlobalTitleBar from "./ui/UIComponent/GlobalTitleBar.vue";
 import StartupProgressBar from "./ui/UIComponent/StartupProgressBar.vue";
@@ -26,6 +27,7 @@ import { useStartupProgress } from "./composables/useStartupProgress";
 provide(VideoStudioKey, VideoStudioStore);
 provide(TimelineKey, TimelineStore);
 provide(AIWorkflowKey, AIWorkflowStore);
+provide(ThemeKey, ThemeStore);
 
 const contentEl = ref<HTMLElement | null>(null);
 const navExpanded = ref(false);
@@ -58,6 +60,9 @@ function syncContentRect() {
 }
 
 onMounted(() => {
+  // Initialize theme from storage
+  ThemeStore.dispatch('initTheme');
+
   document.body.setAttribute('data-side-nav-expanded', String(navExpanded.value));
   syncContentRect();
   if ("ResizeObserver" in window) {
@@ -82,7 +87,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
   overflow: hidden;
-  background: var(--dweb-defualt-dark);
+  background: var(--theme-bg-primary);
 }
 
 .app-shell.electron {
@@ -112,6 +117,6 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--dweb-defualt);
+  background: var(--theme-bg-secondary);
 }
 </style>

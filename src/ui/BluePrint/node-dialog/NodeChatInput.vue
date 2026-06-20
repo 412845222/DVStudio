@@ -138,7 +138,7 @@ defineExpose({ focus, blur })
   border: none;
   outline: none;
   background: transparent;
-  color: var(--vscode-fg, #e0e0e0);
+  color: var(--wf-text, #edf2f4);
   font-size: 14px;
   line-height: 1.6;
   padding: 12px 14px 28px 14px;
@@ -148,7 +148,7 @@ defineExpose({ focus, blur })
 }
 
 .bp-node-chat-textarea::placeholder {
-  color: var(--vscode-fg-muted, #666);
+  color: var(--wf-text-muted, #aeb8bd);
   opacity: 0.7;
 }
 
@@ -167,7 +167,7 @@ defineExpose({ focus, blur })
   align-items: center;
   pointer-events: none;
   font-size: 11px;
-  color: var(--vscode-fg-muted, #666);
+  color: var(--wf-text-muted, #aeb8bd);
 }
 
 .bp-node-chat-char-count {
@@ -184,8 +184,8 @@ defineExpose({ focus, blur })
   margin: 0 1px;
   font-size: 10px;
   font-family: monospace;
-  background: var(--vscode-editorWidget-background, #2d2d2d);
-  border: 1px solid var(--vscode-border, #444);
+  background: var(--wf-surface-muted, rgba(36, 42, 48, 0.9));
+  border: 1px solid var(--wf-border, rgba(0, 0, 0, 0.12));
   border-radius: 0;
   line-height: 1;
 }

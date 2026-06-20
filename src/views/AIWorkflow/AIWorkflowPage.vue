@@ -584,7 +584,7 @@ import { VideoMetadataReadQueue } from '../../aiworkflow/VideoMetadataReadQueue'
 import { createVideoFirstFrameThumbnail } from '../../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
 import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../../aiworkflow/localFileHandleDb'
 import { resolveBackendUrl, getBackendBaseUrl } from '../../network/backendConfig'
-import { isElectron, openFolderForPath, pingBackend, startBackend } from '../../electronBridge'
+import { isElectron, openFolderForPath,downloadUrlToProjectRoot, pingBackend, startBackend } from '../../electronBridge'
 import { useStartupProgress } from '../../composables/useStartupProgress'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
@@ -954,28 +954,58 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
       bindTextResultToNode: (nodeId: string, text: string) => {
         store.commit('setNodeTextValue', { nodeId, textValue: text })
       },
-      bindImageResultToNode: (nodeId: string, url: string) => {
+      bindImageResultToNode: async (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
         if (!node) return
         const resourceId = `gen-img-${nodeId}-${Date.now()}`
-        store.commit('addResource', {
+        const base: any = {
           id: resourceId,
           kind: 'image',
           name: `AI 生成图片 ${resourceId.slice(-6)}`,
           url: url,
-        })
+        }
+        if (isElectron()) {
+          const pid = Number(currentProjectId.value ?? 0)
+          if (pid > 0 && url) {
+            try {
+              const dl = await downloadUrlToProjectRoot(pid, url, `img-${resourceId}`)
+              if (dl?.ok) {
+                base.sourcePath = dl.absolutePath
+                base.projectRelativePath = dl.relativePath
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+        store.commit('addResource', base)
         store.commit('setNodeResource', { nodeId, resourceId })
       },
-      bindVideoResultToNode: (nodeId: string, url: string) => {
+      bindVideoResultToNode: async (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
         if (!node) return
         const resourceId = `gen-video-${nodeId}-${Date.now()}`
-        store.commit('addResource', {
+        const base: any = {
           id: resourceId,
           kind: 'video',
           name: `AI 生成视频 ${resourceId.slice(-6)}`,
           url: url,
-        })
+        }
+        if (isElectron()) {
+          const pid = Number(currentProjectId.value ?? 0)
+          if (pid > 0 && url) {
+            try {
+              const dl = await downloadUrlToProjectRoot(pid, url, `video-${resourceId}`)
+              if (dl?.ok) {
+                base.sourcePath = dl.absolutePath
+                base.projectRelativePath = dl.relativePath
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+        store.commit('addResource', base)
         store.commit('setNodeResource', { nodeId, resourceId })
       },
     },
@@ -2502,6 +2532,8 @@ const {
   selectedNodeId,
   isElectron,
   nodeResourceName,
+  getProjectId: () => currentProjectId.value,
+  getProjectRootPath: (_projectId?: number) => currentProjectRootPath.value,
 })
 
 const isWebEnvironment = () => getRuntimePlatform() === 'web'
@@ -2955,6 +2987,7 @@ const projectToolbarRef = ref<{ openSaveDialog: () => void } | null>(null)
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
+const currentProjectRootPath = ref('')
 const noProjectSelected = ref(false)
 const agentWorkingDirectory = computed(() => {
   const projectName = String(currentProjectName.value || '').trim()
@@ -2999,6 +3032,7 @@ const {
 } = useAIWorkflowProjectIdentity({
   currentProjectId,
   currentProjectName,
+  currentProjectRootPath,
   lastProjectStorageKey: AIWF_LAST_PROJECT_STORAGE_KEY,
 })
 

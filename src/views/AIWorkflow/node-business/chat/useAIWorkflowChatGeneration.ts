@@ -81,7 +81,7 @@ export const useAIWorkflowChatGeneration = (payload: {
     kind: 'image' | 'video' | 'file',
     resourceName: string,
     opts?: { projectId?: number | null },
-  ) => Promise<{ url: string; absolutePath: string }>
+  ) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string }>
   resolveBackendUrl: (value: string) => string
   getChatService: () => ChatBridgeService
   onSeedanceTaskObserved?: (taskId: string, stage: 'created' | 'completed') => void
@@ -584,6 +584,7 @@ export const useAIWorkflowChatGeneration = (payload: {
                 patch: {
                   url: uploaded.url,
                   sourcePath: uploaded.absolutePath || undefined,
+                  projectRelativePath: (uploaded as any).projectRelativePath || undefined,
                 } as any,
               })
             }

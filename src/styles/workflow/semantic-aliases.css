@@ -1,52 +1,59 @@
 :root {
-  --wf-page-bg: var(--aiwf-color-graphite-950);
-  --wf-page-bg-muted: var(--aiwf-color-graphite-900);
+  --wf-page-bg: var(--wf-page-bg, var(--aiwf-color-graphite-950));
+  --wf-page-bg-muted: var(--wf-page-bg-muted, var(--aiwf-color-graphite-900));
 
-  --wf-surface-base: rgba(21, 24, 28, 0.94);
-  --wf-surface-raised: rgba(29, 34, 39, 0.94);
-  --wf-surface-muted: rgba(36, 42, 48, 0.9);
-  --wf-surface-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)), rgba(21, 24, 28, 0.82);
+  --wf-surface-base: var(--wf-surface-base, rgba(21, 24, 28, 0.94));
+  --wf-surface-raised: var(--wf-surface-raised, rgba(29, 34, 39, 0.94));
+  --wf-surface-muted: var(--wf-surface-muted, rgba(36, 42, 48, 0.9));
+  --wf-surface-glass: var(--wf-surface-glass, linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)), rgba(21, 24, 28, 0.82));
 
-  --wf-text: var(--aiwf-color-text);
-  --wf-text-muted: var(--aiwf-color-text-muted);
-  --wf-text-subtle: var(--aiwf-color-text-subtle);
+  --wf-text: var(--wf-text, var(--aiwf-color-text));
+  --wf-text-muted: var(--wf-text-muted, var(--aiwf-color-text-muted));
+  --wf-text-subtle: var(--wf-text-subtle, var(--aiwf-color-text-subtle));
 
-  --wf-border-subtle: var(--aiwf-border-subtle);
-  --wf-border: var(--aiwf-border-default);
-  --wf-border-strong: var(--aiwf-border-strong);
-  --wf-border-focus: rgba(31, 157, 132, 0.58);
+  --wf-border-subtle: var(--wf-border-subtle, var(--aiwf-border-subtle));
+  --wf-border: var(--wf-border, var(--aiwf-border-default));
+  --wf-border-strong: var(--wf-border-strong, var(--aiwf-border-strong));
+  --wf-border-focus: var(--wf-border-focus, rgba(31, 157, 132, 0.58));
 
-  --wf-primary: var(--aiwf-color-primary);
-  --wf-primary-hover: var(--aiwf-color-primary-hover);
-  --wf-primary-soft: var(--aiwf-color-primary-soft);
-  --wf-accent: var(--aiwf-color-accent);
-  --wf-accent-soft: var(--aiwf-color-accent-soft);
-  --wf-info: var(--aiwf-color-info);
-  --wf-info-soft: var(--aiwf-color-info-soft);
-  --wf-danger: var(--aiwf-color-danger);
-  --wf-danger-soft: var(--aiwf-color-danger-soft);
-  --wf-success: var(--aiwf-color-success);
-  --wf-success-soft: var(--aiwf-color-success-soft);
-  --wf-warning: var(--aiwf-color-warning);
-  --wf-warning-soft: var(--aiwf-color-warning-soft);
+  --wf-primary: var(--wf-primary, var(--aiwf-color-primary));
+  --wf-primary-hover: var(--wf-primary-hover, var(--aiwf-color-primary-hover));
+  --wf-primary-soft: var(--wf-primary-soft, var(--aiwf-color-primary-soft));
+  --wf-accent: var(--wf-accent, var(--aiwf-color-accent));
+  --wf-accent-soft: var(--wf-accent-soft, var(--aiwf-color-accent-soft));
+  --wf-info: var(--wf-info, var(--aiwf-color-info));
+  --wf-info-soft: var(--wf-info-soft, var(--aiwf-color-info-soft));
+  --wf-danger: var(--wf-danger, var(--aiwf-color-danger));
+  --wf-danger-soft: var(--wf-danger-soft, var(--aiwf-color-danger-soft));
+  --wf-success: var(--wf-success, var(--aiwf-color-success));
+  --wf-success-soft: var(--wf-success-soft, var(--aiwf-color-success-soft));
+  --wf-warning: var(--wf-warning, var(--aiwf-color-warning));
+  --wf-warning-soft: var(--wf-warning-soft, var(--aiwf-color-warning-soft));
 
-  --wf-control-bg: rgba(29, 34, 39, 0.92);
-  --wf-control-bg-hover: rgba(36, 42, 48, 0.96);
-  --wf-control-border: var(--wf-border);
-  --wf-control-border-hover: var(--wf-border-focus);
-  --wf-control-text: var(--wf-text);
+  --wf-control-bg: var(--wf-control-bg, rgba(29, 34, 39, 0.92));
+  --wf-control-bg-hover: var(--wf-control-bg-hover, rgba(36, 42, 48, 0.96));
+  --wf-control-border: var(--wf-control-border, var(--wf-border));
+  --wf-control-border-hover: var(--wf-control-border-hover, var(--wf-border-focus));
+  --wf-control-text: var(--wf-control-text, var(--wf-text));
 
-  --wf-state-selected-bg: rgba(31, 157, 132, 0.16);
-  --wf-state-selected-border: rgba(31, 157, 132, 0.58);
-  --wf-state-running-bg: var(--wf-info-soft);
-  --wf-state-running-border: rgba(79, 183, 197, 0.58);
-  --wf-state-error-bg: var(--wf-danger-soft);
-  --wf-state-error-border: rgba(207, 90, 70, 0.62);
-  --wf-state-warning-bg: var(--wf-warning-soft);
-  --wf-state-warning-border: rgba(217, 173, 74, 0.62);
+  --wf-state-selected-bg: var(--wf-state-selected-bg, rgba(31, 157, 132, 0.16));
+  --wf-state-selected-border: var(--wf-state-selected-border, rgba(31, 157, 132, 0.58));
+  --wf-state-running-bg: var(--wf-state-running-bg, var(--wf-info-soft));
+  --wf-state-running-border: var(--wf-state-running-border, rgba(79, 183, 197, 0.58));
+  --wf-state-error-bg: var(--wf-state-error-bg, var(--wf-danger-soft));
+  --wf-state-error-border: var(--wf-state-error-border, rgba(207, 90, 70, 0.62));
+  --wf-state-warning-bg: var(--wf-state-warning-bg, var(--wf-warning-soft));
+  --wf-state-warning-border: var(--wf-state-warning-border, rgba(217, 173, 74, 0.62));
 
-  --wf-overlay-bg: rgba(8, 11, 16, 0.68);
-  --wf-overlay-blur: 10px;
-  --wf-panel-shadow: var(--aiwf-shadow-md);
-  --wf-panel-shadow-strong: var(--aiwf-shadow-lg);
+  --wf-overlay-bg: var(--wf-overlay-bg, rgba(8, 11, 16, 0.68));
+  --wf-overlay-blur: var(--wf-overlay-blur, 10px);
+  --wf-panel-shadow: var(--wf-panel-shadow, var(--aiwf-shadow-md));
+  --wf-panel-shadow-strong: var(--wf-panel-shadow-strong, var(--aiwf-shadow-lg));
+
+  --wf-chat-column-bg: var(--wf-chat-column-bg, rgba(21, 24, 28, 0.62));
+  --wf-chat-message-user-bg: var(--wf-chat-message-user-bg, var(--wf-primary-soft));
+  --wf-chat-message-assistant-bg: var(--wf-chat-message-assistant-bg, rgba(237, 242, 244, 0.07));
+  --wf-chat-flow-pending-bg: var(--wf-chat-flow-pending-bg, var(--wf-warning-soft));
+  --wf-chat-flow-complete-bg: var(--wf-chat-flow-complete-bg, var(--wf-success-soft));
+  --wf-chat-flow-error-bg: var(--wf-chat-flow-error-bg, var(--wf-danger-soft));
 }
