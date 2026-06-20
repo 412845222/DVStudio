@@ -191,26 +191,29 @@
           />
         </div>
 
-        <ContextMenu
-          :visible="contextMenu.open"
-          :x="contextMenu.x"
-          :y="contextMenu.y"
-          :sections="contextMenuSections"
-          @select="onContextMenuSelect"
-        />
-
-        <DwebCanvasNodeSearchMenu
-          :visible="nodeSearchMenuVisible"
-          :items="NEWUI2_NODE_CATALOG"
-          :categories="NEWUI2_NODE_CATALOG_CATEGORIES"
-          :top-categories="NEWUI2_NODE_TOP_CATEGORIES"
-          :special-groups="NEWUI2_NODE_SPECIAL_GROUPS"
-          @select="onNodeSearchMenuSelect"
-          @upload-file="onNodeSearchMenuUploadFile"
-          @close="closeNodeSearchMenu"
-        />
       </BlueprintCanvas>
     </div>
+
+    <Teleport to="body">
+      <ContextMenu
+        :visible="contextMenu.open"
+        :x="contextMenu.x"
+        :y="contextMenu.y"
+        :sections="contextMenuSections"
+        @select="onContextMenuSelect"
+      />
+
+      <DwebCanvasNodeSearchMenu
+        :visible="nodeSearchMenuVisible"
+        :items="NEWUI2_NODE_CATALOG"
+        :categories="NEWUI2_NODE_CATALOG_CATEGORIES"
+        :top-categories="NEWUI2_NODE_TOP_CATEGORIES"
+        :special-groups="NEWUI2_NODE_SPECIAL_GROUPS"
+        @select="onNodeSearchMenuSelect"
+        @upload-file="onNodeSearchMenuUploadFile"
+        @close="closeNodeSearchMenu"
+      />
+    </Teleport>
 
     <!-- UI按钮容器 -->
     <div class="aiwf-ui-container">
