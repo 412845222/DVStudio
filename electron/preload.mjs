@@ -84,6 +84,9 @@ contextBridge.exposeInMainWorld('dweb', {
 		pingBackend: () => invoke('dweb:backend:ping'),
 		selectMediaFiles: (options) => invoke('dweb:aiworkflow:selectMediaFiles', options),
 		selectProjectFolder: () => invoke('dweb:aiworkflow:selectProjectFolder'),
+		registerProjectRoot: (payload) => invoke('dweb:aiworkflow:registerProjectRoot', payload || {}),
+		clearProjectRoot: (payload) => invoke('dweb:aiworkflow:clearProjectRoot', payload || {}),
+		getProjectRootSnapshot: () => invoke('dweb:aiworkflow:getProjectRootSnapshot'),
 	},
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),

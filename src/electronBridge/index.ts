@@ -117,6 +117,25 @@ export async function selectProjectFolder(): Promise<DirectoryPickResult | null>
 	return w.dweb.aiworkflow.selectProjectFolder()
 }
 
+export async function registerProjectRoot(projectId: number, rootPath: string): Promise<{ ok: boolean; cleared?: boolean; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.registerProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.registerProjectRoot({ projectId: pid, rootPath: String(rootPath || '') })
+}
+
+export async function clearProjectRoot(projectId: number): Promise<{ ok: boolean; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.clearProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.clearProjectRoot({ projectId: pid })
+}
+
+export async function getProjectRootSnapshot(): Promise<Record<string, string> | null> {
+	if (!w?.dweb?.aiworkflow?.getProjectRootSnapshot) return null
+	return w.dweb.aiworkflow.getProjectRootSnapshot()
+}
+
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {
 	if (!w?.dweb?.common?.runBootstrapInstaller) return null
 	return w.dweb.common.runBootstrapInstaller()
