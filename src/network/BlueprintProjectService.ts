@@ -147,6 +147,25 @@ export class BlueprintProjectService {
     }
   }
 
+  private async electronAsset<T>(
+    opName:
+      | 'uploadProjectAsset'
+      | 'importProjectAsset'
+      | 'deleteProjectAsset'
+      | 'resolveProjectAsset'
+      | 'repairProjectAsset',
+    payload: any,
+  ): Promise<T | null> {
+    const bridge = (window as any)?.dweb?.aiworkflow
+    if (typeof bridge?.[opName] !== 'function') return null
+    try {
+      const r = await bridge[opName](normalizeForIpc(payload ?? {}))
+      return r as T
+    } catch {
+      return null
+    }
+  }
+
   private url(path: string) {
     const base = (this.getBaseUrl?.() ?? '').trim().replace(/\/$/, '')
     if (!base) return path
@@ -335,6 +354,27 @@ export class BlueprintProjectService {
     kind: BlueprintAssetKind,
     opts?: { projectId?: number | null; bucket?: 'assets' | 'thumbnails' }
   ): Promise<UploadAssetResponse> {
+    if (this.isElectronRuntime()) {
+      try {
+        const ab = await file.arrayBuffer()
+        const electronResult = await this.electronAsset<any>('uploadProjectAsset', {
+          name: file.name,
+          kind,
+          contentType: file.type || undefined,
+          arrayBuffer: ab,
+          projectId: opts?.projectId ? Number(opts.projectId) : null,
+          bucket: opts?.bucket,
+        })
+        if (electronResult?.ok) {
+          return { ok: true, asset: electronResult.asset as any }
+        }
+        if (electronResult && !electronResult.ok) {
+          return { ok: false, error: `upload via electron failed: ${String(electronResult.error || 'unknown')}` }
+        }
+      } catch (err) {
+        return { ok: false, error: `upload via electron failed: ${err instanceof Error ? err.message : String(err)}` }
+      }
+    }
     const fd = new FormData()
     fd.append('file', file)
     fd.append('kind', kind)
@@ -369,6 +409,20 @@ export class BlueprintProjectService {
     projectId?: number | null
     bucket?: 'assets' | 'thumbnails'
   }): Promise<ImportAssetResponse> {
+    if (this.isElectronRuntime()) {
+      const electronResult = await this.electronAsset<any>('importProjectAsset', {
+        projectId: payload.projectId ? Number(payload.projectId) : null,
+        kind: payload.kind,
+        name: payload.name,
+        sourcePath: payload.sourcePath,
+        sourceUrl: payload.sourceUrl,
+        bucket: payload.bucket,
+      })
+      if (electronResult?.ok) return { ok: true, asset: electronResult.asset as any }
+      if (electronResult && !electronResult.ok) {
+        return { ok: false, error: `import via electron failed: ${String(electronResult.error || 'unknown')}` }
+      }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/import'), {
       method: 'POST',
       headers: jsonHeaders,
@@ -393,6 +447,18 @@ export class BlueprintProjectService {
     relativePath?: string
     projectRelativePath?: string
   }): Promise<DeleteAssetResponse> {
+    if (this.isElectronRuntime()) {
+      const electronResult = await this.electronAsset<any>('deleteProjectAsset', {
+        projectId: payload.projectId ? Number(payload.projectId) : null,
+        relativePath: payload.relativePath,
+        url: payload.url,
+        sourcePath: payload.sourcePath,
+      })
+      if (electronResult?.ok) return { ok: true, fileDeleted: Boolean(electronResult.fileDeleted), path: electronResult.path }
+      if (electronResult && !electronResult.ok) {
+        return { ok: false, error: `delete via electron failed: ${String(electronResult.error || 'unknown')}` }
+      }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/delete'), {
       method: 'POST',
       headers: jsonHeaders,
@@ -417,6 +483,27 @@ export class BlueprintProjectService {
     sourceUrl?: string
     projectRelativePath?: string
   }): Promise<ResolveAssetResponse> {
+    if (this.isElectronRuntime()) {
+      const electronResult = await this.electronAsset<any>('resolveProjectAsset', {
+        projectId: payload.projectId ? Number(payload.projectId) : null,
+        kind: payload.kind,
+        name: payload.name,
+        sourcePath: payload.sourcePath,
+        sourceUrl: payload.sourceUrl,
+        projectRelativePath: payload.projectRelativePath,
+      })
+      if (electronResult?.ok) {
+        return {
+          ok: true,
+          resolved: Boolean(electronResult.resolved),
+          asset: electronResult.asset as any,
+          reason: electronResult.reason,
+        }
+      }
+      if (electronResult && !electronResult.ok) {
+        return { ok: false, error: `resolve via electron failed: ${String(electronResult.error || 'unknown')}` }
+      }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/resolve'), {
       method: 'POST',
       headers: jsonHeaders,
@@ -439,6 +526,25 @@ export class BlueprintProjectService {
     name?: string
     projectRelativePath?: string
   }): Promise<RepairAssetResponse> {
+    if (this.isElectronRuntime()) {
+      const electronResult = await this.electronAsset<any>('repairProjectAsset', {
+        projectId: payload.projectId ? Number(payload.projectId) : null,
+        kind: payload.kind,
+        name: payload.name,
+        projectRelativePath: payload.projectRelativePath,
+      })
+      if (electronResult?.ok) {
+        return {
+          ok: true,
+          repaired: Boolean(electronResult.repaired),
+          asset: electronResult.asset as any,
+          reason: electronResult.reason,
+        }
+      }
+      if (electronResult && !electronResult.ok) {
+        return { ok: false, error: `repair via electron failed: ${String(electronResult.error || 'unknown')}` }
+      }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/repair'), {
       method: 'POST',
       headers: jsonHeaders,

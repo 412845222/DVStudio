@@ -92,6 +92,13 @@ contextBridge.exposeInMainWorld('dweb', {
 		copyFileToProjectRoot: (payload) => invoke('dweb:aiworkflow:copyFileToProjectRoot', payload || {}),
 		fetchAsArrayBuffer: (payload) => invoke('dweb:aiworkflow:fetchAsArrayBuffer', payload || {}),
 
+		// ---- 静态资产管理（纯本地；取代 Django assets/* API） ----
+		uploadProjectAsset: (payload) => invoke('dweb:aiworkflow:uploadProjectAsset', payload || {}),
+		importProjectAsset: (payload) => invoke('dweb:aiworkflow:importProjectAsset', payload || {}),
+		deleteProjectAsset: (payload) => invoke('dweb:aiworkflow:deleteProjectAsset', payload || {}),
+		resolveProjectAsset: (payload) => invoke('dweb:aiworkflow:resolveProjectAsset', payload || {}),
+		repairProjectAsset: (payload) => invoke('dweb:aiworkflow:repairProjectAsset', payload || {}),
+
 		// ---- 本地化存储（取代 Django 的项目/任务镜像/API key 管理） ----
 		db: {
 			_initState: () => invoke('dweb:localdb:getInitState'),
