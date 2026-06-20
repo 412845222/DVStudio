@@ -27,6 +27,11 @@ const routes: RouteRecordRaw[] = [
     name: 'Settings',
     component: () => import('../views/Settings.vue'),
   },
+  {
+    path: '/image-markup-preview',
+    name: 'ImageMarkupPreview',
+    component: () => import('../views/ImageMarkupPreviewPage.vue'),
+  },
 ]
 
 const router = createRouter({

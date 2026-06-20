@@ -83,7 +83,6 @@
     "postinstall": "npm run git:setup-hooks 2>/dev/null || true"
   },
   "dependencies": {
-    "@github/copilot": "^0.0.23",
     "better-sqlite3": "^11.3.0",
     "js-yaml": "^4.1.1",
     "jszip": "^3.10.1",
