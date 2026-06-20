@@ -946,28 +946,58 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
       bindTextResultToNode: (nodeId: string, text: string) => {
         store.commit('setNodeTextValue', { nodeId, textValue: text })
       },
-      bindImageResultToNode: (nodeId: string, url: string) => {
+      bindImageResultToNode: async (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
         if (!node) return
         const resourceId = `gen-img-${nodeId}-${Date.now()}`
-        store.commit('addResource', {
+        const base: any = {
           id: resourceId,
           kind: 'image',
           name: `AI 生成图片 ${resourceId.slice(-6)}`,
           url: url,
-        })
+        }
+        if (isElectron()) {
+          const pid = Number(currentProjectId.value ?? 0)
+          if (pid > 0 && url) {
+            try {
+              const dl = await downloadUrlToProjectRoot(pid, url, `img-${resourceId}`)
+              if (dl?.ok) {
+                base.sourcePath = dl.absolutePath
+                base.projectRelativePath = dl.relativePath
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+        store.commit('addResource', base)
         store.commit('setNodeResource', { nodeId, resourceId })
       },
-      bindVideoResultToNode: (nodeId: string, url: string) => {
+      bindVideoResultToNode: async (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
         if (!node) return
         const resourceId = `gen-video-${nodeId}-${Date.now()}`
-        store.commit('addResource', {
+        const base: any = {
           id: resourceId,
           kind: 'video',
           name: `AI 生成视频 ${resourceId.slice(-6)}`,
           url: url,
-        })
+        }
+        if (isElectron()) {
+          const pid = Number(currentProjectId.value ?? 0)
+          if (pid > 0 && url) {
+            try {
+              const dl = await downloadUrlToProjectRoot(pid, url, `video-${resourceId}`)
+              if (dl?.ok) {
+                base.sourcePath = dl.absolutePath
+                base.projectRelativePath = dl.relativePath
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+        store.commit('addResource', base)
         store.commit('setNodeResource', { nodeId, resourceId })
       },
     },
