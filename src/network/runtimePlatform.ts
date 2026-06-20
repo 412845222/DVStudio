@@ -40,9 +40,38 @@ export const getRuntimePlatform = (): Platform => {
 export const isElectron = () => getRuntimePlatform() === 'electron'
 export const isWeb = () => getRuntimePlatform() === 'web'
 
+// 读取 window.__DWEB_BACKEND_BASE_URL__（可能是字符串，也可能是带 get/toString 的对象）
+const readBackendBaseUrlFromWindow = (): string => {
+  if (typeof window === 'undefined') return ''
+  const raw = (window as any).__DWEB_BACKEND_BASE_URL__
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object') {
+    if (typeof raw.get === 'function') {
+      try {
+        const g = raw.get()
+        if (typeof g === 'string') return g
+      } catch {}
+    }
+    if (typeof raw.toString === 'function') {
+      try {
+        const s = raw.toString()
+        if (typeof s === 'string' && s !== '[object Object]') return s
+      } catch {}
+    }
+  }
+  return ''
+}
+
 // Convenience for exposing debug info to the in-browser debug panel.
 export const runtimeDescription = (): Record<string, string> => {
-  const base = (typeof window !== 'undefined' && (window as any).__DWEB_BACKEND_BASE_URL) || ''
+  // 从 preload 注入或同步 fallback 读取
+  let base = readBackendBaseUrlFromWindow()
+  if (!base) {
+    try {
+      const env = (import.meta as any)?.env?.VITE_BACKEND_BASE_URL
+      if (typeof env === 'string' && env) base = env
+    } catch {}
+  }
   return {
     platform: getRuntimePlatform(),
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
