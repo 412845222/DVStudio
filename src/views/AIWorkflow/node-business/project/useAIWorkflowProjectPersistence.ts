@@ -24,7 +24,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
   }
   currentProjectId: Ref<number | null>
   currentProjectName: Ref<string>
-  setSavedProject: (project: { id?: unknown; name?: unknown }, fallbackName?: string) => void
+  setSavedProject: (project: { id?: unknown; name?: unknown }, fallbackName?: string) => Promise<void>
   readLastProjectId: () => number | null
   forgetLastProjectId: () => void
   refreshProjectList: () => Promise<void>
@@ -263,7 +263,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     const project = (res as any).project ?? {}
-    payload.setSavedProject(project)
+    await payload.setSavedProject(project)
 
     const normalizedSnapshot = payload.stripUnrealExportRuntimeFromSnapshot(
       payload.normalizeSnapshotResourceUrls((res as any).snapshot, payload.resolveBackendUrl)
@@ -393,7 +393,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     const project = (res as any).project ?? {}
-    payload.setSavedProject(project, nextName)
+    await payload.setSavedProject(project, nextName)
 
     const projectId = Number(payload.currentProjectId.value || 0)
     if (wasUnsavedProject && Number.isFinite(projectId) && projectId > 0) {

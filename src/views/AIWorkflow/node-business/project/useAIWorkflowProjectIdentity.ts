@@ -7,7 +7,7 @@ export const useAIWorkflowProjectIdentity = (payload: {
   currentProjectRootPath?: Ref<string>
   lastProjectStorageKey: string
 }) => {
-  const setSavedProject = (project: { id?: unknown; name?: unknown; rootPath?: unknown }, fallbackName = '') => {
+  const setSavedProject = async (project: { id?: unknown; name?: unknown; rootPath?: unknown }, fallbackName = '') => {
     const id = Number(project?.id)
     const validId = Number.isFinite(id) && id > 0 ? id : null
     payload.currentProjectId.value = validId
@@ -17,7 +17,7 @@ export const useAIWorkflowProjectIdentity = (payload: {
     }
     if (validId && isElectron()) {
       const rootPath = String((project as any)?.rootPath ?? '').trim()
-      void registerProjectRoot(validId, rootPath)
+      await registerProjectRoot(validId, rootPath)
     }
     if (payload.currentProjectId.value) {
       localStorage.setItem(payload.lastProjectStorageKey, String(payload.currentProjectId.value))

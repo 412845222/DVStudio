@@ -183,37 +183,36 @@ function handleProjectAssetRequest(request) {
     // ignore
   }
 
-  // 统一处理路径分隔符（Windows \ -> /），并规范化路径
   const rel = String(parsed.relPath || '').trim().replace(/\\/g, '/')
+  let cleanRel = rel
+  if (cleanRel.startsWith('Content/Media/')) {
+    cleanRel = cleanRel.slice('Content/Media/'.length)
+  } else if (cleanRel.startsWith('content/media/')) {
+    cleanRel = cleanRel.slice('content/media/'.length)
+  } else if (cleanRel.startsWith('Media/')) {
+    cleanRel = cleanRel.slice('Media/'.length)
+  } else if (cleanRel.startsWith('media/')) {
+    cleanRel = cleanRel.slice('media/'.length)
+  }
 
-  // 候选路径列表：优先使用原始路径，然后尝试新旧目录的等价路径
-  // 例如：generated-assets/img-xxx.jpg -> Content/Media/img-xxx.jpg
-  // 反之亦然：Content/Media/img-xxx.jpg -> generated-assets/img-xxx.jpg
-  const candidates = [rel]
+  const candidates = [rel, cleanRel]
 
-  // 提取文件名（最基础的文件名），用于在新旧目录中查找
   const parts = rel.split('/').filter((p) => p && p !== '.')
   if (parts.length >= 2) {
     const firstDir = parts[0].toLowerCase()
     const restPath = parts.slice(1).join('/')
     const fileName = parts[parts.length - 1]
 
-    // 旧项目：路径以 generated-assets 开头
     if (firstDir === 'generated-assets') {
-      // 尝试在新目录 Content/Media 下查找
       candidates.push('Content/Media/' + restPath)
-      // 也尝试 Content/Media/ + 文件名（资源可能没有子目录）
       if (restPath !== fileName) {
         candidates.push('Content/Media/' + fileName)
       }
     }
-    // 新项目：路径以 Content 或 Media 开头
     if (firstDir === 'content' || firstDir === 'media' || firstDir === 'thumbnails') {
-      // 尝试在旧目录 generated-assets 下查找
       candidates.push('generated-assets/' + fileName)
     }
   } else if (parts.length === 1) {
-    // 只给出文件名时，尝试多个常见目录
     candidates.push('Content/Media/' + parts[0])
     candidates.push('generated-assets/' + parts[0])
   }
@@ -221,7 +220,6 @@ function handleProjectAssetRequest(request) {
   if (parts.length >= 2) {
     const firstDir = parts[0].toLowerCase()
     const secondDir = parts[1]?.toLowerCase()
-    // 当 root 已经是 Content/Media 目录时，直接尝试去掉前缀
     if (firstDir === 'content' && secondDir === 'media' && parts.length >= 3) {
       candidates.push(parts.slice(2).join('/'))
     } else if (firstDir === 'media' && parts.length >= 2) {
@@ -229,7 +227,13 @@ function handleProjectAssetRequest(request) {
     }
   }
 
-  // 解析并检查每个候选路径（支持多个 root 候选，提升项目根映射容错）
+  const cleanParts = cleanRel.split('/').filter((p) => p && p !== '.')
+  if (cleanParts.length >= 1) {
+    const fileName = cleanParts[cleanParts.length - 1]
+    candidates.push('Content/Media/' + fileName)
+    candidates.push('Content/Media/' + cleanRel)
+  }
+
   let resolvedPath = null
   let resolvedFromRoot = ''
   for (const rootCandidate of rootCandidates) {
@@ -252,7 +256,6 @@ function handleProjectAssetRequest(request) {
     if (resolvedPath) break
   }
 
-  // 如果所有候选都找不到，则使用原始路径返回 404（给用户明确的错误信息）
   let filePath = resolvedPath
   if (!filePath) {
     for (const rootCandidate of rootCandidates) {
