@@ -6,19 +6,11 @@ export type NodeGenerationApiDeps = {
   store: Store<WorkflowState>
   comfyService?: ComfyUIBridgeService | null
   resolveBackendUrl: (raw: string) => string
-  getBackendBaseUrl?: () => string
   pushToast?: (message: string, tone?: 'info' | 'warn' | 'error') => void
   /** Bind produced asset url to the originating node, e.g. as its resource. */
-  bindImageResultToNode?: (nodeId: string, url: string) => Promise<void> | void
-  bindVideoResultToNode?: (nodeId: string, url: string) => Promise<void> | void
+  bindImageResultToNode?: (nodeId: string, url: string) => void
+  bindVideoResultToNode?: (nodeId: string, url: string) => void
   bindTextResultToNode?: (nodeId: string, text: string) => void
-  /** Persist a remote URL / local path into the current project's asset directory. */
-  persistExternalAssetToProject?: (payload: {
-    kind: 'image' | 'video' | 'file' | 'model'
-    name: string
-    sourceUrl?: string
-    sourcePath?: string
-  }) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string } | null>
 }
 
 // Loose alias for store action callers that don't want to import types directly.
@@ -59,29 +51,6 @@ const appendResult = (deps: NodeGenerationApiDeps, taskId: string, result: Workf
  * The resolved url is also run through `deps.resolveBackendUrl` to ensure
  * any relative / project-internal URLs are resolved correctly.
  */
-const REMOTE_CDN_RE = /^https?:\/\//i
-
-const fetchBlobViaBackendImport = async (
-  deps: NodeGenerationApiDeps,
-  sourceUrl: string,
-  kind: 'image' | 'video',
-  name: string,
-): Promise<Blob | null> => {
-  if (typeof deps.persistExternalAssetToProject !== 'function') return null
-  try {
-    const persisted = await deps.persistExternalAssetToProject({ kind, name, sourceUrl })
-    if (!persisted || !persisted.url) return null
-    // 后端代理返回的 URL 可能是 dweb:// 或相对路径，resolveBackendUrl 会处理
-    const finalUrl = deps.resolveBackendUrl(persisted.url)
-    const resp = await fetch(finalUrl)
-    if (!resp.ok) return null
-    const blob = await resp.blob()
-    return blob && blob.size > 0 ? blob : null
-  } catch {
-    return null
-  }
-}
-
 const collectReferenceImages = async (
   deps: NodeGenerationApiDeps,
   nodeId: string,
@@ -128,23 +97,12 @@ const collectReferenceImages = async (
     if (!candidateUrl) continue
 
     const resolved = deps.resolveBackendUrl(candidateUrl)
-    const name = `ref-${sourceNode.type || 'image'}-${edge.fromNodeId}-${Date.now()}.png`
-
-    // 远程 CDN URL：由于 CORS，浏览器无法直接 fetch()，需要走后端代理下载。
-    if (REMOTE_CDN_RE.test(candidateUrl) && typeof deps.persistExternalAssetToProject === 'function') {
-      const blob = await fetchBlobViaBackendImport(deps, candidateUrl, 'image', name)
-      if (blob) {
-        refs.push({ name, blob })
-        continue
-      }
-    }
-
-    // 本地 URL / 同源 URL：直接 fetch()
     try {
       const resp = await fetch(resolved)
       if (!resp.ok) continue
       const blob = await resp.blob()
       if (!blob || blob.size === 0) continue
+      const name = `ref-${sourceNode.type || 'image'}-${edge.fromNodeId}-${Date.now()}.png`
       refs.push({ name, blob })
     } catch {
       continue
@@ -358,26 +316,10 @@ const runImageTask = async (
         }
       })()
       if (obj && typeof obj.imageUrl === 'string') {
-        const rawImageUrl = obj.imageUrl
-        let finalUrl = deps.resolveBackendUrl(rawImageUrl)
-        let absolutePath = ''
-
-        // 远程 CDN URL：先本地化到项目目录，以支持右键菜单"打开文件夹"和"另存为"，并避免浏览器 CORS 拦截。
-        if (REMOTE_CDN_RE.test(rawImageUrl) && typeof deps.persistExternalAssetToProject === 'function') {
-          const persisted = await deps.persistExternalAssetToProject({
-            kind: 'image',
-            name: `ai-gen-${payload.nodeId}-${produced}-${Date.now()}.png`,
-            sourceUrl: rawImageUrl,
-          })
-          if (persisted?.url) {
-            finalUrl = persisted.url
-            absolutePath = persisted.absolutePath || ''
-          }
-        }
-
-        appendResult(deps, task.id, { kind: 'image', url: finalUrl, label: `图 ${produced + 1}` })
+        const resolved = deps.resolveBackendUrl(obj.imageUrl)
+        appendResult(deps, task.id, { kind: 'image', url: resolved, label: `图 ${produced + 1}` })
         if (produced === 0 && typeof deps.bindImageResultToNode === 'function') {
-          await deps.bindImageResultToNode(payload.nodeId, finalUrl)
+          deps.bindImageResultToNode(payload.nodeId, resolved)
         }
         produced += 1
         updateTask(deps, task.id, { status: 'running', statusText: `已接收图片 ${produced} 张`, progress: Math.min(95, 40 + produced * 12) })
@@ -460,29 +402,14 @@ const runVideoTask = async (
       })()
       if (obj) {
         const urlRaw = String(obj.videoUrl ?? obj.videoUrlRemote ?? obj.url ?? '').trim()
-        let finalUrl = deps.resolveBackendUrl(urlRaw)
-        let absolutePath = ''
-
-        // 远程 CDN URL：先本地化到项目目录，以支持视频播放、右键菜单"文件夹打开"和"另存为"。
-        if (urlRaw && REMOTE_CDN_RE.test(urlRaw) && typeof deps.persistExternalAssetToProject === 'function') {
-          const persisted = await deps.persistExternalAssetToProject({
-            kind: 'video',
-            name: `ai-gen-${payload.nodeId}-${produced}-${Date.now()}.mp4`,
-            sourceUrl: urlRaw,
-          })
-          if (persisted?.url) {
-            finalUrl = persisted.url
-            absolutePath = persisted.absolutePath || ''
-          }
-        }
-
+        const url = deps.resolveBackendUrl(urlRaw)
         const downloadStatus = String(obj.downloadStatus ?? '').trim()
         const progressRaw = Number(obj.downloadProgress ?? 0)
         const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, Math.round(progressRaw))) : task.progress
-        if (finalUrl) {
-          appendResult(deps, task.id, { kind: 'video', url: finalUrl, label: '视频结果' })
+        if (url) {
+          appendResult(deps, task.id, { kind: 'video', url, label: '视频结果' })
           if (produced === 0 && typeof deps.bindVideoResultToNode === 'function') {
-            await deps.bindVideoResultToNode(payload.nodeId, finalUrl)
+            deps.bindVideoResultToNode(payload.nodeId, url)
           }
           produced += 1
         }

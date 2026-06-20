@@ -136,7 +136,7 @@ const onClick = (item: ContextMenuItem) => {
 <style scoped>
 .ctx-menu {
 	position: fixed;
-	z-index: 10000;
+	z-index: var(--aiwf-floating-z-index, 101);
 	min-width: 220px;
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt-dark);

@@ -8,48 +8,8 @@ const normalizeBaseUrl = (url: string) => {
 }
 
 /**
- * 从 preload 暴露的 `__DWEB_BACKEND_BASE_URL__` 中解析出字符串值。
- * 支持两种形式：
- *   1) 普通字符串:  window.__DWEB_BACKEND_BASE_URL__ = 'http://127.0.0.1:5800'
- *   2) 带 getter 的对象: { get: () => 'http://...', toString: () => '...' }
- */
-const resolveWindowBackendBaseUrl = (w: any): string => {
-	const raw = w?.__DWEB_BACKEND_BASE_URL__
-	if (typeof raw === 'string') return raw
-	if (typeof raw === 'string') return raw
-	if (raw && typeof raw === 'object') {
-		// 优先调用 get() 拿到最新值（Electron preload 使用闭包实现动态更新）
-		if (typeof raw.get === 'function') {
-			try {
-				const g = raw.get()
-				if (typeof g === 'string') return g
-			} catch {
-				// ignore
-			}
-		}
-		if (typeof raw.toString === 'function') {
-			try {
-				const s = raw.toString()
-				if (typeof s === 'string' && s !== '[object Object]') return s
-			} catch {
-				// ignore
-			}
-		}
-		if (typeof raw.valueOf === 'function') {
-			try {
-				const v = raw.valueOf()
-				if (typeof v === 'string') return v
-			} catch {
-				// ignore
-			}
-		}
-	}
-	return ''
-}
-
-/**
  * Backend base URL resolution priority:
- * 1) window.__DWEB_BACKEND_BASE_URL__ (runtime override, dynamically updated by Electron preload)
+ * 1) window.__DWEB_BACKEND_BASE_URL (runtime override)
  * 2) import.meta.env.VITE_BACKEND_BASE_URL (build-time env)
  * 3) localStorage (runtime persisted)
  * 4) default Django dev server: http://127.0.0.1:5800
@@ -61,7 +21,7 @@ export const getBackendBaseUrl = (): string => {
 
 	// Electron 下必须优先使用 preload 注入的实时后端地址，
 	// 避免 localStorage 里的历史值（例如 5800 的旧服务）导致请求打到错误后端。
-	const fromWindow = resolveWindowBackendBaseUrl(w)
+	const fromWindow = typeof w?.__DWEB_BACKEND_BASE_URL === 'string' ? w.__DWEB_BACKEND_BASE_URL : ''
 	const fromEnv = (import.meta as any)?.env?.VITE_BACKEND_BASE_URL ?? ''
 	const fromStorage = localStorage.getItem(STORAGE_KEY) ?? ''
 	if (isElectronRuntime) {

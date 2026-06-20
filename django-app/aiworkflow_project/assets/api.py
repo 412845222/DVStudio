@@ -511,22 +511,8 @@ def import_project_asset(request: Request) -> Response:
             file_name = source_path.name
     elif source_url_raw:
         try:
-            import ssl
             import urllib.request
-            req = urllib.request.Request(
-                source_url_raw,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': '*/*',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Cache-Control': 'no-cache',
-                },
-            )
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(req, timeout=60, context=ssl_ctx) as response:
+            with urllib.request.urlopen(source_url_raw, timeout=45) as response:
                 content = response.read()
                 content_type = str(response.headers.get_content_type() or content_type)
         except Exception as exc:

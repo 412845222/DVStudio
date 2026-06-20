@@ -1,8 +1,5 @@
 import { computed, type Ref } from 'vue'
 import type { WorkflowNode } from '../../../../aiworkflow/types'
-import { resolveBackendUrl } from '../../../../network/backendConfig'
-
-const REMOTE_CDN_RE = /^https?:\/\//i
 
 export const useAIWorkflowResourceActions = (payload: {
   store: {
@@ -14,13 +11,6 @@ export const useAIWorkflowResourceActions = (payload: {
   selectedNodeId: Ref<string | null>
   isElectron: () => boolean
   nodeResourceName: (node: WorkflowNode) => string | null
-  /** 可选 getter：用于通过后端代理下载远程 CDN URL 的资产。 */
-  getPersistExternalAssetToProject?: () => (payload: {
-    kind: 'image' | 'video' | 'file' | 'model'
-    name: string
-    sourceUrl?: string
-    sourcePath?: string
-  }) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string } | null>
 }) => {
   const triggerDownloadObjectUrl = (objectUrl: string, filename: string) => {
     const a = document.createElement('a')
@@ -33,41 +23,14 @@ export const useAIWorkflowResourceActions = (payload: {
   }
 
   const downloadUrlAsBlob = async (url: string, filename: string) => {
-    // 第一步：将 dweb:// 或其他协议 URL 转换为 HTTP URL
-    let workingUrl = resolveBackendUrl(url)
-    // 远程 CDN URL：由于 CORS，浏览器无法直接 fetch()。先通过后端代理下载到本地。
-    let finalUrl = workingUrl
-    const persistFn = typeof payload.getPersistExternalAssetToProject === 'function'
-      ? payload.getPersistExternalAssetToProject()
-      : null
-    if (REMOTE_CDN_RE.test(workingUrl) && typeof persistFn === 'function') {
-      const inferredKind: 'image' | 'video' | 'file' =
-        /\.(png|jpg|jpeg|gif|webp|bmp|svg|tiff?)(?:\?|$)/i.test(url)
-          ? 'image'
-          : /\.(mp4|webm|mov|mkv|avi)(?:\?|$)/i.test(url)
-            ? 'video'
-            : 'file'
-      try {
-        const persisted = await persistFn({
-          kind: inferredKind,
-          name: filename.replace(/\.[^.]+$/, '') || `download-${Date.now()}`,
-          sourceUrl: url,
-        })
-        if (persisted?.url) {
-          finalUrl = persisted.url
-        }
-      } catch {
-        // 回退到原始 URL
-      }
-    }
-
-    const res = await fetch(finalUrl, { credentials: 'include' })
+    const res = await fetch(url, { credentials: 'include' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()
     const objectUrl = URL.createObjectURL(blob)
     try {
       triggerDownloadObjectUrl(objectUrl, filename)
     } finally {
+      // Give the browser a moment to start the download before revoking.
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
     }
   }

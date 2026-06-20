@@ -10,11 +10,11 @@ type ServiceOptions = {
 
 const normalizeLocalExecBasePath = (raw: unknown) => {
 	const text = String(raw ?? '').trim()
-	if (!text) return '/api/workflow/copilot'
+	if (!text) return '/api/workflow/codex'
 	if (text === 'codex') return '/api/workflow/codex'
 	if (text === 'copilot') return '/api/workflow/copilot'
 	const withLeadingSlash = text.startsWith('/') ? text : `/${text}`
-	return withLeadingSlash.replace(/\/+$/, '') || '/api/workflow/copilot'
+	return withLeadingSlash.replace(/\/+$/, '') || '/api/workflow/codex'
 }
 
 type PingResponse =

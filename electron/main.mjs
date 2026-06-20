@@ -17,6 +17,15 @@ import {
 	ensureRuntimeRequirements,
 	sanitizeRuntimeDjangoDir,
 } from './backend/djangoProject.mjs'
+import {
+	registerDwebProjectAssetProtocol,
+	setProjectRoot,
+	clearProjectRoot,
+	getProjectRootSnapshot,
+} from './backend/projectAssetProtocol.mjs'
+import { initLocalDb, getRepos } from './localdb/index.mjs'
+import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
+import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
 
 const isDev = !!process.env.ELECTRON_DEV || !app.isPackaged
 
@@ -58,8 +67,6 @@ let backendRuntimeState = {
 	setupRunning: false,
 	updatedAt: 0,
 }
-
-const DWEB_PROJECT_ASSET_HOST = 'project-assets'
 
 function createDefaultSetupSteps() {
 	return [
@@ -1356,65 +1363,53 @@ function registerIpc() {
 			properties: ['openDirectory', 'createDirectory'],
 		})
 	})
-}
 
-function registerDwebProjectAssetProtocol() {
+	ipcMain.handle('dweb:aiworkflow:registerProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		const rootPath = String(payload?.rootPath || '').trim()
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		if (!rootPath) {
+			clearProjectRoot(projectId)
+			return { ok: true, cleared: true }
+		}
+		const ok = setProjectRoot(projectId, rootPath)
+		return { ok: !!ok }
+	})
+
+	ipcMain.handle('dweb:aiworkflow:clearProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		clearProjectRoot(projectId)
+		return { ok: true }
+	})
+
+	ipcMain.handle('dweb:aiworkflow:getProjectRootSnapshot', async () => {
+		return getProjectRootSnapshot()
+	})
+
 	try {
-		protocol.handle('dweb', async (request) => {
-			try {
-				const raw = String(request?.url || '').trim()
-				if (!raw) {
-					return new Response('Bad Request', { status: 400 })
-				}
-				const u = new URL(raw)
-				if (String(u.hostname || '').toLowerCase() !== DWEB_PROJECT_ASSET_HOST) {
-					return new Response('Not Found', { status: 404 })
-				}
-				const projectId = String(u.searchParams.get('projectId') || '').trim()
-				const relPath = String(u.searchParams.get('path') || '').trim()
-				if (!projectId || !relPath) {
-					return new Response('Bad Request', { status: 400 })
-				}
-				const pid = Number(projectId)
-				if (!Number.isFinite(pid) || pid <= 0) {
-					return new Response('Bad Request', { status: 400 })
-				}
-				if (!backendBaseUrl) {
-					return new Response('Backend Unavailable', { status: 503 })
-				}
-
-				const passthroughKeys = ['variant', 'mode', 'maxSize', 'max_size', 'v']
-				const qs = new URLSearchParams()
-				qs.set('projectId', String(Math.floor(pid)))
-				qs.set('path', relPath)
-				for (const key of passthroughKeys) {
-					const value = String(u.searchParams.get(key) || '').trim()
-					if (!value) continue
-					qs.set(key, value)
-				}
-				const upstreamUrl = `${backendBaseUrl.replace(/\/$/, '')}/api/workflow/projects/assets/file?${qs.toString()}`
-				const method = String(request.method || 'GET').toUpperCase()
-				const headers = {}
-				for (const [k, v] of request.headers.entries()) {
-					headers[k] = v
-				}
-				const fetchInit = {
-					method,
-					headers,
-				}
-				if (method !== 'GET' && method !== 'HEAD') {
-					fetchInit.body = request.body
-				}
-				return await fetch(upstreamUrl, fetchInit)
-			} catch (err) {
-				const msg = String(err?.message || err || 'protocol proxy failed')
-				appendRuntimeLog(`[dweb-protocol] ${msg}`)
-				return new Response(msg, { status: 500 })
-			}
-		})
-	} catch (e) {
-		appendRuntimeLog(`[dweb-protocol] register failed: ${String(e?.message || e)}`)
+		registerLocalDbIpc(ipcMain)
+	} catch (err) {
+		console.error('[main] localdb ipc register failed:', err)
 	}
+
+	ipcMain.handle('dweb:localdb:migrateFromDjango', async (_e, payload) => {
+		try {
+			const legacy = String(payload?.legacyDbPath || '').trim() || path.resolve(getBackendDataDir(), 'db.sqlite3')
+			const result = runLegacyDbMigration({
+				legacyDbPath: legacy,
+				backendDataDir: payload?.backendDataDir || getBackendDataDir(),
+				force: Boolean(payload?.force),
+			})
+			return result
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
 }
 
 async function stopBackend() {
@@ -1472,6 +1467,16 @@ async function main() {
 	ensureBackendHealthMonitor()
 	ensureClientResourceLayout()
 	loadClientSettings()
+
+	try {
+		const backendDir = getBackendDataDir() || getUserDataDir()
+		initLocalDb({ backendDataDir: backendDir, userDataDir: getUserDataDir(), appSecret: backendDir })
+		const repos = getRepos()
+		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (schema=${repos.schemaInfo?.currentVersion})`)
+	} catch (err) {
+		appendRuntimeLog(`[app] localdb init failed: ${String(err?.message || err)}`)
+	}
+
 	registerIpc()
 	appendRuntimeLog(`[app] isPackaged=${app.isPackaged} platform=${process.platform} execPath=${process.execPath}`)
 

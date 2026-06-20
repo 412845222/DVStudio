@@ -26,42 +26,13 @@ export const isElectron = (): boolean => {
 	return w?.__DWEB_RUNTIME__?.platform === 'electron' || !!w?.dweb?.common
 }
 
-/**
- * 从 preload 暴露的 `__DWEB_BACKEND_BASE_URL__` 读取字符串值。
- * 支持：
- *   1) 字符串: window.__DWEB_BACKEND_BASE_URL__ = 'http://127.0.0.1:5800'
- *   2) 带 getter 的对象: { get: () => 'http://...', toString: () => '...' }
- */
-const readWindowBackendBaseUrl = (): string => {
-	const raw = w?.__DWEB_BACKEND_BASE_URL__
-	if (typeof raw === 'string') return raw
-	if (raw && typeof raw === 'object') {
-		if (typeof raw.get === 'function') {
-			try {
-				const g = raw.get()
-				if (typeof g === 'string') return g
-			} catch {}
-		}
-		if (typeof raw.toString === 'function') {
-			try {
-				const s = raw.toString()
-				if (typeof s === 'string' && s !== '[object Object]') return s
-			} catch {}
-		}
-	}
-	return ''
-}
-
 export async function getBackendBaseUrl(): Promise<string> {
 	if (w?.dweb?.common?.getBackendBaseUrl) {
 		const baseUrl = await w.dweb.common.getBackendBaseUrl()
 		if (typeof baseUrl === 'string' && baseUrl.trim()) setBackendBaseUrl(baseUrl)
 		return baseUrl
 	}
-	// Web 模式: 从 window.__DWEB_BACKEND_BASE_URL__ 或 Vite 环境变量读取
-	const fromWindow = readWindowBackendBaseUrl()
-	const fromEnv = (import.meta as any)?.env?.VITE_BACKEND_BASE_URL ?? ''
-	return fromWindow || fromEnv || 'http://127.0.0.1:5800'
+	return String(w?.__DWEB_BACKEND_BASE_URL || '')
 }
 
 export async function pingBackend(): Promise<BackendPingResult> {
@@ -146,6 +117,25 @@ export async function selectProjectFolder(): Promise<DirectoryPickResult | null>
 	return w.dweb.aiworkflow.selectProjectFolder()
 }
 
+export async function registerProjectRoot(projectId: number, rootPath: string): Promise<{ ok: boolean; cleared?: boolean; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.registerProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.registerProjectRoot({ projectId: pid, rootPath: String(rootPath || '') })
+}
+
+export async function clearProjectRoot(projectId: number): Promise<{ ok: boolean; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.clearProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.clearProjectRoot({ projectId: pid })
+}
+
+export async function getProjectRootSnapshot(): Promise<Record<string, string> | null> {
+	if (!w?.dweb?.aiworkflow?.getProjectRootSnapshot) return null
+	return w.dweb.aiworkflow.getProjectRootSnapshot()
+}
+
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {
 	if (!w?.dweb?.common?.runBootstrapInstaller) return null
 	return w.dweb.common.runBootstrapInstaller()
@@ -171,65 +161,28 @@ export async function cleanupOldProject(): Promise<CleanupOldProjectResult | nul
 	return w.dweb.common.cleanupOldProject()
 }
 
-const readWindowClientSettings = (): ClientSettings | null => {
-	const raw = w?.__DWEB_CLIENT_SETTINGS__
-	if (raw && typeof raw === 'object') {
-		// 尝试通过 getter 获取
-		if (typeof raw.get === 'function') {
-			try {
-				const g = raw.get()
-				if (g && typeof g === 'object') return g as ClientSettings
-			} catch {}
-		}
-		return raw as ClientSettings
-	}
-	return null
-}
-
-const writeWindowClientSettings = (data: ClientSettings): void => {
-	const raw = w?.__DWEB_CLIENT_SETTINGS__
-	if (raw && typeof raw === 'object' && typeof raw.set === 'function') {
-		try { raw.set(data) } catch {}
-	} else if (typeof raw !== 'object') {
-		// 非对象，可能是普通值，直接赋值
-		try {
-			w.__DWEB_CLIENT_SETTINGS__ = data
-		} catch {}
-	}
-}
-
 export async function getClientSettings(): Promise<ClientSettingsResult | null> {
 	if (w?.dweb?.common?.getClientSettings) return w.dweb.common.getClientSettings()
 	if (clientSettingsCache) return { ok: true, data: clientSettingsCache }
-	const local = readWindowClientSettings()
-	if (local) return { ok: true, data: local }
-	// Web 模式: 从 localStorage 读一份默认值
-	try {
-		const saved = localStorage.getItem('dweb.clientSettings')
-		if (saved) {
-			const parsed = JSON.parse(saved)
-			if (parsed && typeof parsed === 'object') return { ok: true, data: parsed as ClientSettings }
-		}
-	} catch {}
+	const local = w?.__DWEB_CLIENT_SETTINGS
+	if (local) return { ok: true, data: local as ClientSettings }
 	return { ok: false, error: 'Not running in Electron.' }
 }
 
 export async function saveClientSettings(payload: ClientSettings): Promise<ClientSettingsResult | null> {
-	if (w?.dweb?.common?.saveClientSettings) {
-		const r: ClientSettingsResult = await w.dweb.common.saveClientSettings(payload)
-		if (r?.ok && r.data) {
-			clientSettingsCache = r.data
-			writeWindowClientSettings(r.data)
+	if (!w?.dweb?.common?.saveClientSettings) return null // Web 模式返回 null，由调用方判断
+	const r: ClientSettingsResult = await w.dweb.common.saveClientSettings(payload)
+	if (r?.ok && r.data) {
+		clientSettingsCache = r.data
+		// In Electron, preload may expose __DWEB_CLIENT_SETTINGS via contextBridge as a read-only getter.
+		// Only update window when it's actually writable or has a setter.
+		try {
+			const desc = Object.getOwnPropertyDescriptor(w, '__DWEB_CLIENT_SETTINGS')
+			const canAssign = !desc || ('writable' in desc ? Boolean((desc as any).writable) : typeof (desc as any).set === 'function')
+			if (canAssign) w.__DWEB_CLIENT_SETTINGS = r.data
+		} catch {
+			// ignore
 		}
-		return r
 	}
-	// Web 模式 fallback: 存到 localStorage，并返回成功
-	try {
-		localStorage.setItem('dweb.clientSettings', JSON.stringify(payload))
-		clientSettingsCache = payload
-		writeWindowClientSettings(payload)
-		return { ok: true, data: payload }
-	} catch (e: any) {
-		return { ok: false, error: String(e?.message || '保存设置失败。') }
-	}
+	return r
 }
