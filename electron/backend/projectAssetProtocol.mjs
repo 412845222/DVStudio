@@ -1,5 +1,7 @@
 import path from 'node:path'
 import fs from 'node:fs'
+import https from 'node:https'
+import http from 'node:http'
 import { protocol, net } from 'electron'
 
 // 项目静态资产在 Electron 中通过 dweb://project-assets 协议直接读取本地磁盘，
