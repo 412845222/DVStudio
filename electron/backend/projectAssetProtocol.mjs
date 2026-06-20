@@ -730,8 +730,9 @@ export function uploadProjectAsset({ projectId, kind, name, arrayBuffer, content
   const target = resolveAssetTargetDir(id, bucket)
   if (!target) return { ok: false, error: 'project root not registered' }
 
-  const extension = path.extname(String(name || 'file')) || '.bin'
-  const base = path.basename(String(name || 'file'), extension) || 'asset'
+  const safeName = sanitizeFilename(String(name || 'file'))
+  const extension = path.extname(safeName) || '.bin'
+  const base = path.basename(safeName, extension) || 'asset'
   const finalPath = makeUniqueFilename(target.targetDir, base, extension)
 
   try {
@@ -742,7 +743,7 @@ export function uploadProjectAsset({ projectId, kind, name, arrayBuffer, content
 
   const asset = buildAssetPayload(id, finalPath, target.root, {
     kind: kind || target.kind,
-    name,
+    name: safeName,
     contentType,
     sourcePath: finalPath,
   })
@@ -765,15 +766,17 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
       if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
         return { ok: false, error: 'sourcePath not found' }
       }
-      const ext = path.extname(src) || '.bin'
-      const base = path.basename(src, ext) || 'asset'
+      const srcName = path.basename(src)
+      const safeName = sanitizeFilename(String(name || srcName))
+      const ext = path.extname(safeName) || '.bin'
+      const base = path.basename(safeName, ext) || 'asset'
       const finalPath = makeUniqueFilename(target.targetDir, base, ext)
       if (path.resolve(src) !== finalPath) {
         fs.copyFileSync(src, finalPath)
       }
       const asset = buildAssetPayload(id, finalPath, target.root, {
         kind: kind || 'file',
-        name: name || path.basename(src),
+        name: safeName,
         contentType: null,
         sourcePath: src,
       })
@@ -785,14 +788,16 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
 
   if (rawSourceUrl) {
     try {
-      const nameHint = String(name || '').trim() || path.basename(rawSourceUrl.split('?')[0].split('#')[0]) || 'asset'
-      const ext = path.extname(nameHint) || inferExtension(nameHint, rawSourceUrl) || '.bin'
-      const base = path.basename(nameHint, ext) || 'asset'
+      const urlBaseName = path.basename(rawSourceUrl.split('?')[0].split('#')[0]) || 'asset'
+      const nameHint = String(name || '').trim() || urlBaseName
+      const safeName = sanitizeFilename(nameHint)
+      const ext = path.extname(safeName) || inferExtension(safeName, rawSourceUrl) || '.bin'
+      const base = path.basename(safeName, ext) || 'asset'
       const finalPath = makeUniqueFilename(target.targetDir, base, ext)
       await fetchRemoteUrl(rawSourceUrl, finalPath)
       const asset = buildAssetPayload(id, finalPath, target.root, {
         kind: kind || 'file',
-        name: nameHint,
+        name: safeName,
         contentType: null,
         sourcePath: finalPath,
       })

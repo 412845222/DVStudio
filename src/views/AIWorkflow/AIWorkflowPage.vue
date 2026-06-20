@@ -947,14 +947,13 @@ const toFileUrlFromSourcePath = (sourcePath: string): string => {
   if (!raw) return ''
   const normalized = raw.replace(/\\/g, '/')
   if (!/^[a-zA-Z]:\//.test(normalized)) return ''
-  return `file:///${encodeURI(normalized)}`
+  return `file:///${encodeURIComponent(normalized)}`
 }
 
 const isStrictLocalRenderableUrl = (rawUrl: string): boolean => {
   const text = String(rawUrl || '').trim()
   if (!text) return false
   if (text.toLowerCase().startsWith('dweb://project-assets')) return true
-  if (text.toLowerCase().startsWith('file://')) return true
   return false
 }
 
@@ -967,15 +966,25 @@ const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
     base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
     return
   }
-  if (isStrictLocalRenderableUrl(currentUrl)) {
+  if (currentUrl.toLowerCase().startsWith('dweb://project-assets')) {
     base.url = currentUrl
     return
   }
-  if (sourcePath) {
-    const fileUrl = toFileUrlFromSourcePath(sourcePath)
-    if (fileUrl) {
-      base.url = fileUrl
-      return
+  if (sourcePath && isElectron()) {
+    const rootPath = String(currentProjectRootPath.value || '').trim()
+    if (rootPath) {
+      try {
+        const normalizedSource = sourcePath.replace(/\\/g, '/').replace(/\/+$/, '')
+        const normalizedRoot = rootPath.replace(/\\/g, '/').replace(/\/+$/, '')
+        if (normalizedSource.startsWith(normalizedRoot + '/')) {
+          const inferredRel = normalizedSource.slice(normalizedRoot.length + 1)
+          base.projectRelativePath = inferredRel
+          base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(inferredRel)}`
+          return
+        }
+      } catch {
+        // ignore
+      }
     }
   }
   base.url = ''
