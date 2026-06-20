@@ -5156,17 +5156,7 @@ async function runProjectEnterSequence(
 
 /* 智能位置调整 */
 .bp-toolbar-wrap {
-  transition: left var(--aiwf-shell-transition, 220ms cubic-bezier(0.22, 0.61, 0.36, 1));
-}
-
-/* 当导航栏展开时，调整左侧按钮位置 */
-body[data-side-nav-expanded="true"] .bp-toolbar-wrap {
-  left: var(--aiwf-shell-left-expanded, 180px) !important;
-}
-
-/* 当导航栏收起时，按钮位置避开导航栏 (46px + 10px间距) */
-body[data-side-nav-expanded="false"] .bp-toolbar-wrap {
-  left: var(--aiwf-shell-left-collapsed, 56px) !important;
+  left: 88px;
 }
 
 .aiwf-canvas {
