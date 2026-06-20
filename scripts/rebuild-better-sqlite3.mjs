@@ -7,6 +7,7 @@ import path from 'node:path'
 function readElectronVersion() {
   try {
     const pkg = JSON.parse(require('node:fs').readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'))
+    // electron 可能在 devDependencies（Electron 开发依赖）或 dependencies 中
     const devDeps = pkg.devDependencies || {}
     const deps = pkg.dependencies || {}
     const raw = devDeps.electron || deps.electron || ''

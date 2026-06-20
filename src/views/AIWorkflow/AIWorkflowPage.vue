@@ -283,16 +283,12 @@
           :performancePriorityMode="performancePriorityMode"
           :resources="resources"
           :nodeLibraryOpen="false"
-          :promptLibraryOpen="false"
+          :backendLogOpen="blueprintLogPanelOpen"
           :electronReady="isElectron()"
           @quick-add="onRailQuickAdd"
           @toggle-node-library="onRailToggleNodeLibrary"
-          @open-prompt-library="onRailOpenPromptLibrary"
           @toggle-backend-log="onRailToggleBackendLog"
           @open-resource-manager="openResourceDialog"
-          @open-meshy-task="openMeshyTaskDialog"
-          @open-video-task="openVideoTaskDialog"
-          @open-task-placeholder="onRailOpenTaskPlaceholder"
           @request-new="onRequestNewProject"
           @request-repair-assets="onRequestRepairProjectAssets"
           @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
@@ -527,6 +523,7 @@
       />
 
     </div>
+    <BlueprintLogPanel v-model:open="blueprintLogPanelOpen" />
     <AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
   </div>
 </template>
@@ -591,6 +588,8 @@ import { isElectron, openFolderForPath, pingBackend, startBackend } from '../../
 import { useStartupProgress } from '../../composables/useStartupProgress'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
+import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
+import { blueprintLog } from './blueprint-core/blueprintLog'
 import { useAIWorkflowEdgeRenderer } from './blueprint-core/useAIWorkflowEdgeRenderer'
 import { useAIWorkflowEdgeIndex } from './blueprint-core/useAIWorkflowEdgeIndex'
 import { useAIWorkflowNodeVisibility } from './blueprint-core/useAIWorkflowNodeVisibility'
@@ -4090,6 +4089,7 @@ const onExportPerfDiagnostics = () => {
 }
 
 const resourceDialogOpen = ref(false)
+const blueprintLogPanelOpen = ref(false)
 const resources = computed(() =>
   store.state.resourceOrder.map((id) => store.state.resourcesById[id]).filter(Boolean)
 )
@@ -4275,16 +4275,8 @@ const onNodeOpenLibrary = (nodeId: string) => {
   }
 }
 
-const onRailOpenPromptLibrary = () => {
-  pushToast('提示词库面板即将接入。', 'info')
-}
-
 const onRailToggleBackendLog = () => {
-  pushToast('日志面板即将接入。', 'info')
-}
-
-const onRailOpenTaskPlaceholder = () => {
-  pushToast('该任务入口将于下一阶段接入。', 'info')
+  blueprintLogPanelOpen.value = !blueprintLogPanelOpen.value
 }
 
 const { onNodeRefresh } = useAIWorkflowNodeRefresh({
@@ -4470,6 +4462,11 @@ onMounted(() => {
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
   startUnrealExportPolling()
   void refreshProjectList()
+  blueprintLog.append('蓝图页面已加载，日志面板就绪', {
+    category: 'system',
+    level: 'INFO',
+    tag: 'init',
+  })
 
   const rawProjectId = String((route.query as Record<string, unknown>)?.projectId ?? '').trim()
   const parsedProjectId = Number(rawProjectId)
