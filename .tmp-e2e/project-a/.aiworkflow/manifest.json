@@ -1,0 +1,26 @@
+{
+  "schemaVersion":1,
+  "kind":"aiworkflow-blueprint-project",
+  "storageVersion":1,
+  "projectId":5,
+  "projectUuid":"f35ca6f4-7632-4384-b7b1-188ca7f831a2",
+  "name":"E2E Project A",
+  "blueprint":"Blueprints/main.blueprint.json",
+  "configPath":"Config/user.json",
+  "assetRoots":{
+    "images":"Content/Media/images",
+    "videos":"Content/Media/videos",
+    "audio":"Content/Media/audio",
+    "models":"Content/Media/models",
+    "thumbnails":"Content/Media/thumbnails"
+  },
+  "generatedRoots":{
+    "comfy":"Content/Generated/comfy",
+    "meshy":"Content/Generated/meshy",
+    "dreammaker":"Content/Generated/dreammaker",
+    "fal":"Content/Generated/fal",
+    "unreal":"Content/Generated/unreal"
+  },
+  "createdAt":1781449002819,
+  "updatedAt":1781449002822
+}
