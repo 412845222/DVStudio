@@ -90,21 +90,30 @@ def sessions_collection(request: HttpRequest) -> JsonResponse | HttpResponse:
         return JsonResponse({"items": sessions})
 
     if request.method == "POST":
-        payload = parse_json_body(request)
-        provider = _provider_from_request(request)
-        project_id = _coerce_project_id(payload.get("projectId"))
-        if project_id is None:
-            return JsonResponse({"error": "projectId is required"}, status=400)
-        title = str(payload.get("title", "")).strip()
-        cwd = str(payload.get("cwd", "")).strip()
-        model = str(payload.get("model", "")).strip()
-        try:
-            session = orchestrator.create_session(title=title, cwd=cwd, model=model, project_id=project_id, provider=provider)
-        except Exception as exc:
-            logger.exception("session_create_failed project_id=%s model=%s", project_id, model)
-            return JsonResponse({"error": str(exc)}, status=503)
-        logger.info("session_created id=%s project_id=%s model=%s", session.id, project_id, session.model_name)
-        return JsonResponse(serialize_session(session), status=201)
+            payload = parse_json_body(request)
+            provider = _provider_from_request(request)
+            project_id = _coerce_project_id(payload.get("projectId"))
+            if project_id is None:
+                return JsonResponse({"error": "projectId is required"}, status=400)
+            title = str(payload.get("title", "")).strip()
+            cwd = str(payload.get("cwd", "")).strip()
+            model = str(payload.get("model", "")).strip()
+            try:
+                session = orchestrator.create_session(title=title, cwd=cwd, model=model, project_id=project_id, provider=provider)
+            except RuntimeError as exc:
+                logger.exception("session_create_failed project_id=%s model=%s", project_id, model)
+                error_text = str(exc)
+                if "not found" in error_text.lower() or "command not found" in error_text.lower():
+                    install_hint = ""
+                    if provider == "copilot-cli":
+                        install_hint = " 请先安装 GitHub Copilot CLI：运行 `npm install -g @githubnext/copilot-cli`，然后运行 `copilot login` 登录。"
+                    return JsonResponse({"error": error_text + install_hint}, status=503)
+                return JsonResponse({"error": error_text}, status=503)
+            except Exception as exc:
+                logger.exception("session_create_failed project_id=%s model=%s", project_id, model)
+                return JsonResponse({"error": str(exc)}, status=503)
+            logger.info("session_created id=%s project_id=%s model=%s", session.id, project_id, session.model_name)
+            return JsonResponse(serialize_session(session), status=201)
 
     return HttpResponseNotAllowed(["GET", "POST"])
 
