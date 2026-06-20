@@ -4020,6 +4020,7 @@ const {
   activeRecoverySession,
   store,
   uploadLocalResourceAndGetUrl,
+  getCurrentProjectRootPath: () => String(currentProjectRootPath.value || '').trim(),
 })
 
 const saveProjectToBackend = _saveProjectToBackendFn

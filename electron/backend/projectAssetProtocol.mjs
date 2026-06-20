@@ -411,6 +411,23 @@ export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilenam
   // 统一使用正斜杠表示相对路径，与 Django 端保持一致
   const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
 
+  // 如果目标文件已存在且非空，则直接返回已存在的路径，避免重复下载导致副本。
+  if (fs.existsSync(absolutePath)) {
+    try {
+      const st = fs.statSync(absolutePath)
+      if (st && st.isFile() && Number(st.size) > 0) {
+        return {
+          ok: true,
+          absolutePath,
+          relativePath,
+          size: st.size,
+        }
+      }
+    } catch {
+      // fall through to redownload
+    }
+  }
+
   try {
     await fetchRemoteUrl(url, absolutePath)
   } catch (err) {
@@ -479,8 +496,12 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
   }
 
   let absolutePath = path.resolve(subDir, filename)
-  if (path.resolve(sourcePath) === path.resolve(absolutePath)) {
-    const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
+  const resolvedSource = path.resolve(sourcePath)
+  const resolvedTarget = path.resolve(absolutePath)
+  const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
+
+  // 源文件与目标完全相同：直接返回，避免重复复制。
+  if (resolvedSource === resolvedTarget) {
     return {
       ok: true,
       absolutePath,
@@ -489,9 +510,19 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
     }
   }
 
+  // 如果目标文件已经存在且与源文件大小一致，则视为相同资源，直接返回已存在的文件作为结果，避免重复复制。
+  // 注意：这里不做字节级比对以保持性能。
   if (fs.existsSync(absolutePath)) {
-    const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-    absolutePath = path.resolve(subDir, `${base}_${suffix}${ext}`)
+    let existingStat
+    try { existingStat = fs.statSync(absolutePath) } catch { existingStat = null }
+    if (existingStat && existingStat.isFile() && Number(existingStat.size) === Number(sourceStat.size)) {
+      return {
+        ok: true,
+        absolutePath,
+        relativePath,
+        size: existingStat.size,
+      }
+    }
   }
 
   try {
@@ -505,7 +536,6 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
     if (!st.isFile() || st.size === 0) {
       return { ok: false, error: 'copied file is empty or not a regular file' }
     }
-    const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
     return {
       ok: true,
       absolutePath,
