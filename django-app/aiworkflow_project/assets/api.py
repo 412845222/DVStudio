@@ -3,9 +3,13 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import os
+import ssl
+import tempfile
 import threading
 import time
 import urllib.parse
+import urllib.request
+import urllib.error
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Generator, Optional, Tuple
@@ -18,6 +22,47 @@ from django.http import StreamingHttpResponse
 
 from aiworkflow_project.models import BlueprintProject
 from aiworkflow_project.projects.storage import _project_root_from_row
+
+# ============================
+# 下载与重试配置
+# ============================
+_DOWNLOAD_MAX_RETRIES = 5                # 失败重试次数
+_DOWNLOAD_TIMEOUT = 90                   # 单次请求超时时间（秒）
+_DOWNLOAD_RETRY_BACKOFF = 2              # 重试退避基数（秒），指数退避
+_DOWNLOAD_CHUNK_SIZE = 1024 * 1024       # 流式下载块大小（1MB）
+_DOWNLOAD_MAX_SIZE = 10 * 1024 * 1024 * 1024  # 10GB 上限保护
+
+# ============================
+# SSL Context — 解决字节 CDN 的 SSL EOF / TLS 兼容性问题
+# ============================
+_ssl_context_cache: "Optional[ssl.SSLContext]" = None
+
+
+def _get_ssl_context() -> ssl.SSLContext:
+    """
+    为 urllib HTTPS 请求创建一个兼容的 SSL context。
+    与 comfyui_bridge/api.py 中的实现保持一致：
+    - 优先使用 certifi 的根证书（如果安装了）
+    - 降低 SSL 校验严格性以兼容部分 CDN（例如字节方舟 tos-cn-beijing 的 SNI/ALPN 行为）
+    """
+    global _ssl_context_cache
+    if _ssl_context_cache is not None:
+        return _ssl_context_cache
+    try:
+        import certifi  # type: ignore
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        ctx = ssl.create_default_context()
+    # 允许 TLS 1.2+，禁用不安全的旧版本
+    try:
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    # 跳过证书 hostname 校验（仅在必要时；不推荐全局启用，这里对 CDN 资源是安全的）
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    _ssl_context_cache = ctx
+    return ctx
 
 
 def _json_error(message: str, status: int = 400) -> Response:
@@ -77,8 +122,115 @@ def _guess_extension(file_name: str, content_type: str) -> str:
     ext = Path(file_name or "").suffix.lower()
     if ext:
         return ext
+
     guessed = mimetypes.guess_extension(str(content_type or "").split(";")[0].strip()) or ""
-    return guessed.lower() if guessed else ".bin"
+    if guessed:
+        return guessed.lower()
+
+    lower_name = str(file_name or "").lower()
+    ext_map = {
+        ".jpg": ".jpg",
+        ".jpeg": ".jpg",
+        ".png": ".png",
+        ".webp": ".webp",
+        ".gif": ".gif",
+        ".bmp": ".bmp",
+        ".mp4": ".mp4",
+        ".mov": ".mov",
+        ".webm": ".webm",
+        ".mkv": ".mkv",
+        ".m4v": ".m4v",
+        ".mp3": ".mp3",
+        ".wav": ".wav",
+        ".ogg": ".ogg",
+        ".m4a": ".m4a",
+        ".flac": ".flac",
+        ".pdf": ".pdf",
+        ".glb": ".glb",
+        ".gltf": ".gltf",
+        ".obj": ".obj",
+        ".json": ".json",
+    }
+    for k, v in ext_map.items():
+        if k in lower_name:
+            return v
+
+    content_lower = str(content_type or "").lower()
+    content_type_map = {
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "image/bmp": ".bmp",
+        "video/mp4": ".mp4",
+        "video/quicktime": ".mov",
+        "video/webm": ".webm",
+        "video/x-matroska": ".mkv",
+        "video/x-m4v": ".m4v",
+        "audio/mpeg": ".mp3",
+        "audio/wav": ".wav",
+        "audio/ogg": ".ogg",
+        "audio/mp4": ".m4a",
+        "audio/flac": ".flac",
+        "application/pdf": ".pdf",
+        "model/gltf-binary": ".glb",
+        "model/gltf+json": ".gltf",
+        "application/json": ".json",
+    }
+    for k, v in content_type_map.items():
+        if k in content_lower:
+            return v
+
+    return ".bin"
+
+
+def _guess_extension_from_file_signature(file_path: Path) -> str:
+    try:
+        with file_path.open("rb") as fp:
+            header = fp.read(4096)
+    except Exception:
+        return ""
+    if not header:
+        return ""
+
+    if header.startswith(b"\xFF\xD8\xFF"):
+        return ".jpg"
+    if header.startswith(b"\x89PNG\r\n\x1A\n"):
+        return ".png"
+    if header.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif"
+    if header.startswith(b"BM"):
+        return ".bmp"
+    if header.startswith((b"II*\x00", b"MM\x00*")):
+        return ".tif"
+    if len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return ".webp"
+    if len(header) >= 12 and header[4:8] == b"ftyp":
+        brand = header[8:12].lower()
+        if brand in (b"qt  ", b"moov"):
+            return ".mov"
+        return ".mp4"
+    if header.startswith(b"\x1A\x45\xDF\xA3"):
+        lowered = header.lower()
+        if b"webm" in lowered:
+            return ".webm"
+        return ".mkv"
+    if header.startswith(b"ID3"):
+        return ".mp3"
+    if header.startswith(b"OggS"):
+        return ".ogg"
+    if header.startswith(b"fLaC"):
+        return ".flac"
+    if header.startswith(b"RIFF") and len(header) >= 12 and header[8:12] == b"WAVE":
+        return ".wav"
+    if header.startswith(b"%PDF"):
+        return ".pdf"
+    if header.startswith(b"glTF"):
+        return ".glb"
+    if header[:1] in (b"{", b"["):
+        return ".json"
+    return ""
 
 
 def _project_bucket_root(project: BlueprintProject, kind: str, bucket: str) -> Tuple[Optional[Path], Optional[str]]:
@@ -87,27 +239,22 @@ def _project_bucket_root(project: BlueprintProject, kind: str, bucket: str) -> T
         return None, "project is not folder-backed"
 
     b = str(bucket or "assets").strip().lower()
-    safe_kind = str(kind or "").strip().lower()
-    if safe_kind == "model":
-        safe_kind = "file"
 
+    # 缩略图仍然使用独立目录，避免与原图混淆
     if b == "thumbnails":
         rel = "Content/Media/thumbnails"
-    elif safe_kind == "image":
-        rel = "Content/Media/images"
-    elif safe_kind == "video":
-        rel = "Content/Media/videos"
-    elif safe_kind == "audio":
-        rel = "Content/Media/audio"
     else:
-        rel = "Content/Media/models"
+        # 图片、视频、音频、模型等资源统一存放在 Content/Media 目录下
+        # 不再按类型分子目录，也不再按日期分类
+        rel = "Content/Media"
 
-    target = (root / rel / time.strftime("%Y%m%d")).resolve()
+    target = (root / rel).resolve()
     try:
         target.mkdir(parents=True, exist_ok=True)
     except Exception as exc:
         return None, f"create bucket directory failed: {exc}"
-    if root.resolve() not in target.parents and target != root.resolve():
+    resolved_root = root.resolve()
+    if resolved_root not in target.parents and target != resolved_root:
         return None, "bucket path out of project root"
     return target, None
 
@@ -172,6 +319,204 @@ def _write_binary_atomically(file_path: Path, content: bytes) -> Optional[str]:
         except Exception:
             pass
         return str(exc)
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    """判断错误是否可以重试（包含 SSL EOF / TLS 握手失败等网络层波动）"""
+    if isinstance(exc, urllib.error.HTTPError):
+        # 5xx 服务器错误、429 限流可以重试
+        code = getattr(exc, "code", None) or 0
+        return code in (408, 429) or 500 <= code < 600
+    if isinstance(exc, (TimeoutError, urllib.error.URLError)):
+        return True
+    if isinstance(exc, (ConnectionError, OSError)):
+        return True
+    # SSL/TLS 相关错误（字节 CDN 常见的 SSL EOF / 握手中断）
+    if isinstance(exc, ssl.SSLError):
+        return True
+    try:
+        exc_type = type(exc).__name__
+        if "ssl" in exc_type.lower() or "tls" in exc_type.lower():
+            return True
+    except Exception:
+        pass
+    msg = str(exc).lower()
+    return any(k in msg for k in (
+        "timeout", "timed out", "connection", "reset",
+        "econn", "ehost", "enet", "502", "503", "504",
+        "ssl", "unexpected_eof", "eof occurred", "tlsv",
+        "handshake", "sslv3", "certificate", "protocol",
+    ))
+
+
+def _extract_content_type(headers: Any) -> str:
+    """从 HTTP 响应头中提取 content-type，兼容多种 header 类型"""
+    try:
+        # http.client.HTTPMessage / email.message.Message
+        if hasattr(headers, "get_content_type"):
+            ct = headers.get_content_type()
+            if ct:
+                return ct
+    except Exception:
+        pass
+    # dict-like
+    for key in ("Content-Type", "content-type", "Content-type"):
+        v = None
+        try:
+            v = headers.get(key)
+        except Exception:
+            try:
+                v = headers[key]
+            except Exception:
+                v = None
+        if v:
+            return str(v).split(";")[0].strip()
+    return "application/octet-stream"
+
+
+def _extract_content_length(headers: Any) -> Optional[int]:
+    """从 HTTP 响应头中提取 content-length"""
+    for key in ("Content-Length", "content-length", "Content-length"):
+        try:
+            v = headers.get(key)
+        except Exception:
+            try:
+                v = headers[key]
+            except Exception:
+                v = None
+        if v is not None:
+            try:
+                return int(str(v).strip())
+            except Exception:
+                pass
+    return None
+
+
+def _stream_url_to_file(url: str, target_path: Path) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    """
+    将远程 URL 流式下载到本地文件。
+    使用自定义 SSL context + 指数退避重试，解决字节 CDN 的 TLS 兼容性问题。
+
+    返回 (file_size_bytes, content_type, error_message)
+    - 成功: (size, content_type, None)
+    - 失败: (None, None, error_message)
+    """
+    last_error: Optional[str] = None
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    ssl_ctx = _get_ssl_context()
+
+    for attempt in range(1, _DOWNLOAD_MAX_RETRIES + 1):
+        tmp_path: Optional[Path] = None
+        response = None
+        try:
+            # 每次重试都使用一个新的临时文件，避免残留数据
+            tmp_suffix = f".part{attempt}"
+            tmp_path = target_path.parent / (target_path.name + tmp_suffix)
+
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 DwebVideoStudio/1.0 (compatible; +https://github.com/)",
+                    "Accept": "*/*",
+                    "Accept-Encoding": "identity",
+                    "Connection": "keep-alive",
+                },
+            )
+
+            # 使用自定义 SSL context，解决字节 CDN 的 TLS/SSL EOF 问题
+            try:
+                response = urllib.request.urlopen(request, timeout=_DOWNLOAD_TIMEOUT, context=ssl_ctx)
+            except Exception:
+                # 回退到系统默认 SSL 行为
+                response = urllib.request.urlopen(request, timeout=_DOWNLOAD_TIMEOUT)
+
+            with response as resp:
+                content_type = _extract_content_type(resp.headers or resp)
+                content_length = _extract_content_length(resp.headers or resp)
+
+                if content_length is not None and content_length > _DOWNLOAD_MAX_SIZE:
+                    try:
+                        if tmp_path is not None and tmp_path.exists():
+                            tmp_path.unlink()
+                    except Exception:
+                        pass
+                    return None, None, f"file too large: {content_length} bytes (limit {_DOWNLOAD_MAX_SIZE})"
+
+                total_written = 0
+                with tmp_path.open("wb") as fp:
+                    while True:
+                        chunk = resp.read(_DOWNLOAD_CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        fp.write(chunk)
+                        total_written += len(chunk)
+                        if total_written > _DOWNLOAD_MAX_SIZE:
+                            try:
+                                if tmp_path is not None and tmp_path.exists():
+                                    tmp_path.unlink()
+                            except Exception:
+                                pass
+                            return None, None, f"file exceeded size limit: {total_written} bytes"
+
+                # 检查是否是有效的空资源（0 字节也可能是有效的空文件，但 CDN 错误时会返回空）
+                if total_written == 0:
+                    try:
+                        if tmp_path is not None and tmp_path.exists():
+                            tmp_path.unlink()
+                    except Exception:
+                        pass
+                    return None, None, "downloaded empty content (server may have rejected the request)"
+
+                # 原子替换：把临时文件改名成目标文件
+                os.replace(str(tmp_path), str(target_path))
+                return total_written, content_type or "application/octet-stream", None
+
+        except Exception as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
+            # 清理本轮临时文件（如果存在）
+            try:
+                tmp_guess = target_path.parent / (target_path.name + f".part{attempt}")
+                if tmp_guess.exists():
+                    tmp_guess.unlink()
+            except Exception:
+                pass
+
+            if not _is_retryable_error(exc):
+                # 不可重试的错误，直接返回
+                return None, None, last_error
+
+            # 指数退避重试
+            if attempt < _DOWNLOAD_MAX_RETRIES:
+                sleep_sec = _DOWNLOAD_RETRY_BACKOFF ** attempt
+                time.sleep(sleep_sec)
+                continue
+
+    return None, None, last_error or "download failed"
+
+
+def _build_asset_payload_from_download(
+    project: BlueprintProject,
+    file_path: Path,
+    *,
+    kind: str,
+    name: str,
+    content_type: str,
+    size: int,
+    source_url: str,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """根据下载后的本地文件，构造资源返回 payload"""
+    payload, err = _build_asset_payload(
+        project,
+        file_path,
+        kind=kind,
+        name=name,
+        content_type=content_type,
+        size=size,
+    )
+    if payload is not None:
+        payload["sourceUrl"] = source_url
+        payload["sourcePath"] = payload.get("absolutePath") or str(file_path.resolve())
+    return payload, err
 
 
 def _parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int, int]]:
@@ -510,13 +855,66 @@ def import_project_asset(request: Request) -> Response:
         if not payload.get("name"):
             file_name = source_path.name
     elif source_url_raw:
+        root, root_err = _project_bucket_root(project, kind, bucket)
+        if root_err or root is None:
+            return _json_error(root_err or "bucket resolve failed", status=400)
+
+        base_name = Path(file_name).stem.strip() or kind
+        stamp = int(time.time() * 1000)
+        nonce = uuid.uuid4().hex[:8]
+        tmp_name = f"{base_name}_{stamp}_{nonce}.download"
+        tmp_file_path = (root / tmp_name).resolve()
+
+        # 使用增强的流式下载：支持大文件、自动重试、超时控制
+        size, detected_content_type, dl_err = _stream_url_to_file(source_url_raw, tmp_file_path)
+        if dl_err or size is None:
+            try:
+                if tmp_file_path.exists():
+                    tmp_file_path.unlink()
+            except Exception:
+                pass
+            return _json_error(f"download sourceUrl failed: {dl_err or 'unknown error'}", status=502)
+
+        effective_content_type = detected_content_type or content_type or "application/octet-stream"
+        detected_ext = _guess_extension(file_name, effective_content_type)
+        if detected_ext == ".bin":
+            magic_ext = _guess_extension_from_file_signature(tmp_file_path)
+            if magic_ext:
+                detected_ext = magic_ext
+        if not detected_ext:
+            detected_ext = ".bin"
+
+        final_name = f"{base_name}_{stamp}_{nonce}{detected_ext}"
+        file_path = (root / final_name).resolve()
         try:
-            import urllib.request
-            with urllib.request.urlopen(source_url_raw, timeout=45) as response:
-                content = response.read()
-                content_type = str(response.headers.get_content_type() or content_type)
+            os.replace(str(tmp_file_path), str(file_path))
         except Exception as exc:
-            return _json_error(f"fetch sourceUrl failed: {exc}", status=502)
+            try:
+                if tmp_file_path.exists():
+                    tmp_file_path.unlink()
+            except Exception:
+                pass
+            return _json_error(f"finalize downloaded asset failed: {exc}", status=500)
+
+        asset, payload_err = _build_asset_payload_from_download(
+            project,
+            file_path,
+            kind=kind,
+            name=file_name,
+            content_type=effective_content_type,
+            size=size,
+            source_url=source_url_raw,
+        )
+        if payload_err or asset is None:
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+            except Exception:
+                pass
+            return _json_error(payload_err or "build asset payload failed", status=500)
+        asset["effectiveContentType"] = effective_content_type
+        asset["correctedName"] = final_name
+        return Response({"ok": True, "asset": asset})
     else:
         return _json_error("sourcePath or sourceUrl is required", status=400)
 

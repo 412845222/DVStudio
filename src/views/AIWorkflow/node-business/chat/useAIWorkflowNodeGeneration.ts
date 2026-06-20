@@ -6,11 +6,18 @@ export type NodeGenerationApiDeps = {
   store: Store<WorkflowState>
   comfyService?: ComfyUIBridgeService | null
   resolveBackendUrl: (raw: string) => string
+  resolveBackendFetchUrl?: (raw: string) => string
   pushToast?: (message: string, tone?: 'info' | 'warn' | 'error') => void
   /** Bind produced asset url to the originating node, e.g. as its resource. */
-  bindImageResultToNode?: (nodeId: string, url: string) => void
-  bindVideoResultToNode?: (nodeId: string, url: string) => void
+  bindImageResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
+  bindVideoResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
   bindTextResultToNode?: (nodeId: string, text: string) => void
+  /**
+   * Resolve a URL to a Blob. In Electron this may route downloads through the
+   * main process to avoid browser CORS for signed CDN URLs. In the browser
+   * it falls back to fetch().
+   */
+  downloadUrlAsBlob?: (url: string) => Promise<Blob | null>
 }
 
 // Loose alias for store action callers that don't want to import types directly.
@@ -96,11 +103,21 @@ const collectReferenceImages = async (
     }
     if (!candidateUrl) continue
 
-    const resolved = deps.resolveBackendUrl(candidateUrl)
+    const fetchUrl = typeof deps.resolveBackendFetchUrl === 'function'
+      ? deps.resolveBackendFetchUrl(candidateUrl)
+      : deps.resolveBackendUrl(candidateUrl)
     try {
-      const resp = await fetch(resolved)
-      if (!resp.ok) continue
-      const blob = await resp.blob()
+      // In Electron, prefer the main-process download (bypasses CORS).
+      // In the browser, fall back to direct fetch().
+      let blob: Blob | null = null
+      if (typeof deps.downloadUrlAsBlob === 'function') {
+        blob = await deps.downloadUrlAsBlob(fetchUrl)
+      }
+      if (!blob) {
+        const resp = await fetch(fetchUrl)
+        if (!resp.ok) continue
+        blob = await resp.blob()
+      }
       if (!blob || blob.size === 0) continue
       const name = `ref-${sourceNode.type || 'image'}-${edge.fromNodeId}-${Date.now()}.png`
       refs.push({ name, blob })
@@ -225,8 +242,8 @@ const runTextTask = async (
   if (params.maxTokens) body.maxTokens = params.maxTokens
 
   let accumulated = ''
-	try {
-		for await (const ev of svc.blueprintChatStream({ content: String(body.content ?? ''), history: body.history, provider: body.provider, modelId: body.modelId })) {
+  try {
+    for await (const ev of (svc as any).blueprintChatStream({ content: String(body.content ?? ''), history: body.history, provider: body.provider, modelId: body.modelId })) {
       if (ev.type === 'done') break
       if (ev.type === 'error') {
         throw new Error(String(ev.error?.message ?? 'unknown'))
@@ -316,11 +333,19 @@ const runImageTask = async (
         }
       })()
       if (obj && typeof obj.imageUrl === 'string') {
-        const resolved = deps.resolveBackendUrl(obj.imageUrl)
-        appendResult(deps, task.id, { kind: 'image', url: resolved, label: `图 ${produced + 1}` })
-        if (produced === 0 && typeof deps.bindImageResultToNode === 'function') {
-          deps.bindImageResultToNode(payload.nodeId, resolved)
+        const sourceUrl = String(obj.imageUrl || '').trim()
+        if (!sourceUrl) continue
+        let bound = true
+        if (typeof deps.bindImageResultToNode === 'function') {
+          const bindRet = await deps.bindImageResultToNode(payload.nodeId, sourceUrl)
+          bound = bindRet !== false
         }
+        if (!bound) {
+          appendDetail(deps, task.id, '图片结果已返回，但导入本地资产失败，已跳过远程地址渲染。')
+          continue
+        }
+        const resolved = deps.resolveBackendUrl(sourceUrl)
+        appendResult(deps, task.id, { kind: 'image', url: resolved, label: `图 ${produced + 1}` })
         produced += 1
         updateTask(deps, task.id, { status: 'running', statusText: `已接收图片 ${produced} 张`, progress: Math.min(95, 40 + produced * 12) })
       }
@@ -406,11 +431,17 @@ const runVideoTask = async (
         const downloadStatus = String(obj.downloadStatus ?? '').trim()
         const progressRaw = Number(obj.downloadProgress ?? 0)
         const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, Math.round(progressRaw))) : task.progress
-        if (url) {
-          appendResult(deps, task.id, { kind: 'video', url, label: '视频结果' })
-          if (produced === 0 && typeof deps.bindVideoResultToNode === 'function') {
-            deps.bindVideoResultToNode(payload.nodeId, url)
+        if (urlRaw) {
+          let bound = true
+          if (typeof deps.bindVideoResultToNode === 'function') {
+            const bindRet = await deps.bindVideoResultToNode(payload.nodeId, urlRaw)
+            bound = bindRet !== false
           }
+          if (!bound) {
+            appendDetail(deps, task.id, '视频结果已返回，但导入本地资产失败，已跳过远程地址渲染。')
+            continue
+          }
+          appendResult(deps, task.id, { kind: 'video', url, label: '视频结果' })
           produced += 1
         }
         updateTask(deps, task.id, {

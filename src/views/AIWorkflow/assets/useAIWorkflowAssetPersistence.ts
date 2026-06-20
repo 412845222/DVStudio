@@ -123,6 +123,9 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 			}
 		}
 
+		// 图片/视频节点不允许远程地址直渲，导入失败时直接返回空。
+		if (payload.kind === 'image' || payload.kind === 'video') return null
+
 		return sourceUrl ? { url: sourceUrl, absolutePath: sourcePath, projectRelativePath: undefined } : null
 	}
 

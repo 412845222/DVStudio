@@ -170,12 +170,71 @@ function handleProjectAssetRequest(request) {
   if (!root) {
     return new Response('Project Root Not Registered', { status: 404, statusText: 'Project Root Not Registered' })
   }
-  const filePath = safeResolveProjectFile(root, parsed.relPath)
-  if (!filePath) {
-    return new Response('Invalid Asset Path', { status: 400 })
+
+  // 统一处理路径分隔符（Windows \ -> /），并规范化路径
+  const rel = String(parsed.relPath || '').trim().replace(/\\/g, '/')
+
+  // 候选路径列表：优先使用原始路径，然后尝试新旧目录的等价路径
+  // 例如：generated-assets/img-xxx.jpg -> Content/Media/img-xxx.jpg
+  // 反之亦然：Content/Media/img-xxx.jpg -> generated-assets/img-xxx.jpg
+  const candidates = [rel]
+
+  // 提取文件名（最基础的文件名），用于在新旧目录中查找
+  const parts = rel.split('/').filter((p) => p && p !== '.')
+  if (parts.length >= 2) {
+    const firstDir = parts[0].toLowerCase()
+    const restPath = parts.slice(1).join('/')
+    const fileName = parts[parts.length - 1]
+
+    // 旧项目：路径以 generated-assets 开头
+    if (firstDir === 'generated-assets') {
+      // 尝试在新目录 Content/Media 下查找
+      candidates.push('Content/Media/' + restPath)
+      // 也尝试 Content/Media/ + 文件名（资源可能没有子目录）
+      if (restPath !== fileName) {
+        candidates.push('Content/Media/' + fileName)
+      }
+    }
+    // 新项目：路径以 Content 或 Media 开头
+    if (firstDir === 'content' || firstDir === 'media' || firstDir === 'thumbnails') {
+      // 尝试在旧目录 generated-assets 下查找
+      candidates.push('generated-assets/' + fileName)
+    }
+  } else if (parts.length === 1) {
+    // 只给出文件名时，尝试多个常见目录
+    candidates.push('Content/Media/' + parts[0])
+    candidates.push('generated-assets/' + parts[0])
   }
+
+  // 解析并检查每个候选路径
+  let resolvedPath = null
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    const p = safeResolveProjectFile(root, candidate)
+    if (p && fs.existsSync(p)) {
+      try {
+        const st = fs.statSync(p)
+        if (st && st.isFile()) {
+          resolvedPath = p
+          break
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // 如果所有候选都找不到，则使用原始路径返回 404（给用户明确的错误信息）
+  let filePath = resolvedPath
+  if (!filePath) {
+    filePath = safeResolveProjectFile(root, rel)
+    if (!filePath) {
+      return new Response('Invalid Asset Path', { status: 400 })
+    }
+  }
+
   if (!fs.existsSync(filePath)) {
-    return new Response('Asset Not Found', { status: 404 })
+    return new Response('Asset Not Found: ' + rel, { status: 404 })
   }
   let stat
   try {
@@ -220,13 +279,38 @@ export function registerDwebProjectAssetProtocol() {
         }
         return new Response('Not Found', { status: 404 })
       } catch (err) {
+        console.error('[dweb-protocol] request error:', err)
         return new Response(String(err?.message || err || 'protocol error'), { status: 500 })
       }
     })
+    console.log('[dweb-protocol] registered successfully')
     return true
   } catch (err) {
     console.error('[dweb-protocol] register failed:', err)
-    return false
+    try {
+      protocol.unregisterProtocol('dweb')
+    } catch {
+      // ignore
+    }
+    try {
+      protocol.handle('dweb', async (request) => {
+        try {
+          const host = String(new URL(request.url).hostname || '').toLowerCase()
+          if (host === DWEB_PROJECT_ASSET_HOST) {
+            return handleProjectAssetRequest(request)
+          }
+          return new Response('Not Found', { status: 404 })
+        } catch (err) {
+          console.error('[dweb-protocol] retry request error:', err)
+          return new Response(String(err?.message || err || 'protocol error'), { status: 500 })
+        }
+      })
+      console.log('[dweb-protocol] registered successfully after retry')
+      return true
+    } catch (retryErr) {
+      console.error('[dweb-protocol] retry register failed:', retryErr)
+      return false
+    }
   }
 }
 
@@ -260,7 +344,9 @@ export function getProjectRootById(projectId) {
   return projectRootById.get(id) || null
 }
 
-// 将远程 URL 的文件下载到指定项目根目录下的 generated-assets 子目录。
+// 将远程 URL 的文件下载到指定项目根目录下的 Content/Media 子目录。
+// 与 Django 后端的 import_project_asset API 使用相同的目录约定，
+// 确保右键菜单、资源面板的查看功能能够正确定位文件。
 // 返回绝对路径（absolutePath）和相对根目录的相对路径（relativePath）。
 export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilename) {
   const id = Number(projectId)
@@ -276,7 +362,8 @@ export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilenam
   const base = safeName.replace(/\.[^.]+$/, '') || `asset-${Date.now()}`
   const filename = `${base}${ext}`
 
-  const subDir = path.resolve(root, 'generated-assets')
+  // 与 Django 保持一致：所有资源存放在 Content/Media 目录下
+  const subDir = path.resolve(root, 'Content', 'Media')
   try {
     fs.mkdirSync(subDir, { recursive: true })
   } catch (err) {
@@ -284,7 +371,8 @@ export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilenam
   }
 
   const absolutePath = path.resolve(subDir, filename)
-  const relativePath = path.relative(root, absolutePath)
+  // 统一使用正斜杠表示相对路径，与 Django 端保持一致
+  const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
 
   try {
     await fetchRemoteUrl(url, absolutePath)
@@ -328,7 +416,10 @@ function inferExtension(safeName, rawUrl) {
   const lower = String(safeName || '').toLowerCase()
   const dotIdx = lower.lastIndexOf('.')
   if (dotIdx > 0 && dotIdx >= lower.length - 8) return lower.slice(dotIdx)
+
   const urlLower = String(rawUrl || '').toLowerCase()
+
+
   const extMap = {
     jpg: '.jpg',
     jpeg: '.jpg',
@@ -341,10 +432,37 @@ function inferExtension(safeName, rawUrl) {
     webm: '.webm',
     mkv: '.mkv',
     m4v: '.m4v',
+    mp3: '.mp3',
+    wav: '.wav',
+    ogg: '.ogg',
+    m4a: '.m4a',
+    flac: '.flac',
+    pdf: '.pdf',
+    glb: '.glb',
+    gltf: '.gltf',
+    obj: '.obj',
+    json: '.json',
   }
+
   for (const [key, ext] of Object.entries(extMap)) {
-    if (urlLower.includes(`.${key}`)) return ext
+    if (urlLower.includes(`.${key}?`)) return ext
+    if (urlLower.includes(`.${key}/`)) return ext
+    if (urlLower.endsWith(`.${key}`)) return ext
   }
+
+  try {
+    const parsed = new URL(rawUrl)
+    const pathname = parsed.pathname.toLowerCase()
+    const pathExt = pathname.substring(pathname.lastIndexOf('.'))
+    if (pathExt && pathExt.length <= 8) {
+      const extKey = pathExt.slice(1).toLowerCase()
+      if (extMap[extKey]) return extMap[extKey]
+    }
+  } catch {
+    // ignore
+  }
+
+
   return '.bin'
 }
 

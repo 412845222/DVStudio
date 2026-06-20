@@ -16,7 +16,7 @@ import WorkflowSceneDecomposeNode from '../../../../ui/WorkFlow/WorlFlowNodes/Wo
 import WorkflowSceneLayoutNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowSceneLayoutNode.vue'
 import WorkflowUnrealExportNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowUnrealExportNode.vue'
 import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
-import { resolveBackendUrl } from '../../../../network/backendConfig'
+import { isWorkflowLocalAssetUrl, resolveBackendUrl } from '../../../../network/backendConfig'
 
 export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
   const clampNodeScale = (zoom: number) => Math.max(0.2, Math.min(6, Number(zoom) || 1))
@@ -125,7 +125,7 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
     if (!safeUrl) return ''
 
     if (/^(?:blob:|data:)/i.test(safeUrl)) return safeUrl
-    if (/^https?:\/\//i.test(safeUrl)) return safeUrl
+    if (/^https?:\/\//i.test(safeUrl)) return ''
 
     const parsed = parseProjectAssetUrl(raw)
     if (parsed) {
@@ -166,6 +166,9 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
     if (!node.resourceId) return null
     const raw = store.state.resourcesById[node.resourceId]?.url
     const safe = sanitizeWorkflowMediaUrl(raw)
+    if (safe && (node.type === 'image' || node.type === 'video' || node.type === 'rotate-image')) {
+      if (!isWorkflowLocalAssetUrl(safe)) return null
+    }
     return safe || null
   }
 

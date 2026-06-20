@@ -3566,8 +3566,20 @@ def _nanobanana_download_and_save(url: str) -> str:
     if not (u.startswith("http://") or u.startswith("https://")):
         raise ValueError("invalid image url")
 
-    req = urllib.request.Request(u, headers={"Accept": "image/*"}, method="GET")
-    with urllib.request.urlopen(req, timeout=30.0) as res:
+    req = urllib.request.Request(
+        u,
+        headers={
+            "Accept": "image/*",
+            "User-Agent": "Mozilla/5.0 DwebVideoStudio/1.0 (compatible; +https://github.com/)",
+        },
+        method="GET",
+    )
+    # 使用自定义 SSL context 解决字节 CDN 的 TLS EOF 问题
+    try:
+        res = urllib.request.urlopen(req, timeout=30.0, context=_get_ssl_context())
+    except Exception:
+        res = urllib.request.urlopen(req, timeout=30.0)
+    with res:
         content_type = str(res.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         data = res.read()
 
@@ -3603,8 +3615,20 @@ def _seedream_download_and_save(url: str) -> str:
     if not (u.startswith("http://") or u.startswith("https://")):
         raise ValueError("invalid image url")
 
-    req = urllib.request.Request(u, headers={"Accept": "image/*"}, method="GET")
-    with urllib.request.urlopen(req, timeout=30.0) as res:
+    req = urllib.request.Request(
+        u,
+        headers={
+            "Accept": "image/*",
+            "User-Agent": "Mozilla/5.0 DwebVideoStudio/1.0 (compatible; +https://github.com/)",
+        },
+        method="GET",
+    )
+    # 使用自定义 SSL context 解决字节 CDN 的 TLS EOF 问题
+    try:
+        res = urllib.request.urlopen(req, timeout=30.0, context=_get_ssl_context())
+    except Exception:
+        res = urllib.request.urlopen(req, timeout=30.0)
+    with res:
         content_type = str(res.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         data = res.read()
 
@@ -4108,8 +4132,20 @@ def _seedance_save_media_from_url(raw_url: str, category: str, accept_header: st
     if not (url.startswith("http://") or url.startswith("https://")):
         raise ValueError("invalid media url")
 
-    req = urllib.request.Request(url, headers={"Accept": accept_header}, method="GET")
-    with urllib.request.urlopen(req, timeout=60.0) as res:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": accept_header,
+            "User-Agent": "Mozilla/5.0 DwebVideoStudio/1.0 (compatible; +https://github.com/)",
+        },
+        method="GET",
+    )
+    # 使用自定义 SSL context 解决字节 CDN 的 TLS EOF 问题
+    try:
+        res = urllib.request.urlopen(req, timeout=60.0, context=_get_ssl_context())
+    except Exception:
+        res = urllib.request.urlopen(req, timeout=60.0)
+    with res:
         content_type = str(res.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         data = res.read()
 
@@ -4171,12 +4207,17 @@ def _seedance_stream_download_bytes(
         source_url,
         headers={
             "Accept": accept,
-            "User-Agent": "DwebVideoStudio/seedance-downloader",
+            "User-Agent": "Mozilla/5.0 DwebVideoStudio/1.0 (compatible; +https://github.com/)",
         },
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=180) as res:
+        # 使用自定义 SSL context 解决字节 CDN 的 TLS EOF 问题
+        try:
+            resp = urllib.request.urlopen(req, timeout=180, context=_get_ssl_context())
+        except Exception:
+            resp = urllib.request.urlopen(req, timeout=180)
+        with resp as res:
             total = 0
             try:
                 total = int(str(res.headers.get("Content-Length") or "0").strip() or "0")
@@ -6072,7 +6113,10 @@ def view(request: Request) -> Any:
     req = urllib.request.Request(url, headers=upstream_headers)
 
     try:
-        upstream = urllib.request.urlopen(req, timeout=20.0)
+        try:
+            upstream = urllib.request.urlopen(req, timeout=20.0, context=_get_ssl_context())
+        except Exception:
+            upstream = urllib.request.urlopen(req, timeout=20.0)
     except urllib.error.HTTPError as e:
         try:
             body = e.read().decode("utf-8", errors="ignore")
@@ -6168,7 +6212,11 @@ def get_workflow(request: Request) -> Response:
     url = base + "/userdata/" + quoted
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
-        with urllib.request.urlopen(req, timeout=10.0) as res:
+        try:
+            res = urllib.request.urlopen(req, timeout=10.0, context=_get_ssl_context())
+        except Exception:
+            res = urllib.request.urlopen(req, timeout=10.0)
+        with res:
             raw = res.read()
     except urllib.error.HTTPError as e:
         try:

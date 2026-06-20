@@ -1,6 +1,8 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
+import https from 'node:https'
+import http from 'node:http'
 import { spawn } from 'node:child_process'
 
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol } from 'electron'
@@ -29,6 +31,25 @@ import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from '.
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
 import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
 
+// dweb:// must be registered as a privileged scheme before app ready,
+// otherwise renderer-side fetch/XHR treats it as unsupported.
+try {
+	protocol.registerSchemesAsPrivileged([
+		{
+			scheme: 'dweb',
+			privileges: {
+				standard: true,
+				secure: true,
+				supportFetchAPI: true,
+				stream: true,
+			},
+		},
+	])
+	console.log('[dweb-protocol] privileged scheme registered')
+} catch (err) {
+	console.error('[dweb-protocol] privileged scheme register failed:', err)
+}
+
 const isDev = !!process.env.ELECTRON_DEV || !app.isPackaged
 
 let mainWindow = null
@@ -44,6 +65,54 @@ const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
 // Nano Banana image generation requires an image-capable model.
 // Ref: https://ai.google.dev/gemini-api/docs/image-generation
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
+
+// Download a URL and return { buffer: Uint8Array, mime: string }
+// Used to bypass browser CORS when consuming signed CDN URLs (e.g. seedance results).
+function fetchRawBuffer(rawUrl) {
+	return new Promise((resolve, reject) => {
+		let parsed
+		try {
+			parsed = new URL(String(rawUrl || ''))
+		} catch (err) {
+			reject(err)
+			return
+		}
+		const transport = parsed.protocol === 'https:' ? https : http
+		const options = {
+			method: 'GET',
+			hostname: parsed.hostname,
+			port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+			path: parsed.pathname + parsed.search,
+			headers: {
+				'User-Agent': 'DwebVideoStudio/1.0 (Electron)',
+			},
+			timeout: 120 * 1000,
+		}
+		const req = transport.request(options, (res) => {
+			if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers?.location) {
+				fetchRawBuffer(String(res.headers.location)).then(resolve, reject)
+				return
+			}
+			if (!res.statusCode || res.statusCode >= 400) {
+				reject(new Error(`HTTP ${res.statusCode}`))
+				return
+			}
+			const chunks = []
+			res.on('data', (chunk) => chunks.push(chunk))
+			res.on('end', () => {
+				const buf = Buffer.concat(chunks)
+				const mime = String(res.headers?.['content-type'] || '').split(';')[0].trim() || 'application/octet-stream'
+				resolve({ buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), mime })
+			})
+			res.on('error', reject)
+		})
+		req.on('error', reject)
+		req.on('timeout', () => {
+			req.destroy(new Error('request timeout'))
+		})
+		req.end()
+	})
+}
 
 let bootstrapProc = null
 
@@ -1411,6 +1480,19 @@ function registerIpc() {
 			return { ok: false, error: String(err?.message || err) }
 		}
 	})
+
+	// Fetch a URL in the main process (bypasses browser CORS) and return Uint8Array / mime
+	ipcMain.handle('dweb:aiworkflow:fetchAsArrayBuffer', async (_e, payload) => {
+		const url = String(payload?.url || '').trim()
+		if (!url) return { ok: false, error: 'url is empty' }
+		try {
+			const { buffer, mime } = await fetchRawBuffer(url)
+			return { ok: true, buffer, mime }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
 
 	try {
 		registerLocalDbIpc(ipcMain, {
