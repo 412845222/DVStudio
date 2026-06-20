@@ -1395,6 +1395,27 @@ function registerIpc() {
 		return { ok: true }
 	})
 
+	ipcMain.handle('dweb:app:openExternalUrl', async (_e, payload) => {
+		try {
+			const raw = String(payload?.url || '').trim()
+			if (!raw) return { ok: false, error: 'empty url' }
+			let parsed
+			try {
+				parsed = new URL(raw)
+			} catch {
+				return { ok: false, error: 'invalid url' }
+			}
+			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+				return { ok: false, error: 'unsupported protocol' }
+			}
+			const openErr = await shell.openExternal(raw, { activate: true })
+			if (openErr) return { ok: false, error: String(openErr) }
+			return { ok: true }
+		} catch (e) {
+			return { ok: false, error: String(e?.message || e) }
+		}
+	})
+
 	ipcMain.handle('dweb:app:openFolderForPath', async (_e, payload) => {
 		try {
 			const raw = String(payload?.path || '').trim()

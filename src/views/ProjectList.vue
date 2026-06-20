@@ -520,16 +520,7 @@ onMounted(async () => {
   height: 100%;
   overflow: auto;
   box-sizing: border-box;
-  padding: 24px 24px 24px 74px;
-  transition: padding-left 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-body[data-side-nav-expanded="true"] .project-list-page {
-  padding-left: 198px;
-}
-
-body[data-side-nav-expanded="false"] .project-list-page {
-  padding-left: 74px;
+  padding: 24px;
 }
 
 .project-list-shell {
@@ -772,10 +763,7 @@ body[data-side-nav-expanded="false"] .project-list-page {
 
 @media (max-width: 760px) {
   .project-list-page {
-    padding: 16px 12px 16px 68px;
-  }
-  body[data-side-nav-expanded="true"] .project-list-page {
-    padding-left: 180px;
+    padding: 16px 12px;
   }
   .project-list-grid {
     grid-template-columns: 1fr;
