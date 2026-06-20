@@ -485,7 +485,7 @@ watch(
   position: fixed;
   inset: 0;
   z-index: 130;
-  background: var(--sui-overlay-backdrop, rgba(0, 0, 0, 0.55));
+  background: var(--wf-overlay-bg);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -498,14 +498,11 @@ watch(
   max-height: calc(86vh - 16px);
   display: flex;
   flex-direction: column;
-  background: var(--sui-surface-sunken, #131418);
-  border: 1px solid var(--sui-border);
+  background: var(--wf-surface-raised);
+  border: 1px solid var(--wf-border);
   border-radius: 0;
-  box-shadow:
-    0 20px 40px -12px rgba(0, 0, 0, 0.55),
-    0 10px 20px -8px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(255, 255, 255, 0.04);
-  color: var(--sui-text);
+  box-shadow: var(--wf-panel-shadow-strong);
+  color: var(--wf-text);
   overflow: hidden;
   animation: dweb-add-node-modal-pop 140ms cubic-bezier(0.2, 0.75, 0.2, 1);
 }
@@ -516,7 +513,7 @@ watch(
   justify-content: space-between;
   height: 40px;
   padding: 0 10px 0 14px;
-  border-bottom: 1px solid var(--sui-divider);
+  border-bottom: 1px solid var(--wf-border-subtle);
 }
 
 .dweb-add-node-modal__title {
@@ -524,7 +521,7 @@ watch(
   font-size: 14px;
   font-weight: 600;
   line-height: 1.2;
-  color: var(--sui-text);
+  color: var(--wf-text);
 }
 
 .dweb-add-node-modal__close {
@@ -536,15 +533,15 @@ watch(
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--sui-muted-text);
+  color: var(--wf-text-muted);
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }
 
 .dweb-add-node-modal__close:hover,
 .dweb-add-node-modal__close:focus-visible {
-  background: var(--sui-menu-item-bg-hover);
-  color: var(--sui-text);
+  background: var(--wf-control-bg-hover);
+  color: var(--wf-text);
   outline: none;
 }
 
@@ -567,14 +564,14 @@ watch(
   align-items: center;
   gap: 8px;
   padding: 0 14px;
-  border-bottom: 1px solid var(--sui-divider);
+  border-bottom: 1px solid var(--wf-border-subtle);
 }
 
 .dweb-add-node-modal__search svg {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  color: var(--sui-muted-text);
+  color: var(--wf-text-muted);
 }
 
 .dweb-add-node-modal__search svg circle,
@@ -593,19 +590,19 @@ watch(
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--sui-text);
+  color: var(--wf-text);
   font-size: 13.5px;
 }
 
 .dweb-add-node-modal__search input::placeholder {
-  color: var(--sui-muted-text);
+  color: var(--wf-text-muted);
 }
 
 .dweb-add-node-modal__tabs-wrap {
   position: relative;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--sui-divider);
+  border-bottom: 1px solid var(--wf-border-subtle);
 }
 
 .dweb-add-node-modal__tabs {
@@ -626,7 +623,7 @@ watch(
   border: 1px solid transparent;
   border-radius: 0;
   background: transparent;
-  color: var(--sui-muted-text);
+  color: var(--wf-text-muted);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -636,16 +633,16 @@ watch(
 
 .dweb-add-node-modal__tab:hover,
 .dweb-add-node-modal__tab:focus-visible {
-  color: var(--sui-text);
-  background: var(--sui-menu-item-bg-hover);
+  color: var(--wf-text);
+  background: var(--wf-control-bg-hover);
   outline: none;
 }
 
 .dweb-add-node-modal__tab.is-active {
-  color: var(--sui-text);
-  background: var(--sui-primary, var(--sui-menu-item-bg-hover));
-  border-color: var(--sui-primary, var(--sui-menu-item-bg-hover));
-  box-shadow: 0 0 8px rgba(58, 168, 180, 0.3), 0 0 16px rgba(58, 168, 180, 0.15);
+  color: var(--wf-text);
+  background: var(--wf-primary-soft);
+  border-color: var(--wf-primary);
+  box-shadow: var(--aiwf-shadow-focus);
 }
 
 .dweb-add-node-modal__tab.is-special .dweb-add-node-modal__tab-icon {
@@ -698,7 +695,7 @@ watch(
   text-align: left;
   cursor: pointer;
   transition: background-color 120ms ease;
-  border-bottom: 1px solid color-mix(in srgb, var(--sui-border) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-border) 40%, transparent);
 }
 
 .dweb-add-node-modal__item:last-child {
@@ -707,13 +704,13 @@ watch(
 
 .dweb-add-node-modal__item:hover,
 .dweb-add-node-modal__item:focus-visible {
-  background: var(--sui-menu-item-bg-hover, rgba(58, 168, 180, 0.15));
+  background: var(--wf-control-bg-hover);
   outline: none;
 }
 
 .dweb-add-node-modal__item:hover .dweb-add-node-modal__item-label,
 .dweb-add-node-modal__item:focus-visible .dweb-add-node-modal__item-label {
-  color: var(--sui-primary, #3aa8b4);
+  color: var(--wf-primary);
 }
 
 .dweb-add-node-modal__item-label {
@@ -723,17 +720,17 @@ watch(
   font-size: 14px;
   font-weight: 600;
   line-height: 1.3;
-  color: var(--sui-text);
+  color: var(--wf-text);
 }
 
 .dweb-add-node-modal__item-desc {
   font-size: 12px;
   line-height: 1.5;
-  color: var(--sui-muted-text);
+  color: var(--wf-text-muted);
 }
 
 .dweb-add-node-modal__item--upload .dweb-add-node-modal__item-label {
-  color: var(--sui-primary, var(--sui-text));
+  color: var(--wf-primary);
 }
 
 .dweb-add-node-modal__upload-icon {
@@ -754,7 +751,7 @@ watch(
 .dweb-add-node-modal__empty {
   padding: 24px 16px;
   text-align: center;
-  color: var(--sui-muted-text);
+  color: var(--wf-text-muted);
   font-size: 12px;
 }
 
@@ -776,17 +773,17 @@ watch(
 }
 
 .custom-scrollbar-right::-webkit-scrollbar-thumb {
-  background-color: var(--sui-border-strong);
+  background-color: var(--wf-border-strong);
   border-radius: 0;
 }
 
 .custom-scrollbar-right::-webkit-scrollbar-thumb:hover {
-  background-color: var(--sui-primary);
+  background-color: var(--wf-primary);
 }
 
 .custom-scrollbar-right {
   scrollbar-width: thin;
-  scrollbar-color: var(--sui-border-strong) transparent;
+  scrollbar-color: var(--wf-border-strong) transparent;
 }
 
 @keyframes dweb-add-node-modal-pop {
