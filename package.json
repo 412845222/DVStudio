@@ -80,9 +80,10 @@
     "git:unset-hooks": "git config --unset core.hooksPath",
     "git:protect-on": "npm run git:setup-hooks",
     "git:protect-off": "npm run git:unset-hooks",
-    "postinstall": "npm run git:setup-hooks 2>/dev/null || true"
+    "postinstall": "node scripts/rebuild-better-sqlite3.mjs && node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch(e){}\""
   },
   "dependencies": {
+    "@github/copilot": "^0.0.326",
     "better-sqlite3": "^11.3.0",
     "js-yaml": "^4.1.1",
     "jszip": "^3.10.1",

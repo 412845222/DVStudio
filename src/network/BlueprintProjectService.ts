@@ -93,6 +93,27 @@ export class BlueprintProjectService {
     }
   }
 
+  private async _ensureElectronLocalDb(): Promise<boolean> {
+    const bridge = (window as any)?.dweb?.aiworkflow?.db
+    if (!bridge) return false
+    try {
+      const state = await bridge._initState?.()
+      if (state?.ok) return true
+      const retry = await bridge._ensureInitialized?.()
+      return Boolean(retry?.ok)
+    } catch {
+      return false
+    }
+  }
+
+  private async electronDb<T>(fn: () => Promise<T>): Promise<T | null> {
+    const bridge = (window as any)?.dweb?.aiworkflow?.db?.projects
+    if (typeof bridge !== 'object') return null
+    const ready = await this._ensureElectronLocalDb()
+    if (!ready) return null
+    return fn().catch(() => null)
+  }
+
   private url(path: string) {
     const base = (this.getBaseUrl?.() ?? '').trim().replace(/\/$/, '')
     if (!base) return path
@@ -135,6 +156,13 @@ export class BlueprintProjectService {
   }
 
   async listProjects(): Promise<ListProjectsResponse> {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.list()
+    )
+    if (electronResult !== null) {
+      const rows = Array.isArray(electronResult) ? electronResult : (electronResult as any)?.projects || []
+      return { ok: true, projects: rows as any }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/list'), { method: 'GET' })
     if (!res.ok) {
       const body = await safeJson(res)
@@ -148,6 +176,16 @@ export class BlueprintProjectService {
   }
 
   async saveProject(payload: { name: string; snapshot: any; projectId?: number | null }): Promise<SaveProjectResponse> {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.save({
+        projectId: payload.projectId,
+        snapshot: payload.snapshot,
+        name: payload.name,
+      })
+    )
+    if (electronResult !== null) {
+      return { ok: true, project: electronResult.project ?? electronResult }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/save'), {
       method: 'POST',
       headers: jsonHeaders,
@@ -165,6 +203,17 @@ export class BlueprintProjectService {
   }
 
   async loadProject(projectId: number): Promise<LoadProjectResponse> {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.load({ id: projectId })
+    )
+    if (electronResult !== null) {
+      // Electron returns { ok, project, snapshot } with snapshot at root level
+      return {
+        ok: true,
+        project: electronResult.project ?? electronResult,
+        snapshot: electronResult.snapshot,
+      }
+    }
     const res = await this.fetchWithLog(this.url(`/api/workflow/projects/load?id=${encodeURIComponent(String(projectId))}`), {
       method: 'GET',
     })
@@ -180,6 +229,15 @@ export class BlueprintProjectService {
   }
 
   async deleteProject(projectId: number): Promise<DeleteProjectResponse> {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.delete({ id: projectId })
+    )
+    if (electronResult !== null) {
+      if ((electronResult as any).ok === false) {
+        return { ok: false, error: String((electronResult as any).error || 'delete failed') }
+      }
+      return { ok: true, id: projectId }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/delete'), {
       method: 'POST',
       headers: jsonHeaders,
@@ -197,6 +255,16 @@ export class BlueprintProjectService {
   }
 
   async openProjectFolder(payload: { rootPath: string; name?: string; create?: boolean }): Promise<OpenProjectFolderResponse> {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.openFolder({
+        rootPath: payload.rootPath,
+        name: payload.name,
+        create: payload.create,
+      })
+    )
+    if (electronResult !== null) {
+      return { ok: true, project: electronResult.project ?? electronResult }
+    }
     const res = await this.fetchWithLog(this.url('/api/workflow/projects/folder/open'), {
       method: 'POST',
       headers: jsonHeaders,

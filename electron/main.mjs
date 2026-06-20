@@ -23,7 +23,7 @@ import {
 	clearProjectRoot,
 	getProjectRootSnapshot,
 } from './backend/projectAssetProtocol.mjs'
-import { initLocalDb, getRepos } from './localdb/index.mjs'
+import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
 import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
 
@@ -1392,7 +1392,11 @@ function registerIpc() {
 	})
 
 	try {
-		registerLocalDbIpc(ipcMain)
+		registerLocalDbIpc(ipcMain, {
+			backendDataDir: getBackendDataDir() || getUserDataDir(),
+			userDataDir: getUserDataDir(),
+			appSecret: getBackendDataDir() || getUserDataDir(),
+		})
 	} catch (err) {
 		console.error('[main] localdb ipc register failed:', err)
 	}
@@ -1469,12 +1473,24 @@ async function main() {
 	loadClientSettings()
 
 	try {
-		const backendDir = getBackendDataDir() || getUserDataDir()
-		initLocalDb({ backendDataDir: backendDir, userDataDir: getUserDataDir(), appSecret: backendDir })
+		const userDir = getUserDataDir()
+		const backendDir = getBackendDataDir() || userDir
+		const dirOk = typeof userDir === 'string' && userDir.trim().length > 0
+		appendRuntimeLog(`[app] localdb init paths: userDir=${userDir} backendDir=${backendDir} ok=${dirOk}`)
+		initLocalDb({ backendDataDir: backendDir, userDataDir: userDir, appSecret: backendDir })
 		const repos = getRepos()
-		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (schema=${repos.schemaInfo?.currentVersion})`)
+		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (tag=${repos.tag || 'primary'} schema=${repos.schemaInfo?.currentVersion})`)
 	} catch (err) {
 		appendRuntimeLog(`[app] localdb init failed: ${String(err?.message || err)}`)
+		appendRuntimeLog(`[app] 尝试回退初始化 localdb (强制使用 userDataDir)...`)
+		const retry = ensureLocalDbInitialized({ userDataDir: getUserDataDir(), backendDataDir: getUserDataDir(), appSecret: getUserDataDir() })
+		if (!retry.ok) {
+			appendRuntimeLog(`[app] localdb fallback init also failed: ${retry.error}`)
+			appendRuntimeLog(`[app] WARNING: localdb 不可用，将使用前端 fallback 路径；项目相关功能可能异常。`)
+		} else {
+			const r = getReposSafe()
+			appendRuntimeLog(`[app] localdb fallback OK: ${r.ok ? r.repos.dbFilePath : 'unknown'}`)
+		}
 	}
 
 	registerIpc()
