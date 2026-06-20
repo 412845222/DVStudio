@@ -1,6 +1,7 @@
 import { getBackendBaseUrl } from './backendConfig'
 import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
+import { logBlueprintRequest } from './blueprintRequestLog'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -115,8 +116,36 @@ export class SceneSkillService {
 		return `${base}/${path}`
 	}
 
+	private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+		const url = typeof input === 'string' ? input : (input as Request).url || String(input)
+		const method = String(init?.method || 'GET').toUpperCase()
+		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+		try {
+			const res = await fetch(input as any, init)
+			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			logBlueprintRequest({
+				url,
+				method,
+				status: res.status,
+				durationMs: Math.max(0, Math.round(end - start)),
+				tag: 'scene-skill',
+			})
+			return res
+		} catch (err) {
+			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			logBlueprintRequest({
+				url,
+				method,
+				durationMs: Math.max(0, Math.round(end - start)),
+				errorMessage: err instanceof Error ? err.message : String(err),
+				tag: 'scene-skill',
+			})
+			throw err
+		}
+	}
+
 	async listSceneUnderstandModels(): Promise<SceneUnderstandModelsResponse> {
-		const res = await fetch(this.url('/api/agent-skills/scene-understand/models'), { method: 'GET' })
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/models'), { method: 'GET' })
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -136,7 +165,7 @@ export class SceneSkillService {
 		imageDataUrl?: string
 		imageInputs?: SceneUnderstandImageInput[]
 	}): Promise<SceneUnderstandRunResponse> {
-		const res = await fetch(this.url('/api/agent-skills/scene-understand/run'), {
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/run'), {
 			method: 'POST',
 			headers: jsonHeaders,
 			body: JSON.stringify(payload ?? {}),
@@ -153,7 +182,7 @@ export class SceneSkillService {
 	}
 
 	async listSceneLightingModels(): Promise<SceneLightingModelsResponse> {
-		const res = await fetch(this.url('/api/agent-skills/scene-lighting/models'), { method: 'GET' })
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/models'), { method: 'GET' })
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -174,7 +203,7 @@ export class SceneSkillService {
 		imageDataUrl?: string
 		imageInputs?: SceneUnderstandImageInput[]
 	}): Promise<SceneLightingRunResponse> {
-		const res = await fetch(this.url('/api/agent-skills/scene-lighting/run'), {
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/run'), {
 			method: 'POST',
 			headers: jsonHeaders,
 			body: JSON.stringify(payload ?? {}),
@@ -201,7 +230,7 @@ export class SceneSkillService {
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<SceneUnderstandStreamEvent, void, void> {
-		const res = await fetch(this.url('/api/agent-skills/scene-understand/run:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/run:stream'), {
 			method: 'POST',
 			headers: {
 				...jsonHeaders,
@@ -299,7 +328,7 @@ export class SceneSkillService {
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<SceneLightingStreamEvent, void, void> {
-		const res = await fetch(this.url('/api/agent-skills/scene-lighting/run:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/run:stream'), {
 			method: 'POST',
 			headers: {
 				...jsonHeaders,
@@ -386,7 +415,7 @@ export class SceneSkillService {
 	}
 
 	async runSceneLayout(payload: { nodeId: string; inputJson: string }): Promise<SceneLayoutRunResponse> {
-		const res = await fetch(this.url('/api/agent-skills/scene-layout/run'), {
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-layout/run'), {
 			method: 'POST',
 			headers: jsonHeaders,
 			body: JSON.stringify(payload ?? {}),

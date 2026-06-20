@@ -87,8 +87,12 @@ contextBridge.exposeInMainWorld('dweb', {
 		registerProjectRoot: (payload) => invoke('dweb:aiworkflow:registerProjectRoot', payload || {}),
 		clearProjectRoot: (payload) => invoke('dweb:aiworkflow:clearProjectRoot', payload || {}),
 		getProjectRootSnapshot: () => invoke('dweb:aiworkflow:getProjectRootSnapshot'),
+		getProjectRootById: (payload) => invoke('dweb:aiworkflow:getProjectRootById', payload || {}),
+		downloadUrlToProjectRoot: (payload) => invoke('dweb:aiworkflow:downloadUrlToProjectRoot', payload || {}),
 		// ---- 本地化存储（取代 Django 的项目/任务镜像/API key 管理） ----
 		db: {
+			_initState: () => invoke('dweb:localdb:getInitState'),
+			_ensureInitialized: (payload) => invoke('dweb:localdb:ensureInitialized', payload || {}),
 			projects: {
 				list: () => invoke('dweb:localdb:projects:list'),
 				get: (payload) => invoke('dweb:localdb:projects:get', payload || {}),

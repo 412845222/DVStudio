@@ -22,8 +22,10 @@ import {
 	setProjectRoot,
 	clearProjectRoot,
 	getProjectRootSnapshot,
+	downloadUrlToProjectRoot,
+	getProjectRootById,
 } from './backend/projectAssetProtocol.mjs'
-import { initLocalDb, getRepos } from './localdb/index.mjs'
+import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
 import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
 
@@ -1391,8 +1393,31 @@ function registerIpc() {
 		return getProjectRootSnapshot()
 	})
 
+	ipcMain.handle('dweb:aiworkflow:getProjectRootById', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) return null
+		return getProjectRootById(projectId)
+	})
+
+	ipcMain.handle('dweb:aiworkflow:downloadUrlToProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		const url = String(payload?.url || '').trim()
+		const desiredFilename = payload?.desiredFilename ? String(payload.desiredFilename) : undefined
+		if (!Number.isFinite(projectId) || projectId <= 0) return { ok: false, error: 'projectId is invalid' }
+		if (!url) return { ok: false, error: 'url is empty' }
+		try {
+			return await downloadUrlToProjectRoot(projectId, url, desiredFilename)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
 	try {
-		registerLocalDbIpc(ipcMain)
+		registerLocalDbIpc(ipcMain, {
+			backendDataDir: getBackendDataDir() || getUserDataDir(),
+			userDataDir: getUserDataDir(),
+			appSecret: getBackendDataDir() || getUserDataDir(),
+		})
 	} catch (err) {
 		console.error('[main] localdb ipc register failed:', err)
 	}
@@ -1548,12 +1573,24 @@ async function main() {
 	loadClientSettings()
 
 	try {
-		const backendDir = getBackendDataDir() || getUserDataDir()
-		initLocalDb({ backendDataDir: backendDir, userDataDir: getUserDataDir(), appSecret: backendDir })
+		const userDir = getUserDataDir()
+		const backendDir = getBackendDataDir() || userDir
+		const dirOk = typeof userDir === 'string' && userDir.trim().length > 0
+		appendRuntimeLog(`[app] localdb init paths: userDir=${userDir} backendDir=${backendDir} ok=${dirOk}`)
+		initLocalDb({ backendDataDir: backendDir, userDataDir: userDir, appSecret: backendDir })
 		const repos = getRepos()
-		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (schema=${repos.schemaInfo?.currentVersion})`)
+		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (tag=${repos.tag || 'primary'} schema=${repos.schemaInfo?.currentVersion})`)
 	} catch (err) {
 		appendRuntimeLog(`[app] localdb init failed: ${String(err?.message || err)}`)
+		appendRuntimeLog(`[app] 尝试回退初始化 localdb (强制使用 userDataDir)...`)
+		const retry = ensureLocalDbInitialized({ userDataDir: getUserDataDir(), backendDataDir: getUserDataDir(), appSecret: getUserDataDir() })
+		if (!retry.ok) {
+			appendRuntimeLog(`[app] localdb fallback init also failed: ${retry.error}`)
+			appendRuntimeLog(`[app] WARNING: localdb 不可用，将使用前端 fallback 路径；项目相关功能可能异常。`)
+		} else {
+			const r = getReposSafe()
+			appendRuntimeLog(`[app] localdb fallback OK: ${r.ok ? r.repos.dbFilePath : 'unknown'}`)
+		}
 	}
 
 	registerIpc()

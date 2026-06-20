@@ -116,11 +116,6 @@ const items = computed(() => [
     active: route.name === "ProjectList",
   },
   {
-    key: "welcome",
-    label: "环境检查",
-    active: route.name === "Welcome",
-  },
-  {
     key: "workflow",
     label: "AI素材工作流",
     active: route.name === "AIWorkflow",
@@ -139,7 +134,6 @@ const items = computed(() => [
 
 function onSelect(key: string) {
   if (key === "projects") void router.push({ name: "ProjectList" });
-  if (key === "welcome") void router.push({ name: "Welcome" });
   if (key === "workflow") void router.push({ name: "AIWorkflow" });
   if (key === "studio") void router.push({ name: "VideoStudio" });
   if (key === "settings") void router.push({ name: "Settings" });

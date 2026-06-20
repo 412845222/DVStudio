@@ -1,0 +1,535 @@
+/* ============================================
+   Theme Tokens - Light/Dark Mode Color System
+   ============================================ */
+
+/* Transition for smooth theme switching */
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  transition:
+    background-color 280ms ease,
+    color 280ms ease,
+    border-color 280ms ease,
+    box-shadow 280ms ease;
+}
+
+/* ============================================
+   Dark Theme (Default)
+   ============================================ */
+:root,
+[data-theme="dark"] {
+  /* Base backgrounds */
+  --theme-bg-primary: #181818;
+  --theme-bg-secondary: #1e1e1e;
+  --theme-bg-tertiary: #23272e;
+  --theme-bg-elevated: #2a2e35;
+  --theme-bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Text colors */
+  --theme-text-primary: #d4d4d4;
+  --theme-text-secondary: #a0a0a0;
+  --theme-text-muted: #6e6e6e;
+  --theme-text-inverse: #1e1e1e;
+
+  /* Accent colors */
+  --theme-accent: #3aa8b4;
+  --theme-accent-hover: #45b8c8;
+  --theme-accent-muted: rgba(58, 168, 180, 0.18);
+  --theme-accent-subtle: rgba(58, 168, 180, 0.08);
+
+  /* Border colors */
+  --theme-border: #3c3c3c;
+  --theme-border-light: #505050;
+  --theme-border-subtle: rgba(255, 255, 255, 0.08);
+  --theme-border-accent: #3aa8b4;
+
+  /* Status colors */
+  --theme-success: #17a773;
+  --theme-success-bg: rgba(23, 167, 115, 0.15);
+  --theme-warning: #cca700;
+  --theme-warning-bg: rgba(204, 167, 0, 0.15);
+  --theme-error: #f14c4c;
+  --theme-error-bg: rgba(241, 76, 76, 0.15);
+  --theme-info: #3794ff;
+  --theme-info-bg: rgba(55, 148, 255, 0.15);
+
+  /* Shadow */
+  --theme-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --theme-shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.24);
+  --theme-shadow-glow: 0 0 12px rgba(58, 168, 180, 0.3);
+
+  /* Interactive states */
+  --theme-hover-bg: #23272e;
+  --theme-hover-border: #3aa8b4;
+  --theme-selected-bg: #094771;
+  --theme-selected-border: #3aa8b4;
+  --theme-disabled-bg: #2c2c2c;
+  --theme-disabled-fg: #666;
+
+  /* Title bar specific */
+  --theme-titlebar-bg: rgba(24, 24, 24, 0.85);
+  --theme-titlebar-border: #3c3c3c;
+
+  /* Side nav */
+  --theme-sidenav-bg: #1a1a1a;
+  --theme-sidenav-hover: #23272e;
+
+  /* Scrollbar */
+  --theme-scrollbar-track: #23272e;
+  --theme-scrollbar-thumb: #3aa8b4;
+
+  /* Input fields */
+  --theme-input-bg: rgba(0, 0, 0, 0.25);
+  --theme-input-border: rgba(255, 255, 255, 0.16);
+  --theme-input-focus-border: rgba(58, 168, 180, 0.7);
+  --theme-input-focus-bg: rgba(0, 0, 0, 0.35);
+  --theme-input-placeholder: #9aa0a6;
+
+  /* Code blocks */
+  --theme-code-bg: #0b1220;
+  --theme-code-border: rgba(255, 255, 255, 0.08);
+
+  /* Card/Panel */
+  --theme-card-bg: #23272e;
+  --theme-card-border: rgba(255, 255, 255, 0.1);
+
+  /* =====================
+     AI Workflow (Dark)
+     ===================== */
+  /* Color palette */
+  --aiwf-color-graphite-950: #15181c;
+  --aiwf-color-graphite-900: #1d2227;
+  --aiwf-color-graphite-820: #242a30;
+  --aiwf-color-graphite-760: #30373f;
+  --aiwf-color-text: #edf2f4;
+  --aiwf-color-text-muted: #aeb8bd;
+  --aiwf-color-text-subtle: #7f8b91;
+  --aiwf-color-primary: #1f9d84;
+  --aiwf-color-primary-hover: #27b99c;
+  --aiwf-color-primary-soft: rgba(31, 157, 132, 0.18);
+  --aiwf-color-accent: #d9982b;
+  --aiwf-color-accent-soft: rgba(217, 152, 43, 0.18);
+  --aiwf-color-info: #4fb7c5;
+  --aiwf-color-info-soft: rgba(79, 183, 197, 0.18);
+  --aiwf-color-danger: #cf5a46;
+  --aiwf-color-danger-soft: rgba(207, 90, 70, 0.18);
+  --aiwf-color-success: #4caf88;
+  --aiwf-color-success-soft: rgba(76, 175, 136, 0.18);
+  --aiwf-color-warning: #d9ad4a;
+  --aiwf-color-warning-soft: rgba(217, 173, 74, 0.2);
+
+  /* Borders (dark) */
+  --aiwf-border-subtle: rgba(237, 242, 244, 0.1);
+  --aiwf-border-default: rgba(237, 242, 244, 0.16);
+  --aiwf-border-strong: rgba(237, 242, 244, 0.26);
+
+  /* Shadows (dark) */
+  --aiwf-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.22);
+  --aiwf-shadow-md: 0 12px 32px rgba(0, 0, 0, 0.3);
+  --aiwf-shadow-lg: 0 20px 54px rgba(0, 0, 0, 0.42);
+  --aiwf-shadow-focus: 0 0 0 1px rgba(31, 157, 132, 0.55), 0 0 18px rgba(31, 157, 132, 0.2);
+
+  /* Motion */
+  --aiwf-motion-fast: 120ms ease;
+  --aiwf-motion-base: 180ms ease;
+  --aiwf-motion-shell: 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Semantic surfaces (dark) */
+  --wf-page-bg: var(--aiwf-color-graphite-950);
+  --wf-page-bg-muted: var(--aiwf-color-graphite-900);
+  --wf-surface-base: rgba(21, 24, 28, 0.94);
+  --wf-surface-raised: rgba(29, 34, 39, 0.94);
+  --wf-surface-muted: rgba(36, 42, 48, 0.9);
+  --wf-surface-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)), rgba(21, 24, 28, 0.82);
+
+  /* WF text */
+  --wf-text: var(--aiwf-color-text);
+  --wf-text-muted: var(--aiwf-color-text-muted);
+  --wf-text-subtle: var(--aiwf-color-text-subtle);
+
+  /* WF borders */
+  --wf-border-subtle: var(--aiwf-border-subtle);
+  --wf-border: var(--aiwf-border-default);
+  --wf-border-strong: var(--aiwf-border-strong);
+  --wf-border-focus: rgba(31, 157, 132, 0.58);
+
+  /* WF semantic colors */
+  --wf-primary: var(--aiwf-color-primary);
+  --wf-primary-hover: var(--aiwf-color-primary-hover);
+  --wf-primary-soft: var(--aiwf-color-primary-soft);
+  --wf-accent: var(--aiwf-color-accent);
+  --wf-accent-soft: var(--aiwf-color-accent-soft);
+  --wf-info: var(--aiwf-color-info);
+  --wf-info-soft: var(--aiwf-color-info-soft);
+  --wf-danger: var(--aiwf-color-danger);
+  --wf-danger-soft: var(--aiwf-color-danger-soft);
+  --wf-success: var(--aiwf-color-success);
+  --wf-success-soft: var(--aiwf-color-success-soft);
+  --wf-warning: var(--aiwf-color-warning);
+  --wf-warning-soft: var(--aiwf-color-warning-soft);
+
+  /* WF controls */
+  --wf-control-bg: rgba(29, 34, 39, 0.92);
+  --wf-control-bg-hover: rgba(36, 42, 48, 0.96);
+  --wf-control-border: var(--wf-border);
+  --wf-control-border-hover: var(--wf-border-focus);
+  --wf-control-text: var(--wf-text);
+
+  /* WF states */
+  --wf-state-selected-bg: rgba(31, 157, 132, 0.16);
+  --wf-state-selected-border: rgba(31, 157, 132, 0.58);
+  --wf-state-running-bg: var(--wf-info-soft);
+  --wf-state-running-border: rgba(79, 183, 197, 0.58);
+  --wf-state-error-bg: var(--wf-danger-soft);
+  --wf-state-error-border: rgba(207, 90, 70, 0.62);
+  --wf-state-warning-bg: var(--wf-warning-soft);
+  --wf-state-warning-border: rgba(217, 173, 74, 0.62);
+
+  /* WF overlays */
+  --wf-overlay-bg: rgba(8, 11, 16, 0.68);
+  --wf-overlay-blur: 10px;
+  --wf-panel-shadow: var(--aiwf-shadow-md);
+  --wf-panel-shadow-strong: var(--aiwf-shadow-lg);
+
+  /* Chat-specific (dark) */
+  --wf-chat-column-bg: rgba(21, 24, 28, 0.62);
+  --wf-chat-message-user-bg: var(--wf-primary-soft);
+  --wf-chat-message-assistant-bg: rgba(237, 242, 244, 0.07);
+  --wf-chat-flow-pending-bg: var(--wf-warning-soft);
+  --wf-chat-flow-complete-bg: var(--wf-success-soft);
+  --wf-chat-flow-error-bg: var(--wf-danger-soft);
+}
+
+/* ============================================
+   Light Theme
+   ============================================ */
+[data-theme="light"] {
+  /* Base backgrounds - warm off-white */
+  --theme-bg-primary: #f5f6f7;
+  --theme-bg-secondary: #ffffff;
+  --theme-bg-tertiary: #eef0f2;
+  --theme-bg-elevated: #ffffff;
+  --theme-bg-overlay: rgba(0, 0, 0, 0.08);
+
+  /* Text colors - dark gray for readability */
+  --theme-text-primary: #1a1d21;
+  --theme-text-secondary: #4a5058;
+  --theme-text-muted: #8a9099;
+  --theme-text-inverse: #ffffff;
+
+  /* Accent colors - slightly deeper for contrast on light bg */
+  --theme-accent: #2a8a96;
+  --theme-accent-hover: #237a84;
+  --theme-accent-muted: rgba(42, 138, 150, 0.12);
+  --theme-accent-subtle: rgba(42, 138, 150, 0.06);
+
+  /* Border colors */
+  --theme-border: #d8dbe0;
+  --theme-border-light: #e8ebf0;
+  --theme-border-subtle: rgba(0, 0, 0, 0.06);
+  --theme-border-accent: #2a8a96;
+
+  /* Status colors - adjusted for light backgrounds */
+  --theme-success: #0d8a54;
+  --theme-success-bg: rgba(13, 138, 84, 0.1);
+  --theme-warning: #a68a00;
+  --theme-warning-bg: rgba(166, 138, 0, 0.1);
+  --theme-error: #d63030;
+  --theme-error-bg: rgba(214, 48, 48, 0.1);
+  --theme-info: #2070c0;
+  --theme-info-bg: rgba(32, 112, 192, 0.1);
+
+  /* Shadow - subtle for light mode */
+  --theme-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  --theme-shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --theme-shadow-glow: 0 0 12px rgba(42, 138, 150, 0.2);
+
+  /* Interactive states */
+  --theme-hover-bg: #eef0f2;
+  --theme-hover-border: #2a8a96;
+  --theme-selected-bg: #d0e8ec;
+  --theme-selected-border: #2a8a96;
+  --theme-disabled-bg: #e8ebf0;
+  --theme-disabled-fg: #a0a5ad;
+
+  /* Title bar specific */
+  --theme-titlebar-bg: rgba(245, 246, 247, 0.9);
+  --theme-titlebar-border: #d8dbe0;
+
+  /* Side nav */
+  --theme-sidenav-bg: #eef0f2;
+  --theme-sidenav-hover: #d8dbe0;
+
+  /* Scrollbar */
+  --theme-scrollbar-track: #e8ebf0;
+  --theme-scrollbar-thumb: #2a8a96;
+
+  /* Input fields */
+  --theme-input-bg: rgba(255, 255, 255, 0.9);
+  --theme-input-border: rgba(0, 0, 0, 0.12);
+  --theme-input-focus-border: rgba(42, 138, 150, 0.6);
+  --theme-input-focus-bg: rgba(255, 255, 255, 1);
+  --theme-input-placeholder: #8a9099;
+
+  /* Code blocks */
+  --theme-code-bg: #f0f2f4;
+  --theme-code-border: rgba(0, 0, 0, 0.08);
+
+  /* Card/Panel */
+  --theme-card-bg: #ffffff;
+  --theme-card-border: rgba(0, 0, 0, 0.08);
+
+  /* =====================
+     AI Workflow (Light)
+     ===================== */
+  /* Color palette (light) */
+  --aiwf-color-graphite-950: #eef0f2;
+  --aiwf-color-graphite-900: #f5f6f7;
+  --aiwf-color-graphite-820: #ffffff;
+  --aiwf-color-graphite-760: #e8ebf0;
+  --aiwf-color-text: #1a1d21;
+  --aiwf-color-text-muted: #4a5058;
+  --aiwf-color-text-subtle: #8a9099;
+  --aiwf-color-primary: #1f9d84;
+  --aiwf-color-primary-hover: #178a74;
+  --aiwf-color-primary-soft: rgba(31, 157, 132, 0.12);
+  --aiwf-color-accent: #d9982b;
+  --aiwf-color-accent-soft: rgba(217, 152, 43, 0.12);
+  --aiwf-color-info: #2a8a96;
+  --aiwf-color-info-soft: rgba(42, 138, 150, 0.12);
+  --aiwf-color-danger: #cf5a46;
+  --aiwf-color-danger-soft: rgba(207, 90, 70, 0.12);
+  --aiwf-color-success: #4caf88;
+  --aiwf-color-success-soft: rgba(76, 175, 136, 0.12);
+  --aiwf-color-warning: #d9ad4a;
+  --aiwf-color-warning-soft: rgba(217, 173, 74, 0.14);
+
+  /* Borders (light) */
+  --aiwf-border-subtle: rgba(0, 0, 0, 0.06);
+  --aiwf-border-default: rgba(0, 0, 0, 0.12);
+  --aiwf-border-strong: rgba(0, 0, 0, 0.18);
+
+  /* Shadows (light) */
+  --aiwf-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --aiwf-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --aiwf-shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.18);
+  --aiwf-shadow-focus: 0 0 0 1px rgba(31, 157, 132, 0.55), 0 0 16px rgba(31, 157, 132, 0.18);
+
+  /* Motion (shared) */
+  --aiwf-motion-fast: 120ms ease;
+  --aiwf-motion-base: 180ms ease;
+  --aiwf-motion-shell: 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Semantic surfaces (light) */
+  --wf-page-bg: #eef0f2;
+  --wf-page-bg-muted: #f5f6f7;
+  --wf-surface-base: rgba(255, 255, 255, 0.96);
+  --wf-surface-raised: rgba(255, 255, 255, 0.98);
+  --wf-surface-muted: rgba(238, 240, 242, 0.92);
+  --wf-surface-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.55)), rgba(245, 246, 247, 0.85);
+
+  /* WF text (light) */
+  --wf-text: var(--aiwf-color-text);
+  --wf-text-muted: var(--aiwf-color-text-muted);
+  --wf-text-subtle: var(--aiwf-color-text-subtle);
+
+  /* WF borders (light) */
+  --wf-border-subtle: var(--aiwf-border-subtle);
+  --wf-border: var(--aiwf-border-default);
+  --wf-border-strong: var(--aiwf-border-strong);
+  --wf-border-focus: rgba(31, 157, 132, 0.58);
+
+  /* WF semantic colors (light) */
+  --wf-primary: var(--aiwf-color-primary);
+  --wf-primary-hover: var(--aiwf-color-primary-hover);
+  --wf-primary-soft: var(--aiwf-color-primary-soft);
+  --wf-accent: var(--aiwf-color-accent);
+  --wf-accent-soft: var(--aiwf-color-accent-soft);
+  --wf-info: var(--aiwf-color-info);
+  --wf-info-soft: var(--aiwf-color-info-soft);
+  --wf-danger: var(--aiwf-color-danger);
+  --wf-danger-soft: var(--aiwf-color-danger-soft);
+  --wf-success: var(--aiwf-color-success);
+  --wf-success-soft: var(--aiwf-color-success-soft);
+  --wf-warning: var(--aiwf-color-warning);
+  --wf-warning-soft: var(--aiwf-color-warning-soft);
+
+  /* WF controls (light) */
+  --wf-control-bg: rgba(255, 255, 255, 0.92);
+  --wf-control-bg-hover: rgba(245, 246, 247, 0.98);
+  --wf-control-border: var(--wf-border);
+  --wf-control-border-hover: var(--wf-border-focus);
+  --wf-control-text: var(--wf-text);
+
+  /* WF states (light) */
+  --wf-state-selected-bg: rgba(31, 157, 132, 0.14);
+  --wf-state-selected-border: rgba(31, 157, 132, 0.6);
+  --wf-state-running-bg: var(--wf-info-soft);
+  --wf-state-running-border: rgba(42, 138, 150, 0.58);
+  --wf-state-error-bg: var(--wf-danger-soft);
+  --wf-state-error-border: rgba(207, 90, 70, 0.6);
+  --wf-state-warning-bg: var(--wf-warning-soft);
+  --wf-state-warning-border: rgba(217, 173, 74, 0.58);
+
+  /* WF overlays (light) */
+  --wf-overlay-bg: rgba(200, 205, 210, 0.55);
+  --wf-overlay-blur: 10px;
+  --wf-panel-shadow: var(--aiwf-shadow-md);
+  --wf-panel-shadow-strong: var(--aiwf-shadow-lg);
+
+  /* Chat-specific (light) */
+  --wf-chat-column-bg: rgba(255, 255, 255, 0.72);
+  --wf-chat-message-user-bg: var(--wf-primary-soft);
+  --wf-chat-message-assistant-bg: rgba(0, 0, 0, 0.05);
+  --wf-chat-flow-pending-bg: var(--wf-warning-soft);
+  --wf-chat-flow-complete-bg: var(--wf-success-soft);
+  --wf-chat-flow-error-bg: var(--wf-danger-soft);
+}
+
+/* ============================================
+   Backward Compatibility Aliases
+   Maps old CSS variables to new theme system
+   ============================================ */
+
+/* Dark theme aliases (maps existing variables) */
+:root,
+[data-theme="dark"] {
+  --dweb-defualt: var(--theme-bg-secondary);
+  --dweb-defualt-light: var(--theme-bg-tertiary);
+  --dweb-defualt-dark: var(--theme-bg-primary);
+  --vscode-fg: var(--theme-text-primary);
+  --vscode-fg-muted: var(--theme-text-secondary);
+  --vscode-accent: var(--theme-accent);
+  --vscode-border: var(--theme-border);
+  --vscode-border-light: var(--theme-border-light);
+  --vscode-border-accent: var(--theme-border-accent);
+  --vscode-error: var(--theme-error);
+  --vscode-warning: var(--theme-warning);
+  --vscode-success: var(--theme-success);
+  --vscode-info: var(--theme-info);
+  --vscode-shadow: var(--theme-shadow);
+  --vscode-hover-bg: var(--theme-hover-bg);
+  --vscode-hover-border: var(--theme-hover-border);
+  --vscode-selected-bg: var(--theme-selected-bg);
+  --vscode-selected-border: var(--theme-selected-border);
+  --vscode-disabled-bg: var(--theme-disabled-bg);
+  --vscode-disabled-fg: var(--theme-disabled-fg);
+  --vscode-divider: var(--theme-border);
+  --vscode-accent-light: var(--theme-accent-hover);
+  --vscode-accent-dark: var(--theme-accent);
+}
+
+/* Light theme aliases */
+[data-theme="light"] {
+  --dweb-defualt: var(--theme-bg-secondary);
+  --dweb-defualt-light: var(--theme-bg-tertiary);
+  --dweb-defualt-dark: var(--theme-bg-primary);
+  --vscode-fg: var(--theme-text-primary);
+  --vscode-fg-muted: var(--theme-text-secondary);
+  --vscode-accent: var(--theme-accent);
+  --vscode-border: var(--theme-border);
+  --vscode-border-light: var(--theme-border-light);
+  --vscode-border-accent: var(--theme-border-accent);
+  --vscode-error: var(--theme-error);
+  --vscode-warning: var(--theme-warning);
+  --vscode-success: var(--theme-success);
+  --vscode-info: var(--theme-info);
+  --vscode-shadow: var(--theme-shadow);
+  --vscode-hover-bg: var(--theme-hover-bg);
+  --vscode-hover-border: var(--theme-hover-border);
+  --vscode-selected-bg: var(--theme-selected-bg);
+  --vscode-selected-border: var(--theme-selected-border);
+  --vscode-disabled-bg: var(--theme-disabled-bg);
+  --vscode-disabled-fg: var(--theme-disabled-fg);
+  --vscode-divider: var(--theme-border);
+  --vscode-accent-light: var(--theme-accent-hover);
+  --vscode-accent-dark: var(--theme-accent);
+}
+
+/* ============================================
+   Theme Toggle Button Styles
+   ============================================ */
+.theme-toggle-btn {
+  position: relative;
+  width: 36px;
+  height: 26px;
+  border: 1px solid var(--theme-border);
+  border-radius: 13px;
+  background: var(--theme-bg-tertiary);
+  cursor: pointer;
+  transition: all 280ms ease;
+  overflow: hidden;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--theme-accent);
+  background: var(--theme-hover-bg);
+}
+
+.theme-toggle-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--theme-accent-muted);
+}
+
+.theme-toggle-track {
+  position: absolute;
+  inset: 2px;
+  border-radius: 11px;
+  background: var(--theme-bg-secondary);
+  transition: transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+[data-theme="dark"] .theme-toggle-track {
+  transform: translateX(0);
+}
+
+[data-theme="light"] .theme-toggle-track {
+  transform: translateX(10px);
+}
+
+.theme-toggle-icons {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.theme-icon-sun,
+.theme-icon-moon {
+  font-size: 12px;
+  line-height: 1;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+[data-theme="dark"] .theme-icon-sun {
+  opacity: 0.3;
+  transform: scale(0.8);
+}
+
+[data-theme="light"] .theme-icon-moon {
+  opacity: 0.3;
+  transform: scale(0.8);
+}
+
+/* Theme toggle knob */
+.theme-toggle-knob {
+  position: absolute;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--theme-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+[data-theme="dark"] .theme-toggle-knob {
+  left: 3px;
+}
+
+[data-theme="light"] .theme-toggle-knob {
+  left: 13px;
+}

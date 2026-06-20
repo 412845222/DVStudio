@@ -10,6 +10,7 @@
     <main ref="contentEl" class="app-content" :class="{ 'app-content-fullscreen': isPreviewWindow }">
       <router-view />
     </main>
+    <StartupProgressBar :state="startupProgressState" @dismiss="hideStartupProgress" />
   </div>
 </template>
 
@@ -19,12 +20,16 @@ import { useRoute } from "vue-router";
 import { VideoStudioKey, VideoStudioStore } from "./store/videostudio";
 import { TimelineKey, TimelineStore } from "./store/timeline";
 import { AIWorkflowKey, AIWorkflowStore } from "./store/aiworkflow";
+import { ThemeKey, ThemeStore } from "./store/theme";
 import GlobalSideNav from "./ui/UIComponent/GlobalSideNav.vue";
 import GlobalTitleBar from "./ui/UIComponent/GlobalTitleBar.vue";
+import StartupProgressBar from "./ui/UIComponent/StartupProgressBar.vue";
+import { useStartupProgress } from "./composables/useStartupProgress";
 
 provide(VideoStudioKey, VideoStudioStore);
 provide(TimelineKey, TimelineStore);
 provide(AIWorkflowKey, AIWorkflowStore);
+provide(ThemeKey, ThemeStore);
 
 const route = useRoute();
 const contentEl = ref<HTMLElement | null>(null);
@@ -37,6 +42,8 @@ const isPreviewWindow = computed(() => {
 });
 
 let ro: ResizeObserver | null = null;
+
+const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress();
 
 function onNavExpandChange(expanded: boolean) {
   navExpanded.value = expanded;
@@ -62,6 +69,9 @@ function syncContentRect() {
 }
 
 onMounted(() => {
+  // Initialize theme from storage
+  ThemeStore.dispatch('initTheme');
+
   document.body.setAttribute('data-side-nav-expanded', String(navExpanded.value));
   if (isPreviewWindow.value) {
     document.documentElement.style.setProperty("--dweb-content-width", `${window.innerWidth}px`);
@@ -91,7 +101,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
   overflow: hidden;
-  background: var(--dweb-defualt-dark);
+  background: var(--theme-bg-primary);
 }
 
 .app-shell.electron {
@@ -125,7 +135,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--dweb-defualt);
+  background: var(--theme-bg-secondary);
 }
 
 .app-content-fullscreen {
