@@ -122,6 +122,32 @@ contextBridge.exposeInMainWorld('dweb', {
 			},
 		},
 		migrateFromDjango: (payload) => invoke('dweb:localdb:migrateFromDjango', payload || {}),
+		// ---- 图片预览原生窗口（Electron BrowserWindow） ----
+		openImageMarkupPreview: (payload) => {
+			console.log('[preload] openImageMarkupPreview called with:', JSON.stringify(payload))
+			return invoke('dweb:image-markup:open', payload || {})
+		},
+		exportImageMarkup: (payload) => invoke('dweb:image-markup:export', payload || {}),
+		onImageMarkupExported: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const CHANNEL = 'dweb:image-markup:exported'
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch { /* ignore */ }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on(CHANNEL, wrapped)
+			return id
+		},
+		offImageMarkupExported: (listenerId) => {
+			const CHANNEL = 'dweb:image-markup:exported'
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener(CHANNEL, wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
 	},
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),

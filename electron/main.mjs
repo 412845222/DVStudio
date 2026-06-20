@@ -1435,6 +1435,85 @@ function registerIpc() {
 			return { ok: false, error: String(err?.message || err) }
 		}
 	})
+
+	// 图片预览原生窗口
+	let imageMarkupWindow = null
+	ipcMain.handle('dweb:image-markup:open', async (_e, payload) => {
+		console.log('[main] dweb:image-markup:open payload:', JSON.stringify(payload))
+		try {
+			const url = String(payload?.url || '').trim()
+			const name = String(payload?.name || '图片预览').slice(0, 200)
+			console.log('[main] url resolved:', url, 'name:', name)
+			if (!url) return { ok: false, error: 'missing url' }
+
+			// 如果已存在，则先关闭
+			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
+				try { imageMarkupWindow.close() } catch {}
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+			const targetUrl = isDev
+				? `${devUrl}/#/image-markup-preview?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/image-markup-preview?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`
+			console.log('[main] targetUrl:', targetUrl)
+
+			imageMarkupWindow = new BrowserWindow({
+				width: 1280,
+				height: 820,
+				title: `${APP_NAME} · ${name}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#181818',
+				frame: true,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+				},
+			})
+			console.log('[main] BrowserWindow created, isDestroyed:', imageMarkupWindow.isDestroyed())
+			try { imageMarkupWindow.setMenuBarVisibility(false) } catch {}
+			try { imageMarkupWindow.removeMenu() } catch {}
+
+			imageMarkupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				appendRuntimeLog(`[image-markup:${level}] ${message} (${sourceId}:${line})`)
+			})
+			imageMarkupWindow.on('closed', () => { imageMarkupWindow = null })
+
+			console.log('[main] about to loadURL:', targetUrl)
+			await imageMarkupWindow.loadURL(targetUrl)
+			console.log('[main] loadURL done, URL:', imageMarkupWindow.webContents.getURL())
+			return { ok: true }
+		} catch (err) {
+			console.error('[main][image-markup] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:image-markup:export', async (_e, payload) => {
+		try {
+			if (!mainWindow || mainWindow.isDestroyed()) {
+				return { ok: false, error: 'main window not available' }
+			}
+			mainWindow.webContents.send('dweb:image-markup:exported', {
+				dataUrl: String(payload?.dataUrl || ''),
+				width: Number(payload?.width || 0) || 0,
+				height: Number(payload?.height || 0) || 0,
+				sourceName: String(payload?.sourceName || ''),
+			})
+			// 关闭预览窗口
+			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
+				try { imageMarkupWindow.close() } catch {}
+			}
+			return { ok: true }
+		} catch (err) {
+			console.error('[main][image-markup] export failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
 }
 
 async function stopBackend() {

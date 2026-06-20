@@ -129,6 +129,7 @@
             @media-ready="onNodeMediaReady(node.id)"
             @move-merge-item="onTextMergeItemMove(node.id, $event)"
             @preview-contextmenu="onNodePreviewContextMenu(node.id, $event)"
+            @preview-request="onNodeImagePreviewRequestInline(node.id, $event)"
             @pull-meshy-output="onNodePullMeshyOutput(node.id)"
             @refresh="() => onNodeRefresh(node.id)"
             @refresh-meshy-task="onNodeRefreshMeshyTask(node.id)"
@@ -552,6 +553,7 @@ import BottomChatDock, {
 import ContextMenu from '../../ui/UIComponent/ContextMenu.vue'
 import ToastStack from '../../ui/UIComponent/ToastStack.vue'
 import FullscreenProgressOverlay from '../../ui/UIComponent/FullscreenProgressOverlay.vue'
+import ImageMarkupDialog from '../../ui/WorkFlow/WorlFlowNodes/ImageMarkupDialog.vue'
 import DwebCanvasNodeSearchMenu from '../../ui/UIComponent/DwebCanvasNodeSearchMenu.vue'
 import { buildDeleteAction, type WorkflowAction } from '../../aiworkflow/actions'
 import { exportWorkflowImageOutputPng } from '../../aiworkflow/imageOutput'
@@ -1152,6 +1154,17 @@ watch(
 onMounted(() => {
   syncGlobalSafeAreaCssVars()
   window.addEventListener('resize', syncGlobalSafeAreaCssVars, { passive: true })
+  try {
+    const w = window as any
+    if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.onImageMarkupExported === 'function') {
+      const id = w.dweb.aiworkflow.onImageMarkupExported((payload: any) => {
+        handleImageMarkupExported(payload || {})
+      })
+      imageMarkupExportListenerId = Number(id || 0) || null
+    }
+  } catch (err) {
+    console.warn('[AIWorkflowPage] registerImageMarkupExportListener failed', err)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -1159,6 +1172,15 @@ onBeforeUnmount(() => {
   const fallbackTop = resolveAppShellTitlebarHeight()
   document.documentElement.style.setProperty('--aiwf-safe-top', `${Math.round(fallbackTop)}px`)
   document.documentElement.style.setProperty('--aiwf-safe-right', '0px')
+  if (imageMarkupExportListenerId != null) {
+    try {
+      const w = window as any
+      if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.offImageMarkupExported === 'function') {
+        w.dweb.aiworkflow.offImageMarkupExported(imageMarkupExportListenerId)
+      }
+    } catch { /* ignore */ }
+    imageMarkupExportListenerId = null
+  }
 })
 
 watch(
@@ -4127,6 +4149,105 @@ const blueprintLogPanelOpen = ref(false)
 const resources = computed(() =>
   store.state.resourceOrder.map((id) => store.state.resourcesById[id]).filter(Boolean)
 )
+
+const imageMarkupContext = ref<{ nodeId: string | null; url: string | null; name: string | null }>({
+  nodeId: null,
+  url: null,
+  name: null,
+})
+
+let imageMarkupExportListenerId: number | null = null
+
+const onNodeImagePreviewRequestInline = (nodeId: string, ev: any) => {
+  const url = typeof ev === 'object' && ev !== null && typeof (ev as any).imageUrl === 'string' ? (ev as any).imageUrl : ''
+  onNodeImagePreviewRequest(nodeId, url)
+}
+
+const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
+  console.log('[AIWorkflowPage] onNodeImagePreviewRequest → nodeId:', nodeId, 'imageUrl:', imageUrl);
+  if (!imageUrl) {
+    pushToast('该图片节点暂无图像资源可预览。', 'warn')
+    return
+  }
+  imageMarkupContext.value = { nodeId, url: imageUrl, name: null }
+  try {
+    const w = window as any
+    console.log('[AIWorkflowPage] dweb available:', !!w.dweb, 'dweb.aiworkflow:', !!w.dweb?.aiworkflow, 'openImageMarkupPreview:', typeof w.dweb?.aiworkflow?.openImageMarkupPreview);
+    if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.openImageMarkupPreview === 'function') {
+      console.log('[AIWorkflowPage] calling openImageMarkupPreview with:', { url: imageUrl, name: nodeId });
+      w.dweb.aiworkflow.openImageMarkupPreview({ url: imageUrl, name: nodeId })
+      return
+    }
+    pushToast('当前环境未提供图片预览原生窗口，请在 DVStudio Electron 客户端中使用。', 'warn')
+  } catch (err) {
+    console.warn('[AIWorkflowPage] openImageMarkupPreview failed', err)
+    pushToast('打开图片预览窗口失败。', 'warn')
+  }
+}
+
+const closeImageMarkupDialog = () => {
+  imageMarkupContext.value = { nodeId: null, url: null, name: null }
+}
+
+const handleImageMarkupExported = (payload: { dataUrl: string; width: number; height: number; sourceName?: string | null }) => {
+  const fromNodeId = imageMarkupContext.value.nodeId
+  const baseName = (imageMarkupContext.value.name || payload.sourceName || 'marked-image.png').replace(/\.[^.]+$/, '')
+  if (!fromNodeId) {
+    pushToast('找不到源图片节点，无法生成新节点。', 'warn')
+    return
+  }
+  try {
+    const fromNode = store.state.nodesById[fromNodeId]
+    if (!fromNode) return
+
+    const baseX = Number(fromNode.worldX || 0)
+    const baseY = Number(fromNode.worldY || 0)
+    const title = `${fromNode.title ? fromNode.title + ' ' : ''}标记图像`
+
+    store.commit('addNodeAt', { worldX: baseX + 400, worldY: baseY, title })
+    const newNodeId = String(store.state.selectedNodeId || '').trim()
+    if (!newNodeId || !store.state.nodesById[newNodeId]) {
+      pushToast('创建标记图像节点失败。', 'error')
+      return
+    }
+
+    const resourceId = `res-markup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    const resourceName = `${baseName}-marked-${Date.now()}.png`.slice(0, 200)
+    store.commit('addResource', {
+      id: resourceId,
+      kind: 'image',
+      name: resourceName,
+      url: payload.dataUrl,
+      localFileKey: `markup:${newNodeId}`,
+    } as any)
+
+    store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+    store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
+
+    const w = Math.max(1, Math.floor(Number(payload.width) || 1))
+    const h = Math.max(1, Math.floor(Number(payload.height) || 1))
+    store.commit('setNodeImageSettings', {
+      nodeId: newNodeId,
+      imageSettings: { outputWidth: w, outputHeight: h, naturalWidth: w, naturalHeight: h, cropEnabled: false, crop: { x: 0, y: 0, width: 1, height: 1 } },
+    })
+
+    const fromAnchors = (fromNode as any).outputs as Array<any> | undefined
+    const fromAnchor = fromAnchors?.find((a: any) => String(a.mediaType || '') === 'image' || /^out-image/.test(String(a.id || ''))) || fromAnchors?.[0]
+    if (fromAnchor) {
+      store.commit('addEdge', { fromNodeId, fromAnchorId: String(fromAnchor.id), toNodeId: newNodeId, toAnchorId: 'in-0' })
+    }
+
+    closeImageMarkupDialog()
+    pushToast('已在当前图片节点右侧生成新的图片节点，并自动连接原节点。', 'info')
+  } catch (err) {
+    console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
+    pushToast('生成标记图像节点失败。', 'error')
+  }
+}
+
+const onNodeExportMarkupImage = (payload: { file: File; dataUrl: string; width: number; height: number }) => {
+  handleImageMarkupExported({ dataUrl: payload.dataUrl, width: payload.width, height: payload.height })
+}
 
 const {
   meshyTaskDialogOpen,

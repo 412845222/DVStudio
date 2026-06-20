@@ -1,12 +1,13 @@
 <template>
-  <div class="app-shell" :class="{ electron: isElectronRuntime }">
-    <GlobalTitleBar v-if="isElectronRuntime" class="app-titlebar" />
+  <div class="app-shell" :class="{ electron: isElectronRuntime, 'is-preview-window': isPreviewWindow }">
+    <GlobalTitleBar v-if="isElectronRuntime && !isPreviewWindow" class="app-titlebar" />
     <GlobalSideNav
+      v-if="!isPreviewWindow"
       class="app-side-nav"
       :expanded="navExpanded"
       @expand-change="onNavExpandChange"
     />
-    <main ref="contentEl" class="app-content">
+    <main ref="contentEl" class="app-content" :class="{ 'app-content-fullscreen': isPreviewWindow }">
       <router-view />
     </main>
     <StartupProgressBar :state="startupProgressState" @dismiss="hideStartupProgress" />
@@ -14,7 +15,8 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, provide, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, provide, ref } from "vue";
+import { useRoute } from "vue-router";
 import { VideoStudioKey, VideoStudioStore } from "./store/videostudio";
 import { TimelineKey, TimelineStore } from "./store/timeline";
 import { AIWorkflowKey, AIWorkflowStore } from "./store/aiworkflow";
@@ -29,9 +31,16 @@ provide(TimelineKey, TimelineStore);
 provide(AIWorkflowKey, AIWorkflowStore);
 provide(ThemeKey, ThemeStore);
 
+const route = useRoute();
 const contentEl = ref<HTMLElement | null>(null);
 const navExpanded = ref(false);
 const isElectronRuntime = (window as any)?.__DWEB_RUNTIME__?.isElectron === true;
+
+const isPreviewWindow = computed(() => {
+  const path = String(route.path || '');
+  return path.startsWith('/image-markup-preview');
+});
+
 let ro: ResizeObserver | null = null;
 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress();
@@ -64,6 +73,11 @@ onMounted(() => {
   ThemeStore.dispatch('initTheme');
 
   document.body.setAttribute('data-side-nav-expanded', String(navExpanded.value));
+  if (isPreviewWindow.value) {
+    document.documentElement.style.setProperty("--dweb-content-width", `${window.innerWidth}px`);
+    document.documentElement.style.setProperty("--dweb-content-height", `${window.innerHeight}px`);
+    return;
+  }
   syncContentRect();
   if ("ResizeObserver" in window) {
     ro = new ResizeObserver(() => syncContentRect());
@@ -94,6 +108,10 @@ onBeforeUnmount(() => {
   --titlebar-height: 36px;
 }
 
+.app-shell.is-preview-window {
+  --titlebar-height: 0px;
+}
+
 .app-titlebar {
   grid-column: 1 / -1;
   grid-row: 1;
@@ -118,5 +136,13 @@ onBeforeUnmount(() => {
   height: 100%;
   overflow: hidden;
   background: var(--theme-bg-secondary);
+}
+
+.app-content-fullscreen {
+  grid-row: 1 / -1;
+  grid-column: 1 / -1;
+  width: 100vw;
+  height: 100vh;
+  background: #1a1a1a;
 }
 </style>
