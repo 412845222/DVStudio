@@ -36,6 +36,7 @@
   },
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/rebuild-better-sqlite3.mjs",
     "dev": "vite",
     "dev:vite:5173": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "dev:web": "cross-env VITE_PLATFORM=web VITE_BACKEND_BASE_URL=http://127.0.0.1:5800 DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
@@ -83,7 +84,7 @@
     "postinstall": "npm run git:setup-hooks 2>/dev/null || true"
   },
   "dependencies": {
-    "@github/copilot": "^0.0.23",
+    "@github/copilot": "^0.0.326",
     "better-sqlite3": "^11.3.0",
     "js-yaml": "^4.1.1",
     "jszip": "^3.10.1",
