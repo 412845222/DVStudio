@@ -312,13 +312,14 @@ export const useAIWorkflowProjectPersistence = (payload: {
           },
         })
       } catch {
-        payload.pushToast(`保存前图片读取失败，已跳过临时预览并继续保存：${item.name}`, 'warn')
-        blueprintLog.append(`保存前图片读取失败，跳过临时预览：${item.name}`, {
+        payload.pushToast(`删除无效资源：${item.name}`, 'info')
+        blueprintLog.append(`删除无效资源：${item.name}`, {
           category: 'operation',
-          level: 'WARN',
+          level: 'INFO',
           tag: 'project-save',
           detail: { resourceId: item.id, name: item.name },
         })
+        payload.store.commit('removeResource', { resourceId: item.id })
       }
     }
 
@@ -355,7 +356,9 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     const project = (res as any).project ?? {}
-    await payload.setSavedProject(project)
+    const loadedProjectId = Number(project?.id)
+    const fallbackLoadedId = Number.isFinite(loadedProjectId) && loadedProjectId > 0 ? loadedProjectId : projectId
+    await payload.setSavedProject({ ...project, id: fallbackLoadedId })
 
     const normalizedSnapshot = payload.stripUnrealExportRuntimeFromSnapshot(
       payload.normalizeSnapshotResourceUrls((res as any).snapshot, payload.resolveBackendUrl)
@@ -386,11 +389,11 @@ export const useAIWorkflowProjectPersistence = (payload: {
       })
     }
 
-    const loadedProjectId = Number(payload.currentProjectId.value || 0)
-    if (Number.isFinite(loadedProjectId) && loadedProjectId > 0) {
+    const repairProjectId = Number(payload.currentProjectId.value || 0)
+    if (Number.isFinite(repairProjectId) && repairProjectId > 0) {
       try {
         const projectRoot = typeof payload.getCurrentProjectRootPath === 'function' ? payload.getCurrentProjectRootPath() : ''
-        await resolveOrRepairProjectScopedResources(loadedProjectId, { silent: true, projectRootPath: projectRoot })
+        await resolveOrRepairProjectScopedResources(repairProjectId, { silent: true, projectRootPath: projectRoot })
       } catch {
         // keep load flow resilient if auto repair fails
       }
@@ -495,7 +498,9 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     const project = (res as any).project ?? {}
-    await payload.setSavedProject(project, nextName)
+    const savedProjectId = Number(project?.id)
+    const fallbackId = Number.isFinite(savedProjectId) && savedProjectId > 0 ? savedProjectId : payload.currentProjectId.value
+    await payload.setSavedProject({ ...project, id: fallbackId }, nextName)
 
     const projectId = Number(payload.currentProjectId.value || 0)
     if (wasUnsavedProject && Number.isFinite(projectId) && projectId > 0) {

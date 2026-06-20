@@ -135,10 +135,11 @@ async function load() {
 	form.deepseekBaseUrl = FIXED_DEEPSEEK_BASE_URL
 	form.deepseekModel = FIXED_DEEPSEEK_MODEL
 	form.geminiModel = FIXED_GEMINI_MODEL
-	form.deepseekApiKey = ''
-	form.geminiApiKey = ''
-	form.bytedanceApiKey = ''
-	form.meshyApiKey = ''
+	// Keep API keys from loaded settings - do NOT clear them
+	// Keys are stored in client settings alongside encrypted backend storage
+	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey']) {
+		if (!(key in form) || typeof (form as any)[key] !== 'string') (form as any)[key] = ''
+	}
 	loading.value = false
 }
 
@@ -155,36 +156,28 @@ async function doSubmit() {
 	saving.value = true
 	saveMsg.value = ''
 
-	const deepseekKey = String(form.deepseekApiKey || '').trim()
-	const geminiKey = String(form.geminiApiKey || '').trim()
-	const bytedanceKey = String(form.bytedanceApiKey || '').trim()
-	const meshyKey = String(form.meshyApiKey || '').trim()
+	// Always include all key fields in saveEncryptedAICredentials.
+	// This ensures that clearing a key in the form also clears the encrypted storage.
 	const keyPayload: {
-		deepseekApiKey?: string
-		geminiApiKey?: string
-		bytedanceApiKey?: string
-		meshyApiKey?: string
-	} = {}
-	if (deepseekKey) keyPayload.deepseekApiKey = deepseekKey
-	if (geminiKey) keyPayload.geminiApiKey = geminiKey
-	if (bytedanceKey) keyPayload.bytedanceApiKey = bytedanceKey
-	if (meshyKey) keyPayload.meshyApiKey = meshyKey
-
-	if (Object.keys(keyPayload).length > 0) {
-		const keyRes = await saveEncryptedAICredentials(keyPayload)
-		if (!keyRes.ok) {
-			saveMsg.value = `保存失败：${keyRes.error || '后端写入失败'}`
-			saving.value = false
-			return
-		}
+		deepseekApiKey: string
+		geminiApiKey: string
+		bytedanceApiKey: string
+		meshyApiKey: string
+	} = {
+		deepseekApiKey: String(form.deepseekApiKey || '').trim(),
+		geminiApiKey: String(form.geminiApiKey || '').trim(),
+		bytedanceApiKey: String(form.bytedanceApiKey || '').trim(),
+		meshyApiKey: String(form.meshyApiKey || '').trim(),
+	}
+	const keyRes = await saveEncryptedAICredentials(keyPayload)
+	if (!keyRes.ok) {
+		saveMsg.value = `保存失败：${keyRes.error || '后端写入失败'}`
+		saving.value = false
+		return
 	}
 
 	const r = await saveClientSettings({
 		...form,
-		deepseekApiKey: '',
-		geminiApiKey: '',
-		bytedanceApiKey: '',
-		meshyApiKey: '',
 		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
 		deepseekModel: FIXED_DEEPSEEK_MODEL,
 		geminiModel: FIXED_GEMINI_MODEL,
@@ -194,12 +187,6 @@ async function doSubmit() {
 	else if (r === null) saveMsg.value = '保存成功（本地设置已在浏览器中保存）'
 	else saveMsg.value = `保存失败：${r?.error || '未知错误'}`
 
-	if (r?.ok) {
-		form.deepseekApiKey = ''
-		form.geminiApiKey = ''
-		form.bytedanceApiKey = ''
-		form.meshyApiKey = ''
-	}
 	saving.value = false
 }
 
