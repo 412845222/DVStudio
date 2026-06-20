@@ -1075,10 +1075,11 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         const node = store.state.nodesById[nodeId]
         if (!node) return false
         const resourceId = `gen-img-${nodeId}-${Date.now()}`
+        const resourceName = `gen_image_${resourceId.slice(-6)}`
         const base: any = {
           id: resourceId,
           kind: 'image',
-          name: `AI 生成图片 ${resourceId.slice(-6)}`,
+          name: resourceName,
           url: '',
         }
         const pid = Number(currentProjectId.value ?? 0)
@@ -1097,7 +1098,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
 
           // Electron: localdb authoritative. Prefer main-process download to local project root.
           if (!downloaded && isElectron()) {
-            const dl = await downloadAssetViaElectron(pid, sourceUrl, `img-${resourceId}`)
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, resourceName)
             if (dl) {
               base.sourcePath = dl.sourcePath
               base.projectRelativePath = dl.projectRelativePath
@@ -1114,7 +1115,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
                 projectId: pid,
                 kind: 'image',
                 sourceUrl,
-                name: `img-${resourceId}`,
+                name: resourceName,
                 bucket: 'assets',
               })
               if (result?.ok && result.asset) {
@@ -1150,10 +1151,11 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         const node = store.state.nodesById[nodeId]
         if (!node) return false
         const resourceId = `gen-video-${nodeId}-${Date.now()}`
+        const resourceName = `gen_video_${resourceId.slice(-6)}`
         const base: any = {
           id: resourceId,
           kind: 'video',
-          name: `AI 生成视频 ${resourceId.slice(-6)}`,
+          name: resourceName,
           url: '',
         }
         const pid = Number(currentProjectId.value ?? 0)
@@ -1172,7 +1174,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
 
           // Electron: localdb authoritative. Prefer main-process download to local project root.
           if (!downloaded && isElectron()) {
-            const dl = await downloadAssetViaElectron(pid, sourceUrl, `video-${resourceId}`)
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, resourceName)
             if (dl) {
               base.sourcePath = dl.sourcePath
               base.projectRelativePath = dl.projectRelativePath
@@ -1189,7 +1191,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
                 projectId: pid,
                 kind: 'video',
                 sourceUrl,
-                name: `video-${resourceId}`,
+                name: resourceName,
                 bucket: 'assets',
               })
               if (result?.ok && result.asset) {

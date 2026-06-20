@@ -105,6 +105,11 @@ export const useAIWorkflowProjectSnapshotBuilder = (payload: {
       let backendAbsolutePath = ''
       let backendProjectRelativePath = projectRelativePath
       const kind = ((resource as any).kind === 'video' ? 'video' : 'image') as 'image' | 'video'
+
+      if (!isLocal && backendProjectRelativePath && !rawUrl.toLowerCase().startsWith('dweb://project-assets')) {
+        persistUrl = projectAssetRuntimeUrl(backendProjectRelativePath, persistUrl)
+      }
+
       if (uploadLocal && isLocal) {
         if (backendProjectRelativePath) {
           persistUrl = projectAssetRuntimeUrl(backendProjectRelativePath, '')

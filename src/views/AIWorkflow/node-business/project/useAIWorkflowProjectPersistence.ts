@@ -198,7 +198,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
       ? ((payload.store.state as any).resourceOrder as string[])
       : Object.keys(resourcesById)
 
-    const toUpload: Array<{ id: string; url: string; name: string }> = []
+    const toUpload: Array<{ id: string; url: string; name: string; projectRelativePath: string; sourcePath: string; localFileKey: string }> = []
     for (const rid of resourceOrder) {
       const r = resourcesById?.[rid]
       if (!r) continue
@@ -214,13 +214,13 @@ export const useAIWorkflowProjectPersistence = (payload: {
       if (sourcePath || projectRelativePath || localFileKey) continue
 
       const name = String(r.name ?? `image_${rid}`).trim() || `image_${rid}`
-      toUpload.push({ id: String(rid), url, name })
+      toUpload.push({ id: String(rid), url, name, projectRelativePath, sourcePath, localFileKey })
     }
     if (!toUpload.length) return true
 
     for (const item of toUpload) {
       try {
-        const uploaded = await payload.uploadLocalResourceAndGetUrl(item.url, 'image', item.name)
+        const uploaded = await payload.uploadLocalResourceAndGetUrl(item.url, 'image', item.name, { projectId: payload.currentProjectId.value })
         payload.store.commit('patchResource', {
           resourceId: item.id,
           patch: {
