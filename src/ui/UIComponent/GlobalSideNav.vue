@@ -16,7 +16,15 @@
       @click="onSelect(item.key)"
     >
       <span class="global-side-nav-icon" aria-hidden="true">
-        <svg v-if="item.key === 'welcome'" viewBox="0 0 24 24" fill="none">
+        <svg v-if="item.key === 'projects'" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M4 5h7l2 2h7v12H4z"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <svg v-else-if="item.key === 'welcome'" viewBox="0 0 24 24" fill="none">
           <path
             d="M4 9.5L12 4l8 5.5"
             stroke="currentColor"
@@ -103,6 +111,11 @@ const router = useRouter();
 
 const items = computed(() => [
   {
+    key: "projects",
+    label: "项目列表",
+    active: route.name === "ProjectList",
+  },
+  {
     key: "welcome",
     label: "环境检查",
     active: route.name === "Welcome",
@@ -125,6 +138,7 @@ const items = computed(() => [
 ]);
 
 function onSelect(key: string) {
+  if (key === "projects") void router.push({ name: "ProjectList" });
   if (key === "welcome") void router.push({ name: "Welcome" });
   if (key === "workflow") void router.push({ name: "AIWorkflow" });
   if (key === "studio") void router.push({ name: "VideoStudio" });

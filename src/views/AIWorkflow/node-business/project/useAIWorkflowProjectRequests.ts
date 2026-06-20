@@ -63,6 +63,12 @@ export const useAIWorkflowProjectRequests = (payload: {
       }
       return
     }
+    await createProjectAtRootPath(picked.path)
+  }
+
+  const createProjectAtRootPath = async (rootPath: string) => {
+    const trimmedRoot = String(rootPath || '').trim()
+    if (!trimmedRoot) return
 
     payload.cancelActiveRecoverySession()
     payload.store.commit('hydrateDraft', { snapshot: payload.createEmptyDraftSnapshot() })
@@ -75,7 +81,7 @@ export const useAIWorkflowProjectRequests = (payload: {
 
     const fallbackName = String(payload.currentProjectName.value || '').trim() || '未命名项目'
     const opened = await payload.blueprintProjectService.openProjectFolder({
-      rootPath: picked.path,
+      rootPath: trimmedRoot,
       name: fallbackName,
       create: true,
     })
@@ -102,6 +108,19 @@ export const useAIWorkflowProjectRequests = (payload: {
     payload.pushToast(`已新建项目：${String(project?.name || fallbackName)}`, 'info')
   }
 
+  const onRequestNewProjectFromPath = async (rootPath: string) => {
+    if (!String(rootPath || '').trim()) return
+    if (!isElectron()) {
+      payload.pushToast('新建项目需选择本地文件夹，当前运行环境不支持。', 'warn')
+      return
+    }
+    if (payload.activeRecoverySession.value) {
+      payload.pushToast('资源恢复中，请稍候再新建项目。', 'warn')
+      return
+    }
+    await createProjectAtRootPath(rootPath)
+  }
+
   const onRequestLoadProject = async (request: { projectId: number }) => {
     const id = Number(request?.projectId)
     if (!Number.isFinite(id) || id <= 0) return
@@ -118,7 +137,7 @@ export const useAIWorkflowProjectRequests = (payload: {
 
     const res = await payload.blueprintProjectService.deleteProject(id)
     if (!res.ok) {
-      payload.pushToast('删除项目失败：' + String(res.error || 'unknown'), 'error')
+      payload.pushToast('删除项目失败：' + String((res as any).error || 'unknown'), 'error')
       return
     }
 
@@ -141,6 +160,7 @@ export const useAIWorkflowProjectRequests = (payload: {
   return {
     onRequestSaveProject,
     onRequestNewProject,
+    onRequestNewProjectFromPath,
     onRequestLoadProject,
     onRequestDeleteProject,
     onRequestRepairProjectAssets,
