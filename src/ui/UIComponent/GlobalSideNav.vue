@@ -192,9 +192,24 @@ function onHover(v: boolean) {
 	emit('expand-change', v)
 }
 
+const LAST_PROJECT_KEY = 'dweb.aiworkflow.lastProjectId.v1'
+
+function getLastProjectId(): number | null {
+	const raw = localStorage.getItem(LAST_PROJECT_KEY)
+	const id = Number(raw)
+	return Number.isFinite(id) && id > 0 ? id : null
+}
+
 function onSelect(key: string) {
 	if (key === 'projects') void router.push({ name: 'ProjectList' })
-	if (key === 'workflow') void router.push({ name: 'AIWorkflow' })
+	if (key === 'workflow') {
+		const lastId = getLastProjectId()
+		if (lastId) {
+			void router.push({ name: 'AIWorkflow', query: { projectId: String(lastId) } })
+		} else {
+			void router.push({ name: 'AIWorkflow' })
+		}
+	}
 	if (key === 'studio') void router.push({ name: 'VideoStudio' })
 	if (key === 'settings') void router.push({ name: 'Settings' })
 }
