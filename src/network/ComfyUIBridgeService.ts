@@ -1,6 +1,7 @@
 import { getBackendBaseUrl } from './backendConfig'
 import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
+import { logBlueprintRequest } from './blueprintRequestLog'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -10,11 +11,11 @@ type ServiceOptions = {
 
 const normalizeLocalExecBasePath = (raw: unknown) => {
 	const text = String(raw ?? '').trim()
-	if (!text) return '/api/workflow/copilot'
+	if (!text) return '/api/workflow/codex'
 	if (text === 'codex') return '/api/workflow/codex'
 	if (text === 'copilot') return '/api/workflow/copilot'
 	const withLeadingSlash = text.startsWith('/') ? text : `/${text}`
-	return withLeadingSlash.replace(/\/+$/, '') || '/api/workflow/copilot'
+	return withLeadingSlash.replace(/\/+$/, '') || '/api/workflow/codex'
 }
 
 type PingResponse =
@@ -397,11 +398,39 @@ export class ComfyUIBridgeService {
 		return this.url(`${this.localExecBasePath}${normalized}`)
 	}
 
+	private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit, tag = 'comfyui'): Promise<Response> {
+		const url = typeof input === 'string' ? input : (input as Request).url || String(input)
+		const method = String(init?.method || 'GET').toUpperCase()
+		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+		try {
+			const res = await fetch(input as any, init)
+			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			logBlueprintRequest({
+				url,
+				method,
+				status: res.status,
+				durationMs: Math.max(0, Math.round(end - start)),
+				tag,
+			})
+			return res
+		} catch (err) {
+			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			logBlueprintRequest({
+				url,
+				method,
+				durationMs: Math.max(0, Math.round(end - start)),
+				errorMessage: err instanceof Error ? err.message : String(err),
+				tag,
+			})
+			throw err
+		}
+	}
+
 	async blueprintChat(payload: {
 		content: string
 		history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 	}): Promise<BlueprintChatResponse> {
-		const res = await fetch(this.url('/api/workflow/blueprint/chat'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/blueprint/chat'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload ?? {}),
@@ -442,7 +471,7 @@ export class ComfyUIBridgeService {
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<BlueprintChatStreamEvent, void, void> {
-		const res = await fetch(this.url('/api/third-party/blueprint/chat:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/blueprint/chat:stream'), {
 			method: 'POST',
 			headers: {
 				...jsonHeaders(this.devToken),
@@ -534,7 +563,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async codexHealth(): Promise<any> {
-		const res = await fetch(this.localExecUrl('/health'), {
+		const res = await this.fetchWithLog(this.localExecUrl('/health'), {
 			method: 'GET',
 			headers: jsonHeaders(this.devToken),
 		})
@@ -548,7 +577,7 @@ export class ComfyUIBridgeService {
 	async codexListSessions(projectId: number | null): Promise<CodexListSessionsResponse> {
 		const pid = Number.isFinite(projectId as number) ? Number(projectId) : NaN
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
-		const res = await fetch(this.localExecUrl(`/sessions${query}`), {
+		const res = await this.fetchWithLog(this.localExecUrl(`/sessions${query}`), {
 			method: 'GET',
 			headers: jsonHeaders(this.devToken),
 		})
@@ -560,7 +589,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async codexCreateSession(payload: { title?: string; cwd?: string; model?: string; projectId?: number | null } = {}): Promise<CodexCreateSessionResponse> {
-		const res = await fetch(this.localExecUrl('/sessions'), {
+		const res = await this.fetchWithLog(this.localExecUrl('/sessions'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload ?? {}),
@@ -577,7 +606,7 @@ export class ComfyUIBridgeService {
 		if (!sid) return { error: 'sessionId is required' }
 		const pid = Number.isFinite(projectId as number) ? Number(projectId) : NaN
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
-		const res = await fetch(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/messages${query}`), {
+		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/messages${query}`), {
 			method: 'GET',
 			headers: jsonHeaders(this.devToken),
 		})
@@ -591,7 +620,7 @@ export class ComfyUIBridgeService {
 	async codexUpdateSession(payload: { sessionId: string; projectId: number | null; title: string }): Promise<{ error?: string; [k: string]: any }> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
-		const res = await fetch(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}`), {
+		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}`), {
 			method: 'PATCH',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ title: payload.title, projectId: payload.projectId }),
@@ -608,7 +637,7 @@ export class ComfyUIBridgeService {
 		if (!sid) return { error: 'sessionId is required' }
 		const pid = Number.isFinite(payload.projectId as number) ? Number(payload.projectId) : NaN
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
-		const res = await fetch(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}${query}`), {
+		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}${query}`), {
 			method: 'DELETE',
 			headers: jsonHeaders(this.devToken),
 		})
@@ -622,7 +651,7 @@ export class ComfyUIBridgeService {
 	async codexSubmitApproval(payload: { sessionId: string; messageId: string; decision: 'accept' | 'decline'; projectId?: number | null }): Promise<CodexApprovalResponse> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
-		const res = await fetch(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/approvals`), {
+		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/approvals`), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ message_id: payload.messageId, decision: payload.decision, projectId: (payload as any).projectId ?? null }),
@@ -656,7 +685,7 @@ export class ComfyUIBridgeService {
 		const streamPath = useTestStream
 			? `/sessions/${encodeURIComponent(sid)}/messages:stream-test`
 			: `/sessions/${encodeURIComponent(sid)}/messages:stream`
-		const res = await fetch(this.localExecUrl(streamPath), {
+		const res = await this.fetchWithLog(this.localExecUrl(streamPath), {
 			method: 'POST',
 			headers: {
 				...jsonHeaders(this.devToken),
@@ -746,7 +775,7 @@ export class ComfyUIBridgeService {
 			Accept: 'application/json',
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
-		const res = await fetch(this.url('/api/third-party/nanobanana/ref-cache'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/nanobanana/ref-cache'), {
 			method: 'POST',
 			headers,
 			body: formData,
@@ -771,7 +800,7 @@ export class ComfyUIBridgeService {
 			Accept: 'application/json',
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
-		const res = await fetch(this.url('/api/third-party/seedream/ref-cache'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/seedream/ref-cache'), {
 			method: 'POST',
 			headers,
 			body: formData,
@@ -798,7 +827,7 @@ export class ComfyUIBridgeService {
 		width?: number
 		height?: number
 	}): Promise<NanoBananaGenerateResponse> {
-		const res = await fetch(this.url('/api/third-party/nanobanana/generate'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/nanobanana/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload ?? {}),
@@ -832,7 +861,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/third-party/nanobanana/generate:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/nanobanana/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -930,7 +959,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/third-party/seedream/generate:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/seedream/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -1025,7 +1054,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/third-party/seedance/generate:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/seedance/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -1122,7 +1151,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/third-party/jimeng/image/generate:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/jimeng/image/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -1219,7 +1248,7 @@ export class ComfyUIBridgeService {
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await fetch(this.url('/api/workflow/jimeng/video/generate:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/jimeng/video/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -1304,7 +1333,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async ping(comfyBaseUrl: string): Promise<PingResponse> {
-		const res = await fetch(this.url('/api/workflow/ping'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/ping'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ baseUrl: comfyBaseUrl }),
@@ -1322,7 +1351,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async listWorkflows(comfyBaseUrl: string): Promise<WorkflowsListResponse> {
-		const res = await fetch(this.url('/api/workflow/workflows/list'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/workflows/list'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ baseUrl: comfyBaseUrl }),
@@ -1340,7 +1369,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async getWorkflow(comfyBaseUrl: string, workflowPath: string): Promise<WorkflowGetResponse> {
-		const res = await fetch(this.url('/api/workflow/workflows/get'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/workflows/get'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ baseUrl: comfyBaseUrl, workflowPath }),
@@ -1372,7 +1401,7 @@ export class ComfyUIBridgeService {
 		files.forEach((f, idx) => {
 			form.append(`file${idx}`, f, f.name || `input_${idx}.png`)
 		})
-		const res = await fetch(this.url('/api/workflow/run'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/run'), {
 			method: 'POST',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 			body: form,
@@ -1401,7 +1430,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async outputs(comfyBaseUrl: string, promptId: string): Promise<OutputsResponse> {
-		const res = await fetch(this.url('/api/workflow/outputs'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/outputs'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ baseUrl: comfyBaseUrl, promptId }),
@@ -1419,7 +1448,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyGenerate(payload: Record<string, any>): Promise<MeshyGenerateResponse> {
-		const res = await fetch(this.url('/api/third-party/meshy/generate'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload || {}),
@@ -1436,7 +1465,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyTask(taskId: string, mode: string): Promise<MeshyTaskResponse> {
-		const res = await fetch(this.url('/api/third-party/meshy/task'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/task'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ taskId, mode }),
@@ -1464,7 +1493,7 @@ export class ComfyUIBridgeService {
 		if (query?.family) search.set('family', String(query.family).trim())
 		if (Number.isFinite(query?.limit)) search.set('limit', String(query?.limit))
 		const suffix = search.size ? `?${search.toString()}` : ''
-		const res = await fetch(this.url(`/api/third-party/meshy/tasks${suffix}`), {
+		const res = await this.fetchWithLog(this.url(`/api/third-party/meshy/tasks${suffix}`), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1481,7 +1510,7 @@ export class ComfyUIBridgeService {
 
 	async meshyTaskDetail(taskId: string): Promise<MeshyTaskDetailResponse> {
 		const search = new URLSearchParams({ taskId })
-		const res = await fetch(this.url(`/api/third-party/meshy/task/detail?${search.toString()}`), {
+		const res = await this.fetchWithLog(this.url(`/api/third-party/meshy/task/detail?${search.toString()}`), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1506,7 +1535,7 @@ export class ComfyUIBridgeService {
 		if (query?.model) search.set('model', String(query.model).trim())
 		if (Number.isFinite(query?.limit)) search.set('limit', String(query?.limit))
 		const suffix = search.size ? `?${search.toString()}` : ''
-		const res = await fetch(this.url(`/api/third-party/seedance/tasks${suffix}`), {
+		const res = await this.fetchWithLog(this.url(`/api/third-party/seedance/tasks${suffix}`), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1523,7 +1552,7 @@ export class ComfyUIBridgeService {
 
 	async seedanceTaskDetail(taskId: string): Promise<SeedanceTaskDetailResponse> {
 		const search = new URLSearchParams({ taskId })
-		const res = await fetch(this.url(`/api/third-party/seedance/task/detail?${search.toString()}`), {
+		const res = await this.fetchWithLog(this.url(`/api/third-party/seedance/task/detail?${search.toString()}`), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1547,7 +1576,7 @@ export class ComfyUIBridgeService {
 		projectId?: number
 		saveMedia?: boolean
 	}): Promise<SeedanceSyncTasksResponse> {
-		const res = await fetch(this.url('/api/third-party/seedance/sync-tasks'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/seedance/sync-tasks'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload || {}),
@@ -1564,7 +1593,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyStop(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {
-		const res = await fetch(this.url('/api/third-party/meshy/stop'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/stop'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ taskId, mode }),
@@ -1581,7 +1610,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyDelete(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {
-		const res = await fetch(this.url('/api/third-party/meshy/delete'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/delete'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ taskId, mode }),
@@ -1598,7 +1627,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyBalance(): Promise<MeshyBalanceResponse> {
-		const res = await fetch(this.url('/api/third-party/meshy/balance'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/balance'), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
 		})
@@ -1614,7 +1643,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async cancel(comfyBaseUrl: string, promptId: string): Promise<CancelResponse> {
-		const res = await fetch(this.url('/api/workflow/cancel'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/cancel'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ baseUrl: comfyBaseUrl, promptId }),
@@ -1632,7 +1661,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async job(comfyBaseUrl: string, id: string): Promise<JobResponse> {
-		const res = await fetch(this.url('/api/workflow/job'), {
+		const res = await this.fetchWithLog(this.url('/api/workflow/job'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify({ baseUrl: comfyBaseUrl, id }),

@@ -1,4 +1,5 @@
 import { getBackendBaseUrl } from './backendConfig'
+import { logBlueprintRequest } from './blueprintRequestLog'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -89,8 +90,36 @@ export class UnrealExportService {
 		return `${base}/${path}`
 	}
 
+	private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+		const url = typeof input === 'string' ? input : (input as Request).url || String(input)
+		const method = String(init?.method || 'GET').toUpperCase()
+		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+		try {
+			const res = await fetch(input as any, init)
+			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			logBlueprintRequest({
+				url,
+				method,
+				status: res.status,
+				durationMs: Math.max(0, Math.round(end - start)),
+				tag: 'unreal',
+			})
+			return res
+		} catch (err) {
+			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			logBlueprintRequest({
+				url,
+				method,
+				durationMs: Math.max(0, Math.round(end - start)),
+				errorMessage: err instanceof Error ? err.message : String(err),
+				tag: 'unreal',
+			})
+			throw err
+		}
+	}
+
 	async listSessions(): Promise<UnrealExportSessionsResponse> {
-		const res = await fetch(this.url('/api/agent-skills/unreal-export/sessions'), { method: 'GET' })
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/sessions'), { method: 'GET' })
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -108,7 +137,7 @@ export class UnrealExportService {
 		sceneName: string
 		exportPayload: Record<string, any>
 	}): Promise<UnrealExportCreateJobResponse> {
-		const res = await fetch(this.url('/api/agent-skills/unreal-export/jobs/create'), {
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/jobs/create'), {
 			method: 'POST',
 			headers: jsonHeaders,
 			body: JSON.stringify(payload ?? {}),
@@ -127,7 +156,7 @@ export class UnrealExportService {
 	async getJob(jobId: string): Promise<UnrealExportJobResponse> {
 		const normalizedJobId = String(jobId ?? '').trim()
 		if (!normalizedJobId) return { ok: false, error: 'jobId is required', status: 400 }
-		const res = await fetch(this.url(`/api/agent-skills/unreal-export/jobs/${encodeURIComponent(normalizedJobId)}`), { method: 'GET' })
+		const res = await this.fetchWithLog(this.url(`/api/agent-skills/unreal-export/jobs/${encodeURIComponent(normalizedJobId)}`), { method: 'GET' })
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {

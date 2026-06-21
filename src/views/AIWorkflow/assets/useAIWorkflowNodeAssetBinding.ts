@@ -61,6 +61,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
       const asset = (uploaded as any).asset ?? {}
       const localizedUrl = options.resolveBackendUrl(String(asset.url || ''))
       const localizedPath = String(asset.absolutePath || '').trim()
+      const localizedProjectRelativePath = String(asset.projectRelativePath || asset.relativePath || '').trim()
       if (!localizedUrl) return
 
       const latest = options.store.state.resourcesById?.[resourceId] as any
@@ -74,6 +75,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
         patch: {
           url: localizedUrl,
           sourcePath: localizedPath || undefined,
+          projectRelativePath: localizedProjectRelativePath || undefined,
         } as any,
       })
 

@@ -90,15 +90,19 @@ export const useAIWorkflowNodeExtraProps = (payload: {
       }
     }
     if (node.type === 'image' || node.type === 'video') {
+      const rid = String(node.resourceId ?? '').trim()
+      const resource = rid ? payload.store.state.resourcesById[rid] : null
+      const resourceSourcePath =
+        resource && typeof (resource as any).sourcePath === 'string'
+          ? String((resource as any).sourcePath).trim()
+          : ''
       const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 320))
       const imagePreviewUrl640 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 640))
       const imagePreviewVersion = String(payload.nodeImagePreviewVersion(node) ?? '').trim()
       const resourcePosterUrl =
         node.type === 'video'
           ? (() => {
-              const rid = String(node.resourceId ?? '').trim()
               if (!rid) return null
-              const resource = payload.store.state.resourcesById[rid]
               const raw = typeof (resource as any)?.posterUrl === 'string' ? String((resource as any).posterUrl).trim() : ''
               const safe = sanitizeWorkflowMediaUrl(raw)
               return safe || null
@@ -106,6 +110,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
           : null
       return {
         resourceUrl: sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node)),
+        resourceSourcePath: resourceSourcePath || null,
         resourcePreviewUrl320: imagePreviewUrl320 || null,
         resourcePreviewUrl640: imagePreviewUrl640 || imagePreviewUrl320 || null,
         resourcePreviewVersion: imagePreviewVersion || null,

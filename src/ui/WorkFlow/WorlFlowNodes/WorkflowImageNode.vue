@@ -49,7 +49,7 @@
             @error="onPreviewImageError"
           />
 
-          <div v-if="cropMode" class="wf-crop-overlay" @pointerdown.stop>
+        <div v-if="cropMode" class="wf-crop-overlay" @pointerdown.stop>
             <div class="wf-crop-mask" :style="maskTopStyle" />
             <div class="wf-crop-mask" :style="maskLeftStyle" />
             <div class="wf-crop-mask" :style="maskRightStyle" />
@@ -116,6 +116,27 @@
             class="wf-toolbar-btn"
             type="button"
             :disabled="!resourceUrl"
+            @click.stop="onPreviewClick"
+            title="原图预览：在 Electron 新窗口查看原图，支持缩放、旋转、红色画笔标记并导出为新节点"
+          >
+            <svg class="wf-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"
+              />
+              <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2" />
+            </svg>
+            <span>原图</span>
+          </button>
+
+          <button
+            class="wf-toolbar-btn"
+            type="button"
+            :disabled="!resourceUrl"
             @click.stop="toggleCropMode"
             title="裁剪"
           >
@@ -173,6 +194,7 @@ const props = defineProps<{
   subtitle?: string;
   style?: Record<string, string>;
   resourceUrl?: string | null;
+  resourceSourcePath?: string | null;
   resourcePreviewUrl320?: string | null;
   resourcePreviewUrl640?: string | null;
   resourcePreviewVersion?: string | null;
@@ -237,6 +259,7 @@ const emit = defineEmits<{
     }
   ): void;
   (e: "media-ready"): void;
+  (e: "preview-request", payload: { imageUrl: string }): void;
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -246,14 +269,29 @@ const onPreviewContextMenu = (e: MouseEvent) => {
   emit("preview-contextmenu", { clientX: e.clientX, clientY: e.clientY });
 };
 
+const onPreviewClick = () => {
+  const src = effectiveSourceUrl.value;
+  if (!src) return;
+  emit("select", props.nodeId);
+  console.log('[WorkflowImageNode] preview click → nodeId:', props.nodeId, 'url:', src);
+  emit("preview-request", { imageUrl: src });
+};
+
 const previewWrap = ref<HTMLElement | null>(null);
 const previewImg = ref<HTMLImageElement | null>(null);
 let ro: ResizeObserver | null = null;
 const lastResourceUrl = ref("");
 const pendingResourceReset = ref(false);
 const failedPreviewUrl = ref("");
+const resourceFallbackUrl = ref("");
 
 const normalizedResourceUrl = computed(() => String(props.resourceUrl ?? "").trim());
+const normalizedResourceSourcePath = computed(() => String(props.resourceSourcePath ?? "").trim());
+const effectiveSourceUrl = computed(() => {
+  const fallback = String(resourceFallbackUrl.value || "").trim();
+  if (fallback) return fallback;
+  return normalizedResourceUrl.value;
+});
 const normalizedPreview320 = computed(() => String(props.resourcePreviewUrl320 ?? "").trim());
 const normalizedPreview640 = computed(() => String(props.resourcePreviewUrl640 ?? "").trim());
 
@@ -273,7 +311,7 @@ const activePreviewUrl = computed(() => {
 });
 
 const displayResourceUrl = computed(() => {
-  const source = normalizedResourceUrl.value;
+  const source = effectiveSourceUrl.value;
   if (!source) return "";
   const preview = activePreviewUrl.value;
   if (!preview) return source;
@@ -282,7 +320,7 @@ const displayResourceUrl = computed(() => {
 });
 
 const usingPreviewResource = computed(() => {
-  const source = normalizedResourceUrl.value;
+  const source = effectiveSourceUrl.value;
   if (!source) return false;
   return displayResourceUrl.value === activePreviewUrl.value && displayResourceUrl.value !== source;
 });
@@ -483,7 +521,7 @@ const cropToUv = (c: { x: number; y: number; width: number; height: number }) =>
 };
 
 const ensureNaturalSizeFallback = async () => {
-  const sourceUrl = normalizedResourceUrl.value;
+  const sourceUrl = effectiveSourceUrl.value;
   if (!sourceUrl) return;
   if (naturalWidth.value && naturalHeight.value && !pendingResourceReset.value) return;
   await new Promise<void>((resolve) => {
@@ -505,6 +543,10 @@ const ensureNaturalSizeFallback = async () => {
     img.onerror = () => resolve();
     img.src = sourceUrl;
   });
+};
+
+const toFileUrl = () => {
+  return "";
 };
 
 const toggleCropMode = async () => {
@@ -704,6 +746,14 @@ const onPreviewImageError = () => {
     failedPreviewUrl.value = activePreviewUrl.value;
     return;
   }
+  const sourceFilePath = normalizedResourceSourcePath.value;
+  if (!resourceFallbackUrl.value && sourceFilePath) {
+    const fileUrl = toFileUrl(sourceFilePath);
+    if (fileUrl) {
+      resourceFallbackUrl.value = fileUrl;
+      return;
+    }
+  }
   emit("media-ready");
 };
 
@@ -725,12 +775,14 @@ watch(
       pendingResourceReset.value = false;
       lastResourceUrl.value = "";
       failedPreviewUrl.value = "";
+      resourceFallbackUrl.value = "";
       return;
     }
     if (next !== prev || next !== lastResourceUrl.value) {
       pendingResourceReset.value = true;
       lastResourceUrl.value = next;
       failedPreviewUrl.value = "";
+      resourceFallbackUrl.value = "";
     }
     initPreviewLayoutObserver();
     await ensureNaturalSizeFallback();
@@ -758,7 +810,7 @@ watch(
 defineExpose({
   /** Export the node output PNG (offscreen canvas render, cropped + scaled to output resolution). */
   exportPngBlob: async () => {
-    const src = normalizedResourceUrl.value;
+    const src = effectiveSourceUrl.value;
     if (!src) return null;
     const w = outputWidth.value;
     const h = outputHeight.value;
@@ -863,6 +915,77 @@ onBeforeUnmount(() => {
   cursor: nwse-resize;
 }
 
+.wf-media-top-btn {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-border);
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 12px;
+  z-index: 80;
+  pointer-events: auto;
+}
+
+.wf-media-top-btn:hover {
+  background: rgba(192, 57, 43, 0.9);
+  border-color: #d94a37;
+}
+
+.wf-media-top-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+}
+
+.wf-media-preview-btn {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--vscode-border);
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  opacity: 1;
+  transition: background 160ms ease, transform 160ms ease, opacity 160ms ease;
+  z-index: 50;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.wf-media-preview-btn:hover {
+  background: rgba(192, 57, 43, 0.9);
+  border-color: #d94a37;
+  transform: translate(-50%, -50%) scale(1.02);
+}
+
+.wf-media-preview-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
+.wf-media-preview-text {
+  display: inline-block;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .wf-media-empty {
   border: 1px dashed var(--vscode-border);
   border-radius: 0;
@@ -908,6 +1031,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
 }
 
 .wf-toolbar-btn:disabled {

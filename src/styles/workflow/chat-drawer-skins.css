@@ -6,10 +6,9 @@
   --wf-chat-dock-radius: var(--aiwf-radius-lg);
   --wf-chat-dock-shadow: var(--wf-panel-shadow-strong);
   --wf-chat-dock-blur: var(--wf-overlay-blur);
-  --wf-chat-column-bg: rgba(21, 24, 28, 0.62);
   --wf-chat-column-border: var(--wf-border-subtle);
   --wf-chat-message-user-bg: var(--wf-primary-soft);
-  --wf-chat-message-assistant-bg: rgba(237, 242, 244, 0.07);
+  --wf-chat-message-assistant-bg: color-mix(in srgb, var(--wf-text) 6%, transparent);
   --wf-chat-flow-pending-bg: var(--wf-warning-soft);
   --wf-chat-flow-complete-bg: var(--wf-success-soft);
   --wf-chat-flow-error-bg: var(--wf-danger-soft);
@@ -55,7 +54,7 @@
 
 .chat-panel-tabs {
   border: 1px solid var(--wf-control-border) !important;
-  background: rgba(9, 12, 16, 0.55) !important;
+  background: var(--wf-surface-base) !important;
 }
 
 .chat-panel-tab.active {
@@ -69,12 +68,12 @@
 }
 
 .agent-empty-state {
-  color: rgba(219, 226, 233, 0.24) !important;
+  color: color-mix(in srgb, var(--wf-text-muted) 45%, transparent) !important;
 }
 
 .agent-working-dir {
   border-color: var(--wf-chat-column-border) !important;
-  background: rgba(16, 20, 24, 0.45) !important;
+  background: color-mix(in srgb, var(--wf-surface-base) 85%, transparent) !important;
 }
 
 .chat-collapsed-handle:hover,
@@ -103,7 +102,7 @@
 }
 
 .codex-col {
-  background: rgba(21, 24, 28, 0.42) !important;
+  background: color-mix(in srgb, var(--wf-surface-base) 75%, transparent) !important;
 }
 
 .codex-session-item,

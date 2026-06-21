@@ -1,112 +1,140 @@
 <template>
-  <div class="app-shell" :class="{ electron: isElectronRuntime }">
-    <GlobalTitleBar v-if="isElectronRuntime" class="app-titlebar" />
-    <GlobalSideNav
-      class="app-side-nav"
-      :expanded="navExpanded"
-      @expand-change="onNavExpandChange"
-    />
-    <main ref="contentEl" class="app-content">
-      <router-view />
-    </main>
-  </div>
+	<div
+		class="app-shell"
+		:class="{ electron: isElectronRuntime, 'is-preview-window': isPreviewWindow, 'is-resource-manager-window': isResourceManagerWindow }"
+	>
+		<GlobalTitleBar v-if="isElectronRuntime && !isPreviewWindow" class="app-titlebar" />
+		<GlobalSideNav
+			v-if="!isPreviewWindow"
+			class="app-side-nav"
+			:expanded="navExpanded"
+			:collapsed="navCollapsed"
+			@expand-change="onNavExpandChange"
+			@collapsed-change="onNavCollapsedChange"
+		/>
+		<main ref="contentEl" class="app-content">
+			<router-view v-slot="{ Component }">
+				<transition name="page-fade" mode="out-in">
+					<component :is="Component" />
+				</transition>
+			</router-view>
+		</main>
+		<StartupProgressBar v-if="!isResourceManagerWindow" :state="startupProgressState" @dismiss="hideStartupProgress" />
+		<PageTransitionOverlay v-if="!isPreviewWindow" />
+	</div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, provide, ref } from "vue";
-import { VideoStudioKey, VideoStudioStore } from "./store/videostudio";
-import { TimelineKey, TimelineStore } from "./store/timeline";
-import { AIWorkflowKey, AIWorkflowStore } from "./store/aiworkflow";
-import GlobalSideNav from "./ui/UIComponent/GlobalSideNav.vue";
-import GlobalTitleBar from "./ui/UIComponent/GlobalTitleBar.vue";
+import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { VideoStudioKey, VideoStudioStore } from './store/videostudio'
+import { TimelineKey, TimelineStore } from './store/timeline'
+import { AIWorkflowKey, AIWorkflowStore } from './store/aiworkflow'
+import { ThemeKey, ThemeStore } from './store/theme'
+import GlobalSideNav from './ui/UIComponent/GlobalSideNav.vue'
+import GlobalTitleBar from './ui/UIComponent/GlobalTitleBar.vue'
+import StartupProgressBar from './ui/UIComponent/StartupProgressBar.vue'
+import PageTransitionOverlay from './ui/UIComponent/PageTransitionOverlay.vue'
+import { useStartupProgress } from './composables/useStartupProgress'
 
-provide(VideoStudioKey, VideoStudioStore);
-provide(TimelineKey, TimelineStore);
-provide(AIWorkflowKey, AIWorkflowStore);
+provide(VideoStudioKey, VideoStudioStore)
+provide(TimelineKey, TimelineStore)
+provide(AIWorkflowKey, AIWorkflowStore)
+provide(ThemeKey, ThemeStore)
 
-const contentEl = ref<HTMLElement | null>(null);
-const navExpanded = ref(false);
-const isElectronRuntime = (window as any)?.__DWEB_RUNTIME__?.isElectron === true;
-let ro: ResizeObserver | null = null;
+const route = useRoute()
+const contentEl = ref<HTMLElement | null>(null)
+const navExpanded = ref(false)
+const navCollapsed = ref(false)
+const isElectronRuntime = (window as any)?.__DWEB_RUNTIME__?.isElectron === true
+
+const isPreviewWindow = computed(() => {
+	const path = String(route.path || '')
+	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager')
+})
+
+const isResourceManagerWindow = computed(() => {
+	return String(route.path || '').startsWith('/resource-manager')
+})
+
+const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
 
 function onNavExpandChange(expanded: boolean) {
-  navExpanded.value = expanded;
-  document.body.setAttribute('data-side-nav-expanded', String(expanded));
-  syncContentRect();
-  window.setTimeout(syncContentRect, 120);
-  window.setTimeout(syncContentRect, 240);
+	navExpanded.value = expanded
 }
 
-function syncContentRect() {
-  const el = contentEl.value;
-  if (!el) return;
-  const rect = el.getBoundingClientRect();
-  const width = Math.max(0, Math.round(rect.width));
-  const height = Math.max(0, Math.round(rect.height));
-  document.documentElement.style.setProperty("--dweb-content-width", `${width}px`);
-  document.documentElement.style.setProperty("--dweb-content-height", `${height}px`);
-  window.dispatchEvent(
-    new CustomEvent("dweb:content/resize", {
-      detail: { width, height, left: rect.left, top: rect.top },
-    })
-  );
+function onNavCollapsedChange(collapsed: boolean) {
+	navCollapsed.value = collapsed
 }
 
 onMounted(() => {
-  document.body.setAttribute('data-side-nav-expanded', String(navExpanded.value));
-  syncContentRect();
-  if ("ResizeObserver" in window) {
-    ro = new ResizeObserver(() => syncContentRect());
-    if (contentEl.value) ro.observe(contentEl.value);
-  }
-  window.addEventListener("resize", syncContentRect, { passive: true });
-});
-
-onBeforeUnmount(() => {
-  ro?.disconnect();
-  ro = null;
-  window.removeEventListener("resize", syncContentRect);
-});
+	ThemeStore.dispatch('initTheme')
+})
 </script>
 
 <style scoped>
 .app-shell {
-  --titlebar-height: 0px;
-  width: 100vw;
-  height: 100vh;
-  display: grid;
-  grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
-  overflow: hidden;
-  background: var(--dweb-defualt-dark);
+	--titlebar-height: 36px;
+	width: 100vw;
+	height: 100vh;
+	display: block;
+	position: relative;
+	overflow: hidden;
+	background: var(--theme-bg-primary);
 }
 
-.app-shell.electron {
-  --titlebar-height: 36px;
+.app-shell.is-preview-window {
+	--titlebar-height: 0px;
 }
 
 .app-titlebar {
-  grid-column: 1 / -1;
-  grid-row: 1;
-  z-index: 20;
-}
-
-.app-side-nav {
-  position: absolute;
-  left: 0;
-  top: var(--titlebar-height);
-  bottom: 0;
-  width: 46px;
-  z-index: 15;
+	position: relative;
+	z-index: 30;
+	height: var(--titlebar-height);
 }
 
 .app-content {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  min-width: 0;
-  min-height: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: var(--dweb-defualt);
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: var(--titlebar-height);
+	bottom: 0;
+	min-width: 0;
+	min-height: 0;
+	width: 100%;
+	z-index: 10;
+	overflow: hidden;
+	background: var(--theme-bg-secondary);
+}
+
+.app-shell.is-preview-window .app-content {
+	top: 0;
+	bottom: 0;
+	width: 100vw;
+	height: 100vh;
+	background: #1a1a1a;
+}
+
+.app-shell.is-resource-manager-window .app-content {
+	top: 0;
+	bottom: 0;
+	width: 100vw;
+	height: 100vh;
+	background: #1a1a1a;
+}
+
+.page-fade-enter-active,
+.page-fade-leave-active {
+	transition: opacity 260ms ease, transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.page-fade-enter-from {
+	opacity: 0;
+	transform: translateY(8px);
+}
+
+.page-fade-leave-to {
+	opacity: 0;
+	transform: translateY(-4px);
 }
 </style>

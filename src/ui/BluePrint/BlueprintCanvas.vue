@@ -134,10 +134,10 @@ const drawGrid = () => {
   ctx.clearRect(0, 0, w, h);
 
   const style = getComputedStyle(document.documentElement);
-  const bg = style.getPropertyValue("--dweb-defualt") || "#1e1e1e";
-  const border = style.getPropertyValue("--vscode-border") || "#3c3c3c";
-  const accent = style.getPropertyValue("--vscode-border-accent") || "#3aa8b4";
-  const muted = style.getPropertyValue("--vscode-fg-muted") || "#a0a0a0";
+  const bg = style.getPropertyValue("--wf-page-bg").trim() || style.getPropertyValue("--dweb-defualt").trim() || "#1e1e1e";
+  const border = style.getPropertyValue("--wf-border").trim() || style.getPropertyValue("--vscode-border").trim() || "rgba(0, 0, 0, 0.12)";
+  const accent = style.getPropertyValue("--wf-primary").trim() || style.getPropertyValue("--vscode-border-accent").trim() || "#1f9d84";
+  const muted = style.getPropertyValue("--wf-text-muted").trim() || style.getPropertyValue("--vscode-fg-muted").trim() || "#aeb8bd";
 
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
@@ -188,6 +188,8 @@ const drawGrid = () => {
 };
 
 let ro: ResizeObserver | null = null;
+let themeObserver: MutationObserver | null = null;
+
 onMounted(() => {
   resizeCanvasToWrap();
   requestDraw();
@@ -195,6 +197,11 @@ onMounted(() => {
     ro = new ResizeObserver(() => resizeCanvasToWrap());
     if (wrapEl.value) ro.observe(wrapEl.value);
   }
+  themeObserver = new MutationObserver(() => requestDraw());
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
 });
 
 watch(
@@ -207,6 +214,8 @@ onBeforeUnmount(() => {
   raf = 0;
   ro?.disconnect();
   ro = null;
+  themeObserver?.disconnect();
+  themeObserver = null;
 });
 
 let bgDrag: null | {
@@ -443,8 +452,8 @@ const onContextMenu = (e: MouseEvent) => {
 .bp-boxsel {
   position: absolute;
   z-index: 999;
-  border: 1px dashed var(--vscode-border-accent);
-  background: color-mix(in srgb, var(--vscode-border-accent) 15%, transparent);
+  border: 1px dashed var(--wf-primary, #1f9d84);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 18%, transparent);
   pointer-events: none;
 }
 

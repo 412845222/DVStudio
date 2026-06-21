@@ -654,7 +654,7 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 
 <style scoped>
 .bp-node-chat-param-panel {
-  border-top: 1px solid color-mix(in srgb, var(--vscode-border) 50%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--wf-border) 50%, transparent);
   padding: 4px 0;
 }
 
@@ -669,13 +669,13 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 }
 
 .bp-node-chat-param-header:hover {
-  background: color-mix(in srgb, var(--vscode-list-hoverBackground) 30%, transparent);
+  background: var(--wf-control-bg-hover);
 }
 
 .bp-node-chat-param-title {
   font-size: 12px;
   font-weight: 500;
-  color: var(--vscode-fg, #e0e0e0);
+  color: var(--wf-text);
 }
 
 .bp-node-chat-param-toggle {
@@ -685,7 +685,7 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 
 .bp-node-chat-chevron {
   transition: transform 0.2s ease;
-  color: var(--vscode-fg-muted, #888);
+  color: var(--wf-text-muted);
 }
 
 .bp-node-chat-chevron.is-collapsed {
@@ -703,7 +703,7 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 .bp-node-chat-param-label {
   display: block;
   font-size: 11px;
-  color: var(--vscode-fg-muted, #888);
+  color: var(--wf-text-muted);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -718,24 +718,24 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 .bp-node-chat-param-btn {
   padding: 5px 10px;
   font-size: 12px;
-  border: 1px solid var(--vscode-border, #444);
+  border: 1px solid var(--wf-border);
   border-radius: 6px;
   background: transparent;
-  color: var(--vscode-fg, #ccc);
+  color: var(--wf-text);
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
 }
 
 .bp-node-chat-param-btn:hover:not(:disabled) {
-  border-color: var(--vscode-border-accent, #3aa8b4);
-  color: var(--vscode-border-accent, #3aa8b4);
+  border-color: var(--wf-primary);
+  color: var(--wf-primary);
 }
 
 .bp-node-chat-param-btn.is-active {
-  background: color-mix(in srgb, var(--vscode-border-accent) 20%, transparent);
-  border-color: var(--vscode-border-accent, #3aa8b4);
-  color: var(--vscode-border-accent, #3aa8b4);
+  background: var(--wf-primary-soft);
+  border-color: var(--wf-primary);
+  color: var(--wf-primary);
 }
 
 .bp-node-chat-param-btn:disabled {
@@ -755,14 +755,14 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: var(--vscode-fg, #ccc);
+  color: var(--wf-text);
   cursor: pointer;
 }
 
 .bp-node-chat-param-toggle input[type='checkbox'] {
   width: 14px;
   height: 14px;
-  accent-color: var(--vscode-border-accent, #3aa8b4);
+  accent-color: var(--wf-primary);
 }
 
 .bp-node-chat-param-seed {
@@ -770,22 +770,22 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--vscode-fg, #ccc);
+  color: var(--wf-text);
 }
 
 .bp-node-chat-param-seed input {
   width: 80px;
   padding: 4px 8px;
   font-size: 12px;
-  border: 1px solid var(--vscode-border, #444);
+  border: 1px solid var(--wf-border);
   border-radius: 0;
-  background: var(--vscode-input-background, #3c3c3c);
-  color: var(--vscode-input-foreground, #fff);
+  background: var(--wf-control-bg);
+  color: var(--wf-text);
   font-family: monospace;
 }
 
 .bp-node-chat-param-seed input:focus {
   outline: none;
-  border-color: var(--vscode-border-accent, #3aa8b4);
+  border-color: var(--wf-primary);
 }
 </style>

@@ -338,9 +338,11 @@ onBeforeUnmount(() => {
 .bp-node-chat-surface {
   border-radius: 0;
   box-shadow:
-    0 8px 32px color-mix(in srgb, black 40%, transparent),
-    0 2px 8px color-mix(in srgb, black 20%, transparent);
-  border: 1px solid var(--vscode-border, #444);
+    0 8px 32px color-mix(in srgb, var(--wf-text, #1a1d21) 28%, transparent),
+    0 2px 8px color-mix(in srgb, var(--wf-text, #1a1d21) 12%, transparent);
+  border: 1px solid var(--wf-border, rgba(0, 0, 0, 0.12));
+  background: var(--wf-surface-base, rgba(29, 34, 39, 0.94));
+  color: var(--wf-text, #edf2f4);
   width: 100%;
 }
 
@@ -349,7 +351,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-border) 30%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-border, rgba(0, 0, 0, 0.12)) 40%, transparent);
 }
 
 .bp-node-chat-title-wrap {
@@ -365,10 +367,11 @@ onBeforeUnmount(() => {
 .bp-node-chat-title {
   font-size: 13px;
   font-weight: 600;
+  color: var(--wf-text, #edf2f4);
 }
 
 .bp-node-chat-text .bp-node-chat-title {
-  color: #f59e0b;
+  color: var(--wf-accent, #f59e0b);
 }
 
 .bp-node-chat-image .bp-node-chat-title {
@@ -376,7 +379,7 @@ onBeforeUnmount(() => {
 }
 
 .bp-node-chat-video .bp-node-chat-title {
-  color: #22c55e;
+  color: var(--wf-primary, #22c55e);
 }
 
 .bp-node-chat-model3d .bp-node-chat-title {
@@ -391,15 +394,15 @@ onBeforeUnmount(() => {
   height: 24px;
   border: none;
   background: transparent;
-  color: var(--vscode-fg-muted, #888);
+  color: var(--wf-text-muted, #aeb8bd);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .bp-node-chat-close:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--vscode-errorForeground) 20%, transparent);
-  color: var(--vscode-errorForeground, #f48771);
+  background: color-mix(in srgb, var(--wf-danger, #cf5a46) 20%, transparent);
+  color: var(--wf-danger, #cf5a46);
 }
 
 .bp-node-chat-close:disabled {
@@ -423,9 +426,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--vscode-border) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--wf-border, rgba(0, 0, 0, 0.12)) 50%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 80%, transparent);
+  background: color-mix(in srgb, var(--wf-surface-muted, rgba(36, 42, 48, 0.9)) 70%, transparent);
 }
 
 .bp-node-chat-param-ref-icon {
@@ -435,8 +438,8 @@ onBeforeUnmount(() => {
   width: 28px;
   height: 28px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 55%, transparent);
-  color: var(--vscode-fg, #ccc);
+  background: color-mix(in srgb, var(--wf-surface-muted, rgba(36, 42, 48, 0.9)) 55%, transparent);
+  color: var(--wf-text, #edf2f4);
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
@@ -448,7 +451,7 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   object-fit: cover;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 92%, transparent);
+  background: color-mix(in srgb, var(--wf-surface-muted, rgba(36, 42, 48, 0.9)) 92%, transparent);
 }
 
 .bp-node-chat-param-ref-main {
@@ -462,7 +465,7 @@ onBeforeUnmount(() => {
 .bp-node-chat-param-ref-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--vscode-fg, #ddd);
+  color: var(--wf-text, #edf2f4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -472,7 +475,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   font-size: 11px;
-  color: var(--vscode-fg-muted, #aaa);
+  color: var(--wf-text-muted, #aeb8bd);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -486,7 +489,7 @@ onBeforeUnmount(() => {
   height: 18px;
   border: none;
   background: transparent;
-  color: var(--vscode-fg-muted, #888);
+  color: var(--wf-text-muted, #aeb8bd);
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
@@ -496,8 +499,8 @@ onBeforeUnmount(() => {
 }
 
 .bp-node-chat-param-ref-remove:hover {
-  background: color-mix(in srgb, var(--vscode-errorForeground) 20%, transparent);
-  color: var(--vscode-errorForeground, #f48771);
+  background: color-mix(in srgb, var(--wf-danger, #cf5a46) 20%, transparent);
+  color: var(--wf-danger, #cf5a46);
 }
 
 .bp-node-chat-param-ref-item.is-text .bp-node-chat-param-ref-icon {
@@ -525,7 +528,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-border) 30%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--wf-border, rgba(0, 0, 0, 0.12)) 40%, transparent);
   gap: 10px;
 }
 
@@ -551,10 +554,10 @@ onBeforeUnmount(() => {
   width: min(360px, calc(100vw - 48px));
   max-height: none;
   overflow: visible;
-  border: 1px solid color-mix(in srgb, var(--vscode-border) 70%, transparent);
+  border: 1px solid var(--wf-border, rgba(0, 0, 0, 0.12));
   border-radius: 0;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 96%, transparent);
-  box-shadow: 0 18px 40px color-mix(in srgb, black 42%, transparent);
+  background: var(--wf-surface-base, rgba(29, 34, 39, 0.94));
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--wf-text, #1a1d21) 35%, transparent);
 }
 
 .bp-node-chat-btn {
@@ -573,22 +576,22 @@ onBeforeUnmount(() => {
 
 .bp-node-chat-btn-secondary {
   background: transparent;
-  color: var(--vscode-fg, #ccc);
-  border: 1px solid var(--vscode-border, #444);
+  color: var(--wf-text, #edf2f4);
+  border: 1px solid var(--wf-border, rgba(0, 0, 0, 0.12));
 }
 
 .bp-node-chat-btn-secondary:hover:not(:disabled) {
-  border-color: var(--vscode-border-accent, #3aa8b4);
-  color: var(--vscode-border-accent, #3aa8b4);
+  border-color: var(--wf-primary, #1f9d84);
+  color: var(--wf-primary, #1f9d84);
 }
 
 .bp-node-chat-btn-primary {
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #fff);
+  background: var(--wf-primary, #1f9d84);
+  color: #fff;
 }
 
 .bp-node-chat-btn-primary:hover:not(:disabled) {
-  background: var(--vscode-button-hoverBackground, #1177bb);
+  background: var(--wf-primary-hover, #27b99c);
 }
 
 .bp-node-chat-btn:disabled {

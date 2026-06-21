@@ -127,19 +127,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding-left: 56px;
   box-sizing: border-box;
-  transition: padding-left 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-/* 当导航栏展开时，调整左侧padding */
-body[data-side-nav-expanded="true"] .videostudio-page {
-  padding-left: 180px;
-}
-
-/* 当导航栏收起时，恢复默认padding */
-body[data-side-nav-expanded="false"] .videostudio-page {
-  padding-left: 56px;
 }
 
 .videostudio-stage {

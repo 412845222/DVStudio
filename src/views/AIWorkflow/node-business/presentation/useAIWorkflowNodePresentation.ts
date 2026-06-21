@@ -16,7 +16,7 @@ import WorkflowSceneDecomposeNode from '../../../../ui/WorkFlow/WorlFlowNodes/Wo
 import WorkflowSceneLayoutNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowSceneLayoutNode.vue'
 import WorkflowUnrealExportNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowUnrealExportNode.vue'
 import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
-import { resolveBackendUrl } from '../../../../network/backendConfig'
+import { isWorkflowLocalAssetUrl, resolveBackendUrl } from '../../../../network/backendConfig'
 
 export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
   const clampNodeScale = (zoom: number) => Math.max(0.2, Math.min(6, Number(zoom) || 1))
@@ -82,10 +82,8 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
       const u = new URL(text, base)
       const protocol = String(u.protocol || '').toLowerCase()
       const host = String(u.hostname || '').toLowerCase()
-      const path = String(u.pathname || '').toLowerCase()
       const isDwebAsset = protocol === 'dweb:' && host === 'project-assets'
-      const isApiAsset = /\/api\/workflow\/projects\/assets\/file\/?$/.test(path)
-      if (!isDwebAsset && !isApiAsset) return null
+      if (!isDwebAsset) return null
       const projectId = String(u.searchParams.get('projectId') || '').trim()
       const relPath = String(u.searchParams.get('path') || '').trim()
       if (!projectId || !relPath) return null
@@ -125,7 +123,7 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
     if (!safeUrl) return ''
 
     if (/^(?:blob:|data:)/i.test(safeUrl)) return safeUrl
-    if (/^https?:\/\//i.test(safeUrl)) return safeUrl
+    if (/^https?:\/\//i.test(safeUrl)) return ''
 
     const parsed = parseProjectAssetUrl(raw)
     if (parsed) {
@@ -166,6 +164,9 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
     if (!node.resourceId) return null
     const raw = store.state.resourcesById[node.resourceId]?.url
     const safe = sanitizeWorkflowMediaUrl(raw)
+    if (safe && (node.type === 'image' || node.type === 'video' || node.type === 'rotate-image')) {
+      if (!isWorkflowLocalAssetUrl(safe)) return null
+    }
     return safe || null
   }
 

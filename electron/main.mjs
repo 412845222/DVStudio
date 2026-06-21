@@ -1,6 +1,8 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
+import https from 'node:https'
+import http from 'node:http'
 import { spawn } from 'node:child_process'
 
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol } from 'electron'
@@ -17,6 +19,46 @@ import {
 	ensureRuntimeRequirements,
 	sanitizeRuntimeDjangoDir,
 } from './backend/djangoProject.mjs'
+import {
+	registerDwebProjectAssetProtocol,
+	setProjectRoot,
+	clearProjectRoot,
+	getProjectRootSnapshot,
+	downloadUrlToProjectRoot,
+	copyFileToProjectRoot,
+	getProjectRootById,
+	repairProjectAsset,
+} from './backend/projectAssetProtocol.mjs'
+import {
+	uploadBufferProjectAsset,
+	importUrlProjectAsset,
+	importFileProjectAsset,
+	deleteStaticProjectAsset,
+	resolveStaticProjectAsset,
+	repairAllProjectAssets,
+} from './backend/projectStaticAssets/service.mjs'
+import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
+import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
+import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
+
+// dweb:// must be registered as a privileged scheme before app ready,
+// otherwise renderer-side fetch/XHR treats it as unsupported.
+try {
+	protocol.registerSchemesAsPrivileged([
+		{
+			scheme: 'dweb',
+			privileges: {
+				standard: true,
+				secure: true,
+				supportFetchAPI: true,
+				stream: true,
+			},
+		},
+	])
+	console.log('[dweb-protocol] privileged scheme registered')
+} catch (err) {
+	console.error('[dweb-protocol] privileged scheme register failed:', err)
+}
 
 const isDev = !!process.env.ELECTRON_DEV || !app.isPackaged
 
@@ -33,6 +75,54 @@ const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
 // Nano Banana image generation requires an image-capable model.
 // Ref: https://ai.google.dev/gemini-api/docs/image-generation
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
+
+// Download a URL and return { buffer: Uint8Array, mime: string }
+// Used to bypass browser CORS when consuming signed CDN URLs (e.g. seedance results).
+function fetchRawBuffer(rawUrl) {
+	return new Promise((resolve, reject) => {
+		let parsed
+		try {
+			parsed = new URL(String(rawUrl || ''))
+		} catch (err) {
+			reject(err)
+			return
+		}
+		const transport = parsed.protocol === 'https:' ? https : http
+		const options = {
+			method: 'GET',
+			hostname: parsed.hostname,
+			port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+			path: parsed.pathname + parsed.search,
+			headers: {
+				'User-Agent': 'DwebVideoStudio/1.0 (Electron)',
+			},
+			timeout: 120 * 1000,
+		}
+		const req = transport.request(options, (res) => {
+			if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers?.location) {
+				fetchRawBuffer(String(res.headers.location)).then(resolve, reject)
+				return
+			}
+			if (!res.statusCode || res.statusCode >= 400) {
+				reject(new Error(`HTTP ${res.statusCode}`))
+				return
+			}
+			const chunks = []
+			res.on('data', (chunk) => chunks.push(chunk))
+			res.on('end', () => {
+				const buf = Buffer.concat(chunks)
+				const mime = String(res.headers?.['content-type'] || '').split(';')[0].trim() || 'application/octet-stream'
+				resolve({ buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), mime })
+			})
+			res.on('error', reject)
+		})
+		req.on('error', reject)
+		req.on('timeout', () => {
+			req.destroy(new Error('request timeout'))
+		})
+		req.end()
+	})
+}
 
 let bootstrapProc = null
 
@@ -58,8 +148,6 @@ let backendRuntimeState = {
 	setupRunning: false,
 	updatedAt: 0,
 }
-
-const DWEB_PROJECT_ASSET_HOST = 'project-assets'
 
 function createDefaultSetupSteps() {
 	return [
@@ -1307,26 +1395,60 @@ function registerIpc() {
 		return { ok: true }
 	})
 
+	ipcMain.handle('dweb:app:openExternalUrl', async (_e, payload) => {
+		try {
+			const raw = String(payload?.url || '').trim()
+			if (!raw) return { ok: false, error: 'empty url' }
+			let parsed
+			try {
+				parsed = new URL(raw)
+			} catch {
+				return { ok: false, error: 'invalid url' }
+			}
+			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+				return { ok: false, error: 'unsupported protocol' }
+			}
+			const openErr = await shell.openExternal(raw, { activate: true })
+			if (openErr) return { ok: false, error: String(openErr) }
+			return { ok: true }
+		} catch (e) {
+			return { ok: false, error: String(e?.message || e) }
+		}
+	})
+
 	ipcMain.handle('dweb:app:openFolderForPath', async (_e, payload) => {
 		try {
 			const raw = String(payload?.path || '').trim()
 			if (!raw) return { ok: false, error: 'empty path' }
 			const normalized = path.normalize(raw)
-			let target = ''
-			if (fs.existsSync(normalized)) {
-				try {
-					const stat = fs.statSync(normalized)
-					target = stat.isDirectory() ? normalized : path.dirname(normalized)
-				} catch {
-					target = path.dirname(normalized)
+			if (!fs.existsSync(normalized)) {
+				// 文件不存在，尝试打开父文件夹
+				const dir = path.dirname(normalized)
+				if (dir && fs.existsSync(dir)) {
+					const openErr = await shell.openPath(dir)
+					if (openErr) return { ok: false, error: String(openErr) }
+					return { ok: true }
 				}
-			} else {
-				target = path.dirname(normalized)
+				return { ok: false, error: 'path not found' }
 			}
-			if (!target || !fs.existsSync(target)) return { ok: false, error: 'path not found' }
-			const openErr = await shell.openPath(target)
-			if (openErr) return { ok: false, error: String(openErr) }
-			return { ok: true }
+			const stat = fs.statSync(normalized)
+			if (stat.isDirectory()) {
+				// 是文件夹，直接打开
+				const openErr = await shell.openPath(normalized)
+				if (openErr) return { ok: false, error: String(openErr) }
+				return { ok: true }
+			}
+			// 是文件，先尝试使用 showItemInFolder 在资源管理器中显示并选中该文件
+			try {
+				shell.showItemInFolder(normalized)
+				return { ok: true }
+			} catch {
+				// 回退到打开父文件夹
+				const dir = path.dirname(normalized)
+				const openErr = await shell.openPath(dir)
+				if (openErr) return { ok: false, error: String(openErr) }
+				return { ok: true }
+			}
 		} catch (e) {
 			return { ok: false, error: String(e?.message || e) }
 		}
@@ -1356,65 +1478,360 @@ function registerIpc() {
 			properties: ['openDirectory', 'createDirectory'],
 		})
 	})
-}
 
-function registerDwebProjectAssetProtocol() {
+	ipcMain.handle('dweb:aiworkflow:registerProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		const rootPath = String(payload?.rootPath || '').trim()
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		if (!rootPath) {
+			clearProjectRoot(projectId)
+			return { ok: true, cleared: true }
+		}
+		const ok = setProjectRoot(projectId, rootPath)
+		return { ok: !!ok }
+	})
+
+	ipcMain.handle('dweb:aiworkflow:clearProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		clearProjectRoot(projectId)
+		return { ok: true }
+	})
+
+	ipcMain.handle('dweb:aiworkflow:getProjectRootSnapshot', async () => {
+		return getProjectRootSnapshot()
+	})
+
+	ipcMain.handle('dweb:aiworkflow:getProjectRootById', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) return null
+		return getProjectRootById(projectId)
+	})
+
+	ipcMain.handle('dweb:aiworkflow:downloadUrlToProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		const url = String(payload?.url || '').trim()
+		const desiredFilename = payload?.desiredFilename ? String(payload.desiredFilename) : undefined
+		if (!Number.isFinite(projectId) || projectId <= 0) return { ok: false, error: 'projectId is invalid' }
+		if (!url) return { ok: false, error: 'url is empty' }
+		try {
+			return await downloadUrlToProjectRoot(projectId, url, desiredFilename)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:copyFileToProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		const sourcePath = String(payload?.sourcePath || '').trim()
+		const desiredFilename = payload?.desiredFilename ? String(payload.desiredFilename) : undefined
+		if (!Number.isFinite(projectId) || projectId <= 0) return { ok: false, error: 'projectId is invalid' }
+		if (!sourcePath) return { ok: false, error: 'sourcePath is empty' }
+		try {
+			return await copyFileToProjectRoot(projectId, sourcePath, desiredFilename)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// Project asset operations (local only; replaces Django backend assets/* API)
+	ipcMain.handle('dweb:aiworkflow:uploadProjectAsset', async (_e, payload) => {
+		try {
+			return uploadBufferProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:importProjectAsset', async (_e, payload) => {
+		try {
+			const p = payload || {}
+			if (p.sourcePath || p.path) return await importFileProjectAsset(p)
+			return await importUrlProjectAsset(p)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:deleteProjectAsset', async (_e, payload) => {
+		try {
+			return deleteStaticProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:resolveProjectAsset', async (_e, payload) => {
+		try {
+			return resolveStaticProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:repairProjectAsset', async (_e, payload) => {
+		try {
+			return repairProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:projectAssets:repairAll', async (_e, payload) => {
+		try {
+			return await repairAllProjectAssets(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// Fetch a URL in the main process (bypasses browser CORS) and return Uint8Array / mime
+	ipcMain.handle('dweb:aiworkflow:fetchAsArrayBuffer', async (_e, payload) => {
+		const url = String(payload?.url || '').trim()
+		if (!url) return { ok: false, error: 'url is empty' }
+		try {
+			const { buffer, mime } = await fetchRawBuffer(url)
+			return { ok: true, buffer, mime }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+
 	try {
-		protocol.handle('dweb', async (request) => {
-			try {
-				const raw = String(request?.url || '').trim()
-				if (!raw) {
-					return new Response('Bad Request', { status: 400 })
-				}
-				const u = new URL(raw)
-				if (String(u.hostname || '').toLowerCase() !== DWEB_PROJECT_ASSET_HOST) {
-					return new Response('Not Found', { status: 404 })
-				}
-				const projectId = String(u.searchParams.get('projectId') || '').trim()
-				const relPath = String(u.searchParams.get('path') || '').trim()
-				if (!projectId || !relPath) {
-					return new Response('Bad Request', { status: 400 })
-				}
-				const pid = Number(projectId)
-				if (!Number.isFinite(pid) || pid <= 0) {
-					return new Response('Bad Request', { status: 400 })
-				}
-				if (!backendBaseUrl) {
-					return new Response('Backend Unavailable', { status: 503 })
-				}
-
-				const passthroughKeys = ['variant', 'mode', 'maxSize', 'max_size', 'v']
-				const qs = new URLSearchParams()
-				qs.set('projectId', String(Math.floor(pid)))
-				qs.set('path', relPath)
-				for (const key of passthroughKeys) {
-					const value = String(u.searchParams.get(key) || '').trim()
-					if (!value) continue
-					qs.set(key, value)
-				}
-				const upstreamUrl = `${backendBaseUrl.replace(/\/$/, '')}/api/workflow/projects/assets/file?${qs.toString()}`
-				const method = String(request.method || 'GET').toUpperCase()
-				const headers = {}
-				for (const [k, v] of request.headers.entries()) {
-					headers[k] = v
-				}
-				const fetchInit = {
-					method,
-					headers,
-				}
-				if (method !== 'GET' && method !== 'HEAD') {
-					fetchInit.body = request.body
-				}
-				return await fetch(upstreamUrl, fetchInit)
-			} catch (err) {
-				const msg = String(err?.message || err || 'protocol proxy failed')
-				appendRuntimeLog(`[dweb-protocol] ${msg}`)
-				return new Response(msg, { status: 500 })
-			}
+		registerLocalDbIpc(ipcMain, {
+			backendDataDir: getBackendDataDir() || getUserDataDir(),
+			userDataDir: getUserDataDir(),
+			appSecret: getBackendDataDir() || getUserDataDir(),
 		})
-	} catch (e) {
-		appendRuntimeLog(`[dweb-protocol] register failed: ${String(e?.message || e)}`)
+	} catch (err) {
+		console.error('[main] localdb ipc register failed:', err)
 	}
+
+	ipcMain.handle('dweb:localdb:migrateFromDjango', async (_e, payload) => {
+		try {
+			const legacy = String(payload?.legacyDbPath || '').trim() || path.resolve(getBackendDataDir(), 'db.sqlite3')
+			const result = runLegacyDbMigration({
+				legacyDbPath: legacy,
+				backendDataDir: payload?.backendDataDir || getBackendDataDir(),
+				force: Boolean(payload?.force),
+			})
+			return result
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 图片预览原生窗口
+	let imageMarkupWindow = null
+	ipcMain.handle('dweb:image-markup:open', async (_e, payload) => {
+		console.log('[main] dweb:image-markup:open payload:', JSON.stringify(payload))
+		try {
+			const url = String(payload?.url || '').trim()
+			const name = String(payload?.name || '图片预览').slice(0, 200)
+			console.log('[main] url resolved:', url, 'name:', name)
+			if (!url) return { ok: false, error: 'missing url' }
+
+			// 如果已存在，则先关闭
+			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
+				try { imageMarkupWindow.close() } catch {}
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+			const targetUrl = isDev
+				? `${devUrl}/#/image-markup-preview?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/image-markup-preview?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`
+			console.log('[main] targetUrl:', targetUrl)
+
+			imageMarkupWindow = new BrowserWindow({
+				width: 1280,
+				height: 820,
+				title: `${APP_NAME} · ${name}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#181818',
+				frame: true,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+				},
+			})
+			console.log('[main] BrowserWindow created, isDestroyed:', imageMarkupWindow.isDestroyed())
+			try { imageMarkupWindow.setMenuBarVisibility(false) } catch {}
+			try { imageMarkupWindow.removeMenu() } catch {}
+
+			imageMarkupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				appendRuntimeLog(`[image-markup:${level}] ${message} (${sourceId}:${line})`)
+			})
+			imageMarkupWindow.on('closed', () => { imageMarkupWindow = null })
+
+			console.log('[main] about to loadURL:', targetUrl)
+			await imageMarkupWindow.loadURL(targetUrl)
+			console.log('[main] loadURL done, URL:', imageMarkupWindow.webContents.getURL())
+			return { ok: true }
+		} catch (err) {
+			console.error('[main][image-markup] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:image-markup:export', async (_e, payload) => {
+		try {
+			if (!mainWindow || mainWindow.isDestroyed()) {
+				return { ok: false, error: 'main window not available' }
+			}
+			mainWindow.webContents.send('dweb:image-markup:exported', {
+				dataUrl: String(payload?.dataUrl || ''),
+				width: Number(payload?.width || 0) || 0,
+				height: Number(payload?.height || 0) || 0,
+				sourceName: String(payload?.sourceName || ''),
+			})
+			// 关闭预览窗口
+			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
+				try { imageMarkupWindow.close() } catch {}
+			}
+			return { ok: true }
+		} catch (err) {
+			console.error('[main][image-markup] export failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// ===== 资源管理器原生窗口 =====
+	let resourceManagerWindow = null
+
+	ipcMain.handle('dweb:resource-manager:open', async (_e, payload) => {
+		console.log('[main] dweb:resource-manager:open payload:', JSON.stringify(payload))
+		try {
+			const projectId = payload?.projectId ?? null
+			const title = String(payload?.title || '资源管理器').slice(0, 200)
+
+			// 若已存在，直接聚焦，不重建
+			if (resourceManagerWindow && !resourceManagerWindow.isDestroyed()) {
+				resourceManagerWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			// 构建 URL query 参数
+			const queryParams = new URLSearchParams()
+			if (projectId != null) queryParams.set('projectId', String(projectId))
+			if (title) queryParams.set('title', title)
+			const queryStr = queryParams.toString() ? `?${queryParams.toString()}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/resource-manager${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/resource-manager${queryStr}`
+
+			console.log('[main][resource-manager] targetUrl:', targetUrl)
+
+			resourceManagerWindow = new BrowserWindow({
+				width: 1100,
+				height: 720,
+				minWidth: 640,
+				minHeight: 480,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#181818',
+				frame: true,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+				},
+			})
+
+			try { resourceManagerWindow.setMenuBarVisibility(false) } catch {}
+			try { resourceManagerWindow.removeMenu() } catch {}
+
+			resourceManagerWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				appendRuntimeLog(`[resource-manager:${level}] ${message} (${sourceId}:${line})`)
+			})
+			resourceManagerWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[resource-manager:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			resourceManagerWindow.on('closed', () => {
+				resourceManagerWindow = null
+			})
+
+			await resourceManagerWindow.loadURL(targetUrl)
+			console.log('[main][resource-manager] loadURL done, URL:', resourceManagerWindow.webContents.getURL())
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][resource-manager] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:resource-manager:close', async () => {
+		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
+			return { ok: true }
+		}
+		try {
+			resourceManagerWindow.close()
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:resource-manager:focus', async () => {
+		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
+			return { ok: false, error: 'window not available' }
+		}
+		resourceManagerWindow.focus()
+		return { ok: true }
+	})
+
+	// 资源管理器窗口 → 主窗口事件广播
+	// 事件类型: 'remove' | 'preview' | 'refresh-missing' | 'drop-to-node'
+	ipcMain.handle('dweb:resource-manager:broadcast', async (_e, payload) => {
+		const event = String(payload?.event || '').trim()
+		if (!event) return { ok: false, error: 'missing event name' }
+		if (!mainWindow || mainWindow.isDestroyed()) {
+			return { ok: false, error: 'main window not available' }
+		}
+		try {
+			mainWindow.webContents.send('dweb:resource-manager:event', {
+				event,
+				data: payload?.data ?? null,
+			})
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 主窗口 → 资源管理器窗口事件通知（资源列表变化时通知刷新）
+	ipcMain.handle('dweb:resource-manager:notify', async (_e, payload) => {
+		const event = String(payload?.event || '').trim()
+		if (!event) return { ok: false, error: 'missing event name' }
+		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
+			return { ok: false, skipped: true }
+		}
+		try {
+			resourceManagerWindow.webContents.send('dweb:resource-manager:notify', {
+				event,
+				data: payload?.data ?? null,
+			})
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
 }
 
 async function stopBackend() {
@@ -1472,6 +1889,28 @@ async function main() {
 	ensureBackendHealthMonitor()
 	ensureClientResourceLayout()
 	loadClientSettings()
+
+	try {
+		const userDir = getUserDataDir()
+		const backendDir = getBackendDataDir() || userDir
+		const dirOk = typeof userDir === 'string' && userDir.trim().length > 0
+		appendRuntimeLog(`[app] localdb init paths: userDir=${userDir} backendDir=${backendDir} ok=${dirOk}`)
+		initLocalDb({ backendDataDir: backendDir, userDataDir: userDir, appSecret: backendDir })
+		const repos = getRepos()
+		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (tag=${repos.tag || 'primary'} schema=${repos.schemaInfo?.currentVersion})`)
+	} catch (err) {
+		appendRuntimeLog(`[app] localdb init failed: ${String(err?.message || err)}`)
+		appendRuntimeLog(`[app] 尝试回退初始化 localdb (强制使用 userDataDir)...`)
+		const retry = ensureLocalDbInitialized({ userDataDir: getUserDataDir(), backendDataDir: getUserDataDir(), appSecret: getUserDataDir() })
+		if (!retry.ok) {
+			appendRuntimeLog(`[app] localdb fallback init also failed: ${retry.error}`)
+			appendRuntimeLog(`[app] WARNING: localdb 不可用，将使用前端 fallback 路径；项目相关功能可能异常。`)
+		} else {
+			const r = getReposSafe()
+			appendRuntimeLog(`[app] localdb fallback OK: ${r.ok ? r.repos.dbFilePath : 'unknown'}`)
+		}
+	}
+
 	registerIpc()
 	appendRuntimeLog(`[app] isPackaged=${app.isPackaged} platform=${process.platform} execPath=${process.execPath}`)
 

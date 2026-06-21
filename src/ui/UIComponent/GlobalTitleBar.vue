@@ -26,6 +26,14 @@
     </div>
 
     <div class="global-title-bar-right" aria-label="窗口控制">
+      <button class="theme-toggle-btn" type="button" aria-label="切换深色/浅色模式" title="切换主题" @click="toggleTheme">
+        <span class="theme-toggle-track" />
+        <span class="theme-toggle-knob" />
+        <span class="theme-toggle-icons" aria-hidden="true">
+          <span class="theme-icon-sun">☀️</span>
+          <span class="theme-icon-moon">🌙</span>
+        </span>
+      </button>
       <button class="titlebar-btn" type="button" aria-label="强制刷新" title="强制刷新" @click="onReload">
         ↻
       </button>
@@ -42,10 +50,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getBackendRuntimeState, getSetupState, onBackendRuntimeStateChanged } from '../../electronBridge'
-
-const w = window as any
-const router = useRouter()
+import {
+	getBackendRuntimeState,
+	getSetupState,
+	onBackendRuntimeStateChanged,
+	minimizeWindow,
+	toggleMaximizeWindow,
+	closeWindow,
+	reloadWindow,
+	openDevTools,
+} from '../../electronBridge'
+import { ThemeStore } from '../../store/theme'
 
 const backendRuntime = ref<{
   running: boolean
@@ -152,7 +167,7 @@ onBeforeUnmount(() => {
 
 async function onMinimize() {
   try {
-    await w?.dweb?.window?.minimize?.()
+    await minimizeWindow()
   } catch {
     // ignore
   }
@@ -160,7 +175,7 @@ async function onMinimize() {
 
 async function onReload() {
   try {
-    await w?.dweb?.window?.reload?.()
+    await reloadWindow()
   } catch {
     // ignore
   }
@@ -168,7 +183,7 @@ async function onReload() {
 
 async function onOpenDevTools() {
   try {
-    await w?.dweb?.window?.openDevTools?.()
+    await openDevTools()
   } catch {
     // ignore
   }
@@ -176,7 +191,7 @@ async function onOpenDevTools() {
 
 async function onToggleMaximize() {
   try {
-    await w?.dweb?.window?.toggleMaximize?.()
+    await toggleMaximizeWindow()
   } catch {
     // ignore
   }
@@ -184,7 +199,7 @@ async function onToggleMaximize() {
 
 async function onClose() {
   try {
-    await w?.dweb?.window?.close?.()
+    await closeWindow()
   } catch {
     // ignore
   }
@@ -192,6 +207,10 @@ async function onClose() {
 
 function goWelcome() {
   void router.push({ name: 'Welcome' })
+}
+
+function toggleTheme() {
+  ThemeStore.dispatch('toggleTheme')
 }
 </script>
 
@@ -204,17 +223,97 @@ function goWelcome() {
   align-items: center;
   justify-content: space-between;
   padding: 0 8px;
-  background: color-mix(in srgb, var(--dweb-defualt-dark) 70%, transparent);
+  background: var(--theme-titlebar-bg);
   backdrop-filter: blur(14px) saturate(1.25);
   -webkit-backdrop-filter: blur(14px) saturate(1.25);
-  border-bottom: 1px solid var(--vscode-border);
-  box-shadow: var(--vscode-shadow);
+  border-bottom: 1px solid var(--theme-titlebar-border);
+  box-shadow: var(--theme-shadow);
 
   user-select: none;
   -webkit-user-select: none;
 
   /* Electron frameless window drag region */
   -webkit-app-region: drag;
+}
+
+/* Theme Toggle Button */
+.theme-toggle-btn {
+  position: relative;
+  width: 52px;
+  height: 26px;
+  border: 1px solid var(--theme-border);
+  border-radius: 13px;
+  background: var(--theme-bg-tertiary);
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--theme-accent);
+}
+
+.theme-toggle-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--theme-accent-muted);
+}
+
+.theme-toggle-track {
+  position: absolute;
+  inset: 2px;
+  border-radius: 11px;
+  background: var(--theme-bg-secondary);
+}
+
+.theme-toggle-knob {
+  position: absolute;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--theme-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="dark"] .theme-toggle-knob {
+  left: 3px;
+}
+
+[data-theme="light"] .theme-toggle-knob {
+  left: 27px;
+}
+
+.theme-toggle-icons {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+}
+
+.theme-icon-sun,
+.theme-icon-moon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+[data-theme="dark"] .theme-icon-sun {
+  opacity: 0.35;
+}
+
+[data-theme="dark"] .theme-icon-moon {
+  opacity: 1;
+}
+
+[data-theme="light"] .theme-icon-sun {
+  opacity: 1;
+}
+
+[data-theme="light"] .theme-icon-moon {
+  opacity: 0.35;
 }
 
 .global-title-bar-left {
@@ -236,23 +335,23 @@ function goWelcome() {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  border: 1px solid var(--vscode-border);
+  border: 1px solid var(--theme-border);
   box-sizing: border-box;
 }
 
 .backend-status-dot.good {
-  background: var(--vscode-success);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--vscode-success) 68%, transparent);
+  background: var(--theme-success);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-success) 68%, transparent);
 }
 
 .backend-status-dot.bad {
-  background: var(--vscode-error);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--vscode-error) 68%, transparent);
+  background: var(--theme-error);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-error) 68%, transparent);
 }
 
 .backend-status-text {
   font-size: 12px;
-  color: var(--vscode-fg-muted);
+  color: var(--theme-text-secondary);
   white-space: nowrap;
 }
 
@@ -263,17 +362,17 @@ function goWelcome() {
   min-width: 128px;
   max-width: 180px;
   padding: 2px 6px;
-  border: 1px solid var(--vscode-border);
-  background: color-mix(in srgb, var(--dweb-defualt) 72%, transparent);
+  border: 1px solid var(--theme-border);
+  background: var(--theme-bg-tertiary);
 }
 
 .setup-progress-chip.running {
-  border-color: color-mix(in srgb, var(--vscode-success) 56%, var(--vscode-border));
+  border-color: color-mix(in srgb, var(--theme-success) 56%, var(--theme-border));
 }
 
 .setup-progress-label {
   font-size: 11px;
-  color: var(--vscode-fg-muted);
+  color: var(--theme-text-secondary);
   white-space: nowrap;
 }
 
@@ -281,7 +380,7 @@ function goWelcome() {
   position: relative;
   width: 64px;
   height: 6px;
-  background: color-mix(in srgb, var(--vscode-fg-muted) 18%, transparent);
+  background: color-mix(in srgb, var(--theme-text-secondary) 18%, transparent);
   overflow: hidden;
 }
 
@@ -290,7 +389,7 @@ function goWelcome() {
   left: 0;
   top: 0;
   bottom: 0;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--vscode-success) 82%, #6fd1a0), var(--vscode-success));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--theme-success) 82%, #6fd1a0), var(--theme-success));
 }
 
 .global-title-bar-logo {
@@ -302,7 +401,7 @@ function goWelcome() {
 .global-title-bar-title {
   min-width: 0;
   font-size: 12px;
-  color: var(--vscode-fg);
+  color: var(--theme-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -320,10 +419,10 @@ function goWelcome() {
 .titlebar-btn {
   appearance: none;
   -webkit-appearance: none;
-  border: 1px solid var(--vscode-border);
+  border: 1px solid var(--theme-border);
   border-radius: 0;
-  background: color-mix(in srgb, var(--dweb-defualt) 70%, transparent);
-  color: var(--vscode-fg);
+  background: var(--theme-bg-tertiary);
+  color: var(--theme-text-primary);
   height: 26px;
   width: 40px;
   cursor: pointer;
@@ -342,12 +441,11 @@ function goWelcome() {
 }
 
 .titlebar-btn:hover {
-  background: color-mix(in srgb, var(--vscode-hover-bg) 75%, transparent);
-  border-color: var(--vscode-hover-border);
+  background: var(--theme-hover-bg);
+  border-color: var(--theme-hover-border);
 }
 
 .titlebar-btn.danger:hover {
-  border-color: var(--vscode-error);
-  box-shadow: var(--dweb-shadow-red);
+  border-color: var(--theme-error);
 }
 </style>

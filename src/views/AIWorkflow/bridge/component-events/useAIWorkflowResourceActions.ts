@@ -11,8 +11,10 @@ export const useAIWorkflowResourceActions = (payload: {
   selectedNodeId: Ref<string | null>
   isElectron: () => boolean
   nodeResourceName: (node: WorkflowNode) => string | null
+  getProjectId?: () => number | null
+  getProjectRootPath?: (projectId?: number) => string
 }) => {
-  const triggerDownloadObjectUrl = (objectUrl: string, filename: string) => {
+  const triggerDownloadObjectUrl = (objectUrl: string, filename: string) => {   
     const a = document.createElement('a')
     a.href = objectUrl
     a.download = filename
@@ -30,7 +32,7 @@ export const useAIWorkflowResourceActions = (payload: {
     try {
       triggerDownloadObjectUrl(objectUrl, filename)
     } finally {
-      // Give the browser a moment to start the download before revoking.
+      // Give the browser a moment to start the download before revoking.       
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
     }
   }
@@ -49,36 +51,94 @@ export const useAIWorkflowResourceActions = (payload: {
     return `image-${node.id}.png`
   }
 
-  const selectedNodeLocalResourcePath = computed(() => {
-    if (!payload.selectedNodeId.value) return ''
-    const node = payload.store.state.nodesById[payload.selectedNodeId.value]
-    if (!node) return ''
-    if (node.type === 'model3d') {
-      const assetPath = String(node.model3dSettings?.modelAssetPath ?? '').trim()
-      if (/^[a-zA-Z]:[\\/]/.test(assetPath) || assetPath.startsWith('/')) return assetPath
-      const sourcePath = String(node.model3dSettings?.modelSourcePath ?? '').trim()
-      if (/^[a-zA-Z]:[\\/]/.test(sourcePath) || sourcePath.startsWith('/')) return sourcePath
+  const isAbsoluteLocalPath = (value: string) => {
+    const v = String(value || '').trim()
+    if (!v) return false
+    return /^[a-zA-Z]:[\\/]/.test(v) || v.startsWith('/') || v.startsWith('\\\\') || v.startsWith('file://')
+  }
+
+  const resolveFromProjectRelativePath = (projectRelativePath: string, projectId?: number) => {
+    const rel = String(projectRelativePath || '').trim()
+    if (!rel) return ''
+    const root = payload.getProjectRootPath ? payload.getProjectRootPath(projectId) : ''
+    if (root) {
+      const normalizedRoot = root.endsWith('/') || root.endsWith('\\') ? root.slice(0, -1) : root
+      const normalizedRel = rel.replace(/^[\\/]+/, '')
+      if (normalizedRoot && normalizedRel) {
+        return `${normalizedRoot}/${normalizedRel}`
+      }
+    }
+    return rel
+  }
+
+  const resolveFromDwebProjectAssetUrl = (rawUrl: string) => {
+    const urlLower = String(rawUrl || '').trim()
+    if (!urlLower.startsWith('dweb://project-assets')) return ''
+    try {
+      const urlObj = new URL(rawUrl)
+      const params = urlObj.searchParams
+      const parsedPath = params.get('path') || ''
+      if (!parsedPath) return ''
+      const pid = Number(params.get('projectId') || params.get('project') || '0') || 0
+      const root = payload.getProjectRootPath ? payload.getProjectRootPath(pid) : ''
+      if (root) {
+        const normalizedRoot = root.endsWith('/') || root.endsWith('\\') ? root.slice(0, -1) : root
+        const normalizedPath = parsedPath.replace(/^[\\/]+/, '')
+        return `${normalizedRoot}/${normalizedPath}`
+      }
+      return parsedPath
+    } catch {
       return ''
     }
+  }
+
+  const selectedNodeLocalResourcePath = computed(() => {
+    if (!payload.selectedNodeId.value) return ''
+    const node = payload.store.state.nodesById[payload.selectedNodeId.value]    
+    if (!node) return ''
+
+    if (node.type === 'model3d') {
+      const assetPath = String(node.model3dSettings?.modelAssetPath ?? '').trim()
+      if (isAbsoluteLocalPath(assetPath)) return assetPath
+      const sourcePath = String(node.model3dSettings?.modelSourcePath ?? '').trim()
+      if (isAbsoluteLocalPath(sourcePath)) return sourcePath
+      return ''
+    }
+
     if (node.type !== 'image' && node.type !== 'video') return ''
-    const rid = String((node as any)?.resourceId ?? '').trim()
+
+    const rid = String(node.resourceId || '').trim()
     if (!rid) return ''
     const resource = payload.store.state.resourcesById[rid] as any
     if (!resource) return ''
 
     const sourcePath = String(resource?.sourcePath ?? '').trim()
-    if (/^[a-zA-Z]:[\\/]/.test(sourcePath) || sourcePath.startsWith('/')) return sourcePath
+    if (isAbsoluteLocalPath(sourcePath)) return sourcePath
+
+    const projectRelativePath = String(resource?.projectRelativePath ?? '').trim()
+    if (projectRelativePath) {
+      const pid = payload.getProjectId?.() ?? undefined
+      const resolved = resolveFromProjectRelativePath(projectRelativePath, pid)
+      if (resolved) return resolved
+    }
 
     const rawUrl = String(resource?.url ?? '').trim()
-    if (/^file:\/\//i.test(rawUrl)) {
-      const urlObj = new URL(rawUrl)
-      return decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1')
+    if (rawUrl) {
+      if (/^file:\/\//i.test(rawUrl)) {
+        const urlObj = new URL(rawUrl)
+        return decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1')
+      }
+      if (rawUrl.toLowerCase().startsWith('dweb://project-assets')) {
+        const fromDweb = resolveFromDwebProjectAssetUrl(rawUrl)
+        if (fromDweb) return fromDweb
+      }
     }
+
     return ''
   })
 
   const canOpenSelectedNodeFolder = computed(() => {
-    return Boolean(payload.isElectron() && selectedNodeLocalResourcePath.value)
+    return Boolean(payload.isElectron() && selectedNodeLocalResourcePath.value) 
   })
 
   return {

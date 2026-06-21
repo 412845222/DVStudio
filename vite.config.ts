@@ -11,6 +11,9 @@ const normalizeRepoUrl = (raw: unknown): string => {
 
 const REPO_URL = normalizeRepoUrl((pkg as any)?.repository?.url ?? (pkg as any)?.repository)
 
+// 根据 env 中的 VITE_BACKEND_BASE_URL（用于开发/测试时指定后端地址）。
+const VITE_BACKEND_BASE_URL = process.env.VITE_BACKEND_BASE_URL || 'http://127.0.0.1:5800'
+
 // 自定义 HTTP agent: 禁用连接池的 keepAlive，
 // 避免 Node.js 默认 agent 的 socket 超时/重用问题影响长连接 SSE。
 const noKeepAliveAgent = new http.Agent({
@@ -30,7 +33,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:5800',
+        target: VITE_BACKEND_BASE_URL,
         changeOrigin: true,
         ws: false,
         // 完全禁用代理层超时：Seedance 视频生成可能十几分钟。
@@ -104,7 +107,7 @@ export default defineConfig({
         },
       },
       '/media': {
-        target: 'http://127.0.0.1:5800',
+        target: VITE_BACKEND_BASE_URL,
         changeOrigin: true,
         timeout: 0,
         proxyTimeout: 0,

@@ -11,7 +11,7 @@ html,
 body {
   margin: 0;
   padding: 0;
-  color: #fff;
+  color: var(--theme-text-primary);
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
@@ -22,7 +22,7 @@ body {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  background: var(--dweb-defualt-dark);
+  background: var(--theme-bg-primary);
 }
 
 #app {

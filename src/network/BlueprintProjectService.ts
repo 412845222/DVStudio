@@ -1,4 +1,5 @@
 import { getBackendBaseUrl } from './backendConfig'
+import { logBlueprintRequest } from './blueprintRequestLog'
 
 type ServiceOptions = {
   baseUrl?: string | (() => string)
@@ -70,6 +71,30 @@ const jsonHeaders = {
   'Content-Type': 'application/json',
 }
 
+const normalizeForIpc = (input: any): any => {
+  const seen = new WeakSet<object>()
+  const walk = (value: any): any => {
+    if (value === null) return null
+    const t = typeof value
+    if (t === 'string' || t === 'number' || t === 'boolean') return value
+    if (t === 'bigint') return Number(value)
+    if (t === 'undefined' || t === 'function' || t === 'symbol') return null
+    if (t !== 'object') return null
+
+    if (value instanceof Date) return value.toISOString()
+    if (Array.isArray(value)) return value.map((item) => walk(item))
+
+    if (seen.has(value)) return null
+    seen.add(value)
+    const out: Record<string, any> = {}
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = walk(v)
+    }
+    return out
+  }
+  return walk(input)
+}
+
 const safeJson = async (res: Response) => {
   const text = await res.text()
   try {
@@ -92,6 +117,55 @@ export class BlueprintProjectService {
     }
   }
 
+  private async _ensureElectronLocalDb(): Promise<boolean> {
+    const bridge = (window as any)?.dweb?.aiworkflow?.db
+    if (!bridge) return false
+    try {
+      const state = await bridge._initState?.()
+      if (state?.ok) return true
+      const retry = await bridge._ensureInitialized?.()
+      return Boolean(retry?.ok)
+    } catch {
+      return false
+    }
+  }
+
+  private isElectronRuntime(): boolean {
+    const w = window as any
+    return w?.__DWEB_RUNTIME__?.platform === 'electron' || typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
+  }
+
+  private async electronDb<T>(fn: () => Promise<T> | T): Promise<T | null> {
+    const bridge = (window as any)?.dweb?.aiworkflow?.db?.projects
+    if (typeof bridge !== 'object') return null
+    const ready = await this._ensureElectronLocalDb()
+    if (!ready) return null
+    try {
+      return await Promise.resolve(fn())
+    } catch {
+      return null
+    }
+  }
+
+  private async electronAsset<T>(
+    opName:
+      | 'uploadProjectAsset'
+      | 'importProjectAsset'
+      | 'deleteProjectAsset'
+      | 'resolveProjectAsset'
+      | 'repairProjectAsset',
+    payload: any,
+  ): Promise<T | null> {
+    const bridge = (window as any)?.dweb?.aiworkflow
+    if (typeof bridge?.[opName] !== 'function') return null
+    try {
+      const r = await bridge[opName](normalizeForIpc(payload ?? {}))
+      return r as T
+    } catch {
+      return null
+    }
+  }
+
   private url(path: string) {
     const base = (this.getBaseUrl?.() ?? '').trim().replace(/\/$/, '')
     if (!base) return path
@@ -99,8 +173,52 @@ export class BlueprintProjectService {
     return `${base}/${path}`
   }
 
+  private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const url = typeof input === 'string' ? input : (input as Request).url || String(input)
+    const method = String(init?.method || (typeof input !== 'string' && 'method' in (input as any) ? (input as any).method : '') || 'GET').toUpperCase()
+    const start = typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now()
+    try {
+      const res = await fetch(input as any, init)
+      const end = typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now()
+      logBlueprintRequest({
+        url,
+        method,
+        status: res.status,
+        durationMs: Math.max(0, Math.round(end - start)),
+        tag: 'project',
+      })
+      return res
+    } catch (err) {
+      const end = typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now()
+      logBlueprintRequest({
+        url,
+        method,
+        durationMs: Math.max(0, Math.round(end - start)),
+        errorMessage: err instanceof Error ? err.message : String(err),
+        tag: 'project',
+      })
+      throw err
+    }
+  }
+
   async listProjects(): Promise<ListProjectsResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/list'), { method: 'GET' })
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.list()
+    )
+    if (electronResult !== null) {
+      const rows = Array.isArray(electronResult) ? electronResult : (electronResult as any)?.projects || []
+      return { ok: true, projects: rows as any }
+    }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/list requires localdb in Electron runtime' }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/list'), { method: 'GET' })
     if (!res.ok) {
       const body = await safeJson(res)
       return {
@@ -113,7 +231,21 @@ export class BlueprintProjectService {
   }
 
   async saveProject(payload: { name: string; snapshot: any; projectId?: number | null }): Promise<SaveProjectResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/save'), {
+    const safeSnapshot = normalizeForIpc(payload.snapshot)
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.save({
+        projectId: payload.projectId,
+        snapshot: safeSnapshot,
+        name: payload.name,
+      })
+    )
+    if (electronResult !== null) {
+      return { ok: true, project: electronResult.project ?? electronResult }
+    }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/save requires localdb in Electron runtime' }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/save'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -130,7 +262,21 @@ export class BlueprintProjectService {
   }
 
   async loadProject(projectId: number): Promise<LoadProjectResponse> {
-    const res = await fetch(this.url(`/api/workflow/projects/load?id=${encodeURIComponent(String(projectId))}`), {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.load({ id: projectId })
+    )
+    if (electronResult !== null) {
+      // Electron returns { ok, project, snapshot } with snapshot at root level
+      return {
+        ok: true,
+        project: electronResult.project ?? electronResult,
+        snapshot: electronResult.snapshot,
+      }
+    }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/load requires localdb in Electron runtime' }
+    }
+    const res = await this.fetchWithLog(this.url(`/api/workflow/projects/load?id=${encodeURIComponent(String(projectId))}`), {
       method: 'GET',
     })
     if (!res.ok) {
@@ -145,7 +291,19 @@ export class BlueprintProjectService {
   }
 
   async deleteProject(projectId: number): Promise<DeleteProjectResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/delete'), {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.delete({ id: projectId })
+    )
+    if (electronResult !== null) {
+      if ((electronResult as any).ok === false) {
+        return { ok: false, error: String((electronResult as any).error || 'delete failed') }
+      }
+      return { ok: true, id: projectId }
+    }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/delete requires localdb in Electron runtime' }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/delete'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({ id: projectId }),
@@ -162,7 +320,20 @@ export class BlueprintProjectService {
   }
 
   async openProjectFolder(payload: { rootPath: string; name?: string; create?: boolean }): Promise<OpenProjectFolderResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/folder/open'), {
+    const electronResult = await this.electronDb(() =>
+      (window as any).dweb.aiworkflow.db.projects.openFolder({
+        rootPath: payload.rootPath,
+        name: payload.name,
+        create: payload.create,
+      })
+    )
+    if (electronResult !== null) {
+      return { ok: true, project: electronResult.project ?? electronResult }
+    }
+    if (this.isElectronRuntime()) {
+      return { ok: false, error: 'electron localdb unavailable: projects/folder/open requires localdb in Electron runtime' }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/folder/open'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
@@ -183,6 +354,27 @@ export class BlueprintProjectService {
     kind: BlueprintAssetKind,
     opts?: { projectId?: number | null; bucket?: 'assets' | 'thumbnails' }
   ): Promise<UploadAssetResponse> {
+    if (this.isElectronRuntime()) {
+      try {
+        const ab = await file.arrayBuffer()
+        const electronResult = await this.electronAsset<any>('uploadProjectAsset', {
+          name: file.name,
+          kind,
+          contentType: file.type || undefined,
+          arrayBuffer: ab,
+          projectId: opts?.projectId ? Number(opts.projectId) : null,
+          bucket: opts?.bucket,
+        })
+        if (electronResult?.ok) {
+          return { ok: true, asset: electronResult.asset as any }
+        }
+        if (electronResult && !electronResult.ok) {
+          return { ok: false, error: `upload via electron failed: ${String(electronResult.error || 'unknown')}` }
+        }
+      } catch (err) {
+        return { ok: false, error: `upload via electron failed: ${err instanceof Error ? err.message : String(err)}` }
+      }
+    }
     const fd = new FormData()
     fd.append('file', file)
     fd.append('kind', kind)
@@ -190,7 +382,7 @@ export class BlueprintProjectService {
       fd.append('projectId', String(Number(opts.projectId)))
     }
     if (opts?.bucket === 'thumbnails') fd.append('bucket', 'thumbnails')
-    const res = await fetch(this.url('/api/workflow/projects/assets/upload'), {
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/upload'), {
       method: 'POST',
       body: fd,
     })
@@ -217,7 +409,21 @@ export class BlueprintProjectService {
     projectId?: number | null
     bucket?: 'assets' | 'thumbnails'
   }): Promise<ImportAssetResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/assets/import'), {
+    if (this.isElectronRuntime()) {
+      const electronResult = await this.electronAsset<any>('importProjectAsset', {
+        projectId: payload.projectId ? Number(payload.projectId) : null,
+        kind: payload.kind,
+        name: payload.name,
+        sourcePath: payload.sourcePath,
+        sourceUrl: payload.sourceUrl,
+        bucket: payload.bucket,
+      })
+      if (electronResult?.ok) return { ok: true, asset: electronResult.asset as any }
+      if (electronResult && !electronResult.ok) {
+        return { ok: false, error: `import via electron failed: ${String(electronResult.error || 'unknown')}` }
+      }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/import'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
@@ -241,7 +447,19 @@ export class BlueprintProjectService {
     relativePath?: string
     projectRelativePath?: string
   }): Promise<DeleteAssetResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/assets/delete'), {
+    if (this.isElectronRuntime()) {
+      const electronResult = await this.electronAsset<any>('deleteProjectAsset', {
+        projectId: payload.projectId ? Number(payload.projectId) : null,
+        relativePath: payload.relativePath,
+        url: payload.url,
+        sourcePath: payload.sourcePath,
+      })
+      if (electronResult?.ok) return { ok: true, fileDeleted: Boolean(electronResult.fileDeleted), path: electronResult.path }
+      if (electronResult && !electronResult.ok) {
+        return { ok: false, error: `delete via electron failed: ${String(electronResult.error || 'unknown')}` }
+      }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/delete'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
@@ -265,7 +483,28 @@ export class BlueprintProjectService {
     sourceUrl?: string
     projectRelativePath?: string
   }): Promise<ResolveAssetResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/assets/resolve'), {
+    if (this.isElectronRuntime()) {
+      const electronResult = await this.electronAsset<any>('resolveProjectAsset', {
+        projectId: payload.projectId ? Number(payload.projectId) : null,
+        kind: payload.kind,
+        name: payload.name,
+        sourcePath: payload.sourcePath,
+        sourceUrl: payload.sourceUrl,
+        projectRelativePath: payload.projectRelativePath,
+      })
+      if (electronResult?.ok) {
+        return {
+          ok: true,
+          resolved: Boolean(electronResult.resolved),
+          asset: electronResult.asset as any,
+          reason: electronResult.reason,
+        }
+      }
+      if (electronResult && !electronResult.ok) {
+        return { ok: false, error: `resolve via electron failed: ${String(electronResult.error || 'unknown')}` }
+      }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/resolve'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),
@@ -287,7 +526,26 @@ export class BlueprintProjectService {
     name?: string
     projectRelativePath?: string
   }): Promise<RepairAssetResponse> {
-    const res = await fetch(this.url('/api/workflow/projects/assets/repair'), {
+    if (this.isElectronRuntime()) {
+      const electronResult = await this.electronAsset<any>('repairProjectAsset', {
+        projectId: payload.projectId ? Number(payload.projectId) : null,
+        kind: payload.kind,
+        name: payload.name,
+        projectRelativePath: payload.projectRelativePath,
+      })
+      if (electronResult?.ok) {
+        return {
+          ok: true,
+          repaired: Boolean(electronResult.repaired),
+          asset: electronResult.asset as any,
+          reason: electronResult.reason,
+        }
+      }
+      if (electronResult && !electronResult.ok) {
+        return { ok: false, error: `repair via electron failed: ${String(electronResult.error || 'unknown')}` }
+      }
+    }
+    const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/repair'), {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload ?? {}),

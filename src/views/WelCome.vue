@@ -460,20 +460,9 @@ onBeforeUnmount(() => {
 
 .layout {
   height: 100%;
-  padding: 12px 12px 12px 68px;
+  padding: 12px;
   box-sizing: border-box;
   min-height: 0;
-  transition: padding-left 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-/* 当导航栏展开时，调整左侧padding */
-body[data-side-nav-expanded="true"] .layout {
-  padding-left: 192px;
-}
-
-/* 当导航栏收起时，恢复默认padding */
-body[data-side-nav-expanded="false"] .layout {
-  padding-left: 68px;
 }
 
 .left,

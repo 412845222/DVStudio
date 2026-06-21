@@ -1,5 +1,12 @@
 <template>
   <div class="aiwf-page bg-vscode">
+    <div v-if="noProjectSelected" class="no-project-guide">
+      <div class="no-project-card">
+        <h2>请先选择或新建项目</h2>
+        <p>从左侧「项目列表」选择已有项目，或点击「新建项目」创建一个新项目。</p>
+        <button @click="noProjectSelected = false; void $router.push({ name: 'ProjectList' })">去项目列表</button>
+      </div>
+    </div>
     <!-- 蓝图节点容器 -->
     <div class="aiwf-blueprint-container">
       <BlueprintCanvas
@@ -122,6 +129,7 @@
             @media-ready="onNodeMediaReady(node.id)"
             @move-merge-item="onTextMergeItemMove(node.id, $event)"
             @preview-contextmenu="onNodePreviewContextMenu(node.id, $event)"
+            @preview-request="onNodeImagePreviewRequestInline(node.id, $event)"
             @pull-meshy-output="onNodePullMeshyOutput(node.id)"
             @refresh="() => onNodeRefresh(node.id)"
             @refresh-meshy-task="onNodeRefreshMeshyTask(node.id)"
@@ -276,16 +284,12 @@
           :performancePriorityMode="performancePriorityMode"
           :resources="resources"
           :nodeLibraryOpen="false"
-          :promptLibraryOpen="false"
+          :backendLogOpen="blueprintLogPanelOpen"
           :electronReady="isElectron()"
           @quick-add="onRailQuickAdd"
           @toggle-node-library="onRailToggleNodeLibrary"
-          @open-prompt-library="onRailOpenPromptLibrary"
           @toggle-backend-log="onRailToggleBackendLog"
           @open-resource-manager="openResourceDialog"
-          @open-meshy-task="openMeshyTaskDialog"
-          @open-video-task="openVideoTaskDialog"
-          @open-task-placeholder="onRailOpenTaskPlaceholder"
           @request-new="onRequestNewProject"
           @request-repair-assets="onRequestRepairProjectAssets"
           @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
@@ -389,15 +393,6 @@
       </div>
 
       <div class="aiwf-overlay-floating aiwf-overlay-floating-utility">
-        <ResourceManagerPanel
-          :open="resourceDialogOpen"
-          :resources="resources"
-          @close="closeResourceDialog"
-          @remove="onRemoveResource"
-          @preview="onPreviewResource"
-          @refresh-missing="onRefreshMissingResourceRecords"
-        />
-
         <MeshyTaskPanel
           :open="meshyTaskDialogOpen"
           :tasks="meshyTaskItems"
@@ -520,6 +515,7 @@
       />
 
     </div>
+    <BlueprintLogPanel v-model:open="blueprintLogPanelOpen" />
     <AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
   </div>
 </template>
@@ -533,7 +529,6 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
 import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
 import BlueprintProjectToolbar, { type BlueprintProjectListItem } from '../../ui/WorkFlow/BlueprintProjectToolbar.vue'
-import ResourceManagerPanel from '../../ui/WorkFlow/ResourceManagerPanel.vue'
 import MeshyTaskPanel, { type MeshyTaskPanelAction, type MeshyTaskPanelDetail, type MeshyTaskPanelItem } from '../../ui/WorkFlow/MeshyTaskPanel.vue'
 import VideoTaskPanel from '../../ui/WorkFlow/VideoTaskPanel.vue'
 import WorkflowInspectorPanel from '../../ui/UIComponent/WorkflowInspectorPanel.vue'
@@ -548,6 +543,7 @@ import BottomChatDock, {
 import ContextMenu from '../../ui/UIComponent/ContextMenu.vue'
 import ToastStack from '../../ui/UIComponent/ToastStack.vue'
 import FullscreenProgressOverlay from '../../ui/UIComponent/FullscreenProgressOverlay.vue'
+import ImageMarkupDialog from '../../ui/WorkFlow/WorlFlowNodes/ImageMarkupDialog.vue'
 import DwebCanvasNodeSearchMenu from '../../ui/UIComponent/DwebCanvasNodeSearchMenu.vue'
 import { buildDeleteAction, type WorkflowAction } from '../../aiworkflow/actions'
 import { exportWorkflowImageOutputPng } from '../../aiworkflow/imageOutput'
@@ -569,6 +565,7 @@ import {
 import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
 import { AIWorkflowKey } from '../../store/aiworkflow'
 import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
+import { aiWorkflowHistory, ensureAIWorkflowHistory } from '../../adapters/aiWorkflowPersistence'
 import { ComfyUIBridgeService } from '../../network/ComfyUIBridgeService'
 import type { SeedanceTaskMirrorItem } from '../../network/ComfyUIBridgeService'
 import { createLocalExecChatService } from '../../network/LocalExecChatService'
@@ -579,10 +576,16 @@ import { MediaResourceImportManager } from '../../aiworkflow/MediaResourceImport
 import { VideoMetadataReadQueue } from '../../aiworkflow/VideoMetadataReadQueue'
 import { createVideoFirstFrameThumbnail } from '../../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
 import { canUseFileSystemHandles, ensureReadPermission, getLocalFileHandle, putLocalFileHandle } from '../../aiworkflow/localFileHandleDb'
-import { resolveBackendUrl, getBackendBaseUrl } from '../../network/backendConfig'
-import { isElectron, openFolderForPath } from '../../electronBridge'
+import {
+  resolveBackendUrl,
+  resolveBackendFetchUrl,
+  isWorkflowLocalAssetUrl,
+} from '../../network/backendConfig'
+import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets, uploadProjectAsset, importProjectAsset } from '../../electronBridge'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
+import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
+import { blueprintLog } from './blueprint-core/blueprintLog'
 import { useAIWorkflowEdgeRenderer } from './blueprint-core/useAIWorkflowEdgeRenderer'
 import { useAIWorkflowEdgeIndex } from './blueprint-core/useAIWorkflowEdgeIndex'
 import { useAIWorkflowNodeVisibility } from './blueprint-core/useAIWorkflowNodeVisibility'
@@ -673,11 +676,14 @@ import { useAIWorkflowSceneLayoutController } from './node-business/scene/useAIW
 import { useAIWorkflowSceneLayoutSettings } from './node-business/scene/useAIWorkflowSceneLayoutSettings'
 import { useAIWorkflowSceneUnderstandingController } from './node-business/scene/useAIWorkflowSceneUnderstandingController'
 import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
+import { useStartupProgress } from '../../composables/useStartupProgress'
 
 const router = useRouter()
 const route = useRoute()
+const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
+ensureAIWorkflowHistory()
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 
@@ -928,6 +934,112 @@ const onNodeChatClose = () => {
   store.dispatch('closeNodeChatDialog')
 }
 
+const toFileUrlFromSourcePath = (): string => {
+  return ''
+}
+
+const isStrictLocalRenderableUrl = (rawUrl: string): boolean => {
+  const text = String(rawUrl || '').trim()
+  if (!text) return false
+  if (text.toLowerCase().startsWith('dweb://project-assets')) return true
+  return false
+}
+
+const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
+  const rel = String(base?.projectRelativePath || '').trim()
+  const sourcePath = String(base?.sourcePath || '').trim()
+  const currentUrl = String(base?.url || '').trim()
+
+  if (rel) {
+    base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
+    return
+  }
+  if (currentUrl.toLowerCase().startsWith('dweb://project-assets')) {
+    base.url = currentUrl
+    return
+  }
+  if (sourcePath && isElectron()) {
+    const rootPath = String(currentProjectRootPath.value || '').trim()
+    if (rootPath) {
+      try {
+        const normalizedSource = sourcePath.replace(/\\/g, '/').replace(/\/+$/, '')
+        const normalizedRoot = rootPath.replace(/\\/g, '/').replace(/\/+$/, '')
+        if (normalizedSource.startsWith(normalizedRoot + '/')) {
+          const inferredRel = normalizedSource.slice(normalizedRoot.length + 1)
+          base.projectRelativePath = inferredRel
+          base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(inferredRel)}`
+          return
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+  base.url = ''
+}
+
+const downloadAssetViaElectron = async (
+  projectId: number,
+  sourceUrl: string,
+  desiredFilename: string,
+): Promise<{ sourcePath: string; projectRelativePath: string; url: string; size: number } | null> => {
+  if (!isElectron()) return null
+  const pid = Number(projectId)
+  const url = String(sourceUrl || '').trim()
+  if (!Number.isFinite(pid) || pid <= 0 || !url) return null
+  try {
+    const dl = await downloadUrlToProjectRoot(pid, url, desiredFilename)
+    const relPath = String(dl?.relativePath || '').trim()
+    const absolutePath = String(dl?.absolutePath || '').trim()
+    if (!(dl?.ok) || !relPath || !absolutePath) return null
+    return {
+      sourcePath: absolutePath,
+      projectRelativePath: relPath,
+      url: `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(relPath)}`,
+      size: Number(dl?.size || 0),
+    }
+  } catch {
+    return null
+  }
+}
+
+const ensureActiveProjectRootRegistered = async (projectId: number): Promise<string> => {
+  const pid = Number(projectId)
+  if (!Number.isFinite(pid) || pid <= 0) return ''
+
+  let rootPath = String(currentProjectRootPath.value || '').trim()
+
+  // Use localdb-backed project list as authoritative source to avoid stale in-memory rootPath.
+  try {
+    const listed = await blueprintProjectService.listProjects()
+    if (listed?.ok && Array.isArray((listed as any).projects)) {
+      const hit = (listed as any).projects.find((p: any) => Number(p?.id) === pid)
+      const listedRoot = String(hit?.rootPath || '').trim()
+      if (listedRoot && listedRoot !== rootPath) {
+        console.warn('[AIWorkflow] project root corrected by projectId', {
+          projectId: pid,
+          previousRoot: rootPath,
+          correctedRoot: listedRoot,
+        })
+        rootPath = listedRoot
+        currentProjectRootPath.value = listedRoot
+      }
+    }
+  } catch {
+    // ignore and keep current in-memory rootPath
+  }
+
+  if (isElectron() && rootPath) {
+    try {
+      await registerProjectRoot(pid, rootPath)
+    } catch {
+      // ignore
+    }
+  }
+
+  return rootPath
+}
+
 const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
   store.dispatch('submitNodeChat', payload)
   const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
@@ -937,6 +1049,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
       store,
       comfyService,
       resolveBackendUrl,
+      resolveBackendFetchUrl,
       pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
         chatMessages.value = [
           ...chatMessages.value,
@@ -946,29 +1059,186 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
       bindTextResultToNode: (nodeId: string, text: string) => {
         store.commit('setNodeTextValue', { nodeId, textValue: text })
       },
-      bindImageResultToNode: (nodeId: string, url: string) => {
+      bindImageResultToNode: async (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
-        if (!node) return
+        if (!node) return false
         const resourceId = `gen-img-${nodeId}-${Date.now()}`
-        store.commit('addResource', {
+        const resourceName = `gen_image_${resourceId.slice(-6)}`
+        const base: any = {
           id: resourceId,
           kind: 'image',
-          name: `AI 生成图片 ${resourceId.slice(-6)}`,
-          url: url,
-        })
+          name: resourceName,
+          url: '',
+        }
+        const pid = Number(currentProjectId.value ?? 0)
+        const sourceUrl = String(url || '').trim()
+        if (!(pid > 0) || !sourceUrl) {
+          pushToast('图片生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+          return false
+        }
+        const rootPath = await ensureActiveProjectRootRegistered(pid)
+        if (isElectron() && !rootPath) {
+          pushToast('图片导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+          return false
+        }
+        if (pid > 0 && sourceUrl) {
+          let downloaded = false
+
+          // Electron: localdb authoritative. Prefer main-process download to local project root.
+          if (!downloaded && isElectron()) {
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, resourceName)
+            if (dl) {
+              base.sourcePath = dl.sourcePath
+              base.projectRelativePath = dl.projectRelativePath
+              base.url = dl.url
+              base.size = dl.size
+              downloaded = true
+            }
+          }
+
+          // 方案一：通过 Django 后端代理下载，绕过 CDN 的 CORS 限制
+          if (!downloaded && !isElectron()) {
+            try {
+              const result = await blueprintProjectService.importAsset({
+                projectId: pid,
+                kind: 'image',
+                sourceUrl,
+                name: resourceName,
+                bucket: 'assets',
+              })
+              if (result?.ok && result.asset) {
+                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
+                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
+                base.url = (result.asset as any).url || ''
+                base.contentType = (result.asset as any).contentType || ''
+                base.size = (result.asset as any).size || 0
+                downloaded = true
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          // 如果下载成功但没有 dweb URL，手动构建
+          if (downloaded && !base.url && base.projectRelativePath) {
+            base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(base.projectRelativePath)}`
+          }
+        }
+
+        finalizeGeneratedResourceLocalUrl(base, pid)
+        base.url = String(base.url || '').trim()
+        if (!base.url || !isStrictLocalRenderableUrl(base.url) || !isWorkflowLocalAssetUrl(base.url)) {
+          pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+          return false
+        }
+        store.commit('addResource', base)
         store.commit('setNodeResource', { nodeId, resourceId })
+        return true
       },
-      bindVideoResultToNode: (nodeId: string, url: string) => {
+      bindVideoResultToNode: async (nodeId: string, url: string) => {
         const node = store.state.nodesById[nodeId]
-        if (!node) return
+        if (!node) return false
         const resourceId = `gen-video-${nodeId}-${Date.now()}`
-        store.commit('addResource', {
+        const resourceName = `gen_video_${resourceId.slice(-6)}`
+        const base: any = {
           id: resourceId,
           kind: 'video',
-          name: `AI 生成视频 ${resourceId.slice(-6)}`,
-          url: url,
-        })
+          name: resourceName,
+          url: '',
+        }
+        const pid = Number(currentProjectId.value ?? 0)
+        const sourceUrl = String(url || '').trim()
+        if (!(pid > 0) || !sourceUrl) {
+          pushToast('视频生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+          return false
+        }
+        const rootPath = await ensureActiveProjectRootRegistered(pid)
+        if (isElectron() && !rootPath) {
+          pushToast('视频导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+          return false
+        }
+        if (pid > 0 && sourceUrl) {
+          let downloaded = false
+
+          // Electron: localdb authoritative. Prefer main-process download to local project root.
+          if (!downloaded && isElectron()) {
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, resourceName)
+            if (dl) {
+              base.sourcePath = dl.sourcePath
+              base.projectRelativePath = dl.projectRelativePath
+              base.url = dl.url
+              base.size = dl.size
+              downloaded = true
+            }
+          }
+
+          // 方案一：通过 Django 后端代理下载，绕过 CDN 的 CORS 限制
+          if (!downloaded && !isElectron()) {
+            try {
+              const result = await blueprintProjectService.importAsset({
+                projectId: pid,
+                kind: 'video',
+                sourceUrl,
+                name: resourceName,
+                bucket: 'assets',
+              })
+              if (result?.ok && result.asset) {
+                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
+                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
+                base.url = (result.asset as any).url || ''
+                base.contentType = (result.asset as any).contentType || ''
+                base.size = (result.asset as any).size || 0
+                downloaded = true
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          // 如果下载成功但没有 dweb URL，手动构建
+          if (downloaded && !base.url && base.projectRelativePath) {
+            base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(base.projectRelativePath)}`
+          }
+        }
+
+        finalizeGeneratedResourceLocalUrl(base, pid)
+        base.url = String(base.url || '').trim()
+        if (!base.url || !isStrictLocalRenderableUrl(base.url) || !isWorkflowLocalAssetUrl(base.url)) {
+          pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+          return false
+        }
+        store.commit('addResource', base)
         store.commit('setNodeResource', { nodeId, resourceId })
+        return true
+      },
+      downloadUrlAsBlob: async (url: string): Promise<Blob | null> => {
+        const pid = Number(currentProjectId.value ?? 0)
+        if (pid > 0 && url) {
+          const dl = await downloadAssetViaElectron(pid, url, `blob-${Date.now()}`)
+          if (dl) {
+            try {
+              const r = await fetchAsArrayBuffer(dl.sourcePath)
+              if (r?.ok && r.buffer) {
+                return new Blob([r.buffer], { type: r.mime || 'application/octet-stream' })
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        if (isElectron()) {
+          try {
+            const r = await fetchAsArrayBuffer(url)
+            if (r?.ok && r.buffer) {
+              return new Blob([r.buffer], { type: r.mime || 'application/octet-stream' })
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        return null
       },
     },
     castPayload,
@@ -1114,6 +1384,17 @@ watch(
 onMounted(() => {
   syncGlobalSafeAreaCssVars()
   window.addEventListener('resize', syncGlobalSafeAreaCssVars, { passive: true })
+  try {
+    const w = window as any
+    if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.onImageMarkupExported === 'function') {
+      const id = w.dweb.aiworkflow.onImageMarkupExported((payload: any) => {
+        handleImageMarkupExported(payload || {})
+      })
+      imageMarkupExportListenerId = Number(id || 0) || null
+    }
+  } catch (err) {
+    console.warn('[AIWorkflowPage] registerImageMarkupExportListener failed', err)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -1121,6 +1402,15 @@ onBeforeUnmount(() => {
   const fallbackTop = resolveAppShellTitlebarHeight()
   document.documentElement.style.setProperty('--aiwf-safe-top', `${Math.round(fallbackTop)}px`)
   document.documentElement.style.setProperty('--aiwf-safe-right', '0px')
+  if (imageMarkupExportListenerId != null) {
+    try {
+      const w = window as any
+      if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.offImageMarkupExported === 'function') {
+        w.dweb.aiworkflow.offImageMarkupExported(imageMarkupExportListenerId)
+      }
+    } catch { /* ignore */ }
+    imageMarkupExportListenerId = null
+  }
 })
 
 watch(
@@ -1449,6 +1739,208 @@ const normalizePastedNodeResources = (nodeIds: string[]) => {
 const pasteNodesWithResourceDedupe = (payload?: { worldX?: number; worldY?: number }) => {
   store.commit('pasteNode', payload ?? {})
   // Keep resources unique per pasted node.
+}
+
+const inferMediaKindFromUrlOrName = (input: string): 'image' | 'video' | null => {
+  const text = String(input || '').trim().toLowerCase()
+  if (!text) return null
+  const cleanUrl = text.split('?')[0].split('#')[0]
+  const extMatch = cleanUrl.match(/\.([a-z0-9]{1,6})$/)
+  const ext = extMatch ? extMatch[1] : ''
+  const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+  const videoExts = ['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'flv', 'wmv']
+  if (imageExts.includes(ext)) return 'image'
+  if (videoExts.includes(ext)) return 'video'
+  return null
+}
+
+const buildProjectAssetUrl = (projectId: number, relativePath: string): string => {
+  const pid = Number(projectId)
+  const rel = String(relativePath || '').trim()
+  if (!(pid > 0) || !rel) return ''
+  return `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
+}
+
+const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boolean> => {
+  if (!clipboardData) return false
+  const projectId = Number(currentProjectId.value ?? 0)
+  if (!(projectId > 0)) {
+    pushToast('请先保存项目后，再粘贴媒体资源到蓝图。', 'warn')
+    return false
+  }
+
+  const inferMediaKindFromFileLocal = (file: File): 'image' | 'video' | null => {
+    const mime = String(file.type || '').toLowerCase()
+    if (mime.startsWith('image/')) return 'image'
+    if (mime.startsWith('video/')) return 'video'
+    const name = String(file.name || '').toLowerCase()
+    const ext = name.split('.').pop() || ''
+    const imgExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+    const vidExts = ['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'flv', 'wmv']
+    if (imgExts.includes(ext)) return 'image'
+    if (vidExts.includes(ext)) return 'video'
+    return null
+  }
+
+  const items = Array.from(clipboardData.items ?? [])
+  const files: Array<{ file: File; sourcePath: string }> = []
+
+  for (const item of items) {
+    if (item.kind !== 'file') continue
+    const file = item.getAsFile()
+    if (!file) continue
+    const sourcePath = typeof (file as any).path === 'string' ? String((file as any).path).trim() : ''
+    files.push({ file, sourcePath })
+  }
+
+  if (files.length > 0) {
+    const mediaFiles = files.filter((f) => {
+      const mime = String(f.file.type || '').toLowerCase()
+      if (mime.startsWith('image/') || mime.startsWith('video/')) return true
+      return !!inferMediaKindFromFileLocal(f.file)
+    })
+
+    if (mediaFiles.length > 0) {
+      const { worldX, worldY } = getCanvasCenterWorld()
+      const createdNodeIds: string[] = []
+      let offset = 0
+
+      for (const { file, sourcePath } of mediaFiles) {
+        const mime = String(file.type || '').toLowerCase()
+        let kind: 'image' | 'video' | null = null
+        if (mime.startsWith('image/')) kind = 'image'
+        if (mime.startsWith('video/')) kind = 'video'
+        if (!kind) kind = inferMediaKindFromFileLocal(file)
+        if (!kind) continue
+
+        const fileName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
+
+        let created = false
+        let assetUrl = ''
+        let assetRelPath = ''
+        let assetAbsPath = ''
+
+        if (sourcePath && isElectron()) {
+          try {
+            const result = await copyFileToProjectRoot(projectId, sourcePath, fileName)
+            if (result && result.ok) {
+              assetRelPath = String(result.relativePath || '').trim()
+              assetAbsPath = String(result.absolutePath || '').trim()
+              assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+              created = true
+            }
+          } catch {
+            // 失败则回退
+          }
+        }
+
+        if (!created && isElectron()) {
+          try {
+            const arrayBuffer = await file.arrayBuffer()
+            const uploaded = await uploadProjectAsset({
+              projectId,
+              kind,
+              name: fileName,
+              arrayBuffer,
+              contentType: file.type || (kind === 'image' ? 'image/png' : 'video/mp4'),
+            })
+
+            if (uploaded && uploaded.ok && uploaded.asset) {
+              const asset = uploaded.asset
+              assetRelPath = String(asset.projectRelativePath || asset.relativePath || '').trim()
+              assetAbsPath = String(asset.absolutePath || '').trim()
+              assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+              created = true
+            }
+          } catch {
+            // 上传失败
+          }
+        }
+
+        if (!created) {
+          assetUrl = URL.createObjectURL(file)
+          assetAbsPath = sourcePath
+        }
+
+        const finalDisplayUrl = assetUrl && assetUrl.toLowerCase().startsWith('dweb://') ? resolveBackendUrl(assetUrl) : assetUrl
+        store.commit('addNodeAt', {
+          worldX: worldX + offset,
+          worldY: worldY + offset,
+          title: kind === 'image' ? '图片' : '视频',
+        })
+        const nodeId = store.state.selectedNodeId
+        if (nodeId) {
+          store.commit('setNodeType', { nodeId, type: kind })
+          bindMediaResourceToNode(nodeId, kind, finalDisplayUrl || assetUrl, fileName, {
+            sourcePath: assetAbsPath || undefined,
+            projectRelativePath: assetRelPath || undefined,
+          })
+          autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, kind)
+          createdNodeIds.push(nodeId)
+        }
+        offset += 40
+      }
+
+      if (createdNodeIds.length > 0) {
+        store.commit('setSelectedNodes', {
+          nodeIds: createdNodeIds,
+          primaryNodeId: createdNodeIds[0],
+        })
+        return true
+      }
+    }
+  }
+
+  const urlText = (clipboardData.getData('text/uri-list') || clipboardData.getData('text/plain') || '').trim()
+  if (urlText && /^https?:\/\//i.test(urlText)) {
+    const urlKind = inferMediaKindFromUrlOrName(urlText)
+    if (urlKind) {
+      const center = getCanvasCenterWorld()
+      const fileName = `paste-${Date.now()}`
+      const pid = Number(currentProjectId.value ?? 0)
+
+      try {
+        const result = await downloadUrlToProjectRoot(pid, urlText, fileName)
+        if (result && result.ok) {
+          const relPath = String(result.relativePath || '').trim()
+          const absPath = String(result.absolutePath || '').trim()
+          const assetUrl = buildProjectAssetUrl(pid, relPath)
+          const finalDisplayUrl = assetUrl ? resolveBackendUrl(assetUrl) : ''
+
+          store.commit('addNodeAt', {
+            worldX: center.worldX,
+            worldY: center.worldY,
+            title: urlKind === 'image' ? '图片' : '视频',
+          })
+          const nodeId = store.state.selectedNodeId
+          if (nodeId) {
+            store.commit('setNodeType', { nodeId, type: urlKind })
+            bindMediaResourceToNode(nodeId, urlKind, finalDisplayUrl || assetUrl, fileName, {
+              sourcePath: absPath || undefined,
+              projectRelativePath: relPath || undefined,
+            })
+            autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, urlKind)
+            return true
+          }
+        }
+      } catch {
+        store.commit('addNodeAt', {
+          worldX: center.worldX,
+          worldY: center.worldY,
+          title: urlKind === 'image' ? '图片' : '视频',
+        })
+        const nodeId = store.state.selectedNodeId
+        if (nodeId) {
+          store.commit('setNodeType', { nodeId, type: urlKind })
+          bindMediaResourceToNode(nodeId, urlKind, urlText, fileName)
+          autoSizeMediaNode(nodeId, urlText, urlKind)
+          return true
+        }
+      }
+    }
+  }
+
+  return false
 }
 
 const {
@@ -2494,6 +2986,8 @@ const {
   selectedNodeId,
   isElectron,
   nodeResourceName,
+  getProjectId: () => currentProjectId.value,
+  getProjectRootPath: (_projectId?: number) => currentProjectRootPath.value,
 })
 
 const isWebEnvironment = () => getRuntimePlatform() === 'web'
@@ -2947,6 +3441,8 @@ const projectToolbarRef = ref<{ openSaveDialog: () => void } | null>(null)
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
+const currentProjectRootPath = ref('')
+const noProjectSelected = ref(false)
 const agentWorkingDirectory = computed(() => {
   const projectName = String(currentProjectName.value || '').trim()
   if (projectName) return `/Users/dweb/Desktop/dweb-video-studio · ${projectName}`
@@ -2990,6 +3486,7 @@ const {
 } = useAIWorkflowProjectIdentity({
   currentProjectId,
   currentProjectName,
+  currentProjectRootPath,
   lastProjectStorageKey: AIWF_LAST_PROJECT_STORAGE_KEY,
 })
 
@@ -3056,6 +3553,9 @@ const { routeComfyOutputsToConnectedNodes } = useAIWorkflowComfyOutputRouter({
   comfyAnchorLocalizedOutputs,
   blueprintProjectService,
   currentProjectId,
+  isElectron: () => isElectron(),
+  downloadUrlToProjectRoot: (projectId, url, desiredFilename) =>
+    downloadUrlToProjectRoot(projectId, url, desiredFilename),
   resolveBackendUrl,
   bindMediaResourceToNode: (nodeId, kind, url, name, meta) =>
     bindMediaResourceToNode(nodeId, kind, url, name, meta),
@@ -3517,6 +4017,11 @@ const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkf
   onLimitExceeded: (count, limit) => {
     importLimitAlertMessage.value = `本次检测到 ${count} 个媒体文件，超过批量导入上限 ${limit} 个。请减少后再导入。`
   },
+  getProjectId: () => Number(currentProjectId.value ?? 0) || null,
+  copyFileToProjectRoot: (projectId, sourcePath, desiredFilename) =>
+    copyFileToProjectRoot(projectId, sourcePath, desiredFilename),
+  uploadProjectAsset,
+  resolveBackendUrl,
 })
 
 
@@ -3657,6 +4162,7 @@ const {
   currentProjectId,
   resolveBackendUrl,
   uploadLocalResourceAndGetUrl,
+  toProjectAssetRuntimeUrl: buildProjectAssetRuntimeUrl,
   persistExternalAssetToProject,
   pushToast,
   stripUnrealExportRuntimeFromNodes,
@@ -3688,6 +4194,28 @@ const {
   recoverComfyUIRunStates,
 })
 
+const repairProjectAssetsBeforeHydrate = async (projectId: number, snapshot: any) => {
+  if (!isElectron()) return snapshot
+  const pid = Number(projectId)
+  if (!Number.isFinite(pid) || pid <= 0) return snapshot
+  const resourcesById = snapshot && typeof snapshot === 'object' && snapshot.resourcesById && typeof snapshot.resourcesById === 'object'
+    ? snapshot.resourcesById
+    : {}
+  try {
+    const repaired = await repairAllProjectAssets({ projectId: pid, resourcesById })
+    if (!repaired?.ok || !repaired.patches || Object.keys(repaired.patches).length === 0) return snapshot
+    return {
+      ...snapshot,
+      resourcesById: {
+        ...resourcesById,
+        ...repaired.patches,
+      },
+    }
+  } catch {
+    return snapshot
+  }
+}
+
 const {
   loadProjectById,
   saveProjectToBackend: _saveProjectToBackendFn,
@@ -3716,11 +4244,13 @@ const {
   finalizeRecoverySessionAfterUrlRecoveryAttempt,
   recoverLocalResourcesFromHandles,
   migrateCurrentResourcesToProjectScope: (...args) => migrateCurrentResourcesToProjectScope(...args),
+  repairAllProjectAssetsBeforeHydrate: repairProjectAssetsBeforeHydrate,
   buildPersistableSnapshotWithOptions,
   isElectron,
   activeRecoverySession,
   store,
   uploadLocalResourceAndGetUrl,
+  getCurrentProjectRootPath: () => String(currentProjectRootPath.value || '').trim(),
 })
 
 const saveProjectToBackend = _saveProjectToBackendFn
@@ -3754,9 +4284,37 @@ const {
   repairProjectAssetsNow,
 })
 
-const onPreviewResource = (resourceId: string) => {
+const onPreviewResource = async (resourceId: string) => {
   const r = store.state.resourcesById?.[String(resourceId)] as any
   if (!r) return
+
+  // Prefer opening the project folder if the asset is stored locally
+  const sourcePath = String(r.sourcePath || '').trim()
+  const projectRelativePath = String(r.projectRelativePath || '').trim()
+  if (isElectron()) {
+    if (sourcePath) {
+      try {
+        await openFolderForPath(sourcePath)
+        return
+      } catch {
+        // ignore
+      }
+    }
+    if (projectRelativePath) {
+      const root = String(currentProjectRootPath.value || '').trim()
+      if (root) {
+        try {
+          const fullPath = `${root}/${projectRelativePath}`.replace(/\\/g, '/')
+          await openFolderForPath(fullPath)
+          return
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  // Fallback: open the URL in a new window/tab
   const kind = String(r.kind || '').toLowerCase()
   const url = kind === 'video'
     ? String(r.url || '').trim() || String(r.posterUrl || '').trim()
@@ -3853,6 +4411,16 @@ const {
   pasteNodesAtCanvasCenter: () => {
     const { worldX, worldY } = getCanvasCenterWorld()
     pasteNodesWithResourceDedupe({ worldX, worldY })
+  },
+  pasteMediaData: (clipboardData) => pasteMediaData(clipboardData),
+  copySelectedNodes: (primaryNodeId) => {
+    store.commit('copyNode', { nodeId: primaryNodeId })
+  },
+  undo: () => {
+    aiWorkflowHistory.undo()
+  },
+  redo: () => {
+    aiWorkflowHistory.redo()
   },
   removeSelectedNodes: (nodeIds) => {
     void removeSelectedNodesWithResourceCleanup(nodeIds)
@@ -4079,10 +4647,109 @@ const onExportPerfDiagnostics = () => {
   }
 }
 
-const resourceDialogOpen = ref(false)
+const blueprintLogPanelOpen = ref(false)
 const resources = computed(() =>
   store.state.resourceOrder.map((id) => store.state.resourcesById[id]).filter(Boolean)
 )
+
+const imageMarkupContext = ref<{ nodeId: string | null; url: string | null; name: string | null }>({
+  nodeId: null,
+  url: null,
+  name: null,
+})
+
+let imageMarkupExportListenerId: number | null = null
+
+const onNodeImagePreviewRequestInline = (nodeId: string, ev: any) => {
+  const url = typeof ev === 'object' && ev !== null && typeof (ev as any).imageUrl === 'string' ? (ev as any).imageUrl : ''
+  onNodeImagePreviewRequest(nodeId, url)
+}
+
+const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
+  console.log('[AIWorkflowPage] onNodeImagePreviewRequest → nodeId:', nodeId, 'imageUrl:', imageUrl);
+  if (!imageUrl) {
+    pushToast('该图片节点暂无图像资源可预览。', 'warn')
+    return
+  }
+  imageMarkupContext.value = { nodeId, url: imageUrl, name: null }
+  try {
+    const w = window as any
+    console.log('[AIWorkflowPage] dweb available:', !!w.dweb, 'dweb.aiworkflow:', !!w.dweb?.aiworkflow, 'openImageMarkupPreview:', typeof w.dweb?.aiworkflow?.openImageMarkupPreview);
+    if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.openImageMarkupPreview === 'function') {
+      console.log('[AIWorkflowPage] calling openImageMarkupPreview with:', { url: imageUrl, name: nodeId });
+      w.dweb.aiworkflow.openImageMarkupPreview({ url: imageUrl, name: nodeId })
+      return
+    }
+    pushToast('当前环境未提供图片预览原生窗口，请在 DVStudio Electron 客户端中使用。', 'warn')
+  } catch (err) {
+    console.warn('[AIWorkflowPage] openImageMarkupPreview failed', err)
+    pushToast('打开图片预览窗口失败。', 'warn')
+  }
+}
+
+const closeImageMarkupDialog = () => {
+  imageMarkupContext.value = { nodeId: null, url: null, name: null }
+}
+
+const handleImageMarkupExported = (payload: { dataUrl: string; width: number; height: number; sourceName?: string | null }) => {
+  const fromNodeId = imageMarkupContext.value.nodeId
+  const baseName = (imageMarkupContext.value.name || payload.sourceName || 'marked-image.png').replace(/\.[^.]+$/, '')
+  if (!fromNodeId) {
+    pushToast('找不到源图片节点，无法生成新节点。', 'warn')
+    return
+  }
+  try {
+    const fromNode = store.state.nodesById[fromNodeId]
+    if (!fromNode) return
+
+    const baseX = Number(fromNode.worldX || 0)
+    const baseY = Number(fromNode.worldY || 0)
+    const title = `${fromNode.title ? fromNode.title + ' ' : ''}标记图像`
+
+    store.commit('addNodeAt', { worldX: baseX + 400, worldY: baseY, title })
+    const newNodeId = String(store.state.selectedNodeId || '').trim()
+    if (!newNodeId || !store.state.nodesById[newNodeId]) {
+      pushToast('创建标记图像节点失败。', 'error')
+      return
+    }
+
+    const resourceId = `res-markup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    const resourceName = `${baseName}-marked-${Date.now()}.png`.slice(0, 200)
+    store.commit('addResource', {
+      id: resourceId,
+      kind: 'image',
+      name: resourceName,
+      url: payload.dataUrl,
+      localFileKey: `markup:${newNodeId}`,
+    } as any)
+
+    store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+    store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
+
+    const w = Math.max(1, Math.floor(Number(payload.width) || 1))
+    const h = Math.max(1, Math.floor(Number(payload.height) || 1))
+    store.commit('setNodeImageSettings', {
+      nodeId: newNodeId,
+      imageSettings: { outputWidth: w, outputHeight: h, naturalWidth: w, naturalHeight: h, cropEnabled: false, crop: { x: 0, y: 0, width: 1, height: 1 } },
+    })
+
+    const fromAnchors = (fromNode as any).outputs as Array<any> | undefined
+    const fromAnchor = fromAnchors?.find((a: any) => String(a.mediaType || '') === 'image' || /^out-image/.test(String(a.id || ''))) || fromAnchors?.[0]
+    if (fromAnchor) {
+      store.commit('addEdge', { fromNodeId, fromAnchorId: String(fromAnchor.id), toNodeId: newNodeId, toAnchorId: 'in-0' })
+    }
+
+    closeImageMarkupDialog()
+    pushToast('已在当前图片节点右侧生成新的图片节点，并自动连接原节点。', 'info')
+  } catch (err) {
+    console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
+    pushToast('生成标记图像节点失败。', 'error')
+  }
+}
+
+const onNodeExportMarkupImage = (payload: { file: File; dataUrl: string; width: number; height: number }) => {
+  handleImageMarkupExported({ dataUrl: payload.dataUrl, width: payload.width, height: payload.height })
+}
 
 const {
   meshyTaskDialogOpen,
@@ -4218,7 +4885,48 @@ const syncSeedancePreviewFromTaskId = async (taskId: string) => {
 
 onBeforeUnmount(() => {
   clearSeedancePreviewPoll()
+  // 清理资源管理器窗口事件监听
+  if (resourceManagerEventListenerId !== null) {
+    const w = window as any
+    if (w.dweb?.aiworkflow?.offResourceManagerEvent) {
+      w.dweb.aiworkflow.offResourceManagerEvent(resourceManagerEventListenerId)
+    }
+    resourceManagerEventListenerId = null
+  }
 })
+
+// ============ 资源管理器窗口 → 蓝图节点拖放 ============
+const onResourceDraggedToBlueprint = (
+  resourceId: string,
+  screenPosition?: { x: number; y: number } | null
+) => {
+  const resource = (store.state as any).resourcesById?.[String(resourceId)] as any
+  if (!resource) {
+    pushToast('未找到该资源记录。', 'warn')
+    return
+  }
+  // 计算世界坐标
+  const vp = viewport.value
+  const screenX = screenPosition?.x ?? window.innerWidth / 2
+  const screenY = screenPosition?.y ?? window.innerHeight / 2
+  const worldX = (screenX - vp.panX) / vp.zoom
+  const worldY = (screenY - vp.panY) / vp.zoom
+
+  const title = String(resource.name || resourceId || '资源节点').slice(0, 200)
+  store.commit('addNodeAt', { worldX, worldY, title })
+  const newNodeId = String(store.state.selectedNodeId || '').trim()
+  if (!newNodeId || !store.state.nodesById[newNodeId]) {
+    pushToast('创建资源节点失败。', 'error')
+    return
+  }
+  // 将资源绑定到新节点
+  store.commit('nodeFieldUpdate', {
+    nodeId: newNodeId,
+    field: 'image',
+    value: resource.url || '',
+  })
+  pushToast(`已将「${title}」添加到蓝图。`, 'info')
+}
 
 const onVideoTaskPanelMediaError = (taskId: string) => {
   void recoverVideoTaskMedia(taskId)
@@ -4265,16 +4973,8 @@ const onNodeOpenLibrary = (nodeId: string) => {
   }
 }
 
-const onRailOpenPromptLibrary = () => {
-  pushToast('提示词库面板即将接入。', 'info')
-}
-
 const onRailToggleBackendLog = () => {
-  pushToast('日志面板即将接入。', 'info')
-}
-
-const onRailOpenTaskPlaceholder = () => {
-  pushToast('该任务入口将于下一阶段接入。', 'info')
+  blueprintLogPanelOpen.value = !blueprintLogPanelOpen.value
 }
 
 const { onNodeRefresh } = useAIWorkflowNodeRefresh({
@@ -4298,13 +4998,68 @@ const { onNodeRefresh } = useAIWorkflowNodeRefresh({
   connectedImageOutputUrl,
 })
 
-const openResourceDialog = () => {
-  resourceDialogOpen.value = true
+// ============ 资源管理器窗口事件监听 ============
+// 主窗口监听来自资源管理器独立窗口的事件广播
+let resourceManagerEventListenerId: number | null = null
+
+const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => {
+  const { event, data } = payload || {}
+  if (!event) return
+  switch (String(event)) {
+    case 'remove':
+      // 资源管理器窗口中删除了资源，同步到蓝图页面
+      if (data?.resourceId) {
+        void onRemoveResource(String(data.resourceId))
+      }
+      break
+    case 'preview':
+      // 资源管理器窗口中预览了资源
+      if (data?.resourceId) {
+        void onPreviewResource(String(data.resourceId))
+      }
+      break
+    case 'refresh-missing':
+      // 资源管理器窗口中触发了缺失刷新
+      if (Array.isArray(data?.resourceIds)) {
+        void onRefreshMissingResourceRecords(data.resourceIds)
+      }
+      break
+    case 'drop-to-node':
+      // 资源管理器窗口中拖拽资源到蓝图节点
+      if (data?.resourceId) {
+        void onResourceDraggedToBlueprint(String(data.resourceId), data?.position ?? null)
+      }
+      break
+    default:
+      console.log('[AIWorkflowPage][resource-manager] unknown event:', event, data)
+  }
 }
 
-const closeResourceDialog = () => {
-  resourceDialogOpen.value = false
+const registerResourceManagerEventListener = () => {
+  const w = window as any
+  if (!w.__DWEB_RUNTIME__?.isElectron || !w.dweb?.aiworkflow?.onResourceManagerEvent) return
+  resourceManagerEventListenerId = w.dweb.aiworkflow.onResourceManagerEvent(onResourceManagerWindowEvent)
 }
+
+const openResourceDialog = async () => {
+  const w = window as any
+  // Electron 环境：打开原生窗口
+  if (w.__DWEB_RUNTIME__?.isElectron && w.dweb?.aiworkflow?.openResourceManager) {
+    try {
+      const projectId = currentProjectId.value
+      const title = currentProjectName.value || '资源管理器'
+      const result = await w.dweb.aiworkflow.openResourceManager({ projectId, title })
+      console.log('[AIWorkflowPage] openResourceManager result:', JSON.stringify(result))
+      return
+    } catch (err) {
+      console.warn('[AIWorkflowPage] openResourceManager IPC failed:', err)
+    }
+  }
+  // Web 环境或 Electron 降级：显示提示
+  // 资源管理器需要 Electron 原生窗口，Web 模式暂不支持
+  pushToast('资源管理器仅在 Electron 客户端中可用', 'warn')
+}
+
 watch(meshyTaskDialogOpen, (open) => {
   onMeshyTaskDialogOpenChanged(open)
 })
@@ -4330,6 +5085,25 @@ const importAssetIntoProjectScope = async (payload: {
   if (!sourcePath && !sourceUrl) return null
 
   if (sourcePath) {
+    if (isElectron()) {
+      const copied = await copyFileToProjectRoot(payload.projectId, sourcePath, payload.name)
+      const rel = String(copied?.relativePath || '').trim()
+      const abs = String(copied?.absolutePath || '').trim()
+      if (copied?.ok && rel && abs) {
+        return {
+          kind: payload.kind,
+          name: payload.name,
+          size: Number(copied?.size || 0),
+          projectRelativePath: rel,
+          relativePath: rel,
+          absolutePath: abs,
+          sourcePath: abs,
+          url: `dweb://project-assets?projectId=${payload.projectId}&path=${encodeURIComponent(rel)}`,
+        }
+      }
+      return null
+    }
+
     const byPath = await blueprintProjectService.importAsset({
       kind: payload.kind,
       name: payload.name,
@@ -4341,6 +5115,23 @@ const importAssetIntoProjectScope = async (payload: {
   }
 
   if (sourceUrl) {
+    if (isElectron()) {
+      const dl = await downloadAssetViaElectron(payload.projectId, sourceUrl, payload.name)
+      if (dl) {
+        return {
+          kind: payload.kind,
+          name: payload.name,
+          size: dl.size,
+          projectRelativePath: dl.projectRelativePath,
+          relativePath: dl.projectRelativePath,
+          absolutePath: dl.sourcePath,
+          sourcePath: dl.sourcePath,
+          url: dl.url,
+        }
+      }
+      return null
+    }
+
     const byUrl = await blueprintProjectService.importAsset({
       kind: payload.kind,
       name: payload.name,
@@ -4459,7 +5250,13 @@ onMounted(() => {
   window.addEventListener('pointerup', flushPendingImageDistribute, true)
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
   startUnrealExportPolling()
+  registerResourceManagerEventListener()
   void refreshProjectList()
+  blueprintLog.append('蓝图页面已加载，日志面板就绪', {
+    category: 'system',
+    level: 'INFO',
+    tag: 'init',
+  })
 
   const rawProjectId = String((route.query as Record<string, unknown>)?.projectId ?? '').trim()
   const parsedProjectId = Number(rawProjectId)
@@ -4471,16 +5268,19 @@ onMounted(() => {
 
   void (async () => {
     if (resolvedProjectId) {
-      const ok = await loadProjectById(resolvedProjectId)
-      if (ok) await recoverComfyUIRunStates({ silent: true })
+      await runProjectEnterSequence({ kind: 'open', projectId: resolvedProjectId })
       return
     }
     if (hasNewProjectQuery && rawRootPath) {
-      await onRequestNewProjectFromPath(rawRootPath)
+      // 直接用 newProject query 进入已不再支持，跳回项目列表
+      noProjectSelected.value = true
       return
     }
     await tryAutoLoadLastProject()
     await recoverComfyUIRunStates({ silent: true })
+    if (!currentProjectId.value) {
+      noProjectSelected.value = true
+    }
   })()
 
   if (isElectronRuntime) {
@@ -4504,6 +5304,47 @@ onMounted(() => {
   }
 })
 
+async function runProjectEnterSequence(
+  request:
+    | { kind: 'open'; projectId: number }
+    | { kind: 'new'; rootPath: string },
+) {
+  if (isElectron()) {
+    startupProgress.show('进入蓝图项目', 2500)
+    startupProgress.reset('进入蓝图项目')
+  }
+
+  // Step 1. 读取本地项目数据
+  let projectReady = false
+  if (request.kind === 'open') {
+    await startupProgress.runStep('project.load', '读取项目数据', async () => {
+      const ok = await loadProjectById(request.projectId)
+      if (!ok) throw new Error('项目数据加载失败')
+      projectReady = true
+      return true
+    }, { errorDetailOnFailure: true })
+  } else {
+    await startupProgress.runStep('project.new', '初始化项目', async () => {
+      await onRequestNewProjectFromPath(request.rootPath)
+      projectReady = true
+      return true
+    }, { errorDetailOnFailure: true })
+  }
+
+  // Step 2. 加载静态资产（根据当前快照中的资源记录做一次运行状态梳理）
+  if (projectReady) {
+    await startupProgress.runStep('project.assets', '加载静态资产', async () => {
+      try {
+        await recoverComfyUIRunStates({ silent: true })
+      } catch {
+        // 资源恢复失败不阻断主流程，仅记录
+      }
+      const resourcesTotal = Number(Array.isArray((store.state as any)?.resources) ? (store.state as any).resources.length : (store.state as any)?.resourcesById ? Object.keys((store.state as any).resourcesById).length : 0)
+      return resourcesTotal
+    }, { errorDetailOnFailure: true })
+  }
+}
+
 </script>
 
 <style scoped>
@@ -4512,6 +5353,56 @@ onMounted(() => {
   position: relative;
   overflow: hidden;
   background: var(--aiwf-page-background, var(--dweb-defualt));
+}
+
+.no-project-guide {
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 15, 21, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.no-project-card {
+  background: var(--dweb-defualt-dark);
+  border: 1px solid var(--vscode-border);
+  border-radius: 12px;
+  padding: 32px 40px;
+  max-width: 420px;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+.no-project-card h2 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--vscode-fg);
+}
+
+.no-project-card p {
+  margin: 0 0 20px 0;
+  font-size: 13px;
+  color: var(--vscode-fg-muted);
+  line-height: 1.6;
+}
+
+.no-project-card button {
+  padding: 8px 20px;
+  background: var(--vscode-border-accent);
+  border: 1px solid var(--vscode-border-accent);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.no-project-card button:hover {
+  opacity: 0.9;
 }
 
 .aiwf-blueprint-container {
@@ -4575,17 +5466,7 @@ onMounted(() => {
 
 /* 智能位置调整 */
 .bp-toolbar-wrap {
-  transition: left var(--aiwf-shell-transition, 220ms cubic-bezier(0.22, 0.61, 0.36, 1));
-}
-
-/* 当导航栏展开时，调整左侧按钮位置 */
-body[data-side-nav-expanded="true"] .bp-toolbar-wrap {
-  left: var(--aiwf-shell-left-expanded, 180px) !important;
-}
-
-/* 当导航栏收起时，按钮位置避开导航栏 (46px + 10px间距) */
-body[data-side-nav-expanded="false"] .bp-toolbar-wrap {
-  left: var(--aiwf-shell-left-collapsed, 56px) !important;
+  left: 88px;
 }
 
 .aiwf-canvas {

@@ -154,6 +154,7 @@ const props = defineProps<{
   subtitle?: string;
   style?: Record<string, string>;
   resourceUrl?: string | null;
+  resourceSourcePath?: string | null;
   posterUrl?: string | null;
   resourceName?: string | null;
   videoSettings?: {
@@ -264,8 +265,17 @@ let pendingSeekRequestedAt = 0;
 let noCrossOriginFallbackSrc = "";
 let localMediaRetryTimer: number | null = null;
 let localMediaRetryCount = 0;
+const resourceFallbackUrl = ref("");
+const effectiveResourceUrl = computed(() =>
+  String(resourceFallbackUrl.value || props.resourceUrl || "").trim()
+);
 
 const screenshotEnabled = computed(() => Boolean(props.screenshotEnabled));
+const normalizedResourceSourcePath = computed(() => String(props.resourceSourcePath ?? "").trim());
+
+const toFileUrl = () => {
+  return "";
+};
 
 const resetMediaRuntimeState = () => {
   playing.value = false;
@@ -284,6 +294,7 @@ const resetMediaRuntimeState = () => {
 const isLikelyLocalMediaUrl = (src: string) => {
   const text = String(src || "").trim();
   if (!text) return false;
+  if (text.toLowerCase().startsWith("dweb://")) return true;
   try {
     const parsed = new URL(text, window.location.href);
     return /\/media\//i.test(parsed.pathname);
@@ -397,6 +408,7 @@ const shouldUseAnonymousCrossOrigin = (src: string) => {
   const text = String(src || "").trim();
   if (!text) return false;
   if (text.startsWith("blob:") || text.startsWith("data:")) return false;
+  if (text.toLowerCase().startsWith("dweb://")) return false;
   if (noCrossOriginFallbackSrc === text) return false;
   return true;
 };
@@ -430,7 +442,7 @@ const applyVideoSrc = async (opts?: {
 }) => {
   const v = videoEl.value;
   if (!v) return;
-  const src = String(props.resourceUrl ?? "").trim();
+  const src = effectiveResourceUrl.value;
   if (!src) return;
   applyVideoCrossOriginMode(v, src, opts);
   if (opts?.reload) {
@@ -459,7 +471,7 @@ let lastReadySrc = "";
 const tryEmitMediaReady = () => {
   const v = videoEl.value;
   if (!v) return;
-  const src = String(props.resourceUrl ?? "").trim();
+  const src = effectiveResourceUrl.value;
   if (!src) return;
   if (src === lastReadySrc) return;
   // HAVE_CURRENT_DATA (2) means the first frame is available for rendering.
@@ -719,7 +731,7 @@ const drawTimeline = () => {
   ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
 
   const d = durationDisplay.value;
-  if (!d || !props.resourceUrl) {
+  if (!d || !effectiveResourceUrl.value) {
     ctx.fillStyle = muted;
     ctx.font = "12px sans-serif";
     ctx.fillText("时间轴", 8, Math.floor(h / 2) + 4);
@@ -779,7 +791,7 @@ const seekByOverviewTime = (t: number) => {
 };
 
 const onTimelinePointerDown = (e: PointerEvent) => {
-  if (!props.resourceUrl || !durationDisplay.value) return;
+  if (!effectiveResourceUrl.value || !durationDisplay.value) return;
   const el = timelineCanvas.value;
   if (!el) return;
   tlPointerActive = true;
@@ -801,7 +813,7 @@ const onTimelinePointerDown = (e: PointerEvent) => {
 };
 
 const onTimelineWheel = (e: WheelEvent) => {
-  if (!props.resourceUrl || !durationDisplay.value) return;
+  if (!effectiveResourceUrl.value || !durationDisplay.value) return;
   const delta = e.deltaY;
   const cur = clamp(Math.floor(Number(timelineZoom.value) || 6), 1, 20);
   const next = clamp(cur + (delta > 0 ? -1 : 1), 1, 20);
@@ -940,13 +952,16 @@ const onFileChange = (e: Event) => {
 
 watch(
   () => props.resourceUrl,
-  async () => {
+  async (nextValue, prevValue) => {
+    const next = String(nextValue ?? "").trim();
+    const prev = String(prevValue ?? "").trim();
+    if (next !== prev) resourceFallbackUrl.value = "";
     const runId = ++srcWatchRunId;
     try {
       await nextTick();
       if (runId !== srcWatchRunId) return;
 
-      if (!props.resourceUrl) {
+      if (!effectiveResourceUrl.value) {
         resetMediaRuntimeState();
         return;
       }
@@ -982,7 +997,7 @@ watch(
   () => props.reloadToken,
   async (nextValue, prevValue) => {
     if (nextValue === prevValue) return;
-    if (!props.resourceUrl) return;
+    if (!effectiveResourceUrl.value) return;
     const runId = ++srcWatchRunId;
     try {
       resetMediaRuntimeState();
@@ -1021,8 +1036,17 @@ onMounted(() => {
     });
     videoEl.value.addEventListener("error", () => {
       const v = videoEl.value;
-      const src = String(props.resourceUrl ?? "").trim();
+      const src = effectiveResourceUrl.value;
       if (!v || !src) return;
+      if (!resourceFallbackUrl.value && normalizedResourceSourcePath.value) {
+        const fileUrl = toFileUrl(normalizedResourceSourcePath.value);
+        if (fileUrl) {
+          resourceFallbackUrl.value = fileUrl;
+          resetMediaRuntimeState();
+          void applyVideoSrc({ reload: true });
+          return;
+        }
+      }
       if (isLikelyLocalMediaUrl(src)) {
         if (shouldUseAnonymousCrossOrigin(src) && noCrossOriginFallbackSrc !== src) {
           noCrossOriginFallbackSrc = src;
@@ -1093,7 +1117,7 @@ onMounted(() => {
       tick();
     });
   }
-  if (props.resourceUrl && videoEl.value) {
+  if (effectiveResourceUrl.value && videoEl.value) {
     void (async () => {
       try {
         await applyVideoSrc();

@@ -112,10 +112,153 @@ export async function openFolderForPath(path: string): Promise<OpenFolderResult 
 	return w.dweb.common.openFolderForPath({ path: String(path || '') })
 }
 
+/**
+ * 在用户的默认浏览器中打开外部 URL。
+ * 优先使用 Electron 的 shell.openExternal；非 Electron 环境回落到 window.open。
+ */
+export function openExternalUrl(url: string): Promise<{ ok: boolean; error?: string }> {
+	const trimmed = String(url || '').trim()
+	if (!trimmed) return Promise.resolve({ ok: false, error: 'empty url' })
+	if (w?.dweb?.common?.openExternalUrl) {
+		try {
+			const r = w.dweb.common.openExternalUrl({ url: trimmed })
+			if (r && typeof r.then === 'function') {
+				return r.catch((e: any) => ({ ok: false, error: String(e?.message || e) }))
+			}
+			if (r && (r as any).ok) return Promise.resolve({ ok: true })
+		} catch (e: any) {
+			return Promise.resolve({ ok: false, error: String(e?.message || e) })
+		}
+	}
+	// 非 Electron 环境：用原生 window.open 在新窗口/浏览器中打开
+	try {
+		const win = window.open(trimmed, '_blank', 'noopener,noreferrer')
+		if (!win) return Promise.resolve({ ok: false, error: 'blocked by browser' })
+		return Promise.resolve({ ok: true })
+	} catch (e: any) {
+		return Promise.resolve({ ok: false, error: String(e?.message || e) })
+	}
+}
+
 export async function selectProjectFolder(): Promise<DirectoryPickResult | null> {
 	if (!w?.dweb?.aiworkflow?.selectProjectFolder) return null
 	return w.dweb.aiworkflow.selectProjectFolder()
 }
+
+export async function registerProjectRoot(projectId: number, rootPath: string): Promise<{ ok: boolean; cleared?: boolean; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.registerProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.registerProjectRoot({ projectId: pid, rootPath: String(rootPath || '') })
+}
+
+export async function clearProjectRoot(projectId: number): Promise<{ ok: boolean; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.clearProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.clearProjectRoot({ projectId: pid })
+}
+
+export async function getProjectRootSnapshot(): Promise<Record<string, string> | null> {
+	if (!w?.dweb?.aiworkflow?.getProjectRootSnapshot) return null
+	return w.dweb.aiworkflow.getProjectRootSnapshot()
+}
+
+export async function getProjectRootById(projectId: number): Promise<string | null> {
+	if (!w?.dweb?.aiworkflow?.getProjectRootById) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return null
+	const result = await w.dweb.aiworkflow.getProjectRootById({ projectId: pid })
+	return result ? String(result) : null
+}
+
+export async function downloadUrlToProjectRoot(
+	projectId: number,
+	url: string,
+	desiredFilename?: string,
+): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.downloadUrlToProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	const result = await w.dweb.aiworkflow.downloadUrlToProjectRoot({ projectId: pid, url: String(url || ''), desiredFilename })
+	return result
+}
+
+export async function copyFileToProjectRoot(
+	projectId: number,
+	sourcePath: string,
+	desiredFilename?: string,
+): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.copyFileToProjectRoot) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	const result = await w.dweb.aiworkflow.copyFileToProjectRoot({ projectId: pid, sourcePath: String(sourcePath || ''), desiredFilename })
+	return result
+}
+
+export async function fetchAsArrayBuffer(url: string): Promise<{ ok: boolean; buffer?: Uint8Array; mime?: string; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.fetchAsArrayBuffer) return null
+	const result = await w.dweb.aiworkflow.fetchAsArrayBuffer({ url: String(url || '') })
+	return result
+}
+
+export async function uploadProjectAsset(payload: {
+	projectId: number
+	kind?: string
+	name?: string
+	arrayBuffer: ArrayBuffer
+	contentType?: string
+	bucket?: string
+}): Promise<{ ok: boolean; asset?: any; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.uploadProjectAsset) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	const result = await w.dweb.aiworkflow.uploadProjectAsset({
+		projectId: pid,
+		kind: payload?.kind,
+		name: payload?.name,
+		arrayBuffer: payload?.arrayBuffer,
+		contentType: payload?.contentType,
+		bucket: payload?.bucket,
+	})
+	return result
+}
+
+export async function importProjectAsset(payload: {
+	projectId: number
+	kind?: string
+	name?: string
+	sourcePath?: string
+	sourceUrl?: string
+	bucket?: string
+}): Promise<{ ok: boolean; asset?: any; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.importProjectAsset) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	const result = await w.dweb.aiworkflow.importProjectAsset({
+		projectId: pid,
+		kind: payload?.kind,
+		name: payload?.name,
+		sourcePath: payload?.sourcePath,
+		sourceUrl: payload?.sourceUrl,
+		bucket: payload?.bucket,
+	})
+	return result
+}
+
+export async function repairAllProjectAssets(payload: {
+	projectId: number
+	resourcesById: Record<string, any>
+}): Promise<{ ok: boolean; patches?: Record<string, any>; failed?: string[]; changed?: number; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.projectAssets?.repairAll) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.projectAssets.repairAll({
+		projectId: pid,
+		resourcesById: payload?.resourcesById || {},
+	})
+}
+
 
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {
 	if (!w?.dweb?.common?.runBootstrapInstaller) return null
@@ -166,4 +309,49 @@ export async function saveClientSettings(payload: ClientSettings): Promise<Clien
 		}
 	}
 	return r
+}
+
+export async function minimizeWindow(): Promise<{ ok: boolean; error?: string }> {
+	if (!w?.dweb?.window?.minimize) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.minimize()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}
+
+export async function toggleMaximizeWindow(): Promise<{ ok: boolean; maximized?: boolean; error?: string }> {
+	if (!w?.dweb?.window?.toggleMaximize) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.toggleMaximize()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}
+
+export async function closeWindow(): Promise<{ ok: boolean; error?: string }> {
+	if (!w?.dweb?.window?.close) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.close()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}
+
+export async function reloadWindow(): Promise<{ ok: boolean; error?: string }> {
+	if (!w?.dweb?.window?.reload) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.reload()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
+}
+
+export async function openDevTools(): Promise<{ ok: boolean; opened?: boolean; error?: string }> {
+	if (!w?.dweb?.window?.openDevTools) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await w.dweb.window.openDevTools()) || { ok: true }
+	} catch (e: any) {
+		return { ok: false, error: String(e?.message || e) }
+	}
 }
