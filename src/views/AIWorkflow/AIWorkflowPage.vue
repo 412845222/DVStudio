@@ -393,15 +393,6 @@
       </div>
 
       <div class="aiwf-overlay-floating aiwf-overlay-floating-utility">
-        <ResourceManagerPanel
-          :open="resourceDialogOpen"
-          :resources="resources"
-          @close="closeResourceDialog"
-          @remove="onRemoveResource"
-          @preview="onPreviewResource"
-          @refresh-missing="onRefreshMissingResourceRecords"
-        />
-
         <MeshyTaskPanel
           :open="meshyTaskDialogOpen"
           :tasks="meshyTaskItems"
@@ -538,7 +529,6 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
 import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
 import BlueprintProjectToolbar, { type BlueprintProjectListItem } from '../../ui/WorkFlow/BlueprintProjectToolbar.vue'
-import ResourceManagerPanel from '../../ui/WorkFlow/ResourceManagerPanel.vue'
 import MeshyTaskPanel, { type MeshyTaskPanelAction, type MeshyTaskPanelDetail, type MeshyTaskPanelItem } from '../../ui/WorkFlow/MeshyTaskPanel.vue'
 import VideoTaskPanel from '../../ui/WorkFlow/VideoTaskPanel.vue'
 import WorkflowInspectorPanel from '../../ui/UIComponent/WorkflowInspectorPanel.vue'
@@ -4657,7 +4647,6 @@ const onExportPerfDiagnostics = () => {
   }
 }
 
-const resourceDialogOpen = ref(false)
 const blueprintLogPanelOpen = ref(false)
 const resources = computed(() =>
   store.state.resourceOrder.map((id) => store.state.resourcesById[id]).filter(Boolean)
@@ -4896,7 +4885,48 @@ const syncSeedancePreviewFromTaskId = async (taskId: string) => {
 
 onBeforeUnmount(() => {
   clearSeedancePreviewPoll()
+  // 清理资源管理器窗口事件监听
+  if (resourceManagerEventListenerId !== null) {
+    const w = window as any
+    if (w.dweb?.aiworkflow?.offResourceManagerEvent) {
+      w.dweb.aiworkflow.offResourceManagerEvent(resourceManagerEventListenerId)
+    }
+    resourceManagerEventListenerId = null
+  }
 })
+
+// ============ 资源管理器窗口 → 蓝图节点拖放 ============
+const onResourceDraggedToBlueprint = (
+  resourceId: string,
+  screenPosition?: { x: number; y: number } | null
+) => {
+  const resource = (store.state as any).resourcesById?.[String(resourceId)] as any
+  if (!resource) {
+    pushToast('未找到该资源记录。', 'warn')
+    return
+  }
+  // 计算世界坐标
+  const vp = viewport.value
+  const screenX = screenPosition?.x ?? window.innerWidth / 2
+  const screenY = screenPosition?.y ?? window.innerHeight / 2
+  const worldX = (screenX - vp.panX) / vp.zoom
+  const worldY = (screenY - vp.panY) / vp.zoom
+
+  const title = String(resource.name || resourceId || '资源节点').slice(0, 200)
+  store.commit('addNodeAt', { worldX, worldY, title })
+  const newNodeId = String(store.state.selectedNodeId || '').trim()
+  if (!newNodeId || !store.state.nodesById[newNodeId]) {
+    pushToast('创建资源节点失败。', 'error')
+    return
+  }
+  // 将资源绑定到新节点
+  store.commit('nodeFieldUpdate', {
+    nodeId: newNodeId,
+    field: 'image',
+    value: resource.url || '',
+  })
+  pushToast(`已将「${title}」添加到蓝图。`, 'info')
+}
 
 const onVideoTaskPanelMediaError = (taskId: string) => {
   void recoverVideoTaskMedia(taskId)
@@ -4968,13 +4998,68 @@ const { onNodeRefresh } = useAIWorkflowNodeRefresh({
   connectedImageOutputUrl,
 })
 
-const openResourceDialog = () => {
-  resourceDialogOpen.value = true
+// ============ 资源管理器窗口事件监听 ============
+// 主窗口监听来自资源管理器独立窗口的事件广播
+let resourceManagerEventListenerId: number | null = null
+
+const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => {
+  const { event, data } = payload || {}
+  if (!event) return
+  switch (String(event)) {
+    case 'remove':
+      // 资源管理器窗口中删除了资源，同步到蓝图页面
+      if (data?.resourceId) {
+        void onRemoveResource(String(data.resourceId))
+      }
+      break
+    case 'preview':
+      // 资源管理器窗口中预览了资源
+      if (data?.resourceId) {
+        void onPreviewResource(String(data.resourceId))
+      }
+      break
+    case 'refresh-missing':
+      // 资源管理器窗口中触发了缺失刷新
+      if (Array.isArray(data?.resourceIds)) {
+        void onRefreshMissingResourceRecords(data.resourceIds)
+      }
+      break
+    case 'drop-to-node':
+      // 资源管理器窗口中拖拽资源到蓝图节点
+      if (data?.resourceId) {
+        void onResourceDraggedToBlueprint(String(data.resourceId), data?.position ?? null)
+      }
+      break
+    default:
+      console.log('[AIWorkflowPage][resource-manager] unknown event:', event, data)
+  }
 }
 
-const closeResourceDialog = () => {
-  resourceDialogOpen.value = false
+const registerResourceManagerEventListener = () => {
+  const w = window as any
+  if (!w.__DWEB_RUNTIME__?.isElectron || !w.dweb?.aiworkflow?.onResourceManagerEvent) return
+  resourceManagerEventListenerId = w.dweb.aiworkflow.onResourceManagerEvent(onResourceManagerWindowEvent)
 }
+
+const openResourceDialog = async () => {
+  const w = window as any
+  // Electron 环境：打开原生窗口
+  if (w.__DWEB_RUNTIME__?.isElectron && w.dweb?.aiworkflow?.openResourceManager) {
+    try {
+      const projectId = currentProjectId.value
+      const title = currentProjectName.value || '资源管理器'
+      const result = await w.dweb.aiworkflow.openResourceManager({ projectId, title })
+      console.log('[AIWorkflowPage] openResourceManager result:', JSON.stringify(result))
+      return
+    } catch (err) {
+      console.warn('[AIWorkflowPage] openResourceManager IPC failed:', err)
+    }
+  }
+  // Web 环境或 Electron 降级：显示提示
+  // 资源管理器需要 Electron 原生窗口，Web 模式暂不支持
+  pushToast('资源管理器仅在 Electron 客户端中可用', 'warn')
+}
+
 watch(meshyTaskDialogOpen, (open) => {
   onMeshyTaskDialogOpenChanged(open)
 })
@@ -5165,6 +5250,7 @@ onMounted(() => {
   window.addEventListener('pointerup', flushPendingImageDistribute, true)
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
   startUnrealExportPolling()
+  registerResourceManagerEventListener()
   void refreshProjectList()
   blueprintLog.append('蓝图页面已加载，日志面板就绪', {
     category: 'system',

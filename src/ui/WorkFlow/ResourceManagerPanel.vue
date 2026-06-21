@@ -1,210 +1,183 @@
 <template>
-  <teleport to="body">
-    <div
-      v-if="open"
-      ref="panelEl"
-      class="wf-resource-panel"
-      :class="{ animating: !isInteracting }"
-      :style="panelStyle"
-      @pointerdown.stop
-    >
-      <div
-        class="wf-resource-header"
-        @pointerdown="onHeaderPointerDown"
-        @dblclick="onHeaderDoubleClick"
-      >
-        <div class="wf-resource-title">资源管理器</div>
-        <div class="wf-resource-actions" @pointerdown.stop>
-          <button
-            class="wf-resource-icon-btn"
-            type="button"
-            :title="thumbSize === 'sm' ? '缩略图：小' : '缩略图：大'"
-            @click="toggleThumbSize"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
-              <path
-                d="M2.5 3.5h5v5h-5zM8.5 3.5h5v5h-5zM2.5 9.5h5v5h-5zM8.5 9.5h5v5h-5z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.1"
-              />
-              <path
-                v-if="thumbSize === 'lg'"
-                d="M3.4 4.4h3.2v3.2H3.4z"
-                fill="currentColor"
-                opacity="0.25"
-              />
-            </svg>
-          </button>
-          <button
-            class="wf-resource-icon-btn"
-            type="button"
-            title="刷新并清理无缩略图记录"
-            @click="emitRefreshMissing"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
-              <path
-                d="M13.5 8a5.5 5.5 0 1 1-1.3-3.6"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.2"
-                stroke-linecap="round"
-              />
-              <path
-                d="M10.7 2.7h3v3"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.2"
-                stroke-linecap="round"
-              />
-            </svg>
-          </button>
-          <button
-            class="wf-resource-icon-btn"
-            type="button"
-            :title="sortModeTitle"
-            @click="cycleSortMode"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
-              <path
-                d="M4 3h8M4 6h6M4 9h4"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.2"
-                stroke-linecap="round"
-              />
-              <path
-                v-if="sortMode.endsWith('asc')"
-                d="M12 13l-2-2h4z"
-                fill="currentColor"
-              />
-              <path v-else d="M12 11l-2 2h4z" fill="currentColor" />
-            </svg>
-          </button>
-          <button class="wf-resource-btn" type="button" @click="toggleMinimize">-</button>
-          <button class="wf-resource-btn" type="button" @click="toggleMaximize">
-            []
-          </button>
-          <button class="wf-resource-btn danger" type="button" @click="emit('close')">
-            x
-          </button>
-        </div>
-      </div>
-      <div v-if="!minimized" class="wf-resource-body">
-        <div v-if="!resources.length" class="wf-resource-empty">暂无资源</div>
-        <div v-else class="wf-resource-stats">共 {{ totalCount }} 条，当前显示 {{ visibleCount }} 条</div>
-        <div
-          v-if="resources.length"
-          ref="bodyEl"
-          class="wf-resource-grid"
-          :class="[thumbSize === 'lg' ? 'thumb-lg' : 'thumb-sm', { reflowing: gridReflowing }]"
+  <div class="wf-resource-panel">
+    <div class="wf-resource-header">
+      <div class="wf-resource-title">资源管理器</div>
+      <div class="wf-resource-actions">
+        <button
+          class="wf-resource-icon-btn"
+          type="button"
+          :title="thumbSize === 'sm' ? '缩略图：小' : '缩略图：大'"
+          @click="toggleThumbSize"
         >
-          <div
-            v-for="r in visibleResources"
-            :key="`${String(r.id)}:${layoutEpoch}`"
-            class="wf-resource-tile"
-            draggable="true"
-            @dragstart="onTileDragStart($event, r)"
-          >
-            <img
-              class="wf-resource-thumb"
-              :src="thumbSrc(r)"
-              :alt="r.name"
-              loading="lazy"
-              draggable="false"
-              @error="onThumbError(String(r.id))"
+          <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
+            <path
+              d="M2.5 3.5h5v5h-5zM8.5 3.5h5v5h-5zM2.5 9.5h5v5h-5zM8.5 9.5h5v5h-5z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.1"
             />
-
-            <div class="wf-resource-overlay">
-              <button
-                class="wf-resource-overlay-btn"
-                type="button"
-                title="查看"
-                @click="emit('preview', String(r.id))"
-              >
-                <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
-                  <path
-                    d="M8 3c-3.2 0-5.8 2.3-7 5 1.2 2.7 3.8 5 7 5s5.8-2.3 7-5c-1.2-2.7-3.8-5-7-5z"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.1"
-                  />
-                  <path
-                    d="M8 6.1a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z"
-                    fill="currentColor"
-                    opacity="0.9"
-                  />
-                </svg>
-              </button>
-              <button
-                class="wf-resource-overlay-btn danger"
-                type="button"
-                title="删除"
-                @click="emit('remove', String(r.id))"
-              >
-                <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
-                  <path
-                    d="M6 2.8h4M3.4 4.4h9.2"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    stroke-linecap="round"
-                  />
-                  <path
-                    d="M5.2 4.6v8.6c0 .6.5 1 1 1h3.6c.6 0 1-.4 1-1V4.6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.1"
-                  />
-                  <path
-                    d="M6.7 6.4v6.1M9.3 6.4v6.1"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.1"
-                    stroke-linecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div ref="sentinelEl" class="wf-resource-sentinel" />
-        </div>
+            <path
+              v-if="thumbSize === 'lg'"
+              d="M3.4 4.4h3.2v3.2H3.4z"
+              fill="currentColor"
+              opacity="0.25"
+            />
+          </svg>
+        </button>
+        <button
+          class="wf-resource-icon-btn"
+          type="button"
+          title="刷新并清理无缩略图记录"
+          @click="emitRefreshMissing"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
+            <path
+              d="M13.5 8a5.5 5.5 0 1 1-1.3-3.6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+            <path
+              d="M10.7 2.7h3v3"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+        <button
+          class="wf-resource-icon-btn"
+          type="button"
+          :title="sortModeTitle"
+          @click="cycleSortMode"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
+            <path
+              d="M4 3h8M4 6h6M4 9h4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+            <path
+              v-if="sortMode.endsWith('asc')"
+              d="M12 13l-2-2h4z"
+              fill="currentColor"
+            />
+            <path v-else d="M12 11l-2 2h4z" fill="currentColor" />
+          </svg>
+        </button>
+        <button class="wf-resource-btn" type="button" title="关闭" @click="emit('close')">
+          x
+        </button>
       </div>
-      <div
-        class="wf-resize wf-resize-n"
-        @pointerdown.prevent="onResizeStart('n', $event)"
-      />
-      <div
-        class="wf-resize wf-resize-s"
-        @pointerdown.prevent="onResizeStart('s', $event)"
-      />
-      <div
-        class="wf-resize wf-resize-e"
-        @pointerdown.prevent="onResizeStart('e', $event)"
-      />
-      <div
-        class="wf-resize wf-resize-w"
-        @pointerdown.prevent="onResizeStart('w', $event)"
-      />
-      <div
-        class="wf-resize wf-resize-nw"
-        @pointerdown.prevent="onResizeStart('nw', $event)"
-      />
-      <div
-        class="wf-resize wf-resize-ne"
-        @pointerdown.prevent="onResizeStart('ne', $event)"
-      />
-      <div
-        class="wf-resize wf-resize-sw"
-        @pointerdown.prevent="onResizeStart('sw', $event)"
-      />
-      <div
-        class="wf-resize wf-resize-se"
-        @pointerdown.prevent="onResizeStart('se', $event)"
-      />
     </div>
-  </teleport>
+    <div class="wf-resource-body">
+      <div v-if="!resources.length" class="wf-resource-empty">暂无资源</div>
+      <div v-else class="wf-resource-stats">共 {{ totalCount }} 条，当前显示 {{ visibleCount }} 条</div>
+      <div
+        v-if="resources.length"
+        ref="bodyEl"
+        class="wf-resource-grid"
+        :class="[thumbSize === 'lg' ? 'thumb-lg' : 'thumb-sm', { reflowing: gridReflowing }]"
+      >
+        <div
+          v-for="r in visibleResources"
+          :key="`${String(r.id)}:${layoutEpoch}`"
+          class="wf-resource-tile"
+          draggable="true"
+          @dragstart="onTileDragStart($event, r)"
+        >
+          <img
+            class="wf-resource-thumb"
+            :src="thumbSrc(r)"
+            :alt="r.name"
+            loading="lazy"
+            draggable="false"
+            @error="onThumbError(String(r.id))"
+          />
+
+          <div class="wf-resource-overlay">
+            <button
+              class="wf-resource-overlay-btn"
+              type="button"
+              title="查看"
+              @click="emit('preview', String(r.id))"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
+                <path
+                  d="M8 3c-3.2 0-5.8 2.3-7 5 1.2 2.7 3.8 5 7 5s5.8-2.3 7-5c-1.2-2.7-3.8-5-7-5z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.1"
+                />
+                <path
+                  d="M8 6.1a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z"
+                  fill="currentColor"
+                  opacity="0.9"
+                />
+              </svg>
+            </button>
+            <button
+              class="wf-resource-overlay-btn"
+              type="button"
+              title="添加至蓝图"
+              @click="emit('drop-to-node', String(r.id))"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
+                <path
+                  d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.1"
+                />
+                <path
+                  d="M11 9v4M9 11h4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+            <button
+              class="wf-resource-overlay-btn danger"
+              type="button"
+              title="删除"
+              @click="emit('remove', String(r.id))"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
+                <path
+                  d="M6 2.8h4M3.4 4.4h9.2"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.2"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M5.2 4.6v8.6c0 .6.5 1 1 1h3.6c.6 0 1-.4 1-1V4.6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.1"
+                />
+                <path
+                  d="M6.7 6.4v6.1M9.3 6.4v6.1"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.1"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div ref="sentinelEl" class="wf-resource-sentinel" />
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -213,7 +186,7 @@ import type { WorkflowResource } from "../../aiworkflow/resource/types";
 import { sanitizeWorkflowMediaUrl } from "../../aiworkflow/domain/resource/safeWorkflowUrl";
 
 const props = defineProps<{
-  open: boolean;
+  open?: boolean
   resources: WorkflowResource[];
 }>();
 
@@ -222,13 +195,11 @@ const emit = defineEmits<{
   (e: "remove", resourceId: string): void;
   (e: "preview", resourceId: string): void;
   (e: "refresh-missing", resourceIds: string[]): void;
+  (e: "drop-to-node", resourceId: string): void;
 }>();
 
-const minimized = ref(false);
-const maximized = ref(false);
-const position = ref({ x: 16, y: 16 });
-const size = ref({ w: 420, h: 450 });
-const isInteracting = ref(false);
+const bodyEl = ref<HTMLElement | null>(null);
+const sentinelEl = ref<HTMLElement | null>(null);
 
 type SortMode = "date-desc" | "date-asc";
 const sortMode = ref<SortMode>("date-desc");
@@ -236,55 +207,20 @@ const thumbSize = ref<"sm" | "lg">("sm");
 const failedThumbIds = ref<Set<string>>(new Set());
 const gridReflowing = ref(false);
 const layoutEpoch = ref(0);
-const panelEl = ref<HTMLElement | null>(null);
-
-const bodyEl = ref<HTMLElement | null>(null);
-const sentinelEl = ref<HTMLElement | null>(null);
 let io: IntersectionObserver | null = null;
 
 const PAGE_SIZE = 80;
 const loadedCount = ref(PAGE_SIZE);
 
-const TILE_GAP = 10;
-const TILE_BASE_HEIGHT_SM = 132;
-const TILE_BASE_HEIGHT_LG = 192;
-const MAX_FILL_STEPS = 10;
-let fillRaf = 0;
-
 const resetPaging = () => {
   loadedCount.value = PAGE_SIZE;
 };
 
-const estimateColumns = () => {
-  const body = bodyEl.value;
-  if (!body) return 1;
-  const width = Math.max(1, Math.floor(body.clientWidth));
-  const colWidth = thumbSize.value === "lg" ? TILE_BASE_HEIGHT_LG : TILE_BASE_HEIGHT_SM;
-  return Math.max(1, Math.floor((width + TILE_GAP) / (colWidth + TILE_GAP)));
-};
-
 const scheduleFillVisibleCapacity = () => {
-  if (fillRaf) window.cancelAnimationFrame(fillRaf);
-  fillRaf = window.requestAnimationFrame(async () => {
-    fillRaf = 0;
-    await nextTick();
-    for (let step = 0; step < MAX_FILL_STEPS; step += 1) {
-      if (!props.open || minimized.value) return;
-      const total = sortedResources.value.length;
-      if (loadedCount.value >= total) return;
-      const body = bodyEl.value;
-      if (!body) return;
-
-      const clientH = Math.max(0, Math.floor(body.clientHeight));
-      const scrollH = Math.max(0, Math.floor(body.scrollHeight));
-      if (clientH <= 0) return;
-      if (scrollH > clientH + 2) return;
-
-      const cols = estimateColumns();
-      const chunk = Math.max(cols * 3, Math.min(PAGE_SIZE, cols * 12));
-      loadedCount.value = Math.min(total, loadedCount.value + chunk);
-      await nextTick();
-    }
+  nextTick(() => {
+    const total = sortedResources.value.length;
+    if (loadedCount.value >= total) return;
+    loadedCount.value = Math.min(total, loadedCount.value + PAGE_SIZE * 2);
   });
 };
 
@@ -303,21 +239,6 @@ const sortModeTitle = computed(() => {
   if (sortMode.value === "date-desc") return "排序：日期（新→旧）";
   return "排序：日期（旧→新）";
 });
-
-const dateKeyOf = (ts: any) => {
-  const n = Number(ts);
-  const d = new Date(Number.isFinite(n) ? n : Date.now());
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-};
-
-const compareName = (a: WorkflowResource, b: WorkflowResource) => {
-  const an = String(a?.name ?? "");
-  const bn = String(b?.name ?? "");
-  return an.localeCompare(bn, undefined, { numeric: true, sensitivity: "base" });
-};
 
 const compareCreatedAt = (a: WorkflowResource, b: WorkflowResource) => {
   const at = Number((a as any)?.createdAt ?? 0);
@@ -394,55 +315,6 @@ const onTileDragStart = (event: DragEvent, r: WorkflowResource) => {
   }
 };
 
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-const safeTopInset = () => {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue('--aiwf-safe-top');
-  const parsed = Number.parseFloat(String(raw || '').trim());
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, parsed);
-};
-const minTopBound = (pad = 16) => Math.max(pad, Math.round(safeTopInset()) + 8);
-const MIN_WIDTH = 320;
-const MIN_HEIGHT = 220;
-
-const MINIMIZED_HEIGHT = 36;
-
-const resetPosition = () => {
-	const w = size.value.w;
-	const h = size.value.h;
-	const pad = 16;
-  const minTop = minTopBound(pad);
-	const nextX = 56;
-  const nextY = clamp(window.innerHeight - h - 64, minTop, Math.max(minTop, window.innerHeight - h - pad));
-	position.value = { x: nextX, y: nextY };
-};
-
-const dockMinimized = () => {
-	const pad = 16;
-  const minTop = minTopBound(pad);
-	const nextX = 56;
-	const nextY = clamp(
-		window.innerHeight - MINIMIZED_HEIGHT - pad,
-    minTop,
-    Math.max(minTop, window.innerHeight - MINIMIZED_HEIGHT - pad)
-	);
-	position.value = { x: nextX, y: nextY };
-};
-
-watch(
-  () => props.open,
-  (open) => {
-    if (open) {
-      minimized.value = false;
-      maximized.value = false;
-      size.value = { w: 420, h: 450 };
-      resetPosition();
-			resetPaging();
-      scheduleFillVisibleCapacity();
-    }
-  }
-);
-
 watch(
   () => props.resources,
   () => {
@@ -461,25 +333,9 @@ watch(
   }
 );
 
-let panelResizeObserver: ResizeObserver | null = null;
-let lastPanelWidth = 0;
-let reflowTimer = 0;
-
-const triggerGridReflowAnimation = () => {
-  layoutEpoch.value += 1;
-  gridReflowing.value = true;
-  if (reflowTimer) window.clearTimeout(reflowTimer);
-  reflowTimer = window.setTimeout(() => {
-    gridReflowing.value = false;
-    reflowTimer = 0;
-  }, 260);
-};
-
 onMounted(() => {
   io = new IntersectionObserver(
     (entries) => {
-      if (!props.open) return;
-      if (minimized.value) return;
       const hit = entries.some((e) => e.isIntersecting);
       if (!hit) return;
       const total = sortedResources.value.length;
@@ -489,149 +345,16 @@ onMounted(() => {
     { root: bodyEl.value ?? null, rootMargin: "240px" }
   );
 
-  // observe on next tick-ish: refs may not be ready immediately
   setTimeout(() => {
     if (!io) return;
     if (sentinelEl.value) io.observe(sentinelEl.value);
   }, 0);
 
-  if (typeof ResizeObserver !== "undefined") {
-    panelResizeObserver = new ResizeObserver((entries) => {
-      const rect = entries?.[0]?.contentRect;
-      const width = Number(rect?.width || 0);
-      const height = Number(rect?.height || 0);
-      if (Number.isFinite(height) && height > 0) {
-        scheduleFillVisibleCapacity();
-      }
-      if (!Number.isFinite(width) || width <= 0) return;
-      if (!lastPanelWidth) {
-        lastPanelWidth = width;
-        return;
-      }
-      if (Math.abs(width - lastPanelWidth) < 2) return;
-      lastPanelWidth = width;
-      triggerGridReflowAnimation();
-    });
-    if (panelEl.value) panelResizeObserver.observe(panelEl.value);
-  }
-});
-
-const toggleMinimize = () => {
-  const next = !minimized.value;
-  minimized.value = next;
-  if (next) {
-    maximized.value = false;
-    dockMinimized();
-    return;
-  }
-  resetPosition();
+  resetPaging();
   scheduleFillVisibleCapacity();
-};
-
-const toggleMaximize = () => {
-  const next = !maximized.value;
-  maximized.value = next;
-  if (next) {
-    minimized.value = false;
-    scheduleFillVisibleCapacity();
-    return;
-  }
-  resetPosition();
-  scheduleFillVisibleCapacity();
-};
-
-const panelStyle = computed(() => {
-  if (maximized.value) {
-    const topInset = minTopBound(16);
-    return {
-      left: "16px",
-      top: `${topInset}px`,
-      width: `${window.innerWidth - 32}px`,
-      height: `${Math.max(MIN_HEIGHT, window.innerHeight - topInset - 16)}px`,
-    };
-  }
-  const h = minimized.value ? MINIMIZED_HEIGHT : size.value.h;
-  return {
-    left: `${position.value.x}px`,
-    top: `${position.value.y}px`,
-    width: `${size.value.w}px`,
-    height: `${h}px`,
-  };
 });
-
-let drag: null | {
-  startX: number;
-  startY: number;
-  originX: number;
-  originY: number;
-} = null;
-let resize: null | {
-  dir: string;
-  startX: number;
-  startY: number;
-  startW: number;
-  startH: number;
-  startLeft: number;
-  startTop: number;
-} = null;
-
-const onHeaderPointerDown = (e: PointerEvent) => {
-  if (e.button !== 0) return;
-  if (maximized.value) return;
-  const target = e.target as HTMLElement | null;
-  if (target?.closest("button")) return;
-  isInteracting.value = true;
-  drag = {
-    startX: e.clientX,
-    startY: e.clientY,
-    originX: position.value.x,
-    originY: position.value.y,
-  };
-  const onMove = (ev: PointerEvent) => {
-    if (!drag) return;
-    const minTop = minTopBound(16);
-    const nextX = drag.originX + (ev.clientX - drag.startX);
-    const nextY = drag.originY + (ev.clientY - drag.startY);
-    const maxX = Math.max(16, window.innerWidth - size.value.w - 16);
-    const maxY = Math.max(
-      minTop,
-      window.innerHeight - (minimized.value ? 40 : size.value.h) - 16
-    );
-    position.value = {
-      x: clamp(nextX, 16, maxX),
-      y: clamp(nextY, minTop, maxY),
-    };
-  };
-  const onUp = () => {
-    drag = null;
-    isInteracting.value = false;
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
-    window.removeEventListener("pointercancel", onUp);
-  };
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp, { once: true });
-  window.addEventListener("pointercancel", onUp, { once: true });
-};
-
-const onHeaderDoubleClick = (e: MouseEvent) => {
-  const target = e.target as HTMLElement | null;
-  if (target?.closest("button")) return;
-  if (minimized.value) {
-    minimized.value = false;
-    resetPosition();
-    return;
-  }
-  toggleMaximize();
-};
 
 onBeforeUnmount(() => {
-  drag = null;
-  resize = null;
-  if (fillRaf) {
-    window.cancelAnimationFrame(fillRaf);
-    fillRaf = 0;
-  }
   if (io) {
     try {
       io.disconnect();
@@ -640,93 +363,25 @@ onBeforeUnmount(() => {
     }
     io = null;
   }
-  if (panelResizeObserver) {
-    try {
-      panelResizeObserver.disconnect();
-    } catch {
-      // ignore
-    }
-    panelResizeObserver = null;
-  }
-  if (reflowTimer) {
-    window.clearTimeout(reflowTimer);
-    reflowTimer = 0;
-  }
 });
-
-const onResizeStart = (dir: string, e: PointerEvent) => {
-  if (e.button !== 0) return;
-  if (maximized.value) return;
-  isInteracting.value = true;
-  resize = {
-    dir,
-    startX: e.clientX,
-    startY: e.clientY,
-    startW: size.value.w,
-    startH: size.value.h,
-    startLeft: position.value.x,
-    startTop: position.value.y,
-  };
-  const onMove = (ev: PointerEvent) => {
-    if (!resize) return;
-    const dx = ev.clientX - resize.startX;
-    const dy = ev.clientY - resize.startY;
-    let nextW = resize.startW;
-    let nextH = resize.startH;
-    let nextLeft = resize.startLeft;
-    let nextTop = resize.startTop;
-
-    if (resize.dir.includes("e")) nextW = resize.startW + dx;
-    if (resize.dir.includes("s")) nextH = resize.startH + dy;
-    if (resize.dir.includes("w")) {
-      nextW = resize.startW - dx;
-      nextLeft = resize.startLeft + dx;
-    }
-    if (resize.dir.includes("n")) {
-      nextH = resize.startH - dy;
-      nextTop = resize.startTop + dy;
-    }
-
-    nextW = Math.max(MIN_WIDTH, nextW);
-    nextH = Math.max(MIN_HEIGHT, nextH);
-
-    const minTop = minTopBound(16);
-    const maxLeft = window.innerWidth - nextW - 16;
-    const maxTop = window.innerHeight - nextH - 16;
-    nextLeft = clamp(nextLeft, 16, Math.max(16, maxLeft));
-    nextTop = clamp(nextTop, minTop, Math.max(minTop, maxTop));
-
-    size.value = { w: nextW, h: nextH };
-    position.value = { x: nextLeft, y: nextTop };
-  };
-  const onUp = () => {
-    resize = null;
-    isInteracting.value = false;
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
-    window.removeEventListener("pointercancel", onUp);
-  };
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp, { once: true });
-  window.addEventListener("pointercancel", onUp, { once: true });
-};
 </script>
 
 <style scoped>
+/*
+ * 资源管理器面板样式
+ * 在独立 BrowserWindow 中使用时，由父容器 (.rmw-root) 提供定位和尺寸。
+ * 面板本身占满 flex 空间，无 fixed 定位。
+ */
 .wf-resource-panel {
-  position: fixed;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   background: rgba(20, 24, 28, 0.82);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--vscode-border);
   box-shadow: var(--vscode-shadow);
-  display: flex;
-  flex-direction: column;
-  z-index: var(--aiwf-overlay-utility-z-index, 80);
-}
-
-.wf-resource-panel.animating {
-  transition: left 180ms ease, top 180ms ease, width 180ms ease, height 180ms ease;
+  overflow: hidden;
 }
 
 .wf-resource-header {
@@ -735,9 +390,8 @@ const onResizeStart = (dir: string, e: PointerEvent) => {
   justify-content: space-between;
   padding: 6px 8px;
   border-bottom: 1px solid var(--vscode-border);
-  cursor: grab;
-  user-select: none;
   background: rgba(30, 34, 38, 0.85);
+  flex-shrink: 0;
 }
 
 .wf-resource-title {
@@ -924,76 +578,5 @@ const onResizeStart = (dir: string, e: PointerEvent) => {
     opacity: 1;
     transform: scale(1);
   }
-}
-
-.wf-resize {
-  position: absolute;
-  background: transparent;
-}
-
-.wf-resize-n,
-.wf-resize-s {
-  left: 6px;
-  right: 6px;
-  height: 6px;
-}
-
-.wf-resize-n {
-  top: -3px;
-  cursor: ns-resize;
-}
-
-.wf-resize-s {
-  bottom: -3px;
-  cursor: ns-resize;
-}
-
-.wf-resize-e,
-.wf-resize-w {
-  top: 6px;
-  bottom: 6px;
-  width: 6px;
-}
-
-.wf-resize-e {
-  right: -3px;
-  cursor: ew-resize;
-}
-
-.wf-resize-w {
-  left: -3px;
-  cursor: ew-resize;
-}
-
-.wf-resize-nw,
-.wf-resize-ne,
-.wf-resize-sw,
-.wf-resize-se {
-  width: 10px;
-  height: 10px;
-}
-
-.wf-resize-nw {
-  top: -5px;
-  left: -5px;
-  cursor: nwse-resize;
-}
-
-.wf-resize-ne {
-  top: -5px;
-  right: -5px;
-  cursor: nesw-resize;
-}
-
-.wf-resize-sw {
-  bottom: -5px;
-  left: -5px;
-  cursor: nesw-resize;
-}
-
-.wf-resize-se {
-  bottom: -5px;
-  right: -5px;
-  cursor: nwse-resize;
 }
 </style>

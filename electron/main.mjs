@@ -1704,6 +1704,134 @@ function registerIpc() {
 			return { ok: false, error: String(err?.message || err) }
 		}
 	})
+
+	// ===== 资源管理器原生窗口 =====
+	let resourceManagerWindow = null
+
+	ipcMain.handle('dweb:resource-manager:open', async (_e, payload) => {
+		console.log('[main] dweb:resource-manager:open payload:', JSON.stringify(payload))
+		try {
+			const projectId = payload?.projectId ?? null
+			const title = String(payload?.title || '资源管理器').slice(0, 200)
+
+			// 若已存在，直接聚焦，不重建
+			if (resourceManagerWindow && !resourceManagerWindow.isDestroyed()) {
+				resourceManagerWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			// 构建 URL query 参数
+			const queryParams = new URLSearchParams()
+			if (projectId != null) queryParams.set('projectId', String(projectId))
+			if (title) queryParams.set('title', title)
+			const queryStr = queryParams.toString() ? `?${queryParams.toString()}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/resource-manager${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/resource-manager${queryStr}`
+
+			console.log('[main][resource-manager] targetUrl:', targetUrl)
+
+			resourceManagerWindow = new BrowserWindow({
+				width: 1100,
+				height: 720,
+				minWidth: 640,
+				minHeight: 480,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#181818',
+				frame: true,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+				},
+			})
+
+			try { resourceManagerWindow.setMenuBarVisibility(false) } catch {}
+			try { resourceManagerWindow.removeMenu() } catch {}
+
+			resourceManagerWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				appendRuntimeLog(`[resource-manager:${level}] ${message} (${sourceId}:${line})`)
+			})
+			resourceManagerWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[resource-manager:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			resourceManagerWindow.on('closed', () => {
+				resourceManagerWindow = null
+			})
+
+			await resourceManagerWindow.loadURL(targetUrl)
+			console.log('[main][resource-manager] loadURL done, URL:', resourceManagerWindow.webContents.getURL())
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][resource-manager] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:resource-manager:close', async () => {
+		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
+			return { ok: true }
+		}
+		try {
+			resourceManagerWindow.close()
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:resource-manager:focus', async () => {
+		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
+			return { ok: false, error: 'window not available' }
+		}
+		resourceManagerWindow.focus()
+		return { ok: true }
+	})
+
+	// 资源管理器窗口 → 主窗口事件广播
+	// 事件类型: 'remove' | 'preview' | 'refresh-missing' | 'drop-to-node'
+	ipcMain.handle('dweb:resource-manager:broadcast', async (_e, payload) => {
+		const event = String(payload?.event || '').trim()
+		if (!event) return { ok: false, error: 'missing event name' }
+		if (!mainWindow || mainWindow.isDestroyed()) {
+			return { ok: false, error: 'main window not available' }
+		}
+		try {
+			mainWindow.webContents.send('dweb:resource-manager:event', {
+				event,
+				data: payload?.data ?? null,
+			})
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 主窗口 → 资源管理器窗口事件通知（资源列表变化时通知刷新）
+	ipcMain.handle('dweb:resource-manager:notify', async (_e, payload) => {
+		const event = String(payload?.event || '').trim()
+		if (!event) return { ok: false, error: 'missing event name' }
+		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
+			return { ok: false, skipped: true }
+		}
+		try {
+			resourceManagerWindow.webContents.send('dweb:resource-manager:notify', {
+				event,
+				data: payload?.data ?? null,
+			})
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
 }
 
 async function stopBackend() {

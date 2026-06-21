@@ -1,7 +1,7 @@
 <template>
 	<div
 		class="app-shell"
-		:class="{ electron: isElectronRuntime, 'is-preview-window': isPreviewWindow }"
+		:class="{ electron: isElectronRuntime, 'is-preview-window': isPreviewWindow, 'is-resource-manager-window': isResourceManagerWindow }"
 	>
 		<GlobalTitleBar v-if="isElectronRuntime && !isPreviewWindow" class="app-titlebar" />
 		<GlobalSideNav
@@ -19,7 +19,7 @@
 				</transition>
 			</router-view>
 		</main>
-		<StartupProgressBar :state="startupProgressState" @dismiss="hideStartupProgress" />
+		<StartupProgressBar v-if="!isResourceManagerWindow" :state="startupProgressState" @dismiss="hideStartupProgress" />
 		<PageTransitionOverlay v-if="!isPreviewWindow" />
 	</div>
 </template>
@@ -50,7 +50,11 @@ const isElectronRuntime = (window as any)?.__DWEB_RUNTIME__?.isElectron === true
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
-	return path.startsWith('/image-markup-preview')
+	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager')
+})
+
+const isResourceManagerWindow = computed(() => {
+	return String(route.path || '').startsWith('/resource-manager')
 })
 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
@@ -104,6 +108,14 @@ onMounted(() => {
 }
 
 .app-shell.is-preview-window .app-content {
+	top: 0;
+	bottom: 0;
+	width: 100vw;
+	height: 100vh;
+	background: #1a1a1a;
+}
+
+.app-shell.is-resource-manager-window .app-content {
 	top: 0;
 	bottom: 0;
 	width: 100vw;

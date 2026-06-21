@@ -32,6 +32,11 @@ const routes: RouteRecordRaw[] = [
     name: 'ImageMarkupPreview',
     component: () => import('../views/ImageMarkupPreviewPage.vue'),
   },
+  {
+    path: '/resource-manager',
+    name: 'ResourceManager',
+    component: () => import('../views/AIWorkflow/ResourceManagerWindow.vue'),
+  },
 ]
 
 const router = createRouter({
