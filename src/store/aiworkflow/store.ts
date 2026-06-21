@@ -2192,6 +2192,61 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.selectedNodeIds = []
 			state.selectedEdgeId = null
 		},
+		replaceWorkflowState(state, payload: { snapshot: WorkflowState }) {
+			// 用于撤销/重做：整份快照写回当前 state。
+			const snap = payload?.snapshot
+			if (!snap || typeof snap !== 'object') return
+			if (snap.viewport && typeof snap.viewport === 'object') {
+				state.viewport.zoom = clampZoom((snap.viewport as any).zoom)
+				state.viewport.panX = clamp((snap.viewport as any).panX, -1e9, 1e9)
+				state.viewport.panY = clamp((snap.viewport as any).panY, -1e9, 1e9)
+			} else {
+				state.viewport = { zoom: 1, panX: 0, panY: 0 }
+			}
+			state.nodesById = snap.nodesById && typeof snap.nodesById === 'object'
+				? (snap.nodesById as Record<string, WorkflowNode>)
+				: {}
+			state.nodeOrder = Array.isArray(snap.nodeOrder) ? (snap.nodeOrder as string[]) : []
+			state.edgesById = snap.edgesById && typeof snap.edgesById === 'object'
+				? (snap.edgesById as Record<string, WorkflowEdge>)
+				: {}
+			state.edgeOrder = Array.isArray(snap.edgeOrder) ? (snap.edgeOrder as string[]) : []
+			state.resourcesById = snap.resourcesById && typeof snap.resourcesById === 'object'
+				? (snap.resourcesById as any)
+				: {}
+			state.resourceOrder = Array.isArray(snap.resourceOrder) ? (snap.resourceOrder as string[]) : []
+			state.selectedNodeId = typeof snap.selectedNodeId === 'string' ? snap.selectedNodeId : null
+			state.selectedNodeIds = Array.isArray(snap.selectedNodeIds) ? (snap.selectedNodeIds as string[]) : []
+			state.selectedEdgeId = typeof snap.selectedEdgeId === 'string' ? snap.selectedEdgeId : null
+			state.clipboardNode = (snap as any).clipboardNode ?? null
+			state.clipboardNodes = (snap as any).clipboardNodes ?? null
+			state.clipboardPrimaryNodeId = typeof (snap as any).clipboardPrimaryNodeId === 'string'
+				? (snap as any).clipboardPrimaryNodeId
+				: null
+			state.chatDraft = typeof snap.chatDraft === 'string' ? snap.chatDraft : ''
+			if (snap.nodeChatDialog && typeof snap.nodeChatDialog === 'object') {
+				state.nodeChatDialog = {
+					visible: Boolean((snap.nodeChatDialog as any).visible),
+					nodeId: typeof (snap.nodeChatDialog as any).nodeId === 'string'
+						? (snap.nodeChatDialog as any).nodeId
+						: null,
+					nodeType: (snap.nodeChatDialog as any).nodeType ?? null,
+					draft: typeof (snap.nodeChatDialog as any).draft === 'string'
+						? (snap.nodeChatDialog as any).draft
+						: '',
+					submitting: Boolean((snap.nodeChatDialog as any).submitting),
+					params: (snap.nodeChatDialog as any).params && typeof (snap.nodeChatDialog as any).params === 'object'
+						? (snap.nodeChatDialog as any).params
+						: {},
+				}
+			}
+			if (snap.nodeGenerationTasksById && typeof snap.nodeGenerationTasksById === 'object') {
+				state.nodeGenerationTasksById = snap.nodeGenerationTasksById as any
+			}
+			if (snap.nodeGenerationTaskIdsByNodeId && typeof snap.nodeGenerationTaskIdsByNodeId === 'object') {
+				state.nodeGenerationTaskIdsByNodeId = snap.nodeGenerationTaskIdsByNodeId as any
+			}
+		},
 		moveSelectedNodesByDelta(state, payload: { dx?: number; dy?: number }) {
 			const dx = payload?.dx != null ? Number(payload.dx) : 0
 			const dy = payload?.dy != null ? Number(payload.dy) : 0
@@ -2222,8 +2277,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 			}
 			state.edgeOrder = state.edgeOrder.filter((edgeId) => !!state.edgesById[edgeId])
-			state.selectedNodeId = state.nodeOrder[0] ?? null
-			state.selectedNodeIds = state.selectedNodeId ? [state.selectedNodeId] : []
+			// 删除节点后，彻底清空选择状态，避免误选中其它节点。
+			state.selectedNodeId = null
+			state.selectedNodeIds = []
 			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
 		},
 		upsertNode(state, payload: { node: WorkflowNode }) {
@@ -2301,11 +2357,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 			}
 			state.edgeOrder = state.edgeOrder.filter((edgeId) => !!state.edgesById[edgeId])
-			state.selectedNodeIds = state.selectedNodeIds.filter((x) => x !== id)
-			if (state.selectedNodeId === id) state.selectedNodeId = state.nodeOrder[0] ?? null
-			if (state.selectedNodeId && !state.selectedNodeIds.includes(state.selectedNodeId)) {
-				state.selectedNodeIds = [state.selectedNodeId]
-			}
+			// 删除节点后，彻底清空选择状态，避免误选中其它节点。
+			state.selectedNodeIds = []
+			state.selectedNodeId = null
+			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
 		},
 		addEdge(state, payload: { fromNodeId: string; fromAnchorId: string; toNodeId: string; toAnchorId: string }) {
 			const fromNodeId = String(payload?.fromNodeId ?? '').trim()
