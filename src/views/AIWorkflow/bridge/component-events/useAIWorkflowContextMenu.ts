@@ -113,7 +113,7 @@ export const useAIWorkflowContextMenu = (payload: {
       })
       actionItems.push({
         id: 'open-image-folder',
-        label: '文件夹打开',
+        label: '在文件夹中显示',
         disabled: !payload.canOpenSelectedNodeFolder.value,
       })
     }
@@ -123,7 +123,7 @@ export const useAIWorkflowContextMenu = (payload: {
       actionItems.push({ id: 'save-model-resource', label: '模型另存为', disabled: !url })
       actionItems.push({
         id: 'open-image-folder',
-        label: '文件夹打开',
+        label: '在文件夹中显示',
         disabled: !payload.canOpenSelectedNodeFolder.value,
       })
     }

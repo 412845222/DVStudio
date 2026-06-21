@@ -32,6 +32,10 @@ export const useAIWorkflowBatchMediaImport = (options: {
   scheduleVideoMetadataRead: (payload: { sessionId?: string; resourceId: string; nodeId: string; url: string }) => void
   autoSizeImageNodeFromDims: (nodeId: string, width: number, height: number) => void
   onLimitExceeded: (count: number, limit: number) => void
+  getProjectId: () => number | null
+  copyFileToProjectRoot: (projectId: number, sourcePath: string, desiredFilename: string) => Promise<any>
+  uploadProjectAsset: (payload: { projectId: number; kind?: string; name?: string; arrayBuffer: ArrayBuffer; contentType?: string; bucket?: string }) => Promise<any>
+  resolveBackendUrl: (value: string) => string
 }) => {
   const createMediaNodesFromFiles = async (opts: {
     files: AIWorkflowDroppedFile[]
@@ -161,21 +165,48 @@ export const useAIWorkflowBatchMediaImport = (options: {
         url = ''
       }
 
-      if (state) state.urlReady = Boolean(url)
-      if (url) {
-        options.setObjectUrl(task.resourceId, url)
-        const sourcePath = typeof (task.file as any)?.path === 'string'
-          ? String((task.file as any).path).trim()
-          : ''
+      const sourcePath = typeof (task.file as any)?.path === 'string'
+        ? String((task.file as any).path).trim()
+        : ''
+
+      // 在 Electron 环境中，尝试将本地视频文件复制到项目目录
+      const projectId = options.getProjectId?.()
+      let projectAssetUrl = ''
+      let projectRelPath = ''
+      if (projectId && sourcePath) {
+        try {
+          const copyResult = await options.copyFileToProjectRoot(projectId, sourcePath, task.name)
+          if (copyResult && copyResult.ok) {
+            projectRelPath = String(copyResult.relativePath || '').trim()
+            if (projectRelPath) {
+              const dwebUrl = `dweb://project-assets?projectId=${projectId}&path=${encodeURIComponent(projectRelPath)}`
+              projectAssetUrl = options.resolveBackendUrl(dwebUrl)
+            }
+          }
+        } catch {
+          // 复制失败时回退到 object URL
+        }
+      }
+
+      const finalUrl = projectAssetUrl || url
+      if (state) state.urlReady = Boolean(finalUrl)
+      if (finalUrl) {
+        if (!projectAssetUrl) {
+          options.setObjectUrl(task.resourceId, finalUrl)
+        }
         options.store.commit('patchResource', {
           resourceId: task.resourceId,
-          patch: { url, ...(sourcePath ? { sourcePath } : {}) },
+          patch: {
+            url: finalUrl,
+            ...(sourcePath ? { sourcePath } : {}),
+            ...(projectRelPath ? { projectRelativePath: projectRelPath } : {}),
+          },
         })
         options.scheduleVideoMetadataRead({
           sessionId,
           resourceId: task.resourceId,
           nodeId: info.nodeId,
-          url,
+          url: finalUrl,
         })
       }
       options.updateImportProgressIfNeeded(sessionId, task.resourceId)
@@ -183,6 +214,33 @@ export const useAIWorkflowBatchMediaImport = (options: {
 
     const imageTasks = importTasks.filter((task) => task.kind === 'image')
     if (!imageTasks.length) return
+
+    // 在 Electron 环境中，预先将本地图片文件复制到项目目录
+    const projectIdForImages = options.getProjectId?.()
+    const projectAssetUrlByResourceId = new Map<string, { url: string; relPath: string }>()
+    if (projectIdForImages) {
+      for (const task of imageTasks) {
+        const sourcePath = typeof (task.file as any)?.path === 'string'
+          ? String((task.file as any).path).trim()
+          : ''
+
+        if (sourcePath) {
+          try {
+            const copyResult = await options.copyFileToProjectRoot(projectIdForImages, sourcePath, task.name)
+            if (copyResult && copyResult.ok) {
+              const relPath = String(copyResult.relativePath || '').trim()
+              if (relPath) {
+                const dwebUrl = `dweb://project-assets?projectId=${projectIdForImages}&path=${encodeURIComponent(relPath)}`
+                const projectAssetUrl = options.resolveBackendUrl(dwebUrl)
+                projectAssetUrlByResourceId.set(task.resourceId, { url: projectAssetUrl, relPath })
+              }
+            }
+          } catch {
+            // 复制失败时继续用后续流程
+          }
+        }
+      }
+    }
 
     options.mediaImportManager.enqueue(
       imageTasks.map((task) => ({
@@ -192,15 +250,24 @@ export const useAIWorkflowBatchMediaImport = (options: {
           if (!session || session.id !== sessionId || session.cancelled) return
 
           const state = session.resourceState.get(result.resourceId)
+          const resourceProject = projectAssetUrlByResourceId.get(result.resourceId)
+          const finalUrl = resourceProject?.url || result.url
+
           if (state) {
-            state.urlReady = Boolean(result.url)
+            state.urlReady = Boolean(finalUrl)
           }
 
-          if (result.url) {
-            options.setObjectUrl(result.resourceId, result.url)
+          if (finalUrl) {
+            if (!resourceProject) {
+              options.setObjectUrl(result.resourceId, finalUrl)
+            }
             options.store.commit('patchResource', {
               resourceId: result.resourceId,
-              patch: { url: result.url, sourcePath: result.sourcePath || undefined },
+              patch: {
+                url: finalUrl,
+                sourcePath: result.sourcePath || undefined,
+                ...(resourceProject?.relPath ? { projectRelativePath: resourceProject.relPath } : {}),
+              },
             })
           } else if (result.sourcePath) {
             options.store.commit('patchResource', {

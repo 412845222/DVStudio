@@ -1421,21 +1421,34 @@ function registerIpc() {
 			const raw = String(payload?.path || '').trim()
 			if (!raw) return { ok: false, error: 'empty path' }
 			const normalized = path.normalize(raw)
-			let target = ''
-			if (fs.existsSync(normalized)) {
-				try {
-					const stat = fs.statSync(normalized)
-					target = stat.isDirectory() ? normalized : path.dirname(normalized)
-				} catch {
-					target = path.dirname(normalized)
+			if (!fs.existsSync(normalized)) {
+				// 文件不存在，尝试打开父文件夹
+				const dir = path.dirname(normalized)
+				if (dir && fs.existsSync(dir)) {
+					const openErr = await shell.openPath(dir)
+					if (openErr) return { ok: false, error: String(openErr) }
+					return { ok: true }
 				}
-			} else {
-				target = path.dirname(normalized)
+				return { ok: false, error: 'path not found' }
 			}
-			if (!target || !fs.existsSync(target)) return { ok: false, error: 'path not found' }
-			const openErr = await shell.openPath(target)
-			if (openErr) return { ok: false, error: String(openErr) }
-			return { ok: true }
+			const stat = fs.statSync(normalized)
+			if (stat.isDirectory()) {
+				// 是文件夹，直接打开
+				const openErr = await shell.openPath(normalized)
+				if (openErr) return { ok: false, error: String(openErr) }
+				return { ok: true }
+			}
+			// 是文件，先尝试使用 showItemInFolder 在资源管理器中显示并选中该文件
+			try {
+				shell.showItemInFolder(normalized)
+				return { ok: true }
+			} catch {
+				// 回退到打开父文件夹
+				const dir = path.dirname(normalized)
+				const openErr = await shell.openPath(dir)
+				if (openErr) return { ok: false, error: String(openErr) }
+				return { ok: true }
+			}
 		} catch (e) {
 			return { ok: false, error: String(e?.message || e) }
 		}

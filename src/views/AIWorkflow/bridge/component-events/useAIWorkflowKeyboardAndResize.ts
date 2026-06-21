@@ -12,6 +12,7 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
   getSelectedEdgeId: () => string | null
   selectAllNodes: () => void
   pasteNodesAtCanvasCenter: () => void
+  pasteMediaData: (clipboardData: DataTransfer | null) => Promise<boolean> | boolean
   copySelectedNodes: (primaryNodeId: string) => void
   undo: () => void
   redo: () => void
@@ -44,11 +45,9 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
       return
     }
 
-    if (mod && key === 'v') {
-      ev.preventDefault()
-      payload.pasteNodesAtCanvasCenter()
-      return
-    }
+    // Ctrl+V：默认交由下面的 paste 事件处理，paste 事件会识别媒体；
+    // 只有在明确无剪贴板内容或 paste 事件未触发时才 fallback。
+    // 注意：此处不做 preventDefault，让浏览器派发原生 paste 事件。
 
     if (mod && key === 'z') {
       ev.preventDefault()
@@ -80,17 +79,52 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
     }
   }
 
+  // 处理 Ctrl+V 时来自操作系统的文件/图片/URL 粘贴。
+  // 优先走 paste 事件，可以直接拿到 clipboardData。
+  const onWorkflowPaste = (ev: ClipboardEvent) => {
+    if (!payload.isRouteActive()) return
+    if (isEditableEventTarget(ev.target ?? null)) return
+
+    const activeEl = document.activeElement as HTMLElement | null
+    if (activeEl?.dataset?.wfSceneLayoutCanvas === 'true') return
+
+    const cd = ev.clipboardData ?? null
+    if (!cd) return
+
+    // 判断剪贴板是否含有媒体内容（文件/图片）——是则拦截，否则交给默认（或页面其他逻辑）。
+    const hasFiles = Array.from(cd.items ?? []).some((it) => it.kind === 'file')
+    if (!hasFiles) {
+      // 无文件：尝试识别 URL（来自浏览器地址栏等的粘贴）
+      const text = (cd.getData('text') ?? '').trim()
+      if (!text) return
+      const isHttpUrl = /^https?:\/\//i.test(text)
+      if (!isHttpUrl) return
+    }
+
+    ev.preventDefault()
+    const handled = payload.pasteMediaData(cd)
+    if (typeof handled === 'object' && (handled as any).then) {
+      Promise.resolve(handled as Promise<boolean>).then((ok) => {
+        if (!ok) payload.pasteNodesAtCanvasCenter()
+      })
+    } else if (!handled) {
+      payload.pasteNodesAtCanvasCenter()
+    }
+  }
+
   const onContentResize = () => {
     payload.scheduleAsyncEdgeRender()
   }
 
   const mountWindowEvents = () => {
     window.addEventListener('keydown', onWorkflowKeyDown, true)
+    window.addEventListener('paste', onWorkflowPaste as any, true)
     window.addEventListener('dweb:content/resize', onContentResize as EventListener, true)
   }
 
   const unmountWindowEvents = () => {
     window.removeEventListener('keydown', onWorkflowKeyDown, true)
+    window.removeEventListener('paste', onWorkflowPaste as any, true)
     window.removeEventListener('dweb:content/resize', onContentResize as EventListener, true)
   }
 

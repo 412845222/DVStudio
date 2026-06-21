@@ -591,7 +591,7 @@ import {
   resolveBackendFetchUrl,
   isWorkflowLocalAssetUrl,
 } from '../../network/backendConfig'
-import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets } from '../../electronBridge'
+import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets, uploadProjectAsset, importProjectAsset } from '../../electronBridge'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -1753,6 +1753,208 @@ const normalizePastedNodeResources = (nodeIds: string[]) => {
 const pasteNodesWithResourceDedupe = (payload?: { worldX?: number; worldY?: number }) => {
   store.commit('pasteNode', payload ?? {})
   // Keep resources unique per pasted node.
+}
+
+const inferMediaKindFromUrlOrName = (input: string): 'image' | 'video' | null => {
+  const text = String(input || '').trim().toLowerCase()
+  if (!text) return null
+  const cleanUrl = text.split('?')[0].split('#')[0]
+  const extMatch = cleanUrl.match(/\.([a-z0-9]{1,6})$/)
+  const ext = extMatch ? extMatch[1] : ''
+  const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+  const videoExts = ['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'flv', 'wmv']
+  if (imageExts.includes(ext)) return 'image'
+  if (videoExts.includes(ext)) return 'video'
+  return null
+}
+
+const buildProjectAssetUrl = (projectId: number, relativePath: string): string => {
+  const pid = Number(projectId)
+  const rel = String(relativePath || '').trim()
+  if (!(pid > 0) || !rel) return ''
+  return `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
+}
+
+const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boolean> => {
+  if (!clipboardData) return false
+  const projectId = Number(currentProjectId.value ?? 0)
+  if (!(projectId > 0)) {
+    pushToast('请先保存项目后，再粘贴媒体资源到蓝图。', 'warn')
+    return false
+  }
+
+  const inferMediaKindFromFileLocal = (file: File): 'image' | 'video' | null => {
+    const mime = String(file.type || '').toLowerCase()
+    if (mime.startsWith('image/')) return 'image'
+    if (mime.startsWith('video/')) return 'video'
+    const name = String(file.name || '').toLowerCase()
+    const ext = name.split('.').pop() || ''
+    const imgExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+    const vidExts = ['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'flv', 'wmv']
+    if (imgExts.includes(ext)) return 'image'
+    if (vidExts.includes(ext)) return 'video'
+    return null
+  }
+
+  const items = Array.from(clipboardData.items ?? [])
+  const files: Array<{ file: File; sourcePath: string }> = []
+
+  for (const item of items) {
+    if (item.kind !== 'file') continue
+    const file = item.getAsFile()
+    if (!file) continue
+    const sourcePath = typeof (file as any).path === 'string' ? String((file as any).path).trim() : ''
+    files.push({ file, sourcePath })
+  }
+
+  if (files.length > 0) {
+    const mediaFiles = files.filter((f) => {
+      const mime = String(f.file.type || '').toLowerCase()
+      if (mime.startsWith('image/') || mime.startsWith('video/')) return true
+      return !!inferMediaKindFromFileLocal(f.file)
+    })
+
+    if (mediaFiles.length > 0) {
+      const { worldX, worldY } = getCanvasCenterWorld()
+      const createdNodeIds: string[] = []
+      let offset = 0
+
+      for (const { file, sourcePath } of mediaFiles) {
+        const mime = String(file.type || '').toLowerCase()
+        let kind: 'image' | 'video' | null = null
+        if (mime.startsWith('image/')) kind = 'image'
+        if (mime.startsWith('video/')) kind = 'video'
+        if (!kind) kind = inferMediaKindFromFileLocal(file)
+        if (!kind) continue
+
+        const fileName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
+
+        let created = false
+        let assetUrl = ''
+        let assetRelPath = ''
+        let assetAbsPath = ''
+
+        if (sourcePath && isElectron()) {
+          try {
+            const result = await copyFileToProjectRoot(projectId, sourcePath, fileName)
+            if (result && result.ok) {
+              assetRelPath = String(result.relativePath || '').trim()
+              assetAbsPath = String(result.absolutePath || '').trim()
+              assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+              created = true
+            }
+          } catch {
+            // 失败则回退
+          }
+        }
+
+        if (!created && isElectron()) {
+          try {
+            const arrayBuffer = await file.arrayBuffer()
+            const uploaded = await uploadProjectAsset({
+              projectId,
+              kind,
+              name: fileName,
+              arrayBuffer,
+              contentType: file.type || (kind === 'image' ? 'image/png' : 'video/mp4'),
+            })
+
+            if (uploaded && uploaded.ok && uploaded.asset) {
+              const asset = uploaded.asset
+              assetRelPath = String(asset.projectRelativePath || asset.relativePath || '').trim()
+              assetAbsPath = String(asset.absolutePath || '').trim()
+              assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+              created = true
+            }
+          } catch {
+            // 上传失败
+          }
+        }
+
+        if (!created) {
+          assetUrl = URL.createObjectURL(file)
+          assetAbsPath = sourcePath
+        }
+
+        const finalDisplayUrl = assetUrl && assetUrl.toLowerCase().startsWith('dweb://') ? resolveBackendUrl(assetUrl) : assetUrl
+        store.commit('addNodeAt', {
+          worldX: worldX + offset,
+          worldY: worldY + offset,
+          title: kind === 'image' ? '图片' : '视频',
+        })
+        const nodeId = store.state.selectedNodeId
+        if (nodeId) {
+          store.commit('setNodeType', { nodeId, type: kind })
+          bindMediaResourceToNode(nodeId, kind, finalDisplayUrl || assetUrl, fileName, {
+            sourcePath: assetAbsPath || undefined,
+            projectRelativePath: assetRelPath || undefined,
+          })
+          autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, kind)
+          createdNodeIds.push(nodeId)
+        }
+        offset += 40
+      }
+
+      if (createdNodeIds.length > 0) {
+        store.commit('setSelectedNodes', {
+          nodeIds: createdNodeIds,
+          primaryNodeId: createdNodeIds[0],
+        })
+        return true
+      }
+    }
+  }
+
+  const urlText = (clipboardData.getData('text/uri-list') || clipboardData.getData('text/plain') || '').trim()
+  if (urlText && /^https?:\/\//i.test(urlText)) {
+    const urlKind = inferMediaKindFromUrlOrName(urlText)
+    if (urlKind) {
+      const center = getCanvasCenterWorld()
+      const fileName = `paste-${Date.now()}`
+      const pid = Number(currentProjectId.value ?? 0)
+
+      try {
+        const result = await downloadUrlToProjectRoot(pid, urlText, fileName)
+        if (result && result.ok) {
+          const relPath = String(result.relativePath || '').trim()
+          const absPath = String(result.absolutePath || '').trim()
+          const assetUrl = buildProjectAssetUrl(pid, relPath)
+          const finalDisplayUrl = assetUrl ? resolveBackendUrl(assetUrl) : ''
+
+          store.commit('addNodeAt', {
+            worldX: center.worldX,
+            worldY: center.worldY,
+            title: urlKind === 'image' ? '图片' : '视频',
+          })
+          const nodeId = store.state.selectedNodeId
+          if (nodeId) {
+            store.commit('setNodeType', { nodeId, type: urlKind })
+            bindMediaResourceToNode(nodeId, urlKind, finalDisplayUrl || assetUrl, fileName, {
+              sourcePath: absPath || undefined,
+              projectRelativePath: relPath || undefined,
+            })
+            autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, urlKind)
+            return true
+          }
+        }
+      } catch {
+        store.commit('addNodeAt', {
+          worldX: center.worldX,
+          worldY: center.worldY,
+          title: urlKind === 'image' ? '图片' : '视频',
+        })
+        const nodeId = store.state.selectedNodeId
+        if (nodeId) {
+          store.commit('setNodeType', { nodeId, type: urlKind })
+          bindMediaResourceToNode(nodeId, urlKind, urlText, fileName)
+          autoSizeMediaNode(nodeId, urlText, urlKind)
+          return true
+        }
+      }
+    }
+  }
+
+  return false
 }
 
 const {
@@ -3829,6 +4031,11 @@ const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkf
   onLimitExceeded: (count, limit) => {
     importLimitAlertMessage.value = `本次检测到 ${count} 个媒体文件，超过批量导入上限 ${limit} 个。请减少后再导入。`
   },
+  getProjectId: () => Number(currentProjectId.value ?? 0) || null,
+  copyFileToProjectRoot: (projectId, sourcePath, desiredFilename) =>
+    copyFileToProjectRoot(projectId, sourcePath, desiredFilename),
+  uploadProjectAsset,
+  resolveBackendUrl,
 })
 
 
@@ -4219,6 +4426,7 @@ const {
     const { worldX, worldY } = getCanvasCenterWorld()
     pasteNodesWithResourceDedupe({ worldX, worldY })
   },
+  pasteMediaData: (clipboardData) => pasteMediaData(clipboardData),
   copySelectedNodes: (primaryNodeId) => {
     store.commit('copyNode', { nodeId: primaryNodeId })
   },
