@@ -191,6 +191,17 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			? value
 			: options.resolveBackendUrl(value)
 
+		// dweb:// 或私有主机的 http:// URL → 远程服务无法访问，必须转换为 base64
+		if (resolved.startsWith('dweb://')) {
+			try {
+				const file = await fileFromUrl(resolved, label)
+				return blobToMeshyModelDataUrl(file)
+			} catch (err: any) {
+				console.warn(`[Meshy] failed to convert dweb model URL to data URL: ${resolved}`, err)
+				return ''
+			}
+		}
+
 		if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
 			try {
 				const parsed = new URL(resolved)
@@ -395,17 +406,21 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		if (value.startsWith('file:') || /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('/')) {
 			return value
 		}
+		// dweb://、http(s):// 等远程/本地服务URL → 统一抓取并转为data URL
+		// 注意：远端 AI 服务（如火山引擎 Ark）无法访问 localhost/dweb 协议URL，
+		// 必须转为 base64/data URL 才能被服务正确识别
 		const resolvedUrl = options.resolveBackendUrl(value)
 		try {
 			const file = await fileFromUrl(resolvedUrl, label)
-			const padded = await padImageBlobToMinSize(file, MESHY_SAFE_MIN_IMAGE_SIDE)
-			if (!padded.expanded) return resolvedUrl
-			console.info(
-				`[Meshy] auto-expanded reference image "${label}" from ${padded.width}x${padded.height} to ${padded.targetWidth}x${padded.targetHeight}`,
-			)
-			return options.blobToDataUrl(padded.blob)
-		} catch {
-			return resolvedUrl
+			// 始终转换为data URL，确保远端服务可访问
+			return normalizeMeshyImageBlob(file, label)
+		} catch (err: any) {
+			console.warn(`[Meshy] failed to convert local asset URL to data URL: ${value} -> ${resolvedUrl}`, err)
+			// 回退：尝试直接返回原始 URL（只用于已公开可访问的 http/https URL）
+			if (/^https?:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(value)) {
+				return value
+			}
+			return ''
 		}
 	}
 

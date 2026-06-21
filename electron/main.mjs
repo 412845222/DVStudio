@@ -1832,6 +1832,30 @@ function registerIpc() {
 			return { ok: false, error: String(err?.message || err) }
 		}
 	})
+
+	// 主窗口 → 资源管理器窗口发送初始数据（资源列表、节点数据）
+	let resourceManagerLatestData = null
+
+	ipcMain.handle('dweb:resource-manager:send-data', async (_e, payload) => {
+		// 缓冲最近一次收到的数据（用于资源管理器窗口后续主动请求）
+		resourceManagerLatestData = payload
+
+		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
+			return { ok: true, buffered: true }
+		}
+		try {
+			resourceManagerWindow.webContents.send('dweb:resource-manager:data', payload)
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 资源管理器窗口 → 主窗口：主动请求数据
+	ipcMain.handle('dweb:resource-manager:request-data', async () => {
+		const payload = resourceManagerLatestData
+		return { ok: true, data: payload }
+	})
 }
 
 async function stopBackend() {
