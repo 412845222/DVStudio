@@ -575,6 +575,7 @@ import {
 import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
 import { AIWorkflowKey } from '../../store/aiworkflow'
 import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
+import { aiWorkflowHistory, ensureAIWorkflowHistory } from '../../adapters/aiWorkflowPersistence'
 import { ComfyUIBridgeService } from '../../network/ComfyUIBridgeService'
 import type { SeedanceTaskMirrorItem } from '../../network/ComfyUIBridgeService'
 import { createLocalExecChatService } from '../../network/LocalExecChatService'
@@ -590,7 +591,7 @@ import {
   resolveBackendFetchUrl,
   isWorkflowLocalAssetUrl,
 } from '../../network/backendConfig'
-import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot } from '../../electronBridge'
+import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets, uploadProjectAsset, importProjectAsset } from '../../electronBridge'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -692,6 +693,7 @@ const route = useRoute()
 const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
+ensureAIWorkflowHistory()
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 
@@ -947,14 +949,13 @@ const toFileUrlFromSourcePath = (sourcePath: string): string => {
   if (!raw) return ''
   const normalized = raw.replace(/\\/g, '/')
   if (!/^[a-zA-Z]:\//.test(normalized)) return ''
-  return `file:///${encodeURI(normalized)}`
+  return `file:///${encodeURIComponent(normalized)}`
 }
 
 const isStrictLocalRenderableUrl = (rawUrl: string): boolean => {
   const text = String(rawUrl || '').trim()
   if (!text) return false
   if (text.toLowerCase().startsWith('dweb://project-assets')) return true
-  if (text.toLowerCase().startsWith('file://')) return true
   return false
 }
 
@@ -967,15 +968,25 @@ const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
     base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
     return
   }
-  if (isStrictLocalRenderableUrl(currentUrl)) {
+  if (currentUrl.toLowerCase().startsWith('dweb://project-assets')) {
     base.url = currentUrl
     return
   }
-  if (sourcePath) {
-    const fileUrl = toFileUrlFromSourcePath(sourcePath)
-    if (fileUrl) {
-      base.url = fileUrl
-      return
+  if (sourcePath && isElectron()) {
+    const rootPath = String(currentProjectRootPath.value || '').trim()
+    if (rootPath) {
+      try {
+        const normalizedSource = sourcePath.replace(/\\/g, '/').replace(/\/+$/, '')
+        const normalizedRoot = rootPath.replace(/\\/g, '/').replace(/\/+$/, '')
+        if (normalizedSource.startsWith(normalizedRoot + '/')) {
+          const inferredRel = normalizedSource.slice(normalizedRoot.length + 1)
+          base.projectRelativePath = inferredRel
+          base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(inferredRel)}`
+          return
+        }
+      } catch {
+        // ignore
+      }
     }
   }
   base.url = ''
@@ -1066,10 +1077,11 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         const node = store.state.nodesById[nodeId]
         if (!node) return false
         const resourceId = `gen-img-${nodeId}-${Date.now()}`
+        const resourceName = `gen_image_${resourceId.slice(-6)}`
         const base: any = {
           id: resourceId,
           kind: 'image',
-          name: `AI 生成图片 ${resourceId.slice(-6)}`,
+          name: resourceName,
           url: '',
         }
         const pid = Number(currentProjectId.value ?? 0)
@@ -1088,7 +1100,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
 
           // Electron: localdb authoritative. Prefer main-process download to local project root.
           if (!downloaded && isElectron()) {
-            const dl = await downloadAssetViaElectron(pid, sourceUrl, `img-${resourceId}`)
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, resourceName)
             if (dl) {
               base.sourcePath = dl.sourcePath
               base.projectRelativePath = dl.projectRelativePath
@@ -1105,7 +1117,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
                 projectId: pid,
                 kind: 'image',
                 sourceUrl,
-                name: `img-${resourceId}`,
+                name: resourceName,
                 bucket: 'assets',
               })
               if (result?.ok && result.asset) {
@@ -1141,10 +1153,11 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         const node = store.state.nodesById[nodeId]
         if (!node) return false
         const resourceId = `gen-video-${nodeId}-${Date.now()}`
+        const resourceName = `gen_video_${resourceId.slice(-6)}`
         const base: any = {
           id: resourceId,
           kind: 'video',
-          name: `AI 生成视频 ${resourceId.slice(-6)}`,
+          name: resourceName,
           url: '',
         }
         const pid = Number(currentProjectId.value ?? 0)
@@ -1163,7 +1176,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
 
           // Electron: localdb authoritative. Prefer main-process download to local project root.
           if (!downloaded && isElectron()) {
-            const dl = await downloadAssetViaElectron(pid, sourceUrl, `video-${resourceId}`)
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, resourceName)
             if (dl) {
               base.sourcePath = dl.sourcePath
               base.projectRelativePath = dl.projectRelativePath
@@ -1180,7 +1193,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
                 projectId: pid,
                 kind: 'video',
                 sourceUrl,
-                name: `video-${resourceId}`,
+                name: resourceName,
                 bucket: 'assets',
               })
               if (result?.ok && result.asset) {
@@ -1740,6 +1753,208 @@ const normalizePastedNodeResources = (nodeIds: string[]) => {
 const pasteNodesWithResourceDedupe = (payload?: { worldX?: number; worldY?: number }) => {
   store.commit('pasteNode', payload ?? {})
   // Keep resources unique per pasted node.
+}
+
+const inferMediaKindFromUrlOrName = (input: string): 'image' | 'video' | null => {
+  const text = String(input || '').trim().toLowerCase()
+  if (!text) return null
+  const cleanUrl = text.split('?')[0].split('#')[0]
+  const extMatch = cleanUrl.match(/\.([a-z0-9]{1,6})$/)
+  const ext = extMatch ? extMatch[1] : ''
+  const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+  const videoExts = ['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'flv', 'wmv']
+  if (imageExts.includes(ext)) return 'image'
+  if (videoExts.includes(ext)) return 'video'
+  return null
+}
+
+const buildProjectAssetUrl = (projectId: number, relativePath: string): string => {
+  const pid = Number(projectId)
+  const rel = String(relativePath || '').trim()
+  if (!(pid > 0) || !rel) return ''
+  return `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
+}
+
+const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boolean> => {
+  if (!clipboardData) return false
+  const projectId = Number(currentProjectId.value ?? 0)
+  if (!(projectId > 0)) {
+    pushToast('请先保存项目后，再粘贴媒体资源到蓝图。', 'warn')
+    return false
+  }
+
+  const inferMediaKindFromFileLocal = (file: File): 'image' | 'video' | null => {
+    const mime = String(file.type || '').toLowerCase()
+    if (mime.startsWith('image/')) return 'image'
+    if (mime.startsWith('video/')) return 'video'
+    const name = String(file.name || '').toLowerCase()
+    const ext = name.split('.').pop() || ''
+    const imgExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+    const vidExts = ['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'flv', 'wmv']
+    if (imgExts.includes(ext)) return 'image'
+    if (vidExts.includes(ext)) return 'video'
+    return null
+  }
+
+  const items = Array.from(clipboardData.items ?? [])
+  const files: Array<{ file: File; sourcePath: string }> = []
+
+  for (const item of items) {
+    if (item.kind !== 'file') continue
+    const file = item.getAsFile()
+    if (!file) continue
+    const sourcePath = typeof (file as any).path === 'string' ? String((file as any).path).trim() : ''
+    files.push({ file, sourcePath })
+  }
+
+  if (files.length > 0) {
+    const mediaFiles = files.filter((f) => {
+      const mime = String(f.file.type || '').toLowerCase()
+      if (mime.startsWith('image/') || mime.startsWith('video/')) return true
+      return !!inferMediaKindFromFileLocal(f.file)
+    })
+
+    if (mediaFiles.length > 0) {
+      const { worldX, worldY } = getCanvasCenterWorld()
+      const createdNodeIds: string[] = []
+      let offset = 0
+
+      for (const { file, sourcePath } of mediaFiles) {
+        const mime = String(file.type || '').toLowerCase()
+        let kind: 'image' | 'video' | null = null
+        if (mime.startsWith('image/')) kind = 'image'
+        if (mime.startsWith('video/')) kind = 'video'
+        if (!kind) kind = inferMediaKindFromFileLocal(file)
+        if (!kind) continue
+
+        const fileName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
+
+        let created = false
+        let assetUrl = ''
+        let assetRelPath = ''
+        let assetAbsPath = ''
+
+        if (sourcePath && isElectron()) {
+          try {
+            const result = await copyFileToProjectRoot(projectId, sourcePath, fileName)
+            if (result && result.ok) {
+              assetRelPath = String(result.relativePath || '').trim()
+              assetAbsPath = String(result.absolutePath || '').trim()
+              assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+              created = true
+            }
+          } catch {
+            // 失败则回退
+          }
+        }
+
+        if (!created && isElectron()) {
+          try {
+            const arrayBuffer = await file.arrayBuffer()
+            const uploaded = await uploadProjectAsset({
+              projectId,
+              kind,
+              name: fileName,
+              arrayBuffer,
+              contentType: file.type || (kind === 'image' ? 'image/png' : 'video/mp4'),
+            })
+
+            if (uploaded && uploaded.ok && uploaded.asset) {
+              const asset = uploaded.asset
+              assetRelPath = String(asset.projectRelativePath || asset.relativePath || '').trim()
+              assetAbsPath = String(asset.absolutePath || '').trim()
+              assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+              created = true
+            }
+          } catch {
+            // 上传失败
+          }
+        }
+
+        if (!created) {
+          assetUrl = URL.createObjectURL(file)
+          assetAbsPath = sourcePath
+        }
+
+        const finalDisplayUrl = assetUrl && assetUrl.toLowerCase().startsWith('dweb://') ? resolveBackendUrl(assetUrl) : assetUrl
+        store.commit('addNodeAt', {
+          worldX: worldX + offset,
+          worldY: worldY + offset,
+          title: kind === 'image' ? '图片' : '视频',
+        })
+        const nodeId = store.state.selectedNodeId
+        if (nodeId) {
+          store.commit('setNodeType', { nodeId, type: kind })
+          bindMediaResourceToNode(nodeId, kind, finalDisplayUrl || assetUrl, fileName, {
+            sourcePath: assetAbsPath || undefined,
+            projectRelativePath: assetRelPath || undefined,
+          })
+          autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, kind)
+          createdNodeIds.push(nodeId)
+        }
+        offset += 40
+      }
+
+      if (createdNodeIds.length > 0) {
+        store.commit('setSelectedNodes', {
+          nodeIds: createdNodeIds,
+          primaryNodeId: createdNodeIds[0],
+        })
+        return true
+      }
+    }
+  }
+
+  const urlText = (clipboardData.getData('text/uri-list') || clipboardData.getData('text/plain') || '').trim()
+  if (urlText && /^https?:\/\//i.test(urlText)) {
+    const urlKind = inferMediaKindFromUrlOrName(urlText)
+    if (urlKind) {
+      const center = getCanvasCenterWorld()
+      const fileName = `paste-${Date.now()}`
+      const pid = Number(currentProjectId.value ?? 0)
+
+      try {
+        const result = await downloadUrlToProjectRoot(pid, urlText, fileName)
+        if (result && result.ok) {
+          const relPath = String(result.relativePath || '').trim()
+          const absPath = String(result.absolutePath || '').trim()
+          const assetUrl = buildProjectAssetUrl(pid, relPath)
+          const finalDisplayUrl = assetUrl ? resolveBackendUrl(assetUrl) : ''
+
+          store.commit('addNodeAt', {
+            worldX: center.worldX,
+            worldY: center.worldY,
+            title: urlKind === 'image' ? '图片' : '视频',
+          })
+          const nodeId = store.state.selectedNodeId
+          if (nodeId) {
+            store.commit('setNodeType', { nodeId, type: urlKind })
+            bindMediaResourceToNode(nodeId, urlKind, finalDisplayUrl || assetUrl, fileName, {
+              sourcePath: absPath || undefined,
+              projectRelativePath: relPath || undefined,
+            })
+            autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, urlKind)
+            return true
+          }
+        }
+      } catch {
+        store.commit('addNodeAt', {
+          worldX: center.worldX,
+          worldY: center.worldY,
+          title: urlKind === 'image' ? '图片' : '视频',
+        })
+        const nodeId = store.state.selectedNodeId
+        if (nodeId) {
+          store.commit('setNodeType', { nodeId, type: urlKind })
+          bindMediaResourceToNode(nodeId, urlKind, urlText, fileName)
+          autoSizeMediaNode(nodeId, urlText, urlKind)
+          return true
+        }
+      }
+    }
+  }
+
+  return false
 }
 
 const {
@@ -3816,6 +4031,11 @@ const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkf
   onLimitExceeded: (count, limit) => {
     importLimitAlertMessage.value = `本次检测到 ${count} 个媒体文件，超过批量导入上限 ${limit} 个。请减少后再导入。`
   },
+  getProjectId: () => Number(currentProjectId.value ?? 0) || null,
+  copyFileToProjectRoot: (projectId, sourcePath, desiredFilename) =>
+    copyFileToProjectRoot(projectId, sourcePath, desiredFilename),
+  uploadProjectAsset,
+  resolveBackendUrl,
 })
 
 
@@ -3956,6 +4176,7 @@ const {
   currentProjectId,
   resolveBackendUrl,
   uploadLocalResourceAndGetUrl,
+  toProjectAssetRuntimeUrl: buildProjectAssetRuntimeUrl,
   persistExternalAssetToProject,
   pushToast,
   stripUnrealExportRuntimeFromNodes,
@@ -3987,6 +4208,28 @@ const {
   recoverComfyUIRunStates,
 })
 
+const repairProjectAssetsBeforeHydrate = async (projectId: number, snapshot: any) => {
+  if (!isElectron()) return snapshot
+  const pid = Number(projectId)
+  if (!Number.isFinite(pid) || pid <= 0) return snapshot
+  const resourcesById = snapshot && typeof snapshot === 'object' && snapshot.resourcesById && typeof snapshot.resourcesById === 'object'
+    ? snapshot.resourcesById
+    : {}
+  try {
+    const repaired = await repairAllProjectAssets({ projectId: pid, resourcesById })
+    if (!repaired?.ok || !repaired.patches || Object.keys(repaired.patches).length === 0) return snapshot
+    return {
+      ...snapshot,
+      resourcesById: {
+        ...resourcesById,
+        ...repaired.patches,
+      },
+    }
+  } catch {
+    return snapshot
+  }
+}
+
 const {
   loadProjectById,
   saveProjectToBackend: _saveProjectToBackendFn,
@@ -4015,6 +4258,7 @@ const {
   finalizeRecoverySessionAfterUrlRecoveryAttempt,
   recoverLocalResourcesFromHandles,
   migrateCurrentResourcesToProjectScope: (...args) => migrateCurrentResourcesToProjectScope(...args),
+  repairAllProjectAssetsBeforeHydrate: repairProjectAssetsBeforeHydrate,
   buildPersistableSnapshotWithOptions,
   isElectron,
   activeRecoverySession,
@@ -4181,6 +4425,16 @@ const {
   pasteNodesAtCanvasCenter: () => {
     const { worldX, worldY } = getCanvasCenterWorld()
     pasteNodesWithResourceDedupe({ worldX, worldY })
+  },
+  pasteMediaData: (clipboardData) => pasteMediaData(clipboardData),
+  copySelectedNodes: (primaryNodeId) => {
+    store.commit('copyNode', { nodeId: primaryNodeId })
+  },
+  undo: () => {
+    aiWorkflowHistory.undo()
+  },
+  redo: () => {
+    aiWorkflowHistory.redo()
   },
   removeSelectedNodes: (nodeIds) => {
     void removeSelectedNodesWithResourceCleanup(nodeIds)

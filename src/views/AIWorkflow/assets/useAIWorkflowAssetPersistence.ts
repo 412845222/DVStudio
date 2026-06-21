@@ -26,6 +26,14 @@ type UseAIWorkflowAssetPersistenceOptions = {
 export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersistenceOptions) => {
 	const localUrlUploadedAssetCache = new Map<string, PersistedAssetReference>()
 
+	const sanitizeResourceName = (raw: unknown, fallback: string): string => {
+		const name = String(raw ?? '').trim()
+		if (!name || /[\u4e00-\u9fff]/.test(name)) {
+			return String(fallback || 'resource').replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_')
+		}
+		return name.replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_').slice(0, 80)
+	}
+
 	const uploadLocalResourceAndGetUrl = async (
 		localUrl: string,
 		kind: BlueprintAssetKind,
@@ -38,9 +46,10 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		const cached = localUrlUploadedAssetCache.get(cacheKey)
 		if (cached) return cached
 
+		const safeName = sanitizeResourceName(resourceName, `${kind || 'resource'}_${Date.now()}`)
 		const file = await options.fileFromUrl(
 			localUrl,
-			String(resourceName || kind || 'resource').replace(/\.[^.]+$/, ''),
+			safeName.replace(/\.[^.]+$/, ''),
 		)
 		const uploaded = await options.blueprintProjectService.uploadAsset(
 			file,
@@ -71,6 +80,7 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		const projectId = Number.isFinite(currentProjectId) && currentProjectId > 0 ? currentProjectId : 0
 		let sourceUrl = String(payload.sourceUrl ?? '').trim()
 		let sourcePath = String(payload.sourcePath ?? '').trim()
+		const safeName = sanitizeResourceName(payload.name, `${payload.kind || 'resource'}_${Date.now()}`)
 		if (sourceUrl) {
 			sourceUrl = options.resolveBackendUrl(sourceUrl)
 		}
@@ -84,7 +94,7 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		if (!sourceUrl && !sourcePath) return null
 
 		if (sourceUrl && (sourceUrl.startsWith('blob:') || sourceUrl.startsWith('data:'))) {
-			const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, payload.name, { projectId })
+			const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, safeName, { projectId })
 			return {
 				url: uploaded.url,
 				absolutePath: uploaded.absolutePath,
@@ -95,7 +105,7 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		if (projectId > 0) {
 			const imported = await options.importAssetIntoProjectScope({
 				kind: payload.kind,
-				name: payload.name,
+				name: safeName,
 				projectId,
 				sourcePath: sourcePath || undefined,
 				sourceUrl: sourceUrl || undefined,
@@ -112,7 +122,7 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 
 		if (sourceUrl) {
 			try {
-				const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, payload.name, { projectId })
+				const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, safeName, { projectId })
 				return {
 					url: uploaded.url,
 					absolutePath: uploaded.absolutePath || sourcePath,

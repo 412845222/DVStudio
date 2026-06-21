@@ -27,12 +27,16 @@ import {
 	downloadUrlToProjectRoot,
 	copyFileToProjectRoot,
 	getProjectRootById,
-	uploadProjectAsset,
-	importProjectAsset,
-	deleteProjectAsset,
-	resolveProjectAsset,
 	repairProjectAsset,
 } from './backend/projectAssetProtocol.mjs'
+import {
+	uploadBufferProjectAsset,
+	importUrlProjectAsset,
+	importFileProjectAsset,
+	deleteStaticProjectAsset,
+	resolveStaticProjectAsset,
+	repairAllProjectAssets,
+} from './backend/projectStaticAssets/service.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
 import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
@@ -1417,21 +1421,34 @@ function registerIpc() {
 			const raw = String(payload?.path || '').trim()
 			if (!raw) return { ok: false, error: 'empty path' }
 			const normalized = path.normalize(raw)
-			let target = ''
-			if (fs.existsSync(normalized)) {
-				try {
-					const stat = fs.statSync(normalized)
-					target = stat.isDirectory() ? normalized : path.dirname(normalized)
-				} catch {
-					target = path.dirname(normalized)
+			if (!fs.existsSync(normalized)) {
+				// 文件不存在，尝试打开父文件夹
+				const dir = path.dirname(normalized)
+				if (dir && fs.existsSync(dir)) {
+					const openErr = await shell.openPath(dir)
+					if (openErr) return { ok: false, error: String(openErr) }
+					return { ok: true }
 				}
-			} else {
-				target = path.dirname(normalized)
+				return { ok: false, error: 'path not found' }
 			}
-			if (!target || !fs.existsSync(target)) return { ok: false, error: 'path not found' }
-			const openErr = await shell.openPath(target)
-			if (openErr) return { ok: false, error: String(openErr) }
-			return { ok: true }
+			const stat = fs.statSync(normalized)
+			if (stat.isDirectory()) {
+				// 是文件夹，直接打开
+				const openErr = await shell.openPath(normalized)
+				if (openErr) return { ok: false, error: String(openErr) }
+				return { ok: true }
+			}
+			// 是文件，先尝试使用 showItemInFolder 在资源管理器中显示并选中该文件
+			try {
+				shell.showItemInFolder(normalized)
+				return { ok: true }
+			} catch {
+				// 回退到打开父文件夹
+				const dir = path.dirname(normalized)
+				const openErr = await shell.openPath(dir)
+				if (openErr) return { ok: false, error: String(openErr) }
+				return { ok: true }
+			}
 		} catch (e) {
 			return { ok: false, error: String(e?.message || e) }
 		}
@@ -1524,7 +1541,7 @@ function registerIpc() {
 	// Project asset operations (local only; replaces Django backend assets/* API)
 	ipcMain.handle('dweb:aiworkflow:uploadProjectAsset', async (_e, payload) => {
 		try {
-			return uploadProjectAsset(payload || {})
+			return uploadBufferProjectAsset(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1532,7 +1549,9 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:aiworkflow:importProjectAsset', async (_e, payload) => {
 		try {
-			return await importProjectAsset(payload || {})
+			const p = payload || {}
+			if (p.sourcePath || p.path) return await importFileProjectAsset(p)
+			return await importUrlProjectAsset(p)
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1540,7 +1559,7 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:aiworkflow:deleteProjectAsset', async (_e, payload) => {
 		try {
-			return deleteProjectAsset(payload || {})
+			return deleteStaticProjectAsset(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1548,7 +1567,7 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:aiworkflow:resolveProjectAsset', async (_e, payload) => {
 		try {
-			return resolveProjectAsset(payload || {})
+			return resolveStaticProjectAsset(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1557,6 +1576,14 @@ function registerIpc() {
 	ipcMain.handle('dweb:aiworkflow:repairProjectAsset', async (_e, payload) => {
 		try {
 			return repairProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:projectAssets:repairAll', async (_e, payload) => {
+		try {
+			return await repairAllProjectAssets(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
