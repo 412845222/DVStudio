@@ -26,6 +26,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
   isDjangoManagedResource: (resource: any) => boolean
 }) => {
   const imageResourcePersistingIds = new Set<string>()
+  const videoResourcePersistingIds = new Set<string>()
 
   const shouldUseAnonymousCrossOrigin = (url: string) => {
     const text = String(url || '').trim()
@@ -90,6 +91,64 @@ export const useAIWorkflowNodeAssetBinding = (options: {
       // Keep the local object url when localization fails.
     } finally {
       imageResourcePersistingIds.delete(resourceId)
+    }
+  }
+
+  const persistNodeVideoResourceLocally = async (payload: {
+    resourceId: string
+    nodeId: string
+    file: File
+  }) => {
+    const resourceId = String(payload.resourceId ?? '').trim()
+    if (!resourceId || videoResourcePersistingIds.has(resourceId)) return
+
+    const current = options.store.state.resourcesById?.[resourceId] as any
+    if (!current || current.kind !== 'video' || options.isDjangoManagedResource(current)) return
+
+    videoResourcePersistingIds.add(resourceId)
+    try {
+      const currentProjectId = Number(options.getCurrentProjectId() ?? 0)
+      const uploaded = await options.blueprintProjectService.uploadAsset(
+        payload.file,
+        'video',
+        Number.isFinite(currentProjectId) && currentProjectId > 0
+          ? { projectId: currentProjectId }
+          : undefined,
+      )
+      if (!uploaded.ok) return
+
+      const asset = (uploaded as any).asset ?? {}
+      const localizedUrl = options.resolveBackendUrl(String(asset.url || ''))
+      const localizedPath = String(asset.absolutePath || '').trim()
+      const localizedProjectRelativePath = String(asset.projectRelativePath || asset.relativePath || '').trim()
+      if (!localizedUrl) return
+
+      const latest = options.store.state.resourcesById?.[resourceId] as any
+      const previousUrl = String(latest?.url ?? '').trim()
+      if (previousUrl.startsWith('blob:')) {
+        options.revokeTrackedObjectUrlsForResource(resourceId)
+      }
+
+      options.store.commit('patchResource', {
+        resourceId,
+        patch: {
+          url: localizedUrl,
+          sourcePath: localizedPath || undefined,
+          projectRelativePath: localizedProjectRelativePath || undefined,
+        } as any,
+      })
+
+      const boundNode = options.store.state.nodesById[payload.nodeId]
+      if (boundNode && String(boundNode.resourceId ?? '').trim() === resourceId && localizedPath) {
+        options.store.commit('setNodeResourcePath', {
+          nodeId: payload.nodeId,
+          resourcePath: localizedPath,
+        })
+      }
+    } catch {
+      // Keep the local object url when localization fails.
+    } finally {
+      videoResourcePersistingIds.delete(resourceId)
     }
   }
 
@@ -162,6 +221,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
     if (kind === 'video') {
       options.scheduleVideoMetadataRead({ resourceId, nodeId, url })
+      void persistNodeVideoResourceLocally({ resourceId, nodeId, file })
     }
 
     options.autoSizeMediaNode(nodeId, url, kind)
@@ -313,6 +373,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
   return {
     persistNodeImageResourceLocally,
+    persistNodeVideoResourceLocally,
     uploadNodeResource,
     bindMediaResourceToNode,
     uploadNodeModel3DFile,

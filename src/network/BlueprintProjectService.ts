@@ -82,6 +82,7 @@ const normalizeForIpc = (input: any): any => {
     if (t !== 'object') return null
 
     if (value instanceof Date) return value.toISOString()
+    if (value instanceof ArrayBuffer) return value
     if (Array.isArray(value)) return value.map((item) => walk(item))
 
     if (seen.has(value)) return null
