@@ -128,4 +128,5 @@ state_*.sqlite
 logs_*.sqlite
 .personality_migration
 config.toml
+AIPlan/
 
