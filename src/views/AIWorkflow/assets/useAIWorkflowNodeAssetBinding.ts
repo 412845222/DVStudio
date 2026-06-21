@@ -162,26 +162,58 @@ export const useAIWorkflowNodeAssetBinding = (options: {
     if (!node) return
     const sourcePath = typeof (file as any)?.path === 'string' ? String((file as any).path).trim() : ''
 
+    let finalUrl = ''
+    let assetAbsPath = ''
+    let assetRelPath = ''
+    let usedBlobUrl = false
+
+    const currentProjectId = Number(options.getCurrentProjectId() ?? 0)
+    if (currentProjectId > 0) {
+      try {
+        const uploaded = await options.blueprintProjectService.uploadAsset(
+          file,
+          kind === 'image' ? 'image' : (kind === 'video' ? 'video' : 'file'),
+          { projectId: currentProjectId },
+        )
+        if (uploaded.ok) {
+          const asset = (uploaded as any).asset ?? {}
+          finalUrl = options.resolveBackendUrl(String(asset.url || ''))
+          assetAbsPath = String(asset.absolutePath || '').trim()
+          assetRelPath = String(asset.projectRelativePath || asset.relativePath || '').trim()
+        }
+      } catch {
+        // fall back to blob URL below
+      }
+    }
+
+    if (!finalUrl) {
+      finalUrl = URL.createObjectURL(file)
+      usedBlobUrl = true
+    }
+
     const resourceId = options.makeResourceId()
-    const url = URL.createObjectURL(file)
-    options.setObjectUrl(resourceId, url)
+    if (usedBlobUrl) {
+      options.setObjectUrl(resourceId, finalUrl)
+    }
+
     options.store.commit('addResource', {
       id: resourceId,
       kind,
       name: file.name || `${kind}资源`,
-      url,
-      ...(sourcePath ? { sourcePath } : {}),
+      url: finalUrl,
+      ...(assetAbsPath ? { sourcePath: assetAbsPath } : (sourcePath ? { sourcePath } : {})),
+      ...(assetRelPath ? { projectRelativePath: assetRelPath } : {}),
       createdAt: Date.now(),
     })
     options.setNodeResourceWithCleanup({
       nodeId,
       resourceId,
-      resourcePath: sourcePath || undefined,
+      resourcePath: assetAbsPath || sourcePath || undefined,
     })
 
     if (kind === 'image') {
       const img = new Image()
-      if (shouldUseAnonymousCrossOrigin(url)) {
+      if (shouldUseAnonymousCrossOrigin(finalUrl)) {
         img.crossOrigin = 'anonymous'
       }
       img.onload = () => {
@@ -215,8 +247,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
         })
         options.autoSizeImageNodeFromDims(nodeId, fallbackWidth, fallbackHeight)
       }
-      img.src = url
-      void persistNodeImageResourceLocally({ resourceId, nodeId, file })
+      img.src = finalUrl
     }
 
     if (kind === 'video') {
@@ -224,8 +255,8 @@ export const useAIWorkflowNodeAssetBinding = (options: {
       void persistNodeVideoResourceLocally({ resourceId, nodeId, file })
     }
 
-    options.autoSizeMediaNode(nodeId, url, kind)
-    opts?.onAfterBind?.({ resourceId, url })
+    options.autoSizeMediaNode(nodeId, finalUrl, kind)
+    opts?.onAfterBind?.({ resourceId, url: finalUrl })
   }
 
   const bindMediaResourceToNode = (

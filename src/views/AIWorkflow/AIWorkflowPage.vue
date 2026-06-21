@@ -2968,8 +2968,8 @@ const onStoryBranchUpdateFromInspector = (nodeId: string, branchId: string, text
   store.commit('updateStoryBranch', { nodeId, branchId, text })
 }
 
-const onInspectorUploadResource = (nodeId: string, file: File, kind: 'image' | 'video') => {
-  onNodeUploadResource(nodeId, file, kind)
+const onInspectorUploadResource = async (nodeId: string, file: File, kind: 'image' | 'video') => {
+  await onNodeUploadResource(nodeId, file, kind)
 }
 
 const onInspectorClearResource = (nodeId: string) => {
@@ -3975,13 +3975,13 @@ const {
 const importLimitAlertMessage = ref('')
 const MAX_BATCH_IMPORT_MEDIA_COUNT = 100
 
-const onNodeUploadResource = (
+const onNodeUploadResource = async (
   nodeId: string,
   file: File,
   kind: 'image' | 'video',
   opts?: { autoDistribute?: boolean }
 ) => {
-  uploadNodeResource(nodeId, file, kind, {
+  await uploadNodeResource(nodeId, file, kind, {
     autoDistribute: opts?.autoDistribute,
     onAfterBind: () => {
       if (kind === 'image' && opts?.autoDistribute !== false) {
@@ -5050,6 +5050,21 @@ const openResourceDialog = async () => {
       const title = currentProjectName.value || '资源管理器'
       const result = await w.dweb.aiworkflow.openResourceManager({ projectId, title })
       console.log('[AIWorkflowPage] openResourceManager result:', JSON.stringify(result))
+      
+      // 发送资源数据到资源管理器窗口
+      if (result?.ok) {
+        // 将Vue响应式对象转换为普通对象（通过JSON序列化脱壳）
+        // 注意：必须使用这种方式，因为Electron IPC无法序列化Vue Proxy对象
+        const resourcesData = JSON.parse(JSON.stringify(resources.value))
+        const nodesData = JSON.parse(JSON.stringify(store.state.nodesById))
+        const nodeOrderData = JSON.parse(JSON.stringify(store.state.nodeOrder))
+        await w.dweb.aiworkflow.sendResourceManagerData({
+          resources: resourcesData,
+          nodesById: nodesData,
+          nodeOrder: nodeOrderData,
+        })
+        console.log('[AIWorkflowPage] sent resources to resource manager:', resourcesData.length)
+      }
       return
     } catch (err) {
       console.warn('[AIWorkflowPage] openResourceManager IPC failed:', err)
