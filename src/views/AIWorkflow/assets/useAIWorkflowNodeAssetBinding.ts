@@ -152,7 +152,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
     }
   }
 
-  const uploadNodeResource = (
+  const uploadNodeResource =async (
     nodeId: string,
     file: File,
     kind: 'image' | 'video',
