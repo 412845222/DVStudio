@@ -1,5 +1,6 @@
-import type { WorkflowState } from '../../../../aiworkflow/persistence/workflowState'
+import type { WorkflowState } from '../../../../aiworkflow/types'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
+import { AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 
 type UseAIWorkflowProjectSnapshotBuilderOptions = {
   store: {
@@ -145,14 +146,17 @@ kind, String((resource as any).name || kind), {
     }
 
     return {
+      schemaVersion: AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION,
+      savedAt: Date.now(),
+      viewport: payload.store.state.viewport,
       nodesById,
       nodeOrder: payload.store.state.nodeOrder,
+      edgesById: payload.store.state.edgesById,
+      edgeOrder: payload.store.state.edgeOrder,
       resourcesById,
       resourceOrder,
-      meta: {
-        ...((payload.store.state.meta as any) || {}),
-        resourceOmissions: omittedResourceIds.size > 0 ? Array.from(omittedResourceIds) : undefined,
-      },
+      selectedNodeId: payload.store.state.selectedNodeId,
+      selectedNodeIds: payload.store.state.selectedNodeIds,
     } as AIWorkflowDraftSnapshot
   }
 

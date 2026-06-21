@@ -69,7 +69,7 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 
       if (nodeType === 'scene-layout') {
         const settings = (node as any).sceneLayoutSettings
-        const manualBindings = Array.isArray(settings?.manualModelBindings)
+        const manualModelBindings = Array.isArray(settings?.manualModelBindings)
           ? settings.manualModelBindings.filter((item: any) => item && typeof item === 'object')
           : []
         const layoutItems = Array.isArray(settings?.layoutItems)

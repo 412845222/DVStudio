@@ -273,13 +273,8 @@ const effectiveResourceUrl = computed(() =>
 const screenshotEnabled = computed(() => Boolean(props.screenshotEnabled));
 const normalizedResourceSourcePath = computed(() => String(props.resourceSourcePath ?? "").trim());
 
-const toFileUrl = (sourcePath: string) => {
-  const raw = String(sourcePath || "").trim();
-  if (!raw) return "";
-  const normalized = raw.replace(/\\/g, "/");
-  const isDrivePath = /^[a-zA-Z]:\//.test(normalized);
-  if (!isDrivePath) return "";
-  return `file:///${encodeURI(normalized)}`;
+const toFileUrl = () => {
+  return "";
 };
 
 const resetMediaRuntimeState = () => {

@@ -545,14 +545,8 @@ const ensureNaturalSizeFallback = async () => {
   });
 };
 
-const toFileUrl = (sourcePath: string) => {
-  const raw = String(sourcePath || "").trim();
-  if (!raw) return "";
-  const normalized = raw.replace(/\\/g, "/");
-  const isDrivePath = /^[a-zA-Z]:\//.test(normalized);
-  if (!isDrivePath) return "";
-  const encoded = encodeURI(normalized);
-  return `file:///${encoded}`;
+const toFileUrl = () => {
+  return "";
 };
 
 const toggleCropMode = async () => {

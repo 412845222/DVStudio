@@ -942,12 +942,8 @@ const onNodeChatClose = () => {
   store.dispatch('closeNodeChatDialog')
 }
 
-const toFileUrlFromSourcePath = (sourcePath: string): string => {
-  const raw = String(sourcePath || '').trim()
-  if (!raw) return ''
-  const normalized = raw.replace(/\\/g, '/')
-  if (!/^[a-zA-Z]:\//.test(normalized)) return ''
-  return `file:///${encodeURIComponent(normalized)}`
+const toFileUrlFromSourcePath = (): string => {
+  return ''
 }
 
 const isStrictLocalRenderableUrl = (rawUrl: string): boolean => {
@@ -5040,33 +5036,6 @@ async function runProjectEnterSequence(
       }
       const resourcesTotal = Number(Array.isArray((store.state as any)?.resources) ? (store.state as any).resources.length : (store.state as any)?.resourcesById ? Object.keys((store.state as any).resourcesById).length : 0)
       return resourcesTotal
-    }, { errorDetailOnFailure: true })
-  }
-
-  // Step 3. 检查/拉起 Django 后端
-  if (isElectron()) {
-    await startupProgress.runStep('backend.django', '检查 Django 后端', async () => {
-      try {
-        const ping = await pingBackend()
-        if (ping?.ok) return '已就绪'
-      } catch {
-        // 继续尝试启动
-      }
-      // 后端未就绪，尝试启动
-      try {
-        const r = await startBackend()
-        if (!r?.ok) throw new Error(r?.error || '后端启动失败')
-      } catch (e) {
-        const msg = String((e as any)?.message ?? e ?? '后端启动失败')
-        throw new Error(msg)
-      }
-      // 等待 ping 通过
-      for (let attempt = 0; attempt < 12; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        const p = await pingBackend()
-        if (p?.ok) return '已启动'
-      }
-      throw new Error('Django 后端仍未响应')
     }, { errorDetailOnFailure: true })
   }
 }
