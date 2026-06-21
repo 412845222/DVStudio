@@ -297,14 +297,108 @@ function handleProjectAssetRequest(request) {
     }
   }
 
-  // 走 Node.js stream -> Blob -> Response 的方式，兼容 protocol.handle
-  try {
-    const buffer = readFileSyncSafe(filePath, 512 * 1024 * 1024)
-    if (buffer === null || !Buffer.isBuffer(buffer)) {
+  // 视频/音频/大文件：使用流式传输 + Range 请求支持
+  // 小文件 (< 5MB) 仍可使用内存方式，但视频/音频一律走流式以便播放控制
+  const videoExts = new Set(['.mp4', '.mov', '.webm', '.mkv', '.m4v', '.avi', '.flv'])
+  const audioExts = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'])
+  const largeThreshold = 5 * 1024 * 1024 // 5MB
+  const totalSize = Number(stat.size || 0)
+  const useStream = videoExts.has(ext) || audioExts.has(ext) || totalSize > largeThreshold
+
+  if (!useStream) {
+    // 小的非媒体文件：保持简单的内存返回
+    try {
+      const buffer = fs.readFileSync(filePath)
+      return buildInMemoryResponse(buffer, guessMimeType(filePath), 200)
+    } catch {
       return new Response('Asset Read Failed', { status: 500 })
     }
-    return buildInMemoryResponse(buffer, guessMimeType(filePath), 200)
-  } catch {
+  }
+
+  // 媒体/大文件：支持 Range 请求
+  try {
+    // 1) 解析 Range header
+    const rangeHeader = request.headers ? String(request.headers.get('range') || '') : ''
+    const total = totalSize
+    const contentType = guessMimeType(filePath)
+
+    let start = 0
+    let end = total - 1
+    let isValidRange = false
+
+    if (rangeHeader && /^bytes=\s*(\d*)-(\d*)\s*$/.test(rangeHeader)) {
+      const match = rangeHeader.match(/^bytes=\s*(\d*)-(\d*)\s*$/)
+      if (match) {
+        const startStr = match[1]
+        const endStr = match[2]
+        if (startStr === '' && endStr !== '') {
+          // suffix-byte-range-spec: bytes=-500 -> last 500 bytes
+          const suffixLen = Math.min(total, Math.max(1, Number(endStr) || 0))
+          start = Math.max(0, total - suffixLen)
+          end = total - 1
+          isValidRange = total > 0
+        } else if (startStr !== '' && endStr === '') {
+          start = Math.max(0, Math.min(total - 1, Number(startStr) || 0))
+          end = total - 1
+          isValidRange = total > 0
+        } else if (startStr !== '' && endStr !== '') {
+          start = Math.max(0, Math.min(total - 1, Number(startStr) || 0))
+          end = Math.min(total - 1, Math.max(start, Number(endStr) || 0))
+          isValidRange = total > 0
+        }
+      }
+    }
+
+    // 2) 构建 ReadableStream 包装 fs.createReadStream
+    const streamStart = isValidRange ? start : 0
+    const streamEnd = isValidRange ? end : total - 1
+    const contentLength = Math.max(0, streamEnd - streamStart + 1)
+
+    const nodeStream = fs.createReadStream(filePath, {
+      start: streamStart,
+      end: Math.max(streamStart, streamEnd),
+      highWaterMark: 256 * 1024,
+    })
+
+    const webStream = new ReadableStream({
+      start(controller) {
+        nodeStream.on('data', (chunk) => {
+          // Node.js Buffer -> Uint8Array
+          const bytes = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+          controller.enqueue(bytes)
+        })
+        nodeStream.on('end', () => {
+          controller.close()
+        })
+        nodeStream.on('error', (err) => {
+          console.error('[dweb-protocol] stream error:', err)
+          try { controller.error(err) } catch { /* ignore */ }
+        })
+      },
+      cancel() {
+        try { nodeStream.destroy() } catch { /* ignore */ }
+      },
+    })
+
+    // 3) 构建响应头
+    const headers = new Headers()
+    headers.set('Content-Type', contentType)
+    headers.set('Content-Length', String(contentLength))
+    headers.set('Accept-Ranges', 'bytes')
+    headers.set('Cache-Control', 'private, max-age=0, must-revalidate')
+    headers.set('X-Content-Type-Options', 'nosniff')
+
+    const statusCode = isValidRange ? 206 : 200
+    if (isValidRange) {
+      headers.set('Content-Range', `bytes ${start}-${end}/${total}`)
+    } else if (total > 0) {
+      // 有些客户端要求完整请求时也能感知文件大小
+      headers.set('Content-Range', `bytes 0-${total - 1}/${total}`)
+    }
+
+    return new Response(webStream, { status: statusCode, headers })
+  } catch (err) {
+    console.error('[dweb-protocol] stream build failed:', err)
     return new Response('Asset Read Failed', { status: 500 })
   }
 }

@@ -294,6 +294,7 @@ const resetMediaRuntimeState = () => {
 const isLikelyLocalMediaUrl = (src: string) => {
   const text = String(src || "").trim();
   if (!text) return false;
+  if (text.toLowerCase().startsWith("dweb://")) return true;
   try {
     const parsed = new URL(text, window.location.href);
     return /\/media\//i.test(parsed.pathname);
@@ -407,6 +408,7 @@ const shouldUseAnonymousCrossOrigin = (src: string) => {
   const text = String(src || "").trim();
   if (!text) return false;
   if (text.startsWith("blob:") || text.startsWith("data:")) return false;
+  if (text.toLowerCase().startsWith("dweb://")) return false;
   if (noCrossOriginFallbackSrc === text) return false;
   return true;
 };
