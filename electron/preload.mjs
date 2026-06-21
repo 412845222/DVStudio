@@ -162,6 +162,57 @@ contextBridge.exposeInMainWorld('dweb', {
 			backendRuntimeListenerMap.delete(id)
 			return { ok: true }
 		},
+
+		// ===== 资源管理器原生窗口 =====
+		openResourceManager: (payload) => {
+			return invoke('dweb:resource-manager:open', payload || {})
+		},
+		closeResourceManager: () => invoke('dweb:resource-manager:close'),
+		focusResourceManager: () => invoke('dweb:resource-manager:focus'),
+
+		// 监听主窗口发来的事件（如资源被删除/添加后通知刷新）
+		onResourceManagerEvent: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const CHANNEL = 'dweb:resource-manager:event'
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch { /* ignore */ }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on(CHANNEL, wrapped)
+			return id
+		},
+		offResourceManagerEvent: (listenerId) => {
+			const CHANNEL = 'dweb:resource-manager:event'
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener(CHANNEL, wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+
+		// 监听主窗口发来的通知（如其他操作改变了资源列表）
+		onResourceManagerNotify: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const CHANNEL = 'dweb:resource-manager:notify'
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch { /* ignore */ }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on(CHANNEL, wrapped)
+			return id
+		},
+		offResourceManagerNotify: (listenerId) => {
+			const CHANNEL = 'dweb:resource-manager:notify'
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener(CHANNEL, wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
 	},
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),
