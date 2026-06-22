@@ -340,11 +340,11 @@
           :nodeLibraryOpen="false"
           :backendLogOpen="blueprintLogPanelOpen"
           :electronReady="isElectron()"
+          :show-repair-assets="true"
           @quick-add="onRailQuickAdd"
           @toggle-node-library="onRailToggleNodeLibrary"
           @toggle-backend-log="onRailToggleBackendLog"
           @open-resource-manager="openResourceDialog"
-          @request-new="onRequestNewProject"
           @request-repair-assets="onRequestRepairProjectAssets"
           @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
           @request-export-performance-diagnostics="onExportPerfDiagnostics"
@@ -3495,7 +3495,7 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
   }
 }
 
-const projectToolbarRef = ref<{ openSaveDialog: () => void } | null>(null)
+const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
@@ -4402,6 +4402,7 @@ const {
   pushToast,
   buildPersistableSnapshotWithOptions,
   currentProjectName,
+  currentProjectId,
   AIWF_PROJECT_PACKAGE_ENTRY,
   isValidBlueprintSnapshot,
   store,
@@ -4416,8 +4417,46 @@ const {
   hydrateBlueprintSnapshotSafely,
   resetCurrentUnrealExportNodeRuntimeState,
   setUnsavedProject,
+  setSavedProject,
   sanitizeFileNamePart,
   recoverComfyUIRunStates,
+  createProjectForImport: async (name: string) => {
+    try {
+      const snapshot = await buildPersistableSnapshotWithOptions({ uploadLocalResources: false })
+      const result = await blueprintProjectService.saveProject({ name, snapshot })
+      if (result?.ok && result?.project?.id > 0) {
+        return {
+          id: Number(result.project.id),
+          rootPath: String((result.project as any)?.rootPath || ''),
+        }
+      }
+      return null
+    } catch (err) {
+      console.error('[AIWF] createProjectForImport failed:', err)
+      return null
+    }
+  },
+  importAssetFromBuffer: async (projectId, buffer, fileName, mimeType) => {
+    if (!isElectron()) return null
+    try {
+      const result = await uploadProjectAsset({
+        projectId,
+        kind: mimeType?.startsWith('image') ? 'image' : mimeType?.startsWith('video') ? 'video' : 'file',
+        name: fileName,
+        arrayBuffer: buffer,
+        contentType: mimeType,
+      })
+      return result?.ok && result?.asset
+        ? { url: result.asset.url, relativePath: result.asset.relativePath }
+        : null
+    } catch (err) {
+      console.error('[AIWF] importAssetFromBuffer failed:', err)
+      return null
+    }
+  },
+  saveImportedSnapshot: async () => {
+    await saveProjectToBackend()
+  },
 })
 
 const onGlobalShortcutSave = async (ev: Event) => {
@@ -4427,13 +4466,7 @@ const onGlobalShortcutSave = async (ev: Event) => {
   ;(ev as any).stopImmediatePropagation?.()
 
   // Ctrl/Cmd+S: persist blueprint project to backend (DB + JSON file).
-  const name = String(currentProjectName.value ?? '').trim()
-  if (!name) {
-    projectToolbarRef.value?.openSaveDialog?.()
-    pushToast('请先输入项目名称，再执行保存。', 'info')
-    return
-  }
-  await saveProjectToBackend(name)
+  await onRequestSaveProject()
 }
 
 const getCanvasCenterWorld = () => {

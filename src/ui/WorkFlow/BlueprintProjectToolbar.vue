@@ -87,16 +87,14 @@
     <Transition name="aiwf-floating-rail-popover">
       <section v-if="activePanel" class="aiwf-floating-rail-popover" :class="`is-${activePanel}`">
         <template v-if="activePanel === 'project'">
-          <button class="aiwf-floating-rail-popover__item" type="button" @click="openSaveDialog">
+          <button class="aiwf-floating-rail-popover__item" type="button" @click="handleSaveProject">
             保存项目
           </button>
           <button class="aiwf-floating-rail-popover__item" type="button" @click="openLoadDialog">
             加载项目
           </button>
-          <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('request-new')">
-            新建项目
-          </button>
-          <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('request-repair-assets')">
+          <div v-if="showRepairAssets" class="aiwf-floating-rail-popover__sep" aria-hidden="true"></div>
+          <button v-if="showRepairAssets" class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('request-repair-assets')">
             修复项目资源
           </button>
           <div class="aiwf-floating-rail-popover__sep" aria-hidden="true"></div>
@@ -152,51 +150,6 @@
 
     <Transition name="aiwf-rail-dialog">
       <div
-        v-if="saveDialogOpen"
-        class="aiwf-rail-dialog-mask"
-        data-bp-ui-overlay="true"
-        @pointerdown.stop
-        @mousedown.stop
-        @contextmenu.prevent.stop
-        @click.self="saveDialogOpen = false"
-      >
-        <div
-          class="aiwf-rail-dialog"
-          data-bp-ui-overlay="true"
-          @pointerdown.stop
-          @mousedown.stop
-          @click.stop
-          @contextmenu.prevent.stop
-        >
-          <!-- Sci-fi L corner brackets -->
-          <span class="rail-bracket rail-bracket-tl" aria-hidden="true"></span>
-          <span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
-          <span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
-          <span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
-          <div class="aiwf-rail-dialog__title">保存蓝图项目</div>
-          <input
-            ref="saveInputRef"
-            v-model="saveName"
-            class="aiwf-rail-input"
-            type="text"
-            maxlength="120"
-            placeholder="请输入项目名称"
-            @keydown.enter.prevent="confirmSave"
-          />
-          <div class="aiwf-rail-dialog__actions">
-            <button class="aiwf-rail-dialog-btn" type="button" @click="saveDialogOpen = false">
-              取消
-            </button>
-            <button class="aiwf-rail-dialog-btn is-primary" type="button" @click="confirmSave">
-              确认保存
-            </button>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <Transition name="aiwf-rail-dialog">
-      <div
         v-if="loadDialogOpen"
         class="aiwf-rail-dialog-mask"
         data-bp-ui-overlay="true"
@@ -219,28 +172,58 @@
           <span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
           <span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
           <div class="aiwf-rail-dialog__title">加载蓝图项目</div>
+
+          <!-- 搜索框 -->
+          <div class="aiwf-rail-search-wrap">
+            <input
+              v-model="searchKeyword"
+              class="aiwf-rail-search-input"
+              type="text"
+              placeholder="搜索项目..."
+            />
+          </div>
+
           <div class="aiwf-rail-project-list">
             <div
-              v-for="(item, idx) in projects"
+              v-for="(item, idx) in filteredProjects"
               :key="`${String(item.id ?? '')}-${String(item.updatedAt ?? '')}-${idx}`"
               class="aiwf-rail-project-item"
               :class="{ active: selectedProjectId === item.id }"
             >
               <button class="aiwf-rail-project-main" type="button" @click="selectedProjectId = item.id">
-                <span class="aiwf-rail-project-name">{{ item.name }}</span>
-                <small>{{ formatTime(item.updatedAt) }}</small>
+                <span class="aiwf-rail-project-icon">
+                  <svg v-if="item.folderBacked" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M3 4.2h3.6l1.2 1.3H13v6.3H3z" />
+                    <path d="M4.6 8.6h6.8" />
+                  </svg>
+                  <svg v-else viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M3 3h10v10H3z" />
+                    <path d="M5 6h6M5 8.5h4M5 11h3" />
+                  </svg>
+                </span>
+                <div class="aiwf-rail-project-info">
+                  <span class="aiwf-rail-project-name">{{ item.name }}</span>
+                  <small>{{ formatRelativeTime(item.updatedAt) }}</small>
+                </div>
               </button>
               <button class="aiwf-rail-project-del" type="button" @click.stop="onDeleteProject(item.id, item.name)">
                 删除
               </button>
             </div>
-            <div v-if="!projects.length" class="aiwf-rail-empty">暂无项目</div>
+            <div v-if="!filteredProjects.length" class="aiwf-rail-empty">
+              {{ searchKeyword ? '未找到匹配的项目' : '暂无项目' }}
+            </div>
           </div>
           <div class="aiwf-rail-dialog__actions">
             <button class="aiwf-rail-dialog-btn" type="button" @click="loadDialogOpen = false">
               取消
             </button>
-            <button class="aiwf-rail-dialog-btn is-primary" type="button" @click="confirmLoad">
+            <button
+              class="aiwf-rail-dialog-btn is-primary"
+              type="button"
+              @click="confirmLoad"
+              :disabled="selectedProjectId == null"
+            >
               加载
             </button>
           </div>
@@ -251,12 +234,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 export type BlueprintProjectListItem = {
   id: number
   name: string
+  projectUuid: string
+  rootPath: string
+  folderBacked: boolean
+  createdAt: number
   updatedAt?: number | null
+  lastOpenedAt?: number | null
 }
 
 type FloatingPanel = '' | 'project' | 'resources'
@@ -269,6 +257,7 @@ const props = defineProps<{
   resources?: Array<{ id: string }>
   nodeLibraryOpen?: boolean
   backendLogOpen?: boolean
+  showRepairAssets?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -276,8 +265,7 @@ const emit = defineEmits<{
   (e: 'toggle-node-library'): void
   (e: 'toggle-backend-log'): void
   (e: 'open-resource-manager'): void
-  (e: 'request-new'): void
-  (e: 'request-save', payload?: { name?: string }): void
+  (e: 'request-save'): void
   (e: 'request-repair-assets'): void
   (e: 'request-toggle-performance-priority'): void
   (e: 'request-export-performance-diagnostics'): void
@@ -293,17 +281,16 @@ const emit = defineEmits<{
 const toolbarWrapRef = ref<HTMLElement | null>(null)
 const activePanel = ref<FloatingPanel>('')
 
-const saveDialogOpen = ref(false)
 const loadDialogOpen = ref(false)
-const saveName = ref('')
 const selectedProjectId = ref<number | null>(null)
+const searchKeyword = ref('')
 const importInputRef = ref<HTMLInputElement | null>(null)
 const importPackageInputRef = ref<HTMLInputElement | null>(null)
-const saveInputRef = ref<HTMLInputElement | null>(null)
 
 const resources = computed(() => (Array.isArray(props.resources) ? props.resources : []))
 const nodeLibraryOpen = computed(() => props.nodeLibraryOpen === true)
 const backendLogOpen = computed(() => props.backendLogOpen === true)
+const showRepairAssets = computed(() => props.showRepairAssets === true)
 
 const hasProjectName = computed(() => String(props.currentProjectName ?? '').trim().length > 0)
 const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || '未保存项目')
@@ -312,34 +299,11 @@ const statusTitle = computed(() => {
   return `当前项目: ${projectTitle.value}`
 })
 
-const focusInputWithRetry = (targetRef: Ref<HTMLInputElement | null>) => {
-  void nextTick(() => {
-    let attempts = 0
-    const tryFocus = () => {
-      attempts += 1
-      const el = targetRef.value
-      if (!el) return
-      el.focus()
-      try {
-        const len = el.value.length
-        el.setSelectionRange(len, len)
-      } catch {
-        // ignore selection API failures
-      }
-      if (document.activeElement !== el && attempts < 4) {
-        window.setTimeout(tryFocus, attempts === 1 ? 0 : 60)
-      }
-    }
-    window.requestAnimationFrame(tryFocus)
-  })
-}
-
 watch(
   () => props.currentProjectName,
-  (next) => {
-    if (typeof next === 'string' && next.trim()) saveName.value = next.trim()
+  () => {
+    // 当前项目名变化时无需特殊处理（保存直接使用 currentProjectName）
   },
-  { immediate: true },
 )
 
 watch(
@@ -356,18 +320,12 @@ watch(
   { immediate: true },
 )
 
-watch(saveDialogOpen, (next) => {
-  if (!next) return
-  focusInputWithRetry(saveInputRef)
-})
-
 const togglePanel = (panel: Exclude<FloatingPanel, ''>) => {
   activePanel.value = activePanel.value === panel ? '' : panel
 }
 
 const emitThenClose = (
   eventName:
-    | 'request-new'
     | 'request-repair-assets'
     | 'request-export'
     | 'request-export-package'
@@ -379,18 +337,9 @@ const emitThenClose = (
   activePanel.value = ''
 }
 
-const openSaveDialog = () => {
-  saveName.value = String(props.currentProjectName || saveName.value || '').trim()
-  saveDialogOpen.value = true
+const handleSaveProject = () => {
+  emit('request-save')
   activePanel.value = ''
-  focusInputWithRetry(saveInputRef)
-}
-
-const confirmSave = () => {
-  const name = String(saveName.value || '').trim()
-  if (!name) return
-  emit('request-save', { name })
-  saveDialogOpen.value = false
 }
 
 const openLoadDialog = () => {
@@ -437,9 +386,27 @@ const onImportPackageChange = (ev: Event) => {
   if (input) input.value = ''
 }
 
-const formatTime = (ts?: number | null) => {
+const filteredProjects = computed(() => {
+  if (!searchKeyword.value.trim()) return props.projects
+  const keyword = searchKeyword.value.toLowerCase()
+  return props.projects.filter(item =>
+    item.name.toLowerCase().includes(keyword)
+  )
+})
+
+const formatRelativeTime = (ts?: number | null) => {
   if (!Number.isFinite(Number(ts))) return '更新时间未知'
-  return new Date(Number(ts)).toLocaleString()
+  const now = Date.now()
+  const diff = now - Number(ts)
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes}分钟前`
+  if (hours < 24) return `${hours}小时前`
+  if (days < 7) return `${days}天前`
+  return new Date(Number(ts)).toLocaleDateString()
 }
 
 const isPointerInsideToolbar = (event: PointerEvent) => {
@@ -463,10 +430,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onWindowPointerDown, true)
-})
-
-defineExpose({
-  openSaveDialog,
 })
 </script>
 
@@ -1019,6 +982,81 @@ defineExpose({
   color: var(--theme-text-muted, #aeb8bd);
   font-size: 12px;
   padding: 8px;
+}
+
+/* ── Search in load dialog ── */
+.aiwf-rail-search-wrap {
+  margin-bottom: 10px;
+}
+
+.aiwf-rail-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 85%, transparent);
+  color: var(--theme-text-primary, #edf2f4);
+  padding: 8px 10px;
+  font-size: 12px;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.aiwf-rail-search-input::placeholder {
+  color: color-mix(in srgb, var(--theme-text-muted, #aeb8bd) 60%, transparent);
+}
+
+.aiwf-rail-search-input:focus {
+  outline: none;
+  border-color: var(--theme-accent, #1f9d84);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent),
+    0 0 10px color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
+}
+
+/* ── Project item with icon & info layout ── */
+.aiwf-rail-project-main {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.aiwf-rail-project-icon {
+  flex: 0 0 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--theme-accent, #1f9d84);
+}
+
+.aiwf-rail-project-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.aiwf-rail-project-icon svg path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.aiwf-rail-project-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* ── Dialog transitions ── */
