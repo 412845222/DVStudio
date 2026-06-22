@@ -129,4 +129,5 @@ logs_*.sqlite
 .personality_migration
 config.toml
 AIPlan/
+.trae/
 
