@@ -9,5 +9,6 @@ export type JsonArray = JsonValue[]
 export const isJsonObject = (v: unknown): v is JsonObject => {
 	if (v == null || typeof v !== 'object') return false
 	if (Array.isArray(v)) return false
-	return true
+	const proto = Object.getPrototypeOf(v)
+	return proto === null || proto === Object.prototype
 }

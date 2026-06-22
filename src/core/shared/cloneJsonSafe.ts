@@ -25,11 +25,26 @@ const deepCloneFallback = (value: unknown, seen: WeakMap<object, unknown>): unkn
 	return out
 }
 
+const replacer = (_key: string, value: unknown): unknown => {
+	if (value instanceof Date) {
+		return { __isDate: true, value: value.getTime() }
+	}
+	return value
+}
+
+const reviver = (_key: string, value: unknown): unknown => {
+	if (typeof value === 'object' && value !== null && '__isDate' in value) {
+		return new Date((value as { value: number }).value)
+	}
+	return value
+}
+
 export const cloneJsonSafe = <T>(v: T): T => {
-	// Vuex state is reactive (Proxy). structuredClone may throw.
-	// Must never return original reference; snapshots must be immutable-by-convention.
+	if (v instanceof Date) {
+		return new Date(v.getTime()) as T
+	}
 	try {
-		return JSON.parse(JSON.stringify(v)) as T
+		return JSON.parse(JSON.stringify(v, replacer), reviver) as T
 	} catch {
 		try {
 			const sc = (globalThis as { structuredClone?: (value: unknown) => unknown }).structuredClone

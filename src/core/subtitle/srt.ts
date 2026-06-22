@@ -80,9 +80,9 @@ export const parseSrt = (text: string): SrtCue[] => {
 }
 
 export const msToFrameRangeInclusive = (startMs: number, endMs: number, fps: number) => {
-	const safeFps = Math.max(1, Math.min(240, Math.floor(Number(fps) || 30)))
-	const startSec = Math.max(0, Number(startMs) / 1000)
-	const endSec = Math.max(0, Number(endMs) / 1000)
+	const safeFps = Number.isFinite(fps) ? Math.max(1, Math.min(240, Math.floor(fps))) : 30
+	const startSec = Number.isFinite(startMs) ? Math.max(0, startMs / 1000) : 0
+	const endSec = Number.isFinite(endMs) ? Math.max(0, endMs / 1000) : 0
 	const startFrame = Math.floor(startSec * safeFps)
 	// end is exclusive in time, so use ceil - 1 for inclusive frames
 	const endFrame = Math.max(startFrame, Math.ceil(endSec * safeFps) - 1)
