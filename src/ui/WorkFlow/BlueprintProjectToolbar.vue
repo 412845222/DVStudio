@@ -1,6 +1,11 @@
 <template>
   <div ref="toolbarWrapRef" class="aiwf-floating-rail-wrap" data-bp-ui-overlay="true" @pointerdown.stop>
     <nav class="aiwf-floating-rail" aria-label="AI 工作流统一工具栏">
+      <!-- Sci-fi L corner brackets -->
+      <span class="rail-bracket rail-bracket-tl" aria-hidden="true"></span>
+      <span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
+      <span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
+      <span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
       <div
         class="aiwf-floating-rail__identity"
         :class="{ unsaved: !hasProjectName }"
@@ -163,6 +168,11 @@
           @click.stop
           @contextmenu.prevent.stop
         >
+          <!-- Sci-fi L corner brackets -->
+          <span class="rail-bracket rail-bracket-tl" aria-hidden="true"></span>
+          <span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
+          <span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
+          <span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
           <div class="aiwf-rail-dialog__title">保存蓝图项目</div>
           <input
             ref="saveInputRef"
@@ -203,6 +213,11 @@
           @click.stop
           @contextmenu.prevent.stop
         >
+          <!-- Sci-fi L corner brackets -->
+          <span class="rail-bracket rail-bracket-tl" aria-hidden="true"></span>
+          <span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
+          <span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
+          <span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
           <div class="aiwf-rail-dialog__title">加载蓝图项目</div>
           <div class="aiwf-rail-project-list">
             <div
@@ -456,6 +471,33 @@ defineExpose({
 </script>
 
 <style scoped>
+/* ============================================================
+   BlueprintProjectToolbar — Sci-Fi / Cyber Futuristic Style
+   Uses project theme tokens: --theme-accent, --wf-*, --sqp-*
+   ============================================================ */
+
+/* Sci-fi L corner brackets (shared across toolbar/dialog) */
+.rail-bracket {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  z-index: 3;
+}
+.rail-bracket-tl { top: -2px; left: -2px; border-top: 1.5px solid var(--theme-accent, #1f9d84); border-left: 1.5px solid var(--theme-accent, #1f9d84); }
+.rail-bracket-tr { top: -2px; right: -2px; border-top: 1.5px solid var(--theme-accent, #1f9d84); border-right: 1.5px solid var(--theme-accent, #1f9d84); }
+.rail-bracket-bl { bottom: -2px; left: -2px; border-bottom: 1.5px solid var(--theme-accent, #1f9d84); border-left: 1.5px solid var(--theme-accent, #1f9d84); }
+.rail-bracket-br { bottom: -2px; right: -2px; border-bottom: 1.5px solid var(--theme-accent, #1f9d84); border-right: 1.5px solid var(--theme-accent, #1f9d84); }
+
+/* Show brackets on hover or when the container is focused */
+.aiwf-floating-rail:hover .rail-bracket,
+.aiwf-rail-dialog:hover .rail-bracket {
+  opacity: 1;
+}
+
+/* ── Toolbar wrap ── */
 .aiwf-floating-rail-wrap {
   position: absolute;
   left: 56px;
@@ -466,23 +508,41 @@ defineExpose({
   pointer-events: auto;
 }
 
+/* ── Main floating rail (toolbar bar) ── */
 .aiwf-floating-rail {
+  position: relative;
   display: inline-flex;
   flex-direction: row;
   align-items: center;
   gap: 4px;
   min-height: 34px;
   padding: 4px 6px;
-  border: 1px solid var(--vscode-border);
-  border-radius: 0;
-  background: color-mix(in srgb, var(--dweb-defualt-dark) 92%, transparent);
-  box-shadow: var(--vscode-shadow);
-  backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 35%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 88%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 10%, transparent),
+    0 0 16px color-mix(in srgb, var(--theme-accent, #1f9d84) 14%, transparent),
+    0 8px 24px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
   max-width: calc(100vw - 80px);
   flex-wrap: nowrap;
-  overflow: hidden;
+  overflow: visible;
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease;
 }
 
+.aiwf-floating-rail:hover {
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent),
+    0 0 24px color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent),
+    0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Identity / project title ── */
 .aiwf-floating-rail__identity {
   display: inline-flex;
   align-items: center;
@@ -491,7 +551,7 @@ defineExpose({
   padding: 0 10px;
   min-width: 0;
   max-width: 220px;
-  color: var(--vscode-fg);
+  color: var(--theme-text-primary, #edf2f4);
   font-size: 12px;
   line-height: 1;
   user-select: none;
@@ -501,14 +561,19 @@ defineExpose({
   width: 7px;
   height: 7px;
   flex: 0 0 7px;
-  border-radius: 0;
+  border-radius: 2px;
   background: #6ee7b7;
-  box-shadow: 0 0 0 3px color-mix(in srgb, #6ee7b7 18%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, #6ee7b7 18%, transparent),
+    0 0 8px #6ee7b7;
+  transition: background 200ms ease, box-shadow 200ms ease;
 }
 
 .aiwf-floating-rail__identity.unsaved .aiwf-floating-rail__status-dot {
-  background: #f6c177;
-  box-shadow: 0 0 0 3px color-mix(in srgb, #f6c177 18%, transparent);
+  background: #e5b567;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, #e5b567 18%, transparent),
+    0 0 8px #e5b567;
 }
 
 .aiwf-floating-rail__status-main {
@@ -517,15 +582,18 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
+/* ── Separator ── */
 .aiwf-floating-rail__sep {
   width: 1px;
   height: 20px;
   margin: 0 2px;
-  background: color-mix(in srgb, var(--vscode-border) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 28%, transparent);
 }
 
+/* ── Buttons ── */
 .aiwf-floating-rail__btn {
   position: relative;
   height: 26px;
@@ -535,37 +603,54 @@ defineExpose({
   gap: 6px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 0;
+  border-radius: 2px;
   outline: none;
   background: transparent;
-  color: var(--vscode-fg-muted);
+  color: color-mix(in srgb, var(--theme-text-muted, #aeb8bd) 85%, transparent);
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
   flex: 0 0 auto;
   transition:
-    border-color 120ms ease,
-    background-color 120ms ease,
-    color 120ms ease;
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .aiwf-floating-rail__btn:hover,
-.aiwf-floating-rail__btn:focus-visible,
+.aiwf-floating-rail__btn:focus-visible {
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 12%, transparent);
+  color: var(--theme-accent, #1f9d84);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent);
+}
+
 .aiwf-floating-rail__btn.active {
-  border-color: var(--vscode-border);
-  background: var(--vscode-hover-bg);
-  color: var(--vscode-fg);
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 65%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 16%, transparent);
+  color: var(--theme-accent, #1f9d84);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
 }
 
 .aiwf-floating-rail__btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .aiwf-floating-rail__btn.is-primary {
-  border-color: color-mix(in srgb, #4cb1ff 64%, transparent);
-  background: color-mix(in srgb, #4cb1ff 18%, transparent);
-  color: #4cb1ff;
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 72%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent);
+  color: var(--theme-accent, #1f9d84);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent, #1f9d84) 28%, transparent);
+}
+
+.aiwf-floating-rail__btn.is-primary:hover,
+.aiwf-floating-rail__btn.is-primary:focus-visible {
+  border-color: var(--theme-accent-hover, #27b99c);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 32%, transparent);
+  color: var(--theme-accent-hover, #27b99c);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--theme-accent, #1f9d84) 38%, transparent);
 }
 
 .aiwf-floating-rail__btn svg {
@@ -587,14 +672,16 @@ defineExpose({
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
 .aiwf-floating-rail__caret {
   font-size: 9px;
   line-height: 1;
-  opacity: 0.7;
+  opacity: 0.65;
 }
 
+/* ── Popover ── */
 .aiwf-floating-rail-popover {
   position: absolute;
   top: 100%;
@@ -608,12 +695,16 @@ defineExpose({
   display: flex;
   flex-direction: column;
   padding: 6px;
-  border: 1px solid var(--vscode-border);
-  border-radius: 0;
-  background: color-mix(in srgb, var(--dweb-defualt-dark) 96%, transparent);
-  box-shadow: var(--vscode-shadow);
-  color: var(--vscode-fg);
-  backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 38%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 94%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 12%, transparent),
+    0 0 20px color-mix(in srgb, var(--theme-accent, #1f9d84) 16%, transparent),
+    0 12px 32px rgba(0, 0, 0, 0.45);
+  color: var(--theme-text-primary, #edf2f4);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
   will-change: transform, opacity;
 }
 
@@ -627,61 +718,73 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 0 10px 6px 10px;
-  border-bottom: 1px solid var(--vscode-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent);
   margin-bottom: 4px;
-  color: var(--vscode-fg-muted);
+  color: var(--theme-text-muted, #aeb8bd);
   font-size: 11px;
   line-height: 1;
   font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .aiwf-floating-rail-popover__head small {
   font-size: 11px;
   font-weight: 600;
+  color: var(--theme-accent, #1f9d84);
 }
 
 .aiwf-floating-rail-popover__item {
   height: 30px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 0;
+  border-radius: 2px;
   background: transparent;
-  color: var(--vscode-fg);
+  color: var(--theme-text-primary, #edf2f4);
   text-align: left;
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
 }
 
 .aiwf-floating-rail-popover__item:hover,
 .aiwf-floating-rail-popover__item:focus-visible {
-  border-color: var(--vscode-border);
-  background: var(--vscode-hover-bg);
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 12%, transparent);
+  color: var(--theme-accent, #1f9d84);
   outline: none;
 }
 
 .aiwf-floating-rail-popover__item:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .aiwf-floating-rail-popover__sep {
   height: 1px;
   margin: 4px 6px;
-  background: color-mix(in srgb, var(--vscode-border) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent);
 }
 
 .aiwf-floating-rail-popover__item.is-footer {
   margin-top: 4px;
-  border-top: 1px solid var(--vscode-border);
-  border-radius: 0;
+  border-top: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
+  border-radius: 2px;
   padding-top: 6px;
+  color: var(--theme-accent, #1f9d84);
+}
+
+.aiwf-floating-rail-popover__item.is-footer:hover {
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent);
 }
 
 .aiwf-floating-rail-popover__empty {
   padding: 16px 12px;
-  color: var(--vscode-fg-muted);
+  color: var(--theme-text-muted, #aeb8bd);
   text-align: center;
   font-size: 12px;
 }
@@ -689,38 +792,62 @@ defineExpose({
 .aiwf-floating-rail-popover-enter-active,
 .aiwf-floating-rail-popover-leave-active {
   transition:
-    opacity 140ms ease,
-    transform 140ms ease;
+    opacity 160ms ease,
+    transform 160ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .aiwf-floating-rail-popover-enter-from,
 .aiwf-floating-rail-popover-leave-to {
   opacity: 0;
-  transform: translateY(-4px);
+  transform: translateY(-6px);
 }
 
+/* ── Hidden file inputs ── */
 .aiwf-rail-hidden-input {
   display: none;
 }
 
+/* ── Dialog mask ── */
 .aiwf-rail-dialog-mask {
   position: fixed;
   inset: 0;
   z-index: 9200;
-  background: rgba(0, 0, 0, 0.42);
+  background:
+    radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--theme-accent, #1f9d84) 8%, transparent) 0%, transparent 60%),
+    rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* ── Dialog box ── */
 .aiwf-rail-dialog {
+  position: relative;
   width: min(440px, calc(100vw - 32px));
-  border: 1px solid var(--vscode-border);
-  background: color-mix(in srgb, var(--dweb-defualt-dark) 96%, #101318 4%);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
-  border-radius: 0;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 48%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 98%, transparent),
+      color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 90%, transparent)
+    ),
+    var(--wf-surface-raised, rgba(22, 26, 30, 0.92));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 14%, transparent),
+    0 0 28px color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent),
+    0 20px 60px rgba(0, 0, 0, 0.5);
+  border-radius: 2px;
   padding: 14px;
-  color: var(--vscode-fg);
+  color: var(--theme-text-primary, #edf2f4);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.aiwf-rail-dialog:hover .rail-bracket {
+  opacity: 1;
 }
 
 .aiwf-rail-dialog--wide {
@@ -731,25 +858,34 @@ defineExpose({
   font-size: 14px;
   font-weight: 700;
   margin-bottom: 12px;
+  color: var(--theme-text-primary, #edf2f4);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent, #1f9d84) 28%, transparent);
 }
 
+/* ── Input ── */
 .aiwf-rail-input {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--vscode-border);
-  border-radius: 0;
-  background: color-mix(in srgb, var(--dweb-defualt) 55%, transparent);
-  color: var(--vscode-fg);
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 85%, transparent);
+  color: var(--theme-text-primary, #edf2f4);
   padding: 8px;
   font-size: 12px;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .aiwf-rail-input:focus {
   outline: none;
-  border-color: var(--vscode-border-accent);
+  border-color: var(--theme-accent, #1f9d84);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent),
+    0 0 10px color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
 }
 
+/* ── Dialog actions ── */
 .aiwf-rail-dialog__actions {
   margin-top: 14px;
   display: flex;
@@ -759,44 +895,70 @@ defineExpose({
 
 .aiwf-rail-dialog-btn {
   padding: 6px 12px;
-  border: 1px solid var(--vscode-border);
-  border-radius: 0;
-  background: color-mix(in srgb, var(--dweb-defualt) 64%, transparent);
-  color: var(--vscode-fg);
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 85%, transparent);
+  color: var(--theme-text-primary, #edf2f4);
   font-size: 12px;
   cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .aiwf-rail-dialog-btn:hover,
 .aiwf-rail-dialog-btn:focus-visible {
-  border-color: var(--vscode-border-accent);
-  background: var(--vscode-hover-bg);
+  border-color: var(--theme-accent, #1f9d84);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 14%, transparent);
+  color: var(--theme-accent, #1f9d84);
   outline: none;
 }
 
 .aiwf-rail-dialog-btn.is-primary {
-  border-color: color-mix(in srgb, #4cb1ff 72%, var(--vscode-border));
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 72%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent);
+  color: var(--theme-accent, #1f9d84);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
 }
 
+.aiwf-rail-dialog-btn.is-primary:hover,
+.aiwf-rail-dialog-btn.is-primary:focus-visible {
+  border-color: var(--theme-accent-hover, #27b99c);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 32%, transparent);
+  color: var(--theme-accent-hover, #27b99c);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--theme-accent, #1f9d84) 38%, transparent);
+}
+
+/* ── Project list in load dialog ── */
 .aiwf-rail-project-list {
   max-height: 340px;
   overflow: auto;
-  border: 1px solid var(--vscode-border);
-  border-radius: 0;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
+  border-radius: 2px;
   padding: 6px;
   display: grid;
   gap: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 40%, transparent) transparent;
 }
 
 .aiwf-rail-project-item {
-  border: 1px solid var(--vscode-border);
-  border-radius: 0;
-  background: color-mix(in srgb, var(--dweb-defualt) 48%, transparent);
-  color: var(--vscode-fg);
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 80%, transparent);
+  color: var(--theme-text-primary, #edf2f4);
   padding: 6px;
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.aiwf-rail-project-item:hover {
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 10%, transparent);
 }
 
 .aiwf-rail-project-main {
@@ -819,56 +981,80 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.aiwf-rail-project-del {
-  border: 1px solid var(--vscode-border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--vscode-fg-muted);
-  padding: 2px 8px;
-  font-size: 11px;
-  cursor: pointer;
+  font-size: 12px;
 }
 
 .aiwf-rail-project-item small {
-  color: var(--vscode-fg-muted);
+  color: var(--theme-text-muted, #aeb8bd);
+  font-size: 11px;
 }
 
-.aiwf-rail-project-main:hover {
-  color: var(--vscode-fg);
+.aiwf-rail-project-del {
+  border: 1px solid color-mix(in srgb, var(--aiwf-color-danger, #cf5a46) 35%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: color-mix(in srgb, var(--aiwf-color-danger, #cf5a46) 70%, transparent);
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
 }
 
 .aiwf-rail-project-del:hover {
-  border-color: var(--vscode-border-accent);
-  color: var(--vscode-fg);
-  background: var(--vscode-hover-bg);
+  border-color: var(--aiwf-color-danger, #cf5a46);
+  color: var(--aiwf-color-danger, #cf5a46);
+  background: color-mix(in srgb, var(--aiwf-color-danger, #cf5a46) 12%, transparent);
 }
 
 .aiwf-rail-project-item.active {
-  border-color: var(--vscode-border-accent);
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 68%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 14%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent);
 }
 
 .aiwf-rail-empty {
-  color: var(--vscode-fg-muted);
+  color: var(--theme-text-muted, #aeb8bd);
   font-size: 12px;
   padding: 8px;
 }
 
+/* ── Dialog transitions ── */
 .aiwf-rail-dialog-enter-active,
 .aiwf-rail-dialog-leave-active {
-  transition: all 0.2s ease;
+  transition:
+    opacity 200ms ease,
+    transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .aiwf-rail-dialog-enter-from,
 .aiwf-rail-dialog-leave-to {
   opacity: 0;
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
+/* ── Responsive ── */
 @media (max-width: 920px) {
   .aiwf-floating-rail__identity {
     max-width: 150px;
+  }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .aiwf-floating-rail,
+  .aiwf-floating-rail:hover,
+  .aiwf-floating-rail__btn,
+  .aiwf-floating-rail__btn:hover,
+  .aiwf-floating-rail-popover,
+  .aiwf-rail-dialog,
+  .aiwf-rail-dialog-btn {
+    transition: none !important;
+  }
+  .rail-bracket {
+    opacity: 1 !important;
   }
 }
 </style>

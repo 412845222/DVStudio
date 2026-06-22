@@ -1,5 +1,5 @@
 <template>
-  <div class="aiwf-page bg-vscode">
+  <div class="aiwf-page">
     <div v-if="noProjectSelected" class="no-project-guide">
       <div class="no-project-card">
         <h2>请先选择或新建项目</h2>
@@ -35,7 +35,7 @@
             v-if="shouldRenderCompactNode(vp.zoom, node)"
             :class="[compactNodeClass(node), compactNodeStateClass(node)]"
             :style="
-              compactNodeStyle(
+              compactNodeShellStyle(
                 vp.worldToScreen,
                 node.worldX,
                 node.worldY,
@@ -47,25 +47,69 @@
             class="aiwf-node-compact"
             :title="compactNodeTooltip(node)"
             aria-hidden="true"
+            :data-node-type="node.type"
             @pointerdown="onCompactNodePointerDown(node.id, $event, vp.screenToWorld)"
           >
-            <div v-if="compactNodeImageUrl(node)" class="aiwf-node-compact-thumb">
-              <img
-                :src="compactNodeImageUrl(node) || undefined"
-                :alt="compactNodeDisplayName(node)"
-                class="aiwf-node-compact-thumb-img"
-                loading="lazy"
-                decoding="async"
-              />
+            <!-- Top-right type badge -->
+            <span class="aiwf-node-compact-type-badge" :style="{ '--tc': compactNodeTypeColor(node) }">
+              {{ compactNodeTypeChinese(node) }}
+            </span>
+
+            <!-- Left: type icon block -->
+            <div
+              class="aiwf-node-compact-icon-block"
+              :style="{ '--tc': compactNodeTypeColor(node) }"
+            >
+              <svg class="aiwf-node-compact-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+                <g v-if="node.type === 'text' || node.type === 'text-merge'">
+                  <rect x="5" y="4" width="14" height="16" rx="1" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <path d="M7 8h10M7 12h8M7 16h6" stroke-width="1.4" />
+                </g>
+                <g v-else-if="node.type === 'image' || node.type === 'rotate-image'">
+                  <rect x="3" y="4" width="18" height="16" rx="2" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <circle cx="17" cy="8" r="1.5" :fill="compactNodeTypeColor(node)" />
+                  <path d="M4 18l6-6 4 4 3-3 5 5" stroke-width="1.4" stroke-linecap="round" />
+                </g>
+                <g v-else-if="node.type === 'video'">
+                  <rect x="2" y="6" width="13" height="12" rx="1" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <path d="M15 10l5-3v6l-5-3z" :fill="compactNodeTypeColor(node)" />
+                </g>
+                <g v-else-if="node.type === 'scene-understanding' || node.type === 'scene-decompose' || node.type === 'scene-layout'">
+                  <path d="M12 3l9 5v8l-9 5-9-5V8l9-5z" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <path d="M12 20V11M4 8l8 4 8-4" stroke-width="1.2" />
+                </g>
+                <g v-else-if="node.type === 'comfyui'">
+                  <rect x="4" y="8" width="6" height="8" rx="1" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <rect x="14" y="8" width="6" height="8" rx="1" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <path d="M10 12h4" stroke-width="1.5" stroke-linecap="round" />
+                </g>
+                <g v-else-if="node.type === 'model3d' || node.type === 'meshy'">
+                  <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <path d="M12 20V11M4 7.5l8 4.5 8-4.5" stroke-width="1.2" />
+                </g>
+                <g v-else-if="node.type === 'story'">
+                  <path d="M4 5h6v14H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM20 5h-6v14h6a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <path d="M6 8h3M6 12h3M15 8h3M15 12h3" stroke-width="1.2" />
+                </g>
+                <g v-else>
+                  <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
+                  <circle cx="12" cy="12" r="2" :fill="compactNodeTypeColor(node)" />
+                </g>
+              </svg>
             </div>
-            <div class="aiwf-node-compact-body">
-              <div class="aiwf-node-compact-chip">{{ compactNodeBadge(node) }}</div>
-              <div class="aiwf-node-compact-title">{{ compactNodeDisplayName(node) }}</div>
-              <div class="aiwf-node-compact-meta">{{ compactNodeMeta(node) }}</div>
-              <div v-if="compactNodeStateLabel(node)" class="aiwf-node-compact-state">
-                {{ compactNodeStateLabel(node) }}
-              </div>
+
+            <!-- Right: minimal info -->
+            <div class="aiwf-node-compact-info">
+              <div class="aiwf-node-compact-label">{{ compactNodeTypeCode(node) }}</div>
             </div>
+
+            <!-- Status pulse dot -->
+            <div
+              v-if="compactNodeStateLabel(node)"
+              class="aiwf-node-compact-state-dot"
+              :data-state="compactNodeStateLabel(node)"
+              :title="compactNodeStateLabel(node)"
+            />
           </div>
 
           <component
@@ -745,13 +789,17 @@ const {
 
 const {
   nodeStyle,
-  compactNodeStyle,
+  compactNodeShellStyle,
   nodeComponent,
   nodeImagePreviewUrl,
   nodeImagePreviewVersion,
   nodeResourceUrl,
   nodeResourceName,
   compactNodeImageUrl,
+  compactNodeTypeColor,
+  compactNodeTypeChinese,
+  compactNodeTypeGradient,
+  compactNodeTypeCode,
 } = useAIWorkflowNodePresentation(store)
 
 const ensureNanoAnchorNode = () => {

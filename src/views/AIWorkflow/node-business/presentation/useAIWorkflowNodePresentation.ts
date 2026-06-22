@@ -39,6 +39,82 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
     } as Record<string, string>
   }
 
+  /**
+   * Compact node style — DYNAMIC physical dimensions matching scaled node size.
+   * The type badge is now INSIDE the node, so no extra vertical space needed.
+   */
+  const compactNodeShellStyle = (
+    worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
+    worldX: number,
+    worldY: number,
+    zoom: number,
+    width: number,
+    height: number,
+  ) => {
+    const point = worldToScreen({ x: worldX, y: worldY })
+    const nodeWidth = Math.max(80, width || 240)
+    const nodeHeight = Math.max(80, height || 160)
+    const safeZoom = Math.max(0.01, Number(zoom) || 1)
+    
+    // Dynamic size matching scaled real node
+    const fixedWidth = Math.max(120, nodeWidth * safeZoom)
+    const fixedHeight = Math.max(64, nodeHeight * safeZoom)
+    
+    return {
+      left: `${point.x}px`,
+      top: `${point.y}px`,
+      width: `${fixedWidth}px`,
+      height: `${fixedHeight}px`,
+      transform: 'translate(-50%, -50%)',
+    } as Record<string, string>
+  }
+
+  /** Chinese type name for top-right badge. */
+  const compactNodeTypeChinese = (node: WorkflowNode): string => {
+    const labels: Record<string, string> = {
+      text: '文本',
+      'text-merge': '文本合并',
+      image: '图片',
+      'rotate-image': '图像旋转',
+      video: '视频',
+      'scene-understanding': '场景理解',
+      'scene-decompose': '场景分解',
+      'scene-layout': '场景布局',
+      'unreal-export': 'UE导出',
+      story: '故事',
+      comfyui: 'ComfyUI',
+      model3d: '3D模型',
+      meshy: 'Meshy',
+    }
+    return labels[node.type] || '节点'
+  }
+
+  /** Gradient CSS background for the icon block (left side). */
+  const compactNodeTypeGradient = (node: WorkflowNode): string => {
+    const color = compactNodeTypeColor(node)
+    return `linear-gradient(135deg, color-mix(in srgb, ${color} 40%, #0d1117) 0%, color-mix(in srgb, ${color} 22%, #0d1117) 55%, color-mix(in srgb, ${color} 10%, #0d1117) 100%)`
+  }
+
+  /** Short uppercase type label for compact display. */
+  const compactNodeTypeCode = (node: WorkflowNode): string => {
+    const codes: Record<string, string> = {
+      text: 'TXT',
+      'text-merge': 'MERGE',
+      image: 'IMG',
+      'rotate-image': 'ROT',
+      video: 'VID',
+      'scene-understanding': 'SCU',
+      'scene-decompose': 'SCD',
+      'scene-layout': 'SCL',
+      'unreal-export': 'UNR',
+      story: 'STORY',
+      comfyui: 'COMFY',
+      model3d: '3D',
+      meshy: 'MESH',
+    }
+    return codes[node.type] || 'NODE'
+  }
+
   const nodeStyle = (
     worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
     worldX: number,
@@ -180,8 +256,33 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
     return nodeImagePreviewUrl(node, 320)
   }
 
+  /**
+   * Returns the CSS color for a compact node's type icon block.
+   * Matches the sci-fi theme's distinct colors per node type.
+   */
+  const compactNodeTypeColor = (node: WorkflowNode): string => {
+    const typeColors: Record<string, string> = {
+      text: '#3f8cfc',
+      'text-merge': '#3f8cfc',
+      image: '#ec4899',
+      'rotate-image': '#ec4899',
+      video: '#34d399',
+      'scene-understanding': '#a855f7',
+      'scene-decompose': '#a855f7',
+      'scene-layout': '#f97322',
+      'unreal-export': '#f97322',
+      story: '#f59e0b',
+      comfyui: '#0ea5e9',
+      model3d: '#3b82f6',
+      meshy: '#0ea5e9',
+      base: '#1f9d84',
+    }
+    return typeColors[node.type] || '#1f9d84'
+  }
+
   return {
     nodeStyle,
+    compactNodeShellStyle,
     compactNodeStyle,
     nodeComponent,
     nodeImagePreviewUrl,
@@ -189,5 +290,9 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
     nodeResourceUrl,
     nodeResourceName,
     compactNodeImageUrl,
+    compactNodeTypeColor,
+    compactNodeTypeChinese,
+    compactNodeTypeGradient,
+    compactNodeTypeCode,
   }
 }
