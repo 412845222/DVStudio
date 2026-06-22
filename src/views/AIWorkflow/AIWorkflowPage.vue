@@ -50,13 +50,23 @@
             :data-node-type="node.type"
             @pointerdown="onCompactNodePointerDown(node.id, $event, vp.screenToWorld)"
           >
+            <!-- Media preview for image nodes only (video uses icon in compact mode) -->
+            <img
+              v-if="['image', 'rotate-image'].includes(node.type) && compactNodeImageUrl(node)"
+              class="aiwf-node-compact-preview"
+              :src="compactNodeImageUrl(node)"
+              :alt="node.type"
+              loading="lazy"
+            />
+
             <!-- Top-right type badge -->
             <span class="aiwf-node-compact-type-badge" :style="{ '--tc': compactNodeTypeColor(node) }">
               {{ compactNodeTypeChinese(node) }}
             </span>
 
-            <!-- Left: type icon block -->
+            <!-- Left: type icon block - only hide for image nodes with preview -->
             <div
+              v-if="!(['image', 'rotate-image'].includes(node.type) && compactNodeImageUrl(node))"
               class="aiwf-node-compact-icon-block"
               :style="{ '--tc': compactNodeTypeColor(node) }"
             >
@@ -5693,6 +5703,14 @@ async function runProjectEnterSequence(
 .aiwf-node-compact.is-secondary-selected {
   border-color: color-mix(in srgb, var(--wf-state-selected-border) 68%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-state-selected-border) 26%, transparent), var(--wf-node-shadow);
+}
+
+.aiwf-node-compact-preview {
+  width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: 4px;
+  opacity: 0.95;
 }
 
 .aiwf-node-compact.is-running {

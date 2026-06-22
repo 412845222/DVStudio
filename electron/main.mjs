@@ -1193,6 +1193,84 @@ async function createWindow() {
 	mainWindow.on('closed', () => {
 		mainWindow = null
 	})
+
+	mainWindow.on('maximize', () => {
+		// 最大化事件处理
+	})
+
+	mainWindow.on('unmaximize', () => {
+		// 还原事件处理
+	})
+}
+
+let windowAnimating = false
+const ANIMATION_DURATION = 200
+let lastNormalBounds = null
+
+function lerp(start, end, t) {
+	return start + (end - start) * t
+}
+
+function easeOutCubic(t) {
+	return 1 - Math.pow(1 - t, 3)
+}
+
+async function animateWindowBounds(win, targetBounds) {
+	if (!win || win.isDestroyed()) return
+	if (windowAnimating) return
+
+	windowAnimating = true
+	const startBounds = win.getBounds()
+	const startX = startBounds.x
+	const startY = startBounds.y
+	const startWidth = startBounds.width
+	const startHeight = startBounds.height
+
+	const startTime = Date.now()
+
+	return new Promise((resolve) => {
+		function animate() {
+			if (!win || win.isDestroyed()) {
+				windowAnimating = false
+				resolve()
+				return
+			}
+
+			const elapsed = Date.now() - startTime
+			const t = Math.min(elapsed / ANIMATION_DURATION, 1)
+			const easedT = easeOutCubic(t)
+
+			const currentX = lerp(startX, targetBounds.x, easedT)
+			const currentY = lerp(startY, targetBounds.y, easedT)
+			const currentWidth = lerp(startWidth, targetBounds.width, easedT)
+			const currentHeight = lerp(startHeight, targetBounds.height, easedT)
+
+			try {
+				win.setBounds({
+					x: Math.round(currentX),
+					y: Math.round(currentY),
+					width: Math.round(currentWidth),
+					height: Math.round(currentHeight),
+				})
+			} catch {
+				// ignore
+			}
+
+			if (t < 1) {
+				requestAnimationFrame(animate)
+			} else {
+				try {
+					win.setBounds(targetBounds)
+				} catch {
+					// ignore
+				}
+				windowAnimating = false
+				resolve()
+			}
+		}
+
+		requestAnimationFrame(animate)
+	})
 }
 
 function registerIpc() {
@@ -1218,9 +1296,28 @@ function registerIpc() {
 	ipcMain.handle('dweb:window:toggleMaximize', async (e) => {
 		const win = getSenderWindow(e)
 		if (!win) return { ok: false, error: 'No window.' }
-		if (win.isMaximized()) win.unmaximize()
-		else win.maximize()
-		return { ok: true, maximized: win.isMaximized() }
+
+		if (windowAnimating) return { ok: false, error: 'Animating.' }
+
+		if (win.isMaximized()) {
+			const targetBounds = lastNormalBounds || { x: 100, y: 100, width: 1280, height: 800 }
+			await animateWindowBounds(win, targetBounds)
+			win.unmaximize()
+			return { ok: true, maximized: false }
+		} else {
+			lastNormalBounds = win.getBounds()
+			const screen = win.getScreen()
+			const display = screen.getDisplayNearestPoint({ x: lastNormalBounds.x, y: lastNormalBounds.y })
+			const workArea = display.workArea
+			await animateWindowBounds(win, {
+				x: workArea.x,
+				y: workArea.y,
+				width: workArea.width,
+				height: workArea.height,
+			})
+			win.maximize()
+			return { ok: true, maximized: true }
+		}
 	})
 
 	ipcMain.handle('dweb:window:isMaximized', async (e) => {
