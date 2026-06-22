@@ -33,6 +33,8 @@ export const useAIWorkflowNodeSettings = (payload: {
       naturalHeight?: number
       cropEnabled?: boolean
       crop?: { x: number; y: number; width: number; height: number }
+      imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+      meshyImageSettings?: Record<string, any>
     }
   ) => {
     payload.store.commit('setNodeImageSettings', { nodeId, imageSettings: input })

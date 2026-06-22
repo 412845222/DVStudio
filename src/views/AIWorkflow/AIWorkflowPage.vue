@@ -356,6 +356,7 @@
           @request-import-package="onRequestImportProjectPackage"
           @request-export="onRequestExportProject"
           @request-export-package="onRequestExportProjectPackage"
+          @open-meshy-task-panel="onOpenMeshyTaskPanel"
         />
 
         <div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
@@ -1004,16 +1005,27 @@ const isStrictLocalRenderableUrl = (rawUrl: string): boolean => {
 }
 
 const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
-  const rel = String(base?.projectRelativePath || '').trim()
+  const relRaw = base?.projectRelativePath
+  const rel = String(typeof relRaw === 'string' && relRaw ? relRaw : '').trim()
   const sourcePath = String(base?.sourcePath || '').trim()
   const currentUrl = String(base?.url || '').trim()
+  
+  console.log('[finalizeGeneratedResourceLocalUrl] input:', {
+    relRaw,
+    rel,
+    sourcePath,
+    currentUrl,
+    currentProjectRootPath: currentProjectRootPath.value,
+  })
 
-  if (rel) {
+  if (rel && rel !== 'undefined' && rel !== 'null') {
     base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
+    console.log('[finalizeGeneratedResourceLocalUrl] using rel:', base.url)
     return
   }
   if (currentUrl.toLowerCase().startsWith('dweb://project-assets')) {
     base.url = currentUrl
+    console.log('[finalizeGeneratedResourceLocalUrl] keeping existing dweb url:', base.url)
     return
   }
   if (sourcePath && isElectron()) {
@@ -1026,6 +1038,7 @@ const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
           const inferredRel = normalizedSource.slice(normalizedRoot.length + 1)
           base.projectRelativePath = inferredRel
           base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(inferredRel)}`
+          console.log('[finalizeGeneratedResourceLocalUrl] inferred from sourcePath:', base.url)
           return
         }
       } catch {
@@ -1034,6 +1047,7 @@ const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
     }
   }
   base.url = ''
+  console.log('[finalizeGeneratedResourceLocalUrl] failed, base.url set to empty')
 }
 
 const downloadAssetViaElectron = async (
@@ -1130,6 +1144,31 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         }
         const pid = Number(currentProjectId.value ?? 0)
         const sourceUrl = String(url || '').trim()
+        
+        // 如果已经是 dweb:// URL，直接使用
+        if (sourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
+          base.url = sourceUrl
+          // 尝试从 dweb URL 中提取 projectRelativePath
+          try {
+            const u = new URL(sourceUrl)
+            const path = u.searchParams.get('path')
+            if (path) {
+              base.projectRelativePath = decodeURIComponent(path)
+            }
+          } catch {
+            // ignore
+          }
+          finalizeGeneratedResourceLocalUrl(base, pid)
+          base.url = String(base.url || '').trim()
+          if (!base.url || !isStrictLocalRenderableUrl(base.url) || !isWorkflowLocalAssetUrl(base.url)) {
+            pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+            return false
+          }
+          store.commit('addResource', base)
+          store.commit('setNodeResource', { nodeId, resourceId })
+          return true
+        }
+        
         if (!(pid > 0) || !sourceUrl) {
           pushToast('图片生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
           return false
@@ -1298,6 +1337,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
 
         return null
       },
+      persistExternalAssetToProject,
     },
     castPayload,
   )
@@ -2812,13 +2852,22 @@ const syncConnectedModel3DTargets = async (fromNodeId: string) => {
 
 const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
   const fromNode = store.state.nodesById[fromNodeId]
-  if (!fromNode || fromNode.type !== 'meshy') return false
-  const settings = fromNode.meshySettings ?? {}
-  const effective = getMeshyEffectiveImageSource(settings)
-  const imageUrls = Array.isArray(effective.imageUrls)
-    ? effective.imageUrls.map((x: any) => String(x ?? '').trim()).filter(Boolean).slice(0, 4)
+  if (!fromNode) return false
+
+  // 根据节点类型读取 meshy 图片设置
+  const getMeshyImageSettings = (node: any): Record<string, any> => {
+    if (node.type === 'image') return node.imageSettings?.meshyImageSettings ?? {}
+    if (node.type === 'model3d') return node.model3dSettings?.meshyModelSettings ?? {}
+    return node.meshySettings ?? {}
+  }
+  const settings = getMeshyImageSettings(fromNode)
+
+  // 从 outputSummary 或直接字段获取图片 URL
+  const outputSummary = settings.outputSummary ?? {}
+  const imageUrls = Array.isArray(outputSummary.imageUrls)
+    ? outputSummary.imageUrls.map((x: any) => String(x ?? '').trim()).filter(Boolean).slice(0, 4)
     : []
-  const fallbackUrl = String(effective.assetUrl || effective.preferredUrl || '').trim()
+  const fallbackUrl = String(outputSummary.assetUrl || outputSummary.preferredUrl || settings.outputAssetUrl || '').trim()
   if (!imageUrls.length && !fallbackUrl) return false
 
   const outputEdges = getOutgoingEdges(fromNodeId).filter((e: any) => {
@@ -2846,7 +2895,7 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 
     const ext = fileExtensionFromUrl(sourceUrl, '.png')
     const anchorSuffix = String((e as any).fromAnchorId ?? 'out-image').replace(/[^a-zA-Z0-9_-]/g, '_')
-    const fileNameBase = `meshy_${String(settings.meshyTaskId ?? fromNode.id).trim() || fromNode.id}_${anchorSuffix}_${targetNodeId}`
+    const fileNameBase = `meshy_${String(settings.taskId ?? fromNode.id).trim() || fromNode.id}_${anchorSuffix}_${targetNodeId}`
     const fileName = `${fileNameBase}${ext}`
 
     let cloned: File | null = null
@@ -2861,10 +2910,10 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
         kind: 'image',
         name: fileName,
         sourceUrl,
-        sourcePath: effective.assetPath || undefined,
+        sourcePath: outputSummary.assetPath || settings.outputAssetPath || undefined,
       })
       const outputUrl = String(persisted?.url || sourceUrl).trim()
-      const outputPath = String(persisted?.absolutePath || effective.assetPath || '').trim()
+      const outputPath = String(persisted?.absolutePath || outputSummary.assetPath || settings.outputAssetPath || '').trim()
       if (!outputUrl) continue
 
       try {
@@ -4879,6 +4928,10 @@ const {
   applyMeshyTaskResult,
   stopMeshyPoll,
 })
+
+const onOpenMeshyTaskPanel = () => {
+  openMeshyTaskDialog()
+}
 
 const {
   videoTaskDialogOpen,

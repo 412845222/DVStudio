@@ -150,6 +150,77 @@
             </button>
           </div>
         </div>
+        <div v-if="params.model === 'nanobanana'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">型号</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in nanobananaModelVersionOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.nanobananaModelVersion === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('nanobananaModelVersion', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">型号</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in meshyImageAiModelOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.meshyImageAiModel === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('meshyImageAiModel', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">姿态模式</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in meshyPoseModeOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.meshyPoseMode === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('meshyPoseMode', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">多视图</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': !params.meshyGenerateMultiView }"
+              :disabled="disabled"
+              @click="updateParam('meshyGenerateMultiView', false)"
+            >
+              关闭
+            </button>
+            <button
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.meshyGenerateMultiView === true }"
+              :disabled="disabled"
+              @click="updateParam('meshyGenerateMultiView', true)"
+            >
+              开启
+            </button>
+          </div>
+        </div>
         <div class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">尺寸</span>
           <div class="bp-node-chat-param-options">
@@ -521,16 +592,96 @@
             </div>
           </div>
           <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">阶段</span>
+            <span class="bp-node-chat-param-label">AI模型</span>
             <div class="bp-node-chat-param-options">
               <button
-                v-for="opt in meshyStageOptions"
+                v-for="opt in meshyAiModelOptions"
                 :key="opt.value"
                 type="button"
                 class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.meshyStage === opt.value }"
+                :class="{ 'is-active': params.meshyAiModel === opt.value }"
                 :disabled="disabled"
-                @click="updateParam('meshyStage', opt.value)"
+                @click="updateParam('meshyAiModel', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">模型类型</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyModelTypeOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyModelType === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyModelType', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">拓扑结构</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyTopologyOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyTopology === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyTopology', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">对称模式</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshySymmetryModeOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshySymmetryMode === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshySymmetryMode', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">原点位置</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyOriginAtOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyOriginAt === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyOriginAt', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">姿态模式</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyPoseModeOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyPoseMode === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyPoseMode', opt.value)"
               >
                 {{ opt.label }}
               </button>
@@ -550,6 +701,30 @@
               >
                 {{ opt.label }}
               </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">高级设置</span>
+            <div class="bp-node-chat-param-advanced">
+              <label class="bp-node-chat-param-toggle">
+                <input
+                  type="checkbox"
+                  :checked="params.meshyMultiView"
+                  :disabled="disabled"
+                  @change="updateParam('meshyMultiView', ($event.target as HTMLInputElement).checked)"
+                />
+                <span>多视图</span>
+              </label>
+              <div class="bp-node-chat-param-seed">
+                <label>种子</label>
+                <input
+                  type="number"
+                  :value="params.meshySeed"
+                  :disabled="disabled"
+                  placeholder="-1 随机"
+                  @input="updateParam('meshySeed', parseInt(($event.target as HTMLInputElement).value) || -1)"
+                />
+              </div>
             </div>
           </div>
         </template>
@@ -587,10 +762,17 @@ import {
   NODE_CHAT_IMAGE_MODEL_OPTIONS,
   NODE_CHAT_VIDEO_MODEL_OPTIONS,
   NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS,
+  NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS,
   NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS,
   NODE_CHAT_SEED_MODEL_VERSION_OPTIONS,
   NODE_CHAT_MESHY_MODE_OPTIONS,
-  NODE_CHAT_MESHY_STAGE_OPTIONS,
+  NODE_CHAT_MESHY_AI_MODEL_OPTIONS,
+  NODE_CHAT_MESHY_IMAGE_OPTIONS,
+  NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS,
+  NODE_CHAT_MESHY_TOPOLOGY_OPTIONS,
+  NODE_CHAT_MESHY_SYMMETRY_MODE_OPTIONS,
+  NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS,
+  NODE_CHAT_MESHY_POSE_MODE_OPTIONS,
   NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
 } from './nodeChatConfig'
 
@@ -646,10 +828,17 @@ const rodinTierOptions = NODE_CHAT_RODIN_TIER_OPTIONS
 const rodinQualityOptions = NODE_CHAT_RODIN_QUALITY_OPTIONS
 const rodinOutputFormatOptions = NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS
 const meshyModeOptions = NODE_CHAT_MESHY_MODE_OPTIONS
-const meshyStageOptions = NODE_CHAT_MESHY_STAGE_OPTIONS
+const meshyAiModelOptions = NODE_CHAT_MESHY_AI_MODEL_OPTIONS
+const meshyModelTypeOptions = NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS
+const meshyTopologyOptions = NODE_CHAT_MESHY_TOPOLOGY_OPTIONS
+const meshySymmetryModeOptions = NODE_CHAT_MESHY_SYMMETRY_MODE_OPTIONS
+const meshyOriginAtOptions = NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS
+const meshyPoseModeOptions = NODE_CHAT_MESHY_POSE_MODE_OPTIONS
 const meshyOutputFormatOptions = NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS
 const seedreamModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
-const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
+const nanobananaModelVersionOptions = NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS
+const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
+const seedanceModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
 </script>
 
 <style scoped>

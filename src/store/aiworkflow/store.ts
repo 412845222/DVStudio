@@ -18,6 +18,8 @@ import type {
 	WorkflowViewport,
 	WorkflowStoryBranch,
 	WorkflowComfyUINodeSettings,
+	WorkflowImageNodeSettings,
+	WorkflowMeshyModelSettings,
 	WorkflowModel3DNodeSettings,
 	WorkflowMeshyNodeSettings,
 	WorkflowMeshyTaskFamily,
@@ -1859,14 +1861,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state,
 			payload: {
 				nodeId: string
-				imageSettings: {
-					outputWidth?: number
-					outputHeight?: number
-					naturalWidth?: number
-					naturalHeight?: number
-					cropEnabled?: boolean
-					crop?: { x: number; y: number; width: number; height: number }
-				}
+				imageSettings: Partial<WorkflowImageNodeSettings>
 			}
 		) {
 			const id = String(payload?.nodeId ?? '').trim()
@@ -1894,6 +1889,59 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					}
 					: undefined
 
+			const imageGenerationSource =
+				next.imageGenerationSource === 'upload' || next.imageGenerationSource === 'comfyui' || next.imageGenerationSource === 'meshy'
+					? next.imageGenerationSource
+					: undefined
+
+			const meshyImageSettingsRaw = next.meshyImageSettings
+			const meshyImageSettings =
+				meshyImageSettingsRaw && typeof meshyImageSettingsRaw === 'object'
+					? {
+						prompt: typeof meshyImageSettingsRaw.prompt === 'string' ? meshyImageSettingsRaw.prompt : undefined,
+						negativePrompt: typeof meshyImageSettingsRaw.negativePrompt === 'string' ? meshyImageSettingsRaw.negativePrompt : undefined,
+						seed: Number.isFinite(Number(meshyImageSettingsRaw.seed)) ? Number(meshyImageSettingsRaw.seed) : undefined,
+						aiModel:
+							meshyImageSettingsRaw.aiModel === 'nano-banana' || meshyImageSettingsRaw.aiModel === 'nano-banana-pro'
+								? meshyImageSettingsRaw.aiModel
+								: undefined,
+						generateMultiView: typeof meshyImageSettingsRaw.generateMultiView === 'boolean' ? Boolean(meshyImageSettingsRaw.generateMultiView) : undefined,
+						aspectRatio: typeof meshyImageSettingsRaw.aspectRatio === 'string' ? meshyImageSettingsRaw.aspectRatio : undefined,
+						outputImageCount: Number.isFinite(Number(meshyImageSettingsRaw.outputImageCount))
+							? (Math.max(1, Math.min(4, Math.floor(Number(meshyImageSettingsRaw.outputImageCount)))) as 1 | 2 | 3 | 4)
+							: undefined,
+						poseMode:
+							meshyImageSettingsRaw.poseMode === '' || meshyImageSettingsRaw.poseMode === 'a-pose' || meshyImageSettingsRaw.poseMode === 't-pose'
+								? meshyImageSettingsRaw.poseMode
+								: undefined,
+						taskId: typeof meshyImageSettingsRaw.taskId === 'string' ? meshyImageSettingsRaw.taskId : undefined,
+						taskStatus:
+							meshyImageSettingsRaw.taskStatus === 'idle' ||
+							meshyImageSettingsRaw.taskStatus === 'pending' ||
+							meshyImageSettingsRaw.taskStatus === 'running' ||
+							meshyImageSettingsRaw.taskStatus === 'succeeded' ||
+							meshyImageSettingsRaw.taskStatus === 'failed' ||
+							meshyImageSettingsRaw.taskStatus === 'canceled'
+								? meshyImageSettingsRaw.taskStatus
+								: undefined,
+						progress: Number.isFinite(Number(meshyImageSettingsRaw.progress)) ? Number(meshyImageSettingsRaw.progress) : undefined,
+						statusText: typeof meshyImageSettingsRaw.statusText === 'string' ? meshyImageSettingsRaw.statusText : undefined,
+						errorMessage: typeof meshyImageSettingsRaw.errorMessage === 'string' ? meshyImageSettingsRaw.errorMessage : undefined,
+						outputSummary:
+							meshyImageSettingsRaw.outputSummary && typeof meshyImageSettingsRaw.outputSummary === 'object'
+								? {
+									preferredUrl: typeof meshyImageSettingsRaw.outputSummary.preferredUrl === 'string' ? meshyImageSettingsRaw.outputSummary.preferredUrl : undefined,
+									imageUrls: Array.isArray(meshyImageSettingsRaw.outputSummary.imageUrls)
+										? meshyImageSettingsRaw.outputSummary.imageUrls.map((x: any) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
+										: undefined,
+									assetUrl: typeof meshyImageSettingsRaw.outputSummary.assetUrl === 'string' ? meshyImageSettingsRaw.outputSummary.assetUrl : undefined,
+									assetPath: typeof meshyImageSettingsRaw.outputSummary.assetPath === 'string' ? meshyImageSettingsRaw.outputSummary.assetPath : undefined,
+									thumbnailUrl: typeof meshyImageSettingsRaw.outputSummary.thumbnailUrl === 'string' ? meshyImageSettingsRaw.outputSummary.thumbnailUrl : undefined,
+								}
+								: undefined,
+					}
+					: undefined
+
 			n.imageSettings = {
 				...(n.imageSettings ?? {}),
 				...(outW != null ? { outputWidth: outW } : {}),
@@ -1902,6 +1950,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				...(natH != null ? { naturalHeight: natH } : {}),
 				...(cropEnabled != null ? { cropEnabled } : {}),
 				...(crop ? { crop } : {}),
+				...(imageGenerationSource != null ? { imageGenerationSource } : {}),
+				...(meshyImageSettings ? { meshyImageSettings } : {}),
 			}
 		},
 		setNodeModel3DSettings(state, payload: { nodeId: string; model3dSettings: Partial<WorkflowModel3DNodeSettings> }) {
@@ -1912,6 +1962,98 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const next = payload?.model3dSettings
 			if (!next || typeof next !== 'object') return
 
+			const modelGenerationSource =
+				next.modelGenerationSource === 'upload' || next.modelGenerationSource === 'comfyui' || next.modelGenerationSource === 'meshy'
+					? next.modelGenerationSource
+					: undefined
+
+			const meshyModelSettingsRaw = next.meshyModelSettings
+			const meshyModelSettings =
+				meshyModelSettingsRaw && typeof meshyModelSettingsRaw === 'object'
+					? {
+						prompt: typeof meshyModelSettingsRaw.prompt === 'string' ? meshyModelSettingsRaw.prompt : undefined,
+						negativePrompt: typeof meshyModelSettingsRaw.negativePrompt === 'string' ? meshyModelSettingsRaw.negativePrompt : undefined,
+						seed: Number.isFinite(Number(meshyModelSettingsRaw.seed)) ? Number(meshyModelSettingsRaw.seed) : undefined,
+						aiModel:
+							meshyModelSettingsRaw.aiModel === 'latest' ||
+							meshyModelSettingsRaw.aiModel === 'meshy-6' ||
+							meshyModelSettingsRaw.aiModel === 'meshy-5'
+								? meshyModelSettingsRaw.aiModel
+								: undefined,
+						taskFamily:
+							meshyModelSettingsRaw.taskFamily === 'text-to-3d' ||
+							meshyModelSettingsRaw.taskFamily === 'image-to-3d' ||
+							meshyModelSettingsRaw.taskFamily === 'multi-image-to-3d' ||
+							meshyModelSettingsRaw.taskFamily === 'retexture'
+								? meshyModelSettingsRaw.taskFamily
+								: undefined,
+						modelType: meshyModelSettingsRaw.modelType === 'standard' || meshyModelSettingsRaw.modelType === 'lowpoly' ? meshyModelSettingsRaw.modelType : undefined,
+						topology: meshyModelSettingsRaw.topology === 'triangle' || meshyModelSettingsRaw.topology === 'quad' ? meshyModelSettingsRaw.topology : undefined,
+						targetPolycount: Number.isFinite(Number(meshyModelSettingsRaw.targetPolycount))
+							? Math.max(0, Math.floor(Number(meshyModelSettingsRaw.targetPolycount)))
+							: undefined,
+						symmetryMode:
+							meshyModelSettingsRaw.symmetryMode === 'auto' || meshyModelSettingsRaw.symmetryMode === 'on' || meshyModelSettingsRaw.symmetryMode === 'off'
+								? meshyModelSettingsRaw.symmetryMode
+								: undefined,
+						shouldRemesh: typeof meshyModelSettingsRaw.shouldRemesh === 'boolean' ? Boolean(meshyModelSettingsRaw.shouldRemesh) : undefined,
+						savePreRemeshedModel: typeof meshyModelSettingsRaw.savePreRemeshedModel === 'boolean' ? Boolean(meshyModelSettingsRaw.savePreRemeshedModel) : undefined,
+						shouldTexture: typeof meshyModelSettingsRaw.shouldTexture === 'boolean' ? Boolean(meshyModelSettingsRaw.shouldTexture) : undefined,
+						enablePbr: typeof meshyModelSettingsRaw.enablePbr === 'boolean' ? Boolean(meshyModelSettingsRaw.enablePbr) : undefined,
+						texturePrompt: typeof meshyModelSettingsRaw.texturePrompt === 'string' ? meshyModelSettingsRaw.texturePrompt : undefined,
+						textureImageUrl: typeof meshyModelSettingsRaw.textureImageUrl === 'string' ? meshyModelSettingsRaw.textureImageUrl : undefined,
+						poseMode:
+							meshyModelSettingsRaw.poseMode === '' || meshyModelSettingsRaw.poseMode === 'a-pose' || meshyModelSettingsRaw.poseMode === 't-pose'
+								? meshyModelSettingsRaw.poseMode
+								: undefined,
+						autoSize: typeof meshyModelSettingsRaw.autoSize === 'boolean' ? Boolean(meshyModelSettingsRaw.autoSize) : undefined,
+						originAt: meshyModelSettingsRaw.originAt === 'bottom' || meshyModelSettingsRaw.originAt === 'center' ? meshyModelSettingsRaw.originAt : undefined,
+						moderation: typeof meshyModelSettingsRaw.moderation === 'boolean' ? Boolean(meshyModelSettingsRaw.moderation) : undefined,
+						imageEnhancement: typeof meshyModelSettingsRaw.imageEnhancement === 'boolean' ? Boolean(meshyModelSettingsRaw.imageEnhancement) : undefined,
+						removeLighting: typeof meshyModelSettingsRaw.removeLighting === 'boolean' ? Boolean(meshyModelSettingsRaw.removeLighting) : undefined,
+						targetFormats: Array.isArray(meshyModelSettingsRaw.targetFormats)
+							? meshyModelSettingsRaw.targetFormats.map((x: any) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
+							: undefined,
+						imageUrl: typeof meshyModelSettingsRaw.imageUrl === 'string' ? meshyModelSettingsRaw.imageUrl : undefined,
+						imageUrls: Array.isArray(meshyModelSettingsRaw.imageUrls)
+							? meshyModelSettingsRaw.imageUrls.map((x: any) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
+							: undefined,
+						taskId: typeof meshyModelSettingsRaw.taskId === 'string' ? meshyModelSettingsRaw.taskId : undefined,
+						taskStatus:
+							meshyModelSettingsRaw.taskStatus === 'idle' ||
+							meshyModelSettingsRaw.taskStatus === 'pending' ||
+							meshyModelSettingsRaw.taskStatus === 'running' ||
+							meshyModelSettingsRaw.taskStatus === 'succeeded' ||
+							meshyModelSettingsRaw.taskStatus === 'failed' ||
+							meshyModelSettingsRaw.taskStatus === 'canceled'
+								? meshyModelSettingsRaw.taskStatus
+								: undefined,
+						progress: Number.isFinite(Number(meshyModelSettingsRaw.progress)) ? Number(meshyModelSettingsRaw.progress) : undefined,
+						statusText: typeof meshyModelSettingsRaw.statusText === 'string' ? meshyModelSettingsRaw.statusText : undefined,
+						errorMessage: typeof meshyModelSettingsRaw.errorMessage === 'string' ? meshyModelSettingsRaw.errorMessage : undefined,
+						outputSummary:
+							meshyModelSettingsRaw.outputSummary && typeof meshyModelSettingsRaw.outputSummary === 'object'
+								? {
+									preferredUrl: typeof meshyModelSettingsRaw.outputSummary.preferredUrl === 'string' ? meshyModelSettingsRaw.outputSummary.preferredUrl : undefined,
+									assetUrl: typeof meshyModelSettingsRaw.outputSummary.assetUrl === 'string' ? meshyModelSettingsRaw.outputSummary.assetUrl : undefined,
+									assetPath: typeof meshyModelSettingsRaw.outputSummary.assetPath === 'string' ? meshyModelSettingsRaw.outputSummary.assetPath : undefined,
+									thumbnailUrl: typeof meshyModelSettingsRaw.outputSummary.thumbnailUrl === 'string' ? meshyModelSettingsRaw.outputSummary.thumbnailUrl : undefined,
+									format: typeof meshyModelSettingsRaw.outputSummary.format === 'string' ? meshyModelSettingsRaw.outputSummary.format : undefined,
+								}
+								: undefined,
+						relationKind:
+							meshyModelSettingsRaw.relationKind === 'model' ||
+							meshyModelSettingsRaw.relationKind === 'texture' ||
+							meshyModelSettingsRaw.relationKind === 'rigging' ||
+							meshyModelSettingsRaw.relationKind === 'animation'
+								? meshyModelSettingsRaw.relationKind
+								: undefined,
+						rootTaskId: typeof meshyModelSettingsRaw.rootTaskId === 'string' ? meshyModelSettingsRaw.rootTaskId : undefined,
+						parentTaskId: typeof meshyModelSettingsRaw.parentTaskId === 'string' ? meshyModelSettingsRaw.parentTaskId : undefined,
+						previewTaskId: typeof meshyModelSettingsRaw.previewTaskId === 'string' ? meshyModelSettingsRaw.previewTaskId : undefined,
+					}
+					: undefined
+
 			const patch: Partial<WorkflowModel3DNodeSettings> = { ...next }
 			if (patch.lightIntensity != null) patch.lightIntensity = Math.max(0, Math.min(10, Number(patch.lightIntensity) || 0))
 			if (patch.renderWidth != null) patch.renderWidth = Math.max(1, Math.floor(Number(patch.renderWidth) || 1))
@@ -1919,6 +2061,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 
 			n.model3dSettings = {
 				...(n.model3dSettings ?? {}),
+				...(modelGenerationSource != null ? { modelGenerationSource } : {}),
+				...(meshyModelSettings ? { meshyModelSettings } : {}),
 				...patch,
 			}
 		},

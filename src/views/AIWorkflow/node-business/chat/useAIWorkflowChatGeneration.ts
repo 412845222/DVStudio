@@ -31,6 +31,9 @@ type ChatBridgeService = {
   jimengImageGenerateStream: (form: FormData) => AsyncIterable<any>
   jimengVideoGenerateStream: (form: FormData) => AsyncIterable<any>
   seedanceGenerateStream: (form: FormData) => AsyncIterable<any>
+  meshyGenerate: (payload: Record<string, any>) => Promise<any>
+  meshyGenerateImage: (form: FormData) => Promise<any>
+  meshyTask: (taskId: string, mode: string) => Promise<any>
 }
 
 export const useAIWorkflowChatGeneration = (payload: {
@@ -629,11 +632,141 @@ export const useAIWorkflowChatGeneration = (payload: {
         finalPrompt = `${prompt}\n\n${relLines.join('\n')}`
       }
 
-      const ar = String(input?.config?.aspectRatio ?? '').trim()
+      const ar = String(input?.config?.aspectRatio ?? input?.config?.meshyAspectRatio ?? '').trim()
       const selectedImageModel = String((input as any)?.config?.imageModel ?? '').trim()
+      const selectedMeshyAiModel = String((input as any)?.config?.meshyImageAiModel ?? '').trim()
+      const meshyPoseMode = String((input as any)?.config?.meshyPoseMode ?? '').trim()
+      const meshyGenerateMultiView = Boolean((input as any)?.config?.meshyGenerateMultiView)
       const isSeedreamModel = selectedImageModel.startsWith('doubao-seedream-')
       const isJimengImageModel = selectedImageModel.startsWith('jimeng-image-')
-      const imageEngineLabel = isJimengImageModel ? '即梦图片' : isSeedreamModel ? 'Seedream' : 'NanoBanana'
+      const isMeshyModel = selectedImageModel === 'meshy'
+      const imageEngineLabel = isJimengImageModel ? '即梦图片' : isSeedreamModel ? 'Seedream' : isMeshyModel ? 'Meshy' : 'NanoBanana'
+
+      let completedCount = 0
+      let failedCount = 0
+      const updateProgressStatus = () => {
+        payload.nanoStatus.value = `并发请求中（${completedCount}/${requestCount}）`
+        if (completedCount >= requestCount) {
+          const successCount = requestCount - failedCount
+          payload.nanoStatus.value = failedCount > 0 ? `完成（成功 ${successCount}，失败 ${failedCount}）` : '完成'
+        }
+      }
+
+      if (isMeshyModel) {
+        const hasRefImages = refFiles.length > 0
+        const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
+        
+        // 使用官方 API 参数名（小写下划线格式）
+        const meshyPayload: Record<string, any> = {
+          mode: taskType,
+          prompt: finalPrompt,
+          ai_model: selectedMeshyAiModel || 'nano-banana',
+        }
+
+        // text-to-image 特有参数
+        if (!hasRefImages) {
+          if (ar) meshyPayload.aspect_ratio = ar
+          if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
+          if (meshyGenerateMultiView) meshyPayload.generate_multi_view = true
+        }
+
+        if (hasRefImages) {
+          const form = new FormData()
+          for (const key of Object.keys(meshyPayload)) {
+            form.set(key, String(meshyPayload[key]))
+          }
+          for (const r of refFiles) {
+            form.append('refImages', r.file, r.file.name)
+          }
+          
+          const meshyService = svc as any
+          const res = await meshyService.meshyGenerateImage(form)
+          if (res.ok) {
+            const taskId = String(res.taskId || '').trim()
+            if (taskId) {
+              appendNanoDetail(`Meshy 任务已创建：${taskId}`)
+              payload.nanoStatus.value = `任务已创建（${taskId}）`
+              
+              const pollStatus = async () => {
+                const taskRes = await meshyService.meshyTask(taskId, taskType)
+                if (taskRes.ok) {
+                  const status = String(taskRes.status || '').trim().toUpperCase()
+                  const progress = Number(taskRes.progress || 0)
+                  payload.nanoStatus.value = status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
+                  
+                  if (status === 'SUCCEEDED') {
+                    const imageUrl = taskRes.preferredImageUrl || taskRes.imageUrls?.[0]
+                    if (imageUrl) {
+                      const resolvedUrl = payload.resolveBackendUrl(imageUrl)
+                      payload.nanoPreviewUrl.value = resolvedUrl
+                      payload.nanoPreviewUrls.value = [resolvedUrl]
+                      payload.nanoPreviewLoadingStates.value = [false]
+                      payload.nanoModelUsed.value = selectedMeshyAiModel
+                    }
+                  } else if (status === 'FAILED') {
+                    const errorMsg = String(taskRes.errorMessage || '未知错误')
+                    payload.pushToast(`Meshy 生成失败：${errorMsg}`, 'warn')
+                    appendNanoDetail(`错误：${errorMsg}`)
+                  } else if (status !== 'CANCELED') {
+                    setTimeout(pollStatus, 2000)
+                  }
+                }
+              }
+              pollStatus()
+            }
+          } else {
+            const errMsg = String(res.error || 'Meshy 请求失败')
+            payload.pushToast(`Meshy 生成失败：${errMsg}`, 'warn')
+            appendNanoDetail(`错误：${errMsg}`)
+          }
+          completedCount = 1
+          updateProgressStatus()
+          return
+        } else {
+          const res = await (svc as any).meshyGenerate(meshyPayload)
+          if (res.ok) {
+            const taskId = String(res.taskId || '').trim()
+            if (taskId) {
+              appendNanoDetail(`Meshy 任务已创建：${taskId}`)
+              payload.nanoStatus.value = `任务已创建（${taskId}）`
+              
+              const pollStatus = async () => {
+                const taskRes = await (svc as any).meshyTask(taskId, taskType)
+                if (taskRes.ok) {
+                  const status = String(taskRes.status || '').trim().toUpperCase()
+                  const progress = Number(taskRes.progress || 0)
+                  payload.nanoStatus.value = status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
+                  
+                  if (status === 'SUCCEEDED') {
+                    const imageUrl = taskRes.preferredImageUrl || taskRes.imageUrls?.[0]
+                    if (imageUrl) {
+                      const resolvedUrl = payload.resolveBackendUrl(imageUrl)
+                      payload.nanoPreviewUrl.value = resolvedUrl
+                      payload.nanoPreviewUrls.value = [resolvedUrl]
+                      payload.nanoPreviewLoadingStates.value = [false]
+                      payload.nanoModelUsed.value = selectedMeshyAiModel
+                    }
+                  } else if (status === 'FAILED') {
+                    const errorMsg = String(taskRes.errorMessage || '未知错误')
+                    payload.pushToast(`Meshy 生成失败：${errorMsg}`, 'warn')
+                    appendNanoDetail(`错误：${errorMsg}`)
+                  } else if (status !== 'CANCELED') {
+                    setTimeout(pollStatus, 2000)
+                  }
+                }
+              }
+              pollStatus()
+            }
+          } else {
+            const errMsg = String(res.error || 'Meshy 请求失败')
+            payload.pushToast(`Meshy 生成失败：${errMsg}`, 'warn')
+            appendNanoDetail(`错误：${errMsg}`)
+          }
+          completedCount = 1
+          updateProgressStatus()
+          return
+        }
+      }
 
       let cachedRefIds: string[] = []
       let useDirectRefUpload = isJimengImageModel
@@ -656,15 +789,6 @@ export const useAIWorkflowChatGeneration = (payload: {
           appendNanoDetail(`警告：${warnMsg}`)
           payload.pushToast(`${imageEngineLabel}：${warnMsg}`, 'warn')
           useDirectRefUpload = true
-        }
-      }
-      let completedCount = 0
-      let failedCount = 0
-      const updateProgressStatus = () => {
-        payload.nanoStatus.value = `并发请求中（${completedCount}/${requestCount}）`
-        if (completedCount >= requestCount) {
-          const successCount = requestCount - failedCount
-          payload.nanoStatus.value = failedCount > 0 ? `完成（成功 ${successCount}，失败 ${failedCount}）` : '完成'
         }
       }
 

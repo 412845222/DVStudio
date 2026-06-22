@@ -82,6 +82,23 @@
         </svg>
         <span class="aiwf-floating-rail__label">日志</span>
       </button>
+
+      <span class="aiwf-floating-rail__sep" aria-hidden="true"></span>
+
+      <button
+        class="aiwf-floating-rail__btn"
+        :class="{ active: activePanel === 'tasks' }"
+        type="button"
+        title="任务"
+        @click.stop="togglePanel('tasks')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3 4h10v8H3z" />
+          <path d="M5 7h6M5 9h4" />
+        </svg>
+        <span class="aiwf-floating-rail__label">任务</span>
+        <span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
+      </button>
     </nav>
 
     <Transition name="aiwf-floating-rail-popover">
@@ -128,6 +145,33 @@
           <div v-else class="aiwf-floating-rail-popover__empty">暂无资源</div>
           <button class="aiwf-floating-rail-popover__item is-footer" type="button" @click="emitThenClose('open-resource-manager')">
             打开完整资源管理器
+          </button>
+        </template>
+
+        <template v-else-if="activePanel === 'tasks'">
+          <div class="aiwf-floating-rail-popover__head">
+            <span>任务管理</span>
+          </div>
+          <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('open-meshy-task-panel')">
+            <svg viewBox="0 0 16 16" aria-hidden="true" class="aiwf-floating-rail-popover__icon">
+              <path d="M12 3L8 7 4 3H2v10h12V3h-2z" />
+              <path d="M8 7v6" />
+            </svg>
+            <span>Meshy</span>
+          </button>
+          <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('open-gemini-task-panel')">
+            <svg viewBox="0 0 16 16" aria-hidden="true" class="aiwf-floating-rail-popover__icon">
+              <circle cx="8" cy="8" r="6" />
+              <path d="M8 3v6M3 8h6" />
+            </svg>
+            <span>Gemini</span>
+          </button>
+          <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('open-seedream-task-panel')">
+            <svg viewBox="0 0 16 16" aria-hidden="true" class="aiwf-floating-rail-popover__icon">
+              <rect x="2" y="4" width="12" height="8" rx="2" />
+              <path d="M6 8h4" />
+            </svg>
+            <span>字节方舟</span>
           </button>
         </template>
       </section>
@@ -708,6 +752,8 @@ onBeforeUnmount(() => {
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -750,6 +796,22 @@ onBeforeUnmount(() => {
   color: var(--theme-text-muted, #aeb8bd);
   text-align: center;
   font-size: 12px;
+}
+
+.aiwf-floating-rail-popover__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-right: 8px;
+}
+
+.aiwf-floating-rail-popover__icon path,
+.aiwf-floating-rail-popover__icon circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .aiwf-floating-rail-popover-enter-active,
