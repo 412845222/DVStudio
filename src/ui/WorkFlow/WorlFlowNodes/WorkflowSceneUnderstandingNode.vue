@@ -430,7 +430,7 @@ onMounted(() => {
 .wf-scene-understand-footer,
 .wf-scene-understand-output-shell {
   border: 1px solid var(--vscode-border);
-  background: rgba(15, 23, 32, 0.84);
+  background: var(--dweb-defualt);
   border-radius: 0;
   padding: 10px;
 }

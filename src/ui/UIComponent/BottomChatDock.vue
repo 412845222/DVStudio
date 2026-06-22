@@ -49,24 +49,12 @@
           <button
             class="chat-history-minimize"
             type="button"
-            title="最小化"
+            title="关闭"
             @pointerdown.stop
             @click.stop="requestCollapse"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 12h12v2H6z" />
-            </svg>
-          </button>
-          <button
-            class="chat-history-expand"
-            type="button"
-            :title="historyExpanded ? '还原高度' : '放大高度'"
-            @click="toggleHistory"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M7 3H3v4h2V5h2V3zm14 0h-4v2h2v2h2V3zM5 17H3v4h4v-2H5v-2zm16 0h-2v2h-2v2h4v-4z"
-              />
+              <path d="M6 6l12 12M6 18L18 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" />
             </svg>
           </button>
         </div>
@@ -1448,26 +1436,26 @@ watch(
   -webkit-backdrop-filter: blur(14px) saturate(140%);
 }
 
-.chat-dock::before,
-.chat-dock::after {
+.chat-dock:not(.collapsed)::before,
+.chat-dock:not(.collapsed)::after {
   content: "";
   position: absolute;
   pointer-events: none;
-  z-index: 3;
+  z-index: 10;
   width: 14px;
   height: 14px;
   border: 2px solid var(--wf-primary, #1f9d84);
   box-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
 }
 
-.chat-dock::before {
+.chat-dock:not(.collapsed)::before {
   top: -2px;
   left: -2px;
   border-right: none;
   border-bottom: none;
 }
 
-.chat-dock::after {
+.chat-dock:not(.collapsed)::after {
   bottom: -2px;
   right: -2px;
   border-left: none;
@@ -2193,19 +2181,6 @@ watch(
   text-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
 }
 
-.chat-history-expand {
-  width: 34px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
-  background: color-mix(in srgb, var(--wf-surface-base, rgba(21,24,28,0.9)) 88%, transparent);
-  color: var(--wf-text, #edf2f4);
-  border-radius: 2px;
-  cursor: pointer;
-  transition: border-color 220ms ease, color 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
-}
-
 .chat-history-minimize {
   width: 34px;
   height: 28px;
@@ -2219,7 +2194,6 @@ watch(
   transition: border-color 220ms ease, color 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
 }
 
-.chat-history-expand:hover,
 .chat-history-minimize:hover {
   border-color: var(--wf-primary, #1f9d84);
   color: var(--wf-primary, #1f9d84);
@@ -2227,16 +2201,9 @@ watch(
   background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
 }
 
-.chat-history-expand svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
-}
-
 .chat-history-minimize svg {
   width: 18px;
   height: 18px;
-  fill: currentColor;
 }
 
 .chat-history-body {

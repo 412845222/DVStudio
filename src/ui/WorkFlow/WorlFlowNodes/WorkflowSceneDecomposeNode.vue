@@ -374,9 +374,9 @@ const onPreviewListWheel = (event: WheelEvent) => {
 .wf-scene-decompose-output-shell,
 .wf-scene-decompose-preview-item,
 .wf-scene-decompose-footer {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--vscode-border);
   border-radius: 0;
-  background: rgba(10, 12, 16, 0.34);
+  background: var(--dweb-defualt);
 }
 
 .wf-scene-decompose-card {
@@ -385,7 +385,7 @@ const onPreviewListWheel = (event: WheelEvent) => {
 }
 
 .wf-scene-decompose-card.accent {
-  background: linear-gradient(180deg, rgba(255, 165, 0, 0.14), rgba(255, 255, 255, 0.04));
+  background: rgba(255, 165, 0, 0.14);
 }
 
 .wf-scene-decompose-card-title,

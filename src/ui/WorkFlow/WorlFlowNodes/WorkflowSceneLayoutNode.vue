@@ -1285,7 +1285,7 @@ defineExpose({
   border: 1px solid var(--vscode-border);
   border-radius: 12px;
   overflow: hidden;
-  background: #0b1220;
+  background: var(--dweb-defualt);
 }
 
 .wf-scene-layout-overlay-tools {
@@ -1298,7 +1298,7 @@ defineExpose({
 }
 
 .wf-scene-layout-overlay-btn {
-  background: rgba(15, 23, 32, 0.72);
+  background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
 }
 
@@ -1321,7 +1321,7 @@ defineExpose({
   padding: 12px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 12px;
-  background: rgba(8, 15, 26, 0.82);
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(10px);
   z-index: 3;
 }
@@ -1349,7 +1349,7 @@ defineExpose({
   padding: 10px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 12px;
-  background: rgba(8, 15, 26, 0.82);
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(10px);
 }
 
@@ -1437,7 +1437,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: linear-gradient(180deg, rgba(11, 18, 32, 0.55), rgba(11, 18, 32, 0.8));
+  background: rgba(0, 0, 0, 0.4);
   text-align: center;
   padding: 16px;
 }
@@ -1492,7 +1492,7 @@ defineExpose({
 
 .wf-scene-layout-footer {
   border: 1px solid var(--vscode-border);
-  background: rgba(15, 23, 32, 0.84);
+  background: var(--dweb-defualt);
   border-radius: 10px;
   padding: 10px;
   display: flex;
