@@ -42,7 +42,7 @@ export const isWeb = () => getRuntimePlatform() === 'web'
 
 // Convenience for exposing debug info to the in-browser debug panel.
 export const runtimeDescription = (): Record<string, string> => {
-  const base = (typeof window !== 'undefined' && (window as any).__DWEB_BACKEND_BASE_URL) || ''
+  const base = (typeof window !== 'undefined' && (window as any).__DWEB_BACKEND_BASE_URL__) || ''
   return {
     platform: getRuntimePlatform(),
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',

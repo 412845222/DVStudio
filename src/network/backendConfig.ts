@@ -21,7 +21,7 @@ export const getBackendBaseUrl = (): string => {
 
 	// Electron 下必须优先使用 preload 注入的实时后端地址，
 	// 避免 localStorage 里的历史值（例如 5800 的旧服务）导致请求打到错误后端。
-	const fromWindow = typeof w?.__DWEB_BACKEND_BASE_URL === 'string' ? w.__DWEB_BACKEND_BASE_URL : ''
+	const fromWindow = typeof w?.__DWEB_BACKEND_BASE_URL__ === 'string' ? w.__DWEB_BACKEND_BASE_URL__ : ''
 	const fromEnv = (import.meta as any)?.env?.VITE_BACKEND_BASE_URL ?? ''
 	const fromStorage = localStorage.getItem(STORAGE_KEY) ?? ''
 	if (isElectronRuntime) {
