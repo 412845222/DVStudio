@@ -789,6 +789,8 @@ defineExpose({
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -831,6 +833,22 @@ defineExpose({
   color: var(--theme-text-muted, #aeb8bd);
   text-align: center;
   font-size: 12px;
+}
+
+.aiwf-floating-rail-popover__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-right: 8px;
+}
+
+.aiwf-floating-rail-popover__icon path,
+.aiwf-floating-rail-popover__icon circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .aiwf-floating-rail-popover-enter-active,
