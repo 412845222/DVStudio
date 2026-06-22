@@ -31,6 +31,15 @@
             </button>
           </header>
 
+          <!-- HUD scanline animation layer -->
+          <div class="nsm-hud-scanlines" aria-hidden="true"></div>
+
+          <!-- Sci-fi L corner brackets -->
+          <span class="nsm-bracket nsm-bracket-tl" aria-hidden="true"></span>
+          <span class="nsm-bracket nsm-bracket-tr" aria-hidden="true"></span>
+          <span class="nsm-bracket nsm-bracket-bl" aria-hidden="true"></span>
+          <span class="nsm-bracket nsm-bracket-br" aria-hidden="true"></span>
+
           <div class="dweb-add-node-modal__search">
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <circle cx="7" cy="7" r="4.2" />
@@ -481,11 +490,21 @@ watch(
 </script>
 
 <style scoped>
+/* ============================================================
+   DwebCanvasNodeSearchMenu — Sci-Fi / Cyber Futuristic Style
+   Uses --wf-primary, --wf-*, --theme-accent tokens
+   ============================================================ */
+
+/* ── Backdrop ── */
 .dweb-add-node-modal__backdrop {
   position: fixed;
   inset: 0;
-  z-index: 130;
-  background: var(--wf-overlay-bg);
+  z-index: 9500;
+  background:
+    radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent) 0%, transparent 55%),
+    rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -493,35 +512,111 @@ watch(
   overflow: hidden;
 }
 
+/* ── Modal container ── */
 .dweb-add-node-modal {
+  position: relative;
   width: min(640px, calc(100vw - 32px));
   max-height: calc(86vh - 16px);
   display: flex;
   flex-direction: column;
-  background: var(--wf-surface-raised);
-  border: 1px solid var(--wf-border);
-  border-radius: 0;
-  box-shadow: var(--wf-panel-shadow-strong);
-  color: var(--wf-text);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--wf-surface-raised, rgba(29, 34, 39, 0.94)) 99%, transparent),
+      color-mix(in srgb, var(--wf-surface-raised, rgba(29, 34, 39, 0.94)) 92%, transparent)
+    ),
+    var(--wf-surface-raised, rgba(29, 34, 39, 0.94));
+  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 48%, transparent);
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent),
+    0 0 28px color-mix(in srgb, var(--wf-primary, #1f9d84) 18%, transparent),
+    0 24px 64px rgba(0, 0, 0, 0.5);
+  color: var(--wf-text, #edf2f4);
   overflow: hidden;
-  animation: dweb-add-node-modal-pop 140ms cubic-bezier(0.2, 0.75, 0.2, 1);
+  animation: dweb-add-node-modal-pop 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
 }
 
+/* Top pulse glow line */
+.dweb-add-node-modal::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--wf-primary, #1f9d84) 72%, transparent) 50%,
+    transparent 100%
+  );
+  box-shadow: 0 0 8px var(--wf-primary, #1f9d84);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ── Sci-fi L corner brackets ── */
+.nsm-bracket {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.nsm-bracket-tl { top: -2px; left: -2px; border-top: 1.5px solid var(--wf-primary, #1f9d84); border-left: 1.5px solid var(--wf-primary, #1f9d84); }
+.nsm-bracket-tr { top: -2px; right: -2px; border-top: 1.5px solid var(--wf-primary, #1f9d84); border-right: 1.5px solid var(--wf-primary, #1f9d84); }
+.nsm-bracket-bl { bottom: -2px; left: -2px; border-bottom: 1.5px solid var(--wf-primary, #1f9d84); border-left: 1.5px solid var(--wf-primary, #1f9d84); }
+.nsm-bracket-br { bottom: -2px; right: -2px; border-bottom: 1.5px solid var(--wf-primary, #1f9d84); border-right: 1.5px solid var(--wf-primary, #1f9d84); }
+.dweb-add-node-modal:hover .nsm-bracket {
+  opacity: 1;
+}
+
+/* ── HUD scanline overlay ── */
+.nsm-hud-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 240ms ease;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    color-mix(in srgb, var(--wf-primary, #1f9d84) 3%, transparent) 3px,
+    color-mix(in srgb, var(--wf-primary, #1f9d84) 3%, transparent) 4px
+  );
+}
+
+.dweb-add-node-modal:hover .nsm-hud-scanlines {
+  opacity: 0.3;
+}
+
+/* ── Header ── */
 .dweb-add-node-modal__header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 40px;
   padding: 0 10px 0 14px;
-  border-bottom: 1px solid var(--wf-border-subtle);
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent);
+  z-index: 2;
 }
 
 .dweb-add-node-modal__title {
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.2;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 28%, transparent);
 }
 
 .dweb-add-node-modal__close {
@@ -530,19 +625,25 @@ watch(
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 0;
-  border-radius: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
   background: transparent;
-  color: var(--wf-text-muted);
+  color: var(--wf-text-muted, #aeb8bd);
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .dweb-add-node-modal__close:hover,
 .dweb-add-node-modal__close:focus-visible {
-  background: var(--wf-control-bg-hover);
-  color: var(--wf-text);
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 14%, transparent);
+  color: var(--wf-primary, #1f9d84);
   outline: none;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent);
 }
 
 .dweb-add-node-modal__close svg {
@@ -558,20 +659,23 @@ watch(
   fill: none;
 }
 
+/* ── Search ── */
 .dweb-add-node-modal__search {
   height: 36px;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 14px;
-  border-bottom: 1px solid var(--wf-border-subtle);
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent);
+  position: relative;
+  z-index: 2;
 }
 
 .dweb-add-node-modal__search svg {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  color: var(--wf-text-muted);
+  color: color-mix(in srgb, var(--wf-primary, #1f9d84) 60%, var(--wf-text-muted, #aeb8bd));
 }
 
 .dweb-add-node-modal__search svg circle,
@@ -590,19 +694,23 @@ watch(
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
   font-size: 13.5px;
+  caret-color: var(--wf-primary, #1f9d84);
+  transition: color 160ms ease;
 }
 
 .dweb-add-node-modal__search input::placeholder {
-  color: var(--wf-text-muted);
+  color: color-mix(in srgb, var(--wf-text-muted, #aeb8bd) 50%, transparent);
 }
 
+/* ── Tabs wrap ── */
 .dweb-add-node-modal__tabs-wrap {
   position: relative;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--wf-border-subtle);
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+  z-index: 2;
 }
 
 .dweb-add-node-modal__tabs {
@@ -621,28 +729,34 @@ watch(
   gap: 4px;
   padding: 4px 8px;
   border: 1px solid transparent;
-  border-radius: 0;
+  border-radius: 2px;
   background: transparent;
-  color: var(--wf-text-muted);
+  color: var(--wf-text-muted, #aeb8bd);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
 .dweb-add-node-modal__tab:hover,
 .dweb-add-node-modal__tab:focus-visible {
-  color: var(--wf-text);
-  background: var(--wf-control-bg-hover);
+  color: var(--wf-text, #edf2f4);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
   outline: none;
 }
 
 .dweb-add-node-modal__tab.is-active {
-  color: var(--wf-text);
-  background: var(--wf-primary-soft);
-  border-color: var(--wf-primary);
-  box-shadow: var(--aiwf-shadow-focus);
+  color: var(--wf-primary, #1f9d84);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 16%, transparent);
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 28%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
 }
 
 .dweb-add-node-modal__tab.is-special .dweb-add-node-modal__tab-icon {
@@ -651,6 +765,7 @@ watch(
 
 .dweb-add-node-modal__tab.is-special.is-active .dweb-add-node-modal__tab-icon {
   opacity: 1;
+  color: var(--wf-primary, #1f9d84);
 }
 
 .dweb-add-node-modal__tab-icon {
@@ -675,14 +790,37 @@ watch(
   stroke-linejoin: round;
 }
 
+/* ── Body ── */
 .dweb-add-node-modal__body {
+  position: relative;
   min-height: 140px;
   max-height: calc(86vh - 16px - 40px - 36px - 38px);
   overflow-y: auto;
   padding: 6px 8px 12px;
+  z-index: 2;
 }
 
+/* Left accent bar on body */
+.dweb-add-node-modal__body::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    var(--wf-primary, #1f9d84) 0%,
+    color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent) 100%
+  );
+  opacity: 0.25;
+  pointer-events: none;
+  border-radius: 0 1px 1px 0;
+}
+
+/* ── Items ── */
 .dweb-add-node-modal__item {
+  position: relative;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -694,8 +832,24 @@ watch(
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 120ms ease;
-  border-bottom: 1px solid color-mix(in srgb, var(--wf-border) 40%, transparent);
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent);
+}
+
+/* Left indicator stripe on hover */
+.dweb-add-node-modal__item::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--wf-primary, #1f9d84);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 160ms ease;
 }
 
 .dweb-add-node-modal__item:last-child {
@@ -704,13 +858,20 @@ watch(
 
 .dweb-add-node-modal__item:hover,
 .dweb-add-node-modal__item:focus-visible {
-  background: var(--wf-control-bg-hover);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
   outline: none;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--wf-primary, #1f9d84) 14%, transparent);
+}
+
+.dweb-add-node-modal__item:hover::before,
+.dweb-add-node-modal__item:focus-visible::before {
+  opacity: 1;
 }
 
 .dweb-add-node-modal__item:hover .dweb-add-node-modal__item-label,
 .dweb-add-node-modal__item:focus-visible .dweb-add-node-modal__item-label {
-  color: var(--wf-primary);
+  color: var(--wf-primary, #1f9d84);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
 }
 
 .dweb-add-node-modal__item-label {
@@ -720,17 +881,27 @@ watch(
   font-size: 14px;
   font-weight: 600;
   line-height: 1.3;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
+  transition: color 160ms ease, text-shadow 160ms ease;
 }
 
+/* Description keeps muted color on hover */
 .dweb-add-node-modal__item-desc {
   font-size: 12px;
   line-height: 1.5;
-  color: var(--wf-text-muted);
+  color: var(--wf-text-muted, #aeb8bd);
 }
 
+/* Upload item */
 .dweb-add-node-modal__item--upload .dweb-add-node-modal__item-label {
-  color: var(--wf-primary);
+  color: var(--wf-primary, #1f9d84);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+}
+
+.dweb-add-node-modal__item--upload:hover,
+.dweb-add-node-modal__item--upload:focus-visible {
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent);
 }
 
 .dweb-add-node-modal__upload-icon {
@@ -748,10 +919,11 @@ watch(
   stroke-linejoin: round;
 }
 
+/* ── Empty state ── */
 .dweb-add-node-modal__empty {
   padding: 24px 16px;
   text-align: center;
-  color: var(--wf-text-muted);
+  color: var(--wf-text-muted, #aeb8bd);
   font-size: 12px;
 }
 
@@ -763,6 +935,7 @@ watch(
   pointer-events: none;
 }
 
+/* ── Scrollbar ── */
 .custom-scrollbar-right::-webkit-scrollbar {
   width: 5px;
 }
@@ -773,23 +946,25 @@ watch(
 }
 
 .custom-scrollbar-right::-webkit-scrollbar-thumb {
-  background-color: var(--wf-border-strong);
-  border-radius: 0;
+  background-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+  border-radius: 2px;
+  transition: background-color 160ms ease;
 }
 
 .custom-scrollbar-right::-webkit-scrollbar-thumb:hover {
-  background-color: var(--wf-primary);
+  background-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 65%, transparent);
 }
 
 .custom-scrollbar-right {
   scrollbar-width: thin;
-  scrollbar-color: var(--wf-border-strong) transparent;
+  scrollbar-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent) transparent;
 }
 
+/* ── Animations ── */
 @keyframes dweb-add-node-modal-pop {
   from {
     opacity: 0;
-    transform: translateY(-6px) scale(0.98);
+    transform: translateY(-8px) scale(0.97);
   }
   to {
     opacity: 1;
@@ -799,7 +974,7 @@ watch(
 
 .dweb-add-node-modal-fade-enter-active,
 .dweb-add-node-modal-fade-leave-active {
-  transition: opacity 140ms ease;
+  transition: opacity 160ms ease;
 }
 
 .dweb-add-node-modal-fade-enter-from,
@@ -807,9 +982,21 @@ watch(
   opacity: 0;
 }
 
+/* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   .dweb-add-node-modal {
     animation: none;
+  }
+  .nsm-bracket {
+    opacity: 1 !important;
+  }
+  .nsm-hud-scanlines {
+    display: none;
+  }
+  .dweb-add-node-modal__tab,
+  .dweb-add-node-modal__item,
+  .dweb-add-node-modal__close {
+    transition: none !important;
   }
 }
 </style>

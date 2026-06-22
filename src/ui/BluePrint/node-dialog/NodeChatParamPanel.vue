@@ -654,7 +654,7 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 
 <style scoped>
 .bp-node-chat-param-panel {
-  border-top: 1px solid color-mix(in srgb, var(--wf-border) 50%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
   padding: 4px 0;
 }
 
@@ -665,17 +665,19 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
   padding: 6px 14px;
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s ease;
+  transition: background 0.22s ease;
 }
 
 .bp-node-chat-param-header:hover {
-  background: var(--wf-control-bg-hover);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
 }
 
 .bp-node-chat-param-title {
   font-size: 12px;
-  font-weight: 500;
-  color: var(--wf-text);
+  font-weight: 600;
+  color: var(--wf-primary, #1f9d84);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+  letter-spacing: 0.5px;
 }
 
 .bp-node-chat-param-toggle {
@@ -684,8 +686,8 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 }
 
 .bp-node-chat-chevron {
-  transition: transform 0.2s ease;
-  color: var(--wf-text-muted);
+  transition: transform 0.22s ease;
+  color: color-mix(in srgb, var(--wf-primary, #1f9d84) 70%, transparent);
 }
 
 .bp-node-chat-chevron.is-collapsed {
@@ -703,10 +705,11 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 .bp-node-chat-param-label {
   display: block;
   font-size: 11px;
-  color: var(--wf-text-muted);
+  color: color-mix(in srgb, var(--wf-primary, #1f9d84) 70%, transparent);
   margin-bottom: 6px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  font-weight: 500;
 }
 
 .bp-node-chat-param-options {
@@ -718,24 +721,27 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 .bp-node-chat-param-btn {
   padding: 5px 10px;
   font-size: 12px;
-  border: 1px solid var(--wf-border);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+  border-radius: 2px;
   background: transparent;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.22s ease;
   font-family: inherit;
 }
 
 .bp-node-chat-param-btn:hover:not(:disabled) {
-  border-color: var(--wf-primary);
-  color: var(--wf-primary);
+  border-color: var(--wf-primary, #1f9d84);
+  color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
 }
 
 .bp-node-chat-param-btn.is-active {
-  background: var(--wf-primary-soft);
-  border-color: var(--wf-primary);
-  color: var(--wf-primary);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 65%, transparent);
+  color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
 }
 
 .bp-node-chat-param-btn:disabled {
@@ -755,14 +761,14 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
   cursor: pointer;
 }
 
 .bp-node-chat-param-toggle input[type='checkbox'] {
   width: 14px;
   height: 14px;
-  accent-color: var(--wf-primary);
+  accent-color: var(--wf-primary, #1f9d84);
 }
 
 .bp-node-chat-param-seed {
@@ -770,22 +776,24 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
 }
 
 .bp-node-chat-param-seed input {
   width: 80px;
   padding: 4px 8px;
   font-size: 12px;
-  border: 1px solid var(--wf-border);
-  border-radius: 0;
-  background: var(--wf-control-bg);
-  color: var(--wf-text);
+  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 92%, transparent);
+  color: var(--wf-text, #edf2f4);
   font-family: monospace;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
 }
 
 .bp-node-chat-param-seed input:focus {
   outline: none;
-  border-color: var(--wf-primary);
+  border-color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent), 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
 }
 </style>

@@ -6,14 +6,15 @@
 		@mouseenter="onHover(true)"
 		@mouseleave="onHover(false)"
 	>
-		<!-- 漂浮方块粒子背景 -->
+		<!-- 漂浮方块粒子背景 (统一 useSquareParticles) -->
 		<div class="gsn-particles" aria-hidden="true">
 			<span
-				v-for="p in particles"
+				v-for="p in sideNavParticles.particles"
 				:key="p.id"
-				class="gsn-particle"
+				class="sq-particle"
+				:class="sideNavParticles.buildHoverStateClass(false)"
 				:style="p.style"
-			/>
+			></span>
 		</div>
 
 		<!-- 收缩态：只显示一个展开按钮 -->
@@ -90,8 +91,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useSquareParticles } from '../../composables/useSquareParticles'
 
 const props = defineProps<{
 	expanded: boolean
@@ -113,76 +115,13 @@ const isCollapsed = ref(props.collapsed)
 watch(() => props.expanded, v => { expandedState.value = v })
 watch(() => props.collapsed, v => { isCollapsed.value = v })
 
-// 随机生成粒子（与项目主题色一致的翡翠/青绿配色）
-// 颜色取自 src/styles/theme-tokens.css：
-//   --theme-accent: #1f9d84 / --theme-accent-hover: #27b99c
-//   --theme-success: #17a773 / --aiwf-color-success: #4caf88
-type Particle = { id: number; style: Record<string, string> }
-const particleCount = 10
-const palette = [
-	'#1f9d84',
-	'#27b99c',
-	'#17a773',
-	'#4caf88',
-	'#148a73',
-	'#2ec4a6',
-]
-
-const particles = ref<Particle[]>([])
-
-function buildParticles(): Particle[] {
-	const list: Particle[] = []
-	for (let i = 0; i < particleCount; i++) {
-		const size = 3 + Math.round(Math.random() * 4)
-		const left = 6 + Math.random() * 88
-		const top = 6 + Math.random() * 88
-		const delay = Math.random() * 3.5
-		const duration = 5 + Math.random() * 6
-		const rotate = Math.round(Math.random() * 180)
-		const color = palette[i % palette.length]
-		const opacity = (0.35 + Math.random() * 0.45).toFixed(2)
-		list.push({
-			id: i,
-			style: {
-				width: size + 'px',
-				height: size + 'px',
-				left: left + '%',
-				top: top + '%',
-				animationDelay: delay + 's',
-				animationDuration: duration + 's',
-				transform: `rotate(${rotate}deg)`,
-				background: color,
-				'--color': color,
-				'--base-opacity': opacity,
-			},
-		})
-	}
-	return list
-}
-
-let particlesTimer: number | null = null
-
-function refreshParticlesSoon() {
-	if (particlesTimer !== null) {
-		window.clearTimeout(particlesTimer)
-	}
-	particlesTimer = window.setTimeout(() => {
-		particles.value = buildParticles()
-	}, 60)
-}
-
-onMounted(() => {
-	particles.value = buildParticles()
-})
-
-onBeforeUnmount(() => {
-	if (particlesTimer !== null) window.clearTimeout(particlesTimer)
-})
+// 统一粒子系统（DOM-based，来自 composables/useSquareParticles.ts）
+const sideNavParticles = useSquareParticles({ count: 10, seed: 42, baseOpacity: 0.6 })
 
 const items = computed(() => [
 	{ key: 'projects', label: '项目列表', active: route.name === 'ProjectList' },
 	{ key: 'workflow', label: 'AI素材工作流', active: route.name === 'AIWorkflow' },
-	{ key: 'studio', label: '动画编辑器', active: route.name === 'VideoStudio' },
+	// { key: 'studio', label: '动画编辑器', active: route.name === 'VideoStudio' },
 	{ key: 'settings', label: '设置', active: route.name === 'Settings' },
 ])
 
@@ -218,10 +157,6 @@ function toggleCollapsed() {
 	const next = !isCollapsed.value
 	isCollapsed.value = next
 	emit('collapsed-change', next)
-	if (!next) {
-		// 重新展开时刷新粒子
-		refreshParticlesSoon()
-	}
 }
 </script>
 
@@ -285,49 +220,24 @@ function toggleCollapsed() {
 	justify-content: center;
 }
 
-/* 粒子层 */
+/* 粒子层（统一 useSquareParticles） */
+@import "../../styles/square-particles.css";
+
 .gsn-particles {
 	position: absolute;
 	inset: 0;
 	pointer-events: none;
 	overflow: hidden;
 	opacity: 0.85;
-}
-
-.gsn-particle {
-	position: absolute;
-	display: block;
-	box-shadow: 0 0 6px var(--color, #1f9d84);
-	animation: gsn-drift 7s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
-	opacity: var(--base-opacity, 0.6);
-}
-
-@keyframes gsn-drift {
-	0% {
-		transform: translateY(0) translateX(0) rotate(0deg);
-		opacity: 0;
-	}
-	15% {
-		opacity: var(--base-opacity, 0.6);
-	}
-	50% {
-		transform: translateY(-18px) translateX(6px) rotate(90deg);
-	}
-	85% {
-		opacity: var(--base-opacity, 0.6);
-	}
-	100% {
-		transform: translateY(-36px) translateX(-4px) rotate(180deg);
-		opacity: 0;
-	}
+	z-index: 0;
 }
 
 .global-side-nav.collapsed .gsn-particles {
 	opacity: 1;
 }
 
-.global-side-nav.collapsed .gsn-particles .gsn-particle {
-	animation-duration: 4.5s;
+.global-side-nav.collapsed .gsn-particles .sq-particle {
+	--sq-duration: 4.5s;
 }
 
 /* 折叠/展开切换按钮 */

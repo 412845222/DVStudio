@@ -1,116 +1,363 @@
-:root {
-  --wf-node-bg: var(--wf-surface-glass);
-  --wf-node-bg-solid: var(--wf-surface-raised);
-  --wf-node-border: var(--wf-border);
-  --wf-node-border-selected: var(--wf-state-selected-border);
-  --wf-node-border-running: var(--wf-state-running-border);
-  --wf-node-border-error: var(--wf-state-error-border);
-  --wf-node-radius: var(--aiwf-radius-lg);
-  --wf-node-shadow: var(--aiwf-shadow-sm);
-  --wf-node-shadow-selected: var(--aiwf-shadow-focus);
-  --wf-node-padding-x: 10px;
-  --wf-node-padding-y: 8px;
-  --wf-node-title: var(--wf-text);
-  --wf-node-subtitle: var(--wf-text-muted);
-  --wf-node-anchor-bg: var(--wf-surface-raised);
-  --wf-node-anchor-border: var(--wf-border-strong);
-  --wf-node-anchor-hover: var(--wf-primary);
-}
+/* ============================================================
+   Node Skins — Refined sci-fi look for AI workflow nodes
+   Frosted glass nodes + emerald glow + L-brackets.
+   ============================================================ */
 
-/* Node shell baseline */
+/* --- Baseline node shell (frosted glass) --- */
 .wf-node {
-  border: 1px solid var(--wf-node-border) !important;
-  border-radius: var(--wf-node-radius);
-  background: var(--wf-node-bg) !important;
-  box-shadow: var(--wf-node-shadow);
+  border: 1px solid color-mix(in srgb, var(--wf-node-border) 85%, transparent) !important;
+  border-radius: 2px !important;
+  background-color: color-mix(in srgb, var(--theme-bg-elevated) 70%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-border) 30%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 15%, transparent),
+    0 0 16px color-mix(in srgb, var(--wf-primary) 10%, transparent),
+    0 4px 14px color-mix(in srgb, var(--theme-border) 25%, transparent) !important;
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 220ms ease,
+    box-shadow 260ms ease,
+    transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.wf-node.selected {
-  border-color: var(--wf-node-border-selected) !important;
-  box-shadow: var(--wf-node-shadow-selected) !important;
+/* L-shaped corner brackets for .wf-node */
+.wf-node::before,
+.wf-node::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+  width: 10px;
+  height: 10px;
+  border: 2px solid color-mix(in srgb, var(--wf-primary) 55%, transparent);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--wf-primary) 25%, transparent);
+  transition: width 220ms ease, height 220ms ease, border-color 220ms ease, opacity 220ms ease;
 }
 
+.wf-node::before {
+  top: -2px;
+  left: -2px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.wf-node::after {
+  bottom: -2px;
+  right: -2px;
+  border-left: none;
+  border-top: none;
+}
+
+/* Hover glow */
+.wf-node:hover {
+  border-color: color-mix(in srgb, var(--wf-primary) 55%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--wf-primary) 25%, #fff 10%),
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 30%, transparent),
+    0 0 22px color-mix(in srgb, var(--wf-primary) 22%, transparent),
+    0 6px 18px rgba(0, 0, 0, 0.35) !important;
+}
+
+.wf-node:hover::before,
+.wf-node:hover::after {
+  width: 14px;
+  height: 14px;
+  border-color: color-mix(in srgb, var(--wf-primary) 85%, transparent) !important;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary) 40%, transparent);
+}
+
+/* --- Primary selection: emerald border + outer glow + brighter brackets --- */
 .wf-node.is-primary-selected {
-  border-color: var(--wf-node-border-selected) !important;
-  box-shadow: var(--wf-node-shadow-selected) !important;
+  border-color: color-mix(in srgb, var(--wf-primary) 75%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--wf-primary) 35%, #fff 10%),
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 45%, transparent),
+    0 0 28px color-mix(in srgb, var(--wf-primary) 30%, transparent),
+    0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  z-index: 10;
 }
 
+.wf-node.is-primary-selected::before,
+.wf-node.is-primary-selected::after {
+  width: 14px;
+  height: 14px;
+  border-color: var(--wf-primary) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary) 50%, transparent);
+}
+
+/* --- Secondary selection (multi-select) — dimmer glow --- */
 .wf-node.is-secondary-selected {
-  border-color: color-mix(in srgb, var(--wf-node-border-selected) 56%, transparent) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-node-border-selected) 28%, transparent) !important;
+  border-color: color-mix(in srgb, var(--wf-primary) 55%, transparent) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 28%, transparent),
+    0 0 14px color-mix(in srgb, var(--wf-primary) 18%, transparent) !important;
 }
 
 .wf-node.is-secondary-selected .wf-node-toolbar {
   display: none !important;
 }
 
+.wf-node.is-secondary-selected::before,
+.wf-node.is-secondary-selected::after {
+  width: 10px;
+  height: 10px;
+  border-color: color-mix(in srgb, var(--wf-primary) 60%, transparent) !important;
+}
+
+/* --- Running state: warm-gold border + pulse glow --- */
 .wf-node.wf-node-running {
-  border-color: var(--wf-node-border-running) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-node-border-running) 34%, transparent), 0 0 16px color-mix(in srgb, var(--wf-node-border-running) 26%, transparent) !important;
+  border-color: color-mix(in srgb, var(--aiwf-color-accent, #e5b567) 70%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #e5b567 25%, #fff 10%),
+    0 0 0 1px color-mix(in srgb, #e5b567 45%, transparent),
+    0 0 28px color-mix(in srgb, #e5b567 35%, transparent),
+    0 6px 18px rgba(0, 0, 0, 0.36) !important;
 }
 
+.wf-node.wf-node-running::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, #e5b567 75%, transparent) 50%,
+    transparent 100%
+  );
+  box-shadow: 0 0 8px #e5b567;
+  animation: wf-node-running-pulse 1.8s ease-in-out infinite;
+  pointer-events: none;
+  border: none;
+  width: auto;
+  height: 1px;
+}
+
+.wf-node.wf-node-running::before {
+  border-color: color-mix(in srgb, #e5b567 80%, transparent) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, #e5b567 40%, transparent);
+}
+
+.wf-node.wf-node-running::after {
+  border-color: color-mix(in srgb, #e5b567 80%, transparent) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, #e5b567 40%, transparent);
+}
+
+@keyframes wf-node-running-pulse {
+  0%, 100% { opacity: 0.4; transform: translateX(-20%); }
+  50%      { opacity: 1;   transform: translateX(20%); }
+}
+
+/* --- Error state: red border + red glow --- */
 .wf-node.wf-node-error {
-  border-color: var(--wf-node-border-error) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-node-border-error) 34%, transparent), 0 0 16px color-mix(in srgb, var(--wf-node-border-error) 22%, transparent) !important;
+  border-color: color-mix(in srgb, var(--aiwf-color-danger, #cf5a46) 75%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #cf5a46 25%, #fff 10%),
+    0 0 0 1px color-mix(in srgb, #cf5a46 45%, transparent),
+    0 0 28px color-mix(in srgb, #cf5a46 35%, transparent),
+    0 6px 18px rgba(0, 0, 0, 0.38) !important;
 }
 
+.wf-node.wf-node-error::before {
+  border-color: color-mix(in srgb, #cf5a46 80%, transparent) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, #cf5a46 40%, transparent);
+}
+
+.wf-node.wf-node-error::after {
+  border-color: color-mix(in srgb, #cf5a46 80%, transparent) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, #cf5a46 40%, transparent);
+}
+
+/* --- Node toolbar (dropdown / actions) — sci-fi frosted glass + L-brackets --- */
 .wf-node-toolbar {
-  border: 1px solid var(--wf-border) !important;
-  background: var(--wf-surface-raised) !important;
-  border-radius: var(--aiwf-radius-md);
+  position: absolute;
+  top: -46px;
+  left: 50%;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 40px));
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 50%, transparent) !important;
+  background-color: color-mix(in srgb, var(--theme-bg-elevated) 75%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  border-radius: 2px !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 20%, transparent),
+    0 0 10px color-mix(in srgb, var(--wf-primary) 15%, transparent),
+    0 3px 12px color-mix(in srgb, var(--theme-border) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent) !important;
+  animation: wf-toolbar-in 160ms ease-out both;
+  z-index: 90;
 }
 
+/* L-bracket decorations on toolbar */
+.wf-node-toolbar::before,
+.wf-node-toolbar::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--wf-primary) !important;
+  box-shadow: 0 0 5px color-mix(in srgb, var(--wf-primary) 40%, transparent);
+}
+
+.wf-node-toolbar::before {
+  top: -2px;
+  left: -2px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.wf-node-toolbar::after {
+  bottom: -2px;
+  right: -2px;
+  border-left: none;
+  border-top: none;
+}
+
+/* --- Buttons / controls inside the node toolbar --- */
 .wf-node-btn,
 .wf-node-type-item,
 .wf-media-btn,
 .wf-inline-btn,
 .wf-quick-action {
-  color: var(--wf-text) !important;
+  min-height: 26px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 38%, transparent) !important;
+  background: color-mix(in srgb, var(--wf-primary) 10%, transparent) !important;
+  color: var(--wf-text, #edf2f4) !important;
+  border-radius: 2px !important;
+  padding: 4px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.wf-node-btn:hover,
+.wf-node-type-item:hover,
+.wf-media-btn:hover {
+  border-color: var(--wf-primary) !important;
+  background: color-mix(in srgb, var(--wf-primary) 22%, transparent) !important;
+  color: var(--wf-primary) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary) 35%, transparent) !important;
+}
+
+.wf-node-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.wf-node-type-label,
+.wf-node-btn-label {
+  font-size: 12px;
+}
+
+.wf-node-type-caret {
+  font-size: 10px;
+  margin-left: 2px;
+  color: color-mix(in srgb, var(--wf-primary) 65%, transparent);
 }
 
 .wf-node-type-dropdown {
-  border: 1px solid var(--wf-border) !important;
-  background: var(--wf-surface-raised) !important;
-  border-radius: var(--aiwf-radius-md);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  min-width: 140px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 55%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-bg-elevated) 96%, transparent) !important;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-radius: 2px !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 18%, transparent),
+    0 0 14px color-mix(in srgb, var(--wf-primary) 22%, transparent),
+    0 8px 20px rgba(0, 0, 0, 0.38) !important;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.wf-node-type-item,
-.wf-media-btn {
-  border: 1px solid var(--wf-control-border) !important;
-  background: var(--wf-control-bg) !important;
+.wf-node-type-item {
+  text-align: left;
+  font-size: 12px;
 }
 
-.wf-node-type-item:hover,
-.wf-media-btn:hover {
-  border-color: var(--wf-control-border-hover) !important;
-  background: var(--wf-control-bg-hover) !important;
+@keyframes wf-toolbar-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
+/* --- Node title --- */
 .wf-node-title {
-  color: var(--wf-node-title) !important;
+  color: var(--wf-text, #edf2f4) !important;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary) 25%, transparent);
+  letter-spacing: 0.01em;
+  font-size: 13px;
 }
 
+/* --- Node subtitle / secondary text --- */
 .wf-node-type,
 .wf-media-sub,
 .wf-image-meta,
 .wf-video-meta {
-  color: var(--wf-node-subtitle) !important;
+  color: color-mix(in srgb, var(--wf-text-muted, #aeb8bd) 85%, transparent) !important;
+  font-size: 11px;
 }
 
+/* --- Media previews / body panels --- */
 .wf-media-preview,
 .wf-media-empty,
 .wf-node-body {
-  border-color: var(--wf-border-subtle) !important;
-  background: var(--wf-surface-base) !important;
+  border-color: color-mix(in srgb, var(--wf-border) 55%, transparent) !important;
+  background-color: color-mix(in srgb, var(--theme-bg-secondary) 75%, transparent) !important;
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  border-radius: 4px !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wf-border-subtle) 60%, transparent) !important;
 }
 
+/* --- Anchor points (connection dots) --- */
 .wf-anchor,
 .wf-input-anchor,
 .wf-output-anchor,
 .wf-node-anchor,
 .nano-ref-dot {
-  border-color: var(--wf-node-anchor-border) !important;
-  background: var(--wf-node-anchor-bg) !important;
+  border-radius: 2px !important;
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent) !important;
+  background: color-mix(in srgb, var(--wf-surface-base, rgba(21,24,28,0.78)) 90%, transparent) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent) !important;
+  transition: border-color 220ms ease, box-shadow 220ms ease, background 220ms ease;
 }
 
 .wf-anchor-hit {
@@ -119,34 +366,356 @@
 }
 
 .wf-anchor-hit::after {
-  border-color: color-mix(in srgb, var(--wf-node-anchor-border) 82%, rgba(255, 255, 255, 0.2));
+  border-radius: 2px !important;
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 45%, transparent) !important;
 }
 
+.wf-anchor-hit::before {
+  border-radius: 2px !important;
+}
+
+/* Anchor type colors (keep existing semantic) */
 .wf-anchor-hit.wf-anchor-image::before {
-  background: var(--dweb-purple) !important;
+  background: var(--dweb-purple, #9b59b6) !important;
 }
 
 .wf-anchor-hit.wf-anchor-video::before {
-  background: var(--dweb-green-main) !important;
+  background: var(--dweb-green-main, #27ae60) !important;
 }
 
 .wf-anchor-hit.wf-anchor-text::before {
-  background: var(--dweb-yellow) !important;
+  background: var(--dweb-yellow, #f1c40f) !important;
 }
 
 .wf-anchor-hit.wf-anchor-flow::before {
-  background: var(--dweb-orange) !important;
+  background: var(--dweb-orange, #e67e22) !important;
 }
 
 .wf-anchor-hit.wf-anchor-model3d::before {
-  background: var(--dweb-blue) !important;
+  background: var(--dweb-blue, #3498db) !important;
 }
 
 .wf-anchor:hover,
 .wf-input-anchor:hover,
 .wf-output-anchor:hover,
 .wf-node-anchor:hover,
+.nano-ref-dot:hover,
 .wf-anchor-hit:hover,
 .wf-anchor-hit.hovered {
-  border-color: var(--wf-node-anchor-hover) !important;
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 70%, transparent) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent),
+    0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 45%, transparent) !important;
+}
+
+/* --- Node id badge (top-right, monospace) --- */
+.wf-node-id-badge {
+  position: absolute;
+  top: -10px;
+  right: 8px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--wf-surface-base) 98%, var(--wf-primary) 25%);
+  color: color-mix(in srgb, var(--wf-primary) 80%, #fff);
+  border-radius: 2px;
+  z-index: 3;
+  pointer-events: none;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary) 20%, transparent);
+}
+
+.wf-node.wf-node-running .wf-node-id-badge {
+  border-color: color-mix(in srgb, #e5b567 55%, transparent);
+  color: color-mix(in srgb, #e5b567 85%, #fff);
+  box-shadow: 0 0 8px color-mix(in srgb, #e5b567 35%, transparent);
+}
+
+.wf-node.wf-node-error .wf-node-id-badge {
+  border-color: color-mix(in srgb, #cf5a46 55%, transparent);
+  color: color-mix(in srgb, #ff7f6e 85%, #fff);
+  box-shadow: 0 0 8px color-mix(in srgb, #cf5a46 35%, transparent);
+}
+
+/* --- Node particle layer (DOM particles, visible only on hover/state) --- */
+.wf-node-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0;
+  z-index: 1;
+  transition: opacity 240ms ease;
+}
+
+.wf-node:hover > .wf-node-particles,
+.wf-node.is-primary-selected > .wf-node-particles,
+.wf-node.wf-node-running > .wf-node-particles,
+.wf-node.wf-node-error > .wf-node-particles {
+  opacity: 0.85;
+}
+
+/* compact nodes keep particle layer hidden for performance */
+.aiwf-node-host.compact .wf-node-particles,
+.wf-node.compact > .wf-node-particles {
+  display: none !important;
+}
+
+/* --- Compact node shell — DYNAMIC size matching scaled real nodes --- */
+/* Size is calculated dynamically in compactNodeShellStyle based on zoom level */
+.aiwf-node-compact {
+  position: relative;
+  min-width: 120px;
+  min-height: 64px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 60%, transparent);
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--theme-bg-elevated) 70%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-border) 30%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 22%, transparent),
+    0 0 12px color-mix(in srgb, var(--wf-primary) 12%, transparent),
+    0 3px 10px color-mix(in srgb, var(--theme-border) 22%, transparent) !important;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  transition:
+    border-color 220ms ease,
+    box-shadow 260ms ease,
+    width 150ms ease,
+    height 150ms ease;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transform-origin: 50% 50%;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+/* L-bracket corners (top-left + bottom-right) */
+.aiwf-node-compact::before,
+.aiwf-node-compact::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  width: 7px;
+  height: 7px;
+  border: 2px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+  transition: width 200ms ease, height 200ms ease, border-color 200ms ease;
+}
+
+.aiwf-node-compact::before {
+  top: -2px;
+  left: -2px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.aiwf-node-compact::after {
+  bottom: -2px;
+  right: -2px;
+  border-left: none;
+  border-top: none;
+}
+
+/* Top-right type badge — INSIDE the node, no overflow */
+.aiwf-node-compact-type-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 4;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  max-width: calc(100% - 8px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--tc, #1f9d84) 60%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--tc, #1f9d84) 22%, transparent),
+      color-mix(in srgb, var(--tc, #1f9d84) 12%, transparent)
+    );
+  color: color-mix(in srgb, var(--tc, #1f9d84) 95%, #fff);
+  border-radius: 2px;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--tc, #1f9d84) 50%, transparent);
+}
+
+/* Left: type icon block (48px width) — clean glass with glowing edge */
+.aiwf-node-compact-icon-block {
+  width: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--tc, #1f9d84);
+  border-right: 1px solid color-mix(in srgb, var(--tc, #1f9d84) 35%, transparent);
+  position: relative;
+}
+
+/* Glowing right edge line */
+.aiwf-node-compact-icon-block::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: -1px;
+  width: 1px;
+  background: var(--tc, #1f9d84);
+  box-shadow:
+    0 0 4px var(--tc, #1f9d84),
+    0 0 8px color-mix(in srgb, var(--tc, #1f9d84) 50%, transparent);
+  opacity: 0.7;
+}
+
+.aiwf-node-compact-icon-svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+/* Right: minimal info — aligned with icon vertically */
+.aiwf-node-compact-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px 0 4px;
+}
+
+.aiwf-node-compact-label {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--wf-text, #1a1d21);
+  text-shadow: 0 0 4px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+  text-transform: uppercase;
+}
+
+/* Status pulse dot (bottom-right corner) */
+.aiwf-node-compact-state-dot {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  z-index: 4;
+  background: var(--wf-primary, #1f9d84);
+  box-shadow:
+    0 0 3px var(--wf-primary, #1f9d84),
+    0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
+  animation: compact-state-pulse 1.4s ease-in-out infinite;
+}
+
+.aiwf-node-compact-state-dot[data-state="running"] {
+  background: #e5b567;
+  box-shadow: 0 0 4px #e5b567, 0 0 8px color-mix(in srgb, #e5b567 50%, transparent);
+}
+
+.aiwf-node-compact-state-dot[data-state="error"] {
+  background: #cf5a46;
+  box-shadow: 0 0 4px #cf5a46, 0 0 8px color-mix(in srgb, #cf5a46 50%, transparent);
+}
+
+/* Selected states */
+.aiwf-node-compact.is-primary-selected {
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 75%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, #fff 10%),
+    0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 48%, transparent),
+    0 0 18px color-mix(in srgb, var(--wf-primary, #1f9d84) 28%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+  z-index: 5;
+}
+
+.aiwf-node-compact.is-primary-selected::before,
+.aiwf-node-compact.is-primary-selected::after {
+  width: 10px;
+  height: 10px;
+  border-color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
+}
+
+.aiwf-node-compact.is-secondary-selected {
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 28%, transparent),
+    0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 18%, transparent);
+}
+
+/* Running state (warm gold) */
+.aiwf-node-compact.is-running {
+  border-color: color-mix(in srgb, #e5b567 70%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #e5b567 22%, #fff 10%),
+    0 0 0 1px color-mix(in srgb, #e5b567 45%, transparent),
+    0 0 18px color-mix(in srgb, #e5b567 28%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.aiwf-node-compact.is-running::before,
+.aiwf-node-compact.is-running::after {
+  border-color: color-mix(in srgb, #e5b567 80%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, #e5b567 45%, transparent);
+}
+
+.aiwf-node-compact.is-running .aiwf-node-compact-type-badge {
+  border-color: color-mix(in srgb, #e5b567 55%, transparent);
+  color: color-mix(in srgb, #e5b567 90%, #fff);
+}
+
+/* Error state (red) */
+.aiwf-node-compact.is-error {
+  border-color: color-mix(in srgb, #cf5a46 75%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #cf5a46 22%, #fff 10%),
+    0 0 0 1px color-mix(in srgb, #cf5a46 45%, transparent),
+    0 0 18px color-mix(in srgb, #cf5a46 28%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.aiwf-node-compact.is-error::before,
+.aiwf-node-compact.is-error::after {
+  border-color: color-mix(in srgb, #cf5a46 80%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, #cf5a46 55%, transparent);
+}
+
+.aiwf-node-compact.is-error .aiwf-node-compact-type-badge {
+  border-color: color-mix(in srgb, #cf5a46 55%, transparent);
+  color: color-mix(in srgb, #ff7f6e 95%, #fff);
+}
+
+@keyframes compact-state-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.3); }
+}
+
+/* --- Reduced motion fallback --- */
+@media (prefers-reduced-motion: reduce) {
+  .wf-node,
+  .wf-node:hover,
+  .wf-node.is-primary-selected,
+  .wf-node.is-secondary-selected,
+  .wf-node.wf-node-running,
+  .wf-node.wf-node-error {
+    transition: none !important;
+  }
+  .wf-node.wf-node-running::after {
+    animation: none !important;
+    opacity: 0.85;
+    transform: none;
+  }
 }

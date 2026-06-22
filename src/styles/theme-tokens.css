@@ -94,6 +94,22 @@
   --theme-card-border: rgba(255, 255, 255, 0.1);
 
   /* =====================
+     Project List (Dark) — Sci-Fi UI
+     ===================== */
+  --pl-bg-0: #07090d;
+  --pl-bg-1: #111a22;
+  --pl-accent: #1f9d84;
+  --pl-cold: #3aa8b4;
+  --pl-warm: #e5b567;
+  --pl-glow-1: #27b99c;
+  --pl-glow-2: #4fb7c5;
+  --pl-glow-3: #e5b567;
+  --pl-fg: #eaf2f5;
+  --pl-fg-soft: #9aa0a6;
+  --pl-card-bg: rgba(18, 26, 32, 0.78);
+  --pl-card-border: rgba(31, 157, 132, 0.28);
+
+  /* =====================
      AI Workflow (Dark)
      ===================== */
   /* Color palette */
@@ -213,6 +229,48 @@
   --pto-bar-shimmer: color-mix(in srgb, var(--theme-accent, #1f9d84) 40%, transparent);
   --pto-label-color: var(--theme-text-primary, #d4d4d4);
   --pto-percent-color: var(--theme-accent, #1f9d84);
+
+  /* =====================
+     Global Page Background (Dark)
+     ===================== */
+  --gpb-bg-0: #07090d;
+  --gpb-bg-1: #0f161c;
+  --gpb-accent: #1f9d84;
+  --gpb-cold: #3aa8b4;
+  --gpb-warm: #e5b567;
+  --gpb-glow-1: rgba(39, 185, 156, 0.32);
+  --gpb-glow-2: rgba(79, 183, 197, 0.22);
+  --gpb-glow-3: rgba(229, 181, 103, 0.18);
+  --gpb-grid: rgba(31, 157, 132, 0.06);
+  --gpb-radial: rgba(31, 157, 132, 0.10);
+  --gpb-scanline: rgba(31, 157, 132, 0.30);
+
+  /* =====================
+     Global Square Particles (Dark)
+     ===================== */
+  --sqp-color-accent: #1f9d84;
+  --sqp-color-glow-1: #27b99c;
+  --sqp-color-cold: #3aa8b4;
+  --sqp-color-warm: #e5b567;
+  --sqp-base-opacity: 0.55;
+
+  /* =====================
+     Workflow Node Skins Refined (Dark)
+     ===================== */
+  --node-base-bg: linear-gradient(135deg, rgba(29, 34, 39, 0.88), rgba(21, 24, 28, 0.92));
+  --node-base-border: rgba(31, 157, 132, 0.22);
+  --node-glow: rgba(31, 157, 132, 0.18);
+  --node-corner-color: #1f9d84;
+  --node-corner-color-hover: #27b99c;
+  --node-selected-border: rgba(31, 157, 132, 0.55);
+  --node-selected-shadow: 0 0 0 1px rgba(31, 157, 132, 0.38), 0 0 22px rgba(31, 157, 132, 0.22);
+  --node-running-border: rgba(217, 152, 43, 0.55);
+  --node-running-shadow: 0 0 0 1px rgba(217, 152, 43, 0.38), 0 0 28px rgba(217, 152, 43, 0.22);
+  --node-error-border: rgba(207, 90, 70, 0.60);
+  --node-error-shadow: 0 0 0 1px rgba(207, 90, 70, 0.40), 0 0 28px rgba(207, 90, 70, 0.22);
+  --node-id-bg: rgba(31, 157, 132, 0.06);
+  --node-id-border: rgba(31, 157, 132, 0.30);
+  --node-id-color: #27b99c;
 }
 
 /* ============================================
@@ -293,6 +351,22 @@
   /* Card/Panel */
   --theme-card-bg: #ffffff;
   --theme-card-border: rgba(0, 0, 0, 0.08);
+
+  /* =====================
+     Project List (Light) — Sci-Fi UI
+     ===================== */
+  --pl-bg-0: #eef2f5;
+  --pl-bg-1: #dfe5eb;
+  --pl-accent: #1f9d84;
+  --pl-cold: #2a8a96;
+  --pl-warm: #d9982b;
+  --pl-glow-1: #27b99c;
+  --pl-glow-2: #4fb7c5;
+  --pl-glow-3: #d9982b;
+  --pl-fg: #1a1d21;
+  --pl-fg-soft: #6b7280;
+  --pl-card-bg: rgba(255, 255, 255, 0.82);
+  --pl-card-border: rgba(31, 157, 132, 0.22);
 
   /* =====================
      AI Workflow (Light)
@@ -414,6 +488,48 @@
   --pto-bar-shimmer: color-mix(in srgb, var(--theme-accent, #1f9d84) 35%, transparent);
   --pto-label-color: var(--theme-text-primary, #1a1d21);
   --pto-percent-color: var(--theme-accent, #1f9d84);
+
+  /* =====================
+     Global Page Background (Light)
+     ===================== */
+  --gpb-bg-0: #eef2f5;
+  --gpb-bg-1: #dfe5eb;
+  --gpb-accent: #1f9d84;
+  --gpb-cold: #2a8a96;
+  --gpb-warm: #d9982b;
+  --gpb-glow-1: rgba(39, 185, 156, 0.22);
+  --gpb-glow-2: rgba(42, 138, 150, 0.16);
+  --gpb-glow-3: rgba(217, 152, 43, 0.14);
+  --gpb-grid: rgba(31, 157, 132, 0.07);
+  --gpb-radial: rgba(31, 157, 132, 0.08);
+  --gpb-scanline: rgba(31, 157, 132, 0.22);
+
+  /* =====================
+     Global Square Particles (Light)
+     ===================== */
+  --sqp-color-accent: #1f9d84;
+  --sqp-color-glow-1: #27b99c;
+  --sqp-color-cold: #2a8a96;
+  --sqp-color-warm: #d9982b;
+  --sqp-base-opacity: 0.48;
+
+  /* =====================
+     Workflow Node Skins Refined (Light)
+     ===================== */
+  --node-base-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(245, 248, 250, 0.94));
+  --node-base-border: rgba(31, 157, 132, 0.22);
+  --node-glow: rgba(31, 157, 132, 0.14);
+  --node-corner-color: #1f9d84;
+  --node-corner-color-hover: #17806d;
+  --node-selected-border: rgba(31, 157, 132, 0.55);
+  --node-selected-shadow: 0 0 0 1px rgba(31, 157, 132, 0.35), 0 0 18px rgba(31, 157, 132, 0.18);
+  --node-running-border: rgba(217, 152, 43, 0.55);
+  --node-running-shadow: 0 0 0 1px rgba(217, 152, 43, 0.35), 0 0 22px rgba(217, 152, 43, 0.18);
+  --node-error-border: rgba(207, 90, 70, 0.55);
+  --node-error-shadow: 0 0 0 1px rgba(207, 90, 70, 0.35), 0 0 22px rgba(207, 90, 70, 0.18);
+  --node-id-bg: rgba(31, 157, 132, 0.08);
+  --node-id-border: rgba(31, 157, 132, 0.28);
+  --node-id-color: #17806d;
 }
 
 /* ============================================

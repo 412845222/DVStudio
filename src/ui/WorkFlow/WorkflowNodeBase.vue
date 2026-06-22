@@ -177,6 +177,23 @@
       @pointerdown.stop.prevent="onResizeStart('se', $event)"
     />
 
+    <!-- L-shaped brackets are now CSS ::before / ::after on .wf-node -->
+    <!-- Node id badge -->
+    <span class="wf-node-id-badge" aria-hidden="true">{{ nodeId }}</span>
+    <!-- Particle layer (DOM particles, visible on hover/selected/running/error) -->
+    <div class="wf-node-particles" aria-hidden="true">
+      <span
+        v-for="p in nodeParticles.particles"
+        :key="p.id"
+        class="sq-particle"
+        :class="nodeParticles.buildHoverStateClass(false, {
+          running: visualStatus === 'running',
+          error: visualStatus === 'error',
+        })"
+        :style="p.style"
+      ></span>
+    </div>
+
     <slot
       v-if="hasAnchorSlot"
       name="anchors"
@@ -230,6 +247,7 @@
 
 <script setup lang="ts">
 import { computed, useSlots } from "vue";
+import { useSquareParticles } from "../../composables/useSquareParticles";
 import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from "../../aiworkflow/types";
 import { NodeChatDialog, type InputParamPreviewRef } from "../BluePrint/node-dialog";
 
@@ -309,6 +327,20 @@ const emit = defineEmits<{
 }>();
 
 const slots = useSlots();
+
+// 稳定种子：从 nodeId 派生 — 每个节点有自己的粒子布局
+function hashNodeIdToNumber(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) {
+    h = (h * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+const nodeParticles = useSquareParticles({
+  count: 6,
+  seed: hashNodeIdToNumber(props.nodeId),
+});
 
 const hasAnchorSlot = computed(() => !!slots.anchors);
 
@@ -553,11 +585,12 @@ const isOutputHover = (anchorId: string) => {
 </script>
 
 <style>
+@import "../../styles/square-particles.css";
 .wf-node {
   position: absolute;
   border: 1px solid var(--wf-node-border);
   border-radius: 0;
-  background: var(--wf-node-bg);
+  background-color: color-mix(in srgb, var(--theme-bg-elevated) 70%, transparent);
   box-shadow: var(--wf-node-shadow);
   box-sizing: border-box;
   padding: 8px 10px 10px;
@@ -590,7 +623,7 @@ const isOutputHover = (anchorId: string) => {
 
 .wf-node-toolbar {
   position: absolute;
-  top: -48px;
+  top: -46px;
   left: 50%;
   width: max-content;
   max-width: min(560px, calc(100vw - 40px));
@@ -598,25 +631,55 @@ const isOutputHover = (anchorId: string) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 5px 8px;
-  border: 1px solid color-mix(in srgb, var(--wf-border) 78%, transparent);
-  background: color-mix(in srgb, var(--wf-surface-raised) 92%, transparent);
-  border-radius: 0;
-  box-shadow: 0 12px 28px color-mix(in srgb, black 32%, transparent), inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 50%, transparent) !important;
+  background-color: color-mix(in srgb, var(--theme-bg-elevated) 75%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  border-radius: 2px !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 20%, transparent),
+    0 0 10px color-mix(in srgb, var(--wf-primary) 15%, transparent),
+    0 3px 12px color-mix(in srgb, var(--theme-border) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent) !important;
   animation: wf-toolbar-in 160ms ease-out both;
   z-index: 90;
 }
 
+/* L-bracket decorations on toolbar */
+.wf-node-toolbar::before,
+.wf-node-toolbar::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--wf-primary) !important;
+  box-shadow: 0 0 5px color-mix(in srgb, var(--wf-primary) 40%, transparent);
+}
+
+.wf-node-toolbar::before {
+  top: -2px;
+  left: -2px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.wf-node-toolbar::after {
+  bottom: -2px;
+  right: -2px;
+  border-left: none;
+  border-top: none;
+}
+
 .wf-node-btn {
-  min-height: 24px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--wf-text);
-  border-radius: 0;
-  padding: 4px 6px;
+  min-height: 26px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 38%, transparent) !important;
+  background: color-mix(in srgb, var(--wf-primary) 10%, transparent) !important;
+  color: var(--wf-text) !important;
+  border-radius: 2px !important;
+  padding: 4px 8px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -625,17 +688,24 @@ const isOutputHover = (anchorId: string) => {
   white-space: nowrap;
   font-size: 12px;
   line-height: 1;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .wf-node-btn:hover {
-  border-color: color-mix(in srgb, var(--wf-primary) 42%, transparent);
-  background: color-mix(in srgb, var(--wf-primary) 14%, transparent);
-  color: var(--wf-primary);
+  border-color: var(--wf-primary) !important;
+  background: color-mix(in srgb, var(--wf-primary) 22%, transparent) !important;
+  color: var(--wf-primary) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary) 35%, transparent) !important;
 }
 
 .wf-node-icon {
   width: 14px;
   height: 14px;
+  flex-shrink: 0;
 }
 
 .wf-node-type-menu {
@@ -652,9 +722,9 @@ const isOutputHover = (anchorId: string) => {
 }
 
 .wf-node-type-caret {
-  font-size: 11px;
-  margin-left: 1px;
-  color: var(--wf-text-muted);
+  font-size: 10px;
+  margin-left: 2px;
+  color: color-mix(in srgb, var(--wf-primary) 65%, transparent);
 }
 
 .wf-node-type-dropdown {
@@ -663,11 +733,16 @@ const isOutputHover = (anchorId: string) => {
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
-  min-width: 132px;
-  border: 1px solid var(--wf-border);
-  background: var(--wf-surface-raised);
-  border-radius: 0;
-  box-shadow: var(--aiwf-shadow-sm);
+  min-width: 140px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 55%, transparent) !important;
+  background: color-mix(in srgb, rgba(21, 24, 28, 0.92) 96%, transparent) !important;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-radius: 2px !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wf-primary) 18%, transparent),
+    0 0 14px color-mix(in srgb, var(--wf-primary) 22%, transparent),
+    0 8px 20px rgba(0, 0, 0, 0.38) !important;
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -676,17 +751,25 @@ const isOutputHover = (anchorId: string) => {
 
 .wf-node-type-item {
   text-align: left;
-  border: 1px solid var(--wf-control-border);
-  background: var(--wf-control-bg);
-  color: var(--wf-text);
-  border-radius: 0;
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 38%, transparent) !important;
+  background: color-mix(in srgb, var(--wf-primary) 10%, transparent) !important;
+  color: var(--wf-text) !important;
+  border-radius: 2px !important;
   padding: 6px 8px;
   cursor: pointer;
+  font-size: 12px;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .wf-node-type-item:hover {
-  border-color: var(--wf-control-border-hover);
-  background: var(--wf-control-bg-hover);
+  border-color: var(--wf-primary) !important;
+  background: color-mix(in srgb, var(--wf-primary) 22%, transparent) !important;
+  color: var(--wf-primary) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary) 35%, transparent) !important;
 }
 
 @keyframes wf-toolbar-in {
@@ -1025,14 +1108,16 @@ const isOutputHover = (anchorId: string) => {
   z-index: 1;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: var(--dweb-blue);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.26);
-  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: 50% 50%;
   transition:
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 160ms ease,
-    opacity 160ms ease;
+    transform 360ms cubic-bezier(0.22, 0.8, 0.25, 1.05),
+    box-shadow 220ms ease,
+    opacity 220ms ease,
+    background-color 220ms ease;
 }
 
 .wf-anchor-hit::after {
@@ -1041,21 +1126,21 @@ const isOutputHover = (anchorId: string) => {
   left: 50%;
   top: 50%;
   z-index: 0;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  background:
-    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.13) 0 26%, transparent 28%),
-    linear-gradient(180deg, rgba(36, 42, 48, 0.96), rgba(21, 24, 28, 0.78));
-  box-shadow: 0 2px 8px rgba(237, 242, 244, 0.12);
+  width: 24px;
+  height: 24px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 45%, transparent);
+  background: color-mix(in srgb, var(--wf-surface-base, rgba(21,24,28,0.78)) 90%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent), 0 2px 8px rgba(0, 0, 0, 0.18);
   opacity: 0.92;
-  transform: translate(-50%, -50%) scale(1);
+  transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  transform-origin: 50% 50%;
   transition:
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease;
+    transform 360ms cubic-bezier(0.22, 0.8, 0.25, 1.05),
+    opacity 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease,
+    background-color 220ms ease;
 }
 
 .wf-anchor-hit.wf-anchor-resource::before {
@@ -1065,29 +1150,36 @@ const isOutputHover = (anchorId: string) => {
 .wf-anchor-hit[data-magnet-phase="armed"]::after,
 .wf-anchor-hit[data-magnet-phase="dragging"]::after {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1.04);
-  border-color: color-mix(in srgb, var(--wf-node-anchor-hover) 72%, transparent);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--wf-node-anchor-hover) 18%, transparent);
+  transform: translate(-50%, -50%) scale(1.08) rotate(-2deg);
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 72%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent), 0 0 14px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }
 
 .wf-anchor-hit[data-magnet-phase="snapped"]::after {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1.11);
-  border-color: color-mix(in srgb, var(--wf-node-anchor-hover) 82%, transparent);
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--wf-node-anchor-hover) 22%, transparent);
+  transform: translate(-50%, -50%) scale(1.18) rotate(0deg);
+  border-color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 28%, transparent), 0 0 22px var(--wf-primary, #1f9d84);
 }
 
-.wf-anchor-hit[data-magnet-phase="snapped"]::before,
+.wf-anchor-hit[data-magnet-phase="armed"]::before {
+  transform: translate(-50%, -50%) scale(1.08) rotate(15deg);
+}
+
+.wf-anchor-hit[data-magnet-phase="snapped"]::before {
+  transform: translate(-50%, -50%) scale(1.2) rotate(90deg);
+  box-shadow: 0 0 0 2px var(--wf-primary, #1f9d84), 0 0 14px var(--wf-primary, #1f9d84);
+  animation: wf-anchor-snap-glow 0.6s cubic-bezier(0.22, 0.8, 0.25, 1.05);
+}
+
 .wf-anchor-hit[data-magnet-phase="dragging"]::before {
-  transform: translate(-50%, -50%) scale(1.14);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.6),
-    0 0 10px rgba(255, 255, 255, 0.25);
+  transform: translate(-50%, -50%) scale(1.14) rotate(45deg);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
+  animation: wf-anchor-drag-pulse 0.9s cubic-bezier(0.22, 0.8, 0.25, 1.05) infinite;
 }
 
 .wf-anchor-hit[data-magnet-phase="dragging"]::after {
-  transform: translate(-50%, -50%) scale(1.16);
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--wf-node-anchor-hover) 28%, transparent));
+  transform: translate(-50%, -50%) scale(1.12) rotate(-10deg);
 }
 
 .wf-anchor-hit[data-magnet-phase="release"]::after {
@@ -1095,18 +1187,40 @@ const isOutputHover = (anchorId: string) => {
   transform: translate(-50%, -50%) scale(0.96);
 }
 
+.wf-anchor-hit[data-magnet-phase="release"]::before {
+  transform: translate(-50%, -50%) scale(1) rotate(0deg);
+}
+
 .wf-anchor-hit:hover::before,
 .wf-anchor-hit.hovered::before {
-  transform: translate(-50%, -50%) scale(1.08);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.66),
-    0 0 8px rgba(255, 255, 255, 0.22);
+  transform: translate(-50%, -50%) scale(1.08) rotate(3deg);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.66), 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }
 
 .wf-anchor-hit:hover::after,
 .wf-anchor-hit.hovered::after {
-  transform: translate(-50%, -50%) scale(1.06);
-  border-color: color-mix(in srgb, var(--wf-node-anchor-hover) 54%, var(--wf-node-anchor-border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wf-node-anchor-hover) 16%, transparent);
+  transform: translate(-50%, -50%) scale(1.08) rotate(-2deg);
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 54%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+}
+
+@keyframes wf-anchor-drag-pulse {
+  0%   { transform: translate(-50%, -50%) scale(1.14) rotate(30deg); opacity: 0.85; }
+  50%  { transform: translate(-50%, -50%) scale(1.2) rotate(60deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.14) rotate(90deg); opacity: 0.85; }
+}
+
+@keyframes wf-anchor-snap-glow {
+  0%   { transform: translate(-50%, -50%) scale(1.3) rotate(120deg); box-shadow: 0 0 0 2px var(--wf-primary, #1f9d84); }
+  40%  { transform: translate(-50%, -50%) scale(1.22) rotate(95deg); box-shadow: 0 0 0 4px color-mix(in srgb, var(--wf-primary, #1f9d84) 60%, transparent), 0 0 14px var(--wf-primary, #1f9d84); }
+  100% { transform: translate(-50%, -50%) scale(1.18) rotate(90deg); box-shadow: 0 0 0 2px var(--wf-primary, #1f9d84), 0 0 14px var(--wf-primary, #1f9d84); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-anchor-hit::before,
+  .wf-anchor-hit::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 </style>
