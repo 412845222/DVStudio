@@ -9,6 +9,7 @@ export const useAIWorkflowProjectTransfer = (payload: {
   pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
   buildPersistableSnapshotWithOptions: (opts: { uploadLocalResources: boolean }) => Promise<AIWorkflowDraftSnapshot>
   currentProjectName: { value: string }
+  currentProjectId?: { value: number | null }
   AIWF_PROJECT_PACKAGE_ENTRY: string
   isValidBlueprintSnapshot: (snapshot: unknown) => boolean
   store: {
@@ -27,6 +28,15 @@ export const useAIWorkflowProjectTransfer = (payload: {
   hydrateBlueprintSnapshotSafely: (snapshot: AIWorkflowDraftSnapshot, sourceLabel: string) => boolean
   resetCurrentUnrealExportNodeRuntimeState: () => void
   setUnsavedProject: (name?: string) => void
+  setSavedProject?: (project: { id?: unknown; name?: unknown; rootPath?: unknown }, fallbackName?: string) => Promise<void>
+  createProjectForImport?: (name: string) => Promise<{ id: number; rootPath: string } | null>
+  saveImportedSnapshot?: () => Promise<void>
+  importAssetFromBuffer?: (
+    projectId: number,
+    buffer: ArrayBuffer,
+    fileName: string,
+    mimeType?: string
+  ) => Promise<{ url: string; relativePath: string } | null>
   sanitizeFileNamePart: (value: string) => string
   recoverComfyUIRunStates: (opts?: { silent?: boolean }) => Promise<void>
 }) => {
@@ -87,51 +97,119 @@ export const useAIWorkflowProjectTransfer = (payload: {
         }
 
         const blob = await zf.async('blob')
-        const objectUrl = URL.createObjectURL(blob)
-        if (target === 'snapshotField') {
-          const objectKey = `wf-pkg:${snapshotPointer || filePath}`
-          const previous = payload.getObjectUrl(objectKey)
-          if (previous) {
-            try {
-              URL.revokeObjectURL(previous)
-            } catch {
-              // ignore
+        const rawProjectId = payload.currentProjectId?.value
+
+        // 尝试将资源落盘并注册为 dweb:// URL（需要有效的 projectId）
+        const activeProjectId = typeof rawProjectId === 'number' && rawProjectId > 0 ? rawProjectId : null
+        const shouldPersistAsset = Boolean(
+          payload.importAssetFromBuffer &&
+          activeProjectId !== null
+        )
+
+        if (shouldPersistAsset) {
+          // ── 落盘路径：写入项目文件夹并通过 IPC 注册 dweb:// URL ──
+          const arrayBuffer = await blob.arrayBuffer()
+          const assetFileName = `${rid}-${target}.${guessExtFromBlob(blob, target)}`
+          const imported = await payload.importAssetFromBuffer!(
+            activeProjectId!,
+            arrayBuffer,
+            assetFileName,
+            blob.type
+          )
+
+          if (target === 'snapshotField') {
+            const objectKey = `wf-pkg:${snapshotPointer || filePath}`
+            const previous = payload.getObjectUrl(objectKey)
+            if (previous) {
+              try { URL.revokeObjectURL(previous) } catch { /* ignore */ }
             }
-          }
-          if (!snapshotPointer || !payload.setValueByJsonPointer(nextSnapshot as any, snapshotPointer, objectUrl)) {
-            try {
-              URL.revokeObjectURL(objectUrl)
-            } catch {
-              // ignore
+            const resolvedUrl = imported?.url ?? `package://${filePath}`
+            if (!snapshotPointer || !payload.setValueByJsonPointer(nextSnapshot as any, snapshotPointer, resolvedUrl)) {
+              missingAssets.push(`${filePath}#${snapshotPointer || 'pointer-missing'}`)
+              continue
             }
-            missingAssets.push(`${filePath}#${snapshotPointer || 'pointer-missing'}`)
-            continue
+            payload.setObjectUrl(objectKey, resolvedUrl)
+          } else {
+            const objectKey = target === 'posterUrl' ? `wf-poster:${rid}` : rid
+            const previous = payload.getObjectUrl(objectKey)
+            if (previous) {
+              try { URL.revokeObjectURL(previous) } catch { /* ignore */ }
+            }
+            const resolvedUrl = imported?.url ?? `package://${filePath}`
+            payload.setObjectUrl(objectKey, resolvedUrl)
+            resource[target] = resolvedUrl
+            resource.sourcePath = imported?.relativePath ?? undefined
+            resource.projectRelativePath = imported?.relativePath ?? undefined
+            resource.posterSourcePath = undefined
+            resource.localFileKey = undefined
           }
-          payload.setObjectUrl(objectKey, objectUrl)
         } else {
-          const objectKey = target === 'posterUrl' ? `wf-poster:${rid}` : rid
-          const previous = payload.getObjectUrl(objectKey)
-          if (previous) {
-            try {
-              URL.revokeObjectURL(previous)
-            } catch {
-              // ignore
+          // ── 回退路径：使用浏览器临时 blob URL（Web 模式或无 projectId）──
+          const objectUrl = URL.createObjectURL(blob)
+          if (target === 'snapshotField') {
+            const objectKey = `wf-pkg:${snapshotPointer || filePath}`
+            const previous = payload.getObjectUrl(objectKey)
+            if (previous) {
+              try { URL.revokeObjectURL(previous) } catch { /* ignore */ }
             }
+            if (!snapshotPointer || !payload.setValueByJsonPointer(nextSnapshot as any, snapshotPointer, objectUrl)) {
+              try { URL.revokeObjectURL(objectUrl) } catch { /* ignore */ }
+              missingAssets.push(`${filePath}#${snapshotPointer || 'pointer-missing'}`)
+              continue
+            }
+            payload.setObjectUrl(objectKey, objectUrl)
+          } else {
+            const objectKey = target === 'posterUrl' ? `wf-poster:${rid}` : rid
+            const previous = payload.getObjectUrl(objectKey)
+            if (previous) {
+              try { URL.revokeObjectURL(previous) } catch { /* ignore */ }
+            }
+            payload.setObjectUrl(objectKey, objectUrl)
+            resource[target] = objectUrl
+            resource.sourcePath = undefined
+            resource.posterSourcePath = undefined
+            resource.localFileKey = undefined
           }
-          payload.setObjectUrl(objectKey, objectUrl)
-          resource[target] = objectUrl
-          resource.sourcePath = undefined
-          resource.posterSourcePath = undefined
-          resource.localFileKey = undefined
         }
       }
 
+      // ── 导入后项目身份设置：先确定身份，再做运行时清洗 ──
+      const importName = payload.sanitizeFileNamePart(
+        String(parsed.projectName || file.name || 'blueprint_project').replace(/\.zip$/i, '')
+      )
+
+      const existingProjectId = typeof payload.currentProjectId?.value === 'number'
+        && payload.currentProjectId.value > 0
+        ? payload.currentProjectId.value
+        : null
+
+      if (existingProjectId) {
+        // 场景A：已有项目 → 保持当前项目身份不变
+        if (payload.setSavedProject) {
+          await payload.setSavedProject(
+            { id: existingProjectId, name: payload.currentProjectName.value },
+            payload.currentProjectName.value,
+          )
+        }
+        // 导入到已有项目后，自动保存快照以持久化导入内容
+        try { await (payload.saveImportedSnapshot?.()) } catch { /* non-critical */ }
+      } else if (payload.createProjectForImport && payload.setSavedProject) {
+        // 场景B：无已有项目 → 创建新项目记录
+        const created = await payload.createProjectForImport(importName)
+        if (created && created.id > 0) {
+          await payload.setSavedProject({ id: created.id, name: importName, rootPath: created.rootPath }, importName)
+        } else {
+          payload.setUnsavedProject(importName)
+        }
+      } else {
+        payload.setUnsavedProject(importName)
+      }
+
+      // 此时 currentProjectId 已是最终值 → 运行时清洗能构建正确的 dweb:// URL
       const runtimeSafeSnapshot = payload.sanitizeBlueprintSnapshotForRuntime(nextSnapshot)
       if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, '导入项目包')) return
       payload.resetCurrentUnrealExportNodeRuntimeState()
-      payload.setUnsavedProject(
-        payload.sanitizeFileNamePart(String(parsed.projectName || file.name || 'blueprint_project').replace(/\.zip$/i, ''))
-      )
+
       await payload.recoverComfyUIRunStates({ silent: true })
 
       if (missingAssets.length > 0) {
@@ -170,4 +248,24 @@ export const useAIWorkflowProjectTransfer = (payload: {
     onRequestImportProjectPackage,
     onRequestExportProject,
   }
+}
+
+/** 根据 Blob 的 MIME 类型猜测文件扩展名 */
+function guessExtFromBlob(blob: Blob, target: string): string {
+  const mime = String(blob.type || '').toLowerCase().trim()
+  const extMap: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'video/mp4': 'mp4',
+    'video/quicktime': 'mov',
+    'video/webm': 'webm',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+  }
+  if (extMap[mime]) return extMap[mime]
+  // 按 target 类型回退
+  if (target === 'posterUrl') return 'png'
+  return mime.startsWith('video') ? 'mp4' : mime.startsWith('image') ? 'png' : 'bin'
 }
