@@ -17,7 +17,7 @@
     0 0 16px color-mix(in srgb, var(--wf-primary) 10%, transparent),
     0 4px 14px color-mix(in srgb, var(--theme-border) 25%, transparent) !important;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   transition:
     border-color 220ms ease,
     box-shadow 260ms ease,

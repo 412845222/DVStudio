@@ -602,7 +602,6 @@ const isOutputHover = (anchorId: string) => {
   touch-action: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  contain: layout paint style;
   will-change: transform, width, height;
   backface-visibility: hidden;
   transform-style: preserve-3d;
