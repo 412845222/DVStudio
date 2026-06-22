@@ -1,6 +1,13 @@
 import { computed, type Ref } from 'vue'
 import type { WorkflowNode } from '../../../aiworkflow/types'
 
+const GRID_CELL_SIZE = 1000
+const SPATIAL_INDEX_THRESHOLD = 80
+
+interface GridCell {
+  nodeIds: string[]
+}
+
 export const useAIWorkflowNodeVisibility = (payload: {
   nodes: Ref<WorkflowNode[]>
   viewport: Ref<{ zoom: number; panX: number; panY: number }>
@@ -34,6 +41,61 @@ export const useAIWorkflowNodeVisibility = (payload: {
   let lastNodeSignature = ''
   let lastSelectedSignature = ''
   let lastComputeAt = 0
+
+  const gridIndex = new Map<string, GridCell>()
+  let lastGridBuiltForSignature = ''
+
+  const buildGridIndex = (nodes: WorkflowNode[], signature: string) => {
+    if (signature === lastGridBuiltForSignature) return
+    gridIndex.clear()
+
+    for (const node of nodes) {
+      const halfWidth = Math.max(0, Number(node.width) || 0) / 2
+      const halfHeight = Math.max(0, Number(node.height) || 0) / 2
+      const left = node.worldX - halfWidth
+      const right = node.worldX + halfWidth
+      const top = node.worldY - halfHeight
+      const bottom = node.worldY + halfHeight
+
+      const minCol = Math.floor(left / GRID_CELL_SIZE)
+      const maxCol = Math.floor(right / GRID_CELL_SIZE)
+      const minRow = Math.floor(top / GRID_CELL_SIZE)
+      const maxRow = Math.floor(bottom / GRID_CELL_SIZE)
+
+      for (let col = minCol; col <= maxCol; col++) {
+        for (let row = minRow; row <= maxRow; row++) {
+          const key = `${col},${row}`
+          let cell = gridIndex.get(key)
+          if (!cell) {
+            cell = { nodeIds: [] }
+            gridIndex.set(key, cell)
+          }
+          cell.nodeIds.push(node.id)
+        }
+      }
+    }
+    lastGridBuiltForSignature = signature
+  }
+
+  const queryGridIndex = (viewLeft: number, viewTop: number, viewRight: number, viewBottom: number): string[] => {
+    const result = new Set<string>()
+    const minCol = Math.floor(viewLeft / GRID_CELL_SIZE)
+    const maxCol = Math.floor(viewRight / GRID_CELL_SIZE)
+    const minRow = Math.floor(viewTop / GRID_CELL_SIZE)
+    const maxRow = Math.floor(viewBottom / GRID_CELL_SIZE)
+
+    for (let col = minCol; col <= maxCol; col++) {
+      for (let row = minRow; row <= maxRow; row++) {
+        const cell = gridIndex.get(`${col},${row}`)
+        if (cell) {
+          for (const id of cell.nodeIds) {
+            result.add(id)
+          }
+        }
+      }
+    }
+    return Array.from(result)
+  }
 
   const renderNodes = computed(() => payload.nodes.value.filter((node) => !hiddenNodeIdSet.has(node.id)))
 
@@ -172,19 +234,43 @@ export const useAIWorkflowNodeVisibility = (payload: {
 
     const next = new Set<string>()
 
-    for (const node of nodesForRender) {
-      if (selectedIds.has(node.id)) {
-        next.add(node.id)
-        continue
+    for (const id of selectedIds) {
+      next.add(id)
+    }
+
+    if (nodesForRender.length <= SPATIAL_INDEX_THRESHOLD) {
+      for (const node of nodesForRender) {
+        if (selectedIds.has(node.id)) continue
+        const halfWidth = Math.max(0, Number(node.width) || 0) / 2
+        const halfHeight = Math.max(0, Number(node.height) || 0) / 2
+        const left = node.worldX - halfWidth
+        const right = node.worldX + halfWidth
+        const top = node.worldY - halfHeight
+        const bottom = node.worldY + halfHeight
+        const visible = right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom
+        if (visible) next.add(node.id)
       }
-      const halfWidth = Math.max(0, Number(node.width) || 0) / 2
-      const halfHeight = Math.max(0, Number(node.height) || 0) / 2
-      const left = node.worldX - halfWidth
-      const right = node.worldX + halfWidth
-      const top = node.worldY - halfHeight
-      const bottom = node.worldY + halfHeight
-      const visible = right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom
-      if (visible) next.add(node.id)
+    } else {
+      buildGridIndex(nodesForRender, nodeSignature)
+      const candidateIds = queryGridIndex(viewLeft, viewTop, viewRight, viewBottom)
+      const nodesById = new Map<string, WorkflowNode>()
+      for (const node of nodesForRender) {
+        nodesById.set(node.id, node)
+      }
+
+      for (const id of candidateIds) {
+        if (selectedIds.has(id)) continue
+        const node = nodesById.get(id)
+        if (!node) continue
+        const halfWidth = Math.max(0, Number(node.width) || 0) / 2
+        const halfHeight = Math.max(0, Number(node.height) || 0) / 2
+        const left = node.worldX - halfWidth
+        const right = node.worldX + halfWidth
+        const top = node.worldY - halfHeight
+        const bottom = node.worldY + halfHeight
+        const visible = right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom
+        if (visible) next.add(id)
+      }
     }
 
     lastVisibleIds = next

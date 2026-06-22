@@ -5493,6 +5493,11 @@ async function runProjectEnterSequence(
   display: contents;
 }
 
+.aiwf-node-host > :deep(.wf-node) {
+  contain: layout paint style;
+  will-change: transform, width, height;
+}
+
 .aiwf-inspector-toggle {
   position: absolute;
   top: var(--aiwf-inspector-toggle-top, 16px);
@@ -5625,6 +5630,8 @@ async function runProjectEnterSequence(
   cursor: grab;
   touch-action: none;
   overflow: hidden;
+  contain: layout paint style;
+  will-change: transform;
 }
 
 .aiwf-node-compact:active {
