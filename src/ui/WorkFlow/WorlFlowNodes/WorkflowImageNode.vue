@@ -179,6 +179,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import WorkflowNodeBase from "../WorkflowNodeBase.vue";
 import { exportWorkflowImageOutputPng } from "../../../aiworkflow/imageOutput";
+import { useAIWorkflowResourceCache } from "../../../views/AIWorkflow/assets/useAIWorkflowResourceCache";
 
 type AnchorSpec = {
   id: string;
@@ -520,33 +521,62 @@ const cropToUv = (c: { x: number; y: number; width: number; height: number }) =>
   return { u0: x0, u1: x1, v0: y0, v1: y1 };
 };
 
+const { getCachedResource, loadResource, getResourceSize } = useAIWorkflowResourceCache();
+
 const ensureNaturalSizeFallback = async () => {
   const sourceUrl = effectiveSourceUrl.value;
   if (!sourceUrl) return;
   if (naturalWidth.value && naturalHeight.value && !pendingResourceReset.value) return;
-  await new Promise<void>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1));
-      const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1));
-      const patch: Record<string, any> = { naturalWidth: w, naturalHeight: h };
-      if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
-        patch.outputWidth = w;
-        patch.outputHeight = h;
-        patch.cropEnabled = false;
-        patch.crop = { x: 0, y: 0, width: 1, height: 1 };
-      }
-      emit("update-image-settings", patch);
-      pendingResourceReset.value = false;
-      resolve();
-    };
-    img.onerror = () => resolve();
-    img.src = sourceUrl;
-  });
+
+  const cachedSize = getResourceSize(sourceUrl);
+  if (cachedSize) {
+    const patch: Record<string, any> = { naturalWidth: cachedSize.width, naturalHeight: cachedSize.height };
+    if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
+      patch.outputWidth = cachedSize.width;
+      patch.outputHeight = cachedSize.height;
+      patch.cropEnabled = false;
+      patch.crop = { x: 0, y: 0, width: 1, height: 1 };
+    }
+    emit("update-image-settings", patch);
+    pendingResourceReset.value = false;
+    return;
+  }
+
+  const cached = getCachedResource(sourceUrl);
+  if (cached && cached.loaded && cached.size) {
+    const patch: Record<string, any> = { naturalWidth: cached.size.width, naturalHeight: cached.size.height };
+    if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
+      patch.outputWidth = cached.size.width;
+      patch.outputHeight = cached.size.height;
+      patch.cropEnabled = false;
+      patch.crop = { x: 0, y: 0, width: 1, height: 1 };
+    }
+    emit("update-image-settings", patch);
+    pendingResourceReset.value = false;
+    return;
+  }
+
+  const resource = await loadResource(sourceUrl, "image");
+  if (!resource.error && resource.size) {
+    const patch: Record<string, any> = { naturalWidth: resource.size.width, naturalHeight: resource.size.height };
+    if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
+      patch.outputWidth = resource.size.width;
+      patch.outputHeight = resource.size.height;
+      patch.cropEnabled = false;
+      patch.crop = { x: 0, y: 0, width: 1, height: 1 };
+    }
+    emit("update-image-settings", patch);
+    pendingResourceReset.value = false;
+  }
 };
 
-const toFileUrl = () => {
-  return "";
+const toFileUrl = (path: string) => {
+  if (!path) return "";
+  try {
+    return `file:///${path.replace(/\\/g, "/")}`;
+  } catch {
+    return "";
+  }
 };
 
 const toggleCropMode = async () => {
@@ -726,6 +756,13 @@ const onPreviewImageLoad = () => {
   if (img) {
     const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1));
     const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1));
+    
+    const needsUpdate = w !== naturalWidth.value || h !== naturalHeight.value;
+    if (!needsUpdate && !pendingResourceReset.value) {
+      emit("media-ready");
+      return;
+    }
+
     const patch: Record<string, any> = { naturalWidth: w, naturalHeight: h };
     if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
       patch.outputWidth = w;
