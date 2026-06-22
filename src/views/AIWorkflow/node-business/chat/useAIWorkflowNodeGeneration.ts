@@ -18,6 +18,19 @@ export type NodeGenerationApiDeps = {
    * it falls back to fetch().
    */
   downloadUrlAsBlob?: (url: string) => Promise<Blob | null>
+  /**
+   * Persist an external asset URL to the project, downloading and storing it locally.
+   */
+  persistExternalAssetToProject?: (payload: {
+    kind: 'image' | 'video' | 'file'
+    name: string
+    sourceUrl?: string
+    sourcePath?: string
+  }) => Promise<{
+    url: string
+    absolutePath: string
+    projectRelativePath?: string
+  } | null>
 }
 
 // Loose alias for store action callers that don't want to import types directly.
@@ -130,6 +143,11 @@ const collectReferenceImages = async (
 
 const normalizeImageModel = (params: Record<string, any>) => {
   const rawModel = String(params?.imageModel ?? params?.model ?? '').trim()
+  // Meshy 图片生成模型
+  if (rawModel === 'meshy') {
+    const meshyAiModel = String(params?.meshyImageAiModel || 'nano-banana').trim()
+    return { kind: 'meshy', model: meshyAiModel }
+  }
   if (rawModel.startsWith('jimeng')) return { kind: 'jimeng', model: rawModel }
   if (rawModel.startsWith('nanobanana')) return { kind: 'nanobanana', model: rawModel }
   // When user picks 'seedream' as the interface, the actual model ID is in seedreamModelVersion.
@@ -151,6 +169,170 @@ const normalizeVideoModel = (params: Record<string, any>) => {
   }
   // Default to seedance (Doubao / 字节方舟) when the user did not pick a provider.
   return { kind: 'seedance', model: rawModel || 'doubao-seedance-2-0-260128' }
+}
+
+/**
+ * 轮询 Meshy 任务状态直到完成
+ */
+const pollMeshyTaskStatus = async (
+  deps: NodeGenerationApiDeps,
+  svc: any,
+  taskId: string,
+  generationTaskId: string,
+  nodeId: string,
+  taskType: string, // 任务类型：'text-to-image' | 'image-to-image'
+) => {
+  const maxPolls = 120 // 最大轮询次数（约4分钟）
+  const pollInterval = 2000 // 2秒间隔
+  let consecutiveErrors = 0 // 连续错误计数
+
+  for (let i = 0; i < maxPolls; i++) {
+    await new Promise((r) => setTimeout(r, pollInterval))
+
+    try {
+      // mode 参数必须是任务类型（text-to-image / image-to-image），不是 'status'
+      const taskRes = await svc.meshyTask(taskId, taskType)
+      
+      // 重置连续错误计数
+      consecutiveErrors = 0
+
+      if (!taskRes.ok) {
+        const errorDetails = {
+          status: taskRes.status,
+          error: taskRes.error,
+          taskId,
+          taskType,
+          attempt: i + 1,
+        }
+        appendDetail(deps, generationTaskId, `轮询失败（状态码: ${taskRes.status}）：${taskRes.error}`)
+        console.warn('[Meshy Poll] 轮询失败:', errorDetails)
+        
+        // 如果是502错误，记录更详细的信息
+        if (taskRes.status === 502) {
+          appendDetail(deps, generationTaskId, `502 Bad Gateway - 后端服务可能暂时不可用，将重试`)
+          pushToast(deps, 'Meshy 服务暂时不可用，正在重试...', 'warn')
+        }
+        continue
+      }
+
+      // 兼容大小写：后端可能返回 'SUCCEEDED' 或 'succeeded'
+      const status = String(taskRes.status || '').trim().toUpperCase()
+      const progress = Number(taskRes.progress ?? 0)
+      const progressPct = Math.min(95, Math.max(20, progress))
+
+      updateTask(deps, generationTaskId, {
+        statusText: `Meshy ${taskType} ${status}（${progress}%）`,
+        progress: progressPct,
+      })
+
+      if (status === 'SUCCEEDED') {
+        // 获取生成的图片 URL
+        const imageUrls = taskRes.imageUrls || []
+        const preferredUrl = taskRes.preferredImageUrl || imageUrls[0] || ''
+
+        let outputSummary = {
+          preferredUrl: '',
+          imageUrls: [] as string[],
+          thumbnailUrl: ''
+        }
+
+        if (preferredUrl) {
+          const resolved = deps.resolveBackendUrl(preferredUrl)
+          
+          // 下载资产到本地项目
+          if (typeof deps.persistExternalAssetToProject === 'function') {
+            const fileName = `meshy_${taskId}${String(preferredUrl).match(/\.[^.]+$/)?.[0] || '.png'}`
+            const persisted = await deps.persistExternalAssetToProject({
+              kind: 'image',
+              name: fileName,
+              sourceUrl: resolved
+            })
+            if (persisted) {
+              outputSummary.preferredUrl = String(persisted.url || resolved)
+              outputSummary.imageUrls = imageUrls.map(u => deps.resolveBackendUrl(u))
+              console.log('[Meshy Poll] 资产已持久化:', { 
+                taskId, 
+                originalUrl: preferredUrl, 
+                persistedUrl: persisted.url,
+                absolutePath: persisted.absolutePath 
+              })
+            } else {
+              console.warn('[Meshy Poll] 资产持久化失败，使用原始URL:', preferredUrl)
+            }
+          }
+
+          let bound = true
+          if (typeof deps.bindImageResultToNode === 'function') {
+            const bindRet = await deps.bindImageResultToNode(nodeId, outputSummary.preferredUrl || resolved)
+            bound = bindRet !== false
+          }
+          if (bound) {
+            appendResult(deps, generationTaskId, { kind: 'image', url: outputSummary.preferredUrl || resolved, label: 'Meshy 图片' })
+          }
+        }
+
+        // 更新图片节点的 meshyImageSettings
+        deps.store.commit('setNodeImageSettings', {
+          nodeId,
+          imageSettings: {
+            meshyImageSettings: {
+              taskId,
+              taskStatus: 'succeeded',
+              progress: 100,
+              statusText: 'Meshy 图片生成完成',
+              outputSummary
+            }
+          }
+        })
+
+        updateTask(deps, generationTaskId, {
+          status: 'completed',
+          statusText: `Meshy 图片生成完成（共 ${imageUrls.length} 张）`,
+          progress: 100,
+          finishedAt: Date.now(),
+        })
+        return
+      }
+
+      if (status === 'FAILED') {
+        const errorMsg = String(taskRes.errorMessage || taskRes.task_error?.message || '未知错误')
+        throw new Error(`Meshy 任务失败：${errorMsg}`)
+      }
+
+      if (status === 'CANCELED') {
+        throw new Error('Meshy 任务已取消')
+      }
+
+      // PENDING 或 IN_PROGRESS，继续轮询
+    } catch (err: any) {
+      // 如果是已知的状态错误，直接抛出
+      const errMsg = String(err?.message ?? '')
+      if (errMsg.includes('失败') || errMsg.includes('取消')) {
+        throw err
+      }
+      
+      // 网络错误等，记录并继续重试
+      consecutiveErrors++
+      const errorDetails = {
+        message: errMsg,
+        taskId,
+        taskType,
+        attempt: i + 1,
+        consecutiveErrors,
+        timestamp: Date.now(),
+      }
+      
+      appendDetail(deps, generationTaskId, `轮询异常（第${i + 1}次，连续${consecutiveErrors}次）：${errMsg}`)
+      console.error('[Meshy Poll] 轮询异常:', errorDetails)
+      
+      // 如果连续错误超过5次，给出警告提示
+      if (consecutiveErrors >= 5) {
+        pushToast(deps, `Meshy 轮询连续失败${consecutiveErrors}次，请检查网络连接或后端服务状态。`, 'warn')
+      }
+    }
+  }
+
+  throw new Error('Meshy 任务超时')
 }
 
 const createTask = (payload: WorkflowNodeChatSubmitPayload): WorkflowNodeGenerationTask => ({
@@ -303,9 +485,111 @@ const runImageTask = async (
   const quantity = Number(params.quantity ?? 1)
   if (Number.isFinite(quantity) && quantity > 0) form.set('quantity', String(Math.min(8, Math.max(1, Math.floor(quantity)))))
 
+  // Collect connected reference images for meshy image-to-image or seedream.
+  const refs = await collectReferenceImages(deps, payload.nodeId, 5)
+  const hasRefImages = refs.length > 0
+
+  // Meshy 图片生成任务（异步任务模式，非流式）
+  if (kind === 'meshy') {
+    const meshyAiModel = String(params?.meshyImageAiModel || model || 'nano-banana').trim()
+    const meshyAspectRatio = String(params?.meshyAspectRatio || params?.aspectRatio || '1:1').trim()
+    const meshyPoseMode = String(params?.meshyPoseMode || '').trim()
+    const meshyGenerateMultiView = Boolean(params?.meshyGenerateMultiView)
+    const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
+
+    appendDetail(deps, task.id, `Meshy 模式：${taskType}`)
+    appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
+
+    try {
+      // 构建 Meshy API 请求体
+      const meshyPayload: Record<string, any> = {
+        mode: taskType,
+        ai_model: meshyAiModel,
+        prompt: payload.prompt,
+      }
+
+      if (!hasRefImages) {
+        // text-to-image 参数
+        if (meshyAspectRatio) meshyPayload.aspect_ratio = meshyAspectRatio
+        if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
+        if (meshyGenerateMultiView) meshyPayload.generate_multi_view = true
+      }
+
+      updateTask(deps, task.id, { statusText: `正在创建 Meshy ${taskType} 任务…`, progress: 20 })
+
+      // 如果有参考图，需要先上传或转换为 URL
+      if (hasRefImages) {
+        const refForm = new FormData()
+        for (const key of Object.keys(meshyPayload)) {
+          refForm.set(key, String(meshyPayload[key]))
+        }
+        for (const ref of refs) {
+          refForm.append('refImages', ref.blob, ref.name)
+        }
+        const createRes = await (svc as any).meshyGenerateImage(refForm)
+        if (!createRes.ok) {
+          throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
+        }
+        const taskId = String(createRes.taskId || createRes.result || '').trim()
+        if (!taskId) throw new Error('Meshy 返回空任务 ID')
+        appendDetail(deps, task.id, `任务已创建：${taskId}`)
+
+        // 标记图片节点的 imageGenerationSource 为 meshy，使任务面板能找到该节点
+        deps.store.commit('setNodeImageSettings', {
+          nodeId: payload.nodeId,
+          imageSettings: {
+            imageGenerationSource: 'meshy',
+            meshyImageSettings: {
+              taskId,
+              taskStatus: 'pending',
+              taskFamily: taskType,
+              progress: 20,
+              statusText: `Meshy ${taskType} 任务已创建`,
+            },
+          },
+        })
+
+        // 轮询任务状态
+        await pollMeshyTaskStatus(deps, svc, taskId, task.id, payload.nodeId, taskType)
+      } else {
+        const createRes = await (svc as any).meshyGenerate(meshyPayload)
+        if (!createRes.ok) {
+          throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
+        }
+        const taskId = String(createRes.taskId || createRes.result || '').trim()
+        if (!taskId) throw new Error('Meshy 返回空任务 ID')
+        appendDetail(deps, task.id, `任务已创建：${taskId}`)
+
+        // 标记图片节点的 imageGenerationSource 为 meshy
+        deps.store.commit('setNodeImageSettings', {
+          nodeId: payload.nodeId,
+          imageSettings: {
+            imageGenerationSource: 'meshy',
+            meshyImageSettings: {
+              taskId,
+              taskStatus: 'pending',
+              taskFamily: taskType,
+              progress: 20,
+              statusText: `Meshy ${taskType} 任务已创建`,
+            },
+          },
+        })
+
+        // 轮询任务状态
+        await pollMeshyTaskStatus(deps, svc, taskId, task.id, payload.nodeId, taskType)
+      }
+
+      return
+    } catch (err: any) {
+      const errMsg = String(err?.message ?? err ?? 'Meshy 生成异常')
+      pushToast(deps, `Meshy 生成失败：${errMsg}`, 'error')
+      updateTask(deps, task.id, { status: 'failed', statusText: `失败：${errMsg}`, progress: 0, finishedAt: Date.now() })
+      return
+    }
+  }
+
   // Collect connected reference images (anchor-based input) for seedream image-to-image.
   if (kind === 'seedream') {
-    const refs = await collectReferenceImages(deps, payload.nodeId, 4)
     for (const ref of refs) form.append('refImages', ref.blob, ref.name)
   }
 

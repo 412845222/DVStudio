@@ -169,6 +169,9 @@
               @change="onOutputHeightChange"
             />
           </div>
+
+          <div class="wf-toolbar-divider" />
+
         </div>
       </div>
     </template>
@@ -1134,5 +1137,149 @@ onBeforeUnmount(() => {
   height: 1px;
   opacity: 0;
   pointer-events: none;
+}
+
+.wf-toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--vscode-border);
+  margin: 0 4px;
+}
+
+.wf-model-select {
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.wf-model-select:hover {
+  border-color: var(--vscode-hover-border);
+}
+
+.wf-meshy-panel {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.54);
+  padding: 10px;
+}
+
+.wf-meshy-row {
+  display: grid;
+  gap: 10px;
+}
+
+.wf-meshy-row-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wf-meshy-field {
+  display: grid;
+  gap: 6px;
+}
+
+.wf-meshy-label {
+  font-size: 11px;
+  color: #9ec2dd;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wf-meshy-input,
+.wf-meshy-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.72);
+  color: var(--vscode-fg);
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 0;
+}
+
+.wf-meshy-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.wf-meshy-textarea.compact {
+  min-height: 48px;
+}
+
+.wf-meshy-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vscode-fg);
+}
+
+.wf-meshy-status-area {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.4);
+  border: 1px solid rgb(from var(--vscode-border) r g b / 0.68);
+}
+
+.wf-meshy-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.wf-meshy-status-label {
+  color: var(--vscode-fg-muted);
+}
+
+.wf-meshy-status-value {
+  color: var(--vscode-fg);
+}
+
+.wf-meshy-status-value.is-running,
+.wf-meshy-status-value.is-pending {
+  color: #5bb6ff;
+}
+
+.wf-meshy-status-value.is-succeeded {
+  color: #38b98c;
+}
+
+.wf-meshy-status-value.is-failed {
+  color: #f87171;
+}
+
+.wf-meshy-status-value.is-canceled {
+  color: var(--vscode-fg-muted);
+}
+
+.wf-meshy-progress-bar {
+  height: 6px;
+  background: rgb(from var(--vscode-border) r g b / 0.4);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.wf-meshy-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5bb6ff, #38b98c);
+  transition: width 300ms ease;
+}
+
+.wf-meshy-task-id {
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+  word-break: break-all;
+}
+
+.wf-meshy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 </style>

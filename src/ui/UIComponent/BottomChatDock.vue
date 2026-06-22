@@ -152,6 +152,12 @@
                   @update:config="onSeedanceConfigChange"
                 />
 
+                <MeshyImageForm
+                  v-if="modelKey === 'meshy'"
+                  :config="meshyImageConfig"
+                  @update:config="onMeshyImageConfigChange"
+                />
+
                 <div class="chat-history-status" aria-live="polite">
                   执行状态：{{
                     nanoStatus ||
@@ -458,6 +464,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideoForm.vue'
+import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
 import {
 	CHAT_API_SOURCE_OPTIONS,
 	CHAT_MODEL_CATALOG,
@@ -730,7 +737,7 @@ const needType = ref<ChatNeedType>(needTypeFromLegacyModel(modelKey.value));
 const apiSource = ref<ChatApiSource>("all");
 
 const isVisualGenMode = computed(
-  () => isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance")
+  () => isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance" || modelKey.value === "meshy")
 );
 
 const nanoConfig = ref<NanoBananaConfig>({
@@ -760,8 +767,23 @@ const seedanceConfig = ref<SeedanceConfig>({
   executionExpiresAfter: '',
 });
 
+const meshyImageConfig = ref<MeshyImageConfig>({
+  prompt: '',
+  negativePrompt: '',
+  aiModel: 'nano-banana',
+  outputImageCount: 1,
+  generateMultiView: false,
+  aspectRatio: '1:1',
+  poseMode: '',
+  seed: 0,
+});
+
 const onSeedanceConfigChange = (nextConfig: SeedanceConfig) => {
   seedanceConfig.value = { ...nextConfig };
+};
+
+const onMeshyImageConfigChange = (nextConfig: MeshyImageConfig) => {
+  meshyImageConfig.value = { ...nextConfig };
 };
 
 const textModel = ref("auto");
@@ -1175,6 +1197,24 @@ const emitGenerate = () => {
     });
     return;
   }
+  // Meshy 图片生成分支
+  if (modelKey.value === "meshy") {
+    const quantity = normalizedNanoQuantity.value as 1 | 2 | 3 | 4;
+    emit("nanobanana-generate", {
+      prompt,
+      config: {
+        ...nanoConfig.value,
+        imageModel: 'meshy',
+        meshyImageAiModel: meshyImageConfig.value.aiModel || 'nano-banana',
+        meshyAspectRatio: meshyImageConfig.value.aspectRatio || '1:1',
+        meshyPoseMode: meshyImageConfig.value.poseMode || '',
+        meshyGenerateMultiView: meshyImageConfig.value.generateMultiView || false,
+        meshyOutputImageCount: meshyImageConfig.value.outputImageCount || 1,
+        quantity,
+      },
+    });
+    return;
+  }
   const selected = String(nanoConfig.value.imageModel || "").trim();
   const imageModel =
     selected === "gemini-2.5-flash-image"
@@ -1205,7 +1245,7 @@ const onEnterSend = () => {
     if (!isStoppingState.value) emit('stop');
     return;
   }
-  if (isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance")) emitGenerate();
+  if (isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance" || modelKey.value === "meshy")) emitGenerate();
   else emit("send");
 };
 
@@ -1214,7 +1254,7 @@ const onClickSend = () => {
     if (!isStoppingState.value) emit('stop');
     return;
   }
-  if (isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance")) emitGenerate();
+  if (isRegularMode.value && (modelKey.value === "nanobanana" || modelKey.value === "seedance" || modelKey.value === "meshy")) emitGenerate();
   else emit("send");
 };
 

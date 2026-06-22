@@ -90,16 +90,42 @@ export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [
 ]
 
 export const NODE_CHAT_MESHY_MODE_OPTIONS = [
-  { value: 'text-to-3d', label: '文本生成' },
-  { value: 'image-to-3d', label: '单图生成' },
-  { value: 'multi-image-to-3d', label: '多图生成' },
-  { value: 'retexture', label: '重新纹理化' },
-  { value: 'remesh', label: '重新网格化' },
+  { value: 'text-to-3d', label: 'Text to 3D' },
+  { value: 'image-to-3d', label: 'Image to 3D' },
+  { value: 'multi-image-to-3d', label: 'Multi-Image to 3D' },
 ]
 
-export const NODE_CHAT_MESHY_STAGE_OPTIONS = [
-  { value: 'preview', label: '预览' },
-  { value: 'refine', label: '精修' },
+export const NODE_CHAT_MESHY_AI_MODEL_OPTIONS = [
+  { value: 'latest', label: 'latest' },
+  { value: 'meshy-6', label: 'meshy-6' },
+  { value: 'meshy-5', label: 'meshy-5' },
+]
+
+export const NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS = [
+  { value: 'standard', label: '标准' },
+  { value: 'lowpoly', label: '低模' },
+]
+
+export const NODE_CHAT_MESHY_TOPOLOGY_OPTIONS = [
+  { value: 'triangle', label: 'triangle' },
+  { value: 'quad', label: 'quad' },
+]
+
+export const NODE_CHAT_MESHY_SYMMETRY_MODE_OPTIONS = [
+  { value: 'auto', label: 'auto' },
+  { value: 'on', label: 'on' },
+  { value: 'off', label: 'off' },
+]
+
+export const NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS = [
+  { value: 'bottom', label: '底部' },
+  { value: 'center', label: '中心' },
+]
+
+export const NODE_CHAT_MESHY_POSE_MODE_OPTIONS = [
+  { value: '', label: '无' },
+  { value: 'a-pose', label: 'a-pose' },
+  { value: 't-pose', label: 't-pose' },
 ]
 
 export const NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS = [
@@ -213,9 +239,37 @@ export const NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS = [
 ]
 
 export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
-  { value: 'nanobanana', label: 'NanoBanana (Gemini)' },
+  { value: 'nanobanana', label: 'NanoBanana' },
   { value: 'seedream', label: 'Seedream (字节方舟)' },
+  { value: 'meshy', label: 'Meshy' },
 ]
+
+export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS = [
+  { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (NanoBanana)' },
+  { value: 'gemini-3-pro-image', label: 'Gemini 3 Pro Image (NanoBanana2)' },
+  { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview' },
+]
+
+export const NODE_CHAT_MESHY_IMAGE_OPTIONS = {
+  aiModel: [
+    { value: 'nano-banana', label: 'NanoBanana' },
+    { value: 'nano-banana-2', label: 'NanoBanana2' },
+    { value: 'nano-banana-pro', label: 'NanoBananaPro' },
+    { value: 'gpt-image-2', label: 'GPT-Image-2' },
+  ],
+  aspectRatio: [
+    { value: '1:1', label: '1:1' },
+    { value: '16:9', label: '16:9' },
+    { value: '9:16', label: '9:16' },
+    { value: '4:3', label: '4:3' },
+    { value: '3:4', label: '3:4' },
+  ],
+  poseMode: [
+    { value: '', label: '无' },
+    { value: 'a-pose', label: 'a-pose' },
+    { value: 't-pose', label: 't-pose' },
+  ],
+}
 
 export const NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS = [
   { value: 'doubao-seedream-4-5-251128', label: 'Seedream v4.5 (推荐)' },
@@ -253,7 +307,11 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
     case 'image':
       return {
         modelId: undefined,
-        model: 'seedream',
+        model: 'nanobanana',
+        nanobananaModelVersion: 'gemini-2.5-flash-image',
+        meshyImageAiModel: 'nano-banana',
+        meshyPoseMode: '',
+        meshyGenerateMultiView: false,
         seedreamModelVersion: 'doubao-seedream-4-5-251128',
         resolution: '1024x1024',
         aspectRatio: '1:1',
@@ -288,8 +346,15 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
         rodinQuality: 'medium',
         rodinOutputFormat: 'glb',
         meshyMode: 'text-to-3d',
-        meshyStage: 'preview',
+        meshyAiModel: 'latest',
+        meshyModelType: 'standard',
+        meshyTopology: 'triangle',
+        meshySymmetryMode: 'auto',
+        meshyOriginAt: 'bottom',
+        meshyPoseMode: '',
         meshyOutputFormat: 'glb',
+        meshyMultiView: false,
+        meshySeed: -1,
       }
     default:
       return {}

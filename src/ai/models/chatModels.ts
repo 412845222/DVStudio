@@ -1,4 +1,4 @@
-export type ChatLegacyModelKey = 'deepseek' | 'nanobanana' | 'seedance' | 'codex'
+export type ChatLegacyModelKey = 'deepseek' | 'nanobanana' | 'seedance' | 'codex' | 'meshy'
 export type ChatNeedType = 'text' | 'image' | 'video'
 export type ChatApiSource = 'all' | 'deepseek' | 'gemini' | 'bytedance' | 'local-exec'
 
@@ -404,6 +404,7 @@ export const needTypeFromLegacyModel = (mk: ChatLegacyModelKey): ChatNeedType =>
 	if (mk === 'nanobanana') return 'image'
 	if (mk === 'seedance') return 'video'
 	if (mk === 'codex') return 'text'
+	if (mk === 'meshy') return 'image'
 	return 'text'
 }
 

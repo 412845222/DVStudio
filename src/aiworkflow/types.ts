@@ -53,6 +53,31 @@ export type WorkflowImageNodeSettings = {
 	cropEnabled?: boolean
 	/** crop rect in normalized source space */
 	crop?: WorkflowImageCrop
+	/** image generation source */
+	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	/** Meshy image generation settings */
+	meshyImageSettings?: {
+		prompt?: string
+		negativePrompt?: string
+		seed?: number
+		aiModel?: 'nano-banana' | 'nano-banana-pro'
+		generateMultiView?: boolean
+		aspectRatio?: string
+		outputImageCount?: number
+		poseMode?: '' | 'a-pose' | 't-pose'
+		taskId?: string
+		taskStatus?: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+		progress?: number
+		statusText?: string
+		errorMessage?: string
+		outputSummary?: {
+			preferredUrl?: string
+			imageUrls?: string[]
+			assetUrl?: string
+			assetPath?: string
+			thumbnailUrl?: string
+		}
+	}
 }
 
 export type WorkflowVideoNodeSettings = {
@@ -513,7 +538,52 @@ export type WorkflowComfyUINodeSettings = {
 	lastUpdateAt?: number
 }
 
+export type WorkflowMeshyModelSettings = {
+	prompt?: string
+	negativePrompt?: string
+	seed?: number
+	aiModel?: 'latest' | 'meshy-6' | 'meshy-5'
+	taskFamily?: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'retexture'
+	modelType?: 'standard' | 'lowpoly'
+	topology?: 'triangle' | 'quad'
+	targetPolycount?: number
+	symmetryMode?: 'auto' | 'on' | 'off'
+	shouldRemesh?: boolean
+	savePreRemeshedModel?: boolean
+	shouldTexture?: boolean
+	enablePbr?: boolean
+	texturePrompt?: string
+	textureImageUrl?: string
+	poseMode?: '' | 'a-pose' | 't-pose'
+	autoSize?: boolean
+	originAt?: 'bottom' | 'center'
+	moderation?: boolean
+	imageEnhancement?: boolean
+	removeLighting?: boolean
+	targetFormats?: string[]
+	imageUrl?: string
+	imageUrls?: string[]
+	taskId?: string
+	taskStatus?: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+	progress?: number
+	statusText?: string
+	errorMessage?: string
+	outputSummary?: {
+		preferredUrl?: string
+		assetUrl?: string
+		assetPath?: string
+		thumbnailUrl?: string
+		format?: string
+	}
+	relationKind?: 'model' | 'texture' | 'rigging' | 'animation'
+	rootTaskId?: string
+	parentTaskId?: string
+	previewTaskId?: string
+}
+
 export type WorkflowModel3DNodeSettings = {
+	modelGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	meshyModelSettings?: WorkflowMeshyModelSettings
 	modelUrl?: string
 	modelFormat?: 'glb' | 'gltf'
 	modelSourceName?: string
