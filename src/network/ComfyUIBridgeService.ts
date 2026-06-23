@@ -1465,13 +1465,13 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyGenerateImage(form: FormData): Promise<MeshyGenerateResponse> {
-		// 将 FormData 中的 refImages 文件提取并转为 base64 data URI
 		const payload: Record<string, any> = {}
 		const refImageUrls: string[] = []
 
-		for (const [key, value] of form.entries()) {
-			if (key === 'refImages' && value instanceof File) {
-				// 将 File 转为 base64 data URI（符合 Meshy 官方 API 要求）
+		// 遍历 FormData 中的所有字段
+		const entries = (form as any).entries ? Array.from((form as any).entries() as IterableIterator<[string, any]>) : []
+		for (const [key, value] of entries) {
+			if (key === 'refImages' && (value instanceof File || value instanceof Blob)) {
 				const buffer = await value.arrayBuffer()
 				const bytes = new Uint8Array(buffer)
 				let binary = ''

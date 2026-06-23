@@ -23,7 +23,7 @@ async function main() {
 
 	process.stdout.write(`[dist:win] output dir: ${releaseDir}\n`)
 
-	let code = await run('npm', ['run', 'build'])
+	let code = await run('npx', ['vite', 'build'])
 	if (code !== 0) process.exit(code)
 
 	code = await run('electron-builder', ['-w', '--publish', 'never', '--projectDir', process.cwd(), '--config.directories.output', releaseDir], {

@@ -56,6 +56,7 @@
     "clean:runtime-django": "node scripts/clean-runtime-django.mjs",
     "build": "vue-tsc && vite build",
     "gen:win-icon": "node scripts/gen-win-icon.mjs",
+    "prepare:python-runtime": "node scripts/prepare-python-runtime.mjs",
     "clean:source-pack": "node scripts/remove-dir.mjs release-source",
     "pack:source": "node scripts/pack-source.mjs",
     "clean:lan-pack": "node scripts/remove-dir.mjs release-transfer",
@@ -73,7 +74,7 @@
     "prepack:win": "npm run gen:win-icon",
     "pack:win": "npm run build && electron-builder --dir -w",
     "pack:mac": "npm run build && electron-builder --dir -m",
-    "predist:win": "npm run gen:win-icon",
+    "predist:win": "npm run prepare:python-runtime && npm run gen:win-icon",
     "dist:win": "node scripts/dist-win.mjs",
     "dist:mac": "node scripts/dist-mac.mjs",
     "preview": "vite preview",
@@ -130,6 +131,7 @@
     "files": [
       "dist/**",
       "electron/**",
+      "!electron/static/runtime/**",
       "public/favicon.ico"
     ],
     "extraResources": [
@@ -139,7 +141,13 @@
       },
       {
         "from": "electron/static",
-        "to": "static"
+        "to": "static",
+        "filter": ["**/*", "!runtime/**"]
+      },
+      {
+        "from": "electron/static/runtime",
+        "to": "runtime",
+        "filter": ["**/*"]
       }
     ],
     "win": {

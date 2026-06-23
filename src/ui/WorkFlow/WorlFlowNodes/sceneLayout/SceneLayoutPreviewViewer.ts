@@ -101,6 +101,22 @@ type OrientationCandidate = {
 	scaleRatio: number
 }
 
+type ObjectSemanticClass =
+	| 'floor-standing'
+	| 'surface-placed'
+	| 'wall-mounted'
+	| 'ceiling-mounted'
+	| 'support-surface'
+	| 'wall-support'
+	| 'structure'
+	| 'unknown'
+
+type AlignmentRule = {
+	x: 'min' | 'center' | 'max'
+	y: 'min' | 'center' | 'max'
+	z: 'min' | 'center' | 'max'
+}
+
 type FillAxis = 'x' | 'y' | 'z'
 
 type AxisName = 'x' | 'y' | 'z'
@@ -2007,22 +2023,200 @@ private resolveWorldFillSuggestion(
 	return best
 }
 
-private resolveManualRotationAxes(item: WorkflowSceneLayoutItem, preferredAxis: AxisName): AxisName[] {
+private classifyObjectSemantics(item: WorkflowSceneLayoutItem): ObjectSemanticClass {
+	const keyElementType = String(item.keyElementType ?? '').trim().toLowerCase()
+	const semanticRole = String(item.semanticRole ?? '').trim().toLowerCase()
 	const placement = String(item.placement ?? '').trim().toLowerCase()
-	const supportSurface = String(item.supportSurface ?? '').trim().toLowerCase()
 	const mountType = String(item.mountType ?? '').trim().toLowerCase()
-	const isWall = isWallSurfaceLike(item)
-	const isCeiling = placement.includes('ceiling') || supportSurface.includes('ceiling') || supportSurface.includes('roof') || mountType.includes('ceiling') || mountType.includes('roof')
-	if (isWall) {
-		const base: AxisName[] = preferredAxis === 'z' ? ['y', 'z'] : preferredAxis === 'y' ? ['z', 'y'] : ['y', 'z']
-		return base
+	const supportSurface = String(item.supportSurface ?? '').trim().toLowerCase()
+	const id = String(item.id ?? '').trim().toLowerCase()
+	const relationTags = Array.isArray(item.relationTags)
+		? item.relationTags.map((tag) => String(tag ?? '').trim().toLowerCase())
+		: []
+
+	if (
+		keyElementType === 'floor' || keyElementType === 'wall' || keyElementType === 'ceiling' ||
+		keyElementType === 'column' || semanticRole === 'structure-shell' ||
+		relationTags.includes('structural-shell') ||
+		id === 'floor1' || id === 'ceiling1' || /wall\d+$/i.test(id)
+	) {
+		return 'structure'
 	}
-	if (isCeiling) {
-		const ordered: AxisName[] = preferredAxis === 'y' ? ['x', 'z', 'y'] : [preferredAxis, 'y', preferredAxis === 'x' ? 'z' : 'x']
-		return ordered.filter((value, index, list) => list.indexOf(value) === index)
+
+	if (isWallMountedSupportSurface(item)) {
+		return 'wall-support'
 	}
-	const ordered: AxisName[] = [preferredAxis, 'y', preferredAxis === 'x' ? 'z' : 'x']
-	return ordered.filter((value, index, list) => list.indexOf(value) === index)
+
+	if (isDeskLikeSurface(item)) {
+		return 'support-surface'
+	}
+
+	if (
+		placement.includes('ceiling') || supportSurface.includes('ceiling') ||
+		supportSurface.includes('roof') || mountType.includes('ceiling') ||
+		mountType.includes('roof')
+	) {
+		return 'ceiling-mounted'
+	}
+
+	if (isWallSurfaceLike(item)) {
+		return 'wall-mounted'
+	}
+
+	if (
+		mountType.includes('floor') || placement === 'on-floor' ||
+		semanticRole.includes('floor-standing') ||
+		item.shouldTouchGround === true
+	) {
+		return 'floor-standing'
+	}
+
+	if (
+		placement === 'on-top' || supportSurface === 'table' ||
+		supportSurface.includes('desk') || semanticRole.includes('surface-placed')
+	) {
+		return 'surface-placed'
+	}
+
+	const tokens = [
+		String(item.name ?? ''),
+		String(item.category ?? ''),
+		String(item.subCategory ?? ''),
+		semanticRole,
+	].join(' ').toLowerCase()
+
+	if (/(chair|seat|sofa|couch|table|desk|cabinet|wardrobe|bed|stool|bench|shelf|bookcase|椅|沙发|桌|柜|床|凳|书架|衣柜)/.test(tokens)) {
+		return 'floor-standing'
+	}
+	if (/(lamp|light|chandelier|pendant|灯|吊灯|吸顶灯)/.test(tokens)) {
+		if (mountType.includes('ceiling') || /ceiling|pendant|chandelier|吊|吸顶/.test(tokens)) {
+			return 'ceiling-mounted'
+		}
+		return 'floor-standing'
+	}
+	if (/(monitor|computer|screen|display|keyboard|mouse|cup|bottle|book|phone|laptop|显示器|键盘|鼠标|杯子|书|手机|笔记本)/.test(tokens)) {
+		return 'surface-placed'
+	}
+	if (/(picture|poster|painting|mirror|tv|shelf|hook|rack|画|海报|镜子|电视|壁挂|挂钩)/.test(tokens)) {
+		return 'wall-mounted'
+	}
+
+	return 'unknown'
+}
+
+private getAllowedOrientationCandidates(item: WorkflowSceneLayoutItem): OrientationOffset[] {
+	const semanticClass = this.classifyObjectSemantics(item)
+	const yawSet = [0, 90, 180, -90]
+	const wallYaw = canonicalWallRoleYaw(canonicalWallRole(item.wallRole))
+
+	switch (semanticClass) {
+		case 'structure':
+			return [{ yaw: 0, pitch: 0, roll: 0 }]
+		case 'floor-standing':
+		case 'surface-placed':
+		case 'support-surface':
+		case 'unknown':
+			return yawSet.map(yaw => ({ yaw, pitch: 0, roll: 0 }))
+		case 'wall-mounted':
+		case 'wall-support': {
+			const candidates: OrientationOffset[] = []
+			for (const yaw of [wallYaw, normalizeAngleDeg(wallYaw + 180)]) {
+				candidates.push({ yaw, pitch: 0, roll: 0 })
+			}
+			return candidates
+		}
+		case 'ceiling-mounted':
+			return yawSet.map(yaw => ({ yaw, pitch: -90, roll: 0 }))
+		default:
+			return yawSet.map(yaw => ({ yaw, pitch: 0, roll: 0 }))
+	}
+}
+
+private getAlignmentRule(item: WorkflowSceneLayoutItem, semanticClass?: ObjectSemanticClass): AlignmentRule {
+	const cls = semanticClass ?? this.classifyObjectSemantics(item)
+	switch (cls) {
+		case 'ceiling-mounted':
+			return { x: 'center', y: 'max', z: 'center' }
+		case 'wall-mounted':
+		case 'wall-support': {
+			const role = canonicalWallRole(item.wallRole)
+			if (role === 'left') return { x: 'min', y: 'center', z: 'center' }
+			if (role === 'right') return { x: 'max', y: 'center', z: 'center' }
+			if (role === 'back') return { x: 'center', y: 'center', z: 'max' }
+			return { x: 'center', y: 'center', z: 'min' }
+		}
+		case 'floor-standing':
+		case 'surface-placed':
+		case 'support-surface':
+		case 'unknown':
+		case 'structure':
+		default:
+			return { x: 'center', y: 'min', z: 'center' }
+	}
+}
+
+private calculateUniformScaleToFit(modelSize: { x: number; y: number; z: number }, targetSize: { x: number; y: number; z: number }): number {
+	const sx = targetSize.x / Math.max(modelSize.x, 0.001)
+	const sy = targetSize.y / Math.max(modelSize.y, 0.001)
+	const sz = targetSize.z / Math.max(modelSize.z, 0.001)
+	return Math.max(0.0001, Math.min(sx, sy, sz))
+}
+
+private alignModelToTarget(
+	modelObject: any,
+	targetMin: { x: number; y: number; z: number },
+	targetMax: { x: number; y: number; z: number },
+	rule: AlignmentRule
+) {
+	const modelBox = this.getWorldBox(modelObject)
+	if (!modelBox) return
+
+	const modelSize = modelBox.getSize(new THREE.Vector3())
+	const modelMin = modelBox.min
+	const modelCenter = modelBox.getCenter(new THREE.Vector3())
+	const targetSize = {
+		x: targetMax.x - targetMin.x,
+		y: targetMax.y - targetMin.y,
+		z: targetMax.z - targetMin.z,
+	}
+	const targetCenter = {
+		x: (targetMin.x + targetMax.x) * 0.5,
+		y: (targetMin.y + targetMax.y) * 0.5,
+		z: (targetMin.z + targetMax.z) * 0.5,
+	}
+
+	const getOffset = (axis: 'x' | 'y' | 'z', align: 'min' | 'center' | 'max') => {
+		switch (align) {
+			case 'min': return targetMin[axis] - modelMin[axis]
+			case 'max': return targetMax[axis] - (modelMin[axis] + modelSize[axis])
+			case 'center': return targetCenter[axis] - modelCenter[axis]
+		}
+	}
+
+	modelObject.position.x += getOffset('x', rule.x)
+	modelObject.position.y += getOffset('y', rule.y)
+	modelObject.position.z += getOffset('z', rule.z)
+	modelObject.updateMatrixWorld(true)
+}
+
+private resolveManualRotationAxes(item: WorkflowSceneLayoutItem, preferredAxis: AxisName): AxisName[] {
+	const semanticClass = this.classifyObjectSemantics(item)
+	switch (semanticClass) {
+		case 'floor-standing':
+		case 'surface-placed':
+		case 'support-surface':
+		case 'unknown':
+			return ['y']
+		case 'wall-mounted':
+		case 'wall-support':
+			return ['y']
+		case 'ceiling-mounted':
+			return ['y']
+		case 'structure':
+			return []
+		default:
+			return ['y']
+	}
 }
 
 private prepareModelPreview(object: any, item: WorkflowSceneLayoutItem, mode: 'auto' | 'manual' | 'keep') {
@@ -2057,22 +2251,23 @@ if (!rotatedBox.isEmpty()) {
 	const fillAxis = fillModeToAxis(item.fillMode)
 	const fillAxisScale = Number.isFinite(Number(item.fillAxisScale)) ? Number(item.fillAxisScale) : 1
 	const uniformScale = Math.max(0.0001, Math.min(placeholderScaleX, placeholderScaleY, placeholderScaleZ))
+	const allowDeform = (item as any).allowDeformInForcedMode === true
 	const scaleX = useForcedScale
-		? placeholderScaleX
+		? (allowDeform ? placeholderScaleX : uniformScale)
 		: fillAxis === 'x'
 		? Math.max(fillAxisScale, 0.0001)
 		: useModelScale || !!fillAxis
 		? (fillAxis ? placeholderScaleX : uniformScale)
 		: placeholderScaleX
 	const scaleY = useForcedScale
-		? placeholderScaleY
+		? (allowDeform ? placeholderScaleY : uniformScale)
 		: fillAxis === 'y'
 		? Math.max(fillAxisScale, 0.0001)
 		: useModelScale || !!fillAxis
 		? (fillAxis ? placeholderScaleY : uniformScale)
 		: placeholderScaleY
 	const scaleZ = useForcedScale
-		? placeholderScaleZ
+		? (allowDeform ? placeholderScaleZ : uniformScale)
 		: fillAxis === 'z'
 		? Math.max(fillAxisScale, 0.0001)
 		: useModelScale || !!fillAxis
@@ -2086,19 +2281,6 @@ if (!rotatedBox.isEmpty()) {
 		)
 	)
 	object.updateMatrixWorld(true)
-	if (useForcedScale) {
-		const forcedBox = new THREE.Box3().setFromObject(object)
-		if (!forcedBox.isEmpty()) {
-			const forcedSize = forcedBox.getSize(new THREE.Vector3())
-			const correction = new THREE.Vector3(
-				target.x / Math.max(forcedSize.x, 0.001),
-				target.y / Math.max(forcedSize.y, 0.001),
-				target.z / Math.max(forcedSize.z, 0.001),
-			)
-			object.scale.multiply(correction)
-			object.updateMatrixWorld(true)
-		}
-	}
 }
 
 const normalizedBox = new THREE.Box3().setFromObject(object)
@@ -2179,41 +2361,41 @@ private arrangeFilledClonesInWorld(boundRoot: any, placeholderMesh: any, item: W
 	boundRoot.scale.set(1, 1, 1)
 	boundRoot.updateMatrixWorld(true)
 	const placeholderSize = placeholderBox.getSize(new THREE.Vector3())
-	const placeholderCenter = placeholderBox.getCenter(new THREE.Vector3())
 	const axisLength = placeholderSize[fillAxis] / Math.max(count, 1)
+	const semanticClass = this.classifyObjectSemantics(item)
+	const alignmentRule = this.getAlignmentRule(item, semanticClass)
+
 	for (let index = 0; index < clones.length; index += 1) {
 		const clone = clones[index]
 		const cloneBox = this.getWorldBox(clone)
 		if (!cloneBox) continue
 		const cloneSize = cloneBox.getSize(new THREE.Vector3())
-		const targetSize = new THREE.Vector3(placeholderSize.x, placeholderSize.y, placeholderSize.z)
-		targetSize[fillAxis] = axisLength
-		clone.scale.multiply(
-			new THREE.Vector3(
-				targetSize.x / Math.max(cloneSize.x, 0.001),
-				targetSize.y / Math.max(cloneSize.y, 0.001),
-				targetSize.z / Math.max(cloneSize.z, 0.001),
-			),
+
+		const cellSize = {
+			x: fillAxis === 'x' ? axisLength : placeholderSize.x,
+			y: fillAxis === 'y' ? axisLength : placeholderSize.y,
+			z: fillAxis === 'z' ? axisLength : placeholderSize.z,
+		}
+
+		const uniformScale = this.calculateUniformScaleToFit(
+			{ x: cloneSize.x, y: cloneSize.y, z: cloneSize.z },
+			cellSize
 		)
+		clone.scale.multiplyScalar(uniformScale)
 		clone.updateMatrixWorld(true)
-		const scaledBox = this.getWorldBox(clone)
-		if (!scaledBox) continue
-		const offset = new THREE.Vector3(0, 0, 0)
-		const cellMin = placeholderBox.min[fillAxis] + axisLength * index
-		offset[fillAxis] = cellMin - scaledBox.min[fillAxis]
-		if (fillAxis !== 'x') {
-			const scaledCenterX = (scaledBox.min.x + scaledBox.max.x) * 0.5
-			offset.x = placeholderCenter.x - scaledCenterX
+
+		const cellMin = {
+			x: fillAxis === 'x' ? placeholderBox.min.x + axisLength * index : placeholderBox.min.x,
+			y: fillAxis === 'y' ? placeholderBox.min.y + axisLength * index : placeholderBox.min.y,
+			z: fillAxis === 'z' ? placeholderBox.min.z + axisLength * index : placeholderBox.min.z,
 		}
-		if (fillAxis !== 'z') {
-			const scaledCenterZ = (scaledBox.min.z + scaledBox.max.z) * 0.5
-			offset.z = placeholderCenter.z - scaledCenterZ
+		const cellMax = {
+			x: fillAxis === 'x' ? cellMin.x + axisLength : placeholderBox.max.x,
+			y: fillAxis === 'y' ? cellMin.y + axisLength : placeholderBox.max.y,
+			z: fillAxis === 'z' ? cellMin.z + axisLength : placeholderBox.max.z,
 		}
-		if (fillAxis !== 'y') {
-			offset.y = placeholderBox.min.y - scaledBox.min.y
-		}
-		clone.position.add(offset)
-		clone.updateMatrixWorld(true)
+
+		this.alignModelToTarget(clone, cellMin, cellMax, alignmentRule)
 	}
 }
 
@@ -2223,67 +2405,49 @@ private fitBoundModelToPlaceholderWorld(boundRoot: any, placeholderMesh: any, it
 	if (!placeholderBox || !modelBox) return
 	const placeholderSize = placeholderBox.getSize(new THREE.Vector3())
 	const modelSize = modelBox.getSize(new THREE.Vector3())
-	const previewScaleMode = String(item.previewScaleMode ?? 'placeholder').trim().toLowerCase()
 	const fillAxis = fillModeToAxis(item.fillMode)
 	const isForced = item.fitMode === 'forced'
-	const useExactFit = isForced || previewScaleMode !== 'model'
-	if (fillAxis && !isForced) return
-	const ratios = new THREE.Vector3(
-		placeholderSize.x / Math.max(modelSize.x, 0.001),
-		placeholderSize.y / Math.max(modelSize.y, 0.001),
-		placeholderSize.z / Math.max(modelSize.z, 0.001),
-	)
-	const correction = fillAxis && !isForced
-		? new THREE.Vector3(
-			fillAxis === 'x' ? ratios.x : Math.min(1, ratios.x),
-			fillAxis === 'y' ? ratios.y : Math.min(1, ratios.y),
-			fillAxis === 'z' ? ratios.z : Math.min(1, ratios.z),
+	const allowDeform = (item as any).allowDeformInForcedMode === true
+	const semanticClass = this.classifyObjectSemantics(item)
+	const alignmentRule = this.getAlignmentRule(item, semanticClass)
+
+	if (fillAxis && !isForced) {
+		const fillScale = placeholderSize[fillAxis] / Math.max(modelSize[fillAxis], 0.001)
+		const uniformScale = Math.min(
+			placeholderSize.x / Math.max(modelSize.x, 0.001),
+			placeholderSize.y / Math.max(modelSize.y, 0.001),
+			placeholderSize.z / Math.max(modelSize.z, 0.001)
 		)
-		: useExactFit
-		? ratios
-		: new THREE.Vector3(
-			Math.min(ratios.x, ratios.y, ratios.z),
-			Math.min(ratios.x, ratios.y, ratios.z),
-			Math.min(ratios.x, ratios.y, ratios.z),
-		)
-	boundRoot.scale.multiply(correction)
-	boundRoot.updateMatrixWorld(true)
-	const fittedBox = this.getWorldBox(boundRoot)
-	if (!fittedBox) return
-	const placeholderCenter = placeholderBox.getCenter(new THREE.Vector3())
-	const fittedCenter = fittedBox.getCenter(new THREE.Vector3())
-	const offsetX = fillAxis === 'x'
-		? placeholderBox.min.x - fittedBox.min.x
-		: placeholderCenter.x - fittedCenter.x
-	const offsetZ = fillAxis === 'z'
-		? placeholderBox.min.z - fittedBox.min.z
-		: placeholderCenter.z - fittedCenter.z
-	const offsetY = fillAxis === 'y'
-		? placeholderBox.min.y - fittedBox.min.y
-		: placeholderBox.min.y - fittedBox.min.y
-	boundRoot.position.x += offsetX
-	boundRoot.position.y += offsetY
-	boundRoot.position.z += offsetZ
-	boundRoot.updateMatrixWorld(true)
-	if (isForced) {
-		const preciseBox = this.getWorldBox(boundRoot)
-		if (!preciseBox) return
-		const preciseSize = preciseBox.getSize(new THREE.Vector3())
-		const preciseCorrection = new THREE.Vector3(
-			placeholderSize.x / Math.max(preciseSize.x, 0.001),
-			placeholderSize.y / Math.max(preciseSize.y, 0.001),
-			placeholderSize.z / Math.max(preciseSize.z, 0.001),
-		)
-		boundRoot.scale.multiply(preciseCorrection)
+		boundRoot.scale.multiplyScalar(Math.max(0.0001, Math.min(fillScale, uniformScale)))
 		boundRoot.updateMatrixWorld(true)
-		const correctedBox = this.getWorldBox(boundRoot)
-		if (!correctedBox) return
-		const correctedCenter = correctedBox.getCenter(new THREE.Vector3())
-		boundRoot.position.x += placeholderCenter.x - correctedCenter.x
-		boundRoot.position.y += placeholderBox.min.y - correctedBox.min.y
-		boundRoot.position.z += placeholderCenter.z - correctedCenter.z
-		boundRoot.updateMatrixWorld(true)
+	} else {
+		let scaleFactor: number
+		if (isForced && allowDeform) {
+			const sx = placeholderSize.x / Math.max(modelSize.x, 0.001)
+			const sy = placeholderSize.y / Math.max(modelSize.y, 0.001)
+			const sz = placeholderSize.z / Math.max(modelSize.z, 0.001)
+			boundRoot.scale.multiply(new THREE.Vector3(
+				Math.max(0.0001, sx),
+				Math.max(0.0001, sy),
+				Math.max(0.0001, sz)
+			))
+			boundRoot.updateMatrixWorld(true)
+		} else {
+			scaleFactor = this.calculateUniformScaleToFit(
+				{ x: modelSize.x, y: modelSize.y, z: modelSize.z },
+				{ x: placeholderSize.x, y: placeholderSize.y, z: placeholderSize.z }
+			)
+			boundRoot.scale.multiplyScalar(scaleFactor)
+			boundRoot.updateMatrixWorld(true)
+		}
 	}
+
+	this.alignModelToTarget(
+		boundRoot,
+		{ x: placeholderBox.min.x, y: placeholderBox.min.y, z: placeholderBox.min.z },
+		{ x: placeholderBox.max.x, y: placeholderBox.max.y, z: placeholderBox.max.z },
+		alignmentRule
+	)
 }
 
 async adjustSelectedModelOrientation(): Promise<SceneLayoutActionResult> {
@@ -2424,7 +2588,7 @@ async forceFitSelectedModel(): Promise<SceneLayoutActionResult> {
 		item.fitMode = 'forced'
 		item.fitUpdatedAt = Date.now()
 		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
-		const message = '已强制压到占位盒尺寸；切换占位比例/模型比例后会自动清除。'
+		const message = '已按比例适配到占位盒（保持模型比例）；切换占位比例/模型比例后会自动清除。'
 		this.setFitState(item, 'forced', message)
 		this.emitLayoutChange()
 		this.requestRender()
@@ -2463,8 +2627,9 @@ private resolveOrientationDecision(
 	existingOffset: OrientationOffset,
 	mode: 'auto' | 'manual' | 'keep'
 ) {
-	const candidates = buildOrientationCandidates().map((offset) => this.measureOrientationCandidate(object, baseScale, baseQuaternion, basePosition, target, offset))
-	const current = this.measureOrientationCandidate(object, baseScale, baseQuaternion, basePosition, target, existingOffset)
+	const allowedCandidates = this.getAllowedOrientationCandidates(item)
+	const candidates = allowedCandidates.map((offset) => this.measureOrientationCandidate(object, baseScale, baseQuaternion, basePosition, target, offset, item))
+	const current = this.measureOrientationCandidate(object, baseScale, baseQuaternion, basePosition, target, existingOffset, item)
 	let best = current
 	for (const candidate of candidates) {
 		if (candidate.score < best.score) best = candidate
@@ -2473,10 +2638,15 @@ private resolveOrientationDecision(
 	if (mode === 'manual') {
 		const improvement = current.score - best.score
 		if (improvement <= ORIENTATION_NEAR_MATCH_THRESHOLD) {
-			nextOffset = {
-				yaw: normalizeAngleDeg(existingOffset.yaw + 180),
-				pitch: existingOffset.pitch,
-				roll: existingOffset.roll,
+			const semanticClass = this.classifyObjectSemantics(item)
+			if (semanticClass === 'wall-mounted' || semanticClass === 'wall-support') {
+				nextOffset = best.offset
+			} else {
+				nextOffset = {
+					yaw: normalizeAngleDeg(existingOffset.yaw + 180),
+					pitch: existingOffset.pitch,
+					roll: existingOffset.roll,
+				}
 			}
 		} else {
 			nextOffset = best.offset
@@ -2486,7 +2656,7 @@ private resolveOrientationDecision(
 		nextOffset = improvement > ORIENTATION_IMPROVEMENT_THRESHOLD ? best.offset : existingOffset
 	}
 	nextOffset = this.applySurfaceFacingConstraint(nextOffset, item)
-	const finalBest = this.measureOrientationCandidate(object, baseScale, baseQuaternion, basePosition, target, nextOffset)
+	const finalBest = this.measureOrientationCandidate(object, baseScale, baseQuaternion, basePosition, target, nextOffset, item)
 	return {
 		offset: nextOffset,
 		best: finalBest,
@@ -2534,9 +2704,38 @@ private measureOrientationCandidate(
 	const logs = normalized.map((value) => Math.log(Math.max(value, 0.0001)))
 	const avg = (logs[0] + logs[1] + logs[2]) / 3
 	const variance = ((logs[0] - avg) ** 2 + (logs[1] - avg) ** 2 + (logs[2] - avg) ** 2) / 3
-	const score = previewScaleMode === 'model'
+	let score = previewScaleMode === 'model'
 		? Math.abs(1 - normalized[0]) + Math.abs(1 - normalized[1]) + Math.abs(1 - normalized[2])
 		: Math.max(0, scaleRatio - 1) + Math.sqrt(Math.max(0, variance))
+
+	if (item) {
+		const semanticClass = this.classifyObjectSemantics(item)
+		const ORIENTATION_PENALTY = 50
+		switch (semanticClass) {
+			case 'floor-standing':
+			case 'surface-placed':
+			case 'support-surface':
+			case 'unknown':
+				if (Math.abs(normalizeAngleDeg(offset.pitch)) > 5) score += ORIENTATION_PENALTY
+				if (Math.abs(normalizeAngleDeg(offset.roll)) > 5) score += ORIENTATION_PENALTY
+				break
+			case 'wall-mounted':
+			case 'wall-support':
+				if (Math.abs(normalizeAngleDeg(offset.pitch)) > 5) score += ORIENTATION_PENALTY
+				if (Math.abs(normalizeAngleDeg(offset.roll)) > 5) score += ORIENTATION_PENALTY
+				break
+			case 'ceiling-mounted':
+				if (Math.abs(normalizeAngleDeg(offset.pitch) + 90) > 10) score += ORIENTATION_PENALTY
+				if (Math.abs(normalizeAngleDeg(offset.roll)) > 5) score += ORIENTATION_PENALTY
+				break
+			case 'structure':
+				if (Math.abs(normalizeAngleDeg(offset.pitch)) > 1) score += ORIENTATION_PENALTY
+				if (Math.abs(normalizeAngleDeg(offset.roll)) > 1) score += ORIENTATION_PENALTY
+				if (Math.abs(normalizeAngleDeg(offset.yaw)) > 1) score += ORIENTATION_PENALTY
+				break
+		}
+	}
+
 	return {
 		offset,
 		size,
@@ -2546,34 +2745,47 @@ private measureOrientationCandidate(
 }
 
 private applySurfaceFacingConstraint(offset: OrientationOffset, item: WorkflowSceneLayoutItem): OrientationOffset {
-	const placement = String(item.placement ?? '').trim().toLowerCase()
-	const supportSurface = String(item.supportSurface ?? '').trim().toLowerCase()
-	const mountType = String(item.mountType ?? '').trim().toLowerCase()
-	const isWall = isWallSurfaceLike(item)
-	const isCeiling = placement.includes('ceiling') || supportSurface.includes('ceiling') || supportSurface.includes('roof') || mountType.includes('ceiling') || mountType.includes('roof')
-	const isFloor = placement.includes('on-top') || supportSurface.includes('floor') || mountType.includes('floor')
-let yaw = normalizeAngleDeg(offset.yaw)
-let pitch = normalizeAngleDeg(offset.pitch)
+	const semanticClass = this.classifyObjectSemantics(item)
+	let yaw = normalizeAngleDeg(offset.yaw)
+	let pitch = normalizeAngleDeg(offset.pitch)
 	let roll = normalizeAngleDeg(offset.roll)
-	if (isWall) {
-		if (yaw > 90) yaw = normalizeAngleDeg(yaw - 180)
-		if (yaw <= -90) yaw = normalizeAngleDeg(yaw + 180)
-		pitch = 0
+
+	switch (semanticClass) {
+		case 'floor-standing':
+		case 'surface-placed':
+		case 'support-surface':
+		case 'unknown':
+			pitch = 0
+			roll = 0
+			break
+		case 'wall-mounted':
+		case 'wall-support': {
+			pitch = 0
+			roll = 0
+			const wallYaw = canonicalWallRoleYaw(canonicalWallRole(item.wallRole))
+			const diff = normalizeAngleDeg(yaw - wallYaw)
+			if (Math.abs(diff) > 90 + 5) {
+				yaw = normalizeAngleDeg(yaw - 180)
+			}
+			break
+		}
+		case 'ceiling-mounted':
+			pitch = -90
+			roll = 0
+			break
+		case 'structure':
+			yaw = 0
+			pitch = 0
+			roll = 0
+			break
 	}
-	if (isCeiling) {
-		if (pitch > 45) pitch = normalizeAngleDeg(pitch - 180)
-		if (pitch >= -45 && pitch <= 45) pitch = -90
+
+	return {
+		...offset,
+		yaw,
+		pitch,
+		roll,
 	}
-	if (isFloor) {
-		if (pitch > 120) pitch = normalizeAngleDeg(pitch - 180)
-		if (pitch < -120) pitch = normalizeAngleDeg(pitch + 180)
-	}
-return {
-	...offset,
-	yaw,
-	pitch,
-	roll,
-}
 }
 
 private captureObjectTransform(object: any, origin?: { x: number; y: number; z: number }) {

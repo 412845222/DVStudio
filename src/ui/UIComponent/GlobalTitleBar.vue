@@ -62,6 +62,8 @@ import {
 } from '../../electronBridge'
 import { ThemeStore } from '../../store/theme'
 
+const router = useRouter()
+
 const backendRuntime = ref<{
   running: boolean
   healthy: boolean

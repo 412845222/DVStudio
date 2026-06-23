@@ -369,6 +369,9 @@
           :screenshotAnchorsEnabled="screenshotAnchorsEnabled"
           :screenshotParticlesEnabled="screenshotParticlesEnabled"
           :resources="resources"
+          :nodes-by-id="(store.state as any).nodesById"
+          :node-order="(store.state as any).nodeOrder"
+          :current-project-id="currentProjectId"
           :nodeLibraryOpen="false"
           :backendLogOpen="blueprintLogPanelOpen"
           :electronReady="isElectron()"
@@ -377,6 +380,7 @@
           @toggle-node-library="onRailToggleNodeLibrary"
           @toggle-backend-log="onRailToggleBackendLog"
           @open-resource-manager="openResourceDialog"
+          @focus-node="onToolbarFocusNode"
           @request-repair-assets="onRequestRepairProjectAssets"
           @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
           @request-toggle-screenshot-anchors="screenshotAnchorsEnabled = !screenshotAnchorsEnabled"
@@ -715,6 +719,7 @@ import ImageMarkupDialog from '../../ui/WorkFlow/WorlFlowNodes/ImageMarkupDialog
 import DwebCanvasNodeSearchMenu from '../../ui/UIComponent/DwebCanvasNodeSearchMenu.vue'
 import { buildDeleteAction, type WorkflowAction } from '../../aiworkflow/actions'
 import { exportWorkflowImageOutputPng } from '../../aiworkflow/imageOutput'
+import { exportWorkflowImageEnforcedPng, uvCropToPixelRect, type PixelRect } from '../../aiworkflow/imageCropEnforcer'
 import type {
   WorkflowAnchorSpec,
   WorkflowEdge,
@@ -1810,9 +1815,19 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 }
 
 const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
-  store.dispatch('submitNodeChat', payload)
+  // 当 draft 为空时，尝试从连接的文本节点获取 prompt
+  let resolvedPrompt = payload.prompt
+  if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d') {
+    const refs = getInputParamPreviewRefs(payload.nodeId)
+    const textRef = refs.find((r) => r.kind === 'text' && r.text)
+    if (textRef && textRef.text) {
+      resolvedPrompt = textRef.text
+    }
+  }
+  const finalPayload = { ...payload, prompt: resolvedPrompt }
+  store.dispatch('submitNodeChat', finalPayload)
   const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
-  const castPayload = payload as unknown as Parameters<typeof runNodeGenerationTask>[1]
+  const castPayload = finalPayload as unknown as Parameters<typeof runNodeGenerationTask>[1]
   const result = await runNodeGenerationTask(
     {
       store,
@@ -3195,7 +3210,25 @@ const buildImageTransferFileFromCrop = async (payload: {
   outputWidth?: number
   outputHeight?: number
   suffix?: string
+  sourceWidth?: number
+  sourceHeight?: number
+  enforceLandscape?: boolean
 }) => {
+  if (payload.enforceLandscape) {
+    const srcW = Math.max(1, Math.floor(Number(payload.sourceWidth ?? 0) || 1))
+    const srcH = Math.max(1, Math.floor(Number(payload.sourceHeight ?? 0) || 1))
+    const pixelCrop = uvCropToPixelRect(srcW, srcH, payload.crop)
+    const blob = await exportWorkflowImageEnforcedPng({
+      src: payload.sourceUrl,
+      crop: pixelCrop,
+      minWidth: 350,
+    })
+    if (!blob) return null
+    const baseName = String(payload.sourceName || 'image').replace(/\.[^./\\]+$/, '') || 'image'
+    const suffix = String(payload.suffix || 'crop').trim() || 'crop'
+    return new File([blob], `${baseName}_${suffix}.png`, { type: 'image/png' })
+  }
+
   const outputWidth = Math.max(1, Math.floor(Number(payload.outputWidth ?? 0) || 1))
   const outputHeight = Math.max(1, Math.floor(Number(payload.outputHeight ?? 0) || 1))
   const blob = await exportWorkflowImageOutputPng({
@@ -6253,6 +6286,34 @@ const { onNodeRefresh } = useAIWorkflowNodeRefresh({
 // 主窗口监听来自资源管理器独立窗口的事件广播
 let resourceManagerEventListenerId: number | null = null
 
+const pushSystemToast = (message: string, tone: 'info' | 'warn' | 'error' = 'warn') => {
+  chatMessages.value = [
+    ...chatMessages.value,
+    { id: `sys-focus-${Date.now()}`, role: 'system', message, tone, createdAt: Date.now() },
+  ] as any
+}
+
+const tryFocusNodeById = (nodeIdRaw: any): boolean => {
+  const nodeId = String(nodeIdRaw || '').trim()
+  if (!nodeId) return false
+  const exists = !!(store.state as any).nodesById?.[nodeId]
+  if (!exists) return false
+  const ok = canvasInteraction.onFocusNode(nodeId)
+  if (ok) {
+    ;(store.commit as any)('setSelectedNode', { nodeId })
+  }
+  return ok
+}
+
+const onToolbarFocusNode = (p: any) => {
+  const nodeId = String(p?.nodeId || '').trim()
+  if (!nodeId) return
+  const ok = tryFocusNodeById(nodeId)
+  if (!ok) {
+    pushSystemToast('引用节点已删除，无法定位。', 'warn')
+  }
+}
+
 const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => {
   const { event, data } = payload || {}
   if (!event) return
@@ -6279,6 +6340,15 @@ const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => 
       // 资源管理器窗口中拖拽资源到蓝图节点
       if (data?.resourceId) {
         void onResourceDraggedToBlueprint(String(data.resourceId), data?.position ?? null)
+      }
+      break
+    case 'focus-node':
+      // 资源管理器窗口中请求定位到节点
+      if (data?.nodeId) {
+        const ok = tryFocusNodeById(String(data.nodeId))
+        if (!ok) {
+          pushSystemToast('引用节点已删除，无法定位。', 'warn')
+        }
       }
       break
     default:
@@ -6332,6 +6402,37 @@ watch(meshyTaskDialogOpen, (open) => {
 watch(videoTaskDialogOpen, (open) => {
   onVideoTaskDialogOpenChanged(open)
 })
+
+let syncNodesToManagerTimer: number | null = null
+const syncNodesToResourceManager = () => {
+  if (syncNodesToManagerTimer !== null) {
+    clearTimeout(syncNodesToManagerTimer)
+  }
+  syncNodesToManagerTimer = window.setTimeout(() => {
+    syncNodesToManagerTimer = null
+    const w = window as any
+    if (!w.__DWEB_RUNTIME__?.isElectron || !w.dweb?.aiworkflow?.sendResourceManagerData) return
+    try {
+      const resourcesData = JSON.parse(JSON.stringify(resources.value))
+      const nodesData = JSON.parse(JSON.stringify(store.state.nodesById))
+      const nodeOrderData = JSON.parse(JSON.stringify(store.state.nodeOrder))
+      void w.dweb.aiworkflow.sendResourceManagerData({
+        resources: resourcesData,
+        nodesById: nodesData,
+        nodeOrder: nodeOrderData,
+      })
+    } catch {
+      // ignore
+    }
+  }, 500)
+}
+
+watch(
+  () => (store.state as any).nodeOrder?.length ?? 0,
+  () => {
+    syncNodesToResourceManager()
+  }
+)
 
 const removeResourceRecordOnly = (resourceId: string) => {
   revokeTrackedObjectUrlsForResource(resourceId)
@@ -6465,6 +6566,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
   chatCollapsed,
   markViewportMotion,
   scheduleAsyncEdgeRender,
+  canvasViewportSize,
 })
 
 const onStartLink = linkInteraction.onStartLink
@@ -6534,6 +6636,7 @@ watch(
 )
 
 const onCanvasPanningStart = () => {
+  canvasInteraction.cancelFocusAnimation()
   linkInteraction.setPanning(true)
 }
 

@@ -103,7 +103,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		}
 	}
 
-	const getMeshySettingsForNode = (node: WorkflowNode) => {
+	const getMeshySettingsForNode = (node: WorkflowNode): Record<string, any> | undefined => {
 		if (node.type === 'meshy') return node.meshySettings
 		if (node.type === 'image' && node.imageSettings?.imageGenerationSource === 'meshy') return node.imageSettings?.meshyImageSettings
 		if (node.type === 'model3d' && node.model3dSettings?.meshyModelSettings?.taskId) return node.model3dSettings?.meshyModelSettings

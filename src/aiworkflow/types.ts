@@ -66,6 +66,8 @@ export type WorkflowImageNodeSettings = {
 		outputImageCount?: number
 		poseMode?: '' | 'a-pose' | 't-pose'
 		taskId?: string
+		taskFamily?: 'text-to-image' | 'image-to-image'
+		mode?: 'text-to-image' | 'image-to-image'
 		taskStatus?: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
 		progress?: number
 		statusText?: string
@@ -469,7 +471,7 @@ export type WorkflowSceneDecomposeOutput = {
 	objectId?: string
 	name?: string
 	description?: string
-	cropMode?: 'cropped' | 'fallback'
+	cropMode?: 'cropped' | 'fallback' | 'cropped-enforced' | 'fallback-enforced'
 	sourceImageIndex: number
 	observedImageIndices?: number[]
 	imageRect?: WorkflowImageCrop

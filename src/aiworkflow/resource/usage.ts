@@ -57,17 +57,30 @@ const extractPath = (raw: string): string | null => {
   const r = normStr(raw);
   if (!r) return null;
 
-  // 处理 URL 形式
   try {
-    if (r.includes("://")) {
-      const afterProtocol = r.split("://")[1] || "";
-      const withoutQuery = afterProtocol.split("?")[0].split("#")[0];
-      return withoutQuery || null;
+    const url = new URL(r);
+    if (url.protocol === "dweb:" && url.host === "project-assets") {
+      const p = url.searchParams.get("path");
+      if (p) return p.startsWith("/") ? p.slice(1) : p;
+      return null;
     }
-    // 纯路径：直接去除 query/hash
-    return r.split("?")[0].split("#")[0] || null;
+    let pathname = url.pathname || "";
+    if (pathname.startsWith("/")) {
+      if (url.protocol === "file:") {
+        pathname = pathname.replace(/^\/+/, "");
+      } else {
+        const host = url.host || "";
+        return host ? `${host}${pathname}` : pathname.slice(1);
+      }
+    }
+    return pathname || null;
   } catch {
-    return r.split("?")[0].split("#")[0] || null;
+    const withoutQuery = r.split("?")[0].split("#")[0];
+    if (withoutQuery.includes("://")) {
+      const afterProto = withoutQuery.split("://")[1] || "";
+      return afterProto || null;
+    }
+    return withoutQuery || null;
   }
 };
 
@@ -181,6 +194,10 @@ const collectCandidateUrlsFromNode = (
   // 通用：node.resourceId
   const rid = normStr((node as any).resourceId);
   if (rid) out.push({ value: rid, source: "node.resourceId" });
+
+  // 通用：node.resourcePath（项目相对路径）
+  const rpath = normStr((node as any).resourcePath);
+  if (rpath) out.push({ value: rpath, source: "node.resourceId", description: "资源路径" });
 
   // 文本节点：textValue
   if (type === "text") {
@@ -322,11 +339,14 @@ export function analyzeResourceUsage(
 
   const index = buildResourceIndex(resources);
 
+  const addedPairs = new Set<string>();
+
   for (const nodeId of order) {
     const node = nodesById[nodeId];
     if (!node) continue;
     const nodeTitle = String(node.title ?? node.type ?? nodeId).trim();
     const nodeType = String(node.type ?? "").trim();
+    const resolvedNodeId = String(node.id ?? nodeId);
 
     const candidates = collectCandidateUrlsFromNode(node);
     for (const c of candidates) {
@@ -334,8 +354,11 @@ export function analyzeResourceUsage(
       for (const rid of matchedIds) {
         const info = result.get(rid);
         if (!info) continue;
+        const pairKey = `${rid}::${resolvedNodeId}`;
+        if (addedPairs.has(pairKey)) continue;
+        addedPairs.add(pairKey);
         info.usedBy.push({
-          nodeId: String(node.id ?? nodeId),
+          nodeId: resolvedNodeId,
           nodeTitle,
           nodeType,
           source: c.source,
