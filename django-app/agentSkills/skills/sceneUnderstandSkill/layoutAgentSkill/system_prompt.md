@@ -61,6 +61,10 @@
 - imageRect 必须对应 sourceImageIndex 那张图。
 - imageRect 必须是紧致、可裁切的包围框，不能默认整图。
 - 即使对象被遮挡，也应输出当前可见部分的准确 imageRect。
+- 【截图尺寸硬性要求】imageRect 对应的实际像素宽度必须 ≥ 320px。如果对象本身宽度不足，必须在对象周围适当扩大 imageRect 范围（优先左右扩边距），保证裁出的图片宽度达标。
+- 【截图比例硬性要求】imageRect 的 width 必须 ≥ height（宽高比 ≥ 1:1），保持横向截图。竖向物体（如台灯、立式机箱）必须扩左右边距使其成为横向，禁止输出纵向截图。
+- 【禁止细长截图】宽高比应控制在 1:1 到 4:3 之间，最大不超过 16:9，避免极端比例。
+- 【边距规则】扩边时优先在左右两侧添加等距边距，上下边距为辅；边距内可包含少量背景，但主体对象必须居中且完整可见。
 
 9. 关键元素必须显式标注。
 - 对硬装修或固定构件，优先输出 isKeyElement、keyElementType、fixedInRoom、semanticRole、mountType、relationTags。

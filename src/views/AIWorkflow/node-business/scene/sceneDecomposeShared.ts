@@ -1,5 +1,10 @@
 import type { WorkflowImageCrop, WorkflowPixelRect } from '../../../../aiworkflow/types'
 
+const MIN_CROP_WIDTH_PX = 320
+const MIN_ASPECT_RATIO = 1.0
+const MAX_ASPECT_RATIO = 16 / 9
+const MAX_PADDING_RATIO = 0.5
+
 const sceneDecomposeImageSizeCache = new Map<string, { width: number; height: number }>()
 
 export const slugSceneDecomposeId = (value: unknown, index: number) => {
@@ -130,11 +135,14 @@ export const normalizeSceneDecomposeCrop = (
   const width = Number(source.width ?? 0)
   const height = Number(source.height ?? 0)
   if (hasValidSceneDecomposeImageRect(imageRect)) {
-    const crop: WorkflowImageCrop = {
+    let crop: WorkflowImageCrop = {
       x: Math.max(0, Math.min(1, Number(imageRect.x))),
       y: Math.max(0, Math.min(1, Number(imageRect.y))),
       width: Math.max(0.0001, Math.min(1, Number(imageRect.width))),
       height: Math.max(0.0001, Math.min(1, Number(imageRect.height))),
+    }
+    if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+      crop = adjustCropForMinimumSize(crop, width, height)
     }
     const outputWidth = Number.isFinite(width) && width > 0 ? Math.max(1, Math.round(width * crop.width)) : Math.max(1, Math.round(Number(imageRectPixels?.width ?? 1024 * crop.width)))
     const outputHeight = Number.isFinite(height) && height > 0 ? Math.max(1, Math.round(height * crop.height)) : Math.max(1, Math.round(Number(imageRectPixels?.height ?? 1024 * crop.height)))
@@ -154,16 +162,22 @@ export const normalizeSceneDecomposeCrop = (
     const py = Number(imageRectPixels.y)
     const pw = Math.max(1, Number(imageRectPixels.width))
     const ph = Math.max(1, Number(imageRectPixels.height))
+    let crop: WorkflowImageCrop = {
+      x: Math.max(0, Math.min(1, px / width)),
+      y: Math.max(0, Math.min(1, py / height)),
+      width: Math.max(0.0001, Math.min(1, pw / width)),
+      height: Math.max(0.0001, Math.min(1, ph / height)),
+    }
+    crop = adjustCropForMinimumSize(crop, width, height)
+    const adjustedPx = Math.round(crop.x * width)
+    const adjustedPy = Math.round(crop.y * height)
+    const adjustedPw = Math.max(1, Math.round(crop.width * width))
+    const adjustedPh = Math.max(1, Math.round(crop.height * height))
     return {
-      crop: {
-        x: Math.max(0, Math.min(1, px / width)),
-        y: Math.max(0, Math.min(1, py / height)),
-        width: Math.max(0.0001, Math.min(1, pw / width)),
-        height: Math.max(0.0001, Math.min(1, ph / height)),
-      },
-      pixelRect: { x: px, y: py, width: pw, height: ph },
-      outputWidth: Math.max(1, Math.round(pw)),
-      outputHeight: Math.max(1, Math.round(ph)),
+      crop,
+      pixelRect: { x: adjustedPx, y: adjustedPy, width: adjustedPw, height: adjustedPh },
+      outputWidth: adjustedPw,
+      outputHeight: adjustedPh,
       cropMode: 'cropped',
     }
   }
@@ -181,6 +195,81 @@ export const normalizeSceneDecomposeCrop = (
   }
 
   return null
+}
+
+interface CropAdjustOptions {
+  minWidthPx?: number
+  minAspectRatio?: number
+  maxAspectRatio?: number
+}
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+const adjustCropForMinimumSize = (
+  crop: WorkflowImageCrop,
+  sourceWidth: number,
+  sourceHeight: number,
+  options: CropAdjustOptions = {}
+): WorkflowImageCrop => {
+  const minWidthPx = options.minWidthPx ?? MIN_CROP_WIDTH_PX
+  const minAspectRatio = options.minAspectRatio ?? MIN_ASPECT_RATIO
+  const maxAspectRatio = options.maxAspectRatio ?? MAX_ASPECT_RATIO
+
+  if (!Number.isFinite(sourceWidth) || sourceWidth <= 0 || !Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+    return crop
+  }
+
+  let { x, y, width, height } = crop
+  let pixelWidth = Math.max(1, Math.round(sourceWidth * width))
+  let pixelHeight = Math.max(1, Math.round(sourceHeight * height))
+
+  let needsAdjust = false
+
+  if (pixelWidth < minWidthPx) {
+    const targetPixelWidth = Math.min(sourceWidth, minWidthPx)
+    const targetWidth = targetPixelWidth / sourceWidth
+    const centerX = x + width / 2
+    x = clamp(centerX - targetWidth / 2, 0, 1 - targetWidth)
+    width = targetWidth
+    pixelWidth = targetPixelWidth
+    needsAdjust = true
+  }
+
+  const aspectRatio = pixelWidth / pixelHeight
+  if (aspectRatio < minAspectRatio) {
+    const targetPixelHeight = Math.max(1, Math.round(pixelWidth / minAspectRatio))
+    const maxPixelHeight = Math.round(sourceHeight * (1 - y))
+    const finalPixelHeight = Math.min(targetPixelHeight, maxPixelHeight, Math.round(sourceHeight))
+    if (finalPixelHeight > pixelHeight) {
+      const targetHeight = finalPixelHeight / sourceHeight
+      const centerY = y + height / 2
+      y = clamp(centerY - targetHeight / 2, 0, 1 - targetHeight)
+      height = targetHeight
+      pixelHeight = finalPixelHeight
+      needsAdjust = true
+    }
+  } else if (aspectRatio > maxAspectRatio) {
+    const targetPixelWidth = Math.max(1, Math.round(pixelHeight * maxAspectRatio))
+    const maxPixelWidth = Math.round(sourceWidth * (1 - x))
+    const finalPixelWidth = Math.min(targetPixelWidth, maxPixelWidth, Math.round(sourceWidth))
+    if (finalPixelWidth < pixelWidth) {
+      const targetWidth = finalPixelWidth / sourceWidth
+      const centerX = x + width / 2
+      x = clamp(centerX - targetWidth / 2, 0, 1 - targetWidth)
+      width = targetWidth
+      pixelWidth = finalPixelWidth
+      needsAdjust = true
+    }
+  }
+
+  if (!needsAdjust) return crop
+
+  x = clamp(x, 0, 1 - width)
+  y = clamp(y, 0, 1 - height)
+  width = clamp(width, 0.0001, 1 - x)
+  height = clamp(height, 0.0001, 1 - y)
+
+  return { x, y, width, height }
 }
 
 export const cleanupSceneDecomposeSharedRuntime = () => {
