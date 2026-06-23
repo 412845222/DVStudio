@@ -1277,9 +1277,19 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 }
 
 const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
-  store.dispatch('submitNodeChat', payload)
+  // 当 draft 为空时，尝试从连接的文本节点获取 prompt
+  let resolvedPrompt = payload.prompt
+  if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d') {
+    const refs = getInputParamPreviewRefs(payload.nodeId)
+    const textRef = refs.find((r) => r.kind === 'text' && r.text)
+    if (textRef && textRef.text) {
+      resolvedPrompt = textRef.text
+    }
+  }
+  const finalPayload = { ...payload, prompt: resolvedPrompt }
+  store.dispatch('submitNodeChat', finalPayload)
   const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
-  const castPayload = payload as unknown as Parameters<typeof runNodeGenerationTask>[1]
+  const castPayload = finalPayload as unknown as Parameters<typeof runNodeGenerationTask>[1]
   const result = await runNodeGenerationTask(
     {
       store,

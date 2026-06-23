@@ -66,6 +66,8 @@ export type WorkflowImageNodeSettings = {
 		outputImageCount?: number
 		poseMode?: '' | 'a-pose' | 't-pose'
 		taskId?: string
+		taskFamily?: 'text-to-image' | 'image-to-image'
+		mode?: 'text-to-image' | 'image-to-image'
 		taskStatus?: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
 		progress?: number
 		statusText?: string

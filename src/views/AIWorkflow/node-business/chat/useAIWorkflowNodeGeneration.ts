@@ -250,7 +250,7 @@ const pollMeshyTaskStatus = async (
             })
             if (persisted) {
               outputSummary.preferredUrl = String(persisted.url || resolved)
-              outputSummary.imageUrls = imageUrls.map(u => deps.resolveBackendUrl(u))
+              outputSummary.imageUrls = imageUrls.map((u: string) => deps.resolveBackendUrl(u))
               console.log('[Meshy Poll] 资产已持久化:', { 
                 taskId, 
                 originalUrl: preferredUrl, 
@@ -379,8 +379,10 @@ export const runNodeGenerationTask = async (
       await runTextTask(deps, task, payload)
       return { ok: true, taskType: 'other' }
     } else if (payload.nodeType === 'image') {
+      const params = payload.params ?? {}
+      const { kind } = normalizeImageModel(params)
       await runImageTask(deps, task, payload)
-      return { ok: true, taskType: 'other' }
+      return { ok: true, taskType: kind === 'meshy' ? 'meshy-image' : 'other' }
     } else if (payload.nodeType === 'video') {
       await runVideoTask(deps, task, payload)
       return { ok: true, taskType: 'other' }
@@ -522,6 +524,8 @@ const runImageTask = async (
     const meshyAspectRatio = String(params?.meshyAspectRatio || params?.aspectRatio || '1:1').trim()
     const meshyPoseMode = String(params?.meshyPoseMode || '').trim()
     const meshyGenerateMultiView = Boolean(params?.meshyGenerateMultiView)
+    const meshyNegativePrompt = String(params?.meshyNegativePrompt || '').trim()
+    const meshySeed = Number(params?.meshySeed ?? 0)
     const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
 
     appendDetail(deps, task.id, `Meshy 模式：${taskType}`)
@@ -533,6 +537,8 @@ const runImageTask = async (
         mode: taskType,
         ai_model: meshyAiModel,
         prompt: payload.prompt,
+        negative_prompt: meshyNegativePrompt,
+        output_image_count: quantity,
       }
 
       if (!hasRefImages) {
@@ -540,6 +546,10 @@ const runImageTask = async (
         if (meshyAspectRatio) meshyPayload.aspect_ratio = meshyAspectRatio
         if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
         if (meshyGenerateMultiView) meshyPayload.generate_multi_view = true
+      }
+
+      if (Number.isFinite(meshySeed) && meshySeed > 0) {
+        meshyPayload.seed = meshySeed
       }
 
       updateTask(deps, task.id, { statusText: `正在创建 Meshy ${taskType} 任务…`, progress: 20 })
@@ -610,8 +620,8 @@ const runImageTask = async (
     } catch (err: any) {
       const errMsg = String(err?.message ?? err ?? 'Meshy 生成异常')
       pushToast(deps, `Meshy 生成失败：${errMsg}`, 'error')
-      updateTask(deps, task.id, { status: 'failed', statusText: `失败：${errMsg}`, progress: 0, finishedAt: Date.now() })
-      return
+      updateTask(deps, task.id, { status: 'error', statusText: `失败：${errMsg}`, progress: 0, finishedAt: Date.now() })
+      throw err
     }
   }
 

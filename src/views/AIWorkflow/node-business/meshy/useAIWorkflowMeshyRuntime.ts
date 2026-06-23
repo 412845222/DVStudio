@@ -180,7 +180,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
               }
               
               // 先检查是否已存在相同的资源
-              const existingResource = options.store.state.resources.find(r => r.id === resourceId)
+              const existingResource = options.store.state.resources.find((r: any) => r.id === resourceId)
               if (existingResource) {
                 console.log('[Meshy Runtime] 资源已存在，跳过添加:', resourceId)
               } else {

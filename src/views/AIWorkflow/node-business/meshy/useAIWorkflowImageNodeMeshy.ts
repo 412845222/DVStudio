@@ -1,6 +1,5 @@
 import { ref, computed } from 'vue'
 import type { WorkflowNode } from '../../../../aiworkflow/types'
-import { useAIWorkflowMeshyRequest } from './useAIWorkflowMeshyRequest'
 import { useAIWorkflowMeshyRuntime } from './useAIWorkflowMeshyRuntime'
 
 const normalizeText = (value: unknown) => String(value ?? '').trim()
@@ -24,22 +23,6 @@ export const useAIWorkflowImageNodeMeshy = (options: {
     sourcePath?: string
   }) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string } | null>
 }) => {
-  // 使用现有的 useAIWorkflowMeshyRequest 构建请求
-  const { buildMeshyRequestPayload } = useAIWorkflowMeshyRequest({
-    connectedMeshyPrompt: (nodeId: string) => {
-      // TODO: 从节点获取提示词
-      return ''
-    },
-    connectedMeshyImageInputs: (nodeId: string) => [],
-    connectedMeshyModelInput: async (nodeId: string) => null,
-    buildMeshyImageInputFromNode: async () => '',
-    normalizeMeshyImageInputValue: async (rawValue: string) => rawValue,
-    hasConnectedMeshyConsumer: () => false,
-    missingMeshyImageOutputAnchors: () => [],
-    meshyImageOutputCount: (settings) => 1,
-  })
-
-  // 使用 useAIWorkflowMeshyRuntime 进行状态轮询
   const {
     stopMeshyPoll,
     startMeshyPoll,
@@ -70,32 +53,71 @@ export const useAIWorkflowImageNodeMeshy = (options: {
     shouldRefreshMeshyTaskItems: () => false,
   })
 
-  // 状态管理
   const isLoading = ref(false)
   const errorMessage = ref<string | null>(null)
 
-  // 从节点获取当前 meshyImageSettings
   const meshySettings = computed(() => {
     const node = options.getNode()
     return node?.imageSettings?.meshyImageSettings ?? {}
   })
 
-  // 任务状态
   const taskStatus = computed(() => String(meshySettings.value.taskStatus ?? 'idle').trim())
   const taskProgress = computed(() => Math.max(0, Math.min(100, Number(meshySettings.value.progress ?? 0))))
   const taskId = computed(() => String(meshySettings.value.taskId ?? '').trim())
   const statusText = computed(() => String(meshySettings.value.statusText ?? '').trim())
 
-  // 更新节点设置的帮助函数
   const updateMeshyImageSettings = (patch: Record<string, any>) => {
     options.updateNodeSettings({
       imageSettings: {
-        meshyImageSettings: patch,
+        meshyImageSettings: {
+          ...meshySettings.value,
+          ...patch,
+        },
       },
     })
   }
 
-  // 启动 Meshy 图片生成任务
+  const buildMeshyImageRequestPayload = () => {
+    const node = options.getNode()
+    if (!node) return { ok: false as const, error: '节点不存在' }
+
+    const chatParams = node.nodeChatParams ?? {}
+    const meshyImageSettings = node.imageSettings?.meshyImageSettings ?? {}
+
+    const prompt = String(chatParams.prompt ?? meshyImageSettings.prompt ?? '').trim()
+    if (!prompt) {
+      return { ok: false as const, error: '请先填写提示词' }
+    }
+
+    const meshyAiModel = String(chatParams.meshyImageAiModel ?? meshyImageSettings.aiModel ?? 'nano-banana').trim()
+    const meshyAspectRatio = String(chatParams.aspectRatio ?? meshyImageSettings.aspectRatio ?? '1:1').trim()
+    const meshyPoseMode = String(chatParams.meshyPoseMode ?? meshyImageSettings.poseMode ?? '').trim()
+    const meshyGenerateMultiView = Boolean(chatParams.meshyGenerateMultiView ?? meshyImageSettings.generateMultiView)
+    const meshyNegativePrompt = String(chatParams.meshyNegativePrompt ?? meshyImageSettings.negativePrompt ?? '').trim()
+    const meshySeed = Number(chatParams.meshySeed ?? meshyImageSettings.seed ?? 0)
+
+    const payload: Record<string, any> = {
+      mode: 'text-to-image',
+      ai_model: meshyAiModel,
+      prompt,
+      negative_prompt: meshyNegativePrompt,
+      aspect_ratio: meshyAspectRatio,
+      output_image_count: Number(chatParams.quantity ?? meshyImageSettings.outputImageCount ?? 1),
+    }
+
+    if (meshyPoseMode) payload.pose_mode = meshyPoseMode
+    if (meshyGenerateMultiView) payload.generate_multi_view = true
+    if (Number.isFinite(meshySeed) && meshySeed > 0) payload.seed = meshySeed
+
+    return {
+      ok: true as const,
+      payload,
+      promptText: prompt,
+      promptSource: 'manual' as const,
+      imageCount: 0,
+    }
+  }
+
   const startGeneration = async () => {
     const node = options.getNode()
     if (!node) return { ok: false, error: '节点不存在' }
@@ -104,7 +126,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
     errorMessage.value = null
 
     try {
-      const result = await buildMeshyRequestPayload(node)
+      const result = buildMeshyImageRequestPayload()
       if (!result.ok) {
         errorMessage.value = result.error
         updateMeshyImageSettings({
@@ -182,7 +204,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
     const node = options.getNode()
     if (!node) return
 
-    const mode = String(meshySettings.value.taskFamily ?? 'text-to-image').trim()
+    const mode = String(meshySettings.value.mode ?? 'text-to-image').trim()
     try {
       const res = await options.getComfyService().meshyTask(currentTaskId, mode)
       if (!res.ok) {
@@ -201,7 +223,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
     const currentTaskId = taskId.value
     if (!currentTaskId) return
 
-    const mode = String(meshySettings.value.taskFamily ?? 'text-to-image').trim()
+    const mode = String(meshySettings.value.mode ?? 'text-to-image').trim()
     try {
       const res = await options.getComfyService().meshyStop(currentTaskId, mode)
       if (!res.ok) {
@@ -225,7 +247,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
     const currentTaskId = taskId.value
     if (!currentTaskId) return
 
-    const mode = String(meshySettings.value.taskFamily ?? 'text-to-image').trim()
+    const mode = String(meshySettings.value.mode ?? 'text-to-image').trim()
     try {
       const res = await options.getComfyService().meshyDelete(currentTaskId, mode)
       if (!res.ok) {
