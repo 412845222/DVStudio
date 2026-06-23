@@ -29,6 +29,22 @@
   >
     <template #body>
       <div class="wf-model3d-body">
+        <div v-if="meshyFetchFailed" class="wf-model3d-fetch-error" @pointerdown.stop>
+          <div class="wf-model3d-fetch-error-icon">!</div>
+          <div class="wf-model3d-fetch-error-body">
+            <div class="wf-model3d-fetch-error-title">模型文件拉取失败</div>
+            <div class="wf-model3d-fetch-error-text">{{ meshyFetchErrorText }}</div>
+            <div class="wf-model3d-fetch-error-actions">
+              <button class="wf-model3d-fetch-error-btn primary" type="button" @click.stop="emit('retry-meshy-fetch')">
+                重试拉取
+              </button>
+              <button class="wf-model3d-fetch-error-btn" type="button" @click.stop="emit('open-meshy-task-panel')">
+                打开任务面板
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div
           class="wf-model3d-viewer-shell"
           data-wf-node-drag-ignore="true"
@@ -88,338 +104,49 @@
     <template #footer>
       <div class="wf-model3d-footer" @pointerdown.stop>
         <div class="wf-model3d-grid">
-          <label class="wf-model3d-field wf-model3d-field-wide">
-            <span class="wf-model3d-label">模型来源</span>
-            <select class="wf-model3d-input" :value="modelGenerationSource" @change="onModelGenerationSourceChange">
-              <option value="upload">本地上传</option>
-              <option value="comfyui">ComfyUI</option>
-              <option value="meshy">Meshy</option>
-            </select>
+          <div class="wf-model3d-info-card wf-model3d-field-wide">
+            <div class="wf-model3d-info-row">
+              <span class="wf-model3d-label">项目资产</span>
+              <span class="wf-model3d-info-value">{{ assetStatusDisplay }}</span>
+            </div>
+            <div class="wf-model3d-info-row">
+              <span class="wf-model3d-label">上游输入</span>
+              <span class="wf-model3d-info-value">{{ upstreamStatusDisplay }}</span>
+            </div>
+          </div>
+
+          <label class="wf-model3d-field">
+            <span class="wf-model3d-label">背景色</span>
+            <input class="wf-model3d-input wf-model3d-input-color" type="color" :value="backgroundColor" @input="onBackgroundInput" />
           </label>
 
-          <template v-if="modelGenerationSource === 'meshy'">
-            <!-- Meshy 参数面板 -->
-            <div class="wf-model3d-meshy-panel wf-model3d-field-wide">
-              <div class="wf-model3d-meshy-section">
-                <div class="wf-model3d-meshy-section-title">基础参数</div>
+          <label class="wf-model3d-field">
+            <span class="wf-model3d-label">灯光强度</span>
+            <input class="wf-model3d-input" type="number" min="0" max="10" step="0.1" :value="lightIntensity" @change="onLightIntensityChange" />
+          </label>
 
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">任务类型</span>
-                  <select class="wf-model3d-input" :value="meshyTaskFamily" @change="onMeshyTaskFamilyChange">
-                    <option value="text-to-3d">Text to 3D</option>
-                    <option value="image-to-3d">Image to 3D</option>
-                    <option value="multi-image-to-3d">Multi-Image to 3D</option>
-                  </select>
-                </label>
+          <label class="wf-model3d-field">
+            <span class="wf-model3d-label">渲染宽度</span>
+            <input class="wf-model3d-input" type="number" min="1" :value="renderWidth" @change="onRenderWidthChange" />
+          </label>
 
-                <label class="wf-model3d-field wf-model3d-field-wide">
-                  <span class="wf-model3d-label">提示词</span>
-                  <textarea
-                    class="wf-model3d-textarea"
-                    rows="2"
-                    :value="meshyPrompt"
-                    placeholder="输入描述想要生成的 3D 模型"
-                    @input="onMeshyPromptInput"
-                  />
-                </label>
+          <label class="wf-model3d-field">
+            <span class="wf-model3d-label">渲染高度</span>
+            <input class="wf-model3d-input" type="number" min="1" :value="renderHeight" @change="onRenderHeightChange" />
+          </label>
 
-                <label class="wf-model3d-field wf-model3d-field-wide">
-                  <span class="wf-model3d-label">负向提示词</span>
-                  <textarea
-                    class="wf-model3d-textarea compact"
-                    rows="2"
-                    :value="meshyNegativePrompt"
-                    placeholder="例如：low quality, low poly, ugly"
-                    @input="onMeshyNegativePromptInput"
-                  />
-                </label>
-
-                <label v-if="meshyTaskFamily === 'image-to-3d'" class="wf-model3d-field wf-model3d-field-wide">
-                  <span class="wf-model3d-label">参考图 URL</span>
-                  <input class="wf-model3d-input" type="text" :value="meshyImageUrl" placeholder="https://.../image.png" @input="onMeshyImageUrlInput" />
-                </label>
-
-                <label v-if="meshyTaskFamily === 'multi-image-to-3d'" class="wf-model3d-field wf-model3d-field-wide">
-                  <span class="wf-model3d-label">多图 URL（每行一个）</span>
-                  <textarea
-                    class="wf-model3d-textarea compact"
-                    rows="3"
-                    :value="meshyMultiImageText"
-                    placeholder="每行一个 URL，最多 4 张"
-                    @input="onMeshyMultiImageInput"
-                  />
-                </label>
-              </div>
-
-              <div class="wf-model3d-meshy-section">
-                <div class="wf-model3d-meshy-section-title">高级参数</div>
-
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">模型版本</span>
-                  <select class="wf-model3d-input" :value="meshyAiModel" @change="onMeshyAiModelChange">
-                    <option value="latest">latest</option>
-                    <option value="meshy-6">meshy-6</option>
-                    <option value="meshy-5">meshy-5</option>
-                  </select>
-                </label>
-
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">网格模式</span>
-                  <select class="wf-model3d-input" :value="meshyModelType" :disabled="isLowpolyModelType" @change="onMeshyModelTypeChange">
-                    <option value="standard">standard</option>
-                    <option value="lowpoly">lowpoly</option>
-                  </select>
-                </label>
-
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">拓扑</span>
-                  <select class="wf-model3d-input" :value="meshyTopology" :disabled="isLowpolyModelType" @change="onMeshyTopologyChange">
-                    <option value="triangle">triangle</option>
-                    <option value="quad">quad</option>
-                  </select>
-                </label>
-
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">目标面数</span>
-                  <input
-                    class="wf-model3d-input"
-                    type="number"
-                    min="100"
-                    max="300000"
-                    step="100"
-                    :value="meshyTargetPolycount"
-                    :disabled="isLowpolyModelType"
-                    @change="onMeshyTargetPolycountChange"
-                  />
-                </label>
-
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">对称模式</span>
-                  <select class="wf-model3d-input" :value="meshySymmetryMode" :disabled="isLowpolyModelType" @change="onMeshySymmetryModeChange">
-                    <option value="auto">auto</option>
-                    <option value="on">on</option>
-                    <option value="off">off</option>
-                  </select>
-                </label>
-
-                <label class="wf-model3d-check">
-                  <input type="checkbox" :checked="meshyShouldRemesh" :disabled="isLowpolyModelType" @change="onMeshyShouldRemeshToggle" />
-                  <span>重建网格</span>
-                </label>
-
-                <label class="wf-model3d-check">
-                  <input type="checkbox" :checked="meshySavePreRemeshedModel" :disabled="isLowpolyModelType || !meshyShouldRemesh" @change="onMeshySavePreRemeshedToggle" />
-                  <span>保留重建前模型</span>
-                </label>
-
-                <label class="wf-model3d-check">
-                  <input type="checkbox" :checked="meshyShouldTexture" @change="onMeshyShouldTextureToggle" />
-                  <span>生成贴图</span>
-                </label>
-
-                <label class="wf-model3d-check">
-                  <input type="checkbox" :checked="meshyEnablePbr" :disabled="!meshyShouldTexture" @change="onMeshyEnablePbrToggle" />
-                  <span>PBR 材质</span>
-                </label>
-
-                <label class="wf-model3d-field wf-model3d-field-wide">
-                  <span class="wf-model3d-label">贴图提示词</span>
-                  <textarea
-                    class="wf-model3d-textarea compact"
-                    rows="2"
-                    :value="meshyTexturePrompt"
-                    :disabled="!meshyShouldTexture"
-                    placeholder="可选"
-                    @input="onMeshyTexturePromptInput"
-                  />
-                </label>
-
-                <label class="wf-model3d-field wf-model3d-field-wide">
-                  <span class="wf-model3d-label">贴图参考图 URL</span>
-                  <input
-                    class="wf-model3d-input"
-                    type="text"
-                    :value="meshyTextureImageUrl"
-                    :disabled="!meshyShouldTexture"
-                    placeholder="可选"
-                    @input="onMeshyTextureImageUrlInput"
-                  />
-                </label>
-
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">姿势模式</span>
-                  <select class="wf-model3d-input" :value="meshyPoseMode" @change="onMeshyPoseModeChange">
-                    <option value="">无</option>
-                    <option value="a-pose">A Pose</option>
-                    <option value="t-pose">T Pose</option>
-                  </select>
-                </label>
-
-                <label class="wf-model3d-check">
-                  <input type="checkbox" :checked="meshyAutoSize" @change="onMeshyAutoSizeToggle" />
-                  <span>自动尺寸</span>
-                </label>
-
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">原点位置</span>
-                  <select class="wf-model3d-input" :value="meshyOriginAt" :disabled="!meshyAutoSize" @change="onMeshyOriginAtChange">
-                    <option value="bottom">bottom</option>
-                    <option value="center">center</option>
-                  </select>
-                </label>
-
-                <label class="wf-model3d-check">
-                  <input type="checkbox" :checked="meshyModeration" @change="onMeshyModerationToggle" />
-                  <span>内容审核</span>
-                </label>
-
-                <label class="wf-model3d-check">
-                  <input type="checkbox" :checked="meshyImageEnhancement" @change="onMeshyImageEnhancementToggle" />
-                  <span>图像增强</span>
-                </label>
-
-                <label class="wf-model3d-check">
-                  <input type="checkbox" :checked="meshyRemoveLighting" @change="onMeshyRemoveLightingToggle" />
-                  <span>去除光照烘焙</span>
-                </label>
-
-                <div class="wf-model3d-field wf-model3d-field-wide">
-                  <span class="wf-model3d-label">输出格式</span>
-                  <div class="wf-model3d-format-grid">
-                    <label v-for="fmt in targetFormatOptions" :key="fmt" class="wf-model3d-check">
-                      <input type="checkbox" :checked="meshyTargetFormats.includes(fmt)" @change="onMeshyTargetFormatToggle(fmt, $event)" />
-                      <span>{{ fmt }}</span>
-                    </label>
-                  </div>
-                </div>
-
-                <label class="wf-model3d-field">
-                  <span class="wf-model3d-label">Seed</span>
-                  <input class="wf-model3d-input" type="number" min="0" step="1" :value="meshySeed" placeholder="0 表示自动随机" @change="onMeshySeedChange" />
-                </label>
-              </div>
-
-              <!-- 任务状态区域 -->
-              <div v-if="meshyTaskId || meshyTaskStatus !== 'idle'" class="wf-model3d-meshy-section">
-                <div class="wf-model3d-meshy-section-title">任务状态</div>
-                <div class="wf-model3d-meshy-status-card" :class="`is-${meshyTaskStatus}`">
-                  <div class="wf-model3d-meshy-status-row">
-                    <span class="wf-model3d-label">状态</span>
-                    <span class="wf-model3d-status-value">{{ meshyStatusLabel }}</span>
-                  </div>
-                  <div v-if="meshyTaskStatus === 'running' || meshyTaskStatus === 'pending'" class="wf-model3d-meshy-progress">
-                    <div class="wf-model3d-meshy-progress-bar" :style="{ width: `${meshyProgress}%` }"></div>
-                  </div>
-                  <div v-if="meshyTaskId" class="wf-model3d-meshy-status-row">
-                    <span class="wf-model3d-label">任务ID</span>
-                    <span class="wf-model3d-status-value wf-model3d-status-id">{{ meshyTaskId }}</span>
-                  </div>
-                  <div class="wf-model3d-meshy-status-row">
-                    <span class="wf-model3d-label">阶段</span>
-                    <span class="wf-model3d-status-value">{{ meshyStatusText || '-' }}</span>
-                  </div>
-                  <div v-if="meshyErrorMessage" class="wf-model3d-meshy-error">{{ meshyErrorMessage }}</div>
-                </div>
-              </div>
-
-              <!-- 操作按钮 -->
-              <div class="wf-model3d-meshy-actions">
-                <button
-                  class="wf-model3d-btn"
-                  type="button"
-                  :disabled="!canMeshyGenerate"
-                  :title="meshyGenerateDisabledReason"
-                  @click.stop="emit('start-meshy-generation')"
-                >
-                  {{ meshyGenerateButtonText }}
-                </button>
-                <button
-                  v-if="meshyTaskStatus === 'succeeded' && meshyRelationKind === 'model'"
-                  class="wf-model3d-btn secondary"
-                  type="button"
-                  @click.stop="emit('start-meshy-retexture')"
-                >
-                  生成贴图
-                </button>
-                <button
-                  class="wf-model3d-btn secondary"
-                  type="button"
-                  :disabled="!meshyTaskId"
-                  @click.stop="emit('refresh-meshy-status')"
-                >
-                  刷新状态
-                </button>
-                <button
-                  class="wf-model3d-btn secondary"
-                  type="button"
-                  :disabled="!canMeshyStopTask"
-                  @click.stop="emit('stop-meshy-task')"
-                >
-                  停止任务
-                </button>
-                <button
-                  class="wf-model3d-btn secondary"
-                  type="button"
-                  :disabled="!meshyTaskId"
-                  @click.stop="emit('delete-meshy-task')"
-                >
-                  删除任务
-                </button>
-              </div>
-            </div>
-          </template>
-
-          <template v-else>
-            <!-- 原有参数 -->
-            <label class="wf-model3d-field wf-model3d-field-wide">
-              <span class="wf-model3d-label">模型 URL</span>
-              <input class="wf-model3d-input" type="text" :value="modelUrl" placeholder="https://.../model.glb" @input="onModelUrlInput" />
-            </label>
-
-            <div class="wf-model3d-info-card wf-model3d-field-wide">
-              <div class="wf-model3d-info-row">
-                <span class="wf-model3d-label">项目资产</span>
-                <span class="wf-model3d-info-value">{{ assetStatusDisplay }}</span>
-              </div>
-              <div class="wf-model3d-info-row">
-                <span class="wf-model3d-label">上游输入</span>
-                <span class="wf-model3d-info-value">{{ upstreamStatusDisplay }}</span>
-              </div>
-            </div>
-
-            <label class="wf-model3d-field">
-              <span class="wf-model3d-label">背景色</span>
-              <input class="wf-model3d-input wf-model3d-input-color" type="color" :value="backgroundColor" @input="onBackgroundInput" />
-            </label>
-
-            <label class="wf-model3d-field">
-              <span class="wf-model3d-label">灯光强度</span>
-              <input class="wf-model3d-input" type="number" min="0" max="10" step="0.1" :value="lightIntensity" @change="onLightIntensityChange" />
-            </label>
-
-            <label class="wf-model3d-field">
-              <span class="wf-model3d-label">渲染宽度</span>
-              <input class="wf-model3d-input" type="number" min="1" :value="renderWidth" @change="onRenderWidthChange" />
-            </label>
-
-            <label class="wf-model3d-field">
-              <span class="wf-model3d-label">渲染高度</span>
-              <input class="wf-model3d-input" type="number" min="1" :value="renderHeight" @change="onRenderHeightChange" />
-            </label>
-
-            <label class="wf-model3d-check">
-              <input type="checkbox" :checked="gridVisible" @change="onGridToggle" />
-              <span>显示地面网格</span>
-            </label>
-            <label class="wf-model3d-check">
-              <input type="checkbox" :checked="axesVisible" @change="onAxesToggle" />
-              <span>显示 XYZ 轴</span>
-            </label>
-            <label class="wf-model3d-check wf-model3d-field-wide">
-              <input type="checkbox" :checked="autoRotate" @change="onAutoRotateToggle" />
-              <span>自动旋转</span>
-            </label>
-          </template>
+          <label class="wf-model3d-check">
+            <input type="checkbox" :checked="gridVisible" @change="onGridToggle" />
+            <span>显示地面网格</span>
+          </label>
+          <label class="wf-model3d-check">
+            <input type="checkbox" :checked="axesVisible" @change="onAxesToggle" />
+            <span>显示 XYZ 轴</span>
+          </label>
+          <label class="wf-model3d-check wf-model3d-field-wide">
+            <input type="checkbox" :checked="autoRotate" @change="onAutoRotateToggle" />
+            <span>自动旋转</span>
+          </label>
         </div>
       </div>
     </template>
@@ -430,7 +157,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { Model3DPreviewViewer } from './model3d/Model3DPreviewViewer'
-import type { WorkflowModel3DNodeSettings, WorkflowMeshyModelSettings } from '../../../aiworkflow/types'
+import type { WorkflowModel3DNodeSettings } from '../../../aiworkflow/types'
 import WorkflowThreePreviewShell from './three-preview/WorkflowThreePreviewShell.vue'
 import type {
   WorkflowThreePreviewProgressPayload,
@@ -485,11 +212,8 @@ const emit = defineEmits<{
   (e: 'three-preview-progress', payload?: WorkflowThreePreviewProgressPayload): void
   (e: 'three-preview-ready'): void
   (e: 'three-preview-error'): void
-  (e: 'start-meshy-generation'): void
-  (e: 'start-meshy-retexture'): void
-  (e: 'refresh-meshy-status'): void
-  (e: 'stop-meshy-task'): void
-  (e: 'delete-meshy-task'): void
+  (e: 'retry-meshy-fetch'): void
+  (e: 'open-meshy-task-panel'): void
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -501,10 +225,8 @@ let loadRunId = 0
 let activePreviewRequestId = 0
 
 const settings = computed(() => props.model3dSettings ?? null)
-const threePreviewState = computed(() => props.threePreviewState ?? null)
-const previewPhase = computed(() => threePreviewState.value?.phase ?? 'masked')
+const rawThreePreviewState = computed(() => props.threePreviewState ?? null)
 const previewSuspended = computed(() => props.previewSuspended === true)
-const viewerLive = computed(() => previewPhase.value === 'loading' || previewPhase.value === 'interactive')
 const modelUrl = computed(() => String(settings.value?.modelUrl ?? '').trim())
 const backgroundColor = computed(() => String(settings.value?.backgroundColor ?? '#0f1720'))
 const lightIntensity = computed(() => Number(settings.value?.lightIntensity ?? 1.25))
@@ -531,93 +253,18 @@ const upstreamStatusDisplay = computed(() => {
   return '当前未连接上游模型输出'
 })
 
-// Meshy 相关配置
-const modelGenerationSource = computed(() => String(settings.value?.modelGenerationSource ?? 'upload') as 'upload' | 'comfyui' | 'meshy')
 const meshySettings = computed(() => settings.value?.meshyModelSettings ?? null)
-
-const meshyTaskFamily = computed(() => String(meshySettings.value?.taskFamily ?? 'text-to-3d') as 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d')
-const meshyPrompt = computed(() => String(meshySettings.value?.prompt ?? ''))
-const meshyNegativePrompt = computed(() => String(meshySettings.value?.negativePrompt ?? ''))
-const meshyImageUrl = computed(() => String(meshySettings.value?.imageUrl ?? ''))
-const meshyMultiImageText = computed(() => (meshySettings.value?.imageUrls ?? []).join('\n'))
-const meshyAiModel = computed(() => String(meshySettings.value?.aiModel ?? 'latest') as 'latest' | 'meshy-6' | 'meshy-5')
-const meshyModelType = computed(() => String(meshySettings.value?.modelType ?? 'standard') as 'standard' | 'lowpoly')
-const meshyTopology = computed(() => String(meshySettings.value?.topology ?? 'triangle') as 'triangle' | 'quad')
-const meshyTargetPolycount = computed(() => Number(meshySettings.value?.targetPolycount ?? 30000))
-const meshySymmetryMode = computed(() => String(meshySettings.value?.symmetryMode ?? 'auto') as 'auto' | 'on' | 'off')
-const meshyShouldRemesh = computed(() => meshySettings.value?.shouldRemesh === true)
-const meshySavePreRemeshedModel = computed(() => meshySettings.value?.savePreRemeshedModel === true)
-const meshyShouldTexture = computed(() => meshySettings.value?.shouldTexture !== false)
-const meshyEnablePbr = computed(() => meshySettings.value?.enablePbr === true)
-const meshyTexturePrompt = computed(() => String(meshySettings.value?.texturePrompt ?? ''))
-const meshyTextureImageUrl = computed(() => String(meshySettings.value?.textureImageUrl ?? ''))
-const meshyPoseMode = computed(() => String(meshySettings.value?.poseMode ?? ''))
-const meshyAutoSize = computed(() => meshySettings.value?.autoSize === true)
-const meshyOriginAt = computed(() => String(meshySettings.value?.originAt ?? 'bottom') as 'bottom' | 'center')
-const meshyModeration = computed(() => meshySettings.value?.moderation === true)
-const meshyImageEnhancement = computed(() => meshySettings.value?.imageEnhancement === true)
-const meshyRemoveLighting = computed(() => meshySettings.value?.removeLighting === true)
-const meshySeed = computed(() => Math.max(0, Number(meshySettings.value?.seed ?? 0) || 0))
-const meshyTaskId = computed(() => String(meshySettings.value?.taskId ?? '').trim())
-const meshyTaskStatus = computed(() => String(meshySettings.value?.taskStatus ?? 'idle') as 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled')
-const meshyProgress = computed(() => Number(meshySettings.value?.progress ?? 0))
-const meshyStatusText = computed(() => String(meshySettings.value?.statusText ?? ''))
-const meshyErrorMessage = computed(() => String(meshySettings.value?.errorMessage ?? ''))
-
-const targetFormatOptions = ['glb', 'obj', 'fbx', 'stl', 'usdz'] as const
-const meshyTargetFormats = computed(() => {
-  const list = Array.isArray(meshySettings.value?.targetFormats)
-    ? meshySettings.value!.targetFormats!
-    : ['glb']
-  const normalized = list.map(x => String(x ?? '').trim().toLowerCase()).filter(x => targetFormatOptions.includes(x as any))
-  return normalized.length ? (normalized as Array<typeof targetFormatOptions[number]>) : ['glb']
+const meshyFetchFailed = computed(() => {
+  const status = String(meshySettings.value?.taskStatus ?? '').trim()
+  return status === 'fetch-failed'
+})
+const meshyFetchErrorText = computed(() => {
+  return String(meshySettings.value?.errorMessage ?? meshySettings.value?.statusText ?? '拉取失败').trim()
 })
 
-const meshyRelationKind = computed(() =>
-  String(meshySettings.value?.relationKind ?? 'model').trim() || 'model'
-)
-
-const isLowpolyModelType = computed(() => meshyModelType.value === 'lowpoly')
-
-const meshyStatusLabel = computed(() => {
-  if (meshyTaskStatus.value === 'running') return '任务执行中'
-  if (meshyTaskStatus.value === 'pending') return '任务排队中'
-  if (meshyTaskStatus.value === 'succeeded') return '任务已完成'
-  if (meshyTaskStatus.value === 'failed') return '任务失败'
-  if (meshyTaskStatus.value === 'canceled') return '任务已取消'
-  return '待发起任务'
-})
-
-const canMeshyGenerate = computed(() => {
-  if (meshyTaskStatus.value === 'pending' || meshyTaskStatus.value === 'running') return false
-  if (!meshyPrompt.value.trim() && meshyTaskFamily.value === 'text-to-3d') return false
-  if (meshyTaskFamily.value === 'image-to-3d' && !meshyImageUrl.value.trim()) return false
-  if (meshyTaskFamily.value === 'multi-image-to-3d' && !meshyMultiImageText.value.trim()) return false
-  return true
-})
-
-const meshyGenerateDisabledReason = computed(() => {
-  if (meshyTaskStatus.value === 'pending' || meshyTaskStatus.value === 'running') return 'Meshy 任务进行中'
-  if (!meshyPrompt.value.trim() && meshyTaskFamily.value === 'text-to-3d') return '请填写提示词'
-  if (meshyTaskFamily.value === 'image-to-3d' && !meshyImageUrl.value.trim()) return '请填写参考图 URL'
-  if (meshyTaskFamily.value === 'multi-image-to-3d' && !meshyMultiImageText.value.trim()) return '请填写多图 URL'
-  return ''
-})
-
-const meshyGenerateButtonText = computed(() => {
-  if (meshyTaskStatus.value === 'pending') return '排队中…'
-  if (meshyTaskStatus.value === 'running') return '执行中…'
-  if (meshyTaskStatus.value === 'succeeded') return '重新执行'
-  return '启动任务'
-})
-
-const canMeshyStopTask = computed(() =>
-  !!meshyTaskId.value && (meshyTaskStatus.value === 'pending' || meshyTaskStatus.value === 'running')
-)
-
-const updateMeshySettings = (patch: Partial<WorkflowMeshyModelSettings>) => {
-  updateSettings({ meshyModelSettings: { ...meshySettings.value, ...patch } } as Partial<WorkflowModel3DNodeSettings>)
-}
+const threePreviewState = computed(() => rawThreePreviewState.value)
+const previewPhase = computed(() => threePreviewState.value?.phase ?? 'masked')
+const viewerLive = computed(() => previewPhase.value === 'loading' || previewPhase.value === 'interactive')
 
 const updateSettings = (patch: Partial<WorkflowModel3DNodeSettings>) => emit('update-model3d-settings', patch)
 const emitPreviewProgress = (progress: number, label: string) => {
@@ -724,142 +371,6 @@ const onGridToggle = (e: Event) => updateSettings({ gridVisible: (e.target as HT
 const onAxesToggle = (e: Event) => updateSettings({ axesVisible: (e.target as HTMLInputElement).checked })
 const onAutoRotateToggle = (e: Event) => updateSettings({ autoRotate: (e.target as HTMLInputElement).checked })
 
-// Meshy 事件处理
-const onModelGenerationSourceChange = (e: Event) => {
-  const value = String((e.target as HTMLSelectElement).value ?? 'upload') as 'upload' | 'comfyui' | 'meshy'
-  updateSettings({ modelGenerationSource: value })
-}
-
-const onMeshyTaskFamilyChange = (e: Event) => {
-  const value = String((e.target as HTMLSelectElement).value ?? 'text-to-3d') as 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d'
-  updateMeshySettings({ taskFamily: value as any })
-}
-
-const onMeshyPromptInput = (e: Event) => {
-  updateMeshySettings({ prompt: String((e.target as HTMLTextAreaElement).value ?? '') })
-}
-
-const onMeshyNegativePromptInput = (e: Event) => {
-  updateMeshySettings({ negativePrompt: String((e.target as HTMLTextAreaElement).value ?? '') })
-}
-
-const onMeshyImageUrlInput = (e: Event) => {
-  updateMeshySettings({ imageUrl: String((e.target as HTMLInputElement).value ?? '') })
-}
-
-const onMeshyMultiImageInput = (e: Event) => {
-  const value = String((e.target as HTMLTextAreaElement).value ?? '')
-  const urls = value.split(/\r?\n/).map(x => x.trim()).filter(x => !!x).slice(0, 4)
-  updateMeshySettings({ imageUrls: urls })
-}
-
-const onMeshyAiModelChange = (e: Event) => {
-  const value = String((e.target as HTMLSelectElement).value ?? 'latest') as 'latest' | 'meshy-6' | 'meshy-5'
-  updateMeshySettings({ aiModel: value as any })
-}
-
-const onMeshyModelTypeChange = (e: Event) => {
-  const value = String((e.target as HTMLSelectElement).value ?? 'standard') as 'standard' | 'lowpoly'
-  updateMeshySettings({ modelType: value as any })
-}
-
-const onMeshyTopologyChange = (e: Event) => {
-  const value = String((e.target as HTMLSelectElement).value ?? 'triangle') as 'triangle' | 'quad'
-  updateMeshySettings({ topology: value as any })
-}
-
-const onMeshyTargetPolycountChange = (e: Event) => {
-  const raw = Number((e.target as HTMLInputElement).value ?? 30000)
-  const value = Number.isFinite(raw) ? Math.max(100, Math.min(300000, Math.floor(raw))) : 30000
-  updateMeshySettings({ targetPolycount: value })
-}
-
-const onMeshySymmetryModeChange = (e: Event) => {
-  const value = String((e.target as HTMLSelectElement).value ?? 'auto') as 'auto' | 'on' | 'off'
-  updateMeshySettings({ symmetryMode: value as any })
-}
-
-const onMeshyShouldRemeshToggle = (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  updateMeshySettings({
-    shouldRemesh: checked,
-    ...(checked ? {} : { savePreRemeshedModel: false }),
-  })
-}
-
-const onMeshySavePreRemeshedToggle = (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  updateMeshySettings({ savePreRemeshedModel: checked })
-}
-
-const onMeshyShouldTextureToggle = (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  updateMeshySettings({
-    shouldTexture: checked,
-    ...(checked ? {} : { enablePbr: false }),
-  })
-}
-
-const onMeshyEnablePbrToggle = (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  updateMeshySettings({ enablePbr: checked })
-}
-
-const onMeshyTexturePromptInput = (e: Event) => {
-  updateMeshySettings({ texturePrompt: String((e.target as HTMLTextAreaElement).value ?? '') })
-}
-
-const onMeshyTextureImageUrlInput = (e: Event) => {
-  updateMeshySettings({ textureImageUrl: String((e.target as HTMLInputElement).value ?? '') })
-}
-
-const onMeshyPoseModeChange = (e: Event) => {
-  const value = String((e.target as HTMLSelectElement).value ?? '') as '' | 'a-pose' | 't-pose'
-  updateMeshySettings({ poseMode: value as any })
-}
-
-const onMeshyAutoSizeToggle = (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  updateMeshySettings({
-    autoSize: checked,
-    ...(checked ? {} : { originAt: 'bottom' }),
-  })
-}
-
-const onMeshyOriginAtChange = (e: Event) => {
-  const value = String((e.target as HTMLSelectElement).value ?? 'bottom') as 'bottom' | 'center'
-  updateMeshySettings({ originAt: value as any })
-}
-
-const onMeshyModerationToggle = (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  updateMeshySettings({ moderation: checked })
-}
-
-const onMeshyImageEnhancementToggle = (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  updateMeshySettings({ imageEnhancement: checked })
-}
-
-const onMeshyRemoveLightingToggle = (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  updateMeshySettings({ removeLighting: checked })
-}
-
-const onMeshyTargetFormatToggle = (format: typeof targetFormatOptions[number], e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked === true
-  const current = [...meshyTargetFormats.value]
-  const next = checked
-    ? Array.from(new Set([...current, format]))
-    : current.filter(x => x !== format)
-  updateMeshySettings({ targetFormats: (next.length ? next : ['glb']) as any })
-}
-
-const onMeshySeedChange = (e: Event) => {
-  const raw = Number((e.target as HTMLInputElement).value ?? 0)
-  updateMeshySettings({ seed: Math.max(0, Number.isFinite(raw) ? Math.floor(raw) : 0) })
-}
-
 watch(
   () => [previewPhase.value, threePreviewState.value?.requestId ?? 0] as const,
   ([phase, requestId]) => {
@@ -912,6 +423,168 @@ onBeforeUnmount(() => {
   width: 100%;
   display: grid;
   gap: 10px;
+}
+
+.wf-model3d-fetch-error {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgb(239 68 68 / 0.45);
+  background: rgb(239 68 68 / 0.08);
+  border-radius: 6px;
+}
+
+.wf-model3d-fetch-error-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgb(239 68 68 / 0.85);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.wf-model3d-fetch-error-body {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wf-model3d-fetch-error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(248 113 113);
+}
+
+.wf-model3d-fetch-error-text {
+  font-size: 12px;
+  color: rgb(252 165 165 / 0.9);
+  line-height: 1.4;
+}
+
+.wf-model3d-fetch-error-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.wf-model3d-fetch-error-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  background: rgb(255 255 255 / 0.06);
+  color: #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wf-model3d-fetch-error-btn:hover {
+  background: rgb(255 255 255 / 0.12);
+  border-color: rgb(255 255 255 / 0.25);
+}
+
+.wf-model3d-fetch-error-btn.primary {
+  background: rgb(239 68 68 / 0.6);
+  border-color: rgb(239 68 68 / 0.7);
+  color: #fff;
+}
+
+.wf-model3d-fetch-error-btn.primary:hover {
+  background: rgb(239 68 68 / 0.8);
+  border-color: rgb(239 68 68 / 0.9);
+}
+
+.wf-model3d-meshy-status {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.72);
+}
+
+.wf-model3d-meshy-status.is-pending {
+  border-color: rgb(90 180 255 / 0.45);
+}
+
+.wf-model3d-meshy-status.is-running {
+  border-color: rgb(250 204 21 / 0.55);
+}
+
+.wf-model3d-meshy-status.is-success {
+  border-color: rgb(34 197 94 / 0.55);
+}
+
+.wf-model3d-meshy-status.is-error {
+  border-color: rgb(239 68 68 / 0.55);
+}
+
+.wf-model3d-meshy-status-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.wf-model3d-meshy-status-label {
+  font-weight: 600;
+  color: var(--vscode-fg);
+  white-space: nowrap;
+}
+
+.wf-model3d-meshy-status.is-running .wf-model3d-meshy-status-label {
+  color: rgb(250 204 21);
+}
+
+.wf-model3d-meshy-status.is-pending .wf-model3d-meshy-status-label {
+  color: rgb(96 165 250);
+}
+
+.wf-model3d-meshy-status.is-success .wf-model3d-meshy-status-label {
+  color: rgb(34 197 94);
+}
+
+.wf-model3d-meshy-status.is-error .wf-model3d-meshy-status-label {
+  color: rgb(248 113 113);
+}
+
+.wf-model3d-meshy-status-text {
+  color: var(--vscode-fg-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-model3d-meshy-progress {
+  width: 100%;
+  height: 4px;
+  background: rgb(from var(--vscode-border) r g b / 0.45);
+  overflow: hidden;
+}
+
+.wf-model3d-meshy-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgb(96 165 250 / 0.85), rgb(52 211 153 / 0.85));
+  transition: width 400ms ease;
+}
+
+.wf-model3d-meshy-status.is-running .wf-model3d-meshy-progress-fill {
+  background: linear-gradient(90deg, rgb(250 204 21 / 0.85), rgb(251 146 60 / 0.85));
+}
+
+.wf-model3d-meshy-status.is-success .wf-model3d-meshy-progress-fill {
+  background: rgb(34 197 94 / 0.85);
+}
+
+.wf-model3d-meshy-status.is-error .wf-model3d-meshy-progress-fill {
+  background: rgb(239 68 68 / 0.75);
 }
 
 .wf-model3d-viewer-shell {
@@ -1111,147 +784,9 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-/* Meshy 参数面板样式 */
-.wf-model3d-meshy-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
-  background: rgb(from var(--dweb-defualt-dark) r g b / 0.54);
-  padding: 12px;
-}
-
-.wf-model3d-meshy-section {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.wf-model3d-meshy-section-title {
-  grid-column: 1 / -1;
-  font-size: 11px;
-  color: #9ec2dd;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgb(from var(--vscode-border) r g b / 0.5);
-}
-
-.wf-model3d-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
-  background: rgb(from var(--dweb-defualt-dark) r g b / 0.72);
-  color: var(--vscode-fg);
-  padding: 8px 10px;
-  font-size: 12px;
-  resize: vertical;
-  min-height: 60px;
-}
-
-.wf-model3d-textarea.compact {
-  min-height: 50px;
-}
-
-.wf-model3d-format-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-/* Meshy 状态卡片样式 */
-.wf-model3d-meshy-status-card {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 8px;
-  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
-  background: rgb(from var(--dweb-defualt-dark) r g b / 0.54);
-  padding: 10px;
-}
-
-.wf-model3d-meshy-status-card.is-running,
-.wf-model3d-meshy-status-card.is-pending {
-  box-shadow: 0 0 0 1px rgb(90 180 255 / 0.24), 0 0 18px rgb(90 180 255 / 0.18);
-}
-
-.wf-model3d-meshy-status-card.is-succeeded {
-  box-shadow: 0 0 0 1px rgb(56 189 140 / 0.24), 0 0 18px rgb(56 189 140 / 0.16);
-}
-
-.wf-model3d-meshy-status-card.is-failed {
-  box-shadow: 0 0 0 1px rgb(248 113 113 / 0.24), 0 0 18px rgb(248 113 113 / 0.16);
-}
-
-.wf-model3d-meshy-status-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.wf-model3d-status-value {
-  font-size: 12px;
-  color: var(--vscode-fg);
-  word-break: break-all;
-  text-align: right;
-}
-
-.wf-model3d-status-id {
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wf-model3d-meshy-progress {
-  height: 4px;
-  background: rgb(from var(--vscode-border) r g b / 0.5);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.wf-model3d-meshy-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, rgb(90 180 255), rgb(56 189 140));
-  transition: width 200ms ease;
-}
-
-.wf-model3d-meshy-error {
-  font-size: 11px;
-  color: #fecaca;
-  padding: 6px 8px;
-  background: rgb(248 113 113 / 0.1);
-  border: 1px solid rgb(248 113 113 / 0.3);
-}
-
-/* Meshy 操作按钮 */
-.wf-model3d-meshy-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-start;
-}
-
-.wf-model3d-btn.secondary {
-  padding: 6px 8px;
-  font-size: 11px;
-  border-color: rgb(from var(--vscode-border) r g b / 0.72);
-}
-
-.wf-model3d-btn:disabled {
-  opacity: 0.58;
-  cursor: not-allowed;
-}
-
 @media (max-width: 720px) {
   .wf-model3d-grid {
     grid-template-columns: 1fr;
-  }
-  .wf-model3d-meshy-section {
-    grid-template-columns: 1fr;
-  }
-  .wf-model3d-format-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

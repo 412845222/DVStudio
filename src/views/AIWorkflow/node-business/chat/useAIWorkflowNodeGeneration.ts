@@ -12,6 +12,7 @@ export type NodeGenerationApiDeps = {
   bindImageResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
   bindVideoResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
   bindTextResultToNode?: (nodeId: string, text: string) => void
+  bindModel3dResultToNode?: (nodeId: string, url: string, format?: string) => boolean | void | Promise<boolean | void>
   /**
    * Resolve a URL to a Blob. In Electron this may route downloads through the
    * main process to avoid browser CORS for signed CDN URLs. In the browser
@@ -347,18 +348,26 @@ const createTask = (payload: WorkflowNodeChatSubmitPayload): WorkflowNodeGenerat
   detailLines: [],
 })
 
+export type NodeGenerationResult = {
+  ok: boolean
+  taskId?: string
+  taskType?: 'meshy-3d' | 'meshy-image' | 'other'
+  mode?: string
+  error?: string
+}
+
 export const runNodeGenerationTask = async (
   deps: NodeGenerationApiDeps,
   payload: WorkflowNodeChatSubmitPayload,
-) => {
+): Promise<NodeGenerationResult> => {
   const node = deps.store.state.nodesById[payload.nodeId]
   if (!node) {
     pushToast(deps, '未找到对应节点，无法发起生成任务。', 'error')
-    return
+    return { ok: false, error: '未找到对应节点' }
   }
   if (!payload.prompt.trim() && payload.nodeType !== 'model3d') {
     pushToast(deps, '请先填写提示词再发起生成。', 'warn')
-    return
+    return { ok: false, error: '提示词为空' }
   }
 
   const task = createTask(payload)
@@ -368,14 +377,31 @@ export const runNodeGenerationTask = async (
   try {
     if (payload.nodeType === 'text') {
       await runTextTask(deps, task, payload)
+      return { ok: true, taskType: 'other' }
     } else if (payload.nodeType === 'image') {
       await runImageTask(deps, task, payload)
+      return { ok: true, taskType: 'other' }
     } else if (payload.nodeType === 'video') {
       await runVideoTask(deps, task, payload)
+      return { ok: true, taskType: 'other' }
     } else if (payload.nodeType === 'model3d') {
-      // 3D nodes delegate to Meshy integration; mark as a stub so users see status.
-      runModel3dStub(deps, task, payload)
+      const params = payload.params ?? {}
+      const provider = String(params.provider || '').trim()
+      if (provider === 'meshy') {
+        const result = await runModel3dMeshyTask(deps, task, payload)
+        return {
+          ok: result.ok,
+          taskId: result.taskId,
+          taskType: 'meshy-3d',
+          mode: result.mode,
+          error: result.error,
+        }
+      } else {
+        runModel3dStub(deps, task, payload)
+        return { ok: false, error: '不支持的 3D 生成提供商' }
+      }
     }
+    return { ok: true, taskType: 'other' }
   } catch (err: any) {
     const raw = err?.message ? String(err.message) : String(err ?? '生成任务异常')
     // 典型的浏览器网络错误（后端未启、CORS 被拒、或断网）给出更明确的中文提示。
@@ -392,6 +418,7 @@ export const runNodeGenerationTask = async (
     appendDetail(deps, task.id, message)
     updateTask(deps, task.id, { status: 'error', statusText: `失败：${message}`, errorMessage: message, finishedAt: Date.now() })
     pushToast(deps, `${labelForType(payload.nodeType)}生成失败：${message}`, 'error')
+    return { ok: false, error: message }
   } finally {
     deps.store.commit('setNodeChatSubmitting', { submitting: false })
   }
@@ -753,6 +780,355 @@ const runVideoTask = async (
 
   if (produced === 0) throw new Error('未接收到视频结果，请检查 API 配置与提示词')
   updateTask(deps, task.id, { status: 'completed', statusText: '视频生成完成', progress: 100, finishedAt: Date.now() })
+}
+
+const pollMeshy3DTaskStatus = async (
+  deps: NodeGenerationApiDeps,
+  svc: any,
+  taskId: string,
+  generationTaskId: string,
+  nodeId: string,
+  taskMode: string,
+  outputFormat: string,
+) => {
+  const maxPolls = 180
+  const pollInterval = 3000
+  let consecutiveErrors = 0
+
+  for (let i = 0; i < maxPolls; i++) {
+    await new Promise((r) => setTimeout(r, pollInterval))
+
+    try {
+      const taskRes = await svc.meshyTask(taskId, taskMode)
+
+      consecutiveErrors = 0
+
+      if (!taskRes.ok) {
+        appendDetail(deps, generationTaskId, `轮询失败（状态码: ${taskRes.status}）：${taskRes.error}`)
+        console.warn('[Meshy 3D Poll] 轮询失败:', { status: taskRes.status, error: taskRes.error, taskId, taskMode })
+        continue
+      }
+
+      const status = String(taskRes.status || '').trim().toUpperCase()
+      const progress = Number(taskRes.progress ?? 0)
+      const progressPct = status === 'SUCCEEDED' ? 100 : Math.min(99, Math.max(10, progress))
+
+      const statusText = `Meshy 3D ${taskMode} ${status}（${progress}%）`
+
+      updateTask(deps, generationTaskId, {
+        statusText,
+        progress: progressPct,
+      })
+
+      // 同步更新 meshyModelSettings（绿色进度条）
+      const meshyStatus = (() => {
+        const s = status.toLowerCase()
+        if (s === 'succeeded' || s === 'success' || s === 'completed') return 'succeeded' as const
+        if (s === 'failed' || s === 'error') return 'failed' as const
+        if (s === 'cancelled' || s === 'canceled') return 'canceled' as const
+        if (s === 'pending' || s === 'queued') return 'pending' as const
+        return 'running' as const
+      })()
+
+      deps.store.commit('setNodeModel3DSettings', {
+        nodeId,
+        model3dSettings: {
+          meshyModelSettings: {
+            taskId,
+            taskStatus: meshyStatus,
+            taskFamily: taskMode,
+            progress: progressPct,
+            statusText,
+          },
+        },
+      })
+
+      if (status === 'SUCCEEDED') {
+        const modelUrls = taskRes.modelUrls && typeof taskRes.modelUrls === 'object' ? taskRes.modelUrls : {}
+        const preferredModelUrl = String(taskRes.preferredModelUrl || '').trim()
+        const thumbnailUrl = String(taskRes.thumbnailUrl || taskRes.thumbnail_url || '').trim()
+
+        let finalModelUrl = preferredModelUrl
+        let finalFormat = outputFormat || 'glb'
+
+        if (!finalModelUrl) {
+          const urlKeys = Object.keys(modelUrls)
+          if (urlKeys.length > 0) {
+            const priorityOrder = ['glb', 'gltf', 'obj', 'fbx', 'usdz', 'stl']
+            for (const key of priorityOrder) {
+              if (modelUrls[key]) {
+                finalModelUrl = String(modelUrls[key])
+                finalFormat = key
+                break
+              }
+            }
+            if (!finalModelUrl) {
+              finalModelUrl = String(modelUrls[urlKeys[0]])
+              finalFormat = urlKeys[0]
+            }
+          }
+        }
+
+        if (!finalModelUrl) {
+          throw new Error('Meshy 任务成功但未返回模型 URL')
+        }
+
+        const resolvedUrl = deps.resolveBackendUrl(finalModelUrl)
+
+        let persistedUrl = resolvedUrl
+        let persistedAssetPath = ''
+        let persistFailed = false
+
+        if (typeof deps.persistExternalAssetToProject === 'function') {
+          try {
+            const urlObj = finalModelUrl.split('?')[0]
+            const extMatch = urlObj.match(/\.[^.]+$/)
+            const ext = extMatch ? extMatch[0] : `.${finalFormat}`
+            const fileName = `meshy-3d-${taskId}${ext}`
+            const persisted = await deps.persistExternalAssetToProject({
+              kind: 'file',
+              name: fileName,
+              sourceUrl: resolvedUrl,
+            })
+            if (persisted) {
+              persistedUrl = String(persisted.url || resolvedUrl)
+              persistedAssetPath = persisted.projectRelativePath || persisted.absolutePath || ''
+              console.log('[Meshy 3D Poll] 资产已持久化:', { taskId, persistedUrl })
+            } else {
+              persistFailed = true
+            }
+          } catch (e) {
+            persistFailed = true
+            console.warn('[Meshy 3D Poll] 资产持久化失败:', e)
+          }
+        }
+
+        let bound = true
+        if (typeof deps.bindModel3dResultToNode === 'function') {
+          try {
+            const bindRet = await deps.bindModel3dResultToNode(nodeId, persistedUrl, finalFormat)
+            bound = bindRet !== false
+          } catch (e) {
+            bound = false
+            console.warn('[Meshy 3D Poll] 绑定模型到节点失败:', e)
+          }
+        }
+        if (bound) {
+          appendResult(deps, generationTaskId, { kind: 'model3d', url: persistedUrl, label: `Meshy 3D 模型 (${finalFormat})` })
+        }
+
+        if (thumbnailUrl) {
+          const resolvedThumb = deps.resolveBackendUrl(thumbnailUrl)
+          appendResult(deps, generationTaskId, { kind: 'image', url: resolvedThumb, label: '模型预览图' })
+        }
+
+        const fetchSucceeded = bound && !persistFailed
+
+        deps.store.commit('setNodeModel3DSettings', {
+          nodeId,
+          model3dSettings: {
+            modelGenerationSource: 'meshy',
+            modelUrl: fetchSucceeded ? persistedUrl : '',
+            modelAssetUrl: fetchSucceeded ? persistedUrl : '',
+            modelAssetPath: fetchSucceeded ? persistedAssetPath : '',
+            modelFormat: finalFormat,
+            meshyModelSettings: {
+              taskId,
+              taskStatus: fetchSucceeded ? 'succeeded' : 'fetch-failed',
+              taskFamily: taskMode,
+              progress: 100,
+              statusText: fetchSucceeded
+                ? 'Meshy 3D 模型生成完成'
+                : 'Meshy 3D 模型生成完成，但拉取失败',
+              errorMessage: fetchSucceeded ? '' : '模型文件拉取失败，请点击重试或在任务面板中手动拉取',
+              outputSummary: {
+                preferredUrl: persistedUrl,
+                assetUrl: persistedUrl,
+                thumbnailUrl: deps.resolveBackendUrl(thumbnailUrl),
+                format: finalFormat,
+              },
+            },
+          },
+        })
+
+        updateTask(deps, generationTaskId, {
+          status: fetchSucceeded ? 'completed' : 'completed',
+          statusText: fetchSucceeded
+            ? `Meshy 3D 模型生成完成`
+            : `Meshy 3D 模型生成完成，但拉取失败`,
+          progress: 100,
+          finishedAt: Date.now(),
+        })
+        return
+      }
+
+      if (status === 'FAILED') {
+        const errorMsg = String(taskRes.errorMessage || taskRes.task_error?.message || '未知错误')
+        throw new Error(`Meshy 3D 任务失败：${errorMsg}`)
+      }
+
+      if (status === 'CANCELED') {
+        throw new Error('Meshy 3D 任务已取消')
+      }
+    } catch (err: any) {
+      const errMsg = String(err?.message ?? '')
+      if (errMsg.includes('失败') || errMsg.includes('取消') || errMsg.includes('未返回模型 URL')) {
+        throw err
+      }
+
+      consecutiveErrors++
+      appendDetail(deps, generationTaskId, `轮询异常（第${i + 1}次，连续${consecutiveErrors}次）：${errMsg}`)
+      console.error('[Meshy 3D Poll] 轮询异常:', { message: errMsg, taskId, taskMode, attempt: i + 1, consecutiveErrors })
+
+      if (consecutiveErrors >= 10) {
+        throw new Error(`Meshy 3D 任务轮询连续失败 ${consecutiveErrors} 次，任务中止`)
+      }
+    }
+  }
+
+  throw new Error('Meshy 3D 任务超时（超过最大轮询次数）')
+}
+
+const blobToBase64DataUri = async (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+const runModel3dMeshyTask = async (
+  deps: NodeGenerationApiDeps,
+  task: WorkflowNodeGenerationTask,
+  payload: WorkflowNodeChatSubmitPayload,
+): Promise<{ ok: boolean; taskId?: string; mode?: string; error?: string }> => {
+  const svc = getComfyService(deps)
+  const params = payload.params ?? {}
+
+  const meshyMode = String(params.meshyMode || 'text-to-3d').trim()
+  const meshyAiModel = String(params.meshyAiModel || 'latest').trim()
+  const meshyModelType = String(params.meshyModelType || 'standard').trim()
+  const meshyOutputFormat = String(params.meshyOutputFormat || 'glb').trim()
+  const meshyTopology = String(params.meshyTopology || '').trim()
+  const meshySymmetryMode = String(params.meshySymmetryMode || '').trim()
+  const meshyOriginAt = String(params.meshyOriginAt || '').trim()
+  const meshyPoseMode = String(params.meshyPoseMode || '').trim()
+  const meshySeed = Number(params.meshySeed ?? -1)
+
+  updateTask(deps, task.id, { status: 'running', statusText: `正在创建 Meshy 3D 任务（${meshyMode}）…`, progress: 10 })
+  appendDetail(deps, task.id, `模式：${meshyMode}`)
+  appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
+  appendDetail(deps, task.id, `输出格式：${meshyOutputFormat}`)
+  if (payload.prompt) appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+
+  try {
+    const meshyPayload: Record<string, any> = {
+      mode: meshyMode,
+      ai_model: meshyAiModel,
+    }
+
+    if (payload.prompt) {
+      meshyPayload.prompt = payload.prompt
+    }
+
+    if (meshyModelType) meshyPayload.model_type = meshyModelType
+    if (meshyTopology) meshyPayload.topology = meshyTopology
+    if (meshySymmetryMode) meshyPayload.symmetry_mode = meshySymmetryMode
+    if (meshyOriginAt) meshyPayload.origin_at = meshyOriginAt
+    if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
+    if (meshyOutputFormat) meshyPayload.output_format = meshyOutputFormat
+    if (meshySeed > 0) meshyPayload.seed = meshySeed
+
+    let refImages: Array<{ name: string; blob: Blob }> = []
+    let imageDataUris: string[] = []
+    let maxRefs = 1
+
+    if (meshyMode === 'image-to-3d') {
+      maxRefs = 1
+    } else if (meshyMode === 'multi-image-to-3d') {
+      maxRefs = 4
+    }
+
+    if (meshyMode === 'image-to-3d' || meshyMode === 'multi-image-to-3d') {
+      refImages = await collectReferenceImages(deps, payload.nodeId, maxRefs)
+
+      if (refImages.length === 0 && meshyMode === 'image-to-3d') {
+        throw new Error('图生3D 模式需要连接至少一张图片输入')
+      }
+
+      if (refImages.length === 0 && meshyMode === 'multi-image-to-3d') {
+        throw new Error('多图生3D 模式需要连接图片输入（1-4 张）')
+      }
+
+      appendDetail(deps, task.id, `参考图片数量：${refImages.length}`)
+
+      for (const ref of refImages) {
+        try {
+          const dataUri = await blobToBase64DataUri(ref.blob)
+          if (dataUri) imageDataUris.push(dataUri)
+        } catch {
+          // skip failed images
+        }
+      }
+
+      if (imageDataUris.length === 0) {
+        throw new Error('参考图片读取失败，请检查图片是否有效')
+      }
+
+      if (meshyMode === 'image-to-3d') {
+        meshyPayload.image_url = imageDataUris[0]
+      } else if (meshyMode === 'multi-image-to-3d') {
+        meshyPayload.image_urls = imageDataUris
+      }
+    }
+
+    updateTask(deps, task.id, { statusText: `正在提交 Meshy 3D 任务…`, progress: 15 })
+
+    const createRes = await (svc as any).meshyGenerate(meshyPayload)
+
+    if (!createRes.ok) {
+      throw new Error(String(createRes.error || 'Meshy 3D 任务创建失败'))
+    }
+
+    const meshyTaskId = String(createRes.taskId || createRes.result || '').trim()
+    if (!meshyTaskId) throw new Error('Meshy 返回空任务 ID')
+
+    appendDetail(deps, task.id, `任务已创建：${meshyTaskId}`)
+
+    deps.store.commit('setNodeModel3DSettings', {
+      nodeId: payload.nodeId,
+      model3dSettings: {
+        modelGenerationSource: 'meshy',
+        meshyModelSettings: {
+          taskId: meshyTaskId,
+          taskStatus: 'pending',
+          taskFamily: meshyMode,
+          progress: 15,
+          statusText: `Meshy 3D ${meshyMode} 任务已创建`,
+          imageCount: refImages.length,
+          imageUrls: imageDataUris,
+          prompt: payload.prompt,
+        },
+      },
+    })
+
+    updateTask(deps, task.id, {
+      status: 'running',
+      statusText: `Meshy 3D 任务已提交，等待处理…`,
+      progress: 15,
+    })
+
+    // 启动 Meshy 3D 任务轮询（异步，不阻塞返回）
+    void pollMeshy3DTaskStatus(deps, svc, meshyTaskId, task.id, payload.nodeId, meshyMode, meshyOutputFormat)
+
+    return { ok: true, taskId: meshyTaskId, mode: meshyMode }
+  } catch (err: any) {
+    const errMsg = String(err?.message ?? err ?? 'Meshy 3D 生成异常')
+    pushToast(deps, `Meshy 3D 生成失败：${errMsg}`, 'error')
+    updateTask(deps, task.id, { status: 'error', statusText: `失败：${errMsg}`, progress: 0, finishedAt: Date.now() })
+    return { ok: false, error: errMsg }
+  }
 }
 
 const runModel3dStub = (deps: NodeGenerationApiDeps, task: WorkflowNodeGenerationTask, payload: WorkflowNodeChatSubmitPayload) => {

@@ -563,6 +563,7 @@ export type WorkflowMeshyModelSettings = {
 	targetFormats?: string[]
 	imageUrl?: string
 	imageUrls?: string[]
+	imageCount?: number
 	taskId?: string
 	taskStatus?: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
 	progress?: number
@@ -787,19 +788,12 @@ export type WorkflowNodeChatVideoParams = {
 }
 
 export type WorkflowNodeChatModel3DParams = {
-	provider?: 'tripo3d' | 'hunyuan3d' | 'rodin3d'
+	provider?: 'tripo3d' | 'meshy'
 	tripoProvider?: 'dreammaker' | 'official'
 	tripoMode?: 'image-to-3d' | 'multi-image-to-3d' | 'retopo'
 	tripoOutputFormat?: 'fbx' | 'glb'
 	tripoTextureQuality?: 'standard' | 'detailed'
 	tripoModelVersion?: string
-	hunyuanMode?: 'image-to-3d' | 'multi-image-to-3d' | 'hunyuan-reduce-face'
-	hunyuanFaceLevel?: 'high' | 'medium' | 'low'
-	hunyuanPolygonType?: 'triangle' | 'quadrilateral'
-	hunyuanOutputFormat?: 'fbx' | 'glb'
-	rodinTier?: string
-	rodinQuality?: 'high' | 'medium' | 'low' | 'extra-low'
-	rodinOutputFormat?: 'glb' | 'usdz' | 'fbx' | 'obj' | 'stl'
 }
 
 export type WorkflowNodeChatTextParams = {

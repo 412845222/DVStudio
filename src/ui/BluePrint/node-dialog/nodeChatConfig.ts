@@ -82,13 +82,6 @@ export const NODE_CHAT_VIDEO_RATIO_OPTIONS = [
   { value: '3:4', label: '3:4' },
 ]
 
-export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [
-  { value: 'tripo3d', label: 'Tripo3D' },
-  { value: 'hunyuan3d', label: 'Hunyuan3D' },
-  { value: 'rodin3d', label: 'Rodin 3D' },
-  { value: 'meshy', label: 'Meshy' },
-]
-
 export const NODE_CHAT_MESHY_MODE_OPTIONS = [
   { value: 'text-to-3d', label: 'Text to 3D' },
   { value: 'image-to-3d', label: 'Image to 3D' },
@@ -134,68 +127,6 @@ export const NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS = [
   { value: 'obj', label: 'OBJ' },
   { value: 'stl', label: 'STL' },
   { value: 'usdz', label: 'USDZ' },
-]
-
-export const NODE_CHAT_TRIPO_MODE_OPTIONS = [
-  { value: 'image-to-3d', label: '单图生成' },
-  { value: 'multi-image-to-3d', label: '多图生成' },
-  { value: 'retopo', label: '模型重拓扑' },
-]
-
-export const NODE_CHAT_TRIPO_OUTPUT_FORMAT_OPTIONS = [
-  { value: 'fbx', label: 'FBX' },
-  { value: 'glb', label: 'GLB' },
-]
-
-export const NODE_CHAT_TRIPO_TEXTURE_QUALITY_OPTIONS = [
-  { value: 'standard', label: '标准贴图' },
-  { value: 'detailed', label: '精细贴图' },
-]
-
-export const NODE_CHAT_HUNYUAN_MODE_OPTIONS = [
-  { value: 'image-to-3d', label: '单图生模' },
-  { value: 'multi-image-to-3d', label: '多图生模' },
-  { value: 'hunyuan-reduce-face', label: '减面重拓扑' },
-]
-
-export const NODE_CHAT_HUNYUAN_FACE_LEVEL_OPTIONS = [
-  { value: 'high', label: '高精度' },
-  { value: 'medium', label: '均衡' },
-  { value: 'low', label: '轻量' },
-]
-
-export const NODE_CHAT_HUNYUAN_POLYGON_TYPE_OPTIONS = [
-  { value: 'triangle', label: '三角面' },
-  { value: 'quadrilateral', label: '四边面' },
-]
-
-export const NODE_CHAT_HUNYUAN_OUTPUT_FORMAT_OPTIONS = [
-  { value: 'fbx', label: 'FBX' },
-  { value: 'glb', label: 'GLB' },
-]
-
-export const NODE_CHAT_RODIN_TIER_OPTIONS = [
-  { value: '', label: '默认（让DM/Rodin决定）' },
-  { value: 'Gen-2.5-Extreme-Low', label: 'Extreme-Low' },
-  { value: 'Gen-2.5-Low', label: 'Low' },
-  { value: 'Gen-2.5-Medium', label: 'Medium' },
-  { value: 'Gen-2.5-High', label: 'High' },
-  { value: 'Gen-2.5-Extreme-High', label: 'Extreme-High' },
-]
-
-export const NODE_CHAT_RODIN_QUALITY_OPTIONS = [
-  { value: 'extra-low', label: 'extra-low' },
-  { value: 'low', label: 'low' },
-  { value: 'medium', label: 'medium' },
-  { value: 'high', label: 'high' },
-]
-
-export const NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS = [
-  { value: 'glb', label: 'GLB' },
-  { value: 'usdz', label: 'USDZ' },
-  { value: 'fbx', label: 'FBX' },
-  { value: 'obj', label: 'OBJ' },
-  { value: 'stl', label: 'STL' },
 ]
 
 export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
@@ -282,6 +213,10 @@ export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [
   { value: 'seedance', label: 'Seedance (字节方舟)' },
 ]
 
+export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [
+  { value: 'meshy', label: 'Meshy' },
+]
+
 export const NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS = [
   { value: 'doubao-seedance-2-0-260128', label: 'Seedance 2.0' },
   { value: 'doubao-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast' },
@@ -332,19 +267,7 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
       }
     case 'model3d':
       return {
-        provider: 'tripo3d',
-        tripoProvider: 'dreammaker',
-        tripoMode: 'image-to-3d',
-        tripoOutputFormat: 'glb',
-        tripoTextureQuality: 'standard',
-        tripoModelVersion: undefined,
-        hunyuanMode: 'image-to-3d',
-        hunyuanFaceLevel: 'medium',
-        hunyuanPolygonType: 'triangle',
-        hunyuanOutputFormat: 'glb',
-        rodinTier: '',
-        rodinQuality: 'medium',
-        rodinOutputFormat: 'glb',
+        provider: 'meshy',
         meshyMode: 'text-to-3d',
         meshyAiModel: 'latest',
         meshyModelType: 'standard',

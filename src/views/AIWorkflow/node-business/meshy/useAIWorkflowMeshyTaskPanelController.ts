@@ -106,14 +106,14 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 	const getMeshySettingsForNode = (node: WorkflowNode) => {
 		if (node.type === 'meshy') return node.meshySettings
 		if (node.type === 'image' && node.imageSettings?.imageGenerationSource === 'meshy') return node.imageSettings?.meshyImageSettings
-		if (node.type === 'model3d' && node.model3dSettings?.modelGenerationSource === 'meshy') return node.model3dSettings?.meshyModelSettings
+		if (node.type === 'model3d' && node.model3dSettings?.meshyModelSettings?.taskId) return node.model3dSettings?.meshyModelSettings
 		return undefined
 	}
 
 	const isMeshyNode = (node: WorkflowNode) => {
 		if (node.type === 'meshy') return true
 		if (node.type === 'image' && node.imageSettings?.imageGenerationSource === 'meshy') return true
-		if (node.type === 'model3d' && node.model3dSettings?.modelGenerationSource === 'meshy') return true
+		if (node.type === 'model3d' && node.model3dSettings?.meshyModelSettings?.taskId) return true
 		return false
 	}
 
@@ -132,9 +132,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				const imageCount =
 					node.type === 'image'
 						? Number(settings.outputImageCount ?? 0)
-						: Array.isArray(settings.imageUrls)
-							? settings.imageUrls.length
-							: 0
+						: Number(settings.imageCount ?? (Array.isArray(settings.imageUrls) ? settings.imageUrls.length : 0))
 				const progress = Math.max(0, Math.min(100, Number(settings.progress ?? 0)))
 				return {
 					id: `${node.id}:${String(settings.taskId ?? family)}`,
