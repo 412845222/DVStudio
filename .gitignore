@@ -56,6 +56,7 @@ staticfiles/
 .ruff_cache/
 .coverage
 htmlcov/
+coverage/
 coverage.xml
 
 # Secrets (never commit)
