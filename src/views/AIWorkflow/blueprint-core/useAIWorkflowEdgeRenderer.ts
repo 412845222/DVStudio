@@ -279,9 +279,20 @@ export const useAIWorkflowEdgeRenderer = (payload: {
     asyncDraftRender.value = payload.draftRender(workflowWorldToCanvas)
   }
 
+  let lastSyncEdgeRenderAt = 0
+  const SYNC_EDGE_RENDER_MIN_INTERVAL_MS = 16
+
   const scheduleAsyncEdgeRender = () => {
     if (disposed) return
     if (isViewportMotionActive()) {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      if (now - lastSyncEdgeRenderAt < SYNC_EDGE_RENDER_MIN_INTERVAL_MS) {
+        if (!edgeRenderRaf) {
+          edgeRenderRaf = requestAnimationFrame(rebuildSyncEdgeRenders)
+        }
+        return
+      }
+      lastSyncEdgeRenderAt = now
       rebuildSyncEdgeRenders()
       return
     }
@@ -291,10 +302,26 @@ export const useAIWorkflowEdgeRenderer = (payload: {
 
   const edgeDependencySignature = () => {
     const edges = payload.renderEdges.value
-    if (!edges.length) return '0'
-    return edges
-      .map((edge) => `${edge.id}:${edge.fromNodeId}:${edge.fromAnchorId}:${edge.toNodeId}:${edge.toAnchorId}`)
-      .join('|')
+    const count = edges.length
+    if (!count) return '0'
+    let hash = count * 131
+    const sampleStep = Math.max(1, Math.floor(count / 20))
+    for (let i = 0; i < count; i += sampleStep) {
+      const edge = edges[i]
+      const id = String(edge?.id ?? '')
+      for (let j = 0; j < id.length; j++) {
+        hash = (hash * 31 + id.charCodeAt(j)) % 2147483647
+      }
+      const fromId = String(edge?.fromNodeId ?? '')
+      for (let j = 0; j < fromId.length; j++) {
+        hash = (hash * 17 + fromId.charCodeAt(j)) % 2147483647
+      }
+      const toId = String(edge?.toNodeId ?? '')
+      for (let j = 0; j < toId.length; j++) {
+        hash = (hash * 17 + toId.charCodeAt(j)) % 2147483647
+      }
+    }
+    return String(hash)
   }
 
   watch(

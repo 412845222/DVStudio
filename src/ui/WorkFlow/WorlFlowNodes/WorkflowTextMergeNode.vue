@@ -393,7 +393,6 @@ const anchorTypeAttr = (a: AnchorSpec) => {
 <style scoped>
 .wf-merge {
   width: 100%;
-  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 6px;
