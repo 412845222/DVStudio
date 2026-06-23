@@ -695,7 +695,12 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 	try {
 		setStep('python', { status: 'running', progress: 25, detail: '正在检测 Python 版本...' })
 		pyInfo = detectPythonInfo({ minMajor: 3, minMinor: 11 })
+		const usingBundledPython = !!pyInfo?.isBundled
 		if (!pyInfo.ok || !pyInfo.meetsRequirement) {
+			if (usingBundledPython) {
+				setStep('python', { status: 'error', progress: 100, detail: '内置 Python 运行时损坏，请重新安装应用。' })
+				return { ok: false, state: getSetupState(), error: 'bundled-python-corrupted' }
+			}
 			const missingPython = !pyInfo.command
 			setStep('python', {
 				status: 'running',
@@ -724,9 +729,11 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		setStep('python', {
 			status: 'ok',
 			progress: 100,
-			detail: pyInfo.recommended
-				? `${pyInfo.detail}（推荐版本）`
-				: `${pyInfo.detail}（可用，推荐 3.11）`,
+			detail: pyInfo.isBundled
+				? `${pyInfo.detail}（开箱即用，无需安装）`
+				: (pyInfo.recommended
+					? `${pyInfo.detail}（推荐版本）`
+					: `${pyInfo.detail}（可用，推荐 3.11）`),
 		})
 
 		setStep('resource', { status: 'running', progress: 40, detail: '正在创建 DVSResource...' })
@@ -739,43 +746,50 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		})
 		if (layout.settingsFile) loadClientSettings()
 
-		setStep('venv', { status: 'running', progress: 55, detail: '正在检查虚拟环境...' })
-		if (fs.existsSync(venvDir) && isCrossPlatformVenv(venvDir)) {
-			setStep('venv', {
-				status: 'running',
-				progress: 60,
-				detail: '检测到跨平台虚拟环境（Windows/macOS 不匹配），正在重建...',
-			})
-			fs.rmSync(venvDir, { recursive: true, force: true })
-		}
-		if (!fs.existsSync(venvPython)) {
-			const r = await runSyncWithLogs(pyInfo.command, [...(pyInfo.argsPrefix || []), '-m', 'venv', venvDir], {
-				label: '创建 Python 虚拟环境',
-			})
-			if (!r.ok) {
+		let activePythonCommand = ''
+		if (pyInfo.isBundled) {
+			setStep('venv', { status: 'ok', progress: 100, detail: '使用内置 Python 运行时，无需虚拟环境' })
+			activePythonCommand = pyInfo.command
+		} else {
+			setStep('venv', { status: 'running', progress: 55, detail: '正在检查虚拟环境...' })
+			if (fs.existsSync(venvDir) && isCrossPlatformVenv(venvDir)) {
+				setStep('venv', {
+					status: 'running',
+					progress: 60,
+					detail: '检测到跨平台虚拟环境（Windows/macOS 不匹配），正在重建...',
+				})
+				fs.rmSync(venvDir, { recursive: true, force: true })
+			}
+			if (!fs.existsSync(venvPython)) {
+				const r = await runSyncWithLogs(pyInfo.command, [...(pyInfo.argsPrefix || []), '-m', 'venv', venvDir], {
+					label: '创建 Python 虚拟环境',
+				})
+				if (!r.ok) {
+					setStep('venv', {
+						status: 'error',
+						progress: 100,
+						detail: '虚拟环境创建失败，请检查 Python 安装权限和磁盘空间。',
+					})
+					pushBackendLog('[建议] 虚拟环境创建失败：请尝试“以管理员身份运行”或检查杀毒软件拦截。')
+					return { ok: false, state: getSetupState(), error: 'venv-create-failed' }
+				}
+				setStep('venv', { status: 'ok', progress: 100, detail: `已创建：${venvDir}` })
+			} else {
+				setStep('venv', { status: 'ok', progress: 100, detail: `已检测到：${venvDir}` })
+			}
+
+			if (!fs.existsSync(venvPython)) {
 				setStep('venv', {
 					status: 'error',
 					progress: 100,
-					detail: '虚拟环境创建失败，请检查 Python 安装权限和磁盘空间。',
+					detail: '未找到虚拟环境 Python，可重试创建。',
 				})
-				pushBackendLog('[建议] 虚拟环境创建失败：请尝试“以管理员身份运行”或检查杀毒软件拦截。')
-				return { ok: false, state: getSetupState(), error: 'venv-create-failed' }
+				return { ok: false, state: getSetupState(), error: 'venv-python-missing' }
 			}
-			setStep('venv', { status: 'ok', progress: 100, detail: `已创建：${venvDir}` })
-		} else {
-			setStep('venv', { status: 'ok', progress: 100, detail: `已检测到：${venvDir}` })
+			activePythonCommand = venvPython
 		}
 
-		if (!fs.existsSync(venvPython)) {
-			setStep('venv', {
-				status: 'error',
-				progress: 100,
-				detail: '未找到虚拟环境 Python，可重试创建。',
-			})
-			return { ok: false, state: getSetupState(), error: 'venv-python-missing' }
-		}
-
-		backendPythonCommand = venvPython
+		backendPythonCommand = activePythonCommand
 		migrateLegacyRuntimeData({
 			runtimeDjangoDir: djangoRuntimeDir,
 			backendDataDir,
@@ -804,11 +818,13 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 					log: (line) => pushBackendLog(line),
 				})
 			}
-			ensureRuntimeRequirements({
-				templateDir: djangoTemplateDir,
-				runtimeDir: djangoRuntimeDir,
-				log: (line) => pushBackendLog(line),
-			})
+			if (!pyInfo.isBundled) {
+				ensureRuntimeRequirements({
+					templateDir: djangoTemplateDir,
+					runtimeDir: djangoRuntimeDir,
+					log: (line) => pushBackendLog(line),
+				})
+			}
 			ensureRuntimeDjangoProjectScaffold({
 				runtimeDir: djangoRuntimeDir,
 				log: (line) => pushBackendLog(line),
@@ -835,58 +851,71 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		setStep('django', { status: 'running', progress: 70, detail: '正在启动 Django...' })
 		await stopBackend()
 		try {
-			await bootBackend({ pythonCommand: venvPython, djangoDir: djangoRuntimeDir })
+			await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
 			setStep('django', {
 				status: 'ok',
 				progress: 100,
 				detail: `启动成功：${backendBaseUrl}`,
 			})
 
-			// 即便启动成功，也需要验证关键依赖（例如 cryptography）。否则会出现“能启动但调用接口 500”。
-			setStep('dependencyCheck', { status: 'running', progress: 80, detail: '正在检查关键依赖...' })
-			const check = await checkDjangoRuntimeDependencies(venvPython)
-			if (check.ok) {
-				const versionLine = splitLines(check.stdout || check.stderr)[0] || ''
-				setStep('dependencyCheck', {
-					status: 'ok',
-					progress: 100,
-					detail: `依赖齐全${versionLine ? `（Django ${versionLine}）` : ''}`,
-				})
+			if (pyInfo.isBundled) {
+				setStep('dependencyCheck', { status: 'ok', progress: 100, detail: '内置依赖已预装，无需检查' })
 				setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '无需安装。' })
 			} else {
-				setStep('dependencyCheck', {
-					status: 'error',
-					progress: 100,
-					detail: '依赖不完整或已损坏（运行时导入失败）。',
-				})
-				setStep('dependencyInstall', { status: 'running', progress: 90, detail: '正在强制重装项目依赖...' })
-				const install = await installDjangoRuntimeDependencies({
-					pythonCommand: venvPython,
-					djangoRuntimeDir,
-					forceReinstall: true,
-				})
-				if (!install.ok) {
-					setStep('dependencyInstall', {
+				setStep('dependencyCheck', { status: 'running', progress: 80, detail: '正在检查关键依赖...' })
+				const check = await checkDjangoRuntimeDependencies(activePythonCommand)
+				if (check.ok) {
+					const versionLine = splitLines(check.stdout || check.stderr)[0] || ''
+					setStep('dependencyCheck', {
+						status: 'ok',
+						progress: 100,
+						detail: `依赖齐全${versionLine ? `（Django ${versionLine}）` : ''}`,
+					})
+					setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '无需安装。' })
+				} else {
+					setStep('dependencyCheck', {
 						status: 'error',
 						progress: 100,
-						detail: '依赖强制重装失败，请检查网络或 pip 源配置。',
+						detail: '依赖不完整或已损坏（运行时导入失败）。',
 					})
-					pushBackendLog('[建议] 依赖安装失败：请检查网络，或配置可用的 pip 镜像后重试。')
-					return { ok: false, state: getSetupState(), error: 'dependency-install-failed' }
-				}
-				setStep('dependencyCheck', {
-					status: 'ok',
-					progress: 100,
-					detail: '依赖安装完成并可用。',
-				})
-				setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '依赖安装完成。' })
+					setStep('dependencyInstall', { status: 'running', progress: 90, detail: '正在强制重装项目依赖...' })
+					const install = await installDjangoRuntimeDependencies({
+						pythonCommand: activePythonCommand,
+						djangoRuntimeDir,
+						forceReinstall: true,
+					})
+					if (!install.ok) {
+						setStep('dependencyInstall', {
+							status: 'error',
+							progress: 100,
+							detail: '依赖强制重装失败，请检查网络或 pip 源配置。',
+						})
+						pushBackendLog('[建议] 依赖安装失败：请检查网络，或配置可用的 pip 镜像后重试。')
+						return { ok: false, state: getSetupState(), error: 'dependency-install-failed' }
+					}
+					setStep('dependencyCheck', {
+						status: 'ok',
+						progress: 100,
+						detail: '依赖安装完成并可用。',
+					})
+					setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '依赖安装完成。' })
 
-				setStep('django', { status: 'running', progress: 95, detail: '依赖已补齐，正在重启 Django...' })
-				await stopBackend()
-				await bootBackend({ pythonCommand: venvPython, djangoDir: djangoRuntimeDir })
-				setStep('django', { status: 'ok', progress: 100, detail: `启动成功：${backendBaseUrl}` })
+					setStep('django', { status: 'running', progress: 95, detail: '依赖已补齐，正在重启 Django...' })
+					await stopBackend()
+					await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
+					setStep('django', { status: 'ok', progress: 100, detail: `启动成功：${backendBaseUrl}` })
+				}
 			}
 		} catch (startErr) {
+			if (pyInfo.isBundled) {
+				setStep('django', {
+					status: 'error',
+					progress: 100,
+					detail: `内置环境启动失败：${String(startErr?.message || startErr)}`,
+				})
+				pushBackendLog('[错误] 内置 Python 运行时启动失败，请尝试重新安装应用。')
+				return { ok: false, state: getSetupState(), error: 'bundled-django-start-failed' }
+			}
 			setStep('django', {
 				status: 'error',
 				progress: 100,
@@ -894,7 +923,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			})
 
 			setStep('dependencyCheck', { status: 'running', progress: 80, detail: '正在检查关键依赖...' })
-			const check = await checkDjangoRuntimeDependencies(venvPython)
+			const check = await checkDjangoRuntimeDependencies(activePythonCommand)
 			if (!check.ok) {
 				setStep('dependencyCheck', {
 					status: 'error',
@@ -904,7 +933,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 
 				setStep('dependencyInstall', { status: 'running', progress: 90, detail: '正在强制重装项目依赖...' })
 				const install = await installDjangoRuntimeDependencies({
-					pythonCommand: venvPython,
+					pythonCommand: activePythonCommand,
 					djangoRuntimeDir,
 					forceReinstall: true,
 				})
@@ -936,7 +965,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			setStep('django', { status: 'running', progress: 95, detail: '依赖就绪，正在重新启动 Django...' })
 			try {
 				await stopBackend()
-				await bootBackend({ pythonCommand: venvPython, djangoDir: djangoRuntimeDir })
+				await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
 				setStep('django', {
 					status: 'ok',
 					progress: 100,
