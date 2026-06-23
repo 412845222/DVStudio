@@ -303,9 +303,11 @@ const onPreviewListWheel = (event: WheelEvent) => {
 
 <style scoped>
 .wf-scene-decompose {
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
   min-height: 0;
 }
 

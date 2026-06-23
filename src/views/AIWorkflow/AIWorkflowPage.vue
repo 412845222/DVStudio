@@ -25,6 +25,8 @@
         @canvas-contextmenu="onCanvasContextMenu"
         @canvas-dblclick="onCanvasDblClick"
         @box-select="onBoxSelect"
+        @canvas-panning-start="onCanvasPanningStart"
+        @canvas-panning-end="onCanvasPanningEnd"
         @pointerdown="onCanvasPointerDown"
         @dragover.prevent="onCanvasDragOver"
         @drop.prevent="onCanvasDrop"
@@ -140,6 +142,8 @@
             :ref="setWorkflowNodeComponentRef(node.id, node.type)"
             :alias="node.alias"
             :height="node.height"
+            :sizeCustomized="node.sizeCustomized"
+            :autoHeight="true"
             :hoverInputAnchorId="hoverInputAnchorId(node.id)"
             :hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
             :inputs="node.inputs"
@@ -203,6 +207,7 @@
             @remove-merge-item="onTextMergeItemRemove(node.id, $event)"
             @request-scene-models="onNodeRequestSceneModels(node.id)"
             @resize="onNodeResize(node.id, $event)"
+            @auto-resize="(h) => onNodeAutoResize(node.id, h)"
             @restart-meshy-task="onNodeRestartMeshyTask(node.id)"
             @run-comfyui="onComfyUIRun(node.id)"
             @run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
@@ -929,16 +934,25 @@ const {
   motionRecomputeMinIntervalMs: 90,
 })
 
+const safeVisibleSeenSet = new Set<string>()
+const safeVisibleResult: WorkflowNode[] = []
+
 const safeVisibleRenderNodes = computed(() => {
-  const seen = new Set<string>()
-  const safe: WorkflowNode[] = []
-  for (const node of visibleRenderNodes.value) {
+  const source = visibleRenderNodes.value
+  const sourceLen = source.length
+
+  safeVisibleSeenSet.clear()
+  safeVisibleResult.length = 0
+
+  for (let i = 0; i < sourceLen; i++) {
+    const node = source[i]
     const nodeId = String(node?.id ?? '').trim()
-    if (!nodeId || seen.has(nodeId)) continue
-    seen.add(nodeId)
-    safe.push(node)
+    if (!nodeId || safeVisibleSeenSet.has(nodeId)) continue
+    safeVisibleSeenSet.add(nodeId)
+    safeVisibleResult.push(node)
   }
-  return safe
+
+  return safeVisibleResult.slice()
 })
 
 type NodeRuntimeVisualState = 'idle' | 'running' | 'error'
@@ -1000,11 +1014,28 @@ const compactNodeStateLabel = (node: WorkflowNode) => {
 }
 
 const edgeWorkerMutationEpoch = computed(() => {
-  const selected = selectedNodeIds.value.join('|')
-  const visible = safeVisibleRenderNodes.value
-    .map((node) => `${String(node.id ?? '').trim()}:${String(node.type ?? '').trim()}`)
-    .join('|')
-  return `${selected}::${visible}`
+  const selectedIds = selectedNodeIds.value
+  const visibleNodes = safeVisibleRenderNodes.value
+  let hash = (selectedIds.length * 131 + visibleNodes.length * 977) % 2147483647
+  for (let i = 0; i < selectedIds.length; i++) {
+    const id = selectedIds[i]
+    for (let j = 0; j < id.length; j++) {
+      hash = (hash * 31 + id.charCodeAt(j)) % 2147483647
+    }
+  }
+  const sampleStep = Math.max(1, Math.floor(visibleNodes.length / 16))
+  for (let i = 0; i < visibleNodes.length; i += sampleStep) {
+    const node = visibleNodes[i]
+    const id = String(node.id ?? '')
+    for (let j = 0; j < id.length; j++) {
+      hash = (hash * 31 + id.charCodeAt(j)) % 2147483647
+    }
+    const type = String(node.type ?? '')
+    for (let j = 0; j < type.length; j++) {
+      hash = (hash * 17 + type.charCodeAt(j)) % 2147483647
+    }
+  }
+  return String(hash)
 })
 
 const {
@@ -2555,6 +2586,7 @@ const queueImageDistributeOnPointerUp = (nodeId: string) => {
 
 const {
   onNodeResize,
+  onNodeAutoResize,
   onNodeTextValueUpdate,
   onNodeImageSettingsUpdate,
   onNodeVideoSettingsUpdate,
@@ -3847,6 +3879,28 @@ const buildPath = (start: { x: number; y: number }, end: { x: number; y: number 
   return `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`
 }
 
+const EDGE_VIEWPORT_CULL_MARGIN_PX = 240
+
+const shouldCullEdgeByViewport = (
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  viewportWidth: number,
+  viewportHeight: number,
+  marginPx: number,
+) => {
+  if (viewportWidth <= 0 || viewportHeight <= 0) return false
+  const left = -marginPx
+  const top = -marginPx
+  const right = viewportWidth + marginPx
+  const bottom = viewportHeight + marginPx
+  const curveSlackX = Math.max(80, Math.abs(end.x - start.x) * 0.5)
+  const minX = Math.min(start.x, end.x) - curveSlackX
+  const maxX = Math.max(start.x, end.x) + curveSlackX
+  const minY = Math.min(start.y, end.y)
+  const maxY = Math.max(start.y, end.y)
+  return maxX < left || minX > right || maxY < top || minY > bottom
+}
+
 const anchorIndexByNodeId = computed(() => {
   const next = new Map<string, { input: Map<string, number>; output: Map<string, number> }>()
   for (const node of renderNodes.value) {
@@ -3862,7 +3916,22 @@ const anchorIndexByNodeId = computed(() => {
 })
 
 const edgeRenders = (worldToScreen: (p: { x: number; y: number }) => { x: number; y: number }) => {
-  return renderEdges.value.map((e) => {
+  const edges = renderEdges.value
+  const result: Array<{
+    id: string
+    start: { x: number; y: number }
+    end: { x: number; y: number }
+    path: string
+    stroke?: string
+    strokeWidth?: number
+  }> = []
+  const viewportWidth = canvasViewportSize.value.width
+  const viewportHeight = canvasViewportSize.value.height
+  const keepEdgeId = String(store.state.selectedEdgeId ?? '').trim()
+
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i]
+    const edgeId = String(e.id ?? '')
     const fromNode = store.state.nodesById[e.fromNodeId]
     const toNode = store.state.nodesById[e.toNodeId]
     const fromAnchorIndex = anchorIndexByNodeId.value.get(String(e.fromNodeId ?? ''))
@@ -3881,16 +3950,22 @@ const edgeRenders = (worldToScreen: (p: { x: number; y: number }) => { x: number
           ? resolveAnchorCanvasPointByDom(e.toNodeId, String(e.toAnchorId ?? ''), 'in')
           : null) ?? worldToScreen(anchorWorld(toNode, 'in', Math.max(0, toIndex), toNode.inputs.length, toAnchor))
       : { x: 0, y: 0 }
+
+    if (edgeId !== keepEdgeId && shouldCullEdgeByViewport(start, end, viewportWidth, viewportHeight, EDGE_VIEWPORT_CULL_MARGIN_PX)) {
+      continue
+    }
+
     const isStory = fromNode?.type === 'story'
-    return {
+    result.push({
       id: e.id,
       start,
       end,
       path: buildPath(start, end),
       stroke: isStory ? '#f29d38' : undefined,
       strokeWidth: isStory ? 3.5 : undefined,
-    }
-  })
+    })
+  }
+  return result
 }
 
 const buildEdgeWorkerInput = () => {
@@ -4148,7 +4223,7 @@ const onNodeUploadResource = async (
   await uploadNodeResource(nodeId, file, kind, {
     autoDistribute: opts?.autoDistribute,
     onAfterBind: () => {
-      if (kind === 'image' && opts?.autoDistribute !== false) {
+      if (kind === 'image' && opts?.autoDistribute === true) {
         void autoDistributeImageOutputToConnectedNodes(nodeId)
       }
     },
@@ -5422,6 +5497,14 @@ const onEndLink = linkInteraction.onEndLink
 const nanoHoverAnchorId = linkInteraction.nanoHoverAnchorId
 const hoverInputAnchorId = linkInteraction.hoverInputAnchorId
 const hoverOutputAnchorId = linkInteraction.hoverOutputAnchorId
+
+const onCanvasPanningStart = () => {
+  linkInteraction.setPanning(true)
+}
+
+const onCanvasPanningEnd = () => {
+  linkInteraction.setPanning(false)
+}
 
 const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
 const onNodeX = canvasInteraction.onNodeX

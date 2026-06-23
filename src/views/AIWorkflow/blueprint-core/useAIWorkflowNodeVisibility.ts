@@ -36,20 +36,51 @@ export const useAIWorkflowNodeVisibility = (payload: {
     ? Math.max(16, Number(payload.motionRecomputeMinIntervalMs))
     : 90
 
-  let lastVisibleIds = new Set<string>()
-  let lastViewportSignature = ''
-  let lastNodeSignature = ''
-  let lastSelectedSignature = ''
+  let lastVisibleIds: string[] = []
+  let lastVisibleIdSet = new Set<string>()
+  let lastViewLeft = 0
+  let lastViewTop = 0
+  let lastViewRight = 0
+  let lastViewBottom = 0
+  let lastZoom = 1
+  let lastNodeCount = -1
+  let lastSelectedCount = -1
   let lastComputeAt = 0
+  let lastResultWasCapped = false
 
   const gridIndex = new Map<string, GridCell>()
-  let lastGridBuiltForSignature = ''
+  let lastGridHash = -1
+  let gridNodesById: Map<string, WorkflowNode> | null = null
 
-  const buildGridIndex = (nodes: WorkflowNode[], signature: string) => {
-    if (signature === lastGridBuiltForSignature) return
+  const computeSpatialHash = (nodes: WorkflowNode[]) => {
+    const count = nodes.length
+    if (!count) return 0
+    let hash = count * 131
+    const sampleStep = Math.max(1, Math.floor(count / 20))
+    for (let i = 0; i < count; i += sampleStep) {
+      const node = nodes[i]
+      const id = String(node.id ?? '')
+      for (let j = 0; j < id.length; j++) {
+        hash = (hash * 31 + id.charCodeAt(j)) % 2147483647
+      }
+      hash = (hash + Math.round((Number(node.worldX) || 0) * 0.1)) % 2147483647
+      hash = (hash + Math.round((Number(node.worldY) || 0) * 0.1)) % 2147483647
+      hash = (hash + Math.round((Number(node.width) || 0) * 0.1)) % 2147483647
+      hash = (hash + Math.round((Number(node.height) || 0) * 0.1)) % 2147483647
+    }
+    return hash
+  }
+
+  const buildGridIndex = (nodes: WorkflowNode[]) => {
+    const hash = computeSpatialHash(nodes)
+    if (hash === lastGridHash && gridNodesById) return gridNodesById
     gridIndex.clear()
+    const byId = new Map<string, WorkflowNode>()
+    const count = nodes.length
 
-    for (const node of nodes) {
+    for (let i = 0; i < count; i++) {
+      const node = nodes[i]
+      byId.set(node.id, node)
       const halfWidth = Math.max(0, Number(node.width) || 0) / 2
       const halfHeight = Math.max(0, Number(node.height) || 0) / 2
       const left = node.worldX - halfWidth
@@ -57,14 +88,14 @@ export const useAIWorkflowNodeVisibility = (payload: {
       const top = node.worldY - halfHeight
       const bottom = node.worldY + halfHeight
 
-      const minCol = Math.floor(left / GRID_CELL_SIZE)
-      const maxCol = Math.floor(right / GRID_CELL_SIZE)
-      const minRow = Math.floor(top / GRID_CELL_SIZE)
-      const maxRow = Math.floor(bottom / GRID_CELL_SIZE)
+      const minCol = (left / GRID_CELL_SIZE) | 0
+      const maxCol = (right / GRID_CELL_SIZE) | 0
+      const minRow = (top / GRID_CELL_SIZE) | 0
+      const maxRow = (bottom / GRID_CELL_SIZE) | 0
 
       for (let col = minCol; col <= maxCol; col++) {
         for (let row = minRow; row <= maxRow; row++) {
-          const key = `${col},${row}`
+          const key = col + ',' + row
           let cell = gridIndex.get(key)
           if (!cell) {
             cell = { nodeIds: [] }
@@ -74,27 +105,28 @@ export const useAIWorkflowNodeVisibility = (payload: {
         }
       }
     }
-    lastGridBuiltForSignature = signature
+    lastGridHash = hash
+    gridNodesById = byId
+    return byId
   }
 
-  const queryGridIndex = (viewLeft: number, viewTop: number, viewRight: number, viewBottom: number): string[] => {
-    const result = new Set<string>()
-    const minCol = Math.floor(viewLeft / GRID_CELL_SIZE)
-    const maxCol = Math.floor(viewRight / GRID_CELL_SIZE)
-    const minRow = Math.floor(viewTop / GRID_CELL_SIZE)
-    const maxRow = Math.floor(viewBottom / GRID_CELL_SIZE)
+  const queryGridIndex = (viewLeft: number, viewTop: number, viewRight: number, viewBottom: number, out: string[]) => {
+    const minCol = (viewLeft / GRID_CELL_SIZE) | 0
+    const maxCol = (viewRight / GRID_CELL_SIZE) | 0
+    const minRow = (viewTop / GRID_CELL_SIZE) | 0
+    const maxRow = (viewBottom / GRID_CELL_SIZE) | 0
 
     for (let col = minCol; col <= maxCol; col++) {
       for (let row = minRow; row <= maxRow; row++) {
-        const cell = gridIndex.get(`${col},${row}`)
+        const cell = gridIndex.get(col + ',' + row)
         if (cell) {
-          for (const id of cell.nodeIds) {
-            result.add(id)
+          const ids = cell.nodeIds
+          for (let i = 0; i < ids.length; i++) {
+            out.push(ids[i])
           }
         }
       }
     }
-    return Array.from(result)
   }
 
   const renderNodes = computed(() => payload.nodes.value.filter((node) => !hiddenNodeIdSet.has(node.id)))
@@ -158,29 +190,74 @@ export const useAIWorkflowNodeVisibility = (payload: {
     return next
   }
 
-  const buildNodeSignature = (nodes: WorkflowNode[]) => {
-    const count = nodes.length
-    if (!count) return '0'
-    const sampleStep = Math.max(1, Math.floor(count / 24))
-    let hash = count * 131
-    for (let i = 0; i < count; i += sampleStep) {
-      const node = nodes[i]
-      const id = String(node.id ?? '')
-      for (let j = 0; j < id.length; j += 1) hash = (hash * 33 + id.charCodeAt(j)) % 2147483647
-      hash = (hash + Math.round((Number(node.worldX) || 0) * 10)) % 2147483647
-      hash = (hash + Math.round((Number(node.worldY) || 0) * 10)) % 2147483647
-      hash = (hash + Math.round((Number(node.width) || 0) * 10)) % 2147483647
-      hash = (hash + Math.round((Number(node.height) || 0) * 10)) % 2147483647
+  const candidateIdBuf: string[] = []
+
+  const computeVisibleNodeIds = (
+    nodesForRender: WorkflowNode[],
+    viewLeft: number,
+    viewTop: number,
+    viewRight: number,
+    viewBottom: number,
+    selectedIds: Set<string>,
+    out: string[],
+  ) => {
+    out.length = 0
+
+    selectedIds.forEach((id) => {
+      out.push(id)
+    })
+
+    const nodeCount = nodesForRender.length
+
+    if (nodeCount <= SPATIAL_INDEX_THRESHOLD) {
+      for (let i = 0; i < nodeCount; i++) {
+        const node = nodesForRender[i]
+        const id = node.id
+        if (selectedIds.has(id)) continue
+        const halfWidth = Math.max(0, Number(node.width) || 0) / 2
+        const halfHeight = Math.max(0, Number(node.height) || 0) / 2
+        const left = node.worldX - halfWidth
+        const right = node.worldX + halfWidth
+        const top = node.worldY - halfHeight
+        const bottom = node.worldY + halfHeight
+        if (right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom) {
+          out.push(id)
+        }
+      }
+    } else {
+      const nodesById = buildGridIndex(nodesForRender)
+      candidateIdBuf.length = 0
+      queryGridIndex(viewLeft, viewTop, viewRight, viewBottom, candidateIdBuf)
+
+      for (let i = 0; i < candidateIdBuf.length; i++) {
+        const id = candidateIdBuf[i]
+        if (selectedIds.has(id)) continue
+        const node = nodesById.get(id)
+        if (!node) continue
+        const halfWidth = Math.max(0, Number(node.width) || 0) / 2
+        const halfHeight = Math.max(0, Number(node.height) || 0) / 2
+        const left = node.worldX - halfWidth
+        const right = node.worldX + halfWidth
+        const top = node.worldY - halfHeight
+        const bottom = node.worldY + halfHeight
+        if (right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom) {
+          out.push(id)
+        }
+      }
     }
-    const firstId = String(nodes[0]?.id ?? '')
-    const lastId = String(nodes[count - 1]?.id ?? '')
-    return `${count}:${hash}:${firstId}:${lastId}`
   }
 
-  const buildSelectedSignature = (selectedIds: string[]) => {
-    if (!selectedIds.length) return '0'
-    return selectedIds.join('|')
+  const idArrayToSet = (arr: string[], set: Set<string>) => {
+    set.clear()
+    for (let i = 0; i < arr.length; i++) {
+      set.add(arr[i])
+    }
+    return set
   }
+
+  const lastVisibleIdArr: string[] = []
+  const tmpVisibleIdArr: string[] = []
+  const tmpSelectedSet = new Set<string>()
 
   const visibleRenderNodeIds = computed(() => {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -188,17 +265,25 @@ export const useAIWorkflowNodeVisibility = (payload: {
     const viewportHeight = payload.canvasViewportSize.value.height
     const nodesForRender = renderNodes.value
     const selectedIdsRaw = payload.selectedNodeIds.value ?? []
-    const selectedSignature = buildSelectedSignature(selectedIdsRaw)
-    const nodeSignature = buildNodeSignature(nodesForRender)
+    const nodeCount = nodesForRender.length
+    const selectedCount = selectedIdsRaw.length
+    const motionActive = payload.viewportMotionActive?.value === true
 
     if (viewportWidth <= 0 || viewportHeight <= 0) {
-      const next = new Set(nodesForRender.map((node) => node.id))
-      lastVisibleIds = next
-      lastViewportSignature = `zero:${viewportWidth}:${viewportHeight}`
-      lastNodeSignature = nodeSignature
-      lastSelectedSignature = selectedSignature
+      lastVisibleIdArr.length = 0
+      for (let i = 0; i < nodeCount; i++) {
+        lastVisibleIdArr.push(nodesForRender[i].id)
+      }
+      idArrayToSet(lastVisibleIdArr, lastVisibleIdSet)
+      lastNodeCount = nodeCount
+      lastSelectedCount = selectedCount
       lastComputeAt = now
-      return next
+      lastViewLeft = 0
+      lastViewTop = 0
+      lastViewRight = 0
+      lastViewBottom = 0
+      lastZoom = 1
+      return lastVisibleIdSet
     }
 
     const zoom = Math.max(0.01, Number(payload.viewport.value.zoom) || 1)
@@ -209,88 +294,84 @@ export const useAIWorkflowNodeVisibility = (payload: {
     const viewRight = (viewportWidth - centerX - payload.viewport.value.panX) / zoom + worldMargin
     const viewTop = (-centerY - payload.viewport.value.panY) / zoom - worldMargin
     const viewBottom = (viewportHeight - centerY - payload.viewport.value.panY) / zoom + worldMargin
-    const selectedIds = new Set(selectedIdsRaw)
-    const viewportSignature = `${zoom.toFixed(4)}:${viewLeft.toFixed(1)}:${viewTop.toFixed(1)}:${viewRight.toFixed(1)}:${viewBottom.toFixed(1)}`
-    const motionActive = payload.viewportMotionActive?.value === true
 
-    if (
-      lastVisibleIds.size > 0
-      && lastNodeSignature === nodeSignature
-      && lastSelectedSignature === selectedSignature
-      && viewportSignature === lastViewportSignature
-    ) {
-      return lastVisibleIds
+    const viewUnchanged =
+      lastVisibleIdArr.length > 0
+      && lastNodeCount === nodeCount
+      && lastSelectedCount === selectedCount
+      && lastZoom === zoom
+      && lastViewLeft === viewLeft
+      && lastViewTop === viewTop
+      && lastViewRight === viewRight
+      && lastViewBottom === viewBottom
+
+    if (viewUnchanged) {
+      return lastVisibleIdSet
     }
 
     if (
       motionActive
-      && lastVisibleIds.size > 0
-      && lastNodeSignature === nodeSignature
-      && lastSelectedSignature === selectedSignature
+      && lastVisibleIdArr.length > 0
+      && lastNodeCount === nodeCount
+      && lastSelectedCount === selectedCount
       && now - lastComputeAt < motionRecomputeMinIntervalMs
     ) {
-      return lastVisibleIds
+      return lastVisibleIdSet
     }
 
-    const next = new Set<string>()
-
-    for (const id of selectedIds) {
-      next.add(id)
+    tmpSelectedSet.clear()
+    for (let i = 0; i < selectedCount; i++) {
+      tmpSelectedSet.add(selectedIdsRaw[i])
     }
 
-    if (nodesForRender.length <= SPATIAL_INDEX_THRESHOLD) {
-      for (const node of nodesForRender) {
-        if (selectedIds.has(node.id)) continue
-        const halfWidth = Math.max(0, Number(node.width) || 0) / 2
-        const halfHeight = Math.max(0, Number(node.height) || 0) / 2
-        const left = node.worldX - halfWidth
-        const right = node.worldX + halfWidth
-        const top = node.worldY - halfHeight
-        const bottom = node.worldY + halfHeight
-        const visible = right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom
-        if (visible) next.add(node.id)
-      }
-    } else {
-      buildGridIndex(nodesForRender, nodeSignature)
-      const candidateIds = queryGridIndex(viewLeft, viewTop, viewRight, viewBottom)
-      const nodesById = new Map<string, WorkflowNode>()
-      for (const node of nodesForRender) {
-        nodesById.set(node.id, node)
-      }
+    computeVisibleNodeIds(
+      nodesForRender,
+      viewLeft,
+      viewTop,
+      viewRight,
+      viewBottom,
+      tmpSelectedSet,
+      tmpVisibleIdArr,
+    )
 
-      for (const id of candidateIds) {
-        if (selectedIds.has(id)) continue
-        const node = nodesById.get(id)
-        if (!node) continue
-        const halfWidth = Math.max(0, Number(node.width) || 0) / 2
-        const halfHeight = Math.max(0, Number(node.height) || 0) / 2
-        const left = node.worldX - halfWidth
-        const right = node.worldX + halfWidth
-        const top = node.worldY - halfHeight
-        const bottom = node.worldY + halfHeight
-        const visible = right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom
-        if (visible) next.add(id)
-      }
+    lastVisibleIdArr.length = 0
+    for (let i = 0; i < tmpVisibleIdArr.length; i++) {
+      lastVisibleIdArr.push(tmpVisibleIdArr[i])
     }
+    idArrayToSet(lastVisibleIdArr, lastVisibleIdSet)
 
-    lastVisibleIds = next
-    lastViewportSignature = viewportSignature
-    lastNodeSignature = nodeSignature
-    lastSelectedSignature = selectedSignature
+    lastNodeCount = nodeCount
+    lastSelectedCount = selectedCount
+    lastZoom = zoom
+    lastViewLeft = viewLeft
+    lastViewTop = viewTop
+    lastViewRight = viewRight
+    lastViewBottom = viewBottom
     lastComputeAt = now
-    return next
+
+    return new Set(lastVisibleIdSet)
   })
 
-  const visibleRenderNodes = computed(() => renderNodes.value.filter((node) => visibleRenderNodeIds.value.has(node.id)))
+  const visibleRenderNodes = computed(() => {
+    const idSet = visibleRenderNodeIds.value
+    const result: WorkflowNode[] = []
+    const allNodes = renderNodes.value
+    for (let i = 0; i < allNodes.length; i++) {
+      if (idSet.has(allNodes[i].id)) {
+        result.push(allNodes[i])
+      }
+    }
+    return result
+  })
 
   const renderNodeIdSet = computed(() => new Set(renderNodes.value.map((node) => String(node.id ?? '').trim()).filter(Boolean)))
 
   const pruneCompactRenderState = () => {
     if (!compactRenderStateByNodeId.size) return
     const validIds = renderNodeIdSet.value
-    for (const nodeId of compactRenderStateByNodeId.keys()) {
+    compactRenderStateByNodeId.forEach((_, nodeId) => {
       if (!validIds.has(nodeId)) compactRenderStateByNodeId.delete(nodeId)
-    }
+    })
   }
 
   const compactVisibleNodeCount = computed(() => {

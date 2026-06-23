@@ -1259,7 +1259,7 @@ defineExpose({
 <style scoped>
 .wf-scene-layout {
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;

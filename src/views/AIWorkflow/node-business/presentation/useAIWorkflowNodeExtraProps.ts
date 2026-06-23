@@ -54,10 +54,15 @@ export const useAIWorkflowNodeExtraProps = (payload: {
     return props
   }
 
+  const MOTION_SHED_THRESHOLD = 80
+  const ALWAYS_SHED_THRESHOLD = 220
+
   const shouldShedHeavyMedia = () => {
     if (!payload.performancePriorityMode.value) return false
     const count = Number(payload.nodeCount.value) || 0
-    return payload.viewportMotionActive.value || count >= 220
+    if (count >= ALWAYS_SHED_THRESHOLD) return true
+    if (payload.viewportMotionActive.value && count >= MOTION_SHED_THRESHOLD) return true
+    return false
   }
 
   const buildMotionReducedProps = (node: WorkflowNode): Record<string, any> => {
@@ -316,8 +321,16 @@ export const useAIWorkflowNodeExtraProps = (payload: {
     if (!nodeId) return buildNodeExtraProps(node)
 
     const isMotionActive = payload.viewportMotionActive.value
+    const nodeCount = Number(payload.nodeCount.value) || 0
 
     if (isMotionActive) {
+      if (nodeCount < MOTION_SHED_THRESHOLD) {
+        const cached = extraPropsCache.get(nodeId)
+        if (cached) return withMotionSafeProps(node, cached)
+        const next = buildNodeExtraProps(node)
+        extraPropsCache.set(nodeId, next)
+        return withMotionSafeProps(node, next)
+      }
       const cached = extraPropsCache.get(nodeId)
       if (cached) return withMotionSafeProps(node, cached)
       const next = buildMotionReducedProps(node)
