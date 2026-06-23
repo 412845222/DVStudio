@@ -19,7 +19,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
     const target = event.target as HTMLElement | null
     if (!target) return
     const inUi = target.closest(
-      '.wf-node, .wf-resource-panel, .wf-inspector, .ctx-menu, .aiwf-toolbar, .aiwf-inspector-toggle',
+      '.wf-node, .wf-resource-panel, .wf-inspector, .ctx-menu, .aiwf-toolbar, .aiwf-inspector-toggle, .wf-sel-frame-tag-bar',
     )
     if (inUi) return
     payload.store.commit('clearSelection')

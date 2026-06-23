@@ -26,6 +26,7 @@ import type {
 	WorkflowNodeChatParams,
 	WorkflowNodeChatSubmitPayload,
 	WorkflowNodeGenerationTask,
+	WorkflowSelectionTag,
 } from '../../aiworkflow/types'
 import type { WorkflowResource, ResourceKind } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
@@ -103,6 +104,9 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 		},
 		nodeGenerationTasksById: {},
 		nodeGenerationTaskIdsByNodeId: {},
+		selectionTagsByKey: {},
+		savedSelectionFrames: [],
+		nodeCheckboxVisible: true,
 	}
 }
 
@@ -1348,6 +1352,20 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.clipboardNodes = null
 			state.clipboardPrimaryNodeId = null
 			state.chatDraft = ''
+
+			// 多选标签和checkbox开关
+			if (s.selectionTagsByKey && typeof s.selectionTagsByKey === 'object') {
+				state.selectionTagsByKey = s.selectionTagsByKey as Record<string, WorkflowSelectionTag>
+			} else {
+				state.selectionTagsByKey = {}
+			}
+			state.nodeCheckboxVisible = typeof s.nodeCheckboxVisible === 'boolean' ? s.nodeCheckboxVisible : true
+			// 已保存选区框
+			if (Array.isArray(s.savedSelectionFrames)) {
+				state.savedSelectionFrames = s.savedSelectionFrames
+			} else {
+				state.savedSelectionFrames = []
+			}
 		},
 		setChatDraft(state, payload: { text: string }) {
 			state.chatDraft = typeof payload?.text === 'string' ? payload.text : String(payload?.text ?? '')
@@ -2246,6 +2264,21 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (snap.nodeGenerationTaskIdsByNodeId && typeof snap.nodeGenerationTaskIdsByNodeId === 'object') {
 				state.nodeGenerationTaskIdsByNodeId = snap.nodeGenerationTaskIdsByNodeId as any
 			}
+			// 多选标签
+			if (snap.selectionTagsByKey && typeof snap.selectionTagsByKey === 'object') {
+				state.selectionTagsByKey = snap.selectionTagsByKey as Record<string, WorkflowSelectionTag>
+			} else {
+				state.selectionTagsByKey = {}
+			}
+			// 已保存选区框
+			if (Array.isArray((snap as any).savedSelectionFrames)) {
+				state.savedSelectionFrames = (snap as any).savedSelectionFrames
+			} else {
+				state.savedSelectionFrames = []
+			}
+			state.nodeCheckboxVisible = typeof (snap as any).nodeCheckboxVisible === 'boolean'
+				? (snap as any).nodeCheckboxVisible
+				: true
 		},
 		moveSelectedNodesByDelta(state, payload: { dx?: number; dy?: number }) {
 			const dx = payload?.dx != null ? Number(payload.dx) : 0
@@ -2341,6 +2374,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (payload.worldY != null) {
 				const y = Number(payload.worldY)
 				if (Number.isFinite(y)) n.worldY = y
+			}
+		},
+		moveNodesBy(state, payload: { nodeIds: string[]; dx: number; dy: number }) {
+			const ids = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
+			const dx = Number(payload?.dx ?? 0)
+			const dy = Number(payload?.dy ?? 0)
+			if (!Number.isFinite(dx) || !Number.isFinite(dy)) return
+			for (const id of ids) {
+				const n = state.nodesById[id]
+				if (!n) continue
+				n.worldX += dx
+				n.worldY += dy
 			}
 		},
 		removeNode(state, payload: { nodeId: string }) {
@@ -2482,6 +2527,110 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!task) return
 			task.results = [...task.results, payload.result]
 		},
+		// —— 多选框显示开关 ——
+		setNodeCheckboxVisible(state, payload: { visible: boolean }) {
+			state.nodeCheckboxVisible = !!payload?.visible
+		},
+		// —— 切换单个节点的多选状态 ——
+		toggleNodeSelection(state, payload: { nodeId: string; modifier?: boolean; range?: boolean }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id || !state.nodesById[id]) return
+			const modifier = !!payload?.modifier
+			const range = !!payload?.range
+
+			if (range) {
+				// Shift 区间选择
+				const order = state.nodeOrder
+				const current = state.selectedNodeId
+				const curIdx = current ? order.indexOf(current) : -1
+				const next = order.indexOf(id)
+				if (curIdx >= 0 && next >= 0) {
+					const [a, b] = curIdx < next ? [curIdx, next] : [next, curIdx]
+					const rangeIds = order.slice(a, b + 1)
+					state.selectedNodeIds = rangeIds
+					state.selectedNodeId = id
+					state.selectedEdgeId = null
+					return
+				}
+			}
+
+			if (modifier) {
+				// Ctrl/Cmd：toggle
+				if (state.selectedNodeIds.includes(id)) {
+					state.selectedNodeIds = state.selectedNodeIds.filter(n => n !== id)
+					if (state.selectedNodeId === id) {
+						state.selectedNodeId = state.selectedNodeIds[0] ?? null
+					}
+				} else {
+					state.selectedNodeIds = [...state.selectedNodeIds, id]
+					state.selectedNodeId = id
+				}
+				state.selectedEdgeId = null
+				return
+			}
+
+			// 默认：单选
+			state.selectedNodeId = id
+			state.selectedNodeIds = [id]
+			state.selectedEdgeId = null
+		},
+		// —— 多选标签 ——
+		upsertSelectionTag(state, payload: {
+			key: string
+			label: string
+			nodeIds: string[]
+			color?: string
+			note?: string
+		}) {
+			const key = String(payload?.key ?? '').trim()
+			if (!key) return
+			const label = String(payload?.label ?? '').trim()
+			const nodeIds = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
+			if (!label && !payload?.note) {
+				delete state.selectionTagsByKey[key]
+				return
+			}
+			const now = Date.now()
+			const existing = state.selectionTagsByKey[key]
+			state.selectionTagsByKey[key] = {
+				key,
+				label,
+				nodeIds: nodeIds.slice().sort(),
+				color: payload?.color ?? existing?.color,
+				note: payload?.note ?? existing?.note,
+				createdAt: existing?.createdAt ?? now,
+				updatedAt: now,
+			}
+		},
+		removeSelectionTag(state, payload: { key: string }) {
+			const key = String(payload?.key ?? '').trim()
+			if (!key) return
+			delete state.selectionTagsByKey[key]
+		},
+		// —— 已保存选区框（持久化实体） ——
+		upsertSavedSelectionFrame(state, payload: { id: string; label: string; nodeIds: string[] }) {
+			const id = String(payload?.id ?? '').trim()
+			if (!id) return
+			const label = String(payload?.label ?? '').trim()
+			const nodeIds = Array.isArray(payload?.nodeIds) ? payload.nodeIds.slice().sort() : []
+			const now = Date.now()
+
+			const existingIdx = state.savedSelectionFrames.findIndex((f: any) => f.id === id)
+			if (existingIdx >= 0) {
+				state.savedSelectionFrames[existingIdx] = {
+					...state.savedSelectionFrames[existingIdx],
+					label,
+					nodeIds,
+				}
+			} else {
+				state.savedSelectionFrames.push({ id, label, nodeIds, createdAt: now })
+			}
+		},
+		removeSavedSelectionFrame(state, payload: { id: string }) {
+			const id = String(payload?.id ?? '').trim()
+			if (!id) return
+			state.savedSelectionFrames = state.savedSelectionFrames.filter((f: any) => f.id !== id)
+		},
 	},
 	actions: {
 		setChatDraft({ commit }, payload: { text: string }) {
@@ -2501,6 +2650,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		},
 		setNodePosition({ commit }, payload: { nodeId: string; worldX?: number; worldY?: number }) {
 			commit('setNodePosition', payload)
+		},
+		moveNodesBy({ commit }, payload: { nodeIds: string[]; dx: number; dy: number }) {
+			const ids = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
+			const dx = Number(payload?.dx ?? 0)
+			const dy = Number(payload?.dy ?? 0)
+			
+			if (!Number.isFinite(dx) || !Number.isFinite(dy) || !ids.length) return
+			
+			// 只移动直接传入的节点，不自动扩展到其他选区
+			// 嵌套选区的联动是自然的：拖动父选区时子选区的节点本来就在父选区中
+			commit('moveNodesBy', { nodeIds: ids, dx, dy })
 		},
 		removeNode({ commit }, payload: { nodeId: string }) {
 			commit('removeNode', payload)
@@ -2547,6 +2707,21 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		async submitNodeChatWithDeps(_, args: { deps: Record<string, any>; payload: WorkflowNodeChatSubmitPayload }) {
 			const mod = await import('../../views/AIWorkflow/node-business/chat/useAIWorkflowNodeGeneration')
 			await mod.runNodeGenerationTask(args.deps as any, args.payload)
+		},
+		toggleNodeSelection({ commit }, payload: { nodeId: string; modifier?: boolean; range?: boolean }) {
+			commit('toggleNodeSelection', payload)
+		},
+		upsertSelectionTag({ commit }, payload: { key: string; label: string; nodeIds: string[]; color?: string; note?: string }) {
+			commit('upsertSelectionTag', payload)
+		},
+		removeSelectionTag({ commit }, payload: { key: string }) {
+			commit('removeSelectionTag', payload)
+		},
+		upsertSavedSelectionFrame({ commit }, payload: { id: string; label: string; nodeIds: string[] }) {
+			commit('upsertSavedSelectionFrame', payload)
+		},
+		removeSavedSelectionFrame({ commit }, payload: { id: string }) {
+			commit('removeSavedSelectionFrame', payload)
 		},
 	},
 })

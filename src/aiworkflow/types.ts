@@ -794,6 +794,12 @@ export type WorkflowState = {
 	nodeChatDialog: WorkflowNodeChatDialog
 	nodeGenerationTasksById: Record<string, WorkflowNodeGenerationTask>
 	nodeGenerationTaskIdsByNodeId: Record<string, string[]>
+	/** 当前多选对应的 tag 记录（按 key 索引） */
+	selectionTagsByKey: Record<string, WorkflowSelectionTag>
+	/** 已保存的选区框列表（持久化实体） */
+	savedSelectionFrames: SavedSelectionFrame[]
+	/** 是否显示节点级多选框（运行时开关） */
+	nodeCheckboxVisible: boolean
 }
 
 export type WorkflowSelectionTarget =
@@ -809,4 +815,42 @@ export abstract class WorkflowEntity {
 export abstract class WorkflowBlueprint {
 	abstract id: string
 	abstract name: string
+}
+
+/**
+ * 多选标签（Selection Tag）
+ *  - key  由 selectedNodeIds 排序拼接，保证 frame 稳定
+ *  - label 为用户编辑的文本
+ *  - note  为节点批注（可空）
+ *  - color 标识色（可空）
+ */
+export type WorkflowSelectionTag = {
+	/** 稳定 key：`ids:nodeId1|nodeId2|...` */
+	key: string
+	/** 用户可编辑的标签名 */
+	label: string
+	/** 可选批注 */
+	note?: string
+	/** 可选标识色（hex） */
+	color?: string
+	/** 节点 ID 列表（已排序） */
+	nodeIds: string[]
+	/** 创建时间（毫秒） */
+	createdAt: number
+	/** 最近更新时间 */
+	updatedAt: number
+}
+
+/**
+ * 已保存的选区框（持久化实体，不依赖运行时 selectedNodeIds）
+ */
+export type SavedSelectionFrame = {
+	/** 唯一 ID（UUID） */
+	id: string
+	/** 用户命名的标签 */
+	label: string
+	/** 包含的节点 ID 列表（已排序） */
+	nodeIds: string[]
+	/** 创建时间 */
+	createdAt: number
 }
