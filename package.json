@@ -92,6 +92,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
+    "html2canvas": "^1.4.1",
     "js-yaml": "^4.1.1",
     "jszip": "^3.10.1",
     "markdown-it": "^14.1.0",

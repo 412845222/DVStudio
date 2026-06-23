@@ -131,6 +131,12 @@
           <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('request-toggle-performance-priority')">
             {{ performancePriorityMode ? '性能优先：开' : '性能优先：关' }}
           </button>
+          <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('request-toggle-screenshot-anchors')">
+            {{ anchorsToggleLabel }}
+          </button>
+          <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('request-toggle-screenshot-particles')">
+            {{ particlesToggleLabel }}
+          </button>
           <button class="aiwf-floating-rail-popover__item" type="button" @click="emitThenClose('request-export-performance-diagnostics')">
             导出性能诊断
           </button>
@@ -354,12 +360,14 @@ export type ToolbarResourceItem = WorkflowResource & {
   usedBy?: Array<{ nodeId: string; nodeTitle: string; nodeType: string }>
 }
 
-type FloatingPanel = '' | 'project' | 'resources'
+type FloatingPanel = '' | 'project' | 'resources' | 'tasks'
 
 const props = defineProps<{
   projects: BlueprintProjectListItem[]
   currentProjectName?: string
   performancePriorityMode?: boolean
+  screenshotAnchorsEnabled?: boolean
+  screenshotParticlesEnabled?: boolean
   electronReady?: boolean
   resources?: ToolbarResourceItem[]
   nodesById?: Record<string, WorkflowNode>
@@ -379,6 +387,8 @@ const emit = defineEmits<{
   (e: 'request-save'): void
   (e: 'request-repair-assets'): void
   (e: 'request-toggle-performance-priority'): void
+  (e: 'request-toggle-screenshot-anchors'): void
+  (e: 'request-toggle-screenshot-particles'): void
   (e: 'request-export-performance-diagnostics'): void
   (e: 'request-load-list'): void
   (e: 'request-load-project', payload: { projectId: number }): void
@@ -387,6 +397,9 @@ const emit = defineEmits<{
   (e: 'request-export'): void
   (e: 'request-import-package', payload: { file: File }): void
   (e: 'request-export-package'): void
+  (e: 'open-meshy-task-panel'): void
+  (e: 'open-gemini-task-panel'): void
+  (e: 'open-seedream-task-panel'): void
 }>()
 
 const toolbarWrapRef = ref<HTMLElement | null>(null)
@@ -441,12 +454,24 @@ const emitThenClose = (
     | 'request-export'
     | 'request-export-package'
     | 'request-toggle-performance-priority'
+    | 'request-toggle-screenshot-anchors'
+    | 'request-toggle-screenshot-particles'
     | 'request-export-performance-diagnostics'
-    | 'open-resource-manager',
+    | 'open-resource-manager'
+    | 'open-meshy-task-panel'
+    | 'open-gemini-task-panel'
+    | 'open-seedream-task-panel',
 ) => {
   ;(emit as any)(eventName)
   activePanel.value = ''
 }
+
+const anchorsToggleLabel = computed(() =>
+  props.screenshotAnchorsEnabled === false ? '截图节点锚点：关' : '截图节点锚点：开',
+)
+const particlesToggleLabel = computed(() =>
+  props.screenshotParticlesEnabled === false ? '矩形粒子效果：关' : '矩形粒子效果：开',
+)
 
 const handleSaveProject = () => {
   emit('request-save')

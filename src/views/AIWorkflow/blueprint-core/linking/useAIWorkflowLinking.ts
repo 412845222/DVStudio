@@ -664,6 +664,8 @@ export const useAIWorkflowLinking = (payload: {
     tooltipState,
     anchorCompatibility,
     isLinking: computed(() => !!linkDraft.value),
+    linkingFromNodeId: computed(() => linkDraft.value?.fromNodeId ?? null),
+    linkingHoverNodeId: computed(() => dropTarget.value?.nodeId ?? null),
     setPanning,
   }
 }
