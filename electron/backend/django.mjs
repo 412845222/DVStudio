@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import net from 'node:net'
 
 import { getDjangoAppDir } from '../config.mjs'
-import { detectPythonCommand } from './python.mjs'
+import { detectPythonCommand, getPythonSubprocessEnv } from './python.mjs'
 
 function wait(ms) {
 	return new Promise((r) => setTimeout(r, ms))
@@ -96,11 +96,21 @@ export function killExistingDjangoRunservers({ pythonCommand, djangoDir, onLog }
 	return { ok: r.status === 0 || r.status === 1, killed }
 }
 
-export function startDjangoServer({ port, dataDir, extraEnv = {}, djangoDir, onLog } = {}) {
-	const py = extraEnv.__DWEB_PYTHON_COMMAND
-		? { command: extraEnv.__DWEB_PYTHON_COMMAND, argsPrefix: [] }
-		: detectPythonCommand()
-	if (!py) {
+export function startDjangoServer({ port, dataDir, extraEnv = {}, djangoDir, onLog, pyInfo: providedPyInfo } = {}) {
+	let py
+	if (providedPyInfo) {
+		py = providedPyInfo
+	} else if (extraEnv.__DWEB_PYTHON_COMMAND) {
+		const allPython = detectPythonCommand()
+		if (allPython && allPython.command === extraEnv.__DWEB_PYTHON_COMMAND) {
+			py = allPython
+		} else {
+			py = { command: extraEnv.__DWEB_PYTHON_COMMAND, argsPrefix: [], isBundled: false }
+		}
+	} else {
+		py = detectPythonCommand()
+	}
+	if (!py || !py.command) {
 		throw new Error('Python not found. Please install Python 3 (or enable py launcher on Windows).')
 	}
 
@@ -109,9 +119,9 @@ export function startDjangoServer({ port, dataDir, extraEnv = {}, djangoDir, onL
 	const host = '127.0.0.1'
 	const bind = `${host}:${port}`
 
-	const args = [...py.argsPrefix, 'manage.py', 'runserver', bind, '--noreload']
+	const args = [...(py.argsPrefix || []), 'manage.py', 'runserver', bind, '--noreload']
 
-	const env = {
+	const baseEnv = {
 		...process.env,
 		DJANGO_SETTINGS_MODULE: process.env.DJANGO_SETTINGS_MODULE || 'dwebsite.settings',
 		PYTHONUTF8: '1',
@@ -119,7 +129,9 @@ export function startDjangoServer({ port, dataDir, extraEnv = {}, djangoDir, onL
 		DWEB_DATA_DIR: dataDir || process.env.DWEB_DATA_DIR || '',
 		...extraEnv,
 	}
-	delete env.__DWEB_PYTHON_COMMAND
+	delete baseEnv.__DWEB_PYTHON_COMMAND
+
+	const env = getPythonSubprocessEnv(py, baseEnv)
 
 	// 首次启动/空数据库时需要 migrate，否则 API 会因为缺表直接 500。
 	// 这里用同步方式保证 runserver 前完成（避免竞争条件）。

@@ -37,6 +37,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Bundled Python runtime (built during packaging)
+electron/static/runtime/
+!electron/static/runtime/.gitkeep
+
+# Python runtime download cache (for slow network environments)
+python-runtime/
+
 # Virtual environments
 .venv/
 venv/
