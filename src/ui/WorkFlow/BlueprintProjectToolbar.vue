@@ -139,10 +139,64 @@
         <template v-else-if="activePanel === 'resources'">
           <div class="aiwf-floating-rail-popover__head">
             <span>当前蓝图资源</span>
-            <small>{{ resources.length }}</small>
+            <small>{{ resourceList.length }}（已引用 {{ usedResourceCount }}）</small>
           </div>
-          <div v-if="resources.length" class="aiwf-floating-rail-popover__empty">资源面板已接入，点击打开完整资源管理器。</div>
-          <div v-else class="aiwf-floating-rail-popover__empty">暂无资源</div>
+          <div v-if="!enrichedResources.length" class="aiwf-floating-rail-popover__empty">暂无资源</div>
+          <div v-else ref="resourceListScrollRef" class="aiwf-floating-rail-popover__list" @scroll.passive="onResourceListScroll">
+            <div
+              v-for="r in visibleResources"
+              :key="String(r.id)"
+              class="aiwf-resource-item"
+              :class="{ 'is-unused': r.usageCount === 0 }"
+            >
+              <button
+                class="aiwf-resource-item__cover"
+                type="button"
+                :title="r.usageCount > 0 ? '点击定位到引用节点' : '该资源未被任何节点引用'"
+                :disabled="r.usageCount === 0"
+                @click.stop="onResourceCoverClick(r)"
+              >
+                <img
+                  v-if="resourceThumbUrl(r) && !hasThumbFailed(String(r.id))"
+                  class="aiwf-resource-item__thumb"
+                  :src="resourceThumbUrl(r)"
+                  :alt="r.name || ''"
+                  loading="lazy"
+                  draggable="false"
+                  @error="onThumbError(String(r.id))"
+                />
+                <div v-else class="aiwf-resource-item__placeholder">
+                  <svg viewBox="0 0 24 24" class="aiwf-resource-item__placeholder-icon">
+                    <path :d="resourceKindIconPath(r.kind)" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <span v-if="r.usageCount > 0" class="aiwf-resource-item__cover-badge">{{ r.usageCount }}</span>
+              </button>
+              <div class="aiwf-resource-item__info">
+                <div class="aiwf-resource-item__name" :title="r.name || ''">{{ r.name || '未命名资源' }}</div>
+                <div class="aiwf-resource-item__meta">
+                  <span class="aiwf-resource-item__kind" :data-kind="r.kind">{{ resourceKindLabel(r.kind) }}</span>
+                  <span v-if="r.usageCount > 0" class="aiwf-resource-item__usage">
+                    <template v-if="r.usedBy && r.usedBy.length > 0">
+                      →
+                      <button
+                        class="aiwf-resource-item__node-link"
+                        type="button"
+                        :title="`定位到节点：${r.usedBy[0].nodeTitle || r.usedBy[0].nodeId}`"
+                        @click.stop="onResourceNodeClick(r.usedBy[0].nodeId)"
+                      >
+                        {{ r.usedBy[0].nodeTitle || r.usedBy[0].nodeId }}
+                      </button>
+                      <span v-if="r.usedBy.length > 1" class="aiwf-resource-item__more">+{{ r.usedBy.length - 1 }}</span>
+                    </template>
+                  </span>
+                  <span v-else class="aiwf-resource-item__unused-label">未引用</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="hasMoreResources" class="aiwf-resource-list__footer">向下滚动加载更多...</div>
+            <div v-else-if="enrichedResources.length > RESOURCE_PAGE_SIZE" class="aiwf-resource-list__footer">已加载全部 {{ enrichedResources.length }} 个资源</div>
+          </div>
           <button class="aiwf-floating-rail-popover__item is-footer" type="button" @click="emitThenClose('open-resource-manager')">
             打开完整资源管理器
           </button>
@@ -278,7 +332,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
+import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
+import type { WorkflowResource } from '../../aiworkflow/resource/types'
+import type { WorkflowNode } from '../../aiworkflow/types'
 
 export type BlueprintProjectListItem = {
   id: number
@@ -291,6 +349,11 @@ export type BlueprintProjectListItem = {
   lastOpenedAt?: number | null
 }
 
+export type ToolbarResourceItem = WorkflowResource & {
+  usageCount?: number
+  usedBy?: Array<{ nodeId: string; nodeTitle: string; nodeType: string }>
+}
+
 type FloatingPanel = '' | 'project' | 'resources'
 
 const props = defineProps<{
@@ -298,7 +361,10 @@ const props = defineProps<{
   currentProjectName?: string
   performancePriorityMode?: boolean
   electronReady?: boolean
-  resources?: Array<{ id: string }>
+  resources?: ToolbarResourceItem[]
+  nodesById?: Record<string, WorkflowNode>
+  nodeOrder?: string[]
+  currentProjectId?: number | null
   nodeLibraryOpen?: boolean
   backendLogOpen?: boolean
   showRepairAssets?: boolean
@@ -309,6 +375,7 @@ const emit = defineEmits<{
   (e: 'toggle-node-library'): void
   (e: 'toggle-backend-log'): void
   (e: 'open-resource-manager'): void
+  (e: 'focus-node', payload: { nodeId: string }): void
   (e: 'request-save'): void
   (e: 'request-repair-assets'): void
   (e: 'request-toggle-performance-priority'): void
@@ -451,6 +518,128 @@ const formatRelativeTime = (ts?: number | null) => {
   if (hours < 24) return `${hours}小时前`
   if (days < 7) return `${days}天前`
   return new Date(Number(ts)).toLocaleDateString()
+}
+
+const resourceList = computed(() => (Array.isArray(props.resources) ? props.resources : []))
+
+const resourceUsageMap = computed(() => analyzeResourceUsage(
+  resourceList.value as WorkflowResource[],
+  props.nodesById ?? {},
+  props.nodeOrder ?? [],
+))
+
+const enrichedResources = computed(() => {
+  return resourceList.value.map((r: any) => {
+    const rid = String(r.id ?? '').trim()
+    const info = getUsageInfo(resourceUsageMap.value, rid)
+    return {
+      ...r,
+      usageCount: info?.usageCount ?? 0,
+      usedBy: info?.usedBy ?? [],
+    }
+  }).sort((a: any, b: any) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))
+})
+
+const usedResourceCount = computed(() => {
+  let count = 0
+  for (const info of resourceUsageMap.value.values()) {
+    if (info.isUsed) count++
+  }
+  return count
+})
+
+const RESOURCE_PAGE_SIZE = 30
+const resourceListScrollRef = ref<HTMLElement | null>(null)
+const visibleCount = ref(RESOURCE_PAGE_SIZE)
+
+const visibleResources = computed(() => {
+  return enrichedResources.value.slice(0, visibleCount.value)
+})
+
+const hasMoreResources = computed(() => {
+  return visibleCount.value < enrichedResources.value.length
+})
+
+const onResourceListScroll = (e: Event) => {
+  const el = e.target as HTMLElement
+  if (!el) return
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
+    if (hasMoreResources.value) {
+      visibleCount.value = Math.min(visibleCount.value + RESOURCE_PAGE_SIZE, enrichedResources.value.length)
+    }
+  }
+}
+
+watch(
+  () => activePanel.value,
+  (panel) => {
+    if (panel === 'resources') {
+      visibleCount.value = RESOURCE_PAGE_SIZE
+      nextTick(() => {
+        if (resourceListScrollRef.value) {
+          resourceListScrollRef.value.scrollTop = 0
+        }
+      })
+    }
+  }
+)
+
+watch(
+  () => props.resources,
+  () => {
+    visibleCount.value = RESOURCE_PAGE_SIZE
+  }
+)
+
+const resourceThumbUrl = (r: any): string => {
+  if (!r) return ''
+  if (r.kind === 'video') {
+    return sanitizeWorkflowMediaUrl(String(r.posterUrl ?? r.url ?? '').trim())
+  }
+  return sanitizeWorkflowMediaUrl(String(r.url ?? '').trim())
+}
+
+const resourceKindLabel = (kind: string): string => {
+  const k = String(kind || '').toLowerCase()
+  if (k === 'image') return '图片'
+  if (k === 'video') return '视频'
+  if (k === 'model3d') return '3D模型'
+  return kind || '资源'
+}
+
+const resourceKindIconPath = (kind: string): string => {
+  const k = String(kind || '').toLowerCase()
+  if (k === 'video') return 'M2 6h9v6H2zM11 8l4-2v6l-4-2z'
+  if (k === 'model3d') return 'M12 2l9 5v8l-9 5-9-5V7z M12 20V10M3 6.5l9 5 9-5'
+  return 'M3 4h14v12H3zM3 16l4-4 3 3 4-5 4 5'
+}
+
+const onResourceCoverClick = (r: any) => {
+  const rid = String(r?.id ?? '').trim()
+  if (!rid) return
+  const info = getUsageInfo(resourceUsageMap.value, rid)
+  if (info?.isUsed && info.usedBy.length > 0) {
+    emit('focus-node', { nodeId: info.usedBy[0].nodeId })
+    activePanel.value = ''
+  }
+}
+
+const onResourceNodeClick = (nodeId: string) => {
+  if (!nodeId) return
+  emit('focus-node', { nodeId })
+  activePanel.value = ''
+}
+
+const failedThumbIds = ref<Set<string>>(new Set())
+
+const onThumbError = (resourceId: string) => {
+  const id = String(resourceId || '').trim()
+  if (!id) return
+  failedThumbIds.value.add(id)
+}
+
+const hasThumbFailed = (resourceId: string): boolean => {
+  return failedThumbIds.value.has(String(resourceId || '').trim())
 }
 
 const isPointerInsideToolbar = (event: PointerEvent) => {
@@ -796,6 +985,200 @@ onBeforeUnmount(() => {
   color: var(--theme-text-muted, #aeb8bd);
   text-align: center;
   font-size: 12px;
+}
+
+/* ── Resource quick list ── */
+.aiwf-floating-rail-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 40%, transparent) transparent;
+}
+
+.aiwf-resource-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.aiwf-resource-item:hover {
+  background: color-mix(in srgb, var(--theme-accent, #1f9d84) 10%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
+}
+
+.aiwf-resource-item.is-unused {
+  opacity: 0.7;
+}
+
+.aiwf-resource-item__cover {
+  position: relative;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 80%, transparent);
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.aiwf-resource-item__cover:hover:not(:disabled) {
+  border-color: var(--theme-accent, #1f9d84);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
+}
+
+.aiwf-resource-item__cover:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.aiwf-resource-item__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+}
+
+.aiwf-resource-item__placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--theme-accent, #1f9d84) 55%, transparent);
+}
+
+.aiwf-resource-item__placeholder-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.aiwf-resource-item__placeholder-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.aiwf-resource-item__cover-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(40, 140, 90, 0.95), rgba(30, 110, 70, 0.95));
+  color: #e4f6ff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.aiwf-resource-item__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aiwf-resource-item__name {
+  font-size: 11.5px;
+  color: var(--theme-text-primary, #edf2f4);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.aiwf-resource-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1;
+  flex-wrap: wrap;
+}
+
+.aiwf-resource-item__kind {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.aiwf-resource-item__kind[data-kind="image"] {
+  background: color-mix(in srgb, #60a5fa 25%, transparent);
+  color: #93c5fd;
+}
+
+.aiwf-resource-item__kind[data-kind="video"] {
+  background: color-mix(in srgb, #f472b6 25%, transparent);
+  color: #f9a8d4;
+}
+
+.aiwf-resource-item__kind[data-kind="model3d"] {
+  background: color-mix(in srgb, #fbbf24 25%, transparent);
+  color: #fcd34d;
+}
+
+.aiwf-resource-item__usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--theme-text-muted, #aeb8bd);
+}
+
+.aiwf-resource-item__node-link {
+  border: none;
+  background: transparent;
+  color: var(--theme-accent, #1f9d84);
+  font-size: 10.5px;
+  padding: 0;
+  cursor: pointer;
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 40%, transparent);
+  transition: color 120ms ease;
+}
+
+.aiwf-resource-item__node-link:hover {
+  color: var(--theme-accent-hover, #27b99c);
+}
+
+.aiwf-resource-item__more {
+  color: var(--theme-text-muted, #aeb8bd);
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.aiwf-resource-item__unused-label {
+  color: color-mix(in srgb, var(--theme-text-muted, #aeb8bd) 60%, transparent);
+  font-size: 10px;
 }
 
 .aiwf-floating-rail-popover__icon {
@@ -1156,5 +1539,13 @@ onBeforeUnmount(() => {
   .rail-bracket {
     opacity: 1 !important;
   }
+}
+
+.aiwf-resource-list__footer {
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--theme-text-muted, #aeb8bd);
+  opacity: 0.7;
 }
 </style>
