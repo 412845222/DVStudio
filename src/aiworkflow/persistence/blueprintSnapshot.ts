@@ -1,4 +1,4 @@
-import type { WorkflowState } from '../types'
+import type { WorkflowState, WorkflowSelectionTag } from '../types'
 
 export const AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION = 1 as const
 
@@ -14,6 +14,12 @@ export type AIWorkflowDraftSnapshot = {
   resourceOrder: WorkflowState['resourceOrder']
   selectedNodeId: WorkflowState['selectedNodeId']
   selectedNodeIds: WorkflowState['selectedNodeIds']
+  /** 多选标签记录（按 key 索引） */
+  selectionTagsByKey?: Record<string, WorkflowSelectionTag>
+  /** 已保存的选区框列表（持久化实体） */
+  savedSelectionFrames?: import('../types').SavedSelectionFrame[]
+  /** 是否显示节点级多选框 */
+  nodeCheckboxVisible?: boolean
 }
 
 export const isValidBlueprintSnapshot = (v: any): v is AIWorkflowDraftSnapshot => {
@@ -31,7 +37,7 @@ export const isValidBlueprintSnapshot = (v: any): v is AIWorkflowDraftSnapshot =
 }
 
 export const buildSnapshotFromState = (state: WorkflowState): AIWorkflowDraftSnapshot => {
-  return {
+  const snapshot: AIWorkflowDraftSnapshot = {
     schemaVersion: AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION,
     savedAt: Date.now(),
     viewport: state.viewport,
@@ -44,6 +50,16 @@ export const buildSnapshotFromState = (state: WorkflowState): AIWorkflowDraftSna
     selectedNodeId: state.selectedNodeId,
     selectedNodeIds: state.selectedNodeIds,
   }
+  // 多选标签持久化
+  if (state.selectionTagsByKey && Object.keys(state.selectionTagsByKey).length) {
+    snapshot.selectionTagsByKey = state.selectionTagsByKey
+  }
+  // 已保存选区框持久化
+  if (state.savedSelectionFrames && state.savedSelectionFrames.length) {
+    snapshot.savedSelectionFrames = state.savedSelectionFrames
+  }
+  snapshot.nodeCheckboxVisible = state.nodeCheckboxVisible
+  return snapshot
 }
 
 export const normalizeSnapshotResourceUrls = (
