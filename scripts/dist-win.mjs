@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
+import fs from 'node:fs'
 
 function run(cmd, args, { env } = {}) {
 	return new Promise((resolve) => {
@@ -20,16 +21,24 @@ async function main() {
 		.replace(/\..+$/, '')
 		.replace('T', '-')
 	const releaseDir = path.resolve(process.cwd(), `release-${stamp}`)
+	const cacheDir = path.resolve(process.cwd(), '.electron-cache')
+
+	fs.mkdirSync(cacheDir, { recursive: true })
 
 	process.stdout.write(`[dist:win] output dir: ${releaseDir}\n`)
+	process.stdout.write(`[dist:win] electron cache dir: ${cacheDir}\n`)
+
+	const buildEnv = {
+		ELECTRON_BUILDER_DISABLE_UPDATES_CHECK: 'true',
+		ELECTRON_CACHE: cacheDir,
+		ELECTRON_BUILDER_CACHE: cacheDir,
+	}
 
 	let code = await run('npx', ['vite', 'build'])
 	if (code !== 0) process.exit(code)
 
 	code = await run('electron-builder', ['-w', '--publish', 'never', '--projectDir', process.cwd(), '--config.directories.output', releaseDir], {
-		env: {
-			ELECTRON_BUILDER_DISABLE_UPDATES_CHECK: 'true',
-		},
+		env: buildEnv,
 	})
 	if (code !== 0) {
 		process.stdout.write('[dist:win] retry once...\n')
@@ -37,9 +46,7 @@ async function main() {
 			'electron-builder',
 			['-w', '--publish', 'never', '--projectDir', process.cwd(), '--config.directories.output', releaseDir],
 			{
-				env: {
-					ELECTRON_BUILDER_DISABLE_UPDATES_CHECK: 'true',
-				},
+				env: buildEnv,
 			},
 		)
 	}
