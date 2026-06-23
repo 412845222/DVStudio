@@ -29,6 +29,16 @@ type DropTarget = {
   magnetY?: number
 }
 
+type TooltipState = {
+  visible: boolean
+  type: string
+  direction: 'in' | 'out'
+  label?: string
+  acceptedTypes?: string[]
+  compatible?: boolean
+  position: { x: number; y: number }
+}
+
 export type ScreenToWorldFn = (point: { x: number; y: number }) => { x: number; y: number }
 
 export const useAIWorkflowLinking = (payload: {
@@ -70,6 +80,8 @@ export const useAIWorkflowLinking = (payload: {
 }) => {
   const linkDraft = ref<LinkDraft | null>(null)
   const dropTarget = ref<DropTarget | null>(null)
+  const tooltipState = ref<TooltipState | null>(null)
+  const anchorCompatibility = ref<Record<string, boolean | null>>({})
   let cleanupLink: (() => void) | null = null
   const magnet = useWorkflowAnchorMagnet()
   let lastMagnetEl: HTMLElement | null = null
@@ -105,6 +117,8 @@ export const useAIWorkflowLinking = (payload: {
     activeScreenToWorld = null
     linkDraft.value = null
     dropTarget.value = null
+    tooltipState.value = null
+    anchorCompatibility.value = {}
   }
 
   const attrEscape = (value: string) => String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
@@ -248,6 +262,65 @@ export const useAIWorkflowLinking = (payload: {
     lastMagnetEl = el
   }
 
+  const updateTooltipState = (target: DropTarget | null) => {
+    if (!target || !linkDraft.value) {
+      tooltipState.value = null
+      anchorCompatibility.value = {}
+      return
+    }
+
+    const targetNode = payload.store.state.nodesById[target.nodeId]
+    if (!targetNode) {
+      tooltipState.value = null
+      anchorCompatibility.value = {}
+      return
+    }
+
+    const anchors = target.direction === 'in' ? targetNode.inputs : targetNode.outputs
+    const anchor = anchors.find((a) => a.id === target.anchorId)
+    if (!anchor) {
+      tooltipState.value = null
+      anchorCompatibility.value = {}
+      return
+    }
+
+    const el = target.element ?? anchorElement(target.nodeId, target.anchorId, target.direction)
+    if (!el) {
+      tooltipState.value = null
+      anchorCompatibility.value = {}
+      return
+    }
+
+    const rect = el.getBoundingClientRect()
+    const compatible = canLinkAnchors(
+      payload.store.state.nodesById,
+      linkDraft.value.fromNodeId,
+      linkDraft.value.fromAnchorId,
+      target.nodeId,
+      target.anchorId,
+    )
+
+    const targetKey = `${target.nodeId}-${target.direction}-${target.anchorId}`
+    const sourceKey = `${linkDraft.value.fromNodeId}-out-${linkDraft.value.fromAnchorId}`
+    anchorCompatibility.value = {
+      [targetKey]: compatible,
+      [sourceKey]: compatible,
+    }
+
+    tooltipState.value = {
+      visible: true,
+      type: anchor.mediaType ?? 'generic',
+      direction: target.direction,
+      label: anchor.label,
+      acceptedTypes: anchor.acceptedMediaTypes,
+      compatible,
+      position: {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      },
+    }
+  }
+
   const runHoverMagnet = () => {
     hoverRafId = null
     if (linkDraft.value || !lastHoverPointer) return
@@ -279,6 +352,7 @@ export const useAIWorkflowLinking = (payload: {
     () => [linkDraft.value, dropTarget.value],
     () => {
       applyMagnetVisual(dropTarget.value)
+      updateTooltipState(dropTarget.value)
       payload.scheduleAsyncEdgeRender()
     },
     { deep: true, flush: 'post' },
@@ -303,7 +377,7 @@ export const useAIWorkflowLinking = (payload: {
 
   const findDropTarget = (clientPoint: { x: number; y: number }) => {
     const target = magnet.resolveTarget({
-      candidates: collectAnchorCandidates({ directions: ['in'], legalOnly: true }),
+      candidates: collectAnchorCandidates({ directions: ['in'], legalOnly: false }),
       pointer: clientPoint,
       dragging: false,
     })
@@ -443,7 +517,18 @@ export const useAIWorkflowLinking = (payload: {
       linkDraft.value.fromAnchorId,
       target.nodeId,
       target.anchorId,
-    )) return
+    )) {
+      const fromNode = payload.store.state.nodesById[linkDraft.value.fromNodeId]
+      const toNode = payload.store.state.nodesById[target.nodeId]
+      const fromKind = anchorKind(fromNode, linkDraft.value.fromAnchorId, 'out')
+      const toKind = anchorKind(toNode, target.anchorId, 'in')
+      payload.pushToast(
+        `锚点类型不匹配：${anchorKindLabel(fromKind)} → ${anchorKindLabel(toKind)}。resource 输入可接收 image/video/resource。`,
+        'warn',
+      )
+      clearLinkInteraction()
+      return
+    }
 
     const fromNodeId = linkDraft.value.fromNodeId
     const fromAnchorId = linkDraft.value.fromAnchorId
@@ -463,6 +548,8 @@ export const useAIWorkflowLinking = (payload: {
       toNodeId,
       toAnchorId,
     })
+
+    clearLinkInteraction()
   }
 
   const onEndLink = (endPayload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
@@ -548,5 +635,8 @@ export const useAIWorkflowLinking = (payload: {
     onStartLink,
     onEndLink,
     draftRender,
+    tooltipState,
+    anchorCompatibility,
+    isLinking: computed(() => !!linkDraft.value),
   }
 }
