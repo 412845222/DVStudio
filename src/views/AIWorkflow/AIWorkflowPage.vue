@@ -12,6 +12,15 @@
       <BlueprintCanvas
         class="aiwf-canvas"
         :viewport="viewport"
+        :selection-frame="{
+          visible: selectionFrame.visible.value,
+          worldRect: selectionFrame.worldRect.value,
+          label: selectionFrame.label.value,
+          nodeCount: selectionFrame.nodeCount.value,
+          nodeIds: selectionFrame.nodeIds.value,
+        }"
+        :saved-frames="selectionFrame.savedFrames.value"
+        :nodes-by-id="(store.state as any).nodesById"
         @update:viewport="onViewportUpdate"
         @canvas-contextmenu="onCanvasContextMenu"
         @canvas-dblclick="onCanvasDblClick"
@@ -21,6 +30,9 @@
         @pointerdown="onCanvasPointerDown"
         @dragover.prevent="onCanvasDragOver"
         @drop.prevent="onCanvasDrop"
+        @selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
+        @selection-frame-delete="tagEditor.clearSelectionOnly()"
+        @selection-frame-drag="onSelectionFrameDrag"
         v-slot="vp"
       >
         <WorkflowEdgeLayer
@@ -139,8 +151,8 @@
             :nodeType="node.type"
             :outputs="node.outputs"
             :selected="selectedNodeIds.includes(node.id)"
-            :isPrimarySelected="selectedNodeId === node.id"
-            :isSecondarySelected="selectedNodeIds.includes(node.id) && selectedNodeId !== node.id"
+            :isPrimarySelected="selectedNodeIds.length === 1 && selectedNodeId === node.id"
+            :isSecondarySelected="selectedNodeIds.length === 1 && selectedNodeIds.includes(node.id) && selectedNodeId !== node.id"
             :visualStatus="resolveNodeRuntimeVisualState(node)"
             :node-chat-visible="nodeChatDialog.visible && nodeChatDialog.nodeId === node.id && selectedNodeId === node.id"
             :node-chat-node-type="nodeChatDialog.nodeId === node.id ? nodeChatDialog.nodeType : null"
@@ -275,6 +287,17 @@
           @select="onNodeSearchMenuSelect"
           @upload-file="onNodeSearchMenuUploadFile"
           @close="closeNodeSearchMenu"
+        />
+
+        <!-- 标签编辑器 -->
+        <WorkflowTagEditor
+          :visible="tagEditor.visible.value"
+          :screenX="tagEditor.screenX.value"
+          :screenY="tagEditor.screenY.value"
+          :initialLabel="tagEditor.initialLabel.value"
+          @commit="tagEditor.commitTag($event)"
+          @cancel="tagEditor.closeEditor()"
+          @update:visible="tagEditor.visible.value = $event"
         />
       </BlueprintCanvas>
     </div>
@@ -725,6 +748,10 @@ import { useAIWorkflowTextMergeCommands } from './node-business/useAIWorkflowTex
 import { useAIWorkflowMediaPreviewSources } from './node-business/presentation/useAIWorkflowMediaPreviewSources'
 import { useAIWorkflowNodeExtraProps } from './node-business/presentation/useAIWorkflowNodeExtraProps'
 import { useAIWorkflowTextOutputResolver, type InputParamPreviewRef } from './node-business/presentation/useAIWorkflowTextOutputResolver'
+import { useAIWorkflowSelectionFrame } from './blueprint-core/selection/useAIWorkflowSelectionFrame'
+import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflowTagEditor'
+import WorkflowTagEditor from '../../ui/WorkFlow/selection/WorkflowTagEditor.vue'
+import SelectionFrameOverlay from '../../ui/WorkFlow/selection/SelectionFrameOverlay.vue'
 import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
 import { useAIWorkflowSceneDecomposeAutoExpand } from './node-business/scene/useAIWorkflowSceneDecomposeAutoExpand'
 import { useAIWorkflowSceneDecomposeController } from './node-business/scene/useAIWorkflowSceneDecomposeController'
@@ -791,6 +818,36 @@ const {
   selectedNodeResource,
   active3DPreviewNodeId,
 } = useAIWorkflowSelectionState(store)
+
+// 多选框选框状态管理（Canvas绘制）
+const selectionFrame = useAIWorkflowSelectionFrame({
+  store,
+  selectedNodeIds,
+})
+
+// 标签编辑器（复用SelectionFrame的坐标）
+const tagEditor = useAIWorkflowTagEditor({
+  store,
+  selectedNodeIds,
+})
+
+const openSelectionTagEditor = () => {
+  if (selectionFrame.worldRect.value && selectionFrame.visible.value) {
+    const rect = selectionFrame.worldRect.value
+    const canvasW = canvasViewportSize.value?.width ?? 0
+    const canvasH = canvasViewportSize.value?.height ?? 0
+    const zoom = viewport.value.zoom
+    const panX = viewport.value.panX
+    const panY = viewport.value.panY
+    const centerX = (rect.x0 + rect.x1) / 2
+    const centerY = rect.y0
+    const screenX = canvasW / 2 + panX + centerX * zoom
+    const screenY = canvasH / 2 + panY + centerY * zoom
+    tagEditor.openEditor({ screenX: screenX - 90, screenY: screenY - 60 })
+  } else {
+    tagEditor.openEditor()
+  }
+}
 
 const {
   getNodePreviewState,
@@ -5458,6 +5515,10 @@ const onCompactNodePointerDown = canvasInteraction.onCompactNodePointerDown
 const onBoxSelect = canvasInteraction.onBoxSelect
 const onNodeSizeChange = canvasInteraction.onNodeSizeChange
 const onFocusNode = canvasInteraction.onFocusNode
+
+const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
+  store.dispatch('moveNodesBy', payload)
+}
 
 onBeforeUnmount(() => {
 	cancelActiveImportSession({ cleanupUnresolved: false })
