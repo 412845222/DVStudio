@@ -1,6 +1,6 @@
 import type { WorkflowImageCrop, WorkflowPixelRect } from '../../../../aiworkflow/types'
 
-const MIN_CROP_WIDTH_PX = 320
+const MIN_CROP_WIDTH_PX = 350
 const MIN_ASPECT_RATIO = 1.0
 const MAX_ASPECT_RATIO = 16 / 9
 const MAX_PADDING_RATIO = 0.5

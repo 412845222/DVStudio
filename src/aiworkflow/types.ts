@@ -471,7 +471,7 @@ export type WorkflowSceneDecomposeOutput = {
 	objectId?: string
 	name?: string
 	description?: string
-	cropMode?: 'cropped' | 'fallback'
+	cropMode?: 'cropped' | 'fallback' | 'cropped-enforced' | 'fallback-enforced'
 	sourceImageIndex: number
 	observedImageIndices?: number[]
 	imageRect?: WorkflowImageCrop
