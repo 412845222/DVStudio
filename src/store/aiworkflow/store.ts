@@ -194,8 +194,18 @@ const singleIOAnchorsForNodeType = (type: string): { inputs: WorkflowAnchorSpec[
 	}
 	if (type === 'model3d') {
 		return {
-			inputs: [{ id: 'in-0', label: '模型输入', multiInput: true }],
-			outputs: [{ id: 'out-0', label: '模型输出', mediaType: 'model3d' }],
+			inputs: [
+				{ id: 'in-resource', label: '资源', mediaType: 'generic' },
+				{ id: 'in-text', label: '提示词', mediaType: 'text' },
+				{ id: 'in-image-1', label: '参考图 1', mediaType: 'image' },
+				{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
+				{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
+				{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
+			],
+			outputs: [
+				{ id: 'out-0', label: '模型输出', mediaType: 'model3d' },
+				{ id: 'out-image', label: '预览图', mediaType: 'image' },
+			],
 		}
 	}
 	return null
@@ -226,7 +236,7 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 		return nextAnchorId
 	}
 	if (nextType === 'model3d') {
-		if (nextAnchorId === 'in-model') return 'in-0'
+		if (nextAnchorId === 'in-0' || nextAnchorId === 'in-model') return 'in-resource'
 		return nextAnchorId
 	}
 	if (nextType === 'rotate-image') {
@@ -2036,6 +2046,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						imageUrls: Array.isArray(meshyModelSettingsRaw.imageUrls)
 							? meshyModelSettingsRaw.imageUrls.map((x: any) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
 							: undefined,
+						imageCount: Number.isFinite(Number(meshyModelSettingsRaw.imageCount)) ? Number(meshyModelSettingsRaw.imageCount) : undefined,
 						taskId: typeof meshyModelSettingsRaw.taskId === 'string' ? meshyModelSettingsRaw.taskId : undefined,
 						taskStatus:
 							meshyModelSettingsRaw.taskStatus === 'idle' ||
@@ -2076,11 +2087,19 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (patch.lightIntensity != null) patch.lightIntensity = Math.max(0, Math.min(10, Number(patch.lightIntensity) || 0))
 			if (patch.renderWidth != null) patch.renderWidth = Math.max(1, Math.floor(Number(patch.renderWidth) || 1))
 			if (patch.renderHeight != null) patch.renderHeight = Math.max(1, Math.floor(Number(patch.renderHeight) || 1))
+			delete (patch as any).meshyModelSettings
+
+			const existingMeshy = (n.model3dSettings?.meshyModelSettings) ?? {}
+			const mergedMeshy = meshyModelSettings
+				? Object.fromEntries(
+					Object.entries({ ...existingMeshy, ...meshyModelSettings }).filter(([, v]) => v !== undefined),
+				  )
+				: undefined
 
 			n.model3dSettings = {
 				...(n.model3dSettings ?? {}),
 				...(modelGenerationSource != null ? { modelGenerationSource } : {}),
-				...(meshyModelSettings ? { meshyModelSettings } : {}),
+				...(mergedMeshy ? { meshyModelSettings: mergedMeshy as any } : {}),
 				...patch,
 			}
 		},

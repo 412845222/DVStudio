@@ -207,7 +207,7 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
     actionId: 'model3d',
     nodeType: 'model3d',
     label: '3D模型节点',
-    inputKinds: ['resource'],
+    inputKinds: ['resource', 'text', 'image', 'image', 'image', 'image'],
     outputKinds: ['resource', 'image'],
     order: 40,
   },

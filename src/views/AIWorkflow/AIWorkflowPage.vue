@@ -228,6 +228,8 @@
             @start-link="onStartLink($event, vp.screenToWorld)"
             @stop-meshy-task="onNodeStopMeshyTask(node.id)"
             @start-three-preview="onNodeStartThreePreview(node.id)"
+            @retry-meshy-fetch="onNodeRetryMeshyFetch(node.id)"
+            @open-meshy-task-panel="onOpenMeshyTaskPanel"
             @three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
             @three-preview-ready="onNodeThreePreviewReady(node.id)"
             @three-preview-error="onNodeThreePreviewError(node.id)"
@@ -1278,7 +1280,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
   store.dispatch('submitNodeChat', payload)
   const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
   const castPayload = payload as unknown as Parameters<typeof runNodeGenerationTask>[1]
-  await runNodeGenerationTask(
+  const result = await runNodeGenerationTask(
     {
       store,
       comfyService,
@@ -1470,6 +1472,103 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         store.commit('setNodeResource', { nodeId, resourceId })
         return true
       },
+      bindModel3dResultToNode: async (nodeId: string, url: string, format?: string) => {
+        const node = store.state.nodesById[nodeId]
+        if (!node) return false
+        const resourceId = `gen-model3d-${nodeId}-${Date.now()}`
+        const resourceName = `gen_model3d_${resourceId.slice(-6)}`
+        const base: any = {
+          id: resourceId,
+          kind: 'model3d',
+          name: resourceName,
+          url: '',
+          format: format || 'glb',
+        }
+        const pid = Number(currentProjectId.value ?? 0)
+        const sourceUrl = String(url || '').trim()
+
+        if (sourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
+          base.url = sourceUrl
+          try {
+            const u = new URL(sourceUrl)
+            const path = u.searchParams.get('path')
+            if (path) {
+              base.projectRelativePath = decodeURIComponent(path)
+            }
+          } catch {
+            // ignore
+          }
+          finalizeGeneratedResourceLocalUrl(base, pid)
+          base.url = String(base.url || '').trim()
+          if (!base.url) {
+            pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+            return false
+          }
+          store.commit('addResource', base)
+          store.commit('setNodeResource', { nodeId, resourceId })
+          return true
+        }
+
+        if (!(pid > 0) || !sourceUrl) {
+          pushToast('3D 模型生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+          return false
+        }
+        const rootPath = await ensureActiveProjectRootRegistered(pid)
+        if (isElectron() && !rootPath) {
+          pushToast('3D 模型导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+          return false
+        }
+        if (pid > 0 && sourceUrl) {
+          let downloaded = false
+
+          if (!downloaded && isElectron()) {
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, resourceName)
+            if (dl) {
+              base.sourcePath = dl.sourcePath
+              base.projectRelativePath = dl.projectRelativePath
+              base.url = dl.url
+              base.size = dl.size
+              downloaded = true
+            }
+          }
+
+          if (!downloaded && !isElectron()) {
+            try {
+              const result = await blueprintProjectService.importAsset({
+                projectId: pid,
+                kind: 'file',
+                sourceUrl,
+                name: resourceName,
+                bucket: 'assets',
+              })
+              if (result?.ok && result.asset) {
+                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
+                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
+                base.url = (result.asset as any).url || ''
+                base.contentType = (result.asset as any).contentType || ''
+                base.size = (result.asset as any).size || 0
+                downloaded = true
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          if (downloaded && !base.url && base.projectRelativePath) {
+            base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(base.projectRelativePath)}`
+          }
+        }
+
+        finalizeGeneratedResourceLocalUrl(base, pid)
+        base.url = String(base.url || '').trim()
+        if (!base.url) {
+          pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+          return false
+        }
+        store.commit('addResource', base)
+        store.commit('setNodeResource', { nodeId, resourceId })
+        return true
+      },
       downloadUrlAsBlob: async (url: string): Promise<Blob | null> => {
         const pid = Number(currentProjectId.value ?? 0)
         if (pid > 0 && url) {
@@ -1503,6 +1602,10 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
     },
     castPayload,
   )
+
+  if (result.ok && result.taskType === 'meshy-3d' && result.taskId && result.mode) {
+    startMeshyPoll(payload.nodeId, result.taskId, result.mode)
+  }
 }
 
 const onNodeChatRemoveParamRef = (item: InputParamPreviewRef) => {
@@ -2883,7 +2986,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
   const node = store.state.nodesById[nodeId]
   if (!node || node.type !== 'model3d') return false
 
-  const incoming = getIncomingEdges(nodeId, 'in-model')
+  const incoming = getIncomingEdges(nodeId, 'in-resource')
   for (const edge of incoming) {
     const fromNode = store.state.nodesById[String((edge as any).fromNodeId ?? '')]
     if (!fromNode) continue
@@ -3004,7 +3107,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 
 const syncConnectedModel3DTargets = async (fromNodeId: string) => {
   const targets = getOutgoingEdges(fromNodeId)
-    .filter((e: any) => String(e.toAnchorId ?? '') === 'in-model')
+    .filter((e: any) => String(e.toAnchorId ?? '') === 'in-resource')
     .map((e: any) => String(e.toNodeId ?? '').trim())
     .filter((id: string, index: number, arr: string[]) => !!id && arr.indexOf(id) === index)
 
@@ -3358,7 +3461,8 @@ const latestGenerationTaskByNodeId = (nodeId: string) => {
   const ids = store.state.nodeGenerationTaskIdsByNodeId?.[nodeId]
   if (!Array.isArray(ids) || !ids.length) return null
   const firstId = ids[0]
-  return store.state.nodeGenerationTasksById?.[firstId] || null
+  const task = store.state.nodeGenerationTasksById?.[firstId] || null
+  return task
 }
 
 const onNodeStartThreePreview = (nodeId: string) => {
@@ -5002,7 +5106,7 @@ const linkInteraction = useAIWorkflowLinking({
       }
     }
 
-    if (toNode && toNode.type === 'model3d' && toAnchorId === 'in-model') {
+    if (toNode && toNode.type === 'model3d' && toAnchorId === 'in-resource') {
       void syncModel3DInputFromUpstream(toNodeId)
     }
     if (
@@ -5252,6 +5356,33 @@ const {
 
 const onOpenMeshyTaskPanel = () => {
   openMeshyTaskDialog()
+}
+
+const onNodeRetryMeshyFetch = async (nodeId: string) => {
+  const node = store.state.nodesById[nodeId]
+  if (!node || node.type !== 'model3d') return
+  const settings = node.model3dSettings?.meshyModelSettings
+  const taskId = String(settings?.taskId ?? '').trim()
+  const mode = String(settings?.taskFamily ?? 'text-to-3d').trim()
+  if (!taskId) {
+    pushToast('当前节点没有可重试的 Meshy 任务 ID。', 'warn')
+    return
+  }
+  try {
+    const res = await comfyService.meshyTask(taskId, mode)
+    if (!res?.ok) {
+      pushToast('拉取失败：' + String(res?.error ?? 'unknown'), 'error')
+      return
+    }
+    const finalStatus = await applyMeshyTaskResult(nodeId, res as any)
+    if (finalStatus === 'succeeded') {
+      pushToast('模型文件拉取成功。', 'info')
+    } else {
+      pushToast('任务尚未完成，当前状态：' + finalStatus, 'warn')
+    }
+  } catch (e: any) {
+    pushToast('拉取异常：' + String(e?.message ?? e), 'error')
+  }
 }
 
 const {

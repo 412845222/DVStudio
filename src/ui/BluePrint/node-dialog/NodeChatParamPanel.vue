@@ -389,7 +389,7 @@
 
       <template v-else-if="nodeType === 'model3d'">
         <div class="bp-node-chat-param-row">
-          <span class="bp-node-chat-param-label">3D引擎</span>
+          <span class="bp-node-chat-param-label">模型接口</span>
           <div class="bp-node-chat-param-options">
             <button
               v-for="opt in model3dProviderOptions"
@@ -398,183 +398,13 @@
               class="bp-node-chat-param-btn"
               :class="{ 'is-active': params.provider === opt.value }"
               :disabled="disabled"
-              @click="updateProvider(opt.value)"
+              @click="updateParam('provider', opt.value)"
             >
               {{ opt.label }}
             </button>
           </div>
         </div>
-
-        <template v-if="params.provider === 'tripo3d'">
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">Tripo模式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in tripoModeOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.tripoMode === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('tripoMode', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">输出格式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in tripoOutputFormatOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.tripoOutputFormat === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('tripoOutputFormat', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">贴图质量</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in tripoTextureQualityOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.tripoTextureQuality === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('tripoTextureQuality', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="params.provider === 'hunyuan3d'">
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">Hunyuan模式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in hunyuanModeOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.hunyuanMode === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('hunyuanMode', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">精度</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in hunyuanFaceLevelOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.hunyuanFaceLevel === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('hunyuanFaceLevel', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">面类型</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in hunyuanPolygonTypeOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.hunyuanPolygonType === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('hunyuanPolygonType', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">输出格式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in hunyuanOutputFormatOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.hunyuanOutputFormat === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('hunyuanOutputFormat', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="params.provider === 'rodin3d'">
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">质量等级</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in rodinTierOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.rodinTier === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('rodinTier', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">质量</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in rodinQualityOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.rodinQuality === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('rodinQuality', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">输出格式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in rodinOutputFormatOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.rodinOutputFormat === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('rodinOutputFormat', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="params.provider === 'meshy'">
+        <template v-if="params.provider === 'meshy'">
           <div class="bp-node-chat-param-row">
             <span class="bp-node-chat-param-label">生成模式</span>
             <div class="bp-node-chat-param-options">
@@ -743,17 +573,6 @@ import {
   NODE_CHAT_VIDEO_MODE_OPTIONS,
   NODE_CHAT_VIDEO_DURATION_OPTIONS,
   NODE_CHAT_VIDEO_RATIO_OPTIONS,
-  NODE_CHAT_MODEL3D_PROVIDER_OPTIONS,
-  NODE_CHAT_TRIPO_MODE_OPTIONS,
-  NODE_CHAT_TRIPO_OUTPUT_FORMAT_OPTIONS,
-  NODE_CHAT_TRIPO_TEXTURE_QUALITY_OPTIONS,
-  NODE_CHAT_HUNYUAN_MODE_OPTIONS,
-  NODE_CHAT_HUNYUAN_FACE_LEVEL_OPTIONS,
-  NODE_CHAT_HUNYUAN_POLYGON_TYPE_OPTIONS,
-  NODE_CHAT_HUNYUAN_OUTPUT_FORMAT_OPTIONS,
-  NODE_CHAT_RODIN_TIER_OPTIONS,
-  NODE_CHAT_RODIN_QUALITY_OPTIONS,
-  NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS,
   NODE_CHAT_TEXT_SPEED_OPTIONS,
   NODE_CHAT_TEXT_MODEL_OPTIONS,
   NODE_CHAT_TEXT_THINKING_OPTIONS,
@@ -761,6 +580,7 @@ import {
   NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS,
   NODE_CHAT_IMAGE_MODEL_OPTIONS,
   NODE_CHAT_VIDEO_MODEL_OPTIONS,
+  NODE_CHAT_MODEL3D_PROVIDER_OPTIONS,
   NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS,
   NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS,
   NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS,
@@ -797,11 +617,6 @@ const updateParam = (key: string, value: any) => {
   emit('update:params', next)
 }
 
-const updateProvider = (provider: string) => {
-  const next = { ...props.params, provider }
-  emit('update:params', next)
-}
-
 const textSpeedOptions = NODE_CHAT_TEXT_SPEED_OPTIONS
 const textModelOptions = NODE_CHAT_TEXT_MODEL_OPTIONS
 const textThinkingOptions = NODE_CHAT_TEXT_THINKING_OPTIONS
@@ -810,23 +625,13 @@ const textMaxTokensOptions = NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS
 const seedModelVersionOptions = NODE_CHAT_SEED_MODEL_VERSION_OPTIONS
 const imageModelOptions = NODE_CHAT_IMAGE_MODEL_OPTIONS
 const videoModelOptions = NODE_CHAT_VIDEO_MODEL_OPTIONS
+const model3dProviderOptions = NODE_CHAT_MODEL3D_PROVIDER_OPTIONS
 const resolutionOptions = NODE_CHAT_RESOLUTION_OPTIONS
 const aspectRatioOptions = NODE_CHAT_ASPECT_RATIO_OPTIONS
 const quantityOptions = NODE_CHAT_QUANTITY_OPTIONS
 const videoModeOptions = NODE_CHAT_VIDEO_MODE_OPTIONS
 const videoDurationOptions = NODE_CHAT_VIDEO_DURATION_OPTIONS
 const videoRatioOptions = NODE_CHAT_VIDEO_RATIO_OPTIONS
-const model3dProviderOptions = NODE_CHAT_MODEL3D_PROVIDER_OPTIONS
-const tripoModeOptions = NODE_CHAT_TRIPO_MODE_OPTIONS
-const tripoOutputFormatOptions = NODE_CHAT_TRIPO_OUTPUT_FORMAT_OPTIONS
-const tripoTextureQualityOptions = NODE_CHAT_TRIPO_TEXTURE_QUALITY_OPTIONS
-const hunyuanModeOptions = NODE_CHAT_HUNYUAN_MODE_OPTIONS
-const hunyuanFaceLevelOptions = NODE_CHAT_HUNYUAN_FACE_LEVEL_OPTIONS
-const hunyuanPolygonTypeOptions = NODE_CHAT_HUNYUAN_POLYGON_TYPE_OPTIONS
-const hunyuanOutputFormatOptions = NODE_CHAT_HUNYUAN_OUTPUT_FORMAT_OPTIONS
-const rodinTierOptions = NODE_CHAT_RODIN_TIER_OPTIONS
-const rodinQualityOptions = NODE_CHAT_RODIN_QUALITY_OPTIONS
-const rodinOutputFormatOptions = NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS
 const meshyModeOptions = NODE_CHAT_MESHY_MODE_OPTIONS
 const meshyAiModelOptions = NODE_CHAT_MESHY_AI_MODEL_OPTIONS
 const meshyModelTypeOptions = NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS
