@@ -213,14 +213,14 @@ const settings = computed(() => props.sceneDecomposeSettings ?? null);
 const previewListRef = ref<HTMLDivElement | null>(null);
 const status = computed(() => String(settings.value?.status ?? "idle"));
 const running = computed(() => status.value === "running");
-const outputs = computed(
+const sceneOutputs = computed(
   () =>
     (Array.isArray(settings.value?.outputs)
       ? settings.value?.outputs
       : []) as WorkflowSceneDecomposeOutput[]
 );
-const outputCount = computed(() => outputs.value.length);
-const previewItems = computed(() => outputs.value);
+const outputCount = computed(() => sceneOutputs.value.length);
+const previewItems = computed(() => sceneOutputs.value);
 const linkedImageCount = computed(() =>
   Array.isArray(props.linkedImageUrls)
     ? props.linkedImageUrls.filter((item) => !!String(item ?? "").trim()).length
@@ -266,7 +266,7 @@ const croppedCount = computed(() =>
     0,
     Number(
       settings.value?.croppedCount ??
-        outputs.value.filter((item) => item.cropMode !== "fallback").length
+        sceneOutputs.value.filter((item) => item.cropMode !== "fallback").length
     )
   )
 );
@@ -275,7 +275,7 @@ const fallbackCount = computed(() =>
     0,
     Number(
       settings.value?.fallbackCount ??
-        outputs.value.filter((item) => item.cropMode === "fallback").length
+        sceneOutputs.value.filter((item) => item.cropMode === "fallback").length
     )
   )
 );
