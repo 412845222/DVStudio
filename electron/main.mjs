@@ -31,6 +31,8 @@ import {
 	validateProjectRoot,
 	diagnoseDwebAsset,
 	getAccessLogs,
+	getProjectCacheStats,
+	clearProjectCache,
 } from './backend/projectAssetProtocol.mjs'
 import {
 	uploadBufferProjectAsset,
@@ -1718,6 +1720,32 @@ function registerIpc() {
 		return { ok: true, logs: getAccessLogs(Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : 100) }
 	})
 
+	// 项目缓存统计：统计 .dvcache 目录下文件数量和总大小
+	ipcMain.handle('dweb:project-cache:stats', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		try {
+			return getProjectCacheStats(projectId)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 项目缓存清理：清空 .dvcache 目录下的所有缓存文件
+	ipcMain.handle('dweb:project-cache:clear', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		try {
+			return clearProjectCache(projectId)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
 	// Fetch a URL in the main process (bypasses browser CORS) and return Uint8Array / mime
 	ipcMain.handle('dweb:aiworkflow:fetchAsArrayBuffer', async (_e, payload) => {
 		const url = String(payload?.url || '').trim()
@@ -1926,7 +1954,7 @@ function registerIpc() {
 	})
 
 	// 资源管理器窗口 → 主窗口事件广播
-	// 事件类型: 'remove' | 'preview' | 'refresh-missing' | 'drop-to-node'
+	// 事件类型: 'remove' | 'preview' | 'refresh-missing' | 'drop-to-node' | 'focus-node'
 	ipcMain.handle('dweb:resource-manager:broadcast', async (_e, payload) => {
 		const event = String(payload?.event || '').trim()
 		if (!event) return { ok: false, error: 'missing event name' }
@@ -1934,6 +1962,10 @@ function registerIpc() {
 			return { ok: false, error: 'main window not available' }
 		}
 		try {
+			if (event === 'focus-node') {
+				if (mainWindow.isMinimized()) mainWindow.restore()
+				mainWindow.focus()
+			}
 			mainWindow.webContents.send('dweb:resource-manager:event', {
 				event,
 				data: payload?.data ?? null,

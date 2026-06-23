@@ -124,6 +124,8 @@ contextBridge.exposeInMainWorld('dweb', {
 		diagnoseAsset: (payload) => invoke('dweb:aiworkflow:diagnoseAsset', payload || {}),
 		validateProjectRoot: (payload) => invoke('dweb:aiworkflow:validateProjectRoot', payload || {}),
 		getAssetAccessLogs: (payload) => invoke('dweb:aiworkflow:getAssetAccessLogs', payload || {}),
+		getCacheStats: (payload) => invoke('dweb:project-cache:stats', payload || {}),
+		clearCache: (payload) => invoke('dweb:project-cache:clear', payload || {}),
 
 		// ---- 本地化存储（取代 Django 的项目/任务镜像/API key 管理） ----
 		db: {
@@ -197,6 +199,8 @@ contextBridge.exposeInMainWorld('dweb', {
 		sendResourceManagerData: (payload) => {
 			return invoke('dweb:resource-manager:send-data', payload || {})
 		},
+		broadcastResourceEvent: (payload) => invoke('dweb:resource-manager:broadcast', payload || {}),
+		notifyResourceEvent: (payload) => invoke('dweb:resource-manager:notify', payload || {}),
 		// 资源管理器窗口：读取已缓存的资源数据（数据可能在 Vue 挂载前就到达了）
 		getResourceManagerData: () => resourceManagerLatestData,
 		// 资源管理器窗口：主动向主窗口请求最新的资源数据

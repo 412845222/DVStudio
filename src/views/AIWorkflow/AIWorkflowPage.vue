@@ -370,6 +370,9 @@
           :currentProjectName="currentProjectName"
           :performancePriorityMode="performancePriorityMode"
           :resources="resources"
+          :nodes-by-id="(store.state as any).nodesById"
+          :node-order="(store.state as any).nodeOrder"
+          :current-project-id="currentProjectId"
           :nodeLibraryOpen="false"
           :backendLogOpen="blueprintLogPanelOpen"
           :electronReady="isElectron()"
@@ -378,6 +381,7 @@
           @toggle-node-library="onRailToggleNodeLibrary"
           @toggle-backend-log="onRailToggleBackendLog"
           @open-resource-manager="openResourceDialog"
+          @focus-node="onToolbarFocusNode"
           @request-repair-assets="onRequestRepairProjectAssets"
           @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
           @request-export-performance-diagnostics="onExportPerfDiagnostics"
@@ -5626,6 +5630,34 @@ const { onNodeRefresh } = useAIWorkflowNodeRefresh({
 // 主窗口监听来自资源管理器独立窗口的事件广播
 let resourceManagerEventListenerId: number | null = null
 
+const pushSystemToast = (message: string, tone: 'info' | 'warn' | 'error' = 'warn') => {
+  chatMessages.value = [
+    ...chatMessages.value,
+    { id: `sys-focus-${Date.now()}`, role: 'system', message, tone, createdAt: Date.now() },
+  ] as any
+}
+
+const tryFocusNodeById = (nodeIdRaw: any): boolean => {
+  const nodeId = String(nodeIdRaw || '').trim()
+  if (!nodeId) return false
+  const exists = !!(store.state as any).nodesById?.[nodeId]
+  if (!exists) return false
+  const ok = canvasInteraction.onFocusNode(nodeId)
+  if (ok) {
+    ;(store.commit as any)('setSelectedNode', { nodeId })
+  }
+  return ok
+}
+
+const onToolbarFocusNode = (p: any) => {
+  const nodeId = String(p?.nodeId || '').trim()
+  if (!nodeId) return
+  const ok = tryFocusNodeById(nodeId)
+  if (!ok) {
+    pushSystemToast('引用节点已删除，无法定位。', 'warn')
+  }
+}
+
 const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => {
   const { event, data } = payload || {}
   if (!event) return
@@ -5652,6 +5684,15 @@ const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => 
       // 资源管理器窗口中拖拽资源到蓝图节点
       if (data?.resourceId) {
         void onResourceDraggedToBlueprint(String(data.resourceId), data?.position ?? null)
+      }
+      break
+    case 'focus-node':
+      // 资源管理器窗口中请求定位到节点
+      if (data?.nodeId) {
+        const ok = tryFocusNodeById(String(data.nodeId))
+        if (!ok) {
+          pushSystemToast('引用节点已删除，无法定位。', 'warn')
+        }
       }
       break
     default:
@@ -5705,6 +5746,37 @@ watch(meshyTaskDialogOpen, (open) => {
 watch(videoTaskDialogOpen, (open) => {
   onVideoTaskDialogOpenChanged(open)
 })
+
+let syncNodesToManagerTimer: number | null = null
+const syncNodesToResourceManager = () => {
+  if (syncNodesToManagerTimer !== null) {
+    clearTimeout(syncNodesToManagerTimer)
+  }
+  syncNodesToManagerTimer = window.setTimeout(() => {
+    syncNodesToManagerTimer = null
+    const w = window as any
+    if (!w.__DWEB_RUNTIME__?.isElectron || !w.dweb?.aiworkflow?.sendResourceManagerData) return
+    try {
+      const resourcesData = JSON.parse(JSON.stringify(resources.value))
+      const nodesData = JSON.parse(JSON.stringify(store.state.nodesById))
+      const nodeOrderData = JSON.parse(JSON.stringify(store.state.nodeOrder))
+      void w.dweb.aiworkflow.sendResourceManagerData({
+        resources: resourcesData,
+        nodesById: nodesData,
+        nodeOrder: nodeOrderData,
+      })
+    } catch {
+      // ignore
+    }
+  }, 500)
+}
+
+watch(
+  () => (store.state as any).nodeOrder?.length ?? 0,
+  () => {
+    syncNodesToResourceManager()
+  }
+)
 
 const removeResourceRecordOnly = (resourceId: string) => {
   revokeTrackedObjectUrlsForResource(resourceId)
@@ -5838,6 +5910,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
   chatCollapsed,
   markViewportMotion,
   scheduleAsyncEdgeRender,
+  canvasViewportSize,
 })
 
 const onStartLink = linkInteraction.onStartLink
@@ -5850,6 +5923,7 @@ const anchorCompatibility = linkInteraction.anchorCompatibility
 const isLinking = linkInteraction.isLinking
 
 const onCanvasPanningStart = () => {
+  canvasInteraction.cancelFocusAnimation()
   linkInteraction.setPanning(true)
 }
 

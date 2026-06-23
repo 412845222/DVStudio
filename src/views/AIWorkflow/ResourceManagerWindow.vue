@@ -21,6 +21,7 @@
           @preview="handlePreview"
           @refresh-missing="handleRefreshMissing"
           @drop-to-node="handleDropToNode"
+          @focus-node="handleFocusNode"
         />
 
         <!-- 删除确认对话框（仅在"已使用"资源删除时显示） -->
@@ -265,39 +266,69 @@ const onConfirmRemove = async () => {
 }
 
 const handlePreview = async (resourceId: string) => {
-  const r = (store.state as any).resourcesById?.[String(resourceId)] as any
-  if (!r) return
+  const rid = String(resourceId || '').trim()
+  if (!rid) return
 
-  // 优先打开文件所在文件夹
-  const sourcePath = String(r.sourcePath || '').trim()
-  if (sourcePath) {
+  let r: any = null
+  if (dataReceived.value) {
+    r = localResources.value.find((item: any) => String(item?.id) === rid)
+  }
+  if (!r) {
+    r = (store.state as any).resourcesById?.[rid]
+  }
+  if (!r) {
+    pushToast('资源不存在', 'warn')
+    return
+  }
+
+  const projectRoot = String((store.state as any).projectRootPath || '').trim()
+
+  const tryOpenPath = async (p: string): Promise<boolean> => {
+    const target = String(p || '').trim()
+    if (!target) return false
     try {
       const w = window as any
       if (w.dweb && w.dweb.common && typeof w.dweb.common.openFolderForPath === 'function') {
-        await w.dweb.common.openFolderForPath({ path: sourcePath })
-        return
+        const res = await w.dweb.common.openFolderForPath({ path: target })
+        return !!(res && (res as any).ok)
       }
     } catch {
       // ignore
     }
+    return false
   }
 
-  // Fallback：在新窗口打开 URL
-  const kind = String(r.kind || '').toLowerCase()
-  const url =
-    kind === 'video'
-      ? String(r.url || r.posterUrl || '').trim()
-      : String(r.url || '').trim()
+  const sourcePath = String(r.sourcePath || '').trim()
+  if (sourcePath) {
+    const ok = await tryOpenPath(sourcePath)
+    if (ok) {
+      broadcastToMainWindow('preview', { resourceId: rid })
+      return
+    }
+  }
+
+  const projectRelativePath = String(r.projectRelativePath || '').trim()
+  if (projectRelativePath && projectRoot) {
+    const fullPath = `${projectRoot}/${projectRelativePath}`.replace(/\\/g, '/')
+    const ok = await tryOpenPath(fullPath)
+    if (ok) {
+      broadcastToMainWindow('preview', { resourceId: rid })
+      return
+    }
+  }
+
+  const url = String(r.url || r.posterUrl || '').trim()
   if (url) {
     try {
       window.open(url, '_blank')
+      broadcastToMainWindow('preview', { resourceId: rid })
+      return
     } catch {
       // ignore
     }
   }
 
-  // 通知主窗口预览了某个资源
-  broadcastToMainWindow('preview', { resourceId })
+  pushToast('无法定位文件位置', 'warn')
 }
 
 const handleRefreshMissing = async (resourceIds: string[]) => {
@@ -307,6 +338,26 @@ const handleRefreshMissing = async (resourceIds: string[]) => {
 const handleDropToNode = async (resourceId: string) => {
   // 广播到主窗口，由主窗口在蓝图光标位置创建节点
   broadcastToMainWindow('drop-to-node', { resourceId, position: null })
+}
+
+const handleFocusNode = async (payload: { nodeId: string }) => {
+  const nodeId = String(payload?.nodeId || '').trim()
+  if (!nodeId) return
+
+  if (dataReceived.value && localNodesById.value) {
+    if (!localNodesById.value[nodeId]) {
+      pushToast('引用节点已删除，无法定位。', 'warn')
+      return
+    }
+  } else {
+    const storeNodes = (store.state as any).nodesById as Record<string, any>
+    if (storeNodes && !storeNodes[nodeId]) {
+      pushToast('引用节点已删除，无法定位。', 'warn')
+      return
+    }
+  }
+
+  broadcastToMainWindow('focus-node', { nodeId })
 }
 
 // ============ 9. IPC 广播到主窗口 ============
