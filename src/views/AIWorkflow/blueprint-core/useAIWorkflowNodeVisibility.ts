@@ -18,6 +18,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
   screenMargin?: number
   viewportMotionActive?: Ref<boolean>
   motionRecomputeMinIntervalMs?: number
+  forceRenderAll?: Ref<boolean>
 }) => {
   const hiddenNodeIdSet = new Set((payload.hiddenNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean))
   const compactRenderStateByNodeId = new Map<string, boolean>()
@@ -26,7 +27,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
     const raw = typeof payload.compactZoomThreshold === 'object'
       ? payload.compactZoomThreshold?.value
       : payload.compactZoomThreshold
-    return Number.isFinite(Number(raw)) ? Number(raw) : 0.36
+    return Number.isFinite(Number(raw)) ? Number(raw) : 0.3
   }
   const screenMargin = Number.isFinite(Number(payload.screenMargin))
     ? Number(payload.screenMargin)
@@ -173,21 +174,11 @@ export const useAIWorkflowNodeVisibility = (payload: {
     'is-story': node.type === 'story',
   })
 
-  const shouldRenderCompactNode = (zoom: number, node: WorkflowNode) => {
+  const shouldRenderCompactNode = (_zoom: number, node: WorkflowNode) => {
     const nodeId = String(node?.id ?? '').trim()
     if (!nodeId) return false
-    const safeZoom = Math.max(0.01, Number(zoom) || 1)
-    const threshold = resolveCompactZoomThreshold()
-    const exitThreshold = threshold + Math.max(0.03, threshold * 0.08)
-    const isSelected = payload.selectedNodeIds.value.includes(node.id)
-    if (isSelected) {
-      compactRenderStateByNodeId.set(nodeId, false)
-      return false
-    }
-    const previous = compactRenderStateByNodeId.get(nodeId) === true
-    const next = previous ? safeZoom <= exitThreshold : safeZoom <= threshold
-    compactRenderStateByNodeId.set(nodeId, next)
-    return next
+    compactRenderStateByNodeId.set(nodeId, false)
+    return false
   }
 
   const candidateIdBuf: string[] = []
@@ -353,6 +344,9 @@ export const useAIWorkflowNodeVisibility = (payload: {
   })
 
   const visibleRenderNodes = computed(() => {
+    if (payload.forceRenderAll?.value === true) {
+      return renderNodes.value
+    }
     const idSet = visibleRenderNodeIds.value
     const result: WorkflowNode[] = []
     const allNodes = renderNodes.value
@@ -390,6 +384,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
     compactNodeTooltip,
     compactNodeClass,
     shouldRenderCompactNode,
+    compactRenderStateByNodeId,
     compactVisibleNodeCount,
     fullVisibleNodeCount,
   }

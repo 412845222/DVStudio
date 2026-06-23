@@ -45,12 +45,28 @@
           @select-edge="onSelectEdge"
         />
 
-        <div v-for="node in safeVisibleRenderNodes" :key="node.id" class="aiwf-node-host">
+        <div
+          v-for="node in safeVisibleRenderNodes"
+          :key="node.id"
+          class="aiwf-node-host"
+          :class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots }"
+          :ref="(el: any) => { if (el) nodeHostRefs.set(node.id, el as HTMLElement); else nodeHostRefs.delete(node.id); }"
+        >
+          <!-- Screenshot node (static image + real anchors + particles) -->
           <div
-            v-if="shouldRenderCompactNode(vp.zoom, node)"
-            :class="[compactNodeClass(node), compactNodeStateClass(node)]"
+            v-if="!fullRenderNodeIds.has(node.id) && nodeScreenshotMap.get(node.id)"
+            class="aiwf-node-screenshot-host"
+            :class="[
+              { 'aiwf-node-offscreen': isWarmingUpScreenshots },
+              { 'is-primary-selected': selectedNodeIds.length === 1 && selectedNodeId === node.id },
+              { 'wf-node-running': resolveNodeRuntimeVisualState(node) === 'running' },
+              { 'wf-node-error': resolveNodeRuntimeVisualState(node) === 'error' },
+              { 'is-anchors-hidden': !screenshotAnchorsEnabled },
+              { 'is-particles-hidden': !screenshotParticlesEnabled },
+              { 'is-near-drag': !screenshotAnchorsEnabled && nearDragNodeIds.has(node.id) },
+            ]"
             :style="
-              compactNodeShellStyle(
+              screenshotNodeStyle(
                 vp.worldToScreen,
                 node.worldX,
                 node.worldY,
@@ -59,82 +75,61 @@
                 node.height
               )
             "
-            class="aiwf-node-compact"
-            :title="compactNodeTooltip(node)"
-            aria-hidden="true"
+            :title="compactNodeDisplayName(node)"
             :data-node-type="node.type"
             @pointerdown="onCompactNodePointerDown(node.id, $event, vp.screenToWorld)"
           >
-            <!-- Media preview for image nodes only (video uses icon in compact mode) -->
             <img
-              v-if="['image', 'rotate-image'].includes(node.type) && compactNodeImageUrl(node)"
-              class="aiwf-node-compact-preview"
-              :src="compactNodeImageUrl(node)"
-              :alt="node.type"
-              loading="lazy"
+              class="aiwf-node-screenshot-img"
+              :src="nodeScreenshotMap.get(node.id)"
+              :alt="node.title || node.type"
+              draggable="false"
             />
-
-            <!-- Top-right type badge -->
-            <span class="aiwf-node-compact-type-badge" :style="{ '--tc': compactNodeTypeColor(node) }">
-              {{ compactNodeTypeChinese(node) }}
-            </span>
-
-            <!-- Left: type icon block - only hide for image nodes with preview -->
-            <div
-              v-if="!(['image', 'rotate-image'].includes(node.type) && compactNodeImageUrl(node))"
-              class="aiwf-node-compact-icon-block"
-              :style="{ '--tc': compactNodeTypeColor(node) }"
-            >
-              <svg class="aiwf-node-compact-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
-                <g v-if="node.type === 'text' || node.type === 'text-merge'">
-                  <rect x="5" y="4" width="14" height="16" rx="1" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <path d="M7 8h10M7 12h8M7 16h6" stroke-width="1.4" />
-                </g>
-                <g v-else-if="node.type === 'image' || node.type === 'rotate-image'">
-                  <rect x="3" y="4" width="18" height="16" rx="2" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <circle cx="17" cy="8" r="1.5" :fill="compactNodeTypeColor(node)" />
-                  <path d="M4 18l6-6 4 4 3-3 5 5" stroke-width="1.4" stroke-linecap="round" />
-                </g>
-                <g v-else-if="node.type === 'video'">
-                  <rect x="2" y="6" width="13" height="12" rx="1" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <path d="M15 10l5-3v6l-5-3z" :fill="compactNodeTypeColor(node)" />
-                </g>
-                <g v-else-if="node.type === 'scene-understanding' || node.type === 'scene-decompose' || node.type === 'scene-layout'">
-                  <path d="M12 3l9 5v8l-9 5-9-5V8l9-5z" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <path d="M12 20V11M4 8l8 4 8-4" stroke-width="1.2" />
-                </g>
-                <g v-else-if="node.type === 'comfyui'">
-                  <rect x="4" y="8" width="6" height="8" rx="1" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <rect x="14" y="8" width="6" height="8" rx="1" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <path d="M10 12h4" stroke-width="1.5" stroke-linecap="round" />
-                </g>
-                <g v-else-if="node.type === 'model3d' || node.type === 'meshy'">
-                  <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <path d="M12 20V11M4 7.5l8 4.5 8-4.5" stroke-width="1.2" />
-                </g>
-                <g v-else-if="node.type === 'story'">
-                  <path d="M4 5h6v14H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM20 5h-6v14h6a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <path d="M6 8h3M6 12h3M15 8h3M15 12h3" stroke-width="1.2" />
-                </g>
-                <g v-else>
-                  <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" :fill="'color-mix(in srgb, ' + compactNodeTypeColor(node) + ' 30%, transparent)'" />
-                  <circle cx="12" cy="12" r="2" :fill="compactNodeTypeColor(node)" />
-                </g>
-              </svg>
+            <div class="wf-node-particles" aria-hidden="true">
+              <span
+                v-for="p in getScreenshotParticles(node.id).particles"
+                :key="p.id"
+                class="sq-particle"
+                :class="getScreenshotParticles(node.id).buildHoverStateClass(false, {
+                  running: resolveNodeRuntimeVisualState(node) === 'running',
+                  error: resolveNodeRuntimeVisualState(node) === 'error',
+                })"
+                :style="p.style"
+              />
             </div>
-
-            <!-- Right: minimal info -->
-            <div class="aiwf-node-compact-info">
-              <div class="aiwf-node-compact-label">{{ compactNodeTypeCode(node) }}</div>
+            <div class="wf-anchors wf-anchors-in" aria-label="入口锚点">
+              <div
+                v-for="a in resolveScreenshotAnchors(node, 'in')"
+                :key="'in-' + a.id"
+                class="wf-anchor-hit"
+                :class="screenshotAnchorClass(a.mediaType)"
+                :style="screenshotAnchorTopStyle(a.offsetY)"
+                :title="a.label || '入口'"
+                :data-wf-node-id="node.id"
+                :data-wf-anchor-id="a.id"
+                data-wf-dir="in"
+                data-anchor-direction="in"
+                data-anchor-side="left"
+                :data-wf-anchor-index="a.index"
+              />
             </div>
-
-            <!-- Status pulse dot -->
-            <div
-              v-if="compactNodeStateLabel(node)"
-              class="aiwf-node-compact-state-dot"
-              :data-state="compactNodeStateLabel(node)"
-              :title="compactNodeStateLabel(node)"
-            />
+            <div class="wf-anchors wf-anchors-out" aria-label="出口锚点">
+              <div
+                v-for="a in resolveScreenshotAnchors(node, 'out')"
+                :key="'out-' + a.id"
+                class="wf-anchor-hit"
+                :class="screenshotAnchorClass(a.mediaType)"
+                :style="screenshotAnchorTopStyle(a.offsetY)"
+                :title="a.label || '出口'"
+                :data-wf-node-id="node.id"
+                :data-wf-anchor-id="a.id"
+                data-wf-dir="out"
+                data-anchor-direction="out"
+                data-anchor-side="right"
+                :data-wf-anchor-index="a.index"
+                @pointerdown.stop.prevent="onStartLink({ nodeId: node.id, anchorId: a.id, anchorIndex: a.index, event: $event }, vp.screenToWorld)"
+              />
+            </div>
           </div>
 
           <component
@@ -369,6 +364,8 @@
           :projects="projectList"
           :currentProjectName="currentProjectName"
           :performancePriorityMode="performancePriorityMode"
+          :screenshotAnchorsEnabled="screenshotAnchorsEnabled"
+          :screenshotParticlesEnabled="screenshotParticlesEnabled"
           :resources="resources"
           :nodeLibraryOpen="false"
           :backendLogOpen="blueprintLogPanelOpen"
@@ -380,6 +377,8 @@
           @open-resource-manager="openResourceDialog"
           @request-repair-assets="onRequestRepairProjectAssets"
           @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
+          @request-toggle-screenshot-anchors="screenshotAnchorsEnabled = !screenshotAnchorsEnabled"
+          @request-toggle-screenshot-particles="screenshotParticlesEnabled = !screenshotParticlesEnabled"
           @request-export-performance-diagnostics="onExportPerfDiagnostics"
           @request-save="onRequestSaveProject"
           @request-load-list="refreshProjectList"
@@ -390,6 +389,8 @@
           @request-export="onRequestExportProject"
           @request-export-package="onRequestExportProjectPackage"
           @open-meshy-task-panel="onOpenMeshyTaskPanel"
+          @open-gemini-task-panel="() => {}"
+          @open-seedream-task-panel="() => {}"
         />
 
         <div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
@@ -602,6 +603,14 @@
         :cancellable="false"
       />
 
+      <FullscreenProgressOverlay
+        :open="screenshotWarmupOpen"
+        title="正在生成节点预览缓存"
+        :detail="screenshotWarmupDetail || '请稍候，正在为所有节点生成截图缓存以提升蓝图流畅度...'"
+        :progress="screenshotWarmupProgress"
+        :cancellable="false"
+      />
+
     </div>
     <BlueprintLogPanel v-model:open="blueprintLogPanelOpen" />
     <AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
@@ -678,7 +687,7 @@
 
 <script setup lang="ts">
 import * as THREE from 'three'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
@@ -753,6 +762,8 @@ import {
 } from './blueprint-core/canvas-interaction/useAIWorkflowCanvasInteraction'
 import { useAIWorkflowLinking } from './blueprint-core/linking/useAIWorkflowLinking'
 import { useAIWorkflowNodePresentation } from './node-business/presentation/useAIWorkflowNodePresentation'
+import { createNodeScreenshotPool, SCREENSHOT_PADDING } from './node-screenshot'
+import { useSquareParticles } from '../../composables/useSquareParticles'
 import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
 import { useAIWorkflowVideoScreenshot } from './node-business/presentation/useAIWorkflowVideoScreenshot'
 import { useAIWorkflowPerfMonitor } from './blueprint-core/useAIWorkflowPerfMonitor'
@@ -862,6 +873,8 @@ const {
 })
 
 const performancePriorityMode = ref(false)
+const screenshotAnchorsEnabled = ref(true)
+const screenshotParticlesEnabled = ref(true)
 const compactThresholdNormal = 0.3
 const compactThresholdPerf = 0.35
 const compactThreshold = computed(() => {
@@ -951,6 +964,77 @@ const {
   compactNodeTypeCode,
 } = useAIWorkflowNodePresentation(store)
 
+const clampNodeScale = (zoom: number) => Math.max(0.2, Math.min(6, Number(zoom) || 1))
+
+const screenshotAnchorDefaultOffsets = (idx: number, count: number) => {
+  const gap = 24
+  const start = -((count - 1) * gap) / 2
+  return start + idx * gap
+}
+
+const resolveScreenshotAnchors = (node: WorkflowNode, direction: 'in' | 'out') => {
+  const raw = direction === 'in' ? node.inputs : node.outputs
+  const fallbackId = direction === 'in' ? 'in-0' : 'out-0'
+  const fallbackLabel = direction === 'in' ? '入口' : '出口'
+  const list = Array.isArray(raw) && raw.length > 0 ? raw : [{ id: fallbackId } as WorkflowAnchorSpec]
+  return list.map((a, index) => {
+    const offsetY = typeof a.offsetY === 'number' ? a.offsetY : screenshotAnchorDefaultOffsets(index, list.length)
+    return {
+      id: String(a.id ?? `${direction}-${index}`),
+      index,
+      offsetY,
+      mediaType: (a.mediaType ?? 'resource') as string,
+      label: String((a as any).label ?? fallbackLabel),
+    }
+  })
+}
+
+const screenshotAnchorTopStyle = (offsetY: number): Record<string, string> => ({
+  top: `calc(50% + ${offsetY}px)`,
+})
+
+const screenshotAnchorClass = (mediaType: string | undefined) => {
+  if (mediaType === 'image') return 'wf-anchor-image'
+  if (mediaType === 'video') return 'wf-anchor-video'
+  if (mediaType === 'text') return 'wf-anchor-text'
+  if (mediaType === 'model3d') return 'wf-anchor-model3d'
+  if (mediaType === 'flow') return 'wf-anchor-flow'
+  if (mediaType === 'audio') return 'wf-anchor-audio'
+  if (mediaType === 'meta') return 'wf-anchor-meta'
+  return 'wf-anchor-resource'
+}
+
+const screenshotNodeStyle = (
+  worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
+  worldX: number,
+  worldY: number,
+  zoom: number,
+  width: number,
+  height: number,
+) => {
+  const point = worldToScreen({ x: worldX, y: worldY })
+  const nodeW = Math.max(80, Math.round(width) || 240)
+  const nodeH = Math.max(80, Math.round(height) || 160)
+  return {
+    left: `${point.x}px`,
+    top: `${point.y}px`,
+    width: `${nodeW}px`,
+    height: `${nodeH}px`,
+    transform: `translate(-50%, -50%) scale(${clampNodeScale(zoom)})`,
+  } as Record<string, string>
+}
+
+const _screenshotParticleCache = new Map<string, ReturnType<typeof useSquareParticles>>()
+const getScreenshotParticles = (nodeId: string) => {
+  let cached = _screenshotParticleCache.get(nodeId)
+  if (!cached) {
+    const seed = Array.from(nodeId).reduce((s, c, i) => s + c.charCodeAt(0) * (i + 1), 0)
+    cached = useSquareParticles({ count: 6, seed })
+    _screenshotParticleCache.set(nodeId, cached)
+  }
+  return cached
+}
+
 const ensureNanoAnchorNode = () => {
   const existing = store.state.nodesById[NANO_ANCHOR_NODE_ID]
   const inputs: WorkflowAnchorSpec[] = Array.from({ length: NANO_REF_IMAGE_MAX }, (_, i) => ({
@@ -986,6 +1070,13 @@ watch(
   { immediate: true }
 )
 
+const isWarmingUpScreenshots = ref(false)
+const screenshotWarmupProgress = ref(0)
+const screenshotWarmupOpen = ref(false)
+const screenshotWarmupDetail = ref('')
+const forceRenderAll = computed(() => isWarmingUpScreenshots.value)
+const nearDragNodeIds = ref<Set<string>>(new Set())
+
 const {
   renderNodes,
   visibleRenderNodeIds,
@@ -1008,6 +1099,7 @@ const {
   compactZoomThreshold: compactThreshold,
   screenMargin: 360,
   motionRecomputeMinIntervalMs: 90,
+  forceRenderAll,
 })
 
 const safeVisibleSeenSet = new Set<string>()
@@ -1029,6 +1121,323 @@ const safeVisibleRenderNodes = computed(() => {
   }
 
   return safeVisibleResult.slice()
+})
+
+const nodeHostRefs = new Map<string, HTMLElement>()
+const nodeScreenshotMap = shallowRef(new Map<string, string>())
+const screenshotPool = createNodeScreenshotPool()
+
+const fullRenderNodeIds = computed<Set<string>>(() => {
+  const ids = new Set<string>()
+
+  for (const id of selectedNodeIds.value) {
+    const nid = String(id ?? '').trim()
+    if (nid) ids.add(nid)
+  }
+
+  const linkFromId = linkingFromNodeId.value
+  if (linkFromId) ids.add(String(linkFromId))
+
+  const linkHoverId = linkingHoverNodeId.value
+  if (linkHoverId) ids.add(String(linkHoverId))
+
+  if (ids.size === 0) return ids
+
+  const visibleNodeIds = new Set(
+    safeVisibleRenderNodes.value
+      .map(n => String(n?.id ?? '').trim())
+      .filter(Boolean),
+  )
+
+  const adjacency = new Set<string>(ids)
+  for (const edge of edges.value) {
+    const fromId = String(edge?.fromNodeId ?? '').trim()
+    const toId = String(edge?.toNodeId ?? '').trim()
+    if (!fromId || !toId) continue
+
+    if (ids.has(fromId) && visibleNodeIds.has(toId)) {
+      adjacency.add(toId)
+    }
+    if (ids.has(toId) && visibleNodeIds.has(fromId)) {
+      adjacency.add(fromId)
+    }
+  }
+
+  return adjacency
+})
+
+const getNodeScreenshotVersion = (node: WorkflowNode): string => {
+  const parts: string[] = []
+  parts.push(`t:${node.title || ''}`)
+  parts.push(`a:${node.alias || ''}`)
+  parts.push(`w:${node.width || 240}`)
+  parts.push(`h:${node.height || 160}`)
+  parts.push(`tp:${node.type || ''}`)
+  const previewVer = nodeImagePreviewVersion(node)
+  if (previewVer) parts.push(`pv:${previewVer}`)
+  return parts.join('|')
+}
+
+const findNodeElementForScreenshot = (hostEl: HTMLElement): HTMLElement | null => {
+  if (!hostEl) return null
+  const children = Array.from(hostEl.children)
+  for (const child of children) {
+    if (child.classList.contains('aiwf-node-compact')) continue
+    if (child.classList.contains('aiwf-node-screenshot-host')) continue
+    if (child instanceof HTMLElement) {
+      return child
+    }
+  }
+  if (hostEl.classList.contains('wf-node')) return hostEl
+  return hostEl.querySelector('.wf-node') as HTMLElement | null
+}
+
+const scheduleNodeScreenshot = async (node: WorkflowNode) => {
+  const nodeId = String(node?.id ?? '').trim()
+  if (!nodeId) return
+  if (selectedNodeIds.value.includes(nodeId)) return
+  if (fullRenderNodeIds.value.has(nodeId)) return
+
+  const hostEl = nodeHostRefs.get(nodeId)
+  if (!hostEl) return
+
+  const version = getNodeScreenshotVersion(node)
+  if (screenshotPool.hasCachedScreenshot(nodeId, version)) return
+
+  const nodeEl = findNodeElementForScreenshot(hostEl)
+  if (!nodeEl) return
+
+  try {
+    const width = Math.max(80, Math.round(node.width) || 240)
+    const height = Math.max(80, Math.round(node.height) || 160)
+    const entry = await screenshotPool.queueScreenshot(
+      nodeId,
+      nodeEl,
+      version,
+      width,
+      height,
+      SCREENSHOT_PADDING,
+    )
+    if (entry?.dataUrl) {
+      const newMap = new Map(nodeScreenshotMap.value)
+      newMap.set(nodeId, entry.dataUrl)
+      nodeScreenshotMap.value = newMap
+    }
+  } catch (err) {
+    console.warn('[Screenshot] failed for node:', nodeId, err)
+  }
+}
+
+let screenshotScheduleTimer: ReturnType<typeof setTimeout> | null = null
+const scheduleVisibleNodeScreenshots = () => {
+  if (screenshotScheduleTimer) {
+    clearTimeout(screenshotScheduleTimer)
+  }
+  screenshotScheduleTimer = setTimeout(() => {
+    screenshotScheduleTimer = null
+    if (viewportMotionActive.value) return
+
+    const visibleNodes = safeVisibleRenderNodes.value
+    const fullRenderSet = fullRenderNodeIds.value
+    const unselectedNodes = visibleNodes.filter(n => {
+      const nid = String(n?.id ?? '').trim()
+      return nid && !selectedNodeIds.value.includes(nid) && !fullRenderSet.has(nid)
+    })
+
+    let scheduled = 0
+    for (const node of unselectedNodes) {
+      if (scheduled >= 2) break
+      const nodeId = node.id
+      const version = getNodeScreenshotVersion(node)
+      if (!screenshotPool.hasCachedScreenshot(nodeId, version)) {
+        const hostEl = nodeHostRefs.get(nodeId)
+        if (hostEl) {
+          const nodeEl = findNodeElementForScreenshot(hostEl)
+          if (nodeEl) {
+            scheduleNodeScreenshot(node)
+            scheduled++
+          }
+        }
+      }
+    }
+  }, 400)
+}
+
+const warmupAllNodeScreenshots = async () => {
+  const allNodes = nodes.value.filter(n => {
+    const nodeId = String(n?.id ?? '').trim()
+    return nodeId && !selectedNodeIds.value.includes(nodeId)
+  })
+  if (allNodes.length === 0) return
+
+  isWarmingUpScreenshots.value = true
+  screenshotWarmupOpen.value = true
+  screenshotWarmupProgress.value = 0
+  screenshotWarmupDetail.value = '准备中...'
+
+  await nextTick()
+  await waitForFrames(3)
+
+  const originalZoom = viewport.value.zoom
+  const originalPanX = viewport.value.panX
+  const originalPanY = viewport.value.panY
+  viewport.value.zoom = 1
+  viewport.value.panX = 0
+  viewport.value.panY = 0
+  await nextTick()
+  await waitForFrames(5)
+
+  const newMap = new Map(nodeScreenshotMap.value)
+
+  const nodesNeedingCapture: WorkflowNode[] = []
+  for (const node of allNodes) {
+    const nodeId = node.id
+    const version = getNodeScreenshotVersion(node)
+    if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
+      const cached = screenshotPool.getCachedScreenshot(nodeId, version)
+      if (cached?.dataUrl) newMap.set(nodeId, cached.dataUrl)
+      continue
+    }
+    const hostEl = nodeHostRefs.get(nodeId)
+    if (!hostEl) continue
+    const nodeEl = findNodeElementForScreenshot(hostEl)
+    if (!nodeEl) continue
+    nodesNeedingCapture.push(node)
+  }
+
+  const total = nodesNeedingCapture.length
+  const cachedCount = allNodes.length - total
+  if (total === 0) {
+    nodeScreenshotMap.value = newMap
+    viewport.value.zoom = originalZoom
+    viewport.value.panX = originalPanX
+    viewport.value.panY = originalPanY
+    isWarmingUpScreenshots.value = false
+    await waitForFrames(1)
+    screenshotWarmupOpen.value = false
+    screenshotWarmupDetail.value = ''
+    return
+  }
+
+  screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，${cachedCount} 个已缓存，正在截图 0/${total}...`
+
+  let completed = 0
+  const promises: Promise<void>[] = []
+
+  for (const node of nodesNeedingCapture) {
+    const nodeId = node.id
+    const promise = (async () => {
+      try {
+        const version = getNodeScreenshotVersion(node)
+        const hostEl = nodeHostRefs.get(nodeId)
+        const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
+        if (nodeEl) {
+          const width = Math.max(80, Math.round(node.width) || 240)
+          const height = Math.max(80, Math.round(node.height) || 160)
+          const entry = await screenshotPool.queueScreenshot(nodeId, nodeEl, version, width, height, SCREENSHOT_PADDING)
+          if (entry?.dataUrl) {
+            newMap.set(nodeId, entry.dataUrl)
+          }
+        }
+      } catch (err) {
+        console.warn('[Screenshot Warmup] failed for node:', nodeId, err)
+      }
+
+      completed++
+      screenshotWarmupProgress.value = completed / total
+      screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${completed}/${total}...`
+    })()
+    promises.push(promise)
+  }
+
+  await Promise.all(promises)
+
+  nodeScreenshotMap.value = newMap
+  viewport.value.zoom = originalZoom
+  viewport.value.panX = originalPanX
+  viewport.value.panY = originalPanY
+  isWarmingUpScreenshots.value = false
+  screenshotWarmupDetail.value = `截图完成，共 ${allNodes.length} 个节点`
+  await waitForFrames(2)
+  screenshotWarmupOpen.value = false
+  screenshotWarmupDetail.value = ''
+}
+
+const waitForFrames = (count = 2): Promise<void> => {
+  return new Promise(resolve => {
+    let remaining = count
+    const tick = () => {
+      if (--remaining <= 0) resolve()
+      else requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
+watch(
+  () => [viewport.value.zoom, viewport.value.panX, viewport.value.panY],
+  () => {
+    nextTick(() => {
+      scheduleVisibleNodeScreenshots()
+    })
+  },
+  { flush: 'post' }
+)
+
+watch(
+  () => viewportMotionActive.value,
+  (isActive) => {
+    if (!isActive) {
+      nextTick(() => {
+        scheduleVisibleNodeScreenshots()
+      })
+    }
+  },
+  { flush: 'post' }
+)
+
+watch(
+  () => safeVisibleRenderNodes.value,
+  () => {
+    nextTick(() => {
+      scheduleVisibleNodeScreenshots()
+    })
+  },
+  { deep: true, flush: 'post' }
+)
+
+watch(
+  () => selectedNodeIds.value,
+  () => {
+    nextTick(() => {
+      scheduleVisibleNodeScreenshots()
+    })
+  },
+  { deep: true, flush: 'post' }
+)
+
+let hasWarmedUp = false
+watch(
+  () => nodes.value.length,
+  (count, prevCount) => {
+    if (count > 0 && (!prevCount || prevCount === 0) && !hasWarmedUp && !isWarmingUpScreenshots.value) {
+      hasWarmedUp = true
+      setTimeout(() => {
+        warmupAllNodeScreenshots().catch(err => {
+          console.warn('[Screenshot Warmup] failed:', err)
+          isWarmingUpScreenshots.value = false
+          screenshotWarmupOpen.value = false
+        })
+      }, 800)
+    }
+  },
+  { immediate: true, flush: 'post' }
+)
+
+onMounted(() => {
+  setTimeout(() => {
+    scheduleVisibleNodeScreenshots()
+  }, 1000)
 })
 
 type NodeRuntimeVisualState = 'idle' | 'running' | 'error'
@@ -3205,6 +3614,16 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 
 const onNodeMediaReady = (nodeId: string) => {
   markNodeMediaReady(nodeId)
+  screenshotPool.invalidateScreenshot(nodeId)
+  const newMap = new Map(nodeScreenshotMap.value)
+  newMap.delete(nodeId)
+  nodeScreenshotMap.value = newMap
+  nextTick(() => {
+    setTimeout(() => {
+      const node = store.state.nodesById[nodeId]
+      if (node) scheduleNodeScreenshot(node)
+    }, 300)
+  })
 }
 
 const videoPosterGenerating = new Set<string>()
@@ -3478,6 +3897,16 @@ const onNodeThreePreviewProgress = (
 
 const onNodeThreePreviewReady = (nodeId: string) => {
   completePreviewSession(nodeId)
+  screenshotPool.invalidateScreenshot(nodeId)
+  const newMap = new Map(nodeScreenshotMap.value)
+  newMap.delete(nodeId)
+  nodeScreenshotMap.value = newMap
+  nextTick(() => {
+    setTimeout(() => {
+      const node = store.state.nodesById[nodeId]
+      if (node) scheduleNodeScreenshot(node)
+    }, 300)
+  })
 }
 
 const onNodeThreePreviewError = (nodeId: string) => {
@@ -5163,6 +5592,77 @@ const {
 getLinkWorkflowWorldToCanvas = () => workflowWorldToCanvas
 scheduleLinkEdgeRender = scheduleAsyncEdgeRender
 
+let nearDragRafId: number | null = null
+let nearDragLastPointer: { x: number; y: number } | null = null
+
+const computeNearDragNodes = () => {
+  nearDragRafId = null
+  if (!nearDragLastPointer) return
+  if (!linkInteraction.isLinking.value || screenshotAnchorsEnabled.value) {
+    if (nearDragNodeIds.value.size > 0) nearDragNodeIds.value = new Set()
+    return
+  }
+  const { x: px, y: py } = nearDragLastPointer
+  const HIT_RADIUS = 80
+  const next = new Set<string>()
+  const hosts = document.querySelectorAll<HTMLElement>('.aiwf-node-screenshot-host')
+  for (const host of hosts) {
+    const nodeId = host.querySelector('[data-wf-node-id]')?.getAttribute('data-wf-node-id')
+    if (!nodeId) continue
+    const r = host.getBoundingClientRect()
+    if (r.width <= 0 || r.height <= 0) continue
+    const dx = Math.max(r.left - px, 0, px - r.right)
+    const dy = Math.max(r.top - py, 0, py - r.bottom)
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist <= HIT_RADIUS || (px >= r.left - HIT_RADIUS && px <= r.right + HIT_RADIUS && py >= r.top - HIT_RADIUS && py <= r.bottom + HIT_RADIUS)) {
+      next.add(nodeId)
+    }
+  }
+  nearDragNodeIds.value = next
+}
+
+const onNearDragPointerMove = (e: PointerEvent) => {
+  if (!linkInteraction.isLinking.value || screenshotAnchorsEnabled.value) {
+    nearDragLastPointer = null
+    if (nearDragNodeIds.value.size > 0) nearDragNodeIds.value = new Set()
+    return
+  }
+  nearDragLastPointer = { x: e.clientX, y: e.clientY }
+  if (nearDragRafId == null) {
+    nearDragRafId = requestAnimationFrame(computeNearDragNodes)
+  }
+}
+
+const onNearDragPointerUp = () => {
+  nearDragLastPointer = null
+  nearDragNodeIds.value = new Set()
+}
+
+watch(linkInteraction.isLinking, (isLinking) => {
+  if (isLinking && !screenshotAnchorsEnabled.value) {
+    window.addEventListener('pointermove', onNearDragPointerMove, { passive: true })
+    window.addEventListener('pointerup', onNearDragPointerUp, { once: true })
+    window.addEventListener('pointercancel', onNearDragPointerUp, { once: true })
+  } else {
+    window.removeEventListener('pointermove', onNearDragPointerMove)
+    window.removeEventListener('pointerup', onNearDragPointerUp)
+    window.removeEventListener('pointercancel', onNearDragPointerUp)
+    nearDragLastPointer = null
+    nearDragNodeIds.value = new Set()
+    if (nearDragRafId != null) {
+      cancelAnimationFrame(nearDragRafId)
+      nearDragRafId = null
+    }
+  }
+})
+
+watch(screenshotAnchorsEnabled, (enabled) => {
+  if (enabled) {
+    nearDragNodeIds.value = new Set()
+    nearDragLastPointer = null
+  }
+})
+
 const {
   perfFpsText,
   perfFrameText,
@@ -5838,6 +6338,8 @@ const hoverOutputAnchorId = linkInteraction.hoverOutputAnchorId
 const tooltipState = linkInteraction.tooltipState
 const anchorCompatibility = linkInteraction.anchorCompatibility
 const isLinking = linkInteraction.isLinking
+const linkingFromNodeId = linkInteraction.linkingFromNodeId
+const linkingHoverNodeId = linkInteraction.linkingHoverNodeId
 
 const onCanvasPanningStart = () => {
   linkInteraction.setPanning(true)
@@ -6126,6 +6628,63 @@ async function runProjectEnterSequence(
 
 .aiwf-node-host {
   display: contents;
+}
+
+.aiwf-node-host-offscreen {
+  position: fixed !important;
+  left: -99999px !important;
+  top: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.aiwf-node-screenshot-host {
+  position: absolute;
+  will-change: transform;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+  transform-origin: center center;
+  overflow: visible;
+  z-index: 2;
+}
+
+.aiwf-node-screenshot-host.is-primary-selected {
+  z-index: 30;
+}
+
+.aiwf-node-screenshot-host.is-anchors-hidden .wf-anchors {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.aiwf-node-screenshot-host.is-anchors-hidden.is-near-drag .wf-anchors {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.aiwf-node-screenshot-host.is-particles-hidden .wf-node-particles {
+  display: none !important;
+}
+
+.aiwf-node-screenshot-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+.aiwf-node-skeleton {
+  position: absolute;
+  pointer-events: none;
+  transform-origin: top left;
+  background: rgba(30, 34, 44, 0.6);
+  border: 1px dashed rgba(120, 130, 150, 0.3);
+  border-radius: 10px;
 }
 
 .aiwf-inspector-toggle {
