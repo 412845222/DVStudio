@@ -979,22 +979,12 @@ const syncSceneDecomposeAnchors = (node: WorkflowNode) => {
 		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
 		{ id: 'in-json', label: '场景 JSON', mediaType: 'text' },
 	]
-	const nextOutputs: WorkflowAnchorSpec[] = []
-	for (const item of outputs) {
-		const id = String(item?.id ?? '').trim()
-		if (!id) continue
-		nextOutputs.push({
-			id: String(item?.imageAnchorId ?? `out-image-${id}`),
-			label: item?.name ? `${item.name} 图像` : '图像输出',
-			mediaType: 'image',
-		})
-		nextOutputs.push({
-			id: String(item?.textAnchorId ?? `out-text-${id}`),
-			label: item?.name ? `${item.name} 文本` : '文本输出',
-			mediaType: 'text',
-		})
-	}
-	node.outputs = nextOutputs.length ? nextOutputs : [{ id: 'out-empty', label: '待分解', mediaType: 'text' }]
+	// 场景拆解节点输出锚点归一化：无论拆解出多少对象，只保留一个总输出锚点，
+	// 所有自动布线均从该锚点出发，避免多锚点位置与连线起点错位的问题。
+	const hasOutputs = outputs.length > 0
+	node.outputs = hasOutputs
+		? [{ id: 'out-main', label: '拆解输出', mediaType: 'image' }]
+		: [{ id: 'out-empty', label: '待分解', mediaType: 'text' }]
 }
 
 const normalizeMeshyTargetFormats = (value: any): WorkflowMeshyNodeSettings['meshyTargetFormats'] | undefined => {
