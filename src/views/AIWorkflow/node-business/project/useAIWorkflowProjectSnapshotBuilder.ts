@@ -145,7 +145,7 @@ kind, String((resource as any).name || kind), {
       nodesById = next
     }
 
-    return {
+    const snapshot: AIWorkflowDraftSnapshot = {
       schemaVersion: AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION,
       savedAt: Date.now(),
       viewport: payload.store.state.viewport,
@@ -157,7 +157,21 @@ kind, String((resource as any).name || kind), {
       resourceOrder,
       selectedNodeId: payload.store.state.selectedNodeId,
       selectedNodeIds: payload.store.state.selectedNodeIds,
-    } as AIWorkflowDraftSnapshot
+    }
+    
+    // 多选标签持久化
+    if (payload.store.state.selectionTagsByKey && Object.keys(payload.store.state.selectionTagsByKey).length) {
+      snapshot.selectionTagsByKey = payload.store.state.selectionTagsByKey
+    }
+    
+    // 已保存选区框持久化
+    if (payload.store.state.savedSelectionFrames && payload.store.state.savedSelectionFrames.length) {
+      snapshot.savedSelectionFrames = payload.store.state.savedSelectionFrames
+    }
+    
+    snapshot.nodeCheckboxVisible = payload.store.state.nodeCheckboxVisible
+    
+    return snapshot
   }
 
   return {
