@@ -31,8 +31,9 @@
         @dragover.prevent="onCanvasDragOver"
         @drop.prevent="onCanvasDrop"
         @selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
-        @selection-frame-delete="tagEditor.clearSelectionOnly()"
+        @selection-frame-delete="onDeleteSelectionFrame"
         @selection-frame-drag="onSelectionFrameDrag"
+        @selection-frame-delete-selected="onDeleteSelectedNodes"
         v-slot="vp"
       >
         <WorkflowEdgeLayer
@@ -146,6 +147,8 @@
             :autoHeight="true"
             :hoverInputAnchorId="hoverInputAnchorId(node.id)"
             :hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
+            :anchor-compatibility="anchorCompatibility"
+            :is-linking="isLinking"
             :inputs="node.inputs"
             :nodeId="node.id"
             :nodeType="node.type"
@@ -600,6 +603,15 @@
     </div>
     <BlueprintLogPanel v-model:open="blueprintLogPanelOpen" />
     <AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
+    <AnchorTooltip
+      :visible="tooltipState?.visible ?? false"
+      :type="tooltipState?.type ?? 'resource'"
+      :direction="tooltipState?.direction ?? 'in'"
+      :label="tooltipState?.label"
+      :accepted-types="tooltipState?.acceptedTypes"
+      :compatible="tooltipState?.compatible"
+      :position="tooltipState?.position ?? { x: 0, y: 0 }"
+    />
 
     <!-- 缺失资产确认对话框 -->
     <ModalDialog
@@ -670,6 +682,7 @@ import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
 import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
+import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, { type BlueprintProjectListItem } from '../../ui/WorkFlow/BlueprintProjectToolbar.vue'
 import MeshyTaskPanel, { type MeshyTaskPanelAction, type MeshyTaskPanelDetail, type MeshyTaskPanelItem } from '../../ui/WorkFlow/MeshyTaskPanel.vue'
 import VideoTaskPanel from '../../ui/WorkFlow/VideoTaskPanel.vue'
@@ -3854,17 +3867,17 @@ const onStoryPreviewSettingsUpdate = (
 }
 
 const NODE_WIDTH = 240
-const ANCHOR_GAP = 14
+const ANCHOR_GAP = 24
 
 // NOTE: anchors are rendered as DOM elements (absolute positioned + scaled with node).
 // To avoid fragile "magic" offsets (like 25), we will resolve the exact anchor center
 // from DOM (getBoundingClientRect) and convert it into BlueprintCanvas-local coords.
 // The constants below are only used as a fallback when the DOM is not available.
-const ANCHOR_SIDE_INSET_PX = 10
-const ANCHOR_IN_SIZE = 18
-const ANCHOR_OUT_SIZE = 18
-const STORY_ANCHOR_IN_SIZE = 9
-const STORY_ANCHOR_OUT_SIZE = 10
+const ANCHOR_SIDE_INSET_PX = 0
+const ANCHOR_IN_SIZE = 0
+const ANCHOR_OUT_SIZE = 0
+const STORY_ANCHOR_IN_SIZE = 0
+const STORY_ANCHOR_OUT_SIZE = 0
 
 const ANCHOR_IN_X_OFFSET = -ANCHOR_SIDE_INSET_PX + ANCHOR_IN_SIZE / 2
 const ANCHOR_OUT_X_OFFSET = ANCHOR_SIDE_INSET_PX - ANCHOR_OUT_SIZE / 2
@@ -5390,6 +5403,24 @@ const onRailQuickAdd = (event: MouseEvent) => {
   store.commit('addNodeAt', { worldX, worldY })
 }
 
+const onDeleteSelectedNodes = () => {
+  if (!selectedNodeIds.value.length) return
+  void removeSelectedNodesWithResourceCleanup(selectedNodeIds.value)
+}
+
+const onDeleteSelectionFrame = (payload?: { frameId?: string }) => {
+  if (payload?.frameId) {
+    const frame = store.state.savedSelectionFrames?.find((f: any) => f.id === payload.frameId)
+    if (frame) {
+      store.dispatch('removeSavedSelectionFrame', { id: payload.frameId })
+      const sortedIds = [...frame.nodeIds].sort()
+      const tagKey = `ids:${sortedIds.join('|')}`
+      store.dispatch('removeSelectionTag', { key: tagKey })
+    }
+  }
+  tagEditor.clearSelectionOnly()
+}
+
 const onRailToggleNodeLibrary = () => {
   const wrapEl = document.querySelector('.bp-wrap')
   if (wrapEl) {
@@ -5673,6 +5704,9 @@ const onEndLink = linkInteraction.onEndLink
 const nanoHoverAnchorId = linkInteraction.nanoHoverAnchorId
 const hoverInputAnchorId = linkInteraction.hoverInputAnchorId
 const hoverOutputAnchorId = linkInteraction.hoverOutputAnchorId
+const tooltipState = linkInteraction.tooltipState
+const anchorCompatibility = linkInteraction.anchorCompatibility
+const isLinking = linkInteraction.isLinking
 
 const onCanvasPanningStart = () => {
   linkInteraction.setPanning(true)

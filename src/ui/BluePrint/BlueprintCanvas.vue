@@ -27,6 +27,8 @@
       :canvasHeight="canvasSize.h"
       @tag-save="(label: string) => emit('selection-frame-tag-save', label)"
       @delete="emit('selection-frame-delete')"
+      @delete-nodes="emit('selection-frame-delete-selected')"
+      @drag-move="onOverlayDragMove"
     />
 
     <slot
@@ -87,8 +89,9 @@ const emit = defineEmits<{
   (e: "canvas-panning-start"): void;
   (e: "canvas-panning-end"): void;
   (e: "selection-frame-tag-save", label: string): void;
-  (e: "selection-frame-delete"): void;
+  (e: "selection-frame-delete", payload?: { frameId?: string }): void;
   (e: "selection-frame-drag", payload: { dx: number; dy: number; nodeIds: string[] }): void;
+  (e: "selection-frame-delete-selected"): void;
 }>();
 
 const wrapEl = ref<HTMLElement | null>(null);
@@ -99,10 +102,14 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 // 多选框移动手柄区域（用于交互检测）
 const selectionFrameMoveHandle = ref<{ x: number; y: number; width: number; height: number } | null>(null);
 
+// 多选框删除按钮区域（用于交互检测）
+const selectionFrameDeleteButton = ref<{ x: number; y: number; width: number; height: number } | null>(null);
+
 // 已保存选区的移动手柄区域列表
 const savedFrameMoveHandles = ref<Array<{ 
   x: number; y: number; width: number; height: number; 
-  frameId: string; nodeIds: string[] 
+  frameId: string; nodeIds: string[];
+  deleteBtn?: { x: number; y: number; width: number; height: number };
 }>>([]);
 
 // 拖拽状态
@@ -163,6 +170,17 @@ const screenToWorld = (p: { x: number; y: number }) => {
     x: (p.x - c.x - viewportPanPx.value.x) / z,
     y: (p.y - c.y - viewportPanPx.value.y) / z,
   };
+};
+
+// 处理来自 DOM overlay 的拖拽移动
+const onOverlayDragMove = (payload: { dx: number; dy: number }) => {
+  const z = viewportZoom.value;
+  const nodeIds = props.selectionFrame?.nodeIds || [];
+  emit("selection-frame-drag", {
+    dx: payload.dx / z,
+    dy: payload.dy / z,
+    nodeIds,
+  });
 };
 
 let raf = 0;
@@ -322,108 +340,14 @@ const drawGrid = () => {
     ctx.lineTo(left + width, top + height - cornerSize);
     ctx.stroke();
 
-    // 绘制顶部标签栏
-    const tagLabel = selFrame.label || "选区";
-    const tagHeight = 22;
-    const tagTop = top - tagHeight - 4;
-    const tagPadding = 10;
-    const tagText = `${tagLabel} (${selFrame.nodeCount}个节点)`;
-
-    ctx.font = "12px sans-serif";
-    const tagWidth = Math.max(100, ctx.measureText(tagText).width + tagPadding * 2 + 24); // +24 for move icon
-
-    // 标签背景
-    ctx.fillStyle = "rgba(30, 41, 59, 0.92)";
-    ctx.fillRect(left, tagTop, tagWidth, tagHeight);
-
-    // 标签边框
-    ctx.strokeStyle = "rgba(59, 130, 246, 0.5)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(left, tagTop, tagWidth, tagHeight);
-
-    // 绘制移动图标（位于标题框左侧内部）
-    const moveHandleSize = 16;
-    const moveHandleX = left + 4;
-    const moveHandleY = tagTop + (tagHeight - moveHandleSize) / 2;
-    
-    // 保存标题框区域用于交互检测（整个标题框都可拖拽）
-    if (!selectionFrameMoveHandle.value) {
-      selectionFrameMoveHandle.value = {
-        x: left,
-        y: tagTop,
-        width: tagWidth,
-        height: tagHeight,
-      };
-    } else {
-      selectionFrameMoveHandle.value.x = left;
-      selectionFrameMoveHandle.value.y = tagTop;
-      selectionFrameMoveHandle.value.width = tagWidth;
-      selectionFrameMoveHandle.value.height = tagHeight;
-    }
-
-    // 绘制移动图标（十字箭头样式）
-    ctx.strokeStyle = "#93c5fd";
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    
-    const arrowSize = 5;
-    const centerX = moveHandleX + moveHandleSize / 2;
-    const centerY = moveHandleY + moveHandleSize / 2;
-    
-    // 绘制十字箭头（中心十字 + 四个箭头）
-    // 水平线
-    ctx.beginPath();
-    ctx.moveTo(centerX - arrowSize, centerY);
-    ctx.lineTo(centerX + arrowSize, centerY);
-    ctx.stroke();
-    
-    // 垂直线
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY - arrowSize);
-    ctx.lineTo(centerX, centerY + arrowSize);
-    ctx.stroke();
-    
-    // 上箭头
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY - arrowSize - 3);
-    ctx.lineTo(centerX - 4, centerY - arrowSize);
-    ctx.moveTo(centerX, centerY - arrowSize - 3);
-    ctx.lineTo(centerX + 4, centerY - arrowSize);
-    ctx.stroke();
-    
-    // 下箭头
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY + arrowSize + 3);
-    ctx.lineTo(centerX - 4, centerY + arrowSize);
-    ctx.moveTo(centerX, centerY + arrowSize + 3);
-    ctx.lineTo(centerX + 4, centerY + arrowSize);
-    ctx.stroke();
-    
-    // 左箭头
-    ctx.beginPath();
-    ctx.moveTo(centerX - arrowSize - 3, centerY);
-    ctx.lineTo(centerX - arrowSize, centerY - 4);
-    ctx.moveTo(centerX - arrowSize - 3, centerY);
-    ctx.lineTo(centerX - arrowSize, centerY + 4);
-    ctx.stroke();
-    
-    // 右箭头
-    ctx.beginPath();
-    ctx.moveTo(centerX + arrowSize + 3, centerY);
-    ctx.lineTo(centerX + arrowSize, centerY - 4);
-    ctx.moveTo(centerX + arrowSize + 3, centerY);
-    ctx.lineTo(centerX + arrowSize, centerY + 4);
-    ctx.stroke();
-
-    // 标签文字（右移以避开图标）
-    ctx.fillStyle = "#93c5fd";
-    ctx.globalAlpha = 1;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(tagText, left + tagWidth / 2, tagTop + tagHeight / 2);
+    // 标签栏由 DOM 组件 SelectionFrameOverlay 负责绘制和交互
+    // Canvas 中不再绘制临时选区的标签栏，避免重复
+    // 移动拖拽由 DOM 组件处理
+    selectionFrameMoveHandle.value = null;
+    selectionFrameDeleteButton.value = null;
   } else {
     selectionFrameMoveHandle.value = null;
+    selectionFrameDeleteButton.value = null;
   }
 
   // --- 绘制已保存的选区框（持久化实体） ---
@@ -509,6 +433,12 @@ const drawGrid = () => {
         height: sTagH,
         frameId: frame.id,
         nodeIds: frame.nodeIds,
+        deleteBtn: {
+          x: sLeft + sWidth - 20,
+          y: sTop - 20,
+          width: 20,
+          height: 20,
+        }
       };
       savedFrameMoveHandles.value.push(savedFrameHandle);
 
@@ -573,6 +503,36 @@ const drawGrid = () => {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(sTagText, sLeft + sTagW / 2, sTagT + sTagH / 2);
+
+      // 绘制删除按钮（位于绿框顶部最右侧，右上角）
+      const sDeleteBtnSize = 20;
+      const sDeleteBtnX = sLeft + sWidth - sDeleteBtnSize;
+      const sDeleteBtnY = sTop - sDeleteBtnSize;
+      
+      // 删除按钮背景
+      ctx.fillStyle = "rgba(239, 68, 68, 0.2)";
+      ctx.fillRect(sDeleteBtnX, sDeleteBtnY, sDeleteBtnSize, sDeleteBtnSize);
+      
+      // 删除按钮边框
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.5)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sDeleteBtnX, sDeleteBtnY, sDeleteBtnSize, sDeleteBtnSize);
+      
+      // 绘制 × 图标
+      ctx.strokeStyle = "#ef4444";
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = "round";
+      
+      const sCrossSize = 8;
+      const sCrossX = sDeleteBtnX + sDeleteBtnSize / 2;
+      const sCrossY = sDeleteBtnY + sDeleteBtnSize / 2;
+      
+      ctx.beginPath();
+      ctx.moveTo(sCrossX - sCrossSize / 2, sCrossY - sCrossSize / 2);
+      ctx.lineTo(sCrossX + sCrossSize / 2, sCrossY + sCrossSize / 2);
+      ctx.moveTo(sCrossX + sCrossSize / 2, sCrossY - sCrossSize / 2);
+      ctx.lineTo(sCrossX - sCrossSize / 2, sCrossY + sCrossSize / 2);
+      ctx.stroke();
     }
   } else {
     savedFrameMoveHandles.value = [];
@@ -773,70 +733,24 @@ const onWrapPointerDown = (e: PointerEvent) => {
   if (e.button === 0) {
     const start = toLocal(wrap, { x: e.clientX, y: e.clientY });
     
-    // 检查是否点击在多选框移动手柄上（临时选区）
-    const handle = selectionFrameMoveHandle.value;
-    if (handle) {
-      const isOnMoveHandle = 
-        start.x >= handle.x && 
-        start.x <= handle.x + handle.width &&
-        start.y >= handle.y && 
-        start.y <= handle.y + handle.height;
-      
-      if (isOnMoveHandle && props.selectionFrame?.visible) {
-        // 开始拖拽多选框
-        e.preventDefault();
-        draggingSelectionFrame.value = true;
-        dragLastWorld.value = screenToWorld(start);
-        
-        // 记录当前选中节点的位置
-        const nodeIds = props.selectionFrame.nodeCount > 0 ? 
-          (props.selectionFrame as any).nodeIds || [] : [];
-        const startNodes: Record<string, { x: number; y: number }> = {};
-        if (props.nodesById) {
-          for (const id of nodeIds) {
-            const node = props.nodesById[id];
-            if (node) {
-              startNodes[id] = { x: node.worldX ?? 0, y: node.worldY ?? 0 };
-            }
-          }
-        }
-        dragStartNodes.value = startNodes;
-        
-        wrap.setPointerCapture(e.pointerId);
-        
-        const onMove = (ev: PointerEvent) => {
-          if (!draggingSelectionFrame.value) return;
-          const cur = toLocal(wrap, { x: ev.clientX, y: ev.clientY });
-          const curWorld = screenToWorld(cur);
-          const dx = curWorld.x - dragLastWorld.value.x;
-          const dy = curWorld.y - dragLastWorld.value.y;
-          dragLastWorld.value = curWorld;
-          
-          emit("selection-frame-drag", { 
-            dx, 
-            dy, 
-            nodeIds: Object.keys(dragStartNodes.value) 
-          });
-        };
-        
-        const onUp = (ev: PointerEvent) => {
-          draggingSelectionFrame.value = false;
-          dragStartNodes.value = {};
-          wrap.removeEventListener("pointermove", onMove);
-          wrap.removeEventListener("pointerup", onUp);
-          wrap.removeEventListener("pointercancel", onUp);
-          try {
-            wrap.releasePointerCapture(ev.pointerId);
-          } catch {
-            // ignore
-          }
-        };
-        
-        wrap.addEventListener("pointermove", onMove);
-        wrap.addEventListener("pointerup", onUp, { once: true });
-        wrap.addEventListener("pointercancel", onUp, { once: true });
-        return;
+    // 检查是否点击在已保存选区的删除按钮上（优先于移动手柄检测）
+    let clickedSavedDeleteFrame: any = null;
+    for (const h of savedFrameMoveHandles.value) {
+      if (h.deleteBtn &&
+        start.x >= h.deleteBtn.x && 
+        start.x <= h.deleteBtn.x + h.deleteBtn.width &&
+        start.y >= h.deleteBtn.y && 
+        start.y <= h.deleteBtn.y + h.deleteBtn.height
+      ) {
+        clickedSavedDeleteFrame = h;
+        break;
       }
+    }
+    
+    if (clickedSavedDeleteFrame) {
+      e.preventDefault();
+      emit("selection-frame-delete", { frameId: clickedSavedDeleteFrame.frameId });
+      return;
     }
     
     // 检查是否点击在已保存选区的移动手柄上

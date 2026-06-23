@@ -212,7 +212,7 @@
           v-for="a in inputAnchors"
           :key="a.id"
           class="wf-anchor-hit"
-          :class="[anchorClass(a), { hovered: isInputHover(a.id) }]"
+          :class="[anchorClass(a), { hovered: isInputHover(a.id), compatible: isAnchorCompatible(a.id, 'in'), incompatible: isAnchorIncompatible(a.id, 'in') }]"
           :title="a.label || '入口'"
           :style="anchorStyle(a)"
           :data-wf-node-id="nodeId"
@@ -222,7 +222,7 @@
           data-anchor-direction="in"
           data-anchor-side="left"
           :data-wf-anchor-index="a.index"
-          @pointerup.stop="onEndLink(a.id, a.index)"
+          @pointerup="onInputAnchorPointerUp(a.id, a.index, $event)"
         />
       </div>
       <div class="wf-anchors wf-anchors-out" aria-label="出口锚点">
@@ -230,7 +230,7 @@
           v-for="a in outputAnchors"
           :key="a.id"
           class="wf-anchor-hit"
-          :class="[anchorClass(a), { hovered: isOutputHover(a.id) }]"
+          :class="[anchorClass(a), { hovered: isOutputHover(a.id), compatible: isAnchorCompatible(a.id, 'out'), incompatible: isAnchorIncompatible(a.id, 'out') }]"
           :title="a.label || '出口'"
           :style="anchorStyle(a)"
           :data-wf-node-id="nodeId"
@@ -257,7 +257,7 @@ type AnchorSpec = {
   id: string;
   label?: string;
   offsetY?: number;
-  mediaType?: "generic" | "image" | "video" | "text" | "flow" | "model3d";
+  mediaType?: "generic" | "image" | "video" | "text" | "flow" | "model3d" | "audio" | "meta";
 };
 
 type NormalizedAnchor = AnchorSpec & {
@@ -292,6 +292,8 @@ const props = defineProps<{
   nodeChatParams?: Record<string, any>;
   inputParamPreviewRefs?: InputParamPreviewRef[];
   nodeGenerationTask?: WorkflowNodeGenerationTask | null;
+  anchorCompatibility?: Record<string, boolean | null>;
+  isLinking?: boolean;
   sizeCustomized?: boolean;
   autoHeight?: boolean;
 }>();
@@ -350,7 +352,7 @@ const nodeParticles = useSquareParticles({
 const hasAnchorSlot = computed(() => !!slots.anchors);
 
 const defaultOffsets = (idx: number, count: number) => {
-  const gap = 14;
+  const gap = 24;
   const start = -((count - 1) * gap) / 2;
   return start + idx * gap;
 };
@@ -443,7 +445,14 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
   top: `calc(50% + ${a.offsetY ?? 0}px)`,
 });
 
-const anchorClass = (_a: AnchorSpec) => {
+const anchorClass = (a: AnchorSpec) => {
+  if (a.mediaType === "image") return "wf-anchor-image";
+  if (a.mediaType === "video") return "wf-anchor-video";
+  if (a.mediaType === "text") return "wf-anchor-text";
+  if (a.mediaType === "flow") return "wf-anchor-flow";
+  if (a.mediaType === "model3d") return "wf-anchor-model3d";
+  if (a.mediaType === "audio") return "wf-anchor-audio";
+  if (a.mediaType === "meta") return "wf-anchor-meta";
   return "wf-anchor-resource";
 };
 
@@ -453,6 +462,8 @@ const anchorTypeAttr = (a: AnchorSpec) => {
   if (a.mediaType === "text") return "text";
   if (a.mediaType === "model3d") return "model3d";
   if (a.mediaType === "flow") return "flow";
+  if (a.mediaType === "audio") return "audio";
+  if (a.mediaType === "meta") return "meta";
   return "resource";
 };
 
@@ -647,6 +658,14 @@ const onEndLink = (anchorId: string, anchorIndex: number) => {
   emit("end-link", { nodeId: props.nodeId, anchorId, anchorIndex });
 };
 
+const onInputAnchorPointerUp = (anchorId: string, anchorIndex: number, event: PointerEvent) => {
+  if (props.isLinking) {
+    return;
+  }
+  event.stopPropagation();
+  emit("end-link", { nodeId: props.nodeId, anchorId, anchorIndex });
+};
+
 const isInputHover = (anchorId: string) => {
   if (!props.hoverInputAnchorId) return false;
   return props.hoverInputAnchorId === anchorId;
@@ -657,6 +676,17 @@ const isOutputHover = (anchorId: string) => {
   return props.hoverOutputAnchorId === anchorId;
 };
 
+const isAnchorCompatible = (anchorId: string, direction: 'in' | 'out') => {
+  if (!props.anchorCompatibility) return false;
+  const key = `${props.nodeId}-${direction}-${anchorId}`;
+  return props.anchorCompatibility[key] === true;
+};
+
+const isAnchorIncompatible = (anchorId: string, direction: 'in' | 'out') => {
+  if (!props.anchorCompatibility) return false;
+  const key = `${props.nodeId}-${direction}-${anchorId}`;
+  return props.anchorCompatibility[key] === false;
+};
 onMounted(() => {
   if (props.autoHeight === false) return;
   if (props.sizeCustomized) return;
@@ -1185,7 +1215,7 @@ onBeforeUnmount(() => {
 .wf-anchor-hit {
   --wf-anchor-side-offset: 0px;
   --wf-anchor-base-x: 0px;
-  --wf-anchor-hit-size: 40px;
+  --wf-anchor-hit-size: 44px;
   width: var(--wf-anchor-hit-size);
   height: var(--wf-anchor-hit-size);
   display: inline-flex;
@@ -1227,9 +1257,9 @@ onBeforeUnmount(() => {
   left: 50%;
   top: 50%;
   z-index: 1;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
   background: var(--wf-primary, #1f9d84);
   box-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
   transform: translate(-50%, -50%) rotate(0deg);

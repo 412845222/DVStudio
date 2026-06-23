@@ -395,6 +395,58 @@
   background: var(--dweb-blue, #3498db) !important;
 }
 
+.wf-anchor-hit.wf-anchor-audio::before {
+  background: var(--dweb-pink, #e91e63) !important;
+}
+
+.wf-anchor-hit.wf-anchor-meta::before {
+  background: var(--dweb-gray, #7f8c8d) !important;
+}
+
+.wf-anchor-hit.wf-anchor-resource::before {
+  background: var(--dweb-blue, #3498db) !important;
+}
+
+.wf-anchor-hit.wf-anchor-image:hover::before,
+.wf-anchor-hit.wf-anchor-image.hovered::before {
+  box-shadow: 0 0 0 2px var(--dweb-purple, #9b59b6), 0 0 14px var(--dweb-purple, #9b59b6) !important;
+}
+
+.wf-anchor-hit.wf-anchor-video:hover::before,
+.wf-anchor-hit.wf-anchor-video.hovered::before {
+  box-shadow: 0 0 0 2px var(--dweb-green-main, #27ae60), 0 0 14px var(--dweb-green-main, #27ae60) !important;
+}
+
+.wf-anchor-hit.wf-anchor-text:hover::before,
+.wf-anchor-hit.wf-anchor-text.hovered::before {
+  box-shadow: 0 0 0 2px var(--dweb-yellow, #f1c40f), 0 0 14px var(--dweb-yellow, #f1c40f) !important;
+}
+
+.wf-anchor-hit.wf-anchor-flow:hover::before,
+.wf-anchor-hit.wf-anchor-flow.hovered::before {
+  box-shadow: 0 0 0 2px var(--dweb-orange, #e67e22), 0 0 14px var(--dweb-orange, #e67e22) !important;
+}
+
+.wf-anchor-hit.wf-anchor-model3d:hover::before,
+.wf-anchor-hit.wf-anchor-model3d.hovered::before {
+  box-shadow: 0 0 0 2px var(--dweb-blue, #3498db), 0 0 14px var(--dweb-blue, #3498db) !important;
+}
+
+.wf-anchor-hit.wf-anchor-audio:hover::before,
+.wf-anchor-hit.wf-anchor-audio.hovered::before {
+  box-shadow: 0 0 0 2px var(--dweb-pink, #e91e63), 0 0 14px var(--dweb-pink, #e91e63) !important;
+}
+
+.wf-anchor-hit.wf-anchor-meta:hover::before,
+.wf-anchor-hit.wf-anchor-meta.hovered::before {
+  box-shadow: 0 0 0 2px var(--dweb-gray, #7f8c8d), 0 0 14px var(--dweb-gray, #7f8c8d) !important;
+}
+
+.wf-anchor-hit.wf-anchor-resource:hover::before,
+.wf-anchor-hit.wf-anchor-resource.hovered::before {
+  box-shadow: 0 0 0 2px var(--dweb-blue, #3498db), 0 0 14px var(--dweb-blue, #3498db) !important;
+}
+
 .wf-anchor:hover,
 .wf-input-anchor:hover,
 .wf-output-anchor:hover,
@@ -701,6 +753,37 @@
 @keyframes compact-state-pulse {
   0%, 100% { opacity: 0.7; transform: scale(1); }
   50%       { opacity: 1;   transform: scale(1.3); }
+}
+
+/* --- Anchor compatibility states --- */
+.wf-anchor-hit[data-magnet-phase="snapped"].compatible::after {
+  border-color: var(--dweb-green-main, #27ae60) !important;
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--dweb-green-main, #27ae60) 30%, transparent),
+    0 0 22px var(--dweb-green-main, #27ae60) !important;
+}
+.wf-anchor-hit[data-magnet-phase="snapped"].compatible::before {
+  box-shadow: 0 0 0 2px var(--dweb-green-main, #27ae60), 0 0 14px var(--dweb-green-main, #27ae60) !important;
+}
+
+.wf-anchor-hit[data-magnet-phase="snapped"].incompatible::after {
+  border-color: var(--dweb-red, #e74c3c) !important;
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--dweb-red, #e74c3c) 30%, transparent),
+    0 0 22px var(--dweb-red, #e74c3c) !important;
+  animation: wf-anchor-incompatible-pulse 0.5s ease-in-out infinite;
+}
+.wf-anchor-hit[data-magnet-phase="snapped"].incompatible::before {
+  box-shadow: 0 0 0 2px var(--dweb-red, #e74c3c), 0 0 14px var(--dweb-red, #e74c3c) !important;
+}
+
+@keyframes wf-anchor-incompatible-pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1.18) rotate(0deg);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.22) rotate(2deg);
+  }
 }
 
 /* --- Reduced motion fallback --- */
