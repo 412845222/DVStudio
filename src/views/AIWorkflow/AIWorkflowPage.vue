@@ -704,6 +704,7 @@ import ImageMarkupDialog from '../../ui/WorkFlow/WorlFlowNodes/ImageMarkupDialog
 import DwebCanvasNodeSearchMenu from '../../ui/UIComponent/DwebCanvasNodeSearchMenu.vue'
 import { buildDeleteAction, type WorkflowAction } from '../../aiworkflow/actions'
 import { exportWorkflowImageOutputPng } from '../../aiworkflow/imageOutput'
+import { exportWorkflowImageEnforcedPng, uvCropToPixelRect, type PixelRect } from '../../aiworkflow/imageCropEnforcer'
 import type {
   WorkflowAnchorSpec,
   WorkflowEdge,
@@ -2672,7 +2673,25 @@ const buildImageTransferFileFromCrop = async (payload: {
   outputWidth?: number
   outputHeight?: number
   suffix?: string
+  sourceWidth?: number
+  sourceHeight?: number
+  enforceLandscape?: boolean
 }) => {
+  if (payload.enforceLandscape) {
+    const srcW = Math.max(1, Math.floor(Number(payload.sourceWidth ?? 0) || 1))
+    const srcH = Math.max(1, Math.floor(Number(payload.sourceHeight ?? 0) || 1))
+    const pixelCrop = uvCropToPixelRect(srcW, srcH, payload.crop)
+    const blob = await exportWorkflowImageEnforcedPng({
+      src: payload.sourceUrl,
+      crop: pixelCrop,
+      minWidth: 350,
+    })
+    if (!blob) return null
+    const baseName = String(payload.sourceName || 'image').replace(/\.[^./\\]+$/, '') || 'image'
+    const suffix = String(payload.suffix || 'crop').trim() || 'crop'
+    return new File([blob], `${baseName}_${suffix}.png`, { type: 'image/png' })
+  }
+
   const outputWidth = Math.max(1, Math.floor(Number(payload.outputWidth ?? 0) || 1))
   const outputHeight = Math.max(1, Math.floor(Number(payload.outputHeight ?? 0) || 1))
   const blob = await exportWorkflowImageOutputPng({

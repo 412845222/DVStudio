@@ -29,6 +29,30 @@ from .sceneUnderstand_skillMD import (
 
 SCENE_UNDERSTAND_MODEL_OPTIONS: List[Dict[str, Any]] = [
 	{
+		'id': 'doubao-seed-evolving',
+		'label': '豆包 Seed 快速迭代版',
+		'supportsVision': True,
+		'supportsStructuredOutput': True,
+		'recommended': True,
+		'vendor': '字节方舟',
+	},
+	{
+		'id': 'doubao-seed-2-1-pro-260628',
+		'label': '豆包 Seed 2.1 Pro',
+		'supportsVision': True,
+		'supportsStructuredOutput': True,
+		'recommended': True,
+		'vendor': '字节方舟',
+	},
+	{
+		'id': 'doubao-seed-2-1-turbo-260628',
+		'label': '豆包 Seed 2.1 Turbo',
+		'supportsVision': True,
+		'supportsStructuredOutput': True,
+		'recommended': True,
+		'vendor': '字节方舟',
+	},
+	{
 		'id': 'doubao-seed-2-0-pro-260215',
 		'label': '豆包 Seed 2.0 Pro',
 		'supportsVision': True,
@@ -94,7 +118,7 @@ SCENE_UNDERSTAND_MODEL_OPTIONS: List[Dict[str, Any]] = [
 	},
 ]
 
-DEFAULT_SCENE_UNDERSTAND_MODEL = 'doubao-seed-2-0-pro-260215'
+DEFAULT_SCENE_UNDERSTAND_MODEL = 'doubao-seed-2-1-pro-260628'
 ALLOW_SCENE_UNDERSTAND_MOCK_FALLBACK = str(os.environ.get('SCENE_UNDERSTAND_ALLOW_MOCK_FALLBACK', '')).strip().lower() in ('1', 'true', 'yes', 'on')
 
 COLOR_WORDS = {
@@ -1977,7 +2001,7 @@ def _build_scene_understand_messages(prompt_text: str, image_inputs: List[Dict[s
 	content_items: List[Dict[str, Any]] = [
 		{
 			'type': 'text',
-			'text': '以下图片是同一室内空间的多视角参考。请先综合全部参考图建立统一房屋结构与 roomShell，再补全全部 objects、不可移动结构、支撑关系和附着关系；其中 camera.openWallRole 请优先参考第一张图判断。若子物体位于父物体内部，请输出 embedded-inside 与明确的嵌入方向，不要误写成 on-top。场景分解节点会直接使用 sourceImageIndex + imageRect 自动截图，所以每个非壳体对象都必须选择唯一一张最适合截图的参考图作为 sourceImageIndex，并在这唯一一张图上给出紧致、准确、非整图默认值的 imageRect。'
+			'text': '以下图片是同一室内空间的多视角参考。请先综合全部参考图建立统一房屋结构与 roomShell，再补全全部 objects、不可移动结构、支撑关系和附着关系；其中 camera.openWallRole 请优先参考第一张图判断。若子物体位于父物体内部，请输出 embedded-inside 与明确的嵌入方向，不要误写成 on-top。场景分解节点会直接使用 sourceImageIndex + imageRect 自动截图，所以每个非壳体对象都必须选择唯一一张最适合截图的参考图作为 sourceImageIndex，并在这唯一一张图上给出紧致、准确、非整图默认值的 imageRect。【重要截图要求】imageRect 裁出的宽度必须 ≥ 350px，且必须是横向（width ≥ height），禁止纵向或细长截图；对象太窄时请主动扩大 imageRect 左右边距来保证宽度和比例。'
 		}
 	]
 	for item in image_inputs[:4]:

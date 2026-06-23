@@ -11,6 +11,7 @@ import {
   slugSceneDecomposeId,
   ensureSceneDecomposeSourceDimensions,
 } from './sceneDecomposeShared'
+import { computeEnforcedLandscapeCrop, uvCropToPixelRect } from '../../../../aiworkflow/imageCropEnforcer'
 
 export const useAIWorkflowSceneDecomposeController = (options: {
   store: any
@@ -24,6 +25,9 @@ export const useAIWorkflowSceneDecomposeController = (options: {
     outputWidth?: number
     outputHeight?: number
     suffix?: string
+    sourceWidth?: number
+    sourceHeight?: number
+    enforceLandscape?: boolean
   }) => Promise<File | null>
   addGeneratedImageResource: (file: File) => { resourceId: string; url: string }
   autoExpandSceneDecomposeOutputs: (
@@ -176,19 +180,34 @@ export const useAIWorkflowSceneDecomposeController = (options: {
           continue
         }
 
+        const srcW = Math.max(1, Math.floor(Number(normalizedSource?.width ?? cropInfo.outputWidth ?? 0) || 1))
+        const srcH = Math.max(1, Math.floor(Number(normalizedSource?.height ?? cropInfo.outputHeight ?? 0) || 1))
+        const pixelCrop = uvCropToPixelRect(srcW, srcH, cropInfo.crop)
+        const enforced = computeEnforcedLandscapeCrop(srcW, srcH, pixelCrop, { minWidth: 350 })
+
         const description = buildSceneDecomposeDescription(item, objectName)
         const transferFile = await options.buildImageTransferFileFromCrop({
           sourceUrl: source.url,
           sourceName: objectName,
           crop: cropInfo.crop,
-          outputWidth: cropInfo.outputWidth,
-          outputHeight: cropInfo.outputHeight,
+          outputWidth: enforced.outputWidth,
+          outputHeight: enforced.outputHeight,
           suffix: `decompose_${index + 1}`,
+          sourceWidth: srcW,
+          sourceHeight: srcH,
+          enforceLandscape: true,
         })
         if (!transferFile) {
           skippedCount += 1
           completedTasks += 1
           continue
+        }
+
+        const enforcedPixelRect = {
+          x: enforced.sourceCrop.sx,
+          y: enforced.sourceCrop.sy,
+          width: enforced.sourceCrop.sw,
+          height: enforced.sourceCrop.sh,
         }
 
         const generated = options.addGeneratedImageResource(transferFile)
@@ -200,18 +219,18 @@ export const useAIWorkflowSceneDecomposeController = (options: {
           objectId,
           name: objectName,
           description,
-          cropMode: cropInfo.cropMode,
+          cropMode: enforced.adjusted ? `${cropInfo.cropMode}-enforced` : cropInfo.cropMode,
           sourceImageIndex,
           observedImageIndices: Array.isArray(item?.observedImageIndices)
             ? item.observedImageIndices.map((value: any) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0)
             : undefined,
           imageRect: cropInfo.crop,
-          imageRectPixels: cropInfo.pixelRect,
+          imageRectPixels: enforcedPixelRect,
           imageAnchorId: `out-image-${outputId}`,
           textAnchorId: `out-text-${outputId}`,
           generatedResourceId: generated.resourceId,
-          outputWidth: cropInfo.outputWidth,
-          outputHeight: cropInfo.outputHeight,
+          outputWidth: enforced.outputWidth,
+          outputHeight: enforced.outputHeight,
         })
 
         completedTasks += 1
