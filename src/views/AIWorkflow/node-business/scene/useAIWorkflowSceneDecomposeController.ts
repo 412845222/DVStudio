@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import type { WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
 import {
   buildSceneDecomposeDescription,
@@ -251,7 +252,33 @@ export const useAIWorkflowSceneDecomposeController = (options: {
         return
       }
 
-      const autoExpandResult = await options.autoExpandSceneDecomposeOutputs(node, outputs, generatedFiles)
+      // 先提交完整 outputs 以触发场景拆解节点输出锚点的渲染，
+      // 等待 Vue 完成 DOM 刷新后再执行自动布线，确保连线起点能对准实际锚点位置。
+      options.store.commit('setNodeSceneDecomposeSettings', {
+        nodeId,
+        sceneDecomposeSettings: {
+          status: 'running',
+          message: `正在生成 ${outputs.length} 个拆解对象节点…`,
+          currentStep: '准备自动布线',
+          progress: 100,
+          totalTasks,
+          completedTasks,
+          croppedCount,
+          fallbackCount,
+          inputJson,
+          outputs,
+          lastRunAt: Date.now(),
+        },
+      })
+      await nextTick()
+
+      const refreshedNode = options.store.state.nodesById[nodeId]
+      if (!refreshedNode || refreshedNode.type !== 'scene-decompose') {
+        options.pushToast('场景分解节点已失效，无法执行自动布线。', 'warn')
+        return
+      }
+
+      const autoExpandResult = await options.autoExpandSceneDecomposeOutputs(refreshedNode, outputs, generatedFiles)
       const createdNodeIds = autoExpandResult.createdNodeIds
       const sceneLayoutConnections = Number(autoExpandResult.sceneLayoutConnections ?? 0)
       const completedMessage = skippedCount > 0
