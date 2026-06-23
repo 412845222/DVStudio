@@ -826,7 +826,6 @@ watch(
     }
     initPreviewLayoutObserver();
     await ensureNaturalSizeFallback();
-    emit("media-ready");
   },
   { immediate: true }
 );
@@ -887,14 +886,13 @@ onBeforeUnmount(() => {
   gap: 8px;
   flex: 1;
   min-height: 0;
-  height: 100%;
   align-self: stretch;
 }
 
 .wf-media-preview {
   width: 100%;
   flex: 0 0 auto;
-  height: auto;
+  aspect-ratio: 1 / 1;
   border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--vscode-border);
@@ -1027,12 +1025,18 @@ onBeforeUnmount(() => {
 }
 
 .wf-media-empty {
+  width: 100%;
+  aspect-ratio: 1 / 1;
   border: 1px dashed var(--vscode-border);
   border-radius: 0;
   padding: 10px;
   text-align: center;
   color: var(--vscode-fg-muted);
   background: var(--dweb-defualt);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .wf-media-hint {

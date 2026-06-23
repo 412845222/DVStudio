@@ -86,6 +86,8 @@ const emit = defineEmits<{
     e: "box-select",
     payload: { worldRect: { x0: number; y0: number; x1: number; y1: number } }
   ): void;
+  (e: "canvas-panning-start"): void;
+  (e: "canvas-panning-end"): void;
   (e: "selection-frame-tag-save", label: string): void;
   (e: "selection-frame-delete", payload?: { frameId?: string }): void;
   (e: "selection-frame-drag", payload: { dx: number; dy: number; nodeIds: string[] }): void;
@@ -648,6 +650,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
   // Right button: pan viewport
   if (e.button === 2) {
     e.preventDefault();
+    emit("canvas-panning-start");
     bgDrag = {
       start: { x: e.clientX, y: e.clientY },
       startPan: { ...viewportPanPx.value },
@@ -677,6 +680,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
         // ignore
       }
       if (moved) suppressContextMenuOnce = true;
+      emit("canvas-panning-end");
     };
     wrap.addEventListener("pointermove", onMove, { passive: false });
     wrap.addEventListener("pointerup", onUp, { once: true });
@@ -688,6 +692,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
   const isTouchOrPen = e.pointerType === 'touch' || e.pointerType === 'pen';
   if (isTouchOrPen && e.button === 0) {
     e.preventDefault();
+    emit("canvas-panning-start");
     touchDrag = {
       start: { x: e.clientX, y: e.clientY },
       startPan: { ...viewportPanPx.value },
@@ -716,6 +721,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
       } catch {
         // ignore
       }
+      emit("canvas-panning-end");
     };
     wrap.addEventListener("pointermove", onMove, { passive: false });
     wrap.addEventListener("pointerup", onUp, { once: true });

@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="nodeElRef"
     class="wf-node"
     :data-node-id="nodeId"
     :class="[
@@ -11,6 +12,7 @@
         'wf-node-error': visualStatus === 'error',
       },
       { 'wf-node-chat-open': nodeChatVisibleResolved },
+      { 'is-auto-height': autoHeight },
       `wf-node-${nodeType}`,
     ]"
     :style="style"
@@ -246,7 +248,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, useSlots } from "vue";
+import { computed, useSlots, ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { useSquareParticles } from "../../composables/useSquareParticles";
 import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from "../../aiworkflow/types";
 import { NodeChatDialog, type InputParamPreviewRef } from "../BluePrint/node-dialog";
@@ -292,6 +294,8 @@ const props = defineProps<{
   nodeGenerationTask?: WorkflowNodeGenerationTask | null;
   anchorCompatibility?: Record<string, boolean | null>;
   isLinking?: boolean;
+  sizeCustomized?: boolean;
+  autoHeight?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -326,6 +330,7 @@ const emit = defineEmits<{
   (e: "node-chat-close"): void;
   (e: "node-chat-submit", payload: WorkflowNodeChatSubmitPayload): void;
   (e: "node-chat-remove-param-ref", item: InputParamPreviewRef): void;
+  (e: "auto-resize", height: number): void;
 }>();
 
 const slots = useSlots();
@@ -462,6 +467,73 @@ const anchorTypeAttr = (a: AnchorSpec) => {
   return "resource";
 };
 
+const nodeElRef = ref<HTMLElement | null>(null);
+
+const MIN_AUTO_HEIGHT = 120;
+const MAX_AUTO_HEIGHT = 800;
+const HEIGHT_CHANGE_THRESHOLD = 2;
+
+let resizeObserver: ResizeObserver | null = null;
+let rafId = 0;
+let lastEmittedHeight = 0;
+let userResized = false;
+
+const measureNaturalHeight = (): number => {
+  const el = nodeElRef.value;
+  if (!el) return props.height;
+  const prevHeight = el.style.height;
+  const prevFlexBasis = (el.style as any).flexBasis;
+  el.style.height = "auto";
+  (el.style as any).flexBasis = "auto";
+  const natural = el.getBoundingClientRect().height;
+  el.style.height = prevHeight;
+  if (prevFlexBasis !== undefined) {
+    (el.style as any).flexBasis = prevFlexBasis;
+  } else {
+    (el.style as any).flexBasis = "";
+  }
+  const zoom = Math.max(1e-6, props.zoom || 1);
+  const worldHeight = natural / zoom;
+  const clamped = Math.max(MIN_AUTO_HEIGHT, Math.min(MAX_AUTO_HEIGHT, worldHeight));
+  return Math.round(clamped);
+};
+
+const requestAutoResize = () => {
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    rafId = 0;
+    if (userResized) return;
+    if (props.sizeCustomized) return;
+    if (props.autoHeight === false) return;
+    const nextHeight = measureNaturalHeight();
+    if (Math.abs(nextHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return;
+    if (Math.abs(nextHeight - props.height) < HEIGHT_CHANGE_THRESHOLD) return;
+    lastEmittedHeight = nextHeight;
+    emit("auto-resize", nextHeight);
+  });
+};
+
+const setupResizeObserver = () => {
+  if (typeof ResizeObserver === "undefined") return;
+  const el = nodeElRef.value;
+  if (!el) return;
+  resizeObserver = new ResizeObserver(() => {
+    requestAutoResize();
+  });
+  resizeObserver.observe(el, { box: "content-box" });
+};
+
+const teardownResizeObserver = () => {
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
+};
+
 let drag: null | {
   startClient: { x: number; y: number };
   startWorld: { x: number; y: number };
@@ -471,6 +543,8 @@ const MIN_SIZE = 80;
 
 const onResizeStart = (corner: "nw" | "ne" | "sw" | "se", e: PointerEvent) => {
   if (e.button !== 0) return;
+  userResized = true;
+  teardownResizeObserver();
   emit("select", props.nodeId);
   const el = e.currentTarget as HTMLElement;
   const z = Math.max(1e-6, props.zoom);
@@ -613,6 +687,48 @@ const isAnchorIncompatible = (anchorId: string, direction: 'in' | 'out') => {
   const key = `${props.nodeId}-${direction}-${anchorId}`;
   return props.anchorCompatibility[key] === false;
 };
+onMounted(() => {
+  if (props.autoHeight === false) return;
+  if (props.sizeCustomized) return;
+  nextTick(() => {
+    setupResizeObserver();
+    requestAutoResize();
+    setTimeout(requestAutoResize, 100);
+    setTimeout(requestAutoResize, 500);
+  });
+});
+
+watch(
+  () => props.sizeCustomized,
+  (customized) => {
+    if (customized) {
+      teardownResizeObserver();
+    } else if (!userResized && props.autoHeight !== false) {
+      nextTick(() => {
+        setupResizeObserver();
+        requestAutoResize();
+      });
+    }
+  }
+);
+
+watch(
+  () => props.autoHeight,
+  (enabled) => {
+    if (enabled === false) {
+      teardownResizeObserver();
+    } else if (!userResized && !props.sizeCustomized) {
+      nextTick(() => {
+        setupResizeObserver();
+        requestAutoResize();
+      });
+    }
+  }
+);
+
+onBeforeUnmount(() => {
+  teardownResizeObserver();
+});
 </script>
 
 <style>
@@ -1074,6 +1190,11 @@ const isAnchorIncompatible = (anchorId: string, direction: 'in' | 'out') => {
 
 .wf-node.wf-node-meshy .wf-node-footer {
   overflow: visible;
+}
+
+.wf-node.is-auto-height .wf-node-body {
+  align-items: stretch;
+  justify-content: flex-start;
 }
 
 .wf-anchors {

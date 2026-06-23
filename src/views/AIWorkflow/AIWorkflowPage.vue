@@ -25,6 +25,8 @@
         @canvas-contextmenu="onCanvasContextMenu"
         @canvas-dblclick="onCanvasDblClick"
         @box-select="onBoxSelect"
+        @canvas-panning-start="onCanvasPanningStart"
+        @canvas-panning-end="onCanvasPanningEnd"
         @pointerdown="onCanvasPointerDown"
         @dragover.prevent="onCanvasDragOver"
         @drop.prevent="onCanvasDrop"
@@ -141,6 +143,8 @@
             :ref="setWorkflowNodeComponentRef(node.id, node.type)"
             :alias="node.alias"
             :height="node.height"
+            :sizeCustomized="node.sizeCustomized"
+            :autoHeight="true"
             :hoverInputAnchorId="hoverInputAnchorId(node.id)"
             :hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
             :anchor-compatibility="anchorCompatibility"
@@ -206,6 +210,7 @@
             @remove-merge-item="onTextMergeItemRemove(node.id, $event)"
             @request-scene-models="onNodeRequestSceneModels(node.id)"
             @resize="onNodeResize(node.id, $event)"
+            @auto-resize="(h) => onNodeAutoResize(node.id, h)"
             @restart-meshy-task="onNodeRestartMeshyTask(node.id)"
             @run-comfyui="onComfyUIRun(node.id)"
             @run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
@@ -607,6 +612,65 @@
       :compatible="tooltipState?.compatible"
       :position="tooltipState?.position ?? { x: 0, y: 0 }"
     />
+
+    <!-- 缺失资产确认对话框 -->
+    <ModalDialog
+      :open="missingAssetDialogOpen"
+      title="资源缺失：文件不存在"
+      confirmText="移除失效引用"
+      closeText="暂不处理"
+      @confirm="onConfirmRemoveMissingAsset"
+      @close="onCancelMissingAssetDialog"
+    >
+      <div v-if="missingAssetDialogPending" class="aiwf-missing-asset-dialog">
+        <p style="margin-top:0;">
+          系统检测到以下静态资源在磁盘上已不存在，但项目数据中仍存在对它的引用。
+          这可能是由于文件被手动移动或删除，或从其他设备迁移项目时文件未同步。
+        </p>
+        <div class="aiwf-missing-asset-info">
+          <div class="aiwf-missing-asset-row">
+            <span class="aiwf-missing-asset-label">资产名称：</span>
+            <span class="aiwf-missing-asset-value"><strong>{{ missingAssetDialogPending.assetName }}</strong></span>
+          </div>
+          <div class="aiwf-missing-asset-row">
+            <span class="aiwf-missing-asset-label">请求路径：</span>
+            <span class="aiwf-missing-asset-value aiewf-mono">{{ missingAssetDialogPending.requestedPath }}</span>
+          </div>
+          <div v-if="missingAssetDialogPending.absolutePath" class="aiwf-missing-asset-row">
+            <span class="aiwf-missing-asset-label">磁盘路径：</span>
+            <span class="aiwf-missing-asset-value aiewf-mono" style="word-break:break-all;">{{ missingAssetDialogPending.absolutePath }}</span>
+          </div>
+        </div>
+
+        <div v-if="missingAssetDialogPending.sources && missingAssetDialogPending.sources.length > 0" class="aiwf-missing-asset-sources">
+          <div class="aiwf-missing-asset-sources-title">错误调用来源（{{ missingAssetDialogPending.sources.length }} 处引用）：</div>
+          <ul class="aiwf-missing-asset-source-list">
+            <li v-for="(s, i) in missingAssetDialogPending.sources" :key="i">
+              <span class="aiwf-source-tag">{{ sourceTypeLabel(s.type) }}</span>
+              <span v-if="s.nodeId"> 节点 <code>{{ s.nodeId }}</code><span v-if="s.nodeType">（{{ s.nodeType }}）</span></span>
+              <span v-if="s.resourceId"> 资源 <code>{{ s.resourceId }}</code></span>
+              <span v-if="s.field"> 字段 <code>{{ s.field }}</code></span>
+              <span v-if="s.detail" class="aiwf-source-detail"> — {{ s.detail }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <p class="aiwf-missing-asset-tip">
+          点击「移除失效引用」将从项目数据中清除上述引用（不会删除磁盘上的其他文件），操作可撤销。
+          点击「暂不处理」将保留引用，稍后您可以通过右键菜单或重新导入来修复。
+        </p>
+      </div>
+    </ModalDialog>
+
+    <!-- 撤销最近移除操作的浮动按钮 -->
+    <button
+      v-if="lastRemovedUndoAvailable"
+      type="button"
+      class="aiwf-undo-remove-btn"
+      @click="onUndoLastRemove"
+    >
+      ↶ 撤销最近一次移除
+    </button>
   </div>
 </template>
 
@@ -673,6 +737,8 @@ import {
   isWorkflowLocalAssetUrl,
 } from '../../network/backendConfig'
 import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets, uploadProjectAsset, importProjectAsset } from '../../electronBridge'
+import ModalDialog from '../../ui/UIComponent/ModalDialog.vue'
+import { useAIWorkflow404Fallback } from './assets/useAIWorkflow404Fallback'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -942,16 +1008,25 @@ const {
   motionRecomputeMinIntervalMs: 90,
 })
 
+const safeVisibleSeenSet = new Set<string>()
+const safeVisibleResult: WorkflowNode[] = []
+
 const safeVisibleRenderNodes = computed(() => {
-  const seen = new Set<string>()
-  const safe: WorkflowNode[] = []
-  for (const node of visibleRenderNodes.value) {
+  const source = visibleRenderNodes.value
+  const sourceLen = source.length
+
+  safeVisibleSeenSet.clear()
+  safeVisibleResult.length = 0
+
+  for (let i = 0; i < sourceLen; i++) {
+    const node = source[i]
     const nodeId = String(node?.id ?? '').trim()
-    if (!nodeId || seen.has(nodeId)) continue
-    seen.add(nodeId)
-    safe.push(node)
+    if (!nodeId || safeVisibleSeenSet.has(nodeId)) continue
+    safeVisibleSeenSet.add(nodeId)
+    safeVisibleResult.push(node)
   }
-  return safe
+
+  return safeVisibleResult.slice()
 })
 
 type NodeRuntimeVisualState = 'idle' | 'running' | 'error'
@@ -1013,11 +1088,28 @@ const compactNodeStateLabel = (node: WorkflowNode) => {
 }
 
 const edgeWorkerMutationEpoch = computed(() => {
-  const selected = selectedNodeIds.value.join('|')
-  const visible = safeVisibleRenderNodes.value
-    .map((node) => `${String(node.id ?? '').trim()}:${String(node.type ?? '').trim()}`)
-    .join('|')
-  return `${selected}::${visible}`
+  const selectedIds = selectedNodeIds.value
+  const visibleNodes = safeVisibleRenderNodes.value
+  let hash = (selectedIds.length * 131 + visibleNodes.length * 977) % 2147483647
+  for (let i = 0; i < selectedIds.length; i++) {
+    const id = selectedIds[i]
+    for (let j = 0; j < id.length; j++) {
+      hash = (hash * 31 + id.charCodeAt(j)) % 2147483647
+    }
+  }
+  const sampleStep = Math.max(1, Math.floor(visibleNodes.length / 16))
+  for (let i = 0; i < visibleNodes.length; i += sampleStep) {
+    const node = visibleNodes[i]
+    const id = String(node.id ?? '')
+    for (let j = 0; j < id.length; j++) {
+      hash = (hash * 31 + id.charCodeAt(j)) % 2147483647
+    }
+    const type = String(node.type ?? '')
+    for (let j = 0; j < type.length; j++) {
+      hash = (hash * 17 + type.charCodeAt(j)) % 2147483647
+    }
+  }
+  return String(hash)
 })
 
 const {
@@ -2568,6 +2660,7 @@ const queueImageDistributeOnPointerUp = (nodeId: string) => {
 
 const {
   onNodeResize,
+  onNodeAutoResize,
   onNodeTextValueUpdate,
   onNodeImageSettingsUpdate,
   onNodeVideoSettingsUpdate,
@@ -3860,6 +3953,28 @@ const buildPath = (start: { x: number; y: number }, end: { x: number; y: number 
   return `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`
 }
 
+const EDGE_VIEWPORT_CULL_MARGIN_PX = 240
+
+const shouldCullEdgeByViewport = (
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  viewportWidth: number,
+  viewportHeight: number,
+  marginPx: number,
+) => {
+  if (viewportWidth <= 0 || viewportHeight <= 0) return false
+  const left = -marginPx
+  const top = -marginPx
+  const right = viewportWidth + marginPx
+  const bottom = viewportHeight + marginPx
+  const curveSlackX = Math.max(80, Math.abs(end.x - start.x) * 0.5)
+  const minX = Math.min(start.x, end.x) - curveSlackX
+  const maxX = Math.max(start.x, end.x) + curveSlackX
+  const minY = Math.min(start.y, end.y)
+  const maxY = Math.max(start.y, end.y)
+  return maxX < left || minX > right || maxY < top || minY > bottom
+}
+
 const anchorIndexByNodeId = computed(() => {
   const next = new Map<string, { input: Map<string, number>; output: Map<string, number> }>()
   for (const node of renderNodes.value) {
@@ -3875,7 +3990,22 @@ const anchorIndexByNodeId = computed(() => {
 })
 
 const edgeRenders = (worldToScreen: (p: { x: number; y: number }) => { x: number; y: number }) => {
-  return renderEdges.value.map((e) => {
+  const edges = renderEdges.value
+  const result: Array<{
+    id: string
+    start: { x: number; y: number }
+    end: { x: number; y: number }
+    path: string
+    stroke?: string
+    strokeWidth?: number
+  }> = []
+  const viewportWidth = canvasViewportSize.value.width
+  const viewportHeight = canvasViewportSize.value.height
+  const keepEdgeId = String(store.state.selectedEdgeId ?? '').trim()
+
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i]
+    const edgeId = String(e.id ?? '')
     const fromNode = store.state.nodesById[e.fromNodeId]
     const toNode = store.state.nodesById[e.toNodeId]
     const fromAnchorIndex = anchorIndexByNodeId.value.get(String(e.fromNodeId ?? ''))
@@ -3894,16 +4024,22 @@ const edgeRenders = (worldToScreen: (p: { x: number; y: number }) => { x: number
           ? resolveAnchorCanvasPointByDom(e.toNodeId, String(e.toAnchorId ?? ''), 'in')
           : null) ?? worldToScreen(anchorWorld(toNode, 'in', Math.max(0, toIndex), toNode.inputs.length, toAnchor))
       : { x: 0, y: 0 }
+
+    if (edgeId !== keepEdgeId && shouldCullEdgeByViewport(start, end, viewportWidth, viewportHeight, EDGE_VIEWPORT_CULL_MARGIN_PX)) {
+      continue
+    }
+
     const isStory = fromNode?.type === 'story'
-    return {
+    result.push({
       id: e.id,
       start,
       end,
       path: buildPath(start, end),
       stroke: isStory ? '#f29d38' : undefined,
       strokeWidth: isStory ? 3.5 : undefined,
-    }
-  })
+    })
+  }
+  return result
 }
 
 const buildEdgeWorkerInput = () => {
@@ -3952,6 +4088,121 @@ const {
   setToastHovering,
 } = useAIWorkflowToastState({ durationMs: 2600 })
 pushToastBridge = pushToast
+
+// ===== 404 兜底恢复系统 =====
+const missingAssetDialogOpen = ref(false)
+const missingAssetDialogPending = ref<any>(null)
+const lastRemovedUndoAvailable = ref(false)
+
+const {
+  pendingMissingAssets,
+  installGlobalErrorHandlers,
+  confirmRemoveMissingAsset,
+  undoLastRemove,
+  cancelMissingAsset,
+} = useAIWorkflow404Fallback({
+  getCurrentProjectId: () => currentProjectId.value,
+  getCurrentProjectRootPath: () => currentProjectRootPath.value || null,
+  getStore: () => store,
+  pushToast,
+  batchWindowMs: 600,
+  onRecovered: ({ url, newUrl, assetName, newAsset }) => {
+    // 资源已自动恢复：更新资源缓存中的 URL，触发资源引用节点重渲染
+    try {
+      const resourcesById = (store.state as any)?.resourcesById || {}
+      const patches: Record<string, any> = {}
+      for (const [rid, res] of Object.entries(resourcesById) as Array<[string, any]>) {
+        if (!res) continue
+        const patch: any = {}
+        let touched = false
+        if (res.url === url) { patch.url = newUrl; touched = true }
+        if (res.previewUrl === url) { patch.previewUrl = newUrl; touched = true }
+        if (res.posterUrl === url) { patch.posterUrl = newUrl; touched = true }
+        if (touched) {
+          // 如果诊断结果提供了新的资源路径信息，同步更新
+          if (newAsset) {
+            patch.projectRelativePath = newAsset.projectRelativePath || newAsset.relativePath
+            patch.absolutePath = newAsset.absolutePath
+            patch.sourcePath = newAsset.sourcePath || newAsset.absolutePath
+            patch.contentType = newAsset.contentType
+            patch.size = newAsset.size
+            if (!patch.url) patch.url = newUrl
+          }
+          patches[rid] = patch
+        }
+      }
+      if (Object.keys(patches).length > 0) {
+        store.commit('patchResourcesBatch', { patches })
+      }
+      // 通知节点刷新（触发重新渲染）
+      void nextTick(() => {
+        blueprintLog.append(`资源自动恢复成功：${assetName}`, { category: 'system', level: 'INFO', tag: 'asset-recovery' })
+      })
+    } catch (err) {
+      console.warn('[AIWorkflowPage] onRecovered hook error:', err)
+    }
+  },
+  onMissingAsset: (pending) => {
+    // 已有对话框打开时，先入队；否则直接打开对话框
+    if (!missingAssetDialogOpen.value) {
+      missingAssetDialogPending.value = pending
+      missingAssetDialogOpen.value = true
+    }
+  },
+})
+
+// 缺失资产确认对话框操作
+const onConfirmRemoveMissingAsset = () => {
+  const p = missingAssetDialogPending.value
+  if (!p) {
+    missingAssetDialogOpen.value = false
+    return
+  }
+  const result = confirmRemoveMissingAsset(p.id)
+  lastRemovedUndoAvailable.value = !!result.undoAvailable
+  missingAssetDialogOpen.value = false
+  missingAssetDialogPending.value = null
+  // 若还有其他待处理的缺失资产，打开下一个
+  const next = pendingMissingAssets.value[0]
+  if (next) {
+    setTimeout(() => {
+      missingAssetDialogPending.value = next
+      missingAssetDialogOpen.value = true
+    }, 300)
+  }
+}
+const onCancelMissingAssetDialog = () => {
+  const p = missingAssetDialogPending.value
+  if (p) cancelMissingAsset(p.id)
+  missingAssetDialogOpen.value = false
+  missingAssetDialogPending.value = null
+  // 继续处理队列中下一个
+  const next = pendingMissingAssets.value[0]
+  if (next) {
+    setTimeout(() => {
+      missingAssetDialogPending.value = next
+      missingAssetDialogOpen.value = true
+    }, 300)
+  }
+}
+const onUndoLastRemove = () => {
+  if (undoLastRemove()) {
+    lastRemovedUndoAvailable.value = false
+  }
+}
+
+function sourceTypeLabel(type: string): string {
+  switch (type) {
+    case 'resource': return '[资源记录]'
+    case 'node_input': return '[节点输入]'
+    case 'node_output': return '[节点输出]'
+    case 'node_param': return '[节点参数]'
+    case 'preview': return '[预览图]'
+    case 'poster': return '[封面图]'
+    case 'unknown': return '[未知位置]'
+    default: return `[${type}]`
+  }
+}
 
 const {
   buildUnrealExportPayload,
@@ -4161,7 +4412,7 @@ const onNodeUploadResource = async (
   await uploadNodeResource(nodeId, file, kind, {
     autoDistribute: opts?.autoDistribute,
     onAfterBind: () => {
-      if (kind === 'image' && opts?.autoDistribute !== false) {
+      if (kind === 'image' && opts?.autoDistribute === true) {
         void autoDistributeImageOutputToConnectedNodes(nodeId)
       }
     },
@@ -5457,6 +5708,14 @@ const tooltipState = linkInteraction.tooltipState
 const anchorCompatibility = linkInteraction.anchorCompatibility
 const isLinking = linkInteraction.isLinking
 
+const onCanvasPanningStart = () => {
+  linkInteraction.setPanning(true)
+}
+
+const onCanvasPanningEnd = () => {
+  linkInteraction.setPanning(false)
+}
+
 const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
 const onNodeX = canvasInteraction.onNodeX
 const onNodeY = canvasInteraction.onNodeY
@@ -5495,7 +5754,11 @@ onBeforeUnmount(() => {
   posterAutoSaveRunning = false
   pendingImageDistributeNodeIds.clear()
   clearAllObjectUrls()
+  // 卸载全局 404 错误拦截器
+  try { uninstallGlobal404Handlers?.() } catch { /* ignore */ }
 })
+
+let uninstallGlobal404Handlers: (() => void) | null = null
 
 onMounted(() => {
 	// Take over global Ctrl/Cmd+S only on this page.
@@ -5503,6 +5766,8 @@ onMounted(() => {
   mountWindowEvents()
   window.addEventListener('pointerup', flushPendingImageDistribute, true)
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
+  // 安装全局 404 错误拦截器（覆盖 img/video/script/link/fetch 错误）
+  uninstallGlobal404Handlers = installGlobalErrorHandlers()
   startUnrealExportPolling()
   registerResourceManagerEventListener()
   void refreshProjectList()
@@ -6153,5 +6418,105 @@ async function runProjectEnterSequence(
 
 .aiwf-perf-stats-value.is-bad {
   color: var(--aiwf-perf-bad, #f14c4c);
+}
+
+/* ===== 缺失资产对话框 ===== */
+.aiwf-missing-asset-dialog {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vscode-fg);
+}
+.aiwf-missing-asset-info {
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: var(--vscode-input-background, rgba(0,0,0,0.15));
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+}
+.aiwf-missing-asset-row {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 12.5px;
+}
+.aiwf-missing-asset-label {
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground, #888);
+  min-width: 70px;
+}
+.aiwf-missing-asset-value {
+  word-break: break-all;
+}
+.aiewf-mono {
+  font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+  font-size: 12px;
+}
+.aiwf-missing-asset-sources {
+  margin: 12px 0;
+}
+.aiwf-missing-asset-sources-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.aiwf-missing-asset-source-list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.aiwf-missing-asset-source-list li {
+  margin: 3px 0;
+  font-size: 12.5px;
+}
+.aiwf-missing-asset-source-list code {
+  font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+  background: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.2));
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+.aiwf-source-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  font-size: 11px;
+  margin-right: 4px;
+}
+.aiwf-source-detail {
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: 11.5px;
+}
+.aiwf-missing-asset-tip {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  background: var(--vscode-textBlockQuote-background, rgba(255,255,0,0.05));
+  border-left: 3px solid var(--vscode-textBlockQuote-border, #cca700);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #aaa);
+}
+
+/* 撤销移除按钮 */
+.aiwf-undo-remove-btn {
+  position: fixed;
+  bottom: 60px;
+  right: 24px;
+  z-index: 9999;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--vscode-button-background, #0e639c);
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  transition: all 0.15s;
+}
+.aiwf-undo-remove-btn:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+  transform: translateY(-1px);
 }
 </style>

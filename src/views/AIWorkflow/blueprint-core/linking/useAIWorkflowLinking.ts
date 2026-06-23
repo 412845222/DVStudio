@@ -91,6 +91,9 @@ export const useAIWorkflowLinking = (payload: {
   let hoverRafId: number | null = null
   let lastHoverPointer: { x: number; y: number } | null = null
   let activeScreenToWorld: ScreenToWorldFn | null = null
+  const isPanning = ref(false)
+  const HOVER_THROTTLE_MS = 50
+  let lastHoverTime = 0
 
   watch(
     () => payload.store.state.viewport.zoom,
@@ -333,7 +336,26 @@ export const useAIWorkflowLinking = (payload: {
   }
 
   const onHoverPointerMove = (event: PointerEvent) => {
-    if (linkDraft.value) return
+    if (linkDraft.value || isPanning.value) return
+    
+    const canvasEl = document.querySelector('.bp-wrap')
+    if (!canvasEl) return
+    
+    const rect = canvasEl.getBoundingClientRect()
+    const padding = 20
+    if (
+      event.clientX < rect.left - padding ||
+      event.clientX > rect.right + padding ||
+      event.clientY < rect.top - padding ||
+      event.clientY > rect.bottom + padding
+    ) {
+      return
+    }
+    
+    const now = Date.now()
+    if (now - lastHoverTime < HOVER_THROTTLE_MS) return
+    lastHoverTime = now
+    
     lastHoverPointer = { x: event.clientX, y: event.clientY }
     if (hoverRafId != null) return
     hoverRafId = requestAnimationFrame(runHoverMagnet)
@@ -628,6 +650,10 @@ export const useAIWorkflowLinking = (payload: {
     clearReleaseTimers()
   })
 
+  const setPanning = (panning: boolean) => {
+    isPanning.value = panning
+  }
+
   return {
     nanoHoverAnchorId,
     hoverInputAnchorId,
@@ -638,5 +664,6 @@ export const useAIWorkflowLinking = (payload: {
     tooltipState,
     anchorCompatibility,
     isLinking: computed(() => !!linkDraft.value),
+    setPanning,
   }
 }

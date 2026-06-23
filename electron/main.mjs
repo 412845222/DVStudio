@@ -28,6 +28,9 @@ import {
 	copyFileToProjectRoot,
 	getProjectRootById,
 	repairProjectAsset,
+	validateProjectRoot,
+	diagnoseDwebAsset,
+	getAccessLogs,
 } from './backend/projectAssetProtocol.mjs'
 import {
 	uploadBufferProjectAsset,
@@ -1586,8 +1589,8 @@ function registerIpc() {
 			clearProjectRoot(projectId)
 			return { ok: true, cleared: true }
 		}
-		const ok = setProjectRoot(projectId, rootPath)
-		return { ok: !!ok }
+		const result = setProjectRoot(projectId, rootPath)
+		return result
 	})
 
 	ipcMain.handle('dweb:aiworkflow:clearProjectRoot', async (_e, payload) => {
@@ -1684,6 +1687,35 @@ function registerIpc() {
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
+	})
+
+	// 诊断单个 dweb:// URL：返回项目根注册状态、磁盘文件是否存在、候选路径、相似文件、修复建议。
+	ipcMain.handle('dweb:aiworkflow:diagnoseAsset', async (_e, payload) => {
+		try {
+			return diagnoseDwebAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err), diagnostics: [] }
+		}
+	})
+
+	// 校验/重注册项目根目录。传入 expectedRootPath（磁盘真实路径）时，若当前注册值与磁盘不一致会强制重新 setProjectRoot。
+	ipcMain.handle('dweb:aiworkflow:validateProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		const expected = String(payload?.expectedRootPath || '').trim()
+		if (expected) {
+			const result = setProjectRoot(projectId, expected)
+			return { ok: true, reRegistered: result?.ok, registerResult: result, validation: validateProjectRoot(projectId) }
+		}
+		return { ok: true, validation: validateProjectRoot(projectId) }
+	})
+
+	// 获取最近 dweb 协议访问日志（用于调试/错误上报）。
+	ipcMain.handle('dweb:aiworkflow:getAssetAccessLogs', async (_e, payload) => {
+		const maxEntries = Number(payload?.maxEntries)
+		return { ok: true, logs: getAccessLogs(Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : 100) }
 	})
 
 	// Fetch a URL in the main process (bypasses browser CORS) and return Uint8Array / mime

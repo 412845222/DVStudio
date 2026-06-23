@@ -542,7 +542,6 @@ const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
 <style scoped>
 .wf-story-body {
   width: 100%;
-  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 8px;
