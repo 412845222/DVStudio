@@ -32,10 +32,9 @@ const getIdealConcurrency = () => {
     return 3
   }
 }
-const CACHE_MAX_SIZE = 400
 const QUEUE_DELAY_MS = 10
 const IMAGE_WAIT_TIMEOUT = 2500
-export const SCREENSHOT_PADDING = 0
+export const SCREENSHOT_PADDING = 20
 
 interface ScreenshotSlot {
   host: HTMLDivElement
@@ -252,10 +251,12 @@ export const createNodeScreenshotPool = () => {
   const hasCached = (nodeId: string, version: string) => !!getCached(nodeId, version)
   const invalidate = (nodeId: string) => cache.delete(nodeId)
 
-  const prune = () => {
-    if (cache.size <= CACHE_MAX_SIZE) return
-    const sorted = Array.from(cache.values()).sort((a, b) => a.capturedAt - b.capturedAt)
-    sorted.slice(0, cache.size - CACHE_MAX_SIZE).forEach(e => cache.delete(e.nodeId))
+  const pruneToValidNodes = (validNodeIds: Set<string>) => {
+    for (const cachedId of Array.from(cache.keys())) {
+      if (!validNodeIds.has(cachedId)) {
+        cache.delete(cachedId)
+      }
+    }
   }
 
   const capture = async (slot: ScreenshotSlot, sourceEl: HTMLElement, width: number, height: number, padding: number): Promise<HTMLCanvasElement | null> => {
@@ -275,7 +276,6 @@ export const createNodeScreenshotPool = () => {
     wrapper.style.width = `${totalW}px`
     wrapper.style.height = `${totalH}px`
     wrapper.style.overflow = 'visible'
-    wrapper.style.background = 'transparent'
     wrapper.style.margin = '0'
     wrapper.style.padding = '0'
     wrapper.style.transform = 'none'
@@ -292,12 +292,9 @@ export const createNodeScreenshotPool = () => {
     clone.style.transform = 'none'
     clone.style.transformOrigin = 'top left'
     clone.style.boxSizing = 'border-box'
-    clone.style.border = 'none'
     clone.style.boxShadow = 'none'
     clone.style.outline = 'none'
     clone.style.borderRadius = '0'
-    clone.style.background = 'transparent'
-    clone.style.backgroundColor = 'transparent'
     clone.style.backdropFilter = 'none'
     ;(clone.style as any).webkitBackdropFilter = 'none'
 
@@ -313,9 +310,76 @@ export const createNodeScreenshotPool = () => {
     for (const sel of stripSelectors) {
       clone.querySelectorAll(sel).forEach(el => el.remove())
     }
+
+    // 修复表单元素和媒体元素渲染
+    const sourceTextareas = sourceEl.querySelectorAll('textarea')
+    const cloneTextareas = clone.querySelectorAll('textarea')
+    sourceTextareas.forEach((src, i) => {
+      const dst = cloneTextareas[i]
+      if (dst && src) {
+        dst.textContent = src.value
+        dst.value = src.value
+        dst.setAttribute('value', src.value)
+      }
+    })
+
+    const sourceInputs = sourceEl.querySelectorAll('input')
+    const cloneInputs = clone.querySelectorAll('input')
+    sourceInputs.forEach((src, i) => {
+      const dst = cloneInputs[i]
+      if (dst && src && (src.type === 'text' || src.type === 'number' || src.type === 'search' || src.type === 'email' || src.type === 'password' || src.type === 'url' || src.type === 'tel')) {
+        dst.setAttribute('value', src.value)
+      }
+    })
+
+    // 将canvas内容转为图片
+    const sourceCanvases = sourceEl.querySelectorAll('canvas')
+    const cloneCanvases = clone.querySelectorAll('canvas')
+    sourceCanvases.forEach((src, i) => {
+      const dst = cloneCanvases[i]
+      if (dst && src) {
+        try {
+          const dataUrl = src.toDataURL('image/png')
+          const img = document.createElement('img')
+          img.src = dataUrl
+          img.style.width = dst.style.width || `${src.width}px`
+          img.style.height = dst.style.height || `${src.height}px`
+          img.style.objectFit = 'contain'
+          dst.replaceWith(img)
+        } catch {}
+      }
+    })
+
+    // 将video当前帧绘制到canvas
+    const sourceVideos = sourceEl.querySelectorAll('video')
+    const cloneVideos = clone.querySelectorAll('video')
+    sourceVideos.forEach((src, i) => {
+      const dst = cloneVideos[i]
+      if (dst && src && src.readyState >= 2 && src.videoWidth > 0 && src.videoHeight > 0) {
+        try {
+          const vw = src.videoWidth
+          const vh = src.videoHeight
+          const canvas = document.createElement('canvas')
+          canvas.width = vw
+          canvas.height = vh
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(src, 0, 0, vw, vh)
+            const dataUrl = canvas.toDataURL('image/png')
+            const img = document.createElement('img')
+            img.src = dataUrl
+            img.style.width = '100%'
+            img.style.height = '100%'
+            img.style.objectFit = getComputedStyle(src).objectFit || 'cover'
+            dst.replaceWith(img)
+          }
+        } catch {}
+      }
+    })
+
     const hidePseudoStyle = document.createElement('style')
     hidePseudoStyle.setAttribute('type', 'text/css')
-    hidePseudoStyle.textContent = '.wf-node::before, .wf-node::after { display: none !important; content: none; } * { box-shadow: none !important; }'
+    hidePseudoStyle.textContent = '.wf-node::before, .wf-node::after { display: none !important; content: none; } * { box-shadow: none !important; } textarea { color: inherit; }'
     wrapper.appendChild(hidePseudoStyle)
 
     wrapper.appendChild(clone)
@@ -405,7 +469,6 @@ export const createNodeScreenshotPool = () => {
               capturedAt: Date.now(),
             }
             cache.set(task.nodeId, entry)
-            prune()
             task.resolve(entry)
           } catch (err) {
             console.warn('[ScreenshotPool] capture failed for node:', task.nodeId, err)
@@ -472,6 +535,20 @@ export const createNodeScreenshotPool = () => {
     })
   }
 
+  const prefillCache = (nodeId: string, version: string, dataUrl: string, width: number = 0, height: number = 0, padding: number = SCREENSHOT_PADDING) => {
+    const existing = cache.get(nodeId)
+    if (existing && existing.version === version) return
+    cache.set(nodeId, {
+      nodeId,
+      version,
+      dataUrl,
+      width,
+      height,
+      padding,
+      capturedAt: Date.now(),
+    })
+  }
+
   const cleanup = () => {
     clearAllSlots()
     cleanupSlots()
@@ -485,6 +562,8 @@ export const createNodeScreenshotPool = () => {
     getCachedScreenshot: getCached,
     hasCachedScreenshot: hasCached,
     invalidateScreenshot: invalidate,
+    pruneToValidNodes,
+    prefillCache,
     queueScreenshot,
     awaitQueueDrained,
     getStats: () => ({ cacheSize: cache.size, queueLength: queue.length, activeCaptures: active, maxConcurrency: maxConcurrency.value }),

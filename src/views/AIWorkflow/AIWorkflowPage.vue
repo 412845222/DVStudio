@@ -81,7 +81,8 @@
           >
             <img
               class="aiwf-node-screenshot-img"
-              :src="nodeScreenshotMap.get(node.id)"
+              :src="nodeScreenshotMap.get(node.id)?.dataUrl"
+              :style="screenshotImageStyle(nodeScreenshotMap.get(node.id))"
               :alt="node.title || node.type"
               draggable="false"
             />
@@ -195,6 +196,7 @@
             @export-unreal-scene="onNodeExportUnrealScene(node.id)"
             @generate-meshy="onNodeGenerateMeshy(node.id)"
             @media-ready="onNodeMediaReady(node.id)"
+            @invalidate-screenshot="onNodeInvalidateScreenshot(node.id)"
             @move-merge-item="onTextMergeItemMove(node.id, $event)"
             @preview-contextmenu="onNodePreviewContextMenu(node.id, $event)"
             @preview-request="onNodeImagePreviewRequestInline(node.id, $event)"
@@ -762,7 +764,8 @@ import {
 } from './blueprint-core/canvas-interaction/useAIWorkflowCanvasInteraction'
 import { useAIWorkflowLinking } from './blueprint-core/linking/useAIWorkflowLinking'
 import { useAIWorkflowNodePresentation } from './node-business/presentation/useAIWorkflowNodePresentation'
-import { createNodeScreenshotPool, SCREENSHOT_PADDING } from './node-screenshot'
+import { createNodeScreenshotPool, SCREENSHOT_PADDING, type ScreenshotCacheEntry } from './node-screenshot'
+import { loadAllScreenshotsForBlueprint, saveScreenshotToDisk, cleanupOldScreenshots } from './node-screenshot/nodeScreenshotPersistentCache'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
 import { useAIWorkflowVideoScreenshot } from './node-business/presentation/useAIWorkflowVideoScreenshot'
@@ -1024,6 +1027,16 @@ const screenshotNodeStyle = (
   } as Record<string, string>
 }
 
+const screenshotImageStyle = (entry: ScreenshotCacheEntry | undefined) => {
+  const padding = entry?.padding ?? SCREENSHOT_PADDING
+  return {
+    width: `calc(100% + ${padding * 2}px)`,
+    height: `calc(100% + ${padding * 2}px)`,
+    marginLeft: `${-padding}px`,
+    marginTop: `${-padding}px`,
+  } as Record<string, string>
+}
+
 const _screenshotParticleCache = new Map<string, ReturnType<typeof useSquareParticles>>()
 const getScreenshotParticles = (nodeId: string) => {
   let cached = _screenshotParticleCache.get(nodeId)
@@ -1124,7 +1137,7 @@ const safeVisibleRenderNodes = computed(() => {
 })
 
 const nodeHostRefs = new Map<string, HTMLElement>()
-const nodeScreenshotMap = shallowRef(new Map<string, string>())
+const nodeScreenshotMap = shallowRef(new Map<string, ScreenshotCacheEntry>())
 const screenshotPool = createNodeScreenshotPool()
 
 const fullRenderNodeIds = computed<Set<string>>(() => {
@@ -1192,20 +1205,37 @@ const findNodeElementForScreenshot = (hostEl: HTMLElement): HTMLElement | null =
   return hostEl.querySelector('.wf-node') as HTMLElement | null
 }
 
-const scheduleNodeScreenshot = async (node: WorkflowNode) => {
+const scheduleNodeScreenshot = async (node: WorkflowNode, retryCount: number = 0) => {
   const nodeId = String(node?.id ?? '').trim()
   if (!nodeId) return
   if (selectedNodeIds.value.includes(nodeId)) return
   if (fullRenderNodeIds.value.has(nodeId)) return
 
   const hostEl = nodeHostRefs.get(nodeId)
-  if (!hostEl) return
+  if (!hostEl) {
+    if (retryCount < 3) {
+      setTimeout(() => scheduleNodeScreenshot(node, retryCount + 1), 100)
+    }
+    return
+  }
 
   const version = getNodeScreenshotVersion(node)
   if (screenshotPool.hasCachedScreenshot(nodeId, version)) return
 
-  const nodeEl = findNodeElementForScreenshot(hostEl)
-  if (!nodeEl) return
+  let nodeEl = findNodeElementForScreenshot(hostEl)
+  if (!nodeEl) {
+    if (retryCount < 5) {
+      await nextTick()
+      await waitForFrames(2)
+      nodeEl = findNodeElementForScreenshot(hostEl)
+      if (!nodeEl) {
+        setTimeout(() => scheduleNodeScreenshot(node, retryCount + 1), 150)
+        return
+      }
+    } else {
+      return
+    }
+  }
 
   try {
     const width = Math.max(80, Math.round(node.width) || 240)
@@ -1220,8 +1250,10 @@ const scheduleNodeScreenshot = async (node: WorkflowNode) => {
     )
     if (entry?.dataUrl) {
       const newMap = new Map(nodeScreenshotMap.value)
-      newMap.set(nodeId, entry.dataUrl)
+      newMap.set(nodeId, entry)
       nodeScreenshotMap.value = newMap
+      const cacheCtx = getScreenshotCacheContext()
+      void saveScreenshotToDisk(cacheCtx.projectId, cacheCtx.blueprintId, nodeId, version, entry.dataUrl, entry.width, entry.height)
     }
   } catch (err) {
     console.warn('[Screenshot] failed for node:', nodeId, err)
@@ -1263,17 +1295,29 @@ const scheduleVisibleNodeScreenshots = () => {
   }, 400)
 }
 
+const getScreenshotCacheContext = () => {
+  const pid = String(currentProjectId.value || 'default')
+  const bpId = String(route.path || 'main')
+  return { projectId: pid, blueprintId: bpId }
+}
+
 const warmupAllNodeScreenshots = async () => {
   const allNodes = nodes.value.filter(n => {
     const nodeId = String(n?.id ?? '').trim()
-    return nodeId && !selectedNodeIds.value.includes(nodeId)
+    return nodeId
   })
   if (allNodes.length === 0) return
+
+  const validNodeIds = new Set(allNodes.map(n => String(n.id)))
+  screenshotPool.pruneToValidNodes(validNodeIds)
 
   isWarmingUpScreenshots.value = true
   screenshotWarmupOpen.value = true
   screenshotWarmupProgress.value = 0
   screenshotWarmupDetail.value = '准备中...'
+
+  const cacheCtx = getScreenshotCacheContext()
+  void cleanupOldScreenshots(7 * 24 * 60 * 60 * 1000)
 
   await nextTick()
   await waitForFrames(3)
@@ -1287,26 +1331,52 @@ const warmupAllNodeScreenshots = async () => {
   await nextTick()
   await waitForFrames(5)
 
-  const newMap = new Map(nodeScreenshotMap.value)
+  const newMap = new Map<string, ScreenshotCacheEntry>()
+
+  let diskLoadedCount = 0
+  try {
+    const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
+    for (const node of allNodes) {
+      const nodeId = node.id
+      if (selectedNodeIds.value.includes(nodeId)) continue
+      const version = getNodeScreenshotVersion(node)
+      const diskEntry = diskCache.get(nodeId)
+      if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
+        const screenshotEntry: ScreenshotCacheEntry = {
+          nodeId,
+          version,
+          dataUrl: diskEntry.dataUrl,
+          width: diskEntry.width,
+          height: diskEntry.height,
+          padding: SCREENSHOT_PADDING,
+          capturedAt: Date.now(),
+        }
+        newMap.set(nodeId, screenshotEntry)
+        screenshotPool.prefillCache(nodeId, version, diskEntry.dataUrl, diskEntry.width, diskEntry.height, SCREENSHOT_PADDING)
+        diskLoadedCount++
+      }
+    }
+  } catch (err) {
+    console.warn('[Screenshot Warmup] load from disk failed:', err)
+  }
 
   const nodesNeedingCapture: WorkflowNode[] = []
   for (const node of allNodes) {
     const nodeId = node.id
+    if (selectedNodeIds.value.includes(nodeId)) continue
+    if (fullRenderNodeIds.value.has(nodeId)) continue
     const version = getNodeScreenshotVersion(node)
     if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
       const cached = screenshotPool.getCachedScreenshot(nodeId, version)
-      if (cached?.dataUrl) newMap.set(nodeId, cached.dataUrl)
+      if (cached) newMap.set(nodeId, cached)
       continue
     }
-    const hostEl = nodeHostRefs.get(nodeId)
-    if (!hostEl) continue
-    const nodeEl = findNodeElementForScreenshot(hostEl)
-    if (!nodeEl) continue
+    if (newMap.has(nodeId)) continue
     nodesNeedingCapture.push(node)
   }
 
   const total = nodesNeedingCapture.length
-  const cachedCount = allNodes.length - total
+  const cachedCount = allNodes.length - total - selectedNodeIds.value.length
   if (total === 0) {
     nodeScreenshotMap.value = newMap
     viewport.value.zoom = originalZoom
@@ -1319,7 +1389,7 @@ const warmupAllNodeScreenshots = async () => {
     return
   }
 
-  screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，${cachedCount} 个已缓存，正在截图 0/${total}...`
+  screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，${cachedCount + diskLoadedCount} 个已缓存（磁盘${diskLoadedCount}），正在截图 0/${total}...`
 
   let completed = 0
   const promises: Promise<void>[] = []
@@ -1327,16 +1397,30 @@ const warmupAllNodeScreenshots = async () => {
   for (const node of nodesNeedingCapture) {
     const nodeId = node.id
     const promise = (async () => {
+      let entry: ScreenshotCacheEntry | null = null
       try {
         const version = getNodeScreenshotVersion(node)
-        const hostEl = nodeHostRefs.get(nodeId)
-        const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
+        let retries = 0
+        let nodeEl: HTMLElement | null = null
+        let hostEl = nodeHostRefs.get(nodeId)
+        while (retries < 5 && !nodeEl) {
+          if (hostEl) {
+            nodeEl = findNodeElementForScreenshot(hostEl)
+          }
+          if (!nodeEl) {
+            await nextTick()
+            await waitForFrames(2)
+            hostEl = nodeHostRefs.get(nodeId)
+            retries++
+          }
+        }
         if (nodeEl) {
           const width = Math.max(80, Math.round(node.width) || 240)
           const height = Math.max(80, Math.round(node.height) || 160)
-          const entry = await screenshotPool.queueScreenshot(nodeId, nodeEl, version, width, height, SCREENSHOT_PADDING)
+          entry = await screenshotPool.queueScreenshot(nodeId, nodeEl, version, width, height, SCREENSHOT_PADDING)
           if (entry?.dataUrl) {
-            newMap.set(nodeId, entry.dataUrl)
+            newMap.set(nodeId, entry)
+            void saveScreenshotToDisk(cacheCtx.projectId, cacheCtx.blueprintId, nodeId, version, entry.dataUrl, entry.width, entry.height)
           }
         }
       } catch (err) {
@@ -1345,7 +1429,7 @@ const warmupAllNodeScreenshots = async () => {
 
       completed++
       screenshotWarmupProgress.value = completed / total
-      screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${completed}/${total}...`
+      screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，正在截图 ${completed}/${total}...`
     })()
     promises.push(promise)
   }
@@ -1357,7 +1441,7 @@ const warmupAllNodeScreenshots = async () => {
   viewport.value.panX = originalPanX
   viewport.value.panY = originalPanY
   isWarmingUpScreenshots.value = false
-  screenshotWarmupDetail.value = `截图完成，共 ${allNodes.length} 个节点`
+  screenshotWarmupDetail.value = `截图完成，共 ${allNodes.length - selectedNodeIds.value.length} 个节点（磁盘缓存${diskLoadedCount}）`
   await waitForFrames(2)
   screenshotWarmupOpen.value = false
   screenshotWarmupDetail.value = ''
@@ -1402,6 +1486,46 @@ watch(
     nextTick(() => {
       scheduleVisibleNodeScreenshots()
     })
+  },
+  { deep: true, flush: 'post' }
+)
+
+const previousNodeSizes = new Map<string, { w: number; h: number }>()
+const nodesNeedingScreenshotRefresh = new Set<string>()
+watch(
+  () => nodes.value.map(n => ({ id: n.id, w: n.width, h: n.height })),
+  (newSizes) => {
+    const currentFullRenderIds = fullRenderNodeIds.value
+    const resizedNodes: WorkflowNode[] = []
+    for (const s of newSizes) {
+      const nodeId = String(s.id ?? '').trim()
+      if (!nodeId) continue
+      const prev = previousNodeSizes.get(nodeId)
+      const w = Math.max(80, Math.round(s.w || 240))
+      const h = Math.max(80, Math.round(s.h || 160))
+      if (prev && (Math.abs(prev.w - w) >= 1 || Math.abs(prev.h - h) >= 1)) {
+        const node = nodes.value.find(n => String(n.id) === nodeId)
+        if (node) {
+          screenshotPool.invalidateScreenshot(nodeId)
+          if (currentFullRenderIds.has(nodeId)) {
+            nodesNeedingScreenshotRefresh.add(nodeId)
+          } else {
+            resizedNodes.push(node)
+          }
+          const newMap = new Map(nodeScreenshotMap.value)
+          newMap.delete(nodeId)
+          nodeScreenshotMap.value = newMap
+        }
+      }
+      previousNodeSizes.set(nodeId, { w, h })
+    }
+    if (resizedNodes.length > 0) {
+      nextTick(() => {
+        for (const node of resizedNodes) {
+          void scheduleNodeScreenshot(node)
+        }
+      })
+    }
   },
   { deep: true, flush: 'post' }
 )
@@ -3623,6 +3747,19 @@ const onNodeMediaReady = (nodeId: string) => {
       const node = store.state.nodesById[nodeId]
       if (node) scheduleNodeScreenshot(node)
     }, 300)
+  })
+}
+
+const onNodeInvalidateScreenshot = (nodeId: string) => {
+  if (selectedNodeIds.value.includes(nodeId)) return
+  if (fullRenderNodeIds.value.has(nodeId)) return
+  screenshotPool.invalidateScreenshot(nodeId)
+  const newMap = new Map(nodeScreenshotMap.value)
+  newMap.delete(nodeId)
+  nodeScreenshotMap.value = newMap
+  nextTick(() => {
+    const node = store.state.nodesById[nodeId]
+    if (node) void scheduleNodeScreenshot(node)
   })
 }
 
@@ -6341,6 +6478,61 @@ const isLinking = linkInteraction.isLinking
 const linkingFromNodeId = linkInteraction.linkingFromNodeId
 const linkingHoverNodeId = linkInteraction.linkingHoverNodeId
 
+watch(
+  () => Array.from(fullRenderNodeIds.value),
+  (newIds, oldIds) => {
+    const newSet = new Set(newIds)
+    const oldSet = new Set(oldIds || [])
+    const nodesExitingFullRender: string[] = []
+    for (const nodeId of oldSet) {
+      if (!newSet.has(nodeId)) {
+        nodesExitingFullRender.push(nodeId)
+      }
+    }
+    if (nodesExitingFullRender.length > 0) {
+      nextTick(() => {
+        setTimeout(() => {
+          for (const nodeId of nodesExitingFullRender) {
+            const node = nodes.value.find(n => String(n.id) === nodeId)
+            if (node) {
+              screenshotPool.invalidateScreenshot(nodeId)
+              nodesNeedingScreenshotRefresh.delete(nodeId)
+              void scheduleNodeScreenshot(node)
+            }
+          }
+        }, 50)
+      })
+    }
+    nextTick(() => {
+      scheduleVisibleNodeScreenshots()
+    })
+  },
+  { deep: true, flush: 'post' }
+)
+
+watch(
+  () => nodes.value.map(n => String(n.id)),
+  (newNodeIds) => {
+    const validNodeIds = new Set(newNodeIds.filter(Boolean))
+    const screenshotMap = nodeScreenshotMap.value
+    let hasChanges = false
+    const newMap = new Map(screenshotMap)
+    for (const cachedId of screenshotMap.keys()) {
+      if (!validNodeIds.has(cachedId)) {
+        newMap.delete(cachedId)
+        screenshotPool.invalidateScreenshot(cachedId)
+        nodesNeedingScreenshotRefresh.delete(cachedId)
+        previousNodeSizes.delete(cachedId)
+        hasChanges = true
+      }
+    }
+    if (hasChanges) {
+      nodeScreenshotMap.value = newMap
+    }
+  },
+  { deep: true, flush: 'post' }
+)
+
 const onCanvasPanningStart = () => {
   linkInteraction.setPanning(true)
 }
@@ -6668,8 +6860,6 @@ async function runProjectEnterSequence(
 }
 
 .aiwf-node-screenshot-img {
-  width: 100%;
-  height: 100%;
   display: block;
   object-fit: fill;
   pointer-events: none;

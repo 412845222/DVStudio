@@ -237,6 +237,7 @@ const emit = defineEmits<{
     payload: { dataUrl: string; width: number; height: number; time: number }
   ): void;
   (e: "media-ready"): void;
+  (e: "invalidate-screenshot"): void;
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -271,10 +272,21 @@ const effectiveResourceUrl = computed(() =>
   String(resourceFallbackUrl.value || props.resourceUrl || "").trim()
 );
 
+let invalidateScreenshotTimer: number | null = null;
+const scheduleInvalidateScreenshot = () => {
+  if (invalidateScreenshotTimer != null) {
+    clearTimeout(invalidateScreenshotTimer);
+  }
+  invalidateScreenshotTimer = window.setTimeout(() => {
+    invalidateScreenshotTimer = null;
+    emit("invalidate-screenshot");
+  }, 150);
+};
+
 const screenshotEnabled = computed(() => Boolean(props.screenshotEnabled));
 const normalizedResourceSourcePath = computed(() => String(props.resourceSourcePath ?? "").trim());
 
-const toFileUrl = () => {
+const toFileUrl = (_path?: string) => {
   return "";
 };
 
@@ -1116,11 +1128,13 @@ onMounted(() => {
       }
       seekTime.value = cur;
       drawTimeline();
+      if (!playing.value) scheduleInvalidateScreenshot();
     });
     videoEl.value.addEventListener("pause", () => {
       playing.value = false;
       stopRaf();
       drawTimeline();
+      scheduleInvalidateScreenshot();
     });
     videoEl.value.addEventListener("play", () => {
       playing.value = true;
@@ -1153,6 +1167,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopRaf();
   clearLocalMediaRetry();
+  if (invalidateScreenshotTimer != null) {
+    clearTimeout(invalidateScreenshotTimer);
+    invalidateScreenshotTimer = null;
+  }
   try {
     if (videoEl.value) {
       videoEl.value.removeEventListener("loadeddata", tryEmitMediaReady);
