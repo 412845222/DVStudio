@@ -221,7 +221,7 @@
             </button>
           </div>
         </div>
-        <div class="bp-node-chat-param-row">
+        <div v-if="params.model !== 'meshy'" class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">尺寸</span>
           <div class="bp-node-chat-param-options">
             <button
@@ -237,7 +237,7 @@
             </button>
           </div>
         </div>
-        <div class="bp-node-chat-param-row">
+        <div v-if="params.model !== 'meshy'" class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">宽高比</span>
           <div class="bp-node-chat-param-options">
             <button
@@ -253,7 +253,40 @@
             </button>
           </div>
         </div>
-        <div class="bp-node-chat-param-row">
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">宽高比</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in currentMeshyAspectRatioOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.meshyAspectRatio === opt.value }"
+              :disabled="disabled || params.meshyGenerateMultiView"
+              @click="updateParam('meshyAspectRatio', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+            <span v-if="params.meshyGenerateMultiView" class="bp-node-chat-param-hint">多视图模式下固定为1:1</span>
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">输出数量</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="n in meshyImageOutputCountOptions"
+              :key="n"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.meshyOutputImageCount === n }"
+              :disabled="disabled"
+              @click="updateParam('meshyOutputImageCount', n)"
+            >
+              {{ n }}x
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model !== 'meshy'" class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">生成数量</span>
           <div class="bp-node-chat-param-options">
             <button
@@ -267,6 +300,30 @@
             >
               {{ n }}x
             </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">负向提示</span>
+          <div class="bp-node-chat-param-input">
+            <input
+              type="text"
+              :value="params.meshyNegativePrompt"
+              :disabled="disabled"
+              placeholder="输入不想要的内容..."
+              @input="updateParam('meshyNegativePrompt', ($event.target as HTMLInputElement).value)"
+            />
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">随机种子</span>
+          <div class="bp-node-chat-param-input">
+            <input
+              type="number"
+              :value="params.meshySeed"
+              :disabled="disabled"
+              placeholder="-1 随机"
+              @input="updateParam('meshySeed', parseInt(($event.target as HTMLInputElement).value) || -1)"
+            />
           </div>
         </div>
       </template>
@@ -315,6 +372,22 @@
               :class="{ 'is-active': params.mode === opt.value }"
               :disabled="disabled"
               @click="updateParam('mode', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">分辨率</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in videoResolutionOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.resolution === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('resolution', opt.value)"
             >
               {{ opt.label }}
             </button>
@@ -372,6 +445,24 @@
                 @change="updateParam('watermark', ($event.target as HTMLInputElement).checked)"
               />
               <span>添加水印</span>
+            </label>
+            <label class="bp-node-chat-param-toggle">
+              <input
+                type="checkbox"
+                :checked="params.cameraFixed"
+                :disabled="disabled"
+                @change="updateParam('cameraFixed', ($event.target as HTMLInputElement).checked)"
+              />
+              <span>固定镜头</span>
+            </label>
+            <label class="bp-node-chat-param-toggle">
+              <input
+                type="checkbox"
+                :checked="params.returnLastFrame"
+                :disabled="disabled"
+                @change="updateParam('returnLastFrame', ($event.target as HTMLInputElement).checked)"
+              />
+              <span>返回尾帧</span>
             </label>
             <div class="bp-node-chat-param-seed">
               <label>种子</label>
@@ -564,7 +655,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 import {
   NODE_CHAT_ASPECT_RATIO_OPTIONS,
@@ -573,6 +664,7 @@ import {
   NODE_CHAT_VIDEO_MODE_OPTIONS,
   NODE_CHAT_VIDEO_DURATION_OPTIONS,
   NODE_CHAT_VIDEO_RATIO_OPTIONS,
+  NODE_CHAT_VIDEO_RESOLUTION_OPTIONS,
   NODE_CHAT_TEXT_SPEED_OPTIONS,
   NODE_CHAT_TEXT_MODEL_OPTIONS,
   NODE_CHAT_TEXT_THINKING_OPTIONS,
@@ -588,12 +680,14 @@ import {
   NODE_CHAT_MESHY_MODE_OPTIONS,
   NODE_CHAT_MESHY_AI_MODEL_OPTIONS,
   NODE_CHAT_MESHY_IMAGE_OPTIONS,
+  NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS,
   NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS,
   NODE_CHAT_MESHY_TOPOLOGY_OPTIONS,
   NODE_CHAT_MESHY_SYMMETRY_MODE_OPTIONS,
   NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS,
   NODE_CHAT_MESHY_POSE_MODE_OPTIONS,
   NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
+  getMeshyImageAspectRatioOptions,
 } from './nodeChatConfig'
 
 const props = defineProps<{
@@ -632,6 +726,7 @@ const quantityOptions = NODE_CHAT_QUANTITY_OPTIONS
 const videoModeOptions = NODE_CHAT_VIDEO_MODE_OPTIONS
 const videoDurationOptions = NODE_CHAT_VIDEO_DURATION_OPTIONS
 const videoRatioOptions = NODE_CHAT_VIDEO_RATIO_OPTIONS
+const videoResolutionOptions = NODE_CHAT_VIDEO_RESOLUTION_OPTIONS
 const meshyModeOptions = NODE_CHAT_MESHY_MODE_OPTIONS
 const meshyAiModelOptions = NODE_CHAT_MESHY_AI_MODEL_OPTIONS
 const meshyModelTypeOptions = NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS
@@ -643,7 +738,12 @@ const meshyOutputFormatOptions = NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS
 const seedreamModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
 const nanobananaModelVersionOptions = NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS
 const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
-const seedanceModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
+const meshyImageOutputCountOptions = NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS
+const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
+
+const currentMeshyAspectRatioOptions = computed(() => {
+  return getMeshyImageAspectRatioOptions(props.params.meshyImageAiModel || 'nano-banana')
+})
 </script>
 
 <style scoped>
@@ -789,5 +889,39 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
   outline: none;
   border-color: var(--wf-primary, #1f9d84);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent), 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+}
+
+.bp-node-chat-param-input {
+  display: flex;
+  align-items: center;
+}
+
+.bp-node-chat-param-input input {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 92%, transparent);
+  color: var(--wf-text, #edf2f4);
+  font-family: inherit;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.bp-node-chat-param-input input:focus {
+  outline: none;
+  border-color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent), 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+}
+
+.bp-node-chat-param-input input::placeholder {
+  color: color-mix(in srgb, var(--wf-text, #edf2f4) 40%, transparent);
+}
+
+.bp-node-chat-param-hint {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--wf-text, #edf2f4) 50%, transparent);
+  margin-left: 8px;
+  font-style: italic;
 }
 </style>
