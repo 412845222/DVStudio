@@ -213,14 +213,14 @@ const settings = computed(() => props.sceneDecomposeSettings ?? null);
 const previewListRef = ref<HTMLDivElement | null>(null);
 const status = computed(() => String(settings.value?.status ?? "idle"));
 const running = computed(() => status.value === "running");
-const outputs = computed(
+const sceneOutputs = computed(
   () =>
     (Array.isArray(settings.value?.outputs)
       ? settings.value?.outputs
       : []) as WorkflowSceneDecomposeOutput[]
 );
-const outputCount = computed(() => outputs.value.length);
-const previewItems = computed(() => outputs.value);
+const outputCount = computed(() => sceneOutputs.value.length);
+const previewItems = computed(() => sceneOutputs.value);
 const linkedImageCount = computed(() =>
   Array.isArray(props.linkedImageUrls)
     ? props.linkedImageUrls.filter((item) => !!String(item ?? "").trim()).length
@@ -266,7 +266,7 @@ const croppedCount = computed(() =>
     0,
     Number(
       settings.value?.croppedCount ??
-        outputs.value.filter((item) => item.cropMode !== "fallback").length
+        sceneOutputs.value.filter((item) => item.cropMode !== "fallback").length
     )
   )
 );
@@ -275,7 +275,7 @@ const fallbackCount = computed(() =>
     0,
     Number(
       settings.value?.fallbackCount ??
-        outputs.value.filter((item) => item.cropMode === "fallback").length
+        sceneOutputs.value.filter((item) => item.cropMode === "fallback").length
     )
   )
 );
@@ -303,9 +303,11 @@ const onPreviewListWheel = (event: WheelEvent) => {
 
 <style scoped>
 .wf-scene-decompose {
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
   min-height: 0;
 }
 
@@ -374,9 +376,9 @@ const onPreviewListWheel = (event: WheelEvent) => {
 .wf-scene-decompose-output-shell,
 .wf-scene-decompose-preview-item,
 .wf-scene-decompose-footer {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--vscode-border);
   border-radius: 0;
-  background: rgba(10, 12, 16, 0.34);
+  background: var(--dweb-defualt);
 }
 
 .wf-scene-decompose-card {
@@ -385,7 +387,7 @@ const onPreviewListWheel = (event: WheelEvent) => {
 }
 
 .wf-scene-decompose-card.accent {
-  background: linear-gradient(180deg, rgba(255, 165, 0, 0.14), rgba(255, 255, 255, 0.04));
+  background: rgba(255, 165, 0, 0.14);
 }
 
 .wf-scene-decompose-card-title,

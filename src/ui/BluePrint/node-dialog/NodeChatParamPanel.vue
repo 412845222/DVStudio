@@ -150,6 +150,77 @@
             </button>
           </div>
         </div>
+        <div v-if="params.model === 'nanobanana'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">型号</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in nanobananaModelVersionOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.nanobananaModelVersion === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('nanobananaModelVersion', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">型号</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in meshyImageAiModelOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.meshyImageAiModel === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('meshyImageAiModel', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">姿态模式</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              v-for="opt in meshyPoseModeOptions"
+              :key="opt.value"
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.meshyPoseMode === opt.value }"
+              :disabled="disabled"
+              @click="updateParam('meshyPoseMode', opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
+          <span class="bp-node-chat-param-label">多视图</span>
+          <div class="bp-node-chat-param-options">
+            <button
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': !params.meshyGenerateMultiView }"
+              :disabled="disabled"
+              @click="updateParam('meshyGenerateMultiView', false)"
+            >
+              关闭
+            </button>
+            <button
+              type="button"
+              class="bp-node-chat-param-btn"
+              :class="{ 'is-active': params.meshyGenerateMultiView === true }"
+              :disabled="disabled"
+              @click="updateParam('meshyGenerateMultiView', true)"
+            >
+              开启
+            </button>
+          </div>
+        </div>
         <div class="bp-node-chat-param-row">
           <span class="bp-node-chat-param-label">尺寸</span>
           <div class="bp-node-chat-param-options">
@@ -318,7 +389,7 @@
 
       <template v-else-if="nodeType === 'model3d'">
         <div class="bp-node-chat-param-row">
-          <span class="bp-node-chat-param-label">3D引擎</span>
+          <span class="bp-node-chat-param-label">模型接口</span>
           <div class="bp-node-chat-param-options">
             <button
               v-for="opt in model3dProviderOptions"
@@ -327,183 +398,13 @@
               class="bp-node-chat-param-btn"
               :class="{ 'is-active': params.provider === opt.value }"
               :disabled="disabled"
-              @click="updateProvider(opt.value)"
+              @click="updateParam('provider', opt.value)"
             >
               {{ opt.label }}
             </button>
           </div>
         </div>
-
-        <template v-if="params.provider === 'tripo3d'">
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">Tripo模式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in tripoModeOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.tripoMode === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('tripoMode', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">输出格式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in tripoOutputFormatOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.tripoOutputFormat === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('tripoOutputFormat', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">贴图质量</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in tripoTextureQualityOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.tripoTextureQuality === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('tripoTextureQuality', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="params.provider === 'hunyuan3d'">
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">Hunyuan模式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in hunyuanModeOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.hunyuanMode === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('hunyuanMode', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">精度</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in hunyuanFaceLevelOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.hunyuanFaceLevel === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('hunyuanFaceLevel', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">面类型</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in hunyuanPolygonTypeOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.hunyuanPolygonType === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('hunyuanPolygonType', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">输出格式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in hunyuanOutputFormatOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.hunyuanOutputFormat === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('hunyuanOutputFormat', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="params.provider === 'rodin3d'">
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">质量等级</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in rodinTierOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.rodinTier === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('rodinTier', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">质量</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in rodinQualityOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.rodinQuality === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('rodinQuality', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">输出格式</span>
-            <div class="bp-node-chat-param-options">
-              <button
-                v-for="opt in rodinOutputFormatOptions"
-                :key="opt.value"
-                type="button"
-                class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.rodinOutputFormat === opt.value }"
-                :disabled="disabled"
-                @click="updateParam('rodinOutputFormat', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="params.provider === 'meshy'">
+        <template v-if="params.provider === 'meshy'">
           <div class="bp-node-chat-param-row">
             <span class="bp-node-chat-param-label">生成模式</span>
             <div class="bp-node-chat-param-options">
@@ -521,16 +422,96 @@
             </div>
           </div>
           <div class="bp-node-chat-param-row">
-            <span class="bp-node-chat-param-label">阶段</span>
+            <span class="bp-node-chat-param-label">AI模型</span>
             <div class="bp-node-chat-param-options">
               <button
-                v-for="opt in meshyStageOptions"
+                v-for="opt in meshyAiModelOptions"
                 :key="opt.value"
                 type="button"
                 class="bp-node-chat-param-btn"
-                :class="{ 'is-active': params.meshyStage === opt.value }"
+                :class="{ 'is-active': params.meshyAiModel === opt.value }"
                 :disabled="disabled"
-                @click="updateParam('meshyStage', opt.value)"
+                @click="updateParam('meshyAiModel', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">模型类型</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyModelTypeOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyModelType === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyModelType', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">拓扑结构</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyTopologyOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyTopology === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyTopology', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">对称模式</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshySymmetryModeOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshySymmetryMode === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshySymmetryMode', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">原点位置</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyOriginAtOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyOriginAt === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyOriginAt', opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">姿态模式</span>
+            <div class="bp-node-chat-param-options">
+              <button
+                v-for="opt in meshyPoseModeOptions"
+                :key="opt.value"
+                type="button"
+                class="bp-node-chat-param-btn"
+                :class="{ 'is-active': params.meshyPoseMode === opt.value }"
+                :disabled="disabled"
+                @click="updateParam('meshyPoseMode', opt.value)"
               >
                 {{ opt.label }}
               </button>
@@ -552,6 +533,30 @@
               </button>
             </div>
           </div>
+          <div class="bp-node-chat-param-row">
+            <span class="bp-node-chat-param-label">高级设置</span>
+            <div class="bp-node-chat-param-advanced">
+              <label class="bp-node-chat-param-toggle">
+                <input
+                  type="checkbox"
+                  :checked="params.meshyMultiView"
+                  :disabled="disabled"
+                  @change="updateParam('meshyMultiView', ($event.target as HTMLInputElement).checked)"
+                />
+                <span>多视图</span>
+              </label>
+              <div class="bp-node-chat-param-seed">
+                <label>种子</label>
+                <input
+                  type="number"
+                  :value="params.meshySeed"
+                  :disabled="disabled"
+                  placeholder="-1 随机"
+                  @input="updateParam('meshySeed', parseInt(($event.target as HTMLInputElement).value) || -1)"
+                />
+              </div>
+            </div>
+          </div>
         </template>
       </template>
     </div>
@@ -568,17 +573,6 @@ import {
   NODE_CHAT_VIDEO_MODE_OPTIONS,
   NODE_CHAT_VIDEO_DURATION_OPTIONS,
   NODE_CHAT_VIDEO_RATIO_OPTIONS,
-  NODE_CHAT_MODEL3D_PROVIDER_OPTIONS,
-  NODE_CHAT_TRIPO_MODE_OPTIONS,
-  NODE_CHAT_TRIPO_OUTPUT_FORMAT_OPTIONS,
-  NODE_CHAT_TRIPO_TEXTURE_QUALITY_OPTIONS,
-  NODE_CHAT_HUNYUAN_MODE_OPTIONS,
-  NODE_CHAT_HUNYUAN_FACE_LEVEL_OPTIONS,
-  NODE_CHAT_HUNYUAN_POLYGON_TYPE_OPTIONS,
-  NODE_CHAT_HUNYUAN_OUTPUT_FORMAT_OPTIONS,
-  NODE_CHAT_RODIN_TIER_OPTIONS,
-  NODE_CHAT_RODIN_QUALITY_OPTIONS,
-  NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS,
   NODE_CHAT_TEXT_SPEED_OPTIONS,
   NODE_CHAT_TEXT_MODEL_OPTIONS,
   NODE_CHAT_TEXT_THINKING_OPTIONS,
@@ -586,11 +580,19 @@ import {
   NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS,
   NODE_CHAT_IMAGE_MODEL_OPTIONS,
   NODE_CHAT_VIDEO_MODEL_OPTIONS,
+  NODE_CHAT_MODEL3D_PROVIDER_OPTIONS,
   NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS,
+  NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS,
   NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS,
   NODE_CHAT_SEED_MODEL_VERSION_OPTIONS,
   NODE_CHAT_MESHY_MODE_OPTIONS,
-  NODE_CHAT_MESHY_STAGE_OPTIONS,
+  NODE_CHAT_MESHY_AI_MODEL_OPTIONS,
+  NODE_CHAT_MESHY_IMAGE_OPTIONS,
+  NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS,
+  NODE_CHAT_MESHY_TOPOLOGY_OPTIONS,
+  NODE_CHAT_MESHY_SYMMETRY_MODE_OPTIONS,
+  NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS,
+  NODE_CHAT_MESHY_POSE_MODE_OPTIONS,
   NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
 } from './nodeChatConfig'
 
@@ -615,11 +617,6 @@ const updateParam = (key: string, value: any) => {
   emit('update:params', next)
 }
 
-const updateProvider = (provider: string) => {
-  const next = { ...props.params, provider }
-  emit('update:params', next)
-}
-
 const textSpeedOptions = NODE_CHAT_TEXT_SPEED_OPTIONS
 const textModelOptions = NODE_CHAT_TEXT_MODEL_OPTIONS
 const textThinkingOptions = NODE_CHAT_TEXT_THINKING_OPTIONS
@@ -628,33 +625,30 @@ const textMaxTokensOptions = NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS
 const seedModelVersionOptions = NODE_CHAT_SEED_MODEL_VERSION_OPTIONS
 const imageModelOptions = NODE_CHAT_IMAGE_MODEL_OPTIONS
 const videoModelOptions = NODE_CHAT_VIDEO_MODEL_OPTIONS
+const model3dProviderOptions = NODE_CHAT_MODEL3D_PROVIDER_OPTIONS
 const resolutionOptions = NODE_CHAT_RESOLUTION_OPTIONS
 const aspectRatioOptions = NODE_CHAT_ASPECT_RATIO_OPTIONS
 const quantityOptions = NODE_CHAT_QUANTITY_OPTIONS
 const videoModeOptions = NODE_CHAT_VIDEO_MODE_OPTIONS
 const videoDurationOptions = NODE_CHAT_VIDEO_DURATION_OPTIONS
 const videoRatioOptions = NODE_CHAT_VIDEO_RATIO_OPTIONS
-const model3dProviderOptions = NODE_CHAT_MODEL3D_PROVIDER_OPTIONS
-const tripoModeOptions = NODE_CHAT_TRIPO_MODE_OPTIONS
-const tripoOutputFormatOptions = NODE_CHAT_TRIPO_OUTPUT_FORMAT_OPTIONS
-const tripoTextureQualityOptions = NODE_CHAT_TRIPO_TEXTURE_QUALITY_OPTIONS
-const hunyuanModeOptions = NODE_CHAT_HUNYUAN_MODE_OPTIONS
-const hunyuanFaceLevelOptions = NODE_CHAT_HUNYUAN_FACE_LEVEL_OPTIONS
-const hunyuanPolygonTypeOptions = NODE_CHAT_HUNYUAN_POLYGON_TYPE_OPTIONS
-const hunyuanOutputFormatOptions = NODE_CHAT_HUNYUAN_OUTPUT_FORMAT_OPTIONS
-const rodinTierOptions = NODE_CHAT_RODIN_TIER_OPTIONS
-const rodinQualityOptions = NODE_CHAT_RODIN_QUALITY_OPTIONS
-const rodinOutputFormatOptions = NODE_CHAT_RODIN_OUTPUT_FORMAT_OPTIONS
 const meshyModeOptions = NODE_CHAT_MESHY_MODE_OPTIONS
-const meshyStageOptions = NODE_CHAT_MESHY_STAGE_OPTIONS
+const meshyAiModelOptions = NODE_CHAT_MESHY_AI_MODEL_OPTIONS
+const meshyModelTypeOptions = NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS
+const meshyTopologyOptions = NODE_CHAT_MESHY_TOPOLOGY_OPTIONS
+const meshySymmetryModeOptions = NODE_CHAT_MESHY_SYMMETRY_MODE_OPTIONS
+const meshyOriginAtOptions = NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS
+const meshyPoseModeOptions = NODE_CHAT_MESHY_POSE_MODE_OPTIONS
 const meshyOutputFormatOptions = NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS
 const seedreamModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
-const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
+const nanobananaModelVersionOptions = NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS
+const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
+const seedanceModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
 </script>
 
 <style scoped>
 .bp-node-chat-param-panel {
-  border-top: 1px solid color-mix(in srgb, var(--wf-border) 50%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
   padding: 4px 0;
 }
 
@@ -665,17 +659,19 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
   padding: 6px 14px;
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s ease;
+  transition: background 0.22s ease;
 }
 
 .bp-node-chat-param-header:hover {
-  background: var(--wf-control-bg-hover);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
 }
 
 .bp-node-chat-param-title {
   font-size: 12px;
-  font-weight: 500;
-  color: var(--wf-text);
+  font-weight: 600;
+  color: var(--wf-primary, #1f9d84);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+  letter-spacing: 0.5px;
 }
 
 .bp-node-chat-param-toggle {
@@ -684,8 +680,8 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 }
 
 .bp-node-chat-chevron {
-  transition: transform 0.2s ease;
-  color: var(--wf-text-muted);
+  transition: transform 0.22s ease;
+  color: color-mix(in srgb, var(--wf-primary, #1f9d84) 70%, transparent);
 }
 
 .bp-node-chat-chevron.is-collapsed {
@@ -703,10 +699,11 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 .bp-node-chat-param-label {
   display: block;
   font-size: 11px;
-  color: var(--wf-text-muted);
+  color: color-mix(in srgb, var(--wf-primary, #1f9d84) 70%, transparent);
   margin-bottom: 6px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  font-weight: 500;
 }
 
 .bp-node-chat-param-options {
@@ -718,24 +715,27 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 .bp-node-chat-param-btn {
   padding: 5px 10px;
   font-size: 12px;
-  border: 1px solid var(--wf-border);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+  border-radius: 2px;
   background: transparent;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.22s ease;
   font-family: inherit;
 }
 
 .bp-node-chat-param-btn:hover:not(:disabled) {
-  border-color: var(--wf-primary);
-  color: var(--wf-primary);
+  border-color: var(--wf-primary, #1f9d84);
+  color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
 }
 
 .bp-node-chat-param-btn.is-active {
-  background: var(--wf-primary-soft);
-  border-color: var(--wf-primary);
-  color: var(--wf-primary);
+  background: color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 65%, transparent);
+  color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
 }
 
 .bp-node-chat-param-btn:disabled {
@@ -755,14 +755,14 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
   cursor: pointer;
 }
 
 .bp-node-chat-param-toggle input[type='checkbox'] {
   width: 14px;
   height: 14px;
-  accent-color: var(--wf-primary);
+  accent-color: var(--wf-primary, #1f9d84);
 }
 
 .bp-node-chat-param-seed {
@@ -770,22 +770,24 @@ const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--wf-text);
+  color: var(--wf-text, #edf2f4);
 }
 
 .bp-node-chat-param-seed input {
   width: 80px;
   padding: 4px 8px;
   font-size: 12px;
-  border: 1px solid var(--wf-border);
-  border-radius: 0;
-  background: var(--wf-control-bg);
-  color: var(--wf-text);
+  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 92%, transparent);
+  color: var(--wf-text, #edf2f4);
   font-family: monospace;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
 }
 
 .bp-node-chat-param-seed input:focus {
   outline: none;
-  border-color: var(--wf-primary);
+  border-color: var(--wf-primary, #1f9d84);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent), 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
 }
 </style>

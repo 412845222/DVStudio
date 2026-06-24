@@ -37,6 +37,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Bundled Python runtime (built during packaging)
+electron/static/runtime/
+!electron/static/runtime/.gitkeep
+
+# Python runtime download cache (for slow network environments)
+python-runtime/
+
+# Electron binary cache for packaging
+.electron-cache/
+
 # Virtual environments
 .venv/
 venv/
@@ -56,6 +66,7 @@ staticfiles/
 .ruff_cache/
 .coverage
 htmlcov/
+coverage/
 coverage.xml
 
 # Secrets (never commit)
@@ -128,4 +139,6 @@ state_*.sqlite
 logs_*.sqlite
 .personality_migration
 config.toml
+AIPlan/
+.trae/
 

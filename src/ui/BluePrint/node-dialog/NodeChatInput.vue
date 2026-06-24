@@ -135,20 +135,30 @@ defineExpose({ focus, blur })
 .bp-node-chat-textarea {
   width: 100%;
   resize: none;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 2px;
   outline: none;
-  background: transparent;
+  background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 88%, transparent);
   color: var(--wf-text, #edf2f4);
   font-size: 14px;
   line-height: 1.6;
-  padding: 12px 14px 28px 14px;
+  padding: 10px 12px 26px 12px;
+  margin: 6px 10px 6px 10px;
+  width: calc(100% - 20px);
   font-family: inherit;
   box-sizing: border-box;
-  transition: height 0.15s ease;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background-color 0.22s ease, height 0.15s ease;
+}
+
+.bp-node-chat-textarea:focus {
+  border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 60%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent), 0 0 12px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+  background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 96%, transparent);
+  outline: none;
 }
 
 .bp-node-chat-textarea::placeholder {
-  color: var(--wf-text-muted, #aeb8bd);
+  color: color-mix(in srgb, var(--wf-text-muted, #aeb8bd) 60%, transparent);
   opacity: 0.7;
 }
 
@@ -159,9 +169,9 @@ defineExpose({ focus, blur })
 
 .bp-node-chat-input-footer {
   position: absolute;
-  bottom: 6px;
-  left: 14px;
-  right: 14px;
+  bottom: 12px;
+  left: 22px;
+  right: 22px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -184,9 +194,10 @@ defineExpose({ focus, blur })
   margin: 0 1px;
   font-size: 10px;
   font-family: monospace;
-  background: var(--wf-surface-muted, rgba(36, 42, 48, 0.9));
-  border: 1px solid var(--wf-border, rgba(0, 0, 0, 0.12));
-  border-radius: 0;
+  background: color-mix(in srgb, var(--wf-surface-muted, rgba(36, 42, 48, 0.9)) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+  border-radius: 2px;
+  color: color-mix(in srgb, var(--wf-primary, #1f9d84) 75%, transparent);
   line-height: 1;
 }
 </style>

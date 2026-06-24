@@ -4,15 +4,28 @@ import https from 'node:https'
 import http from 'node:http'
 import { protocol, net } from 'electron'
 
-// 项目静态资产在 Electron 中通过 dweb://project-assets 协议直接读取本地磁盘，
-// 不再回落到 Django 的 /api/workflow/projects/assets/file。
-// Django 仍负责 upload/import/delete/resolve/repair 等会落盘或远程拉取的操作。
-
 const DWEB_PROJECT_ASSET_HOST = 'project-assets'
+const CACHE_DIR = '.dvcache'
+const CACHE_BIN_DIR = '.dvcache/bin'
 
-// 注册表：projectId (number) -> 项目根目录绝对路径 (string)
-// 允许在同一进程中切换/打开不同的项目，只要前端调用 registerProjectRoots IPC。
 const projectRootById = new Map()
+
+const accessLog = []
+const MAX_LOG_ENTRIES = 1000
+
+function logAccess(entry) {
+  const now = Date.now()
+  accessLog.push({ ...entry, timestamp: now })
+  while (accessLog.length > MAX_LOG_ENTRIES) {
+    accessLog.shift()
+  }
+  const status = entry.status || (entry.resolvedPath ? 'FOUND' : 'NOT_FOUND')
+  console.debug(`[dweb-access] ${status} | projectId=${entry.projectId} | path=${entry.requestedPath || 'N/A'} | resolved=${entry.resolvedPath || 'N/A'} | candidates=${entry.candidateCount || 0}`)
+}
+
+function getRecentAccessLogs(maxEntries = 100) {
+  return accessLog.slice(-maxEntries)
+}
 
 function parseDwebAssetUrl(rawUrl) {
   const text = String(rawUrl || '').trim()
@@ -45,23 +58,84 @@ function parseDwebAssetUrl(rawUrl) {
 
 function safeResolveProjectFile(root, relPath) {
   const rootStr = String(root || '').trim()
-  if (!rootStr) return null
+  if (!rootStr) return { resolved: null, reason: 'empty_root', root: rootStr }
   const rel = String(relPath || '').trim().replace(/\\/g, '/')
-  if (!rel) return null
-  // 拒绝明显的路径穿越或绝对路径
-  if (rel.startsWith('/')) return null
-  if (rel.includes('..')) return null
+  if (!rel) return { resolved: null, reason: 'empty_rel_path', root: rootStr, relPath: rel }
+  if (rel.startsWith('/')) return { resolved: null, reason: 'absolute_path_rejected', root: rootStr, relPath: rel }
+  if (rel.includes('..')) return { resolved: null, reason: 'path_traversal_rejected', root: rootStr, relPath: rel }
   let normalized
   try {
     normalized = path.resolve(rootStr, ...rel.split('/').filter((seg) => seg && seg !== '.'))
-  } catch {
-    return null
+  } catch (err) {
+    return { resolved: null, reason: 'resolve_error', root: rootStr, relPath: rel, error: String(err?.message || err) }
   }
   const resolvedRoot = path.resolve(rootStr)
   if (normalized !== resolvedRoot && !normalized.startsWith(resolvedRoot + path.sep)) {
-    return null
+    return { resolved: null, reason: 'path_outside_project', root: resolvedRoot, relPath: rel, attempted: normalized }
   }
-  return normalized
+  return { resolved: normalized, reason: 'success', root: resolvedRoot, relPath: rel }
+}
+
+function diagnoseFilePath(root, relPath) {
+  const result = []
+  const rootStr = String(root || '').trim()
+  
+  if (!rootStr) {
+    result.push({ check: 'project_root', status: 'FAIL', message: '项目根目录为空' })
+    return result
+  }
+  
+  try {
+    const rootStat = fs.statSync(rootStr)
+    if (!rootStat.isDirectory()) {
+      result.push({ check: 'project_root_is_dir', status: 'FAIL', message: `项目根目录不是文件夹: ${rootStr}` })
+    } else {
+      result.push({ check: 'project_root_is_dir', status: 'OK', message: `项目根目录有效: ${rootStr}` })
+    }
+  } catch (err) {
+    result.push({ check: 'project_root_exists', status: 'FAIL', message: `项目根目录不存在或无法访问: ${rootStr} | ${String(err?.message || err)}` })
+    return result
+  }
+  
+  const rel = String(relPath || '').trim().replace(/\\/g, '/')
+  if (!rel) {
+    result.push({ check: 'relative_path', status: 'FAIL', message: '相对路径为空' })
+    return result
+  }
+  
+  const resolved = safeResolveProjectFile(rootStr, rel)
+  if (!resolved.resolved) {
+    result.push({ check: 'path_resolution', status: 'FAIL', message: `路径解析失败: ${resolved.reason}`, detail: resolved })
+    return result
+  }
+  
+  const filePath = resolved.resolved
+  try {
+    const fileStat = fs.statSync(filePath)
+    if (!fileStat.isFile()) {
+      result.push({ check: 'file_is_file', status: 'FAIL', message: `路径不是文件: ${filePath}` })
+    } else {
+      result.push({ check: 'file_exists', status: 'OK', message: `文件存在: ${filePath}` })
+      result.push({ check: 'file_size', status: 'OK', message: `文件大小: ${fileStat.size} bytes` })
+    }
+  } catch (err) {
+    result.push({ check: 'file_stat', status: 'FAIL', message: `文件状态检查失败: ${filePath} | ${String(err?.message || err)}` })
+    
+    const mediaDir = path.resolve(rootStr, 'Content', 'Media')
+    try {
+      if (fs.existsSync(mediaDir)) {
+        const entries = fs.readdirSync(mediaDir, { withFileTypes: true })
+        const matching = entries.filter(e => e.isFile() && e.name.includes(path.basename(rel)))
+        if (matching.length > 0) {
+          result.push({ check: 'similar_files_found', status: 'INFO', message: `在 Content/Media 中找到相似文件: ${matching.map(e => e.name).join(', ')}` })
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  
+  return result
 }
 
 function guessMimeType(filePath) {
@@ -164,10 +238,12 @@ function buildInMemoryResponse(buffer, contentType, status) {
 function handleProjectAssetRequest(request) {
   const parsed = parseDwebAssetUrl(request.url)
   if (!parsed) {
+    logAccess({ status: 'PARSE_FAILED', projectId: 'N/A', requestedPath: String(request.url || '') })
     return new Response('Bad Request', { status: 400 })
   }
   const root = projectRootById.get(parsed.projectId)
   if (!root) {
+    logAccess({ status: 'ROOT_NOT_REGISTERED', projectId: parsed.projectId, requestedPath: parsed.relPath })
     return new Response('Project Root Not Registered', { status: 404, statusText: 'Project Root Not Registered' })
   }
 
@@ -234,17 +310,27 @@ function handleProjectAssetRequest(request) {
     candidates.push('Content/Media/' + cleanRel)
   }
 
+  const reqExt = path.extname(rel).toLowerCase()
+  const isBinRequest = reqExt === '.bin'
+  if (isBinRequest && parts.length >= 1) {
+    const fileName = parts[parts.length - 1]
+    candidates.push(CACHE_BIN_DIR + '/' + fileName)
+    candidates.push(CACHE_DIR + '/' + fileName)
+  }
+
   let resolvedPath = null
   let resolvedFromRoot = ''
+  const triedCandidates = []
   for (const rootCandidate of rootCandidates) {
     for (const candidate of candidates) {
       if (!candidate) continue
-      const p = safeResolveProjectFile(rootCandidate, candidate)
-      if (p && fs.existsSync(p)) {
+      const resolved = safeResolveProjectFile(rootCandidate, candidate)
+      triedCandidates.push({ root: rootCandidate, candidate, resolved: resolved.resolved, reason: resolved.reason })
+      if (resolved.resolved && fs.existsSync(resolved.resolved)) {
         try {
-          const st = fs.statSync(p)
+          const st = fs.statSync(resolved.resolved)
           if (st && st.isFile()) {
-            resolvedPath = p
+            resolvedPath = resolved.resolved
             resolvedFromRoot = String(rootCandidate || '')
             break
           }
@@ -259,32 +345,74 @@ function handleProjectAssetRequest(request) {
   let filePath = resolvedPath
   if (!filePath) {
     for (const rootCandidate of rootCandidates) {
-      filePath = safeResolveProjectFile(rootCandidate, rel)
-      if (filePath) {
+      const resolved = safeResolveProjectFile(rootCandidate, rel)
+      if (resolved.resolved) {
+        filePath = resolved.resolved
         resolvedFromRoot = String(rootCandidate || '')
         break
       }
     }
     if (!filePath) {
-      return new Response('Invalid Asset Path', { status: 400 })
+      logAccess({
+        status: 'PATH_RESOLUTION_FAILED',
+        projectId: parsed.projectId,
+        requestedPath: rel,
+        candidateCount: candidates.length,
+        triedCandidates,
+        root,
+        rootCandidates,
+      })
+      const diagnostics = diagnoseFilePath(root, rel)
+      const diagText = diagnostics.map(d => `${d.status}: ${d.message}`).join('\n')
+      return new Response('Invalid Asset Path:\n' + diagText, { status: 400 })
     }
   }
 
   if (!fs.existsSync(filePath)) {
-    return new Response(
-      'Asset Not Found: ' + rel + ' ; root=' + String(root || '') + ' ; resolvedRoot=' + String(resolvedFromRoot || ''),
-      { status: 404 }
-    )
+    const diagnostics = diagnoseFilePath(root, rel)
+    const diagText = diagnostics.map(d => `${d.status}: ${d.message}`).join('\n')
+    logAccess({
+      status: 'FILE_NOT_FOUND',
+      projectId: parsed.projectId,
+      requestedPath: rel,
+      resolvedPath: filePath,
+      candidateCount: candidates.length,
+      triedCandidates,
+      diagnostics,
+    })
+    return new Response('Asset Not Found:\n' + diagText, { status: 404 })
   }
   let stat
   try {
     stat = fs.statSync(filePath)
-  } catch {
+  } catch (err) {
+    logAccess({
+      status: 'STAT_FAILED',
+      projectId: parsed.projectId,
+      requestedPath: rel,
+      resolvedPath: filePath,
+      error: String(err?.message || err),
+    })
     return new Response('Asset Stat Failed', { status: 500 })
   }
   if (!stat.isFile()) {
+    logAccess({
+      status: 'NOT_A_FILE',
+      projectId: parsed.projectId,
+      requestedPath: rel,
+      resolvedPath: filePath,
+    })
     return new Response('Asset Is Not A File', { status: 404 })
   }
+
+  logAccess({
+    status: 'SUCCESS',
+    projectId: parsed.projectId,
+    requestedPath: rel,
+    resolvedPath: filePath,
+    candidateCount: candidates.length,
+    size: stat.size,
+  })
 
   // 预览/缩略图：只对常见图片做下采样，其它一律按原样返回
   const ext = path.extname(filePath).toLowerCase()
@@ -448,21 +576,296 @@ export function registerDwebProjectAssetProtocol() {
   }
 }
 
+function ensureGitignore(root) {
+  const rootStr = String(root || '').trim()
+  if (!rootStr) return
+  const gitignorePath = path.resolve(rootStr, '.gitignore')
+  try {
+    if (!fs.existsSync(gitignorePath)) return
+    const content = fs.readFileSync(gitignorePath, 'utf8')
+    const lines = content.split(/\r?\n/)
+    const hasCacheEntry = lines.some(line => {
+      const trimmed = line.trim()
+      return trimmed === CACHE_DIR + '/' || trimmed === CACHE_DIR || trimmed === CACHE_BIN_DIR
+    })
+    if (!hasCacheEntry) {
+      const separator = content.length > 0 && !content.endsWith('\n') ? '\n' : ''
+      fs.appendFileSync(gitignorePath, separator + CACHE_DIR + '/\n')
+      console.log(`[dweb-protocol] added ${CACHE_DIR}/ to .gitignore`)
+    }
+  } catch (err) {
+    console.debug(`[dweb-protocol] ensureGitignore failed: ${String(err?.message || err)}`)
+  }
+}
+
+function scanDirForBinFiles(dirPath, options = {}) {
+  const recursive = Boolean(options.recursive)
+  const result = []
+  const skipDirNames = new Set(options.skipDirNames || [])
+
+  function walk(currentDir) {
+    let entries
+    try {
+      if (!fs.existsSync(currentDir)) return
+      const stat = fs.statSync(currentDir)
+      if (!stat.isDirectory()) return
+      entries = fs.readdirSync(currentDir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.resolve(currentDir, entry.name)
+      if (entry.isDirectory()) {
+        if (recursive && !skipDirNames.has(entry.name)) {
+          walk(fullPath)
+        }
+        continue
+      }
+      if (!entry.isFile()) continue
+      if (!entry.name.endsWith('.bin')) continue
+      result.push(fullPath)
+    }
+  }
+
+  walk(dirPath)
+  return result
+}
+
+export function cleanupProjectRootBinFiles(projectId) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, error: 'projectId is invalid' }
+  }
+
+  const root = projectRootById.get(id)
+  if (!root) {
+    return { ok: false, error: 'project root not registered' }
+  }
+
+  let rootExists = false
+  let rootIsDir = false
+  try {
+    const stat = fs.statSync(root)
+    rootExists = true
+    rootIsDir = stat.isDirectory()
+  } catch {
+    rootExists = false
+  }
+
+  if (!rootExists || !rootIsDir) {
+    return { ok: false, error: 'project root is invalid or not a directory' }
+  }
+
+  const cacheBinDir = path.resolve(root, CACHE_DIR, 'bin')
+  try {
+    fs.mkdirSync(cacheBinDir, { recursive: true })
+  } catch (err) {
+    return { ok: false, error: `failed to create cache bin directory: ${String(err?.message || err)}` }
+  }
+
+  const commonSkipDirs = [CACHE_DIR, '.git', 'node_modules', '.venv', '__pycache__', 'Content']
+
+  const scanTargets = [
+    { dir: root, recursive: false },
+    { dir: path.resolve(root, 'generated-assets'), recursive: true, skipDirNames: commonSkipDirs },
+  ]
+
+  const binFiles = []
+  const errors = []
+
+  for (const target of scanTargets) {
+    try {
+      const found = scanDirForBinFiles(target.dir, {
+        recursive: target.recursive,
+        skipDirNames: target.skipDirNames,
+      })
+      binFiles.push(...found)
+    } catch (err) {
+      errors.push(`failed to scan directory ${target.dir}: ${String(err?.message || err)}`)
+    }
+  }
+
+  const seen = new Set()
+  const uniqueBinFiles = []
+  for (const f of binFiles) {
+    const resolved = path.resolve(f)
+    if (resolved === path.resolve(cacheBinDir, path.basename(resolved))) continue
+    if (!seen.has(resolved)) {
+      seen.add(resolved)
+      uniqueBinFiles.push(resolved)
+    }
+  }
+
+  let movedCount = 0
+  let totalBytes = 0
+  let freedBytes = 0
+  const cleanedPaths = []
+
+  for (const binFile of uniqueBinFiles) {
+    try {
+      let fileSize = 0
+      try {
+        const stat = fs.statSync(binFile)
+        fileSize = Number(stat.size || 0)
+      } catch (err) {
+        errors.push(`failed to stat ${binFile}: ${String(err?.message || err)}`)
+        continue
+      }
+
+      const fileName = path.basename(binFile)
+      const ext = path.extname(fileName)
+      const baseName = path.basename(fileName, ext)
+      let targetPath = path.resolve(cacheBinDir, fileName)
+
+      if (fs.existsSync(targetPath)) {
+        const stamp = Date.now()
+        const rand = Math.random().toString(36).slice(2, 8)
+        targetPath = path.resolve(cacheBinDir, `${baseName}_${stamp}_${rand}${ext}`)
+      }
+
+      let moveSuccess = false
+      try {
+        fs.renameSync(binFile, targetPath)
+        moveSuccess = true
+      } catch (renameErr) {
+        try {
+          fs.copyFileSync(binFile, targetPath)
+          fs.unlinkSync(binFile)
+          moveSuccess = true
+        } catch (copyErr) {
+          try {
+            fs.unlinkSync(binFile)
+            totalBytes += fileSize
+            freedBytes += fileSize
+            cleanedPaths.push(binFile)
+            movedCount++
+            continue
+          } catch (deleteErr) {
+            errors.push(`failed to process ${binFile}: rename=${String(renameErr?.message || renameErr)}, copy=${String(copyErr?.message || copyErr)}, delete=${String(deleteErr?.message || deleteErr)}`)
+            continue
+          }
+        }
+      }
+
+      if (moveSuccess) {
+        totalBytes += fileSize
+        cleanedPaths.push(binFile)
+        movedCount++
+      }
+    } catch (err) {
+      errors.push(`unexpected error processing ${binFile}: ${String(err?.message || err)}`)
+    }
+  }
+
+  return {
+    ok: true,
+    movedCount,
+    totalBytes,
+    freedBytes,
+    cleanedPaths,
+    errors,
+  }
+}
+
 export function setProjectRoot(projectId, rootPath) {
   const id = Number(projectId)
   const root = String(rootPath || '').trim()
-  if (!Number.isFinite(id) || id <= 0) return false
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
   if (!root) {
     projectRootById.delete(id)
-    return true
+    console.log(`[dweb-protocol] cleared project root for projectId=${id}`)
+    return { ok: true, cleared: true }
   }
-  projectRootById.set(id, root)
-  return true
+  
+  let resolvedRoot
+  try {
+    resolvedRoot = path.resolve(root)
+  } catch (err) {
+    return { ok: false, error: `invalid root path: ${String(err?.message || err)}` }
+  }
+  
+  let isDirectory = false
+  let exists = false
+  try {
+    const stat = fs.statSync(resolvedRoot)
+    exists = true
+    isDirectory = stat.isDirectory()
+  } catch {
+    exists = false
+  }
+  
+  if (!exists) {
+    try {
+      fs.mkdirSync(resolvedRoot, { recursive: true })
+      console.log(`[dweb-protocol] created project root directory: ${resolvedRoot}`)
+    } catch (err) {
+      return { ok: false, error: `failed to create project root: ${String(err?.message || err)}` }
+    }
+  } else if (!isDirectory) {
+    return { ok: false, error: `project root is not a directory: ${resolvedRoot}` }
+  }
+  
+  projectRootById.set(id, resolvedRoot)
+  console.log(`[dweb-protocol] registered project root for projectId=${id}: ${resolvedRoot}`)
+  
+  const mediaDir = path.resolve(resolvedRoot, 'Content', 'Media')
+  try {
+    fs.mkdirSync(mediaDir, { recursive: true })
+  } catch {
+    // ignore - media dir creation failure shouldn't block project registration
+  }
+
+  const generatedDir = path.resolve(resolvedRoot, 'Content', 'Generated')
+  try {
+    fs.mkdirSync(generatedDir, { recursive: true })
+  } catch {
+    // ignore - generated dir creation failure shouldn't block project registration
+  }
+
+  const cacheBinDir = path.resolve(resolvedRoot, CACHE_DIR, 'bin')
+  try {
+    fs.mkdirSync(cacheBinDir, { recursive: true })
+  } catch {
+    // ignore - cache dir creation failure shouldn't block project registration
+  }
+
+  setTimeout(() => {
+    try {
+      console.log(`[dweb-protocol] bin cleanup probe started for projectId=${id}, root=${resolvedRoot}`)
+      const result = cleanupProjectRootBinFiles(id)
+      if (result.ok) {
+        if (result.movedCount > 0) {
+          console.log(`[dweb-protocol] bin cleanup completed for projectId=${id}: moved ${result.movedCount} files, freed ${result.freedBytes} bytes`)
+          if (result.cleanedPaths.length > 0 && result.cleanedPaths.length <= 10) {
+            result.cleanedPaths.forEach((p, i) => console.log(`[dweb-protocol] cleaned[${i}]: ${p}`))
+          }
+        } else {
+          console.log(`[dweb-protocol] bin cleanup completed for projectId=${id}: no stray .bin files found`)
+        }
+        if (result.errors && result.errors.length > 0) {
+          console.debug(`[dweb-protocol] bin cleanup had ${result.errors.length} non-fatal errors:`, result.errors)
+        }
+      } else {
+        console.warn(`[dweb-protocol] bin cleanup failed for projectId=${id}: ${result.error}`)
+      }
+    } catch (err) {
+      console.warn(`[dweb-protocol] bin cleanup unexpected error for projectId=${id}: ${String(err?.message || err)}`)
+    }
+  }, 1500)
+
+  ensureGitignore(resolvedRoot)
+
+  return { ok: true, root: resolvedRoot, created: !exists }
 }
 
 export function clearProjectRoot(projectId) {
   const id = Number(projectId)
-  if (Number.isFinite(id) && id > 0) projectRootById.delete(id)
+  if (Number.isFinite(id) && id > 0) {
+    const oldRoot = projectRootById.get(id)
+    projectRootById.delete(id)
+    console.log(`[dweb-protocol] cleared project root for projectId=${id}: ${oldRoot || 'N/A'}`)
+  }
 }
 
 export function getProjectRootSnapshot() {
@@ -471,11 +874,47 @@ export function getProjectRootSnapshot() {
   return result
 }
 
-// 通过已注册的 projectId 获取项目根目录（供主进程其他模块使用）
 export function getProjectRootById(projectId) {
   const id = Number(projectId)
   if (!Number.isFinite(id) || id <= 0) return null
   return projectRootById.get(id) || null
+}
+
+export function validateProjectRoot(projectId) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) return { valid: false, error: 'projectId is invalid' }
+  
+  const root = projectRootById.get(id)
+  if (!root) return { valid: false, error: 'project root not registered', projectId: id }
+  
+  try {
+    const stat = fs.statSync(root)
+    if (!stat.isDirectory()) {
+      return { valid: false, error: 'registered root is not a directory', projectId: id, root }
+    }
+  } catch (err) {
+    return { valid: false, error: `root directory not found or inaccessible: ${String(err?.message || err)}`, projectId: id, root }
+  }
+  
+  const mediaDir = path.resolve(root, 'Content', 'Media')
+  let mediaExists = false
+  try {
+    mediaExists = fs.existsSync(mediaDir) && fs.statSync(mediaDir).isDirectory()
+  } catch {
+    mediaExists = false
+  }
+  
+  return {
+    valid: true,
+    projectId: id,
+    root,
+    mediaDirExists: mediaExists,
+    mediaDir: mediaDir,
+  }
+}
+
+export function getAccessLogs(maxEntries = 100) {
+  return getRecentAccessLogs(maxEntries)
 }
 
 // 将远程 URL 的文件下载到指定项目根目录下的 Content/Media 子目录。
@@ -495,17 +934,11 @@ export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilenam
   const ext = inferExtension(safeName, url)
   const base = safeName.replace(/\.[^.]+$/, '') || `asset-${Date.now()}`
   const filename = `${base}${ext}`
+  const effectiveBucket = ext === '.bin' ? 'cache' : undefined
+  const target = resolveAssetTargetDir(id, effectiveBucket)
+  if (!target) return { ok: false, error: 'failed to resolve target directory' }
 
-  // 与 Django 保持一致：所有资源存放在 Content/Media 目录下
-  const subDir = path.resolve(root, 'Content', 'Media')
-  try {
-    fs.mkdirSync(subDir, { recursive: true })
-  } catch (err) {
-    return { ok: false, error: `mkdir failed: ${String(err?.message || err)}` }
-  }
-
-  const absolutePath = path.resolve(subDir, filename)
-  // 统一使用正斜杠表示相对路径，与 Django 端保持一致
+  const absolutePath = path.resolve(target.targetDir, filename)
   const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
 
   // 如果目标文件已存在且非空，则直接返回已存在的路径，避免重复下载导致副本。
@@ -548,6 +981,20 @@ export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilenam
   }
 }
 
+function isPathInsideProject(root, filePath) {
+  const resolvedRoot = path.resolve(String(root || '').trim())
+  const resolvedFile = path.resolve(String(filePath || '').trim())
+  const relative = path.relative(resolvedRoot, resolvedFile)
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return false
+  }
+  const relativePosix = relative.split(path.sep).join('/')
+  if (relativePosix.startsWith(CACHE_DIR + '/')) {
+    return false
+  }
+  return true
+}
+
 function normalizeLocalSourcePath(rawSourcePath) {
   const raw = String(rawSourcePath || '').trim()
   if (!raw) return ''
@@ -578,6 +1025,19 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
   }
   if (!sourceStat?.isFile?.()) return { ok: false, error: 'sourcePath is not a file' }
 
+  const resolvedSource = path.resolve(sourcePath)
+
+  if (isPathInsideProject(root, resolvedSource)) {
+    const relativePath = path.relative(root, resolvedSource).split(path.sep).join('/')
+    return {
+      ok: true,
+      absolutePath: resolvedSource,
+      relativePath,
+      size: sourceStat.size,
+      reused: true,
+    }
+  }
+
   const sourceBaseName = path.basename(sourcePath)
   const safeName = sanitizeFilename(desiredFilename || sourceBaseName)
   const sourceExt = (path.extname(sourceBaseName) || '').toLowerCase()
@@ -593,11 +1053,9 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
   }
 
   let absolutePath = path.resolve(subDir, filename)
-  const resolvedSource = path.resolve(sourcePath)
   const resolvedTarget = path.resolve(absolutePath)
   const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
 
-  // 源文件与目标完全相同：直接返回，避免重复复制。
   if (resolvedSource === resolvedTarget) {
     return {
       ok: true,
@@ -607,8 +1065,6 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
     }
   }
 
-  // 如果目标文件已经存在且与源文件大小一致，则视为相同资源，直接返回已存在的文件作为结果，避免重复复制。
-  // 注意：这里不做字节级比对以保持性能。
   if (fs.existsSync(absolutePath)) {
     let existingStat
     try { existingStat = fs.statSync(absolutePath) } catch { existingStat = null }
@@ -808,6 +1264,11 @@ function resolveAssetTargetDir(projectId, bucket) {
     fs.mkdirSync(p, { recursive: true })
     return { root, kind: 'image', targetDir: p }
   }
+  if (safeBucket === 'cache') {
+    const p = path.resolve(root, CACHE_DIR, 'bin')
+    fs.mkdirSync(p, { recursive: true })
+    return { root, kind: 'file', targetDir: p }
+  }
   const p = path.resolve(root, 'Content', 'Media')
   fs.mkdirSync(p, { recursive: true })
   return { root, kind: 'file', targetDir: p }
@@ -828,11 +1289,12 @@ export function uploadProjectAsset({ projectId, kind, name, arrayBuffer, content
   if (!arrayBuffer || !(arrayBuffer instanceof ArrayBuffer || (arrayBuffer && typeof arrayBuffer.byteLength === 'number'))) {
     return { ok: false, error: 'file content is required' }
   }
-  const target = resolveAssetTargetDir(id, bucket)
-  if (!target) return { ok: false, error: 'project root not registered' }
-
   const safeName = sanitizeFilename(String(name || 'file'))
   const extension = path.extname(safeName) || '.bin'
+  const effectiveBucket = bucket || (extension === '.bin' ? 'cache' : undefined)
+  const target = resolveAssetTargetDir(id, effectiveBucket)
+  if (!target) return { ok: false, error: 'project root not registered' }
+
   const base = path.basename(safeName, extension) || 'asset'
   const finalPath = makeUniqueFilename(target.targetDir, base, extension)
 
@@ -855,24 +1317,38 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
   const id = Number(projectId)
   if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
 
-  const target = resolveAssetTargetDir(id, bucket)
-  if (!target) return { ok: false, error: 'project root not registered' }
-
   const rawSourcePath = String(sourcePath || '').trim()
   const rawSourceUrl = String(sourceUrl || '').trim()
 
   if (rawSourcePath) {
+    const root = projectRootById.get(id)
+    if (!root) return { ok: false, error: 'project root not registered' }
     try {
       const src = path.normalize(rawSourcePath)
       if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
         return { ok: false, error: 'sourcePath not found' }
       }
+      const resolvedSrc = path.resolve(src)
       const srcName = path.basename(src)
       const safeName = sanitizeFilename(String(name || srcName))
+
+      if (isPathInsideProject(root, resolvedSrc)) {
+        const asset = buildAssetPayload(id, resolvedSrc, root, {
+          kind: kind || 'file',
+          name: safeName,
+          contentType: null,
+          sourcePath: src,
+        })
+        asset.reused = true
+        return { ok: true, asset }
+      }
+
+      const target = resolveAssetTargetDir(id, bucket)
+      if (!target) return { ok: false, error: 'project root not registered' }
       const ext = path.extname(safeName) || '.bin'
       const base = path.basename(safeName, ext) || 'asset'
       const finalPath = makeUniqueFilename(target.targetDir, base, ext)
-      if (path.resolve(src) !== finalPath) {
+      if (resolvedSrc !== finalPath) {
         fs.copyFileSync(src, finalPath)
       }
       const asset = buildAssetPayload(id, finalPath, target.root, {
@@ -893,6 +1369,9 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
       const nameHint = String(name || '').trim() || urlBaseName
       const safeName = sanitizeFilename(nameHint)
       const ext = path.extname(safeName) || inferExtension(safeName, rawSourceUrl) || '.bin'
+      const effectiveBucket = bucket || (ext === '.bin' ? 'cache' : undefined)
+      const target = resolveAssetTargetDir(id, effectiveBucket)
+      if (!target) return { ok: false, error: 'project root not registered' }
       const base = path.basename(safeName, ext) || 'asset'
       const finalPath = makeUniqueFilename(target.targetDir, base, ext)
       await fetchRemoteUrl(rawSourceUrl, finalPath)
@@ -977,19 +1456,17 @@ export function resolveProjectAsset({ projectId, kind, name, projectRelativePath
   const src = String(sourcePath || '').trim()
   if (src) {
     const abs = path.resolve(src)
-    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile() && isPathInsideProject(root, abs)) {
       const candidate = path.relative(root, abs).split(path.sep).join('/')
-      if (!candidate.startsWith('..')) {
-        const asset = buildAssetPayload(id, abs, root, {
-          kind: kind || 'file',
-          name: name || path.basename(abs),
-          contentType: null,
-          sourcePath: abs,
-        })
-        asset.projectRelativePath = candidate
-        asset.relativePath = candidate
-        return { ok: true, resolved: true, asset }
-      }
+      const asset = buildAssetPayload(id, abs, root, {
+        kind: kind || 'file',
+        name: name || path.basename(abs),
+        contentType: null,
+        sourcePath: abs,
+      })
+      asset.projectRelativePath = candidate
+      asset.relativePath = candidate
+      return { ok: true, resolved: true, asset }
     }
   }
 
@@ -1043,6 +1520,400 @@ export function repairProjectAsset({ projectId, kind, name, projectRelativePath 
     sourcePath: hit,
   })
   return { ok: true, repaired: true, asset }
+}
+
+/**
+ * 404 兜底诊断：给定一个 dweb://project-assets URL，返回详细的诊断信息，
+ * 包括：项目根是否注册、注册的根路径是否有效、文件是否真实存在于磁盘、
+ * 若在磁盘上找到相似文件，则返回候选修复路径。
+ */
+export function diagnoseDwebAsset({ projectId, relPath, url }) {
+  const id = Number(projectId)
+  const result = {
+    ok: true,
+    projectId: Number.isFinite(id) ? id : null,
+    requestedPath: String(relPath || ''),
+    registered: false,
+    root: null,
+    rootValid: false,
+    rootExists: false,
+    resolvedTo: null,
+    fileExists: false,
+    fileIsFile: false,
+    fileSize: 0,
+    candidates: [],
+    similarFiles: [],
+    diagnostics: [],
+    suggestion: null,
+    repairedAsset: null,
+  }
+
+  // --- 1. 从 url 解析参数（若未直接传 projectId/relPath）---
+  let parsed = null
+  if (url) {
+    parsed = parseDwebAssetUrl(String(url))
+    if (parsed) {
+      if (!Number.isFinite(id) || id <= 0) {
+        result.projectId = parsed.projectId
+      }
+      if (!result.requestedPath) {
+        result.requestedPath = parsed.relPath
+      }
+    }
+  }
+  const pid = Number(result.projectId)
+  if (!Number.isFinite(pid) || pid <= 0) {
+    result.ok = false
+    result.diagnostics.push({ check: 'projectId', status: 'FAIL', message: 'projectId 无效' })
+    return result
+  }
+
+  // --- 2. 检查项目根注册 ---
+  const root = projectRootById.get(pid)
+  result.registered = !!root
+  if (!root) {
+    result.diagnostics.push({ check: 'root_registered', status: 'FAIL', message: '项目根未注册' })
+    result.suggestion = 're_register_root'
+    return result
+  }
+  result.root = root
+
+  // --- 3. 验证注册的根路径在磁盘上是否有效 ---
+  try {
+    const st = fs.statSync(root)
+    result.rootExists = true
+    result.rootValid = st.isDirectory()
+    if (!result.rootValid) {
+      result.diagnostics.push({ check: 'root_is_directory', status: 'FAIL', message: `注册的根路径不是文件夹: ${root}` })
+      result.suggestion = 're_register_root'
+      return result
+    }
+    result.diagnostics.push({ check: 'root_is_directory', status: 'OK', message: `项目根有效: ${root}` })
+  } catch (err) {
+    result.diagnostics.push({ check: 'root_exists', status: 'FAIL', message: `项目根不存在或无法访问: ${root} | ${String(err?.message || err)}` })
+    result.suggestion = 're_register_root'
+    return result
+  }
+
+  // --- 4. 复现 handleProjectAssetRequest 的候选路径搜索逻辑 ---
+  const rel = String(result.requestedPath || '').replace(/\\/g, '/').trim()
+  if (!rel) {
+    result.diagnostics.push({ check: 'rel_path', status: 'FAIL', message: '请求路径为空' })
+    return result
+  }
+
+  const rootCandidates = [root]
+  try {
+    const normalizedRoot = String(root).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    if (normalizedRoot.endsWith('/content/media')) {
+      rootCandidates.push(path.resolve(String(root), '..', '..'))
+    } else if (normalizedRoot.endsWith('/generated-assets')) {
+      rootCandidates.push(path.resolve(String(root), '..'))
+    }
+  } catch { /* ignore */ }
+
+  let cleanRel = rel
+  if (cleanRel.startsWith('Content/Media/')) cleanRel = cleanRel.slice('Content/Media/'.length)
+  else if (cleanRel.startsWith('content/media/')) cleanRel = cleanRel.slice('content/media/'.length)
+  else if (cleanRel.startsWith('Media/')) cleanRel = cleanRel.slice('Media/'.length)
+  else if (cleanRel.startsWith('media/')) cleanRel = cleanRel.slice('media/'.length)
+
+  const candidates = [rel, cleanRel]
+  const parts = rel.split('/').filter((p) => p && p !== '.')
+  if (parts.length >= 2) {
+    const firstDir = parts[0].toLowerCase()
+    const restPath = parts.slice(1).join('/')
+    const fileName = parts[parts.length - 1]
+    if (firstDir === 'generated-assets') {
+      candidates.push('Content/Media/' + restPath)
+      if (restPath !== fileName) candidates.push('Content/Media/' + fileName)
+    }
+    if (firstDir === 'content' || firstDir === 'media' || firstDir === 'thumbnails') {
+      candidates.push('generated-assets/' + fileName)
+    }
+  } else if (parts.length === 1) {
+    candidates.push('Content/Media/' + parts[0])
+    candidates.push('generated-assets/' + parts[0])
+  }
+  if (parts.length >= 2) {
+    const firstDir = parts[0].toLowerCase()
+    const secondDir = parts[1]?.toLowerCase()
+    if (firstDir === 'content' && secondDir === 'media' && parts.length >= 3) {
+      candidates.push(parts.slice(2).join('/'))
+    } else if (firstDir === 'media' && parts.length >= 2) {
+      candidates.push(parts.slice(1).join('/'))
+    }
+  }
+  const cleanPartsDiag = cleanRel.split('/').filter((p) => p && p !== '.')
+  if (cleanPartsDiag.length >= 1) {
+    const fileName = cleanPartsDiag[cleanPartsDiag.length - 1]
+    candidates.push('Content/Media/' + fileName)
+    candidates.push('Content/Media/' + cleanRel)
+  }
+
+  const reqExtDiag = path.extname(rel).toLowerCase()
+  if (reqExtDiag === '.bin' && parts.length >= 1) {
+    const fileName = parts[parts.length - 1]
+    candidates.push(CACHE_BIN_DIR + '/' + fileName)
+    candidates.push(CACHE_DIR + '/' + fileName)
+  }
+
+  // 去重
+  const uniqCandidates = Array.from(new Set(candidates.filter(Boolean)))
+
+  // --- 5. 逐个候选路径尝试解析 ---
+  let hitPath = null
+  for (const rc of rootCandidates) {
+    for (const c of uniqCandidates) {
+      const r = safeResolveProjectFile(rc, c)
+      const entry = {
+        root: rc,
+        candidate: c,
+        resolved: r.resolved,
+        reason: r.reason,
+        exists: false,
+        isFile: false,
+        size: 0,
+      }
+      if (r.resolved) {
+        try {
+          const st = fs.statSync(r.resolved)
+          entry.exists = true
+          entry.isFile = st.isFile()
+          entry.size = Number(st.size || 0)
+          if (entry.isFile && !hitPath) {
+            hitPath = r.resolved
+            result.resolvedTo = r.resolved
+            result.fileExists = true
+            result.fileIsFile = true
+            result.fileSize = entry.size
+          }
+        } catch {
+          entry.exists = false
+        }
+      }
+      result.candidates.push(entry)
+    }
+    if (hitPath) break
+  }
+
+  if (hitPath) {
+    result.diagnostics.push({ check: 'file_found', status: 'OK', message: `文件可解析至: ${hitPath}` })
+    // 文件实际上存在，构造修复后的 asset payload
+    try {
+      result.repairedAsset = buildAssetPayload(pid, hitPath, root, {
+        kind: inferKindFromFile(hitPath),
+        name: path.basename(hitPath),
+        contentType: null,
+        sourcePath: hitPath,
+      })
+    } catch { /* ignore */ }
+    return result
+  }
+
+  // --- 6. 文件未找到：在 Content/Media 和 Content/Generated 中模糊搜索同名文件 ---
+  result.diagnostics.push({ check: 'file_found', status: 'FAIL', message: `所有候选路径都未找到文件: ${rel}` })
+  const targetBase = path.basename(rel).split('?')[0].split('#')[0]
+  const searchDirs = [
+    path.resolve(root, 'Content', 'Media'),
+    path.resolve(root, 'Content', 'Generated'),
+    path.resolve(root, 'generated-assets'),
+    path.resolve(root, CACHE_BIN_DIR),
+    path.resolve(root, CACHE_DIR),
+  ]
+  const similar = []
+  const targetLower = targetBase.toLowerCase()
+  for (const dir of searchDirs) {
+    collectSimilarFiles(dir, targetBase, targetLower, similar, 20)
+    if (similar.length >= 20) break
+  }
+  result.similarFiles = similar
+  if (similar.length > 0) {
+    result.diagnostics.push({
+      check: 'similar_files',
+      status: 'INFO',
+      message: `在项目目录找到 ${similar.length} 个相似文件，可作为修复参考`,
+    })
+    // 尝试按文件名精确匹配修复
+    const exactHit = similar.find((s) => s.name === targetBase) || similar[0]
+    if (exactHit) {
+      try {
+        result.repairedAsset = buildAssetPayload(pid, exactHit.path, root, {
+          kind: inferKindFromFile(exactHit.path),
+          name: exactHit.name,
+          contentType: null,
+          sourcePath: exactHit.path,
+        })
+        result.suggestion = 'repair_by_rename'
+      } catch { /* ignore */ }
+    }
+  } else {
+    result.suggestion = 'file_missing'
+  }
+
+  return result
+}
+
+function inferKindFromFile(filePath) {
+  return guessMimeType(filePath).startsWith('image/') ? 'image'
+    : guessMimeType(filePath).startsWith('video/') ? 'video'
+    : filePath.toLowerCase().endsWith('.glb') || filePath.toLowerCase().endsWith('.gltf') ? 'model3d'
+    : 'file'
+}
+
+function collectSimilarFiles(dir, targetName, targetLower, out, limit) {
+  if (out.length >= limit) return
+  if (!dir || !fs.existsSync(dir)) return
+  let entries
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    if (out.length >= limit) return
+    const full = path.resolve(dir, entry.name)
+    if (entry.isFile()) {
+      const nameLower = entry.name.toLowerCase()
+      const baseNoExt = targetLower.replace(/\.[^.]+$/, '')
+      const nameNoExt = nameLower.replace(/\.[^.]+$/, '')
+      const isSimilar =
+        nameLower === targetLower ||
+        nameNoExt === baseNoExt ||
+        nameLower.includes(baseNoExt) ||
+        baseNoExt.includes(nameNoExt)
+      if (isSimilar) {
+        out.push({ name: entry.name, path: full })
+      }
+    } else if (entry.isDirectory()) {
+      // 避免进入 node_modules / .git 等大目录
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name.startsWith('.')) continue
+      collectSimilarFiles(full, targetName, targetLower, out, limit)
+    }
+  }
+}
+
+export function getProjectCacheStats(projectId) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, error: 'projectId is invalid' }
+  }
+
+  const root = projectRootById.get(id)
+  if (!root) {
+    return { ok: false, error: `project root not registered for projectId=${id}` }
+  }
+
+  const cacheDir = path.resolve(root, CACHE_DIR)
+  let fileCount = 0
+  let totalBytes = 0
+
+  try {
+    if (fs.existsSync(cacheDir)) {
+      const stack = [cacheDir]
+      while (stack.length > 0) {
+        const current = stack.pop()
+        let entries
+        try {
+          entries = fs.readdirSync(current, { withFileTypes: true })
+        } catch {
+          continue
+        }
+        for (const entry of entries) {
+          const fullPath = path.resolve(current, entry.name)
+          if (entry.isDirectory()) {
+            stack.push(fullPath)
+          } else if (entry.isFile()) {
+            try {
+              const st = fs.statSync(fullPath)
+              fileCount += 1
+              totalBytes += Number(st.size || 0)
+            } catch {
+              // ignore single file stat failure
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    return { ok: false, error: `failed to scan cache directory: ${String(err?.message || err)}` }
+  }
+
+  return { ok: true, fileCount, totalBytes, cacheDir }
+}
+
+export function clearProjectCache(projectId) {
+  const id = Number(projectId)
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, error: 'projectId is invalid' }
+  }
+
+  const root = projectRootById.get(id)
+  if (!root) {
+    return { ok: false, error: `project root not registered for projectId=${id}` }
+  }
+
+  const cacheDir = path.resolve(root, CACHE_DIR)
+  const cacheBinDir = path.resolve(root, CACHE_BIN_DIR)
+  let deletedCount = 0
+  let freedBytes = 0
+
+  try {
+    if (fs.existsSync(cacheDir)) {
+      const stack = [cacheDir]
+      const dirsToRemove = []
+
+      while (stack.length > 0) {
+        const current = stack.pop()
+        let entries
+        try {
+          entries = fs.readdirSync(current, { withFileTypes: true })
+        } catch {
+          continue
+        }
+
+        let hasFiles = false
+        for (const entry of entries) {
+          const fullPath = path.resolve(current, entry.name)
+          if (entry.isDirectory()) {
+            stack.push(fullPath)
+          } else if (entry.isFile()) {
+            try {
+              const st = fs.statSync(fullPath)
+              freedBytes += Number(st.size || 0)
+              fs.unlinkSync(fullPath)
+              deletedCount += 1
+              hasFiles = true
+            } catch {
+              // ignore single file deletion failure
+            }
+          }
+        }
+
+        if (current !== cacheDir) {
+          dirsToRemove.push(current)
+        }
+      }
+
+      for (let i = dirsToRemove.length - 1; i >= 0; i--) {
+        try {
+          fs.rmdirSync(dirsToRemove[i])
+        } catch {
+          // ignore empty dir removal failure
+        }
+      }
+    }
+
+    try {
+      fs.mkdirSync(cacheBinDir, { recursive: true })
+    } catch {
+      // ignore dir creation failure
+    }
+  } catch (err) {
+    return { ok: false, error: `failed to clear cache: ${String(err?.message || err)}`, deletedCount, freedBytes }
+  }
+
+  return { ok: true, deletedCount, freedBytes }
 }
 
 export { DWEB_PROJECT_ASSET_HOST }

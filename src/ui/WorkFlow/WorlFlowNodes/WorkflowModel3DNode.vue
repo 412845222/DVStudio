@@ -29,6 +29,22 @@
   >
     <template #body>
       <div class="wf-model3d-body">
+        <div v-if="meshyFetchFailed" class="wf-model3d-fetch-error" @pointerdown.stop>
+          <div class="wf-model3d-fetch-error-icon">!</div>
+          <div class="wf-model3d-fetch-error-body">
+            <div class="wf-model3d-fetch-error-title">模型文件拉取失败</div>
+            <div class="wf-model3d-fetch-error-text">{{ meshyFetchErrorText }}</div>
+            <div class="wf-model3d-fetch-error-actions">
+              <button class="wf-model3d-fetch-error-btn primary" type="button" @click.stop="emit('retry-meshy-fetch')">
+                重试拉取
+              </button>
+              <button class="wf-model3d-fetch-error-btn" type="button" @click.stop="emit('open-meshy-task-panel')">
+                打开任务面板
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div
           class="wf-model3d-viewer-shell"
           data-wf-node-drag-ignore="true"
@@ -88,11 +104,6 @@
     <template #footer>
       <div class="wf-model3d-footer" @pointerdown.stop>
         <div class="wf-model3d-grid">
-          <label class="wf-model3d-field wf-model3d-field-wide">
-            <span class="wf-model3d-label">模型 URL</span>
-            <input class="wf-model3d-input" type="text" :value="modelUrl" placeholder="https://.../model.glb" @input="onModelUrlInput" />
-          </label>
-
           <div class="wf-model3d-info-card wf-model3d-field-wide">
             <div class="wf-model3d-info-row">
               <span class="wf-model3d-label">项目资产</span>
@@ -201,6 +212,8 @@ const emit = defineEmits<{
   (e: 'three-preview-progress', payload?: WorkflowThreePreviewProgressPayload): void
   (e: 'three-preview-ready'): void
   (e: 'three-preview-error'): void
+  (e: 'retry-meshy-fetch'): void
+  (e: 'open-meshy-task-panel'): void
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -212,10 +225,8 @@ let loadRunId = 0
 let activePreviewRequestId = 0
 
 const settings = computed(() => props.model3dSettings ?? null)
-const threePreviewState = computed(() => props.threePreviewState ?? null)
-const previewPhase = computed(() => threePreviewState.value?.phase ?? 'masked')
+const rawThreePreviewState = computed(() => props.threePreviewState ?? null)
 const previewSuspended = computed(() => props.previewSuspended === true)
-const viewerLive = computed(() => previewPhase.value === 'loading' || previewPhase.value === 'interactive')
 const modelUrl = computed(() => String(settings.value?.modelUrl ?? '').trim())
 const backgroundColor = computed(() => String(settings.value?.backgroundColor ?? '#0f1720'))
 const lightIntensity = computed(() => Number(settings.value?.lightIntensity ?? 1.25))
@@ -241,6 +252,19 @@ const upstreamStatusDisplay = computed(() => {
   if (source) return source
   return '当前未连接上游模型输出'
 })
+
+const meshySettings = computed(() => settings.value?.meshyModelSettings ?? null)
+const meshyFetchFailed = computed(() => {
+  const status = String(meshySettings.value?.taskStatus ?? '').trim()
+  return status === 'fetch-failed'
+})
+const meshyFetchErrorText = computed(() => {
+  return String(meshySettings.value?.errorMessage ?? meshySettings.value?.statusText ?? '拉取失败').trim()
+})
+
+const threePreviewState = computed(() => rawThreePreviewState.value)
+const previewPhase = computed(() => threePreviewState.value?.phase ?? 'masked')
+const viewerLive = computed(() => previewPhase.value === 'loading' || previewPhase.value === 'interactive')
 
 const updateSettings = (patch: Partial<WorkflowModel3DNodeSettings>) => emit('update-model3d-settings', patch)
 const emitPreviewProgress = (progress: number, label: string) => {
@@ -399,6 +423,168 @@ onBeforeUnmount(() => {
   width: 100%;
   display: grid;
   gap: 10px;
+}
+
+.wf-model3d-fetch-error {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgb(239 68 68 / 0.45);
+  background: rgb(239 68 68 / 0.08);
+  border-radius: 6px;
+}
+
+.wf-model3d-fetch-error-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgb(239 68 68 / 0.85);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.wf-model3d-fetch-error-body {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wf-model3d-fetch-error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(248 113 113);
+}
+
+.wf-model3d-fetch-error-text {
+  font-size: 12px;
+  color: rgb(252 165 165 / 0.9);
+  line-height: 1.4;
+}
+
+.wf-model3d-fetch-error-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.wf-model3d-fetch-error-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  background: rgb(255 255 255 / 0.06);
+  color: #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wf-model3d-fetch-error-btn:hover {
+  background: rgb(255 255 255 / 0.12);
+  border-color: rgb(255 255 255 / 0.25);
+}
+
+.wf-model3d-fetch-error-btn.primary {
+  background: rgb(239 68 68 / 0.6);
+  border-color: rgb(239 68 68 / 0.7);
+  color: #fff;
+}
+
+.wf-model3d-fetch-error-btn.primary:hover {
+  background: rgb(239 68 68 / 0.8);
+  border-color: rgb(239 68 68 / 0.9);
+}
+
+.wf-model3d-meshy-status {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.72);
+}
+
+.wf-model3d-meshy-status.is-pending {
+  border-color: rgb(90 180 255 / 0.45);
+}
+
+.wf-model3d-meshy-status.is-running {
+  border-color: rgb(250 204 21 / 0.55);
+}
+
+.wf-model3d-meshy-status.is-success {
+  border-color: rgb(34 197 94 / 0.55);
+}
+
+.wf-model3d-meshy-status.is-error {
+  border-color: rgb(239 68 68 / 0.55);
+}
+
+.wf-model3d-meshy-status-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.wf-model3d-meshy-status-label {
+  font-weight: 600;
+  color: var(--vscode-fg);
+  white-space: nowrap;
+}
+
+.wf-model3d-meshy-status.is-running .wf-model3d-meshy-status-label {
+  color: rgb(250 204 21);
+}
+
+.wf-model3d-meshy-status.is-pending .wf-model3d-meshy-status-label {
+  color: rgb(96 165 250);
+}
+
+.wf-model3d-meshy-status.is-success .wf-model3d-meshy-status-label {
+  color: rgb(34 197 94);
+}
+
+.wf-model3d-meshy-status.is-error .wf-model3d-meshy-status-label {
+  color: rgb(248 113 113);
+}
+
+.wf-model3d-meshy-status-text {
+  color: var(--vscode-fg-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-model3d-meshy-progress {
+  width: 100%;
+  height: 4px;
+  background: rgb(from var(--vscode-border) r g b / 0.45);
+  overflow: hidden;
+}
+
+.wf-model3d-meshy-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgb(96 165 250 / 0.85), rgb(52 211 153 / 0.85));
+  transition: width 400ms ease;
+}
+
+.wf-model3d-meshy-status.is-running .wf-model3d-meshy-progress-fill {
+  background: linear-gradient(90deg, rgb(250 204 21 / 0.85), rgb(251 146 60 / 0.85));
+}
+
+.wf-model3d-meshy-status.is-success .wf-model3d-meshy-progress-fill {
+  background: rgb(34 197 94 / 0.85);
+}
+
+.wf-model3d-meshy-status.is-error .wf-model3d-meshy-progress-fill {
+  background: rgb(239 68 68 / 0.75);
 }
 
 .wf-model3d-viewer-shell {

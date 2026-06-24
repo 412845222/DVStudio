@@ -33,19 +33,16 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
     const nodeFootprint = {
       image: { width: 450, height: 300 },
       text: { width: 360, height: 260 },
-      meshy: { width: 450, height: 470 },
       model3d: { width: 450, height: 420 },
       sceneLayout: { width: 450, height: 430 },
     }
 
     const pipelineColumns = [
-      nodeFootprint.image.width,
-      nodeFootprint.text.width,
-      nodeFootprint.meshy.width,
-      nodeFootprint.image.width,
-      nodeFootprint.text.width,
-      nodeFootprint.meshy.width,
-      nodeFootprint.model3d.width,
+      nodeFootprint.image.width,    // 列0: 拆解截图
+      nodeFootprint.text.width,     // 列1: 图像Prompt
+      nodeFootprint.image.width,    // 列2: 生成图像
+      nodeFootprint.text.width,     // 列3: 3D Prompt
+      nodeFootprint.model3d.width,  // 列4: 3D模型
     ]
 
     const columnCenterX = (columnIndex: number) => {
@@ -256,6 +253,7 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
       const sourceRef = options.connectedSceneDecomposeImageInputRefAt(sourceNode.id, requestedSourceIndex)
       const objectId = String(output.objectId ?? output.id ?? '').trim() || String(output.id)
 
+      // 列0: 拆解截图
       const imageNodeId = createNode({
         worldX: columnCenterX(0),
         worldY: currentY,
@@ -264,9 +262,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
         alias: output.name ? `${output.name} 图像` : '拆解图像',
       })
       if (!imageNodeId) continue
+      // 输出锚点已归一化：所有下游节点统一从场景拆解节点的 out-main 锚点连出
       addEdgeIfMissing({
         fromNodeId: sourceNode.id,
-        fromAnchorId: output.imageAnchorId,
+        fromAnchorId: 'out-main',
         toNodeId: imageNodeId,
         toAnchorId: 'in-image',
       })
@@ -274,6 +273,7 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
       options.onNodeUploadResource(imageNodeId, clonedFile, 'image', { autoDistribute: false })
       createdNodeIds.push(imageNodeId)
 
+      // 列1: 图像Prompt
       const imagePromptNodeId = createNode({
         worldX: columnCenterX(1),
         worldY: currentY,
@@ -291,66 +291,42 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
       })
       createdNodeIds.push(imagePromptNodeId)
 
-      const meshyImageNodeId = createNode({
+      // 列2: 生成图像（替换原Meshy图像节点）
+      const generatedImageNodeId = createNode({
         worldX: columnCenterX(2),
         worldY: currentY,
-        title: output.name || 'Meshy 图像',
-        type: 'meshy',
-        alias: output.name ? `${output.name} Meshy图像` : 'Meshy图像',
+        title: output.name || '生成图像',
+        type: 'image',
+        alias: output.name ? `${output.name} 生成图像` : '生成图像',
       })
-      if (!meshyImageNodeId) continue
-      options.store.commit('setNodeMeshySettings', {
-        nodeId: meshyImageNodeId,
-        meshySettings: {
-          meshyTaskTarget: 'image',
-          meshyTaskFamily: 'image-to-image',
-          meshyAiModel: 'nano-banana',
-          meshyAspectRatio: '1:1',
-          meshyOutputImageCount: 1,
-          meshyPoseMode: '',
-          meshyRemoveLighting: false,
-        },
-      })
+      if (!generatedImageNodeId) continue
+      // 连接图像Prompt输出到生成图像节点
       addEdgeIfMissing({
         fromNodeId: imagePromptNodeId,
         fromAnchorId: 'out-text',
-        toNodeId: meshyImageNodeId,
+        toNodeId: generatedImageNodeId,
         toAnchorId: 'in-text',
       })
+      // 连接参考图到生成图像节点
       if (sourceRef?.fromNodeId && sourceRef?.fromAnchorId) {
         addEdgeIfMissing({
           fromNodeId: sourceRef.fromNodeId,
           fromAnchorId: sourceRef.fromAnchorId,
-          toNodeId: meshyImageNodeId,
-          toAnchorId: 'in-image-1',
+          toNodeId: generatedImageNodeId,
+          toAnchorId: 'in-image',
         })
       }
       addEdgeIfMissing({
         fromNodeId: imageNodeId,
         fromAnchorId: 'out-image',
-        toNodeId: meshyImageNodeId,
-        toAnchorId: 'in-image-2',
-      })
-      createdNodeIds.push(meshyImageNodeId)
-
-      const resultImageNodeId = createNode({
-        worldX: columnCenterX(3),
-        worldY: currentY,
-        title: output.name || 'Meshy 结果图',
-        type: 'image',
-        alias: output.name ? `${output.name} Meshy结果` : 'Meshy结果',
-      })
-      if (!resultImageNodeId) continue
-      addEdgeIfMissing({
-        fromNodeId: meshyImageNodeId,
-        fromAnchorId: 'out-image-1',
-        toNodeId: resultImageNodeId,
+        toNodeId: generatedImageNodeId,
         toAnchorId: 'in-image',
       })
-      createdNodeIds.push(resultImageNodeId)
+      createdNodeIds.push(generatedImageNodeId)
 
+      // 列3: 3D Prompt（调整列索引）
       const modelPromptNodeId = createNode({
-        worldX: columnCenterX(4),
+        worldX: columnCenterX(3),
         worldY: currentY,
         title: output.name || '3D Prompt',
         type: 'text',
@@ -366,52 +342,36 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
       })
       createdNodeIds.push(modelPromptNodeId)
 
-      const meshy3dNodeId = createNode({
-        worldX: columnCenterX(5),
-        worldY: currentY,
-        title: output.name || 'Meshy 3D',
-        type: 'meshy',
-        alias: output.name ? `${output.name} Meshy3D` : 'Meshy3D',
-      })
-      if (!meshy3dNodeId) continue
-      options.store.commit('setNodeMeshySettings', {
-        nodeId: meshy3dNodeId,
-        meshySettings: {
-          meshyTaskTarget: '3d',
-          meshyTaskFamily: 'image-to-3d',
-          meshyAiModel: 'latest',
-          meshyModelType: 'lowpoly',
-          meshyTopology: 'triangle',
-          meshyTargetPolycount: 12000,
-          meshyShouldTexture: true,
-          meshyRemoveLighting: false,
-        },
-      })
-      addEdgeIfMissing({
-        fromNodeId: modelPromptNodeId,
-        fromAnchorId: 'out-text',
-        toNodeId: meshy3dNodeId,
-        toAnchorId: 'in-text',
-      })
-      addEdgeIfMissing({
-        fromNodeId: resultImageNodeId,
-        fromAnchorId: 'out-image',
-        toNodeId: meshy3dNodeId,
-        toAnchorId: 'in-image-1',
-      })
-      createdNodeIds.push(meshy3dNodeId)
-
+      // 列4: 3D模型（调整列索引，配置为Meshy模式）
       const model3dNodeId = createNode({
-        worldX: columnCenterX(6),
+        worldX: columnCenterX(4),
         worldY: currentY,
         title: output.name || '3D 模型',
         type: 'model3d',
         alias: output.name ? `${output.name} 3D模型` : '3D模型',
       })
       if (!model3dNodeId) continue
+      // 配置3D模型节点为Meshy模式
+      options.store.commit('setNodeModel3DSettings', {
+        nodeId: model3dNodeId,
+        model3dSettings: {
+          modelGenerationSource: 'meshy',
+          meshyModelSettings: {
+            taskFamily: 'image-to-3d',
+            prompt: buildMeshy3dPrompt(output),
+            aiModel: 'latest',
+            modelType: 'lowpoly',
+            topology: 'triangle',
+            targetPolycount: 12000,
+            shouldTexture: true,
+            removeLighting: false,
+          },
+        },
+      })
+      // 连接生成图像输出到3D模型节点
       addEdgeIfMissing({
-        fromNodeId: meshy3dNodeId,
-        fromAnchorId: 'out-model',
+        fromNodeId: generatedImageNodeId,
+        fromAnchorId: 'out-image',
         toNodeId: model3dNodeId,
         toAnchorId: 'in-model',
       })

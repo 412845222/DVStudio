@@ -18,6 +18,8 @@ import type {
 	WorkflowViewport,
 	WorkflowStoryBranch,
 	WorkflowComfyUINodeSettings,
+	WorkflowImageNodeSettings,
+	WorkflowMeshyModelSettings,
 	WorkflowModel3DNodeSettings,
 	WorkflowMeshyNodeSettings,
 	WorkflowMeshyTaskFamily,
@@ -26,6 +28,7 @@ import type {
 	WorkflowNodeChatParams,
 	WorkflowNodeChatSubmitPayload,
 	WorkflowNodeGenerationTask,
+	WorkflowSelectionTag,
 } from '../../aiworkflow/types'
 import type { WorkflowResource, ResourceKind } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
@@ -103,6 +106,9 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 		},
 		nodeGenerationTasksById: {},
 		nodeGenerationTaskIdsByNodeId: {},
+		selectionTagsByKey: {},
+		savedSelectionFrames: [],
+		nodeCheckboxVisible: true,
 	}
 }
 
@@ -188,8 +194,18 @@ const singleIOAnchorsForNodeType = (type: string): { inputs: WorkflowAnchorSpec[
 	}
 	if (type === 'model3d') {
 		return {
-			inputs: [{ id: 'in-0', label: '模型输入', multiInput: true }],
-			outputs: [{ id: 'out-0', label: '模型输出', mediaType: 'model3d' }],
+			inputs: [
+				{ id: 'in-resource', label: '资源', mediaType: 'generic' },
+				{ id: 'in-text', label: '提示词', mediaType: 'text' },
+				{ id: 'in-image-1', label: '参考图 1', mediaType: 'image' },
+				{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
+				{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
+				{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
+			],
+			outputs: [
+				{ id: 'out-0', label: '模型输出', mediaType: 'model3d' },
+				{ id: 'out-image', label: '预览图', mediaType: 'image' },
+			],
 		}
 	}
 	return null
@@ -220,7 +236,7 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 		return nextAnchorId
 	}
 	if (nextType === 'model3d') {
-		if (nextAnchorId === 'in-model') return 'in-0'
+		if (nextAnchorId === 'in-0' || nextAnchorId === 'in-model') return 'in-resource'
 		return nextAnchorId
 	}
 	if (nextType === 'rotate-image') {
@@ -963,22 +979,12 @@ const syncSceneDecomposeAnchors = (node: WorkflowNode) => {
 		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
 		{ id: 'in-json', label: '场景 JSON', mediaType: 'text' },
 	]
-	const nextOutputs: WorkflowAnchorSpec[] = []
-	for (const item of outputs) {
-		const id = String(item?.id ?? '').trim()
-		if (!id) continue
-		nextOutputs.push({
-			id: String(item?.imageAnchorId ?? `out-image-${id}`),
-			label: item?.name ? `${item.name} 图像` : '图像输出',
-			mediaType: 'image',
-		})
-		nextOutputs.push({
-			id: String(item?.textAnchorId ?? `out-text-${id}`),
-			label: item?.name ? `${item.name} 文本` : '文本输出',
-			mediaType: 'text',
-		})
-	}
-	node.outputs = nextOutputs.length ? nextOutputs : [{ id: 'out-empty', label: '待分解', mediaType: 'text' }]
+	// 场景拆解节点输出锚点归一化：无论拆解出多少对象，只保留一个总输出锚点，
+	// 所有自动布线均从该锚点出发，避免多锚点位置与连线起点错位的问题。
+	const hasOutputs = outputs.length > 0
+	node.outputs = hasOutputs
+		? [{ id: 'out-main', label: '拆解输出', mediaType: 'image' }]
+		: [{ id: 'out-empty', label: '待分解', mediaType: 'text' }]
 }
 
 const normalizeMeshyTargetFormats = (value: any): WorkflowMeshyNodeSettings['meshyTargetFormats'] | undefined => {
@@ -1348,6 +1354,20 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.clipboardNodes = null
 			state.clipboardPrimaryNodeId = null
 			state.chatDraft = ''
+
+			// 多选标签和checkbox开关
+			if (s.selectionTagsByKey && typeof s.selectionTagsByKey === 'object') {
+				state.selectionTagsByKey = s.selectionTagsByKey as Record<string, WorkflowSelectionTag>
+			} else {
+				state.selectionTagsByKey = {}
+			}
+			state.nodeCheckboxVisible = typeof s.nodeCheckboxVisible === 'boolean' ? s.nodeCheckboxVisible : true
+			// 已保存选区框
+			if (Array.isArray(s.savedSelectionFrames)) {
+				state.savedSelectionFrames = s.savedSelectionFrames
+			} else {
+				state.savedSelectionFrames = []
+			}
 		},
 		setChatDraft(state, payload: { text: string }) {
 			state.chatDraft = typeof payload?.text === 'string' ? payload.text : String(payload?.text ?? '')
@@ -1859,14 +1879,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state,
 			payload: {
 				nodeId: string
-				imageSettings: {
-					outputWidth?: number
-					outputHeight?: number
-					naturalWidth?: number
-					naturalHeight?: number
-					cropEnabled?: boolean
-					crop?: { x: number; y: number; width: number; height: number }
-				}
+				imageSettings: Partial<WorkflowImageNodeSettings>
 			}
 		) {
 			const id = String(payload?.nodeId ?? '').trim()
@@ -1894,6 +1907,59 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					}
 					: undefined
 
+			const imageGenerationSource =
+				next.imageGenerationSource === 'upload' || next.imageGenerationSource === 'comfyui' || next.imageGenerationSource === 'meshy'
+					? next.imageGenerationSource
+					: undefined
+
+			const meshyImageSettingsRaw = next.meshyImageSettings
+			const meshyImageSettings =
+				meshyImageSettingsRaw && typeof meshyImageSettingsRaw === 'object'
+					? {
+						prompt: typeof meshyImageSettingsRaw.prompt === 'string' ? meshyImageSettingsRaw.prompt : undefined,
+						negativePrompt: typeof meshyImageSettingsRaw.negativePrompt === 'string' ? meshyImageSettingsRaw.negativePrompt : undefined,
+						seed: Number.isFinite(Number(meshyImageSettingsRaw.seed)) ? Number(meshyImageSettingsRaw.seed) : undefined,
+						aiModel:
+							meshyImageSettingsRaw.aiModel === 'nano-banana' || meshyImageSettingsRaw.aiModel === 'nano-banana-pro'
+								? meshyImageSettingsRaw.aiModel
+								: undefined,
+						generateMultiView: typeof meshyImageSettingsRaw.generateMultiView === 'boolean' ? Boolean(meshyImageSettingsRaw.generateMultiView) : undefined,
+						aspectRatio: typeof meshyImageSettingsRaw.aspectRatio === 'string' ? meshyImageSettingsRaw.aspectRatio : undefined,
+						outputImageCount: Number.isFinite(Number(meshyImageSettingsRaw.outputImageCount))
+							? (Math.max(1, Math.min(4, Math.floor(Number(meshyImageSettingsRaw.outputImageCount)))) as 1 | 2 | 3 | 4)
+							: undefined,
+						poseMode:
+							meshyImageSettingsRaw.poseMode === '' || meshyImageSettingsRaw.poseMode === 'a-pose' || meshyImageSettingsRaw.poseMode === 't-pose'
+								? meshyImageSettingsRaw.poseMode
+								: undefined,
+						taskId: typeof meshyImageSettingsRaw.taskId === 'string' ? meshyImageSettingsRaw.taskId : undefined,
+						taskStatus:
+							meshyImageSettingsRaw.taskStatus === 'idle' ||
+							meshyImageSettingsRaw.taskStatus === 'pending' ||
+							meshyImageSettingsRaw.taskStatus === 'running' ||
+							meshyImageSettingsRaw.taskStatus === 'succeeded' ||
+							meshyImageSettingsRaw.taskStatus === 'failed' ||
+							meshyImageSettingsRaw.taskStatus === 'canceled'
+								? meshyImageSettingsRaw.taskStatus
+								: undefined,
+						progress: Number.isFinite(Number(meshyImageSettingsRaw.progress)) ? Number(meshyImageSettingsRaw.progress) : undefined,
+						statusText: typeof meshyImageSettingsRaw.statusText === 'string' ? meshyImageSettingsRaw.statusText : undefined,
+						errorMessage: typeof meshyImageSettingsRaw.errorMessage === 'string' ? meshyImageSettingsRaw.errorMessage : undefined,
+						outputSummary:
+							meshyImageSettingsRaw.outputSummary && typeof meshyImageSettingsRaw.outputSummary === 'object'
+								? {
+									preferredUrl: typeof meshyImageSettingsRaw.outputSummary.preferredUrl === 'string' ? meshyImageSettingsRaw.outputSummary.preferredUrl : undefined,
+									imageUrls: Array.isArray(meshyImageSettingsRaw.outputSummary.imageUrls)
+										? meshyImageSettingsRaw.outputSummary.imageUrls.map((x: any) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
+										: undefined,
+									assetUrl: typeof meshyImageSettingsRaw.outputSummary.assetUrl === 'string' ? meshyImageSettingsRaw.outputSummary.assetUrl : undefined,
+									assetPath: typeof meshyImageSettingsRaw.outputSummary.assetPath === 'string' ? meshyImageSettingsRaw.outputSummary.assetPath : undefined,
+									thumbnailUrl: typeof meshyImageSettingsRaw.outputSummary.thumbnailUrl === 'string' ? meshyImageSettingsRaw.outputSummary.thumbnailUrl : undefined,
+								}
+								: undefined,
+					}
+					: undefined
+
 			n.imageSettings = {
 				...(n.imageSettings ?? {}),
 				...(outW != null ? { outputWidth: outW } : {}),
@@ -1902,6 +1968,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				...(natH != null ? { naturalHeight: natH } : {}),
 				...(cropEnabled != null ? { cropEnabled } : {}),
 				...(crop ? { crop } : {}),
+				...(imageGenerationSource != null ? { imageGenerationSource } : {}),
+				...(meshyImageSettings ? { meshyImageSettings } : {}),
 			}
 		},
 		setNodeModel3DSettings(state, payload: { nodeId: string; model3dSettings: Partial<WorkflowModel3DNodeSettings> }) {
@@ -1912,13 +1980,116 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const next = payload?.model3dSettings
 			if (!next || typeof next !== 'object') return
 
+			const modelGenerationSource =
+				next.modelGenerationSource === 'upload' || next.modelGenerationSource === 'comfyui' || next.modelGenerationSource === 'meshy'
+					? next.modelGenerationSource
+					: undefined
+
+			const meshyModelSettingsRaw = next.meshyModelSettings
+			const meshyModelSettings =
+				meshyModelSettingsRaw && typeof meshyModelSettingsRaw === 'object'
+					? {
+						prompt: typeof meshyModelSettingsRaw.prompt === 'string' ? meshyModelSettingsRaw.prompt : undefined,
+						negativePrompt: typeof meshyModelSettingsRaw.negativePrompt === 'string' ? meshyModelSettingsRaw.negativePrompt : undefined,
+						seed: Number.isFinite(Number(meshyModelSettingsRaw.seed)) ? Number(meshyModelSettingsRaw.seed) : undefined,
+						aiModel:
+							meshyModelSettingsRaw.aiModel === 'latest' ||
+							meshyModelSettingsRaw.aiModel === 'meshy-6' ||
+							meshyModelSettingsRaw.aiModel === 'meshy-5'
+								? meshyModelSettingsRaw.aiModel
+								: undefined,
+						taskFamily:
+							meshyModelSettingsRaw.taskFamily === 'text-to-3d' ||
+							meshyModelSettingsRaw.taskFamily === 'image-to-3d' ||
+							meshyModelSettingsRaw.taskFamily === 'multi-image-to-3d' ||
+							meshyModelSettingsRaw.taskFamily === 'retexture'
+								? meshyModelSettingsRaw.taskFamily
+								: undefined,
+						modelType: meshyModelSettingsRaw.modelType === 'standard' || meshyModelSettingsRaw.modelType === 'lowpoly' ? meshyModelSettingsRaw.modelType : undefined,
+						topology: meshyModelSettingsRaw.topology === 'triangle' || meshyModelSettingsRaw.topology === 'quad' ? meshyModelSettingsRaw.topology : undefined,
+						targetPolycount: Number.isFinite(Number(meshyModelSettingsRaw.targetPolycount))
+							? Math.max(0, Math.floor(Number(meshyModelSettingsRaw.targetPolycount)))
+							: undefined,
+						symmetryMode:
+							meshyModelSettingsRaw.symmetryMode === 'auto' || meshyModelSettingsRaw.symmetryMode === 'on' || meshyModelSettingsRaw.symmetryMode === 'off'
+								? meshyModelSettingsRaw.symmetryMode
+								: undefined,
+						shouldRemesh: typeof meshyModelSettingsRaw.shouldRemesh === 'boolean' ? Boolean(meshyModelSettingsRaw.shouldRemesh) : undefined,
+						savePreRemeshedModel: typeof meshyModelSettingsRaw.savePreRemeshedModel === 'boolean' ? Boolean(meshyModelSettingsRaw.savePreRemeshedModel) : undefined,
+						shouldTexture: typeof meshyModelSettingsRaw.shouldTexture === 'boolean' ? Boolean(meshyModelSettingsRaw.shouldTexture) : undefined,
+						enablePbr: typeof meshyModelSettingsRaw.enablePbr === 'boolean' ? Boolean(meshyModelSettingsRaw.enablePbr) : undefined,
+						texturePrompt: typeof meshyModelSettingsRaw.texturePrompt === 'string' ? meshyModelSettingsRaw.texturePrompt : undefined,
+						textureImageUrl: typeof meshyModelSettingsRaw.textureImageUrl === 'string' ? meshyModelSettingsRaw.textureImageUrl : undefined,
+						poseMode:
+							meshyModelSettingsRaw.poseMode === '' || meshyModelSettingsRaw.poseMode === 'a-pose' || meshyModelSettingsRaw.poseMode === 't-pose'
+								? meshyModelSettingsRaw.poseMode
+								: undefined,
+						autoSize: typeof meshyModelSettingsRaw.autoSize === 'boolean' ? Boolean(meshyModelSettingsRaw.autoSize) : undefined,
+						originAt: meshyModelSettingsRaw.originAt === 'bottom' || meshyModelSettingsRaw.originAt === 'center' ? meshyModelSettingsRaw.originAt : undefined,
+						moderation: typeof meshyModelSettingsRaw.moderation === 'boolean' ? Boolean(meshyModelSettingsRaw.moderation) : undefined,
+						imageEnhancement: typeof meshyModelSettingsRaw.imageEnhancement === 'boolean' ? Boolean(meshyModelSettingsRaw.imageEnhancement) : undefined,
+						removeLighting: typeof meshyModelSettingsRaw.removeLighting === 'boolean' ? Boolean(meshyModelSettingsRaw.removeLighting) : undefined,
+						targetFormats: Array.isArray(meshyModelSettingsRaw.targetFormats)
+							? meshyModelSettingsRaw.targetFormats.map((x: any) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
+							: undefined,
+						imageUrl: typeof meshyModelSettingsRaw.imageUrl === 'string' ? meshyModelSettingsRaw.imageUrl : undefined,
+						imageUrls: Array.isArray(meshyModelSettingsRaw.imageUrls)
+							? meshyModelSettingsRaw.imageUrls.map((x: any) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
+							: undefined,
+						imageCount: Number.isFinite(Number(meshyModelSettingsRaw.imageCount)) ? Number(meshyModelSettingsRaw.imageCount) : undefined,
+						taskId: typeof meshyModelSettingsRaw.taskId === 'string' ? meshyModelSettingsRaw.taskId : undefined,
+						taskStatus:
+							meshyModelSettingsRaw.taskStatus === 'idle' ||
+							meshyModelSettingsRaw.taskStatus === 'pending' ||
+							meshyModelSettingsRaw.taskStatus === 'running' ||
+							meshyModelSettingsRaw.taskStatus === 'succeeded' ||
+							meshyModelSettingsRaw.taskStatus === 'failed' ||
+							meshyModelSettingsRaw.taskStatus === 'canceled'
+								? meshyModelSettingsRaw.taskStatus
+								: undefined,
+						progress: Number.isFinite(Number(meshyModelSettingsRaw.progress)) ? Number(meshyModelSettingsRaw.progress) : undefined,
+						statusText: typeof meshyModelSettingsRaw.statusText === 'string' ? meshyModelSettingsRaw.statusText : undefined,
+						errorMessage: typeof meshyModelSettingsRaw.errorMessage === 'string' ? meshyModelSettingsRaw.errorMessage : undefined,
+						outputSummary:
+							meshyModelSettingsRaw.outputSummary && typeof meshyModelSettingsRaw.outputSummary === 'object'
+								? {
+									preferredUrl: typeof meshyModelSettingsRaw.outputSummary.preferredUrl === 'string' ? meshyModelSettingsRaw.outputSummary.preferredUrl : undefined,
+									assetUrl: typeof meshyModelSettingsRaw.outputSummary.assetUrl === 'string' ? meshyModelSettingsRaw.outputSummary.assetUrl : undefined,
+									assetPath: typeof meshyModelSettingsRaw.outputSummary.assetPath === 'string' ? meshyModelSettingsRaw.outputSummary.assetPath : undefined,
+									thumbnailUrl: typeof meshyModelSettingsRaw.outputSummary.thumbnailUrl === 'string' ? meshyModelSettingsRaw.outputSummary.thumbnailUrl : undefined,
+									format: typeof meshyModelSettingsRaw.outputSummary.format === 'string' ? meshyModelSettingsRaw.outputSummary.format : undefined,
+								}
+								: undefined,
+						relationKind:
+							meshyModelSettingsRaw.relationKind === 'model' ||
+							meshyModelSettingsRaw.relationKind === 'texture' ||
+							meshyModelSettingsRaw.relationKind === 'rigging' ||
+							meshyModelSettingsRaw.relationKind === 'animation'
+								? meshyModelSettingsRaw.relationKind
+								: undefined,
+						rootTaskId: typeof meshyModelSettingsRaw.rootTaskId === 'string' ? meshyModelSettingsRaw.rootTaskId : undefined,
+						parentTaskId: typeof meshyModelSettingsRaw.parentTaskId === 'string' ? meshyModelSettingsRaw.parentTaskId : undefined,
+						previewTaskId: typeof meshyModelSettingsRaw.previewTaskId === 'string' ? meshyModelSettingsRaw.previewTaskId : undefined,
+					}
+					: undefined
+
 			const patch: Partial<WorkflowModel3DNodeSettings> = { ...next }
 			if (patch.lightIntensity != null) patch.lightIntensity = Math.max(0, Math.min(10, Number(patch.lightIntensity) || 0))
 			if (patch.renderWidth != null) patch.renderWidth = Math.max(1, Math.floor(Number(patch.renderWidth) || 1))
 			if (patch.renderHeight != null) patch.renderHeight = Math.max(1, Math.floor(Number(patch.renderHeight) || 1))
+			delete (patch as any).meshyModelSettings
+
+			const existingMeshy = (n.model3dSettings?.meshyModelSettings) ?? {}
+			const mergedMeshy = meshyModelSettings
+				? Object.fromEntries(
+					Object.entries({ ...existingMeshy, ...meshyModelSettings }).filter(([, v]) => v !== undefined),
+				  )
+				: undefined
 
 			n.model3dSettings = {
 				...(n.model3dSettings ?? {}),
+				...(modelGenerationSource != null ? { modelGenerationSource } : {}),
+				...(mergedMeshy ? { meshyModelSettings: mergedMeshy as any } : {}),
 				...patch,
 			}
 		},
@@ -2246,6 +2417,21 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (snap.nodeGenerationTaskIdsByNodeId && typeof snap.nodeGenerationTaskIdsByNodeId === 'object') {
 				state.nodeGenerationTaskIdsByNodeId = snap.nodeGenerationTaskIdsByNodeId as any
 			}
+			// 多选标签
+			if (snap.selectionTagsByKey && typeof snap.selectionTagsByKey === 'object') {
+				state.selectionTagsByKey = snap.selectionTagsByKey as Record<string, WorkflowSelectionTag>
+			} else {
+				state.selectionTagsByKey = {}
+			}
+			// 已保存选区框
+			if (Array.isArray((snap as any).savedSelectionFrames)) {
+				state.savedSelectionFrames = (snap as any).savedSelectionFrames
+			} else {
+				state.savedSelectionFrames = []
+			}
+			state.nodeCheckboxVisible = typeof (snap as any).nodeCheckboxVisible === 'boolean'
+				? (snap as any).nodeCheckboxVisible
+				: true
 		},
 		moveSelectedNodesByDelta(state, payload: { dx?: number; dy?: number }) {
 			const dx = payload?.dx != null ? Number(payload.dx) : 0
@@ -2341,6 +2527,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (payload.worldY != null) {
 				const y = Number(payload.worldY)
 				if (Number.isFinite(y)) n.worldY = y
+			}
+		},
+		moveNodesBy(state, payload: { nodeIds: string[]; dx: number; dy: number }) {
+			const ids = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
+			const dx = Number(payload?.dx ?? 0)
+			const dy = Number(payload?.dy ?? 0)
+			if (!Number.isFinite(dx) || !Number.isFinite(dy)) return
+			for (const id of ids) {
+				const n = state.nodesById[id]
+				if (!n) continue
+				n.worldX += dx
+				n.worldY += dy
 			}
 		},
 		removeNode(state, payload: { nodeId: string }) {
@@ -2482,6 +2680,110 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!task) return
 			task.results = [...task.results, payload.result]
 		},
+		// —— 多选框显示开关 ——
+		setNodeCheckboxVisible(state, payload: { visible: boolean }) {
+			state.nodeCheckboxVisible = !!payload?.visible
+		},
+		// —— 切换单个节点的多选状态 ——
+		toggleNodeSelection(state, payload: { nodeId: string; modifier?: boolean; range?: boolean }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id || !state.nodesById[id]) return
+			const modifier = !!payload?.modifier
+			const range = !!payload?.range
+
+			if (range) {
+				// Shift 区间选择
+				const order = state.nodeOrder
+				const current = state.selectedNodeId
+				const curIdx = current ? order.indexOf(current) : -1
+				const next = order.indexOf(id)
+				if (curIdx >= 0 && next >= 0) {
+					const [a, b] = curIdx < next ? [curIdx, next] : [next, curIdx]
+					const rangeIds = order.slice(a, b + 1)
+					state.selectedNodeIds = rangeIds
+					state.selectedNodeId = id
+					state.selectedEdgeId = null
+					return
+				}
+			}
+
+			if (modifier) {
+				// Ctrl/Cmd：toggle
+				if (state.selectedNodeIds.includes(id)) {
+					state.selectedNodeIds = state.selectedNodeIds.filter(n => n !== id)
+					if (state.selectedNodeId === id) {
+						state.selectedNodeId = state.selectedNodeIds[0] ?? null
+					}
+				} else {
+					state.selectedNodeIds = [...state.selectedNodeIds, id]
+					state.selectedNodeId = id
+				}
+				state.selectedEdgeId = null
+				return
+			}
+
+			// 默认：单选
+			state.selectedNodeId = id
+			state.selectedNodeIds = [id]
+			state.selectedEdgeId = null
+		},
+		// —— 多选标签 ——
+		upsertSelectionTag(state, payload: {
+			key: string
+			label: string
+			nodeIds: string[]
+			color?: string
+			note?: string
+		}) {
+			const key = String(payload?.key ?? '').trim()
+			if (!key) return
+			const label = String(payload?.label ?? '').trim()
+			const nodeIds = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
+			if (!label && !payload?.note) {
+				delete state.selectionTagsByKey[key]
+				return
+			}
+			const now = Date.now()
+			const existing = state.selectionTagsByKey[key]
+			state.selectionTagsByKey[key] = {
+				key,
+				label,
+				nodeIds: nodeIds.slice().sort(),
+				color: payload?.color ?? existing?.color,
+				note: payload?.note ?? existing?.note,
+				createdAt: existing?.createdAt ?? now,
+				updatedAt: now,
+			}
+		},
+		removeSelectionTag(state, payload: { key: string }) {
+			const key = String(payload?.key ?? '').trim()
+			if (!key) return
+			delete state.selectionTagsByKey[key]
+		},
+		// —— 已保存选区框（持久化实体） ——
+		upsertSavedSelectionFrame(state, payload: { id: string; label: string; nodeIds: string[] }) {
+			const id = String(payload?.id ?? '').trim()
+			if (!id) return
+			const label = String(payload?.label ?? '').trim()
+			const nodeIds = Array.isArray(payload?.nodeIds) ? payload.nodeIds.slice().sort() : []
+			const now = Date.now()
+
+			const existingIdx = state.savedSelectionFrames.findIndex((f: any) => f.id === id)
+			if (existingIdx >= 0) {
+				state.savedSelectionFrames[existingIdx] = {
+					...state.savedSelectionFrames[existingIdx],
+					label,
+					nodeIds,
+				}
+			} else {
+				state.savedSelectionFrames.push({ id, label, nodeIds, createdAt: now })
+			}
+		},
+		removeSavedSelectionFrame(state, payload: { id: string }) {
+			const id = String(payload?.id ?? '').trim()
+			if (!id) return
+			state.savedSelectionFrames = state.savedSelectionFrames.filter((f: any) => f.id !== id)
+		},
 	},
 	actions: {
 		setChatDraft({ commit }, payload: { text: string }) {
@@ -2501,6 +2803,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		},
 		setNodePosition({ commit }, payload: { nodeId: string; worldX?: number; worldY?: number }) {
 			commit('setNodePosition', payload)
+		},
+		moveNodesBy({ commit }, payload: { nodeIds: string[]; dx: number; dy: number }) {
+			const ids = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
+			const dx = Number(payload?.dx ?? 0)
+			const dy = Number(payload?.dy ?? 0)
+			
+			if (!Number.isFinite(dx) || !Number.isFinite(dy) || !ids.length) return
+			
+			// 只移动直接传入的节点，不自动扩展到其他选区
+			// 嵌套选区的联动是自然的：拖动父选区时子选区的节点本来就在父选区中
+			commit('moveNodesBy', { nodeIds: ids, dx, dy })
 		},
 		removeNode({ commit }, payload: { nodeId: string }) {
 			commit('removeNode', payload)
@@ -2547,6 +2860,21 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		async submitNodeChatWithDeps(_, args: { deps: Record<string, any>; payload: WorkflowNodeChatSubmitPayload }) {
 			const mod = await import('../../views/AIWorkflow/node-business/chat/useAIWorkflowNodeGeneration')
 			await mod.runNodeGenerationTask(args.deps as any, args.payload)
+		},
+		toggleNodeSelection({ commit }, payload: { nodeId: string; modifier?: boolean; range?: boolean }) {
+			commit('toggleNodeSelection', payload)
+		},
+		upsertSelectionTag({ commit }, payload: { key: string; label: string; nodeIds: string[]; color?: string; note?: string }) {
+			commit('upsertSelectionTag', payload)
+		},
+		removeSelectionTag({ commit }, payload: { key: string }) {
+			commit('removeSelectionTag', payload)
+		},
+		upsertSavedSelectionFrame({ commit }, payload: { id: string; label: string; nodeIds: string[] }) {
+			commit('upsertSavedSelectionFrame', payload)
+		},
+		removeSavedSelectionFrame({ commit }, payload: { id: string }) {
+			commit('removeSavedSelectionFrame', payload)
 		},
 	},
 })

@@ -26,6 +26,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
   isDjangoManagedResource: (resource: any) => boolean
 }) => {
   const imageResourcePersistingIds = new Set<string>()
+  const videoResourcePersistingIds = new Set<string>()
 
   const shouldUseAnonymousCrossOrigin = (url: string) => {
     const text = String(url || '').trim()
@@ -93,7 +94,65 @@ export const useAIWorkflowNodeAssetBinding = (options: {
     }
   }
 
-  const uploadNodeResource = (
+  const persistNodeVideoResourceLocally = async (payload: {
+    resourceId: string
+    nodeId: string
+    file: File
+  }) => {
+    const resourceId = String(payload.resourceId ?? '').trim()
+    if (!resourceId || videoResourcePersistingIds.has(resourceId)) return
+
+    const current = options.store.state.resourcesById?.[resourceId] as any
+    if (!current || current.kind !== 'video' || options.isDjangoManagedResource(current)) return
+
+    videoResourcePersistingIds.add(resourceId)
+    try {
+      const currentProjectId = Number(options.getCurrentProjectId() ?? 0)
+      const uploaded = await options.blueprintProjectService.uploadAsset(
+        payload.file,
+        'video',
+        Number.isFinite(currentProjectId) && currentProjectId > 0
+          ? { projectId: currentProjectId }
+          : undefined,
+      )
+      if (!uploaded.ok) return
+
+      const asset = (uploaded as any).asset ?? {}
+      const localizedUrl = options.resolveBackendUrl(String(asset.url || ''))
+      const localizedPath = String(asset.absolutePath || '').trim()
+      const localizedProjectRelativePath = String(asset.projectRelativePath || asset.relativePath || '').trim()
+      if (!localizedUrl) return
+
+      const latest = options.store.state.resourcesById?.[resourceId] as any
+      const previousUrl = String(latest?.url ?? '').trim()
+      if (previousUrl.startsWith('blob:')) {
+        options.revokeTrackedObjectUrlsForResource(resourceId)
+      }
+
+      options.store.commit('patchResource', {
+        resourceId,
+        patch: {
+          url: localizedUrl,
+          sourcePath: localizedPath || undefined,
+          projectRelativePath: localizedProjectRelativePath || undefined,
+        } as any,
+      })
+
+      const boundNode = options.store.state.nodesById[payload.nodeId]
+      if (boundNode && String(boundNode.resourceId ?? '').trim() === resourceId && localizedPath) {
+        options.store.commit('setNodeResourcePath', {
+          nodeId: payload.nodeId,
+          resourcePath: localizedPath,
+        })
+      }
+    } catch {
+      // Keep the local object url when localization fails.
+    } finally {
+      videoResourcePersistingIds.delete(resourceId)
+    }
+  }
+
+  const uploadNodeResource =async (
     nodeId: string,
     file: File,
     kind: 'image' | 'video',
@@ -103,26 +162,58 @@ export const useAIWorkflowNodeAssetBinding = (options: {
     if (!node) return
     const sourcePath = typeof (file as any)?.path === 'string' ? String((file as any).path).trim() : ''
 
+    let finalUrl = ''
+    let assetAbsPath = ''
+    let assetRelPath = ''
+    let usedBlobUrl = false
+
+    const currentProjectId = Number(options.getCurrentProjectId() ?? 0)
+    if (currentProjectId > 0) {
+      try {
+        const uploaded = await options.blueprintProjectService.uploadAsset(
+          file,
+          kind === 'image' ? 'image' : (kind === 'video' ? 'video' : 'file'),
+          { projectId: currentProjectId },
+        )
+        if (uploaded.ok) {
+          const asset = (uploaded as any).asset ?? {}
+          finalUrl = options.resolveBackendUrl(String(asset.url || ''))
+          assetAbsPath = String(asset.absolutePath || '').trim()
+          assetRelPath = String(asset.projectRelativePath || asset.relativePath || '').trim()
+        }
+      } catch {
+        // fall back to blob URL below
+      }
+    }
+
+    if (!finalUrl) {
+      finalUrl = URL.createObjectURL(file)
+      usedBlobUrl = true
+    }
+
     const resourceId = options.makeResourceId()
-    const url = URL.createObjectURL(file)
-    options.setObjectUrl(resourceId, url)
+    if (usedBlobUrl) {
+      options.setObjectUrl(resourceId, finalUrl)
+    }
+
     options.store.commit('addResource', {
       id: resourceId,
       kind,
       name: file.name || `${kind}资源`,
-      url,
-      ...(sourcePath ? { sourcePath } : {}),
+      url: finalUrl,
+      ...(assetAbsPath ? { sourcePath: assetAbsPath } : (sourcePath ? { sourcePath } : {})),
+      ...(assetRelPath ? { projectRelativePath: assetRelPath } : {}),
       createdAt: Date.now(),
     })
     options.setNodeResourceWithCleanup({
       nodeId,
       resourceId,
-      resourcePath: sourcePath || undefined,
+      resourcePath: assetAbsPath || sourcePath || undefined,
     })
 
     if (kind === 'image') {
       const img = new Image()
-      if (shouldUseAnonymousCrossOrigin(url)) {
+      if (shouldUseAnonymousCrossOrigin(finalUrl)) {
         img.crossOrigin = 'anonymous'
       }
       img.onload = () => {
@@ -156,16 +247,16 @@ export const useAIWorkflowNodeAssetBinding = (options: {
         })
         options.autoSizeImageNodeFromDims(nodeId, fallbackWidth, fallbackHeight)
       }
-      img.src = url
-      void persistNodeImageResourceLocally({ resourceId, nodeId, file })
+      img.src = finalUrl
     }
 
     if (kind === 'video') {
       options.scheduleVideoMetadataRead({ resourceId, nodeId, url })
+      void persistNodeVideoResourceLocally({ resourceId, nodeId, file })
     }
 
-    options.autoSizeMediaNode(nodeId, url, kind)
-    opts?.onAfterBind?.({ resourceId, url })
+    options.autoSizeMediaNode(nodeId, finalUrl, kind)
+    opts?.onAfterBind?.({ resourceId, url: finalUrl })
   }
 
   const bindMediaResourceToNode = (
@@ -313,6 +404,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
   return {
     persistNodeImageResourceLocally,
+    persistNodeVideoResourceLocally,
     uploadNodeResource,
     bindMediaResourceToNode,
     uploadNodeModel3DFile,

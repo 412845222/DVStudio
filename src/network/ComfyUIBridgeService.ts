@@ -1464,6 +1464,48 @@ export class ComfyUIBridgeService {
 		return (await res.json()) as MeshyGenerateResponse
 	}
 
+	async meshyGenerateImage(form: FormData): Promise<MeshyGenerateResponse> {
+		const payload: Record<string, any> = {}
+		const refImageUrls: string[] = []
+
+		// 遍历 FormData 中的所有字段
+		const entries = (form as any).entries ? Array.from((form as any).entries() as IterableIterator<[string, any]>) : []
+		for (const [key, value] of entries) {
+			if (key === 'refImages' && (value instanceof File || value instanceof Blob)) {
+				const buffer = await value.arrayBuffer()
+				const bytes = new Uint8Array(buffer)
+				let binary = ''
+				for (let i = 0; i < bytes.length; i++) {
+					binary += String.fromCharCode(bytes[i])
+				}
+				const b64 = btoa(binary)
+				const mime = value.type || 'image/png'
+				refImageUrls.push(`data:${mime};base64,${b64}`)
+			} else {
+				payload[key] = value
+			}
+		}
+
+		if (refImageUrls.length > 0) {
+			payload.reference_image_urls = refImageUrls
+		}
+
+		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/generate'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload),
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: body.ok ? String((body.value as any)?.error || `meshy/generate failed: ${res.status}`) : `meshy/generate failed: ${res.status} ${body.text}`,
+			}
+		}
+		return (await res.json()) as MeshyGenerateResponse
+	}
+
 	async meshyTask(taskId: string, mode: string): Promise<MeshyTaskResponse> {
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/task'), {
 			method: 'POST',

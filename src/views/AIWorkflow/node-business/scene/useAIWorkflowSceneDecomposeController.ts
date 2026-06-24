@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import type { WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
 import {
   buildSceneDecomposeDescription,
@@ -10,6 +11,7 @@ import {
   slugSceneDecomposeId,
   ensureSceneDecomposeSourceDimensions,
 } from './sceneDecomposeShared'
+import { computeEnforcedLandscapeCrop, uvCropToPixelRect } from '../../../../aiworkflow/imageCropEnforcer'
 
 export const useAIWorkflowSceneDecomposeController = (options: {
   store: any
@@ -23,6 +25,9 @@ export const useAIWorkflowSceneDecomposeController = (options: {
     outputWidth?: number
     outputHeight?: number
     suffix?: string
+    sourceWidth?: number
+    sourceHeight?: number
+    enforceLandscape?: boolean
   }) => Promise<File | null>
   addGeneratedImageResource: (file: File) => { resourceId: string; url: string }
   autoExpandSceneDecomposeOutputs: (
@@ -175,19 +180,34 @@ export const useAIWorkflowSceneDecomposeController = (options: {
           continue
         }
 
+        const srcW = Math.max(1, Math.floor(Number(normalizedSource?.width ?? cropInfo.outputWidth ?? 0) || 1))
+        const srcH = Math.max(1, Math.floor(Number(normalizedSource?.height ?? cropInfo.outputHeight ?? 0) || 1))
+        const pixelCrop = uvCropToPixelRect(srcW, srcH, cropInfo.crop)
+        const enforced = computeEnforcedLandscapeCrop(srcW, srcH, pixelCrop, { minWidth: 350 })
+
         const description = buildSceneDecomposeDescription(item, objectName)
         const transferFile = await options.buildImageTransferFileFromCrop({
           sourceUrl: source.url,
           sourceName: objectName,
           crop: cropInfo.crop,
-          outputWidth: cropInfo.outputWidth,
-          outputHeight: cropInfo.outputHeight,
+          outputWidth: enforced.outputWidth,
+          outputHeight: enforced.outputHeight,
           suffix: `decompose_${index + 1}`,
+          sourceWidth: srcW,
+          sourceHeight: srcH,
+          enforceLandscape: true,
         })
         if (!transferFile) {
           skippedCount += 1
           completedTasks += 1
           continue
+        }
+
+        const enforcedPixelRect = {
+          x: enforced.sourceCrop.sx,
+          y: enforced.sourceCrop.sy,
+          width: enforced.sourceCrop.sw,
+          height: enforced.sourceCrop.sh,
         }
 
         const generated = options.addGeneratedImageResource(transferFile)
@@ -199,18 +219,18 @@ export const useAIWorkflowSceneDecomposeController = (options: {
           objectId,
           name: objectName,
           description,
-          cropMode: cropInfo.cropMode,
+          cropMode: enforced.adjusted ? `${cropInfo.cropMode}-enforced` : cropInfo.cropMode,
           sourceImageIndex,
           observedImageIndices: Array.isArray(item?.observedImageIndices)
             ? item.observedImageIndices.map((value: any) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0)
             : undefined,
           imageRect: cropInfo.crop,
-          imageRectPixels: cropInfo.pixelRect,
+          imageRectPixels: enforcedPixelRect,
           imageAnchorId: `out-image-${outputId}`,
           textAnchorId: `out-text-${outputId}`,
           generatedResourceId: generated.resourceId,
-          outputWidth: cropInfo.outputWidth,
-          outputHeight: cropInfo.outputHeight,
+          outputWidth: enforced.outputWidth,
+          outputHeight: enforced.outputHeight,
         })
 
         completedTasks += 1
@@ -251,7 +271,33 @@ export const useAIWorkflowSceneDecomposeController = (options: {
         return
       }
 
-      const autoExpandResult = await options.autoExpandSceneDecomposeOutputs(node, outputs, generatedFiles)
+      // 先提交完整 outputs 以触发场景拆解节点输出锚点的渲染，
+      // 等待 Vue 完成 DOM 刷新后再执行自动布线，确保连线起点能对准实际锚点位置。
+      options.store.commit('setNodeSceneDecomposeSettings', {
+        nodeId,
+        sceneDecomposeSettings: {
+          status: 'running',
+          message: `正在生成 ${outputs.length} 个拆解对象节点…`,
+          currentStep: '准备自动布线',
+          progress: 100,
+          totalTasks,
+          completedTasks,
+          croppedCount,
+          fallbackCount,
+          inputJson,
+          outputs,
+          lastRunAt: Date.now(),
+        },
+      })
+      await nextTick()
+
+      const refreshedNode = options.store.state.nodesById[nodeId]
+      if (!refreshedNode || refreshedNode.type !== 'scene-decompose') {
+        options.pushToast('场景分解节点已失效，无法执行自动布线。', 'warn')
+        return
+      }
+
+      const autoExpandResult = await options.autoExpandSceneDecomposeOutputs(refreshedNode, outputs, generatedFiles)
       const createdNodeIds = autoExpandResult.createdNodeIds
       const sceneLayoutConnections = Number(autoExpandResult.sceneLayoutConnections ?? 0)
       const completedMessage = skippedCount > 0

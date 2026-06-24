@@ -56,6 +56,8 @@
     "clean:runtime-django": "node scripts/clean-runtime-django.mjs",
     "build": "vue-tsc && vite build",
     "gen:win-icon": "node scripts/gen-win-icon.mjs",
+    "gen:installer-bitmaps": "node scripts/gen-installer-bitmaps.mjs",
+    "prepare:python-runtime": "node scripts/prepare-python-runtime.mjs",
     "clean:source-pack": "node scripts/remove-dir.mjs release-source",
     "pack:source": "node scripts/pack-source.mjs",
     "clean:lan-pack": "node scripts/remove-dir.mjs release-transfer",
@@ -73,7 +75,7 @@
     "prepack:win": "npm run gen:win-icon",
     "pack:win": "npm run build && electron-builder --dir -w",
     "pack:mac": "npm run build && electron-builder --dir -m",
-    "predist:win": "npm run gen:win-icon",
+    "predist:win": "npm run prepare:python-runtime && npm run gen:win-icon && npm run gen:installer-bitmaps",
     "dist:win": "node scripts/dist-win.mjs",
     "dist:mac": "node scripts/dist-mac.mjs",
     "preview": "vite preview",
@@ -81,10 +83,17 @@
     "git:unset-hooks": "git config --unset core.hooksPath",
     "git:protect-on": "npm run git:setup-hooks",
     "git:protect-off": "npm run git:unset-hooks",
-    "postinstall": "node scripts/rebuild-better-sqlite3.mjs && node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch(e){}\""
+    "postinstall": "node scripts/rebuild-better-sqlite3.mjs && node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch(e){}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint \"src/**/*.{ts,vue}\" \"electron/**/*.{mjs,js}\"",
+    "quality": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
+    "html2canvas": "^1.4.1",
     "js-yaml": "^4.1.1",
     "jszip": "^3.10.1",
     "markdown-it": "^14.1.0",
@@ -97,14 +106,19 @@
     "@electron/rebuild": "^3.6.2",
     "@types/js-yaml": "^4.0.9",
     "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20.0.0",
     "@vitejs/plugin-vue": "^3.2.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "@vue/test-utils": "^2.4.0",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "33.4.11",
     "electron-builder": "^25.1.8",
+    "jsdom": "^24.0.0",
     "png-to-ico": "^2.1.8",
     "typescript": "^4.6.4",
     "vite": "^3.2.3",
+    "vitest": "^2.0.0",
     "vue-tsc": "1.0.9",
     "wait-on": "^8.0.4"
   },
@@ -118,6 +132,7 @@
     "files": [
       "dist/**",
       "electron/**",
+      "!electron/static/runtime/**",
       "public/favicon.ico"
     ],
     "extraResources": [
@@ -127,7 +142,13 @@
       },
       {
         "from": "electron/static",
-        "to": "static"
+        "to": "static",
+        "filter": ["**/*", "!runtime/**"]
+      },
+      {
+        "from": "electron/static/runtime",
+        "to": "runtime",
+        "filter": ["**/*"]
       }
     ],
     "win": {
@@ -149,15 +170,22 @@
       "category": "public.app-category.video"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "allowElevation": true,
-      "allowToChangeInstallationDirectory": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Dweb Video Studio",
       "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico"
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installer-sidebar.bmp",
+      "uninstallerSidebar": "build/uninstaller-sidebar.bmp",
+      "include": "build/installer.nsh",
+      "installerLanguages": ["zh-CN", "en-US"],
+      "language": "2052",
+      "deleteAppDataOnUninstall": false
     }
   }
 }

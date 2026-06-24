@@ -39,9 +39,8 @@ export const useAIWorkflowProjectRequests = (payload: {
     return { ok: true as const, path }
   }
 
-  const onRequestSaveProject = async (request?: { name?: string }) => {
-    const name = String(request?.name ?? '').trim()
-    await payload.saveProjectToBackend(name || payload.currentProjectName.value)
+  const onRequestSaveProject = async () => {
+    await payload.saveProjectToBackend()
   }
 
   const onRequestNewProject = async () => {

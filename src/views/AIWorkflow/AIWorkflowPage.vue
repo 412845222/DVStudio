@@ -1,5 +1,5 @@
 <template>
-  <div class="aiwf-page bg-vscode">
+  <div class="aiwf-page">
     <div v-if="noProjectSelected" class="no-project-guide">
       <div class="no-project-card">
         <h2>请先选择或新建项目</h2>
@@ -12,13 +12,28 @@
       <BlueprintCanvas
         class="aiwf-canvas"
         :viewport="viewport"
+        :selection-frame="{
+          visible: selectionFrame.visible.value,
+          worldRect: selectionFrame.worldRect.value,
+          label: selectionFrame.label.value,
+          nodeCount: selectionFrame.nodeCount.value,
+          nodeIds: selectionFrame.nodeIds.value,
+        }"
+        :saved-frames="selectionFrame.savedFrames.value"
+        :nodes-by-id="(store.state as any).nodesById"
         @update:viewport="onViewportUpdate"
         @canvas-contextmenu="onCanvasContextMenu"
         @canvas-dblclick="onCanvasDblClick"
         @box-select="onBoxSelect"
+        @canvas-panning-start="onCanvasPanningStart"
+        @canvas-panning-end="onCanvasPanningEnd"
         @pointerdown="onCanvasPointerDown"
         @dragover.prevent="onCanvasDragOver"
         @drop.prevent="onCanvasDrop"
+        @selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
+        @selection-frame-delete="onDeleteSelectionFrame"
+        @selection-frame-drag="onSelectionFrameDrag"
+        @selection-frame-delete-selected="onDeleteSelectedNodes"
         v-slot="vp"
       >
         <WorkflowEdgeLayer
@@ -30,12 +45,28 @@
           @select-edge="onSelectEdge"
         />
 
-        <div v-for="node in safeVisibleRenderNodes" :key="node.id" class="aiwf-node-host">
+        <div
+          v-for="node in safeVisibleRenderNodes"
+          :key="node.id"
+          class="aiwf-node-host"
+          :class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots }"
+          :ref="(el: any) => { if (el) nodeHostRefs.set(node.id, el as HTMLElement); else nodeHostRefs.delete(node.id); }"
+        >
+          <!-- Screenshot node (static image + real anchors + particles) -->
           <div
-            v-if="shouldRenderCompactNode(vp.zoom, node)"
-            :class="[compactNodeClass(node), compactNodeStateClass(node)]"
+            v-if="!fullRenderNodeIds.has(node.id) && nodeScreenshotMap.get(node.id)"
+            class="aiwf-node-screenshot-host"
+            :class="[
+              { 'aiwf-node-offscreen': isWarmingUpScreenshots },
+              { 'is-primary-selected': selectedNodeIds.length === 1 && selectedNodeId === node.id },
+              { 'wf-node-running': resolveNodeRuntimeVisualState(node) === 'running' },
+              { 'wf-node-error': resolveNodeRuntimeVisualState(node) === 'error' },
+              { 'is-anchors-hidden': !screenshotAnchorsEnabled },
+              { 'is-particles-hidden': !screenshotParticlesEnabled },
+              { 'is-near-drag': !screenshotAnchorsEnabled && nearDragNodeIds.has(node.id) },
+            ]"
             :style="
-              compactNodeStyle(
+              screenshotNodeStyle(
                 vp.worldToScreen,
                 node.worldX,
                 node.worldY,
@@ -44,27 +75,61 @@
                 node.height
               )
             "
-            class="aiwf-node-compact"
-            :title="compactNodeTooltip(node)"
-            aria-hidden="true"
+            :title="compactNodeDisplayName(node)"
+            :data-node-type="node.type"
             @pointerdown="onCompactNodePointerDown(node.id, $event, vp.screenToWorld)"
           >
-            <div v-if="compactNodeImageUrl(node)" class="aiwf-node-compact-thumb">
-              <img
-                :src="compactNodeImageUrl(node) || undefined"
-                :alt="compactNodeDisplayName(node)"
-                class="aiwf-node-compact-thumb-img"
-                loading="lazy"
-                decoding="async"
+            <img
+              class="aiwf-node-screenshot-img"
+              :src="nodeScreenshotMap.get(node.id)?.dataUrl"
+              :style="screenshotImageStyle(nodeScreenshotMap.get(node.id))"
+              :alt="node.title || node.type"
+              draggable="false"
+            />
+            <div class="wf-node-particles" aria-hidden="true">
+              <span
+                v-for="p in getScreenshotParticles(node.id).particles"
+                :key="p.id"
+                class="sq-particle"
+                :class="getScreenshotParticles(node.id).buildHoverStateClass(false, {
+                  running: resolveNodeRuntimeVisualState(node) === 'running',
+                  error: resolveNodeRuntimeVisualState(node) === 'error',
+                })"
+                :style="p.style"
               />
             </div>
-            <div class="aiwf-node-compact-body">
-              <div class="aiwf-node-compact-chip">{{ compactNodeBadge(node) }}</div>
-              <div class="aiwf-node-compact-title">{{ compactNodeDisplayName(node) }}</div>
-              <div class="aiwf-node-compact-meta">{{ compactNodeMeta(node) }}</div>
-              <div v-if="compactNodeStateLabel(node)" class="aiwf-node-compact-state">
-                {{ compactNodeStateLabel(node) }}
-              </div>
+            <div class="wf-anchors wf-anchors-in" aria-label="入口锚点">
+              <div
+                v-for="a in resolveScreenshotAnchors(node, 'in')"
+                :key="'in-' + a.id"
+                class="wf-anchor-hit"
+                :class="screenshotAnchorClass(a.mediaType)"
+                :style="screenshotAnchorTopStyle(a.offsetY)"
+                :title="a.label || '入口'"
+                :data-wf-node-id="node.id"
+                :data-wf-anchor-id="a.id"
+                data-wf-dir="in"
+                data-anchor-direction="in"
+                data-anchor-side="left"
+                :data-wf-anchor-index="a.index"
+              />
+            </div>
+            <div class="wf-anchors wf-anchors-out" aria-label="出口锚点">
+              <div
+                v-for="a in resolveScreenshotAnchors(node, 'out')"
+                :key="'out-' + a.id"
+                class="wf-anchor-hit"
+                :class="screenshotAnchorClass(a.mediaType)"
+                :style="screenshotAnchorTopStyle(a.offsetY)"
+                :title="a.label || '出口'"
+                :data-wf-node-id="node.id"
+                :data-wf-anchor-id="a.id"
+                data-wf-dir="out"
+                data-anchor-direction="out"
+                data-anchor-side="right"
+                :data-wf-anchor-index="a.index"
+                @pointerdown.stop.prevent="onStartLink({ nodeId: node.id, anchorId: a.id, anchorIndex: a.index, event: $event }, vp.screenToWorld)"
+              />
             </div>
           </div>
 
@@ -74,15 +139,19 @@
             :ref="setWorkflowNodeComponentRef(node.id, node.type)"
             :alias="node.alias"
             :height="node.height"
+            :sizeCustomized="node.sizeCustomized"
+            :autoHeight="true"
             :hoverInputAnchorId="hoverInputAnchorId(node.id)"
             :hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
+            :anchor-compatibility="anchorCompatibility"
+            :is-linking="isLinking"
             :inputs="node.inputs"
             :nodeId="node.id"
             :nodeType="node.type"
             :outputs="node.outputs"
             :selected="selectedNodeIds.includes(node.id)"
-            :isPrimarySelected="selectedNodeId === node.id"
-            :isSecondarySelected="selectedNodeIds.includes(node.id) && selectedNodeId !== node.id"
+            :isPrimarySelected="selectedNodeIds.length === 1 && selectedNodeId === node.id"
+            :isSecondarySelected="selectedNodeIds.length === 1 && selectedNodeIds.includes(node.id) && selectedNodeId !== node.id"
             :visualStatus="resolveNodeRuntimeVisualState(node)"
             :node-chat-visible="nodeChatDialog.visible && nodeChatDialog.nodeId === node.id && selectedNodeId === node.id"
             :node-chat-node-type="nodeChatDialog.nodeId === node.id ? nodeChatDialog.nodeType : null"
@@ -127,6 +196,7 @@
             @export-unreal-scene="onNodeExportUnrealScene(node.id)"
             @generate-meshy="onNodeGenerateMeshy(node.id)"
             @media-ready="onNodeMediaReady(node.id)"
+            @invalidate-screenshot="onNodeInvalidateScreenshot(node.id)"
             @move-merge-item="onTextMergeItemMove(node.id, $event)"
             @preview-contextmenu="onNodePreviewContextMenu(node.id, $event)"
             @preview-request="onNodeImagePreviewRequestInline(node.id, $event)"
@@ -137,6 +207,7 @@
             @remove-merge-item="onTextMergeItemRemove(node.id, $event)"
             @request-scene-models="onNodeRequestSceneModels(node.id)"
             @resize="onNodeResize(node.id, $event)"
+            @auto-resize="(h) => onNodeAutoResize(node.id, h)"
             @restart-meshy-task="onNodeRestartMeshyTask(node.id)"
             @run-comfyui="onComfyUIRun(node.id)"
             @run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
@@ -154,6 +225,8 @@
             @start-link="onStartLink($event, vp.screenToWorld)"
             @stop-meshy-task="onNodeStopMeshyTask(node.id)"
             @start-three-preview="onNodeStartThreePreview(node.id)"
+            @retry-meshy-fetch="onNodeRetryMeshyFetch(node.id)"
+            @open-meshy-task-panel="onOpenMeshyTaskPanel"
             @three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
             @three-preview-ready="onNodeThreePreviewReady(node.id)"
             @three-preview-error="onNodeThreePreviewError(node.id)"
@@ -216,6 +289,17 @@
           @select="onNodeSearchMenuSelect"
           @upload-file="onNodeSearchMenuUploadFile"
           @close="closeNodeSearchMenu"
+        />
+
+        <!-- 标签编辑器 -->
+        <WorkflowTagEditor
+          :visible="tagEditor.visible.value"
+          :screenX="tagEditor.screenX.value"
+          :screenY="tagEditor.screenY.value"
+          :initialLabel="tagEditor.initialLabel.value"
+          @commit="tagEditor.commitTag($event)"
+          @cancel="tagEditor.closeEditor()"
+          @update:visible="tagEditor.visible.value = $event"
         />
       </BlueprintCanvas>
     </div>
@@ -282,17 +366,25 @@
           :projects="projectList"
           :currentProjectName="currentProjectName"
           :performancePriorityMode="performancePriorityMode"
+          :screenshotAnchorsEnabled="screenshotAnchorsEnabled"
+          :screenshotParticlesEnabled="screenshotParticlesEnabled"
           :resources="resources"
+          :nodes-by-id="(store.state as any).nodesById"
+          :node-order="(store.state as any).nodeOrder"
+          :current-project-id="currentProjectId"
           :nodeLibraryOpen="false"
           :backendLogOpen="blueprintLogPanelOpen"
           :electronReady="isElectron()"
+          :show-repair-assets="true"
           @quick-add="onRailQuickAdd"
           @toggle-node-library="onRailToggleNodeLibrary"
           @toggle-backend-log="onRailToggleBackendLog"
           @open-resource-manager="openResourceDialog"
-          @request-new="onRequestNewProject"
+          @focus-node="onToolbarFocusNode"
           @request-repair-assets="onRequestRepairProjectAssets"
           @request-toggle-performance-priority="performancePriorityMode = !performancePriorityMode"
+          @request-toggle-screenshot-anchors="screenshotAnchorsEnabled = !screenshotAnchorsEnabled"
+          @request-toggle-screenshot-particles="screenshotParticlesEnabled = !screenshotParticlesEnabled"
           @request-export-performance-diagnostics="onExportPerfDiagnostics"
           @request-save="onRequestSaveProject"
           @request-load-list="refreshProjectList"
@@ -302,6 +394,9 @@
           @request-import-package="onRequestImportProjectPackage"
           @request-export="onRequestExportProject"
           @request-export-package="onRequestExportProjectPackage"
+          @open-meshy-task-panel="onOpenMeshyTaskPanel"
+          @open-gemini-task-panel="() => {}"
+          @open-seedream-task-panel="() => {}"
         />
 
         <div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
@@ -514,20 +609,97 @@
         :cancellable="false"
       />
 
+      <FullscreenProgressOverlay
+        :open="screenshotWarmupOpen"
+        title="正在生成节点预览缓存"
+        :detail="screenshotWarmupDetail || '请稍候，正在为所有节点生成截图缓存以提升蓝图流畅度...'"
+        :progress="screenshotWarmupProgress"
+        :cancellable="false"
+      />
+
     </div>
     <BlueprintLogPanel v-model:open="blueprintLogPanelOpen" />
     <AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
+    <AnchorTooltip
+      :visible="tooltipState?.visible ?? false"
+      :type="tooltipState?.type ?? 'resource'"
+      :direction="tooltipState?.direction ?? 'in'"
+      :label="tooltipState?.label"
+      :accepted-types="tooltipState?.acceptedTypes"
+      :compatible="tooltipState?.compatible"
+      :position="tooltipState?.position ?? { x: 0, y: 0 }"
+    />
+
+    <!-- 缺失资产确认对话框 -->
+    <ModalDialog
+      :open="missingAssetDialogOpen"
+      title="资源缺失：文件不存在"
+      confirmText="移除失效引用"
+      closeText="暂不处理"
+      @confirm="onConfirmRemoveMissingAsset"
+      @close="onCancelMissingAssetDialog"
+    >
+      <div v-if="missingAssetDialogPending" class="aiwf-missing-asset-dialog">
+        <p style="margin-top:0;">
+          系统检测到以下静态资源在磁盘上已不存在，但项目数据中仍存在对它的引用。
+          这可能是由于文件被手动移动或删除，或从其他设备迁移项目时文件未同步。
+        </p>
+        <div class="aiwf-missing-asset-info">
+          <div class="aiwf-missing-asset-row">
+            <span class="aiwf-missing-asset-label">资产名称：</span>
+            <span class="aiwf-missing-asset-value"><strong>{{ missingAssetDialogPending.assetName }}</strong></span>
+          </div>
+          <div class="aiwf-missing-asset-row">
+            <span class="aiwf-missing-asset-label">请求路径：</span>
+            <span class="aiwf-missing-asset-value aiewf-mono">{{ missingAssetDialogPending.requestedPath }}</span>
+          </div>
+          <div v-if="missingAssetDialogPending.absolutePath" class="aiwf-missing-asset-row">
+            <span class="aiwf-missing-asset-label">磁盘路径：</span>
+            <span class="aiwf-missing-asset-value aiewf-mono" style="word-break:break-all;">{{ missingAssetDialogPending.absolutePath }}</span>
+          </div>
+        </div>
+
+        <div v-if="missingAssetDialogPending.sources && missingAssetDialogPending.sources.length > 0" class="aiwf-missing-asset-sources">
+          <div class="aiwf-missing-asset-sources-title">错误调用来源（{{ missingAssetDialogPending.sources.length }} 处引用）：</div>
+          <ul class="aiwf-missing-asset-source-list">
+            <li v-for="(s, i) in missingAssetDialogPending.sources" :key="i">
+              <span class="aiwf-source-tag">{{ sourceTypeLabel(s.type) }}</span>
+              <span v-if="s.nodeId"> 节点 <code>{{ s.nodeId }}</code><span v-if="s.nodeType">（{{ s.nodeType }}）</span></span>
+              <span v-if="s.resourceId"> 资源 <code>{{ s.resourceId }}</code></span>
+              <span v-if="s.field"> 字段 <code>{{ s.field }}</code></span>
+              <span v-if="s.detail" class="aiwf-source-detail"> — {{ s.detail }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <p class="aiwf-missing-asset-tip">
+          点击「移除失效引用」将从项目数据中清除上述引用（不会删除磁盘上的其他文件），操作可撤销。
+          点击「暂不处理」将保留引用，稍后您可以通过右键菜单或重新导入来修复。
+        </p>
+      </div>
+    </ModalDialog>
+
+    <!-- 撤销最近移除操作的浮动按钮 -->
+    <button
+      v-if="lastRemovedUndoAvailable"
+      type="button"
+      class="aiwf-undo-remove-btn"
+      @click="onUndoLastRemove"
+    >
+      ↶ 撤销最近一次移除
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import * as THREE from 'three'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
 import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
+import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, { type BlueprintProjectListItem } from '../../ui/WorkFlow/BlueprintProjectToolbar.vue'
 import MeshyTaskPanel, { type MeshyTaskPanelAction, type MeshyTaskPanelDetail, type MeshyTaskPanelItem } from '../../ui/WorkFlow/MeshyTaskPanel.vue'
 import VideoTaskPanel from '../../ui/WorkFlow/VideoTaskPanel.vue'
@@ -547,6 +719,7 @@ import ImageMarkupDialog from '../../ui/WorkFlow/WorlFlowNodes/ImageMarkupDialog
 import DwebCanvasNodeSearchMenu from '../../ui/UIComponent/DwebCanvasNodeSearchMenu.vue'
 import { buildDeleteAction, type WorkflowAction } from '../../aiworkflow/actions'
 import { exportWorkflowImageOutputPng } from '../../aiworkflow/imageOutput'
+import { exportWorkflowImageEnforcedPng, uvCropToPixelRect, type PixelRect } from '../../aiworkflow/imageCropEnforcer'
 import type {
   WorkflowAnchorSpec,
   WorkflowEdge,
@@ -582,6 +755,8 @@ import {
   isWorkflowLocalAssetUrl,
 } from '../../network/backendConfig'
 import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets, uploadProjectAsset, importProjectAsset } from '../../electronBridge'
+import ModalDialog from '../../ui/UIComponent/ModalDialog.vue'
+import { useAIWorkflow404Fallback } from './assets/useAIWorkflow404Fallback'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -594,6 +769,9 @@ import {
 } from './blueprint-core/canvas-interaction/useAIWorkflowCanvasInteraction'
 import { useAIWorkflowLinking } from './blueprint-core/linking/useAIWorkflowLinking'
 import { useAIWorkflowNodePresentation } from './node-business/presentation/useAIWorkflowNodePresentation'
+import { createNodeScreenshotPool, SCREENSHOT_PADDING, type ScreenshotCacheEntry } from './node-screenshot'
+import { loadAllScreenshotsForBlueprint, saveScreenshotToDisk, cleanupOldScreenshots } from './node-screenshot/nodeScreenshotPersistentCache'
+import { useSquareParticles } from '../../composables/useSquareParticles'
 import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
 import { useAIWorkflowVideoScreenshot } from './node-business/presentation/useAIWorkflowVideoScreenshot'
 import { useAIWorkflowPerfMonitor } from './blueprint-core/useAIWorkflowPerfMonitor'
@@ -665,6 +843,10 @@ import { useAIWorkflowTextMergeCommands } from './node-business/useAIWorkflowTex
 import { useAIWorkflowMediaPreviewSources } from './node-business/presentation/useAIWorkflowMediaPreviewSources'
 import { useAIWorkflowNodeExtraProps } from './node-business/presentation/useAIWorkflowNodeExtraProps'
 import { useAIWorkflowTextOutputResolver, type InputParamPreviewRef } from './node-business/presentation/useAIWorkflowTextOutputResolver'
+import { useAIWorkflowSelectionFrame } from './blueprint-core/selection/useAIWorkflowSelectionFrame'
+import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflowTagEditor'
+import WorkflowTagEditor from '../../ui/WorkFlow/selection/WorkflowTagEditor.vue'
+import SelectionFrameOverlay from '../../ui/WorkFlow/selection/SelectionFrameOverlay.vue'
 import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
 import { useAIWorkflowSceneDecomposeAutoExpand } from './node-business/scene/useAIWorkflowSceneDecomposeAutoExpand'
 import { useAIWorkflowSceneDecomposeController } from './node-business/scene/useAIWorkflowSceneDecomposeController'
@@ -699,6 +881,8 @@ const {
 })
 
 const performancePriorityMode = ref(false)
+const screenshotAnchorsEnabled = ref(true)
+const screenshotParticlesEnabled = ref(true)
 const compactThresholdNormal = 0.3
 const compactThresholdPerf = 0.35
 const compactThreshold = computed(() => {
@@ -732,6 +916,36 @@ const {
   active3DPreviewNodeId,
 } = useAIWorkflowSelectionState(store)
 
+// 多选框选框状态管理（Canvas绘制）
+const selectionFrame = useAIWorkflowSelectionFrame({
+  store,
+  selectedNodeIds,
+})
+
+// 标签编辑器（复用SelectionFrame的坐标）
+const tagEditor = useAIWorkflowTagEditor({
+  store,
+  selectedNodeIds,
+})
+
+const openSelectionTagEditor = () => {
+  if (selectionFrame.worldRect.value && selectionFrame.visible.value) {
+    const rect = selectionFrame.worldRect.value
+    const canvasW = canvasViewportSize.value?.width ?? 0
+    const canvasH = canvasViewportSize.value?.height ?? 0
+    const zoom = viewport.value.zoom
+    const panX = viewport.value.panX
+    const panY = viewport.value.panY
+    const centerX = (rect.x0 + rect.x1) / 2
+    const centerY = rect.y0
+    const screenX = canvasW / 2 + panX + centerX * zoom
+    const screenY = canvasH / 2 + panY + centerY * zoom
+    tagEditor.openEditor({ screenX: screenX - 90, screenY: screenY - 60 })
+  } else {
+    tagEditor.openEditor()
+  }
+}
+
 const {
   getNodePreviewState,
   startPreviewSession,
@@ -745,14 +959,99 @@ const {
 
 const {
   nodeStyle,
-  compactNodeStyle,
+  compactNodeShellStyle,
   nodeComponent,
   nodeImagePreviewUrl,
   nodeImagePreviewVersion,
   nodeResourceUrl,
   nodeResourceName,
   compactNodeImageUrl,
+  compactNodeTypeColor,
+  compactNodeTypeChinese,
+  compactNodeTypeGradient,
+  compactNodeTypeCode,
 } = useAIWorkflowNodePresentation(store)
+
+const clampNodeScale = (zoom: number) => Math.max(0.2, Math.min(6, Number(zoom) || 1))
+
+const screenshotAnchorDefaultOffsets = (idx: number, count: number) => {
+  const gap = 24
+  const start = -((count - 1) * gap) / 2
+  return start + idx * gap
+}
+
+const resolveScreenshotAnchors = (node: WorkflowNode, direction: 'in' | 'out') => {
+  const raw = direction === 'in' ? node.inputs : node.outputs
+  const fallbackId = direction === 'in' ? 'in-0' : 'out-0'
+  const fallbackLabel = direction === 'in' ? '入口' : '出口'
+  const list = Array.isArray(raw) && raw.length > 0 ? raw : [{ id: fallbackId } as WorkflowAnchorSpec]
+  return list.map((a, index) => {
+    const offsetY = typeof a.offsetY === 'number' ? a.offsetY : screenshotAnchorDefaultOffsets(index, list.length)
+    return {
+      id: String(a.id ?? `${direction}-${index}`),
+      index,
+      offsetY,
+      mediaType: (a.mediaType ?? 'resource') as string,
+      label: String((a as any).label ?? fallbackLabel),
+    }
+  })
+}
+
+const screenshotAnchorTopStyle = (offsetY: number): Record<string, string> => ({
+  top: `calc(50% + ${offsetY}px)`,
+})
+
+const screenshotAnchorClass = (mediaType: string | undefined) => {
+  if (mediaType === 'image') return 'wf-anchor-image'
+  if (mediaType === 'video') return 'wf-anchor-video'
+  if (mediaType === 'text') return 'wf-anchor-text'
+  if (mediaType === 'model3d') return 'wf-anchor-model3d'
+  if (mediaType === 'flow') return 'wf-anchor-flow'
+  if (mediaType === 'audio') return 'wf-anchor-audio'
+  if (mediaType === 'meta') return 'wf-anchor-meta'
+  return 'wf-anchor-resource'
+}
+
+const screenshotNodeStyle = (
+  worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
+  worldX: number,
+  worldY: number,
+  zoom: number,
+  width: number,
+  height: number,
+) => {
+  const point = worldToScreen({ x: worldX, y: worldY })
+  const nodeW = Math.max(80, Math.round(width) || 240)
+  const nodeH = Math.max(80, Math.round(height) || 160)
+  return {
+    left: `${point.x}px`,
+    top: `${point.y}px`,
+    width: `${nodeW}px`,
+    height: `${nodeH}px`,
+    transform: `translate(-50%, -50%) scale(${clampNodeScale(zoom)})`,
+  } as Record<string, string>
+}
+
+const screenshotImageStyle = (entry: ScreenshotCacheEntry | undefined) => {
+  const padding = entry?.padding ?? SCREENSHOT_PADDING
+  return {
+    width: `calc(100% + ${padding * 2}px)`,
+    height: `calc(100% + ${padding * 2}px)`,
+    marginLeft: `${-padding}px`,
+    marginTop: `${-padding}px`,
+  } as Record<string, string>
+}
+
+const _screenshotParticleCache = new Map<string, ReturnType<typeof useSquareParticles>>()
+const getScreenshotParticles = (nodeId: string) => {
+  let cached = _screenshotParticleCache.get(nodeId)
+  if (!cached) {
+    const seed = Array.from(nodeId).reduce((s, c, i) => s + c.charCodeAt(0) * (i + 1), 0)
+    cached = useSquareParticles({ count: 6, seed })
+    _screenshotParticleCache.set(nodeId, cached)
+  }
+  return cached
+}
 
 const ensureNanoAnchorNode = () => {
   const existing = store.state.nodesById[NANO_ANCHOR_NODE_ID]
@@ -789,6 +1088,13 @@ watch(
   { immediate: true }
 )
 
+const isWarmingUpScreenshots = ref(false)
+const screenshotWarmupProgress = ref(0)
+const screenshotWarmupOpen = ref(false)
+const screenshotWarmupDetail = ref('')
+const forceRenderAll = computed(() => isWarmingUpScreenshots.value)
+const nearDragNodeIds = ref<Set<string>>(new Set())
+
 const {
   renderNodes,
   visibleRenderNodeIds,
@@ -811,18 +1117,456 @@ const {
   compactZoomThreshold: compactThreshold,
   screenMargin: 360,
   motionRecomputeMinIntervalMs: 90,
+  forceRenderAll,
 })
 
+const safeVisibleSeenSet = new Set<string>()
+const safeVisibleResult: WorkflowNode[] = []
+
 const safeVisibleRenderNodes = computed(() => {
-  const seen = new Set<string>()
-  const safe: WorkflowNode[] = []
-  for (const node of visibleRenderNodes.value) {
+  const source = visibleRenderNodes.value
+  const sourceLen = source.length
+
+  safeVisibleSeenSet.clear()
+  safeVisibleResult.length = 0
+
+  for (let i = 0; i < sourceLen; i++) {
+    const node = source[i]
     const nodeId = String(node?.id ?? '').trim()
-    if (!nodeId || seen.has(nodeId)) continue
-    seen.add(nodeId)
-    safe.push(node)
+    if (!nodeId || safeVisibleSeenSet.has(nodeId)) continue
+    safeVisibleSeenSet.add(nodeId)
+    safeVisibleResult.push(node)
   }
-  return safe
+
+  return safeVisibleResult.slice()
+})
+
+const nodeHostRefs = new Map<string, HTMLElement>()
+const nodeScreenshotMap = shallowRef(new Map<string, ScreenshotCacheEntry>())
+const screenshotPool = createNodeScreenshotPool()
+
+const fullRenderNodeIds = computed<Set<string>>(() => {
+  const ids = new Set<string>()
+
+  for (const id of selectedNodeIds.value) {
+    const nid = String(id ?? '').trim()
+    if (nid) ids.add(nid)
+  }
+
+  const linkFromId = linkingFromNodeId.value
+  if (linkFromId) ids.add(String(linkFromId))
+
+  const linkHoverId = linkingHoverNodeId.value
+  if (linkHoverId) ids.add(String(linkHoverId))
+
+  if (ids.size === 0) return ids
+
+  const visibleNodeIds = new Set(
+    safeVisibleRenderNodes.value
+      .map(n => String(n?.id ?? '').trim())
+      .filter(Boolean),
+  )
+
+  const adjacency = new Set<string>(ids)
+  for (const edge of edges.value) {
+    const fromId = String(edge?.fromNodeId ?? '').trim()
+    const toId = String(edge?.toNodeId ?? '').trim()
+    if (!fromId || !toId) continue
+
+    if (ids.has(fromId) && visibleNodeIds.has(toId)) {
+      adjacency.add(toId)
+    }
+    if (ids.has(toId) && visibleNodeIds.has(fromId)) {
+      adjacency.add(fromId)
+    }
+  }
+
+  return adjacency
+})
+
+const getNodeScreenshotVersion = (node: WorkflowNode): string => {
+  const parts: string[] = []
+  parts.push(`t:${node.title || ''}`)
+  parts.push(`a:${node.alias || ''}`)
+  parts.push(`w:${node.width || 240}`)
+  parts.push(`h:${node.height || 160}`)
+  parts.push(`tp:${node.type || ''}`)
+  const previewVer = nodeImagePreviewVersion(node)
+  if (previewVer) parts.push(`pv:${previewVer}`)
+  return parts.join('|')
+}
+
+const findNodeElementForScreenshot = (hostEl: HTMLElement): HTMLElement | null => {
+  if (!hostEl) return null
+  const children = Array.from(hostEl.children)
+  for (const child of children) {
+    if (child.classList.contains('aiwf-node-compact')) continue
+    if (child.classList.contains('aiwf-node-screenshot-host')) continue
+    if (child instanceof HTMLElement) {
+      return child
+    }
+  }
+  if (hostEl.classList.contains('wf-node')) return hostEl
+  return hostEl.querySelector('.wf-node') as HTMLElement | null
+}
+
+const scheduleNodeScreenshot = async (node: WorkflowNode, retryCount: number = 0) => {
+  const nodeId = String(node?.id ?? '').trim()
+  if (!nodeId) return
+  if (selectedNodeIds.value.includes(nodeId)) return
+  if (fullRenderNodeIds.value.has(nodeId)) return
+
+  const hostEl = nodeHostRefs.get(nodeId)
+  if (!hostEl) {
+    if (retryCount < 3) {
+      setTimeout(() => scheduleNodeScreenshot(node, retryCount + 1), 100)
+    }
+    return
+  }
+
+  const version = getNodeScreenshotVersion(node)
+  if (screenshotPool.hasCachedScreenshot(nodeId, version)) return
+
+  let nodeEl = findNodeElementForScreenshot(hostEl)
+  if (!nodeEl) {
+    if (retryCount < 5) {
+      await nextTick()
+      await waitForFrames(2)
+      nodeEl = findNodeElementForScreenshot(hostEl)
+      if (!nodeEl) {
+        setTimeout(() => scheduleNodeScreenshot(node, retryCount + 1), 150)
+        return
+      }
+    } else {
+      return
+    }
+  }
+
+  try {
+    const width = Math.max(80, Math.round(node.width) || 240)
+    const height = Math.max(80, Math.round(node.height) || 160)
+    const entry = await screenshotPool.queueScreenshot(
+      nodeId,
+      nodeEl,
+      version,
+      width,
+      height,
+      SCREENSHOT_PADDING,
+    )
+    if (entry?.dataUrl) {
+      const newMap = new Map(nodeScreenshotMap.value)
+      newMap.set(nodeId, entry)
+      nodeScreenshotMap.value = newMap
+      const cacheCtx = getScreenshotCacheContext()
+      void saveScreenshotToDisk(cacheCtx.projectId, cacheCtx.blueprintId, nodeId, version, entry.dataUrl, entry.width, entry.height)
+    }
+  } catch (err) {
+    console.warn('[Screenshot] failed for node:', nodeId, err)
+  }
+}
+
+let screenshotScheduleTimer: ReturnType<typeof setTimeout> | null = null
+const scheduleVisibleNodeScreenshots = () => {
+  if (screenshotScheduleTimer) {
+    clearTimeout(screenshotScheduleTimer)
+  }
+  screenshotScheduleTimer = setTimeout(() => {
+    screenshotScheduleTimer = null
+    if (viewportMotionActive.value) return
+
+    const visibleNodes = safeVisibleRenderNodes.value
+    const fullRenderSet = fullRenderNodeIds.value
+    const unselectedNodes = visibleNodes.filter(n => {
+      const nid = String(n?.id ?? '').trim()
+      return nid && !selectedNodeIds.value.includes(nid) && !fullRenderSet.has(nid)
+    })
+
+    let scheduled = 0
+    for (const node of unselectedNodes) {
+      if (scheduled >= 2) break
+      const nodeId = node.id
+      const version = getNodeScreenshotVersion(node)
+      if (!screenshotPool.hasCachedScreenshot(nodeId, version)) {
+        const hostEl = nodeHostRefs.get(nodeId)
+        if (hostEl) {
+          const nodeEl = findNodeElementForScreenshot(hostEl)
+          if (nodeEl) {
+            scheduleNodeScreenshot(node)
+            scheduled++
+          }
+        }
+      }
+    }
+  }, 400)
+}
+
+const getScreenshotCacheContext = () => {
+  const pid = String(currentProjectId.value || 'default')
+  const bpId = String(route.path || 'main')
+  return { projectId: pid, blueprintId: bpId }
+}
+
+const warmupAllNodeScreenshots = async () => {
+  const allNodes = nodes.value.filter(n => {
+    const nodeId = String(n?.id ?? '').trim()
+    return nodeId
+  })
+  if (allNodes.length === 0) return
+
+  const validNodeIds = new Set(allNodes.map(n => String(n.id)))
+  screenshotPool.pruneToValidNodes(validNodeIds)
+
+  isWarmingUpScreenshots.value = true
+  screenshotWarmupOpen.value = true
+  screenshotWarmupProgress.value = 0
+  screenshotWarmupDetail.value = '准备中...'
+
+  const cacheCtx = getScreenshotCacheContext()
+  void cleanupOldScreenshots(7 * 24 * 60 * 60 * 1000)
+
+  await nextTick()
+  await waitForFrames(3)
+
+  const originalZoom = viewport.value.zoom
+  const originalPanX = viewport.value.panX
+  const originalPanY = viewport.value.panY
+  viewport.value.zoom = 1
+  viewport.value.panX = 0
+  viewport.value.panY = 0
+  await nextTick()
+  await waitForFrames(5)
+
+  const newMap = new Map<string, ScreenshotCacheEntry>()
+
+  let diskLoadedCount = 0
+  try {
+    const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
+    for (const node of allNodes) {
+      const nodeId = node.id
+      if (selectedNodeIds.value.includes(nodeId)) continue
+      const version = getNodeScreenshotVersion(node)
+      const diskEntry = diskCache.get(nodeId)
+      if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
+        const screenshotEntry: ScreenshotCacheEntry = {
+          nodeId,
+          version,
+          dataUrl: diskEntry.dataUrl,
+          width: diskEntry.width,
+          height: diskEntry.height,
+          padding: SCREENSHOT_PADDING,
+          capturedAt: Date.now(),
+        }
+        newMap.set(nodeId, screenshotEntry)
+        screenshotPool.prefillCache(nodeId, version, diskEntry.dataUrl, diskEntry.width, diskEntry.height, SCREENSHOT_PADDING)
+        diskLoadedCount++
+      }
+    }
+  } catch (err) {
+    console.warn('[Screenshot Warmup] load from disk failed:', err)
+  }
+
+  const nodesNeedingCapture: WorkflowNode[] = []
+  for (const node of allNodes) {
+    const nodeId = node.id
+    if (selectedNodeIds.value.includes(nodeId)) continue
+    if (fullRenderNodeIds.value.has(nodeId)) continue
+    const version = getNodeScreenshotVersion(node)
+    if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
+      const cached = screenshotPool.getCachedScreenshot(nodeId, version)
+      if (cached) newMap.set(nodeId, cached)
+      continue
+    }
+    if (newMap.has(nodeId)) continue
+    nodesNeedingCapture.push(node)
+  }
+
+  const total = nodesNeedingCapture.length
+  const cachedCount = allNodes.length - total - selectedNodeIds.value.length
+  if (total === 0) {
+    nodeScreenshotMap.value = newMap
+    viewport.value.zoom = originalZoom
+    viewport.value.panX = originalPanX
+    viewport.value.panY = originalPanY
+    isWarmingUpScreenshots.value = false
+    await waitForFrames(1)
+    screenshotWarmupOpen.value = false
+    screenshotWarmupDetail.value = ''
+    return
+  }
+
+  screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，${cachedCount + diskLoadedCount} 个已缓存（磁盘${diskLoadedCount}），正在截图 0/${total}...`
+
+  let completed = 0
+  const promises: Promise<void>[] = []
+
+  for (const node of nodesNeedingCapture) {
+    const nodeId = node.id
+    const promise = (async () => {
+      let entry: ScreenshotCacheEntry | null = null
+      try {
+        const version = getNodeScreenshotVersion(node)
+        let retries = 0
+        let nodeEl: HTMLElement | null = null
+        let hostEl = nodeHostRefs.get(nodeId)
+        while (retries < 5 && !nodeEl) {
+          if (hostEl) {
+            nodeEl = findNodeElementForScreenshot(hostEl)
+          }
+          if (!nodeEl) {
+            await nextTick()
+            await waitForFrames(2)
+            hostEl = nodeHostRefs.get(nodeId)
+            retries++
+          }
+        }
+        if (nodeEl) {
+          const width = Math.max(80, Math.round(node.width) || 240)
+          const height = Math.max(80, Math.round(node.height) || 160)
+          entry = await screenshotPool.queueScreenshot(nodeId, nodeEl, version, width, height, SCREENSHOT_PADDING)
+          if (entry?.dataUrl) {
+            newMap.set(nodeId, entry)
+            void saveScreenshotToDisk(cacheCtx.projectId, cacheCtx.blueprintId, nodeId, version, entry.dataUrl, entry.width, entry.height)
+          }
+        }
+      } catch (err) {
+        console.warn('[Screenshot Warmup] failed for node:', nodeId, err)
+      }
+
+      completed++
+      screenshotWarmupProgress.value = completed / total
+      screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，正在截图 ${completed}/${total}...`
+    })()
+    promises.push(promise)
+  }
+
+  await Promise.all(promises)
+
+  nodeScreenshotMap.value = newMap
+  viewport.value.zoom = originalZoom
+  viewport.value.panX = originalPanX
+  viewport.value.panY = originalPanY
+  isWarmingUpScreenshots.value = false
+  screenshotWarmupDetail.value = `截图完成，共 ${allNodes.length - selectedNodeIds.value.length} 个节点（磁盘缓存${diskLoadedCount}）`
+  await waitForFrames(2)
+  screenshotWarmupOpen.value = false
+  screenshotWarmupDetail.value = ''
+}
+
+const waitForFrames = (count = 2): Promise<void> => {
+  return new Promise(resolve => {
+    let remaining = count
+    const tick = () => {
+      if (--remaining <= 0) resolve()
+      else requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
+watch(
+  () => [viewport.value.zoom, viewport.value.panX, viewport.value.panY],
+  () => {
+    nextTick(() => {
+      scheduleVisibleNodeScreenshots()
+    })
+  },
+  { flush: 'post' }
+)
+
+watch(
+  () => viewportMotionActive.value,
+  (isActive) => {
+    if (!isActive) {
+      nextTick(() => {
+        scheduleVisibleNodeScreenshots()
+      })
+    }
+  },
+  { flush: 'post' }
+)
+
+watch(
+  () => safeVisibleRenderNodes.value,
+  () => {
+    nextTick(() => {
+      scheduleVisibleNodeScreenshots()
+    })
+  },
+  { deep: true, flush: 'post' }
+)
+
+const previousNodeSizes = new Map<string, { w: number; h: number }>()
+const nodesNeedingScreenshotRefresh = new Set<string>()
+watch(
+  () => nodes.value.map(n => ({ id: n.id, w: n.width, h: n.height })),
+  (newSizes) => {
+    const currentFullRenderIds = fullRenderNodeIds.value
+    const resizedNodes: WorkflowNode[] = []
+    for (const s of newSizes) {
+      const nodeId = String(s.id ?? '').trim()
+      if (!nodeId) continue
+      const prev = previousNodeSizes.get(nodeId)
+      const w = Math.max(80, Math.round(s.w || 240))
+      const h = Math.max(80, Math.round(s.h || 160))
+      if (prev && (Math.abs(prev.w - w) >= 1 || Math.abs(prev.h - h) >= 1)) {
+        const node = nodes.value.find(n => String(n.id) === nodeId)
+        if (node) {
+          screenshotPool.invalidateScreenshot(nodeId)
+          if (currentFullRenderIds.has(nodeId)) {
+            nodesNeedingScreenshotRefresh.add(nodeId)
+          } else {
+            resizedNodes.push(node)
+          }
+          const newMap = new Map(nodeScreenshotMap.value)
+          newMap.delete(nodeId)
+          nodeScreenshotMap.value = newMap
+        }
+      }
+      previousNodeSizes.set(nodeId, { w, h })
+    }
+    if (resizedNodes.length > 0) {
+      nextTick(() => {
+        for (const node of resizedNodes) {
+          void scheduleNodeScreenshot(node)
+        }
+      })
+    }
+  },
+  { deep: true, flush: 'post' }
+)
+
+watch(
+  () => selectedNodeIds.value,
+  () => {
+    nextTick(() => {
+      scheduleVisibleNodeScreenshots()
+    })
+  },
+  { deep: true, flush: 'post' }
+)
+
+let hasWarmedUp = false
+watch(
+  () => nodes.value.length,
+  (count, prevCount) => {
+    if (count > 0 && (!prevCount || prevCount === 0) && !hasWarmedUp && !isWarmingUpScreenshots.value) {
+      hasWarmedUp = true
+      setTimeout(() => {
+        warmupAllNodeScreenshots().catch(err => {
+          console.warn('[Screenshot Warmup] failed:', err)
+          isWarmingUpScreenshots.value = false
+          screenshotWarmupOpen.value = false
+        })
+      }, 800)
+    }
+  },
+  { immediate: true, flush: 'post' }
+)
+
+onMounted(() => {
+  setTimeout(() => {
+    scheduleVisibleNodeScreenshots()
+  }, 1000)
 })
 
 type NodeRuntimeVisualState = 'idle' | 'running' | 'error'
@@ -884,11 +1628,28 @@ const compactNodeStateLabel = (node: WorkflowNode) => {
 }
 
 const edgeWorkerMutationEpoch = computed(() => {
-  const selected = selectedNodeIds.value.join('|')
-  const visible = safeVisibleRenderNodes.value
-    .map((node) => `${String(node.id ?? '').trim()}:${String(node.type ?? '').trim()}`)
-    .join('|')
-  return `${selected}::${visible}`
+  const selectedIds = selectedNodeIds.value
+  const visibleNodes = safeVisibleRenderNodes.value
+  let hash = (selectedIds.length * 131 + visibleNodes.length * 977) % 2147483647
+  for (let i = 0; i < selectedIds.length; i++) {
+    const id = selectedIds[i]
+    for (let j = 0; j < id.length; j++) {
+      hash = (hash * 31 + id.charCodeAt(j)) % 2147483647
+    }
+  }
+  const sampleStep = Math.max(1, Math.floor(visibleNodes.length / 16))
+  for (let i = 0; i < visibleNodes.length; i += sampleStep) {
+    const node = visibleNodes[i]
+    const id = String(node.id ?? '')
+    for (let j = 0; j < id.length; j++) {
+      hash = (hash * 31 + id.charCodeAt(j)) % 2147483647
+    }
+    const type = String(node.type ?? '')
+    for (let j = 0; j < type.length; j++) {
+      hash = (hash * 17 + type.charCodeAt(j)) % 2147483647
+    }
+  }
+  return String(hash)
 })
 
 const {
@@ -946,16 +1707,27 @@ const isStrictLocalRenderableUrl = (rawUrl: string): boolean => {
 }
 
 const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
-  const rel = String(base?.projectRelativePath || '').trim()
+  const relRaw = base?.projectRelativePath
+  const rel = String(typeof relRaw === 'string' && relRaw ? relRaw : '').trim()
   const sourcePath = String(base?.sourcePath || '').trim()
   const currentUrl = String(base?.url || '').trim()
+  
+  console.log('[finalizeGeneratedResourceLocalUrl] input:', {
+    relRaw,
+    rel,
+    sourcePath,
+    currentUrl,
+    currentProjectRootPath: currentProjectRootPath.value,
+  })
 
-  if (rel) {
+  if (rel && rel !== 'undefined' && rel !== 'null') {
     base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
+    console.log('[finalizeGeneratedResourceLocalUrl] using rel:', base.url)
     return
   }
   if (currentUrl.toLowerCase().startsWith('dweb://project-assets')) {
     base.url = currentUrl
+    console.log('[finalizeGeneratedResourceLocalUrl] keeping existing dweb url:', base.url)
     return
   }
   if (sourcePath && isElectron()) {
@@ -968,6 +1740,7 @@ const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
           const inferredRel = normalizedSource.slice(normalizedRoot.length + 1)
           base.projectRelativePath = inferredRel
           base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(inferredRel)}`
+          console.log('[finalizeGeneratedResourceLocalUrl] inferred from sourcePath:', base.url)
           return
         }
       } catch {
@@ -976,6 +1749,7 @@ const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
     }
   }
   base.url = ''
+  console.log('[finalizeGeneratedResourceLocalUrl] failed, base.url set to empty')
 }
 
 const downloadAssetViaElectron = async (
@@ -1041,10 +1815,20 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 }
 
 const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
-  store.dispatch('submitNodeChat', payload)
+  // 当 draft 为空时，尝试从连接的文本节点获取 prompt
+  let resolvedPrompt = payload.prompt
+  if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d') {
+    const refs = getInputParamPreviewRefs(payload.nodeId)
+    const textRef = refs.find((r) => r.kind === 'text' && r.text)
+    if (textRef && textRef.text) {
+      resolvedPrompt = textRef.text
+    }
+  }
+  const finalPayload = { ...payload, prompt: resolvedPrompt }
+  store.dispatch('submitNodeChat', finalPayload)
   const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
-  const castPayload = payload as unknown as Parameters<typeof runNodeGenerationTask>[1]
-  await runNodeGenerationTask(
+  const castPayload = finalPayload as unknown as Parameters<typeof runNodeGenerationTask>[1]
+  const result = await runNodeGenerationTask(
     {
       store,
       comfyService,
@@ -1072,6 +1856,31 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         }
         const pid = Number(currentProjectId.value ?? 0)
         const sourceUrl = String(url || '').trim()
+        
+        // 如果已经是 dweb:// URL，直接使用
+        if (sourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
+          base.url = sourceUrl
+          // 尝试从 dweb URL 中提取 projectRelativePath
+          try {
+            const u = new URL(sourceUrl)
+            const path = u.searchParams.get('path')
+            if (path) {
+              base.projectRelativePath = decodeURIComponent(path)
+            }
+          } catch {
+            // ignore
+          }
+          finalizeGeneratedResourceLocalUrl(base, pid)
+          base.url = String(base.url || '').trim()
+          if (!base.url || !isStrictLocalRenderableUrl(base.url) || !isWorkflowLocalAssetUrl(base.url)) {
+            pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+            return false
+          }
+          store.commit('addResource', base)
+          store.commit('setNodeResource', { nodeId, resourceId })
+          return true
+        }
+        
         if (!(pid > 0) || !sourceUrl) {
           pushToast('图片生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
           return false
@@ -1211,6 +2020,103 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         store.commit('setNodeResource', { nodeId, resourceId })
         return true
       },
+      bindModel3dResultToNode: async (nodeId: string, url: string, format?: string) => {
+        const node = store.state.nodesById[nodeId]
+        if (!node) return false
+        const resourceId = `gen-model3d-${nodeId}-${Date.now()}`
+        const resourceName = `gen_model3d_${resourceId.slice(-6)}`
+        const base: any = {
+          id: resourceId,
+          kind: 'model3d',
+          name: resourceName,
+          url: '',
+          format: format || 'glb',
+        }
+        const pid = Number(currentProjectId.value ?? 0)
+        const sourceUrl = String(url || '').trim()
+
+        if (sourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
+          base.url = sourceUrl
+          try {
+            const u = new URL(sourceUrl)
+            const path = u.searchParams.get('path')
+            if (path) {
+              base.projectRelativePath = decodeURIComponent(path)
+            }
+          } catch {
+            // ignore
+          }
+          finalizeGeneratedResourceLocalUrl(base, pid)
+          base.url = String(base.url || '').trim()
+          if (!base.url) {
+            pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+            return false
+          }
+          store.commit('addResource', base)
+          store.commit('setNodeResource', { nodeId, resourceId })
+          return true
+        }
+
+        if (!(pid > 0) || !sourceUrl) {
+          pushToast('3D 模型生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+          return false
+        }
+        const rootPath = await ensureActiveProjectRootRegistered(pid)
+        if (isElectron() && !rootPath) {
+          pushToast('3D 模型导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+          return false
+        }
+        if (pid > 0 && sourceUrl) {
+          let downloaded = false
+
+          if (!downloaded && isElectron()) {
+            const dl = await downloadAssetViaElectron(pid, sourceUrl, resourceName)
+            if (dl) {
+              base.sourcePath = dl.sourcePath
+              base.projectRelativePath = dl.projectRelativePath
+              base.url = dl.url
+              base.size = dl.size
+              downloaded = true
+            }
+          }
+
+          if (!downloaded && !isElectron()) {
+            try {
+              const result = await blueprintProjectService.importAsset({
+                projectId: pid,
+                kind: 'file',
+                sourceUrl,
+                name: resourceName,
+                bucket: 'assets',
+              })
+              if (result?.ok && result.asset) {
+                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
+                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
+                base.url = (result.asset as any).url || ''
+                base.contentType = (result.asset as any).contentType || ''
+                base.size = (result.asset as any).size || 0
+                downloaded = true
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          if (downloaded && !base.url && base.projectRelativePath) {
+            base.url = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(base.projectRelativePath)}`
+          }
+        }
+
+        finalizeGeneratedResourceLocalUrl(base, pid)
+        base.url = String(base.url || '').trim()
+        if (!base.url) {
+          pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+          return false
+        }
+        store.commit('addResource', base)
+        store.commit('setNodeResource', { nodeId, resourceId })
+        return true
+      },
       downloadUrlAsBlob: async (url: string): Promise<Blob | null> => {
         const pid = Number(currentProjectId.value ?? 0)
         if (pid > 0 && url) {
@@ -1240,9 +2146,14 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
 
         return null
       },
+      persistExternalAssetToProject,
     },
     castPayload,
   )
+
+  if (result.ok && result.taskType === 'meshy-3d' && result.taskId && result.mode) {
+    startMeshyPoll(payload.nodeId, result.taskId, result.mode)
+  }
 }
 
 const onNodeChatRemoveParamRef = (item: InputParamPreviewRef) => {
@@ -2299,7 +3210,25 @@ const buildImageTransferFileFromCrop = async (payload: {
   outputWidth?: number
   outputHeight?: number
   suffix?: string
+  sourceWidth?: number
+  sourceHeight?: number
+  enforceLandscape?: boolean
 }) => {
+  if (payload.enforceLandscape) {
+    const srcW = Math.max(1, Math.floor(Number(payload.sourceWidth ?? 0) || 1))
+    const srcH = Math.max(1, Math.floor(Number(payload.sourceHeight ?? 0) || 1))
+    const pixelCrop = uvCropToPixelRect(srcW, srcH, payload.crop)
+    const blob = await exportWorkflowImageEnforcedPng({
+      src: payload.sourceUrl,
+      crop: pixelCrop,
+      minWidth: 350,
+    })
+    if (!blob) return null
+    const baseName = String(payload.sourceName || 'image').replace(/\.[^./\\]+$/, '') || 'image'
+    const suffix = String(payload.suffix || 'crop').trim() || 'crop'
+    return new File([blob], `${baseName}_${suffix}.png`, { type: 'image/png' })
+  }
+
   const outputWidth = Math.max(1, Math.floor(Number(payload.outputWidth ?? 0) || 1))
   const outputHeight = Math.max(1, Math.floor(Number(payload.outputHeight ?? 0) || 1))
   const blob = await exportWorkflowImageOutputPng({
@@ -2400,6 +3329,7 @@ const queueImageDistributeOnPointerUp = (nodeId: string) => {
 
 const {
   onNodeResize,
+  onNodeAutoResize,
   onNodeTextValueUpdate,
   onNodeImageSettingsUpdate,
   onNodeVideoSettingsUpdate,
@@ -2622,7 +3552,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
   const node = store.state.nodesById[nodeId]
   if (!node || node.type !== 'model3d') return false
 
-  const incoming = getIncomingEdges(nodeId, 'in-model')
+  const incoming = getIncomingEdges(nodeId, 'in-resource')
   for (const edge of incoming) {
     const fromNode = store.state.nodesById[String((edge as any).fromNodeId ?? '')]
     if (!fromNode) continue
@@ -2743,7 +3673,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 
 const syncConnectedModel3DTargets = async (fromNodeId: string) => {
   const targets = getOutgoingEdges(fromNodeId)
-    .filter((e: any) => String(e.toAnchorId ?? '') === 'in-model')
+    .filter((e: any) => String(e.toAnchorId ?? '') === 'in-resource')
     .map((e: any) => String(e.toNodeId ?? '').trim())
     .filter((id: string, index: number, arr: string[]) => !!id && arr.indexOf(id) === index)
 
@@ -2754,13 +3684,22 @@ const syncConnectedModel3DTargets = async (fromNodeId: string) => {
 
 const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
   const fromNode = store.state.nodesById[fromNodeId]
-  if (!fromNode || fromNode.type !== 'meshy') return false
-  const settings = fromNode.meshySettings ?? {}
-  const effective = getMeshyEffectiveImageSource(settings)
-  const imageUrls = Array.isArray(effective.imageUrls)
-    ? effective.imageUrls.map((x: any) => String(x ?? '').trim()).filter(Boolean).slice(0, 4)
+  if (!fromNode) return false
+
+  // 根据节点类型读取 meshy 图片设置
+  const getMeshyImageSettings = (node: any): Record<string, any> => {
+    if (node.type === 'image') return node.imageSettings?.meshyImageSettings ?? {}
+    if (node.type === 'model3d') return node.model3dSettings?.meshyModelSettings ?? {}
+    return node.meshySettings ?? {}
+  }
+  const settings = getMeshyImageSettings(fromNode)
+
+  // 从 outputSummary 或直接字段获取图片 URL
+  const outputSummary = settings.outputSummary ?? {}
+  const imageUrls = Array.isArray(outputSummary.imageUrls)
+    ? outputSummary.imageUrls.map((x: any) => String(x ?? '').trim()).filter(Boolean).slice(0, 4)
     : []
-  const fallbackUrl = String(effective.assetUrl || effective.preferredUrl || '').trim()
+  const fallbackUrl = String(outputSummary.assetUrl || outputSummary.preferredUrl || settings.outputAssetUrl || '').trim()
   if (!imageUrls.length && !fallbackUrl) return false
 
   const outputEdges = getOutgoingEdges(fromNodeId).filter((e: any) => {
@@ -2788,7 +3727,7 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 
     const ext = fileExtensionFromUrl(sourceUrl, '.png')
     const anchorSuffix = String((e as any).fromAnchorId ?? 'out-image').replace(/[^a-zA-Z0-9_-]/g, '_')
-    const fileNameBase = `meshy_${String(settings.meshyTaskId ?? fromNode.id).trim() || fromNode.id}_${anchorSuffix}_${targetNodeId}`
+    const fileNameBase = `meshy_${String(settings.taskId ?? fromNode.id).trim() || fromNode.id}_${anchorSuffix}_${targetNodeId}`
     const fileName = `${fileNameBase}${ext}`
 
     let cloned: File | null = null
@@ -2803,10 +3742,10 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
         kind: 'image',
         name: fileName,
         sourceUrl,
-        sourcePath: effective.assetPath || undefined,
+        sourcePath: outputSummary.assetPath || settings.outputAssetPath || undefined,
       })
       const outputUrl = String(persisted?.url || sourceUrl).trim()
-      const outputPath = String(persisted?.absolutePath || effective.assetPath || '').trim()
+      const outputPath = String(persisted?.absolutePath || outputSummary.assetPath || settings.outputAssetPath || '').trim()
       if (!outputUrl) continue
 
       try {
@@ -2832,6 +3771,29 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 
 const onNodeMediaReady = (nodeId: string) => {
   markNodeMediaReady(nodeId)
+  screenshotPool.invalidateScreenshot(nodeId)
+  const newMap = new Map(nodeScreenshotMap.value)
+  newMap.delete(nodeId)
+  nodeScreenshotMap.value = newMap
+  nextTick(() => {
+    setTimeout(() => {
+      const node = store.state.nodesById[nodeId]
+      if (node) scheduleNodeScreenshot(node)
+    }, 300)
+  })
+}
+
+const onNodeInvalidateScreenshot = (nodeId: string) => {
+  if (selectedNodeIds.value.includes(nodeId)) return
+  if (fullRenderNodeIds.value.has(nodeId)) return
+  screenshotPool.invalidateScreenshot(nodeId)
+  const newMap = new Map(nodeScreenshotMap.value)
+  newMap.delete(nodeId)
+  nodeScreenshotMap.value = newMap
+  nextTick(() => {
+    const node = store.state.nodesById[nodeId]
+    if (node) void scheduleNodeScreenshot(node)
+  })
 }
 
 const videoPosterGenerating = new Set<string>()
@@ -2968,8 +3930,8 @@ const onStoryBranchUpdateFromInspector = (nodeId: string, branchId: string, text
   store.commit('updateStoryBranch', { nodeId, branchId, text })
 }
 
-const onInspectorUploadResource = (nodeId: string, file: File, kind: 'image' | 'video') => {
-  onNodeUploadResource(nodeId, file, kind)
+const onInspectorUploadResource = async (nodeId: string, file: File, kind: 'image' | 'video') => {
+  await onNodeUploadResource(nodeId, file, kind)
 }
 
 const onInspectorClearResource = (nodeId: string) => {
@@ -3088,7 +4050,8 @@ const latestGenerationTaskByNodeId = (nodeId: string) => {
   const ids = store.state.nodeGenerationTaskIdsByNodeId?.[nodeId]
   if (!Array.isArray(ids) || !ids.length) return null
   const firstId = ids[0]
-  return store.state.nodeGenerationTasksById?.[firstId] || null
+  const task = store.state.nodeGenerationTasksById?.[firstId] || null
+  return task
 }
 
 const onNodeStartThreePreview = (nodeId: string) => {
@@ -3104,6 +4067,16 @@ const onNodeThreePreviewProgress = (
 
 const onNodeThreePreviewReady = (nodeId: string) => {
   completePreviewSession(nodeId)
+  screenshotPool.invalidateScreenshot(nodeId)
+  const newMap = new Map(nodeScreenshotMap.value)
+  newMap.delete(nodeId)
+  nodeScreenshotMap.value = newMap
+  nextTick(() => {
+    setTimeout(() => {
+      const node = store.state.nodesById[nodeId]
+      if (node) scheduleNodeScreenshot(node)
+    }, 300)
+  })
 }
 
 const onNodeThreePreviewError = (nodeId: string) => {
@@ -3437,7 +4410,7 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
   }
 }
 
-const projectToolbarRef = ref<{ openSaveDialog: () => void } | null>(null)
+const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
@@ -3597,20 +4570,20 @@ const onStoryPreviewSettingsUpdate = (
 }
 
 const NODE_WIDTH = 240
-const ANCHOR_GAP = 14
+const ANCHOR_GAP = 24
 
 // NOTE: anchors are rendered as DOM elements (absolute positioned + scaled with node).
 // To avoid fragile "magic" offsets (like 25), we will resolve the exact anchor center
 // from DOM (getBoundingClientRect) and convert it into BlueprintCanvas-local coords.
 // The constants below are only used as a fallback when the DOM is not available.
-const ANCHOR_SIDE_INSET_PX = 10
-const ANCHOR_IN_SIZE = 18
-const ANCHOR_OUT_SIZE = 18
-const STORY_ANCHOR_IN_SIZE = 9
-const STORY_ANCHOR_OUT_SIZE = 10
+const ANCHOR_SIDE_INSET_PX = 0
+const ANCHOR_IN_SIZE = 0
+const ANCHOR_OUT_SIZE = 0
+const STORY_ANCHOR_IN_SIZE = 0
+const STORY_ANCHOR_OUT_SIZE = 0
 
 const ANCHOR_IN_X_OFFSET = -ANCHOR_SIDE_INSET_PX + ANCHOR_IN_SIZE / 2
-const ANCHOR_OUT_X_OFFSET = ANCHOR_SIDE_INSET_PX - ANCHOR_OUT_SIZE / 2
+const ANCHOR_OUT_X_OFFSET = ANCHOR_SIDE_INSET_PX + ANCHOR_OUT_SIZE / 2
 const STORY_ANCHOR_IN_X_OFFSET = -ANCHOR_SIDE_INSET_PX + STORY_ANCHOR_IN_SIZE / 2
 const STORY_ANCHOR_OUT_X_OFFSET = ANCHOR_SIDE_INSET_PX - STORY_ANCHOR_OUT_SIZE / 2
 
@@ -3683,6 +4656,28 @@ const buildPath = (start: { x: number; y: number }, end: { x: number; y: number 
   return `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`
 }
 
+const EDGE_VIEWPORT_CULL_MARGIN_PX = 240
+
+const shouldCullEdgeByViewport = (
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  viewportWidth: number,
+  viewportHeight: number,
+  marginPx: number,
+) => {
+  if (viewportWidth <= 0 || viewportHeight <= 0) return false
+  const left = -marginPx
+  const top = -marginPx
+  const right = viewportWidth + marginPx
+  const bottom = viewportHeight + marginPx
+  const curveSlackX = Math.max(80, Math.abs(end.x - start.x) * 0.5)
+  const minX = Math.min(start.x, end.x) - curveSlackX
+  const maxX = Math.max(start.x, end.x) + curveSlackX
+  const minY = Math.min(start.y, end.y)
+  const maxY = Math.max(start.y, end.y)
+  return maxX < left || minX > right || maxY < top || minY > bottom
+}
+
 const anchorIndexByNodeId = computed(() => {
   const next = new Map<string, { input: Map<string, number>; output: Map<string, number> }>()
   for (const node of renderNodes.value) {
@@ -3698,7 +4693,22 @@ const anchorIndexByNodeId = computed(() => {
 })
 
 const edgeRenders = (worldToScreen: (p: { x: number; y: number }) => { x: number; y: number }) => {
-  return renderEdges.value.map((e) => {
+  const edges = renderEdges.value
+  const result: Array<{
+    id: string
+    start: { x: number; y: number }
+    end: { x: number; y: number }
+    path: string
+    stroke?: string
+    strokeWidth?: number
+  }> = []
+  const viewportWidth = canvasViewportSize.value.width
+  const viewportHeight = canvasViewportSize.value.height
+  const keepEdgeId = String(store.state.selectedEdgeId ?? '').trim()
+
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i]
+    const edgeId = String(e.id ?? '')
     const fromNode = store.state.nodesById[e.fromNodeId]
     const toNode = store.state.nodesById[e.toNodeId]
     const fromAnchorIndex = anchorIndexByNodeId.value.get(String(e.fromNodeId ?? ''))
@@ -3717,16 +4727,22 @@ const edgeRenders = (worldToScreen: (p: { x: number; y: number }) => { x: number
           ? resolveAnchorCanvasPointByDom(e.toNodeId, String(e.toAnchorId ?? ''), 'in')
           : null) ?? worldToScreen(anchorWorld(toNode, 'in', Math.max(0, toIndex), toNode.inputs.length, toAnchor))
       : { x: 0, y: 0 }
+
+    if (edgeId !== keepEdgeId && shouldCullEdgeByViewport(start, end, viewportWidth, viewportHeight, EDGE_VIEWPORT_CULL_MARGIN_PX)) {
+      continue
+    }
+
     const isStory = fromNode?.type === 'story'
-    return {
+    result.push({
       id: e.id,
       start,
       end,
       path: buildPath(start, end),
       stroke: isStory ? '#f29d38' : undefined,
       strokeWidth: isStory ? 3.5 : undefined,
-    }
-  })
+    })
+  }
+  return result
 }
 
 const buildEdgeWorkerInput = () => {
@@ -3775,6 +4791,121 @@ const {
   setToastHovering,
 } = useAIWorkflowToastState({ durationMs: 2600 })
 pushToastBridge = pushToast
+
+// ===== 404 兜底恢复系统 =====
+const missingAssetDialogOpen = ref(false)
+const missingAssetDialogPending = ref<any>(null)
+const lastRemovedUndoAvailable = ref(false)
+
+const {
+  pendingMissingAssets,
+  installGlobalErrorHandlers,
+  confirmRemoveMissingAsset,
+  undoLastRemove,
+  cancelMissingAsset,
+} = useAIWorkflow404Fallback({
+  getCurrentProjectId: () => currentProjectId.value,
+  getCurrentProjectRootPath: () => currentProjectRootPath.value || null,
+  getStore: () => store,
+  pushToast,
+  batchWindowMs: 600,
+  onRecovered: ({ url, newUrl, assetName, newAsset }) => {
+    // 资源已自动恢复：更新资源缓存中的 URL，触发资源引用节点重渲染
+    try {
+      const resourcesById = (store.state as any)?.resourcesById || {}
+      const patches: Record<string, any> = {}
+      for (const [rid, res] of Object.entries(resourcesById) as Array<[string, any]>) {
+        if (!res) continue
+        const patch: any = {}
+        let touched = false
+        if (res.url === url) { patch.url = newUrl; touched = true }
+        if (res.previewUrl === url) { patch.previewUrl = newUrl; touched = true }
+        if (res.posterUrl === url) { patch.posterUrl = newUrl; touched = true }
+        if (touched) {
+          // 如果诊断结果提供了新的资源路径信息，同步更新
+          if (newAsset) {
+            patch.projectRelativePath = newAsset.projectRelativePath || newAsset.relativePath
+            patch.absolutePath = newAsset.absolutePath
+            patch.sourcePath = newAsset.sourcePath || newAsset.absolutePath
+            patch.contentType = newAsset.contentType
+            patch.size = newAsset.size
+            if (!patch.url) patch.url = newUrl
+          }
+          patches[rid] = patch
+        }
+      }
+      if (Object.keys(patches).length > 0) {
+        store.commit('patchResourcesBatch', { patches })
+      }
+      // 通知节点刷新（触发重新渲染）
+      void nextTick(() => {
+        blueprintLog.append(`资源自动恢复成功：${assetName}`, { category: 'system', level: 'INFO', tag: 'asset-recovery' })
+      })
+    } catch (err) {
+      console.warn('[AIWorkflowPage] onRecovered hook error:', err)
+    }
+  },
+  onMissingAsset: (pending) => {
+    // 已有对话框打开时，先入队；否则直接打开对话框
+    if (!missingAssetDialogOpen.value) {
+      missingAssetDialogPending.value = pending
+      missingAssetDialogOpen.value = true
+    }
+  },
+})
+
+// 缺失资产确认对话框操作
+const onConfirmRemoveMissingAsset = () => {
+  const p = missingAssetDialogPending.value
+  if (!p) {
+    missingAssetDialogOpen.value = false
+    return
+  }
+  const result = confirmRemoveMissingAsset(p.id)
+  lastRemovedUndoAvailable.value = !!result.undoAvailable
+  missingAssetDialogOpen.value = false
+  missingAssetDialogPending.value = null
+  // 若还有其他待处理的缺失资产，打开下一个
+  const next = pendingMissingAssets.value[0]
+  if (next) {
+    setTimeout(() => {
+      missingAssetDialogPending.value = next
+      missingAssetDialogOpen.value = true
+    }, 300)
+  }
+}
+const onCancelMissingAssetDialog = () => {
+  const p = missingAssetDialogPending.value
+  if (p) cancelMissingAsset(p.id)
+  missingAssetDialogOpen.value = false
+  missingAssetDialogPending.value = null
+  // 继续处理队列中下一个
+  const next = pendingMissingAssets.value[0]
+  if (next) {
+    setTimeout(() => {
+      missingAssetDialogPending.value = next
+      missingAssetDialogOpen.value = true
+    }, 300)
+  }
+}
+const onUndoLastRemove = () => {
+  if (undoLastRemove()) {
+    lastRemovedUndoAvailable.value = false
+  }
+}
+
+function sourceTypeLabel(type: string): string {
+  switch (type) {
+    case 'resource': return '[资源记录]'
+    case 'node_input': return '[节点输入]'
+    case 'node_output': return '[节点输出]'
+    case 'node_param': return '[节点参数]'
+    case 'preview': return '[预览图]'
+    case 'poster': return '[封面图]'
+    case 'unknown': return '[未知位置]'
+    default: return `[${type}]`
+  }
+}
 
 const {
   buildUnrealExportPayload,
@@ -3975,16 +5106,16 @@ const {
 const importLimitAlertMessage = ref('')
 const MAX_BATCH_IMPORT_MEDIA_COUNT = 100
 
-const onNodeUploadResource = (
+const onNodeUploadResource = async (
   nodeId: string,
   file: File,
   kind: 'image' | 'video',
   opts?: { autoDistribute?: boolean }
 ) => {
-  uploadNodeResource(nodeId, file, kind, {
+  await uploadNodeResource(nodeId, file, kind, {
     autoDistribute: opts?.autoDistribute,
     onAfterBind: () => {
-      if (kind === 'image' && opts?.autoDistribute !== false) {
+      if (kind === 'image' && opts?.autoDistribute === true) {
         void autoDistributeImageOutputToConnectedNodes(nodeId)
       }
     },
@@ -4344,6 +5475,7 @@ const {
   pushToast,
   buildPersistableSnapshotWithOptions,
   currentProjectName,
+  currentProjectId,
   AIWF_PROJECT_PACKAGE_ENTRY,
   isValidBlueprintSnapshot,
   store,
@@ -4358,8 +5490,46 @@ const {
   hydrateBlueprintSnapshotSafely,
   resetCurrentUnrealExportNodeRuntimeState,
   setUnsavedProject,
+  setSavedProject,
   sanitizeFileNamePart,
   recoverComfyUIRunStates,
+  createProjectForImport: async (name: string) => {
+    try {
+      const snapshot = await buildPersistableSnapshotWithOptions({ uploadLocalResources: false })
+      const result = await blueprintProjectService.saveProject({ name, snapshot })
+      if (result?.ok && result?.project?.id > 0) {
+        return {
+          id: Number(result.project.id),
+          rootPath: String((result.project as any)?.rootPath || ''),
+        }
+      }
+      return null
+    } catch (err) {
+      console.error('[AIWF] createProjectForImport failed:', err)
+      return null
+    }
+  },
+  importAssetFromBuffer: async (projectId, buffer, fileName, mimeType) => {
+    if (!isElectron()) return null
+    try {
+      const result = await uploadProjectAsset({
+        projectId,
+        kind: mimeType?.startsWith('image') ? 'image' : mimeType?.startsWith('video') ? 'video' : 'file',
+        name: fileName,
+        arrayBuffer: buffer,
+        contentType: mimeType,
+      })
+      return result?.ok && result?.asset
+        ? { url: result.asset.url, relativePath: result.asset.relativePath }
+        : null
+    } catch (err) {
+      console.error('[AIWF] importAssetFromBuffer failed:', err)
+      return null
+    }
+  },
+  saveImportedSnapshot: async () => {
+    await saveProjectToBackend()
+  },
 })
 
 const onGlobalShortcutSave = async (ev: Event) => {
@@ -4369,13 +5539,7 @@ const onGlobalShortcutSave = async (ev: Event) => {
   ;(ev as any).stopImmediatePropagation?.()
 
   // Ctrl/Cmd+S: persist blueprint project to backend (DB + JSON file).
-  const name = String(currentProjectName.value ?? '').trim()
-  if (!name) {
-    projectToolbarRef.value?.openSaveDialog?.()
-    pushToast('请先输入项目名称，再执行保存。', 'info')
-    return
-  }
-  await saveProjectToBackend(name)
+  await onRequestSaveProject()
 }
 
 const getCanvasCenterWorld = () => {
@@ -4541,7 +5705,7 @@ const linkInteraction = useAIWorkflowLinking({
       }
     }
 
-    if (toNode && toNode.type === 'model3d' && toAnchorId === 'in-model') {
+    if (toNode && toNode.type === 'model3d' && toAnchorId === 'in-resource') {
       void syncModel3DInputFromUpstream(toNodeId)
     }
     if (
@@ -4597,6 +5761,77 @@ const {
 })
 getLinkWorkflowWorldToCanvas = () => workflowWorldToCanvas
 scheduleLinkEdgeRender = scheduleAsyncEdgeRender
+
+let nearDragRafId: number | null = null
+let nearDragLastPointer: { x: number; y: number } | null = null
+
+const computeNearDragNodes = () => {
+  nearDragRafId = null
+  if (!nearDragLastPointer) return
+  if (!linkInteraction.isLinking.value || screenshotAnchorsEnabled.value) {
+    if (nearDragNodeIds.value.size > 0) nearDragNodeIds.value = new Set()
+    return
+  }
+  const { x: px, y: py } = nearDragLastPointer
+  const HIT_RADIUS = 80
+  const next = new Set<string>()
+  const hosts = document.querySelectorAll<HTMLElement>('.aiwf-node-screenshot-host')
+  for (const host of hosts) {
+    const nodeId = host.querySelector('[data-wf-node-id]')?.getAttribute('data-wf-node-id')
+    if (!nodeId) continue
+    const r = host.getBoundingClientRect()
+    if (r.width <= 0 || r.height <= 0) continue
+    const dx = Math.max(r.left - px, 0, px - r.right)
+    const dy = Math.max(r.top - py, 0, py - r.bottom)
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist <= HIT_RADIUS || (px >= r.left - HIT_RADIUS && px <= r.right + HIT_RADIUS && py >= r.top - HIT_RADIUS && py <= r.bottom + HIT_RADIUS)) {
+      next.add(nodeId)
+    }
+  }
+  nearDragNodeIds.value = next
+}
+
+const onNearDragPointerMove = (e: PointerEvent) => {
+  if (!linkInteraction.isLinking.value || screenshotAnchorsEnabled.value) {
+    nearDragLastPointer = null
+    if (nearDragNodeIds.value.size > 0) nearDragNodeIds.value = new Set()
+    return
+  }
+  nearDragLastPointer = { x: e.clientX, y: e.clientY }
+  if (nearDragRafId == null) {
+    nearDragRafId = requestAnimationFrame(computeNearDragNodes)
+  }
+}
+
+const onNearDragPointerUp = () => {
+  nearDragLastPointer = null
+  nearDragNodeIds.value = new Set()
+}
+
+watch(linkInteraction.isLinking, (isLinking) => {
+  if (isLinking && !screenshotAnchorsEnabled.value) {
+    window.addEventListener('pointermove', onNearDragPointerMove, { passive: true })
+    window.addEventListener('pointerup', onNearDragPointerUp, { once: true })
+    window.addEventListener('pointercancel', onNearDragPointerUp, { once: true })
+  } else {
+    window.removeEventListener('pointermove', onNearDragPointerMove)
+    window.removeEventListener('pointerup', onNearDragPointerUp)
+    window.removeEventListener('pointercancel', onNearDragPointerUp)
+    nearDragLastPointer = null
+    nearDragNodeIds.value = new Set()
+    if (nearDragRafId != null) {
+      cancelAnimationFrame(nearDragRafId)
+      nearDragRafId = null
+    }
+  }
+})
+
+watch(screenshotAnchorsEnabled, (enabled) => {
+  if (enabled) {
+    nearDragNodeIds.value = new Set()
+    nearDragLastPointer = null
+  }
+})
 
 const {
   perfFpsText,
@@ -4789,6 +6024,37 @@ const {
   stopMeshyPoll,
 })
 
+const onOpenMeshyTaskPanel = () => {
+  openMeshyTaskDialog()
+}
+
+const onNodeRetryMeshyFetch = async (nodeId: string) => {
+  const node = store.state.nodesById[nodeId]
+  if (!node || node.type !== 'model3d') return
+  const settings = node.model3dSettings?.meshyModelSettings
+  const taskId = String(settings?.taskId ?? '').trim()
+  const mode = String(settings?.taskFamily ?? 'text-to-3d').trim()
+  if (!taskId) {
+    pushToast('当前节点没有可重试的 Meshy 任务 ID。', 'warn')
+    return
+  }
+  try {
+    const res = await comfyService.meshyTask(taskId, mode)
+    if (!res?.ok) {
+      pushToast('拉取失败：' + String(res?.error ?? 'unknown'), 'error')
+      return
+    }
+    const finalStatus = await applyMeshyTaskResult(nodeId, res as any)
+    if (finalStatus === 'succeeded') {
+      pushToast('模型文件拉取成功。', 'info')
+    } else {
+      pushToast('任务尚未完成，当前状态：' + finalStatus, 'warn')
+    }
+  } catch (e: any) {
+    pushToast('拉取异常：' + String(e?.message ?? e), 'error')
+  }
+}
+
 const {
   videoTaskDialogOpen,
   videoTaskItems,
@@ -4938,6 +6204,24 @@ const onRailQuickAdd = (event: MouseEvent) => {
   store.commit('addNodeAt', { worldX, worldY })
 }
 
+const onDeleteSelectedNodes = () => {
+  if (!selectedNodeIds.value.length) return
+  void removeSelectedNodesWithResourceCleanup(selectedNodeIds.value)
+}
+
+const onDeleteSelectionFrame = (payload?: { frameId?: string }) => {
+  if (payload?.frameId) {
+    const frame = store.state.savedSelectionFrames?.find((f: any) => f.id === payload.frameId)
+    if (frame) {
+      store.dispatch('removeSavedSelectionFrame', { id: payload.frameId })
+      const sortedIds = [...frame.nodeIds].sort()
+      const tagKey = `ids:${sortedIds.join('|')}`
+      store.dispatch('removeSelectionTag', { key: tagKey })
+    }
+  }
+  tagEditor.clearSelectionOnly()
+}
+
 const onRailToggleNodeLibrary = () => {
   const wrapEl = document.querySelector('.bp-wrap')
   if (wrapEl) {
@@ -5002,6 +6286,34 @@ const { onNodeRefresh } = useAIWorkflowNodeRefresh({
 // 主窗口监听来自资源管理器独立窗口的事件广播
 let resourceManagerEventListenerId: number | null = null
 
+const pushSystemToast = (message: string, tone: 'info' | 'warn' | 'error' = 'warn') => {
+  chatMessages.value = [
+    ...chatMessages.value,
+    { id: `sys-focus-${Date.now()}`, role: 'system', message, tone, createdAt: Date.now() },
+  ] as any
+}
+
+const tryFocusNodeById = (nodeIdRaw: any): boolean => {
+  const nodeId = String(nodeIdRaw || '').trim()
+  if (!nodeId) return false
+  const exists = !!(store.state as any).nodesById?.[nodeId]
+  if (!exists) return false
+  const ok = canvasInteraction.onFocusNode(nodeId)
+  if (ok) {
+    ;(store.commit as any)('setSelectedNode', { nodeId })
+  }
+  return ok
+}
+
+const onToolbarFocusNode = (p: any) => {
+  const nodeId = String(p?.nodeId || '').trim()
+  if (!nodeId) return
+  const ok = tryFocusNodeById(nodeId)
+  if (!ok) {
+    pushSystemToast('引用节点已删除，无法定位。', 'warn')
+  }
+}
+
 const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => {
   const { event, data } = payload || {}
   if (!event) return
@@ -5030,6 +6342,15 @@ const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => 
         void onResourceDraggedToBlueprint(String(data.resourceId), data?.position ?? null)
       }
       break
+    case 'focus-node':
+      // 资源管理器窗口中请求定位到节点
+      if (data?.nodeId) {
+        const ok = tryFocusNodeById(String(data.nodeId))
+        if (!ok) {
+          pushSystemToast('引用节点已删除，无法定位。', 'warn')
+        }
+      }
+      break
     default:
       console.log('[AIWorkflowPage][resource-manager] unknown event:', event, data)
   }
@@ -5050,6 +6371,21 @@ const openResourceDialog = async () => {
       const title = currentProjectName.value || '资源管理器'
       const result = await w.dweb.aiworkflow.openResourceManager({ projectId, title })
       console.log('[AIWorkflowPage] openResourceManager result:', JSON.stringify(result))
+      
+      // 发送资源数据到资源管理器窗口
+      if (result?.ok) {
+        // 将Vue响应式对象转换为普通对象（通过JSON序列化脱壳）
+        // 注意：必须使用这种方式，因为Electron IPC无法序列化Vue Proxy对象
+        const resourcesData = JSON.parse(JSON.stringify(resources.value))
+        const nodesData = JSON.parse(JSON.stringify(store.state.nodesById))
+        const nodeOrderData = JSON.parse(JSON.stringify(store.state.nodeOrder))
+        await w.dweb.aiworkflow.sendResourceManagerData({
+          resources: resourcesData,
+          nodesById: nodesData,
+          nodeOrder: nodeOrderData,
+        })
+        console.log('[AIWorkflowPage] sent resources to resource manager:', resourcesData.length)
+      }
       return
     } catch (err) {
       console.warn('[AIWorkflowPage] openResourceManager IPC failed:', err)
@@ -5066,6 +6402,37 @@ watch(meshyTaskDialogOpen, (open) => {
 watch(videoTaskDialogOpen, (open) => {
   onVideoTaskDialogOpenChanged(open)
 })
+
+let syncNodesToManagerTimer: number | null = null
+const syncNodesToResourceManager = () => {
+  if (syncNodesToManagerTimer !== null) {
+    clearTimeout(syncNodesToManagerTimer)
+  }
+  syncNodesToManagerTimer = window.setTimeout(() => {
+    syncNodesToManagerTimer = null
+    const w = window as any
+    if (!w.__DWEB_RUNTIME__?.isElectron || !w.dweb?.aiworkflow?.sendResourceManagerData) return
+    try {
+      const resourcesData = JSON.parse(JSON.stringify(resources.value))
+      const nodesData = JSON.parse(JSON.stringify(store.state.nodesById))
+      const nodeOrderData = JSON.parse(JSON.stringify(store.state.nodeOrder))
+      void w.dweb.aiworkflow.sendResourceManagerData({
+        resources: resourcesData,
+        nodesById: nodesData,
+        nodeOrder: nodeOrderData,
+      })
+    } catch {
+      // ignore
+    }
+  }, 500)
+}
+
+watch(
+  () => (store.state as any).nodeOrder?.length ?? 0,
+  () => {
+    syncNodesToResourceManager()
+  }
+)
 
 const removeResourceRecordOnly = (resourceId: string) => {
   revokeTrackedObjectUrlsForResource(resourceId)
@@ -5199,6 +6566,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
   chatCollapsed,
   markViewportMotion,
   scheduleAsyncEdgeRender,
+  canvasViewportSize,
 })
 
 const onStartLink = linkInteraction.onStartLink
@@ -5206,6 +6574,75 @@ const onEndLink = linkInteraction.onEndLink
 const nanoHoverAnchorId = linkInteraction.nanoHoverAnchorId
 const hoverInputAnchorId = linkInteraction.hoverInputAnchorId
 const hoverOutputAnchorId = linkInteraction.hoverOutputAnchorId
+const tooltipState = linkInteraction.tooltipState
+const anchorCompatibility = linkInteraction.anchorCompatibility
+const isLinking = linkInteraction.isLinking
+const linkingFromNodeId = linkInteraction.linkingFromNodeId
+const linkingHoverNodeId = linkInteraction.linkingHoverNodeId
+
+watch(
+  () => Array.from(fullRenderNodeIds.value),
+  (newIds, oldIds) => {
+    const newSet = new Set(newIds)
+    const oldSet = new Set(oldIds || [])
+    const nodesExitingFullRender: string[] = []
+    for (const nodeId of oldSet) {
+      if (!newSet.has(nodeId)) {
+        nodesExitingFullRender.push(nodeId)
+      }
+    }
+    if (nodesExitingFullRender.length > 0) {
+      nextTick(() => {
+        setTimeout(() => {
+          for (const nodeId of nodesExitingFullRender) {
+            const node = nodes.value.find(n => String(n.id) === nodeId)
+            if (node) {
+              screenshotPool.invalidateScreenshot(nodeId)
+              nodesNeedingScreenshotRefresh.delete(nodeId)
+              void scheduleNodeScreenshot(node)
+            }
+          }
+        }, 50)
+      })
+    }
+    nextTick(() => {
+      scheduleVisibleNodeScreenshots()
+    })
+  },
+  { deep: true, flush: 'post' }
+)
+
+watch(
+  () => nodes.value.map(n => String(n.id)),
+  (newNodeIds) => {
+    const validNodeIds = new Set(newNodeIds.filter(Boolean))
+    const screenshotMap = nodeScreenshotMap.value
+    let hasChanges = false
+    const newMap = new Map(screenshotMap)
+    for (const cachedId of screenshotMap.keys()) {
+      if (!validNodeIds.has(cachedId)) {
+        newMap.delete(cachedId)
+        screenshotPool.invalidateScreenshot(cachedId)
+        nodesNeedingScreenshotRefresh.delete(cachedId)
+        previousNodeSizes.delete(cachedId)
+        hasChanges = true
+      }
+    }
+    if (hasChanges) {
+      nodeScreenshotMap.value = newMap
+    }
+  },
+  { deep: true, flush: 'post' }
+)
+
+const onCanvasPanningStart = () => {
+  canvasInteraction.cancelFocusAnimation()
+  linkInteraction.setPanning(true)
+}
+
+const onCanvasPanningEnd = () => {
+  linkInteraction.setPanning(false)
+}
 
 const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
 const onNodeX = canvasInteraction.onNodeX
@@ -5216,6 +6653,10 @@ const onCompactNodePointerDown = canvasInteraction.onCompactNodePointerDown
 const onBoxSelect = canvasInteraction.onBoxSelect
 const onNodeSizeChange = canvasInteraction.onNodeSizeChange
 const onFocusNode = canvasInteraction.onFocusNode
+
+const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
+  store.dispatch('moveNodesBy', payload)
+}
 
 onBeforeUnmount(() => {
 	cancelActiveImportSession({ cleanupUnresolved: false })
@@ -5241,7 +6682,11 @@ onBeforeUnmount(() => {
   posterAutoSaveRunning = false
   pendingImageDistributeNodeIds.clear()
   clearAllObjectUrls()
+  // 卸载全局 404 错误拦截器
+  try { uninstallGlobal404Handlers?.() } catch { /* ignore */ }
 })
+
+let uninstallGlobal404Handlers: (() => void) | null = null
 
 onMounted(() => {
 	// Take over global Ctrl/Cmd+S only on this page.
@@ -5249,6 +6694,8 @@ onMounted(() => {
   mountWindowEvents()
   window.addEventListener('pointerup', flushPendingImageDistribute, true)
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
+  // 安装全局 404 错误拦截器（覆盖 img/video/script/link/fetch 错误）
+  uninstallGlobal404Handlers = installGlobalErrorHandlers()
   startUnrealExportPolling()
   registerResourceManagerEventListener()
   void refreshProjectList()
@@ -5478,6 +6925,61 @@ async function runProjectEnterSequence(
   display: contents;
 }
 
+.aiwf-node-host-offscreen {
+  position: fixed !important;
+  left: -99999px !important;
+  top: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.aiwf-node-screenshot-host {
+  position: absolute;
+  will-change: transform;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+  transform-origin: center center;
+  overflow: visible;
+  z-index: 2;
+}
+
+.aiwf-node-screenshot-host.is-primary-selected {
+  z-index: 30;
+}
+
+.aiwf-node-screenshot-host.is-anchors-hidden .wf-anchors {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.aiwf-node-screenshot-host.is-anchors-hidden.is-near-drag .wf-anchors {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.aiwf-node-screenshot-host.is-particles-hidden .wf-node-particles {
+  display: none !important;
+}
+
+.aiwf-node-screenshot-img {
+  display: block;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+.aiwf-node-skeleton {
+  position: absolute;
+  pointer-events: none;
+  transform-origin: top left;
+  background: rgba(30, 34, 44, 0.6);
+  border: 1px dashed rgba(120, 130, 150, 0.3);
+  border-radius: 10px;
+}
+
 .aiwf-inspector-toggle {
   position: absolute;
   top: var(--aiwf-inspector-toggle-top, 16px);
@@ -5610,6 +7112,7 @@ async function runProjectEnterSequence(
   cursor: grab;
   touch-action: none;
   overflow: hidden;
+  will-change: transform;
 }
 
 .aiwf-node-compact:active {
@@ -5629,6 +7132,14 @@ async function runProjectEnterSequence(
 .aiwf-node-compact.is-secondary-selected {
   border-color: color-mix(in srgb, var(--wf-state-selected-border) 68%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--wf-state-selected-border) 26%, transparent), var(--wf-node-shadow);
+}
+
+.aiwf-node-compact-preview {
+  width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: 4px;
+  opacity: 0.95;
 }
 
 .aiwf-node-compact.is-running {
@@ -5890,5 +7401,105 @@ async function runProjectEnterSequence(
 
 .aiwf-perf-stats-value.is-bad {
   color: var(--aiwf-perf-bad, #f14c4c);
+}
+
+/* ===== 缺失资产对话框 ===== */
+.aiwf-missing-asset-dialog {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vscode-fg);
+}
+.aiwf-missing-asset-info {
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: var(--vscode-input-background, rgba(0,0,0,0.15));
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+}
+.aiwf-missing-asset-row {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 12.5px;
+}
+.aiwf-missing-asset-label {
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground, #888);
+  min-width: 70px;
+}
+.aiwf-missing-asset-value {
+  word-break: break-all;
+}
+.aiewf-mono {
+  font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+  font-size: 12px;
+}
+.aiwf-missing-asset-sources {
+  margin: 12px 0;
+}
+.aiwf-missing-asset-sources-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.aiwf-missing-asset-source-list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.aiwf-missing-asset-source-list li {
+  margin: 3px 0;
+  font-size: 12.5px;
+}
+.aiwf-missing-asset-source-list code {
+  font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+  background: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.2));
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+.aiwf-source-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  font-size: 11px;
+  margin-right: 4px;
+}
+.aiwf-source-detail {
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: 11.5px;
+}
+.aiwf-missing-asset-tip {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  background: var(--vscode-textBlockQuote-background, rgba(255,255,0,0.05));
+  border-left: 3px solid var(--vscode-textBlockQuote-border, #cca700);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #aaa);
+}
+
+/* 撤销移除按钮 */
+.aiwf-undo-remove-btn {
+  position: fixed;
+  bottom: 60px;
+  right: 24px;
+  z-index: 9999;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--vscode-button-background, #0e639c);
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  transition: all 0.15s;
+}
+.aiwf-undo-remove-btn:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+  transform: translateY(-1px);
 }
 </style>

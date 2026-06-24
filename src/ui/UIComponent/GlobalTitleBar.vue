@@ -1,5 +1,5 @@
 <template>
-  <header class="global-title-bar" aria-label="窗口标题栏">
+  <header class="global-title-bar" aria-label="窗口标题栏" @dblclick="onDoubleClick">
     <div class="global-title-bar-left">
       <img class="global-title-bar-logo" src="/favicon.ico" alt="" aria-hidden="true" />
       <div class="global-title-bar-title">Dweb Video Studio</div>
@@ -61,6 +61,8 @@ import {
 	openDevTools,
 } from '../../electronBridge'
 import { ThemeStore } from '../../store/theme'
+
+const router = useRouter()
 
 const backendRuntime = ref<{
   running: boolean
@@ -190,6 +192,14 @@ async function onOpenDevTools() {
 }
 
 async function onToggleMaximize() {
+  try {
+    await toggleMaximizeWindow()
+  } catch {
+    // ignore
+  }
+}
+
+async function onDoubleClick() {
   try {
     await toggleMaximizeWindow()
   } catch {

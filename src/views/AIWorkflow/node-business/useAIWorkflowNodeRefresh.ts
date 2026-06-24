@@ -125,20 +125,10 @@ export const useAIWorkflowNodeRefresh = (payload: {
           const sourceName = String((r as any).name ?? `${expectedKind}`)
           if (expectedKind === 'image') {
             if (fromNode.type === 'image' && url) {
-              try {
-                const croppedFile = await payload.buildCroppedImageTransferFile(
-                  fromNode,
-                  url,
-                  sourceName
-                )
-                if (croppedFile) {
-                  payload.onNodeUploadResource(nodeId, croppedFile, 'image', { autoDistribute: false })
-                  payload.pushToast('已按上游图片节点的裁剪结果刷新资源。', 'info')
-                  return
-                }
-              } catch {
-                // ignore and fallback to cloning original media
-              }
+              payload.bindMediaResourceToNode(nodeId, 'image', url, sourceName, { sourcePath: sourcePath || undefined })
+              payload.autoSizeMediaNode(nodeId, url, 'image')
+              payload.pushToast('已从输入锚点引用图片资源。', 'info')
+              return
             }
 
             if (url) {
@@ -155,7 +145,7 @@ export const useAIWorkflowNodeRefresh = (payload: {
             if (url) {
               payload.bindMediaResourceToNode(nodeId, 'image', url, sourceName, { sourcePath: sourcePath || undefined })
               payload.autoSizeMediaNode(nodeId, url, 'image')
-              payload.pushToast('已从输入锚点刷新图片资源。', 'info')
+              payload.pushToast('已从输入锚点引用图片资源。', 'info')
               return
             }
           }

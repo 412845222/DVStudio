@@ -44,18 +44,129 @@ export const useAIWorkflowNodeExtraProps = (payload: {
   const extraPropsCache = new Map<string, Record<string, any>>()
 
   const withMotionSafeProps = (node: WorkflowNode, props: Record<string, any>) => {
-    if (node.type !== 'scene-layout' && node.type !== 'model3d') return props
     if (props.previewSuspended === true) return props
-    return {
-      ...props,
-      previewSuspended: true,
+    if (node.type === 'scene-layout' || node.type === 'model3d') {
+      return {
+        ...props,
+        previewSuspended: true,
+      }
     }
+    return props
   }
+
+  const MOTION_SHED_THRESHOLD = 80
+  const ALWAYS_SHED_THRESHOLD = 220
 
   const shouldShedHeavyMedia = () => {
     if (!payload.performancePriorityMode.value) return false
     const count = Number(payload.nodeCount.value) || 0
-    return payload.viewportMotionActive.value || count >= 220
+    if (count >= ALWAYS_SHED_THRESHOLD) return true
+    if (payload.viewportMotionActive.value && count >= MOTION_SHED_THRESHOLD) return true
+    return false
+  }
+
+  const buildMotionReducedProps = (node: WorkflowNode): Record<string, any> => {
+    if (node.type === 'scene-layout') {
+      return {
+        sceneLayoutSettings: sanitizeWorkflowUrlFieldsDeep(node.sceneLayoutSettings ?? null),
+        linkedJsonText: '',
+        linkedLightingJsonText: '',
+        sceneLayoutModelBindings: [],
+        threePreviewState: null,
+        previewSuspended: true,
+      }
+    }
+    if (node.type === 'model3d') {
+      return {
+        model3dSettings: sanitizeWorkflowUrlFieldsDeep(node.model3dSettings ?? null),
+        threePreviewState: null,
+        inputParamPreviewRefs: [],
+        previewSuspended: true,
+      }
+    }
+    if (node.type === 'scene-understanding') {
+      return {
+        sceneUnderstandingSettings: node.sceneUnderstandingSettings ?? null,
+        linkedImageUrl: '',
+        linkedImageUrls: [],
+        linkedLayoutJsonText: '',
+        linkedPromptText: '',
+      }
+    }
+    if (node.type === 'scene-decompose') {
+      return {
+        sceneDecomposeSettings: node.sceneDecomposeSettings ?? null,
+        linkedImageUrls: [],
+        linkedJsonText: '',
+      }
+    }
+    if (node.type === 'meshy') {
+      return {
+        meshySettings: payload.buildMeshyNodePresentationSettings(node.meshySettings ?? null),
+        connectedPrompt: '',
+        connectedImageUrls: [],
+        sourcePreviewUrl: '',
+        sourcePreviewLabel: '',
+      }
+    }
+    if (node.type === 'image' || node.type === 'video') {
+      const rid = String(node.resourceId ?? '').trim()
+      const resource = rid ? payload.store.state.resourcesById[rid] : null
+      const resourceSourcePath =
+        resource && typeof (resource as any).sourcePath === 'string'
+          ? String((resource as any).sourcePath).trim()
+          : ''
+      const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 320))
+      const imagePreviewUrl640 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 640))
+      const imagePreviewVersion = String(payload.nodeImagePreviewVersion(node) ?? '').trim()
+      const resourcePosterUrl =
+        node.type === 'video'
+          ? (() => {
+              if (!rid) return null
+              const raw = typeof (resource as any)?.posterUrl === 'string' ? String((resource as any).posterUrl).trim() : ''
+              const safe = sanitizeWorkflowMediaUrl(raw)
+              return safe || null
+            })()
+          : null
+      return {
+        resourceUrl: sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node)),
+        resourceSourcePath: resourceSourcePath || null,
+        resourcePreviewUrl320: imagePreviewUrl320 || null,
+        resourcePreviewUrl640: imagePreviewUrl640 || imagePreviewUrl320 || null,
+        resourcePreviewVersion: imagePreviewVersion || null,
+        resourceName: payload.nodeResourceName(node),
+        inputParamPreviewRefs: [],
+        ...(node.type === 'image' ? { imageSettings: node.imageSettings ?? null } : {}),
+        ...(node.type === 'video'
+          ? {
+              posterUrl: resourcePosterUrl,
+              videoSettings: node.videoSettings ?? null,
+              screenshotEnabled: payload.connectedImageTargetsFromVideo(node.id).length > 0,
+              reloadToken: payload.nodeMediaReloadToken(node.id),
+            }
+          : {}),
+      }
+    }
+    if (node.type === 'rotate-image') {
+      return {
+        inputUrl: '',
+        rotatePromptText: '',
+      }
+    }
+    if (node.type === 'story') {
+      const pw = node.storySettings?.previewWidth
+      const ph = node.storySettings?.previewHeight
+      return {
+        branches: [],
+        previewUrl: '',
+        previewKind: null,
+        previewCropEnabled: false,
+        previewCrop: null,
+        previewWidth: Number.isFinite(Number(pw)) ? Number(pw) : 1920,
+        previewHeight: Number.isFinite(Number(ph)) ? Number(ph) : 1080,
+      }
+    }
+    return buildNodeExtraProps(node)
   }
 
   const buildNodeExtraProps = (node: WorkflowNode): Record<string, any> => {
@@ -209,16 +320,25 @@ export const useAIWorkflowNodeExtraProps = (payload: {
     const nodeId = String(node.id ?? '').trim()
     if (!nodeId) return buildNodeExtraProps(node)
 
-    // Nodes with chat input previews always rebuild because preview refs depend on incoming edges.
-    const skipCache = node.type === 'text' || node.type === 'image' || node.type === 'video' || node.type === 'model3d'
+    const isMotionActive = payload.viewportMotionActive.value
+    const nodeCount = Number(payload.nodeCount.value) || 0
 
-    if (!skipCache && payload.viewportMotionActive.value) {
+    if (isMotionActive) {
+      if (nodeCount < MOTION_SHED_THRESHOLD) {
+        const cached = extraPropsCache.get(nodeId)
+        if (cached) return withMotionSafeProps(node, cached)
+        const next = buildNodeExtraProps(node)
+        extraPropsCache.set(nodeId, next)
+        return withMotionSafeProps(node, next)
+      }
       const cached = extraPropsCache.get(nodeId)
       if (cached) return withMotionSafeProps(node, cached)
-      const next = buildNodeExtraProps(node)
+      const next = buildMotionReducedProps(node)
       extraPropsCache.set(nodeId, next)
       return withMotionSafeProps(node, next)
     }
+
+    extraPropsCache.delete(nodeId)
 
     return buildNodeExtraProps(node)
   }

@@ -20,6 +20,18 @@ export const useAIWorkflowNodeSettings = (payload: {
     payload.scheduleAsyncEdgeRender()
   }
 
+  const onNodeAutoResize = (nodeId: string, height: number) => {
+    const node = payload.store.state.nodesById[nodeId] as any
+    if (!node) return
+    if (node.sizeCustomized) return
+    const nextHeight = Math.max(80, Math.floor(Number(height) || 0))
+    if (!nextHeight || !Number.isFinite(nextHeight)) return
+    const prevHeight = Number(node.height) || 0
+    if (Math.abs(nextHeight - prevHeight) < 2) return
+    payload.store.commit('setNodeSize', { nodeId, width: node.width, height: nextHeight, customized: false })
+    payload.scheduleAsyncEdgeRender()
+  }
+
   const onNodeTextValueUpdate = (nodeId: string, input: { textValue: string }) => {
     payload.store.commit('setNodeTextValue', { nodeId, textValue: String(input?.textValue ?? '') })
   }
@@ -33,15 +45,11 @@ export const useAIWorkflowNodeSettings = (payload: {
       naturalHeight?: number
       cropEnabled?: boolean
       crop?: { x: number; y: number; width: number; height: number }
+      imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+      meshyImageSettings?: Record<string, any>
     }
   ) => {
     payload.store.commit('setNodeImageSettings', { nodeId, imageSettings: input })
-    const hasCropPayload = Object.prototype.hasOwnProperty.call(input, 'crop')
-    if (hasCropPayload) {
-      payload.queueImageDistributeOnPointerUp(nodeId)
-      return
-    }
-    void payload.autoDistributeImageOutputToConnectedNodes(nodeId)
   }
 
   const onNodeVideoSettingsUpdate = (
@@ -81,6 +89,7 @@ export const useAIWorkflowNodeSettings = (payload: {
 
   return {
     onNodeResize,
+    onNodeAutoResize,
     onNodeTextValueUpdate,
     onNodeImageSettingsUpdate,
     onNodeVideoSettingsUpdate,

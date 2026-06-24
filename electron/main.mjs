@@ -28,6 +28,11 @@ import {
 	copyFileToProjectRoot,
 	getProjectRootById,
 	repairProjectAsset,
+	validateProjectRoot,
+	diagnoseDwebAsset,
+	getAccessLogs,
+	getProjectCacheStats,
+	clearProjectCache,
 } from './backend/projectAssetProtocol.mjs'
 import {
 	uploadBufferProjectAsset,
@@ -61,6 +66,42 @@ try {
 }
 
 const isDev = !!process.env.ELECTRON_DEV || !app.isPackaged
+
+let _portableUserDataDir = ''
+let _portableWarnOnReady = false
+
+function isDirectoryWritable(dir) {
+	try {
+		fs.mkdirSync(dir, { recursive: true })
+		const testFile = path.join(dir, '.write-test-' + Date.now() + '-' + Math.random().toString(36).slice(2))
+		fs.writeFileSync(testFile, 'test')
+		fs.unlinkSync(testFile)
+		return true
+	} catch {
+		return false
+	}
+}
+
+function configurePortablePaths() {
+	if (isDev) return
+	const installDir = path.dirname(process.execPath)
+	const dvsResourceDir = path.resolve(installDir, 'DVSResource')
+	const targetUserDataDir = path.resolve(dvsResourceDir, 'UserData')
+	const targetLogsDir = path.resolve(dvsResourceDir, 'Logs')
+
+	if (isDirectoryWritable(dvsResourceDir)) {
+		app.setPath('userData', targetUserDataDir)
+		app.setPath('sessionData', path.resolve(targetUserDataDir, 'Session'))
+		try { app.setPath('crashDumps', path.resolve(targetUserDataDir, 'CrashDumps')) } catch {}
+		_portableUserDataDir = targetUserDataDir
+		fs.mkdirSync(targetLogsDir, { recursive: true })
+	} else {
+		_portableUserDataDir = app.getPath('userData')
+		_portableWarnOnReady = true
+	}
+}
+
+configurePortablePaths()
 
 let mainWindow = null
 let backend = null
@@ -387,7 +428,7 @@ function appendRuntimeLog(line) {
 
 function initRuntimeLogger() {
 	const candidates = [
-		path.resolve(getClientRootDir(), 'dweb-runtime.log'),
+		path.resolve(getLogsDir(), 'runtime.log'),
 		path.resolve(getUserDataDir(), 'dweb-runtime.log'),
 	]
 	for (const p of candidates) {
@@ -480,8 +521,12 @@ async function runBootstrapInstaller() {
 }
 
 function getUserDataDir() {
-	// Electron 自带 per-user data dir
+	if (_portableUserDataDir) return _portableUserDataDir
 	return app.getPath('userData')
+}
+
+function getLogsDir() {
+	return path.resolve(getDvsResourceDir(), 'Logs')
 }
 
 function findNearestGitRoot(startDir) {
@@ -690,7 +735,12 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 	try {
 		setStep('python', { status: 'running', progress: 25, detail: '正在检测 Python 版本...' })
 		pyInfo = detectPythonInfo({ minMajor: 3, minMinor: 11 })
+		const usingBundledPython = !!pyInfo?.isBundled
 		if (!pyInfo.ok || !pyInfo.meetsRequirement) {
+			if (usingBundledPython) {
+				setStep('python', { status: 'error', progress: 100, detail: '内置 Python 运行时损坏，请重新安装应用。' })
+				return { ok: false, state: getSetupState(), error: 'bundled-python-corrupted' }
+			}
 			const missingPython = !pyInfo.command
 			setStep('python', {
 				status: 'running',
@@ -719,9 +769,11 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		setStep('python', {
 			status: 'ok',
 			progress: 100,
-			detail: pyInfo.recommended
-				? `${pyInfo.detail}（推荐版本）`
-				: `${pyInfo.detail}（可用，推荐 3.11）`,
+			detail: pyInfo.isBundled
+				? `${pyInfo.detail}（开箱即用，无需安装）`
+				: (pyInfo.recommended
+					? `${pyInfo.detail}（推荐版本）`
+					: `${pyInfo.detail}（可用，推荐 3.11）`),
 		})
 
 		setStep('resource', { status: 'running', progress: 40, detail: '正在创建 DVSResource...' })
@@ -734,43 +786,50 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		})
 		if (layout.settingsFile) loadClientSettings()
 
-		setStep('venv', { status: 'running', progress: 55, detail: '正在检查虚拟环境...' })
-		if (fs.existsSync(venvDir) && isCrossPlatformVenv(venvDir)) {
-			setStep('venv', {
-				status: 'running',
-				progress: 60,
-				detail: '检测到跨平台虚拟环境（Windows/macOS 不匹配），正在重建...',
-			})
-			fs.rmSync(venvDir, { recursive: true, force: true })
-		}
-		if (!fs.existsSync(venvPython)) {
-			const r = await runSyncWithLogs(pyInfo.command, [...(pyInfo.argsPrefix || []), '-m', 'venv', venvDir], {
-				label: '创建 Python 虚拟环境',
-			})
-			if (!r.ok) {
+		let activePythonCommand = ''
+		if (pyInfo.isBundled) {
+			setStep('venv', { status: 'ok', progress: 100, detail: '使用内置 Python 运行时，无需虚拟环境' })
+			activePythonCommand = pyInfo.command
+		} else {
+			setStep('venv', { status: 'running', progress: 55, detail: '正在检查虚拟环境...' })
+			if (fs.existsSync(venvDir) && isCrossPlatformVenv(venvDir)) {
+				setStep('venv', {
+					status: 'running',
+					progress: 60,
+					detail: '检测到跨平台虚拟环境（Windows/macOS 不匹配），正在重建...',
+				})
+				fs.rmSync(venvDir, { recursive: true, force: true })
+			}
+			if (!fs.existsSync(venvPython)) {
+				const r = await runSyncWithLogs(pyInfo.command, [...(pyInfo.argsPrefix || []), '-m', 'venv', venvDir], {
+					label: '创建 Python 虚拟环境',
+				})
+				if (!r.ok) {
+					setStep('venv', {
+						status: 'error',
+						progress: 100,
+						detail: '虚拟环境创建失败，请检查 Python 安装权限和磁盘空间。',
+					})
+					pushBackendLog('[建议] 虚拟环境创建失败：请尝试“以管理员身份运行”或检查杀毒软件拦截。')
+					return { ok: false, state: getSetupState(), error: 'venv-create-failed' }
+				}
+				setStep('venv', { status: 'ok', progress: 100, detail: `已创建：${venvDir}` })
+			} else {
+				setStep('venv', { status: 'ok', progress: 100, detail: `已检测到：${venvDir}` })
+			}
+
+			if (!fs.existsSync(venvPython)) {
 				setStep('venv', {
 					status: 'error',
 					progress: 100,
-					detail: '虚拟环境创建失败，请检查 Python 安装权限和磁盘空间。',
+					detail: '未找到虚拟环境 Python，可重试创建。',
 				})
-				pushBackendLog('[建议] 虚拟环境创建失败：请尝试“以管理员身份运行”或检查杀毒软件拦截。')
-				return { ok: false, state: getSetupState(), error: 'venv-create-failed' }
+				return { ok: false, state: getSetupState(), error: 'venv-python-missing' }
 			}
-			setStep('venv', { status: 'ok', progress: 100, detail: `已创建：${venvDir}` })
-		} else {
-			setStep('venv', { status: 'ok', progress: 100, detail: `已检测到：${venvDir}` })
+			activePythonCommand = venvPython
 		}
 
-		if (!fs.existsSync(venvPython)) {
-			setStep('venv', {
-				status: 'error',
-				progress: 100,
-				detail: '未找到虚拟环境 Python，可重试创建。',
-			})
-			return { ok: false, state: getSetupState(), error: 'venv-python-missing' }
-		}
-
-		backendPythonCommand = venvPython
+		backendPythonCommand = activePythonCommand
 		migrateLegacyRuntimeData({
 			runtimeDjangoDir: djangoRuntimeDir,
 			backendDataDir,
@@ -799,11 +858,13 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 					log: (line) => pushBackendLog(line),
 				})
 			}
-			ensureRuntimeRequirements({
-				templateDir: djangoTemplateDir,
-				runtimeDir: djangoRuntimeDir,
-				log: (line) => pushBackendLog(line),
-			})
+			if (!pyInfo.isBundled) {
+				ensureRuntimeRequirements({
+					templateDir: djangoTemplateDir,
+					runtimeDir: djangoRuntimeDir,
+					log: (line) => pushBackendLog(line),
+				})
+			}
 			ensureRuntimeDjangoProjectScaffold({
 				runtimeDir: djangoRuntimeDir,
 				log: (line) => pushBackendLog(line),
@@ -830,58 +891,71 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		setStep('django', { status: 'running', progress: 70, detail: '正在启动 Django...' })
 		await stopBackend()
 		try {
-			await bootBackend({ pythonCommand: venvPython, djangoDir: djangoRuntimeDir })
+			await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
 			setStep('django', {
 				status: 'ok',
 				progress: 100,
 				detail: `启动成功：${backendBaseUrl}`,
 			})
 
-			// 即便启动成功，也需要验证关键依赖（例如 cryptography）。否则会出现“能启动但调用接口 500”。
-			setStep('dependencyCheck', { status: 'running', progress: 80, detail: '正在检查关键依赖...' })
-			const check = await checkDjangoRuntimeDependencies(venvPython)
-			if (check.ok) {
-				const versionLine = splitLines(check.stdout || check.stderr)[0] || ''
-				setStep('dependencyCheck', {
-					status: 'ok',
-					progress: 100,
-					detail: `依赖齐全${versionLine ? `（Django ${versionLine}）` : ''}`,
-				})
+			if (pyInfo.isBundled) {
+				setStep('dependencyCheck', { status: 'ok', progress: 100, detail: '内置依赖已预装，无需检查' })
 				setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '无需安装。' })
 			} else {
-				setStep('dependencyCheck', {
-					status: 'error',
-					progress: 100,
-					detail: '依赖不完整或已损坏（运行时导入失败）。',
-				})
-				setStep('dependencyInstall', { status: 'running', progress: 90, detail: '正在强制重装项目依赖...' })
-				const install = await installDjangoRuntimeDependencies({
-					pythonCommand: venvPython,
-					djangoRuntimeDir,
-					forceReinstall: true,
-				})
-				if (!install.ok) {
-					setStep('dependencyInstall', {
+				setStep('dependencyCheck', { status: 'running', progress: 80, detail: '正在检查关键依赖...' })
+				const check = await checkDjangoRuntimeDependencies(activePythonCommand)
+				if (check.ok) {
+					const versionLine = splitLines(check.stdout || check.stderr)[0] || ''
+					setStep('dependencyCheck', {
+						status: 'ok',
+						progress: 100,
+						detail: `依赖齐全${versionLine ? `（Django ${versionLine}）` : ''}`,
+					})
+					setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '无需安装。' })
+				} else {
+					setStep('dependencyCheck', {
 						status: 'error',
 						progress: 100,
-						detail: '依赖强制重装失败，请检查网络或 pip 源配置。',
+						detail: '依赖不完整或已损坏（运行时导入失败）。',
 					})
-					pushBackendLog('[建议] 依赖安装失败：请检查网络，或配置可用的 pip 镜像后重试。')
-					return { ok: false, state: getSetupState(), error: 'dependency-install-failed' }
-				}
-				setStep('dependencyCheck', {
-					status: 'ok',
-					progress: 100,
-					detail: '依赖安装完成并可用。',
-				})
-				setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '依赖安装完成。' })
+					setStep('dependencyInstall', { status: 'running', progress: 90, detail: '正在强制重装项目依赖...' })
+					const install = await installDjangoRuntimeDependencies({
+						pythonCommand: activePythonCommand,
+						djangoRuntimeDir,
+						forceReinstall: true,
+					})
+					if (!install.ok) {
+						setStep('dependencyInstall', {
+							status: 'error',
+							progress: 100,
+							detail: '依赖强制重装失败，请检查网络或 pip 源配置。',
+						})
+						pushBackendLog('[建议] 依赖安装失败：请检查网络，或配置可用的 pip 镜像后重试。')
+						return { ok: false, state: getSetupState(), error: 'dependency-install-failed' }
+					}
+					setStep('dependencyCheck', {
+						status: 'ok',
+						progress: 100,
+						detail: '依赖安装完成并可用。',
+					})
+					setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '依赖安装完成。' })
 
-				setStep('django', { status: 'running', progress: 95, detail: '依赖已补齐，正在重启 Django...' })
-				await stopBackend()
-				await bootBackend({ pythonCommand: venvPython, djangoDir: djangoRuntimeDir })
-				setStep('django', { status: 'ok', progress: 100, detail: `启动成功：${backendBaseUrl}` })
+					setStep('django', { status: 'running', progress: 95, detail: '依赖已补齐，正在重启 Django...' })
+					await stopBackend()
+					await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
+					setStep('django', { status: 'ok', progress: 100, detail: `启动成功：${backendBaseUrl}` })
+				}
 			}
 		} catch (startErr) {
+			if (pyInfo.isBundled) {
+				setStep('django', {
+					status: 'error',
+					progress: 100,
+					detail: `内置环境启动失败：${String(startErr?.message || startErr)}`,
+				})
+				pushBackendLog('[错误] 内置 Python 运行时启动失败，请尝试重新安装应用。')
+				return { ok: false, state: getSetupState(), error: 'bundled-django-start-failed' }
+			}
 			setStep('django', {
 				status: 'error',
 				progress: 100,
@@ -889,7 +963,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			})
 
 			setStep('dependencyCheck', { status: 'running', progress: 80, detail: '正在检查关键依赖...' })
-			const check = await checkDjangoRuntimeDependencies(venvPython)
+			const check = await checkDjangoRuntimeDependencies(activePythonCommand)
 			if (!check.ok) {
 				setStep('dependencyCheck', {
 					status: 'error',
@@ -899,7 +973,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 
 				setStep('dependencyInstall', { status: 'running', progress: 90, detail: '正在强制重装项目依赖...' })
 				const install = await installDjangoRuntimeDependencies({
-					pythonCommand: venvPython,
+					pythonCommand: activePythonCommand,
 					djangoRuntimeDir,
 					forceReinstall: true,
 				})
@@ -931,7 +1005,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			setStep('django', { status: 'running', progress: 95, detail: '依赖就绪，正在重新启动 Django...' })
 			try {
 				await stopBackend()
-				await bootBackend({ pythonCommand: venvPython, djangoDir: djangoRuntimeDir })
+				await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
 				setStep('django', {
 					status: 'ok',
 					progress: 100,
@@ -1193,6 +1267,84 @@ async function createWindow() {
 	mainWindow.on('closed', () => {
 		mainWindow = null
 	})
+
+	mainWindow.on('maximize', () => {
+		// 最大化事件处理
+	})
+
+	mainWindow.on('unmaximize', () => {
+		// 还原事件处理
+	})
+}
+
+let windowAnimating = false
+const ANIMATION_DURATION = 200
+let lastNormalBounds = null
+
+function lerp(start, end, t) {
+	return start + (end - start) * t
+}
+
+function easeOutCubic(t) {
+	return 1 - Math.pow(1 - t, 3)
+}
+
+async function animateWindowBounds(win, targetBounds) {
+	if (!win || win.isDestroyed()) return
+	if (windowAnimating) return
+
+	windowAnimating = true
+	const startBounds = win.getBounds()
+	const startX = startBounds.x
+	const startY = startBounds.y
+	const startWidth = startBounds.width
+	const startHeight = startBounds.height
+
+	const startTime = Date.now()
+
+	return new Promise((resolve) => {
+		function animate() {
+			if (!win || win.isDestroyed()) {
+				windowAnimating = false
+				resolve()
+				return
+			}
+
+			const elapsed = Date.now() - startTime
+			const t = Math.min(elapsed / ANIMATION_DURATION, 1)
+			const easedT = easeOutCubic(t)
+
+			const currentX = lerp(startX, targetBounds.x, easedT)
+			const currentY = lerp(startY, targetBounds.y, easedT)
+			const currentWidth = lerp(startWidth, targetBounds.width, easedT)
+			const currentHeight = lerp(startHeight, targetBounds.height, easedT)
+
+			try {
+				win.setBounds({
+					x: Math.round(currentX),
+					y: Math.round(currentY),
+					width: Math.round(currentWidth),
+					height: Math.round(currentHeight),
+				})
+			} catch {
+				// ignore
+			}
+
+			if (t < 1) {
+				requestAnimationFrame(animate)
+			} else {
+				try {
+					win.setBounds(targetBounds)
+				} catch {
+					// ignore
+				}
+				windowAnimating = false
+				resolve()
+			}
+		}
+
+		requestAnimationFrame(animate)
+	})
 }
 
 function registerIpc() {
@@ -1218,9 +1370,28 @@ function registerIpc() {
 	ipcMain.handle('dweb:window:toggleMaximize', async (e) => {
 		const win = getSenderWindow(e)
 		if (!win) return { ok: false, error: 'No window.' }
-		if (win.isMaximized()) win.unmaximize()
-		else win.maximize()
-		return { ok: true, maximized: win.isMaximized() }
+
+		if (windowAnimating) return { ok: false, error: 'Animating.' }
+
+		if (win.isMaximized()) {
+			const targetBounds = lastNormalBounds || { x: 100, y: 100, width: 1280, height: 800 }
+			await animateWindowBounds(win, targetBounds)
+			win.unmaximize()
+			return { ok: true, maximized: false }
+		} else {
+			lastNormalBounds = win.getBounds()
+			const screen = win.getScreen()
+			const display = screen.getDisplayNearestPoint({ x: lastNormalBounds.x, y: lastNormalBounds.y })
+			const workArea = display.workArea
+			await animateWindowBounds(win, {
+				x: workArea.x,
+				y: workArea.y,
+				width: workArea.width,
+				height: workArea.height,
+			})
+			win.maximize()
+			return { ok: true, maximized: true }
+		}
 	})
 
 	ipcMain.handle('dweb:window:isMaximized', async (e) => {
@@ -1391,7 +1562,7 @@ function registerIpc() {
 	})
 
 	ipcMain.handle('dweb:app:revealUserDataDir', async () => {
-		await shell.openPath(getUserDataDir())
+		await shell.openPath(getDvsResourceDir())
 		return { ok: true }
 	})
 
@@ -1489,8 +1660,8 @@ function registerIpc() {
 			clearProjectRoot(projectId)
 			return { ok: true, cleared: true }
 		}
-		const ok = setProjectRoot(projectId, rootPath)
-		return { ok: !!ok }
+		const result = setProjectRoot(projectId, rootPath)
+		return result
 	})
 
 	ipcMain.handle('dweb:aiworkflow:clearProjectRoot', async (_e, payload) => {
@@ -1584,6 +1755,61 @@ function registerIpc() {
 	ipcMain.handle('dweb:aiworkflow:projectAssets:repairAll', async (_e, payload) => {
 		try {
 			return await repairAllProjectAssets(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 诊断单个 dweb:// URL：返回项目根注册状态、磁盘文件是否存在、候选路径、相似文件、修复建议。
+	ipcMain.handle('dweb:aiworkflow:diagnoseAsset', async (_e, payload) => {
+		try {
+			return diagnoseDwebAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err), diagnostics: [] }
+		}
+	})
+
+	// 校验/重注册项目根目录。传入 expectedRootPath（磁盘真实路径）时，若当前注册值与磁盘不一致会强制重新 setProjectRoot。
+	ipcMain.handle('dweb:aiworkflow:validateProjectRoot', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		const expected = String(payload?.expectedRootPath || '').trim()
+		if (expected) {
+			const result = setProjectRoot(projectId, expected)
+			return { ok: true, reRegistered: result?.ok, registerResult: result, validation: validateProjectRoot(projectId) }
+		}
+		return { ok: true, validation: validateProjectRoot(projectId) }
+	})
+
+	// 获取最近 dweb 协议访问日志（用于调试/错误上报）。
+	ipcMain.handle('dweb:aiworkflow:getAssetAccessLogs', async (_e, payload) => {
+		const maxEntries = Number(payload?.maxEntries)
+		return { ok: true, logs: getAccessLogs(Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : 100) }
+	})
+
+	// 项目缓存统计：统计 .dvcache 目录下文件数量和总大小
+	ipcMain.handle('dweb:project-cache:stats', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		try {
+			return getProjectCacheStats(projectId)
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 项目缓存清理：清空 .dvcache 目录下的所有缓存文件
+	ipcMain.handle('dweb:project-cache:clear', async (_e, payload) => {
+		const projectId = Number(payload?.projectId)
+		if (!Number.isFinite(projectId) || projectId <= 0) {
+			return { ok: false, error: 'projectId is invalid' }
+		}
+		try {
+			return clearProjectCache(projectId)
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -1797,7 +2023,7 @@ function registerIpc() {
 	})
 
 	// 资源管理器窗口 → 主窗口事件广播
-	// 事件类型: 'remove' | 'preview' | 'refresh-missing' | 'drop-to-node'
+	// 事件类型: 'remove' | 'preview' | 'refresh-missing' | 'drop-to-node' | 'focus-node'
 	ipcMain.handle('dweb:resource-manager:broadcast', async (_e, payload) => {
 		const event = String(payload?.event || '').trim()
 		if (!event) return { ok: false, error: 'missing event name' }
@@ -1805,6 +2031,10 @@ function registerIpc() {
 			return { ok: false, error: 'main window not available' }
 		}
 		try {
+			if (event === 'focus-node') {
+				if (mainWindow.isMinimized()) mainWindow.restore()
+				mainWindow.focus()
+			}
 			mainWindow.webContents.send('dweb:resource-manager:event', {
 				event,
 				data: payload?.data ?? null,
@@ -1831,6 +2061,30 @@ function registerIpc() {
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
+	})
+
+	// 主窗口 → 资源管理器窗口发送初始数据（资源列表、节点数据）
+	let resourceManagerLatestData = null
+
+	ipcMain.handle('dweb:resource-manager:send-data', async (_e, payload) => {
+		// 缓冲最近一次收到的数据（用于资源管理器窗口后续主动请求）
+		resourceManagerLatestData = payload
+
+		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
+			return { ok: true, buffered: true }
+		}
+		try {
+			resourceManagerWindow.webContents.send('dweb:resource-manager:data', payload)
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 资源管理器窗口 → 主窗口：主动请求数据
+	ipcMain.handle('dweb:resource-manager:request-data', async () => {
+		const payload = resourceManagerLatestData
+		return { ok: true, data: payload }
 	})
 }
 
@@ -1889,6 +2143,19 @@ async function main() {
 	ensureBackendHealthMonitor()
 	ensureClientResourceLayout()
 	loadClientSettings()
+
+	if (_portableWarnOnReady && app.isPackaged) {
+		dialog.showMessageBox({
+			type: 'warning',
+			title: '安装目录权限提示',
+			message: '当前安装目录无写入权限',
+			detail: 'Dweb Video Studio 已安装到受系统保护的目录（如 Program Files），应用数据和日志将保存到用户目录（AppData）。\n\n如需完全便携化使用（所有文件保存在安装目录），请重新安装到非系统保护目录（如 D:\\Dweb Video Studio）。',
+			buttons: ['我知道了'],
+			defaultId: 0,
+			noLink: true,
+		}).catch(() => {})
+		_portableWarnOnReady = false
+	}
 
 	try {
 		const userDir = getUserDataDir()

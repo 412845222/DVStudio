@@ -375,7 +375,7 @@ onMounted(() => {
 <style scoped>
 .wf-scene-understand {
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -430,7 +430,7 @@ onMounted(() => {
 .wf-scene-understand-footer,
 .wf-scene-understand-output-shell {
   border: 1px solid var(--vscode-border);
-  background: rgba(15, 23, 32, 0.84);
+  background: var(--dweb-defualt);
   border-radius: 0;
   padding: 10px;
 }

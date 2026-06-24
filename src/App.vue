@@ -3,6 +3,7 @@
 		class="app-shell"
 		:class="{ electron: isElectronRuntime, 'is-preview-window': isPreviewWindow, 'is-resource-manager-window': isResourceManagerWindow }"
 	>
+		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
 		<GlobalTitleBar v-if="isElectronRuntime && !isPreviewWindow" class="app-titlebar" />
 		<GlobalSideNav
 			v-if="!isPreviewWindow"
@@ -35,6 +36,7 @@ import GlobalSideNav from './ui/UIComponent/GlobalSideNav.vue'
 import GlobalTitleBar from './ui/UIComponent/GlobalTitleBar.vue'
 import StartupProgressBar from './ui/UIComponent/StartupProgressBar.vue'
 import PageTransitionOverlay from './ui/UIComponent/PageTransitionOverlay.vue'
+import GlobalPageBackground from './ui/UIComponent/GlobalPageBackground.vue'
 import { useStartupProgress } from './composables/useStartupProgress'
 
 provide(VideoStudioKey, VideoStudioStore)
@@ -55,6 +57,15 @@ const isPreviewWindow = computed(() => {
 
 const isResourceManagerWindow = computed(() => {
 	return String(route.path || '').startsWith('/resource-manager')
+})
+
+const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() => {
+	const path = String(route.path || '')
+	const name = String((route.name as string) || '')
+	if (name === 'ProjectList' || path.startsWith('/projects')) return 'project-list'
+	if (name === 'AIWorkflow' || path.startsWith('/aiworkflow') || path.startsWith('/blueprint')) return 'workflow'
+	if (name === 'VideoStudio' || path.startsWith('/video-studio') || path.startsWith('/studio')) return 'default'
+	return 'default'
 })
 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
@@ -104,7 +115,7 @@ onMounted(() => {
 	width: 100%;
 	z-index: 10;
 	overflow: hidden;
-	background: var(--theme-bg-secondary);
+	background: transparent;
 }
 
 .app-shell.is-preview-window .app-content {

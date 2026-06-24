@@ -145,7 +145,7 @@ export async function selectProjectFolder(): Promise<DirectoryPickResult | null>
 	return w.dweb.aiworkflow.selectProjectFolder()
 }
 
-export async function registerProjectRoot(projectId: number, rootPath: string): Promise<{ ok: boolean; cleared?: boolean; error?: string } | null> {
+export async function registerProjectRoot(projectId: number, rootPath: string): Promise<{ ok: boolean; cleared?: boolean; created?: boolean; root?: string; error?: string } | null> {
 	if (!w?.dweb?.aiworkflow?.registerProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
@@ -188,7 +188,7 @@ export async function copyFileToProjectRoot(
 	projectId: number,
 	sourcePath: string,
 	desiredFilename?: string,
-): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null> {
+): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; reused?: boolean; error?: string } | null> {
 	if (!w?.dweb?.aiworkflow?.copyFileToProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
@@ -259,6 +259,119 @@ export async function repairAllProjectAssets(payload: {
 	})
 }
 
+export type DwebAssetDiagnosticCheck = {
+	check: string
+	status: 'OK' | 'FAIL' | 'INFO'
+	message: string
+	detail?: any
+}
+
+export type DwebAssetDiagnoseResult = {
+	ok: boolean
+	projectId: number | null
+	requestedPath: string
+	registered: boolean
+	root: string | null
+	rootValid: boolean
+	rootExists: boolean
+	resolvedTo: string | null
+	fileExists: boolean
+	fileIsFile: boolean
+	fileSize: number
+	candidates: Array<{
+		root: string
+		candidate: string
+		resolved: string | null
+		reason: string
+		exists: boolean
+		isFile: boolean
+		size: number
+	}>
+	similarFiles: Array<{ name: string; path: string }>
+	diagnostics: DwebAssetDiagnosticCheck[]
+	suggestion: 're_register_root' | 'repair_by_rename' | 'file_missing' | null
+	repairedAsset: {
+		kind: string
+		name: string
+		contentType: string
+		size: number
+		relativePath: string
+		projectRelativePath: string
+		absolutePath: string
+		url: string
+		sourcePath: string
+	} | null
+	error?: string
+}
+
+export async function diagnoseDwebAsset(payload: {
+	projectId?: number
+	relPath?: string
+	url?: string
+}): Promise<DwebAssetDiagnoseResult | null> {
+	if (!w?.dweb?.aiworkflow?.diagnoseAsset) return null
+	return w.dweb.aiworkflow.diagnoseAsset(payload || {})
+}
+
+export async function validateDwebProjectRoot(payload: {
+	projectId: number
+	expectedRootPath?: string
+}): Promise<{
+	ok: boolean
+	reRegistered?: boolean
+	registerResult?: any
+	validation?: {
+		valid: boolean
+		projectId: number
+		root?: string
+		mediaDirExists?: boolean
+		mediaDir?: string
+		error?: string
+	}
+	error?: string
+} | null> {
+	if (!w?.dweb?.aiworkflow?.validateProjectRoot) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.validateProjectRoot({
+		projectId: pid,
+		expectedRootPath: payload?.expectedRootPath ? String(payload.expectedRootPath) : undefined,
+	})
+}
+
+export async function getDwebAssetAccessLogs(maxEntries: number = 100): Promise<{ ok: boolean; logs?: any[]; error?: string } | null> {
+	if (!w?.dweb?.aiworkflow?.getAssetAccessLogs) return null
+	return w.dweb.aiworkflow.getAssetAccessLogs({ maxEntries: Number(maxEntries) || 100 })
+}
+
+export type ProjectCacheStatsResult = {
+	ok: boolean
+	fileCount?: number
+	totalBytes?: number
+	cacheDir?: string
+	error?: string
+}
+
+export type ProjectCacheClearResult = {
+	ok: boolean
+	deletedCount?: number
+	freedBytes?: number
+	error?: string
+}
+
+export async function getProjectCacheStats(projectId: number): Promise<ProjectCacheStatsResult | null> {
+	if (!w?.dweb?.aiworkflow?.getCacheStats) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.getCacheStats({ projectId: pid })
+}
+
+export async function clearProjectCache(projectId: number): Promise<ProjectCacheClearResult | null> {
+	if (!w?.dweb?.aiworkflow?.clearCache) return null
+	const pid = Number(projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return w.dweb.aiworkflow.clearCache({ projectId: pid })
+}
 
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {
 	if (!w?.dweb?.common?.runBootstrapInstaller) return null

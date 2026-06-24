@@ -21,7 +21,11 @@ export class TypedEventBus<Events extends Record<string, unknown>> {
 		const set = this.listeners.get(eventName)
 		if (!set || set.size === 0) return
 		for (const handler of Array.from(set)) {
-			;(handler as EventHandler<Events[K]>)(payload)
+			try {
+				;(handler as EventHandler<Events[K]>)(payload)
+			} catch {
+				// Ignore exceptions from handlers
+			}
 		}
 	}
 }

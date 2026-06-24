@@ -2,13 +2,35 @@
   <div
     ref="wrapEl"
     class="bp-wrap"
+    :class="{ 'bp-wrap--move-cursor': isOverMoveHandle }"
     @pointerdown="onWrapPointerDown"
+    @pointermove="onWrapPointerMove"
+    @pointerleave="onWrapPointerLeave"
     @wheel="onWheel"
     @dblclick="onDblClick"
     @contextmenu.prevent="onContextMenu"
   >
     <canvas ref="canvasEl" class="bp-grid-canvas" />
     <div v-if="boxSel" class="bp-boxsel" :style="boxSelStyle" />
+
+    <!-- 多选框选框交互覆盖层 -->
+    <SelectionFrameOverlay
+      v-if="selectionFrameOverlayProps"
+      :visible="selectionFrameOverlayProps.visible"
+      :worldRect="selectionFrameOverlayProps.worldRect"
+      :label="selectionFrameOverlayProps.label"
+      :nodeCount="selectionFrameOverlayProps.nodeCount"
+      :zoom="viewportZoom"
+      :panX="viewportPanPx.x"
+      :panY="viewportPanPx.y"
+      :canvasWidth="canvasSize.w"
+      :canvasHeight="canvasSize.h"
+      @tag-save="(label: string) => emit('selection-frame-tag-save', label)"
+      @delete="emit('selection-frame-delete')"
+      @delete-nodes="emit('selection-frame-delete-selected')"
+      @drag-move="onOverlayDragMove"
+    />
+
     <slot
       :worldToScreen="worldToScreen"
       :screenToWorld="screenToWorld"
@@ -20,6 +42,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import SelectionFrameOverlay from "../WorkFlow/selection/SelectionFrameOverlay.vue";
 
 export type BlueprintViewport = {
   zoom: number;
@@ -30,6 +53,19 @@ export type BlueprintViewport = {
 const props = withDefaults(
   defineProps<{
     viewport?: BlueprintViewport;
+    selectionFrame?: {
+      visible: boolean;
+      worldRect: { x0: number; y0: number; x1: number; y1: number } | null;
+      label?: string;
+      nodeCount: number;
+      nodeIds?: string[];
+    } | null;
+    savedFrames?: Array<{
+      id: string;
+      label: string;
+      nodeIds: string[];
+    }>;
+    nodesById?: Record<string, any>;
   }>(),
   {
     viewport: () => ({ zoom: 1, panX: 0, panY: 0 }),
@@ -50,12 +86,39 @@ const emit = defineEmits<{
     e: "box-select",
     payload: { worldRect: { x0: number; y0: number; x1: number; y1: number } }
   ): void;
+  (e: "canvas-panning-start"): void;
+  (e: "canvas-panning-end"): void;
+  (e: "selection-frame-tag-save", label: string): void;
+  (e: "selection-frame-delete", payload?: { frameId?: string }): void;
+  (e: "selection-frame-drag", payload: { dx: number; dy: number; nodeIds: string[] }): void;
+  (e: "selection-frame-delete-selected"): void;
 }>();
 
 const wrapEl = ref<HTMLElement | null>(null);
 const canvasEl = ref<HTMLCanvasElement | null>(null);
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+// 多选框移动手柄区域（用于交互检测）
+const selectionFrameMoveHandle = ref<{ x: number; y: number; width: number; height: number } | null>(null);
+
+// 多选框删除按钮区域（用于交互检测）
+const selectionFrameDeleteButton = ref<{ x: number; y: number; width: number; height: number } | null>(null);
+
+// 已保存选区的移动手柄区域列表
+const savedFrameMoveHandles = ref<Array<{ 
+  x: number; y: number; width: number; height: number; 
+  frameId: string; nodeIds: string[];
+  deleteBtn?: { x: number; y: number; width: number; height: number };
+}>>([]);
+
+// 拖拽状态
+const draggingSelectionFrame = ref(false);
+const dragLastWorld = ref({ x: 0, y: 0 });
+const dragStartNodes = ref<Record<string, { x: number; y: number }>>({});
+
+// 是否悬停在移动手柄上
+const isOverMoveHandle = ref(false);
 
 const viewportZoom = computed(() => {
   const z = Number(props.viewport?.zoom ?? 1);
@@ -66,6 +129,24 @@ const viewportPanPx = computed(() => ({
   x: Number(props.viewport?.panX ?? 0) || 0,
   y: Number(props.viewport?.panY ?? 0) || 0,
 }));
+
+// Canvas 尺寸（用于选框 overlay 定位）
+const canvasSize = computed(() => {
+  const r = wrapRect()
+  return { w: r ? r.width : 0, h: r ? r.height : 0 }
+})
+
+// 选框 overlay 数据（仅当有数据时返回对象，否则返回 null）
+const selectionFrameOverlayProps = computed(() => {
+  const sf = props.selectionFrame
+  if (!sf?.visible || !sf.worldRect) return null
+  return {
+    visible: sf.visible,
+    worldRect: sf.worldRect,
+    label: sf.label,
+    nodeCount: sf.nodeCount,
+  }
+})
 
 const wrapRect = () => wrapEl.value?.getBoundingClientRect() ?? null;
 const screenCenter = () => {
@@ -89,6 +170,17 @@ const screenToWorld = (p: { x: number; y: number }) => {
     x: (p.x - c.x - viewportPanPx.value.x) / z,
     y: (p.y - c.y - viewportPanPx.value.y) / z,
   };
+};
+
+// 处理来自 DOM overlay 的拖拽移动
+const onOverlayDragMove = (payload: { dx: number; dy: number }) => {
+  const z = viewportZoom.value;
+  const nodeIds = props.selectionFrame?.nodeIds || [];
+  emit("selection-frame-drag", {
+    dx: payload.dx / z,
+    dy: payload.dy / z,
+    nodeIds,
+  });
 };
 
 let raf = 0;
@@ -124,6 +216,9 @@ const drawGrid = () => {
   if (!canvas || !wrap) return;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
+
+  // 清空已保存选区手柄列表（将在绘制时重新填充）
+  savedFrameMoveHandles.value = [];
 
   const dpr = GRID_DPR;
   const r = wrap.getBoundingClientRect();
@@ -185,6 +280,265 @@ const drawGrid = () => {
   ctx.fillStyle = muted;
   ctx.font = "12px sans-serif";
   ctx.fillText("0,0", origin.x + 6, origin.y - 6);
+
+  // --- 绘制多选框选框 ---
+  const selFrame = props.selectionFrame;
+  if (selFrame?.visible && selFrame.worldRect) {
+    const { x0, y0, x1, y1 } = selFrame.worldRect;
+    const screenTopLeft = worldToScreen({ x: x0, y: y0 });
+    const screenBottomRight = worldToScreen({ x: x1, y: y1 });
+
+    const left = Math.min(screenTopLeft.x, screenBottomRight.x);
+    const top = Math.min(screenTopLeft.y, screenBottomRight.y);
+    const width = Math.abs(screenBottomRight.x - screenTopLeft.x);
+    const height = Math.abs(screenBottomRight.y - screenTopLeft.y);
+
+    // 绘制背景半透明填充
+    ctx.fillStyle = "rgba(59, 130, 246, 0.06)";
+    ctx.globalAlpha = 1;
+    ctx.fillRect(left, top, width, height);
+
+    // 绘制虚线边框
+    ctx.strokeStyle = "#3b82f6";
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(left, top, width, height);
+    ctx.setLineDash([]);
+
+    // 绘制四角装饰
+    const cornerSize = 8;
+    ctx.strokeStyle = "#3b82f6";
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 1;
+
+    // 左上角
+    ctx.beginPath();
+    ctx.moveTo(left, top + cornerSize);
+    ctx.lineTo(left, top);
+    ctx.lineTo(left + cornerSize, top);
+    ctx.stroke();
+
+    // 右上角
+    ctx.beginPath();
+    ctx.moveTo(left + width - cornerSize, top);
+    ctx.lineTo(left + width, top);
+    ctx.lineTo(left + width, top + cornerSize);
+    ctx.stroke();
+
+    // 左下角
+    ctx.beginPath();
+    ctx.moveTo(left, top + height - cornerSize);
+    ctx.lineTo(left, top + height);
+    ctx.lineTo(left + cornerSize, top + height);
+    ctx.stroke();
+
+    // 右下角
+    ctx.beginPath();
+    ctx.moveTo(left + width - cornerSize, top + height);
+    ctx.lineTo(left + width, top + height);
+    ctx.lineTo(left + width, top + height - cornerSize);
+    ctx.stroke();
+
+    // 标签栏由 DOM 组件 SelectionFrameOverlay 负责绘制和交互
+    // Canvas 中不再绘制临时选区的标签栏，避免重复
+    // 移动拖拽由 DOM 组件处理
+    selectionFrameMoveHandle.value = null;
+    selectionFrameDeleteButton.value = null;
+  } else {
+    selectionFrameMoveHandle.value = null;
+    selectionFrameDeleteButton.value = null;
+  }
+
+  // --- 绘制已保存的选区框（持久化实体） ---
+  if (props.savedFrames?.length && props.nodesById) {
+    for (const frame of props.savedFrames) {
+      if (!frame.nodeIds || frame.nodeIds.length < 2) continue;
+
+      // 计算已保存选区的包围盒
+      let sfX0 = Infinity, sfY0 = Infinity, sfX1 = -Infinity, sfY1 = -Infinity;
+      let validNodes = 0;
+      for (const nid of frame.nodeIds) {
+        const node = props.nodesById[nid];
+        if (!node) continue;
+        const nx = node.worldX ?? 0, ny = node.worldY ?? 0;
+        const nw = node.width ?? 200, nh = node.height ?? 160;
+        const left = nx - nw / 2, top = ny - nh / 2;
+        const right = nx + nw / 2, bottom = ny + nh / 2;
+        sfX0 = Math.min(sfX0, left); sfY0 = Math.min(sfY0, top);
+        sfX1 = Math.max(sfX1, right); sfY1 = Math.max(sfY1, bottom);
+        validNodes++;
+      }
+      if (validNodes < 2 || !isFinite(sfX0)) continue;
+
+      // 添加 padding
+      const pad = 12;
+      sfX0 -= pad; sfY0 -= pad; sfX1 += pad; sfY1 += pad;
+
+      const sTopLeft = worldToScreen({ x: sfX0, y: sfY0 });
+      const sBottomRight = worldToScreen({ x: sfX1, y: sfY1 });
+      const sLeft = Math.min(sTopLeft.x, sBottomRight.x);
+      const sTop = Math.min(sTopLeft.y, sBottomRight.y);
+      const sWidth = Math.abs(sBottomRight.x - sTopLeft.x);
+      const sHeight = Math.abs(sBottomRight.y - sTopLeft.y);
+
+      // 半透明填充
+      ctx.fillStyle = "rgba(16, 185, 129, 0.04)";
+      ctx.fillRect(sLeft, sTop, sWidth, sHeight);
+
+      // 已保存选区：实线边框（与临时虚线区分）
+      ctx.strokeStyle = "#10b981"; // 绿色表示已保存
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      ctx.strokeRect(sLeft, sTop, sWidth, sHeight);
+
+      // 四角装饰
+      const cSize = 6;
+      ctx.strokeStyle = "#10b981";
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 1;
+      // 左上
+      ctx.beginPath(); ctx.moveTo(sLeft, sTop + cSize); ctx.lineTo(sLeft, sTop); ctx.lineTo(sLeft + cSize, sTop); ctx.stroke();
+      // 右上
+      ctx.beginPath(); ctx.moveTo(sLeft + sWidth - cSize, sTop); ctx.lineTo(sLeft + sWidth, sTop); ctx.lineTo(sLeft + sWidth, sTop + cSize); ctx.stroke();
+      // 左下
+      ctx.beginPath(); ctx.moveTo(sLeft, sTop + sHeight - cSize); ctx.lineTo(sLeft, sTop + sHeight); ctx.lineTo(sLeft + cSize, sTop + sHeight); ctx.stroke();
+      // 右下
+      ctx.beginPath(); ctx.moveTo(sLeft + sWidth - cSize, sTop + sHeight); ctx.lineTo(sLeft + sWidth, sTop + sHeight); ctx.lineTo(sLeft + sWidth, sTop + sHeight - cSize); ctx.stroke();
+
+      // 标签栏（移到移动图标之前）
+      const sTagLabel = frame.label || "已保存";
+      const sTagH = 20;
+      const sTagT = sTop - sTagH - 4;
+      const sTagText = `${sTagLabel} (${frame.nodeIds.length}个节点)`;
+      ctx.font = "11px sans-serif";
+      const sTagW = Math.max(80, ctx.measureText(sTagText).width + 16 + 20); // +20 for move icon
+      ctx.fillStyle = "rgba(6, 78, 59, 0.92)";
+      ctx.fillRect(sLeft, sTagT, sTagW, sTagH);
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.5)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sLeft, sTagT, sTagW, sTagH);
+
+      // 绘制移动图标（位于标题框左侧内部）
+      const sMoveHandleSize = 14;
+      const sMoveHandleX = sLeft + 3;
+      const sMoveHandleY = sTagT + (sTagH - sMoveHandleSize) / 2;
+
+      // 保存标题框区域用于交互检测（整个标题框都可拖拽）
+      const savedFrameHandle = {
+        x: sLeft,
+        y: sTagT,
+        width: sTagW,
+        height: sTagH,
+        frameId: frame.id,
+        nodeIds: frame.nodeIds,
+        deleteBtn: {
+          x: sLeft + sWidth - 20,
+          y: sTop - 20,
+          width: 20,
+          height: 20,
+        }
+      };
+      savedFrameMoveHandles.value.push(savedFrameHandle);
+
+      // 绘制移动图标（十字箭头样式）
+      ctx.strokeStyle = "#6ee7b7";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      const sArrowSize = 4;
+      const sCenterX = sMoveHandleX + sMoveHandleSize / 2;
+      const sCenterY = sMoveHandleY + sMoveHandleSize / 2;
+
+      // 绘制十字箭头（中心十字 + 四个箭头）
+      // 水平线
+      ctx.beginPath();
+      ctx.moveTo(sCenterX - sArrowSize, sCenterY);
+      ctx.lineTo(sCenterX + sArrowSize, sCenterY);
+      ctx.stroke();
+
+      // 垂直线
+      ctx.beginPath();
+      ctx.moveTo(sCenterX, sCenterY - sArrowSize);
+      ctx.lineTo(sCenterX, sCenterY + sArrowSize);
+      ctx.stroke();
+
+      // 上箭头
+      ctx.beginPath();
+      ctx.moveTo(sCenterX, sCenterY - sArrowSize - 2.5);
+      ctx.lineTo(sCenterX - 3, sCenterY - sArrowSize);
+      ctx.moveTo(sCenterX, sCenterY - sArrowSize - 2.5);
+      ctx.lineTo(sCenterX + 3, sCenterY - sArrowSize);
+      ctx.stroke();
+
+      // 下箭头
+      ctx.beginPath();
+      ctx.moveTo(sCenterX, sCenterY + sArrowSize + 2.5);
+      ctx.lineTo(sCenterX - 3, sCenterY + sArrowSize);
+      ctx.moveTo(sCenterX, sCenterY + sArrowSize + 2.5);
+      ctx.lineTo(sCenterX + 3, sCenterY + sArrowSize);
+      ctx.stroke();
+
+      // 左箭头
+      ctx.beginPath();
+      ctx.moveTo(sCenterX - sArrowSize - 2.5, sCenterY);
+      ctx.lineTo(sCenterX - sArrowSize, sCenterY - 3);
+      ctx.moveTo(sCenterX - sArrowSize - 2.5, sCenterY);
+      ctx.lineTo(sCenterX - sArrowSize, sCenterY + 3);
+      ctx.stroke();
+
+      // 右箭头
+      ctx.beginPath();
+      ctx.moveTo(sCenterX + sArrowSize + 2.5, sCenterY);
+      ctx.lineTo(sCenterX + sArrowSize, sCenterY - 3);
+      ctx.moveTo(sCenterX + sArrowSize + 2.5, sCenterY);
+      ctx.lineTo(sCenterX + sArrowSize, sCenterY + 3);
+      ctx.stroke();
+
+      // 标签文字（右移以避开图标）
+      ctx.fillStyle = "#6ee7b7";
+      ctx.globalAlpha = 1;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(sTagText, sLeft + sTagW / 2, sTagT + sTagH / 2);
+
+      // 绘制删除按钮（位于绿框顶部最右侧，右上角）
+      const sDeleteBtnSize = 20;
+      const sDeleteBtnX = sLeft + sWidth - sDeleteBtnSize;
+      const sDeleteBtnY = sTop - sDeleteBtnSize;
+      
+      // 删除按钮背景
+      ctx.fillStyle = "rgba(239, 68, 68, 0.2)";
+      ctx.fillRect(sDeleteBtnX, sDeleteBtnY, sDeleteBtnSize, sDeleteBtnSize);
+      
+      // 删除按钮边框
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.5)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sDeleteBtnX, sDeleteBtnY, sDeleteBtnSize, sDeleteBtnSize);
+      
+      // 绘制 × 图标
+      ctx.strokeStyle = "#ef4444";
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = "round";
+      
+      const sCrossSize = 8;
+      const sCrossX = sDeleteBtnX + sDeleteBtnSize / 2;
+      const sCrossY = sDeleteBtnY + sDeleteBtnSize / 2;
+      
+      ctx.beginPath();
+      ctx.moveTo(sCrossX - sCrossSize / 2, sCrossY - sCrossSize / 2);
+      ctx.lineTo(sCrossX + sCrossSize / 2, sCrossY + sCrossSize / 2);
+      ctx.moveTo(sCrossX + sCrossSize / 2, sCrossY - sCrossSize / 2);
+      ctx.lineTo(sCrossX - sCrossSize / 2, sCrossY + sCrossSize / 2);
+      ctx.stroke();
+    }
+  } else {
+    savedFrameMoveHandles.value = [];
+  }
+
+  ctx.globalAlpha = 1;
 };
 
 let ro: ResizeObserver | null = null;
@@ -204,8 +558,35 @@ onMounted(() => {
   });
 });
 
+// 监听节点位置变化以实时更新多选框
+const nodePositionsHash = computed(() => {
+  const nodesById = props.nodesById
+  if (!nodesById) return ''
+  return JSON.stringify(
+    Object.keys(nodesById)
+      .map(id => ({
+        id,
+        x: nodesById[id]?.worldX,
+        y: nodesById[id]?.worldY,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+  )
+})
+
 watch(
-  () => [props.viewport?.zoom, props.viewport?.panX, props.viewport?.panY],
+  () => [
+    props.viewport?.zoom,
+    props.viewport?.panX,
+    props.viewport?.panY,
+    props.selectionFrame?.visible,
+    props.selectionFrame?.worldRect?.x0,
+    props.selectionFrame?.worldRect?.y0,
+    props.selectionFrame?.worldRect?.x1,
+    props.selectionFrame?.worldRect?.y1,
+    props.selectionFrame?.nodeCount,
+    props.savedFrames?.length,
+    nodePositionsHash.value,
+  ],
   () => requestDraw()
 );
 
@@ -269,6 +650,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
   // Right button: pan viewport
   if (e.button === 2) {
     e.preventDefault();
+    emit("canvas-panning-start");
     bgDrag = {
       start: { x: e.clientX, y: e.clientY },
       startPan: { ...viewportPanPx.value },
@@ -298,6 +680,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
         // ignore
       }
       if (moved) suppressContextMenuOnce = true;
+      emit("canvas-panning-end");
     };
     wrap.addEventListener("pointermove", onMove, { passive: false });
     wrap.addEventListener("pointerup", onUp, { once: true });
@@ -309,6 +692,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
   const isTouchOrPen = e.pointerType === 'touch' || e.pointerType === 'pen';
   if (isTouchOrPen && e.button === 0) {
     e.preventDefault();
+    emit("canvas-panning-start");
     touchDrag = {
       start: { x: e.clientX, y: e.clientY },
       startPan: { ...viewportPanPx.value },
@@ -337,6 +721,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
       } catch {
         // ignore
       }
+      emit("canvas-panning-end");
     };
     wrap.addEventListener("pointermove", onMove, { passive: false });
     wrap.addEventListener("pointerup", onUp, { once: true });
@@ -344,9 +729,93 @@ const onWrapPointerDown = (e: PointerEvent) => {
     return;
   }
 
-  // Left button: box select (mouse only)
+  // Left button: check for selection frame drag or box select (mouse only)
   if (e.button === 0) {
     const start = toLocal(wrap, { x: e.clientX, y: e.clientY });
+    
+    // 检查是否点击在已保存选区的删除按钮上（优先于移动手柄检测）
+    let clickedSavedDeleteFrame: any = null;
+    for (const h of savedFrameMoveHandles.value) {
+      if (h.deleteBtn &&
+        start.x >= h.deleteBtn.x && 
+        start.x <= h.deleteBtn.x + h.deleteBtn.width &&
+        start.y >= h.deleteBtn.y && 
+        start.y <= h.deleteBtn.y + h.deleteBtn.height
+      ) {
+        clickedSavedDeleteFrame = h;
+        break;
+      }
+    }
+    
+    if (clickedSavedDeleteFrame) {
+      e.preventDefault();
+      emit("selection-frame-delete", { frameId: clickedSavedDeleteFrame.frameId });
+      return;
+    }
+    
+    // 检查是否点击在已保存选区的移动手柄上
+    const savedHandle = savedFrameMoveHandles.value.find(h => 
+      start.x >= h.x && 
+      start.x <= h.x + h.width &&
+      start.y >= h.y && 
+      start.y <= h.y + h.height
+    );
+    
+    if (savedHandle) {
+      // 开始拖拽已保存选区
+      e.preventDefault();
+      draggingSelectionFrame.value = true;
+      dragLastWorld.value = screenToWorld(start);
+      
+      // 记录当前选区节点的位置
+      const startNodes: Record<string, { x: number; y: number }> = {};
+      if (props.nodesById) {
+        for (const id of savedHandle.nodeIds) {
+          const node = props.nodesById[id];
+          if (node) {
+            startNodes[id] = { x: node.worldX ?? 0, y: node.worldY ?? 0 };
+          }
+        }
+      }
+      dragStartNodes.value = startNodes;
+      
+      wrap.setPointerCapture(e.pointerId);
+      
+      const onMove = (ev: PointerEvent) => {
+        if (!draggingSelectionFrame.value) return;
+        const cur = toLocal(wrap, { x: ev.clientX, y: ev.clientY });
+        const curWorld = screenToWorld(cur);
+        const dx = curWorld.x - dragLastWorld.value.x;
+        const dy = curWorld.y - dragLastWorld.value.y;
+        dragLastWorld.value = curWorld;
+        
+        emit("selection-frame-drag", { 
+          dx, 
+          dy, 
+          nodeIds: Object.keys(dragStartNodes.value) 
+        });
+      };
+      
+      const onUp = (ev: PointerEvent) => {
+        draggingSelectionFrame.value = false;
+        dragStartNodes.value = {};
+        wrap.removeEventListener("pointermove", onMove);
+        wrap.removeEventListener("pointerup", onUp);
+        wrap.removeEventListener("pointercancel", onUp);
+        try {
+          wrap.releasePointerCapture(ev.pointerId);
+        } catch {
+          // ignore
+        }
+      };
+      
+      wrap.addEventListener("pointermove", onMove);
+      wrap.addEventListener("pointerup", onUp, { once: true });
+      wrap.addEventListener("pointercancel", onUp, { once: true });
+      return;
+    }
+    
+    // 普通框选
     let moved = false;
     wrap.setPointerCapture(e.pointerId);
     const onMove = (ev: PointerEvent) => {
@@ -378,6 +847,35 @@ const onWrapPointerDown = (e: PointerEvent) => {
     wrap.addEventListener("pointerup", onUp, { once: true });
     wrap.addEventListener("pointercancel", onUp, { once: true });
   }
+};
+
+const onWrapPointerMove = (e: PointerEvent) => {
+  const wrap = wrapEl.value;
+  if (!wrap) return;
+  
+  const pos = toLocal(wrap, { x: e.clientX, y: e.clientY });
+  
+  // 检查是否悬停在临时选区的标题框上
+  const handle = selectionFrameMoveHandle.value;
+  const isOnTempFrame = handle && 
+    pos.x >= handle.x && 
+    pos.x <= handle.x + handle.width &&
+    pos.y >= handle.y && 
+    pos.y <= handle.y + handle.height;
+  
+  // 检查是否悬停在已保存选区的标题框上
+  const isOnSavedFrame = savedFrameMoveHandles.value.some(h => 
+    pos.x >= h.x && 
+    pos.x <= h.x + h.width &&
+    pos.y >= h.y && 
+    pos.y <= h.y + h.height
+  );
+  
+  isOverMoveHandle.value = isOnTempFrame || isOnSavedFrame;
+};
+
+const onWrapPointerLeave = () => {
+  isOverMoveHandle.value = false;
 };
 
 const onWheel = (e: WheelEvent) => {
@@ -462,5 +960,14 @@ const onContextMenu = (e: MouseEvent) => {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+.bp-wrap--move-cursor {
+  cursor: move;
+  cursor: grab;
+}
+
+.bp-wrap--move-cursor:active {
+  cursor: grabbing;
 }
 </style>

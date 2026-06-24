@@ -32,6 +32,7 @@
         <div
           v-if="resourceUrl"
           class="wf-media-preview"
+          :style="previewWrapStyle"
           @contextmenu.stop.prevent="onPreviewContextMenu"
         >
           <video
@@ -236,6 +237,7 @@ const emit = defineEmits<{
     payload: { dataUrl: string; width: number; height: number; time: number }
   ): void;
   (e: "media-ready"): void;
+  (e: "invalidate-screenshot"): void;
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -270,10 +272,21 @@ const effectiveResourceUrl = computed(() =>
   String(resourceFallbackUrl.value || props.resourceUrl || "").trim()
 );
 
+let invalidateScreenshotTimer: number | null = null;
+const scheduleInvalidateScreenshot = () => {
+  if (invalidateScreenshotTimer != null) {
+    clearTimeout(invalidateScreenshotTimer);
+  }
+  invalidateScreenshotTimer = window.setTimeout(() => {
+    invalidateScreenshotTimer = null;
+    emit("invalidate-screenshot");
+  }, 150);
+};
+
 const screenshotEnabled = computed(() => Boolean(props.screenshotEnabled));
 const normalizedResourceSourcePath = computed(() => String(props.resourceSourcePath ?? "").trim());
 
-const toFileUrl = () => {
+const toFileUrl = (_path?: string) => {
   return "";
 };
 
@@ -349,6 +362,15 @@ const outputWidth = computed(() => {
 const outputHeight = computed(() => {
   const v = props.videoSettings?.outputHeight;
   return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null;
+});
+
+const previewWrapStyle = computed(() => {
+  const nw = naturalWidth.value;
+  const nh = naturalHeight.value;
+  if (nw && nh && nw > 0 && nh > 0) {
+    return { aspectRatio: `${nw} / ${nh}` };
+  }
+  return {};
 });
 
 const outputWidthDisplay = computed(() =>
@@ -1106,11 +1128,13 @@ onMounted(() => {
       }
       seekTime.value = cur;
       drawTimeline();
+      if (!playing.value) scheduleInvalidateScreenshot();
     });
     videoEl.value.addEventListener("pause", () => {
       playing.value = false;
       stopRaf();
       drawTimeline();
+      scheduleInvalidateScreenshot();
     });
     videoEl.value.addEventListener("play", () => {
       playing.value = true;
@@ -1143,6 +1167,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopRaf();
   clearLocalMediaRetry();
+  if (invalidateScreenshotTimer != null) {
+    clearTimeout(invalidateScreenshotTimer);
+    invalidateScreenshotTimer = null;
+  }
   try {
     if (videoEl.value) {
       videoEl.value.removeEventListener("loadeddata", tryEmitMediaReady);
@@ -1167,18 +1195,18 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
 }
 
 .wf-media-preview {
   width: 100%;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  aspect-ratio: 1 / 1;
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--vscode-border);
   background: var(--dweb-defualt);
+  position: relative;
 }
 
 .wf-media-video {
@@ -1189,12 +1217,18 @@ onBeforeUnmount(() => {
 }
 
 .wf-media-empty {
+  width: 100%;
+  aspect-ratio: 1 / 1;
   border: 1px dashed var(--vscode-border);
   border-radius: 6px;
   padding: 10px;
   text-align: center;
   color: var(--vscode-fg-muted);
   background: var(--dweb-defualt);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .wf-media-hint {

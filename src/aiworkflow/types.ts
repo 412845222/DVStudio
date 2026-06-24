@@ -53,6 +53,33 @@ export type WorkflowImageNodeSettings = {
 	cropEnabled?: boolean
 	/** crop rect in normalized source space */
 	crop?: WorkflowImageCrop
+	/** image generation source */
+	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	/** Meshy image generation settings */
+	meshyImageSettings?: {
+		prompt?: string
+		negativePrompt?: string
+		seed?: number
+		aiModel?: 'nano-banana' | 'nano-banana-pro'
+		generateMultiView?: boolean
+		aspectRatio?: string
+		outputImageCount?: number
+		poseMode?: '' | 'a-pose' | 't-pose'
+		taskId?: string
+		taskFamily?: 'text-to-image' | 'image-to-image'
+		mode?: 'text-to-image' | 'image-to-image'
+		taskStatus?: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+		progress?: number
+		statusText?: string
+		errorMessage?: string
+		outputSummary?: {
+			preferredUrl?: string
+			imageUrls?: string[]
+			assetUrl?: string
+			assetPath?: string
+			thumbnailUrl?: string
+		}
+	}
 }
 
 export type WorkflowVideoNodeSettings = {
@@ -444,7 +471,7 @@ export type WorkflowSceneDecomposeOutput = {
 	objectId?: string
 	name?: string
 	description?: string
-	cropMode?: 'cropped' | 'fallback'
+	cropMode?: 'cropped' | 'fallback' | 'cropped-enforced' | 'fallback-enforced'
 	sourceImageIndex: number
 	observedImageIndices?: number[]
 	imageRect?: WorkflowImageCrop
@@ -513,7 +540,53 @@ export type WorkflowComfyUINodeSettings = {
 	lastUpdateAt?: number
 }
 
+export type WorkflowMeshyModelSettings = {
+	prompt?: string
+	negativePrompt?: string
+	seed?: number
+	aiModel?: 'latest' | 'meshy-6' | 'meshy-5'
+	taskFamily?: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'retexture'
+	modelType?: 'standard' | 'lowpoly'
+	topology?: 'triangle' | 'quad'
+	targetPolycount?: number
+	symmetryMode?: 'auto' | 'on' | 'off'
+	shouldRemesh?: boolean
+	savePreRemeshedModel?: boolean
+	shouldTexture?: boolean
+	enablePbr?: boolean
+	texturePrompt?: string
+	textureImageUrl?: string
+	poseMode?: '' | 'a-pose' | 't-pose'
+	autoSize?: boolean
+	originAt?: 'bottom' | 'center'
+	moderation?: boolean
+	imageEnhancement?: boolean
+	removeLighting?: boolean
+	targetFormats?: string[]
+	imageUrl?: string
+	imageUrls?: string[]
+	imageCount?: number
+	taskId?: string
+	taskStatus?: 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+	progress?: number
+	statusText?: string
+	errorMessage?: string
+	outputSummary?: {
+		preferredUrl?: string
+		assetUrl?: string
+		assetPath?: string
+		thumbnailUrl?: string
+		format?: string
+	}
+	relationKind?: 'model' | 'texture' | 'rigging' | 'animation'
+	rootTaskId?: string
+	parentTaskId?: string
+	previewTaskId?: string
+}
+
 export type WorkflowModel3DNodeSettings = {
+	modelGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	meshyModelSettings?: WorkflowMeshyModelSettings
 	modelUrl?: string
 	modelFormat?: 'glb' | 'gltf'
 	modelSourceName?: string
@@ -717,19 +790,12 @@ export type WorkflowNodeChatVideoParams = {
 }
 
 export type WorkflowNodeChatModel3DParams = {
-	provider?: 'tripo3d' | 'hunyuan3d' | 'rodin3d'
+	provider?: 'tripo3d' | 'meshy'
 	tripoProvider?: 'dreammaker' | 'official'
 	tripoMode?: 'image-to-3d' | 'multi-image-to-3d' | 'retopo'
 	tripoOutputFormat?: 'fbx' | 'glb'
 	tripoTextureQuality?: 'standard' | 'detailed'
 	tripoModelVersion?: string
-	hunyuanMode?: 'image-to-3d' | 'multi-image-to-3d' | 'hunyuan-reduce-face'
-	hunyuanFaceLevel?: 'high' | 'medium' | 'low'
-	hunyuanPolygonType?: 'triangle' | 'quadrilateral'
-	hunyuanOutputFormat?: 'fbx' | 'glb'
-	rodinTier?: string
-	rodinQuality?: 'high' | 'medium' | 'low' | 'extra-low'
-	rodinOutputFormat?: 'glb' | 'usdz' | 'fbx' | 'obj' | 'stl'
 }
 
 export type WorkflowNodeChatTextParams = {
@@ -794,6 +860,12 @@ export type WorkflowState = {
 	nodeChatDialog: WorkflowNodeChatDialog
 	nodeGenerationTasksById: Record<string, WorkflowNodeGenerationTask>
 	nodeGenerationTaskIdsByNodeId: Record<string, string[]>
+	/** 当前多选对应的 tag 记录（按 key 索引） */
+	selectionTagsByKey: Record<string, WorkflowSelectionTag>
+	/** 已保存的选区框列表（持久化实体） */
+	savedSelectionFrames: SavedSelectionFrame[]
+	/** 是否显示节点级多选框（运行时开关） */
+	nodeCheckboxVisible: boolean
 }
 
 export type WorkflowSelectionTarget =
@@ -809,4 +881,42 @@ export abstract class WorkflowEntity {
 export abstract class WorkflowBlueprint {
 	abstract id: string
 	abstract name: string
+}
+
+/**
+ * 多选标签（Selection Tag）
+ *  - key  由 selectedNodeIds 排序拼接，保证 frame 稳定
+ *  - label 为用户编辑的文本
+ *  - note  为节点批注（可空）
+ *  - color 标识色（可空）
+ */
+export type WorkflowSelectionTag = {
+	/** 稳定 key：`ids:nodeId1|nodeId2|...` */
+	key: string
+	/** 用户可编辑的标签名 */
+	label: string
+	/** 可选批注 */
+	note?: string
+	/** 可选标识色（hex） */
+	color?: string
+	/** 节点 ID 列表（已排序） */
+	nodeIds: string[]
+	/** 创建时间（毫秒） */
+	createdAt: number
+	/** 最近更新时间 */
+	updatedAt: number
+}
+
+/**
+ * 已保存的选区框（持久化实体，不依赖运行时 selectedNodeIds）
+ */
+export type SavedSelectionFrame = {
+	/** 唯一 ID（UUID） */
+	id: string
+	/** 用户命名的标签 */
+	label: string
+	/** 包含的节点 ID 列表（已排序） */
+	nodeIds: string[]
+	/** 创建时间 */
+	createdAt: number
 }

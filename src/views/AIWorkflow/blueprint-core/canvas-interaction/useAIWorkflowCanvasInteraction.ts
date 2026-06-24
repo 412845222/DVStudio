@@ -5,6 +5,12 @@ import type { WorkflowState } from '../../../../aiworkflow/types'
 
 export type ScreenToWorldFn = (point: { x: number; y: number }) => { x: number; y: number }
 
+const DEFAULT_NODE_WIDTH = 240
+const DEFAULT_NODE_HEIGHT = 160
+const FOCUS_ANIMATION_DURATION = 300
+
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
+
 export const useAIWorkflowCanvasInteraction = (payload: {
   store: Store<WorkflowState>
   selectedNodeIds: Ref<string[]>
@@ -13,13 +19,14 @@ export const useAIWorkflowCanvasInteraction = (payload: {
   chatCollapsed: Ref<boolean>
   markViewportMotion: () => void
   scheduleAsyncEdgeRender: () => void
+  canvasViewportSize: Ref<{ width: number; height: number }>
 }) => {
   const onCanvasPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement | null
     if (!target) return
     const inUi = target.closest(
-      '.wf-node, .wf-resource-panel, .wf-inspector, .ctx-menu, .aiwf-toolbar, .aiwf-inspector-toggle',
+      '.wf-node, .wf-resource-panel, .wf-inspector, .ctx-menu, .aiwf-toolbar, .aiwf-inspector-toggle, .wf-sel-frame-tag-bar',
     )
     if (inUi) return
     payload.store.commit('clearSelection')
@@ -182,11 +189,65 @@ export const useAIWorkflowCanvasInteraction = (payload: {
     payload.scheduleAsyncEdgeRender()
   }
 
-  const onFocusNode = (nodeId: string) => {
+  let focusAnimationFrameId: number | null = null
+
+  const cancelFocusAnimation = () => {
+    if (focusAnimationFrameId !== null) {
+      cancelAnimationFrame(focusAnimationFrameId)
+      focusAnimationFrameId = null
+    }
+  }
+
+  const onFocusNode = (nodeId: string): boolean => {
     const node = payload.store.state.nodesById[nodeId]
-    if (!node) return
-    const zoom = payload.store.state.viewport.zoom
-    payload.store.commit('setViewport', { zoom, panX: -node.worldX * zoom, panY: -node.worldY * zoom })
+    if (!node) return false
+
+    cancelFocusAnimation()
+
+    const vp = payload.store.state.viewport
+    const zoom = Math.max(0.01, Number(vp.zoom) || 1)
+
+    const nodeWidth = Number.isFinite(node.width) ? (node.width as number) : DEFAULT_NODE_WIDTH
+    const nodeHeight = Number.isFinite(node.height) ? (node.height as number) : DEFAULT_NODE_HEIGHT
+
+    const nodeCenterX = (node.worldX as number) + nodeWidth / 2
+    const nodeCenterY = (node.worldY as number) + nodeHeight / 2
+
+    const targetPanX = -nodeCenterX * zoom
+    const targetPanY = -nodeCenterY * zoom
+
+    const startPanX = Number(vp.panX) || 0
+    const startPanY = Number(vp.panY) || 0
+    const dx = targetPanX - startPanX
+    const dy = targetPanY - startPanY
+
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+      payload.store.commit('setViewport', { zoom, panX: targetPanX, panY: targetPanY })
+      return true
+    }
+
+    const startTime = performance.now()
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime
+      const rawT = Math.min(1, elapsed / FOCUS_ANIMATION_DURATION)
+      const t = easeOutCubic(rawT)
+
+      const panX = startPanX + dx * t
+      const panY = startPanY + dy * t
+
+      payload.store.commit('setViewport', { zoom, panX, panY })
+      payload.markViewportMotion()
+
+      if (rawT < 1) {
+        focusAnimationFrameId = requestAnimationFrame(animate)
+      } else {
+        focusAnimationFrameId = null
+      }
+    }
+
+    focusAnimationFrameId = requestAnimationFrame(animate)
+    return true
   }
 
   return {
@@ -199,5 +260,6 @@ export const useAIWorkflowCanvasInteraction = (payload: {
     onBoxSelect,
     onNodeSizeChange,
     onFocusNode,
+    cancelFocusAnimation,
   }
 }

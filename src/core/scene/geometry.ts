@@ -10,8 +10,8 @@ export type RectCorners = {
 export const rotatedRectCorners = (center: Vec2, size: { width: number; height: number }, rotation: number): RectCorners => {
 	const cx = center.x
 	const cy = center.y
-	const w = Number(size.width) || 0
-	const h = Number(size.height) || 0
+	const w = Number.isFinite(Number(size.width)) ? Number(size.width) : 0
+	const h = Number.isFinite(Number(size.height)) ? Number(size.height) : 0
 	const cos = Math.cos(rotation)
 	const sin = Math.sin(rotation)
 	const rot = (dx: number, dy: number): Vec2 => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })

@@ -169,6 +169,9 @@
               @change="onOutputHeightChange"
             />
           </div>
+
+          <div class="wf-toolbar-divider" />
+
         </div>
       </div>
     </template>
@@ -179,6 +182,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import WorkflowNodeBase from "../WorkflowNodeBase.vue";
 import { exportWorkflowImageOutputPng } from "../../../aiworkflow/imageOutput";
+import { useAIWorkflowResourceCache } from "../../../views/AIWorkflow/assets/useAIWorkflowResourceCache";
 
 type AnchorSpec = {
   id: string;
@@ -520,33 +524,62 @@ const cropToUv = (c: { x: number; y: number; width: number; height: number }) =>
   return { u0: x0, u1: x1, v0: y0, v1: y1 };
 };
 
+const { getCachedResource, loadResource, getResourceSize } = useAIWorkflowResourceCache();
+
 const ensureNaturalSizeFallback = async () => {
   const sourceUrl = effectiveSourceUrl.value;
   if (!sourceUrl) return;
   if (naturalWidth.value && naturalHeight.value && !pendingResourceReset.value) return;
-  await new Promise<void>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1));
-      const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1));
-      const patch: Record<string, any> = { naturalWidth: w, naturalHeight: h };
-      if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
-        patch.outputWidth = w;
-        patch.outputHeight = h;
-        patch.cropEnabled = false;
-        patch.crop = { x: 0, y: 0, width: 1, height: 1 };
-      }
-      emit("update-image-settings", patch);
-      pendingResourceReset.value = false;
-      resolve();
-    };
-    img.onerror = () => resolve();
-    img.src = sourceUrl;
-  });
+
+  const cachedSize = getResourceSize(sourceUrl);
+  if (cachedSize) {
+    const patch: Record<string, any> = { naturalWidth: cachedSize.width, naturalHeight: cachedSize.height };
+    if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
+      patch.outputWidth = cachedSize.width;
+      patch.outputHeight = cachedSize.height;
+      patch.cropEnabled = false;
+      patch.crop = { x: 0, y: 0, width: 1, height: 1 };
+    }
+    emit("update-image-settings", patch);
+    pendingResourceReset.value = false;
+    return;
+  }
+
+  const cached = getCachedResource(sourceUrl);
+  if (cached && cached.loaded && cached.size) {
+    const patch: Record<string, any> = { naturalWidth: cached.size.width, naturalHeight: cached.size.height };
+    if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
+      patch.outputWidth = cached.size.width;
+      patch.outputHeight = cached.size.height;
+      patch.cropEnabled = false;
+      patch.crop = { x: 0, y: 0, width: 1, height: 1 };
+    }
+    emit("update-image-settings", patch);
+    pendingResourceReset.value = false;
+    return;
+  }
+
+  const resource = await loadResource(sourceUrl, "image");
+  if (!resource.error && resource.size) {
+    const patch: Record<string, any> = { naturalWidth: resource.size.width, naturalHeight: resource.size.height };
+    if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
+      patch.outputWidth = resource.size.width;
+      patch.outputHeight = resource.size.height;
+      patch.cropEnabled = false;
+      patch.crop = { x: 0, y: 0, width: 1, height: 1 };
+    }
+    emit("update-image-settings", patch);
+    pendingResourceReset.value = false;
+  }
 };
 
-const toFileUrl = () => {
-  return "";
+const toFileUrl = (path: string) => {
+  if (!path) return "";
+  try {
+    return `file:///${path.replace(/\\/g, "/")}`;
+  } catch {
+    return "";
+  }
 };
 
 const toggleCropMode = async () => {
@@ -726,6 +759,13 @@ const onPreviewImageLoad = () => {
   if (img) {
     const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1));
     const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1));
+    
+    const needsUpdate = w !== naturalWidth.value || h !== naturalHeight.value;
+    if (!needsUpdate && !pendingResourceReset.value) {
+      emit("media-ready");
+      return;
+    }
+
     const patch: Record<string, any> = { naturalWidth: w, naturalHeight: h };
     if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
       patch.outputWidth = w;
@@ -786,7 +826,6 @@ watch(
     }
     initPreviewLayoutObserver();
     await ensureNaturalSizeFallback();
-    emit("media-ready");
   },
   { immediate: true }
 );
@@ -847,14 +886,13 @@ onBeforeUnmount(() => {
   gap: 8px;
   flex: 1;
   min-height: 0;
-  height: 100%;
   align-self: stretch;
 }
 
 .wf-media-preview {
   width: 100%;
   flex: 0 0 auto;
-  height: auto;
+  aspect-ratio: 1 / 1;
   border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--vscode-border);
@@ -987,12 +1025,18 @@ onBeforeUnmount(() => {
 }
 
 .wf-media-empty {
+  width: 100%;
+  aspect-ratio: 1 / 1;
   border: 1px dashed var(--vscode-border);
   border-radius: 0;
   padding: 10px;
   text-align: center;
   color: var(--vscode-fg-muted);
   background: var(--dweb-defualt);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .wf-media-hint {
@@ -1097,5 +1141,149 @@ onBeforeUnmount(() => {
   height: 1px;
   opacity: 0;
   pointer-events: none;
+}
+
+.wf-toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--vscode-border);
+  margin: 0 4px;
+}
+
+.wf-model-select {
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt);
+  color: var(--vscode-fg);
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.wf-model-select:hover {
+  border-color: var(--vscode-hover-border);
+}
+
+.wf-meshy-panel {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.54);
+  padding: 10px;
+}
+
+.wf-meshy-row {
+  display: grid;
+  gap: 10px;
+}
+
+.wf-meshy-row-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wf-meshy-field {
+  display: grid;
+  gap: 6px;
+}
+
+.wf-meshy-label {
+  font-size: 11px;
+  color: #9ec2dd;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wf-meshy-input,
+.wf-meshy-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.72);
+  color: var(--vscode-fg);
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 0;
+}
+
+.wf-meshy-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.wf-meshy-textarea.compact {
+  min-height: 48px;
+}
+
+.wf-meshy-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vscode-fg);
+}
+
+.wf-meshy-status-area {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  background: rgb(from var(--dweb-defualt-dark) r g b / 0.4);
+  border: 1px solid rgb(from var(--vscode-border) r g b / 0.68);
+}
+
+.wf-meshy-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.wf-meshy-status-label {
+  color: var(--vscode-fg-muted);
+}
+
+.wf-meshy-status-value {
+  color: var(--vscode-fg);
+}
+
+.wf-meshy-status-value.is-running,
+.wf-meshy-status-value.is-pending {
+  color: #5bb6ff;
+}
+
+.wf-meshy-status-value.is-succeeded {
+  color: #38b98c;
+}
+
+.wf-meshy-status-value.is-failed {
+  color: #f87171;
+}
+
+.wf-meshy-status-value.is-canceled {
+  color: var(--vscode-fg-muted);
+}
+
+.wf-meshy-progress-bar {
+  height: 6px;
+  background: rgb(from var(--vscode-border) r g b / 0.4);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.wf-meshy-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5bb6ff, #38b98c);
+  transition: width 300ms ease;
+}
+
+.wf-meshy-task-id {
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+  word-break: break-all;
+}
+
+.wf-meshy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 </style>

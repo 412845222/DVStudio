@@ -13,7 +13,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
     name: string
     sourceUrl?: string
     sourcePath?: string
-  }) => Promise<{ url: string; absolutePath: string } | null>
+  }) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string } | null>
   syncConnectedImageTargetsFromMeshy: (nodeId: string) => Promise<any>
   syncConnectedModel3DTargets: (nodeId: string) => Promise<any>
   refreshMeshyTaskItems: (opts?: { silent?: boolean }) => Promise<any> | void
@@ -57,9 +57,18 @@ export const useAIWorkflowMeshyRuntime = (options: {
   const applyMeshyTaskResult = async (nodeId: string, task: Record<string, any>) => {
     const normalized = options.normalizeMeshyTaskStatus(task.status)
     const node = options.store.state.nodesById[nodeId]
+
+    // 根据节点类型读取 meshy 设置
+    const getMeshySettings = (n: any): Record<string, any> => {
+      if (n?.type === 'image') return n.imageSettings?.meshyImageSettings ?? {}
+      if (n?.type === 'model3d') return n.model3dSettings?.meshyModelSettings ?? {}
+      return n?.meshySettings ?? {}
+    }
+    const existingSettings = getMeshySettings(node)
+
     const target =
-      String(node?.meshySettings?.meshyTaskTarget ?? '').trim() ||
-      (String(task.mode ?? '').includes('image') ? 'image' : '3d')
+      String(existingSettings.taskFamily ?? '').includes('image') ||
+      String(task.mode ?? '').includes('image') ? 'image' : '3d'
     const isImageTarget = target === 'image'
     const modelUrls = task.modelUrls && typeof task.modelUrls === 'object' ? task.modelUrls : {}
     const imageUrls = Array.isArray((task as any).imageUrls)
@@ -73,28 +82,24 @@ export const useAIWorkflowMeshyRuntime = (options: {
     const errorMessage = String(task.errorMessage ?? '').trim()
     const format = options.pickMeshyPreferredFormat(modelUrls)
     const existingLocalThumbnailUrl = pickLocalThumbnailCandidate(
-      node?.meshySettings?.meshyRelationSummary?.effectiveThumbnailUrl,
-      node?.meshySettings?.meshyOutputSummary?.thumbnailUrl,
-      node?.meshySettings?.meshyThumbnailUrl,
+      existingSettings.outputSummary?.thumbnailUrl,
+      existingSettings.thumbnailUrl,
     )
     let resolvedThumbnailUrl = isImageTarget
       ? (thumbnailUrl || existingLocalThumbnailUrl)
       : existingLocalThumbnailUrl
 
+    const rawProgress = Number(task.progress ?? 0)
+    const finalProgress = normalized === 'succeeded' ? 100 : Math.max(0, Math.min(100, rawProgress))
+
     const patch: Record<string, any> = {
       meshyTaskId: String(task.taskId ?? '').trim(),
-      meshyRelationKind:
-        String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyRelationKind ?? 'model').trim() ||
-        'model',
-      meshyRootTaskId:
-        String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyRootTaskId ?? task.taskId ?? '').trim() ||
-        undefined,
-      meshyParentTaskId:
-        String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyParentTaskId ?? '').trim() ||
-        undefined,
-      meshyCapabilities: options.store.state.nodesById[nodeId]?.meshySettings?.meshyCapabilities ?? undefined,
+      meshyRelationKind: String(existingSettings.relationKind ?? 'model').trim() || 'model',
+      meshyRootTaskId: String(existingSettings.rootTaskId ?? task.taskId ?? '').trim() || undefined,
+      meshyParentTaskId: String(existingSettings.parentTaskId ?? '').trim() || undefined,
+      meshyCapabilities: existingSettings.capabilities ?? undefined,
       meshyTaskStatus: normalized,
-      meshyProgress: Number(task.progress ?? 0),
+      meshyProgress: finalProgress,
       meshyStatusText: statusText,
       meshyThumbnailUrl: resolvedThumbnailUrl || undefined,
       meshyModelUrls: modelUrls,
@@ -107,139 +112,327 @@ export const useAIWorkflowMeshyRuntime = (options: {
         format: isImageTarget ? undefined : format,
       },
       meshyRelationSummary: {
-        ...(options.store.state.nodesById[nodeId]?.meshySettings?.meshyRelationSummary ?? {}),
-        relationKind:
-          String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyRelationKind ?? 'model').trim() ||
-          'model',
-        rootTaskId:
-          String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyRootTaskId ?? task.taskId ?? '').trim() ||
-          undefined,
-        parentTaskId:
-          String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyParentTaskId ?? '').trim() ||
-          undefined,
+        ...(existingSettings.relationSummary ?? {}),
+        relationKind: String(existingSettings.relationKind ?? 'model').trim() || 'model',
+        rootTaskId: String(existingSettings.rootTaskId ?? task.taskId ?? '').trim() || undefined,
+        parentTaskId: String(existingSettings.parentTaskId ?? '').trim() || undefined,
         effectiveTaskId: String(task.taskId ?? '').trim() || undefined,
-        effectiveRelationKind:
-          String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyRelationKind ?? 'model').trim() ||
-          'model',
+        effectiveRelationKind: String(existingSettings.relationKind ?? 'model').trim() || 'model',
         effectiveStatus: normalized,
         effectiveProgress: Number(task.progress ?? 0),
         effectivePreferredModelUrl: preferredModelUrl || undefined,
         effectivePreferredImageUrl: preferredImageUrl || undefined,
-        effectiveLocalAssetUrl:
-          String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyOutputAssetUrl ?? '').trim() ||
-          undefined,
-        effectiveLocalAssetPath:
-          String(options.store.state.nodesById[nodeId]?.meshySettings?.meshyOutputAssetPath ?? '').trim() ||
-          undefined,
+        effectiveLocalAssetUrl: String(existingSettings.outputAssetUrl ?? '').trim() || undefined,
+        effectiveLocalAssetPath: String(existingSettings.outputAssetPath ?? '').trim() || undefined,
         effectiveThumbnailUrl: resolvedThumbnailUrl || undefined,
       },
     }
 
     if (normalized === 'succeeded') {
-      if (isImageTarget) {
-        const imageSource = preferredImageUrl || preferredModelUrl
-        if (imageSource) {
-          const ext = options.fileExtensionFromUrl(imageSource, '.png')
-          const fileName = `meshy_${String(task.taskId ?? '').trim() || nodeId}${ext}`
+      try {
+        if (isImageTarget) {
+          const imageSource = preferredImageUrl || preferredModelUrl
+          if (imageSource) {
+            const ext = options.fileExtensionFromUrl(imageSource, '.png')
+            const fileName = `meshy_${String(task.taskId ?? '').trim() || nodeId}${ext}`
+            const persisted = await options.persistExternalAssetToProject({
+              kind: 'image',
+              name: fileName,
+              sourceUrl: imageSource,
+              sourcePath: String((task as any).sourceImageUrl ?? task.sourceModelUrl ?? '').trim() || undefined,
+            })
+            const assetUrl = String(persisted?.url || imageSource)
+            const assetPath = String(persisted?.absolutePath || '').trim() || undefined
+            const projectRelativePath = String(persisted?.projectRelativePath || '').trim() || undefined
+            
+            patch.meshyOutputAssetUrl = assetUrl
+            patch.meshyOutputAssetPath = assetPath
+            patch.meshyOutputSummary = {
+              ...(patch.meshyOutputSummary ?? {}),
+              outputKind: 'image',
+              preferredUrl: imageSource,
+              imageUrls: imageUrls.length ? imageUrls.slice(0, 4) : [imageSource],
+              assetUrl,
+              assetPath,
+              thumbnailUrl: thumbnailUrl || undefined,
+              format: undefined,
+            }
+            patch.meshyRelationSummary = {
+              ...(patch.meshyRelationSummary ?? {}),
+              effectivePreferredImageUrl: imageSource,
+              effectiveLocalAssetUrl: assetUrl,
+              effectiveLocalAssetPath: assetPath,
+            }
+
+            // 如果是图片节点，直接将生成的图片绑定为节点资源
+            if (node?.type === 'image' && assetUrl) {
+              const resourceId = `meshy-img-${task.taskId || nodeId}-${Date.now()}`
+              const resourceName = `meshy_image_${resourceId.slice(-8)}`
+              
+              const resourceBase: Record<string, any> = {
+                id: resourceId,
+                kind: 'image',
+                name: resourceName,
+                url: assetUrl,
+                sourcePath: assetPath,
+                projectRelativePath,
+                createdAt: Date.now(),
+              }
+              
+              // 先检查是否已存在相同的资源
+              const existingResource = options.store.state.resources.find((r: any) => r.id === resourceId)
+              if (existingResource) {
+                console.log('[Meshy Runtime] 资源已存在，跳过添加:', resourceId)
+              } else {
+                options.store.commit('addResource', resourceBase)
+                console.log('[Meshy Runtime] 资源已添加:', resourceBase)
+              }
+              
+              // 检查节点当前绑定的资源
+              const currentNodeResourceId = options.store.state.nodesById[nodeId]?.resourceId
+              console.log('[Meshy Runtime] 节点当前resourceId:', currentNodeResourceId, '新resourceId:', resourceId)
+              
+              options.store.commit('setNodeResource', { nodeId, resourceId })
+              
+              // 验证绑定结果
+              const updatedNode = options.store.state.nodesById[nodeId]
+              console.log('[Meshy Runtime] 绑定后节点resourceId:', updatedNode?.resourceId)
+              console.log('[Meshy Runtime] 图片资源已绑定到节点:', { nodeId, resourceId, assetUrl })
+            }
+          }
+        } else if (preferredModelUrl) {
+          const fileName = `meshy_${String(task.taskId ?? '').trim() || nodeId}.${format}`
           const persisted = await options.persistExternalAssetToProject({
-            kind: 'image',
+            kind: 'file',
             name: fileName,
-            sourceUrl: imageSource,
-            sourcePath: String((task as any).sourceImageUrl ?? task.sourceModelUrl ?? '').trim() || undefined,
+            sourceUrl: preferredModelUrl,
+            sourcePath: String(task.sourceModelUrl ?? '').trim() || undefined,
           })
-          patch.meshyOutputAssetUrl = String(persisted?.url || imageSource)
+          patch.meshyOutputAssetUrl = String(persisted?.url || preferredModelUrl)
           patch.meshyOutputAssetPath = String(persisted?.absolutePath || '').trim() || undefined
+
+          if (!resolvedThumbnailUrl && thumbnailUrl) {
+            try {
+              const thumbName = `meshy_${String(task.taskId ?? '').trim() || nodeId}_preview${options.fileExtensionFromUrl(thumbnailUrl, '.png')}`
+              const persistedThumb = await options.persistExternalAssetToProject({
+                kind: 'image',
+                name: thumbName,
+                sourceUrl: thumbnailUrl,
+              })
+              const localThumb = String(persistedThumb?.url || '').trim()
+              if (localThumb) {
+                resolvedThumbnailUrl = localThumb
+              }
+            } catch {
+              // Ignore thumbnail persistence errors; do not fall back to remote thumbnail request.
+            }
+          }
+
           patch.meshyOutputSummary = {
             ...(patch.meshyOutputSummary ?? {}),
-            outputKind: 'image',
-            preferredUrl: imageSource,
-            imageUrls: imageUrls.length ? imageUrls.slice(0, 4) : [imageSource],
-            assetUrl: String(persisted?.url || imageSource),
+            outputKind: '3d-model',
+            preferredUrl: preferredModelUrl,
+            imageUrls: undefined,
+            assetUrl: String(persisted?.url || preferredModelUrl),
             assetPath: String(persisted?.absolutePath || '').trim() || undefined,
-            thumbnailUrl: thumbnailUrl || undefined,
-            format: undefined,
+            thumbnailUrl: resolvedThumbnailUrl || undefined,
+            format,
           }
           patch.meshyRelationSummary = {
             ...(patch.meshyRelationSummary ?? {}),
-            effectivePreferredImageUrl: imageSource,
-            effectiveLocalAssetUrl: String(persisted?.url || imageSource),
+            effectiveLocalAssetUrl: String(persisted?.url || preferredModelUrl),
             effectiveLocalAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+            effectiveThumbnailUrl: resolvedThumbnailUrl || undefined,
           }
-        }
-      } else if (preferredModelUrl) {
-        const fileName = `meshy_${String(task.taskId ?? '').trim() || nodeId}.${format}`
-        const persisted = await options.persistExternalAssetToProject({
-          kind: 'file',
-          name: fileName,
-          sourceUrl: preferredModelUrl,
-          sourcePath: String(task.sourceModelUrl ?? '').trim() || undefined,
-        })
-        patch.meshyOutputAssetUrl = String(persisted?.url || preferredModelUrl)
-        patch.meshyOutputAssetPath = String(persisted?.absolutePath || '').trim() || undefined
+          patch.meshyThumbnailUrl = resolvedThumbnailUrl || undefined
 
-        if (!resolvedThumbnailUrl && thumbnailUrl) {
-          try {
-            const thumbName = `meshy_${String(task.taskId ?? '').trim() || nodeId}_preview${options.fileExtensionFromUrl(thumbnailUrl, '.png')}`
-            const persistedThumb = await options.persistExternalAssetToProject({
-              kind: 'image',
-              name: thumbName,
-              sourceUrl: thumbnailUrl,
-            })
-            const localThumb = String(persistedThumb?.url || '').trim()
-            if (localThumb) {
-              resolvedThumbnailUrl = localThumb
+          // 3D模型节点：注册资源并绑定到节点
+          if (node?.type === 'model3d' && persisted?.url) {
+            const resourceId = `meshy-model-${task.taskId || nodeId}-${Date.now()}`
+            const resourceName = `meshy_model_${resourceId.slice(-8)}`
+            
+            const resourceBase = {
+              id: resourceId,
+              kind: 'model3d',
+              name: resourceName,
+              url: String(persisted.url || preferredModelUrl),
+              sourcePath: String(persisted.absolutePath || '').trim() || undefined,
+              projectRelativePath: String(persisted.projectRelativePath || '').trim() || undefined,
+              posterUrl: resolvedThumbnailUrl || undefined,
+              posterSourcePath: resolvedThumbnailUrl && thumbnailUrl ? undefined : undefined,
+              createdAt: Date.now(),
             }
-          } catch {
-            // Ignore thumbnail persistence errors; do not fall back to remote thumbnail request.
+            
+            const existingResource = options.store.state.resourcesById?.[resourceId]
+              || options.store.state.resources?.find?.((r: any) => r.id === resourceId)
+            if (!existingResource) {
+              options.store.commit('addResource', resourceBase)
+            }
+            
+            options.store.commit('setNodeResource', { nodeId, resourceId })
           }
         }
-
-        patch.meshyOutputSummary = {
-          ...(patch.meshyOutputSummary ?? {}),
-          outputKind: '3d-model',
-          preferredUrl: preferredModelUrl,
-          imageUrls: undefined,
-          assetUrl: String(persisted?.url || preferredModelUrl),
-          assetPath: String(persisted?.absolutePath || '').trim() || undefined,
-          thumbnailUrl: resolvedThumbnailUrl || undefined,
-          format,
+      } catch (e) {
+        console.error('[Meshy Runtime] 产物下载/绑定失败，状态仍标记为成功:', e)
+        // 产物下载失败不影响任务状态更新和轮询停止
+        // 保留远程URL作为fallback
+        if (!patch.meshyOutputAssetUrl) {
+          if (isImageTarget) {
+            const imageSource = preferredImageUrl || preferredModelUrl
+            if (imageSource) {
+              patch.meshyOutputAssetUrl = imageSource
+              patch.meshyOutputSummary = {
+                ...(patch.meshyOutputSummary ?? {}),
+                outputKind: 'image',
+                preferredUrl: imageSource,
+                imageUrls: imageUrls.length ? imageUrls.slice(0, 4) : [imageSource],
+                assetUrl: imageSource,
+                thumbnailUrl: thumbnailUrl || undefined,
+              }
+              patch.meshyRelationSummary = {
+                ...(patch.meshyRelationSummary ?? {}),
+                effectivePreferredImageUrl: imageSource,
+                effectiveLocalAssetUrl: imageSource,
+              }
+            }
+          } else if (preferredModelUrl) {
+            patch.meshyOutputAssetUrl = preferredModelUrl
+            patch.meshyOutputSummary = {
+              ...(patch.meshyOutputSummary ?? {}),
+              outputKind: '3d-model',
+              preferredUrl: preferredModelUrl,
+              assetUrl: preferredModelUrl,
+              thumbnailUrl: thumbnailUrl || undefined,
+              format,
+            }
+            patch.meshyRelationSummary = {
+              ...(patch.meshyRelationSummary ?? {}),
+              effectiveLocalAssetUrl: preferredModelUrl,
+              effectiveThumbnailUrl: thumbnailUrl || undefined,
+            }
+            patch.meshyThumbnailUrl = thumbnailUrl || undefined
+          }
         }
-        patch.meshyRelationSummary = {
-          ...(patch.meshyRelationSummary ?? {}),
-          effectiveLocalAssetUrl: String(persisted?.url || preferredModelUrl),
-          effectiveLocalAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-          effectiveThumbnailUrl: resolvedThumbnailUrl || undefined,
-        }
-        patch.meshyThumbnailUrl = resolvedThumbnailUrl || undefined
       }
     }
 
-    options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
+    // 根据节点类型分发到正确的 store commit
+    const targetNode = options.store.state.nodesById[nodeId]
+    if (targetNode?.type === 'image') {
+      // 图片节点：写入 imageSettings.meshyImageSettings，字段名不带 meshy 前缀
+      const imagePatch = {
+        taskId: patch.meshyTaskId,
+        taskStatus: normalized,
+        taskFamily: String(task.mode ?? '').includes('image') ? 'text-to-image' : 'text-to-3d',
+        progress: patch.meshyProgress,
+        statusText: patch.meshyStatusText,
+        errorMessage: patch.meshyErrorMessage,
+        outputAssetUrl: patch.meshyOutputAssetUrl,
+        outputAssetPath: patch.meshyOutputAssetPath,
+        outputSummary: {
+          preferredUrl: patch.meshyOutputSummary?.preferredUrl,
+          imageUrls: patch.meshyOutputSummary?.imageUrls,
+          assetUrl: patch.meshyOutputSummary?.assetUrl,
+          assetPath: patch.meshyOutputSummary?.assetPath,
+          thumbnailUrl: patch.meshyOutputSummary?.thumbnailUrl,
+        },
+        thumbnailUrl: resolvedThumbnailUrl || undefined,
+      }
+      options.store.commit('setNodeImageSettings', { nodeId, imageSettings: { meshyImageSettings: imagePatch } })
+    } else if (targetNode?.type === 'model3d') {
+      // 3D模型节点：写入 model3dSettings.meshyModelSettings + 更新模型URL触发预览刷新
+      const existingMeshy = existingSettings ?? {}
+      const model3dPatch: Record<string, any> = {
+        meshyModelSettings: {
+          taskId: patch.meshyTaskId,
+          taskStatus: normalized,
+          taskFamily: existingMeshy.taskFamily || String(task.mode ?? 'text-to-3d').trim(),
+          progress: patch.meshyProgress,
+          statusText: patch.meshyStatusText,
+          errorMessage: patch.meshyErrorMessage,
+          outputSummary: patch.meshyOutputSummary,
+          imageCount: existingMeshy.imageCount ?? 0,
+          imageUrls: existingMeshy.imageUrls ?? [],
+          prompt: existingMeshy.prompt ?? '',
+        },
+      }
+      
+      // 任务成功时，更新模型URL等字段，触发3D预览刷新
+      if (normalized === 'succeeded' && patch.meshyOutputAssetUrl) {
+        model3dPatch.modelUrl = patch.meshyOutputAssetUrl
+        model3dPatch.modelAssetUrl = patch.meshyOutputAssetUrl
+        model3dPatch.modelAssetPath = patch.meshyOutputAssetPath
+        model3dPatch.modelFormat = patch.meshyOutputSummary?.format || format
+        model3dPatch.modelGenerationSource = 'meshy'
+      }
+      
+      options.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: model3dPatch })
+    } else {
+      // Meshy 节点：保持原有逻辑
+      options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
+    }
     if (options.shouldRefreshMeshyTaskItems()) {
-      void options.refreshMeshyTaskItems({ silent: true })
+      try {
+        void options.refreshMeshyTaskItems({ silent: true })
+      } catch (e) {
+        console.warn('[Meshy Runtime] 刷新任务列表失败:', e)
+      }
     }
     if (normalized === 'succeeded') {
-      if (isImageTarget && (preferredImageUrl || preferredModelUrl || String(patch.meshyOutputAssetUrl ?? '').trim())) {
-        await options.syncConnectedImageTargetsFromMeshy(nodeId)
-      } else if (!isImageTarget && (preferredModelUrl || String(patch.meshyOutputAssetUrl ?? '').trim())) {
-        await options.syncConnectedModel3DTargets(nodeId)
+      try {
+        if (isImageTarget && (preferredImageUrl || preferredModelUrl || String(patch.meshyOutputAssetUrl ?? '').trim())) {
+          await options.syncConnectedImageTargetsFromMeshy(nodeId)
+        } else if (!isImageTarget && (preferredModelUrl || String(patch.meshyOutputAssetUrl ?? '').trim())) {
+          await options.syncConnectedModel3DTargets(nodeId)
+        }
+      } catch (e) {
+        console.warn('[Meshy Runtime] 同步下游节点失败，不影响任务状态:', e)
       }
     }
     return normalized
   }
 
   const startMeshyPoll = (nodeId: string, taskId: string, mode: string) => {
+    const node = options.store.state.nodesById[nodeId]
+    // model3d 节点使用 pollMeshy3DTaskStatus 进行轮询，此处跳过避免重复
+    if (node?.type === 'model3d') return
+
     stopMeshyPoll(nodeId)
     meshyTerminalNotified.delete(nodeId)
     meshyPollErrorCounts.delete(nodeId)
 
+    // 根据节点类型读取 meshy 任务状态的辅助函数
+    const getNodeMeshyTaskStatus = (node: any): string => {
+      if (!node) return 'idle'
+      if (node.type === 'image') return String(node.imageSettings?.meshyImageSettings?.taskStatus ?? 'idle').trim()
+      if (node.type === 'model3d') return String(node.model3dSettings?.meshyModelSettings?.taskStatus ?? 'idle').trim()
+      return String(node.meshySettings?.meshyTaskStatus ?? 'idle').trim()
+    }
+
+    // 根据节点类型写入失败状态的辅助函数
+    const commitMeshyTaskFailed = (nid: string, node: any, msg: string) => {
+      const patch: Record<string, any> = {
+        taskStatus: 'failed',
+        statusText: msg,
+        errorMessage: '',
+      }
+      if (node?.type === 'image') {
+        options.store.commit('setNodeImageSettings', { nodeId: nid, imageSettings: { meshyImageSettings: patch } })
+      } else if (node?.type === 'model3d') {
+        options.store.commit('setNodeModel3DSettings', { nodeId: nid, model3dSettings: { meshyModelSettings: patch } })
+      } else {
+        options.store.commit('setNodeMeshySettings', { nodeId: nid, meshySettings: { meshyTaskStatus: 'failed', meshyStatusText: msg, meshyErrorMessage: '' } })
+      }
+    }
+
     const tick = async () => {
       const node = options.store.state.nodesById[nodeId]
-      if (!node || node.type !== 'meshy') {
+      if (!node) {
         stopMeshyPoll(nodeId)
         return
       }
-      const currentStatus = String(node.meshySettings?.meshyTaskStatus ?? 'idle')
+      // 支持所有可发起 meshy 任务的节点类型（image / model3d / meshy）
+      const currentStatus = getNodeMeshyTaskStatus(node)
       if (currentStatus === 'succeeded' || currentStatus === 'failed' || currentStatus === 'canceled') {
         stopMeshyPoll(nodeId)
         return
@@ -252,14 +445,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
           meshyPollErrorCounts.set(nodeId, nextCount)
           if (nextCount >= 4) {
             stopMeshyPoll(nodeId)
-            options.store.commit('setNodeMeshySettings', {
-              nodeId,
-              meshySettings: {
-                meshyTaskStatus: 'failed',
-                meshyStatusText: 'Meshy 状态连续获取失败',
-                meshyErrorMessage: String(res.error ?? 'unknown'),
-              },
-            })
+            commitMeshyTaskFailed(nodeId, node, 'Meshy 状态连续获取失败')
             options.pushToast('Meshy 状态连续获取失败，请稍后重试。', 'warn')
           }
           return
@@ -271,8 +457,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
           if (!meshyTerminalNotified.has(nodeId)) {
             meshyTerminalNotified.add(nodeId)
             const finalTarget =
-              String(node.meshySettings?.meshyTaskTarget ?? '').trim() ||
-              (String(mode).includes('image') ? 'image' : '3d')
+              String(mode).includes('image') ? 'image' : '3d'
             if (finalStatus === 'succeeded') {
               options.pushToast(finalTarget === 'image' ? 'Meshy 图片任务完成。' : 'Meshy 3D 模型生成完成。', 'info')
             } else if (finalStatus === 'failed') {
@@ -288,14 +473,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
         meshyPollErrorCounts.set(nodeId, nextCount)
         if (nextCount >= 4) {
           stopMeshyPoll(nodeId)
-          options.store.commit('setNodeMeshySettings', {
-            nodeId,
-            meshySettings: {
-              meshyTaskStatus: 'failed',
-              meshyStatusText: 'Meshy 状态获取异常',
-              meshyErrorMessage: String(err?.message ?? err ?? 'unknown'),
-            },
-          })
+          commitMeshyTaskFailed(nodeId, node, 'Meshy 状态获取异常')
           options.pushToast('Meshy 状态获取异常，已停止轮询。', 'warn')
         }
       }

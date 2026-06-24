@@ -23,6 +23,7 @@ export const useAIWorkflowViewport = (
 
   const viewportMotionActive = ref(false)
   const canvasViewportSize = ref({ width: 0, height: 0 })
+  const isDevToolsOpen = ref(false)
 
   const canvasSelector = String(options?.canvasSelector ?? '.aiwf-canvas').trim() || '.aiwf-canvas'
   const motionResetMs = Number.isFinite(Number(options?.motionResetMs))
@@ -32,13 +33,37 @@ export const useAIWorkflowViewport = (
   let viewportMotionTimer: number | null = null
   let canvasViewportObserver: ResizeObserver | null = null
 
+  const checkDevToolsState = () => {
+    try {
+      if (typeof window !== 'undefined' && (window as any).ElectronAPI) {
+        ;(window as any).ElectronAPI.onDevToolsStateChange((open: boolean) => {
+          isDevToolsOpen.value = open
+        })
+        ;(window as any).ElectronAPI.getDevToolsState((open: boolean) => {
+          isDevToolsOpen.value = open
+        })
+      }
+    } catch {
+      isDevToolsOpen.value = false
+    }
+  }
+
+  const getMotionResetMs = () => {
+    const baseMs = motionResetMs
+    if (isDevToolsOpen.value) {
+      return baseMs * 3
+    }
+    return baseMs
+  }
+
   const markViewportMotion = () => {
     viewportMotionActive.value = true
+    const resetMs = getMotionResetMs()
     if (viewportMotionTimer != null) window.clearTimeout(viewportMotionTimer)
     viewportMotionTimer = window.setTimeout(() => {
       viewportMotionTimer = null
       viewportMotionActive.value = false
-    }, motionResetMs)
+    }, resetMs)
   }
 
   const updateCanvasViewportSize = () => {
@@ -60,6 +85,7 @@ export const useAIWorkflowViewport = (
 
   onMounted(() => {
     updateCanvasViewportSize()
+    checkDevToolsState()
     const canvasHost = document.querySelector(canvasSelector) as HTMLElement | null
     if (!canvasHost || typeof ResizeObserver === 'undefined') return
     canvasViewportObserver = new ResizeObserver(() => updateCanvasViewportSize())
@@ -80,5 +106,6 @@ export const useAIWorkflowViewport = (
     markViewportMotion,
     canvasViewportSize,
     updateCanvasViewportSize,
+    isDevToolsOpen,
   }
 }

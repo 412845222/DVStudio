@@ -8,6 +8,28 @@ const BACKEND_RUNTIME_CHANNEL = 'dweb:backendRuntime:changed'
 const backendRuntimeListenerMap = new Map()
 let backendRuntimeListenerSeed = 0
 
+// ===== 资源管理器窗口：预注册监听器 + 数据缓存 =====
+// 关键：在 preload 脚本加载时（早于 Vue 挂载）就注册 IPC 监听器
+// 避免主窗口推送数据时 Vue 组件尚未挂载导致消息丢失
+const RESOURCE_MANAGER_DATA_CHANNEL = 'dweb:resource-manager:data'
+let resourceManagerLatestData = null
+const resourceManagerDataHandlers = new Map()
+let resourceManagerDataListenerSeed = 0
+
+ipcRenderer.on(RESOURCE_MANAGER_DATA_CHANNEL, (_event, payload) => {
+	try {
+		const resCount = Array.isArray(payload?.resources) ? payload.resources.length : 0
+		console.log(`[preload:resource-manager] received data: ${resCount} resources, nodesById=${payload?.nodesById ? typeof payload.nodesById : 'missing'}, nodeOrder=${Array.isArray(payload?.nodeOrder) ? payload.nodeOrder.length : 'N/A'}`)
+		resourceManagerLatestData = payload
+		// 通知所有已注册的 Vue 侧处理器
+		for (const handler of resourceManagerDataHandlers.values()) {
+			try { handler(payload) } catch (err) { console.warn('[preload:resource-manager] handler error:', err) }
+		}
+	} catch (err) {
+		console.warn('[preload:resource-manager] failed to process data:', err)
+	}
+})
+
 // 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
 const BACKEND_BASE_URL = await invoke('dweb:getBackendBaseUrl')
 contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', BACKEND_BASE_URL)
@@ -99,6 +121,11 @@ contextBridge.exposeInMainWorld('dweb', {
 		deleteProjectAsset: (payload) => invoke('dweb:aiworkflow:deleteProjectAsset', payload || {}),
 		resolveProjectAsset: (payload) => invoke('dweb:aiworkflow:resolveProjectAsset', payload || {}),
 		repairProjectAsset: (payload) => invoke('dweb:aiworkflow:repairProjectAsset', payload || {}),
+		diagnoseAsset: (payload) => invoke('dweb:aiworkflow:diagnoseAsset', payload || {}),
+		validateProjectRoot: (payload) => invoke('dweb:aiworkflow:validateProjectRoot', payload || {}),
+		getAssetAccessLogs: (payload) => invoke('dweb:aiworkflow:getAssetAccessLogs', payload || {}),
+		getCacheStats: (payload) => invoke('dweb:project-cache:stats', payload || {}),
+		clearCache: (payload) => invoke('dweb:project-cache:clear', payload || {}),
 
 		// ---- 本地化存储（取代 Django 的项目/任务镜像/API key 管理） ----
 		db: {
@@ -169,6 +196,15 @@ contextBridge.exposeInMainWorld('dweb', {
 		},
 		closeResourceManager: () => invoke('dweb:resource-manager:close'),
 		focusResourceManager: () => invoke('dweb:resource-manager:focus'),
+		sendResourceManagerData: (payload) => {
+			return invoke('dweb:resource-manager:send-data', payload || {})
+		},
+		broadcastResourceEvent: (payload) => invoke('dweb:resource-manager:broadcast', payload || {}),
+		notifyResourceEvent: (payload) => invoke('dweb:resource-manager:notify', payload || {}),
+		// 资源管理器窗口：读取已缓存的资源数据（数据可能在 Vue 挂载前就到达了）
+		getResourceManagerData: () => resourceManagerLatestData,
+		// 资源管理器窗口：主动向主窗口请求最新的资源数据
+		requestResourceManagerData: () => invoke('dweb:resource-manager:request-data', {}),
 
 		// 监听主窗口发来的事件（如资源被删除/添加后通知刷新）
 		onResourceManagerEvent: (handler) => {
@@ -211,6 +247,23 @@ contextBridge.exposeInMainWorld('dweb', {
 			if (!wrapped) return { ok: false }
 			ipcRenderer.removeListener(CHANNEL, wrapped)
 			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		// 监听主窗口推送的资源数据（Vue 挂载后注册，用于后续更新）
+		onResourceManagerData: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++resourceManagerDataListenerSeed
+			resourceManagerDataHandlers.set(id, handler)
+			// 如果已有缓存数据，立即回调一次
+			if (resourceManagerLatestData !== null) {
+				try { handler(resourceManagerLatestData) } catch { /* ignore */ }
+			}
+			return id
+		},
+		offResourceManagerData: (listenerId) => {
+			const id = Number(listenerId || 0)
+			if (!resourceManagerDataHandlers.has(id)) return { ok: false }
+			resourceManagerDataHandlers.delete(id)
 			return { ok: true }
 		},
 	},

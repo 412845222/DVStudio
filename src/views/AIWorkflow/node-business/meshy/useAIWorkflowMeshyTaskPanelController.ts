@@ -103,22 +103,42 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		}
 	}
 
+	const getMeshySettingsForNode = (node: WorkflowNode): Record<string, any> | undefined => {
+		if (node.type === 'meshy') return node.meshySettings
+		if (node.type === 'image' && node.imageSettings?.imageGenerationSource === 'meshy') return node.imageSettings?.meshyImageSettings
+		if (node.type === 'model3d' && node.model3dSettings?.meshyModelSettings?.taskId) return node.model3dSettings?.meshyModelSettings
+		return undefined
+	}
+
+	const isMeshyNode = (node: WorkflowNode) => {
+		if (node.type === 'meshy') return true
+		if (node.type === 'image' && node.imageSettings?.imageGenerationSource === 'meshy') return true
+		if (node.type === 'model3d' && node.model3dSettings?.meshyModelSettings?.taskId) return true
+		return false
+	}
+
 	const localMeshyTaskItems = computed<MeshyTaskPanelItem[]>(() => {
 		return options.renderNodes.value
-			.filter((node) => node.type === 'meshy')
+			.filter((node) => isMeshyNode(node))
 			.map((node) => {
-				const settings = node.meshySettings ?? {}
-				const target = String(settings.meshyTaskTarget ?? '3d') === 'image' ? 'image' : '3d'
-				const family = String(settings.meshyTaskFamily ?? (target === 'image' ? 'text-to-image' : 'text-to-3d')).trim()
-				const taskStatus = String(settings.meshyTaskStatus ?? 'idle').trim() as MeshyTaskPanelItem['status']
-				const prompt = String(settings.meshyInputSummary?.promptText ?? settings.meshyPrompt ?? '').trim()
-				const imageCount = Number(settings.meshyInputSummary?.imageCount ?? (Array.isArray(settings.meshyImageUrls) ? settings.meshyImageUrls.length : 0))
-				const progress = Math.max(0, Math.min(100, Number(settings.meshyProgress ?? 0)))
+				const settings = getMeshySettingsForNode(node) ?? {}
+				const target = node.type === 'image' ? 'image' : '3d'
+				const family =
+					node.type === 'image'
+						? String(settings.taskFamily ?? 'text-to-image').trim()
+						: String(settings.taskFamily ?? 'text-to-3d').trim()
+				const taskStatus = String(settings.taskStatus ?? 'idle').trim() as MeshyTaskPanelItem['status']
+				const prompt = String(settings.prompt ?? '').trim()
+				const imageCount =
+					node.type === 'image'
+						? Number(settings.outputImageCount ?? 0)
+						: Number(settings.imageCount ?? (Array.isArray(settings.imageUrls) ? settings.imageUrls.length : 0))
+				const progress = Math.max(0, Math.min(100, Number(settings.progress ?? 0)))
 				return {
-					id: `${node.id}:${String(settings.meshyTaskId ?? family)}`,
+					id: `${node.id}:${String(settings.taskId ?? family)}`,
 					nodeId: node.id,
 					title: String(node.alias ?? node.title ?? 'Meshy 任务').trim() || 'Meshy 任务',
-					taskId: String(settings.meshyTaskId ?? '').trim() || undefined,
+					taskId: String(settings.taskId ?? '').trim() || undefined,
 					target,
 					family,
 					familyLabel: familyLabelForMeshy(family),
@@ -126,27 +146,26 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 					statusLabel: statusLabelForMeshy(taskStatus),
 					progress,
 					promptPreview: prompt || '未填写提示词',
-					metaText: `${target === 'image' ? '图像链路' : '3D链路'} · ${imageCount} 张图片输入 · ${String(settings.meshyStatusText ?? settings.meshyErrorMessage ?? '').trim() || '待执行'}`,
-					relationKind: String(settings.meshyRelationKind ?? settings.meshyRelationSummary?.relationKind ?? 'model').trim() || 'model',
-					rootTaskId: String(settings.meshyRootTaskId ?? settings.meshyTaskId ?? '').trim() || undefined,
-					parentTaskId: String(settings.meshyParentTaskId ?? '').trim() || undefined,
-					capabilities: Array.isArray(settings.meshyCapabilities) ? settings.meshyCapabilities : undefined,
-					thumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings) || undefined,
-					hasTextureChild: settings.meshyRelationSummary?.hasTextureChild === true,
-					hasRiggingChild: settings.meshyRelationSummary?.hasRiggingChild === true,
-					hasAnimationChild: settings.meshyRelationSummary?.hasAnimationChild === true,
-					effectiveTaskId: String(settings.meshyRelationSummary?.effectiveTaskId ?? settings.meshyTaskId ?? '').trim() || undefined,
-					effectiveRelationKind: String(settings.meshyRelationSummary?.effectiveRelationKind ?? settings.meshyRelationKind ?? 'model').trim() || 'model',
+					metaText: `${target === 'image' ? '图像链路' : '3D链路'} · ${imageCount} 张图片输入 · ${String(settings.statusText ?? settings.errorMessage ?? '').trim() || '待执行'}`,
+					relationKind: String(settings.relationKind ?? 'model').trim() || 'model',
+					rootTaskId: String(settings.rootTaskId ?? settings.taskId ?? '').trim() || undefined,
+					parentTaskId: String(settings.parentTaskId ?? '').trim() || undefined,
+					capabilities: undefined,
+					thumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings as Record<string, any>) || undefined,
+					hasTextureChild: false,
+					hasRiggingChild: false,
+					hasAnimationChild: false,
+					effectiveTaskId: String(settings.outputSummary?.preferredUrl ?? settings.taskId ?? '').trim() || undefined,
+					effectiveRelationKind: String(settings.relationKind ?? 'model').trim() || 'model',
 					effectivePreferredModelUrl:
-						String(settings.meshyRelationSummary?.effectivePreferredImageUrl ?? settings.meshyRelationSummary?.effectivePreferredModelUrl ?? settings.meshyOutputSummary?.preferredUrl ?? '').trim()
-						|| undefined,
-					effectiveThumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings) || undefined,
+						String(settings.outputSummary?.preferredUrl ?? '').trim() || undefined,
+					effectiveThumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings as Record<string, any>) || undefined,
 					children: [],
 					createdAt: Number(node.createdAt ?? Date.now()),
 					payload: {
 						source: 'meshy-task-panel',
 						nodeId: node.id,
-						taskId: String(settings.meshyTaskId ?? '').trim() || undefined,
+						taskId: String(settings.taskId ?? '').trim() || undefined,
 						title: String(node.title ?? '').trim() || 'Meshy 任务',
 						alias: String(node.alias ?? '').trim() || undefined,
 						meshySettings: JSON.parse(JSON.stringify(settings ?? {})),
@@ -208,16 +227,13 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		const targetTaskId = String(taskId ?? '').trim()
 		if (!targetTaskId) return ''
 		for (const node of options.renderNodes.value) {
-			if (!node || node.type !== 'meshy') continue
-			const settings = node.meshySettings ?? {}
-			const relation = settings.meshyRelationSummary ?? {}
+			if (!node || !isMeshyNode(node)) continue
+			const settings = getMeshySettingsForNode(node) ?? {}
 			const knownIds = [
-				settings.meshyTaskId,
-				relation.effectiveTaskId,
-				settings.meshyRootTaskId,
-				relation.rootTaskId,
-				settings.meshyParentTaskId,
-				relation.parentTaskId,
+				settings.taskId,
+				settings.outputSummary?.preferredUrl,
+				settings.rootTaskId,
+				settings.parentTaskId,
 			]
 				.map((x) => String(x ?? '').trim())
 				.filter(Boolean)
@@ -238,13 +254,14 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 
 	const onNodeRefreshMeshyTask = async (nodeId: string) => {
 		const node = options.store.state.nodesById[nodeId]
-		if (!node || node.type !== 'meshy') return
-		const taskId = String(node.meshySettings?.meshyTaskId ?? node.meshySettings?.meshyRelationSummary?.effectiveTaskId ?? '').trim()
+		if (!node || !isMeshyNode(node)) return
+		const settings = getMeshySettingsForNode(node) ?? {}
+		const taskId = String(settings.taskId ?? '').trim()
 		if (!taskId) {
 			options.pushToast('当前节点没有可刷新的 Meshy 任务 ID。', 'warn')
 			return
 		}
-		const mode = String(node.meshySettings?.meshyTaskFamily ?? 'text-to-3d')
+		const mode = String(settings.taskFamily ?? 'text-to-3d')
 		const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
 		if (!refreshed.ok) {
 			options.pushToast('刷新 Meshy 状态失败：' + refreshed.error, 'warn')
@@ -255,13 +272,14 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 
 	const onNodePullMeshyOutput = async (nodeId: string) => {
 		const node = options.store.state.nodesById[nodeId]
-		if (!node || node.type !== 'meshy') return
-		const taskId = String(node.meshySettings?.meshyTaskId ?? node.meshySettings?.meshyRelationSummary?.effectiveTaskId ?? '').trim()
+		if (!node || !isMeshyNode(node)) return
+		const settings = getMeshySettingsForNode(node) ?? {}
+		const taskId = String(settings.taskId ?? '').trim()
 		if (!taskId) {
 			options.pushToast('当前节点没有可拉取的 Meshy 任务 ID。', 'warn')
 			return
 		}
-		const mode = String(node.meshySettings?.meshyTaskFamily ?? 'text-to-3d')
+		const mode = String(settings.taskFamily ?? 'text-to-3d')
 		const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
 		if (!refreshed.ok) {
 			options.pushToast('拉取 Meshy 产物失败：' + refreshed.error, 'warn')
@@ -271,61 +289,79 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			options.pushToast('任务尚未完成，暂无法拉取最终产物。', 'warn')
 			return
 		}
-		options.pushToast('Meshy 产物已同步到当前节点并尝试下发到下游。', 'info')
+		
+		// 根据节点类型给出不同的反馈消息
+		if (node.type === 'image') {
+			options.pushToast('Meshy 图片已下载并绑定到当前图片节点。', 'info')
+		} else if (node.type === 'model3d') {
+			options.pushToast('Meshy 3D 模型已下载并绑定到当前模型节点。', 'info')
+		} else {
+			options.pushToast('Meshy 产物已同步到当前节点并尝试下发到下游。', 'info')
+		}
 	}
 
 	const onNodeStopMeshyTask = async (nodeId: string) => {
 		const node = options.store.state.nodesById[nodeId]
-		if (!node || node.type !== 'meshy') return
-		const taskId = String(node.meshySettings?.meshyTaskId ?? node.meshySettings?.meshyRelationSummary?.effectiveTaskId ?? '').trim()
+		if (!node || !isMeshyNode(node)) return
+		const settings = getMeshySettingsForNode(node) ?? {}
+		const taskId = String(settings.taskId ?? '').trim()
 		if (!taskId) {
 			options.pushToast('当前节点没有运行中的 Meshy 任务。', 'warn')
 			return
 		}
-		const mode = normalizeMeshyModeForTaskAction(String(node.meshySettings?.meshyTaskFamily ?? 'text-to-3d'))
+		const mode = normalizeMeshyModeForTaskAction(String(settings.taskFamily ?? 'text-to-3d'))
 		const res = await options.comfyService.meshyStop(taskId, mode)
 		if (!res.ok) {
 			options.pushToast('停止 Meshy 任务失败：' + String(res.error || 'unknown'), 'warn')
 			return
 		}
 		options.stopMeshyPoll(nodeId)
-		options.store.commit('setNodeMeshySettings', {
-			nodeId,
-			meshySettings: {
-				meshyTaskStatus: 'canceled',
-				meshyStatusText: 'Meshy：任务已停止',
-				meshyErrorMessage: '',
-			},
-		})
+		const patch = {
+			taskStatus: 'canceled' as const,
+			statusText: 'Meshy：任务已停止',
+			errorMessage: '',
+		}
+		if (node.type === 'meshy') {
+			options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
+		} else if (node.type === 'image') {
+			options.store.commit('setNodeImageSettings', { nodeId, imageSettings: { meshyImageSettings: patch } })
+		} else if (node.type === 'model3d') {
+			options.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: { meshyModelSettings: patch } })
+		}
 		options.pushToast('已停止 Meshy 任务。', 'info')
 		if (meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value) void refreshMeshyTaskItems({ silent: true })
 	}
 
 	const onNodeDeleteMeshyTask = async (nodeId: string) => {
 		const node = options.store.state.nodesById[nodeId]
-		if (!node || node.type !== 'meshy') return
-		const taskId = String(node.meshySettings?.meshyTaskId ?? node.meshySettings?.meshyRelationSummary?.effectiveTaskId ?? '').trim()
+		if (!node || !isMeshyNode(node)) return
+		const settings = getMeshySettingsForNode(node) ?? {}
+		const taskId = String(settings.taskId ?? '').trim()
 		if (!taskId) {
 			options.pushToast('当前节点没有可删除的 Meshy 任务。', 'warn')
 			return
 		}
-		const mode = normalizeMeshyModeForTaskAction(String(node.meshySettings?.meshyTaskFamily ?? 'text-to-3d'))
+		const mode = normalizeMeshyModeForTaskAction(String(settings.taskFamily ?? 'text-to-3d'))
 		const res = await options.comfyService.meshyDelete(taskId, mode)
 		if (!res.ok) {
 			options.pushToast('删除 Meshy 任务失败：' + String(res.error || 'unknown'), 'warn')
 			return
 		}
 		options.stopMeshyPoll(nodeId)
-		options.store.commit('setNodeMeshySettings', {
-			nodeId,
-			meshySettings: {
-				meshyTaskId: undefined,
-				meshyTaskStatus: 'idle',
-				meshyProgress: 0,
-				meshyStatusText: 'Meshy：任务已删除',
-				meshyErrorMessage: '',
-			},
-		})
+		const patch = {
+			taskId: undefined,
+			taskStatus: 'idle' as const,
+			progress: 0,
+			statusText: 'Meshy：任务已删除',
+			errorMessage: '',
+		}
+		if (node.type === 'meshy') {
+			options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
+		} else if (node.type === 'image') {
+			options.store.commit('setNodeImageSettings', { nodeId, imageSettings: { meshyImageSettings: patch } })
+		} else if (node.type === 'model3d') {
+			options.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: { meshyModelSettings: patch } })
+		}
 		options.pushToast('已删除 Meshy 任务。', 'info')
 		if (meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value) void refreshMeshyTaskItems({ silent: true })
 	}
@@ -355,9 +391,21 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 					options.pushToast('未找到可接收产物的 Meshy 节点，请先将任务拖回蓝图或绑定节点。', 'warn')
 				} else {
 					const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
-					if (!refreshed.ok) options.pushToast('拉取产物失败：' + refreshed.error, 'warn')
-					else if (refreshed.finalStatus !== 'succeeded') options.pushToast('任务尚未完成，暂无法拉取最终产物。', 'warn')
-					else options.pushToast('产物已同步到节点并尝试分发到下游。', 'info')
+					if (!refreshed.ok) {
+						options.pushToast('拉取产物失败：' + refreshed.error, 'warn')
+					} else if (refreshed.finalStatus !== 'succeeded') {
+						options.pushToast('任务尚未完成，暂无法拉取最终产物。', 'warn')
+					} else {
+						// 根据节点类型给出不同的反馈消息
+						const node = options.store.state.nodesById[nodeId]
+						if (node?.type === 'image') {
+							options.pushToast('Meshy 图片已下载并绑定到图片节点。', 'info')
+						} else if (node?.type === 'model3d') {
+							options.pushToast('Meshy 3D 模型已下载并绑定到模型节点。', 'info')
+						} else {
+							options.pushToast('产物已同步到节点并尝试分发到下游。', 'info')
+						}
+					}
 				}
 			} else if (payload.action === 'stop') {
 				const res = await options.comfyService.meshyStop(taskId, mode)
@@ -366,14 +414,19 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				} else {
 					if (nodeId) {
 						options.stopMeshyPoll(nodeId)
-						options.store.commit('setNodeMeshySettings', {
-							nodeId,
-							meshySettings: {
-								meshyTaskStatus: 'canceled',
-								meshyStatusText: 'Meshy：任务已停止',
-								meshyErrorMessage: '',
-							},
-						})
+						const node = options.store.state.nodesById[nodeId]
+						const patch = {
+							taskStatus: 'canceled' as const,
+							statusText: 'Meshy：任务已停止',
+							errorMessage: '',
+						}
+						if (node?.type === 'meshy') {
+							options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
+						} else if (node?.type === 'image') {
+							options.store.commit('setNodeImageSettings', { nodeId, imageSettings: { meshyImageSettings: patch } })
+						} else if (node?.type === 'model3d') {
+							options.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: { meshyModelSettings: patch } })
+						}
 					}
 					options.pushToast('任务已停止。', 'info')
 				}
@@ -384,16 +437,21 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				} else {
 					if (nodeId) {
 						options.stopMeshyPoll(nodeId)
-						options.store.commit('setNodeMeshySettings', {
-							nodeId,
-							meshySettings: {
-								meshyTaskId: undefined,
-								meshyTaskStatus: 'idle',
-								meshyProgress: 0,
-								meshyStatusText: 'Meshy：任务已删除',
-								meshyErrorMessage: '',
-							},
-						})
+						const node = options.store.state.nodesById[nodeId]
+						const patch = {
+							taskId: undefined,
+							taskStatus: 'idle' as const,
+							progress: 0,
+							statusText: 'Meshy：任务已删除',
+							errorMessage: '',
+						}
+						if (node?.type === 'meshy') {
+							options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
+						} else if (node?.type === 'image') {
+							options.store.commit('setNodeImageSettings', { nodeId, imageSettings: { meshyImageSettings: patch } })
+						} else if (node?.type === 'model3d') {
+							options.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: { meshyModelSettings: patch } })
+						}
 					}
 					options.pushToast('任务已删除。', 'info')
 				}
