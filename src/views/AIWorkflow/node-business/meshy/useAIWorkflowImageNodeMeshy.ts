@@ -90,23 +90,27 @@ export const useAIWorkflowImageNodeMeshy = (options: {
     }
 
     const meshyAiModel = String(chatParams.meshyImageAiModel ?? meshyImageSettings.aiModel ?? 'nano-banana').trim()
-    const meshyAspectRatio = String(chatParams.aspectRatio ?? meshyImageSettings.aspectRatio ?? '1:1').trim()
+    const meshyAspectRatio = String(chatParams.meshyAspectRatio ?? chatParams.aspectRatio ?? meshyImageSettings.aspectRatio ?? '1:1').trim()
     const meshyPoseMode = String(chatParams.meshyPoseMode ?? meshyImageSettings.poseMode ?? '').trim()
     const meshyGenerateMultiView = Boolean(chatParams.meshyGenerateMultiView ?? meshyImageSettings.generateMultiView)
     const meshyNegativePrompt = String(chatParams.meshyNegativePrompt ?? meshyImageSettings.negativePrompt ?? '').trim()
     const meshySeed = Number(chatParams.meshySeed ?? meshyImageSettings.seed ?? 0)
+    const meshyOutputImageCount = Number(chatParams.meshyOutputImageCount ?? chatParams.quantity ?? meshyImageSettings.outputImageCount ?? 1)
 
     const payload: Record<string, any> = {
       mode: 'text-to-image',
       ai_model: meshyAiModel,
       prompt,
       negative_prompt: meshyNegativePrompt,
-      aspect_ratio: meshyAspectRatio,
-      output_image_count: Number(chatParams.quantity ?? meshyImageSettings.outputImageCount ?? 1),
+      output_image_count: meshyOutputImageCount,
     }
 
     if (meshyPoseMode) payload.pose_mode = meshyPoseMode
-    if (meshyGenerateMultiView) payload.generate_multi_view = true
+    if (meshyGenerateMultiView) {
+      payload.generate_multi_view = true
+    } else {
+      payload.aspect_ratio = meshyAspectRatio
+    }
     if (Number.isFinite(meshySeed) && meshySeed > 0) payload.seed = meshySeed
 
     return {

@@ -773,13 +773,25 @@ export type WorkflowNodeChatType = 'text' | 'image' | 'video' | 'model3d'
 
 export type WorkflowNodeChatImageParams = {
 	modelId?: string
+	model?: string
+	nanobananaModelVersion?: string
+	seedreamModelVersion?: string
 	resolution?: string
 	aspectRatio?: string
 	quantity?: number
+	meshyImageAiModel?: string
+	meshyAspectRatio?: string
+	meshyNegativePrompt?: string
+	meshyPoseMode?: string
+	meshyGenerateMultiView?: boolean
+	meshySeed?: number
+	meshyOutputImageCount?: number
 }
 
 export type WorkflowNodeChatVideoParams = {
 	modelId?: string
+	model?: string
+	seedanceModelVersion?: string
 	mode?: 'auto' | 'text_to_video' | 'image_to_video' | 'first-last' | 'reference'
 	resolution?: string
 	ratio?: string
@@ -787,6 +799,8 @@ export type WorkflowNodeChatVideoParams = {
 	seed?: number
 	generateAudio?: boolean
 	watermark?: boolean
+	cameraFixed?: boolean
+	returnLastFrame?: boolean
 }
 
 export type WorkflowNodeChatModel3DParams = {
