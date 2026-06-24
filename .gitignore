@@ -44,6 +44,9 @@ electron/static/runtime/
 # Python runtime download cache (for slow network environments)
 python-runtime/
 
+# Electron binary cache for packaging
+.electron-cache/
+
 # Virtual environments
 .venv/
 venv/

@@ -56,6 +56,7 @@
     "clean:runtime-django": "node scripts/clean-runtime-django.mjs",
     "build": "vue-tsc && vite build",
     "gen:win-icon": "node scripts/gen-win-icon.mjs",
+    "gen:installer-bitmaps": "node scripts/gen-installer-bitmaps.mjs",
     "prepare:python-runtime": "node scripts/prepare-python-runtime.mjs",
     "clean:source-pack": "node scripts/remove-dir.mjs release-source",
     "pack:source": "node scripts/pack-source.mjs",
@@ -74,7 +75,7 @@
     "prepack:win": "npm run gen:win-icon",
     "pack:win": "npm run build && electron-builder --dir -w",
     "pack:mac": "npm run build && electron-builder --dir -m",
-    "predist:win": "npm run prepare:python-runtime && npm run gen:win-icon",
+    "predist:win": "npm run prepare:python-runtime && npm run gen:win-icon && npm run gen:installer-bitmaps",
     "dist:win": "node scripts/dist-win.mjs",
     "dist:mac": "node scripts/dist-mac.mjs",
     "preview": "vite preview",
@@ -169,15 +170,22 @@
       "category": "public.app-category.video"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "allowElevation": true,
-      "allowToChangeInstallationDirectory": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Dweb Video Studio",
       "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico"
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installer-sidebar.bmp",
+      "uninstallerSidebar": "build/uninstaller-sidebar.bmp",
+      "include": "build/installer.nsh",
+      "installerLanguages": ["zh-CN", "en-US"],
+      "language": "2052",
+      "deleteAppDataOnUninstall": false
     }
   }
 }

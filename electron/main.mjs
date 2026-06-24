@@ -67,6 +67,42 @@ try {
 
 const isDev = !!process.env.ELECTRON_DEV || !app.isPackaged
 
+let _portableUserDataDir = ''
+let _portableWarnOnReady = false
+
+function isDirectoryWritable(dir) {
+	try {
+		fs.mkdirSync(dir, { recursive: true })
+		const testFile = path.join(dir, '.write-test-' + Date.now() + '-' + Math.random().toString(36).slice(2))
+		fs.writeFileSync(testFile, 'test')
+		fs.unlinkSync(testFile)
+		return true
+	} catch {
+		return false
+	}
+}
+
+function configurePortablePaths() {
+	if (isDev) return
+	const installDir = path.dirname(process.execPath)
+	const dvsResourceDir = path.resolve(installDir, 'DVSResource')
+	const targetUserDataDir = path.resolve(dvsResourceDir, 'UserData')
+	const targetLogsDir = path.resolve(dvsResourceDir, 'Logs')
+
+	if (isDirectoryWritable(dvsResourceDir)) {
+		app.setPath('userData', targetUserDataDir)
+		app.setPath('sessionData', path.resolve(targetUserDataDir, 'Session'))
+		try { app.setPath('crashDumps', path.resolve(targetUserDataDir, 'CrashDumps')) } catch {}
+		_portableUserDataDir = targetUserDataDir
+		fs.mkdirSync(targetLogsDir, { recursive: true })
+	} else {
+		_portableUserDataDir = app.getPath('userData')
+		_portableWarnOnReady = true
+	}
+}
+
+configurePortablePaths()
+
 let mainWindow = null
 let backend = null
 let backendBaseUrl = ''
@@ -392,7 +428,7 @@ function appendRuntimeLog(line) {
 
 function initRuntimeLogger() {
 	const candidates = [
-		path.resolve(getClientRootDir(), 'dweb-runtime.log'),
+		path.resolve(getLogsDir(), 'runtime.log'),
 		path.resolve(getUserDataDir(), 'dweb-runtime.log'),
 	]
 	for (const p of candidates) {
@@ -485,8 +521,12 @@ async function runBootstrapInstaller() {
 }
 
 function getUserDataDir() {
-	// Electron 自带 per-user data dir
+	if (_portableUserDataDir) return _portableUserDataDir
 	return app.getPath('userData')
+}
+
+function getLogsDir() {
+	return path.resolve(getDvsResourceDir(), 'Logs')
 }
 
 function findNearestGitRoot(startDir) {
@@ -1522,7 +1562,7 @@ function registerIpc() {
 	})
 
 	ipcMain.handle('dweb:app:revealUserDataDir', async () => {
-		await shell.openPath(getUserDataDir())
+		await shell.openPath(getDvsResourceDir())
 		return { ok: true }
 	})
 
@@ -2103,6 +2143,19 @@ async function main() {
 	ensureBackendHealthMonitor()
 	ensureClientResourceLayout()
 	loadClientSettings()
+
+	if (_portableWarnOnReady && app.isPackaged) {
+		dialog.showMessageBox({
+			type: 'warning',
+			title: '安装目录权限提示',
+			message: '当前安装目录无写入权限',
+			detail: 'Dweb Video Studio 已安装到受系统保护的目录（如 Program Files），应用数据和日志将保存到用户目录（AppData）。\n\n如需完全便携化使用（所有文件保存在安装目录），请重新安装到非系统保护目录（如 D:\\Dweb Video Studio）。',
+			buttons: ['我知道了'],
+			defaultId: 0,
+			noLink: true,
+		}).catch(() => {})
+		_portableWarnOnReady = false
+	}
 
 	try {
 		const userDir = getUserDataDir()
