@@ -1,0 +1,60 @@
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+      timezone: 'Asia/Shanghai'
+    target-branch: 'dev'
+    commit-message:
+      prefix: 'chore(deps):'
+      include: 'scope'
+    labels:
+      - 'dependencies'
+      - 'automated'
+    assignees:
+      - '412845222'
+    ignore:
+      - dependency-name: 'electron'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'better-sqlite3'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'vite'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'vue'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'three'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: 'pip'
+    directory: '/django-app'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+      timezone: 'Asia/Shanghai'
+    target-branch: 'dev'
+    commit-message:
+      prefix: 'chore(deps):'
+      include: 'scope'
+    labels:
+      - 'dependencies'
+      - 'automated'
+    assignees:
+      - '412845222'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+      day: 'first'
+    target-branch: 'dev'
+    commit-message:
+      prefix: 'chore(ci):'
+    labels:
+      - 'dependencies'
+      - 'automated'

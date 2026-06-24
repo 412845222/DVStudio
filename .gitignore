@@ -28,7 +28,6 @@ release-*.7z
 .tmp-*/
 
 # Repo meta folders you don't want to publish
-/.github/
 /.vscode/
 /.cloudbase/
 
