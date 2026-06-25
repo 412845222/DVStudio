@@ -2,6 +2,7 @@ import js from '@eslint/js'
 import vue from 'eslint-plugin-vue'
 import ts from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
+import globals from 'globals'
 
 const tsRules = {
   ...ts.configs.recommended.rules,
@@ -9,6 +10,18 @@ const tsRules = {
   'no-debugger': 'error',
   'no-unused-vars': 'off',
   'no-empty': ['warn', { allowEmptyCatch: true }],
+  'no-useless-assignment': 'warn',
+  'no-control-regex': 'warn',
+  'preserve-caught-error': 'off',
+  'no-redeclare': 'warn',
+  'no-constant-binary-expression': 'warn',
+  'no-prototype-builtins': 'warn',
+  'no-useless-escape': 'warn',
+  'no-self-assign': 'warn',
+  'no-undef': 'warn',
+  'no-case-declarations': 'warn',
+  'no-extra-boolean-cast': 'warn',
+  'no-unsafe-finally': 'warn',
   '@typescript-eslint/no-unused-vars': ['warn', {
     argsIgnorePattern: '^_',
     varsIgnorePattern: '^_',
@@ -16,7 +29,8 @@ const tsRules = {
   }],
   '@typescript-eslint/no-explicit-any': 'warn',
   '@typescript-eslint/ban-ts-comment': 'warn',
-  '@typescript-eslint/no-namespace': 'off'
+  '@typescript-eslint/no-namespace': 'off',
+  '@typescript-eslint/no-empty-object-type': 'off'
 }
 
 const vueRules = {
@@ -30,7 +44,12 @@ const vueRules = {
   'vue/max-attributes-per-line': 'off',
   'vue/singleline-html-element-content-newline': 'off',
   'vue/html-self-closing': 'off',
-  'vue/multiline-html-element-content-newline': 'off'
+  'vue/multiline-html-element-content-newline': 'off',
+  'vue/html-indent': 'off',
+  'vue/valid-template-root': 'warn',
+  'vue/no-dupe-keys': 'warn',
+  'vue/no-unused-vars': 'warn',
+  'vue/no-side-effects-in-computed-properties': 'warn'
 }
 
 export default [
@@ -47,7 +66,8 @@ export default [
       'public/**',
       'samples/**',
       'agent_docs/**',
-      'AIPlan/**'
+      'AIPlan/**',
+      'electron/static/**'
     ]
   },
   js.configs.recommended,
@@ -56,7 +76,11 @@ export default [
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 'latest',
-      sourceType: 'module'
+      sourceType: 'module',
+      globals: {
+        ...globals.browser,
+        ...globals.es2021
+      }
     },
     plugins: {
       '@typescript-eslint': ts
@@ -72,6 +96,10 @@ export default [
         ecmaVersion: 'latest',
         sourceType: 'module',
         extraFileExtensions: ['.vue']
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.es2021
       }
     },
     plugins: {
@@ -80,6 +108,26 @@ export default [
     rules: {
       ...tsRules,
       ...vueRules
+    }
+  },
+  {
+    files: ['src/workers/**/*.ts'],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.worker,
+        ...globals.browser,
+        ...globals.es2021
+      }
+    },
+    plugins: {
+      '@typescript-eslint': ts
+    },
+    rules: {
+      ...tsRules,
+      'no-undef': 'off'
     }
   },
   {
@@ -92,16 +140,35 @@ export default [
         __dirname: 'readonly',
         __filename: 'readonly',
         Buffer: 'readonly',
-        global: 'readonly'
+        global: 'readonly',
+        ...globals.node,
+        ...globals.es2021
       }
     },
     rules: {
       'no-unused-vars': 'warn',
-      'no-console': 'off'
+      'no-console': 'off',
+      'no-undef': 'off',
+      'no-empty': ['warn', { allowEmptyCatch: true }],
+      'no-useless-assignment': 'warn',
+      'no-control-regex': 'warn',
+      'preserve-caught-error': 'off',
+      'no-redeclare': 'warn',
+      'no-constant-binary-expression': 'warn',
+      'no-prototype-builtins': 'warn',
+      'no-useless-escape': 'warn',
+      'no-self-assign': 'warn'
     }
   },
   {
     files: ['tests/**/*.{test,spec}.{ts,js}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.vitest
+      }
+    },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
@@ -111,6 +178,12 @@ export default [
   },
   {
     files: ['scripts/**/*.{mjs,js}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.es2021
+      }
+    },
     rules: {
       'no-console': 'off'
     }
