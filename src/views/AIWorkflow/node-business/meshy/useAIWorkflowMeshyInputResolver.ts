@@ -1,26 +1,32 @@
-import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
+import type { WorkflowEdge, WorkflowNode, WorkflowState } from '../../../../aiworkflow/types'
+import { isString, isRecord } from '../../../../types/utils'
+import type { MeshyNodeSettingsLike, ConnectedMeshyImageInput, ConnectedMeshyModelInput, WorkflowResourceLike, MeshyStoreLike } from './types'
 
-type ConnectedMeshyImageInput = { edge: WorkflowEdge; fromNode: WorkflowNode; fromAnchorId: string; url: string }
+type ImageDimensions = {
+	width: number
+	height: number
+	ratioOnly?: boolean
+}
 
 export const useAIWorkflowMeshyInputResolver = (options: {
-	store: any
-	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => any
-	getIncomingEdges: (nodeId: string, anchorId?: string) => any[]
-	getOutgoingEdges: (nodeId: string, anchorId?: string) => any[]
+	store: MeshyStoreLike
+	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => WorkflowEdge | null | undefined
+	getIncomingEdges: (nodeId: string, anchorId?: string) => WorkflowEdge[]
+	getOutgoingEdges: (nodeId: string, anchorId?: string) => WorkflowEdge[]
 	hasOutgoingEdge: (nodeId: string, anchorId: string) => boolean
 	getTextOutputForNode: (nodeId: string) => string
 	nodeResourceUrl: (node: WorkflowNode) => string | null
 	nodeResourceName: (node: WorkflowNode) => string | null
-	getMeshyEffectiveImageSource: (settings: Record<string, any> | null | undefined) => {
+	getMeshyEffectiveImageSource: (settings: MeshyNodeSettingsLike) => {
 		preferredUrl: string
 		assetUrl: string
 	}
-	getMeshyEffectiveModelSource: (settings: Record<string, any> | null | undefined) => {
+	getMeshyEffectiveModelSource: (settings: MeshyNodeSettingsLike) => {
 		preferredUrl: string
 		assetUrl: string
 		format: 'glb' | 'gltf'
 	}
-	getMeshyDisplayThumbnailUrl: (settings: Record<string, any> | null | undefined) => string
+	getMeshyDisplayThumbnailUrl: (settings: MeshyNodeSettingsLike) => string
 	getSceneDecomposeImageUrl: (fromNode: WorkflowNode, fromAnchorId: string) => string
 	getComfyImageUrl: (fromNode: WorkflowNode, fromAnchorId: string) => string
 	blobToDataUrl: (blob: Blob) => Promise<string>
@@ -85,6 +91,17 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		return String(options.getTextOutputForNode(String(edge.fromNodeId ?? '')) || '').trim()
 	}
 
+	const getNodeResourceId = (node: WorkflowNode): string => {
+		const settings = node as unknown as Record<string, unknown>
+		const id = settings.resourceId
+		return isString(id) ? id.trim() : ''
+	}
+
+	const getNodeMeshySettings = (node: WorkflowNode): Record<string, unknown> => {
+		const settings = node.meshySettings
+		return settings && typeof settings === 'object' ? (settings as unknown as Record<string, unknown>) : {}
+	}
+
 	const connectedImageOutputUrl = (fromNode: WorkflowNode, fromAnchorId: string) => {
 		if (fromNode.type === 'image') return String(options.nodeResourceUrl(fromNode) ?? '').trim()
 		if (fromNode.type === 'rotate-image') {
@@ -94,16 +111,16 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			if (!edge) return ''
 			const upstream = options.store.state.nodesById[edge.fromNodeId]
 			if (!upstream) return ''
-			const rid = String((upstream as any).resourceId ?? '').trim()
+			const rid = getNodeResourceId(upstream)
 			if (rid) {
-				const r = options.store.state.resourcesById[rid] as any
+				const r = options.store.state.resourcesById[rid]
 				if (r && String(r.kind ?? '').trim() === 'image') {
 					const url = String(r.url ?? '').trim()
 					if (url) return url
 				}
 			}
 			if (upstream.type === 'comfyui') {
-				const url = String(options.getComfyImageUrl(upstream, String((edge as any).fromAnchorId ?? '')) ?? '').trim()
+				const url = String(options.getComfyImageUrl(upstream, String(edge.fromAnchorId ?? '')) ?? '').trim()
 				if (url) return url
 			}
 			return ''
@@ -111,7 +128,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		if (fromNode.type === 'meshy') {
 			const anchor = String(fromAnchorId ?? '').trim()
 			if (/^out-image(?:-\d+)?$/.test(anchor)) {
-				const effective = options.getMeshyEffectiveImageSource(fromNode.meshySettings as any)
+				const effective = options.getMeshyEffectiveImageSource(getNodeMeshySettings(fromNode))
 				return String(effective.assetUrl || effective.preferredUrl || '').trim()
 			}
 			return ''
@@ -125,23 +142,25 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		return ''
 	}
 
+	const isImageInEdge = (e: WorkflowEdge) => /^in-image-/.test(String(e.toAnchorId ?? ''))
+
 	const connectedMeshyImageUrls = (nodeId: string) => {
-		const incoming = options.getIncomingEdges(nodeId).filter((e: any) => /^in-image-/.test(String(e.toAnchorId ?? '')))
+		const incoming = options.getIncomingEdges(nodeId).filter(isImageInEdge)
 		return incoming
-			.sort((a: any, b: any) => String(a.toAnchorId ?? '').localeCompare(String(b.toAnchorId ?? '')))
-			.map((edge: any) => {
+			.sort((a, b) => String(a.toAnchorId ?? '').localeCompare(String(b.toAnchorId ?? '')))
+			.map((edge) => {
 				const fromNode = options.store.state.nodesById[String(edge.fromNodeId ?? '')]
 				if (!fromNode) return ''
 				return connectedImageOutputUrl(fromNode, String(edge.fromAnchorId ?? ''))
 			})
-			.filter((url: string) => !!url)
+			.filter((url): url is string => !!url)
 	}
 
 	const connectedMeshyImageInputs = (nodeId: string) => {
-		const incoming = options.getIncomingEdges(nodeId).filter((e: any) => /^in-image-/.test(String(e.toAnchorId ?? '')))
+		const incoming = options.getIncomingEdges(nodeId).filter(isImageInEdge)
 		return incoming
-			.sort((a: any, b: any) => String(a.toAnchorId ?? '').localeCompare(String(b.toAnchorId ?? '')))
-			.map((edge: any) => {
+			.sort((a, b) => String(a.toAnchorId ?? '').localeCompare(String(b.toAnchorId ?? '')))
+			.map((edge) => {
 				const fromNode = options.store.state.nodesById[String(edge.fromNodeId ?? '')]
 				if (!fromNode) return null
 				const fromAnchorId = String(edge.fromAnchorId ?? '')
@@ -191,7 +210,6 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			? value
 			: options.resolveBackendUrl(value)
 
-		// dweb:// 或私有主机的 http:// URL → 远程服务无法访问，必须转换为 base64
 		if (resolved.startsWith('dweb://')) {
 			try {
 				const file = await fileFromUrl(resolved, label)
@@ -220,9 +238,10 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 
 	const buildMeshyModelInputFromNode = async (fromNode: WorkflowNode, fromAnchorId: string) => {
 		if (fromNode.type === 'meshy') {
-			const settings = fromNode.meshySettings ?? {}
+			const settings = getNodeMeshySettings(fromNode)
 			const effective = options.getMeshyEffectiveModelSource(settings)
-			const inputTaskId = String(settings.meshyTaskId ?? settings.meshyRelationSummary?.effectiveTaskId ?? '').trim()
+			const relationSummary = isRecord(settings.meshyRelationSummary) ? settings.meshyRelationSummary : {}
+			const inputTaskId = String(settings.meshyTaskId ?? relationSummary.effectiveTaskId ?? '').trim()
 			const sourceUrl = String(effective.assetUrl || effective.preferredUrl || '').trim()
 			return {
 				inputTaskId: inputTaskId || undefined,
@@ -232,13 +251,14 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		}
 
 		if (fromNode.type === 'model3d') {
-			const settings = fromNode.model3dSettings ?? {}
-			const rawSource = String(settings.modelAssetUrl ?? settings.modelUrl ?? '').trim()
-			const format = settings.modelFormat === 'gltf' ? 'gltf' : 'glb'
+			const nodeSettings = fromNode as unknown as Record<string, unknown>
+			const modelSettings = isRecord(nodeSettings.model3dSettings) ? nodeSettings.model3dSettings : {}
+			const rawSource = String(modelSettings.modelAssetUrl ?? modelSettings.modelUrl ?? '').trim()
+			const format = modelSettings.modelFormat === 'gltf' ? 'gltf' : 'glb'
 			return {
 				inputTaskId: undefined,
 				modelUrl: rawSource ? await normalizeMeshyModelInputValue(rawSource, `model3d_${fromNode.id}`) : '',
-				sourceName: String(settings.modelSourceName ?? '').trim() || `model_${fromNode.id}.${format}`,
+				sourceName: String(modelSettings.modelSourceName ?? '').trim() || `model_${fromNode.id}.${format}`,
 			}
 		}
 
@@ -259,9 +279,9 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 	const connectedMeshyModelInput = async (nodeId: string) => {
 		const edge = options.getFirstIncomingEdge(nodeId, 'in-model')
 		if (!edge) return null
-		const fromNode = options.store.state.nodesById[String((edge as any).fromNodeId ?? '')]
+		const fromNode = options.store.state.nodesById[String(edge.fromNodeId ?? '')]
 		if (!fromNode) return null
-		return buildMeshyModelInputFromNode(fromNode, String((edge as any).fromAnchorId ?? ''))
+		return buildMeshyModelInputFromNode(fromNode, String(edge.fromAnchorId ?? ''))
 	}
 
 	const connectedMeshySourcePreview = (nodeId: string) => {
@@ -272,8 +292,8 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 				label: '未连接模型输入锚点 in-model',
 			}
 		}
-		const fromNodeId = String((edge as any).fromNodeId ?? '').trim()
-		const fromAnchorId = String((edge as any).fromAnchorId ?? '').trim()
+		const fromNodeId = String(edge.fromNodeId ?? '').trim()
+		const fromAnchorId = String(edge.fromAnchorId ?? '').trim()
 		const fromNode = options.store.state.nodesById[fromNodeId]
 		if (!fromNode) {
 			return {
@@ -294,7 +314,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		}
 
 		if (fromNode.type === 'meshy') {
-			const thumbnail = options.getMeshyDisplayThumbnailUrl(fromNode.meshySettings ?? null)
+			const thumbnail = options.getMeshyDisplayThumbnailUrl(getNodeMeshySettings(fromNode))
 			return {
 				url: thumbnail,
 				label: `来源 Meshy 节点：${String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id}`,
@@ -333,6 +353,10 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		}
 	}
 
+	interface OffscreenCanvasConvertable extends OffscreenCanvas {
+		convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob>
+	}
+
 	const padImageBlobToMinSize = async (blob: Blob, minSide = MESHY_SAFE_MIN_IMAGE_SIDE) => {
 		const bitmap = typeof createImageBitmap === 'function' ? await createImageBitmap(blob) : null
 		const width = Math.max(1, Math.floor(bitmap?.width || 0)) || (await measureBlobImageSize(blob)).width
@@ -340,7 +364,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		const targetWidth = Math.max(minSide, width)
 		const targetHeight = Math.max(minSide, height)
 		if (targetWidth === width && targetHeight === height) {
-			if (bitmap && typeof (bitmap as any).close === 'function') (bitmap as any).close()
+			if (bitmap && typeof bitmap.close === 'function') bitmap.close()
 			return { blob, expanded: false, width, height, targetWidth, targetHeight }
 		}
 
@@ -349,12 +373,14 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		let nextBlob: Blob | null = null
 
 		if (typeof OffscreenCanvas !== 'undefined' && bitmap) {
-			const canvas = new OffscreenCanvas(targetWidth, targetHeight)
+			const canvas = new OffscreenCanvas(targetWidth, targetHeight) as OffscreenCanvasConvertable
 			const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null
 			if (!ctx) throw new Error('create offscreen canvas context failed')
 			ctx.clearRect(0, 0, targetWidth, targetHeight)
 			ctx.drawImage(bitmap, offsetX, offsetY, width, height)
-			nextBlob = await (canvas as any).convertToBlob({ type: 'image/png' })
+			if (typeof canvas.convertToBlob === 'function') {
+				nextBlob = await canvas.convertToBlob({ type: 'image/png' })
+			}
 		} else {
 			const objectUrl = URL.createObjectURL(blob)
 			try {
@@ -377,7 +403,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			}
 		}
 
-		if (bitmap && typeof (bitmap as any).close === 'function') (bitmap as any).close()
+		if (bitmap && typeof bitmap.close === 'function') bitmap.close()
 		if (!nextBlob) throw new Error('expand image on canvas failed')
 		return { blob: nextBlob, expanded: true, width, height, targetWidth, targetHeight }
 	}
@@ -406,17 +432,12 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		if (value.startsWith('file:') || /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('/')) {
 			return value
 		}
-		// dweb://、http(s):// 等远程/本地服务URL → 统一抓取并转为data URL
-		// 注意：远端 AI 服务（如火山引擎 Ark）无法访问 localhost/dweb 协议URL，
-		// 必须转为 base64/data URL 才能被服务正确识别
 		const resolvedUrl = options.resolveBackendUrl(value)
 		try {
 			const file = await fileFromUrl(resolvedUrl, label)
-			// 始终转换为data URL，确保远端服务可访问
 			return normalizeMeshyImageBlob(file, label)
 		} catch (err: unknown) {
 			console.warn(`[Meshy] failed to convert local asset URL to data URL: ${value} -> ${resolvedUrl}`, err)
-			// 回退：尝试直接返回原始 URL（只用于已公开可访问的 http/https URL）
 			if (/^https?:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(value)) {
 				return value
 			}
@@ -428,13 +449,16 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		const rawUrl = connectedImageOutputUrl(fromNode, fromAnchorId)
 		if (!rawUrl) return ''
 
+		const nodeSettings = fromNode as unknown as Record<string, unknown>
+		const meshySettings = getNodeMeshySettings(fromNode)
 		const nameBase = String(
 			options.nodeResourceName(fromNode) ??
-			(fromNode as any)?.meshySettings?.meshyTaskId ??
+			meshySettings.meshyTaskId ??
 			fromNode.alias ??
 			fromNode.title ??
 			'meshy_ref',
 		).trim() || 'meshy_ref'
+		void nodeSettings
 
 		if (fromNode.type === 'image') {
 			try {
@@ -448,42 +472,42 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		return normalizeMeshyImageInputValue(rawUrl, nameBase)
 	}
 
+	const isImageOutEdge = (e: WorkflowEdge) =>
+		/^out-image(?:-\d+)?$/.test(String(e.fromAnchorId ?? '')) &&
+		(() => {
+			const toAnchorId = String(e.toAnchorId ?? '')
+			return toAnchorId === 'in-image' || toAnchorId === 'in-resource'
+		})()
+
 	const hasConnectedMeshyConsumer = (node: WorkflowNode) => {
-		const target = String(node.meshySettings?.meshyTaskTarget ?? '3d')
+		const settings = getNodeMeshySettings(node)
+		const target = String(settings.meshyTaskTarget ?? '3d')
 		if (target === 'image') {
-			return options.getOutgoingEdges(node.id).some(
-				(e: any) =>
-					e &&
-					/^out-image(?:-\d+)?$/.test(String(e.fromAnchorId ?? '')) &&
-					(() => {
-						const toAnchorId = String(e.toAnchorId ?? '')
-						return toAnchorId === 'in-image' || toAnchorId === 'in-resource'
-					})(),
-			)
+			return options.getOutgoingEdges(node.id).some(isImageOutEdge)
 		}
 		return options.hasOutgoingEdge(node.id, 'out-model')
 	}
 
-	const meshyImageOutputCount = (settings: Record<string, any> | null | undefined) => {
-		const raw = Number((settings as any)?.meshyOutputImageCount ?? 1)
+	const meshyImageOutputCount = (settings: MeshyNodeSettingsLike) => {
+		const record = isRecord(settings) ? settings : {}
+		const raw = Number(record.meshyOutputImageCount ?? 1)
 		if (!Number.isFinite(raw)) return 1
 		return Math.max(1, Math.min(4, Math.floor(raw)))
 	}
 
+	const isImageOutputEdge = (e: WorkflowEdge) =>
+		/^out-image-(\d+)$/.test(String(e.fromAnchorId ?? '')) &&
+		(() => {
+			const toAnchorId = String(e.toAnchorId ?? '')
+			return toAnchorId === 'in-image' || toAnchorId === 'in-resource'
+		})()
+
 	const missingMeshyImageOutputAnchors = (node: WorkflowNode) => {
-		const expectedCount = meshyImageOutputCount(node.meshySettings as any)
+		const expectedCount = meshyImageOutputCount(node.meshySettings)
 		const connected = new Set(
 			options.getOutgoingEdges(node.id)
-				.filter(
-					(e: any) =>
-						e &&
-						/^out-image-(\d+)$/.test(String(e.fromAnchorId ?? '')) &&
-						(() => {
-							const toAnchorId = String(e.toAnchorId ?? '')
-							return toAnchorId === 'in-image' || toAnchorId === 'in-resource'
-						})(),
-				)
-				.map((e: any) => String(e.fromAnchorId ?? '').trim())
+				.filter(isImageOutputEdge)
+				.map((e) => String(e.fromAnchorId ?? '').trim())
 				.filter(Boolean),
 		)
 		const missing: string[] = []

@@ -1,7 +1,7 @@
 <template>
-	<div class="vs-handle line start" :style="handleStyles.start" @pointerdown.stop.prevent="(e: any) => emit('pointDown', 'start', e)" />
-	<div class="vs-handle line anchor" :style="handleStyles.anchor" @pointerdown.stop.prevent="(e: any) => emit('pointDown', 'anchor', e)" />
-	<div class="vs-handle line end" :style="handleStyles.end" @pointerdown.stop.prevent="(e: any) => emit('pointDown', 'end', e)" />
+	<div class="vs-handle line start" :style="handleStyles.start" @pointerdown.stop.prevent="onPointDown('start')" />
+	<div class="vs-handle line anchor" :style="handleStyles.anchor" @pointerdown.stop.prevent="onPointDown('anchor')" />
+	<div class="vs-handle line end" :style="handleStyles.end" @pointerdown.stop.prevent="onPointDown('end')" />
 </template>
 
 <script setup lang="ts">
@@ -16,6 +16,10 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'pointDown', kind: LinePointKind, ev: PointerEvent): void }>()
+
+const onPointDown = (kind: LinePointKind) => (ev: PointerEvent) => {
+	emit('pointDown', kind, ev)
+}
 </script>
 
 <style scoped>

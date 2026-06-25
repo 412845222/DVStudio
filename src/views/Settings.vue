@@ -11,10 +11,24 @@ const FIXED_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 
+type ClientSettingsKey = keyof ClientSettings
+
+type ProviderConfig = {
+	key: string
+	name: string
+	desc: string
+	accent: string
+	icon: string
+	fields: Array<{ key: ClientSettingsKey; label: string; placeholder: string; mask: boolean }>
+	docsUrl: string
+	formKey: ClientSettingsKey
+	formValue: (s: ClientSettings) => string
+}
+
 const loading = ref(false)
 const saving = ref(false)
 const saveMsg = ref('')
-const repoUrl = String((window as any).__DWEB_REPO_URL ?? '').trim()
+const repoUrl = String(window.__DWEB_REPO_URL__ ?? '').trim()
 
 const agreementOpen = ref(false)
 const agreementChecked = ref(false)
@@ -40,9 +54,9 @@ const form = reactive<ClientSettings>({
 
 // 模态框状态
 const activeProvider = ref<string | null>(null)
-const pendingForm = reactive<Record<string, string>>({})
+const pendingForm = reactive<Partial<Record<ClientSettingsKey, string>>>({})
 
-const providers = [
+const providers: ProviderConfig[] = [
 	{
 		key: 'deepseek',
 		name: 'DeepSeek',
@@ -98,13 +112,13 @@ const hasPendingKey = (key: string) => {
 function openProvider(key: string) {
 	const prov = providers.find((p) => p.key === key)
 	if (!prov) return
-	for (const f of prov.fields) pendingForm[f.key] = (form as any)[f.key] || ''
+	for (const f of prov.fields) pendingForm[f.key] = form[f.key] || ''
 	activeProvider.value = key
 }
 
 function closeProvider() {
 	activeProvider.value = null
-	for (const k of Object.keys(pendingForm)) delete pendingForm[k]
+	for (const k of Object.keys(pendingForm) as ClientSettingsKey[]) delete pendingForm[k]
 }
 
 function saveProvider() {
@@ -112,7 +126,7 @@ function saveProvider() {
 	const prov = providers.find((p) => p.key === key)
 	if (!prov) return
 	for (const f of prov.fields) {
-		;(form as any)[f.key] = pendingForm[f.key] || ''
+		form[f.key] = (pendingForm[f.key] || '') as ClientSettings[typeof f.key]
 	}
 	saveMsg.value = '请点击右上角“保存全部”以将凭证加密写入后端。'
 	closeProvider()
@@ -139,8 +153,8 @@ async function load() {
 	form.geminiModel = FIXED_GEMINI_MODEL
 	// Keep API keys from loaded settings - do NOT clear them
 	// Keys are stored in client settings alongside encrypted backend storage
-	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey']) {
-		if (!(key in form) || typeof (form as any)[key] !== 'string') (form as any)[key] = ''
+	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey'] as const) {
+		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
 	}
 	loading.value = false
 }

@@ -1,36 +1,30 @@
 import { computed, ref } from 'vue'
 import type { WorkflowNode } from '../../../../aiworkflow/types'
 import type { MeshyTaskPanelAction, MeshyTaskPanelDetail, MeshyTaskPanelItem } from '../../../../ui/WorkFlow/MeshyTaskPanel.vue'
+import { getErrorMessage, isRecord } from '../../../../types/utils'
+import type {
+	MeshyBalanceResponse,
+	MeshyComfyService,
+	MeshyEffectiveOutput,
+	MeshyStoreLike,
+	MeshyTaskActionResponse,
+	MeshyTaskDetailResponse,
+	MeshyTaskResponse,
+	MeshyTasksListResponse,
+	MeshyTaskStatus,
+} from './types'
 import { useAIWorkflowMeshyTaskPanelMapping } from './useAIWorkflowMeshyTaskPanelMapping'
-import { getErrorMessage } from '../../../../types/utils'
+
+type MeshyNodeSettingsLike = Record<string, unknown>
 
 export const useAIWorkflowMeshyTaskPanelController = (options: {
-	store: any
+	store: MeshyStoreLike
 	renderNodes: { value: WorkflowNode[] }
-	comfyService: {
-		meshyTasks: (payload: { limit: number }) => Promise<any>
-		meshyBalance: () => Promise<any>
-		meshyTask: (taskId: string, mode: string) => Promise<any>
-		meshyTaskDetail: (taskId: string) => Promise<any>
-		meshyStop: (taskId: string, mode: string) => Promise<any>
-		meshyDelete: (taskId: string, mode: string) => Promise<any>
-	}
+	comfyService: MeshyComfyService
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
-	getMeshyDisplayThumbnailUrl: (settings: Record<string, any> | null | undefined) => string
-	pickMeshyEffectiveOutput: (item: Record<string, any>) => {
-		preferredImageUrl: string
-		preferredModelUrl: string
-		preferredUrl: string
-		imageUrls: string[]
-		localAssetUrl: string
-		localAssetPath: string
-		thumbnailUrl: string
-		effectiveTaskId: string
-		effectiveRelationKind: string
-		effectiveStatus: string
-		effectiveProgress: number
-	}
-	applyMeshyTaskResult: (nodeId: string, task: Record<string, any>) => Promise<any>
+	getMeshyDisplayThumbnailUrl: (settings: Record<string, unknown> | null | undefined) => string
+	pickMeshyEffectiveOutput: (item: Record<string, unknown>) => MeshyEffectiveOutput
+	applyMeshyTaskResult: (nodeId: string, task: unknown) => Promise<string>
 	stopMeshyPoll: (nodeId: string) => void
 }) => {
 	const meshyTaskDialogOpen = ref(false)
@@ -64,14 +58,14 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		if (meshyTaskRemoteLoading.value) return
 		meshyTaskRemoteLoading.value = true
 		try {
-			const res = await options.comfyService.meshyTasks({ limit: 120 })
+			const res: MeshyTasksListResponse = await options.comfyService.meshyTasks({ limit: 120 })
 			if (!res.ok) {
 				meshyTaskRemoteFallbackReason.value = String(res.error || 'unknown')
 				if (!opts?.silent) options.pushToast('读取 Meshy 任务中心失败：' + String(res.error || 'unknown'), 'warn')
 				return
 			}
 			meshyTaskRemoteItems.value = Array.isArray(res.items)
-				? res.items.map((item: any) => mapMeshyRemoteTaskToPanelItem(item as Record<string, any>))
+				? res.items.map((item) => mapMeshyRemoteTaskToPanelItem(item as unknown as Record<string, unknown>))
 				: []
 			meshyTaskRemoteLoaded.value = true
 			meshyTaskRemoteFallbackReason.value = ''
@@ -85,7 +79,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 
 	const refreshMeshyBalance = async (opts?: { silent?: boolean }) => {
 		try {
-			const res = await options.comfyService.meshyBalance()
+			const res: MeshyBalanceResponse = await options.comfyService.meshyBalance()
 			if (!res.ok) {
 				meshyBalanceText.value = '读取失败'
 				meshyBalanceDetail.value = String(res.error || 'unknown')
@@ -104,17 +98,27 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		}
 	}
 
-	const getMeshySettingsForNode = (node: WorkflowNode): Record<string, any> | undefined => {
-		if (node.type === 'meshy') return node.meshySettings
-		if (node.type === 'image' && node.imageSettings?.imageGenerationSource === 'meshy') return node.imageSettings?.meshyImageSettings
-		if (node.type === 'model3d' && node.model3dSettings?.meshyModelSettings?.taskId) return node.model3dSettings?.meshyModelSettings
+	const getMeshySettingsForNode = (node: WorkflowNode): MeshyNodeSettingsLike | undefined => {
+		if (node.type === 'meshy') return isRecord(node.meshySettings) ? node.meshySettings : undefined
+		if (node.type === 'image' && isRecord(node.imageSettings) && node.imageSettings.imageGenerationSource === 'meshy') {
+			return isRecord(node.imageSettings.meshyImageSettings) ? node.imageSettings.meshyImageSettings : undefined
+		}
+		if (node.type === 'model3d' && isRecord(node.model3dSettings)) {
+			const meshyModelSettings = node.model3dSettings.meshyModelSettings
+			if (isRecord(meshyModelSettings) && meshyModelSettings.taskId) {
+				return meshyModelSettings
+			}
+		}
 		return undefined
 	}
 
 	const isMeshyNode = (node: WorkflowNode) => {
 		if (node.type === 'meshy') return true
-		if (node.type === 'image' && node.imageSettings?.imageGenerationSource === 'meshy') return true
-		if (node.type === 'model3d' && node.model3dSettings?.meshyModelSettings?.taskId) return true
+		if (node.type === 'image' && isRecord(node.imageSettings) && node.imageSettings.imageGenerationSource === 'meshy') return true
+		if (node.type === 'model3d' && isRecord(node.model3dSettings)) {
+			const meshyModelSettings = node.model3dSettings.meshyModelSettings
+			if (isRecord(meshyModelSettings) && meshyModelSettings.taskId) return true
+		}
 		return false
 	}
 
@@ -152,15 +156,15 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 					rootTaskId: String(settings.rootTaskId ?? settings.taskId ?? '').trim() || undefined,
 					parentTaskId: String(settings.parentTaskId ?? '').trim() || undefined,
 					capabilities: undefined,
-					thumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings as Record<string, any>) || undefined,
+					thumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings) || undefined,
 					hasTextureChild: false,
 					hasRiggingChild: false,
 					hasAnimationChild: false,
-					effectiveTaskId: String(settings.outputSummary?.preferredUrl ?? settings.taskId ?? '').trim() || undefined,
+					effectiveTaskId: String((settings.outputSummary as Record<string, unknown>)?.preferredUrl ?? settings.taskId ?? '').trim() || undefined,
 					effectiveRelationKind: String(settings.relationKind ?? 'model').trim() || 'model',
 					effectivePreferredModelUrl:
-						String(settings.outputSummary?.preferredUrl ?? '').trim() || undefined,
-					effectiveThumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings as Record<string, any>) || undefined,
+						String((settings.outputSummary as Record<string, unknown>)?.preferredUrl ?? '').trim() || undefined,
+					effectiveThumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings) || undefined,
 					children: [],
 					createdAt: Number(node.createdAt ?? Date.now()),
 					payload: {
@@ -230,9 +234,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		for (const node of options.renderNodes.value) {
 			if (!node || !isMeshyNode(node)) continue
 			const settings = getMeshySettingsForNode(node) ?? {}
+			const outputSummary = isRecord(settings.outputSummary) ? settings.outputSummary : {}
 			const knownIds = [
 				settings.taskId,
-				settings.outputSummary?.preferredUrl,
+				outputSummary.preferredUrl,
 				settings.rootTaskId,
 				settings.parentTaskId,
 			]
@@ -245,11 +250,11 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 
 	const refreshMeshyTaskToNode = async (nodeId: string, taskId: string, mode: string) => {
 		const reqMode = normalizeMeshyModeForTaskAction(mode)
-		const res = await options.comfyService.meshyTask(taskId, reqMode)
+		const res: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, reqMode)
 		if (!res.ok) {
 			return { ok: false as const, error: String(res.error || 'unknown') }
 		}
-		const finalStatus = await options.applyMeshyTaskResult(nodeId, res as any)
+		const finalStatus = await options.applyMeshyTaskResult(nodeId, res)
 		return { ok: true as const, finalStatus }
 	}
 
@@ -290,8 +295,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			options.pushToast('任务尚未完成，暂无法拉取最终产物。', 'warn')
 			return
 		}
-		
-		// 根据节点类型给出不同的反馈消息
+
 		if (node.type === 'image') {
 			options.pushToast('Meshy 图片已下载并绑定到当前图片节点。', 'info')
 		} else if (node.type === 'model3d') {
@@ -311,7 +315,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			return
 		}
 		const mode = normalizeMeshyModeForTaskAction(String(settings.taskFamily ?? 'text-to-3d'))
-		const res = await options.comfyService.meshyStop(taskId, mode)
+		const res: MeshyTaskActionResponse = await options.comfyService.meshyStop(taskId, mode)
 		if (!res.ok) {
 			options.pushToast('停止 Meshy 任务失败：' + String(res.error || 'unknown'), 'warn')
 			return
@@ -343,7 +347,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			return
 		}
 		const mode = normalizeMeshyModeForTaskAction(String(settings.taskFamily ?? 'text-to-3d'))
-		const res = await options.comfyService.meshyDelete(taskId, mode)
+		const res: MeshyTaskActionResponse = await options.comfyService.meshyDelete(taskId, mode)
 		if (!res.ok) {
 			options.pushToast('删除 Meshy 任务失败：' + String(res.error || 'unknown'), 'warn')
 			return
@@ -384,7 +388,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 						options.pushToast('任务状态已刷新。', 'info')
 					}
 				} else {
-					const res = await options.comfyService.meshyTask(taskId, mode)
+					const res: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, mode)
 					if (!res.ok) options.pushToast('刷新任务状态失败：' + String(res.error || 'unknown'), 'warn')
 				}
 			} else if (payload.action === 'import-output') {
@@ -397,7 +401,6 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 					} else if (refreshed.finalStatus !== 'succeeded') {
 						options.pushToast('任务尚未完成，暂无法拉取最终产物。', 'warn')
 					} else {
-						// 根据节点类型给出不同的反馈消息
 						const node = options.store.state.nodesById[nodeId]
 						if (node?.type === 'image') {
 							options.pushToast('Meshy 图片已下载并绑定到图片节点。', 'info')
@@ -409,7 +412,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 					}
 				}
 			} else if (payload.action === 'stop') {
-				const res = await options.comfyService.meshyStop(taskId, mode)
+				const res: MeshyTaskActionResponse = await options.comfyService.meshyStop(taskId, mode)
 				if (!res.ok) {
 					options.pushToast('停止任务失败：' + String(res.error || 'unknown'), 'warn')
 				} else {
@@ -432,7 +435,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 					options.pushToast('任务已停止。', 'info')
 				}
 			} else if (payload.action === 'delete') {
-				const res = await options.comfyService.meshyDelete(taskId, mode)
+				const res: MeshyTaskActionResponse = await options.comfyService.meshyDelete(taskId, mode)
 				if (!res.ok) {
 					options.pushToast('删除任务失败：' + String(res.error || 'unknown'), 'warn')
 				} else {
@@ -474,12 +477,12 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		if (!item.taskId || !meshyTaskRemoteLoaded.value) return
 		meshyTaskDetailLoading.value = true
 		try {
-			const res = await options.comfyService.meshyTaskDetail(item.taskId)
+			const res: MeshyTaskDetailResponse = await options.comfyService.meshyTaskDetail(item.taskId)
 			if (!res.ok) {
 				options.pushToast('读取 Meshy 任务详情失败：' + String(res.error || 'unknown'), 'warn')
 				return
 			}
-			meshyTaskDetail.value = mapMeshyMirrorItemToDetail(res.item as Record<string, any>)
+			meshyTaskDetail.value = mapMeshyMirrorItemToDetail(res.item as unknown as Record<string, unknown>)
 		} catch (err: unknown) {
 			options.pushToast('读取 Meshy 任务详情失败：' + getErrorMessage(err), 'warn')
 		} finally {

@@ -1,5 +1,6 @@
 import { getBackendBaseUrl } from './backendConfig'
 import { logBlueprintRequest } from './blueprintRequestLog'
+import { getErrorMessage } from '../types/utils'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -31,6 +32,17 @@ export type UnrealExportCreateJobResponse =
 	| { ok: true; job: { jobId: string; status: string; message?: string; createdAt?: number } }
 	| { ok: false; error: string; status?: number }
 
+export type UnrealExportResultData = {
+	progress?: number
+	stage?: string
+	assetRootPath?: string
+	modelsAssetPath?: string
+	blueprintAssetPath?: string
+	importedAssetCount?: number
+	pendingModelImportCount?: number
+	[k: string]: unknown
+}
+
 export type UnrealExportJobInfo = {
 	jobId: string
 	targetSessionId?: string
@@ -40,22 +52,20 @@ export type UnrealExportJobInfo = {
 	message?: string
 	createdAt?: number
 	updatedAt?: number
-	resultData?: {
-		progress?: number
-		stage?: string
-		assetRootPath?: string
-		modelsAssetPath?: string
-		blueprintAssetPath?: string
-		importedAssetCount?: number
-		pendingModelImportCount?: number
-		[k: string]: any
-	}
-	exportPayload?: Record<string, any>
+	resultData?: UnrealExportResultData
+	exportPayload?: Record<string, unknown>
 }
 
 export type UnrealExportJobResponse =
 	| { ok: true; job: UnrealExportJobInfo | null }
 	| { ok: false; error: string; status?: number }
+
+export type UnrealExportRequest = {
+	targetSessionId: string
+	sourceNodeId: string
+	sceneName: string
+	exportPayload: Record<string, unknown>
+}
 
 const jsonHeaders = {
 	'Content-Type': 'application/json',
@@ -64,7 +74,7 @@ const jsonHeaders = {
 const safeJson = async (res: Response) => {
 	const text = await res.text()
 	try {
-		return { ok: true as const, value: JSON.parse(text) }
+		return { ok: true as const, value: JSON.parse(text) as unknown }
 	} catch {
 		return { ok: false as const, text }
 	}
@@ -95,7 +105,7 @@ export class UnrealExportService {
 		const method = String(init?.method || 'GET').toUpperCase()
 		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 		try {
-			const res = await fetch(input as any, init)
+			const res = await fetch(input, init)
 			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 			logBlueprintRequest({
 				url,
@@ -105,13 +115,13 @@ export class UnrealExportService {
 				tag: 'unreal',
 			})
 			return res
-		} catch (err) {
+		} catch (err: unknown) {
 			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				durationMs: Math.max(0, Math.round(end - start)),
-				errorMessage: err instanceof Error ? err.message : String(err),
+				errorMessage: getErrorMessage(err),
 				tag: 'unreal',
 			})
 			throw err
@@ -131,12 +141,7 @@ export class UnrealExportService {
 		return (await res.json()) as UnrealExportSessionsResponse
 	}
 
-	async createJob(payload: {
-		targetSessionId: string
-		sourceNodeId: string
-		sceneName: string
-		exportPayload: Record<string, any>
-	}): Promise<UnrealExportCreateJobResponse> {
+	async createJob(payload: UnrealExportRequest): Promise<UnrealExportCreateJobResponse> {
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/jobs/create'), {
 			method: 'POST',
 			headers: jsonHeaders,

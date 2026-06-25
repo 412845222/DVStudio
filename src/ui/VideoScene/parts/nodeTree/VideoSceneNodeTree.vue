@@ -181,7 +181,7 @@ defineOptions({ name: 'VideoSceneNodeTree' })
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 const controller = new VideoSceneNodeTreeController(store)
-const dwebCanvasRef = inject<any>(DwebCanvasGLKey, null)
+const dwebCanvasRef = inject(DwebCanvasGLKey, null)
 const componentService = new ComponentLibraryService()
 const COMPONENT_LIBRARY_KEY = 'dvs.componentLibrary.v1'
 

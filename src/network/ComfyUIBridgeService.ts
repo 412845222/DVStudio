@@ -2,6 +2,7 @@ import { getBackendBaseUrl } from './backendConfig'
 import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
 import { logBlueprintRequest } from './blueprintRequestLog'
+import { getErrorMessage, isRecord, isString, isArray } from '../types/utils'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -16,6 +17,30 @@ const normalizeLocalExecBasePath = (raw: unknown) => {
 	if (text === 'copilot') return '/api/workflow/copilot'
 	const withLeadingSlash = text.startsWith('/') ? text : `/${text}`
 	return withLeadingSlash.replace(/\/+$/, '') || '/api/workflow/codex'
+}
+
+export type ComfyNode = {
+	class_type: string
+	inputs: Record<string, unknown>
+	[key: string]: unknown
+}
+
+export type ComfyWorkflow = {
+	[key: string]: ComfyNode
+}
+
+export type ComfyPromptResponse = {
+	prompt_id: string
+	[key: string]: unknown
+}
+
+export type ComfyOutputMedia = {
+	nodeId: string
+	kind: 'image' | 'video'
+	filename: string
+	subfolder?: string
+	type?: string
+	url: string
 }
 
 type PingResponse =
@@ -49,7 +74,7 @@ type WorkflowGetResponse =
 			ok: true
 			baseUrl: string
 			workflowPath: string
-			workflow: any
+			workflow: ComfyWorkflow
 	  }
 	| {
 			ok: false
@@ -63,8 +88,8 @@ type RunResponse =
 			ok: true
 			baseUrl: string
 			promptId: string
-			result: any
-			snapshot?: any
+			result: Record<string, unknown>
+			snapshot?: Record<string, unknown>
 	  }
 	| {
 			ok: false
@@ -86,15 +111,8 @@ type OutputsResponse =
 			ok: true
 			baseUrl: string
 			promptId: string
-			media: Array<{
-				nodeId: string
-				kind: 'image' | 'video'
-				filename: string
-				subfolder?: string
-				type?: string
-				url: string
-			}>
-			result: any
+			media: ComfyOutputMedia[]
+			result: Record<string, unknown>
 	  }
 	| {
 			ok: false
@@ -107,7 +125,7 @@ type CancelResponse =
 	| {
 			ok: true
 			baseUrl: string
-			result: any
+			result: Record<string, unknown>
 	  }
 	| {
 			ok: false
@@ -145,14 +163,32 @@ export type CodexSessionDto = {
 	cwd?: string
 }
 
+export type CodexMessageDto = {
+	id: string
+	role: string
+	content: unknown
+	createdAt?: string
+	[key: string]: unknown
+}
+
 export type CodexListSessionsResponse = { items: CodexSessionDto[] } | { error: string }
 
 export type CodexCreateSessionResponse = CodexSessionDto | { error: string }
 
-export type CodexApprovalResponse = { message?: any; error?: string }
+export type CodexListMessagesResponse = { items: CodexMessageDto[] } | { error: string }
+
+export type CodexUpdateSessionResponse = CodexSessionDto | { error: string }
+
+export type CodexApprovalResponse = { message?: unknown; error?: string }
+
+export type CodexHealthResponse = {
+	ok?: boolean
+	status?: string
+	[key: string]: unknown
+}
 
 export type CodexStreamEvent =
-	| { type: 'event'; event: string; data: any }
+	| { type: 'event'; event: string; data: unknown }
 	| { type: 'error'; error: { message: string; details?: unknown } }
 	| { type: 'done' }
 
@@ -160,7 +196,7 @@ type NanoBananaGenerateResponse =
 	| { ok: true; imageUrl: string; baseUrl?: string }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
-type NanoBananaCacheRefsResponse =
+export type NanoBananaCacheRefsResponse =
 	| { ok: true; cacheIds: string[]; baseUrl?: string }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
@@ -185,8 +221,8 @@ export type SeedanceTaskMirrorItem = {
 	watermark?: boolean
 	cameraFixed?: boolean
 	serviceTier?: string
-	tools?: any[]
-	usage?: Record<string, any>
+	tools?: unknown[]
+	usage?: Record<string, unknown>
 	videoUrlRemote?: string
 	videoUrlLocal?: string
 	videoSourcePathLocal?: string
@@ -201,8 +237,8 @@ export type SeedanceTaskMirrorItem = {
 	projectId?: number | null
 	remoteCreatedAt?: number | null
 	remoteUpdatedAt?: number | null
-	requestPayload?: Record<string, any>
-	responsePayload?: Record<string, any>
+	requestPayload?: Record<string, unknown>
+	responsePayload?: Record<string, unknown>
 	createdAt: string
 	updatedAt: string
 	syncedAt: string
@@ -228,12 +264,12 @@ type SeedanceSyncTasksResponse =
 			item?: SeedanceTaskMirrorItem
 			items?: SeedanceTaskMirrorItem[]
 			total?: number
-			remote?: Record<string, any>
+			remote?: Record<string, unknown>
 	  }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
 type MeshyGenerateResponse =
-	| { ok: true; mode: string; taskId: string; status: string; raw?: any }
+	| { ok: true; mode: string; taskId: string; status: string; raw?: unknown }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
 type MeshyTaskResponse =
@@ -252,7 +288,7 @@ type MeshyTaskResponse =
 			sourceModelUrl?: string
 			statusText?: string
 			errorMessage?: string
-			raw?: any
+			raw?: unknown
 	  }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
@@ -301,8 +337,8 @@ export type MeshyTaskMirrorItem = {
 	effectiveLocalAssetPath?: string
 	effectiveThumbnailUrl?: string
 	selectedTaskId?: string
-	requestPayload?: Record<string, any>
-	responsePayload?: Record<string, any>
+	requestPayload?: Record<string, unknown>
+	responsePayload?: Record<string, unknown>
 }
 
 type MeshyTasksListResponse =
@@ -343,7 +379,7 @@ type JobResponse =
 			ok: true
 			baseUrl: string
 			fallback?: string
-			result: any
+			result: Record<string, unknown>
 	  }
 	| {
 			ok: false
@@ -360,13 +396,49 @@ const jsonHeaders = (devToken?: string) => {
 	return h
 }
 
-const safeJson = async (res: Response) => {
+const safeJson = async (res: Response): Promise<{ ok: true; value: unknown } | { ok: false; text: string }> => {
 	const text = await res.text()
 	try {
-		return { ok: true as const, value: JSON.parse(text) }
+		return { ok: true as const, value: JSON.parse(text) as unknown }
 	} catch {
 		return { ok: false as const, text }
 	}
+}
+
+const extractErrorMessage = (body: { ok: true; value: unknown } | { ok: false; text: string }, fallback: string): string => {
+	if (body.ok && isRecord(body.value) && isString(body.value.error)) {
+		return body.value.error
+	}
+	return body.ok ? `${fallback}: ${JSON.stringify(body.value)}` : `${fallback}: ${body.text}`
+}
+
+const parseSseError = (data: string): { message: string; details: unknown } => {
+	try {
+		const obj: unknown = JSON.parse(data)
+		if (isRecord(obj) && isString(obj.message)) {
+			return { message: obj.message, details: obj }
+		}
+		return { message: 'error', details: obj }
+	} catch {
+		return { message: data || 'error', details: data }
+	}
+}
+
+const parseSseAgentMessage = (data: string): AgentToUiMessage | null => {
+	try {
+		const obj: unknown = JSON.parse(data)
+		if (isAgentToUiMessage(obj)) return obj
+		return null
+	} catch {
+		return null
+	}
+}
+
+const extractBodyError = (body: { ok: true; value: unknown } | { ok: false; text: string }, fallback: string): string => {
+	if (body.ok && isRecord(body.value) && isString(body.value.error)) {
+		return body.value.error
+	}
+	return body.ok ? fallback : `${fallback}: ${body.text}`
 }
 
 export class ComfyUIBridgeService {
@@ -399,11 +471,11 @@ export class ComfyUIBridgeService {
 	}
 
 	private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit, tag = 'comfyui'): Promise<Response> {
-		const url = typeof input === 'string' ? input : (input as Request).url || String(input)
+		const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
 		const method = String(init?.method || 'GET').toUpperCase()
 		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 		try {
-			const res = await fetch(input as any, init)
+			const res = await fetch(input, init)
 			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 			logBlueprintRequest({
 				url,
@@ -413,13 +485,13 @@ export class ComfyUIBridgeService {
 				tag,
 			})
 			return res
-		} catch (err) {
+		} catch (err: unknown) {
 			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				durationMs: Math.max(0, Math.round(end - start)),
-				errorMessage: err instanceof Error ? err.message : String(err),
+				errorMessage: getErrorMessage(err),
 				tag,
 			})
 			throw err
@@ -437,21 +509,19 @@ export class ComfyUIBridgeService {
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			if (body.ok && body.value && typeof body.value === 'object') {
+			if (body.ok && isRecord(body.value)) {
+				const errorMsg = isString(body.value.error) ? body.value.error : `blueprint/chat failed: ${res.status}`
 				return {
 					ok: false,
 					status: res.status,
-					error:
-						typeof (body.value as any).error === 'string'
-							? String((body.value as any).error)
-							: `blueprint/chat failed: ${res.status}`,
-					...(body.value as any),
-				}
+					error: errorMsg,
+					...body.value,
+				} as BlueprintChatResponse
 			}
 			return {
 				ok: false,
 				status: res.status,
-				error: `blueprint/chat failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: extractErrorMessage(body, `blueprint/chat failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as BlueprintChatResponse
@@ -504,8 +574,11 @@ export class ComfyUIBridgeService {
 
 			if (name === 'error') {
 				try {
-					const v = JSON.parse(data)
-					const msg = typeof (v as any)?.message === 'string' ? String((v as any).message) : 'SSE error'
+					const v: unknown = JSON.parse(data)
+					let msg = 'SSE error'
+					if (isRecord(v) && isString(v.message)) {
+						msg = v.message
+					}
 					return [{ type: 'error', error: { message: msg, details: v } }]
 				} catch {
 					return [{ type: 'error', error: { message: data || 'SSE error' } }]
@@ -514,12 +587,12 @@ export class ComfyUIBridgeService {
 
 			// default / msg
 			try {
-				const v = JSON.parse(data)
+				const v: unknown = JSON.parse(data)
 				if (isAgentToUiMessage(v)) return [{ type: 'msg', message: v }]
 				// ignore non AgentToUI payloads to keep stream stable
 				return []
-			} catch (e) {
-				return [{ type: 'error', error: { message: 'SSE msg JSON.parse failed', details: { raw: data, error: String(e) } } }]
+			} catch (e: unknown) {
+				return [{ type: 'error', error: { message: 'SSE msg JSON.parse failed', details: { raw: data, error: getErrorMessage(e) } } }]
 			}
 		}
 
@@ -562,16 +635,16 @@ export class ComfyUIBridgeService {
 		for (const ev of flush()) yield ev
 	}
 
-	async codexHealth(): Promise<any> {
+	async codexHealth(): Promise<CodexHealthResponse> {
 		const res = await this.fetchWithLog(this.localExecUrl('/health'), {
 			method: 'GET',
 			headers: jsonHeaders(this.devToken),
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			return { ok: false, error: `codex/health failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+			return { ok: false, error: extractErrorMessage(body, `codex/health failed: ${res.status}`) }
 		}
-		return await res.json()
+		return (await res.json()) as CodexHealthResponse
 	}
 
 	async codexListSessions(projectId: number | null): Promise<CodexListSessionsResponse> {
@@ -601,7 +674,7 @@ export class ComfyUIBridgeService {
 		return (await res.json()) as CodexCreateSessionResponse
 	}
 
-	async codexListMessages(sessionId: string, projectId: number | null): Promise<{ items?: any[]; error?: string }> {
+	async codexListMessages(sessionId: string, projectId: number | null): Promise<CodexListMessagesResponse> {
 		const sid = String(sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
 		const pid = Number.isFinite(projectId as number) ? Number(projectId) : NaN
@@ -612,12 +685,12 @@ export class ComfyUIBridgeService {
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			return { error: `codex/messages failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+			return { error: extractErrorMessage(body, `codex/messages failed: ${res.status}`) }
 		}
-		return await res.json()
+		return (await res.json()) as CodexListMessagesResponse
 	}
 
-	async codexUpdateSession(payload: { sessionId: string; projectId: number | null; title: string }): Promise<{ error?: string; [k: string]: any }> {
+	async codexUpdateSession(payload: { sessionId: string; projectId: number | null; title: string }): Promise<CodexUpdateSessionResponse> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
 		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}`), {
@@ -627,9 +700,9 @@ export class ComfyUIBridgeService {
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			return { error: `codex/session patch failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+			return { error: extractErrorMessage(body, `codex/session patch failed: ${res.status}`) }
 		}
-		return await res.json()
+		return (await res.json()) as CodexUpdateSessionResponse
 	}
 
 	async codexDeleteSession(payload: { sessionId: string; projectId: number | null }): Promise<{ ok?: boolean; error?: string }> {
@@ -654,11 +727,11 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/approvals`), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ message_id: payload.messageId, decision: payload.decision, projectId: (payload as any).projectId ?? null }),
+			body: JSON.stringify({ message_id: payload.messageId, decision: payload.decision, projectId: payload.projectId ?? null }),
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			return { error: `codex/approvals failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+			return { error: extractErrorMessage(body, `codex/approvals failed: ${res.status}`) }
 		}
 		return (await res.json()) as CodexApprovalResponse
 	}
@@ -718,9 +791,9 @@ export class ComfyUIBridgeService {
 			eventName = undefined
 			dataLines = []
 			if (ev === 'done') return [{ type: 'done' }]
-			let parsed: any = dataText
+			let parsed: unknown = dataText
 			try {
-				parsed = dataText ? JSON.parse(dataText) : {}
+				parsed = dataText ? JSON.parse(dataText) as unknown : {}
 			} catch {
 				parsed = { raw: dataText }
 			}
@@ -891,21 +964,19 @@ export class ComfyUIBridgeService {
 
 			if (name === 'done') return [{ type: 'done' }]
 			if (name === 'error') {
-				try {
-					const obj = JSON.parse(data)
-					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
-				} catch {
-					return [{ type: 'error', error: { message: data || 'error' } }]
-				}
+				const err = parseSseError(data)
+				return [{ type: 'error', error: err }]
 			}
 			// default to msg
+			const msg = parseSseAgentMessage(data)
+			if (msg) return [{ type: 'msg', message: msg }]
+			let errDetails: unknown = data
 			try {
-				const obj = JSON.parse(data)
-				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
-				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
-			} catch (e) {
-				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+				errDetails = JSON.parse(data) as unknown
+			} catch {
+				// keep raw data
 			}
+			return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: errDetails } }]
 		}
 
 		try {
@@ -987,20 +1058,18 @@ export class ComfyUIBridgeService {
 
 			if (name === 'done') return [{ type: 'done' }]
 			if (name === 'error') {
-				try {
-					const obj = JSON.parse(data)
-					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
-				} catch {
-					return [{ type: 'error', error: { message: data || 'error' } }]
-				}
+				const err = parseSseError(data)
+				return [{ type: 'error', error: err }]
 			}
+			const msg = parseSseAgentMessage(data)
+			if (msg) return [{ type: 'msg', message: msg }]
+			let errDetails: unknown = data
 			try {
-				const obj = JSON.parse(data)
-				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
-				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
-			} catch (e) {
-				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+				errDetails = JSON.parse(data) as unknown
+			} catch {
+				// keep raw data
 			}
+			return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: errDetails } }]
 		}
 
 		try {
@@ -1408,21 +1477,20 @@ export class ComfyUIBridgeService {
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			if (body.ok && body.value && typeof body.value === 'object') {
+			if (body.ok && isRecord(body.value)) {
+				const errorMsg = isString(body.value.error) ? body.value.error : `run failed: ${res.status}`
 				return {
 					ok: false,
 					status: res.status,
 					baseUrl: comfyBaseUrl,
-					error: typeof (body.value as any).error === 'string'
-						? String((body.value as any).error)
-						: `run failed: ${res.status}`,
-					...(body.value as any),
-				}
+					error: errorMsg,
+					...body.value,
+				} as RunResponse
 			}
 			return {
 				ok: false,
 				status: res.status,
-				error: `run failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: extractErrorMessage(body, `run failed: ${res.status}`),
 				baseUrl: comfyBaseUrl,
 			}
 		}
@@ -1447,7 +1515,7 @@ export class ComfyUIBridgeService {
 		return (await res.json()) as OutputsResponse
 	}
 
-	async meshyGenerate(payload: Record<string, any>): Promise<MeshyGenerateResponse> {
+	async meshyGenerate(payload: Record<string, unknown>): Promise<MeshyGenerateResponse> {
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -1458,28 +1526,28 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `meshy/generate failed: ${res.status}`) : `meshy/generate failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `meshy/generate failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as MeshyGenerateResponse
 	}
 
 	async meshyGenerateImage(form: FormData): Promise<MeshyGenerateResponse> {
-		const payload: Record<string, any> = {}
+		const payload: Record<string, unknown> = {}
 		const refImageUrls: string[] = []
 
-		// 遍历 FormData 中的所有字段
-		const entries = (form as any).entries ? Array.from((form as any).entries() as IterableIterator<[string, any]>) : []
-		for (const [key, value] of entries) {
-			if (key === 'refImages' && (value instanceof File || value instanceof Blob)) {
-				const buffer = await value.arrayBuffer()
+		const formAny = form as unknown as { entries: () => IterableIterator<[string, FormDataEntryValue]> }
+		for (const [key, value] of Array.from(formAny.entries())) {
+			if (key === 'refImages' && value instanceof File) {
+				const fileValue = value
+				const buffer = await fileValue.arrayBuffer()
 				const bytes = new Uint8Array(buffer)
 				let binary = ''
 				for (let i = 0; i < bytes.length; i++) {
 					binary += String.fromCharCode(bytes[i])
 				}
 				const b64 = btoa(binary)
-				const mime = value.type || 'image/png'
+				const mime = fileValue.type || 'image/png'
 				refImageUrls.push(`data:${mime};base64,${b64}`)
 			} else {
 				payload[key] = value
@@ -1500,7 +1568,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `meshy/generate failed: ${res.status}`) : `meshy/generate failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `meshy/generate failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as MeshyGenerateResponse
@@ -1517,7 +1585,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `meshy/task failed: ${res.status}`) : `meshy/task failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `meshy/task failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as MeshyTaskResponse
@@ -1544,7 +1612,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `meshy/tasks failed: ${res.status}`) : `meshy/tasks failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `meshy/tasks failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as MeshyTasksListResponse
@@ -1561,7 +1629,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `meshy/task-detail failed: ${res.status}`) : `meshy/task-detail failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `meshy/task-detail failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as MeshyTaskDetailResponse
@@ -1586,7 +1654,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `seedance/tasks failed: ${res.status}`) : `seedance/tasks failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `seedance/tasks failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as SeedanceTasksListResponse
@@ -1603,7 +1671,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `seedance/task-detail failed: ${res.status}`) : `seedance/task-detail failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `seedance/task-detail failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as SeedanceTaskDetailResponse
@@ -1628,7 +1696,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `seedance/tasks:sync failed: ${res.status}`) : `seedance/tasks:sync failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `seedance/tasks:sync failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as SeedanceSyncTasksResponse
@@ -1645,7 +1713,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `meshy/stop failed: ${res.status}`) : `meshy/stop failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `meshy/stop failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as MeshyTaskActionResponse
@@ -1662,7 +1730,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `meshy/delete failed: ${res.status}`) : `meshy/delete failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `meshy/delete failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as MeshyTaskActionResponse
@@ -1678,7 +1746,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: body.ok ? String((body.value as any)?.error || `meshy/balance failed: ${res.status}`) : `meshy/balance failed: ${res.status} ${body.text}`,
+				error: extractBodyError(body, `meshy/balance failed: ${res.status}`),
 			}
 		}
 		return (await res.json()) as MeshyBalanceResponse
@@ -1695,7 +1763,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: `cancel failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: extractErrorMessage(body, `cancel failed: ${res.status}`),
 				baseUrl: comfyBaseUrl,
 			}
 		}
@@ -1713,7 +1781,7 @@ export class ComfyUIBridgeService {
 			return {
 				ok: false,
 				status: res.status,
-				error: `job failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: extractErrorMessage(body, `job failed: ${res.status}`),
 				baseUrl: comfyBaseUrl,
 			}
 		}

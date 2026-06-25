@@ -2487,7 +2487,7 @@ const previewTemplate = async (t: TemplateItem) => {
 					paletteCount: Array.isArray((promptInput as any)?.palette) ? (promptInput as any).palette.length : 0,
 					paletteLocked: (promptInput as any)?.paletteLocked,
 					requireGlow: (promptInput as any)?.requireGlow,
-					backendBaseUrl: baseUrlOverride || (import.meta as any)?.env?.VITE_BACKEND_BASE_URL || baseUrlStorage || '(same-origin/proxy)',
+				backendBaseUrl: baseUrlOverride || import.meta.env.VITE_BACKEND_BASE_URL || baseUrlStorage || '(same-origin/proxy)',
 				})
 			} catch {
 				// ignore

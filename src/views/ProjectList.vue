@@ -215,12 +215,14 @@ import { isElectron } from "../electronBridge"
 import { useStartupProgress } from "../composables/useStartupProgress"
 import { useSquareParticles, type SquareParticlesResult } from "../composables/useSquareParticles"
 import GlobalPageBackground from "../ui/UIComponent/GlobalPageBackground.vue"
+import { getErrorMessage } from "../types/utils"
 import "../styles/project-list.css"
 import "../styles/square-particles.css"
 
 type ProjectCardItem = {
   id: number
   name: string
+  rootPath?: string
   createdAt: number | null
   updatedAt: number | null
 }
@@ -286,8 +288,7 @@ function formatProjectId(id: number): string {
 }
 
 const localDbBridge = () => {
-  const dweb = (window as unknown as { dweb?: { aiworkflow?: { db?: { projects?: { list?: () => Promise<unknown> } } } } }).dweb
-  return dweb?.aiworkflow?.db?.projects?.list
+  return window.dweb?.aiworkflow?.db?.projects?.list
 }
 
 async function runStartupCheckSequence() {
@@ -305,15 +306,13 @@ async function runStartupCheckSequence() {
   }
 
   await startupProgress.runStep('localdb.init', '初始化本地数据库', async () => {
-    const dbBridge = (window as unknown as {
-      dweb?: { aiworkflow?: { db?: { _initState?: () => Promise<{ ok?: boolean; error?: string; dbFilePath?: string }>; _ensureInitialized?: (payload?: any) => Promise<{ ok?: boolean; error?: string }> } } }
-    })?.dweb?.aiworkflow?.db
+    const dbBridge = window.dweb?.aiworkflow?.db
     if (!dbBridge) {
       startupProgress.updateStep('localdb.init', { status: 'warn', detail: 'IPC 桥不可用，将使用后端数据' })
       return 'fallback'
     }
     const initState = await withTimeout('localdb.init', () => Promise.resolve(dbBridge._initState?.()).then((v) => v ?? ({ ok: false, error: '未实现' })), 5000)
-    if (initState?.ok) return `已就绪 @ ${String((initState as any).dbFilePath || 'default')}`
+    if (initState?.ok) return `已就绪 @ ${String(initState.dbFilePath || 'default')}`
     const retry = await withTimeout('localdb.ensureInitialized', () => Promise.resolve(dbBridge._ensureInitialized?.({})).then((v) => v ?? ({ ok: false, error: '未实现' })), 5000)
     if (!retry?.ok) {
       const errMsg = String(retry?.error || '本地数据库初始化失败')
@@ -332,11 +331,21 @@ async function runStartupCheckSequence() {
     let rows: unknown
     try {
       rows = await withTimeout('localdb.projects.list', () => Promise.resolve(listFn()), 5000)
-    } catch (e) {
-      startupProgress.updateStep('localdb.open', { status: 'warn', detail: String((e as any)?.message ?? e ?? '本地数据库调用失败') })
+    } catch (e: unknown) {
+      startupProgress.updateStep('localdb.open', { status: 'warn', detail: getErrorMessage(e) || '本地数据库调用失败' })
       return -1
     }
-    const arr = Array.isArray(rows) ? rows : (rows && typeof rows === 'object' && Array.isArray((rows as any)?.projects) ? (rows as any).projects : [])
+    let arr: unknown[] = []
+    if (Array.isArray(rows)) {
+      arr = rows
+    } else if (rows != null && typeof rows === 'object') {
+      const obj = rows as { projects?: unknown; value?: unknown }
+      if (Array.isArray(obj.projects)) {
+        arr = obj.projects
+      } else if (Array.isArray(obj.value)) {
+        arr = obj.value
+      }
+    }
     return arr.length
   }, { errorDetailOnFailure: true })
   if (dbOpenResult.ok && typeof dbOpenResult.value === 'number' && dbOpenResult.value >= 0) {
@@ -409,13 +418,16 @@ async function refreshProjects(silent = false) {
     if (isElectron() && typeof localDbBridge() === 'function') {
       usedLocal = true
       const raw = await localDbBridge()!.call(null)
-      list = Array.isArray(raw)
-        ? raw
-        : raw && typeof raw === 'object' && Array.isArray((raw as any)?.projects)
-          ? (raw as any).projects
-          : raw && typeof raw === 'object' && Array.isArray((raw as any)?.value)
-            ? (raw as any).value
-            : []
+      if (Array.isArray(raw)) {
+        list = raw
+      } else if (raw != null && typeof raw === 'object') {
+        const obj = raw as { projects?: unknown; value?: unknown }
+        if (Array.isArray(obj.projects)) {
+          list = obj.projects
+        } else if (Array.isArray(obj.value)) {
+          list = obj.value
+        }
+      }
     } else {
       const res = await blueprintProjectService.listProjects()
       if (!res || !(res as { ok?: boolean }).ok) {
@@ -447,10 +459,8 @@ async function refreshProjects(silent = false) {
     if (usedLocal) {
       // synced hint placeholder (non-blocking)
     }
-  } catch (e) {
-    const err = String(
-      (e as { message?: string })?.message || e || "加载项目列表失败。"
-    )
+  } catch (e: unknown) {
+    const err = getErrorMessage(e) || "加载项目列表失败。"
     if (!silent) loadError.value = err
   } finally {
     loading.value = false
@@ -472,18 +482,7 @@ async function onClickNewProject() {
     loadError.value = "新建项目需要选择本地文件夹，当前运行环境不支持。"
     return
   }
-  const bridge = (
-    window as unknown as {
-      dweb?: {
-        aiworkflow?: {
-          selectProjectFolder?: () => Promise<{
-            canceled?: boolean
-            filePaths?: string[]
-          }>
-        }
-      }
-    }
-  )?.dweb?.aiworkflow
+  const bridge = window.dweb?.aiworkflow
   if (typeof bridge?.selectProjectFolder !== "function") {
     loadError.value = "当前运行环境不支持选择项目文件夹。"
     return
@@ -502,10 +501,8 @@ async function onClickNewProject() {
     pendingRootPath.value = rootPath
     newProjectName.value = ''
     newProjectDialog.value?.showModal()
-  } catch (e) {
-    loadError.value = String(
-      (e as { message?: string })?.message || e || "选择项目文件夹失败。"
-    )
+  } catch (e: unknown) {
+    loadError.value = getErrorMessage(e) || "选择项目文件夹失败。"
   }
 }
 
@@ -514,11 +511,7 @@ async function onNewProjectDialogConfirm() {
   creating.value = true
   newProjectDialog.value?.close()
   try {
-    const dbBridge = (
-      window as unknown as {
-        dweb?: { aiworkflow?: { db?: { _initState?: () => Promise<{ ok?: boolean; error?: string }>; _ensureInitialized?: (payload?: any) => Promise<{ ok?: boolean; error?: string }> } } }
-      }
-    )?.dweb?.aiworkflow?.db
+    const dbBridge = window.dweb?.aiworkflow?.db
     if (dbBridge) {
       const initState = await dbBridge._initState?.()
       if (!initState?.ok) {
@@ -529,23 +522,7 @@ async function onNewProjectDialogConfirm() {
         }
       }
     }
-    const openFolderBridge = (
-      window as unknown as {
-        dweb?: {
-          aiworkflow?: {
-            db?: {
-              projects?: {
-                openFolder?: (payload: { rootPath: string; name: string; create: boolean }) => Promise<{
-                  ok?: boolean
-                  project?: { id: number }
-                  error?: string
-                }>
-              }
-            }
-          }
-        }
-      }
-    )?.dweb?.aiworkflow?.db?.projects?.openFolder
+    const openFolderBridge = window.dweb?.aiworkflow?.db?.projects?.openFolder
     if (typeof openFolderBridge !== 'function') {
       loadError.value = "当前运行环境不支持创建项目。"
       return
@@ -564,10 +541,8 @@ async function onNewProjectDialogConfirm() {
       name: "AIWorkflow",
       query: { projectId: String(projectId) },
     })
-  } catch (e) {
-    loadError.value = String(
-      (e as { message?: string })?.message || e || "创建项目失败。"
-    )
+  } catch (e: unknown) {
+    loadError.value = getErrorMessage(e) || "创建项目失败。"
   } finally {
     creating.value = false
   }
@@ -585,12 +560,16 @@ async function onClickDeleteProject(project: ProjectCardItem) {
   try {
     let succeeded = false
     let errorMsg = "删除项目失败。"
-    const del = (window as unknown as { dweb?: { aiworkflow?: { db?: { projects?: { delete?: (payload: { id: number }) => Promise<unknown> } } } } }).dweb?.aiworkflow?.db?.projects?.delete
+    const del = window.dweb?.aiworkflow?.db?.projects?.delete
+    type DeleteResult = { ok?: boolean; error?: string } | boolean | unknown[] | number
     if (isElectron() && typeof del === 'function') {
       const raw = await del({ id: project.id })
-      succeeded = (raw && typeof raw === 'object' && (raw as any).ok) === true || raw === true || (Array.isArray(raw) || typeof raw === 'number')
-      if (!succeeded && raw && typeof raw === 'object' && (raw as any).error) {
-        errorMsg = String((raw as any).error)
+      const deleteRes = raw as DeleteResult
+      succeeded = (deleteRes != null && typeof deleteRes === 'object' && 'ok' in deleteRes && deleteRes.ok === true)
+        || deleteRes === true
+        || (Array.isArray(deleteRes) || typeof deleteRes === 'number')
+      if (!succeeded && deleteRes != null && typeof deleteRes === 'object' && 'error' in deleteRes && deleteRes.error) {
+        errorMsg = String(deleteRes.error)
       }
     } else {
       const res = await blueprintProjectService.deleteProject(project.id)
@@ -605,10 +584,8 @@ async function onClickDeleteProject(project: ProjectCardItem) {
       return
     }
     await refreshProjects(true)
-  } catch (e) {
-    loadError.value = String(
-      (e as { message?: string })?.message || e || "删除项目失败。"
-    )
+  } catch (e: unknown) {
+    loadError.value = getErrorMessage(e) || "删除项目失败。"
   } finally {
     deletingId.value = null
   }

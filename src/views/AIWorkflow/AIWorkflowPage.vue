@@ -2376,16 +2376,16 @@ const buildProjectAssetRuntimeUrl = (projectId: number, projectRelativePath: str
   return String(fallbackUrl || '').trim()
 }
 const shouldAutoHelloOnLaunch = (() => {
-  const envFlag = String((import.meta as any)?.env?.VITE_AIWF_AUTO_HELLO || '').trim().toLowerCase()
+  const envFlag = String(import.meta.env.VITE_AIWF_AUTO_HELLO || '').trim().toLowerCase()
   if (envFlag === '1' || envFlag === 'true' || envFlag === 'yes' || envFlag === 'on') return true
-  const winFlag = String((window as any)?.__DWEB_AIWF_AUTO_HELLO || '').trim().toLowerCase()
+  const winFlag = String(window?.__DWEB_AIWF_AUTO_HELLO || '').trim().toLowerCase()
   if (winFlag === '1' || winFlag === 'true' || winFlag === 'yes' || winFlag === 'on') return true
   return false
 })()
 const resolveAutoHelloText = () => {
-  const envText = String((import.meta as any)?.env?.VITE_AIWF_AUTO_HELLO_TEXT || '').trim()
+  const envText = String(import.meta.env.VITE_AIWF_AUTO_HELLO_TEXT || '').trim()
   if (envText) return envText
-  const winText = String((window as any)?.__DWEB_AIWF_AUTO_HELLO_TEXT || '').trim()
+  const winText = String(window?.__DWEB_AIWF_AUTO_HELLO_TEXT || '').trim()
   if (winText) return winText
   return '你好'
 }
@@ -4085,9 +4085,8 @@ const onNodeThreePreviewError = (nodeId: string) => {
 }
 
 const resolveLocalExecBasePath = () => {
-  const w = window as any
-  const fromWindow = typeof w?.__DWEB_LOCAL_EXEC_BASE_PATH === 'string' ? String(w.__DWEB_LOCAL_EXEC_BASE_PATH) : ''
-  const fromEnv = String((import.meta as any)?.env?.VITE_LOCAL_EXEC_BASE_PATH || '')
+  const fromWindow = typeof window?.__DWEB_LOCAL_EXEC_BASE_PATH === 'string' ? String(window.__DWEB_LOCAL_EXEC_BASE_PATH) : ''
+  const fromEnv = String(import.meta.env.VITE_LOCAL_EXEC_BASE_PATH || '')
   const fromStorage = String(localStorage.getItem('dweb.localExecBasePath') || '')
   if (!fromWindow && !fromEnv && fromStorage.trim().toLowerCase() === 'codex') return 'copilot'
   const candidate = String(fromWindow || fromEnv || fromStorage || 'copilot').trim()
@@ -4095,9 +4094,8 @@ const resolveLocalExecBasePath = () => {
 }
 
 const resolveLocalExecStreamMode = (): 'real' | 'mock' => {
-  const w = window as any
-  const fromWindow = typeof w?.__DWEB_LOCAL_EXEC_STREAM_MODE === 'string' ? String(w.__DWEB_LOCAL_EXEC_STREAM_MODE) : ''
-  const fromEnv = String((import.meta as any)?.env?.VITE_LOCAL_EXEC_STREAM_MODE || '')
+  const fromWindow = typeof window?.__DWEB_LOCAL_EXEC_STREAM_MODE === 'string' ? String(window.__DWEB_LOCAL_EXEC_STREAM_MODE) : ''
+  const fromEnv = String(import.meta.env.VITE_LOCAL_EXEC_STREAM_MODE || '')
   const fromStorage = String(localStorage.getItem('dweb.localExecStreamMode') || '')
   const candidate = String(fromWindow || fromEnv || fromStorage || 'real').trim().toLowerCase()
   return candidate === 'mock' ? 'mock' : 'real'
