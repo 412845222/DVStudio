@@ -1,4 +1,6 @@
 import type { WorkflowState, WorkflowSelectionTag } from '../types'
+import type { WorkflowResource } from '../resource/types'
+import { isRecord, isArray, isString } from '../../types/utils'
 
 export const AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION = 1 as const
 
@@ -14,25 +16,34 @@ export type AIWorkflowDraftSnapshot = {
   resourceOrder: WorkflowState['resourceOrder']
   selectedNodeId: WorkflowState['selectedNodeId']
   selectedNodeIds: WorkflowState['selectedNodeIds']
-  /** 多选标签记录（按 key 索引） */
   selectionTagsByKey?: Record<string, WorkflowSelectionTag>
-  /** 已保存的选区框列表（持久化实体） */
   savedSelectionFrames?: import('../types').SavedSelectionFrame[]
-  /** 是否显示节点级多选框 */
   nodeCheckboxVisible?: boolean
 }
 
-export const isValidBlueprintSnapshot = (v: any): v is AIWorkflowDraftSnapshot => {
-  if (!v || typeof v !== 'object') return false
-  if (Number((v as any).schemaVersion) !== AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION) return false
+type LegacySnapshot = {
+  schemaVersion?: unknown
+  viewport?: unknown
+  nodesById?: unknown
+  nodeOrder?: unknown
+  edgesById?: unknown
+  edgeOrder?: unknown
+  resourcesById?: unknown
+  resourceOrder?: unknown
+}
+
+export const isValidBlueprintSnapshot = (v: unknown): v is AIWorkflowDraftSnapshot => {
+  if (!isRecord(v)) return false
+  const rec = v as LegacySnapshot
+  if (Number(rec.schemaVersion) !== AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION) return false
   return (
-    typeof (v as any).viewport === 'object' &&
-    typeof (v as any).nodesById === 'object' &&
-    Array.isArray((v as any).nodeOrder) &&
-    typeof (v as any).edgesById === 'object' &&
-    Array.isArray((v as any).edgeOrder) &&
-    typeof (v as any).resourcesById === 'object' &&
-    Array.isArray((v as any).resourceOrder)
+    isRecord(rec.viewport) &&
+    isRecord(rec.nodesById) &&
+    isArray(rec.nodeOrder) &&
+    isRecord(rec.edgesById) &&
+    isArray(rec.edgeOrder) &&
+    isRecord(rec.resourcesById) &&
+    isArray(rec.resourceOrder)
   )
 }
 
@@ -50,11 +61,9 @@ export const buildSnapshotFromState = (state: WorkflowState): AIWorkflowDraftSna
     selectedNodeId: state.selectedNodeId,
     selectedNodeIds: state.selectedNodeIds,
   }
-  // 多选标签持久化
   if (state.selectionTagsByKey && Object.keys(state.selectionTagsByKey).length) {
     snapshot.selectionTagsByKey = state.selectionTagsByKey
   }
-  // 已保存选区框持久化
   if (state.savedSelectionFrames && state.savedSelectionFrames.length) {
     snapshot.savedSelectionFrames = state.savedSelectionFrames
   }
@@ -62,21 +71,27 @@ export const buildSnapshotFromState = (state: WorkflowState): AIWorkflowDraftSna
   return snapshot
 }
 
+type LegacyResource = Record<string, unknown> & {
+  url?: unknown
+  posterUrl?: unknown
+}
+
 export const normalizeSnapshotResourceUrls = (
   snapshot: AIWorkflowDraftSnapshot,
   resolveUrl: (url: string) => string
 ): AIWorkflowDraftSnapshot => {
-  const resourcesById: WorkflowState['resourcesById'] = {}
+  const resourcesById: Record<string, WorkflowResource> = {}
   for (const rid of snapshot.resourceOrder) {
     const r = snapshot.resourcesById?.[rid]
     if (!r) continue
-    const rawUrl = typeof (r as any).url === 'string' ? String((r as any).url) : ''
-    const rawPosterUrl = typeof (r as any).posterUrl === 'string' ? String((r as any).posterUrl) : ''
+    const legacyR = r as LegacyResource
+    const rawUrl = isString(legacyR.url) ? String(legacyR.url) : ''
+    const rawPosterUrl = isString(legacyR.posterUrl) ? String(legacyR.posterUrl) : ''
     resourcesById[rid] = {
-      ...(r as any),
+      ...r,
       url: resolveUrl(rawUrl),
-			posterUrl: rawPosterUrl ? resolveUrl(rawPosterUrl) : undefined,
-    } as any
+      posterUrl: rawPosterUrl ? resolveUrl(rawPosterUrl) : undefined,
+    }
   }
   return {
     ...snapshot,
