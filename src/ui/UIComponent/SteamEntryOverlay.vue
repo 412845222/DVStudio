@@ -3,13 +3,21 @@
 		<div v-if="visible" class="steam-entry-overlay">
 			<div class="steam-entry-backdrop" @click="handleBackdropClick"></div>
 			<div class="steam-entry-card" :class="{ 'is-connected': isConnected }">
+				<div class="card-particles" aria-hidden="true">
+					<span
+						v-for="p in particles"
+						:key="p.id"
+						class="sq-particle"
+						:style="p.style"
+					></span>
+				</div>
+
 				<div class="steam-entry-header">
 					<div class="steam-logo">
 						<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
-							<circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+							<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" />
+							<circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8" />
 							<circle cx="12" cy="12" r="1.5" fill="currentColor" />
-							<path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
 						</svg>
 					</div>
 					<div class="steam-title">
@@ -20,18 +28,11 @@
 
 				<div v-if="isConnected && user" class="steam-user-info">
 					<div class="steam-avatar-wrapper">
-						<div v-if="user.avatarUrl" class="steam-avatar" :style="{ backgroundImage: `url(${user.avatarUrl})` }"></div>
-						<div v-else class="steam-avatar steam-avatar-placeholder">
-							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-								<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2" />
-								<path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-							</svg>
-						</div>
-						<div class="steam-avatar-status online"></div>
+						<UserAvatar :src="user.avatarUrl" size="lg" status="online" />
 					</div>
 					<div class="steam-user-details">
 						<div class="steam-user-name">{{ user.displayName }}</div>
-						<div class="steam-user-id">SteamID: {{ user.steamId || 'Unknown' }}</div>
+						<div class="steam-user-id">{{ user.platformId ? `SteamID: ${user.platformId}` : '' }}</div>
 					</div>
 				</div>
 
@@ -43,12 +44,12 @@
 				</div>
 
 				<div v-if="isConnected" class="steam-actions">
-					<button class="steam-btn steam-btn-primary" @click="openOverlay">
+					<button class="steam-btn steam-btn-primary" @click="openPanel">
 						<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-							<rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" />
-							<path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="2" />
+							<rect x="3" y="3" width="18" height="18" stroke="currentColor" stroke-width="1.8" />
+							<path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="1.8" />
 						</svg>
-						打开 Steam Overlay
+						打开 Steam 面板
 					</button>
 					<button class="steam-btn steam-btn-secondary" @click="closeOverlay">
 						开始使用
@@ -57,15 +58,20 @@
 
 				<div v-if="error" class="steam-error">
 					<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-						<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
-						<path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+						<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8" />
+						<path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
 					</svg>
 					<span>{{ error }}</span>
 				</div>
 
 				<div class="steam-footer">
-					<span class="steam-hint">按 Shift+Tab 可随时唤出 Steam Overlay</span>
+					<span class="steam-hint">按 Shift+Tab 可随时打开 Steam 面板</span>
 				</div>
+
+				<div class="card-corner-decoration top-left" aria-hidden="true"></div>
+				<div class="card-corner-decoration top-right" aria-hidden="true"></div>
+				<div class="card-corner-decoration bottom-left" aria-hidden="true"></div>
+				<div class="card-corner-decoration bottom-right" aria-hidden="true"></div>
 			</div>
 		</div>
 	</Transition>
@@ -73,6 +79,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useSquareParticles } from '../../composables/useSquareParticles'
+import { UserAvatar } from '../User'
 
 interface Props {
 	visible: boolean
@@ -80,6 +88,7 @@ interface Props {
 	isConnected: boolean
 	user: {
 		displayName: string
+		platformId?: string
 		steamId?: string
 		avatarUrl?: string | null
 	} | null
@@ -95,8 +104,10 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
 	(e: 'close'): void
-	(e: 'open-overlay'): void
+	(e: 'open-panel'): void
 }>()
+
+const { particles } = useSquareParticles({ count: 14, seed: 123, baseOpacity: 0.35 })
 
 const statusText = computed(() => {
 	if (props.error) return '连接失败'
@@ -115,12 +126,14 @@ function closeOverlay() {
 	emit('close')
 }
 
-function openOverlay() {
-	emit('open-overlay')
+function openPanel() {
+	emit('open-panel')
 }
 </script>
 
 <style scoped>
+@import "../../styles/square-particles.css";
+
 .steam-entry-overlay {
 	position: fixed;
 	inset: 0;
@@ -134,40 +147,100 @@ function openOverlay() {
 	position: absolute;
 	inset: 0;
 	background: rgba(0, 0, 0, 0.75);
-	backdrop-filter: blur(8px);
-	-webkit-backdrop-filter: blur(8px);
+	backdrop-filter: blur(6px);
+	-webkit-backdrop-filter: blur(6px);
 }
 
 .steam-entry-card {
 	position: relative;
-	width: 420px;
+	width: 440px;
 	max-width: 90vw;
-	background: linear-gradient(145deg, #1b2838 0%, #16202d 100%);
-	border: 1px solid rgba(102, 192, 244, 0.3);
-	border-radius: 16px;
+	background: color-mix(in srgb, var(--theme-bg-secondary, #1e1e1e) 96%, transparent);
+	border: 2px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	padding: 32px;
-	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 80px rgba(102, 192, 244, 0.15);
-	animation: steam-card-pulse 2s ease-in-out infinite;
+	box-shadow:
+		0 24px 80px rgba(0, 0, 0, 0.7),
+		0 0 100px color-mix(in srgb, var(--theme-accent, #1f9d84) 10%, transparent),
+		inset 0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 5%, transparent);
+	animation: steam-card-pulse 2.5s ease-in-out infinite;
+	overflow: hidden;
+	border-radius: 0;
 }
 
 .steam-entry-card.is-connected {
 	animation: none;
-	border-color: rgba(102, 192, 244, 0.6);
-	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 100px rgba(102, 192, 244, 0.25);
+	border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 60%, transparent);
+	box-shadow:
+		0 24px 80px rgba(0, 0, 0, 0.7),
+		0 0 120px color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent),
+		0 0 40px color-mix(in srgb, var(--theme-accent, #1f9d84) 8%, transparent),
+		inset 0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 12%, transparent);
+}
+
+.card-particles {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	overflow: hidden;
+	opacity: 0.5;
+	z-index: 0;
+}
+
+.card-corner-decoration {
+	position: absolute;
+	width: 16px;
+	height: 16px;
+	border: 2px solid var(--theme-accent, #1f9d84);
+	opacity: 0.6;
+}
+
+.card-corner-decoration.top-left {
+	top: 6px;
+	left: 6px;
+	border-right: none;
+	border-bottom: none;
+}
+
+.card-corner-decoration.top-right {
+	top: 6px;
+	right: 6px;
+	border-left: none;
+	border-bottom: none;
+}
+
+.card-corner-decoration.bottom-left {
+	bottom: 6px;
+	left: 6px;
+	border-right: none;
+	border-top: none;
+}
+
+.card-corner-decoration.bottom-right {
+	bottom: 6px;
+	right: 6px;
+	border-left: none;
+	border-top: none;
 }
 
 @keyframes steam-card-pulse {
 	0%, 100% {
-		border-color: rgba(102, 192, 244, 0.3);
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 80px rgba(102, 192, 244, 0.15);
+		border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
+		box-shadow:
+			0 24px 80px rgba(0, 0, 0, 0.7),
+			0 0 100px color-mix(in srgb, var(--theme-accent, #1f9d84) 8%, transparent);
 	}
 	50% {
-		border-color: rgba(102, 192, 244, 0.5);
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 100px rgba(102, 192, 244, 0.3);
+		border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 50%, transparent);
+		box-shadow:
+			0 24px 80px rgba(0, 0, 0, 0.7),
+			0 0 130px color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent),
+			0 0 50px color-mix(in srgb, var(--theme-accent, #1f9d84) 10%, transparent);
 	}
 }
 
 .steam-entry-header {
+	position: relative;
+	z-index: 1;
 	display: flex;
 	align-items: center;
 	gap: 16px;
@@ -180,15 +253,19 @@ function openOverlay() {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: linear-gradient(135deg, #66c0f4 0%, #417a9b 100%);
-	border-radius: 14px;
+	background: linear-gradient(135deg, var(--theme-accent, #1f9d84) 0%, var(--pl-cold, #3aa8b4) 100%);
 	color: white;
 	flex-shrink: 0;
+	border: 2px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 60%, transparent);
+	box-shadow:
+		0 0 20px color-mix(in srgb, var(--theme-accent, #1f9d84) 40%, transparent),
+		inset 0 0 12px color-mix(in srgb, white 15%, transparent);
+	border-radius: 0;
 }
 
 .steam-logo svg {
-	width: 32px;
-	height: 32px;
+	width: 30px;
+	height: 30px;
 }
 
 .steam-title {
@@ -196,19 +273,27 @@ function openOverlay() {
 }
 
 .steam-title-main {
-	font-size: 22px;
+	font-size: 20px;
 	font-weight: 700;
-	color: #ffffff;
-	letter-spacing: 0.3px;
+	color: var(--theme-text-primary, #d4d4d4);
+	letter-spacing: 0.5px;
 	margin-bottom: 4px;
 }
 
 .steam-title-sub {
-	font-size: 14px;
-	color: #8f98a0;
+	font-size: 12px;
+	color: var(--theme-text-muted, #6e6e6e);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.steam-entry-card.is-connected .steam-title-sub {
+	color: var(--theme-accent, #1f9d84);
 }
 
 .steam-loading {
+	position: relative;
+	z-index: 1;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -217,18 +302,19 @@ function openOverlay() {
 }
 
 .steam-spinner {
-	width: 64px;
-	height: 64px;
+	width: 56px;
+	height: 56px;
 	position: relative;
 }
 
 .steam-spinner-ring {
-	width: 64px;
-	height: 64px;
-	border: 3px solid rgba(102, 192, 244, 0.2);
-	border-top-color: #66c0f4;
-	border-radius: 50%;
-	animation: steam-spin 1s linear infinite;
+	width: 56px;
+	height: 56px;
+	border: 3px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 12%, transparent);
+	border-top-color: var(--theme-accent, #1f9d84);
+	border-right-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 40%, transparent);
+	animation: steam-spin 0.9s linear infinite;
+	border-radius: 0;
 }
 
 @keyframes steam-spin {
@@ -238,63 +324,27 @@ function openOverlay() {
 }
 
 .steam-loading-text {
-	font-size: 14px;
-	color: #66c0f4;
+	font-size: 13px;
+	color: var(--theme-accent, #1f9d84);
+	letter-spacing: 0.03em;
 }
 
 .steam-user-info {
+	position: relative;
+	z-index: 1;
 	display: flex;
 	align-items: center;
 	gap: 16px;
 	padding: 20px;
-	background: rgba(102, 192, 244, 0.08);
-	border-radius: 12px;
+	background: color-mix(in srgb, var(--theme-accent, #1f9d84) 5%, transparent);
+	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
 	margin-bottom: 24px;
-	border: 1px solid rgba(102, 192, 244, 0.15);
+	border-radius: 0;
 }
 
 .steam-avatar-wrapper {
 	position: relative;
-	width: 64px;
-	height: 64px;
 	flex-shrink: 0;
-}
-
-.steam-avatar {
-	width: 64px;
-	height: 64px;
-	border-radius: 50%;
-	background-size: cover;
-	background-position: center;
-	background-color: #2a475e;
-	border: 3px solid #66c0f4;
-}
-
-.steam-avatar-placeholder {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	color: #66c0f4;
-}
-
-.steam-avatar-placeholder svg {
-	width: 32px;
-	height: 32px;
-}
-
-.steam-avatar-status {
-	position: absolute;
-	bottom: 2px;
-	right: 2px;
-	width: 16px;
-	height: 16px;
-	border-radius: 50%;
-	border: 3px solid #1b2838;
-}
-
-.steam-avatar-status.online {
-	background: #57cbde;
-	box-shadow: 0 0 8px rgba(87, 203, 222, 0.6);
 }
 
 .steam-user-details {
@@ -305,23 +355,27 @@ function openOverlay() {
 .steam-user-name {
 	font-size: 18px;
 	font-weight: 600;
-	color: #ffffff;
-	margin-bottom: 4px;
+	color: var(--theme-text-primary, #d4d4d4);
+	margin-bottom: 6px;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	letter-spacing: 0.02em;
 }
 
 .steam-user-id {
-	font-size: 12px;
-	color: #8f98a0;
+	font-size: 11px;
+	color: var(--theme-text-muted, #6e6e6e);
 	font-family: monospace;
+	letter-spacing: 0.04em;
 }
 
 .steam-actions {
+	position: relative;
+	z-index: 1;
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 10px;
 	margin-bottom: 20px;
 }
 
@@ -331,52 +385,67 @@ function openOverlay() {
 	justify-content: center;
 	gap: 10px;
 	padding: 14px 24px;
-	border-radius: 10px;
-	font-size: 15px;
+	font-size: 14px;
 	font-weight: 600;
 	cursor: pointer;
-	border: none;
-	transition: all 0.2s ease;
+	border: 2px solid transparent;
+	transition: all 180ms ease;
+	appearance: none;
+	-webkit-appearance: none;
+	letter-spacing: 0.03em;
+	border-radius: 0;
 }
 
 .steam-btn svg {
-	width: 20px;
-	height: 20px;
+	width: 18px;
+	height: 18px;
 }
 
 .steam-btn-primary {
-	background: linear-gradient(135deg, #66c0f4 0%, #417a9b 100%);
+	background: linear-gradient(135deg, var(--theme-accent, #1f9d84) 0%, var(--pl-cold, #3aa8b4) 100%);
 	color: white;
+	border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 70%, transparent);
+	box-shadow: 0 0 20px color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
 }
 
 .steam-btn-primary:hover {
-	background: linear-gradient(135deg, #7fcbf7 0%, #4d8fb5 100%);
-	transform: translateY(-1px);
-	box-shadow: 0 6px 20px rgba(102, 192, 244, 0.3);
+	background: linear-gradient(135deg, var(--theme-accent-hover, #27b99c) 0%, #4fb7c5 100%);
+	transform: translateY(-2px);
+	box-shadow:
+		0 8px 28px color-mix(in srgb, var(--theme-accent, #1f9d84) 35%, transparent),
+		0 0 30px color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent);
+	border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 90%, transparent);
+}
+
+.steam-btn-primary:active {
+	transform: translateY(0);
 }
 
 .steam-btn-secondary {
-	background: rgba(255, 255, 255, 0.08);
-	color: #c7d5e0;
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	background: color-mix(in srgb, var(--theme-text-primary, #d4d4d4) 4%, transparent);
+	color: var(--theme-text-secondary, #a0a0a0);
+	border-color: color-mix(in srgb, var(--theme-text-primary, #d4d4d4) 12%, transparent);
 }
 
 .steam-btn-secondary:hover {
-	background: rgba(255, 255, 255, 0.12);
-	color: #ffffff;
+	background: color-mix(in srgb, var(--theme-text-primary, #d4d4d4) 8%, transparent);
+	color: var(--theme-text-primary, #d4d4d4);
+	border-color: color-mix(in srgb, var(--theme-text-primary, #d4d4d4) 25%, transparent);
 }
 
 .steam-error {
+	position: relative;
+	z-index: 1;
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 12px 16px;
-	background: rgba(255, 82, 82, 0.1);
-	border: 1px solid rgba(255, 82, 82, 0.3);
-	border-radius: 8px;
+	padding: 14px 16px;
+	background: var(--theme-error-bg, rgba(241, 76, 76, 0.1));
+	border: 1px solid color-mix(in srgb, var(--theme-error, #f14c4c) 35%, transparent);
+	color: var(--theme-error, #f14c4c);
+	font-size: 13px;
 	margin-bottom: 16px;
-	color: #ff5252;
-	font-size: 14px;
+	border-radius: 0;
 }
 
 .steam-error svg {
@@ -386,18 +455,24 @@ function openOverlay() {
 }
 
 .steam-footer {
+	position: relative;
+	z-index: 1;
 	text-align: center;
+	padding-top: 4px;
+	border-top: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 12%, transparent);
+	padding-top: 14px;
 }
 
 .steam-hint {
-	font-size: 12px;
-	color: #5a6b7b;
+	font-size: 11px;
+	color: var(--theme-text-muted, #6e6e6e);
+	letter-spacing: 0.04em;
 }
 
 /* Transitions */
 .steam-overlay-enter-active,
 .steam-overlay-leave-active {
-	transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+	transition: all 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .steam-overlay-enter-from .steam-entry-backdrop,
@@ -409,5 +484,9 @@ function openOverlay() {
 .steam-overlay-leave-to .steam-entry-card {
 	opacity: 0;
 	transform: scale(0.9) translateY(20px);
+}
+
+.steam-overlay-enter-active .steam-entry-card {
+	transition-delay: 80ms;
 }
 </style>

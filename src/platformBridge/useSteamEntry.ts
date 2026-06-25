@@ -1,13 +1,12 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { usePlatform } from './usePlatform'
-import { overlayActivate } from './platform'
 
 const ENTRY_SHOWN_KEY = 'dweb-steam-entry-shown'
 const AUTO_DISMISS_DELAY = 3500
 const INITIAL_CONNECT_TIMEOUT = 8000
 
 export function useSteamEntry() {
-	const { isSteam, isMock, isLoggedIn, user, isRealPlatform, overlayEnabled } = usePlatform()
+	const { isSteam, isMock, isLoggedIn, user, isRealPlatform } = usePlatform()
 
 	const showOverlay = ref(false)
 	const isConnecting = ref(false)
@@ -61,14 +60,6 @@ export function useSteamEntry() {
 		hasCheckedOnce.value = true
 	}
 
-	function openSteamOverlay() {
-		try {
-			overlayActivate('Friends')
-		} catch (err) {
-			console.error('[useSteamEntry] Failed to open overlay:', err)
-		}
-	}
-
 	watch(isConnected, (connected) => {
 		if (connected && connectionStarted.value) {
 			isConnecting.value = false
@@ -110,8 +101,6 @@ export function useSteamEntry() {
 		user,
 		error,
 		hideOverlay,
-		openSteamOverlay,
 		isSteam,
-		overlayEnabled,
 	}
 }

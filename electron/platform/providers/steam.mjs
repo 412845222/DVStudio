@@ -120,7 +120,6 @@ function wrapNativeModule(native) {
 
             const emitter = new EventEmitter()
             let wasLoggedOn = false
-            let wasOverlayEnabled = false
             let cachedAvatarUrl = null
 
             const client = {
@@ -154,14 +153,6 @@ function wrapNativeModule(native) {
                         emitter.emit('disconnected', { reason: 'logged-off' })
                     }
                     wasLoggedOn = isLogged
-
-                    const overlayEnabled = nativeClient.isOverlayEnabled()
-                    if (overlayEnabled && !wasOverlayEnabled) {
-                        emitter.emit('overlay-activated')
-                    } else if (!overlayEnabled && wasOverlayEnabled) {
-                        emitter.emit('overlay-deactivated')
-                    }
-                    wasOverlayEnabled = overlayEnabled
                 } catch {}
             }
 
@@ -317,14 +308,6 @@ class SteamPlatformProvider extends EventEmitter {
                     this._wasLoggedIn = false
                     this.emit('disconnected', { platformId: 'steam', reason: data?.reason || 'Steam disconnected' })
                 })
-                this._client.on('overlay-activated', () => {
-                    this._overlayActive = true
-                    this.emit('overlay-activated', { platformId: 'steam' })
-                })
-                this._client.on('overlay-deactivated', () => {
-                    this._overlayActive = false
-                    this.emit('overlay-deactivated', { platformId: 'steam' })
-                })
             }
 
             if (typeof this._client.init !== 'function') {
@@ -456,49 +439,20 @@ class SteamPlatformProvider extends EventEmitter {
     }
 
     isOverlayEnabled() {
-        if (!this._initialized || !this._client) return false
-        try {
-            if (typeof this._client.isOverlayEnabled === 'function') {
-                return this._client.isOverlayEnabled()
-            }
-            return this.isAvailable() && this.isLoggedIn()
-        } catch {
-            return false
-        }
+        return false
     }
 
     isOverlayActive() {
-        return this._overlayActive
+        return false
     }
 
     overlayOpenUrl(url) {
-        if (!this._initialized || !this._client) {
-            return { ok: false, errMsg: 'Steam not initialized' }
-        }
-        try {
-            if (typeof this._client.activateGameOverlayToWebPage === 'function') {
-                return this._client.activateGameOverlayToWebPage(url)
-            }
-            console.warn('[platform:steam] overlayOpenUrl: method not implemented in dweb-steamjs')
-            return { ok: false, errMsg: 'Overlay method not available' }
-        } catch (err) {
-            return { ok: false, errMsg: err.message }
-        }
+        return { ok: false, errMsg: 'Use in-app panel instead of native Steam Overlay' }
     }
 
     overlayActivateGameOverlay(dialog) {
-        if (!this._initialized || !this._client) {
-            return { ok: false, errMsg: 'Steam not initialized' }
-        }
-        try {
-            if (typeof this._client.activateGameOverlay === 'function') {
-                return this._client.activateGameOverlay(dialog || 'Friends')
-            }
-            console.warn('[platform:steam] overlayActivateGameOverlay: method not implemented in dweb-steamjs')
-            return { ok: false, errMsg: 'Overlay method not available' }
-        } catch (err) {
-            return { ok: false, errMsg: err.message }
-        }
+        console.log('[platform:steam] Native Steam Overlay disabled - using in-app panel instead')
+        return { ok: false, errMsg: 'Use in-app panel instead of native Steam Overlay' }
     }
 
     isDlcInstalled(dlcAppId) {
