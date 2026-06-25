@@ -162,7 +162,7 @@ type AnchorSpec = {
   id: string;
   label?: string;
   offsetY?: number;
-  mediaType?: "generic" | "image" | "video" | "text" | "flow" | "model3d";
+  mediaType?: "generic" | "image" | "video" | "text" | "flow" | "model3d" | "audio" | "meta";
 };
 
 type MergeItem = { id: string };

@@ -1930,7 +1930,7 @@ onBeforeUnmount(() => {
 		canvasEl.removeEventListener('pointermove', onPointerMove)
 		canvasEl.removeEventListener('pointerup', endPan)
 		canvasEl.removeEventListener('pointercancel', endPan)
-		canvasEl.removeEventListener('wheel', onWheel as EventListener)
+		canvasEl.removeEventListener('wheel', onWheel as (e: Event) => void)
 	}
 	document.removeEventListener('pointermove', onDocPointerMove)
 	document.removeEventListener('pointerup', onDocPointerUp)

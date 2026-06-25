@@ -18,6 +18,17 @@ import type {
 export type LocalExecDecision = 'accept' | 'decline'
 export type LocalExecStreamMode = 'real' | 'mock'
 
+type MeshyTaskResult = {
+	ok?: unknown
+	taskId?: unknown
+	status?: unknown
+	progress?: unknown
+	preferredImageUrl?: unknown
+	imageUrls?: unknown
+	error?: unknown
+	errorMessage?: unknown
+}
+
 export type LocalExecChatService = {
 	blueprintChatStream: (payload: {
 		content: string
@@ -70,6 +81,9 @@ export type LocalExecChatService = {
 	jimengImageGenerateStream: (form: FormData) => AsyncGenerator<JimengGenerateStreamEvent, void, void>
 	jimengVideoGenerateStream: (form: FormData) => AsyncGenerator<JimengGenerateStreamEvent, void, void>
 	seedanceGenerateStream: (form: FormData) => AsyncGenerator<SeedanceGenerateStreamEvent, void, void>
+	meshyGenerate: (payload: Record<string, unknown>) => Promise<MeshyTaskResult>
+	meshyGenerateImage: (form: FormData) => Promise<MeshyTaskResult>
+	meshyTask: (taskId: string, mode: string) => Promise<MeshyTaskResult>
 	setLocalExecStreamMode: (mode: LocalExecStreamMode) => void
 	getLocalExecStreamMode: () => LocalExecStreamMode
 }
@@ -129,6 +143,9 @@ export const createLocalExecChatService = (bridge: ComfyUIBridgeService): LocalE
 		jimengImageGenerateStream: (form) => bridge.jimengImageGenerateStream(form),
 		jimengVideoGenerateStream: (form) => bridge.jimengVideoGenerateStream(form),
 		seedanceGenerateStream: (form) => bridge.seedanceGenerateStream(form),
+		meshyGenerate: (payload) => bridge.meshyGenerate(payload),
+		meshyGenerateImage: (form) => bridge.meshyGenerateImage(form),
+		meshyTask: (taskId, mode) => bridge.meshyTask(taskId, mode),
 		setLocalExecStreamMode,
 		getLocalExecStreamMode,
 	}

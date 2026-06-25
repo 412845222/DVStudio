@@ -183,7 +183,7 @@
                     class="vs-btn"
                     type="button"
                     :disabled="t.saved || localBusy"
-                    @click="(e: any) => saveTemplateAsComponent(t, e)"
+                    @click="(e: MouseEvent) => saveTemplateAsComponent(t, e)"
                   >
                     {{ t.saved ? "已保存" : "保存组件" }}
                   </button>
@@ -351,13 +351,14 @@ import { ComponentLibraryService } from '../../../network/ComponentLibraryServic
 import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners } from '../../../core/scene'
 import type { VideoSceneLayer, VideoSceneTreeNode } from '../../../core/scene'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
+import type { JsonValue } from '../../../core/shared/json'
 import { stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import { TimelineStore } from '../../../store/timeline'
 import { VideoStudioStore } from '../../../store/videostudio'
 import { SubtitleAIService } from '../../../network/SubtitleAIService'
 import type { AgentToUiMessage, AgentToUiTaskStatusMessage, AgentToUiErrorMessage, AgentToUiSubtitleSummaryDeltaMessage, AgentToUiTextMessage, AgentToUiChatMessage, AgentToUiComponentTemplateMessage } from '../../../core/agentToUI'
-import { isRecord as isRecordGuard, isArray as isArrayGuard, isString as isStringGuard, isNumber as isNumberGuard } from '../../../types/utils'
+import { isRecord as isRecordGuard, isArray as isArrayGuard, isString as isStringGuard, isNumber as isNumberGuard, safeGetString as utilsSafeGetString, safeGetArray as utilsSafeGetArray, safeGetNumber, safeGetRecord, isFunction as isFunctionGuard } from '../../../types/utils'
 import { DwebCanvasGLKey } from '../VideoSceneRuntime'
 import { flyThumbnailPng } from '../parts/flyThumbnail'
 import {
@@ -491,6 +492,18 @@ type SummaryCacheStorage = Record<string, SummaryCacheEntry>
 const isRecord = (v: unknown): v is Record<string, unknown> => isRecordGuard(v)
 const isArray = isArrayGuard
 const isString = isStringGuard
+const isNumber = isNumberGuard
+const isFunction = isFunctionGuard
+
+const safeGetString = (obj: unknown, key: string): string => {
+	const v = utilsSafeGetString(obj, key)
+	return v ?? ''
+}
+
+const safeGetArray = <T>(obj: unknown, key: string, pred: (x: unknown) => x is T): T[] => {
+	const v = utilsSafeGetArray(obj, key, pred)
+	return v ?? []
+}
 
 const summary = ref<SubtitleSummaryState>(createEmptySubtitleSummaryState())
 
@@ -1161,8 +1174,8 @@ const generateProgressBarLayer = async () => {
 		}
 
 		const layersForSnapshot = buildLayersForStageSnapshot()
-		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: 0, endFrame: 0, layers: layersForSnapshot as any })
-		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: endFrame, endFrame: endFrame, layers: layersForSnapshot as any })
+		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: 0, endFrame: 0, layers: layersForSnapshot })
+		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: endFrame, endFrame: endFrame, layers: layersForSnapshot })
 
 		await store.dispatch('setSelectedNode', { nodeId: rootId })
 	} catch (e) {
@@ -1196,18 +1209,6 @@ const syncSummaryNarrative = (assistantId: string) => {
 	void scrollToBottom()
 }
 
-
-const safeGetString = (obj: unknown, key: string): string => {
-	if (!isRecord(obj)) return ''
-	const v = obj[key]
-	return typeof v === 'string' ? v : ''
-}
-
-const safeGetArray = <T>(obj: unknown, key: string, pred: (x: unknown) => x is T): T[] => {
-	if (!isRecord(obj)) return []
-	const v = obj[key]
-	return Array.isArray(v) ? v.filter(pred) : []
-}
 
 type PanelPatchTarget = 'style' | 'templates' | 'both' | 'none'
 
@@ -1401,22 +1402,25 @@ const tryFormatJsonCodeBlock = (raw: string) => {
 		return '```json\n' + s + '\n```'
 	}
 }
-const extractReadableTextFromAgentJson = (obj: any): string | null => {
-	const t = obj?.type
-	const p = obj?.payload
-	if (t === 'agentToUi/chatMessage' && typeof p?.content === 'string') return p.content
-	if (t === 'agentToUi/chat' && typeof p?.message === 'string') return p.message
-	if (t === 'agentToUi/chat' && typeof p?.content === 'string') return p.content
-	if (t === 'agentToUi/text' && typeof p?.text === 'string') return p.text
-	// Some backends/models may embed an envelope under payload.
-	if (isRecord(p) && typeof (p as any).text === 'string') {
-		const inner = String((p as any).text).trim()
-		if (inner.startsWith('{') && inner.endsWith('}')) {
-			try {
-				const innerObj = JSON.parse(inner)
-				return extractReadableTextFromAgentJson(innerObj)
-			} catch {
-				// ignore
+const extractReadableTextFromAgentJson = (obj: unknown): string | null => {
+	if (!isRecord(obj)) return null
+	const t = safeGetString(obj, 'type')
+	const p: unknown = obj.payload
+	if (t === 'agentToUi/chatMessage' && isRecord(p) && isString(p.content)) return p.content
+	if (t === 'agentToUi/chat' && isRecord(p) && isString(p.message)) return p.message
+	if (t === 'agentToUi/chat' && isRecord(p) && isString(p.content)) return p.content
+	if (t === 'agentToUi/text' && isRecord(p) && isString(p.text)) return p.text
+	if (isRecord(p)) {
+		const innerText = safeGetString(p, 'text')
+		if (innerText) {
+			const inner = innerText.trim()
+			if (inner.startsWith('{') && inner.endsWith('}')) {
+				try {
+					const innerObj: unknown = JSON.parse(inner)
+					return extractReadableTextFromAgentJson(innerObj)
+				} catch {
+					// ignore
+				}
 			}
 		}
 	}
@@ -1428,7 +1432,7 @@ const extractReadableText = (raw: string): string => {
 	const trimmed = text.trim()
 	if (!trimmed) return ''
 
-	const tryParse = (s: string): any | null => {
+	const tryParse = (s: string): unknown => {
 		try {
 			return JSON.parse(s)
 		} catch {
@@ -1472,30 +1476,29 @@ const toSafeKey = (s: string) =>
 		.replace(/\s+/g, '_')
 		.replace(/[^a-zA-Z0-9_:\-]/g, '_')
 
-const repairComponentTemplate = (input: unknown, fallbackId: string) => {
-	const t: any = isRecord(input) ? { ...input } : {}
+const repairComponentTemplate = (input: unknown, fallbackId: string): RepairTemplate => {
+	const t: RepairTemplate = isRecord(input) ? { ...input } : {}
 	if (t.schemaVersion !== 1) t.schemaVersion = 1
-	if (typeof t.templateId !== 'string' || !t.templateId.trim()) t.templateId = toSafeKey(fallbackId || `tpl_${Date.now()}`)
-	if (typeof t.name !== 'string' || !t.name.trim()) t.name = t.templateId
-	// Strong constraint: a single unique root.
+	const templateIdRaw = safeGetString(t, 'templateId')
+	if (!templateIdRaw.trim()) t.templateId = toSafeKey(fallbackId || `tpl_${Date.now()}`)
+	const nameRaw = safeGetString(t, 'name')
+	if (!nameRaw.trim()) t.name = t.templateId
 	t.rootLocalId = 'root'
 
-	// params: drop invalid keys; try to derive key from name/label
-	const rawParams = Array.isArray(t.params) ? t.params : []
-	const nextParams: any[] = []
+	const rawParams = isArray(t.params, isRecord) ? t.params : []
+	const nextParams: RepairTemplateParam[] = []
 	const used = new Set<string>()
 	for (const p of rawParams) {
 		if (!isRecord(p)) continue
-		let key = typeof p.key === 'string' ? p.key.trim() : ''
-		if (!key) key = typeof (p as any).name === 'string' ? String((p as any).name).trim() : ''
-		if (!key) key = typeof (p as any).label === 'string' ? String((p as any).label).trim() : ''
+		let key = safeGetString(p, 'key').trim()
+		if (!key) key = safeGetString(p, 'name').trim()
+		if (!key) key = safeGetString(p, 'label').trim()
 		key = toSafeKey(key)
 		if (!key) continue
 		if (used.has(key)) continue
 		used.add(key)
 
-		// validateComponentTemplate requires param.type in: string|number|boolean|color|asset:image
-		const rawType = typeof (p as any).type === 'string' ? String((p as any).type).trim() : ''
+		const rawType = safeGetString(p, 'type').trim()
 		const typeMap: Record<string, string> = {
 			text: 'string',
 			str: 'string',
@@ -1517,23 +1520,22 @@ const repairComponentTemplate = (input: unknown, fallbackId: string) => {
 	}
 	t.params = nextParams
 
-	// nodes: ensure props is object; transform if provided must be object
-	const rawNodes = Array.isArray(t.nodes) ? t.nodes : []
-	const nextNodes: any[] = []
+	const rawNodes = isArray(t.nodes, isRecord) ? t.nodes : []
+	const nextNodes: RepairTemplateNode[] = []
 	for (const n of rawNodes) {
 		if (!isRecord(n)) continue
-		const nn: any = { ...n }
+		const nn: RepairTemplateNode = { ...n }
 		if (!isRecord(nn.props)) nn.props = {}
 		if (nn.transform !== undefined && !isRecord(nn.transform)) nn.transform = {}
-		if (typeof nn.localId !== 'string' || !nn.localId.trim()) nn.localId = `n_${nextNodes.length}`
-		if (typeof nn.type !== 'string' || !nn.type.trim()) nn.type = 'rect'
+		const localIdRaw = safeGetString(nn, 'localId').trim()
+		if (!localIdRaw) nn.localId = `n_${nextNodes.length}`
+		const typeRaw = safeGetString(nn, 'type').trim()
+		if (!typeRaw) nn.type = 'rect'
 		if (nn.type === 'group') nn.type = 'rect'
 		nextNodes.push(nn)
 	}
 	if (!nextNodes.length) nextNodes.push({ localId: 'root', type: 'rect', props: {}, transform: {} })
 
-	// De-duplicate localId to guarantee a single unique root and a valid template.
-	// If duplicates exist, keep the first and rename later ones.
 	const usedIds = new Set<string>()
 	for (const n of nextNodes) {
 		let id = String(n?.localId || '').trim()
@@ -1550,7 +1552,6 @@ const repairComponentTemplate = (input: unknown, fallbackId: string) => {
 	}
 	t.nodes = nextNodes
 
-	// Enforce root node existence + shape.
 	const rootLocalId = 'root'
 	let root = nextNodes.find((n) => String(n?.localId || '').trim() === rootLocalId)
 	if (!root) {
@@ -1566,23 +1567,21 @@ const repairComponentTemplate = (input: unknown, fallbackId: string) => {
 	if (root.transform.height === undefined) root.transform.height = 420
 	delete root.parentLocalId
 
-	// Re-parent any top-level nodes to root; also fix invalid parentLocalId.
 	const localIds = new Set(nextNodes.map((n) => String(n?.localId || '').trim()).filter((x) => !!x))
 	for (const n of nextNodes) {
 		const id = String(n?.localId || '').trim()
 		if (!id) continue
 		if (id === rootLocalId) continue
-		const p = n.parentLocalId
-		const parentId = typeof p === 'string' ? p.trim() : ''
-		if (!parentId) {
+		const parentIdRaw = safeGetString(n, 'parentLocalId').trim()
+		if (!parentIdRaw) {
 			n.parentLocalId = rootLocalId
 			continue
 		}
-		if (parentId === id) {
+		if (parentIdRaw === id) {
 			n.parentLocalId = rootLocalId
 			continue
 		}
-		if (!localIds.has(parentId)) {
+		if (!localIds.has(parentIdRaw)) {
 			n.parentLocalId = rootLocalId
 		}
 	}
@@ -1590,19 +1589,19 @@ const repairComponentTemplate = (input: unknown, fallbackId: string) => {
 	return t
 }
 
-const selfCheckTemplateForSave = (tpl: any) => {
+const selfCheckTemplateForSave = (tpl: unknown) => {
 	const errors: string[] = []
-	if (!tpl || typeof tpl !== 'object') {
+	if (!isRecord(tpl)) {
 		errors.push('template 不是对象')
 		return { ok: false, errors }
 	}
-	const rootLocalId = String((tpl as any).rootLocalId || '').trim()
+	const rootLocalId = safeGetString(tpl, 'rootLocalId').trim()
 	if (rootLocalId !== 'root') errors.push('rootLocalId 必须为 "root"')
-	const nodes = Array.isArray((tpl as any).nodes) ? ((tpl as any).nodes as any[]) : []
+	const nodes = safeGetArray(tpl, 'nodes', isRecord)
 	if (!nodes.length) errors.push('nodes 不能为空')
 	const localIds = new Set<string>()
 	for (const n of nodes) {
-		const id = String(n?.localId || '').trim()
+		const id = safeGetString(n, 'localId').trim()
 		if (!id) {
 			errors.push('存在空 localId')
 			continue
@@ -1610,27 +1609,26 @@ const selfCheckTemplateForSave = (tpl: any) => {
 		if (localIds.has(id)) errors.push(`localId 重复: ${id}`)
 		localIds.add(id)
 	}
-	const root = nodes.find((n) => String(n?.localId || '').trim() === 'root')
+	const root = nodes.find((n) => safeGetString(n, 'localId').trim() === 'root')
 	if (!root) errors.push('nodes 中必须存在 localId="root" 的根节点')
 	else {
-		const rt = String(root?.type || '').trim()
+		const rt = safeGetString(root, 'type').trim()
 		if (rt !== 'rect') errors.push('root 节点 type 必须为 rect')
-		const tr = root?.transform
-		if (!tr || typeof tr !== 'object') errors.push('root.transform 必须存在')
+		const tr: unknown = root.transform
+		if (!isRecord(tr)) errors.push('root.transform 必须存在')
 		else {
-			if ((tr as any).width === undefined) errors.push('root.transform.width 必须存在')
-			if ((tr as any).height === undefined) errors.push('root.transform.height 必须存在')
+			if (tr.width === undefined) errors.push('root.transform.width 必须存在')
+			if (tr.height === undefined) errors.push('root.transform.height 必须存在')
 		}
-		if (root?.parentLocalId !== undefined) errors.push('root 不能有 parentLocalId')
+		if (root.parentLocalId !== undefined) errors.push('root 不能有 parentLocalId')
 	}
 	for (const n of nodes) {
-		const id = String(n?.localId || '').trim()
+		const id = safeGetString(n, 'localId').trim()
 		if (!id || id === 'root') continue
-		const p = String(n?.parentLocalId || '').trim()
+		const p = safeGetString(n, 'parentLocalId').trim()
 		if (!p) errors.push(`节点 ${id} 缺少 parentLocalId`)
 		else if (!localIds.has(p)) errors.push(`节点 ${id} parentLocalId 不存在: ${p}`)
 	}
-	// Save metadata is injected on client-side when saving (id/createdAt).
 	return { ok: errors.length === 0, errors }
 }
 
@@ -1672,10 +1670,10 @@ const buildPreviewContextPack = (activeLayerId: string) => {
 	const layer = findLayer(store.state, activeLayerId)
 	return {
 		activeLayerId,
-		layers: store.state.layers.map((l: any) => ({ id: l.id, name: l.name })),
+		layers: store.state.layers.map((l) => ({ id: l.id, name: l.name })),
 		selectedNodeIds: [],
 		selectedNodes: [],
-		activeLayer: layer ? { id: layer.id, name: (layer as any).name, nodeTree: layer.nodeTree } : null,
+		activeLayer: layer ? { id: layer.id, name: layer.name, nodeTree: layer.nodeTree } : null,
 		lastStageOps: [],
 		subtitleSummary: {
 			style: summary.value.style,
@@ -1685,9 +1683,10 @@ const buildPreviewContextPack = (activeLayerId: string) => {
 }
 
 const buildPreviewPromptInput = (t: TemplateItem) => {
-	const desc = Array.isArray((t.spec as any)?.description) ? ((t.spec as any).description as any[]) : []
+	const specRecord = isRecord(t.spec) ? t.spec : {}
+	const desc = safeGetArray(specRecord, 'description', isString)
 	const descLines = desc
-		.map((x) => (typeof x === 'string' ? x.trim() : ''))
+		.map((x) => x.trim())
 		.filter((x) => !!x)
 		.slice(0, 12)
 	const fallbackDesc = (() => {
@@ -1731,8 +1730,10 @@ const handlePreviewAgentMsg = async (
 	opts: { assistantId: string; layerId: string; templateId: string; templateName?: string; sampleTitle?: string; sampleText?: string }
 ) => {
 	if (m.type === 'agentToUi/taskStatus') {
-		const ph = String((m as any)?.payload?.phase || '').trim()
-		const msg = String((m as any)?.payload?.message || '').trim()
+		const mRecord = isRecord(m) ? m : {}
+		const payload = safeGetRecord(mRecord, 'payload')
+		const ph = safeGetString(payload, 'phase').trim()
+		const msg = safeGetString(payload, 'message').trim()
 		taskPhase.value = ph
 		if (msg) {
 			statusText.value = msg
@@ -1747,33 +1748,40 @@ const handlePreviewAgentMsg = async (
 		return
 	}
 	if (m.type === 'agentToUi/error') {
-		const msg = (m as any)?.payload?.message
-		throw new Error(typeof msg === 'string' && msg.trim() ? msg.trim() : 'AI 请求失败')
+		const mRecord = isRecord(m) ? m : {}
+		const payload = safeGetRecord(mRecord, 'payload')
+		const msg = safeGetString(payload, 'message')
+		throw new Error(msg.trim() ? msg.trim() : 'AI 请求失败')
 	}
 	if (m.type === 'agentToUi/text') {
-		const delta = (m as any)?.payload?.text
-		if (typeof delta !== 'string' || !delta) return
+		const mRecord = isRecord(m) ? m : {}
+		const payload = safeGetRecord(mRecord, 'payload')
+		const delta = safeGetString(payload, 'text')
+		if (!delta) return
 		const readable = extractReadableText(delta)
 		if (!readable) return
 		if (opts.assistantId) appendAssistantText(opts.assistantId, readable)
 		return
 	}
 	if (m.type === 'agentToUi/chatMessage') {
-		const c = (m as any)?.payload?.content
-		if (typeof c !== 'string' || !c.trim()) return
+		const mRecord = isRecord(m) ? m : {}
+		const payload = safeGetRecord(mRecord, 'payload')
+		const c = safeGetString(payload, 'content')
+		if (!c.trim()) return
 		const safeContent = extractReadableText(c)
 		if (!safeContent) return
 		if (opts.assistantId) appendAssistantText(opts.assistantId, safeContent + '\n')
 		return
 	}
 	if (m.type === 'agentToUi/componentTemplate') {
-		// Chat bubble status: self-check stage (sync to chat box)
 		taskPhase.value = 'self_check'
 		statusText.value = '自检：检查唯一 root 与可保存要求…'
 		const checkMsgId = opts.assistantId || pushAssistantMsg('自检中：检查唯一root根组件、模板结构可保存…')
 		if (opts.assistantId) appendAssistantText(checkMsgId, '自检中：检查唯一root根组件、模板结构可保存…')
 
-		const tpl = (m as any)?.payload?.template
+		const mRecord = isRecord(m) ? m : {}
+		const payload = safeGetRecord(mRecord, 'payload')
+		const tpl: unknown = payload ? payload.template : undefined
 		const repaired = repairComponentTemplate(tpl, opts.templateId)
 		const check = selfCheckTemplateForSave(repaired)
 		if (!check.ok) {
@@ -1784,32 +1792,28 @@ const handlePreviewAgentMsg = async (
 		taskPhase.value = 'self_check_done'
 		statusText.value = '自检通过，正在实例化预览…'
 
-		const validated = validateComponentTemplate(repaired)
+		const validated = validateComponentTemplate(repaired as unknown as ComponentTemplate)
 		if (!validated.ok) throw new Error(`ComponentTemplate invalid: ${validated.errors.join('; ')}`)
 		generatedTemplateById.value = { ...generatedTemplateById.value, [opts.templateId]: validated.value }
 
-		// Instantiate into preview layer.
 		const params = buildDefaultTemplateParams(validated.value, {
 			title: String(opts.templateName || validated.value?.name || opts.templateId || '').trim(),
 			subtitle: String(opts.sampleTitle || '').trim(),
 			body: String(opts.sampleText || '').trim(),
 			text: String(opts.sampleText || '').trim(),
 		})
-		const rootId = await instantiateIntoLayerWithParams(opts.layerId, validated.value, params)
+		const rootId = await instantiateIntoLayerWithParams(opts.layerId, validated.value, params as Record<string, JsonValue>)
 		previewRootIdByTemplateId.value = { ...previewRootIdByTemplateId.value, [opts.templateId]: rootId }
 		const f = Math.max(0, Math.floor(TimelineStore.state.currentFrame ?? 0))
 		await setOpacityKeyframes(opts.layerId, rootId, [{ frame: f, opacity: 1 }])
-		// Prevent preview nodes from being wiped by stage snapshots (flash-then-disappear).
 		try {
 			const layersForSnapshot = buildLayersForStageSnapshot()
-			await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: f, endFrame: f, layers: layersForSnapshot as any })
+			await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: f, endFrame: f, layers: layersForSnapshot })
 		} catch {
-			// ignore snapshot failures (preview can still work without stage snapshots enabled)
+			// ignore snapshot failures
 		}
 		return
 	}
-	// Strong constraint: preview must be produced via a single componentTemplate instantiation.
-	// Ignore incremental node operations to avoid scattered/multi-root outputs.
 	if (m.type === 'agentToUi/insertNode') return
 	if (m.type === 'agentToUi/patchNode') return
 	if (m.type === 'agentToUi/deleteNode') return
@@ -1870,14 +1874,14 @@ const startUnderstanding = async () => {
 	taskPhase.value = ''
 	summary.value = createEmptySubtitleSummaryState()
 	draft.value = ''
-	summaryChatIntro.value = `我正在读取字幕并生成“字幕整体理解”（共 ${(cues.value as any[])?.length || 0} 段）…`
+	summaryChatIntro.value = `我正在读取字幕并生成“字幕整体理解”（共 ${cues.value?.length || 0} 段）…`
 	if (typeof progressAssistantId.value === 'string' && progressAssistantId.value) syncSummaryNarrative(progressAssistantId.value)
 
 	try {
 		for await (const ev of service.streamUnderstand({
 			layerId,
-			cues: cues.value as unknown[],
-			cueRanges: cueRanges.value as unknown[],
+			cues: cues.value,
+			cueRanges: cueRanges.value,
 			scope: 'overall',
 			signal: understandAborter.signal,
 		})) {
@@ -1932,7 +1936,7 @@ const generateStyleAdvice = async () => {
 	try {
 		for await (const ev of service.streamStyleAdvice({
 			layerId,
-			understanding: (summary.value as any)?.understanding ?? {},
+			understanding: summary.value.understanding ?? {},
 			signal: styleAborter.signal,
 		})) {
 			if (ev.type === 'msg') {
@@ -1978,7 +1982,7 @@ const generateTemplateSuggestions = async () => {
 	try {
 		for await (const ev of service.streamTemplateSuggestions({
 			layerId,
-			understanding: (summary.value as any)?.understanding ?? {},
+			understanding: summary.value.understanding ?? {},
 			signal: templatesAborter.signal,
 		})) {
 			if (ev.type === 'msg') {
@@ -2082,8 +2086,8 @@ const applyPaletteFromMessage = (m: ChatMessage) => {
 	statusText.value = '应用配色…'
 	try {
 		const next = { ...summary.value.style }
-		if (m.styleData.palette && typeof m.styleData.palette === 'object') (next as any).palette = m.styleData.palette
-		summary.value = { ...summary.value, style: next as any }
+		if (m.styleData.palette && isRecord(m.styleData.palette)) next.palette = m.styleData.palette
+		summary.value = { ...summary.value, style: next }
 		m.applied = true
 		if (props.layerId) saveSummaryCache(props.layerId)
 	} finally {
@@ -2095,17 +2099,19 @@ const applyPaletteFromMessage = (m: ChatMessage) => {
 const applyPanelPatchFromMessage = async (m: ChatMessage) => {
 	if (m.applied) return
 	const patch = m.panelPatch
-	if (!patch || typeof patch !== 'object') return
+	if (!isRecord(patch)) return
 
 	localBusy.value = true
 	localBusyLabel.value = '应用修改'
 	statusText.value = '应用修改…'
 	try {
-		if ((patch as any).style && typeof (patch as any).style === 'object') {
-			summary.value = applySubtitleSummaryDelta(summary.value, { section: 'style', data: (patch as any).style })
+		const stylePatch = safeGetRecord(patch, 'style')
+		if (stylePatch) {
+			summary.value = applySubtitleSummaryDelta(summary.value, { section: 'style', data: stylePatch })
 		}
-		if (Array.isArray((patch as any).templates)) {
-			summary.value = applySubtitleSummaryDelta(summary.value, { section: 'templates', data: (patch as any).templates })
+		const templatesPatch = safeGetArray(patch, 'templates', isRecord)
+		if (templatesPatch) {
+			summary.value = applySubtitleSummaryDelta(summary.value, { section: 'templates', data: templatesPatch })
 		}
 		m.applied = true
 		if (props.layerId) saveSummaryCache(props.layerId)
@@ -2143,7 +2149,8 @@ const generatePalette = async () => {
 	const layerId = props.layerId
 	if (!layerId) return
 	if (!summaryReady.value) return
-	const notes = Array.isArray((summary.value as any)?.style?.notes) ? ((summary.value as any).style.notes as any[]) : []
+	const styleRecord = isRecord(summary.value.style) ? summary.value.style : {}
+	const notes = safeGetArray(styleRecord, 'notes', isString)
 	if (!notes.length) {
 		// Non-blocking prerequisite hint: do NOT lock the whole panel.
 		errorText.value = ''
@@ -2174,7 +2181,7 @@ const generatePalette = async () => {
 		const nonceHint = `nonce=${nonce}（请以此作为随机种子，让每次生成的配色都不同）`
 		for await (const ev of service.streamPalette({
 			layerId,
-			summary: { understanding: (summary.value as any)?.understanding ?? {}, style: (summary.value as any)?.style ?? {} },
+			summary: { understanding: summary.value.understanding ?? {}, style: summary.value.style ?? {} },
 			text: nonceHint,
 			signal: paletteAborter.signal,
 		})) {
@@ -2213,7 +2220,7 @@ type TemplateItem = {
 }
 
 const savedComponentMap = ref<Record<string, boolean>>({})
-const generatedTemplateById = ref<Record<string, any>>({})
+const generatedTemplateById = ref<Record<string, ComponentTemplate>>({})
 const previewLayerByTemplateId = ref<Record<string, string>>({})
 const previewRootIdByTemplateId = ref<Record<string, string>>({})
 
@@ -2222,7 +2229,7 @@ type SavedComponent = {
 	createdAt: string
 	templateId: string
 	name: string
-	template: any
+	template: ComponentTemplate
 	savedAt: string
 	thumbAssetId?: string
 	thumbDataUrl?: string
@@ -2235,24 +2242,31 @@ const componentService = new ComponentLibraryService()
 const loadComponentLibrary = (): SavedComponent[] => {
 	try {
 		const raw = localStorage.getItem(COMPONENT_LIBRARY_KEY)
-		const parsed = raw ? JSON.parse(raw) : []
+		const parsed: unknown = raw ? JSON.parse(raw) : []
 		if (!Array.isArray(parsed)) return []
 		return parsed
-			.filter((x) => x && typeof x === 'object')
-			.map((x: any) => ({
-				id:
-					typeof x.id === 'string' && x.id.trim()
-						? x.id
-						: `${typeof x.templateId === 'string' ? x.templateId : ''}::${typeof x.savedAt === 'string' ? x.savedAt : ''}`,
-				createdAt: typeof x.createdAt === 'string' ? x.createdAt : (typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString()),
-				templateId: typeof x.templateId === 'string' ? x.templateId : '',
-				name: typeof x.name === 'string' ? x.name : '',
-				template: x.template,
-				savedAt: typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString(),
-				thumbAssetId: typeof x.thumbAssetId === 'string' ? x.thumbAssetId : undefined,
-				thumbDataUrl: typeof x.thumbDataUrl === 'string' ? x.thumbDataUrl : undefined,
-				thumbUrl: typeof x.thumbUrl === 'string' ? x.thumbUrl : undefined,
-			}))
+			.filter((x): x is Record<string, unknown> => isRecord(x))
+			.map((x) => {
+				const xId = safeGetString(x, 'id')
+				const xTemplateId = safeGetString(x, 'templateId')
+				const xSavedAt = safeGetString(x, 'savedAt')
+				const xCreatedAt = safeGetString(x, 'createdAt')
+				const xName = safeGetString(x, 'name')
+				return {
+					id:
+						xId && xId.trim()
+							? xId
+							: `${xTemplateId || ''}::${xSavedAt || ''}`,
+					createdAt: xCreatedAt || (xSavedAt || new Date().toISOString()),
+					templateId: xTemplateId,
+					name: xName,
+					template: x.template as ComponentTemplate,
+					savedAt: xSavedAt || new Date().toISOString(),
+					thumbAssetId: safeGetString(x, 'thumbAssetId') || undefined,
+					thumbDataUrl: safeGetString(x, 'thumbDataUrl') || undefined,
+					thumbUrl: safeGetString(x, 'thumbUrl') || undefined,
+				}
+			})
 			.filter((x: SavedComponent) => x.id && x.templateId && x.name)
 	} catch {
 		return []
@@ -2274,26 +2288,27 @@ const templateItems = computed((): TemplateItem[] => {
 	const list = Array.isArray(summary.value.templates) ? summary.value.templates : []
 	return list
 		.map((spec, idx) => {
-		const templateId = String((spec as any)?.templateId || '').trim() || `template-${idx + 1}`
-		const name = String((spec as any)?.name || templateId)
+		const specRecord = isRecord(spec) ? spec : {}
+		const templateId = safeGetString(specRecord, 'templateId').trim() || `template-${idx + 1}`
+		const name = safeGetString(specRecord, 'name') || templateId
 		const key = `${templateId}__${idx}`
-		const rawDesc = Array.isArray((spec as any)?.description) ? ((spec as any).description as any[]) : []
+		const rawDesc = safeGetArray(specRecord, 'description', isString)
 		const cleanedDesc = rawDesc
-			.map((x) => (typeof x === 'string' ? x.trim() : ''))
+			.map((x) => x.trim())
 			.filter((x) => !!x)
 			.slice(0, 12)
-		const patchedSpec = { ...(spec as any), description: cleanedDesc }
+		const category = safeGetString(specRecord, 'category') || undefined
+		const patchedSpec: SubtitleTemplateSuggestion = { ...spec as SubtitleTemplateSuggestion, description: cleanedDesc }
 		return {
 			key,
 			templateId,
 			name,
-			category: typeof (spec as any)?.category === 'string' ? (spec as any).category : undefined,
-			spec: patchedSpec as any,
+			category,
+			spec: patchedSpec,
 			saved: !!savedComponentMap.value[key],
 		}
 		})
-		// Drop templates with completely empty description to avoid unstable preview prompts.
-		.filter((t) => Array.isArray((t.spec as any)?.description) && ((t.spec as any).description as any[]).length > 0)
+		.filter((t) => Array.isArray(t.spec.description) && t.spec.description.length > 0)
 })
 
 const closePreviewLayerForTemplate = (templateId: string) => {
@@ -2361,11 +2376,10 @@ const saveTemplateAsComponent = async (t: TemplateItem, ev?: MouseEvent) => {
 	const createdAt = new Date().toISOString()
 	const id = `cmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
 	const uniqueName = makeUniqueName(t.name || t.templateId)
-	const baseTplId = typeof template?.templateId === 'string' && template.templateId.trim() ? template.templateId : t.templateId
+	const baseTplId = isString(template?.templateId) && template.templateId.trim() ? template.templateId : t.templateId
 	const uniqueTemplateId = makeUniqueTemplateId(baseTplId)
-	const savedTemplate = { ...(template as any), templateId: uniqueTemplateId, name: uniqueName }
+	const savedTemplate: ComponentTemplate = { ...template, templateId: uniqueTemplateId, name: uniqueName }
 
-	// Best-effort thumbnail capture from current WebGL canvas (component area, not whole stage).
 	let thumbAssetId: string | undefined
 	let thumbDataUrl: string | undefined
 	try {
@@ -2375,12 +2389,13 @@ const saveTemplateAsComponent = async (t: TemplateItem, ev?: MouseEvent) => {
 		if (layerId && rootId && dwebCanvas) {
 			const layer = findLayer(store.state, layerId)
 			const root = layer ? findNode(layer.nodeTree ?? [], rootId) : null
-			const tr: any = (root as any)?.transform
-			if (tr && typeof tr.x === 'number' && typeof tr.y === 'number' && typeof tr.width === 'number' && typeof tr.height === 'number') {
+			const tr = isRecord(root) ? root.transform : undefined
+			if (isRecord(tr) && isNumber(tr.x) && isNumber(tr.y) && isNumber(tr.width) && isNumber(tr.height)) {
+				const rotation = isNumber(tr.rotation) ? tr.rotation : 0
 				const corners = rotatedRectCorners(
 					{ x: tr.x, y: tr.y },
 					{ width: Math.max(1, tr.width), height: Math.max(1, tr.height) },
-					Number(tr.rotation ?? 0)
+					rotation
 				)
 				const pts = [corners.tl, corners.tr, corners.bl, corners.br].map((p) => dwebCanvas.worldToScreen(p))
 				const xs = pts.map((p) => p.x)
@@ -2482,8 +2497,8 @@ const createTimelineAndStageLayer = async (name: string, opts?: { activate?: boo
 	return layer.id
 }
 
-const instantiateIntoLayer = async (layerId: string, template: any) => {
-	const instantiated = componentTemplateApi.instantiateTemplate(template as any, {}, {
+const instantiateIntoLayer = async (layerId: string, template: ComponentTemplate) => {
+	const instantiated = componentTemplateApi.instantiateTemplate(template, {}, {
 		getNodeId: ({ templateId, localId }) => {
 			const base = safeIdPart(`${templateId}:${localId}`)
 			let id = base
@@ -2496,8 +2511,8 @@ const instantiateIntoLayer = async (layerId: string, template: any) => {
 	return instantiated.root?.id as string
 }
 
-const instantiateIntoLayerWithParams = async (layerId: string, template: any, params: Record<string, any>) => {
-	const instantiated = componentTemplateApi.instantiateTemplate(template as any, params ?? {}, {
+const instantiateIntoLayerWithParams = async (layerId: string, template: ComponentTemplate, params: Record<string, JsonValue>) => {
+	const instantiated = componentTemplateApi.instantiateTemplate(template, params ?? {}, {
 		getNodeId: ({ templateId, localId }) => {
 			const base = safeIdPart(`${templateId}:${localId}`)
 			let id = base
@@ -2515,8 +2530,9 @@ const collectSubtitleText = (startCue: number, endCue: number) => {
 	const b = Math.max(0, Math.max(startCue, endCue))
 	const out: string[] = []
 	for (let i = a; i <= b; i++) {
-		const t = (cues.value as any[])[i]?.text
-		if (typeof t === 'string' && t.trim()) out.push(t.trim())
+		const cue = cues.value[i]
+		const t = isString(cue?.text) ? cue.text : ''
+		if (t.trim()) out.push(t.trim())
 	}
 	return out.join(' ')
 }
@@ -2524,10 +2540,10 @@ const collectSubtitleText = (startCue: number, endCue: number) => {
 const normalizeParamKey = (k: unknown) => String(k ?? '').trim().replace(/\s+/g, '')
 
 const buildDefaultTemplateParams = (
-	template: any,
+	template: ComponentTemplate,
 	opts: { title?: string; subtitle?: string; body?: string; text?: string }
 ) => {
-	const params: Record<string, any> = {}
+	const params: Record<string, unknown> = {}
 	const list = Array.isArray(template?.params) ? template.params : []
 	const title = String(opts.title ?? '').trim()
 	const subtitle = String(opts.subtitle ?? '').trim()
@@ -2600,11 +2616,13 @@ const previewTemplate = async (t: TemplateItem) => {
 		appendAssistantText(assistantId, '【进度】预览图层已创建\n')
 		previewLayerByTemplateId.value = { ...previewLayerByTemplateId.value, [t.templateId]: layerId }
 
-		const outlineItems = Array.isArray((summary.value as any)?.outline?.items) ? (((summary.value as any).outline.items as any[]) ?? []) : []
+		const outlineRecord = isRecord(summary.value.outline) ? summary.value.outline : {}
+		const outlineItems = safeGetArray(outlineRecord, 'items', isRecord)
 		const firstOutline = outlineItems.length ? outlineItems[0] : null
-		const sampleTitle = typeof firstOutline?.title === 'string' ? firstOutline.title : ''
-		const sc = Number.isInteger(firstOutline?.startCue) ? (firstOutline.startCue as number) : 0
-		const ec = Number.isInteger(firstOutline?.endCue) ? (firstOutline.endCue as number) : Math.min(sc + 2, Math.max(0, (cues.value as any[])?.length - 1))
+		const sampleTitle = firstOutline ? safeGetString(firstOutline, 'title') : ''
+		const sc = firstOutline && isNumber(firstOutline.startCue) ? firstOutline.startCue : 0
+		const ecDefault = Math.min(sc + 2, Math.max(0, cues.value.length - 1))
+		const ec = firstOutline && isNumber(firstOutline.endCue) ? firstOutline.endCue : ecDefault
 		const sampleText = collectSubtitleText(sc, ec)
 
 		statusText.value = '请求 AI 生成模板（专属 API / agentToUi-jsonl）…'
@@ -2613,24 +2631,25 @@ const previewTemplate = async (t: TemplateItem) => {
 		const aborter = new AbortController()
 		previewAborter.value = aborter
 		const promptInput = buildPreviewPromptInput(t)
-		// Debug: dump request summary (avoid logging huge node trees).
 		if (import.meta.env.DEV) {
 			try {
-				const baseUrlOverride = (window as any)?.__DWEB_BACKEND_BASE_URL
+				const w = window as unknown as Record<string, unknown>
+				const baseUrlOverride = isString(w.__DWEB_BACKEND_BASE_URL) ? w.__DWEB_BACKEND_BASE_URL : undefined
 				const baseUrlStorage = window.localStorage.getItem('dweb.backendBaseUrl')
+				const paletteArr = isArray(promptInput.palette, isString) ? promptInput.palette : []
 				// eslint-disable-next-line no-console
 				console.log('[template:stream request]', {
 					promptPreset: 'subtitle_template_preview',
-					paletteCount: Array.isArray((promptInput as any)?.palette) ? (promptInput as any).palette.length : 0,
-					paletteLocked: (promptInput as any)?.paletteLocked,
-					requireGlow: (promptInput as any)?.requireGlow,
+					paletteCount: paletteArr.length,
+					paletteLocked: promptInput.paletteLocked,
+					requireGlow: promptInput.requireGlow,
 				backendBaseUrl: baseUrlOverride || import.meta.env.VITE_BACKEND_BASE_URL || baseUrlStorage || '(same-origin/proxy)',
 				})
 			} catch {
 				// ignore
 			}
 		}
-		if (!Array.isArray((promptInput as any).description) || !(promptInput as any).description.length) {
+		if (!isArray(promptInput.description, isString) || !promptInput.description.length) {
 			throw new Error('模板描述为空：请重新总结或先生成配色后再试')
 		}
 
@@ -2648,18 +2667,18 @@ const previewTemplate = async (t: TemplateItem) => {
 				console.log('[template:stream event]', ev)
 			}
 			if (ev.type === 'msg') {
-				seenMsgTypes.push(String((ev.message as any)?.type || ''))
+				const msgRecord = isRecord(ev.message) ? ev.message : {}
+				seenMsgTypes.push(safeGetString(msgRecord, 'type'))
 				if (ev.message.type === 'agentToUi/componentTemplate') gotTemplate = true
-				// Extra debug to avoid false negatives when the message exists but gotTemplate isn't set.
 				if (import.meta.env.DEV && ev.message.type === 'agentToUi/componentTemplate') {
 					try {
+						const msgPayload = safeGetRecord(msgRecord, 'payload')
+						const tpl = msgPayload ? safeGetRecord(msgPayload, 'template') : undefined
 						// eslint-disable-next-line no-console
 						console.log('[template:stream GOT componentTemplate]', {
-							templateId: (ev.message as any)?.payload?.template?.templateId,
-							rootLocalId: (ev.message as any)?.payload?.template?.rootLocalId,
-							nodeCount: Array.isArray((ev.message as any)?.payload?.template?.nodes)
-								? (ev.message as any).payload.template.nodes.length
-								: undefined,
+							templateId: tpl ? safeGetString(tpl, 'templateId') : undefined,
+							rootLocalId: tpl ? safeGetString(tpl, 'rootLocalId') : undefined,
+							nodeCount: tpl ? safeGetArray(tpl, 'nodes', isRecord).length : undefined,
 						})
 					} catch {
 						// ignore
@@ -2712,8 +2731,8 @@ watch(
 			return
 		}
 		const hit = loadSummaryCache(layerId)
-		const h = hit && typeof hit.cuesHash === 'string' ? hit.cuesHash : ''
-		const nowHash = computeCuesHash(cues.value as any[])
+		const h = hit && isString(hit.cuesHash) ? hit.cuesHash : ''
+		const nowHash = computeCuesHash(cues.value)
 		if (hit && h && h === nowHash) {
 			summary.value = hit.summary
 			summaryReady.value = true

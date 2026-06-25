@@ -274,3 +274,45 @@ export function toError(error: unknown): Error {
   if (error instanceof Error) return error
   return new Error(getErrorMessage(error))
 }
+
+// ─── 安全属性访问辅助函数 ────────────────────────────────────────────────────
+
+/**
+ * 从 unknown 对象中安全获取字符串属性
+ */
+export function safeGetString(obj: unknown, key: string): string | undefined {
+  if (!hasKey(obj, key)) return undefined
+  const value = obj[key]
+  return isString(value) ? value : undefined
+}
+
+/**
+ * 从 unknown 对象中安全获取数字属性
+ */
+export function safeGetNumber(obj: unknown, key: string): number | undefined {
+  if (!hasKey(obj, key)) return undefined
+  const value = obj[key]
+  return isNumber(value) ? value : undefined
+}
+
+/**
+ * 从 unknown 对象中安全获取数组属性，并验证每个元素类型
+ */
+export function safeGetArray<T>(
+  obj: unknown,
+  key: string,
+  itemGuard: (v: unknown) => v is T
+): T[] | undefined {
+  if (!hasKey(obj, key)) return undefined
+  const value = obj[key]
+  return isArray(value, itemGuard) ? value : undefined
+}
+
+/**
+ * 从 unknown 对象中安全获取 Record<string, unknown> 属性
+ */
+export function safeGetRecord(obj: unknown, key: string): Record<string, unknown> | undefined {
+  if (!hasKey(obj, key)) return undefined
+  const value = obj[key]
+  return isRecord(value) ? value : undefined
+}

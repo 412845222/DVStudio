@@ -20,7 +20,7 @@
           nodeIds: selectionFrame.nodeIds.value,
         }"
         :saved-frames="selectionFrame.savedFrames.value"
-        :nodes-by-id="(store.state as any).nodesById"
+        :nodes-by-id="store.state.nodesById"
         @update:viewport="onViewportUpdate"
         @canvas-contextmenu="onCanvasContextMenu"
         @canvas-dblclick="onCanvasDblClick"
@@ -50,7 +50,7 @@
           :key="node.id"
           class="aiwf-node-host"
           :class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots }"
-          :ref="(el: any) => { if (el) nodeHostRefs.set(node.id, el as HTMLElement); else nodeHostRefs.delete(node.id); }"
+          :ref="(el: Element | null) => { if (el) nodeHostRefs.set(node.id, el as HTMLElement); else nodeHostRefs.delete(node.id); }"
         >
           <!-- Screenshot node (static image + real anchors + particles) -->
           <div
@@ -343,7 +343,7 @@
         @update:panelMode="chatPanelMode = $event"
         @update:agentMode="agentConversationMode = $event"
         @update:localExecStreamMode="localExecStreamMode = $event"
-        @update:modelKey="chatModelKey = $event as any"
+        @update:modelKey="(v: unknown) => { if (typeof v === 'string' && ['deepseek', 'nanobanana', 'seedance', 'codex'].includes(v)) chatModelKey = v as typeof chatModelKey; }"
         @update:activeModelId="chatModelId = $event"
         @nanobanana-generate="onNanoBananaGenerate"
         @seedance-generate="onSeedanceGenerate"
@@ -369,8 +369,8 @@
           :screenshotAnchorsEnabled="screenshotAnchorsEnabled"
           :screenshotParticlesEnabled="screenshotParticlesEnabled"
           :resources="resources"
-          :nodes-by-id="(store.state as any).nodesById"
-          :node-order="(store.state as any).nodeOrder"
+          :nodes-by-id="store.state.nodesById"
+          :node-order="store.state.nodeOrder"
           :current-project-id="currentProjectId"
           :nodeLibraryOpen="false"
           :backendLogOpen="blueprintLogPanelOpen"
@@ -692,7 +692,7 @@
 </template>
 
 <script setup lang="ts">
-import { getErrorMessage, isRecord, isString, isNumber, isArray } from '../../types/utils'
+import { getErrorMessage, isRecord, isString, isNumber, isArray, hasKey, safeGetString, safeGetNumber, safeGetArray, safeGetRecord } from '../../types/utils'
 import * as THREE from 'three'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -726,6 +726,7 @@ import type {
   WorkflowEdge,
   WorkflowImageCrop,
   WorkflowModel3DNodeSettings,
+  WorkflowUnrealExportNodeSettings,
   WorkflowUnrealResolvedLayoutExport,
   WorkflowNode,
   WorkflowNodeChatParams,
@@ -740,6 +741,7 @@ import {
   isValidBlueprintSnapshot,
   normalizeSnapshotResourceUrls,
 } from '../../aiworkflow/persistence/blueprintSnapshot'
+import type { AIWorkflowDraftSnapshot } from '../../aiworkflow/persistence/blueprintSnapshot'
 import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
 import { AIWorkflowKey } from '../../store/aiworkflow'
 import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
@@ -749,7 +751,7 @@ import type { SeedanceTaskMirrorItem } from '../../network/ComfyUIBridgeService'
 import { createLocalExecChatService } from '../../network/LocalExecChatService'
 import { BlueprintProjectService, type BlueprintAssetKind } from '../../network/BlueprintProjectService'
 import { SceneSkillService } from '../../network/SceneSkillService'
-import { UnrealExportService } from '../../network/UnrealExportService'
+import { UnrealExportService, type UnrealExportJobInfo, type UnrealExportSessionInfo } from '../../network/UnrealExportService'
 import { MediaResourceImportManager } from '../../aiworkflow/MediaResourceImportManager'
 import { VideoMetadataReadQueue } from '../../aiworkflow/VideoMetadataReadQueue'
 import { createVideoFirstFrameThumbnail } from '../../aiworkflow/domain/resource/createVideoFirstFrameThumbnail'
@@ -758,10 +760,11 @@ import {
   resolveBackendUrl,
   resolveBackendFetchUrl,
   isWorkflowLocalAssetUrl,
+  getBackendBaseUrl,
 } from '../../network/backendConfig'
-import { isElectron, getBackendBaseUrl, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets, uploadProjectAsset, importProjectAsset } from '../../electronBridge'
+import { isElectron, openFolderForPath, downloadUrlToProjectRoot, copyFileToProjectRoot, fetchAsArrayBuffer, registerProjectRoot, repairAllProjectAssets, uploadProjectAsset, importProjectAsset } from '../../electronBridge'
 import ModalDialog from '../../ui/UIComponent/ModalDialog.vue'
-import { useAIWorkflow404Fallback } from './assets/useAIWorkflow404Fallback'
+import { useAIWorkflow404Fallback, type PendingMissingAsset } from './assets/useAIWorkflow404Fallback'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -4477,7 +4480,7 @@ const ensureVideoResourcePoster = async (resourceId: string, url: string) => {
   if (!rid || !rawUrl) return
   if (videoPosterGenerating.has(rid)) return
 
-  const cur = store.state.resourcesById?.[rid] as any
+  const cur = store.state.resourcesById?.[rid]
   const existedPoster = typeof cur?.posterUrl === 'string' ? String(cur.posterUrl).trim() : ''
   if (existedPoster) return
 
@@ -4500,7 +4503,7 @@ const ensureVideoResourcePoster = async (resourceId: string, url: string) => {
         bucket: 'thumbnails',
       })
       if (uploaded.ok) {
-        const asset = (uploaded as any).asset ?? {}
+        const asset = uploaded.asset
         nextPosterUrl = resolveBackendUrl(String(asset?.url || ''))
         nextPosterSourcePath = String(asset?.absolutePath || '').trim()
         const nextPosterProjectRelativePath = String(asset?.projectRelativePath || asset?.relativePath || '').trim()
@@ -4509,7 +4512,7 @@ const ensureVideoResourcePoster = async (resourceId: string, url: string) => {
             resourceId: rid,
             patch: {
               posterProjectRelativePath: nextPosterProjectRelativePath,
-            } as any,
+            },
           })
         }
       }
@@ -4527,7 +4530,7 @@ const ensureVideoResourcePoster = async (resourceId: string, url: string) => {
     }
 
     if (nextPosterUrl) {
-      const prevPoster = String((store.state.resourcesById?.[rid] as any)?.posterUrl || '').trim()
+      const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
       if (prevPoster && prevPoster.startsWith('blob:') && prevPoster !== nextPosterUrl) {
         try {
           URL.revokeObjectURL(prevPoster)
@@ -4540,7 +4543,7 @@ const ensureVideoResourcePoster = async (resourceId: string, url: string) => {
         patch: {
           posterUrl: nextPosterUrl,
           posterSourcePath: nextPosterSourcePath || undefined,
-        } as any,
+        },
       })
     }
   } catch {
@@ -4746,7 +4749,7 @@ const comfyService = new ComfyUIBridgeService({
   localExecBasePath: resolveLocalExecBasePath(),
   // web 模式下不写 baseUrl，让路径保持相对路径走 Vite proxy (/api/* → http://127.0.0.1:5800)，
   // 避免浏览器因跨域而在测试环境出现 "Failed to fetch"。
-  baseUrl: (getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl()) as any,
+  baseUrl: getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl(),
 })
 const localExecChatService = createLocalExecChatService(comfyService)
 const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())
@@ -4776,26 +4779,29 @@ const UNREAL_EXPORT_POLL_MAX_MS = 30000
 const UNREAL_EXPORT_POLL_IDLE_EXTRA_MS = 1000
 const UNREAL_EXPORT_POLL_JITTER_MS = 400
 
-const buildResetUnrealExportSettings = (settings?: Record<string, any> | null) => ({
-  connectionStatus: 'idle' as const,
-  statusText: '未建立连接',
-  message: '已清除旧项目中的 Unreal 会话与任务状态，请重新点击“等待连接”。',
-  targetSessionId: undefined,
-  connectedSession: null,
-  lastHeartbeatAt: undefined,
-  lastExportMode: undefined,
-  lastExportJobId: undefined,
-  lastExportStatus: undefined,
-  lastExportStage: undefined,
-  lastExportProgress: undefined,
-  lastExportMessage: undefined,
-  lastBlueprintAssetPath: undefined,
-  lastModelsAssetPath: undefined,
-  lastSpawnedLightCount: undefined,
-  lastLightingTargetActor: undefined,
-  lastExportAt: undefined,
-  autoPoll: settings?.autoPoll !== false,
-})
+const buildResetUnrealExportSettings = (settings?: Record<string, unknown> | null) => {
+  const autoPollVal = settings?.autoPoll
+  return {
+    connectionStatus: 'idle' as const,
+    statusText: '未建立连接',
+    message: '已清除旧项目中的 Unreal 会话与任务状态，请重新点击“等待连接”。',
+    targetSessionId: undefined,
+    connectedSession: null,
+    lastHeartbeatAt: undefined,
+    lastExportMode: undefined,
+    lastExportJobId: undefined,
+    lastExportStatus: undefined,
+    lastExportStage: undefined,
+    lastExportProgress: undefined,
+    lastExportMessage: undefined,
+    lastBlueprintAssetPath: undefined,
+    lastModelsAssetPath: undefined,
+    lastSpawnedLightCount: undefined,
+    lastLightingTargetActor: undefined,
+    lastExportAt: undefined,
+    autoPoll: autoPollVal !== false,
+  }
+}
 
 const {
   stripUnrealExportRuntimeFromNodes,
@@ -4806,7 +4812,7 @@ const {
 
 const resetCurrentUnrealExportNodeRuntimeState = () => {
   for (const nodeId of store.state.nodeOrder) {
-    const node = store.state.nodesById[nodeId] as any
+    const node = store.state.nodesById[nodeId]
     if (!node || node.type !== 'unreal-export') continue
     store.commit('setNodeUnrealExportSettings', {
       nodeId,
@@ -4837,16 +4843,16 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
       if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${res.error || 'unknown'}`, 'warn')
       return { ok: false, hasRunningJob: false, skipped: false }
     }
-    const sessions = Array.isArray(res.sessions) ? res.sessions : []
+    const sessions: UnrealExportSessionInfo[] = Array.isArray(res.sessions) ? res.sessions : []
     const activeSessions = sessions.filter((item) => String(item?.status ?? 'connected') !== 'stale')
     const latestConnected = activeSessions[0] ?? sessions[0] ?? null
     for (const node of nodesToSync) {
-      const current = (node as any).unrealExportSettings ?? {}
-      const lastExportJobId = String(current.lastExportJobId ?? '').trim()
-      const targetSessionId = String(current.targetSessionId ?? '').trim()
-      const currentProjectPath = String(current.connectedSession?.projectPath ?? '').trim()
-      const currentProjectName = String(current.connectedSession?.projectName ?? '').trim()
-      const exactSession = targetSessionId ? sessions.find((item) => String(item.sessionId ?? '') === targetSessionId) ?? null : null
+      const current: Partial<WorkflowUnrealExportNodeSettings> = node.unrealExportSettings ?? {}
+      const lastExportJobId = safeGetString(current, 'lastExportJobId')?.trim() ?? ''
+      const targetSessionId = safeGetString(current, 'targetSessionId')?.trim() ?? ''
+      const currentProjectPath = safeGetString(current.connectedSession ?? {}, 'projectPath')?.trim() ?? ''
+      const currentProjectName = safeGetString(current.connectedSession ?? {}, 'projectName')?.trim() ?? ''
+      const exactSession = targetSessionId ? sessions.find((item) => String(item?.sessionId ?? '') === targetSessionId) ?? null : null
       const replacementSession = activeSessions.find((item) => {
         const itemProjectPath = String(item?.projectPath ?? '').trim()
         const itemProjectName = String(item?.projectName ?? '').trim()
@@ -4857,7 +4863,7 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
       const matchedSession = exactSession && String(exactSession.status ?? 'connected') !== 'stale'
         ? exactSession
         : replacementSession
-      let latestJob: any = null
+      let latestJob: UnrealExportJobInfo | null = null
       let latestJobMissing = false
       if (lastExportJobId) {
         const jobRes = await unrealExportService.getJob(lastExportJobId)
@@ -4867,10 +4873,16 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
       if (matchedSession && String(matchedSession.status ?? 'connected') !== 'stale') {
         const latestJobStatus = String(latestJob?.status ?? '').trim()
         const latestJobMessage = String(latestJob?.message ?? '').trim()
-        const latestJobResult = latestJob?.resultData && typeof latestJob.resultData === 'object' ? latestJob.resultData : null
+        const latestJobResult = latestJob?.resultData && typeof latestJob.resultData === 'object' ? latestJob.resultData as Record<string, unknown> : null
         const nodeHasRunningJob = latestJobStatus === 'queued' || latestJobStatus === 'picked' || latestJobStatus === 'downloading' || latestJobStatus === 'importing' || latestJobStatus === 'assembling-actor' || latestJobStatus === 'applying-lighting'
         const hasFailedJob = latestJobStatus === 'failed'
         if (nodeHasRunningJob) hasRunningJob = true
+        const resultProgress = latestJobResult ? Number(latestJobResult.progress) : NaN
+        const resultSpawnedLightCount = latestJobResult ? Number(latestJobResult.spawnedLightCount) : NaN
+        const resultLayoutProtocolVersion = latestJobResult ? Number(latestJobResult.layoutProtocolVersion) : NaN
+        const resultSlotCount = latestJobResult ? Number(latestJobResult.slotCount) : NaN
+        const resultAppliedSlotCount = latestJobResult ? Number(latestJobResult.appliedSlotCount) : NaN
+        const resultMaterialOverrideCount = latestJobResult ? Number(latestJobResult.materialOverrideCount) : NaN
         store.commit('setNodeUnrealExportSettings', {
           nodeId: node.id,
           unrealExportSettings: {
@@ -4894,29 +4906,29 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
             lastExportStage: latestJobMissing ? undefined : (String(latestJobResult?.stage ?? '').trim() || current.lastExportStage),
             lastExportProgress: latestJobMissing
               ? undefined
-              : (Number.isFinite(Number(latestJobResult?.progress)) ? Number(latestJobResult.progress) : current.lastExportProgress),
+              : (Number.isFinite(resultProgress) ? resultProgress : current.lastExportProgress),
             lastExportMessage: latestJobMissing ? undefined : (latestJobMessage || current.lastExportMessage),
             lastBlueprintAssetPath: latestJobMissing ? undefined : (String(latestJobResult?.blueprintAssetPath ?? '').trim() || current.lastBlueprintAssetPath),
             lastModelsAssetPath: latestJobMissing ? undefined : (String(latestJobResult?.modelsAssetPath ?? '').trim() || current.lastModelsAssetPath),
             lastActorBaseClass: latestJobMissing ? undefined : (String(latestJobResult?.actorBaseClass ?? '').trim() || current.lastActorBaseClass),
             lastSpawnedLightCount: latestJobMissing
               ? undefined
-              : (Number.isFinite(Number(latestJobResult?.spawnedLightCount)) ? Number(latestJobResult.spawnedLightCount) : current.lastSpawnedLightCount),
+              : (Number.isFinite(resultSpawnedLightCount) ? resultSpawnedLightCount : current.lastSpawnedLightCount),
             lastLightingTargetActor: latestJobMissing
               ? undefined
               : (String(latestJobResult?.lightingTargetActorLabel ?? latestJobResult?.lightingTargetActorPath ?? '').trim() || current.lastLightingTargetActor),
             lastLayoutProtocolVersion: latestJobMissing
               ? undefined
-              : (Number.isFinite(Number(latestJobResult?.layoutProtocolVersion)) ? Number(latestJobResult.layoutProtocolVersion) : current.lastLayoutProtocolVersion),
+              : (Number.isFinite(resultLayoutProtocolVersion) ? resultLayoutProtocolVersion : current.lastLayoutProtocolVersion),
             lastSlotCount: latestJobMissing
               ? undefined
-              : (Number.isFinite(Number(latestJobResult?.slotCount)) ? Number(latestJobResult.slotCount) : current.lastSlotCount),
+              : (Number.isFinite(resultSlotCount) ? resultSlotCount : current.lastSlotCount),
             lastAppliedSlotCount: latestJobMissing
               ? undefined
-              : (Number.isFinite(Number(latestJobResult?.appliedSlotCount)) ? Number(latestJobResult.appliedSlotCount) : current.lastAppliedSlotCount),
+              : (Number.isFinite(resultAppliedSlotCount) ? resultAppliedSlotCount : current.lastAppliedSlotCount),
             lastMaterialOverrideCount: latestJobMissing
               ? undefined
-              : (Number.isFinite(Number(latestJobResult?.materialOverrideCount)) ? Number(latestJobResult.materialOverrideCount) : current.lastMaterialOverrideCount),
+              : (Number.isFinite(resultMaterialOverrideCount) ? resultMaterialOverrideCount : current.lastMaterialOverrideCount),
             lastExportAt: latestJobMissing ? undefined : (Number(latestJob?.updatedAt ?? latestJob?.createdAt ?? current.lastExportAt ?? 0) || current.lastExportAt),
           },
         })
@@ -5000,7 +5012,7 @@ const stopUnrealExportPolling = () => {
 }
 
 const onNodeAwaitUnrealConnection = async (nodeId: string) => {
-  const node = store.state.nodesById[nodeId] as any
+  const node = store.state.nodesById[nodeId]
   if (!node || node.type !== 'unreal-export') return
   store.commit('setNodeUnrealExportSettings', {
     nodeId,
@@ -5435,7 +5447,7 @@ pushToastBridge = pushToast
 
 // ===== 404 兜底恢复系统 =====
 const missingAssetDialogOpen = ref(false)
-const missingAssetDialogPending = ref<any>(null)
+const missingAssetDialogPending = ref<PendingMissingAsset | null>(null)
 const lastRemovedUndoAvailable = ref(false)
 
 const {
@@ -5453,23 +5465,24 @@ const {
   onRecovered: ({ url, newUrl, assetName, newAsset }) => {
     // 资源已自动恢复：更新资源缓存中的 URL，触发资源引用节点重渲染
     try {
-      const resourcesById = (store.state as any)?.resourcesById || {}
-      const patches: Record<string, any> = {}
-      for (const [rid, res] of Object.entries(resourcesById) as Array<[string, any]>) {
+      const resourcesById = store.state.resourcesById
+      const patches: Record<string, Partial<WorkflowResource>> = {}
+      for (const [rid, res] of Object.entries(resourcesById)) {
         if (!res) continue
-        const patch: any = {}
+        const patch: Partial<WorkflowResource> = {}
         let touched = false
         if (res.url === url) { patch.url = newUrl; touched = true }
         if (res.previewUrl === url) { patch.previewUrl = newUrl; touched = true }
         if (res.posterUrl === url) { patch.posterUrl = newUrl; touched = true }
         if (touched) {
           // 如果诊断结果提供了新的资源路径信息，同步更新
-          if (newAsset) {
-            patch.projectRelativePath = newAsset.projectRelativePath || newAsset.relativePath
-            patch.absolutePath = newAsset.absolutePath
-            patch.sourcePath = newAsset.sourcePath || newAsset.absolutePath
-            patch.contentType = newAsset.contentType
-            patch.size = newAsset.size
+          if (newAsset && isRecord(newAsset)) {
+            const projRelPath = safeGetString(newAsset, 'projectRelativePath') ?? safeGetString(newAsset, 'relativePath')
+            if (projRelPath) patch.projectRelativePath = projRelPath
+            const absPath = safeGetString(newAsset, 'absolutePath')
+            const sourcePathFromAsset = safeGetString(newAsset, 'sourcePath')
+            const finalSourcePath = sourcePathFromAsset || absPath
+            if (finalSourcePath) patch.sourcePath = finalSourcePath
             if (!patch.url) patch.url = newUrl
           }
           patches[rid] = patch
@@ -5926,7 +5939,7 @@ const {
   uploadLocalResourceAndGetUrl,
   resolveBackendUrl,
   getChatService: () => localExecChatService as any,
-  onSeedanceTaskObserved: (...args) => void onSeedanceTaskObserved(...args),
+  onSeedanceTaskObserved,
 })
 
 const {
@@ -5968,23 +5981,22 @@ const {
   recoverComfyUIRunStates,
 })
 
-const repairProjectAssetsBeforeHydrate = async (projectId: number, snapshot: any) => {
+const repairProjectAssetsBeforeHydrate = async (projectId: number, snapshot: AIWorkflowDraftSnapshot): Promise<AIWorkflowDraftSnapshot> => {
   if (!isElectron()) return snapshot
   const pid = Number(projectId)
   if (!Number.isFinite(pid) || pid <= 0) return snapshot
-  const resourcesById = snapshot && typeof snapshot === 'object' && snapshot.resourcesById && typeof snapshot.resourcesById === 'object'
-    ? snapshot.resourcesById
-    : {}
+  const snapshotRec = isRecord(snapshot) ? snapshot : {}
+  const resourcesById = safeGetRecord(snapshotRec, 'resourcesById') ?? {}
   try {
     const repaired = await repairAllProjectAssets({ projectId: pid, resourcesById })
     if (!repaired?.ok || !repaired.patches || Object.keys(repaired.patches).length === 0) return snapshot
     return {
       ...snapshot,
       resourcesById: {
-        ...resourcesById,
+        ...(snapshot.resourcesById || {}),
         ...repaired.patches,
       },
-    }
+    } as AIWorkflowDraftSnapshot
   } catch {
     return snapshot
   }
@@ -6059,7 +6071,7 @@ const {
 })
 
 const onPreviewResource = async (resourceId: string) => {
-  const r = store.state.resourcesById?.[String(resourceId)] as any
+  const r = store.state.resourcesById?.[String(resourceId)]
   if (!r) return
 
   // Prefer opening the project folder if the asset is stored locally
@@ -6143,7 +6155,7 @@ const {
       if (result?.ok && result?.project?.id > 0) {
         return {
           id: Number(result.project.id),
-          rootPath: String((result.project as any)?.rootPath || ''),
+          rootPath: String(result.project.rootPath || ''),
         }
       }
       return null
@@ -6178,8 +6190,12 @@ const {
 const onGlobalShortcutSave = async (ev: Event) => {
   // Only take over save behavior on AIWorkflow route.
   if (route.name !== 'AIWorkflow') return
-  ;(ev as any).preventDefault?.()
-  ;(ev as any).stopImmediatePropagation?.()
+  ev.preventDefault?.()
+  const evRec = ev as unknown as Record<string, unknown>
+  const stopProp = evRec.stopImmediatePropagation
+  if (typeof stopProp === 'function') {
+    stopProp.call(ev)
+  }
 
   // Ctrl/Cmd+S: persist blueprint project to backend (DB + JSON file).
   await onRequestSaveProject()
@@ -6314,8 +6330,8 @@ const linkInteraction = useAIWorkflowLinking({
   buildPath,
   pushToast,
   onLinkConnected: ({ fromNodeId, fromAnchorId, toNodeId, toAnchorId }) => {
-    const fromNode = store.state.nodesById[fromNodeId] as any
-    const toNode = store.state.nodesById[toNodeId] as any
+    const fromNode = store.state.nodesById[fromNodeId]
+    const toNode = store.state.nodesById[toNodeId]
     if (
       fromNode
       && toNode
@@ -6325,7 +6341,7 @@ const linkInteraction = useAIWorkflowLinking({
     ) {
       const rid = String(fromNode.resourceId ?? '').trim()
       if (rid) {
-        const resource = store.state.resourcesById[rid] as any
+        const resource = store.state.resourcesById[rid]
         const url = String(resource?.url ?? '').trim()
         if (url) {
           void (async () => {
@@ -6340,7 +6356,7 @@ const linkInteraction = useAIWorkflowLinking({
             const sourcePath = String(resource?.sourcePath ?? '').trim()
             bindMediaResourceToNode(toNodeId, 'image', url, fallbackName, {
               sourcePath: sourcePath || undefined,
-              projectRelativePath: String((resource as any)?.projectRelativePath || '').trim() || undefined,
+              projectRelativePath: String(resource?.projectRelativePath || '').trim() || undefined,
             })
             autoSizeMediaNode(toNodeId, url, 'image')
           })()
@@ -6538,9 +6554,10 @@ const imageMarkupContext = ref<{ nodeId: string | null; url: string | null; name
 
 let imageMarkupExportListenerId: number | null = null
 
-const onNodeImagePreviewRequestInline = (nodeId: string, ev: any) => {
-  const url = typeof ev === 'object' && ev !== null && typeof (ev as any).imageUrl === 'string' ? (ev as any).imageUrl : ''
-  onNodeImagePreviewRequest(nodeId, url)
+const onNodeImagePreviewRequestInline = (nodeId: string, ev: unknown) => {
+  const evRec = isRecord(ev) ? ev : {}
+  const imageUrl = safeGetString(evRec, 'imageUrl') ?? ''
+  onNodeImagePreviewRequest(nodeId, imageUrl)
 }
 
 const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
@@ -6551,11 +6568,14 @@ const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
   }
   imageMarkupContext.value = { nodeId, url: imageUrl, name: null }
   try {
-    const w = window as any
-    console.log('[AIWorkflowPage] dweb available:', !!w.dweb, 'dweb.aiworkflow:', !!w.dweb?.aiworkflow, 'openImageMarkupPreview:', typeof w.dweb?.aiworkflow?.openImageMarkupPreview);
-    if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.openImageMarkupPreview === 'function') {
+    const w = window as unknown as Record<string, unknown>
+    const dweb = safeGetRecord(w, 'dweb')
+    const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+    console.log('[AIWorkflowPage] dweb available:', !!dweb, 'dweb.aiworkflow:', !!dwebAiworkflow, 'openImageMarkupPreview:', typeof dwebAiworkflow?.openImageMarkupPreview);
+    if (dwebAiworkflow && typeof dwebAiworkflow.openImageMarkupPreview === 'function') {
       console.log('[AIWorkflowPage] calling openImageMarkupPreview with:', { url: imageUrl, name: nodeId });
-      w.dweb.aiworkflow.openImageMarkupPreview({ url: imageUrl, name: nodeId })
+      const openPreview = dwebAiworkflow.openImageMarkupPreview as (args: { url: string; name: string }) => void
+      openPreview({ url: imageUrl, name: nodeId })
       return
     }
     pushToast('当前环境未提供图片预览原生窗口，请在 DVStudio Electron 客户端中使用。', 'warn')
@@ -6593,13 +6613,15 @@ const handleImageMarkupExported = (payload: { dataUrl: string; width: number; he
 
     const resourceId = `res-markup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
     const resourceName = `${baseName}-marked-${Date.now()}.png`.slice(0, 200)
-    store.commit('addResource', {
+    const newResource: WorkflowResource = {
       id: resourceId,
       kind: 'image',
       name: resourceName,
       url: payload.dataUrl,
       localFileKey: `markup:${newNodeId}`,
-    } as any)
+      createdAt: Date.now(),
+    }
+    store.commit('addResource', newResource)
 
     store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
     store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
@@ -6611,8 +6633,8 @@ const handleImageMarkupExported = (payload: { dataUrl: string; width: number; he
       imageSettings: { outputWidth: w, outputHeight: h, naturalWidth: w, naturalHeight: h, cropEnabled: false, crop: { x: 0, y: 0, width: 1, height: 1 } },
     })
 
-    const fromAnchors = (fromNode as any).outputs as Array<any> | undefined
-    const fromAnchor = fromAnchors?.find((a: any) => String(a.mediaType || '') === 'image' || /^out-image/.test(String(a.id || ''))) || fromAnchors?.[0]
+    const fromAnchors = fromNode.outputs
+    const fromAnchor = fromAnchors?.find((a) => String(a.mediaType || '') === 'image' || /^out-image/.test(String(a.id || ''))) || fromAnchors?.[0]
     if (fromAnchor) {
       store.commit('addEdge', { fromNodeId, fromAnchorId: String(fromAnchor.id), toNodeId: newNodeId, toAnchorId: 'in-0' })
     }
@@ -6687,7 +6709,7 @@ const onNodeRetryMeshyFetch = async (nodeId: string) => {
       pushToast('拉取失败：' + String(res?.error ?? 'unknown'), 'error')
       return
     }
-    const finalStatus = await applyMeshyTaskResult(nodeId, res as any)
+    const finalStatus = await applyMeshyTaskResult(nodeId, res as unknown)
     if (finalStatus === 'succeeded') {
       pushToast('模型文件拉取成功。', 'info')
     } else {
@@ -6720,7 +6742,7 @@ const {
   getCurrentProjectId: () => currentProjectId.value,
 })
 
-const onSeedanceTaskObserved = async (taskId: string, stage: 'created' | 'completed') => {
+async function onSeedanceTaskObserved(taskId: string, stage: 'created' | 'completed') {
   const nextTaskId = String(taskId || '').trim()
   if (!nextTaskId) return
   await refreshVideoTaskItems({ silent: true })
@@ -6775,11 +6797,12 @@ const syncSeedancePreviewFromTaskId = async (taskId: string) => {
   if (!nextTaskId) return
   try {
     const res = await comfyService.seedanceTaskDetail(nextTaskId)
-    if (!(res as any)?.ok || !(res as any)?.item) {
+    const resRec = isRecord(res) ? (res as Record<string, unknown> & { ok?: boolean }) : {}
+    if (!resRec.ok || !hasKey(resRec, 'item')) {
       scheduleSeedancePreviewPoll(nextTaskId, 1500)
       return
     }
-    const shouldContinue = syncSeedancePreviewFromTaskItem((res as any).item as SeedanceTaskMirrorItem)
+    const shouldContinue = syncSeedancePreviewFromTaskItem(resRec.item as SeedanceTaskMirrorItem)
     if (currentSeedancePreviewTaskId.value === nextTaskId && shouldContinue) {
       scheduleSeedancePreviewPoll(nextTaskId)
       return
@@ -6796,9 +6819,12 @@ onBeforeUnmount(() => {
   clearSeedancePreviewPoll()
   // 清理资源管理器窗口事件监听
   if (resourceManagerEventListenerId !== null) {
-    const w = window as any
-    if (w.dweb?.aiworkflow?.offResourceManagerEvent) {
-      w.dweb.aiworkflow.offResourceManagerEvent(resourceManagerEventListenerId)
+    const w = window as unknown as Record<string, unknown>
+    const dweb = safeGetRecord(w, 'dweb')
+    const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+    const offEvent = dwebAiworkflow?.offResourceManagerEvent
+    if (typeof offEvent === 'function') {
+      (offEvent as (id: number) => void)(resourceManagerEventListenerId)
     }
     resourceManagerEventListenerId = null
   }
@@ -6809,7 +6835,7 @@ const onResourceDraggedToBlueprint = (
   resourceId: string,
   screenPosition?: { x: number; y: number } | null
 ) => {
-  const resource = (store.state as any).resourcesById?.[String(resourceId)] as any
+  const resource = store.state.resourcesById?.[String(resourceId)]
   if (!resource) {
     pushToast('未找到该资源记录。', 'warn')
     return
@@ -6854,7 +6880,7 @@ const onDeleteSelectedNodes = () => {
 
 const onDeleteSelectionFrame = (payload?: { frameId?: string }) => {
   if (payload?.frameId) {
-    const frame = store.state.savedSelectionFrames?.find((f: any) => f.id === payload.frameId)
+    const frame = store.state.savedSelectionFrames?.find((f) => f.id === payload.frameId)
     if (frame) {
       store.dispatch('removeSavedSelectionFrame', { id: payload.frameId })
       const sortedIds = [...frame.nodeIds].sort()
@@ -6936,20 +6962,21 @@ const pushSystemToast = (message: string, tone: 'info' | 'warn' | 'error' = 'war
   ]
 }
 
-const tryFocusNodeById = (nodeIdRaw: any): boolean => {
+const tryFocusNodeById = (nodeIdRaw: unknown): boolean => {
   const nodeId = String(nodeIdRaw || '').trim()
   if (!nodeId) return false
-  const exists = !!(store.state as any).nodesById?.[nodeId]
+  const exists = !!store.state.nodesById?.[nodeId]
   if (!exists) return false
   const ok = canvasInteraction.onFocusNode(nodeId)
   if (ok) {
-    ;(store.commit as any)('setSelectedNode', { nodeId })
+    store.commit('setSelectedNode', { nodeId })
   }
   return ok
 }
 
-const onToolbarFocusNode = (p: any) => {
-  const nodeId = String(p?.nodeId || '').trim()
+const onToolbarFocusNode = (p: unknown) => {
+  const pRec = isRecord(p) ? p : {}
+  const nodeId = safeGetString(pRec, 'nodeId')?.trim() ?? ''
   if (!nodeId) return
   const ok = tryFocusNodeById(nodeId)
   if (!ok) {
@@ -6957,38 +6984,43 @@ const onToolbarFocusNode = (p: any) => {
   }
 }
 
-const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => {
+const onResourceManagerWindowEvent = (payload: { event: string; data: unknown }) => {
   const { event, data } = payload || {}
   if (!event) return
+  const dataRec = isRecord(data) ? data : {}
   switch (String(event)) {
     case 'remove':
       // 资源管理器窗口中删除了资源，同步到蓝图页面
-      if (data?.resourceId) {
-        void onRemoveResource(String(data.resourceId))
+      if (dataRec.resourceId) {
+        void onRemoveResource(String(dataRec.resourceId))
       }
       break
     case 'preview':
       // 资源管理器窗口中预览了资源
-      if (data?.resourceId) {
-        void onPreviewResource(String(data.resourceId))
+      if (dataRec.resourceId) {
+        void onPreviewResource(String(dataRec.resourceId))
       }
       break
     case 'refresh-missing':
       // 资源管理器窗口中触发了缺失刷新
-      if (Array.isArray(data?.resourceIds)) {
-        void onRefreshMissingResourceRecords(data.resourceIds)
+      const resourceIdsRaw = safeGetArray(dataRec, 'resourceIds', isString)
+      if (resourceIdsRaw) {
+        void onRefreshMissingResourceRecords(resourceIdsRaw)
       }
       break
     case 'drop-to-node':
       // 资源管理器窗口中拖拽资源到蓝图节点
-      if (data?.resourceId) {
-        void onResourceDraggedToBlueprint(String(data.resourceId), data?.position ?? null)
+      if (dataRec.resourceId) {
+        const position = safeGetRecord(dataRec, 'position')
+        const posX = safeGetNumber(position ?? {}, 'x')
+        const posY = safeGetNumber(position ?? {}, 'y')
+        void onResourceDraggedToBlueprint(String(dataRec.resourceId), posX !== undefined && posY !== undefined ? { x: posX, y: posY } : null)
       }
       break
     case 'focus-node':
       // 资源管理器窗口中请求定位到节点
-      if (data?.nodeId) {
-        const ok = tryFocusNodeById(String(data.nodeId))
+      if (dataRec.nodeId) {
+        const ok = tryFocusNodeById(String(dataRec.nodeId))
         if (!ok) {
           pushSystemToast('引用节点已删除，无法定位。', 'warn')
         }
@@ -7000,19 +7032,29 @@ const onResourceManagerWindowEvent = (payload: { event: string; data: any }) => 
 }
 
 const registerResourceManagerEventListener = () => {
-  const w = window as any
-  if (!w.__DWEB_RUNTIME__?.isElectron || !w.dweb?.aiworkflow?.onResourceManagerEvent) return
-  resourceManagerEventListenerId = w.dweb.aiworkflow.onResourceManagerEvent(onResourceManagerWindowEvent)
+  const w = window as unknown as Record<string, unknown>
+  const runtime = safeGetRecord(w, '__DWEB_RUNTIME__')
+  const isElectronRuntime = runtime?.isElectron === true
+  const dweb = safeGetRecord(w, 'dweb')
+  const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+  const onEvent = dwebAiworkflow?.onResourceManagerEvent
+  if (!isElectronRuntime || typeof onEvent !== 'function') return
+  resourceManagerEventListenerId = (onEvent as (cb: (payload: { event: string; data: unknown }) => void) => number)(onResourceManagerWindowEvent)
 }
 
 const openResourceDialog = async () => {
-  const w = window as any
+  const w = window as unknown as Record<string, unknown>
+  const runtime = safeGetRecord(w, '__DWEB_RUNTIME__')
+  const isElectronRuntime = runtime?.isElectron === true
+  const dweb = safeGetRecord(w, 'dweb')
+  const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+  const openManager = dwebAiworkflow?.openResourceManager
   // Electron 环境：打开原生窗口
-  if (w.__DWEB_RUNTIME__?.isElectron && w.dweb?.aiworkflow?.openResourceManager) {
+  if (isElectronRuntime && typeof openManager === 'function') {
     try {
       const projectId = currentProjectId.value
       const title = currentProjectName.value || '资源管理器'
-      const result = await w.dweb.aiworkflow.openResourceManager({ projectId, title })
+      const result = await (openManager as (args: { projectId: number | null; title: string }) => Promise<{ ok?: boolean }>)({ projectId, title })
       console.log('[AIWorkflowPage] openResourceManager result:', JSON.stringify(result))
       
       // 发送资源数据到资源管理器窗口
@@ -7022,11 +7064,14 @@ const openResourceDialog = async () => {
         const resourcesData = JSON.parse(JSON.stringify(resources.value))
         const nodesData = JSON.parse(JSON.stringify(store.state.nodesById))
         const nodeOrderData = JSON.parse(JSON.stringify(store.state.nodeOrder))
-        await w.dweb.aiworkflow.sendResourceManagerData({
-          resources: resourcesData,
-          nodesById: nodesData,
-          nodeOrder: nodeOrderData,
-        })
+        const sendData = dwebAiworkflow?.sendResourceManagerData
+        if (typeof sendData === 'function') {
+          await (sendData as (args: { resources: unknown; nodesById: unknown; nodeOrder: unknown }) => Promise<void>)({
+            resources: resourcesData,
+            nodesById: nodesData,
+            nodeOrder: nodeOrderData,
+          })
+        }
         console.log('[AIWorkflowPage] sent resources to resource manager:', resourcesData.length)
       }
       return
@@ -7053,13 +7098,18 @@ const syncNodesToResourceManager = () => {
   }
   syncNodesToManagerTimer = window.setTimeout(() => {
     syncNodesToManagerTimer = null
-    const w = window as any
-    if (!w.__DWEB_RUNTIME__?.isElectron || !w.dweb?.aiworkflow?.sendResourceManagerData) return
+    const w = window as unknown as Record<string, unknown>
+    const runtime = safeGetRecord(w, '__DWEB_RUNTIME__')
+    const isElectronRuntime = runtime?.isElectron === true
+    const dweb = safeGetRecord(w, 'dweb')
+    const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+    const sendData = dwebAiworkflow?.sendResourceManagerData
+    if (!isElectronRuntime || typeof sendData !== 'function') return
     try {
       const resourcesData = JSON.parse(JSON.stringify(resources.value))
       const nodesData = JSON.parse(JSON.stringify(store.state.nodesById))
       const nodeOrderData = JSON.parse(JSON.stringify(store.state.nodeOrder))
-      void w.dweb.aiworkflow.sendResourceManagerData({
+      void (sendData as (args: { resources: unknown; nodesById: unknown; nodeOrder: unknown }) => Promise<void>)({
         resources: resourcesData,
         nodesById: nodesData,
         nodeOrder: nodeOrderData,
@@ -7071,7 +7121,7 @@ const syncNodesToResourceManager = () => {
 }
 
 watch(
-  () => (store.state as any).nodeOrder?.length ?? 0,
+  () => store.state.nodeOrder?.length ?? 0,
   () => {
     syncNodesToResourceManager()
   }
@@ -7121,7 +7171,11 @@ const importAssetIntoProjectScope = async (payload: {
       projectId: payload.projectId,
       bucket: payload.bucket,
     })
-    if (byPath.ok) return (byPath as any).asset ?? null
+    const byPathRec = isRecord(byPath) ? (byPath as Record<string, unknown> & { ok?: boolean }) : {}
+    if (byPathRec.ok) {
+      const asset = safeGetRecord(byPathRec, 'asset')
+      return asset ? (asset as unknown as PendingMissingAsset) : null
+    }
   }
 
   if (sourceUrl) {
@@ -7149,7 +7203,11 @@ const importAssetIntoProjectScope = async (payload: {
       projectId: payload.projectId,
       bucket: payload.bucket,
     })
-    if (byUrl.ok) return (byUrl as any).asset ?? null
+    const byUrlRec = isRecord(byUrl) ? (byUrl as Record<string, unknown> & { ok?: boolean }) : {}
+    if (byUrlRec.ok) {
+      const asset = safeGetRecord(byUrlRec, 'asset')
+      return asset ? (asset as unknown as PendingMissingAsset) : null
+    }
   }
 
   return null
@@ -7347,7 +7405,7 @@ onBeforeUnmount(() => {
   } catch {
     // ignore
   }
-	window.removeEventListener('dvs:shortcut/save', onGlobalShortcutSave as EventListener, true)
+	window.removeEventListener('dvs:shortcut/save', onGlobalShortcutSave, true)
   unmountWindowEvents()
   window.removeEventListener('pointerup', flushPendingImageDistribute, true)
   window.removeEventListener('pointercancel', flushPendingImageDistribute, true)
@@ -7382,7 +7440,7 @@ let uninstallGlobal404Handlers: (() => void) | null = null
 
 onMounted(() => {
 	// Take over global Ctrl/Cmd+S only on this page.
-  window.addEventListener('dvs:shortcut/save', onGlobalShortcutSave as EventListener, true)
+  window.addEventListener('dvs:shortcut/save', onGlobalShortcutSave, true)
   mountWindowEvents()
   window.addEventListener('pointerup', flushPendingImageDistribute, true)
   window.addEventListener('pointercancel', flushPendingImageDistribute, true)
@@ -7478,7 +7536,7 @@ async function runProjectEnterSequence(
       } catch {
         // 资源恢复失败不阻断主流程，仅记录
       }
-      const resourcesTotal = Number(Array.isArray((store.state as any)?.resources) ? (store.state as any).resources.length : (store.state as any)?.resourcesById ? Object.keys((store.state as any).resourcesById).length : 0)
+      const resourcesTotal = store.state.resourceOrder?.length ?? Object.keys(store.state.resourcesById ?? {}).length
       return resourcesTotal
     }, { errorDetailOnFailure: true })
   }
