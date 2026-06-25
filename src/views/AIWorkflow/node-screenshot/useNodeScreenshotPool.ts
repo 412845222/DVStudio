@@ -27,7 +27,7 @@ export interface ScreenshotCacheEntry {
 export type ScreenshotPriority = 'high' | 'normal' | 'low'
 
 const BASE_CONCURRENT_CAPTURES = 1
-const MAX_CONCURRENT_CAPTURES = 4
+const MAX_CONCURRENT_CAPTURES = 8
 const HIGH_PRIORITY_FRAME_TIME_MS = 16
 const NORMAL_PRIORITY_FRAME_TIME_MS = 8
 const LOW_PRIORITY_FRAME_TIME_MS = 5
@@ -41,7 +41,17 @@ const getIdealConcurrency = () => {
     return 2
   }
 }
+
+const getWarmupConcurrency = () => {
+  try {
+    const cores = navigator.hardwareConcurrency || 4
+    return Math.min(MAX_CONCURRENT_CAPTURES, Math.max(4, cores - 1))
+  } catch {
+    return 4
+  }
+}
 const QUEUE_DELAY_MS = 10
+const BURST_QUEUE_DELAY_MS = 0
 const IMAGE_WAIT_TIMEOUT = 2500
 export const SCREENSHOT_PADDING = 20
 
@@ -248,10 +258,14 @@ const inlineAllStyles = (source: Element, clone: Element) => {
 
 const convertImagesToDataUrls = async (root: HTMLElement): Promise<void> => {
   const imgs = Array.from(root.querySelectorAll('img'))
-  for (const img of imgs) {
-    try {
-      if (!img.src || img.src.startsWith('data:')) continue
-      await new Promise<void>(resolve => {
+  if (imgs.length === 0) return
+  await Promise.all(imgs.map(img => {
+    return new Promise<void>(resolve => {
+      try {
+        if (!img.src || img.src.startsWith('data:')) {
+          resolve()
+          return
+        }
         const doConvert = () => {
           try {
             const canvas = document.createElement('canvas')
@@ -274,9 +288,11 @@ const convertImagesToDataUrls = async (root: HTMLElement): Promise<void> => {
           img.addEventListener('error', () => resolve(), { once: true })
           setTimeout(() => resolve(), 1000)
         }
-      })
-    } catch {}
-  }
+      } catch {
+        resolve()
+      }
+    })
+  }))
 }
 
 const renderSvgToCanvas = (svgDataUrl: string, width: number, height: number): Promise<HTMLCanvasElement> => {
@@ -317,9 +333,11 @@ export const createNodeScreenshotPool = () => {
   const highPriorityQueue: ScreenshotTask[] = []
   const normalPriorityQueue: ScreenshotTask[] = []
   const lowPriorityQueue: ScreenshotTask[] = []
+  const inFlight = new Map<string, { version: string; resolves: Array<(e: ScreenshotCacheEntry | null) => void> }>()
 
   let processing = false
   let active = 0
+  let burstMode = false
 
   const getCached = (nodeId: string, version: string) => {
     const e = cache.get(nodeId)
@@ -360,7 +378,6 @@ export const createNodeScreenshotPool = () => {
     wrapper.style.backgroundColor = 'transparent'
 
     const clone = sourceEl.cloneNode(true) as HTMLElement
-    inlineAllStyles(sourceEl, clone)
 
     clone.style.position = 'absolute'
     clone.style.left = `${padding}px`
@@ -452,7 +469,6 @@ export const createNodeScreenshotPool = () => {
     host.appendChild(wrapper)
 
     await waitForAllImages(wrapper)
-    await waitForFrames(1)
 
     await convertImagesToDataUrls(wrapper)
 
@@ -509,63 +525,65 @@ export const createNodeScreenshotPool = () => {
 
   const getQueueLength = () => highPriorityQueue.length + normalPriorityQueue.length + lowPriorityQueue.length
 
-  const process = async () => {
-    if (processing) return
-    processing = true
+  const processNext = () => {
+    if (getQueueLength() === 0 || active >= maxConcurrency.value) {
+      return
+    }
+    
+    const slot = acquireSlot()
+    if (!slot) return
 
-    ensureSlots(maxConcurrency.value)
+    const task = dequeueTask()
+    if (!task) {
+      releaseSlot(slot)
+      return
+    }
 
-    const processNext = () => {
-      if (getQueueLength() === 0 || active >= maxConcurrency.value) {
-        return
-      }
-      
-      const slot = acquireSlot()
-      if (!slot) return
+    active++
 
-      const task = dequeueTask()
-      if (!task) {
+    const inflightResolves: Array<(e: ScreenshotCacheEntry | null) => void> = []
+    inFlight.set(task.nodeId, { version: task.version, resolves: inflightResolves })
+    inflightResolves.push(task.resolve)
+
+    ;(async () => {
+      const startTime = performance.now()
+      try {
+        const cached = getCached(task.nodeId, task.version)
+        if (cached) {
+          releaseSlot(slot)
+          for (const r of inflightResolves) r(cached)
+          return
+        }
+
+        const canvas = await capture(slot, task.element, task.width, task.height, task.padding)
         releaseSlot(slot)
-        return
-      }
 
-      active++
+        if (!canvas) {
+          for (const r of inflightResolves) r(null)
+          return
+        }
 
-      ;(async () => {
-        const startTime = performance.now()
-        try {
-          const cached = getCached(task.nodeId, task.version)
-          if (cached) {
-            releaseSlot(slot)
-            task.resolve(cached)
-            return
-          }
-
-          const canvas = await capture(slot, task.element, task.width, task.height, task.padding)
-          releaseSlot(slot)
-
-          if (!canvas) {
-            task.resolve(null)
-            return
-          }
-
-          const entry: ScreenshotCacheEntry = {
-            nodeId: task.nodeId,
-            version: task.version,
-            dataUrl: canvas.toDataURL('image/png'),
-            width: canvas.width,
-            height: canvas.height,
-            padding: task.padding,
-            capturedAt: Date.now(),
-          }
-          cache.set(task.nodeId, entry)
-          task.resolve(entry)
-        } catch (err) {
-          console.warn('[ScreenshotPool] capture failed for node:', task.nodeId, err)
-          releaseSlot(slot)
-          task.resolve(null)
-        } finally {
-          active--
+        const entry: ScreenshotCacheEntry = {
+          nodeId: task.nodeId,
+          version: task.version,
+          dataUrl: canvas.toDataURL('image/png'),
+          width: canvas.width,
+          height: canvas.height,
+          padding: task.padding,
+          capturedAt: Date.now(),
+        }
+        cache.set(task.nodeId, entry)
+        for (const r of inflightResolves) r(entry)
+      } catch (err) {
+        console.warn('[ScreenshotPool] capture failed for node:', task.nodeId, err)
+        releaseSlot(slot)
+        for (const r of inflightResolves) r(null)
+      } finally {
+        inFlight.delete(task.nodeId)
+        active--
+        if (burstMode) {
+          processNext()
+        } else {
           const elapsed = performance.now() - startTime
           const frameBudget = task.priority === 'high' ? HIGH_PRIORITY_FRAME_TIME_MS : 
                              task.priority === 'normal' ? NORMAL_PRIORITY_FRAME_TIME_MS : 
@@ -577,21 +595,30 @@ export const createNodeScreenshotPool = () => {
             processNext()
           }
         }
-      })()
+      }
+    })()
+  }
+
+  const process = async () => {
+    ensureSlots(maxConcurrency.value)
+
+    if (!processing) {
+      processing = true
+      const checkComplete = () => {
+        if (active === 0 && getQueueLength() === 0) {
+          processing = false
+        } else {
+          setTimeout(checkComplete, 16)
+        }
+      }
+      setTimeout(checkComplete, 16)
     }
 
-    for (let i = 0; i < maxConcurrency.value; i++) {
+    const slotsAvailable = maxConcurrency.value - active
+    const toStart = Math.min(slotsAvailable, getQueueLength())
+    for (let i = 0; i < toStart; i++) {
       processNext()
     }
-
-    const checkComplete = () => {
-      if (active === 0 && getQueueLength() === 0) {
-        processing = false
-      } else {
-        setTimeout(checkComplete, 16)
-      }
-    }
-    setTimeout(checkComplete, 16)
   }
 
   const queueScreenshot = (
@@ -604,6 +631,18 @@ export const createNodeScreenshotPool = () => {
     priority: ScreenshotPriority = 'normal',
   ): Promise<ScreenshotCacheEntry | null> => {
     return new Promise(resolve => {
+      const cached = getCached(nodeId, version)
+      if (cached) {
+        resolve(cached)
+        return
+      }
+
+      const inflight = inFlight.get(nodeId)
+      if (inflight && inflight.version === version) {
+        inflight.resolves.push(resolve)
+        return
+      }
+
       const existingTask = [...highPriorityQueue, ...normalPriorityQueue, ...lowPriorityQueue]
         .find(x => x.nodeId === nodeId)
       
@@ -621,6 +660,14 @@ export const createNodeScreenshotPool = () => {
           originalResolve(entry)
           resolve(entry)
         }
+        if (burstMode) {
+          ensureSlots(maxConcurrency.value)
+          const slotsAvailable = maxConcurrency.value - active
+          if (slotsAvailable > 0) {
+            const toStart = Math.min(slotsAvailable, getQueueLength())
+            for (let i = 0; i < toStart; i++) processNext()
+          }
+        }
         return
       }
       
@@ -634,7 +681,16 @@ export const createNodeScreenshotPool = () => {
         normalPriorityQueue.push(task)
       }
       
-      setTimeout(process, QUEUE_DELAY_MS)
+      if (burstMode) {
+        ensureSlots(maxConcurrency.value)
+        const slotsAvailable = maxConcurrency.value - active
+        if (slotsAvailable > 0) {
+          const toStart = Math.min(slotsAvailable, getQueueLength())
+          for (let i = 0; i < toStart; i++) processNext()
+        }
+      } else {
+        setTimeout(process, QUEUE_DELAY_MS)
+      }
     })
   }
 
@@ -665,6 +721,33 @@ export const createNodeScreenshotPool = () => {
     })
   }
 
+  const setConcurrency = (n: number) => {
+    const newVal = Math.max(1, Math.min(MAX_CONCURRENT_CAPTURES, Math.round(n)))
+    if (newVal !== maxConcurrency.value) {
+      maxConcurrency.value = newVal
+      ensureSlots(newVal)
+      if (processing) {
+        setTimeout(process, 0)
+      }
+    }
+  }
+
+  const resetConcurrency = () => {
+    setConcurrency(getIdealConcurrency())
+  }
+
+  const setBurstMode = (enabled: boolean) => {
+    burstMode = enabled
+    if (enabled) {
+      ensureSlots(maxConcurrency.value)
+      const slotsAvailable = maxConcurrency.value - active
+      if (slotsAvailable > 0 && getQueueLength() > 0) {
+        const toStart = Math.min(slotsAvailable, getQueueLength())
+        for (let i = 0; i < toStart; i++) processNext()
+      }
+    }
+  }
+
   const cleanup = () => {
     clearAllSlots()
     cleanupSlots()
@@ -672,8 +755,10 @@ export const createNodeScreenshotPool = () => {
     highPriorityQueue.length = 0
     normalPriorityQueue.length = 0
     lowPriorityQueue.length = 0
+    inFlight.clear()
     processing = false
     active = 0
+    burstMode = false
   }
 
   return {
@@ -684,6 +769,10 @@ export const createNodeScreenshotPool = () => {
     prefillCache,
     queueScreenshot,
     awaitQueueDrained,
+    setConcurrency,
+    resetConcurrency,
+    setBurstMode,
+    getWarmupConcurrency,
     getStats: () => ({ 
       cacheSize: cache.size, 
       queueHigh: highPriorityQueue.length,

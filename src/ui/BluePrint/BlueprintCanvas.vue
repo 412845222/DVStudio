@@ -120,6 +120,27 @@ const dragStartNodes = ref<Record<string, { x: number; y: number }>>({});
 // 是否悬停在移动手柄上
 const isOverMoveHandle = ref(false);
 
+let pendingViewport: BlueprintViewport | null = null;
+let viewportRafId = 0;
+const flushPendingViewport = () => {
+  viewportRafId = 0;
+  const v = pendingViewport;
+  if (!v) return;
+  pendingViewport = null;
+  emit("update:viewport", v);
+};
+const scheduleViewportEmit = (v: BlueprintViewport) => {
+  pendingViewport = v;
+  if (viewportRafId) return;
+  viewportRafId = requestAnimationFrame(flushPendingViewport);
+};
+const flushViewportEmitNow = () => {
+  if (viewportRafId) {
+    cancelAnimationFrame(viewportRafId);
+  }
+  flushPendingViewport();
+};
+
 const viewportZoom = computed(() => {
   const z = Number(props.viewport?.zoom ?? 1);
   return Number.isFinite(z) ? clamp(z, 0.2, 6) : 1;
@@ -593,6 +614,9 @@ watch(
 onBeforeUnmount(() => {
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
+  if (viewportRafId) cancelAnimationFrame(viewportRafId);
+  viewportRafId = 0;
+  pendingViewport = null;
   ro?.disconnect();
   ro = null;
   themeObserver?.disconnect();
@@ -667,7 +691,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
         x: bgDrag.startPan.x + dx,
         y: bgDrag.startPan.y + dy,
       };
-      emit("update:viewport", { zoom: viewportZoom.value, panX: next.x, panY: next.y });
+      scheduleViewportEmit({ zoom: viewportZoom.value, panX: next.x, panY: next.y });
     };
     const onUp = (ev: PointerEvent) => {
       bgDrag = null;
@@ -679,6 +703,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
       } catch {
         // ignore
       }
+      flushViewportEmitNow();
       if (moved) suppressContextMenuOnce = true;
       emit("canvas-panning-end");
     };
@@ -708,7 +733,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
         x: touchDrag.startPan.x + dx,
         y: touchDrag.startPan.y + dy,
       };
-      emit("update:viewport", { zoom: viewportZoom.value, panX: next.x, panY: next.y });
+      scheduleViewportEmit({ zoom: viewportZoom.value, panX: next.x, panY: next.y });
     };
     const onUp = (ev: PointerEvent) => {
       if (touchDrag && ev.pointerId !== touchDrag.pointerId) return;
@@ -721,6 +746,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
       } catch {
         // ignore
       }
+      flushViewportEmitNow();
       emit("canvas-panning-end");
     };
     wrap.addEventListener("pointermove", onMove, { passive: false });

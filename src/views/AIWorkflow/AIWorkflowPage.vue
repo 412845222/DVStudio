@@ -1092,7 +1092,8 @@ const isWarmingUpScreenshots = ref(false)
 const screenshotWarmupProgress = ref(0)
 const screenshotWarmupOpen = ref(false)
 const screenshotWarmupDetail = ref('')
-const forceRenderAll = computed(() => isWarmingUpScreenshots.value)
+const warmupForceRenderNodeIds = ref<Set<string>>(new Set())
+const warmupExitingFullRender = ref(false)
 const nearDragNodeIds = ref<Set<string>>(new Set())
 
 const autoWireInProgress = ref(false)
@@ -1143,7 +1144,7 @@ const {
   compactZoomThreshold: compactThreshold,
   screenMargin: 360,
   motionRecomputeMinIntervalMs: 90,
-  forceRenderAll,
+  forceRenderNodeIds: warmupForceRenderNodeIds,
 })
 
 const safeVisibleSeenSet = new Set<string>()
@@ -1170,6 +1171,79 @@ const safeVisibleRenderNodes = computed(() => {
 const nodeHostRefs = new Map<string, HTMLElement>()
 const nodeScreenshotMap = shallowRef(new Map<string, ScreenshotCacheEntry>())
 const screenshotPool = createNodeScreenshotPool()
+const upstreamCroppedImageUrls = new Map<string, string>()
+
+const getUpstreamCroppedImageUrl = (node: WorkflowNode): string | null => {
+  if (node.type !== 'image') return null
+  if (node.resourceId) return null
+  const inEdge = getFirstIncomingEdge(node.id, 'in-image') || getFirstIncomingEdge(node.id, 'in-resource')
+  if (!inEdge) return null
+  const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
+  if (!fromNode || fromNode.type !== 'image') return null
+  const fromResourceId = String(fromNode.resourceId ?? '').trim()
+  if (!fromResourceId) return null
+  const fromResource = store.state.resourcesById[fromResourceId]
+  if (!fromResource) return null
+  const src = String(fromResource.url ?? '').trim()
+  if (!src) return null
+  const fromSettings = fromNode.imageSettings
+  if (!fromSettings?.cropEnabled || !fromSettings?.crop) return null
+  const ow = Math.max(1, Math.floor(Number(fromSettings.outputWidth ?? fromSettings.naturalWidth ?? 0)))
+  const oh = Math.max(1, Math.floor(Number(fromSettings.outputHeight ?? fromSettings.naturalHeight ?? 0)))
+  if (!ow || !oh) return null
+  return `cropped:${src}|${ow}|${oh}|${JSON.stringify(fromSettings.crop)}`
+}
+
+const getCroppedImageUrl = async (rawUrl: string): Promise<string | null> => {
+  if (!rawUrl.startsWith('cropped:')) return null
+  const parts = rawUrl.slice(9).split('|')
+  if (parts.length < 4) return null
+  const [src, owStr, ohStr, cropJson] = parts
+  const ow = parseInt(owStr, 10)
+  const oh = parseInt(ohStr, 10)
+  const crop = JSON.parse(cropJson)
+  if (!src || !ow || !oh || !crop) return null
+  try {
+    const blob = await exportWorkflowImageOutputPng({
+      src,
+      outputWidth: ow,
+      outputHeight: oh,
+      crop: crop,
+    })
+    if (!blob) return null
+    return URL.createObjectURL(blob)
+  } catch {
+    return null
+  }
+}
+
+const clearUpstreamCroppedImageUrl = (nodeId: string) => {
+  const cachedUrl = upstreamCroppedImageUrls.get(nodeId)
+  if (cachedUrl && cachedUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(cachedUrl)
+  }
+  upstreamCroppedImageUrls.delete(nodeId)
+}
+
+watch(() => nodes.value, (newNodes) => {
+  const currentNodeIds = new Set(newNodes.map(n => String(n?.id ?? '').trim()).filter(Boolean))
+  upstreamCroppedImageUrls.forEach((url, nodeId) => {
+    if (!currentNodeIds.has(nodeId)) {
+      clearUpstreamCroppedImageUrl(nodeId)
+    }
+  })
+}, { deep: true })
+
+watch(() => store.state.nodesById, () => {
+  nodes.value.forEach(node => {
+    if (node.type !== 'image') return
+    const newCmd = getUpstreamCroppedImageUrl(node)
+    const currentUrl = upstreamCroppedImageUrls.get(String(node.id))
+    if (newCmd && currentUrl && newCmd !== currentUrl) {
+      clearUpstreamCroppedImageUrl(String(node.id))
+    }
+  })
+}, { deep: true })
 
 /**
  * 判断节点的几何边界是否与当前视口矩形相交（纯几何计算，不依赖渲染状态）
@@ -1250,6 +1324,11 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
     }
   }
 
+  for (const id of warmupForceRenderNodeIds.value) {
+    const nid = String(id ?? '').trim()
+    if (nid) result.add(nid)
+  }
+
   return result
 })
 
@@ -1264,12 +1343,36 @@ const getNodeScreenshotVersion = (node: WorkflowNode): string => {
   
   if (node.subtitle) parts.push(`sub:${node.subtitle}`)
   
+  if (node.type === 'image' && !node.resourceId) {
+    const inEdge = getFirstIncomingEdge(node.id, 'in-image') || getFirstIncomingEdge(node.id, 'in-resource')
+    if (inEdge) {
+      const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
+      if (fromNode && fromNode.type === 'image' && fromNode.resourceId) {
+        parts.push(`ptfrom:${fromNode.id}`)
+        const fromPreviewVer = nodeImagePreviewVersion(fromNode)
+        if (fromPreviewVer) parts.push(`ptpv:${fromPreviewVer}`)
+        const fromSettings = fromNode.imageSettings
+        if (fromSettings) {
+          parts.push(`ptiw:${fromSettings.outputWidth || 0}`)
+          parts.push(`ptih:${fromSettings.outputHeight || 0}`)
+          parts.push(`ptice:${fromSettings.cropEnabled ? '1' : '0'}`)
+          if (fromSettings.crop) {
+            const c = fromSettings.crop
+            parts.push(`pticx:${Math.round((c.x || 0) * 1000) / 1000}`)
+            parts.push(`pticy:${Math.round((c.y || 0) * 1000) / 1000}`)
+            parts.push(`pticw:${Math.round((c.width || 1) * 1000) / 1000}`)
+            parts.push(`ptich:${Math.round((c.height || 1) * 1000) / 1000}`)
+          }
+        }
+      }
+    }
+  }
+  
   const imageSettings = (node as any).imageSettings
   if (imageSettings) {
     parts.push(`img:${imageSettings.outputWidth || 0}`)
     parts.push(`imh:${imageSettings.outputHeight || 0}`)
     parts.push(`imce:${imageSettings.cropEnabled ? '1' : '0'}`)
-    parts.push(`impt:${imageSettings.outputPassThroughEnabled ? '1' : '0'}`)
     if (imageSettings.crop) {
       const c = imageSettings.crop
       parts.push(`imcx:${Math.round((c.x || 0) * 1000) / 1000}`)
@@ -1348,6 +1451,29 @@ const scheduleNodeScreenshot = async (node: WorkflowNode, retryCount: number = 0
     }
   }
 
+  let croppedImageUrl: string | null = upstreamCroppedImageUrls.get(nodeId) || null
+  if (!croppedImageUrl) {
+    const croppedCmd = getUpstreamCroppedImageUrl(node)
+    if (croppedCmd) {
+      const generatedUrl = await getCroppedImageUrl(croppedCmd)
+      if (generatedUrl) {
+        croppedImageUrl = generatedUrl
+        upstreamCroppedImageUrls.set(nodeId, generatedUrl)
+      }
+    }
+  }
+
+  const originalImgSrcs: Map<HTMLImageElement, string> = new Map()
+  if (croppedImageUrl) {
+    const imgEls = nodeEl.querySelectorAll('.wf-media-img')
+    imgEls.forEach(img => {
+      if (img instanceof HTMLImageElement && img.src && !img.src.startsWith('data:')) {
+        originalImgSrcs.set(img, img.src)
+        img.src = croppedImageUrl as string
+      }
+    })
+  }
+
   try {
     const width = Math.max(80, Math.round(node.width) || 240)
     const height = Math.max(80, Math.round(node.height) || 160)
@@ -1369,6 +1495,10 @@ const scheduleNodeScreenshot = async (node: WorkflowNode, retryCount: number = 0
     }
   } catch (err) {
     console.warn('[Screenshot] failed for node:', nodeId, err)
+  } finally {
+    originalImgSrcs.forEach((src, img) => {
+      img.src = src
+    })
   }
 }
 
@@ -1430,7 +1560,6 @@ const warmupAllNodeScreenshots = async () => {
   const validNodeIds = new Set(allNodes.map(n => String(n.id)))
   screenshotPool.pruneToValidNodes(validNodeIds)
 
-  isWarmingUpScreenshots.value = true
   screenshotWarmupOpen.value = true
   screenshotWarmupProgress.value = 0
   screenshotWarmupDetail.value = '准备中...'
@@ -1439,23 +1568,14 @@ const warmupAllNodeScreenshots = async () => {
   void cleanupOldScreenshots(7 * 24 * 60 * 60 * 1000)
 
   await nextTick()
-  await waitForFrames(3)
 
-  const originalZoom = viewport.value.zoom
-  const originalPanX = viewport.value.panX
-  const originalPanY = viewport.value.panY
-  
   const visibleNodeIds = new Set(safeVisibleRenderNodes.value.map(n => String(n.id)))
-  
-  viewport.value.zoom = 1
-  viewport.value.panX = 0
-  viewport.value.panY = 0
-  await nextTick()
-  await waitForFrames(5)
 
   const newMap = new Map<string, ScreenshotCacheEntry>()
 
   let diskLoadedCount = 0
+  screenshotWarmupProgress.value = 0.05
+  screenshotWarmupDetail.value = '正在加载磁盘缓存...'
   try {
     const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
     for (const node of allNodes) {
@@ -1486,7 +1606,6 @@ const warmupAllNodeScreenshots = async () => {
   for (const node of allNodes) {
     const nodeId = node.id
     if (selectedNodeIds.value.includes(nodeId)) continue
-    if (fullRenderNodeIds.value.has(nodeId)) continue
     const version = getNodeScreenshotVersion(node)
     if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
       const cached = screenshotPool.getCachedScreenshot(nodeId, version)
@@ -1507,49 +1626,63 @@ const warmupAllNodeScreenshots = async () => {
 
   const total = nodesNeedingCapture.length
   const cachedCount = allNodes.length - total - selectedNodeIds.value.length
+
+  nodeScreenshotMap.value = newMap
+
   if (total === 0) {
-    nodeScreenshotMap.value = newMap
-    viewport.value.zoom = originalZoom
-    viewport.value.panX = originalPanX
-    viewport.value.panY = originalPanY
-    isWarmingUpScreenshots.value = false
+    await nextTick()
     await waitForFrames(1)
     screenshotWarmupOpen.value = false
     screenshotWarmupDetail.value = ''
     return
   }
 
-  screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，${cachedCount + diskLoadedCount} 个已缓存（磁盘${diskLoadedCount}），正在截图 0/${total}...`
+  warmupForceRenderNodeIds.value = new Set(nodesNeedingCapture.map(n => String(n.id)))
+  isWarmingUpScreenshots.value = true
 
-  let completed = 0
+  screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
+  screenshotPool.setBurstMode(true)
+
+  await waitForFrames(2)
+
+  screenshotWarmupProgress.value = 0.1
+  screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，${cachedCount + diskLoadedCount} 个已缓存（磁盘${diskLoadedCount}），准备截图...`
+
+  let screenshotStarted = 0
+  let screenshotCompleted = 0
+  const nodeElMap = new Map<string, HTMLElement>()
+  const startedSet = new Set<string>()
   const promises: Promise<void>[] = []
 
-  for (const node of nodesNeedingCapture) {
-    const nodeId = node.id
+  const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement | null) => {
+    const nodeId = String(node.id ?? '').trim()
+    if (startedSet.has(nodeId)) return
+    startedSet.add(nodeId)
+    screenshotStarted++
+
     const isVisible = visibleNodeIds.has(nodeId)
     const promise = (async () => {
       let entry: ScreenshotCacheEntry | null = null
       try {
         const version = getNodeScreenshotVersion(node)
-        let retries = 0
-        let nodeEl: HTMLElement | null = null
-        let hostEl = nodeHostRefs.get(nodeId)
-        while (retries < 5 && !nodeEl) {
-          if (hostEl) {
-            nodeEl = findNodeElementForScreenshot(hostEl)
-          }
-          if (!nodeEl) {
+        let el: HTMLElement | null = nodeEl
+        if (!el) {
+          let retries = 0
+          while (retries < 5 && !el) {
             await nextTick()
             await waitForFrames(2)
-            hostEl = nodeHostRefs.get(nodeId)
+            const hostEl = nodeHostRefs.get(nodeId)
+            if (hostEl) {
+              el = findNodeElementForScreenshot(hostEl)
+            }
             retries++
           }
         }
-        if (nodeEl) {
+        if (el) {
           const width = Math.max(80, Math.round(node.width) || 240)
           const height = Math.max(80, Math.round(node.height) || 160)
-          const priority: ScreenshotPriority = isVisible ? 'normal' : 'low'
-          entry = await screenshotPool.queueScreenshot(nodeId, nodeEl, version, width, height, SCREENSHOT_PADDING, priority)
+          const priority: ScreenshotPriority = isVisible ? 'high' : 'normal'
+          entry = await screenshotPool.queueScreenshot(nodeId, el, version, width, height, SCREENSHOT_PADDING, priority)
           if (entry?.dataUrl) {
             newMap.set(nodeId, entry)
             void saveScreenshotToDisk(cacheCtx.projectId, cacheCtx.blueprintId, nodeId, version, entry.dataUrl, entry.width, entry.height)
@@ -1559,20 +1692,61 @@ const warmupAllNodeScreenshots = async () => {
         console.warn('[Screenshot Warmup] failed for node:', nodeId, err)
       }
 
-      completed++
-      screenshotWarmupProgress.value = completed / total
-      screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，正在截图 ${completed}/${total}...`
+      screenshotCompleted++
+      const ratio = screenshotCompleted / total
+      screenshotWarmupProgress.value = 0.1 + ratio * 0.9
+      screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，正在截图 ${screenshotCompleted}/${total}...`
     })()
     promises.push(promise)
   }
 
+  let waitFrames = 0
+  const MAX_WAIT_FRAMES = 30
+  while (screenshotStarted < total && waitFrames < MAX_WAIT_FRAMES) {
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    waitFrames++
+
+    for (const node of nodesNeedingCapture) {
+      const nodeId = String(node.id ?? '').trim()
+      if (startedSet.has(nodeId)) continue
+      const hostEl = nodeHostRefs.get(nodeId)
+      if (hostEl) {
+        const nodeEl = findNodeElementForScreenshot(hostEl)
+        if (nodeEl) {
+          nodeElMap.set(nodeId, nodeEl)
+          startScreenshot(node, nodeEl)
+        }
+      }
+    }
+
+    if (screenshotCompleted === total) break
+
+    if (screenshotStarted > 0) {
+      const ratio = screenshotStarted / total
+      screenshotWarmupProgress.value = 0.1 + ratio * 0.15 + (screenshotCompleted / total) * 0.75
+      screenshotWarmupDetail.value = `共 ${allNodes.length - selectedNodeIds.value.length} 个节点，正在截图 ${screenshotCompleted}/${total}（渲染就绪 ${screenshotStarted}）...`
+    }
+  }
+
+  for (const node of nodesNeedingCapture) {
+    const nodeId = String(node.id ?? '').trim()
+    if (startedSet.has(nodeId)) continue
+    const hostEl = nodeHostRefs.get(nodeId)
+    const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
+    startScreenshot(node, nodeEl)
+  }
+
   await Promise.all(promises)
 
+  screenshotPool.setBurstMode(false)
+  screenshotPool.resetConcurrency()
+
   nodeScreenshotMap.value = newMap
-  viewport.value.zoom = originalZoom
-  viewport.value.panX = originalPanX
-  viewport.value.panY = originalPanY
   isWarmingUpScreenshots.value = false
+  warmupExitingFullRender.value = true
+  warmupForceRenderNodeIds.value = new Set()
+  await nextTick()
+  warmupExitingFullRender.value = false
   screenshotWarmupDetail.value = `截图完成，共 ${allNodes.length - selectedNodeIds.value.length} 个节点（磁盘缓存${diskLoadedCount}）`
   await waitForFrames(2)
   screenshotWarmupOpen.value = false
@@ -1591,20 +1765,11 @@ const warmupAutoWireNodes = async (): Promise<void> => {
   isWarmingUpScreenshots.value = true
   screenshotWarmupOpen.value = true
   screenshotWarmupProgress.value = 0
-  screenshotWarmupDetail.value = `正在预热 ${newNodes.length} 个新节点...`
+  screenshotWarmupDetail.value = `正在渲染 ${newNodes.length} 个新节点...`
 
-  await nextTick()
-  await waitForFrames(3)
+  warmupForceRenderNodeIds.value = new Set(newNodeIds)
 
-  const originalZoom = viewport.value.zoom
-  const originalPanX = viewport.value.panX
-  const originalPanY = viewport.value.panY
-
-  viewport.value.zoom = 1
-  viewport.value.panX = 0
-  viewport.value.panY = 0
-  await nextTick()
-  await waitForFrames(5)
+  await waitForFrames(2)
 
   const newMap = new Map(nodeScreenshotMap.value)
   const nodesNeedingCapture: WorkflowNode[] = []
@@ -1613,7 +1778,6 @@ const warmupAutoWireNodes = async (): Promise<void> => {
     const nodeId = String(node.id ?? '').trim()
     if (!nodeId) continue
     if (selectedNodeIds.value.includes(nodeId)) continue
-    if (fullRenderNodeIds.value.has(nodeId)) continue
     const version = getNodeScreenshotVersion(node)
     if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
       const cached = screenshotPool.getCachedScreenshot(nodeId, version)
@@ -1626,47 +1790,58 @@ const warmupAutoWireNodes = async (): Promise<void> => {
   const total = nodesNeedingCapture.length
   if (total === 0) {
     nodeScreenshotMap.value = newMap
-    viewport.value.zoom = originalZoom
-    viewport.value.panX = originalPanX
-    viewport.value.panY = originalPanY
     isWarmingUpScreenshots.value = false
+    warmupExitingFullRender.value = true
+    warmupForceRenderNodeIds.value = new Set()
+    await nextTick()
+    warmupExitingFullRender.value = false
     await waitForFrames(1)
     screenshotWarmupOpen.value = false
     screenshotWarmupDetail.value = ''
     return
   }
 
-  screenshotWarmupDetail.value = `正在生成 ${total} 个新节点预览...`
+  screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
+  screenshotPool.setBurstMode(true)
 
-  let completed = 0
+  screenshotWarmupProgress.value = 0.02
+  screenshotWarmupDetail.value = `正在生成新节点预览 0/${total}...`
+
+  let screenshotStarted = 0
+  let screenshotCompleted = 0
+  const nodeElMap = new Map<string, HTMLElement>()
+  const startedSet = new Set<string>()
   const promises: Promise<void>[] = []
 
-  for (const node of nodesNeedingCapture) {
+  const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement) => {
     const nodeId = String(node.id ?? '').trim()
+    if (startedSet.has(nodeId)) return
+    startedSet.add(nodeId)
+    screenshotStarted++
+
     const promise = (async () => {
       let entry: ScreenshotCacheEntry | null = null
       try {
         const version = getNodeScreenshotVersion(node)
-        let retries = 0
-        let nodeEl: HTMLElement | null = null
-        let hostEl = nodeHostRefs.get(nodeId)
-        while (retries < 8 && !nodeEl) {
-          if (hostEl) {
-            nodeEl = findNodeElementForScreenshot(hostEl)
-          }
-          if (!nodeEl) {
+        let el: HTMLElement | null = nodeEl
+        if (!el) {
+          let retries = 0
+          while (retries < 8 && !el) {
             await nextTick()
             await waitForFrames(2)
-            hostEl = nodeHostRefs.get(nodeId)
+            const hostEl = nodeHostRefs.get(nodeId)
+            if (hostEl) {
+              el = findNodeElementForScreenshot(hostEl)
+            }
             retries++
           }
         }
-        if (nodeEl) {
+        if (el) {
           const width = Math.max(80, Math.round(node.width) || 240)
           const height = Math.max(80, Math.round(node.height) || 160)
           entry = await screenshotPool.queueScreenshot(
             nodeId,
-            nodeEl,
+            el,
             version,
             width,
             height,
@@ -1683,20 +1858,63 @@ const warmupAutoWireNodes = async (): Promise<void> => {
         console.warn('[AutoWire Warmup] failed for node:', nodeId, err)
       }
 
-      completed++
-      screenshotWarmupProgress.value = completed / total
-      screenshotWarmupDetail.value = `正在生成新节点预览 ${completed}/${total}...`
+      screenshotCompleted++
+      screenshotWarmupProgress.value = screenshotCompleted / total
+      screenshotWarmupDetail.value = `正在生成新节点预览 ${screenshotCompleted}/${total}...`
     })()
     promises.push(promise)
   }
 
+  let waitFrames = 0
+  const MAX_WAIT_FRAMES = 30
+  while (screenshotStarted < total && waitFrames < MAX_WAIT_FRAMES) {
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    waitFrames++
+
+    for (const node of nodesNeedingCapture) {
+      const nodeId = String(node.id ?? '').trim()
+      if (startedSet.has(nodeId)) continue
+      const hostEl = nodeHostRefs.get(nodeId)
+      if (hostEl) {
+        const nodeEl = findNodeElementForScreenshot(hostEl)
+        if (nodeEl) {
+          nodeElMap.set(nodeId, nodeEl)
+          startScreenshot(node, nodeEl)
+        }
+      }
+    }
+
+    if (screenshotCompleted === total) break
+
+    if (screenshotStarted === 0) {
+      screenshotWarmupProgress.value = 0.02 + (waitFrames / MAX_WAIT_FRAMES) * 0.08
+      screenshotWarmupDetail.value = `正在等待节点渲染...`
+    } else {
+      const pending = screenshotStarted - screenshotCompleted
+      screenshotWarmupProgress.value = (screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
+      screenshotWarmupDetail.value = `正在生成新节点预览 ${screenshotCompleted}/${total}（渲染中 ${pending}）...`
+    }
+  }
+
+  for (const node of nodesNeedingCapture) {
+    const nodeId = String(node.id ?? '').trim()
+    if (startedSet.has(nodeId)) continue
+    const hostEl = nodeHostRefs.get(nodeId)
+    const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
+    startScreenshot(node, nodeEl as HTMLElement)
+  }
+
   await Promise.all(promises)
 
+  screenshotPool.setBurstMode(false)
+  screenshotPool.resetConcurrency()
+
   nodeScreenshotMap.value = newMap
-  viewport.value.zoom = originalZoom
-  viewport.value.panX = originalPanX
-  viewport.value.panY = originalPanY
   isWarmingUpScreenshots.value = false
+  warmupExitingFullRender.value = true
+  warmupForceRenderNodeIds.value = new Set()
+  await nextTick()
+  warmupExitingFullRender.value = false
   screenshotWarmupDetail.value = `新节点预热完成，共 ${newNodes.length} 个节点`
   await waitForFrames(2)
   screenshotWarmupOpen.value = false
@@ -1810,7 +2028,7 @@ watch(
           isWarmingUpScreenshots.value = false
           screenshotWarmupOpen.value = false
         })
-      }, 800)
+      }, 150)
     }
   },
   { immediate: true, flush: 'post' }
@@ -4297,6 +4515,7 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
   rotateImagePreviewUrl,
   connectedSceneUnderstandImageInputs,
   connectedImageInputUrl,
+  connectedImageInputSource,
   connectedSceneDecomposeImageInputs,
   connectedSceneLayoutModelBindings,
   viewportMotionActive,
@@ -4309,6 +4528,8 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
   connectedMeshyPrompt,
   connectedMeshyImageUrls,
   nodeMediaReloadToken,
+  getFirstIncomingEdge,
+  getUpstreamCroppedImageUrl,
 })
 
 const latestGenerationTaskByNodeId = (nodeId: string) => {
@@ -6860,26 +7081,56 @@ watch(
       }
     }
     if (nodesExitingFullRender.length > 0) {
-      nextTick(() => {
-        setTimeout(() => {
-          for (const nodeId of nodesExitingFullRender) {
-            const node = nodes.value.find(n => String(n.id) === nodeId)
-            if (node) {
-              const version = getNodeScreenshotVersion(node)
-              const existingCached = screenshotPool.getCachedScreenshot(nodeId, version)
-              if (existingCached) {
-                const newMap = new Map(nodeScreenshotMap.value)
-                newMap.set(nodeId, existingCached)
-                nodeScreenshotMap.value = newMap
-                nodesNeedingScreenshotRefresh.delete(nodeId)
-              } else {
-                nodesNeedingScreenshotRefresh.delete(nodeId)
-                void scheduleNodeScreenshot(node, 0, 'low')
-              }
-            }
+      const isWarmupExit = warmupExitingFullRender.value
+      const visibleExiting: WorkflowNode[] = []
+      const offscreenExiting: WorkflowNode[] = []
+      const reused: WorkflowNode[] = []
+      for (const nodeId of nodesExitingFullRender) {
+        const node = nodes.value.find(n => String(n.id) === nodeId)
+        if (!node) continue
+        nodesNeedingScreenshotRefresh.delete(nodeId)
+        const version = getNodeScreenshotVersion(node)
+        const existingCached = screenshotPool.getCachedScreenshot(nodeId, version)
+        const currentMapEntry = nodeScreenshotMap.value.get(nodeId)
+        const mapEntryValid = currentMapEntry && currentMapEntry.version === version
+
+        if (isWarmupExit && (existingCached || mapEntryValid)) {
+          if (existingCached && !mapEntryValid) {
+            const newMap = new Map(nodeScreenshotMap.value)
+            newMap.set(nodeId, existingCached)
+            nodeScreenshotMap.value = newMap
           }
-        }, 120)
-      })
+          reused.push(node)
+          continue
+        }
+
+        if (!isWarmupExit) {
+          screenshotPool.invalidateScreenshot(nodeId)
+          const newMap = new Map(nodeScreenshotMap.value)
+          newMap.delete(nodeId)
+          nodeScreenshotMap.value = newMap
+        }
+
+        if (isNodeInViewport(node)) {
+          visibleExiting.push(node)
+        } else {
+          offscreenExiting.push(node)
+        }
+      }
+
+      const captureExiting = (list: WorkflowNode[], delayMs: number, priority: ScreenshotPriority) => {
+        if (list.length === 0) return
+        nextTick(() => {
+          setTimeout(() => {
+            for (const node of list) {
+              void scheduleNodeScreenshot(node, 0, priority)
+            }
+          }, delayMs)
+        })
+      }
+
+      captureExiting(visibleExiting, isWarmupExit ? 0 : 80, 'high')
+      captureExiting(offscreenExiting, isWarmupExit ? 50 : 300, 'low')
     }
     nextTick(() => {
       scheduleVisibleNodeScreenshots()
