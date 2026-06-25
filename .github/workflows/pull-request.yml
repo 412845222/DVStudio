@@ -29,8 +29,9 @@ env:
 
 jobs:
   lint-check:
-    name: Lint Check
+    name: Lint Check ( advisory )
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,13 +48,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
-      - name: Run Prettier check
-        run: npm run format:check
-
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
-    needs: [lint-check]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

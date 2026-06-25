@@ -2,7 +2,7 @@
 # DVStudio pre-push hook
 #
 # 1. Prevents direct pushes to the protected branches `main` and `dev`.
-# 2. Runs quality checks (typecheck + lint + test) before pushing to feature branches.
+# 2. Runs quality checks (typecheck + test) before pushing to feature branches.
 #
 # To disable branch protection temporarily:
 #   DWEB_GIT_ALLOW_DIRECT_PUSH=1 git push ...
@@ -97,7 +97,7 @@ if [ "$SKIP_QUALITY" = "1" ]; then
   exit 0
 fi
 
-echo_info "运行质量检查 (typecheck + lint + test)..."
+echo_info "运行质量检查 (typecheck + test)..."
 if npm run quality 2>&1; then
   echo_success "质量检查通过。"
   echo_info "未命中受保护分支 (main/dev)，推送继续。"

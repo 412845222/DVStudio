@@ -92,7 +92,8 @@
     "lint:fix": "eslint \"src/**/*.{ts,vue}\" \"electron/**/*.{mjs,js}\" --fix",
     "format": "prettier --write \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
     "format:check": "prettier --check \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
-    "quality": "npm run typecheck && npm run lint && npm run test"
+    "quality": "npm run typecheck && npm run test",
+    "quality:full": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

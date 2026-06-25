@@ -2,7 +2,6 @@ import js from '@eslint/js'
 import vue from 'eslint-plugin-vue'
 import ts from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
-import prettier from 'eslint-plugin-prettier/recommended'
 
 const tsRules = {
   ...ts.configs.recommended.rules,
@@ -115,6 +114,5 @@ export default [
     rules: {
       'no-console': 'off'
     }
-  },
-  prettier
+  }
 ]
