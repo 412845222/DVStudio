@@ -29,7 +29,8 @@ export class LineNode extends NodeBase {
 		const d = LineNode.defaultProps(dto.transform)
 		const width = Math.max(1, dto.transform.width ?? 260)
 		const height = Math.max(1, dto.transform.height ?? 180)
-		const local = normalizeLineLocalPoints({ props: base as any, width, height })
+		const lineProps: Partial<Record<'startX' | 'startY' | 'endX' | 'endY' | 'anchorX' | 'anchorY', unknown>> = base
+		const local = normalizeLineLocalPoints({ props: lineProps, width, height })
 		const lineColor = typeof base.lineColor === 'string' ? base.lineColor : d.lineColor
 		const lineWidth = Math.max(1, toNumber(base.lineWidth, d.lineWidth))
 		const lineStyle: LineStyle = base.lineStyle === 'dashed' ? 'dashed' : 'solid'

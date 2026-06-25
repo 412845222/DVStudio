@@ -929,6 +929,9 @@ const meshyOriginAt = computed(() =>
   String(settings.value?.meshyOriginAt ?? "bottom") === "center" ? "center" : "bottom"
 );
 const targetFormatOptions = ["glb", "obj", "fbx", "stl", "usdz"] as const;
+type TargetFormat = typeof targetFormatOptions[number];
+const isTargetFormat = (x: string): x is TargetFormat =>
+  (targetFormatOptions as readonly string[]).includes(x);
 const meshyTargetFormats = computed(() => {
   const list = Array.isArray(settings.value?.meshyTargetFormats)
     ? settings.value!.meshyTargetFormats!
@@ -939,10 +942,8 @@ const meshyTargetFormats = computed(() => {
         .trim()
         .toLowerCase()
     )
-    .filter((x) => targetFormatOptions.includes(x as any));
-  return normalized.length
-    ? (normalized as Array<typeof targetFormatOptions[number]>)
-    : ["glb"];
+    .filter(isTargetFormat);
+  return normalized.length ? normalized : ["glb"];
 });
 const taskStatus = computed(() => String(settings.value?.meshyTaskStatus ?? "idle"));
 const taskProgress = computed(() => Number(settings.value?.meshyProgress ?? 0));
@@ -1322,18 +1323,18 @@ const onTargetSelect = (target: WorkflowMeshyTaskTarget) => {
     meshyHelpTopic: family,
     ...(target === "image"
       ? {
-          meshyAiModel: "nano-banana",
-          meshyAspectRatio: "1:1",
+          meshyAiModel: "nano-banana" as const,
+          meshyAspectRatio: "1:1" as const,
           meshyGenerateMultiView: false,
-          meshyOutputImageCount: 1,
+          meshyOutputImageCount: 1 as const,
           meshyImageInputCount: 5,
         }
       : {
-          meshyAiModel: ["latest", "meshy-6", "meshy-5"].includes(
+          meshyAiModel: (["latest", "meshy-6", "meshy-5"].includes(
             String(settings.value?.meshyAiModel ?? "")
           )
-            ? (String(settings.value?.meshyAiModel ?? "latest") as any)
-            : "latest",
+            ? String(settings.value?.meshyAiModel ?? "latest")
+            : "latest") as WorkflowMeshyNodeSettings["meshyAiModel"],
           meshyModelType:
             String(settings.value?.meshyModelType ?? "") === "lowpoly"
               ? "lowpoly"
@@ -1352,29 +1353,30 @@ const onFamilyChange = (e: Event) => {
     meshyHelpTopic: family,
     ...(imageFamily
       ? {
-          meshyAiModel: ["nano-banana", "nano-banana-pro"].includes(
+          meshyAiModel: (["nano-banana", "nano-banana-pro"].includes(
             String(settings.value?.meshyAiModel ?? "")
           )
-            ? (String(settings.value?.meshyAiModel ?? "nano-banana") as any)
-            : "nano-banana",
-          meshyOutputImageCount:
+            ? String(settings.value?.meshyAiModel ?? "nano-banana")
+            : "nano-banana") as WorkflowMeshyNodeSettings["meshyAiModel"],
+          meshyOutputImageCount: (
             Number(settings.value?.meshyOutputImageCount ?? 1) >= 1
-              ? (Math.max(
+              ? Math.max(
                   1,
                   Math.min(
                     4,
                     Math.floor(Number(settings.value?.meshyOutputImageCount ?? 1))
                   )
-                ) as any)
-              : 1,
+                )
+              : 1
+          ) as 1 | 2 | 3 | 4,
           meshyImageInputCount: family === "image-to-image" ? 5 : 0,
         }
       : {
-          meshyAiModel: ["latest", "meshy-6", "meshy-5"].includes(
+          meshyAiModel: (["latest", "meshy-6", "meshy-5"].includes(
             String(settings.value?.meshyAiModel ?? "")
           )
-            ? (String(settings.value?.meshyAiModel ?? "latest") as any)
-            : "latest",
+            ? String(settings.value?.meshyAiModel ?? "latest")
+            : "latest") as WorkflowMeshyNodeSettings["meshyAiModel"],
           meshyModelType:
             String(settings.value?.meshyModelType ?? "") === "lowpoly"
               ? "lowpoly"
@@ -1412,7 +1414,7 @@ const onAspectRatioChange = (e: Event) => {
     updateSettings({ meshyAspectRatio: "1:1" });
     return;
   }
-  updateSettings({ meshyAspectRatio: value as any });
+  updateSettings({ meshyAspectRatio: value as WorkflowMeshyNodeSettings["meshyAspectRatio"] });
 };
 
 const onGenerateMultiViewToggle = (e: Event) => {
@@ -1426,7 +1428,7 @@ const onGenerateMultiViewToggle = (e: Event) => {
 const onPoseModeChange = (e: Event) => {
   const value = String((e.target as HTMLSelectElement).value ?? "").trim();
   updateSettings({
-    meshyPoseMode: value === "a-pose" || value === "t-pose" ? (value as any) : "",
+    meshyPoseMode: (value === "a-pose" || value === "t-pose" ? value : "") as WorkflowMeshyNodeSettings["meshyPoseMode"],
   });
 };
 
@@ -1446,7 +1448,7 @@ const onTargetPolycountChange = (e: Event) => {
 const onSymmetryModeChange = (e: Event) => {
   const value = String((e.target as HTMLSelectElement).value ?? "auto").trim();
   updateSettings({
-    meshySymmetryMode: value === "on" || value === "off" ? (value as any) : "auto",
+    meshySymmetryMode: (value === "on" || value === "off" ? value : "auto") as WorkflowMeshyNodeSettings["meshySymmetryMode"],
   });
 };
 
@@ -1510,7 +1512,7 @@ const onTargetFormatToggle = (format: typeof targetFormatOptions[number], e: Eve
   const next = checked
     ? Array.from(new Set([...current, format]))
     : current.filter((x) => x !== format);
-  updateSettings({ meshyTargetFormats: (next.length ? next : ["glb"]) as any });
+  updateSettings({ meshyTargetFormats: (next.length ? next : ["glb"]) as WorkflowMeshyNodeSettings["meshyTargetFormats"] });
 };
 
 const onSeedChange = (e: Event) => {
@@ -1521,7 +1523,7 @@ const onSeedChange = (e: Event) => {
 const onOutputImageCountChange = (e: Event) => {
   const raw = Number((e.target as HTMLSelectElement).value ?? 1);
   const count = Number.isFinite(raw) ? Math.max(1, Math.min(4, Math.floor(raw))) : 1;
-  updateSettings({ meshyOutputImageCount: count as any });
+  updateSettings({ meshyOutputImageCount: count as 1 | 2 | 3 | 4 });
 };
 
 const onPromptInput = (e: Event) =>

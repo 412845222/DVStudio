@@ -173,7 +173,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	if (cleanupMoveUp) cleanupMoveUp()
 	if (cleanupMoveUpW) cleanupMoveUpW()
-	window.removeEventListener('resize', clampWidthToViewport as any)
+	window.removeEventListener('resize', clampWidthToViewport as EventListener)
 	ro?.disconnect()
 	ro = null
 })

@@ -56,6 +56,21 @@ import { computed, nextTick, onBeforeUnmount, ref, onMounted } from 'vue'
 
 type Mode = 'view' | 'brush'
 
+type ExportImageMarkupPayload = {
+  dataUrl: string
+  width: number
+  height: number
+  sourceName: string
+}
+
+type ImageMarkupDwebBridge = {
+  dweb?: {
+    aiworkflow?: {
+      exportImageMarkup?: (payload: ExportImageMarkupPayload) => Promise<unknown>
+    }
+  }
+}
+
 const viewportRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const overlayRef = ref<HTMLCanvasElement | null>(null)
@@ -313,8 +328,8 @@ const onExportMarkup = async () => {
   const result = composeExportDataUrl()
   if (!result) return
   try {
-    const w = (window as any)
-    if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.exportImageMarkup === 'function') {
+    const w = window as Window & ImageMarkupDwebBridge
+    if (w.dweb?.aiworkflow && typeof w.dweb.aiworkflow.exportImageMarkup === 'function') {
       await w.dweb.aiworkflow.exportImageMarkup({
         dataUrl: result.dataUrl,
         width: result.width,
@@ -326,14 +341,13 @@ const onExportMarkup = async () => {
   } catch (err) {
     console.warn('[ImageMarkupPreview] export failed', err)
   }
-  // 降级：提示用户（Electron 环境外）
   alert('当前环境不支持直接导出到原工作流。您仍可右键保存图像。')
 }
 
 const onClose = () => {
   try {
-    if (typeof (window as any).close === 'function') {
-      (window as any).close()
+    if (typeof window.close === 'function') {
+      window.close()
     }
   } catch { /* ignore */ }
 }

@@ -1,12 +1,6 @@
-import type { WorkflowEdge, WorkflowNode, WorkflowState } from '../../../../aiworkflow/types'
+import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import { isString, isRecord } from '../../../../types/utils'
-import type { MeshyNodeSettingsLike, ConnectedMeshyImageInput, ConnectedMeshyModelInput, WorkflowResourceLike, MeshyStoreLike } from './types'
-
-type ImageDimensions = {
-	width: number
-	height: number
-	ratioOnly?: boolean
-}
+import type { MeshyNodeSettingsLike, ConnectedMeshyImageInput, MeshyStoreLike } from './types'
 
 export const useAIWorkflowMeshyInputResolver = (options: {
 	store: MeshyStoreLike

@@ -692,7 +692,7 @@
 </template>
 
 <script setup lang="ts">
-import { getErrorMessage } from '../../types/utils'
+import { getErrorMessage, isRecord, isString, isNumber, isArray } from '../../types/utils'
 import * as THREE from 'three'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -725,12 +725,16 @@ import type {
   WorkflowAnchorSpec,
   WorkflowEdge,
   WorkflowImageCrop,
+  WorkflowModel3DNodeSettings,
   WorkflowUnrealResolvedLayoutExport,
   WorkflowNode,
+  WorkflowNodeChatParams,
+  WorkflowNodeChatSubmitPayload,
   WorkflowSceneDecomposeOutput,
   WorkflowSelectionTarget,
   WorkflowState,
 } from '../../aiworkflow/types'
+import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import {
   buildSnapshotFromState,
   isValidBlueprintSnapshot,
@@ -860,6 +864,126 @@ import { useAIWorkflowSceneLayoutSettings } from './node-business/scene/useAIWor
 import { useAIWorkflowSceneUnderstandingController } from './node-business/scene/useAIWorkflowSceneUnderstandingController'
 import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
 import { useStartupProgress } from '../../composables/useStartupProgress'
+
+interface GeneratedResourceBase {
+  id: string
+  kind: 'image' | 'video' | 'model3d'
+  name: string
+  url: string
+  projectRelativePath?: string
+  sourcePath?: string
+  size?: number
+  contentType?: string
+  format?: string
+  sourceFingerprint?: string
+  localFileKey?: string
+  sourceName?: string
+  sourceSize?: number
+  sourceLastModified?: number
+}
+
+interface UnrealExportJob {
+  jobId?: string
+  status?: string
+  message?: string
+  resultData?: {
+    stage?: string
+    progress?: number
+    blueprintAssetPath?: string
+    modelsAssetPath?: string
+    actorBaseClass?: string
+    spawnedLightCount?: number
+    lightingTargetActorLabel?: string
+    lightingTargetActorPath?: string
+    layoutProtocolVersion?: number
+    slotCount?: number
+    appliedSlotCount?: number
+    materialOverrideCount?: number
+  }
+  exportPayload?: {
+    exportMode?: string
+  }
+  updatedAt?: number
+  createdAt?: number
+}
+
+interface MissingAssetDialogPending {
+  assetName: string
+  requestedPath: string
+  absolutePath?: string
+  sources: Array<{
+    type: string
+    nodeId?: string
+    nodeType?: string
+    resourceId?: string
+    field?: string
+    detail?: string
+  }>
+}
+
+interface DwebRuntimeWindow {
+  __DWEB_RUNTIME__?: {
+    isElectron?: boolean
+  }
+  __DWEB_AIWF_AUTO_HELLO?: string
+  __DWEB_AIWF_AUTO_HELLO_TEXT?: string
+  __DWEB_LOCAL_EXEC_BASE_PATH?: string
+  __DWEB_LOCAL_EXEC_STREAM_MODE?: string
+  dweb?: {
+    aiworkflow?: {
+      onImageMarkupExported?: (callback: (payload: unknown) => void) => number
+      offImageMarkupExported?: (listenerId: number) => void
+    }
+  }
+}
+
+interface ElectronFile extends File {
+  path?: string
+}
+
+interface AssetImportResult {
+  ok: boolean
+  asset?: {
+    url?: string
+    absolutePath?: string
+    projectRelativePath?: string
+    relativePath?: string
+    contentType?: string
+    size?: number
+    sourcePath?: string
+  }
+}
+
+type PersistedAsset = NonNullable<AssetImportResult['asset']>
+
+interface VideoMetadataResult {
+  width?: number
+  height?: number
+}
+
+interface CodexSessionRow {
+  id?: string
+  title?: string
+  status?: string
+  model_name?: string
+}
+
+interface CodexMessageRow {
+  id?: string
+  role?: string
+  content?: string
+}
+
+interface WorkflowChatMessage extends BottomChatMessage {
+  message?: string
+  tone?: 'info' | 'warn' | 'error'
+  createdAt?: number
+}
+
+interface LocalExecListResult {
+  items?: unknown[]
+  error?: string
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -993,7 +1117,7 @@ const resolveScreenshotAnchors = (node: WorkflowNode, direction: 'in' | 'out') =
       index,
       offsetY,
       mediaType: (a.mediaType ?? 'resource') as string,
-      label: String((a as any).label ?? fallbackLabel),
+      label: String(a.label ?? fallbackLabel),
     }
   })
 }
@@ -1202,14 +1326,18 @@ const getCroppedImageUrl = async (rawUrl: string): Promise<string | null> => {
   const [src, owStr, ohStr, cropJson] = parts
   const ow = parseInt(owStr, 10)
   const oh = parseInt(ohStr, 10)
-  const crop = JSON.parse(cropJson)
-  if (!src || !ow || !oh || !crop) return null
+  const cropParsed: unknown = JSON.parse(cropJson)
+  const isValidCrop = (c: unknown): c is WorkflowImageCrop => {
+    if (!isRecord(c)) return false
+    return isNumber(c.x) && isNumber(c.y) && isNumber(c.width) && isNumber(c.height)
+  }
+  if (!src || !ow || !oh || !isValidCrop(cropParsed)) return null
   try {
     const blob = await exportWorkflowImageOutputPng({
       src,
       outputWidth: ow,
       outputHeight: oh,
-      crop: crop,
+      crop: cropParsed,
     })
     if (!blob) return null
     return URL.createObjectURL(blob)
@@ -1369,7 +1497,7 @@ const getNodeScreenshotVersion = (node: WorkflowNode): string => {
     }
   }
   
-  const imageSettings = (node as any).imageSettings
+  const imageSettings = node.imageSettings
   if (imageSettings) {
     parts.push(`img:${imageSettings.outputWidth || 0}`)
     parts.push(`imh:${imageSettings.outputHeight || 0}`)
@@ -1383,13 +1511,13 @@ const getNodeScreenshotVersion = (node: WorkflowNode): string => {
     }
   }
   
-  const videoSettings = (node as any).videoSettings
+  const videoSettings = node.videoSettings
   if (videoSettings) {
     parts.push(`vw:${videoSettings.outputWidth || 0}`)
     parts.push(`vh:${videoSettings.outputHeight || 0}`)
   }
   
-  const textValue = (node as any).textValue
+  const textValue = node.textValue
   if (textValue) parts.push(`txt:${String(textValue).slice(0, 100)}`)
   
   const previewVer = nodeImagePreviewVersion(node)
@@ -2159,7 +2287,7 @@ const onNodeChatDraftUpdate = (text: string) => {
   store.commit('setNodeChatDraft', { text })
 }
 
-const onNodeChatParamsUpdate = (params: Record<string, any>) => {
+const onNodeChatParamsUpdate = (params: WorkflowNodeChatParams) => {
   store.commit('setNodeChatParams', { params })
 }
 
@@ -2178,7 +2306,7 @@ const isStrictLocalRenderableUrl = (rawUrl: string): boolean => {
   return false
 }
 
-const finalizeGeneratedResourceLocalUrl = (base: any, pid: number) => {
+const finalizeGeneratedResourceLocalUrl = (base: GeneratedResourceBase, pid: number) => {
   const relRaw = base?.projectRelativePath
   const rel = String(typeof relRaw === 'string' && relRaw ? relRaw : '').trim()
   const sourcePath = String(base?.sourcePath || '').trim()
@@ -2286,7 +2414,7 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
   return rootPath
 }
 
-const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; prompt: string; params: Record<string, any> }) => {
+const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
   // 当 draft 为空时，尝试从连接的文本节点获取 prompt
   let resolvedPrompt = payload.prompt
   if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d') {
@@ -2309,8 +2437,8 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
       pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
         chatMessages.value = [
           ...chatMessages.value,
-          { id: `sys-${Date.now()}`, role: 'system', message, tone, createdAt: Date.now() },
-        ] as any
+          { id: `sys-${Date.now()}`, role: 'system', content: message, message, tone, createdAt: Date.now() },
+        ]
       },
       bindTextResultToNode: (nodeId: string, text: string) => {
         store.commit('setNodeTextValue', { nodeId, textValue: text })
@@ -2320,7 +2448,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         if (!node) return false
         const resourceId = `gen-img-${nodeId}-${Date.now()}`
         const resourceName = `gen_image_${resourceId.slice(-6)}`
-        const base: any = {
+        const base: GeneratedResourceBase = {
           id: resourceId,
           kind: 'image',
           name: resourceName,
@@ -2380,19 +2508,19 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
           // 方案一：通过 Django 后端代理下载，绕过 CDN 的 CORS 限制
           if (!downloaded && !isElectron()) {
             try {
-              const result = await blueprintProjectService.importAsset({
+              const importResult = await blueprintProjectService.importAsset({
                 projectId: pid,
                 kind: 'image',
                 sourceUrl,
                 name: resourceName,
                 bucket: 'assets',
-              })
-              if (result?.ok && result.asset) {
-                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
-                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
-                base.url = (result.asset as any).url || ''
-                base.contentType = (result.asset as any).contentType || ''
-                base.size = (result.asset as any).size || 0
+              }) as AssetImportResult
+              if (importResult?.ok && importResult.asset) {
+                base.sourcePath = String(importResult.asset.sourcePath || importResult.asset.absolutePath || '')
+                base.projectRelativePath = String(importResult.asset.projectRelativePath || importResult.asset.relativePath || '')
+                base.url = String(importResult.asset.url || '')
+                base.contentType = String(importResult.asset.contentType || '')
+                base.size = Number(importResult.asset.size || 0)
                 downloaded = true
               }
             } catch {
@@ -2421,7 +2549,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         if (!node) return false
         const resourceId = `gen-video-${nodeId}-${Date.now()}`
         const resourceName = `gen_video_${resourceId.slice(-6)}`
-        const base: any = {
+        const base: GeneratedResourceBase = {
           id: resourceId,
           kind: 'video',
           name: resourceName,
@@ -2462,13 +2590,13 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
                 sourceUrl,
                 name: resourceName,
                 bucket: 'assets',
-              })
+              }) as AssetImportResult
               if (result?.ok && result.asset) {
-                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
-                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
-                base.url = (result.asset as any).url || ''
-                base.contentType = (result.asset as any).contentType || ''
-                base.size = (result.asset as any).size || 0
+                base.sourcePath = String(result.asset.sourcePath || result.asset.absolutePath || '')
+                base.projectRelativePath = String(result.asset.projectRelativePath || result.asset.relativePath || '')
+                base.url = String(result.asset.url || '')
+                base.contentType = String(result.asset.contentType || '')
+                base.size = Number(result.asset.size || 0)
                 downloaded = true
               }
             } catch {
@@ -2497,7 +2625,7 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
         if (!node) return false
         const resourceId = `gen-model3d-${nodeId}-${Date.now()}`
         const resourceName = `gen_model3d_${resourceId.slice(-6)}`
-        const base: any = {
+        const base: GeneratedResourceBase = {
           id: resourceId,
           kind: 'model3d',
           name: resourceName,
@@ -2560,13 +2688,13 @@ const onNodeChatSubmit = async (payload: { nodeId: string; nodeType: string; pro
                 sourceUrl,
                 name: resourceName,
                 bucket: 'assets',
-              })
+              }) as AssetImportResult
               if (result?.ok && result.asset) {
-                base.sourcePath = (result.asset as any).sourcePath || (result.asset as any).absolutePath || ''
-                base.projectRelativePath = (result.asset as any).projectRelativePath || (result.asset as any).relativePath || ''
-                base.url = (result.asset as any).url || ''
-                base.contentType = (result.asset as any).contentType || ''
-                base.size = (result.asset as any).size || 0
+                base.sourcePath = String(result.asset.sourcePath || result.asset.absolutePath || '')
+                base.projectRelativePath = String(result.asset.projectRelativePath || result.asset.relativePath || '')
+                base.url = String(result.asset.url || '')
+                base.contentType = String(result.asset.contentType || '')
+                base.size = Number(result.asset.size || 0)
                 downloaded = true
               }
             } catch {
@@ -2655,7 +2783,7 @@ watch(
   }
 )
 
-const chatMessages = ref<BottomChatMessage[]>([])
+const chatMessages = ref<WorkflowChatMessage[]>([])
 const chatSending = ref(false)
 const chatRunState = ref<'idle' | 'sending' | 'stopping' | 'error'>('idle')
 const codexSessions = ref<LocalExecSessionItem[]>([])
@@ -2768,10 +2896,15 @@ onMounted(() => {
   syncGlobalSafeAreaCssVars()
   window.addEventListener('resize', syncGlobalSafeAreaCssVars, { passive: true })
   try {
-    const w = window as any
+    const w = window as Window & DwebRuntimeWindow
     if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.onImageMarkupExported === 'function') {
-      const id = w.dweb.aiworkflow.onImageMarkupExported((payload: any) => {
-        handleImageMarkupExported(payload || {})
+      const id = w.dweb.aiworkflow.onImageMarkupExported((payload: unknown) => {
+        const isMarkupPayload = (p: unknown): p is { dataUrl: string; width: number; height: number; sourceName?: string | null } => {
+          return isRecord(p) && isString(p.dataUrl) && isNumber(p.width) && isNumber(p.height)
+        }
+        if (isMarkupPayload(payload)) {
+          handleImageMarkupExported(payload)
+        }
       })
       imageMarkupExportListenerId = Number(id || 0) || null
     }
@@ -2787,7 +2920,7 @@ onBeforeUnmount(() => {
   document.documentElement.style.setProperty('--aiwf-safe-right', '0px')
   if (imageMarkupExportListenerId != null) {
     try {
-      const w = window as any
+      const w = window as Window & DwebRuntimeWindow
       if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.offImageMarkupExported === 'function') {
         w.dweb.aiworkflow.offImageMarkupExported(imageMarkupExportListenerId)
       }
@@ -2836,7 +2969,7 @@ const chatTaskStatus = computed(() => {
   return chatSending.value ? 'AI 任务：生成中…' : 'AI 任务：空闲'
 })
 
-const isElectronRuntime = (window as any)?.__DWEB_RUNTIME__?.isElectron === true
+const isElectronRuntime = (window as Window & DwebRuntimeWindow)?.__DWEB_RUNTIME__?.isElectron === true
 
 const buildProjectAssetRuntimeUrl = (projectId: number, projectRelativePath: string, fallbackUrl?: string) => {
   const pid = Number(projectId)
@@ -2849,20 +2982,20 @@ const buildProjectAssetRuntimeUrl = (projectId: number, projectRelativePath: str
 const shouldAutoHelloOnLaunch = (() => {
   const envFlag = String(import.meta.env.VITE_AIWF_AUTO_HELLO || '').trim().toLowerCase()
   if (envFlag === '1' || envFlag === 'true' || envFlag === 'yes' || envFlag === 'on') return true
-  const winFlag = String(window?.__DWEB_AIWF_AUTO_HELLO || '').trim().toLowerCase()
+  const winFlag = String((window as Window & DwebRuntimeWindow)?.__DWEB_AIWF_AUTO_HELLO || '').trim().toLowerCase()
   if (winFlag === '1' || winFlag === 'true' || winFlag === 'yes' || winFlag === 'on') return true
   return false
 })()
 const resolveAutoHelloText = () => {
   const envText = String(import.meta.env.VITE_AIWF_AUTO_HELLO_TEXT || '').trim()
   if (envText) return envText
-  const winText = String(window?.__DWEB_AIWF_AUTO_HELLO_TEXT || '').trim()
+  const winText = String((window as Window & DwebRuntimeWindow)?.__DWEB_AIWF_AUTO_HELLO_TEXT || '').trim()
   if (winText) return winText
   return '你好'
 }
 let autoHelloSent = false
 
-const mapCodexSession = (row: any): LocalExecSessionItem => ({
+const mapCodexSession = (row: CodexSessionRow): LocalExecSessionItem => ({
   id: String(row?.id || '').trim(),
   title: String(row?.title || 'Copilot CLI 会话').trim() || 'Copilot CLI 会话',
   status: String(row?.status || 'active').trim() || 'active',
@@ -2895,9 +3028,9 @@ const loadCodexSessions = async () => {
     return
   }
   try {
-    const res = await localExecChatService.localExecListSessions(projectId)
-    const items = Array.isArray((res as any)?.items) ? (res as any).items : []
-    codexSessions.value = items.map(mapCodexSession).filter((s: LocalExecSessionItem) => !!s.id)
+    const res = await localExecChatService.localExecListSessions(projectId) as LocalExecListResult
+    const items = Array.isArray(res?.items) ? res.items : []
+    codexSessions.value = items.map((item: unknown) => mapCodexSession(item as CodexSessionRow)).filter((s: LocalExecSessionItem) => !!s.id)
     if (!codexActiveSessionId.value && codexSessions.value.length) {
       codexActiveSessionId.value = codexSessions.value[0].id
     }
@@ -2917,12 +3050,12 @@ const onCodexCreateSession = async () => {
       title: 'AI Workflow Copilot CLI 会话',
       model: chatModelId.value,
       projectId,
-    })
-    if ((created as any)?.error) {
-      pushToast('创建 Copilot CLI 会话失败：' + String((created as any).error), 'warn')
+    }) as LocalExecListResult
+    if (created?.error) {
+      pushToast('创建 Copilot CLI 会话失败：' + String(created.error), 'warn')
       return
     }
-    const item = mapCodexSession(created)
+    const item = mapCodexSession(created as unknown as CodexSessionRow)
     if (!item.id) {
       pushToast('创建 Copilot CLI 会话失败：返回会话ID为空', 'warn')
       return
@@ -2946,14 +3079,17 @@ const onCodexSelectSession = async (sessionId: string) => {
   codexActiveSessionId.value = sid
   codexFlowEvents.value = []
   try {
-    const data = await localExecChatService.localExecListMessages(sid, projectId)
-    const items = Array.isArray((data as any)?.items) ? (data as any).items : []
+    const data = await localExecChatService.localExecListMessages(sid, projectId) as LocalExecListResult
+    const items = Array.isArray(data?.items) ? data.items : []
     chatMessages.value = items
-      .map((m: any) => ({
-        id: String(m?.id || makeChatId()),
-        role: (m?.role === 'assistant' || m?.role === 'system') ? m.role : 'user',
-        content: String(m?.content || ''),
-      }))
+      .map((m: unknown) => {
+        const msg = m as CodexMessageRow
+        return {
+          id: String(msg?.id || makeChatId()),
+          role: (msg?.role === 'assistant' || msg?.role === 'system') ? msg.role : 'user',
+          content: String(msg?.content || ''),
+        } as WorkflowChatMessage
+      })
   } catch {
     chatMessages.value = []
   }
@@ -2976,9 +3112,9 @@ const onCodexApproval = async (payloadValue: { messageId: string; decision: 'acc
       messageId: payloadValue.messageId,
       decision: payloadValue.decision,
       projectId,
-    })
-    if ((result as any)?.error) {
-      pushToast('审批提交失败：' + String((result as any).error), 'warn')
+    }) as LocalExecListResult
+    if (result?.error) {
+      pushToast('审批提交失败：' + String(result.error), 'warn')
       return
     }
     pushToast('审批已提交。', 'info')
@@ -2997,9 +3133,9 @@ const onCodexDeleteSession = async (sessionId: string) => {
   if (!sid) return
   const ok = window.confirm('确认删除该 Copilot CLI 会话吗？')
   if (!ok) return
-  const result = await localExecChatService.localExecDeleteSession({ sessionId: sid, projectId })
-  if ((result as any)?.error) {
-    pushToast('删除会话失败：' + String((result as any).error), 'warn')
+  const result = await localExecChatService.localExecDeleteSession({ sessionId: sid, projectId }) as LocalExecListResult
+  if (result?.error) {
+    pushToast('删除会话失败：' + String(result.error), 'warn')
     return
   }
   codexSessions.value = codexSessions.value.filter((s) => s.id !== sid)
@@ -3023,9 +3159,9 @@ const onCodexRenameSession = async (payloadValue: { sessionId: string; title: st
   const sid = String(payloadValue.sessionId || '').trim()
   const title = String(payloadValue.title || '').trim()
   if (!sid || !title) return
-  const result = await localExecChatService.localExecUpdateSession({ sessionId: sid, projectId, title })
-  if ((result as any)?.error) {
-    pushToast('会话改名失败：' + String((result as any).error), 'warn')
+  const result = await localExecChatService.localExecUpdateSession({ sessionId: sid, projectId, title }) as LocalExecListResult
+  if (result?.error) {
+    pushToast('会话改名失败：' + String(result.error), 'warn')
     return
   }
   codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
@@ -3067,17 +3203,17 @@ const normalizePastedNodeResources = (nodeIds: string[]) => {
 
   const canonicalByUniqueKey = new Map<string, string>()
   for (const rid of store.state.resourceOrder) {
-    const r = store.state.resourcesById[rid] as any
+    const r = store.state.resourcesById[rid] as WorkflowResource | undefined
     if (!r) continue
     const key = resourceUniqueIndexKey({
       kind: r.kind,
       sourcePath: r.sourcePath,
       url: r.url,
-      sourceFingerprint: (r as any).sourceFingerprint,
-      localFileKey: (r as any).localFileKey,
-      sourceName: (r as any).sourceName,
-      sourceSize: (r as any).sourceSize,
-      sourceLastModified: (r as any).sourceLastModified,
+      sourceFingerprint: r.sourceFingerprint,
+      localFileKey: r.localFileKey,
+      sourceName: r.sourceName,
+      sourceSize: r.sourceSize,
+      sourceLastModified: r.sourceLastModified,
     })
     if (!key) continue
     if (!canonicalByUniqueKey.has(key)) canonicalByUniqueKey.set(key, rid)
@@ -3090,18 +3226,18 @@ const normalizePastedNodeResources = (nodeIds: string[]) => {
     if (!node || (node.type !== 'image' && node.type !== 'video')) continue
     const resourceId = String(node.resourceId ?? '').trim()
     if (!resourceId) continue
-    const resource = store.state.resourcesById[resourceId] as any
+    const resource = store.state.resourcesById[resourceId] as WorkflowResource | undefined
     if (!resource) continue
 
     const key = resourceUniqueIndexKey({
       kind: resource.kind,
       sourcePath: resource.sourcePath,
       url: resource.url,
-      sourceFingerprint: (resource as any).sourceFingerprint,
-      localFileKey: (resource as any).localFileKey,
-      sourceName: (resource as any).sourceName,
-      sourceSize: (resource as any).sourceSize,
-      sourceLastModified: (resource as any).sourceLastModified,
+      sourceFingerprint: resource.sourceFingerprint,
+      localFileKey: resource.localFileKey,
+      sourceName: resource.sourceName,
+      sourceSize: resource.sourceSize,
+      sourceLastModified: resource.sourceLastModified,
     })
     if (!key) continue
 
@@ -3166,13 +3302,13 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
   }
 
   const items = Array.from(clipboardData.items ?? [])
-  const files: Array<{ file: File; sourcePath: string }> = []
+  const files: Array<{ file: ElectronFile; sourcePath: string }> = []
 
   for (const item of items) {
     if (item.kind !== 'file') continue
-    const file = item.getAsFile()
+    const file = item.getAsFile() as ElectronFile | null
     if (!file) continue
-    const sourcePath = typeof (file as any).path === 'string' ? String((file as any).path).trim() : ''
+    const sourcePath = typeof file.path === 'string' ? String(file.path).trim() : ''
     files.push({ file, sourcePath })
   }
 
@@ -3421,7 +3557,7 @@ const findExistingResourceIdByUniqueIndex = (input: {
   const key = resourceUniqueIndexKey(input)
   if (!key) return null
   for (const rid of store.state.resourceOrder) {
-    const r = store.state.resourcesById[rid] as any
+    const r = store.state.resourcesById[rid] as WorkflowResource | undefined
     if (!r) continue
     const cur = resourceUniqueIndexKey({
       kind: r.kind,
@@ -3438,12 +3574,12 @@ const findExistingResourceIdByUniqueIndex = (input: {
   return null
 }
 
-const isComfyForwardResource = (resource: any) => {
+const isComfyForwardResource = (resource: Pick<WorkflowResource, 'url'> | null | undefined) => {
   const url = String(resource?.url ?? '').trim().toLowerCase()
   return /\/api\/workflow\/(view|outputs)(\?|$)/.test(url)
 }
 
-const isDjangoManagedResource = (resource: any) => {
+const isDjangoManagedResource = (resource: WorkflowResource | null | undefined) => {
   if (!resource) return false
   if (isComfyForwardResource(resource)) return false
   const sp = normalizeSourcePathKey(resource?.sourcePath)
@@ -3496,11 +3632,11 @@ const scheduleVideoMetadataRead = (payload: { sessionId?: string; resourceId: st
     {
       id: payload.resourceId,
       url: payload.url,
-      onResult: (res) => {
+      onResult: (res: VideoMetadataResult) => {
         if (!store.state.nodesById[payload.nodeId]) return
 
-        const w = Number((res as any).width)
-        const h = Number((res as any).height)
+        const w = Number(res.width)
+        const h = Number(res.height)
         if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return
 
         const ww = Math.max(1, Math.floor(w))
@@ -3562,8 +3698,8 @@ const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video')
   if (kind === 'image') {
     const img = new Image()
     img.onload = () => {
-      const w = Math.max(1, Math.floor((img as any).naturalWidth || img.width || 1))
-      const h = Math.max(1, Math.floor((img as any).naturalHeight || img.height || 1))
+      const w = Math.max(1, Math.floor(img.naturalWidth || img.width || 1))
+      const h = Math.max(1, Math.floor(img.naturalHeight || img.height || 1))
       const aspect = w && h ? w / h : 1
       const previewHeight = Math.round(targetWidth / Math.max(0.1, aspect))
       const height = Math.max(220, previewHeight + chromeHeight)
@@ -3751,12 +3887,12 @@ const autoDistributeImageOutputToConnectedNodes = async (fromNodeId: string) => 
 
   const rid = String(fromNode.resourceId ?? '').trim()
   if (!rid) return
-  const sourceResource = store.state.resourcesById[rid]
+  const sourceResource = store.state.resourcesById[rid] as WorkflowResource | undefined
   if (!sourceResource || sourceResource.kind !== 'image') return
 
-  const sourceUrl = String((sourceResource as any).url ?? '').trim()
+  const sourceUrl = String(sourceResource.url ?? '').trim()
   if (!sourceUrl) return
-  const sourceName = String((sourceResource as any).name ?? 'image')
+  const sourceName = String(sourceResource.name ?? 'image')
 
   let croppedFile: File | null = null
   try {
@@ -3823,8 +3959,17 @@ const {
   store,
 })
 
+interface SceneLayoutPlaceholderPayload {
+  size?: { width?: unknown; height?: unknown; depth?: unknown }
+  scale?: { x?: unknown; y?: unknown; z?: unknown }
+  rotation?: { yaw?: unknown; pitch?: unknown; roll?: unknown }
+  objectId?: string
+  name?: string
+  color?: string
+}
+
 const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
-  const placeholderPayload = getSceneLayoutSelectedPlaceholderPayload(nodeId)
+  const placeholderPayload = getSceneLayoutSelectedPlaceholderPayload(nodeId) as SceneLayoutPlaceholderPayload | null
   if (!placeholderPayload) return null
 
   const positive = (value: unknown, fallback: number) => {
@@ -3836,20 +3981,20 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
     return Number.isFinite(next) ? next : fallback
   }
 
-  const width = Math.max(0.05, positive((placeholderPayload as any)?.size?.width, 1) * Math.max(0.01, Math.abs(signed((placeholderPayload as any)?.scale?.x, 1))))
-  const height = Math.max(0.05, positive((placeholderPayload as any)?.size?.height, 1) * Math.max(0.01, Math.abs(signed((placeholderPayload as any)?.scale?.y, 1))))
-  const depth = Math.max(0.05, positive((placeholderPayload as any)?.size?.depth, 1) * Math.max(0.01, Math.abs(signed((placeholderPayload as any)?.scale?.z, 1))))
-  const yaw = signed((placeholderPayload as any)?.rotation?.yaw, 0)
-  const pitch = signed((placeholderPayload as any)?.rotation?.pitch, 0)
-  const roll = signed((placeholderPayload as any)?.rotation?.roll, 0)
-  const placeholderId = String((placeholderPayload as any)?.objectId ?? '').trim()
-  const placeholderName = String((placeholderPayload as any)?.name ?? placeholderId ?? 'placeholder').trim() || 'placeholder'
+  const width = Math.max(0.05, positive(placeholderPayload?.size?.width, 1) * Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.x, 1))))
+  const height = Math.max(0.05, positive(placeholderPayload?.size?.height, 1) * Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.y, 1))))
+  const depth = Math.max(0.05, positive(placeholderPayload?.size?.depth, 1) * Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.z, 1))))
+  const yaw = signed(placeholderPayload?.rotation?.yaw, 0)
+  const pitch = signed(placeholderPayload?.rotation?.pitch, 0)
+  const roll = signed(placeholderPayload?.rotation?.roll, 0)
+  const placeholderId = String(placeholderPayload?.objectId ?? '').trim()
+  const placeholderName = String(placeholderPayload?.name ?? placeholderId ?? 'placeholder').trim() || 'placeholder'
   const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
   const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
 
   const geometry = new THREE.BoxGeometry(width, height, depth)
   const material = new THREE.MeshStandardMaterial({
-    color: String((placeholderPayload as any)?.color ?? '').trim() || '#94a3b8',
+    color: String(placeholderPayload?.color ?? '').trim() || '#94a3b8',
     roughness: 0.88,
     metalness: 0.08,
   })
@@ -3873,14 +4018,14 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
     const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
       exporter.parse(
         root,
-        (result: any) => {
+        (result: unknown) => {
           if (result instanceof ArrayBuffer) {
             resolve(result)
             return
           }
           reject(new Error('placeholder glb export returned non-binary payload'))
         },
-        (error: any) => reject(error instanceof Error ? error : new Error(String(error ?? 'placeholder glb export failed'))),
+        (error: unknown) => reject(error instanceof Error ? error : new Error(String(error ?? 'placeholder glb export failed'))),
         { binary: true, onlyVisible: true }
       )
     })
@@ -3922,9 +4067,9 @@ const resolveGeneratedModelTransferSource = async (file: File) => {
   try {
     const projectId = Number(currentProjectId.value ?? 0)
     if (projectId > 0) {
-      const uploaded = await blueprintProjectService.uploadAsset(file, 'file', { projectId })
+      const uploaded = await blueprintProjectService.uploadAsset(file, 'file', { projectId }) as AssetImportResult
       if (uploaded.ok) {
-        const asset = (uploaded as any).asset ?? {}
+        const asset = uploaded.asset ?? {}
         assetUrl = resolveBackendUrl(String(asset.url || ''))
         assetPath = String(asset.absolutePath || '').trim()
       }
@@ -3991,15 +4136,15 @@ const {
     const outputs: WorkflowSceneDecomposeOutput[] = Array.isArray(rawOutputs) ? rawOutputs : []
     const item = outputs.find((entry) => String(entry?.imageAnchorId ?? '') === fromAnchorId)
     if (!item?.generatedResourceId) return ''
-    const resource = store.state.resourcesById[item.generatedResourceId]
-    return String((resource as any)?.url ?? '').trim()
+    const resource = store.state.resourcesById[item.generatedResourceId] as WorkflowResource | undefined
+    return String(resource?.url ?? '').trim()
   },
   getComfyImageUrl: (fromNode, fromAnchorId) => {
     const outputs = Array.isArray(fromNode.comfyuiSettings?.outputs)
       ? (fromNode.comfyuiSettings!.outputs! as ComfyLocalizedOutput[])
       : []
-    const media = comfyOutputForAnchor(outputs, fromAnchorId, 'image')
-    return String((media as any)?.url ?? '').trim()
+    const media = comfyOutputForAnchor(outputs, fromAnchorId, 'image') as ComfyLocalizedOutput | null
+    return String(media?.url ?? '').trim()
   },
   blobToDataUrl,
   resolveBackendUrl,
@@ -4026,9 +4171,9 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 
   const incoming = getIncomingEdges(nodeId, 'in-resource')
   for (const edge of incoming) {
-    const fromNode = store.state.nodesById[String((edge as any).fromNodeId ?? '')]
+    const fromNode = store.state.nodesById[String(edge.fromNodeId ?? '')]
     if (!fromNode) continue
-    const fromAnchorId = String((edge as any).fromAnchorId ?? '').trim()
+    const fromAnchorId = String(edge.fromAnchorId ?? '').trim()
 
     if (fromNode.type === 'meshy') {
       const settings = fromNode.meshySettings ?? {}
@@ -4042,7 +4187,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
         name,
         sourceUrl,
         sourcePath: effective.assetPath || undefined,
-      })
+      }) as PersistedAsset | null
       revokeNodeModel3DObjectUrl(nodeId)
       const finalModelUrl = String(persisted?.url || effective.assetUrl || sourceUrl)
       if (isMeshyRemoteUrl(finalModelUrl)) {
@@ -4056,10 +4201,10 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
           modelFormat: format,
           modelSourceName: name,
           modelSourcePath: String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
-          modelProjectRelativePath: String((persisted as any)?.projectRelativePath || '').trim() || undefined,
+          modelProjectRelativePath: String(persisted?.projectRelativePath || '').trim() || undefined,
           modelAssetUrl: String(persisted?.url || ''),
           modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-          modelAssetProjectRelativePath: String((persisted as any)?.projectRelativePath || '').trim() || undefined,
+          modelAssetProjectRelativePath: String(persisted?.projectRelativePath || '').trim() || undefined,
           lastInputSignature: `${fromNode.id}:${String(settings.meshyTaskId ?? '')}:${sourceUrl}`,
           lastInputNodeId: fromNode.id,
           lastInputSourceUrl: sourceUrl,
@@ -4071,7 +4216,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
     }
 
     if (fromNode.type === 'model3d') {
-      const settings = fromNode.model3dSettings ?? {}
+      const settings: WorkflowModel3DNodeSettings = fromNode.model3dSettings ?? {}
       const preferredUrl = String(settings.modelAssetUrl ?? settings.modelUrl ?? '').trim()
       if (!preferredUrl) continue
       const format = settings.modelFormat === 'gltf' ? 'gltf' : 'glb'
@@ -4081,7 +4226,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
         name,
         sourceUrl: preferredUrl,
         sourcePath: String(settings.modelAssetPath ?? settings.modelSourcePath ?? '').trim() || undefined,
-      })
+      }) as PersistedAsset | null
       revokeNodeModel3DObjectUrl(nodeId)
       store.commit('setNodeModel3DSettings', {
         nodeId,
@@ -4090,10 +4235,10 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
           modelFormat: format,
           modelSourceName: name,
           modelSourcePath: String(persisted?.absolutePath || settings.modelAssetPath || settings.modelSourcePath || '').trim() || undefined,
-          modelProjectRelativePath: String((persisted as any)?.projectRelativePath || (settings as any)?.modelAssetProjectRelativePath || (settings as any)?.modelProjectRelativePath || '').trim() || undefined,
+          modelProjectRelativePath: String(persisted?.projectRelativePath || settings.modelAssetProjectRelativePath || settings.modelProjectRelativePath || '').trim() || undefined,
           modelAssetUrl: String(persisted?.url || ''),
           modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-          modelAssetProjectRelativePath: String((persisted as any)?.projectRelativePath || (settings as any)?.modelAssetProjectRelativePath || (settings as any)?.modelProjectRelativePath || '').trim() || undefined,
+          modelAssetProjectRelativePath: String(persisted?.projectRelativePath || settings.modelAssetProjectRelativePath || settings.modelProjectRelativePath || '').trim() || undefined,
           lastInputSignature: `${fromNode.id}:${preferredUrl}`,
           lastInputNodeId: fromNode.id,
           lastInputSourceUrl: preferredUrl,
@@ -4145,8 +4290,8 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 
 const syncConnectedModel3DTargets = async (fromNodeId: string) => {
   const targets = getOutgoingEdges(fromNodeId)
-    .filter((e: any) => String(e.toAnchorId ?? '') === 'in-resource')
-    .map((e: any) => String(e.toNodeId ?? '').trim())
+    .filter((e: WorkflowEdge) => String(e.toAnchorId ?? '') === 'in-resource')
+    .map((e: WorkflowEdge) => String(e.toNodeId ?? '').trim())
     .filter((id: string, index: number, arr: string[]) => !!id && arr.indexOf(id) === index)
 
   for (const nodeId of targets) {
@@ -4159,22 +4304,32 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
   if (!fromNode) return false
 
   // 根据节点类型读取 meshy 图片设置
-  const getMeshyImageSettings = (node: any): Record<string, any> => {
+  interface MeshyImageSettingsNode extends WorkflowNode {
+    imageSettings?: { meshyImageSettings?: Record<string, unknown> }
+    model3dSettings?: { meshyModelSettings?: Record<string, unknown> }
+    meshySettings?: Record<string, unknown>
+  }
+  const getMeshyImageSettings = (node: MeshyImageSettingsNode): Record<string, unknown> => {
     if (node.type === 'image') return node.imageSettings?.meshyImageSettings ?? {}
     if (node.type === 'model3d') return node.model3dSettings?.meshyModelSettings ?? {}
     return node.meshySettings ?? {}
   }
-  const settings = getMeshyImageSettings(fromNode)
+  const settings = getMeshyImageSettings(fromNode as MeshyImageSettingsNode)
 
   // 从 outputSummary 或直接字段获取图片 URL
-  const outputSummary = settings.outputSummary ?? {}
+  const outputSummary = (settings.outputSummary ?? {}) as {
+    imageUrls?: unknown[]
+    assetUrl?: string
+    preferredUrl?: string
+    assetPath?: string
+  }
   const imageUrls = Array.isArray(outputSummary.imageUrls)
-    ? outputSummary.imageUrls.map((x: any) => String(x ?? '').trim()).filter(Boolean).slice(0, 4)
+    ? outputSummary.imageUrls.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 4)
     : []
-  const fallbackUrl = String(outputSummary.assetUrl || outputSummary.preferredUrl || settings.outputAssetUrl || '').trim()
+  const fallbackUrl = String(outputSummary.assetUrl || outputSummary.preferredUrl || (settings.outputAssetUrl as string) || '').trim()
   if (!imageUrls.length && !fallbackUrl) return false
 
-  const outputEdges = getOutgoingEdges(fromNodeId).filter((e: any) => {
+  const outputEdges = getOutgoingEdges(fromNodeId).filter((e: WorkflowEdge) => {
     if (!e) return false
     const fromAnchorId = String(e.fromAnchorId ?? '')
     const toAnchorId = String(e.toAnchorId ?? '')
@@ -4190,16 +4345,16 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
   }
 
   for (const e of outputEdges) {
-    const targetNodeId = String((e as any).toNodeId ?? '').trim()
+    const targetNodeId = String(e.toNodeId ?? '').trim()
     const targetNode = store.state.nodesById[targetNodeId]
     if (!targetNode || targetNode.type !== 'image') continue
 
-    const sourceUrl = resolveOutputUrlByAnchor(String((e as any).fromAnchorId ?? ''))
+    const sourceUrl = resolveOutputUrlByAnchor(String(e.fromAnchorId ?? ''))
     if (!sourceUrl) continue
 
     const ext = fileExtensionFromUrl(sourceUrl, '.png')
-    const anchorSuffix = String((e as any).fromAnchorId ?? 'out-image').replace(/[^a-zA-Z0-9_-]/g, '_')
-    const fileNameBase = `meshy_${String(settings.taskId ?? fromNode.id).trim() || fromNode.id}_${anchorSuffix}_${targetNodeId}`
+    const anchorSuffix = String(e.fromAnchorId ?? 'out-image').replace(/[^a-zA-Z0-9_-]/g, '_')
+    const fileNameBase = `meshy_${String((settings.taskId as string) ?? fromNode.id).trim() || fromNode.id}_${anchorSuffix}_${targetNodeId}`
     const fileName = `${fileNameBase}${ext}`
 
     let cloned: File | null = null
@@ -4214,10 +4369,10 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
         kind: 'image',
         name: fileName,
         sourceUrl,
-        sourcePath: outputSummary.assetPath || settings.outputAssetPath || undefined,
-      })
+        sourcePath: outputSummary.assetPath || (settings.outputAssetPath as string) || undefined,
+      }) as PersistedAsset | null
       const outputUrl = String(persisted?.url || sourceUrl).trim()
-      const outputPath = String(persisted?.absolutePath || outputSummary.assetPath || settings.outputAssetPath || '').trim()
+      const outputPath = String(persisted?.absolutePath || outputSummary.assetPath || (settings.outputAssetPath as string) || '').trim()
       if (!outputUrl) continue
 
       try {
@@ -4229,7 +4384,7 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
       if (!cloned) {
         bindMediaResourceToNode(targetNodeId, 'image', outputUrl, fileName, {
           sourcePath: outputPath || undefined,
-          projectRelativePath: String((persisted as any)?.projectRelativePath || '').trim() || undefined,
+          projectRelativePath: String(persisted?.projectRelativePath || '').trim() || undefined,
         })
         autoSizeMediaNode(targetNodeId, outputUrl, 'image')
         continue
@@ -6777,8 +6932,8 @@ let resourceManagerEventListenerId: number | null = null
 const pushSystemToast = (message: string, tone: 'info' | 'warn' | 'error' = 'warn') => {
   chatMessages.value = [
     ...chatMessages.value,
-    { id: `sys-focus-${Date.now()}`, role: 'system', message, tone, createdAt: Date.now() },
-  ] as any
+    { id: `sys-focus-${Date.now()}`, role: 'system', content: message, message, tone, createdAt: Date.now() },
+  ]
 }
 
 const tryFocusNodeById = (nodeIdRaw: any): boolean => {

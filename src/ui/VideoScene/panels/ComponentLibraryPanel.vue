@@ -112,15 +112,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
+import type { JsonValue } from '../../../core/shared/json'
 import { componentTemplateApi } from '../../../core/components'
 import { nodeExistsInAnyLayer } from '../../../core/scene'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 import { stripSubtitleTextContentFromNodeSnapshots, stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
 import { applyTimelineAnimationAtFrame } from '../anim/timelineAnimation'
 import { ComponentLibraryService } from '../../../network/ComponentLibraryService'
-import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
+import { VideoSceneKey, type VideoSceneState, type VideoSceneLayer, type VideoSceneTreeNode } from '../../../store/videoscene'
 import { TimelineStore } from '../../../store/timeline'
 import { containsFrame, type TimelineFrameSpan } from '../../../store/timeline/spans'
+import { isObject, isRecord, isString, isNumber } from '../../../types/utils'
 
 defineOptions({ name: 'ComponentLibraryPanel' })
 
@@ -128,12 +130,17 @@ defineProps<{ layerId: string | null }>()
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 
+type ComponentTemplate = {
+  nodes?: unknown
+  params?: unknown
+}
+
 type SavedComponent = {
 	id: string
 	createdAt: string
 	templateId: string
 	name: string
-	template: any
+	template: ComponentTemplate
 	savedAt: string
 	thumbAssetId?: string
 	thumbDataUrl?: string
@@ -142,16 +149,17 @@ type SavedComponent = {
 
 type ParamDef = { key: string; type: 'string' | 'number' | 'boolean' | 'color' | 'asset:image' }
 
+type TimelineFrameSpanPoint = number | { start?: unknown; end?: unknown }
+
 const COMPONENT_LIBRARY_KEY = 'dvs.componentLibrary.v1'
 
 const componentLibrary = ref<SavedComponent[]>([])
 const selectedComponentId = ref<string>('')
-const componentParamValuesById = ref<Record<string, Record<string, any>>>({})
+const componentParamValuesById = ref<Record<string, Record<string, JsonValue>>>({})
 const busy = ref(false)
 const componentService = new ComponentLibraryService()
 
 const getSingleSelectedKeyframeCell = (): { layerId: string; frameIndex: number } | null => {
-	// Read versions to ensure reactivity when nested maps mutate.
 	const _selV = TimelineStore.state.selectionVersion
 	const _kfV = TimelineStore.state.keyframeVersion
 	void _selV
@@ -161,10 +169,18 @@ const getSingleSelectedKeyframeCell = (): { layerId: string; frameIndex: number 
 	const layerId = entries[0][0]
 	const spans = entries[0][1] as TimelineFrameSpan[]
 	if (!spans || spans.length !== 1) return null
-	const s = spans[0]
-	const frameIndex = typeof s === 'number' ? Math.floor(s) : s && typeof s === 'object' && (s as any).start === (s as any).end ? Math.floor((s as any).start) : null
+	const s = spans[0] as TimelineFrameSpanPoint
+	let frameIndex: number | null = null
+	if (typeof s === 'number') {
+		frameIndex = Math.floor(s)
+	} else if (isObject(s)) {
+		const start = s.start
+		const end = s.end
+		if (isNumber(start) && isNumber(end) && start === end) {
+			frameIndex = Math.floor(start)
+		}
+	}
 	if (frameIndex == null || !Number.isFinite(frameIndex)) return null
-	// Must be a keyframe cell on that layer.
 	const kfSpans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
 	if (!containsFrame(kfSpans, frameIndex)) return null
 	return { layerId, frameIndex }
@@ -184,6 +200,10 @@ const addHint = computed(() => {
 	return '请在时间轴选择一个关键帧格子（或先创建关键帧）'
 })
 
+const isSavedComponentLike = (x: unknown): x is Record<string, unknown> => {
+	return isRecord(x)
+}
+
 const loadComponentLibrary = () => {
 	try {
 		const raw = localStorage.getItem(COMPONENT_LIBRARY_KEY)
@@ -195,24 +215,23 @@ const loadComponentLibrary = () => {
 		const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return [] as SavedComponent[]
 		const list: SavedComponent[] = parsed
-			.filter((x) => x && typeof x === 'object')
-			.map((x: any) => ({
+			.filter((x): x is Record<string, unknown> => isSavedComponentLike(x))
+			.map((x) => ({
 				id:
-					typeof x.id === 'string' && x.id.trim()
+					isString(x.id) && x.id.trim()
 						? x.id
-						: `${typeof x.templateId === 'string' ? x.templateId : ''}::${typeof x.savedAt === 'string' ? x.savedAt : ''}`,
-				createdAt: typeof x.createdAt === 'string' ? x.createdAt : (typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString()),
-				templateId: typeof x.templateId === 'string' ? x.templateId : '',
-				name: typeof x.name === 'string' ? x.name : '',
-				template: x.template,
-				savedAt: typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString(),
-				thumbAssetId: typeof x.thumbAssetId === 'string' ? x.thumbAssetId : undefined,
-				thumbDataUrl: typeof x.thumbDataUrl === 'string' ? x.thumbDataUrl : undefined,
-        thumbUrl: typeof x.thumbUrl === 'string' ? x.thumbUrl : undefined,
+						: `${isString(x.templateId) ? x.templateId : ''}::${isString(x.savedAt) ? x.savedAt : ''}`,
+				createdAt: isString(x.createdAt) ? x.createdAt : (isString(x.savedAt) ? x.savedAt : new Date().toISOString()),
+				templateId: isString(x.templateId) ? x.templateId : '',
+				name: isString(x.name) ? x.name : '',
+				template: (isObject(x.template) ? x.template : {}) as ComponentTemplate,
+				savedAt: isString(x.savedAt) ? x.savedAt : new Date().toISOString(),
+				thumbAssetId: isString(x.thumbAssetId) ? x.thumbAssetId : undefined,
+				thumbDataUrl: isString(x.thumbDataUrl) ? x.thumbDataUrl : undefined,
+        thumbUrl: isString(x.thumbUrl) ? x.thumbUrl : undefined,
 			}))
 			.filter((x) => x.id && x.templateId && x.name)
 		componentLibrary.value = list
-		// Re-hydrate thumbnail data into the imageAssets pool for UI usage.
 		for (const it of list) {
       if (!it.thumbAssetId) continue
       const url = it.thumbUrl || it.thumbDataUrl
@@ -222,7 +241,6 @@ const loadComponentLibrary = () => {
 		if (!selectedComponentId.value && list.length) selectedComponentId.value = list[0].id
     return list
 	} catch {
-		// ignore
     return [] as SavedComponent[]
 	}
 }
@@ -239,25 +257,29 @@ const localSnapshot = loadComponentLibrary()
 
 const getThumbUrl = (c: SavedComponent): string | null => {
 	const id = String(c.thumbAssetId || '').trim()
-  if (!id) return typeof c.thumbUrl === 'string' && c.thumbUrl.trim() ? c.thumbUrl : null
+  if (!id) return isString(c.thumbUrl) && c.thumbUrl.trim() ? c.thumbUrl : null
 	const url = store.state.imageAssets?.[id]?.url
-  if (typeof url === 'string' && url.trim()) return url
-  if (typeof c.thumbUrl === 'string' && c.thumbUrl.trim()) return c.thumbUrl
-  return typeof c.thumbDataUrl === 'string' && c.thumbDataUrl.trim() ? c.thumbDataUrl : null
+  if (isString(url) && url.trim()) return url
+  if (isString(c.thumbUrl) && c.thumbUrl.trim()) return c.thumbUrl
+  return isString(c.thumbDataUrl) && c.thumbDataUrl.trim() ? c.thumbDataUrl : null
 }
 
-const applyServerList = (items: any[]) => {
+const isServerComponentItem = (x: unknown): x is Record<string, unknown> => {
+	return isRecord(x)
+}
+
+const applyServerList = (items: unknown[]) => {
   const list: SavedComponent[] = items
-    .filter((x) => x && typeof x === 'object')
-    .map((x: any) => ({
-      id: typeof x.id === 'string' ? x.id : '',
-      createdAt: typeof x.createdAt === 'string' ? x.createdAt : new Date().toISOString(),
-      templateId: typeof x.templateId === 'string' ? x.templateId : '',
-      name: typeof x.name === 'string' ? x.name : '',
-      template: x.template,
-      savedAt: typeof x.savedAt === 'string' ? x.savedAt : new Date().toISOString(),
-      thumbAssetId: typeof x.thumbAssetId === 'string' ? x.thumbAssetId : undefined,
-      thumbUrl: typeof x.thumbUrl === 'string' ? x.thumbUrl : undefined,
+    .filter((x): x is Record<string, unknown> => isServerComponentItem(x))
+    .map((x) => ({
+      id: isString(x.id) ? x.id : '',
+      createdAt: isString(x.createdAt) ? x.createdAt : new Date().toISOString(),
+      templateId: isString(x.templateId) ? x.templateId : '',
+      name: isString(x.name) ? x.name : '',
+      template: (isObject(x.template) ? x.template : {}) as ComponentTemplate,
+      savedAt: isString(x.savedAt) ? x.savedAt : new Date().toISOString(),
+      thumbAssetId: isString(x.thumbAssetId) ? x.thumbAssetId : undefined,
+      thumbUrl: isString(x.thumbUrl) ? x.thumbUrl : undefined,
     }))
     .filter((x) => x.id && x.templateId && x.name)
   componentLibrary.value = list
@@ -296,18 +318,18 @@ const refreshFromServer = async () => {
   }
 }
 
+const onExternalRefresh = (): void => {
+  void refreshFromServer()
+}
+
 onMounted(() => {
   void refreshFromServer()
-  window.addEventListener('dvs:componentLibrary/refresh', onExternalRefresh as any)
+	window.addEventListener('dvs:componentLibrary/refresh', onExternalRefresh as (e: Event) => void)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('dvs:componentLibrary/refresh', onExternalRefresh as any)
+	window.removeEventListener('dvs:componentLibrary/refresh', onExternalRefresh as (e: Event) => void)
 })
-
-const onExternalRefresh = () => {
-  void refreshFromServer()
-}
 
 const syncLocalToServer = async () => {
   if (busy.value) return
@@ -356,7 +378,7 @@ const selectedComponent = computed(() => {
 	return componentLibrary.value.find((c) => c.id === id) || null
 })
 
-const extractParamKeysFromNodes = (template: any): string[] => {
+const extractParamKeysFromNodes = (template: ComponentTemplate): string[] => {
 	try {
 		const nodes = Array.isArray(template?.nodes) ? template.nodes : []
 		const str = JSON.stringify(nodes)
@@ -375,15 +397,16 @@ const extractParamKeysFromNodes = (template: any): string[] => {
 
 const normalizeParamKey = (k: unknown) => String(k ?? '').trim().replace(/\s+/g, '')
 
-const buildDefaultTemplateParams = (template: any, opts: { title?: string; subtitle?: string; body?: string; text?: string }) => {
-	const params: Record<string, any> = {}
+const buildDefaultTemplateParams = (template: ComponentTemplate, opts: { title?: string; subtitle?: string; body?: string; text?: string }): Record<string, JsonValue> => {
+	const params: Record<string, JsonValue> = {}
 	const list = Array.isArray(template?.params) ? template.params : []
 	const title = String(opts.title ?? '').trim()
 	const subtitle = String(opts.subtitle ?? '').trim()
 	const body = String(opts.body ?? '').trim()
 	const text = String(opts.text ?? '').trim()
 	for (const it of list) {
-		const keyRaw = typeof it?.key === 'string' ? it.key : ''
+		if (!isObject(it)) continue
+		const keyRaw = isString(it.key) ? it.key : ''
 		const key = keyRaw.trim()
 		if (!key) continue
 		const nk = normalizeParamKey(key).toLowerCase()
@@ -392,27 +415,32 @@ const buildDefaultTemplateParams = (template: any, opts: { title?: string; subti
 		if (nk === 'title' || nk.endsWith('.title') || nk.includes('title')) params[key] = title || subtitle || 'Title'
 		else if (nk === 'subtitle' || nk.includes('sub')) params[key] = subtitle || ''
 		else if (nk === 'body' || nk === 'text' || nk === 'content' || nk.includes('desc') || nk.includes('summary')) params[key] = body || text || ''
-		else if (it?.default !== undefined) params[key] = it.default
+		else if (it.default !== undefined) params[key] = it.default as JsonValue
 	}
 	return params
 }
 
-const deriveParamDefs = (template: any): ParamDef[] => {
+const isValidParamType = (t: string): t is ParamDef['type'] => {
+	return new Set<ParamDef['type']>(['string', 'number', 'boolean', 'color', 'asset:image']).has(t as ParamDef['type'])
+}
+
+const deriveParamDefs = (template: ComponentTemplate): ParamDef[] => {
 	const keys = new Set<string>()
 	const list = Array.isArray(template?.params) ? template.params : []
 	for (const p of list) {
-		const k = typeof p?.key === 'string' ? p.key.trim() : ''
+		if (!isObject(p)) continue
+		const k = isString(p.key) ? p.key.trim() : ''
 		if (k) keys.add(k)
 	}
 	for (const k of extractParamKeysFromNodes(template)) keys.add(k)
 
 	const paramTypeByKey = new Map<string, ParamDef['type']>()
 	for (const p of list) {
-		const k = typeof p?.key === 'string' ? p.key.trim() : ''
+		if (!isObject(p)) continue
+		const k = isString(p.key) ? p.key.trim() : ''
 		if (!k) continue
-		const t = typeof p?.type === 'string' ? p.type.trim() : ''
-		const ok = new Set<ParamDef['type']>(['string', 'number', 'boolean', 'color', 'asset:image'])
-		if (ok.has(t as any)) paramTypeByKey.set(k, t as any)
+		const t = isString(p.type) ? p.type.trim() : ''
+		if (isValidParamType(t)) paramTypeByKey.set(k, t)
 	}
 
 	return Array.from(keys)
@@ -436,33 +464,52 @@ const ensureParamBag = (componentId: string) => {
 	componentParamValuesById.value = { ...componentParamValuesById.value, [componentId]: defaults }
 }
 
-const getParamValue = (componentId: string, key: string) => {
+const getParamValue = (componentId: string, key: string): JsonValue | undefined => {
 	ensureParamBag(componentId)
 	return componentParamValuesById.value?.[componentId]?.[key]
 }
 
-const setParamValue = (componentId: string, key: string, value: any) => {
+const setParamValue = (componentId: string, key: string, value: JsonValue) => {
 	ensureParamBag(componentId)
 	const bag = { ...(componentParamValuesById.value[componentId] || {}) }
 	bag[key] = value
 	componentParamValuesById.value = { ...componentParamValuesById.value, [componentId]: bag }
 }
 
-const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
+const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_-]/g, '_')
 
-type NodeSnapshot = { transform?: any; props?: Record<string, any> }
+type NodeSnapshotTransform = {
+	x?: number
+	y?: number
+	scaleX?: number
+	scaleY?: number
+	scale?: number
+	pivotX?: number
+	pivotY?: number
+	width?: number
+	height?: number
+	rotation?: number
+	opacity?: number
+}
 
-const collectUserNodeSnapshots = (nodes: any[] | undefined, out: Record<string, NodeSnapshot>) => {
+type NodeSnapshot = { transform?: NodeSnapshotTransform; props?: Record<string, JsonValue> }
+
+const isVideoSceneTreeNodeLike = (n: unknown): n is { id?: unknown; category?: unknown; transform?: unknown; props?: unknown; children?: unknown } => {
+	return isObject(n)
+}
+
+const collectUserNodeSnapshots = (nodes: unknown[] | undefined, out: Record<string, NodeSnapshot>) => {
   if (!nodes) return
   for (const n of nodes) {
-    if (n && typeof n === 'object' && (n as any).category === 'user') {
-      out[String((n as any).id)] = {
-        transform: (n as any).transform ? { ...(n as any).transform } : undefined,
-        props: (n as any).props ? cloneJsonSafe((n as any).props) : undefined,
-      }
+    if (!isVideoSceneTreeNodeLike(n)) continue
+    if (n.category === 'user') {
+      const nodeId = String(n.id ?? '')
+      const transform = isObject(n.transform) ? { ...(n.transform as NodeSnapshotTransform) } : undefined
+      const props = isObject(n.props) ? cloneJsonSafe(n.props as Record<string, JsonValue>) : undefined
+      out[nodeId] = { transform, props }
     }
-    const children = (n as any)?.children
-    if (Array.isArray(children) && children.length) collectUserNodeSnapshots(children, out)
+    const children = Array.isArray(n.children) ? n.children : undefined
+    if (children && children.length) collectUserNodeSnapshots(children, out)
   }
 }
 
@@ -470,7 +517,7 @@ const captureLayerSnapshot = (layerId: string): Record<string, NodeSnapshot> => 
   const layer = store.state.layers.find((l) => l.id === layerId)
   if (!layer) return {}
   const out: Record<string, NodeSnapshot> = {}
-  collectUserNodeSnapshots((layer as any).nodeTree, out)
+  collectUserNodeSnapshots(layer.nodeTree as unknown[], out)
   return out
 }
 
@@ -483,8 +530,8 @@ const ensureVideoSceneLayerExists = async (layerId: string) => {
   await TimelineStore.dispatch('ensureStageSnapshotsContainLayer', { layerId: id, name })
 }
 
-const instantiateIntoLayerWithParams = async (layerId: string, template: any, params: Record<string, any>) => {
-	const instantiated = componentTemplateApi.instantiateTemplate(template as any, params ?? {}, {
+const instantiateIntoLayerWithParams = async (layerId: string, template: ComponentTemplate, params: Record<string, JsonValue>): Promise<string> => {
+	const instantiated = componentTemplateApi.instantiateTemplate(template as unknown, params ?? {}, {
 		getNodeId: ({ templateId, localId }) => {
 			const base = safeIdPart(`${templateId}:${localId}`)
 			let id = base
@@ -493,7 +540,7 @@ const instantiateIntoLayerWithParams = async (layerId: string, template: any, pa
 			return id
 		},
 	})
-	await store.dispatch('addNodeTree', { node: instantiated.root, layerId })
+	await store.dispatch('addNodeTree', { node: instantiated.root as VideoSceneTreeNode, layerId })
 	return instantiated.root?.id as string
 }
 
@@ -522,12 +569,11 @@ const insertSelectedComponent = async () => {
 	busy.value = true
 	try {
     await ensureVideoSceneLayerExists(layerId)
-    // Ensure the node tree panel is showing the target layer.
     await store.dispatch('setActiveLayer', { layerId })
 		ensureParamBag(c.id)
 		const rawParams = componentParamValuesById.value[c.id] || {}
 		const defs = deriveParamDefs(c.template)
-		const params: Record<string, any> = {}
+		const params: Record<string, JsonValue> = {}
 		for (const d of defs) {
 			const v = rawParams[d.key]
 			if (d.type === 'number') {
@@ -540,7 +586,6 @@ const insertSelectedComponent = async () => {
 			}
 		}
 
-		// Ensure the target keyframe exists and bind the insertion to it.
 		await TimelineStore.dispatch('addKeyframeRange', { layerId, startFrame: frameIndex, endFrame: frameIndex })
 		const rootId = await instantiateIntoLayerWithParams(layerId, c.template, params)
     if (rootId) {
@@ -559,31 +604,28 @@ const insertSelectedComponent = async () => {
     }
 		await setOpacityKeyframes(layerId, rootId, [{ frame: frameIndex, opacity: 1 }])
 
-    // Write back PER-LAYER stage snapshot for this keyframe.
-    // Do NOT capture the whole stage, otherwise other layers can be overwritten.
-    const kind = (TimelineStore.state.layerKindById?.[layerId] ?? 'normal') as any
+    const kind = TimelineStore.state.layerKindById?.[layerId] ?? 'normal'
     const isSubtitle = kind === 'subtitle'
     const baseLayer = store.state.layers.find((l) => l.id === layerId)
-    const snapLayer = baseLayer ? (cloneJsonSafe(baseLayer) as any) : ({ id: layerId, name: layerId } as any)
-    const layersForSnapshot = isSubtitle ? stripSubtitleTextContentFromStageLayers([snapLayer] as any, layerId) : ([snapLayer] as any)
+    const snapLayer: VideoSceneLayer = baseLayer ? (cloneJsonSafe(baseLayer) as VideoSceneLayer) : ({ id: layerId, name: layerId, nodeTree: [] } as VideoSceneLayer)
+    const layersForSnapshot: VideoSceneLayer[] = isSubtitle ? stripSubtitleTextContentFromStageLayers([snapLayer], layerId) : [snapLayer]
 		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
 			startFrame: frameIndex,
 			endFrame: frameIndex,
-			layers: layersForSnapshot as any,
+			layers: layersForSnapshot,
 		})
 
     if (kind === 'subtitle' || kind === 'progress') {
-      const nodesById = kind === 'subtitle' ? stripSubtitleTextContentFromNodeSnapshots(captureLayerSnapshot(layerId) as any) : captureLayerSnapshot(layerId)
+      const snapshot = captureLayerSnapshot(layerId)
+      const nodesById = kind === 'subtitle' ? stripSubtitleTextContentFromNodeSnapshots(snapshot) : snapshot
       await TimelineStore.dispatch('setNodeKeyframeSnapshotRange', {
         layerId,
         startFrame: frameIndex,
         endFrame: frameIndex,
-        nodesById: nodesById as any,
+        nodesById,
       })
     }
 
-    // If we inserted into a keyframe that is NOT the current playhead,
-    // restore stage to what should be rendered at the current frame.
     if (playheadFrame !== frameIndex) applyTimelineAnimationAtFrame(playheadFrame)
 	} finally {
 		busy.value = false
@@ -812,7 +854,6 @@ const removeSelectedComponent = async () => {
   flex-wrap: wrap;
 }
 
-/* Local button skin: keep consistent with editor panels, no rounded corners */
 .vs-btn {
   padding: 6px 10px;
   border-radius: 0;

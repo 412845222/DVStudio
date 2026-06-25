@@ -1,8 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* three module is shimmed as any in vite-env-three.d.ts; runtime calls are valid, type references use custom Like types */
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
+import { isObject } from '../../../../types/utils'
 import type {
 	WorkflowSceneLayoutItem,
 	WorkflowSceneLayoutLightingControls,
@@ -15,12 +18,216 @@ import type {
 	WorkflowSceneLightingPreviewConfig,
 } from '../../../../aiworkflow/types'
 
-type AnchorPoint = { center: any; base: any; top: any }
+type GltfTemplateLike = Object3Dlike & { clone(recursive?: boolean): Object3Dlike }
+type AnchorPoint = { center: Vector3Like; base: Vector3Like; top: Vector3Like }
 type RelationLine = {
 childId: string
 parentId: string
 placement: string
-line: any
+line: LineLike
+}
+type TransformControlsDragEvent = { value: boolean }
+type LightDefinition = {
+	type?: unknown
+	color?: unknown
+	intensity?: unknown
+	position?: { x?: unknown; y?: unknown; z?: unknown }
+	target?: { x?: unknown; y?: unknown; z?: unknown }
+	direction?: { x?: unknown; y?: unknown; z?: unknown }
+	rotation?: { x?: unknown; y?: unknown; z?: unknown }
+	width?: unknown
+	height?: unknown
+	distance?: unknown
+	decay?: unknown
+	angle?: unknown
+	penumbra?: unknown
+	castShadow?: unknown
+	role?: unknown
+	groundColor?: unknown
+	emitMode?: unknown
+}
+type Disposable = { dispose(): void }
+type TextureLike = Disposable
+type MaterialWithMaps = Disposable & {
+	map?: TextureLike | null
+	normalMap?: TextureLike | null
+	roughnessMap?: TextureLike | null
+	metalnessMap?: TextureLike | null
+	emissiveMap?: TextureLike | null
+	aoMap?: TextureLike | null
+	alphaMap?: TextureLike | null
+	emissive?: { set: (color: string) => void }
+	emissiveIntensity?: number
+	opacity?: number
+	color?: SettableColor
+	groundColor?: SettableColor
+}
+type SettableColor = { set: (color: string) => void; getHexString: () => string }
+type Vector2Like = { x: number; y: number; set(x: number, y: number): void }
+type Vector3Like = {
+	x: number; y: number; z: number
+	clone(): Vector3Like
+	copy(v: Vector3Like): Vector3Like
+	set(x: number, y: number, z: number): Vector3Like
+	add(v: Vector3Like): Vector3Like
+	sub(v: Vector3Like): Vector3Like
+	multiply(v: Vector3Like): Vector3Like
+	multiplyScalar(s: number): Vector3Like
+	normalize(): Vector3Like
+	length(): number
+	lengthSq(): number
+	toArray(): number[]
+}
+type QuaternionLike = {
+	x: number; y: number; z: number; w: number
+	clone(): QuaternionLike
+	copy(q: QuaternionLike): QuaternionLike
+	multiply(q: QuaternionLike): QuaternionLike
+	setFromUnitVectors(from: Vector3Like, to: Vector3Like): QuaternionLike
+	setFromEuler(euler: EulerLike): QuaternionLike
+}
+type EulerLike = {
+	x: number; y: number; z: number
+	clone(): EulerLike
+	copy(e: EulerLike): EulerLike
+	set(x: number, y: number, z: number, order?: string): EulerLike
+}
+type Matrix4Like = {
+	copy(m: Matrix4Like): Matrix4Like
+	invert(): Matrix4Like
+	multiplyMatrices(a: Matrix4Like, b: Matrix4Like): Matrix4Like
+	decompose(position: Vector3Like, quaternion: QuaternionLike, scale: Vector3Like): Matrix4Like
+}
+type Box3Like = {
+	isEmpty(): boolean
+	min: Vector3Like
+	max: Vector3Like
+	getSize(v: Vector3Like): Vector3Like
+	getCenter(v: Vector3Like): Vector3Like
+	setFromObject(obj: Object3Dlike): Box3Like
+}
+type Object3Dlike = {
+	position: Vector3Like
+	rotation: EulerLike
+	quaternion: QuaternionLike
+	scale: Vector3Like
+	matrixWorld: Matrix4Like
+	visible: boolean
+	parent: Object3Dlike | null
+	userData: Record<string, unknown>
+	children: Object3Dlike[]
+	material?: unknown
+	geometry?: unknown
+	lookAt(x: number | Vector3Like, y?: number, z?: number): void
+	updateMatrixWorld(force?: boolean): void
+	traverse(callback: (object: Object3Dlike) => void): void
+	add(...objects: Object3Dlike[]): Object3Dlike
+	remove(...objects: Object3Dlike[]): Object3Dlike
+	getWorldPosition(target: Vector3Like): Vector3Like
+	getWorldQuaternion(target: QuaternionLike): QuaternionLike
+	getWorldScale(target: Vector3Like): Vector3Like
+}
+type MeshLike = Object3Dlike & {
+	material: MaterialWithMaps | MaterialWithMaps[]
+	geometry: Disposable
+}
+type LineLike = Object3Dlike & {
+	material: { opacity?: number; dispose?: () => void }
+	geometry: Disposable & { setFromPoints(points: Vector3Like[]): Disposable }
+	computeLineDistances(): void
+	renderOrder: number
+}
+type GroupLike = Object3Dlike
+type HemisphereLightLike = LightLike & {
+	groundColor: SettableColor
+}
+type LightLike = Object3Dlike & {
+	color: SettableColor
+	intensity: number
+	position: Vector3Like
+	target?: Object3Dlike
+	distance?: number
+	decay?: number
+	angle?: number
+	penumbra?: number
+	castShadow?: boolean
+	shadow?: { camera?: unknown }
+	width?: number
+	height?: number
+}
+type CameraLike = Object3Dlike & {
+	aspect: number
+	near: number
+	far: number
+	updateProjectionMatrix(): void
+}
+type PerspectiveCameraLike = CameraLike & {
+	fov: number
+}
+type SceneLike = Object3Dlike & {
+	background: unknown
+	add(...objects: unknown[]): Object3Dlike
+	remove(...objects: unknown[]): Object3Dlike
+}
+type RendererInfo = {
+	memory?: { geometries?: number; textures?: number }
+	render?: { calls?: number; triangles?: number; points?: number; lines?: number }
+}
+type WebGLRendererLike = {
+	domElement: HTMLCanvasElement
+	outputColorSpace: unknown
+	setPixelRatio(value: number): void
+	setClearColor(color: string, alpha: number): void
+	setSize(width: number, height: number, updateStyle?: boolean): void
+	render(scene: SceneLike, camera: CameraLike): void
+	dispose(): void
+	shadowMap: { enabled: boolean; type: unknown }
+	toneMapping: unknown
+	toneMappingExposure: number
+	info: RendererInfo
+}
+type OrbitControlsLike = {
+	enableDamping: boolean
+	dampingFactor: number
+	minDistance: number
+	maxDistance: number
+	target: Vector3Like
+	enabled: boolean
+	autoRotate?: boolean
+	zoomSpeed?: number
+	addEventListener(type: string, callback: (event?: unknown) => void): void
+	removeEventListener(type: string, callback: (event?: unknown) => void): void
+	update(): void
+	dispose(): void
+}
+type TransformControlsLike = Object3Dlike & {
+	visible: boolean
+	enabled: boolean
+	dragging: boolean
+	object: Object3Dlike | null
+	size: number
+	showX: boolean
+	showY: boolean
+	showZ: boolean
+	attach(object: Object3Dlike): void
+	detach(): void
+	setMode(mode: string): void
+	setSpace(space: string): void
+	getHelper?(): Object3Dlike
+	addEventListener(type: string, callback: (event?: unknown) => void): void
+	removeEventListener(type: string, callback: (event?: unknown) => void): void
+	dispose(): void
+}
+type RaycasterLike = {
+	setFromCamera(coords: Vector2Like, camera: CameraLike): void
+	intersectObjects(objects: Object3Dlike[], recursive?: boolean): Array<{ object: Object3Dlike }>
+}
+type GLTFResult = {
+	scene: Object3Dlike & { clone(recursive?: boolean): Object3Dlike }
+}
+type GLTFLoaderLike = {
+	load(url: string, onLoad: (gltf: GLTFResult) => void, onProgress?: (event: { loaded: number; total: number }) => void, onError?: (err: unknown) => void): void
+	loadAsync(url: string, onProgress?: (event: { loaded: number; total: number }) => void): Promise<GLTFResult>
 }
 type ViewerOptions = {
 onLayoutChange?: (items: WorkflowSceneLayoutItem[]) => void
@@ -61,14 +268,18 @@ type DragTransformBaseline = {
 const DRAG_POSITION_EPSILON = 0.06
 const DRAG_ROTATION_EPSILON_RAD = THREE.MathUtils.degToRad(0.35)
 
-const disposeMaterial = (material: any) => {
+const isDisposableTexture = (value: unknown): value is TextureLike => {
+	return isObject(value) && typeof (value as { dispose?: unknown }).dispose === 'function'
+}
+
+const disposeMaterial = (material: MaterialWithMaps | MaterialWithMaps[]) => {
 const list = Array.isArray(material) ? material : [material]
 for (const item of list) {
 if (!item || typeof item.dispose !== 'function') continue
 const mapKeys = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap'] as const
 for (const key of mapKeys) {
-const value = (item as any)[key]
-if (value && typeof value.dispose === 'function') value.dispose()
+const value = item[key]
+if (value != null && isDisposableTexture(value)) value.dispose()
 }
 item.dispose()
 }
@@ -412,24 +623,24 @@ const rotateOffsetByAxis = (offset: OrientationOffset, axis: AxisName, delta: nu
 }
 
 export class SceneLayoutPreviewViewer {
-private readonly renderer: any
-private readonly scene: any
-private readonly camera: any
-private readonly controls: any
-private readonly transformControls: any
-private readonly transformHelper: any
+private readonly renderer: WebGLRendererLike
+private readonly scene: SceneLike
+private readonly camera: CameraLike
+private readonly controls: OrbitControlsLike
+private readonly transformControls: TransformControlsLike
+private readonly transformHelper: Object3Dlike
 private readonly resizeObserver: ResizeObserver | null
-private readonly group: any
-private readonly lightsGroup: any
-private readonly raycaster = new THREE.Raycaster()
-private readonly pointer = new THREE.Vector2()
-private readonly meshesById = new Map<string, any>()
-private readonly edgesById = new Map<string, any>()
-private readonly boundModelsById = new Map<string, any>()
+private readonly group: GroupLike
+private readonly lightsGroup: GroupLike
+private readonly raycaster: RaycasterLike
+private readonly pointer: Vector2Like
+private readonly meshesById = new Map<string, MeshLike>()
+private readonly edgesById = new Map<string, LineLike>()
+private readonly boundModelsById = new Map<string, GroupLike>()
 private readonly bindingById = new Map<string, WorkflowSceneLayoutModelBinding>()
 private readonly relationLines: RelationLine[] = []
-private readonly loader = new GLTFLoader()
-private readonly modelTemplateCache = new Map<string, Promise<any>>()
+private readonly loader: GLTFLoaderLike
+private readonly modelTemplateCache = new Map<string, Promise<GltfTemplateLike>>()
 private readonly handlePointerDown: (event: PointerEvent) => void
 private readonly handlePointerMove: (event: PointerEvent) => void
 private readonly handleWheel: (event: WheelEvent) => void
@@ -460,19 +671,19 @@ private pendingBindingSync: Promise<void> | null = null
 private pendingBindingRevision = 0
 private idleTimer: ReturnType<typeof setInterval> | null = null
 private rightClickPickCache: { ts: number; x: number; y: number; itemId: string } | null = null
-private readonly baseHemisphereLight: any
-private readonly baseDirectionalLight: any
-private readonly baseDirectionalTarget: any
+private readonly baseHemisphereLight: HemisphereLightLike
+private readonly baseDirectionalLight: LightLike
+private readonly baseDirectionalTarget: Object3Dlike
 
 constructor(
 private readonly canvas: HTMLCanvasElement,
 private readonly options: ViewerOptions = {}
 ) {
-this.scene = new THREE.Scene()
+this.scene = new THREE.Scene() as unknown as SceneLike
 this.scene.background = new THREE.Color('#0c1420')
-this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000)
+this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000) as unknown as PerspectiveCameraLike
 this.camera.position.set(360, 260, 420)
-this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' })
+this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' }) as unknown as WebGLRendererLike
 this.renderer.outputColorSpace = THREE.SRGBColorSpace
 this.renderer.toneMapping = THREE.ACESFilmicToneMapping
 this.renderer.toneMappingExposure = 0.9
@@ -481,7 +692,7 @@ this.renderer.shadowMap.type = THREE.PCFShadowMap
 this.renderer.setPixelRatio(Math.max(1, Math.min(window.devicePixelRatio || 1, 1.5)))
 RectAreaLightUniformsLib.init()
 
-this.controls = new OrbitControls(this.camera, canvas)
+this.controls = new OrbitControls(this.camera, canvas) as unknown as OrbitControlsLike
 this.controls.enableDamping = false
 this.controls.zoomSpeed = 0.9
 this.controls.target.set(0, 40, 0)
@@ -490,7 +701,7 @@ this.controls.addEventListener('change', this.handleControlsChange)
 this.controls.addEventListener('start', this.handleControlsStart)
 this.controls.addEventListener('end', this.handleControlsEnd)
 
-this.transformControls = new TransformControls(this.camera, canvas)
+this.transformControls = new TransformControls(this.camera, canvas) as unknown as TransformControlsLike
 this.transformControls.setMode('translate')
 this.transformControls.setSpace('world')
 this.transformControls.size = 1.05
@@ -500,10 +711,11 @@ this.transformControls.showZ = true
 this.transformHelper = typeof this.transformControls.getHelper === 'function'
 ? this.transformControls.getHelper()
 : this.transformControls
-this.transformControls.addEventListener('dragging-changed', (event: any) => {
-this.transforming = event.value === true
+this.transformControls.addEventListener('dragging-changed', (event?: unknown) => {
+const dragEvent = event as TransformControlsDragEvent
+this.transforming = dragEvent.value === true
 this.controls.enabled = this.interactiveActive && !this.transforming
-if (event.value) {
+if (dragEvent.value) {
 this.dragBaseline = this.captureSelectedDragBaseline()
 this.dragDirty = false
 } else {
@@ -545,10 +757,13 @@ floor.rotation.x = -Math.PI / 2
 floor.position.y = 0
 this.scene.add(floor)
 
-this.group = new THREE.Group()
+this.group = new THREE.Group() as unknown as GroupLike
 this.scene.add(this.group)
-this.lightsGroup = new THREE.Group()
+this.lightsGroup = new THREE.Group() as unknown as GroupLike
 this.scene.add(this.lightsGroup)
+this.raycaster = new THREE.Raycaster() as unknown as RaycasterLike
+this.pointer = new THREE.Vector2() as unknown as Vector2Like
+this.loader = new GLTFLoader() as unknown as GLTFLoaderLike
 
 this.handlePointerDown = (event: PointerEvent) => {
 this.canvas.focus({ preventScroll: true })
@@ -617,17 +832,17 @@ if (this.raf) return
 this.raf = window.requestAnimationFrame(() => this.renderFrame())
 }
 
-private isObjectInSceneGraph(object: any) {
-	let current = object as any
+private isObjectInSceneGraph(object: Object3Dlike | null | undefined) {
+	let current: Object3Dlike | null = object ?? null
 	while (current) {
 		if (current === this.scene) return true
-		current = current.parent as any
+		current = current.parent
 	}
 	return false
 }
 
 private ensureTransformAttachmentValid() {
-	const attached = (this.transformControls as any)?.object
+	const attached = this.transformControls.object
 	if (!attached) return
 	if (!this.isObjectInSceneGraph(attached)) {
 		this.transformControls.detach()
@@ -1027,7 +1242,7 @@ private clearLightingPreview() {
 	}
 }
 
-private applyColor(target: any, value: unknown) {
+private applyColor(target: SettableColor | null | undefined, value: unknown) {
 	const text = String(value ?? '').trim()
 	if (!text || !target?.set) return
 	try {
@@ -1037,11 +1252,14 @@ private applyColor(target: any, value: unknown) {
 	}
 }
 
-private normalizeVector3(raw: any, fallback: { x: number; y: number; z: number }) {
+private normalizeVector3(raw: { x?: unknown; y?: unknown; z?: unknown } | null | undefined, fallback: { x: number; y: number; z: number }) {
+	const rx = raw?.x
+	const ry = raw?.y
+	const rz = raw?.z
 	return new THREE.Vector3(
-		Number.isFinite(Number(raw?.x)) ? Number(raw.x) : fallback.x,
-		Number.isFinite(Number(raw?.y)) ? Number(raw.y) : fallback.y,
-		Number.isFinite(Number(raw?.z)) ? Number(raw.z) : fallback.z,
+		Number.isFinite(Number(rx)) ? Number(rx) : fallback.x,
+		Number.isFinite(Number(ry)) ? Number(ry) : fallback.y,
+		Number.isFinite(Number(rz)) ? Number(rz) : fallback.z,
 	)
 }
 
@@ -1161,11 +1379,11 @@ private applyRoleIntensityBias(type: string, role: unknown, intensity: number) {
 	return intensity * factor
 }
 
-private adjustRectAreaPreviewIntensity(intensity: number, lightDef: any) {
-	const width = this.clampNumber((lightDef as any)?.width, 0.02, 24, 1.2)
-	const height = this.clampNumber((lightDef as any)?.height, 0.02, 24, 0.4)
+private adjustRectAreaPreviewIntensity(intensity: number, lightDef: LightDefinition) {
+	const width = this.clampNumber(lightDef?.width, 0.02, 24, 1.2)
+	const height = this.clampNumber(lightDef?.height, 0.02, 24, 0.4)
 	const area = width * height
-	const roleText = String((lightDef as any)?.role ?? '').trim().toLowerCase()
+	const roleText = String(lightDef?.role ?? '').trim().toLowerCase()
 	const largePanelFactor = area > 2.2 ? Math.pow(area / 2.2, 0.15) : 1
 	const thinStripBoost = height <= 0.12 || width <= 0.18 ? 1.7 : 1
 	const roleBoost = roleText === 'key'
@@ -1181,12 +1399,12 @@ private adjustRectAreaPreviewIntensity(intensity: number, lightDef: any) {
 
 }
 
-private addPreviewAssistLight(type: string, color: string, position: any, lightDef: any, baseIntensity: number) {
-	const roleText = String((lightDef as any)?.role ?? '').trim().toLowerCase()
+private addPreviewAssistLight(type: string, color: string, position: Vector3Like, lightDef: LightDefinition, baseIntensity: number) {
+	const roleText = String(lightDef?.role ?? '').trim().toLowerCase()
 	const sceneScale = this.getSceneScaleHint()
 	if (type === 'rect-area') {
-		const width = this.clampNumber((lightDef as any)?.width, 0.02, 24, 1.2)
-		const height = this.clampNumber((lightDef as any)?.height, 0.02, 24, 0.4)
+		const width = this.clampNumber(lightDef?.width, 0.02, 24, 1.2)
+		const height = this.clampNumber(lightDef?.height, 0.02, 24, 0.4)
 		const isThinStrip = height <= 0.12 || width <= 0.18
 		if (isThinStrip) return
 		const target = this.resolveLightTarget(position, lightDef, { x: position.x, y: position.y, z: position.z + 1 })
@@ -1221,7 +1439,7 @@ private addPreviewAssistLight(type: string, color: string, position: any, lightD
 	}
 }
 
-private shouldLightCastShadow(type: string, lightDef: any, intensity: number) {
+private shouldLightCastShadow(type: string, lightDef: LightDefinition, intensity: number) {
 	if (lightDef?.castShadow !== true) return false
 	if (type === 'rect-area' || type === 'ambient' || type === 'hemisphere') return false
 	if (type === 'point') return intensity >= 0.55
@@ -1235,7 +1453,7 @@ private createLightDebugMarker(color: string, radius: number) {
 	)
 }
 
-private createDebugLine(points: any[], color: string, opacity = 0.9) {
+private createDebugLine(points: Vector3Like[], color: string, opacity = 0.9) {
 	const geometry = new THREE.BufferGeometry().setFromPoints(points)
 	return new THREE.Line(
 		geometry,
@@ -1243,7 +1461,7 @@ private createDebugLine(points: any[], color: string, opacity = 0.9) {
 	)
 }
 
-private addLightDebugHelper(type: string, color: string, position: any, lightDef: any) {
+private addLightDebugHelper(type: string, color: string, position: Vector3Like, lightDef: LightDefinition) {
 	if (!this.lightingDebugEnabled) return
 	const helperGroup = new THREE.Group()
 	const scaleHint = this.getSceneScaleHint()
@@ -1252,8 +1470,8 @@ private addLightDebugHelper(type: string, color: string, position: any, lightDef
 	marker.position.copy(position)
 	helperGroup.add(marker)
 	if (type === 'rect-area') {
-		const width = this.clampNumber((lightDef as any)?.width, 0.02, 24, 1.2)
-		const height = this.clampNumber((lightDef as any)?.height, 0.02, 24, 0.4)
+		const width = this.clampNumber(lightDef.width, 0.02, 24, 1.2)
+		const height = this.clampNumber(lightDef.height, 0.02, 24, 0.4)
 		const plane = new THREE.Mesh(
 			new THREE.PlaneGeometry(width, height),
 			new THREE.MeshBasicMaterial({
@@ -1307,7 +1525,7 @@ private addLightDebugHelper(type: string, color: string, position: any, lightDef
 	this.lightsGroup.add(helperGroup)
 }
 
-private resolveLightTarget(position: any, lightDef: any, fallback: { x: number; y: number; z: number }) {
+private resolveLightTarget(position: Vector3Like, lightDef: LightDefinition, fallback: { x: number; y: number; z: number }) {
 	if (lightDef?.target) return this.normalizeVector3(lightDef.target, fallback)
 	const direction = this.normalizeVector3(lightDef?.direction, { x: 0, y: -1, z: 0 })
 	if (direction.lengthSq() > 0.0001) {
@@ -1316,14 +1534,14 @@ private resolveLightTarget(position: any, lightDef: any, fallback: { x: number; 
 	return this.normalizeVector3(undefined, fallback)
 }
 
-private applyRectAreaOrientation(light: any, lightDef: any, position: any) {
+private applyRectAreaOrientation(light: Object3Dlike, lightDef: LightDefinition, position: Vector3Like) {
 	const target = lightDef?.target || lightDef?.direction
 	if (target) {
 		light.lookAt(this.resolveLightTarget(position, lightDef, { x: 0, y: 40, z: 0 }))
 		return
 	}
 	const rotation = lightDef?.rotation
-	if (rotation && typeof rotation === 'object') {
+	if (rotation && isObject(rotation)) {
 		light.rotation.set(this.toRadians(rotation.x), this.toRadians(rotation.y), this.toRadians(rotation.z))
 		return
 	}
@@ -1424,10 +1642,11 @@ private applyLightingPreview(
 	} else {
 		this.baseDirectionalLight.intensity = 0.08 * this.getLightingTypeScale('directional', controls)
 	}
-	for (const lightDef of Array.isArray(config.lights) ? config.lights : []) {
-		if (!lightDef || typeof lightDef !== 'object') continue
+	for (const rawLightDef of Array.isArray(config.lights) ? config.lights : []) {
+		if (!rawLightDef || typeof rawLightDef !== 'object') continue
+		const lightDef = rawLightDef as LightDefinition
 		const type = this.normalizeLightingType(lightDef.type)
-		const emitMode = String((lightDef as any).emitMode ?? '').trim().toLowerCase()
+		const emitMode = String(lightDef.emitMode ?? '').trim().toLowerCase()
 		if (emitMode === 'self-emissive-only') {
 			this.addLightDebugHelper(type, String(lightDef.color ?? '#ffffff').trim() || '#ffffff', this.normalizeVector3(lightDef.position, { x: 0, y: 120, z: 0 }), lightDef)
 			continue
@@ -1438,54 +1657,58 @@ private applyLightingPreview(
 			lightDef.intensity ?? 1,
 			atmosphere.intensityScale * this.getLightingTypeScale(type, controls),
 		)
-		intensity = this.applyRoleIntensityBias(type, (lightDef as any).role, intensity)
-		if (type === 'spot' && String((lightDef as any).role ?? '').trim().toLowerCase() === 'accent') intensity *= 1.5
-		if (type === 'point' && String((lightDef as any).role ?? '').trim().toLowerCase() === 'accent') intensity *= 1.35
+		intensity = this.applyRoleIntensityBias(type, lightDef.role, intensity)
+		if (type === 'spot' && String(lightDef.role ?? '').trim().toLowerCase() === 'accent') intensity *= 1.5
+		if (type === 'point' && String(lightDef.role ?? '').trim().toLowerCase() === 'accent') intensity *= 1.35
 		const position = this.normalizeVector3(lightDef.position, { x: 0, y: 120, z: 0 })
-		let light: any = null
+		let light: (Object3Dlike & { castShadow?: boolean }) | null = null
 		if (type === 'ambient') {
-			light = new THREE.AmbientLight(color, intensity)
+			light = new THREE.AmbientLight(color, intensity) as unknown as Object3Dlike & { castShadow?: boolean }
 		} else if (type === 'hemisphere') {
-			light = new THREE.HemisphereLight(color, String((lightDef as any).groundColor ?? '#1f2937'), intensity)
+			light = new THREE.HemisphereLight(color, String(lightDef.groundColor ?? '#1f2937'), intensity) as unknown as Object3Dlike & { castShadow?: boolean }
 		} else if (type === 'directional') {
-			light = new THREE.DirectionalLight(color, intensity)
-			light.position.copy(position)
+			const dirLight = new THREE.DirectionalLight(color, intensity)
+			dirLight.position.copy(position)
 			const target = new THREE.Object3D()
 			target.position.copy(this.resolveLightTarget(position, lightDef, { x: 0, y: 40, z: 0 }))
 			this.lightsGroup.add(target)
-			light.target = target
+			dirLight.target = target
+			light = dirLight as unknown as Object3Dlike & { castShadow?: boolean }
 		} else if (type === 'spot') {
-			light = new THREE.SpotLight(color, intensity)
-			light.position.copy(position)
-			light.distance = Math.max(Number(lightDef.distance ?? 0) || 0, this.getSceneScaleHint() * 0.75)
-			light.decay = Math.max(0.6, Math.min(1.2, Number(lightDef.decay ?? 1)))
-			light.angle = Math.max(0.01, Math.min(Math.PI / 2, Number(lightDef.angle ?? 0.75) * 1.15))
-			light.penumbra = Math.max(0.45, Math.min(1, Number(lightDef.penumbra ?? 0.25) + 0.3))
+			const spotLight = new THREE.SpotLight(color, intensity)
+			spotLight.position.copy(position)
+			spotLight.distance = Math.max(Number(lightDef.distance ?? 0) || 0, this.getSceneScaleHint() * 0.75)
+			spotLight.decay = Math.max(0.6, Math.min(1.2, Number(lightDef.decay ?? 1)))
+			spotLight.angle = Math.max(0.01, Math.min(Math.PI / 2, Number(lightDef.angle ?? 0.75) * 1.15))
+			spotLight.penumbra = Math.max(0.45, Math.min(1, Number(lightDef.penumbra ?? 0.25) + 0.3))
 			const target = new THREE.Object3D()
 			target.position.copy(this.resolveLightTarget(position, lightDef, { x: 0, y: 20, z: 0 }))
 			this.lightsGroup.add(target)
-			light.target = target
+			spotLight.target = target
+			light = spotLight as unknown as Object3Dlike & { castShadow?: boolean }
 		} else if (type === 'rect-area') {
 			intensity = this.adjustRectAreaPreviewIntensity(intensity, lightDef)
-			light = new THREE.RectAreaLight(
+			const rectLight = new THREE.RectAreaLight(
 				color,
 				intensity,
-				this.clampNumber((lightDef as any).width, 0.02, 24, 1.2),
-				this.clampNumber((lightDef as any).height, 0.02, 24, 0.4),
+				this.clampNumber(lightDef.width, 0.02, 24, 1.2),
+				this.clampNumber(lightDef.height, 0.02, 24, 0.4),
 			)
-			light.position.copy(position)
-			this.applyRectAreaOrientation(light, lightDef, position)
+			rectLight.position.copy(position)
+			this.applyRectAreaOrientation(rectLight as unknown as Object3Dlike, lightDef, position)
+			light = rectLight as unknown as Object3Dlike & { castShadow?: boolean }
 		} else {
-			light = new THREE.PointLight(color, intensity)
-			light.position.copy(position)
-			light.distance = Math.max(Number(lightDef.distance ?? 0) || 0, this.getSceneScaleHint() * 0.55)
-			light.decay = Math.max(0.75, Math.min(1.15, Number(lightDef.decay ?? 1)))
+			const pointLight = new THREE.PointLight(color, intensity)
+			pointLight.position.copy(position)
+			pointLight.distance = Math.max(Number(lightDef.distance ?? 0) || 0, this.getSceneScaleHint() * 0.55)
+			pointLight.decay = Math.max(0.75, Math.min(1.15, Number(lightDef.decay ?? 1)))
+			light = pointLight as unknown as Object3Dlike & { castShadow?: boolean }
 		}
-		if ('castShadow' in light) light.castShadow = this.shouldLightCastShadow(type, lightDef, intensity)
-		if (type !== 'directional' && type !== 'spot' && type !== 'ambient' && type !== 'hemisphere') {
+		if (light && 'castShadow' in light) light.castShadow = this.shouldLightCastShadow(type, lightDef, intensity)
+		if (light && type !== 'directional' && type !== 'spot' && type !== 'ambient' && type !== 'hemisphere') {
 			light.position.copy(position)
 		}
-		this.lightsGroup.add(light)
+		if (light) this.lightsGroup.add(light)
 		this.addPreviewAssistLight(type, color, position, lightDef, intensity)
 		this.addLightDebugHelper(type, color, position, lightDef)
 	}
@@ -1708,26 +1931,28 @@ const source = String(url ?? '').trim()
 if (!source) return Promise.reject(new Error('empty model source'))
 const cached = this.modelTemplateCache.get(source)
 if (cached) return cached
-const next = this.loader.loadAsync(source).then((gltf: any) => gltf.scene)
+const next = this.loader.loadAsync(source).then((gltf: GLTFResult) => gltf.scene)
 this.modelTemplateCache.set(source, next)
 return next
 }
 
-private cloneModelScene(template: any) {
-	const cloned = template.clone(true)
+private cloneModelScene(template: GltfTemplateLike) {
+	const cloned: any = template.clone(true)
 	cloned.traverse((entry: any) => {
-		if (entry?.geometry && typeof entry.geometry.clone === 'function') {
-			entry.geometry = entry.geometry.clone()
-		}
-		const material = entry?.material as any
-		if (Array.isArray(material)) {
-			entry.material = material.map((item: any) => (item && typeof item.clone === 'function' ? item.clone() : item))
-		} else if (material && typeof material.clone === 'function') {
-			entry.material = material.clone()
+		if (entry instanceof THREE.Mesh) {
+			if (entry.geometry && typeof entry.geometry.clone === 'function') {
+				entry.geometry = entry.geometry.clone()
+			}
+			const material = entry.material
+			if (Array.isArray(material)) {
+				entry.material = material.map((item: any) => (item && typeof item.clone === 'function' ? item.clone() : item))
+			} else if (material && typeof material.clone === 'function') {
+				entry.material = material.clone()
+			}
 		}
 	})
 	cloned.updateMatrixWorld(true)
-	return cloned
+	return cloned as unknown as GltfTemplateLike
 }
 
 private getCurrentRenderOptions(): SceneLayoutRenderOptions {
@@ -1748,17 +1973,17 @@ Math.max(0.05, safeNumber(item.size.depth, 1) * Math.max(0.01, safeNumber(item.s
 }
 
 private clearFillState(item: WorkflowSceneLayoutItem) {
-	;(item as any).fillMode = undefined
-	;(item as any).fillCount = undefined
-	;(item as any).fillAxisScale = undefined
-	;(item as any).fillUpdatedAt = undefined
+	item.fillMode = undefined
+	item.fillCount = undefined
+	item.fillAxisScale = undefined
+	item.fillUpdatedAt = undefined
 }
 
 private clearForcedFitState(item: WorkflowSceneLayoutItem) {
 	if (item.fitMode !== 'forced') return false
-	;(item as any).fitMode = undefined
-	;(item as any).fitMessage = undefined
-	;(item as any).fitUpdatedAt = undefined
+	item.fitMode = undefined
+	item.fitMessage = undefined
+	item.fitUpdatedAt = undefined
 	return true
 }
 
@@ -1775,11 +2000,11 @@ private disposeBoundModel(itemId: string) {
 	const existingModel = this.boundModelsById.get(itemId)
 	if (existingModel) {
 		this.group.remove(existingModel)
-		existingModel.traverse((entry: any) => {
-			const geometry = entry.geometry as any
-			const material = entry.material as any
-			if (geometry && typeof geometry.dispose === 'function') geometry.dispose()
-			if (material) disposeMaterial(material)
+		;(existingModel as any).traverse((entry: any) => {
+			if (entry instanceof THREE.Mesh) {
+				entry.geometry?.dispose()
+				if (entry.material) disposeMaterial(entry.material as MaterialWithMaps | MaterialWithMaps[])
+			}
 		})
 	}
 	this.boundModelsById.delete(itemId)
@@ -1790,12 +2015,12 @@ private purgeBoundModelResidue(itemId: string) {
 	const targetId = String(itemId ?? '').trim()
 	if (!targetId) return
 	for (let index = this.group.children.length - 1; index >= 0; index -= 1) {
-		const child = this.group.children[index] as any
+		const child: any = this.group.children[index]
 		if (!child) continue
 		const directItemId = String(child.userData?.itemId ?? '').trim()
 		const directIsBoundModel = child.userData?.isBoundModel === true
 		let matched = directIsBoundModel && directItemId === targetId
-		if (!matched && typeof child.traverse === 'function') {
+		if (!matched) {
 			child.traverse((entry: any) => {
 				if (matched) return
 				const entryItemId = String(entry?.userData?.itemId ?? '').trim()
@@ -1805,10 +2030,10 @@ private purgeBoundModelResidue(itemId: string) {
 		if (!matched) continue
 		this.group.remove(child)
 		child.traverse((entry: any) => {
-			const geometry = entry.geometry as any
-			const material = entry.material as any
-			if (geometry && typeof geometry.dispose === 'function') geometry.dispose()
-			if (material) disposeMaterial(material)
+			if (entry instanceof THREE.Mesh) {
+				entry.geometry?.dispose()
+				if (entry.material) disposeMaterial(entry.material as MaterialWithMaps | MaterialWithMaps[])
+			}
 		})
 	}
 }
@@ -1832,17 +2057,17 @@ private async rebuildBoundModelForItem(itemId: string, mode: 'auto' | 'manual' |
 	return true
 }
 
-private mountBoundModel(itemId: string, item: WorkflowSceneLayoutItem, mesh: any, template: any, mode: 'auto' | 'manual' | 'keep') {
+private mountBoundModel(itemId: string, item: WorkflowSceneLayoutItem, mesh: MeshLike, template: GltfTemplateLike, mode: 'auto' | 'manual' | 'keep') {
 	this.disposeBoundModel(itemId)
 	const modelContent = this.cloneModelScene(template)
-	const orientationChanged = this.prepareModelPreview(modelContent, item, mode)
-	const modelRoot = this.createBoundModelRoot(modelContent, mesh, item)
+	const orientationChanged = this.prepareModelPreview(modelContent as unknown as Object3Dlike, item, mode)
+	const modelRoot = this.createBoundModelRoot(modelContent, mesh, item) as unknown as GroupLike
 	modelRoot.userData = {
 		...(modelRoot.userData ?? {}),
 		itemId: item.id,
 		isBoundModel: true,
 	}
-	modelRoot.traverse((child: any) => {
+	modelRoot.traverse((child: Object3Dlike) => {
 		child.userData = {
 			...(child.userData ?? {}),
 			itemId: item.id,
@@ -1870,10 +2095,10 @@ private resolveDominantMismatchAxis(size: { x: number; y: number; z: number }, t
 }
 
 private resolveManualOrientationOffset(
-	object: any,
-	baseScale: any,
-	baseQuaternion: any,
-	basePosition: any,
+	object: Object3Dlike,
+	baseScale: Vector3Like,
+	baseQuaternion: QuaternionLike,
+	basePosition: Vector3Like,
 	target: { x: number; y: number; z: number },
 	item: WorkflowSceneLayoutItem,
 	existingOffset: OrientationOffset
@@ -1969,8 +2194,8 @@ private resolveFillSuggestion(size: { x: number; y: number; z: number }, target:
 }
 
 private resolveWorldFillSuggestion(
-	placeholderMesh: any,
-	template: any,
+	placeholderMesh: MeshLike,
+	template: GltfTemplateLike,
 	item: WorkflowSceneLayoutItem,
 ): FillSuggestion | null {
 	const placeholderBox = this.getWorldBox(placeholderMesh)
@@ -2163,7 +2388,7 @@ private calculateUniformScaleToFit(modelSize: { x: number; y: number; z: number 
 }
 
 private alignModelToTarget(
-	modelObject: any,
+	modelObject: Object3Dlike,
 	targetMin: { x: number; y: number; z: number },
 	targetMax: { x: number; y: number; z: number },
 	rule: AlignmentRule
@@ -2219,7 +2444,7 @@ private resolveManualRotationAxes(item: WorkflowSceneLayoutItem, preferredAxis: 
 	}
 }
 
-private prepareModelPreview(object: any, item: WorkflowSceneLayoutItem, mode: 'auto' | 'manual' | 'keep') {
+private prepareModelPreview(object: Object3Dlike, item: WorkflowSceneLayoutItem, mode: 'auto' | 'manual' | 'keep') {
 const target = new THREE.Vector3(...this.resolvePlaceholderWorldSize(item).toArray())
 const baseScale = object.scale.clone()
 const baseQuaternion = object.quaternion.clone()
@@ -2251,7 +2476,7 @@ if (!rotatedBox.isEmpty()) {
 	const fillAxis = fillModeToAxis(item.fillMode)
 	const fillAxisScale = Number.isFinite(Number(item.fillAxisScale)) ? Number(item.fillAxisScale) : 1
 	const uniformScale = Math.max(0.0001, Math.min(placeholderScaleX, placeholderScaleY, placeholderScaleZ))
-	const allowDeform = (item as any).allowDeformInForcedMode === true
+	const allowDeform = Boolean((item as { allowDeformInForcedMode?: unknown }).allowDeformInForcedMode)
 	const scaleX = useForcedScale
 		? (allowDeform ? placeholderScaleX : uniformScale)
 		: fillAxis === 'x'
@@ -2314,7 +2539,7 @@ if (changed) item.orientationFix = nextFix
 return changed
 }
 
-private createBoundModelRoot(modelContent: any, placeholderMesh: any, item: WorkflowSceneLayoutItem) {
+private createBoundModelRoot(modelContent: GltfTemplateLike, placeholderMesh: MeshLike, item: WorkflowSceneLayoutItem) {
 const boundRoot = new THREE.Group()
 	const fillAxis = fillModeToAxis(item.fillMode)
 	const fillCount = Number(item.fillCount ?? 1)
@@ -2333,7 +2558,7 @@ const boundRoot = new THREE.Group()
 return boundRoot
 }
 
-private applyBoundModelWorldTransform(boundRoot: any, placeholderMesh: any) {
+private applyBoundModelWorldTransform(boundRoot: Object3Dlike, placeholderMesh: Object3Dlike) {
 if (!boundRoot || !placeholderMesh) return
 boundRoot.position.copy(placeholderMesh.position)
 boundRoot.rotation.copy(placeholderMesh.rotation)
@@ -2341,14 +2566,14 @@ boundRoot.scale.copy(placeholderMesh.scale)
 boundRoot.updateMatrixWorld(true)
 }
 
-private getWorldBox(object: any) {
+private getWorldBox(object: Object3Dlike): Box3Like | null {
 	if (!object) return null
 	object.updateMatrixWorld(true)
 	const box = new THREE.Box3().setFromObject(object)
 	return box.isEmpty() ? null : box
 }
 
-private arrangeFilledClonesInWorld(boundRoot: any, placeholderMesh: any, item: WorkflowSceneLayoutItem) {
+private arrangeFilledClonesInWorld(boundRoot: Object3Dlike, placeholderMesh: MeshLike, item: WorkflowSceneLayoutItem) {
 	const fillAxis = fillModeToAxis(item.fillMode)
 	if (!fillAxis) return
 	const placeholderBox = this.getWorldBox(placeholderMesh)
@@ -2399,7 +2624,7 @@ private arrangeFilledClonesInWorld(boundRoot: any, placeholderMesh: any, item: W
 	}
 }
 
-private fitBoundModelToPlaceholderWorld(boundRoot: any, placeholderMesh: any, item: WorkflowSceneLayoutItem) {
+private fitBoundModelToPlaceholderWorld(boundRoot: Object3Dlike, placeholderMesh: MeshLike, item: WorkflowSceneLayoutItem) {
 	const placeholderBox = this.getWorldBox(placeholderMesh)
 	const modelBox = this.getWorldBox(boundRoot)
 	if (!placeholderBox || !modelBox) return
@@ -2407,7 +2632,7 @@ private fitBoundModelToPlaceholderWorld(boundRoot: any, placeholderMesh: any, it
 	const modelSize = modelBox.getSize(new THREE.Vector3())
 	const fillAxis = fillModeToAxis(item.fillMode)
 	const isForced = item.fitMode === 'forced'
-	const allowDeform = (item as any).allowDeformInForcedMode === true
+	const allowDeform = Boolean((item as { allowDeformInForcedMode?: unknown }).allowDeformInForcedMode)
 	const semanticClass = this.classifyObjectSemantics(item)
 	const alignmentRule = this.getAlignmentRule(item, semanticClass)
 
@@ -2618,10 +2843,10 @@ private resolveShouldAutoAdjust(binding: WorkflowSceneLayoutModelBinding, item: 
 }
 
 private resolveOrientationDecision(
-	object: any,
-	baseScale: any,
-	baseQuaternion: any,
-	basePosition: any,
+	object: Object3Dlike,
+	baseScale: Vector3Like,
+	baseQuaternion: QuaternionLike,
+	basePosition: Vector3Like,
 	target: { x: number; y: number; z: number },
 	item: WorkflowSceneLayoutItem,
 	existingOffset: OrientationOffset,
@@ -2664,10 +2889,10 @@ private resolveOrientationDecision(
 }
 
 private measureOrientationCandidate(
-	object: any,
-	baseScale: any,
-	baseQuaternion: any,
-	basePosition: any,
+	object: Object3Dlike,
+	baseScale: Vector3Like,
+	baseQuaternion: QuaternionLike,
+	basePosition: Vector3Like,
 	target: { x: number; y: number; z: number },
 	offset: OrientationOffset,
 	item?: WorkflowSceneLayoutItem
@@ -2788,7 +3013,7 @@ private applySurfaceFacingConstraint(offset: OrientationOffset, item: WorkflowSc
 	}
 }
 
-private captureObjectTransform(object: any, origin?: { x: number; y: number; z: number }) {
+private captureObjectTransform(object: Object3Dlike, origin?: { x: number; y: number; z: number }) {
 	object?.updateMatrixWorld?.(true)
 	const worldPosition = new THREE.Vector3()
 	const worldQuaternion = new THREE.Quaternion()
@@ -2822,7 +3047,7 @@ private captureObjectTransform(object: any, origin?: { x: number; y: number; z: 
 	}
 }
 
-private captureLocalTransform(object: any) {
+private captureLocalTransform(object: Object3Dlike) {
 	const position = object?.position ?? new THREE.Vector3()
 	const quaternion = object?.quaternion ?? new THREE.Quaternion()
 	const scale = object?.scale ?? new THREE.Vector3(1, 1, 1)
@@ -2852,7 +3077,7 @@ private captureLocalTransform(object: any) {
 	}
 }
 
-private captureObjectBounds(object: any) {
+private captureObjectBounds(object: Object3Dlike) {
 	const box = this.getWorldBox(object)
 	if (!box) return null
 	const center = box.getCenter(new THREE.Vector3())
@@ -2934,7 +3159,7 @@ private resolveReferenceAnchors(item: WorkflowSceneLayoutItem): {
 	return { parentAnchor: 'center', childAnchor: 'center' }
 }
 
-private captureTransformRelativeTo(object: any, parentObject?: any) {
+private captureTransformRelativeTo(object: Object3Dlike, parentObject?: Object3Dlike) {
 	if (!object) return this.captureObjectTransform(object)
 	object.updateMatrixWorld?.(true)
 	if (!parentObject) return this.captureObjectTransform(object)
@@ -2968,7 +3193,7 @@ private captureTransformRelativeTo(object: any, parentObject?: any) {
 
 private buildParentReference(
 	item: WorkflowSceneLayoutItem,
-	boundModel: any,
+	boundModel: Object3Dlike,
 	actorOrigin: { x: number; y: number; z: number },
 ): { parentReference: WorkflowUnrealResolvedParentReference; warnings: string[] } {
 	const parentId = String(item.parentId ?? '').trim()
@@ -3035,7 +3260,7 @@ this.relationLines.push({ childId: item.id, parentId, placement: String(item.pla
 }
 }
 
-private getRelationPoints(childId: string, parentId: string, placement: string): [any, any] | null {
+private getRelationPoints(childId: string, parentId: string, placement: string): [Vector3Like, Vector3Like] | null {
 const childItem = this.currentItems.find((item) => item.id === childId)
 const parentItem = this.resolveParentItem(parentId)
 if (!childItem || !parentItem) return null
@@ -3072,7 +3297,7 @@ return this.currentItems.find((item) => String(item.id).includes('floor') || Str
 return undefined
 }
 
-private isFinitePoint(point: any): boolean {
+private isFinitePoint(point: Vector3Like | null | undefined): boolean {
 return !!point && Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z)
 }
 
@@ -3093,13 +3318,13 @@ if (event.button === 0 && cache) {
 this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
 this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
 this.raycaster.setFromCamera(this.pointer, this.camera)
-	const pickTargets = Array.from(this.meshesById.values()).filter((mesh: any) => mesh?.visible !== false)
+	const pickTargets = Array.from(this.meshesById.values()).filter((mesh: MeshLike) => mesh?.visible !== false)
 const intersects = this.raycaster.intersectObjects(pickTargets, false)
-let hit = intersects[0]?.object as any
+let hit = intersects[0]?.object as Object3Dlike | undefined
 let nextId = ''
 while (hit && !nextId) {
-		if (hit?.userData?.isPlaceholder === true) nextId = String(hit?.userData?.itemId ?? '').trim()
-hit = hit.parent as any
+		if ((hit.userData as { isPlaceholder?: boolean; itemId?: unknown }).isPlaceholder === true) nextId = String((hit.userData as { isPlaceholder?: boolean; itemId?: unknown }).itemId ?? '').trim()
+hit = hit.parent as Object3Dlike | undefined
 }
 this.rightClickPickCache = { ts: now, x: event.clientX, y: event.clientY, itemId: nextId }
 this.selectItem(nextId)
@@ -3124,27 +3349,29 @@ if (!selectionChanged) {
 	if (prevSelectedId) {
 		const prevMesh = this.meshesById.get(prevSelectedId)
 		if (prevMesh) {
-			const material = prevMesh.material as any
-			material.emissive.set('#000000')
-			material.emissiveIntensity = 0
+			const material = Array.isArray(prevMesh.material) ? prevMesh.material[0] : prevMesh.material
+			if (material && 'emissive' in material && material.emissive) {
+				material.emissive.set('#000000')
+				if ('emissiveIntensity' in material) material.emissiveIntensity = 0
+			}
 		}
 		const prevEdge = this.edgesById.get(prevSelectedId)
-		if (prevEdge) {
-			const edgeMaterial = prevEdge.material as any
-			edgeMaterial.opacity = 0.55
+		if (prevEdge && 'opacity' in prevEdge.material) {
+			prevEdge.material.opacity = 0.55
 		}
 	}
 	if (this.selectedId) {
 		const nextMesh = this.meshesById.get(this.selectedId)
 		if (nextMesh) {
-			const material = nextMesh.material as any
-			material.emissive.set('#60a5fa')
-			material.emissiveIntensity = 0.35
+			const material = Array.isArray(nextMesh.material) ? nextMesh.material[0] : nextMesh.material
+			if (material && 'emissive' in material && material.emissive) {
+				material.emissive.set('#60a5fa')
+				if ('emissiveIntensity' in material) material.emissiveIntensity = 0.35
+			}
 		}
 		const nextEdge = this.edgesById.get(this.selectedId)
-		if (nextEdge) {
-			const edgeMaterial = nextEdge.material as any
-			edgeMaterial.opacity = 1
+		if (nextEdge && 'opacity' in nextEdge.material) {
+			nextEdge.material.opacity = 1
 		}
 	}
 const mesh = this.selectedId ? this.meshesById.get(this.selectedId) : null
@@ -3288,11 +3515,9 @@ this.meshesById.clear()
 this.edgesById.clear()
 for (const model of this.boundModelsById.values()) {
 this.group.remove(model)
-model.traverse((entry: any) => {
-const geometry = entry.geometry as any
-const material = entry.material as any
-if (geometry && typeof geometry.dispose === 'function') geometry.dispose()
-if (material) disposeMaterial(material)
+;(model as any).traverse((entry: any) => {
+if (entry.geometry && typeof entry.geometry.dispose === 'function') entry.geometry.dispose()
+if (entry.material) disposeMaterial(entry.material as MaterialWithMaps | MaterialWithMaps[])
 })
 }
 this.boundModelsById.clear()
@@ -3300,17 +3525,15 @@ this.boundModelsById.clear()
 this.clearLightingPreview()
 for (const relation of this.relationLines.splice(0, this.relationLines.length)) {
 relation.line.geometry.dispose()
-const material = relation.line.material as any
+const material = relation.line.material as Disposable
 material.dispose()
 }
 while (this.group.children.length) {
-const child = this.group.children.pop()
+const child: any = this.group.children.pop()
 if (!child) continue
 child.traverse((entry: any) => {
-const geometry = entry.geometry as any
-const material = entry.material as any
-if (geometry && typeof geometry.dispose === 'function') geometry.dispose()
-if (material) disposeMaterial(material)
+if (entry.geometry && typeof entry.geometry.dispose === 'function') entry.geometry.dispose()
+if (entry.material) disposeMaterial(entry.material as MaterialWithMaps | MaterialWithMaps[])
 })
 }
 }

@@ -692,12 +692,12 @@ import {
 
 const props = defineProps<{
   nodeType: WorkflowNodeChatType
-  params: Record<string, any>
+  params: Record<string, unknown>
   disabled?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:params', params: Record<string, any>): void
+  (e: 'update:params', params: Record<string, unknown>): void
 }>()
 
 const collapsed = ref(false)
@@ -706,7 +706,7 @@ const toggleCollapse = () => {
   collapsed.value = !collapsed.value
 }
 
-const updateParam = (key: string, value: any) => {
+const updateParam = (key: string, value: unknown) => {
   const next = { ...props.params, [key]: value }
   emit('update:params', next)
 }
@@ -742,7 +742,8 @@ const meshyImageOutputCountOptions = NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS
 const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 
 const currentMeshyAspectRatioOptions = computed(() => {
-  return getMeshyImageAspectRatioOptions(props.params.meshyImageAiModel || 'nano-banana')
+  const modelVal = typeof props.params.meshyImageAiModel === 'string' ? props.params.meshyImageAiModel : 'nano-banana'
+  return getMeshyImageAspectRatioOptions(modelVal)
 })
 </script>
 

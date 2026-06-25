@@ -171,13 +171,34 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState } from '../../../../store/videoscene'
+import type { VideoSceneLayer, VideoSceneTreeNode, VideoSceneNodeProps } from '../../../../core/scene/types'
 import { VideoSceneNodeTreeController } from './VideoSceneNodeTreeController'
 import type { FlatNode } from './NodeTreeController'
 import { DwebCanvasGLKey } from '../../VideoSceneRuntime'
 import { ComponentLibraryService } from '../../../../network/ComponentLibraryService'
 import { componentTemplateApi } from '../../../../core/components'
+import { isObject, isString } from '../../../../types/utils'
+import type { JsonValue } from '../../../../core/shared/json'
 
 defineOptions({ name: 'VideoSceneNodeTree' })
+
+type SavedComponentItem = {
+	id?: string
+	templateId?: string
+	createdAt?: string
+	savedAt?: string
+	name?: string
+	template?: unknown
+	thumbAssetId?: string
+	thumbUrl?: string
+}
+
+type ComponentMeta = {
+	templateId: string
+	componentId: string
+	params: Record<string, JsonValue>
+	props: Record<string, JsonValue>
+}
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 const controller = new VideoSceneNodeTreeController(store)
@@ -205,30 +226,34 @@ const toggleCollapse = (nodeId: string) => {
 }
 
 const nodeIndex = computed(() => {
-	const out = new Map<string, any>()
-	const walk = (list: any[]) => {
+	const out = new Map<string, VideoSceneTreeNode>()
+	const walk = (list: VideoSceneTreeNode[]) => {
 		for (const n of list) {
 			out.set(String(n.id), n)
 			if (n.children?.length) walk(n.children)
 		}
 	}
-	walk(controller.getActiveElements() as any)
+	walk(controller.getActiveElements())
 	return out
 })
 
-const getComponentMeta = (nodeId: string) => {
-  const n = nodeIndex.value.get(String(nodeId))
-  const props = (n as any)?.props
-  if (!props || typeof props !== 'object') return null
-  const templateId = typeof (props as any).__dvsComponentTemplateId === 'string' ? String((props as any).__dvsComponentTemplateId).trim() : ''
-  if (!templateId) return null
-  const componentId = typeof (props as any).__dvsComponentLibraryId === 'string' ? String((props as any).__dvsComponentLibraryId).trim() : ''
-  const params = (props as any).__dvsComponentParams && typeof (props as any).__dvsComponentParams === 'object' ? (props as any).__dvsComponentParams : {}
-  return { templateId, componentId, params, props }
+const getComponentMeta = (nodeId: string): ComponentMeta | null => {
+	const n = nodeIndex.value.get(String(nodeId))
+	const props = n?.props
+	if (!props || typeof props !== 'object') return null
+	const propsRec = props as Record<string, JsonValue>
+	const templateIdVal = propsRec.__dvsComponentTemplateId
+	const templateId = isString(templateIdVal) ? String(templateIdVal).trim() : ''
+	if (!templateId) return null
+	const componentIdVal = propsRec.__dvsComponentLibraryId
+	const componentId = isString(componentIdVal) ? String(componentIdVal).trim() : ''
+	const paramsVal = propsRec.__dvsComponentParams
+	const params: Record<string, JsonValue> = isObject(paramsVal) ? paramsVal as Record<string, JsonValue> : {}
+	return { templateId, componentId, params, props: propsRec }
 }
 
 const isComponentRoot = (nodeId: string) => {
-  return !!getComponentMeta(nodeId)
+	return !!getComponentMeta(nodeId)
 }
 
 const hasChildren = (nodeId: string) => {
@@ -238,21 +263,22 @@ const hasChildren = (nodeId: string) => {
 
 const visibleFlatNodes = computed<FlatNode[]>(() => {
 	const out: FlatNode[] = []
-	const walk = (list: any[], depth: number, parentId: string | null) => {
+	const walk = (list: VideoSceneTreeNode[], depth: number, parentId: string | null) => {
 		for (let index = 0; index < list.length; index++) {
 			const n = list[index]
 			out.push({ id: n.id, name: n.name, depth, parentId, index })
 			if (n.children?.length && !isCollapsed(n.id)) walk(n.children, depth + 1, n.id)
 		}
 	}
-	walk(controller.getActiveElements() as any, 0, 'root')
+	walk(controller.getActiveElements(), 0, 'root')
 	return out
 })
 
 const isLocked = (nodeId: string) => {
 	const n = nodeIndex.value.get(String(nodeId))
 	if (!n || n.category !== 'user') return false
-	return !!(n.props && (n.props as any).locked)
+	const props = n.props as Record<string, unknown> | undefined
+	return !!(props && props.locked)
 }
 
 
@@ -260,7 +286,7 @@ const collectDescendantIds = (nodeId: string) => {
 	const root = nodeIndex.value.get(String(nodeId))
 	if (!root) return [] as string[]
 	const out: string[] = []
-	const walk = (n: any) => {
+	const walk = (n: VideoSceneTreeNode) => {
 		if (!n || typeof n !== 'object') return
 		const id = String(n.id || '')
 		if (id) out.push(id)
@@ -275,29 +301,29 @@ const collectDescendantIds = (nodeId: string) => {
 const toggleLock = (nodeId: string) => {
 	const n = nodeIndex.value.get(String(nodeId))
 	if (!n || n.category !== 'user') return
-  const nextLocked = !isLocked(nodeId)
-  store.dispatch('updateNodesPropsBatch', { nodeIds: [String(nodeId)], patch: { locked: nextLocked } })
+	const nextLocked = !isLocked(nodeId)
+	store.dispatch('updateNodesPropsBatch', { nodeIds: [String(nodeId)], patch: { locked: nextLocked } })
 }
 
 const collectChildIds = (nodeId: string) => {
-  const ids = collectDescendantIds(nodeId)
-  return ids.filter((x) => x !== String(nodeId))
+	const ids = collectDescendantIds(nodeId)
+	return ids.filter((x) => x !== String(nodeId))
 }
 
 const isGroupLocked = (nodeId: string) => {
-  if (!hasChildren(nodeId)) return false
-  const childIds = collectChildIds(nodeId)
-  if (!childIds.length) return false
-  return childIds.every((id) => isLocked(id))
+	if (!hasChildren(nodeId)) return false
+	const childIds = collectChildIds(nodeId)
+	if (!childIds.length) return false
+	return childIds.every((id) => isLocked(id))
 }
 
 const toggleGroupLock = (nodeId: string) => {
-  const n = nodeIndex.value.get(String(nodeId))
-  if (!n || n.category !== 'user') return
-  const childIds = collectChildIds(nodeId)
-  if (!childIds.length) return
-  const nextLocked = !isGroupLocked(nodeId)
-  store.dispatch('updateNodesPropsBatch', { nodeIds: childIds, patch: { locked: nextLocked } })
+	const n = nodeIndex.value.get(String(nodeId))
+	if (!n || n.category !== 'user') return
+	const childIds = collectChildIds(nodeId)
+	if (!childIds.length) return
+	const nextLocked = !isGroupLocked(nodeId)
+	store.dispatch('updateNodesPropsBatch', { nodeIds: childIds, patch: { locked: nextLocked } })
 }
 
 const deleteNode = (nodeId: string) => {
@@ -322,16 +348,15 @@ const dropLineVisible = computed(() => draggingNodeId.value && dropMode.value ==
 
 const onSelect = (nodeId: string) => {
 	if (renamingId.value) return
-  if (isLocked(nodeId)) return
+	if (isLocked(nodeId)) return
 	controller.selectNode(nodeId)
 }
 
-type NodeClipboard = { node: any } | null
+type NodeClipboard = { node: VideoSceneTreeNode } | null
 let nodeClipboard: NodeClipboard = null
 
 const deepCloneJson = <T,>(v: T): T => {
 	try {
-		// @ts-ignore
 		if (typeof structuredClone === 'function') return structuredClone(v)
 	} catch {
 		// ignore
@@ -344,7 +369,7 @@ const isTypingTarget = (el: EventTarget | null) => {
 	if (!e) return false
 	const tag = String(e.tagName || '').toLowerCase()
 	if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
-	return (e as any).isContentEditable === true
+	return e.isContentEditable === true
 }
 
 const onGlobalKeyDown = (ev: KeyboardEvent) => {
@@ -385,12 +410,12 @@ const onGlobalKeyDown = (ev: KeyboardEvent) => {
 
 onMounted(() => {
 	window.addEventListener('keydown', onGlobalKeyDown, { capture: true })
-  window.addEventListener('pointerdown', closeMenu, { passive: true })
+	window.addEventListener('pointerdown', closeMenu, { passive: true })
 })
 
 onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onGlobalKeyDown, { capture: true } as any)
-  window.removeEventListener('pointerdown', closeMenu as any)
+	window.removeEventListener('keydown', onGlobalKeyDown, { capture: true })
+	window.removeEventListener('pointerdown', closeMenu)
 })
 
 const startRename = async (nodeId: string, currentName: string) => {
@@ -419,7 +444,7 @@ const commitRename = () => {
 
 const onDragStart = (nodeId: string, ev: DragEvent) => {
 	if (renamingId.value) return
-  if (isLocked(nodeId)) return
+	if (isLocked(nodeId)) return
 	draggingNodeId.value = nodeId
 	dragOverNodeId.value = ''
 	dropMode.value = 'child'
@@ -428,7 +453,7 @@ const onDragStart = (nodeId: string, ev: DragEvent) => {
 	try {
 		ev.dataTransfer?.setData('application/x-dweb-node-id', nodeId)
 		ev.dataTransfer?.setData('text/plain', nodeId)
-		ev.dataTransfer!.effectAllowed = 'move'
+		if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move'
 	} catch {
 		// ignore
 	}
@@ -481,7 +506,6 @@ const onDragOver = (node: FlatNode, ev: DragEvent) => {
 		return
 	}
 
-	// default: child drop
 	dropMode.value = 'child'
 	dropInsertTarget.value = null
 	dragOverNodeId.value = node.id
@@ -514,153 +538,164 @@ const onDropRoot = (ev: DragEvent) => {
 const menu = ref({ visible: false, x: 0, y: 0, nodeId: '' })
 
 const closeMenu = () => {
-  menu.value = { visible: false, x: 0, y: 0, nodeId: '' }
+	menu.value = { visible: false, x: 0, y: 0, nodeId: '' }
 }
 
 const onContextMenu = (node: FlatNode, ev: MouseEvent) => {
-  if (!isComponentRoot(node.id)) {
-    closeMenu()
-    return
-  }
-  menu.value = { visible: true, x: ev.clientX, y: ev.clientY, nodeId: node.id }
+	if (!isComponentRoot(node.id)) {
+		closeMenu()
+		return
+	}
+	menu.value = { visible: true, x: ev.clientX, y: ev.clientY, nodeId: node.id }
 }
 
 const onSyncComponent = async () => {
-  const nodeId = String(menu.value.nodeId || '').trim()
-  closeMenu()
-  if (!nodeId) return
-  const meta = getComponentMeta(nodeId)
-  if (!meta) return
-  const layerId = controller.getActiveLayer()?.id
-  if (!layerId) return
-  const currentNode = nodeIndex.value.get(nodeId)
-  if (!currentNode) return
-  const currentTransform = (currentNode as any)?.transform ? { ...(currentNode as any).transform } : undefined
-  const currentName = String((currentNode as any)?.name ?? '').trim()
-  let latest: any | null = null
-  try {
-    const res = await componentService.listComponents({ q: meta.templateId, limit: 50, offset: 0 })
-    const items = Array.isArray(res.items) ? res.items : []
-    latest = items.find((x: any) => typeof x?.templateId === 'string' && String(x.templateId).trim() === meta.templateId) || null
-  } catch {
-    window.alert('同步失败：无法读取组件库数据')
-    return
-  }
-  if (!latest?.template) {
-    window.alert('同步失败：未找到该组件的最新数据')
-    return
-  }
-  updateLocalComponentCache(latest, latest.template)
-  let instantiated
-  try {
-    instantiated = componentTemplateApi.instantiateTemplate(latest.template, meta.params ?? {}, {
-      getNodeId: ({ templateId, localId }) => {
-        const base = String(templateId).trim() ? `${templateId}:${localId}` : localId
-        return base.replace(/[^a-zA-Z0-9:_\-]/g, '_')
-      },
-    })
-  } catch {
-    window.alert('同步失败：组件模板无效')
-    return
-  }
-  const newRoot = instantiated?.root
-  if (!newRoot) return
-  if (currentTransform) (newRoot as any).transform = { ...currentTransform }
-  if (currentName) (newRoot as any).name = currentName
-  ;(newRoot as any).props = {
-    ...((newRoot as any).props ?? {}),
-    __dvsComponentRoot: true,
-    __dvsComponentLibraryId: latest.id || meta.componentId,
-    __dvsComponentTemplateId: meta.templateId,
-    __dvsComponentName: typeof latest.name === 'string' ? latest.name : currentName,
-    __dvsComponentParams: meta.params ?? {},
-  }
+	const nodeId = String(menu.value.nodeId || '').trim()
+	closeMenu()
+	if (!nodeId) return
+	const meta = getComponentMeta(nodeId)
+	if (!meta) return
+	const layerId = controller.getActiveLayer()?.id
+	if (!layerId) return
+	const currentNode = nodeIndex.value.get(nodeId)
+	if (!currentNode) return
+	const currentTransform = currentNode.transform ? { ...currentNode.transform } : undefined
+	const currentName = String(currentNode.name ?? '').trim()
+	let latest: SavedComponentItem | null
+	try {
+		const res = await componentService.listComponents({ q: meta.templateId, limit: 50, offset: 0 })
+		const items: unknown[] = Array.isArray((res as { items?: unknown[] }).items) ? (res as { items: unknown[] }).items : []
+		latest = items.find((x): x is SavedComponentItem => {
+			if (!isObject(x)) return false
+			const tid = (x as Record<string, unknown>).templateId
+			return isString(tid) && String(tid).trim() === meta.templateId
+		}) ?? null
+	} catch {
+		window.alert('同步失败：无法读取组件库数据')
+		return
+	}
+	if (!latest?.template) {
+		window.alert('同步失败：未找到该组件的最新数据')
+		return
+	}
+	updateLocalComponentCache(latest, latest.template)
+	let instantiated: { root?: VideoSceneTreeNode } | undefined
+	try {
+		instantiated = componentTemplateApi.instantiateTemplate(latest.template, meta.params ?? {}, {
+			getNodeId: ({ templateId, localId }) => {
+				const base = String(templateId).trim() ? `${templateId}:${localId}` : localId
+				return base.replace(/[^a-zA-Z0-9:_-]/g, '_')
+			},
+		}) as { root?: VideoSceneTreeNode } | undefined
+	} catch {
+		window.alert('同步失败：组件模板无效')
+		return
+	}
+	const newRoot = instantiated?.root
+	if (!newRoot) return
+	if (currentTransform) newRoot.transform = { ...currentTransform }
+	if (currentName) newRoot.name = currentName
+	const newProps: Record<string, unknown> = {
+		...((newRoot.props as Record<string, unknown> | undefined) ?? {}),
+		__dvsComponentRoot: true,
+		__dvsComponentLibraryId: latest.id || meta.componentId,
+		__dvsComponentTemplateId: meta.templateId,
+		__dvsComponentName: isString(latest.name) ? latest.name : currentName,
+		__dvsComponentParams: meta.params ?? {},
+	}
+	newRoot.props = newProps as VideoSceneTreeNode['props']
 
-  const target = visibleFlatNodes.value.find((x) => x.id === nodeId)
-  const parentId = target?.parentId ?? 'root'
-  const index = Math.max(0, target?.index ?? 0)
+	const target = visibleFlatNodes.value.find((x) => x.id === nodeId)
+	const parentId = target?.parentId ?? 'root'
+	const index = Math.max(0, target?.index ?? 0)
 
-  await store.dispatch('deleteNodesById', { nodeIds: [nodeId], layerId })
-  await store.dispatch('addNodeTree', { node: newRoot, layerId, parentId })
-  await store.dispatch('moveNode', { nodeId: newRoot.id, layerId, targetParentId: parentId, targetIndex: index })
-  await store.dispatch('setSelectedNode', { nodeId: newRoot.id })
-  ;
-  dwebCanvasRef?.value?.requestRender?.()
+	await store.dispatch('deleteNodesById', { nodeIds: [nodeId], layerId })
+	await store.dispatch('addNodeTree', { node: newRoot, layerId, parentId })
+	await store.dispatch('moveNode', { nodeId: newRoot.id, layerId, targetParentId: parentId, targetIndex: index })
+	await store.dispatch('setSelectedNode', { nodeId: newRoot.id })
+	dwebCanvasRef?.value?.requestRender?.()
 }
 
 const onPushComponent = async () => {
-  const nodeId = String(menu.value.nodeId || '').trim()
-  closeMenu()
-  if (!nodeId) return
-  const meta = getComponentMeta(nodeId)
-  if (!meta) return
-  const layer = controller.getActiveLayer()
-  if (!layer) return
-  const currentNode = nodeIndex.value.get(nodeId)
-  const name = String((currentNode as any)?.name ?? (meta.props as any)?.__dvsComponentName ?? meta.templateId).trim() || meta.templateId
-  let template
-  try {
-    template = componentTemplateApi.exportTemplateFromSelection({
-      layerNodeTree: (layer as any).nodeTree ?? [],
-      selectedNodeIds: [nodeId],
-      templateId: meta.templateId,
-      name,
-    })
-  } catch {
-    window.alert('更新失败：无法导出组件模板')
-    return
-  }
-  let res
-  try {
-    res = await componentService.upsertComponent({
-      templateId: meta.templateId,
-      name,
-      template,
-      thumbAssetId: typeof (meta.props as any)?.__dvsComponentThumbAssetId === 'string' ? (meta.props as any).__dvsComponentThumbAssetId : undefined,
-    })
-  } catch {
-    window.alert('更新失败：写入组件库失败')
-    return
-  }
-  if (res?.item) updateLocalComponentCache(res.item, template)
-  const nextId = res?.item?.id || meta.componentId
-  await store.dispatch('updateNodeProps', {
-    layerId: layer.id,
-    nodeId,
-    patch: {
-      __dvsComponentRoot: true,
-      __dvsComponentLibraryId: nextId,
-      __dvsComponentTemplateId: meta.templateId,
-      __dvsComponentName: name,
-    },
-  })
-  dwebCanvasRef?.value?.requestRender?.()
+	const nodeId = String(menu.value.nodeId || '').trim()
+	closeMenu()
+	if (!nodeId) return
+	const meta = getComponentMeta(nodeId)
+	if (!meta) return
+	const layer = controller.getActiveLayer() as VideoSceneLayer | undefined
+	if (!layer) return
+	const currentNode = nodeIndex.value.get(nodeId)
+	const name = String(currentNode?.name ?? (meta.props.__dvsComponentName as string | undefined) ?? meta.templateId).trim() || meta.templateId
+	let template: unknown
+	try {
+		template = componentTemplateApi.exportTemplateFromSelection({
+			layerNodeTree: layer.nodeTree ?? [],
+			selectedNodeIds: [nodeId],
+			templateId: meta.templateId,
+			name,
+		})
+	} catch {
+		window.alert('更新失败：无法导出组件模板')
+		return
+	}
+	let res: { item?: SavedComponentItem } | undefined
+	const thumbAssetIdVal = meta.props.__dvsComponentThumbAssetId
+	const thumbAssetId = isString(thumbAssetIdVal) ? thumbAssetIdVal : undefined
+	try {
+		res = await componentService.upsertComponent({
+			templateId: meta.templateId,
+			name,
+			template,
+			thumbAssetId,
+		}) as { item?: SavedComponentItem } | undefined
+	} catch {
+		window.alert('更新失败：写入组件库失败')
+		return
+	}
+	if (res?.item) updateLocalComponentCache(res.item, template)
+	const nextId = res?.item?.id || meta.componentId
+	await store.dispatch('updateNodeProps', {
+		layerId: layer.id,
+		nodeId,
+		patch: {
+			__dvsComponentRoot: true,
+			__dvsComponentLibraryId: nextId,
+			__dvsComponentTemplateId: meta.templateId,
+			__dvsComponentName: name,
+		},
+	})
+	dwebCanvasRef?.value?.requestRender?.()
 }
 
-const updateLocalComponentCache = (item: any, templateOverride?: any) => {
-  try {
-    const raw = localStorage.getItem(COMPONENT_LIBRARY_KEY)
-    const parsed = raw ? JSON.parse(raw) : []
-    const list = Array.isArray(parsed) ? parsed : []
-    const templateId = typeof item?.templateId === 'string' ? String(item.templateId).trim() : ''
-    if (!templateId) return
-    const nextItem = {
-      id: typeof item?.id === 'string' ? item.id : `${templateId}::${Date.now()}`,
-      createdAt: typeof item?.createdAt === 'string' ? item.createdAt : new Date().toISOString(),
-      savedAt: typeof item?.savedAt === 'string' ? item.savedAt : new Date().toISOString(),
-      templateId,
-      name: typeof item?.name === 'string' ? item.name : templateId,
-      template: templateOverride ?? item?.template,
-      thumbAssetId: typeof item?.thumbAssetId === 'string' ? item.thumbAssetId : undefined,
-      thumbUrl: typeof item?.thumbUrl === 'string' ? item.thumbUrl : undefined,
-    }
-    const next = list.filter((x: any) => String(x?.templateId ?? '').trim() !== templateId)
-    next.unshift(nextItem)
-    localStorage.setItem(COMPONENT_LIBRARY_KEY, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent('dvs:componentLibrary/refresh', { detail: { templateId } }))
-  } catch {
-    // ignore
-  }
+const updateLocalComponentCache = (item: SavedComponentItem, templateOverride?: unknown) => {
+	try {
+		const raw = localStorage.getItem(COMPONENT_LIBRARY_KEY)
+		const parsed: unknown = raw ? JSON.parse(raw) : []
+		const list: unknown[] = Array.isArray(parsed) ? parsed : []
+		const templateIdVal = item.templateId
+		const templateId = isString(templateIdVal) ? String(templateIdVal).trim() : ''
+		if (!templateId) return
+		const nextItem: SavedComponentItem = {
+			id: isString(item.id) ? item.id : `${templateId}::${Date.now()}`,
+			createdAt: isString(item.createdAt) ? item.createdAt : new Date().toISOString(),
+			savedAt: isString(item.savedAt) ? item.savedAt : new Date().toISOString(),
+			templateId,
+			name: isString(item.name) ? item.name : templateId,
+			template: templateOverride ?? item.template,
+			thumbAssetId: isString(item.thumbAssetId) ? item.thumbAssetId : undefined,
+			thumbUrl: isString(item.thumbUrl) ? item.thumbUrl : undefined,
+		}
+		const next = list.filter((x): x is SavedComponentItem => {
+			if (!isObject(x)) return false
+			const tid = (x as Record<string, unknown>).templateId
+			return isString(tid) && String(tid).trim() !== templateId
+		})
+		next.unshift(nextItem)
+		localStorage.setItem(COMPONENT_LIBRARY_KEY, JSON.stringify(next))
+		window.dispatchEvent(new CustomEvent('dvs:componentLibrary/refresh', { detail: { templateId } }))
+	} catch {
+		// ignore
+	}
 }
 </script>
 

@@ -107,6 +107,7 @@ import { TimelineStore } from '../../../store/timeline'
 import { msToFrameRangeInclusive, parseSrt } from '../../../core/subtitle/srt'
 import { buildSubtitleGeneratedKeyframes } from '../../../core/subtitle/subtitleKeyframes'
 import type { TimelineFrameSpan } from '../../../store/timeline/spans'
+import type { SubtitleTextStyle } from '../../../core/timeline/types'
 
 const props = defineProps<{ aiOpen?: boolean; aiMinimized?: boolean }>()
 const emit = defineEmits<{ 'toggle-ai': [{ anchor: { x: number; y: number } | null }] }>()
@@ -264,11 +265,11 @@ const onImportSubtitleFile = async (e: Event) => {
 			const boxH = Math.max(80, Math.floor(stageH * 0.18))
 			const boxY = stageH / 2 - boxH / 2 - 24
 
-			const rawDefaultStyle = TimelineStore.state.subtitleDefaultStyleByLayer?.[layer.id]
-				?? ({ fontSize: 36, fontColor: '#ffffff', fontStyle: 'normal', textAlign: 'center' } as any)
-			const defaultStyle = {
+			const rawDefaultStyle: SubtitleTextStyle = TimelineStore.state.subtitleDefaultStyleByLayer?.[layer.id]
+				?? { fontSize: 36, fontColor: '#ffffff', fontStyle: 'normal', textAlign: 'center' }
+			const defaultStyle: SubtitleTextStyle = {
 				...rawDefaultStyle,
-				fontSize: Math.max(6, Number((rawDefaultStyle as any).fontSize ?? 36) || 36),
+				fontSize: Math.max(6, Number(rawDefaultStyle.fontSize ?? 36) || 36),
 			}
 			// Subtitle text node should be visible by default.
 			const nodeTransform = {
@@ -368,7 +369,7 @@ const onImportAudioFile = async (e: Event) => {
 	if (!file) return
 	try {
 		const arrayBuffer = await file.arrayBuffer()
-		const AudioContextCtor = (window.AudioContext || (window as any).webkitAudioContext) as any
+		const AudioContextCtor: typeof AudioContext | undefined = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
 		if (!AudioContextCtor) {
 			window.alert('导入失败：当前浏览器不支持 WebAudio（无法解析音频波形）')
 			return

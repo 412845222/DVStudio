@@ -200,9 +200,13 @@ import { useStore } from 'vuex'
 import NodeFiltersForm from '../parts/nodeDetail/forms/NodeFiltersForm.vue'
 import { DwebCanvasGLKey } from '../VideoSceneRuntime'
 import { TimelineKey, type TimelineState } from '../../../store/timeline'
-import type { ProgressBarSpec } from '../../../core/timeline'
+import type { ProgressBarSpec, ProgressBarSegment, ProgressBarStyle, ProgressMarkerShape, TimelineFrameSpan } from '../../../core/timeline'
+import type { NodeFilterSpec } from '../../../core/timeline/types'
+import type { VideoSceneLayer, VideoSceneTreeNode } from '../../../core/scene/types'
 import { VideoSceneStore } from '../../../store/videoscene'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
+import { isObject, isNumber } from '../../../types/utils'
+import type { JsonValue } from '../../../core/shared/json'
 
 defineOptions({ name: 'ProgressBarEditDialog' })
 
@@ -222,20 +226,31 @@ const dwebCanvasRef = inject(DwebCanvasGLKey, null)
 const open = computed(() => !!props.open)
 const frameCount = computed(() => store.state.frameCount)
 
-const spec = computed(() => {
+const spec = computed<ProgressBarSpec | null>(() => {
 	const lid = String(props.layerId || '').trim()
 	const map = store.state.progressBarByLayerId as Record<string, ProgressBarSpec>
 	return lid && map ? (map[lid] ?? null) : null
 })
 
 const filtersNodeIds = computed(() => {
-	const s = spec.value as any
+	const s = spec.value
 	const ids = s?.nodeIds
-	const rootId = String(ids?.rootId ?? '').trim()
-	const playedOverlayId = String(ids?.playedOverlayId ?? '').trim()
-	const segmentIds: string[] = Array.isArray(ids?.segmentIds) ? ids.segmentIds : []
-	const titleIds: string[] = Array.isArray(ids?.titleIds) ? ids.titleIds : []
-	const markerIds: string[] = Array.isArray(ids?.markerIds) ? ids.markerIds : []
+	if (!ids) {
+		return {
+			rootId: '',
+			playedOverlayId: '',
+			segmentIds: [] as string[],
+			titleIds: [] as string[],
+			markerIds: [] as string[],
+			segmentRepId: '',
+			titleRepId: '',
+		}
+	}
+	const rootId = String(ids.rootId ?? '').trim()
+	const playedOverlayId = String(ids.playedOverlayId ?? '').trim()
+	const segmentIds: string[] = Array.isArray(ids.segmentIds) ? ids.segmentIds : []
+	const titleIds: string[] = Array.isArray(ids.titleIds) ? ids.titleIds : []
+	const markerIds: string[] = Array.isArray(ids.markerIds) ? ids.markerIds : []
 	const segmentRepId = String(segmentIds[0] ?? '').trim()
 	const titleRepId = String(titleIds[0] ?? '').trim()
 	return {
@@ -249,18 +264,19 @@ const filtersNodeIds = computed(() => {
 	}
 })
 
-const findNodeInLayer = (layerId: string, nodeId: string): any | null => {
+const findNodeInLayer = (layerId: string, nodeId: string): VideoSceneTreeNode | null => {
 	const lid = String(layerId || '').trim()
 	const id = String(nodeId || '').trim()
 	if (!lid || !id) return null
-	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === lid)
+	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
+	const layer = layers.find((l) => String(l?.id ?? '') === lid)
 	if (!layer) return null
-	const dfs = (nodes: any[] | undefined): any | null => {
+	const dfs = (nodes: VideoSceneTreeNode[] | undefined): VideoSceneTreeNode | null => {
 		const list = Array.isArray(nodes) ? nodes : []
 		for (const n of list) {
 			if (!n || typeof n !== 'object') continue
-			if (String((n as any).id ?? '') === id) return n
-			const hit = dfs((n as any).children)
+			if (String(n.id ?? '') === id) return n
+			const hit = dfs(n.children)
 			if (hit) return hit
 		}
 		return null
@@ -268,13 +284,14 @@ const findNodeInLayer = (layerId: string, nodeId: string): any | null => {
 	return dfs(layer.nodeTree)
 }
 
-const filtersByNodeId = (nodeId: string): any[] => {
+const filtersByNodeId = (nodeId: string): NodeFilterSpec[] => {
 	const n = findNodeInLayer(String(props.layerId), nodeId)
-	const v = (n as any)?.props?.filters
-	return Array.isArray(v) ? (v as any[]) : []
+	const nodeProps = n?.props
+	const v = isObject(nodeProps) ? (nodeProps as Record<string, unknown>).filters : undefined
+	return Array.isArray(v) ? (v as NodeFilterSpec[]) : []
 }
 
-const jsonStable = (v: any) => {
+const jsonStable = (v: unknown) => {
 	try {
 		return JSON.stringify(v ?? null)
 	} catch {
@@ -282,7 +299,7 @@ const jsonStable = (v: any) => {
 	}
 }
 
-const syncFiltersToNodeIds = (nodeIds: string[], filters: any[], excludeId?: string) => {
+const syncFiltersToNodeIds = (nodeIds: string[], filters: NodeFilterSpec[], excludeId?: string) => {
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
 	const ex = String(excludeId ?? '').trim()
@@ -296,10 +313,9 @@ const syncFiltersToNodeIds = (nodeIds: string[], filters: any[], excludeId?: str
 	scheduleCommitStyleToStore()
 }
 
-// --- live commit filters to timeline spec (microtask coalesced) ---
-let pendingFilterStylePatch: Record<string, any> | null = null
+let pendingFilterStylePatch: Record<string, unknown> | null = null
 let filterCommitMicrotask = false
-const scheduleCommitFiltersToStoreSoon = (patch: Record<string, any>) => {
+const scheduleCommitFiltersToStoreSoon = (patch: Record<string, unknown>) => {
 	if (!props.open) return
 	if (!spec.value) return
 	const lid = String(props.layerId || '').trim()
@@ -313,7 +329,7 @@ const scheduleCommitFiltersToStoreSoon = (patch: Record<string, any>) => {
 		const merged = pendingFilterStylePatch
 		pendingFilterStylePatch = null
 		if (!merged || Object.keys(merged).length === 0) return
-		void store.dispatch('updateProgressBarStyle', { layerId: lid, style: merged as any })
+		void store.dispatch('updateProgressBarStyle', { layerId: lid, style: merged })
 	})
 }
 
@@ -326,8 +342,14 @@ const getMinKeyframeFrameForLayer = (layerId: string): number | null => {
 	const spans = store.state.keyframeSpansByLayer?.[lid] ?? []
 	if (!Array.isArray(spans) || spans.length === 0) return null
 	let min: number | null = null
-	for (const s of spans) {
-		const a = typeof s === 'number' ? Math.floor(s) : s && typeof s === 'object' ? Math.floor((s as any).start) : null
+	for (const s of spans as TimelineFrameSpan[]) {
+		let a: number | null = null
+		if (typeof s === 'number') {
+			a = Math.floor(s)
+		} else if (isObject(s)) {
+			const start = (s as { start?: unknown }).start
+			a = isNumber(start) ? Math.floor(start) : null
+		}
 		if (a == null || !Number.isFinite(a)) continue
 		if (min == null || a < min) min = a
 	}
@@ -335,15 +357,6 @@ const getMinKeyframeFrameForLayer = (layerId: string): number | null => {
 }
 
 let writeBackFirstKfRaf: number | null = null
-const scheduleWriteBackToFirstKeyframe = () => {
-	if (!spec.value) return
-	if (writeBackFirstKfRaf != null) return
-	writeBackFirstKfRaf = window.requestAnimationFrame(() => {
-		writeBackFirstKfRaf = null
-		void writeBackToFirstKeyframe()
-	})
-}
-
 let writeBackFirstKfMicrotask = false
 const scheduleWriteBackToFirstKeyframeSoon = () => {
 	if (!spec.value) return
@@ -360,38 +373,38 @@ const writeBackToFirstKeyframe = async () => {
 	if (!lid) return
 	let first = getMinKeyframeFrameForLayer(lid)
 	if (first == null) {
-		// progress bar layer should always have a stable base keyframe; if missing, create one at frame 0.
 		await store.dispatch('addKeyframeRange', { layerId: lid, startFrame: 0, endFrame: 0 })
 		first = 0
 	}
-	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === lid)
+	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
+	const layer = layers.find((l) => String(l?.id ?? '') === lid)
 	if (!layer) return
 	await store.dispatch('setStageKeyframeSnapshotRange', {
 		startFrame: first,
 		endFrame: first,
-		layers: [cloneJsonSafe(layer)] as any,
+		layers: [cloneJsonSafe(layer)],
 	})
 }
 
-const patchNodeFiltersInLayerSnapshot = (layerSnap: any, nodeId: string, filters: any[]) => {
+const patchNodeFiltersInLayerSnapshot = (layerSnap: VideoSceneLayer, nodeId: string, filters: NodeFilterSpec[]) => {
 	const id = String(nodeId ?? '').trim()
 	if (!id) return
-	const dfs = (nodes: any[] | undefined): boolean => {
+	const dfs = (nodes: VideoSceneTreeNode[] | undefined): boolean => {
 		const list = Array.isArray(nodes) ? nodes : []
 		for (const n of list) {
 			if (!n || typeof n !== 'object') continue
-			if (String((n as any).id ?? '') === id) {
-				;(n as any).props = { ...((n as any).props ?? {}), filters: cloneJsonSafe(filters) }
+			if (String(n.id ?? '') === id) {
+				n.props = { ...(n.props ?? {}), filters: cloneJsonSafe(filters) as unknown as JsonValue }
 				return true
 			}
-			if (dfs((n as any).children)) return true
+			if (dfs(n.children)) return true
 		}
 		return false
 	}
 	dfs(layerSnap?.nodeTree)
 }
 
-const writeBackToFirstKeyframeWithPatchedFilters = async (nodeId: string, filters: any[]) => {
+const writeBackToFirstKeyframeWithPatchedFilters = async (nodeId: string, filters: NodeFilterSpec[]) => {
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
 	let first = getMinKeyframeFrameForLayer(lid)
@@ -399,19 +412,20 @@ const writeBackToFirstKeyframeWithPatchedFilters = async (nodeId: string, filter
 		await store.dispatch('addKeyframeRange', { layerId: lid, startFrame: 0, endFrame: 0 })
 		first = 0
 	}
-	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === lid)
+	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
+	const layer = layers.find((l) => String(l?.id ?? '') === lid)
 	if (!layer) return
 	const snap = cloneJsonSafe(layer)
 	patchNodeFiltersInLayerSnapshot(snap, nodeId, filters)
 	await store.dispatch('setStageKeyframeSnapshotRange', {
 		startFrame: first,
 		endFrame: first,
-		layers: [snap] as any,
+		layers: [snap],
 	})
 }
 
 const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: number) => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const ids = s.nodeIds
 	if (!ids) return
@@ -424,9 +438,9 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 	const desiredTitleIds = Array.from({ length: n }, (_, i) => `${rootId}-seg-title-${i}`)
 	const desiredMarkerIds = Array.from({ length: Math.max(0, n - 1) }, (_, k) => `${rootId}-marker-${k + 1}`)
 
-	const curSegIds: string[] = Array.isArray(ids.segmentIds) ? ids.segmentIds.map((x: any) => String(x ?? '').trim()).filter(Boolean) : []
-	const curTitleIds: string[] = Array.isArray(ids.titleIds) ? ids.titleIds.map((x: any) => String(x ?? '').trim()).filter(Boolean) : []
-	const curMarkerIds: string[] = Array.isArray(ids.markerIds) ? ids.markerIds.map((x: any) => String(x ?? '').trim()).filter(Boolean) : []
+	const curSegIds: string[] = Array.isArray(ids.segmentIds) ? ids.segmentIds.map((x) => String(x ?? '').trim()).filter(Boolean) : []
+	const curTitleIds: string[] = Array.isArray(ids.titleIds) ? ids.titleIds.map((x) => String(x ?? '').trim()).filter(Boolean) : []
+	const curMarkerIds: string[] = Array.isArray(ids.markerIds) ? ids.markerIds.map((x) => String(x ?? '').trim()).filter(Boolean) : []
 
 	const desiredSet = new Set([...desiredSegmentIds, ...desiredTitleIds, ...desiredMarkerIds])
 	const toDelete = [...curSegIds, ...curTitleIds, ...curMarkerIds].filter((id) => id && !desiredSet.has(id))
@@ -434,33 +448,36 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 		VideoSceneStore.dispatch('deleteNodesById', { layerId: lid, nodeIds: toDelete })
 	}
 
-	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === lid)
+	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
+	const layer = layers.find((l) => String(l?.id ?? '') === lid)
 	if (!layer) return
 	const root = findNodeInLayer(lid, rootId)
 	if (!root) return
 
-	const barH = Math.max(1, Math.round(Number((root as any).transform?.height ?? 40)))
+	const rootTransform = root.transform
+	const barH = Math.max(1, Math.round(Number(rootTransform?.height ?? 40)))
 	const baseFontSize = (() => {
 		const repTitleId = String(curTitleIds[0] ?? '').trim()
 		const rep = repTitleId ? findNodeInLayer(lid, repTitleId) : null
-		const fs = Number((rep as any)?.props?.fontSize)
+		const repProps = rep?.props
+		const fsVal = isObject(repProps) ? (repProps as Record<string, unknown>).fontSize : undefined
+		const fs = Number(fsVal)
 		if (Number.isFinite(fs) && fs > 0) return Math.round(fs)
 		return Math.max(12, Math.min(28, Math.round(barH * 0.42)))
 	})()
 
-	const segFilters = filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []
-	const titleFilters = filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []
-	const bgFilters = filtersNodeIds.value.rootId ? filtersByNodeId(filtersNodeIds.value.rootId) : []
-	const playedFilters = filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []
+	const segFilters = (filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []) as unknown as JsonValue
+	const titleFilters = (filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []) as unknown as JsonValue
+	const bgFilters = (filtersNodeIds.value.rootId ? filtersByNodeId(filtersNodeIds.value.rootId) : []) as unknown as JsonValue
+	const playedFilters = (filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []) as unknown as JsonValue
 
-	const addChildIfMissing = (node: any) => {
+	const addChildIfMissing = (node: VideoSceneTreeNode) => {
 		const id = String(node?.id ?? '').trim()
 		if (!id) return
 		if (findNodeInLayer(lid, id)) return
 		VideoSceneStore.dispatch('addNodeTree', { layerId: lid, parentId: rootId, node })
 	}
 
-	// Ensure base nodes keep their filters (root/played) if user edited filters.
 	if (rootId) {
 		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: rootId, patch: { filters: bgFilters } })
 	}
@@ -468,7 +485,6 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: playedId, patch: { filters: playedFilters } })
 	}
 
-	// Add missing segment/title/marker nodes.
 	for (let i = 0; i < n; i++) {
 		const segId = desiredSegmentIds[i]
 		const titleId = desiredTitleIds[i]
@@ -477,7 +493,7 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 			name: `Segment ${i + 1}`,
 			category: 'user',
 			userType: 'rect',
-			transform: { x: 0, y: 0, width: 10, height: barH, rotation: 0, opacity: 1 },
+			transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 10, height: barH, rotation: 0, opacity: 1 },
 			props: {
 				fillColor: border.value,
 				fillOpacity: 0.18,
@@ -493,7 +509,7 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 			name: `Segment Title ${i + 1}`,
 			category: 'user',
 			userType: 'text',
-			transform: { x: 0, y: 0, width: 10, height: barH, rotation: 0, opacity: 1 },
+			transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 10, height: barH, rotation: 0, opacity: 1 },
 			props: {
 				textContent: String(segmentsDraft.value[i]?.title ?? '').trim() || `段落${i + 1}`,
 				textAlign: 'center',
@@ -511,7 +527,7 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 				name: `Marker ${i + 1}`,
 				category: 'user',
 				userType: 'rect',
-				transform: { x: 0, y: 0, width: markerSize.value, height: markerSize.value, rotation: 0, opacity: 1 },
+				transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: markerSize.value, height: markerSize.value, rotation: 0, opacity: 1 },
 				props: {
 					fillColor: markerColor.value,
 					fillOpacity: 1,
@@ -524,8 +540,7 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 		}
 	}
 
-	// Update timeline spec.nodeIds to reflect new arrays.
-	const prevSpec = spec.value as any
+	const prevSpec = spec.value
 	if (!prevSpec) return
 	await store.dispatch('setProgressBarSpec', {
 		layerId: lid,
@@ -538,7 +553,7 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 				titleIds: desiredTitleIds,
 				markerIds: desiredMarkerIds,
 			},
-		} as any,
+		},
 	})
 }
 
@@ -552,7 +567,7 @@ const border = ref('#3aa1ff')
 const text = ref('#ffffff')
 const played = ref('#3aa1ff')
 const playedBorder = ref('#3aa1ff')
-const markerShape = ref<'circle' | 'square'>('circle')
+const markerShape = ref<ProgressMarkerShape>('circle')
 const markerSize = ref(6)
 const markerColor = ref('#3aa1ff')
 const markerBorder = ref('#3aa1ff')
@@ -568,13 +583,10 @@ const allocateByWeights = (totalFrames: number, weights: number[]) => {
 	const n = weights.length
 	if (n === 0) return [] as number[]
 	const total = Math.max(0, Math.floor(totalFrames))
-	// We enforce at least 1 frame per segment.
 	const minPer = 1
 	const base = new Array(n).fill(minPer)
 	let remaining = total - n * minPer
 	if (remaining <= 0) {
-		// If not enough frames, still keep contiguous allocation; caller should have clamped anchor to make space.
-		// Here we just truncate from the tail.
 		for (let i = n - 1; i >= 0 && remaining < 0; i--) {
 			const can = Math.min(base[i] - 0, -remaining)
 			base[i] -= can
@@ -618,7 +630,6 @@ const recomputeSegmentsWithAnchor = (anchorIndex: number, mode: 'start' | 'end')
 	const maxFrame = Math.max(0, frameCount.value - 1)
 	const minAnchorLen = 1
 
-	// If no pre/post segments exist, the anchor must touch the edge.
 	let s = preCount === 0 ? 0 : clampInt(list[idx]?.startFrame, 0, maxFrame, 0)
 	let e = postCount === 0 ? maxFrame : clampInt(list[idx]?.endFrame, 0, maxFrame, maxFrame)
 
@@ -672,7 +683,6 @@ const recomputeSegmentsWithAnchor = (anchorIndex: number, mode: 'start' | 'end')
 		cursor = next[i].endFrame + 1
 	}
 
-	// Final hard clamp to ensure last ends exactly at maxFrame.
 	if (n > 0) {
 		next[0].startFrame = 0
 		next[n - 1].endFrame = maxFrame
@@ -697,7 +707,6 @@ const normalizeSegmentsToFullRange = (items: SegmentDraft[]) => {
 		segmentsDraft.value = []
 		return
 	}
-	// Each segment consumes at least 1 frame; cap count.
 	if (n > frameCount.value) list.splice(frameCount.value)
 	const lens = (items ?? []).slice(0, list.length).map((x) => Math.max(1, Math.floor((x?.endFrame ?? 0) - (x?.startFrame ?? 0) + 1)))
 	const weights = lens.length === list.length ? lens : new Array(list.length).fill(1)
@@ -749,17 +758,17 @@ const syncSegmentsDraftToLayer = async (opts?: { rebuildOverlayKeyframes?: boole
 	}
 	segmentsSyncBusy = true
 	try {
-		const s = spec.value as any
+		const s = spec.value
 		if (!s) return
 		const lid = String(props.layerId || '').trim()
 		if (!lid) return
-		const segs = segmentsDraft.value.map((x) => ({
+		const segs: ProgressBarSegment[] = segmentsDraft.value.map((x) => ({
 			title: String(x.title ?? '').trim(),
 			startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.startFrame ?? 0)))),
 			endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0)))),
 		}))
 		await ensureProgressBarNodesForSegmentCount(lid, segs.length)
-		await store.dispatch('updateProgressBarSegments', { layerId: lid, segments: segs as any })
+		await store.dispatch('updateProgressBarSegments', { layerId: lid, segments: segs })
 		applySegmentsToStageNodes()
 		if (opts?.rebuildOverlayKeyframes) {
 			await rebuildPlayedOverlayKeyframes(lid, segs)
@@ -787,39 +796,36 @@ const onSegmentEndEdit = (idx: number) => {
 watch(
 	() => spec.value,
 	() => {
-		// no-op: draft hydration is handled below.
 	},
 	{ immediate: true }
 )
 
-// Hydrate drafts only when opening dialog / switching layer.
-// Otherwise, applying style (which updates spec.style) would overwrite the user's segment edits.
 let hydratedKey = ''
 const hydrateFromSpecIfNeeded = () => {
 	if (!props.open) return
 	const lid = String(props.layerId || '').trim()
-	const s = spec.value as any
+	const s = spec.value
 	if (!lid || !s) return
 	const key = `${lid}:${String(s?.nodeIds?.rootId ?? '')}`
 	if (hydratedKey === key) return
 	hydratedKey = key
 
-	const segs = Array.isArray((s as any).segments) ? (s as any).segments : []
-	segmentsDraft.value = segs.map((x: any) => ({
+	const segs = Array.isArray(s.segments) ? s.segments : []
+	segmentsDraft.value = segs.map((x) => ({
 		title: String(x?.title ?? '').trim(),
 		startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.startFrame ?? 0)))),
 		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.endFrame ?? 0)))),
 	}))
 
-	bg.value = toHexOr((s as any).style?.backgroundColor, bg.value)
-	border.value = toHexOr((s as any).style?.borderColor, border.value)
-	text.value = toHexOr((s as any).style?.textColor, text.value)
-	played.value = toHexOr((s as any).style?.playedOverlayColor, played.value)
-	playedBorder.value = toHexOr((s as any).style?.playedOverlayBorderColor, playedBorder.value)
-	markerShape.value = ((s as any).style?.marker?.shape === 'square' ? 'square' : 'circle')
-	markerSize.value = Math.max(1, Math.min(64, Math.floor(Number((s as any).style?.marker?.size ?? markerSize.value))))
-	markerColor.value = toHexOr((s as any).style?.marker?.color, markerColor.value)
-	markerBorder.value = toHexOr((s as any).style?.marker?.borderColor, markerBorder.value)
+	bg.value = toHexOr(s.style?.backgroundColor, bg.value)
+	border.value = toHexOr(s.style?.borderColor, border.value)
+	text.value = toHexOr(s.style?.textColor, text.value)
+	played.value = toHexOr(s.style?.playedOverlayColor, played.value)
+	playedBorder.value = toHexOr(s.style?.playedOverlayBorderColor, playedBorder.value)
+	markerShape.value = (s.style?.marker?.shape === 'square' ? 'square' : 'circle')
+	markerSize.value = Math.max(1, Math.min(64, Math.floor(Number(s.style?.marker?.size ?? markerSize.value))))
+	markerColor.value = toHexOr(s.style?.marker?.color, markerColor.value)
+	markerBorder.value = toHexOr(s.style?.marker?.borderColor, markerBorder.value)
 }
 
 watch(
@@ -838,12 +844,10 @@ watch(
 watch(
 	() => spec.value,
 	() => {
-		// If spec becomes available after open, hydrate once.
 		hydrateFromSpecIfNeeded()
 	}
 )
 
-// --- draggable dialog ---
 const dialogRef = ref<HTMLDivElement | null>(null)
 const pos = ref<{ left: number; top: number }>({ left: 80, top: 80 })
 let drag: null | { startX: number; startY: number; startLeft: number; startTop: number } = null
@@ -865,7 +869,8 @@ const onHeadPointerDown = (ev: PointerEvent) => {
 	if (ev.button !== 0) return
 	const el = dialogRef.value
 	if (!el) return
-	;(ev.target as any)?.setPointerCapture?.(ev.pointerId)
+	const target = ev.target as HTMLElement | null
+	target?.setPointerCapture?.(ev.pointerId)
 	drag = { startX: ev.clientX, startY: ev.clientY, startLeft: pos.value.left, startTop: pos.value.top }
 }
 
@@ -880,18 +885,24 @@ const onUp = () => {
 	drag = null
 }
 
+const onSaveShortcut = (e: Event) => {
+	if (!props.open) return
+	e.preventDefault()
+	void applyAll()
+}
+
 onMounted(() => {
 	window.addEventListener('pointermove', onMove)
 	window.addEventListener('pointerup', onUp)
 	window.addEventListener('resize', clampPos)
-	window.addEventListener('dvs:shortcut/save', onSaveShortcut as any)
+	window.addEventListener('dvs:shortcut/save', onSaveShortcut)
 })
 
 onBeforeUnmount(() => {
 	window.removeEventListener('pointermove', onMove)
 	window.removeEventListener('pointerup', onUp)
 	window.removeEventListener('resize', clampPos)
-	window.removeEventListener('dvs:shortcut/save', onSaveShortcut as any)
+	window.removeEventListener('dvs:shortcut/save', onSaveShortcut)
 	if (styleCommitTimer != null) {
 		window.clearTimeout(styleCommitTimer)
 		styleCommitTimer = null
@@ -911,15 +922,13 @@ watch(
 	(open) => {
 		if (!open) return
 		setTimeout(() => clampPos(), 0)
-		// ensure played overlay is sized like background when opening
 		applyPlayedOverlayLayout()
 	},
 	{ immediate: true }
 )
 
-// --- apply to store + stage ---
 const applyPlayedOverlayLayout = () => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const ids = s.nodeIds
 	if (!ids) return
@@ -927,14 +936,15 @@ const applyPlayedOverlayLayout = () => {
 	const playedId = String(ids.playedOverlayId ?? '').trim()
 	if (!rootId || !playedId) return
 
-	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === String(props.layerId))
+	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
+	const layer = layers.find((l) => String(l?.id ?? '') === String(props.layerId))
 	if (!layer) return
-	const findNode = (nodes: any[] | undefined, id: string): any | null => {
+	const findNode = (nodes: VideoSceneTreeNode[] | undefined, id: string): VideoSceneTreeNode | null => {
 		const list = Array.isArray(nodes) ? nodes : []
 		for (const n of list) {
 			if (!n || typeof n !== 'object') continue
-			if (String((n as any).id ?? '') === id) return n
-			const hit = findNode((n as any).children, id)
+			if (String(n.id ?? '') === id) return n
+			const hit = findNode(n.children, id)
 			if (hit) return hit
 		}
 		return null
@@ -950,7 +960,6 @@ const applyPlayedOverlayLayout = () => {
 		nodeId: playedId,
 		patch: { y: 0, height: rh, x: leftX, pivotX: 0, pivotY: 0.5 },
 	})
-	// width is controlled by keyframes during playback; keep as-is
 	scheduleWriteBackToFirstKeyframeSoon()
 }
 
@@ -963,7 +972,7 @@ const clamp01 = (v: unknown, fallback = 0.5) => {
 }
 
 const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFrame: number; endFrame: number }>) => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const ids = s.nodeIds
 	if (!ids) return
@@ -971,14 +980,15 @@ const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFra
 	const rootId = String(ids.rootId ?? '').trim()
 	if (!playedId || !rootId) return
 
-	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === String(lid))
+	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
+	const layer = layers.find((l) => String(l?.id ?? '') === String(lid))
 	if (!layer) return
-	const findNode = (nodes: any[] | undefined, id: string): any | null => {
+	const findNode = (nodes: VideoSceneTreeNode[] | undefined, id: string): VideoSceneTreeNode | null => {
 		const list = Array.isArray(nodes) ? nodes : []
 		for (const n of list) {
 			if (!n || typeof n !== 'object') continue
-			if (String((n as any).id ?? '') === id) return n
-			const hit = findNode((n as any).children, id)
+			if (String(n.id ?? '') === id) return n
+			const hit = findNode(n.children, id)
 			if (hit) return hit
 		}
 		return null
@@ -991,10 +1001,9 @@ const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFra
 	const endFrame = Math.max(0, frameCount.value - 1)
 
 	const playedNode = findNode(layer.nodeTree, playedId)
-	const baseRotation = Number((playedNode as any)?.transform?.rotation ?? 0)
-	const baseOpacity = Number((playedNode as any)?.transform?.opacity ?? 1)
+	const baseRotation = Number(playedNode?.transform?.rotation ?? 0)
+	const baseOpacity = Number(playedNode?.transform?.opacity ?? 1)
 
-	// 使用当前 segments 的比例宽度，确保“每段起点”就是一个关键帧
 	const lens = segs.map((x) => Math.max(1, x.endFrame - x.startFrame + 1))
 	const total = Math.max(1, lens.reduce((a, b) => a + b, 0))
 	let used = 0
@@ -1047,16 +1056,15 @@ const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFra
 		})
 	}
 
-	// 保证 overlay 是左锚点（pivotX=0），width 只向右增长
 	VideoSceneStore.dispatch('updateNodeTransform', {
 		layerId: lid,
 		nodeId: playedId,
-		patch: { x: leftX, pivotX: 0, pivotY: clamp01((root.transform as any)?.pivotY, 0.5) },
+		patch: { x: leftX, pivotX: 0, pivotY: clamp01(root.transform?.pivotY, 0.5) },
 	})
 }
 
 const reorderChildren = () => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const ids = s.nodeIds
 	if (!ids) return
@@ -1081,7 +1089,7 @@ const reorderChildren = () => {
 }
 
 const applySegmentsToStageNodes = () => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const ids = s.nodeIds
 	if (!ids) return
@@ -1092,14 +1100,15 @@ const applySegmentsToStageNodes = () => {
 	const titleIds: string[] = Array.isArray(ids.titleIds) ? ids.titleIds : []
 	const markerIds: string[] = Array.isArray(ids.markerIds) ? ids.markerIds : []
 
-	const layer = (VideoSceneStore.state.layers as any[]).find((l) => String(l?.id ?? '') === String(props.layerId))
+	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
+	const layer = layers.find((l) => String(l?.id ?? '') === String(props.layerId))
 	if (!layer) return
-	const findNode = (nodes: any[] | undefined, id: string): any | null => {
+	const findNode = (nodes: VideoSceneTreeNode[] | undefined, id: string): VideoSceneTreeNode | null => {
 		const list = Array.isArray(nodes) ? nodes : []
 		for (const n of list) {
 			if (!n || typeof n !== 'object') continue
-			if (String((n as any).id ?? '') === id) return n
-			const hit = findNode((n as any).children, id)
+			if (String(n.id ?? '') === id) return n
+			const hit = findNode(n.children, id)
 			if (hit) return hit
 		}
 		return null
@@ -1150,7 +1159,6 @@ const applySegmentsToStageNodes = () => {
 			})
 		}
 
-		// marker at segment start (except first)
 		if (i > 0) {
 			const mid = String(markerIds[i - 1] ?? '').trim()
 			if (mid) {
@@ -1172,7 +1180,6 @@ const applySegmentsToStageNodes = () => {
 	scheduleWriteBackToFirstKeyframeSoon()
 }
 
-// --- live preview for style changes ---
 let stylePreviewRaf: number | null = null
 const scheduleStylePreview = () => {
 	if (stylePreviewRaf != null) return
@@ -1183,11 +1190,11 @@ const scheduleStylePreview = () => {
 }
 
 const applyStyleToStageNodesOnly = () => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
-	const ids = (s as any).nodeIds
+	const ids = s.nodeIds
 	if (!ids) return
 	const rootId = String(ids.rootId ?? '').trim()
 	const playedId = String(ids.playedOverlayId ?? '').trim()
@@ -1245,7 +1252,6 @@ const applyStyleToStageNodesOnly = () => {
 	scheduleWriteBackToFirstKeyframeSoon()
 }
 
-// --- live commit style to timeline spec (debounced) ---
 let styleCommitTimer: number | null = null
 const scheduleCommitStyleToStore = () => {
 	if (!props.open) return
@@ -1258,7 +1264,7 @@ const scheduleCommitStyleToStore = () => {
 }
 
 const commitStyleToStore = async () => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
@@ -1266,25 +1272,26 @@ const commitStyleToStore = async () => {
 	const segFilters = filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []
 	const titleFilters = filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []
 	const playedFilters = filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []
+	const stylePatch: ProgressBarStyle = {
+		backgroundColor: bg.value,
+		borderColor: border.value,
+		textColor: text.value,
+		marker: {
+			shape: markerShape.value,
+			size: Math.max(1, Math.min(64, Math.floor(markerSize.value))),
+			color: markerColor.value,
+			borderColor: markerBorder.value,
+		},
+		playedOverlayColor: played.value,
+		playedOverlayBorderColor: playedBorder.value,
+		backgroundFilters: bgFilters,
+		segmentFilters: segFilters,
+		titleFilters: titleFilters,
+		playedOverlayFilters: playedFilters,
+	}
 	await store.dispatch('updateProgressBarStyle', {
 		layerId: lid,
-		style: {
-			backgroundColor: bg.value,
-			borderColor: border.value,
-			textColor: text.value,
-			marker: {
-				shape: markerShape.value,
-				size: Math.max(1, Math.min(64, Math.floor(markerSize.value))),
-				color: markerColor.value,
-				borderColor: markerBorder.value,
-			},
-			playedOverlayColor: played.value,
-			playedOverlayBorderColor: playedBorder.value,
-			backgroundFilters: bgFilters as any,
-			segmentFilters: segFilters as any,
-			titleFilters: titleFilters as any,
-			playedOverlayFilters: playedFilters as any,
-		},
+		style: stylePatch,
 	})
 }
 
@@ -1298,7 +1305,6 @@ watch(
 	}
 )
 
-// keep segment/title filters uniform: use rep node as source of truth
 let lastSegFiltersJson = ''
 watch(
 	() => filtersNodeIds.value.segmentRepId,
@@ -1316,7 +1322,7 @@ watch(
 		if (json === lastSegFiltersJson) return
 		lastSegFiltersJson = json
 		syncFiltersToNodeIds(filtersNodeIds.value.segmentIds, next, repId)
-		scheduleCommitFiltersToStoreSoon({ segmentFilters: cloneJsonSafe(next) as any })
+		scheduleCommitFiltersToStoreSoon({ segmentFilters: cloneJsonSafe(next) })
 	},
 	{ deep: true }
 )
@@ -1338,12 +1344,11 @@ watch(
 		if (json === lastTitleFiltersJson) return
 		lastTitleFiltersJson = json
 		syncFiltersToNodeIds(filtersNodeIds.value.titleIds, next, repId)
-		scheduleCommitFiltersToStoreSoon({ titleFilters: cloneJsonSafe(next) as any })
+		scheduleCommitFiltersToStoreSoon({ titleFilters: cloneJsonSafe(next) })
 	},
 	{ deep: true }
 )
 
-// root / played overlay filter edits should also write back to first keyframe
 let lastRootFiltersJson = ''
 watch(
 	() => filtersNodeIds.value.rootId,
@@ -1360,7 +1365,7 @@ watch(
 		const json = jsonStable(next)
 		if (json === lastRootFiltersJson) return
 		lastRootFiltersJson = json
-		scheduleCommitFiltersToStoreSoon({ backgroundFilters: cloneJsonSafe(next) as any })
+		scheduleCommitFiltersToStoreSoon({ backgroundFilters: cloneJsonSafe(next) })
 		queueMicrotask(() => void writeBackToFirstKeyframeWithPatchedFilters(id, next))
 	},
 	{ deep: true }
@@ -1382,31 +1387,31 @@ watch(
 		const json = jsonStable(next)
 		if (json === lastPlayedFiltersJson) return
 		lastPlayedFiltersJson = json
-		scheduleCommitFiltersToStoreSoon({ playedOverlayFilters: cloneJsonSafe(next) as any })
+		scheduleCommitFiltersToStoreSoon({ playedOverlayFilters: cloneJsonSafe(next) })
 		queueMicrotask(() => void writeBackToFirstKeyframeWithPatchedFilters(id, next))
 	},
 	{ deep: true }
 )
 
 const applySegments = async () => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
-	const segs = segmentsDraft.value.map((x) => ({
+	const segs: ProgressBarSegment[] = segmentsDraft.value.map((x) => ({
 		title: String(x.title ?? '').trim(),
 		startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.startFrame ?? 0)))),
 		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0)))),
 	}))
 	await ensureProgressBarNodesForSegmentCount(lid, segs.length)
-	await store.dispatch('updateProgressBarSegments', { layerId: lid, segments: segs as any })
+	await store.dispatch('updateProgressBarSegments', { layerId: lid, segments: segs })
 	applySegmentsToStageNodes()
 	await rebuildPlayedOverlayKeyframes(lid, segs)
 	await writeBackToFirstKeyframe()
 }
 
 const applyStyle = async () => {
-	const s = spec.value as any
+	const s = spec.value
 	if (!s) return
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
@@ -1414,28 +1419,29 @@ const applyStyle = async () => {
 	const segFilters = filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []
 	const titleFilters = filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []
 	const playedFilters = filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []
+	const stylePatch: ProgressBarStyle = {
+		backgroundColor: bg.value,
+		borderColor: border.value,
+		textColor: text.value,
+		marker: {
+			shape: markerShape.value,
+			size: Math.max(1, Math.min(64, Math.floor(markerSize.value))),
+			color: markerColor.value,
+			borderColor: markerBorder.value,
+		},
+		playedOverlayColor: played.value,
+		playedOverlayBorderColor: playedBorder.value,
+		backgroundFilters: bgFilters,
+		segmentFilters: segFilters,
+		titleFilters: titleFilters,
+		playedOverlayFilters: playedFilters,
+	}
 	await store.dispatch('updateProgressBarStyle', {
 		layerId: lid,
-		style: {
-			backgroundColor: bg.value,
-			borderColor: border.value,
-			textColor: text.value,
-			marker: {
-				shape: markerShape.value,
-				size: Math.max(1, Math.min(64, Math.floor(markerSize.value))),
-				color: markerColor.value,
-				borderColor: markerBorder.value,
-			},
-			playedOverlayColor: played.value,
-			playedOverlayBorderColor: playedBorder.value,
-			backgroundFilters: bgFilters as any,
-			segmentFilters: segFilters as any,
-			titleFilters: titleFilters as any,
-			playedOverlayFilters: playedFilters as any,
-		},
+		style: stylePatch,
 	})
 
-	const ids = (s as any).nodeIds
+	const ids = s.nodeIds
 	if (!ids) return
 	const rootId = String(ids.rootId ?? '').trim()
 	const playedId = String(ids.playedOverlayId ?? '').trim()
@@ -1499,12 +1505,6 @@ const applyAll = async () => {
 	if (!spec.value) return
 	await applySegments()
 	await applyStyle()
-}
-
-const onSaveShortcut = (e: Event) => {
-	if (!props.open) return
-	e.preventDefault()
-	void applyAll()
 }
 </script>
 

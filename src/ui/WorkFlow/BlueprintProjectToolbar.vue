@@ -462,7 +462,7 @@ const emitThenClose = (
     | 'open-gemini-task-panel'
     | 'open-seedream-task-panel',
 ) => {
-  ;(emit as any)(eventName)
+  ;(emit as (event: typeof eventName) => void)(eventName)
   activePanel.value = ''
 }
 
@@ -554,7 +554,7 @@ const resourceUsageMap = computed(() => analyzeResourceUsage(
 ))
 
 const enrichedResources = computed(() => {
-  return resourceList.value.map((r: any) => {
+  return resourceList.value.map((r: ToolbarResourceItem) => {
     const rid = String(r.id ?? '').trim()
     const info = getUsageInfo(resourceUsageMap.value, rid)
     return {
@@ -562,7 +562,7 @@ const enrichedResources = computed(() => {
       usageCount: info?.usageCount ?? 0,
       usedBy: info?.usedBy ?? [],
     }
-  }).sort((a: any, b: any) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))
+  }).sort((a: ToolbarResourceItem, b: ToolbarResourceItem) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))
 })
 
 const usedResourceCount = computed(() => {
@@ -616,7 +616,7 @@ watch(
   }
 )
 
-const resourceThumbUrl = (r: any): string => {
+const resourceThumbUrl = (r: ToolbarResourceItem): string => {
   if (!r) return ''
   if (r.kind === 'video') {
     return sanitizeWorkflowMediaUrl(String(r.posterUrl ?? r.url ?? '').trim())
@@ -639,7 +639,7 @@ const resourceKindIconPath = (kind: string): string => {
   return 'M3 4h14v12H3zM3 16l4-4 3 3 4-5 4 5'
 }
 
-const onResourceCoverClick = (r: any) => {
+const onResourceCoverClick = (r: ToolbarResourceItem) => {
   const rid = String(r?.id ?? '').trim()
   if (!rid) return
   const info = getUsageInfo(resourceUsageMap.value, rid)

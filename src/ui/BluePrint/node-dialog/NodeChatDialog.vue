@@ -158,7 +158,7 @@ const props = defineProps<{
   nodeType: WorkflowNodeChatType | null
   draft: string
   submitting: boolean
-  params: Record<string, any>
+  params: Record<string, unknown>
   nodeWidth?: number
   inputParamPreviewRefs?: InputParamPreviewRef[]
 }>()
@@ -166,7 +166,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'update:draft', value: string): void
-  (e: 'update:params', params: Record<string, any>): void
+  (e: 'update:params', params: Record<string, unknown>): void
   (e: 'submit', payload: WorkflowNodeChatSubmitPayload): void
   (e: 'remove-param-ref', item: InputParamPreviewRef): void
 }>()
@@ -194,9 +194,9 @@ const typeDescription = computed(() => {
   return NODE_CHAT_TYPE_DESCRIPTIONS[props.nodeType]
 })
 
-const currentParams = computed(() => {
+const currentParams = computed<Record<string, unknown>>(() => {
   if (props.nodeType && props.params[props.nodeType]) {
-    return props.params[props.nodeType]
+    return props.params[props.nodeType] as Record<string, unknown>
   }
   return {}
 })
@@ -271,7 +271,7 @@ const handleSubmit = () => {
   emit('submit', payload)
 }
 
-const onParamsUpdate = (nextParams: Record<string, any>) => {
+const onParamsUpdate = (nextParams: Record<string, unknown>) => {
   if (!props.nodeType) return
   const merged = { ...props.params, [props.nodeType]: nextParams }
   emit('update:params', merged)

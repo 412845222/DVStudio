@@ -290,8 +290,8 @@ const onViewportKeyDown = (event: KeyboardEvent) => {
 const rowElByItemId = new Map<string, HTMLElement | null>();
 const inputAnchorTopByItemId = ref<Record<string, number>>({});
 
-const setRowEl = (itemId: string, el: any) => {
-  const nextEl = (el as HTMLElement) ?? null;
+const setRowEl = (itemId: string, el: HTMLElement | null) => {
+  const nextEl = el ?? null;
   const prevEl = rowElByItemId.get(itemId) ?? null;
   if (prevEl === nextEl) return;
   rowElByItemId.set(itemId, nextEl);
@@ -372,15 +372,15 @@ const inputAnchorStyle = (itemId: string) => {
   };
 };
 
-const anchorStyle = (a: any) => ({
+const anchorStyle = (a: AnchorSpec) => ({
   top: `calc(50% + ${a.offsetY ?? 0}px)`,
 });
 
-const anchorClass = (a: any) => {
+const anchorClass = (_a: AnchorSpec) => {
   return "wf-anchor-resource";
 };
 
-const anchorTypeAttr = (a: any) => {
+const anchorTypeAttr = (a: AnchorSpec) => {
   if (a.mediaType === "image") return "image";
   if (a.mediaType === "video") return "video";
   if (a.mediaType === "text") return "text";

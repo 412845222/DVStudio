@@ -143,7 +143,8 @@ const resolveTargetNodeIds = (layer: VideoSceneLayer, insertedNodeIds: string[],
 	for (const node of insertedNodes) {
 		const id = String(node.id || '').trim()
 		if (!id) continue
-		const fields = [node.id, node.name, (node as any).title, (node as any).alias, (node.props as any)?.textContent]
+		const nodeRecord = node as unknown as Record<string, unknown>
+		const fields = [node.id, node.name, nodeRecord.title, nodeRecord.alias, node.props?.textContent]
 		const slugs = fields.map((value) => slug(value)).filter(Boolean)
 		if (slugs.includes(targetSlug)) {
 			matched.add(id)

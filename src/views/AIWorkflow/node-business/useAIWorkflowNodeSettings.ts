@@ -1,10 +1,28 @@
-export const useAIWorkflowNodeSettings = (payload: {
-  store: {
-    state: {
-      nodesById: Record<string, any>
-    }
-    commit: (type: string, value: any) => void
+import { isRecord } from '../../../types/utils'
+
+type NodeSettingsStore = {
+  state: {
+    nodesById: Record<string, unknown>
   }
+  commit: (type: string, value: unknown) => void
+}
+
+type VideoDimensionSettings = {
+  outputWidth?: number
+  outputHeight?: number
+  naturalWidth?: number
+  naturalHeight?: number
+}
+
+type ImageSettingsUpdate = VideoDimensionSettings & {
+  cropEnabled?: boolean
+  crop?: { x: number; y: number; width: number; height: number }
+  imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+  meshyImageSettings?: Record<string, unknown>
+}
+
+export const useAIWorkflowNodeSettings = (payload: {
+  store: NodeSettingsStore
   markViewportMotion: () => void
   scheduleAsyncEdgeRender: () => void
   queueImageDistributeOnPointerUp: (nodeId: string) => void
@@ -21,8 +39,8 @@ export const useAIWorkflowNodeSettings = (payload: {
   }
 
   const onNodeAutoResize = (nodeId: string, height: number) => {
-    const node = payload.store.state.nodesById[nodeId] as any
-    if (!node) return
+    const node = payload.store.state.nodesById[nodeId]
+    if (!isRecord(node)) return
     if (node.sizeCustomized) return
     const nextHeight = Math.max(80, Math.floor(Number(height) || 0))
     if (!nextHeight || !Number.isFinite(nextHeight)) return
@@ -38,27 +56,19 @@ export const useAIWorkflowNodeSettings = (payload: {
 
   const onNodeImageSettingsUpdate = (
     nodeId: string,
-    input: {
-      outputWidth?: number
-      outputHeight?: number
-      naturalWidth?: number
-      naturalHeight?: number
-      cropEnabled?: boolean
-      crop?: { x: number; y: number; width: number; height: number }
-      imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
-      meshyImageSettings?: Record<string, any>
-    }
+    input: ImageSettingsUpdate
   ) => {
     payload.store.commit('setNodeImageSettings', { nodeId, imageSettings: input })
   }
 
   const onNodeVideoSettingsUpdate = (
     nodeId: string,
-    input: { outputWidth?: number; outputHeight?: number; naturalWidth?: number; naturalHeight?: number }
+    input: VideoDimensionSettings
   ) => {
-    const node = payload.store.state.nodesById[nodeId] as any
-    const prev = (node?.videoSettings ?? {}) as any
-    const next = (input ?? {}) as any
+    const node = payload.store.state.nodesById[nodeId]
+    if (!isRecord(node)) return
+    const prev: Record<string, unknown> = isRecord(node.videoSettings) ? node.videoSettings : {}
+    const next: Record<string, unknown> = isRecord(input) ? input : {}
     const keys: Array<'outputWidth' | 'outputHeight' | 'naturalWidth' | 'naturalHeight'> = [
       'outputWidth',
       'outputHeight',
@@ -68,8 +78,8 @@ export const useAIWorkflowNodeSettings = (payload: {
     let changed = false
     for (const key of keys) {
       if (!Object.prototype.hasOwnProperty.call(next, key)) continue
-      const a = Number(prev?.[key])
-      const b = Number(next?.[key])
+      const a = Number(prev[key])
+      const b = Number(next[key])
       if (!Number.isFinite(a) || !Number.isFinite(b) || a !== b) {
         changed = true
         break
@@ -79,11 +89,11 @@ export const useAIWorkflowNodeSettings = (payload: {
     payload.store.commit('setNodeVideoSettings', { nodeId, videoSettings: input })
   }
 
-  const onNodeModel3DSettingsUpdate = (nodeId: string, input: Record<string, any>) => {
+  const onNodeModel3DSettingsUpdate = (nodeId: string, input: Record<string, unknown>) => {
     payload.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: input })
   }
 
-  const onNodeMeshySettingsUpdate = (nodeId: string, input: Record<string, any>) => {
+  const onNodeMeshySettingsUpdate = (nodeId: string, input: Record<string, unknown>) => {
     payload.store.commit('setNodeMeshySettings', { nodeId, meshySettings: input })
   }
 

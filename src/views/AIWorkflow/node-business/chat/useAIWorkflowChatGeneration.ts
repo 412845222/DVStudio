@@ -6,46 +6,105 @@ import type {
   NanoBananaConfig,
   SeedanceConfig,
 } from '../../../../ui/UIComponent/BottomChatDock.vue'
-import type { WorkflowAnchorSpec, WorkflowNode } from '../../../../aiworkflow/types'
-import { getErrorMessage } from '../../../../types/utils'
+import type { WorkflowAnchorSpec, WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
+import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/utils'
 
-// ChatBridgeService: Transitional compatibility interface for Copilot CLI bridge.
-// Method names retain "codex" prefix for backward compatibility with backend adapter.
-// Backend implementation uses Copilot CLI subprocess calls, not Codex SDK.
-// Planned migration: Rename to "copilotCreateSession" etc. when backend API stabilizes.
-type ChatBridgeService = {
-  blueprintChatStream: (payload: any) => AsyncIterable<any>
-  localExecCreateSession?: (payload?: { title?: string; cwd?: string; model?: string; projectId?: number | null }) => Promise<any>
-  localExecStreamMessage?: (sessionId: string, payload: any, signal?: AbortSignal) => AsyncIterable<any>
-  localExecListMessages?: (sessionId: string, projectId: number | null) => Promise<any>
-  localExecSubmitApproval?: (payload: { sessionId: string; messageId: string; decision: 'accept' | 'decline'; projectId?: number | null }) => Promise<any>
-  // Codex-compatible session creation (backend: Copilot CLI)
-  codexCreateSession: (payload?: { title?: string; cwd?: string; model?: string; projectId?: number | null }) => Promise<any>
-  // Codex-compatible message stream (backend: Copilot CLI SSE)
-  codexStreamMessage: (sessionId: string, payload: any, signal?: AbortSignal) => AsyncIterable<any>
-  codexListMessages: (sessionId: string, projectId: number | null) => Promise<any>
-  codexSubmitApproval: (payload: { sessionId: string; messageId: string; decision: 'accept' | 'decline'; projectId?: number | null }) => Promise<any>
-  nanoBananaCacheRefImages: (form: FormData) => Promise<any>
-  seedreamCacheRefImages: (form: FormData) => Promise<any>
-  nanoBananaGenerateStream: (form: FormData) => AsyncIterable<any>
-  seedreamGenerateStream: (form: FormData) => AsyncIterable<any>
-  jimengImageGenerateStream: (form: FormData) => AsyncIterable<any>
-  jimengVideoGenerateStream: (form: FormData) => AsyncIterable<any>
-  seedanceGenerateStream: (form: FormData) => AsyncIterable<any>
-  meshyGenerate: (payload: Record<string, any>) => Promise<any>
-  meshyGenerateImage: (form: FormData) => Promise<any>
-  meshyTask: (taskId: string, mode: string) => Promise<any>
+type LocalExecSessionCreateResult = {
+  id?: unknown
+  title?: unknown
+  status?: unknown
+  model_name?: unknown
+  error?: unknown
 }
 
-export const useAIWorkflowChatGeneration = (payload: {
-  store: {
-    state: {
-      nodesById: Record<string, any>
-      edgeOrder: string[]
-      edgesById: Record<string, any>
+type LocalExecStreamEvent =
+  | { type: 'done' }
+  | { type: 'error'; error?: { message?: unknown } }
+  | {
+      type: 'event'
+      event?: unknown
+      data?: unknown
     }
-    commit: (type: string, value?: any) => void
+
+type BlueprintChatStreamEvent =
+  | { type: 'done' }
+  | { type: 'error'; error?: { message?: unknown } }
+  | {
+      type: 'message'
+      message: {
+        type: string
+        payload?: unknown
+      }
+    }
+
+type CacheRefImagesResult = {
+  ok?: unknown
+  cacheIds?: unknown
+}
+
+type MeshyImageTaskResult = {
+  ok?: unknown
+  taskId?: unknown
+  status?: unknown
+  progress?: unknown
+  preferredImageUrl?: unknown
+  imageUrls?: unknown
+  error?: unknown
+  errorMessage?: unknown
+}
+
+type ChatStreamResult = {
+  ok?: unknown
+  error?: unknown
+}
+
+type ChatBridgeService = {
+  blueprintChatStream: (payload: { content: string; history: Array<{ role: string; content: string }> }) => AsyncIterable<BlueprintChatStreamEvent>
+  localExecCreateSession?: (payload?: { title?: string; cwd?: string; model?: string; projectId?: number | null }) => Promise<LocalExecSessionCreateResult>
+  localExecStreamMessage?: (sessionId: string, payload: Record<string, unknown>, signal?: AbortSignal) => AsyncIterable<LocalExecStreamEvent>
+  localExecListMessages?: (sessionId: string, projectId: number | null) => Promise<unknown>
+  localExecSubmitApproval?: (payload: { sessionId: string; messageId: string; decision: 'accept' | 'decline'; projectId?: number | null }) => Promise<unknown>
+  codexCreateSession: (payload?: { title?: string; cwd?: string; model?: string; projectId?: number | null }) => Promise<LocalExecSessionCreateResult>
+  codexStreamMessage: (sessionId: string, payload: Record<string, unknown>, signal?: AbortSignal) => AsyncIterable<LocalExecStreamEvent>
+  codexListMessages: (sessionId: string, projectId: number | null) => Promise<unknown>
+  codexSubmitApproval: (payload: { sessionId: string; messageId: string; decision: 'accept' | 'decline'; projectId?: number | null }) => Promise<unknown>
+  nanoBananaCacheRefImages: (form: FormData) => Promise<CacheRefImagesResult>
+  seedreamCacheRefImages: (form: FormData) => Promise<CacheRefImagesResult>
+  nanoBananaGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
+  seedreamGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
+  jimengImageGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
+  jimengVideoGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
+  seedanceGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
+  meshyGenerate: (payload: Record<string, unknown>) => Promise<MeshyImageTaskResult>
+  meshyGenerateImage: (form: FormData) => Promise<MeshyImageTaskResult>
+  meshyTask: (taskId: string, mode: string) => Promise<MeshyImageTaskResult>
+}
+
+type WorkflowResourceLike = {
+  resourceId?: string
+  url?: string
+  sourcePath?: string
+  projectRelativePath?: string
+  kind?: string
+  name?: string
+  [key: string]: unknown
+}
+
+type WorkflowEdgeLike = WorkflowEdge & {
+  [key: string]: unknown
+}
+
+type ChatGenerationStore = {
+  state: {
+    nodesById: Record<string, WorkflowNode>
+    edgeOrder: string[]
+    edgesById: Record<string, WorkflowEdge>
   }
+  commit: (type: string, value?: unknown) => void
+}
+
+type ChatGenerationPayload = {
+  store: ChatGenerationStore
   chatModelKey: Ref<string>
   chatDraft: Ref<string>
   chatModelId: Ref<string>
@@ -75,7 +134,7 @@ export const useAIWorkflowChatGeneration = (payload: {
   NANO_ANCHOR_NODE_ID: string
   NANO_REF_IMAGE_MAX: number
   pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
-  getFirstIncomingEdge: (nodeId: string, anchorId?: string) => any
+  getFirstIncomingEdge: (nodeId: string, anchorId?: string) => WorkflowEdge | null | undefined
   nodeResourceUrl: (node: WorkflowNode) => string | null
   nodeResourceName: (node: WorkflowNode) => string | null
   buildCroppedImageTransferFile: (fromNode: WorkflowNode, sourceUrl: string, sourceName: string) => Promise<File | null>
@@ -89,7 +148,9 @@ export const useAIWorkflowChatGeneration = (payload: {
   resolveBackendUrl: (value: string) => string
   getChatService: () => ChatBridgeService
   onSeedanceTaskObserved?: (taskId: string, stage: 'created' | 'completed') => void
-}) => {
+}
+
+export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
   const makeChatId = () => `aiwf-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   let activeAbortController: AbortController | null = null
 
@@ -187,6 +248,26 @@ export const useAIWorkflowChatGeneration = (payload: {
     return out
   }
 
+  const getStringField = (obj: unknown, key: string): string => {
+    if (isRecord(obj)) {
+      const val = obj[key]
+      if (isString(val)) return val
+    }
+    return ''
+  }
+
+  const isUnknown = (_v: unknown): _v is unknown => true
+
+  const getArrayField = <T>(obj: unknown, key: string, itemGuard: (v: unknown) => v is T): T[] => {
+    if (isRecord(obj)) {
+      const val = obj[key]
+      if (Array.isArray(val)) {
+        return val.filter(itemGuard)
+      }
+    }
+    return []
+  }
+
   const onSend = async () => {
     if (payload.chatModelKey.value === 'nanobanana' || payload.chatModelKey.value === 'seedance') return
     if (payload.chatSending.value) return
@@ -233,18 +314,19 @@ export const useAIWorkflowChatGeneration = (payload: {
             model: payload.chatModelId.value,
             projectId,
           })
-          if ((created as any)?.error) {
-            throw new Error(String((created as any).error || 'create codex session failed'))
+          const createdError = getStringField(created, 'error')
+          if (createdError) {
+            throw new Error(createdError || 'create codex session failed')
           }
-          sessionId = String((created as any)?.id || '').trim()
+          sessionId = getStringField(created, 'id').trim()
           if (!sessionId) throw new Error('create codex session returned empty id')
           payload.codexActiveSessionId.value = sessionId
           payload.codexSessions.value = [
             {
               id: sessionId,
-              title: String((created as any)?.title || 'Copilot CLI 会话').trim() || 'Copilot CLI 会话',
-              status: String((created as any)?.status || 'active'),
-              modelName: String((created as any)?.model_name || payload.chatModelId.value || ''),
+              title: getStringField(created, 'title').trim() || 'Copilot CLI 会话',
+              status: getStringField(created, 'status') || 'active',
+              modelName: getStringField(created, 'model_name') || payload.chatModelId.value || '',
               source: 'copilot-cli',
             },
             ...payload.codexSessions.value.filter((s) => s.id !== sessionId),
@@ -291,11 +373,11 @@ export const useAIWorkflowChatGeneration = (payload: {
           }
 
           if (ev.type !== 'event') continue
-          const name = String((ev as any).event || '')
-          const data = (ev as any).data ?? {}
+          const name = getStringField(ev, 'event')
+          const data = isRecord(ev.data) ? ev.data : {}
 
           if (name === 'assistant_delta') {
-            const delta = String((data as any)?.delta || '')
+            const delta = getStringField(data, 'delta')
             if (delta) {
               updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
             }
@@ -305,7 +387,7 @@ export const useAIWorkflowChatGeneration = (payload: {
 
           if (name === 'assistant_done') {
             receivedAssistantDone = true
-            const doneTextRaw = String((data as any)?.content ?? '')
+            const doneTextRaw = getStringField(data, 'content')
             const doneText = doneTextRaw.trim()
             if (doneText) {
               updateAssistantMessageContent(assistantMsg.id, () => doneTextRaw)
@@ -315,13 +397,15 @@ export const useAIWorkflowChatGeneration = (payload: {
           }
 
           if (name === 'plan_update') {
-            pushLocalExecFlow({ kind: 'plan', title: '计划更新', detail: String((data as any)?.explanation || ''), status: 'completed', source: 'copilot-cli' })
+            pushLocalExecFlow({ kind: 'plan', title: '计划更新', detail: getStringField(data, 'explanation'), status: 'completed', source: 'copilot-cli' })
             continue
           }
 
           if (name === 'runtime_context') {
-            const skillCount = Array.isArray((data as any)?.skills) ? (data as any).skills.length : 0
-            const mcpCount = Array.isArray((data as any)?.active_mcp_servers) ? (data as any).active_mcp_servers.length : 0
+            const skills = getArrayField(data, 'skills', isUnknown)
+            const mcpServers = getArrayField(data, 'active_mcp_servers', isUnknown)
+            const skillCount = skills.length
+            const mcpCount = mcpServers.length
             setTaskStatus('AI 任务：正在加载运行时上下文…')
             pushLocalExecFlow({
               kind: 'runtime',
@@ -334,14 +418,14 @@ export const useAIWorkflowChatGeneration = (payload: {
           }
 
           if (name === 'skill_call') {
-            const skillName = String((data as any)?.name || '').trim() || 'skill'
-            const skillStatus = String((data as any)?.status || '').trim().toLowerCase()
+            const skillName = getStringField(data, 'name').trim() || 'skill'
+            const skillStatusRaw = getStringField(data, 'status').trim().toLowerCase()
             setTaskStatus(`AI 任务：正在调用技能 ${skillName}…`)
             pushLocalExecFlow({
               kind: 'skill',
               title: `Skill · ${skillName}`,
-              detail: String((data as any)?.description || ''),
-              status: skillStatus === 'failed' ? 'failed' : 'completed',
+              detail: getStringField(data, 'description'),
+              status: skillStatusRaw === 'failed' ? 'failed' : 'completed',
               source: 'copilot-cli',
               payload: data,
             })
@@ -349,14 +433,14 @@ export const useAIWorkflowChatGeneration = (payload: {
           }
 
           if (name === 'command_started') {
-            const command = (data as any)?.command
+            const command = hasKey(data, 'command') ? data.command : ''
             setTaskStatus('AI 任务：正在执行命令…')
             pushLocalExecFlow({
               kind: 'command',
               title: '命令开始',
               detail: Array.isArray(command) ? command.join(' ') : String(command || ''),
               status: 'pending',
-              messageId: String((data as any)?.message_id || ''),
+              messageId: getStringField(data, 'message_id'),
               source: 'copilot-cli',
               payload: data,
             })
@@ -365,12 +449,13 @@ export const useAIWorkflowChatGeneration = (payload: {
 
           if (name === 'command_completed') {
             setTaskStatus('AI 任务：命令完成，继续处理中…')
+            const cmdStatus = getStringField(data, 'status')
             pushLocalExecFlow({
               kind: 'command',
               title: '命令完成',
-              detail: String((data as any)?.status || 'completed'),
-              status: String((data as any)?.status || '').toLowerCase() === 'completed' ? 'completed' : 'failed',
-              messageId: String((data as any)?.message_id || ''),
+              detail: cmdStatus || 'completed',
+              status: cmdStatus.toLowerCase() === 'completed' ? 'completed' : 'failed',
+              messageId: getStringField(data, 'message_id'),
               source: 'copilot-cli',
               payload: data,
             })
@@ -378,12 +463,13 @@ export const useAIWorkflowChatGeneration = (payload: {
           }
 
           if (name === 'file_change_started') {
+            const changes = getArrayField(data, 'changes', isUnknown)
             pushLocalExecFlow({
               kind: 'fileChange',
               title: '文件变更准备',
-              detail: String(((data as any)?.changes || []).length || 0) + ' 项',
+              detail: String(changes.length) + ' 项',
               status: 'pending',
-              messageId: String((data as any)?.message_id || ''),
+              messageId: getStringField(data, 'message_id'),
               source: 'copilot-cli',
               payload: data,
             })
@@ -391,12 +477,13 @@ export const useAIWorkflowChatGeneration = (payload: {
           }
 
           if (name === 'file_change_completed') {
+            const changes = getArrayField(data, 'changes', isUnknown)
             pushLocalExecFlow({
               kind: 'fileChange',
               title: '文件变更',
-              detail: String(((data as any)?.changes || []).length || 0) + ' 项',
+              detail: String(changes.length) + ' 项',
               status: 'completed',
-              messageId: String((data as any)?.message_id || ''),
+              messageId: getStringField(data, 'message_id'),
               source: 'copilot-cli',
               payload: data,
             })
@@ -404,13 +491,13 @@ export const useAIWorkflowChatGeneration = (payload: {
           }
 
           if (name === 'approval_requested') {
-            const requestId = String((data as any)?.request_id || '')
+            const requestId = getStringField(data, 'request_id')
             pushLocalExecFlow({
               kind: 'approval',
               title: '等待审批',
               detail: requestId || 'request',
               status: 'pending',
-              messageId: String((data as any)?.message_id || ''),
+              messageId: getStringField(data, 'message_id'),
               approvalRequestId: requestId,
               source: 'copilot-cli',
               payload: data,
@@ -419,7 +506,7 @@ export const useAIWorkflowChatGeneration = (payload: {
           }
 
           if (name === 'error') {
-            const errMsg = normalizeChatErrorMessage((data as any)?.message || 'unknown')
+            const errMsg = normalizeChatErrorMessage(getStringField(data, 'message') || 'unknown')
             receivedError = true
             payload.chatRunState.value = 'error'
             setTaskStatus('AI 任务：错误')
@@ -457,7 +544,8 @@ export const useAIWorkflowChatGeneration = (payload: {
         }
         const message = ev.message
         if (message.type === 'agentToUi/text') {
-          const delta = String((message as any)?.payload?.text ?? '')
+          const msgPayload = isRecord(message.payload) ? message.payload : {}
+          const delta = getStringField(msgPayload, 'text')
           if (delta) {
             updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
           }
@@ -465,13 +553,15 @@ export const useAIWorkflowChatGeneration = (payload: {
           continue
         }
         if (message.type === 'agentToUi/taskStatus') {
-          const phase = String((message as any)?.payload?.phase ?? '')
-          const text = (message as any)?.payload?.message
+          const msgPayload = isRecord(message.payload) ? message.payload : {}
+          const phase = getStringField(msgPayload, 'phase')
+          const text = hasKey(msgPayload, 'message') ? msgPayload.message : ''
           setTaskStatus('AI 任务：' + String(typeof text === 'string' && text.trim() ? text.trim() : phase || '处理中'))
           continue
         }
         if (message.type === 'agentToUi/error') {
-          const text = (message as any)?.payload?.message
+          const msgPayload = isRecord(message.payload) ? message.payload : {}
+          const text = hasKey(msgPayload, 'message') ? msgPayload.message : 'unknown'
           payload.chatRunState.value = 'error'
           setTaskStatus('AI 任务：错误')
           payload.pushToast('AI 对话失败：' + String(typeof text === 'string' ? text : 'unknown'), 'warn')
@@ -508,7 +598,27 @@ export const useAIWorkflowChatGeneration = (payload: {
     activeAbortController?.abort()
   }
 
-  const onNanoBananaGenerate = async (input: { prompt: string; config: NanoBananaConfig }) => {
+  const parseNanoImageMessage = (content: string): unknown => {
+    try {
+      const parsed = JSON.parse(content)
+      if (isRecord(parsed)) return parsed
+    } catch {
+      // ignore
+    }
+    return {}
+  }
+
+  const parseSeedanceMessage = (content: string): unknown => {
+    try {
+      const parsed = JSON.parse(content)
+      if (isRecord(parsed)) return parsed
+    } catch {
+      // ignore
+    }
+    return {}
+  }
+
+  const onNanoBananaGenerate = async (input: { prompt: string; config: NanoBananaConfig & Record<string, unknown> }) => {
     if (payload.chatSending.value) return
     const prompt = String(input?.prompt ?? '').trim()
     if (!prompt) return
@@ -525,7 +635,7 @@ export const useAIWorkflowChatGeneration = (payload: {
     payload.nanoPreviewDownloadStatuses.value = []
     payload.nanoPreviewDownloadProgresses.value = []
     payload.nanoPreviewLocalReadyStates.value = []
-    const requestedCountRaw = Number((input?.config as any)?.quantity ?? 1)
+    const requestedCountRaw = Number(hasKey(input.config, 'quantity') ? input.config.quantity : 1)
     const requestCount = Number.isFinite(requestedCountRaw)
       ? Math.max(1, Math.min(4, Math.floor(requestedCountRaw)))
       : 1
@@ -555,7 +665,8 @@ export const useAIWorkflowChatGeneration = (payload: {
         if (refFiles.length >= payload.NANO_REF_IMAGE_MAX) break
         const edge = payload.getFirstIncomingEdge(payload.NANO_ANCHOR_NODE_ID, String(anchor.id ?? ''))
         if (!edge) continue
-        const fromNode = payload.store.state.nodesById[edge.fromNodeId]
+        const fromNodeId = getStringField(edge, 'fromNodeId')
+        const fromNode = payload.store.state.nodesById[fromNodeId]
         if (!fromNode) continue
         const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
         if (!isImageSource) {
@@ -581,15 +692,18 @@ export const useAIWorkflowChatGeneration = (payload: {
               `${nameBase}_rot`,
               { projectId: payload.currentProjectId.value }
             )
-            const rid = String((fromNode as any).resourceId ?? '').trim()
+            const rid = getStringField(fromNode, 'resourceId').trim()
             if (rid) {
+              const patch: Record<string, unknown> = {
+                url: uploaded.url,
+                sourcePath: uploaded.absolutePath || undefined,
+              }
+              if (isString(uploaded.projectRelativePath)) {
+                patch.projectRelativePath = uploaded.projectRelativePath
+              }
               payload.store.commit('patchResource', {
                 resourceId: rid,
-                patch: {
-                  url: uploaded.url,
-                  sourcePath: uploaded.absolutePath || undefined,
-                  projectRelativePath: (uploaded as any).projectRelativePath || undefined,
-                } as any,
+                patch,
               })
             }
             url = uploaded.url
@@ -633,11 +747,11 @@ export const useAIWorkflowChatGeneration = (payload: {
         finalPrompt = `${prompt}\n\n${relLines.join('\n')}`
       }
 
-      const ar = String(input?.config?.aspectRatio ?? (input as any)?.config?.meshyAspectRatio ?? '').trim()
-      const selectedImageModel = String((input as any)?.config?.imageModel ?? '').trim()
-      const selectedMeshyAiModel = String((input as any)?.config?.meshyImageAiModel ?? '').trim()
-      const meshyPoseMode = String((input as any)?.config?.meshyPoseMode ?? '').trim()
-      const meshyGenerateMultiView = Boolean((input as any)?.config?.meshyGenerateMultiView)
+      const ar = String(input?.config?.aspectRatio ?? (hasKey(input.config, 'meshyAspectRatio') ? input.config.meshyAspectRatio : '')).trim()
+      const selectedImageModel = String(hasKey(input.config, 'imageModel') ? input.config.imageModel : '').trim()
+      const selectedMeshyAiModel = String(hasKey(input.config, 'meshyImageAiModel') ? input.config.meshyImageAiModel : '').trim()
+      const meshyPoseMode = String(hasKey(input.config, 'meshyPoseMode') ? input.config.meshyPoseMode : '').trim()
+      const meshyGenerateMultiView = Boolean(hasKey(input.config, 'meshyGenerateMultiView') ? input.config.meshyGenerateMultiView : false)
       const isSeedreamModel = selectedImageModel.startsWith('doubao-seedream-')
       const isJimengImageModel = selectedImageModel.startsWith('jimeng-image-')
       const isMeshyModel = selectedImageModel === 'meshy'
@@ -657,14 +771,12 @@ export const useAIWorkflowChatGeneration = (payload: {
         const hasRefImages = refFiles.length > 0
         const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
         
-        // 使用官方 API 参数名（小写下划线格式）
-        const meshyPayload: Record<string, any> = {
+        const meshyPayload: Record<string, unknown> = {
           mode: taskType,
           prompt: finalPrompt,
           ai_model: selectedMeshyAiModel || 'nano-banana',
         }
 
-        // text-to-image 特有参数
         if (!hasRefImages) {
           if (ar) meshyPayload.aspect_ratio = ar
           if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
@@ -680,8 +792,7 @@ export const useAIWorkflowChatGeneration = (payload: {
             form.append('refImages', r.file, r.file.name)
           }
           
-          const meshyService = svc as any
-          const res = await meshyService.meshyGenerateImage(form)
+          const res = await svc.meshyGenerateImage(form)
           if (res.ok) {
             const taskId = String(res.taskId || '').trim()
             if (taskId) {
@@ -689,15 +800,15 @@ export const useAIWorkflowChatGeneration = (payload: {
               payload.nanoStatus.value = `任务已创建（${taskId}）`
               
               const pollStatus = async () => {
-                const taskRes = await meshyService.meshyTask(taskId, taskType)
+                const taskRes = await svc.meshyTask(taskId, taskType)
                 if (taskRes.ok) {
                   const status = String(taskRes.status || '').trim().toUpperCase()
                   const progress = Number(taskRes.progress || 0)
                   payload.nanoStatus.value = status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
                   
                   if (status === 'SUCCEEDED') {
-                    const imageUrl = taskRes.preferredImageUrl || taskRes.imageUrls?.[0]
-                    if (imageUrl) {
+                    const imageUrl = taskRes.preferredImageUrl || (Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls[0] : undefined)
+                    if (imageUrl && isString(imageUrl)) {
                       const resolvedUrl = payload.resolveBackendUrl(imageUrl)
                       payload.nanoPreviewUrl.value = resolvedUrl
                       payload.nanoPreviewUrls.value = [resolvedUrl]
@@ -724,7 +835,7 @@ export const useAIWorkflowChatGeneration = (payload: {
           updateProgressStatus()
           return
         } else {
-          const res = await (svc as any).meshyGenerate(meshyPayload)
+          const res = await svc.meshyGenerate(meshyPayload)
           if (res.ok) {
             const taskId = String(res.taskId || '').trim()
             if (taskId) {
@@ -732,15 +843,15 @@ export const useAIWorkflowChatGeneration = (payload: {
               payload.nanoStatus.value = `任务已创建（${taskId}）`
               
               const pollStatus = async () => {
-                const taskRes = await (svc as any).meshyTask(taskId, taskType)
+                const taskRes = await svc.meshyTask(taskId, taskType)
                 if (taskRes.ok) {
                   const status = String(taskRes.status || '').trim().toUpperCase()
                   const progress = Number(taskRes.progress || 0)
                   payload.nanoStatus.value = status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
                   
                   if (status === 'SUCCEEDED') {
-                    const imageUrl = taskRes.preferredImageUrl || taskRes.imageUrls?.[0]
-                    if (imageUrl) {
+                    const imageUrl = taskRes.preferredImageUrl || (Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls[0] : undefined)
+                    if (imageUrl && isString(imageUrl)) {
                       const resolvedUrl = payload.resolveBackendUrl(imageUrl)
                       payload.nanoPreviewUrl.value = resolvedUrl
                       payload.nanoPreviewUrls.value = [resolvedUrl]
@@ -783,8 +894,10 @@ export const useAIWorkflowChatGeneration = (payload: {
           : isSeedreamModel
           ? await svc.seedreamCacheRefImages(cacheForm)
           : await svc.nanoBananaCacheRefImages(cacheForm)
-        if (cacheRes.ok && Array.isArray((cacheRes as any).cacheIds)) {
-          cachedRefIds = ((cacheRes as any).cacheIds as string[]).map((v) => String(v || '')).filter(Boolean)
+        if (cacheRes.ok && Array.isArray(cacheRes.cacheIds)) {
+          cachedRefIds = cacheRes.cacheIds
+            .map((v) => String(v || ''))
+            .filter(Boolean)
         } else {
           const warnMsg = '参考图缓存失败，已回退为直接上传。'
           appendNanoDetail(`警告：${warnMsg}`)
@@ -824,34 +937,35 @@ export const useAIWorkflowChatGeneration = (payload: {
 
             const message = ev.message
             if (message.type === 'agentToUi/chatMessage') {
-              const content = String((message as any)?.payload?.content ?? '')
-              try {
-                const obj = JSON.parse(content)
-                if (obj && typeof obj === 'object') {
-                  if (typeof (obj as any).imageUrl === 'string') {
-                    const nextUrl = payload.resolveBackendUrl(String((obj as any).imageUrl))
-                    const fallbackUrl = payload.resolveBackendUrl(String((obj as any).imageUrlRemote || ''))
-                    if (nextUrl) {
-                      payload.nanoPreviewUrls.value = payload.nanoPreviewUrls.value.map((v, i) => (i === index ? nextUrl : v))
-                      payload.nanoPreviewFallbackUrls.value = payload.nanoPreviewFallbackUrls.value.map((v, i) => (i === index ? fallbackUrl : v))
-                      payload.nanoPreviewDownloadStatuses.value = payload.nanoPreviewDownloadStatuses.value.map((v, i) => (i === index ? 'ready' : v))
-                      payload.nanoPreviewDownloadProgresses.value = payload.nanoPreviewDownloadProgresses.value.map((v, i) => (i === index ? 100 : v))
-                      payload.nanoPreviewLocalReadyStates.value = payload.nanoPreviewLocalReadyStates.value.map((v, i) => (i === index ? true : v))
-                      payload.nanoPreviewLoadingStates.value = payload.nanoPreviewLoadingStates.value.map((v, i) => (i === index ? false : v))
-                      if (!payload.nanoPreviewUrl.value) payload.nanoPreviewUrl.value = nextUrl
-                    }
+              const msgPayload = isRecord(message.payload) ? message.payload : {}
+              const content = getStringField(msgPayload, 'content')
+              const obj = parseNanoImageMessage(content)
+              if (isRecord(obj)) {
+                const imageUrl = getStringField(obj, 'imageUrl')
+                if (imageUrl) {
+                  const nextUrl = payload.resolveBackendUrl(imageUrl)
+                  const fallbackUrl = payload.resolveBackendUrl(getStringField(obj, 'imageUrlRemote'))
+                  if (nextUrl) {
+                    payload.nanoPreviewUrls.value = payload.nanoPreviewUrls.value.map((v, i) => (i === index ? nextUrl : v))
+                    payload.nanoPreviewFallbackUrls.value = payload.nanoPreviewFallbackUrls.value.map((v, i) => (i === index ? fallbackUrl : v))
+                    payload.nanoPreviewDownloadStatuses.value = payload.nanoPreviewDownloadStatuses.value.map((v, i) => (i === index ? 'ready' : v))
+                    payload.nanoPreviewDownloadProgresses.value = payload.nanoPreviewDownloadProgresses.value.map((v, i) => (i === index ? 100 : v))
+                    payload.nanoPreviewLocalReadyStates.value = payload.nanoPreviewLocalReadyStates.value.map((v, i) => (i === index ? true : v))
+                    payload.nanoPreviewLoadingStates.value = payload.nanoPreviewLoadingStates.value.map((v, i) => (i === index ? false : v))
+                    if (!payload.nanoPreviewUrl.value) payload.nanoPreviewUrl.value = nextUrl
                   }
-                  if (typeof (obj as any).billing === 'string') payload.nanoBilling.value = String((obj as any).billing)
-                  if (typeof (obj as any).model === 'string') payload.nanoModelUsed.value = String((obj as any).model)
                 }
-              } catch {
-                // ignore
+                const billing = getStringField(obj, 'billing')
+                if (billing) payload.nanoBilling.value = billing
+                const model = getStringField(obj, 'model')
+                if (model) payload.nanoModelUsed.value = model
               }
               continue
             }
 
             if (message.type === 'agentToUi/error') {
-              const text = (message as any)?.payload?.message
+              const msgPayload = isRecord(message.payload) ? message.payload : {}
+              const text = hasKey(msgPayload, 'message') ? msgPayload.message : 'unknown'
               const errMsg = String(typeof text === 'string' ? text : 'unknown')
               requestFailed = true
               appendNanoDetail(`请求 ${requestNo} 错误：${errMsg}`)
@@ -884,7 +998,7 @@ export const useAIWorkflowChatGeneration = (payload: {
     }
   }
 
-  const onSeedanceGenerate = async (input: { prompt: string; config: SeedanceConfig }) => {
+  const onSeedanceGenerate = async (input: { prompt: string; config: SeedanceConfig & Record<string, unknown> }) => {
     if (payload.chatSending.value) return
     const prompt = String(input?.prompt ?? '').trim()
     if (!prompt) return
@@ -925,7 +1039,8 @@ export const useAIWorkflowChatGeneration = (payload: {
         if (refFiles.length >= 4) break
         const edge = payload.getFirstIncomingEdge(payload.NANO_ANCHOR_NODE_ID, String(anchor.id ?? ''))
         if (!edge) continue
-        const fromNode = payload.store.state.nodesById[edge.fromNodeId]
+        const fromNodeId = getStringField(edge, 'fromNodeId')
+        const fromNode = payload.store.state.nodesById[fromNodeId]
         if (!fromNode) continue
         const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
         if (!isImageSource) continue
@@ -960,16 +1075,16 @@ export const useAIWorkflowChatGeneration = (payload: {
         form.set('resolution', '720p')
       }
 
-      const useFrames = !!(input?.config as any)?.useFrames
+      const useFrames = Boolean(hasKey(input.config, 'useFrames') ? input.config.useFrames : false)
       if (isJimengVideoModel) {
         if (useFrames) {
-          const framesText = String((input?.config as any)?.frames ?? '').trim()
+          const framesText = String(hasKey(input.config, 'frames') ? input.config.frames : '').trim()
           if (framesText) form.set('frames', framesText)
         } else {
           form.set('duration', String(Number(input?.config?.duration ?? 5) || 5))
         }
       } else if (useFrames) {
-        const framesText = String((input?.config as any)?.frames ?? '').trim()
+        const framesText = String(hasKey(input.config, 'frames') ? input.config.frames : '').trim()
         if (framesText) form.set('frames', framesText)
       } else {
         form.set('duration', String(Number(input?.config?.duration ?? 5) || 5))
@@ -986,8 +1101,8 @@ export const useAIWorkflowChatGeneration = (payload: {
       if (seedText) form.set('seed', seedText)
 
       if (isJimengVideoModel && refMode === 'recamera') {
-        const templateId = String((input?.config as any)?.templateId ?? '').trim()
-        const cameraStrength = String((input?.config as any)?.cameraStrength ?? 'medium').trim().toLowerCase()
+        const templateId = String(hasKey(input.config, 'templateId') ? input.config.templateId : '').trim()
+        const cameraStrength = String(hasKey(input.config, 'cameraStrength') ? input.config.cameraStrength : 'medium').trim().toLowerCase()
         if (templateId) form.set('templateId', templateId)
         if (cameraStrength) form.set('cameraStrength', cameraStrength)
       }
@@ -1040,22 +1155,22 @@ export const useAIWorkflowChatGeneration = (payload: {
             : Math.min(referenceCount, refFiles.length)
         appendNanoDetail(`即梦参考图策略：${modeText}（输入 ${refFiles.length} 张，生效 ${effectiveCount} 张）`)
         if (refMode === 'first-last' && refFiles.length > 2) {
-          appendNanoDetail('提示：首尾帧模式最多使用 2 张参考图；若需超过 2 张请切换到“自动/参考图”模式。')
+          appendNanoDetail('提示：首尾帧模式最多使用 2 张参考图；若需超过 2 张请切换到"自动/参考图"模式。')
         }
         if (!hasRefs) appendNanoDetail('即梦模式：当前为纯文本生视频（无参考图）')
       }
 
       if (!isJimengVideoModel) {
-        form.set('generateAudio', (input?.config as any)?.generateAudio ? '1' : '0')
-        form.set('watermark', (input?.config as any)?.watermark ? '1' : '0')
-        form.set('cameraFixed', (input?.config as any)?.cameraFixed ? '1' : '0')
-        form.set('draft', (input?.config as any)?.draft ? '1' : '0')
-        form.set('returnLastFrame', (input?.config as any)?.returnLastFrame ? '1' : '0')
+        form.set('generateAudio', Boolean(hasKey(input.config, 'generateAudio') ? input.config.generateAudio : false) ? '1' : '0')
+        form.set('watermark', Boolean(hasKey(input.config, 'watermark') ? input.config.watermark : false) ? '1' : '0')
+        form.set('cameraFixed', Boolean(hasKey(input.config, 'cameraFixed') ? input.config.cameraFixed : false) ? '1' : '0')
+        form.set('draft', Boolean(hasKey(input.config, 'draft') ? input.config.draft : false) ? '1' : '0')
+        form.set('returnLastFrame', Boolean(hasKey(input.config, 'returnLastFrame') ? input.config.returnLastFrame : false) ? '1' : '0')
 
-        const currentModel = String((input?.config as any)?.model ?? '').trim()
-        const serviceTier = String((input?.config as any)?.serviceTier ?? '').trim()
+        const currentModel = String(hasKey(input.config, 'model') ? input.config.model : '').trim()
+        const serviceTier = String(hasKey(input.config, 'serviceTier') ? input.config.serviceTier : '').trim()
         if (serviceTier && seedanceSupportsServiceTier(currentModel)) form.set('serviceTier', serviceTier)
-        const executionExpiresAfter = String((input?.config as any)?.executionExpiresAfter ?? '').trim()
+        const executionExpiresAfter = String(hasKey(input.config, 'executionExpiresAfter') ? input.config.executionExpiresAfter : '').trim()
         if (executionExpiresAfter) form.set('executionExpiresAfter', executionExpiresAfter)
       }
 
@@ -1073,44 +1188,44 @@ export const useAIWorkflowChatGeneration = (payload: {
         }
         const message = ev.message
         if (message.type === 'agentToUi/chatMessage') {
-          const content = String((message as any)?.payload?.content ?? '')
-          try {
-            const obj = JSON.parse(content)
-            if (obj && typeof obj === 'object') {
-              const taskId = String((obj as any).taskId || '').trim()
-              const remoteUrl = payload.resolveBackendUrl(String((obj as any).videoUrlRemote || ''))
-              const localUrl = payload.resolveBackendUrl(String((obj as any).videoUrlLocal || ''))
-              const nextUrl = payload.resolveBackendUrl(String((obj as any).videoUrl || ''))
-              const downloadStatus = String((obj as any).downloadStatus || '').trim() || 'pending'
-              const downloadProgressRaw = Number((obj as any).downloadProgress ?? 0)
-              const downloadProgress = Number.isFinite(downloadProgressRaw)
-                ? Math.max(0, Math.min(100, Math.round(downloadProgressRaw)))
-                : 0
-              const localReady = !!localUrl && downloadStatus === 'ready'
-              const sourcePath = String((obj as any).videoSourcePath || '').trim()
-              const displayUrl = localReady ? localUrl : (remoteUrl || nextUrl || localUrl)
-              payload.nanoPreviewUrls.value = [displayUrl]
-              payload.nanoPreviewFallbackUrls.value = [remoteUrl]
-              payload.nanoPreviewSourcePaths.value = [localReady ? sourcePath : '']
-              payload.nanoPreviewDownloadStatuses.value = [downloadStatus]
-              payload.nanoPreviewDownloadProgresses.value = [downloadProgress]
-              payload.nanoPreviewLocalReadyStates.value = [localReady]
-              payload.nanoPreviewLoadingStates.value = [!displayUrl]
-              if (displayUrl) payload.nanoPreviewUrl.value = displayUrl
-              if (typeof (obj as any).billing === 'string') payload.nanoBilling.value = String((obj as any).billing)
-              if (typeof (obj as any).model === 'string') payload.nanoModelUsed.value = String((obj as any).model)
-              if (!isJimengVideoModel && taskId) {
-                observedSeedanceTaskId = taskId
-                payload.onSeedanceTaskObserved?.(taskId, 'completed')
-              }
+          const msgPayload = isRecord(message.payload) ? message.payload : {}
+          const content = getStringField(msgPayload, 'content')
+          const obj = parseSeedanceMessage(content)
+          if (isRecord(obj)) {
+            const taskId = getStringField(obj, 'taskId').trim()
+            const remoteUrl = payload.resolveBackendUrl(getStringField(obj, 'videoUrlRemote'))
+            const localUrl = payload.resolveBackendUrl(getStringField(obj, 'videoUrlLocal'))
+            const nextUrl = payload.resolveBackendUrl(getStringField(obj, 'videoUrl'))
+            const downloadStatus = getStringField(obj, 'downloadStatus').trim() || 'pending'
+            const downloadProgressRaw = Number(hasKey(obj, 'downloadProgress') ? obj.downloadProgress : 0)
+            const downloadProgress = Number.isFinite(downloadProgressRaw)
+              ? Math.max(0, Math.min(100, Math.round(downloadProgressRaw)))
+              : 0
+            const localReady = !!localUrl && downloadStatus === 'ready'
+            const sourcePath = getStringField(obj, 'videoSourcePath').trim()
+            const displayUrl = localReady ? localUrl : (remoteUrl || nextUrl || localUrl)
+            payload.nanoPreviewUrls.value = [displayUrl]
+            payload.nanoPreviewFallbackUrls.value = [remoteUrl]
+            payload.nanoPreviewSourcePaths.value = [localReady ? sourcePath : '']
+            payload.nanoPreviewDownloadStatuses.value = [downloadStatus]
+            payload.nanoPreviewDownloadProgresses.value = [downloadProgress]
+            payload.nanoPreviewLocalReadyStates.value = [localReady]
+            payload.nanoPreviewLoadingStates.value = [!displayUrl]
+            if (displayUrl) payload.nanoPreviewUrl.value = displayUrl
+            const billing = getStringField(obj, 'billing')
+            if (billing) payload.nanoBilling.value = billing
+            const model = getStringField(obj, 'model')
+            if (model) payload.nanoModelUsed.value = model
+            if (!isJimengVideoModel && taskId) {
+              observedSeedanceTaskId = taskId
+              payload.onSeedanceTaskObserved?.(taskId, 'completed')
             }
-          } catch {
-            // ignore
           }
           continue
         }
         if (message.type === 'agentToUi/taskStatus') {
-          const text = String((message as any)?.payload?.message ?? '').trim()
+          const msgPayload = isRecord(message.payload) ? message.payload : {}
+          const text = getStringField(msgPayload, 'message').trim()
           if (text) payload.nanoStatus.value = text
           if (!isJimengVideoModel && text) {
             const match = text.match(/任务已创建（([^）]+)）/)
@@ -1123,7 +1238,8 @@ export const useAIWorkflowChatGeneration = (payload: {
           continue
         }
         if (message.type === 'agentToUi/error') {
-          const text = String((message as any)?.payload?.message ?? 'unknown')
+          const msgPayload = isRecord(message.payload) ? message.payload : {}
+          const text = getStringField(msgPayload, 'message') ?? 'unknown'
           payload.nanoStatus.value = '失败'
           appendNanoDetail(`错误：${text}`)
           payload.pushToast(videoEngineLabel + ' 生成失败：' + text, 'warn')

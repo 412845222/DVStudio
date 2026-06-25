@@ -344,6 +344,7 @@ import type {
   WorkflowThreePreviewProgressPayload,
   WorkflowThreePreviewState,
 } from "./three-preview/types";
+import { isObject, isString } from "../../../types/utils";
 
 type AnchorSpec = {
   id: string;
@@ -697,13 +698,14 @@ const lightingPreviewMeta = computed(() => {
   const raw = String(props.linkedLightingJsonText ?? "").trim();
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Record<string, any>;
-    const lights = Array.isArray(parsed?.lights) ? parsed.lights : [];
+    const parsed = JSON.parse(raw) as unknown;
+    const parsedRecord = isObject(parsed) ? parsed : {};
+    const lights = Array.isArray(parsedRecord.lights) ? parsedRecord.lights : [];
     return {
       lightsCount: lights.length,
-      style: String(parsed?.lightingStyle ?? "").trim(),
-      preset: String(parsed?.atmosphere?.preset ?? "").trim(),
-      summary: String(parsed?.sceneSummary ?? "").trim(),
+      style: isString(parsedRecord.lightingStyle) ? parsedRecord.lightingStyle.trim() : "",
+      preset: isObject(parsedRecord.atmosphere) && isString(parsedRecord.atmosphere.preset) ? parsedRecord.atmosphere.preset.trim() : "",
+      summary: isString(parsedRecord.sceneSummary) ? parsedRecord.sceneSummary.trim() : "",
       valid: true,
     };
   } catch {
@@ -1049,9 +1051,8 @@ const createViewerNow = () => {
   } catch (err) {
     viewer = null;
     viewerInitCooldownUntil = Date.now() + 400;
-    lastActionMessage.value = `预览器初始化失败：${String(
-      (err as any)?.message ?? err ?? "unknown"
-    )}`;
+    const errMessage = isObject(err) && isString(err.message) ? err.message : String(err ?? "unknown");
+    lastActionMessage.value = `预览器初始化失败：${errMessage}`;
   }
 };
 
@@ -1243,7 +1244,8 @@ const getResolvedLayoutForUnreal = async (): Promise<
     }
     return { ok: true, exportData };
   } catch (err) {
-    return { ok: false, error: `场景布局导出失败：${String((err as any)?.message ?? err ?? "unknown")}` };
+    const errMessage = isObject(err) && isString(err.message) ? err.message : String(err ?? "unknown");
+    return { ok: false, error: `场景布局导出失败：${errMessage}` };
   } finally {
     if (!previewActive.value) {
       disposeViewer();

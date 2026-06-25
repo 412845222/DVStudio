@@ -102,7 +102,7 @@ const clampToViewport = () => {
 
 onMounted(() => {
   clampToViewport();
-  window.addEventListener("dweb:content/resize", clampToViewport as EventListener, true);
+  window.addEventListener("dweb:content/resize", clampToViewport, true);
   if ("ResizeObserver" in window) {
     ro = new ResizeObserver(() => clampToViewport());
     if (rootEl.value) ro.observe(rootEl.value);
@@ -112,7 +112,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener(
     "dweb:content/resize",
-    clampToViewport as EventListener,
+    clampToViewport,
     true
   );
   if (cleanupMoveUp) cleanupMoveUp();

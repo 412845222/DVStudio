@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import type { Store } from 'vuex'
 import { getErrorMessage } from '../../../types/utils'
 import { runtimeDescription } from '../../../network/runtimePlatform'
+import type { WorkflowNodeGenerationTask, WorkflowState } from '../../../aiworkflow/types'
+
+type DebugPanelStore = Pick<Store<WorkflowState>, 'state'> & {
+  state: Pick<WorkflowState, 'nodeGenerationTasksById' | 'nodeGenerationTaskIdsByNodeId'>
+}
 
 const props = defineProps<{
-  store: any
+  store: DebugPanelStore
 }>()
 
 const visible = ref(false)
@@ -52,7 +58,7 @@ const onPanelToggle = () => {
 }
 
 const taskCount = computed(() => {
-  const map = props.store?.state?.nodeGenerationTasksById as Record<string, any> | undefined
+  const map: Record<string, WorkflowNodeGenerationTask> | undefined = props.store?.state?.nodeGenerationTasksById
   if (!map) return 0
   return Object.keys(map).length
 })
@@ -60,8 +66,8 @@ const taskCount = computed(() => {
 const taskList = computed(() => {
   const store = props.store
   if (!store?.state) return []
-  const idsByNode = (store.state.nodeGenerationTaskIdsByNodeId ?? {}) as Record<string, string[]>
-  const byId = (store.state.nodeGenerationTasksById ?? {}) as Record<string, any>
+  const idsByNode: Record<string, string[]> = store.state.nodeGenerationTaskIdsByNodeId ?? {}
+  const byId: Record<string, WorkflowNodeGenerationTask> = store.state.nodeGenerationTasksById ?? {}
   const nodes = Object.keys(idsByNode)
   const out: { nodeId: string; status: string; statusText: string; progress: number; startedAt: number; finishedAt?: number; kind: string; errorMessage?: string; results: number }[] = []
   for (const nodeId of nodes) {
@@ -71,14 +77,14 @@ const taskList = computed(() => {
       if (!task) continue
       out.push({
         nodeId,
-        status: String(task.status ?? 'idle'),
-        statusText: String(task.statusText ?? ''),
-        progress: Number(task.progress) || 0,
-        startedAt: Number(task.startedAt) || 0,
-        finishedAt: task.finishedAt ? Number(task.finishedAt) : undefined,
-        kind: String(task.nodeType ?? 'unknown'),
-        errorMessage: task.errorMessage ? String(task.errorMessage) : undefined,
-        results: Array.isArray(task.results) ? task.results.length : 0,
+        status: task.status ?? 'idle',
+        statusText: task.statusText ?? '',
+        progress: task.progress || 0,
+        startedAt: task.startedAt || 0,
+        finishedAt: task.finishedAt,
+        kind: task.nodeType ?? 'unknown',
+        errorMessage: task.errorMessage,
+        results: task.results.length,
       })
     }
   }

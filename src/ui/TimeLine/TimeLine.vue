@@ -401,14 +401,16 @@ const isSubtitleFrame = (layerId: string, frameIndex: number) => {
 	return containsFrame(spans, frameIndex)
 }
 
+type SubtitleCueRange = { startFrame?: number; endFrame?: number; [key: string]: unknown }
+
 const subtitleCueStartSetByLayer = computed(() => {
 	const out: Record<string, Set<number>> = {}
 	const map = store.state.subtitleCueRangesByLayer ?? {}
 	for (const [layerId, ranges] of Object.entries(map)) {
 		const set = new Set<number>()
-		const list = Array.isArray(ranges) ? ranges : []
-		for (const r of list as any[]) {
-			const s = Math.floor(Number((r as any)?.startFrame))
+		const list = Array.isArray(ranges) ? (ranges as SubtitleCueRange[]) : []
+		for (const r of list) {
+			const s = Math.floor(Number(r?.startFrame))
 			if (Number.isFinite(s)) set.add(s)
 		}
 		out[layerId] = set
@@ -421,9 +423,9 @@ const subtitleCueIndexByStartFrameByLayer = computed(() => {
 	const map = store.state.subtitleCueRangesByLayer ?? {}
 	for (const [layerId, ranges] of Object.entries(map)) {
 		const dict: Record<number, number> = {}
-		const list = Array.isArray(ranges) ? ranges : []
+		const list = Array.isArray(ranges) ? (ranges as SubtitleCueRange[]) : []
 		for (let i = 0; i < list.length; i++) {
-			const s = Math.floor(Number((list as any)[i]?.startFrame))
+			const s = Math.floor(Number(list[i]?.startFrame))
 			if (!Number.isFinite(s)) continue
 			dict[s] = i
 		}
@@ -956,27 +958,27 @@ const closeMenu = () => {
 
 type NodeSnapshot = { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }
 
-const deepCloneFallback = <T,>(value: T, seen = new WeakMap<object, any>()): T => {
+const deepCloneFallback = <T,>(value: T, seen = new WeakMap<object, unknown>()): T => {
 	if (value == null) return value
 	if (typeof value !== 'object') return value
-	if (value instanceof Date) return new Date(value.getTime()) as any
+	if (value instanceof Date) return new Date(value.getTime()) as unknown as T
 
 	const obj = value as unknown as object
 	const cached = seen.get(obj)
-	if (cached) return cached
+	if (cached) return cached as T
 
 	if (Array.isArray(value)) {
-		const out: any[] = []
+		const out: unknown[] = []
 		seen.set(obj, out)
-		for (const item of value as any[]) out.push(deepCloneFallback(item, seen))
-		return out as any
+		for (const item of value) out.push(deepCloneFallback(item, seen))
+		return out as unknown as T
 	}
 
 	const proto = Object.getPrototypeOf(obj)
-	const out: any = proto === null ? Object.create(null) : {}
+	const out: Record<string, unknown> = proto === null ? Object.create(null) as Record<string, unknown> : {}
 	seen.set(obj, out)
-	for (const k of Object.keys(obj as any)) out[k] = deepCloneFallback((obj as any)[k], seen)
-	return out
+	for (const k of Object.keys(obj)) out[k] = deepCloneFallback((obj as Record<string, unknown>)[k], seen)
+	return out as unknown as T
 }
 
 const cloneJsonSafe = <T,>(v: T): T => {
@@ -984,7 +986,7 @@ const cloneJsonSafe = <T,>(v: T): T => {
 		return JSON.parse(JSON.stringify(v)) as T
 	} catch {
 		try {
-			return (globalThis as any).structuredClone ? ((globalThis as any).structuredClone(v) as T) : deepCloneFallback(v)
+			return (globalThis as { structuredClone?: <T>(v: T) => T }).structuredClone ? ((globalThis as { structuredClone: <T>(v: T) => T }).structuredClone(v) as T) : deepCloneFallback(v)
 		} catch {
 			return deepCloneFallback(v)
 		}
@@ -1311,7 +1313,7 @@ const audioEl = ref<HTMLAudioElement | null>(null)
 
 const syncAudioToFrame = (fi: number, force = false) => {
 	const el = audioEl.value
-	const track = activeAudioTrack.value as any
+	const track = activeAudioTrack.value
 	if (!el || !track) return
 	const f = Math.max(1, Math.floor(Number(fps.value) || 60))
 	const dur = Math.max(0, Number(track.durationSec) || 0)
@@ -1581,7 +1583,7 @@ const onGlobalPointerDown = (e: PointerEvent) => {
 const onGlobalKeydown = (e: KeyboardEvent) => {
 	if (e.key === 'Escape') closeMenu()
 
-	const target = e.target as any
+	const target = e.target
 	const isTyping =
 		target instanceof HTMLInputElement ||
 		target instanceof HTMLTextAreaElement ||

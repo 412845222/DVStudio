@@ -5,6 +5,10 @@ export type VideoThumbnailResult = {
   mime: string
 }
 
+type HTMLVideoElementWithPlaysInline = HTMLVideoElement & {
+  playsInline?: boolean
+}
+
 const blobFromCanvas = (canvas: HTMLCanvasElement, mime: string, quality: number) => {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -33,11 +37,11 @@ export const createVideoFirstFrameThumbnail = async (opts: {
   const quality = Math.min(0.95, Math.max(0.5, Number(opts?.quality ?? 0.82)))
   const timeoutMs = Math.max(1500, Math.floor(Number(opts?.timeoutMs ?? 12000)))
 
-  const video = document.createElement('video')
+  const video = document.createElement('video') as HTMLVideoElementWithPlaysInline
   video.preload = 'auto'
   video.muted = true
-  ;(video as any).playsInline = true
-  ;(video as any).crossOrigin = 'anonymous'
+  video.playsInline = true
+  video.crossOrigin = 'anonymous'
 
   const cleanup = () => {
     try {

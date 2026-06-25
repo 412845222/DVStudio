@@ -14,13 +14,20 @@ type WorkflowNodeType =
   | 'model3d'
   | 'meshy'
 
-export const useAIWorkflowNodeActions = (payload: {
-  store: {
-    state: {
-      nodesById: Record<string, any>
-    }
-    commit: (type: string, value: any) => void
+type NodeActionsNode = {
+  worldX?: unknown
+  worldY?: unknown
+}
+
+type NodeActionsStore = {
+  state: {
+    nodesById: Record<string, NodeActionsNode | undefined>
   }
+  commit: (type: string, value: unknown) => void
+}
+
+export const useAIWorkflowNodeActions = (payload: {
+  store: NodeActionsStore
   selectedNodeIds: { value: string[] }
   pasteNodesWithResourceDedupe: (position?: { worldX?: number; worldY?: number }) => void
   removeSelectedNodesWithResourceCleanup: (nodeIds: string[]) => Promise<void>
@@ -32,7 +39,7 @@ export const useAIWorkflowNodeActions = (payload: {
   const onNodePaste = (nodeId: string) => {
     const node = payload.store.state.nodesById[nodeId]
     if (!node) return
-    payload.pasteNodesWithResourceDedupe({ worldX: node.worldX + 20, worldY: node.worldY + 20 })
+    payload.pasteNodesWithResourceDedupe({ worldX: Number(node.worldX) + 20, worldY: Number(node.worldY) + 20 })
   }
 
   const onNodeDelete = (nodeId: string) => {

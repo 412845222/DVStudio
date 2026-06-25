@@ -302,21 +302,32 @@ const displayInputs = computed(() => renderInputs.value);
 const positivePromptAnchorIndex = computed(() => allInputs.value.findIndex((a) => a.id === "in-positive"));
 const negativePromptAnchorIndex = computed(() => allInputs.value.findIndex((a) => a.id === "in-negative"));
 
+type ComfyUiOutput = {
+  kind: "image" | "video";
+  url: string;
+  filename?: string;
+  anchorId?: string;
+  nodeId?: string;
+  sourcePath?: string;
+  subfolder?: string;
+  type?: string;
+};
+
 const hoverInputAnchorId = computed(() => props.hoverInputAnchorId ?? null);
 const mediaOutputs = computed(() => {
-  const arr = (props.comfyuiSettings as any)?.outputs;
+  const arr = props.comfyuiSettings?.outputs;
   if (!Array.isArray(arr)) return [];
   return arr
-    .map((m: any) => ({
-      kind: String(m?.kind ?? "") === "video" ? "video" : "image",
+    .map((m: ComfyUiOutput) => ({
+      kind: String(m?.kind ?? "") === "video" ? "video" as const : "image" as const,
       url: String(m?.url ?? "").trim(),
       filename: typeof m?.filename === "string" ? m.filename : "",
       anchorId: typeof m?.anchorId === "string" ? m.anchorId : "",
     }))
-    .filter((m: any) => m.url);
+    .filter((m: { url: string }) => m.url);
 });
 
-const runStatus = computed(() => (props.comfyuiSettings?.runStatus ?? "idle") as any);
+const runStatus = computed(() => (props.comfyuiSettings?.runStatus ?? "idle") as "idle" | "running" | "canceling" | "completed" | "failed" | "cancelled");
 const promptId = computed(() => String(props.comfyuiSettings?.promptId ?? ""));
 const progress = computed(() => {
   const n = Number(props.comfyuiSettings?.progress);

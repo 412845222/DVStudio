@@ -1,13 +1,59 @@
 import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { blueprintLog } from '../../blueprint-core/blueprintLog'
-import { getErrorMessage } from '../../../../types/utils'
+import { getErrorMessage, isNumber, isRecord, isString } from '../../../../types/utils'
 
-export const useAIWorkflowProjectPersistence = (payload: {
+type AssetRecord = {
+  url?: unknown
+  projectRelativePath?: unknown
+  relativePath?: unknown
+  absolutePath?: unknown
+  name?: unknown
+  sourcePath?: unknown
+}
+
+type ProjectServiceResult = {
+  ok?: unknown
+  error?: unknown
+  project?: unknown
+  snapshot?: unknown
+  projects?: unknown
+  resolved?: unknown
+  repaired?: unknown
+  asset?: AssetRecord
+}
+
+type PersistenceResource = {
+  kind?: unknown
+  name?: unknown
+  url?: unknown
+  sourcePath?: unknown
+  projectRelativePath?: unknown
+  posterSourcePath?: unknown
+  posterUrl?: unknown
+  posterProjectRelativePath?: unknown
+  [key: string]: unknown
+}
+
+type PersistenceStoreState = {
+  nodesById: Record<string, unknown>
+  nodeOrder: string[]
+  resourcesById: Record<string, PersistenceResource>
+  resourceOrder: string[]
+}
+
+type PersistenceStore = {
+  state: PersistenceStoreState
+  commit: (type: string, payload?: unknown) => void
+}
+
+type RecoverySession = Record<string, unknown>
+
+type ProjectPersistencePayload = {
   blueprintProjectService: {
-    loadProject: (projectId: number) => Promise<any>
-    listProjects: () => Promise<any>
-    saveProject: (input: { name: string; snapshot: AIWorkflowDraftSnapshot; projectId?: number }) => Promise<any>
+    loadProject: (projectId: number) => Promise<ProjectServiceResult>
+    listProjects: () => Promise<ProjectServiceResult>
+    saveProject: (input: { name: string; snapshot: AIWorkflowDraftSnapshot; projectId?: number }) => Promise<ProjectServiceResult>
     resolveAsset: (input: {
       projectId?: number | null
       kind?: 'image' | 'video' | 'file' | 'model'
@@ -15,13 +61,13 @@ export const useAIWorkflowProjectPersistence = (payload: {
       sourcePath?: string
       sourceUrl?: string
       projectRelativePath?: string
-    }) => Promise<any>
+    }) => Promise<ProjectServiceResult>
     repairAsset: (input: {
       projectId?: number | null
       kind?: 'image' | 'video' | 'file' | 'model'
       name?: string
       projectRelativePath?: string
-    }) => Promise<any>
+    }) => Promise<ProjectServiceResult>
   }
   currentProjectId: Ref<number | null>
   currentProjectName: Ref<string>
@@ -31,18 +77,18 @@ export const useAIWorkflowProjectPersistence = (payload: {
   refreshProjectList: () => Promise<void>
   pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
   isValidBlueprintSnapshot: (snapshot: unknown) => boolean
-  stripUnrealExportRuntimeFromSnapshot: (snapshot: any) => any
-  normalizeSnapshotResourceUrls: (snapshot: any, resolveBackendUrl: (value: string) => string) => any
-  sanitizeBlueprintSnapshotForRuntime: (snapshot: any) => AIWorkflowDraftSnapshot
+  stripUnrealExportRuntimeFromSnapshot: (snapshot: AIWorkflowDraftSnapshot) => AIWorkflowDraftSnapshot
+  normalizeSnapshotResourceUrls: (snapshot: AIWorkflowDraftSnapshot, resolveBackendUrl: (value: string) => string) => AIWorkflowDraftSnapshot
+  sanitizeBlueprintSnapshotForRuntime: (snapshot: AIWorkflowDraftSnapshot) => AIWorkflowDraftSnapshot
   hydrateBlueprintSnapshotSafely: (snapshot: AIWorkflowDraftSnapshot, sourceLabel: string) => boolean
   resetCurrentUnrealExportNodeRuntimeState: () => void
   resolveBackendUrl: (value: string) => string
   toProjectAssetRuntimeUrl?: (projectId: number, projectRelativePath: string, fallbackUrl?: string) => string
   cancelActiveRecoverySession: () => void
   startRecoverySessionFromCurrentState: (payload: {
-    nodesById: Record<string, any>
+    nodesById: Record<string, unknown>
     nodeOrder: string[]
-    resourcesById: Record<string, any>
+    resourcesById: Record<string, PersistenceResource>
   }) => string | null
   refreshRecoveryUrlReady: (sessionId: string, getResourceUrl: (resourceId: string) => string) => void
   finalizeRecoverySessionAfterUrlRecoveryAttempt: (sessionId: string, getResourceUrl: (resourceId: string) => string) => void
@@ -54,30 +100,25 @@ export const useAIWorkflowProjectPersistence = (payload: {
   repairAllProjectAssetsBeforeHydrate?: (projectId: number, snapshot: AIWorkflowDraftSnapshot) => Promise<AIWorkflowDraftSnapshot>
   buildPersistableSnapshotWithOptions: (opts: { uploadLocalResources: boolean }) => Promise<AIWorkflowDraftSnapshot>
   isElectron: () => boolean
-  activeRecoverySession: Ref<any>
-  store: {
-    state: {
-      nodesById: Record<string, any>
-      nodeOrder: string[]
-      resourcesById: Record<string, any>
-      resourceOrder: string[]
-    }
-    commit: (type: string, payload: any) => void
-  }
+  activeRecoverySession: Ref<RecoverySession | null>
+  store: PersistenceStore
   uploadLocalResourceAndGetUrl: (
     localUrl: string,
     kind: 'image' | 'video' | 'file',
     resourceName: string,
     opts?: { projectId?: number | null },
   ) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string }>
-  // 可选：在 Electron 中解析当前已注册的项目根目录（用于避免重复复制）
   getCurrentProjectRootPath?: () => string
-}) => {
+}
+
+type ResourcePatch = Record<string, unknown>
+
+export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePayload) => {
   const resolveOrRepairProjectScopedResources = async (projectId: number, opts?: { silent?: boolean; projectRootPath?: string }) => {
     const pid = Number(projectId)
     if (!Number.isFinite(pid) || pid <= 0) return { changed: 0, failed: 0 }
 
-    const patches: Array<{ resourceId: string; patch: any }> = []
+    const patches: Array<{ resourceId: string; patch: ResourcePatch }> = []
     let failed = 0
     const projectRoot = typeof opts?.projectRootPath === 'string' ? opts.projectRootPath.replace(/\\/g, '/').replace(/\/+$/, '') : ''
 
@@ -87,7 +128,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
     }
 
     for (const rid of payload.store.state.resourceOrder) {
-      const resource = payload.store.state.resourcesById?.[rid] as any
+      const resource = payload.store.state.resourcesById?.[rid]
       if (!resource) continue
 
       const kindRaw = String(resource.kind ?? '').trim().toLowerCase()
@@ -100,19 +141,16 @@ export const useAIWorkflowProjectPersistence = (payload: {
       const posterUrl = String(resource.posterUrl || '').trim()
       const posterProjectRelativePath = String(resource.posterProjectRelativePath || '').trim()
 
-      const nextPatch: any = {}
+      const nextPatch: ResourcePatch = {}
 
-      // 清洗资源名称，确保不包含中文
       const hasChineseInName = /[\u4e00-\u9fff]/.test(rawName)
       if (hasChineseInName || !rawName) {
         const safeName = `${kind}_${String(rid).slice(-8)}`
         nextPatch.name = safeName
       }
 
-      // 检测 file:// 协议 URL
       const isFileProtocol = rawUrl.toLowerCase().startsWith('file://')
 
-      // 从 sourcePath 推断 projectRelativePath
       let inferredRelPath = projectRelativePath
       if (!inferredRelPath && sourcePath && projectRoot) {
         const normalizedSource = sourcePath.toLowerCase()
@@ -122,7 +160,6 @@ export const useAIWorkflowProjectPersistence = (payload: {
         }
       }
 
-      // 如果有 projectRelativePath 但没有正确的 dweb URL，或者 URL 是 file:// 协议，则修复
       const needsUrlFromRelPath = (inferredRelPath && (!rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:') || isFileProtocol))
       const needsFileProtocolFix = isFileProtocol
       const needsUrlFix = needsUrlFromRelPath || needsFileProtocolFix
@@ -140,17 +177,21 @@ export const useAIWorkflowProjectPersistence = (payload: {
               sourcePath: sourcePath || undefined,
               projectRelativePath: projectRelativePath || undefined,
             })
-            const asset = (resolved as any)?.ok && (resolved as any)?.resolved ? (resolved as any)?.asset : null
+            const asset = resolved.ok && resolved.resolved ? resolved.asset : null
             if (asset) {
-              const nextUrl = String(asset.url || '').trim()
-              const nextRel = String(asset.projectRelativePath || asset.relativePath || '').trim()
+              const nextUrl = isString(asset.url) ? asset.url.trim() : ''
+              const nextRel = isString(asset.projectRelativePath)
+                ? asset.projectRelativePath.trim()
+                : isString(asset.relativePath)
+                ? asset.relativePath.trim()
+                : ''
               if (nextUrl) {
                 nextPatch.url = payload.toProjectAssetRuntimeUrl
                   ? payload.toProjectAssetRuntimeUrl(pid, nextRel || inferredRelPath, payload.resolveBackendUrl(nextUrl))
                   : payload.resolveBackendUrl(nextUrl)
               }
               if (nextRel) nextPatch.projectRelativePath = nextRel
-              if (asset.absolutePath) nextPatch.sourcePath = String(asset.absolutePath)
+              if (isString(asset.absolutePath)) nextPatch.sourcePath = asset.absolutePath
             }
           } catch {
             failed += 1
@@ -158,7 +199,6 @@ export const useAIWorkflowProjectPersistence = (payload: {
         }
       }
 
-      // 基础资源修复：原本的逻辑
       const needsResourceFix = !rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:') || isFileProtocol
       if (needsResourceFix && !needsUrlFix && (projectRelativePath || sourcePath || rawUrl)) {
         try {
@@ -170,7 +210,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
             sourceUrl: !isFileProtocol ? rawUrl : undefined,
             projectRelativePath: projectRelativePath || undefined,
           })
-          let asset = (resolved as any)?.ok && (resolved as any)?.resolved ? (resolved as any)?.asset : null
+          let asset = resolved.ok && resolved.resolved ? resolved.asset : null
 
           if (!asset && projectRelativePath) {
             const repaired = await payload.blueprintProjectService.repairAsset({
@@ -179,13 +219,17 @@ export const useAIWorkflowProjectPersistence = (payload: {
               name: rawName || undefined,
               projectRelativePath: projectRelativePath || undefined,
             })
-            asset = (repaired as any)?.ok && (repaired as any)?.repaired ? (repaired as any)?.asset : null
+            asset = repaired.ok && repaired.repaired ? repaired.asset : null
           }
 
           if (asset) {
-            const nextUrl = String(asset.url || '').trim()
-            const nextAbs = String(asset.absolutePath || '').trim()
-            const nextRel = String(asset.projectRelativePath || asset.relativePath || '').trim()
+            const nextUrl = isString(asset.url) ? asset.url.trim() : ''
+            const nextAbs = isString(asset.absolutePath) ? asset.absolutePath.trim() : ''
+            const nextRel = isString(asset.projectRelativePath)
+              ? asset.projectRelativePath.trim()
+              : isString(asset.relativePath)
+              ? asset.relativePath.trim()
+              : ''
             if (nextUrl) {
               const resolvedHttpUrl = payload.resolveBackendUrl(nextUrl)
               nextPatch.url = payload.toProjectAssetRuntimeUrl
@@ -200,13 +244,11 @@ export const useAIWorkflowProjectPersistence = (payload: {
         }
       }
 
-      // 海报 URL 同样处理
       const posterIsFileProtocol = posterUrl.toLowerCase().startsWith('file://')
       const needsPosterUrlFix = posterIsFileProtocol
       const posterHasNoValidUrl = !posterUrl || posterUrl.startsWith('blob:') || posterUrl.startsWith('data:')
       const needsPosterFix = kind === 'video' && (posterHasNoValidUrl || needsPosterUrlFix)
       if (needsPosterFix && (posterProjectRelativePath || posterSourcePath || posterUrl)) {
-        // 从 posterSourcePath 推断 posterProjectRelativePath
         let inferredPosterRelPath = posterProjectRelativePath
         if (!inferredPosterRelPath && posterSourcePath && projectRoot) {
           const normalizedSource = posterSourcePath.toLowerCase()
@@ -229,7 +271,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
               sourceUrl: !posterIsFileProtocol ? posterUrl : undefined,
               projectRelativePath: posterProjectRelativePath || undefined,
             })
-            let posterAsset = (posterResolved as any)?.ok && (posterResolved as any)?.resolved ? (posterResolved as any)?.asset : null
+            let posterAsset = posterResolved.ok && posterResolved.resolved ? posterResolved.asset : null
 
             if (!posterAsset && posterProjectRelativePath) {
               const posterRepaired = await payload.blueprintProjectService.repairAsset({
@@ -238,13 +280,17 @@ export const useAIWorkflowProjectPersistence = (payload: {
                 name: `poster_${String(rid).slice(-8)}.jpg`,
                 projectRelativePath: posterProjectRelativePath,
               })
-              posterAsset = (posterRepaired as any)?.ok && (posterRepaired as any)?.repaired ? (posterRepaired as any)?.asset : null
+              posterAsset = posterRepaired.ok && posterRepaired.repaired ? posterRepaired.asset : null
             }
 
             if (posterAsset) {
-              const nextPosterUrl = String(posterAsset.url || '').trim()
-              const nextPosterAbs = String(posterAsset.absolutePath || '').trim()
-              const nextPosterRel = String(posterAsset.projectRelativePath || posterAsset.relativePath || '').trim()
+              const nextPosterUrl = isString(posterAsset.url) ? posterAsset.url.trim() : ''
+              const nextPosterAbs = isString(posterAsset.absolutePath) ? posterAsset.absolutePath.trim() : ''
+              const nextPosterRel = isString(posterAsset.projectRelativePath)
+                ? posterAsset.projectRelativePath.trim()
+                : isString(posterAsset.relativePath)
+                ? posterAsset.relativePath.trim()
+                : ''
               if (nextPosterUrl) {
                 const resolvedPosterHttpUrl = payload.resolveBackendUrl(nextPosterUrl)
                 nextPatch.posterUrl = payload.toProjectAssetRuntimeUrl
@@ -276,9 +322,9 @@ export const useAIWorkflowProjectPersistence = (payload: {
   }
 
   const persistUnstableImagesForSave = async () => {
-    const resourcesById = (payload.store.state as any).resourcesById ?? {}
-    const resourceOrder = Array.isArray((payload.store.state as any).resourceOrder)
-      ? ((payload.store.state as any).resourceOrder as string[])
+    const resourcesById = payload.store.state.resourcesById ?? {}
+    const resourceOrder = Array.isArray(payload.store.state.resourceOrder)
+      ? payload.store.state.resourceOrder
       : Object.keys(resourcesById)
 
     const toUpload: Array<{ id: string; url: string; name: string; projectRelativePath: string; sourcePath: string; localFileKey: string }> = []
@@ -287,13 +333,13 @@ export const useAIWorkflowProjectPersistence = (payload: {
       if (!r) continue
       const kind = String(r.kind ?? '').toLowerCase()
       if (kind !== 'image') continue
-      const url = typeof r.url === 'string' ? String(r.url).trim() : ''
+      const url = isString(r.url) ? String(r.url).trim() : ''
       if (!url) continue
       if (!url.startsWith('data:') && !url.startsWith('blob:')) continue
 
-      const sourcePath = typeof r.sourcePath === 'string' ? String(r.sourcePath).trim() : ''
-      const projectRelativePath = typeof r.projectRelativePath === 'string' ? String(r.projectRelativePath).trim() : ''
-      const localFileKey = typeof r.localFileKey === 'string' ? String(r.localFileKey).trim() : ''
+      const sourcePath = isString(r.sourcePath) ? String(r.sourcePath).trim() : ''
+      const projectRelativePath = isString(r.projectRelativePath) ? String(r.projectRelativePath).trim() : ''
+      const localFileKey = isString(r.localFileKey) ? String(r.localFileKey).trim() : ''
       if (sourcePath || projectRelativePath || localFileKey) continue
 
       const name = String(r.name ?? `image_${rid}`).trim() || `image_${rid}`
@@ -356,16 +402,18 @@ export const useAIWorkflowProjectPersistence = (payload: {
       return false
     }
 
-    const project = res.project ?? {}
+    const project = isRecord(res.project) ? res.project : {}
     const loadedProjectId = Number(project?.id)
     const fallbackLoadedId = Number.isFinite(loadedProjectId) && loadedProjectId > 0 ? loadedProjectId : projectId
     await payload.setSavedProject({ ...project, id: fallbackLoadedId })
 
     const normalizedSnapshot = payload.stripUnrealExportRuntimeFromSnapshot(
-      payload.normalizeSnapshotResourceUrls(res.snapshot, payload.resolveBackendUrl)
+      payload.normalizeSnapshotResourceUrls(res.snapshot as AIWorkflowDraftSnapshot, payload.resolveBackendUrl)
     )
     let runtimeSafeSnapshot = payload.sanitizeBlueprintSnapshotForRuntime(normalizedSnapshot)
-    const projectIdForAssetRepair = Number((project as any)?.id || payload.currentProjectId.value || projectId || 0)
+    const projectIdForAssetRepair = Number(
+      isRecord(project) && isNumber(project.id) ? project.id : payload.currentProjectId.value || projectId || 0
+    )
     if (typeof payload.repairAllProjectAssetsBeforeHydrate === 'function' && Number.isFinite(projectIdForAssetRepair) && projectIdForAssetRepair > 0) {
       try {
         runtimeSafeSnapshot = await payload.repairAllProjectAssetsBeforeHydrate(projectIdForAssetRepair, runtimeSafeSnapshot)
@@ -377,16 +425,16 @@ export const useAIWorkflowProjectPersistence = (payload: {
     payload.resetCurrentUnrealExportNodeRuntimeState()
 
     const recoverySessionId = payload.startRecoverySessionFromCurrentState({
-      nodesById: (payload.store.state as any).nodesById ?? {},
-      nodeOrder: Array.isArray((payload.store.state as any).nodeOrder)
-        ? (payload.store.state as any).nodeOrder
-        : Object.keys((payload.store.state as any).nodesById ?? {}),
-      resourcesById: (payload.store.state as any).resourcesById ?? {},
+      nodesById: payload.store.state.nodesById ?? {},
+      nodeOrder: Array.isArray(payload.store.state.nodeOrder)
+        ? payload.store.state.nodeOrder
+        : Object.keys(payload.store.state.nodesById ?? {}),
+      resourcesById: payload.store.state.resourcesById ?? {},
     })
     if (recoverySessionId) {
       payload.refreshRecoveryUrlReady(recoverySessionId, (resourceId) => {
-        const resource = (payload.store.state as any).resourcesById?.[resourceId]
-        return typeof resource?.url === 'string' ? String(resource.url).trim() : ''
+        const resource = payload.store.state.resourcesById?.[resourceId]
+        return resource && isString(resource.url) ? String(resource.url).trim() : ''
       })
     }
 
@@ -404,7 +452,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
       const st = await payload.recoverLocalResourcesFromHandles({ silent: Boolean(opts?.silent) })
       if (opts?.silent && st && (st.missingHandle || st.permissionDenied)) {
         payload.pushToast(
-          `有本地资源需要重新授权/绑定：缺少句柄 ${st.missingHandle}，未授权 ${st.permissionDenied}。可手动“加载项目”再选择文件夹绑定。`,
+          `有本地资源需要重新授权/绑定：缺少句柄 ${st.missingHandle}，未授权 ${st.permissionDenied}。可手动"加载项目"再选择文件夹绑定。`,
           'warn'
         )
       }
@@ -414,12 +462,12 @@ export const useAIWorkflowProjectPersistence = (payload: {
 
     if (recoverySessionId) {
       payload.refreshRecoveryUrlReady(recoverySessionId, (resourceId) => {
-        const resource = (payload.store.state as any).resourcesById?.[resourceId]
-        return typeof resource?.url === 'string' ? String(resource.url).trim() : ''
+        const resource = payload.store.state.resourcesById?.[resourceId]
+        return resource && isString(resource.url) ? String(resource.url).trim() : ''
       })
       payload.finalizeRecoverySessionAfterUrlRecoveryAttempt(recoverySessionId, (resourceId) => {
-        const resource = (payload.store.state as any).resourcesById?.[resourceId]
-        return typeof resource?.url === 'string' ? String(resource.url).trim() : ''
+        const resource = payload.store.state.resourcesById?.[resourceId]
+        return resource && isString(resource.url) ? String(resource.url).trim() : ''
       })
     }
 
@@ -455,7 +503,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
     const wasUnsavedProject = !payload.currentProjectId.value
 
     if (wasUnsavedProject) {
-      if (!silent) payload.pushToast('请先通过“新建项目”选择项目文件夹后再保存。', 'warn')
+      if (!silent) payload.pushToast('请先通过"新建项目"选择项目文件夹后再保存。', 'warn')
       return false
     }
 
@@ -498,7 +546,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
       return false
     }
 
-    const project = (res as any).project ?? {}
+    const project = isRecord(res.project) ? res.project : {}
     const savedProjectId = Number(project?.id)
     const fallbackId = Number.isFinite(savedProjectId) && savedProjectId > 0 ? savedProjectId : payload.currentProjectId.value
     await payload.setSavedProject({ ...project, id: fallbackId }, nextName)
@@ -560,9 +608,12 @@ export const useAIWorkflowProjectPersistence = (payload: {
       return
     }
 
-    const fallbackId = Number(projects[0]?.id || 0)
+    const fallbackId = Number((projects[0] as Record<string, unknown>)?.id || 0)
     const targetId =
-      id && projects.some((p: any) => Number(p?.id || 0) === id)
+      id && projects.some((p: unknown) => {
+        const rec = isRecord(p) ? p : {}
+        return Number(rec?.id || 0) === id
+      })
         ? id
         : (Number.isFinite(fallbackId) && fallbackId > 0 ? fallbackId : null)
 

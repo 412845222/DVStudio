@@ -346,15 +346,18 @@
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { componentTemplateApi, validateComponentTemplate } from '../../../core/components'
+import type { ComponentTemplate, InstantiateTemplateResult } from '../../../core/components/types'
 import { ComponentLibraryService } from '../../../network/ComponentLibraryService'
 import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners } from '../../../core/scene'
+import type { VideoSceneLayer, VideoSceneTreeNode } from '../../../core/scene'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 import { stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import { TimelineStore } from '../../../store/timeline'
 import { VideoStudioStore } from '../../../store/videostudio'
 import { SubtitleAIService } from '../../../network/SubtitleAIService'
-import type { AgentToUiMessage } from '../../../core/agentToUI'
+import type { AgentToUiMessage, AgentToUiTaskStatusMessage, AgentToUiErrorMessage, AgentToUiSubtitleSummaryDeltaMessage, AgentToUiTextMessage, AgentToUiChatMessage, AgentToUiComponentTemplateMessage } from '../../../core/agentToUI'
+import { isRecord as isRecordGuard, isArray as isArrayGuard, isString as isStringGuard, isNumber as isNumberGuard } from '../../../types/utils'
 import { DwebCanvasGLKey } from '../VideoSceneRuntime'
 import { flyThumbnailPng } from '../parts/flyThumbnail'
 import {
@@ -362,7 +365,13 @@ import {
 	createEmptySubtitleSummaryState,
 	type SubtitleSummaryState,
 	type SubtitleTemplateSuggestion,
+	type SubtitleOutlineItem,
+	type SubtitleUnderstanding,
+	type SubtitleSegments,
+	type SubtitleStyle,
+	type SubtitlePlanItem,
 } from '../subtitleAI/subtitleSummaryState'
+import type { SubtitleCue, SubtitleCueRange } from '../../../core/timeline/types'
 
 defineOptions({ name: 'AiSubtitleUnderstandingPanel' })
 
@@ -383,6 +392,106 @@ type ChatMessage = {
 	applied?: boolean
 }
 
+type SegmentItem = SubtitleOutlineItem & { title?: string }
+
+type LooseTemplateNode = {
+	localId?: string
+	type?: string
+	name?: string
+	parentLocalId?: string
+	transform?: Record<string, unknown>
+	props?: Record<string, unknown>
+	[key: string]: unknown
+}
+
+type RepairTemplateParam = {
+	key?: string
+	name?: string
+	label?: string
+	type?: string
+	default?: unknown
+	[key: string]: unknown
+}
+
+type RepairTemplateNode = {
+	localId?: string
+	type?: string
+	name?: string
+	parentLocalId?: string
+	transform?: Record<string, unknown>
+	props?: Record<string, unknown>
+	[key: string]: unknown
+}
+
+type RepairTemplate = {
+	schemaVersion?: number
+	templateId?: string
+	name?: string
+	rootLocalId?: string
+	params?: RepairTemplateParam[]
+	nodes?: RepairTemplateNode[]
+	[key: string]: unknown
+}
+
+type LooseComponentTemplate = {
+	schemaVersion?: unknown
+	templateId?: string
+	name?: string
+	category?: string
+	description?: unknown
+	params?: unknown[]
+	nodes?: LooseTemplateNode[]
+	rootLocalId?: string
+	bindings?: Record<string, unknown>
+	[key: string]: unknown
+}
+
+type LooseSavedComponent = {
+	id?: unknown
+	createdAt?: unknown
+	templateId?: unknown
+	name?: unknown
+	template?: unknown
+	savedAt?: unknown
+	thumbAssetId?: unknown
+	thumbDataUrl?: unknown
+	thumbUrl?: unknown
+}
+
+type ProgressBarNodeChild = {
+	id: string
+	name: string
+	category: 'user'
+	userType: 'rect' | 'text'
+	transform: Record<string, number>
+	props: Record<string, unknown>
+}
+
+type LooseSceneNode = {
+	id: string
+	name: string
+	category: 'user'
+	userType: 'rect' | 'text'
+	transform: Record<string, number>
+	props: Record<string, unknown>
+	children?: LooseSceneNode[]
+}
+
+type TemplateParam = {
+	key?: string
+	name?: string
+	label?: string
+	type?: string
+	default?: unknown
+	[key: string]: unknown
+}
+
+type SummaryCacheStorage = Record<string, SummaryCacheEntry>
+
+const isRecord = (v: unknown): v is Record<string, unknown> => isRecordGuard(v)
+const isArray = isArrayGuard
+const isString = isStringGuard
+
 const summary = ref<SubtitleSummaryState>(createEmptySubtitleSummaryState())
 
 const paletteEntries = computed(() => {
@@ -393,12 +502,18 @@ const paletteEntries = computed(() => {
 		.map(([k, v]) => [k, v] as [string, string])
 })
 
-const cues = computed(() => (props.layerId ? (TimelineStore.state.subtitleCuesByLayer?.[props.layerId] ?? []) : []))
-const cueRanges = computed(() => (props.layerId ? (TimelineStore.state.subtitleCueRangesByLayer?.[props.layerId] ?? []) : []))
+const cues = computed<SubtitleCue[]>(() => (props.layerId ? (TimelineStore.state.subtitleCuesByLayer?.[props.layerId] ?? []) : []))
+const cueRanges = computed<SubtitleCueRange[]>(() => (props.layerId ? (TimelineStore.state.subtitleCueRangesByLayer?.[props.layerId] ?? []) : []))
 
-const segmentsItems = computed(() => {
-	const items = (summary.value as any)?.segments?.items
-	return Array.isArray(items) ? (items as any[]) : ([] as any[])
+const segmentsItems = computed<SegmentItem[]>(() => {
+	const items = summary.value.segments?.items
+	return Array.isArray(items) ? items.map((it): SegmentItem => ({
+		title: isString(it?.title) ? it.title : '',
+		startCue: isNumberGuard(it?.startCue) ? it.startCue : 0,
+		endCue: isNumberGuard(it?.endCue) ? it.endCue : 0,
+		startTimeMs: isNumberGuard(it?.startTimeMs) ? it.startTimeMs : null,
+		endTimeMs: isNumberGuard(it?.endTimeMs) ? it.endTimeMs : null,
+	})) : []
 })
 
 type Phase = 'idle' | 'checking' | 'summarizing' | 'ready' | 'chatting' | 'error'
@@ -532,13 +647,17 @@ const taskStatusLabel = computed(() => {
 
 const canGenerateStyleAdvice = computed(() => {
 	const u = summary.value?.understanding
-	const ok = !!String((u as any)?.summary || '').trim() || (Array.isArray((u as any)?.points) && (u as any).points.length)
+	const hasSummary = !!String(u?.summary || '').trim()
+	const hasPoints = Array.isArray(u?.points) && u.points.length > 0
+	const ok = hasSummary || hasPoints
 	return summaryReady.value && ok && !busy.value && !localBusy.value
 })
 
 const canGenerateTemplateSuggestions = computed(() => {
 	const u = summary.value?.understanding
-	const ok = !!String((u as any)?.summary || '').trim() || (Array.isArray((u as any)?.points) && (u as any).points.length)
+	const hasSummary = !!String(u?.summary || '').trim()
+	const hasPoints = Array.isArray(u?.points) && u.points.length > 0
+	const ok = hasSummary || hasPoints
 	return summaryReady.value && ok && !busy.value && !localBusy.value
 })
 
@@ -553,14 +672,13 @@ type SummaryCacheEntry = {
 	cachedAt: string
 }
 
-const computeCuesHash = (cues: any[]) => {
-	const s = cues
+const computeCuesHash = (cuesList: SubtitleCue[]) => {
+	const s = cuesList
 		.map((c) => {
 			const t = typeof c?.text === 'string' ? c.text : ''
-			return `${typeof c?.start === 'number' ? c.start : ''}|${typeof c?.end === 'number' ? c.end : ''}|${t}`
+			return `${typeof c?.startMs === 'number' ? c.startMs : ''}|${typeof c?.endMs === 'number' ? c.endMs : ''}|${t}`
 		})
 		.join('\n')
-	// FNV-1a 32-bit
 	let h = 0x811c9dc5
 	for (let i = 0; i < s.length; i++) {
 		h ^= s.charCodeAt(i)
@@ -573,13 +691,13 @@ const loadSummaryCache = (layerId: string): SummaryCacheEntry | null => {
 	try {
 		const raw = localStorage.getItem(SUMMARY_CACHE_KEY)
 		if (!raw) return null
-		const parsed = JSON.parse(raw)
-		if (!parsed || typeof parsed !== 'object') return null
-		const hit = (parsed as any)[layerId]
-		if (!hit || typeof hit !== 'object') return null
-		if (typeof hit.layerId !== 'string' || hit.layerId !== layerId) return null
-		if (typeof hit.cuesHash !== 'string' || !hit.cuesHash) return null
-		if (!hit.summary || typeof hit.summary !== 'object') return null
+		const parsed: unknown = JSON.parse(raw)
+		if (!isRecord(parsed)) return null
+		const hit = parsed[layerId]
+		if (!isRecord(hit)) return null
+		if (!isString(hit.layerId) || hit.layerId !== layerId) return null
+		if (!isString(hit.cuesHash) || !hit.cuesHash) return null
+		if (!isRecord(hit.summary)) return null
 		return hit as SummaryCacheEntry
 	} catch {
 		return null
@@ -588,12 +706,15 @@ const loadSummaryCache = (layerId: string): SummaryCacheEntry | null => {
 
 const saveSummaryCache = (layerId: string) => {
 	try {
-		const cuesHash = computeCuesHash(cues.value as any[])
+		const cuesHash = computeCuesHash(cues.value)
 		const entry: SummaryCacheEntry = { layerId, cuesHash, summary: summary.value, cachedAt: new Date().toISOString() }
 		const raw = localStorage.getItem(SUMMARY_CACHE_KEY)
-		const parsed = raw ? JSON.parse(raw) : {}
-		const next = parsed && typeof parsed === 'object' ? parsed : {}
-		;(next as any)[layerId] = entry
+		let parsed: Record<string, unknown> = {}
+		if (raw) {
+			const parsedRaw: unknown = JSON.parse(raw)
+			if (isRecord(parsedRaw)) parsed = parsedRaw
+		}
+		const next: SummaryCacheStorage = { ...parsed as SummaryCacheStorage, [layerId]: entry }
 		localStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify(next))
 	} catch {
 		// ignore
@@ -604,10 +725,10 @@ const clearSummaryCache = (layerId: string) => {
 	try {
 		const raw = localStorage.getItem(SUMMARY_CACHE_KEY)
 		if (!raw) return
-		const parsed = JSON.parse(raw)
-		if (!parsed || typeof parsed !== 'object') return
-		if (!(layerId in (parsed as any))) return
-		const next = { ...(parsed as any) }
+		const parsed: unknown = JSON.parse(raw)
+		if (!isRecord(parsed)) return
+		if (!(layerId in parsed)) return
+		const next: Record<string, unknown> = { ...parsed }
 		delete next[layerId]
 		localStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify(next))
 	} catch {
@@ -676,35 +797,38 @@ const buildSummaryNarrative = (s: SubtitleSummaryState): string => {
 		}
 	}
 
-	const items = Array.isArray(s.outline?.items) ? s.outline.items : []
-	if (items.length) {
+	const outlineItems = Array.isArray(s.outline?.items) ? s.outline.items : []
+	if (outlineItems.length) {
 		lines.push('')
 		lines.push('【大纲】')
-		items.forEach((it, i) => {
-			const title = typeof it?.title === 'string' ? it.title.trim() : ''
-			const sc = (it as any)?.startCue
-			const ec = (it as any)?.endCue
+		outlineItems.forEach((it, i) => {
+			const title = isString(it?.title) ? it.title.trim() : ''
+			const sc = it?.startCue
+			const ec = it?.endCue
 			const range = `${typeof sc === 'number' ? sc : '?'}-${typeof ec === 'number' ? ec : '?'}`
 			lines.push(`${i + 1}. ${title || '（未命名）'}（cue ${range}）`)
 		})
 	}
 
-	const segs = Array.isArray((s as any)?.segments?.items) ? (((s as any).segments.items as any[]) ?? []) : []
+	const segs = Array.isArray(s.segments?.items) ? s.segments.items : []
 	if (segs.length) {
 		lines.push('')
 		lines.push('【段落标题】')
 		segs.forEach((it, i) => {
-			const title = typeof it?.title === 'string' ? it.title.trim() : ''
-			const sc = (it as any)?.startCue
-			const ec = (it as any)?.endCue
+			const title = isString(it?.title) ? it.title.trim() : ''
+			const sc = it?.startCue
+			const ec = it?.endCue
 			const range = `${typeof sc === 'number' ? sc : '?'}-${typeof ec === 'number' ? ec : '?'}`
 			lines.push(`${i + 1}. ${title || '（未命名）'}（cue ${range}）`)
 		})
 	}
 
 	const st = s.style
-	const notes = Array.isArray(st?.notes) ? st.notes.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : []
-	const pal = st?.palette && typeof st.palette === 'object' ? Object.entries(st.palette).filter(([k, v]) => k.trim() && typeof v === 'string' && v.trim()) : []
+	const notes = Array.isArray(st?.notes) ? st.notes.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim()) : []
+	const pal = st?.palette && isRecord(st.palette) ? Object.entries(st.palette).filter((entry): entry is [string, string] => {
+		const [k, v] = entry
+		return typeof k === 'string' && !!k.trim() && typeof v === 'string' && !!v.trim()
+	}) : []
 	if (notes.length || pal.length) {
 		lines.push('')
 		lines.push('【风格】')
@@ -721,10 +845,10 @@ const buildSummaryNarrative = (s: SubtitleSummaryState): string => {
 		lines.push('')
 		lines.push('【组件建议】')
 		for (const t of templates) {
-			const name = typeof (t as any)?.name === 'string' ? String((t as any).name).trim() : ''
-			const tid = typeof (t as any)?.templateId === 'string' ? String((t as any).templateId).trim() : ''
+			const name = isString(t?.name) ? String(t.name).trim() : ''
+			const tid = isString(t?.templateId) ? String(t.templateId).trim() : ''
 			lines.push(`- ${name || tid || '（未命名）'}${tid ? `（${tid}）` : ''}`)
-			const desc = Array.isArray((t as any)?.description) ? (t as any).description : []
+			const desc = Array.isArray(t?.description) ? t.description : []
 			for (const d of desc) if (typeof d === 'string' && d.trim()) lines.push(`  - ${d.trim()}`)
 		}
 	}
@@ -734,10 +858,10 @@ const buildSummaryNarrative = (s: SubtitleSummaryState): string => {
 		lines.push('')
 		lines.push('【计划】')
 		plans.forEach((p, i) => {
-			const title = typeof (p as any)?.title === 'string' ? String((p as any).title).trim() : ''
-			const ref = typeof (p as any)?.templateRef === 'string' ? String((p as any).templateRef).trim() : ''
-			const sc = (p as any)?.start?.cueIndex
-			const ec = (p as any)?.end?.cueIndex
+			const title = isString(p?.title) ? String(p.title).trim() : ''
+			const ref = isString(p?.templateRef) ? String(p.templateRef).trim() : ''
+			const sc = p?.start?.cueIndex
+			const ec = p?.end?.cueIndex
 			const range = `${typeof sc === 'number' ? sc : '?'}-${typeof ec === 'number' ? ec : '?'}`
 			lines.push(`${i + 1}. ${title || '（未命名）'} → ${ref || '（未指定模板）'}（cue ${range}）`)
 		})
@@ -750,7 +874,7 @@ const onSegmentTitleInput = (idx: number, titleRaw: string) => {
 	const nextTitle = String(titleRaw ?? '').trim()
 	const base = segmentsItems.value
 	if (!base.length) return
-	const nextItems = base.map((it: any, i: number) => {
+	const nextItems: SegmentItem[] = base.map((it, i) => {
 		if (i !== idx) return it
 		return { ...it, title: nextTitle }
 	})
@@ -765,13 +889,12 @@ const canGenerateProgressBar = computed(() => {
 })
 
 const buildLayersForStageSnapshot = () => {
-	const stageLayers = cloneJsonSafe(store.state.layers)
-	let next = stageLayers as any
+	let next: VideoSceneLayer[] = cloneJsonSafe(store.state.layers) as VideoSceneLayer[]
 	const kinds = TimelineStore.state.layerKindById ?? {}
 	for (const [layerId, kind] of Object.entries(kinds)) {
 		if (kind !== 'subtitle') continue
 		try {
-			next = stripSubtitleTextContentFromStageLayers(next as any, layerId)
+			next = stripSubtitleTextContentFromStageLayers(next, layerId)
 		} catch {
 			// ignore
 		}
@@ -800,10 +923,11 @@ const generateProgressBarLayer = async () => {
 			// ignore
 		}
 
-		const palette = summary.value.style?.palette && typeof summary.value.style.palette === 'object' ? summary.value.style.palette : {}
-		const bg = typeof (palette as any)?.neutral === 'string' ? String((palette as any).neutral) : '#222222'
-		const fg = typeof (palette as any)?.primary === 'string' ? String((palette as any).primary) : '#3aa1ff'
-		const text = typeof (palette as any)?.text === 'string' ? String((palette as any).text) : '#ffffff'
+		const paletteRec = summary.value.style?.palette
+		const palette = isRecord(paletteRec) ? paletteRec : {}
+		const bg = isString(palette.neutral) ? palette.neutral : '#222222'
+		const fg = isString(palette.primary) ? palette.primary : '#3aa1ff'
+		const text = isString(palette.text) ? palette.text : '#ffffff'
 
 		// IMPORTANT: stage/world coordinates are center-origin (0,0 at stage center), and y grows downward.
 		// Root must be a rect (no group/base node). It spans full stage width.
@@ -818,23 +942,21 @@ const generateProgressBarLayer = async () => {
 		const playedId = `${rootId}-played`
 
 		// Compute segment time bounds from cues/timeMs.
-		const cuesArr = cues.value as any[]
-		const startMs = typeof cuesArr?.[0]?.startMs === 'number' ? (cuesArr[0].startMs as number) : 0
-		const endMs =
-			typeof cuesArr?.[cuesArr.length - 1]?.endMs === 'number'
-				? (cuesArr[cuesArr.length - 1].endMs as number)
-				: Math.max(1, startMs + 1)
+		const cuesArr = cues.value
+		const startMs = cuesArr.length > 0 && typeof cuesArr[0]?.startMs === 'number' ? cuesArr[0].startMs : 0
+		const lastCue = cuesArr.length > 0 ? cuesArr[cuesArr.length - 1] : null
+		const endMs = lastCue && typeof lastCue.endMs === 'number' ? lastCue.endMs : Math.max(1, startMs + 1)
 		const durMs = Math.max(1, endMs - startMs)
-		const getItemStartMs = (it: any): number | null => {
-			if (typeof it?.startTimeMs === 'number') return it.startTimeMs as number
-			const sc = typeof it?.startCue === 'number' ? (it.startCue as number) : null
-			if (sc != null && cuesArr?.[sc] && typeof cuesArr[sc].startMs === 'number') return cuesArr[sc].startMs as number
+		const getItemStartMs = (it: SegmentItem): number | null => {
+			if (typeof it.startTimeMs === 'number') return it.startTimeMs
+			const sc = it.startCue
+			if (sc != null && cuesArr[sc] && typeof cuesArr[sc].startMs === 'number') return cuesArr[sc].startMs
 			return null
 		}
-		const getItemEndMs = (it: any): number | null => {
-			if (typeof it?.endTimeMs === 'number') return it.endTimeMs as number
-			const ec = typeof it?.endCue === 'number' ? (it.endCue as number) : null
-			if (ec != null && cuesArr?.[ec] && typeof cuesArr[ec].endMs === 'number') return cuesArr[ec].endMs as number
+		const getItemEndMs = (it: SegmentItem): number | null => {
+			if (typeof it.endTimeMs === 'number') return it.endTimeMs
+			const ec = it.endCue
+			if (ec != null && cuesArr[ec] && typeof cuesArr[ec].endMs === 'number') return cuesArr[ec].endMs
 			return null
 		}
 		const toRatio01 = (ms: number) => Math.max(0, Math.min(1, (ms - startMs) / durMs))
@@ -846,21 +968,22 @@ const generateProgressBarLayer = async () => {
 		const segmentIds: string[] = []
 		const titleIds: string[] = []
 		const markerIds: string[] = []
-		const segmentRectChildren: any[] = []
-		const titleChildren: any[] = []
-		const markerChildren: any[] = []
-		const segmentsForSpec: any[] = []
+		const segmentRectChildren: ProgressBarNodeChild[] = []
+		const titleChildren: ProgressBarNodeChild[] = []
+		const markerChildren: ProgressBarNodeChild[] = []
+		const segmentsForSpec: Array<{ startFrame: number; endFrame: number; title: string }> = []
 		const playedKeyframes: Array<{ frame: number; width: number }> = []
 		let lastEndPx = 0
 		const markerSize = 6
 		const baseFontSize = Math.max(12, Math.min(28, Math.round(barH * 0.42)))
 		for (let i = 0; i < items.length; i++) {
-			const it: any = items[i]
-			const title = typeof it?.title === 'string' ? String(it.title).trim() : ''
+			const it = items[i]
+			const title = isString(it?.title) ? String(it.title).trim() : ''
 			const sMs = getItemStartMs(it)
 			if (sMs == null) continue
 			const eMsRaw = getItemEndMs(it)
-			const nextStartMs = i + 1 < items.length ? getItemStartMs(items[i + 1] as any) : null
+			const nextItem = i + 1 < items.length ? items[i + 1] : null
+			const nextStartMs = nextItem ? getItemStartMs(nextItem) : null
 			const eMs =
 				typeof eMsRaw === 'number'
 					? eMsRaw
@@ -943,7 +1066,22 @@ const generateProgressBarLayer = async () => {
 			playedKeyframes.push({ frame: computeFrameFromMs(sMs), width: startPx })
 		}
 
-		const root: any = {
+		const playedOverlayChild: ProgressBarNodeChild = {
+			id: playedId,
+			name: 'Played Overlay',
+			category: 'user',
+			userType: 'rect',
+			transform: { x: barLeftLocalX, y: 0, width: 0, height: barH, rotation: 0, opacity: 1, pivotX: 0, pivotY: 0.5 },
+			props: {
+				fillColor: fg,
+				fillOpacity: 0.28,
+				borderColor: fg,
+				borderOpacity: 0,
+				borderWidth: 0,
+				cornerRadius: 0,
+			},
+		}
+		const root: LooseSceneNode = {
 			id: rootId,
 			name: 'ProgressBar',
 			category: 'user',
@@ -959,22 +1097,7 @@ const generateProgressBarLayer = async () => {
 			},
 			children: [
 				...segmentRectChildren,
-				{
-					id: playedId,
-					name: 'Played Overlay',
-					category: 'user',
-					userType: 'rect',
-					// overlay grows from left -> right inside the root. Keep height equal to background.
-					transform: { x: barLeftLocalX, y: 0, width: 0, height: barH, rotation: 0, opacity: 1, pivotX: 0, pivotY: 0.5 },
-					props: {
-						fillColor: fg,
-						fillOpacity: 0.28,
-						borderColor: fg,
-						borderOpacity: 0,
-						borderWidth: 0,
-						cornerRadius: 0,
-					},
-				},
+				playedOverlayChild,
 				...markerChildren,
 				...titleChildren,
 			],
@@ -1074,20 +1197,33 @@ const syncSummaryNarrative = (assistantId: string) => {
 }
 
 
+const safeGetString = (obj: unknown, key: string): string => {
+	if (!isRecord(obj)) return ''
+	const v = obj[key]
+	return typeof v === 'string' ? v : ''
+}
+
+const safeGetArray = <T>(obj: unknown, key: string, pred: (x: unknown) => x is T): T[] => {
+	if (!isRecord(obj)) return []
+	const v = obj[key]
+	return Array.isArray(v) ? v.filter(pred) : []
+}
+
+type PanelPatchTarget = 'style' | 'templates' | 'both' | 'none'
+
 const handleAgentMsg = (
 	m: AgentToUiMessage,
 	opts: { target: 'summary' | 'chat'; assistantId?: string; applyToSummary?: boolean }
 ) => {
 	if (m.type === 'agentToUi/taskStatus') {
-		const msg = (m as any)?.payload?.message
-		const ph = (m as any)?.payload?.phase
+		const { payload } = m as unknown as { payload: { phase?: string; message?: string } }
+		const msg = payload.message
+		const ph = payload.phase
 		if (typeof ph === 'string' && ph.trim()) taskPhase.value = ph.trim()
 		if (typeof msg === 'string' && msg.trim()) {
 			taskPhaseMessage.value = msg.trim()
-			// Keep legacy top status bar behavior.
 			statusText.value = msg.trim()
 		}
-		// Fast-path: mark panel ready once understanding is finished.
 		if (opts.target === 'summary' && ph === 'understanding_done') {
 			if (!summaryReady.value) summaryReady.value = true
 			if (phase.value === 'summarizing') phase.value = 'ready'
@@ -1105,20 +1241,21 @@ const handleAgentMsg = (
 		return
 	}
 	if (m.type === 'agentToUi/error') {
-		const msg = (m as any)?.payload?.message
+		const { payload } = m as AgentToUiErrorMessage
+		const msg = payload.message
 		errorText.value = typeof msg === 'string' && msg.trim() ? msg.trim() : 'AI 请求失败'
 		phase.value = 'error'
 		return
 	}
 	if (m.type === 'agentToUi/subtitleSummaryDelta') {
-		const section = (m as any)?.payload?.section
-		const data = (m as any)?.payload?.data
+		const { payload } = m as unknown as { payload: { section: string; data: unknown } }
+		const section = payload.section
+		const data: unknown = payload.data
 		if (typeof section === 'string' && section.trim()) {
 			const applyToSummary = opts.applyToSummary !== false
 			if (applyToSummary) summary.value = applySubtitleSummaryDelta(summary.value, { section, data })
 			if (opts.target === 'summary' && section === 'understanding') {
-				// Defensive: if server didn't send understanding_done taskStatus, still unblock the UI.
-				const s = typeof (data as any)?.summary === 'string' ? String((data as any).summary).trim() : ''
+				const s = safeGetString(data, 'summary').trim()
 				if (s && phase.value === 'summarizing') {
 					if (!summaryReady.value) summaryReady.value = true
 					phase.value = 'ready'
@@ -1131,49 +1268,53 @@ const handleAgentMsg = (
 			}
 			if (opts.target === 'chat' && typeof opts.assistantId === 'string' && opts.assistantId) {
 				if (section === 'understanding') {
-					const s = typeof (data as any)?.summary === 'string' ? String((data as any).summary).trim() : ''
-					const pts = Array.isArray((data as any)?.points) ? ((data as any).points as any[]).filter((x) => typeof x === 'string' && x.trim()).map((x) => String(x).trim()) : []
+					const s = safeGetString(data, 'summary').trim()
+					const pts = safeGetArray(data, 'points', (x): x is string => typeof x === 'string' && !!x.trim()).map(x => x.trim())
 					let out = ''
 					if (s) out += `【字幕整体理解】\n${s}\n`
 					if (pts.length) out += `\n【要点】\n${pts.map((x) => `- ${x}`).join('\n')}\n`
 					if (out) appendAssistantText(opts.assistantId, out + '\n')
 				}
 				if (section === 'style') {
-					const notes = Array.isArray((data as any)?.notes) ? ((data as any).notes as any[]).filter((x) => typeof x === 'string' && x.trim()).map((x) => String(x).trim()) : []
+					const notes = safeGetArray(data, 'notes', (x): x is string => typeof x === 'string' && !!x.trim()).map(x => x.trim())
 					if (notes.length) {
 						appendAssistantText(opts.assistantId, `【配色与风格建议】\n${notes.map((x) => `- ${x}`).join('\n')}\n\n`)
 					}
 				}
 				if (section === 'templates') {
-					const list = Array.isArray(data) ? (data as any[]) : []
+					const list: unknown[] = Array.isArray(data) ? data : []
 					if (list.length) {
 						const lines: string[] = ['【可复用高级组件描述】']
 						for (const t of list.slice(0, 8)) {
-							const name = typeof t?.name === 'string' ? String(t.name).trim() : ''
-							const tid = typeof t?.templateId === 'string' ? String(t.templateId).trim() : ''
+							const name = safeGetString(t, 'name').trim()
+							const tid = safeGetString(t, 'templateId').trim()
 							lines.push(`- ${name || tid || '（未命名）'}${tid ? `（${tid}）` : ''}`)
-							const desc = Array.isArray(t?.description) ? (t.description as any[]) : []
-							for (const d of desc.slice(0, 4)) if (typeof d === 'string' && d.trim()) lines.push(`  - ${String(d).trim()}`)
+							const desc = safeGetArray(t, 'description', (x): x is string => typeof x === 'string' && !!x.trim())
+							for (const d of desc.slice(0, 4)) if (d.trim()) lines.push(`  - ${d.trim()}`)
 						}
 						appendAssistantText(opts.assistantId, lines.join('\n') + '\n\n')
 					}
 				}
 			}
-			if (opts.target === 'chat' && section === 'style' && data && typeof data === 'object') {
-				const palette = (data as any).palette
-				if (palette && typeof palette === 'object') {
-					const entries = Object.entries(palette)
-						.filter(([k, v]) => typeof k === 'string' && k.trim() && typeof v === 'string' && v.trim())
+			if (opts.target === 'chat' && section === 'style' && isRecord(data)) {
+				const paletteRaw: unknown = data.palette
+				if (isRecord(paletteRaw)) {
+					const entries = Object.entries(paletteRaw)
+						.filter((entry): entry is [string, string] => {
+							const [k, v] = entry
+							return typeof k === 'string' && !!k.trim() && typeof v === 'string' && !!v.trim()
+						})
 						.map(([k, v]) => [k, v] as [string, string])
 					if (entries.length) {
 						const tipText = '我生成了一套新的配色方案，请确认是否应用。'
 						const tryFillId = typeof opts.assistantId === 'string' ? opts.assistantId : ''
 						const idx = tryFillId ? messages.value.findIndex((x) => x.id === tryFillId) : -1
+						const palette: Record<string, string> = Object.fromEntries(entries)
 						if (idx >= 0) {
 							const mm = messages.value[idx]
 							mm.text = tipText
 							mm.paletteEntries = entries
-							mm.styleData = { palette: palette as any }
+							mm.styleData = { palette }
 							void scrollToBottom()
 						} else {
 							messages.value.push({
@@ -1181,7 +1322,7 @@ const handleAgentMsg = (
 								role: 'assistant',
 								text: tipText,
 								paletteEntries: entries,
-								styleData: { palette: palette as any },
+								styleData: { palette },
 							})
 							void scrollToBottom()
 						}
@@ -1192,10 +1333,9 @@ const handleAgentMsg = (
 		return
 	}
 	if (m.type === 'agentToUi/text') {
-		const delta = (m as any)?.payload?.text
+		const { payload } = m as AgentToUiTextMessage
+		const delta = payload.text
 		if (typeof delta !== 'string' || !delta) return
-		// Align with AIChatDialog: extract human-readable content even if JSON blobs are streamed.
-		// If it's pure structured JSON (and not a recognized envelope), suppress it.
 		const readable = extractReadableText(delta)
 		if (!readable) return
 		const targetId =
@@ -1208,17 +1348,16 @@ const handleAgentMsg = (
 		return
 	}
 	if (m.type === 'agentToUi/chatMessage' && (opts.target === 'chat' || opts.target === 'summary')) {
-		const c = (m as any)?.payload?.content
+		const { payload, meta } = m as AgentToUiChatMessage & { meta?: Record<string, unknown> }
+		const c = payload.content
 		if (typeof c !== 'string' || !c.trim()) return
-		const meta = (m as any)?.meta
 		const requiresApply = meta?.requiresApply === true
-		const panelPatch = requiresApply ? meta?.panelPatch : null
+		const panelPatch: unknown = requiresApply ? meta?.panelPatch : null
 		const panelPatchTargetRaw = String(meta?.panelPatchTarget || '').trim()
-		const panelPatchTarget =
+		const panelPatchTarget: PanelPatchTarget =
 			panelPatchTargetRaw === 'style' || panelPatchTargetRaw === 'templates' || panelPatchTargetRaw === 'both' || panelPatchTargetRaw === 'none'
-				? (panelPatchTargetRaw as any)
-				: ('none' as any)
-		// Align with AIChatDialog: suppress structured JSON, but keep human-readable text.
+				? panelPatchTargetRaw
+				: 'none'
 		const safeContent = extractReadableText(c)
 		if (!safeContent) return
 		const tryFillId =
@@ -1232,7 +1371,7 @@ const handleAgentMsg = (
 			const mm = messages.value[idx]
 			if (!String(mm.text || '').trim()) pushStreamText(mm.id, safeContent)
 			if (panelPatch && typeof panelPatch === 'object') {
-				mm.panelPatch = panelPatch
+				mm.panelPatch = panelPatch as { style?: unknown; templates?: unknown }
 				mm.panelPatchTarget = panelPatchTarget
 			}
 			void scrollToBottom()
@@ -1243,7 +1382,7 @@ const handleAgentMsg = (
 			id,
 			role: 'assistant',
 			text: '',
-			panelPatch: panelPatch && typeof panelPatch === 'object' ? panelPatch : undefined,
+			panelPatch: panelPatch && typeof panelPatch === 'object' ? (panelPatch as { style?: unknown; templates?: unknown }) : undefined,
 			panelPatchTarget,
 		})
 		pushStreamText(id, safeContent)
@@ -1326,8 +1465,6 @@ const pushStreamText = (assistantId: string, text: string) => {
 	typingQueue += text
 	ensureTyping(assistantId)
 }
-
-const isRecord = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v)
 
 const toSafeKey = (s: string) =>
 	String(s || '')

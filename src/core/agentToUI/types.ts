@@ -126,6 +126,7 @@ export type AgentToUiApplyFilterPayload = {
 	 */
 	target: 'selection' | 'nodeId'
 	nodeId?: string
+	layerId?: string
 	/**
 	 * append: 追加到 filters 列表；replace: 直接覆盖 filters。
 	 */

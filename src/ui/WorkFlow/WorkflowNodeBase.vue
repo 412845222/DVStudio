@@ -289,7 +289,7 @@ const props = defineProps<{
   nodeChatNodeType?: WorkflowNodeChatType | null;
   nodeChatDraft?: string;
   nodeChatSubmitting?: boolean;
-  nodeChatParams?: Record<string, any>;
+  nodeChatParams?: Record<string, unknown>;
   inputParamPreviewRefs?: InputParamPreviewRef[];
   nodeGenerationTask?: WorkflowNodeGenerationTask | null;
   anchorCompatibility?: Record<string, boolean | null>;
@@ -326,7 +326,7 @@ const emit = defineEmits<{
     payload: { width: number; height: number; worldX: number; worldY: number }
   ): void;
   (e: "node-chat-update-draft", value: string): void;
-  (e: "node-chat-update-params", value: Record<string, any>): void;
+  (e: "node-chat-update-params", value: Record<string, unknown>): void;
   (e: "node-chat-close"): void;
   (e: "node-chat-submit", payload: WorkflowNodeChatSubmitPayload): void;
   (e: "node-chat-remove-param-ref", item: InputParamPreviewRef): void;
@@ -482,15 +482,15 @@ const measureNaturalHeight = (): number => {
   const el = nodeElRef.value;
   if (!el) return props.height;
   const prevHeight = el.style.height;
-  const prevFlexBasis = (el.style as any).flexBasis;
+  const prevFlexBasis = el.style.flexBasis;
   el.style.height = "auto";
-  (el.style as any).flexBasis = "auto";
+  el.style.flexBasis = "auto";
   const natural = el.getBoundingClientRect().height;
   el.style.height = prevHeight;
   if (prevFlexBasis !== undefined) {
-    (el.style as any).flexBasis = prevFlexBasis;
+    el.style.flexBasis = prevFlexBasis;
   } else {
-    (el.style as any).flexBasis = "";
+    el.style.flexBasis = "";
   }
   const zoom = Math.max(1e-6, props.zoom || 1);
   const worldHeight = natural / zoom;

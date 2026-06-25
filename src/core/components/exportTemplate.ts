@@ -18,12 +18,12 @@ const cloneProps = (props?: Record<string, JsonValue>): Record<string, JsonValue
 
 const toTransform = (n: VideoSceneTreeNode): TemplateNodeTransform | undefined => {
 	if (!n.transform) return undefined
-	const legacyScale = (n.transform as any).scale
+	const legacyScale = n.transform.scale
 	return {
 		x: n.transform.x,
 		y: n.transform.y,
-		scaleX: (n.transform as any).scaleX ?? legacyScale,
-		scaleY: (n.transform as any).scaleY ?? legacyScale,
+		scaleX: n.transform.scaleX ?? legacyScale,
+		scaleY: n.transform.scaleY ?? legacyScale,
 		width: n.transform.width,
 		height: n.transform.height,
 		rotation: n.transform.rotation,

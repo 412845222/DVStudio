@@ -551,7 +551,7 @@ export type MeshyTaskPanelItem = {
   effectiveThumbnailUrl?: string;
   children?: MeshyTaskPanelItem[];
   createdAt: number;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
 };
 
 export type MeshyTaskPanelDetail = {
@@ -576,8 +576,8 @@ export type MeshyTaskPanelDetail = {
   createdAtLabel?: string;
   updatedAtLabel?: string;
   sourceLabel?: string;
-  requestPayload?: Record<string, any>;
-  responsePayload?: Record<string, any>;
+  requestPayload?: Record<string, unknown>;
+  responsePayload?: Record<string, unknown>;
 };
 
 export type MeshyTaskPanelAction = "refresh" | "stop" | "delete" | "import-output";

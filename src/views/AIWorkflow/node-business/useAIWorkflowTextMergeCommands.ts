@@ -1,7 +1,9 @@
+type TextMergeStore = {
+  commit: (type: string, value: unknown) => void
+}
+
 export const useAIWorkflowTextMergeCommands = (payload: {
-  store: {
-    commit: (type: string, value: any) => void
-  }
+  store: TextMergeStore
 }) => {
   const onTextMergeItemAdd = (nodeId: string) => {
     payload.store.commit('textMergeAddItem', { nodeId })

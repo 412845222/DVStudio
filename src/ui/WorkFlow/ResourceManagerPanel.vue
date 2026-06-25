@@ -259,7 +259,7 @@
               </span>
               <span v-else class="wf-resource-tile__unused">未引用</span>
             </div>
-            <div class="wf-resource-tile__date">{{ formatDate((r as any).createdAt) }}</div>
+            <div class="wf-resource-tile__date">{{ formatDate(r.createdAt) }}</div>
           </div>
         </div>
 
@@ -334,7 +334,7 @@
             </template>
             <span v-else class="wf-resource-list__unused-text">未引用</span>
           </div>
-          <div class="wf-resource-list__date">{{ formatDate((r as any).createdAt) }}</div>
+          <div class="wf-resource-list__date">{{ formatDate(r.createdAt) }}</div>
           <div class="wf-resource-list__actions">
             <button
               class="wf-resource-list__action-btn"
@@ -456,7 +456,7 @@ const onRemoveClick = (rid: string) => {
 };
 
 const onFocusResourceClick = (r: WorkflowResource) => {
-  const rid = String((r as any)?.id ?? "").trim();
+  const rid = String(r?.id ?? "").trim();
   const info = getUsageInfo(usageMap.value, rid);
   if (!info?.isUsed || !info.usedBy.length) return;
   emit("focus-node", { nodeId: info.usedBy[0].nodeId });
@@ -486,7 +486,7 @@ const resourceKindIconPath = (kind: string): string => {
   return "M3 5.5c0-.8.7-1.5 1.5-1.5h7c.8 0 1.5.7 1.5 1.5v7c0 .8-.7 1.5-1.5 1.5h-7c-.8 0-1.5-.7-1.5-1.5z M3 14.5l3-3 2 2 3-4 4 4";
 };
 
-const formatDate = (ts: any): string => {
+const formatDate = (ts: number | string | null | undefined): string => {
   const n = Number(ts);
   if (!Number.isFinite(n) || n <= 0) return "";
   const d = new Date(n);
@@ -558,8 +558,8 @@ const hasThumbFailed = (resourceId: string): boolean => {
 };
 
 const compareCreatedAt = (a: WorkflowResource, b: WorkflowResource) => {
-  const at = Number((a as any)?.createdAt ?? 0);
-  const bt = Number((b as any)?.createdAt ?? 0);
+  const at = Number(a?.createdAt ?? 0);
+  const bt = Number(b?.createdAt ?? 0);
   return at - bt;
 };
 
@@ -576,13 +576,13 @@ const sortedResources = computed(() => {
   // 筛选：类型
   if (typeFilter.value) {
     const tk = typeFilter.value;
-    list = list.filter((r) => String((r as any).kind ?? "").toLowerCase() === tk);
+    list = list.filter((r) => String(r.kind ?? "").toLowerCase() === tk);
   }
 
   // 搜索：名称
   const kw = searchKeyword.value.trim().toLowerCase();
   if (kw) {
-    list = list.filter((r) => String((r as any).name ?? "").toLowerCase().includes(kw));
+    list = list.filter((r) => String(r.name ?? "").toLowerCase().includes(kw));
   }
 
   // 排序
@@ -594,10 +594,10 @@ const sortedResources = computed(() => {
       list.sort(compareCreatedAt);
       break;
     case "name-asc":
-      list.sort((a, b) => String((a as any).name ?? "").localeCompare(String((b as any).name ?? ""), "zh"));
+      list.sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "zh"));
       break;
     case "name-desc":
-      list.sort((a, b) => String((b as any).name ?? "").localeCompare(String((a as any).name ?? ""), "zh"));
+      list.sort((a, b) => String(b.name ?? "").localeCompare(String(a.name ?? ""), "zh"));
       break;
     case "usage-desc":
       list.sort((a, b) => getUsageCount(String(b.id ?? "")) - getUsageCount(String(a.id ?? "")));
@@ -621,14 +621,14 @@ const visibleCount = computed(() => visibleResources.value.length);
 const thumbSrc = (r: WorkflowResource) => {
   if (!r) return "";
   if (r.kind === "video") {
-    const poster = String((r as any).posterUrl ?? "").trim();
+    const poster = String(r.posterUrl ?? "").trim();
     return sanitizeWorkflowMediaUrl(poster);
   }
-  return sanitizeWorkflowMediaUrl(String((r as any).url ?? "").trim());
+  return sanitizeWorkflowMediaUrl(String(r.url ?? "").trim());
 };
 
 const resourceMissingThumb = (r: WorkflowResource) => {
-  const rid = String((r as any)?.id ?? "").trim();
+  const rid = String(r?.id ?? "").trim();
   if (!rid) return false;
   if (failedThumbIds.value.has(rid)) return true;
   return !String(thumbSrc(r) || "").trim();
@@ -637,7 +637,7 @@ const resourceMissingThumb = (r: WorkflowResource) => {
 const emitRefreshMissing = () => {
   const ids = sortedResources.value
     .filter((r) => resourceMissingThumb(r))
-    .map((r) => String((r as any)?.id ?? "").trim())
+    .map((r) => String(r?.id ?? "").trim())
     .filter((id) => !!id);
   emit("refresh-missing", ids);
 };
@@ -658,14 +658,14 @@ const onTileDragStart = (event: DragEvent, r: WorkflowResource) => {
     dt.setData(
       "application/x-dweb-resource-item",
       JSON.stringify({
-        resourceId: String((r as any).id ?? ""),
-        kind: String((r as any).kind ?? ""),
-        name: String((r as any).name ?? ""),
-        url: String((r as any).url ?? ""),
-        sourcePath: String((r as any).sourcePath ?? ""),
+        resourceId: String(r.id ?? ""),
+        kind: String(r.kind ?? ""),
+        name: String(r.name ?? ""),
+        url: String(r.url ?? ""),
+        sourcePath: String(r.sourcePath ?? ""),
       })
     );
-    dt.setData("text/plain", String((r as any).url ?? ""));
+    dt.setData("text/plain", String(r.url ?? ""));
   } catch {
     // ignore
   }
@@ -676,7 +676,7 @@ watch(
   () => {
     const keep = new Set(
       (props.resources ?? [])
-        .map((r: any) => String(r?.id ?? "").trim())
+        .map((r: WorkflowResource) => String(r?.id ?? "").trim())
         .filter((id) => !!id)
     );
     const next = new Set<string>();

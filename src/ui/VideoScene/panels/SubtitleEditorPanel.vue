@@ -108,9 +108,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { DVS_EVENTS, type DvsSubtitleCueSelectDetail } from '../../../core/events/dvsEvents'
 import { TimelineStore } from '../../../store/timeline'
 import { VideoSceneStore } from '../../../store/videoscene'
-import { findLayer, findNode, type VideoSceneNodeTransform } from '../../../core/scene'
+import { findLayer, findNode, type VideoSceneNodeTransform, type VideoSceneNodeProps } from '../../../core/scene'
 import { buildSubtitleGeneratedKeyframes } from '../../../core/subtitle/subtitleKeyframes'
 import NodeFiltersForm from '../parts/nodeDetail/forms/NodeFiltersForm.vue'
+import type { SubtitleCue, SubtitleCueRange, SubtitleTextStyle, NodeFilterSpec } from '../../../core/timeline/types'
 
 const props = defineProps<{ layerId: string | null }>()
 
@@ -135,9 +136,10 @@ const boundNode = computed(() => {
 	return findNode(layer.nodeTree, nodeId)
 })
 
-const boundFilters = computed(() => {
-	const p: any = (boundNode.value as any)?.props
-	return Array.isArray(p?.filters) ? (p.filters as any[]) : []
+const boundFilters = computed<NodeFilterSpec[]>(() => {
+	const props = boundNode.value?.props
+	const filters = props?.filters
+	return Array.isArray(filters) ? (filters as NodeFilterSpec[]) : []
 })
 
 const selectedIndex = ref(0)
@@ -185,12 +187,12 @@ const ensureCueVisible = (idx: number, paddingPx?: number) => {
 	else if (targetBottom > maxBottom) el.scrollTop = Math.max(0, targetBottom + pad - el.clientHeight)
 }
 
-const getDefaultStyle = (layerId: string) =>
-	TimelineStore.state.subtitleDefaultStyleByLayer?.[layerId] ?? ({ fontSize: 36, fontColor: '#ffffff', fontStyle: 'normal', textAlign: 'center' } as any)
+const getDefaultStyle = (layerId: string): SubtitleTextStyle =>
+	TimelineStore.state.subtitleDefaultStyleByLayer?.[layerId] ?? { fontSize: 36, fontColor: '#ffffff', fontStyle: 'normal', textAlign: 'center' }
 
-const getOverride = (layerId: string, idx: number) => TimelineStore.state.subtitleOverrideStyleByLayer?.[layerId]?.[String(idx)] ?? null
+const getOverride = (layerId: string, idx: number): Partial<SubtitleTextStyle> | null => TimelineStore.state.subtitleOverrideStyleByLayer?.[layerId]?.[String(idx)] ?? null
 
-const effectiveStyle = computed(() => {
+const effectiveStyle = computed<SubtitleTextStyle>(() => {
 	const layerId = props.layerId
 	const idx = selectedIndex.value
 	if (!layerId) return getDefaultStyle('')
@@ -222,14 +224,13 @@ const nodeH = ref<number>(120)
 const nodeOpacity = ref<number>(1)
 
 const syncNodeFromStore = () => {
-	const t: any = (boundNode.value as any)?.transform
+	const t = boundNode.value?.transform
 	if (!t) return
 	nodeX.value = Number(t.x ?? 0) || 0
 	nodeY.value = Number(t.y ?? 0) || 0
 	nodeW.value = Math.max(1, Number(t.width ?? 1) || 1)
 	nodeH.value = Math.max(1, Number(t.height ?? 1) || 1)
 	const op = Number(t.opacity)
-	// default to 1 if unset/invalid
 	nodeOpacity.value = Number.isFinite(op) ? Math.max(0, Math.min(1, op)) : 1
 }
 
@@ -267,18 +268,13 @@ function syncEditorFromStore() {
 	selectedIndex.value = idx
 
 	editText.value = String(cues.value[idx]?.text ?? '')
-	const s = effectiveStyle.value as any
-	editFontSize.value = Number(s.fontSize ?? 36)
-	editFontColor.value = String(s.fontColor ?? '#ffffff')
-	editFontStyle.value = String(s.fontStyle ?? 'normal')
-	editTextAlign.value =
-		(String(s.textAlign ?? 'center') as any) === 'left'
-			? 'left'
-			: (String(s.textAlign ?? 'center') as any) === 'right'
-				? 'right'
-				: 'center'
+	const s = effectiveStyle.value
+	editFontSize.value = s.fontSize
+	editFontColor.value = s.fontColor
+	editFontStyle.value = s.fontStyle
+	editTextAlign.value = s.textAlign
 
-		syncNodeFromStore()
+	syncNodeFromStore()
 }
 
 watch(
@@ -302,7 +298,7 @@ const select = (idx: number, opts?: { jump?: boolean; scroll?: boolean; paddingP
 	const layerId = props.layerId
 	if (!layerId) return
 	if (opts?.jump === false) return
-	const r: any = cueRanges.value[selectedIndex.value]
+	const r: SubtitleCueRange | undefined = cueRanges.value[selectedIndex.value]
 	const startFrame = Number(r?.startFrame)
 	if (Number.isFinite(startFrame)) {
 		void TimelineStore.dispatch('jumpToFrameCentered', { frameIndex: Math.floor(startFrame) })
@@ -311,7 +307,7 @@ const select = (idx: number, opts?: { jump?: boolean; scroll?: boolean; paddingP
 
 const onExternalCueSelect = (ev: Event) => {
 	const ce = ev as CustomEvent<DvsSubtitleCueSelectDetail>
-	const d: any = ce?.detail
+	const d = ce?.detail
 	const layerId = props.layerId
 	if (!layerId || !d) return
 	if (String(d.layerId) !== layerId) return
@@ -321,7 +317,7 @@ const onExternalCueSelect = (ev: Event) => {
 }
 
 onMounted(() => {
-	window.addEventListener(DVS_EVENTS.SubtitleCueSelect, onExternalCueSelect as any)
+	window.addEventListener(DVS_EVENTS.SubtitleCueSelect, onExternalCueSelect as EventListener)
 })
 
 const pad2 = (n: number) => String(Math.max(0, Math.floor(n))).padStart(2, '0')
@@ -335,9 +331,9 @@ const formatMs = (ms: number) => {
 }
 
 const cueTimeText = (idx: number) => {
-	const c: any = cues.value[idx]
+	const c: SubtitleCue | undefined = cues.value[idx]
 	if (c && typeof c.startMs === 'number' && typeof c.endMs === 'number') return `${formatMs(c.startMs)} → ${formatMs(c.endMs)}`
-	const r: any = cueRanges.value[idx]
+	const r: SubtitleCueRange | undefined = cueRanges.value[idx]
 	if (r && Number.isFinite(r.startFrame) && Number.isFinite(r.endFrame)) return `F${r.startFrame} → F${r.endFrame}`
 	return `#${idx + 1}`
 }
@@ -357,8 +353,8 @@ const regen = async () => {
 	const gen = buildSubtitleGeneratedKeyframes({
 		layerId,
 		nodeId,
-		cues: cues.value as any,
-		cueRanges: cueRanges.value as any,
+		cues: cues.value,
+		cueRanges: cueRanges.value,
 		defaultStyle,
 		overridesByCueIndex,
 		nodeTransform: node.transform as VideoSceneNodeTransform,
@@ -380,13 +376,13 @@ const scheduleCommitText = () => {
 
 onBeforeUnmount(() => {
 	if (textTimer != null) window.clearTimeout(textTimer)
-	window.removeEventListener(DVS_EVENTS.SubtitleCueSelect, onExternalCueSelect as any)
+	window.removeEventListener(DVS_EVENTS.SubtitleCueSelect, onExternalCueSelect as EventListener)
 })
 
-const commitStyle = async (key: 'fontSize' | 'fontColor' | 'fontStyle' | 'textAlign', value: any) => {
+const commitStyle = async (key: keyof SubtitleTextStyle, value: SubtitleTextStyle[keyof SubtitleTextStyle]) => {
 	const layerId = props.layerId
 	if (!layerId) return
-	const patch: any = { [key]: value }
+	const patch: Partial<SubtitleTextStyle> = { [key]: value } as Partial<SubtitleTextStyle>
 	if (isPerCue.value) await TimelineStore.dispatch('setSubtitleOverrideStyle', { layerId, cueIndex: selectedIndex.value, style: patch })
 	else await TimelineStore.dispatch('setSubtitleDefaultStyle', { layerId, style: patch })
 	await regen()
@@ -410,7 +406,7 @@ const clearPerCue = async () => {
 const applyToAll = async () => {
 	const layerId = props.layerId
 	if (!layerId) return
-	await TimelineStore.dispatch('applySubtitleStyleToAll', { layerId, style: effectiveStyle.value as any })
+	await TimelineStore.dispatch('applySubtitleStyleToAll', { layerId, style: effectiveStyle.value })
 	syncEditorFromStore()
 	await regen()
 }

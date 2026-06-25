@@ -159,7 +159,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
         const exactByKind = exactNodeCandidates
           .filter((m: ComfyBridgeMedia) => inferMediaKind(m) === inferredMediaType)
 
-        let selectedMedia: ComfyBridgeMedia | null = null
+        let selectedMedia: ComfyBridgeMedia | null
         if (exactByKind.length) {
           selectedMedia = exactByKind[0]
         } else if (exactNodeCandidates.length) {

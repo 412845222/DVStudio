@@ -6,6 +6,7 @@
 // ─── 基础工具类型 ────────────────────────────────────────────────────────────
 
 /** 标记"已验证安全的 any"——仅用于已确认类型安全但暂时无法精确定义的场景 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SafeAny = any
 
 /** T | null | undefined */

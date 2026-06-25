@@ -11,7 +11,7 @@ import {
   type TimelineFrameSpan,
 } from './spans'
 
-import type { VideoSceneLayer, VideoSceneNodeProps, VideoSceneNodeTransform } from '../videoscene'
+import type { VideoSceneLayer, VideoSceneNodeProps, VideoSceneNodeTransform, VideoSceneTreeNode } from '../videoscene'
 
 import type {
   SubtitleCue,
@@ -25,12 +25,17 @@ import type {
   TimelineLayerKind,
   TimelineState,
 } from '../../core/timeline'
+
 import { createDefaultTimelineState } from '../../core/timeline'
 import { cloneJsonSafe } from '../../core/shared/cloneJsonSafe'
-
-import type { VideoSceneTreeNode } from '../../core/scene'
 import { createVideoSceneLayer } from '../../core/scene'
 import { VideoSceneStore } from '../videoscene'
+import { isString, isNumber } from '../../types/utils'
+
+type StageSnapshotEntry = { layers: VideoSceneLayer[] }
+type NodeKeyframeSnapshot = { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }
+type NodeKeyframeLayerMap = TimelineState['nodeKeyframesByLayer'][string]
+type NodeKeyframeFrameMap = NodeKeyframeLayerMap[string]
 
 export type {
   SubtitleCue,
@@ -88,15 +93,16 @@ const stageSnapshotsEnsureLayer = (state: TimelineState, payload: { layerId: str
   if (!layerId) return false
   const name = String(payload.name || '').trim() || layerId
   let changed = false
-  const map = state.stageKeyframesByFrame ?? ({} as any)
-  for (const [fk, v] of Object.entries(map as any)) {
-    const entry = v as any
-    const layers = Array.isArray(entry?.layers) ? (entry.layers as any[]) : null
+  const map = state.stageKeyframesByFrame
+  if (!map) return false
+  for (const [fk, v] of Object.entries(map)) {
+    const entry = v
+    const layers = Array.isArray(entry?.layers) ? entry.layers : null
     if (!layers) continue
-    if (layers.some((l) => String((l as any)?.id) === layerId)) continue
-    layers.push({ id: layerId, name, nodeTree: createVideoSceneLayer(layerId, name).nodeTree } as any)
+    if (layers.some((l) => String(l?.id) === layerId)) continue
+    layers.push({ id: layerId, name, nodeTree: createVideoSceneLayer(layerId, name).nodeTree })
     changed = true
-    ;(map as any)[fk] = { ...(entry ?? {}), layers }
+    map[fk] = { ...(entry ?? {}), layers }
   }
   return changed
 }
@@ -104,24 +110,23 @@ const stageSnapshotsEnsureLayer = (state: TimelineState, payload: { layerId: str
 const stageSnapshotsPurgeLayers = (state: TimelineState, layerIds: string[]) => {
   const ids = new Set(layerIds.map((s) => String(s || '').trim()).filter(Boolean))
   if (ids.size === 0) return false
-  const map = state.stageKeyframesByFrame ?? ({} as any)
+  const map = state.stageKeyframesByFrame
+  if (!map) return false
   let changed = false
-  for (const [fk, v] of Object.entries(map as any)) {
-    const entry = v as any
-    const layers = Array.isArray(entry?.layers) ? (entry.layers as any[]) : null
+  for (const [fk, v] of Object.entries(map)) {
+    const entry = v
+    const layers = Array.isArray(entry?.layers) ? entry.layers : null
     if (!layers) continue
-    const nextLayers = layers.filter((l) => !ids.has(String((l as any)?.id ?? '')))
+    const nextLayers = layers.filter((l) => !ids.has(String(l?.id ?? '')))
     if (nextLayers.length === layers.length) continue
 
     changed = true
     if (nextLayers.length === 0) {
-      // If this stage snapshot no longer contains any layers, drop it.
-      // (Normally this only happens when deleting the last remaining layer.)
-      delete (map as any)[fk]
+      delete map[fk]
       continue
     }
 
-    ;(map as any)[fk] = { ...(entry ?? {}), layers: nextLayers }
+    map[fk] = { ...(entry ?? {}), layers: nextLayers }
   }
   return changed
 }
@@ -162,17 +167,22 @@ const updateNodeTextContentInTree = (
 }
 
 const normalizeSubtitleStyle = (s: Partial<SubtitleTextStyle> | null | undefined): SubtitleTextStyle => {
-  // Keep defaults aligned with TextNodeForm expectations: readable by default.
-  const rawSize = (s as any)?.fontSize
-  const fontSize = Number.isFinite(Number(rawSize)) ? Number(rawSize) : 36
+  const raw: Record<string, unknown> = s ?? {}
+  const rawSize = raw.fontSize
+  const fontSize = isNumber(rawSize) ? rawSize : Number.isFinite(Number(rawSize)) ? Number(rawSize) : 36
+  const rawFontColor = raw.fontColor
+  const fontColor = isString(rawFontColor) ? rawFontColor : '#ffffff'
+  const rawFontStyle = raw.fontStyle
+  const fontStyle = isString(rawFontStyle) ? rawFontStyle : 'normal'
+  const rawTextAlign = raw.textAlign
+  const textAlign = rawTextAlign === 'left' || rawTextAlign === 'right' || rawTextAlign === 'center'
+    ? rawTextAlign
+    : 'center'
   return {
     fontSize: clampInt(fontSize, 6, 256),
-    fontColor: typeof (s as any)?.fontColor === 'string' ? String((s as any).fontColor) : '#ffffff',
-    fontStyle: typeof (s as any)?.fontStyle === 'string' ? String((s as any).fontStyle) : 'normal',
-    textAlign:
-      (s as any)?.textAlign === 'left' || (s as any)?.textAlign === 'right' || (s as any)?.textAlign === 'center'
-        ? ((s as any).textAlign as any)
-        : 'center',
+    fontColor,
+    fontStyle,
+    textAlign,
   }
 }
 
@@ -194,17 +204,17 @@ const purgeTreeNodesById = (
   const out: VideoSceneTreeNode[] = []
   for (const n of src) {
     if (!n || typeof n !== 'object') continue
-    const id = String((n as any).id ?? '')
+    const id = String(n.id ?? '')
     if (id && ids.has(id)) {
       changed = true
       continue
     }
-    const children = (n as any).children
+    const children = n.children
     if (Array.isArray(children) && children.length) {
       const r = purgeTreeNodesById(children, ids)
       if (r.changed) {
         changed = true
-        out.push({ ...(n as any), children: r.nodes })
+        out.push({ ...n, children: r.nodes })
       } else {
         out.push(n)
       }
@@ -971,31 +981,32 @@ export const TimelineStore = createStore<TimelineState>({
   if (!layerId || !nodeId) return
 
   let stageChanged = false
-  for (const [fk, entryRaw] of Object.entries(state.stageKeyframesByFrame ?? {})) {
-    const entry = entryRaw as any
-    const layers = Array.isArray(entry?.layers) ? (entry.layers as VideoSceneLayer[]) : []
-    let frameChanged = false
-    const nextLayers = layers.map((layer) => {
-      if (String(layer?.id ?? '') !== layerId) return layer
-      const res = updateNodeTextContentInTree(layer.nodeTree, nodeId, textContent)
-      if (!res.changed) return layer
-      frameChanged = true
-      return { ...layer, nodeTree: res.nodes }
-    })
-    if (!frameChanged) continue
-    state.stageKeyframesByFrame[fk] = { ...(entry ?? {}), layers: nextLayers }
-    stageChanged = true
+  const stageMap = state.stageKeyframesByFrame
+  if (stageMap) {
+    for (const [fk, entry] of Object.entries(stageMap)) {
+      const layers = Array.isArray(entry?.layers) ? entry.layers : []
+      let frameChanged = false
+      const nextLayers = layers.map((layer) => {
+        if (String(layer?.id ?? '') !== layerId) return layer
+        const res = updateNodeTextContentInTree(layer.nodeTree, nodeId, textContent)
+        if (!res.changed) return layer
+        frameChanged = true
+        return { ...layer, nodeTree: res.nodes }
+      })
+      if (!frameChanged) continue
+      stageMap[fk] = { ...(entry ?? {}), layers: nextLayers }
+      stageChanged = true
+    }
   }
 
   const layerMap = state.nodeKeyframesByLayer[layerId]
   let nodeChanged = false
   if (layerMap) {
     const nextLayerMap = { ...layerMap }
-    for (const [fk, nodesByIdRaw] of Object.entries(layerMap)) {
-      const nodesById = nodesByIdRaw as Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>
+    for (const [fk, nodesById] of Object.entries(layerMap)) {
       const snap = nodesById?.[nodeId]
       if (!snap) continue
-      const curText = String((snap.props as any)?.textContent ?? '')
+      const curText = String(snap.props?.textContent ?? '')
       if (curText === textContent) continue
       nextLayerMap[fk] = {
         ...nodesById,
@@ -1033,11 +1044,11 @@ export const TimelineStore = createStore<TimelineState>({
     const nextNodeKf: TimelineState['nodeKeyframesByLayer'] = {}
     for (const [layerId, layerMap] of Object.entries(state.nodeKeyframesByLayer)) {
       let layerChanged = false
-      const nextLayerMap: Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>> = {}
+      const nextLayerMap: NodeKeyframeLayerMap = {}
       for (const [fk, nodesById] of Object.entries(layerMap ?? {})) {
         const before = nodesById ?? {}
         let frameChanged = false
-        const nextNodes: Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }> = {}
+        const nextNodes: NodeKeyframeFrameMap = {}
         for (const [nid, snap] of Object.entries(before)) {
           if (ids.has(nid)) {
             frameChanged = true
@@ -1049,7 +1060,7 @@ export const TimelineStore = createStore<TimelineState>({
         if (Object.keys(nextNodes).length) nextLayerMap[fk] = nextNodes
         else if (Object.keys(before).length) layerChanged = true
       }
-      if (Object.keys(nextLayerMap).length) nextNodeKf[layerId] = layerChanged ? nextLayerMap : (layerMap as any)
+      if (Object.keys(nextLayerMap).length) nextNodeKf[layerId] = layerChanged ? nextLayerMap : layerMap
       if (layerChanged) nodeKfChanged = true
     }
     if (nodeKfChanged) {
@@ -1059,22 +1070,23 @@ export const TimelineStore = createStore<TimelineState>({
 
     // 2) 清理 stageKeyframesByFrame[frame].layers[].nodeTree
     let stageChanged = false
-    const nextStage: TimelineState['stageKeyframesByFrame'] = {}
+    const nextStage: Record<string, StageSnapshotEntry> = {}
     for (const [fk, v] of Object.entries(state.stageKeyframesByFrame ?? {})) {
-      const layers = Array.isArray((v as any)?.layers) ? ((v as any).layers as any[]) : []
+      const entry: StageSnapshotEntry = v
+      const layers = Array.isArray(entry?.layers) ? entry.layers : []
       let frameChanged = false
-      const nextLayers: any[] = []
+      const nextLayers: VideoSceneLayer[] = []
       for (const layer of layers) {
         if (!layer || typeof layer !== 'object') {
           nextLayers.push(layer)
           continue
         }
-        const tree = (layer as any).nodeTree
+        const tree = layer.nodeTree
         if (Array.isArray(tree) && tree.length) {
           const r = purgeTreeNodesById(tree, ids)
           if (r.changed) {
             frameChanged = true
-            nextLayers.push({ ...(layer as any), nodeTree: r.nodes })
+            nextLayers.push({ ...layer, nodeTree: r.nodes })
           } else {
             nextLayers.push(layer)
           }
@@ -1082,7 +1094,7 @@ export const TimelineStore = createStore<TimelineState>({
           nextLayers.push(layer)
         }
       }
-      nextStage[fk] = frameChanged ? ({ ...(v as any), layers: nextLayers } as any) : v
+      nextStage[fk] = frameChanged ? { ...entry, layers: nextLayers } : v
       if (frameChanged) stageChanged = true
     }
     if (stageChanged) {

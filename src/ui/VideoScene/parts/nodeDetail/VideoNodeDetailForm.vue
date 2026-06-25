@@ -88,6 +88,8 @@ import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState, type VideoSceneTreeNode, type VideoSceneUserNodeType } from '../../../../store/videoscene'
 import { TimelineStore } from '../../../../store/timeline'
 import { VideoStudioKey, type VideoStudioState } from '../../../../store/videostudio'
+import type { VideoSceneImageAsset, VideoSceneNodeTransform, VideoSceneNodeProps } from '../../../../core/scene/types'
+import { isNumber, isString } from '../../../../types/utils'
 import CommonTransformForm from './forms/CommonTransformForm.vue'
 import ImageNodeForm from './forms/ImageNodeForm.vue'
 import LineNodeForm from './forms/LineNodeForm.vue'
@@ -101,7 +103,48 @@ defineOptions({ name: 'VideoNodeDetailForm' })
 const store = useStore<VideoSceneState>(VideoSceneKey)
 const studioStore = useStore<VideoStudioState>(VideoStudioKey)
 
-type VideoNodeFilter = any
+type TextAlign = 'left' | 'center' | 'right'
+type ImageFit = 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'
+type LineStyle = 'solid' | 'dashed'
+
+type NodeDraft = {
+	name: string
+	type: VideoSceneUserNodeType
+	x: number
+	y: number
+	scaleX: number
+	scaleY: number
+	width: number
+	height: number
+	rotation: number
+	opacity: number
+	pivotX: number
+	pivotY: number
+	fillColor: string
+	fillOpacity: number
+	borderColor: string
+	borderOpacity: number
+	borderWidth: number
+	cornerRadius: number
+	textContent: string
+	fontSize: number
+	fontColor: string
+	fontStyle: string
+	textAlign: TextAlign
+	imageId: string
+	imagePath: string
+	imageName: string
+	imageFit: ImageFit
+	startX: number
+	startY: number
+	endX: number
+	endY: number
+	anchorX: number
+	anchorY: number
+	lineColor: string
+	lineWidth: number
+	lineStyle: LineStyle
+}
 
 const { onNumberScrubPointerDown, onNumberInputDblClick, onNumberInputFocus, onNumberInputBlur } = useNumberScrub()
 
@@ -124,9 +167,9 @@ const findSelected = (): SelectedInfo | null => {
 
 const selected = computed(() => findSelected())
 
-const draft = reactive({
+const draft = reactive<NodeDraft>({
 	name: '',
-	type: 'base' as VideoSceneUserNodeType,
+	type: 'base',
 	x: 0,
 	y: 0,
 	scaleX: 1,
@@ -147,11 +190,11 @@ const draft = reactive({
 	fontSize: 24,
 	fontColor: '#ffffff',
 	fontStyle: 'normal',
-	textAlign: 'center' as 'left' | 'center' | 'right',
+	textAlign: 'center',
 	imageId: '',
 	imagePath: '',
 	imageName: '',
-	imageFit: 'contain' as 'contain' | 'cover' | 'fill' | 'none' | 'scale-down',
+	imageFit: 'contain',
 	startX: -88,
 	startY: 0,
 	endX: 88,
@@ -160,13 +203,47 @@ const draft = reactive({
 	anchorY: -30,
 	lineColor: '#ffffff',
 	lineWidth: 4,
-	lineStyle: 'solid' as 'solid' | 'dashed',
+	lineStyle: 'solid',
 })
+
+const getNumberFromProps = (props: VideoSceneNodeProps | undefined, key: string, fallback: number): number => {
+	if (!props) return fallback
+	const v = props[key]
+	if (isNumber(v)) return v
+	return fallback
+}
+
+const getStringFromProps = (props: VideoSceneNodeProps | undefined, key: string, fallback: string): string => {
+	if (!props) return fallback
+	const v = props[key]
+	if (isString(v)) return v
+	return fallback
+}
+
+const getTextAlign = (props: VideoSceneNodeProps | undefined, fallback: TextAlign): TextAlign => {
+	if (!props) return fallback
+	const v = props.textAlign
+	if (v === 'left' || v === 'right' || v === 'center') return v
+	return fallback
+}
+
+const getImageFit = (props: VideoSceneNodeProps | undefined, fallback: ImageFit): ImageFit => {
+	if (!props) return fallback
+	const v = props.imageFit
+	if (v === 'contain' || v === 'cover' || v === 'fill' || v === 'none' || v === 'scale-down') return v
+	return fallback
+}
+
+const getLineStyle = (props: VideoSceneNodeProps | undefined, fallback: LineStyle): LineStyle => {
+	if (!props) return fallback
+	const v = props.lineStyle
+	return v === 'dashed' ? 'dashed' : fallback
+}
 
 const currentImageUrl = computed(() => {
 	const id = String(draft.imageId || '').trim()
 	if (id) {
-		const asset: any = (store.state as any).imageAssets?.[id]
+		const asset: VideoSceneImageAsset | undefined = store.state.imageAssets[id]
 		const u = String(asset?.url ?? '').trim()
 		if (u) return u
 	}
@@ -186,7 +263,7 @@ const onPickNodeImageFile = (file: File) => {
 	applyProps('image')
 }
 
-const setImageFit = (fit: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down') => {
+const setImageFit = (fit: ImageFit) => {
 	draft.imageFit = fit
 	applyProps('image')
 }
@@ -200,50 +277,59 @@ const syncFromStore = () => {
 		if (!Number.isFinite(n)) return fallback
 		return Math.max(0, Math.min(100, n))
 	}
+	const getPivot = (v: unknown, fallback: number): number => {
+		const n = Number(v)
+		if (!Number.isFinite(n)) return fallback
+		return Math.max(0, Math.min(1, n))
+	}
+	const getUnitInterval = (v: unknown, fallback: number): number => {
+		const n = Number(v)
+		if (!Number.isFinite(n)) return fallback
+		return Math.max(0, Math.min(1, n))
+	}
 	const n = s.node
 	draft.name = n.name ?? ''
-	draft.type = (n.category === 'user' ? ((n.userType ?? 'base') as any) : 'base')
-	const t: any = n.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 200, height: 120, rotation: 0, opacity: 1 }
-	const legacyScale = clampScale((t as any).scale, 1)
+	draft.type = n.category === 'user' ? (n.userType ?? 'base') : 'base'
+	const t: VideoSceneNodeTransform = n.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 200, height: 120, rotation: 0, opacity: 1, pivotX: 0.5, pivotY: 0.5 }
+	const legacyScale = clampScale(t.scale, 1)
 	draft.x = Number(t.x ?? 0)
 	draft.y = Number(t.y ?? 0)
-	draft.scaleX = clampScale((t as any).scaleX, legacyScale)
-	draft.scaleY = clampScale((t as any).scaleY, legacyScale)
+	draft.scaleX = clampScale(t.scaleX, legacyScale)
+	draft.scaleY = clampScale(t.scaleY, legacyScale)
 	draft.width = Number(t.width ?? 200)
 	draft.height = Number(t.height ?? 120)
 	draft.rotation = radToDeg(Number(t.rotation ?? 0))
 	draft.opacity = Number(t.opacity ?? 1)
-	draft.pivotX = Number.isFinite((t as any).pivotX) ? Math.max(0, Math.min(1, Number((t as any).pivotX))) : 0.5
-	draft.pivotY = Number.isFinite((t as any).pivotY) ? Math.max(0, Math.min(1, Number((t as any).pivotY))) : 0.5
-	const p: any = n.props ?? {}
-	draft.fillColor = p.fillColor ?? draft.fillColor
-	draft.fillOpacity = Number.isFinite(p.fillOpacity as any) ? Math.max(0, Math.min(1, Number(p.fillOpacity))) : draft.fillOpacity
-	draft.borderColor = p.borderColor ?? draft.borderColor
-	draft.borderOpacity = Number.isFinite(p.borderOpacity as any) ? Math.max(0, Math.min(1, Number(p.borderOpacity))) : draft.borderOpacity
-	draft.borderWidth = Number(p.borderWidth ?? draft.borderWidth)
-	draft.cornerRadius = Number(p.cornerRadius ?? draft.cornerRadius)
-	draft.textContent = p.textContent ?? draft.textContent
-	draft.fontSize = Number(p.fontSize ?? draft.fontSize)
-	draft.fontColor = p.fontColor ?? draft.fontColor
-	draft.fontStyle = p.fontStyle ?? draft.fontStyle
-	draft.textAlign = (p.textAlign === 'left' || p.textAlign === 'right' || p.textAlign === 'center' ? p.textAlign : draft.textAlign) as any
-	draft.imageId = String(p.imageId ?? draft.imageId)
-	const fromAsset = draft.imageId ? (store.state as any).imageAssets?.[draft.imageId] : null
+	draft.pivotX = getPivot(t.pivotX, 0.5)
+	draft.pivotY = getPivot(t.pivotY, 0.5)
+	const p: VideoSceneNodeProps = n.props ?? {}
+	draft.fillColor = getStringFromProps(p, 'fillColor', draft.fillColor)
+	draft.fillOpacity = getUnitInterval(p.fillOpacity, draft.fillOpacity)
+	draft.borderColor = getStringFromProps(p, 'borderColor', draft.borderColor)
+	draft.borderOpacity = getUnitInterval(p.borderOpacity, draft.borderOpacity)
+	draft.borderWidth = getNumberFromProps(p, 'borderWidth', draft.borderWidth)
+	draft.cornerRadius = getNumberFromProps(p, 'cornerRadius', draft.cornerRadius)
+	draft.textContent = getStringFromProps(p, 'textContent', draft.textContent)
+	draft.fontSize = getNumberFromProps(p, 'fontSize', draft.fontSize)
+	draft.fontColor = getStringFromProps(p, 'fontColor', draft.fontColor)
+	draft.fontStyle = getStringFromProps(p, 'fontStyle', draft.fontStyle)
+	draft.textAlign = getTextAlign(p, draft.textAlign)
+	draft.imageId = getStringFromProps(p, 'imageId', draft.imageId)
+	const fromAsset: VideoSceneImageAsset | undefined = draft.imageId ? store.state.imageAssets[draft.imageId] : undefined
 	const assetUrl = String(fromAsset?.url ?? '').trim()
 	const assetName = String(fromAsset?.name ?? '').trim()
-	draft.imagePath = assetUrl || String(p.imagePath ?? '').trim()
-	draft.imageName = assetName || String(p.imageName ?? '').trim()
-	draft.imageFit = (p.imageFit ?? draft.imageFit) as any
-	// line
-	draft.startX = Number(p.startX ?? draft.startX)
-	draft.startY = Number(p.startY ?? draft.startY)
-	draft.endX = Number(p.endX ?? draft.endX)
-	draft.endY = Number(p.endY ?? draft.endY)
-	draft.anchorX = Number(p.anchorX ?? draft.anchorX)
-	draft.anchorY = Number(p.anchorY ?? draft.anchorY)
-	draft.lineColor = p.lineColor ?? draft.lineColor
-	draft.lineWidth = Math.max(1, Number(p.lineWidth ?? draft.lineWidth))
-	draft.lineStyle = (p.lineStyle === 'dashed' ? 'dashed' : 'solid') as any
+	draft.imagePath = assetUrl || getStringFromProps(p, 'imagePath', '').trim()
+	draft.imageName = assetName || getStringFromProps(p, 'imageName', '').trim()
+	draft.imageFit = getImageFit(p, draft.imageFit)
+	draft.startX = getNumberFromProps(p, 'startX', draft.startX)
+	draft.startY = getNumberFromProps(p, 'startY', draft.startY)
+	draft.endX = getNumberFromProps(p, 'endX', draft.endX)
+	draft.endY = getNumberFromProps(p, 'endY', draft.endY)
+	draft.anchorX = getNumberFromProps(p, 'anchorX', draft.anchorX)
+	draft.anchorY = getNumberFromProps(p, 'anchorY', draft.anchorY)
+	draft.lineColor = getStringFromProps(p, 'lineColor', draft.lineColor)
+	draft.lineWidth = Math.max(1, getNumberFromProps(p, 'lineWidth', draft.lineWidth))
+	draft.lineStyle = getLineStyle(p, draft.lineStyle)
 }
 
 watch(
@@ -252,29 +338,28 @@ watch(
 	{ immediate: true }
 )
 
-// 舞台拖拽/缩放会直接更新 store 内节点数据：这里监听选中节点快照变化以同步表单
 watch(
 	() => {
 		const s = selected.value
 		if (!s) return ''
-		const n: any = s.node as any
-		const t: any = n.transform ?? {}
-		const p: any = n.props ?? {}
+		const n = s.node
+		const t: VideoSceneNodeTransform = n.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 200, height: 120, rotation: 0, opacity: 1, pivotX: 0.5, pivotY: 0.5 }
+		const p: VideoSceneNodeProps = n.props ?? {}
 		return JSON.stringify({
 			id: n.id,
 			name: n.name ?? '',
 			type: n.userType ?? 'base',
 			x: t.x ?? 0,
 			y: t.y ?? 0,
-			scaleX: (t as any).scaleX ?? (t as any).scale ?? 1,
-			scaleY: (t as any).scaleY ?? (t as any).scale ?? 1,
-			scale: (t as any).scale ?? 1,
+			scaleX: t.scaleX ?? t.scale ?? 1,
+			scaleY: t.scaleY ?? t.scale ?? 1,
+			scale: t.scale ?? 1,
 			width: t.width ?? 200,
 			height: t.height ?? 120,
 			rotation: t.rotation ?? 0,
 			opacity: t.opacity ?? 1,
-			pivotX: (t as any).pivotX ?? 0.5,
-			pivotY: (t as any).pivotY ?? 0.5,
+			pivotX: t.pivotX ?? 0.5,
+			pivotY: t.pivotY ?? 0.5,
 			fillColor: p.fillColor,
 			fillOpacity: p.fillOpacity,
 			borderColor: p.borderColor,
@@ -315,7 +400,6 @@ const applyType = () => {
 	const s = selected.value
 	if (!s) return
 	store.dispatch('setNodeType', { layerId: s.layerId, nodeId: s.node.id, type: draft.type })
-	// 类型转换后同步一次，拿到默认 props
 	syncFromStore()
 }
 
@@ -350,13 +434,18 @@ type QuickAction = 'left' | 'right' | 'hcenter' | 'vcenter' | 'fillW' | 'fillH'
 const applyQuick = (action: QuickAction) => {
 	const s = selected.value
 	if (!s) return
-	const t: any = s.node.transform ?? { x: 0, y: 0, width: 200, height: 120 }
+	const t: VideoSceneNodeTransform = s.node.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 200, height: 120, rotation: 0, opacity: 1, pivotX: 0.5, pivotY: 0.5 }
 	const parentW = s.parent?.transform?.width ?? studioStore.state.stage.width
 	const parentH = s.parent?.transform?.height ?? studioStore.state.stage.height
 	const w = Math.max(1, Number(t.width ?? draft.width))
 	const h = Math.max(1, Number(t.height ?? draft.height))
-	const px = Number.isFinite((t as any).pivotX) ? Math.max(0, Math.min(1, Number((t as any).pivotX))) : Math.max(0, Math.min(1, Number(draft.pivotX)))
-	const py = Number.isFinite((t as any).pivotY) ? Math.max(0, Math.min(1, Number((t as any).pivotY))) : Math.max(0, Math.min(1, Number(draft.pivotY)))
+	const getPivot = (v: unknown, fallback: number): number => {
+		const n = Number(v)
+		if (!Number.isFinite(n)) return fallback
+		return Math.max(0, Math.min(1, n))
+	}
+	const px = getPivot(t.pivotX, draft.pivotX)
+	const py = getPivot(t.pivotY, draft.pivotY)
 
 	let nextX = Number(t.x ?? draft.x)
 	let nextY = Number(t.y ?? draft.y)
@@ -376,7 +465,6 @@ const applyQuick = (action: QuickAction) => {
 		nextH = Math.max(1, Number(parentH) || 1)
 	}
 
-	// update local draft immediately
 	draft.x = nextX
 	draft.y = nextY
 	draft.width = nextW
@@ -465,11 +553,12 @@ const applyTextToAllFrames = () => {
 }
 
 
-const filters = computed<VideoNodeFilter[]>(() => {
+const filters = computed(() => {
 	const s = selected.value
 	if (!s) return []
-	const p: any = s.node.props ?? {}
-	return Array.isArray(p.filters) ? (p.filters as VideoNodeFilter[]) : []
+	const p: VideoSceneNodeProps = s.node.props ?? {}
+	const filtersVal = p.filters
+	return Array.isArray(filtersVal) ? filtersVal : []
 })
 </script>
 

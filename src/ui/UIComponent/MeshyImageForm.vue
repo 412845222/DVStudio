@@ -131,8 +131,8 @@ const aiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
 const aspectRatioOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aspectRatio
 const poseModeOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.poseMode
 
-const updateConfig = (key: keyof MeshyImageConfig, value: any) => {
-  emit('update:config', { ...props.config, [key]: value })
+const updateConfig = (key: keyof MeshyImageConfig, value: unknown) => {
+  emit('update:config', { ...props.config, [key]: value } as MeshyImageConfig)
 }
 </script>
 

@@ -1,5 +1,6 @@
 import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
+import { isRecord as isRecordGuard, isString as isStringGuard } from '../types/utils'
 import { getBackendBaseUrl } from './backendConfig'
 
 export type AIChatUsage = {
@@ -166,8 +167,28 @@ export class AIChatService {
 		let eventName: string | undefined
 		let dataLines: string[] = []
 
-		const isRecord = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null && !Array.isArray(v)
-		const isString = (v: unknown): v is string => typeof v === 'string'
+		type AgentToUiMessageCandidate = {
+			schemaVersion: number
+			type: string
+			id: string
+			createdAt: string
+			payload: Record<string, unknown>
+		}
+
+		const coerceToMessageCandidate = (v: Record<string, unknown>): AgentToUiMessageCandidate | null => {
+			if (v.schemaVersion !== 1) return null
+			if (!isStringGuard(v.type) || !isStringGuard(v.id) || !isStringGuard(v.createdAt)) return null
+			if (!('payload' in v)) return null
+			const payload = v.payload
+			if (!isRecordGuard(payload)) return null
+			return {
+				schemaVersion: 1,
+				type: v.type,
+				id: v.id,
+				createdAt: v.createdAt,
+				payload,
+			}
+		}
 
 		const logMsg = (m: AgentToUiMessage) => {
 			try {
@@ -182,42 +203,40 @@ export class AIChatService {
 		}
 
 		const coerceAgentToUiMessage = (v: unknown): AgentToUiMessage | null => {
-			if (!isRecord(v)) return null
-			if (v.schemaVersion !== 1) return null
-			if (!isString(v.type) || !isString(v.id) || !isString(v.createdAt)) return null
-			if (!('payload' in v)) return null
-			const payload = (v as any).payload
-			if (!isRecord(payload)) return null
+			if (!isRecordGuard(v)) return null
+			const candidate = coerceToMessageCandidate(v)
+			if (!candidate) return null
+			const { payload } = candidate
 
 			// Fix common model mistakes for taskStatus: missing payload.phase.
-			if (v.type === 'agentToUi/taskStatus') {
+			if (candidate.type === 'agentToUi/taskStatus') {
 				const phase = payload.phase
 				const message = payload.message
-				if (!isString(phase) && isString(message)) {
-					const patched = {
-						...(v as any),
+				if (!isStringGuard(phase) && isStringGuard(message)) {
+					const patched: AgentToUiMessageCandidate = {
+						...candidate,
 						payload: { ...payload, phase: 'writing' },
 					}
-					return isAgentToUiMessage(patched) ? (patched as AgentToUiMessage) : null
+					return isAgentToUiMessage(patched) ? patched : null
 				}
 			}
 
 			// Fix common model mistakes for applyFilter:
 			// - payload.target mistakenly set to "nodeId:xxx" (should be target="nodeId" and nodeId="xxx").
-			if (v.type === 'agentToUi/applyFilter') {
+			if (candidate.type === 'agentToUi/applyFilter') {
 				const target = payload.target
-				if (isString(target)) {
-					const m = target.match(/^nodeId\s*:\s*(.+)$/)
-					if (m && m[1] && !isString(payload.nodeId)) {
-						const patched = {
-							...(v as any),
+				if (isStringGuard(target)) {
+					const match = target.match(/^nodeId\s*:\s*(.+)$/)
+					if (match && match[1] && !isStringGuard(payload.nodeId)) {
+						const patched: AgentToUiMessageCandidate = {
+							...candidate,
 							payload: {
 								...payload,
 								target: 'nodeId',
-								nodeId: m[1].trim(),
+								nodeId: match[1].trim(),
 							},
 						}
-						return isAgentToUiMessage(patched) ? (patched as AgentToUiMessage) : null
+						return isAgentToUiMessage(patched) ? patched : null
 					}
 				}
 			}
@@ -273,9 +292,12 @@ export class AIChatService {
 			if (name === 'done') return [{ type: 'done' }]
 			if (name === 'error') {
 				try {
-					const err = JSON.parse(data) as any
-					console.error('[AIChatService][sse:error]', err)
-					return [{ type: 'error', error: err }]
+					const parsed = JSON.parse(data) as unknown
+					console.error('[AIChatService][sse:error]', parsed)
+					if (isRecordGuard(parsed) && isStringGuard(parsed.message)) {
+						return [{ type: 'error', error: { message: parsed.message, details: parsed.details } }]
+					}
+					return [{ type: 'error', error: { message: isStringGuard(parsed) ? parsed : data } }]
 				} catch {
 					console.error('[AIChatService][sse:error]', data)
 					return [{ type: 'error', error: { message: data } }]

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationNormalized, type NavigationGuardNext } from 'vue-router'
 import { ThemeStore } from '../../store/theme'
 
 const props = defineProps<{
@@ -134,7 +134,7 @@ const MIN_TRANSITION_MS = 2400
 // 防止在 overlay 仍在播放时重复导航
 let navigationInFlight = false
 
-const beforeHook = async (to: any, from: any, next: any) => {
+const beforeHook = async (to: RouteLocationNormalized, from: RouteLocationNormalized, next: NavigationGuardNext) => {
 	if (isDisabled.value) { next(); return }
 	// 初始加载或同页面跳转不触发
 	if (!from || !from.name || from.name === to.name) { next(); return }
@@ -165,7 +165,7 @@ const beforeHook = async (to: any, from: any, next: any) => {
 	next()
 }
 
-const afterHook = async (to: any, from: any) => {
+const afterHook = async (to: RouteLocationNormalized, from: RouteLocationNormalized) => {
 	if (isDisabled.value) { resetState(); return }
 	if (!from || !from.name || from.name === to.name) { resetState(); return }
 

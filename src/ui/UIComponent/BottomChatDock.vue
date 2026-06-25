@@ -482,7 +482,13 @@ export type NanoBananaConfig = {
     | "doubao-seedream-4-0-250828"
     | "doubao-seedream-5-0-260128"
     | "jimeng-image-3.0"
-    | "jimeng-image-4.0";
+    | "jimeng-image-4.0"
+    | "meshy";
+  meshyImageAiModel?: string;
+  meshyAspectRatio?: string;
+  meshyPoseMode?: string;
+  meshyGenerateMultiView?: boolean;
+  meshyOutputImageCount?: number;
 };
 
 export type SeedanceConfig = SeedanceVideoFormConfig;
@@ -516,7 +522,7 @@ export type LocalExecFlowEvent = {
   messageId?: string;
   approvalRequestId?: string;
   source?: LocalExecSource;
-  payload?: Record<string, any> | null;
+  payload?: Record<string, unknown> | null;
 };
 
 export type CodexSessionItem = LocalExecSessionItem;
@@ -1199,7 +1205,7 @@ const emitGenerate = () => {
         meshyGenerateMultiView: meshyImageConfig.value.generateMultiView || false,
         meshyOutputImageCount: meshyImageConfig.value.outputImageCount || 1,
         quantity,
-      } as any,
+      },
     });
     return;
   }
@@ -1326,7 +1332,7 @@ const agentApprovalEvents = computed(() =>
 const agentFlowDetail = (ev: CodexFlowEvent) => {
   const direct = String(ev.detail || '').trim();
   if (direct) return direct;
-  const payloadValue = (ev.payload || {}) as Record<string, any>;
+  const payloadValue = (ev.payload || {}) as Record<string, unknown>;
   if (ev.kind === 'command' && Array.isArray(payloadValue.command)) {
     return payloadValue.command.map((item: unknown) => String(item || '')).join(' ').trim();
   }

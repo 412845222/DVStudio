@@ -524,6 +524,15 @@ const cropToUv = (c: { x: number; y: number; width: number; height: number }) =>
 
 const { getCachedResource, loadResource, getResourceSize } = useAIWorkflowResourceCache();
 
+type ImageSettingsPatch = {
+  outputWidth?: number;
+  outputHeight?: number;
+  naturalWidth?: number;
+  naturalHeight?: number;
+  cropEnabled?: boolean;
+  crop?: { x: number; y: number; width: number; height: number };
+};
+
 const ensureNaturalSizeFallback = async () => {
   const sourceUrl = effectiveSourceUrl.value;
   if (!sourceUrl) return;
@@ -531,7 +540,7 @@ const ensureNaturalSizeFallback = async () => {
 
   const cachedSize = getResourceSize(sourceUrl);
   if (cachedSize) {
-    const patch: Record<string, any> = { naturalWidth: cachedSize.width, naturalHeight: cachedSize.height };
+    const patch: ImageSettingsPatch = { naturalWidth: cachedSize.width, naturalHeight: cachedSize.height };
     if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
       patch.outputWidth = cachedSize.width;
       patch.outputHeight = cachedSize.height;
@@ -545,7 +554,7 @@ const ensureNaturalSizeFallback = async () => {
 
   const cached = getCachedResource(sourceUrl);
   if (cached && cached.loaded && cached.size) {
-    const patch: Record<string, any> = { naturalWidth: cached.size.width, naturalHeight: cached.size.height };
+    const patch: ImageSettingsPatch = { naturalWidth: cached.size.width, naturalHeight: cached.size.height };
     if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
       patch.outputWidth = cached.size.width;
       patch.outputHeight = cached.size.height;
@@ -559,7 +568,7 @@ const ensureNaturalSizeFallback = async () => {
 
   const resource = await loadResource(sourceUrl, "image");
   if (!resource.error && resource.size) {
-    const patch: Record<string, any> = { naturalWidth: resource.size.width, naturalHeight: resource.size.height };
+    const patch: ImageSettingsPatch = { naturalWidth: resource.size.width, naturalHeight: resource.size.height };
     if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
       patch.outputWidth = resource.size.width;
       patch.outputHeight = resource.size.height;
@@ -764,7 +773,7 @@ const onPreviewImageLoad = () => {
       return;
     }
 
-    const patch: Record<string, any> = { naturalWidth: w, naturalHeight: h };
+    const patch: ImageSettingsPatch = { naturalWidth: w, naturalHeight: h };
     if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
       patch.outputWidth = w;
       patch.outputHeight = h;

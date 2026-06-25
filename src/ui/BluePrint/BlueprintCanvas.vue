@@ -50,6 +50,14 @@ export type BlueprintViewport = {
   panY: number;
 };
 
+type BlueprintCanvasNode = {
+  worldX?: number;
+  worldY?: number;
+  width?: number;
+  height?: number;
+  [key: string]: unknown;
+};
+
 const props = withDefaults(
   defineProps<{
     viewport?: BlueprintViewport;
@@ -65,7 +73,7 @@ const props = withDefaults(
       label: string;
       nodeIds: string[];
     }>;
-    nodesById?: Record<string, any>;
+    nodesById?: Record<string, BlueprintCanvasNode>;
   }>(),
   {
     viewport: () => ({ zoom: 1, panX: 0, panY: 0 }),
@@ -105,12 +113,13 @@ const selectionFrameMoveHandle = ref<{ x: number; y: number; width: number; heig
 // 多选框删除按钮区域（用于交互检测）
 const selectionFrameDeleteButton = ref<{ x: number; y: number; width: number; height: number } | null>(null);
 
-// 已保存选区的移动手柄区域列表
-const savedFrameMoveHandles = ref<Array<{ 
-  x: number; y: number; width: number; height: number; 
+type SavedFrameHandle = {
+  x: number; y: number; width: number; height: number;
   frameId: string; nodeIds: string[];
   deleteBtn?: { x: number; y: number; width: number; height: number };
-}>>([]);
+};
+
+const savedFrameMoveHandles = ref<SavedFrameHandle[]>([]);
 
 // 拖拽状态
 const draggingSelectionFrame = ref(false);
@@ -760,7 +769,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
     const start = toLocal(wrap, { x: e.clientX, y: e.clientY });
     
     // 检查是否点击在已保存选区的删除按钮上（优先于移动手柄检测）
-    let clickedSavedDeleteFrame: any = null;
+    let clickedSavedDeleteFrame: SavedFrameHandle | null = null;
     for (const h of savedFrameMoveHandles.value) {
       if (h.deleteBtn &&
         start.x >= h.deleteBtn.x && 

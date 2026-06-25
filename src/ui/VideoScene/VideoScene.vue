@@ -278,8 +278,42 @@ import {
 	shouldCollapseMultiSelectionOnPointerUp,
 	type MoveSnapSession,
 	type ResizeSnapSession,
+	type VideoSceneNodeTransform,
+	type VideoSceneNodeProps,
 	worldToLocalRotated,
 } from '../../core/scene'
+
+type WorldTransform = { x: number; y: number; scaleX: number; scaleY: number; rotation: number }
+
+const safeNumber = (v: unknown, fallback = 0): number => {
+	const n = Number(v)
+	return Number.isFinite(n) ? n : fallback
+}
+
+const getNodeTransform = (hit: { node: { transform?: VideoSceneNodeTransform } | null } | null): VideoSceneNodeTransform => {
+	const t = hit?.node?.transform
+	return {
+		x: safeNumber(t?.x),
+		y: safeNumber(t?.y),
+		scaleX: safeNumber(t?.scaleX, 1),
+		scaleY: safeNumber(t?.scaleY, 1),
+		scale: t?.scale,
+		pivotX: safeNumber(t?.pivotX, 0.5),
+		pivotY: safeNumber(t?.pivotY, 0.5),
+		width: safeNumber(t?.width),
+		height: safeNumber(t?.height),
+		rotation: safeNumber(t?.rotation),
+		opacity: safeNumber(t?.opacity, 1),
+	}
+}
+
+const getWorldTransform = (world: WorldTransform | null | undefined): WorldTransform => ({
+	x: safeNumber(world?.x),
+	y: safeNumber(world?.y),
+	scaleX: safeNumber(world?.scaleX, 1),
+	scaleY: safeNumber(world?.scaleY, 1),
+	rotation: safeNumber(world?.rotation),
+})
 
 const isCtrlDown = ref(false)
 const onKeyDown = (ev: KeyboardEvent) => {
@@ -642,7 +676,7 @@ const exportFrames = async () => {
 
 			for (let wi = 0; wi < concurrency; wi++) {
 				const w = new Worker(workerUrl, { type: 'module' })
-				w.onmessage = (ev) => onWorkerMessage(w, (ev as MessageEvent).data as any)
+				w.onmessage = (ev: MessageEvent<WorkerOut>) => onWorkerMessage(w, ev.data)
 				w.postMessage({
 					type: 'init',
 					jobId: created.jobId,
@@ -712,7 +746,7 @@ const exportFrames = async () => {
 		}
 	} catch (e) {
 		exportStatus.value = 'error'
-		exportError.value = String((e as any)?.message ?? e)
+		exportError.value = e instanceof Error ? e.message : String(e)
 		stopExportStream()
 	}
 }
@@ -745,7 +779,7 @@ const renderVideo = async () => {
 		})
 	} catch (e) {
 		exportStatus.value = 'error'
-		exportError.value = String((e as any)?.message ?? e)
+		exportError.value = e instanceof Error ? e.message : String(e)
 	}
 }
 
@@ -853,7 +887,7 @@ watch(
 	(bg) => {
 		bgType.value = bg.type
 		bgColor.value = bg.color
-		bgOpacity.value = Number.isFinite(bg.opacity as any) ? Number(bg.opacity) : 1
+		bgOpacity.value = safeNumber(bg.opacity, 1)
 		bgImageSrc.value = bg.imageSrc
 		bgFit.value = bg.imageFit
 		bgRepeat.value = bg.repeat
@@ -1015,7 +1049,7 @@ const resize = ref<{
 	nodeId?: string
 	layerId?: string
 	anchorWorld?: { x: number; y: number }
-	parentWorld?: { x: number; y: number; scaleX: number; scaleY: number }
+	parentWorld?: WorldTransform
 	rotation?: number
 	pivotX?: number
 	pivotY?: number
@@ -1092,18 +1126,19 @@ const updateOverlay = () => {
 		for (const id of selectedIds) {
 			const hit = findUserNodeWithWorld(id)
 			if (!hit) continue
-			const t = hit.node.transform as any
+			const t = getNodeTransform(hit)
+			const world = getWorldTransform(hit.world)
 			const geom = buildNodeOverlayGeometry({
 				worldPivot: hit.world,
-				width: Number(t.width ?? 0),
-				height: Number(t.height ?? 0),
-				scaleX: Number((hit.world as any).scaleX ?? 1),
-				scaleY: Number((hit.world as any).scaleY ?? 1),
-				rotation: Number((hit.world as any).rotation ?? 0),
-				pivotX: Number((t as any).pivotX ?? 0.5),
-				pivotY: Number((t as any).pivotY ?? 0.5),
-				userType: (hit.node as any)?.userType,
-				props: (hit.node as any)?.props,
+				width: t.width,
+				height: t.height,
+				scaleX: world.scaleX,
+				scaleY: world.scaleY,
+				rotation: world.rotation,
+				pivotX: t.pivotX,
+				pivotY: t.pivotY,
+				userType: hit.node.userType,
+				props: hit.node.props,
 			})
 			const tl = canvas.worldToScreen(geom.corners.tl)
 			const tr = canvas.worldToScreen(geom.corners.tr)
@@ -1153,18 +1188,19 @@ const updateOverlay = () => {
 		lineOverlay.visible = false
 		return
 	}
-	const t = hit.node.transform as any
+	const t = getNodeTransform(hit)
+	const world = getWorldTransform(hit.world)
 	const geom = buildNodeOverlayGeometry({
 		worldPivot: hit.world,
-		width: Number(t.width ?? 0),
-		height: Number(t.height ?? 0),
-		scaleX: Number((hit.world as any).scaleX ?? 1),
-		scaleY: Number((hit.world as any).scaleY ?? 1),
-		rotation: Number((hit.world as any).rotation ?? 0),
-		pivotX: Number((t as any).pivotX ?? 0.5),
-		pivotY: Number((t as any).pivotY ?? 0.5),
-		userType: (hit.node as any)?.userType,
-		props: (hit.node as any)?.props,
+		width: t.width,
+		height: t.height,
+		scaleX: world.scaleX,
+		scaleY: world.scaleY,
+		rotation: world.rotation,
+		pivotX: t.pivotX,
+		pivotY: t.pivotY,
+		userType: hit.node.userType,
+		props: hit.node.props,
 	})
 	const tl = canvas.worldToScreen(geom.corners.tl)
 	const tr = canvas.worldToScreen(geom.corners.tr)
@@ -1200,26 +1236,27 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 	if (!nodeId) return
 	const hit = findUserNodeWithWorld(nodeId)
 	if (!hit) return
-	const t = hit.node.transform as any
+	const t = getNodeTransform(hit)
+	const world = getWorldTransform(hit.world)
 	const layerId = hit.layerId
 	const cx = hit.world.x
 	const cy = hit.world.y
-	const w = Number(t.width ?? 0)
-	const h = Number(t.height ?? 0)
-	const rotation = Number((hit.world as any).rotation ?? 0)
-	const pivotX = Number((t as any).pivotX ?? 0.5)
-	const pivotY = Number((t as any).pivotY ?? 0.5)
+	const w = t.width
+	const h = t.height
+	const rotation = world.rotation
+	const pivotX = t.pivotX
+	const pivotY = t.pivotY
 	const geom = buildNodeOverlayGeometry({
 		worldPivot: { x: cx, y: cy },
 		width: w,
 		height: h,
-		scaleX: Number((hit.world as any).scaleX ?? 1),
-		scaleY: Number((hit.world as any).scaleY ?? 1),
+		scaleX: world.scaleX,
+		scaleY: world.scaleY,
 		rotation,
 		pivotX,
 		pivotY,
-		userType: (hit.node as any)?.userType,
-		props: (hit.node as any)?.props,
+		userType: hit.node.userType,
+		props: hit.node.props,
 	})
 	const tl = geom.corners.tl
 	const tr = geom.corners.tr
@@ -1237,10 +1274,11 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 		if (!Number.isFinite(n)) return fallback
 		return Math.max(0, Math.min(100, n))
 	}
-	const legacyScale = clampScale((t as any).scale, 1)
-	const nodeScaleX = clampScale((t as any).scaleX, legacyScale)
-	const nodeScaleY = clampScale((t as any).scaleY, legacyScale)
-	resize.value = { active: true, corner, nodeId, layerId, anchorWorld, parentWorld: hit.parentWorld as any, rotation, pivotX, pivotY, nodeScaleX, nodeScaleY }
+	const legacyScale = clampScale(t.scale, 1)
+	const nodeScaleX = clampScale(t.scaleX, legacyScale)
+	const nodeScaleY = clampScale(t.scaleY, legacyScale)
+	const parentWorld = getWorldTransform(hit.parentWorld)
+	resize.value = { active: true, corner, nodeId, layerId, anchorWorld, parentWorld, rotation, pivotX, pivotY, nodeScaleX, nodeScaleY }
 	overlay.showSize = true
 	resizeSnapSession.value = snapEnabled.value
 		? beginResizeSnapSessionForNode({
@@ -1266,8 +1304,9 @@ const onLinePointDown = (kind: LinePointKind, ev: PointerEvent) => {
 	if (!nodeId) return
 	const hit = findUserNodeWithWorld(nodeId)
 	if (!hit) return
-	if ((hit.node as any)?.userType !== 'line') return
-	const rotation = Number((hit.world as any).rotation ?? 0)
+	if (hit.node.userType !== 'line') return
+	const world = getWorldTransform(hit.world)
+	const rotation = world.rotation
 	lineDrag.value = {
 		active: true,
 		kind,
@@ -1275,8 +1314,8 @@ const onLinePointDown = (kind: LinePointKind, ev: PointerEvent) => {
 		layerId: hit.layerId,
 		worldCenter: { x: hit.world.x, y: hit.world.y },
 		rotation,
-		scaleX: Number((hit.world as any).scaleX ?? 1),
-		scaleY: Number((hit.world as any).scaleY ?? 1),
+		scaleX: world.scaleX,
+		scaleY: world.scaleY,
 	}
 	try {
 		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
@@ -1398,9 +1437,10 @@ const onDocPointerMove = (ev: PointerEvent) => {
 	const offY = (0.5 - py) * heightWorld
 	const pivotWorldX = cx - (offX * cos - offY * sin)
 	const pivotWorldY = cy - (offX * sin + offY * cos)
-	const psx = Math.max(1e-6, Number((parentWorld as any).scaleX ?? 1))
-	const psy = Math.max(1e-6, Number((parentWorld as any).scaleY ?? 1))
-	const prot = Number((parentWorld as any).rotation ?? 0) || 0
+	const parentW = getWorldTransform(parentWorld)
+	const psx = Math.max(1e-6, parentW.scaleX)
+	const psy = Math.max(1e-6, parentW.scaleY)
+	const prot = parentW.rotation
 	const cosP = Math.cos(-prot)
 	const sinP = Math.sin(-prot)
 	const nsx = Math.max(1e-6, Number(nodeScaleX ?? 1))
@@ -1528,14 +1568,17 @@ const onPointerMove = (ev: PointerEvent) => {
 				const start = drag.value.startXYById[nodeId]
 				if (!start) continue
 				const hit = findUserNodeWithWorld(nodeId)
-				const psx = Math.max(1e-6, Number((hit?.parentWorld as any)?.scaleX ?? 1))
-				const psy = Math.max(1e-6, Number((hit?.parentWorld as any)?.scaleY ?? 1))
-				const prot = Number((hit?.parentWorld as any)?.rotation ?? 0) || 0
+				if (!hit) continue
+				const parentW = getWorldTransform(hit.parentWorld)
+				const psx = Math.max(1e-6, parentW.scaleX)
+				const psy = Math.max(1e-6, parentW.scaleY)
+				const prot = parentW.rotation
 				const cosP = Math.cos(-prot)
 				const sinP = Math.sin(-prot)
 				const rdx = dx * cosP - dy * sinP
 				const rdy = dx * sinP + dy * cosP
 				VideoSceneStore.dispatch('updateNodeTransform', {
+					layerId: hit.layerId,
 					nodeId,
 					patch: { x: start.x + rdx / psx, y: start.y + rdy / psy },
 				})
@@ -1545,9 +1588,11 @@ const onPointerMove = (ev: PointerEvent) => {
 
 		if (!drag.value.startXY) return
 		const hit0 = findUserNodeWithWorld(drag.value.nodeId)
-		const psx0 = Math.max(1e-6, Number((hit0?.parentWorld as any)?.scaleX ?? 1))
-		const psy0 = Math.max(1e-6, Number((hit0?.parentWorld as any)?.scaleY ?? 1))
-		const prot0 = Number((hit0?.parentWorld as any)?.rotation ?? 0) || 0
+		if (!hit0) return
+		const parentW0 = getWorldTransform(hit0.parentWorld)
+		const psx0 = Math.max(1e-6, parentW0.scaleX)
+		const psy0 = Math.max(1e-6, parentW0.scaleY)
+		const prot0 = parentW0.rotation
 		const cosP0 = Math.cos(-prot0)
 		const sinP0 = Math.sin(-prot0)
 		const rdx0 = dx * cosP0 - dy * sinP0
@@ -1560,17 +1605,25 @@ const onPointerMove = (ev: PointerEvent) => {
 		const focusedId = VideoSceneStore.state.focusedNodeId
 		if (snapEnabled.value && focusedId && focusedId === drag.value.nodeId) {
 			const hit = findUserNodeWithWorld(drag.value.nodeId)
-			const parentWorld = (hit?.parentWorld as any) ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }
-			const psx = Math.max(1e-6, Number(parentWorld.scaleX ?? 1))
-			const psy = Math.max(1e-6, Number(parentWorld.scaleY ?? 1))
-			const prot = Number(parentWorld.rotation ?? 0) || 0
+			if (!hit) {
+				VideoSceneStore.dispatch('updateNodeTransform', {
+					nodeId: drag.value.nodeId,
+					patch: { x: localX, y: localY },
+				})
+				return
+			}
+			const parentWorld = getWorldTransform(hit.parentWorld)
+			const psx = Math.max(1e-6, parentWorld.scaleX)
+			const psy = Math.max(1e-6, parentWorld.scaleY)
+			const prot = parentWorld.rotation
 			const cosP = Math.cos(prot)
 			const sinP = Math.sin(prot)
-			const t = findUserNodeTransform(drag.value.nodeId) as any
-			const w0 = Math.max(1, Number(t?.width ?? 1))
-			const h0 = Math.max(1, Number(t?.height ?? 1))
-			const wsx = Number((hit?.world as any)?.scaleX ?? 1)
-			const wsy = Number((hit?.world as any)?.scaleY ?? 1)
+			const t = getNodeTransform(hit)
+			const w0 = Math.max(1, t.width || 1)
+			const h0 = Math.max(1, t.height || 1)
+			const world = getWorldTransform(hit.world)
+			const wsx = world.scaleX
+			const wsy = world.scaleY
 			const w = w0 * wsx
 			const h = h0 * wsy
 			const tx = localX * psx
@@ -1623,6 +1676,7 @@ const onPointerMove = (ev: PointerEvent) => {
 		}
 
 		VideoSceneStore.dispatch('updateNodeTransform', {
+			layerId: hit0.layerId,
 			nodeId: drag.value.nodeId,
 			patch: { x: localX, y: localY },
 		})
@@ -1714,9 +1768,9 @@ const onWheel = (ev: WheelEvent) => {
 let wheelZoomRaf: number | null = null
 let wheelZoomDeltaY = 0
 let wheelZoomPoint: { x: number; y: number } | null = null
-let wheelZoomCanvas: any | null = null
+let wheelZoomCanvas: DwebCanvasGL | null = null
 
-const queueWheelZoom = (canvas: any, p: { x: number; y: number }, deltaY: number) => {
+const queueWheelZoom = (canvas: DwebCanvasGL, p: { x: number; y: number }, deltaY: number) => {
 	wheelZoomCanvas = canvas
 	wheelZoomPoint = p
 	wheelZoomDeltaY += Number(deltaY) || 0
@@ -1767,8 +1821,19 @@ onMounted(() => {
 	scene.setState(VideoSceneStore.state)
 	canvas.setScene(scene)
 	unsubscribeVideoScene = VideoSceneStore.subscribe((_m, state) => {
-		const m: any = _m as any
-		// 关键帧编辑：当且仅当“时间轴单选关键帧格子”且同图层时，把当前舞台写回该关键帧快照
+		type MutationType =
+			| 'updateNodeTransform'
+			| 'updateNodeProps'
+			| 'updateNodeName'
+			| 'setNodeType'
+			| 'moveNode'
+			| 'deleteNodesById'
+			| 'addNodeTree'
+			| 'addRenderableNode'
+			| 'pasteNodeTreeAsSibling'
+			| string
+		const m = _m as { type: MutationType; payload?: { layerId?: string } }
+		// 关键帧编辑：当且仅当"时间轴单选关键帧格子"且同图层时，把当前舞台写回该关键帧快照
 		if (!isApplyingTimelineAnimation) {
 			const type = String(m?.type ?? '')
 			const isKeyframeMutation =
@@ -1777,14 +1842,14 @@ onMounted(() => {
 				type === 'updateNodeName' ||
 				type === 'setNodeType' ||
 				type === 'moveNode' ||
-				// 关键修复：删除/新增节点也属于“关键帧内容编辑”，必须写回当前关键帧快照
+				// 关键修复：删除/新增节点也属于"关键帧内容编辑"，必须写回当前关键帧快照
 				type === 'deleteNodesById' ||
 				type === 'addNodeTree' ||
 				type === 'addRenderableNode' ||
 				type === 'pasteNodeTreeAsSibling'
 			if (isKeyframeMutation) {
 				const selected = getSingleSelectedKeyframeCell()
-				// 优先用“当前单选关键帧格子”的 layerId，避免依赖 mutation payload（删除时可能无 layerId）
+				// 优先用"当前单选关键帧格子"的 layerId，避免依赖 mutation payload（删除时可能无 layerId）
 				const lid = String(selected?.layerId ?? m?.payload?.layerId ?? '')
 				if (lid) {
 					if (isHighFreqEditing()) keyframeDirtyLayerIds.add(lid)
@@ -1865,7 +1930,7 @@ onBeforeUnmount(() => {
 		canvasEl.removeEventListener('pointermove', onPointerMove)
 		canvasEl.removeEventListener('pointerup', endPan)
 		canvasEl.removeEventListener('pointercancel', endPan)
-		canvasEl.removeEventListener('wheel', onWheel as any)
+		canvasEl.removeEventListener('wheel', onWheel as EventListener)
 	}
 	document.removeEventListener('pointermove', onDocPointerMove)
 	document.removeEventListener('pointerup', onDocPointerUp)

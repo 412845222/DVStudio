@@ -307,13 +307,13 @@ const draw = () => {
       .map((s) => ({
         startFrame: Math.max(
           0,
-          Math.min(props.frameCount - 1, Math.floor(Number((s as any).startFrame)))
+          Math.min(props.frameCount - 1, Math.floor(Number(s.startFrame)))
         ),
         endFrame: Math.max(
           0,
-          Math.min(props.frameCount - 1, Math.floor(Number((s as any).endFrame)))
+          Math.min(props.frameCount - 1, Math.floor(Number(s.endFrame)))
         ),
-        title: String((s as any).title ?? "").trim(),
+        title: String(s.title ?? "").trim(),
       }))
       .filter(
         (s) => Number.isFinite(s.startFrame) && Number.isFinite(s.endFrame) && s.title

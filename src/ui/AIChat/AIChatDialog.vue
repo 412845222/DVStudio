@@ -117,7 +117,7 @@
                 class="ai-chat__action-btn"
                 type="button"
                 :disabled="sending"
-                @click="(e: any) => saveToComponentLibrary(m, e)"
+                @click="(e: MouseEvent) => saveToComponentLibrary(m, e)"
               >
                 保存到组件库
               </button>
@@ -175,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
 import { useStore } from 'vuex'
 import { aiChatService } from '../../network/AIChatService'
 import type { AgentToUiMessage } from '../../core/agentToUI'
@@ -190,9 +190,9 @@ import {
 	getChatModelOptions,
 	type ChatApiSource,
 } from '../../ai/models/chatModels'
-import { componentTemplateApi } from '../../core/components'
+import { componentTemplateApi, type ComponentTemplate } from '../../core/components'
 import { ComponentLibraryService } from '../../network/ComponentLibraryService'
-import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners } from '../../core/scene'
+import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners, type VideoSceneTreeNode } from '../../core/scene'
 import { TimelineStore } from '../../store/timeline'
 import { VideoSceneKey, type VideoSceneState } from '../../store/videoscene'
 import { editorPersistence } from '../../adapters/editorPersistence'
@@ -200,6 +200,8 @@ import { dispatchDvsEditorNodeDeleted, dispatchDvsEditorNodePatched } from '../.
 import { DwebCanvasGLKey } from '../VideoScene/VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from '../VideoScene/anim/timelineAnimation'
 import { flyThumbnailPng } from '../VideoScene/parts/flyThumbnail'
+import { isRecord, isString, isArray, hasKeyOfType, isNumber, isBoolean, isNull } from '../../types/utils'
+import type { JsonValue } from '../../core/shared/json'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -213,6 +215,38 @@ type ChatMessage = {
 	scenePlanJson?: string
 	scenePlanData?: VideoScenePlan
 	scenePlanApplyStatus?: 'pending' | 'applied' | 'skipped'
+}
+
+type StageFilter = {
+	target: 'selection' | 'nodeId'
+	nodeId?: string
+	layerId?: string
+	mode: 'append' | 'replace'
+	filter: Record<string, JsonValue>
+}
+
+type StageOps = {
+	insertedNodeIds: string[]
+	filters: StageFilter[]
+}
+
+type ViewportContext = {
+	panX?: number
+	panY?: number
+	zoom?: number
+	screenW: number
+	screenH: number
+	centerWorld: { x: number; y: number }
+}
+
+type TemplateNodeLike = {
+	localId?: unknown
+	type?: unknown
+	props?: unknown
+	transform?: unknown
+	parentLocalId?: unknown
+	children?: unknown
+	[key: string]: unknown
 }
 
 const props = defineProps<{ open: boolean; minimized: boolean; anchor?: { x: number; y: number } | null }>()
@@ -320,14 +354,14 @@ const computeMinimizeTransform = () => {
 	return `translate(${dx}px, ${dy}px) scale(0.05)`
 }
 
-const shellStyle = computed(() => {
+const shellStyle = computed<CSSProperties>(() => {
 	return {
 		left: `${pos.value.x}px`,
 		top: `${pos.value.y}px`,
 		width: `${getDialogWidth()}px`,
 		height: `${getDialogHeight()}px`,
 		transform: minimizing.value ? animTransform.value : '',
-	} as any
+	}
 })
 
 const messages = ref<ChatMessage[]>([
@@ -464,11 +498,6 @@ const taskStatusLabel = computed(() => {
 
 const lastUserText = ref<string>('')
 
-type StageOps = {
-	insertedNodeIds: string[]
-	filters: Array<{ target: 'selection' | 'nodeId'; nodeId?: string; layerId?: string; mode: 'append' | 'replace'; filter: any }>
-}
-
 const lastStageOps = ref<StageOps>({ insertedNodeIds: [], filters: [] })
 
 const selfCheckActive = ref(false)
@@ -487,20 +516,25 @@ const stopTyping = () => {
 	typingQueue = ''
 }
 
-const isRecord = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null
+type TemplateLike = {
+	nodes?: unknown
+	rootLocalId?: unknown
+	[key: string]: unknown
+}
 
 const sanitizeComponentTemplate = (template: unknown): unknown => {
 	if (!isRecord(template)) return template
-	const nodes = (template as any).nodes
+	const tpl = template as TemplateLike
+	const nodes = tpl.nodes
 	if (!Array.isArray(nodes)) return template
-	const rootLocalId = typeof (template as any).rootLocalId === 'string' ? String((template as any).rootLocalId) : ''
+	const rootLocalId = isString(tpl.rootLocalId) ? tpl.rootLocalId : ''
 	const localIdSet = new Set<string>()
 	for (const n of nodes) {
-		if (n && typeof n === 'object' && typeof (n as any).localId === 'string') localIdSet.add((n as any).localId)
+		if (isRecord(n) && isString(n.localId)) localIdSet.add(n.localId)
 	}
 
 	const normalizeParentLocalId = (parentLocalId: unknown): string | undefined => {
-		if (typeof parentLocalId !== 'string') return undefined
+		if (!isString(parentLocalId)) return undefined
 		const raw = parentLocalId.trim()
 		if (!raw) return undefined
 		if (localIdSet.has(raw)) return raw
@@ -511,16 +545,13 @@ const sanitizeComponentTemplate = (template: unknown): unknown => {
 		return undefined
 	}
 
-	const nextNodes = nodes.map((n: any) => {
+	const nextNodes = nodes.map((n: unknown) => {
 		if (!isRecord(n)) return n
-		const next: any = { ...n }
-		// validate.ts requires props to be an object for every node.
+		const node = n as TemplateNodeLike
+		const next: TemplateNodeLike = { ...node }
 		if (!isRecord(next.props)) next.props = {}
-		// if transform provided but invalid, drop it (validator requires object when provided).
 		if (next.transform !== undefined && !isRecord(next.transform)) delete next.transform
-		// parentLocalId: must reference an existing localId inside the same template.
-		if (typeof next.localId === 'string' && next.localId === rootLocalId) {
-			// Root must not have parentLocalId.
+		if (isString(next.localId) && next.localId === rootLocalId) {
 			if (next.parentLocalId !== undefined) delete next.parentLocalId
 		} else if (next.parentLocalId !== undefined) {
 			const normalized = normalizeParentLocalId(next.parentLocalId)
@@ -546,10 +577,15 @@ const sanitizeComponentTemplate = (template: unknown): unknown => {
 		}
 		return next
 	})
-	return { ...(template as any), nodes: nextNodes }
+	return { ...template, nodes: nextNodes }
 }
 
-const applyFilterToSelection = async (filter: Record<string, any>, mode: 'append' | 'replace' = 'append') => {
+const getNodeFilters = (node: VideoSceneTreeNode): Record<string, JsonValue>[] => {
+	const filters = node.props?.filters
+	return isArray(filters, (v): v is Record<string, JsonValue> => isRecord(v)) ? filters : []
+}
+
+const applyFilterToSelection = async (filter: Record<string, JsonValue>, mode: 'append' | 'replace' = 'append') => {
 	const layer = findLayer(store.state, store.state.activeLayerId)
 	if (!layer) throw new Error('active layer not found')
 	const selectedIds = store.state.selectedNodeIds?.length ? store.state.selectedNodeIds : (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
@@ -557,7 +593,7 @@ const applyFilterToSelection = async (filter: Record<string, any>, mode: 'append
 	for (const nodeId of selectedIds) {
 		const node = findNode(layer.nodeTree, nodeId)
 		if (!node || node.category !== 'user') continue
-		const prev = Array.isArray((node.props as any)?.filters) ? ((node.props as any).filters as any[]) : []
+		const prev = getNodeFilters(node)
 		const next = mode === 'replace' ? [filter] : [...prev, filter]
 		await store.dispatch('updateNodeProps', { nodeId, patch: { filters: next } })
 	}
@@ -565,11 +601,11 @@ const applyFilterToSelection = async (filter: Record<string, any>, mode: 'append
 
 const applyFilterToNodeId = async (
 	nodeId: string,
-	filter: Record<string, any>,
+	filter: Record<string, JsonValue>,
 	mode: 'append' | 'replace' = 'append',
 	preferredLayerId?: string
 ) => {
-	const tryLayerIds = [preferredLayerId, store.state.activeLayerId].filter((x): x is string => typeof x === 'string' && !!x)
+	const tryLayerIds = [preferredLayerId, store.state.activeLayerId].filter((x): x is string => isString(x) && !!x)
 	const visited = new Set<string>()
 
 	const findInLayer = (layerId: string) => {
@@ -584,7 +620,7 @@ const applyFilterToNodeId = async (
 		visited.add(lid)
 		const hit = findInLayer(lid)
 		if (hit) {
-			const prev = Array.isArray((hit.node.props as any)?.filters) ? ((hit.node.props as any).filters as any[]) : []
+			const prev = getNodeFilters(hit.node)
 			const next = mode === 'replace' ? [filter] : [...prev, filter]
 			await store.dispatch('updateNodeProps', { layerId: hit.layerId, nodeId, patch: { filters: next } })
 			return
@@ -595,7 +631,7 @@ const applyFilterToNodeId = async (
 		if (visited.has(layer.id)) continue
 		const hit = findInLayer(layer.id)
 		if (hit) {
-			const prev = Array.isArray((hit.node.props as any)?.filters) ? ((hit.node.props as any).filters as any[]) : []
+			const prev = getNodeFilters(hit.node)
 			const next = mode === 'replace' ? [filter] : [...prev, filter]
 			await store.dispatch('updateNodeProps', { layerId: hit.layerId, nodeId, patch: { filters: next } })
 			return
@@ -605,13 +641,20 @@ const applyFilterToNodeId = async (
 	throw new Error(`未找到节点：${nodeId}`)
 }
 
-const collectNodeIds = (root: any): string[] => {
+type TreeNodeLike = {
+	id?: unknown
+	children?: unknown
+	[key: string]: unknown
+}
+
+const collectNodeIds = (root: unknown): string[] => {
 	const out: string[] = []
-	const visit = (n: any) => {
-		if (!n || typeof n !== 'object') return
-		if (typeof n.id === 'string') out.push(n.id)
-		const children = (n as any).children
-		if (Array.isArray(children)) children.forEach(visit)
+	const visit = (n: unknown) => {
+		if (!isRecord(n)) return
+		const node = n as TreeNodeLike
+		if (isString(node.id)) out.push(node.id)
+		const children = node.children
+		if (isArray(children)) children.forEach(visit)
 	}
 	visit(root)
 	return out
@@ -624,19 +667,19 @@ const buildContextPack = () => {
 		? store.state.selectedNodeIds
 		: (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
 
-	let selectedNodes: any[] = []
+	let selectedNodes: VideoSceneTreeNode[] = []
 	if (layer && selectedNodeIds.length) {
 		selectedNodes = selectedNodeIds
 			.map((id) => findNode(layer.nodeTree, id))
-			.filter((n) => !!n)
+			.filter((n): n is VideoSceneTreeNode => !!n)
 	}
 
 	return {
 		activeLayerId,
-		layers: store.state.layers.map((l: any) => ({ id: l.id, name: l.name })),
+		layers: store.state.layers.map((l) => ({ id: l.id, name: l.name })),
 		selectedNodeIds,
 		selectedNodes,
-		activeLayer: layer ? { id: layer.id, name: (layer as any).name, nodeTree: layer.nodeTree } : null,
+		activeLayer: layer ? { id: layer.id, name: layer.name, nodeTree: layer.nodeTree } : null,
 		lastStageOps: lastStageOps.value,
 	}
 }
@@ -682,7 +725,7 @@ const coerceNumber = (v: unknown): number | undefined => {
 
 const toComponentTemplateLike = (v: unknown, opts?: { defaultCenterWorld?: { x: number; y: number } }): unknown => {
 	let obj: unknown = v
-	if (typeof obj === 'string') {
+	if (isString(obj)) {
 		try {
 			obj = JSON.parse(obj)
 		} catch {
@@ -691,35 +734,33 @@ const toComponentTemplateLike = (v: unknown, opts?: { defaultCenterWorld?: { x: 
 	}
 	if (!isRecord(obj)) return v
 
-	// Already looks like a ComponentTemplate.
-	if (obj.schemaVersion === 1 && typeof obj.templateId === 'string' && Array.isArray(obj.nodes) && typeof obj.rootLocalId === 'string') {
+	const objRecord = obj as Record<string, unknown>
+	if (objRecord.schemaVersion === 1 && isString(objRecord.templateId) && isArray(objRecord.nodes) && isString(objRecord.rootLocalId)) {
 		return obj
 	}
 
-	// Heuristic: model returned a single node-like object.
-	const nodeType = typeof obj.type === 'string' ? obj.type : 'text'
+	const nodeType = isString(objRecord.type) ? objRecord.type : 'text'
 	const center = opts?.defaultCenterWorld
-	const transform = {
-		x: coerceNumber(obj.x) ?? center?.x ?? 0,
-		y: coerceNumber(obj.y) ?? center?.y ?? 0,
-		width: coerceNumber(obj.width),
-		height: coerceNumber(obj.height),
-		rotation: coerceNumber(obj.rotation),
-		opacity: coerceNumber(obj.opacity),
+	const transform: Record<string, number | undefined> = {
+		x: coerceNumber(objRecord.x) ?? center?.x ?? 0,
+		y: coerceNumber(objRecord.y) ?? center?.y ?? 0,
+		width: coerceNumber(objRecord.width),
+		height: coerceNumber(objRecord.height),
+		rotation: coerceNumber(objRecord.rotation),
+		opacity: coerceNumber(objRecord.opacity),
 	}
 
-	const reserved = new Set(['type', 'id', 'localId', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'name', 'children', 'parentId'])
-	const props: Record<string, any> = isRecord(obj.props) ? { ...obj.props } : {}
-	for (const [k, val] of Object.entries(obj)) {
+	const reserved = new Set(['type', 'id', 'localId', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'name', 'children', 'parentId', 'props'])
+	const props: Record<string, unknown> = isRecord(objRecord.props) ? { ...objRecord.props } : {}
+	for (const [k, val] of Object.entries(objRecord)) {
 		if (reserved.has(k)) continue
-		if (k === 'props') continue
 		props[k] = val
 	}
 
 	return {
 		schemaVersion: 1,
 		templateId: `ai_${Date.now()}`,
-		name: typeof obj.name === 'string' ? obj.name : 'AI生成节点',
+		name: isString(objRecord.name) ? objRecord.name : 'AI生成节点',
 		params: [],
 		nodes: [
 			{
@@ -733,23 +774,25 @@ const toComponentTemplateLike = (v: unknown, opts?: { defaultCenterWorld?: { x: 
 	}
 }
 
-const normalizeTemplateForViewport = (template: any, opts?: { defaultCenterWorld?: { x: number; y: number } }) => {
+const normalizeTemplateForViewport = (template: unknown, opts?: { defaultCenterWorld?: { x: number; y: number } }) => {
 	if (!isRecord(template)) return template
-	if (!Array.isArray((template as any).nodes)) return template
-	const rootId = (template as any).rootLocalId
-	if (typeof rootId !== 'string') return template
-	const nodes = (template as any).nodes
-	const idx = nodes.findIndex((n: any) => n && typeof n === 'object' && n.localId === rootId)
+	const tpl = template as TemplateLike
+	if (!isArray(tpl.nodes)) return template
+	const rootId = tpl.rootLocalId
+	if (!isString(rootId)) return template
+	const nodes = tpl.nodes
+	const idx = nodes.findIndex((n): n is Record<string, unknown> => isRecord(n) && n.localId === rootId)
 	if (idx < 0) return template
 	const node = nodes[idx]
 	if (!isRecord(node)) return template
-	const t = isRecord((node as any).transform) ? (node as any).transform : {}
-	const cx = coerceNumber(t.x)
-	const cy = coerceNumber(t.y)
+	const nodeRecord = node as Record<string, unknown>
+	const t = isRecord(nodeRecord.transform) ? nodeRecord.transform : {}
+	const cx = coerceNumber((t as Record<string, unknown>).x)
+	const cy = coerceNumber((t as Record<string, unknown>).y)
 	if (cx != null && cy != null) return template
 	const center = opts?.defaultCenterWorld
 	if (!center) return template
-	const nextNode = { ...node, transform: { ...t, x: cx ?? center.x, y: cy ?? center.y } }
+	const nextNode = { ...nodeRecord, transform: { ...t, x: cx ?? center.x, y: cy ?? center.y } }
 	const nextNodes = nodes.slice()
 	nextNodes[idx] = nextNode
 	return { ...template, nodes: nextNodes }
@@ -775,7 +818,7 @@ const extractReadableText = (raw: string): string => {
 	const trimmed = text.trim()
 	if (!trimmed) return ''
 
-	const tryParse = (s: string): any | null => {
+	const tryParse = (s: string): unknown => {
 		try {
 			return JSON.parse(s)
 		} catch {
@@ -783,14 +826,11 @@ const extractReadableText = (raw: string): string => {
 		}
 	}
 
-	// Fast path: exact JSON object/array.
-	// If it is JSON but not a known envelope, hide it to prevent leaking raw JSON into the UI.
 	if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
 		const obj = tryParse(trimmed)
 		if (obj) return extractReadableTextFromAgentJson(obj) ?? ''
 	}
 
-	// Embedded JSON object within other text (or pretty-printed JSON fragments).
 	const first = trimmed.indexOf('{')
 	const last = trimmed.lastIndexOf('}')
 	if (first >= 0 && last > first) {
@@ -799,7 +839,6 @@ const extractReadableText = (raw: string): string => {
 		if (obj) {
 			const extracted = extractReadableTextFromAgentJson(obj)
 			if (extracted) return extracted
-			// Strip JSON fragment to avoid leaking raw JSON into the UI.
 			const stripped = (trimmed.slice(0, first) + trimmed.slice(last + 1)).trim()
 			return stripped
 		}
@@ -808,15 +847,21 @@ const extractReadableText = (raw: string): string => {
 	return text
 }
 
-const extractReadableTextFromAgentJson = (obj: any): string | null => {
-	const t = obj?.type
-	const p = obj?.payload
-	if (t === 'agentToUi/chatMessage' && typeof p?.content === 'string') return p.content
-	if (t === 'agentToUi/chat' && typeof p?.message === 'string') return p.message
-	if (t === 'agentToUi/chat' && typeof p?.content === 'string') return p.content
-	if (t === 'agentToUi/text' && typeof p?.text === 'string') return p.text
-	// Some backends/models may embed an envelope under payload.
-	if (isRecord(p) && typeof p.text === 'string') {
+type AgentJsonEnvelope = {
+	type?: unknown
+	payload?: unknown
+}
+
+const extractReadableTextFromAgentJson = (obj: unknown): string | null => {
+	if (!isRecord(obj)) return null
+	const envelope = obj as AgentJsonEnvelope
+	const t = envelope.type
+	const p = envelope.payload
+	if (t === 'agentToUi/chatMessage' && isRecord(p) && isString(p.content)) return p.content
+	if (t === 'agentToUi/chat' && isRecord(p) && isString(p.message)) return p.message
+	if (t === 'agentToUi/chat' && isRecord(p) && isString(p.content)) return p.content
+	if (t === 'agentToUi/text' && isRecord(p) && isString(p.text)) return p.text
+	if (isRecord(p) && isString(p.text)) {
 		const inner = p.text.trim()
 		if (inner.startsWith('{') && inner.endsWith('}')) {
 			try {
@@ -839,8 +884,14 @@ const pushStreamText = (assistantId: string, text: string) => {
 	ensureTyping(assistantId)
 }
 
-const getViewportContext = (): any | null => {
-	const canvas = dwebCanvasRef?.value
+type DwebCanvasLike = {
+	size: { width: number; height: number }
+	viewport?: { pan?: { x?: number; y?: number }; zoom?: number }
+	screenToWorld: (p: { x: number; y: number }) => { x: number; y: number }
+}
+
+const getViewportContext = (): ViewportContext | null => {
+	const canvas = dwebCanvasRef?.value as DwebCanvasLike | null
 	if (!canvas) return null
 	try {
 		const size = canvas.size
@@ -1076,16 +1127,16 @@ const sendText = async (text: string) => {
 				if (m.type === 'agentToUi/applyFilter') {
 					taskPhase.value = 'template'
 					try {
-						const payload: any = (m as any).payload
-						const filter = payload?.filter
-						const mode = payload?.mode === 'replace' ? 'replace' : 'append'
-						if (!isRecord(filter)) throw new Error('filter 必须是对象')
-						if (payload?.target === 'nodeId' && typeof payload?.nodeId === 'string') {
-							await applyFilterToNodeId(payload.nodeId, filter, mode, typeof payload?.layerId === 'string' ? payload.layerId : undefined)
+						const payload = m.payload
+						const filter = payload.filter as Record<string, JsonValue>
+						const mode: 'append' | 'replace' = payload.mode === 'replace' ? 'replace' : 'append'
+						if (payload.target === 'nodeId' && isString(payload.nodeId)) {
+							const layerId = isString(payload.layerId) ? payload.layerId : undefined
+							await applyFilterToNodeId(payload.nodeId, filter, mode, layerId)
 							lastStageOps.value.filters.push({
 								target: 'nodeId',
 								nodeId: payload.nodeId,
-								layerId: typeof payload?.layerId === 'string' ? payload.layerId : undefined,
+								layerId,
 								mode,
 								filter,
 							})
@@ -1095,8 +1146,8 @@ const sendText = async (text: string) => {
 						}
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) {
-							const ft = String(filter?.type ?? '')
-							const targetLabel = payload?.target === 'nodeId' && typeof payload?.nodeId === 'string' ? `节点 ${payload.nodeId}` : '选中节点'
+							const ft = String(filter.type ?? '')
+							const targetLabel = payload.target === 'nodeId' && isString(payload.nodeId) ? `节点 ${payload.nodeId}` : '选中节点'
 							messages.value[idx].text = (messages.value[idx].text || '') + `\n\n已为${targetLabel}应用滤镜：${ft || 'filter'}。`
 						}
 					} catch (err) {
@@ -1106,12 +1157,12 @@ const sendText = async (text: string) => {
 					continue
 				}
 				if (m.type === 'agentToUi/taskStatus') {
-					const phase = (m as any).payload?.phase
-					const msg = (m as any).payload?.message
-					if (typeof msg === 'string') taskPhaseMessage.value = msg
-					// 思考内容不进聊天记录：仅刷新左侧单一思考栏。
+					const payload = m.payload
+					const phase = payload.phase
+					const msg = payload.message
+					if (isString(msg)) taskPhaseMessage.value = msg
 					{
-						const text = (typeof msg === 'string' && msg.trim()) ? msg.trim() : String(phase ?? '').trim()
+						const text = (isString(msg) && msg.trim()) ? msg.trim() : String(phase ?? '').trim()
 						if (text) {
 							thoughtText.value = text
 							if (!thoughtDismissed.value) thoughtOpen.value = true
@@ -1135,17 +1186,18 @@ const sendText = async (text: string) => {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
 					try {
-						const payloadAny: any = (m as any).payload
-						const targetLayerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-						const rawParentId = payloadAny?.parentId
+						const payload = m.payload
+						const targetLayerId = isString(payload.layerId) && payload.layerId.trim() ? payload.layerId.trim() : undefined
+						const rawParentId = payload.parentId
 						const targetParentId: string | null | undefined =
 							rawParentId === null
 								? null
-								: typeof rawParentId === 'string' && rawParentId.trim()
+								: isString(rawParentId) && rawParentId.trim()
 									? rawParentId.trim()
 									: undefined
-						const nodeUnknown: unknown = payloadAny?.node
+						const nodeUnknown = payload.node
 						if (!isRecord(nodeUnknown)) throw new Error('insertNode.payload.node 必须是对象')
+						const nodeRecord = nodeUnknown as Record<string, unknown>
 
 						let finalLayerId = targetLayerId
 						if (finalLayerId && !findLayer(store.state, finalLayerId)) {
@@ -1153,7 +1205,7 @@ const sendText = async (text: string) => {
 							finalLayerId = undefined
 						}
 						let finalParentId: string | null | undefined = targetParentId
-						if (typeof finalParentId === 'string' && finalParentId !== 'root') {
+						if (isString(finalParentId) && finalParentId !== 'root') {
 							const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
 							const exists = layer ? !!findNode(layer.nodeTree, finalParentId) : nodeExistsInAnyLayer(store.state.layers, finalParentId)
 							if (!exists) {
@@ -1162,20 +1214,17 @@ const sendText = async (text: string) => {
 							}
 						}
 
-						// Minimal normalization: ensure props is object, prefer user nodes.
-						const n: any = { ...(nodeUnknown as any) }
+						const n: Record<string, unknown> = { ...nodeRecord }
 						if (!isRecord(n.props)) n.props = {}
-						if (typeof n.category !== 'string') n.category = 'user'
+						if (!isString(n.category)) n.category = 'user'
 						if (n.category === 'user') {
-							if (typeof n.userType !== 'string') {
-								// Allow shorthand 'type' from template-like payloads.
-								if (typeof n.type === 'string') n.userType = n.type
+							if (!isString(n.userType)) {
+								if (isString(n.type)) n.userType = n.type
 							}
 							if (!isRecord(n.transform)) n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
 						}
-						await store.dispatch('addNodeTree', { node: n, layerId: finalLayerId, parentId: finalParentId })
+						await store.dispatch('addNodeTree', { node: n as unknown as VideoSceneTreeNode, layerId: finalLayerId, parentId: finalParentId })
 
-						// best-effort: collect inserted ids if present
 						try {
 							const inserted = collectNodeIds(n)
 							lastStageOps.value.insertedNodeIds.push(...inserted)
@@ -1206,13 +1255,13 @@ const sendText = async (text: string) => {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
 					try {
-						const payloadAny: any = (m as any).payload
-						const nodeId = typeof payloadAny?.nodeId === 'string' ? payloadAny.nodeId.trim() : ''
+						const payload = m.payload
+						const nodeId = isString(payload.nodeId) ? payload.nodeId.trim() : ''
 						if (!nodeId) throw new Error('patchNode.payload.nodeId 必须是非空字符串')
-						const patch = payloadAny?.patch
+						const patch = payload.patch
 						if (!isRecord(patch)) throw new Error('patchNode.payload.patch 必须是对象')
-						const layerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-						dispatchDvsEditorNodePatched({ nodeId, layerId, patch })
+						const layerId = isString(payload.layerId) && payload.layerId.trim() ? payload.layerId.trim() : undefined
+						dispatchDvsEditorNodePatched({ nodeId, layerId, patch: patch as Record<string, JsonValue> })
 
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) {
@@ -1229,13 +1278,13 @@ const sendText = async (text: string) => {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
 					try {
-						const payloadAny: any = (m as any).payload
-						const layerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
+						const payload = m.payload
+						const layerId = isString(payload.layerId) && payload.layerId.trim() ? payload.layerId.trim() : undefined
 						const ids: string[] = []
-						if (typeof payloadAny?.nodeId === 'string' && payloadAny.nodeId.trim()) ids.push(payloadAny.nodeId.trim())
-						if (Array.isArray(payloadAny?.nodeIds)) {
-							for (const s of payloadAny.nodeIds) {
-								if (typeof s === 'string' && s.trim()) ids.push(s.trim())
+						if (isString(payload.nodeId) && payload.nodeId.trim()) ids.push(payload.nodeId.trim())
+						if (isArray(payload.nodeIds, isString)) {
+							for (const s of payload.nodeIds) {
+								if (s.trim()) ids.push(s.trim())
 							}
 						}
 						const uniq = Array.from(new Set(ids))
@@ -1255,21 +1304,21 @@ const sendText = async (text: string) => {
 				}
 				if (m.type === 'agentToUi/chatMessage') {
 					taskPhase.value = 'writing'
-					const content = (m as any).payload?.content
-					if (typeof content === 'string') pushStreamText(assistantId, content)
+					const content = m.payload.content
+					if (isString(content)) pushStreamText(assistantId, content)
 					continue
 				}
 				if (m.type === 'agentToUi/videoScenePlan') {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
-					const payloadAny: any = (m as any).payload
-					const normalizedPlan = normalizeVideoScenePlan(payloadAny?.plan)
-					const summary = typeof payloadAny?.summary === 'string' && payloadAny.summary.trim()
-						? payloadAny.summary.trim()
+					const payload = m.payload
+					const normalizedPlan = normalizeVideoScenePlan(payload.plan)
+					const summary = isString(payload.summary) && payload.summary.trim()
+						? payload.summary.trim()
 						: '已生成一份 VideoScene 场景计划 JSON，可用于后续动画编译。'
 					let scenePlanJson = ''
 					try {
-						scenePlanJson = JSON.stringify(payloadAny?.plan ?? null, null, 2)
+						scenePlanJson = JSON.stringify(payload.plan ?? null, null, 2)
 					} catch {
 						scenePlanJson = ''
 					}
@@ -1293,19 +1342,18 @@ const sendText = async (text: string) => {
 				if (m.type === 'agentToUi/componentTemplate') {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
-					// Instantiate and insert into stage.
 					try {
-						const payloadAny: any = (m as any).payload
-						const targetLayerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-						const rawParentId = payloadAny?.parentId
+						const payload = m.payload
+						const targetLayerId = isString(payload.layerId) && payload.layerId.trim() ? payload.layerId.trim() : undefined
+						const rawParentId = payload.parentId
 						const targetParentId: string | null | undefined =
 							rawParentId === null
 								? null
-								: typeof rawParentId === 'string' && rawParentId.trim()
+								: isString(rawParentId) && rawParentId.trim()
 									? rawParentId.trim()
 									: undefined
 
-						let template: unknown = m.payload.template
+						let template: unknown = payload.template
 						if (debugAgentToUi) {
 							try {
 								console.debug('[AIChat] componentTemplate raw:', template)
@@ -1315,9 +1363,9 @@ const sendText = async (text: string) => {
 						}
 						try {
 							const vp = getViewportContext()
-							const center = vp?.centerWorld && typeof vp.centerWorld.x === 'number' && typeof vp.centerWorld.y === 'number' ? vp.centerWorld : undefined
+							const center = vp?.centerWorld && isNumber(vp.centerWorld.x) && isNumber(vp.centerWorld.y) ? vp.centerWorld : undefined
 							template = toComponentTemplateLike(template, { defaultCenterWorld: center })
-							template = normalizeTemplateForViewport(template as any, { defaultCenterWorld: center })
+							template = normalizeTemplateForViewport(template, { defaultCenterWorld: center })
 							template = sanitizeComponentTemplate(template)
 							if (debugAgentToUi) {
 								try {
@@ -1330,7 +1378,7 @@ const sendText = async (text: string) => {
 							// ignore and let instantiateTemplate throw
 						}
 						const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
-						const instantiated = componentTemplateApi.instantiateTemplate(template as any, {}, {
+						const instantiated = componentTemplateApi.instantiateTemplate(template as ComponentTemplate, {}, {
 							getNodeId: ({ templateId, localId }) => {
 								const base = safeIdPart(`${templateId}:${localId}`)
 								let id = base
@@ -1347,7 +1395,7 @@ const sendText = async (text: string) => {
 							finalLayerId = undefined
 						}
 						let finalParentId: string | null | undefined = targetParentId
-						if (typeof finalParentId === 'string' && finalParentId !== 'root') {
+						if (isString(finalParentId) && finalParentId !== 'root') {
 							const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
 							const exists = layer ? !!findNode(layer.nodeTree, finalParentId) : nodeExistsInAnyLayer(store.state.layers, finalParentId)
 							if (!exists) {
@@ -1371,17 +1419,12 @@ const sendText = async (text: string) => {
 							messages.value[idx].hasStageResult = true
 							messages.value[idx].text =
 								(messages.value[idx].text || '') +
-								`\n\n已插入舞台节点（intent=${m.payload.intent ?? 'insert'}${finalParentId !== undefined ? `, parentId=${String(finalParentId)}` : ''}${finalLayerId ? `, layerId=${finalLayerId}` : ''}）。`
+								`\n\n已插入舞台节点（intent=${payload.intent ?? 'insert'}${finalParentId !== undefined ? `, parentId=${String(finalParentId)}` : ''}${finalLayerId ? `, layerId=${finalLayerId}` : ''}）。`
 						}
 						updateScenePlanReadyHint(assistantId)
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) messages.value[idx].text = `模板插入失败：${err instanceof Error ? err.message : String(err)}`
-					}
-					const idx = messages.value.findIndex((x) => x.id === assistantId)
-					if (idx >= 0) {
-						// keep a small marker
-						messages.value[idx].text = (messages.value[idx].text || '')
 					}
 					continue
 				}
@@ -1423,11 +1466,12 @@ const sendText = async (text: string) => {
 					if (ev2.type === 'msg') {
 						const m2 = ev2.message as AgentToUiMessage
 						if (m2.type === 'agentToUi/taskStatus') {
-							const phase = (m2 as any).payload?.phase
-							const msg = (m2 as any).payload?.message
-							if (typeof msg === 'string') taskPhaseMessage.value = msg
+							const payload = m2.payload
+							const phase = payload.phase
+							const msg = payload.message
+							if (isString(msg)) taskPhaseMessage.value = msg
 							{
-								const text = (typeof msg === 'string' && msg.trim()) ? msg.trim() : String(phase ?? '').trim()
+								const text = (isString(msg) && msg.trim()) ? msg.trim() : String(phase ?? '').trim()
 								if (text) {
 									thoughtText.value = text
 									if (!thoughtDismissed.value) thoughtOpen.value = true
@@ -1443,12 +1487,13 @@ const sendText = async (text: string) => {
 							continue
 						}
 						if (m2.type === 'agentToUi/applyFilter') {
-							const payload: any = (m2 as any).payload
-							const filter = payload?.filter
-							const mode = payload?.mode === 'replace' ? 'replace' : 'append'
+							const payload = m2.payload
+							const filter = payload.filter as Record<string, JsonValue>
+							const mode: 'append' | 'replace' = payload.mode === 'replace' ? 'replace' : 'append'
 							if (isRecord(filter)) {
-								if (payload?.target === 'nodeId' && typeof payload?.nodeId === 'string') {
-									await applyFilterToNodeId(payload.nodeId, filter, mode, typeof payload?.layerId === 'string' ? payload.layerId : undefined)
+								if (payload.target === 'nodeId' && isString(payload.nodeId)) {
+									const layerId = isString(payload.layerId) ? payload.layerId : undefined
+									await applyFilterToNodeId(payload.nodeId, filter, mode, layerId)
 								} else {
 									await applyFilterToSelection(filter, mode)
 								}
@@ -1457,24 +1502,24 @@ const sendText = async (text: string) => {
 						}
 						if (m2.type === 'agentToUi/componentTemplate') {
 							try {
-								const payloadAny: any = (m2 as any).payload
-								const targetLayerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-								const rawParentId = payloadAny?.parentId
+								const payload = m2.payload
+								const targetLayerId = isString(payload.layerId) && payload.layerId.trim() ? payload.layerId.trim() : undefined
+								const rawParentId = payload.parentId
 								const targetParentId: string | null | undefined =
 									rawParentId === null
 										? null
-										: typeof rawParentId === 'string' && rawParentId.trim()
+										: isString(rawParentId) && rawParentId.trim()
 											? rawParentId.trim()
 											: undefined
 
-								let template: unknown = m2.payload.template
+								let template: unknown = payload.template
 								const vp = getViewportContext()
-								const center = vp?.centerWorld && typeof vp.centerWorld.x === 'number' && typeof vp.centerWorld.y === 'number' ? vp.centerWorld : undefined
+								const center = vp?.centerWorld && isNumber(vp.centerWorld.x) && isNumber(vp.centerWorld.y) ? vp.centerWorld : undefined
 								template = toComponentTemplateLike(template, { defaultCenterWorld: center })
-								template = normalizeTemplateForViewport(template as any, { defaultCenterWorld: center })
+								template = normalizeTemplateForViewport(template, { defaultCenterWorld: center })
 								template = sanitizeComponentTemplate(template)
 								const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
-								const instantiated = componentTemplateApi.instantiateTemplate(template as any, {}, {
+								const instantiated = componentTemplateApi.instantiateTemplate(template as ComponentTemplate, {}, {
 									getNodeId: ({ templateId, localId }) => {
 										const base = safeIdPart(`${templateId}:${localId}`)
 										let id = base
@@ -1491,7 +1536,7 @@ const sendText = async (text: string) => {
 									finalLayerId = undefined
 								}
 								let finalParentId: string | null | undefined = targetParentId
-								if (typeof finalParentId === 'string' && finalParentId !== 'root') {
+								if (isString(finalParentId) && finalParentId !== 'root') {
 									const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
 									const exists = layer ? !!findNode(layer.nodeTree, finalParentId) : nodeExistsInAnyLayer(store.state.layers, finalParentId)
 									if (!exists) {
@@ -1507,17 +1552,18 @@ const sendText = async (text: string) => {
 						}
 						if (m2.type === 'agentToUi/insertNode') {
 							try {
-								const payloadAny: any = (m2 as any).payload
-								const targetLayerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-								const rawParentId = payloadAny?.parentId
+								const payload = m2.payload
+								const targetLayerId = isString(payload.layerId) && payload.layerId.trim() ? payload.layerId.trim() : undefined
+								const rawParentId = payload.parentId
 								const targetParentId: string | null | undefined =
 									rawParentId === null
 										? null
-										: typeof rawParentId === 'string' && rawParentId.trim()
+										: isString(rawParentId) && rawParentId.trim()
 											? rawParentId.trim()
 											: undefined
-								const nodeUnknown: unknown = payloadAny?.node
+								const nodeUnknown = payload.node
 								if (!isRecord(nodeUnknown)) throw new Error('insertNode.payload.node 必须是对象')
+								const nodeRecord = nodeUnknown as Record<string, unknown>
 
 								let finalLayerId = targetLayerId
 								if (finalLayerId && !findLayer(store.state, finalLayerId)) {
@@ -1525,7 +1571,7 @@ const sendText = async (text: string) => {
 									finalLayerId = undefined
 								}
 								let finalParentId: string | null | undefined = targetParentId
-								if (typeof finalParentId === 'string' && finalParentId !== 'root') {
+								if (isString(finalParentId) && finalParentId !== 'root') {
 									const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
 									const exists = layer ? !!findNode(layer.nodeTree, finalParentId) : nodeExistsInAnyLayer(store.state.layers, finalParentId)
 									if (!exists) {
@@ -1534,16 +1580,16 @@ const sendText = async (text: string) => {
 									}
 								}
 
-								const n: any = { ...(nodeUnknown as any) }
+								const n: Record<string, unknown> = { ...nodeRecord }
 								if (!isRecord(n.props)) n.props = {}
-								if (typeof n.category !== 'string') n.category = 'user'
+								if (!isString(n.category)) n.category = 'user'
 								if (n.category === 'user') {
-									if (typeof n.userType !== 'string') {
-										if (typeof n.type === 'string') n.userType = n.type
+									if (!isString(n.userType)) {
+										if (isString(n.type)) n.userType = n.type
 									}
 									if (!isRecord(n.transform)) n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
 								}
-								await store.dispatch('addNodeTree', { node: n, layerId: finalLayerId, parentId: finalParentId })
+								await store.dispatch('addNodeTree', { node: n as unknown as VideoSceneTreeNode, layerId: finalLayerId, parentId: finalParentId })
 							} catch {
 								// ignore
 							}
@@ -1554,8 +1600,8 @@ const sendText = async (text: string) => {
 							continue
 						}
 						if (m2.type === 'agentToUi/chatMessage') {
-							const content = (m2 as any).payload?.content
-							if (typeof content === 'string') pushStreamText(assistantId, content)
+							const content = m2.payload.content
+							if (isString(content)) pushStreamText(assistantId, content)
 							continue
 						}
 						if (m2.type === 'agentToUi/error') {
@@ -1595,7 +1641,7 @@ type SavedComponent = {
 	createdAt: string
 	templateId: string
 	name: string
-	template: any
+	template: ComponentTemplate
 	savedAt: string
 	thumbAssetId?: string
 	thumbDataUrl?: string
@@ -1636,14 +1682,28 @@ const easingCurveForPreset = (preset?: string) => {
 	}
 }
 
+type StageKeyframeEntry = {
+	layers?: unknown
+}
+
+type LayerLike = {
+	id?: unknown
+}
+
 const layerHasExistingTimelineData = (layerId: string) => {
 	const spans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
 	if (Array.isArray(spans) && spans.length) return true
-	const nodeMap = (TimelineStore.state.nodeKeyframesByLayer as any)?.[layerId]
-	if (nodeMap && Object.keys(nodeMap).length) return true
-	for (const entry of Object.values(TimelineStore.state.stageKeyframesByFrame ?? {})) {
-		const layers = Array.isArray((entry as any)?.layers) ? (entry as any).layers : []
-		if (layers.some((layer: any) => String(layer?.id ?? '') === layerId)) return true
+	const nodeKeyframesByLayer = TimelineStore.state.nodeKeyframesByLayer as Record<string, unknown> | undefined
+	const nodeMap = nodeKeyframesByLayer?.[layerId]
+	if (nodeMap && isRecord(nodeMap) && Object.keys(nodeMap).length) return true
+	const stageKeyframesByFrame = TimelineStore.state.stageKeyframesByFrame as Record<string, StageKeyframeEntry> | undefined
+	if (stageKeyframesByFrame) {
+		for (const entry of Object.values(stageKeyframesByFrame)) {
+			const layers = entry?.layers
+			if (isArray(layers)) {
+				if (layers.some((layer: unknown) => isRecord(layer) && String((layer as LayerLike).id ?? '') === layerId)) return true
+			}
+		}
 	}
 	return false
 }
@@ -1747,12 +1807,27 @@ const onClickGenerateAnimation = async (m: ChatMessage) => {
 	await generateScenePlanAnimations(m)
 }
 
-const ensureTemplateTextParams = (template: any) => {
-	if (!template || typeof template !== 'object') return template
-	if (!Array.isArray((template as any).params)) (template as any).params = []
-	if (!Array.isArray((template as any).nodes)) return template
+type MutableTemplate = {
+	params: unknown[]
+	nodes: unknown[]
+}
 
-	const used = new Set<string>((template as any).params.map((p: any) => (typeof p?.key === 'string' ? p.key : '')).filter(Boolean))
+type MutableTemplateNode = {
+	type?: unknown
+	props?: Record<string, unknown>
+}
+
+const ensureTemplateTextParams = <T>(template: T): T => {
+	if (!isRecord(template)) return template
+	const tpl = template as unknown as MutableTemplate
+	if (!Array.isArray(tpl.params)) tpl.params = []
+	if (!Array.isArray(tpl.nodes)) return template
+
+	const used = new Set<string>(
+		tpl.params
+			.map((p: unknown) => (isRecord(p) && isString(p.key) ? p.key : ''))
+			.filter(Boolean)
+	)
 	const baseKeys = ['title', 'subtitle', 'text']
 	let seq = 0
 	const nextKey = () => {
@@ -1767,18 +1842,19 @@ const ensureTemplateTextParams = (template: any) => {
 		return k
 	}
 
-	for (const n of (template as any).nodes) {
-		if (!n || typeof n !== 'object') continue
-		if (String((n as any).type || '') !== 'text') continue
-		const props = (n as any).props
-		if (!props || typeof props !== 'object') continue
-		const v = (props as any).textContent
-		if (typeof v !== 'string') continue
+	for (const n of tpl.nodes) {
+		if (!isRecord(n)) continue
+		const node = n as unknown as MutableTemplateNode
+		if (String(node.type ?? '') !== 'text') continue
+		const props = node.props
+		if (!isRecord(props)) continue
+		const v = props.textContent
+		if (!isString(v)) continue
 		const text = v.trim()
 		if (!text) continue
 		const key = nextKey()
-		;(template as any).params.push({ key, type: 'string', default: v })
-		;(props as any).textContent = `{{ ${key} }}`
+		tpl.params.push({ key, type: 'string', default: v })
+		props.textContent = `{{ ${key} }}`
 	}
 	return template
 }
@@ -1850,7 +1926,7 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		const templateId = makeUniqueTemplateId(baseTplId)
 		const name = makeUniqueName(`AI组件-${templateId}`)
 
-		let template: any = componentTemplateApi.exportTemplateFromSelection({
+		let template = componentTemplateApi.exportTemplateFromSelection({
 			layerNodeTree: layer.nodeTree,
 			selectedNodeIds: ids,
 			templateId,
@@ -1858,23 +1934,28 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		})
 		template = ensureTemplateTextParams(template)
 
-		// Best-effort thumbnail capture from current WebGL canvas (nodes area, not whole stage).
+		type Point2D = { x: number; y: number }
+		type CanvasWithCapture = DwebCanvasLike & {
+			capturePngFromScreenRect: (rect: { x: number; y: number; width: number; height: number }, opts: { maxSidePx: number; padPx: number }) => Promise<{ dataUrl?: string } | null>
+			worldToScreen: (p: Point2D) => Point2D
+		}
+
 		let thumbAssetId: string | undefined
 		let thumbDataUrl: string | undefined
 		try {
-			const dwebCanvas = dwebCanvasRef?.value ?? null
+			const dwebCanvas = dwebCanvasRef?.value as CanvasWithCapture | null
 			if (dwebCanvas) {
-				const pts: { x: number; y: number }[] = []
+				const pts: Point2D[] = []
 				for (const nodeId of ids) {
-					const n = findNode(layer.nodeTree ?? [], nodeId) as any
-					const tr: any = n?.transform
-					if (!tr || typeof tr.x !== 'number' || typeof tr.y !== 'number' || typeof tr.width !== 'number' || typeof tr.height !== 'number') continue
+					const n = findNode(layer.nodeTree ?? [], nodeId)
+					const tr = n?.transform
+					if (!tr || !isNumber(tr.x) || !isNumber(tr.y) || !isNumber(tr.width) || !isNumber(tr.height)) continue
 					const corners = rotatedRectCorners(
 						{ x: tr.x, y: tr.y },
 						{ width: Math.max(1, tr.width), height: Math.max(1, tr.height) },
 						Number(tr.rotation ?? 0)
 					)
-					const sp = [corners.tl, corners.tr, corners.bl, corners.br].map((p: any) => dwebCanvas.worldToScreen(p))
+					const sp = [corners.tl, corners.tr, corners.bl, corners.br].map((p) => dwebCanvas.worldToScreen(p))
 					pts.push(...sp)
 				}
 				if (pts.length) {
