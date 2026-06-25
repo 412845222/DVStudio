@@ -142,3 +142,9 @@ AIPlan/
 .trae/
 html/
 
+# External platform SDKs and native modules (managed separately)
+DwebSteamJS/
+SteamworksSDK/
+steam_appid.txt
+electron/platform/native/win32/
+!electron/platform/native/README.txt

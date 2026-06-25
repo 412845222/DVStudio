@@ -25,6 +25,11 @@
       <button class="titlebar-btn status-jump" type="button" @click="goWelcome">环境检查</button>
     </div>
 
+    <div class="platform-status-wrap" :title="platformStatusTooltip">
+      <span class="platform-status-dot" :class="platformStatusClass" aria-hidden="true" />
+      <span class="platform-status-text">{{ platformStatusText }}</span>
+    </div>
+
     <div class="global-title-bar-right" aria-label="窗口控制">
       <button class="theme-toggle-btn" type="button" aria-label="切换深色/浅色模式" title="切换主题" @click="toggleTheme">
         <span class="theme-toggle-track" />
@@ -60,6 +65,7 @@ import {
 	reloadWindow,
 	openDevTools,
 } from '../../electronBridge'
+import { usePlatform } from '../../platformBridge'
 import { ThemeStore } from '../../store/theme'
 
 const router = useRouter()
@@ -218,6 +224,40 @@ async function onClose() {
 function goWelcome() {
   void router.push({ name: 'Welcome' })
 }
+
+const { status: platformStatus, isSteam, isRealPlatform, user, displayName } = usePlatform()
+
+const platformStatusClass = computed(() => {
+  const s = platformStatus.value
+  if (!s) return 'mock'
+  if (s.available && s.initialized && s.loggedIn) return 'good'
+  if (s.available && !s.loggedIn) return 'warn'
+  return 'mock'
+})
+
+const platformStatusText = computed(() => {
+  const s = platformStatus.value
+  if (!s) return 'DEV'
+  if (isSteam.value && user.value?.displayName) {
+    return `Steam: ${user.value.displayName}`
+  }
+  if (isRealPlatform.value) {
+    return displayName.value
+  }
+  return 'DEV'
+})
+
+const platformStatusTooltip = computed(() => {
+  const s = platformStatus.value
+  if (!s) return '开发模式 (Mock)'
+  if (isSteam.value) {
+    return `Steam 已连接\n用户: ${user.value?.displayName || '未知'}`
+  }
+  if (isRealPlatform.value) {
+    return `${displayName.value} 模式`
+  }
+  return '开发模式 (Mock) - 无平台SDK'
+})
 
 function toggleTheme() {
   ThemeStore.dispatch('toggleTheme')
@@ -457,5 +497,45 @@ function toggleTheme() {
 
 .titlebar-btn.danger:hover {
   border-color: var(--theme-error);
+}
+
+.platform-status-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+}
+
+.platform-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--theme-border);
+  box-sizing: border-box;
+}
+
+.platform-status-dot.good {
+  background: var(--theme-accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent) 68%, transparent);
+}
+
+.platform-status-dot.warn {
+  background: var(--theme-warning, #f0ad4e);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-warning, #f0ad4e) 68%, transparent);
+}
+
+.platform-status-dot.mock {
+  background: var(--theme-text-secondary);
+  opacity: 0.5;
+}
+
+.platform-status-text {
+  font-size: 12px;
+  color: var(--theme-text-secondary);
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

@@ -1,6 +1,45 @@
 export {}
 
 declare global {
+	type PlatformEventName = 'disconnected' | 'user-changed' | 'overlay-activated' | 'overlay-deactivated' | 'status-changed'
+
+	interface PlatformEventPayload {
+		event: PlatformEventName
+		data: any
+	}
+
+	interface DwebPlatformUser {
+		platformId: string
+		displayName: string
+		avatarUrl?: string
+	}
+
+	interface DwebPlatformDlcInfo {
+		appId: number
+		name: string
+		installed: boolean
+	}
+
+	interface DwebPlatformProviderInfo {
+		id: string
+		displayName: string
+		available: boolean
+		initialized: boolean
+	}
+
+	interface DwebPlatformStatus {
+		activePlatform: string
+		activeDisplayName: string
+		available: boolean
+		initialized: boolean
+		loggedIn: boolean
+		user: DwebPlatformUser | null
+		overlayEnabled: boolean
+		overlayActive: boolean
+		installedDlcs: DwebPlatformDlcInfo[]
+		allPlatforms: DwebPlatformProviderInfo[]
+	}
+
 	interface Window {
 		/** Electron preload 注入：后端 baseUrl（优先级最高） */
 		__DWEB_BACKEND_BASE_URL?: string
@@ -128,6 +167,20 @@ declare global {
 			videostudio: {
 				pingBackend(): Promise<{ ok: boolean; status?: number; error?: string }>
 				selectExportDir(options?: unknown): Promise<{ canceled: boolean; filePaths: string[] }>
+			}
+			platform: {
+				getStatus(): Promise<DwebPlatformStatus>
+				getActive(): Promise<{ id: string; displayName: string }>
+				getUser(): Promise<DwebPlatformUser | null>
+				isAvailable(): Promise<boolean>
+				overlayIsEnabled(): Promise<boolean>
+				overlayIsActive(): Promise<boolean>
+				overlayOpenUrl(url: string): Promise<{ ok: boolean; errMsg?: string }>
+				overlayActivate(dialog?: string): Promise<{ ok: boolean; errMsg?: string }>
+				dlcIsInstalled(dlcAppId: number): Promise<boolean>
+				dlcGetInstalled(): Promise<DwebPlatformDlcInfo[]>
+				onEvent(handler: (payload: PlatformEventPayload) => void): number
+				offEvent(listenerId: number): { ok: boolean }
 			}
 		}
 	}

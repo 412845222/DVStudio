@@ -17,6 +17,8 @@ import {
   startBackend,
 } from "../electronBridge";
 
+import { usePlatform } from "../platformBridge";
+
 import EnvCheckList from "../ui/Electron/EnvCheckList.vue";
 import CommandConsole from "../ui/Electron/CommandConsole.vue";
 import type { SetupState, SetupStep } from "../electronBridge/types";
@@ -61,6 +63,48 @@ let pingTimer: number | null = null;
 let logFlushTimer: number | null = null;
 
 const router = useRouter();
+
+const {
+  status: platformStatus,
+  isSteam: platformIsSteam,
+  isMock: platformIsMock,
+  isRealPlatform: platformIsReal,
+  displayName: platformDisplayName,
+  overlayEnabled: platformOverlayEnabled,
+} = usePlatform();
+
+const platformStatusClass = computed(() => {
+  const s = platformStatus.value;
+  if (!s) return "unknown";
+  if (s.available && s.initialized && s.loggedIn) return "ok";
+  if (s.available && !s.loggedIn) return "warn";
+  return "mock";
+});
+
+const platformStatusText = computed(() => {
+  const s = platformStatus.value;
+  if (!s) return "检测中...";
+  if (platformIsSteam.value) {
+    return s.user?.displayName ? `Steam: ${s.user.displayName}` : "Steam";
+  }
+  if (platformIsReal.value) return platformDisplayName.value;
+  return "开发模式 (Mock)";
+});
+
+const platformHintText = computed(() => {
+  const s = platformStatus.value;
+  if (!s) return "";
+  if (platformIsMock.value) {
+    return "当前使用开发模式运行，Steam功能未启用。如需Steam联调，请运行 npm run setup:steam 链接本地DwebSteamJS包。";
+  }
+  if (platformIsSteam.value && !s.loggedIn) {
+    return "Steam已连接，但用户未登录。请检查Steam客户端是否已登录。";
+  }
+  if (platformIsSteam.value && s.loggedIn) {
+    return `已通过Steam登录，用户: ${s.user?.displayName || "未知"}`;
+  }
+  return "";
+});
 
 const envItems = computed<EnvItem[]>(() => {
   const steps = setupState.value.steps || [];
@@ -437,6 +481,30 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </div>
+
+        <div class="platformCard">
+          <div class="platformCardHeader">
+            <div class="platformCardTitle">平台状态</div>
+            <div class="platformStatusBadge" :class="platformStatusClass">
+              <span class="platformStatusDot" />
+              <span>{{ platformStatusText }}</span>
+            </div>
+          </div>
+          <div v-if="platformHintText" class="platformHint">
+            {{ platformHintText }}
+          </div>
+          <div v-if="platformStatus?.installedDlcs?.length" class="platformDlcs">
+            <span class="platformDlcsLabel">已安装DLC:</span>
+            <span
+              v-for="dlc in platformStatus.installedDlcs"
+              :key="dlc.appId"
+              class="platformDlcTag"
+            >{{ dlc.name }}</span>
+          </div>
+          <div v-if="platformOverlayEnabled" class="platformOverlayInfo">
+            Steam Overlay {{ platformStatus?.overlayActive ? "已激活" : "可用" }}
+          </div>
+        </div>
         <div class="rightBottom">
           <CommandConsole
             title="命令行输出（Django）"
@@ -552,5 +620,89 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.platformCard {
+  border: 1px solid var(--vscode-border);
+  background: var(--dweb-defualt-light);
+  padding: 12px;
+}
+
+.platformCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.platformCardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-fg);
+}
+
+.platformStatusBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--dweb-defualt-dark);
+}
+
+.platformStatusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.platformStatusBadge.unknown .platformStatusDot {
+  background: var(--vscode-fg-muted);
+}
+
+.platformStatusBadge.ok .platformStatusDot {
+  background: #5ec47f;
+}
+
+.platformStatusBadge.warn .platformStatusDot {
+  background: #f0ad4e;
+}
+
+.platformStatusBadge.mock .platformStatusDot {
+  background: #6e7681;
+}
+
+.platformHint {
+  font-size: 12px;
+  color: var(--vscode-fg);
+  padding: 8px;
+  background: rgba(60, 148, 255, 0.12);
+  border: 1px solid rgba(60, 148, 255, 0.32);
+  margin-bottom: 8px;
+}
+
+.platformDlcs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.platformDlcsLabel {
+  color: var(--vscode-fg-muted);
+}
+
+.platformDlcTag {
+  padding: 2px 6px;
+  background: var(--dweb-defualt-dark);
+  border-radius: 4px;
+}
+
+.platformOverlayInfo {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--vscode-fg-muted);
 }
 </style>
