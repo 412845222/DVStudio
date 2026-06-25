@@ -1,3 +1,5 @@
+import { getErrorMessage } from '../types/utils'
+
 type Task = {
   id: string
   url: string
@@ -121,8 +123,8 @@ export class VideoMetadataReadQueue {
       })
 
       done({ id: task.id, ...result })
-    } catch (err: any) {
-      done({ id: task.id, error: String(err?.message ?? err ?? 'unknown') })
+    } catch (err: unknown) {
+      done({ id: task.id, error: getErrorMessage(err) })
     } finally {
       const cur = this.activeEls.get(task.id)
       if (cur) {

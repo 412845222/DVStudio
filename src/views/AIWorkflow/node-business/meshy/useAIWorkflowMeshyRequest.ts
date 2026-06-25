@@ -1,4 +1,5 @@
 import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
+import { getErrorMessage } from '../../../../types/utils'
 
 type MeshyRequestMode =
 	| 'text-to-3d'
@@ -88,10 +89,10 @@ export const useAIWorkflowMeshyRequest = (options: {
 		let linkedModelInput: Awaited<ReturnType<typeof options.connectedMeshyModelInput>> = null
 		try {
 			linkedModelInput = await options.connectedMeshyModelInput(node.id)
-		} catch (err: any) {
+		} catch (err: unknown) {
 			return {
 				ok: false as const,
-				error: `模型输入读取失败：${String(err?.message ?? err ?? 'unknown')}`,
+				error: `模型输入读取失败：${getErrorMessage(err)}`,
 			}
 		}
 		const target = String(settings.meshyTaskTarget ?? '3d') as '3d' | 'image'
@@ -160,11 +161,11 @@ export const useAIWorkflowMeshyRequest = (options: {
 			try {
 				const normalized = await options.buildMeshyImageInputFromNode(item.fromNode, item.fromAnchorId)
 				if (normalized) linkedImages.push(normalized)
-			} catch (err: any) {
+			} catch (err: unknown) {
 				const label = String(item.fromNode.alias ?? item.fromNode.title ?? item.fromNode.id).trim() || item.fromNode.id
 				return {
 					ok: false as const,
-					error: `参考图「${label}」读取失败：${String(err?.message ?? err ?? 'unknown')}`,
+					error: `参考图「${label}」读取失败：${getErrorMessage(err)}`,
 				}
 			}
 		}
@@ -173,10 +174,10 @@ export const useAIWorkflowMeshyRequest = (options: {
 			try {
 				const normalized = await options.normalizeMeshyImageInputValue(rawUrl, 'meshy_manual_ref')
 				if (normalized) resolvedManualImageUrls.push(normalized)
-			} catch (err: any) {
+			} catch (err: unknown) {
 				return {
 					ok: false as const,
-					error: `手填参考图读取失败：${String(err?.message ?? err ?? 'unknown')}`,
+					error: `手填参考图读取失败：${getErrorMessage(err)}`,
 				}
 			}
 		}
@@ -185,10 +186,10 @@ export const useAIWorkflowMeshyRequest = (options: {
 			resolvedSingleImageUrl = String(settings.meshyImageUrl ?? '').trim()
 				? await options.normalizeMeshyImageInputValue(String(settings.meshyImageUrl ?? '').trim(), 'meshy_single_ref')
 				: ''
-		} catch (err: any) {
+		} catch (err: unknown) {
 			return {
 				ok: false as const,
-				error: `单图参考图读取失败：${String(err?.message ?? err ?? 'unknown')}`,
+				error: `单图参考图读取失败：${getErrorMessage(err)}`,
 			}
 		}
 		const imageUrls = linkedImages.length ? linkedImages : resolvedManualImageUrls
@@ -203,10 +204,10 @@ export const useAIWorkflowMeshyRequest = (options: {
 			textureImageUrl = String(settings.meshyTextureImageUrl ?? '').trim()
 				? await options.normalizeMeshyImageInputValue(String(settings.meshyTextureImageUrl ?? '').trim(), 'meshy_texture_ref')
 				: ''
-		} catch (err: any) {
+		} catch (err: unknown) {
 			return {
 				ok: false as const,
-				error: `贴图参考图读取失败：${String(err?.message ?? err ?? 'unknown')}`,
+				error: `贴图参考图读取失败：${getErrorMessage(err)}`,
 			}
 		}
 		if (!textureImageUrl && family === 'retexture') {

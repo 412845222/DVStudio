@@ -102,3 +102,15 @@ export type ClientSettingsResult = {
 	path?: string
 	error?: string
 }
+
+export type UploadedProjectAsset = {
+	kind: string
+	name: string
+	contentType: string
+	size: number
+	relativePath: string
+	projectRelativePath: string
+	absolutePath: string
+	url: string
+	sourcePath?: string
+}

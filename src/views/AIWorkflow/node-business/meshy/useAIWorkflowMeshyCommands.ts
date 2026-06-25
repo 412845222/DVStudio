@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowMeshyCommands = (options: {
   store: any
@@ -89,8 +90,8 @@ export const useAIWorkflowMeshyCommands = (options: {
         return
       }
       options.startMeshyPoll(nodeId, taskId, mode)
-    } catch (err: any) {
-      const msg = 'Meshy 创建任务异常：' + String(err?.message ?? err ?? 'unknown')
+    } catch (err: unknown) {
+      const msg = 'Meshy 创建任务异常：' + getErrorMessage(err)
       options.store.commit('setNodeMeshySettings', {
         nodeId,
         meshySettings: {

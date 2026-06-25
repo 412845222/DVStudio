@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../types/utils'
 import { resolveBackendUrl } from './backendConfig'
 
 export const fetchUserAgreementMarkdown = async (): Promise<{ ok: boolean; markdown?: string; error?: string }> => {
@@ -7,7 +8,7 @@ export const fetchUserAgreementMarkdown = async (): Promise<{ ok: boolean; markd
     const text = await res.text()
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}: ${text}` }
     return { ok: true, markdown: text }
-  } catch (e: any) {
-    return { ok: false, error: String(e?.message || e) }
+  } catch (e: unknown) {
+    return { ok: false, error: getErrorMessage(e) }
   }
 }

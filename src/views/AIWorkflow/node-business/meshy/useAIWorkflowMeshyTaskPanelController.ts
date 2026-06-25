@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import type { WorkflowNode } from '../../../../aiworkflow/types'
 import type { MeshyTaskPanelAction, MeshyTaskPanelDetail, MeshyTaskPanelItem } from '../../../../ui/WorkFlow/MeshyTaskPanel.vue'
 import { useAIWorkflowMeshyTaskPanelMapping } from './useAIWorkflowMeshyTaskPanelMapping'
+import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowMeshyTaskPanelController = (options: {
 	store: any
@@ -74,9 +75,9 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				: []
 			meshyTaskRemoteLoaded.value = true
 			meshyTaskRemoteFallbackReason.value = ''
-		} catch (err: any) {
-			meshyTaskRemoteFallbackReason.value = String(err?.message ?? err ?? 'unknown')
-			if (!opts?.silent) options.pushToast('读取 Meshy 任务中心失败：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+		} catch (err: unknown) {
+			meshyTaskRemoteFallbackReason.value = getErrorMessage(err)
+			if (!opts?.silent) options.pushToast('读取 Meshy 任务中心失败：' + getErrorMessage(err), 'warn')
 		} finally {
 			meshyTaskRemoteLoading.value = false
 		}
@@ -95,11 +96,11 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			meshyBalanceText.value = String(res.displayText || '暂不可读')
 			meshyBalanceDetail.value = String(res.detail || '')
 			meshyBalanceTone.value = res.available ? 'ok' : res.configured ? 'muted' : 'warn'
-		} catch (err: any) {
+		} catch (err: unknown) {
 			meshyBalanceText.value = '读取失败'
-			meshyBalanceDetail.value = String(err?.message ?? err ?? 'unknown')
+			meshyBalanceDetail.value = getErrorMessage(err)
 			meshyBalanceTone.value = 'warn'
-			if (!opts?.silent) options.pushToast('读取 Meshy 余额状态失败：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+			if (!opts?.silent) options.pushToast('读取 Meshy 余额状态失败：' + getErrorMessage(err), 'warn')
 		}
 	}
 
@@ -479,8 +480,8 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				return
 			}
 			meshyTaskDetail.value = mapMeshyMirrorItemToDetail(res.item as Record<string, any>)
-		} catch (err: any) {
-			options.pushToast('读取 Meshy 任务详情失败：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+		} catch (err: unknown) {
+			options.pushToast('读取 Meshy 任务详情失败：' + getErrorMessage(err), 'warn')
 		} finally {
 			meshyTaskDetailLoading.value = false
 		}

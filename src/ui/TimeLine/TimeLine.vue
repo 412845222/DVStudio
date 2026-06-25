@@ -342,7 +342,8 @@ import { DVS_EVENTS, type DvsSubtitleCueSelectDetail, type DvsTimelineNavDetail 
 import { stripSubtitleTextContentFromNodeSnapshots, stripSubtitleTextContentFromStageLayers } from '../../core/subtitle/sanitizeStageSnapshot'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
-import { TimelineKey, type TimelineState } from '../../store/timeline'
+import { TimelineKey, type TimelineState, type AudioTrack } from '../../store/timeline'
+import type { ProgressBarSpec } from '../../core/timeline'
 import { VideoSceneStore, type VideoSceneNodeProps, type VideoSceneNodeTransform, type VideoSceneTreeNode } from '../../store/videoscene'
 import { containsFrame, getPrevNext, rangeFullyCovered, rangeIntersects, type TimelineFrameSpan } from '../../store/timeline/spans'
 import { VuexTimelineDataManager } from './core/VuexTimelineDataManager'
@@ -371,7 +372,7 @@ const keyframeSpansByLayer = computed(() => store.state.keyframeSpansByLayer)
 const keyframeVersion = computed(() => store.state.keyframeVersion)
 const easingSegmentKeys = computed(() => store.state.easingSegmentKeys)
 
-const progressVersion = computed(() => (store.state as any).progressVersion ?? 0)
+const progressVersion = computed(() => store.state.progressVersion ?? 0)
 
 const isSubtitleLayer = (layerId: string) => (store.state.layerKindById?.[layerId] ?? 'normal') === 'subtitle'
 
@@ -379,11 +380,11 @@ const isProgressLayer = (layerId: string) => (store.state.layerKindById?.[layerI
 
 const isAudioLayer = (layerId: string) => (store.state.layerKindById?.[layerId] ?? 'normal') === 'audio'
 
-const audioVersion = computed(() => (store.state as any).audioVersion ?? 0)
-const audioTrackFor = (layerId: string) => ((store.state as any).audioByLayerId?.[layerId] ?? null)
+const audioVersion = computed(() => store.state.audioVersion ?? 0)
+const audioTrackFor = (layerId: string): AudioTrack | null => (store.state.audioByLayerId?.[layerId] ?? null)
 
 const progressSegmentsFor = (layerId: string) => {
-	const spec = (store.state as any).progressBarByLayerId?.[layerId]
+	const spec = store.state.progressBarByLayerId?.[layerId]
 	return Array.isArray(spec?.segments) ? spec.segments : []
 }
 
@@ -498,7 +499,7 @@ const formatTimeByFrame = (frameIndex: number, fps: number) => {
 const currentTimeText = computed(() => formatTimeByFrame(currentFrame.value, inputFps.value))
 
 watch(
-	() => (store.state as any).fps,
+	() => store.state.fps,
 	(v) => {
 		const next = clampInt(Number(v ?? 60), 1, 240)
 		if (inputFps.value !== next) {
@@ -551,7 +552,7 @@ const removeSelectedLayers = () => {
 	const audioUrls: string[] = []
 	for (const id of ids) {
 		if (!isAudioLayer(id)) continue
-		const url = (store.state as any).audioByLayerId?.[id]?.objectUrl
+		const url = store.state.audioByLayerId?.[id]?.objectUrl
 		if (typeof url === 'string' && url.trim()) audioUrls.push(url)
 	}
 	store.dispatch('removeSelectedLayers')
@@ -1289,7 +1290,7 @@ const onZoomWheel = (ev: WheelEvent) => {
 }
 
 // 指针线拖动（手柄在第一行）
-const uiFocus = computed(() => (store.state as any).uiFocus ?? null)
+const uiFocus = computed(() => store.state.uiFocus ?? null)
 
 const activeAudioLayerId = computed(() => {
 	const sel = store.state.selectedLayerIds?.[0]
@@ -1303,7 +1304,7 @@ const activeAudioLayerId = computed(() => {
 const activeAudioTrack = computed(() => {
 	const id = activeAudioLayerId.value
 	if (!id) return null
-	return (store.state as any).audioByLayerId?.[id] ?? null
+	return store.state.audioByLayerId?.[id] ?? null
 })
 
 const audioEl = ref<HTMLAudioElement | null>(null)
@@ -1746,7 +1747,7 @@ onMounted(() => {
 		getFrameCount: () => frameCount.value,
 		getCurrentFrame: () => currentFrame.value,
 		setCurrentFrame: (fi) => setCurrentFrame(fi),
-		fps: clampInt(Number((store.state as any).fps ?? inputFps.value ?? 60), 1, 240),
+		fps: clampInt(Number(store.state.fps ?? inputFps.value ?? 60), 1, 240),
 		loop: loopEnabled.value,
 		onPlayingChange: (p) => {
 			isPlaying.value = p

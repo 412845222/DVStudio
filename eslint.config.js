@@ -27,7 +27,10 @@ const tsRules = {
     varsIgnorePattern: '^_',
     caughtErrorsIgnorePattern: '^_'
   }],
-  '@typescript-eslint/no-explicit-any': 'warn',
+  '@typescript-eslint/no-explicit-any': ['warn', {
+    fixToUnknown: false,
+    ignoreRestArgs: true
+  }],
   '@typescript-eslint/ban-ts-comment': 'warn',
   '@typescript-eslint/no-namespace': 'off',
   '@typescript-eslint/no-empty-object-type': 'off'

@@ -1,4 +1,5 @@
 import type { WorkflowNode } from '../../../../aiworkflow/types'
+import { getErrorMessage } from '../../../../types/utils'
 
 type Meshy3DTaskMode = 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'retexture'
 
@@ -356,7 +357,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 					}
 					stopPoll(nodeId)
 				}
-			} catch (err: any) {
+			} catch (err: unknown) {
 				const nextCount = Number(pollErrorCounts.get(nodeId) ?? 0) + 1
 				pollErrorCounts.set(nodeId, nextCount)
 				if (nextCount >= MESHY_MAX_POLL_ERRORS) {
@@ -364,7 +365,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 					options.updateNodeSettings(nodeId, {
 						meshyTaskStatus: 'failed',
 						meshyStatusText: 'Meshy 状态获取异常',
-						meshyErrorMessage: String(err?.message ?? err ?? 'unknown'),
+						meshyErrorMessage: getErrorMessage(err),
 					})
 					options.pushToast('Meshy 状态获取异常，已停止轮询。', 'warn')
 				}
@@ -440,8 +441,8 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 			}
 
 			startPoll(nodeId, taskId, mode)
-		} catch (err: any) {
-			const msg = 'Meshy 创建任务异常：' + String(err?.message ?? err ?? 'unknown')
+		} catch (err: unknown) {
+			const msg = 'Meshy 创建任务异常：' + getErrorMessage(err)
 			options.updateNodeSettings(nodeId, {
 				meshyTaskStatus: 'failed',
 				meshyErrorMessage: msg,
@@ -506,8 +507,8 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 				return
 			}
 			await applyMeshyTaskResult(nodeId, res as any)
-		} catch (err: any) {
-			options.pushToast('刷新任务状态异常：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+		} catch (err: unknown) {
+			options.pushToast('刷新任务状态异常：' + getErrorMessage(err), 'warn')
 		}
 	}
 

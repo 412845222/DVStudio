@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../../../../types/utils'
 export const useAIWorkflowSceneUnderstandingController = (options: {
 	store: any
 	sceneSkillService: {
@@ -226,8 +227,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					statusText: models.length ? (mode === 'scene-lighting' ? '灯光理解模型列表已刷新。' : '模型列表已刷新，可直接发起场景理解。') : '未发现可用模型。',
 				},
 			})
-		} catch (err: any) {
-			const message = String(err?.message ?? err ?? 'unknown')
+		} catch (err: unknown) {
+			const message = getErrorMessage(err)
 			options.store.commit('setNodeSceneUnderstandingSettings', {
 				nodeId,
 				sceneUnderstandingSettings: { status: 'error', message },
@@ -423,8 +424,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							},
 						})
 						options.pushToast(`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}完成${payloadResult?.mock ? '（Mock）' : ''}。`, 'info')
-					} catch (parseErr: any) {
-						const parseMsg = String(parseErr?.message ?? parseErr ?? 'unknown')
+					} catch (parseErr: unknown) {
+						const parseMsg = getErrorMessage(parseErr)
 						options.store.commit('setNodeSceneUnderstandingSettings', {
 							nodeId,
 							sceneUnderstandingSettings: {
@@ -438,10 +439,10 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					}
 				}
 			}
-		} catch (err: any) {
+		} catch (err: unknown) {
 			flushSceneUnderstandDraft(nodeId)
 			clearSceneUnderstandDraftSchedule(nodeId)
-			const abortName = String(err?.name ?? '')
+			const abortName = err instanceof Error ? err.name : ''
 			if (abortName === 'AbortError') {
 				options.store.commit('setNodeSceneUnderstandingSettings', {
 					nodeId,
@@ -454,7 +455,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				})
 				return
 			}
-			const message = String(err?.message ?? err ?? 'unknown')
+			const message = getErrorMessage(err)
 			options.store.commit('setNodeSceneUnderstandingSettings', {
 				nodeId,
 				sceneUnderstandingSettings: {

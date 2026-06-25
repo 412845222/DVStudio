@@ -880,6 +880,10 @@ export type WorkflowState = {
 	savedSelectionFrames: SavedSelectionFrame[]
 	/** 是否显示节点级多选框（运行时开关） */
 	nodeCheckboxVisible: boolean
+	/** 当前项目 ID */
+	projectId: number | null
+	/** 当前项目根路径 */
+	projectRootPath: string
 }
 
 export type WorkflowSelectionTarget =

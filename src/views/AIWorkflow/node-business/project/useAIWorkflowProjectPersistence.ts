@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { blueprintLog } from '../../blueprint-core/blueprintLog'
+import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowProjectPersistence = (payload: {
   blueprintProjectService: {
@@ -477,8 +478,8 @@ export const useAIWorkflowProjectPersistence = (payload: {
     let snapshot: AIWorkflowDraftSnapshot
     try {
       snapshot = await payload.buildPersistableSnapshotWithOptions({ uploadLocalResources })
-    } catch (err: any) {
-      if (!silent) payload.pushToast('保存项目失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
+    } catch (err: unknown) {
+      if (!silent) payload.pushToast('保存项目失败：' + getErrorMessage(err), 'error')
       return false
     }
     const res = await payload.blueprintProjectService.saveProject({
@@ -523,9 +524,9 @@ export const useAIWorkflowProjectPersistence = (payload: {
               detail: { projectId },
             })
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (!silent) {
-            payload.pushToast('迁移后回写项目失败：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+            payload.pushToast('迁移后回写项目失败：' + getErrorMessage(err), 'warn')
           }
         }
       }

@@ -130,7 +130,7 @@ const boundNode = computed(() => {
 	const layerId = props.layerId
 	const nodeId = boundNodeId.value
 	if (!layerId || !nodeId) return null
-	const layer = findLayer(VideoSceneStore.state as any, layerId)
+	const layer = findLayer(VideoSceneStore.state, layerId)
 	if (!layer) return null
 	return findNode(layer.nodeTree, nodeId)
 })
@@ -347,7 +347,7 @@ const regen = async () => {
 	if (!layerId) return
 	const nodeId = TimelineStore.state.subtitleTextNodeIdByLayer?.[layerId]
 	if (!nodeId) return
-	const sceneLayer = findLayer(VideoSceneStore.state as any, layerId)
+	const sceneLayer = findLayer(VideoSceneStore.state, layerId)
 	if (!sceneLayer) return
 	const node = findNode(sceneLayer.nodeTree, nodeId)
 	if (!node?.transform) return

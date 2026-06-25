@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { getErrorMessage } from '../../../types/utils'
 
 interface CachedResource {
   url: string
@@ -99,8 +100,8 @@ export const useAIWorkflowResourceCache = () => {
     try {
       const response = await fetch(trimmed, { method: 'HEAD' })
       return { available: response.ok, status: response.status }
-    } catch (err: any) {
-      return { available: false, error: String(err?.message || err) }
+    } catch (err: unknown) {
+      return { available: false, error: getErrorMessage(err) }
     }
   }
 

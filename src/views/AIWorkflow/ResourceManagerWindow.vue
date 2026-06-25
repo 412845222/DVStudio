@@ -63,6 +63,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { getErrorMessage } from '../../types/utils'
 import { useStore } from 'vuex'
 import type { StartupProgressState } from '../../ui/UIComponent/StartupProgressBar.vue'
 import { useStartupProgress } from '../../composables/useStartupProgress'
@@ -454,8 +455,8 @@ onMounted(async () => {
       await w.dweb.aiworkflow.registerProjectRoot({ projectId, rootPath })
     }
     markStepOk('register-root')
-  } catch (err: any) {
-    markStepError('register-root', String(err?.message || err || 'failed'))
+  } catch (err: unknown) {
+    markStepError('register-root', getErrorMessage(err))
   }
 
   // Step 2: 从 preload 缓存读取资源数据（关键：数据可能在 Vue 挂载前就到达）
@@ -492,7 +493,7 @@ onMounted(async () => {
           await new Promise(resolve => setTimeout(resolve, 50))
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn('[ResourceManagerWindow] request data failed:', err)
     }
   }

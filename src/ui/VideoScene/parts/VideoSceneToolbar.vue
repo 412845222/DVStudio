@@ -126,7 +126,7 @@ const importAudioInputEl = ref<HTMLInputElement | null>(null)
 const DEFAULT_SUBTITLE_FPS = 30
 
 const getImportSubtitleFps = () => {
-	const fps = Math.floor(Number((TimelineStore.state as any).fps ?? DEFAULT_SUBTITLE_FPS))
+	const fps = Math.floor(Number(TimelineStore.state.fps ?? DEFAULT_SUBTITLE_FPS))
 	return Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_SUBTITLE_FPS
 }
 
