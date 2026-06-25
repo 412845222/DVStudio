@@ -18,6 +18,18 @@ import type {
 	DirectoryPickResult,
 	UploadedProjectAsset,
 } from '../electronBridge/types'
+import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
+
+export type ResourceManagerDataPayload = {
+	resources?: WorkflowResource[]
+	nodesById?: Record<string, WorkflowNode>
+	nodeOrder?: string[]
+}
+
+export type ResourceManagerEventPayload = {
+	event: string
+	data?: unknown
+}
 
 declare global {
 	interface Window {
@@ -211,6 +223,20 @@ declare global {
 					freedBytes?: number
 					error?: string
 				}>
+				openResourceManager(payload: { projectId: number; title: string }): Promise<{ ok: boolean; error?: string }>
+				closeResourceManager(): Promise<{ ok: boolean; error?: string }>
+				focusResourceManager(): Promise<{ ok: boolean; error?: string }>
+				sendResourceManagerData(payload: ResourceManagerDataPayload): Promise<{ ok: boolean; error?: string }>
+				broadcastResourceEvent(payload: ResourceManagerEventPayload): Promise<{ ok: boolean; error?: string }>
+				notifyResourceEvent(payload: ResourceManagerEventPayload): Promise<{ ok: boolean; error?: string }>
+				getResourceManagerData(): ResourceManagerDataPayload | null
+				requestResourceManagerData(): Promise<{ ok: boolean; data?: ResourceManagerDataPayload; error?: string }>
+				onResourceManagerEvent(handler: (payload: ResourceManagerEventPayload) => void): number
+				offResourceManagerEvent(listenerId: number): Promise<{ ok: boolean; error?: string }>
+				onResourceManagerNotify(handler: (payload: ResourceManagerEventPayload) => void): number
+				offResourceManagerNotify(listenerId: number): Promise<{ ok: boolean; error?: string }>
+				onResourceManagerData(handler: (payload: ResourceManagerDataPayload) => void): number
+				offResourceManagerData(listenerId: number): Promise<{ ok: boolean; error?: string }>
 			}
 			videostudio: {
 				pingBackend(): Promise<BackendPingResult>

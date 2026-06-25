@@ -2258,8 +2258,8 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
   // Use localdb-backed project list as authoritative source to avoid stale in-memory rootPath.
   try {
     const listed = await blueprintProjectService.listProjects()
-    if (listed?.ok && Array.isArray((listed as any).projects)) {
-      const hit = (listed as any).projects.find((p: any) => Number(p?.id) === pid)
+    if (listed.ok && Array.isArray(listed.projects)) {
+      const hit = listed.projects.find((p) => Number(p?.id) === pid)
       const listedRoot = String(hit?.rootPath || '').trim()
       if (listedRoot && listedRoot !== rootPath) {
         console.warn('[AIWorkflow] project root corrected by projectId', {

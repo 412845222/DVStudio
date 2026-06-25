@@ -65,21 +65,25 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getErrorMessage } from '../../types/utils'
 import { useStore } from 'vuex'
-import type { StartupProgressState } from '../../ui/UIComponent/StartupProgressBar.vue'
+import type { StartupProgressState, StartupProgressStep } from '../../ui/UIComponent/StartupProgressBar.vue'
 import { useStartupProgress } from '../../composables/useStartupProgress'
 import ResourceManagerPanel from '../../ui/WorkFlow/ResourceManagerPanel.vue'
 import { AIWorkflowKey } from '../../store/aiworkflow'
-import type { WorkflowState } from '../../aiworkflow/types'
+import type { WorkflowState, WorkflowResource, WorkflowNode } from '../../aiworkflow/types'
 import { BlueprintProjectService } from '../../network/BlueprintProjectService'
+import { openFolderForPath, registerProjectRoot } from '../../electronBridge'
 import { useAIWorkflowResourceRecordCleanup } from './assets/useAIWorkflowResourceRecordCleanup'
+
+type RmDataPayload = { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] }
+type RmEventPayload = { event: string; data?: unknown }
 
 // ============ 1. Store & Services ============
 const store = useStore<WorkflowState>(AIWorkflowKey)
 const blueprintProjectService = new BlueprintProjectService()
 
 // ============ 1b. 本地缓存的资源数据（从主窗口接收） ============
-const localResources = ref<Array<any>>([])
-const localNodesById = ref<Record<string, any>>({})
+const localResources = ref<WorkflowResource[]>([])
+const localNodesById = ref<Record<string, WorkflowNode>>({})
 const localNodeOrder = ref<string[]>([])
 const dataReceived = ref(false)
 
@@ -101,8 +105,8 @@ const resources = computed(() => {
     // 已从主窗口接收到数据，直接使用（即使是空数组）
     return localResources.value
   }
-  const byId = (store.state as any).resourcesById as Record<string, any>
-  const order = (store.state as any).resourceOrder as string[]
+  const byId = store.state.resourcesById
+  const order = store.state.resourceOrder
   if (!Array.isArray(order)) return []
   return order.map((id) => byId[id]).filter(Boolean)
 })
@@ -112,21 +116,21 @@ const nodesById = computed(() => {
   if (dataReceived.value) {
     return localNodesById.value
   }
-  const byId = (store.state as any).nodesById as Record<string, any>
+  const byId = store.state.nodesById
   return byId ?? {}
 })
 const nodeOrder = computed(() => {
   if (dataReceived.value) {
     return localNodeOrder.value
   }
-  const order = (store.state as any).nodeOrder as string[]
+  const order = store.state.nodeOrder
   return Array.isArray(order) ? order : []
 })
 
 // ============ 4. 当前项目 ID（从 store 读取） ============
 const currentProjectId = computed(() => {
-  const id = (store.state as any).projectId
-  return Number.isFinite(id) ? id : null
+  const id = store.state.projectId
+  return id != null && Number.isFinite(id) ? id : null
 })
 
 // ============ 5. Toast 提示（资源管理器窗口内简单实现） ============
@@ -150,11 +154,11 @@ const {
   onRemoveResource,
   onRefreshMissingResourceRecords,
 } = useAIWorkflowResourceRecordCleanup({
-  store: store as any,
+  store,
   currentProjectId,
   blueprintProjectService,
   pushToast,
-  isComfyForwardResource: (resource: any) => {
+  isComfyForwardResource: (resource: { url?: string }) => {
     const forwardUrls = [
       'result.image',
       'image.upscaled.image',
@@ -164,7 +168,7 @@ const {
     const url = String(resource?.url || '').toLowerCase()
     return forwardUrls.some((u) => url.includes(u)) && url.includes('comfyui')
   },
-  isDjangoManagedResource: (resource: any) => {
+  isDjangoManagedResource: (resource: { url?: string }) => {
     const url = String(resource?.url || '').trim()
     if (!url) return false
     if (url.startsWith('dweb://')) return true
@@ -195,7 +199,7 @@ const { state: progressStateRaw, show, beginStep, markStepOk, markStepError, upd
 const progressState = computed<StartupProgressState>(() => ({
   visible: true,
   title: progressStateRaw.value.title || '正在加载项目资源…',
-  steps: progressStateRaw.value.steps.map((s: any) => ({
+  steps: progressStateRaw.value.steps.map((s: StartupProgressStep) => ({
     key: s.key,
     label: s.label,
     status: s.status,
@@ -207,9 +211,8 @@ const progressState = computed<StartupProgressState>(() => ({
 // ============ 8. 事件处理 ============
 const handleClose = async () => {
   try {
-    const w = window as any
-    if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.closeResourceManager === 'function') {
-      await w.dweb.aiworkflow.closeResourceManager()
+    if (window.dweb?.aiworkflow && typeof window.dweb.aiworkflow.closeResourceManager === 'function') {
+      await window.dweb.aiworkflow.closeResourceManager()
       return
     }
   } catch {
@@ -270,29 +273,26 @@ const handlePreview = async (resourceId: string) => {
   const rid = String(resourceId || '').trim()
   if (!rid) return
 
-  let r: any = null
+  let r: WorkflowResource | null = null
   if (dataReceived.value) {
-    r = localResources.value.find((item: any) => String(item?.id) === rid)
+    r = localResources.value.find((item: WorkflowResource) => String(item?.id) === rid) ?? null
   }
   if (!r) {
-    r = (store.state as any).resourcesById?.[rid]
+    r = store.state.resourcesById?.[rid] ?? null
   }
   if (!r) {
     pushToast('资源不存在', 'warn')
     return
   }
 
-  const projectRoot = String((store.state as any).projectRootPath || '').trim()
+  const projectRoot = String(store.state.projectRootPath || '').trim()
 
   const tryOpenPath = async (p: string): Promise<boolean> => {
     const target = String(p || '').trim()
     if (!target) return false
     try {
-      const w = window as any
-      if (w.dweb && w.dweb.common && typeof w.dweb.common.openFolderForPath === 'function') {
-        const res = await w.dweb.common.openFolderForPath({ path: target })
-        return !!(res && (res as any).ok)
-      }
+      const res = await openFolderForPath(target)
+      return !!res?.ok
     } catch {
       // ignore
     }
@@ -351,7 +351,7 @@ const handleFocusNode = async (payload: { nodeId: string }) => {
       return
     }
   } else {
-    const storeNodes = (store.state as any).nodesById as Record<string, any>
+    const storeNodes = store.state.nodesById
     if (storeNodes && !storeNodes[nodeId]) {
       pushToast('引用节点已删除，无法定位。', 'warn')
       return
@@ -364,12 +364,11 @@ const handleFocusNode = async (payload: { nodeId: string }) => {
 // ============ 9. IPC 广播到主窗口 ============
 const broadcastToMainWindow = async (
   event: string,
-  data: any
+  data?: unknown
 ) => {
   try {
-    const w = window as any
-    if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.broadcastResourceEvent === 'function') {
-      await w.dweb.aiworkflow.broadcastResourceEvent({ event, data })
+    if (window.dweb?.aiworkflow && typeof window.dweb.aiworkflow.broadcastResourceEvent === 'function') {
+      await window.dweb.aiworkflow.broadcastResourceEvent({ event, data })
     }
   } catch {
     // ignore
@@ -380,7 +379,7 @@ const broadcastToMainWindow = async (
 let mainWindowNotifyListenerId: number | null = null
 let mainWindowDataListenerId: number | null = null
 
-const onMainWindowNotify = (payload: { event: string; data: any }) => {
+const onMainWindowNotify = (payload: RmEventPayload) => {
   if (!payload?.event) return
   // 主窗口通知：资源列表可能已变化，触发刷新
   if (payload.event === 'resources-changed') {
@@ -390,24 +389,23 @@ const onMainWindowNotify = (payload: { event: string; data: any }) => {
 }
 
 // 处理主窗口发送的资源数据
-const applyResourceData = (payload: { resources?: Array<any>; nodesById?: Record<string, any>; nodeOrder?: string[] }) => {
+const applyResourceData = (payload: RmDataPayload | null | undefined) => {
   if (!payload) {
     console.warn('[ResourceManagerWindow] applyResourceData: payload is null/undefined')
     return false
   }
   const resIsArray = Array.isArray(payload.resources)
-  const resCount = resIsArray ? (payload.resources as Array<any>).length : 0
+  const resCount = resIsArray ? payload.resources!.length : 0
   const hasNodes = payload.nodesById && typeof payload.nodesById === 'object'
   const hasNodeOrder = Array.isArray(payload.nodeOrder)
-  console.log(`[ResourceManagerWindow] applyResourceData: resources=${resIsArray ? `array[${resCount}]` : typeof payload.resources}, nodesById=${hasNodes ? 'ok' : 'N/A'}, nodeOrder=${hasNodeOrder ? `array[${(payload.nodeOrder as string[]).length}]` : 'N/A'}`)
+  const nodeOrderLen = hasNodeOrder ? payload.nodeOrder!.length : 0
+  console.log(`[ResourceManagerWindow] applyResourceData: resources=${resIsArray ? `array[${resCount}]` : typeof payload.resources}, nodesById=${hasNodes ? 'ok' : 'N/A'}, nodeOrder=${hasNodeOrder ? `array[${nodeOrderLen}]` : 'N/A'}`)
   
   if (resIsArray) {
-    // 即使空数组也设置为接收到的数据，避免空数组情况下使用本地空 store
-    localResources.value = payload.resources as Array<any>
+    localResources.value = payload.resources as WorkflowResource[]
     dataReceived.value = true
-    // 调试：打印第一个资源的关键字段
-    if ((localResources.value as Array<any>).length > 0) {
-      const first = (localResources.value as Array<any>)[0]
+    if (localResources.value.length > 0) {
+      const first = localResources.value[0]
       console.log('[ResourceManagerWindow] first resource:', {
         id: first?.id,
         kind: first?.kind,
@@ -422,7 +420,7 @@ const applyResourceData = (payload: { resources?: Array<any>; nodesById?: Record
   }
   
   if (hasNodes) {
-    localNodesById.value = payload.nodesById as Record<string, any>
+    localNodesById.value = payload.nodesById as Record<string, WorkflowNode>
   }
   if (hasNodeOrder) {
     localNodeOrder.value = payload.nodeOrder as string[]
@@ -431,16 +429,16 @@ const applyResourceData = (payload: { resources?: Array<any>; nodesById?: Record
 }
 
 // onResourceManagerData 回调（push 更新）
-const onMainWindowData = (payload: { resources?: Array<any>; nodesById?: Record<string, any>; nodeOrder?: string[] }) => {
+const onMainWindowData = (payload: RmDataPayload) => {
   applyResourceData(payload)
 }
 
 onMounted(async () => {
-  const w = window as any
+  const dweb = window.dweb
 
   // Step 0: 注册监听主窗口通知（push 模型）
-  if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.onResourceManagerNotify === 'function') {
-    mainWindowNotifyListenerId = w.dweb.aiworkflow.onResourceManagerNotify(onMainWindowNotify)
+  if (dweb?.aiworkflow && typeof dweb.aiworkflow.onResourceManagerNotify === 'function') {
+    mainWindowNotifyListenerId = dweb.aiworkflow.onResourceManagerNotify(onMainWindowNotify)
   }
 
   // 加载流程 — 进度条分阶段反馈
@@ -450,9 +448,9 @@ onMounted(async () => {
   beginStep('register-root', '注册项目资产根目录')
   try {
     const projectId = currentProjectId.value
-    const rootPath = (store.state as any).projectRootPath as string | undefined
-    if (projectId != null && rootPath && w.dweb?.aiworkflow?.registerProjectRoot) {
-      await w.dweb.aiworkflow.registerProjectRoot({ projectId, rootPath })
+    const rootPath = store.state.projectRootPath
+    if (projectId != null && rootPath) {
+      await registerProjectRoot(projectId, rootPath)
     }
     markStepOk('register-root')
   } catch (err: unknown) {
@@ -462,8 +460,8 @@ onMounted(async () => {
   // Step 2: 从 preload 缓存读取资源数据（关键：数据可能在 Vue 挂载前就到达）
   beginStep('read-cache', '读取资源数据')
   let readFromCache = false
-  if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.getResourceManagerData === 'function') {
-    const cached = w.dweb.aiworkflow.getResourceManagerData()
+  if (dweb?.aiworkflow && typeof dweb.aiworkflow.getResourceManagerData === 'function') {
+    const cached = dweb.aiworkflow.getResourceManagerData()
     console.log('[ResourceManagerWindow] cached data from preload:', cached)
     if (cached) {
       const applied = applyResourceData(cached)
@@ -473,14 +471,14 @@ onMounted(async () => {
 
   // Step 3: 注册 push 监听器（用于后续数据推送/更新）
   // 注意：onResourceManagerData 在注册时如果已有缓存会立即回调
-  if (w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.onResourceManagerData === 'function') {
-    mainWindowDataListenerId = w.dweb.aiworkflow.onResourceManagerData(onMainWindowData)
+  if (dweb?.aiworkflow && typeof dweb.aiworkflow.onResourceManagerData === 'function') {
+    mainWindowDataListenerId = dweb.aiworkflow.onResourceManagerData(onMainWindowData)
   }
 
   // Step 4: 如果仍无数据，主动请求主窗口发送一次（最多等待2秒）
-  if (!dataReceived.value && w.dweb && w.dweb.aiworkflow && typeof w.dweb.aiworkflow.requestResourceManagerData === 'function') {
+  if (!dataReceived.value && dweb?.aiworkflow && typeof dweb.aiworkflow.requestResourceManagerData === 'function') {
     try {
-      const response = await w.dweb.aiworkflow.requestResourceManagerData()
+      const response = await dweb.aiworkflow.requestResourceManagerData()
       console.log('[ResourceManagerWindow] request-data response:', response)
       // 优先处理直接返回的数据
       if (response && response.data) {
@@ -529,13 +527,13 @@ onBeforeUnmount(() => {
     clearTimeout(toastTimer)
     toastTimer = null
   }
-  const w = window as any
-  if (mainWindowNotifyListenerId !== null && w.dweb?.aiworkflow?.offResourceManagerNotify) {
-    w.dweb.aiworkflow.offResourceManagerNotify(mainWindowNotifyListenerId)
+  const dweb = window.dweb
+  if (mainWindowNotifyListenerId !== null && dweb?.aiworkflow?.offResourceManagerNotify) {
+    dweb.aiworkflow.offResourceManagerNotify(mainWindowNotifyListenerId)
     mainWindowNotifyListenerId = null
   }
-  if (mainWindowDataListenerId !== null && w.dweb?.aiworkflow?.offResourceManagerData) {
-    w.dweb.aiworkflow.offResourceManagerData(mainWindowDataListenerId)
+  if (mainWindowDataListenerId !== null && dweb?.aiworkflow?.offResourceManagerData) {
+    dweb.aiworkflow.offResourceManagerData(mainWindowDataListenerId)
     mainWindowDataListenerId = null
   }
 })

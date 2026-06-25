@@ -1,5 +1,7 @@
 import type { WorkflowResource } from './resource/types'
 
+export type { WorkflowResource }
+
 export type WorkflowViewport = {
 	zoom: number
 	panX: number

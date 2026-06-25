@@ -9,7 +9,8 @@ type ServiceOptions = {
 export type BlueprintProjectItem = {
   id: number
   name: string
-  data: string
+  data?: string
+  rootPath?: string
   createdAt?: number | null
   updatedAt?: number | null
 }
@@ -148,12 +149,13 @@ const coerceProjectItem = (v: unknown): BlueprintProjectItem | null => {
   if (!isRecord(v)) return null
   const id = v.id
   const name = v.name
+  if (!isNumber(id) || !isString(name)) return null
   const data = v.data
-  if (!isNumber(id) || !isString(name) || !isString(data)) return null
   return {
     id,
     name,
-    data,
+    data: isString(data) ? data : undefined,
+    rootPath: isString(v.rootPath) ? v.rootPath : undefined,
     createdAt: isNumber(v.createdAt) ? v.createdAt : null,
     updatedAt: isNumber(v.updatedAt) ? v.updatedAt : null,
   }
@@ -381,13 +383,32 @@ export class BlueprintProjectService {
     )
     if (electronResult !== null && electronResult !== undefined) {
       const resultRecord = isRecord(electronResult) ? electronResult : null
-      const project = resultRecord && isRecord(resultRecord.project) ? coerceProjectItem(resultRecord.project) : coerceProjectItem(electronResult)
-      const snapshot = resultRecord ? resultRecord.snapshot : undefined
-      if (project) {
-        return {
-          ok: true,
-          project,
-          snapshot,
+      if (resultRecord && isRecord(resultRecord.project)) {
+        const project = coerceProjectItem(resultRecord.project)
+        const snapshot = resultRecord.snapshot
+        if (project) {
+          return {
+            ok: true,
+            project,
+            snapshot,
+          }
+        }
+      } else {
+        const project = coerceProjectItem(electronResult)
+        if (project) {
+          let snapshot: unknown = undefined
+          if (project.data) {
+            try {
+              snapshot = JSON.parse(project.data)
+            } catch {
+              snapshot = undefined
+            }
+          }
+          return {
+            ok: true,
+            project,
+            snapshot,
+          }
         }
       }
     }

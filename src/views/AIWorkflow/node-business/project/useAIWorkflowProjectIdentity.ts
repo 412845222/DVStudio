@@ -10,13 +10,13 @@ export const useAIWorkflowProjectIdentity = (payload: {
   const setSavedProject = async (project: { id?: unknown; name?: unknown; rootPath?: unknown }, fallbackName = '') => {
     const id = Number(project?.id)
     const validId = Number.isFinite(id) && id > 0 ? id : null
+    const rootPath = String(project?.rootPath ?? '').trim()
     payload.currentProjectId.value = validId
     payload.currentProjectName.value = String(project?.name ?? fallbackName).trim() || String(fallbackName || '').trim()
     if (payload.currentProjectRootPath) {
-      payload.currentProjectRootPath.value = String((project as any)?.rootPath ?? '').trim()
+      payload.currentProjectRootPath.value = rootPath
     }
     if (validId && isElectron()) {
-      const rootPath = String((project as any)?.rootPath ?? '').trim()
       await registerProjectRoot(validId, rootPath)
     }
     if (payload.currentProjectId.value) {

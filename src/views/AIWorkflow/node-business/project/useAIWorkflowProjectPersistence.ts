@@ -25,7 +25,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
   }
   currentProjectId: Ref<number | null>
   currentProjectName: Ref<string>
-  setSavedProject: (project: { id?: unknown; name?: unknown }, fallbackName?: string) => Promise<void>
+  setSavedProject: (project: { id?: unknown; name?: unknown; rootPath?: unknown }, fallbackName?: string) => Promise<void>
   readLastProjectId: () => number | null
   forgetLastProjectId: () => void
   refreshProjectList: () => Promise<void>
@@ -345,7 +345,7 @@ export const useAIWorkflowProjectPersistence = (payload: {
       })
       return false
     }
-    if (!payload.isValidBlueprintSnapshot((res as any).snapshot)) {
+    if (!payload.isValidBlueprintSnapshot(res.snapshot)) {
       payload.pushToast('加载项目失败：项目文件数据结构无效。', 'error')
       blueprintLog.append('加载项目失败：项目文件数据结构无效。', {
         category: 'operation',
@@ -356,13 +356,13 @@ export const useAIWorkflowProjectPersistence = (payload: {
       return false
     }
 
-    const project = (res as any).project ?? {}
+    const project = res.project ?? {}
     const loadedProjectId = Number(project?.id)
     const fallbackLoadedId = Number.isFinite(loadedProjectId) && loadedProjectId > 0 ? loadedProjectId : projectId
     await payload.setSavedProject({ ...project, id: fallbackLoadedId })
 
     const normalizedSnapshot = payload.stripUnrealExportRuntimeFromSnapshot(
-      payload.normalizeSnapshotResourceUrls((res as any).snapshot, payload.resolveBackendUrl)
+      payload.normalizeSnapshotResourceUrls(res.snapshot, payload.resolveBackendUrl)
     )
     let runtimeSafeSnapshot = payload.sanitizeBlueprintSnapshotForRuntime(normalizedSnapshot)
     const projectIdForAssetRepair = Number((project as any)?.id || payload.currentProjectId.value || projectId || 0)
