@@ -1,4 +1,4 @@
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, type Ref } from 'vue'
 
 const isPanelOpen = ref(false)
 const isAnimating = ref(false)
@@ -6,6 +6,7 @@ let listenerBound = false
 let boundKeydownHandler: ((e: KeyboardEvent) => void) | null = null
 let previousBodyOverflow = ''
 let lastFocusedElement: HTMLElement | null = null
+let enabledRef: Ref<boolean> | null = null
 
 function isEditableTarget(target: EventTarget | null): boolean {
 	if (!target) return false
@@ -70,8 +71,12 @@ function getPanelFocusableElements(): HTMLElement[] {
 	}) as HTMLElement[]
 }
 
+function isEnabled(): boolean {
+	return !enabledRef || enabledRef.value
+}
+
 function openPanel() {
-	if (isAnimating.value) return
+	if (!isEnabled() || isAnimating.value) return
 	isPanelOpen.value = true
 }
 
@@ -81,11 +86,13 @@ function closePanel() {
 }
 
 function togglePanel() {
-	if (isAnimating.value) return
+	if (!isEnabled() || isAnimating.value) return
 	isPanelOpen.value = !isPanelOpen.value
 }
 
 function handleKeydown(e: KeyboardEvent) {
+	if (!isEnabled()) return
+
 	if (e.shiftKey && e.key === 'Tab') {
 		if (isEditableTarget(e.target)) return
 		if (isPanelOpen.value) {
@@ -161,7 +168,16 @@ watch(isPanelOpen, (open) => {
 	}, 320)
 })
 
-export function useSteamHotkeys() {
+if (enabledRef) {
+	watch(enabledRef, (enabled) => {
+		if (!enabled && isPanelOpen.value) {
+			isPanelOpen.value = false
+		}
+	})
+}
+
+export function useSteamHotkeys(enabled?: Ref<boolean>) {
+	enabledRef = enabled ?? null
 	ensureListener()
 
 	return {

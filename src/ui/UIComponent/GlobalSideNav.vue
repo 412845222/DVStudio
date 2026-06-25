@@ -32,6 +32,7 @@
 				</svg>
 			</button>
 			<UserButton
+				v-if="isRealPlatform"
 				:collapsed="true"
 				:is-logged-in="isLoggedIn"
 				:is-real-platform="isRealPlatform"
@@ -96,9 +97,10 @@
 				<span class="gsn-label">{{ item.label }}</span>
 			</button>
 
-			<div class="nav-divider"></div>
+			<div v-if="isRealPlatform" class="nav-divider"></div>
 
 			<UserButton
+				v-if="isRealPlatform"
 				:collapsed="false"
 				:is-logged-in="isLoggedIn"
 				:is-real-platform="isRealPlatform"
@@ -109,6 +111,7 @@
 		</template>
 
 		<UserMenu
+			v-if="isRealPlatform"
 			:visible="userMenuOpen"
 			:is-real-platform="isRealPlatform"
 			:user="user"
@@ -214,9 +217,8 @@ function handleUserMenuAction(actionId: string) {
 .global-side-nav {
 	position: fixed;
 	left: 16px;
-	top: 72px;
-	bottom: 72px;
-	transform: none;
+	top: 50%;
+	transform: translateY(-25%);
 	width: 56px;
 	box-sizing: border-box;
 	padding: 12px 6px;
@@ -224,7 +226,7 @@ function handleUserMenuAction(actionId: string) {
 	flex-direction: column;
 	align-items: center;
 	justify-content: flex-start;
-	gap: 10px;
+	gap: 8px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #3aa8b4) 35%, transparent);
 	background: color-mix(in srgb, var(--theme-bg-primary, #181818) 60%, transparent);
 	backdrop-filter: blur(16px) saturate(140%);
@@ -236,6 +238,7 @@ function handleUserMenuAction(actionId: string) {
 	transition:
 		width 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
 		left 380ms cubic-bezier(0.22, 0.61, 0.36, 1),
+		transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
 		padding 220ms ease,
 		border-color 220ms ease,
 		background 220ms ease,
@@ -257,13 +260,10 @@ function handleUserMenuAction(actionId: string) {
 }
 
 .global-side-nav.collapsed {
-	top: 72px;
-	bottom: 18px;
-	left: 18px;
 	width: 52px;
 	padding: 8px 6px;
 	gap: 8px;
-	justify-content: space-between;
+	justify-content: flex-start;
 	align-items: center;
 }
 

@@ -16,6 +16,7 @@
 			:src="user?.avatarUrl"
 			:size="collapsed ? 'sm' : 'md'"
 			:status="avatarStatus"
+			:no-border="collapsed"
 		/>
 		<span v-if="!collapsed" class="user-label">
 			<span class="user-name">{{ displayName }}</span>
@@ -106,7 +107,6 @@ function handleClick(e: MouseEvent) {
 	gap: 0;
 	padding: 6px;
 	margin: 0;
-	margin-top: auto;
 	cursor: pointer;
 	overflow: hidden;
 	transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
@@ -115,16 +115,26 @@ function handleClick(e: MouseEvent) {
 
 .user-button.is-collapsed {
 	justify-content: center;
-	padding: 8px;
+	align-items: center;
+	padding: 8px 0;
 	min-height: unset;
-	height: 44px;
+	height: auto;
 	width: 100%;
+	border: none;
+	background: transparent;
+}
+
+.user-button.is-collapsed:hover {
+	background: transparent;
+	border: none;
+	box-shadow: none;
 }
 
 .user-button:not(.is-collapsed) {
 	justify-content: flex-start;
 	padding: 8px 10px;
 	gap: 10px;
+	margin-top: 4px;
 }
 
 .user-button:hover {

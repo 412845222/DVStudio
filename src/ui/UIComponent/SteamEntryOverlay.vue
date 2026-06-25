@@ -44,14 +44,7 @@
 				</div>
 
 				<div v-if="isConnected" class="steam-actions">
-					<button class="steam-btn steam-btn-primary" @click="openPanel">
-						<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-							<rect x="3" y="3" width="18" height="18" stroke="currentColor" stroke-width="1.8" />
-							<path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="1.8" />
-						</svg>
-						打开 Steam 面板
-					</button>
-					<button class="steam-btn steam-btn-secondary" @click="closeOverlay">
+					<button class="steam-btn steam-btn-primary" @click="closeOverlay">
 						开始使用
 					</button>
 				</div>
@@ -104,7 +97,6 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
 	(e: 'close'): void
-	(e: 'open-panel'): void
 }>()
 
 const { particles } = useSquareParticles({ count: 14, seed: 123, baseOpacity: 0.35 })
@@ -124,10 +116,6 @@ function handleBackdropClick() {
 
 function closeOverlay() {
 	emit('close')
-}
-
-function openPanel() {
-	emit('open-panel')
 }
 </script>
 

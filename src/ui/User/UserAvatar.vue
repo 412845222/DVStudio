@@ -3,7 +3,7 @@
 		class="user-avatar"
 		:class="[
 			`size-${size}`,
-			{ 'has-status': !!status, 'is-placeholder': !src }
+			{ 'has-status': !!status, 'is-placeholder': !src, 'no-border': noBorder }
 		]"
 	>
 		<div
@@ -27,12 +27,14 @@ interface Props {
 	size?: 'sm' | 'md' | 'lg'
 	status?: 'online' | 'offline' | 'connecting'
 	platform?: 'steam' | 'mock' | 'epic'
+	noBorder?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
 	size: 'md',
 	status: undefined,
 	platform: 'steam',
+	noBorder: false,
 })
 </script>
 
@@ -55,6 +57,12 @@ withDefaults(defineProps<Props>(), {
 	border-radius: 0;
 }
 
+.user-avatar.no-border .avatar-image,
+.user-avatar.no-border .avatar-placeholder {
+	border: none;
+	box-shadow: none;
+}
+
 .avatar-placeholder {
 	display: flex;
 	align-items: center;
@@ -63,8 +71,12 @@ withDefaults(defineProps<Props>(), {
 	border-color: color-mix(in srgb, var(--theme-border, #3c3c3c) 60%, transparent);
 }
 
-.user-avatar:not(.is-placeholder) .avatar-image {
+.user-avatar:not(.is-placeholder):not(.no-border) .avatar-image {
 	box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent);
+}
+
+.user-avatar.no-border .status-indicator {
+	border-color: var(--theme-bg-primary, #181818);
 }
 
 .size-sm {

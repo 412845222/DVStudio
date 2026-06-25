@@ -24,17 +24,16 @@
 		<StartupProgressBar v-if="!isResourceManagerWindow" :state="startupProgressState" @dismiss="hideStartupProgress" />
 		<PageTransitionOverlay v-if="!isPreviewWindow" />
 		<SteamEntryOverlay
-			v-if="!isPreviewWindow && !isResourceManagerWindow"
+			v-if="!isPreviewWindow && !isResourceManagerWindow && isRealPlatform"
 			:visible="steamEntryVisible"
 			:is-connecting="steamEntryConnecting"
 			:is-connected="steamEntryConnected"
 			:user="steamEntryUser"
 			:error="steamEntryError"
 			@close="hideSteamEntry"
-			@open-panel="openSteamPanel()"
 		/>
 		<SteamPanel
-			v-if="!isPreviewWindow && !isResourceManagerWindow"
+			v-if="!isPreviewWindow && !isResourceManagerWindow && isRealPlatform"
 			:visible="steamPanelOpen"
 			:is-real-platform="isRealPlatform"
 			:user="platformUser"
@@ -94,7 +93,7 @@ const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
 
 const { isRealPlatform, user: platformUser } = usePlatform()
-const { isOpen: steamPanelOpen, open: openSteamPanel, close: closeSteamPanel, toggle: toggleSteamPanel } = useSteamPanel()
+const { isOpen: steamPanelOpen, open: openSteamPanel, close: closeSteamPanel, toggle: toggleSteamPanel } = useSteamPanel(isRealPlatform)
 
 const {
 	showOverlay: steamEntryVisible,
