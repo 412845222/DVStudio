@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../../../../types/utils'
 export const useAIWorkflowSceneLayoutController = (options: {
   store: any
   connectedTextInputValue: (nodeId: string, anchorId: string) => string
@@ -78,8 +79,8 @@ export const useAIWorkflowSceneLayoutController = (options: {
         },
       })
       options.pushToast('场景布局已更新。', 'info')
-    } catch (err: any) {
-      const message = String(err?.message ?? err ?? 'unknown')
+    } catch (err: unknown) {
+      const message = getErrorMessage(err)
       options.store.commit('setNodeSceneLayoutSettings', {
         nodeId,
         sceneLayoutSettings: { status: 'error', message, inputJson },

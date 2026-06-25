@@ -207,7 +207,7 @@
             @remove-merge-item="onTextMergeItemRemove(node.id, $event)"
             @request-scene-models="onNodeRequestSceneModels(node.id)"
             @resize="onNodeResize(node.id, $event)"
-            @auto-resize="(h) => onNodeAutoResize(node.id, h)"
+            @auto-resize="(h: number) => onNodeAutoResize(node.id, h)"
             @restart-meshy-task="onNodeRestartMeshyTask(node.id)"
             @run-comfyui="onComfyUIRun(node.id)"
             @run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
@@ -343,7 +343,7 @@
         @update:panelMode="chatPanelMode = $event"
         @update:agentMode="agentConversationMode = $event"
         @update:localExecStreamMode="localExecStreamMode = $event"
-        @update:modelKey="chatModelKey = $event"
+        @update:modelKey="chatModelKey = $event as any"
         @update:activeModelId="chatModelId = $event"
         @nanobanana-generate="onNanoBananaGenerate"
         @seedance-generate="onSeedanceGenerate"
@@ -692,6 +692,7 @@
 </template>
 
 <script setup lang="ts">
+import { getErrorMessage } from '../../types/utils'
 import * as THREE from 'three'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -2929,8 +2930,8 @@ const onCodexCreateSession = async () => {
     codexSessions.value = [item, ...codexSessions.value.filter((s) => s.id !== item.id)]
     codexActiveSessionId.value = item.id
     chatMessages.value = []
-  } catch (err: any) {
-    pushToast('创建 Copilot CLI 会话失败：' + String(err?.message || err || 'unknown'), 'warn')
+  } catch (err: unknown) {
+    pushToast('创建 Copilot CLI 会话失败：' + getErrorMessage(err), 'warn')
   }
 }
 
@@ -2981,8 +2982,8 @@ const onCodexApproval = async (payloadValue: { messageId: string; decision: 'acc
       return
     }
     pushToast('审批已提交。', 'info')
-  } catch (err: any) {
-    pushToast('审批提交失败：' + String(err?.message || err || 'unknown'), 'warn')
+  } catch (err: unknown) {
+    pushToast('审批提交失败：' + getErrorMessage(err), 'warn')
   }
 }
 
@@ -4592,7 +4593,7 @@ const comfyService = new ComfyUIBridgeService({
   localExecBasePath: resolveLocalExecBasePath(),
   // web 模式下不写 baseUrl，让路径保持相对路径走 Vite proxy (/api/* → http://127.0.0.1:5800)，
   // 避免浏览器因跨域而在测试环境出现 "Failed to fetch"。
-  baseUrl: getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl(),
+  baseUrl: (getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl()) as any,
 })
 const localExecChatService = createLocalExecChatService(comfyService)
 const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())
@@ -4791,8 +4792,8 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
       }
     }
     return { ok: true, hasRunningJob, skipped: false }
-  } catch (err: any) {
-    if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${String(err?.message ?? err ?? 'unknown')}`, 'warn')
+  } catch (err: unknown) {
+    if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${getErrorMessage(err)}`, 'warn')
     return { ok: false, hasRunningJob: false, skipped: false }
   } finally {
     unrealExportSyncRunning = false
@@ -4891,8 +4892,8 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
   }
   try {
     return await instance.getResolvedLayoutForUnreal()
-  } catch (err: any) {
-    return { ok: false as const, error: String(err?.message ?? err ?? 'unknown') }
+  } catch (err: unknown) {
+    return { ok: false as const, error: getErrorMessage(err) }
   }
 }
 
@@ -5771,7 +5772,7 @@ const {
   fileFromUrl,
   uploadLocalResourceAndGetUrl,
   resolveBackendUrl,
-  getChatService: () => localExecChatService,
+  getChatService: () => localExecChatService as any,
   onSeedanceTaskObserved: (...args) => void onSeedanceTaskObserved(...args),
 })
 
@@ -5786,7 +5787,7 @@ const {
   persistExternalAssetToProject,
   pushToast,
   stripUnrealExportRuntimeFromNodes,
-})
+} as any)
 
 const {
   sanitizeBlueprintSnapshotForRuntime,
@@ -6265,7 +6266,7 @@ const computeNearDragNodes = () => {
   const HIT_RADIUS = 80
   const next = new Set<string>()
   const hosts = document.querySelectorAll<HTMLElement>('.aiwf-node-screenshot-host')
-  for (const host of hosts) {
+  for (const host of Array.from(hosts)) {
     const nodeId = host.querySelector('[data-wf-node-id]')?.getAttribute('data-wf-node-id')
     if (!nodeId) continue
     const r = host.getBoundingClientRect()
@@ -6366,8 +6367,8 @@ const onExportPerfDiagnostics = () => {
       URL.revokeObjectURL(url)
     }, 0)
     pushToast('已导出性能诊断日志。', 'info')
-  } catch (err: any) {
-    pushToast(`导出性能诊断日志失败：${String(err?.message ?? err ?? 'unknown')}`, 'warn')
+  } catch (err: unknown) {
+    pushToast(`导出性能诊断日志失败：${getErrorMessage(err)}`, 'warn')
   }
 }
 
@@ -6539,8 +6540,8 @@ const onNodeRetryMeshyFetch = async (nodeId: string) => {
     } else {
       pushToast('任务尚未完成，当前状态：' + finalStatus, 'warn')
     }
-  } catch (e: any) {
-    pushToast('拉取异常：' + String(e?.message ?? e), 'error')
+  } catch (e: unknown) {
+    pushToast('拉取异常：' + getErrorMessage(e), 'error')
   }
 }
 

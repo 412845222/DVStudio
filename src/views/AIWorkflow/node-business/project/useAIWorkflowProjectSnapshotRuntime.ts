@@ -1,4 +1,5 @@
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
+import { getErrorMessage } from '../../../../types/utils'
 import {
   sanitizeWorkflowMediaUrl,
   sanitizeWorkflowUrlFieldsDeep,
@@ -181,8 +182,8 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
     try {
       payload.store.commit('hydrateDraft', { snapshot })
       return true
-    } catch (err: any) {
-      const message = String(err?.message ?? err ?? 'unknown')
+    } catch (err: unknown) {
+      const message = getErrorMessage(err)
       payload.pushToast(`${sourceLabel}: blueprint data compatibility failed (${message})`, 'error')
       return false
     }

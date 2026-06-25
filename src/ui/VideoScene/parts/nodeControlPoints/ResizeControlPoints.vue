@@ -1,8 +1,8 @@
 <template>
-	<div class="vs-handle tl" :style="handleStyles.tl" @pointerdown.stop.prevent="(e) => emit('handleDown', 'tl', e)" />
-	<div class="vs-handle tr" :style="handleStyles.tr" @pointerdown.stop.prevent="(e) => emit('handleDown', 'tr', e)" />
-	<div class="vs-handle bl" :style="handleStyles.bl" @pointerdown.stop.prevent="(e) => emit('handleDown', 'bl', e)" />
-	<div class="vs-handle br" :style="handleStyles.br" @pointerdown.stop.prevent="(e) => emit('handleDown', 'br', e)" />
+	<div class="vs-handle tl" :style="handleStyles.tl" @pointerdown.stop.prevent="(e: any) => emit('handleDown', 'tl', e)" />
+	<div class="vs-handle tr" :style="handleStyles.tr" @pointerdown.stop.prevent="(e: any) => emit('handleDown', 'tr', e)" />
+	<div class="vs-handle bl" :style="handleStyles.bl" @pointerdown.stop.prevent="(e: any) => emit('handleDown', 'bl', e)" />
+	<div class="vs-handle br" :style="handleStyles.br" @pointerdown.stop.prevent="(e: any) => emit('handleDown', 'br', e)" />
 	<div v-if="showSize" class="vs-size" :style="sizeStyle">{{ sizeText }}</div>
 </template>
 

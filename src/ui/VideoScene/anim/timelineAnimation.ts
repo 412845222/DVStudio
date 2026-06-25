@@ -1,5 +1,5 @@
 import { TimelineStore } from '../../../store/timeline'
-import { VideoSceneStore, type VideoSceneTreeNode } from '../../../store/videoscene'
+import { VideoSceneStore, type VideoSceneLayer, type VideoSceneTreeNode } from '../../../store/videoscene'
 import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
 import { canInterpolateNumber, cubicBezierYforX, lerpNumber } from '../../TimeLine/core/curveTick'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
@@ -20,7 +20,7 @@ const buildNodeIndex = (nodes: VideoSceneTreeNode[] | undefined, out: Map<string
 }
 
 const getLayerNodeSnapshotAt = (layerId: string, frameIndex: number): Record<string, NodeSnapshot> | null => {
-	const map = (TimelineStore.state as any).nodeKeyframesByLayer?.[layerId]
+	const map = TimelineStore.state.nodeKeyframesByLayer?.[layerId]
 	if (!map) return null
 	const snap = map[String(Math.floor(frameIndex))]
 	return snap ?? null
@@ -221,7 +221,7 @@ const findNodeInLayer = (layerId: string, nodeId: string): VideoSceneTreeNode | 
 }
 
 const applyProgressStyleFromSpec = (layerId: string) => {
-	const spec = (TimelineStore.state as any).progressBarByLayerId?.[layerId]
+	const spec = TimelineStore.state.progressBarByLayerId?.[layerId]
 	if (!spec) return
 	const style = (spec as any).style ?? {}
 	const nodeIds = (spec as any).nodeIds ?? {}
@@ -284,12 +284,12 @@ const applyProgressStyleFromSpec = (layerId: string) => {
 }
 
 const applySubtitleEmptyOutsideCue = (layerId: string, frameIndex: number) => {
-	const kind = (TimelineStore.state as any).layerKindById?.[layerId] ?? 'normal'
+	const kind = TimelineStore.state.layerKindById?.[layerId] ?? 'normal'
 	if (kind !== 'subtitle') return
-	const spans = (TimelineStore.state as any).subtitleSpansByLayer?.[layerId] ?? []
+	const spans = TimelineStore.state.subtitleSpansByLayer?.[layerId] ?? []
 	const inCue = containsFrame(spans, Math.floor(frameIndex))
 	if (inCue) return
-	const nodeId = String((TimelineStore.state as any).subtitleTextNodeIdByLayer?.[layerId] ?? '').trim()
+	const nodeId = String(TimelineStore.state.subtitleTextNodeIdByLayer?.[layerId] ?? '').trim()
 	if (!nodeId) return
 	const node = findNodeInLayer(layerId, nodeId)
 	if (!node || node.category !== 'user') return
@@ -300,7 +300,7 @@ const applySubtitleEmptyOutsideCue = (layerId: string, frameIndex: number) => {
 }
 
 const getLayerStageSnapshotAt = (layerId: string, frameIndex: number) => {
-	const map = (TimelineStore.state as any).stageKeyframesByFrame as Record<string, { layers: any[] }> | undefined
+	const map = TimelineStore.state.stageKeyframesByFrame as Record<string, { layers: VideoSceneLayer[] }> | undefined
 	if (!map) return null
 	const hit = map[String(Math.floor(frameIndex))]
 	const layers = Array.isArray(hit?.layers) ? hit!.layers : null
@@ -446,7 +446,7 @@ const applySubtitleLayersAtFrame = (frameIndex: number) => {
 
 	for (const layer of TimelineStore.state.layers) {
 		const layerId = layer.id
-		const kind = (TimelineStore.state as any).layerKindById?.[layerId] ?? 'normal'
+		const kind = TimelineStore.state.layerKindById?.[layerId] ?? 'normal'
 		if (kind !== 'subtitle') continue
 
 		const spans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
@@ -505,9 +505,9 @@ const applyProgressLayersAtFrame = (frameIndex: number) => {
 	if (!Number.isFinite(fi)) return
 
 	const snapPlayedOverlayTransform = (layerId: string) => {
-		const kind = (TimelineStore.state as any).layerKindById?.[layerId] ?? 'normal'
+		const kind = TimelineStore.state.layerKindById?.[layerId] ?? 'normal'
 		if (kind !== 'progress') return
-		const spec = (TimelineStore.state as any).progressBarByLayerId?.[layerId]
+		const spec = TimelineStore.state.progressBarByLayerId?.[layerId]
 		if (!spec) return
 		const playedId = String((spec as any)?.nodeIds?.playedOverlayId ?? '').trim()
 		if (!playedId) return
@@ -522,7 +522,7 @@ const applyProgressLayersAtFrame = (frameIndex: number) => {
 
 	for (const layer of TimelineStore.state.layers) {
 		const layerId = layer.id
-		const kind = (TimelineStore.state as any).layerKindById?.[layerId] ?? 'normal'
+		const kind = TimelineStore.state.layerKindById?.[layerId] ?? 'normal'
 		if (kind !== 'progress') continue
 
 		const spans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
@@ -646,7 +646,7 @@ export const applyTimelineAnimationAtFrame = (frameIndex: number) => {
 	// Normal layers: per-layer keyframe rules (hold-left to the right; left side unaffected).
 	for (const layer of TimelineStore.state.layers) {
 		const layerId = layer.id
-		const kind = (TimelineStore.state as any).layerKindById?.[layerId] ?? 'normal'
+		const kind = TimelineStore.state.layerKindById?.[layerId] ?? 'normal'
 		if (kind !== 'normal') continue
 		applyNormalLayerAtFrame(layerId, fi)
 	}

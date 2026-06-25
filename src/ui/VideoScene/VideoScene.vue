@@ -441,7 +441,7 @@ const exportEstimatedSizeText = computed(() => {
 	try {
 		const width = Math.max(1, Math.round(stageWidth.value))
 		const height = Math.max(1, Math.round(stageHeight.value))
-		const fps = Math.max(1, Math.min(240, Math.floor(Number((TimelineStore.state as any).fps ?? 60) || 60)))
+		const fps = Math.max(1, Math.min(240, Math.floor(Number(TimelineStore.state.fps ?? 60) || 60)))
 		const frameCount = Math.max(1, Math.floor(Number(TimelineStore.state.frameCount) || 1))
 		const durationSec = frameCount / Math.max(1, fps)
 		const baseline = (1920 * 1080 * 30)
@@ -530,7 +530,7 @@ const exportFrames = async () => {
 		// Use the real stage size from the bottom size form/store.
 		const width = Math.max(1, Math.round(stageWidth.value))
 		const height = Math.max(1, Math.round(stageHeight.value))
-		const fps = Math.max(1, Math.min(240, Math.floor(Number((TimelineStore.state as any).fps ?? 60) || 60)))
+		const fps = Math.max(1, Math.min(240, Math.floor(Number(TimelineStore.state.fps ?? 60) || 60)))
 		const frameCount = Math.max(1, Math.floor(Number(TimelineStore.state.frameCount) || 1))
 
 		const created = await ExportService.createJob({
@@ -660,7 +660,7 @@ const exportFrames = async () => {
 						repeat: stageBackground.value.repeat,
 					},
 					baseSceneState: cloneJsonSafe(VideoSceneStore.state),
-					timelineState: cloneJsonSafe(TimelineStore.state as any),
+					timelineState: cloneJsonSafe(TimelineStore.state),
 				})
 				workers.push(w)
 			}
@@ -800,7 +800,7 @@ watch(
 )
 
 watch(
-	() => (TimelineStore.state as any).nodeKeyframeVersion,
+	() => TimelineStore.state.nodeKeyframeVersion,
 	() => {
 		scheduleApplyTimelineAnimation()
 	},
@@ -808,7 +808,7 @@ watch(
 )
 
 watch(
-	() => (TimelineStore.state as any).stageKeyframeVersion,
+	() => TimelineStore.state.stageKeyframeVersion,
 	() => {
 		scheduleApplyTimelineAnimation()
 	},

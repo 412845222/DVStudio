@@ -12,6 +12,7 @@ import {
   ensureSceneDecomposeSourceDimensions,
 } from './sceneDecomposeShared'
 import { computeEnforcedLandscapeCrop, uvCropToPixelRect } from '../../../../aiworkflow/imageCropEnforcer'
+import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowSceneDecomposeController = (options: {
   store: any
@@ -329,8 +330,8 @@ export const useAIWorkflowSceneDecomposeController = (options: {
       options.pushToast('场景分解已生成并展开。', 'info')
 
       options.onAutoWireEnd?.()
-    } catch (err: any) {
-      const message = String(err?.message ?? err ?? 'unknown')
+    } catch (err: unknown) {
+      const message = getErrorMessage(err)
       options.store.commit('setNodeSceneDecomposeSettings', {
         nodeId,
         sceneDecomposeSettings: {

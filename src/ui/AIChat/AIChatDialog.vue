@@ -117,7 +117,7 @@
                 class="ai-chat__action-btn"
                 type="button"
                 :disabled="sending"
-                @click="(e) => saveToComponentLibrary(m, e)"
+                @click="(e: any) => saveToComponentLibrary(m, e)"
               >
                 保存到组件库
               </button>

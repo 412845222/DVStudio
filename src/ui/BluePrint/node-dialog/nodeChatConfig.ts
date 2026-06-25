@@ -181,6 +181,42 @@ export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS = [
   { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview' },
 ]
 
+export const NODE_CHAT_MESHY_IMAGE_ASPECT_RATIO_OPTIONS = {
+  'nano-banana': [
+    { value: '1:1', label: '1:1' },
+    { value: '16:9', label: '16:9' },
+    { value: '9:16', label: '9:16' },
+    { value: '4:3', label: '4:3' },
+    { value: '3:4', label: '3:4' },
+  ],
+  'nano-banana-2': [
+    { value: '1:1', label: '1:1' },
+    { value: '16:9', label: '16:9' },
+    { value: '9:16', label: '9:16' },
+    { value: '4:3', label: '4:3' },
+    { value: '3:4', label: '3:4' },
+  ],
+  'nano-banana-pro': [
+    { value: '1:1', label: '1:1' },
+    { value: '16:9', label: '16:9' },
+    { value: '9:16', label: '9:16' },
+    { value: '4:3', label: '4:3' },
+    { value: '3:4', label: '3:4' },
+  ],
+  'gpt-image-2': [
+    { value: '1:1', label: '1:1' },
+    { value: '3:2', label: '3:2' },
+    { value: '2:3', label: '2:3' },
+  ],
+}
+
+export const getMeshyImageAspectRatioOptions = (aiModel: string) => {
+  return NODE_CHAT_MESHY_IMAGE_ASPECT_RATIO_OPTIONS[aiModel as keyof typeof NODE_CHAT_MESHY_IMAGE_ASPECT_RATIO_OPTIONS] 
+    || NODE_CHAT_MESHY_IMAGE_ASPECT_RATIO_OPTIONS['nano-banana']
+}
+
+export const NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS = [1, 2, 4]
+
 export const NODE_CHAT_MESHY_IMAGE_OPTIONS = {
   aiModel: [
     { value: 'nano-banana', label: 'NanoBanana' },
@@ -188,19 +224,20 @@ export const NODE_CHAT_MESHY_IMAGE_OPTIONS = {
     { value: 'nano-banana-pro', label: 'NanoBananaPro' },
     { value: 'gpt-image-2', label: 'GPT-Image-2' },
   ],
-  aspectRatio: [
-    { value: '1:1', label: '1:1' },
-    { value: '16:9', label: '16:9' },
-    { value: '9:16', label: '9:16' },
-    { value: '4:3', label: '4:3' },
-    { value: '3:4', label: '3:4' },
-  ],
+  aspectRatio: NODE_CHAT_MESHY_IMAGE_ASPECT_RATIO_OPTIONS['nano-banana'],
   poseMode: [
     { value: '', label: '无' },
     { value: 'a-pose', label: 'a-pose' },
     { value: 't-pose', label: 't-pose' },
   ],
 }
+
+export const NODE_CHAT_VIDEO_RESOLUTION_OPTIONS = [
+  { value: '480p', label: '480p' },
+  { value: '720p', label: '720p' },
+  { value: '1080p', label: '1080p' },
+  { value: '4k', label: '4K' },
+]
 
 export const NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS = [
   { value: 'doubao-seedream-4-5-251128', label: 'Seedream v4.5 (推荐)' },
@@ -245,8 +282,12 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
         model: 'nanobanana',
         nanobananaModelVersion: 'gemini-2.5-flash-image',
         meshyImageAiModel: 'nano-banana',
+        meshyAspectRatio: '1:1',
+        meshyNegativePrompt: '',
         meshyPoseMode: '',
         meshyGenerateMultiView: false,
+        meshySeed: -1,
+        meshyOutputImageCount: 1,
         seedreamModelVersion: 'doubao-seedream-4-5-251128',
         resolution: '1024x1024',
         aspectRatio: '1:1',
@@ -264,6 +305,8 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
         seed: -1,
         generateAudio: false,
         watermark: false,
+        cameraFixed: false,
+        returnLastFrame: false,
       }
     case 'model3d':
       return {

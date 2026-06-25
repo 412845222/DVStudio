@@ -34,7 +34,7 @@ const replacer = (_key: string, value: unknown): unknown => {
 
 const reviver = (_key: string, value: unknown): unknown => {
 	if (typeof value === 'object' && value !== null && '__isDate' in value) {
-		return new Date((value as { value: number }).value)
+		return new Date((value as unknown as { value: number }).value)
 	}
 	return value
 }

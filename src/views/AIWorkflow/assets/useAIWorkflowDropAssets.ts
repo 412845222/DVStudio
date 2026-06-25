@@ -1,3 +1,5 @@
+import { getErrorMessage } from '../../../types/utils'
+
 export type AIWorkflowDraggedResourceItem = {
   resourceId: string
   kind: 'image' | 'video'
@@ -406,8 +408,8 @@ export const useAIWorkflowDropAssets = (options: {
           await options.createBatchMediaNodesFromFiles({ files: dropped, worldX: world.worldX, worldY: world.worldY })
           return
         }
-      } catch (err: any) {
-        options.pushToast('拖拽导入失败：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+      } catch (err: unknown) {
+        options.pushToast('拖拽导入失败：' + getErrorMessage(err), 'warn')
         // fall through to image-gen URL if present
       }
     }

@@ -1,6 +1,8 @@
 import { onBeforeUnmount, ref } from 'vue'
+import type { Store } from 'vuex'
 import { isElectron, diagnoseDwebAsset, validateDwebProjectRoot, type DwebAssetDiagnoseResult } from '../../../electronBridge'
 import type { WorkflowResource } from '../../../aiworkflow/resource/types'
+import type { WorkflowState } from '../../../aiworkflow/types'
 
 /**
  * 404 错误回退处理结果
@@ -90,7 +92,7 @@ export interface AIWorkflow404FallbackOptions {
   /** 获取当前项目根路径（磁盘真实路径），用于重注册 projectRoot */
   getCurrentProjectRootPath?: () => string | null
   /** 获取 Vuex store，用于写入资源/节点修复结果 */
-  getStore?: () => any
+  getStore?: () => Store<WorkflowState>
   /** 从 url 查找绑定该 url 的节点/资源（来源定位） */
   findBindingSources?: (url: string) => ResourceBindingSource[]
   /** 恢复成功回调（重新加载资源、刷新节点显示） */
@@ -314,8 +316,8 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
     }
 
     const url = pending.url
-    const resourcesById = (store.state as any)?.resourcesById || {}
-    const nodesById = (store.state as any)?.nodesById || {}
+    const resourcesById = store.state.resourcesById || {}
+    const nodesById = store.state.nodesById || {}
 
     // 1) 清理 resourcesById 中对该 url 的直接引用（备份后删除）
     for (const [rid, res] of Object.entries(resourcesById) as Array<[string, any]>) {
@@ -400,7 +402,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
       }
     }
     for (const np of snap.nodePatches || []) {
-      const nodesById = (store.state as any)?.nodesById || {}
+      const nodesById = store.state.nodesById || {}
       const node = nodesById[np.nodeId]
       if (node) setDeepValue(node, np.path, np.oldValue)
     }
@@ -504,12 +506,11 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 /**
  * 默认来源定位：从 Vuex store 中查找引用了该 URL 的资源和节点
  */
-function defaultFindBindingSources(url: string, store: any): ResourceBindingSource[] {
+function defaultFindBindingSources(url: string, store: Store<WorkflowState> | null | undefined): ResourceBindingSource[] {
   const sources: ResourceBindingSource[] = []
-  if (!store || !store?.state) return sources
-  const state: any = store.state
+  if (!store || !store.state) return sources
+  const state = store.state
 
-  // 查找 resourcesById
   const resourcesById = state.resourcesById || {}
   for (const [rid, res] of Object.entries(resourcesById) as Array<[string, any]>) {
     if (!res) continue
@@ -522,7 +523,6 @@ function defaultFindBindingSources(url: string, store: any): ResourceBindingSour
     }
   }
 
-  // 查找 nodesById
   const nodesById = state.nodesById || {}
   for (const [nid, node] of Object.entries(nodesById) as Array<[string, any]>) {
     if (!node) continue

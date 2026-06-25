@@ -19,13 +19,13 @@
     @update:worldX="(v) => emit('update:worldX', v)"
     @update:worldY="(v) => emit('update:worldY', v)"
     @select="(id) => emit('select', id)"
-    @start-link="(payload) => emit('start-link', payload)"
-    @end-link="(payload) => emit('end-link', payload)"
+    @start-link="(payload: any) => emit('start-link', payload)"
+    @end-link="(payload: any) => emit('end-link', payload)"
     @copy="() => emit('copy')"
     @refresh="() => emit('refresh')"
     @delete="() => emit('delete')"
-    @set-type="(type) => emit('set-type', type)"
-    @resize="(payload) => emit('resize', payload)"
+    @set-type="(type: any) => emit('set-type', type)"
+    @resize="(payload: any) => emit('resize', payload)"
   >
     <template #body>
       <div class="wf-merge" @pointerdown.stop>
@@ -62,7 +62,7 @@
             v-for="(it, idx) in mergeItems"
             :key="it.id"
             class="wf-merge-row"
-            :ref="(el) => setRowEl(it.id, el)"
+            :ref="(el: any) => setRowEl(it.id, el)"
           >
             <div class="wf-merge-row-left">
               <div class="wf-merge-row-label">拼接 {{ idx + 1 }}</div>
@@ -372,15 +372,15 @@ const inputAnchorStyle = (itemId: string) => {
   };
 };
 
-const anchorStyle = (a: AnchorSpec & { offsetY?: number }) => ({
+const anchorStyle = (a: any) => ({
   top: `calc(50% + ${a.offsetY ?? 0}px)`,
 });
 
-const anchorClass = (a: AnchorSpec) => {
+const anchorClass = (a: any) => {
   return "wf-anchor-resource";
 };
 
-const anchorTypeAttr = (a: AnchorSpec) => {
+const anchorTypeAttr = (a: any) => {
   if (a.mediaType === "image") return "image";
   if (a.mediaType === "video") return "video";
   if (a.mediaType === "text") return "text";

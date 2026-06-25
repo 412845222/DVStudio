@@ -19,13 +19,13 @@
     @update:worldX="(v) => emit('update:worldX', v)"
     @update:worldY="(v) => emit('update:worldY', v)"
     @select="(id) => emit('select', id)"
-    @start-link="(payload) => emit('start-link', payload)"
-    @end-link="(payload) => emit('end-link', payload)"
+    @start-link="(payload: any) => emit('start-link', payload)"
+    @end-link="(payload: any) => emit('end-link', payload)"
     @copy="() => emit('copy')"
     @refresh="() => emit('refresh')"
     @delete="() => emit('delete')"
-    @set-type="(type) => emit('set-type', type)"
-    @resize="(payload) => emit('resize', payload)"
+    @set-type="(type: any) => emit('set-type', type)"
+    @resize="(payload: any) => emit('resize', payload)"
   >
     <template #body>
       <div class="wf-model3d-body">
@@ -155,6 +155,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { getErrorMessage } from '../../../types/utils'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { Model3DPreviewViewer } from './model3d/Model3DPreviewViewer'
 import type { WorkflowModel3DNodeSettings } from '../../../aiworkflow/types'
@@ -339,9 +340,9 @@ const loadModel = async (requestId?: number) => {
       emitPreviewProgress(0.98, '同步交互状态')
       emit('three-preview-ready')
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (current !== loadRunId) return
-    errorMessage.value = String(err?.message ?? err ?? '模型加载失败')
+    errorMessage.value = getErrorMessage(err) || '模型加载失败'
     viewer.clearModel()
     emit('three-preview-error')
   }

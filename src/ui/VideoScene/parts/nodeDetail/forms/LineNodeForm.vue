@@ -13,7 +13,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.startX, (v) => (draft.startX = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.startX, (v) => (draft.startX = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
 			/>
 		</label>
 		<label class="vs-row">
@@ -27,7 +27,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.startY, (v) => (draft.startY = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.startY, (v) => (draft.startY = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
 			/>
 		</label>
 
@@ -42,7 +42,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.endX, (v) => (draft.endX = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.endX, (v) => (draft.endX = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
 			/>
 		</label>
 		<label class="vs-row">
@@ -56,7 +56,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.endY, (v) => (draft.endY = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.endY, (v) => (draft.endY = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
 			/>
 		</label>
 
@@ -71,7 +71,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.anchorX, (v) => (draft.anchorX = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.anchorX, (v) => (draft.anchorX = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
 			/>
 		</label>
 		<label class="vs-row">
@@ -85,7 +85,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.anchorY, (v) => (draft.anchorY = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.anchorY, (v) => (draft.anchorY = v), { step: 1, min: -999999, max: 999999, onCommit: applyLine })"
 			/>
 		</label>
 
@@ -107,7 +107,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.lineWidth, (v) => (draft.lineWidth = v), { step: 1, min: 1, max: 999999, onCommit: applyLine })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.lineWidth, (v) => (draft.lineWidth = v), { step: 1, min: 1, max: 999999, onCommit: applyLine })"
 			/>
 		</label>
 

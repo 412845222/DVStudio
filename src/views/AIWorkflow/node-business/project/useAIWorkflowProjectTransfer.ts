@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
+import { getErrorMessage } from '../../../../types/utils'
 import type {
   AIWorkflowProjectPackageAssetTarget,
   AIWorkflowProjectPackageV1,
@@ -217,8 +218,8 @@ export const useAIWorkflowProjectTransfer = (payload: {
       } else {
         payload.pushToast('项目包导入成功。', 'info')
       }
-    } catch (err: any) {
-      payload.pushToast('导入项目包失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
+    } catch (err: unknown) {
+      payload.pushToast('导入项目包失败：' + getErrorMessage(err), 'error')
     }
   }
 
@@ -239,8 +240,8 @@ export const useAIWorkflowProjectTransfer = (payload: {
       a.remove()
       URL.revokeObjectURL(url)
       payload.pushToast('已导出蓝图 JSON 文件。', 'info')
-    } catch (err: any) {
-      payload.pushToast('导出失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
+    } catch (err: unknown) {
+      payload.pushToast('导出失败：' + getErrorMessage(err), 'error')
     }
   }
 

@@ -133,14 +133,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { computed } from "vue";
-
-type VideoModelOption = {
-  value: string;
-  label: string;
-};
-
+<script lang="ts">
 export type SeedanceVideoFormConfig = {
   model: string;
   ratio: string;
@@ -159,6 +152,15 @@ export type SeedanceVideoFormConfig = {
   returnLastFrame: boolean;
   serviceTier: "" | "default" | "flex";
   executionExpiresAfter?: string;
+};
+</script>
+
+<script setup lang="ts">
+import { computed } from "vue";
+
+type VideoModelOption = {
+  value: string;
+  label: string;
 };
 
 const props = defineProps<{

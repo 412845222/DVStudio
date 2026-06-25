@@ -7,6 +7,7 @@ import type {
   SeedanceConfig,
 } from '../../../../ui/UIComponent/BottomChatDock.vue'
 import type { WorkflowAnchorSpec, WorkflowNode } from '../../../../aiworkflow/types'
+import { getErrorMessage } from '../../../../types/utils'
 
 // ChatBridgeService: Transitional compatibility interface for Copilot CLI bridge.
 // Method names retain "codex" prefix for backward compatibility with backend adapter.
@@ -482,8 +483,8 @@ export const useAIWorkflowChatGeneration = (payload: {
       if (!String(finalAssistantText).trim()) {
         payload.pushToast('AI 返回为空，请重试。', 'warn')
       }
-    } catch (err: any) {
-      const errMsgRaw = String(err?.message ?? err ?? 'unknown')
+    } catch (err: unknown) {
+      const errMsgRaw = getErrorMessage(err)
       const aborted = abortController.signal.aborted || /abort/i.test(errMsgRaw)
       if (aborted) {
         setTaskStatus('AI 任务：已停止')
@@ -632,7 +633,7 @@ export const useAIWorkflowChatGeneration = (payload: {
         finalPrompt = `${prompt}\n\n${relLines.join('\n')}`
       }
 
-      const ar = String(input?.config?.aspectRatio ?? input?.config?.meshyAspectRatio ?? '').trim()
+      const ar = String(input?.config?.aspectRatio ?? (input as any)?.config?.meshyAspectRatio ?? '').trim()
       const selectedImageModel = String((input as any)?.config?.imageModel ?? '').trim()
       const selectedMeshyAiModel = String((input as any)?.config?.meshyImageAiModel ?? '').trim()
       const meshyPoseMode = String((input as any)?.config?.meshyPoseMode ?? '').trim()
@@ -867,8 +868,8 @@ export const useAIWorkflowChatGeneration = (payload: {
       }
 
       await Promise.all(Array.from({ length: requestCount }, (_, idx) => runSingleRequest(idx)))
-    } catch (err: any) {
-      const errMsg = String(err?.message ?? err ?? 'unknown')
+    } catch (err: unknown) {
+      const errMsg = getErrorMessage(err)
       payload.nanoStatus.value = '失败'
       appendNanoDetail(`错误：${errMsg}`)
       payload.pushToast('图片生成失败：' + errMsg, 'warn')
@@ -1129,8 +1130,8 @@ export const useAIWorkflowChatGeneration = (payload: {
           break
         }
       }
-    } catch (err: any) {
-      const errMsg = String(err?.message ?? err ?? 'unknown')
+    } catch (err: unknown) {
+      const errMsg = getErrorMessage(err)
       payload.nanoStatus.value = '失败'
       appendNanoDetail(`错误：${errMsg}`)
       payload.pushToast('视频生成失败：' + errMsg, 'warn')

@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../types/utils'
 import { resolveBackendUrl } from './backendConfig'
 
 export type CredentialProvidersStatus = {
@@ -35,7 +36,7 @@ export const saveEncryptedAICredentials = async (payload: {
     if (!res.ok) return { ok: false, error: obj?.error || `HTTP ${res.status}: ${text}` }
     if (!obj?.ok) return { ok: false, error: obj?.error || 'unknown error' }
     return { ok: true, providers: obj?.providers }
-  } catch (e: any) {
-    return { ok: false, error: String(e?.message || e) }
+  } catch (e: unknown) {
+    return { ok: false, error: getErrorMessage(e) }
   }
 }

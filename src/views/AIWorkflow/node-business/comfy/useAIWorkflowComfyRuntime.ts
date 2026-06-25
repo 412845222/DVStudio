@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
+import { getErrorMessage } from '../../../../types/utils'
 
 type ReuseRecordConfirmState = {
   nodeId: string
@@ -373,7 +374,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
         },
       })
       if (pid) startComfyUIPoll(nodeId, baseUrl, pid)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[ComfyUI] 运行异常', {
         nodeId,
         baseUrl,
@@ -389,7 +390,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
           lastUpdateAt: Date.now(),
         },
       })
-      payload.pushToast('运行异常：' + String(err?.message ?? err ?? 'unknown'), 'error')
+      payload.pushToast('运行异常：' + getErrorMessage(err), 'error')
     }
   }
 

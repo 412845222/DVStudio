@@ -1,6 +1,7 @@
 import type { Store } from 'vuex'
 import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask, WorkflowState } from '../../../../aiworkflow/types'
 import { ComfyUIBridgeService } from '../../../../network/ComfyUIBridgeService'
+import { getErrorMessage } from '../../../../types/utils'
 
 export type NodeGenerationApiDeps = {
   store: Store<WorkflowState>
@@ -305,9 +306,9 @@ const pollMeshyTaskStatus = async (
       }
 
       // PENDING 或 IN_PROGRESS，继续轮询
-    } catch (err: any) {
+    } catch (err: unknown) {
       // 如果是已知的状态错误，直接抛出
-      const errMsg = String(err?.message ?? '')
+      const errMsg = getErrorMessage(err)
       if (errMsg.includes('失败') || errMsg.includes('取消')) {
         throw err
       }
@@ -404,8 +405,8 @@ export const runNodeGenerationTask = async (
       }
     }
     return { ok: true, taskType: 'other' }
-  } catch (err: any) {
-    const raw = err?.message ? String(err.message) : String(err ?? '生成任务异常')
+  } catch (err: unknown) {
+    const raw = getErrorMessage(err)
     // 典型的浏览器网络错误（后端未启、CORS 被拒、或断网）给出更明确的中文提示。
     const looksLikeNetworkError =
       /Failed to fetch/i.test(raw) ||
@@ -472,17 +473,17 @@ const runTextTask = async (
         continue
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Fallback: attempt simple non-streaming endpoint to keep the node task observable.
-    const fallbackMsg = err?.message ? String(err.message) : String(err ?? 'stream failed')
+    const fallbackMsg = getErrorMessage(err)
     appendDetail(deps, task.id, `流式调用失败：${fallbackMsg}`)
     updateTask(deps, task.id, { status: 'running', statusText: '尝试失败回退…' })
     try {
       const plain = await (svc as any).blueprintChat(body)
       const text = typeof plain?.text === 'string' ? plain.text : typeof plain?.content === 'string' ? plain.content : ''
       if (text) accumulated = text
-    } catch (fallbackErr: any) {
-      appendDetail(deps, task.id, `兜底请求失败：${String(fallbackErr?.message ?? fallbackErr ?? '')}`)
+    } catch (fallbackErr: unknown) {
+      appendDetail(deps, task.id, `兜底请求失败：${getErrorMessage(fallbackErr)}`)
       throw err
     }
   }
@@ -617,8 +618,8 @@ const runImageTask = async (
       }
 
       return
-    } catch (err: any) {
-      const errMsg = String(err?.message ?? err ?? 'Meshy 生成异常')
+    } catch (err: unknown) {
+      const errMsg = getErrorMessage(err)
       pushToast(deps, `Meshy 生成失败：${errMsg}`, 'error')
       updateTask(deps, task.id, { status: 'error', statusText: `失败：${errMsg}`, progress: 0, finishedAt: Date.now() })
       throw err
@@ -980,8 +981,8 @@ const pollMeshy3DTaskStatus = async (
       if (status === 'CANCELED') {
         throw new Error('Meshy 3D 任务已取消')
       }
-    } catch (err: any) {
-      const errMsg = String(err?.message ?? '')
+    } catch (err: unknown) {
+      const errMsg = getErrorMessage(err)
       if (errMsg.includes('失败') || errMsg.includes('取消') || errMsg.includes('未返回模型 URL')) {
         throw err
       }
@@ -1133,8 +1134,8 @@ const runModel3dMeshyTask = async (
     void pollMeshy3DTaskStatus(deps, svc, meshyTaskId, task.id, payload.nodeId, meshyMode, meshyOutputFormat)
 
     return { ok: true, taskId: meshyTaskId, mode: meshyMode }
-  } catch (err: any) {
-    const errMsg = String(err?.message ?? err ?? 'Meshy 3D 生成异常')
+  } catch (err: unknown) {
+    const errMsg = getErrorMessage(err)
     pushToast(deps, `Meshy 3D 生成失败：${errMsg}`, 'error')
     updateTask(deps, task.id, { status: 'error', statusText: `失败：${errMsg}`, progress: 0, finishedAt: Date.now() })
     return { ok: false, error: errMsg }

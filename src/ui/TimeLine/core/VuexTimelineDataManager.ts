@@ -270,7 +270,7 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 
 		// Apply to stage ONLY if the playhead is at this frame.
 		// Otherwise, we only update the keyframe snapshot and let the timeline renderer drive the stage.
-		const playhead = Math.floor(Number((this.store.state as any).currentFrame ?? 0))
+		const playhead = Math.floor(Number(this.store.state.currentFrame ?? 0))
 		if (playhead === fi) {
 			const existing = VideoSceneStore.state.layers.find((l) => l.id === layerId)
 			const nextLayer = existing ? (cloneJsonSafe(existing) as any) : ({ id: layerId, name: layerId } as any)

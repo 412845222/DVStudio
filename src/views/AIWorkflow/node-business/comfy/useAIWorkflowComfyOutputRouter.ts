@@ -244,21 +244,21 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
         }
 
         assignMap.set(anchorId, key)
-        localizedByAnchor.set(anchorId, localizedOutput)
+        localizedByAnchor.set(anchorId, localizedOutput!)
 
         for (const e of edgesForAnchor) {
           const to = payload.store.state.nodesById[e.toNodeId]
           if (!to) continue
           const targetKind = to.type === 'image' ? 'image' : to.type === 'video' ? 'video' : null
           if (!targetKind) continue
-          if (targetKind !== localizedOutput.kind) continue
+          if (targetKind !== localizedOutput!.kind) continue
           payload.bindMediaResourceToNode(
             to.id,
-            localizedOutput.kind,
-            localizedOutput.url,
-            String(localizedOutput.filename || `comfy_${localizedOutput.kind}_${Date.now()}`),
+            localizedOutput!.kind,
+            localizedOutput!.url,
+            String(localizedOutput!.filename || `comfy_${localizedOutput!.kind}_${Date.now()}`),
             {
-              sourcePath: String(localizedOutput.sourcePath || '').trim() || undefined,
+              sourcePath: String(localizedOutput!.sourcePath || '').trim() || undefined,
             }
           )
         }

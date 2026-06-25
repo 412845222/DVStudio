@@ -1,7 +1,7 @@
 <template>
-	<div class="vs-handle line start" :style="handleStyles.start" @pointerdown.stop.prevent="(e) => emit('pointDown', 'start', e)" />
-	<div class="vs-handle line anchor" :style="handleStyles.anchor" @pointerdown.stop.prevent="(e) => emit('pointDown', 'anchor', e)" />
-	<div class="vs-handle line end" :style="handleStyles.end" @pointerdown.stop.prevent="(e) => emit('pointDown', 'end', e)" />
+	<div class="vs-handle line start" :style="handleStyles.start" @pointerdown.stop.prevent="(e: any) => emit('pointDown', 'start', e)" />
+	<div class="vs-handle line anchor" :style="handleStyles.anchor" @pointerdown.stop.prevent="(e: any) => emit('pointDown', 'anchor', e)" />
+	<div class="vs-handle line end" :style="handleStyles.end" @pointerdown.stop.prevent="(e: any) => emit('pointDown', 'end', e)" />
 </template>
 
 <script setup lang="ts">

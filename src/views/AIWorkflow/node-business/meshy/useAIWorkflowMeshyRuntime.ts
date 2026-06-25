@@ -468,7 +468,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
           }
           stopMeshyPoll(nodeId)
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         const nextCount = Number(meshyPollErrorCounts.get(nodeId) ?? 0) + 1
         meshyPollErrorCounts.set(nodeId, nextCount)
         if (nextCount >= 4) {

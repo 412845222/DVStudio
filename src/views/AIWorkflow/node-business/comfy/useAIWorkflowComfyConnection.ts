@@ -1,4 +1,5 @@
 import { parseComfyWorkflowIO } from '../../../../aiworkflow/domain/comfyui/parseWorkflowIO'
+import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowComfyConnection = (payload: {
   store: {
@@ -50,8 +51,8 @@ export const useAIWorkflowComfyConnection = (payload: {
               comfyuiSettings: { workflows: [] },
             })
           }
-        } catch (err: any) {
-          payload.pushToast('读取工作流列表失败：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+        } catch (err: unknown) {
+          payload.pushToast('读取工作流列表失败：' + getErrorMessage(err), 'warn')
           payload.store.commit('setNodeComfyUISettings', {
             nodeId,
             comfyuiSettings: { workflows: [] },
@@ -67,12 +68,12 @@ export const useAIWorkflowComfyConnection = (payload: {
           },
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       payload.store.commit('setNodeComfyUISettings', {
         nodeId,
         comfyuiSettings: {
           status: 'error',
-          message: String(err?.message ?? err ?? '连接失败'),
+          message: getErrorMessage(err),
           lastCheckedAt: Date.now(),
         },
       })
@@ -104,8 +105,8 @@ export const useAIWorkflowComfyConnection = (payload: {
         nodeId,
         comfyuiSettings: { workflowPath: res.workflowPath || workflowPath },
       })
-    } catch (err: any) {
-      payload.pushToast('读取工作流失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
+    } catch (err: unknown) {
+      payload.pushToast('读取工作流失败：' + getErrorMessage(err), 'error')
     }
   }
 

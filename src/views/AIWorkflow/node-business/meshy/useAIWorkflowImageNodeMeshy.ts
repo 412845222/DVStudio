@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import type { WorkflowNode } from '../../../../aiworkflow/types'
 import { useAIWorkflowMeshyRuntime } from './useAIWorkflowMeshyRuntime'
+import { getErrorMessage } from '../../../../types/utils'
 
 const normalizeText = (value: unknown) => String(value ?? '').trim()
 
@@ -90,23 +91,27 @@ export const useAIWorkflowImageNodeMeshy = (options: {
     }
 
     const meshyAiModel = String(chatParams.meshyImageAiModel ?? meshyImageSettings.aiModel ?? 'nano-banana').trim()
-    const meshyAspectRatio = String(chatParams.aspectRatio ?? meshyImageSettings.aspectRatio ?? '1:1').trim()
+    const meshyAspectRatio = String(chatParams.meshyAspectRatio ?? chatParams.aspectRatio ?? meshyImageSettings.aspectRatio ?? '1:1').trim()
     const meshyPoseMode = String(chatParams.meshyPoseMode ?? meshyImageSettings.poseMode ?? '').trim()
     const meshyGenerateMultiView = Boolean(chatParams.meshyGenerateMultiView ?? meshyImageSettings.generateMultiView)
     const meshyNegativePrompt = String(chatParams.meshyNegativePrompt ?? meshyImageSettings.negativePrompt ?? '').trim()
     const meshySeed = Number(chatParams.meshySeed ?? meshyImageSettings.seed ?? 0)
+    const meshyOutputImageCount = Number(chatParams.meshyOutputImageCount ?? chatParams.quantity ?? meshyImageSettings.outputImageCount ?? 1)
 
     const payload: Record<string, any> = {
       mode: 'text-to-image',
       ai_model: meshyAiModel,
       prompt,
       negative_prompt: meshyNegativePrompt,
-      aspect_ratio: meshyAspectRatio,
-      output_image_count: Number(chatParams.quantity ?? meshyImageSettings.outputImageCount ?? 1),
+      output_image_count: meshyOutputImageCount,
     }
 
     if (meshyPoseMode) payload.pose_mode = meshyPoseMode
-    if (meshyGenerateMultiView) payload.generate_multi_view = true
+    if (meshyGenerateMultiView) {
+      payload.generate_multi_view = true
+    } else {
+      payload.aspect_ratio = meshyAspectRatio
+    }
     if (Number.isFinite(meshySeed) && meshySeed > 0) payload.seed = meshySeed
 
     return {
@@ -181,8 +186,8 @@ export const useAIWorkflowImageNodeMeshy = (options: {
         startMeshyPoll(options.nodeId, newTaskId, mode)
 
         return { ok: true, taskId: newTaskId }
-      } catch (err: any) {
-        const msg = 'Meshy 创建任务异常：' + String(err?.message ?? err ?? 'unknown')
+      } catch (err: unknown) {
+        const msg = 'Meshy 创建任务异常：' + getErrorMessage(err)
         errorMessage.value = msg
         updateMeshyImageSettings({
           taskStatus: 'failed',
@@ -213,8 +218,8 @@ export const useAIWorkflowImageNodeMeshy = (options: {
       }
       await applyMeshyTaskResult(options.nodeId, res as Record<string, any>)
       options.pushToast('Meshy 任务状态已刷新。', 'info')
-    } catch (err: any) {
-      options.pushToast('刷新 Meshy 状态异常：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+    } catch (err: unknown) {
+      options.pushToast('刷新 Meshy 状态异常：' + getErrorMessage(err), 'warn')
     }
   }
 
@@ -237,8 +242,8 @@ export const useAIWorkflowImageNodeMeshy = (options: {
         errorMessage: '',
       })
       options.pushToast('已停止 Meshy 任务。', 'info')
-    } catch (err: any) {
-      options.pushToast('停止 Meshy 任务异常：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+    } catch (err: unknown) {
+      options.pushToast('停止 Meshy 任务异常：' + getErrorMessage(err), 'warn')
     }
   }
 
@@ -263,8 +268,8 @@ export const useAIWorkflowImageNodeMeshy = (options: {
         errorMessage: '',
       })
       options.pushToast('已删除 Meshy 任务。', 'info')
-    } catch (err: any) {
-      options.pushToast('删除 Meshy 任务异常：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+    } catch (err: unknown) {
+      options.pushToast('删除 Meshy 任务异常：' + getErrorMessage(err), 'warn')
     }
   }
 

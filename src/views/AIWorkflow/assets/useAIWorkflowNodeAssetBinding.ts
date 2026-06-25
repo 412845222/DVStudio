@@ -251,7 +251,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
     }
 
     if (kind === 'video') {
-      options.scheduleVideoMetadataRead({ resourceId, nodeId, url })
+      options.scheduleVideoMetadataRead({ resourceId, nodeId, url: finalUrl })
       void persistNodeVideoResourceLocally({ resourceId, nodeId, file })
     }
 
