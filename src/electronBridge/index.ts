@@ -14,41 +14,41 @@ import type {
 	SetupState,
 	CleanupOldProjectResult,
 	DirectoryPickResult,
+	UploadedProjectAsset,
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
-
-const w = window as any
+import { getErrorMessage } from '../types/utils'
 
 let clientSettingsCache: ClientSettings | null = null
 
 export const isElectron = (): boolean => {
-	return w?.__DWEB_RUNTIME__?.platform === 'electron' || !!w?.dweb?.common
+	return window?.__DWEB_RUNTIME__?.platform === 'electron' || !!window?.dweb?.common
 }
 
 export async function getBackendBaseUrl(): Promise<string> {
-	if (w?.dweb?.common?.getBackendBaseUrl) {
-		const baseUrl = await w.dweb.common.getBackendBaseUrl()
+	if (window?.dweb?.common?.getBackendBaseUrl) {
+		const baseUrl = await window.dweb.common.getBackendBaseUrl()
 		if (typeof baseUrl === 'string' && baseUrl.trim()) setBackendBaseUrl(baseUrl)
 		return baseUrl
 	}
-	return String(w?.__DWEB_BACKEND_BASE_URL || '')
+	return String(window?.__DWEB_BACKEND_BASE_URL || '')
 }
 
 export async function pingBackend(): Promise<BackendPingResult> {
-	if (w?.dweb?.common?.pingBackend) return w.dweb.common.pingBackend()
+	if (window?.dweb?.common?.pingBackend) return window.dweb.common.pingBackend()
 	try {
 		const baseUrl = await getBackendBaseUrl()
 		const res = await fetch(`${baseUrl}/api/ai/ping`)
 		return { ok: res.ok, status: res.status }
-	} catch (e: any) {
-		return { ok: false, error: String(e?.message || e) }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
 	}
 }
 
 export async function startBackend(): Promise<BackendStartResult> {
-	if (w?.dweb?.common?.startBackend) {
-		const r: BackendStartResult = await w.dweb.common.startBackend()
+	if (window?.dweb?.common?.startBackend) {
+		const r: BackendStartResult = await window.dweb.common.startBackend()
 		if (r?.ok && r.baseUrl) setBackendBaseUrl(r.baseUrl)
 		return r
 	}
@@ -56,8 +56,8 @@ export async function startBackend(): Promise<BackendStartResult> {
 }
 
 export async function restartBackend(): Promise<BackendRestartResult> {
-	if (w?.dweb?.common?.restartBackend) {
-		const r: BackendRestartResult = await w.dweb.common.restartBackend()
+	if (window?.dweb?.common?.restartBackend) {
+		const r: BackendRestartResult = await window.dweb.common.restartBackend()
 		if (r?.ok && r.baseUrl) setBackendBaseUrl(r.baseUrl)
 		return r
 	}
@@ -65,20 +65,20 @@ export async function restartBackend(): Promise<BackendRestartResult> {
 }
 
 export async function getBackendStatus(): Promise<BackendStatus | null> {
-	if (!w?.dweb?.common?.getBackendStatus) return null
-	return w.dweb.common.getBackendStatus()
+	if (!window?.dweb?.common?.getBackendStatus) return null
+	return window.dweb.common.getBackendStatus()
 }
 
 export async function getBackendRuntimeState(): Promise<BackendRuntimeState | null> {
-	if (!w?.dweb?.common?.getBackendRuntimeState) return null
-	return w.dweb.common.getBackendRuntimeState()
+	if (!window?.dweb?.common?.getBackendRuntimeState) return null
+	return window.dweb.common.getBackendRuntimeState()
 }
 
 export function onBackendRuntimeStateChanged(handler: (state: BackendRuntimeState) => void): () => void {
-	if (!w?.dweb?.common?.onBackendRuntimeStateChanged) return () => {}
-	const listenerId = Number(w.dweb.common.onBackendRuntimeStateChanged(handler) || 0)
+	if (!window?.dweb?.common?.onBackendRuntimeStateChanged) return () => {}
+	const listenerId = Number(window.dweb.common.onBackendRuntimeStateChanged(handler) || 0)
 	if (!Number.isFinite(listenerId) || listenerId <= 0) return () => {}
-	const offFn = w?.dweb?.common?.offBackendRuntimeStateChanged
+	const offFn = window?.dweb?.common?.offBackendRuntimeStateChanged
 	if (typeof offFn === 'function') {
 		return () => {
 			void offFn(listenerId)
@@ -88,87 +88,80 @@ export function onBackendRuntimeStateChanged(handler: (state: BackendRuntimeStat
 }
 
 export async function getBackendLogs(options?: { since?: number }): Promise<BackendLogsResult | null> {
-	if (!w?.dweb?.common?.getBackendLogs) return null
-	return w.dweb.common.getBackendLogs(options)
+	if (!window?.dweb?.common?.getBackendLogs) return null
+	return window.dweb.common.getBackendLogs(options)
 }
 
 export async function clearBackendLogs(): Promise<{ ok: boolean } | null> {
-	if (!w?.dweb?.common?.clearBackendLogs) return null
-	return w.dweb.common.clearBackendLogs()
+	if (!window?.dweb?.common?.clearBackendLogs) return null
+	return window.dweb.common.clearBackendLogs()
 }
 
 export async function collectDiagnostics(): Promise<DiagnosticsResult | null> {
-	if (!w?.dweb?.common?.collectDiagnostics) return null
-	return w.dweb.common.collectDiagnostics()
+	if (!window?.dweb?.common?.collectDiagnostics) return null
+	return window.dweb.common.collectDiagnostics()
 }
 
 export async function revealUserDataDir(): Promise<{ ok: boolean } | null> {
-	if (!w?.dweb?.common?.revealUserDataDir) return null
-	return w.dweb.common.revealUserDataDir()
+	if (!window?.dweb?.common?.revealUserDataDir) return null
+	return window.dweb.common.revealUserDataDir()
 }
 
 export async function openFolderForPath(path: string): Promise<OpenFolderResult | null> {
-	if (!w?.dweb?.common?.openFolderForPath) return null
-	return w.dweb.common.openFolderForPath({ path: String(path || '') })
+	if (!window?.dweb?.common?.openFolderForPath) return null
+	return window.dweb.common.openFolderForPath({ path: String(path || '') })
 }
 
-/**
- * 在用户的默认浏览器中打开外部 URL。
- * 优先使用 Electron 的 shell.openExternal；非 Electron 环境回落到 window.open。
- */
-export function openExternalUrl(url: string): Promise<{ ok: boolean; error?: string }> {
+export async function openExternalUrl(url: string): Promise<{ ok: boolean; error?: string }> {
 	const trimmed = String(url || '').trim()
 	if (!trimmed) return Promise.resolve({ ok: false, error: 'empty url' })
-	if (w?.dweb?.common?.openExternalUrl) {
+	if (window?.dweb?.common?.openExternalUrl) {
 		try {
-			const r = w.dweb.common.openExternalUrl({ url: trimmed })
-			if (r && typeof r.then === 'function') {
-				return r.catch((e: any) => ({ ok: false, error: String(e?.message || e) }))
-			}
-			if (r && (r as any).ok) return Promise.resolve({ ok: true })
-		} catch (e: any) {
-			return Promise.resolve({ ok: false, error: String(e?.message || e) })
+			const r = await window.dweb.common.openExternalUrl({ url: trimmed })
+			if (r && r.ok) return { ok: true }
+			return { ok: false, error: r?.error || 'failed' }
+		} catch (e: unknown) {
+			return { ok: false, error: getErrorMessage(e) }
 		}
 	}
-	// 非 Electron 环境：用原生 window.open 在新窗口/浏览器中打开
 	try {
 		const win = window.open(trimmed, '_blank', 'noopener,noreferrer')
-		if (!win) return Promise.resolve({ ok: false, error: 'blocked by browser' })
-		return Promise.resolve({ ok: true })
-	} catch (e: any) {
-		return Promise.resolve({ ok: false, error: String(e?.message || e) })
+		if (!win) return { ok: false, error: 'blocked by browser' }
+		return { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
 	}
 }
 
 export async function selectProjectFolder(): Promise<DirectoryPickResult | null> {
-	if (!w?.dweb?.aiworkflow?.selectProjectFolder) return null
-	return w.dweb.aiworkflow.selectProjectFolder()
+	if (!window?.dweb?.aiworkflow?.selectProjectFolder) return null
+	return window.dweb.aiworkflow.selectProjectFolder()
 }
 
 export async function registerProjectRoot(projectId: number, rootPath: string): Promise<{ ok: boolean; cleared?: boolean; created?: boolean; root?: string; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.registerProjectRoot) return null
+	if (!window?.dweb?.aiworkflow?.registerProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	return w.dweb.aiworkflow.registerProjectRoot({ projectId: pid, rootPath: String(rootPath || '') })
+	return window.dweb.aiworkflow.registerProjectRoot({ projectId: pid, rootPath: String(rootPath || '') })
 }
 
 export async function clearProjectRoot(projectId: number): Promise<{ ok: boolean; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.clearProjectRoot) return null
+	if (!window?.dweb?.aiworkflow?.clearProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	return w.dweb.aiworkflow.clearProjectRoot({ projectId: pid })
+	return window.dweb.aiworkflow.clearProjectRoot({ projectId: pid })
 }
 
 export async function getProjectRootSnapshot(): Promise<Record<string, string> | null> {
-	if (!w?.dweb?.aiworkflow?.getProjectRootSnapshot) return null
-	return w.dweb.aiworkflow.getProjectRootSnapshot()
+	if (!window?.dweb?.aiworkflow?.getProjectRootSnapshot) return null
+	return window.dweb.aiworkflow.getProjectRootSnapshot()
 }
 
 export async function getProjectRootById(projectId: number): Promise<string | null> {
-	if (!w?.dweb?.aiworkflow?.getProjectRootById) return null
+	if (!window?.dweb?.aiworkflow?.getProjectRootById) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return null
-	const result = await w.dweb.aiworkflow.getProjectRootById({ projectId: pid })
+	const result = await window.dweb.aiworkflow.getProjectRootById({ projectId: pid })
 	return result ? String(result) : null
 }
 
@@ -177,10 +170,10 @@ export async function downloadUrlToProjectRoot(
 	url: string,
 	desiredFilename?: string,
 ): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.downloadUrlToProjectRoot) return null
+	if (!window?.dweb?.aiworkflow?.downloadUrlToProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	const result = await w.dweb.aiworkflow.downloadUrlToProjectRoot({ projectId: pid, url: String(url || ''), desiredFilename })
+	const result = await window.dweb.aiworkflow.downloadUrlToProjectRoot({ projectId: pid, url: String(url || ''), desiredFilename })
 	return result
 }
 
@@ -189,16 +182,16 @@ export async function copyFileToProjectRoot(
 	sourcePath: string,
 	desiredFilename?: string,
 ): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; reused?: boolean; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.copyFileToProjectRoot) return null
+	if (!window?.dweb?.aiworkflow?.copyFileToProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	const result = await w.dweb.aiworkflow.copyFileToProjectRoot({ projectId: pid, sourcePath: String(sourcePath || ''), desiredFilename })
+	const result = await window.dweb.aiworkflow.copyFileToProjectRoot({ projectId: pid, sourcePath: String(sourcePath || ''), desiredFilename })
 	return result
 }
 
 export async function fetchAsArrayBuffer(url: string): Promise<{ ok: boolean; buffer?: Uint8Array; mime?: string; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.fetchAsArrayBuffer) return null
-	const result = await w.dweb.aiworkflow.fetchAsArrayBuffer({ url: String(url || '') })
+	if (!window?.dweb?.aiworkflow?.fetchAsArrayBuffer) return null
+	const result = await window.dweb.aiworkflow.fetchAsArrayBuffer({ url: String(url || '') })
 	return result
 }
 
@@ -209,11 +202,11 @@ export async function uploadProjectAsset(payload: {
 	arrayBuffer: ArrayBuffer
 	contentType?: string
 	bucket?: string
-}): Promise<{ ok: boolean; asset?: any; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.uploadProjectAsset) return null
+}): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string } | null> {
+	if (!window?.dweb?.aiworkflow?.uploadProjectAsset) return null
 	const pid = Number(payload?.projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	const result = await w.dweb.aiworkflow.uploadProjectAsset({
+	const result = await window.dweb.aiworkflow.uploadProjectAsset({
 		projectId: pid,
 		kind: payload?.kind,
 		name: payload?.name,
@@ -231,11 +224,11 @@ export async function importProjectAsset(payload: {
 	sourcePath?: string
 	sourceUrl?: string
 	bucket?: string
-}): Promise<{ ok: boolean; asset?: any; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.importProjectAsset) return null
+}): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string } | null> {
+	if (!window?.dweb?.aiworkflow?.importProjectAsset) return null
 	const pid = Number(payload?.projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	const result = await w.dweb.aiworkflow.importProjectAsset({
+	const result = await window.dweb.aiworkflow.importProjectAsset({
 		projectId: pid,
 		kind: payload?.kind,
 		name: payload?.name,
@@ -248,12 +241,12 @@ export async function importProjectAsset(payload: {
 
 export async function repairAllProjectAssets(payload: {
 	projectId: number
-	resourcesById: Record<string, any>
-}): Promise<{ ok: boolean; patches?: Record<string, any>; failed?: string[]; changed?: number; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.projectAssets?.repairAll) return null
+	resourcesById: Record<string, unknown>
+}): Promise<{ ok: boolean; patches?: Record<string, unknown>; failed?: string[]; changed?: number; error?: string } | null> {
+	if (!window?.dweb?.aiworkflow?.projectAssets?.repairAll) return null
 	const pid = Number(payload?.projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	return w.dweb.aiworkflow.projectAssets.repairAll({
+	return window.dweb.aiworkflow.projectAssets.repairAll({
 		projectId: pid,
 		resourcesById: payload?.resourcesById || {},
 	})
@@ -263,7 +256,7 @@ export type DwebAssetDiagnosticCheck = {
 	check: string
 	status: 'OK' | 'FAIL' | 'INFO'
 	message: string
-	detail?: any
+	detail?: unknown
 }
 
 export type DwebAssetDiagnoseResult = {
@@ -309,8 +302,8 @@ export async function diagnoseDwebAsset(payload: {
 	relPath?: string
 	url?: string
 }): Promise<DwebAssetDiagnoseResult | null> {
-	if (!w?.dweb?.aiworkflow?.diagnoseAsset) return null
-	return w.dweb.aiworkflow.diagnoseAsset(payload || {})
+	if (!window?.dweb?.aiworkflow?.diagnoseAsset) return null
+	return window.dweb.aiworkflow.diagnoseAsset(payload || {})
 }
 
 export async function validateDwebProjectRoot(payload: {
@@ -319,7 +312,7 @@ export async function validateDwebProjectRoot(payload: {
 }): Promise<{
 	ok: boolean
 	reRegistered?: boolean
-	registerResult?: any
+	registerResult?: unknown
 	validation?: {
 		valid: boolean
 		projectId: number
@@ -330,18 +323,18 @@ export async function validateDwebProjectRoot(payload: {
 	}
 	error?: string
 } | null> {
-	if (!w?.dweb?.aiworkflow?.validateProjectRoot) return null
+	if (!window?.dweb?.aiworkflow?.validateProjectRoot) return null
 	const pid = Number(payload?.projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	return w.dweb.aiworkflow.validateProjectRoot({
+	return window.dweb.aiworkflow.validateProjectRoot({
 		projectId: pid,
 		expectedRootPath: payload?.expectedRootPath ? String(payload.expectedRootPath) : undefined,
 	})
 }
 
-export async function getDwebAssetAccessLogs(maxEntries: number = 100): Promise<{ ok: boolean; logs?: any[]; error?: string } | null> {
-	if (!w?.dweb?.aiworkflow?.getAssetAccessLogs) return null
-	return w.dweb.aiworkflow.getAssetAccessLogs({ maxEntries: Number(maxEntries) || 100 })
+export async function getDwebAssetAccessLogs(maxEntries: number = 100): Promise<{ ok: boolean; logs?: unknown[]; error?: string } | null> {
+	if (!window?.dweb?.aiworkflow?.getAssetAccessLogs) return null
+	return window.dweb.aiworkflow.getAssetAccessLogs({ maxEntries: Number(maxEntries) || 100 })
 }
 
 export type ProjectCacheStatsResult = {
@@ -360,63 +353,61 @@ export type ProjectCacheClearResult = {
 }
 
 export async function getProjectCacheStats(projectId: number): Promise<ProjectCacheStatsResult | null> {
-	if (!w?.dweb?.aiworkflow?.getCacheStats) return null
+	if (!window?.dweb?.aiworkflow?.getCacheStats) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	return w.dweb.aiworkflow.getCacheStats({ projectId: pid })
+	return window.dweb.aiworkflow.getCacheStats({ projectId: pid })
 }
 
 export async function clearProjectCache(projectId: number): Promise<ProjectCacheClearResult | null> {
-	if (!w?.dweb?.aiworkflow?.clearCache) return null
+	if (!window?.dweb?.aiworkflow?.clearCache) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	return w.dweb.aiworkflow.clearCache({ projectId: pid })
+	return window.dweb.aiworkflow.clearCache({ projectId: pid })
 }
 
 export async function runBootstrapInstaller(): Promise<BootstrapInstallResult | null> {
-	if (!w?.dweb?.common?.runBootstrapInstaller) return null
-	return w.dweb.common.runBootstrapInstaller()
+	if (!window?.dweb?.common?.runBootstrapInstaller) return null
+	return window.dweb.common.runBootstrapInstaller()
 }
 
 export async function getSetupState(): Promise<SetupState | null> {
-	if (!w?.dweb?.common?.getSetupState) return null
-	return w.dweb.common.getSetupState()
+	if (!window?.dweb?.common?.getSetupState) return null
+	return window.dweb.common.getSetupState()
 }
 
 export async function runSetupWorkflow(payload?: {
 	reason?: string
 	retryKey?: string
 }): Promise<SetupRunResult | null> {
-	if (!w?.dweb?.common?.runSetupWorkflow) return null
-	const r: SetupRunResult = await w.dweb.common.runSetupWorkflow(payload)
+	if (!window?.dweb?.common?.runSetupWorkflow) return null
+	const r: SetupRunResult = await window.dweb.common.runSetupWorkflow(payload)
 	if (r?.ok && r.baseUrl) setBackendBaseUrl(r.baseUrl)
 	return r
 }
 
 export async function cleanupOldProject(): Promise<CleanupOldProjectResult | null> {
-	if (!w?.dweb?.common?.cleanupOldProject) return null
-	return w.dweb.common.cleanupOldProject()
+	if (!window?.dweb?.common?.cleanupOldProject) return null
+	return window.dweb.common.cleanupOldProject()
 }
 
 export async function getClientSettings(): Promise<ClientSettingsResult | null> {
-	if (w?.dweb?.common?.getClientSettings) return w.dweb.common.getClientSettings()
+	if (window?.dweb?.common?.getClientSettings) return window.dweb.common.getClientSettings()
 	if (clientSettingsCache) return { ok: true, data: clientSettingsCache }
-	const local = w?.__DWEB_CLIENT_SETTINGS
+	const local = window?.__DWEB_CLIENT_SETTINGS
 	if (local) return { ok: true, data: local as ClientSettings }
 	return { ok: false, error: 'Not running in Electron.' }
 }
 
 export async function saveClientSettings(payload: ClientSettings): Promise<ClientSettingsResult | null> {
-	if (!w?.dweb?.common?.saveClientSettings) return null // Web 模式返回 null，由调用方判断
-	const r: ClientSettingsResult = await w.dweb.common.saveClientSettings(payload)
+	if (!window?.dweb?.common?.saveClientSettings) return null
+	const r: ClientSettingsResult = await window.dweb.common.saveClientSettings(payload)
 	if (r?.ok && r.data) {
 		clientSettingsCache = r.data
-		// In Electron, preload may expose __DWEB_CLIENT_SETTINGS via contextBridge as a read-only getter.
-		// Only update window when it's actually writable or has a setter.
 		try {
-			const desc = Object.getOwnPropertyDescriptor(w, '__DWEB_CLIENT_SETTINGS')
-			const canAssign = !desc || ('writable' in desc ? Boolean((desc as any).writable) : typeof (desc as any).set === 'function')
-			if (canAssign) w.__DWEB_CLIENT_SETTINGS = r.data
+			const desc = Object.getOwnPropertyDescriptor(window, '__DWEB_CLIENT_SETTINGS')
+			const canAssign = !desc || ('writable' in desc ? Boolean(desc.writable) : typeof desc.set === 'function')
+			if (canAssign) window.__DWEB_CLIENT_SETTINGS = r.data
 		} catch {
 			// ignore
 		}
@@ -425,46 +416,46 @@ export async function saveClientSettings(payload: ClientSettings): Promise<Clien
 }
 
 export async function minimizeWindow(): Promise<{ ok: boolean; error?: string }> {
-	if (!w?.dweb?.window?.minimize) return { ok: false, error: 'Not running in Electron.' }
+	if (!window?.dweb?.window?.minimize) return { ok: false, error: 'Not running in Electron.' }
 	try {
-		return (await w.dweb.window.minimize()) || { ok: true }
-	} catch (e: any) {
-		return { ok: false, error: String(e?.message || e) }
+		return (await window.dweb.window.minimize()) || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
 	}
 }
 
 export async function toggleMaximizeWindow(): Promise<{ ok: boolean; maximized?: boolean; error?: string }> {
-	if (!w?.dweb?.window?.toggleMaximize) return { ok: false, error: 'Not running in Electron.' }
+	if (!window?.dweb?.window?.toggleMaximize) return { ok: false, error: 'Not running in Electron.' }
 	try {
-		return (await w.dweb.window.toggleMaximize()) || { ok: true }
-	} catch (e: any) {
-		return { ok: false, error: String(e?.message || e) }
+		return (await window.dweb.window.toggleMaximize()) || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
 	}
 }
 
 export async function closeWindow(): Promise<{ ok: boolean; error?: string }> {
-	if (!w?.dweb?.window?.close) return { ok: false, error: 'Not running in Electron.' }
+	if (!window?.dweb?.window?.close) return { ok: false, error: 'Not running in Electron.' }
 	try {
-		return (await w.dweb.window.close()) || { ok: true }
-	} catch (e: any) {
-		return { ok: false, error: String(e?.message || e) }
+		return (await window.dweb.window.close()) || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
 	}
 }
 
 export async function reloadWindow(): Promise<{ ok: boolean; error?: string }> {
-	if (!w?.dweb?.window?.reload) return { ok: false, error: 'Not running in Electron.' }
+	if (!window?.dweb?.window?.reload) return { ok: false, error: 'Not running in Electron.' }
 	try {
-		return (await w.dweb.window.reload()) || { ok: true }
-	} catch (e: any) {
-		return { ok: false, error: String(e?.message || e) }
+		return (await window.dweb.window.reload()) || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
 	}
 }
 
 export async function openDevTools(): Promise<{ ok: boolean; opened?: boolean; error?: string }> {
-	if (!w?.dweb?.window?.openDevTools) return { ok: false, error: 'Not running in Electron.' }
+	if (!window?.dweb?.window?.openDevTools) return { ok: false, error: 'Not running in Electron.' }
 	try {
-		return (await w.dweb.window.openDevTools()) || { ok: true }
-	} catch (e: any) {
-		return { ok: false, error: String(e?.message || e) }
+		return (await window.dweb.window.openDevTools()) || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
 	}
 }

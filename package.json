@@ -88,6 +88,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "vue-tsc --noEmit",
+    "typecheck:strict": "vue-tsc --noEmit --strict",
+    "typecheck:watch": "vue-tsc --noEmit --watch",
     "lint": "eslint \"src/**/*.{ts,vue}\" \"electron/**/*.{mjs,js}\"",
     "lint:fix": "eslint \"src/**/*.{ts,vue}\" \"electron/**/*.{mjs,js}\" --fix",
     "format": "prettier --write \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",

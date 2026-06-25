@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../../../../types/utils'
 import { fsPostBlur, fsPostGlowComposite, vsPostBlur, vsPostGlowComposite } from '../../shaders'
 import type { DwebCanvasGL } from '../DwebCanvasGL'
 import { createProgram } from './program'
@@ -418,8 +419,8 @@ export class CanvasPostProcess {
 			const it: CustomCached = { prog, ok: true, log: gl.getProgramInfoLog(prog.program) || '' }
 			this.postProgCustomCache.set(key, it)
 			return it
-		} catch (e: any) {
-			const dummy: CustomCached = { prog: null, ok: false, log: String(e?.message ?? e) }
+		} catch (e: unknown) {
+			const dummy: CustomCached = { prog: null, ok: false, log: getErrorMessage(e) }
 			this.postProgCustomCache.set(key, dummy)
 			return dummy
 		}

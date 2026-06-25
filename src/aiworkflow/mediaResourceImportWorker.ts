@@ -1,3 +1,5 @@
+import { getErrorMessage } from '../types/utils'
+
 export type MediaImportKind = 'image' | 'video'
 
 export type MediaImportTask = {
@@ -97,8 +99,8 @@ self.addEventListener('message', async (ev: MessageEvent<ProcessMessage>) => {
       }
 
       results.push({ resourceId, kind, url, sourcePath, width, height })
-    } catch (err: any) {
-      results.push({ resourceId, kind, url, sourcePath, error: String(err?.message ?? err ?? 'unknown') })
+    } catch (err: unknown) {
+      results.push({ resourceId, kind, url, sourcePath, error: getErrorMessage(err) })
     }
   }
 

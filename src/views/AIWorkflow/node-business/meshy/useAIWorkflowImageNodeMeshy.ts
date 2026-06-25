@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import type { WorkflowNode } from '../../../../aiworkflow/types'
 import { useAIWorkflowMeshyRuntime } from './useAIWorkflowMeshyRuntime'
+import { getErrorMessage } from '../../../../types/utils'
 
 const normalizeText = (value: unknown) => String(value ?? '').trim()
 
@@ -185,8 +186,8 @@ export const useAIWorkflowImageNodeMeshy = (options: {
         startMeshyPoll(options.nodeId, newTaskId, mode)
 
         return { ok: true, taskId: newTaskId }
-      } catch (err: any) {
-        const msg = 'Meshy 创建任务异常：' + String(err?.message ?? err ?? 'unknown')
+      } catch (err: unknown) {
+        const msg = 'Meshy 创建任务异常：' + getErrorMessage(err)
         errorMessage.value = msg
         updateMeshyImageSettings({
           taskStatus: 'failed',
@@ -217,8 +218,8 @@ export const useAIWorkflowImageNodeMeshy = (options: {
       }
       await applyMeshyTaskResult(options.nodeId, res as Record<string, any>)
       options.pushToast('Meshy 任务状态已刷新。', 'info')
-    } catch (err: any) {
-      options.pushToast('刷新 Meshy 状态异常：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+    } catch (err: unknown) {
+      options.pushToast('刷新 Meshy 状态异常：' + getErrorMessage(err), 'warn')
     }
   }
 
@@ -241,8 +242,8 @@ export const useAIWorkflowImageNodeMeshy = (options: {
         errorMessage: '',
       })
       options.pushToast('已停止 Meshy 任务。', 'info')
-    } catch (err: any) {
-      options.pushToast('停止 Meshy 任务异常：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+    } catch (err: unknown) {
+      options.pushToast('停止 Meshy 任务异常：' + getErrorMessage(err), 'warn')
     }
   }
 
@@ -267,8 +268,8 @@ export const useAIWorkflowImageNodeMeshy = (options: {
         errorMessage: '',
       })
       options.pushToast('已删除 Meshy 任务。', 'info')
-    } catch (err: any) {
-      options.pushToast('删除 Meshy 任务异常：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+    } catch (err: unknown) {
+      options.pushToast('删除 Meshy 任务异常：' + getErrorMessage(err), 'warn')
     }
   }
 

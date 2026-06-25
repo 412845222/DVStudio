@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { getErrorMessage } from '../../../types/utils'
 import { runtimeDescription } from '../../../network/runtimePlatform'
 
 const props = defineProps<{
@@ -32,9 +33,9 @@ const checkBackend = async () => {
       backendPingStatus.value = 'unreachable'
       backendPingMessage.value = `后端返回 HTTP ${res.status}（${Date.now() - start}ms），请检查 django-app 是否已启动。`
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     backendPingStatus.value = 'unreachable'
-    const msg = err?.message ? String(err.message) : String(err ?? '未知网络错误')
+    const msg = getErrorMessage(err)
     backendPingMessage.value = `后端不可达：${msg}。请确认 django-app 已在 http://127.0.0.1:5800 启动，或在 Settings 调整后端地址后重试。`
   } finally {
     lastBackendCheck.value = Date.now()

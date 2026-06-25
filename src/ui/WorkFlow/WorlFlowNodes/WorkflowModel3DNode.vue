@@ -155,6 +155,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { getErrorMessage } from '../../../types/utils'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { Model3DPreviewViewer } from './model3d/Model3DPreviewViewer'
 import type { WorkflowModel3DNodeSettings } from '../../../aiworkflow/types'
@@ -339,9 +340,9 @@ const loadModel = async (requestId?: number) => {
       emitPreviewProgress(0.98, '同步交互状态')
       emit('three-preview-ready')
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (current !== loadRunId) return
-    errorMessage.value = String(err?.message ?? err ?? '模型加载失败')
+    errorMessage.value = getErrorMessage(err) || '模型加载失败'
     viewer.clearModel()
     emit('three-preview-error')
   }

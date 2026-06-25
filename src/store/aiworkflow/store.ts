@@ -109,6 +109,8 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 		selectionTagsByKey: {},
 		savedSelectionFrames: [],
 		nodeCheckboxVisible: true,
+		projectId: null,
+		projectRootPath: '',
 	}
 }
 

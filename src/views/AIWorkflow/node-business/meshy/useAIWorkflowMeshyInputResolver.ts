@@ -196,7 +196,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			try {
 				const file = await fileFromUrl(resolved, label)
 				return blobToMeshyModelDataUrl(file)
-			} catch (err: any) {
+			} catch (err: unknown) {
 				console.warn(`[Meshy] failed to convert dweb model URL to data URL: ${resolved}`, err)
 				return ''
 			}
@@ -414,7 +414,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			const file = await fileFromUrl(resolvedUrl, label)
 			// 始终转换为data URL，确保远端服务可访问
 			return normalizeMeshyImageBlob(file, label)
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.warn(`[Meshy] failed to convert local asset URL to data URL: ${value} -> ${resolvedUrl}`, err)
 			// 回退：尝试直接返回原始 URL（只用于已公开可访问的 http/https URL）
 			if (/^https?:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(value)) {

@@ -244,23 +244,23 @@ export const TimelineKey: InjectionKey<Store<TimelineState>> = Symbol('TimelineS
 export const TimelineStore = createStore<TimelineState>({
   state: createDefaultTimelineState,
   mutations: {
-	setUiFocus(state, payload: { focus: 'timeline' | 'stage' | null }) {
+	setUiFocus(state: TimelineState, payload: { focus: 'timeline' | 'stage' | null }) {
 		const f = payload?.focus ?? null
 		if (f !== 'timeline' && f !== 'stage' && f !== null) return
-		;(state as any).uiFocus = f
+		state.uiFocus = f
 	},
-  setLayerKind(state, payload: { layerId: string; kind: TimelineLayerKind }) {
+  setLayerKind(state: TimelineState, payload: { layerId: string; kind: TimelineLayerKind }) {
     const layerId = String(payload.layerId || '').trim()
     if (!layerId) return
     const kind = payload.kind
     if (kind !== 'normal' && kind !== 'subtitle' && kind !== 'progress' && kind !== 'audio') return
     state.layerKindById[layerId] = kind
   },
-	setFps(state, payload: { fps: number }) {
+	setFps(state: TimelineState, payload: { fps: number }) {
 		state.fps = clampInt(payload.fps, 1, 240)
 	},
 
-    setFrameCount(state, payload: { frameCount: number }) {
+    setFrameCount(state: TimelineState, payload: { frameCount: number }) {
       const next = Math.max(1, Math.floor(Number(payload.frameCount) || 1))
       state.frameCount = next
       if (state.currentFrame > next - 1) state.currentFrame = next - 1
@@ -360,8 +360,8 @@ export const TimelineStore = createStore<TimelineState>({
       const list = Array.isArray(ranges) ? ranges : []
       const out: SubtitleCueRange[] = []
       for (const r of list) {
-        const a = clampInt((r as any)?.startFrame, 0, next - 1)
-        const b = clampInt((r as any)?.endFrame, 0, next - 1)
+        const a = clampInt(r?.startFrame, 0, next - 1)
+        const b = clampInt(r?.endFrame, 0, next - 1)
         if (a <= b) out.push({ startFrame: a, endFrame: b })
       }
       if (out.length) nextRanges[layerId] = out
@@ -369,20 +369,20 @@ export const TimelineStore = createStore<TimelineState>({
     state.subtitleCueRangesByLayer = nextRanges
     state.subtitleVersion++
     },
-    setCurrentFrame(state, payload: { frameIndex: number }) {
+    setCurrentFrame(state: TimelineState, payload: { frameIndex: number }) {
       state.currentFrame = clampInt(payload.frameIndex, 0, state.frameCount - 1)
     },
-  jumpToFrameCentered(state, payload: { frameIndex: number }) {
+  jumpToFrameCentered(state: TimelineState, payload: { frameIndex: number }) {
     const fi = clampInt(payload.frameIndex, 0, state.frameCount - 1)
     state.currentFrame = fi
     state.uiJumpToFrame = fi
     state.uiJumpVersion++
   },
-    setFrameWidth(state, payload: { frameWidth: number }) {
+    setFrameWidth(state: TimelineState, payload: { frameWidth: number }) {
 		// 更大范围缩放：允许足够小以容纳超长时间轴，也允许更大以便精细编辑
       state.frameWidth = clampFrameWidth(payload.frameWidth)
     },
-    addLayer(state) {
+    addLayer(state: TimelineState) {
       const nextIndex = state.layers.length + 1
       const layer: TimelineLayer = {
         id: `layer-${Date.now()}-${nextIndex}`,
@@ -392,7 +392,7 @@ export const TimelineStore = createStore<TimelineState>({
       state.layerKindById[layer.id] = 'normal'
       state.selectedLayerIds = [layer.id]
     },
-  addSubtitleLayer(state, payload?: { name?: string }) {
+  addSubtitleLayer(state: TimelineState, payload?: { name?: string }) {
     const subtitleCount = state.layers.filter((l) => layerKindOf(state, l.id) === 'subtitle').length
     const nextIndex = subtitleCount + 1
     const layer: TimelineLayer = {
@@ -403,7 +403,7 @@ export const TimelineStore = createStore<TimelineState>({
     state.layerKindById[layer.id] = 'subtitle'
     state.selectedLayerIds = [layer.id]
   },
-	addAudioLayer(state, payload?: { name?: string }) {
+	addAudioLayer(state: TimelineState, payload?: { name?: string }) {
 		const audioCount = state.layers.filter((l) => layerKindOf(state, l.id) === 'audio').length
 		const nextIndex = audioCount + 1
 		const layer: TimelineLayer = {
@@ -417,7 +417,7 @@ export const TimelineStore = createStore<TimelineState>({
 
   // Ensure all recorded stage snapshots contain this layer so applying older keyframes
   // won't wipe newly created layers.
-  ensureStageSnapshotsContainLayer(state, payload: { layerId: string; name: string }) {
+  ensureStageSnapshotsContainLayer(state: TimelineState, payload: { layerId: string; name: string }) {
     // NOTE: Previously we injected the new layer into ALL old stage snapshots to avoid
     // wiping it when applying older snapshots. After switching `applyStageSnapshot` to
     // merge-by-layerId, this is no longer needed.
@@ -425,7 +425,7 @@ export const TimelineStore = createStore<TimelineState>({
     // can overwrite the real content of that layer when old snapshots are applied.
     void payload
   },
-  renameLayer(state, payload: { layerId: string; name: string }) {
+  renameLayer(state: TimelineState, payload: { layerId: string; name: string }) {
     const layerId = String(payload.layerId || '').trim()
     if (!layerId) return
     const name = String(payload.name || '').trim()
@@ -434,18 +434,18 @@ export const TimelineStore = createStore<TimelineState>({
     if (!layer) return
     layer.name = name
   },
-    removeLayer(state, payload: { layerId: string }) {
+    removeLayer(state: TimelineState, payload: { layerId: string }) {
       const idx = state.layers.findIndex((l) => l.id === payload.layerId)
       if (idx < 0) return
       state.layers.splice(idx, 1)
 	  if (state.layerKindById[payload.layerId]) delete state.layerKindById[payload.layerId]
-    if ((state as any).audioByLayerId?.[payload.layerId]) {
-      delete (state as any).audioByLayerId[payload.layerId]
-      ;(state as any).audioVersion = ((state as any).audioVersion ?? 0) + 1
+    if (state.audioByLayerId?.[payload.layerId]) {
+      delete state.audioByLayerId[payload.layerId]
+      state.audioVersion = (state.audioVersion ?? 0) + 1
     }
-	  if ((state as any).progressBarByLayerId?.[payload.layerId]) {
-		  delete (state as any).progressBarByLayerId[payload.layerId]
-		  ;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
+	  if (state.progressBarByLayerId?.[payload.layerId]) {
+		  delete state.progressBarByLayerId[payload.layerId]
+		  state.progressVersion = (state.progressVersion ?? 0) + 1
 	  }
       state.selectedLayerIds = state.selectedLayerIds.filter((id) => id !== payload.layerId)
 	  if (state.selectedSpansByLayer[payload.layerId]) {
@@ -509,7 +509,7 @@ export const TimelineStore = createStore<TimelineState>({
 		  if (seg && seg.layerId === payload.layerId) delete state.easingCurves[k]
 	  }
     },
-    removeSelectedLayers(state) {
+    removeSelectedLayers(state: TimelineState) {
       const toRemove = new Set(state.selectedLayerIds)
       if (toRemove.size === 0) return
       state.layers = state.layers.filter((l) => !toRemove.has(l.id))
@@ -592,19 +592,19 @@ export const TimelineStore = createStore<TimelineState>({
       // Also purge removed layers from stage snapshots to avoid resurrecting them during playback.
       if (stageSnapshotsPurgeLayers(state, Array.from(toRemove))) state.stageKeyframeVersion++
     },
-    selectLayer(state, payload: { layerId: string; additive?: boolean }) {
+    selectLayer(state: TimelineState, payload: { layerId: string; additive?: boolean }) {
       if (payload.additive) {
         state.selectedLayerIds = uniq([...state.selectedLayerIds, payload.layerId])
       } else {
         state.selectedLayerIds = [payload.layerId]
       }
     },
-    clearSelection(state) {
+    clearSelection(state: TimelineState) {
 	  state.selectedSpansByLayer = {}
 	  state.selectionVersion++
       state.lastSelectedCellKey = null
     },
-    toggleCellSelection(state, payload: { layerId: string; frameIndex: number; additive?: boolean }) {
+    toggleCellSelection(state: TimelineState, payload: { layerId: string; frameIndex: number; additive?: boolean }) {
       const frameIndex = clampInt(payload.frameIndex, 0, state.frameCount - 1)
       const key = cellKey(payload.layerId, frameIndex)
 
@@ -628,7 +628,7 @@ export const TimelineStore = createStore<TimelineState>({
       state.selectedLayerIds = uniq([payload.layerId, ...state.selectedLayerIds])
       state.lastSelectedCellKey = key
     },
-    addRangeSelection(state, payload: { layerIds: string[]; startFrame: number; endFrame: number; additive?: boolean }) {
+    addRangeSelection(state: TimelineState, payload: { layerIds: string[]; startFrame: number; endFrame: number; additive?: boolean }) {
       const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
       const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
       const layerIds = uniq(payload.layerIds)
@@ -647,7 +647,7 @@ export const TimelineStore = createStore<TimelineState>({
     },
 
     // --- 关键帧 ---
-    addKeyframe(state, payload: { layerId: string; frameIndex: number }) {
+    addKeyframe(state: TimelineState, payload: { layerId: string; frameIndex: number }) {
       const frameIndex = clampInt(payload.frameIndex, 0, state.frameCount - 1)
     // const key = cellKey(payload.layerId, frameIndex)
 	  const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
@@ -675,7 +675,7 @@ export const TimelineStore = createStore<TimelineState>({
 		  if (!state.easingSegmentKeys.includes(k)) delete state.easingCurves[k]
 	  }
     },
-    removeKeyframe(state, payload: { layerId: string; frameIndex: number }) {
+    removeKeyframe(state: TimelineState, payload: { layerId: string; frameIndex: number }) {
       const frameIndex = clampInt(payload.frameIndex, 0, state.frameCount - 1)
     // const key = cellKey(payload.layerId, frameIndex)
 	  const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
@@ -720,7 +720,7 @@ export const TimelineStore = createStore<TimelineState>({
     },
 
     // --- 缓动（段） ---
-    enableEasingSegment(state, payload: { layerId: string; startFrame: number; endFrame: number }) {
+    enableEasingSegment(state: TimelineState, payload: { layerId: string; startFrame: number; endFrame: number }) {
       const startFrame = clampInt(payload.startFrame, 0, state.frameCount - 1)
       const endFrame = clampInt(payload.endFrame, 0, state.frameCount - 1)
       if (!(startFrame < endFrame)) return
@@ -732,7 +732,7 @@ export const TimelineStore = createStore<TimelineState>({
       state.easingSegmentKeys = [...state.easingSegmentKeys, key]
 	  if (!state.easingCurves[key]) state.easingCurves[key] = defaultEasingCurve()
     },
-    disableEasingSegment(state, payload: { layerId: string; startFrame: number; endFrame: number }) {
+    disableEasingSegment(state: TimelineState, payload: { layerId: string; startFrame: number; endFrame: number }) {
       const startFrame = clampInt(payload.startFrame, 0, state.frameCount - 1)
       const endFrame = clampInt(payload.endFrame, 0, state.frameCount - 1)
       const key = segmentKey(payload.layerId, startFrame, endFrame)
@@ -740,7 +740,7 @@ export const TimelineStore = createStore<TimelineState>({
     delete state.easingCurves[key]
     },
 
-  setEasingCurve(state, payload: { segmentKey: string; curve: { x1: number; y1: number; x2: number; y2: number; preset?: string } }) {
+  setEasingCurve(state: TimelineState, payload: { segmentKey: string; curve: { x1: number; y1: number; x2: number; y2: number; preset?: string } }) {
     if (!state.easingSegmentKeys.includes(payload.segmentKey)) return
     state.easingCurves[payload.segmentKey] = {
       x1: clamp01(payload.curve.x1),
@@ -751,53 +751,53 @@ export const TimelineStore = createStore<TimelineState>({
     }
 	},
 
-	setProgressBarSpec(state, payload: { layerId: string; spec: ProgressBarSpec }) {
+	setProgressBarSpec(state: TimelineState, payload: { layerId: string; spec: ProgressBarSpec }) {
 		const layerId = String(payload.layerId || '').trim()
 		if (!layerId) return
 		if (!payload.spec || typeof payload.spec !== 'object') return
-		;(state as any).progressBarByLayerId[layerId] = payload.spec
-		;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
+		state.progressBarByLayerId[layerId] = payload.spec
+		state.progressVersion = (state.progressVersion ?? 0) + 1
 	},
 
-  setAudioTrack(state, payload: { layerId: string; track: AudioTrack }) {
+  setAudioTrack(state: TimelineState, payload: { layerId: string; track: AudioTrack }) {
     const layerId = String(payload.layerId || '').trim()
     if (!layerId) return
     const track = payload.track
     if (!track || typeof track !== 'object') return
-    if (typeof (track as any).objectUrl !== 'string' || !(track as any).objectUrl.trim()) return
-    if (typeof (track as any).fileName !== 'string') return
-    if (!Number.isFinite(Number((track as any).durationSec))) return
-    if (!Number.isFinite(Number((track as any).pointsPerSecond))) return
-    if (!Array.isArray((track as any).peaks)) return
-    ;(state as any).audioByLayerId[layerId] = track
-    ;(state as any).audioVersion = ((state as any).audioVersion ?? 0) + 1
+    if (typeof track.objectUrl !== 'string' || !track.objectUrl.trim()) return
+    if (typeof track.fileName !== 'string') return
+    if (!Number.isFinite(Number(track.durationSec))) return
+    if (!Number.isFinite(Number(track.pointsPerSecond))) return
+    if (!Array.isArray(track.peaks)) return
+    state.audioByLayerId[layerId] = track
+    state.audioVersion = (state.audioVersion ?? 0) + 1
   },
 
-	updateProgressBarStyle(state, payload: { layerId: string; style: Partial<ProgressBarStyle> }) {
+	updateProgressBarStyle(state: TimelineState, payload: { layerId: string; style: Partial<ProgressBarStyle> }) {
 		const layerId = String(payload.layerId || '').trim()
 		if (!layerId) return
-		const map = (state as any).progressBarByLayerId as Record<string, ProgressBarSpec>
+		const map = state.progressBarByLayerId as Record<string, ProgressBarSpec>
 		const prev = map?.[layerId]
 		if (!prev) return
-		const next: ProgressBarSpec = { ...prev, style: { ...prev.style, ...(payload.style as any) } }
+		const next: ProgressBarSpec = { ...prev, style: { ...prev.style, ...payload.style } }
 		map[layerId] = next
-		;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
+		state.progressVersion = (state.progressVersion ?? 0) + 1
 	},
 
-  updateProgressBarSegments(state, payload: { layerId: string; segments: ProgressBarSpec['segments'] }) {
+  updateProgressBarSegments(state: TimelineState, payload: { layerId: string; segments: ProgressBarSpec['segments'] }) {
     const layerId = String(payload.layerId || '').trim()
     if (!layerId) return
-    const map = (state as any).progressBarByLayerId as Record<string, ProgressBarSpec>
+    const map = state.progressBarByLayerId as Record<string, ProgressBarSpec>
     const prev = map?.[layerId]
     if (!prev) return
     const segments = Array.isArray(payload.segments) ? payload.segments : []
-    const next: ProgressBarSpec = { ...prev, segments: segments as any }
+    const next: ProgressBarSpec = { ...prev, segments }
     map[layerId] = next
-    ;(state as any).progressVersion = ((state as any).progressVersion ?? 0) + 1
+    state.progressVersion = (state.progressVersion ?? 0) + 1
   },
 
     // --- 选择：按范围 toggle（用于合并段整体选择） ---
-    toggleRangeSelection(state, payload: { layerId: string; startFrame: number; endFrame: number }) {
+    toggleRangeSelection(state: TimelineState, payload: { layerId: string; startFrame: number; endFrame: number }) {
       const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
       const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.selectedSpansByLayer }
@@ -812,7 +812,7 @@ export const TimelineStore = createStore<TimelineState>({
     },
 
   // --- 关键帧：范围 ---
-  addKeyframeRange(state, payload: { layerId: string; startFrame: number; endFrame: number }) {
+  addKeyframeRange(state: TimelineState, payload: { layerId: string; startFrame: number; endFrame: number }) {
     const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
@@ -839,7 +839,7 @@ export const TimelineStore = createStore<TimelineState>({
       if (!state.easingSegmentKeys.includes(k)) delete state.easingCurves[k]
     }
   },
-  removeKeyframeRange(state, payload: { layerId: string; startFrame: number; endFrame: number }) {
+  removeKeyframeRange(state: TimelineState, payload: { layerId: string; startFrame: number; endFrame: number }) {
     const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     const nextMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
@@ -893,7 +893,7 @@ export const TimelineStore = createStore<TimelineState>({
 
   // --- 舞台节点关键帧快照 ---
   setNodeKeyframeSnapshotRange(
-    state,
+    state: TimelineState,
     payload: {
       layerId: string
       startFrame: number
@@ -918,7 +918,7 @@ export const TimelineStore = createStore<TimelineState>({
   },
 
   // --- 舞台关键帧快照（全画布） ---
-  setStageKeyframeSnapshotRange(state, payload: { startFrame: number; endFrame: number; layers: VideoSceneLayer[] }) {
+  setStageKeyframeSnapshotRange(state: TimelineState, payload: { startFrame: number; endFrame: number; layers: VideoSceneLayer[] }) {
     const a = clampInt(Math.min(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     const b = clampInt(Math.max(payload.startFrame, payload.endFrame), 0, state.frameCount - 1)
     if (b < a) return
@@ -926,16 +926,16 @@ export const TimelineStore = createStore<TimelineState>({
     // IMPORTANT: Stage snapshots are treated as *per-layer* snapshots.
     // - Only layers that are keyframes at this frame are recorded.
     // - Multiple layers can share the same frame; we MERGE by layerId instead of overwriting.
-    const incoming = cloneJsonSafe(payload.layers ?? [])
+    const incoming: VideoSceneLayer[] = cloneJsonSafe(payload.layers ?? [])
     let changed = false
     for (let f = a; f <= b; f++) {
       const fk = frameKey(f)
-      const entry = (state.stageKeyframesByFrame as any)[fk] as any
-      const beforeLayers = Array.isArray(entry?.layers) ? (entry.layers as any[]) : []
+      const entry = state.stageKeyframesByFrame[fk]
+      const beforeLayers = Array.isArray(entry?.layers) ? entry.layers : []
       let nextLayers = beforeLayers
       let frameChanged = false
 
-      for (const layer of incoming as any[]) {
+      for (const layer of incoming) {
         const layerId = String(layer?.id ?? '').trim()
 
         if (!layerId) continue
@@ -945,11 +945,11 @@ export const TimelineStore = createStore<TimelineState>({
         if (nextLayers === beforeLayers) nextLayers = beforeLayers.slice()
 
         // Replace existing entry (and dedupe any accidental duplicates).
-        const firstIdx = nextLayers.findIndex((x) => String((x as any)?.id ?? '') === layerId)
+        const firstIdx = nextLayers.findIndex((x) => String(x?.id ?? '') === layerId)
         if (firstIdx >= 0) {
           nextLayers[firstIdx] = layer
           for (let i = nextLayers.length - 1; i > firstIdx; i--) {
-            if (String((nextLayers[i] as any)?.id ?? '') === layerId) nextLayers.splice(i, 1)
+            if (String(nextLayers[i]?.id ?? '') === layerId) nextLayers.splice(i, 1)
           }
         } else {
           nextLayers.push(layer)
@@ -958,13 +958,13 @@ export const TimelineStore = createStore<TimelineState>({
       }
 
       if (!frameChanged) continue
-      ;(state.stageKeyframesByFrame as any)[fk] = { ...(entry ?? {}), layers: nextLayers }
+      state.stageKeyframesByFrame[fk] = { ...(entry ?? {}), layers: nextLayers }
       changed = true
     }
     if (changed) state.stageKeyframeVersion++
   },
 
-  applyNodeTextContentAcrossKeyframes(state, payload: { layerId: string; nodeId: string; textContent: string }) {
+  applyNodeTextContentAcrossKeyframes(state: TimelineState, payload: { layerId: string; nodeId: string; textContent: string }) {
   const layerId = String(payload.layerId || '').trim()
   const nodeId = String(payload.nodeId || '').trim()
   const textContent = String(payload.textContent ?? '')
@@ -1022,7 +1022,7 @@ export const TimelineStore = createStore<TimelineState>({
   },
 
   // --- 节点删除：清理时间轴快照中的 nodeId ---
-  purgeNodeIds(state, payload: { nodeIds: string[] }) {
+  purgeNodeIds(state: TimelineState, payload: { nodeIds: string[] }) {
     const raw = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
     const nodeIds = raw.map((s) => String(s || '').trim()).filter(Boolean)
     if (!nodeIds.length) return
@@ -1093,7 +1093,7 @@ export const TimelineStore = createStore<TimelineState>({
 
   // --- 字幕数据 ---
   setSubtitleTrack(
-  state,
+  state: TimelineState,
   payload: { layerId: string; cues: SubtitleCue[]; cueRanges: SubtitleCueRange[]; spans: TimelineFrameSpan[]; fps?: number }
   ) {
     const layerId = String(payload.layerId || '').trim()
@@ -1107,7 +1107,7 @@ export const TimelineStore = createStore<TimelineState>({
     state.subtitleVersion++
   },
 
-  setSubtitleTextNodeId(state, payload: { layerId: string; nodeId: string }) {
+  setSubtitleTextNodeId(state: TimelineState, payload: { layerId: string; nodeId: string }) {
   const layerId = String(payload.layerId || '').trim()
   const nodeId = String(payload.nodeId || '').trim()
   if (!layerId || !nodeId) return
@@ -1115,14 +1115,14 @@ export const TimelineStore = createStore<TimelineState>({
   state.subtitleVersion++
   },
 
-  setSubtitleDefaultStyle(state, payload: { layerId: string; style: Partial<SubtitleTextStyle> }) {
+  setSubtitleDefaultStyle(state: TimelineState, payload: { layerId: string; style: Partial<SubtitleTextStyle> }) {
   const layerId = String(payload.layerId || '').trim()
   if (!layerId) return
   state.subtitleDefaultStyleByLayer[layerId] = normalizeSubtitleStyle(payload.style)
   state.subtitleVersion++
   },
 
-  setSubtitleOverrideStyle(state, payload: { layerId: string; cueIndex: number; style: Partial<SubtitleTextStyle> | null }) {
+  setSubtitleOverrideStyle(state: TimelineState, payload: { layerId: string; cueIndex: number; style: Partial<SubtitleTextStyle> | null }) {
   const layerId = String(payload.layerId || '').trim()
   if (!layerId) return
   const idx = Math.floor(Number(payload.cueIndex))
@@ -1134,7 +1134,7 @@ export const TimelineStore = createStore<TimelineState>({
   state.subtitleVersion++
   },
 
-  setSubtitleCueText(state, payload: { layerId: string; cueIndex: number; text: string }) {
+  setSubtitleCueText(state: TimelineState, payload: { layerId: string; cueIndex: number; text: string }) {
   const layerId = String(payload.layerId || '').trim()
   if (!layerId) return
   const idx = Math.floor(Number(payload.cueIndex))
@@ -1147,7 +1147,7 @@ export const TimelineStore = createStore<TimelineState>({
   state.subtitleVersion++
   },
 
-  applySubtitleStyleToAll(state, payload: { layerId: string; style: Partial<SubtitleTextStyle> }) {
+  applySubtitleStyleToAll(state: TimelineState, payload: { layerId: string; style: Partial<SubtitleTextStyle> }) {
   const layerId = String(payload.layerId || '').trim()
   if (!layerId) return
   state.subtitleDefaultStyleByLayer[layerId] = normalizeSubtitleStyle(payload.style)
@@ -1156,7 +1156,7 @@ export const TimelineStore = createStore<TimelineState>({
   },
 
   setSubtitleGeneratedKeyframes(
-  state,
+  state: TimelineState,
   payload: {
     layerId: string
     frames: number[]
@@ -1166,7 +1166,7 @@ export const TimelineStore = createStore<TimelineState>({
   const layerId = String(payload.layerId || '').trim()
   if (!layerId) return
   const frames = Array.isArray(payload.frames) ? payload.frames : []
-  const validFrames = Array.from(new Set(frames.map((n) => clampInt(n as any, 0, state.frameCount - 1)))).sort((a, b) => a - b)
+  const validFrames = Array.from(new Set(frames.map((n) => clampInt(n, 0, state.frameCount - 1)))).sort((a, b) => a - b)
 
   // 1) keyframe spans
   const nextKeyframeMap: Record<string, TimelineFrameSpan[]> = { ...state.keyframeSpansByLayer }
@@ -1263,7 +1263,7 @@ export const TimelineStore = createStore<TimelineState>({
     removeLayer({ state, commit }, payload: { layerId: string }) {
 	  const layerId = String(payload.layerId || '').trim()
     const kind = layerId ? (state.layerKindById?.[layerId] ?? 'normal') : 'normal'
-	  const url = layerId ? (state as any).audioByLayerId?.[layerId]?.objectUrl : null
+	  const url = layerId ? state.audioByLayerId?.[layerId]?.objectUrl : null
       commit('removeLayer', payload)
     // Non-audio layers should exist in videoscene as well.
     if (layerId && kind !== 'audio') VideoSceneStore.dispatch('removeLayer', { layerId })
