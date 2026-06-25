@@ -16,7 +16,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: Event) => onNumberScrubPointerDown(e, () => draft.fillOpacity, (v) => (draft.fillOpacity = v), { step: 0.01, min: 0, max: 1, onCommit: applyRect })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.fillOpacity, (v) => (draft.fillOpacity = v), { step: 0.01, min: 0, max: 1, onCommit: applyRect })"
 			/>
 		</label>
 		<label class="vs-row">
@@ -34,7 +34,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: Event) => onNumberScrubPointerDown(e, () => draft.borderOpacity, (v) => (draft.borderOpacity = v), { step: 0.01, min: 0, max: 1, onCommit: applyRect })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.borderOpacity, (v) => (draft.borderOpacity = v), { step: 0.01, min: 0, max: 1, onCommit: applyRect })"
 			/>
 		</label>
 		<label class="vs-row">
@@ -49,7 +49,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: Event) => onNumberScrubPointerDown(e, () => draft.borderWidth, (v) => (draft.borderWidth = v), { step: 1, min: 0, max: 999999, onCommit: applyRect })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.borderWidth, (v) => (draft.borderWidth = v), { step: 1, min: 0, max: 999999, onCommit: applyRect })"
 			/>
 		</label>
 		<label class="vs-row">
@@ -64,7 +64,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: Event) => onNumberScrubPointerDown(e, () => draft.cornerRadius, (v) => (draft.cornerRadius = v), { step: 1, min: 0, max: 999999, onCommit: applyRect })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.cornerRadius, (v) => (draft.cornerRadius = v), { step: 1, min: 0, max: 999999, onCommit: applyRect })"
 			/>
 		</label>
 	</div>

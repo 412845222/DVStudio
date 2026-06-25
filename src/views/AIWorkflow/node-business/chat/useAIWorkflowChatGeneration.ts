@@ -632,7 +632,7 @@ export const useAIWorkflowChatGeneration = (payload: {
         finalPrompt = `${prompt}\n\n${relLines.join('\n')}`
       }
 
-      const ar = String(input?.config?.aspectRatio ?? input?.config?.meshyAspectRatio ?? '').trim()
+      const ar = String(input?.config?.aspectRatio ?? (input as any)?.config?.meshyAspectRatio ?? '').trim()
       const selectedImageModel = String((input as any)?.config?.imageModel ?? '').trim()
       const selectedMeshyAiModel = String((input as any)?.config?.meshyImageAiModel ?? '').trim()
       const meshyPoseMode = String((input as any)?.config?.meshyPoseMode ?? '').trim()

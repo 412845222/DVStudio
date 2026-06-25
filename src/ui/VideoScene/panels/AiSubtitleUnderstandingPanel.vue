@@ -183,7 +183,7 @@
                     class="vs-btn"
                     type="button"
                     :disabled="t.saved || localBusy"
-                    @click="(e: Event) => saveTemplateAsComponent(t, e)"
+                    @click="(e: any) => saveTemplateAsComponent(t, e)"
                   >
                     {{ t.saved ? "已保存" : "保存组件" }}
                   </button>

@@ -19,10 +19,10 @@
 			:key="f.id"
 			class="vs-filter-item"
 			:draggable="true"
-			@dragstart="(e: Event) => onFilterDragStart(e, f.id)"
+			@dragstart="(e: any) => onFilterDragStart(e, f.id)"
 			@dragend="onFilterDragEnd"
 			@dragover="onFilterDragOver"
-			@drop="(e: Event) => onFilterDrop(e, f.id)"
+			@drop="(e: any) => onFilterDrop(e, f.id)"
 		>
 			<div class="vs-filter-item-header">
 				<div class="vs-filter-item-title">
@@ -41,7 +41,7 @@
 			<div v-if="f.type === 'blur'" class="vs-filter-item-body">
 				<label class="vs-row">
 					<span class="vs-k">质量</span>
-					<select class="vs-input" :value="f.quality" @change="(e: Event) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+					<select class="vs-input" :value="f.quality" @change="(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
 						<option value="low">低</option>
 						<option value="mid">中</option>
 						<option value="high">高</option>
@@ -55,11 +55,11 @@
 						type="number"
 						min="0"
 						step="1"
-						@change="(e: Event) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)"
+						@change="(e: any) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: Event) => onFilterNumberScrubPointerDown(e, () => f.blurX, (v) => patchFilter(f.id, { blurX: v }), { step: 1, min: 0, max: 999999 })"
+						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.blurX, (v) => patchFilter(f.id, { blurX: v }), { step: 1, min: 0, max: 999999 })"
 					/>
 				</label>
 				<label class="vs-row">
@@ -70,11 +70,11 @@
 						type="number"
 						min="0"
 						step="1"
-						@change="(e: Event) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)"
+						@change="(e: any) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: Event) => onFilterNumberScrubPointerDown(e, () => f.blurY, (v) => patchFilter(f.id, { blurY: v }), { step: 1, min: 0, max: 999999 })"
+						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.blurY, (v) => patchFilter(f.id, { blurY: v }), { step: 1, min: 0, max: 999999 })"
 					/>
 				</label>
 			</div>
@@ -82,7 +82,7 @@
 			<div v-else-if="f.type === 'glow'" class="vs-filter-item-body">
 				<label class="vs-row">
 					<span class="vs-k">质量</span>
-					<select class="vs-input" :value="f.quality" @change="(e: Event) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+					<select class="vs-input" :value="f.quality" @change="(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
 						<option value="low">低</option>
 						<option value="mid">中</option>
 						<option value="high">高</option>
@@ -90,8 +90,8 @@
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">颜色</span>
-					<input :value="f.color" class="vs-input" type="text" placeholder="#ffffff" @change="(e: Event) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })" />
-					<input :value="f.color" class="vs-color" type="color" @input="(e: Event) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })" />
+					<input :value="f.color" class="vs-input" type="text" placeholder="#ffffff" @change="(e: any) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })" />
+					<input :value="f.color" class="vs-color" type="color" @input="(e: any) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })" />
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">强度</span>
@@ -101,11 +101,11 @@
 						type="number"
 						min="0"
 						step="0.01"
-						@change="(e: Event) => patchFilterNumber(f.id, 'intensity', (e.target as HTMLInputElement).value)"
+						@change="(e: any) => patchFilterNumber(f.id, 'intensity', (e.target as HTMLInputElement).value)"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: Event) => onFilterNumberScrubPointerDown(e, () => f.intensity, (v) => patchFilter(f.id, { intensity: v }), { step: 0.01, min: 0, max: 999999 })"
+						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.intensity, (v) => patchFilter(f.id, { intensity: v }), { step: 0.01, min: 0, max: 999999 })"
 					/>
 				</label>
 				<label class="vs-row">
@@ -116,11 +116,11 @@
 						type="number"
 						min="0"
 						step="1"
-						@change="(e: Event) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)"
+						@change="(e: any) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: Event) => onFilterNumberScrubPointerDown(e, () => f.blurX, (v) => patchFilter(f.id, { blurX: v }), { step: 1, min: 0, max: 999999 })"
+						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.blurX, (v) => patchFilter(f.id, { blurX: v }), { step: 1, min: 0, max: 999999 })"
 					/>
 				</label>
 				<label class="vs-row">
@@ -131,27 +131,27 @@
 						type="number"
 						min="0"
 						step="1"
-						@change="(e: Event) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)"
+						@change="(e: any) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: Event) => onFilterNumberScrubPointerDown(e, () => f.blurY, (v) => patchFilter(f.id, { blurY: v }), { step: 1, min: 0, max: 999999 })"
+						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.blurY, (v) => patchFilter(f.id, { blurY: v }), { step: 1, min: 0, max: 999999 })"
 					/>
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">内发光</span>
-					<input :checked="f.inner" type="checkbox" @change="(e: Event) => patchFilter(f.id, { inner: (e.target as HTMLInputElement).checked })" />
+					<input :checked="f.inner" type="checkbox" @change="(e: any) => patchFilter(f.id, { inner: (e.target as HTMLInputElement).checked })" />
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">挖空</span>
-					<input :checked="f.knockout" type="checkbox" @change="(e: Event) => patchFilter(f.id, { knockout: (e.target as HTMLInputElement).checked })" />
+					<input :checked="f.knockout" type="checkbox" @change="(e: any) => patchFilter(f.id, { knockout: (e.target as HTMLInputElement).checked })" />
 				</label>
 			</div>
 
 			<div v-else class="vs-filter-item-body">
 				<label class="vs-row">
 					<span class="vs-k">质量</span>
-					<select class="vs-input" :value="f.quality" @change="(e: Event) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+					<select class="vs-input" :value="f.quality" @change="(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
 						<option value="low">低</option>
 						<option value="mid">中</option>
 						<option value="high">高</option>
@@ -159,11 +159,11 @@
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">顶点</span>
-					<textarea :value="f.vertex" class="vs-input vs-textarea wide" rows="6" @input="(e: Event) => patchFilter(f.id, { vertex: (e.target as HTMLTextAreaElement).value })" />
+					<textarea :value="f.vertex" class="vs-input vs-textarea wide" rows="6" @input="(e: any) => patchFilter(f.id, { vertex: (e.target as HTMLTextAreaElement).value })" />
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">片段</span>
-					<textarea :value="f.fragment" class="vs-input vs-textarea wide" rows="6" @input="(e: Event) => patchFilter(f.id, { fragment: (e.target as HTMLTextAreaElement).value })" />
+					<textarea :value="f.fragment" class="vs-input vs-textarea wide" rows="6" @input="(e: any) => patchFilter(f.id, { fragment: (e.target as HTMLTextAreaElement).value })" />
 				</label>
 				<div class="vs-filter-shader-actions">
 					<button class="vs-filter-btn" type="button" @click="compileCustomShader(f)">预览编译</button>

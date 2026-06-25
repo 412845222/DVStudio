@@ -6,7 +6,7 @@
         v-if="selectedNode"
         class="wf-inspector-focus"
         type="button"
-        @click="emit('focus-node', selectedNode.id)"
+        @click="emit('focus-node', selectedNode!.id)"
       >
         定位节点
       </button>

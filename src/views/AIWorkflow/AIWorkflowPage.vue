@@ -207,7 +207,7 @@
             @remove-merge-item="onTextMergeItemRemove(node.id, $event)"
             @request-scene-models="onNodeRequestSceneModels(node.id)"
             @resize="onNodeResize(node.id, $event)"
-            @auto-resize="(h) => onNodeAutoResize(node.id, h)"
+            @auto-resize="(h: number) => onNodeAutoResize(node.id, h)"
             @restart-meshy-task="onNodeRestartMeshyTask(node.id)"
             @run-comfyui="onComfyUIRun(node.id)"
             @run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
@@ -343,7 +343,7 @@
         @update:panelMode="chatPanelMode = $event"
         @update:agentMode="agentConversationMode = $event"
         @update:localExecStreamMode="localExecStreamMode = $event"
-        @update:modelKey="chatModelKey = $event"
+        @update:modelKey="chatModelKey = $event as any"
         @update:activeModelId="chatModelId = $event"
         @nanobanana-generate="onNanoBananaGenerate"
         @seedance-generate="onSeedanceGenerate"
@@ -4106,7 +4106,7 @@ const comfyService = new ComfyUIBridgeService({
   localExecBasePath: resolveLocalExecBasePath(),
   // web 模式下不写 baseUrl，让路径保持相对路径走 Vite proxy (/api/* → http://127.0.0.1:5800)，
   // 避免浏览器因跨域而在测试环境出现 "Failed to fetch"。
-  baseUrl: getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl(),
+  baseUrl: (getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl()) as any,
 })
 const localExecChatService = createLocalExecChatService(comfyService)
 const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())
@@ -5282,7 +5282,7 @@ const {
   fileFromUrl,
   uploadLocalResourceAndGetUrl,
   resolveBackendUrl,
-  getChatService: () => localExecChatService,
+  getChatService: () => localExecChatService as any,
   onSeedanceTaskObserved: (...args) => void onSeedanceTaskObserved(...args),
 })
 
@@ -5297,7 +5297,7 @@ const {
   persistExternalAssetToProject,
   pushToast,
   stripUnrealExportRuntimeFromNodes,
-})
+} as any)
 
 const {
   sanitizeBlueprintSnapshotForRuntime,
@@ -5776,7 +5776,7 @@ const computeNearDragNodes = () => {
   const HIT_RADIUS = 80
   const next = new Set<string>()
   const hosts = document.querySelectorAll<HTMLElement>('.aiwf-node-screenshot-host')
-  for (const host of hosts) {
+  for (const host of Array.from(hosts)) {
     const nodeId = host.querySelector('[data-wf-node-id]')?.getAttribute('data-wf-node-id')
     if (!nodeId) continue
     const r = host.getBoundingClientRect()

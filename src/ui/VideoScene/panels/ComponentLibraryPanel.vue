@@ -57,29 +57,29 @@
                 v-if="p.type === 'string' || p.type === 'asset:image'"
                 class="vs-cl-input"
                 type="text"
-                :value="String(getParamValue(selectedComponent.id, p.key) ?? '')"
-                @input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+                :value="String(getParamValue(selectedComponent!.id, p.key) ?? '')"
+                @input="setParamValue(selectedComponent!.id, p.key, ($event.target as HTMLInputElement).value)"
               />
               <input
                 v-else-if="p.type === 'number'"
                 class="vs-cl-input"
                 type="number"
-                :value="String(getParamValue(selectedComponent.id, p.key) ?? '')"
-                @input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+                :value="String(getParamValue(selectedComponent!.id, p.key) ?? '')"
+                @input="setParamValue(selectedComponent!.id, p.key, ($event.target as HTMLInputElement).value)"
               />
               <input
                 v-else-if="p.type === 'color'"
                 class="vs-cl-color"
                 type="color"
-                :value="String(getParamValue(selectedComponent.id, p.key) ?? '#ffffff')"
-                @input="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).value)"
+                :value="String(getParamValue(selectedComponent!.id, p.key) ?? '#ffffff')"
+                @input="setParamValue(selectedComponent!.id, p.key, ($event.target as HTMLInputElement).value)"
               />
               <input
                 v-else-if="p.type === 'boolean'"
                 class="vs-cl-checkbox"
                 type="checkbox"
-                :checked="!!getParamValue(selectedComponent.id, p.key)"
-                @change="setParamValue(selectedComponent.id, p.key, ($event.target as HTMLInputElement).checked)"
+                :checked="!!getParamValue(selectedComponent!.id, p.key)"
+                @change="setParamValue(selectedComponent!.id, p.key, ($event.target as HTMLInputElement).checked)"
               />
             </div>
           </div>
