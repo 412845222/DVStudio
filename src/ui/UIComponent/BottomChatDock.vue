@@ -311,8 +311,8 @@
                     v-if="ev.approvalRequestId && ev.messageId"
                     class="codex-approval-row"
                   >
-                    <button class="codex-mini-btn" type="button" @click="onCodexApproval(ev.messageId, 'accept')">同意</button>
-                    <button class="codex-mini-btn danger" type="button" @click="onCodexApproval(ev.messageId, 'decline')">拒绝</button>
+                    <button class="codex-mini-btn" type="button" @click="onCodexApproval(ev.messageId!, 'accept')">同意</button>
+                    <button class="codex-mini-btn danger" type="button" @click="onCodexApproval(ev.messageId!, 'decline')">拒绝</button>
                   </div>
                 </div>
               </div>
@@ -1199,7 +1199,7 @@ const emitGenerate = () => {
         meshyGenerateMultiView: meshyImageConfig.value.generateMultiView || false,
         meshyOutputImageCount: meshyImageConfig.value.outputImageCount || 1,
         quantity,
-      },
+      } as any,
     });
     return;
   }

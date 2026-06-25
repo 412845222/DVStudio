@@ -21,7 +21,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e) => onNumberScrubPointerDown(e, () => draft.fontSize, (v) => (draft.fontSize = v), { step: 1, min: 1, max: 999999, onCommit: applyText })"
+				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.fontSize, (v) => (draft.fontSize = v), { step: 1, min: 1, max: 999999, onCommit: applyText })"
 			/>
 		</label>
 		<label class="vs-row">

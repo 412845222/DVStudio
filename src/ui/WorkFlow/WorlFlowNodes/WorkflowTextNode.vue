@@ -19,13 +19,13 @@
     @update:worldX="(v) => emit('update:worldX', v)"
     @update:worldY="(v) => emit('update:worldY', v)"
     @select="(id) => emit('select', id)"
-    @start-link="(payload) => emit('start-link', payload)"
-    @end-link="(payload) => emit('end-link', payload)"
+    @start-link="(payload: any) => emit('start-link', payload)"
+    @end-link="(payload: any) => emit('end-link', payload)"
     @copy="() => emit('copy')"
     @refresh="() => emit('refresh')"
     @delete="() => emit('delete')"
-    @set-type="(type) => emit('set-type', type)"
-    @resize="(payload) => emit('resize', payload)"
+    @set-type="(type: any) => emit('set-type', type)"
+    @resize="(payload: any) => emit('resize', payload)"
   >
     <template #body>
       <div class="wf-text" @pointerdown.stop>
