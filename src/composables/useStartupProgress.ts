@@ -1,5 +1,6 @@
 import { computed, reactive, readonly } from 'vue'
 import type { StartupProgressState, StartupProgressStep } from '../ui/UIComponent/StartupProgressBar.vue'
+import { getErrorMessage } from '../types/utils'
 
 type InternalStep = {
   key: string
@@ -112,8 +113,8 @@ export const useStartupProgress = () => {
       const value = await fn()
       markStepOk(key)
       return { ok: true, value }
-    } catch (e) {
-      const detail = opts?.errorDetailOnFailure !== false ? String((e as any)?.message ?? e ?? '') : ''
+    } catch (e: unknown) {
+      const detail = opts?.errorDetailOnFailure !== false ? getErrorMessage(e) : ''
       markStepError(key, detail)
       return { ok: false, error: e }
     }

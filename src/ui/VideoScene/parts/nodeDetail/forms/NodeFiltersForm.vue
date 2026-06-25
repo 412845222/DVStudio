@@ -178,6 +178,7 @@
 
 <script setup lang="ts">
 import { computed, inject, reactive, ref } from 'vue'
+import type { Store } from 'vuex'
 import { VideoSceneKey, VideoSceneStore, type VideoSceneState } from '../../../../../store/videoscene'
 import { DwebCanvasGLKey } from '../../../VideoSceneRuntime'
 import { useNumberScrub } from './useNumberScrub'
@@ -213,11 +214,9 @@ const props = defineProps<{
 	filters: VideoNodeFilter[]
 }>()
 
-// NodeFiltersForm 可能被 Teleport 到 body，或被挂载到未 provide VideoSceneKey 的组件树下。
-// useStore(VideoSceneKey) 在这种情况下会触发 Vue injection warn；这里改为 inject(..., null) 来避免控制台噪音。
-const injectedStore = inject<any>(VideoSceneKey as any, null) as (VideoSceneState & { dispatch?: (...args: any[]) => any }) | null
-const store = (injectedStore && typeof (injectedStore as any).dispatch === 'function' ? injectedStore : (VideoSceneStore as any)) as any
-const dwebCanvasRef = inject<any>(DwebCanvasGLKey, null)
+const injectedStore = inject(VideoSceneKey, null)
+const store: Store<VideoSceneState> = injectedStore ?? VideoSceneStore
+const dwebCanvasRef = inject(DwebCanvasGLKey, null)
 
 const filterMenuOpen = ref(false)
 const draggingFilterId = ref<string | null>(null)

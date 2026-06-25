@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
-import { getErrorMessage } from '../../../../types/utils'
+import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
 
 type ReuseRecordConfirmState = {
   nodeId: string
@@ -8,23 +8,47 @@ type ReuseRecordConfirmState = {
   savedAt?: number
 }
 
+type RunState = {
+  runStatus: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  text: string
+}
+
+type ComfyService = {
+  run: (
+    baseUrl: string,
+    workflowPath: string,
+    files: File[],
+    opts?: Record<string, unknown>,
+  ) => Promise<{
+    ok: boolean; error?: string; promptId?: string; requiresConfirm?: boolean; fallbackRecord?: Record<string, unknown>; result?: Record<string, unknown>; [key: string]: unknown
+  }>
+  cancel: (baseUrl: string, promptId: string) => Promise<{ ok: boolean; error?: string; [key: string]: unknown }>
+  job: (baseUrl: string, promptId: string) => Promise<{ ok: boolean; error?: string; status?: number; result?: Record<string, unknown>; [key: string]: unknown }>
+  outputs: (baseUrl: string, promptId: string) => Promise<{ ok: boolean; error?: string; media?: ComfyBridgeMedia[]; [key: string]: unknown }>
+}
+
+type ComfyNode = {
+  id: string; type?: string; title?: string; alias?: string; inputs?: unknown; outputs?: unknown; resourceId?: string; comfyuiSettings?: Record<string, unknown>; [key: string]: unknown
+}
+type ComfyEdge = { fromNodeId?: string; toNodeId?: string; fromAnchorId?: string; toAnchorId?: string; [key: string]: unknown }
+type ComfyResource = { kind?: string; url?: string; name?: string; [key: string]: unknown }
+
+type InputAnchor = { id?: string; [key: string]: unknown }
+type JobStatus = { status?: string; outputs_count?: number; [key: string]: unknown }
+
 export const useAIWorkflowComfyRuntime = (payload: {
   store: {
     state: {
-      nodesById: Record<string, any>
+      nodesById: Record<string, unknown>
       nodeOrder: string[]
       edgeOrder: string[]
-      edgesById: Record<string, any>
-      resourcesById: Record<string, any>
+      edgesById: Record<string, unknown>
+      resourcesById: Record<string, unknown>
     }
-    commit: (type: string, value: any) => void
+    commit: (type: string, value: unknown) => void
   }
-  comfyService: {
-    run: (baseUrl: string, workflowPath: string, files: File[], opts?: Record<string, any>) => Promise<any>
-    cancel: (baseUrl: string, promptId: string) => Promise<any>
-    job: (baseUrl: string, promptId: string) => Promise<any>
-    outputs: (baseUrl: string, promptId: string) => Promise<any>
-  }
+  comfyService: ComfyService
   pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
   routeComfyOutputsToConnectedNodes: (
     comfyNodeId: string,
@@ -55,31 +79,32 @@ export const useAIWorkflowComfyRuntime = (payload: {
     comfyPollErrorCounts.delete(nodeId)
   }
 
-  const isLikelyJobMissing = (res: any) => {
-    const status = Number((res as any)?.status)
+  const isLikelyJobMissing = (res: unknown) => {
+    if (!isRecord(res)) return false
+    const status = Number(res.status)
     if (status === 404) return true
-    const msg = String((res as any)?.error ?? '').toLowerCase()
+    const msg = String(res.error ?? '').toLowerCase()
     return /not\s*found|404|unknown\s*prompt|missing|不存在|无此/.test(msg)
   }
 
-  const normalizeJobFromResult = (res: any, promptId: string) => {
-    if (res && typeof res === 'object') {
-      if (typeof res.status === 'string') return res
-      const item = (res as any)[promptId]
-      if (item && typeof item === 'object') return item
+  const normalizeJobFromResult = (res: unknown, promptId: string): JobStatus | null => {
+    if (isRecord(res)) {
+      if (isString(res.status)) return res as JobStatus
+      const item = res[promptId]
+      if (isRecord(item)) return item as JobStatus
     }
     return null
   }
 
-  const deriveRunStateFromJob = (job: any) => {
+  const deriveRunStateFromJob = (job: JobStatus): RunState => {
     const status = String(job?.status ?? '').toLowerCase()
-    if (status === 'not_found' || status === 'missing') return { runStatus: 'idle' as const, progress: 0, text: '任务不存在' }
-    if (status === 'pending') return { runStatus: 'running' as const, progress: 10, text: '排队中…' }
-    if (status === 'in_progress') return { runStatus: 'running' as const, progress: 50, text: '执行中…' }
-    if (status === 'completed') return { runStatus: 'completed' as const, progress: 100, text: '已完成' }
-    if (status === 'failed') return { runStatus: 'failed' as const, progress: 100, text: '失败' }
-    if (status === 'cancelled') return { runStatus: 'cancelled' as const, progress: 100, text: '已取消' }
-    return { runStatus: 'running' as const, progress: 30, text: '运行中…' }
+    if (status === 'not_found' || status === 'missing') return { runStatus: 'idle', progress: 0, text: '任务不存在' }
+    if (status === 'pending') return { runStatus: 'running', progress: 10, text: '排队中…' }
+    if (status === 'in_progress') return { runStatus: 'running', progress: 50, text: '执行中…' }
+    if (status === 'completed') return { runStatus: 'completed', progress: 100, text: '已完成' }
+    if (status === 'failed') return { runStatus: 'failed', progress: 100, text: '失败' }
+    if (status === 'cancelled') return { runStatus: 'cancelled', progress: 100, text: '已取消' }
+    return { runStatus: 'running', progress: 30, text: '运行中…' }
   }
 
   const resetComfyNodeToIdle = (
@@ -109,7 +134,8 @@ export const useAIWorkflowComfyRuntime = (payload: {
 
     const tick = async () => {
       try {
-        const node = payload.store.state.nodesById[nodeId]
+        const nodeRecord = payload.store.state.nodesById[nodeId]
+        const node = nodeRecord as ComfyNode | undefined
         const currentRunStatus = String(node?.comfyuiSettings?.runStatus ?? '').toLowerCase()
         if (currentRunStatus === 'completed' || currentRunStatus === 'failed' || currentRunStatus === 'cancelled') {
           stopComfyUIPoll(nodeId)
@@ -152,7 +178,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
           return
         }
 
-        const outputsCount = Number.isFinite(Number((job as any)?.outputs_count)) ? Number((job as any).outputs_count) : null
+        const outputsCount = Number.isFinite(Number(job.outputs_count)) ? Number(job.outputs_count) : null
         const suffix = outputsCount != null && next.runStatus === 'completed' ? `（产物 ${outputsCount}）` : ''
         payload.store.commit('setNodeComfyUISettings', {
           nodeId,
@@ -170,11 +196,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
           try {
             const or = await payload.comfyService.outputs(baseUrl, promptId)
             if (or.ok) {
-              const media = Array.isArray((or as any).media) ? (or as any).media : []
+              const media = Array.isArray(or.media) ? or.media : []
               const dispatchRes = await payload.routeComfyOutputsToConnectedNodes(nodeId, media, {
                 notifyWarnings: next.runStatus !== 'running',
               })
-              const localizedOutputs = Array.isArray((dispatchRes as any)?.outputs) ? (dispatchRes as any).outputs : []
+              const localizedOutputs = Array.isArray(dispatchRes?.outputs) ? dispatchRes.outputs : []
               const runningText = next.runStatus === 'running'
                 ? `${next.text}（已入库 ${localizedOutputs.length}/${media.length}）`
                 : `已完成（已入库 ${localizedOutputs.length}/${media.length}）`
@@ -201,7 +227,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
               }
 
               if (next.runStatus === 'completed') {
-                terminalAlerts = Array.isArray((dispatchRes as any)?.alerts) ? (dispatchRes as any).alerts : []
+                terminalAlerts = Array.isArray(dispatchRes?.alerts) ? dispatchRes.alerts : []
               }
             }
           } catch {
@@ -235,32 +261,35 @@ export const useAIWorkflowComfyRuntime = (payload: {
   }
 
   const collectComfyUIInputFiles = async (nodeId: string): Promise<File[]> => {
-    const node = payload.store.state.nodesById[nodeId]
+    const nodeRecord = payload.store.state.nodesById[nodeId]
+    const node = nodeRecord as ComfyNode | undefined
     if (!node || node.type !== 'comfyui') return []
-    const inputs = Array.isArray(node.inputs) ? node.inputs : []
+    const inputs = Array.isArray(node.inputs) ? node.inputs as InputAnchor[] : []
 
     const out: File[] = []
     for (let i = 0; i < inputs.length; i += 1) {
-      const anchorId = String((inputs[i] as any)?.id ?? '').trim()
+      const anchorId = String(inputs[i]?.id ?? '').trim()
       if (!anchorId) continue
       const edge = payload.store.state.edgeOrder
-        .map((id) => payload.store.state.edgesById[id])
+        .map((id) => payload.store.state.edgesById[id] as ComfyEdge | undefined)
         .find((e) => e && e.toNodeId === nodeId && e.toAnchorId === anchorId)
       if (!edge) continue
-      const fromNode = payload.store.state.nodesById[edge.fromNodeId]
+      const fromNodeRecord = payload.store.state.nodesById[edge.fromNodeId ?? '']
+      const fromNode = fromNodeRecord as ComfyNode | undefined
       const rid = String(fromNode?.resourceId ?? '').trim()
       if (!rid) continue
-      const resource = payload.store.state.resourcesById[rid]
+      const resourceRecord = payload.store.state.resourcesById[rid]
+      const resource = resourceRecord as ComfyResource | undefined
       if (!resource) continue
       if (resource.kind !== 'image') {
         payload.pushToast('当前仅支持图片输入资源', 'warn')
         continue
       }
-      const url = String((resource as any).url ?? '').trim()
+      const url = String(resource.url ?? '').trim()
       if (!url) continue
       const resp = await fetch(url)
       const blob = await resp.blob()
-      const name = String((resource as any).name ?? `input_${i}.png`) || `input_${i}.png`
+      const name = String(resource.name ?? `input_${i}.png`) || `input_${i}.png`
       out.push(new File([blob], name, { type: blob.type || 'image/png' }))
     }
     return out
@@ -282,11 +311,13 @@ export const useAIWorkflowComfyRuntime = (payload: {
   }
 
   const onComfyUIRun = async (nodeId: string, opts?: { confirmReuseRecord?: boolean }) => {
-    const node = payload.store.state.nodesById[nodeId]
-    const baseUrl = String(node?.comfyuiSettings?.baseUrl ?? '').trim()
-    const workflowPath = String(node?.comfyuiSettings?.workflowPath ?? '').trim()
-    const positivePrompt = String(node?.comfyuiSettings?.positivePrompt ?? '')
-    const negativePrompt = String(node?.comfyuiSettings?.negativePrompt ?? '')
+    const nodeRecord = payload.store.state.nodesById[nodeId]
+    const node = nodeRecord as ComfyNode | undefined
+    const settings = (node?.comfyuiSettings ?? {}) as { baseUrl?: string; workflowPath?: string; positivePrompt?: string; negativePrompt?: string }
+    const baseUrl = String(settings.baseUrl ?? '').trim()
+    const workflowPath = String(settings.workflowPath ?? '').trim()
+    const positivePrompt = String(settings.positivePrompt ?? '')
+    const negativePrompt = String(settings.negativePrompt ?? '')
     const positiveFromText = payload.getIncomingTextValue(nodeId, 'in-positive')
     const negativeFromText = payload.getIncomingTextValue(nodeId, 'in-negative')
     const finalPositivePrompt = String(positiveFromText).trim() ? positiveFromText : positivePrompt
@@ -324,11 +355,12 @@ export const useAIWorkflowComfyRuntime = (payload: {
         confirmReuseRecord: Boolean(opts?.confirmReuseRecord),
       })
       if (!rr.ok) {
-        if ((rr as any).requiresConfirm) {
+        if (rr.requiresConfirm) {
+          const fallback = rr.fallbackRecord as { workflowName?: string; savedAt?: number } | undefined
           reuseRecordConfirm.value = {
             nodeId,
-            workflowName: String((rr as any)?.fallbackRecord?.workflowName ?? workflowPath),
-            savedAt: Number((rr as any)?.fallbackRecord?.savedAt),
+            workflowName: String(fallback?.workflowName ?? workflowPath),
+            savedAt: Number(fallback?.savedAt),
           }
           payload.store.commit('setNodeComfyUISettings', {
             nodeId,
@@ -362,7 +394,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
         return
       }
 
-      const pid = String((rr as any).promptId ?? '')
+      const pid = String(rr.promptId ?? '')
       payload.store.commit('setNodeComfyUISettings', {
         nodeId,
         comfyuiSettings: {
@@ -402,9 +434,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
   }
 
   const onComfyUICancel = async (nodeId: string) => {
-    const node = payload.store.state.nodesById[nodeId]
-    const baseUrl = String(node?.comfyuiSettings?.baseUrl ?? '').trim()
-    const promptId = String(node?.comfyuiSettings?.promptId ?? '').trim()
+    const nodeRecord = payload.store.state.nodesById[nodeId]
+    const node = nodeRecord as ComfyNode | undefined
+    const settings = (node?.comfyuiSettings ?? {}) as { baseUrl?: string; promptId?: string }
+    const baseUrl = String(settings.baseUrl ?? '').trim()
+    const promptId = String(settings.promptId ?? '').trim()
     if (!node || node.type !== 'comfyui') return
     if (!baseUrl || !promptId) return
 
@@ -425,7 +459,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
       }
 
       const jr = await payload.comfyService.job(baseUrl, promptId)
-      if (!jr.ok || isLikelyJobMissing(jr) || !normalizeJobFromResult((jr as any).result, promptId)) {
+      if (!jr.ok || isLikelyJobMissing(jr) || !normalizeJobFromResult(jr.result, promptId)) {
         payload.store.commit('setNodeComfyUISettings', {
           nodeId,
           comfyuiSettings: {
@@ -441,21 +475,24 @@ export const useAIWorkflowComfyRuntime = (payload: {
       }
 
       startComfyUIPoll(nodeId, baseUrl, promptId)
-    } catch {
+    } catch (err: unknown) {
       resetComfyNodeToIdle(nodeId, '取消失败：ComfyUI 状态未知，已停止轮询。', 'warn')
     }
   }
 
   const recoverComfyUIRunStates = async (opts?: { silent?: boolean }) => {
-    const comfyNodes = payload.store.state.nodeOrder
-      .map((id) => payload.store.state.nodesById[id])
-      .filter((node) => Boolean(node) && node.type === 'comfyui')
+    const comfyNodes: ComfyNode[] = []
+    for (const id of payload.store.state.nodeOrder) {
+      const n = payload.store.state.nodesById[id] as ComfyNode | undefined
+      if (n && n.type === 'comfyui') comfyNodes.push(n)
+    }
 
     for (const node of comfyNodes) {
       const nodeId = node.id
-      const baseUrl = String(node.comfyuiSettings?.baseUrl ?? '').trim()
-      const promptId = String(node.comfyuiSettings?.promptId ?? '').trim()
-      const runStatus = String(node.comfyuiSettings?.runStatus ?? '').toLowerCase()
+      const settings = (node.comfyuiSettings ?? {}) as { baseUrl?: string; promptId?: string; runStatus?: string }
+      const baseUrl = String(settings.baseUrl ?? '').trim()
+      const promptId = String(settings.promptId ?? '').trim()
+      const runStatus = String(settings.runStatus ?? '').toLowerCase()
       if (!baseUrl || !promptId) continue
       if (runStatus !== 'running' && runStatus !== 'canceling') continue
 
@@ -477,7 +514,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
           continue
         }
 
-        const job = normalizeJobFromResult((jr as any).result, promptId)
+        const job = normalizeJobFromResult(jr.result, promptId)
         if (!job) {
           payload.store.commit('setNodeComfyUISettings', {
             nodeId,

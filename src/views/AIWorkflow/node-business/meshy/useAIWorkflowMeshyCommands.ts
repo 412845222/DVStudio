@@ -1,19 +1,18 @@
 import { ref } from 'vue'
-import { getErrorMessage } from '../../../../types/utils'
+import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
+import type { MeshyComfyService, MeshyGenerateResponse, MeshyStoreLike, BuildMeshyRequestPayloadFn } from './types'
 
 export const useAIWorkflowMeshyCommands = (options: {
-  store: any
-  getComfyService: () => {
-    meshyGenerate: (payload: Record<string, any>) => Promise<any>
-  }
+  store: MeshyStoreLike
+  getComfyService: () => MeshyComfyService
   pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
   stopMeshyPoll: (nodeId: string) => void
   startMeshyPoll: (nodeId: string, taskId: string, mode: string) => void
-  buildMeshyRequestPayload: (node: any) => Promise<any>
+  buildMeshyRequestPayload: BuildMeshyRequestPayloadFn
   hasIncomingEdge: (nodeId: string, anchorId: string) => boolean
   connectedMeshyImageUrls: (nodeId: string) => string[]
   normalizeMeshyTaskStatus: (status: unknown) => string
-  refreshMeshyTaskItems: (opts?: { silent?: boolean }) => Promise<any> | void
+  refreshMeshyTaskItems: (opts?: { silent?: boolean }) => Promise<unknown> | void
   shouldRefreshMeshyTaskItems: () => boolean
 }) => {
   const meshyTextureConfirm = ref<{ nodeId: string; currentTaskId: string; rootTaskId: string } | null>(null)
@@ -70,9 +69,9 @@ export const useAIWorkflowMeshyCommands = (options: {
         return
       }
 
-      const taskStatus = options.normalizeMeshyTaskStatus((res as any).status)
-      const taskId = String((res as any).taskId ?? '').trim()
-      const mode = String((res as any).mode ?? prepared.payload.mode ?? 'text-to-3d').trim()
+      const taskStatus = options.normalizeMeshyTaskStatus(res.status)
+      const taskId = String(res.taskId ?? '').trim()
+      const mode = String(res.mode ?? prepared.payload.mode ?? 'text-to-3d').trim()
       options.store.commit('setNodeMeshySettings', {
         nodeId,
         meshySettings: {
@@ -107,8 +106,9 @@ export const useAIWorkflowMeshyCommands = (options: {
   const submitMeshyTextureFollowup = async (nodeId: string, currentTaskId: string, rootTaskId: string) => {
     const node = options.store.state.nodesById[nodeId]
     if (!node || node.type !== 'meshy') return
-    const settings = node.meshySettings ?? {}
-    const relationSummary = settings.meshyRelationSummary ?? {}
+    const nodeRecord = node as unknown as Record<string, unknown>
+    const settings = isRecord(nodeRecord.meshySettings) ? nodeRecord.meshySettings : {}
+    const relationSummary = isRecord(settings.meshyRelationSummary) ? settings.meshyRelationSummary : {}
 
     options.store.commit('setNodeMeshySettings', {
       nodeId,
@@ -135,8 +135,9 @@ export const useAIWorkflowMeshyCommands = (options: {
   const onNodeRunMeshyFollowup = async (nodeId: string, kind: 'texture' | 'rigging' | 'animation') => {
     const node = options.store.state.nodesById[nodeId]
     if (!node || node.type !== 'meshy') return
-    const settings = node.meshySettings ?? {}
-    const relationSummary = settings.meshyRelationSummary ?? {}
+    const nodeRecord = node as unknown as Record<string, unknown>
+    const settings = isRecord(nodeRecord.meshySettings) ? nodeRecord.meshySettings : {}
+    const relationSummary = isRecord(settings.meshyRelationSummary) ? settings.meshyRelationSummary : {}
     const currentTaskId = String(relationSummary.effectiveTaskId ?? settings.meshyTaskId ?? '').trim()
     const rootTaskId = String(settings.meshyRootTaskId ?? relationSummary.rootTaskId ?? currentTaskId).trim()
     const taskStatus = String(settings.meshyTaskStatus ?? '').trim()
@@ -170,7 +171,9 @@ export const useAIWorkflowMeshyCommands = (options: {
     const node = options.store.state.nodesById[nodeId]
     if (!node || node.type !== 'meshy') return
 
-    const status = String(node.meshySettings?.meshyTaskStatus ?? '').trim()
+    const nodeRecord = node as unknown as Record<string, unknown>
+    const settings = isRecord(nodeRecord.meshySettings) ? nodeRecord.meshySettings : {}
+    const status = String(settings.meshyTaskStatus ?? '').trim()
     if (status === 'pending' || status === 'running') {
       options.pushToast('当前任务进行中，无法重开新任务。', 'warn')
       return

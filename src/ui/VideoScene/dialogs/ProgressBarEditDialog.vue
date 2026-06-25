@@ -217,7 +217,7 @@ const props = withDefaults(
 )
 
 const store = useStore<TimelineState>(TimelineKey)
-const dwebCanvasRef = inject<any>(DwebCanvasGLKey, null)
+const dwebCanvasRef = inject(DwebCanvasGLKey, null)
 
 const open = computed(() => !!props.open)
 const frameCount = computed(() => store.state.frameCount)

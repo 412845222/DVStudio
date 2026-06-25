@@ -60,25 +60,14 @@ import {
 	reloadWindow,
 	openDevTools,
 } from '../../electronBridge'
+import type { BackendRuntimeState, SetupState } from '../../electronBridge/types'
 import { ThemeStore } from '../../store/theme'
 
 const router = useRouter()
 
-const backendRuntime = ref<{
-  running: boolean
-  healthy: boolean
-  baseUrl: string
-  port: number
-  lastError: string
-  setupRunning: boolean
-  updatedAt: number
-} | null>(null)
+const backendRuntime = ref<BackendRuntimeState | null>(null)
 
-const setupState = ref<{
-  running: boolean
-  updatedAt: number
-  steps: Array<{ key: string; label: string; status: string; detail?: string; progress?: number }>
-} | null>(null)
+const setupState = ref<SetupState | null>(null)
 
 let offRuntimeListener: (() => void) | null = null
 let setupPollTimer: number | null = null
@@ -125,7 +114,7 @@ const setupProgressTitle = computed(() => {
 const refreshSetupState = async () => {
   try {
     const st = await getSetupState()
-    if (st) setupState.value = st as any
+    if (st) setupState.value = st
   } catch {
     // ignore
   }
@@ -148,10 +137,10 @@ const backendStatusText = computed(() => {
 
 onMounted(async () => {
   const st = await getBackendRuntimeState()
-  if (st) backendRuntime.value = st as any
+  if (st) backendRuntime.value = st
   await refreshSetupState()
   offRuntimeListener = onBackendRuntimeStateChanged((next) => {
-    backendRuntime.value = next as any
+    backendRuntime.value = next
   })
   setupPollTimer = window.setInterval(() => {
     void refreshSetupState()

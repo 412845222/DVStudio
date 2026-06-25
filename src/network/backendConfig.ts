@@ -15,14 +15,13 @@ const normalizeBaseUrl = (url: string) => {
  * 4) default Django dev server: http://127.0.0.1:5800
  */
 export const getBackendBaseUrl = (): string => {
-	const w = window as any
 	const isElectronRuntime =
-		w?.__DWEB_RUNTIME__?.platform === 'electron' || typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
+		window?.__DWEB_RUNTIME__?.platform === 'electron' || typeof window?.dweb?.common?.getBackendBaseUrl === 'function'
 
 	// Electron 下必须优先使用 preload 注入的实时后端地址，
 	// 避免 localStorage 里的历史值（例如 5800 的旧服务）导致请求打到错误后端。
-	const fromWindow = typeof w?.__DWEB_BACKEND_BASE_URL__ === 'string' ? w.__DWEB_BACKEND_BASE_URL__ : ''
-	const fromEnv = (import.meta as any)?.env?.VITE_BACKEND_BASE_URL ?? ''
+	const fromWindow = typeof window?.__DWEB_BACKEND_BASE_URL__ === 'string' ? window.__DWEB_BACKEND_BASE_URL__ : ''
+	const fromEnv = import.meta.env.VITE_BACKEND_BASE_URL ?? ''
 	const fromStorage = localStorage.getItem(STORAGE_KEY) ?? ''
 	if (isElectronRuntime) {
 		return normalizeBaseUrl(fromWindow || fromStorage || fromEnv || DEFAULT_BACKEND_BASE_URL)
@@ -109,10 +108,9 @@ export const resolveBackendUrl = (pathOrUrl: string): string => {
 
 	// Web / 浏览器环境下，优先走 Vite 开发代理(或生产部署的同源 API)，
 	// 直接使用相对路径，避免跨域或 IP 可达性问题。
-	const w = window as any
 	const isElectronRuntime =
-		w?.__DWEB_RUNTIME__?.platform === 'electron' ||
-		typeof w?.dweb?.common?.getBackendBaseUrl === 'function'
+		window?.__DWEB_RUNTIME__?.platform === 'electron' ||
+		typeof window?.dweb?.common?.getBackendBaseUrl === 'function'
 	if (!isElectronRuntime) {
 		return raw.startsWith('/') ? raw : `/${raw}`
 	}

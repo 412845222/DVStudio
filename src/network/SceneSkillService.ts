@@ -2,6 +2,7 @@ import { getBackendBaseUrl } from './backendConfig'
 import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
 import { logBlueprintRequest } from './blueprintRequestLog'
+import { isRecord, isString, getErrorMessage } from '../types/utils'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -42,7 +43,7 @@ export type SceneUnderstandImageInput = {
 
 export type SceneUnderstandStreamEvent =
 	| { type: 'msg'; message: AgentToUiMessage }
-	| { type: 'error'; error: { message: string; details?: any } }
+	| { type: 'error'; error: { message: string; details?: unknown } }
 	| { type: 'done' }
 
 export type SceneLightingModelOption = SceneUnderstandModelOption
@@ -90,10 +91,22 @@ const jsonHeaders = {
 const safeJson = async (res: Response) => {
 	const text = await res.text()
 	try {
-		return { ok: true as const, value: JSON.parse(text) }
+		return { ok: true as const, value: JSON.parse(text) as unknown }
 	} catch {
 		return { ok: false as const, text }
 	}
+}
+
+const extractSseErrorMessage = (data: string): string => {
+	try {
+		const v = JSON.parse(data) as unknown
+		if (isRecord(v) && isString(v.message)) {
+			return v.message
+		}
+	} catch {
+		// ignore
+	}
+	return data || 'SSE error'
 }
 
 export class SceneSkillService {
@@ -121,7 +134,7 @@ export class SceneSkillService {
 		const method = String(init?.method || 'GET').toUpperCase()
 		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 		try {
-			const res = await fetch(input as any, init)
+			const res = await fetch(input, init)
 			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 			logBlueprintRequest({
 				url,
@@ -131,13 +144,13 @@ export class SceneSkillService {
 				tag: 'scene-skill',
 			})
 			return res
-		} catch (err) {
+		} catch (err: unknown) {
 			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				durationMs: Math.max(0, Math.round(end - start)),
-				errorMessage: err instanceof Error ? err.message : String(err),
+				errorMessage: getErrorMessage(err),
 				tag: 'scene-skill',
 			})
 			throw err
@@ -219,18 +232,12 @@ export class SceneSkillService {
 		return (await res.json()) as SceneLightingRunResponse
 	}
 
-	async *streamSceneUnderstand(
-		payload: {
-			nodeId: string
-			model: string
-			promptText: string
-			imageUrl?: string
-			imageDataUrl?: string
-			imageInputs?: SceneUnderstandImageInput[]
-		},
+	private async *streamSse(
+		url: string,
+		payload: unknown,
 		signal?: AbortSignal
 	): AsyncGenerator<SceneUnderstandStreamEvent, void, void> {
-		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/run:stream'), {
+		const res = await this.fetchWithLog(this.url(url), {
 			method: 'POST',
 			headers: {
 				...jsonHeaders,
@@ -242,7 +249,7 @@ export class SceneSkillService {
 
 		if (!res.ok || !res.body) {
 			const body = await safeJson(res)
-			throw new Error(`scene-understand/run:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(`SSE stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
 		}
 
 		const reader = res.body.getReader()
@@ -260,19 +267,13 @@ export class SceneSkillService {
 
 			if (name === 'done') return [{ type: 'done' }]
 			if (name === 'error') {
-				try {
-					const v = JSON.parse(data)
-					const msg = typeof (v as any)?.message === 'string' ? String((v as any).message) : 'SSE error'
-					return [{ type: 'error', error: { message: msg, details: v } }]
-				} catch {
-					return [{ type: 'error', error: { message: data || 'SSE error' } }]
-				}
+				return [{ type: 'error', error: { message: extractSseErrorMessage(data), details: undefined } }]
 			}
 			try {
-				const v = JSON.parse(data)
+				const v = JSON.parse(data) as unknown
 				if (isAgentToUiMessage(v)) return [{ type: 'msg', message: v }]
 				return []
-			} catch (e) {
+			} catch (e: unknown) {
 				return [{ type: 'error', error: { message: 'SSE msg JSON.parse failed', details: { raw: data, error: String(e) } } }]
 			}
 		}
@@ -316,6 +317,20 @@ export class SceneSkillService {
 		yield { type: 'done' }
 	}
 
+	async *streamSceneUnderstand(
+		payload: {
+			nodeId: string
+			model: string
+			promptText: string
+			imageUrl?: string
+			imageDataUrl?: string
+			imageInputs?: SceneUnderstandImageInput[]
+		},
+		signal?: AbortSignal
+	): AsyncGenerator<SceneUnderstandStreamEvent, void, void> {
+		yield* this.streamSse('/api/agent-skills/scene-understand/run:stream', payload, signal)
+	}
+
 	async *streamSceneLighting(
 		payload: {
 			nodeId: string
@@ -328,90 +343,7 @@ export class SceneSkillService {
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<SceneLightingStreamEvent, void, void> {
-		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/run:stream'), {
-			method: 'POST',
-			headers: {
-				...jsonHeaders,
-				Accept: 'text/event-stream',
-			},
-			body: JSON.stringify(payload ?? {}),
-			signal,
-		})
-
-		if (!res.ok || !res.body) {
-			const body = await safeJson(res)
-			throw new Error(`scene-lighting/run:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
-		}
-
-		const reader = res.body.getReader()
-		const decoder = new TextDecoder('utf-8')
-		let buffer = ''
-		let eventName: string | undefined
-		let dataLines: string[] = []
-
-		const flush = (): SceneLightingStreamEvent[] => {
-			if (dataLines.length === 0 && !eventName) return []
-			const data = dataLines.join('\n')
-			const name = eventName
-			eventName = undefined
-			dataLines = []
-
-			if (name === 'done') return [{ type: 'done' }]
-			if (name === 'error') {
-				try {
-					const v = JSON.parse(data)
-					const msg = typeof (v as any)?.message === 'string' ? String((v as any).message) : 'SSE error'
-					return [{ type: 'error', error: { message: msg, details: v } }]
-				} catch {
-					return [{ type: 'error', error: { message: data || 'SSE error' } }]
-				}
-			}
-			try {
-				const v = JSON.parse(data)
-				if (isAgentToUiMessage(v)) return [{ type: 'msg', message: v }]
-				return []
-			} catch (e) {
-				return [{ type: 'error', error: { message: 'SSE msg JSON.parse failed', details: { raw: data, error: String(e) } } }]
-			}
-		}
-
-		try {
-			while (true) {
-				const { done, value } = await reader.read()
-				if (done) break
-				buffer += decoder.decode(value, { stream: true })
-
-				let idx = buffer.indexOf('\n')
-				while (idx >= 0) {
-					const line = buffer.slice(0, idx)
-					buffer = buffer.slice(idx + 1)
-					idx = buffer.indexOf('\n')
-
-					const l = line.replace(/\r$/, '')
-					if (!l.trim()) {
-						for (const ev of flush()) yield ev
-						continue
-					}
-					if (l.startsWith('event:')) {
-						eventName = l.slice('event:'.length).trim()
-						continue
-					}
-					if (l.startsWith('data:')) {
-						dataLines.push(l.slice('data:'.length).trimStart())
-						continue
-					}
-				}
-			}
-		} finally {
-			try {
-				reader.releaseLock()
-			} catch {
-				// ignore
-			}
-		}
-
-		for (const ev of flush()) yield ev
-		yield { type: 'done' }
+		yield* this.streamSse('/api/agent-skills/scene-lighting/run:stream', payload, signal)
 	}
 
 	async runSceneLayout(payload: { nodeId: string; inputJson: string }): Promise<SceneLayoutRunResponse> {

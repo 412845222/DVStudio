@@ -1,6 +1,20 @@
 import { clamp01, clampPx, toNumber } from './numbers'
 import type { NodeBaseDTO, NodeType } from './types'
 
+type LegacyTransform = {
+	x?: unknown
+	y?: unknown
+	scaleX?: unknown
+	scaleY?: unknown
+	scale?: unknown
+	pivotX?: unknown
+	pivotY?: unknown
+	width?: unknown
+	height?: unknown
+	rotation?: unknown
+	opacity?: unknown
+}
+
 export class NodeBase {
 	static readonly type: NodeType = 'base'
 
@@ -20,25 +34,25 @@ export class NodeBase {
 			if (!Number.isFinite(n)) return fallback
 			return Math.max(0, Math.min(100, n))
 		}
-		const legacyScale = clampScale((dto.transform as any)?.scale, 1)
+		const tr = dto.transform as LegacyTransform
+		const legacyScale = clampScale(tr.scale, 1)
 		return {
 			...dto,
 			type: dto.type ?? 'base',
 			transform: {
-				x: toNumber(dto.transform?.x, 0),
-				y: toNumber(dto.transform?.y, 0),
-				scaleX: clampScale((dto.transform as any)?.scaleX, legacyScale),
-				scaleY: clampScale((dto.transform as any)?.scaleY, legacyScale),
+				x: toNumber(tr.x, 0),
+				y: toNumber(tr.y, 0),
+				scaleX: clampScale(tr.scaleX, legacyScale),
+				scaleY: clampScale(tr.scaleY, legacyScale),
 				scale: legacyScale,
-				pivotX: clamp01(dto.transform?.pivotX, 0.5),
-				pivotY: clamp01(dto.transform?.pivotY, 0.5),
-				width: clampPx(dto.transform?.width, 200),
-				height: clampPx(dto.transform?.height, 120),
-				rotation: toNumber(dto.transform?.rotation, 0),
-				opacity: clamp01(dto.transform?.opacity, 1),
+				pivotX: clamp01(tr.pivotX, 0.5),
+				pivotY: clamp01(tr.pivotY, 0.5),
+				width: clampPx(tr.width, 200),
+				height: clampPx(tr.height, 120),
+				rotation: toNumber(tr.rotation, 0),
+				opacity: clamp01(tr.opacity, 1),
 			},
 			props: dto.props ?? {},
 		}
 	}
 }
-

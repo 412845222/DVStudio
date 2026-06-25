@@ -54,22 +54,22 @@ export const comfyOutputForAnchor = (
 ) => {
   const byAnchorAndKind = outputs.find(
     (media) =>
-      String((media as any)?.anchorId ?? '') === anchorId
-      && String((media as any)?.url ?? '').trim()
-      && inferMediaKind(media as any) === expectedKind,
+      String(media?.anchorId ?? '') === anchorId
+      && String(media?.url ?? '').trim()
+      && inferMediaKind(media) === expectedKind,
   )
   if (byAnchorAndKind) return byAnchorAndKind
 
   const byAnchorAny = outputs.find(
     (media) =>
-      String((media as any)?.anchorId ?? '') === anchorId
-      && String((media as any)?.url ?? '').trim(),
+      String(media?.anchorId ?? '') === anchorId
+      && String(media?.url ?? '').trim(),
   )
-  if (byAnchorAny && inferMediaKind(byAnchorAny as any) === expectedKind) return byAnchorAny
+  if (byAnchorAny && inferMediaKind(byAnchorAny) === expectedKind) return byAnchorAny
 
   return outputs.find(
     (media) =>
-      String((media as any)?.url ?? '').trim()
-      && inferMediaKind(media as any) === expectedKind,
+      String(media?.url ?? '').trim()
+      && inferMediaKind(media) === expectedKind,
   )
 }

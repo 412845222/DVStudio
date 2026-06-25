@@ -1,7 +1,15 @@
 import { NodeBase } from './NodeBase'
 import type { NodeBaseDTO, NodeType, TextNodeDTO, TextNodeProps } from './types'
 
-export const normalizeTextNodeProps = (base: any): TextNodeProps => {
+export type TextNodePropsInput = {
+	textContent?: unknown
+	fontSize?: unknown
+	fontColor?: unknown
+	fontStyle?: unknown
+	textAlign?: unknown
+}
+
+export const normalizeTextNodeProps = (base: TextNodePropsInput): TextNodeProps => {
 	const textContent = typeof base?.textContent === 'string' ? base.textContent : 'Text'
 	const fontSizeRaw = Number(base?.fontSize)
 	const fontSize = Number.isFinite(fontSizeRaw) ? fontSizeRaw : 24
@@ -41,4 +49,3 @@ export class TextNode extends NodeBase {
 		}
 	}
 }
-
