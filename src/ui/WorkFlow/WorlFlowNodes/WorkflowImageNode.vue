@@ -172,6 +172,27 @@
 
           <div class="wf-toolbar-divider" />
 
+          <button
+            class="wf-toolbar-btn"
+            type="button"
+            :class="{ active: outputPassThroughEnabled }"
+            :disabled="!resourceUrl"
+            @click.stop="toggleOutputPassThrough"
+            title="向下游传递图片输出：开启后，下游节点可以接收该节点的图片"
+          >
+            <svg class="wf-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 12h16m0 0-5-5m5 5-5 5"
+              />
+            </svg>
+            <span>输出</span>
+          </button>
+
         </div>
       </div>
     </template>
@@ -210,6 +231,7 @@ const props = defineProps<{
     naturalHeight?: number;
     cropEnabled?: boolean;
     crop?: { x: number; y: number; width: number; height: number };
+    outputPassThroughEnabled?: boolean;
   } | null;
   width: number;
   height: number;
@@ -260,6 +282,7 @@ const emit = defineEmits<{
       naturalHeight?: number;
       cropEnabled?: boolean;
       crop?: { x: number; y: number; width: number; height: number };
+      outputPassThroughEnabled?: boolean;
     }
   ): void;
   (e: "media-ready"): void;
@@ -366,6 +389,7 @@ const crop = computed(() => {
 
 const cropMode = ref(false);
 const cropEnabled = computed(() => Boolean(props.imageSettings?.cropEnabled));
+const outputPassThroughEnabled = computed(() => Boolean(props.imageSettings?.outputPassThroughEnabled));
 
 watch(
   () => cropEnabled.value,
@@ -591,6 +615,12 @@ const toggleCropMode = async () => {
     await nextTick();
     await ensureNaturalSizeFallback();
   }
+};
+
+const toggleOutputPassThrough = () => {
+  if (!props.resourceUrl) return;
+  const next = !outputPassThroughEnabled.value;
+  emit("update-image-settings", { outputPassThroughEnabled: next });
 };
 
 const applyOutputQualityByWidth = async (nextW: number) => {

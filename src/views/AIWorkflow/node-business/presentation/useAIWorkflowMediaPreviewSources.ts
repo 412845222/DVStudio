@@ -43,6 +43,14 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
       }
     }
     if (fromNode.type === 'image' || fromNode.type === 'video') {
+      if (fromNode.type === 'image' && !fromNode.imageSettings?.outputPassThroughEnabled) {
+        return {
+          kind: null as null,
+          url: null as string | null,
+          cropEnabled: false,
+          crop: null as null | { x: number; y: number; width: number; height: number },
+        }
+      }
       const cropEnabled = !!fromNode.imageSettings?.cropEnabled
       const crop = fromNode.type === 'image' ? (fromNode.imageSettings?.crop ?? null) : null
       return { kind: fromNode.type, url: payload.nodeResourceUrl(fromNode), cropEnabled, crop }
@@ -91,6 +99,9 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
     if (!fromNode) return null as string | null
 
     if (fromNode.type === 'image' || fromNode.type === 'video') {
+      if (fromNode.type === 'image' && !fromNode.imageSettings?.outputPassThroughEnabled) {
+        return null as string | null
+      }
       return payload.nodeResourceUrl(fromNode)
     }
 
@@ -108,6 +119,9 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
     if (!fromNode) return null as null | { url: string; width?: number; height?: number }
 
     if (fromNode.type === 'image') {
+      if (!fromNode.imageSettings?.outputPassThroughEnabled) {
+        return null as null | { url: string; width?: number; height?: number }
+      }
       const url = String(payload.nodeResourceUrl(fromNode) ?? '').trim()
       if (!url) return null
       return {

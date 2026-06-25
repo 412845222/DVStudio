@@ -36,6 +36,8 @@ export const useAIWorkflowSceneDecomposeController = (options: {
     generatedFiles: Map<string, File>
   ) => Promise<{ createdNodeIds: string[]; sceneLayoutConnections?: number }>
   pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
+  onAutoWireStart?: (sourceNodeId: string) => void
+  onAutoWireEnd?: () => void
 }) => {
   const onNodeRunSceneDecompose = async (nodeId: string) => {
     const node = options.store.state.nodesById[nodeId]
@@ -297,6 +299,8 @@ export const useAIWorkflowSceneDecomposeController = (options: {
         return
       }
 
+      options.onAutoWireStart?.(nodeId)
+
       const autoExpandResult = await options.autoExpandSceneDecomposeOutputs(refreshedNode, outputs, generatedFiles)
       const createdNodeIds = autoExpandResult.createdNodeIds
       const sceneLayoutConnections = Number(autoExpandResult.sceneLayoutConnections ?? 0)
@@ -323,6 +327,8 @@ export const useAIWorkflowSceneDecomposeController = (options: {
         },
       })
       options.pushToast('场景分解已生成并展开。', 'info')
+
+      options.onAutoWireEnd?.()
     } catch (err: any) {
       const message = String(err?.message ?? err ?? 'unknown')
       options.store.commit('setNodeSceneDecomposeSettings', {
@@ -335,6 +341,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
         },
       })
       options.pushToast(`场景分解失败：${message}`, 'warn')
+      options.onAutoWireEnd?.()
     }
   }
 

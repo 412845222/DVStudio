@@ -12,6 +12,7 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
     sourceImageIndex: number,
   ) => { inputAnchorId: string; fromNodeId: string; fromAnchorId: string; fromNode: WorkflowNode } | null
   onNodeUploadResource: (nodeId: string, file: File, kind: 'image' | 'video', opts?: { autoDistribute?: boolean }) => void
+  onAutoWireNodeCreated?: (nodeId: string) => void
 }) => {
   const autoExpandSceneDecomposeOutputs = async (
     sourceNode: WorkflowNode,
@@ -67,6 +68,7 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
       if (!nodeId) return ''
       options.store.commit('setNodeType', { nodeId, type: payload.type })
       options.store.commit('setNodeAlias', { nodeId, alias: payload.alias })
+      options.onAutoWireNodeCreated?.(nodeId)
       return nodeId
     }
 

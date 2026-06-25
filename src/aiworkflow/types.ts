@@ -55,6 +55,8 @@ export type WorkflowImageNodeSettings = {
 	crop?: WorkflowImageCrop
 	/** image generation source */
 	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	/** whether to pass image output to downstream nodes (default: false) */
+	outputPassThroughEnabled?: boolean
 	/** Meshy image generation settings */
 	meshyImageSettings?: {
 		prompt?: string
