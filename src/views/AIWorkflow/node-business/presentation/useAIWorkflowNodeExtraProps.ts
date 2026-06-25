@@ -9,6 +9,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
   store: {
     state: {
       resourcesById: Record<string, any>
+      nodesById: Record<string, any>
     }
   }
   connectedTextInputValue: (nodeId: string, inputId: string) => string
@@ -28,6 +29,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
   rotateImagePreviewUrl: (node: WorkflowNode) => string | null
   connectedSceneUnderstandImageInputs: (nodeId: string) => Array<{ url: string; width?: number; height?: number }>
   connectedImageInputUrl: (nodeId: string, inputId: string) => string | null
+  connectedImageInputSource: (nodeId: string, inputId: string) => { url: string; width?: number; height?: number } | null
   connectedSceneDecomposeImageInputs: (nodeId: string) => Array<{ url: string; width?: number; height?: number }>
   connectedSceneLayoutModelBindings: (nodeId: string) => any[]
   viewportMotionActive: { value: boolean }
@@ -40,8 +42,70 @@ export const useAIWorkflowNodeExtraProps = (payload: {
   connectedMeshyPrompt: (nodeId: string) => string
   connectedMeshyImageUrls: (nodeId: string) => string[]
   nodeMediaReloadToken: (nodeId: string) => number
+  getFirstIncomingEdge: (nodeId: string, anchorId?: string) => any
+  getUpstreamCroppedImageUrl: (node: WorkflowNode) => string | null
 }) => {
   const extraPropsCache = new Map<string, Record<string, any>>()
+
+  const getUpstreamPassThroughImageNode = (node: WorkflowNode): WorkflowNode | null => {
+    if (node.type !== 'image') return null
+    if (node.resourceId) return null
+    const edge = payload.getFirstIncomingEdge(node.id, 'in-image') || payload.getFirstIncomingEdge(node.id, 'in-resource')
+    if (!edge) return null
+    const fromNode = payload.store.state.nodesById[edge.fromNodeId] as WorkflowNode | undefined
+    if (!fromNode || fromNode.type !== 'image') return null
+    if (!fromNode.resourceId) return null
+    return fromNode
+  }
+
+  const resolveImageNodeEffectiveSource = (node: WorkflowNode): { sourceNode: WorkflowNode; isPassThrough: boolean } | null => {
+    if (node.type !== 'image') return null
+    if (node.resourceId) {
+      return { sourceNode: node, isPassThrough: false }
+    }
+    const upstream = getUpstreamPassThroughImageNode(node)
+    if (upstream) {
+      return { sourceNode: upstream, isPassThrough: true }
+    }
+    return null
+  }
+
+  const buildImageNodeProps = (node: WorkflowNode, shedHeavy: boolean, withInputRefs: boolean) => {
+    const effective = resolveImageNodeEffectiveSource(node)
+    const sourceNode = effective?.sourceNode ?? node
+    const isPassThrough = effective?.isPassThrough ?? false
+
+    const rid = String(sourceNode.resourceId ?? '').trim()
+    const resource = rid ? payload.store.state.resourcesById[rid] : null
+    const resourceSourcePath =
+      resource && typeof (resource as any).sourcePath === 'string'
+        ? String((resource as any).sourcePath).trim()
+        : ''
+
+    const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(sourceNode, 320))
+    const imagePreviewUrl640 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(sourceNode, 640))
+    const imagePreviewVersion = String(payload.nodeImagePreviewVersion(sourceNode) ?? '').trim()
+
+    const imageSettings = isPassThrough
+      ? (sourceNode.imageSettings ?? null)
+      : (node.imageSettings ?? null)
+
+    const upstreamCroppedImageUrl = isPassThrough
+      ? payload.getUpstreamCroppedImageUrl(node)
+      : null
+
+    return {
+      resourceUrl: upstreamCroppedImageUrl || sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(sourceNode)),
+      resourceSourcePath: resourceSourcePath || null,
+      resourcePreviewUrl320: shedHeavy ? null : (imagePreviewUrl320 || null),
+      resourcePreviewUrl640: shedHeavy ? null : (imagePreviewUrl640 || imagePreviewUrl320 || null),
+      resourcePreviewVersion: imagePreviewVersion || null,
+      resourceName: payload.nodeResourceName(sourceNode),
+      inputParamPreviewRefs: withInputRefs ? payload.getInputParamPreviewRefs(node.id) : [],
+      imageSettings,
+      upstreamCroppedImageUrl: upstreamCroppedImageUrl,
+    }
+  }
 
   const withMotionSafeProps = (node: WorkflowNode, props: Record<string, any>) => {
     if (props.previewSuspended === true) return props
@@ -109,7 +173,10 @@ export const useAIWorkflowNodeExtraProps = (payload: {
         sourcePreviewLabel: '',
       }
     }
-    if (node.type === 'image' || node.type === 'video') {
+    if (node.type === 'image') {
+      return buildImageNodeProps(node, true, false)
+    }
+    if (node.type === 'video') {
       const rid = String(node.resourceId ?? '').trim()
       const resource = rid ? payload.store.state.resourcesById[rid] : null
       const resourceSourcePath =
@@ -119,15 +186,12 @@ export const useAIWorkflowNodeExtraProps = (payload: {
       const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 320))
       const imagePreviewUrl640 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 640))
       const imagePreviewVersion = String(payload.nodeImagePreviewVersion(node) ?? '').trim()
-      const resourcePosterUrl =
-        node.type === 'video'
-          ? (() => {
-              if (!rid) return null
-              const raw = typeof (resource as any)?.posterUrl === 'string' ? String((resource as any).posterUrl).trim() : ''
-              const safe = sanitizeWorkflowMediaUrl(raw)
-              return safe || null
-            })()
-          : null
+      const resourcePosterUrl = (() => {
+        if (!rid) return null
+        const raw = typeof (resource as any)?.posterUrl === 'string' ? String((resource as any).posterUrl).trim() : ''
+        const safe = sanitizeWorkflowMediaUrl(raw)
+        return safe || null
+      })()
       return {
         resourceUrl: sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node)),
         resourceSourcePath: resourceSourcePath || null,
@@ -136,15 +200,10 @@ export const useAIWorkflowNodeExtraProps = (payload: {
         resourcePreviewVersion: imagePreviewVersion || null,
         resourceName: payload.nodeResourceName(node),
         inputParamPreviewRefs: [],
-        ...(node.type === 'image' ? { imageSettings: node.imageSettings ?? null } : {}),
-        ...(node.type === 'video'
-          ? {
-              posterUrl: resourcePosterUrl,
-              videoSettings: node.videoSettings ?? null,
-              screenshotEnabled: payload.connectedImageTargetsFromVideo(node.id).length > 0,
-              reloadToken: payload.nodeMediaReloadToken(node.id),
-            }
-          : {}),
+        posterUrl: resourcePosterUrl,
+        videoSettings: node.videoSettings ?? null,
+        screenshotEnabled: payload.connectedImageTargetsFromVideo(node.id).length > 0,
+        reloadToken: payload.nodeMediaReloadToken(node.id),
       }
     }
     if (node.type === 'rotate-image') {
@@ -200,7 +259,10 @@ export const useAIWorkflowNodeExtraProps = (payload: {
         previewHeight: Number.isFinite(Number(ph)) ? Number(ph) : 1080,
       }
     }
-    if (node.type === 'image' || node.type === 'video') {
+    if (node.type === 'image') {
+      return buildImageNodeProps(node, false, true)
+    }
+    if (node.type === 'video') {
       const rid = String(node.resourceId ?? '').trim()
       const resource = rid ? payload.store.state.resourcesById[rid] : null
       const resourceSourcePath =
@@ -210,15 +272,12 @@ export const useAIWorkflowNodeExtraProps = (payload: {
       const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 320))
       const imagePreviewUrl640 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 640))
       const imagePreviewVersion = String(payload.nodeImagePreviewVersion(node) ?? '').trim()
-      const resourcePosterUrl =
-        node.type === 'video'
-          ? (() => {
-              if (!rid) return null
-              const raw = typeof (resource as any)?.posterUrl === 'string' ? String((resource as any).posterUrl).trim() : ''
-              const safe = sanitizeWorkflowMediaUrl(raw)
-              return safe || null
-            })()
-          : null
+      const resourcePosterUrl = (() => {
+        if (!rid) return null
+        const raw = typeof (resource as any)?.posterUrl === 'string' ? String((resource as any).posterUrl).trim() : ''
+        const safe = sanitizeWorkflowMediaUrl(raw)
+        return safe || null
+      })()
       return {
         resourceUrl: sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node)),
         resourceSourcePath: resourceSourcePath || null,
@@ -227,15 +286,10 @@ export const useAIWorkflowNodeExtraProps = (payload: {
         resourcePreviewVersion: imagePreviewVersion || null,
         resourceName: payload.nodeResourceName(node),
         inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id),
-        ...(node.type === 'image' ? { imageSettings: node.imageSettings ?? null } : {}),
-        ...(node.type === 'video'
-          ? {
-              posterUrl: resourcePosterUrl,
-              videoSettings: node.videoSettings ?? null,
-              screenshotEnabled: payload.connectedImageTargetsFromVideo(node.id).length > 0,
-              reloadToken: payload.nodeMediaReloadToken(node.id),
-            }
-          : {}),
+        posterUrl: resourcePosterUrl,
+        videoSettings: node.videoSettings ?? null,
+        screenshotEnabled: payload.connectedImageTargetsFromVideo(node.id).length > 0,
+        reloadToken: payload.nodeMediaReloadToken(node.id),
       }
     }
     if (node.type === 'rotate-image') {
