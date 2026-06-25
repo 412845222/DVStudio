@@ -113,23 +113,6 @@ function handleClick(e: MouseEvent) {
 	border-radius: 0;
 }
 
-.user-button.is-collapsed {
-	justify-content: center;
-	align-items: center;
-	padding: 8px 0;
-	min-height: unset;
-	height: auto;
-	width: 100%;
-	border: none;
-	background: transparent;
-}
-
-.user-button.is-collapsed:hover {
-	background: transparent;
-	border: none;
-	box-shadow: none;
-}
-
 .user-button:not(.is-collapsed) {
 	justify-content: flex-start;
 	padding: 8px 10px;
@@ -137,19 +120,19 @@ function handleClick(e: MouseEvent) {
 	margin-top: 4px;
 }
 
-.user-button:hover {
+.user-button:not(.is-collapsed):hover {
 	background: color-mix(in srgb, var(--theme-accent, #1f9d84) 10%, transparent);
 	border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 35%, transparent);
 	color: var(--theme-accent, #1f9d84);
 }
 
-.user-button.is-active,
-.user-button.is-logged-in {
+.user-button:not(.is-collapsed).is-active,
+.user-button:not(.is-collapsed).is-logged-in {
 	border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
 }
 
-.user-button.is-active:hover,
-.user-button.is-logged-in:hover {
+.user-button:not(.is-collapsed).is-active:hover,
+.user-button:not(.is-collapsed).is-logged-in:hover {
 	border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 55%, transparent);
 	box-shadow: 0 0 14px color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
 }
@@ -159,7 +142,7 @@ function handleClick(e: MouseEvent) {
 	cursor: pointer;
 }
 
-.user-button.is-mock:hover {
+.user-button:not(.is-collapsed).is-mock:hover {
 	background: color-mix(in srgb, var(--theme-text-muted, #6e6e6e) 8%, transparent);
 	border-color: color-mix(in srgb, var(--theme-text-muted, #6e6e6e) 25%, transparent);
 	color: var(--theme-text-muted, #6e6e6e);
@@ -170,7 +153,7 @@ function handleClick(e: MouseEvent) {
 	border-color: color-mix(in srgb, var(--theme-warning, #cca700) 30%, transparent);
 }
 
-.user-button.is-connecting:hover {
+.user-button:not(.is-collapsed).is-connecting:hover {
 	border-color: color-mix(in srgb, var(--theme-warning, #cca700) 45%, transparent);
 	box-shadow: 0 0 10px color-mix(in srgb, var(--theme-warning, #cca700) 20%, transparent);
 	color: var(--theme-warning, #cca700);
@@ -233,5 +216,30 @@ function handleClick(e: MouseEvent) {
 .user-menu-indicator svg {
 	width: 12px;
 	height: 12px;
+}
+
+.user-button.is-collapsed {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	padding: 8px 0;
+	min-height: unset;
+	height: auto;
+	width: 100%;
+	border: none !important;
+	background: transparent !important;
+	box-shadow: none !important;
+}
+
+.user-button.is-collapsed:hover,
+.user-button.is-collapsed:active,
+.user-button.is-collapsed.is-logged-in,
+.user-button.is-collapsed.is-active,
+.user-button.is-collapsed.is-connecting,
+.user-button.is-collapsed.is-mock {
+	border: none !important;
+	background: transparent !important;
+	box-shadow: none !important;
+	color: inherit;
 }
 </style>

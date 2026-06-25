@@ -97,7 +97,7 @@
 				<span class="gsn-label">{{ item.label }}</span>
 			</button>
 
-			<div v-if="isRealPlatform" class="nav-divider"></div>
+			<div v-if="isRealPlatform && !isCollapsed" class="nav-divider"></div>
 
 			<UserButton
 				v-if="isRealPlatform"

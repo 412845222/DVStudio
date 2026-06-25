@@ -564,7 +564,7 @@ async function handleOpenOverlayCommunity() {
 	width: 100%;
 	height: 100%;
 	overflow-y: auto;
-	padding: 32px clamp(24px, 4vw, 64px);
+	padding: 32px clamp(24px, 4vw, 64px) 32px 88px;
 	box-sizing: border-box;
 	background:
 		radial-gradient(1200px 500px at 10% -10%, rgba(58, 168, 180, 0.12), transparent 60%),
@@ -581,8 +581,8 @@ async function handleOpenOverlayCommunity() {
 	position: sticky;
 	top: 0;
 	z-index: 5;
-	margin: -32px calc(-1 * clamp(24px, 4vw, 64px)) 24px;
-	padding: 24px clamp(24px, 4vw, 64px) 18px;
+	margin: -32px calc(-1 * clamp(24px, 4vw, 64px)) 24px -88px;
+	padding: 24px clamp(24px, 4vw, 64px) 18px 88px;
 	background: linear-gradient(to bottom, var(--theme-bg-secondary) 70%, transparent);
 	backdrop-filter: blur(8px);
 	-webkit-backdrop-filter: blur(8px);
