@@ -20,7 +20,18 @@ type UseAIWorkflowProjectSnapshotBuilderOptions = {
 		projectRelativePath: string,
 		fallbackUrl?: string
 	) => string
+	persistExternalAssetToProject?: (payload: {
+		kind: 'image' | 'video' | 'file'
+		name: string
+		sourceUrl?: string
+		sourcePath?: string
+	}) => Promise<{
+		url: string
+		absolutePath: string
+		projectRelativePath?: string
+	} | null>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
+	stripUnrealExportRuntimeFromNodes?: (nodesById: WorkflowState['nodesById']) => WorkflowState['nodesById']
 }
 
 export const useAIWorkflowProjectSnapshotBuilder = (

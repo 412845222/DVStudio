@@ -2,16 +2,18 @@
 
 ## 1. 全栈架构
 
-DVStudio 采用 **前端 (Vue 3 + WebGL2) + 后端 (Django) + 桌面端壳 (Electron + LocalDB + dweb:// 协议)** 的三层架构。
+DVStudio 采用 **前端 (Vue 3 + WebGL2) + 平台桥接层 (Platform Bridge) + 后端 (Django) + 桌面端壳 (Electron + LocalDB + dweb:// 协议 + Platform Abstraction)** 的多层架构。
 
-- **前端 (Frontend)**: 负责 UI 渲染、WebGL2 画布绘制、状态管理 (Vuex)、用户交互；通过 Electron IPC 桥访问本地能力，通过 HTTP 访问 Django 后端。
+- **前端 (Frontend)**: 负责 UI 渲染、WebGL2 画布绘制、状态管理 (Vuex)、用户交互；通过 Electron IPC 桥访问本地能力，通过平台桥接层访问 Steam 等平台能力，通过 HTTP 访问 Django 后端。
+- **平台桥接层 (Platform Bridge)**: `src/platformBridge/` 提供前端侧的平台能力抽象（Steam 等），通过 Electron IPC 与主进程平台层通信，Web 模式下自动降级为 Mock。
 - **后端 (Backend)**: 负责 AI 接口代理（Copilot CLI / Codex CLI / Meshy / Seedance / 即梦 / SeeDream / NanoBanana）、SSE 流式对话、组件库、Agent Skills（场景理解/灯光/布局/Unreal 导出）、项目数据持久化。
 - **桌面端 (Desktop)**: Electron 主进程承担多重职责——
   - 启动并守护 Django Python 子进程
   - 承载本地 SQLite 数据库（`electron/localdb/`）
   - 注册 `dweb://project-assets` 自定义协议
   - 提供 Python 环境检测与引导安装
-  - 通过 IPC（`window.dweb.*`）向前端暴露本地能力
+  - **平台抽象层**（`electron/platform/`）：管理 Steam 等平台提供者，加载原生模块，处理平台事件泵
+  - 通过 IPC（`window.dweb.*`）向前端暴露本地能力与平台能力
 
 ## 2. 核心目录结构
 
@@ -22,16 +24,39 @@ DVStudio/
 │   ├── ai/                       # AI 模型定义（chatModels.ts）
 │   ├── aiworkflow/               # AI 工作流核心（types / actions / nodeLibrary / resource / domain / persistence）
 │   ├── assets/                   # 静态资源（vue.svg 等）
-│   ├── composables/              # Vue 组合式函数（useCardParticles / useSquareParticles / useStartupProgress）
-│   ├── core/                     # 核心业务（scene / project / history / events / components / agentToUI / studio / subtitle / timeline / shared）
+│   ├── composables/              # Vue 组合式函数（useCardParticles / useSquareParticles / useStartupProgress / useSteamHotkeys / useSteamPanel）
+│   ├── core/                     # 核心业务（scene / project / history / events / components / agentToUI / studio / subtitle / timeline / shared / export / editor）
+│   │   ├── export/               # 导出核心（computeSceneStateAtFrame）
+│   │   └── scene/
+│   │       ├── commands/         # 场景命令（interaction / lines / moveNode / nodes / overlay / selection / snap）
+│   │       │   └── snap/         # 吸附命令（axis / baseSession / context / moveSession / resizeSession）
+│   │       ├── factories/        # 场景状态工厂
+│   │       └── nodesType/        # 节点类型（含 upgradeNodeType）
 │   ├── electronBridge/           # Electron IPC 桥接封装（index.ts + types.ts）
-│   ├── engine/                   # WebGL2 渲染引擎（canvas / scene / renderers / shaders / texture / camera / picking / pipeline / material / resources / postprocess）
+│   ├── engine/                   # WebGL2 渲染引擎（canvas / scene / renderers / shaders / texture / camera / picking / pipeline / material / resources）
+│   │   ├── canvas/
+│   │   │   └── postprocess/      # 后期处理管线（pipeline / program / targets / types）
+│   │   ├── material/             # 基础 2D shader 与圆角矩形/蒙版材质（basic2dShaders / roundedRectShader / roundedMaskTextureShader）
+│   │   ├── renderers/            # 渲染器（BaseRenderer / NodeRenderer / RectRenderer / TextRenderer / ImageRenderer / LineRenderer）
+│   │   ├── resources/            # 资源管理（DwebImagePool 图片池等）
+│   │   ├── scene/                # 场景管理（DwebVideoScene）
+│   │   └── shaders/              # 着色器（postBlur / postGlowComposite）
 │   ├── network/                  # API 服务封装（AIChatService / ComfyUIBridgeService / BlueprintProjectService / ComponentLibraryService / ExportService / SceneSkillService / SubtitleAIService / UnrealExportService / LegalDocService / LocalExecChatService / AICredentialService / runtimePlatform / backendConfig / blueprintRequestLog）
+│   ├── platformBridge/           # 平台桥接层（index / platform / usePlatform / useSteamEntry / types）
 │   ├── router/                   # Vue Router 4 路由表
 │   ├── store/                    # Vuex 状态（aiworkflow / timeline / videoscene / videostudio / theme）
 │   ├── styles/                   # 全局样式（theme-tokens / workflow 子样式）
 │   ├── types/                    # TypeScript 类型定义（electron-bridge.d.ts / three-rect-area-light.d.ts）
-│   ├── ui/                       # UI 组件库（AIChat / BluePrint / TimeLine / UIComponent / VideoScene / WorkFlow）
+│   ├── ui/                       # UI 组件库
+│   │   ├── AIChat/               # AI 对话（AIChatDialog）
+│   │   ├── BluePrint/            # 工作流画布（BlueprintCanvas + node-dialog/ 节点聊天对话框）
+│   │   ├── Electron/             # Electron 启动环境（CommandConsole / EnvCheckList）
+│   │   ├── Steam/                # Steam 组件（SteamFriendsList / SteamPanel / SteamQuickActions / SteamStatusBadge / SteamUserButton / SteamUserCard）
+│   │   ├── TimeLine/             # 时间轴（TimeLine + audio/ 音频波形 + components/ 缓动曲线/上下文菜单 + core/ 数据管理 + progress/ 进度样式）
+│   │   ├── UIComponent/          # 通用 UI（GlobalTitleBar / GlobalSideNav / ModalDialog / ToastStack / MarkdownViewer / VideoController / ContextMenu / DwebCanvasNodeSearchMenu / FullscreenProgressOverlay / GlobalPageBackground / PageTransitionOverlay / SeedanceVideoForm / StartupProgressBar / SteamEntryOverlay / MeshyImageForm / BottomChatDock / SideNavDock / WorkflowInspectorPanel）
+│   │   ├── User/                 # 用户组件（UserAvatar / UserButton / UserMenu）
+│   │   ├── VideoScene/           # 视频场景编辑器（VideoScene + anim/ 动画 + dialogs/ 对话框 + markdown/ + nodesType/ + panels/ 面板 + parts/ 控制点/详情/节点树/工具栏 + ruler/ + subtitleAI/）
+│   │   └── WorkFlow/             # 工作流 UI（WorlFlowNodes/ + selection/ 选择框/标签编辑器 + WorkflowNodeBase / WorkflowEdgeLayer 等）
 │   ├── views/                    # 页面级组件
 │   │   ├── AIWorkflow.vue        # 工作流页面（包装器，内部委托给 AIWorkflow/AIWorkflowPage.vue）
 │   │   ├── AIWorkflow/           # 工作流页面实现（assets / blueprint-core / bridge / concurrency / network / node-business / ui 等子目录）
@@ -50,9 +75,12 @@ DVStudio/
 ├── django-app/                   # 后端源码 (Django 4.2.11)
 │   ├── dwebapp/                  # 核心 App（AI 对话 / 凭证 / 法律文档 / 导出 / Agent Skills）
 │   │   ├── ai/                   # AI 子模块
-│   │   │   ├── api/              # REST API（chat / subtitle_understanding）
+│   │   │   ├── api/              # REST API
+│   │   │   │   ├── chat/         # SSE 对话（utils.py / views.py）
+│   │   │   │   └── subtitle_understanding/  # 字幕理解
 │   │   │   ├── skills/           # 提示词 + Skill 脚本（palette / subtitle / component_template / outline_style / conversation_component / video_gui / protocol）
 │   │   │   ├── credentials_store.py
+│   │   │   ├── credentials_api.py
 │   │   │   └── _md_prompts.py
 │   │   ├── export_api.py
 │   │   ├── legal_api.py
@@ -119,9 +147,21 @@ DVStudio/
 │   └── requirements.txt
 │
 ├── electron/                     # 桌面端源码 (Electron 33.x)
-│   ├── main.mjs                  # 主进程入口（注册 dweb 协议、启动 Django、初始化 LocalDB）
-│   ├── preload.mjs               # 预加载脚本（contextBridge.exposeInMainWorld('dweb', ...)）
+│   ├── main.mjs                  # 主进程入口（注册 dweb 协议、平台预检、启动 Django、初始化 LocalDB、初始化平台层）
+│   ├── preload.mjs               # 预加载脚本（contextBridge.exposeInMainWorld('dweb', ...)，含 platform 命名空间）
 │   ├── config.mjs                # APP_NAME / getRepoRoot / getDjangoAppDir / getWindowIconPath
+│   ├── platform/                 # 平台抽象层（新增核心模块）
+│   │   ├── manager.mjs           # 平台管理器（discover / preflight / initialize / shutdown / 事件泵）
+│   │   ├── providers/            # 平台提供者
+│   │   │   ├── mock.mjs          # Mock 提供者（开发/Web 模式降级）
+│   │   │   └── steam.mjs         # Steam 平台提供者
+│   │   ├── native/               # 平台原生模块
+│   │   │   └── win32/            # Windows 原生（dweb_steamjs.node + steam_api64.dll）
+│   │   ├── config.mjs            # 原生模块路径配置
+│   │   ├── events.mjs            # 平台事件类型
+│   │   ├── ipc.mjs               # 平台 IPC 注册
+│   │   ├── index.mjs             # 平台层入口（platformPreflight / platformInit / platformShutdown）
+│   │   └── types.mjs             # 平台类型定义
 │   ├── backend/                  # Django 进程管理 + 协议 + 静态资产 + Python 环境
 │   │   ├── django.mjs            # spawn / kill Django runserver；端口选择；健康检查
 │   │   ├── djangoProject.mjs     # 运行时项目脚手架 / 依赖安装
@@ -147,16 +187,16 @@ DVStudio/
 │   │       ├── ipcHost.mjs       # 前端 → LocalDB IPC 主机
 │   │       └── djangoMigrate.mjs # Django 迁移辅助 IPC
 │   └── static/                   # 静态资源（打包时复制到 extraResources）
-│       └── bootstrap/            # Python 引导安装脚本
-│           ├── manifest.json
-│           ├── windows/          # install.cmd / install.ps1 / README.md
-│           └── mac/              # install.sh / README.md
+│       ├── bootstrap/            # Python 引导安装脚本
+│       │   ├── manifest.json
+│       │   ├── windows/          # install.cmd / install.ps1 / README.md
+│       │   └── mac/              # install.sh / README.md
+│       └── runtime/              # 内置 Python 运行时（Windows）
 │
 ├── samples/                      # 示例文件（component template / editor snapshot / project package）
-├── scripts/                      # 工具脚本（dist-win / dist-mac / perf 分析 / copilot smoke / better-sqlite3 rebuild）
+├── scripts/                      # 工具脚本（dist-win / dist-mac / perf 分析 / copilot smoke / better-sqlite3 rebuild / steam setup）
 ├── public/                       # 公共资源（favicon.ico / logo.png）
 ├── coverage/                     # 测试覆盖率报告（vitest）
-├── docs/                         # （可选）用户文档
 ├── .githooks/                    # Git hooks（pre-push）
 ├── build/                        # 打包图标（icon.ico）
 ├── DVSResource/                  # 运行时资源根（开发模式默认指向仓库内，生产指向 AppData）
@@ -174,10 +214,11 @@ DVStudio/
 
 ### 3.1 通用流程
 1. **用户交互**: 用户在 Vue 组件中触发操作。
-2. **状态更新**: 组件调用 Vuex Action/Mutation 更新全局状态，或调用 `ref/reactive` 更新组件局部状态。
+2. **状态更新**: 组件调用 Vuex Action/Mutation 更新全局状态，或调用 `ref/reactive` 更新组件局部状态；平台事件（如 Steam 好友状态变化）通过平台桥接层回写到 Vuex。
 3. **渲染更新**: 状态变更驱动 Vue 响应式 UI 更新，或触发 WebGL2 引擎重新渲染。
 4. **后端通信**: 需要 AI 辅助或持久化时，通过 `src/network/` 中的 Service 调用 Django API（SSE 流式或普通 HTTP）。
 5. **本地能力**: 需要读写本地文件、访问本地 DB、调用原生窗口能力时，通过 `window.dweb.*` 桥接调用 Electron 主进程能力。
+6. **平台能力**: 需要访问 Steam 等平台特有功能（好友列表、Overlay、DLC）时，通过 `src/platformBridge/` → `window.dweb.platform.*` 调用主进程平台层。
 
 ### 3.2 项目资产加载（dweb:// 协议）
 1. 前端从项目元数据中拿到 `projectId` 与 `path`（项目内相对路径）。
@@ -191,12 +232,23 @@ DVStudio/
 3. 仓库层封装 SQL，序列化时把 `TEXT` 字段的 ISO 时间戳 / 可选 JSON 解析回原始 JS 形态。
 4. 所有 handler 由 `safe()` 包装：若 LocalDB 尚未初始化，**自动用 fallback 路径重试**，避免启动竞态。
 
+### 3.4 平台能力调用
+1. 前端通过 `src/platformBridge/` 的 composable（`usePlatform` / `useSteamEntry`）访问平台状态。
+2. 底层通过 `window.dweb.platform.*` IPC 通道与主进程通信。
+3. 主进程 `electron/platform/ipc.mjs` 路由到平台管理器（`manager.mjs`）。
+4. 平台管理器将调用委派给当前激活的 provider（`steam.mjs` 或 `mock.mjs`）。
+5. Steam provider 通过原生模块（`dweb_steamjs.node`）调用 Steamworks API。
+6. 平台事件（如好友上线、Overlay 激活）通过事件泵（callback pump）从原生模块转发到 IPC，再推送到前端。
+
 ## 4. 运行平台与后端地址解析
 
 - `src/network/runtimePlatform.ts`：检测 `electron` / `web` / `unknown`。
 - `src/network/backendConfig.ts`：后端地址解析
   - **Electron**：`window.__DWEB_BACKEND_BASE_URL`（preload 注入）→ `localStorage` → `VITE_BACKEND_BASE_URL` → `http://127.0.0.1:5800`
   - **Web**：`window.__DWEB_BACKEND_BASE_URL` → `VITE_BACKEND_BASE_URL` → `localStorage` → `http://127.0.0.1:5800`
+- `src/platformBridge/platform.ts`：平台提供者检测
+  - **Electron + Steam**：激活 `steam` provider
+  - **其他**：激活 `mock` provider（无操作，不影响核心功能）
 - 资产 URL 一律走 `resolveBackendUrl(pathOrUrl)`：
   - `dweb://` / `blob:` / `data:` 原样返回
   - `http(s)://` 绝对 URL 原样返回
@@ -231,9 +283,16 @@ DVStudio/
 
 启动时序（简化）：
 1. `protocol.registerSchemesAsPrivileged([{ scheme: 'dweb', ... }])` 注册 dweb 协议为 privileged。
-2. `app.whenReady().then(...)` 内：
+2. **平台预检**：调用 `platformPreflight()`；若返回 `restart`（需要通过 Steam 客户端启动），则退出当前进程。
+3. `app.whenReady().then(...)` 内：
    - 初始化 LocalDB（`initLocalDb`）
+   - **初始化平台层**（`platformInit()`）—— 加载原生模块、启动事件泵
    - 启动 Django 子进程（`startDjangoServer`）
    - 注册 dweb 协议处理器（`registerDwebProjectAssetProtocol`）
-   - 注册 IPC 处理器（`registerLocalDbIpc`、`projectStaticAssets` 等）
-3. 退出时：清理 Django 进程、关闭 LocalDB。
+   - 注册 IPC 处理器：
+     - LocalDB（`registerLocalDbIpc`）
+     - **平台层**（`registerPlatformIpc`）
+     - 项目静态资产（`projectStaticAssets` 等）
+   - 创建主窗口（BrowserWindow）
+   - **绑定主窗口到平台层**（`setMainWindowForPlatform`）—— 用于 Overlay 等需要窗口句柄的功能
+4. 退出时：平台关闭（`platformShutdown()`）、清理 Django 进程、关闭 LocalDB。

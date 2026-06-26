@@ -119,7 +119,7 @@ const stripFencedBlocks = (src: string, langs: string[]) => {
 	return s.trim()
 }
 
-const safeYaml = (rawYaml: string): any | null => {
+const safeYaml = (rawYaml: string): unknown | null => {
 	try {
 		const obj = loadYaml(rawYaml)
 		if (obj === null || obj === undefined) return null

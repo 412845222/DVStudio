@@ -7,6 +7,7 @@ import type {
 	SeedanceConfig
 } from '../../../../ui/UIComponent/BottomChatDock.vue'
 import type { WorkflowAnchorSpec, WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
+import type { BlueprintChatStreamEvent } from '../../../../network/ComfyUIBridgeService'
 import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/utils'
 
 type LocalExecSessionCreateResult = {
@@ -24,17 +25,6 @@ type LocalExecStreamEvent =
 			type: 'event'
 			event?: unknown
 			data?: unknown
-	  }
-
-type BlueprintChatStreamEvent =
-	| { type: 'done' }
-	| { type: 'error'; error?: { message?: unknown } }
-	| {
-			type: 'message'
-			message: {
-				type: string
-				payload?: unknown
-			}
 	  }
 
 type CacheRefImagesResult = {
@@ -58,11 +48,14 @@ type ChatStreamResult = {
 	error?: unknown
 }
 
-type ChatBridgeService = {
-	blueprintChatStream: (payload: {
-		content: string
-		history: Array<{ role: string; content: string }>
-	}) => AsyncIterable<BlueprintChatStreamEvent>
+export type ChatBridgeService = {
+	blueprintChatStream: (
+		payload: {
+			content: string
+			history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+		},
+		signal?: AbortSignal
+	) => AsyncIterable<BlueprintChatStreamEvent>
 	localExecCreateSession?: (payload?: {
 		title?: string
 		cwd?: string
@@ -71,7 +64,15 @@ type ChatBridgeService = {
 	}) => Promise<LocalExecSessionCreateResult>
 	localExecStreamMessage?: (
 		sessionId: string,
-		payload: Record<string, unknown>,
+		payload: {
+			content: string
+			references?: Array<{ path: string; kind?: string; name?: string }>
+			projectId?: number | null
+			skillHints?: string[]
+			executionHints?: string[]
+			agentMode?: 'agent' | 'ask' | 'plan'
+			permissionProfile?: string
+		},
 		signal?: AbortSignal
 	) => AsyncIterable<LocalExecStreamEvent>
 	localExecListMessages?: (sessionId: string, projectId: number | null) => Promise<unknown>
@@ -89,7 +90,15 @@ type ChatBridgeService = {
 	}) => Promise<LocalExecSessionCreateResult>
 	codexStreamMessage: (
 		sessionId: string,
-		payload: Record<string, unknown>,
+		payload: {
+			content: string
+			references?: Array<{ path: string; kind?: string; name?: string }>
+			projectId?: number | null
+			skillHints?: string[]
+			executionHints?: string[]
+			agentMode?: 'agent' | 'ask' | 'plan'
+			permissionProfile?: string
+		},
 		signal?: AbortSignal
 	) => AsyncIterable<LocalExecStreamEvent>
 	codexListMessages: (sessionId: string, projectId: number | null) => Promise<unknown>
@@ -609,7 +618,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				return
 			}
 
-			for await (const ev of svc.blueprintChatStream({ content, history })) {
+			for await (const ev of svc.blueprintChatStream({ content, history }, activeAbortController?.signal)) {
 				if (ev.type === 'done') break
 				if (ev.type === 'error') {
 					payload.chatRunState.value = 'error'
@@ -617,36 +626,38 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					payload.pushToast('AI 对话失败：' + String(ev.error?.message ?? 'unknown'), 'warn')
 					break
 				}
-				const message = ev.message
-				if (message.type === 'agentToUi/text') {
-					const msgPayload = isRecord(message.payload) ? message.payload : {}
-					const delta = getStringField(msgPayload, 'text')
-					if (delta) {
-						updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
+				if (ev.type === 'msg') {
+					const message = ev.message
+					if (message.type === 'agentToUi/text') {
+						const msgPayload = isRecord(message.payload) ? message.payload : {}
+						const delta = getStringField(msgPayload, 'text')
+						if (delta) {
+							updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
+						}
+						setTaskStatus('AI 任务：正在生成回复…')
+						continue
 					}
-					setTaskStatus('AI 任务：正在生成回复…')
-					continue
-				}
-				if (message.type === 'agentToUi/taskStatus') {
-					const msgPayload = isRecord(message.payload) ? message.payload : {}
-					const phase = getStringField(msgPayload, 'phase')
-					const text = hasKey(msgPayload, 'message') ? msgPayload.message : ''
-					setTaskStatus(
-						'AI 任务：' +
-							String(typeof text === 'string' && text.trim() ? text.trim() : phase || '处理中')
-					)
-					continue
-				}
-				if (message.type === 'agentToUi/error') {
-					const msgPayload = isRecord(message.payload) ? message.payload : {}
-					const text = hasKey(msgPayload, 'message') ? msgPayload.message : 'unknown'
-					payload.chatRunState.value = 'error'
-					setTaskStatus('AI 任务：错误')
-					payload.pushToast(
-						'AI 对话失败：' + String(typeof text === 'string' ? text : 'unknown'),
-						'warn'
-					)
-					break
+					if (message.type === 'agentToUi/taskStatus') {
+						const msgPayload = isRecord(message.payload) ? message.payload : {}
+						const phase = getStringField(msgPayload, 'phase')
+						const text = hasKey(msgPayload, 'message') ? msgPayload.message : ''
+						setTaskStatus(
+							'AI 任务：' +
+								String(typeof text === 'string' && text.trim() ? text.trim() : phase || '处理中')
+						)
+						continue
+					}
+					if (message.type === 'agentToUi/error') {
+						const msgPayload = isRecord(message.payload) ? message.payload : {}
+						const text = hasKey(msgPayload, 'message') ? msgPayload.message : 'unknown'
+						payload.chatRunState.value = 'error'
+						setTaskStatus('AI 任务：错误')
+						payload.pushToast(
+							'AI 对话失败：' + String(typeof text === 'string' ? text : 'unknown'),
+							'warn'
+						)
+						break
+					}
 				}
 			}
 

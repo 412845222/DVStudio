@@ -1,7 +1,10 @@
+type RotateImageNode = { type: 'rotate-image'; resourceId?: string }
+type ImageNode = { type: 'image'; id: string }
+
 export const useAIWorkflowRotateImageOutput = (payload: {
-	getNode: (nodeId: string) => any
-	getResource: (resourceId: string) => any
-	getEdges: () => Array<any>
+	getNode: (nodeId: string) => Record<string, unknown> | null | undefined
+	getResource: (resourceId: string) => Record<string, unknown> | null | undefined
+	getEdges: () => Array<{ fromNodeId: string; fromAnchorId: string; toNodeId: string }>
 	commitSetRotatePromptText: (input: { nodeId: string; text: string }) => void
 	makeResourceId: () => string
 	setNodeResourceWithCleanup: (input: {
@@ -17,7 +20,7 @@ export const useAIWorkflowRotateImageOutput = (payload: {
 	) => void
 	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video') => void
 	dataUrlToBlob: (dataUrl: string) => Blob
-	commitPatchResource: (input: { resourceId: string; patch: any }) => void
+	commitPatchResource: (input: { resourceId: string; patch: Partial<{ name?: string; url?: string }> }) => void
 	commitAddResource: (input: {
 		id: string
 		kind: 'image' | 'video'
@@ -54,7 +57,7 @@ export const useAIWorkflowRotateImageOutput = (payload: {
 		if (existing && existing.kind === 'image') {
 			payload.commitPatchResource({
 				resourceId: existingResourceId,
-				patch: { name, url: dataUrl } as any
+				patch: { name, url: dataUrl }
 			})
 		} else {
 			outputResourceId = payload.makeResourceId()
@@ -73,16 +76,18 @@ export const useAIWorkflowRotateImageOutput = (payload: {
 			if (edge.fromAnchorId !== 'out-image') continue
 			const toNode = payload.getNode(edge.toNodeId)
 			if (!toNode || toNode.type !== 'image') continue
+			const toNodeId = String(toNode.id ?? '')
+			if (!toNodeId) continue
 
 			const cloned = new File(
 				[payload.dataUrlToBlob(dataUrl)],
-				`rotate_${nodeId}_${toNode.id}.png`,
+				`rotate_${nodeId}_${toNodeId}.png`,
 				{
 					type: 'image/png'
 				}
 			)
-			payload.onNodeUploadResource(toNode.id, cloned, 'image', { autoDistribute: false })
-			payload.autoSizeMediaNode(toNode.id, dataUrl, 'image')
+			payload.onNodeUploadResource(toNodeId, cloned, 'image', { autoDistribute: false })
+			payload.autoSizeMediaNode(toNodeId, dataUrl, 'image')
 		}
 	}
 

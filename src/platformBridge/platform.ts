@@ -1,19 +1,35 @@
-import type { DwebPlatformStatus, DwebPlatformUser, DwebPlatformDlcInfo, PlatformId, PlatformEventPayload, PlatformEventName, PlatformEventListener } from './types'
+import type { DwebPlatformStatus, DwebPlatformUser, DwebPlatformDlcInfo, PlatformId, PlatformEventPayload, PlatformEventName, PlatformEventListener, PlatformEventMap } from './types'
 
-const w = window as any
+const w = window as unknown as Record<string, unknown>
 
 let statusCache: DwebPlatformStatus | null = null
 const eventListeners = new Map<number, (payload: PlatformEventPayload) => void>()
 let eventSeed = 0
 let globalListenerId: number | null = null
 
+interface DwebPlatformApi {
+	onEvent?: (listener: (payload: PlatformEventPayload) => void) => number
+	offEvent?: (listenerId: number) => void
+	getStatus?: () => Promise<DwebPlatformStatus>
+	getActive?: () => Promise<{ id: PlatformId; displayName: string }>
+	getUser?: () => Promise<DwebPlatformUser | null>
+	isAvailable?: () => Promise<boolean>
+	overlayIsEnabled?: () => Promise<boolean>
+	overlayIsActive?: () => Promise<boolean>
+	overlayOpenUrl?: (url: string) => Promise<{ ok: boolean; errMsg?: string }>
+	overlayActivate?: (dialog?: string) => Promise<{ ok: boolean; errMsg?: string }>
+	dlcIsInstalled?: (dlcAppId: number) => Promise<boolean>
+	dlcGetInstalled?: () => Promise<DwebPlatformDlcInfo[]>
+}
+
 function getPlatformApi() {
-	return w?.dweb?.platform || null
+	const dweb = w.dweb as { platform?: DwebPlatformApi } | undefined
+	return dweb?.platform || null
 }
 
 function dispatchEventToListeners(payload: PlatformEventPayload) {
 	if (payload.event === 'status-changed' && payload.data) {
-		statusCache = payload.data
+		statusCache = payload.data as DwebPlatformStatus
 	}
 	for (const listener of eventListeners.values()) {
 		try {
@@ -117,8 +133,8 @@ export async function overlayOpenUrl(url: string): Promise<{ ok: boolean; errMsg
 	if (!api?.overlayOpenUrl) return { ok: false, errMsg: 'Platform API not available' }
 	try {
 		return await api.overlayOpenUrl(url)
-	} catch (err: any) {
-		return { ok: false, errMsg: err?.message || 'Unknown error' }
+	} catch (err: unknown) {
+		return { ok: false, errMsg: (err as Error)?.message || 'Unknown error' }
 	}
 }
 
@@ -127,8 +143,8 @@ export async function overlayActivate(dialog?: string): Promise<{ ok: boolean; e
 	if (!api?.overlayActivate) return { ok: false, errMsg: 'Platform API not available' }
 	try {
 		return await api.overlayActivate(dialog)
-	} catch (err: any) {
-		return { ok: false, errMsg: err?.message || 'Unknown error' }
+	} catch (err: unknown) {
+		return { ok: false, errMsg: (err as Error)?.message || 'Unknown error' }
 	}
 }
 
@@ -163,10 +179,10 @@ export function onPlatformEvent<T extends PlatformEventName>(
 	ensureGlobalListener()
 	const id = ++eventSeed
 	const wrapped = (payload: PlatformEventPayload) => {
-		if (event === '*' || payload.event === event) {
-			listener(payload.data as any)
+			if (event === '*' || payload.event === event) {
+				listener(payload.data as unknown as Parameters<PlatformEventListener<T>>[0])
+			}
 		}
-	}
 	eventListeners.set(id, wrapped)
 	return id
 }

@@ -19,13 +19,13 @@
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
 		@select="(id) => emit('select', id)"
-		@start-link="(payload: any) => emit('start-link', payload)"
-		@end-link="(payload: any) => emit('end-link', payload)"
+		@start-link="onStartLink"
+		@end-link="onEndLink"
 		@copy="() => emit('copy')"
 		@refresh="() => emit('refresh')"
 		@delete="() => emit('delete')"
-		@set-type="(type: any) => emit('set-type', type)"
-		@resize="(payload: any) => emit('resize', payload)"
+		@set-type="onSetType"
+		@resize="onResize"
 	>
 		<template #body>
 			<div class="wf-unreal-export" @pointerdown.stop>
@@ -137,6 +137,13 @@ const props = defineProps<{
 	hoverInputAnchorId?: string | null
 	hoverOutputAnchorId?: string | null
 }>()
+
+const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
+const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy') => { emit('set-type', type) }
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+
+
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void

@@ -86,7 +86,7 @@ export class VideoFirstFrameCaptureQueue {
 
 		const el = document.createElement('video')
 		el.preload = 'auto'
-		;(el as any).playsInline = true
+		el.playsInline = true
 		el.muted = true
 		this.activeEls.set(task.id, el)
 
@@ -109,8 +109,8 @@ export class VideoFirstFrameCaptureQueue {
 
 				const capture = async () => {
 					try {
-						const vw = Math.max(1, Math.floor((el as any).videoWidth || 1))
-						const vh = Math.max(1, Math.floor((el as any).videoHeight || 1))
+						const vw = Math.max(1, Math.floor(el.videoWidth || 1))
+						const vh = Math.max(1, Math.floor(el.videoHeight || 1))
 						const scale = Math.min(1, maxWidth / vw)
 						const cw = Math.max(1, Math.floor(vw * scale))
 						const ch = Math.max(1, Math.floor(vh * scale))

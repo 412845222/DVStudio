@@ -35,13 +35,20 @@ export const useAIWorkflowViewport = (
 
 	const checkDevToolsState = () => {
 		try {
-			if (typeof window !== 'undefined' && (window as any).ElectronAPI) {
-				;(window as any).ElectronAPI.onDevToolsStateChange((open: boolean) => {
-					isDevToolsOpen.value = open
-				})
-				;(window as any).ElectronAPI.getDevToolsState((open: boolean) => {
-					isDevToolsOpen.value = open
-				})
+			if (typeof window !== 'undefined') {
+				const w = window as unknown as Record<string, unknown>
+				const electronAPI = w.ElectronAPI as {
+					onDevToolsStateChange?: (callback: (open: boolean) => void) => void
+					getDevToolsState?: (callback: (open: boolean) => void) => void
+				} | undefined
+				if (electronAPI) {
+					electronAPI.onDevToolsStateChange?.((open: boolean) => {
+						isDevToolsOpen.value = open
+					})
+					electronAPI.getDevToolsState?.((open: boolean) => {
+						isDevToolsOpen.value = open
+					})
+				}
 			}
 		} catch {
 			isDevToolsOpen.value = false

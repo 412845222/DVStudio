@@ -765,7 +765,7 @@ export type WorkflowNode = {
 	/** For chat dialog: user-entered draft text */
 	nodeChatDraft?: string
 	/** For chat dialog: user-configured params */
-	nodeChatParams?: Record<string, any>
+	nodeChatParams?: Record<string, unknown>
 	worldX: number
 	worldY: number
 	width: number
@@ -846,7 +846,7 @@ export type WorkflowNodeChatSubmitPayload = {
 	nodeId: string
 	nodeType: WorkflowNodeChatType
 	prompt: string
-	params: Record<string, any>
+	params: Record<string, unknown>
 }
 
 export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error'

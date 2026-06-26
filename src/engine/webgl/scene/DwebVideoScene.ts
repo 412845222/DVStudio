@@ -79,7 +79,7 @@ export class DwebVideoScene implements IDwebGLScene {
 		const baseW = Math.max(1, Number(node.transform?.width ?? 1))
 		const baseH = Math.max(1, Number(node.transform?.height ?? 1))
 
-		const props = (node.props as any) ?? {}
+		const props = node.props as Record<string, unknown> ?? {}
 		const p = normalizeLineLocalPoints({ props, width: baseW, height: baseH })
 		const startX = p.startX
 		const startY = p.startY
@@ -206,7 +206,8 @@ export class DwebVideoScene implements IDwebGLScene {
 			if (n.type !== 'image') continue
 			const src = (n.imageSrc || '').trim()
 			if (!src) continue
-			const wrap = (n.props as any)?.repeat ? 'repeat' : 'clamp'
+			const props = n.props as Record<string, unknown> ?? {}
+			const wrap = props.repeat ? 'repeat' : 'clamp'
 			out.set(`${wrap}|${src}`, { src, wrap })
 		}
 		return Array.from(out.values())
@@ -250,7 +251,7 @@ export class DwebVideoScene implements IDwebGLScene {
 		return this.rendererByType.get(type) ?? this.baseRenderer
 	}
 
-	private getPivotCenter(t: any): { cx: number; cy: number } {
+	private getPivotCenter(t: VideoSceneNodeTransform | undefined): { cx: number; cy: number } {
 		const w = Math.max(1, Number(t?.width ?? 1))
 		const h = Math.max(1, Number(t?.height ?? 1))
 		const px =
@@ -312,18 +313,13 @@ export class DwebVideoScene implements IDwebGLScene {
 		)
 	}
 
-	private resolveFilterQuality(filter: any): 'low' | 'mid' | 'high' {
+	private resolveFilterQuality(filter: Record<string, unknown> | undefined): 'low' | 'mid' | 'high' {
 		const q = String(filter?.quality ?? '')
 		const v2 = !!filter?.qualityV2
-		// v2 quality semantics:
-		// - low: previous mid
-		// - mid: previous high
-		// - high: new higher quality
 		if (v2) {
 			if (q === 'low' || q === 'mid' || q === 'high') return q
 			return 'mid'
 		}
-		// Legacy (v1) migration mapping (read-only): high -> mid, mid -> low.
 		if (q === 'high') return 'mid'
 		if (q === 'mid') return 'low'
 		if (q === 'low') return 'low'
@@ -336,7 +332,7 @@ export class DwebVideoScene implements IDwebGLScene {
 		return 'low'
 	}
 
-	private getBlurParams(filter: any): {
+	private getBlurParams(filter: Record<string, unknown> | undefined): {
 		factor: number
 		baseIterations: number
 		maxStepPx: number
@@ -367,14 +363,14 @@ export class DwebVideoScene implements IDwebGLScene {
 
 		const dx = hasTransform ? Number(node.transform?.x ?? 0) : 0
 		const dy = hasTransform ? Number(node.transform?.y ?? 0) : 0
-		const localScaleLegacy = hasTransform ? this.clampScale((node.transform as any)?.scale, 1) : 1
+		const localScaleLegacy = hasTransform ? this.clampScale(Number(node.transform?.scale ?? 1), 1) : 1
 		const localScaleX = hasTransform
-			? this.clampScale((node.transform as any)?.scaleX, localScaleLegacy)
+			? this.clampScale(node.transform?.scaleX, localScaleLegacy)
 			: 1
 		const localScaleY = hasTransform
-			? this.clampScale((node.transform as any)?.scaleY, localScaleLegacy)
+			? this.clampScale(node.transform?.scaleY, localScaleLegacy)
 			: 1
-		const localOpacity = hasTransform ? this.clampOpacity((node.transform as any)?.opacity, 1) : 1
+		const localOpacity = hasTransform ? this.clampOpacity(node.transform?.opacity, 1) : 1
 
 		const nodeWorld = hasTransform
 			? {
@@ -391,12 +387,12 @@ export class DwebVideoScene implements IDwebGLScene {
 
 		if (node.category === 'user' && node.transform) {
 			const type = (node.userType ?? 'base') as VideoSceneUserNodeType
-			const props: any = node.props ?? {}
+			const props = node.props as Record<string, unknown> ?? {}
 			const textContent =
 				typeof node.props?.textContent === 'string' ? node.props.textContent : undefined
 			const rawFontSize = Number(node.props?.fontSize)
 			const fontSize = Number.isFinite(rawFontSize) ? rawFontSize : undefined
-			let imageSrc = props?.imagePath
+			let imageSrc = typeof props.imagePath === 'string' ? props.imagePath : undefined
 			const imageId = String(props?.imageId ?? '').trim()
 			if (imageId && this.state?.imageAssets?.[imageId]?.url) {
 				imageSrc = this.state.imageAssets[imageId].url
@@ -405,15 +401,15 @@ export class DwebVideoScene implements IDwebGLScene {
 				...node.transform,
 				x: node.transform.x ?? 0,
 				y: node.transform.y ?? 0,
-				rotation: (node.transform as any).rotation ?? 0,
-				opacity: this.clampOpacity((node.transform as any).opacity, 1),
+				rotation: node.transform.rotation ?? 0,
+				opacity: this.clampOpacity(node.transform.opacity, 1),
 				scaleX: this.clampScale(
-					(node.transform as any).scaleX,
-					this.clampScale((node.transform as any).scale, 1)
+					node.transform.scaleX,
+					this.clampScale(Number(node.transform.scale ?? 1), 1)
 				),
 				scaleY: this.clampScale(
-					(node.transform as any).scaleY,
-					this.clampScale((node.transform as any).scale, 1)
+					node.transform.scaleY,
+					this.clampScale(Number(node.transform.scale ?? 1), 1)
 				)
 			}
 
@@ -431,7 +427,7 @@ export class DwebVideoScene implements IDwebGLScene {
 					y: nodeWorld.y,
 					width: worldW,
 					height: worldH,
-					rotation: (node.transform as any).rotation ?? 0,
+					rotation: node.transform.rotation ?? 0,
 					opacity: nodeWorld.opacity,
 					scaleX: nodeWorld.scaleX,
 					scaleY: nodeWorld.scaleY
@@ -469,13 +465,17 @@ export class DwebVideoScene implements IDwebGLScene {
 		// Frame filter pressure: used to auto-downgrade quality for stability.
 		let filterNodeCount = 0
 		for (const n of this.renderOrder) {
-			const list: any[] = Array.isArray((n.props as any)?.filters)
-				? ((n.props as any).filters as any[])
-				: []
+			const props = n.props as Record<string, unknown> ?? {}
+			const list = Array.isArray(props.filters) ? props.filters : []
 			if (!list.length) continue
-			// count only expensive filters
 			if (
-				list.some((f: any) => String(f?.type || '') === 'glow' || String(f?.type || '') === 'blur')
+				list.some((f: unknown) => {
+					if (f && typeof f === 'object') {
+						const fo = f as Record<string, unknown>
+						return String(fo.type || '') === 'glow' || String(fo.type || '') === 'blur'
+					}
+					return false
+				})
 			)
 				filterNodeCount++
 		}
@@ -564,10 +564,10 @@ export class DwebVideoScene implements IDwebGLScene {
 		const skipped = new Set<string>()
 		for (const n of this.renderOrder) {
 			if (skipped.has(n.id)) continue
-			const rotation = (n.transform as any).rotation ?? 0
-			const opacity = Math.max(0, Math.min(1, (n.transform as any).opacity ?? 1))
-			const sx0 = Number((n.transform as any)?.scaleX ?? 1)
-			const sy0 = Number((n.transform as any)?.scaleY ?? 1)
+			const rotation = n.transform.rotation ?? 0
+			const opacity = Math.max(0, Math.min(1, n.transform.opacity ?? 1))
+			const sx0 = Number(n.transform.scaleX ?? 1)
+			const sy0 = Number(n.transform.scaleY ?? 1)
 			const sxNode = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
 			const syNode = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
 			if (opacity <= 1e-5 || sxNode <= 1e-5 || syNode <= 1e-5) {
@@ -575,10 +575,9 @@ export class DwebVideoScene implements IDwebGLScene {
 				this.markDescendantsSkipped(n.id, skipped)
 				continue
 			}
-			const nodeFilters: any[] = Array.isArray((n.props as any)?.filters)
-				? ((n.props as any).filters as any[])
-				: []
-			const contentSize = this.getFilterContentSize(n as any, zoom)
+			const props = n.props as Record<string, unknown> ?? {}
+			const nodeFilters = Array.isArray(props.filters) ? props.filters : []
+			const contentSize = this.getFilterContentSize(n, zoom)
 			const nodeW = contentSize.w
 			const nodeH = contentSize.h
 			if (nodeFilters.length > 0) {
@@ -586,23 +585,25 @@ export class DwebVideoScene implements IDwebGLScene {
 				let maxXpx = 0
 				let maxYpx = 0
 				const normalizedFilters = nodeFilters
-					.map((f) => (f && typeof f === 'object' ? { ...(f as any) } : f))
+					.map((f) => (f && typeof f === 'object' ? { ...(f as Record<string, unknown>) } : f))
 					.filter(Boolean)
-					.filter((f: any) => {
-						const ft = String(f?.type || '')
+					.filter((f) => {
+						if (!f || typeof f !== 'object') return false
+						const fo = f as Record<string, unknown>
+						const ft = String(fo.type || '')
 						if (ft === 'blur') {
-							const bx = Math.max(0, Number(f.blurX ?? 0) || 0)
-							const by = Math.max(0, Number(f.blurY ?? 0) || 0)
+							const bx = Math.max(0, Number(fo.blurX ?? 0) || 0)
+							const by = Math.max(0, Number(fo.blurY ?? 0) || 0)
 							return bx > 0 || by > 0
 						}
 						if (ft === 'glow') {
-							const intensity = Math.max(0, Number(f.intensity ?? 1))
-							const bx = Math.max(0, Number(f.blurX ?? 0) || 0)
-							const by = Math.max(0, Number(f.blurY ?? 0) || 0)
+							const intensity = Math.max(0, Number(fo.intensity ?? 1))
+							const bx = Math.max(0, Number(fo.blurX ?? 0) || 0)
+							const by = Math.max(0, Number(fo.blurY ?? 0) || 0)
 							return intensity > 0 && (bx > 0 || by > 0)
 						}
 						return true
-					}) as any[]
+					})
 				const hasFilters = normalizedFilters.length > 0
 				if (!hasFilters) {
 					this.getRenderer(n.type).renderWorld(canvas, n, { opacity, rotation })
@@ -610,27 +611,25 @@ export class DwebVideoScene implements IDwebGLScene {
 				}
 
 				for (const f of normalizedFilters) {
-					const ft = String(f?.type || '')
+					if (!f || typeof f !== 'object') continue
+					const fo = f as Record<string, unknown>
+					const ft = String(fo.type || '')
 					if (ft === 'blur' || ft === 'glow') {
-						const p = this.getBlurParams(f)
-						const sx0 = Number((n.transform as any)?.scaleX ?? 1)
-						const sy0 = Number((n.transform as any)?.scaleY ?? 1)
+						const p = this.getBlurParams(fo)
+						const sx0 = Number(n.transform.scaleX ?? 1)
+						const sy0 = Number(n.transform.scaleY ?? 1)
 						const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
 						const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
-						// blurX/blurY are UI pixels (Flash-like). Keep appearance stable in screen space.
-						// When the node is scaled, the filter should scale with it.
-						const blurXpx = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor * sx
-						const blurYpx = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor * sy
+						const blurXpx = Math.max(0, Number(fo.blurX ?? 0) || 0) * p.factor * sx
+						const blurYpx = Math.max(0, Number(fo.blurY ?? 0) || 0) * p.factor * sy
 						maxXpx = Math.max(maxXpx, blurXpx)
 						maxYpx = Math.max(maxYpx, blurYpx)
-
-						// scene 只负责预归一化参数；具体执行由 canvas/postprocess 实现
-						// post-process uses device pixels
-						f.__blurX = blurXpx * dpr
-						f.__blurY = blurYpx * dpr
-						f.__iterations = p.baseIterations
-						f.__maxStepPx = p.maxStepPx * dpr
-						f.__maxIterations = p.maxIterations
+						const fo2 = f as Record<string, unknown>
+						fo2.__blurX = blurXpx * dpr
+						fo2.__blurY = blurYpx * dpr
+						fo2.__iterations = p.baseIterations
+						fo2.__maxStepPx = p.maxStepPx * dpr
+						fo2.__maxIterations = p.maxIterations
 					}
 				}
 
@@ -653,11 +652,13 @@ export class DwebVideoScene implements IDwebGLScene {
 				const capY = desiredPadYpx0 > 1e-3 ? Math.min(1, padYpx / desiredPadYpx0) : 1
 				if (capX < 0.999 || capY < 0.999) {
 					for (const f of normalizedFilters) {
-						const ft = String(f?.type || '')
+						if (!f || typeof f !== 'object') continue
+						const fo = f as Record<string, unknown>
+						const ft = String(fo.type || '')
 						if (ft !== 'blur' && ft !== 'glow') continue
-						if (typeof f.__blurX === 'number') f.__blurX *= capX
-						if (typeof f.__blurY === 'number') f.__blurY *= capY
-						if (typeof f.__maxStepPx === 'number') f.__maxStepPx *= Math.min(capX, capY)
+						if (typeof fo.__blurX === 'number') fo.__blurX *= capX
+						if (typeof fo.__blurY === 'number') fo.__blurY *= capY
+						if (typeof fo.__maxStepPx === 'number') fo.__maxStepPx *= Math.min(capX, capY)
 					}
 				}
 				const padX = padXpx / zoom
@@ -674,10 +675,10 @@ export class DwebVideoScene implements IDwebGLScene {
 						// Rendering the full subtree into the offscreen target causes child artifacts
 						// (inner-glow, clipping to black, text box bleed).
 						const entry = this.nodesById.get(n.id)
-						const t = (entry?.localTransform as any) ?? (n.transform as any)
+						const t = entry?.localTransform ?? n.transform
 						const p = this.getLocalFilterRenderPivotPos(t, nodeW, nodeH, n.type)
-						const sx0 = Number((n.transform as any)?.scaleX ?? 1)
-						const sy0 = Number((n.transform as any)?.scaleY ?? 1)
+						const sx0 = Number(n.transform.scaleX ?? 1)
+						const sy0 = Number(n.transform.scaleY ?? 1)
 						const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
 						const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
 						this.renderNodeSelfIntoLocalTarget(
@@ -696,7 +697,7 @@ export class DwebVideoScene implements IDwebGLScene {
 						)
 					}
 				)
-				const c = this.getPivotCenter(n.transform as any)
+				const c = this.getPivotCenter(n.transform)
 				const roundedMask = this.getRoundedMaskForWorld(n)
 				if (roundedMask) {
 					canvas.drawTexturedRectWithRoundedMask(
@@ -752,8 +753,8 @@ export class DwebVideoScene implements IDwebGLScene {
 					if (entry.type !== 'base') continue
 					const w = Math.max(1, Number(entry.transform.width ?? 1))
 					const h = Math.max(1, Number(entry.transform.height ?? 1))
-					const rot = Number((entry.transform as any).rotation ?? 0)
-					const c = this.getPivotCenter(entry.transform as any)
+					const rot = Number(entry.transform.rotation ?? 0)
+					const c = this.getPivotCenter(entry.transform)
 					canvas.drawRoundedRect(c.cx, c.cy, w, h, 0, transparent, borderColor, borderW2, rot)
 				}
 			}
@@ -778,8 +779,8 @@ export class DwebVideoScene implements IDwebGLScene {
 		const localH0 = Number(entry.localTransform.height ?? 1)
 		const localW = Math.max(1, Number(overrideTransform?.width ?? localW0) || 1)
 		const localH = Math.max(1, Number(overrideTransform?.height ?? localH0) || 1)
-		const nodeOpacity = Math.max(0, Math.min(1, Number((entry.localTransform as any).opacity ?? 1)))
-		const nodeRotation = Number((entry.localTransform as any).rotation ?? 0)
+		const nodeOpacity = Math.max(0, Math.min(1, Number(entry.localTransform.opacity ?? 1)))
+		const nodeRotation = Number(entry.localTransform.rotation ?? 0)
 
 		const visualOpacity = ignoreSelfOpacityRotation ? 1 : nodeOpacity
 		const visualRotation = ignoreSelfOpacityRotation ? 0 : nodeRotation
@@ -793,14 +794,14 @@ export class DwebVideoScene implements IDwebGLScene {
 				height: localH,
 				scaleX: Number(
 					overrideTransform?.scaleX ??
-						(entry.transform as any)?.scaleX ??
-						(entry.localTransform as any)?.scaleX ??
+						entry.transform.scaleX ??
+						entry.localTransform.scaleX ??
 						1
 				),
 				scaleY: Number(
 					overrideTransform?.scaleY ??
-						(entry.transform as any)?.scaleY ??
-						(entry.localTransform as any)?.scaleY ??
+						entry.transform.scaleY ??
+						entry.localTransform.scaleY ??
 						1
 				),
 				rotation: visualRotation,
@@ -855,39 +856,40 @@ export class DwebVideoScene implements IDwebGLScene {
 
 		const localW = Math.max(1, Number(entry.localTransform.width ?? 1))
 		const localH = Math.max(1, Number(entry.localTransform.height ?? 1))
-		const nodeOpacity = Math.max(0, Math.min(1, Number((entry.localTransform as any).opacity ?? 1)))
-		const nodeRotation = Number((entry.localTransform as any).rotation ?? 0)
+		const nodeOpacity = Math.max(0, Math.min(1, Number(entry.localTransform.opacity ?? 1)))
+		const nodeRotation = Number(entry.localTransform.rotation ?? 0)
 
 		// For lines, the visual path can extend outside the default node box.
 		// When applying glow/blur, allocate offscreen targets based on the real path bounds.
 		const filterContentSize = this.getFilterContentSize(
-			{ type: entry.type, transform: { width: localW, height: localH }, props: entry.props as any },
+			{ type: entry.type, transform: { width: localW, height: localH }, props: entry.props as Record<string, unknown> },
 			zoom
 		)
 		const filterW = filterContentSize.w
 		const filterH = filterContentSize.h
 
-		const childFilters: any[] = Array.isArray((entry.props as any)?.filters)
-			? (((entry.props as any).filters as any[]) ?? [])
-			: []
+		const props = entry.props as Record<string, unknown> ?? {}
+		const childFilters = Array.isArray(props.filters) ? props.filters : []
 		const normalizedChildFilters = childFilters
-			.map((f) => (f && typeof f === 'object' ? { ...(f as any) } : f))
+			.map((f) => (f && typeof f === 'object' ? { ...(f as Record<string, unknown>) } : f))
 			.filter(Boolean)
-			.filter((f: any) => {
-				const ft = String(f?.type || '')
+			.filter((f) => {
+				if (!f || typeof f !== 'object') return false
+				const fo = f as Record<string, unknown>
+				const ft = String(fo.type || '')
 				if (ft === 'blur') {
-					const bx = Math.max(0, Number(f.blurX ?? 0) || 0)
-					const by = Math.max(0, Number(f.blurY ?? 0) || 0)
+					const bx = Math.max(0, Number(fo.blurX ?? 0) || 0)
+					const by = Math.max(0, Number(fo.blurY ?? 0) || 0)
 					return bx > 0 || by > 0
 				}
 				if (ft === 'glow') {
-					const intensity = Math.max(0, Number(f.intensity ?? 1))
-					const bx = Math.max(0, Number(f.blurX ?? 0) || 0)
-					const by = Math.max(0, Number(f.blurY ?? 0) || 0)
+					const intensity = Math.max(0, Number(fo.intensity ?? 1))
+					const bx = Math.max(0, Number(fo.blurX ?? 0) || 0)
+					const by = Math.max(0, Number(fo.blurY ?? 0) || 0)
 					return intensity > 0 && (bx > 0 || by > 0)
 				}
 				return true
-			}) as any[]
+			})
 		const hasSelfFilters = normalizedChildFilters.length > 0
 
 		if (hasSelfFilters && !ignoreSelfOpacityRotation) {
@@ -898,23 +900,25 @@ export class DwebVideoScene implements IDwebGLScene {
 			const normalizedFilters = normalizedChildFilters
 
 			for (const f of normalizedFilters) {
-				const ft = String(f?.type || '')
+				if (!f || typeof f !== 'object') continue
+				const fo = f as Record<string, unknown>
+				const ft = String(fo.type || '')
 				if (ft === 'blur' || ft === 'glow') {
-					const p = this.getBlurParams(f)
-					const sx0 = Number((entry.transform as any)?.scaleX ?? 1)
-					const sy0 = Number((entry.transform as any)?.scaleY ?? 1)
+					const p = this.getBlurParams(fo)
+					const sx0 = Number(entry.transform.scaleX ?? 1)
+					const sy0 = Number(entry.transform.scaleY ?? 1)
 					const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
 					const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
-					const blurXpx = Math.max(0, Number(f.blurX ?? 0) || 0) * p.factor * sx
-					const blurYpx = Math.max(0, Number(f.blurY ?? 0) || 0) * p.factor * sy
+					const blurXpx = Math.max(0, Number(fo.blurX ?? 0) || 0) * p.factor * sx
+					const blurYpx = Math.max(0, Number(fo.blurY ?? 0) || 0) * p.factor * sy
 					maxXpx = Math.max(maxXpx, blurXpx)
 					maxYpx = Math.max(maxYpx, blurYpx)
-
-					f.__blurX = blurXpx * dpr
-					f.__blurY = blurYpx * dpr
-					f.__iterations = p.baseIterations
-					f.__maxStepPx = p.maxStepPx * dpr
-					f.__maxIterations = p.maxIterations
+					const fo2 = f as Record<string, unknown>
+					fo2.__blurX = blurXpx * dpr
+					fo2.__blurY = blurYpx * dpr
+					fo2.__iterations = p.baseIterations
+					fo2.__maxStepPx = p.maxStepPx * dpr
+					fo2.__maxIterations = p.maxIterations
 				}
 			}
 
@@ -938,11 +942,13 @@ export class DwebVideoScene implements IDwebGLScene {
 			const capY = desiredPadYpx0 > 1e-3 ? Math.min(1, padYpx / desiredPadYpx0) : 1
 			if (capX < 0.999 || capY < 0.999) {
 				for (const f of normalizedFilters) {
-					const ft = String(f?.type || '')
+					if (!f || typeof f !== 'object') continue
+					const fo = f as Record<string, unknown>
+					const ft = String(fo.type || '')
 					if (ft !== 'blur' && ft !== 'glow') continue
-					if (typeof f.__blurX === 'number') f.__blurX *= capX
-					if (typeof f.__blurY === 'number') f.__blurY *= capY
-					if (typeof f.__maxStepPx === 'number') f.__maxStepPx *= Math.min(capX, capY)
+					if (typeof fo.__blurX === 'number') fo.__blurX *= capX
+					if (typeof fo.__blurY === 'number') fo.__blurY *= capY
+					if (typeof fo.__maxStepPx === 'number') fo.__maxStepPx *= Math.min(capX, capY)
 				}
 			}
 			const padX = padXpx / zoom
@@ -956,7 +962,7 @@ export class DwebVideoScene implements IDwebGLScene {
 				normalizedFilters,
 				(childTarget) => {
 					const p = this.getLocalFilterRenderPivotPos(
-						entry.localTransform as any,
+						entry.localTransform,
 						filterW,
 						filterH,
 						entry.type
@@ -972,12 +978,12 @@ export class DwebVideoScene implements IDwebGLScene {
 				}
 			)
 			const px =
-				typeof (entry.localTransform as any).pivotX === 'number'
-					? (entry.localTransform as any).pivotX
+				typeof entry.localTransform.pivotX === 'number'
+					? entry.localTransform.pivotX
 					: 0.5
 			const py =
-				typeof (entry.localTransform as any).pivotY === 'number'
-					? (entry.localTransform as any).pivotY
+				typeof entry.localTransform.pivotY === 'number'
+					? entry.localTransform.pivotY
 					: 0.5
 			const cx = x + (0.5 - px) * filterW
 			const cy = y + (0.5 - py) * filterH
@@ -1047,10 +1053,11 @@ export class DwebVideoScene implements IDwebGLScene {
 		if (!parent || parent.type !== 'rect') return undefined
 		const parentW = Math.max(1, Number(parent.transform.width ?? 1))
 		const parentH = Math.max(1, Number(parent.transform.height ?? 1))
-		const parentCenter = this.getPivotCenter(parent.transform as any)
-		const baseRadius = Math.max(0, Number((parent.props as any)?.cornerRadius ?? 0))
-		const sx = Number((parent.transform as any)?.scaleX ?? 1)
-		const sy = Number((parent.transform as any)?.scaleY ?? 1)
+		const parentCenter = this.getPivotCenter(parent.transform)
+		const parentProps = parent.props as Record<string, unknown> ?? {}
+		const baseRadius = Math.max(0, Number(parentProps.cornerRadius ?? 0))
+		const sx = Number(parent.transform.scaleX ?? 1)
+		const sy = Number(parent.transform.scaleY ?? 1)
 		const rScale =
 			Number.isFinite(sx) && Number.isFinite(sy) ? Math.max(0, Math.min(100, Math.min(sx, sy))) : 1
 		const radius = baseRadius * rScale
@@ -1068,12 +1075,12 @@ export class DwebVideoScene implements IDwebGLScene {
 		const parentW = Math.max(1, Number(parent.localTransform.width ?? 1))
 		const parentH = Math.max(1, Number(parent.localTransform.height ?? 1))
 		const parentPivotX =
-			typeof (parent.localTransform as any).pivotX === 'number'
-				? Math.max(0, Math.min(1, Number((parent.localTransform as any).pivotX)))
+			typeof parent.localTransform.pivotX === 'number'
+				? Math.max(0, Math.min(1, Number(parent.localTransform.pivotX)))
 				: 0.5
 		const parentPivotY =
-			typeof (parent.localTransform as any).pivotY === 'number'
-				? Math.max(0, Math.min(1, Number((parent.localTransform as any).pivotY)))
+			typeof parent.localTransform.pivotY === 'number'
+				? Math.max(0, Math.min(1, Number(parent.localTransform.pivotY)))
 				: 0.5
 		const childLocalX = Number(node.localTransform.x ?? 0)
 		const childLocalY = Number(node.localTransform.y ?? 0)
@@ -1083,7 +1090,8 @@ export class DwebVideoScene implements IDwebGLScene {
 		const parentBaseY = Number(parent.localTransform.y ?? 0)
 		const parentCx = parentBaseX + deltaX + (0.5 - parentPivotX) * parentW
 		const parentCy = parentBaseY + deltaY + (0.5 - parentPivotY) * parentH
-		const radius = Math.max(0, Number((parent.props as any)?.cornerRadius ?? 0))
+		const parentProps = parent.props as Record<string, unknown> ?? {}
+		const radius = Math.max(0, Number(parentProps.cornerRadius ?? 0))
 		return { cx: parentCx, cy: parentCy, width: parentW, height: parentH, radius }
 	}
 

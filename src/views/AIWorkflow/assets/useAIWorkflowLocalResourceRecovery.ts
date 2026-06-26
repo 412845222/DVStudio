@@ -22,14 +22,14 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	setObjectUrl: (key: string, url: string) => void
 	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video') => void
-	getLocalFileHandle: (key: string) => Promise<FileSystemHandle | null>
-	ensureReadPermission: (handle: FileSystemHandle) => Promise<boolean>
+	getLocalFileHandle: (key: string) => Promise<unknown | null>
+	ensureReadPermission: (handle: unknown) => Promise<boolean>
 	canUseFileSystemHandles: () => boolean
 	collectDroppedFilesFromHandle: (
-		handle: FileSystemHandle,
+		handle: unknown,
 		pathPrefix?: string
-	) => Promise<Array<{ file?: File; fsHandle?: FileSystemHandle }>>
-	putLocalFileHandle: (key: string, handle: FileSystemHandle) => Promise<boolean>
+	) => Promise<Array<{ file?: File; fsHandle?: unknown }>>
+	putLocalFileHandle: (key: string, handle: unknown) => Promise<boolean>
 }) => {
 	const recoverLocalResourcesFromHandles = async (opts?: {
 		silent?: boolean
@@ -145,7 +145,7 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 					const dir = await showDirectoryPicker?.()
 					if (dir) {
 						const dropped = await payload.collectDroppedFilesFromHandle(dir, '')
-						const byName = new Map<string, FileSystemHandle>()
+						const byName = new Map<string, unknown>()
 						for (const it of dropped) {
 							if (!it?.file || !it?.fsHandle) continue
 							const nm = String(it.file.name || '').trim()

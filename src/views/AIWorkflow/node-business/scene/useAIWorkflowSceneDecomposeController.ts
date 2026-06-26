@@ -1,5 +1,5 @@
 import { nextTick } from 'vue'
-import type { WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
+import type { WorkflowImageCrop, WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
 import {
 	buildSceneDecomposeDescription,
 	extractSceneDecomposeItems,
@@ -18,7 +18,12 @@ import {
 import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowSceneDecomposeController = (options: {
-	store: any
+	store: {
+		state: {
+			nodesById: Record<string, WorkflowNode>
+		}
+		commit: (type: string, value: unknown) => void
+	}
 	connectedTextInputValue: (nodeId: string, anchorId: string) => string
 	connectedSceneDecomposeImageInputs: (
 		nodeId: string
@@ -30,7 +35,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 	buildImageTransferFileFromCrop: (payload: {
 		sourceUrl: string
 		sourceName: string
-		crop: any
+		crop: WorkflowImageCrop
 		outputWidth?: number
 		outputHeight?: number
 		suffix?: string
@@ -251,7 +256,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					sourceImageIndex,
 					observedImageIndices: Array.isArray(item?.observedImageIndices)
 						? item.observedImageIndices
-								.map((value: any) => Number(value))
+								.map((value: unknown) => Number(value))
 								.filter((value: number) => Number.isFinite(value) && value > 0)
 						: undefined,
 					imageRect: cropInfo.crop,

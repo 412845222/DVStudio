@@ -37,7 +37,7 @@ export type PlatformEventName = 'disconnected' | 'user-changed' | 'overlay-activ
 
 export interface PlatformEventPayload {
 	event: PlatformEventName
-	data: any
+	data: unknown
 }
 
 export type PlatformEventMap = {
@@ -49,5 +49,5 @@ export type PlatformEventMap = {
 }
 
 export type PlatformEventListener<T extends PlatformEventName> = (
-	payload: T extends keyof PlatformEventMap ? PlatformEventMap[T] : any
+	payload: T extends keyof PlatformEventMap ? PlatformEventMap[T] : unknown
 ) => void

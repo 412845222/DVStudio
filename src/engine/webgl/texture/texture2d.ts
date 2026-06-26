@@ -42,5 +42,5 @@ export function updateTextureFromCanvas(
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode)
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
 	gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas as any)
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
 }

@@ -29,7 +29,7 @@
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
 				@pointerdown="
-					(e: any) =>
+					(e: PointerEvent) =>
 						onNumberScrubPointerDown(
 							e,
 							() => draft.fontSize,

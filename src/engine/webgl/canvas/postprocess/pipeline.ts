@@ -10,6 +10,42 @@ type CustomCached =
 	| { prog: null; ok: false; log: string }
 type UvRect = { u0: number; v0: number; u1: number; v1: number }
 
+interface BlurFilter {
+	type: 'blur'
+	blurX?: number
+	blurY?: number
+	iterations?: number
+	__blurX?: number
+	__blurY?: number
+	__iterations?: number
+	__maxStepPx?: number
+	__maxIterations?: number
+}
+
+interface GlowFilter {
+	type: 'glow'
+	intensity?: number
+	color?: string
+	blurX?: number
+	blurY?: number
+	iterations?: number
+	inner?: boolean
+	knockout?: boolean
+	__blurX?: number
+	__blurY?: number
+	__iterations?: number
+	__maxStepPx?: number
+	__maxIterations?: number
+}
+
+interface CustomShaderFilter {
+	type: 'customShader'
+	vertex?: string
+	fragment?: string
+}
+
+export type Filter = BlurFilter | GlowFilter | CustomShaderFilter
+
 export class CanvasPostProcess {
 	private postVbo: WebGLBuffer | null = null
 	private postProgBlur: PostProg | null = null
@@ -98,7 +134,7 @@ export class CanvasPostProcess {
 		contentH: number,
 		padX: number,
 		padY: number,
-		filters: any[],
+		filters: Filter[],
 		renderLocal: (target: {
 			w: number
 			h: number
@@ -147,18 +183,17 @@ export class CanvasPostProcess {
 
 		let currentTex: WebGLTexture = t.tex0
 		for (const f of filters) {
-			const ft = String(f?.type || '')
-			if (ft === 'blur') {
-				let blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
-				let blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
+			if (f.type === 'blur') {
+				let blurX = Math.max(0, Number(f.__blurX ?? f.blurX ?? 0) || 0)
+				let blurY = Math.max(0, Number(f.__blurY ?? f.blurY ?? 0) || 0)
 				const iterations = Math.max(
 					1,
-					Math.floor(Number((f as any).__iterations ?? f.iterations ?? 1) || 1)
+					Math.floor(Number(f.__iterations ?? f.iterations ?? 1) || 1)
 				)
-				let maxStepPx = Math.max(1e-3, Number((f as any).__maxStepPx ?? 8) || 8)
+				let maxStepPx = Math.max(1e-3, Number(f.__maxStepPx ?? 8) || 8)
 				const maxIterations = Math.max(
 					1,
-					Math.floor(Number((f as any).__maxIterations ?? 12) || 12)
+					Math.floor(Number(f.__maxIterations ?? 12) || 12)
 				)
 				blurX *= scaleAdjust
 				blurY *= scaleAdjust
@@ -211,20 +246,20 @@ export class CanvasPostProcess {
 				}
 				continue
 			}
-			if (ft === 'glow') {
+			if (f.type === 'glow') {
 				if (!this.postProgGlowComposite) continue
-				const intensity = Math.max(0, Number((f as any).intensity ?? 1))
+				const intensity = Math.max(0, Number(f.intensity ?? 1))
 				if (intensity <= 1e-4) continue
-				let blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
-				let blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
+				let blurX = Math.max(0, Number(f.__blurX ?? f.blurX ?? 0) || 0)
+				let blurY = Math.max(0, Number(f.__blurY ?? f.blurY ?? 0) || 0)
 				const iterations = Math.max(
 					1,
-					Math.floor(Number((f as any).__iterations ?? f.iterations ?? 1) || 1)
+					Math.floor(Number(f.__iterations ?? f.iterations ?? 1) || 1)
 				)
-				let maxStepPx = Math.max(1e-3, Number((f as any).__maxStepPx ?? 8) || 8)
+				let maxStepPx = Math.max(1e-3, Number(f.__maxStepPx ?? 8) || 8)
 				const maxIterations = Math.max(
 					1,
-					Math.floor(Number((f as any).__maxIterations ?? 12) || 12)
+					Math.floor(Number(f.__maxIterations ?? 12) || 12)
 				)
 				blurX *= scaleAdjust
 				blurY *= scaleAdjust
@@ -293,7 +328,7 @@ export class CanvasPostProcess {
 				currentTex = outTex
 				continue
 			}
-			if (ft === 'customShader') {
+			if (f.type === 'customShader') {
 				const code = this.getCustomProgram(gl, String(f.vertex ?? ''), String(f.fragment ?? ''))
 				if (!code.ok || !code.prog) continue
 				let dstFbo: WebGLFramebuffer

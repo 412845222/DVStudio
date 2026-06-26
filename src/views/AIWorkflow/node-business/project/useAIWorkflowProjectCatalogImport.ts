@@ -1,16 +1,17 @@
 import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
+import type { ListProjectsResponse } from '../../../../network/BlueprintProjectService'
 import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowProjectCatalogImport = (payload: {
 	blueprintProjectService: {
-		listProjects: () => Promise<any>
+		listProjects: () => Promise<ListProjectsResponse>
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
-	projectList: Ref<any[]>
+	projectList: Ref<Array<{ id: number; name: string }>>
 	isValidBlueprintSnapshot: (snapshot: unknown) => boolean
-	stripUnrealExportRuntimeFromSnapshot: (snapshot: any) => any
-	sanitizeBlueprintSnapshotForRuntime: (snapshot: any) => AIWorkflowDraftSnapshot
+	stripUnrealExportRuntimeFromSnapshot: (snapshot: AIWorkflowDraftSnapshot) => AIWorkflowDraftSnapshot
+	sanitizeBlueprintSnapshotForRuntime: (snapshot: AIWorkflowDraftSnapshot) => AIWorkflowDraftSnapshot
 	hydrateBlueprintSnapshotSafely: (
 		snapshot: AIWorkflowDraftSnapshot,
 		sourceLabel: string
