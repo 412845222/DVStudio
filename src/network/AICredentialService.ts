@@ -1,3 +1,4 @@
+import { getErrorMessage, isRecord, isString } from '../types/utils'
 import { resolveBackendUrl } from './backendConfig'
 
 export type CredentialProvidersStatus = {
@@ -9,14 +10,36 @@ export type CredentialProvidersStatus = {
   jimengSecretKey: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 }
 
-export const saveEncryptedAICredentials = async (payload: {
+export type SaveCredentialRequest = {
   deepseekApiKey?: string
   geminiApiKey?: string
   bytedanceApiKey?: string
   meshyApiKey?: string
   jimengAccessKeyId?: string
   jimengSecretKey?: string
-}): Promise<{ ok: boolean; providers?: CredentialProvidersStatus; error?: string }> => {
+}
+
+export type SaveCredentialResponse = {
+  ok: boolean
+  providers?: CredentialProvidersStatus
+  error?: string
+}
+
+const safeParseCredentialResponse = (text: string): { ok?: boolean; error?: string; providers?: CredentialProvidersStatus } | null => {
+  try {
+    const parsed = JSON.parse(text) as unknown
+    if (!isRecord(parsed)) return null
+    const result: { ok?: boolean; error?: string; providers?: CredentialProvidersStatus } = {}
+    if (typeof parsed.ok === 'boolean') result.ok = parsed.ok
+    if (isString(parsed.error)) result.error = parsed.error
+    if (isRecord(parsed.providers)) result.providers = parsed.providers as CredentialProvidersStatus
+    return result
+  } catch {
+    return null
+  }
+}
+
+export const saveEncryptedAICredentials = async (payload: SaveCredentialRequest): Promise<SaveCredentialResponse> => {
   try {
     const url = resolveBackendUrl('/api/ai/credentials')
     const res = await fetch(url, {
@@ -25,17 +48,16 @@ export const saveEncryptedAICredentials = async (payload: {
       body: JSON.stringify(payload || {}),
     })
     const text = await res.text()
-    let obj: any = null
-    try {
-      obj = JSON.parse(text)
-    } catch {
-      obj = null
-    }
+    const obj = safeParseCredentialResponse(text)
 
-    if (!res.ok) return { ok: false, error: obj?.error || `HTTP ${res.status}: ${text}` }
-    if (!obj?.ok) return { ok: false, error: obj?.error || 'unknown error' }
-    return { ok: true, providers: obj?.providers }
-  } catch (e: any) {
-    return { ok: false, error: String(e?.message || e) }
+    if (!res.ok) {
+      return { ok: false, error: obj?.error || `HTTP ${res.status}: ${text}` }
+    }
+    if (!obj || obj.ok !== true) {
+      return { ok: false, error: obj?.error || 'unknown error' }
+    }
+    return { ok: true, providers: obj.providers }
+  } catch (e: unknown) {
+    return { ok: false, error: getErrorMessage(e) }
   }
 }

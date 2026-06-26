@@ -18,7 +18,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
   screenMargin?: number
   viewportMotionActive?: Ref<boolean>
   motionRecomputeMinIntervalMs?: number
-  forceRenderAll?: Ref<boolean>
+  forceRenderNodeIds?: Ref<Set<string>>
 }) => {
   const hiddenNodeIdSet = new Set((payload.hiddenNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean))
   const compactRenderStateByNodeId = new Map<string, boolean>()
@@ -344,15 +344,14 @@ export const useAIWorkflowNodeVisibility = (payload: {
   })
 
   const visibleRenderNodes = computed(() => {
-    if (payload.forceRenderAll?.value === true) {
-      return renderNodes.value
-    }
     const idSet = visibleRenderNodeIds.value
+    const extraIds = payload.forceRenderNodeIds?.value
     const result: WorkflowNode[] = []
     const allNodes = renderNodes.value
     for (let i = 0; i < allNodes.length; i++) {
-      if (idSet.has(allNodes[i].id)) {
-        result.push(allNodes[i])
+      const node = allNodes[i]
+      if (idSet.has(node.id) || (extraIds && extraIds.has(node.id))) {
+        result.push(node)
       }
     }
     return result

@@ -1,16 +1,17 @@
 import { parseComfyWorkflowIO } from '../../../../aiworkflow/domain/comfyui/parseWorkflowIO'
+import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowComfyConnection = (payload: {
   store: {
     state: {
-      nodesById: Record<string, any>
+      nodesById: Record<string, unknown>
     }
-    commit: (type: string, value: any) => void
+    commit: (type: string, value: unknown) => void
   }
   comfyService: {
-    ping: (baseUrl: string) => Promise<any>
-    listWorkflows: (baseUrl: string) => Promise<any>
-    getWorkflow: (baseUrl: string, workflowPath: string) => Promise<any>
+    ping: (baseUrl: string) => Promise<{ ok: boolean; error?: string; [key: string]: unknown }>
+    listWorkflows: (baseUrl: string) => Promise<{ ok: boolean; error?: string; workflows?: { path: string; name: string }[]; [key: string]: unknown }>
+    getWorkflow: (baseUrl: string, workflowPath: string) => Promise<{ ok: boolean; error?: string; workflowPath?: string; workflow?: unknown; [key: string]: unknown }>
   }
   pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }) => {
@@ -50,8 +51,8 @@ export const useAIWorkflowComfyConnection = (payload: {
               comfyuiSettings: { workflows: [] },
             })
           }
-        } catch (err: any) {
-          payload.pushToast('读取工作流列表失败：' + String(err?.message ?? err ?? 'unknown'), 'warn')
+        } catch (err: unknown) {
+          payload.pushToast('读取工作流列表失败：' + getErrorMessage(err), 'warn')
           payload.store.commit('setNodeComfyUISettings', {
             nodeId,
             comfyuiSettings: { workflows: [] },
@@ -67,12 +68,12 @@ export const useAIWorkflowComfyConnection = (payload: {
           },
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       payload.store.commit('setNodeComfyUISettings', {
         nodeId,
         comfyuiSettings: {
           status: 'error',
-          message: String(err?.message ?? err ?? '连接失败'),
+          message: getErrorMessage(err),
           lastCheckedAt: Date.now(),
         },
       })
@@ -82,7 +83,8 @@ export const useAIWorkflowComfyConnection = (payload: {
   const onComfyUISelectWorkflow = async (nodeId: string, input: { workflowPath: string }) => {
     const workflowPath = String(input?.workflowPath ?? '').trim()
     if (!workflowPath) return
-    const node = payload.store.state.nodesById[nodeId]
+    const nodeRecord = payload.store.state.nodesById[nodeId]
+    const node = nodeRecord as { type?: string; comfyuiSettings?: { baseUrl?: string } } | undefined
     const baseUrl = String(node?.comfyuiSettings?.baseUrl ?? '').trim()
     if (!node || node.type !== 'comfyui' || !baseUrl) return
 
@@ -92,7 +94,7 @@ export const useAIWorkflowComfyConnection = (payload: {
         payload.pushToast('读取工作流失败：' + (res.error || 'unknown'), 'error')
         return
       }
-      const { inputs, outputs, warnings } = parseComfyWorkflowIO(res.workflow)
+      const { inputs, outputs, warnings } = parseComfyWorkflowIO(res.workflow as Record<string, unknown>)
       for (const warning of warnings) payload.pushToast(warning, 'warn')
       payload.store.commit('setNodeComfyUIWorkflowIO', {
         nodeId,
@@ -104,8 +106,8 @@ export const useAIWorkflowComfyConnection = (payload: {
         nodeId,
         comfyuiSettings: { workflowPath: res.workflowPath || workflowPath },
       })
-    } catch (err: any) {
-      payload.pushToast('读取工作流失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
+    } catch (err: unknown) {
+      payload.pushToast('读取工作流失败：' + getErrorMessage(err), 'error')
     }
   }
 

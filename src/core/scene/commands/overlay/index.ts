@@ -45,7 +45,8 @@ export const buildNodeOverlayGeometry = (args: {
 	const sizeText = `${Math.round(w)}×${Math.round(h)}`
 
 	if (args.userType === 'line') {
-		const p = normalizeLineLocalPoints({ props: args.props as any, width: w0, height: h0 })
+		const lineProps: Partial<Record<'startX' | 'startY' | 'endX' | 'endY' | 'anchorX' | 'anchorY', unknown>> = args.props ?? {}
+		const p = normalizeLineLocalPoints({ props: lineProps, width: w0, height: h0 })
 		const scaled = scaleLineLocalPoints(p, sx, sy)
 		const linePoints = lineControlPointsWorld(
 			center,

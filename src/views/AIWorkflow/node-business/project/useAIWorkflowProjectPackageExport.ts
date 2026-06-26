@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import { onBeforeUnmount, ref } from 'vue'
+import { getErrorMessage } from '../../../../types/utils'
 import { resolveBackendUrl } from '../../../../network/backendConfig'
 import {
   AIWF_PROJECT_PACKAGE_ENTRY,
@@ -210,9 +211,9 @@ export const useAIWorkflowProjectPackageExport = (payload: {
         finishPackageExportProgress('项目包导出完成', `${assets.length} 个资产条目已写入 ZIP`)
         payload.pushToast('项目包导出完成。', 'info')
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       resetPackageExportProgress()
-      payload.pushToast('导出项目包失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
+      payload.pushToast('导出项目包失败：' + getErrorMessage(err), 'error')
     }
   }
 

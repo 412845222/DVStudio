@@ -200,6 +200,7 @@ import { useStore } from 'vuex'
 import NodeFiltersForm from '../parts/nodeDetail/forms/NodeFiltersForm.vue'
 import { DwebCanvasGLKey } from '../VideoSceneRuntime'
 import { TimelineKey, type TimelineState } from '../../../store/timeline'
+import type { ProgressBarSpec } from '../../../core/timeline'
 import { VideoSceneStore } from '../../../store/videoscene'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 
@@ -216,14 +217,14 @@ const props = withDefaults(
 )
 
 const store = useStore<TimelineState>(TimelineKey)
-const dwebCanvasRef = inject<any>(DwebCanvasGLKey, null)
+const dwebCanvasRef = inject(DwebCanvasGLKey, null)
 
 const open = computed(() => !!props.open)
 const frameCount = computed(() => store.state.frameCount)
 
 const spec = computed(() => {
 	const lid = String(props.layerId || '').trim()
-	const map = (store.state as any).progressBarByLayerId as Record<string, any>
+	const map = store.state.progressBarByLayerId as Record<string, ProgressBarSpec>
 	return lid && map ? (map[lid] ?? null) : null
 })
 
@@ -322,7 +323,7 @@ const segmentsDraft = ref<SegmentDraft[]>([])
 const getMinKeyframeFrameForLayer = (layerId: string): number | null => {
 	const lid = String(layerId || '').trim()
 	if (!lid) return null
-	const spans = (store.state as any).keyframeSpansByLayer?.[lid] ?? []
+	const spans = store.state.keyframeSpansByLayer?.[lid] ?? []
 	if (!Array.isArray(spans) || spans.length === 0) return null
 	let min: number | null = null
 	for (const s of spans) {

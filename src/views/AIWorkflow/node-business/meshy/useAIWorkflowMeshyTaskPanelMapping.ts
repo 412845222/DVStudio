@@ -1,4 +1,6 @@
 import type { MeshyTaskPanelDetail, MeshyTaskPanelItem } from '../../../../ui/WorkFlow/MeshyTaskPanel.vue'
+import { isRecord } from '../../../../types/utils'
+import type { MeshyCapability, MeshyRelationKind, MeshyTaskStatus } from './types'
 import { sanitizeMeshyPreviewUrl } from './useAIWorkflowMeshyAssets'
 
 const formatMeshyDetailTime = (raw: unknown) => {
@@ -16,9 +18,21 @@ const formatMeshyDetailTime = (raw: unknown) => {
 	return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
 }
 
+const normalizeMeshyRelationKind = (value: unknown): MeshyRelationKind => {
+	const text = String(value ?? '').trim()
+	if (text === 'texture' || text === 'rigging' || text === 'animation' || text === 'remesh') return text
+	return 'model'
+}
+
+const normalizeMeshyTaskStatus = (value: unknown): MeshyTaskStatus => {
+	const text = String(value ?? '').trim()
+	if (text === 'pending' || text === 'running' || text === 'succeeded' || text === 'failed' || text === 'canceled') return text
+	return 'idle'
+}
+
 export const useAIWorkflowMeshyTaskPanelMapping = (options: {
-	getMeshyDisplayThumbnailUrl: (settings: Record<string, any> | null | undefined) => string
-	pickMeshyEffectiveOutput: (item: Record<string, any>) => {
+	getMeshyDisplayThumbnailUrl: (settings: Record<string, unknown> | null | undefined) => string
+	pickMeshyEffectiveOutput: (item: Record<string, unknown>) => {
 		preferredImageUrl: string
 		preferredModelUrl: string
 		preferredUrl: string
@@ -27,8 +41,8 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 		localAssetPath: string
 		thumbnailUrl: string
 		effectiveTaskId: string
-		effectiveRelationKind: string
-		effectiveStatus: string
+		effectiveRelationKind: MeshyRelationKind
+		effectiveStatus: MeshyTaskStatus
 		effectiveProgress: number
 	}
 	isRemoteLoaded: () => boolean
@@ -57,7 +71,7 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 	}
 
 	const mapMeshyPanelItemToDetail = (item: MeshyTaskPanelItem): MeshyTaskPanelDetail => {
-		const settings = item.payload?.meshySettings && typeof item.payload.meshySettings === 'object' ? item.payload.meshySettings : {}
+		const settings = item.payload?.meshySettings && typeof item.payload.meshySettings === 'object' ? item.payload.meshySettings as Record<string, unknown> : {}
 		const targetLabel = item.target === 'image' ? '图像链路' : '3D链路'
 		return {
 			id: item.id,
@@ -74,12 +88,12 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 			statusText: String(settings.meshyStatusText ?? '').trim() || undefined,
 			errorMessage: String(settings.meshyErrorMessage ?? '').trim() || undefined,
 			preferredModelUrl:
-				String(settings.meshyRelationSummary?.effectivePreferredImageUrl ?? settings.meshyOutputSummary?.preferredUrl ?? '').trim()
+				String((settings.meshyRelationSummary as Record<string, unknown>)?.effectivePreferredImageUrl ?? (settings.meshyOutputSummary as Record<string, unknown>)?.preferredUrl ?? '').trim()
 				|| undefined,
-			assetUrl: String(settings.meshyOutputAssetUrl ?? settings.meshyOutputSummary?.assetUrl ?? '').trim() || undefined,
-			assetPath: String(settings.meshyOutputAssetPath ?? settings.meshyOutputSummary?.assetPath ?? '').trim() || undefined,
+			assetUrl: String(settings.meshyOutputAssetUrl ?? (settings.meshyOutputSummary as Record<string, unknown>)?.assetUrl ?? '').trim() || undefined,
+			assetPath: String(settings.meshyOutputAssetPath ?? (settings.meshyOutputSummary as Record<string, unknown>)?.assetPath ?? '').trim() || undefined,
 			thumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings) || undefined,
-			imageCount: Number(settings.meshyInputSummary?.imageCount ?? 0),
+			imageCount: Number((settings.meshyInputSummary as Record<string, unknown>)?.imageCount ?? 0),
 			createdAtLabel: formatMeshyDetailTime(item.createdAt),
 			updatedAtLabel: formatMeshyDetailTime(item.createdAt),
 			sourceLabel: options.isRemoteLoaded() ? '后端镜像列表' : '本地节点状态',
@@ -88,13 +102,14 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 		}
 	}
 
-	const mapMeshyMirrorItemToDetail = (item: Record<string, any>, sourceLabel = '后端镜像详情'): MeshyTaskPanelDetail => {
+	const mapMeshyMirrorItemToDetail = (item: Record<string, unknown>, sourceLabel = '后端镜像详情'): MeshyTaskPanelDetail => {
 		const target = String(item.target ?? '3d').trim() === 'image' ? 'image' : '3d'
 		const family = String(item.family ?? (target === 'image' ? 'text-to-image' : 'text-to-3d')).trim()
 		const status = String(item.status ?? 'idle').trim()
+		const requestPayload = isRecord(item.requestPayload) ? item.requestPayload : {}
 		return {
 			id: `detail:${String(item.taskId ?? item.id ?? '')}`,
-			title: String(item.requestPayload?.title ?? item.requestPayload?.alias ?? familyLabelForMeshy(family)).trim() || familyLabelForMeshy(family),
+			title: String(requestPayload.title ?? requestPayload.alias ?? familyLabelForMeshy(family)).trim() || familyLabelForMeshy(family),
 			taskId: String(item.taskId ?? '').trim() || undefined,
 			nodeId: String(item.lastNodeId ?? '').trim() || undefined,
 			targetLabel: target === 'image' ? '图像链路' : '3D链路',
@@ -114,28 +129,23 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 			createdAtLabel: formatMeshyDetailTime(item.remoteCreatedAt ?? item.createdAt),
 			updatedAtLabel: formatMeshyDetailTime(item.updatedAt ?? item.remoteFinishedAt),
 			sourceLabel,
-			requestPayload: item.requestPayload && typeof item.requestPayload === 'object' ? item.requestPayload : undefined,
-			responsePayload: item.responsePayload && typeof item.responsePayload === 'object' ? item.responsePayload : undefined,
+			requestPayload: isRecord(item.requestPayload) ? item.requestPayload : undefined,
+			responsePayload: isRecord(item.responsePayload) ? item.responsePayload : undefined,
 		}
 	}
 
-	const normalizeMeshyRelationKind = (value: unknown) => {
-		const text = String(value ?? '').trim()
-		if (text === 'texture' || text === 'rigging' || text === 'animation' || text === 'remesh') return text
-		return 'model'
-	}
-
 	const buildMeshyTaskPanelPayload = (
-		item: Record<string, any>,
+		item: Record<string, unknown>,
 		target: '3d' | 'image',
 		family: string,
 		title: string,
 		prompt: string,
 		createdAt: number,
 	) => {
-		const requestPayload = item.requestPayload && typeof item.requestPayload === 'object' ? item.requestPayload : {}
-		const responsePayload = item.responsePayload && typeof item.responsePayload === 'object' ? item.responsePayload : {}
+		const requestPayload = isRecord(item.requestPayload) ? item.requestPayload : {}
+		const responsePayload = isRecord(item.responsePayload) ? item.responsePayload : {}
 		const effective = options.pickMeshyEffectiveOutput(item)
+		const capabilities = Array.isArray(item.capabilities) ? item.capabilities as MeshyCapability[] : undefined
 		return {
 			source: 'meshy-task-panel',
 			nodeId: String(item.lastNodeId ?? '').trim() || undefined,
@@ -146,11 +156,11 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 				meshyTaskId: effective.effectiveTaskId || String(item.taskId ?? '').trim() || undefined,
 				meshyTaskTarget: target,
 				meshyTaskFamily: family,
-				meshyRelationKind: effective.effectiveRelationKind as any,
+				meshyRelationKind: effective.effectiveRelationKind,
 				meshyRootTaskId: String(item.rootTaskId ?? item.taskId ?? '').trim() || undefined,
 				meshyParentTaskId: String(item.parentTaskId ?? '').trim() || undefined,
-				meshyCapabilities: Array.isArray(item.capabilities) ? item.capabilities : undefined,
-				meshyTaskStatus: effective.effectiveStatus as any,
+				meshyCapabilities: capabilities,
+				meshyTaskStatus: effective.effectiveStatus,
 				meshyProgress: effective.effectiveProgress,
 				meshyPrompt: prompt || undefined,
 				meshyNegativePrompt: String(item.negativePrompt ?? '').trim() || undefined,
@@ -177,22 +187,22 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 					modelInputConnected: false,
 					lastValidatedAt: createdAt,
 				},
-				meshyModelUrls: responsePayload.model_urls && typeof responsePayload.model_urls === 'object' ? responsePayload.model_urls : undefined,
+				meshyModelUrls: isRecord(responsePayload.model_urls) ? responsePayload.model_urls : undefined,
 				meshyImageUrl: String(requestPayload.image_url ?? '').trim() || undefined,
-				meshyImageUrls: Array.isArray(requestPayload.image_urls) ? requestPayload.image_urls : undefined,
+				meshyImageUrls: Array.isArray(requestPayload.image_urls) ? requestPayload.image_urls as string[] : undefined,
 				meshyPreviewTaskId: String(requestPayload.preview_task_id ?? '').trim() || undefined,
 				meshySourceModelUrl: String(item.sourceImageUrl ?? item.sourceModelUrl ?? '').trim() || undefined,
 				meshyRelationSummary: {
-					relationKind: normalizeMeshyRelationKind(item.relationKind) as any,
+					relationKind: normalizeMeshyRelationKind(item.relationKind),
 					rootTaskId: String(item.rootTaskId ?? item.taskId ?? '').trim() || undefined,
 					parentTaskId: String(item.parentTaskId ?? '').trim() || undefined,
-					capabilities: Array.isArray(item.capabilities) ? item.capabilities : undefined,
+					capabilities,
 					hasTextureChild: item.hasTextureChild === true,
 					hasRiggingChild: item.hasRiggingChild === true,
 					hasAnimationChild: item.hasAnimationChild === true,
 					effectiveTaskId: effective.effectiveTaskId || undefined,
-					effectiveRelationKind: effective.effectiveRelationKind as any,
-					effectiveStatus: effective.effectiveStatus as any,
+					effectiveRelationKind: effective.effectiveRelationKind,
+					effectiveStatus: effective.effectiveStatus,
 					effectiveProgress: effective.effectiveProgress,
 					effectivePreferredModelUrl: effective.preferredModelUrl || undefined,
 					effectivePreferredImageUrl: effective.preferredImageUrl || undefined,
@@ -204,18 +214,18 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 		}
 	}
 
-	const mapMeshyRemoteTaskToPanelItem = (item: Record<string, any>): MeshyTaskPanelItem => {
+	const mapMeshyRemoteTaskToPanelItem = (item: Record<string, unknown>): MeshyTaskPanelItem => {
 		const target = String(item.target ?? '3d').trim() === 'image' ? 'image' : '3d'
 		const family = String(item.family ?? (target === 'image' ? 'text-to-image' : 'text-to-3d')).trim()
-		const status = String(item.status ?? 'idle').trim() as MeshyTaskPanelItem['status']
+		const status = normalizeMeshyTaskStatus(item.status ?? 'idle')
 		const prompt = String(item.prompt ?? '').trim()
 		const taskId = String(item.taskId ?? '').trim()
 		const effective = options.pickMeshyEffectiveOutput(item)
 		const createdAt = Date.parse(String(item.remoteCreatedAt ?? item.createdAt ?? '')) || Date.parse(String(item.updatedAt ?? '')) || Date.now()
-		const requestPayload = item.requestPayload && typeof item.requestPayload === 'object' ? item.requestPayload : {}
+		const requestPayload = isRecord(item.requestPayload) ? item.requestPayload : {}
 		const title = String(requestPayload.title ?? requestPayload.alias ?? familyLabelForMeshy(family)).trim() || familyLabelForMeshy(family)
 		const children = Array.isArray(item.children)
-			? item.children.map((child) => mapMeshyRemoteTaskToPanelItem(child as Record<string, any>))
+			? item.children.map((child) => mapMeshyRemoteTaskToPanelItem(child as Record<string, unknown>))
 			: []
 		return {
 			id: `remote:${taskId || String(item.id ?? createdAt)}`,
@@ -225,7 +235,7 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 			target,
 			family,
 			familyLabel: familyLabelForMeshy(family),
-			status,
+			status: status as MeshyTaskPanelItem['status'],
 			statusLabel: statusLabelForMeshy(status),
 			progress: Math.max(0, Math.min(100, Number(item.progress ?? 0))),
 			promptPreview: prompt || '未填写提示词',
@@ -233,7 +243,7 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 			relationKind: normalizeMeshyRelationKind(item.relationKind),
 			rootTaskId: String(item.rootTaskId ?? item.taskId ?? '').trim() || undefined,
 			parentTaskId: String(item.parentTaskId ?? '').trim() || undefined,
-			capabilities: Array.isArray(item.capabilities) ? item.capabilities : undefined,
+			capabilities: Array.isArray(item.capabilities) ? item.capabilities as MeshyCapability[] : undefined,
 			thumbnailUrl: sanitizeMeshyPreviewUrl(effective.thumbnailUrl) || undefined,
 			hasTextureChild: item.hasTextureChild === true,
 			hasRiggingChild: item.hasRiggingChild === true,

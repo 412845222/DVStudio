@@ -220,11 +220,11 @@ const emit = defineEmits<{ 'update:open': [boolean]; 'update:minimized': [boolea
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 
-const dwebCanvasRef = inject<any>(DwebCanvasGLKey, null)
+const dwebCanvasRef = inject(DwebCanvasGLKey, null)
 
 const debugAgentToUi = (() => {
 	try {
-		return (import.meta as any)?.env?.DEV || window.localStorage.getItem('dvs.aiChat.debug') === '1'
+		return import.meta.env.DEV || window.localStorage.getItem('dvs.aiChat.debug') === '1'
 	} catch {
 		return false
 	}

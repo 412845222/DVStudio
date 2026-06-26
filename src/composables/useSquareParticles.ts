@@ -114,20 +114,21 @@ export function useSquareParticles(options: SquareParticlesOptions = {}): Square
     const color = palette[i % palette.length]
     const opacity = +(baseOpacity * (0.6 + rng() * 0.8)).toFixed(2)
 
-    particles.push({
-      id: i,
-      style: {
+    const style: Record<string, string> = {
         width: sizePx + 'px',
         height: sizePx + 'px',
         left: leftPct + '%',
         top: topPct + '%',
-        ['--sq-color' as any]: color,
-        ['--sq-opacity' as any]: String(opacity),
-        ['--sq-duration' as any]: durS + 's',
-        ['--sq-delay' as any]: delayS + 's',
-        ['--sq-rotate' as any]: rotateDeg + 'deg',
-        ['--sq-sway' as any]: swayPx + 'px',
-      },
+      }
+      style['--sq-color'] = color
+      style['--sq-opacity'] = String(opacity)
+      style['--sq-duration'] = durS + 's'
+      style['--sq-delay'] = delayS + 's'
+      style['--sq-rotate'] = rotateDeg + 'deg'
+      style['--sq-sway'] = swayPx + 'px'
+    particles.push({
+      id: i,
+      style,
     })
   }
 

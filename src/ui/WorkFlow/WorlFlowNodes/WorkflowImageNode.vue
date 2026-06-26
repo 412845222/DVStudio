@@ -170,8 +170,6 @@
             />
           </div>
 
-          <div class="wf-toolbar-divider" />
-
         </div>
       </div>
     </template>

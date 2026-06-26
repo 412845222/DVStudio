@@ -1,14 +1,28 @@
 import { getBackendBaseUrl } from './backendConfig'
 
+export type ComponentTemplate = unknown
+
 export type ComponentLibraryItem = {
 	id: string
 	createdAt?: string
 	savedAt?: string
 	templateId: string
 	name: string
-	template: any
+	template: ComponentTemplate
 	thumbAssetId?: string
 	thumbUrl?: string
+}
+
+export type ImportComponentItem = {
+	id?: string
+	createdAt?: string
+	savedAt?: string
+	templateId: string
+	name: string
+	template: ComponentTemplate
+	thumbAssetId?: string
+	thumbUrl?: string
+	thumbDataUrl?: string
 }
 
 export type ListComponentsResponse = {
@@ -45,7 +59,7 @@ const jsonHeaders = (devToken?: string) => {
 const safeJson = async (res: Response) => {
 	const text = await res.text()
 	try {
-		return { ok: true as const, value: JSON.parse(text) }
+		return { ok: true as const, value: JSON.parse(text) as unknown }
 	} catch {
 		return { ok: false as const, text }
 	}
@@ -92,7 +106,7 @@ export class ComponentLibraryService {
 	async upsertComponent(payload: {
 		templateId: string
 		name: string
-		template: any
+		template: ComponentTemplate
 		thumbAssetId?: string
 		thumbDataUrl?: string
 		clientId?: string
@@ -122,7 +136,7 @@ export class ComponentLibraryService {
 		return (await res.json()) as { ok: boolean }
 	}
 
-	async importComponents(items: Array<any>): Promise<ImportComponentsResponse> {
+	async importComponents(items: ImportComponentItem[]): Promise<ImportComponentsResponse> {
 		const res = await fetch(this.url('/api/editor/component-library/import'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),

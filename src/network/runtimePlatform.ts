@@ -14,19 +14,18 @@
 
 type Platform = 'electron' | 'web' | 'unknown'
 
-const VITE_PLATFORM_OVERRIDE = (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_PLATFORM) || ''
+const VITE_PLATFORM_OVERRIDE = (typeof import.meta !== 'undefined' && import.meta.env.VITE_PLATFORM) || ''
 
 export const getRuntimePlatform = (): Platform => {
   if (typeof window === 'undefined') return 'unknown'
-  const w = window as any
   // Explicit runtime injection
-  if (w?.__DWEB_RUNTIME__?.platform === 'electron') return 'electron'
-  if (w?.__DWEB_RUNTIME__?.platform === 'web') return 'web'
+  if (window?.__DWEB_RUNTIME__?.platform === 'electron') return 'electron'
+  if (window?.__DWEB_RUNTIME__?.platform === 'web') return 'web'
   // Preload bridge exists -> electron
-  if (typeof w?.dweb?.common?.getBackendBaseUrl === 'function') return 'electron'
+  if (typeof window?.dweb?.common?.getBackendBaseUrl === 'function') return 'electron'
   // process.versions.electron -> electron (legacy fallback)
   try {
-    if ((w.process as any)?.versions?.electron) return 'electron'
+    if (window.process?.versions?.electron) return 'electron'
   } catch {
     // ignore
   }
@@ -42,7 +41,7 @@ export const isWeb = () => getRuntimePlatform() === 'web'
 
 // Convenience for exposing debug info to the in-browser debug panel.
 export const runtimeDescription = (): Record<string, string> => {
-  const base = (typeof window !== 'undefined' && (window as any).__DWEB_BACKEND_BASE_URL__) || ''
+  const base = (typeof window !== 'undefined' && window.__DWEB_BACKEND_BASE_URL__) || ''
   return {
     platform: getRuntimePlatform(),
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',

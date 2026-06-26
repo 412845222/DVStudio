@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
+import { getErrorMessage } from '../../../../types/utils'
 
 export const useAIWorkflowProjectCatalogImport = (payload: {
   blueprintProjectService: {
@@ -45,8 +46,8 @@ export const useAIWorkflowProjectCatalogImport = (payload: {
       payload.setUnsavedProject(String(file.name || '').replace(/\.json$/i, '').trim())
       await payload.recoverComfyUIRunStates({ silent: true })
       payload.pushToast('已从本地文件加载蓝图。', 'info')
-    } catch (err: any) {
-      payload.pushToast('导入失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
+    } catch (err: unknown) {
+      payload.pushToast('导入失败：' + getErrorMessage(err), 'error')
     }
   }
 

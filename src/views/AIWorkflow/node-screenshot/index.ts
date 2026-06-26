@@ -10,4 +10,4 @@
  */
 
 export { createNodeScreenshotPool, SCREENSHOT_PADDING } from './useNodeScreenshotPool'
-export type { ScreenshotCacheEntry, NodeScreenshotPool } from './useNodeScreenshotPool'
+export type { ScreenshotCacheEntry, NodeScreenshotPool, ScreenshotPriority } from './useNodeScreenshotPool'

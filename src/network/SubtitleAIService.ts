@@ -1,6 +1,7 @@
 import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
 import { getBackendBaseUrl } from './backendConfig'
+import { isRecord, isString, isArray } from '../types/utils'
 
 export type AiPingResponse = {
 	ok: boolean
@@ -31,44 +32,48 @@ const jsonHeaders = (devToken?: string) => {
 const safeJson = async (res: Response) => {
 	const text = await res.text()
 	try {
-		return { ok: true as const, value: JSON.parse(text) }
+		return { ok: true as const, value: JSON.parse(text) as unknown }
 	} catch {
 		return { ok: false as const, text }
 	}
 }
 
-const isRecord = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null && !Array.isArray(v)
-
-	const coerceAgentToUiMessage = (v: unknown): AgentToUiMessage | null => {
-		if (isAgentToUiMessage(v)) return v
-		if (!isRecord(v)) return null
-
-		const now = new Date().toISOString()
-		const id = (() => {
-			try {
-				return typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `m-${Date.now()}-${Math.random().toString(16).slice(2)}`
-			} catch {
-				return `m-${Date.now()}-${Math.random().toString(16).slice(2)}`
-			}
-		})()
-
-		// Backend may sometimes emit ComponentTemplate directly (or nested under {template}).
-		const asTemplate = (tpl: unknown): AgentToUiMessage | null => {
-			if (!isRecord(tpl)) return null
-			if (tpl.schemaVersion !== 1) return null
-			if (typeof (tpl as any).templateId !== 'string') return null
-			if (!Array.isArray((tpl as any).nodes)) return null
-			return {
-				schemaVersion: 1,
-				id,
-				createdAt: now,
-				type: 'agentToUi/componentTemplate',
-				payload: { template: tpl },
-			} as AgentToUiMessage
+const generateId = (): string => {
+	try {
+		if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+			return crypto.randomUUID()
 		}
-
-		return asTemplate(v) || asTemplate(v.template)
+	} catch {
+		// ignore
 	}
+	return `m-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+const coerceAgentToUiMessage = (v: unknown): AgentToUiMessage | null => {
+	if (isAgentToUiMessage(v)) return v
+	if (!isRecord(v)) return null
+
+	const now = new Date().toISOString()
+	const id = generateId()
+
+	const asTemplate = (tpl: unknown): AgentToUiMessage | null => {
+		if (!isRecord(tpl)) return null
+		if (tpl.schemaVersion !== 1) return null
+		const templateId = tpl.templateId
+		const nodes = tpl.nodes
+		if (!isString(templateId)) return null
+		if (!isArray(nodes)) return null
+		return {
+			schemaVersion: 1,
+			id,
+			createdAt: now,
+			type: 'agentToUi/componentTemplate',
+			payload: { template: tpl },
+		} as AgentToUiMessage
+	}
+
+	return asTemplate(v) || (isRecord(v.template) ? asTemplate(v.template) : null)
+}
 
 export class SubtitleAIService {
 	private readonly getBaseUrl: () => string
@@ -108,7 +113,6 @@ export class SubtitleAIService {
 		layerId: string
 		cues: unknown[]
 		cueRanges: unknown[]
-		/** optional scope: e.g. 'overall' to only generate subtitle understanding */
 		scope?: string
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
@@ -122,7 +126,6 @@ export class SubtitleAIService {
 
 	async *streamStyleAdvice(params: {
 		layerId: string
-		/** input is the result of "字幕整体理解" */
 		understanding: unknown
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
@@ -134,7 +137,6 @@ export class SubtitleAIService {
 
 	async *streamTemplateSuggestions(params: {
 		layerId: string
-		/** input is the result of "字幕整体理解" */
 		understanding: unknown
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
@@ -148,11 +150,8 @@ export class SubtitleAIService {
 		layerId: string
 		cues: unknown[]
 		cueRanges: unknown[]
-		/** UI mode: deep thinking or normal (backend decides how to use it) */
 		deepMode?: boolean
-		/** legacy: markdown string (deprecated) */
 		markdown?: string
-		/** new: structured subtitle summary state */
 		summary?: unknown
 		messages: Array<{ role: 'user' | 'assistant'; content: string }>
 		signal?: AbortSignal
@@ -168,15 +167,9 @@ export class SubtitleAIService {
 		}, params.signal)
 	}
 
-	/**
-	 * Dedicated panel chat: can propose draft patches for style/templates.
-	 * Backend: POST /api/ai/subtitle/panel-chat:stream
-	 */
 	async *streamPanelChat(params: {
 		layerId: string
-		/** current structured subtitle summary state */
 		summary?: unknown
-		/** conversation messages */
 		messages: Array<{ role: 'user' | 'assistant'; content: string }>
 		deepMode?: boolean
 		signal?: AbortSignal
@@ -191,7 +184,6 @@ export class SubtitleAIService {
 
 	async *streamPalette(params: {
 		layerId: string
-		/** structured subtitle summary state or a custom text */
 		summary?: unknown
 		text?: string
 		signal?: AbortSignal
@@ -203,10 +195,6 @@ export class SubtitleAIService {
 		}, params.signal)
 	}
 
-	/**
-	 * Dedicated API for generating ComponentTemplate JSON via agentToUi-jsonl.
-	 * Backend: POST /api/ai/subtitle/template:stream
-	 */
 	async *streamTemplate(params: {
 		promptPreset: string
 		promptInput: unknown
@@ -214,7 +202,6 @@ export class SubtitleAIService {
 		viewport?: unknown
 		provider?: string
 		model?: string
-		/** Debug: console.log raw SSE events */
 		debug?: boolean
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
@@ -265,28 +252,25 @@ export class SubtitleAIService {
 			dataLines = []
 
 			if (debugLabel) {
-				// Log raw SSE payloads for debugging contract/prompt issues.
-				// eslint-disable-next-line no-console
 				console.log(`[SSE ${debugLabel}]`, { event: name || 'msg', data })
 			}
 
 			if (!name || name === 'msg') {
 				try {
-					const v = JSON.parse(data)
+					const v = JSON.parse(data) as unknown
 					const msg = coerceAgentToUiMessage(v)
 					if (msg) return [{ type: 'msg', message: msg }]
-					// silently ignore unknown messages
 					return []
-				} catch (e) {
+				} catch (e: unknown) {
 					return [{ type: 'error', error: { message: 'SSE msg JSON.parse failed', details: { raw: data, error: String(e) } } }]
 				}
 			}
 
 			if (name === 'error') {
 				try {
-					const v = JSON.parse(data)
-					if (isRecord(v) && typeof v.message === 'string') {
-						return [{ type: 'error', error: { message: v.message, details: (v as any).details } }]
+					const v = JSON.parse(data) as unknown
+					if (isRecord(v) && isString(v.message)) {
+						return [{ type: 'error', error: { message: v.message, details: v.details } }]
 					}
 				} catch {
 					// ignore
@@ -325,7 +309,6 @@ export class SubtitleAIService {
 			}
 		}
 
-		// flush remaining
 		for (const ev of flush()) yield ev
 		yield { type: 'done' }
 	}
