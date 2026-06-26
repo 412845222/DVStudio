@@ -10,6 +10,9 @@ const normalizeRepoUrl = (raw: unknown): string => {
 }
 
 const REPO_URL = normalizeRepoUrl((pkg as any)?.repository?.url ?? (pkg as any)?.repository)
+const APP_VERSION = String((pkg as any)?.version ?? '0.0.0')
+const APP_NAME = String((pkg as any)?.build?.productName ?? (pkg as any)?.productName ?? 'DVStudio')
+const APP_COPYRIGHT = String((pkg as any)?.copyright ?? 'Copyright (c) 2026 DwebStudio')
 
 // 根据 env 中的 VITE_BACKEND_BASE_URL（用于开发/测试时指定后端地址）。
 const VITE_BACKEND_BASE_URL = process.env.VITE_BACKEND_BASE_URL || 'http://127.0.0.1:5800'
@@ -27,8 +30,11 @@ export default defineConfig({
   // 这里使用相对路径避免资源被解析为 file:///assets/* 而 404。
   base: './',
   define: {
-    __DWEB_REPO_URL__: JSON.stringify(REPO_URL),
-  },
+		__DWEB_REPO_URL__: JSON.stringify(REPO_URL),
+		__DWEB_APP_VERSION__: JSON.stringify(APP_VERSION),
+		__DWEB_APP_NAME__: JSON.stringify(APP_NAME),
+		__DWEB_APP_COPYRIGHT__: JSON.stringify(APP_COPYRIGHT),
+	},
   server: {
     host: '0.0.0.0',
     proxy: {

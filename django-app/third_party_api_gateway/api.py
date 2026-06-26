@@ -2897,7 +2897,7 @@ def blueprint_chat_stream(request: HttpRequest) -> HttpResponseBase:
                 return
 
             msgs: List[Dict[str, str]] = [
-                {"role": "system", "content": "你是 Dweb Video Studio 的蓝图工作流助手。请用简洁中文回答。"}
+                {"role": "system", "content": "你是 DVStudio 的蓝图工作流助手。请用简洁中文回答。"}
             ]
             for it in messages[-30:]:
                 if not isinstance(it, dict):

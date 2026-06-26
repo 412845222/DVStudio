@@ -2,7 +2,7 @@
   <header class="global-title-bar" aria-label="窗口标题栏" @dblclick="onDoubleClick">
     <div class="global-title-bar-left">
       <img class="global-title-bar-logo" src="/favicon.ico" alt="" aria-hidden="true" />
-      <div class="global-title-bar-title">Dweb Video Studio</div>
+      <div class="global-title-bar-title">{{ appName }}</div>
     </div>
 
     <div class="backend-status-wrap" title="后端状态">
@@ -45,6 +45,9 @@
       <button class="titlebar-btn" type="button" aria-label="打开开发者工具" title="开发者工具" @click="onOpenDevTools">
         🛠
       </button>
+      <button class="titlebar-btn" type="button" aria-label="关于" title="关于" @click="onOpenAbout">
+        ℹ
+      </button>
       <button class="titlebar-btn" type="button" aria-label="最小化" @click="onMinimize">—</button>
       <button class="titlebar-btn" type="button" aria-label="最大化/还原" @click="onToggleMaximize">□</button>
       <button class="titlebar-btn danger" type="button" aria-label="关闭" @click="onClose">×</button>
@@ -68,8 +71,12 @@ import {
 import { usePlatform } from '../../platformBridge'
 import type { BackendRuntimeState, SetupState } from '../../electronBridge/types'
 import { ThemeStore } from '../../store/theme'
+import { getAppName } from '../../network/appInfo'
+import { openAboutDialog } from './aboutDialogStore'
 
 const router = useRouter()
+
+const appName = getAppName()
 
 const backendRuntime = ref<BackendRuntimeState | null>(null)
 
@@ -250,6 +257,10 @@ const platformStatusTooltip = computed(() => {
 
 function toggleTheme() {
   ThemeStore.dispatch('toggleTheme')
+}
+
+function onOpenAbout() {
+  openAboutDialog()
 }
 </script>
 
