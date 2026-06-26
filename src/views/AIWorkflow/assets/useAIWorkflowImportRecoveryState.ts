@@ -187,22 +187,22 @@ export const useAIWorkflowImportRecoveryState = (payload: {
 	}
 
 	const startRecoverySessionFromCurrentState = (payload: {
-		nodesById: Record<string, any>
+		nodesById: Record<string, unknown>
 		nodeOrder: string[]
-		resourcesById: Record<string, any>
+		resourcesById: Record<string, unknown>
 		title?: string
 	}) => {
 		cancelActiveRecoverySession()
 
 		const nodeState = new Map<string, AIWorkflowRecoveryNodeState>()
 		for (const nodeId of payload.nodeOrder) {
-			const node = payload.nodesById?.[nodeId]
+			const node = payload.nodesById?.[nodeId] as Record<string, unknown> | undefined
 			if (!node) continue
 			const type = String(node.type ?? '').toLowerCase()
 			if (type !== 'image' && type !== 'video') continue
 			const resourceId = String(node.resourceId ?? '').trim()
 			if (!resourceId) continue
-			const resource = payload.resourcesById?.[resourceId]
+			const resource = payload.resourcesById?.[resourceId] as Record<string, unknown> | undefined
 			if (!resource) continue
 			const kind = String(resource.kind ?? '').toLowerCase()
 			if (kind !== 'image' && kind !== 'video') continue

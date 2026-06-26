@@ -5,7 +5,7 @@ interface FileSystemHandleLike {
 	requestPermission?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<'granted' | 'denied' | 'prompt'>
 }
 
-type AnyFileHandle = FileSystemHandleLike
+type ShowOpenFilePickerFn = () => Promise<FileSystemHandleLike[]>
 
 const DB_NAME = 'dweb-aiworkflow-local-files'
 const DB_VERSION = 1
@@ -30,7 +30,7 @@ const openDb = (): Promise<IDBDatabase> => {
 }
 
 export const canUseFileSystemHandles = (): boolean => {
-	return typeof (window as unknown as { showOpenFilePicker?: Function }).showOpenFilePicker === 'function'
+	return typeof (window as unknown as { showOpenFilePicker?: ShowOpenFilePickerFn }).showOpenFilePicker === 'function'
 }
 
 export const putLocalFileHandle = async (key: string, handle: unknown): Promise<boolean> => {

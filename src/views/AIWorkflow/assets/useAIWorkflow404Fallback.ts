@@ -36,6 +36,22 @@ export type ResourceBindingSource = {
 	detail?: string
 }
 
+type WorkflowNodeLike = {
+	type?: string
+	nodeType?: string
+	inputs?: unknown
+	outputs?: unknown
+	imageUrl?: string
+	videoUrl?: string
+	modelUrl?: string
+	thumbnailUrl?: string
+	src?: string
+	url?: string
+	posterUrl?: string
+	previewUrl?: string
+	[key: string]: unknown
+}
+
 /**
  * 待用户确认的缺失资产信息
  */
@@ -402,7 +418,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		const nodesById = store.state.nodesById || {}
 
 		// 1) 清理 resourcesById 中对该 url 的直接引用（备份后删除）
-		for (const [rid, res] of Object.entries(resourcesById) as Array<[string, any]>) {
+		for (const [rid, res] of Object.entries(resourcesById) as Array<[string, WorkflowResource | undefined]>) {
 			if (!res) continue
 			const touchesUrl = res.url === url || res.previewUrl === url || res.posterUrl === url
 			if (touchesUrl) {
@@ -413,7 +429,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		}
 
 		// 2) 清理 nodesById 中对该 url 的字段引用
-		for (const [nid, node] of Object.entries(nodesById) as Array<[string, any]>) {
+		for (const [nid, node] of Object.entries(nodesById) as Array<[string, WorkflowNodeLike | undefined]>) {
 			if (!node) continue
 			const fieldsToClean: string[] = []
 			// 检查常见资源字段
@@ -431,13 +447,13 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 			}
 			// 检查 inputs 对象
 			if (node?.inputs && typeof node.inputs === 'object') {
-				for (const [key, val] of Object.entries(node.inputs)) {
+				for (const [key, val] of Object.entries(node.inputs as Record<string, unknown>)) {
 					if (val === url) fieldsToClean.push(`inputs.${key}`)
 				}
 			}
 			// 检查 outputs 对象
 			if (node?.outputs && typeof node.outputs === 'object') {
-				for (const [key, val] of Object.entries(node.outputs)) {
+				for (const [key, val] of Object.entries(node.outputs as Record<string, unknown>)) {
 					if (val === url) fieldsToClean.push(`outputs.${key}`)
 				}
 			}
@@ -621,7 +637,7 @@ function defaultFindBindingSources(
 	const state = store.state
 
 	const resourcesById = state.resourcesById || {}
-	for (const [rid, res] of Object.entries(resourcesById) as Array<[string, any]>) {
+	for (const [rid, res] of Object.entries(resourcesById) as Array<[string, WorkflowResource | undefined]>) {
 		if (!res) continue
 		if (res.url === url) {
 			sources.push({
@@ -645,7 +661,7 @@ function defaultFindBindingSources(
 	}
 
 	const nodesById = state.nodesById || {}
-	for (const [nid, node] of Object.entries(nodesById) as Array<[string, any]>) {
+	for (const [nid, node] of Object.entries(nodesById) as Array<[string, WorkflowNodeLike | undefined]>) {
 		if (!node) continue
 		const nodeType = String(node.type || node.nodeType || '')
 		for (const field of ['imageUrl', 'videoUrl', 'modelUrl', 'thumbnailUrl', 'src', 'url']) {
@@ -654,7 +670,7 @@ function defaultFindBindingSources(
 			}
 		}
 		if (node?.inputs && typeof node.inputs === 'object') {
-			for (const [key, val] of Object.entries(node.inputs)) {
+			for (const [key, val] of Object.entries(node.inputs as Record<string, unknown>)) {
 				if (val === url) {
 					sources.push({
 						type: 'node_input',
@@ -667,7 +683,7 @@ function defaultFindBindingSources(
 			}
 		}
 		if (node?.outputs && typeof node.outputs === 'object') {
-			for (const [key, val] of Object.entries(node.outputs)) {
+			for (const [key, val] of Object.entries(node.outputs as Record<string, unknown>)) {
 				if (val === url) {
 					sources.push({
 						type: 'node_output',
