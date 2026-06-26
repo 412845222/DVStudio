@@ -7,7 +7,11 @@ import router from './router'
 import { editorPersistence, setEditorSaveHandler } from './adapters/editorPersistence'
 import { editorRecentCache } from './adapters/editorRecentCache'
 import { dispatchDvsTimelineNav } from './adapters/windowEventBridge'
-import { DVS_EVENTS, type DvsEditorNodeDeleteDetail, type DvsEditorNodePatchDetail } from './core/events/dvsEvents'
+import {
+	DVS_EVENTS,
+	type DvsEditorNodeDeleteDetail,
+	type DvsEditorNodePatchDetail
+} from './core/events/dvsEvents'
 import { VideoSceneStore } from './store/videoscene'
 import { TimelineStore } from './store/timeline'
 
@@ -26,8 +30,6 @@ window.addEventListener('contextmenu', (e) => {
 setEditorSaveHandler((payload) => {
 	editorRecentCache.save(payload)
 })
-
-
 
 window.addEventListener(
 	'keydown',
@@ -50,7 +52,12 @@ window.addEventListener(
 		}
 
 		// Ctrl+Z/Ctrl+Y: 撤销/重做（输入框内交给浏览器原生文本撤销）
-		if (!isEditable && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+		if (
+			!isEditable &&
+			(e.ctrlKey || e.metaKey) &&
+			!e.shiftKey &&
+			(e.key === 'z' || e.key === 'Z')
+		) {
 			e.preventDefault()
 			e.stopPropagation()
 			editorPersistence.undo()
@@ -65,7 +72,9 @@ window.addEventListener(
 
 		// Backspace/Delete: 删除选中节点（仅在非输入框且确实有舞台选中时触发）
 		if (!isEditable && (e.key === 'Backspace' || e.key === 'Delete')) {
-			const selected = Array.isArray(VideoSceneStore.state.selectedNodeIds) ? VideoSceneStore.state.selectedNodeIds : []
+			const selected = Array.isArray(VideoSceneStore.state.selectedNodeIds)
+				? VideoSceneStore.state.selectedNodeIds
+				: []
 			if (selected.length) {
 				e.preventDefault()
 				e.stopPropagation()
@@ -100,15 +109,18 @@ window.addEventListener(DVS_EVENTS.EditorNodePatched, (e) => {
 			name: detail.patch?.name as any,
 			userType: detail.patch?.userType as any,
 			transform: (detail.patch?.transform as any) ?? undefined,
-			props: (detail.patch?.props as any) ?? undefined,
-		},
+			props: (detail.patch?.props as any) ?? undefined
+		}
 	})
 })
 
 window.addEventListener(DVS_EVENTS.EditorNodeDeleted, (e) => {
 	const detail = (e as CustomEvent<DvsEditorNodeDeleteDetail>).detail
 	if (!detail || typeof detail.nodeId !== 'string' || !detail.nodeId.trim()) return
-	void VideoSceneStore.dispatch('deleteNodeById', { nodeId: detail.nodeId, layerId: detail.layerId })
+	void VideoSceneStore.dispatch('deleteNodeById', {
+		nodeId: detail.nodeId,
+		layerId: detail.layerId
+	})
 })
 
 // NOTE:
@@ -125,7 +137,10 @@ let lastMouseNavDir: -1 | 1 | 0 = 0
 const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	const me = e as MouseEvent
 	const btn = me.button
-	const mask = typeof (me as { buttons?: unknown }).buttons === 'number' ? (me as { buttons: number }).buttons : 0
+	const mask =
+		typeof (me as { buttons?: unknown }).buttons === 'number'
+			? (me as { buttons: number }).buttons
+			: 0
 	const isBack = btn === 3 || (mask & 8) === 8
 	const isForward = btn === 4 || (mask & 16) === 16
 	if (!isBack && !isForward) return
@@ -133,7 +148,10 @@ const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	// One physical click can fire multiple events (e.g. pointerdown + auxclick, or down/up pairs)
 	// depending on browser/driver. De-dupe to avoid scrolling twice.
 	const dir: -1 | 1 = isBack ? -1 : 1
-	const now = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+	const now =
+		typeof performance !== 'undefined' && typeof performance.now === 'function'
+			? performance.now()
+			: Date.now()
 	if (dir === lastMouseNavDir && now - lastMouseNavAt < 250) return
 	lastMouseNavAt = now
 	lastMouseNavDir = dir

@@ -1,12 +1,6 @@
-import type { WorkflowEdge, WorkflowNode, WorkflowState } from '../../../../aiworkflow/types'
+import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import { isString, isRecord } from '../../../../types/utils'
-import type { MeshyNodeSettingsLike, ConnectedMeshyImageInput, ConnectedMeshyModelInput, WorkflowResourceLike, MeshyStoreLike } from './types'
-
-type ImageDimensions = {
-	width: number
-	height: number
-	ratioOnly?: boolean
-}
+import type { MeshyNodeSettingsLike, ConnectedMeshyImageInput, MeshyStoreLike } from './types'
 
 export const useAIWorkflowMeshyInputResolver = (options: {
 	store: MeshyStoreLike
@@ -31,7 +25,11 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 	getComfyImageUrl: (fromNode: WorkflowNode, fromAnchorId: string) => string
 	blobToDataUrl: (blob: Blob) => Promise<string>
 	resolveBackendUrl: (value: string) => string
-	buildCroppedImageTransferFile: (fromNode: WorkflowNode, sourceUrl: string, fileNameBase: string) => Promise<File | null>
+	buildCroppedImageTransferFile: (
+		fromNode: WorkflowNode,
+		sourceUrl: string,
+		fileNameBase: string
+	) => Promise<File | null>
 	createSceneLayoutPlaceholderModelFile: (nodeId: string) => Promise<{
 		file: File
 		signature: string
@@ -99,7 +97,9 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 
 	const getNodeMeshySettings = (node: WorkflowNode): Record<string, unknown> => {
 		const settings = node.meshySettings
-		return settings && typeof settings === 'object' ? (settings as unknown as Record<string, unknown>) : {}
+		return settings && typeof settings === 'object'
+			? (settings as unknown as Record<string, unknown>)
+			: {}
 	}
 
 	const connectedImageOutputUrl = (fromNode: WorkflowNode, fromAnchorId: string) => {
@@ -120,7 +120,9 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 				}
 			}
 			if (upstream.type === 'comfyui') {
-				const url = String(options.getComfyImageUrl(upstream, String(edge.fromAnchorId ?? '')) ?? '').trim()
+				const url = String(
+					options.getComfyImageUrl(upstream, String(edge.fromAnchorId ?? '')) ?? ''
+				).trim()
 				if (url) return url
 			}
 			return ''
@@ -168,7 +170,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 					edge,
 					fromNode,
 					fromAnchorId,
-					url: connectedImageOutputUrl(fromNode, fromAnchorId),
+					url: connectedImageOutputUrl(fromNode, fromAnchorId)
 				}
 			})
 			.filter((item): item is ConnectedMeshyImageInput => Boolean(item?.url))
@@ -180,9 +182,12 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 	}
 
 	const isPrivateMeshyHostname = (hostname: string) => {
-		const host = String(hostname ?? '').trim().toLowerCase()
+		const host = String(hostname ?? '')
+			.trim()
+			.toLowerCase()
 		if (!host) return false
-		if (host === 'localhost' || host === '::1' || host === '[::1]' || host === '0.0.0.0') return true
+		if (host === 'localhost' || host === '::1' || host === '[::1]' || host === '0.0.0.0')
+			return true
 		if (/^127\./.test(host)) return true
 		if (/^10\./.test(host)) return true
 		if (/^192\.168\./.test(host)) return true
@@ -206,9 +211,10 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			return blobToMeshyModelDataUrl(file)
 		}
 
-		const resolved = value.startsWith('http://') || value.startsWith('https://')
-			? value
-			: options.resolveBackendUrl(value)
+		const resolved =
+			value.startsWith('http://') || value.startsWith('https://')
+				? value
+				: options.resolveBackendUrl(value)
 
 		if (resolved.startsWith('dweb://')) {
 			try {
@@ -240,36 +246,50 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		if (fromNode.type === 'meshy') {
 			const settings = getNodeMeshySettings(fromNode)
 			const effective = options.getMeshyEffectiveModelSource(settings)
-			const relationSummary = isRecord(settings.meshyRelationSummary) ? settings.meshyRelationSummary : {}
-			const inputTaskId = String(settings.meshyTaskId ?? relationSummary.effectiveTaskId ?? '').trim()
+			const relationSummary = isRecord(settings.meshyRelationSummary)
+				? settings.meshyRelationSummary
+				: {}
+			const inputTaskId = String(
+				settings.meshyTaskId ?? relationSummary.effectiveTaskId ?? ''
+			).trim()
 			const sourceUrl = String(effective.assetUrl || effective.preferredUrl || '').trim()
 			return {
 				inputTaskId: inputTaskId || undefined,
-				modelUrl: sourceUrl ? await normalizeMeshyModelInputValue(sourceUrl, `meshy_model_${fromNode.id}`) : '',
-				sourceName: `meshy_${inputTaskId || fromNode.id}.${effective.format}`,
+				modelUrl: sourceUrl
+					? await normalizeMeshyModelInputValue(sourceUrl, `meshy_model_${fromNode.id}`)
+					: '',
+				sourceName: `meshy_${inputTaskId || fromNode.id}.${effective.format}`
 			}
 		}
 
 		if (fromNode.type === 'model3d') {
 			const nodeSettings = fromNode as unknown as Record<string, unknown>
-			const modelSettings = isRecord(nodeSettings.model3dSettings) ? nodeSettings.model3dSettings : {}
+			const modelSettings = isRecord(nodeSettings.model3dSettings)
+				? nodeSettings.model3dSettings
+				: {}
 			const rawSource = String(modelSettings.modelAssetUrl ?? modelSettings.modelUrl ?? '').trim()
 			const format = modelSettings.modelFormat === 'gltf' ? 'gltf' : 'glb'
 			return {
 				inputTaskId: undefined,
-				modelUrl: rawSource ? await normalizeMeshyModelInputValue(rawSource, `model3d_${fromNode.id}`) : '',
-				sourceName: String(modelSettings.modelSourceName ?? '').trim() || `model_${fromNode.id}.${format}`,
+				modelUrl: rawSource
+					? await normalizeMeshyModelInputValue(rawSource, `model3d_${fromNode.id}`)
+					: '',
+				sourceName:
+					String(modelSettings.modelSourceName ?? '').trim() || `model_${fromNode.id}.${format}`
 			}
 		}
 
-		if (fromNode.type === 'scene-layout' && String(fromAnchorId ?? '').trim() === 'out-selected-placeholder') {
+		if (
+			fromNode.type === 'scene-layout' &&
+			String(fromAnchorId ?? '').trim() === 'out-selected-placeholder'
+		) {
 			const generated = await options.createSceneLayoutPlaceholderModelFile(fromNode.id)
 			if (!generated) return null
 			const transfer = await options.resolveGeneratedModelTransferSource(generated.file)
 			return {
 				inputTaskId: undefined,
 				modelUrl: transfer.transferUrl,
-				sourceName: generated.file.name,
+				sourceName: generated.file.name
 			}
 		}
 
@@ -289,7 +309,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		if (!edge) {
 			return {
 				url: '',
-				label: '未连接模型输入锚点 in-model',
+				label: '未连接模型输入锚点 in-model'
 			}
 		}
 		const fromNodeId = String(edge.fromNodeId ?? '').trim()
@@ -298,18 +318,20 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		if (!fromNode) {
 			return {
 				url: '',
-				label: '来源节点不存在',
+				label: '来源节点不存在'
 			}
 		}
 
 		if (fromNode.type === 'model3d') {
-			const sourceName = String(fromNode.model3dSettings?.modelSourceName ?? fromNode.alias ?? fromNode.title ?? fromNode.id).trim()
+			const sourceName = String(
+				fromNode.model3dSettings?.modelSourceName ?? fromNode.alias ?? fromNode.title ?? fromNode.id
+			).trim()
 			const snapshot = options.captureModel3DNodeCanvasPreview(fromNodeId)
 			return {
 				url: snapshot,
 				label: snapshot
 					? `3D 节点实时截图：${sourceName || fromNodeId}`
-					: `3D 节点已连接：${sourceName || fromNodeId}`,
+					: `3D 节点已连接：${sourceName || fromNodeId}`
 			}
 		}
 
@@ -317,7 +339,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			const thumbnail = options.getMeshyDisplayThumbnailUrl(getNodeMeshySettings(fromNode))
 			return {
 				url: thumbnail,
-				label: `来源 Meshy 节点：${String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id}`,
+				label: `来源 Meshy 节点：${String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id}`
 			}
 		}
 
@@ -325,13 +347,13 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			const name = String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
 			return {
 				url: '',
-				label: `来源占位体：${name}`,
+				label: `来源占位体：${name}`
 			}
 		}
 
 		return {
 			url: '',
-			label: `来源节点：${String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id}`,
+			label: `来源节点：${String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id}`
 		}
 	}
 
@@ -346,7 +368,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			})
 			return {
 				width: Math.max(1, Math.floor(img.naturalWidth || img.width || 1)),
-				height: Math.max(1, Math.floor(img.naturalHeight || img.height || 1)),
+				height: Math.max(1, Math.floor(img.naturalHeight || img.height || 1))
 			}
 		} finally {
 			URL.revokeObjectURL(objectUrl)
@@ -359,8 +381,10 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 
 	const padImageBlobToMinSize = async (blob: Blob, minSide = MESHY_SAFE_MIN_IMAGE_SIDE) => {
 		const bitmap = typeof createImageBitmap === 'function' ? await createImageBitmap(blob) : null
-		const width = Math.max(1, Math.floor(bitmap?.width || 0)) || (await measureBlobImageSize(blob)).width
-		const height = Math.max(1, Math.floor(bitmap?.height || 0)) || (await measureBlobImageSize(blob)).height
+		const width =
+			Math.max(1, Math.floor(bitmap?.width || 0)) || (await measureBlobImageSize(blob)).width
+		const height =
+			Math.max(1, Math.floor(bitmap?.height || 0)) || (await measureBlobImageSize(blob)).height
 		const targetWidth = Math.max(minSide, width)
 		const targetHeight = Math.max(minSide, height)
 		if (targetWidth === width && targetHeight === height) {
@@ -412,7 +436,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		const padded = await padImageBlobToMinSize(blob, MESHY_SAFE_MIN_IMAGE_SIDE)
 		if (padded.expanded) {
 			console.info(
-				`[Meshy] auto-expanded reference image "${label}" from ${padded.width}x${padded.height} to ${padded.targetWidth}x${padded.targetHeight}`,
+				`[Meshy] auto-expanded reference image "${label}" from ${padded.width}x${padded.height} to ${padded.targetWidth}x${padded.targetHeight}`
 			)
 		}
 		return options.blobToDataUrl(padded.blob)
@@ -437,7 +461,10 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			const file = await fileFromUrl(resolvedUrl, label)
 			return normalizeMeshyImageBlob(file, label)
 		} catch (err: unknown) {
-			console.warn(`[Meshy] failed to convert local asset URL to data URL: ${value} -> ${resolvedUrl}`, err)
+			console.warn(
+				`[Meshy] failed to convert local asset URL to data URL: ${value} -> ${resolvedUrl}`,
+				err
+			)
 			if (/^https?:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(value)) {
 				return value
 			}
@@ -451,13 +478,14 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 
 		const nodeSettings = fromNode as unknown as Record<string, unknown>
 		const meshySettings = getNodeMeshySettings(fromNode)
-		const nameBase = String(
-			options.nodeResourceName(fromNode) ??
-			meshySettings.meshyTaskId ??
-			fromNode.alias ??
-			fromNode.title ??
-			'meshy_ref',
-		).trim() || 'meshy_ref'
+		const nameBase =
+			String(
+				options.nodeResourceName(fromNode) ??
+					meshySettings.meshyTaskId ??
+					fromNode.alias ??
+					fromNode.title ??
+					'meshy_ref'
+			).trim() || 'meshy_ref'
 		void nodeSettings
 
 		if (fromNode.type === 'image') {
@@ -505,10 +533,11 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 	const missingMeshyImageOutputAnchors = (node: WorkflowNode) => {
 		const expectedCount = meshyImageOutputCount(node.meshySettings)
 		const connected = new Set(
-			options.getOutgoingEdges(node.id)
+			options
+				.getOutgoingEdges(node.id)
 				.filter(isImageOutputEdge)
 				.map((e) => String(e.fromAnchorId ?? '').trim())
-				.filter(Boolean),
+				.filter(Boolean)
 		)
 		const missing: string[] = []
 		for (let i = 1; i <= expectedCount; i += 1) {
@@ -531,6 +560,6 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		buildMeshyImageInputFromNode,
 		hasConnectedMeshyConsumer,
 		meshyImageOutputCount,
-		missingMeshyImageOutputAnchors,
+		missingMeshyImageOutputAnchors
 	}
 }

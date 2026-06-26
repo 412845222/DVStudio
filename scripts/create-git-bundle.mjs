@@ -16,7 +16,7 @@ function formatTimestamp(date) {
 		'-',
 		pad(date.getHours()),
 		pad(date.getMinutes()),
-		pad(date.getSeconds()),
+		pad(date.getSeconds())
 	].join('')
 }
 
@@ -26,7 +26,7 @@ function run(command, args, options = {}) {
 			cwd: repoRoot,
 			stdio: options.captureOutput ? ['ignore', 'pipe', 'pipe'] : 'inherit',
 			shell: false,
-			windowsHide: true,
+			windowsHide: true
 		})
 
 		let stdout = ''
@@ -47,7 +47,13 @@ function run(command, args, options = {}) {
 				return
 			}
 			const output = stderr.trim() || stdout.trim()
-			reject(new Error(output ? `${command} exited with code ${String(code)}: ${output}` : `${command} exited with code ${String(code)}`))
+			reject(
+				new Error(
+					output
+						? `${command} exited with code ${String(code)}: ${output}`
+						: `${command} exited with code ${String(code)}`
+				)
+			)
 		})
 	})
 }
@@ -62,7 +68,9 @@ async function main() {
 
 	process.stdout.write(`[pack:git-bundle] bundle file: ${bundlePath}\n`)
 	process.stdout.write('[pack:git-bundle] restore on target: git clone <bundle-file> <folder>\n')
-	process.stdout.write('[pack:git-bundle] note: ignored local files such as django-app/db.sqlite3 must be copied separately if needed.\n')
+	process.stdout.write(
+		'[pack:git-bundle] note: ignored local files such as django-app/db.sqlite3 must be copied separately if needed.\n'
+	)
 }
 
 main().catch((error) => {

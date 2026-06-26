@@ -1,0 +1,472 @@
+﻿
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\AIChat\AIChatDialog.vue
+   203:39  warning  'hasKeyOfType' is defined but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+   203:63  warning  'isBoolean' is defined but never used. Allowed unused vars must match /^_/u              @typescript-eslint/no-unused-vars
+   203:74  warning  'isNull' is defined but never used. Allowed unused vars must match /^_/u                 @typescript-eslint/no-unused-vars
+  1122:7   warning  Unexpected console statement. Only these console methods are allowed: warn, error, info  no-console
+  1359:9   warning  Unexpected console statement. Only these console methods are allowed: warn, error, info  no-console
+  1372:10  warning  Unexpected console statement. Only these console methods are allowed: warn, error, info  no-console
+  1380:73  warning  Unnecessary escape character: \-                                                         no-useless-escape
+  1521:75  warning  Unnecessary escape character: \-                                                         no-useless-escape
+  1656:67  warning  Unnecessary escape character: \-                                                         no-useless-escape
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\BluePrint\BlueprintCanvas.vue
+   68:32  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+  639:5   warning  'suppressContextMenuOnce' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  763:34  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+  925:9   warning  'target' is assigned a value but never used. Allowed unused vars must match /^_/u                   @typescript-eslint/no-unused-vars
+  945:9   warning  'target' is assigned a value but never used. Allowed unused vars must match /^_/u                   @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\BluePrint\node-dialog\NodeChatDialog.vue
+   82:13  warning  v-on event '@update:modelValue' must be hyphenated                                          vue/v-on-event-hyphenation
+  161:26  error    Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+  169:47  error    Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+  192:7   warning  'typeDescription' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  274:52  error    Unexpected any. Specify a different type                                                    @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\BluePrint\node-dialog\NodeChatParamPanel.vue
+  695:26  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  700:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  709:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\TimeLine\TimeLine.vue
+   346:15  warning  'ProgressBarSpec' is defined but never used. Allowed unused vars must match /^_/u         @typescript-eslint/no-unused-vars
+   410:27  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   411:38  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   426:41  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   648:7   warning  'isActiveFrame' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   959:69  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   962:65  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   969:14  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   971:31  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   972:17  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   976:13  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   978:37  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   978:78  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   987:26  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+   987:65  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  1220:7   warning  'onFrameClick' is assigned a value but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+  1314:42  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+  1453:17  warning  'e' is defined but never used. Allowed unused args must match /^_/u                       @typescript-eslint/no-unused-vars
+  1584:29  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\TimeLine\components\TimeLineContextMenu.vue
+  160:58  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\TimeLine\progress\ProgressStylePanel.vue
+  1:1  warning  The template requires child element  vue/valid-template-root
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\TimeLine\progress\TimeLineProgressCanvasRow.vue
+  310:66  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  314:66  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  316:29  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\UIComponent\BottomChatDock.vue
+    42:63  warning  Expected no line breaks before closing bracket, but 1 line break found                       vue/html-closing-bracket-newline
+    43:45  warning  Expected no line breaks before closing bracket, but 1 line break found                       vue/html-closing-bracket-newline
+   519:28  error    Unexpected any. Specify a different type                                                     @typescript-eslint/no-explicit-any
+   631:11  warning  Redundant double negation                                                                    no-extra-boolean-cast
+   917:7   warning  'nanoProSelected' is assigned a value but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+  1037:7   warning  'toggleHistory' is assigned a value but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars
+  1120:7   warning  'onNeedTypeChange' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  1202:12  error    Unexpected any. Specify a different type                                                     @typescript-eslint/no-explicit-any
+  1329:61  error    Unexpected any. Specify a different type                                                     @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\UIComponent\DwebCanvasNodeSearchMenu.vue
+  202:5  warning  Prop "items" should be optional          vue/no-required-prop-with-default
+  203:5  warning  Prop "categories" should be optional     vue/no-required-prop-with-default
+  204:5  warning  Prop "topCategories" should be optional  vue/no-required-prop-with-default
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\UIComponent\GlobalSideNav.vue
+  30:11   warning  Expected a linebreak before this attribute                              vue/first-attribute-linebreak
+  31:52   warning  Expected 1 line break before closing bracket, but no line breaks found  vue/html-closing-bracket-newline
+  31:52   warning  Expected a space before '/>', but not found                             vue/html-closing-bracket-spacing
+  45:12   warning  Expected a linebreak before this attribute                              vue/first-attribute-linebreak
+  46:53   warning  Expected 1 line break before closing bracket, but no line breaks found  vue/html-closing-bracket-newline
+  46:53   warning  Expected a space before '/>', but not found                             vue/html-closing-bracket-spacing
+  72:13   warning  Expected a linebreak before this attribute                              vue/first-attribute-linebreak
+  73:71   warning  Expected 1 line break before closing bracket, but no line breaks found  vue/html-closing-bracket-newline
+  73:71   warning  Expected a space before '/>', but not found                             vue/html-closing-bracket-spacing
+  77:104  warning  Expected a space before '/>', but not found                             vue/html-closing-bracket-spacing
+  78:100  warning  Expected a space before '/>', but not found                             vue/html-closing-bracket-spacing
+  83:72   warning  Expected 1 line break before closing bracket, but no line breaks found  vue/html-closing-bracket-newline
+  83:72   warning  Expected a space before '/>', but not found                             vue/html-closing-bracket-spacing
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\UIComponent\MarkdownViewer.vue
+  23:26  warning  'v-html' directive can lead to XSS attack  vue/no-v-html
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\UIComponent\MeshyImageForm.vue
+  134:59  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\UIComponent\PageTransitionOverlay.vue
+  118:7   warning  'route' is assigned a value but never used. Allowed unused vars must match /^_/u              @typescript-eslint/no-unused-vars
+  132:7   warning  'MIN_TRANSITION_MS' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  137:31  error    Unexpected any. Specify a different type                                                      @typescript-eslint/no-explicit-any
+  137:42  error    Unexpected any. Specify a different type                                                      @typescript-eslint/no-explicit-any
+  137:53  error    Unexpected any. Specify a different type                                                      @typescript-eslint/no-explicit-any
+  168:30  error    Unexpected any. Specify a different type                                                      @typescript-eslint/no-explicit-any
+  168:41  error    Unexpected any. Specify a different type                                                      @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\UIComponent\SeedanceVideoForm.vue
+  100:36  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  106:22  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  108:36  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  114:21  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  116:36  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  122:22  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  124:36  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  130:22  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\VideoScene.vue
+   210:9   warning  v-on event '@update:ignoreStageBackground' must be hyphenated                                     vue/v-on-event-hyphenation
+   211:9   warning  v-on event '@exportFrames' must be hyphenated                                                     vue/v-on-event-hyphenation
+   212:9   warning  v-on event '@renderVideo' must be hyphenated                                                      vue/v-on-event-hyphenation
+   282:7   warning  'VideoSceneNodeProps' is defined but never used. Allowed unused vars must match /^_/u             @typescript-eslint/no-unused-vars
+  1114:7   warning  'findUserNodeTransform' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  1396:3   warning  The value assigned to 'cx' is not used in subsequent statements                                   no-useless-assignment
+  1397:3   warning  The value assigned to 'cy' is not used in subsequent statements                                   no-useless-assignment
+  1933:52  warning  'EventListener' is not defined                                                                    no-undef
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\dialogs\ProgressBarEditDialog.vue
+  217:3  warning  Prop "open" should be optional  vue/no-required-prop-with-default
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\panels\AiSubtitleUnderstandingPanel.vue
+   169:37   warning  Expected no line breaks before closing bracket, but 1 line break found                                  vue/html-closing-bracket-newline
+   349:15   warning  'ComponentTemplate' is defined but never used. Allowed unused vars must match /^_/u                     @typescript-eslint/no-unused-vars
+   349:34   warning  'InstantiateTemplateResult' is defined but never used. Allowed unused vars must match /^_/u             @typescript-eslint/no-unused-vars
+   352:32   warning  'VideoSceneTreeNode' is defined but never used. Allowed unused vars must match /^_/u                    @typescript-eslint/no-unused-vars
+   359:33   warning  'AgentToUiTaskStatusMessage' is defined but never used. Allowed unused vars must match /^_/u            @typescript-eslint/no-unused-vars
+   359:84   warning  'AgentToUiSubtitleSummaryDeltaMessage' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   359:166  warning  'AgentToUiComponentTemplateMessage' is defined but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars
+   369:7    warning  'SubtitleUnderstanding' is defined but never used. Allowed unused vars must match /^_/u                 @typescript-eslint/no-unused-vars
+   370:7    warning  'SubtitleSegments' is defined but never used. Allowed unused vars must match /^_/u                      @typescript-eslint/no-unused-vars
+   371:7    warning  'SubtitleStyle' is defined but never used. Allowed unused vars must match /^_/u                         @typescript-eslint/no-unused-vars
+   372:7    warning  'SubtitlePlanItem' is defined but never used. Allowed unused vars must match /^_/u                      @typescript-eslint/no-unused-vars
+   426:6    warning  'RepairTemplate' is defined but never used. Allowed unused vars must match /^_/u                        @typescript-eslint/no-unused-vars
+   436:6    warning  'LooseComponentTemplate' is defined but never used. Allowed unused vars must match /^_/u                @typescript-eslint/no-unused-vars
+   449:6    warning  'LooseSavedComponent' is defined but never used. Allowed unused vars must match /^_/u                   @typescript-eslint/no-unused-vars
+   480:6    warning  'TemplateParam' is defined but never used. Allowed unused vars must match /^_/u                         @typescript-eslint/no-unused-vars
+   492:7    warning  'isArray' is assigned a value but never used. Allowed unused vars must match /^_/u                      @typescript-eslint/no-unused-vars
+  1164:124  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1165:138  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1393:7    warning  'tryFormatJsonCodeBlock' is assigned a value but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+  1404:48   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1412:34   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1413:30   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1431:32   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1473:26   warning  Unnecessary escape character: \-                                                                        no-useless-escape
+  1476:11   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1485:20   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1490:32   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1490:70   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1491:32   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1491:71   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1498:32   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1498:70   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1522:19   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1525:13   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1593:40   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1599:37   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1601:38   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1601:61   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1601:75   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1621:15   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1622:15   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1675:38   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1678:56   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1688:40   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1688:73   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1688:93   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1734:27   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1735:28   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1750:21   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1754:23   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1762:19   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1776:21   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1805:125  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1873:66   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1935:37   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  1981:37   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2085:80   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2086:54   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2104:17   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2104:48   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2105:97   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2107:31   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2108:101  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2146:48   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2146:89   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2146:109  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2177:48   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2177:100  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2216:50   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2225:12   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2242:13   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2277:38   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2278:32   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2280:42   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2280:73   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2280:93   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2285:37   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2290:30   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2290:69   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2291:25   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2296:43   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2296:77   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2296:97   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2366:42   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2378:14   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2378:29   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2468:67   warning  Unnecessary escape character: \-                                                                        no-useless-escape
+  2485:7    warning  'instantiateIntoLayer' is assigned a value but never used. Allowed unused vars must match /^_/u         @typescript-eslint/no-unused-vars
+  2485:64   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2486:76   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2499:74   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2499:102  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2500:76   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2518:28   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2527:12   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2530:31   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2603:56   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2603:100  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2603:122  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2607:133  error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2619:40   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2624:50   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2624:83   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2625:37   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2626:35   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2633:38   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2633:76   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2651:45   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2658:35   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2659:36   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2660:48   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2661:26   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+  2697:37   warning  Unsafe usage of ReturnStatement                                                                         no-unsafe-finally
+  2716:49   error    Unexpected any. Specify a different type                                                                @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\panels\SubtitleEditorPanel.vue
+  111:66  warning  'VideoSceneNodeProps' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  320:79  warning  'EventListener' is not defined                                                         no-undef
+  379:82  warning  'EventListener' is not defined                                                         no-undef
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\panels\VideoStudioLeftPanel.vue
+  55:7  warning  'SPLITTER_WIDTH' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\panels\VideoStudioRightPanel.vue
+   49:7   warning  'SPLITTER_WIDTH' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  176:63  warning  'EventListener' is not defined                                                             no-undef
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\parts\nodeDetail\forms\CommonTransformForm.vue
+    8:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   16:83  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   22:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   30:83  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   36:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   46:88  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   52:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   62:88  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   68:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   77:87  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   83:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   92:88  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   98:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  106:90  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  112:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  122:89  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  128:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  138:88  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  144:22  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  154:88  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\parts\nodeDetail\forms\ImageNodeForm.vue
+  21:103  warning  Expected a space before '/>', but not found  vue/html-closing-bracket-spacing
+  24:104  warning  Expected a space before '/>', but not found  vue/html-closing-bracket-spacing
+  27:90   warning  Expected a space before '/>', but not found  vue/html-closing-bracket-spacing
+  30:90   warning  Expected a space before '/>', but not found  vue/html-closing-bracket-spacing
+  33:104  warning  Expected a space before '/>', but not found  vue/html-closing-bracket-spacing
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\parts\nodeDetail\forms\LineNodeForm.vue
+    8:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   16:87  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   22:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   30:87  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   37:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   45:85  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   51:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   59:85  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   66:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   74:88  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   80:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   88:88  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   94:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   95:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  101:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  110:90  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  116:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\parts\nodeDetail\forms\NodeFiltersForm.vue
+  185:20  warning  'isBoolean' is defined but never used. Allowed unused vars must match /^_/u             @typescript-eslint/no-unused-vars
+  243:6   warning  'VideoNodeFilterPatch' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\parts\nodeDetail\forms\RectNodeForm.vue
+   6:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   7:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+   9:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  19:92  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  24:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  25:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  27:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  37:94  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  43:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  52:92  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  58:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  67:93  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\parts\nodeDetail\forms\TextNodeForm.vue
+   6:23  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  15:21  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  24:89  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  29:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  30:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  34:20  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  44:27  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  53:27  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+  62:27  warning  Unexpected mutation of "draft" prop  vue/no-mutating-props
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\VideoScene\parts\nodeTree\VideoSceneNodeTree.vue
+  174:52  warning  'VideoSceneNodeProps' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\BlueprintLogPanel.vue
+  139:13  warning  The value assigned to 'text' is not used in subsequent statements  no-useless-assignment
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\BlueprintProjectToolbar.vue
+  414:7  warning  'resources' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\MeshyTaskPanel.vue
+  128:60  warning  Expected no line breaks before closing bracket, but 1 line break found        vue/html-closing-bracket-newline
+  150:89  warning  Expected no line breaks before closing bracket, but 1 line break found        vue/html-closing-bracket-newline
+  151:33  warning  Expected no line breaks before closing bracket, but 1 line break found        vue/html-closing-bracket-newline
+  153:89  warning  Expected no line breaks before closing bracket, but 1 line break found        vue/html-closing-bracket-newline
+  154:33  warning  Expected no line breaks before closing bracket, but 1 line break found        vue/html-closing-bracket-newline
+  156:91  warning  Expected no line breaks before closing bracket, but 1 line break found        vue/html-closing-bracket-newline
+  157:33  warning  Expected no line breaks before closing bracket, but 1 line break found        vue/html-closing-bracket-newline
+  249:55  warning  Expected no line breaks before closing bracket, but 1 line break found        vue/html-closing-bracket-newline
+  675:9   warning  'h' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\ResourceManagerPanel.vue
+  513:5  warning  'ioObservedSentinel' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  618:7  warning  'totalCount' is assigned a value but never used. Allowed unused vars must match /^_/u          @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\VideoTaskPanel.vue
+   50:54  warning  Expected no line breaks before closing bracket, but 1 line break found            vue/html-closing-bracket-newline
+  144:27  warning  Expected no line breaks before closing bracket, but 1 line break found            vue/html-closing-bracket-newline
+  151:27  warning  Expected no line breaks before closing bracket, but 1 line break found            vue/html-closing-bracket-newline
+  158:27  warning  Expected no line breaks before closing bracket, but 1 line break found            vue/html-closing-bracket-newline
+  165:27  warning  Expected no line breaks before closing bracket, but 1 line break found            vue/html-closing-bracket-newline
+  198:7   warning  'props' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorkflowNodeBase.vue
+  565:9  warning  The value assigned to 'nextW' is not used in subsequent statements   no-useless-assignment
+  566:9  warning  The value assigned to 'nextH' is not used in subsequent statements   no-useless-assignment
+  567:9  warning  The value assigned to 'shiftX' is not used in subsequent statements  no-useless-assignment
+  568:9  warning  The value assigned to 'shiftY' is not used in subsequent statements  no-useless-assignment
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorkflowSelectionToolbar.vue
+  30:7  warning  'props' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowComfyUINode.vue
+  19:5  warning  v-on event '@update:worldX' must be hyphenated  vue/v-on-event-hyphenation
+  20:5  warning  v-on event '@update:worldY' must be hyphenated  vue/v-on-event-hyphenation
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowImageNode.vue
+   19:5   warning  v-on event '@update:worldX' must be hyphenated                                            vue/v-on-event-hyphenation
+   20:5   warning  v-on event '@update:worldY' must be hyphenated                                            vue/v-on-event-hyphenation
+  278:3   warning  Unexpected console statement. Only these console methods are allowed: warn, error, info   no-console
+  352:7   warning  'hasAspectLock' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  515:7   warning  'cropToUv' is assigned a value but never used. Allowed unused vars must match /^_/u       @typescript-eslint/no-unused-vars
+  681:11  warning  'natW' is assigned a value but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+  682:11  warning  'natH' is assigned a value but never used. Allowed unused vars must match /^_/u           @typescript-eslint/no-unused-vars
+  776:33  error    Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowMeshyModelNode.vue
+    19:5   warning  v-on event '@update:worldX' must be hyphenated                                                   vue/v-on-event-hyphenation
+    20:5   warning  v-on event '@update:worldY' must be hyphenated                                                   vue/v-on-event-hyphenation
+   894:7   warning  'meshyImageInputCount' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   942:54  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1126:7   warning  'modelTypeDocNote' is assigned a value but never used. Allowed unused vars must match /^_/u      @typescript-eslint/no-unused-vars
+  1335:68  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1358:73  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1368:22  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1376:68  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1415:47  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1429:73  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1449:70  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1513:74  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+  1524:52  error    Unexpected any. Specify a different type                                                         @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowModel3DNode.vue
+   19:5  warning  v-on event '@update:worldX' must be hyphenated                                              vue/v-on-event-hyphenation
+   20:5  warning  v-on event '@update:worldY' must be hyphenated                                              vue/v-on-event-hyphenation
+  266:7  warning  Duplicate key 'threePreviewState'. May cause name collision in script or template tag       vue/no-dupe-keys
+  363:7  warning  'onModelUrlInput' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowRotateImageNode.vue
+   19:5   warning  v-on event '@update:worldX' must be hyphenated                          vue/v-on-event-hyphenation
+   20:5   warning  v-on event '@update:worldY' must be hyphenated                          vue/v-on-event-hyphenation
+  104:37  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  105:47  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  602:7   warning  The value assigned to 'planeW' is not used in subsequent statements     no-useless-assignment
+  603:7   warning  The value assigned to 'planeH' is not used in subsequent statements     no-useless-assignment
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowSceneDecomposeNode.vue
+   19:5   warning  v-on event '@update:worldX' must be hyphenated                          vue/v-on-event-hyphenation
+   20:5   warning  v-on event '@update:worldY' must be hyphenated                          vue/v-on-event-hyphenation
+  104:61  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+  106:73  warning  Expected no line breaks before closing bracket, but 1 line break found  vue/html-closing-bracket-newline
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowSceneLayoutNode.vue
+    19:5   warning  v-on event '@update:worldX' must be hyphenated                                                      vue/v-on-event-hyphenation
+    20:5   warning  v-on event '@update:worldY' must be hyphenated                                                      vue/v-on-event-hyphenation
+   700:54  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+   821:7   warning  'staticPreviewFrameCount' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+   824:7   warning  'staticPreviewFps' is assigned a value but never used. Allowed unused vars must match /^_/u         @typescript-eslint/no-unused-vars
+  1053:15  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+  1246:59  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowSceneUnderstandingNode.vue
+  19:5  warning  v-on event '@update:worldX' must be hyphenated  vue/v-on-event-hyphenation
+  20:5  warning  v-on event '@update:worldY' must be hyphenated  vue/v-on-event-hyphenation
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowStoryNode.vue
+   19:5  warning  v-on event '@update:worldX' must be hyphenated                  vue/v-on-event-hyphenation
+   20:5  warning  v-on event '@update:worldY' must be hyphenated                  vue/v-on-event-hyphenation
+  458:7  warning  The value assigned to 'w' is not used in subsequent statements  no-useless-assignment
+  459:7  warning  The value assigned to 'h' is not used in subsequent statements  no-useless-assignment
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowTextMergeNode.vue
+   19:5   warning  v-on event '@update:worldX' must be hyphenated                       vue/v-on-event-hyphenation
+   20:5   warning  v-on event '@update:worldY' must be hyphenated                       vue/v-on-event-hyphenation
+  106:9   warning  'inputAnchors' is defined but never used                             vue/no-unused-vars
+  293:39  error    Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+  375:25  error    Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+  379:22  warning  'a' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+  379:25  error    Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+  383:28  error    Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowTextNode.vue
+  19:5  warning  v-on event '@update:worldX' must be hyphenated  vue/v-on-event-hyphenation
+  20:5  warning  v-on event '@update:worldY' must be hyphenated  vue/v-on-event-hyphenation
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowUnrealExportNode.vue
+  19:5  warning  v-on event '@update:worldX' must be hyphenated  vue/v-on-event-hyphenation
+  20:5  warning  v-on event '@update:worldY' must be hyphenated  vue/v-on-event-hyphenation
+
+G:\DwebStudio\DwebVideoStudio\DVStudio\src\ui\WorkFlow\WorlFlowNodes\WorkflowVideoNode.vue
+  19:5  warning  v-on event '@update:worldX' must be hyphenated  vue/v-on-event-hyphenation
+  20:5  warning  v-on event '@update:worldY' must be hyphenated  vue/v-on-event-hyphenation
+
+鉁?372 problems (147 errors, 225 warnings)
+  0 errors and 77 warnings potentially fixable with the `--fix` option.
+

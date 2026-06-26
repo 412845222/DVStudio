@@ -1,118 +1,118 @@
 :root {
-  --aiwf-page-background: var(--wf-page-bg);
-  --aiwf-canvas-z-index: var(--aiwf-z-canvas);
-  --aiwf-chrome-z-index: var(--aiwf-z-chrome);
-  --aiwf-overlay-z-index: var(--aiwf-z-overlay);
-  --aiwf-overlay-utility-z-index: var(--aiwf-z-overlay-utility);
-  --aiwf-floating-z-index: var(--aiwf-z-floating);
-  --aiwf-popover-z-index: var(--aiwf-z-popover);
-  --aiwf-alert-z-index: var(--aiwf-z-alert);
+	--aiwf-page-background: var(--wf-page-bg);
+	--aiwf-canvas-z-index: var(--aiwf-z-canvas);
+	--aiwf-chrome-z-index: var(--aiwf-z-chrome);
+	--aiwf-overlay-z-index: var(--aiwf-z-overlay);
+	--aiwf-overlay-utility-z-index: var(--aiwf-z-overlay-utility);
+	--aiwf-floating-z-index: var(--aiwf-z-floating);
+	--aiwf-popover-z-index: var(--aiwf-z-popover);
+	--aiwf-alert-z-index: var(--aiwf-z-alert);
 
-  --aiwf-safe-right: 0px;
-  --aiwf-safe-top: 0px;
+	--aiwf-safe-right: 0px;
+	--aiwf-safe-top: 0px;
 
-  --aiwf-shell-left-collapsed: 56px;
-  --aiwf-shell-left-expanded: 180px;
-  --aiwf-shell-transition: var(--aiwf-motion-shell);
+	--aiwf-shell-left-collapsed: 56px;
+	--aiwf-shell-left-expanded: 180px;
+	--aiwf-shell-transition: var(--aiwf-motion-shell);
 
-  --aiwf-toolbar-left: var(--aiwf-shell-left-collapsed);
-  --aiwf-toolbar-bottom: var(--aiwf-space-4);
-  --aiwf-toolbar-gap: var(--aiwf-space-2);
-  --aiwf-toolbar-button-bg: var(--wf-control-bg);
-  --aiwf-toolbar-button-bg-hover: var(--wf-control-bg-hover);
-  --aiwf-toolbar-button-border: var(--wf-control-border);
-  --aiwf-toolbar-button-border-hover: var(--wf-control-border-hover);
-  --aiwf-toolbar-button-text: var(--wf-control-text);
-  --aiwf-toolbar-button-shadow: var(--aiwf-shadow-sm);
+	--aiwf-toolbar-left: var(--aiwf-shell-left-collapsed);
+	--aiwf-toolbar-bottom: var(--aiwf-space-4);
+	--aiwf-toolbar-gap: var(--aiwf-space-2);
+	--aiwf-toolbar-button-bg: var(--wf-control-bg);
+	--aiwf-toolbar-button-bg-hover: var(--wf-control-bg-hover);
+	--aiwf-toolbar-button-border: var(--wf-control-border);
+	--aiwf-toolbar-button-border-hover: var(--wf-control-border-hover);
+	--aiwf-toolbar-button-text: var(--wf-control-text);
+	--aiwf-toolbar-button-shadow: var(--aiwf-shadow-sm);
 
-  --aiwf-inspector-toggle-top: var(--aiwf-space-4);
-  --aiwf-inspector-toggle-right: var(--aiwf-space-4);
-  --aiwf-inspector-toggle-bg: var(--wf-control-bg);
-  --aiwf-inspector-toggle-bg-hover: var(--wf-control-bg-hover);
-  --aiwf-inspector-toggle-border: var(--wf-control-border);
-  --aiwf-inspector-toggle-border-hover: var(--wf-control-border-hover);
-  --aiwf-inspector-toggle-text: var(--wf-control-text);
-  --aiwf-inspector-toggle-shadow: var(--aiwf-shadow-sm);
+	--aiwf-inspector-toggle-top: var(--aiwf-space-4);
+	--aiwf-inspector-toggle-right: var(--aiwf-space-4);
+	--aiwf-inspector-toggle-bg: var(--wf-control-bg);
+	--aiwf-inspector-toggle-bg-hover: var(--wf-control-bg-hover);
+	--aiwf-inspector-toggle-border: var(--wf-control-border);
+	--aiwf-inspector-toggle-border-hover: var(--wf-control-border-hover);
+	--aiwf-inspector-toggle-text: var(--wf-control-text);
+	--aiwf-inspector-toggle-shadow: var(--aiwf-shadow-sm);
 
-  --aiwf-dialog-mask-bg: rgba(0, 0, 0, 0.45);
-  --aiwf-dialog-padding: 18px;
-  --aiwf-dialog-max-height-gap: 36px;
-  --aiwf-dialog-border: var(--wf-panel-border);
-  --aiwf-dialog-radius: var(--wf-panel-radius);
-  --aiwf-dialog-bg: var(--wf-panel-bg-solid);
-  --aiwf-dialog-shadow: var(--wf-panel-shadow);
-  --aiwf-dialog-shadow-strong: var(--wf-panel-shadow-strong);
-  --aiwf-dialog-head-padding: 12px 14px;
-  --aiwf-dialog-body-padding: 12px 14px;
-  --aiwf-dialog-actions-padding: 10px 14px;
-  --aiwf-dialog-actions-gap: 10px;
-  --aiwf-dialog-title-size: 14px;
-  --aiwf-dialog-title-weight: 600;
-  --aiwf-dialog-button-height: 32px;
-  --aiwf-dialog-button-padding: 0 12px;
-  --aiwf-dialog-button-radius: var(--aiwf-radius-md);
+	--aiwf-dialog-mask-bg: rgba(0, 0, 0, 0.45);
+	--aiwf-dialog-padding: 18px;
+	--aiwf-dialog-max-height-gap: 36px;
+	--aiwf-dialog-border: var(--wf-panel-border);
+	--aiwf-dialog-radius: var(--wf-panel-radius);
+	--aiwf-dialog-bg: var(--wf-panel-bg-solid);
+	--aiwf-dialog-shadow: var(--wf-panel-shadow);
+	--aiwf-dialog-shadow-strong: var(--wf-panel-shadow-strong);
+	--aiwf-dialog-head-padding: 12px 14px;
+	--aiwf-dialog-body-padding: 12px 14px;
+	--aiwf-dialog-actions-padding: 10px 14px;
+	--aiwf-dialog-actions-gap: 10px;
+	--aiwf-dialog-title-size: 14px;
+	--aiwf-dialog-title-weight: 600;
+	--aiwf-dialog-button-height: 32px;
+	--aiwf-dialog-button-padding: 0 12px;
+	--aiwf-dialog-button-radius: var(--aiwf-radius-md);
 }
 
 /* Page shell visual baseline (direct application, not only vars) */
 .aiwf-page {
-  background:
-    radial-gradient(1200px 560px at 8% -10%, rgba(31, 157, 132, 0.14), transparent 62%),
-    radial-gradient(900px 440px at 96% 108%, rgba(217, 152, 43, 0.12), transparent 58%),
-    var(--aiwf-page-background);
+	background:
+		radial-gradient(1200px 560px at 8% -10%, rgba(31, 157, 132, 0.14), transparent 62%),
+		radial-gradient(900px 440px at 96% 108%, rgba(217, 152, 43, 0.12), transparent 58%),
+		var(--aiwf-page-background);
 }
 
 .aiwf-toolbar,
 .aiwf-perf-panel,
 .aiwf-inspector-toggle,
 .aiwf-package-progress {
-  transition:
-    left var(--aiwf-shell-transition),
-    background-color var(--aiwf-motion-base),
-    border-color var(--aiwf-motion-base),
-    box-shadow var(--aiwf-motion-base);
+	transition:
+		left var(--aiwf-shell-transition),
+		background-color var(--aiwf-motion-base),
+		border-color var(--aiwf-motion-base),
+		box-shadow var(--aiwf-motion-base);
 }
 
 .aiwf-toolbar-btn,
 .aiwf-inspector-toggle,
 .aiwf-perf-toggle,
 .aiwf-perf-export {
-  border-radius: var(--aiwf-radius-md);
-  border: 1px solid var(--aiwf-toolbar-button-border);
-  background: var(--aiwf-toolbar-button-bg);
-  color: var(--aiwf-toolbar-button-text);
+	border-radius: var(--aiwf-radius-md);
+	border: 1px solid var(--aiwf-toolbar-button-border);
+	background: var(--aiwf-toolbar-button-bg);
+	color: var(--aiwf-toolbar-button-text);
 }
 
 .aiwf-toolbar-btn:hover,
 .aiwf-inspector-toggle:hover,
 .aiwf-perf-toggle:hover,
 .aiwf-perf-export:hover {
-  border-color: var(--aiwf-toolbar-button-border-hover);
-  background: var(--aiwf-toolbar-button-bg-hover);
+	border-color: var(--aiwf-toolbar-button-border-hover);
+	background: var(--aiwf-toolbar-button-bg-hover);
 }
 
 .aiwf-package-progress,
 .aiwf-perf-card {
-  border-radius: var(--aiwf-radius-lg);
+	border-radius: var(--aiwf-radius-lg);
 }
 
 .aiwf-package-progress-fill {
-  background: linear-gradient(90deg, var(--wf-primary), var(--wf-accent));
+	background: linear-gradient(90deg, var(--wf-primary), var(--wf-accent));
 }
 
 .aiwf-perf-badge.is-good {
-  color: var(--wf-text);
-  border-color: var(--wf-state-selected-border);
-  background: var(--wf-success-soft);
+	color: var(--wf-text);
+	border-color: var(--wf-state-selected-border);
+	background: var(--wf-success-soft);
 }
 
 .aiwf-perf-badge.is-warn {
-  color: var(--wf-text);
-  border-color: var(--wf-state-warning-border);
-  background: var(--wf-warning-soft);
+	color: var(--wf-text);
+	border-color: var(--wf-state-warning-border);
+	background: var(--wf-warning-soft);
 }
 
 .aiwf-perf-badge.is-bad {
-  color: var(--wf-text);
-  border-color: var(--wf-state-error-border);
-  background: var(--wf-danger-soft);
+	color: var(--wf-text);
+	border-color: var(--wf-state-error-border);
+	background: var(--wf-danger-soft);
 }

@@ -4,10 +4,7 @@ import type { ProjectAssetEntryV1, ProjectManifestV1 } from './types'
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0
 
-const walkNodes = (
-	nodes: unknown,
-	onNode: (node: Record<string, JsonValue>) => void
-) => {
+const walkNodes = (nodes: unknown, onNode: (node: Record<string, JsonValue>) => void) => {
 	if (!Array.isArray(nodes)) return
 	for (const raw of nodes) {
 		if (!raw || typeof raw !== 'object') continue
@@ -46,7 +43,7 @@ export const buildManifestFromSnapshotV1 = (snapshot: EditorSnapshot): ProjectMa
 			mime: 'image/*',
 			name: a.name,
 			createdAt: a.createdAt,
-			url: a.url,
+			url: a.url
 		}
 	}
 

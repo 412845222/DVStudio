@@ -8,7 +8,7 @@ export class ImageNode extends NodeBase {
 		return {
 			imageId: '',
 			imagePath: '',
-			imageFit: 'contain',
+			imageFit: 'contain'
 		}
 	}
 
@@ -28,9 +28,12 @@ export class ImageNode extends NodeBase {
 			id: dto.id,
 			name: dto.name,
 			type: 'image',
-			transform: { ...dto.transform, width: Math.max(1, dto.transform.width ?? 240), height: Math.max(1, dto.transform.height ?? 180) },
-			props: { imageId, imagePath, imageFit },
+			transform: {
+				...dto.transform,
+				width: Math.max(1, dto.transform.width ?? 240),
+				height: Math.max(1, dto.transform.height ?? 180)
+			},
+			props: { imageId, imagePath, imageFit }
 		}
 	}
 }
-

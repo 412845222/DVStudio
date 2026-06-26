@@ -3,7 +3,13 @@
 		<div class="vs-group-title">矩形</div>
 		<label class="vs-row">
 			<span class="vs-k">填充</span>
-			<input v-model="draft.fillColor" class="vs-input" type="text" placeholder="#3aa1ff" @change="applyRect" />
+			<input
+				v-model="draft.fillColor"
+				class="vs-input"
+				type="text"
+				placeholder="#3aa1ff"
+				@change="applyRect"
+			/>
 			<input v-model="draft.fillColor" class="vs-color" type="color" @input="applyRect" />
 			<input
 				v-model.number="draft.fillOpacity"
@@ -16,12 +22,26 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.fillOpacity, (v) => (draft.fillOpacity = v), { step: 0.01, min: 0, max: 1, onCommit: applyRect })"
+				@pointerdown="
+					(e: any) =>
+						onNumberScrubPointerDown(
+							e,
+							() => draft.fillOpacity,
+							(v) => (draft.fillOpacity = v),
+							{ step: 0.01, min: 0, max: 1, onCommit: applyRect }
+						)
+				"
 			/>
 		</label>
 		<label class="vs-row">
 			<span class="vs-k">边框色</span>
-			<input v-model="draft.borderColor" class="vs-input" type="text" placeholder="#9cdcfe" @change="applyRect" />
+			<input
+				v-model="draft.borderColor"
+				class="vs-input"
+				type="text"
+				placeholder="#9cdcfe"
+				@change="applyRect"
+			/>
 			<input v-model="draft.borderColor" class="vs-color" type="color" @input="applyRect" />
 			<input
 				v-model.number="draft.borderOpacity"
@@ -34,7 +54,15 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.borderOpacity, (v) => (draft.borderOpacity = v), { step: 0.01, min: 0, max: 1, onCommit: applyRect })"
+				@pointerdown="
+					(e: any) =>
+						onNumberScrubPointerDown(
+							e,
+							() => draft.borderOpacity,
+							(v) => (draft.borderOpacity = v),
+							{ step: 0.01, min: 0, max: 1, onCommit: applyRect }
+						)
+				"
 			/>
 		</label>
 		<label class="vs-row">
@@ -49,7 +77,15 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.borderWidth, (v) => (draft.borderWidth = v), { step: 1, min: 0, max: 999999, onCommit: applyRect })"
+				@pointerdown="
+					(e: any) =>
+						onNumberScrubPointerDown(
+							e,
+							() => draft.borderWidth,
+							(v) => (draft.borderWidth = v),
+							{ step: 1, min: 0, max: 999999, onCommit: applyRect }
+						)
+				"
 			/>
 		</label>
 		<label class="vs-row">
@@ -64,7 +100,15 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.cornerRadius, (v) => (draft.cornerRadius = v), { step: 1, min: 0, max: 999999, onCommit: applyRect })"
+				@pointerdown="
+					(e: any) =>
+						onNumberScrubPointerDown(
+							e,
+							() => draft.cornerRadius,
+							(v) => (draft.cornerRadius = v),
+							{ step: 1, min: 0, max: 999999, onCommit: applyRect }
+						)
+				"
 			/>
 		</label>
 	</div>
@@ -85,7 +129,12 @@ type DraftRect = {
 defineProps<{
 	draft: DraftRect
 	applyRect: () => void
-	onNumberScrubPointerDown: (e: PointerEvent, get: () => number, set: (v: number) => void, opt: NumberScrubOptions) => void
+	onNumberScrubPointerDown: (
+		e: PointerEvent,
+		get: () => number,
+		set: (v: number) => void,
+		opt: NumberScrubOptions
+	) => void
 	onNumberInputDblClick: (e: MouseEvent) => void
 	onNumberInputFocus: (e: FocusEvent) => void
 	onNumberInputBlur: (e: FocusEvent) => void

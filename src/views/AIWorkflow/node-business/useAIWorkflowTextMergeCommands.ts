@@ -1,23 +1,23 @@
-export const useAIWorkflowTextMergeCommands = (payload: {
-  store: {
-    commit: (type: string, value: any) => void
-  }
-}) => {
-  const onTextMergeItemAdd = (nodeId: string) => {
-    payload.store.commit('textMergeAddItem', { nodeId })
-  }
+type TextMergeStore = {
+	commit: (type: string, value: unknown) => void
+}
 
-  const onTextMergeItemRemove = (nodeId: string, itemId: string) => {
-    payload.store.commit('textMergeRemoveItem', { nodeId, itemId })
-  }
+export const useAIWorkflowTextMergeCommands = (payload: { store: TextMergeStore }) => {
+	const onTextMergeItemAdd = (nodeId: string) => {
+		payload.store.commit('textMergeAddItem', { nodeId })
+	}
 
-  const onTextMergeItemMove = (nodeId: string, input: { itemId: string; dir: 'up' | 'down' }) => {
-    payload.store.commit('textMergeMoveItem', { nodeId, itemId: input.itemId, dir: input.dir })
-  }
+	const onTextMergeItemRemove = (nodeId: string, itemId: string) => {
+		payload.store.commit('textMergeRemoveItem', { nodeId, itemId })
+	}
 
-  return {
-    onTextMergeItemAdd,
-    onTextMergeItemRemove,
-    onTextMergeItemMove,
-  }
+	const onTextMergeItemMove = (nodeId: string, input: { itemId: string; dir: 'up' | 'down' }) => {
+		payload.store.commit('textMergeMoveItem', { nodeId, itemId: input.itemId, dir: input.dir })
+	}
+
+	return {
+		onTextMergeItemAdd,
+		onTextMergeItemRemove,
+		onTextMergeItemMove
+	}
 }

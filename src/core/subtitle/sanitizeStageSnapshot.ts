@@ -6,8 +6,15 @@ type NodeSnapshot = {
 	props?: Record<string, JsonValue>
 }
 
-const isSubtitleTextProps = (props: unknown): props is VideoSceneNodeProps & { __dvsSubtitleTextNode: true } => {
-	return typeof props === 'object' && props !== null && '__dvsSubtitleTextNode' in props && (props as Record<string, unknown>).__dvsSubtitleTextNode === true
+const isSubtitleTextProps = (
+	props: unknown
+): props is VideoSceneNodeProps & { __dvsSubtitleTextNode: true } => {
+	return (
+		typeof props === 'object' &&
+		props !== null &&
+		'__dvsSubtitleTextNode' in props &&
+		(props as Record<string, unknown>).__dvsSubtitleTextNode === true
+	)
 }
 
 const stripTextContentInTree = (nodes: VideoSceneTreeNode[] | undefined) => {
@@ -26,7 +33,10 @@ const stripTextContentInTree = (nodes: VideoSceneTreeNode[] | undefined) => {
 	}
 }
 
-export const stripSubtitleTextContentFromStageLayers = (layers: VideoSceneLayer[], layerId: string): VideoSceneLayer[] => {
+export const stripSubtitleTextContentFromStageLayers = (
+	layers: VideoSceneLayer[],
+	layerId: string
+): VideoSceneLayer[] => {
 	const lid = String(layerId || '').trim()
 	if (!lid) return layers
 	const layer = Array.isArray(layers) ? layers.find((l) => String(l?.id ?? '') === lid) : null
@@ -36,7 +46,7 @@ export const stripSubtitleTextContentFromStageLayers = (layers: VideoSceneLayer[
 }
 
 export const stripSubtitleTextContentFromNodeSnapshots = (
-	nodesById: Record<string, NodeSnapshot>,
+	nodesById: Record<string, NodeSnapshot>
 ): Record<string, NodeSnapshot> => {
 	const map = nodesById ?? {}
 	for (const snap of Object.values(map)) {

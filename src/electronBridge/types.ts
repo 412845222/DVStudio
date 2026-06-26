@@ -44,7 +44,12 @@ export type DiagnosticsResult = { ok: boolean; data?: DiagnosticsPayload; error?
 export type OpenFolderResult = { ok: boolean; error?: string }
 export type DirectoryPickResult = { canceled: boolean; filePaths: string[] }
 
-export type BootstrapInstallResult = { ok: boolean; started?: boolean; running?: boolean; error?: string }
+export type BootstrapInstallResult = {
+	ok: boolean
+	started?: boolean
+	running?: boolean
+	error?: string
+}
 
 export type SetupStepStatus = 'unknown' | 'running' | 'ok' | 'warn' | 'error'
 

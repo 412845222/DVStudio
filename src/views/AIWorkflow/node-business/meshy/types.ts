@@ -1,4 +1,9 @@
-import type { WorkflowEdge, WorkflowMeshyNodeSettings, WorkflowNode, WorkflowState } from '../../../../aiworkflow/types'
+import type {
+	WorkflowEdge,
+	WorkflowMeshyNodeSettings,
+	WorkflowNode,
+	WorkflowState
+} from '../../../../aiworkflow/types'
 import { isArray, isBoolean, isNumber, isRecord, isString } from '../../../../types/utils'
 
 export type MeshyTaskStatus = 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
@@ -32,7 +37,9 @@ export type MeshyRelationKind = 'model' | 'texture' | 'rigging' | 'animation' | 
 
 export type MeshyCapability = 'model' | 'textured' | 'rigged' | 'animated'
 
-export type MeshyModelUrls = Partial<Record<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz' | 'pre_remeshed_glb' | 'gltf', string>>
+export type MeshyModelUrls = Partial<
+	Record<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz' | 'pre_remeshed_glb' | 'gltf', string>
+>
 
 export type MeshyGenerateResponse =
 	| { ok: true; mode: string; taskId: string; status: string; raw?: unknown }
@@ -319,7 +326,7 @@ export function extractMeshyTaskResultFields(raw: unknown): {
 		preferredModelUrl: isString(record.preferredModelUrl) ? record.preferredModelUrl.trim() : '',
 		sourceModelUrl: isString(record.sourceModelUrl) ? record.sourceModelUrl.trim() : '',
 		statusText: isString(record.statusText) ? record.statusText.trim() : '',
-		errorMessage: isString(record.errorMessage) ? record.errorMessage.trim() : '',
+		errorMessage: isString(record.errorMessage) ? record.errorMessage.trim() : ''
 	}
 }
 
@@ -335,9 +342,16 @@ export function isMeshyDraggedTaskPayload(value: unknown): value is MeshyDragged
 }
 
 export type MeshyComfyService = {
-	meshyGenerate: (payload: MeshyGeneratePayload | Record<string, unknown>) => Promise<MeshyGenerateResponse>
+	meshyGenerate: (
+		payload: MeshyGeneratePayload | Record<string, unknown>
+	) => Promise<MeshyGenerateResponse>
 	meshyTask: (taskId: string, mode: string) => Promise<MeshyTaskResponse>
-	meshyTasks: (query?: { status?: string; target?: '3d' | 'image' | 'all'; family?: string; limit?: number }) => Promise<MeshyTasksListResponse>
+	meshyTasks: (query?: {
+		status?: string
+		target?: '3d' | 'image' | 'all'
+		family?: string
+		limit?: number
+	}) => Promise<MeshyTasksListResponse>
 	meshyTaskDetail: (taskId: string) => Promise<MeshyTaskDetailResponse>
 	meshyStop: (taskId: string, mode: string) => Promise<MeshyTaskActionResponse>
 	meshyDelete: (taskId: string, mode: string) => Promise<MeshyTaskActionResponse>
@@ -348,7 +362,11 @@ export function isMeshySettingsRecord(value: unknown): value is Record<string, u
 	return isRecord(value)
 }
 
-export type MeshyNodeSettingsLike = WorkflowMeshyNodeSettings | Record<string, unknown> | null | undefined
+export type MeshyNodeSettingsLike =
+	| WorkflowMeshyNodeSettings
+	| Record<string, unknown>
+	| null
+	| undefined
 
 function toRecord(settings: MeshyNodeSettingsLike): Record<string, unknown> {
 	return isRecord(settings) ? settings : {}
@@ -360,13 +378,21 @@ export function getMeshySettingString(settings: MeshyNodeSettingsLike, key: stri
 	return isString(val) ? val.trim() : ''
 }
 
-export function getMeshySettingNumber(settings: MeshyNodeSettingsLike, key: string, fallback = 0): number {
+export function getMeshySettingNumber(
+	settings: MeshyNodeSettingsLike,
+	key: string,
+	fallback = 0
+): number {
 	const record = toRecord(settings)
 	const val = record[key]
 	return isNumber(val) ? val : fallback
 }
 
-export function getMeshySettingBoolean(settings: MeshyNodeSettingsLike, key: string, fallback = false): boolean {
+export function getMeshySettingBoolean(
+	settings: MeshyNodeSettingsLike,
+	key: string,
+	fallback = false
+): boolean {
 	const record = toRecord(settings)
 	const val = record[key]
 	return isBoolean(val) ? val : fallback
@@ -384,7 +410,10 @@ export function getMeshySettingArray<T>(
 	return val as T[]
 }
 
-export function getMeshySettingRecord(settings: MeshyNodeSettingsLike, key: string): Record<string, unknown> {
+export function getMeshySettingRecord(
+	settings: MeshyNodeSettingsLike,
+	key: string
+): Record<string, unknown> {
 	const record = toRecord(settings)
 	const val = record[key]
 	return isRecord(val) ? val : {}

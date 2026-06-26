@@ -33,14 +33,18 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'pointerdown', payload: { layerId: string; frameIndex: number; ev: PointerEvent }): void
 	(e: 'dblclick', payload: { layerId: string; frameIndex: number; ev: MouseEvent }): void
-	(e: 'contextmenu', payload: { layerId: string; frameIndex: number; clientX: number; clientY: number }): void
+	(
+		e: 'contextmenu',
+		payload: { layerId: string; frameIndex: number; clientX: number; clientY: number }
+	): void
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let ro: ResizeObserver | null = null
 let raf = 0
 
-const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+const cssVar = (name: string) =>
+	getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 const parseHexColor = (s: string): { r: number; g: number; b: number } | null => {
 	const t = s.trim()
@@ -98,12 +102,14 @@ const getThemeColors = () => {
 		selectedBg: 'rgba(255, 255, 255, 0.06)',
 		keyDotFill: 'rgba(255, 255, 255, 0.9)',
 		keyDotStroke: 'rgba(0, 0, 0, 0.25)',
-		easingLine: 'rgba(255, 255, 255, 0.65)',
+		easingLine: 'rgba(255, 255, 255, 0.65)'
 	}
 }
 
 const truncateText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number) => {
-	const t = String(text ?? '').replace(/\s+/g, ' ').trim()
+	const t = String(text ?? '')
+		.replace(/\s+/g, ' ')
+		.trim()
 	if (!t) return ''
 	if (ctx.measureText(t).width <= maxWidth) return t
 	const ell = '…'
@@ -275,7 +281,8 @@ const draw = () => {
 			const txt = String(raw ?? '').trim()
 			if (txt) {
 				let segEnd = fi
-				while (segEnd <= end && (props.isSubtitleFrame?.(props.layerId, segEnd) ?? false)) segEnd += step
+				while (segEnd <= end && (props.isSubtitleFrame?.(props.layerId, segEnd) ?? false))
+					segEnd += step
 				const segW = (segEnd - fi) * fw
 				if (segW >= 36 && fw >= 2) {
 					ctx.save()
@@ -344,7 +351,12 @@ const onDblClick = (ev: MouseEvent) => {
 
 const onContextMenu = (ev: MouseEvent) => {
 	const frameIndex = getFrameAtClientX(ev.clientX)
-	emit('contextmenu', { layerId: props.layerId, frameIndex, clientX: ev.clientX, clientY: ev.clientY })
+	emit('contextmenu', {
+		layerId: props.layerId,
+		frameIndex,
+		clientX: ev.clientX,
+		clientY: ev.clientY
+	})
 }
 
 onMounted(async () => {
@@ -364,7 +376,14 @@ onBeforeUnmount(() => {
 })
 
 watch(
-	() => [props.frameCount, props.frameWidth, props.scrollLeft, props.currentFrame, props.layerId] as const,
+	() =>
+		[
+			props.frameCount,
+			props.frameWidth,
+			props.scrollLeft,
+			props.currentFrame,
+			props.layerId
+		] as const,
 	() => scheduleDraw()
 )
 

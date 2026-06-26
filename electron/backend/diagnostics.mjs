@@ -8,13 +8,13 @@ function run(cmd, args, options = {}) {
 		const r = spawnSync(cmd, args, {
 			encoding: 'utf-8',
 			windowsHide: true,
-			...options,
+			...options
 		})
 		return {
 			ok: r.status === 0,
 			status: r.status,
 			stdout: String(r.stdout || ''),
-			stderr: String(r.stderr || ''),
+			stderr: String(r.stderr || '')
 		}
 	} catch (e) {
 		return { ok: false, status: -1, stdout: '', stderr: String(e?.message || e) }
@@ -22,11 +22,13 @@ function run(cmd, args, options = {}) {
 }
 
 function pickFirstLine(s) {
-	return String(s || '')
-		.split(/\r?\n/)
-		.map((v) => v.trim())
-		.find(Boolean)
-		?.slice(0, 240) || ''
+	return (
+		String(s || '')
+			.split(/\r?\n/)
+			.map((v) => v.trim())
+			.find(Boolean)
+			?.slice(0, 240) || ''
+	)
 }
 
 export function collectDiagnostics() {
@@ -36,26 +38,31 @@ export function collectDiagnostics() {
 			python: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
 			djangoImport: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
 			ffmpeg: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
-			djangoCheck: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
+			djangoCheck: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' }
 		}
 	}
 
 	const py = detectPythonCommand()
 
 	const python = (() => {
-		if (!py) return { ok: false, detail: 'Python not found (install Python3 or enable py launcher).' }
+		if (!py)
+			return { ok: false, detail: 'Python not found (install Python3 or enable py launcher).' }
 		const v = run(py.command, [...py.argsPrefix, '--version'])
 		return {
 			ok: v.ok,
 			command: py.command,
 			argsPrefix: py.argsPrefix,
-			detail: pickFirstLine(v.stdout || v.stderr),
+			detail: pickFirstLine(v.stdout || v.stderr)
 		}
 	})()
 
 	const djangoImport = (() => {
 		if (!py) return { ok: false, detail: 'Python not found.' }
-		const r = run(py.command, [...py.argsPrefix, '-c', 'import django; print(django.get_version())'])
+		const r = run(py.command, [
+			...py.argsPrefix,
+			'-c',
+			'import django; print(django.get_version())'
+		])
 		return { ok: r.ok, detail: pickFirstLine(r.stdout || r.stderr) }
 	})()
 
@@ -75,6 +82,6 @@ export function collectDiagnostics() {
 		python,
 		djangoImport,
 		ffmpeg,
-		djangoCheck,
+		djangoCheck
 	}
 }

@@ -32,7 +32,10 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'pointerdown', payload: { layerId: string; frameIndex: number; ev: PointerEvent }): void
 	(e: 'dblclick', payload: { layerId: string; frameIndex: number; ev: MouseEvent }): void
-	(e: 'contextmenu', payload: { layerId: string; frameIndex: number; clientX: number; clientY: number }): void
+	(
+		e: 'contextmenu',
+		payload: { layerId: string; frameIndex: number; clientX: number; clientY: number }
+	): void
 }>()
 
 const onPointerDown = (ev: PointerEvent) => {
@@ -44,7 +47,12 @@ const onDblClick = (ev: MouseEvent) => {
 }
 
 const onContextMenu = (ev: MouseEvent) => {
-	emit('contextmenu', { layerId: props.layerId, frameIndex: props.frameIndex, clientX: ev.clientX, clientY: ev.clientY })
+	emit('contextmenu', {
+		layerId: props.layerId,
+		frameIndex: props.frameIndex,
+		clientX: ev.clientX,
+		clientY: ev.clientY
+	})
 }
 </script>
 

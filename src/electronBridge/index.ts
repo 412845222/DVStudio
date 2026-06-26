@@ -14,7 +14,7 @@ import type {
 	SetupState,
 	CleanupOldProjectResult,
 	DirectoryPickResult,
-	UploadedProjectAsset,
+	UploadedProjectAsset
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -74,7 +74,9 @@ export async function getBackendRuntimeState(): Promise<BackendRuntimeState | nu
 	return window.dweb.common.getBackendRuntimeState()
 }
 
-export function onBackendRuntimeStateChanged(handler: (state: BackendRuntimeState) => void): () => void {
+export function onBackendRuntimeStateChanged(
+	handler: (state: BackendRuntimeState) => void
+): () => void {
 	if (!window?.dweb?.common?.onBackendRuntimeStateChanged) return () => {}
 	const listenerId = Number(window.dweb.common.onBackendRuntimeStateChanged(handler) || 0)
 	if (!Number.isFinite(listenerId) || listenerId <= 0) return () => {}
@@ -87,7 +89,9 @@ export function onBackendRuntimeStateChanged(handler: (state: BackendRuntimeStat
 	return () => {}
 }
 
-export async function getBackendLogs(options?: { since?: number }): Promise<BackendLogsResult | null> {
+export async function getBackendLogs(options?: {
+	since?: number
+}): Promise<BackendLogsResult | null> {
 	if (!window?.dweb?.common?.getBackendLogs) return null
 	return window.dweb.common.getBackendLogs(options)
 }
@@ -138,14 +142,28 @@ export async function selectProjectFolder(): Promise<DirectoryPickResult | null>
 	return window.dweb.aiworkflow.selectProjectFolder()
 }
 
-export async function registerProjectRoot(projectId: number, rootPath: string): Promise<{ ok: boolean; cleared?: boolean; created?: boolean; root?: string; error?: string } | null> {
+export async function registerProjectRoot(
+	projectId: number,
+	rootPath: string
+): Promise<{
+	ok: boolean
+	cleared?: boolean
+	created?: boolean
+	root?: string
+	error?: string
+} | null> {
 	if (!window?.dweb?.aiworkflow?.registerProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	return window.dweb.aiworkflow.registerProjectRoot({ projectId: pid, rootPath: String(rootPath || '') })
+	return window.dweb.aiworkflow.registerProjectRoot({
+		projectId: pid,
+		rootPath: String(rootPath || '')
+	})
 }
 
-export async function clearProjectRoot(projectId: number): Promise<{ ok: boolean; error?: string } | null> {
+export async function clearProjectRoot(
+	projectId: number
+): Promise<{ ok: boolean; error?: string } | null> {
 	if (!window?.dweb?.aiworkflow?.clearProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
@@ -168,28 +186,51 @@ export async function getProjectRootById(projectId: number): Promise<string | nu
 export async function downloadUrlToProjectRoot(
 	projectId: number,
 	url: string,
-	desiredFilename?: string,
-): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null> {
+	desiredFilename?: string
+): Promise<{
+	ok: boolean
+	absolutePath?: string
+	relativePath?: string
+	size?: number
+	error?: string
+} | null> {
 	if (!window?.dweb?.aiworkflow?.downloadUrlToProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	const result = await window.dweb.aiworkflow.downloadUrlToProjectRoot({ projectId: pid, url: String(url || ''), desiredFilename })
+	const result = await window.dweb.aiworkflow.downloadUrlToProjectRoot({
+		projectId: pid,
+		url: String(url || ''),
+		desiredFilename
+	})
 	return result
 }
 
 export async function copyFileToProjectRoot(
 	projectId: number,
 	sourcePath: string,
-	desiredFilename?: string,
-): Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; reused?: boolean; error?: string } | null> {
+	desiredFilename?: string
+): Promise<{
+	ok: boolean
+	absolutePath?: string
+	relativePath?: string
+	size?: number
+	reused?: boolean
+	error?: string
+} | null> {
 	if (!window?.dweb?.aiworkflow?.copyFileToProjectRoot) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
-	const result = await window.dweb.aiworkflow.copyFileToProjectRoot({ projectId: pid, sourcePath: String(sourcePath || ''), desiredFilename })
+	const result = await window.dweb.aiworkflow.copyFileToProjectRoot({
+		projectId: pid,
+		sourcePath: String(sourcePath || ''),
+		desiredFilename
+	})
 	return result
 }
 
-export async function fetchAsArrayBuffer(url: string): Promise<{ ok: boolean; buffer?: Uint8Array; mime?: string; error?: string } | null> {
+export async function fetchAsArrayBuffer(
+	url: string
+): Promise<{ ok: boolean; buffer?: Uint8Array; mime?: string; error?: string } | null> {
 	if (!window?.dweb?.aiworkflow?.fetchAsArrayBuffer) return null
 	const result = await window.dweb.aiworkflow.fetchAsArrayBuffer({ url: String(url || '') })
 	return result
@@ -212,7 +253,7 @@ export async function uploadProjectAsset(payload: {
 		name: payload?.name,
 		arrayBuffer: payload?.arrayBuffer,
 		contentType: payload?.contentType,
-		bucket: payload?.bucket,
+		bucket: payload?.bucket
 	})
 	return result
 }
@@ -234,7 +275,7 @@ export async function importProjectAsset(payload: {
 		name: payload?.name,
 		sourcePath: payload?.sourcePath,
 		sourceUrl: payload?.sourceUrl,
-		bucket: payload?.bucket,
+		bucket: payload?.bucket
 	})
 	return result
 }
@@ -242,13 +283,19 @@ export async function importProjectAsset(payload: {
 export async function repairAllProjectAssets(payload: {
 	projectId: number
 	resourcesById: Record<string, unknown>
-}): Promise<{ ok: boolean; patches?: Record<string, unknown>; failed?: string[]; changed?: number; error?: string } | null> {
+}): Promise<{
+	ok: boolean
+	patches?: Record<string, unknown>
+	failed?: string[]
+	changed?: number
+	error?: string
+} | null> {
 	if (!window?.dweb?.aiworkflow?.projectAssets?.repairAll) return null
 	const pid = Number(payload?.projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
 	return window.dweb.aiworkflow.projectAssets.repairAll({
 		projectId: pid,
-		resourcesById: payload?.resourcesById || {},
+		resourcesById: payload?.resourcesById || {}
 	})
 }
 
@@ -328,11 +375,13 @@ export async function validateDwebProjectRoot(payload: {
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
 	return window.dweb.aiworkflow.validateProjectRoot({
 		projectId: pid,
-		expectedRootPath: payload?.expectedRootPath ? String(payload.expectedRootPath) : undefined,
+		expectedRootPath: payload?.expectedRootPath ? String(payload.expectedRootPath) : undefined
 	})
 }
 
-export async function getDwebAssetAccessLogs(maxEntries: number = 100): Promise<{ ok: boolean; logs?: unknown[]; error?: string } | null> {
+export async function getDwebAssetAccessLogs(
+	maxEntries: number = 100
+): Promise<{ ok: boolean; logs?: unknown[]; error?: string } | null> {
 	if (!window?.dweb?.aiworkflow?.getAssetAccessLogs) return null
 	return window.dweb.aiworkflow.getAssetAccessLogs({ maxEntries: Number(maxEntries) || 100 })
 }
@@ -352,14 +401,18 @@ export type ProjectCacheClearResult = {
 	error?: string
 }
 
-export async function getProjectCacheStats(projectId: number): Promise<ProjectCacheStatsResult | null> {
+export async function getProjectCacheStats(
+	projectId: number
+): Promise<ProjectCacheStatsResult | null> {
 	if (!window?.dweb?.aiworkflow?.getCacheStats) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
 	return window.dweb.aiworkflow.getCacheStats({ projectId: pid })
 }
 
-export async function clearProjectCache(projectId: number): Promise<ProjectCacheClearResult | null> {
+export async function clearProjectCache(
+	projectId: number
+): Promise<ProjectCacheClearResult | null> {
 	if (!window?.dweb?.aiworkflow?.clearCache) return null
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
@@ -399,14 +452,17 @@ export async function getClientSettings(): Promise<ClientSettingsResult | null> 
 	return { ok: false, error: 'Not running in Electron.' }
 }
 
-export async function saveClientSettings(payload: ClientSettings): Promise<ClientSettingsResult | null> {
+export async function saveClientSettings(
+	payload: ClientSettings
+): Promise<ClientSettingsResult | null> {
 	if (!window?.dweb?.common?.saveClientSettings) return null
 	const r: ClientSettingsResult = await window.dweb.common.saveClientSettings(payload)
 	if (r?.ok && r.data) {
 		clientSettingsCache = r.data
 		try {
 			const desc = Object.getOwnPropertyDescriptor(window, '__DWEB_CLIENT_SETTINGS')
-			const canAssign = !desc || ('writable' in desc ? Boolean(desc.writable) : typeof desc.set === 'function')
+			const canAssign =
+				!desc || ('writable' in desc ? Boolean(desc.writable) : typeof desc.set === 'function')
 			if (canAssign) window.__DWEB_CLIENT_SETTINGS = r.data
 		} catch {
 			// ignore
@@ -424,7 +480,11 @@ export async function minimizeWindow(): Promise<{ ok: boolean; error?: string }>
 	}
 }
 
-export async function toggleMaximizeWindow(): Promise<{ ok: boolean; maximized?: boolean; error?: string }> {
+export async function toggleMaximizeWindow(): Promise<{
+	ok: boolean
+	maximized?: boolean
+	error?: string
+}> {
 	if (!window?.dweb?.window?.toggleMaximize) return { ok: false, error: 'Not running in Electron.' }
 	try {
 		return (await window.dweb.window.toggleMaximize()) || { ok: true }

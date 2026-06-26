@@ -42,14 +42,17 @@ const emit = defineEmits<{
 const draft = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 
-watch(() => props.visible, (v) => {
-	if (v) {
-		draft.value = props.initialLabel ?? ''
-		nextTick(() => {
-			inputRef.value?.focus()
-		})
+watch(
+	() => props.visible,
+	(v) => {
+		if (v) {
+			draft.value = props.initialLabel ?? ''
+			nextTick(() => {
+				inputRef.value?.focus()
+			})
+		}
 	}
-})
+)
 
 const commit = () => {
 	const label = draft.value.trim()

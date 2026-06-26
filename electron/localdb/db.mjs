@@ -15,7 +15,11 @@ function safeRequireBetterSqlite3() {
 		// --- ABI 版本不匹配（最常见错误） ---
 		// 例如："was compiled against a different Node.js version using NODE_MODULE_VERSION 127.
 		//       This version of Node.js requires NODE_MODULE_VERSION 119"
-		if (msg.includes('NODE_MODULE_VERSION') || msg.includes('was compiled against a different') || msg.includes('NODE_MODULE')) {
+		if (
+			msg.includes('NODE_MODULE_VERSION') ||
+			msg.includes('was compiled against a different') ||
+			msg.includes('NODE_MODULE')
+		) {
 			const runtimeAbi = String(process.versions?.modules || 'unknown')
 			const expectedMatch = msg.match(/NODE_MODULE_VERSION\s+(\d+)/)
 			const expectedAbi = expectedMatch ? expectedMatch[1] : 'unknown'
@@ -29,28 +33,34 @@ function safeRequireBetterSqlite3() {
 					`  请在项目根目录执行以下命令重编译：\n` +
 					`    ${rebuildCmd}\n` +
 					`  （备选：npm rebuild better-sqlite3 --runtime=electron --target=${electronVer !== 'unknown' ? electronVer : '<你的Electron版本>'} --disturl=https://electronjs.org/headers --build-from-source）\n` +
-					`  原始错误：${msg}`,
+					`  原始错误：${msg}`
 			)
 		}
 		// --- 模块不存在 ---
-		if (msg.includes("Cannot find module") || msg.includes("找不到模块")) {
+		if (msg.includes('Cannot find module') || msg.includes('找不到模块')) {
 			throw new Error(
 				`[localdb] 缺少 better-sqlite3 原生模块（${msg}）。` +
-					'请先在项目根执行 npm install better-sqlite3。',
+					'请先在项目根执行 npm install better-sqlite3。'
 			)
 		}
 		// --- 其他原生加载错误 ---
-		if (msg.includes('DLOPEN_FAILED') || msg.toLowerCase().includes('dlopen') || msg.includes('.node') || msg.toLowerCase().includes('native')) {
+		if (
+			msg.includes('DLOPEN_FAILED') ||
+			msg.toLowerCase().includes('dlopen') ||
+			msg.includes('.node') ||
+			msg.toLowerCase().includes('native')
+		) {
 			throw new Error(
 				`[localdb] better-sqlite3 原生模块加载失败（${msg}）。` +
 					'请执行：npx --yes @electron/rebuild -f -v ' +
-					String(process.versions?.electron || '28.2.0') + ' -w better-sqlite3',
+					String(process.versions?.electron || '28.2.0') +
+					' -w better-sqlite3'
 			)
 		}
 		// --- 通用兜底 ---
 		throw new Error(
 			`[localdb] 缺少 better-sqlite3 原生模块（${msg}）。` +
-				'请先在项目根执行 npm install better-sqlite3，并在打包前运行 electron-rebuild。',
+				'请先在项目根执行 npm install better-sqlite3，并在打包前运行 electron-rebuild。'
 		)
 	}
 }
@@ -59,7 +69,9 @@ export function resolveLocalDbFilePath({ backendDataDir, userDataDir } = {}) {
 	const raw = backendDataDir ?? userDataDir ?? ''
 	const baseDir = String(raw).trim()
 	if (!baseDir) {
-		throw new Error('[localdb] resolveLocalDbFilePath: 所有目录参数均为空（backendDataDir/userDataDir）')
+		throw new Error(
+			'[localdb] resolveLocalDbFilePath: 所有目录参数均为空（backendDataDir/userDataDir）'
+		)
 	}
 	return path.resolve(baseDir, 'localdb.sqlite3')
 }

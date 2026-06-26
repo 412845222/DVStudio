@@ -390,13 +390,15 @@ type JobResponse =
 
 const jsonHeaders = (devToken?: string) => {
 	const h: Record<string, string> = {
-		'Content-Type': 'application/json',
+		'Content-Type': 'application/json'
 	}
 	if (devToken) h['X-DEV-TOKEN'] = devToken
 	return h
 }
 
-const safeJson = async (res: Response): Promise<{ ok: true; value: unknown } | { ok: false; text: string }> => {
+const safeJson = async (
+	res: Response
+): Promise<{ ok: true; value: unknown } | { ok: false; text: string }> => {
 	const text = await res.text()
 	try {
 		return { ok: true as const, value: JSON.parse(text) as unknown }
@@ -405,7 +407,10 @@ const safeJson = async (res: Response): Promise<{ ok: true; value: unknown } | {
 	}
 }
 
-const extractErrorMessage = (body: { ok: true; value: unknown } | { ok: false; text: string }, fallback: string): string => {
+const extractErrorMessage = (
+	body: { ok: true; value: unknown } | { ok: false; text: string },
+	fallback: string
+): string => {
 	if (body.ok && isRecord(body.value) && isString(body.value.error)) {
 		return body.value.error
 	}
@@ -434,7 +439,10 @@ const parseSseAgentMessage = (data: string): AgentToUiMessage | null => {
 	}
 }
 
-const extractBodyError = (body: { ok: true; value: unknown } | { ok: false; text: string }, fallback: string): string => {
+const extractBodyError = (
+	body: { ok: true; value: unknown } | { ok: false; text: string },
+	fallback: string
+): string => {
 	if (body.ok && isRecord(body.value) && isString(body.value.error)) {
 		return body.value.error
 	}
@@ -470,29 +478,43 @@ export class ComfyUIBridgeService {
 		return this.url(`${this.localExecBasePath}${normalized}`)
 	}
 
-	private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit, tag = 'comfyui'): Promise<Response> {
-		const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
+	private async fetchWithLog(
+		input: RequestInfo | URL,
+		init?: RequestInit,
+		tag = 'comfyui'
+	): Promise<Response> {
+		const url =
+			typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
 		const method = String(init?.method || 'GET').toUpperCase()
-		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+		const start =
+			typeof performance !== 'undefined' && typeof performance.now === 'function'
+				? performance.now()
+				: Date.now()
 		try {
 			const res = await fetch(input, init)
-			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			const end =
+				typeof performance !== 'undefined' && typeof performance.now === 'function'
+					? performance.now()
+					: Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				status: res.status,
 				durationMs: Math.max(0, Math.round(end - start)),
-				tag,
+				tag
 			})
 			return res
 		} catch (err: unknown) {
-			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			const end =
+				typeof performance !== 'undefined' && typeof performance.now === 'function'
+					? performance.now()
+					: Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				durationMs: Math.max(0, Math.round(end - start)),
 				errorMessage: getErrorMessage(err),
-				tag,
+				tag
 			})
 			throw err
 		}
@@ -505,23 +527,25 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/workflow/blueprint/chat'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload ?? {}),
+			body: JSON.stringify(payload ?? {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			if (body.ok && isRecord(body.value)) {
-				const errorMsg = isString(body.value.error) ? body.value.error : `blueprint/chat failed: ${res.status}`
+				const errorMsg = isString(body.value.error)
+					? body.value.error
+					: `blueprint/chat failed: ${res.status}`
 				return {
 					ok: false,
 					status: res.status,
 					error: errorMsg,
-					...body.value,
+					...body.value
 				} as BlueprintChatResponse
 			}
 			return {
 				ok: false,
 				status: res.status,
-				error: extractErrorMessage(body, `blueprint/chat failed: ${res.status}`),
+				error: extractErrorMessage(body, `blueprint/chat failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as BlueprintChatResponse
@@ -545,15 +569,17 @@ export class ComfyUIBridgeService {
 			method: 'POST',
 			headers: {
 				...jsonHeaders(this.devToken),
-				Accept: 'text/event-stream',
+				Accept: 'text/event-stream'
 			},
 			body: JSON.stringify(payload ?? {}),
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
 			const body = await safeJson(res)
-			throw new Error(`blueprint/chat:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`blueprint/chat:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 
 		const reader = res.body.getReader()
@@ -592,7 +618,15 @@ export class ComfyUIBridgeService {
 				// ignore non AgentToUI payloads to keep stream stable
 				return []
 			} catch (e: unknown) {
-				return [{ type: 'error', error: { message: 'SSE msg JSON.parse failed', details: { raw: data, error: getErrorMessage(e) } } }]
+				return [
+					{
+						type: 'error',
+						error: {
+							message: 'SSE msg JSON.parse failed',
+							details: { raw: data, error: getErrorMessage(e) }
+						}
+					}
+				]
 			}
 		}
 
@@ -638,7 +672,7 @@ export class ComfyUIBridgeService {
 	async codexHealth(): Promise<CodexHealthResponse> {
 		const res = await this.fetchWithLog(this.localExecUrl('/health'), {
 			method: 'GET',
-			headers: jsonHeaders(this.devToken),
+			headers: jsonHeaders(this.devToken)
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -652,37 +686,49 @@ export class ComfyUIBridgeService {
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
 		const res = await this.fetchWithLog(this.localExecUrl(`/sessions${query}`), {
 			method: 'GET',
-			headers: jsonHeaders(this.devToken),
+			headers: jsonHeaders(this.devToken)
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			return { error: `codex/sessions failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+			return {
+				error: `codex/sessions failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			}
 		}
 		return (await res.json()) as CodexListSessionsResponse
 	}
 
-	async codexCreateSession(payload: { title?: string; cwd?: string; model?: string; projectId?: number | null } = {}): Promise<CodexCreateSessionResponse> {
+	async codexCreateSession(
+		payload: { title?: string; cwd?: string; model?: string; projectId?: number | null } = {}
+	): Promise<CodexCreateSessionResponse> {
 		const res = await this.fetchWithLog(this.localExecUrl('/sessions'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload ?? {}),
+			body: JSON.stringify(payload ?? {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			return { error: `codex/create-session failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+			return {
+				error: `codex/create-session failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			}
 		}
 		return (await res.json()) as CodexCreateSessionResponse
 	}
 
-	async codexListMessages(sessionId: string, projectId: number | null): Promise<CodexListMessagesResponse> {
+	async codexListMessages(
+		sessionId: string,
+		projectId: number | null
+	): Promise<CodexListMessagesResponse> {
 		const sid = String(sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
 		const pid = Number.isFinite(projectId as number) ? Number(projectId) : NaN
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
-		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/messages${query}`), {
-			method: 'GET',
-			headers: jsonHeaders(this.devToken),
-		})
+		const res = await this.fetchWithLog(
+			this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/messages${query}`),
+			{
+				method: 'GET',
+				headers: jsonHeaders(this.devToken)
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return { error: extractErrorMessage(body, `codex/messages failed: ${res.status}`) }
@@ -690,13 +736,17 @@ export class ComfyUIBridgeService {
 		return (await res.json()) as CodexListMessagesResponse
 	}
 
-	async codexUpdateSession(payload: { sessionId: string; projectId: number | null; title: string }): Promise<CodexUpdateSessionResponse> {
+	async codexUpdateSession(payload: {
+		sessionId: string
+		projectId: number | null
+		title: string
+	}): Promise<CodexUpdateSessionResponse> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
 		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}`), {
 			method: 'PATCH',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ title: payload.title, projectId: payload.projectId }),
+			body: JSON.stringify({ title: payload.title, projectId: payload.projectId })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -705,30 +755,50 @@ export class ComfyUIBridgeService {
 		return (await res.json()) as CodexUpdateSessionResponse
 	}
 
-	async codexDeleteSession(payload: { sessionId: string; projectId: number | null }): Promise<{ ok?: boolean; error?: string }> {
+	async codexDeleteSession(payload: {
+		sessionId: string
+		projectId: number | null
+	}): Promise<{ ok?: boolean; error?: string }> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
 		const pid = Number.isFinite(payload.projectId as number) ? Number(payload.projectId) : NaN
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
-		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}${query}`), {
-			method: 'DELETE',
-			headers: jsonHeaders(this.devToken),
-		})
+		const res = await this.fetchWithLog(
+			this.localExecUrl(`/sessions/${encodeURIComponent(sid)}${query}`),
+			{
+				method: 'DELETE',
+				headers: jsonHeaders(this.devToken)
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
-			return { error: `codex/session delete failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}` }
+			return {
+				error: `codex/session delete failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			}
 		}
 		return { ok: true }
 	}
 
-	async codexSubmitApproval(payload: { sessionId: string; messageId: string; decision: 'accept' | 'decline'; projectId?: number | null }): Promise<CodexApprovalResponse> {
+	async codexSubmitApproval(payload: {
+		sessionId: string
+		messageId: string
+		decision: 'accept' | 'decline'
+		projectId?: number | null
+	}): Promise<CodexApprovalResponse> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
-		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/approvals`), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ message_id: payload.messageId, decision: payload.decision, projectId: payload.projectId ?? null }),
-		})
+		const res = await this.fetchWithLog(
+			this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/approvals`),
+			{
+				method: 'POST',
+				headers: jsonHeaders(this.devToken),
+				body: JSON.stringify({
+					message_id: payload.messageId,
+					decision: payload.decision,
+					projectId: payload.projectId ?? null
+				})
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return { error: extractErrorMessage(body, `codex/approvals failed: ${res.status}`) }
@@ -762,17 +832,20 @@ export class ComfyUIBridgeService {
 			method: 'POST',
 			headers: {
 				...jsonHeaders(this.devToken),
-				Accept: 'text/event-stream',
+				Accept: 'text/event-stream'
 			},
 			body: JSON.stringify(payload ?? {}),
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
 			const body = await safeJson(res)
 			yield {
 				type: 'error',
-				error: { message: `local-exec/messages:stream failed: ${res.status}`, details: body.ok ? body.value : body.text },
+				error: {
+					message: `local-exec/messages:stream failed: ${res.status}`,
+					details: body.ok ? body.value : body.text
+				}
 			}
 			return
 		}
@@ -793,7 +866,7 @@ export class ComfyUIBridgeService {
 			if (ev === 'done') return [{ type: 'done' }]
 			let parsed: unknown = dataText
 			try {
-				parsed = dataText ? JSON.parse(dataText) as unknown : {}
+				parsed = dataText ? (JSON.parse(dataText) as unknown) : {}
 			} catch {
 				parsed = { raw: dataText }
 			}
@@ -845,20 +918,20 @@ export class ComfyUIBridgeService {
 	 */
 	async nanoBananaCacheRefImages(formData: FormData): Promise<NanoBananaCacheRefsResponse> {
 		const headers: Record<string, string> = {
-			Accept: 'application/json',
+			Accept: 'application/json'
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 		const res = await this.fetchWithLog(this.url('/api/third-party/nanobanana/ref-cache'), {
 			method: 'POST',
 			headers,
-			body: formData,
+			body: formData
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `nanobanana/ref-cache failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `nanobanana/ref-cache failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as NanoBananaCacheRefsResponse
@@ -870,20 +943,20 @@ export class ComfyUIBridgeService {
 	 */
 	async seedreamCacheRefImages(formData: FormData): Promise<NanoBananaCacheRefsResponse> {
 		const headers: Record<string, string> = {
-			Accept: 'application/json',
+			Accept: 'application/json'
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 		const res = await this.fetchWithLog(this.url('/api/third-party/seedream/ref-cache'), {
 			method: 'POST',
 			headers,
-			body: formData,
+			body: formData
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `seedream/ref-cache failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `seedream/ref-cache failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as NanoBananaCacheRefsResponse
@@ -903,14 +976,14 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/third-party/nanobanana/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload ?? {}),
+			body: JSON.stringify(payload ?? {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `nanobanana/generate failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `nanobanana/generate failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as NanoBananaGenerateResponse
@@ -930,7 +1003,7 @@ export class ComfyUIBridgeService {
 		signal?: AbortSignal
 	): AsyncGenerator<NanoBananaGenerateStreamEvent, void, void> {
 		const headers: Record<string, string> = {
-			Accept: 'text/event-stream',
+			Accept: 'text/event-stream'
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
@@ -938,7 +1011,7 @@ export class ComfyUIBridgeService {
 			method: 'POST',
 			headers,
 			body: form,
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
@@ -976,7 +1049,9 @@ export class ComfyUIBridgeService {
 			} catch {
 				// keep raw data
 			}
-			return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: errDetails } }]
+			return [
+				{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: errDetails } }
+			]
 		}
 
 		try {
@@ -1026,7 +1101,7 @@ export class ComfyUIBridgeService {
 		signal?: AbortSignal
 	): AsyncGenerator<NanoBananaGenerateStreamEvent, void, void> {
 		const headers: Record<string, string> = {
-			Accept: 'text/event-stream',
+			Accept: 'text/event-stream'
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
@@ -1034,12 +1109,14 @@ export class ComfyUIBridgeService {
 			method: 'POST',
 			headers,
 			body: form,
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
 			const body = await safeJson(res)
-			throw new Error(`seedream/generate:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`seedream/generate:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 
 		const reader = res.body.getReader()
@@ -1069,7 +1146,9 @@ export class ComfyUIBridgeService {
 			} catch {
 				// keep raw data
 			}
-			return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: errDetails } }]
+			return [
+				{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: errDetails } }
+			]
 		}
 
 		try {
@@ -1119,7 +1198,7 @@ export class ComfyUIBridgeService {
 		signal?: AbortSignal
 	): AsyncGenerator<SeedanceGenerateStreamEvent, void, void> {
 		const headers: Record<string, string> = {
-			Accept: 'text/event-stream',
+			Accept: 'text/event-stream'
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
@@ -1127,7 +1206,7 @@ export class ComfyUIBridgeService {
 			method: 'POST',
 			headers,
 			body: form,
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
@@ -1155,7 +1234,9 @@ export class ComfyUIBridgeService {
 			if (name === 'error') {
 				try {
 					const obj = JSON.parse(data)
-					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
+					return [
+						{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }
+					]
 				} catch {
 					return [{ type: 'error', error: { message: data || 'error' } }]
 				}
@@ -1165,7 +1246,9 @@ export class ComfyUIBridgeService {
 				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
 				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
 			} catch (e) {
-				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+				return [
+					{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }
+				]
 			}
 		}
 
@@ -1216,7 +1299,7 @@ export class ComfyUIBridgeService {
 		signal?: AbortSignal
 	): AsyncGenerator<JimengGenerateStreamEvent, void, void> {
 		const headers: Record<string, string> = {
-			Accept: 'text/event-stream',
+			Accept: 'text/event-stream'
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
@@ -1224,7 +1307,7 @@ export class ComfyUIBridgeService {
 			method: 'POST',
 			headers,
 			body: form,
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
@@ -1252,7 +1335,9 @@ export class ComfyUIBridgeService {
 			if (name === 'error') {
 				try {
 					const obj = JSON.parse(data)
-					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
+					return [
+						{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }
+					]
 				} catch {
 					return [{ type: 'error', error: { message: data || 'error' } }]
 				}
@@ -1262,7 +1347,9 @@ export class ComfyUIBridgeService {
 				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
 				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
 			} catch (e) {
-				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+				return [
+					{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }
+				]
 			}
 		}
 
@@ -1313,7 +1400,7 @@ export class ComfyUIBridgeService {
 		signal?: AbortSignal
 	): AsyncGenerator<JimengGenerateStreamEvent, void, void> {
 		const headers: Record<string, string> = {
-			Accept: 'text/event-stream',
+			Accept: 'text/event-stream'
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
@@ -1321,7 +1408,7 @@ export class ComfyUIBridgeService {
 			method: 'POST',
 			headers,
 			body: form,
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
@@ -1349,7 +1436,9 @@ export class ComfyUIBridgeService {
 			if (name === 'error') {
 				try {
 					const obj = JSON.parse(data)
-					return [{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }]
+					return [
+						{ type: 'error', error: { message: String(obj?.message ?? 'error'), details: obj } }
+					]
 				} catch {
 					return [{ type: 'error', error: { message: data || 'error' } }]
 				}
@@ -1359,7 +1448,9 @@ export class ComfyUIBridgeService {
 				if (isAgentToUiMessage(obj)) return [{ type: 'msg', message: obj }]
 				return [{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: obj } }]
 			} catch (e) {
-				return [{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }]
+				return [
+					{ type: 'error', error: { message: 'invalid json in SSE message', details: String(e) } }
+				]
 			}
 		}
 
@@ -1405,7 +1496,7 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/workflow/ping'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl }),
+			body: JSON.stringify({ baseUrl: comfyBaseUrl })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -1413,7 +1504,7 @@ export class ComfyUIBridgeService {
 				ok: false,
 				status: res.status,
 				error: `ping failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
-				baseUrl: comfyBaseUrl,
+				baseUrl: comfyBaseUrl
 			}
 		}
 		return (await res.json()) as PingResponse
@@ -1423,7 +1514,7 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/workflow/workflows/list'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl }),
+			body: JSON.stringify({ baseUrl: comfyBaseUrl })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -1431,7 +1522,7 @@ export class ComfyUIBridgeService {
 				ok: false,
 				status: res.status,
 				error: `workflows/list failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
-				baseUrl: comfyBaseUrl,
+				baseUrl: comfyBaseUrl
 			}
 		}
 		return (await res.json()) as WorkflowsListResponse
@@ -1441,7 +1532,7 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/workflow/workflows/get'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl, workflowPath }),
+			body: JSON.stringify({ baseUrl: comfyBaseUrl, workflowPath })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -1449,7 +1540,7 @@ export class ComfyUIBridgeService {
 				ok: false,
 				status: res.status,
 				error: `workflows/get failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
-				baseUrl: comfyBaseUrl,
+				baseUrl: comfyBaseUrl
 			}
 		}
 		return (await res.json()) as WorkflowGetResponse
@@ -1464,16 +1555,19 @@ export class ComfyUIBridgeService {
 		const form = new FormData()
 		form.set('baseUrl', comfyBaseUrl)
 		form.set('workflowPath', workflowPath)
-		if (typeof overrides?.positivePrompt === 'string') form.set('positivePrompt', overrides.positivePrompt)
-		if (typeof overrides?.negativePrompt === 'string') form.set('negativePrompt', overrides.negativePrompt)
-		if (typeof overrides?.confirmReuseRecord === 'boolean') form.set('confirmReuseRecord', overrides.confirmReuseRecord ? '1' : '0')
+		if (typeof overrides?.positivePrompt === 'string')
+			form.set('positivePrompt', overrides.positivePrompt)
+		if (typeof overrides?.negativePrompt === 'string')
+			form.set('negativePrompt', overrides.negativePrompt)
+		if (typeof overrides?.confirmReuseRecord === 'boolean')
+			form.set('confirmReuseRecord', overrides.confirmReuseRecord ? '1' : '0')
 		files.forEach((f, idx) => {
 			form.append(`file${idx}`, f, f.name || `input_${idx}.png`)
 		})
 		const res = await this.fetchWithLog(this.url('/api/workflow/run'), {
 			method: 'POST',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
-			body: form,
+			body: form
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -1484,14 +1578,14 @@ export class ComfyUIBridgeService {
 					status: res.status,
 					baseUrl: comfyBaseUrl,
 					error: errorMsg,
-					...body.value,
+					...body.value
 				} as RunResponse
 			}
 			return {
 				ok: false,
 				status: res.status,
 				error: extractErrorMessage(body, `run failed: ${res.status}`),
-				baseUrl: comfyBaseUrl,
+				baseUrl: comfyBaseUrl
 			}
 		}
 		return (await res.json()) as RunResponse
@@ -1501,7 +1595,7 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/workflow/outputs'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl, promptId }),
+			body: JSON.stringify({ baseUrl: comfyBaseUrl, promptId })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -1509,7 +1603,7 @@ export class ComfyUIBridgeService {
 				ok: false,
 				status: res.status,
 				error: `outputs failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
-				baseUrl: comfyBaseUrl,
+				baseUrl: comfyBaseUrl
 			}
 		}
 		return (await res.json()) as OutputsResponse
@@ -1519,14 +1613,14 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload || {}),
+			body: JSON.stringify(payload || {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `meshy/generate failed: ${res.status}`),
+				error: extractBodyError(body, `meshy/generate failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as MeshyGenerateResponse
@@ -1536,7 +1630,9 @@ export class ComfyUIBridgeService {
 		const payload: Record<string, unknown> = {}
 		const refImageUrls: string[] = []
 
-		const formAny = form as unknown as { entries: () => IterableIterator<[string, FormDataEntryValue]> }
+		const formAny = form as unknown as {
+			entries: () => IterableIterator<[string, FormDataEntryValue]>
+		}
 		for (const [key, value] of Array.from(formAny.entries())) {
 			if (key === 'refImages' && value instanceof File) {
 				const fileValue = value
@@ -1561,14 +1657,14 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload),
+			body: JSON.stringify(payload)
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `meshy/generate failed: ${res.status}`),
+				error: extractBodyError(body, `meshy/generate failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as MeshyGenerateResponse
@@ -1578,14 +1674,14 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/task'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ taskId, mode }),
+			body: JSON.stringify({ taskId, mode })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `meshy/task failed: ${res.status}`),
+				error: extractBodyError(body, `meshy/task failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as MeshyTaskResponse
@@ -1605,14 +1701,14 @@ export class ComfyUIBridgeService {
 		const suffix = search.size ? `?${search.toString()}` : ''
 		const res = await this.fetchWithLog(this.url(`/api/third-party/meshy/tasks${suffix}`), {
 			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `meshy/tasks failed: ${res.status}`),
+				error: extractBodyError(body, `meshy/tasks failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as MeshyTasksListResponse
@@ -1620,16 +1716,19 @@ export class ComfyUIBridgeService {
 
 	async meshyTaskDetail(taskId: string): Promise<MeshyTaskDetailResponse> {
 		const search = new URLSearchParams({ taskId })
-		const res = await this.fetchWithLog(this.url(`/api/third-party/meshy/task/detail?${search.toString()}`), {
-			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
-		})
+		const res = await this.fetchWithLog(
+			this.url(`/api/third-party/meshy/task/detail?${search.toString()}`),
+			{
+				method: 'GET',
+				headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `meshy/task-detail failed: ${res.status}`),
+				error: extractBodyError(body, `meshy/task-detail failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as MeshyTaskDetailResponse
@@ -1647,14 +1746,14 @@ export class ComfyUIBridgeService {
 		const suffix = search.size ? `?${search.toString()}` : ''
 		const res = await this.fetchWithLog(this.url(`/api/third-party/seedance/tasks${suffix}`), {
 			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `seedance/tasks failed: ${res.status}`),
+				error: extractBodyError(body, `seedance/tasks failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as SeedanceTasksListResponse
@@ -1662,16 +1761,19 @@ export class ComfyUIBridgeService {
 
 	async seedanceTaskDetail(taskId: string): Promise<SeedanceTaskDetailResponse> {
 		const search = new URLSearchParams({ taskId })
-		const res = await this.fetchWithLog(this.url(`/api/third-party/seedance/task/detail?${search.toString()}`), {
-			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
-		})
+		const res = await this.fetchWithLog(
+			this.url(`/api/third-party/seedance/task/detail?${search.toString()}`),
+			{
+				method: 'GET',
+				headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `seedance/task-detail failed: ${res.status}`),
+				error: extractBodyError(body, `seedance/task-detail failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as SeedanceTaskDetailResponse
@@ -1689,14 +1791,14 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/third-party/seedance/sync-tasks'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload || {}),
+			body: JSON.stringify(payload || {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `seedance/tasks:sync failed: ${res.status}`),
+				error: extractBodyError(body, `seedance/tasks:sync failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as SeedanceSyncTasksResponse
@@ -1706,14 +1808,14 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/stop'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ taskId, mode }),
+			body: JSON.stringify({ taskId, mode })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `meshy/stop failed: ${res.status}`),
+				error: extractBodyError(body, `meshy/stop failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as MeshyTaskActionResponse
@@ -1723,14 +1825,14 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/delete'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ taskId, mode }),
+			body: JSON.stringify({ taskId, mode })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `meshy/delete failed: ${res.status}`),
+				error: extractBodyError(body, `meshy/delete failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as MeshyTaskActionResponse
@@ -1739,14 +1841,14 @@ export class ComfyUIBridgeService {
 	async meshyBalance(): Promise<MeshyBalanceResponse> {
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/balance'), {
 			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: extractBodyError(body, `meshy/balance failed: ${res.status}`),
+				error: extractBodyError(body, `meshy/balance failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as MeshyBalanceResponse
@@ -1756,7 +1858,7 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/workflow/cancel'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl, promptId }),
+			body: JSON.stringify({ baseUrl: comfyBaseUrl, promptId })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -1764,7 +1866,7 @@ export class ComfyUIBridgeService {
 				ok: false,
 				status: res.status,
 				error: extractErrorMessage(body, `cancel failed: ${res.status}`),
-				baseUrl: comfyBaseUrl,
+				baseUrl: comfyBaseUrl
 			}
 		}
 		return (await res.json()) as CancelResponse
@@ -1774,7 +1876,7 @@ export class ComfyUIBridgeService {
 		const res = await this.fetchWithLog(this.url('/api/workflow/job'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl, id }),
+			body: JSON.stringify({ baseUrl: comfyBaseUrl, id })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -1782,7 +1884,7 @@ export class ComfyUIBridgeService {
 				ok: false,
 				status: res.status,
 				error: extractErrorMessage(body, `job failed: ${res.status}`),
-				baseUrl: comfyBaseUrl,
+				baseUrl: comfyBaseUrl
 			}
 		}
 		return (await res.json()) as JobResponse

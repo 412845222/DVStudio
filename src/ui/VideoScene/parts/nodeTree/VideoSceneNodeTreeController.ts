@@ -1,5 +1,9 @@
 import type { Store } from 'vuex'
-import type { VideoSceneLayer, VideoSceneState, VideoSceneTreeNode } from '../../../../store/videoscene'
+import type {
+	VideoSceneLayer,
+	VideoSceneState,
+	VideoSceneTreeNode
+} from '../../../../store/videoscene'
 import { NodeTreeController } from './NodeTreeController'
 
 export class VideoSceneNodeTreeController extends NodeTreeController {

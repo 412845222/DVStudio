@@ -1,7 +1,11 @@
 <template>
 	<div
 		class="app-shell"
-		:class="{ electron: isElectronRuntime, 'is-preview-window': isPreviewWindow, 'is-resource-manager-window': isResourceManagerWindow }"
+		:class="{
+			electron: isElectronRuntime,
+			'is-preview-window': isPreviewWindow,
+			'is-resource-manager-window': isResourceManagerWindow
+		}"
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
 		<GlobalTitleBar v-if="isElectronRuntime &amp;&amp; !isPreviewWindow" class="app-titlebar" />
@@ -21,7 +25,11 @@
 				</transition>
 			</router-view>
 		</main>
-		<StartupProgressBar v-if="!isResourceManagerWindow" :state="startupProgressState" @dismiss="hideStartupProgress" />
+		<StartupProgressBar
+			v-if="!isResourceManagerWindow"
+			:state="startupProgressState"
+			@dismiss="hideStartupProgress"
+		/>
 		<PageTransitionOverlay v-if="!isPreviewWindow" />
 		<SteamEntryOverlay
 			v-if="!isPreviewWindow && !isResourceManagerWindow && isRealPlatform"
@@ -85,8 +93,10 @@ const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() 
 	const path = String(route.path || '')
 	const name = String((route.name as string) || '')
 	if (name === 'ProjectList' || path.startsWith('/projects')) return 'project-list'
-	if (name === 'AIWorkflow' || path.startsWith('/aiworkflow') || path.startsWith('/blueprint')) return 'workflow'
-	if (name === 'VideoStudio' || path.startsWith('/video-studio') || path.startsWith('/studio')) return 'default'
+	if (name === 'AIWorkflow' || path.startsWith('/aiworkflow') || path.startsWith('/blueprint'))
+		return 'workflow'
+	if (name === 'VideoStudio' || path.startsWith('/video-studio') || path.startsWith('/studio'))
+		return 'default'
 	return 'default'
 })
 
@@ -194,7 +204,9 @@ onMounted(() => {
 
 .page-fade-enter-active,
 .page-fade-leave-active {
-	transition: opacity 260ms ease, transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+	transition:
+		opacity 260ms ease,
+		transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .page-fade-enter-from {

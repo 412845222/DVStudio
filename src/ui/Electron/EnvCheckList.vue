@@ -26,7 +26,10 @@ const emit = defineEmits<{
 					<div v-if="it.detail" class="detail">{{ it.detail }}</div>
 					<div class="progressWrap">
 						<div class="progressTrack">
-							<div class="progressBar" :style="{ width: `${Math.max(0, Math.min(100, Number(it.progress ?? 0)))}%` }" />
+							<div
+								class="progressBar"
+								:style="{ width: `${Math.max(0, Math.min(100, Number(it.progress ?? 0)))}%` }"
+							/>
 						</div>
 					</div>
 				</div>
@@ -42,7 +45,15 @@ const emit = defineEmits<{
 						@click="emit('retry', it.key)"
 					>
 						<svg v-if="it.retrying" class="spinIcon" viewBox="0 0 24 24" aria-hidden="true">
-							<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3" />
+							<circle
+								cx="12"
+								cy="12"
+								r="9"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								opacity="0.3"
+							/>
 							<path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="2" />
 						</svg>
 						<span>{{ it.retrying ? '重试中' : '重试' }}</span>

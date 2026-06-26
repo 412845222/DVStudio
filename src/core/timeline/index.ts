@@ -13,7 +13,7 @@ export type {
 	SubtitleCue,
 	SubtitleCueRange,
 	SubtitleTextStyle,
-	TimelineState,
+	TimelineState
 } from './types'
 
 export { createDefaultTimelineState } from './factories'

@@ -36,16 +36,16 @@ export type MutationFn<S, P = void> = (state: S, payload: P) => void
  * Action 上下文类型
  */
 export interface ActionContext<S> {
-  state: S
-  commit: (type: string, payload?: unknown, options?: { root?: boolean }) => void
-  dispatch: (type: string, payload?: unknown, options?: { root?: boolean }) => Promise<unknown>
-  getters: Record<string, unknown>
+	state: S
+	commit: (type: string, payload?: unknown, options?: { root?: boolean }) => void
+	dispatch: (type: string, payload?: unknown, options?: { root?: boolean }) => Promise<unknown>
+	getters: Record<string, unknown>
 }
 
 /**
  * Action 函数类型
  */
 export type ActionFn<S, P = void, R = unknown> = (
-  context: ActionContext<S>,
-  payload: P
+	context: ActionContext<S>,
+	payload: P
 ) => Promise<R> | R

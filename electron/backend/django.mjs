@@ -21,7 +21,7 @@ async function isPortFree(port) {
 export async function pickBackendPort({ preferred = 5800, range = 100 } = {}) {
 	for (let i = 0; i < range; i++) {
 		const port = preferred + i
-		// eslint-disable-next-line no-await-in-loop
+		 
 		if (await isPortFree(port)) return port
 	}
 	throw new Error('No free port found for backend')
@@ -38,12 +38,12 @@ export async function waitForBackendReady(baseUrl, { timeoutMs = 20000 } = {}) {
 	while (Date.now() - startedAt < timeoutMs) {
 		try {
 			// 后端已有 ping endpoint
-			// eslint-disable-next-line no-await-in-loop
+			 
 			if (await ping(`${baseUrl}/api/ai/ping`)) return
 		} catch (e) {
 			lastErr = String(e?.message || e)
 		}
-		// eslint-disable-next-line no-await-in-loop
+		 
 		await wait(250)
 	}
 	throw new Error(`Backend not ready within ${timeoutMs}ms. ${lastErr}`)
@@ -61,23 +61,27 @@ export function killExistingDjangoRunservers({ pythonCommand, djangoDir, onLog }
 		const safeWorkDir = workDir.replace(/'/g, "''").replace(/\\/g, '\\\\')
 		const pyNeedle = py ? py.toLowerCase().replace(/'/g, "''").replace(/\\/g, '\\\\') : ''
 		const psScript = [
-			"$procs = Get-CimInstance Win32_Process | Where-Object {",
-			"  $cmd = [string]$_.CommandLine",
-			"  if ([string]::IsNullOrWhiteSpace($cmd)) { return $false }",
-			"  $cmdL = $cmd.ToLowerInvariant()",
+			'$procs = Get-CimInstance Win32_Process | Where-Object {',
+			'  $cmd = [string]$_.CommandLine',
+			'  if ([string]::IsNullOrWhiteSpace($cmd)) { return $false }',
+			'  $cmdL = $cmd.ToLowerInvariant()',
 			`  if (-not $cmdL.Contains('${safeWorkDir.toLowerCase()}')) { return $false }`,
 			"  if (-not ($cmdL.Contains('manage.py') -and $cmdL.Contains('runserver'))) { return $false }",
 			pyNeedle ? `  if (-not $cmdL.Contains('${pyNeedle}')) { return $false }` : '  $true',
 			'}',
 			'foreach($p in $procs){',
 			'  try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; Write-Output $p.ProcessId } catch {}',
-			'}',
+			'}'
 		].join('; ')
 
-		const r = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
-			encoding: 'utf-8',
-			windowsHide: true,
-		})
+		const r = spawnSync(
+			'powershell',
+			['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript],
+			{
+				encoding: 'utf-8',
+				windowsHide: true
+			}
+		)
 		const out = String(r.stdout || '')
 			.split(/\r?\n/)
 			.map((s) => s.trim())
@@ -90,13 +94,20 @@ export function killExistingDjangoRunservers({ pythonCommand, djangoDir, onLog }
 	const pattern = `${workDir}.*manage.py.*runserver`
 	const r = spawnSync('pkill', ['-f', pattern], {
 		encoding: 'utf-8',
-		windowsHide: true,
+		windowsHide: true
 	})
 	if (r.status === 0) log('[backend] 已清理遗留 Django 进程。')
 	return { ok: r.status === 0 || r.status === 1, killed }
 }
 
-export function startDjangoServer({ port, dataDir, extraEnv = {}, djangoDir, onLog, pyInfo: providedPyInfo } = {}) {
+export function startDjangoServer({
+	port,
+	dataDir,
+	extraEnv = {},
+	djangoDir,
+	onLog,
+	pyInfo: providedPyInfo
+} = {}) {
 	let py
 	if (providedPyInfo) {
 		py = providedPyInfo
@@ -127,7 +138,7 @@ export function startDjangoServer({ port, dataDir, extraEnv = {}, djangoDir, onL
 		PYTHONUTF8: '1',
 		// 先把数据目录注入；后续需要在 Django settings 里真正读取这个变量
 		DWEB_DATA_DIR: dataDir || process.env.DWEB_DATA_DIR || '',
-		...extraEnv,
+		...extraEnv
 	}
 	delete baseEnv.__DWEB_PYTHON_COMMAND
 
@@ -139,7 +150,7 @@ export function startDjangoServer({ port, dataDir, extraEnv = {}, djangoDir, onL
 	const mig = spawnSync(py.command, [...py.argsPrefix, 'manage.py', 'migrate', '--noinput'], {
 		cwd: workDir,
 		env,
-		encoding: 'utf-8',
+		encoding: 'utf-8'
 	})
 	if (mig.status !== 0) {
 		const out = String(mig.stdout || '')
@@ -157,7 +168,7 @@ export function startDjangoServer({ port, dataDir, extraEnv = {}, djangoDir, onL
 		cwd: workDir,
 		env,
 		stdio: ['ignore', 'pipe', 'pipe'],
-		windowsHide: true,
+		windowsHide: true
 	})
 
 	child.stdout?.setEncoding('utf-8')

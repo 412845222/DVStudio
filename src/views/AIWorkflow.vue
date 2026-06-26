@@ -1,7 +1,7 @@
 <template>
-  <AIWorkflowPage />
+	<AIWorkflowPage />
 </template>
 
 <script setup lang="ts">
-import AIWorkflowPage from "./AIWorkflow/AIWorkflowPage.vue";
+import AIWorkflowPage from './AIWorkflow/AIWorkflowPage.vue'
 </script>

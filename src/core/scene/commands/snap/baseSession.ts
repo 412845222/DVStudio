@@ -3,7 +3,7 @@ import type { SnapContext, SnapLock } from './types'
 export abstract class SnapSessionBase<
 	TSession extends { ctx: SnapContext; lock: SnapLock | null },
 	TStepArgs,
-	TResult extends { lock: SnapLock | null },
+	TResult extends { lock: SnapLock | null }
 > {
 	protected readonly ctx: SnapContext
 	protected readonly lock: SnapLock | null

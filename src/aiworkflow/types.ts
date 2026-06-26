@@ -1,5 +1,7 @@
 import type { WorkflowResource } from './resource/types'
 
+export type { WorkflowResource }
+
 export type WorkflowViewport = {
 	zoom: number
 	panX: number
@@ -420,7 +422,15 @@ export type WorkflowUnrealExportNodeSettings = {
 	lastHeartbeatAt?: number
 	lastExportMode?: 'scene-layout' | 'lighting-only'
 	lastExportJobId?: string
-	lastExportStatus?: 'queued' | 'picked' | 'downloading' | 'importing' | 'assembling-actor' | 'applying-lighting' | 'completed' | 'failed'
+	lastExportStatus?:
+		| 'queued'
+		| 'picked'
+		| 'downloading'
+		| 'importing'
+		| 'assembling-actor'
+		| 'applying-lighting'
+		| 'completed'
+		| 'failed'
 	lastExportStage?: string
 	lastExportProgress?: number
 	lastExportMessage?: string
@@ -623,7 +633,13 @@ export type WorkflowMeshyTaskFamily =
 	| 'text-to-image'
 	| 'image-to-image'
 
-export type WorkflowMeshyTaskStatus = 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+export type WorkflowMeshyTaskStatus =
+	| 'idle'
+	| 'pending'
+	| 'running'
+	| 'succeeded'
+	| 'failed'
+	| 'canceled'
 
 export type WorkflowMeshyRelationKind = 'model' | 'texture' | 'rigging' | 'animation' | 'remesh'
 
@@ -711,7 +727,9 @@ export type WorkflowMeshyNodeSettings = {
 	meshyProgress?: number
 	meshyStatusText?: string
 	meshyThumbnailUrl?: string
-	meshyModelUrls?: Partial<Record<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz' | 'pre_remeshed_glb', string>>
+	meshyModelUrls?: Partial<
+		Record<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz' | 'pre_remeshed_glb', string>
+	>
 	meshyOutputAssetUrl?: string
 	meshyOutputAssetPath?: string
 	meshyErrorMessage?: string

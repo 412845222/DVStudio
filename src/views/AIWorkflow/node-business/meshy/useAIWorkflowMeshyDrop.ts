@@ -17,7 +17,7 @@ export const useAIWorkflowMeshyDrop = (options: {
 		options.store.commit('addNodeAt', {
 			worldX: payload.worldX,
 			worldY: payload.worldY,
-			title: 'Meshy 任务',
+			title: 'Meshy 任务'
 		})
 		const nodeId = options.store.state.selectedNodeId
 		if (!nodeId) return true
@@ -33,22 +33,22 @@ export const useAIWorkflowMeshyDrop = (options: {
 				meshyTaskStatus: taskStatus,
 				meshyTaskId:
 					String(payload.item.taskId ?? itemSettings.meshyTaskId ?? '').trim() || undefined,
-				meshyStatusText:
-					String(itemSettings.meshyStatusText ?? '').trim() || undefined,
+				meshyStatusText: String(itemSettings.meshyStatusText ?? '').trim() || undefined,
 				meshyInputSummary: itemSettings.meshyInputSummary ?? undefined,
-				meshyOutputSummary: itemSettings.meshyOutputSummary ?? undefined,
-			},
+				meshyOutputSummary: itemSettings.meshyOutputSummary ?? undefined
+			}
 		})
 		options.store.commit('setNodeAlias', {
 			nodeId,
 			alias:
-				String(payload.item.alias ?? payload.item.title ?? 'Meshy任务节点').trim() || 'Meshy任务节点',
+				String(payload.item.alias ?? payload.item.title ?? 'Meshy任务节点').trim() ||
+				'Meshy任务节点'
 		})
 		options.pushToast('已从 Meshy 任务中心创建节点。', 'info')
 		return true
 	}
 
 	return {
-		createNodeFromDraggedMeshyTask,
+		createNodeFromDraggedMeshyTask
 	}
 }

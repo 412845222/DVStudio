@@ -1,6 +1,10 @@
 import type { JsonValue } from '../shared/json'
 
-import type { ComponentTemplate, InstantiateTemplateOptions, InstantiateTemplateResult } from './types'
+import type {
+	ComponentTemplate,
+	InstantiateTemplateOptions,
+	InstantiateTemplateResult
+} from './types'
 import type { ExportTemplateFromSelectionArgs } from './exportTemplate'
 
 import type { ValidateResult } from './validate'
@@ -28,5 +32,5 @@ export const componentTemplateApi: ComponentTemplateApi = {
 	validateTemplate: validateComponentTemplate,
 	instantiateTemplate,
 	instantiateValidatedTemplate,
-	exportTemplateFromSelection,
+	exportTemplateFromSelection
 }

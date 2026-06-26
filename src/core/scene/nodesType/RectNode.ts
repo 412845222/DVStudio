@@ -11,7 +11,7 @@ export class RectNode extends NodeBase {
 			borderColor: '#9cdcfe',
 			borderOpacity: 1,
 			borderWidth: 2,
-			cornerRadius: 0,
+			cornerRadius: 0
 		}
 	}
 
@@ -34,9 +34,8 @@ export class RectNode extends NodeBase {
 				borderColor,
 				borderOpacity: Number.isFinite(borderOpacity) ? Math.max(0, Math.min(1, borderOpacity)) : 1,
 				borderWidth: Number.isFinite(borderWidth) ? Math.max(0, borderWidth) : 2,
-				cornerRadius: Number.isFinite(cornerRadius) ? Math.max(0, cornerRadius) : 0,
-			},
+				cornerRadius: Number.isFinite(cornerRadius) ? Math.max(0, cornerRadius) : 0
+			}
 		}
 	}
 }
-

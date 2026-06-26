@@ -33,13 +33,18 @@ class MoveSnapSessionImpl extends SnapSessionBase<
 				stageWidth: args.stageWidth,
 				stageHeight: args.stageHeight,
 				zoom: args.zoom,
-				basePx: args.basePx,
+				basePx: args.basePx
 			}),
-			lock: null,
+			lock: null
 		}
 	}
 
-	protected compute(args: { rawWorldCx: number; rawWorldCy: number; width: number; height: number }): MoveSnapResult {
+	protected compute(args: {
+		rawWorldCx: number
+		rawWorldCy: number
+		width: number
+		height: number
+	}): MoveSnapResult {
 		return MoveSnapSessionImpl.computeMoveSnap({
 			rawWorldCx: args.rawWorldCx,
 			rawWorldCy: args.rawWorldCy,
@@ -49,7 +54,7 @@ class MoveSnapSessionImpl extends SnapSessionBase<
 			nodeLinesY: this.ctx.nodeLinesY,
 			stage: this.ctx.stage,
 			threshold: this.ctx.threshold,
-			lock: this.lock,
+			lock: this.lock
 		})
 	}
 
@@ -77,14 +82,14 @@ class MoveSnapSessionImpl extends SnapSessionBase<
 		const sxStage = applySnapAxis('x', rawWorldCx, w, [stage.left, stage.right], threshold, lock, {
 			candidates: [
 				{ mode: 'l', v: rawWorldCx - w / 2 },
-				{ mode: 'r', v: rawWorldCx + w / 2 },
-			],
+				{ mode: 'r', v: rawWorldCx + w / 2 }
+			]
 		})
 		const syStage = applySnapAxis('y', rawWorldCy, h, [stage.top, stage.bottom], threshold, lock, {
 			candidates: [
 				{ mode: 't', v: rawWorldCy - h / 2 },
-				{ mode: 'b', v: rawWorldCy + h / 2 },
-			],
+				{ mode: 'b', v: rawWorldCy + h / 2 }
+			]
 		})
 
 		const sx = (sxStage.dist ?? Infinity) < (sxNodes.dist ?? Infinity) ? sxStage : sxNodes
@@ -101,7 +106,7 @@ class MoveSnapSessionImpl extends SnapSessionBase<
 			worldCy: sy.center,
 			snappedLineX: sx.snappedLine,
 			snappedLineY: sy.snappedLine,
-			lock: Object.keys(nextLock).length ? nextLock : null,
+			lock: Object.keys(nextLock).length ? nextLock : null
 		}
 	}
 }
@@ -128,6 +133,6 @@ export const stepMoveSnapSession = (args: {
 		rawWorldCx: args.rawWorldCx,
 		rawWorldCy: args.rawWorldCy,
 		width: args.width,
-		height: args.height,
+		height: args.height
 	})
 }

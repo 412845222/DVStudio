@@ -4,175 +4,208 @@
    ============================================================ */
 
 .gpb-container {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  background: linear-gradient(135deg, var(--gpb-bg-0) 0%, var(--gpb-bg-1) 100%);
+	position: fixed;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+	overflow: hidden;
+	background: linear-gradient(135deg, var(--gpb-bg-0) 0%, var(--gpb-bg-1) 100%);
 }
 
 /* HUD grid layer */
 .gpb-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(to right, var(--gpb-grid) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--gpb-grid) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse at 50% 40%, #000 50%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 50%, transparent 100%);
-  opacity: 0.85;
+	position: absolute;
+	inset: 0;
+	background-image:
+		linear-gradient(to right, var(--gpb-grid) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--gpb-grid) 1px, transparent 1px);
+	background-size: 48px 48px;
+	mask-image: radial-gradient(ellipse at 50% 40%, #000 50%, transparent 100%);
+	-webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 50%, transparent 100%);
+	opacity: 0.85;
 }
 
 /* Radial glow accent */
 .gpb-radial {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(
-      ellipse 60% 50% at 20% 20%,
-      var(--gpb-glow-1),
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 50% 40% at 85% 85%,
-      var(--gpb-glow-2),
-      transparent 60%
-    );
-  opacity: 0.9;
+	position: absolute;
+	inset: 0;
+	background:
+		radial-gradient(ellipse 60% 50% at 20% 20%, var(--gpb-glow-1), transparent 65%),
+		radial-gradient(ellipse 50% 40% at 85% 85%, var(--gpb-glow-2), transparent 60%);
+	opacity: 0.9;
 }
 
 /* Three rectangular soft glows */
 .gpb-glow {
-  position: absolute;
-  border-radius: 4px;
-  filter: blur(50px);
-  will-change: transform, opacity;
+	position: absolute;
+	border-radius: 4px;
+	filter: blur(50px);
+	will-change: transform, opacity;
 }
 
 .gpb-glow-1 {
-  top: 10%;
-  left: 8%;
-  width: 460px;
-  height: 300px;
-  background: linear-gradient(135deg, var(--gpb-glow-1), transparent 70%);
-  animation: gpb-drift-1 22s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+	top: 10%;
+	left: 8%;
+	width: 460px;
+	height: 300px;
+	background: linear-gradient(135deg, var(--gpb-glow-1), transparent 70%);
+	animation: gpb-drift-1 22s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
 }
 
 .gpb-glow-2 {
-  bottom: 8%;
-  right: 6%;
-  width: 520px;
-  height: 340px;
-  background: linear-gradient(135deg, var(--gpb-glow-2), transparent 70%);
-  animation: gpb-drift-2 26s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+	bottom: 8%;
+	right: 6%;
+	width: 520px;
+	height: 340px;
+	background: linear-gradient(135deg, var(--gpb-glow-2), transparent 70%);
+	animation: gpb-drift-2 26s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
 }
 
 .gpb-glow-3 {
-  top: 4%;
-  left: 55%;
-  width: 380px;
-  height: 140px;
-  background: linear-gradient(180deg, var(--gpb-glow-3), transparent 90%);
-  animation: gpb-drift-3 30s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+	top: 4%;
+	left: 55%;
+	width: 380px;
+	height: 140px;
+	background: linear-gradient(180deg, var(--gpb-glow-3), transparent 90%);
+	animation: gpb-drift-3 30s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
 }
 
 /* Top scanline (subtle) */
 .gpb-scanline-top {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--gpb-scanline) 0%, transparent) 10%,
-    var(--gpb-scanline) 50%,
-    color-mix(in srgb, var(--gpb-scanline) 0%, transparent) 90%,
-    transparent 100%
-  );
-  box-shadow: 0 0 12px var(--gpb-scanline);
-  opacity: 0.6;
-  animation: gpb-scanline-pulse 10s ease-in-out infinite;
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 1px;
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		color-mix(in srgb, var(--gpb-scanline) 0%, transparent) 10%,
+		var(--gpb-scanline) 50%,
+		color-mix(in srgb, var(--gpb-scanline) 0%, transparent) 90%,
+		transparent 100%
+	);
+	box-shadow: 0 0 12px var(--gpb-scanline);
+	opacity: 0.6;
+	animation: gpb-scanline-pulse 10s ease-in-out infinite;
 }
 
 /* --- Keyframes --- */
 
 @keyframes gpb-drift-1 {
-  0%   { transform: translate3d(0, 0, 0) scale(1); opacity: 0.85; }
-  25%  { transform: translate3d(60px, -20px, 0) scale(1.05); opacity: 0.95; }
-  50%  { transform: translate3d(20px, -50px, 0) scale(1.02); opacity: 0.9; }
-  75%  { transform: translate3d(-30px, -25px, 0) scale(0.98); opacity: 0.85; }
-  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.85; }
+	0% {
+		transform: translate3d(0, 0, 0) scale(1);
+		opacity: 0.85;
+	}
+	25% {
+		transform: translate3d(60px, -20px, 0) scale(1.05);
+		opacity: 0.95;
+	}
+	50% {
+		transform: translate3d(20px, -50px, 0) scale(1.02);
+		opacity: 0.9;
+	}
+	75% {
+		transform: translate3d(-30px, -25px, 0) scale(0.98);
+		opacity: 0.85;
+	}
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+		opacity: 0.85;
+	}
 }
 
 @keyframes gpb-drift-2 {
-  0%   { transform: translate3d(0, 0, 0) scale(1); opacity: 0.8; }
-  30%  { transform: translate3d(-50px, 30px, 0) scale(1.04); opacity: 0.92; }
-  60%  { transform: translate3d(-20px, 50px, 0) scale(1); opacity: 0.85; }
-  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.8; }
+	0% {
+		transform: translate3d(0, 0, 0) scale(1);
+		opacity: 0.8;
+	}
+	30% {
+		transform: translate3d(-50px, 30px, 0) scale(1.04);
+		opacity: 0.92;
+	}
+	60% {
+		transform: translate3d(-20px, 50px, 0) scale(1);
+		opacity: 0.85;
+	}
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+		opacity: 0.8;
+	}
 }
 
 @keyframes gpb-drift-3 {
-  0%   { transform: translateX(-50%) translateY(0) scale(1); opacity: 0.7; }
-  50%  { transform: translateX(-50%) translateY(30px) scale(1.08); opacity: 0.85; }
-  100% { transform: translateX(-50%) translateY(0) scale(1); opacity: 0.7; }
+	0% {
+		transform: translateX(-50%) translateY(0) scale(1);
+		opacity: 0.7;
+	}
+	50% {
+		transform: translateX(-50%) translateY(30px) scale(1.08);
+		opacity: 0.85;
+	}
+	100% {
+		transform: translateX(-50%) translateY(0) scale(1);
+		opacity: 0.7;
+	}
 }
 
 @keyframes gpb-scanline-pulse {
-  0%, 100% { opacity: 0.45; }
-  50%      { opacity: 0.75; }
+	0%,
+	100% {
+		opacity: 0.45;
+	}
+	50% {
+		opacity: 0.75;
+	}
 }
 
 /* --- Variant: workflow (subdued, more professional) --- */
 
 .gpb-container.gpb-variant-workflow .gpb-glow-1 {
-  width: 360px;
-  height: 240px;
-  opacity: 0.55;
-  animation-duration: 28s;
+	width: 360px;
+	height: 240px;
+	opacity: 0.55;
+	animation-duration: 28s;
 }
 
 .gpb-container.gpb-variant-workflow .gpb-glow-2 {
-  width: 420px;
-  height: 280px;
-  opacity: 0.45;
-  animation-duration: 32s;
+	width: 420px;
+	height: 280px;
+	opacity: 0.45;
+	animation-duration: 32s;
 }
 
 .gpb-container.gpb-variant-workflow .gpb-glow-3 {
-  width: 320px;
-  height: 120px;
-  opacity: 0.35;
-  animation-duration: 36s;
+	width: 320px;
+	height: 120px;
+	opacity: 0.35;
+	animation-duration: 36s;
 }
 
 /* --- Variant: project-list (more vibrant, matches original design) --- */
 
 .gpb-container.gpb-variant-project-list .gpb-glow-1 {
-  width: 560px;
-  height: 340px;
-  opacity: 0.95;
+	width: 560px;
+	height: 340px;
+	opacity: 0.95;
 }
 
 .gpb-container.gpb-variant-project-list .gpb-glow-2 {
-  width: 620px;
-  height: 380px;
-  opacity: 0.9;
+	width: 620px;
+	height: 380px;
+	opacity: 0.9;
 }
 
 .gpb-container.gpb-variant-project-list .gpb-glow-3 {
-  width: 500px;
-  height: 160px;
-  opacity: 0.8;
+	width: 500px;
+	height: 160px;
+	opacity: 0.8;
 }
 
 /* --- Reduced motion --- */
 @media (prefers-reduced-motion: reduce) {
-  .gpb-glow,
-  .gpb-scanline-top {
-    animation: none !important;
-  }
+	.gpb-glow,
+	.gpb-scanline-top {
+		animation: none !important;
+	}
 }

@@ -28,7 +28,7 @@ export const editorRecentCache = {
 		const data: RecentEditCacheV1 = {
 			schemaVersion: 1,
 			savedAt: Number(payload.savedAt ?? Date.now()),
-			projectPackageJson,
+			projectPackageJson
 		}
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -76,5 +76,5 @@ export const editorRecentCache = {
 		} catch {
 			// ignore
 		}
-	},
+	}
 }

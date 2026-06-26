@@ -1,7 +1,19 @@
 <template>
-	<div class="vs-handle line start" :style="handleStyles.start" @pointerdown.stop.prevent="onPointDown('start')" />
-	<div class="vs-handle line anchor" :style="handleStyles.anchor" @pointerdown.stop.prevent="onPointDown('anchor')" />
-	<div class="vs-handle line end" :style="handleStyles.end" @pointerdown.stop.prevent="onPointDown('end')" />
+	<div
+		class="vs-handle line start"
+		:style="handleStyles.start"
+		@pointerdown.stop.prevent="onPointDown('start')"
+	/>
+	<div
+		class="vs-handle line anchor"
+		:style="handleStyles.anchor"
+		@pointerdown.stop.prevent="onPointDown('anchor')"
+	/>
+	<div
+		class="vs-handle line end"
+		:style="handleStyles.end"
+		@pointerdown.stop.prevent="onPointDown('end')"
+	/>
 </template>
 
 <script setup lang="ts">

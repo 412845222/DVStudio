@@ -8,7 +8,7 @@ function run(command, args, { cwd } = {}) {
 			cwd,
 			stdio: 'inherit',
 			shell: false,
-			windowsHide: true,
+			windowsHide: true
 		})
 
 		child.once('error', reject)
@@ -32,7 +32,7 @@ export async function zipDirectory({ sourceDir, destinationZip }) {
 	if (process.platform === 'win32') {
 		const script = [
 			"$ErrorActionPreference = 'Stop'",
-			`Compress-Archive -Path '${src.replace(/'/g, "''")}' -DestinationPath '${dst.replace(/'/g, "''")}' -Force`,
+			`Compress-Archive -Path '${src.replace(/'/g, "''")}' -DestinationPath '${dst.replace(/'/g, "''")}' -Force`
 		].join('; ')
 		await run('powershell', ['-NoProfile', '-Command', script])
 		return
@@ -42,7 +42,9 @@ export async function zipDirectory({ sourceDir, destinationZip }) {
 	const baseName = path.basename(src)
 
 	if (process.platform === 'darwin') {
-		await run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', baseName, dst], { cwd: parentDir })
+		await run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', baseName, dst], {
+			cwd: parentDir
+		})
 		return
 	}
 

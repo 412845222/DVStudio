@@ -95,7 +95,10 @@ export type AgentToUiTaskStatusPayload = {
 }
 
 export type AgentToUiTextMessage = AgentToUiEnvelope<'agentToUi/text', AgentToUiTextPayload>
-export type AgentToUiChatMessage = AgentToUiEnvelope<'agentToUi/chatMessage', AgentToUiChatMessagePayload>
+export type AgentToUiChatMessage = AgentToUiEnvelope<
+	'agentToUi/chatMessage',
+	AgentToUiChatMessagePayload
+>
 export type AgentToUiVideoScenePlanMessage = AgentToUiEnvelope<
 	'agentToUi/videoScenePlan',
 	AgentToUiVideoScenePlanPayload
@@ -106,7 +109,10 @@ export type AgentToUiComponentTemplateMessage = AgentToUiEnvelope<
 	AgentToUiComponentTemplatePayload
 >
 
-export type AgentToUiTaskStatusMessage = AgentToUiEnvelope<'agentToUi/taskStatus', AgentToUiTaskStatusPayload>
+export type AgentToUiTaskStatusMessage = AgentToUiEnvelope<
+	'agentToUi/taskStatus',
+	AgentToUiTaskStatusPayload
+>
 
 export type AgentToUiSubtitleSummaryDeltaPayload = {
 	/** which module is being updated */
@@ -126,6 +132,7 @@ export type AgentToUiApplyFilterPayload = {
 	 */
 	target: 'selection' | 'nodeId'
 	nodeId?: string
+	layerId?: string
 	/**
 	 * append: 追加到 filters 列表；replace: 直接覆盖 filters。
 	 */
@@ -136,7 +143,10 @@ export type AgentToUiApplyFilterPayload = {
 	filter: Record<string, JsonValue>
 }
 
-export type AgentToUiApplyFilterMessage = AgentToUiEnvelope<'agentToUi/applyFilter', AgentToUiApplyFilterPayload>
+export type AgentToUiApplyFilterMessage = AgentToUiEnvelope<
+	'agentToUi/applyFilter',
+	AgentToUiApplyFilterPayload
+>
 
 export type AgentToUiInsertNodePayload = {
 	/**
@@ -157,7 +167,10 @@ export type AgentToUiInsertNodePayload = {
 	layerId?: string
 }
 
-export type AgentToUiInsertNodeMessage = AgentToUiEnvelope<'agentToUi/insertNode', AgentToUiInsertNodePayload>
+export type AgentToUiInsertNodeMessage = AgentToUiEnvelope<
+	'agentToUi/insertNode',
+	AgentToUiInsertNodePayload
+>
 
 export type AgentToUiPatchNodePayload = {
 	/** 舞台 nodeId */
@@ -173,7 +186,10 @@ export type AgentToUiPatchNodePayload = {
 	}
 }
 
-export type AgentToUiPatchNodeMessage = AgentToUiEnvelope<'agentToUi/patchNode', AgentToUiPatchNodePayload>
+export type AgentToUiPatchNodeMessage = AgentToUiEnvelope<
+	'agentToUi/patchNode',
+	AgentToUiPatchNodePayload
+>
 
 export type AgentToUiDeleteNodePayload = {
 	/** 删除单个节点（推荐） */
@@ -184,7 +200,10 @@ export type AgentToUiDeleteNodePayload = {
 	layerId?: string
 }
 
-export type AgentToUiDeleteNodeMessage = AgentToUiEnvelope<'agentToUi/deleteNode', AgentToUiDeleteNodePayload>
+export type AgentToUiDeleteNodeMessage = AgentToUiEnvelope<
+	'agentToUi/deleteNode',
+	AgentToUiDeleteNodePayload
+>
 
 export type AgentToUiMessage =
 	| AgentToUiTextMessage

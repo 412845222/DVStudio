@@ -1,10 +1,11 @@
 // One-off debugging helper: verify backend SSE stream contains agentToUi/componentTemplate.
 // Usage: node scripts/debug-template-stream.js
 
-const url = process.env.DWEB_TEMPLATE_STREAM_URL || 'http://127.0.0.1:5800/api/ai/subtitle/template:stream'
+const url =
+	process.env.DWEB_TEMPLATE_STREAM_URL || 'http://127.0.0.1:5800/api/ai/subtitle/template:stream'
 
 /** @param {Uint8Array} _ */
-const noop = (_)=>{}
+const noop = (_) => {}
 
 async function main() {
 	const body = {
@@ -13,10 +14,14 @@ async function main() {
 			name: 'debug-preview',
 			templateId: 'debug-template',
 			category: '',
-			description: ['结构：root 矩形 + 标题 + 正文', '配色：只使用给定 palette', '滤镜：至少一处 glow'],
+			description: [
+				'结构：root 矩形 + 标题 + 正文',
+				'配色：只使用给定 palette',
+				'滤镜：至少一处 glow'
+			],
 			palette: ['#111111', '#FFFFFF', '#FF3B30'],
 			paletteLocked: true,
-			requireGlow: true,
+			requireGlow: true
 		},
 		contextPack: {
 			activeLayerId: 'layer-debug',
@@ -25,20 +30,20 @@ async function main() {
 			selectedNodes: [],
 			activeLayer: null,
 			lastStageOps: [],
-			subtitleSummary: { style: {}, outline: {} },
+			subtitleSummary: { style: {}, outline: {} }
 		},
 		viewport: { width: 1920, height: 1080, fps: 30 },
 		provider: 'deepseek',
-		responseMode: 'agentToUi-jsonl',
+		responseMode: 'agentToUi-jsonl'
 	}
 
 	const res = await fetch(url, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			Accept: 'text/event-stream',
+			Accept: 'text/event-stream'
 		},
-		body: JSON.stringify(body),
+		body: JSON.stringify(body)
 	})
 
 	if (!res.ok) {

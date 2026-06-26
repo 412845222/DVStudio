@@ -10,7 +10,12 @@ export type NumberScrubOptions = {
 export function useNumberScrub() {
 	let scrubCleanup: (() => void) | null = null
 
-	const onNumberScrubPointerDown = (e: PointerEvent, get: () => number, set: (v: number) => void, opt: NumberScrubOptions) => {
+	const onNumberScrubPointerDown = (
+		e: PointerEvent,
+		get: () => number,
+		set: (v: number) => void,
+		opt: NumberScrubOptions
+	) => {
 		// 仅左键拖拽，且不干扰正在输入/选中文本
 		if (e.button !== 0) return
 		const target = e.currentTarget as HTMLInputElement | null
@@ -109,6 +114,6 @@ export function useNumberScrub() {
 		onNumberScrubPointerDown,
 		onNumberInputDblClick,
 		onNumberInputFocus,
-		onNumberInputBlur,
+		onNumberInputBlur
 	}
 }

@@ -13,7 +13,12 @@ export class BaseRenderer extends NodeRenderer {
 		void ctx
 	}
 
-	renderLocal(canvas: DwebCanvasGL, target: LocalTargetSize, node: RenderNode, ctx: RenderContext): void {
+	renderLocal(
+		canvas: DwebCanvasGL,
+		target: LocalTargetSize,
+		node: RenderNode,
+		ctx: RenderContext
+	): void {
 		// Keep base node invisible in offscreen targets as well.
 		void canvas
 		void target

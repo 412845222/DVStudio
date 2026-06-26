@@ -49,12 +49,14 @@ export type ParsedMarkdownDoc = {
 const md = new MarkdownIt({
 	html: false,
 	linkify: true,
-	breaks: true,
+	breaks: true
 })
 
 // Avoid XSS via crafted links like javascript:...
 md.validateLink = (url: string) => {
-	const u = String(url || '').trim().toLowerCase()
+	const u = String(url || '')
+		.trim()
+		.toLowerCase()
 	if (!u) return false
 	if (u.startsWith('http://') || u.startsWith('https://')) return true
 	if (u.startsWith('mailto:')) return true
@@ -82,7 +84,10 @@ const extractSectionByH2 = (src: string, title: string) => {
 			break
 		}
 	}
-	return lines.slice(start + 1, end).join('\n').trim()
+	return lines
+		.slice(start + 1, end)
+		.join('\n')
+		.trim()
 }
 
 const fencedBlockRe = /```([\w-]+)\n([\s\S]*?)\n```/g
@@ -147,11 +152,13 @@ export const parseMarkdownDoc = (raw: string): ParsedMarkdownDoc => {
 		if (!obj) continue
 		if (Array.isArray(obj)) {
 			for (const it of obj) {
-				if (it && typeof it === 'object') templates.push({ spec: it as DvsTemplateSpec, rawYaml: b.content })
+				if (it && typeof it === 'object')
+					templates.push({ spec: it as DvsTemplateSpec, rawYaml: b.content })
 			}
 			continue
 		}
-		if (typeof obj === 'object') templates.push({ spec: obj as DvsTemplateSpec, rawYaml: b.content })
+		if (typeof obj === 'object')
+			templates.push({ spec: obj as DvsTemplateSpec, rawYaml: b.content })
 	}
 
 	const plans: ParsedMarkdownDoc['plans'] = []
@@ -160,7 +167,8 @@ export const parseMarkdownDoc = (raw: string): ParsedMarkdownDoc => {
 		if (!obj) continue
 		if (Array.isArray(obj)) {
 			for (const it of obj) {
-				if (it && typeof it === 'object') plans.push({ spec: it as DvsPlanSuggestion, rawYaml: b.content })
+				if (it && typeof it === 'object')
+					plans.push({ spec: it as DvsPlanSuggestion, rawYaml: b.content })
 			}
 			continue
 		}
@@ -175,7 +183,7 @@ export const parseMarkdownDoc = (raw: string): ParsedMarkdownDoc => {
 		planSectionMd,
 		style,
 		templates,
-		plans,
+		plans
 	}
 }
 

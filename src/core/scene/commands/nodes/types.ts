@@ -1,5 +1,10 @@
 import type { JsonValue } from '../../../shared/json'
-import type { VideoSceneNodeTransform, VideoSceneState, VideoSceneTreeNode, VideoSceneUserNodeType } from '../../types'
+import type {
+	VideoSceneNodeTransform,
+	VideoSceneState,
+	VideoSceneTreeNode,
+	VideoSceneUserNodeType
+} from '../../types'
 import type { SelectionPatch } from '../selection/types'
 
 export type AddRenderableNodeArgs = {

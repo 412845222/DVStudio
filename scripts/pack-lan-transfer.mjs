@@ -29,7 +29,7 @@ const excludedRootEntries = new Set([
 	'.cache',
 	'.idea',
 	'.vscode',
-	'.cloudbase',
+	'.cloudbase'
 ])
 
 const excludedDirectoryNames = new Set([
@@ -52,17 +52,25 @@ const excludedDirectoryNames = new Set([
 	'.ruff_cache',
 	'staticfiles',
 	'media',
-	'.dweb_exports',
+	'.dweb_exports'
 ])
 
-const excludedFileExtensions = new Set(['.log', '.tmp', '.temp', '.bak', '.old', '.orig', '.rej', '.patch', '.swp', '.swo', '.zip', '.7z'])
-
-const excludedFileNames = new Set([
-	'.dweb-deps.lock',
-	'Thumbs.db',
-	'Desktop.ini',
-	'.DS_Store',
+const excludedFileExtensions = new Set([
+	'.log',
+	'.tmp',
+	'.temp',
+	'.bak',
+	'.old',
+	'.orig',
+	'.rej',
+	'.patch',
+	'.swp',
+	'.swo',
+	'.zip',
+	'.7z'
 ])
+
+const excludedFileNames = new Set(['.dweb-deps.lock', 'Thumbs.db', 'Desktop.ini', '.DS_Store'])
 
 function formatTimestamp(date) {
 	const pad = (value) => String(value).padStart(2, '0')
@@ -73,7 +81,7 @@ function formatTimestamp(date) {
 		'-',
 		pad(date.getHours()),
 		pad(date.getMinutes()),
-		pad(date.getSeconds()),
+		pad(date.getSeconds())
 	].join('')
 }
 
@@ -115,7 +123,7 @@ function run(command, argsList, options = {}) {
 			cwd: repoRoot,
 			stdio: options.captureOutput ? ['ignore', 'pipe', 'pipe'] : 'inherit',
 			shell: false,
-			windowsHide: true,
+			windowsHide: true
 		})
 
 		let stdout = ''
@@ -136,7 +144,13 @@ function run(command, argsList, options = {}) {
 				return
 			}
 			const output = stderr.trim() || stdout.trim()
-			reject(new Error(output ? `${command} exited with code ${String(code)}: ${output}` : `${command} exited with code ${String(code)}`))
+			reject(
+				new Error(
+					output
+						? `${command} exited with code ${String(code)}: ${output}`
+						: `${command} exited with code ${String(code)}`
+				)
+			)
 		})
 	})
 }
@@ -145,13 +159,13 @@ async function getGitMetadata() {
 	const [{ stdout: branch }, { stdout: head }, { stdout: status }] = await Promise.all([
 		run('git', ['branch', '--show-current'], { captureOutput: true }),
 		run('git', ['rev-parse', 'HEAD'], { captureOutput: true }),
-		run('git', ['status', '--short'], { captureOutput: true }),
+		run('git', ['status', '--short'], { captureOutput: true })
 	])
 
 	return {
 		branch: branch.trim() || '(detached)',
 		head: head.trim(),
-		isClean: status.trim().length === 0,
+		isClean: status.trim().length === 0
 	}
 }
 
@@ -202,7 +216,7 @@ async function writeManifest(stagingDir, metadata, files, packageName) {
 		'1. Unzip the archive to the destination folder.',
 		'2. Run git status and git branch --show-current to verify repository state.',
 		'3. Run npm install to restore frontend dependencies.',
-		'4. If needed, install Python dependencies for django-app separately.',
+		'4. If needed, install Python dependencies for django-app separately.'
 	]
 	await writeFile(manifestPath, `${lines.join('\n')}\n`, 'utf8')
 }
@@ -246,7 +260,9 @@ async function main() {
 	process.stdout.write(`[pack:lan] zip file: ${zipPath}\n`)
 	process.stdout.write('[pack:lan] target machine should run: git status, npm install\n')
 	if (!includeDvsResource) {
-		process.stdout.write('[pack:lan] note: DVSResource was excluded. Re-run with --include-dvs-resource if you need local runtime assets.\n')
+		process.stdout.write(
+			'[pack:lan] note: DVSResource was excluded. Re-run with --include-dvs-resource if you need local runtime assets.\n'
+		)
 	}
 }
 

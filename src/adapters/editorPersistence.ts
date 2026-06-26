@@ -18,7 +18,7 @@ const captureSnapshot = (): EditorSnapshot => {
 	return {
 		videoScene: cloneJsonSafe(VideoSceneStore.state),
 		videoStudio: cloneJsonSafe(VideoStudioStore.state),
-		timeline: cloneJsonSafe(TimelineStore.state),
+		timeline: cloneJsonSafe(TimelineStore.state)
 	}
 }
 
@@ -47,7 +47,7 @@ const historyCore = createEditorHistoryCore({
 	},
 	onChanged: () => {
 		historyVersion.value++
-	},
+	}
 })
 
 VideoSceneStore.subscribe(() => historyCore.scheduleCapture())
@@ -98,5 +98,5 @@ export const editorPersistence = {
 	}),
 	undo,
 	redo,
-	save,
+	save
 }

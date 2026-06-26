@@ -55,7 +55,7 @@ function rowToApiKey(row) {
 		keyFingerprint: row.key_fingerprint,
 		hasKey: Boolean(row.key_ciphertext),
 		createdAt: isoToMs(row.created_at),
-		updatedAt: isoToMs(row.updated_at),
+		updatedAt: isoToMs(row.updated_at)
 	}
 }
 
@@ -63,16 +63,18 @@ export function createApiKeysRepo({ appSecret }) {
 	const secret = String(appSecret || '').trim() || '__localdb_default_secret__'
 	const db = getLocalDb()
 
-	const listStmt = db.prepare('SELECT id, provider, key_fingerprint, created_at, updated_at FROM api_keys ORDER BY updated_at DESC')
+	const listStmt = db.prepare(
+		'SELECT id, provider, key_fingerprint, created_at, updated_at FROM api_keys ORDER BY updated_at DESC'
+	)
 	const getByProviderStmt = db.prepare('SELECT * FROM api_keys WHERE provider = ? LIMIT 1')
 	const insertStmt = db.prepare(
-		'INSERT INTO api_keys (provider, key_ciphertext, key_fingerprint) VALUES (?, ?, ?)',
+		'INSERT INTO api_keys (provider, key_ciphertext, key_fingerprint) VALUES (?, ?, ?)'
 	)
 	const updateStmt = db.prepare(
-		'UPDATE api_keys SET key_ciphertext = ?, key_fingerprint = ?, updated_at = datetime(\'now\') WHERE provider = ?',
+		"UPDATE api_keys SET key_ciphertext = ?, key_fingerprint = ?, updated_at = datetime('now') WHERE provider = ?"
 	)
 	const clearStmt = db.prepare(
-		"UPDATE api_keys SET key_ciphertext = '', key_fingerprint = '', updated_at = datetime('now') WHERE provider = ?",
+		"UPDATE api_keys SET key_ciphertext = '', key_fingerprint = '', updated_at = datetime('now') WHERE provider = ?"
 	)
 	const deleteStmt = db.prepare('DELETE FROM api_keys WHERE provider = ?')
 
@@ -118,7 +120,8 @@ export function createApiKeysRepo({ appSecret }) {
 		if (!row || !row.key_ciphertext) return { ok: true, plaintext: '' }
 		const plaintext = decrypt(row.key_ciphertext, secret)
 		const fp = fingerprint(plaintext)
-		if (plaintext && fp !== row.key_fingerprint) return { ok: false, error: 'decrypted value failed fingerprint check' }
+		if (plaintext && fp !== row.key_fingerprint)
+			return { ok: false, error: 'decrypted value failed fingerprint check' }
 		return { ok: true, plaintext }
 	}
 

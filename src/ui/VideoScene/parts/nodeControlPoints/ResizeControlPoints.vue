@@ -1,8 +1,24 @@
 <template>
-	<div class="vs-handle tl" :style="handleStyles.tl" @pointerdown.stop.prevent="onHandleDown('tl')" />
-	<div class="vs-handle tr" :style="handleStyles.tr" @pointerdown.stop.prevent="onHandleDown('tr')" />
-	<div class="vs-handle bl" :style="handleStyles.bl" @pointerdown.stop.prevent="onHandleDown('bl')" />
-	<div class="vs-handle br" :style="handleStyles.br" @pointerdown.stop.prevent="onHandleDown('br')" />
+	<div
+		class="vs-handle tl"
+		:style="handleStyles.tl"
+		@pointerdown.stop.prevent="onHandleDown('tl')"
+	/>
+	<div
+		class="vs-handle tr"
+		:style="handleStyles.tr"
+		@pointerdown.stop.prevent="onHandleDown('tr')"
+	/>
+	<div
+		class="vs-handle bl"
+		:style="handleStyles.bl"
+		@pointerdown.stop.prevent="onHandleDown('bl')"
+	/>
+	<div
+		class="vs-handle br"
+		:style="handleStyles.br"
+		@pointerdown.stop.prevent="onHandleDown('br')"
+	/>
 	<div v-if="showSize" class="vs-size" :style="sizeStyle">{{ sizeText }}</div>
 </template>
 

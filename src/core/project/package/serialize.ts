@@ -6,14 +6,17 @@ import type {
 	ProjectAssetKindV1,
 	ProjectJsonV1,
 	ProjectManifestV1,
-	ProjectPackageV1,
+	ProjectPackageV1
 } from './types'
 
-export const exportProjectJsonV1 = (snapshot: EditorSnapshot, createdAt: number = Date.now()): ProjectJsonV1 => {
+export const exportProjectJsonV1 = (
+	snapshot: EditorSnapshot,
+	createdAt: number = Date.now()
+): ProjectJsonV1 => {
 	return {
 		schemaVersion: 1,
 		createdAt,
-		snapshot,
+		snapshot
 	}
 }
 
@@ -30,7 +33,7 @@ export const exportProjectPackageV1 = (
 	return {
 		project: exportProjectJsonV1(snapshot, opt?.createdAt ?? Date.now()),
 		manifest: opt?.manifest ?? createEmptyManifestV1(),
-		assets: opt?.assets ?? { files: {} },
+		assets: opt?.assets ?? { files: {} }
 	}
 }
 
@@ -55,12 +58,13 @@ export const parseProjectJsonV1 = (json: string): ProjectJsonV1 => {
 	return {
 		schemaVersion: 1,
 		createdAt: Number(raw.createdAt ?? Date.now()),
-		snapshot: snapshot as unknown as EditorSnapshot,
+		snapshot: snapshot as unknown as EditorSnapshot
 	}
 }
 
 export const parseProjectManifestV1 = (raw: unknown): ProjectManifestV1 => {
-	if (!isJsonObject(raw) || raw.schemaVersion !== 1) throw new Error('Unsupported manifest schemaVersion')
+	if (!isJsonObject(raw) || raw.schemaVersion !== 1)
+		throw new Error('Unsupported manifest schemaVersion')
 	const assetsRaw = raw.assets
 	if (assetsRaw != null && !isJsonObject(assetsRaw)) throw new Error('Invalid manifest.assets')
 	const assets: Record<string, ProjectAssetEntryV1> = {}
@@ -85,12 +89,12 @@ export const parseProjectManifestV1 = (raw: unknown): ProjectManifestV1 => {
 			width: typeof width === 'number' ? width : undefined,
 			height: typeof height === 'number' ? height : undefined,
 			url: typeof url === 'string' ? url : undefined,
-			fileKey: typeof fileKey === 'string' ? fileKey : undefined,
+			fileKey: typeof fileKey === 'string' ? fileKey : undefined
 		}
 	}
 	return {
 		schemaVersion: 1,
-		assets,
+		assets
 	}
 }
 
@@ -117,7 +121,6 @@ export const parseProjectPackageV1 = (json: string): ProjectPackageV1 => {
 	return {
 		project: parsedProject,
 		manifest: parsedManifest,
-		assets: { files: outFiles },
+		assets: { files: outFiles }
 	}
 }
-

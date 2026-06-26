@@ -88,6 +88,20 @@ interface Window {
       getAssetAccessLogs?: (payload: { maxEntries: number }) => Promise<{ ok: boolean; logs?: unknown[]; error?: string } | null>
       getCacheStats?: (payload: { projectId: number }) => Promise<import('./electronBridge').ProjectCacheStatsResult | null>
       clearCache?: (payload: { projectId: number }) => Promise<import('./electronBridge').ProjectCacheClearResult | null>
+      openResourceManager?: (payload: { projectId: number; title: string }) => Promise<{ ok: boolean; error?: string }>
+      closeResourceManager?: () => Promise<{ ok: boolean; error?: string }>
+      focusResourceManager?: () => Promise<{ ok: boolean; error?: string }>
+      sendResourceManagerData?: (payload: { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] }) => Promise<{ ok: boolean; error?: string }>
+      broadcastResourceEvent?: (payload: { event: string; data?: unknown }) => Promise<{ ok: boolean; error?: string }>
+      notifyResourceEvent?: (payload: { event: string; data?: unknown }) => Promise<{ ok: boolean; error?: string }>
+      getResourceManagerData?: () => { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] } | null
+      requestResourceManagerData?: () => Promise<{ ok: boolean; data?: { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] }; error?: string }>
+      onResourceManagerEvent?: (handler: (payload: { event: string; data?: unknown }) => void) => number
+      offResourceManagerEvent?: (listenerId: number) => Promise<{ ok: boolean; error?: string }>
+      onResourceManagerNotify?: (handler: (payload: { event: string; data?: unknown }) => void) => number
+      offResourceManagerNotify?: (listenerId: number) => Promise<{ ok: boolean; error?: string }>
+      onResourceManagerData?: (handler: (payload: { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] }) => void) => number
+      offResourceManagerData?: (listenerId: number) => Promise<{ ok: boolean; error?: string }>
     }
   }
 }

@@ -62,16 +62,33 @@ export const createEmptySubtitleSummaryState = (): SubtitleSummaryState => ({
 	outline: { items: [] },
 	style: { palette: {}, notes: [] },
 	templates: [],
-	plans: [],
+	plans: []
 })
 
-const isRecord = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v)
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+	!!v && typeof v === 'object' && !Array.isArray(v)
+
+const safeGetArray = <T>(obj: unknown, key: string, fallback: T[]): T[] => {
+	if (!isRecord(obj) || !Array.isArray(obj[key])) return fallback
+	return obj[key] as T[]
+}
+
+const safeGetString = (obj: unknown, key: string, fallback: string): string => {
+	if (!isRecord(obj) || typeof obj[key] !== 'string') return fallback
+	return obj[key] as string
+}
+
+const safeGetRecord = (obj: unknown, key: string): Record<string, unknown> | undefined => {
+	if (!isRecord(obj) || typeof obj[key] !== 'object' || obj[key] === null || Array.isArray(obj[key]))
+		return undefined
+	return obj[key] as Record<string, unknown>
+}
 
 const normalizeOutline = (v: unknown): SubtitleSummaryState['outline'] => {
 	if (!isRecord(v)) return { items: [] }
 	return {
 		...v,
-		items: Array.isArray((v as any).items) ? (v as any).items : [],
+		items: safeGetArray<SubtitleOutlineItem>(v, 'items', [])
 	}
 }
 
@@ -79,25 +96,31 @@ const normalizeSegments = (v: unknown): SubtitleSegments => {
 	if (!isRecord(v)) return { items: [] }
 	return {
 		...v,
-		items: Array.isArray((v as any).items) ? (v as any).items : [],
+		items: safeGetArray<SubtitleOutlineItem>(v, 'items', [])
 	}
 }
 
 const normalizeStyle = (v: unknown): SubtitleStyle => {
 	if (!isRecord(v)) return { palette: {}, notes: [] }
-	const palette = isRecord((v as any).palette) ? (v as any).palette : {}
-	const notes = Array.isArray((v as any).notes) ? (v as any).notes : []
+	const paletteRecord = safeGetRecord(v, 'palette')
+	const palette: Record<string, string> = {}
+	if (paletteRecord) {
+		for (const [k, val] of Object.entries(paletteRecord)) {
+			if (typeof val === 'string') palette[k] = val
+		}
+	}
+	const notes = safeGetArray<string>(v, 'notes', [])
 	return {
 		...v,
 		palette,
-		notes,
+		notes
 	}
 }
 
 const normalizeUnderstanding = (v: unknown): SubtitleUnderstanding => {
 	if (!isRecord(v)) return { summary: '', points: [] }
-	const summary = typeof (v as any).summary === 'string' ? (v as any).summary : ''
-	const points = Array.isArray((v as any).points) ? (v as any).points : []
+	const summary = safeGetString(v, 'summary', '')
+	const points = safeGetArray<string>(v, 'points', [])
 	return { ...v, summary, points }
 }
 
@@ -111,24 +134,42 @@ export const applySubtitleSummaryDelta = (
 
 	if (section === 'all' && isRecord(data)) {
 		return {
-			meta: isRecord((data as any).meta) ? (data as any).meta : state.meta,
-			understanding: (data as any).understanding ? normalizeUnderstanding((data as any).understanding) : state.understanding,
-			segments: (data as any).segments ? normalizeSegments((data as any).segments) : state.segments,
-			outline: (data as any).outline ? normalizeOutline((data as any).outline) : state.outline,
-			style: (data as any).style ? normalizeStyle((data as any).style) : state.style,
-			templates: Array.isArray((data as any).templates) ? (data as any).templates : state.templates,
-			plans: Array.isArray((data as any).plans) ? (data as any).plans : state.plans,
+			meta: safeGetRecord(data, 'meta') ?? state.meta,
+			understanding: normalizeUnderstanding(safeGetRecord(data, 'understanding') ?? {}),
+			segments: normalizeSegments(safeGetRecord(data, 'segments') ?? {}),
+			outline: normalizeOutline(safeGetRecord(data, 'outline') ?? {}),
+			style: normalizeStyle(safeGetRecord(data, 'style') ?? {}),
+			templates: safeGetArray<SubtitleTemplateSuggestion>(data, 'templates', state.templates),
+			plans: safeGetArray<SubtitlePlanItem>(data, 'plans', state.plans)
 		}
 	}
 
-	if (section === 'meta' && isRecord(data)) return { ...state, meta: { ...state.meta, ...(data as any) } }
-	if (section === 'understanding' && isRecord(data))
-		return { ...state, understanding: normalizeUnderstanding({ ...state.understanding, ...(data as any) }) }
-	if (section === 'segments' && isRecord(data)) return { ...state, segments: normalizeSegments({ ...state.segments, ...(data as any) }) }
-	if (section === 'outline' && isRecord(data)) return { ...state, outline: normalizeOutline({ ...state.outline, ...(data as any) }) }
-	if (section === 'style' && isRecord(data)) return { ...state, style: normalizeStyle({ ...state.style, ...(data as any) }) }
-	if (section === 'templates' && Array.isArray(data)) return { ...state, templates: data as any }
-	if (section === 'plans' && Array.isArray(data)) return { ...state, plans: data as any }
+	if (section === 'meta' && isRecord(data)) {
+		const metaRecord = safeGetRecord(data, 'meta')
+		return { ...state, meta: { ...state.meta, ...(metaRecord ?? {}) } }
+	}
+	if (section === 'understanding' && isRecord(data)) {
+		const deltaRecord = safeGetRecord(data, 'understanding')
+		return {
+			...state,
+			understanding: normalizeUnderstanding({ ...state.understanding, ...(deltaRecord ?? {}) })
+		}
+	}
+	if (section === 'segments' && isRecord(data)) {
+		const deltaRecord = safeGetRecord(data, 'segments')
+		return { ...state, segments: normalizeSegments({ ...state.segments, ...(deltaRecord ?? {}) }) }
+	}
+	if (section === 'outline' && isRecord(data)) {
+		const deltaRecord = safeGetRecord(data, 'outline')
+		return { ...state, outline: normalizeOutline({ ...state.outline, ...(deltaRecord ?? {}) }) }
+	}
+	if (section === 'style' && isRecord(data)) {
+		const deltaRecord = safeGetRecord(data, 'style')
+		return { ...state, style: normalizeStyle({ ...state.style, ...(deltaRecord ?? {}) }) }
+	}
+	if (section === 'templates' && Array.isArray(data))
+		return { ...state, templates: data as SubtitleTemplateSuggestion[] }
+	if (section === 'plans' && Array.isArray(data)) return { ...state, plans: data as SubtitlePlanItem[] }
 
 	return state
 }

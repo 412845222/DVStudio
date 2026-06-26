@@ -8,12 +8,14 @@ import { makeSelectionTagKey } from '../../../../aiworkflow/domain/selection/sel
  */
 const computeWorldBounds = (
 	nodesById: Record<string, any>,
-	selectedNodeIds: string[],
+	selectedNodeIds: string[]
 ): { x0: number; y0: number; x1: number; y1: number } | null => {
 	if (selectedNodeIds.length < 2) return null
 
-	let x0 = Infinity, y0 = Infinity
-	let x1 = -Infinity, y1 = -Infinity
+	let x0 = Infinity,
+		y0 = Infinity
+	let x1 = -Infinity,
+		y1 = -Infinity
 
 	for (const id of selectedNodeIds) {
 		const node = nodesById[id]
@@ -62,11 +64,13 @@ export const useAIWorkflowSelectionFrame = (payload: {
 		if (!visible.value) return null
 		const nodesById = store.state.nodesById
 		// 强制触发依赖追踪
-		void JSON.stringify(Object.keys(nodesById).map(id => ({
-			id,
-			x: nodesById[id]?.worldX,
-			y: nodesById[id]?.worldY,
-		})))
+		void JSON.stringify(
+			Object.keys(nodesById).map((id) => ({
+				id,
+				x: nodesById[id]?.worldX,
+				y: nodesById[id]?.worldY
+			}))
+		)
 		return computeWorldBounds(nodesById, payload.selectedNodeIds.value)
 	})
 
@@ -89,6 +93,6 @@ export const useAIWorkflowSelectionFrame = (payload: {
 		nodeCount,
 		nodeIds,
 		currentTagKey,
-		savedFrames,
+		savedFrames
 	}
 }

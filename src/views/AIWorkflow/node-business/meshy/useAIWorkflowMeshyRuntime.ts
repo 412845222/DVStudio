@@ -3,7 +3,7 @@ import type {
 	MeshyComfyService,
 	MeshyStoreLike,
 	PersistExternalAssetPayload,
-	PersistExternalAssetResult,
+	PersistExternalAssetResult
 } from './types'
 import { extractMeshyTaskResultFields } from './types'
 
@@ -28,7 +28,9 @@ export const useAIWorkflowMeshyRuntime = (options: {
 	pickMeshyPreferredModelUrl: (urls: Record<string, string> | null | undefined) => string
 	pickMeshyPreferredFormat: (urls: Record<string, string> | null | undefined) => 'glb' | 'gltf'
 	fileExtensionFromUrl: (url: string, fallbackExt: string) => string
-	persistExternalAssetToProject: (payload: PersistExternalAssetPayload) => Promise<PersistExternalAssetResult>
+	persistExternalAssetToProject: (
+		payload: PersistExternalAssetPayload
+	) => Promise<PersistExternalAssetResult>
 	syncConnectedImageTargetsFromMeshy: (nodeId: string) => Promise<unknown>
 	syncConnectedModel3DTargets: (nodeId: string) => Promise<unknown>
 	refreshMeshyTaskItems: (opts?: { silent?: boolean }) => Promise<unknown> | void
@@ -97,22 +99,27 @@ export const useAIWorkflowMeshyRuntime = (options: {
 
 		const target =
 			String(existingSettings.taskFamily ?? '').includes('image') ||
-			String(task.mode ?? '').includes('image') ? 'image' : '3d'
+			String(task.mode ?? '').includes('image')
+				? 'image'
+				: '3d'
 		const isImageTarget = target === 'image'
 		const modelUrls = task.modelUrls
 		const imageUrls = task.imageUrls
 		const preferredImageUrl = task.preferredImageUrl || (imageUrls[0] ?? '')
-		const preferredModelUrl = task.preferredModelUrl || options.pickMeshyPreferredModelUrl(modelUrls)
+		const preferredModelUrl =
+			task.preferredModelUrl || options.pickMeshyPreferredModelUrl(modelUrls)
 		const thumbnailUrl = task.thumbnailUrl
 		const statusText = task.statusText
 		const errorMessage = task.errorMessage
 		const format = options.pickMeshyPreferredFormat(modelUrls)
 		const existingLocalThumbnailUrl = pickLocalThumbnailCandidate(
-			(isRecord(existingSettings.outputSummary) ? existingSettings.outputSummary.thumbnailUrl : undefined),
-			existingSettings.thumbnailUrl,
+			isRecord(existingSettings.outputSummary)
+				? existingSettings.outputSummary.thumbnailUrl
+				: undefined,
+			existingSettings.thumbnailUrl
 		)
 		let resolvedThumbnailUrl = isImageTarget
-			? (thumbnailUrl || existingLocalThumbnailUrl)
+			? thumbnailUrl || existingLocalThumbnailUrl
 			: existingLocalThumbnailUrl
 
 		const rawProgress = task.progress
@@ -132,10 +139,11 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			meshyErrorMessage: errorMessage,
 			meshyOutputSummary: {
 				outputKind: isImageTarget ? 'image' : '3d-model',
-				preferredUrl: (isImageTarget ? preferredImageUrl || preferredModelUrl : preferredModelUrl) || undefined,
+				preferredUrl:
+					(isImageTarget ? preferredImageUrl || preferredModelUrl : preferredModelUrl) || undefined,
 				imageUrls: isImageTarget ? imageUrls.slice(0, 4) : undefined,
 				thumbnailUrl: resolvedThumbnailUrl || undefined,
-				format: isImageTarget ? undefined : format,
+				format: isImageTarget ? undefined : format
 			},
 			meshyRelationSummary: {
 				...(isRecord(existingSettings.relationSummary) ? existingSettings.relationSummary : {}),
@@ -150,8 +158,8 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				effectivePreferredImageUrl: preferredImageUrl || undefined,
 				effectiveLocalAssetUrl: String(existingSettings.outputAssetUrl ?? '').trim() || undefined,
 				effectiveLocalAssetPath: String(existingSettings.outputAssetPath ?? '').trim() || undefined,
-				effectiveThumbnailUrl: resolvedThumbnailUrl || undefined,
-			},
+				effectiveThumbnailUrl: resolvedThumbnailUrl || undefined
+			}
 		}
 
 		if (normalized === 'succeeded') {
@@ -165,12 +173,13 @@ export const useAIWorkflowMeshyRuntime = (options: {
 							kind: 'image',
 							name: fileName,
 							sourceUrl: imageSource,
-							sourcePath: task.sourceImageUrl || task.sourceModelUrl || undefined,
+							sourcePath: task.sourceImageUrl || task.sourceModelUrl || undefined
 						})
 						const assetUrl = String(persisted?.url || imageSource)
 						const assetPath = String(persisted?.absolutePath || '').trim() || undefined
-						const projectRelativePath = String(persisted?.projectRelativePath || '').trim() || undefined
-						
+						const projectRelativePath =
+							String(persisted?.projectRelativePath || '').trim() || undefined
+
 						patch.meshyOutputAssetUrl = assetUrl
 						patch.meshyOutputAssetPath = assetPath
 						patch.meshyOutputSummary = {
@@ -181,19 +190,19 @@ export const useAIWorkflowMeshyRuntime = (options: {
 							assetUrl,
 							assetPath,
 							thumbnailUrl: thumbnailUrl || undefined,
-							format: undefined,
+							format: undefined
 						}
 						patch.meshyRelationSummary = {
 							...(isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}),
 							effectivePreferredImageUrl: imageSource,
 							effectiveLocalAssetUrl: assetUrl,
-							effectiveLocalAssetPath: assetPath,
+							effectiveLocalAssetPath: assetPath
 						}
 
 						if (node.type === 'image' && assetUrl) {
 							const resourceId = `meshy-img-${task.taskId || nodeId}-${Date.now()}`
 							const resourceName = `meshy_image_${resourceId.slice(-8)}`
-							
+
 							const resourceBase: Record<string, unknown> = {
 								id: resourceId,
 								kind: 'image',
@@ -201,25 +210,35 @@ export const useAIWorkflowMeshyRuntime = (options: {
 								url: assetUrl,
 								sourcePath: assetPath,
 								projectRelativePath,
-								createdAt: Date.now(),
+								createdAt: Date.now()
 							}
-							
-							const existingResource = (options.store.state as unknown as Record<string, unknown>).resources && 
-								Array.isArray((options.store.state as unknown as Record<string, unknown>).resources) &&
-								(options.store.state as unknown as { resources: Array<{ id: string }> }).resources.find((r) => r.id === resourceId)
+
+							const existingResource =
+								(options.store.state as unknown as Record<string, unknown>).resources &&
+								Array.isArray(
+									(options.store.state as unknown as Record<string, unknown>).resources
+								) &&
+								(
+									options.store.state as unknown as { resources: Array<{ id: string }> }
+								).resources.find((r) => r.id === resourceId)
 							if (existingResource) {
 								console.log('[Meshy Runtime] 资源已存在，跳过添加:', resourceId)
 							} else {
 								options.store.commit('addResource', resourceBase)
 								console.log('[Meshy Runtime] 资源已添加:', resourceBase)
 							}
-							
+
 							const currentNode = getNodeFromStore(nodeId)
 							const currentNodeResourceId = currentNode?.resourceId
-							console.log('[Meshy Runtime] 节点当前resourceId:', currentNodeResourceId, '新resourceId:', resourceId)
-							
+							console.log(
+								'[Meshy Runtime] 节点当前resourceId:',
+								currentNodeResourceId,
+								'新resourceId:',
+								resourceId
+							)
+
 							options.store.commit('setNodeResource', { nodeId, resourceId })
-							
+
 							const updatedNode = getNodeFromStore(nodeId)
 							console.log('[Meshy Runtime] 绑定后节点resourceId:', updatedNode?.resourceId)
 							console.log('[Meshy Runtime] 图片资源已绑定到节点:', { nodeId, resourceId, assetUrl })
@@ -231,7 +250,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						kind: 'file',
 						name: fileName,
 						sourceUrl: preferredModelUrl,
-						sourcePath: task.sourceModelUrl || undefined,
+						sourcePath: task.sourceModelUrl || undefined
 					})
 					patch.meshyOutputAssetUrl = String(persisted?.url || preferredModelUrl)
 					patch.meshyOutputAssetPath = String(persisted?.absolutePath || '').trim() || undefined
@@ -242,7 +261,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 							const persistedThumb = await options.persistExternalAssetToProject({
 								kind: 'image',
 								name: thumbName,
-								sourceUrl: thumbnailUrl,
+								sourceUrl: thumbnailUrl
 							})
 							const localThumb = String(persistedThumb?.url || '').trim()
 							if (localThumb) {
@@ -261,20 +280,20 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						assetUrl: String(persisted?.url || preferredModelUrl),
 						assetPath: String(persisted?.absolutePath || '').trim() || undefined,
 						thumbnailUrl: resolvedThumbnailUrl || undefined,
-						format,
+						format
 					}
 					patch.meshyRelationSummary = {
 						...(isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}),
 						effectiveLocalAssetUrl: String(persisted?.url || preferredModelUrl),
 						effectiveLocalAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-						effectiveThumbnailUrl: resolvedThumbnailUrl || undefined,
+						effectiveThumbnailUrl: resolvedThumbnailUrl || undefined
 					}
 					patch.meshyThumbnailUrl = resolvedThumbnailUrl || undefined
 
 					if (node.type === 'model3d' && persisted?.url) {
 						const resourceId = `meshy-model-${task.taskId || nodeId}-${Date.now()}`
 						const resourceName = `meshy_model_${resourceId.slice(-8)}`
-						
+
 						const resourceBase = {
 							id: resourceId,
 							kind: 'model3d',
@@ -283,17 +302,19 @@ export const useAIWorkflowMeshyRuntime = (options: {
 							sourcePath: String(persisted.absolutePath || '').trim() || undefined,
 							projectRelativePath: String(persisted.projectRelativePath || '').trim() || undefined,
 							posterUrl: resolvedThumbnailUrl || undefined,
-							createdAt: Date.now(),
+							createdAt: Date.now()
 						}
-						
+
 						const state = options.store.state as unknown as Record<string, unknown>
 						const resourcesById = isRecord(state.resourcesById) ? state.resourcesById : {}
-						const existingResource = resourcesById[resourceId] || 
-							(Array.isArray(state.resources) && (state.resources as Array<{ id: string }>).find((r) => r.id === resourceId))
+						const existingResource =
+							resourcesById[resourceId] ||
+							(Array.isArray(state.resources) &&
+								(state.resources as Array<{ id: string }>).find((r) => r.id === resourceId))
 						if (!existingResource) {
 							options.store.commit('addResource', resourceBase)
 						}
-						
+
 						options.store.commit('setNodeResource', { nodeId, resourceId })
 					}
 				}
@@ -310,12 +331,12 @@ export const useAIWorkflowMeshyRuntime = (options: {
 								preferredUrl: imageSource,
 								imageUrls: imageUrls.length ? imageUrls.slice(0, 4) : [imageSource],
 								assetUrl: imageSource,
-								thumbnailUrl: thumbnailUrl || undefined,
+								thumbnailUrl: thumbnailUrl || undefined
 							}
 							patch.meshyRelationSummary = {
 								...(isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}),
 								effectivePreferredImageUrl: imageSource,
-								effectiveLocalAssetUrl: imageSource,
+								effectiveLocalAssetUrl: imageSource
 							}
 						}
 					} else if (preferredModelUrl) {
@@ -326,12 +347,12 @@ export const useAIWorkflowMeshyRuntime = (options: {
 							preferredUrl: preferredModelUrl,
 							assetUrl: preferredModelUrl,
 							thumbnailUrl: thumbnailUrl || undefined,
-							format,
+							format
 						}
 						patch.meshyRelationSummary = {
 							...(isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}),
 							effectiveLocalAssetUrl: preferredModelUrl,
-							effectiveThumbnailUrl: thumbnailUrl || undefined,
+							effectiveThumbnailUrl: thumbnailUrl || undefined
 						}
 						patch.meshyThumbnailUrl = thumbnailUrl || undefined
 					}
@@ -350,16 +371,21 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				errorMessage: patch.meshyErrorMessage,
 				outputAssetUrl: patch.meshyOutputAssetUrl,
 				outputAssetPath: patch.meshyOutputAssetPath,
-				outputSummary: isRecord(patch.meshyOutputSummary) ? {
-					preferredUrl: patch.meshyOutputSummary.preferredUrl,
-					imageUrls: patch.meshyOutputSummary.imageUrls,
-					assetUrl: patch.meshyOutputSummary.assetUrl,
-					assetPath: patch.meshyOutputSummary.assetPath,
-					thumbnailUrl: patch.meshyOutputSummary.thumbnailUrl,
-				} : undefined,
-				thumbnailUrl: resolvedThumbnailUrl || undefined,
+				outputSummary: isRecord(patch.meshyOutputSummary)
+					? {
+							preferredUrl: patch.meshyOutputSummary.preferredUrl,
+							imageUrls: patch.meshyOutputSummary.imageUrls,
+							assetUrl: patch.meshyOutputSummary.assetUrl,
+							assetPath: patch.meshyOutputSummary.assetPath,
+							thumbnailUrl: patch.meshyOutputSummary.thumbnailUrl
+						}
+					: undefined,
+				thumbnailUrl: resolvedThumbnailUrl || undefined
 			}
-			options.store.commit('setNodeImageSettings', { nodeId, imageSettings: { meshyImageSettings: imagePatch } })
+			options.store.commit('setNodeImageSettings', {
+				nodeId,
+				imageSettings: { meshyImageSettings: imagePatch }
+			})
 		} else if (targetNode?.type === 'model3d') {
 			const existingMeshy = existingSettings ?? {}
 			const model3dPatch: Record<string, unknown> = {
@@ -373,18 +399,21 @@ export const useAIWorkflowMeshyRuntime = (options: {
 					outputSummary: patch.meshyOutputSummary,
 					imageCount: Number(existingMeshy.imageCount ?? 0),
 					imageUrls: Array.isArray(existingMeshy.imageUrls) ? existingMeshy.imageUrls : [],
-					prompt: String(existingMeshy.prompt ?? ''),
-				},
+					prompt: String(existingMeshy.prompt ?? '')
+				}
 			}
-			
+
 			if (normalized === 'succeeded' && patch.meshyOutputAssetUrl) {
 				model3dPatch.modelUrl = patch.meshyOutputAssetUrl
 				model3dPatch.modelAssetUrl = patch.meshyOutputAssetUrl
 				model3dPatch.modelAssetPath = patch.meshyOutputAssetPath
-				model3dPatch.modelFormat = (isRecord(patch.meshyOutputSummary) && isString(patch.meshyOutputSummary.format)) ? patch.meshyOutputSummary.format : format
+				model3dPatch.modelFormat =
+					isRecord(patch.meshyOutputSummary) && isString(patch.meshyOutputSummary.format)
+						? patch.meshyOutputSummary.format
+						: format
 				model3dPatch.modelGenerationSource = 'meshy'
 			}
-			
+
 			options.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: model3dPatch })
 		} else {
 			options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
@@ -398,9 +427,22 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		}
 		if (normalized === 'succeeded') {
 			try {
-				if (isImageTarget && (preferredImageUrl || preferredModelUrl || String((isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary.assetUrl : '') ?? '').trim())) {
+				if (
+					isImageTarget &&
+					(preferredImageUrl ||
+						preferredModelUrl ||
+						String(
+							(isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary.assetUrl : '') ?? ''
+						).trim())
+				) {
 					await options.syncConnectedImageTargetsFromMeshy(nodeId)
-				} else if (!isImageTarget && (preferredModelUrl || String((isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary.assetUrl : '') ?? '').trim())) {
+				} else if (
+					!isImageTarget &&
+					(preferredModelUrl ||
+						String(
+							(isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary.assetUrl : '') ?? ''
+						).trim())
+				) {
 					await options.syncConnectedModel3DTargets(nodeId)
 				}
 			} catch (e: unknown) {
@@ -414,12 +456,16 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		if (!node) return 'idle'
 		if (node.type === 'image') {
 			const imgSettings = isRecord(node.imageSettings) ? node.imageSettings : {}
-			const meshyImg = isRecord(imgSettings.meshyImageSettings) ? imgSettings.meshyImageSettings : {}
+			const meshyImg = isRecord(imgSettings.meshyImageSettings)
+				? imgSettings.meshyImageSettings
+				: {}
 			return String(meshyImg.taskStatus ?? 'idle').trim()
 		}
 		if (node.type === 'model3d') {
 			const m3dSettings = isRecord(node.model3dSettings) ? node.model3dSettings : {}
-			const meshyM3d = isRecord(m3dSettings.meshyModelSettings) ? m3dSettings.meshyModelSettings : {}
+			const meshyM3d = isRecord(m3dSettings.meshyModelSettings)
+				? m3dSettings.meshyModelSettings
+				: {}
 			return String(meshyM3d.taskStatus ?? 'idle').trim()
 		}
 		const meshySettings = isRecord(node.meshySettings) ? node.meshySettings : {}
@@ -430,14 +476,23 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		const patch: Record<string, unknown> = {
 			taskStatus: 'failed',
 			statusText: msg,
-			errorMessage: '',
+			errorMessage: ''
 		}
 		if (node?.type === 'image') {
-			options.store.commit('setNodeImageSettings', { nodeId: nid, imageSettings: { meshyImageSettings: patch } })
+			options.store.commit('setNodeImageSettings', {
+				nodeId: nid,
+				imageSettings: { meshyImageSettings: patch }
+			})
 		} else if (node?.type === 'model3d') {
-			options.store.commit('setNodeModel3DSettings', { nodeId: nid, model3dSettings: { meshyModelSettings: patch } })
+			options.store.commit('setNodeModel3DSettings', {
+				nodeId: nid,
+				model3dSettings: { meshyModelSettings: patch }
+			})
 		} else {
-			options.store.commit('setNodeMeshySettings', { nodeId: nid, meshySettings: { meshyTaskStatus: 'failed', meshyStatusText: msg, meshyErrorMessage: '' } })
+			options.store.commit('setNodeMeshySettings', {
+				nodeId: nid,
+				meshySettings: { meshyTaskStatus: 'failed', meshyStatusText: msg, meshyErrorMessage: '' }
+			})
 		}
 	}
 
@@ -456,7 +511,11 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				return
 			}
 			const currentStatus = getNodeMeshyTaskStatus(currentNode)
-			if (currentStatus === 'succeeded' || currentStatus === 'failed' || currentStatus === 'canceled') {
+			if (
+				currentStatus === 'succeeded' ||
+				currentStatus === 'failed' ||
+				currentStatus === 'canceled'
+			) {
 				stopMeshyPoll(nodeId)
 				return
 			}
@@ -481,9 +540,15 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						meshyTerminalNotified.add(nodeId)
 						const finalTarget = String(mode).includes('image') ? 'image' : '3d'
 						if (finalStatus === 'succeeded') {
-							options.pushToast(finalTarget === 'image' ? 'Meshy 图片任务完成。' : 'Meshy 3D 模型生成完成。', 'info')
+							options.pushToast(
+								finalTarget === 'image' ? 'Meshy 图片任务完成。' : 'Meshy 3D 模型生成完成。',
+								'info'
+							)
 						} else if (finalStatus === 'failed') {
-							options.pushToast(finalTarget === 'image' ? 'Meshy 图片任务失败。' : 'Meshy 3D 模型生成失败。', 'warn')
+							options.pushToast(
+								finalTarget === 'image' ? 'Meshy 图片任务失败。' : 'Meshy 3D 模型生成失败。',
+								'warn'
+							)
 						} else {
 							options.pushToast('Meshy 任务已取消。', 'warn')
 						}
@@ -518,6 +583,6 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		stopMeshyPoll,
 		applyMeshyTaskResult,
 		startMeshyPoll,
-		clearMeshyRuntime,
+		clearMeshyRuntime
 	}
 }

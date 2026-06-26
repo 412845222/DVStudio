@@ -1,17 +1,61 @@
 import { TimelineStore } from '../../../store/timeline'
-import { VideoSceneStore, type VideoSceneLayer, type VideoSceneTreeNode } from '../../../store/videoscene'
+import {
+	VideoSceneStore,
+	type VideoSceneLayer,
+	type VideoSceneNodeProps,
+	type VideoSceneNodeTransform,
+	type VideoSceneTreeNode
+} from '../../../store/videoscene'
 import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
-import { canInterpolateNumber, cubicBezierYforX, lerpNumber } from '../../TimeLine/core/curveTick'
+import {
+	canInterpolateNumber,
+	cubicBezierYforX,
+	lerpNumber,
+	type CubicBezier
+} from '../../TimeLine/core/curveTick'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 import { interpolateColorString } from './color'
 import type { JsonValue } from '../../../core/shared/json'
 import { createVideoSceneLayer } from '../../../core/scene'
+import { isObject, isString } from '../../../types/utils'
 
-type NodeSnapshot = { transform?: any; props?: Record<string, any> }
+type FilterWithId = JsonValue & { id?: string }
+type NodeSnapshot = { transform?: Partial<VideoSceneNodeTransform>; props?: VideoSceneNodeProps }
+type ProgressBarStyle = {
+	backgroundColor?: string
+	borderColor?: string
+	textColor?: string
+	playedOverlayColor?: string
+	playedOverlayBorderColor?: string
+	backgroundFilters?: JsonValue[]
+	segmentFilters?: JsonValue[]
+	titleFilters?: JsonValue[]
+	playedOverlayFilters?: JsonValue[]
+	marker?: {
+		shape?: string
+		size?: number
+		color?: string
+		borderColor?: string
+	}
+}
+type ProgressBarSpec = {
+	style?: ProgressBarStyle
+	nodeIds?: {
+		rootId?: string
+		playedOverlayId?: string
+		segmentIds?: string[]
+		titleIds?: string[]
+		markerIds?: string[]
+	}
+}
 
-const makeSegmentKey = (layerId: string, startFrame: number, endFrame: number) => `${layerId}:${startFrame}:${endFrame}`
+const makeSegmentKey = (layerId: string, startFrame: number, endFrame: number) =>
+	`${layerId}:${startFrame}:${endFrame}`
 
-const buildNodeIndex = (nodes: VideoSceneTreeNode[] | undefined, out: Map<string, VideoSceneTreeNode>) => {
+const buildNodeIndex = (
+	nodes: VideoSceneTreeNode[] | undefined,
+	out: Map<string, VideoSceneTreeNode>
+) => {
 	if (!nodes) return
 	for (const n of nodes) {
 		out.set(n.id, n)
@@ -19,14 +63,18 @@ const buildNodeIndex = (nodes: VideoSceneTreeNode[] | undefined, out: Map<string
 	}
 }
 
-const getLayerNodeSnapshotAt = (layerId: string, frameIndex: number): Record<string, NodeSnapshot> | null => {
+const getLayerNodeSnapshotAt = (
+	layerId: string,
+	frameIndex: number
+): Record<string, NodeSnapshot> | null => {
 	const map = TimelineStore.state.nodeKeyframesByLayer?.[layerId]
 	if (!map) return null
 	const snap = map[String(Math.floor(frameIndex))]
 	return snap ?? null
 }
 
-const getNumeric = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const getNumeric = (v: unknown): number | null =>
+	typeof v === 'number' && Number.isFinite(v) ? v : null
 
 const lerpAngleRad = (a: number, b: number, t: number): number => {
 	// Interpolate using the shortest angular distance to avoid long-way spins across wrap boundaries.
@@ -45,22 +93,26 @@ const clamp01 = (v: unknown, fallback = 0.5): number => {
 	return n
 }
 
-const isPlainObject = (v: unknown): v is Record<string, any> => {
+const isPlainObject = (v: unknown): v is Record<string, JsonValue> => {
 	if (!v || typeof v !== 'object') return false
 	const proto = Object.getPrototypeOf(v)
 	return proto === Object.prototype || proto === null
 }
 
+const isFilterWithId = (v: unknown): v is FilterWithId => {
+	return isObject(v)
+}
+
 const interpolateFilterList = (a: JsonValue, b: JsonValue, t: number): JsonValue => {
 	if (!Array.isArray(a) || !Array.isArray(b)) return b
 
-	const keyOf = (f: any, index: number) => {
-		const id = f && typeof f === 'object' ? (f as any).id : null
-		return typeof id === 'string' && id ? id : String(index)
+	const keyOf = (f: JsonValue, index: number) => {
+		const id = isFilterWithId(f) ? f.id : null
+		return isString(id) && id ? id : String(index)
 	}
 
-	const mapA = new Map<string, any>()
-	const mapB = new Map<string, any>()
+	const mapA = new Map<string, JsonValue>()
+	const mapB = new Map<string, JsonValue>()
 	for (let i = 0; i < a.length; i++) mapA.set(keyOf(a[i], i), a[i])
 	for (let i = 0; i < b.length; i++) mapB.set(keyOf(b[i], i), b[i])
 
@@ -76,7 +128,7 @@ const interpolateFilterList = (a: JsonValue, b: JsonValue, t: number): JsonValue
 		const fa = mapA.get(k)
 		const fb = mapB.get(k)
 		if (fb === undefined) {
-			out.push(fa)
+			if (fa !== undefined) out.push(fa)
 			continue
 		}
 		if (fa === undefined) {
@@ -96,7 +148,8 @@ const interpolateFilterList = (a: JsonValue, b: JsonValue, t: number): JsonValue
 			const vb = (fb as Record<string, JsonValue>)[kk]
 			const cc = interpolateColorString(va, vb, t)
 			if (cc != null) next[kk] = cc
-			else if (canInterpolateNumber(va) && canInterpolateNumber(vb)) next[kk] = lerpNumber(va, vb, t)
+			else if (canInterpolateNumber(va) && canInterpolateNumber(vb))
+				next[kk] = lerpNumber(va, vb, t)
 			else next[kk] = vb !== undefined ? vb : va
 		}
 		out.push(next)
@@ -114,79 +167,94 @@ const applySnapshotToLayer = (layerId: string, snap: Record<string, NodeSnapshot
 		const node = index.get(nodeId)
 		if (!node || node.category !== 'user') continue
 
-		const targetT = s.transform as any
+		const targetT = s.transform
 		if (targetT && typeof targetT === 'object') {
 			const cur = node.transform
-			const patch: any = {}
+			const patch: Partial<VideoSceneNodeTransform> = {}
 			if (getNumeric(targetT.x) != null && targetT.x !== cur?.x) patch.x = targetT.x
 			if (getNumeric(targetT.y) != null && targetT.y !== cur?.y) patch.y = targetT.y
-			if (getNumeric(targetT.width) != null && targetT.width !== cur?.width) patch.width = targetT.width
-			if (getNumeric(targetT.height) != null && targetT.height !== cur?.height) patch.height = targetT.height
-			if (getNumeric((targetT as any).scale) != null && (targetT as any).scale !== (cur as any)?.scale) patch.scale = (targetT as any).scale
-			if (getNumeric((targetT as any).scaleX) != null && (targetT as any).scaleX !== (cur as any)?.scaleX) patch.scaleX = (targetT as any).scaleX
-			if (getNumeric((targetT as any).scaleY) != null && (targetT as any).scaleY !== (cur as any)?.scaleY) patch.scaleY = (targetT as any).scaleY
-			if (getNumeric(targetT.rotation) != null && (targetT.rotation as any) !== (cur as any)?.rotation) patch.rotation = targetT.rotation
-			if (getNumeric(targetT.opacity) != null && (targetT.opacity as any) !== (cur as any)?.opacity) patch.opacity = targetT.opacity
-			if (getNumeric((targetT as any).pivotX) != null && clamp01((targetT as any).pivotX) !== clamp01((cur as any)?.pivotX)) patch.pivotX = clamp01((targetT as any).pivotX)
-			if (getNumeric((targetT as any).pivotY) != null && clamp01((targetT as any).pivotY) !== clamp01((cur as any)?.pivotY)) patch.pivotY = clamp01((targetT as any).pivotY)
-			if (Object.keys(patch).length) VideoSceneStore.dispatch('updateNodeTransform', { layerId, nodeId, patch })
+			if (getNumeric(targetT.width) != null && targetT.width !== cur?.width)
+				patch.width = targetT.width
+			if (getNumeric(targetT.height) != null && targetT.height !== cur?.height)
+				patch.height = targetT.height
+			if (getNumeric(targetT.scale) != null && targetT.scale !== cur?.scale)
+				patch.scale = targetT.scale
+			if (getNumeric(targetT.scaleX) != null && targetT.scaleX !== cur?.scaleX)
+				patch.scaleX = targetT.scaleX
+			if (getNumeric(targetT.scaleY) != null && targetT.scaleY !== cur?.scaleY)
+				patch.scaleY = targetT.scaleY
+			if (getNumeric(targetT.rotation) != null && targetT.rotation !== cur?.rotation)
+				patch.rotation = targetT.rotation
+			if (getNumeric(targetT.opacity) != null && targetT.opacity !== cur?.opacity)
+				patch.opacity = targetT.opacity
+			if (getNumeric(targetT.pivotX) != null && clamp01(targetT.pivotX) !== clamp01(cur?.pivotX))
+				patch.pivotX = clamp01(targetT.pivotX)
+			if (getNumeric(targetT.pivotY) != null && clamp01(targetT.pivotY) !== clamp01(cur?.pivotY))
+				patch.pivotY = clamp01(targetT.pivotY)
+			if (Object.keys(patch).length)
+				VideoSceneStore.dispatch('updateNodeTransform', { layerId, nodeId, patch })
 		}
 
 		const targetP = s.props
 		if (targetP && typeof targetP === 'object') {
 			const curP = node.props ?? {}
-			const patch: Record<string, any> = {}
+			const patch: VideoSceneNodeProps = {}
 			for (const [k, v] of Object.entries(targetP)) {
-				if ((curP as any)[k] !== v) patch[k] = v
+				if (curP[k] !== v) patch[k] = v
 			}
-			if (Object.keys(patch).length) VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
+			if (Object.keys(patch).length)
+				VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
 		}
 	}
 }
 
-const interpolateSnapshots = (a: Record<string, NodeSnapshot>, b: Record<string, NodeSnapshot>, t: number): Record<string, NodeSnapshot> => {
+const interpolateSnapshots = (
+	a: Record<string, NodeSnapshot>,
+	b: Record<string, NodeSnapshot>,
+	t: number
+): Record<string, NodeSnapshot> => {
 	const out: Record<string, NodeSnapshot> = {}
 	const ids = new Set<string>([...Object.keys(a), ...Object.keys(b)])
 	for (const nodeId of ids) {
 		const sa = a[nodeId]
 		const sb = b[nodeId]
-		const ta = sa?.transform as any
-		const tb = sb?.transform as any
-		const pa = (sa?.props ?? {}) as Record<string, any>
-		const pb = (sb?.props ?? {}) as Record<string, any>
+		const ta = sa?.transform
+		const tb = sb?.transform
+		const pa = sa?.props ?? {}
+		const pb = sb?.props ?? {}
 
 		const next: NodeSnapshot = {}
 		if (ta || tb) {
-			const tt: any = {}
-			// Numbers: lerp. Rotation: lerp as angle (shortest path). Scale: include both legacy scale and scaleX/scaleY.
+			const tt: Partial<VideoSceneNodeTransform> = {}
 			const numKeys = ['x', 'y', 'width', 'height', 'opacity', 'scale', 'scaleX', 'scaleY'] as const
 			for (const k of numKeys) {
-				const va = ta ? (ta as any)[k] : undefined
-				const vb = tb ? (tb as any)[k] : undefined
+				const va = ta ? ta[k] : undefined
+				const vb = tb ? tb[k] : undefined
 				const na = getNumeric(va)
 				const nb = getNumeric(vb)
 				if (na != null && nb != null) tt[k] = lerpNumber(na, nb, t)
 				else if (nb != null) tt[k] = nb
 				else if (na != null) tt[k] = na
 			}
-			const ra = ta ? getNumeric((ta as any).rotation) : null
-			const rb = tb ? getNumeric((tb as any).rotation) : null
+			const ra = ta ? getNumeric(ta.rotation) : null
+			const rb = tb ? getNumeric(tb.rotation) : null
 			if (ra != null && rb != null) tt.rotation = lerpAngleRad(ra, rb, t)
 			else if (rb != null) tt.rotation = rb
 			else if (ra != null) tt.rotation = ra
-			// pivot 是离散属性：关键帧之间保持上一关键帧，达到下一关键帧才切换
 			const apx = ta ? getNumeric(ta.pivotX) : null
 			const apy = ta ? getNumeric(ta.pivotY) : null
 			const bpx = tb ? getNumeric(tb.pivotX) : null
 			const bpy = tb ? getNumeric(tb.pivotY) : null
-			if (apx != null || bpx != null) tt.pivotX = t >= 1 ? clamp01(bpx, clamp01(apx, 0.5)) : clamp01(apx, 0.5)
-			if (apy != null || bpy != null) tt.pivotY = t >= 1 ? clamp01(bpy, clamp01(apy, 0.5)) : clamp01(apy, 0.5)
+			if (apx != null || bpx != null)
+				tt.pivotX = t >= 1 ? clamp01(bpx, clamp01(apx, 0.5)) : clamp01(apx, 0.5)
+			if (apy != null || bpy != null)
+				tt.pivotY = t >= 1 ? clamp01(bpy, clamp01(apy, 0.5)) : clamp01(apy, 0.5)
 			next.transform = tt
 		}
 
 		const propKeys = new Set<string>([...Object.keys(pa), ...Object.keys(pb)])
 		if (propKeys.size) {
-			const tp: Record<string, any> = {}
+			const tp: VideoSceneNodeProps = {}
 			for (const k of propKeys) {
 				const va = pa[k]
 				const vb = pb[k]
@@ -195,9 +263,9 @@ const interpolateSnapshots = (a: Record<string, NodeSnapshot>, b: Record<string,
 				else {
 					const cc = interpolateColorString(va, vb, t)
 					if (cc != null) tp[k] = cc
-					else if (canInterpolateNumber(va) && canInterpolateNumber(vb)) tp[k] = lerpNumber(va, vb, t)
+					else if (canInterpolateNumber(va) && canInterpolateNumber(vb))
+						tp[k] = lerpNumber(va, vb, t)
 					else {
-						// Discrete fallback (strings/enums/objects): hold previous until reaching next keyframe.
 						if (vb === undefined) tp[k] = va
 						else if (va === undefined) tp[k] = vb
 						else tp[k] = t >= 1 ? vb : va
@@ -221,10 +289,10 @@ const findNodeInLayer = (layerId: string, nodeId: string): VideoSceneTreeNode | 
 }
 
 const applyProgressStyleFromSpec = (layerId: string) => {
-	const spec = TimelineStore.state.progressBarByLayerId?.[layerId]
+	const spec = TimelineStore.state.progressBarByLayerId?.[layerId] as ProgressBarSpec | undefined
 	if (!spec) return
-	const style = (spec as any).style ?? {}
-	const nodeIds = (spec as any).nodeIds ?? {}
+	const style = spec.style ?? {}
+	const nodeIds = spec.nodeIds ?? {}
 	const rootId = String(nodeIds.rootId ?? '').trim()
 	const playedId = String(nodeIds.playedOverlayId ?? '').trim()
 	const segmentIds: string[] = Array.isArray(nodeIds.segmentIds) ? nodeIds.segmentIds : []
@@ -235,41 +303,59 @@ const applyProgressStyleFromSpec = (layerId: string) => {
 	const border = typeof style.borderColor === 'string' ? style.borderColor : null
 	const text = typeof style.textColor === 'string' ? style.textColor : null
 	const played = typeof style.playedOverlayColor === 'string' ? style.playedOverlayColor : null
-	const playedBorder = typeof style.playedOverlayBorderColor === 'string' ? style.playedOverlayBorderColor : null
+	const playedBorder =
+		typeof style.playedOverlayBorderColor === 'string' ? style.playedOverlayBorderColor : null
 	const bgFilters = Array.isArray(style.backgroundFilters) ? style.backgroundFilters : null
 	const segFilters = Array.isArray(style.segmentFilters) ? style.segmentFilters : null
 	const titleFilters = Array.isArray(style.titleFilters) ? style.titleFilters : null
-	const playedFilters = Array.isArray(style.playedOverlayFilters) ? style.playedOverlayFilters : null
+	const playedFilters = Array.isArray(style.playedOverlayFilters)
+		? style.playedOverlayFilters
+		: null
 
-	const patchPropsIf = (nodeId: string, patch: Record<string, any>) => {
+	const patchPropsIf = (nodeId: string, patch: VideoSceneNodeProps) => {
 		const id = String(nodeId ?? '').trim()
 		if (!id) return
 		const node = findNodeInLayer(layerId, id)
 		if (!node || node.category !== 'user') return
-		const cur = (node.props ?? {}) as any
-		const out: Record<string, any> = {}
+		const cur = node.props ?? {}
+		const out: VideoSceneNodeProps = {}
 		for (const [k, v] of Object.entries(patch)) {
 			if (v === undefined) continue
-			if ((cur as any)[k] !== v) out[k] = v
+			if (cur[k] !== v) out[k] = v
 		}
-		if (Object.keys(out).length) VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId: id, patch: out })
+		if (Object.keys(out).length)
+			VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId: id, patch: out })
 	}
 
-	if (rootId) patchPropsIf(rootId, { fillColor: bg ?? undefined, borderColor: border ?? undefined, filters: bgFilters ?? undefined })
-	for (const id of segmentIds) patchPropsIf(id, { fillColor: bg ?? undefined, borderColor: border ?? undefined, filters: segFilters ?? undefined })
-	for (const id of titleIds) patchPropsIf(id, { fontColor: text ?? undefined, filters: titleFilters ?? undefined })
+	if (rootId) {
+		const patch: VideoSceneNodeProps = {}
+		if (bg) patch.fillColor = bg
+		if (border) patch.borderColor = border
+		if (bgFilters) patch.filters = bgFilters
+		patchPropsIf(rootId, patch)
+	}
+	for (const id of segmentIds) {
+		const patch: VideoSceneNodeProps = {}
+		if (bg) patch.fillColor = bg
+		if (border) patch.borderColor = border
+		if (segFilters) patch.filters = segFilters
+		patchPropsIf(id, patch)
+	}
+	for (const id of titleIds) {
+		const patch: VideoSceneNodeProps = {}
+		if (text) patch.fontColor = text
+		if (titleFilters) patch.filters = titleFilters
+		patchPropsIf(id, patch)
+	}
 	if (playedId) {
-		patchPropsIf(playedId, {
-			fillColor: played ?? undefined,
-			borderColor: playedBorder ?? undefined,
-			borderWidth: 1,
-			borderOpacity: 0.55,
-			filters: playedFilters ?? undefined,
-		})
+		const patch: VideoSceneNodeProps = { borderWidth: 1, borderOpacity: 0.55 }
+		if (played) patch.fillColor = played
+		if (playedBorder) patch.borderColor = playedBorder
+		if (playedFilters) patch.filters = playedFilters
+		patchPropsIf(playedId, patch)
 	}
 
-	// marker style
-	const marker = (style as any).marker ?? {}
+	const marker = style.marker ?? {}
 	const mShape = String(marker.shape ?? 'circle') === 'square' ? 'square' : 'circle'
 	const mSize = Math.max(1, Math.min(64, Math.floor(Number(marker.size ?? 6))))
 	const mColor = typeof marker.color === 'string' ? marker.color : null
@@ -278,8 +364,15 @@ const applyProgressStyleFromSpec = (layerId: string) => {
 	for (const id of markerIds) {
 		const mid = String(id ?? '').trim()
 		if (!mid) continue
-		VideoSceneStore.dispatch('updateNodeTransform', { layerId, nodeId: mid, patch: { width: mSize, height: mSize } })
-		patchPropsIf(mid, { fillColor: mColor ?? undefined, borderColor: mBorder ?? undefined, borderWidth: 1, borderOpacity: 0.85, cornerRadius: cr })
+		VideoSceneStore.dispatch('updateNodeTransform', {
+			layerId,
+			nodeId: mid,
+			patch: { width: mSize, height: mSize }
+		})
+		const patch: VideoSceneNodeProps = { borderWidth: 1, borderOpacity: 0.85, cornerRadius: cr }
+		if (mColor) patch.fillColor = mColor
+		if (mBorder) patch.borderColor = mBorder
+		patchPropsIf(mid, patch)
 	}
 }
 
@@ -293,19 +386,21 @@ const applySubtitleEmptyOutsideCue = (layerId: string, frameIndex: number) => {
 	if (!nodeId) return
 	const node = findNodeInLayer(layerId, nodeId)
 	if (!node || node.category !== 'user') return
-	const cur = (node.props as any)?.textContent
+	const cur = node.props?.textContent
 	if (String(cur ?? '') !== '') {
 		VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch: { textContent: '' } })
 	}
 }
 
 const getLayerStageSnapshotAt = (layerId: string, frameIndex: number) => {
-	const map = TimelineStore.state.stageKeyframesByFrame as Record<string, { layers: VideoSceneLayer[] }> | undefined
+	const map = TimelineStore.state.stageKeyframesByFrame as
+		| Record<string, { layers: VideoSceneLayer[] }>
+		| undefined
 	if (!map) return null
 	const hit = map[String(Math.floor(frameIndex))]
 	const layers = Array.isArray(hit?.layers) ? hit!.layers : null
 	if (!layers) return null
-	const found = layers.find((l) => String((l as any)?.id ?? '') === layerId)
+	const found = layers.find((l) => String(l?.id ?? '') === layerId)
 	return found ?? null
 }
 
@@ -316,24 +411,22 @@ const applyNormalLayerAtFrame = (layerId: string, frameIndex: number) => {
 	const spans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
 	if (!spans.length) return
 
-	// Helper: reset this layer to an empty baseline (so keyframes do NOT affect left frames).
 	const resetToBaseline = () => {
 		const name = TimelineStore.state.layers.find((l) => l.id === layerId)?.name ?? layerId
 		const base = createVideoSceneLayer(layerId, name)
-		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(base)] as any })
+		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(base)] })
 	}
 
 	if (containsFrame(spans, fi)) {
 		const snapLayer = getLayerStageSnapshotAt(layerId, fi)
 		if (snapLayer) {
-			VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(snapLayer)] as any })
+			VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(snapLayer)] })
 		} else {
-			// Keyframe spans exist but snapshot may be missing (manual keyframe without snapshot).
-			// Hold previous snapshot instead of clearing.
 			const { prev } = getPrevNext(spans, fi)
 			if (prev != null) {
 				const prevLayer = getLayerStageSnapshotAt(layerId, prev)
-				if (prevLayer) VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] as any })
+				if (prevLayer)
+					VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] })
 				else resetToBaseline()
 			} else {
 				resetToBaseline()
@@ -354,65 +447,69 @@ const applyNormalLayerAtFrame = (layerId: string, frameIndex: number) => {
 	}
 
 	if (next == null) {
-		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] as any })
+		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] })
 		return
 	}
 	if (!(prev < fi && fi < next)) {
-		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] as any })
+		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] })
 		return
 	}
 
 	const segKey = makeSegmentKey(layerId, prev, next)
 	const easingEnabled = TimelineStore.state.easingSegmentKeys.includes(segKey)
 	if (!easingEnabled) {
-		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] as any })
+		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] })
 		return
 	}
 
 	const nextLayer = getLayerStageSnapshotAt(layerId, next)
 	if (!nextLayer) {
-		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] as any })
+		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] })
 		return
 	}
 
 	const rawT = (fi - prev) / (next - prev)
 	const curve = TimelineStore.state.easingCurves[segKey] ?? { x1: 0, y1: 0, x2: 1, y2: 1 }
-	const easedT = cubicBezierYforX(curve as any, rawT)
+	const easedT = cubicBezierYforX(curve as CubicBezier, rawT)
 	if (!(easedT > 0 && easedT < 1)) {
-		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] as any })
+		VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] })
 		return
 	}
 
-	const outLayer = cloneJsonSafe(prevLayer) as any
+	const outLayer = cloneJsonSafe(prevLayer)
 	const outIndex = new Map<string, VideoSceneTreeNode>()
 	buildNodeIndex(outLayer?.nodeTree, outIndex)
 	const nextIndex = new Map<string, VideoSceneTreeNode>()
-	buildNodeIndex((nextLayer as any)?.nodeTree, nextIndex)
+	buildNodeIndex(nextLayer?.nodeTree, nextIndex)
 
 	for (const [nodeId, outNode] of outIndex) {
 		if (outNode.category !== 'user') continue
 		const n2 = nextIndex.get(nodeId)
 		if (!n2 || n2.category !== 'user') continue
 
-		const ot = outNode.transform as any
-		const nt = (n2 as any).transform as any
+		const ot = outNode.transform
+		const nt = n2.transform
 		if (ot && nt) {
 			const numKeys = ['x', 'y', 'width', 'height', 'opacity', 'scale', 'scaleX', 'scaleY'] as const
 			for (const k of numKeys) {
-				const va = (ot as any)[k]
-				const vb = (nt as any)[k]
-				if (canInterpolateNumber(va) && canInterpolateNumber(vb)) (ot as any)[k] = lerpNumber(va, vb, easedT)
+				const va = ot[k]
+				const vb = nt[k]
+				if (canInterpolateNumber(va) && canInterpolateNumber(vb)) ot[k] = lerpNumber(va, vb, easedT)
 			}
-			const ra = (ot as any).rotation
-			const rb = (nt as any).rotation
-			if (canInterpolateNumber(ra) && canInterpolateNumber(rb)) (ot as any).rotation = lerpAngleRad(ra, rb, easedT)
-			// pivot: discrete hold
-			if (canInterpolateNumber(ot.pivotX) || canInterpolateNumber(nt.pivotX)) ot.pivotX = easedT >= 1 ? clamp01(nt.pivotX, clamp01(ot.pivotX, 0.5)) : clamp01(ot.pivotX, 0.5)
-			if (canInterpolateNumber(ot.pivotY) || canInterpolateNumber(nt.pivotY)) ot.pivotY = easedT >= 1 ? clamp01(nt.pivotY, clamp01(ot.pivotY, 0.5)) : clamp01(ot.pivotY, 0.5)
+			const ra = ot.rotation
+			const rb = nt.rotation
+			if (canInterpolateNumber(ra) && canInterpolateNumber(rb))
+				ot.rotation = lerpAngleRad(ra, rb, easedT)
+			if (canInterpolateNumber(ot.pivotX) || canInterpolateNumber(nt.pivotX))
+				ot.pivotX =
+					easedT >= 1 ? clamp01(nt.pivotX, clamp01(ot.pivotX, 0.5)) : clamp01(ot.pivotX, 0.5)
+			if (canInterpolateNumber(ot.pivotY) || canInterpolateNumber(nt.pivotY))
+				ot.pivotY =
+					easedT >= 1 ? clamp01(nt.pivotY, clamp01(ot.pivotY, 0.5)) : clamp01(ot.pivotY, 0.5)
 		}
 
-		const op = (outNode.props ?? {}) as Record<string, any>
-		const np = ((n2 as any).props ?? {}) as Record<string, any>
+		const op = outNode.props ?? {}
+		const np = n2.props ?? {}
 		const keys = Object.keys(op)
 		if (keys.length === 0) continue
 		for (const k of keys) {
@@ -425,7 +522,12 @@ const applyNormalLayerAtFrame = (layerId: string, frameIndex: number) => {
 					outNode.props[k] = interpolateFilterList(va, vb, easedT)
 				}
 			} else {
-				const cc = interpolateColorString(va, vb, easedT, (typeof va === 'string' && va.trim().startsWith('#')) ? 'hex' : undefined)
+				const cc = interpolateColorString(
+					va,
+					vb,
+					easedT,
+					typeof va === 'string' && va.trim().startsWith('#') ? 'hex' : undefined
+				)
 				if (cc != null) {
 					outNode.props = outNode.props ?? {}
 					outNode.props[k] = cc
@@ -437,7 +539,7 @@ const applyNormalLayerAtFrame = (layerId: string, frameIndex: number) => {
 		}
 	}
 
-	VideoSceneStore.dispatch('applyStageSnapshot', { layers: [outLayer] as any })
+	VideoSceneStore.dispatch('applyStageSnapshot', { layers: [outLayer] })
 }
 
 const applySubtitleLayersAtFrame = (frameIndex: number) => {
@@ -507,17 +609,19 @@ const applyProgressLayersAtFrame = (frameIndex: number) => {
 	const snapPlayedOverlayTransform = (layerId: string) => {
 		const kind = TimelineStore.state.layerKindById?.[layerId] ?? 'normal'
 		if (kind !== 'progress') return
-		const spec = TimelineStore.state.progressBarByLayerId?.[layerId]
+		const spec = TimelineStore.state.progressBarByLayerId?.[layerId] as ProgressBarSpec | undefined
 		if (!spec) return
-		const playedId = String((spec as any)?.nodeIds?.playedOverlayId ?? '').trim()
+		const playedId = String(spec?.nodeIds?.playedOverlayId ?? '').trim()
 		if (!playedId) return
 		const node = findNodeInLayer(layerId, playedId)
 		if (!node || node.category !== 'user') return
-		const t = (node.transform ?? {}) as any
-		// This overlay is designed to grow left->right with pivotX=0.
-		// Quantize to whole pixels to prevent subpixel shimmer in glow/blur.
-		if (typeof t.width === 'number' && Number.isFinite(t.width)) t.width = Math.max(0, Math.round(t.width))
-		if (typeof t.height === 'number' && Number.isFinite(t.height)) t.height = Math.max(0, Math.round(t.height))
+		const t = node.transform
+		if (t) {
+			if (typeof t.width === 'number' && Number.isFinite(t.width))
+				t.width = Math.max(0, Math.round(t.width))
+			if (typeof t.height === 'number' && Number.isFinite(t.height))
+				t.height = Math.max(0, Math.round(t.height))
+		}
 	}
 
 	for (const layer of TimelineStore.state.layers) {
@@ -574,14 +678,13 @@ const applyProgressLayersAtFrame = (frameIndex: number) => {
 
 		const rawT = (fi - prev) / (next - prev)
 		const curve = TimelineStore.state.easingCurves[segKey] ?? { x1: 0, y1: 0, x2: 1, y2: 1 }
-		const easedT = cubicBezierYforX(curve as any, rawT)
+		const easedT = cubicBezierYforX(curve as CubicBezier, rawT)
 		const snap = interpolateSnapshots(prevSnap, nextSnap, easedT)
 		applySnapshotToLayer(layerId, snap)
 		applyProgressStyleFromSpec(layerId)
 		snapPlayedOverlayTransform(layerId)
 		continue
 	}
-
 }
 
 const applyTimelineAnimationAtFrameLegacy = (frameIndex: number) => {
@@ -632,7 +735,7 @@ const applyTimelineAnimationAtFrameLegacy = (frameIndex: number) => {
 
 		const rawT = (fi - prev) / (next - prev)
 		const curve = TimelineStore.state.easingCurves[segKey] ?? { x1: 0, y1: 0, x2: 1, y2: 1 }
-		const easedT = cubicBezierYforX(curve as any, rawT)
+		const easedT = cubicBezierYforX(curve as CubicBezier, rawT)
 		const snap = interpolateSnapshots(prevSnap, nextSnap, easedT)
 		applySnapshotToLayer(layerId, snap)
 		applySubtitleEmptyOutsideCue(layerId, fi)

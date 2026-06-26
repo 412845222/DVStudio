@@ -47,7 +47,9 @@ async function main() {
 	const icoBuf = await pngToIco(srcPng)
 	fs.writeFileSync(outIco, icoBuf)
 
-	process.stdout.write(`[gen:win-icon] OK: ${path.relative(repoRoot, outIco)} (from public/logo.png ${width}x${height})\n`)
+	process.stdout.write(
+		`[gen:win-icon] OK: ${path.relative(repoRoot, outIco)} (from public/logo.png ${width}x${height})\n`
+	)
 }
 
 main().catch((e) => {
