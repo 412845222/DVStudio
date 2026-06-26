@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { getClientSettings, saveClientSettings, openExternalUrl } from '../electronBridge'
 import type { ClientSettings } from '../electronBridge/types'
 import { fetchUserAgreementMarkdown } from '../network/LegalDocService'
 import { saveEncryptedAICredentials } from '../network/AICredentialService'
 import ModalDialog from '../ui/UIComponent/ModalDialog.vue'
 import MarkdownViewer from '../ui/UIComponent/MarkdownViewer.vue'
+import { usePlatform } from '../platformBridge'
 
 const FIXED_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
@@ -258,6 +259,60 @@ async function confirmClearCredentials() {
 onMounted(() => {
 	load()
 })
+
+const {
+	status: platformStatus,
+	isSteam: platformIsSteam,
+	isMock: platformIsMock,
+	isRealPlatform: platformIsReal,
+	displayName: platformDisplayName,
+	overlayEnabled: platformOverlayEnabled,
+	overlayActive: platformOverlayActive,
+	overlayActivate,
+} = usePlatform()
+
+const platformStatusClass = computed(() => {
+	const s = platformStatus.value
+	if (!s) return 'unknown'
+	if (s.available && s.initialized && s.loggedIn) return 'ok'
+	if (s.available && !s.loggedIn) return 'warn'
+	return 'mock'
+})
+
+const platformStatusText = computed(() => {
+	const s = platformStatus.value
+	if (!s) return '检测中...'
+	if (platformIsSteam.value) {
+		return s.user?.displayName ? `Steam: ${s.user.displayName}` : 'Steam'
+	}
+	if (platformIsReal.value) return platformDisplayName.value
+	return '开发模式 (Mock)'
+})
+
+const platformHintText = computed(() => {
+	const s = platformStatus.value
+	if (!s) return ''
+	if (platformIsMock.value) {
+		return '当前使用开发模式运行，Steam功能未启用。如需Steam联调，请运行 npm run setup:steam 链接本地DwebSteamJS包。'
+	}
+	if (platformIsSteam.value && !s.loggedIn) {
+		return 'Steam已连接，但用户未登录。请检查Steam客户端是否已登录。'
+	}
+	if (platformIsSteam.value && s.loggedIn) {
+		return `已通过Steam登录，用户: ${s.user?.displayName || '未知'}`
+	}
+	return ''
+})
+
+async function handleOpenOverlayStore() {
+	if (!platformOverlayEnabled.value) return
+	await overlayActivate('steam')
+}
+
+async function handleOpenOverlayCommunity() {
+	if (!platformOverlayEnabled.value) return
+	await overlayActivate('community')
+}
 </script>
 
 <template>
@@ -309,6 +364,66 @@ onMounted(() => {
 						<option value="1080x1920">1080 × 1920</option>
 						<option value="3840x2160">3840 × 2160</option>
 					</select>
+				</div>
+			</div>
+		</section>
+
+		<section class="settings-section">
+			<div class="section-head">
+				<h2 class="section-title">平台集成</h2>
+				<p class="section-desc">Steam、Epic Games Store 等平台的连接状态与功能</p>
+			</div>
+			<div class="platform-card">
+				<div class="platform-header">
+					<div class="platform-info">
+						<div class="platform-badge" :class="platformStatusClass">
+							<span class="platform-dot" />
+							<span class="platform-name">{{ platformStatusText }}</span>
+						</div>
+						<div v-if="platformStatus" class="platform-meta">
+							<span v-if="platformStatus.available">平台可用</span>
+							<span v-if="platformStatus.initialized">已初始化</span>
+							<span v-if="platformStatus.loggedIn">用户已登录</span>
+						</div>
+					</div>
+				</div>
+
+				<div v-if="platformHintText" class="platform-hint">
+					{{ platformHintText }}
+				</div>
+
+				<div v-if="platformIsSteam && platformStatus?.user" class="platform-user">
+					<div class="platform-avatar">
+						{{ platformStatus.user.displayName?.charAt(0) || '?' }}
+					</div>
+					<div class="platform-user-info">
+						<div class="platform-user-name">{{ platformStatus.user.displayName }}</div>
+						<div v-if="platformStatus.user.steamId" class="platform-user-id">Steam ID: {{ platformStatus.user.steamId }}</div>
+					</div>
+				</div>
+
+				<div v-if="platformStatus?.installedDlcs?.length" class="platform-dlcs">
+					<div class="platform-dlcs-label">已安装 DLC</div>
+					<div class="platform-dlc-tags">
+						<span v-for="dlc in platformStatus.installedDlcs" :key="dlc.appId" class="platform-dlc-tag">
+							{{ dlc.name }}
+						</span>
+					</div>
+				</div>
+
+				<div v-if="platformOverlayEnabled" class="platform-overlay">
+					<div class="platform-overlay-status">
+						<span class="overlay-dot" :class="{ active: platformOverlayActive }" />
+						Steam Overlay {{ platformOverlayActive ? '已激活' : '可用' }}
+					</div>
+					<div class="platform-overlay-actions">
+						<button class="btn btn-sm" type="button" @click="handleOpenOverlayStore">
+							打开商店
+						</button>
+						<button class="btn btn-sm" type="button" @click="handleOpenOverlayCommunity">
+							打开社区
+						</button>
+					</div>
 				</div>
 			</div>
 		</section>
@@ -463,7 +578,7 @@ onMounted(() => {
 	width: 100%;
 	height: 100%;
 	overflow-y: auto;
-	padding: 32px clamp(24px, 4vw, 64px);
+	padding: 32px clamp(24px, 4vw, 64px) 32px 88px;
 	box-sizing: border-box;
 	background:
 		radial-gradient(1200px 500px at 10% -10%, rgba(58, 168, 180, 0.12), transparent 60%),
@@ -480,8 +595,8 @@ onMounted(() => {
 	position: sticky;
 	top: 0;
 	z-index: 5;
-	margin: -32px calc(-1 * clamp(24px, 4vw, 64px)) 24px;
-	padding: 24px clamp(24px, 4vw, 64px) 18px;
+	margin: -32px calc(-1 * clamp(24px, 4vw, 64px)) 24px -88px;
+	padding: 24px clamp(24px, 4vw, 64px) 18px 88px;
 	background: linear-gradient(to bottom, var(--theme-bg-secondary) 70%, transparent);
 	backdrop-filter: blur(8px);
 	-webkit-backdrop-filter: blur(8px);
@@ -892,5 +1007,198 @@ onMounted(() => {
 	.provider-grid {
 		grid-template-columns: 1fr;
 	}
+}
+
+.platform-card {
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	padding: 20px;
+	max-width: 760px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.platform-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.platform-info {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.platform-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	padding: 6px 12px;
+	border-radius: 4px;
+	background: var(--dweb-defualt-dark);
+}
+
+.platform-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+}
+
+.platform-badge.unknown .platform-dot {
+	background: var(--vscode-fg-muted);
+}
+
+.platform-badge.ok .platform-dot {
+	background: #22a06b;
+}
+
+.platform-badge.warn .platform-dot {
+	background: #f0ad4e;
+}
+
+.platform-badge.mock .platform-dot {
+	background: #6e7681;
+}
+
+.platform-meta {
+	display: flex;
+	gap: 12px;
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+}
+
+.platform-meta span {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.platform-meta span::before {
+	content: '';
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #22a06b;
+}
+
+.platform-hint {
+	font-size: 12.5px;
+	color: var(--vscode-fg);
+	padding: 12px;
+	background: rgba(60, 148, 255, 0.12);
+	border: 1px solid rgba(60, 148, 255, 0.32);
+	line-height: 1.5;
+}
+
+.platform-user {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 12px;
+	background: var(--dweb-defualt-dark);
+	border: 1px solid var(--vscode-border);
+}
+
+.platform-avatar {
+	width: 48px;
+	height: 48px;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #1b2838, #2a475e);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+	font-weight: 600;
+	flex-shrink: 0;
+}
+
+.platform-user-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.platform-user-name {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--vscode-fg);
+}
+
+.platform-user-id {
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	font-family: monospace;
+}
+
+.platform-dlcs {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.platform-dlcs-label {
+	font-size: 12.5px;
+	color: var(--vscode-fg-muted);
+	font-weight: 500;
+}
+
+.platform-dlc-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.platform-dlc-tag {
+	font-size: 12px;
+	padding: 4px 10px;
+	background: var(--dweb-defualt-dark);
+	border: 1px solid var(--vscode-border);
+	color: var(--vscode-fg);
+}
+
+.platform-overlay {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding: 12px;
+	background: rgba(94, 196, 127, 0.08);
+	border: 1px solid rgba(94, 196, 127, 0.25);
+}
+
+.platform-overlay-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	color: var(--vscode-fg);
+}
+
+.overlay-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--vscode-fg-muted);
+}
+
+.overlay-dot.active {
+	background: #22a06b;
+	box-shadow: 0 0 8px rgba(34, 160, 107, 0.5);
+}
+
+.platform-overlay-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.btn-sm {
+	padding: 6px 12px;
+	font-size: 12px;
 }
 </style>

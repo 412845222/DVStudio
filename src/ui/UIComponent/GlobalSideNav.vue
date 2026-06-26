@@ -17,22 +17,32 @@
 			></span>
 		</div>
 
-		<!-- 收缩态：只显示一个展开按钮 -->
-		<button
-			v-if="isCollapsed"
-			class="gsn-toggle gsn-toggle-expand"
-			type="button"
-			@click="toggleCollapsed"
-			aria-label="展开导航"
-			title="展开导航"
-		>
-			<svg viewBox="0 0 24 24" fill="none">
-				<path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8"
-					stroke-linecap="round" stroke-linejoin="round"/>
-			</svg>
-		</button>
+		<!-- 收缩态：只显示一个展开按钮 + 用户头像 -->
+		<template v-if="isCollapsed">
+			<button
+				class="gsn-toggle gsn-toggle-expand"
+				type="button"
+				@click="toggleCollapsed"
+				aria-label="展开导航"
+				title="展开导航"
+			>
+				<svg viewBox="0 0 24 24" fill="none">
+					<path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8"
+						stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</button>
+			<UserButton
+				v-if="isRealPlatform"
+				:collapsed="true"
+				:is-logged-in="isLoggedIn"
+				:is-real-platform="isRealPlatform"
+				:user="user"
+				:menu-open="userMenuOpen"
+				@click="toggleUserMenu"
+			/>
+		</template>
 
-		<!-- 展开态：折叠按钮 + 导航项 -->
+		<!-- 展开态：折叠按钮 + 导航项 + 用户按钮 -->
 		<template v-else>
 			<button
 				class="gsn-toggle gsn-toggle-collapse"
@@ -86,7 +96,29 @@
 				</span>
 				<span class="gsn-label">{{ item.label }}</span>
 			</button>
+
+			<div v-if="isRealPlatform && !isCollapsed" class="nav-divider"></div>
+
+			<UserButton
+				v-if="isRealPlatform"
+				:collapsed="false"
+				:is-logged-in="isLoggedIn"
+				:is-real-platform="isRealPlatform"
+				:user="user"
+				:menu-open="userMenuOpen"
+				@click="toggleUserMenu"
+			/>
 		</template>
+
+		<UserMenu
+			v-if="isRealPlatform"
+			:visible="userMenuOpen"
+			:is-real-platform="isRealPlatform"
+			:user="user"
+			:collapsed="isCollapsed"
+			@close="closeUserMenu"
+			@action="handleUserMenuAction"
+		/>
 	</nav>
 </template>
 
@@ -94,6 +126,8 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSquareParticles } from '../../composables/useSquareParticles'
+import { usePlatform } from '../../platformBridge/usePlatform'
+import { UserButton, UserMenu } from '../User'
 
 const props = defineProps<{
 	expanded: boolean
@@ -103,25 +137,27 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'expand-change', expanded: boolean): void
 	(e: 'collapsed-change', collapsed: boolean): void
+	(e: 'toggle-steam-panel'): void
 }>()
 
 const route = useRoute()
 const router = useRouter()
 
-// 内部状态：受控于 props.expanded / props.collapsed，hover 时临时展开
+const { isLoggedIn, isRealPlatform, user } = usePlatform()
+
+const userMenuOpen = ref(false)
+
 const expandedState = ref(props.expanded)
 const isCollapsed = ref(props.collapsed)
 
 watch(() => props.expanded, v => { expandedState.value = v })
 watch(() => props.collapsed, v => { isCollapsed.value = v })
 
-// 统一粒子系统（DOM-based，来自 composables/useSquareParticles.ts）
 const sideNavParticles = useSquareParticles({ count: 10, seed: 42, baseOpacity: 0.6 })
 
 const items = computed(() => [
 	{ key: 'projects', label: '项目列表', active: route.name === 'ProjectList' },
 	{ key: 'workflow', label: 'AI素材工作流', active: route.name === 'AIWorkflow' },
-	// { key: 'studio', label: '动画编辑器', active: route.name === 'VideoStudio' },
 	{ key: 'settings', label: '设置', active: route.name === 'Settings' },
 ])
 
@@ -156,25 +192,41 @@ function onSelect(key: string) {
 function toggleCollapsed() {
 	const next = !isCollapsed.value
 	isCollapsed.value = next
+	userMenuOpen.value = false
 	emit('collapsed-change', next)
+}
+
+function toggleUserMenu() {
+	userMenuOpen.value = !userMenuOpen.value
+}
+
+function closeUserMenu() {
+	userMenuOpen.value = false
+}
+
+function handleUserMenuAction(actionId: string) {
+	if (actionId === 'open-panel' || actionId === 'friends') {
+		emit('toggle-steam-panel')
+	}
 }
 </script>
 
 <style scoped>
+@import "../../styles/square-particles.css";
+
 .global-side-nav {
 	position: fixed;
 	left: 16px;
 	top: 50%;
-	bottom: auto;
-	transform: translateY(-50%);
+	transform: translateY(-25%);
 	width: 56px;
 	box-sizing: border-box;
 	padding: 12px 6px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	justify-content: center;
-	gap: 10px;
+	justify-content: flex-start;
+	gap: 8px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #3aa8b4) 35%, transparent);
 	background: color-mix(in srgb, var(--theme-bg-primary, #181818) 60%, transparent);
 	backdrop-filter: blur(16px) saturate(140%);
@@ -186,18 +238,16 @@ function toggleCollapsed() {
 	transition:
 		width 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
 		left 380ms cubic-bezier(0.22, 0.61, 0.36, 1),
-		top 380ms cubic-bezier(0.22, 0.61, 0.36, 1),
-		transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1),
+		transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
 		padding 220ms ease,
 		border-color 220ms ease,
 		background 220ms ease,
 		box-shadow 220ms ease,
 		opacity 280ms ease;
 	z-index: 70;
-	overflow: hidden;
+	overflow: visible;
 }
 
-/* hover 展开 */
 .global-side-nav.expanded {
 	width: 184px;
 	padding: 12px 10px;
@@ -209,19 +259,17 @@ function toggleCollapsed() {
 	border-color: color-mix(in srgb, var(--theme-accent, #3aa8b4) 45%, transparent);
 }
 
-/* 完全收起：只有一个小按钮，漂到左下角 */
 .global-side-nav.collapsed {
-	top: auto;
-	bottom: 18px;
-	transform: translateY(0);
-	width: 44px;
-	padding: 4px;
-	gap: 0;
-	justify-content: center;
+	width: 52px;
+	padding: 8px 6px;
+	gap: 8px;
+	justify-content: flex-start;
+	align-items: center;
 }
 
-/* 粒子层（统一 useSquareParticles） */
-@import "../../styles/square-particles.css";
+.nav-spacer {
+	flex: 1;
+}
 
 .gsn-particles {
 	position: absolute;
@@ -230,6 +278,7 @@ function toggleCollapsed() {
 	overflow: hidden;
 	opacity: 0.85;
 	z-index: 0;
+	border-radius: 0;
 }
 
 .global-side-nav.collapsed .gsn-particles {
@@ -240,7 +289,6 @@ function toggleCollapsed() {
 	--sq-duration: 4.5s;
 }
 
-/* 折叠/展开切换按钮 */
 .gsn-toggle {
 	position: relative;
 	z-index: 1;
@@ -257,6 +305,7 @@ function toggleCollapsed() {
 	align-items: center;
 	justify-content: center;
 	transition: background 160ms ease, border-color 160ms ease, transform 140ms ease;
+	border-radius: 0;
 }
 
 .gsn-toggle:hover {
@@ -274,14 +323,13 @@ function toggleCollapsed() {
 }
 
 .global-side-nav.collapsed .gsn-toggle-expand {
-	height: 40px;
-	width: 40px;
+	height: 36px;
+	width: 100%;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #3aa8b4) 45%, transparent);
 	background: color-mix(in srgb, var(--theme-accent, #3aa8b4) 16%, transparent);
 	box-shadow: 0 0 14px color-mix(in srgb, var(--theme-accent, #3aa8b4) 35%, transparent);
 }
 
-/* 普通导航项 */
 .gsn-item {
 	position: relative;
 	z-index: 1;
@@ -303,6 +351,7 @@ function toggleCollapsed() {
 	cursor: pointer;
 	overflow: hidden;
 	transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+	border-radius: 0;
 }
 
 .global-side-nav.expanded .gsn-item {
@@ -356,5 +405,13 @@ function toggleCollapsed() {
 .global-side-nav.expanded .gsn-label {
 	max-width: 160px;
 	opacity: 1;
+}
+
+.nav-divider {
+	width: 100%;
+	height: 1px;
+	background: color-mix(in srgb, var(--theme-accent, #3aa8b4) 20%, transparent);
+	margin: 4px 0;
+	flex-shrink: 0;
 }
 </style>
