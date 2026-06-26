@@ -10,4 +10,11 @@ export const routes = [
 	{ channel: 'dweb:comfyui:jobs:get', handler: handlers.getJob },
 	{ channel: 'dweb:comfyui:jobs:create', handler: handlers.createJob },
 	{ channel: 'dweb:comfyui:jobs:cancel', handler: handlers.cancelJob },
+	{ channel: 'dweb:comfyui:runtime:ping', handler: handlers.runtimePing },
+	{ channel: 'dweb:comfyui:runtime:workflows:list', handler: handlers.runtimeListWorkflowFiles },
+	{ channel: 'dweb:comfyui:runtime:workflows:get', handler: handlers.runtimeGetWorkflowFile },
+	{ channel: 'dweb:comfyui:runtime:run', handler: handlers.runtimeRunWorkflow },
+	{ channel: 'dweb:comfyui:runtime:outputs', handler: handlers.runtimeGetOutputs },
+	{ channel: 'dweb:comfyui:runtime:cancel', handler: handlers.runtimeCancelRun },
+	{ channel: 'dweb:comfyui:runtime:job', handler: handlers.runtimeGetJobStatus },
 ]

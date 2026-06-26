@@ -19,30 +19,91 @@ function frameFilename(frameIndex, ext) {
 	return `frame_${String(idx).padStart(6, '0')}${ext}`
 }
 
+const STATUS_MAP = {
+	pending: 'queued',
+	processing: 'running',
+	completed: 'done',
+	failed: 'error',
+	cancelled: 'error',
+}
+
+function serializeJobForFrontend(job, frames = []) {
+	if (!job) return null
+	const config = job.config && typeof job.config === 'object' ? job.config : {}
+	const frameCount = Number(config.frameCount || config.expectedFrames) || 0
+	const receivedFrames = Array.isArray(frames) ? frames.length : 0
+	const format = String(config.format || 'mp4').toLowerCase()
+	const outputPath = String(job.outputPath || '')
+	const fileName = outputPath ? path.basename(outputPath) : ''
+	const serverPath = outputPath
+	return {
+		jobId: job.id,
+		id: job.id,
+		status: STATUS_MAP[job.status] || job.status || 'queued',
+		progress: Number(job.progress) || 0,
+		format: format,
+		width: Number(config.width) || undefined,
+		height: Number(config.height) || undefined,
+		fps: Number(config.fps) || undefined,
+		frameCount: frameCount || undefined,
+		expectedFrames: frameCount || undefined,
+		receivedFrames: receivedFrames,
+		fileName: fileName || undefined,
+		downloadUrl: undefined,
+		serverPath: serverPath || undefined,
+		outputPath: serverPath || undefined,
+		error: String(job.error || '') || undefined,
+		projectId: job.projectId || undefined,
+		createdAt: job.createdAt,
+		updatedAt: job.updatedAt,
+	}
+}
+
+function normalizeCreatePayload(payload) {
+	const p = payload || {}
+	if (p.config && typeof p.config === 'object') {
+		return { projectId: p.projectId, config: p.config }
+	}
+	const config = {
+		format: p.format || 'mp4',
+		width: Number(p.width) || 1920,
+		height: Number(p.height) || 1080,
+		fps: Number(p.fps) || 30,
+		frameCount: Number(p.frameCount) || 0,
+		quality: p.quality || 'high',
+		uploadMode: p.uploadMode,
+		ignoreStageBackground: !!p.ignoreStageBackground,
+		snapshot: p.snapshot || null,
+	}
+	if (p.expectedFrames) config.expectedFrames = Number(p.expectedFrames)
+	return { projectId: p.projectId, config }
+}
+
 export function createJob(ctx, payload) {
 	const repo = getRepo(ctx)
-	const p = payload || {}
-	const projectId = p.projectId !== undefined ? Number(p.projectId) : null
-	const config = p.config && typeof p.config === 'object' ? p.config : {}
+	const normalized = normalizeCreatePayload(payload)
+	const projectId = normalized.projectId !== undefined ? Number(normalized.projectId) : null
+	const config = normalized.config || {}
 	const result = repo.create({ projectId, config })
 	if (!result.ok) throw internalError(result.error || 'failed to create export job')
-	return { job: result.job }
+	const frames = repo.getFrames(result.job.id)
+	return serializeJobForFrontend(result.job, frames)
 }
 
 export function getJob(ctx, payload) {
 	const repo = getRepo(ctx)
-	const id = String(payload?.id || '').trim()
+	const id = String(payload?.id || payload?.jobId || '').trim()
 	if (!id) throw invalidParamsError('id is required')
 	const job = repo.get(id)
 	if (!job) throw notFoundError('export job not found')
 	const frames = repo.getFrames(id)
-	return { job, frames }
+	return serializeJobForFrontend(job, frames)
 }
 
 export function finalizeJob(ctx, payload) {
 	const repo = getRepo(ctx)
-	const id = String(payload?.id || '').trim()
-	const outputPath = String(payload?.outputPath || '').trim()
+	const id = String(payload?.id || payload?.jobId || '').trim()
+	const outputPath = String(payload?.outputPath || payload?.serverPath || '').trim()
 	if (!id) throw invalidParamsError('id is required')
 	const job = repo.get(id)
 	if (!job) throw notFoundError('export job not found')
@@ -53,12 +114,13 @@ export function finalizeJob(ctx, payload) {
 		error: ''
 	})
 	if (!result.ok) throw internalError(result.error || 'failed to finalize job')
-	return { job: result.job }
+	const frames = repo.getFrames(id)
+	return serializeJobForFrontend(result.job, frames)
 }
 
 export function getJobFile(ctx, payload) {
 	const repo = getRepo(ctx)
-	const id = String(payload?.id || '').trim()
+	const id = String(payload?.id || payload?.jobId || '').trim()
 	if (!id) throw invalidParamsError('id is required')
 	const job = repo.get(id)
 	if (!job) throw notFoundError('export job not found')
@@ -66,14 +128,19 @@ export function getJobFile(ctx, payload) {
 	if (!outputPath || !fs.existsSync(outputPath)) {
 		throw notFoundError('output file not found')
 	}
-	return { ok: true, filePath: outputPath, fileName: path.basename(outputPath) }
+	return { ok: true, filePath: outputPath, fileName: path.basename(outputPath), jobId: id }
 }
 
 export function listJobsByProject(ctx, payload) {
 	const repo = getRepo(ctx)
 	const pid = Number(payload?.projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { items: [] }
-	return { items: repo.listByProject(pid) }
+	const jobs = repo.listByProject(pid)
+	const items = jobs.map(j => {
+		const frames = repo.getFrames(j.id)
+		return serializeJobForFrontend(j, frames)
+	})
+	return { items }
 }
 
 function writeFrame(repo, jobId, frameIndex, data, filename) {
@@ -87,7 +154,7 @@ function writeFrame(repo, jobId, frameIndex, data, filename) {
 	repo.addFrame({ jobId, frameIndex, filePath: fpath })
 	const frames = repo.getFrames(jobId)
 	const job = repo.get(jobId)
-	const expectedFrames = Number(job?.config?.expectedFrames) || 0
+	const expectedFrames = Number(job?.config?.expectedFrames || job?.config?.frameCount) || 0
 	let progress = 5
 	if (expectedFrames > 0) {
 		progress = Math.min(95, Math.floor((frames.length / expectedFrames) * 95))
@@ -95,13 +162,21 @@ function writeFrame(repo, jobId, frameIndex, data, filename) {
 		progress = Math.min(95, 5 + frames.length * 2)
 	}
 	repo.updateStatus(jobId, { status: 'processing', progress })
-	return { ok: true, filePath: fpath, frameIndex, progress, totalFrames: frames.length }
+	const updatedJob = repo.get(jobId)
+	return {
+		ok: true,
+		filePath: fpath,
+		frameIndex,
+		progress,
+		totalFrames: frames.length,
+		job: serializeJobForFrontend(updatedJob, frames),
+	}
 }
 
 export function uploadFrame(ctx, payload) {
 	const repo = getRepo(ctx)
 	const p = payload || {}
-	const jobId = String(p.jobId || '').trim()
+	const jobId = String(p.jobId || p.id || '').trim()
 	const frameIndex = Number(p.frameIndex) || 0
 	const dataBase64 = String(p.data || '').trim()
 	const filename = String(p.filename || '').trim()
@@ -121,7 +196,7 @@ export function uploadFrame(ctx, payload) {
 export function uploadFrameRaw(ctx, payload) {
 	const repo = getRepo(ctx)
 	const p = payload || {}
-	const jobId = String(p.jobId || '').trim()
+	const jobId = String(p.jobId || p.id || '').trim()
 	const frameIndex = Number(p.frameIndex) || 0
 	const filePath = String(p.filePath || '').trim()
 	if (!jobId) throw invalidParamsError('jobId is required')
@@ -136,7 +211,7 @@ export function uploadFrameRaw(ctx, payload) {
 export function uploadFramesBatch(ctx, payload) {
 	const repo = getRepo(ctx)
 	const p = payload || {}
-	const jobId = String(p.jobId || '').trim()
+	const jobId = String(p.jobId || p.id || '').trim()
 	const frames = Array.isArray(p.frames) ? p.frames : []
 	if (!jobId) throw invalidParamsError('jobId is required')
 	if (!frames.length) throw invalidParamsError('frames array is required')
@@ -163,7 +238,7 @@ export function uploadFramesBatch(ctx, payload) {
 
 export async function* streamJob(ctx, payload) {
 	const repo = getRepo(ctx)
-	const id = String(payload?.id || '').trim()
+	const id = String(payload?.id || payload?.jobId || '').trim()
 	if (!id) {
 		yield JSON.stringify({ type: 'error', error: 'id is required' })
 		return
@@ -173,7 +248,8 @@ export async function* streamJob(ctx, payload) {
 		yield JSON.stringify({ type: 'error', error: 'job not found' })
 		return
 	}
-	yield JSON.stringify({ type: 'status', job })
+	let frames = repo.getFrames(id)
+	yield JSON.stringify({ type: 'status', job: serializeJobForFrontend(job, frames) })
 	const terminalStatuses = new Set(['completed', 'failed', 'cancelled'])
 	let attempts = 0
 	const maxAttempts = 3600
@@ -182,8 +258,11 @@ export async function* streamJob(ctx, payload) {
 		attempts++
 		job = repo.get(id)
 		if (!job) break
-		yield JSON.stringify({ type: 'progress', job })
+		frames = repo.getFrames(id)
+		yield JSON.stringify({ type: 'progress', job: serializeJobForFrontend(job, frames) })
 		if (terminalStatuses.has(String(job.status))) break
 	}
-	yield JSON.stringify({ type: 'done', job: repo.get(id) })
+	const finalJob = repo.get(id)
+	const finalFrames = finalJob ? repo.getFrames(id) : []
+	yield JSON.stringify({ type: 'done', job: finalJob ? serializeJobForFrontend(finalJob, finalFrames) : null })
 }

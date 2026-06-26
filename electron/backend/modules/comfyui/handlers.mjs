@@ -35,3 +35,31 @@ export async function createJob(ctx, payload) {
 export async function cancelJob(ctx, payload) {
 	return service.cancelJob(ctx, payload)
 }
+
+export async function runtimePing(ctx, payload) {
+	return service.runtimePing(ctx, payload)
+}
+
+export async function runtimeListWorkflowFiles(ctx, payload) {
+	return service.runtimeListWorkflowFiles(ctx, payload)
+}
+
+export async function runtimeGetWorkflowFile(ctx, payload) {
+	return service.runtimeGetWorkflowFile(ctx, payload)
+}
+
+export async function runtimeRunWorkflow(ctx, payload) {
+	return service.runtimeRunWorkflow(ctx, payload)
+}
+
+export async function runtimeGetOutputs(ctx, payload) {
+	return service.runtimeGetOutputs(ctx, payload)
+}
+
+export async function runtimeCancelRun(ctx, payload) {
+	return service.runtimeCancelRun(ctx, payload)
+}
+
+export async function runtimeGetJobStatus(ctx, payload) {
+	return service.runtimeGetJobStatus(ctx, payload)
+}

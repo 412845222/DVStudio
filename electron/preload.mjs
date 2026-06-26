@@ -237,6 +237,109 @@ contextBridge.exposeInMainWorld('dweb', {
 		taskDetail: (payload) => invoke('dweb:seedance:task-detail', payload || {}),
 		sync: (payload) => invoke('dweb:seedance:sync', payload || {}),
 	},
+	chat: {
+		conversations: {
+			list: () => invoke('dweb:chat:conversations:list'),
+			create: (payload) => invoke('dweb:chat:conversations:create', payload || {}),
+			get: (payload) => invoke('dweb:chat:conversations:get', payload || {}),
+			delete: (payload) => invoke('dweb:chat:conversations:delete', payload || {}),
+			updateTitle: (payload) => invoke('dweb:chat:conversations:update-title', payload || {}),
+		},
+		messages: {
+			send: (payload) => invoke('dweb:chat:messages:send', payload || {}),
+			stream: (payload) => {
+				const { generator } = createInvokeStream('dweb:chat:messages')(payload || {})
+				return generator
+			},
+		},
+	},
+	export: {
+		jobs: {
+			create: (payload) => invoke('dweb:export:jobs:create', payload || {}),
+			get: (payload) => invoke('dweb:export:jobs:get', payload || {}),
+			listByProject: (payload) => invoke('dweb:export:jobs:list-by-project', payload || {}),
+			stream: (payload) => {
+				const { generator } = createInvokeStream('dweb:export:jobs')(payload || {})
+				return generator
+			},
+			finalize: (payload) => invoke('dweb:export:jobs:finalize', payload || {}),
+			file: (payload) => invoke('dweb:export:jobs:file', payload || {}),
+		},
+		frames: {
+			upload: (payload) => invoke('dweb:export:frames:upload', payload || {}),
+			uploadRaw: (payload) => invoke('dweb:export:frames:upload-raw', payload || {}),
+			uploadBatch: (payload) => invoke('dweb:export:frames:upload-batch', payload || {}),
+		},
+	},
+	editor: {
+		components: {
+			list: (payload) => invoke('dweb:editor:components:list', payload || {}),
+			get: (payload) => invoke('dweb:editor:components:get', payload || {}),
+			save: (payload) => invoke('dweb:editor:components:save', payload || {}),
+			delete: (payload) => invoke('dweb:editor:components:delete', payload || {}),
+			import: (payload) => invoke('dweb:editor:components:import', payload || {}),
+		},
+	},
+	comfyui: {
+		proxy: (payload) => invoke('dweb:comfyui:proxy', payload || {}),
+		workflows: {
+			list: (payload) => invoke('dweb:comfyui:workflows:list', payload || {}),
+			get: (payload) => invoke('dweb:comfyui:workflows:get', payload || {}),
+			save: (payload) => invoke('dweb:comfyui:workflows:save', payload || {}),
+			delete: (payload) => invoke('dweb:comfyui:workflows:delete', payload || {}),
+		},
+		jobs: {
+			list: (payload) => invoke('dweb:comfyui:jobs:list', payload || {}),
+			get: (payload) => invoke('dweb:comfyui:jobs:get', payload || {}),
+			create: (payload) => invoke('dweb:comfyui:jobs:create', payload || {}),
+			cancel: (payload) => invoke('dweb:comfyui:jobs:cancel', payload || {}),
+		},
+		runtime: {
+			ping: (payload) => invoke('dweb:comfyui:runtime:ping', payload || {}),
+			workflows: {
+				list: (payload) => invoke('dweb:comfyui:runtime:workflows:list', payload || {}),
+				get: (payload) => invoke('dweb:comfyui:runtime:workflows:get', payload || {}),
+			},
+			run: (payload) => invoke('dweb:comfyui:runtime:run', payload || {}),
+			outputs: (payload) => invoke('dweb:comfyui:runtime:outputs', payload || {}),
+			cancel: (payload) => invoke('dweb:comfyui:runtime:cancel', payload || {}),
+			job: (payload) => invoke('dweb:comfyui:runtime:job', payload || {}),
+		},
+	},
+	thirdParty: {
+		nanobanana: {
+			refCache: (payload) => invoke('dweb:third-party:nanobanana:ref-cache', payload || {}),
+			generate: (payload) => invoke('dweb:third-party:nanobanana:generate', payload || {}),
+			generateStream: (payload) => {
+				const { generator } = createInvokeStream('dweb:third-party:nanobanana:generate')(payload || {})
+				return generator
+			},
+		},
+		seedream: {
+			refCache: (payload) => invoke('dweb:third-party:seedream:ref-cache', payload || {}),
+			generateStream: (payload) => {
+				const { generator } = createInvokeStream('dweb:third-party:seedream:generate')(payload || {})
+				return generator
+			},
+		},
+		jimeng: {
+			imageGenerateStream: (payload) => {
+				const { generator } = createInvokeStream('dweb:third-party:jimeng:image:generate')(payload || {})
+				return generator
+			},
+			videoGenerateStream: (payload) => {
+				const { generator } = createInvokeStream('dweb:third-party:jimeng:video:generate')(payload || {})
+				return generator
+			},
+		},
+		blueprint: {
+			chat: (payload) => invoke('dweb:third-party:blueprint:chat', payload || {}),
+			chatStream: (payload) => {
+				const { generator } = createInvokeStream('dweb:third-party:blueprint:chat')(payload || {})
+				return generator
+			},
+		},
+	},
 	projects: {
 		list: () => invoke('dweb:projects:list'),
 		save: (payload) => invoke('dweb:projects:save', payload || {}),

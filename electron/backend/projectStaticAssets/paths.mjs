@@ -48,7 +48,8 @@ export function canonicalProjectRelativePath(rawPath) {
 		rel = rel.replace(/^content\/media\//i, '')
 	}
 	if (/^media\//i.test(rel)) rel = rel.replace(/^media\//i, '')
-	if (!/^content\/media\//i.test(rel)) rel = `${PROJECT_MEDIA_RELATIVE_DIR}/${rel}`
+	const isKnownRootPath = /^(?:content\/media|content\/generated|generated-assets|\.dvcache)\//i.test(rel)
+	if (!isKnownRootPath) rel = `${PROJECT_MEDIA_RELATIVE_DIR}/${rel}`
 	const parts = rel.split('/').filter(Boolean)
 	if (!parts.length) return ''
 	if (parts.some((p) => p === '..')) return ''

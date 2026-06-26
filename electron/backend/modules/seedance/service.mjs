@@ -1,27 +1,86 @@
+import crypto from 'node:crypto'
 import { getHttpClient } from '../../core/http-client.mjs'
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
 
 const SEEDANCE_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
-const DEFAULT_MODEL = 'doubao-seedance-1-5-pro-251215'
+const DEFAULT_MODEL = 'doubao-seedance-2-0-260128'
 const DEFAULT_TIMEOUT = 120000
-const POLL_INTERVAL_MS = 3000
-const POLL_TIMEOUT_MS = 600000
+const POLL_INTERVAL_MS = 5000
+const POLL_TIMEOUT_MS = 900000
+
+function generateMsgId() {
+	return `m-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`
+}
+
+function wrapTaskStatusMsg(message, phase) {
+	return JSON.stringify({
+		type: 'msg',
+		message: {
+			schemaVersion: 1,
+			id: generateMsgId(),
+			createdAt: new Date().toISOString(),
+			type: 'agentToUi/taskStatus',
+			payload: { phase: phase || 'streaming', message: String(message || '') }
+		}
+	})
+}
+
+function wrapChatMsg(content) {
+	const contentStr = typeof content === 'string' ? content : JSON.stringify(content)
+	return JSON.stringify({
+		type: 'msg',
+		message: {
+			schemaVersion: 1,
+			id: generateMsgId(),
+			createdAt: new Date().toISOString(),
+			type: 'agentToUi/chatMessage',
+			payload: { content: contentStr }
+		}
+	})
+}
+
+function wrapErrorMsg(code, message) {
+	return JSON.stringify({
+		type: 'msg',
+		message: {
+			schemaVersion: 1,
+			id: generateMsgId(),
+			createdAt: new Date().toISOString(),
+			type: 'agentToUi/error',
+			payload: { code: code || 'STREAM_ERROR', message: String(message || 'unknown error') }
+		}
+	})
+}
+
+function wrapStreamError(message) {
+	return JSON.stringify({ type: 'error', error: { message: String(message || 'unknown error') } })
+}
+
+function wrapDone() {
+	return JSON.stringify({ type: 'done' })
+}
+
+function tryGetKey(ctx, ...names) {
+  const repo = ctx.localdb?.apiKeys
+  if (!repo) return ''
+  for (const name of names) {
+    try {
+      const r = repo.getPlaintext(name)
+      if (r.ok && r.plaintext && String(r.plaintext).trim()) return String(r.plaintext).trim()
+    } catch {}
+  }
+  return ''
+}
 
 function getApiKey(ctx) {
-  const repo = ctx.localdb?.apiKeys
-  if (!repo) throw internalError('apiKeys repo not available')
-  const result = repo.getPlaintext('bytedance_text')
-  if (!result.ok) throw internalError(result.error || 'failed to read bytedance api key')
-  const key = String(result.plaintext || '').trim()
-  if (!key) throw invalidParamsError('bytedance api key is not configured')
+  const key = tryGetKey(ctx, 'seedance', 'bytedance_seedance', 'bytedance_video', 'bytedance_text', 'bytedance', 'doubao')
+  if (!key) throw invalidParamsError('bytedance/seedance api key is not configured')
   return key
 }
 
 function getHeaders(apiKey) {
   const key = String(apiKey || '').trim()
   return {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
     'Authorization': key.startsWith('Bearer ') ? key : `Bearer ${key}`,
   }
 }
@@ -60,25 +119,38 @@ function extractUsageText(obj) {
   return parts.length ? `tokens: ${parts.join(', ')}` : null
 }
 
-function buildContent(prompt, refImageUrls, refMode, refCount) {
-  const content = [{ type: 'text', text: String(prompt || '') }]
+function buildContent(prompt, refImageUrls, refMode) {
+  const content = []
+  const text = String(prompt || '').trim()
+  if (text) {
+    content.push({ type: 'text', text })
+  }
   if (!Array.isArray(refImageUrls) || !refImageUrls.length) return content
 
-  const urls = refImageUrls.slice(0, Math.max(0, Math.min(refImageUrls.length, refCount))).filter(u => String(u || '').trim())
+  const urls = refImageUrls.map(u => String(u || '').trim()).filter(u => u)
   if (!urls.length) return content
 
   const mode = String(refMode || 'auto').trim().toLowerCase()
-  const effectiveMode = ['auto', 'reference', 'first', 'first-last'].includes(mode) ? mode : 'auto'
 
-  for (const url of urls) {
-    content.push({ type: 'image_url', image_url: { url: String(url).trim() } })
+  if (mode === 'first-last' && urls.length >= 2) {
+    content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
+    content.push({ type: 'image_url', image_url: { url: urls[1] }, role: 'last_frame' })
+  } else if (mode === 'first') {
+    content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
+  } else if (mode === 'reference') {
+    for (const url of urls.slice(0, 9)) {
+      content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
+    }
+  } else {
+    if (urls.length === 1) {
+      content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
+    } else {
+      for (const url of urls.slice(0, 9)) {
+        content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
+      }
+    }
   }
   return content
-}
-
-function pickTaskType(model, hasRefImages, refMode, requestedTaskType) {
-  if (requestedTaskType) return String(requestedTaskType).trim().toLowerCase()
-  return hasRefImages ? 'image-to-video' : 'text-to-video'
 }
 
 function msToIsoString(ms) {
@@ -137,18 +209,19 @@ export async function* generateVideoStream(ctx, payload) {
   if (!repo) throw internalError('videoTasks repo not available')
 
   const prompt = String(payload?.prompt || '').trim()
-  if (!prompt) {
-    yield JSON.stringify({ type: 'error', error: { message: 'prompt is required' } })
+  const model = String(payload?.model || payload?.endpoint_id || payload?.videoModel || '').trim()
+  if (!model) {
+    yield wrapStreamError('model is required (videoModel/endpoint_id not provided)')
     return
   }
 
-  const model = String(payload?.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL
-  const ratio = String(payload?.ratio || 'adaptive').trim() || 'adaptive'
-  const resolution = String(payload?.resolution || '').trim()
+  const ratioRaw = String(payload?.ratio || payload?.aspect_ratio || payload?.aspectRatio || 'auto').trim() || 'auto'
+  const ratio = ratioRaw === 'adaptive' ? 'auto' : ratioRaw
+  const resolution = String(payload?.resolution || '720p').trim() || '720p'
   let duration = null
   let frames = null
   if (payload?.duration !== undefined && payload?.duration !== null && String(payload.duration).trim() !== '') {
-    duration = coerceInt(payload.duration, 5, 1, 30)
+    duration = coerceInt(payload.duration, 5, 4, 15)
   }
   if (payload?.frames) {
     try {
@@ -160,17 +233,18 @@ export async function* generateVideoStream(ctx, payload) {
   }
   if (duration === null && frames === null) duration = 5
 
-  const seed = payload?.seed ? (() => { try { return parseInt(String(payload.seed), 10) } catch { return null } })() : null
-  const generateAudio = truthy(payload?.generateAudio || payload?.generate_audio)
+  let seed = null
+  if (payload?.seed !== undefined && payload?.seed !== null && String(payload.seed).trim() !== '') {
+    try {
+      const s = parseInt(String(payload.seed), 10)
+      if (Number.isFinite(s) && s >= 0) seed = s
+    } catch {}
+  }
+  const generateAudio = truthy(payload?.generateAudio ?? payload?.generate_audio ?? true)
   const watermark = truthy(payload?.watermark)
-  const cameraFixed = truthy(payload?.cameraFixed || payload?.camera_fixed)
-  const draft = truthy(payload?.draft)
-  const returnLastFrame = truthy(payload?.returnLastFrame || payload?.return_last_frame)
-  let serviceTier = String(payload?.serviceTier || payload?.service_tier || '').trim().toLowerCase()
-  if (!['', 'default', 'flex'].includes(serviceTier)) serviceTier = ''
+  const cameraFixed = truthy(payload?.cameraFixed ?? payload?.camera_fixed ?? false)
+  const returnLastFrame = truthy(payload?.returnLastFrame ?? payload?.return_last_frame ?? false)
   const refMode = String(payload?.refMode || 'auto').trim().toLowerCase() || 'auto'
-  const requestedTaskType = String(payload?.taskType || payload?.task_type || '').trim().toLowerCase()
-  const refCount = coerceInt(payload?.referenceCount, 4, 1, 4)
   const source = String(payload?.source || 'bottom-chat').trim() || 'bottom-chat'
   const projectId = payload?.projectId ? Number(payload.projectId) || null : null
 
@@ -179,31 +253,41 @@ export async function* generateVideoStream(ctx, payload) {
     refImageUrls = payload.imageUrls.map(u => String(u || '').trim()).filter(u => u)
   } else if (Array.isArray(payload?.refImages)) {
     refImageUrls = payload.refImages.map(u => String(u || '').trim()).filter(u => u)
+  } else if (Array.isArray(payload?.ref_images)) {
+    refImageUrls = payload.ref_images.map(u => {
+      if (typeof u === 'string') return u.trim()
+      if (u && typeof u.data === 'string') return u.data.trim()
+      if (u && typeof u.url === 'string') return u.url.trim()
+      return ''
+    }).filter(u => u)
   }
 
-  yield JSON.stringify({ type: 'msg', message: { type: 'task_status', status: 'started', message: 'Seedance：创建任务中…' } })
+  const hasRefImages = refImageUrls.length > 0
+
+  if (!prompt && !hasRefImages) {
+    yield wrapStreamError('prompt or reference images are required')
+    return
+  }
+
+  yield wrapTaskStatusMsg('Seedance：创建任务中…', 'generating')
 
   try {
-    const taskType = pickTaskType(model, refImageUrls.length > 0, refMode, requestedTaskType)
-    const content = buildContent(prompt, refImageUrls, refMode, refCount)
+    const content = buildContent(prompt, refImageUrls, refMode)
     const createPayload = {
       model,
-      prompt,
       content,
-      task_type: taskType,
       ratio,
+      resolution,
       watermark,
       generate_audio: generateAudio,
       camera_fixed: cameraFixed,
-      draft,
       return_last_frame: returnLastFrame,
     }
     if (frames !== null) createPayload.frames = frames
     else if (duration !== null) createPayload.duration = duration
-    if (resolution) createPayload.resolution = resolution
-    if (seed !== null && Number.isFinite(seed)) createPayload.seed = seed
-    if (serviceTier) createPayload.service_tier = serviceTier
+    if (seed !== null) createPayload.seed = seed
 
+    console.log('[seedance] creating task, model=', model, 'ratio=', ratio, 'resolution=', resolution, 'duration=', duration, 'hasRefImages=', hasRefImages, 'refMode=', refMode, 'generateAudio=', generateAudio)
     const createUrl = `${SEEDANCE_API_BASE}/contents/generations/tasks`
     const createRes = await client.post(createUrl, createPayload, {
       headers: getHeaders(apiKey),
@@ -211,11 +295,13 @@ export async function* generateVideoStream(ctx, payload) {
     })
 
     if (!createRes.ok) {
-      const errMsg = typeof createRes.body === 'object' && createRes.body?.error?.message
-        ? createRes.body.error.message
-        : typeof createRes.body === 'object' && createRes.body?.message
-          ? createRes.body.message
-          : `HTTP ${createRes.status}`
+      let errMsg = `HTTP ${createRes.status}`
+      if (createRes.body) {
+        if (createRes.body.error?.message) errMsg = createRes.body.error.message
+        else if (createRes.body.message) errMsg = createRes.body.message
+        else if (typeof createRes.body === 'object') errMsg = JSON.stringify(createRes.body).slice(0, 500)
+      }
+      console.error('[seedance] create task failed:', createRes.status, JSON.stringify(createRes.body?.error || createRes.body || {}).slice(0, 500))
       throw new Error(`Seedance create task failed: ${errMsg}`)
     }
 
@@ -229,18 +315,17 @@ export async function* generateVideoStream(ctx, payload) {
       remoteTaskId: taskId,
       provider: 'seedance',
       model,
-      taskType,
+      taskType: hasRefImages ? 'image-to-video' : 'text-to-video',
       source,
       status: 'queued',
       prompt,
       ratio,
       resolution,
-      duration: duration || 0,
+      duration: duration || frames || 0,
       seed,
       generateAudio,
       watermark,
       cameraFixed,
-      serviceTier,
       requestPayload: createPayload,
       responsePayload: createObj,
       videoUrlRemote: '',
@@ -256,7 +341,7 @@ export async function* generateVideoStream(ctx, payload) {
       remoteUpdatedAt: Date.now(),
     })
 
-    yield JSON.stringify({ type: 'msg', message: { type: 'task_status', status: 'streaming', message: `Seedance：任务已创建（${taskId}），等待生成…` } })
+    yield wrapTaskStatusMsg(`Seedance：任务已创建（${taskId}），等待生成…`, 'streaming')
 
     const startTime = Date.now()
     let billingText = null
@@ -312,9 +397,9 @@ export async function* generateVideoStream(ctx, payload) {
         }
         if (billingText) outPayload.billing = billingText
 
-        yield JSON.stringify({ type: 'msg', message: { type: 'chat', content: JSON.stringify(outPayload) } })
-        yield JSON.stringify({ type: 'msg', message: { type: 'task_status', status: 'done', message: 'Seedance：完成' } })
-        yield JSON.stringify({ type: 'done' })
+        yield wrapChatMsg(outPayload)
+        yield wrapTaskStatusMsg('Seedance：完成', 'done')
+        yield wrapDone()
         return
       }
 
@@ -340,7 +425,7 @@ export async function* generateVideoStream(ctx, payload) {
       const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000))
       const suffix = billingText ? `；计费：${billingText}` : ''
       const statusMsg = `Seedance：${status || 'running'}（${elapsed}s）${suffix}`
-      yield JSON.stringify({ type: 'msg', message: { type: 'task_status', status: 'streaming', message: statusMsg } })
+      yield wrapTaskStatusMsg(statusMsg, 'streaming')
 
       if (Date.now() - startTime >= POLL_TIMEOUT_MS) {
         throw new Error(`Seedance task timeout after ${Math.floor(POLL_TIMEOUT_MS / 1000)}s`)
@@ -349,8 +434,8 @@ export async function* generateVideoStream(ctx, payload) {
       await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
     }
   } catch (err) {
-    yield JSON.stringify({ type: 'msg', message: { type: 'error', error: 'seedance_error', message: err?.message || String(err) || 'unknown error' } })
-    yield JSON.stringify({ type: 'done' })
+    yield wrapStreamError(String(err?.message || err || 'unknown error'))
+    yield wrapDone()
   }
 }
 
@@ -502,8 +587,6 @@ export async function syncTasks(ctx, payload) {
 }
 
 export async function health(ctx) {
-  const repo = ctx.localdb?.apiKeys
-  if (!repo) return { ok: true, configured: false }
-  const keyResult = repo.getPlaintext('bytedance_text')
-  return { ok: true, configured: !!(keyResult.ok && keyResult.plaintext) }
+  const key = tryGetKey(ctx, 'seedance', 'bytedance_seedance', 'bytedance_video', 'bytedance_text', 'bytedance', 'doubao')
+  return { ok: true, configured: !!key }
 }

@@ -453,6 +453,75 @@ function isIpcAvailable(): boolean {
 	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.meshy && !!(window as any).dweb?.seedance
 }
 
+function isThirdPartyIpcAvailable(): boolean {
+	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.thirdParty
+}
+
+function isComfyRuntimeIpcAvailable(): boolean {
+	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.comfyui?.runtime
+}
+
+async function filesToDataUrlFiles(files: File[]): Promise<Array<{ name: string; dataUrl: string }>> {
+	const out: Array<{ name: string; dataUrl: string }> = []
+	for (let i = 0; i < files.length; i++) {
+		const f = files[i]
+		if (!f) continue
+		const dataUrl = await fileToDataUrl(f)
+		out.push({ name: f.name || `input_${i}.png`, dataUrl })
+	}
+	return out
+}
+
+async function formDataToObject(form: FormData): Promise<Record<string, unknown>> {
+	const obj: Record<string, unknown> = {}
+	const boolKeys = new Set(['generateAudio', 'watermark', 'cameraFixed', 'returnLastFrame', 'draft'])
+	const numKeys = new Set(['duration', 'seed', 'frames', 'referenceCount', 'width', 'height', 'quantity'])
+	const arrayKeys = new Set(['refImages', 'refCacheIds', 'ref_cache_ids', 'ref_images'])
+	const refImageUrls: string[] = []
+	const formAny = form as unknown as {
+		entries: () => IterableIterator<[string, FormDataEntryValue]>
+	}
+	for (const [key, value] of Array.from(formAny.entries())) {
+		if (value instanceof File) {
+			const dataUrl = await fileToDataUrl(value)
+			refImageUrls.push(dataUrl)
+		} else if (typeof value === 'string') {
+			if (arrayKeys.has(key)) {
+				if (!obj[key]) obj[key] = []
+				;(obj[key] as string[]).push(value)
+			} else if (boolKeys.has(key)) {
+				obj[key] = value === '1' || value === 'true'
+			} else if (numKeys.has(key)) {
+				const n = Number(value)
+				obj[key] = Number.isFinite(n) ? n : value
+			} else {
+				obj[key] = value
+			}
+		}
+	}
+	if (refImageUrls.length > 0) {
+		obj.refImages = refImageUrls
+		obj.ref_images = refImageUrls
+	}
+	if (!obj.aspect_ratio && obj.aspectRatio) obj.aspect_ratio = obj.aspectRatio
+	if (!obj.aspect_ratio && obj.ratio) obj.aspect_ratio = obj.ratio
+	if (!obj.req_key && obj.model) obj.req_key = obj.model
+	if (!obj.req_key && obj.imageModel) obj.req_key = obj.imageModel
+	if (!obj.req_key && obj.videoModel) obj.req_key = obj.videoModel
+	if (!obj.model && obj.imageModel) obj.model = obj.imageModel
+	if (!obj.model && obj.videoModel) obj.model = obj.videoModel
+	if (!obj.endpoint_id && obj.imageModel) obj.endpoint_id = obj.imageModel
+	if (!obj.endpoint_id && obj.videoModel) obj.endpoint_id = obj.videoModel
+	if (!obj.negative_prompt && obj.negativePrompt) obj.negative_prompt = obj.negativePrompt
+	if (!obj.ai_model && obj.model && typeof obj.model === 'string') {
+		const modelLower = obj.model.toLowerCase()
+		if (modelLower.includes('nano-banana') || modelLower.includes('nanobanana')) {
+			obj.ai_model = modelLower.includes('pro') ? 'nano-banana-pro' : 'nano-banana'
+		}
+	}
+	return obj
+}
+
 async function fileToDataUrl(file: File): Promise<string> {
 	const buffer = await file.arrayBuffer()
 	const bytes = new Uint8Array(buffer)
@@ -465,36 +534,70 @@ async function fileToDataUrl(file: File): Promise<string> {
 	return `data:${mime};base64,${b64}`
 }
 
-async function formDataToSeedancePayload(form: FormData): Promise<Record<string, unknown>> {
-	const payload: Record<string, unknown> = {}
-	const imageUrls: string[] = []
+async function* consumeThirdPartyIpcStream(
+	generator: AsyncIterable<unknown>,
+	fallbackLabel: string
+): AsyncGenerator<BlueprintChatStreamEvent, void, void> {
+	try {
+		for await (const chunk of generator) {
+			let parsed = chunk
+			if (typeof chunk === 'string') {
+				try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+			}
+			if (parsed && typeof parsed === 'object') {
+				if ((parsed as any).type === 'done') { yield { type: 'done' }; return }
+				if ((parsed as any).type === 'error') { yield parsed as any; return }
+				if ((parsed as any).type === 'msg' && (parsed as any).message) {
+					yield { type: 'msg', message: (parsed as any).message }; continue
+				}
+				yield parsed as any
+			}
+		}
+		yield { type: 'done' }
+	} catch (err: unknown) {
+		yield { type: 'error', error: { message: getErrorMessage(err) || `${fallbackLabel} failed via IPC` } }
+	}
+}
 
+async function formDataToSeedancePayload(form: FormData): Promise<Record<string, unknown>> {
+	const obj: Record<string, unknown> = {}
+	const refImageUrls: string[] = []
+	const boolKeys = new Set(['generateAudio', 'watermark', 'cameraFixed', 'returnLastFrame', 'draft', 'generate_audio', 'camera_fixed', 'return_last_frame'])
+	const numKeys = new Set(['duration', 'seed', 'frames', 'width', 'height', 'quantity', 'referenceCount'])
+	const arrayKeys = new Set(['refImages', 'refCacheIds', 'ref_cache_ids', 'ref_images', 'imageUrls'])
 	const formAny = form as unknown as {
 		entries: () => IterableIterator<[string, FormDataEntryValue]>
 	}
 	for (const [key, value] of Array.from(formAny.entries())) {
-		if (key === 'refImages' && value instanceof File) {
+		if (value instanceof File) {
 			const dataUrl = await fileToDataUrl(value)
-			imageUrls.push(dataUrl)
+			refImageUrls.push(dataUrl)
 		} else if (typeof value === 'string') {
-			if (['generateAudio', 'watermark', 'cameraFixed', 'returnLastFrame', 'draft'].includes(key)) {
-				payload[key] = value === '1' || value === 'true'
-			} else if (['duration', 'seed', 'frames'].includes(key)) {
+			if (arrayKeys.has(key)) {
+				if (!obj[key]) obj[key] = []
+				;(obj[key] as string[]).push(value)
+			} else if (boolKeys.has(key)) {
+				obj[key] = value === '1' || value === 'true'
+			} else if (numKeys.has(key)) {
 				const n = Number(value)
-				payload[key] = Number.isFinite(n) ? n : value
+				obj[key] = Number.isFinite(n) ? n : value
 			} else {
-				payload[key] = value
+				obj[key] = value
 			}
 		} else {
-			payload[key] = value
+			obj[key] = value
 		}
 	}
-
-	if (imageUrls.length > 0) {
-		payload.imageUrls = imageUrls
+	if (refImageUrls.length > 0) {
+		obj.refImages = refImageUrls
+		obj.ref_images = refImageUrls
+		obj.imageUrls = refImageUrls
 	}
-
-	return payload
+	if (!obj.model && obj.videoModel) obj.model = obj.videoModel
+	if (!obj.endpoint_id && obj.videoModel) obj.endpoint_id = obj.videoModel
+	if (!obj.prompt && obj.text) obj.prompt = obj.text
+	if (!obj.refMode && obj.mode) obj.refMode = obj.mode
+	return obj
 }
 
 export class ComfyUIBridgeService {
@@ -571,8 +674,33 @@ export class ComfyUIBridgeService {
 	async blueprintChat(payload: {
 		content: string
 		history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+		provider?: string
+		modelId?: string
 	}): Promise<BlueprintChatResponse> {
-		const res = await this.fetchWithLog(this.url('/api/workflow/blueprint/chat'), {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcPayload = {
+					content: payload.content,
+					message: payload.content,
+					history: payload.history || [],
+					provider: payload.provider,
+					modelId: payload.modelId
+				}
+				const ipcResult = await (window as any).dweb.thirdParty.blueprint.chat(ipcPayload)
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'blueprint/chat failed via IPC' }
+					}
+					if (ipcResult.ok && ipcResult.assistant) {
+						return { ok: true, assistant: ipcResult.assistant, model: ipcResult.model }
+					}
+					return ipcResult as BlueprintChatResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] blueprint/chat IPC failed, falling back to HTTP:', err)
+			}
+		}
+		const res = await this.fetchWithLog(this.url('/api/third-party/blueprint/chat'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
 			body: JSON.stringify(payload ?? {})
@@ -610,9 +738,27 @@ export class ComfyUIBridgeService {
 		payload: {
 			content: string
 			history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+			provider?: string
+			modelId?: string
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<BlueprintChatStreamEvent, void, void> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcPayload = {
+					content: payload.content,
+					message: payload.content,
+					history: payload.history || [],
+					provider: payload.provider,
+					modelId: payload.modelId
+				}
+				const generator = (window as any).dweb.thirdParty.blueprint.chatStream(ipcPayload)
+				yield* consumeThirdPartyIpcStream(generator, 'blueprint/chat:stream')
+				return
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] blueprint/chat:stream IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/third-party/blueprint/chat:stream'), {
 			method: 'POST',
 			headers: {
@@ -659,11 +805,9 @@ export class ComfyUIBridgeService {
 				}
 			}
 
-			// default / msg
 			try {
 				const v: unknown = JSON.parse(data)
 				if (isAgentToUiMessage(v)) return [{ type: 'msg', message: v }]
-				// ignore non AgentToUI payloads to keep stream stable
 				return []
 			} catch (e: unknown) {
 				return [
@@ -713,7 +857,6 @@ export class ComfyUIBridgeService {
 			}
 		}
 
-		// flush tail
 		for (const ev of flush()) yield ev
 	}
 
@@ -965,6 +1108,23 @@ export class ComfyUIBridgeService {
 	 * Backend: POST /api/workflow/nanobanana/ref-cache
 	 */
 	async nanoBananaCacheRefImages(formData: FormData): Promise<NanoBananaCacheRefsResponse> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcPayload = await formDataToObject(formData)
+				const ipcResult = await (window as any).dweb.thirdParty.nanobanana.refCache(ipcPayload)
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'nanobanana/ref-cache failed via IPC' }
+					}
+					if (Array.isArray(ipcResult.cacheIds)) {
+						return { ok: true, cacheIds: ipcResult.cacheIds }
+					}
+					return ipcResult as NanoBananaCacheRefsResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] nanobanana/ref-cache IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const headers: Record<string, string> = {
 			Accept: 'application/json'
 		}
@@ -990,6 +1150,23 @@ export class ComfyUIBridgeService {
 	 * Backend: POST /api/workflow/seedream/ref-cache
 	 */
 	async seedreamCacheRefImages(formData: FormData): Promise<NanoBananaCacheRefsResponse> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcPayload = await formDataToObject(formData)
+				const ipcResult = await (window as any).dweb.thirdParty.seedream.refCache(ipcPayload)
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'seedream/ref-cache failed via IPC' }
+					}
+					if (Array.isArray(ipcResult.cacheIds)) {
+						return { ok: true, cacheIds: ipcResult.cacheIds }
+					}
+					return ipcResult as NanoBananaCacheRefsResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] seedream/ref-cache IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const headers: Record<string, string> = {
 			Accept: 'application/json'
 		}
@@ -1020,7 +1197,28 @@ export class ComfyUIBridgeService {
 		imageSize?: string
 		width?: number
 		height?: number
+		negativePrompt?: string
+		model?: string
+		seed?: number
+		reference_image_urls?: string[]
+		refCacheIds?: string[]
 	}): Promise<NanoBananaGenerateResponse> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.thirdParty.nanobanana.generate(payload || {})
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'nanobanana/generate failed via IPC' }
+					}
+					if (ipcResult.ok && ipcResult.imageUrl) {
+						return { ok: true, imageUrl: ipcResult.imageUrl }
+					}
+					return ipcResult as NanoBananaGenerateResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] nanobanana/generate IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/third-party/nanobanana/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -1050,6 +1248,16 @@ export class ComfyUIBridgeService {
 		form: FormData,
 		signal?: AbortSignal
 	): AsyncGenerator<NanoBananaGenerateStreamEvent, void, void> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcPayload = await formDataToObject(form)
+				const generator = (window as any).dweb.thirdParty.nanobanana.generateStream(ipcPayload)
+				yield* consumeThirdPartyIpcStream(generator, 'nanobanana/generate:stream')
+				return
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] nanobanana/generate:stream IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const headers: Record<string, string> = {
 			Accept: 'text/event-stream'
 		}
@@ -1088,7 +1296,6 @@ export class ComfyUIBridgeService {
 				const err = parseSseError(data)
 				return [{ type: 'error', error: err }]
 			}
-			// default to msg
 			const msg = parseSseAgentMessage(data)
 			if (msg) return [{ type: 'msg', message: msg }]
 			let errDetails: unknown = data
@@ -1148,6 +1355,16 @@ export class ComfyUIBridgeService {
 		form: FormData,
 		signal?: AbortSignal
 	): AsyncGenerator<NanoBananaGenerateStreamEvent, void, void> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcPayload = await formDataToObject(form)
+				const generator = (window as any).dweb.thirdParty.seedream.generateStream(ipcPayload)
+				yield* consumeThirdPartyIpcStream(generator, 'seedream/generate:stream')
+				return
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] seedream/generate:stream IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const headers: Record<string, string> = {
 			Accept: 'text/event-stream'
 		}
@@ -1250,32 +1467,10 @@ export class ComfyUIBridgeService {
 		if (isIpcAvailable()) {
 			try {
 				const generator = (window as any).dweb.seedance.generateStream(ipcPayload)
-				for await (const chunk of generator) {
-					let parsed = chunk
-					if (typeof chunk === 'string') {
-						try {
-							parsed = JSON.parse(chunk)
-						} catch {
-							parsed = chunk
-						}
-					}
-					if (parsed && typeof parsed === 'object') {
-						if (parsed.type === 'done') {
-							yield { type: 'done' }
-							return
-						}
-						if (parsed.type === 'error') {
-							yield parsed
-							return
-						}
-						yield parsed
-					}
-				}
-				yield { type: 'done' }
+				yield* consumeThirdPartyIpcStream(generator, 'seedance/generate:stream')
 				return
 			} catch (err: unknown) {
-				yield { type: 'error', error: { message: getErrorMessage(err) || 'seedance stream failed via IPC' } }
-				return
+				console.warn('[ComfyUIBridge] seedance/generate:stream IPC failed, falling back to HTTP:', err)
 			}
 		}
 
@@ -1380,6 +1575,16 @@ export class ComfyUIBridgeService {
 		form: FormData,
 		signal?: AbortSignal
 	): AsyncGenerator<JimengGenerateStreamEvent, void, void> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcPayload = await formDataToObject(form)
+				const generator = (window as any).dweb.thirdParty.jimeng.imageGenerateStream(ipcPayload)
+				yield* consumeThirdPartyIpcStream(generator, 'jimeng/image/generate:stream')
+				return
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] jimeng/image/generate:stream IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const headers: Record<string, string> = {
 			Accept: 'text/event-stream'
 		}
@@ -1475,18 +1680,28 @@ export class ComfyUIBridgeService {
 
 	/**
 	 * Jimeng video generation (SSE stream).
-	 * Backend: POST /api/workflow/jimeng/video/generate:stream
+	 * Backend: POST /api/third-party/jimeng/video/generate:stream
 	 */
 	async *jimengVideoGenerateStream(
 		form: FormData,
 		signal?: AbortSignal
 	): AsyncGenerator<JimengGenerateStreamEvent, void, void> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const ipcPayload = await formDataToObject(form)
+				const generator = (window as any).dweb.thirdParty.jimeng.videoGenerateStream(ipcPayload)
+				yield* consumeThirdPartyIpcStream(generator, 'jimeng/video/generate:stream')
+				return
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] jimeng/video/generate:stream IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const headers: Record<string, string> = {
 			Accept: 'text/event-stream'
 		}
 		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
 
-		const res = await this.fetchWithLog(this.url('/api/workflow/jimeng/video/generate:stream'), {
+		const res = await this.fetchWithLog(this.url('/api/third-party/jimeng/video/generate:stream'), {
 			method: 'POST',
 			headers,
 			body: form,
@@ -1575,6 +1790,16 @@ export class ComfyUIBridgeService {
 	}
 
 	async ping(comfyBaseUrl: string): Promise<PingResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.runtime.ping({ baseUrl: comfyBaseUrl })
+				if (ipcResult && typeof ipcResult === 'object') {
+					return ipcResult as PingResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] ping IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/ping'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -1593,6 +1818,16 @@ export class ComfyUIBridgeService {
 	}
 
 	async listWorkflows(comfyBaseUrl: string): Promise<WorkflowsListResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.list({ baseUrl: comfyBaseUrl })
+				if (ipcResult && typeof ipcResult === 'object') {
+					return ipcResult as WorkflowsListResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] workflows/list IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/workflows/list'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -1611,6 +1846,16 @@ export class ComfyUIBridgeService {
 	}
 
 	async getWorkflow(comfyBaseUrl: string, workflowPath: string): Promise<WorkflowGetResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.get({ baseUrl: comfyBaseUrl, workflowPath })
+				if (ipcResult && typeof ipcResult === 'object') {
+					return ipcResult as WorkflowGetResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] workflows/get IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/workflows/get'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -1634,6 +1879,36 @@ export class ComfyUIBridgeService {
 		files: File[] = [],
 		overrides?: { positivePrompt?: string; negativePrompt?: string; confirmReuseRecord?: boolean }
 	): Promise<RunResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const dataUrlFiles = await filesToDataUrlFiles(files)
+				const ipcPayload = {
+					baseUrl: comfyBaseUrl,
+					workflowPath,
+					positivePrompt: overrides?.positivePrompt,
+					negativePrompt: overrides?.negativePrompt,
+					confirmReuseRecord: overrides?.confirmReuseRecord,
+					files: dataUrlFiles
+				}
+				const ipcResult = await (window as any).dweb.comfyui.runtime.run(ipcPayload)
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							status: ipcResult.status || 500,
+							baseUrl: comfyBaseUrl,
+							error: ipcResult.error || 'run failed via IPC',
+							requiresConfirm: ipcResult.requiresConfirm,
+							fallbackRecord: ipcResult.fallbackRecord,
+							comfyuiError: ipcResult.comfyuiError
+						} as RunResponse
+					}
+					return ipcResult as RunResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] run IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const form = new FormData()
 		form.set('baseUrl', comfyBaseUrl)
 		form.set('workflowPath', workflowPath)
@@ -1674,6 +1949,16 @@ export class ComfyUIBridgeService {
 	}
 
 	async outputs(comfyBaseUrl: string, promptId: string): Promise<OutputsResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.runtime.outputs({ baseUrl: comfyBaseUrl, promptId })
+				if (ipcResult && typeof ipcResult === 'object') {
+					return ipcResult as OutputsResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] outputs IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/outputs'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -2152,6 +2437,16 @@ export class ComfyUIBridgeService {
 	}
 
 	async cancel(comfyBaseUrl: string, promptId: string): Promise<CancelResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.runtime.cancel({ baseUrl: comfyBaseUrl, promptId })
+				if (ipcResult && typeof ipcResult === 'object') {
+					return ipcResult as CancelResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] cancel IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/cancel'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -2170,6 +2465,16 @@ export class ComfyUIBridgeService {
 	}
 
 	async job(comfyBaseUrl: string, id: string): Promise<JobResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.runtime.job({ baseUrl: comfyBaseUrl, id })
+				if (ipcResult && typeof ipcResult === 'object') {
+					return ipcResult as JobResponse
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] job IPC failed, falling back to HTTP:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/job'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),

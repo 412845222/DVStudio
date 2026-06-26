@@ -249,6 +249,67 @@ export const NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS = [
 	{ value: 'doubao-seedream-5-0-lite-260128', label: 'Seedream v5.0 Lite' }
 ]
 
+export const NODE_CHAT_SEEDREAM_RESOLUTION_OPTIONS = {
+	'doubao-seedream-5-0-260128': [
+		{ value: '2K', label: '2K' },
+		{ value: '3K', label: '3K' },
+		{ value: '4K', label: '4K' }
+	],
+	'doubao-seedream-5-0-lite-260128': [
+		{ value: '2K', label: '2K' },
+		{ value: '3K', label: '3K' },
+		{ value: '4K', label: '4K' }
+	],
+	'doubao-seedream-4-5-251128': [
+		{ value: '2K', label: '2K' },
+		{ value: '4K', label: '4K' }
+	],
+	'doubao-seedream-4-0-250828': [
+		{ value: '1K', label: '1K' },
+		{ value: '2K', label: '2K' },
+		{ value: '4K', label: '4K' }
+	]
+}
+
+export const NODE_CHAT_SEEDREAM_OUTPUT_FORMAT_OPTIONS = {
+	'doubao-seedream-5-0-260128': [
+		{ value: 'png', label: 'PNG' },
+		{ value: 'jpeg', label: 'JPEG' }
+	],
+	'doubao-seedream-5-0-lite-260128': [
+		{ value: 'png', label: 'PNG' },
+		{ value: 'jpeg', label: 'JPEG' }
+	],
+	'doubao-seedream-4-5-251128': [
+		{ value: 'jpeg', label: 'JPEG' }
+	],
+	'doubao-seedream-4-0-250828': [
+		{ value: 'jpeg', label: 'JPEG' }
+	]
+}
+
+export const NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS = [1, 2, 4]
+
+export const getSeedreamResolutionOptions = (modelVersion: string) => {
+	return (
+		NODE_CHAT_SEEDREAM_RESOLUTION_OPTIONS[
+			modelVersion as keyof typeof NODE_CHAT_SEEDREAM_RESOLUTION_OPTIONS
+		] || NODE_CHAT_SEEDREAM_RESOLUTION_OPTIONS['doubao-seedream-4-5-251128']
+	)
+}
+
+export const getSeedreamOutputFormatOptions = (modelVersion: string) => {
+	return (
+		NODE_CHAT_SEEDREAM_OUTPUT_FORMAT_OPTIONS[
+			modelVersion as keyof typeof NODE_CHAT_SEEDREAM_OUTPUT_FORMAT_OPTIONS
+		] || NODE_CHAT_SEEDREAM_OUTPUT_FORMAT_OPTIONS['doubao-seedream-4-5-251128']
+	)
+}
+
+export const supportsSeedreamOutputFormat = (modelVersion: string) => {
+	return modelVersion.includes('5-0')
+}
+
 export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [{ value: 'seedance', label: 'Seedance (字节方舟)' }]
 
 export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [{ value: 'meshy', label: 'Meshy' }]
@@ -278,7 +339,7 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 		case 'image':
 			return {
 				modelId: undefined,
-				model: 'nanobanana',
+				model: 'seedream',
 				nanobananaModelVersion: 'gemini-2.5-flash-image',
 				meshyImageAiModel: 'nano-banana',
 				meshyAspectRatio: '1:1',
@@ -288,6 +349,13 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 				meshySeed: -1,
 				meshyOutputImageCount: 1,
 				seedreamModelVersion: 'doubao-seedream-4-5-251128',
+				seedreamSize: '2K',
+				seedreamAspectRatio: '1:1',
+				seedreamOutputFormat: 'jpeg',
+				seedreamQuantity: 1,
+				seedreamWatermark: false,
+				seedreamSeed: -1,
+				seedreamNegativePrompt: '',
 				resolution: '1024x1024',
 				aspectRatio: '1:1',
 				quantity: 1

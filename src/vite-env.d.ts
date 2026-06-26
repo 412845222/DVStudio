@@ -18,7 +18,7 @@ declare const __DWEB_REPO_URL__: string
 
 interface Window {
   __DWEB_REPO_URL__?: string
-  __DWEB_RUNTIME__?: { platform?: 'electron' | 'web' }
+  __DWEB_RUNTIME__?: { platform?: 'electron' | 'web'; isElectron?: boolean }
   __DWEB_BACKEND_BASE_URL__?: string
   __DWEB_BACKEND_MODE__?: 'normal' | 'migration'
   __DWEB_CLIENT_SETTINGS?: import('./electronBridge/types').ClientSettings
@@ -34,13 +34,13 @@ interface Window {
       echo?: (payload: unknown) => Promise<{ ok: boolean; value?: { echo: unknown; timestamp: number }; error?: string }>
       getUserAgreement?: () => Promise<{ ok: boolean; value?: { content: string }; error?: string }>
       getMigrationStatus?: () => Promise<unknown>
+      getBackendRuntimeState?: () => Promise<import('./electronBridge/types').BackendRuntimeState | null>
+      onBackendRuntimeStateChanged?: (handler: (state: import('./electronBridge/types').BackendRuntimeState) => void) => number | string
+      offBackendRuntimeStateChanged?: (listenerId: number | string) => void
       pingBackend?: () => Promise<import('./electronBridge/types').BackendPingResult>
       startBackend?: () => Promise<import('./electronBridge/types').BackendStartResult>
       restartBackend?: () => Promise<import('./electronBridge/types').BackendRestartResult>
       getBackendStatus?: () => Promise<import('./electronBridge/types').BackendStatus | null>
-      getBackendRuntimeState?: () => Promise<import('./electronBridge/types').BackendRuntimeState | null>
-      onBackendRuntimeStateChanged?: (handler: (state: import('./electronBridge/types').BackendRuntimeState) => void) => number | string
-      offBackendRuntimeStateChanged?: (listenerId: number | string) => void
       getBackendLogs?: (options?: { since?: number }) => Promise<import('./electronBridge/types').BackendLogsResult | null>
       clearBackendLogs?: () => Promise<{ ok: boolean } | null>
       collectDiagnostics?: () => Promise<import('./electronBridge/types').DiagnosticsResult | null>
@@ -72,6 +72,88 @@ interface Window {
       taskDetail?: (payload: { taskId: string }) => Promise<import('./network/ComfyUIBridgeService').SeedanceTaskDetailResponse>
       sync?: (payload?: Record<string, unknown>) => Promise<import('./network/ComfyUIBridgeService').SeedanceSyncTasksResponse>
     }
+    chat?: {
+      conversations?: {
+        list?: () => Promise<{ ok: boolean; items?: unknown[]; error?: string }>
+        create?: (payload: { title?: string; projectId?: number | string }) => Promise<{ ok: boolean; id?: string; conversation?: unknown; error?: string }>
+        get?: (payload: { id: string }) => Promise<{ ok: boolean; conversation?: unknown; messages?: unknown[]; error?: string }>
+        delete?: (payload: { id: string }) => Promise<{ ok: boolean; error?: string }>
+        updateTitle?: (payload: { id: string; title: string }) => Promise<{ ok: boolean; error?: string }>
+      }
+      messages?: {
+        send?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; message?: unknown; error?: string }>
+        stream?: (payload: Record<string, unknown>) => AsyncGenerator<{ type?: string; [key: string]: unknown }, void, void>
+      }
+    }
+    export?: {
+      jobs?: {
+        create?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; job?: unknown; jobId?: string; error?: string }>
+        get?: (payload: { jobId: string }) => Promise<{ ok: boolean; job?: unknown; error?: string }>
+        listByProject?: (payload: { projectId: number | string }) => Promise<{ ok: boolean; items?: unknown[]; error?: string }>
+        stream?: (payload: { jobId: string }) => AsyncGenerator<Record<string, unknown>, void, void>
+        finalize?: (payload: { jobId: string }) => Promise<{ ok: boolean; job?: unknown; error?: string }>
+        file?: (payload: { jobId: string }) => Promise<{ ok: boolean; filePath?: string; fileName?: string; error?: string }>
+      }
+      frames?: {
+        upload?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+        uploadRaw?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+        uploadBatch?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+      }
+    }
+    editor?: {
+      components?: {
+        list?: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; items?: unknown[]; total?: number; error?: string }>
+        get?: (payload: { id: string }) => Promise<{ ok: boolean; item?: unknown; error?: string }>
+        save?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; item?: unknown; error?: string }>
+        delete?: (payload: { id: string }) => Promise<{ ok: boolean; error?: string }>
+        import?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; imported?: number; error?: string }>
+      }
+    }
+    comfyui?: {
+      proxy?: (payload: { method?: string; path: string; body?: unknown; headers?: Record<string, string> }) => Promise<{ ok: boolean; status?: number; data?: unknown; error?: string }>
+      workflows?: {
+        list?: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; items?: unknown[]; error?: string }>
+        get?: (payload: { id: string }) => Promise<{ ok: boolean; workflow?: unknown; error?: string }>
+        save?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; workflow?: unknown; error?: string }>
+        delete?: (payload: { id: string }) => Promise<{ ok: boolean; error?: string }>
+      }
+      jobs?: {
+        list?: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; items?: unknown[]; error?: string }>
+        get?: (payload: { id: string }) => Promise<{ ok: boolean; job?: unknown; error?: string }>
+        create?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; jobId?: string; error?: string }>
+        cancel?: (payload: { id: string }) => Promise<{ ok: boolean; error?: string }>
+      }
+      runtime?: {
+        ping?: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; status?: string; [key: string]: unknown }>
+        workflows?: {
+          list?: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; items?: unknown[]; error?: string }>
+          get?: (payload: { baseUrl?: string; workflowPath: string }) => Promise<{ ok: boolean; workflow?: unknown; error?: string }>
+        }
+        run?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; promptId?: string; baseUrl?: string; promptSource?: string; result?: unknown; comfyuiError?: unknown; error?: string; status?: number }>
+        outputs?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; outputs?: unknown[]; error?: string }>
+        cancel?: (payload: { baseUrl?: string; promptId: string }) => Promise<{ ok: boolean; error?: string }>
+        job?: (payload: { baseUrl?: string; promptId: string }) => Promise<{ ok: boolean; result?: unknown; error?: string; status?: number }>
+      }
+    }
+    thirdParty?: {
+      nanobanana?: {
+        refCache?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; cacheIds?: string[]; error?: string }>
+        generate?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; imageUrl?: string; error?: string; [key: string]: unknown }>
+        generateStream?: (payload: Record<string, unknown>) => AsyncGenerator<import('./network/ComfyUIBridgeService').BlueprintChatStreamEvent, void, void>
+      }
+      seedream?: {
+        refCache?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; cacheIds?: string[]; error?: string }>
+        generateStream?: (payload: Record<string, unknown>) => AsyncGenerator<import('./network/ComfyUIBridgeService').BlueprintChatStreamEvent, void, void>
+      }
+      jimeng?: {
+        imageGenerateStream?: (payload: Record<string, unknown>) => AsyncGenerator<import('./network/ComfyUIBridgeService').JimengGenerateStreamEvent, void, void>
+        videoGenerateStream?: (payload: Record<string, unknown>) => AsyncGenerator<import('./network/ComfyUIBridgeService').JimengGenerateStreamEvent, void, void>
+      }
+      blueprint?: {
+        chat?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; text?: string; content?: string; error?: string; [key: string]: unknown }>
+        chatStream?: (payload: Record<string, unknown>) => AsyncGenerator<import('./network/ComfyUIBridgeService').BlueprintChatStreamEvent, void, void>
+      }
+    }
     projects?: {
       list?: () => Promise<{ ok: boolean; projects?: unknown[]; error?: string }>
       save?: (payload: { name: string; snapshot: unknown; projectId?: number | null }) => Promise<{ ok: boolean; project?: unknown; error?: string }>
@@ -87,10 +169,17 @@ interface Window {
       resolve?: (payload: unknown) => Promise<{ ok: boolean; resolved?: boolean; asset?: unknown; error?: string }>
       repair?: (payload: unknown) => Promise<{ ok: boolean; repaired?: boolean; asset?: unknown; error?: string }>
       repairAll?: (payload: unknown) => Promise<{ ok: boolean; patches?: Record<string, unknown>; failed?: string[]; changed?: number; error?: string }>
+      registerRoot?: (payload: unknown) => Promise<{ ok: boolean; error?: string }>
+      clearRoot?: (payload: unknown) => Promise<{ ok: boolean; error?: string }>
+      validateRoot?: (payload: unknown) => Promise<{ ok: boolean; error?: string }>
+      rootSnapshot?: () => Promise<Record<string, unknown> | null>
+      diagnose?: (payload: unknown) => Promise<{ ok: boolean; error?: string }>
+      accessLogs?: (payload: unknown) => Promise<{ ok: boolean; logs?: unknown[]; error?: string }>
     }
     window?: {
       minimize?: () => Promise<{ ok: boolean; error?: string }>
       toggleMaximize?: () => Promise<{ ok: boolean; maximized?: boolean; error?: string }>
+      isMaximized?: () => Promise<{ ok: boolean; maximized?: boolean; error?: string }>
       close?: () => Promise<{ ok: boolean; error?: string }>
       reload?: () => Promise<{ ok: boolean; error?: string }>
       openDevTools?: () => Promise<{ ok: boolean; opened?: boolean; error?: string }>

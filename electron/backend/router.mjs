@@ -8,7 +8,7 @@ export function createRouter({ routes, contextFactory, mainWindow }) {
 
   function wrapHandler(channel, handler, isStream = false) {
     if (isStream) {
-      return createStreamHandler(async (event, payload) => {
+      return createStreamHandler(channel, async (event, payload) => {
         const ctx = contextFactory ? contextFactory() : {}
         return await handler(ctx, payload, event)
       })

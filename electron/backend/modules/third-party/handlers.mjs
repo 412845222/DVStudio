@@ -12,22 +12,26 @@ export async function nanobananaGenerate(ctx, payload) {
 	return service.nanobananaGenerate(ctx, payload)
 }
 
-export async function nanobananaGenerateStream(ctx, payload) {
+export function nanobananaGenerateStream(ctx, payload) {
 	return service.nanobananaGenerateStream(ctx, payload)
 }
 
-export async function seedreamGenerateStream(ctx, payload) {
+export function seedreamGenerateStream(ctx, payload) {
 	return service.seedreamGenerateStream(ctx, payload)
 }
 
-export async function jimengImageGenerateStream(ctx, payload) {
+export function jimengImageGenerateStream(ctx, payload) {
 	return service.jimengImageGenerateStream(ctx, payload)
 }
 
-export async function jimengVideoGenerateStream(ctx, payload) {
+export function jimengVideoGenerateStream(ctx, payload) {
 	return service.jimengVideoGenerateStream(ctx, payload)
 }
 
-export async function blueprintChatStream(ctx, payload) {
+export async function blueprintChat(ctx, payload) {
+	return service.blueprintChat(ctx, payload)
+}
+
+export function blueprintChatStream(ctx, payload) {
 	return service.blueprintChatStream(ctx, payload)
 }

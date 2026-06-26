@@ -79,25 +79,74 @@ function migrateBinIfMedia(pid, root, filePath, resourceId, resource) {
 	return null
 }
 
-function scanForBasename(root, targetName) {
+function scanForBasename(projectRoot, targetName) {
 	const name = String(targetName || '').trim()
+	const root = String(projectRoot || '').trim()
 	if (!root || !name || !fs.existsSync(root)) return ''
-	const stack = [root]
-	while (stack.length) {
-		const current = stack.pop()
-		let entries = []
+	const skipDirs = new Set(['node_modules', '.git', '__pycache__', '.venv'])
+	const allowedHiddenDirs = new Set(['.dvcache'])
+	const searchRoots = [
+		path.resolve(root, 'Content', 'Media'),
+		path.resolve(root, 'Content', 'Generated'),
+		path.resolve(root, 'generated-assets'),
+		path.resolve(root, '.dvcache', 'bin')
+	].filter((dir) => {
 		try {
-			entries = fs.readdirSync(current, { withFileTypes: true })
+			return fs.existsSync(dir) && fs.statSync(dir).isDirectory()
 		} catch {
-			continue
+			return false
 		}
-		for (const entry of entries) {
-			const full = path.resolve(current, entry.name)
-			if (entry.isFile() && entry.name === name) return full
-			if (entry.isDirectory() && entry.name !== 'node_modules') stack.push(full)
+	})
+	if (searchRoots.length === 0) return ''
+
+	const nameLower = name.toLowerCase()
+	const hasExt = path.extname(nameLower).length > 0
+
+	let exactMatch = ''
+	let basenameMatch = ''
+	let prefixMatch = ''
+
+	for (const searchRoot of searchRoots) {
+		const stack = [searchRoot]
+		while (stack.length) {
+			const current = stack.pop()
+			let entries = []
+			try {
+				entries = fs.readdirSync(current, { withFileTypes: true })
+			} catch {
+				continue
+			}
+			for (const entry of entries) {
+				const full = path.resolve(current, entry.name)
+				if (entry.isFile()) {
+					const entryLower = entry.name.toLowerCase()
+					if (entryLower === nameLower) {
+						return full
+					}
+					if (!hasExt && !basenameMatch) {
+						const entryBase = path.basename(entryLower, path.extname(entryLower))
+						if (entryBase === nameLower) {
+							basenameMatch = full
+						}
+					}
+					if (!prefixMatch && entryLower.startsWith(nameLower)) {
+						const sep = entryLower.charAt(nameLower.length)
+						if (sep === '.' || sep === '_' || sep === '-') {
+							prefixMatch = full
+						}
+					}
+				}
+				if (entry.isDirectory() && !skipDirs.has(entry.name)) {
+					const isHidden = entry.name.startsWith('.')
+					if (!isHidden || allowedHiddenDirs.has(entry.name)) {
+						stack.push(full)
+					}
+				}
+			}
 		}
 	}
-	return ''
+
+	return basenameMatch || prefixMatch || ''
 }
 
 function makeCanonicalAsset(projectId, root, filePath, resourceId, resource, relOverride = '') {
@@ -187,10 +236,8 @@ async function repairOneProjectAsset(projectId, resourceId, resource) {
 		if (base) names.add(base)
 	}
 
-	const mediaRoot = path.resolve(root, 'Content', 'Media')
-	const generatedRoot = path.resolve(root, 'Content', 'Generated')
 	for (const name of names) {
-		const hit = scanForBasename(mediaRoot, name) || scanForBasename(generatedRoot, name)
+		const hit = scanForBasename(root, name)
 		if (hit) {
 			const migrated = migrateBinIfMedia(pid, root, hit, resourceId, resource)
 			if (migrated) return migrated

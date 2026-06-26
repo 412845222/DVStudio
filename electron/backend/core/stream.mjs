@@ -7,22 +7,26 @@ export function createIpcStream(mainWindow, baseChannel, requestId) {
   const endChannel = baseChannel + CHANNEL_SUFFIX_END
   const errorChannel = baseChannel + CHANNEL_SUFFIX_ERROR
 
+  const safeSend = (channel, ...args) => {
+    if (mainWindow && !mainWindow.isDestroyed?.()) {
+      try {
+        mainWindow.webContents.send(channel, ...args)
+      } catch (err) {
+        console.warn('[stream] Failed to send on channel', channel, ':', err?.message || err)
+      }
+    }
+  }
+
   return {
     send(chunk) {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(dataChannel, requestId, chunk)
-      }
+      safeSend(dataChannel, requestId, chunk)
     },
     end() {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(endChannel, requestId)
-      }
+      safeSend(endChannel, requestId)
     },
     error(err) {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        const message = err?.message || String(err || 'Stream error')
-        mainWindow.webContents.send(errorChannel, requestId, { error: message })
-      }
+      const message = err?.message || String(err || 'Stream error')
+      safeSend(errorChannel, requestId, { error: message })
     },
   }
 }
@@ -39,12 +43,13 @@ export async function pipeAsyncGeneratorToIpc(generator, ipcStream) {
   }
 }
 
-export function createStreamHandler(handlerFactory) {
+export function createStreamHandler(channel, handlerFactory) {
   return async (event, payload) => {
     const requestId = payload?.requestId || Date.now().toString(36)
-    const mainWindow = event.sender.getOwnerBrowserWindow()
+    const streamChannel = channel || event?.channel || 'dweb:unknown:stream'
+    const baseChannel = streamChannel.replace(/:stream$/, '')
     
-    const baseChannel = event.channel.replace(':stream', '')
+    const mainWindow = event?.sender?.getOwnerBrowserWindow?.()
     const ipcStream = createIpcStream(mainWindow, baseChannel, requestId)
 
     try {

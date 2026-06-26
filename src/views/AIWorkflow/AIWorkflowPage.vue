@@ -6214,7 +6214,7 @@ const { createNodeFromDraggedMeshyTask } = useAIWorkflowMeshyDrop({
 	pushToast: (message, tone) => pushToast(message, tone)
 })
 
-const { stopMeshyPoll, applyMeshyTaskResult, startMeshyPoll, clearMeshyRuntime } =
+const { stopMeshyPoll, applyMeshyTaskResult, startMeshyPoll, recoverMeshyTaskStates, clearMeshyRuntime } =
 	useAIWorkflowMeshyRuntime({
 		store,
 		getComfyService: () => comfyService,
@@ -8062,6 +8062,7 @@ onMounted(() => {
 		}
 		await tryAutoLoadLastProject()
 		await recoverComfyUIRunStates({ silent: true })
+		await recoverMeshyTaskStates({ silent: true })
 		if (!currentProjectId.value) {
 			noProjectSelected.value = true
 		}
@@ -8131,6 +8132,7 @@ async function runProjectEnterSequence(
 			async () => {
 				try {
 					await recoverComfyUIRunStates({ silent: true })
+					await recoverMeshyTaskStates({ silent: true })
 				} catch {
 					// 资源恢复失败不阻断主流程，仅记录
 				}

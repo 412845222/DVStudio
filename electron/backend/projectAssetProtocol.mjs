@@ -189,6 +189,75 @@ function diagnoseFilePath(root, relPath) {
 	return result
 }
 
+function scanDirForName(dir, targetName) {
+	if (!dir || !fs.existsSync(dir)) return null
+	const skipDirs = new Set(['node_modules', '.git', '__pycache__', '.venv'])
+	const allowedHiddenDirs = new Set(['.dvcache'])
+	const nameLower = String(targetName || '').trim().toLowerCase()
+	const hasExt = path.extname(nameLower).length > 0
+	let exactMatch = null
+	let basenameMatch = null
+	let prefixMatch = null
+	try {
+		const stack = [dir]
+		while (stack.length) {
+			const current = stack.pop()
+			let entries
+			try {
+				entries = fs.readdirSync(current, { withFileTypes: true })
+			} catch {
+				continue
+			}
+			for (const entry of entries) {
+				const full = path.resolve(current, entry.name)
+				if (entry.isFile()) {
+					const entryLower = entry.name.toLowerCase()
+					if (entryLower === nameLower) {
+						return full
+					}
+					if (!hasExt) {
+						const entryBase = path.basename(entryLower, path.extname(entryLower))
+						if (entryBase === nameLower && !basenameMatch) {
+							basenameMatch = full
+						}
+						if (!prefixMatch && entryLower.startsWith(nameLower)) {
+							const sep = entryLower.charAt(nameLower.length)
+							if (sep === '.' || sep === '_' || sep === '-') {
+								prefixMatch = full
+							}
+						}
+					}
+				}
+				if (entry.isDirectory() && !skipDirs.has(entry.name)) {
+					const isHidden = entry.name.startsWith('.')
+					if (!isHidden || allowedHiddenDirs.has(entry.name)) {
+						stack.push(full)
+					}
+				}
+			}
+		}
+	} catch {
+		// ignore
+	}
+	return basenameMatch || prefixMatch
+}
+
+function findFileByBasenameInProject(root, targetName) {
+	const name = String(targetName || '').trim()
+	if (!root || !name) return null
+	const searchDirs = [
+		path.resolve(root, 'Content', 'Media'),
+		path.resolve(root, 'Content', 'Generated'),
+		path.resolve(root, 'generated-assets'),
+		path.resolve(root, CACHE_DIR, 'bin')
+	]
+	for (const dir of searchDirs) {
+		const hit = scanDirForName(dir, name)
+		if (hit) return hit
+	}
+	return null
+}
+
 function guessMimeType(filePath) {
 	const lower = String(filePath || '').toLowerCase()
 	const extMap = {
@@ -381,8 +450,32 @@ function handleProjectAssetRequest(request) {
 	const isBinRequest = reqExt === '.bin'
 	if (isBinRequest && parts.length >= 1) {
 		const fileName = parts[parts.length - 1]
+		const baseNoExt = path.basename(fileName, '.bin')
 		candidates.push(CACHE_BIN_DIR + '/' + fileName)
 		candidates.push(CACHE_DIR + '/' + fileName)
+		const mediaSubDirs = ['images', 'videos', 'audio', 'models']
+		const mediaExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.mp4', '.mov', '.webm', '.glb']
+		for (const sub of mediaSubDirs) {
+			for (const ext of mediaExts) {
+				candidates.push('Content/Media/' + sub + '/' + baseNoExt + ext)
+			}
+		}
+		for (const ext of mediaExts) {
+			candidates.push('Content/Media/' + baseNoExt + ext)
+			candidates.push('Content/Generated/' + baseNoExt + ext)
+		}
+	}
+
+	if (parts.length >= 1) {
+		const fileName = parts[parts.length - 1]
+		const fileExt = path.extname(fileName).toLowerCase()
+		if (fileExt && fileExt !== '.bin') {
+			const mediaSubDirs = ['images', 'videos', 'audio', 'models', 'thumbnails', 'exports', 'generated']
+			for (const sub of mediaSubDirs) {
+				candidates.push('Content/Media/' + sub + '/' + fileName)
+			}
+			candidates.push('Content/Generated/' + fileName)
+		}
 	}
 
 	let resolvedPath = null
@@ -412,6 +505,21 @@ function handleProjectAssetRequest(request) {
 			}
 		}
 		if (resolvedPath) break
+	}
+
+	if (!resolvedPath && parts.length >= 1) {
+		const fileName = parts[parts.length - 1]
+		const fallbackHit = findFileByBasenameInProject(root, fileName)
+		if (fallbackHit) {
+			resolvedPath = fallbackHit
+			resolvedFromRoot = root
+			triedCandidates.push({
+				root: root,
+				candidate: `[fallback-search]${fileName}`,
+				resolved: fallbackHit,
+				reason: 'found_by_basename_search'
+			})
+		}
 	}
 
 	let filePath = resolvedPath
@@ -475,6 +583,44 @@ function handleProjectAssetRequest(request) {
 			resolvedPath: filePath
 		})
 		return new Response('Asset Is Not A File', { status: 404 })
+	}
+
+	const fileExt = path.extname(filePath).toLowerCase()
+	if (fileExt === '.bin') {
+		const reqExt2 = path.extname(rel).toLowerCase()
+		const isMediaRequest = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.mp4', '.mov', '.webm', '.mp3', '.wav', '.ogg', '.glb'].includes(reqExt2)
+		const kindGuess = reqExt2 === '.mp4' || reqExt2 === '.mov' || reqExt2 === '.webm' ? 'video'
+			: reqExt2 === '.mp3' || reqExt2 === '.wav' || reqExt2 === '.ogg' ? 'audio'
+			: reqExt2 === '.glb' ? 'file' : 'image'
+		if (isMediaRequest || (!reqExt2 || reqExt2 === '.bin')) {
+			try {
+				const preferredName = path.basename(rel)
+				const migrated = migrateBinCacheMediaToMedia({
+					projectId: parsed.projectId,
+					binFilePath: filePath,
+					kind: isMediaRequest ? kindGuess : 'image',
+					preferredName
+				})
+				if (migrated?.ok && migrated.migrated && migrated.asset?.absolutePath && fs.existsSync(migrated.asset.absolutePath)) {
+					filePath = migrated.asset.absolutePath
+					try {
+						stat = fs.statSync(filePath)
+					} catch {
+						// keep old stat
+					}
+					logAccess({
+						status: 'BIN_MIGRATED_ON_THE_FLY',
+						projectId: parsed.projectId,
+						requestedPath: rel,
+						resolvedPath: filePath,
+						candidateCount: candidates.length,
+						size: stat.size
+					})
+				}
+			} catch (migrationErr) {
+				console.debug('[dweb-protocol] on-the-fly bin migration failed:', String(migrationErr?.message || migrationErr))
+			}
+		}
 	}
 
 	logAccess({
@@ -747,12 +893,13 @@ export function cleanupProjectRootBinFiles(projectId) {
 		}
 	}
 
-	const commonSkipDirs = [CACHE_DIR, '.git', 'node_modules', '.venv', '__pycache__']
+	const rootSkipDirs = [CACHE_DIR, '.git', 'node_modules', '.venv', '__pycache__']
+	const mediaSkipDirs = ['thumbnails', 'generated', 'exports', '.git', 'node_modules', '.venv', '__pycache__']
 
 	const scanTargets = [
 		{ dir: root, recursive: false },
-		{ dir: path.resolve(root, 'Content', 'Media'), recursive: true, skipDirNames: ['thumbnails', 'generated', 'exports', ...commonSkipDirs] },
-		{ dir: path.resolve(root, 'generated-assets'), recursive: true, skipDirNames: commonSkipDirs }
+		{ dir: path.resolve(root, 'Content', 'Media'), recursive: true, skipDirNames: mediaSkipDirs },
+		{ dir: path.resolve(root, 'generated-assets'), recursive: true, skipDirNames: rootSkipDirs }
 	]
 
 	const binFiles = []
@@ -1726,30 +1873,6 @@ export function resolveProjectAsset({ projectId, kind, name, projectRelativePath
 	return { ok: true, resolved: false, reason: 'not_found' }
 }
 
-function scanDirForName(dir, targetName) {
-	if (!dir || !fs.existsSync(dir)) return null
-	try {
-		const stack = [dir]
-		while (stack.length) {
-			const current = stack.pop()
-			let entries
-			try {
-				entries = fs.readdirSync(current, { withFileTypes: true })
-			} catch {
-				continue
-			}
-			for (const entry of entries) {
-				const full = path.resolve(current, entry.name)
-				if (entry.isFile() && entry.name === targetName) return full
-				if (entry.isDirectory()) stack.push(full)
-			}
-		}
-	} catch {
-		// ignore
-	}
-	return null
-}
-
 export function repairProjectAsset({ projectId, kind, name, projectRelativePath }) {
 	const id = Number(projectId)
 	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
@@ -1761,10 +1884,7 @@ export function repairProjectAsset({ projectId, kind, name, projectRelativePath 
 		String(name || '').trim() || path.basename(String(projectRelativePath || '')).trim()
 	if (!targetName) return { ok: false, error: 'name or projectRelativePath is required' }
 
-	const mediaRoot = path.resolve(root, 'Content', 'Media')
-	const generatedRoot = path.resolve(root, 'Content', 'Generated')
-
-	const hit = scanDirForName(mediaRoot, targetName) || scanDirForName(generatedRoot, targetName)
+	const hit = findFileByBasenameInProject(root, targetName)
 	if (!hit) return { ok: true, repaired: false, reason: 'not_found' }
 
 	const lowerHit = hit.toLowerCase().replace(/\\/g, '/')
@@ -1945,6 +2065,18 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 		candidates.push(CACHE_DIR + '/' + fileName)
 	}
 
+	if (parts.length >= 1) {
+		const fileName = parts[parts.length - 1]
+		const fileExt = path.extname(fileName).toLowerCase()
+		if (fileExt && fileExt !== '.bin') {
+			const mediaSubDirs = ['images', 'videos', 'audio', 'models', 'thumbnails', 'exports', 'generated']
+			for (const sub of mediaSubDirs) {
+				candidates.push('Content/Media/' + sub + '/' + fileName)
+			}
+			candidates.push('Content/Generated/' + fileName)
+		}
+	}
+
 	// 去重
 	const uniqCandidates = Array.from(new Set(candidates.filter(Boolean)))
 
@@ -1982,6 +2114,31 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 			result.candidates.push(entry)
 		}
 		if (hitPath) break
+	}
+
+	if (!hitPath && parts.length >= 1) {
+		const fileName = parts[parts.length - 1]
+		const fallbackHit = findFileByBasenameInProject(root, fileName)
+		if (fallbackHit) {
+			hitPath = fallbackHit
+			result.resolvedTo = fallbackHit
+			result.fileExists = true
+			result.fileIsFile = true
+			try {
+				result.fileSize = Number(fs.statSync(fallbackHit).size || 0)
+			} catch {
+				result.fileSize = 0
+			}
+			result.candidates.push({
+				root: root,
+				candidate: `[fallback-search]${fileName}`,
+				resolved: fallbackHit,
+				reason: 'found_by_basename_search',
+				exists: true,
+				isFile: true,
+				size: result.fileSize
+			})
+		}
 	}
 
 	if (hitPath) {

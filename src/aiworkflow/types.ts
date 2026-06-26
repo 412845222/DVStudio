@@ -789,11 +789,28 @@ export type WorkflowEdge = {
 
 export type WorkflowNodeChatType = 'text' | 'image' | 'video' | 'model3d'
 
+export type WorkflowNodeChatTextParams = {
+	modelId?: string
+	model?: string
+	textModelVersion?: string
+	speed?: 'fast' | 'normal' | 'slow'
+	thinking?: string
+	responseFormat?: string
+	maxTokens?: number
+}
+
 export type WorkflowNodeChatImageParams = {
 	modelId?: string
 	model?: string
 	nanobananaModelVersion?: string
 	seedreamModelVersion?: string
+	seedreamSize?: string
+	seedreamAspectRatio?: string
+	seedreamOutputFormat?: string
+	seedreamQuantity?: number
+	seedreamWatermark?: boolean
+	seedreamSeed?: number
+	seedreamNegativePrompt?: string
 	resolution?: string
 	aspectRatio?: string
 	quantity?: number
@@ -823,30 +840,43 @@ export type WorkflowNodeChatVideoParams = {
 
 export type WorkflowNodeChatModel3DParams = {
 	provider?: 'tripo3d' | 'meshy'
+	modelId?: string
+	model?: string
 	tripoProvider?: 'dreammaker' | 'official'
 	tripoMode?: 'image-to-3d' | 'multi-image-to-3d' | 'retopo'
 	tripoOutputFormat?: 'fbx' | 'glb'
 	tripoTextureQuality?: 'standard' | 'detailed'
 	tripoModelVersion?: string
+	meshyMode?: string
+	meshyAiModel?: string
+	meshyModelType?: string
+	meshyTopology?: string
+	meshySymmetryMode?: string
+	meshyOriginAt?: string
+	meshyPoseMode?: string
+	meshyOutputFormat?: string
+	meshyMultiView?: boolean
+	meshySeed?: number
 }
 
-export type WorkflowNodeChatTextParams = {
-	modelId?: string
-	speed?: 'fast' | 'normal' | 'slow'
-}
+export type WorkflowNodeChatParamRecord =
+	& Partial<WorkflowNodeChatTextParams>
+	& Partial<WorkflowNodeChatImageParams>
+	& Partial<WorkflowNodeChatVideoParams>
+	& Partial<WorkflowNodeChatModel3DParams>
 
 export type WorkflowNodeChatParams = {
-	text?: WorkflowNodeChatTextParams
-	image?: WorkflowNodeChatImageParams
-	video?: WorkflowNodeChatVideoParams
-	model3d?: WorkflowNodeChatModel3DParams
+	text?: WorkflowNodeChatParamRecord
+	image?: WorkflowNodeChatParamRecord
+	video?: WorkflowNodeChatParamRecord
+	model3d?: WorkflowNodeChatParamRecord
 }
 
 export type WorkflowNodeChatSubmitPayload = {
 	nodeId: string
 	nodeType: WorkflowNodeChatType
 	prompt: string
-	params: Record<string, any>
+	params: WorkflowNodeChatParamRecord
 }
 
 export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error'

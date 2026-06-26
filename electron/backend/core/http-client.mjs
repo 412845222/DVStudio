@@ -98,7 +98,7 @@ export class HttpClient {
     return this.request(url, { ...options, method: 'POST', body })
   }
 
-  async postStream(url, options = {}) {
+  postStream(url, options = {}) {
     const parsedUrl = new URL(url)
     const transport = parsedUrl.protocol === 'https:' ? https : http
 
@@ -120,91 +120,152 @@ export class HttpClient {
         requestOptions.headers['Content-Type'] = 'application/json'
         options.body = JSON.stringify(options.body)
       }
+      requestOptions.headers['Content-Length'] = Buffer.byteLength(options.body)
     }
 
-    return {
-      req: null,
-      [Symbol.asyncIterator]() {
-        let res
-        let buffer = ''
-        let resolveNext
-        let rejectNext
-        let done = false
+    const queue = []
+    let done = false
+    let error = null
+    let resolveNext = null
+    let rejectNext = null
+    let buffer = ''
+    let req = null
+    let started = false
 
-        const processChunk = (chunk) => {
+    function pump(line) {
+      if (resolveNext) {
+        const res = resolveNext
+        resolveNext = null
+        rejectNext = null
+        res({ value: line, done: false })
+      } else {
+        queue.push(line)
+      }
+    }
+
+    function flush() {
+      while (queue.length > 0 && resolveNext) {
+        const res = resolveNext
+        resolveNext = null
+        rejectNext = null
+        res({ value: queue.shift(), done: false })
+      }
+    }
+
+    function finish() {
+      done = true
+      if (resolveNext) {
+        const res = resolveNext
+        resolveNext = null
+        rejectNext = null
+        res({ value: undefined, done: true })
+      }
+    }
+
+    function fail(err) {
+      error = err
+      if (rejectNext) {
+        const rej = rejectNext
+        resolveNext = null
+        rejectNext = null
+        rej(err)
+      }
+    }
+
+    function start() {
+      if (started) return
+      started = true
+
+      req = transport.request(requestOptions, (response) => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          let errBody = ''
+          response.on('data', (chunk) => { errBody += chunk.toString('utf-8') })
+          response.on('end', () => {
+            let detail = ''
+            try {
+              const parsed = JSON.parse(errBody)
+              detail = parsed?.error?.message || parsed?.message || JSON.stringify(parsed?.error || parsed)
+            } catch {
+              detail = errBody.slice(0, 500)
+            }
+            console.error('[http-client] SSE error response:', response.statusCode, detail)
+            fail(new UpstreamError(`SSE request failed with status ${response.statusCode}${detail ? ': ' + detail : ''}`))
+          })
+          response.resume()
+          return
+        }
+
+        response.on('data', (chunk) => {
           buffer += chunk.toString('utf-8')
           const lines = buffer.split(/\r?\n/)
           buffer = lines.pop() || ''
-          
           for (const line of lines) {
-            if (resolveNext) {
-              const res = resolveNext
-              resolveNext = null
-              res({ value: line, done: false })
-            }
+            pump(line)
           }
-        }
-
-        const req = transport.request(requestOptions, (response) => {
-          res = response
-          
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            if (rejectNext) {
-              const rej = rejectNext
-              rejectNext = null
-              rej(new UpstreamError(`SSE request failed with status ${response.statusCode}`))
-            }
-            return
-          }
-
-          response.on('data', processChunk)
-          response.on('end', () => {
-            done = true
-            if (resolveNext) {
-              resolveNext({ done: true })
-            }
-          })
-          response.on('error', (err) => {
-            if (rejectNext) rejectNext(err)
-          })
+          flush()
         })
 
-        req.on('error', (err) => {
-          if (rejectNext) rejectNext(new UpstreamError(`SSE request failed: ${err.message}`))
+        response.on('end', () => {
+          if (buffer.trim()) {
+            pump(buffer.trim())
+          }
+          finish()
         })
 
-        if (options.signal) {
-          options.signal.addEventListener('abort', () => {
-            req.destroy()
-            done = true
-          })
-        }
+        response.on('error', (err) => {
+          fail(new UpstreamError(`SSE response error: ${err.message}`))
+        })
+      })
 
-        if (options.body) req.write(options.body)
-        req.end()
-        this.req = req
+      req.on('error', (err) => {
+        fail(new UpstreamError(`SSE request failed: ${err.message}`))
+      })
 
+      req.on('timeout', () => {
+        req.destroy(new UpstreamError('SSE request timeout'))
+      })
+
+      if (options.signal) {
+        options.signal.addEventListener('abort', () => {
+          done = true
+          if (req) req.destroy()
+        })
+      }
+
+      if (options.body) req.write(options.body)
+      req.end()
+    }
+
+    return {
+      [Symbol.asyncIterator]() {
+        start()
         return {
           next() {
             return new Promise((resolve, reject) => {
-              if (done && buffer === '') {
-                resolve({ done: true })
-              } else if (buffer) {
-                const lines = buffer.split(/\r?\n/)
-                buffer = lines.pop() || ''
-                resolve({ value: lines[0] || '', done: false })
-              } else {
-                resolveNext = resolve
-                rejectNext = reject
+              if (error) {
+                reject(error)
+                return
               }
+              if (done && queue.length === 0) {
+                resolve({ value: undefined, done: true })
+                return
+              }
+              if (queue.length > 0) {
+                resolve({ value: queue.shift(), done: false })
+                return
+              }
+              resolveNext = resolve
+              rejectNext = reject
             })
           },
           return() {
-            req.destroy()
-            return Promise.resolve({ done: true })
+            done = true
+            if (req) req.destroy()
+            return Promise.resolve({ value: undefined, done: true })
           },
           throw(err) {
-            req.destroy()
+            done = true
+            if (req) req.destroy()
             return Promise.reject(err)
           },
         }
