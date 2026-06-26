@@ -68,10 +68,7 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'left' }"
 					title="左对齐"
-					@click.stop.prevent="
-						draft.textAlign = 'left'
-						applyText()
-					"
+					@click.stop.prevent="draft.textAlign = 'left'; applyText()"
 				>
 					L
 				</button>
@@ -80,10 +77,7 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'center' }"
 					title="居中"
-					@click.stop.prevent="
-						draft.textAlign = 'center'
-						applyText()
-					"
+					@click.stop.prevent="draft.textAlign = 'center'; applyText()"
 				>
 					C
 				</button>
@@ -92,10 +86,7 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'right' }"
 					title="右对齐"
-					@click.stop.prevent="
-						draft.textAlign = 'right'
-						applyText()
-					"
+					@click.stop.prevent="draft.textAlign = 'right'; applyText()"
 				>
 					R
 				</button>

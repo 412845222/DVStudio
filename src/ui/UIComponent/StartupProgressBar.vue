@@ -114,10 +114,7 @@ function statusIcon(status: StartupProgressStep['status']) {
 			<button
 				class="startup-progress-bar-close"
 				type="button"
-				@click="
-					localVisible = false
-					$emit('dismiss')
-				"
+				@click="localVisible = false; $emit('dismiss')"
 				aria-label="关闭"
 			>
 				■

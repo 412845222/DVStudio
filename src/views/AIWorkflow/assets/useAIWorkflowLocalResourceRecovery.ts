@@ -101,8 +101,7 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 
 			let file: File
 			try {
-				const getFile = (handle as Record<string, unknown>).getFile as () => Promise<File>
-				file = await getFile()
+				file = await (handle as FileSystemFileHandle).getFile()
 			} catch {
 				stats.fileReadFailed += 1
 				continue

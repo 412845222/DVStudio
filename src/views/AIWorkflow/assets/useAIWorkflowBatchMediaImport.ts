@@ -1,16 +1,55 @@
+type FileWithPath = File & {
+	path?: string
+}
+
+type CopyFileResult = {
+	ok: boolean
+	relativePath?: string
+	[key: string]: unknown
+}
+
+type MediaImportTask = {
+	resourceId: string
+	kind: 'image' | 'video'
+	name: string
+	file: File
+	onResult?: (result: MediaImportResult) => void
+	[key: string]: unknown
+}
+
+type MediaImportResult = {
+	resourceId: string
+	url?: string
+	sourcePath?: string
+	width?: number
+	height?: number
+	[key: string]: unknown
+}
+
+type AIWorkflowStoreState = {
+	selectedNodeId?: string | null
+	nodesById: Record<string, unknown>
+	[key: string]: unknown
+}
+
+type AIWorkflowStore = {
+	state: AIWorkflowStoreState
+	commit: (type: string, payload?: Record<string, unknown>) => void
+}
+
 export type AIWorkflowDroppedFile = {
 	file: File
 	relativePath: string
-	fsHandle?: any
+	fsHandle?: unknown
 }
 
 export const useAIWorkflowBatchMediaImport = (options: {
-	store: any
+	store: AIWorkflowStore
 	makeResourceId: () => string
 	maxBatchImportMediaCount: number
 	inferMediaKindFromFile: (file: File) => 'image' | 'video' | null
 	normalizeFileSignatureKey: (name: unknown, size: unknown, lastModified: unknown) => string
-	putLocalFileHandle: (key: string, handle: any) => Promise<any>
+	putLocalFileHandle: (key: string, handle: unknown) => Promise<unknown>
 	cancelActiveImportSession: (opts?: { cleanupUnresolved?: boolean }) => void
 	startImportSession: (payload: {
 		id: string
@@ -32,7 +71,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 	} | null
 	updateImportProgressIfNeeded: (sessionId: string, resourceId: string) => void
 	mediaImportManager: {
-		enqueue: (tasks: Array<any>) => void
+		enqueue: (tasks: MediaImportTask[]) => void
 	}
 	setObjectUrl: (key: string, url: string) => void
 	scheduleVideoMetadataRead: (payload: {
@@ -48,7 +87,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		projectId: number,
 		sourcePath: string,
 		desiredFilename: string
-	) => Promise<any>
+	) => Promise<CopyFileResult | null>
 	uploadProjectAsset: (payload: {
 		projectId: number
 		kind?: string
@@ -56,7 +95,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		arrayBuffer: ArrayBuffer
 		contentType?: string
 		bucket?: string
-	}) => Promise<any>
+	}) => Promise<unknown>
 	resolveBackendUrl: (value: string) => string
 }) => {
 	const createMediaNodesFromFiles = async (opts: {
@@ -101,7 +140,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 				item.relativePath || item.file.name || (item.kind === 'image' ? 'image' : 'video')
 			)
 			const absPath =
-				typeof (item.file as any)?.path === 'string' ? String((item.file as any).path).trim() : ''
+				typeof (item.file as FileWithPath)?.path === 'string' ? String((item.file as FileWithPath).path).trim() : ''
 			const sourceName = String(item.file?.name || name || '').trim()
 			const sourceSize = Number(item.file?.size || 0)
 			const sourceLastModified = Number(item.file?.lastModified || 0)
@@ -200,7 +239,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			}
 
 			const sourcePath =
-				typeof (task.file as any)?.path === 'string' ? String((task.file as any).path).trim() : ''
+				typeof (task.file as FileWithPath)?.path === 'string' ? String((task.file as FileWithPath).path).trim() : ''
 
 			// 在 Electron 环境中，尝试将本地视频文件复制到项目目录
 			const projectId = options.getProjectId?.()
@@ -254,7 +293,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		if (projectIdForImages) {
 			for (const task of imageTasks) {
 				const sourcePath =
-					typeof (task.file as any)?.path === 'string' ? String((task.file as any).path).trim() : ''
+					typeof (task.file as FileWithPath)?.path === 'string' ? String((task.file as FileWithPath).path).trim() : ''
 
 				if (sourcePath) {
 					try {
@@ -281,7 +320,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		options.mediaImportManager.enqueue(
 			imageTasks.map((task) => ({
 				...task,
-				onResult: (result: any) => {
+				onResult: (result: MediaImportResult) => {
 					const session = options.getActiveImportSession()
 					if (!session || session.id !== sessionId || session.cancelled) return
 

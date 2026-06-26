@@ -5,11 +5,8 @@
 				<h2>请先选择或新建项目</h2>
 				<p>从左侧「项目列表」选择已有项目，或点击「新建项目」创建一个新项目。</p>
 				<button
-					@click="
-						noProjectSelected = false
-						void $router.push({ name: 'ProjectList' })
-					"
-				>
+				@click="noProjectSelected = false; void $router.push({ name: 'ProjectList' })"
+			>
 					去项目列表
 				</button>
 			</div>

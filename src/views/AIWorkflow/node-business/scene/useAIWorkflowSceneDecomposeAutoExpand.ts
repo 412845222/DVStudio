@@ -1,8 +1,8 @@
-import type { WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
+import type { WorkflowNode, WorkflowSceneDecomposeOutput, WorkflowEdge, WorkflowState, WorkflowAnchorSpec } from '../../../../aiworkflow/types'
 
 export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
-	store: any
-	getIncomingEdges: (nodeId: string, anchorId?: string) => any[]
+	store: { commit: (mutation: string, payload?: unknown) => void; state: WorkflowState }
+	getIncomingEdges: (nodeId: string, anchorId?: string) => WorkflowEdge[]
 	connectedTextInputValue: (nodeId: string, anchorId: string) => string
 	hasExactEdge: (payload: {
 		fromNodeId: string
@@ -37,9 +37,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 		const createdNodeIds: string[] = []
 		const createdModelTargets: Array<{ objectId: string; model3dNodeId: string }> = []
 		const jsonInputEdge = options.getIncomingEdges(sourceNode.id, 'in-json')[0] ?? null
-		const jsonSourceNodeId = String((jsonInputEdge as any)?.fromNodeId ?? '').trim()
+		const jsonSourceNodeId = String(jsonInputEdge?.fromNodeId ?? '').trim()
 		const jsonSourceAnchorId =
-			String((jsonInputEdge as any)?.fromAnchorId ?? 'out-text').trim() || 'out-text'
+			String(jsonInputEdge?.fromAnchorId ?? 'out-text').trim() || 'out-text'
 		const inputJson = String(options.connectedTextInputValue(sourceNode.id, 'in-json') ?? '').trim()
 		const actionableOutputs = outputs.filter((output) => generatedFiles.has(output.id))
 		const baseX = sourceNode.worldX + sourceNode.width + 180
@@ -112,11 +112,11 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const incomingEdges = options.getIncomingEdges(sceneLayoutNodeId, inputAnchorId)
 			let removedAny = false
 			for (const edge of incomingEdges) {
-				const fromNodeId = String((edge as any)?.fromNodeId ?? '').trim()
-				if (!fromNodeId || fromNodeId === nextModel3dNodeId) continue
-				const fromNode = options.store.state.nodesById[fromNodeId]
-				if (!fromNode || fromNode.type !== 'model3d') continue
-				const edgeId = String((edge as any)?.id ?? '').trim()
+				const fromNodeId = String(edge?.fromNodeId ?? '').trim()
+			if (!fromNodeId || fromNodeId === nextModel3dNodeId) continue
+			const fromNode = options.store.state.nodesById[fromNodeId]
+			if (!fromNode || fromNode.type !== 'model3d') continue
+			const edgeId = String(edge?.id ?? '').trim()
 				if (!edgeId) continue
 				options.store.commit('removeEdge', { edgeId })
 				removedAny = true
@@ -140,8 +140,8 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 					const edge = options.getIncomingEdges(candidateId, 'in-json')[0]
 					if (!edge) continue
 					const sameSource =
-						String((edge as any).fromNodeId ?? '').trim() === jsonSourceNodeId &&
-						String((edge as any).fromAnchorId ?? '').trim() === jsonSourceAnchorId
+						String(edge.fromNodeId ?? '').trim() === jsonSourceNodeId &&
+						String(edge.fromAnchorId ?? '').trim() === jsonSourceAnchorId
 					if (sameSource) {
 						sceneLayoutNodeId = candidateId
 						break
@@ -259,8 +259,8 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 				if (!objectId || !model3dNodeId) continue
 				const inputAnchorId = options.sceneLayoutModelInputAnchorId(objectId)
 				const hasAnchor = Array.isArray(sceneLayoutNode.inputs)
-					? sceneLayoutNode.inputs.some((anchor: any) => String(anchor?.id ?? '') === inputAnchorId)
-					: false
+				? sceneLayoutNode.inputs.some((anchor: WorkflowAnchorSpec) => String(anchor?.id ?? '') === inputAnchorId)
+				: false
 				if (!hasAnchor) continue
 
 				replaceIncomingSceneLayoutModelEdge(sceneLayoutNodeId, inputAnchorId, model3dNodeId)

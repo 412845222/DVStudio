@@ -7,11 +7,15 @@ import { isMeshyRemoteUrl } from '../meshy/useAIWorkflowMeshyAssets'
 export const useAIWorkflowSceneLayoutModelBindings = (options: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
+			nodesById: Record<string, Record<string, unknown>>
 		}
 	}
+	// SAFE-ANY: callback parameter contravariance - caller provides more specific types
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	isSceneLayoutModelTargetItem: (item: any) => boolean
-	getIncomingEdges: (nodeId: string, anchorId?: string) => any[]
+	getIncomingEdges: (nodeId: string, anchorId?: string) => unknown[]
+	// SAFE-ANY: callback parameter contravariance - caller provides more specific types
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	getMeshyEffectiveModelSource: (settings: any) => {
 		preferredUrl?: string | null
 		assetUrl?: string | null
@@ -23,39 +27,43 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 		`in-model-${String(objectId ?? '').trim()}`
 
 	const connectedSceneLayoutModelBindings = (nodeId: string): WorkflowSceneLayoutModelBinding[] => {
-		const node = options.store.state.nodesById[nodeId]
+		const node = options.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node || node.type !== 'scene-layout') return []
-		const allLayoutItems = Array.isArray(node.sceneLayoutSettings?.layoutItems)
-			? node.sceneLayoutSettings!.layoutItems!.filter((item: any) => String(item?.id ?? '').trim())
+		const sceneLayoutSettings = node.sceneLayoutSettings as Record<string, unknown> | undefined
+		const allLayoutItems = Array.isArray(sceneLayoutSettings?.layoutItems)
+			? (sceneLayoutSettings!.layoutItems as unknown[]).filter((item: unknown) =>
+					String((item as Record<string, unknown>)?.id ?? '').trim()
+				)
 			: []
 
 		const manualBindingsMap = new Map<string, WorkflowSceneLayoutManualModelBinding>()
-		const rawManualBindings = Array.isArray(node.sceneLayoutSettings?.manualModelBindings)
-			? node.sceneLayoutSettings!.manualModelBindings!
+		const rawManualBindings = Array.isArray(sceneLayoutSettings?.manualModelBindings)
+			? (sceneLayoutSettings!.manualModelBindings as unknown[])
 			: []
 		for (const item of rawManualBindings) {
-			const objectId = String(item?.objectId ?? '').trim()
+			const itemRecord = item as Record<string, unknown>
+			const objectId = String(itemRecord?.objectId ?? '').trim()
 			if (!objectId) continue
-			const modelUrl = String(item?.modelUrl ?? '').trim()
-			const modelAssetUrl = String(item?.modelAssetUrl ?? '').trim()
+			const modelUrl = String(itemRecord?.modelUrl ?? '').trim()
+			const modelAssetUrl = String(itemRecord?.modelAssetUrl ?? '').trim()
 			if (!modelUrl && !modelAssetUrl) continue
 			manualBindingsMap.set(objectId, {
 				objectId,
 				modelUrl: modelUrl || undefined,
 				modelAssetUrl: modelAssetUrl || undefined,
 				modelSourceName:
-					typeof item?.modelSourceName === 'string' ? item.modelSourceName : undefined,
+					typeof itemRecord?.modelSourceName === 'string' ? itemRecord.modelSourceName : undefined,
 				modelSourcePath:
-					typeof item?.modelSourcePath === 'string' ? item.modelSourcePath : undefined,
-				modelAssetPath: typeof item?.modelAssetPath === 'string' ? item.modelAssetPath : undefined,
+					typeof itemRecord?.modelSourcePath === 'string' ? itemRecord.modelSourcePath : undefined,
+				modelAssetPath: typeof itemRecord?.modelAssetPath === 'string' ? itemRecord.modelAssetPath : undefined,
 				modelFormat:
-					item?.modelFormat === 'gltf' ? 'gltf' : item?.modelFormat === 'glb' ? 'glb' : undefined
+					itemRecord?.modelFormat === 'gltf' ? 'gltf' : itemRecord?.modelFormat === 'glb' ? 'glb' : undefined
 			})
 		}
 
 		const allowedObjectIds = new Set<string>()
 		for (const item of allLayoutItems) {
-			const objectId = String(item?.id ?? '').trim()
+			const objectId = String((item as Record<string, unknown>)?.id ?? '').trim()
 			if (!objectId) continue
 			if (options.isSceneLayoutModelTargetItem(item)) allowedObjectIds.add(objectId)
 		}
@@ -63,13 +71,14 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			if (objectId) allowedObjectIds.add(objectId)
 		}
 
-		const layoutItems = allLayoutItems.filter((item: any) =>
-			allowedObjectIds.has(String(item?.id ?? '').trim())
+		const layoutItems = allLayoutItems.filter((item: unknown) =>
+			allowedObjectIds.has(String((item as Record<string, unknown>)?.id ?? '').trim())
 		)
 
-		return layoutItems.map((item: any) => {
-			const objectId = String(item.id ?? '').trim()
-			const objectName = String(item.name ?? '').trim() || undefined
+		return layoutItems.map((item: unknown) => {
+			const itemRecord = item as Record<string, unknown>
+			const objectId = String(itemRecord.id ?? '').trim()
+			const objectName = String(itemRecord.name ?? '').trim() || undefined
 			const inputAnchorId = sceneLayoutModelInputAnchorId(objectId)
 
 			const manualBinding = manualBindingsMap.get(objectId)
@@ -99,19 +108,19 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 				}
 			}
 
-			const edge = options.getIncomingEdges(nodeId, inputAnchorId)[0]
+			const edge = options.getIncomingEdges(nodeId, inputAnchorId)[0] as Record<string, unknown>
 			if (!edge) {
 				return { objectId, objectName, inputAnchorId, connected: false }
 			}
 
-			const fromNodeId = String((edge as any).fromNodeId ?? '').trim()
-			const fromNode = options.store.state.nodesById[fromNodeId]
+			const fromNodeId = String(edge.fromNodeId ?? '').trim()
+			const fromNode = options.store.state.nodesById[fromNodeId] as Record<string, unknown>
 			if (!fromNode) {
 				return { objectId, objectName, inputAnchorId, connected: false }
 			}
 
 			if (fromNode.type === 'model3d') {
-				const settings = fromNode.model3dSettings ?? {}
+				const settings = (fromNode.model3dSettings ?? {}) as Record<string, unknown>
 				const modelAssetUrl = String(settings.modelAssetUrl ?? '').trim()
 				const modelUrl = String(settings.modelUrl ?? modelAssetUrl ?? '').trim()
 				const modelAssetPath = String(settings.modelAssetPath ?? '').trim()
@@ -138,11 +147,10 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			}
 
 			if (fromNode.type === 'meshy') {
-				const effective = options.getMeshyEffectiveModelSource(fromNode.meshySettings as any)
+				const effective = options.getMeshyEffectiveModelSource(fromNode.meshySettings as Record<string, unknown>)
 				const modelAssetUrl = String(effective.assetUrl ?? '').trim()
 				const rawModelUrl = String(effective.preferredUrl ?? modelAssetUrl ?? '').trim()
 				const modelAssetPath = String(effective.assetPath ?? '').trim()
-				// Block remote meshy.ai URLs — they must be localized before reaching Three.js
 				const modelUrl = isMeshyRemoteUrl(rawModelUrl) ? '' : rawModelUrl
 				const safeAssetUrl = isMeshyRemoteUrl(modelAssetUrl) ? '' : modelAssetUrl
 				return {

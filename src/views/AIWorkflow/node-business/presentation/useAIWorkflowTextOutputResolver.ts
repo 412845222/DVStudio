@@ -68,10 +68,9 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		return getTextOutputForNode(String(edge.fromNodeId), undefined, String(edge.fromAnchorId ?? ''))
 	}
 
-	const sceneDecomposeTextOutputForAnchor = (node: unknown, anchorId: string) => {
-		const n = node as Record<string, unknown>
-		if (n.type !== 'scene-decompose') return ''
-		const settings = n.sceneDecomposeSettings as Record<string, unknown> | undefined
+	const sceneDecomposeTextOutputForAnchor = (node: WorkflowNode, anchorId: string) => {
+		if (node.type !== 'scene-decompose') return ''
+		const settings = node.sceneDecomposeSettings
 		const rawOutputs = settings?.outputs
 		const outputs: WorkflowSceneDecomposeOutput[] = Array.isArray(rawOutputs) ? rawOutputs : []
 		const item = outputs.find(
@@ -91,10 +90,11 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		if (v.has(visitKey)) return ''
 		v.add(visitKey)
 
-		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
+		const node = payload.store.state.nodesById[nodeId]
 		if (!node) return ''
 		if (node.type === 'text') {
-			const inputs = Array.isArray(node.inputs) ? node.inputs : []
+			const n = node as Record<string, unknown>
+			const inputs = Array.isArray(n.inputs) ? n.inputs : []
 			const inputAnchor = inputs.find(
 				(anchor: unknown) => {
 					const a = anchor as Record<string, unknown>
@@ -109,10 +109,8 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		}
 		if (node.type === 'rotate-image') return String(node.rotatePromptText ?? '')
 		if (node.type === 'text-merge') return computeMergedText(nodeId, v)
-		if (node.type === 'scene-understanding') {
-			const settings = node.sceneUnderstandingSettings as Record<string, unknown> | undefined
-			return String(settings?.outputJson ?? '')
-		}
+		if (node.type === 'scene-understanding')
+			return String(node.sceneUnderstandingSettings?.outputJson ?? '')
 		if (node.type === 'scene-decompose')
 			return sceneDecomposeTextOutputForAnchor(node, String(fromAnchorId ?? ''))
 		if (node.type === 'scene-layout') {
@@ -125,13 +123,12 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 	}
 
 	function computeMergedText(nodeId: string, visited?: Set<string>): string {
-		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
+		const node = payload.store.state.nodesById[nodeId]
 		if (!node || node.type !== 'text-merge') return ''
-		const items = Array.isArray(node.textMergeItems) ? node.textMergeItems : []
+		const items = node.textMergeItems ?? []
 		const parts: string[] = []
 		for (const item of items) {
-			const it = item as Record<string, unknown>
-			const itemId = String(it?.id ?? '').trim()
+			const itemId = String(item?.id ?? '').trim()
 			if (!itemId) continue
 			const anchorId = `in-${itemId}`
 			const edge = payload.getFirstIncomingEdge(nodeId, anchorId) as Record<string, unknown> | null
@@ -152,7 +149,7 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 			const fromAnchorId = String(e?.fromAnchorId ?? '').trim()
 			const edgeId = String(e?.id ?? '').trim()
 			if (!fromNodeId) continue
-			const fromNode = payload.store.state.nodesById[fromNodeId] as Record<string, unknown>
+			const fromNode = payload.store.state.nodesById[fromNodeId]
 			if (!fromNode) continue
 
 			const base = {
