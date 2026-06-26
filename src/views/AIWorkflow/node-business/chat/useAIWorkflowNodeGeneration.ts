@@ -4,7 +4,7 @@ import type {
 	WorkflowNodeGenerationTask,
 	WorkflowState
 } from '../../../../aiworkflow/types'
-import { ComfyUIBridgeService } from '../../../../network/ComfyUIBridgeService'
+import { ComfyUIBridgeService, type MeshyTaskResponse } from '../../../../network/ComfyUIBridgeService'
 import { getErrorMessage } from '../../../../types/utils'
 
 export type NodeGenerationApiDeps = {
@@ -196,160 +196,189 @@ const normalizeVideoModel = (params: Record<string, unknown>) => {
 	return { kind: 'seedance', model: rawModel || 'doubao-seedance-2-0-260128' }
 }
 
-/**
- * 轮询 Meshy 任务状态直到完成
- */
-const pollMeshyTaskStatus = async (
+interface PollingConfig {
+	maxPolls: number
+	pollInterval: number
+	maxConsecutiveErrors: number
+}
+
+const enum PollingAction {
+	CONTINUE = 'continue',
+	STOP = 'stop'
+}
+
+type MeshyOutputSummary = {
+	preferredUrl: string
+	imageUrls: string[]
+	thumbnailUrl: string
+}
+
+const handleMeshySuccess = async (
 	deps: NodeGenerationApiDeps,
-	svc: ComfyUIBridgeService,
 	taskId: string,
 	generationTaskId: string,
 	nodeId: string,
-	taskType: string
+	_taskType: string,
+	taskRes: Extract<MeshyTaskResponse, { ok: true }>
 ) => {
-	const maxPolls = 120 // 最大轮询次数（约4分钟）
-	const pollInterval = 2000 // 2秒间隔
-	let consecutiveErrors = 0 // 连续错误计数
+	const imageUrls = taskRes.imageUrls || []
+	const preferredUrl = taskRes.preferredImageUrl || imageUrls[0] || ''
 
-	for (let i = 0; i < maxPolls; i++) {
-		await new Promise((r) => setTimeout(r, pollInterval))
+	const outputSummary: MeshyOutputSummary = {
+		preferredUrl: '',
+		imageUrls: [],
+		thumbnailUrl: ''
+	}
+
+	if (preferredUrl) {
+		const resolved = deps.resolveBackendUrl(preferredUrl)
+
+		if (typeof deps.persistExternalAssetToProject === 'function') {
+			const fileName = `meshy_${taskId}${String(preferredUrl).match(/\.[^.]+$/)?.[0] || '.png'}`
+			const persisted = await deps.persistExternalAssetToProject({
+				kind: 'image',
+				name: fileName,
+				sourceUrl: resolved
+			})
+			if (persisted) {
+				outputSummary.preferredUrl = String(persisted.url || resolved)
+				outputSummary.imageUrls = imageUrls.map((u: string) => deps.resolveBackendUrl(u))
+				console.log('[Meshy Poll] 资产已持久化:', {
+					taskId,
+					originalUrl: preferredUrl,
+					persistedUrl: persisted.url,
+					absolutePath: persisted.absolutePath
+				})
+			} else {
+				console.warn('[Meshy Poll] 资产持久化失败，使用原始URL:', preferredUrl)
+			}
+		}
+
+		let bound = true
+		if (typeof deps.bindImageResultToNode === 'function') {
+			const bindRet = await deps.bindImageResultToNode(
+				nodeId,
+				outputSummary.preferredUrl || resolved
+			)
+			bound = bindRet !== false
+		}
+		if (bound) {
+			appendResult(deps, generationTaskId, {
+				kind: 'image',
+				url: outputSummary.preferredUrl || resolved,
+				label: 'Meshy 图片'
+			})
+		}
+	}
+
+	deps.store.commit('setNodeImageSettings', {
+		nodeId,
+		imageSettings: {
+			meshyImageSettings: {
+				taskId,
+				taskStatus: 'succeeded',
+				progress: 100,
+				statusText: 'Meshy 图片生成完成',
+				outputSummary
+			}
+		}
+	})
+
+	updateTask(deps, generationTaskId, {
+		status: 'completed',
+		statusText: `Meshy 图片生成完成（共 ${imageUrls.length} 张）`,
+		progress: 100,
+		finishedAt: Date.now()
+	})
+}
+
+const handleMeshyTaskStatus = async (
+	deps: NodeGenerationApiDeps,
+	taskId: string,
+	generationTaskId: string,
+	nodeId: string,
+	taskType: string,
+	taskRes: MeshyTaskResponse
+): Promise<PollingAction> => {
+	if (!taskRes.ok) {
+		const errorDetails = {
+			status: taskRes.status,
+			error: taskRes.error,
+			taskId,
+			taskType
+		}
+		appendDetail(
+			deps,
+			generationTaskId,
+			`轮询失败（状态码: ${taskRes.status}）：${taskRes.error}`
+		)
+		console.warn('[Meshy Poll] 轮询失败:', errorDetails)
+
+		if (taskRes.status === 502) {
+			appendDetail(deps, generationTaskId, `502 Bad Gateway - 后端服务可能暂时不可用，将重试`)
+			pushToast(deps, 'Meshy 服务暂时不可用，正在重试...', 'warn')
+		}
+		return PollingAction.CONTINUE
+	}
+
+	const status = String(taskRes.status || '')
+		.trim()
+		.toUpperCase()
+	const progress = Number(taskRes.progress ?? 0)
+	const progressPct = Math.min(95, Math.max(20, progress))
+
+	updateTask(deps, generationTaskId, {
+		statusText: `Meshy ${taskType} ${status}（${progress}%）`,
+		progress: progressPct
+	})
+
+	switch (status) {
+		case 'SUCCEEDED':
+			await handleMeshySuccess(deps, taskId, generationTaskId, nodeId, taskType, taskRes)
+			return PollingAction.STOP
+
+		case 'FAILED': {
+			const errorMsg = String(taskRes.errorMessage || '未知错误')
+			throw new Error(`Meshy 任务失败：${errorMsg}`)
+		}
+
+		case 'CANCELED':
+			throw new Error('Meshy 任务已取消')
+
+		default:
+			return PollingAction.CONTINUE
+	}
+}
+
+const createPollingController = async <T>(
+	config: PollingConfig,
+	deps: NodeGenerationApiDeps,
+	generationTaskId: string,
+	taskId: string,
+	taskType: string,
+	pollFn: () => Promise<T>,
+	handleFn: (result: T) => Promise<PollingAction>
+): Promise<void> => {
+	let consecutiveErrors = 0
+
+	for (let i = 0; i < config.maxPolls; i++) {
+		await new Promise((r) => setTimeout(r, config.pollInterval))
 
 		try {
-			// mode 参数必须是任务类型（text-to-image / image-to-image），不是 'status'
-			const taskRes = await svc.meshyTask(taskId, taskType)
-
-			// 重置连续错误计数
+			const result = await pollFn()
 			consecutiveErrors = 0
 
-			if (!taskRes.ok) {
-				const errorDetails = {
-					status: taskRes.status,
-					error: taskRes.error,
-					taskId,
-					taskType,
-					attempt: i + 1
-				}
-				appendDetail(
-					deps,
-					generationTaskId,
-					`轮询失败（状态码: ${taskRes.status}）：${taskRes.error}`
-				)
-				console.warn('[Meshy Poll] 轮询失败:', errorDetails)
+			const action = await handleFn(result)
 
-				// 如果是502错误，记录更详细的信息
-				if (taskRes.status === 502) {
-					appendDetail(deps, generationTaskId, `502 Bad Gateway - 后端服务可能暂时不可用，将重试`)
-					pushToast(deps, 'Meshy 服务暂时不可用，正在重试...', 'warn')
-				}
-				continue
-			}
-
-			// 兼容大小写：后端可能返回 'SUCCEEDED' 或 'succeeded'
-			const status = String(taskRes.status || '')
-				.trim()
-				.toUpperCase()
-			const progress = Number(taskRes.progress ?? 0)
-			const progressPct = Math.min(95, Math.max(20, progress))
-
-			updateTask(deps, generationTaskId, {
-				statusText: `Meshy ${taskType} ${status}（${progress}%）`,
-				progress: progressPct
-			})
-
-			if (status === 'SUCCEEDED') {
-				// 获取生成的图片 URL
-				const imageUrls = taskRes.imageUrls || []
-				const preferredUrl = taskRes.preferredImageUrl || imageUrls[0] || ''
-
-				let outputSummary = {
-					preferredUrl: '',
-					imageUrls: [] as string[],
-					thumbnailUrl: ''
-				}
-
-				if (preferredUrl) {
-					const resolved = deps.resolveBackendUrl(preferredUrl)
-
-					// 下载资产到本地项目
-					if (typeof deps.persistExternalAssetToProject === 'function') {
-						const fileName = `meshy_${taskId}${String(preferredUrl).match(/\.[^.]+$/)?.[0] || '.png'}`
-						const persisted = await deps.persistExternalAssetToProject({
-							kind: 'image',
-							name: fileName,
-							sourceUrl: resolved
-						})
-						if (persisted) {
-							outputSummary.preferredUrl = String(persisted.url || resolved)
-							outputSummary.imageUrls = imageUrls.map((u: string) => deps.resolveBackendUrl(u))
-							console.log('[Meshy Poll] 资产已持久化:', {
-								taskId,
-								originalUrl: preferredUrl,
-								persistedUrl: persisted.url,
-								absolutePath: persisted.absolutePath
-							})
-						} else {
-							console.warn('[Meshy Poll] 资产持久化失败，使用原始URL:', preferredUrl)
-						}
-					}
-
-					let bound = true
-					if (typeof deps.bindImageResultToNode === 'function') {
-						const bindRet = await deps.bindImageResultToNode(
-							nodeId,
-							outputSummary.preferredUrl || resolved
-						)
-						bound = bindRet !== false
-					}
-					if (bound) {
-						appendResult(deps, generationTaskId, {
-							kind: 'image',
-							url: outputSummary.preferredUrl || resolved,
-							label: 'Meshy 图片'
-						})
-					}
-				}
-
-				// 更新图片节点的 meshyImageSettings
-				deps.store.commit('setNodeImageSettings', {
-					nodeId,
-					imageSettings: {
-						meshyImageSettings: {
-							taskId,
-							taskStatus: 'succeeded',
-							progress: 100,
-							statusText: 'Meshy 图片生成完成',
-							outputSummary
-						}
-					}
-				})
-
-				updateTask(deps, generationTaskId, {
-					status: 'completed',
-					statusText: `Meshy 图片生成完成（共 ${imageUrls.length} 张）`,
-					progress: 100,
-					finishedAt: Date.now()
-				})
+			if (action === PollingAction.STOP) {
 				return
 			}
-
-			if (status === 'FAILED') {
-				const errorMsg = String(taskRes.errorMessage || '未知错误')
-				throw new Error(`Meshy 任务失败：${errorMsg}`)
-			}
-
-			if (status === 'CANCELED') {
-				throw new Error('Meshy 任务已取消')
-			}
-
-			// PENDING 或 IN_PROGRESS，继续轮询
 		} catch (err: unknown) {
-			// 如果是已知的状态错误，直接抛出
 			const errMsg = getErrorMessage(err)
 			if (errMsg.includes('失败') || errMsg.includes('取消')) {
 				throw err
 			}
 
-			// 网络错误等，记录并继续重试
 			consecutiveErrors++
 			const errorDetails = {
 				message: errMsg,
@@ -367,7 +396,6 @@ const pollMeshyTaskStatus = async (
 			)
 			console.error('[Meshy Poll] 轮询异常:', errorDetails)
 
-			// 如果连续错误超过5次，给出警告提示
 			if (consecutiveErrors >= 5) {
 				pushToast(
 					deps,
@@ -375,10 +403,42 @@ const pollMeshyTaskStatus = async (
 					'warn'
 				)
 			}
+
+			if (consecutiveErrors >= config.maxConsecutiveErrors) {
+				throw err
+			}
 		}
 	}
 
 	throw new Error('Meshy 任务超时')
+}
+
+/**
+ * 轮询 Meshy 任务状态直到完成
+ */
+const pollMeshyTaskStatus = async (
+	deps: NodeGenerationApiDeps,
+	svc: ComfyUIBridgeService,
+	taskId: string,
+	generationTaskId: string,
+	nodeId: string,
+	taskType: string
+) => {
+	const config: PollingConfig = {
+		maxPolls: 120,
+		pollInterval: 2000,
+		maxConsecutiveErrors: 10
+	}
+
+	await createPollingController(
+		config,
+		deps,
+		generationTaskId,
+		taskId,
+		taskType,
+		() => svc.meshyTask(taskId, taskType),
+		(taskRes) => handleMeshyTaskStatus(deps, taskId, generationTaskId, nodeId, taskType, taskRes)
+	)
 }
 
 const createTask = (payload: WorkflowNodeChatSubmitPayload): WorkflowNodeGenerationTask => ({

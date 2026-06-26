@@ -272,7 +272,7 @@ type MeshyGenerateResponse =
 	| { ok: true; mode: string; taskId: string; status: string; raw?: unknown }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
-type MeshyTaskResponse =
+export type MeshyTaskResponse =
 	| {
 			ok: true
 			mode: string
