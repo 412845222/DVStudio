@@ -48,7 +48,15 @@ export type UnrealExportJobInfo = {
 	targetSessionId?: string
 	sourceNodeId?: string
 	sceneName?: string
-	status: 'queued' | 'picked' | 'downloading' | 'importing' | 'assembling-actor' | 'completed' | 'failed' | string
+	status:
+		| 'queued'
+		| 'picked'
+		| 'downloading'
+		| 'importing'
+		| 'assembling-actor'
+		| 'completed'
+		| 'failed'
+		| string
 	message?: string
 	createdAt?: number
 	updatedAt?: number
@@ -68,7 +76,7 @@ export type UnrealExportRequest = {
 }
 
 const jsonHeaders = {
-	'Content-Type': 'application/json',
+	'Content-Type': 'application/json'
 }
 
 const safeJson = async (res: Response) => {
@@ -103,39 +111,50 @@ export class UnrealExportService {
 	private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
 		const url = typeof input === 'string' ? input : (input as Request).url || String(input)
 		const method = String(init?.method || 'GET').toUpperCase()
-		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+		const start =
+			typeof performance !== 'undefined' && typeof performance.now === 'function'
+				? performance.now()
+				: Date.now()
 		try {
 			const res = await fetch(input, init)
-			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			const end =
+				typeof performance !== 'undefined' && typeof performance.now === 'function'
+					? performance.now()
+					: Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				status: res.status,
 				durationMs: Math.max(0, Math.round(end - start)),
-				tag: 'unreal',
+				tag: 'unreal'
 			})
 			return res
 		} catch (err: unknown) {
-			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			const end =
+				typeof performance !== 'undefined' && typeof performance.now === 'function'
+					? performance.now()
+					: Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				durationMs: Math.max(0, Math.round(end - start)),
 				errorMessage: getErrorMessage(err),
-				tag: 'unreal',
+				tag: 'unreal'
 			})
 			throw err
 		}
 	}
 
 	async listSessions(): Promise<UnrealExportSessionsResponse> {
-		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/sessions'), { method: 'GET' })
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/sessions'), {
+			method: 'GET'
+		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `unreal-export/sessions failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `unreal-export/sessions failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as UnrealExportSessionsResponse
@@ -145,14 +164,14 @@ export class UnrealExportService {
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/jobs/create'), {
 			method: 'POST',
 			headers: jsonHeaders,
-			body: JSON.stringify(payload ?? {}),
+			body: JSON.stringify(payload ?? {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `unreal-export/jobs/create failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `unreal-export/jobs/create failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as UnrealExportCreateJobResponse
@@ -161,13 +180,16 @@ export class UnrealExportService {
 	async getJob(jobId: string): Promise<UnrealExportJobResponse> {
 		const normalizedJobId = String(jobId ?? '').trim()
 		if (!normalizedJobId) return { ok: false, error: 'jobId is required', status: 400 }
-		const res = await this.fetchWithLog(this.url(`/api/agent-skills/unreal-export/jobs/${encodeURIComponent(normalizedJobId)}`), { method: 'GET' })
+		const res = await this.fetchWithLog(
+			this.url(`/api/agent-skills/unreal-export/jobs/${encodeURIComponent(normalizedJobId)}`),
+			{ method: 'GET' }
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `unreal-export/jobs/${normalizedJobId} failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `unreal-export/jobs/${normalizedJobId} failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as UnrealExportJobResponse

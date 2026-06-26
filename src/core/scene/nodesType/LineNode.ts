@@ -20,7 +20,7 @@ export class LineNode extends NodeBase {
 			anchorY: local.anchorY,
 			lineColor: '#ffffff',
 			lineWidth: 4,
-			lineStyle: 'solid',
+			lineStyle: 'solid'
 		}
 	}
 
@@ -29,7 +29,9 @@ export class LineNode extends NodeBase {
 		const d = LineNode.defaultProps(dto.transform)
 		const width = Math.max(1, dto.transform.width ?? 260)
 		const height = Math.max(1, dto.transform.height ?? 180)
-		const lineProps: Partial<Record<'startX' | 'startY' | 'endX' | 'endY' | 'anchorX' | 'anchorY', unknown>> = base
+		const lineProps: Partial<
+			Record<'startX' | 'startY' | 'endX' | 'endY' | 'anchorX' | 'anchorY', unknown>
+		> = base
 		const local = normalizeLineLocalPoints({ props: lineProps, width, height })
 		const lineColor = typeof base.lineColor === 'string' ? base.lineColor : d.lineColor
 		const lineWidth = Math.max(1, toNumber(base.lineWidth, d.lineWidth))
@@ -49,9 +51,8 @@ export class LineNode extends NodeBase {
 				anchorY: local.anchorY,
 				lineColor,
 				lineWidth,
-				lineStyle,
-			},
+				lineStyle
+			}
 		}
 	}
 }
-

@@ -49,7 +49,8 @@ let scene: DwebVideoScene | null = null
 let lastImageKey = ''
 
 const ensureInit = () => {
-	if (!canvas || !scene || !baseSceneState || !timelineState || !jobId) throw new Error('worker 未初始化')
+	if (!canvas || !scene || !baseSceneState || !timelineState || !jobId)
+		throw new Error('worker 未初始化')
 }
 
 const uploadFramePng = async (jobId0: string, frameIndex: number, blob: Blob) => {
@@ -60,28 +61,40 @@ const uploadFramePng = async (jobId0: string, frameIndex: number, blob: Blob) =>
 	const url = `/api/export/jobs/${encodeURIComponent(jobId0)}/frames`
 	const res = await fetch(url, {
 		method: 'POST',
-		body: fd,
+		body: fd
 	})
 	if (!res.ok) {
 		const text = await res.text().catch(() => '')
-		throw new Error(`上传 PNG 帧失败：${res.status} ${res.statusText} ${(text || '').slice(0, 200)}`)
+		throw new Error(
+			`上传 PNG 帧失败：${res.status} ${res.statusText} ${(text || '').slice(0, 200)}`
+		)
 	}
 }
 
-const uploadFramesRawBatch = async (jobId0: string, startIndex: number, count: number, bytes: Uint8Array) => {
+const uploadFramesRawBatch = async (
+	jobId0: string,
+	startIndex: number,
+	count: number,
+	bytes: Uint8Array
+) => {
 	const si = Math.floor(Number(startIndex) || 0)
 	const c = Math.floor(Number(count) || 0)
 	const url = `/api/export/jobs/${encodeURIComponent(jobId0)}/frames:raw-batch?startIndex=${encodeURIComponent(String(si))}&count=${encodeURIComponent(String(c))}`
 	const buf = bytes.buffer
-	const body: ArrayBuffer = buf instanceof ArrayBuffer ? buf.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : new Uint8Array(bytes).buffer
+	const body: ArrayBuffer =
+		buf instanceof ArrayBuffer
+			? buf.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+			: new Uint8Array(bytes).buffer
 	const res = await fetch(url, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/octet-stream' },
-		body,
+		body
 	})
 	if (!res.ok) {
 		const text = await res.text().catch(() => '')
-		throw new Error(`上传 raw batch 失败：${res.status} ${res.statusText} ${(text || '').slice(0, 200)}`)
+		throw new Error(
+			`上传 raw batch 失败：${res.status} ${res.statusText} ${(text || '').slice(0, 200)}`
+		)
 	}
 }
 
@@ -99,7 +112,8 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 			baseSceneState = msg.baseSceneState
 			timelineState = msg.timelineState
 
-			if (typeof OffscreenCanvas === 'undefined') throw new Error('当前环境不支持 OffscreenCanvas，无法在 worker 内渲染')
+			if (typeof OffscreenCanvas === 'undefined')
+				throw new Error('当前环境不支持 OffscreenCanvas，无法在 worker 内渲染')
 			const offscreen = new OffscreenCanvas(width, height)
 			canvas = new DwebCanvasGL(offscreen)
 			scene = new DwebVideoScene()
@@ -111,7 +125,6 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 			canvas.setSize(width, height, 1)
 			canvas.fitToStage({ width, height }, 0, { left: 0, top: 0, right: 0, bottom: 0 })
 			canvas.setScene(scene)
-
 			;(self as any).postMessage({ type: 'ready' } satisfies OutMsg)
 			return
 		}
@@ -175,12 +188,20 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 				out.set(cap.pixels, i * frameBytes)
 			}
 			await uploadFramesRawBatch(jobId, si, c, out)
-			;(self as any).postMessage({ type: 'uploadedBatch', startIndex: si, count: c } satisfies OutMsg)
+			;(self as any).postMessage({
+				type: 'uploadedBatch',
+				startIndex: si,
+				count: c
+			} satisfies OutMsg)
 			return
 		}
 	} catch (e) {
 		const fi = (msg as any)?.frameIndex
-		;(self as any).postMessage({ type: 'error', frameIndex: typeof fi === 'number' ? fi : -1, message: String((e as any)?.message ?? e) } satisfies OutMsg)
+		;(self as any).postMessage({
+			type: 'error',
+			frameIndex: typeof fi === 'number' ? fi : -1,
+			message: String((e as any)?.message ?? e)
+		} satisfies OutMsg)
 	}
 }
 

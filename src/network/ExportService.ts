@@ -51,7 +51,9 @@ const safeJson = async (res: Response): Promise<unknown> => {
 	const parsed = safeJsonParse(text)
 	if (parsed === null) {
 		const preview = text.slice(0, 200)
-		throw new Error(`Export API 返回非 JSON：${res.status} ${res.statusText}，body 预览：${preview}`)
+		throw new Error(
+			`Export API 返回非 JSON：${res.status} ${res.statusText}，body 预览：${preview}`
+		)
 	}
 	return parsed
 }
@@ -68,7 +70,7 @@ export const ExportService = {
 		const res = await fetch('/api/export/jobs', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(req),
+			body: JSON.stringify(req)
 		})
 		if (!res.ok) {
 			let errorMessage = `导出失败：${res.status} ${res.statusText}`
@@ -89,7 +91,7 @@ export const ExportService = {
 		fd.set('file', blob, `frame_${String(Math.floor(frameIndex)).padStart(6, '0')}.png`)
 		const res = await fetch(`/api/export/jobs/${encodeURIComponent(jobId)}/frames`, {
 			method: 'POST',
-			body: fd,
+			body: fd
 		})
 		if (!res.ok) {
 			let errorMessage = `上传帧失败：${res.status} ${res.statusText}`
@@ -104,16 +106,24 @@ export const ExportService = {
 		return (await safeJson(res)) as ExportJobInfo
 	},
 
-	async uploadFramesRawBatch(jobId: string, startIndex: number, count: number, bytes: Uint8Array): Promise<ExportJobInfo> {
+	async uploadFramesRawBatch(
+		jobId: string,
+		startIndex: number,
+		count: number,
+		bytes: Uint8Array
+	): Promise<ExportJobInfo> {
 		const si = Math.floor(Number(startIndex) || 0)
 		const c = Math.floor(Number(count) || 0)
 		const url = `/api/export/jobs/${encodeURIComponent(jobId)}/frames:raw-batch?startIndex=${encodeURIComponent(String(si))}&count=${encodeURIComponent(String(c))}`
 		const buf = bytes.buffer
-		const body: ArrayBuffer = buf instanceof ArrayBuffer ? buf.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : new Uint8Array(bytes).buffer
+		const body: ArrayBuffer =
+			buf instanceof ArrayBuffer
+				? buf.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+				: new Uint8Array(bytes).buffer
 		const res = await fetch(url, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/octet-stream' },
-			body,
+			body
 		})
 		if (!res.ok) {
 			let errorMessage = `上传 raw batch 失败：${res.status} ${res.statusText}`
@@ -142,8 +152,8 @@ export const ExportService = {
 			body: JSON.stringify({
 				format: opts?.format,
 				quality: opts?.quality,
-				ignoreStageBackground: opts?.ignoreStageBackground,
-			}),
+				ignoreStageBackground: opts?.ignoreStageBackground
+			})
 		})
 		if (!res.ok) {
 			let errorMessage = `触发编码失败：${res.status} ${res.statusText}`
@@ -172,7 +182,7 @@ export const ExportService = {
 					method: 'GET',
 					headers: { Accept: 'text/event-stream' },
 					cache: 'no-store',
-					signal: ac.signal,
+					signal: ac.signal
 				})
 				window.clearTimeout(t)
 				const ct = res.headers.get('content-type')
@@ -182,7 +192,13 @@ export const ExportService = {
 				} catch (e: unknown) {
 					preview = `<<body read failed: ${getErrorMessage(e)}>>`
 				}
-				console.error('[Export SSE probe]', { url, status: res.status, statusText: res.statusText, contentType: ct, preview })
+				console.error('[Export SSE probe]', {
+					url,
+					status: res.status,
+					statusText: res.statusText,
+					contentType: ct,
+					preview
+				})
 			} catch (e: unknown) {
 				console.error('[Export SSE probe] request failed', { url, error: getErrorMessage(e) })
 			}
@@ -221,5 +237,5 @@ export const ExportService = {
 			throw new Error(errorMessage)
 		}
 		return (await safeJson(res)) as ExportJobInfo
-	},
+	}
 }

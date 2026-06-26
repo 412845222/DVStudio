@@ -3,12 +3,21 @@
 		<div class="vs-group-title vs-filter-title">
 			<span>滤镜</span>
 			<div class="vs-filter-title-actions">
-				<button class="vs-quick-btn" type="button" title="添加滤镜" @click="filterMenuOpen = !filterMenuOpen">+</button>
+				<button
+					class="vs-quick-btn"
+					type="button"
+					title="添加滤镜"
+					@click="filterMenuOpen = !filterMenuOpen"
+				>
+					+
+				</button>
 			</div>
 			<div v-if="filterMenuOpen" class="vs-filter-menu" @click.stop>
 				<button class="vs-filter-menu-item" type="button" @click="addFilter('blur')">模糊</button>
 				<button class="vs-filter-menu-item" type="button" @click="addFilter('glow')">发光</button>
-				<button class="vs-filter-menu-item" type="button" @click="addFilter('customShader')">自定义 Shader</button>
+				<button class="vs-filter-menu-item" type="button" @click="addFilter('customShader')">
+					自定义 Shader
+				</button>
 			</div>
 		</div>
 
@@ -32,16 +41,38 @@
 					<span v-else>自定义 Shader</span>
 				</div>
 				<div class="vs-filter-item-actions">
-					<button class="vs-filter-icon-btn" type="button" title="上移" @click="moveFilter(f.id, -1)">↑</button>
-					<button class="vs-filter-icon-btn" type="button" title="下移" @click="moveFilter(f.id, 1)">↓</button>
-					<button class="vs-filter-icon-btn" type="button" title="删除" @click="deleteFilter(f.id)">×</button>
+					<button
+						class="vs-filter-icon-btn"
+						type="button"
+						title="上移"
+						@click="moveFilter(f.id, -1)"
+					>
+						↑
+					</button>
+					<button
+						class="vs-filter-icon-btn"
+						type="button"
+						title="下移"
+						@click="moveFilter(f.id, 1)"
+					>
+						↓
+					</button>
+					<button class="vs-filter-icon-btn" type="button" title="删除" @click="deleteFilter(f.id)">
+						×
+					</button>
 				</div>
 			</div>
 
 			<div v-if="f.type === 'blur'" class="vs-filter-item-body">
 				<label class="vs-row">
 					<span class="vs-k">质量</span>
-					<select class="vs-input" :value="f.quality" @change="(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+					<select
+						class="vs-input"
+						:value="f.quality"
+						@change="
+							(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })
+						"
+					>
 						<option value="low">低</option>
 						<option value="mid">中</option>
 						<option value="high">高</option>
@@ -55,11 +86,21 @@
 						type="number"
 						min="0"
 						step="1"
-						@change="(e: any) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)"
+						@change="
+							(e: any) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)
+						"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.blurX, (v) => patchFilter(f.id, { blurX: v }), { step: 1, min: 0, max: 999999 })"
+						@pointerdown="
+							(e: any) =>
+								onFilterNumberScrubPointerDown(
+									e,
+									() => f.blurX,
+									(v) => patchFilter(f.id, { blurX: v }),
+									{ step: 1, min: 0, max: 999999 }
+								)
+						"
 					/>
 				</label>
 				<label class="vs-row">
@@ -70,11 +111,21 @@
 						type="number"
 						min="0"
 						step="1"
-						@change="(e: any) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)"
+						@change="
+							(e: any) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)
+						"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.blurY, (v) => patchFilter(f.id, { blurY: v }), { step: 1, min: 0, max: 999999 })"
+						@pointerdown="
+							(e: any) =>
+								onFilterNumberScrubPointerDown(
+									e,
+									() => f.blurY,
+									(v) => patchFilter(f.id, { blurY: v }),
+									{ step: 1, min: 0, max: 999999 }
+								)
+						"
 					/>
 				</label>
 			</div>
@@ -82,7 +133,13 @@
 			<div v-else-if="f.type === 'glow'" class="vs-filter-item-body">
 				<label class="vs-row">
 					<span class="vs-k">质量</span>
-					<select class="vs-input" :value="f.quality" @change="(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+					<select
+						class="vs-input"
+						:value="f.quality"
+						@change="
+							(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })
+						"
+					>
 						<option value="low">低</option>
 						<option value="mid">中</option>
 						<option value="high">高</option>
@@ -90,8 +147,19 @@
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">颜色</span>
-					<input :value="f.color" class="vs-input" type="text" placeholder="#ffffff" @change="(e: any) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })" />
-					<input :value="f.color" class="vs-color" type="color" @input="(e: any) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })" />
+					<input
+						:value="f.color"
+						class="vs-input"
+						type="text"
+						placeholder="#ffffff"
+						@change="(e: any) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })"
+					/>
+					<input
+						:value="f.color"
+						class="vs-color"
+						type="color"
+						@input="(e: any) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })"
+					/>
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">强度</span>
@@ -101,11 +169,21 @@
 						type="number"
 						min="0"
 						step="0.01"
-						@change="(e: any) => patchFilterNumber(f.id, 'intensity', (e.target as HTMLInputElement).value)"
+						@change="
+							(e: any) => patchFilterNumber(f.id, 'intensity', (e.target as HTMLInputElement).value)
+						"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.intensity, (v) => patchFilter(f.id, { intensity: v }), { step: 0.01, min: 0, max: 999999 })"
+						@pointerdown="
+							(e: any) =>
+								onFilterNumberScrubPointerDown(
+									e,
+									() => f.intensity,
+									(v) => patchFilter(f.id, { intensity: v }),
+									{ step: 0.01, min: 0, max: 999999 }
+								)
+						"
 					/>
 				</label>
 				<label class="vs-row">
@@ -116,11 +194,21 @@
 						type="number"
 						min="0"
 						step="1"
-						@change="(e: any) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)"
+						@change="
+							(e: any) => patchFilterNumber(f.id, 'blurX', (e.target as HTMLInputElement).value)
+						"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.blurX, (v) => patchFilter(f.id, { blurX: v }), { step: 1, min: 0, max: 999999 })"
+						@pointerdown="
+							(e: any) =>
+								onFilterNumberScrubPointerDown(
+									e,
+									() => f.blurX,
+									(v) => patchFilter(f.id, { blurX: v }),
+									{ step: 1, min: 0, max: 999999 }
+								)
+						"
 					/>
 				</label>
 				<label class="vs-row">
@@ -131,27 +219,55 @@
 						type="number"
 						min="0"
 						step="1"
-						@change="(e: any) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)"
+						@change="
+							(e: any) => patchFilterNumber(f.id, 'blurY', (e.target as HTMLInputElement).value)
+						"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
-						@pointerdown="(e: any) => onFilterNumberScrubPointerDown(e, () => f.blurY, (v) => patchFilter(f.id, { blurY: v }), { step: 1, min: 0, max: 999999 })"
+						@pointerdown="
+							(e: any) =>
+								onFilterNumberScrubPointerDown(
+									e,
+									() => f.blurY,
+									(v) => patchFilter(f.id, { blurY: v }),
+									{ step: 1, min: 0, max: 999999 }
+								)
+						"
 					/>
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">内发光</span>
-					<input :checked="f.inner" type="checkbox" @change="(e: any) => patchFilter(f.id, { inner: (e.target as HTMLInputElement).checked })" />
+					<input
+						:checked="f.inner"
+						type="checkbox"
+						@change="
+							(e: any) => patchFilter(f.id, { inner: (e.target as HTMLInputElement).checked })
+						"
+					/>
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">挖空</span>
-					<input :checked="f.knockout" type="checkbox" @change="(e: any) => patchFilter(f.id, { knockout: (e.target as HTMLInputElement).checked })" />
+					<input
+						:checked="f.knockout"
+						type="checkbox"
+						@change="
+							(e: any) => patchFilter(f.id, { knockout: (e.target as HTMLInputElement).checked })
+						"
+					/>
 				</label>
 			</div>
 
 			<div v-else class="vs-filter-item-body">
 				<label class="vs-row">
 					<span class="vs-k">质量</span>
-					<select class="vs-input" :value="f.quality" @change="(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })">
+					<select
+						class="vs-input"
+						:value="f.quality"
+						@change="
+							(e: any) => patchFilter(f.id, { quality: (e.target as HTMLSelectElement).value })
+						"
+					>
 						<option value="low">低</option>
 						<option value="mid">中</option>
 						<option value="high">高</option>
@@ -159,14 +275,30 @@
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">顶点</span>
-					<textarea :value="f.vertex" class="vs-input vs-textarea wide" rows="6" @input="(e: any) => patchFilter(f.id, { vertex: (e.target as HTMLTextAreaElement).value })" />
+					<textarea
+						:value="f.vertex"
+						class="vs-input vs-textarea wide"
+						rows="6"
+						@input="
+							(e: any) => patchFilter(f.id, { vertex: (e.target as HTMLTextAreaElement).value })
+						"
+					/>
 				</label>
 				<label class="vs-row">
 					<span class="vs-k">片段</span>
-					<textarea :value="f.fragment" class="vs-input vs-textarea wide" rows="6" @input="(e: any) => patchFilter(f.id, { fragment: (e.target as HTMLTextAreaElement).value })" />
+					<textarea
+						:value="f.fragment"
+						class="vs-input vs-textarea wide"
+						rows="6"
+						@input="
+							(e: any) => patchFilter(f.id, { fragment: (e.target as HTMLTextAreaElement).value })
+						"
+					/>
 				</label>
 				<div class="vs-filter-shader-actions">
-					<button class="vs-filter-btn" type="button" @click="compileCustomShader(f)">预览编译</button>
+					<button class="vs-filter-btn" type="button" @click="compileCustomShader(f)">
+						预览编译
+					</button>
 				</div>
 				<div v-if="shaderLogsById[f.id] && shaderOkById[f.id] === false" class="vs-filter-log">
 					<pre class="vs-filter-log-pre">{{ shaderLogsById[f.id] }}</pre>
@@ -179,7 +311,11 @@
 <script setup lang="ts">
 import { computed, inject, reactive, ref, watch } from 'vue'
 import type { Store } from 'vuex'
-import { VideoSceneKey, VideoSceneStore, type VideoSceneState } from '../../../../../store/videoscene'
+import {
+	VideoSceneKey,
+	VideoSceneStore,
+	type VideoSceneState
+} from '../../../../../store/videoscene'
 import { DwebCanvasGLKey } from '../../../VideoSceneRuntime'
 import { useNumberScrub } from './useNumberScrub'
 import { isObject, isBoolean, isArray, isString } from '../../../../../types/utils'
@@ -222,7 +358,10 @@ type VideoNodeCustomShaderFilterUi = {
 	fragment: string
 }
 
-type VideoNodeFilterUi = VideoNodeBlurFilterUi | VideoNodeGlowFilterUi | VideoNodeCustomShaderFilterUi
+type VideoNodeFilterUi =
+	| VideoNodeBlurFilterUi
+	| VideoNodeGlowFilterUi
+	| VideoNodeCustomShaderFilterUi
 
 type VideoNodeFilterInput = {
 	id?: unknown
@@ -242,9 +381,8 @@ type VideoNodeFilterInput = {
 
 type VideoNodeFilterPatch = Partial<
 	Omit<VideoNodeBlurFilterUi, 'id' | 'type'> &
-	Omit<VideoNodeGlowFilterUi, 'id' | 'type'> &
-	Omit<VideoNodeCustomShaderFilterUi, 'id' | 'type'> &
-	{ [k: string]: unknown }
+		Omit<VideoNodeGlowFilterUi, 'id' | 'type'> &
+		Omit<VideoNodeCustomShaderFilterUi, 'id' | 'type'> & { [k: string]: unknown }
 >
 
 const props = defineProps<{
@@ -262,7 +400,8 @@ const draggingFilterId = ref<string | null>(null)
 const shaderLogsById = reactive<Record<string, string>>({})
 const shaderOkById = reactive<Record<string, boolean>>({})
 
-const { onNumberScrubPointerDown, onNumberInputDblClick, onNumberInputFocus, onNumberInputBlur } = useNumberScrub()
+const { onNumberScrubPointerDown, onNumberInputDblClick, onNumberInputFocus, onNumberInputBlur } =
+	useNumberScrub()
 
 const createId = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 
@@ -324,7 +463,7 @@ const normalizeFilterForUi = (f: unknown): VideoNodeFilterUi => {
 			blurX: toNumber(f.blurX, 5),
 			blurY: toNumber(f.blurY, 5),
 			inner: toBoolean(f.inner, false),
-			knockout: toBoolean(f.knockout, false),
+			knockout: toBoolean(f.knockout, false)
 		}
 	}
 	if (type === 'customShader') {
@@ -333,8 +472,12 @@ const normalizeFilterForUi = (f: unknown): VideoNodeFilterUi => {
 			type: 'customShader',
 			quality,
 			qualityV2: v2,
-			vertex: isString(f.vertex) ? f.vertex : `#version 300 es\nprecision highp float;\n\nin vec2 a_position;\nout vec2 v_uv;\n\nvoid main(){\n  v_uv = (a_position + 1.0) * 0.5;\n  gl_Position = vec4(a_position, 0.0, 1.0);\n}`,
-			fragment: isString(f.fragment) ? f.fragment : `#version 300 es\nprecision highp float;\n\nin vec2 v_uv;\nout vec4 outColor;\n\nvoid main(){\n  outColor = vec4(v_uv, 0.0, 1.0);\n}`,
+			vertex: isString(f.vertex)
+				? f.vertex
+				: `#version 300 es\nprecision highp float;\n\nin vec2 a_position;\nout vec2 v_uv;\n\nvoid main(){\n  v_uv = (a_position + 1.0) * 0.5;\n  gl_Position = vec4(a_position, 0.0, 1.0);\n}`,
+			fragment: isString(f.fragment)
+				? f.fragment
+				: `#version 300 es\nprecision highp float;\n\nin vec2 v_uv;\nout vec4 outColor;\n\nvoid main(){\n  outColor = vec4(v_uv, 0.0, 1.0);\n}`
 		}
 	}
 	return {
@@ -343,7 +486,7 @@ const normalizeFilterForUi = (f: unknown): VideoNodeFilterUi => {
 		quality,
 		qualityV2: v2,
 		blurX: toNumber(f.blurX, 5),
-		blurY: toNumber(f.blurY, 5),
+		blurY: toNumber(f.blurY, 5)
 	}
 }
 
@@ -361,7 +504,18 @@ const addFilter = (type: VideoNodeFilterType) => {
 	if (type === 'blur') {
 		next.push({ id, type: 'blur', quality: 'mid', qualityV2: true, blurX: 5, blurY: 5 })
 	} else if (type === 'glow') {
-		next.push({ id, type: 'glow', quality: 'mid', qualityV2: true, color: '#ffffff', intensity: 1, blurX: 5, blurY: 5, inner: false, knockout: false })
+		next.push({
+			id,
+			type: 'glow',
+			quality: 'mid',
+			qualityV2: true,
+			color: '#ffffff',
+			intensity: 1,
+			blurX: 5,
+			blurY: 5,
+			inner: false,
+			knockout: false
+		})
 	} else {
 		next.push({
 			id,
@@ -369,7 +523,7 @@ const addFilter = (type: VideoNodeFilterType) => {
 			quality: 'mid',
 			qualityV2: true,
 			vertex: `#version 300 es\nprecision highp float;\n\nin vec2 a_position;\nout vec2 v_uv;\n\nvoid main(){\n  v_uv = (a_position + 1.0) * 0.5;\n  gl_Position = vec4(a_position, 0.0, 1.0);\n}`,
-			fragment: `#version 300 es\nprecision highp float;\n\nin vec2 v_uv;\nout vec4 outColor;\n\nvoid main(){\n  outColor = vec4(v_uv, 0.0, 1.0);\n}`,
+			fragment: `#version 300 es\nprecision highp float;\n\nin vec2 v_uv;\nout vec4 outColor;\n\nvoid main(){\n  outColor = vec4(v_uv, 0.0, 1.0);\n}`
 		})
 	}
 	updateFilters(next)
@@ -436,7 +590,10 @@ const onFilterDragOver = (e: DragEvent) => {
 
 const onFilterDrop = (e: DragEvent, targetId: string) => {
 	e.preventDefault()
-	const fromId = e.dataTransfer?.getData('application/x-vs-filter-id') || e.dataTransfer?.getData('text/plain') || draggingFilterId.value
+	const fromId =
+		e.dataTransfer?.getData('application/x-vs-filter-id') ||
+		e.dataTransfer?.getData('text/plain') ||
+		draggingFilterId.value
 	if (!fromId || fromId === targetId) return
 	const list = [...filtersUi.value]
 	const fromIdx = list.findIndex((f) => f.id === fromId)
@@ -447,18 +604,31 @@ const onFilterDrop = (e: DragEvent, targetId: string) => {
 	updateFilters(list)
 }
 
-const onFilterNumberScrubPointerDown = (e: PointerEvent, get: () => number, commit: (v: number) => void, opt: { step: number; min: number; max: number }) => {
+const onFilterNumberScrubPointerDown = (
+	e: PointerEvent,
+	get: () => number,
+	commit: (v: number) => void,
+	opt: { step: number; min: number; max: number }
+) => {
 	let latest = Number(get()) || 0
 	const setLocal = (v: number) => {
 		latest = v
 		const target = e.currentTarget as HTMLInputElement | null
 		if (target) target.value = String(v)
 	}
-	onNumberScrubPointerDown(e, () => Number(get()) || 0, setLocal, { step: opt.step, min: opt.min, max: opt.max, onCommit: () => commit(latest) })
+	onNumberScrubPointerDown(e, () => Number(get()) || 0, setLocal, {
+		step: opt.step,
+		min: opt.min,
+		max: opt.max,
+		onCommit: () => commit(latest)
+	})
 }
 
 type DwebCanvasGl = {
-	compileAndLinkProgram?: (vertex: string, fragment: string) => { ok?: boolean; log?: string } | null
+	compileAndLinkProgram?: (
+		vertex: string,
+		fragment: string
+	) => { ok?: boolean; log?: string } | null
 	requestRender?: () => void
 }
 
@@ -497,235 +667,235 @@ watch(
 
 <style scoped>
 .vs-group {
-  padding-top: 6px;
-  border-top: 1px solid var(--vscode-border);
+	padding-top: 6px;
+	border-top: 1px solid var(--vscode-border);
 }
 
 .vs-group-title {
-  margin-bottom: 6px;
-  color: var(--vscode-fg-muted);
+	margin-bottom: 6px;
+	color: var(--vscode-fg-muted);
 }
 
 .vs-filter-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	position: relative;
 }
 
 .vs-filter-title-actions {
-  flex: 0 0 auto;
+	flex: 0 0 auto;
 }
 
 .vs-filter-menu {
-  position: absolute;
-  right: 0;
-  top: 24px;
-  min-width: 140px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  box-shadow: var(--dweb-shadow);
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
+	position: absolute;
+	right: 0;
+	top: 24px;
+	min-width: 140px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	box-shadow: var(--dweb-shadow);
+	z-index: 10;
+	display: flex;
+	flex-direction: column;
 }
 
 .vs-filter-menu-item {
-  text-align: left;
-  padding: 6px 8px;
-  border: none;
-  background: transparent;
-  color: var(--vscode-fg);
-  cursor: pointer;
+	text-align: left;
+	padding: 6px 8px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-fg);
+	cursor: pointer;
 }
 
 .vs-filter-menu-item:hover {
-  background: var(--dweb-defualt-dark);
+	background: var(--dweb-defualt-dark);
 }
 
 .vs-filter-empty {
-  padding: 6px 0;
-  color: var(--vscode-fg-muted);
+	padding: 6px 0;
+	color: var(--vscode-fg-muted);
 }
 
 .vs-filter-item {
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .vs-filter-item + .vs-filter-item {
-  margin-top: 8px;
+	margin-top: 8px;
 }
 
 .vs-filter-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 }
 
 .vs-filter-item-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--vscode-fg);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--vscode-fg);
 }
 
 .vs-filter-drag {
-  color: var(--vscode-fg-muted);
-  cursor: grab;
-  user-select: none;
+	color: var(--vscode-fg-muted);
+	cursor: grab;
+	user-select: none;
 }
 
 .vs-filter-item-actions {
-  display: inline-flex;
-  gap: 6px;
+	display: inline-flex;
+	gap: 6px;
 }
 
 .vs-filter-icon-btn {
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
 }
 
 .vs-filter-icon-btn:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .vs-filter-icon-btn:focus {
-  outline: none;
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	outline: none;
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-filter-item-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .vs-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  max-width: 100%;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
 }
 
 .vs-k {
-  width: 48px;
-  color: var(--vscode-fg-muted);
-  flex: 0 0 auto;
+	width: 48px;
+	color: var(--vscode-fg-muted);
+	flex: 0 0 auto;
 }
 
 .vs-input {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 6px 8px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  outline: none;
+	flex: 1 1 0;
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	outline: none;
 }
 
 .vs-input:focus {
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-scrub {
-  cursor: ew-resize;
+	cursor: ew-resize;
 }
 
 .vs-scrub:focus {
-  cursor: text;
+	cursor: text;
 }
 
 .vs-textarea {
-  resize: vertical;
-  min-height: 72px;
-  line-height: 18px;
-  white-space: pre-wrap;
+	resize: vertical;
+	min-height: 72px;
+	line-height: 18px;
+	white-space: pre-wrap;
 }
 
 .wide {
-  max-width: 100%;
+	max-width: 100%;
 }
 
 .vs-color {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: transparent;
-  box-sizing: border-box;
+	flex: 0 0 auto;
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: transparent;
+	box-sizing: border-box;
 }
 
 .vs-color:focus {
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-quick-btn {
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .vs-quick-btn:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .vs-filter-shader-actions {
-  display: flex;
-  justify-content: flex-end;
+	display: flex;
+	justify-content: flex-end;
 }
 
 .vs-filter-btn {
-  padding: 6px 10px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
+	padding: 6px 10px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
 }
 
 .vs-filter-btn:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .vs-filter-log {
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  padding: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	padding: 8px;
 }
 
 .vs-filter-log-pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--vscode-fg);
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--vscode-fg);
 }
 </style>

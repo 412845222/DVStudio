@@ -1,242 +1,232 @@
 <template>
-  <div ref="shellRef" class="vs-shell">
-    <VideoStudioLeftPanel ref="leftPanelRef" />
-    <div ref="stageRef" class="vs-stage" :style="{ left: leftPanelWidthPx + 'px' }">
-      <canvas ref="canvasRef" class="vs-canvas" :class="{ selecting: isCtrlDown }" />
-      <RulerOverlay
-        :width="stageSize.width"
-        :height="stageSize.height"
-        :pan-x="viewport.panX"
-        :pan-y="viewport.panY"
-        :zoom="viewport.zoom"
-        :origin-x="stageOrigin.x"
-        :origin-y="stageOrigin.y"
-        :ruler-size="RULER_SIZE"
-      />
+	<div ref="shellRef" class="vs-shell">
+		<VideoStudioLeftPanel ref="leftPanelRef" />
+		<div ref="stageRef" class="vs-stage" :style="{ left: leftPanelWidthPx + 'px' }">
+			<canvas ref="canvasRef" class="vs-canvas" :class="{ selecting: isCtrlDown }" />
+			<RulerOverlay
+				:width="stageSize.width"
+				:height="stageSize.height"
+				:pan-x="viewport.panX"
+				:pan-y="viewport.panY"
+				:zoom="viewport.zoom"
+				:origin-x="stageOrigin.x"
+				:origin-y="stageOrigin.y"
+				:ruler-size="RULER_SIZE"
+			/>
 
-      <VideoSceneToolbar
-        ref="toolbarRef"
-        :ai-open="aiChatOpen"
-        :ai-minimized="aiChatMinimized"
-        @toggle-ai="onToggleAi"
-      />
-      <!-- HTML overlay for selection resize handles -->
-      <div class="vs-overlay">
-        <div v-if="marquee.active" class="vs-marquee" :style="marquee.style" />
-        <template v-if="showGuides">
-          <div
-            v-if="snapGuides.x != null"
-            class="vs-snap-line v"
-            :style="{ left: snapGuides.x + 'px' }"
-          />
-          <div
-            v-if="snapGuides.y != null"
-            class="vs-snap-line h"
-            :style="{ top: snapGuides.y + 'px' }"
-          />
-        </template>
-        <template v-if="multiControlPoints.length">
-          <div v-for="cp in multiControlPoints" :key="cp.nodeId" class="vs-cp-passive">
-            <ResizeControlPoints
-              :handle-styles="cp.handleStyles"
-              :show-size="false"
-              :size-text="''"
-              :size-style="{ left: '0px', top: '0px' }"
-              @handle-down="() => {}"
-            />
-            <LineControlPoints
-              v-if="cp.lineHandleStyles"
-              :handle-styles="cp.lineHandleStyles"
-              @point-down="() => {}"
-            />
-          </div>
-        </template>
-        <ResizeControlPoints
-          v-if="overlay.visible"
-          :handle-styles="overlay.handleStyles"
-          :show-size="overlay.showSize"
-          :size-text="overlay.sizeText"
-          :size-style="overlay.sizeStyle"
-          @handle-down="onHandleDown"
-        />
-        <LineControlPoints
-          v-if="lineOverlay.visible"
-          :handle-styles="lineOverlay.handleStyles"
-          @point-down="onLinePointDown"
-        />
-      </div>
+			<VideoSceneToolbar
+				ref="toolbarRef"
+				:ai-open="aiChatOpen"
+				:ai-minimized="aiChatMinimized"
+				@toggle-ai="onToggleAi"
+			/>
+			<!-- HTML overlay for selection resize handles -->
+			<div class="vs-overlay">
+				<div v-if="marquee.active" class="vs-marquee" :style="marquee.style" />
+				<template v-if="showGuides">
+					<div
+						v-if="snapGuides.x != null"
+						class="vs-snap-line v"
+						:style="{ left: snapGuides.x + 'px' }"
+					/>
+					<div
+						v-if="snapGuides.y != null"
+						class="vs-snap-line h"
+						:style="{ top: snapGuides.y + 'px' }"
+					/>
+				</template>
+				<template v-if="multiControlPoints.length">
+					<div v-for="cp in multiControlPoints" :key="cp.nodeId" class="vs-cp-passive">
+						<ResizeControlPoints
+							:handle-styles="cp.handleStyles"
+							:show-size="false"
+							:size-text="''"
+							:size-style="{ left: '0px', top: '0px' }"
+							@handle-down="() => {}"
+						/>
+						<LineControlPoints
+							v-if="cp.lineHandleStyles"
+							:handle-styles="cp.lineHandleStyles"
+							@point-down="() => {}"
+						/>
+					</div>
+				</template>
+				<ResizeControlPoints
+					v-if="overlay.visible"
+					:handle-styles="overlay.handleStyles"
+					:show-size="overlay.showSize"
+					:size-text="overlay.sizeText"
+					:size-style="overlay.sizeStyle"
+					@handle-down="onHandleDown"
+				/>
+				<LineControlPoints
+					v-if="lineOverlay.visible"
+					:handle-styles="lineOverlay.handleStyles"
+					@point-down="onLinePointDown"
+				/>
+			</div>
 
-      <div class="vs-tools">
-        <button
-          class="vs-tool"
-          type="button"
-          :class="{ active: showGuides }"
-          @click="toggleGuides"
-        >
-          辅助线
-        </button>
-        <button
-          class="vs-tool"
-          type="button"
-          :class="{ active: snapEnabled }"
-          @click="toggleSnap"
-        >
-          磁吸
-        </button>
-      </div>
+			<div class="vs-tools">
+				<button class="vs-tool" type="button" :class="{ active: showGuides }" @click="toggleGuides">
+					辅助线
+				</button>
+				<button class="vs-tool" type="button" :class="{ active: snapEnabled }" @click="toggleSnap">
+					磁吸
+				</button>
+			</div>
 
-      <form v-if="showSizePanel" class="vs-form" @submit.prevent>
-        <label class="vs-label">
-          <span>宽</span>
-          <input
-            v-model.number="inputWidth"
-            class="vs-input"
-            type="number"
-            min="1"
-            step="1"
-            @change="applySize"
-          />
-        </label>
-        <label class="vs-label">
-          <span>高</span>
-          <input
-            v-model.number="inputHeight"
-            class="vs-input"
-            type="number"
-            min="1"
-            step="1"
-            @change="applySize"
-          />
-        </label>
-        <button class="vs-btn" type="button" @click="fitStage">屏幕适配</button>
-      </form>
+			<form v-if="showSizePanel" class="vs-form" @submit.prevent>
+				<label class="vs-label">
+					<span>宽</span>
+					<input
+						v-model.number="inputWidth"
+						class="vs-input"
+						type="number"
+						min="1"
+						step="1"
+						@change="applySize"
+					/>
+				</label>
+				<label class="vs-label">
+					<span>高</span>
+					<input
+						v-model.number="inputHeight"
+						class="vs-input"
+						type="number"
+						min="1"
+						step="1"
+						@change="applySize"
+					/>
+				</label>
+				<button class="vs-btn" type="button" @click="fitStage">屏幕适配</button>
+			</form>
 
-      <form v-if="showBackgroundPanel" class="vs-form vs-bg-form" @submit.prevent>
-        <label class="vs-label">
-          <span>类型</span>
-          <select v-model="bgType" class="vs-select" @change="applyBackground">
-            <option value="color">颜色</option>
-            <option value="image">图片</option>
-          </select>
-        </label>
+			<form v-if="showBackgroundPanel" class="vs-form vs-bg-form" @submit.prevent>
+				<label class="vs-label">
+					<span>类型</span>
+					<select v-model="bgType" class="vs-select" @change="applyBackground">
+						<option value="color">颜色</option>
+						<option value="image">图片</option>
+					</select>
+				</label>
 
-        <label class="vs-label">
-          <span>透明</span>
-          <input
-            v-model.number="bgOpacity"
-            class="vs-input"
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            @input="applyBackground"
-          />
-        </label>
+				<label class="vs-label">
+					<span>透明</span>
+					<input
+						v-model.number="bgOpacity"
+						class="vs-input"
+						type="number"
+						min="0"
+						max="1"
+						step="0.05"
+						@input="applyBackground"
+					/>
+				</label>
 
-        <template v-if="bgType === 'color'">
-          <label class="vs-label">
-            <span>颜色</span>
-            <input
-              v-model="bgColor"
-              class="vs-input"
-              type="text"
-              @input="scheduleApplyBackground"
-            />
-          </label>
-          <input
-            v-model="bgColor"
-            class="vs-color"
-            type="color"
-            @input="applyBackground"
-          />
-        </template>
+				<template v-if="bgType === 'color'">
+					<label class="vs-label">
+						<span>颜色</span>
+						<input
+							v-model="bgColor"
+							class="vs-input"
+							type="text"
+							@input="scheduleApplyBackground"
+						/>
+					</label>
+					<input v-model="bgColor" class="vs-color" type="color" @input="applyBackground" />
+				</template>
 
-        <template v-else>
-          <label class="vs-label" style="flex: 1; min-width: 0">
-            <span>图片</span>
-            <input
-              v-model="bgImageSrc"
-              class="vs-input"
-              type="text"
-              placeholder="https://... 或 blob:..."
-              @input="scheduleApplyBackground"
-            />
-          </label>
-          <label class="vs-file">
-            <input
-              class="vs-file-input"
-              type="file"
-              accept="image/*"
-              @change="onPickBgFile"
-            />
-            <span class="vs-file-btn">选择</span>
-          </label>
-          <label class="vs-label">
-            <span>适配</span>
-            <select v-model="bgFit" class="vs-select" @change="applyBackground">
-              <option value="contain">contain</option>
-              <option value="cover">cover</option>
-              <option value="fill">fill</option>
-              <option value="none">none</option>
-              <option value="scale-down">scale-down</option>
-            </select>
-          </label>
-          <label class="vs-label">
-            <span>重复</span>
-            <select v-model="bgRepeat" class="vs-select" @change="applyBackground">
-              <option :value="false">不重复</option>
-              <option :value="true">重复</option>
-            </select>
-          </label>
-        </template>
-      </form>
+				<template v-else>
+					<label class="vs-label" style="flex: 1; min-width: 0">
+						<span>图片</span>
+						<input
+							v-model="bgImageSrc"
+							class="vs-input"
+							type="text"
+							placeholder="https://... 或 blob:..."
+							@input="scheduleApplyBackground"
+						/>
+					</label>
+					<label class="vs-file">
+						<input class="vs-file-input" type="file" accept="image/*" @change="onPickBgFile" />
+						<span class="vs-file-btn">选择</span>
+					</label>
+					<label class="vs-label">
+						<span>适配</span>
+						<select v-model="bgFit" class="vs-select" @change="applyBackground">
+							<option value="contain">contain</option>
+							<option value="cover">cover</option>
+							<option value="fill">fill</option>
+							<option value="none">none</option>
+							<option value="scale-down">scale-down</option>
+						</select>
+					</label>
+					<label class="vs-label">
+						<span>重复</span>
+						<select v-model="bgRepeat" class="vs-select" @change="applyBackground">
+							<option :value="false">不重复</option>
+							<option :value="true">重复</option>
+						</select>
+					</label>
+				</template>
+			</form>
 
-      <ExportDialog
-        :open="showExportPanel"
-        :format="exportFormat"
-        :quality="exportQuality"
-        :concurrency="exportConcurrency"
-        :ignore-stage-background="exportIgnoreStageBackground"
-        :status="exportStatus"
-        :client-progress="exportClientProgress"
-        :server-progress="exportServerProgress"
-        :server-path="exportServerPath"
-        :estimated-size-text="exportEstimatedSizeText"
-        :error-text="exportError"
-        @reset="resetExportResult"
-        @update:format="(v) => (exportFormat = v)"
-        @update:quality="(v) => (exportQuality = v)"
-        @update:concurrency="(v) => (exportConcurrency = v)"
-        @update:ignoreStageBackground="(v) => (exportIgnoreStageBackground = v)"
-        @exportFrames="exportFrames"
-        @renderVideo="renderVideo"
-        @close="
-          () => {
-            resetExportResult();
-            void VideoSceneStore.dispatch('setExportPanelVisible', { visible: false });
-          }
-        "
-      />
+			<ExportDialog
+				:open="showExportPanel"
+				:format="exportFormat"
+				:quality="exportQuality"
+				:concurrency="exportConcurrency"
+				:ignore-stage-background="exportIgnoreStageBackground"
+				:status="exportStatus"
+				:client-progress="exportClientProgress"
+				:server-progress="exportServerProgress"
+				:server-path="exportServerPath"
+				:estimated-size-text="exportEstimatedSizeText"
+				:error-text="exportError"
+				@reset="resetExportResult"
+				@update:format="(v) => (exportFormat = v)"
+				@update:quality="(v) => (exportQuality = v)"
+				@update:concurrency="(v) => (exportConcurrency = v)"
+				@update:ignore-stage-background="(v) => (exportIgnoreStageBackground = v)"
+				@export-frames="exportFrames"
+				@render-video="renderVideo"
+				@close="
+					() => {
+						resetExportResult()
+						void VideoSceneStore.dispatch('setExportPanelVisible', { visible: false })
+					}
+				"
+			/>
 
-      <LoadRecentEditDialog
-        :open="showLoadRecentEditDialog"
-        :saved-at="recentEditSavedAt"
-        @load="loadRecentEdit"
-        @discard="discardRecentEdit"
-      />
-    </div>
+			<LoadRecentEditDialog
+				:open="showLoadRecentEditDialog"
+				:saved-at="recentEditSavedAt"
+				@load="loadRecentEdit"
+				@discard="discardRecentEdit"
+			/>
+		</div>
 
-    <VideoStudioRightPanel ref="rightPanelRef" />
-    <AIChatDialog
-      v-model:open="aiChatOpen"
-      v-model:minimized="aiChatMinimized"
-      :anchor="aiChatAnchor"
-    />
-  </div>
+		<VideoStudioRightPanel ref="rightPanelRef" />
+		<AIChatDialog
+			v-model:open="aiChatOpen"
+			v-model:minimized="aiChatMinimized"
+			:anchor="aiChatAnchor"
+		/>
+	</div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, shallowRef, ref, watch } from 'vue'
+import {
+	computed,
+	nextTick,
+	onBeforeUnmount,
+	onMounted,
+	provide,
+	reactive,
+	shallowRef,
+	ref,
+	watch
+} from 'vue'
 import { useStore } from 'vuex'
 import RulerOverlay from './ruler/RulerOverlay.vue'
 import { VideoStudioKey, type VideoStudioState } from '../../store/videostudio'
@@ -259,12 +249,14 @@ import { editorPersistence } from '../../adapters/editorPersistence'
 import { editorRecentCache } from '../../adapters/editorRecentCache'
 import { ExportService, type ExportFormat, type ExportQuality } from '../../network/ExportService'
 import ResizeControlPoints, { type Corner } from './parts/nodeControlPoints/ResizeControlPoints.vue'
-import LineControlPoints, { type LinePointKind } from './parts/nodeControlPoints/LineControlPoints.vue'
+import LineControlPoints, {
+	type LinePointKind
+} from './parts/nodeControlPoints/LineControlPoints.vue'
 import {
 	buildStartXYByIdForMove,
 	beginMoveSnapSessionForNode,
 	beginResizeSnapSessionForNode,
- 	computeLinePointPatchFromWorld,
+	computeLinePointPatchFromWorld,
 	computeMovableSelectionIds,
 	buildNodeOverlayGeometry,
 	getLayerNodeTree,
@@ -280,7 +272,7 @@ import {
 	type ResizeSnapSession,
 	type VideoSceneNodeTransform,
 	type VideoSceneNodeProps,
-	worldToLocalRotated,
+	worldToLocalRotated
 } from '../../core/scene'
 
 type WorldTransform = { x: number; y: number; scaleX: number; scaleY: number; rotation: number }
@@ -290,7 +282,9 @@ const safeNumber = (v: unknown, fallback = 0): number => {
 	return Number.isFinite(n) ? n : fallback
 }
 
-const getNodeTransform = (hit: { node: { transform?: VideoSceneNodeTransform } | null } | null): VideoSceneNodeTransform => {
+const getNodeTransform = (
+	hit: { node: { transform?: VideoSceneNodeTransform } | null } | null
+): VideoSceneNodeTransform => {
 	const t = hit?.node?.transform
 	return {
 		x: safeNumber(t?.x),
@@ -303,7 +297,7 @@ const getNodeTransform = (hit: { node: { transform?: VideoSceneNodeTransform } |
 		width: safeNumber(t?.width),
 		height: safeNumber(t?.height),
 		rotation: safeNumber(t?.rotation),
-		opacity: safeNumber(t?.opacity, 1),
+		opacity: safeNumber(t?.opacity, 1)
 	}
 }
 
@@ -312,7 +306,7 @@ const getWorldTransform = (world: WorldTransform | null | undefined): WorldTrans
 	y: safeNumber(world?.y),
 	scaleX: safeNumber(world?.scaleX, 1),
 	scaleY: safeNumber(world?.scaleY, 1),
-	rotation: safeNumber(world?.rotation),
+	rotation: safeNumber(world?.rotation)
 })
 
 const isCtrlDown = ref(false)
@@ -339,13 +333,20 @@ const scheduleApplyTimelineAnimation = () => {
 }
 
 const getSingleSelectedKeyframeCell = (): { layerId: string; frameIndex: number } | null => {
-	const entries = Object.entries(TimelineStore.state.selectedSpansByLayer).filter(([, spans]) => spans && spans.length)
+	const entries = Object.entries(TimelineStore.state.selectedSpansByLayer).filter(
+		([, spans]) => spans && spans.length
+	)
 	if (entries.length !== 1) return null
 	const layerId = entries[0][0]
 	const spans = entries[0][1] as TimelineFrameSpan[]
 	if (!spans || spans.length !== 1) return null
 	const s = spans[0]
-	const frameIndex = typeof s === 'number' ? Math.floor(s) : s && typeof s === 'object' && s.start === s.end ? Math.floor(s.start) : null
+	const frameIndex =
+		typeof s === 'number'
+			? Math.floor(s)
+			: s && typeof s === 'object' && s.start === s.end
+				? Math.floor(s.start)
+				: null
 	if (frameIndex == null || !Number.isFinite(frameIndex)) return null
 	// 必须是该图层的关键帧格子
 	const kfSpans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
@@ -371,7 +372,8 @@ const flushDirtyKeyframeWriteBack = () => {
 		return
 	}
 	// 仅对“当前单选关键帧格子”的图层写回
-	if (keyframeDirtyLayerIds.has(selected.layerId)) scheduleWriteBackSelectedKeyframe(selected.layerId)
+	if (keyframeDirtyLayerIds.has(selected.layerId))
+		scheduleWriteBackSelectedKeyframe(selected.layerId)
 	keyframeDirtyLayerIds.clear()
 }
 
@@ -389,13 +391,16 @@ const scheduleWriteBackSelectedKeyframe = (layerId: string) => {
 		if (!p) return
 		const isSubtitle = (TimelineStore.state.layerKindById?.[p.layerId] ?? 'normal') === 'subtitle'
 		const layersForSnapshot = isSubtitle
-			? stripSubtitleTextContentFromStageLayers(cloneJsonSafe(VideoSceneStore.state.layers), p.layerId)
+			? stripSubtitleTextContentFromStageLayers(
+					cloneJsonSafe(VideoSceneStore.state.layers),
+					p.layerId
+				)
 			: VideoSceneStore.state.layers
 		// 写回“全画布快照”；TimelineStore 内部会做深拷贝，并只在该帧确实为关键帧时落盘
 		TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
 			startFrame: p.frameIndex,
 			endFrame: p.frameIndex,
-			layers: layersForSnapshot,
+			layers: layersForSnapshot
 		})
 	})
 }
@@ -478,15 +483,18 @@ const exportEstimatedSizeText = computed(() => {
 		const fps = Math.max(1, Math.min(240, Math.floor(Number(TimelineStore.state.fps ?? 60) || 60)))
 		const frameCount = Math.max(1, Math.floor(Number(TimelineStore.state.frameCount) || 1))
 		const durationSec = frameCount / Math.max(1, fps)
-		const baseline = (1920 * 1080 * 30)
+		const baseline = 1920 * 1080 * 30
 		const scale = (width * height * fps) / baseline
 		const isAlphaMov = exportFormat.value === 'mov' && !!exportIgnoreStageBackground.value
 
 		// Very rough Mbps estimates at 1080p30.
 		const mp4Mbps = exportQuality.value === 'high' ? 12 : exportQuality.value === 'low' ? 3 : 6
-		const movAlphaMbps = exportQuality.value === 'high' ? 18 : exportQuality.value === 'low' ? 6 : 10
-		const movNoAlphaMbps = exportQuality.value === 'high' ? 13 : exportQuality.value === 'low' ? 3.5 : 6.5
-		const baseMbps = exportFormat.value === 'mp4' ? mp4Mbps : isAlphaMov ? movAlphaMbps : movNoAlphaMbps
+		const movAlphaMbps =
+			exportQuality.value === 'high' ? 18 : exportQuality.value === 'low' ? 6 : 10
+		const movNoAlphaMbps =
+			exportQuality.value === 'high' ? 13 : exportQuality.value === 'low' ? 3.5 : 6.5
+		const baseMbps =
+			exportFormat.value === 'mp4' ? mp4Mbps : isAlphaMov ? movAlphaMbps : movNoAlphaMbps
 		const bitrateMbps = Math.max(0.5, baseMbps * Math.max(0.2, scale))
 		const sizeMB = (bitrateMbps * durationSec) / 8
 		if (!Number.isFinite(sizeMB) || sizeMB <= 0) return ''
@@ -526,7 +534,11 @@ const resetRenderResultKeepFrames = () => {
 	exportServerPath.value = ''
 	exportError.value = ''
 	if (exportClientProgress.value >= 100 && exportJobId.value) {
-		if (exportStatus.value === 'done' || exportStatus.value === 'error' || exportStatus.value === 'render') {
+		if (
+			exportStatus.value === 'done' ||
+			exportStatus.value === 'error' ||
+			exportStatus.value === 'render'
+		) {
 			exportStatus.value = 'framesDone'
 		}
 	}
@@ -558,7 +570,9 @@ const exportFrames = async () => {
 	exportStatus.value = 'frames'
 	try {
 		if (exportFormat.value === 'mov' && !exportIgnoreStageBackground.value) {
-			throw new Error('导出 mov 透明背景需要勾选“忽略舞台背景”，否则序列帧会带背景，后续无法得到透明通道。')
+			throw new Error(
+				'导出 mov 透明背景需要勾选“忽略舞台背景”，否则序列帧会带背景，后续无法得到透明通道。'
+			)
 		}
 
 		// Use the real stage size from the bottom size form/store.
@@ -577,7 +591,7 @@ const exportFrames = async () => {
 			uploadMode: 'pipe',
 			ignoreStageBackground: !!exportIgnoreStageBackground.value,
 			// Keep snapshot optional for potential debugging; backend ignores it.
-			snapshot: editorPersistence.getSnapshot(),
+			snapshot: editorPersistence.getSnapshot()
 		})
 		exportJobId.value = created.jobId
 
@@ -636,7 +650,11 @@ const exportFrames = async () => {
 					const task = queue.shift()!
 					inFlight++
 					if (uploadMode === 'pipe') {
-						w.postMessage({ type: 'renderUploadBatch', startIndex: task.startIndex, count: task.count })
+						w.postMessage({
+							type: 'renderUploadBatch',
+							startIndex: task.startIndex,
+							count: task.count
+						})
 					} else {
 						w.postMessage({ type: 'renderUpload', frameIndex: task.startIndex })
 					}
@@ -652,7 +670,10 @@ const exportFrames = async () => {
 				if (msg.type === 'uploaded') {
 					uploaded++
 					inFlight = Math.max(0, inFlight - 1)
-					exportClientProgress.value = Math.max(0, Math.min(100, Math.round((uploaded * 100) / frameCount)))
+					exportClientProgress.value = Math.max(
+						0,
+						Math.min(100, Math.round((uploaded * 100) / frameCount))
+					)
 					idle.push(w)
 					pump()
 					resolveOne?.()
@@ -661,7 +682,10 @@ const exportFrames = async () => {
 				if (msg.type === 'uploadedBatch') {
 					uploaded += Math.max(0, Math.floor(msg.count) || 0)
 					inFlight = Math.max(0, inFlight - 1)
-					exportClientProgress.value = Math.max(0, Math.min(100, Math.round((uploaded * 100) / frameCount)))
+					exportClientProgress.value = Math.max(
+						0,
+						Math.min(100, Math.round((uploaded * 100) / frameCount))
+					)
 					idle.push(w)
 					pump()
 					resolveOne?.()
@@ -691,10 +715,10 @@ const exportFrames = async () => {
 						opacity: stageBackground.value.opacity,
 						imageSrc: stageBackground.value.imageSrc,
 						imageFit: stageBackground.value.imageFit,
-						repeat: stageBackground.value.repeat,
+						repeat: stageBackground.value.repeat
 					},
 					baseSceneState: cloneJsonSafe(VideoSceneStore.state),
-					timelineState: cloneJsonSafe(TimelineStore.state),
+					timelineState: cloneJsonSafe(TimelineStore.state)
 				})
 				workers.push(w)
 			}
@@ -760,14 +784,19 @@ const renderVideo = async () => {
 		exportError.value = '渲染 mov 透明背景需要勾选“忽略舞台背景”。'
 		return
 	}
-	if (exportFramesIgnoreStageBackground.value != null && exportFramesIgnoreStageBackground.value !== !!exportIgnoreStageBackground.value) {
+	if (
+		exportFramesIgnoreStageBackground.value != null &&
+		exportFramesIgnoreStageBackground.value !== !!exportIgnoreStageBackground.value
+	) {
 		exportStatus.value = 'error'
-		exportError.value = '“忽略舞台背景”与序列帧导出阶段不一致。为获得透明 mov，请重新导出序列帧后再渲染视频。'
+		exportError.value =
+			'“忽略舞台背景”与序列帧导出阶段不一致。为获得透明 mov，请重新导出序列帧后再渲染视频。'
 		return
 	}
 	if (exportFramesQuality.value != null && exportFramesQuality.value !== exportQuality.value) {
 		exportStatus.value = 'error'
-		exportError.value = '“质量”与序列帧导出阶段不一致。当前导出使用 pipe 模式（实时编码），请重新导出序列帧后再渲染视频。'
+		exportError.value =
+			'“质量”与序列帧导出阶段不一致。当前导出使用 pipe 模式（实时编码），请重新导出序列帧后再渲染视频。'
 		return
 	}
 	exportStatus.value = 'render'
@@ -775,7 +804,7 @@ const renderVideo = async () => {
 		await ExportService.finalize(jobId, {
 			format: exportFormat.value,
 			quality: exportQuality.value,
-			ignoreStageBackground: !!exportIgnoreStageBackground.value,
+			ignoreStageBackground: !!exportIgnoreStageBackground.value
 		})
 	} catch (e) {
 		exportStatus.value = 'error'
@@ -897,7 +926,7 @@ watch(
 			opacity: bg.opacity,
 			imageSrc: bg.imageSrc,
 			imageFit: bg.imageFit,
-			repeat: bg.repeat,
+			repeat: bg.repeat
 		})
 		dwebCanvas?.requestRender()
 	},
@@ -908,7 +937,9 @@ const stageSize = ref({ width: 0, height: 0 })
 let resizeObserver: ResizeObserver | null = null
 
 const leftPanelRef = ref<InstanceType<typeof VideoStudioLeftPanel> | null>(null)
-const leftPanelWidthPx = computed(() => Math.max(0, VideoSceneStore.state.layoutInsets?.leftPanelWidth ?? 0))
+const leftPanelWidthPx = computed(() =>
+	Math.max(0, VideoSceneStore.state.layoutInsets?.leftPanelWidth ?? 0)
+)
 
 const stageRef = ref<HTMLElement | null>(null)
 
@@ -936,7 +967,7 @@ const applyBackground = () => {
 		opacity: bgOpacity.value,
 		imageSrc: bgImageSrc.value,
 		imageFit: bgFit.value,
-		repeat: bgRepeat.value,
+		repeat: bgRepeat.value
 	})
 }
 
@@ -961,9 +992,17 @@ const onPickBgFile = (ev: Event) => {
 
 const measureInsets = () => {
 	const leftPanelWidth = Math.round(leftPanelRef.value?.rootEl?.getBoundingClientRect().width ?? 0)
-	const rightPanelWidth = Math.round(rightPanelRef.value?.rootEl?.getBoundingClientRect().width ?? 0)
-	const bottomToolbarHeight = Math.round(toolbarRef.value?.rootEl?.getBoundingClientRect().height ?? 0)
-	VideoSceneStore.dispatch('setLayoutInsets', { leftPanelWidth, rightPanelWidth, bottomToolbarHeight })
+	const rightPanelWidth = Math.round(
+		rightPanelRef.value?.rootEl?.getBoundingClientRect().width ?? 0
+	)
+	const bottomToolbarHeight = Math.round(
+		toolbarRef.value?.rootEl?.getBoundingClientRect().height ?? 0
+	)
+	VideoSceneStore.dispatch('setLayoutInsets', {
+		leftPanelWidth,
+		rightPanelWidth,
+		bottomToolbarHeight
+	})
 }
 
 const getFitInsets = () => {
@@ -1010,7 +1049,7 @@ const marquee = reactive({
 	active: false,
 	start: { x: 0, y: 0 },
 	end: { x: 0, y: 0 },
-	style: { left: '0px', top: '0px', width: '0px', height: '0px' } as Record<string, string>,
+	style: { left: '0px', top: '0px', width: '0px', height: '0px' } as Record<string, string>
 })
 
 const updateMarqueeStyle = () => {
@@ -1022,7 +1061,7 @@ const updateMarqueeStyle = () => {
 		left: `${Math.round(x0)}px`,
 		top: `${Math.round(y0)}px`,
 		width: `${Math.round(Math.max(0, x1 - x0))}px`,
-		height: `${Math.round(Math.max(0, y1 - y0))}px`,
+		height: `${Math.round(Math.max(0, y1 - y0))}px`
 	}
 }
 
@@ -1061,7 +1100,7 @@ const resize = ref<{
 	startH?: number
 	pivotWorld?: { x: number; y: number }
 }>({
-	active: false,
+	active: false
 })
 
 const overlay = reactive({
@@ -1072,9 +1111,9 @@ const overlay = reactive({
 		tl: { left: '0px', top: '0px' } as Record<string, string>,
 		tr: { left: '0px', top: '0px' } as Record<string, string>,
 		bl: { left: '0px', top: '0px' } as Record<string, string>,
-		br: { left: '0px', top: '0px' } as Record<string, string>,
+		br: { left: '0px', top: '0px' } as Record<string, string>
 	},
-	sizeStyle: { left: '0px', top: '0px' } as Record<string, string>,
+	sizeStyle: { left: '0px', top: '0px' } as Record<string, string>
 })
 
 const lineOverlay = reactive({
@@ -1082,8 +1121,8 @@ const lineOverlay = reactive({
 	handleStyles: {
 		start: { left: '0px', top: '0px' } as Record<string, string>,
 		anchor: { left: '0px', top: '0px' } as Record<string, string>,
-		end: { left: '0px', top: '0px' } as Record<string, string>,
-	},
+		end: { left: '0px', top: '0px' } as Record<string, string>
+	}
 })
 
 const lineDrag = ref<{
@@ -1095,9 +1134,7 @@ const lineDrag = ref<{
 	rotation?: number
 	scaleX?: number
 	scaleY?: number
-}>(
-	{ active: false }
-)
+}>({ active: false })
 
 const getLocalPoint = (ev: PointerEvent) => {
 	const rect = (ev.currentTarget as HTMLCanvasElement).getBoundingClientRect()
@@ -1111,9 +1148,12 @@ const getLocalPointFromClient = (clientX: number, clientY: number) => {
 	return { x: clientX - rect.left, y: clientY - rect.top }
 }
 
-const findUserNodeTransform = (nodeId: string) => findUserNodeTransformInLayers(VideoSceneStore.state.layers, nodeId)
-const findUserNodeWithWorld = (nodeId: string) => findUserNodeWithWorldInLayers(VideoSceneStore.state.layers, nodeId)
-const findLayerIdByNodeId = (nodeId: string) => findLayerIdByNodeIdInLayers(VideoSceneStore.state.layers, nodeId)
+const findUserNodeTransform = (nodeId: string) =>
+	findUserNodeTransformInLayers(VideoSceneStore.state.layers, nodeId)
+const findUserNodeWithWorld = (nodeId: string) =>
+	findUserNodeWithWorldInLayers(VideoSceneStore.state.layers, nodeId)
+const findLayerIdByNodeId = (nodeId: string) =>
+	findLayerIdByNodeIdInLayers(VideoSceneStore.state.layers, nodeId)
 
 const updateOverlay = () => {
 	const canvas = dwebCanvas
@@ -1138,7 +1178,7 @@ const updateOverlay = () => {
 				pivotX: t.pivotX,
 				pivotY: t.pivotY,
 				userType: hit.node.userType,
-				props: hit.node.props,
+				props: hit.node.props
 			})
 			const tl = canvas.worldToScreen(geom.corners.tl)
 			const tr = canvas.worldToScreen(geom.corners.tr)
@@ -1151,8 +1191,8 @@ const updateOverlay = () => {
 					tl: { left: px(tl.x), top: px(tl.y) },
 					tr: { left: px(tr.x), top: px(tr.y) },
 					bl: { left: px(bl.x), top: px(bl.y) },
-					br: { left: px(br.x), top: px(br.y) },
-				},
+					br: { left: px(br.x), top: px(br.y) }
+				}
 			}
 
 			if (geom.linePoints) {
@@ -1162,7 +1202,7 @@ const updateOverlay = () => {
 				entry.lineHandleStyles = {
 					start: { left: px(sS.x), top: px(sS.y) },
 					anchor: { left: px(aS.x), top: px(aS.y) },
-					end: { left: px(eS.x), top: px(eS.y) },
+					end: { left: px(eS.x), top: px(eS.y) }
 				}
 			}
 
@@ -1200,7 +1240,7 @@ const updateOverlay = () => {
 		pivotX: t.pivotX,
 		pivotY: t.pivotY,
 		userType: hit.node.userType,
-		props: hit.node.props,
+		props: hit.node.props
 	})
 	const tl = canvas.worldToScreen(geom.corners.tl)
 	const tr = canvas.worldToScreen(geom.corners.tr)
@@ -1256,7 +1296,7 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 		pivotX,
 		pivotY,
 		userType: hit.node.userType,
-		props: hit.node.props,
+		props: hit.node.props
 	})
 	const tl = geom.corners.tl
 	const tr = geom.corners.tr
@@ -1278,7 +1318,19 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 	const nodeScaleX = clampScale(t.scaleX, legacyScale)
 	const nodeScaleY = clampScale(t.scaleY, legacyScale)
 	const parentWorld = getWorldTransform(hit.parentWorld)
-	resize.value = { active: true, corner, nodeId, layerId, anchorWorld, parentWorld, rotation, pivotX, pivotY, nodeScaleX, nodeScaleY }
+	resize.value = {
+		active: true,
+		corner,
+		nodeId,
+		layerId,
+		anchorWorld,
+		parentWorld,
+		rotation,
+		pivotX,
+		pivotY,
+		nodeScaleX,
+		nodeScaleY
+	}
 	overlay.showSize = true
 	resizeSnapSession.value = snapEnabled.value
 		? beginResizeSnapSessionForNode({
@@ -1287,7 +1339,7 @@ const onHandleDown = (corner: Corner, ev: PointerEvent) => {
 				stageWidth: stageWidth.value,
 				stageHeight: stageHeight.value,
 				zoom: canvas.viewport.zoom,
-				basePx: 6,
+				basePx: 6
 			})
 		: null
 	try {
@@ -1315,7 +1367,7 @@ const onLinePointDown = (kind: LinePointKind, ev: PointerEvent) => {
 		worldCenter: { x: hit.world.x, y: hit.world.y },
 		rotation,
 		scaleX: world.scaleX,
-		scaleY: world.scaleY,
+		scaleY: world.scaleY
 	}
 	try {
 		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
@@ -1332,14 +1384,32 @@ const onDocPointerMove = (ev: PointerEvent) => {
 		if (!nodeId || !layerId || !kind || !worldCenter || rotation == null) return
 		const p = getLocalPointFromClient(ev.clientX, ev.clientY)
 		const w = canvas.screenToWorld(p)
-		const patch = computeLinePointPatchFromWorld({ kind, worldPoint: w, worldCenter, rotation, scaleX: scaleX ?? 1, scaleY: scaleY ?? 1 })
+		const patch = computeLinePointPatchFromWorld({
+			kind,
+			worldPoint: w,
+			worldCenter,
+			rotation,
+			scaleX: scaleX ?? 1,
+			scaleY: scaleY ?? 1
+		})
 		VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
 		return
 	}
 	if (!resize.value.active) return
 	const canvas = ensureCanvas()
 	if (!canvas) return
-	const { nodeId, layerId, anchorWorld, parentWorld, corner, pivotX, pivotY, rotation, nodeScaleX, nodeScaleY } = resize.value
+	const {
+		nodeId,
+		layerId,
+		anchorWorld,
+		parentWorld,
+		corner,
+		pivotX,
+		pivotY,
+		rotation,
+		nodeScaleX,
+		nodeScaleY
+	} = resize.value
 	if (!nodeId || !layerId || !anchorWorld || !parentWorld || !corner) return
 	const p = getLocalPointFromClient(ev.clientX, ev.clientY)
 	const w = canvas.screenToWorld(p)
@@ -1356,7 +1426,7 @@ const onDocPointerMove = (ev: PointerEvent) => {
 	let local = worldToLocalRotated(w, anchorWorld, rot)
 	local = {
 		x: signX * Math.max(minSize, Math.abs(local.x)),
-		y: signY * Math.max(minSize, Math.abs(local.y)),
+		y: signY * Math.max(minSize, Math.abs(local.y))
 	}
 
 	let movingX = anchorWorld.x + local.x * cos - local.y * sin
@@ -1377,7 +1447,7 @@ const onDocPointerMove = (ev: PointerEvent) => {
 				stageWidth: stageWidth.value,
 				stageHeight: stageHeight.value,
 				zoom: canvas.viewport.zoom,
-				basePx: 6,
+				basePx: 6
 			})
 		const stepped = stepResizeSnapSession({
 			session,
@@ -1387,7 +1457,7 @@ const onDocPointerMove = (ev: PointerEvent) => {
 			movingY,
 			cx,
 			cy,
-			minSize,
+			minSize
 		})
 		resizeSnapSession.value = stepped.session
 		const snapped = stepped.result
@@ -1399,7 +1469,7 @@ const onDocPointerMove = (ev: PointerEvent) => {
 		let snappedLocal = worldToLocalRotated({ x: movingX, y: movingY }, anchorWorld, rot)
 		snappedLocal = {
 			x: signX * Math.max(minSize, Math.abs(snappedLocal.x)),
-			y: signY * Math.max(minSize, Math.abs(snappedLocal.y)),
+			y: signY * Math.max(minSize, Math.abs(snappedLocal.y))
 		}
 		movingX = anchorWorld.x + snappedLocal.x * cos - snappedLocal.y * sin
 		movingY = anchorWorld.y + snappedLocal.x * sin + snappedLocal.y * cos
@@ -1454,7 +1524,7 @@ const onDocPointerMove = (ev: PointerEvent) => {
 	VideoSceneStore.dispatch('updateNodeTransform', {
 		layerId,
 		nodeId,
-		patch: { x: rx / psx, y: ry / psy, width, height },
+		patch: { x: rx / psx, y: ry / psy, width, height }
 	})
 }
 
@@ -1502,7 +1572,14 @@ const onPointerDown = (ev: PointerEvent) => {
 			const sameLayerIds = selectedIds.filter((id) => findLayerIdByNodeId(id) === activeLayerId)
 			const movableIds = computeMovableSelectionIds(activeLayerTree, sameLayerIds)
 			const startXYById = buildStartXYByIdForMove(activeLayerTree, movableIds)
-			drag.value = { mode: 'move', nodeId: hit.nodeId, nodeIds: movableIds, startScreen: p, startWorld: world, startXYById }
+			drag.value = {
+				mode: 'move',
+				nodeId: hit.nodeId,
+				nodeIds: movableIds,
+				startScreen: p,
+				startWorld: world,
+				startXYById
+			}
 		} else {
 			// 点击任意节点：清空多选，单选该节点
 			VideoSceneStore.dispatch('setSelectedNode', { nodeId: hit.nodeId })
@@ -1514,7 +1591,7 @@ const onPointerDown = (ev: PointerEvent) => {
 				nodeId: hit.nodeId,
 				startScreen: p,
 				startWorld: world,
-				startXY: { x: t?.x ?? 0, y: t?.y ?? 0 },
+				startXY: { x: t?.x ?? 0, y: t?.y ?? 0 }
 			}
 			moveSnapSession.value = snapEnabled.value
 				? beginMoveSnapSessionForNode({
@@ -1523,7 +1600,7 @@ const onPointerDown = (ev: PointerEvent) => {
 						stageWidth: stageWidth.value,
 						stageHeight: stageHeight.value,
 						zoom: canvas.viewport.zoom,
-						basePx: 6,
+						basePx: 6
 					})
 				: null
 		}
@@ -1580,7 +1657,7 @@ const onPointerMove = (ev: PointerEvent) => {
 				VideoSceneStore.dispatch('updateNodeTransform', {
 					layerId: hit.layerId,
 					nodeId,
-					patch: { x: start.x + rdx / psx, y: start.y + rdy / psy },
+					patch: { x: start.x + rdx / psx, y: start.y + rdy / psy }
 				})
 			}
 			return
@@ -1608,7 +1685,7 @@ const onPointerMove = (ev: PointerEvent) => {
 			if (!hit) {
 				VideoSceneStore.dispatch('updateNodeTransform', {
 					nodeId: drag.value.nodeId,
-					patch: { x: localX, y: localY },
+					patch: { x: localX, y: localY }
 				})
 				return
 			}
@@ -1638,14 +1715,14 @@ const onPointerMove = (ev: PointerEvent) => {
 					stageWidth: stageWidth.value,
 					stageHeight: stageHeight.value,
 					zoom: canvas.viewport.zoom,
-					basePx: 6,
+					basePx: 6
 				})
 			const stepped = stepMoveSnapSession({
 				session,
 				rawWorldCx,
 				rawWorldCy,
 				width: w,
-				height: h,
+				height: h
 			})
 			moveSnapSession.value = stepped.session
 			const snapped = stepped.result
@@ -1678,7 +1755,7 @@ const onPointerMove = (ev: PointerEvent) => {
 		VideoSceneStore.dispatch('updateNodeTransform', {
 			layerId: hit0.layerId,
 			nodeId: drag.value.nodeId,
-			patch: { x: localX, y: localY },
+			patch: { x: localX, y: localY }
 		})
 		return
 	}
@@ -1708,7 +1785,9 @@ const endPan = (ev: PointerEvent) => {
 		const hit = isClick ? (scene?.hitTest(canvas, marquee.end) ?? null) : null
 		const w0 = isClick ? null : canvas.screenToWorld({ x: x0, y: y0 })
 		const w1 = isClick ? null : canvas.screenToWorld({ x: x1, y: y1 })
-		const hits = isClick ? [] : scene?.queryNodesInWorldRect({ x0: w0!.x, y0: w0!.y, x1: w1!.x, y1: w1!.y }) ?? []
+		const hits = isClick
+			? []
+			: (scene?.queryNodesInWorldRect({ x0: w0!.x, y0: w0!.y, x1: w1!.x, y1: w1!.y }) ?? [])
 		const r = resolveMarqueeSelection({ activeLayerId, isClick, hit, hits })
 
 		if (r.type === 'single') {
@@ -1816,7 +1895,7 @@ onMounted(() => {
 		opacity: stageBackground.value.opacity,
 		imageSrc: stageBackground.value.imageSrc,
 		imageFit: stageBackground.value.imageFit,
-		repeat: stageBackground.value.repeat,
+		repeat: stageBackground.value.repeat
 	})
 	scene.setState(VideoSceneStore.state)
 	canvas.setScene(scene)
@@ -1967,7 +2046,16 @@ watch(
 )
 
 watch(
-	() => [VideoSceneStore.state.selectedNodeId, (VideoSceneStore.state.selectedNodeIds ?? []).join('|'), viewport.value.panX, viewport.value.panY, viewport.value.zoom, stageSize.value.width, stageSize.value.height] as const,
+	() =>
+		[
+			VideoSceneStore.state.selectedNodeId,
+			(VideoSceneStore.state.selectedNodeIds ?? []).join('|'),
+			viewport.value.panX,
+			viewport.value.panY,
+			viewport.value.zoom,
+			stageSize.value.width,
+			stageSize.value.height
+		] as const,
 	() => {
 		updateOverlay()
 	}
@@ -1976,210 +2064,210 @@ watch(
 
 <style scoped>
 .vs-shell {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--dweb-defualt);
+	position: relative;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	overflow: hidden;
+	background: var(--dweb-defualt);
 }
 
 .vs-stage {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  min-width: 0;
-  overflow: hidden;
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	min-width: 0;
+	overflow: hidden;
 }
 
 .vs-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  cursor: grab;
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	cursor: grab;
 }
 
 .vs-canvas.selecting {
-  cursor: default;
+	cursor: default;
 }
 
 .vs-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 4;
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 4;
 }
 
 .vs-cp-passive {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
 }
 
 :deep(.vs-cp-passive .vs-handle) {
-  pointer-events: none !important;
+	pointer-events: none !important;
 }
 
 .vs-marquee {
-  position: absolute;
-  border: 1px solid var(--vscode-border-accent);
-  background: var(--vscode-border-accent);
-  opacity: 0.15;
-  pointer-events: none;
+	position: absolute;
+	border: 1px solid var(--vscode-border-accent);
+	background: var(--vscode-border-accent);
+	opacity: 0.15;
+	pointer-events: none;
 }
 
 .vs-snap-line {
-  position: absolute;
-  background: var(--vscode-border-accent);
-  opacity: 0.9;
-  pointer-events: none;
+	position: absolute;
+	background: var(--vscode-border-accent);
+	opacity: 0.9;
+	pointer-events: none;
 }
 
 .vs-snap-line.v {
-  top: 0;
-  bottom: 0;
-  width: 1px;
+	top: 0;
+	bottom: 0;
+	width: 1px;
 }
 
 .vs-snap-line.h {
-  left: 0;
-  right: 0;
-  height: 1px;
+	left: 0;
+	right: 0;
+	height: 1px;
 }
 
 .vs-tools {
-  position: absolute;
-  top: calc(24px + 12px);
-  left: calc(24px + 12px);
-  display: flex;
-  gap: 8px;
-  z-index: 2;
+	position: absolute;
+	top: calc(24px + 12px);
+	left: calc(24px + 12px);
+	display: flex;
+	gap: 8px;
+	z-index: 2;
 }
 
 .vs-tool {
-  pointer-events: auto;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  font-size: 12px;
+	pointer-events: auto;
+	padding: 6px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	font-size: 12px;
 }
 
 .vs-tool.active {
-  border-color: var(--vscode-border-accent);
-  background: var(--vscode-selected-bg);
+	border-color: var(--vscode-border-accent);
+	background: var(--vscode-selected-bg);
 }
 
 .vs-tool:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .vs-form {
-  position: absolute;
-  left: 16px;
-  bottom: 56px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  border-radius: 10px;
+	position: absolute;
+	left: 16px;
+	bottom: 56px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	border-radius: 10px;
 }
 
 .vs-bg-form {
-  bottom: 56px;
+	bottom: 56px;
 }
 
 .vs-export-form {
-  bottom: 56px;
+	bottom: 56px;
 }
 
 .vs-link {
-  color: var(--vscode-border-accent);
-  text-decoration: none;
+	color: var(--vscode-border-accent);
+	text-decoration: none;
 }
 
 .vs-link:hover {
-  text-decoration: underline;
+	text-decoration: underline;
 }
 
 .vs-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--vscode-fg-muted);
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
 }
 
 .vs-input {
-  width: 96px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  outline: none;
+	width: 96px;
+	padding: 6px 8px;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	outline: none;
 }
 
 .vs-select {
-  width: 120px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  outline: none;
+	width: 120px;
+	padding: 6px 8px;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	outline: none;
 }
 
 .vs-color {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-border);
-  background: transparent;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-border);
+	background: transparent;
 }
 
 .vs-file {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
+	position: relative;
+	display: inline-flex;
+	align-items: center;
 }
 
 .vs-file-input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	cursor: pointer;
 }
 
 .vs-file-btn {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  font-size: 12px;
-  line-height: 28px;
+	height: 28px;
+	padding: 0 10px;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	font-size: 12px;
+	line-height: 28px;
 }
 
 .vs-btn {
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-border-accent);
-  background: transparent;
-  color: var(--vscode-fg);
-  cursor: pointer;
+	padding: 6px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-border-accent);
+	background: transparent;
+	color: var(--vscode-fg);
+	cursor: pointer;
 }
 
 .vs-btn:hover {
-  background: var(--vscode-hover-bg);
+	background: var(--vscode-hover-bg);
 }
 </style>

@@ -4,7 +4,7 @@ import type {
 	BuildMeshyRequestResult,
 	MeshyComfyService,
 	MeshyRelationKind,
-	MeshyTaskStatus,
+	MeshyTaskStatus
 } from './types'
 import { extractMeshyTaskResultFields } from './types'
 
@@ -186,7 +186,8 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		const modelUrls = task.modelUrls
 		const imageUrls = task.imageUrls
 		const preferredImageUrl = task.preferredImageUrl || (imageUrls[0] ?? '')
-		const preferredModelUrl = task.preferredModelUrl || options.pickMeshyPreferredModelUrl(modelUrls)
+		const preferredModelUrl =
+			task.preferredModelUrl || options.pickMeshyPreferredModelUrl(modelUrls)
 		const thumbnailUrl = task.thumbnailUrl
 		const statusText = task.statusText
 		const errorMessage = task.errorMessage
@@ -195,13 +196,16 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		const existingLocalThumbnailUrl = pickLocalThumbnailCandidate(
 			settings.meshyRelationSummary?.effectiveThumbnailUrl,
 			settings.meshyOutputSummary?.thumbnailUrl,
-			settings.meshyThumbnailUrl,
+			settings.meshyThumbnailUrl
 		)
-		let resolvedThumbnailUrl = is3DTarget ? existingLocalThumbnailUrl : (thumbnailUrl || existingLocalThumbnailUrl)
+		let resolvedThumbnailUrl = is3DTarget
+			? existingLocalThumbnailUrl
+			: thumbnailUrl || existingLocalThumbnailUrl
 
 		const patch: Partial<Meshy3DSettings> = {
 			meshyTaskId: task.taskId,
-			meshyRelationKind: (String(settings.meshyRelationKind ?? 'model').trim() || 'model') as MeshyRelationKind,
+			meshyRelationKind: (String(settings.meshyRelationKind ?? 'model').trim() ||
+				'model') as MeshyRelationKind,
 			meshyRootTaskId: String(settings.meshyRootTaskId ?? task.taskId ?? '').trim() || undefined,
 			meshyParentTaskId: String(settings.meshyParentTaskId ?? '').trim() || undefined,
 			meshyCapabilities: settings.meshyCapabilities ?? undefined,
@@ -214,26 +218,29 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 			meshyOutputSummary: {
 				...(settings.meshyOutputSummary ?? {}),
 				outputKind: is3DTarget ? '3d-model' : 'image',
-				preferredUrl: (is3DTarget ? preferredModelUrl : preferredImageUrl || preferredModelUrl) || undefined,
+				preferredUrl:
+					(is3DTarget ? preferredModelUrl : preferredImageUrl || preferredModelUrl) || undefined,
 				imageUrls: is3DTarget ? undefined : imageUrls.slice(0, 4),
 				thumbnailUrl: resolvedThumbnailUrl || undefined,
-				format: is3DTarget ? format : undefined,
+				format: is3DTarget ? format : undefined
 			},
 			meshyRelationSummary: {
 				...(settings.meshyRelationSummary ?? {}),
-				relationKind: (String(settings.meshyRelationKind ?? 'model').trim() || 'model') as MeshyRelationKind,
+				relationKind: (String(settings.meshyRelationKind ?? 'model').trim() ||
+					'model') as MeshyRelationKind,
 				rootTaskId: String(settings.meshyRootTaskId ?? task.taskId ?? '').trim() || undefined,
 				parentTaskId: String(settings.meshyParentTaskId ?? '').trim() || undefined,
 				effectiveTaskId: task.taskId || undefined,
-				effectiveRelationKind: (String(settings.meshyRelationKind ?? 'model').trim() || 'model') as MeshyRelationKind,
+				effectiveRelationKind: (String(settings.meshyRelationKind ?? 'model').trim() ||
+					'model') as MeshyRelationKind,
 				effectiveStatus: normalized,
 				effectiveProgress: task.progress,
 				effectivePreferredModelUrl: preferredModelUrl || undefined,
 				effectivePreferredImageUrl: preferredImageUrl || undefined,
 				effectiveLocalAssetUrl: String(settings.meshyOutputAssetUrl ?? '').trim() || undefined,
 				effectiveLocalAssetPath: String(settings.meshyOutputAssetPath ?? '').trim() || undefined,
-				effectiveThumbnailUrl: resolvedThumbnailUrl || undefined,
-			},
+				effectiveThumbnailUrl: resolvedThumbnailUrl || undefined
+			}
 		}
 
 		if (normalized === 'succeeded') {
@@ -243,7 +250,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 					kind: 'file',
 					name: fileName,
 					sourceUrl: preferredModelUrl,
-					sourcePath: task.sourceModelUrl || undefined,
+					sourcePath: task.sourceModelUrl || undefined
 				})
 				patch.meshyOutputAssetUrl = String(persisted?.url || preferredModelUrl)
 				patch.meshyOutputAssetPath = String(persisted?.absolutePath || '').trim() || undefined
@@ -254,7 +261,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 						const persistedThumb = await options.persistExternalAssetToProject({
 							kind: 'image',
 							name: thumbName,
-							sourceUrl: thumbnailUrl,
+							sourceUrl: thumbnailUrl
 						})
 						const localThumb = String(persistedThumb?.url || '').trim()
 						if (localThumb) {
@@ -273,13 +280,13 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 					assetUrl: String(persisted?.url || preferredModelUrl),
 					assetPath: String(persisted?.absolutePath || '').trim() || undefined,
 					thumbnailUrl: resolvedThumbnailUrl || undefined,
-					format,
+					format
 				}
 				patch.meshyRelationSummary = {
 					...(patch.meshyRelationSummary ?? {}),
 					effectiveLocalAssetUrl: String(persisted?.url || preferredModelUrl),
 					effectiveLocalAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-					effectiveThumbnailUrl: resolvedThumbnailUrl || undefined,
+					effectiveThumbnailUrl: resolvedThumbnailUrl || undefined
 				}
 				patch.meshyThumbnailUrl = resolvedThumbnailUrl || undefined
 			}
@@ -313,7 +320,11 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 			}
 
 			const currentStatus = String(options.getNodeSettings(nodeId)?.meshyTaskStatus ?? 'idle')
-			if (currentStatus === 'succeeded' || currentStatus === 'failed' || currentStatus === 'canceled') {
+			if (
+				currentStatus === 'succeeded' ||
+				currentStatus === 'failed' ||
+				currentStatus === 'canceled'
+			) {
 				stopPoll(nodeId)
 				return
 			}
@@ -328,7 +339,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 						options.updateNodeSettings(nodeId, {
 							meshyTaskStatus: 'failed',
 							meshyStatusText: 'Meshy 状态连续获取失败',
-							meshyErrorMessage: String(res.error ?? 'unknown'),
+							meshyErrorMessage: String(res.error ?? 'unknown')
 						})
 						options.pushToast('Meshy 状态连续获取失败，请稍后重试。', 'warn')
 					}
@@ -358,7 +369,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 					options.updateNodeSettings(nodeId, {
 						meshyTaskStatus: 'failed',
 						meshyStatusText: 'Meshy 状态获取异常',
-						meshyErrorMessage: getErrorMessage(err),
+						meshyErrorMessage: getErrorMessage(err)
 					})
 					options.pushToast('Meshy 状态获取异常，已停止轮询。', 'warn')
 				}
@@ -380,7 +391,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 			options.updateNodeSettings(nodeId, {
 				meshyTaskStatus: 'failed',
 				meshyErrorMessage: prepared.error,
-				meshyStatusText: prepared.error,
+				meshyStatusText: prepared.error
 			})
 			return
 		}
@@ -396,8 +407,8 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 				promptText: prepared.promptText || undefined,
 				imageCount: prepared.imageCount,
 				modelInputConnected: options.hasIncomingEdge(node.id, 'in-model'),
-				lastValidatedAt: Date.now(),
-			},
+				lastValidatedAt: Date.now()
+			}
 		})
 
 		try {
@@ -407,7 +418,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 				options.updateNodeSettings(nodeId, {
 					meshyTaskStatus: 'failed',
 					meshyErrorMessage: msg,
-					meshyStatusText: msg,
+					meshyStatusText: msg
 				})
 				options.pushToast(msg, 'warn')
 				return
@@ -421,7 +432,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 				meshyTaskId: taskId,
 				meshyTaskStatus: taskStatus === 'idle' ? 'pending' : (taskStatus as MeshyTaskStatus),
 				meshyProgress: taskStatus === 'running' ? 5 : 0,
-				meshyStatusText: 'Meshy：任务已创建，开始轮询状态…',
+				meshyStatusText: 'Meshy：任务已创建，开始轮询状态…'
 			})
 
 			if (options.shouldRefreshMeshyTaskItems()) {
@@ -439,7 +450,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 			options.updateNodeSettings(nodeId, {
 				meshyTaskStatus: 'failed',
 				meshyErrorMessage: msg,
-				meshyStatusText: msg,
+				meshyStatusText: msg
 			})
 			options.pushToast(msg, 'warn')
 		}
@@ -449,8 +460,12 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		const settings = options.getNodeSettings(nodeId)
 		if (!settings) return
 
-		const currentTaskId = String(settings.meshyRelationSummary?.effectiveTaskId ?? settings.meshyTaskId ?? '').trim()
-		const rootTaskId = String(settings.meshyRootTaskId ?? settings.meshyRelationSummary?.rootTaskId ?? currentTaskId).trim()
+		const currentTaskId = String(
+			settings.meshyRelationSummary?.effectiveTaskId ?? settings.meshyTaskId ?? ''
+		).trim()
+		const rootTaskId = String(
+			settings.meshyRootTaskId ?? settings.meshyRelationSummary?.rootTaskId ?? currentTaskId
+		).trim()
 
 		if (!currentTaskId) {
 			options.pushToast('当前节点还没有可复用的 Meshy 任务结果。', 'warn')
@@ -474,8 +489,8 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 				...(settings.meshyRelationSummary ?? {}),
 				relationKind: 'texture',
 				rootTaskId: rootTaskId || currentTaskId,
-				parentTaskId: currentTaskId,
-			},
+				parentTaskId: currentTaskId
+			}
 		})
 
 		await startGeneration(nodeId)
@@ -485,7 +500,9 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		const settings = options.getNodeSettings(nodeId)
 		if (!settings) return
 
-		const taskId = String(settings.meshyRelationSummary?.effectiveTaskId ?? settings.meshyTaskId ?? '').trim()
+		const taskId = String(
+			settings.meshyRelationSummary?.effectiveTaskId ?? settings.meshyTaskId ?? ''
+		).trim()
 		if (!taskId) {
 			options.pushToast('当前节点没有进行中的任务。', 'warn')
 			return
@@ -518,7 +535,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		stopPoll(nodeId)
 		options.updateNodeSettings(nodeId, {
 			meshyTaskStatus: 'canceled',
-			meshyStatusText: '任务已停止',
+			meshyStatusText: '任务已停止'
 		})
 		options.pushToast('Meshy 任务已停止。', 'info')
 	}
@@ -552,8 +569,8 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 				effectivePreferredImageUrl: undefined,
 				effectiveLocalAssetUrl: undefined,
 				effectiveLocalAssetPath: undefined,
-				effectiveThumbnailUrl: undefined,
-			},
+				effectiveThumbnailUrl: undefined
+			}
 		})
 	}
 
@@ -575,6 +592,6 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		stopPoll,
 		startPoll,
 		applyMeshyTaskResult,
-		clearAllRuntime,
+		clearAllRuntime
 	}
 }

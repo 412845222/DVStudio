@@ -34,7 +34,7 @@ const presetCurves: Record<string, CubicBezier & { preset: string }> = {
 	linear: { x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' },
 	easeIn: { x1: 0.42, y1: 0, x2: 1, y2: 1, preset: 'easeIn' },
 	easeOut: { x1: 0, y1: 0, x2: 0.58, y2: 1, preset: 'easeOut' },
-	easeInOut: { x1: 0.42, y1: 0, x2: 0.58, y2: 1, preset: 'easeInOut' },
+	easeInOut: { x1: 0.42, y1: 0, x2: 0.58, y2: 1, preset: 'easeInOut' }
 }
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -45,7 +45,10 @@ const activePoint = ref<'p1' | 'p2' | null>(null)
 
 const redraw = () => {
 	if (!curveCanvas) return
-	curveCanvas.draw({ x1: props.curve.x1, y1: props.curve.y1, x2: props.curve.x2, y2: props.curve.y2 }, activePoint.value)
+	curveCanvas.draw(
+		{ x1: props.curve.x1, y1: props.curve.y1, x2: props.curve.x2, y2: props.curve.y2 },
+		activePoint.value
+	)
 }
 
 const resizeToElement = () => {
@@ -127,7 +130,15 @@ onBeforeUnmount(() => {
 })
 
 watch(
-	() => [props.width, props.curve.x1, props.curve.y1, props.curve.x2, props.curve.y2, props.curve.preset] as const,
+	() =>
+		[
+			props.width,
+			props.curve.x1,
+			props.curve.y1,
+			props.curve.x2,
+			props.curve.y2,
+			props.curve.preset
+		] as const,
 	() => {
 		resizeToElement()
 		redraw()

@@ -1,197 +1,197 @@
 <!-- NOTE: file will be rebuilt; marker -->
 <template>
-  <Teleport to="body">
-    <div v-if="open">
-      <div
-        ref="dialogRef"
-        class="dvs-pbed-dialog"
-        role="dialog"
-        aria-modal="false"
-        :style="dialogStyle"
-        @pointerdown.stop
-      >
-        <div class="dvs-pbed-head" @pointerdown.stop.prevent="onHeadPointerDown">
-          <div class="dvs-pbed-title">进度条编辑</div>
-          <button
-            class="dvs-pbed-close vs-btn"
-            type="button"
-            aria-label="关闭"
-            @click="emit('close')"
-          >
-            ×
-          </button>
-        </div>
+	<Teleport to="body">
+		<div v-if="open">
+			<div
+				ref="dialogRef"
+				class="dvs-pbed-dialog"
+				role="dialog"
+				aria-modal="false"
+				:style="dialogStyle"
+				@pointerdown.stop
+			>
+				<div class="dvs-pbed-head" @pointerdown.stop.prevent="onHeadPointerDown">
+					<div class="dvs-pbed-title">进度条编辑</div>
+					<button
+						class="dvs-pbed-close vs-btn"
+						type="button"
+						aria-label="关闭"
+						@click="emit('close')"
+					>
+						×
+					</button>
+				</div>
 
-        <div class="dvs-pbed-body">
-          <div class="dvs-pbed-row1">
-            <div class="dvs-pbed-col">
-              <div class="dvs-pbed-col-head">段落配置</div>
-              <div v-if="!spec" class="dvs-pbed-empty">
-                未找到该图层的进度条数据（请先生成进度条）。
-              </div>
-              <div v-else class="dvs-pbed-list">
-                <div v-for="(seg, idx) in segmentsDraft" :key="idx" class="dvs-pbed-row">
-                  <label class="vs-label" style="flex: 1; min-width: 0">
-                    <span>标题</span>
-                    <input v-model="seg.title" class="vs-input" type="text" />
-                  </label>
-                  <label class="vs-label" style="width: 120px">
-                    <span>开始帧</span>
-                    <input
-                      v-model.number="seg.startFrame"
-                      class="vs-input"
-                      type="number"
-                      :min="0"
-                      :max="Math.max(0, frameCount - 1)"
-                      step="1"
-                      @change="onSegmentStartEdit(idx)"
-                    />
-                  </label>
-                  <label class="vs-label" style="width: 120px">
-                    <span>结束帧</span>
-                    <input
-                      v-model.number="seg.endFrame"
-                      class="vs-input"
-                      type="number"
-                      :min="0"
-                      :max="Math.max(0, frameCount - 1)"
-                      step="1"
-                      @change="onSegmentEndEdit(idx)"
-                    />
-                  </label>
-                  <button
-                    class="vs-btn dvs-pbed-seg-del"
-                    type="button"
-                    :title="segmentsDraft.length <= 1 ? '至少保留 1 段' : '删除此段'"
-                    :disabled="segmentsDraft.length <= 1"
-                    @click="removeSegment(idx)"
-                  >
-                    删除
-                  </button>
-                </div>
-                <button
-                  class="vs-btn dvs-pbed-seg-add"
-                  type="button"
-                  :disabled="segmentsDraft.length >= frameCount"
-                  @click="addSegment"
-                >
-                  添加段落
-                </button>
-              </div>
-            </div>
+				<div class="dvs-pbed-body">
+					<div class="dvs-pbed-row1">
+						<div class="dvs-pbed-col">
+							<div class="dvs-pbed-col-head">段落配置</div>
+							<div v-if="!spec" class="dvs-pbed-empty">
+								未找到该图层的进度条数据（请先生成进度条）。
+							</div>
+							<div v-else class="dvs-pbed-list">
+								<div v-for="(seg, idx) in segmentsDraft" :key="idx" class="dvs-pbed-row">
+									<label class="vs-label" style="flex: 1; min-width: 0">
+										<span>标题</span>
+										<input v-model="seg.title" class="vs-input" type="text" />
+									</label>
+									<label class="vs-label" style="width: 120px">
+										<span>开始帧</span>
+										<input
+											v-model.number="seg.startFrame"
+											class="vs-input"
+											type="number"
+											:min="0"
+											:max="Math.max(0, frameCount - 1)"
+											step="1"
+											@change="onSegmentStartEdit(idx)"
+										/>
+									</label>
+									<label class="vs-label" style="width: 120px">
+										<span>结束帧</span>
+										<input
+											v-model.number="seg.endFrame"
+											class="vs-input"
+											type="number"
+											:min="0"
+											:max="Math.max(0, frameCount - 1)"
+											step="1"
+											@change="onSegmentEndEdit(idx)"
+										/>
+									</label>
+									<button
+										class="vs-btn dvs-pbed-seg-del"
+										type="button"
+										:title="segmentsDraft.length <= 1 ? '至少保留 1 段' : '删除此段'"
+										:disabled="segmentsDraft.length <= 1"
+										@click="removeSegment(idx)"
+									>
+										删除
+									</button>
+								</div>
+								<button
+									class="vs-btn dvs-pbed-seg-add"
+									type="button"
+									:disabled="segmentsDraft.length >= frameCount"
+									@click="addSegment"
+								>
+									添加段落
+								</button>
+							</div>
+						</div>
 
-            <div class="dvs-pbed-col">
-              <div class="dvs-pbed-col-head">样式</div>
-              <div v-if="!spec" class="dvs-pbed-empty">—</div>
-              <div v-else class="dvs-pbed-style">
-                <label class="vs-label">
-                  <span>背景色</span>
-                  <input v-model="bg" class="vs-input vs-color" type="color" />
-                </label>
-                <label class="vs-label">
-                  <span>边框色</span>
-                  <input v-model="border" class="vs-input vs-color" type="color" />
-                </label>
-                <label class="vs-label">
-                  <span>文字色</span>
-                  <input v-model="text" class="vs-input vs-color" type="color" />
-                </label>
+						<div class="dvs-pbed-col">
+							<div class="dvs-pbed-col-head">样式</div>
+							<div v-if="!spec" class="dvs-pbed-empty">—</div>
+							<div v-else class="dvs-pbed-style">
+								<label class="vs-label">
+									<span>背景色</span>
+									<input v-model="bg" class="vs-input vs-color" type="color" />
+								</label>
+								<label class="vs-label">
+									<span>边框色</span>
+									<input v-model="border" class="vs-input vs-color" type="color" />
+								</label>
+								<label class="vs-label">
+									<span>文字色</span>
+									<input v-model="text" class="vs-input vs-color" type="color" />
+								</label>
 
-                <div class="dvs-pbed-divider" />
+								<div class="dvs-pbed-divider" />
 
-                <label class="vs-label">
-                  <span>已播放颜色</span>
-                  <input v-model="played" class="vs-input vs-color" type="color" />
-                </label>
-                <label class="vs-label">
-                  <span>已播放边框</span>
-                  <input v-model="playedBorder" class="vs-input vs-color" type="color" />
-                </label>
+								<label class="vs-label">
+									<span>已播放颜色</span>
+									<input v-model="played" class="vs-input vs-color" type="color" />
+								</label>
+								<label class="vs-label">
+									<span>已播放边框</span>
+									<input v-model="playedBorder" class="vs-input vs-color" type="color" />
+								</label>
 
-                <div class="dvs-pbed-divider" />
+								<div class="dvs-pbed-divider" />
 
-                <label class="vs-label">
-                  <span>标记形状</span>
-                  <select v-model="markerShape" class="vs-select">
-                    <option value="circle">圆</option>
-                    <option value="square">方</option>
-                  </select>
-                </label>
-                <label class="vs-label">
-                  <span>标记大小</span>
-                  <input
-                    v-model.number="markerSize"
-                    class="vs-input"
-                    type="number"
-                    min="1"
-                    max="64"
-                    step="1"
-                  />
-                </label>
-                <label class="vs-label">
-                  <span>标记颜色</span>
-                  <input v-model="markerColor" class="vs-input vs-color" type="color" />
-                </label>
-                <label class="vs-label">
-                  <span>标记边框</span>
-                  <input v-model="markerBorder" class="vs-input vs-color" type="color" />
-                </label>
-              </div>
-            </div>
-          </div>
+								<label class="vs-label">
+									<span>标记形状</span>
+									<select v-model="markerShape" class="vs-select">
+										<option value="circle">圆</option>
+										<option value="square">方</option>
+									</select>
+								</label>
+								<label class="vs-label">
+									<span>标记大小</span>
+									<input
+										v-model.number="markerSize"
+										class="vs-input"
+										type="number"
+										min="1"
+										max="64"
+										step="1"
+									/>
+								</label>
+								<label class="vs-label">
+									<span>标记颜色</span>
+									<input v-model="markerColor" class="vs-input vs-color" type="color" />
+								</label>
+								<label class="vs-label">
+									<span>标记边框</span>
+									<input v-model="markerBorder" class="vs-input vs-color" type="color" />
+								</label>
+							</div>
+						</div>
+					</div>
 
-          <div class="dvs-pbed-row2 dvs-pbed-filters">
-            <div v-if="!spec" class="dvs-pbed-empty">—</div>
-            <template v-else>
-              <div class="dvs-pbed-filter-block">
-                <div class="dvs-pbed-filter-label">背景（root）</div>
-                <NodeFiltersForm
-                  v-if="filtersNodeIds.rootId"
-                  :layer-id="String(props.layerId)"
-                  :node-id="filtersNodeIds.rootId"
-                  :filters="filtersByNodeId(filtersNodeIds.rootId)"
-                />
-              </div>
-              <div class="dvs-pbed-filter-block">
-                <div class="dvs-pbed-filter-label">段落矩形（segments）</div>
-                <NodeFiltersForm
-                  v-if="filtersNodeIds.segmentRepId"
-                  :layer-id="String(props.layerId)"
-                  :node-id="filtersNodeIds.segmentRepId"
-                  :filters="filtersByNodeId(filtersNodeIds.segmentRepId)"
-                />
-              </div>
-              <div class="dvs-pbed-filter-block">
-                <div class="dvs-pbed-filter-label">段落文字（titles）</div>
-                <NodeFiltersForm
-                  v-if="filtersNodeIds.titleRepId"
-                  :layer-id="String(props.layerId)"
-                  :node-id="filtersNodeIds.titleRepId"
-                  :filters="filtersByNodeId(filtersNodeIds.titleRepId)"
-                />
-              </div>
-              <div class="dvs-pbed-filter-block">
-                <div class="dvs-pbed-filter-label">已播放（played overlay）</div>
-                <NodeFiltersForm
-                  v-if="filtersNodeIds.playedOverlayId"
-                  :layer-id="String(props.layerId)"
-                  :node-id="filtersNodeIds.playedOverlayId"
-                  :filters="filtersByNodeId(filtersNodeIds.playedOverlayId)"
-                />
-              </div>
-            </template>
-          </div>
-        </div>
+					<div class="dvs-pbed-row2 dvs-pbed-filters">
+						<div v-if="!spec" class="dvs-pbed-empty">—</div>
+						<template v-else>
+							<div class="dvs-pbed-filter-block">
+								<div class="dvs-pbed-filter-label">背景（root）</div>
+								<NodeFiltersForm
+									v-if="filtersNodeIds.rootId"
+									:layer-id="String(props.layerId)"
+									:node-id="filtersNodeIds.rootId"
+									:filters="filtersByNodeId(filtersNodeIds.rootId)"
+								/>
+							</div>
+							<div class="dvs-pbed-filter-block">
+								<div class="dvs-pbed-filter-label">段落矩形（segments）</div>
+								<NodeFiltersForm
+									v-if="filtersNodeIds.segmentRepId"
+									:layer-id="String(props.layerId)"
+									:node-id="filtersNodeIds.segmentRepId"
+									:filters="filtersByNodeId(filtersNodeIds.segmentRepId)"
+								/>
+							</div>
+							<div class="dvs-pbed-filter-block">
+								<div class="dvs-pbed-filter-label">段落文字（titles）</div>
+								<NodeFiltersForm
+									v-if="filtersNodeIds.titleRepId"
+									:layer-id="String(props.layerId)"
+									:node-id="filtersNodeIds.titleRepId"
+									:filters="filtersByNodeId(filtersNodeIds.titleRepId)"
+								/>
+							</div>
+							<div class="dvs-pbed-filter-block">
+								<div class="dvs-pbed-filter-label">已播放（played overlay）</div>
+								<NodeFiltersForm
+									v-if="filtersNodeIds.playedOverlayId"
+									:layer-id="String(props.layerId)"
+									:node-id="filtersNodeIds.playedOverlayId"
+									:filters="filtersByNodeId(filtersNodeIds.playedOverlayId)"
+								/>
+							</div>
+						</template>
+					</div>
+				</div>
 
-        <div class="dvs-pbed-foot">
-          <button class="vs-btn" type="button" :disabled="!spec" @click="applyAll">
-            应用（Ctrl+S）
-          </button>
-          <button class="vs-btn" type="button" @click="emit('close')">关闭</button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+				<div class="dvs-pbed-foot">
+					<button class="vs-btn" type="button" :disabled="!spec" @click="applyAll">
+						应用（Ctrl+S）
+					</button>
+					<button class="vs-btn" type="button" @click="emit('close')">关闭</button>
+				</div>
+			</div>
+		</div>
+	</Teleport>
 </template>
 
 <script setup lang="ts">
@@ -200,7 +200,13 @@ import { useStore } from 'vuex'
 import NodeFiltersForm from '../parts/nodeDetail/forms/NodeFiltersForm.vue'
 import { DwebCanvasGLKey } from '../VideoSceneRuntime'
 import { TimelineKey, type TimelineState } from '../../../store/timeline'
-import type { ProgressBarSpec, ProgressBarSegment, ProgressBarStyle, ProgressMarkerShape, TimelineFrameSpan } from '../../../core/timeline'
+import type {
+	ProgressBarSpec,
+	ProgressBarSegment,
+	ProgressBarStyle,
+	ProgressMarkerShape,
+	TimelineFrameSpan
+} from '../../../core/timeline'
 import type { NodeFilterSpec } from '../../../core/timeline/types'
 import type { VideoSceneLayer, VideoSceneTreeNode } from '../../../core/scene/types'
 import { VideoSceneStore } from '../../../store/videoscene'
@@ -217,7 +223,7 @@ const props = withDefaults(
 		open: boolean
 		layerId: string | number
 	}>(),
-	{ open: false },
+	{ open: false }
 )
 
 const store = useStore<TimelineState>(TimelineKey)
@@ -243,7 +249,7 @@ const filtersNodeIds = computed(() => {
 			titleIds: [] as string[],
 			markerIds: [] as string[],
 			segmentRepId: '',
-			titleRepId: '',
+			titleRepId: ''
 		}
 	}
 	const rootId = String(ids.rootId ?? '').trim()
@@ -260,7 +266,7 @@ const filtersNodeIds = computed(() => {
 		titleIds: titleIds.map((x) => String(x ?? '').trim()).filter(Boolean),
 		markerIds: markerIds.map((x) => String(x ?? '').trim()).filter(Boolean),
 		segmentRepId,
-		titleRepId,
+		titleRepId
 	}
 })
 
@@ -382,11 +388,15 @@ const writeBackToFirstKeyframe = async () => {
 	await store.dispatch('setStageKeyframeSnapshotRange', {
 		startFrame: first,
 		endFrame: first,
-		layers: [cloneJsonSafe(layer)],
+		layers: [cloneJsonSafe(layer)]
 	})
 }
 
-const patchNodeFiltersInLayerSnapshot = (layerSnap: VideoSceneLayer, nodeId: string, filters: NodeFilterSpec[]) => {
+const patchNodeFiltersInLayerSnapshot = (
+	layerSnap: VideoSceneLayer,
+	nodeId: string,
+	filters: NodeFilterSpec[]
+) => {
 	const id = String(nodeId ?? '').trim()
 	if (!id) return
 	const dfs = (nodes: VideoSceneTreeNode[] | undefined): boolean => {
@@ -404,7 +414,10 @@ const patchNodeFiltersInLayerSnapshot = (layerSnap: VideoSceneLayer, nodeId: str
 	dfs(layerSnap?.nodeTree)
 }
 
-const writeBackToFirstKeyframeWithPatchedFilters = async (nodeId: string, filters: NodeFilterSpec[]) => {
+const writeBackToFirstKeyframeWithPatchedFilters = async (
+	nodeId: string,
+	filters: NodeFilterSpec[]
+) => {
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
 	let first = getMinKeyframeFrameForLayer(lid)
@@ -420,7 +433,7 @@ const writeBackToFirstKeyframeWithPatchedFilters = async (nodeId: string, filter
 	await store.dispatch('setStageKeyframeSnapshotRange', {
 		startFrame: first,
 		endFrame: first,
-		layers: [snap],
+		layers: [snap]
 	})
 }
 
@@ -436,14 +449,25 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 	const n = Math.max(1, Math.floor(Number(segCount) || 1))
 	const desiredSegmentIds = Array.from({ length: n }, (_, i) => `${rootId}-seg-${i}`)
 	const desiredTitleIds = Array.from({ length: n }, (_, i) => `${rootId}-seg-title-${i}`)
-	const desiredMarkerIds = Array.from({ length: Math.max(0, n - 1) }, (_, k) => `${rootId}-marker-${k + 1}`)
+	const desiredMarkerIds = Array.from(
+		{ length: Math.max(0, n - 1) },
+		(_, k) => `${rootId}-marker-${k + 1}`
+	)
 
-	const curSegIds: string[] = Array.isArray(ids.segmentIds) ? ids.segmentIds.map((x) => String(x ?? '').trim()).filter(Boolean) : []
-	const curTitleIds: string[] = Array.isArray(ids.titleIds) ? ids.titleIds.map((x) => String(x ?? '').trim()).filter(Boolean) : []
-	const curMarkerIds: string[] = Array.isArray(ids.markerIds) ? ids.markerIds.map((x) => String(x ?? '').trim()).filter(Boolean) : []
+	const curSegIds: string[] = Array.isArray(ids.segmentIds)
+		? ids.segmentIds.map((x) => String(x ?? '').trim()).filter(Boolean)
+		: []
+	const curTitleIds: string[] = Array.isArray(ids.titleIds)
+		? ids.titleIds.map((x) => String(x ?? '').trim()).filter(Boolean)
+		: []
+	const curMarkerIds: string[] = Array.isArray(ids.markerIds)
+		? ids.markerIds.map((x) => String(x ?? '').trim()).filter(Boolean)
+		: []
 
 	const desiredSet = new Set([...desiredSegmentIds, ...desiredTitleIds, ...desiredMarkerIds])
-	const toDelete = [...curSegIds, ...curTitleIds, ...curMarkerIds].filter((id) => id && !desiredSet.has(id))
+	const toDelete = [...curSegIds, ...curTitleIds, ...curMarkerIds].filter(
+		(id) => id && !desiredSet.has(id)
+	)
 	if (toDelete.length) {
 		VideoSceneStore.dispatch('deleteNodesById', { layerId: lid, nodeIds: toDelete })
 	}
@@ -466,10 +490,18 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 		return Math.max(12, Math.min(28, Math.round(barH * 0.42)))
 	})()
 
-	const segFilters = (filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []) as unknown as JsonValue
-	const titleFilters = (filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []) as unknown as JsonValue
-	const bgFilters = (filtersNodeIds.value.rootId ? filtersByNodeId(filtersNodeIds.value.rootId) : []) as unknown as JsonValue
-	const playedFilters = (filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []) as unknown as JsonValue
+	const segFilters = (filtersNodeIds.value.segmentRepId
+		? filtersByNodeId(filtersNodeIds.value.segmentRepId)
+		: []) as unknown as JsonValue
+	const titleFilters = (filtersNodeIds.value.titleRepId
+		? filtersByNodeId(filtersNodeIds.value.titleRepId)
+		: []) as unknown as JsonValue
+	const bgFilters = (filtersNodeIds.value.rootId
+		? filtersByNodeId(filtersNodeIds.value.rootId)
+		: []) as unknown as JsonValue
+	const playedFilters = (filtersNodeIds.value.playedOverlayId
+		? filtersByNodeId(filtersNodeIds.value.playedOverlayId)
+		: []) as unknown as JsonValue
 
 	const addChildIfMissing = (node: VideoSceneTreeNode) => {
 		const id = String(node?.id ?? '').trim()
@@ -479,10 +511,18 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 	}
 
 	if (rootId) {
-		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: rootId, patch: { filters: bgFilters } })
+		VideoSceneStore.dispatch('updateNodeProps', {
+			layerId: lid,
+			nodeId: rootId,
+			patch: { filters: bgFilters }
+		})
 	}
 	if (playedId) {
-		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: playedId, patch: { filters: playedFilters } })
+		VideoSceneStore.dispatch('updateNodeProps', {
+			layerId: lid,
+			nodeId: playedId,
+			patch: { filters: playedFilters }
+		})
 	}
 
 	for (let i = 0; i < n; i++) {
@@ -493,7 +533,18 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 			name: `Segment ${i + 1}`,
 			category: 'user',
 			userType: 'rect',
-			transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 10, height: barH, rotation: 0, opacity: 1 },
+			transform: {
+				x: 0,
+				y: 0,
+				scaleX: 1,
+				scaleY: 1,
+				pivotX: 0.5,
+				pivotY: 0.5,
+				width: 10,
+				height: barH,
+				rotation: 0,
+				opacity: 1
+			},
 			props: {
 				fillColor: border.value,
 				fillOpacity: 0.18,
@@ -501,23 +552,34 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 				borderOpacity: 0.35,
 				borderWidth: 1,
 				cornerRadius: 0,
-				filters: segFilters,
-			},
+				filters: segFilters
+			}
 		})
 		addChildIfMissing({
 			id: titleId,
 			name: `Segment Title ${i + 1}`,
 			category: 'user',
 			userType: 'text',
-			transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 10, height: barH, rotation: 0, opacity: 1 },
+			transform: {
+				x: 0,
+				y: 0,
+				scaleX: 1,
+				scaleY: 1,
+				pivotX: 0.5,
+				pivotY: 0.5,
+				width: 10,
+				height: barH,
+				rotation: 0,
+				opacity: 1
+			},
 			props: {
 				textContent: String(segmentsDraft.value[i]?.title ?? '').trim() || `段落${i + 1}`,
 				textAlign: 'center',
 				fontSize: baseFontSize,
 				fontColor: text.value,
 				fontStyle: 'normal',
-				filters: titleFilters,
-			},
+				filters: titleFilters
+			}
 		})
 		if (i > 0) {
 			const mid = desiredMarkerIds[i - 1]
@@ -527,15 +589,26 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 				name: `Marker ${i + 1}`,
 				category: 'user',
 				userType: 'rect',
-				transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: markerSize.value, height: markerSize.value, rotation: 0, opacity: 1 },
+				transform: {
+					x: 0,
+					y: 0,
+					scaleX: 1,
+					scaleY: 1,
+					pivotX: 0.5,
+					pivotY: 0.5,
+					width: markerSize.value,
+					height: markerSize.value,
+					rotation: 0,
+					opacity: 1
+				},
 				props: {
 					fillColor: markerColor.value,
 					fillOpacity: 1,
 					borderColor: markerBorder.value,
 					borderOpacity: 0.85,
 					borderWidth: 1,
-					cornerRadius: cr,
-				},
+					cornerRadius: cr
+				}
 			})
 		}
 	}
@@ -551,9 +624,9 @@ const ensureProgressBarNodesForSegmentCount = async (lid: string, segCount: numb
 				playedOverlayId: playedId,
 				segmentIds: desiredSegmentIds,
 				titleIds: desiredTitleIds,
-				markerIds: desiredMarkerIds,
-			},
-		},
+				markerIds: desiredMarkerIds
+			}
+		}
 	})
 }
 
@@ -647,8 +720,12 @@ const recomputeSegmentsWithAnchor = (anchorIndex: number, mode: 'start' | 'end')
 	}
 	if (e - s + 1 < minAnchorLen) e = Math.min(maxEnd, s + minAnchorLen - 1)
 
-	const preWeights = list.slice(0, idx).map((x) => Math.max(1, (x?.endFrame ?? 0) - (x?.startFrame ?? 0) + 1))
-	const postWeights = list.slice(idx + 1).map((x) => Math.max(1, (x?.endFrame ?? 0) - (x?.startFrame ?? 0) + 1))
+	const preWeights = list
+		.slice(0, idx)
+		.map((x) => Math.max(1, (x?.endFrame ?? 0) - (x?.startFrame ?? 0) + 1))
+	const postWeights = list
+		.slice(idx + 1)
+		.map((x) => Math.max(1, (x?.endFrame ?? 0) - (x?.startFrame ?? 0) + 1))
 
 	const preTotal = s
 	const anchorTotal = Math.max(1, e - s + 1)
@@ -660,7 +737,7 @@ const recomputeSegmentsWithAnchor = (anchorIndex: number, mode: 'start' | 'end')
 	const next: SegmentDraft[] = list.map((x) => ({
 		title: String(x?.title ?? '').trim(),
 		startFrame: 0,
-		endFrame: 0,
+		endFrame: 0
 	}))
 
 	let cursor = 0
@@ -700,7 +777,7 @@ const normalizeSegmentsToFullRange = (items: SegmentDraft[]) => {
 	const list = (items ?? []).map((x) => ({
 		title: String(x?.title ?? '').trim(),
 		startFrame: 0,
-		endFrame: 0,
+		endFrame: 0
 	}))
 	const n = list.length
 	if (n <= 0) {
@@ -708,7 +785,9 @@ const normalizeSegmentsToFullRange = (items: SegmentDraft[]) => {
 		return
 	}
 	if (n > frameCount.value) list.splice(frameCount.value)
-	const lens = (items ?? []).slice(0, list.length).map((x) => Math.max(1, Math.floor((x?.endFrame ?? 0) - (x?.startFrame ?? 0) + 1)))
+	const lens = (items ?? [])
+		.slice(0, list.length)
+		.map((x) => Math.max(1, Math.floor((x?.endFrame ?? 0) - (x?.startFrame ?? 0) + 1)))
 	const weights = lens.length === list.length ? lens : new Array(list.length).fill(1)
 	const alloc = allocateByWeights(frameCount.value, weights)
 	let cursor = 0
@@ -743,7 +822,9 @@ const addSegment = () => {
 	const list = segmentsDraft.value.slice()
 	if (list.length >= maxAdd) return
 	const nextIdx = list.length + 1
-	const avgLen = list.length ? Math.max(1, Math.floor(frameCount.value / (list.length + 1))) : frameCount.value
+	const avgLen = list.length
+		? Math.max(1, Math.floor(frameCount.value / (list.length + 1)))
+		: frameCount.value
 	list.push({ title: `段落${nextIdx}`, startFrame: 0, endFrame: Math.max(0, avgLen - 1) })
 	normalizeSegmentsToFullRange(list)
 	void syncSegmentsDraftToLayer({ rebuildOverlayKeyframes: true })
@@ -764,8 +845,11 @@ const syncSegmentsDraftToLayer = async (opts?: { rebuildOverlayKeyframes?: boole
 		if (!lid) return
 		const segs: ProgressBarSegment[] = segmentsDraft.value.map((x) => ({
 			title: String(x.title ?? '').trim(),
-			startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.startFrame ?? 0)))),
-			endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0)))),
+			startFrame: Math.max(
+				0,
+				Math.min(frameCount.value - 1, Math.floor(Number(x.startFrame ?? 0)))
+			),
+			endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0))))
 		}))
 		await ensureProgressBarNodesForSegmentCount(lid, segs.length)
 		await store.dispatch('updateProgressBarSegments', { layerId: lid, segments: segs })
@@ -795,8 +879,7 @@ const onSegmentEndEdit = (idx: number) => {
 
 watch(
 	() => spec.value,
-	() => {
-	},
+	() => {},
 	{ immediate: true }
 )
 
@@ -814,7 +897,7 @@ const hydrateFromSpecIfNeeded = () => {
 	segmentsDraft.value = segs.map((x) => ({
 		title: String(x?.title ?? '').trim(),
 		startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.startFrame ?? 0)))),
-		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.endFrame ?? 0)))),
+		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x?.endFrame ?? 0))))
 	}))
 
 	bg.value = toHexOr(s.style?.backgroundColor, bg.value)
@@ -822,8 +905,11 @@ const hydrateFromSpecIfNeeded = () => {
 	text.value = toHexOr(s.style?.textColor, text.value)
 	played.value = toHexOr(s.style?.playedOverlayColor, played.value)
 	playedBorder.value = toHexOr(s.style?.playedOverlayBorderColor, playedBorder.value)
-	markerShape.value = (s.style?.marker?.shape === 'square' ? 'square' : 'circle')
-	markerSize.value = Math.max(1, Math.min(64, Math.floor(Number(s.style?.marker?.size ?? markerSize.value))))
+	markerShape.value = s.style?.marker?.shape === 'square' ? 'square' : 'circle'
+	markerSize.value = Math.max(
+		1,
+		Math.min(64, Math.floor(Number(s.style?.marker?.size ?? markerSize.value)))
+	)
 	markerColor.value = toHexOr(s.style?.marker?.color, markerColor.value)
 	markerBorder.value = toHexOr(s.style?.marker?.borderColor, markerBorder.value)
 }
@@ -871,7 +957,12 @@ const onHeadPointerDown = (ev: PointerEvent) => {
 	if (!el) return
 	const target = ev.target as HTMLElement | null
 	target?.setPointerCapture?.(ev.pointerId)
-	drag = { startX: ev.clientX, startY: ev.clientY, startLeft: pos.value.left, startTop: pos.value.top }
+	drag = {
+		startX: ev.clientX,
+		startY: ev.clientY,
+		startLeft: pos.value.left,
+		startTop: pos.value.top
+	}
 }
 
 const onMove = (ev: PointerEvent) => {
@@ -939,7 +1030,10 @@ const applyPlayedOverlayLayout = () => {
 	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
 	const layer = layers.find((l) => String(l?.id ?? '') === String(props.layerId))
 	if (!layer) return
-	const findNode = (nodes: VideoSceneTreeNode[] | undefined, id: string): VideoSceneTreeNode | null => {
+	const findNode = (
+		nodes: VideoSceneTreeNode[] | undefined,
+		id: string
+	): VideoSceneTreeNode | null => {
 		const list = Array.isArray(nodes) ? nodes : []
 		for (const n of list) {
 			if (!n || typeof n !== 'object') continue
@@ -958,7 +1052,7 @@ const applyPlayedOverlayLayout = () => {
 	VideoSceneStore.dispatch('updateNodeTransform', {
 		layerId: props.layerId,
 		nodeId: playedId,
-		patch: { y: 0, height: rh, x: leftX, pivotX: 0, pivotY: 0.5 },
+		patch: { y: 0, height: rh, x: leftX, pivotX: 0, pivotY: 0.5 }
 	})
 	scheduleWriteBackToFirstKeyframeSoon()
 }
@@ -971,7 +1065,10 @@ const clamp01 = (v: unknown, fallback = 0.5) => {
 	return n
 }
 
-const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFrame: number; endFrame: number }>) => {
+const rebuildPlayedOverlayKeyframes = async (
+	lid: string,
+	segs: Array<{ startFrame: number; endFrame: number }>
+) => {
 	const s = spec.value
 	if (!s) return
 	const ids = s.nodeIds
@@ -983,7 +1080,10 @@ const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFra
 	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
 	const layer = layers.find((l) => String(l?.id ?? '') === String(lid))
 	if (!layer) return
-	const findNode = (nodes: VideoSceneTreeNode[] | undefined, id: string): VideoSceneTreeNode | null => {
+	const findNode = (
+		nodes: VideoSceneTreeNode[] | undefined,
+		id: string
+	): VideoSceneTreeNode | null => {
 		const list = Array.isArray(nodes) ? nodes : []
 		for (const n of list) {
 			if (!n || typeof n !== 'object') continue
@@ -1005,7 +1105,10 @@ const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFra
 	const baseOpacity = Number(playedNode?.transform?.opacity ?? 1)
 
 	const lens = segs.map((x) => Math.max(1, x.endFrame - x.startFrame + 1))
-	const total = Math.max(1, lens.reduce((a, b) => a + b, 0))
+	const total = Math.max(
+		1,
+		lens.reduce((a, b) => a + b, 0)
+	)
 	let used = 0
 	let accW = 0
 	const keyframes = new Map<number, number>()
@@ -1039,10 +1142,10 @@ const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFra
 						pivotX: 0,
 						pivotY: 0.5,
 						rotation: baseRotation,
-						opacity: baseOpacity,
-					},
-				},
-			},
+						opacity: baseOpacity
+					}
+				}
+			}
 		})
 	}
 	for (let i = 0; i + 1 < frames.length; i++) {
@@ -1052,14 +1155,14 @@ const rebuildPlayedOverlayKeyframes = async (lid: string, segs: Array<{ startFra
 		await store.dispatch('enableEasingSegment', { layerId: lid, startFrame: a, endFrame: b })
 		await store.dispatch('setEasingCurve', {
 			segmentKey: `${lid}:${a}:${b}`,
-			curve: { x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' },
+			curve: { x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' }
 		})
 	}
 
 	VideoSceneStore.dispatch('updateNodeTransform', {
 		layerId: lid,
 		nodeId: playedId,
-		patch: { x: leftX, pivotX: 0, pivotY: clamp01(root.transform?.pivotY, 0.5) },
+		patch: { x: leftX, pivotX: 0, pivotY: clamp01(root.transform?.pivotY, 0.5) }
 	})
 }
 
@@ -1075,14 +1178,16 @@ const reorderChildren = () => {
 	const markerIds: string[] = Array.isArray(ids.markerIds) ? ids.markerIds : []
 	if (!rootId) return
 
-	const order = [...segmentIds, playedId, ...markerIds, ...titleIds].map((x) => String(x ?? '').trim()).filter(Boolean)
+	const order = [...segmentIds, playedId, ...markerIds, ...titleIds]
+		.map((x) => String(x ?? '').trim())
+		.filter(Boolean)
 	let idx = 0
 	for (const nodeId of order) {
 		VideoSceneStore.dispatch('moveNode', {
 			layerId: props.layerId,
 			nodeId,
 			targetParentId: rootId,
-			targetIndex: idx,
+			targetIndex: idx
 		})
 		idx++
 	}
@@ -1103,7 +1208,10 @@ const applySegmentsToStageNodes = () => {
 	const layers = VideoSceneStore.state.layers as VideoSceneLayer[]
 	const layer = layers.find((l) => String(l?.id ?? '') === String(props.layerId))
 	if (!layer) return
-	const findNode = (nodes: VideoSceneTreeNode[] | undefined, id: string): VideoSceneTreeNode | null => {
+	const findNode = (
+		nodes: VideoSceneTreeNode[] | undefined,
+		id: string
+	): VideoSceneTreeNode | null => {
 		const list = Array.isArray(nodes) ? nodes : []
 		for (const n of list) {
 			if (!n || typeof n !== 'object') continue
@@ -1122,11 +1230,14 @@ const applySegmentsToStageNodes = () => {
 	const segs = segmentsDraft.value.map((x) => ({
 		title: String(x.title ?? '').trim() || '段落',
 		startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.startFrame ?? 0)))),
-		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0)))),
+		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0))))
 	}))
 
 	const lens = segs.map((x) => Math.max(1, x.endFrame - x.startFrame + 1))
-	const total = Math.max(1, lens.reduce((a, b) => a + b, 0))
+	const total = Math.max(
+		1,
+		lens.reduce((a, b) => a + b, 0)
+	)
 
 	let used = 0
 	let accW = 0
@@ -1142,7 +1253,7 @@ const applySegmentsToStageNodes = () => {
 			VideoSceneStore.dispatch('updateNodeTransform', {
 				layerId: props.layerId,
 				nodeId: segId,
-				patch: { x: centerX, y: 0, width: w, height: rh },
+				patch: { x: centerX, y: 0, width: w, height: rh }
 			})
 		}
 		const titleId = String(titleIds[i] ?? '').trim()
@@ -1150,12 +1261,12 @@ const applySegmentsToStageNodes = () => {
 			VideoSceneStore.dispatch('updateNodeTransform', {
 				layerId: props.layerId,
 				nodeId: titleId,
-				patch: { x: centerX, y: 0, width: w, height: rh },
+				patch: { x: centerX, y: 0, width: w, height: rh }
 			})
 			VideoSceneStore.dispatch('updateNodeProps', {
 				layerId: props.layerId,
 				nodeId: titleId,
-				patch: { textContent: segs[i].title },
+				patch: { textContent: segs[i].title }
 			})
 		}
 
@@ -1166,7 +1277,7 @@ const applySegmentsToStageNodes = () => {
 				VideoSceneStore.dispatch('updateNodeTransform', {
 					layerId: props.layerId,
 					nodeId: mid,
-					patch: { x: mx, y: 0 },
+					patch: { x: mx, y: 0 }
 				})
 			}
 		}
@@ -1206,7 +1317,7 @@ const applyStyleToStageNodesOnly = () => {
 		VideoSceneStore.dispatch('updateNodeProps', {
 			layerId: lid,
 			nodeId: rootId,
-			patch: { fillColor: bg.value, borderColor: border.value },
+			patch: { fillColor: bg.value, borderColor: border.value }
 		})
 	}
 	for (const id of segmentIds) {
@@ -1215,13 +1326,17 @@ const applyStyleToStageNodesOnly = () => {
 		VideoSceneStore.dispatch('updateNodeProps', {
 			layerId: lid,
 			nodeId: sid,
-			patch: { fillColor: border.value, borderColor: border.value },
+			patch: { fillColor: border.value, borderColor: border.value }
 		})
 	}
 	for (const id of titleIds) {
 		const tid = String(id ?? '').trim()
 		if (!tid) continue
-		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: tid, patch: { fontColor: text.value } })
+		VideoSceneStore.dispatch('updateNodeProps', {
+			layerId: lid,
+			nodeId: tid,
+			patch: { fontColor: text.value }
+		})
 	}
 	if (playedId) {
 		VideoSceneStore.dispatch('updateNodeProps', {
@@ -1231,8 +1346,8 @@ const applyStyleToStageNodesOnly = () => {
 				fillColor: played.value,
 				borderColor: playedBorder.value,
 				borderWidth: 1,
-				borderOpacity: 0.55,
-			},
+				borderOpacity: 0.55
+			}
 		})
 	}
 
@@ -1240,11 +1355,21 @@ const applyStyleToStageNodesOnly = () => {
 	for (const id of markerIds) {
 		const mid = String(id ?? '').trim()
 		if (!mid) continue
-		VideoSceneStore.dispatch('updateNodeTransform', { layerId: lid, nodeId: mid, patch: { width: markerSize.value, height: markerSize.value } })
+		VideoSceneStore.dispatch('updateNodeTransform', {
+			layerId: lid,
+			nodeId: mid,
+			patch: { width: markerSize.value, height: markerSize.value }
+		})
 		VideoSceneStore.dispatch('updateNodeProps', {
 			layerId: lid,
 			nodeId: mid,
-			patch: { fillColor: markerColor.value, borderColor: markerBorder.value, borderWidth: 1, borderOpacity: 0.85, cornerRadius: cr },
+			patch: {
+				fillColor: markerColor.value,
+				borderColor: markerBorder.value,
+				borderWidth: 1,
+				borderOpacity: 0.85,
+				cornerRadius: cr
+			}
 		})
 	}
 
@@ -1269,9 +1394,15 @@ const commitStyleToStore = async () => {
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
 	const bgFilters = filtersNodeIds.value.rootId ? filtersByNodeId(filtersNodeIds.value.rootId) : []
-	const segFilters = filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []
-	const titleFilters = filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []
-	const playedFilters = filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []
+	const segFilters = filtersNodeIds.value.segmentRepId
+		? filtersByNodeId(filtersNodeIds.value.segmentRepId)
+		: []
+	const titleFilters = filtersNodeIds.value.titleRepId
+		? filtersByNodeId(filtersNodeIds.value.titleRepId)
+		: []
+	const playedFilters = filtersNodeIds.value.playedOverlayId
+		? filtersByNodeId(filtersNodeIds.value.playedOverlayId)
+		: []
 	const stylePatch: ProgressBarStyle = {
 		backgroundColor: bg.value,
 		borderColor: border.value,
@@ -1280,23 +1411,34 @@ const commitStyleToStore = async () => {
 			shape: markerShape.value,
 			size: Math.max(1, Math.min(64, Math.floor(markerSize.value))),
 			color: markerColor.value,
-			borderColor: markerBorder.value,
+			borderColor: markerBorder.value
 		},
 		playedOverlayColor: played.value,
 		playedOverlayBorderColor: playedBorder.value,
 		backgroundFilters: bgFilters,
 		segmentFilters: segFilters,
 		titleFilters: titleFilters,
-		playedOverlayFilters: playedFilters,
+		playedOverlayFilters: playedFilters
 	}
 	await store.dispatch('updateProgressBarStyle', {
 		layerId: lid,
-		style: stylePatch,
+		style: stylePatch
 	})
 }
 
 watch(
-	() => [bg.value, border.value, text.value, played.value, playedBorder.value, markerShape.value, markerSize.value, markerColor.value, markerBorder.value] as const,
+	() =>
+		[
+			bg.value,
+			border.value,
+			text.value,
+			played.value,
+			playedBorder.value,
+			markerShape.value,
+			markerSize.value,
+			markerColor.value,
+			markerBorder.value
+		] as const,
 	() => {
 		if (!props.open) return
 		if (!spec.value) return
@@ -1313,7 +1455,8 @@ watch(
 	}
 )
 watch(
-	() => (filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []),
+	() =>
+		filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : [],
 	(next) => {
 		if (!props.open) return
 		const repId = filtersNodeIds.value.segmentRepId
@@ -1379,7 +1522,10 @@ watch(
 	}
 )
 watch(
-	() => (filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []),
+	() =>
+		filtersNodeIds.value.playedOverlayId
+			? filtersByNodeId(filtersNodeIds.value.playedOverlayId)
+			: [],
 	(next) => {
 		if (!props.open) return
 		const id = filtersNodeIds.value.playedOverlayId
@@ -1401,7 +1547,7 @@ const applySegments = async () => {
 	const segs: ProgressBarSegment[] = segmentsDraft.value.map((x) => ({
 		title: String(x.title ?? '').trim(),
 		startFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.startFrame ?? 0)))),
-		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0)))),
+		endFrame: Math.max(0, Math.min(frameCount.value - 1, Math.floor(Number(x.endFrame ?? 0))))
 	}))
 	await ensureProgressBarNodesForSegmentCount(lid, segs.length)
 	await store.dispatch('updateProgressBarSegments', { layerId: lid, segments: segs })
@@ -1416,9 +1562,15 @@ const applyStyle = async () => {
 	const lid = String(props.layerId || '').trim()
 	if (!lid) return
 	const bgFilters = filtersNodeIds.value.rootId ? filtersByNodeId(filtersNodeIds.value.rootId) : []
-	const segFilters = filtersNodeIds.value.segmentRepId ? filtersByNodeId(filtersNodeIds.value.segmentRepId) : []
-	const titleFilters = filtersNodeIds.value.titleRepId ? filtersByNodeId(filtersNodeIds.value.titleRepId) : []
-	const playedFilters = filtersNodeIds.value.playedOverlayId ? filtersByNodeId(filtersNodeIds.value.playedOverlayId) : []
+	const segFilters = filtersNodeIds.value.segmentRepId
+		? filtersByNodeId(filtersNodeIds.value.segmentRepId)
+		: []
+	const titleFilters = filtersNodeIds.value.titleRepId
+		? filtersByNodeId(filtersNodeIds.value.titleRepId)
+		: []
+	const playedFilters = filtersNodeIds.value.playedOverlayId
+		? filtersByNodeId(filtersNodeIds.value.playedOverlayId)
+		: []
 	const stylePatch: ProgressBarStyle = {
 		backgroundColor: bg.value,
 		borderColor: border.value,
@@ -1427,18 +1579,18 @@ const applyStyle = async () => {
 			shape: markerShape.value,
 			size: Math.max(1, Math.min(64, Math.floor(markerSize.value))),
 			color: markerColor.value,
-			borderColor: markerBorder.value,
+			borderColor: markerBorder.value
 		},
 		playedOverlayColor: played.value,
 		playedOverlayBorderColor: playedBorder.value,
 		backgroundFilters: bgFilters,
 		segmentFilters: segFilters,
 		titleFilters: titleFilters,
-		playedOverlayFilters: playedFilters,
+		playedOverlayFilters: playedFilters
 	}
 	await store.dispatch('updateProgressBarStyle', {
 		layerId: lid,
-		style: stylePatch,
+		style: stylePatch
 	})
 
 	const ids = s.nodeIds
@@ -1453,7 +1605,7 @@ const applyStyle = async () => {
 		VideoSceneStore.dispatch('updateNodeProps', {
 			layerId: lid,
 			nodeId: rootId,
-			patch: { fillColor: bg.value, borderColor: border.value },
+			patch: { fillColor: bg.value, borderColor: border.value }
 		})
 	}
 	for (const id of segmentIds) {
@@ -1462,13 +1614,17 @@ const applyStyle = async () => {
 		VideoSceneStore.dispatch('updateNodeProps', {
 			layerId: lid,
 			nodeId: sid,
-			patch: { fillColor: border.value, borderColor: border.value },
+			patch: { fillColor: border.value, borderColor: border.value }
 		})
 	}
 	for (const id of titleIds) {
 		const tid = String(id ?? '').trim()
 		if (!tid) continue
-		VideoSceneStore.dispatch('updateNodeProps', { layerId: lid, nodeId: tid, patch: { fontColor: text.value } })
+		VideoSceneStore.dispatch('updateNodeProps', {
+			layerId: lid,
+			nodeId: tid,
+			patch: { fontColor: text.value }
+		})
 	}
 
 	if (playedId) {
@@ -1479,8 +1635,8 @@ const applyStyle = async () => {
 				fillColor: played.value,
 				borderColor: playedBorder.value,
 				borderWidth: 1,
-				borderOpacity: 0.55,
-			},
+				borderOpacity: 0.55
+			}
 		})
 	}
 
@@ -1488,11 +1644,21 @@ const applyStyle = async () => {
 	for (const id of markerIds) {
 		const mid = String(id ?? '').trim()
 		if (!mid) continue
-		VideoSceneStore.dispatch('updateNodeTransform', { layerId: lid, nodeId: mid, patch: { width: markerSize.value, height: markerSize.value } })
+		VideoSceneStore.dispatch('updateNodeTransform', {
+			layerId: lid,
+			nodeId: mid,
+			patch: { width: markerSize.value, height: markerSize.value }
+		})
 		VideoSceneStore.dispatch('updateNodeProps', {
 			layerId: lid,
 			nodeId: mid,
-			patch: { fillColor: markerColor.value, borderColor: markerBorder.value, borderWidth: 1, borderOpacity: 0.85, cornerRadius: cr },
+			patch: {
+				fillColor: markerColor.value,
+				borderColor: markerBorder.value,
+				borderWidth: 1,
+				borderOpacity: 0.85,
+				cornerRadius: cr
+			}
 		})
 	}
 
@@ -1510,260 +1676,260 @@ const applyAll = async () => {
 
 <style scoped>
 .dvs-pbed-dialog {
-  position: fixed;
-  z-index: 60;
-  width: 760px;
-  height: auto;
-  max-height: calc(100vh - 16px);
-  background: var(--dweb-defualt-dark);
-  border: 1px solid var(--vscode-border);
-  border-radius: 6px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+	position: fixed;
+	z-index: 60;
+	width: 760px;
+	height: auto;
+	max-height: calc(100vh - 16px);
+	background: var(--dweb-defualt-dark);
+	border: 1px solid var(--vscode-border);
+	border-radius: 6px;
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
 }
 
 .dvs-pbed-head {
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--vscode-border);
-  cursor: move;
-  user-select: none;
+	height: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 10px;
+	border-bottom: 1px solid var(--vscode-border);
+	cursor: move;
+	user-select: none;
 }
 
 .dvs-pbed-title {
-  color: var(--vscode-fg);
-  font-size: 14px;
-  font-weight: 600;
+	color: var(--vscode-fg);
+	font-size: 14px;
+	font-weight: 600;
 }
 
 .dvs-pbed-close {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  line-height: 26px;
-  text-align: center;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+	flex: 0 0 auto;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	line-height: 26px;
+	text-align: center;
+	font-size: 18px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .dvs-pbed-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
 }
 
 .dvs-pbed-row1 {
-  flex: 0 0 auto;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 1fr 280px;
+	flex: 0 0 auto;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: 1fr 280px;
 }
 
 .dvs-pbed-row2 {
-  flex: 1 1 auto;
-  min-height: 0;
-  border-top: 1px solid var(--vscode-border);
-  padding: 10px;
-  overflow: auto;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+	flex: 1 1 auto;
+	min-height: 0;
+	border-top: 1px solid var(--vscode-border);
+	padding: 10px;
+	overflow: auto;
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 8px;
 }
 
 .dvs-pbed-col {
-  padding: 10px;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+	padding: 10px;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
 }
 
 .dvs-pbed-col + .dvs-pbed-col {
-  border-left: 1px solid var(--vscode-border);
+	border-left: 1px solid var(--vscode-border);
 }
 
 .dvs-pbed-col-head {
-  color: var(--vscode-fg);
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 8px;
+	color: var(--vscode-fg);
+	font-size: 13px;
+	font-weight: 600;
+	margin-bottom: 8px;
 }
 
 .dvs-pbed-empty {
-  color: var(--vscode-fg-muted);
-  font-size: 12px;
+	color: var(--vscode-fg-muted);
+	font-size: 12px;
 }
 
 .dvs-pbed-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .dvs-pbed-row {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
+	display: flex;
+	gap: 8px;
+	align-items: flex-end;
 }
 
 .dvs-pbed-filter-block {
-  border: 1px solid var(--vscode-border);
-  border-radius: 6px;
-  padding: 8px;
-  min-width: 0;
-  background: rgba(255, 255, 255, 0.02);
+	border: 1px solid var(--vscode-border);
+	border-radius: 6px;
+	padding: 8px;
+	min-width: 0;
+	background: rgba(255, 255, 255, 0.02);
 }
 
 .dvs-pbed-filter-label {
-  color: var(--vscode-fg);
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 6px;
+	color: var(--vscode-fg);
+	font-size: 12px;
+	font-weight: 600;
+	margin-bottom: 6px;
 }
 
 /* shrink NodeFiltersForm typography inside this dialog */
 .dvs-pbed-filters :deep(.vs-filter-title) {
-  font-size: 12px;
+	font-size: 12px;
 }
 
 .dvs-pbed-filters :deep(.vs-filter-item-title) {
-  font-size: 12px;
+	font-size: 12px;
 }
 
 .dvs-pbed-filters :deep(.vs-row .vs-k) {
-  font-size: 12px;
+	font-size: 12px;
 }
 
 .dvs-pbed-filters :deep(.vs-filter-empty) {
-  font-size: 12px;
+	font-size: 12px;
 }
 
 .dvs-pbed-style {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow: auto;
-  padding-right: 2px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	overflow: auto;
+	padding-right: 2px;
 }
 
 .dvs-pbed-foot {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border-top: 1px solid var(--vscode-border);
+	flex: 0 0 auto;
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 10px;
+	padding: 10px;
+	border-top: 1px solid var(--vscode-border);
 }
 
 /* Local control skin: keep consistent with other dialogs/panels */
 .vs-btn {
-  padding: 6px 10px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border-accent);
-  background: transparent;
-  color: var(--vscode-fg);
-  cursor: pointer;
+	padding: 6px 10px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border-accent);
+	background: transparent;
+	color: var(--vscode-fg);
+	cursor: pointer;
 }
 
 .vs-btn:hover {
-  background: var(--vscode-hover-bg);
+	background: var(--vscode-hover-bg);
 }
 
 .vs-btn:disabled {
-  background: var(--vscode-disabled-bg);
-  color: var(--vscode-disabled-fg);
-  border-color: var(--vscode-border);
-  cursor: not-allowed;
+	background: var(--vscode-disabled-bg);
+	color: var(--vscode-disabled-fg);
+	border-color: var(--vscode-border);
+	cursor: not-allowed;
 }
 
 .vs-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--vscode-fg);
-  font-size: 12px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--vscode-fg);
+	font-size: 12px;
 }
 
 .vs-label > span {
-  flex: 0 0 auto;
-  color: var(--vscode-fg-muted);
-  font-size: 11px;
+	flex: 0 0 auto;
+	color: var(--vscode-fg-muted);
+	font-size: 11px;
 }
 
 .vs-input {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  outline: none;
-  box-sizing: border-box;
+	flex: 1 1 0;
+	min-width: 0;
+	height: 28px;
+	padding: 0 8px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	outline: none;
+	box-sizing: border-box;
 }
 
 .vs-input:hover {
-  border-color: var(--vscode-hover-border);
+	border-color: var(--vscode-hover-border);
 }
 
 .vs-input:focus {
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-select {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  outline: none;
-  box-sizing: border-box;
+	flex: 1 1 0;
+	min-width: 0;
+	height: 28px;
+	padding: 0 8px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	outline: none;
+	box-sizing: border-box;
 }
 
 .vs-select:hover {
-  border-color: var(--vscode-hover-border);
+	border-color: var(--vscode-hover-border);
 }
 
 .vs-select:focus {
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-color {
-  padding: 0;
-  width: 44px;
-  flex: 0 0 auto;
+	padding: 0;
+	width: 44px;
+	flex: 0 0 auto;
 }
 
 .vs-color::-webkit-color-swatch-wrapper {
-  padding: 2px;
+	padding: 2px;
 }
 
 .vs-color::-webkit-color-swatch {
-  border: 1px solid var(--vscode-border);
+	border: 1px solid var(--vscode-border);
 }
 
 .dvs-pbed-divider {
-  height: 1px;
-  background: var(--vscode-border);
-  opacity: 0.6;
+	height: 1px;
+	background: var(--vscode-border);
+	opacity: 0.6;
 }
 </style>

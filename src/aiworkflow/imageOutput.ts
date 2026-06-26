@@ -78,11 +78,11 @@ export const exportWorkflowImageOutputPng = async (payload: {
 							},
 							cleanup: () => {
 								try {
-									(bitmap as any).close?.()
+									;(bitmap as any).close?.()
 								} catch {
 									// ignore
 								}
-							},
+							}
 						}
 					}
 					if (typeof Image !== 'undefined') {
@@ -109,7 +109,7 @@ export const exportWorkflowImageOutputPng = async (payload: {
 								} catch {
 									// ignore
 								}
-							},
+							}
 						}
 					}
 				}
@@ -132,7 +132,7 @@ export const exportWorkflowImageOutputPng = async (payload: {
 			height: Math.max(1, Math.floor(img.naturalHeight || img.height || 1)),
 			draw: (ctx, sx, sy, sw, sh, dx, dy, dw, dh) => {
 				ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)
-			},
+			}
 		}
 	}
 

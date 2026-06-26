@@ -13,6 +13,6 @@ export const buildDeleteAction = (target: WorkflowSelectionTarget): WorkflowActi
 	return {
 		id: 'delete',
 		label: '删除',
-		target,
+		target
 	}
 }

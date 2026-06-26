@@ -32,7 +32,9 @@ const getStringFromUnknown = (v: unknown, fallback: string): string => {
 	return typeof v === 'string' ? v : fallback
 }
 
-export const computeTextAutoSize = (props: TextLikeProps): { width: number; height: number } | null => {
+export const computeTextAutoSize = (
+	props: TextLikeProps
+): { width: number; height: number } | null => {
 	const raw = props?.textContent
 	const text = typeof raw === 'string' ? raw : String(raw ?? '')
 	const fontSize = Math.max(1, getNumberFromUnknown(props.fontSize, 24))

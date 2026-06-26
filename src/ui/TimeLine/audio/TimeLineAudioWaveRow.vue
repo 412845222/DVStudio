@@ -20,7 +20,8 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 let ro: ResizeObserver | null = null
 let raf = 0
 
-const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+const cssVar = (name: string) =>
+	getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 const parseHexColor = (s: string): { r: number; g: number; b: number } | null => {
 	const t = s.trim()
@@ -57,7 +58,7 @@ const getThemeColors = () => {
 		rowBg,
 		wave: rgba(accent, 0.95),
 		mid: rgba(accent, 0.35),
-		empty: fgMuted,
+		empty: fgMuted
 	}
 }
 
@@ -174,7 +175,15 @@ onBeforeUnmount(() => {
 })
 
 watch(
-	() => [props.scrollLeft, props.frameWidth, props.fps, props.frameCount, props.audioVersion, props.audioTrack?.objectUrl] as const,
+	() =>
+		[
+			props.scrollLeft,
+			props.frameWidth,
+			props.fps,
+			props.frameCount,
+			props.audioVersion,
+			props.audioTrack?.objectUrl
+		] as const,
 	() => scheduleDraw(),
 	{ immediate: true }
 )

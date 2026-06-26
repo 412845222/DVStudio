@@ -1,6 +1,11 @@
 import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import { getErrorMessage, isRecord } from '../../../../types/utils'
-import type { MeshyGeneratePayload, MeshyRequestMode, BuildMeshyRequestResult, MeshyNodeSettingsLike } from './types'
+import type {
+	MeshyGeneratePayload,
+	MeshyRequestMode,
+	BuildMeshyRequestResult,
+	MeshyNodeSettingsLike
+} from './types'
 
 type LinkedImageInput = {
 	edge: WorkflowEdge
@@ -31,17 +36,28 @@ export const useAIWorkflowMeshyRequest = (options: {
 	missingMeshyImageOutputAnchors: (node: WorkflowNode) => string[]
 	meshyImageOutputCount: (settings: MeshyNodeSettingsLike) => number
 }) => {
-	const meshyImageInputDimensions = (fromNode: WorkflowNode, fromAnchorId: string): ImageDimensions | null => {
+	const meshyImageInputDimensions = (
+		fromNode: WorkflowNode,
+		fromAnchorId: string
+	): ImageDimensions | null => {
 		if (fromNode.type === 'image') {
-			const width = Number(fromNode.imageSettings?.outputWidth ?? fromNode.imageSettings?.naturalWidth ?? 0)
-			const height = Number(fromNode.imageSettings?.outputHeight ?? fromNode.imageSettings?.naturalHeight ?? 0)
+			const width = Number(
+				fromNode.imageSettings?.outputWidth ?? fromNode.imageSettings?.naturalWidth ?? 0
+			)
+			const height = Number(
+				fromNode.imageSettings?.outputHeight ?? fromNode.imageSettings?.naturalHeight ?? 0
+			)
 			if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
 				return { width: Math.floor(width), height: Math.floor(height) }
 			}
 		}
 		if (fromNode.type === 'scene-decompose') {
-			const outputs = Array.isArray(fromNode.sceneDecomposeSettings?.outputs) ? fromNode.sceneDecomposeSettings?.outputs : []
-			const item = outputs?.find((entry) => String((entry as Record<string, unknown>)?.imageAnchorId ?? '') === fromAnchorId)
+			const outputs = Array.isArray(fromNode.sceneDecomposeSettings?.outputs)
+				? fromNode.sceneDecomposeSettings?.outputs
+				: []
+			const item = outputs?.find(
+				(entry) => String((entry as Record<string, unknown>)?.imageAnchorId ?? '') === fromAnchorId
+			)
 			const width = Number((item as Record<string, unknown>)?.outputWidth ?? 0)
 			const height = Number((item as Record<string, unknown>)?.outputHeight ?? 0)
 			if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
@@ -60,7 +76,10 @@ export const useAIWorkflowMeshyRequest = (options: {
 	}
 
 	const buildMeshyImageConstraintHint = (
-		mode: Extract<MeshyRequestMode, 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'text-to-image' | 'image-to-image'>,
+		mode: Extract<
+			MeshyRequestMode,
+			'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'text-to-image' | 'image-to-image'
+		>,
 		linkedImageInputs: LinkedImageInput[]
 	) => {
 		if (mode !== 'image-to-3d' && mode !== 'multi-image-to-3d') return ''
@@ -89,14 +108,22 @@ export const useAIWorkflowMeshyRequest = (options: {
 		} catch (err: unknown) {
 			return {
 				ok: false,
-				error: `模型输入读取失败：${getErrorMessage(err)}`,
+				error: `模型输入读取失败：${getErrorMessage(err)}`
 			}
 		}
 		const target = String(settings.meshyTaskTarget ?? '3d') as '3d' | 'image'
-		const family = String(settings.meshyTaskFamily ?? (target === 'image' ? 'text-to-image' : 'text-to-3d'))
-		const relationSummary = isRecord(settings.meshyRelationSummary) ? settings.meshyRelationSummary : {}
-		const currentTaskId = String(settings.meshyTaskId ?? relationSummary.effectiveTaskId ?? '').trim()
-		const rootTaskId = String(settings.meshyRootTaskId ?? relationSummary.rootTaskId ?? currentTaskId).trim()
+		const family = String(
+			settings.meshyTaskFamily ?? (target === 'image' ? 'text-to-image' : 'text-to-3d')
+		)
+		const relationSummary = isRecord(settings.meshyRelationSummary)
+			? settings.meshyRelationSummary
+			: {}
+		const currentTaskId = String(
+			settings.meshyTaskId ?? relationSummary.effectiveTaskId ?? ''
+		).trim()
+		const rootTaskId = String(
+			settings.meshyRootTaskId ?? relationSummary.rootTaskId ?? currentTaskId
+		).trim()
 		const parentTaskId = String(settings.meshyParentTaskId ?? '').trim()
 		const manualPreviewTaskId = String(settings.meshyPreviewTaskId ?? '').trim()
 		const outputCount = options.meshyImageOutputCount(node.meshySettings)
@@ -107,7 +134,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 				error:
 					target === 'image'
 						? '请先把 Meshy 图片输出锚点连接到下游图片输入后再启动任务。'
-						: '请先把 Meshy 模型输出锚点连接到下游资源/模型输入后再启动任务。',
+						: '请先把 Meshy 模型输出锚点连接到下游资源/模型输入后再启动任务。'
 			}
 		}
 		if (target === 'image') {
@@ -115,7 +142,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 			if (missing.length) {
 				return {
 					ok: false,
-					error: `当前设置需输出 ${outputCount} 张图片，以下输出锚点未连接：${missing.join('、')}`,
+					error: `当前设置需输出 ${outputCount} 张图片，以下输出锚点未连接：${missing.join('、')}`
 				}
 			}
 		}
@@ -148,7 +175,8 @@ export const useAIWorkflowMeshyRequest = (options: {
 		const relationKind =
 			family === 'retexture'
 				? 'texture'
-				: String(settings.meshyRelationKind ?? relationSummary.relationKind ?? 'model').trim() || 'model'
+				: String(settings.meshyRelationKind ?? relationSummary.relationKind ?? 'model').trim() ||
+					'model'
 		const imageLimit = family === 'image-to-image' ? 5 : 4
 		const manualImageUrls = Array.isArray(settings.meshyImageUrls)
 			? settings.meshyImageUrls.map((x) => String(x ?? '').trim()).filter(Boolean)
@@ -156,13 +184,18 @@ export const useAIWorkflowMeshyRequest = (options: {
 		const linkedImages: string[] = []
 		for (const item of linkedImageInputs.slice(0, imageLimit)) {
 			try {
-				const normalized = await options.buildMeshyImageInputFromNode(item.fromNode, item.fromAnchorId)
+				const normalized = await options.buildMeshyImageInputFromNode(
+					item.fromNode,
+					item.fromAnchorId
+				)
 				if (normalized) linkedImages.push(normalized)
 			} catch (err: unknown) {
-				const label = String(item.fromNode.alias ?? item.fromNode.title ?? item.fromNode.id).trim() || item.fromNode.id
+				const label =
+					String(item.fromNode.alias ?? item.fromNode.title ?? item.fromNode.id).trim() ||
+					item.fromNode.id
 				return {
 					ok: false,
-					error: `参考图「${label}」读取失败：${getErrorMessage(err)}`,
+					error: `参考图「${label}」读取失败：${getErrorMessage(err)}`
 				}
 			}
 		}
@@ -174,19 +207,22 @@ export const useAIWorkflowMeshyRequest = (options: {
 			} catch (err: unknown) {
 				return {
 					ok: false,
-					error: `手填参考图读取失败：${getErrorMessage(err)}`,
+					error: `手填参考图读取失败：${getErrorMessage(err)}`
 				}
 			}
 		}
 		let resolvedSingleImageUrl = ''
 		try {
 			resolvedSingleImageUrl = String(settings.meshyImageUrl ?? '').trim()
-				? await options.normalizeMeshyImageInputValue(String(settings.meshyImageUrl ?? '').trim(), 'meshy_single_ref')
+				? await options.normalizeMeshyImageInputValue(
+						String(settings.meshyImageUrl ?? '').trim(),
+						'meshy_single_ref'
+					)
 				: ''
 		} catch (err: unknown) {
 			return {
 				ok: false,
-				error: `单图参考图读取失败：${getErrorMessage(err)}`,
+				error: `单图参考图读取失败：${getErrorMessage(err)}`
 			}
 		}
 		const imageUrls = linkedImages.length ? linkedImages : resolvedManualImageUrls
@@ -199,12 +235,15 @@ export const useAIWorkflowMeshyRequest = (options: {
 		let textureImageUrl = ''
 		try {
 			textureImageUrl = String(settings.meshyTextureImageUrl ?? '').trim()
-				? await options.normalizeMeshyImageInputValue(String(settings.meshyTextureImageUrl ?? '').trim(), 'meshy_texture_ref')
+				? await options.normalizeMeshyImageInputValue(
+						String(settings.meshyTextureImageUrl ?? '').trim(),
+						'meshy_texture_ref'
+					)
 				: ''
 		} catch (err: unknown) {
 			return {
 				ok: false,
-				error: `贴图参考图读取失败：${getErrorMessage(err)}`,
+				error: `贴图参考图读取失败：${getErrorMessage(err)}`
 			}
 		}
 		if (!textureImageUrl && family === 'retexture') {
@@ -223,9 +262,11 @@ export const useAIWorkflowMeshyRequest = (options: {
 		const sizeConstraintHint = buildMeshyImageConstraintHint(sizeConstraintMode, linkedImageInputs)
 		const promptHasSizeHint = /尺寸|分辨率|宽|高|比例|aspect|ratio/i.test(rawPrompt)
 		const promptWithConstraint = sizeConstraintHint
-			? (rawPrompt
-				? (promptHasSizeHint ? rawPrompt : `${rawPrompt}。严格保持输入图像尺寸比例（${sizeConstraintHint}）。`)
-				: `严格保持输入图像尺寸比例（${sizeConstraintHint}）。`)
+			? rawPrompt
+				? promptHasSizeHint
+					? rawPrompt
+					: `${rawPrompt}。严格保持输入图像尺寸比例（${sizeConstraintHint}）。`
+				: `严格保持输入图像尺寸比例（${sizeConstraintHint}）。`
 			: rawPrompt
 
 		const payload: MeshyGeneratePayload = {
@@ -266,7 +307,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 			remove_lighting: settings.meshyRemoveLighting !== false,
 			target_formats:
 				Array.isArray(settings.meshyTargetFormats) && settings.meshyTargetFormats.length
-					? settings.meshyTargetFormats as string[]
+					? (settings.meshyTargetFormats as string[])
 					: ['glb'],
 			relationKind,
 			rootTaskId: rootTaskId || undefined,
@@ -274,7 +315,9 @@ export const useAIWorkflowMeshyRequest = (options: {
 				family === 'retexture'
 					? parentTaskId || manualPreviewTaskId || undefined
 					: parentTaskId || undefined,
-			capabilities: Array.isArray(settings.meshyCapabilities) ? settings.meshyCapabilities as string[] : undefined,
+			capabilities: Array.isArray(settings.meshyCapabilities)
+				? (settings.meshyCapabilities as string[])
+				: undefined
 		}
 
 		if (family === 'retexture') {
@@ -319,12 +362,16 @@ export const useAIWorkflowMeshyRequest = (options: {
 			ok: true,
 			payload,
 			promptText: String(payload.prompt ?? '').trim(),
-			promptSource: linkedPrompt ? 'linked' : (String(settings.meshyPrompt ?? '').trim() ? 'manual' : 'none'),
-			imageCount: imageUrls.length || (payload.image_url ? 1 : 0),
+			promptSource: linkedPrompt
+				? 'linked'
+				: String(settings.meshyPrompt ?? '').trim()
+					? 'manual'
+					: 'none',
+			imageCount: imageUrls.length || (payload.image_url ? 1 : 0)
 		}
 	}
 
 	return {
-		buildMeshyRequestPayload,
+		buildMeshyRequestPayload
 	}
 }

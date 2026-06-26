@@ -8,13 +8,13 @@ const repoRoot = path.resolve(here, '..')
 const resourceDir = path.resolve(repoRoot, 'DVSResource')
 
 const result = cleanupOldRuntimeProject({
-  resourceDir,
-  log: (line) => console.log(line),
+	resourceDir,
+	log: (line) => console.log(line)
 })
 
 if (result.ok) {
-  console.log('[cleanup] success')
-  process.exit(0)
+	console.log('[cleanup] success')
+	process.exit(0)
 }
 
 console.error(`[cleanup] failed: ${result.error || 'unknown error'}`)

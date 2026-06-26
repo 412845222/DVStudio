@@ -73,19 +73,31 @@ export class FilterTargetsPool {
 	private maxBytes = DEFAULT_MAX_BYTES
 	private maxDimPx = DEFAULT_MAX_DIM_PX
 	private maxPixelsPerTex = DEFAULT_MAX_PIXELS_PER_TEX
-	private texCfg:
-		| {
-			internalFormat: number
-			format: number
-			type: number
-			minFilter: number
-			magFilter: number
-			bytesPerPixel: number
-		}
-		| null = null
+	private texCfg: {
+		internalFormat: number
+		format: number
+		type: number
+		minFilter: number
+		magFilter: number
+		bytesPerPixel: number
+	} | null = null
 
-	private frameStats: FrameStats = { alloc: 0, evict: 0, reuse: 0, clampDim: 0, clampPixels: 0, clampBudget: 0 }
-	private lastFrame: { targets: number; bytes: number; maxW: number; maxH: number; bytesPerPixel: number; format: string } | null = null
+	private frameStats: FrameStats = {
+		alloc: 0,
+		evict: 0,
+		reuse: 0,
+		clampDim: 0,
+		clampPixels: 0,
+		clampBudget: 0
+	}
+	private lastFrame: {
+		targets: number
+		bytes: number
+		maxW: number
+		maxH: number
+		bytesPerPixel: number
+		format: string
+	} | null = null
 
 	private ensureTexCfg(gl: WebGL2RenderingContext) {
 		if (this.texCfg) return
@@ -96,7 +108,7 @@ export class FilterTargetsPool {
 			type: gl.UNSIGNED_BYTE,
 			minFilter: gl.LINEAR,
 			magFilter: gl.LINEAR,
-			bytesPerPixel: 4,
+			bytesPerPixel: 4
 		}
 
 		// NOTE: We intentionally force RGBA8 for stability.
@@ -193,7 +205,7 @@ export class FilterTargetsPool {
 			bytesTotalBefore: bytesBefore,
 			targetsBefore,
 			bytesPerPixel: cfg.bytesPerPixel,
-			format: cfg.bytesPerPixel === 8 ? 'rgba16f' : 'rgba8',
+			format: cfg.bytesPerPixel === 8 ? 'rgba16f' : 'rgba8'
 		})
 
 		// Pre-evict before allocation to avoid GPU/driver OOM crashes.
@@ -205,7 +217,10 @@ export class FilterTargetsPool {
 		let finalH = ch
 		if (bytesNeeded > this.maxBytes) {
 			this.frameStats.clampBudget++
-			const maxPixelsByBudget = Math.max(1, Math.floor(this.maxBytes / (cfg.bytesPerPixel * TEX_COUNT_PER_TARGET)))
+			const maxPixelsByBudget = Math.max(
+				1,
+				Math.floor(this.maxBytes / (cfg.bytesPerPixel * TEX_COUNT_PER_TARGET))
+			)
 			const p0 = finalW * finalH
 			if (p0 > maxPixelsByBudget) {
 				const k = Math.sqrt(maxPixelsByBudget / p0)
@@ -239,7 +254,17 @@ export class FilterTargetsPool {
 			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 			gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
 			try {
-				gl.texImage2D(gl.TEXTURE_2D, 0, cfg.internalFormat, finalW, finalH, 0, cfg.format, cfg.type, null)
+				gl.texImage2D(
+					gl.TEXTURE_2D,
+					0,
+					cfg.internalFormat,
+					finalW,
+					finalH,
+					0,
+					cfg.format,
+					cfg.type,
+					null
+				)
 			} catch (e) {
 				diag.push({
 					t: Date.now(),
@@ -251,7 +276,7 @@ export class FilterTargetsPool {
 					targetsBefore,
 					bytesPerPixel: cfg.bytesPerPixel,
 					format: cfg.bytesPerPixel === 8 ? 'rgba16f' : 'rgba8',
-					info: String((e as any)?.message || e || ''),
+					info: String((e as any)?.message || e || '')
 				})
 				try {
 					gl.deleteTexture(tex)
@@ -309,7 +334,17 @@ export class FilterTargetsPool {
 						gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 						gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 						gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-						gl.texImage2D(gl.TEXTURE_2D, 0, cfg.internalFormat, tiny, tiny, 0, cfg.format, cfg.type, null)
+						gl.texImage2D(
+							gl.TEXTURE_2D,
+							0,
+							cfg.internalFormat,
+							tiny,
+							tiny,
+							0,
+							cfg.format,
+							cfg.type,
+							null
+						)
 						return tex
 					}
 					const texA = mkTinyTex()
@@ -331,7 +366,7 @@ export class FilterTargetsPool {
 						tex2: texC,
 						fbo0: fboA,
 						fbo1: fboB,
-						fbo2: fboC,
+						fbo2: fboC
 					}
 					const bytesTiny = tiny * tiny * cfg.bytesPerPixel * TEX_COUNT_PER_TARGET
 					this.map.set(keyTiny, { t: tt, usedAt: this.tick, bytes: bytesTiny })
@@ -351,7 +386,7 @@ export class FilterTargetsPool {
 				targetsBefore,
 				bytesPerPixel: cfg.bytesPerPixel,
 				format: cfg.bytesPerPixel === 8 ? 'rgba16f' : 'rgba8',
-				info: 'fallbackTiny',
+				info: 'fallbackTiny'
 			})
 			if (tTiny) return tTiny
 			throw e
@@ -371,7 +406,7 @@ export class FilterTargetsPool {
 			tex2,
 			fbo0,
 			fbo1,
-			fbo2,
+			fbo2
 		}
 		const bytes = finalW * finalH * cfg.bytesPerPixel * TEX_COUNT_PER_TARGET
 		this.map.set(finalKey, { t, usedAt: this.tick, bytes })
@@ -385,7 +420,7 @@ export class FilterTargetsPool {
 			bytesTotalBefore: bytesBefore,
 			targetsBefore,
 			bytesPerPixel: cfg.bytesPerPixel,
-			format: cfg.bytesPerPixel === 8 ? 'rgba16f' : 'rgba8',
+			format: cfg.bytesPerPixel === 8 ? 'rgba16f' : 'rgba8'
 		})
 		this.enforceBudget(gl, finalKey)
 		return t
@@ -393,7 +428,16 @@ export class FilterTargetsPool {
 
 	consumeFrameStats(): {
 		frame: FrameStats
-		total: { targets: number; bytes: number; maxW: number; maxH: number; bytesPerPixel: number; format: string; maxTargets: number; maxBytes: number }
+		total: {
+			targets: number
+			bytes: number
+			maxW: number
+			maxH: number
+			bytesPerPixel: number
+			format: string
+			maxTargets: number
+			maxBytes: number
+		}
 	} {
 		const cfg = this.texCfg
 		let maxW = 0
@@ -412,9 +456,16 @@ export class FilterTargetsPool {
 			bytesPerPixel: cfg?.bytesPerPixel ?? 4,
 			format,
 			maxTargets: this.maxTargets,
-			maxBytes: this.maxBytes,
+			maxBytes: this.maxBytes
 		}
-		this.lastFrame = { targets: total.targets, bytes: total.bytes, maxW: total.maxW, maxH: total.maxH, bytesPerPixel: total.bytesPerPixel, format: total.format }
+		this.lastFrame = {
+			targets: total.targets,
+			bytes: total.bytes,
+			maxW: total.maxW,
+			maxH: total.maxH,
+			bytesPerPixel: total.bytesPerPixel,
+			format: total.format
+		}
 		const frame = this.frameStats
 		this.frameStats = { alloc: 0, evict: 0, reuse: 0, clampDim: 0, clampPixels: 0, clampBudget: 0 }
 		return { frame, total }
@@ -436,7 +487,10 @@ export class FilterTargetsPool {
 	private enforceBudgetWithReservation(gl: WebGL2RenderingContext, reserveBytes: number) {
 		if (reserveBytes <= 0) return
 		// Evict LRU entries until there is room for the new target.
-		while (this.map.size + 1 > this.maxTargets || this.totalBytes() + reserveBytes > this.maxBytes) {
+		while (
+			this.map.size + 1 > this.maxTargets ||
+			this.totalBytes() + reserveBytes > this.maxBytes
+		) {
 			if (this.map.size === 0) break
 			const entries = [...this.map.entries()]
 			entries.sort((a, b) => a[1].usedAt - b[1].usedAt)

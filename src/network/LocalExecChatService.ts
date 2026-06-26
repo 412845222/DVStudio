@@ -12,7 +12,7 @@ import type {
 	NanoBananaGenerateStreamEvent,
 	SeedanceGenerateStreamEvent,
 	JimengGenerateStreamEvent,
-	NanoBananaCacheRefsResponse,
+	NanoBananaCacheRefsResponse
 } from './ComfyUIBridgeService'
 
 export type LocalExecDecision = 'accept' | 'decline'
@@ -30,17 +30,40 @@ type MeshyTaskResult = {
 }
 
 export type LocalExecChatService = {
-	blueprintChatStream: (payload: {
-		content: string
-		history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
-	}, signal?: AbortSignal) => AsyncGenerator<BlueprintChatStreamEvent, void, void>
+	blueprintChatStream: (
+		payload: {
+			content: string
+			history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+		},
+		signal?: AbortSignal
+	) => AsyncGenerator<BlueprintChatStreamEvent, void, void>
 	localExecHealth: () => Promise<CodexHealthResponse>
 	localExecListSessions: (projectId: number | null) => Promise<CodexListSessionsResponse>
-	localExecCreateSession: (payload?: { title?: string; cwd?: string; model?: string; projectId?: number | null }) => Promise<CodexCreateSessionResponse>
-	localExecListMessages: (sessionId: string, projectId: number | null) => Promise<CodexListMessagesResponse>
-	localExecUpdateSession: (payload: { sessionId: string; projectId: number | null; title: string }) => Promise<CodexUpdateSessionResponse>
-	localExecDeleteSession: (payload: { sessionId: string; projectId: number | null }) => Promise<{ ok?: boolean; error?: string }>
-	localExecSubmitApproval: (payload: { sessionId: string; messageId: string; decision: LocalExecDecision; projectId?: number | null }) => Promise<CodexApprovalResponse>
+	localExecCreateSession: (payload?: {
+		title?: string
+		cwd?: string
+		model?: string
+		projectId?: number | null
+	}) => Promise<CodexCreateSessionResponse>
+	localExecListMessages: (
+		sessionId: string,
+		projectId: number | null
+	) => Promise<CodexListMessagesResponse>
+	localExecUpdateSession: (payload: {
+		sessionId: string
+		projectId: number | null
+		title: string
+	}) => Promise<CodexUpdateSessionResponse>
+	localExecDeleteSession: (payload: {
+		sessionId: string
+		projectId: number | null
+	}) => Promise<{ ok?: boolean; error?: string }>
+	localExecSubmitApproval: (payload: {
+		sessionId: string
+		messageId: string
+		decision: LocalExecDecision
+		projectId?: number | null
+	}) => Promise<CodexApprovalResponse>
 	localExecStreamMessage: (
 		sessionId: string,
 		payload: {
@@ -56,11 +79,31 @@ export type LocalExecChatService = {
 	) => AsyncGenerator<CodexStreamEvent, void, void>
 	codexHealth: () => Promise<CodexHealthResponse>
 	codexListSessions: (projectId: number | null) => Promise<CodexListSessionsResponse>
-	codexCreateSession: (payload?: { title?: string; cwd?: string; model?: string; projectId?: number | null }) => Promise<CodexCreateSessionResponse>
-	codexListMessages: (sessionId: string, projectId: number | null) => Promise<CodexListMessagesResponse>
-	codexUpdateSession: (payload: { sessionId: string; projectId: number | null; title: string }) => Promise<CodexUpdateSessionResponse>
-	codexDeleteSession: (payload: { sessionId: string; projectId: number | null }) => Promise<{ ok?: boolean; error?: string }>
-	codexSubmitApproval: (payload: { sessionId: string; messageId: string; decision: LocalExecDecision; projectId?: number | null }) => Promise<CodexApprovalResponse>
+	codexCreateSession: (payload?: {
+		title?: string
+		cwd?: string
+		model?: string
+		projectId?: number | null
+	}) => Promise<CodexCreateSessionResponse>
+	codexListMessages: (
+		sessionId: string,
+		projectId: number | null
+	) => Promise<CodexListMessagesResponse>
+	codexUpdateSession: (payload: {
+		sessionId: string
+		projectId: number | null
+		title: string
+	}) => Promise<CodexUpdateSessionResponse>
+	codexDeleteSession: (payload: {
+		sessionId: string
+		projectId: number | null
+	}) => Promise<{ ok?: boolean; error?: string }>
+	codexSubmitApproval: (payload: {
+		sessionId: string
+		messageId: string
+		decision: LocalExecDecision
+		projectId?: number | null
+	}) => Promise<CodexApprovalResponse>
 	codexStreamMessage: (
 		sessionId: string,
 		payload: {
@@ -76,11 +119,21 @@ export type LocalExecChatService = {
 	) => AsyncGenerator<CodexStreamEvent, void, void>
 	nanoBananaCacheRefImages: (form: FormData) => Promise<NanoBananaCacheRefsResponse>
 	seedreamCacheRefImages: (form: FormData) => Promise<NanoBananaCacheRefsResponse>
-	nanoBananaGenerateStream: (form: FormData) => AsyncGenerator<NanoBananaGenerateStreamEvent, void, void>
-	seedreamGenerateStream: (form: FormData) => AsyncGenerator<NanoBananaGenerateStreamEvent, void, void>
-	jimengImageGenerateStream: (form: FormData) => AsyncGenerator<JimengGenerateStreamEvent, void, void>
-	jimengVideoGenerateStream: (form: FormData) => AsyncGenerator<JimengGenerateStreamEvent, void, void>
-	seedanceGenerateStream: (form: FormData) => AsyncGenerator<SeedanceGenerateStreamEvent, void, void>
+	nanoBananaGenerateStream: (
+		form: FormData
+	) => AsyncGenerator<NanoBananaGenerateStreamEvent, void, void>
+	seedreamGenerateStream: (
+		form: FormData
+	) => AsyncGenerator<NanoBananaGenerateStreamEvent, void, void>
+	jimengImageGenerateStream: (
+		form: FormData
+	) => AsyncGenerator<JimengGenerateStreamEvent, void, void>
+	jimengVideoGenerateStream: (
+		form: FormData
+	) => AsyncGenerator<JimengGenerateStreamEvent, void, void>
+	seedanceGenerateStream: (
+		form: FormData
+	) => AsyncGenerator<SeedanceGenerateStreamEvent, void, void>
 	meshyGenerate: (payload: Record<string, unknown>) => Promise<MeshyTaskResult>
 	meshyGenerateImage: (form: FormData) => Promise<MeshyTaskResult>
 	meshyTask: (taskId: string, mode: string) => Promise<MeshyTaskResult>
@@ -99,11 +152,27 @@ export const createLocalExecChatService = (bridge: ComfyUIBridgeService): LocalE
 
 	const localExecHealth = () => bridge.codexHealth()
 	const localExecListSessions = (projectId: number | null) => bridge.codexListSessions(projectId)
-	const localExecCreateSession = (payload?: { title?: string; cwd?: string; model?: string; projectId?: number | null }) => bridge.codexCreateSession(payload)
-	const localExecListMessages = (sessionId: string, projectId: number | null) => bridge.codexListMessages(sessionId, projectId)
-	const localExecUpdateSession = (payload: { sessionId: string; projectId: number | null; title: string }) => bridge.codexUpdateSession(payload)
-	const localExecDeleteSession = (payload: { sessionId: string; projectId: number | null }) => bridge.codexDeleteSession(payload)
-	const localExecSubmitApproval = (payload: { sessionId: string; messageId: string; decision: LocalExecDecision; projectId?: number | null }) => bridge.codexSubmitApproval(payload)
+	const localExecCreateSession = (payload?: {
+		title?: string
+		cwd?: string
+		model?: string
+		projectId?: number | null
+	}) => bridge.codexCreateSession(payload)
+	const localExecListMessages = (sessionId: string, projectId: number | null) =>
+		bridge.codexListMessages(sessionId, projectId)
+	const localExecUpdateSession = (payload: {
+		sessionId: string
+		projectId: number | null
+		title: string
+	}) => bridge.codexUpdateSession(payload)
+	const localExecDeleteSession = (payload: { sessionId: string; projectId: number | null }) =>
+		bridge.codexDeleteSession(payload)
+	const localExecSubmitApproval = (payload: {
+		sessionId: string
+		messageId: string
+		decision: LocalExecDecision
+		projectId?: number | null
+	}) => bridge.codexSubmitApproval(payload)
 	const localExecStreamMessage = (
 		sessionId: string,
 		payload: {
@@ -147,6 +216,6 @@ export const createLocalExecChatService = (bridge: ComfyUIBridgeService): LocalE
 		meshyGenerateImage: (form) => bridge.meshyGenerateImage(form),
 		meshyTask: (taskId, mode) => bridge.meshyTask(taskId, mode),
 		setLocalExecStreamMode,
-		getLocalExecStreamMode,
+		getLocalExecStreamMode
 	}
 }

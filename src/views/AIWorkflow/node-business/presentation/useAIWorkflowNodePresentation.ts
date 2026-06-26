@@ -19,280 +19,287 @@ import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource
 import { isWorkflowLocalAssetUrl, resolveBackendUrl } from '../../../../network/backendConfig'
 
 export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
-  const clampNodeScale = (zoom: number) => Math.max(0.2, Math.min(6, Number(zoom) || 1))
+	const clampNodeScale = (zoom: number) => Math.max(0.2, Math.min(6, Number(zoom) || 1))
 
-  const resolveNodeShellStyle = (
-    worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
-    worldX: number,
-    worldY: number,
-    zoom: number,
-    width: number,
-    height: number,
-  ) => {
-    const point = worldToScreen({ x: worldX, y: worldY })
-    return {
-      left: `${point.x}px`,
-      top: `${point.y}px`,
-      width: `${Math.max(80, width || 240)}px`,
-      height: `${Math.max(80, height || 160)}px`,
-      transform: `translate(-50%, -50%) scale(${clampNodeScale(zoom)})`,
-    } as Record<string, string>
-  }
+	const resolveNodeShellStyle = (
+		worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
+		worldX: number,
+		worldY: number,
+		zoom: number,
+		width: number,
+		height: number
+	) => {
+		const point = worldToScreen({ x: worldX, y: worldY })
+		return {
+			left: `${point.x}px`,
+			top: `${point.y}px`,
+			width: `${Math.max(80, width || 240)}px`,
+			height: `${Math.max(80, height || 160)}px`,
+			transform: `translate(-50%, -50%) scale(${clampNodeScale(zoom)})`
+		} as Record<string, string>
+	}
 
-  /**
-   * Compact node style — DYNAMIC physical dimensions matching scaled node size.
-   * The type badge is now INSIDE the node, so no extra vertical space needed.
-   */
-  const compactNodeShellStyle = (
-    worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
-    worldX: number,
-    worldY: number,
-    zoom: number,
-    width: number,
-    height: number,
-  ) => {
-    const point = worldToScreen({ x: worldX, y: worldY })
-    const nodeWidth = Math.max(80, width || 240)
-    const nodeHeight = Math.max(80, height || 160)
-    const safeZoom = Math.max(0.01, Number(zoom) || 1)
-    
-    // Dynamic size matching scaled real node
-    const fixedWidth = Math.max(120, nodeWidth * safeZoom)
-    const fixedHeight = Math.max(64, nodeHeight * safeZoom)
-    
-    return {
-      left: `${point.x}px`,
-      top: `${point.y}px`,
-      width: `${fixedWidth}px`,
-      height: `${fixedHeight}px`,
-      transform: 'translate(-50%, -50%)',
-    } as Record<string, string>
-  }
+	/**
+	 * Compact node style — DYNAMIC physical dimensions matching scaled node size.
+	 * The type badge is now INSIDE the node, so no extra vertical space needed.
+	 */
+	const compactNodeShellStyle = (
+		worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
+		worldX: number,
+		worldY: number,
+		zoom: number,
+		width: number,
+		height: number
+	) => {
+		const point = worldToScreen({ x: worldX, y: worldY })
+		const nodeWidth = Math.max(80, width || 240)
+		const nodeHeight = Math.max(80, height || 160)
+		const safeZoom = Math.max(0.01, Number(zoom) || 1)
 
-  /** Chinese type name for top-right badge. */
-  const compactNodeTypeChinese = (node: WorkflowNode): string => {
-    const labels: Record<string, string> = {
-      text: '文本',
-      'text-merge': '文本合并',
-      image: '图片',
-      'rotate-image': '图像旋转',
-      video: '视频',
-      'scene-understanding': '场景理解',
-      'scene-decompose': '场景分解',
-      'scene-layout': '场景布局',
-      'unreal-export': 'UE导出',
-      story: '故事',
-      comfyui: 'ComfyUI',
-      model3d: '3D模型',
-      meshy: 'Meshy',
-    }
-    return labels[node.type] || '节点'
-  }
+		// Dynamic size matching scaled real node
+		const fixedWidth = Math.max(120, nodeWidth * safeZoom)
+		const fixedHeight = Math.max(64, nodeHeight * safeZoom)
 
-  /** Gradient CSS background for the icon block (left side). */
-  const compactNodeTypeGradient = (node: WorkflowNode): string => {
-    const color = compactNodeTypeColor(node)
-    return `linear-gradient(135deg, color-mix(in srgb, ${color} 40%, #0d1117) 0%, color-mix(in srgb, ${color} 22%, #0d1117) 55%, color-mix(in srgb, ${color} 10%, #0d1117) 100%)`
-  }
+		return {
+			left: `${point.x}px`,
+			top: `${point.y}px`,
+			width: `${fixedWidth}px`,
+			height: `${fixedHeight}px`,
+			transform: 'translate(-50%, -50%)'
+		} as Record<string, string>
+	}
 
-  /** Short uppercase type label for compact display. */
-  const compactNodeTypeCode = (node: WorkflowNode): string => {
-    const codes: Record<string, string> = {
-      text: 'TXT',
-      'text-merge': 'MERGE',
-      image: 'IMG',
-      'rotate-image': 'ROT',
-      video: 'VID',
-      'scene-understanding': 'SCU',
-      'scene-decompose': 'SCD',
-      'scene-layout': 'SCL',
-      'unreal-export': 'UNR',
-      story: 'STORY',
-      comfyui: 'COMFY',
-      model3d: '3D',
-      meshy: 'MESH',
-    }
-    return codes[node.type] || 'NODE'
-  }
+	/** Chinese type name for top-right badge. */
+	const compactNodeTypeChinese = (node: WorkflowNode): string => {
+		const labels: Record<string, string> = {
+			text: '文本',
+			'text-merge': '文本合并',
+			image: '图片',
+			'rotate-image': '图像旋转',
+			video: '视频',
+			'scene-understanding': '场景理解',
+			'scene-decompose': '场景分解',
+			'scene-layout': '场景布局',
+			'unreal-export': 'UE导出',
+			story: '故事',
+			comfyui: 'ComfyUI',
+			model3d: '3D模型',
+			meshy: 'Meshy'
+		}
+		return labels[node.type] || '节点'
+	}
 
-  const nodeStyle = (
-    worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
-    worldX: number,
-    worldY: number,
-    zoom: number,
-    width: number,
-    height: number,
-  ) => resolveNodeShellStyle(worldToScreen, worldX, worldY, zoom, width, height)
+	/** Gradient CSS background for the icon block (left side). */
+	const compactNodeTypeGradient = (node: WorkflowNode): string => {
+		const color = compactNodeTypeColor(node)
+		return `linear-gradient(135deg, color-mix(in srgb, ${color} 40%, #0d1117) 0%, color-mix(in srgb, ${color} 22%, #0d1117) 55%, color-mix(in srgb, ${color} 10%, #0d1117) 100%)`
+	}
 
-  const compactNodeStyle = (
-    worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
-    worldX: number,
-    worldY: number,
-    zoom: number,
-    width: number,
-    height: number,
-  ) => resolveNodeShellStyle(worldToScreen, worldX, worldY, zoom, width, height)
+	/** Short uppercase type label for compact display. */
+	const compactNodeTypeCode = (node: WorkflowNode): string => {
+		const codes: Record<string, string> = {
+			text: 'TXT',
+			'text-merge': 'MERGE',
+			image: 'IMG',
+			'rotate-image': 'ROT',
+			video: 'VID',
+			'scene-understanding': 'SCU',
+			'scene-decompose': 'SCD',
+			'scene-layout': 'SCL',
+			'unreal-export': 'UNR',
+			story: 'STORY',
+			comfyui: 'COMFY',
+			model3d: '3D',
+			meshy: 'MESH'
+		}
+		return codes[node.type] || 'NODE'
+	}
 
-  const nodeComponent = (node: WorkflowNode): Component => {
-    if (node.type === 'story') return WorkflowStoryNode
-    if (node.type === 'text') return WorkflowTextNode
-    if (node.type === 'text-merge') return WorkflowTextMergeNode
-    if (node.type === 'image') return WorkflowImageNode
-    if (node.type === 'rotate-image') return WorkflowRotateImageNode
-    if (node.type === 'video') return WorkflowVideoNode
-    if (node.type === 'scene-understanding') return WorkflowSceneUnderstandingNode
-    if (node.type === 'scene-decompose') return WorkflowSceneDecomposeNode
-    if (node.type === 'scene-layout') return WorkflowSceneLayoutNode
-    if (node.type === 'unreal-export') return WorkflowUnrealExportNode
-    if (node.type === 'comfyui') return WorkflowComfyUINode
-    if (node.type === 'model3d') return WorkflowModel3DNode
-    if (node.type === 'meshy') return WorkflowMeshyModelNode
-    return WorkflowNodeBase
-  }
+	const nodeStyle = (
+		worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
+		worldX: number,
+		worldY: number,
+		zoom: number,
+		width: number,
+		height: number
+	) => resolveNodeShellStyle(worldToScreen, worldX, worldY, zoom, width, height)
 
-  const parseProjectAssetUrl = (raw: unknown) => {
-    const text = String(raw ?? '').trim()
-    if (!text) return null
-    try {
-      const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
-      const u = new URL(text, base)
-      const protocol = String(u.protocol || '').toLowerCase()
-      const host = String(u.hostname || '').toLowerCase()
-      const isDwebAsset = protocol === 'dweb:' && host === 'project-assets'
-      if (!isDwebAsset) return null
-      const projectId = String(u.searchParams.get('projectId') || '').trim()
-      const relPath = String(u.searchParams.get('path') || '').trim()
-      if (!projectId || !relPath) return null
-      return u
-    } catch {
-      return null
-    }
-  }
+	const compactNodeStyle = (
+		worldToScreen: (point: { x: number; y: number }) => { x: number; y: number },
+		worldX: number,
+		worldY: number,
+		zoom: number,
+		width: number,
+		height: number
+	) => resolveNodeShellStyle(worldToScreen, worldX, worldY, zoom, width, height)
 
-  const nodeImagePreviewVersion = (node: WorkflowNode) => {
-    if (!['image', 'video', 'rotate-image'].includes(node.type) || !node.resourceId) return null
-    const resource = store.state.resourcesById[node.resourceId] as any
-    if (!resource || typeof resource !== 'object') return null
+	const nodeComponent = (node: WorkflowNode): Component => {
+		if (node.type === 'story') return WorkflowStoryNode
+		if (node.type === 'text') return WorkflowTextNode
+		if (node.type === 'text-merge') return WorkflowTextMergeNode
+		if (node.type === 'image') return WorkflowImageNode
+		if (node.type === 'rotate-image') return WorkflowRotateImageNode
+		if (node.type === 'video') return WorkflowVideoNode
+		if (node.type === 'scene-understanding') return WorkflowSceneUnderstandingNode
+		if (node.type === 'scene-decompose') return WorkflowSceneDecomposeNode
+		if (node.type === 'scene-layout') return WorkflowSceneLayoutNode
+		if (node.type === 'unreal-export') return WorkflowUnrealExportNode
+		if (node.type === 'comfyui') return WorkflowComfyUINode
+		if (node.type === 'model3d') return WorkflowModel3DNode
+		if (node.type === 'meshy') return WorkflowMeshyModelNode
+		return WorkflowNodeBase
+	}
 
-    const explicit = String(resource.previewVersion ?? '').trim()
-    if (explicit) return explicit
+	const parseProjectAssetUrl = (raw: unknown) => {
+		const text = String(raw ?? '').trim()
+		if (!text) return null
+		try {
+			const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+			const u = new URL(text, base)
+			const protocol = String(u.protocol || '').toLowerCase()
+			const host = String(u.hostname || '').toLowerCase()
+			const isDwebAsset = protocol === 'dweb:' && host === 'project-assets'
+			if (!isDwebAsset) return null
+			const projectId = String(u.searchParams.get('projectId') || '').trim()
+			const relPath = String(u.searchParams.get('path') || '').trim()
+			if (!projectId || !relPath) return null
+			return u
+		} catch {
+			return null
+		}
+	}
 
-    const seedParts: string[] = []
-    const fingerprint = String(resource.sourceFingerprint ?? '').trim()
-    const sourceSize = Number(resource.sourceSize)
-    const sourceMtime = Number(resource.sourceLastModified)
-    const previewPath = String(resource.previewProjectRelativePath ?? '').trim()
-    const mediaPath = String(resource.projectRelativePath ?? '').trim()
+	const nodeImagePreviewVersion = (node: WorkflowNode) => {
+		if (!['image', 'video', 'rotate-image'].includes(node.type) || !node.resourceId) return null
+		const resource = store.state.resourcesById[node.resourceId] as any
+		if (!resource || typeof resource !== 'object') return null
 
-    if (fingerprint) seedParts.push(`f:${fingerprint}`)
-    if (previewPath) seedParts.push(`p:${previewPath}`)
-    if (mediaPath) seedParts.push(`m:${mediaPath}`)
-    if (Number.isFinite(sourceSize) && sourceSize > 0) seedParts.push(`s:${Math.floor(sourceSize)}`)
-    if (Number.isFinite(sourceMtime) && sourceMtime > 0) seedParts.push(`t:${Math.floor(sourceMtime)}`)
+		const explicit = String(resource.previewVersion ?? '').trim()
+		if (explicit) return explicit
 
-    if (!seedParts.length) return null
-    return seedParts.join('|')
-  }
+		const seedParts: string[] = []
+		const fingerprint = String(resource.sourceFingerprint ?? '').trim()
+		const sourceSize = Number(resource.sourceSize)
+		const sourceMtime = Number(resource.sourceLastModified)
+		const previewPath = String(resource.previewProjectRelativePath ?? '').trim()
+		const mediaPath = String(resource.projectRelativePath ?? '').trim()
 
-  const buildProjectAssetPreviewUrl = (raw: unknown, maxSize: number, version?: string | null) => {
-    const safeUrl = sanitizeWorkflowMediaUrl(raw)
-    if (!safeUrl) return ''
+		if (fingerprint) seedParts.push(`f:${fingerprint}`)
+		if (previewPath) seedParts.push(`p:${previewPath}`)
+		if (mediaPath) seedParts.push(`m:${mediaPath}`)
+		if (Number.isFinite(sourceSize) && sourceSize > 0) seedParts.push(`s:${Math.floor(sourceSize)}`)
+		if (Number.isFinite(sourceMtime) && sourceMtime > 0)
+			seedParts.push(`t:${Math.floor(sourceMtime)}`)
 
-    if (/^(?:blob:|data:)/i.test(safeUrl)) return safeUrl
-    if (/^https?:\/\//i.test(safeUrl)) return ''
+		if (!seedParts.length) return null
+		return seedParts.join('|')
+	}
 
-    const parsed = parseProjectAssetUrl(raw)
-    if (parsed) {
-      const safeSize = Number.isFinite(Number(maxSize)) ? Math.max(128, Math.min(4096, Math.floor(Number(maxSize)))) : 640
-      parsed.searchParams.set('variant', 'preview')
-      parsed.searchParams.set('maxSize', String(safeSize))
-      const v = String(version ?? '').trim()
-      if (v) parsed.searchParams.set('v', v)
-      return parsed.toString()
-    }
+	const buildProjectAssetPreviewUrl = (raw: unknown, maxSize: number, version?: string | null) => {
+		const safeUrl = sanitizeWorkflowMediaUrl(raw)
+		if (!safeUrl) return ''
 
-    if (safeUrl.startsWith('/api/') || safeUrl.startsWith('/media/')) {
-      return resolveBackendUrl(safeUrl) || safeUrl
-    }
+		if (/^(?:blob:|data:)/i.test(safeUrl)) return safeUrl
+		if (/^https?:\/\//i.test(safeUrl)) return ''
 
-    return ''
-  }
+		const parsed = parseProjectAssetUrl(raw)
+		if (parsed) {
+			const safeSize = Number.isFinite(Number(maxSize))
+				? Math.max(128, Math.min(4096, Math.floor(Number(maxSize))))
+				: 640
+			parsed.searchParams.set('variant', 'preview')
+			parsed.searchParams.set('maxSize', String(safeSize))
+			const v = String(version ?? '').trim()
+			if (v) parsed.searchParams.set('v', v)
+			return parsed.toString()
+		}
 
-  const nodeImagePreviewUrl = (node: WorkflowNode, maxSize: number) => {
-    if (!['image', 'video', 'rotate-image'].includes(node.type) || !node.resourceId) return null
-    const resource = store.state.resourcesById[node.resourceId] as any
-    if (!resource || typeof resource !== 'object') return null
+		if (safeUrl.startsWith('/api/') || safeUrl.startsWith('/media/')) {
+			return resolveBackendUrl(safeUrl) || safeUrl
+		}
 
-    const previewVersion = nodeImagePreviewVersion(node)
-    const explicitPreviewUrl = sanitizeWorkflowMediaUrl(resource.previewUrl)
-    const mediaUrl = sanitizeWorkflowMediaUrl(resource.url)
+		return ''
+	}
 
-    const builtFromExplicit = buildProjectAssetPreviewUrl(explicitPreviewUrl, maxSize, previewVersion)
-    if (builtFromExplicit) return sanitizeWorkflowMediaUrl(builtFromExplicit) || null
+	const nodeImagePreviewUrl = (node: WorkflowNode, maxSize: number) => {
+		if (!['image', 'video', 'rotate-image'].includes(node.type) || !node.resourceId) return null
+		const resource = store.state.resourcesById[node.resourceId] as any
+		if (!resource || typeof resource !== 'object') return null
 
-    const builtFromMedia = buildProjectAssetPreviewUrl(mediaUrl, maxSize, previewVersion)
-    if (builtFromMedia) return sanitizeWorkflowMediaUrl(builtFromMedia) || null
+		const previewVersion = nodeImagePreviewVersion(node)
+		const explicitPreviewUrl = sanitizeWorkflowMediaUrl(resource.previewUrl)
+		const mediaUrl = sanitizeWorkflowMediaUrl(resource.url)
 
-    return explicitPreviewUrl || null
-  }
+		const builtFromExplicit = buildProjectAssetPreviewUrl(
+			explicitPreviewUrl,
+			maxSize,
+			previewVersion
+		)
+		if (builtFromExplicit) return sanitizeWorkflowMediaUrl(builtFromExplicit) || null
 
-  const nodeResourceUrl = (node: WorkflowNode) => {
-    if (!node.resourceId) return null
-    const raw = store.state.resourcesById[node.resourceId]?.url
-    const safe = sanitizeWorkflowMediaUrl(raw)
-    if (safe && (node.type === 'image' || node.type === 'video' || node.type === 'rotate-image')) {
-      if (!isWorkflowLocalAssetUrl(safe)) return null
-    }
-    return safe || null
-  }
+		const builtFromMedia = buildProjectAssetPreviewUrl(mediaUrl, maxSize, previewVersion)
+		if (builtFromMedia) return sanitizeWorkflowMediaUrl(builtFromMedia) || null
 
-  const nodeResourceName = (node: WorkflowNode) => {
-    if (!node.resourceId) return null
-    return store.state.resourcesById[node.resourceId]?.name ?? null
-  }
+		return explicitPreviewUrl || null
+	}
 
-  const compactNodeImageUrl = (node: WorkflowNode) => {
-    if (node.type !== 'image' && node.type !== 'video' && node.type !== 'rotate-image') return null
-    return nodeImagePreviewUrl(node, 320)
-  }
+	const nodeResourceUrl = (node: WorkflowNode) => {
+		if (!node.resourceId) return null
+		const raw = store.state.resourcesById[node.resourceId]?.url
+		const safe = sanitizeWorkflowMediaUrl(raw)
+		if (safe && (node.type === 'image' || node.type === 'video' || node.type === 'rotate-image')) {
+			if (!isWorkflowLocalAssetUrl(safe)) return null
+		}
+		return safe || null
+	}
 
-  /**
-   * Returns the CSS color for a compact node's type icon block.
-   * Matches the sci-fi theme's distinct colors per node type.
-   */
-  const compactNodeTypeColor = (node: WorkflowNode): string => {
-    const typeColors: Record<string, string> = {
-      text: '#3f8cfc',
-      'text-merge': '#3f8cfc',
-      image: '#ec4899',
-      'rotate-image': '#ec4899',
-      video: '#34d399',
-      'scene-understanding': '#a855f7',
-      'scene-decompose': '#a855f7',
-      'scene-layout': '#f97322',
-      'unreal-export': '#f97322',
-      story: '#f59e0b',
-      comfyui: '#0ea5e9',
-      model3d: '#3b82f6',
-      meshy: '#0ea5e9',
-      base: '#1f9d84',
-    }
-    return typeColors[node.type] || '#1f9d84'
-  }
+	const nodeResourceName = (node: WorkflowNode) => {
+		if (!node.resourceId) return null
+		return store.state.resourcesById[node.resourceId]?.name ?? null
+	}
 
-  return {
-    nodeStyle,
-    compactNodeShellStyle,
-    compactNodeStyle,
-    nodeComponent,
-    nodeImagePreviewUrl,
-    nodeImagePreviewVersion,
-    nodeResourceUrl,
-    nodeResourceName,
-    compactNodeImageUrl,
-    compactNodeTypeColor,
-    compactNodeTypeChinese,
-    compactNodeTypeGradient,
-    compactNodeTypeCode,
-  }
+	const compactNodeImageUrl = (node: WorkflowNode) => {
+		if (node.type !== 'image' && node.type !== 'video' && node.type !== 'rotate-image') return null
+		return nodeImagePreviewUrl(node, 320)
+	}
+
+	/**
+	 * Returns the CSS color for a compact node's type icon block.
+	 * Matches the sci-fi theme's distinct colors per node type.
+	 */
+	const compactNodeTypeColor = (node: WorkflowNode): string => {
+		const typeColors: Record<string, string> = {
+			text: '#3f8cfc',
+			'text-merge': '#3f8cfc',
+			image: '#ec4899',
+			'rotate-image': '#ec4899',
+			video: '#34d399',
+			'scene-understanding': '#a855f7',
+			'scene-decompose': '#a855f7',
+			'scene-layout': '#f97322',
+			'unreal-export': '#f97322',
+			story: '#f59e0b',
+			comfyui: '#0ea5e9',
+			model3d: '#3b82f6',
+			meshy: '#0ea5e9',
+			base: '#1f9d84'
+		}
+		return typeColors[node.type] || '#1f9d84'
+	}
+
+	return {
+		nodeStyle,
+		compactNodeShellStyle,
+		compactNodeStyle,
+		nodeComponent,
+		nodeImagePreviewUrl,
+		nodeImagePreviewVersion,
+		nodeResourceUrl,
+		nodeResourceName,
+		compactNodeImageUrl,
+		compactNodeTypeColor,
+		compactNodeTypeChinese,
+		compactNodeTypeGradient,
+		compactNodeTypeCode
+	}
 }

@@ -18,7 +18,10 @@ const mapTree = (
 	})
 }
 
-const mapImageNodeProps = (props: VideoSceneNodeProps | undefined, idMap: Record<string, string>): VideoSceneNodeProps | undefined => {
+const mapImageNodeProps = (
+	props: VideoSceneNodeProps | undefined,
+	idMap: Record<string, string>
+): VideoSceneNodeProps | undefined => {
 	if (!props) return props
 	const raw = props.imageId
 	if (typeof raw !== 'string') return props
@@ -31,7 +34,11 @@ export const rewriteImageAssetIdsOnImportV1 = (args: {
 	snapshot: EditorSnapshot
 	manifest: ProjectManifestV1
 	existingImageAssetIds: Set<string>
-}): { snapshot: EditorSnapshot; manifest: ProjectManifestV1; assetIdMap: Record<string, string> } => {
+}): {
+	snapshot: EditorSnapshot
+	manifest: ProjectManifestV1
+	assetIdMap: Record<string, string>
+} => {
 	const idMap: Record<string, string> = {}
 	const nextManifest: ProjectManifestV1 = { ...args.manifest, assets: { ...args.manifest.assets } }
 	const nextImageAssets = { ...args.snapshot.videoScene.imageAssets }
@@ -57,7 +64,7 @@ export const rewriteImageAssetIdsOnImportV1 = (args: {
 				const nextProps = mapImageNodeProps(node.props, idMap)
 				if (nextProps === node.props) return node
 				return { ...node, props: nextProps }
-			}),
+			})
 		}
 	})
 
@@ -66,8 +73,8 @@ export const rewriteImageAssetIdsOnImportV1 = (args: {
 		videoScene: {
 			...args.snapshot.videoScene,
 			imageAssets: nextImageAssets,
-			layers: nextLayers,
-		},
+			layers: nextLayers
+		}
 	}
 
 	return { snapshot: nextSnapshot, manifest: nextManifest, assetIdMap: idMap }

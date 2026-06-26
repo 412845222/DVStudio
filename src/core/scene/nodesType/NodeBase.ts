@@ -23,8 +23,19 @@ export class NodeBase {
 			id,
 			name,
 			type: 'base',
-			transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 200, height: 120, rotation: 0, opacity: 1 },
-			props: {},
+			transform: {
+				x: 0,
+				y: 0,
+				scaleX: 1,
+				scaleY: 1,
+				pivotX: 0.5,
+				pivotY: 0.5,
+				width: 200,
+				height: 120,
+				rotation: 0,
+				opacity: 1
+			},
+			props: {}
 		}
 	}
 
@@ -50,9 +61,9 @@ export class NodeBase {
 				width: clampPx(tr.width, 200),
 				height: clampPx(tr.height, 120),
 				rotation: toNumber(tr.rotation, 0),
-				opacity: clamp01(tr.opacity, 1),
+				opacity: clamp01(tr.opacity, 1)
 			},
-			props: dto.props ?? {},
+			props: dto.props ?? {}
 		}
 	}
 }

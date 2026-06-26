@@ -28,7 +28,7 @@ import type {
 	WorkflowNodeGenerationTask,
 	WorkflowSelectionTag,
 	SavedSelectionFrame,
-	WorkflowModel3DNodeSettings,
+	WorkflowModel3DNodeSettings
 } from '../../aiworkflow/types'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
@@ -49,7 +49,9 @@ const clampZoom = (v: unknown) => {
 	return Math.max(0.2, Math.min(6, n))
 }
 
-const normalizeSceneLayoutLightingControls = (raw: unknown): WorkflowSceneLayoutLightingControls => {
+const normalizeSceneLayoutLightingControls = (
+	raw: unknown
+): WorkflowSceneLayoutLightingControls => {
 	const rawObj = isRecord(raw) ? raw : {}
 	const clampControl = (value: unknown, min: number, max: number, fallback: number) => {
 		const num = Number(value)
@@ -64,7 +66,7 @@ const normalizeSceneLayoutLightingControls = (raw: unknown): WorkflowSceneLayout
 		directional: clampControl(rawObj.directional, 0, 2.5, 1),
 		point: clampControl(rawObj.point, 0, 2.5, 1),
 		spot: clampControl(rawObj.spot, 0, 2.5, 1),
-		rectArea: clampControl(rawObj.rectArea, 0, 2.5, 1),
+		rectArea: clampControl(rawObj.rectArea, 0, 2.5, 1)
 	}
 }
 
@@ -83,7 +85,7 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 		resourceId: null,
 		inputs: [{ id: 'in-0', label: '入口' }],
 		outputs: [{ id: 'out-0', label: '出口' }],
-		createdAt: Date.now(),
+		createdAt: Date.now()
 	}
 	return {
 		viewport: { zoom: 1, panX: 0, panY: 0 },
@@ -106,7 +108,7 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 			nodeType: null,
 			draft: '',
 			submitting: false,
-			params: {},
+			params: {}
 		},
 		nodeGenerationTasksById: {},
 		nodeGenerationTaskIdsByNodeId: {},
@@ -114,7 +116,7 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 		savedSelectionFrames: [],
 		nodeCheckboxVisible: true,
 		projectId: null,
-		projectRootPath: '',
+		projectRootPath: ''
 	}
 }
 
@@ -172,30 +174,31 @@ const defaultAliasForType = (type: string) => {
 
 const normalizeMediaType = (
 	v: unknown,
-	context: { node?: WorkflowNode; nodeType?: string; anchorId?: string } = {},
+	context: { node?: WorkflowNode; nodeType?: string; anchorId?: string } = {}
 ): WorkflowAnchorSpec['mediaType'] | undefined => normalizeAnchorMediaType(v, context)
 
-const isSingleIOBaseNodeType = (type: string): type is 'text' | 'image' | 'video' | 'model3d' => (
+const isSingleIOBaseNodeType = (type: string): type is 'text' | 'image' | 'video' | 'model3d' =>
 	type === 'text' || type === 'image' || type === 'video' || type === 'model3d'
-)
 
-const singleIOAnchorsForNodeType = (type: string): { inputs: WorkflowAnchorSpec[]; outputs: WorkflowAnchorSpec[] } | null => {
+const singleIOAnchorsForNodeType = (
+	type: string
+): { inputs: WorkflowAnchorSpec[]; outputs: WorkflowAnchorSpec[] } | null => {
 	if (type === 'text') {
 		return {
 			inputs: [{ id: 'in-0', label: '输入', mediaType: 'text', multiInput: true }],
-			outputs: [{ id: 'out-0', label: '文本输出', mediaType: 'text' }],
+			outputs: [{ id: 'out-0', label: '文本输出', mediaType: 'text' }]
 		}
 	}
 	if (type === 'image') {
 		return {
 			inputs: [{ id: 'in-0', label: '图片输入', multiInput: true }],
-			outputs: [{ id: 'out-0', label: '图片输出', mediaType: 'image' }],
+			outputs: [{ id: 'out-0', label: '图片输出', mediaType: 'image' }]
 		}
 	}
 	if (type === 'video') {
 		return {
 			inputs: [{ id: 'in-0', label: '视频输入', multiInput: true }],
-			outputs: [{ id: 'out-0', label: '视频输出', mediaType: 'video' }],
+			outputs: [{ id: 'out-0', label: '视频输出', mediaType: 'video' }]
 		}
 	}
 	if (type === 'model3d') {
@@ -206,12 +209,12 @@ const singleIOAnchorsForNodeType = (type: string): { inputs: WorkflowAnchorSpec[
 				{ id: 'in-image-1', label: '参考图 1', mediaType: 'image' },
 				{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
 				{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
-				{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
+				{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' }
 			],
 			outputs: [
 				{ id: 'out-0', label: '模型输出', mediaType: 'model3d' },
-				{ id: 'out-image', label: '预览图', mediaType: 'image' },
-			],
+				{ id: 'out-image', label: '预览图', mediaType: 'image' }
+			]
 		}
 	}
 	return null
@@ -329,9 +332,15 @@ const NODE_PADDING_BOTTOM = 10
 
 const storyBranchOffset = (index: number, count: number, height: number) => {
 	const rows = Math.max(1, count)
-	const footerHeight = STORY_BRANCH_PAD * 2 + rows * STORY_BRANCH_ROW + (rows - 1) * STORY_BRANCH_GAP
+	const footerHeight =
+		STORY_BRANCH_PAD * 2 + rows * STORY_BRANCH_ROW + (rows - 1) * STORY_BRANCH_GAP
 	const footerTop = height / 2 - NODE_PADDING_BOTTOM - footerHeight
-	return footerTop + STORY_BRANCH_PAD + STORY_BRANCH_ROW / 2 + index * (STORY_BRANCH_ROW + STORY_BRANCH_GAP)
+	return (
+		footerTop +
+		STORY_BRANCH_PAD +
+		STORY_BRANCH_ROW / 2 +
+		index * (STORY_BRANCH_ROW + STORY_BRANCH_GAP)
+	)
 }
 
 const ensureStoryBranches = (node: WorkflowNode) => {
@@ -360,7 +369,7 @@ const syncTextMergeAnchors = (node: WorkflowNode) => {
 	node.inputs = items.map((it: { id: string }, idx: number) => ({
 		id: `in-${String(it.id)}`,
 		label: `拼接${idx + 1}`,
-		mediaType: 'text' as const,
+		mediaType: 'text' as const
 	}))
 	node.outputs = [{ id: 'out-text', label: '整合文本', mediaType: 'text' as const }]
 }
@@ -371,13 +380,13 @@ const syncStoryAnchors = (node: WorkflowNode) => {
 	const inputOffset = (STORY_INPUT_SIZE + STORY_INPUT_GAP) / 2
 	node.inputs = [
 		{ id: 'in-flow', label: '剧情流程', offsetY: -inputOffset, mediaType: 'flow' },
-		{ id: 'in-resource', label: '资源来源', offsetY: inputOffset },
+		{ id: 'in-resource', label: '资源来源', offsetY: inputOffset }
 	]
 	node.outputs = node.branches!.map((b, idx) => ({
 		id: `out-${b.id}`,
 		label: b.text ? b.text : `分支${idx + 1}`,
 		offsetY: storyBranchOffset(idx, node.branches!.length, height),
-		mediaType: 'flow',
+		mediaType: 'flow'
 	}))
 }
 
@@ -387,35 +396,42 @@ const COMFY_PROMPT_NEGATIVE_ANCHOR_ID = 'in-negative'
 const comfyPromptAnchors = (): WorkflowAnchorSpec[] => {
 	return [
 		{ id: COMFY_PROMPT_POSITIVE_ANCHOR_ID, label: '正向提示词', mediaType: 'text' },
-		{ id: COMFY_PROMPT_NEGATIVE_ANCHOR_ID, label: '负向提示词', mediaType: 'text' },
+		{ id: COMFY_PROMPT_NEGATIVE_ANCHOR_ID, label: '负向提示词', mediaType: 'text' }
 	]
 }
 
-const normalizeSceneUnderstandingSettings = (rawSettings: unknown): WorkflowSceneUnderstandingNodeSettings | undefined => {
+const normalizeSceneUnderstandingSettings = (
+	rawSettings: unknown
+): WorkflowSceneUnderstandingNodeSettings | undefined => {
 	if (!rawSettings || !isRecord(rawSettings)) return undefined
 	const raw = rawSettings
 	const availableModels = isArray(raw.availableModels)
 		? raw.availableModels
-			.map((item: unknown) => {
-				const itemObj = isRecord(item) ? item : {}
-				return {
-					id: String(itemObj.id ?? '').trim(),
-					label: String(itemObj.label ?? itemObj.id ?? '').trim(),
-					supportsVision: isBoolean(itemObj.supportsVision) ? itemObj.supportsVision : undefined,
-					supportsStructuredOutput:
-						isBoolean(itemObj.supportsStructuredOutput) ? itemObj.supportsStructuredOutput : undefined,
-					recommended: isBoolean(itemObj.recommended) ? itemObj.recommended : undefined,
-					vendor: isString(itemObj.vendor) ? itemObj.vendor : undefined,
-				}
-			})
-			.filter((item) => item.id)
+				.map((item: unknown) => {
+					const itemObj = isRecord(item) ? item : {}
+					return {
+						id: String(itemObj.id ?? '').trim(),
+						label: String(itemObj.label ?? itemObj.id ?? '').trim(),
+						supportsVision: isBoolean(itemObj.supportsVision) ? itemObj.supportsVision : undefined,
+						supportsStructuredOutput: isBoolean(itemObj.supportsStructuredOutput)
+							? itemObj.supportsStructuredOutput
+							: undefined,
+						recommended: isBoolean(itemObj.recommended) ? itemObj.recommended : undefined,
+						vendor: isString(itemObj.vendor) ? itemObj.vendor : undefined
+					}
+				})
+				.filter((item) => item.id)
 		: undefined
 	return {
 		mode: raw.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout',
 		selectedModel: isString(raw.selectedModel) ? raw.selectedModel : undefined,
 		availableModels,
 		status:
-			raw.status === 'loading-models' || raw.status === 'running' || raw.status === 'completed' || raw.status === 'error' || raw.status === 'canceled'
+			raw.status === 'loading-models' ||
+			raw.status === 'running' ||
+			raw.status === 'completed' ||
+			raw.status === 'error' ||
+			raw.status === 'canceled'
 				? raw.status
 				: 'idle',
 		message: isString(raw.message) ? raw.message : undefined,
@@ -423,24 +439,33 @@ const normalizeSceneUnderstandingSettings = (rawSettings: unknown): WorkflowScen
 		progress: Number.isFinite(Number(raw.progress)) ? Number(raw.progress) : undefined,
 		provider: isString(raw.provider) ? raw.provider : undefined,
 		providerStatusText: isString(raw.providerStatusText) ? raw.providerStatusText : undefined,
-		remoteStatusCode: Number.isFinite(Number(raw.remoteStatusCode)) ? Number(raw.remoteStatusCode) : undefined,
+		remoteStatusCode: Number.isFinite(Number(raw.remoteStatusCode))
+			? Number(raw.remoteStatusCode)
+			: undefined,
 		outputJson: isString(raw.outputJson) ? raw.outputJson : undefined,
 		rawOutput: isString(raw.rawOutput) ? raw.rawOutput : undefined,
 		resultSummary: isString(raw.resultSummary) ? raw.resultSummary : undefined,
 		lastRunAt: Number.isFinite(Number(raw.lastRunAt)) ? Number(raw.lastRunAt) : undefined,
 		lastInputImageUrl: isString(raw.lastInputImageUrl) ? raw.lastInputImageUrl : undefined,
 		lastInputImageUrls: isArray(raw.lastInputImageUrls)
-			? raw.lastInputImageUrls.map((x: unknown) => String(x ?? '').trim()).filter((x: string) => !!x).slice(0, 4)
+			? raw.lastInputImageUrls
+					.map((x: unknown) => String(x ?? '').trim())
+					.filter((x: string) => !!x)
+					.slice(0, 4)
 			: undefined,
 		lastInputPrompt: isString(raw.lastInputPrompt) ? raw.lastInputPrompt : undefined,
 		lastInputLayoutJson: isString(raw.lastInputLayoutJson) ? raw.lastInputLayoutJson : undefined,
 		rewriteUsed: isBoolean(raw.rewriteUsed) ? raw.rewriteUsed : undefined,
-		rewriteAttempts: Number.isFinite(Number(raw.rewriteAttempts)) ? Number(raw.rewriteAttempts) : undefined,
-		mock: isBoolean(raw.mock) ? raw.mock : undefined,
+		rewriteAttempts: Number.isFinite(Number(raw.rewriteAttempts))
+			? Number(raw.rewriteAttempts)
+			: undefined,
+		mock: isBoolean(raw.mock) ? raw.mock : undefined
 	}
 }
 
-const normalizeSceneLayoutSettings = (rawSettings: unknown): WorkflowSceneLayoutNodeSettings | undefined => {
+const normalizeSceneLayoutSettings = (
+	rawSettings: unknown
+): WorkflowSceneLayoutNodeSettings | undefined => {
 	if (!rawSettings || !isRecord(rawSettings)) return undefined
 	const raw = rawSettings
 	const normalizeOrientationFix = (fix: unknown): WorkflowSceneLayoutOrientationFix | undefined => {
@@ -455,132 +480,193 @@ const normalizeSceneLayoutSettings = (rawSettings: unknown): WorkflowSceneLayout
 			pitch: Number.isFinite(pitch) ? pitch : undefined,
 			roll: Number.isFinite(roll) ? roll : undefined,
 			confidence: fix.confidence === 'low' ? 'low' : fix.confidence === 'high' ? 'high' : undefined,
-			updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined,
+			updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined
 		}
 	}
 	const layoutItems = isArray(raw.layoutItems)
-		? raw.layoutItems
-			.map((item: unknown) => {
-				const itemObj = isRecord(item) ? item : {}
-				const positionObj = isRecord(itemObj.position) ? itemObj.position : {}
-				const sizeObj = isRecord(itemObj.size) ? itemObj.size : {}
-				const rotationObj = isRecord(itemObj.rotation) ? itemObj.rotation : undefined
-				const scaleObj = isRecord(itemObj.scale) ? itemObj.scale : undefined
-				return {
-					id: String(itemObj.id ?? '').trim(),
-					name: isString(itemObj.name) ? itemObj.name : undefined,
-					previewScaleMode: itemObj.previewScaleMode === 'model' ? 'model' : itemObj.previewScaleMode === 'placeholder' ? 'placeholder' : undefined,
-					orientationFix: normalizeOrientationFix(itemObj.orientationFix),
-					fillMode:
-						itemObj.fillMode === 'fill-x' || itemObj.fillMode === 'fill-y' || itemObj.fillMode === 'fill-z'
-							? itemObj.fillMode
+		? (raw.layoutItems
+				.map((item: unknown) => {
+					const itemObj = isRecord(item) ? item : {}
+					const positionObj = isRecord(itemObj.position) ? itemObj.position : {}
+					const sizeObj = isRecord(itemObj.size) ? itemObj.size : {}
+					const rotationObj = isRecord(itemObj.rotation) ? itemObj.rotation : undefined
+					const scaleObj = isRecord(itemObj.scale) ? itemObj.scale : undefined
+					return {
+						id: String(itemObj.id ?? '').trim(),
+						name: isString(itemObj.name) ? itemObj.name : undefined,
+						previewScaleMode:
+							itemObj.previewScaleMode === 'model'
+								? 'model'
+								: itemObj.previewScaleMode === 'placeholder'
+									? 'placeholder'
+									: undefined,
+						orientationFix: normalizeOrientationFix(itemObj.orientationFix),
+						fillMode:
+							itemObj.fillMode === 'fill-x' ||
+							itemObj.fillMode === 'fill-y' ||
+							itemObj.fillMode === 'fill-z'
+								? itemObj.fillMode
+								: undefined,
+						fillCount: Number.isFinite(Number(itemObj.fillCount))
+							? Math.max(2, Math.min(32, Math.floor(Number(itemObj.fillCount))))
 							: undefined,
-					fillCount: Number.isFinite(Number(itemObj.fillCount)) ? Math.max(2, Math.min(32, Math.floor(Number(itemObj.fillCount)))) : undefined,
-					fillAxisScale: Number.isFinite(Number(itemObj.fillAxisScale)) ? Number(itemObj.fillAxisScale) : undefined,
-					fillUpdatedAt: Number.isFinite(Number(itemObj.fillUpdatedAt)) ? Number(itemObj.fillUpdatedAt) : undefined,
-					fitMode:
-						itemObj.fitMode === 'normal' || itemObj.fitMode === 'oriented' || itemObj.fitMode === 'filled' || itemObj.fitMode === 'forced'
-							? itemObj.fitMode
+						fillAxisScale: Number.isFinite(Number(itemObj.fillAxisScale))
+							? Number(itemObj.fillAxisScale)
 							: undefined,
-					fitMessage: isString(itemObj.fitMessage) ? itemObj.fitMessage : undefined,
-					fitUpdatedAt: Number.isFinite(Number(itemObj.fitUpdatedAt)) ? Number(itemObj.fitUpdatedAt) : undefined,
-					description: isString(itemObj.description) ? itemObj.description : undefined,
-					category: isString(itemObj.category) ? itemObj.category : undefined,
-					subCategory: isString(itemObj.subCategory) ? itemObj.subCategory : undefined,
-					material: isString(itemObj.material) ? itemObj.material : undefined,
-					surfaceType: isString(itemObj.surfaceType) ? itemObj.surfaceType : undefined,
-					color: isString(itemObj.color) ? itemObj.color : undefined,
-					sameTypeGroupId: isString(itemObj.sameTypeGroupId) ? itemObj.sameTypeGroupId : undefined,
-					sameTypeGroupLabel: isString(itemObj.sameTypeGroupLabel) ? itemObj.sameTypeGroupLabel : undefined,
-					isKeyElement: isBoolean(itemObj.isKeyElement) ? itemObj.isKeyElement : undefined,
-					keyElementType: isString(itemObj.keyElementType) ? itemObj.keyElementType : undefined,
-					fixedInRoom: isBoolean(itemObj.fixedInRoom) ? itemObj.fixedInRoom : undefined,
-					semanticRole: isString(itemObj.semanticRole) ? itemObj.semanticRole : undefined,
-					mountType: isString(itemObj.mountType) ? itemObj.mountType : undefined,
-					shouldTouchGround: isBoolean(itemObj.shouldTouchGround) ? itemObj.shouldTouchGround : undefined,
-					groundReason: isString(itemObj.groundReason) ? itemObj.groundReason : undefined,
-					relationTags: isArray(itemObj.relationTags)
-						? itemObj.relationTags.map((tag: unknown) => String(tag ?? '').trim()).filter((tag: string) => !!tag)
-						: undefined,
-					layoutPriority: Number.isFinite(Number(itemObj.layoutPriority)) ? Number(itemObj.layoutPriority) : undefined,
-					parentId: isString(itemObj.parentId) ? itemObj.parentId : undefined,
-					placement: isString(itemObj.placement) ? itemObj.placement : undefined,
-					supportSurface: isString(itemObj.supportSurface) ? itemObj.supportSurface : undefined,
-					anchor: isString(itemObj.anchor) ? itemObj.anchor : undefined,
-					wallRole: isString(itemObj.wallRole) ? itemObj.wallRole : undefined,
-					proximityGroupId: isString(itemObj.proximityGroupId) ? itemObj.proximityGroupId : undefined,
-					relationReason: isString(itemObj.relationReason) ? itemObj.relationReason : undefined,
-					inferred: isBoolean(itemObj.inferred) ? itemObj.inferred : undefined,
-					sourceImageIndex: Number.isFinite(Number(itemObj.sourceImageIndex)) ? Math.max(1, Math.floor(Number(itemObj.sourceImageIndex))) : undefined,
-					observedImageIndices: isArray(itemObj.observedImageIndices)
-						? itemObj.observedImageIndices
-							.map((value: unknown) => Number(value))
-							.filter((value: number) => Number.isFinite(value) && value > 0)
-						: undefined,
-					imageRect: normalizeWorkflowImageCrop(itemObj.imageRect),
-					imageRectPixels: normalizeWorkflowPixelRect(itemObj.imageRectPixels),
-					position: {
-						x: Number.isFinite(Number(positionObj.x)) ? Number(positionObj.x) : 0,
-						y: Number.isFinite(Number(positionObj.y)) ? Number(positionObj.y) : 0,
-						z: Number.isFinite(Number(positionObj.z)) ? Number(positionObj.z) : 0,
-					},
-					size: {
-						width: Math.max(0.05, Number(sizeObj.width) || 1),
-						height: Math.max(0.05, Number(sizeObj.height) || 1),
-						depth: Math.max(0.05, Number(sizeObj.depth) || 1),
-					},
-					rotation: rotationObj
-						? {
-							yaw: Number.isFinite(Number(rotationObj.yaw)) ? Number(rotationObj.yaw) : undefined,
-							pitch: Number.isFinite(Number(rotationObj.pitch)) ? Number(rotationObj.pitch) : undefined,
-							roll: Number.isFinite(Number(rotationObj.roll)) ? Number(rotationObj.roll) : undefined,
-						}
-						: undefined,
-					scale: scaleObj
-						? {
-							x: Number.isFinite(Number(scaleObj.x)) ? Number(scaleObj.x) : undefined,
-							y: Number.isFinite(Number(scaleObj.y)) ? Number(scaleObj.y) : undefined,
-							z: Number.isFinite(Number(scaleObj.z)) ? Number(scaleObj.z) : undefined,
-						}
-						: undefined,
-				}
-			})
-			.filter((item) => item.id) as WorkflowSceneLayoutItem[]
+						fillUpdatedAt: Number.isFinite(Number(itemObj.fillUpdatedAt))
+							? Number(itemObj.fillUpdatedAt)
+							: undefined,
+						fitMode:
+							itemObj.fitMode === 'normal' ||
+							itemObj.fitMode === 'oriented' ||
+							itemObj.fitMode === 'filled' ||
+							itemObj.fitMode === 'forced'
+								? itemObj.fitMode
+								: undefined,
+						fitMessage: isString(itemObj.fitMessage) ? itemObj.fitMessage : undefined,
+						fitUpdatedAt: Number.isFinite(Number(itemObj.fitUpdatedAt))
+							? Number(itemObj.fitUpdatedAt)
+							: undefined,
+						description: isString(itemObj.description) ? itemObj.description : undefined,
+						category: isString(itemObj.category) ? itemObj.category : undefined,
+						subCategory: isString(itemObj.subCategory) ? itemObj.subCategory : undefined,
+						material: isString(itemObj.material) ? itemObj.material : undefined,
+						surfaceType: isString(itemObj.surfaceType) ? itemObj.surfaceType : undefined,
+						color: isString(itemObj.color) ? itemObj.color : undefined,
+						sameTypeGroupId: isString(itemObj.sameTypeGroupId)
+							? itemObj.sameTypeGroupId
+							: undefined,
+						sameTypeGroupLabel: isString(itemObj.sameTypeGroupLabel)
+							? itemObj.sameTypeGroupLabel
+							: undefined,
+						isKeyElement: isBoolean(itemObj.isKeyElement) ? itemObj.isKeyElement : undefined,
+						keyElementType: isString(itemObj.keyElementType) ? itemObj.keyElementType : undefined,
+						fixedInRoom: isBoolean(itemObj.fixedInRoom) ? itemObj.fixedInRoom : undefined,
+						semanticRole: isString(itemObj.semanticRole) ? itemObj.semanticRole : undefined,
+						mountType: isString(itemObj.mountType) ? itemObj.mountType : undefined,
+						shouldTouchGround: isBoolean(itemObj.shouldTouchGround)
+							? itemObj.shouldTouchGround
+							: undefined,
+						groundReason: isString(itemObj.groundReason) ? itemObj.groundReason : undefined,
+						relationTags: isArray(itemObj.relationTags)
+							? itemObj.relationTags
+									.map((tag: unknown) => String(tag ?? '').trim())
+									.filter((tag: string) => !!tag)
+							: undefined,
+						layoutPriority: Number.isFinite(Number(itemObj.layoutPriority))
+							? Number(itemObj.layoutPriority)
+							: undefined,
+						parentId: isString(itemObj.parentId) ? itemObj.parentId : undefined,
+						placement: isString(itemObj.placement) ? itemObj.placement : undefined,
+						supportSurface: isString(itemObj.supportSurface) ? itemObj.supportSurface : undefined,
+						anchor: isString(itemObj.anchor) ? itemObj.anchor : undefined,
+						wallRole: isString(itemObj.wallRole) ? itemObj.wallRole : undefined,
+						proximityGroupId: isString(itemObj.proximityGroupId)
+							? itemObj.proximityGroupId
+							: undefined,
+						relationReason: isString(itemObj.relationReason) ? itemObj.relationReason : undefined,
+						inferred: isBoolean(itemObj.inferred) ? itemObj.inferred : undefined,
+						sourceImageIndex: Number.isFinite(Number(itemObj.sourceImageIndex))
+							? Math.max(1, Math.floor(Number(itemObj.sourceImageIndex)))
+							: undefined,
+						observedImageIndices: isArray(itemObj.observedImageIndices)
+							? itemObj.observedImageIndices
+									.map((value: unknown) => Number(value))
+									.filter((value: number) => Number.isFinite(value) && value > 0)
+							: undefined,
+						imageRect: normalizeWorkflowImageCrop(itemObj.imageRect),
+						imageRectPixels: normalizeWorkflowPixelRect(itemObj.imageRectPixels),
+						position: {
+							x: Number.isFinite(Number(positionObj.x)) ? Number(positionObj.x) : 0,
+							y: Number.isFinite(Number(positionObj.y)) ? Number(positionObj.y) : 0,
+							z: Number.isFinite(Number(positionObj.z)) ? Number(positionObj.z) : 0
+						},
+						size: {
+							width: Math.max(0.05, Number(sizeObj.width) || 1),
+							height: Math.max(0.05, Number(sizeObj.height) || 1),
+							depth: Math.max(0.05, Number(sizeObj.depth) || 1)
+						},
+						rotation: rotationObj
+							? {
+									yaw: Number.isFinite(Number(rotationObj.yaw))
+										? Number(rotationObj.yaw)
+										: undefined,
+									pitch: Number.isFinite(Number(rotationObj.pitch))
+										? Number(rotationObj.pitch)
+										: undefined,
+									roll: Number.isFinite(Number(rotationObj.roll))
+										? Number(rotationObj.roll)
+										: undefined
+								}
+							: undefined,
+						scale: scaleObj
+							? {
+									x: Number.isFinite(Number(scaleObj.x)) ? Number(scaleObj.x) : undefined,
+									y: Number.isFinite(Number(scaleObj.y)) ? Number(scaleObj.y) : undefined,
+									z: Number.isFinite(Number(scaleObj.z)) ? Number(scaleObj.z) : undefined
+								}
+							: undefined
+					}
+				})
+				.filter((item) => item.id) as WorkflowSceneLayoutItem[])
 		: undefined
 	const manualModelBindings = isArray(raw.manualModelBindings)
 		? raw.manualModelBindings
-			.map((item: unknown) => {
-				const itemObj = isRecord(item) ? item : {}
-				const objectId = String(itemObj.objectId ?? '').trim()
-				if (!objectId) return null
-				const modelUrl = isString(itemObj.modelUrl) ? String(itemObj.modelUrl).trim() : ''
-				const modelAssetUrl = isString(itemObj.modelAssetUrl) ? String(itemObj.modelAssetUrl).trim() : ''
-				const modelSourceName = isString(itemObj.modelSourceName) ? String(itemObj.modelSourceName) : undefined
-				const modelSourcePath = isString(itemObj.modelSourcePath) ? String(itemObj.modelSourcePath) : undefined
-				const modelAssetPath = isString(itemObj.modelAssetPath) ? String(itemObj.modelAssetPath) : undefined
-				const modelFormat = itemObj.modelFormat === 'gltf' ? 'gltf' : itemObj.modelFormat === 'glb' ? 'glb' : undefined
-				if (!modelUrl && !modelAssetUrl) return null
-				return {
-					objectId,
-					modelUrl: modelUrl || undefined,
-					modelAssetUrl: modelAssetUrl || undefined,
-					modelSourceName,
-					modelSourcePath,
-					modelAssetPath,
-					modelFormat,
-				} as WorkflowSceneLayoutManualModelBinding
-			})
-			.filter((item: WorkflowSceneLayoutManualModelBinding | null): item is WorkflowSceneLayoutManualModelBinding => Boolean(item))
+				.map((item: unknown) => {
+					const itemObj = isRecord(item) ? item : {}
+					const objectId = String(itemObj.objectId ?? '').trim()
+					if (!objectId) return null
+					const modelUrl = isString(itemObj.modelUrl) ? String(itemObj.modelUrl).trim() : ''
+					const modelAssetUrl = isString(itemObj.modelAssetUrl)
+						? String(itemObj.modelAssetUrl).trim()
+						: ''
+					const modelSourceName = isString(itemObj.modelSourceName)
+						? String(itemObj.modelSourceName)
+						: undefined
+					const modelSourcePath = isString(itemObj.modelSourcePath)
+						? String(itemObj.modelSourcePath)
+						: undefined
+					const modelAssetPath = isString(itemObj.modelAssetPath)
+						? String(itemObj.modelAssetPath)
+						: undefined
+					const modelFormat =
+						itemObj.modelFormat === 'gltf'
+							? 'gltf'
+							: itemObj.modelFormat === 'glb'
+								? 'glb'
+								: undefined
+					if (!modelUrl && !modelAssetUrl) return null
+					return {
+						objectId,
+						modelUrl: modelUrl || undefined,
+						modelAssetUrl: modelAssetUrl || undefined,
+						modelSourceName,
+						modelSourcePath,
+						modelAssetPath,
+						modelFormat
+					} as WorkflowSceneLayoutManualModelBinding
+				})
+				.filter(
+					(
+						item: WorkflowSceneLayoutManualModelBinding | null
+					): item is WorkflowSceneLayoutManualModelBinding => Boolean(item)
+				)
 		: undefined
-	const normalizedLayoutIds = new Set((layoutItems ?? []).map((item) => String(item?.id ?? '').trim()).filter(Boolean))
+	const normalizedLayoutIds = new Set(
+		(layoutItems ?? []).map((item) => String(item?.id ?? '').trim()).filter(Boolean)
+	)
 	const selectedLayoutItemId = String(raw.selectedLayoutItemId ?? '').trim()
 	const selectedPlaceholderOutput = String(raw.selectedPlaceholderOutput ?? '').trim()
 	const lightingControls = normalizeSceneLayoutLightingControls(raw.lightingControls)
 	const cameraObj = isRecord(raw.camera) ? raw.camera : undefined
-	const cameraPositionObj = cameraObj && isRecord(cameraObj.position) ? cameraObj.position : undefined
+	const cameraPositionObj =
+		cameraObj && isRecord(cameraObj.position) ? cameraObj.position : undefined
 	const cameraTargetObj = cameraObj && isRecord(cameraObj.target) ? cameraObj.target : undefined
 	return {
-		status: raw.status === 'running' || raw.status === 'completed' || raw.status === 'error' ? raw.status : 'idle',
+		status:
+			raw.status === 'running' || raw.status === 'completed' || raw.status === 'error'
+				? raw.status
+				: 'idle',
 		message: isString(raw.message) ? raw.message : undefined,
 		inputJson: isString(raw.inputJson) ? raw.inputJson : undefined,
 		lastRunAt: Number.isFinite(Number(raw.lastRunAt)) ? Number(raw.lastRunAt) : undefined,
@@ -590,7 +676,9 @@ const normalizeSceneLayoutSettings = (rawSettings: unknown): WorkflowSceneLayout
 		lightingControls,
 		hidePlaceholderCubes: raw.hidePlaceholderCubes === true,
 		selectedLayoutItemId:
-			selectedLayoutItemId && normalizedLayoutIds.has(selectedLayoutItemId) && raw.hidePlaceholderCubes !== true
+			selectedLayoutItemId &&
+			normalizedLayoutIds.has(selectedLayoutItemId) &&
+			raw.hidePlaceholderCubes !== true
 				? selectedLayoutItemId
 				: undefined,
 		selectedPlaceholderOutput:
@@ -601,78 +689,92 @@ const normalizeSceneLayoutSettings = (rawSettings: unknown): WorkflowSceneLayout
 		manualModelBindings,
 		camera: cameraObj
 			? {
-				position: cameraPositionObj
-					? {
-						x: Number.isFinite(Number(cameraPositionObj.x)) ? Number(cameraPositionObj.x) : 0,
-						y: Number.isFinite(Number(cameraPositionObj.y)) ? Number(cameraPositionObj.y) : 0,
-						z: Number.isFinite(Number(cameraPositionObj.z)) ? Number(cameraPositionObj.z) : 0,
-					}
-					: undefined,
-				target: cameraTargetObj
-					? {
-						x: Number.isFinite(Number(cameraTargetObj.x)) ? Number(cameraTargetObj.x) : 0,
-						y: Number.isFinite(Number(cameraTargetObj.y)) ? Number(cameraTargetObj.y) : 0,
-						z: Number.isFinite(Number(cameraTargetObj.z)) ? Number(cameraTargetObj.z) : 0,
-					}
-					: undefined,
-			}
-			: undefined,
+					position: cameraPositionObj
+						? {
+								x: Number.isFinite(Number(cameraPositionObj.x)) ? Number(cameraPositionObj.x) : 0,
+								y: Number.isFinite(Number(cameraPositionObj.y)) ? Number(cameraPositionObj.y) : 0,
+								z: Number.isFinite(Number(cameraPositionObj.z)) ? Number(cameraPositionObj.z) : 0
+							}
+						: undefined,
+					target: cameraTargetObj
+						? {
+								x: Number.isFinite(Number(cameraTargetObj.x)) ? Number(cameraTargetObj.x) : 0,
+								y: Number.isFinite(Number(cameraTargetObj.y)) ? Number(cameraTargetObj.y) : 0,
+								z: Number.isFinite(Number(cameraTargetObj.z)) ? Number(cameraTargetObj.z) : 0
+							}
+						: undefined
+				}
+			: undefined
 	}
 }
 
-const sanitizeSceneLayoutSettings = (settings: WorkflowSceneLayoutNodeSettings | undefined): WorkflowSceneLayoutNodeSettings | undefined => {
+const sanitizeSceneLayoutSettings = (
+	settings: WorkflowSceneLayoutNodeSettings | undefined
+): WorkflowSceneLayoutNodeSettings | undefined => {
 	if (!settings) return settings
 	const layoutItems = Array.isArray(settings.layoutItems)
 		? settings.layoutItems.map((item) => {
-			const fix = item?.orientationFix && typeof item.orientationFix === 'object' ? item.orientationFix : undefined
-			const fillMode =
-				item?.fillMode === 'fill-x' || item?.fillMode === 'fill-y' || item?.fillMode === 'fill-z'
-					? item.fillMode
-					: undefined
-			const fillCount = Number(item?.fillCount)
-			const fillAxisScale = Number(item?.fillAxisScale)
-			const fillUpdatedAt = Number(item?.fillUpdatedAt)
-			const fitMode =
-				item?.fitMode === 'normal' || item?.fitMode === 'oriented' || item?.fitMode === 'filled' || item?.fitMode === 'forced'
-					? item.fitMode
-					: undefined
-			const fitUpdatedAt = Number(item?.fitUpdatedAt)
-			const nextFill = {
-				fillMode,
-				fillCount: fillMode && Number.isFinite(fillCount) ? Math.max(2, Math.min(32, Math.floor(fillCount))) : undefined,
-				fillAxisScale: fillMode && Number.isFinite(fillAxisScale) ? fillAxisScale : undefined,
-				fillUpdatedAt: fillMode && Number.isFinite(fillUpdatedAt) ? fillUpdatedAt : undefined,
-				fitMode,
-				fitMessage: fitMode && typeof item?.fitMessage === 'string' ? item.fitMessage : undefined,
-				fitUpdatedAt: fitMode && Number.isFinite(fitUpdatedAt) ? fitUpdatedAt : undefined,
-			}
-			if (!fix) {
+				const fix =
+					item?.orientationFix && typeof item.orientationFix === 'object'
+						? item.orientationFix
+						: undefined
+				const fillMode =
+					item?.fillMode === 'fill-x' || item?.fillMode === 'fill-y' || item?.fillMode === 'fill-z'
+						? item.fillMode
+						: undefined
+				const fillCount = Number(item?.fillCount)
+				const fillAxisScale = Number(item?.fillAxisScale)
+				const fillUpdatedAt = Number(item?.fillUpdatedAt)
+				const fitMode =
+					item?.fitMode === 'normal' ||
+					item?.fitMode === 'oriented' ||
+					item?.fitMode === 'filled' ||
+					item?.fitMode === 'forced'
+						? item.fitMode
+						: undefined
+				const fitUpdatedAt = Number(item?.fitUpdatedAt)
+				const nextFill = {
+					fillMode,
+					fillCount:
+						fillMode && Number.isFinite(fillCount)
+							? Math.max(2, Math.min(32, Math.floor(fillCount)))
+							: undefined,
+					fillAxisScale: fillMode && Number.isFinite(fillAxisScale) ? fillAxisScale : undefined,
+					fillUpdatedAt: fillMode && Number.isFinite(fillUpdatedAt) ? fillUpdatedAt : undefined,
+					fitMode,
+					fitMessage: fitMode && typeof item?.fitMessage === 'string' ? item.fitMessage : undefined,
+					fitUpdatedAt: fitMode && Number.isFinite(fitUpdatedAt) ? fitUpdatedAt : undefined
+				}
+				if (!fix) {
+					return {
+						...item,
+						...nextFill
+					}
+				}
+				const yaw = Number(fix.yaw)
+				const pitch = Number(fix.pitch)
+				const roll = Number(fix.roll)
+				const updatedAt = Number(fix.updatedAt)
 				return {
 					...item,
 					...nextFill,
+					orientationFix: {
+						mode: fix.mode === 'manual' ? 'manual' : fix.mode === 'auto' ? 'auto' : undefined,
+						yaw: Number.isFinite(yaw) ? yaw : undefined,
+						pitch: Number.isFinite(pitch) ? pitch : undefined,
+						roll: Number.isFinite(roll) ? roll : undefined,
+						confidence:
+							fix.confidence === 'low' ? 'low' : fix.confidence === 'high' ? 'high' : undefined,
+						updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined
+					}
 				}
-			}
-			const yaw = Number(fix.yaw)
-			const pitch = Number(fix.pitch)
-			const roll = Number(fix.roll)
-			const updatedAt = Number(fix.updatedAt)
-			return {
-				...item,
-				...nextFill,
-				orientationFix: {
-					mode: fix.mode === 'manual' ? 'manual' : fix.mode === 'auto' ? 'auto' : undefined,
-					yaw: Number.isFinite(yaw) ? yaw : undefined,
-					pitch: Number.isFinite(pitch) ? pitch : undefined,
-					roll: Number.isFinite(roll) ? roll : undefined,
-					confidence: fix.confidence === 'low' ? 'low' : fix.confidence === 'high' ? 'high' : undefined,
-					updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined,
-				},
-			}
-		})
+			})
 		: []
 	const validIds = new Set(layoutItems.map((item) => String(item?.id ?? '').trim()).filter(Boolean))
 	const nextManualBindingsMap = new Map<string, WorkflowSceneLayoutManualModelBinding>()
-	for (const item of Array.isArray(settings.manualModelBindings) ? settings.manualModelBindings : []) {
+	for (const item of Array.isArray(settings.manualModelBindings)
+		? settings.manualModelBindings
+		: []) {
 		const objectId = String(item?.objectId ?? '').trim()
 		if (!objectId || !validIds.has(objectId)) continue
 		const modelUrl = String(item?.modelUrl ?? '').trim()
@@ -685,10 +787,13 @@ const sanitizeSceneLayoutSettings = (settings: WorkflowSceneLayoutNodeSettings |
 			modelSourceName: typeof item?.modelSourceName === 'string' ? item.modelSourceName : undefined,
 			modelSourcePath: typeof item?.modelSourcePath === 'string' ? item.modelSourcePath : undefined,
 			modelAssetPath: typeof item?.modelAssetPath === 'string' ? item.modelAssetPath : undefined,
-			modelFormat: item?.modelFormat === 'gltf' ? 'gltf' : item?.modelFormat === 'glb' ? 'glb' : undefined,
+			modelFormat:
+				item?.modelFormat === 'gltf' ? 'gltf' : item?.modelFormat === 'glb' ? 'glb' : undefined
 		})
 	}
-	const manualModelBindings = nextManualBindingsMap.size ? Array.from(nextManualBindingsMap.values()) : undefined
+	const manualModelBindings = nextManualBindingsMap.size
+		? Array.from(nextManualBindingsMap.values())
+		: undefined
 	const selectedLayoutItemId = String(settings.selectedLayoutItemId ?? '').trim()
 	const selectedPlaceholderOutput = String(settings.selectedPlaceholderOutput ?? '').trim()
 	const hidePlaceholderCubes = settings.hidePlaceholderCubes === true
@@ -705,58 +810,110 @@ const sanitizeSceneLayoutSettings = (settings: WorkflowSceneLayoutNodeSettings |
 		selectedPlaceholderOutput:
 			selectedPlaceholderOutput && validIds.has(selectedPlaceholderOutput)
 				? selectedPlaceholderOutput
-				: undefined,
+				: undefined
 	}
 }
 
-const normalizeUnrealExportSettings = (rawSettings: unknown): WorkflowUnrealExportNodeSettings | undefined => {
+const normalizeUnrealExportSettings = (
+	rawSettings: unknown
+): WorkflowUnrealExportNodeSettings | undefined => {
 	if (!rawSettings || !isRecord(rawSettings)) return undefined
 	const raw = rawSettings
 	const connectedSessionObj = isRecord(raw.connectedSession) ? raw.connectedSession : null
 	const sessionId = String(connectedSessionObj?.sessionId ?? '').trim()
 	return {
 		connectionStatus:
-			raw.connectionStatus === 'waiting' || raw.connectionStatus === 'connected' || raw.connectionStatus === 'exporting' || raw.connectionStatus === 'error'
+			raw.connectionStatus === 'waiting' ||
+			raw.connectionStatus === 'connected' ||
+			raw.connectionStatus === 'exporting' ||
+			raw.connectionStatus === 'error'
 				? raw.connectionStatus
 				: 'idle',
 		statusText: isString(raw.statusText) ? raw.statusText : undefined,
 		message: isString(raw.message) ? raw.message : undefined,
 		targetSessionId: isString(raw.targetSessionId) ? raw.targetSessionId : undefined,
-		lastExportMode: raw.lastExportMode === 'lighting-only' ? 'lighting-only' : raw.lastExportMode === 'scene-layout' ? 'scene-layout' : undefined,
-		connectedSession: sessionId && connectedSessionObj
-			? {
-				sessionId,
-				displayName: isString(connectedSessionObj.displayName) ? connectedSessionObj.displayName : undefined,
-				projectName: isString(connectedSessionObj.projectName) ? connectedSessionObj.projectName : undefined,
-				projectPath: isString(connectedSessionObj.projectPath) ? connectedSessionObj.projectPath : undefined,
-				saveDirectory: isString(connectedSessionObj.saveDirectory) ? connectedSessionObj.saveDirectory : undefined,
-				assetRootPath: isString(connectedSessionObj.assetRootPath) ? connectedSessionObj.assetRootPath : undefined,
-				pluginVersion: isString(connectedSessionObj.pluginVersion) ? connectedSessionObj.pluginVersion : undefined,
-				lastSeenAt: Number.isFinite(Number(connectedSessionObj.lastSeenAt)) ? Number(connectedSessionObj.lastSeenAt) : undefined,
-				connectedAt: Number.isFinite(Number(connectedSessionObj.connectedAt)) ? Number(connectedSessionObj.connectedAt) : undefined,
-				status: connectedSessionObj.status === 'stale' ? 'stale' : 'connected',
-			}
+		lastExportMode:
+			raw.lastExportMode === 'lighting-only'
+				? 'lighting-only'
+				: raw.lastExportMode === 'scene-layout'
+					? 'scene-layout'
+					: undefined,
+		connectedSession:
+			sessionId && connectedSessionObj
+				? {
+						sessionId,
+						displayName: isString(connectedSessionObj.displayName)
+							? connectedSessionObj.displayName
+							: undefined,
+						projectName: isString(connectedSessionObj.projectName)
+							? connectedSessionObj.projectName
+							: undefined,
+						projectPath: isString(connectedSessionObj.projectPath)
+							? connectedSessionObj.projectPath
+							: undefined,
+						saveDirectory: isString(connectedSessionObj.saveDirectory)
+							? connectedSessionObj.saveDirectory
+							: undefined,
+						assetRootPath: isString(connectedSessionObj.assetRootPath)
+							? connectedSessionObj.assetRootPath
+							: undefined,
+						pluginVersion: isString(connectedSessionObj.pluginVersion)
+							? connectedSessionObj.pluginVersion
+							: undefined,
+						lastSeenAt: Number.isFinite(Number(connectedSessionObj.lastSeenAt))
+							? Number(connectedSessionObj.lastSeenAt)
+							: undefined,
+						connectedAt: Number.isFinite(Number(connectedSessionObj.connectedAt))
+							? Number(connectedSessionObj.connectedAt)
+							: undefined,
+						status: connectedSessionObj.status === 'stale' ? 'stale' : 'connected'
+					}
+				: undefined,
+		lastHeartbeatAt: Number.isFinite(Number(raw.lastHeartbeatAt))
+			? Number(raw.lastHeartbeatAt)
 			: undefined,
-		lastHeartbeatAt: Number.isFinite(Number(raw.lastHeartbeatAt)) ? Number(raw.lastHeartbeatAt) : undefined,
 		lastExportJobId: isString(raw.lastExportJobId) ? raw.lastExportJobId : undefined,
 		lastExportStatus:
-			raw.lastExportStatus === 'queued' || raw.lastExportStatus === 'picked' || raw.lastExportStatus === 'downloading' || raw.lastExportStatus === 'importing' || raw.lastExportStatus === 'assembling-actor' || raw.lastExportStatus === 'applying-lighting' || raw.lastExportStatus === 'completed' || raw.lastExportStatus === 'failed'
+			raw.lastExportStatus === 'queued' ||
+			raw.lastExportStatus === 'picked' ||
+			raw.lastExportStatus === 'downloading' ||
+			raw.lastExportStatus === 'importing' ||
+			raw.lastExportStatus === 'assembling-actor' ||
+			raw.lastExportStatus === 'applying-lighting' ||
+			raw.lastExportStatus === 'completed' ||
+			raw.lastExportStatus === 'failed'
 				? raw.lastExportStatus
 				: undefined,
 		lastExportStage: isString(raw.lastExportStage) ? raw.lastExportStage : undefined,
-		lastExportProgress: Number.isFinite(Number(raw.lastExportProgress)) ? Math.max(0, Math.min(100, Number(raw.lastExportProgress))) : undefined,
+		lastExportProgress: Number.isFinite(Number(raw.lastExportProgress))
+			? Math.max(0, Math.min(100, Number(raw.lastExportProgress)))
+			: undefined,
 		lastExportMessage: isString(raw.lastExportMessage) ? raw.lastExportMessage : undefined,
-		lastBlueprintAssetPath: isString(raw.lastBlueprintAssetPath) ? raw.lastBlueprintAssetPath : undefined,
+		lastBlueprintAssetPath: isString(raw.lastBlueprintAssetPath)
+			? raw.lastBlueprintAssetPath
+			: undefined,
 		lastModelsAssetPath: isString(raw.lastModelsAssetPath) ? raw.lastModelsAssetPath : undefined,
 		lastActorBaseClass: isString(raw.lastActorBaseClass) ? raw.lastActorBaseClass : undefined,
-		lastSpawnedLightCount: Number.isFinite(Number(raw.lastSpawnedLightCount)) ? Number(raw.lastSpawnedLightCount) : undefined,
-		lastLightingTargetActor: isString(raw.lastLightingTargetActor) ? raw.lastLightingTargetActor : undefined,
-		lastLayoutProtocolVersion: Number.isFinite(Number(raw.lastLayoutProtocolVersion)) ? Number(raw.lastLayoutProtocolVersion) : undefined,
-		lastSlotCount: Number.isFinite(Number(raw.lastSlotCount)) ? Number(raw.lastSlotCount) : undefined,
-		lastAppliedSlotCount: Number.isFinite(Number(raw.lastAppliedSlotCount)) ? Number(raw.lastAppliedSlotCount) : undefined,
-		lastMaterialOverrideCount: Number.isFinite(Number(raw.lastMaterialOverrideCount)) ? Number(raw.lastMaterialOverrideCount) : undefined,
+		lastSpawnedLightCount: Number.isFinite(Number(raw.lastSpawnedLightCount))
+			? Number(raw.lastSpawnedLightCount)
+			: undefined,
+		lastLightingTargetActor: isString(raw.lastLightingTargetActor)
+			? raw.lastLightingTargetActor
+			: undefined,
+		lastLayoutProtocolVersion: Number.isFinite(Number(raw.lastLayoutProtocolVersion))
+			? Number(raw.lastLayoutProtocolVersion)
+			: undefined,
+		lastSlotCount: Number.isFinite(Number(raw.lastSlotCount))
+			? Number(raw.lastSlotCount)
+			: undefined,
+		lastAppliedSlotCount: Number.isFinite(Number(raw.lastAppliedSlotCount))
+			? Number(raw.lastAppliedSlotCount)
+			: undefined,
+		lastMaterialOverrideCount: Number.isFinite(Number(raw.lastMaterialOverrideCount))
+			? Number(raw.lastMaterialOverrideCount)
+			: undefined,
 		lastExportAt: Number.isFinite(Number(raw.lastExportAt)) ? Number(raw.lastExportAt) : undefined,
-		autoPoll: raw.autoPoll !== false,
+		autoPoll: raw.autoPoll !== false
 	}
 }
 
@@ -765,8 +922,12 @@ const normalizeWorkflowImageCrop = (rawCrop: unknown): WorkflowImageCrop | undef
 	return {
 		x: Number.isFinite(Number(rawCrop.x)) ? Math.max(0, Math.min(1, Number(rawCrop.x))) : 0,
 		y: Number.isFinite(Number(rawCrop.y)) ? Math.max(0, Math.min(1, Number(rawCrop.y))) : 0,
-		width: Number.isFinite(Number(rawCrop.width)) ? Math.max(0, Math.min(1, Number(rawCrop.width))) : 1,
-		height: Number.isFinite(Number(rawCrop.height)) ? Math.max(0, Math.min(1, Number(rawCrop.height))) : 1,
+		width: Number.isFinite(Number(rawCrop.width))
+			? Math.max(0, Math.min(1, Number(rawCrop.width)))
+			: 1,
+		height: Number.isFinite(Number(rawCrop.height))
+			? Math.max(0, Math.min(1, Number(rawCrop.height)))
+			: 1
 	}
 }
 
@@ -774,68 +935,100 @@ const normalizeWorkflowPixelRect = (rawRect: unknown): WorkflowPixelRect | undef
 	if (!rawRect || !isRecord(rawRect)) return undefined
 	const width = Number(rawRect.width)
 	const height = Number(rawRect.height)
-	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return undefined
+	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
+		return undefined
 	return {
 		x: Number.isFinite(Number(rawRect.x)) ? Number(rawRect.x) : 0,
 		y: Number.isFinite(Number(rawRect.y)) ? Number(rawRect.y) : 0,
 		width,
-		height,
+		height
 	}
 }
 
-const normalizeSceneDecomposeSettings = (rawSettings: unknown): WorkflowSceneDecomposeNodeSettings | undefined => {
+const normalizeSceneDecomposeSettings = (
+	rawSettings: unknown
+): WorkflowSceneDecomposeNodeSettings | undefined => {
 	if (!rawSettings || !isRecord(rawSettings)) return undefined
 	const raw = rawSettings
 	const outputs = isArray(raw.outputs)
 		? raw.outputs
-			.map((item: unknown, index: number) => {
-				const itemObj = isRecord(item) ? item : {}
-				const rawId = String(itemObj.id ?? '').trim()
-				const id = rawId || `object-${index + 1}`
-				const imageAnchorId = String(itemObj.imageAnchorId ?? `out-image-${id}`).trim() || `out-image-${id}`
-				const textAnchorId = String(itemObj.textAnchorId ?? `out-text-${id}`).trim() || `out-text-${id}`
-				const sourceImageIndex = Number(itemObj.sourceImageIndex)
-				return {
-					id,
-					name: isString(itemObj.name) ? itemObj.name : undefined,
-					description: isString(itemObj.description) ? itemObj.description : undefined,
-					cropMode: itemObj.cropMode === 'fallback' ? 'fallback' : 'cropped',
-					sourceImageIndex: Number.isFinite(sourceImageIndex) ? Math.max(1, Math.floor(sourceImageIndex)) : 1,
-					observedImageIndices: isArray(itemObj.observedImageIndices)
-						? itemObj.observedImageIndices
-							.map((value: unknown) => Number(value))
-							.filter((value: number) => Number.isFinite(value) && value > 0)
-						: undefined,
-					imageRect: normalizeWorkflowImageCrop(itemObj.imageRect),
-					imageRectPixels: normalizeWorkflowPixelRect(itemObj.imageRectPixels),
-					imageAnchorId,
-					textAnchorId,
-					generatedResourceId: isString(itemObj.generatedResourceId) ? itemObj.generatedResourceId : undefined,
-					outputWidth: Number.isFinite(Number(itemObj.outputWidth)) ? Math.max(1, Math.floor(Number(itemObj.outputWidth))) : undefined,
-					outputHeight: Number.isFinite(Number(itemObj.outputHeight)) ? Math.max(1, Math.floor(Number(itemObj.outputHeight))) : undefined,
-				} as WorkflowSceneDecomposeOutput
-			})
-			.filter((item: WorkflowSceneDecomposeOutput) => !!item.id)
+				.map((item: unknown, index: number) => {
+					const itemObj = isRecord(item) ? item : {}
+					const rawId = String(itemObj.id ?? '').trim()
+					const id = rawId || `object-${index + 1}`
+					const imageAnchorId =
+						String(itemObj.imageAnchorId ?? `out-image-${id}`).trim() || `out-image-${id}`
+					const textAnchorId =
+						String(itemObj.textAnchorId ?? `out-text-${id}`).trim() || `out-text-${id}`
+					const sourceImageIndex = Number(itemObj.sourceImageIndex)
+					return {
+						id,
+						name: isString(itemObj.name) ? itemObj.name : undefined,
+						description: isString(itemObj.description) ? itemObj.description : undefined,
+						cropMode: itemObj.cropMode === 'fallback' ? 'fallback' : 'cropped',
+						sourceImageIndex: Number.isFinite(sourceImageIndex)
+							? Math.max(1, Math.floor(sourceImageIndex))
+							: 1,
+						observedImageIndices: isArray(itemObj.observedImageIndices)
+							? itemObj.observedImageIndices
+									.map((value: unknown) => Number(value))
+									.filter((value: number) => Number.isFinite(value) && value > 0)
+							: undefined,
+						imageRect: normalizeWorkflowImageCrop(itemObj.imageRect),
+						imageRectPixels: normalizeWorkflowPixelRect(itemObj.imageRectPixels),
+						imageAnchorId,
+						textAnchorId,
+						generatedResourceId: isString(itemObj.generatedResourceId)
+							? itemObj.generatedResourceId
+							: undefined,
+						outputWidth: Number.isFinite(Number(itemObj.outputWidth))
+							? Math.max(1, Math.floor(Number(itemObj.outputWidth)))
+							: undefined,
+						outputHeight: Number.isFinite(Number(itemObj.outputHeight))
+							? Math.max(1, Math.floor(Number(itemObj.outputHeight)))
+							: undefined
+					} as WorkflowSceneDecomposeOutput
+				})
+				.filter((item: WorkflowSceneDecomposeOutput) => !!item.id)
 		: undefined
 	return {
-		status: raw.status === 'running' || raw.status === 'completed' || raw.status === 'error' ? raw.status : 'idle',
+		status:
+			raw.status === 'running' || raw.status === 'completed' || raw.status === 'error'
+				? raw.status
+				: 'idle',
 		message: isString(raw.message) ? raw.message : undefined,
-		progress: Number.isFinite(Number(raw.progress)) ? Math.max(0, Math.min(100, Number(raw.progress))) : undefined,
+		progress: Number.isFinite(Number(raw.progress))
+			? Math.max(0, Math.min(100, Number(raw.progress)))
+			: undefined,
 		currentStep: isString(raw.currentStep) ? raw.currentStep : undefined,
-		totalTasks: Number.isFinite(Number(raw.totalTasks)) ? Math.max(0, Math.floor(Number(raw.totalTasks))) : undefined,
-		completedTasks: Number.isFinite(Number(raw.completedTasks)) ? Math.max(0, Math.floor(Number(raw.completedTasks))) : undefined,
-		croppedCount: Number.isFinite(Number(raw.croppedCount)) ? Math.max(0, Math.floor(Number(raw.croppedCount))) : undefined,
-		fallbackCount: Number.isFinite(Number(raw.fallbackCount)) ? Math.max(0, Math.floor(Number(raw.fallbackCount))) : undefined,
+		totalTasks: Number.isFinite(Number(raw.totalTasks))
+			? Math.max(0, Math.floor(Number(raw.totalTasks)))
+			: undefined,
+		completedTasks: Number.isFinite(Number(raw.completedTasks))
+			? Math.max(0, Math.floor(Number(raw.completedTasks)))
+			: undefined,
+		croppedCount: Number.isFinite(Number(raw.croppedCount))
+			? Math.max(0, Math.floor(Number(raw.croppedCount)))
+			: undefined,
+		fallbackCount: Number.isFinite(Number(raw.fallbackCount))
+			? Math.max(0, Math.floor(Number(raw.fallbackCount)))
+			: undefined,
 		inputJson: isString(raw.inputJson) ? raw.inputJson : undefined,
 		lastRunAt: Number.isFinite(Number(raw.lastRunAt)) ? Number(raw.lastRunAt) : undefined,
 		outputs,
-		lastExpandedAt: Number.isFinite(Number(raw.lastExpandedAt)) ? Number(raw.lastExpandedAt) : undefined,
-		lastExpandedCount: Number.isFinite(Number(raw.lastExpandedCount)) ? Math.max(0, Math.floor(Number(raw.lastExpandedCount))) : undefined,
+		lastExpandedAt: Number.isFinite(Number(raw.lastExpandedAt))
+			? Number(raw.lastExpandedAt)
+			: undefined,
+		lastExpandedCount: Number.isFinite(Number(raw.lastExpandedCount))
+			? Math.max(0, Math.floor(Number(raw.lastExpandedCount)))
+			: undefined
 	}
 }
 
 const normalizeMeshyTaskTarget = (value: unknown): WorkflowMeshyTaskTarget | undefined => {
-	const raw = String(value ?? '').trim().toLowerCase()
+	const raw = String(value ?? '')
+		.trim()
+		.toLowerCase()
 	if (raw === 'image') return 'image'
 	if (raw === '3d') return '3d'
 	return undefined
@@ -846,7 +1039,9 @@ const inferMeshyTargetFromFamily = (family: WorkflowMeshyTaskFamily): WorkflowMe
 	return '3d'
 }
 
-const getDefaultMeshyFamilyForTarget = (target: WorkflowMeshyTaskTarget): WorkflowMeshyTaskFamily => {
+const getDefaultMeshyFamilyForTarget = (
+	target: WorkflowMeshyTaskTarget
+): WorkflowMeshyTaskFamily => {
 	return target === 'image' ? 'text-to-image' : 'text-to-3d'
 }
 
@@ -854,7 +1049,7 @@ const normalizeMeshyTaskFamily = (
 	rawFamily: unknown,
 	rawTarget: unknown,
 	rawMode: unknown,
-	rawStage: unknown,
+	rawStage: unknown
 ): WorkflowMeshyTaskFamily => {
 	const target = normalizeMeshyTaskTarget(rawTarget)
 	const family = String(rawFamily ?? '').trim() as WorkflowMeshyTaskFamily
@@ -879,14 +1074,18 @@ const normalizeMeshyTaskFamily = (
 	return getDefaultMeshyFamilyForTarget(target ?? '3d')
 }
 
-const meshyLegacyModeForFamily = (family: WorkflowMeshyTaskFamily): WorkflowMeshyNodeSettings['meshyMode'] | undefined => {
+const meshyLegacyModeForFamily = (
+	family: WorkflowMeshyTaskFamily
+): WorkflowMeshyNodeSettings['meshyMode'] | undefined => {
 	if (family === 'image-to-3d') return 'image-to-3d'
 	if (family === 'multi-image-to-3d') return 'multi-image-to-3d'
 	if (family === 'text-to-3d' || family === 'refine') return 'text-to-3d'
 	return undefined
 }
 
-const meshyLegacyStageForFamily = (family: WorkflowMeshyTaskFamily): WorkflowMeshyNodeSettings['meshyStage'] | undefined => {
+const meshyLegacyStageForFamily = (
+	family: WorkflowMeshyTaskFamily
+): WorkflowMeshyNodeSettings['meshyStage'] | undefined => {
 	if (family === 'refine') return 'refine'
 	if (family === 'text-to-3d') return 'preview'
 	return undefined
@@ -894,7 +1093,8 @@ const meshyLegacyStageForFamily = (family: WorkflowMeshyTaskFamily): WorkflowMes
 
 const syncMeshyAnchors = (node: WorkflowNode) => {
 	const target = node.meshySettings?.meshyTaskTarget ?? '3d'
-	const family = node.meshySettings?.meshyTaskFamily ?? (target === 'image' ? 'text-to-image' : 'text-to-3d')
+	const family =
+		node.meshySettings?.meshyTaskFamily ?? (target === 'image' ? 'text-to-image' : 'text-to-3d')
 	if (target === 'image') {
 		const imageInputCount = family === 'image-to-image' ? 5 : 0
 		const imageAnchors: WorkflowAnchorSpec[] = []
@@ -902,7 +1102,9 @@ const syncMeshyAnchors = (node: WorkflowNode) => {
 			imageAnchors.push({ id: `in-image-${i}`, label: `参考图 ${i}`, mediaType: 'image' })
 		}
 		const outputCountRaw = Number(node.meshySettings?.meshyOutputImageCount ?? 1)
-		const outputCount = Number.isFinite(outputCountRaw) ? Math.max(1, Math.min(4, Math.floor(outputCountRaw))) : 1
+		const outputCount = Number.isFinite(outputCountRaw)
+			? Math.max(1, Math.min(4, Math.floor(outputCountRaw)))
+			: 1
 		const imageOutputs: WorkflowAnchorSpec[] = []
 		for (let i = 1; i <= outputCount; i += 1) {
 			imageOutputs.push({ id: `out-image-${i}`, label: `图像输出 ${i}`, mediaType: 'image' })
@@ -918,41 +1120,63 @@ const syncMeshyAnchors = (node: WorkflowNode) => {
 		{ id: 'in-image-1', label: '参考图 1', mediaType: 'image' },
 		{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
 		{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
-		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
+		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' }
 	]
 	node.outputs = [{ id: 'out-model', label: '模型输出', mediaType: 'model3d' }]
 }
 
 const syncSceneUnderstandAnchors = (node: WorkflowNode) => {
-	const mode = node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
+	const mode =
+		node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
 	node.inputs = [
 		{ id: 'in-image', label: '参考图 1', mediaType: 'image' },
 		{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
 		{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
 		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
-		...(mode === 'scene-lighting' ? [{ id: 'in-layout-json', label: '布局 JSON', mediaType: 'text' as const }] : []),
-		{ id: 'in-text', label: mode === 'scene-lighting' ? '灯光补充提示' : '提示词', mediaType: 'text' },
+		...(mode === 'scene-lighting'
+			? [{ id: 'in-layout-json', label: '布局 JSON', mediaType: 'text' as const }]
+			: []),
+		{
+			id: 'in-text',
+			label: mode === 'scene-lighting' ? '灯光补充提示' : '提示词',
+			mediaType: 'text'
+		}
 	]
-	node.outputs = [{ id: 'out-0', label: mode === 'scene-lighting' ? '灯光JSON' : 'JSON输出', mediaType: 'text' }]
+	node.outputs = [
+		{ id: 'out-0', label: mode === 'scene-lighting' ? '灯光JSON' : 'JSON输出', mediaType: 'text' }
+	]
 }
 
 const isSceneLayoutModelTarget = (item: unknown): boolean => {
 	if (!item || !isRecord(item)) return false
-	const id = String(item.id ?? '').trim().toLowerCase()
-	const semanticRole = String(item.semanticRole ?? '').trim().toLowerCase()
-	const keyElementType = String(item.keyElementType ?? '').trim().toLowerCase()
+	const id = String(item.id ?? '')
+		.trim()
+		.toLowerCase()
+	const semanticRole = String(item.semanticRole ?? '')
+		.trim()
+		.toLowerCase()
+	const keyElementType = String(item.keyElementType ?? '')
+		.trim()
+		.toLowerCase()
 	const relationTags = isArray(item.relationTags)
-		? item.relationTags.map((value: unknown) => String(value ?? '').trim().toLowerCase())
+		? item.relationTags.map((value: unknown) =>
+				String(value ?? '')
+					.trim()
+					.toLowerCase()
+			)
 		: []
 	const observed = isArray(item.observedImageIndices)
-		? item.observedImageIndices.map((value: unknown) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0)
+		? item.observedImageIndices
+				.map((value: unknown) => Number(value))
+				.filter((value: number) => Number.isFinite(value) && value > 0)
 		: []
 
 	if (semanticRole === 'structure-shell') return false
 	if (relationTags.includes('structural-shell')) return false
 	if (id === 'floor1' || id === 'ceiling1' || /wall\d+$/i.test(id)) return false
 	if (!observed.length && !item.imageRect && !item.imageRectPixels) {
-		if (keyElementType === 'floor' || keyElementType === 'wall' || keyElementType === 'ceiling') return false
+		if (keyElementType === 'floor' || keyElementType === 'wall' || keyElementType === 'ceiling')
+			return false
 	}
 	return true
 }
@@ -960,31 +1184,38 @@ const isSceneLayoutModelTarget = (item: unknown): boolean => {
 const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 	const previewMode = node.sceneLayoutSettings?.previewMode === true
 	const layoutItems = Array.isArray(node.sceneLayoutSettings?.layoutItems)
-		? node.sceneLayoutSettings!.layoutItems!
-			.filter((item) => String(item?.id ?? '').trim())
-			.filter((item) => isSceneLayoutModelTarget(item))
+		? node
+				.sceneLayoutSettings!.layoutItems!.filter((item) => String(item?.id ?? '').trim())
+				.filter((item) => isSceneLayoutModelTarget(item))
 		: []
 	const modelInputs = previewMode
 		? layoutItems.map((item) => ({
-			id: `in-model-${String(item.id ?? '').trim()}`,
-			label: `${String(item.name ?? item.id ?? '对象').trim() || '对象'} 模型`,
-			mediaType: 'model3d' as const,
-		}))
+				id: `in-model-${String(item.id ?? '').trim()}`,
+				label: `${String(item.name ?? item.id ?? '对象').trim() || '对象'} 模型`,
+				mediaType: 'model3d' as const
+			}))
 		: []
-	const lightingInputs = previewMode && node.sceneLayoutSettings?.lightingPreviewEnabled === true
-		? [{ id: 'in-lighting-json', label: '灯光 JSON', mediaType: 'text' as const }]
-		: []
-	node.inputs = [{ id: 'in-json', label: '布局JSON', mediaType: 'text' }, ...modelInputs, ...lightingInputs]
+	const lightingInputs =
+		previewMode && node.sceneLayoutSettings?.lightingPreviewEnabled === true
+			? [{ id: 'in-lighting-json', label: '灯光 JSON', mediaType: 'text' as const }]
+			: []
+	node.inputs = [
+		{ id: 'in-json', label: '布局JSON', mediaType: 'text' },
+		...modelInputs,
+		...lightingInputs
+	]
 	node.outputs = [
 		{ id: 'out-0', label: '布局输出', mediaType: 'text' },
-		...(previewMode ? [{ id: 'out-selected-placeholder', label: '选中占位体', mediaType: 'model3d' as const }] : []),
+		...(previewMode
+			? [{ id: 'out-selected-placeholder', label: '选中占位体', mediaType: 'model3d' as const }]
+			: [])
 	]
 }
 
 const syncUnrealExportAnchors = (node: WorkflowNode) => {
 	node.inputs = [
 		{ id: 'in-layout-json', label: '布局 JSON', mediaType: 'text' },
-		{ id: 'in-lighting-json', label: '灯光 JSON', mediaType: 'text' },
+		{ id: 'in-lighting-json', label: '灯光 JSON', mediaType: 'text' }
 	]
 	node.outputs = []
 }
@@ -992,15 +1223,13 @@ const syncUnrealExportAnchors = (node: WorkflowNode) => {
 const syncSceneDecomposeAnchors = (node: WorkflowNode) => {
 	const settings = node.sceneDecomposeSettings
 	const rawOutputs = settings?.outputs
-	const outputs: WorkflowSceneDecomposeOutput[] = Array.isArray(rawOutputs)
-		? rawOutputs
-		: []
+	const outputs: WorkflowSceneDecomposeOutput[] = Array.isArray(rawOutputs) ? rawOutputs : []
 	node.inputs = [
 		{ id: 'in-image', label: '参考图 1', mediaType: 'image' },
 		{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
 		{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
 		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
-		{ id: 'in-json', label: '场景 JSON', mediaType: 'text' },
+		{ id: 'in-json', label: '场景 JSON', mediaType: 'text' }
 	]
 	// 场景拆解节点输出锚点归一化：无论拆解出多少对象，只保留一个总输出锚点，
 	// 所有自动布线均从该锚点出发，避免多锚点位置与连线起点错位的问题。
@@ -1010,44 +1239,75 @@ const syncSceneDecomposeAnchors = (node: WorkflowNode) => {
 		: [{ id: 'out-empty', label: '待分解', mediaType: 'text' }]
 }
 
-const normalizeMeshyTargetFormats = (value: unknown): WorkflowMeshyNodeSettings['meshyTargetFormats'] | undefined => {
+const normalizeMeshyTargetFormats = (
+	value: unknown
+): WorkflowMeshyNodeSettings['meshyTargetFormats'] | undefined => {
 	if (!Array.isArray(value)) return undefined
-	const next = value.filter((x: unknown) => ['glb', 'obj', 'fbx', 'stl', 'usdz'].includes(String(x)))
+	const next = value.filter((x: unknown) =>
+		['glb', 'obj', 'fbx', 'stl', 'usdz'].includes(String(x))
+	)
 	return next.length ? (next as WorkflowMeshyNodeSettings['meshyTargetFormats']) : undefined
 }
 
-const normalizeModel3DSettings = (rawSettings: unknown): WorkflowModel3DNodeSettings | undefined => {
+const normalizeModel3DSettings = (
+	rawSettings: unknown
+): WorkflowModel3DNodeSettings | undefined => {
 	if (!rawSettings || !isRecord(rawSettings)) return undefined
 	const raw = rawSettings
 	return {
 		modelUrl: isString(raw.modelUrl) ? String(raw.modelUrl) : undefined,
-		modelFormat: raw.modelFormat === 'gltf' ? 'gltf' : raw.modelFormat === 'glb' ? 'glb' : undefined,
+		modelFormat:
+			raw.modelFormat === 'gltf' ? 'gltf' : raw.modelFormat === 'glb' ? 'glb' : undefined,
 		modelSourceName: isString(raw.modelSourceName) ? String(raw.modelSourceName) : undefined,
 		modelSourcePath: isString(raw.modelSourcePath) ? String(raw.modelSourcePath) : undefined,
 		modelAssetUrl: isString(raw.modelAssetUrl) ? String(raw.modelAssetUrl) : undefined,
 		modelAssetPath: isString(raw.modelAssetPath) ? String(raw.modelAssetPath) : undefined,
 		backgroundColor: isString(raw.backgroundColor) ? String(raw.backgroundColor) : undefined,
-		lightIntensity: Number.isFinite(Number(raw.lightIntensity)) ? Math.max(0, Math.min(10, Number(raw.lightIntensity))) : undefined,
+		lightIntensity: Number.isFinite(Number(raw.lightIntensity))
+			? Math.max(0, Math.min(10, Number(raw.lightIntensity)))
+			: undefined,
 		gridVisible: isBoolean(raw.gridVisible) ? Boolean(raw.gridVisible) : undefined,
 		axesVisible: isBoolean(raw.axesVisible) ? Boolean(raw.axesVisible) : undefined,
 		autoRotate: isBoolean(raw.autoRotate) ? Boolean(raw.autoRotate) : undefined,
-		renderWidth: Number.isFinite(Number(raw.renderWidth)) ? Math.max(1, Math.floor(Number(raw.renderWidth))) : undefined,
-		renderHeight: Number.isFinite(Number(raw.renderHeight)) ? Math.max(1, Math.floor(Number(raw.renderHeight))) : undefined,
-		lastInputSignature: isString(raw.lastInputSignature) ? String(raw.lastInputSignature) : undefined,
+		renderWidth: Number.isFinite(Number(raw.renderWidth))
+			? Math.max(1, Math.floor(Number(raw.renderWidth)))
+			: undefined,
+		renderHeight: Number.isFinite(Number(raw.renderHeight))
+			? Math.max(1, Math.floor(Number(raw.renderHeight)))
+			: undefined,
+		lastInputSignature: isString(raw.lastInputSignature)
+			? String(raw.lastInputSignature)
+			: undefined,
 		lastInputNodeId: isString(raw.lastInputNodeId) ? String(raw.lastInputNodeId) : undefined,
-		lastInputSourceUrl: isString(raw.lastInputSourceUrl) ? String(raw.lastInputSourceUrl) : undefined,
-		lastInputSourcePath: isString(raw.lastInputSourcePath) ? String(raw.lastInputSourcePath) : undefined,
-		lastInputSourceName: isString(raw.lastInputSourceName) ? String(raw.lastInputSourceName) : undefined,
-		lastInputPlaceholderId: isString(raw.lastInputPlaceholderId) ? String(raw.lastInputPlaceholderId) : undefined,
-		lastInputPlaceholderJson: isString(raw.lastInputPlaceholderJson) ? String(raw.lastInputPlaceholderJson) : undefined,
+		lastInputSourceUrl: isString(raw.lastInputSourceUrl)
+			? String(raw.lastInputSourceUrl)
+			: undefined,
+		lastInputSourcePath: isString(raw.lastInputSourcePath)
+			? String(raw.lastInputSourcePath)
+			: undefined,
+		lastInputSourceName: isString(raw.lastInputSourceName)
+			? String(raw.lastInputSourceName)
+			: undefined,
+		lastInputPlaceholderId: isString(raw.lastInputPlaceholderId)
+			? String(raw.lastInputPlaceholderId)
+			: undefined,
+		lastInputPlaceholderJson: isString(raw.lastInputPlaceholderJson)
+			? String(raw.lastInputPlaceholderJson)
+			: undefined
 	}
 }
 
 const normalizeMeshySettings = (rawSettings: unknown): WorkflowMeshyNodeSettings | undefined => {
 	if (!rawSettings || !isRecord(rawSettings)) return undefined
 	const raw = rawSettings
-	const meshyTaskFamily = normalizeMeshyTaskFamily(raw.meshyTaskFamily, raw.meshyTaskTarget, raw.meshyMode, raw.meshyStage)
-	const meshyTaskTarget = normalizeMeshyTaskTarget(raw.meshyTaskTarget) ?? inferMeshyTargetFromFamily(meshyTaskFamily)
+	const meshyTaskFamily = normalizeMeshyTaskFamily(
+		raw.meshyTaskFamily,
+		raw.meshyTaskTarget,
+		raw.meshyMode,
+		raw.meshyStage
+	)
+	const meshyTaskTarget =
+		normalizeMeshyTaskTarget(raw.meshyTaskTarget) ?? inferMeshyTargetFromFamily(meshyTaskFamily)
 	const modelUrlsObj = isRecord(raw.meshyModelUrls) ? raw.meshyModelUrls : undefined
 	const inputSummaryObj = isRecord(raw.meshyInputSummary) ? raw.meshyInputSummary : undefined
 	const outputSummaryObj = isRecord(raw.meshyOutputSummary) ? raw.meshyOutputSummary : undefined
@@ -1056,16 +1316,48 @@ const normalizeMeshySettings = (rawSettings: unknown): WorkflowMeshyNodeSettings
 		meshyTaskTarget,
 		meshyTaskFamily,
 		meshyHelpTopic: isString(raw.meshyHelpTopic) ? String(raw.meshyHelpTopic) : undefined,
-		meshyMode: meshyLegacyModeForFamily(meshyTaskFamily) ?? (raw.meshyMode === 'image-to-3d' ? 'image-to-3d' : raw.meshyMode === 'multi-image-to-3d' ? 'multi-image-to-3d' : raw.meshyMode === 'text-to-3d' ? 'text-to-3d' : undefined),
-		meshyStage: meshyLegacyStageForFamily(meshyTaskFamily) ?? (raw.meshyStage === 'refine' ? 'refine' : raw.meshyStage === 'preview' ? 'preview' : undefined),
+		meshyMode:
+			meshyLegacyModeForFamily(meshyTaskFamily) ??
+			(raw.meshyMode === 'image-to-3d'
+				? 'image-to-3d'
+				: raw.meshyMode === 'multi-image-to-3d'
+					? 'multi-image-to-3d'
+					: raw.meshyMode === 'text-to-3d'
+						? 'text-to-3d'
+						: undefined),
+		meshyStage:
+			meshyLegacyStageForFamily(meshyTaskFamily) ??
+			(raw.meshyStage === 'refine'
+				? 'refine'
+				: raw.meshyStage === 'preview'
+					? 'preview'
+					: undefined),
 		meshyPrompt: isString(raw.meshyPrompt) ? String(raw.meshyPrompt) : undefined,
-		meshyNegativePrompt: isString(raw.meshyNegativePrompt) ? String(raw.meshyNegativePrompt) : undefined,
-		meshyPreviewTaskId: isString(raw.meshyPreviewTaskId) ? String(raw.meshyPreviewTaskId) : undefined,
+		meshyNegativePrompt: isString(raw.meshyNegativePrompt)
+			? String(raw.meshyNegativePrompt)
+			: undefined,
+		meshyPreviewTaskId: isString(raw.meshyPreviewTaskId)
+			? String(raw.meshyPreviewTaskId)
+			: undefined,
 		meshyImageUrl: isString(raw.meshyImageUrl) ? String(raw.meshyImageUrl) : undefined,
-		meshyImageUrls: isArray(raw.meshyImageUrls) ? raw.meshyImageUrls.map((x: unknown) => String(x ?? '').trim()).filter((x: string) => !!x).slice(0, 5) : undefined,
-		meshyTexturePrompt: isString(raw.meshyTexturePrompt) ? String(raw.meshyTexturePrompt) : undefined,
-		meshyTextureImageUrl: isString(raw.meshyTextureImageUrl) ? String(raw.meshyTextureImageUrl) : undefined,
-		meshyModelType: raw.meshyModelType === 'lowpoly' ? 'lowpoly' : raw.meshyModelType === 'standard' ? 'standard' : undefined,
+		meshyImageUrls: isArray(raw.meshyImageUrls)
+			? raw.meshyImageUrls
+					.map((x: unknown) => String(x ?? '').trim())
+					.filter((x: string) => !!x)
+					.slice(0, 5)
+			: undefined,
+		meshyTexturePrompt: isString(raw.meshyTexturePrompt)
+			? String(raw.meshyTexturePrompt)
+			: undefined,
+		meshyTextureImageUrl: isString(raw.meshyTextureImageUrl)
+			? String(raw.meshyTextureImageUrl)
+			: undefined,
+		meshyModelType:
+			raw.meshyModelType === 'lowpoly'
+				? 'lowpoly'
+				: raw.meshyModelType === 'standard'
+					? 'standard'
+					: undefined,
 		meshyAiModel:
 			raw.meshyAiModel === 'meshy-5'
 				? 'meshy-5'
@@ -1090,40 +1382,92 @@ const normalizeMeshySettings = (rawSettings: unknown): WorkflowMeshyNodeSettings
 							: raw.meshyAspectRatio === '3:4'
 								? '3:4'
 								: undefined,
-		meshyGenerateMultiView: isBoolean(raw.meshyGenerateMultiView) ? Boolean(raw.meshyGenerateMultiView) : undefined,
+		meshyGenerateMultiView: isBoolean(raw.meshyGenerateMultiView)
+			? Boolean(raw.meshyGenerateMultiView)
+			: undefined,
 		meshyOutputImageCount: Number.isFinite(Number(raw.meshyOutputImageCount))
 			? (Math.max(1, Math.min(4, Math.floor(Number(raw.meshyOutputImageCount)))) as 1 | 2 | 3 | 4)
 			: undefined,
-		meshyImageInputCount: Number.isFinite(Number(raw.meshyImageInputCount)) ? Math.max(0, Math.min(5, Math.floor(Number(raw.meshyImageInputCount)))) : undefined,
-		meshySeed: Number.isFinite(Number(raw.meshySeed)) ? Math.max(0, Math.floor(Number(raw.meshySeed))) : undefined,
+		meshyImageInputCount: Number.isFinite(Number(raw.meshyImageInputCount))
+			? Math.max(0, Math.min(5, Math.floor(Number(raw.meshyImageInputCount))))
+			: undefined,
+		meshySeed: Number.isFinite(Number(raw.meshySeed))
+			? Math.max(0, Math.floor(Number(raw.meshySeed)))
+			: undefined,
 		meshyAnimationActionId: Number.isFinite(Number(raw.meshyAnimationActionId))
 			? Math.max(1, Math.floor(Number(raw.meshyAnimationActionId)))
 			: undefined,
-		meshyTopology: raw.meshyTopology === 'quad' ? 'quad' : raw.meshyTopology === 'triangle' ? 'triangle' : undefined,
-		meshyTargetPolycount: Number.isFinite(Number(raw.meshyTargetPolycount)) ? Math.max(100, Math.min(300000, Math.floor(Number(raw.meshyTargetPolycount)))) : undefined,
-		meshySymmetryMode: raw.meshySymmetryMode === 'off' ? 'off' : raw.meshySymmetryMode === 'on' ? 'on' : raw.meshySymmetryMode === 'auto' ? 'auto' : undefined,
-		meshyShouldRemesh: isBoolean(raw.meshyShouldRemesh) ? Boolean(raw.meshyShouldRemesh) : undefined,
-		meshySavePreRemeshedModel: isBoolean(raw.meshySavePreRemeshedModel) ? Boolean(raw.meshySavePreRemeshedModel) : undefined,
-		meshyShouldTexture: isBoolean(raw.meshyShouldTexture) ? Boolean(raw.meshyShouldTexture) : undefined,
+		meshyTopology:
+			raw.meshyTopology === 'quad'
+				? 'quad'
+				: raw.meshyTopology === 'triangle'
+					? 'triangle'
+					: undefined,
+		meshyTargetPolycount: Number.isFinite(Number(raw.meshyTargetPolycount))
+			? Math.max(100, Math.min(300000, Math.floor(Number(raw.meshyTargetPolycount))))
+			: undefined,
+		meshySymmetryMode:
+			raw.meshySymmetryMode === 'off'
+				? 'off'
+				: raw.meshySymmetryMode === 'on'
+					? 'on'
+					: raw.meshySymmetryMode === 'auto'
+						? 'auto'
+						: undefined,
+		meshyShouldRemesh: isBoolean(raw.meshyShouldRemesh)
+			? Boolean(raw.meshyShouldRemesh)
+			: undefined,
+		meshySavePreRemeshedModel: isBoolean(raw.meshySavePreRemeshedModel)
+			? Boolean(raw.meshySavePreRemeshedModel)
+			: undefined,
+		meshyShouldTexture: isBoolean(raw.meshyShouldTexture)
+			? Boolean(raw.meshyShouldTexture)
+			: undefined,
 		meshyEnablePbr: isBoolean(raw.meshyEnablePbr) ? Boolean(raw.meshyEnablePbr) : undefined,
-		meshyPoseMode: raw.meshyPoseMode === 'a-pose' ? 'a-pose' : raw.meshyPoseMode === 't-pose' ? 't-pose' : raw.meshyPoseMode === '' ? '' : undefined,
+		meshyPoseMode:
+			raw.meshyPoseMode === 'a-pose'
+				? 'a-pose'
+				: raw.meshyPoseMode === 't-pose'
+					? 't-pose'
+					: raw.meshyPoseMode === ''
+						? ''
+						: undefined,
 		meshyModeration: isBoolean(raw.meshyModeration) ? Boolean(raw.meshyModeration) : undefined,
-		meshyImageEnhancement: isBoolean(raw.meshyImageEnhancement) ? Boolean(raw.meshyImageEnhancement) : undefined,
-		meshyRemoveLighting: isBoolean(raw.meshyRemoveLighting) ? Boolean(raw.meshyRemoveLighting) : undefined,
+		meshyImageEnhancement: isBoolean(raw.meshyImageEnhancement)
+			? Boolean(raw.meshyImageEnhancement)
+			: undefined,
+		meshyRemoveLighting: isBoolean(raw.meshyRemoveLighting)
+			? Boolean(raw.meshyRemoveLighting)
+			: undefined,
 		meshyAutoSize: isBoolean(raw.meshyAutoSize) ? Boolean(raw.meshyAutoSize) : undefined,
-		meshyOriginAt: raw.meshyOriginAt === 'center' ? 'center' : raw.meshyOriginAt === 'bottom' ? 'bottom' : undefined,
+		meshyOriginAt:
+			raw.meshyOriginAt === 'center'
+				? 'center'
+				: raw.meshyOriginAt === 'bottom'
+					? 'bottom'
+					: undefined,
 		meshyTargetFormats: normalizeMeshyTargetFormats(raw.meshyTargetFormats),
 		meshyTaskId: isString(raw.meshyTaskId) ? String(raw.meshyTaskId) : undefined,
-		meshyTaskStatus: ['idle', 'pending', 'running', 'succeeded', 'failed', 'canceled'].includes(String(raw.meshyTaskStatus)) ? String(raw.meshyTaskStatus) as WorkflowMeshyNodeSettings['meshyTaskStatus'] : undefined,
-		meshyProgress: Number.isFinite(Number(raw.meshyProgress)) ? Math.max(0, Math.min(100, Number(raw.meshyProgress))) : undefined,
+		meshyTaskStatus: ['idle', 'pending', 'running', 'succeeded', 'failed', 'canceled'].includes(
+			String(raw.meshyTaskStatus)
+		)
+			? (String(raw.meshyTaskStatus) as WorkflowMeshyNodeSettings['meshyTaskStatus'])
+			: undefined,
+		meshyProgress: Number.isFinite(Number(raw.meshyProgress))
+			? Math.max(0, Math.min(100, Number(raw.meshyProgress)))
+			: undefined,
 		meshyStatusText: isString(raw.meshyStatusText) ? String(raw.meshyStatusText) : undefined,
 		meshyThumbnailUrl: isString(raw.meshyThumbnailUrl) ? String(raw.meshyThumbnailUrl) : undefined,
 		meshyModelUrls: modelUrlsObj ? { ...modelUrlsObj } : undefined,
-		meshyOutputAssetUrl: isString(raw.meshyOutputAssetUrl) ? String(raw.meshyOutputAssetUrl) : undefined,
-		meshyOutputAssetPath: isString(raw.meshyOutputAssetPath) ? String(raw.meshyOutputAssetPath) : undefined,
+		meshyOutputAssetUrl: isString(raw.meshyOutputAssetUrl)
+			? String(raw.meshyOutputAssetUrl)
+			: undefined,
+		meshyOutputAssetPath: isString(raw.meshyOutputAssetPath)
+			? String(raw.meshyOutputAssetPath)
+			: undefined,
 		meshyErrorMessage: isString(raw.meshyErrorMessage) ? String(raw.meshyErrorMessage) : undefined,
 		meshyInputSummary: inputSummaryObj ? { ...inputSummaryObj } : undefined,
-		meshyOutputSummary: outputSummaryObj ? { ...outputSummaryObj } : undefined,
+		meshyOutputSummary: outputSummaryObj ? { ...outputSummaryObj } : undefined
 	}
 }
 
@@ -1131,99 +1475,156 @@ const normalizeImageSettings = (raw: unknown): WorkflowImageNodeSettings | undef
 	if (!raw || !isRecord(raw)) return undefined
 	const cropObj = isRecord(raw.crop) ? raw.crop : undefined
 	return {
-		outputWidth: Number.isFinite(Number(raw.outputWidth)) ? Math.max(1, Math.floor(Number(raw.outputWidth))) : undefined,
-		outputHeight: Number.isFinite(Number(raw.outputHeight)) ? Math.max(1, Math.floor(Number(raw.outputHeight))) : undefined,
-		naturalWidth: Number.isFinite(Number(raw.naturalWidth)) ? Math.max(1, Math.floor(Number(raw.naturalWidth))) : undefined,
-		naturalHeight: Number.isFinite(Number(raw.naturalHeight)) ? Math.max(1, Math.floor(Number(raw.naturalHeight))) : undefined,
+		outputWidth: Number.isFinite(Number(raw.outputWidth))
+			? Math.max(1, Math.floor(Number(raw.outputWidth)))
+			: undefined,
+		outputHeight: Number.isFinite(Number(raw.outputHeight))
+			? Math.max(1, Math.floor(Number(raw.outputHeight)))
+			: undefined,
+		naturalWidth: Number.isFinite(Number(raw.naturalWidth))
+			? Math.max(1, Math.floor(Number(raw.naturalWidth)))
+			: undefined,
+		naturalHeight: Number.isFinite(Number(raw.naturalHeight))
+			? Math.max(1, Math.floor(Number(raw.naturalHeight)))
+			: undefined,
 		cropEnabled: isBoolean(raw.cropEnabled) ? Boolean(raw.cropEnabled) : undefined,
-		crop: cropObj ? {
-			x: Number.isFinite(Number(cropObj.x)) ? Math.max(0, Math.min(1, Number(cropObj.x))) : 0,
-			y: Number.isFinite(Number(cropObj.y)) ? Math.max(0, Math.min(1, Number(cropObj.y))) : 0,
-			width: Number.isFinite(Number(cropObj.width)) ? Math.max(0, Math.min(1, Number(cropObj.width))) : 1,
-			height: Number.isFinite(Number(cropObj.height)) ? Math.max(0, Math.min(1, Number(cropObj.height))) : 1,
-		} : undefined,
+		crop: cropObj
+			? {
+					x: Number.isFinite(Number(cropObj.x)) ? Math.max(0, Math.min(1, Number(cropObj.x))) : 0,
+					y: Number.isFinite(Number(cropObj.y)) ? Math.max(0, Math.min(1, Number(cropObj.y))) : 0,
+					width: Number.isFinite(Number(cropObj.width))
+						? Math.max(0, Math.min(1, Number(cropObj.width)))
+						: 1,
+					height: Number.isFinite(Number(cropObj.height))
+						? Math.max(0, Math.min(1, Number(cropObj.height)))
+						: 1
+				}
+			: undefined
 	}
 }
 
 const normalizeVideoSettings = (raw: unknown): WorkflowVideoNodeSettings | undefined => {
 	if (!raw || !isRecord(raw)) return undefined
 	return {
-		outputWidth: Number.isFinite(Number(raw.outputWidth)) ? Math.max(1, Math.floor(Number(raw.outputWidth))) : undefined,
-		outputHeight: Number.isFinite(Number(raw.outputHeight)) ? Math.max(1, Math.floor(Number(raw.outputHeight))) : undefined,
-		naturalWidth: Number.isFinite(Number(raw.naturalWidth)) ? Math.max(1, Math.floor(Number(raw.naturalWidth))) : undefined,
-		naturalHeight: Number.isFinite(Number(raw.naturalHeight)) ? Math.max(1, Math.floor(Number(raw.naturalHeight))) : undefined,
+		outputWidth: Number.isFinite(Number(raw.outputWidth))
+			? Math.max(1, Math.floor(Number(raw.outputWidth)))
+			: undefined,
+		outputHeight: Number.isFinite(Number(raw.outputHeight))
+			? Math.max(1, Math.floor(Number(raw.outputHeight)))
+			: undefined,
+		naturalWidth: Number.isFinite(Number(raw.naturalWidth))
+			? Math.max(1, Math.floor(Number(raw.naturalWidth)))
+			: undefined,
+		naturalHeight: Number.isFinite(Number(raw.naturalHeight))
+			? Math.max(1, Math.floor(Number(raw.naturalHeight)))
+			: undefined
 	}
 }
 
-const normalizeStorySettings = (raw: unknown): { previewWidth?: number; previewHeight?: number } | undefined => {
+const normalizeStorySettings = (
+	raw: unknown
+): { previewWidth?: number; previewHeight?: number } | undefined => {
 	if (!raw || !isRecord(raw)) return undefined
 	const pw = Number(raw.previewWidth)
 	const ph = Number(raw.previewHeight)
 	return {
 		previewWidth: Number.isFinite(pw) ? Math.max(1, Math.floor(pw)) : undefined,
-		previewHeight: Number.isFinite(ph) ? Math.max(1, Math.floor(ph)) : undefined,
+		previewHeight: Number.isFinite(ph) ? Math.max(1, Math.floor(ph)) : undefined
 	}
 }
 
 const normalizeBranches = (raw: unknown): Array<{ id: string; text: string }> | undefined => {
 	if (!isArray(raw)) return undefined
-	const branches = raw.map((b: unknown) => isRecord(b) ? {
-		id: String(b.id ?? '').trim(),
-		text: String(b.text ?? ''),
-	} : { id: '', text: '' }).filter((b: { id: string }) => b.id)
+	const branches = raw
+		.map((b: unknown) =>
+			isRecord(b)
+				? {
+						id: String(b.id ?? '').trim(),
+						text: String(b.text ?? '')
+					}
+				: { id: '', text: '' }
+		)
+		.filter((b: { id: string }) => b.id)
 	return branches.length ? branches : undefined
 }
 
-const normalizeAnchors = (raw: unknown, nodeType: string, direction: 'in' | 'out'): WorkflowAnchorSpec[] => {
+const normalizeAnchors = (
+	raw: unknown,
+	nodeType: string,
+	direction: 'in' | 'out'
+): WorkflowAnchorSpec[] => {
 	if (!isArray(raw)) {
 		return direction === 'in' ? [{ id: 'in-0', label: '入口' }] : [{ id: 'out-0', label: '出口' }]
 	}
-	return raw.map((a: unknown) => {
-		if (!isRecord(a)) return { id: '' }
-		const anchorId = String(a.id ?? '').trim()
-		return {
-			id: anchorId,
-			label: isString(a.label) ? a.label : undefined,
-			offsetY: isNumber(a.offsetY) ? a.offsetY : undefined,
-			mediaType: normalizeMediaType(a.mediaType, { nodeType, anchorId }),
-		}
-	}).filter((a: WorkflowAnchorSpec) => a.id)
+	return raw
+		.map((a: unknown) => {
+			if (!isRecord(a)) return { id: '' }
+			const anchorId = String(a.id ?? '').trim()
+			return {
+				id: anchorId,
+				label: isString(a.label) ? a.label : undefined,
+				offsetY: isNumber(a.offsetY) ? a.offsetY : undefined,
+				mediaType: normalizeMediaType(a.mediaType, { nodeType, anchorId })
+			}
+		})
+		.filter((a: WorkflowAnchorSpec) => a.id)
 }
 
 const normalizeTextMergeItems = (raw: unknown): Array<{ id: string }> | undefined => {
 	if (!isArray(raw)) return undefined
-	const items = raw.map((x: unknown) => isRecord(x) ? {
-		id: String(x.id ?? '').trim(),
-	} : { id: '' }).filter((x: { id: string }) => x.id)
+	const items = raw
+		.map((x: unknown) =>
+			isRecord(x)
+				? {
+						id: String(x.id ?? '').trim()
+					}
+				: { id: '' }
+		)
+		.filter((x: { id: string }) => x.id)
 	return items.length ? items : undefined
 }
 
 const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | undefined => {
 	if (!raw || !isRecord(raw)) return undefined
 	const workflows = isArray(raw.workflows)
-		? raw.workflows.map((w: unknown) => isRecord(w) ? {
-			path: String(w.path ?? ''),
-			name: String(w.name ?? ''),
-		} : { path: '', name: '' }).filter((w: { path: string }) => w.path)
+		? raw.workflows
+				.map((w: unknown) =>
+					isRecord(w)
+						? {
+								path: String(w.path ?? ''),
+								name: String(w.name ?? '')
+							}
+						: { path: '', name: '' }
+				)
+				.filter((w: { path: string }) => w.path)
 		: undefined
 	const outputs = isArray(raw.outputs)
-		? raw.outputs.map((o: unknown) => isRecord(o) ? {
-			kind: (o.kind === 'video' ? 'video' : 'image') as 'video' | 'image',
-			url: String(o.url ?? ''),
-			filename: isString(o.filename) ? o.filename : undefined,
-			anchorId: isString(o.anchorId) ? o.anchorId : undefined,
-			nodeId: isString(o.nodeId) ? o.nodeId : undefined,
-			sourcePath: isString(o.sourcePath) ? o.sourcePath : undefined,
-			subfolder: isString(o.subfolder) ? o.subfolder : undefined,
-			type: isString(o.type) ? o.type : undefined,
-		} : { kind: 'image' as const, url: '' }).filter((o: { url: string }) => o.url)
+		? raw.outputs
+				.map((o: unknown) =>
+					isRecord(o)
+						? {
+								kind: (o.kind === 'video' ? 'video' : 'image') as 'video' | 'image',
+								url: String(o.url ?? ''),
+								filename: isString(o.filename) ? o.filename : undefined,
+								anchorId: isString(o.anchorId) ? o.anchorId : undefined,
+								nodeId: isString(o.nodeId) ? o.nodeId : undefined,
+								sourcePath: isString(o.sourcePath) ? o.sourcePath : undefined,
+								subfolder: isString(o.subfolder) ? o.subfolder : undefined,
+								type: isString(o.type) ? o.type : undefined
+							}
+						: { kind: 'image' as const, url: '' }
+				)
+				.filter((o: { url: string }) => o.url)
 		: undefined
 	const status = raw.status
 	return {
 		baseUrl: isString(raw.baseUrl) ? raw.baseUrl : undefined,
-		status: status === 'connecting' || status === 'connected' || status === 'error' ? status : 'idle',
+		status:
+			status === 'connecting' || status === 'connected' || status === 'error' ? status : 'idle',
 		message: isString(raw.message) ? raw.message : undefined,
-		lastCheckedAt: Number.isFinite(Number(raw.lastCheckedAt)) ? Number(raw.lastCheckedAt) : undefined,
+		lastCheckedAt: Number.isFinite(Number(raw.lastCheckedAt))
+			? Number(raw.lastCheckedAt)
+			: undefined,
 		workflows,
 		workflowPath: isString(raw.workflowPath) ? raw.workflowPath : undefined,
 		positivePrompt: isString(raw.positivePrompt) ? raw.positivePrompt : undefined,
@@ -1233,7 +1634,7 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 		progress: Number.isFinite(Number(raw.progress)) ? Number(raw.progress) : undefined,
 		statusText: isString(raw.statusText) ? raw.statusText : undefined,
 		outputs,
-		lastUpdateAt: Number.isFinite(Number(raw.lastUpdateAt)) ? Number(raw.lastUpdateAt) : undefined,
+		lastUpdateAt: Number.isFinite(Number(raw.lastUpdateAt)) ? Number(raw.lastUpdateAt) : undefined
 	}
 }
 
@@ -1243,7 +1644,11 @@ const normalizeResource = (raw: unknown, id: string): WorkflowResource | undefin
 	return { ...(raw as Partial<WorkflowResource>), id, url } as WorkflowResource
 }
 
-const normalizeEdge = (raw: unknown, edgeId: string, nodesById: Record<string, WorkflowNode>): WorkflowEdge | undefined => {
+const normalizeEdge = (
+	raw: unknown,
+	edgeId: string,
+	nodesById: Record<string, WorkflowNode>
+): WorkflowEdge | undefined => {
 	if (!raw || !isRecord(raw)) return undefined
 	const fromNodeId = String(raw.fromNodeId ?? '').trim()
 	const toNodeId = String(raw.toNodeId ?? '').trim()
@@ -1259,7 +1664,7 @@ const normalizeEdge = (raw: unknown, edgeId: string, nodesById: Record<string, W
 		fromAnchorId,
 		toNodeId,
 		toAnchorId,
-		createdAt: Number.isFinite(Number(raw.createdAt)) ? Number(raw.createdAt) : Date.now(),
+		createdAt: Number.isFinite(Number(raw.createdAt)) ? Number(raw.createdAt) : Date.now()
 	}
 }
 
@@ -1309,8 +1714,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					storySettings: normalizeStorySettings(n.storySettings),
 					worldX: Number.isFinite(Number(n.worldX)) ? Number(n.worldX) : 0,
 					worldY: Number.isFinite(Number(n.worldY)) ? Number(n.worldY) : 0,
-					width: Number.isFinite(Number(n.width)) ? Math.max(80, Math.min(1000, Number(n.width))) : 240,
-					height: Number.isFinite(Number(n.height)) ? Math.max(80, Math.min(1000, Number(n.height))) : 160,
+					width: Number.isFinite(Number(n.width))
+						? Math.max(80, Math.min(1000, Number(n.width)))
+						: 240,
+					height: Number.isFinite(Number(n.height))
+						? Math.max(80, Math.min(1000, Number(n.height)))
+						: 160,
 					sizeCustomized: Boolean(n.sizeCustomized),
 					resourceId: isString(n.resourceId) ? n.resourceId : null,
 					branches: normalizeBranches(n.branches),
@@ -1320,25 +1729,34 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					rotatePromptText: isString(n.rotatePromptText) ? String(n.rotatePromptText) : undefined,
 					textValue: isString(n.textValue) ? String(n.textValue) : undefined,
 					textMergeItems: normalizeTextMergeItems(n.textMergeItems),
-					sceneUnderstandingSettings: normalizeSceneUnderstandingSettings(n.sceneUnderstandingSettings),
+					sceneUnderstandingSettings: normalizeSceneUnderstandingSettings(
+						n.sceneUnderstandingSettings
+					),
 					sceneLayoutSettings: normalizeSceneLayoutSettings(n.sceneLayoutSettings),
 					unrealExportSettings: normalizeUnrealExportSettings(n.unrealExportSettings),
 					sceneDecomposeSettings: normalizeSceneDecomposeSettings(n.sceneDecomposeSettings),
-					comfyuiSettings: normalizeComfyUISettings(n.comfyuiSettings),
+					comfyuiSettings: normalizeComfyUISettings(n.comfyuiSettings)
 				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'text-merge') syncTextMergeAnchors(nextNodesById[nodeId])
-				if (nextNodesById[nodeId].type === 'scene-understanding') syncSceneUnderstandAnchors(nextNodesById[nodeId])
-				if (nextNodesById[nodeId].type === 'scene-layout') syncSceneLayoutAnchors(nextNodesById[nodeId])
-				if (nextNodesById[nodeId].type === 'unreal-export') syncUnrealExportAnchors(nextNodesById[nodeId])
-				if (nextNodesById[nodeId].type === 'scene-decompose') syncSceneDecomposeAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'scene-understanding')
+					syncSceneUnderstandAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'scene-layout')
+					syncSceneLayoutAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'unreal-export')
+					syncUnrealExportAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'scene-decompose')
+					syncSceneDecomposeAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'meshy') syncMeshyAnchors(nextNodesById[nodeId])
 				enforceSingleIOAnchors(nextNodesById[nodeId])
 			}
 
 			const rawNodeOrder = isArray(s.nodeOrder) ? s.nodeOrder : []
 			const tempStateForOrder: WorkflowState = { ...state, nodesById: nextNodesById }
-			const nextNodeOrder = normalizeNodeIds(tempStateForOrder, rawNodeOrder.map((x: unknown) => String(x ?? '')))
+			const nextNodeOrder = normalizeNodeIds(
+				tempStateForOrder,
+				rawNodeOrder.map((x: unknown) => String(x ?? ''))
+			)
 			// if order missing, fall back to object keys
 			const nodeOrder = nextNodeOrder.length ? nextNodeOrder : Object.keys(nextNodesById)
 
@@ -1352,7 +1770,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const nextResourceOrder: string[] = []
 			const rawResourcesById = isRecord(s.resourcesById) ? s.resourcesById : {}
 			const rawResourceOrder = isArray(s.resourceOrder) ? s.resourceOrder : []
-			for (const ridRaw of rawResourceOrder.length ? rawResourceOrder : Object.keys(rawResourcesById)) {
+			for (const ridRaw of rawResourceOrder.length
+				? rawResourceOrder
+				: Object.keys(rawResourcesById)) {
 				const rid = String(ridRaw ?? '').trim()
 				if (!rid) continue
 				const r = rawResourcesById[rid]
@@ -1377,7 +1797,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 			}
 			const rawEdgeOrder = isArray(s.edgeOrder) ? s.edgeOrder : []
-			let edgeOrder = rawEdgeOrder.map((x: unknown) => String(x ?? '').trim()).filter((id: string) => !!id && !!nextEdgesById[id])
+			let edgeOrder = rawEdgeOrder
+				.map((x: unknown) => String(x ?? '').trim())
+				.filter((id: string) => !!id && !!nextEdgesById[id])
 			if (!edgeOrder.length) edgeOrder = Object.keys(nextEdgesById)
 
 			// Remove edges with missing anchors or kind mismatch.
@@ -1394,17 +1816,24 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					delete nextEdgesById[edgeId]
 					continue
 				}
-				if (!canLinkAnchors(state.nodesById, e.fromNodeId, e.fromAnchorId, e.toNodeId, e.toAnchorId)) delete nextEdgesById[edgeId]
+				if (
+					!canLinkAnchors(state.nodesById, e.fromNodeId, e.fromAnchorId, e.toNodeId, e.toAnchorId)
+				)
+					delete nextEdgesById[edgeId]
 			}
 			state.edgesById = nextEdgesById
 			state.edgeOrder = edgeOrder.filter((id: string) => !!state.edgesById[id])
 
 			// selection
 			const rawSelectedNodeIds = isArray(s.selectedNodeIds) ? s.selectedNodeIds : []
-			const ids = normalizeNodeIds(state, rawSelectedNodeIds.map((x: unknown) => String(x ?? '')))
+			const ids = normalizeNodeIds(
+				state,
+				rawSelectedNodeIds.map((x: unknown) => String(x ?? ''))
+			)
 			const primaryRaw = isString(s.selectedNodeId) ? s.selectedNodeId : null
 			state.selectedNodeIds = ids
-			state.selectedNodeId = primaryRaw && ids.includes(primaryRaw) ? primaryRaw : (ids[0] ?? state.nodeOrder[0] ?? null)
+			state.selectedNodeId =
+				primaryRaw && ids.includes(primaryRaw) ? primaryRaw : (ids[0] ?? state.nodeOrder[0] ?? null)
 			state.selectedEdgeId = null
 			state.clipboardNode = null
 			state.clipboardNodes = null
@@ -1426,7 +1855,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 		},
 		setChatDraft(state, payload: { text: string }) {
-			state.chatDraft = typeof payload?.text === 'string' ? payload.text : String(payload?.text ?? '')
+			state.chatDraft =
+				typeof payload?.text === 'string' ? payload.text : String(payload?.text ?? '')
 		},
 		resetViewport(state) {
 			state.viewport = { zoom: 1, panX: 0, panY: 0 }
@@ -1442,7 +1872,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		setSelectedNode(state, payload: { nodeId: string | null }) {
 			const id = payload?.nodeId
 			state.selectedNodeId = typeof id === 'string' && id.trim() ? id : null
-			state.selectedNodeIds = state.selectedNodeId ? normalizeNodeIds(state, [state.selectedNodeId]) : []
+			state.selectedNodeIds = state.selectedNodeId
+				? normalizeNodeIds(state, [state.selectedNodeId])
+				: []
 			if (state.selectedNodeId) state.selectedEdgeId = null
 		},
 		setSelectedNodes(state, payload: { nodeIds: string[]; primaryNodeId?: string | null }) {
@@ -1467,7 +1899,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.resourcesById[id] = payload
 			if (!state.resourceOrder.includes(id)) state.resourceOrder.push(id)
 		},
-		patchResource(state: WorkflowState, payload: { resourceId: string; patch: Partial<WorkflowResource> }) {
+		patchResource(
+			state: WorkflowState,
+			payload: { resourceId: string; patch: Partial<WorkflowResource> }
+		) {
 			const id = String(payload?.resourceId ?? '').trim()
 			if (!id) return
 			const r = state.resourcesById[id]
@@ -1475,7 +1910,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const patch = (payload?.patch ?? {}) as Partial<WorkflowResource>
 			state.resourcesById[id] = { ...r, ...patch, id }
 		},
-		patchResourcesBatch(state: WorkflowState, payload: { patches: Array<{ resourceId: string; patch: Partial<WorkflowResource> }> }) {
+		patchResourcesBatch(
+			state: WorkflowState,
+			payload: { patches: Array<{ resourceId: string; patch: Partial<WorkflowResource> }> }
+		) {
 			const list = Array.isArray(payload?.patches) ? payload.patches : []
 			if (!list.length) return
 			for (const item of list) {
@@ -1503,12 +1941,48 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!n) return
 			n.alias = String(payload?.alias ?? '')
 		},
-		setNodeType(state, payload: { nodeId: string; type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' }) {
+		setNodeType(
+			state,
+			payload: {
+				nodeId: string
+				type:
+					| 'base'
+					| 'text'
+					| 'text-merge'
+					| 'image'
+					| 'rotate-image'
+					| 'video'
+					| 'scene-understanding'
+					| 'scene-decompose'
+					| 'scene-layout'
+					| 'unreal-export'
+					| 'story'
+					| 'comfyui'
+					| 'model3d'
+					| 'meshy'
+			}
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
 			if (!n) return
-			if (payload.type !== 'base' && payload.type !== 'text' && payload.type !== 'text-merge' && payload.type !== 'image' && payload.type !== 'rotate-image' && payload.type !== 'video' && payload.type !== 'scene-understanding' && payload.type !== 'scene-decompose' && payload.type !== 'scene-layout' && payload.type !== 'unreal-export' && payload.type !== 'story' && payload.type !== 'comfyui' && payload.type !== 'model3d' && payload.type !== 'meshy') return
+			if (
+				payload.type !== 'base' &&
+				payload.type !== 'text' &&
+				payload.type !== 'text-merge' &&
+				payload.type !== 'image' &&
+				payload.type !== 'rotate-image' &&
+				payload.type !== 'video' &&
+				payload.type !== 'scene-understanding' &&
+				payload.type !== 'scene-decompose' &&
+				payload.type !== 'scene-layout' &&
+				payload.type !== 'unreal-export' &&
+				payload.type !== 'story' &&
+				payload.type !== 'comfyui' &&
+				payload.type !== 'model3d' &&
+				payload.type !== 'meshy'
+			)
+				return
 			const prevType = String(n.type ?? 'base')
 			const prevDefaultAlias = defaultAliasForType(prevType)
 			n.type = payload.type
@@ -1525,21 +1999,48 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (payload.type !== 'rotate-image') n.rotatePromptText = undefined
 			if (payload.type !== 'text') n.textValue = undefined
 			if (payload.type !== 'text-merge') n.textMergeItems = undefined
-			if (payload.type === 'base' || payload.type === 'text' || payload.type === 'text-merge' || payload.type === 'comfyui' || payload.type === 'rotate-image' || payload.type === 'scene-understanding' || payload.type === 'scene-decompose' || payload.type === 'scene-layout' || payload.type === 'unreal-export' || payload.type === 'model3d' || payload.type === 'meshy') n.resourceId = null
+			if (
+				payload.type === 'base' ||
+				payload.type === 'text' ||
+				payload.type === 'text-merge' ||
+				payload.type === 'comfyui' ||
+				payload.type === 'rotate-image' ||
+				payload.type === 'scene-understanding' ||
+				payload.type === 'scene-decompose' ||
+				payload.type === 'scene-layout' ||
+				payload.type === 'unreal-export' ||
+				payload.type === 'model3d' ||
+				payload.type === 'meshy'
+			)
+				n.resourceId = null
 			if (payload.type !== 'story') n.branches = undefined
-			if (payload.type !== 'story' && payload.type !== 'comfyui' && payload.type !== 'rotate-image' && payload.type !== 'scene-understanding' && payload.type !== 'scene-decompose' && payload.type !== 'scene-layout' && payload.type !== 'unreal-export' && payload.type !== 'model3d' && payload.type !== 'meshy') {
+			if (
+				payload.type !== 'story' &&
+				payload.type !== 'comfyui' &&
+				payload.type !== 'rotate-image' &&
+				payload.type !== 'scene-understanding' &&
+				payload.type !== 'scene-decompose' &&
+				payload.type !== 'scene-layout' &&
+				payload.type !== 'unreal-export' &&
+				payload.type !== 'model3d' &&
+				payload.type !== 'meshy'
+			) {
 				n.inputs = payload.type === 'text' ? [] : [{ id: 'in-0', label: '入口' }]
-				n.outputs = payload.type === 'text'
-				? [{ id: 'out-text', label: '文本', mediaType: 'text' }]
-				: [{ id: 'out-0', label: '出口' }]
+				n.outputs =
+					payload.type === 'text'
+						? [{ id: 'out-text', label: '文本', mediaType: 'text' }]
+						: [{ id: 'out-0', label: '出口' }]
 			}
 			if (payload.type === 'rotate-image') {
 				n.inputs = [{ id: 'in-0', label: '图片输入', mediaType: 'image' }]
-					n.outputs = [{ id: 'out-0', label: '旋转图片', mediaType: 'image' }]
-					n.rotatePromptText = typeof n.rotatePromptText === 'string' ? String(n.rotatePromptText) : ''
+				n.outputs = [{ id: 'out-0', label: '旋转图片', mediaType: 'image' }]
+				n.rotatePromptText =
+					typeof n.rotatePromptText === 'string' ? String(n.rotatePromptText) : ''
 			}
 			if (payload.type === 'text-merge') {
-				n.textMergeItems = Array.isArray(n.textMergeItems) ? n.textMergeItems : [{ id: makeId('merge') }]
+				n.textMergeItems = Array.isArray(n.textMergeItems)
+					? n.textMergeItems
+					: [{ id: makeId('merge') }]
 				syncTextMergeAnchors(n)
 			}
 			if (payload.type === 'story') {
@@ -1557,14 +2058,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					availableModels: [],
 					status: 'idle',
 					message: '',
-						statusText: '',
-						progress: 0,
+					statusText: '',
+					progress: 0,
 					outputJson: '',
-						rawOutput: '',
+					rawOutput: '',
 					resultSummary: '',
-						rewriteUsed: false,
-						rewriteAttempts: 0,
-					mock: false,
+					rewriteUsed: false,
+					rewriteAttempts: 0,
+					mock: false
 				}
 				syncSceneUnderstandAnchors(n)
 			}
@@ -1582,12 +2083,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						directional: 1,
 						point: 1,
 						spot: 1,
-						rectArea: 1,
+						rectArea: 1
 					},
 					hidePlaceholderCubes: false,
 					selectedLayoutItemId: '',
 					selectedPlaceholderOutput: '',
-					layoutItems: [],
+					layoutItems: []
 				}
 				syncSceneLayoutAnchors(n)
 			}
@@ -1596,7 +2097,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					connectionStatus: 'idle',
 					statusText: '等待连接',
 					message: '',
-					autoPoll: true,
+					autoPoll: true
 				}
 				syncUnrealExportAnchors(n)
 			}
@@ -1605,7 +2106,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					status: 'idle',
 					message: '',
 					inputJson: '',
-					outputs: [],
+					outputs: []
 				}
 				syncSceneDecomposeAnchors(n)
 			}
@@ -1620,23 +2121,25 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				n.outputs = [{ id: 'out-text', label: '文本输出', mediaType: 'text' }]
 			}
 			if (payload.type === 'comfyui') {
-				n.comfyuiSettings = n.comfyuiSettings ?? {
-					baseUrl: '',
-					status: 'idle',
-					message: '',
-					workflows: [],
-					workflowPath: '',
-					positivePrompt: '',
-					negativePrompt: '',
-					runStatus: 'idle',
-					promptId: '',
-					progress: 0,
-					statusText: '',
-					outputs: [],
-				} as WorkflowComfyUINodeSettings
+				n.comfyuiSettings =
+					n.comfyuiSettings ??
+					({
+						baseUrl: '',
+						status: 'idle',
+						message: '',
+						workflows: [],
+						workflowPath: '',
+						positivePrompt: '',
+						negativePrompt: '',
+						runStatus: 'idle',
+						promptId: '',
+						progress: 0,
+						statusText: '',
+						outputs: []
+					} as WorkflowComfyUINodeSettings)
 				const baseInputs: WorkflowAnchorSpec[] = [
 					...comfyPromptAnchors(),
-					{ id: 'in-0', label: '图片输入', mediaType: 'image' },
+					{ id: 'in-0', label: '图片输入', mediaType: 'image' }
 				]
 				n.inputs = baseInputs
 				n.outputs = [{ id: 'out-0', label: '产物输出', mediaType: 'generic' }]
@@ -1651,7 +2154,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					axesVisible: true,
 					autoRotate: false,
 					renderWidth: 1024,
-					renderHeight: 1024,
+					renderHeight: 1024
 				}
 				n.inputs = [{ id: 'in-model', label: '模型输入', mediaType: 'model3d' }]
 				n.outputs = [{ id: 'out-model', label: '模型输出', mediaType: 'model3d' }]
@@ -1687,7 +2190,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					meshyOriginAt: 'bottom',
 					meshyTargetFormats: ['glb'],
 					meshyTaskStatus: 'idle',
-					meshyProgress: 0,
+					meshyProgress: 0
 				}
 				syncMeshyAnchors(n)
 			}
@@ -1696,9 +2199,34 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 			enforceSingleIOAnchors(n)
 			if (!n.sizeCustomized) {
-				if (payload.type === 'image' || payload.type === 'rotate-image' || payload.type === 'video' || payload.type === 'scene-understanding' || payload.type === 'scene-decompose' || payload.type === 'scene-layout' || payload.type === 'unreal-export' || payload.type === 'story' || payload.type === 'comfyui' || payload.type === 'model3d' || payload.type === 'meshy') {
+				if (
+					payload.type === 'image' ||
+					payload.type === 'rotate-image' ||
+					payload.type === 'video' ||
+					payload.type === 'scene-understanding' ||
+					payload.type === 'scene-decompose' ||
+					payload.type === 'scene-layout' ||
+					payload.type === 'unreal-export' ||
+					payload.type === 'story' ||
+					payload.type === 'comfyui' ||
+					payload.type === 'model3d' ||
+					payload.type === 'meshy'
+				) {
 					n.width = 450
-					n.height = payload.type === 'model3d' ? 420 : payload.type === 'meshy' ? 470 : payload.type === 'scene-layout' ? 430 : payload.type === 'unreal-export' ? 320 : payload.type === 'scene-decompose' ? 360 : payload.type === 'scene-understanding' ? 360 : 300
+					n.height =
+						payload.type === 'model3d'
+							? 420
+							: payload.type === 'meshy'
+								? 470
+								: payload.type === 'scene-layout'
+									? 430
+									: payload.type === 'unreal-export'
+										? 320
+										: payload.type === 'scene-decompose'
+											? 360
+											: payload.type === 'scene-understanding'
+												? 360
+												: 300
 				} else if (payload.type === 'text-merge') {
 					n.width = 420
 					n.height = 320
@@ -1726,12 +2254,16 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					removeIds.push(edgeId)
 					continue
 				}
-				if (!canLinkAnchors(state.nodesById, e.fromNodeId, e.fromAnchorId, e.toNodeId, e.toAnchorId)) removeIds.push(edgeId)
+				if (
+					!canLinkAnchors(state.nodesById, e.fromNodeId, e.fromAnchorId, e.toNodeId, e.toAnchorId)
+				)
+					removeIds.push(edgeId)
 			}
 			if (removeIds.length) {
 				for (const edgeId of removeIds) delete state.edgesById[edgeId]
 				state.edgeOrder = state.edgeOrder.filter((edgeId) => !!state.edgesById[edgeId])
-				if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
+				if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId])
+					state.selectedEdgeId = null
 			}
 		},
 		textMergeAddItem(state: WorkflowState, payload: { nodeId: string }) {
@@ -1765,10 +2297,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (removeIds.length) {
 				for (const edgeId of removeIds) delete state.edgesById[edgeId]
 				state.edgeOrder = state.edgeOrder.filter((edgeId) => !!state.edgesById[edgeId])
-				if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
+				if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId])
+					state.selectedEdgeId = null
 			}
 		},
-		textMergeMoveItem(state: WorkflowState, payload: { nodeId: string; itemId: string; dir: 'up' | 'down' }) {
+		textMergeMoveItem(
+			state: WorkflowState,
+			payload: { nodeId: string; itemId: string; dir: 'up' | 'down' }
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			const itemId = String(payload?.itemId ?? '').trim()
 			const dir = payload?.dir
@@ -1791,16 +2327,26 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!id) return
 			const n = state.nodesById[id]
 			if (!n || n.type !== 'text') return
-			n.textValue = typeof payload?.textValue === 'string' ? payload.textValue : String(payload?.textValue ?? '')
+			n.textValue =
+				typeof payload?.textValue === 'string'
+					? payload.textValue
+					: String(payload?.textValue ?? '')
 		},
 		setNodeRotatePromptText(state: WorkflowState, payload: { nodeId: string; text: string }) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
 			if (!n || n.type !== 'rotate-image') return
-			n.rotatePromptText = typeof payload?.text === 'string' ? payload.text : String(payload?.text ?? '')
+			n.rotatePromptText =
+				typeof payload?.text === 'string' ? payload.text : String(payload?.text ?? '')
 		},
-		setNodeSceneUnderstandingSettings(state, payload: { nodeId: string; sceneUnderstandingSettings: Partial<WorkflowSceneUnderstandingNodeSettings> }) {
+		setNodeSceneUnderstandingSettings(
+			state,
+			payload: {
+				nodeId: string
+				sceneUnderstandingSettings: Partial<WorkflowSceneUnderstandingNodeSettings>
+			}
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
@@ -1809,12 +2355,15 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!next || typeof next !== 'object') return
 			n.sceneUnderstandingSettings = {
 				...(n.sceneUnderstandingSettings ?? {}),
-				...next,
+				...next
 			}
 			syncSceneUnderstandAnchors(n)
 			pruneInvalidEdgesForNode(state, id)
 		},
-		setNodeSceneLayoutSettings(state: WorkflowState, payload: { nodeId: string; sceneLayoutSettings: Partial<WorkflowSceneLayoutNodeSettings> }) {
+		setNodeSceneLayoutSettings(
+			state: WorkflowState,
+			payload: { nodeId: string; sceneLayoutSettings: Partial<WorkflowSceneLayoutNodeSettings> }
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
@@ -1828,36 +2377,49 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (selectionOnlyUpdate) {
 				const settings = (n.sceneLayoutSettings ??= {})
 				const layoutItems = Array.isArray(settings.layoutItems) ? settings.layoutItems : []
-				const validIds = new Set(layoutItems.map((item: { id?: string }) => String(item?.id ?? '').trim()).filter(Boolean))
+				const validIds = new Set(
+					layoutItems.map((item: { id?: string }) => String(item?.id ?? '').trim()).filter(Boolean)
+				)
 				const hidePlaceholderCubes = settings.hidePlaceholderCubes === true
 				if (Object.prototype.hasOwnProperty.call(next, 'selectedLayoutItemId')) {
-					const rawSelectedLayoutItemId = String((next as { selectedLayoutItemId?: unknown }).selectedLayoutItemId ?? '').trim()
+					const rawSelectedLayoutItemId = String(
+						(next as { selectedLayoutItemId?: unknown }).selectedLayoutItemId ?? ''
+					).trim()
 					const normalizedSelectedLayoutItemId =
-						!hidePlaceholderCubes && rawSelectedLayoutItemId && validIds.has(rawSelectedLayoutItemId)
+						!hidePlaceholderCubes &&
+						rawSelectedLayoutItemId &&
+						validIds.has(rawSelectedLayoutItemId)
 							? rawSelectedLayoutItemId
 							: ''
-					if (normalizedSelectedLayoutItemId) settings.selectedLayoutItemId = normalizedSelectedLayoutItemId
+					if (normalizedSelectedLayoutItemId)
+						settings.selectedLayoutItemId = normalizedSelectedLayoutItemId
 					else delete settings.selectedLayoutItemId
 				}
 				if (Object.prototype.hasOwnProperty.call(next, 'selectedPlaceholderOutput')) {
-					const rawSelectedPlaceholderOutput = String((next as { selectedPlaceholderOutput?: unknown }).selectedPlaceholderOutput ?? '').trim()
+					const rawSelectedPlaceholderOutput = String(
+						(next as { selectedPlaceholderOutput?: unknown }).selectedPlaceholderOutput ?? ''
+					).trim()
 					const normalizedSelectedPlaceholderOutput =
 						rawSelectedPlaceholderOutput && validIds.has(rawSelectedPlaceholderOutput)
 							? rawSelectedPlaceholderOutput
 							: ''
-					if (normalizedSelectedPlaceholderOutput) settings.selectedPlaceholderOutput = normalizedSelectedPlaceholderOutput
+					if (normalizedSelectedPlaceholderOutput)
+						settings.selectedPlaceholderOutput = normalizedSelectedPlaceholderOutput
 					else delete settings.selectedPlaceholderOutput
 				}
 				return
 			}
 			n.sceneLayoutSettings = sanitizeSceneLayoutSettings({
 				...(n.sceneLayoutSettings ?? {}),
-				...next,
+				...next
 			})
 			syncSceneLayoutAnchors(n)
 			pruneInvalidEdgesForNode(state, id)
 		},
-		setNodeUnrealExportSettings(state, payload: { nodeId: string; unrealExportSettings: Partial<WorkflowUnrealExportNodeSettings> }) {
+		setNodeUnrealExportSettings(
+			state,
+			payload: { nodeId: string; unrealExportSettings: Partial<WorkflowUnrealExportNodeSettings> }
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
@@ -1866,12 +2428,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!next || typeof next !== 'object') return
 			n.unrealExportSettings = {
 				...(n.unrealExportSettings ?? {}),
-				...normalizeUnrealExportSettings({ ...(n.unrealExportSettings ?? {}), ...next }),
+				...normalizeUnrealExportSettings({ ...(n.unrealExportSettings ?? {}), ...next })
 			}
 			syncUnrealExportAnchors(n)
 			pruneInvalidEdgesForNode(state, id)
 		},
-		setNodeSceneDecomposeSettings(state, payload: { nodeId: string; sceneDecomposeSettings: Partial<WorkflowSceneDecomposeNodeSettings> }) {
+		setNodeSceneDecomposeSettings(
+			state,
+			payload: {
+				nodeId: string
+				sceneDecomposeSettings: Partial<WorkflowSceneDecomposeNodeSettings>
+			}
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
@@ -1880,11 +2448,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!next || typeof next !== 'object') return
 			n.sceneDecomposeSettings = {
 				...(n.sceneDecomposeSettings ?? {}),
-				...next,
+				...next
 			}
 			syncSceneDecomposeAnchors(n)
 		},
-		setNodeComfyUISettings(state, payload: { nodeId: string; comfyuiSettings: Partial<WorkflowComfyUINodeSettings> }) {
+		setNodeComfyUISettings(
+			state,
+			payload: { nodeId: string; comfyuiSettings: Partial<WorkflowComfyUINodeSettings> }
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
@@ -1893,7 +2464,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!next || typeof next !== 'object') return
 			n.comfyuiSettings = {
 				...(n.comfyuiSettings ?? {}),
-				...next,
+				...next
 			} as WorkflowComfyUINodeSettings
 		},
 		setNodeComfyUIWorkflowIO(
@@ -1913,23 +2484,44 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const outputsRaw = Array.isArray(payload?.outputs) ? payload.outputs : []
 			const prompt = comfyPromptAnchors()
 			const inputs = inputsRaw
-				.map((a: unknown) => isRecord(a) ? {
-					id: String(a.id ?? '').trim(),
-					label: isString(a.label) ? a.label : undefined,
-					offsetY: isNumber(a.offsetY) ? a.offsetY : undefined,
-					mediaType: normalizeMediaType(a.mediaType, { nodeType: 'comfyui', anchorId: String(a.id ?? '') }),
-				} : { id: '' })
-				.filter((a: { id: string }) => a.id && a.id !== COMFY_PROMPT_POSITIVE_ANCHOR_ID && a.id !== COMFY_PROMPT_NEGATIVE_ANCHOR_ID)
+				.map((a: unknown) =>
+					isRecord(a)
+						? {
+								id: String(a.id ?? '').trim(),
+								label: isString(a.label) ? a.label : undefined,
+								offsetY: isNumber(a.offsetY) ? a.offsetY : undefined,
+								mediaType: normalizeMediaType(a.mediaType, {
+									nodeType: 'comfyui',
+									anchorId: String(a.id ?? '')
+								})
+							}
+						: { id: '' }
+				)
+				.filter(
+					(a: { id: string }) =>
+						a.id &&
+						a.id !== COMFY_PROMPT_POSITIVE_ANCHOR_ID &&
+						a.id !== COMFY_PROMPT_NEGATIVE_ANCHOR_ID
+				)
 			const outputs = outputsRaw
-				.map((a: unknown) => isRecord(a) ? {
-					id: String(a.id ?? '').trim(),
-					label: isString(a.label) ? a.label : undefined,
-					offsetY: isNumber(a.offsetY) ? a.offsetY : undefined,
-					mediaType: normalizeMediaType(a.mediaType, { nodeType: 'comfyui', anchorId: String(a.id ?? '') }),
-				} : { id: '' })
+				.map((a: unknown) =>
+					isRecord(a)
+						? {
+								id: String(a.id ?? '').trim(),
+								label: isString(a.label) ? a.label : undefined,
+								offsetY: isNumber(a.offsetY) ? a.offsetY : undefined,
+								mediaType: normalizeMediaType(a.mediaType, {
+									nodeType: 'comfyui',
+									anchorId: String(a.id ?? '')
+								})
+							}
+						: { id: '' }
+				)
 				.filter((a: { id: string }) => a.id)
 			n.inputs = [...prompt, ...inputs]
-			n.outputs = outputs.length ? outputs : [{ id: 'out-0', label: '产物输出', mediaType: 'generic' }]
+			n.outputs = outputs.length
+				? outputs
+				: [{ id: 'out-0', label: '产物输出', mediaType: 'generic' }]
 		},
 		setNodeImageSettings(
 			state,
@@ -1946,25 +2538,40 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const next = payload?.imageSettings
 			if (!next || typeof next !== 'object') return
 
-			const outW = next.outputWidth != null ? Math.max(1, Math.floor(Number(next.outputWidth) || 1)) : undefined
-			const outH = next.outputHeight != null ? Math.max(1, Math.floor(Number(next.outputHeight) || 1)) : undefined
-			const natW = next.naturalWidth != null ? Math.max(1, Math.floor(Number(next.naturalWidth) || 1)) : undefined
-			const natH = next.naturalHeight != null ? Math.max(1, Math.floor(Number(next.naturalHeight) || 1)) : undefined
-			const cropEnabled = typeof next.cropEnabled === 'boolean' ? Boolean(next.cropEnabled) : undefined
+			const outW =
+				next.outputWidth != null
+					? Math.max(1, Math.floor(Number(next.outputWidth) || 1))
+					: undefined
+			const outH =
+				next.outputHeight != null
+					? Math.max(1, Math.floor(Number(next.outputHeight) || 1))
+					: undefined
+			const natW =
+				next.naturalWidth != null
+					? Math.max(1, Math.floor(Number(next.naturalWidth) || 1))
+					: undefined
+			const natH =
+				next.naturalHeight != null
+					? Math.max(1, Math.floor(Number(next.naturalHeight) || 1))
+					: undefined
+			const cropEnabled =
+				typeof next.cropEnabled === 'boolean' ? Boolean(next.cropEnabled) : undefined
 
 			const cropRaw = next.crop
 			const crop =
 				cropRaw && typeof cropRaw === 'object'
 					? {
-						x: Math.max(0, Math.min(1, Number(cropRaw.x) || 0)),
-						y: Math.max(0, Math.min(1, Number(cropRaw.y) || 0)),
-						width: Math.max(0, Math.min(1, Number(cropRaw.width) || 0)),
-						height: Math.max(0, Math.min(1, Number(cropRaw.height) || 0)),
-					}
+							x: Math.max(0, Math.min(1, Number(cropRaw.x) || 0)),
+							y: Math.max(0, Math.min(1, Number(cropRaw.y) || 0)),
+							width: Math.max(0, Math.min(1, Number(cropRaw.width) || 0)),
+							height: Math.max(0, Math.min(1, Number(cropRaw.height) || 0))
+						}
 					: undefined
 
 			const imageGenerationSource =
-				next.imageGenerationSource === 'upload' || next.imageGenerationSource === 'comfyui' || next.imageGenerationSource === 'meshy'
+				next.imageGenerationSource === 'upload' ||
+				next.imageGenerationSource === 'comfyui' ||
+				next.imageGenerationSource === 'meshy'
 					? next.imageGenerationSource
 					: undefined
 
@@ -1972,48 +2579,94 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const meshyImageSettings =
 				meshyImageSettingsRaw && typeof meshyImageSettingsRaw === 'object'
 					? {
-						prompt: typeof meshyImageSettingsRaw.prompt === 'string' ? meshyImageSettingsRaw.prompt : undefined,
-						negativePrompt: typeof meshyImageSettingsRaw.negativePrompt === 'string' ? meshyImageSettingsRaw.negativePrompt : undefined,
-						seed: Number.isFinite(Number(meshyImageSettingsRaw.seed)) ? Number(meshyImageSettingsRaw.seed) : undefined,
-						aiModel:
-							meshyImageSettingsRaw.aiModel === 'nano-banana' || meshyImageSettingsRaw.aiModel === 'nano-banana-pro'
-								? meshyImageSettingsRaw.aiModel
+							prompt:
+								typeof meshyImageSettingsRaw.prompt === 'string'
+									? meshyImageSettingsRaw.prompt
+									: undefined,
+							negativePrompt:
+								typeof meshyImageSettingsRaw.negativePrompt === 'string'
+									? meshyImageSettingsRaw.negativePrompt
+									: undefined,
+							seed: Number.isFinite(Number(meshyImageSettingsRaw.seed))
+								? Number(meshyImageSettingsRaw.seed)
 								: undefined,
-						generateMultiView: typeof meshyImageSettingsRaw.generateMultiView === 'boolean' ? Boolean(meshyImageSettingsRaw.generateMultiView) : undefined,
-						aspectRatio: typeof meshyImageSettingsRaw.aspectRatio === 'string' ? meshyImageSettingsRaw.aspectRatio : undefined,
-						outputImageCount: Number.isFinite(Number(meshyImageSettingsRaw.outputImageCount))
-							? (Math.max(1, Math.min(4, Math.floor(Number(meshyImageSettingsRaw.outputImageCount)))) as 1 | 2 | 3 | 4)
-							: undefined,
-						poseMode:
-							meshyImageSettingsRaw.poseMode === '' || meshyImageSettingsRaw.poseMode === 'a-pose' || meshyImageSettingsRaw.poseMode === 't-pose'
-								? meshyImageSettingsRaw.poseMode
+							aiModel:
+								meshyImageSettingsRaw.aiModel === 'nano-banana' ||
+								meshyImageSettingsRaw.aiModel === 'nano-banana-pro'
+									? meshyImageSettingsRaw.aiModel
+									: undefined,
+							generateMultiView:
+								typeof meshyImageSettingsRaw.generateMultiView === 'boolean'
+									? Boolean(meshyImageSettingsRaw.generateMultiView)
+									: undefined,
+							aspectRatio:
+								typeof meshyImageSettingsRaw.aspectRatio === 'string'
+									? meshyImageSettingsRaw.aspectRatio
+									: undefined,
+							outputImageCount: Number.isFinite(Number(meshyImageSettingsRaw.outputImageCount))
+								? (Math.max(
+										1,
+										Math.min(4, Math.floor(Number(meshyImageSettingsRaw.outputImageCount)))
+									) as 1 | 2 | 3 | 4)
 								: undefined,
-						taskId: typeof meshyImageSettingsRaw.taskId === 'string' ? meshyImageSettingsRaw.taskId : undefined,
-						taskStatus:
-							meshyImageSettingsRaw.taskStatus === 'idle' ||
-							meshyImageSettingsRaw.taskStatus === 'pending' ||
-							meshyImageSettingsRaw.taskStatus === 'running' ||
-							meshyImageSettingsRaw.taskStatus === 'succeeded' ||
-							meshyImageSettingsRaw.taskStatus === 'failed' ||
-							meshyImageSettingsRaw.taskStatus === 'canceled'
-								? meshyImageSettingsRaw.taskStatus
+							poseMode:
+								meshyImageSettingsRaw.poseMode === '' ||
+								meshyImageSettingsRaw.poseMode === 'a-pose' ||
+								meshyImageSettingsRaw.poseMode === 't-pose'
+									? meshyImageSettingsRaw.poseMode
+									: undefined,
+							taskId:
+								typeof meshyImageSettingsRaw.taskId === 'string'
+									? meshyImageSettingsRaw.taskId
+									: undefined,
+							taskStatus:
+								meshyImageSettingsRaw.taskStatus === 'idle' ||
+								meshyImageSettingsRaw.taskStatus === 'pending' ||
+								meshyImageSettingsRaw.taskStatus === 'running' ||
+								meshyImageSettingsRaw.taskStatus === 'succeeded' ||
+								meshyImageSettingsRaw.taskStatus === 'failed' ||
+								meshyImageSettingsRaw.taskStatus === 'canceled'
+									? meshyImageSettingsRaw.taskStatus
+									: undefined,
+							progress: Number.isFinite(Number(meshyImageSettingsRaw.progress))
+								? Number(meshyImageSettingsRaw.progress)
 								: undefined,
-						progress: Number.isFinite(Number(meshyImageSettingsRaw.progress)) ? Number(meshyImageSettingsRaw.progress) : undefined,
-						statusText: typeof meshyImageSettingsRaw.statusText === 'string' ? meshyImageSettingsRaw.statusText : undefined,
-						errorMessage: typeof meshyImageSettingsRaw.errorMessage === 'string' ? meshyImageSettingsRaw.errorMessage : undefined,
-						outputSummary:
-							meshyImageSettingsRaw.outputSummary && typeof meshyImageSettingsRaw.outputSummary === 'object'
-								? {
-									preferredUrl: typeof meshyImageSettingsRaw.outputSummary.preferredUrl === 'string' ? meshyImageSettingsRaw.outputSummary.preferredUrl : undefined,
-									imageUrls: Array.isArray(meshyImageSettingsRaw.outputSummary.imageUrls)
-										? meshyImageSettingsRaw.outputSummary.imageUrls.map((x: unknown) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
-										: undefined,
-									assetUrl: typeof meshyImageSettingsRaw.outputSummary.assetUrl === 'string' ? meshyImageSettingsRaw.outputSummary.assetUrl : undefined,
-									assetPath: typeof meshyImageSettingsRaw.outputSummary.assetPath === 'string' ? meshyImageSettingsRaw.outputSummary.assetPath : undefined,
-									thumbnailUrl: typeof meshyImageSettingsRaw.outputSummary.thumbnailUrl === 'string' ? meshyImageSettingsRaw.outputSummary.thumbnailUrl : undefined,
-								}
-								: undefined,
-					}
+							statusText:
+								typeof meshyImageSettingsRaw.statusText === 'string'
+									? meshyImageSettingsRaw.statusText
+									: undefined,
+							errorMessage:
+								typeof meshyImageSettingsRaw.errorMessage === 'string'
+									? meshyImageSettingsRaw.errorMessage
+									: undefined,
+							outputSummary:
+								meshyImageSettingsRaw.outputSummary &&
+								typeof meshyImageSettingsRaw.outputSummary === 'object'
+									? {
+											preferredUrl:
+												typeof meshyImageSettingsRaw.outputSummary.preferredUrl === 'string'
+													? meshyImageSettingsRaw.outputSummary.preferredUrl
+													: undefined,
+											imageUrls: Array.isArray(meshyImageSettingsRaw.outputSummary.imageUrls)
+												? meshyImageSettingsRaw.outputSummary.imageUrls
+														.map((x: unknown) => (typeof x === 'string' ? x : ''))
+														.filter((x: string) => !!x)
+												: undefined,
+											assetUrl:
+												typeof meshyImageSettingsRaw.outputSummary.assetUrl === 'string'
+													? meshyImageSettingsRaw.outputSummary.assetUrl
+													: undefined,
+											assetPath:
+												typeof meshyImageSettingsRaw.outputSummary.assetPath === 'string'
+													? meshyImageSettingsRaw.outputSummary.assetPath
+													: undefined,
+											thumbnailUrl:
+												typeof meshyImageSettingsRaw.outputSummary.thumbnailUrl === 'string'
+													? meshyImageSettingsRaw.outputSummary.thumbnailUrl
+													: undefined
+										}
+									: undefined
+						}
 					: undefined
 
 			n.imageSettings = {
@@ -2025,10 +2678,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				...(cropEnabled != null ? { cropEnabled } : {}),
 				...(crop ? { crop } : {}),
 				...(imageGenerationSource != null ? { imageGenerationSource } : {}),
-				...(meshyImageSettings ? { meshyImageSettings } : {}),
+				...(meshyImageSettings ? { meshyImageSettings } : {})
 			}
 		},
-		setNodeModel3DSettings(state, payload: { nodeId: string; model3dSettings: Partial<WorkflowModel3DNodeSettings> }) {
+		setNodeModel3DSettings(
+			state,
+			payload: { nodeId: string; model3dSettings: Partial<WorkflowModel3DNodeSettings> }
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
@@ -2037,7 +2693,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!next || typeof next !== 'object') return
 
 			const modelGenerationSource =
-				next.modelGenerationSource === 'upload' || next.modelGenerationSource === 'comfyui' || next.modelGenerationSource === 'meshy'
+				next.modelGenerationSource === 'upload' ||
+				next.modelGenerationSource === 'comfyui' ||
+				next.modelGenerationSource === 'meshy'
 					? next.modelGenerationSource
 					: undefined
 
@@ -2045,111 +2703,222 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const meshyModelSettings =
 				meshyModelSettingsRaw && typeof meshyModelSettingsRaw === 'object'
 					? {
-						prompt: typeof meshyModelSettingsRaw.prompt === 'string' ? meshyModelSettingsRaw.prompt : undefined,
-						negativePrompt: typeof meshyModelSettingsRaw.negativePrompt === 'string' ? meshyModelSettingsRaw.negativePrompt : undefined,
-						seed: Number.isFinite(Number(meshyModelSettingsRaw.seed)) ? Number(meshyModelSettingsRaw.seed) : undefined,
-						aiModel:
-							meshyModelSettingsRaw.aiModel === 'latest' ||
-							meshyModelSettingsRaw.aiModel === 'meshy-6' ||
-							meshyModelSettingsRaw.aiModel === 'meshy-5'
-								? meshyModelSettingsRaw.aiModel
+							prompt:
+								typeof meshyModelSettingsRaw.prompt === 'string'
+									? meshyModelSettingsRaw.prompt
+									: undefined,
+							negativePrompt:
+								typeof meshyModelSettingsRaw.negativePrompt === 'string'
+									? meshyModelSettingsRaw.negativePrompt
+									: undefined,
+							seed: Number.isFinite(Number(meshyModelSettingsRaw.seed))
+								? Number(meshyModelSettingsRaw.seed)
 								: undefined,
-						taskFamily:
-							meshyModelSettingsRaw.taskFamily === 'text-to-3d' ||
-							meshyModelSettingsRaw.taskFamily === 'image-to-3d' ||
-							meshyModelSettingsRaw.taskFamily === 'multi-image-to-3d' ||
-							meshyModelSettingsRaw.taskFamily === 'retexture'
-								? meshyModelSettingsRaw.taskFamily
+							aiModel:
+								meshyModelSettingsRaw.aiModel === 'latest' ||
+								meshyModelSettingsRaw.aiModel === 'meshy-6' ||
+								meshyModelSettingsRaw.aiModel === 'meshy-5'
+									? meshyModelSettingsRaw.aiModel
+									: undefined,
+							taskFamily:
+								meshyModelSettingsRaw.taskFamily === 'text-to-3d' ||
+								meshyModelSettingsRaw.taskFamily === 'image-to-3d' ||
+								meshyModelSettingsRaw.taskFamily === 'multi-image-to-3d' ||
+								meshyModelSettingsRaw.taskFamily === 'retexture'
+									? meshyModelSettingsRaw.taskFamily
+									: undefined,
+							modelType:
+								meshyModelSettingsRaw.modelType === 'standard' ||
+								meshyModelSettingsRaw.modelType === 'lowpoly'
+									? meshyModelSettingsRaw.modelType
+									: undefined,
+							topology:
+								meshyModelSettingsRaw.topology === 'triangle' ||
+								meshyModelSettingsRaw.topology === 'quad'
+									? meshyModelSettingsRaw.topology
+									: undefined,
+							targetPolycount: Number.isFinite(Number(meshyModelSettingsRaw.targetPolycount))
+								? Math.max(0, Math.floor(Number(meshyModelSettingsRaw.targetPolycount)))
 								: undefined,
-						modelType: meshyModelSettingsRaw.modelType === 'standard' || meshyModelSettingsRaw.modelType === 'lowpoly' ? meshyModelSettingsRaw.modelType : undefined,
-						topology: meshyModelSettingsRaw.topology === 'triangle' || meshyModelSettingsRaw.topology === 'quad' ? meshyModelSettingsRaw.topology : undefined,
-						targetPolycount: Number.isFinite(Number(meshyModelSettingsRaw.targetPolycount))
-							? Math.max(0, Math.floor(Number(meshyModelSettingsRaw.targetPolycount)))
-							: undefined,
-						symmetryMode:
-							meshyModelSettingsRaw.symmetryMode === 'auto' || meshyModelSettingsRaw.symmetryMode === 'on' || meshyModelSettingsRaw.symmetryMode === 'off'
-								? meshyModelSettingsRaw.symmetryMode
+							symmetryMode:
+								meshyModelSettingsRaw.symmetryMode === 'auto' ||
+								meshyModelSettingsRaw.symmetryMode === 'on' ||
+								meshyModelSettingsRaw.symmetryMode === 'off'
+									? meshyModelSettingsRaw.symmetryMode
+									: undefined,
+							shouldRemesh:
+								typeof meshyModelSettingsRaw.shouldRemesh === 'boolean'
+									? Boolean(meshyModelSettingsRaw.shouldRemesh)
+									: undefined,
+							savePreRemeshedModel:
+								typeof meshyModelSettingsRaw.savePreRemeshedModel === 'boolean'
+									? Boolean(meshyModelSettingsRaw.savePreRemeshedModel)
+									: undefined,
+							shouldTexture:
+								typeof meshyModelSettingsRaw.shouldTexture === 'boolean'
+									? Boolean(meshyModelSettingsRaw.shouldTexture)
+									: undefined,
+							enablePbr:
+								typeof meshyModelSettingsRaw.enablePbr === 'boolean'
+									? Boolean(meshyModelSettingsRaw.enablePbr)
+									: undefined,
+							texturePrompt:
+								typeof meshyModelSettingsRaw.texturePrompt === 'string'
+									? meshyModelSettingsRaw.texturePrompt
+									: undefined,
+							textureImageUrl:
+								typeof meshyModelSettingsRaw.textureImageUrl === 'string'
+									? meshyModelSettingsRaw.textureImageUrl
+									: undefined,
+							poseMode:
+								meshyModelSettingsRaw.poseMode === '' ||
+								meshyModelSettingsRaw.poseMode === 'a-pose' ||
+								meshyModelSettingsRaw.poseMode === 't-pose'
+									? meshyModelSettingsRaw.poseMode
+									: undefined,
+							autoSize:
+								typeof meshyModelSettingsRaw.autoSize === 'boolean'
+									? Boolean(meshyModelSettingsRaw.autoSize)
+									: undefined,
+							originAt:
+								meshyModelSettingsRaw.originAt === 'bottom' ||
+								meshyModelSettingsRaw.originAt === 'center'
+									? meshyModelSettingsRaw.originAt
+									: undefined,
+							moderation:
+								typeof meshyModelSettingsRaw.moderation === 'boolean'
+									? Boolean(meshyModelSettingsRaw.moderation)
+									: undefined,
+							imageEnhancement:
+								typeof meshyModelSettingsRaw.imageEnhancement === 'boolean'
+									? Boolean(meshyModelSettingsRaw.imageEnhancement)
+									: undefined,
+							removeLighting:
+								typeof meshyModelSettingsRaw.removeLighting === 'boolean'
+									? Boolean(meshyModelSettingsRaw.removeLighting)
+									: undefined,
+							targetFormats: Array.isArray(meshyModelSettingsRaw.targetFormats)
+								? meshyModelSettingsRaw.targetFormats
+										.map((x: unknown) => (typeof x === 'string' ? x : ''))
+										.filter((x: string) => !!x)
 								: undefined,
-						shouldRemesh: typeof meshyModelSettingsRaw.shouldRemesh === 'boolean' ? Boolean(meshyModelSettingsRaw.shouldRemesh) : undefined,
-						savePreRemeshedModel: typeof meshyModelSettingsRaw.savePreRemeshedModel === 'boolean' ? Boolean(meshyModelSettingsRaw.savePreRemeshedModel) : undefined,
-						shouldTexture: typeof meshyModelSettingsRaw.shouldTexture === 'boolean' ? Boolean(meshyModelSettingsRaw.shouldTexture) : undefined,
-						enablePbr: typeof meshyModelSettingsRaw.enablePbr === 'boolean' ? Boolean(meshyModelSettingsRaw.enablePbr) : undefined,
-						texturePrompt: typeof meshyModelSettingsRaw.texturePrompt === 'string' ? meshyModelSettingsRaw.texturePrompt : undefined,
-						textureImageUrl: typeof meshyModelSettingsRaw.textureImageUrl === 'string' ? meshyModelSettingsRaw.textureImageUrl : undefined,
-						poseMode:
-							meshyModelSettingsRaw.poseMode === '' || meshyModelSettingsRaw.poseMode === 'a-pose' || meshyModelSettingsRaw.poseMode === 't-pose'
-								? meshyModelSettingsRaw.poseMode
+							imageUrl:
+								typeof meshyModelSettingsRaw.imageUrl === 'string'
+									? meshyModelSettingsRaw.imageUrl
+									: undefined,
+							imageUrls: Array.isArray(meshyModelSettingsRaw.imageUrls)
+								? meshyModelSettingsRaw.imageUrls
+										.map((x: unknown) => (typeof x === 'string' ? x : ''))
+										.filter((x: string) => !!x)
 								: undefined,
-						autoSize: typeof meshyModelSettingsRaw.autoSize === 'boolean' ? Boolean(meshyModelSettingsRaw.autoSize) : undefined,
-						originAt: meshyModelSettingsRaw.originAt === 'bottom' || meshyModelSettingsRaw.originAt === 'center' ? meshyModelSettingsRaw.originAt : undefined,
-						moderation: typeof meshyModelSettingsRaw.moderation === 'boolean' ? Boolean(meshyModelSettingsRaw.moderation) : undefined,
-						imageEnhancement: typeof meshyModelSettingsRaw.imageEnhancement === 'boolean' ? Boolean(meshyModelSettingsRaw.imageEnhancement) : undefined,
-						removeLighting: typeof meshyModelSettingsRaw.removeLighting === 'boolean' ? Boolean(meshyModelSettingsRaw.removeLighting) : undefined,
-						targetFormats: Array.isArray(meshyModelSettingsRaw.targetFormats)
-							? meshyModelSettingsRaw.targetFormats.map((x: unknown) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
-							: undefined,
-						imageUrl: typeof meshyModelSettingsRaw.imageUrl === 'string' ? meshyModelSettingsRaw.imageUrl : undefined,
-						imageUrls: Array.isArray(meshyModelSettingsRaw.imageUrls)
-							? meshyModelSettingsRaw.imageUrls.map((x: unknown) => (typeof x === 'string' ? x : '')).filter((x: string) => !!x)
-							: undefined,
-						imageCount: Number.isFinite(Number(meshyModelSettingsRaw.imageCount)) ? Number(meshyModelSettingsRaw.imageCount) : undefined,
-						taskId: typeof meshyModelSettingsRaw.taskId === 'string' ? meshyModelSettingsRaw.taskId : undefined,
-						taskStatus:
-							meshyModelSettingsRaw.taskStatus === 'idle' ||
-							meshyModelSettingsRaw.taskStatus === 'pending' ||
-							meshyModelSettingsRaw.taskStatus === 'running' ||
-							meshyModelSettingsRaw.taskStatus === 'succeeded' ||
-							meshyModelSettingsRaw.taskStatus === 'failed' ||
-							meshyModelSettingsRaw.taskStatus === 'canceled'
-								? meshyModelSettingsRaw.taskStatus
+							imageCount: Number.isFinite(Number(meshyModelSettingsRaw.imageCount))
+								? Number(meshyModelSettingsRaw.imageCount)
 								: undefined,
-						progress: Number.isFinite(Number(meshyModelSettingsRaw.progress)) ? Number(meshyModelSettingsRaw.progress) : undefined,
-						statusText: typeof meshyModelSettingsRaw.statusText === 'string' ? meshyModelSettingsRaw.statusText : undefined,
-						errorMessage: typeof meshyModelSettingsRaw.errorMessage === 'string' ? meshyModelSettingsRaw.errorMessage : undefined,
-						outputSummary:
-							meshyModelSettingsRaw.outputSummary && typeof meshyModelSettingsRaw.outputSummary === 'object'
-								? {
-									preferredUrl: typeof meshyModelSettingsRaw.outputSummary.preferredUrl === 'string' ? meshyModelSettingsRaw.outputSummary.preferredUrl : undefined,
-									assetUrl: typeof meshyModelSettingsRaw.outputSummary.assetUrl === 'string' ? meshyModelSettingsRaw.outputSummary.assetUrl : undefined,
-									assetPath: typeof meshyModelSettingsRaw.outputSummary.assetPath === 'string' ? meshyModelSettingsRaw.outputSummary.assetPath : undefined,
-									thumbnailUrl: typeof meshyModelSettingsRaw.outputSummary.thumbnailUrl === 'string' ? meshyModelSettingsRaw.outputSummary.thumbnailUrl : undefined,
-									format: typeof meshyModelSettingsRaw.outputSummary.format === 'string' ? meshyModelSettingsRaw.outputSummary.format : undefined,
-								}
+							taskId:
+								typeof meshyModelSettingsRaw.taskId === 'string'
+									? meshyModelSettingsRaw.taskId
+									: undefined,
+							taskStatus:
+								meshyModelSettingsRaw.taskStatus === 'idle' ||
+								meshyModelSettingsRaw.taskStatus === 'pending' ||
+								meshyModelSettingsRaw.taskStatus === 'running' ||
+								meshyModelSettingsRaw.taskStatus === 'succeeded' ||
+								meshyModelSettingsRaw.taskStatus === 'failed' ||
+								meshyModelSettingsRaw.taskStatus === 'canceled'
+									? meshyModelSettingsRaw.taskStatus
+									: undefined,
+							progress: Number.isFinite(Number(meshyModelSettingsRaw.progress))
+								? Number(meshyModelSettingsRaw.progress)
 								: undefined,
-						relationKind:
-							meshyModelSettingsRaw.relationKind === 'model' ||
-							meshyModelSettingsRaw.relationKind === 'texture' ||
-							meshyModelSettingsRaw.relationKind === 'rigging' ||
-							meshyModelSettingsRaw.relationKind === 'animation'
-								? meshyModelSettingsRaw.relationKind
-								: undefined,
-						rootTaskId: typeof meshyModelSettingsRaw.rootTaskId === 'string' ? meshyModelSettingsRaw.rootTaskId : undefined,
-						parentTaskId: typeof meshyModelSettingsRaw.parentTaskId === 'string' ? meshyModelSettingsRaw.parentTaskId : undefined,
-						previewTaskId: typeof meshyModelSettingsRaw.previewTaskId === 'string' ? meshyModelSettingsRaw.previewTaskId : undefined,
-					}
+							statusText:
+								typeof meshyModelSettingsRaw.statusText === 'string'
+									? meshyModelSettingsRaw.statusText
+									: undefined,
+							errorMessage:
+								typeof meshyModelSettingsRaw.errorMessage === 'string'
+									? meshyModelSettingsRaw.errorMessage
+									: undefined,
+							outputSummary:
+								meshyModelSettingsRaw.outputSummary &&
+								typeof meshyModelSettingsRaw.outputSummary === 'object'
+									? {
+											preferredUrl:
+												typeof meshyModelSettingsRaw.outputSummary.preferredUrl === 'string'
+													? meshyModelSettingsRaw.outputSummary.preferredUrl
+													: undefined,
+											assetUrl:
+												typeof meshyModelSettingsRaw.outputSummary.assetUrl === 'string'
+													? meshyModelSettingsRaw.outputSummary.assetUrl
+													: undefined,
+											assetPath:
+												typeof meshyModelSettingsRaw.outputSummary.assetPath === 'string'
+													? meshyModelSettingsRaw.outputSummary.assetPath
+													: undefined,
+											thumbnailUrl:
+												typeof meshyModelSettingsRaw.outputSummary.thumbnailUrl === 'string'
+													? meshyModelSettingsRaw.outputSummary.thumbnailUrl
+													: undefined,
+											format:
+												typeof meshyModelSettingsRaw.outputSummary.format === 'string'
+													? meshyModelSettingsRaw.outputSummary.format
+													: undefined
+										}
+									: undefined,
+							relationKind:
+								meshyModelSettingsRaw.relationKind === 'model' ||
+								meshyModelSettingsRaw.relationKind === 'texture' ||
+								meshyModelSettingsRaw.relationKind === 'rigging' ||
+								meshyModelSettingsRaw.relationKind === 'animation'
+									? meshyModelSettingsRaw.relationKind
+									: undefined,
+							rootTaskId:
+								typeof meshyModelSettingsRaw.rootTaskId === 'string'
+									? meshyModelSettingsRaw.rootTaskId
+									: undefined,
+							parentTaskId:
+								typeof meshyModelSettingsRaw.parentTaskId === 'string'
+									? meshyModelSettingsRaw.parentTaskId
+									: undefined,
+							previewTaskId:
+								typeof meshyModelSettingsRaw.previewTaskId === 'string'
+									? meshyModelSettingsRaw.previewTaskId
+									: undefined
+						}
 					: undefined
 
-			const patch: Partial<WorkflowModel3DNodeSettings & { meshyModelSettings?: unknown }> = { ...next }
-			if (patch.lightIntensity != null) patch.lightIntensity = Math.max(0, Math.min(10, Number(patch.lightIntensity) || 0))
-			if (patch.renderWidth != null) patch.renderWidth = Math.max(1, Math.floor(Number(patch.renderWidth) || 1))
-			if (patch.renderHeight != null) patch.renderHeight = Math.max(1, Math.floor(Number(patch.renderHeight) || 1))
+			const patch: Partial<WorkflowModel3DNodeSettings & { meshyModelSettings?: unknown }> = {
+				...next
+			}
+			if (patch.lightIntensity != null)
+				patch.lightIntensity = Math.max(0, Math.min(10, Number(patch.lightIntensity) || 0))
+			if (patch.renderWidth != null)
+				patch.renderWidth = Math.max(1, Math.floor(Number(patch.renderWidth) || 1))
+			if (patch.renderHeight != null)
+				patch.renderHeight = Math.max(1, Math.floor(Number(patch.renderHeight) || 1))
 			delete patch.meshyModelSettings
 
-			const existingMeshy = (n.model3dSettings?.meshyModelSettings) ?? {}
+			const existingMeshy = n.model3dSettings?.meshyModelSettings ?? {}
 			const mergedMeshy = meshyModelSettings
 				? Object.fromEntries(
-					Object.entries({ ...existingMeshy, ...meshyModelSettings }).filter(([, v]) => v !== undefined),
-				  )
+						Object.entries({ ...existingMeshy, ...meshyModelSettings }).filter(
+							([, v]) => v !== undefined
+						)
+					)
 				: undefined
 
 			n.model3dSettings = {
 				...(n.model3dSettings ?? {}),
 				...(modelGenerationSource != null ? { modelGenerationSource } : {}),
-				...(mergedMeshy ? { meshyModelSettings: mergedMeshy as WorkflowModel3DNodeSettings['meshyModelSettings'] } : {}),
-				...patch,
+				...(mergedMeshy
+					? { meshyModelSettings: mergedMeshy as WorkflowModel3DNodeSettings['meshyModelSettings'] }
+					: {}),
+				...patch
 			}
 		},
-		setNodeMeshySettings(state, payload: { nodeId: string; meshySettings: Partial<WorkflowMeshyNodeSettings> }) {
+		setNodeMeshySettings(
+			state,
+			payload: { nodeId: string; meshySettings: Partial<WorkflowMeshyNodeSettings> }
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
@@ -2162,33 +2931,58 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const hasTarget = Object.prototype.hasOwnProperty.call(patch, 'meshyTaskTarget')
 			const hasFamily = Object.prototype.hasOwnProperty.call(patch, 'meshyTaskFamily')
 			const nextTarget = normalizeMeshyTaskTarget(patch.meshyTaskTarget) ?? current.meshyTaskTarget
-			const fallbackFamily = current.meshyTaskFamily ?? getDefaultMeshyFamilyForTarget(nextTarget ?? '3d')
+			const fallbackFamily =
+				current.meshyTaskFamily ?? getDefaultMeshyFamilyForTarget(nextTarget ?? '3d')
 			const nextFamily = normalizeMeshyTaskFamily(
 				hasFamily ? patch.meshyTaskFamily : fallbackFamily,
 				nextTarget,
 				patch.meshyMode ?? current.meshyMode,
-				patch.meshyStage ?? current.meshyStage,
+				patch.meshyStage ?? current.meshyStage
 			)
 			patch.meshyTaskTarget = nextTarget ?? inferMeshyTargetFromFamily(nextFamily)
-			patch.meshyTaskFamily = hasTarget && !hasFamily ? getDefaultMeshyFamilyForTarget(patch.meshyTaskTarget) : nextFamily
+			patch.meshyTaskFamily =
+				hasTarget && !hasFamily ? getDefaultMeshyFamilyForTarget(patch.meshyTaskTarget) : nextFamily
 			patch.meshyHelpTopic = String(patch.meshyHelpTopic ?? current.meshyHelpTopic ?? nextFamily)
 			patch.meshyMode = meshyLegacyModeForFamily(nextFamily) ?? patch.meshyMode
 			patch.meshyStage = meshyLegacyStageForFamily(nextFamily) ?? patch.meshyStage
-			if (patch.meshyTargetPolycount != null) patch.meshyTargetPolycount = Math.max(100, Math.min(300000, Math.floor(Number(patch.meshyTargetPolycount) || 100)))
-			if (patch.meshyAnimationActionId != null) patch.meshyAnimationActionId = Math.max(1, Math.floor(Number(patch.meshyAnimationActionId) || 1))
-			if (patch.meshySeed != null) patch.meshySeed = Math.max(0, Math.floor(Number(patch.meshySeed) || 0))
-			if (patch.meshyImageInputCount != null) patch.meshyImageInputCount = Math.max(0, Math.min(5, Math.floor(Number(patch.meshyImageInputCount) || 0)))
-			if (patch.meshyOutputImageCount != null) patch.meshyOutputImageCount = Math.max(1, Math.min(4, Math.floor(Number(patch.meshyOutputImageCount) || 1))) as 1 | 2 | 3 | 4
-			if (patch.meshyProgress != null) patch.meshyProgress = Math.max(0, Math.min(100, Number(patch.meshyProgress) || 0))
-			if (patch.meshyImageUrls) patch.meshyImageUrls = patch.meshyImageUrls.map((x: unknown) => String(x ?? '').trim()).filter((x: string) => !!x).slice(0, 5)
-			if (patch.meshyTargetFormats) patch.meshyTargetFormats = normalizeMeshyTargetFormats(patch.meshyTargetFormats)
+			if (patch.meshyTargetPolycount != null)
+				patch.meshyTargetPolycount = Math.max(
+					100,
+					Math.min(300000, Math.floor(Number(patch.meshyTargetPolycount) || 100))
+				)
+			if (patch.meshyAnimationActionId != null)
+				patch.meshyAnimationActionId = Math.max(
+					1,
+					Math.floor(Number(patch.meshyAnimationActionId) || 1)
+				)
+			if (patch.meshySeed != null)
+				patch.meshySeed = Math.max(0, Math.floor(Number(patch.meshySeed) || 0))
+			if (patch.meshyImageInputCount != null)
+				patch.meshyImageInputCount = Math.max(
+					0,
+					Math.min(5, Math.floor(Number(patch.meshyImageInputCount) || 0))
+				)
+			if (patch.meshyOutputImageCount != null)
+				patch.meshyOutputImageCount = Math.max(
+					1,
+					Math.min(4, Math.floor(Number(patch.meshyOutputImageCount) || 1))
+				) as 1 | 2 | 3 | 4
+			if (patch.meshyProgress != null)
+				patch.meshyProgress = Math.max(0, Math.min(100, Number(patch.meshyProgress) || 0))
+			if (patch.meshyImageUrls)
+				patch.meshyImageUrls = patch.meshyImageUrls
+					.map((x: unknown) => String(x ?? '').trim())
+					.filter((x: string) => !!x)
+					.slice(0, 5)
+			if (patch.meshyTargetFormats)
+				patch.meshyTargetFormats = normalizeMeshyTargetFormats(patch.meshyTargetFormats)
 			if (patch.meshyGenerateMultiView === true) {
 				patch.meshyAspectRatio = undefined
 			}
 
 			const mergedPreview = {
 				...(n.meshySettings ?? {}),
-				...patch,
+				...patch
 			}
 			if ((mergedPreview.meshyTaskTarget ?? '3d') === 'image') {
 				const family = mergedPreview.meshyTaskFamily ?? 'text-to-image'
@@ -2200,7 +2994,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				if (patch.meshyOutputImageCount == null && current.meshyOutputImageCount == null) {
 					patch.meshyOutputImageCount = 1
 				}
-				if (!mergedPreview.meshyAiModel || !['nano-banana', 'nano-banana-pro'].includes(String(mergedPreview.meshyAiModel))) {
+				if (
+					!mergedPreview.meshyAiModel ||
+					!['nano-banana', 'nano-banana-pro'].includes(String(mergedPreview.meshyAiModel))
+				) {
 					patch.meshyAiModel = 'nano-banana'
 				}
 			}
@@ -2216,7 +3013,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 
 			n.meshySettings = {
 				...(n.meshySettings ?? {}),
-				...patch,
+				...patch
 			}
 			syncMeshyAnchors(n)
 		},
@@ -2224,7 +3021,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state,
 			payload: {
 				nodeId: string
-				videoSettings: { outputWidth?: number; outputHeight?: number; naturalWidth?: number; naturalHeight?: number }
+				videoSettings: {
+					outputWidth?: number
+					outputHeight?: number
+					naturalWidth?: number
+					naturalHeight?: number
+				}
 			}
 		) {
 			const id = String(payload?.nodeId ?? '').trim()
@@ -2233,16 +3035,28 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!n || n.type !== 'video') return
 			const next = payload?.videoSettings
 			if (!next || typeof next !== 'object') return
-			const outW = next.outputWidth != null ? Math.max(1, Math.floor(Number(next.outputWidth) || 1)) : undefined
-			const outH = next.outputHeight != null ? Math.max(1, Math.floor(Number(next.outputHeight) || 1)) : undefined
-			const natW = next.naturalWidth != null ? Math.max(1, Math.floor(Number(next.naturalWidth) || 1)) : undefined
-			const natH = next.naturalHeight != null ? Math.max(1, Math.floor(Number(next.naturalHeight) || 1)) : undefined
+			const outW =
+				next.outputWidth != null
+					? Math.max(1, Math.floor(Number(next.outputWidth) || 1))
+					: undefined
+			const outH =
+				next.outputHeight != null
+					? Math.max(1, Math.floor(Number(next.outputHeight) || 1))
+					: undefined
+			const natW =
+				next.naturalWidth != null
+					? Math.max(1, Math.floor(Number(next.naturalWidth) || 1))
+					: undefined
+			const natH =
+				next.naturalHeight != null
+					? Math.max(1, Math.floor(Number(next.naturalHeight) || 1))
+					: undefined
 			n.videoSettings = {
 				...(n.videoSettings ?? {}),
 				...(outW != null ? { outputWidth: outW } : {}),
 				...(outH != null ? { outputHeight: outH } : {}),
 				...(natW != null ? { naturalWidth: natW } : {}),
-				...(natH != null ? { naturalHeight: natH } : {}),
+				...(natH != null ? { naturalHeight: natH } : {})
 			}
 		},
 		setNodeStorySettings(
@@ -2258,12 +3072,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!n || n.type !== 'story') return
 			const next = payload?.storySettings
 			if (!next || typeof next !== 'object') return
-			const pw = next.previewWidth != null ? Math.max(1, Math.floor(Number(next.previewWidth) || 1)) : undefined
-			const ph = next.previewHeight != null ? Math.max(1, Math.floor(Number(next.previewHeight) || 1)) : undefined
+			const pw =
+				next.previewWidth != null
+					? Math.max(1, Math.floor(Number(next.previewWidth) || 1))
+					: undefined
+			const ph =
+				next.previewHeight != null
+					? Math.max(1, Math.floor(Number(next.previewHeight) || 1))
+					: undefined
 			n.storySettings = {
 				...(n.storySettings ?? {}),
 				...(pw != null ? { previewWidth: pw } : {}),
-				...(ph != null ? { previewHeight: ph } : {}),
+				...(ph != null ? { previewHeight: ph } : {})
 			}
 		},
 		setNodeResource(state, payload: { nodeId: string; resourceId: string | null }) {
@@ -2272,19 +3092,22 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const n = state.nodesById[id]
 			if (!n) return
 			const rid = payload?.resourceId
-				n.resourceId = rid ? String(rid) : null
-				if (!n.resourceId) n.resourcePath = undefined
+			n.resourceId = rid ? String(rid) : null
+			if (!n.resourceId) n.resourcePath = undefined
 		},
-			setNodeResourcePath(state, payload: { nodeId: string; resourcePath?: string | null }) {
-				const id = String(payload?.nodeId ?? '').trim()
-				if (!id) return
-				const n = state.nodesById[id]
-				if (!n) return
-				const p = payload?.resourcePath
-				const next = typeof p === 'string' ? p.trim() : ''
-				n.resourcePath = next ? next : undefined
-			},
-		setNodeSize(state, payload: { nodeId: string; width?: number; height?: number; customized?: boolean }) {
+		setNodeResourcePath(state, payload: { nodeId: string; resourcePath?: string | null }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id]
+			if (!n) return
+			const p = payload?.resourcePath
+			const next = typeof p === 'string' ? p.trim() : ''
+			n.resourcePath = next ? next : undefined
+		},
+		setNodeSize(
+			state,
+			payload: { nodeId: string; width?: number; height?: number; customized?: boolean }
+		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
@@ -2357,9 +3180,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				.map((nid) => state.nodesById[nid])
 				.filter(Boolean)
 				.map((n) => ({ ...n, inputs: [...n.inputs], outputs: [...n.outputs] }))
-			state.clipboardPrimaryNodeId = state.selectedNodeId && ids.includes(state.selectedNodeId)
-				? state.selectedNodeId
-				: ids[0]
+			state.clipboardPrimaryNodeId =
+				state.selectedNodeId && ids.includes(state.selectedNodeId) ? state.selectedNodeId : ids[0]
 			state.clipboardNode = null
 		},
 		pasteNode(state, payload: { worldX?: number; worldY?: number }) {
@@ -2384,7 +3206,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						id,
 						worldX: src.worldX + shiftX,
 						worldY: src.worldY + shiftY,
-						createdAt: Date.now(),
+						createdAt: Date.now()
 					}
 					state.nodesById[id] = node
 					state.nodeOrder.push(id)
@@ -2409,7 +3231,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				alias: src.alias ? `${src.alias}` : src.alias,
 				worldX: Number.isFinite(nextX) ? nextX : src.worldX + dx,
 				worldY: Number.isFinite(nextY) ? nextY : src.worldY + dy,
-				createdAt: Date.now(),
+				createdAt: Date.now()
 			}
 			state.nodesById[id] = node
 			state.nodeOrder.push(id)
@@ -2433,48 +3255,39 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			} else {
 				state.viewport = { zoom: 1, panX: 0, panY: 0 }
 			}
-			state.nodesById = snap.nodesById && typeof snap.nodesById === 'object'
-				? snap.nodesById
-				: {}
+			state.nodesById = snap.nodesById && typeof snap.nodesById === 'object' ? snap.nodesById : {}
 			state.nodeOrder = Array.isArray(snap.nodeOrder) ? snap.nodeOrder : []
-			state.edgesById = snap.edgesById && typeof snap.edgesById === 'object'
-				? snap.edgesById
-				: {}
+			state.edgesById = snap.edgesById && typeof snap.edgesById === 'object' ? snap.edgesById : {}
 			state.edgeOrder = Array.isArray(snap.edgeOrder) ? snap.edgeOrder : []
-			state.resourcesById = snap.resourcesById && typeof snap.resourcesById === 'object'
-				? snap.resourcesById
-				: {}
+			state.resourcesById =
+				snap.resourcesById && typeof snap.resourcesById === 'object' ? snap.resourcesById : {}
 			state.resourceOrder = Array.isArray(snap.resourceOrder) ? snap.resourceOrder : []
 			state.selectedNodeId = typeof snap.selectedNodeId === 'string' ? snap.selectedNodeId : null
 			state.selectedNodeIds = Array.isArray(snap.selectedNodeIds) ? snap.selectedNodeIds : []
 			state.selectedEdgeId = typeof snap.selectedEdgeId === 'string' ? snap.selectedEdgeId : null
 			state.clipboardNode = snap.clipboardNode ?? null
 			state.clipboardNodes = snap.clipboardNodes ?? null
-			state.clipboardPrimaryNodeId = typeof snap.clipboardPrimaryNodeId === 'string'
-				? snap.clipboardPrimaryNodeId
-				: null
+			state.clipboardPrimaryNodeId =
+				typeof snap.clipboardPrimaryNodeId === 'string' ? snap.clipboardPrimaryNodeId : null
 			state.chatDraft = typeof snap.chatDraft === 'string' ? snap.chatDraft : ''
 			if (snap.nodeChatDialog && typeof snap.nodeChatDialog === 'object') {
 				const dialog = snap.nodeChatDialog
 				state.nodeChatDialog = {
 					visible: Boolean(dialog.visible),
-					nodeId: typeof dialog.nodeId === 'string'
-						? dialog.nodeId
-						: null,
+					nodeId: typeof dialog.nodeId === 'string' ? dialog.nodeId : null,
 					nodeType: dialog.nodeType ?? null,
-					draft: typeof dialog.draft === 'string'
-						? dialog.draft
-						: '',
+					draft: typeof dialog.draft === 'string' ? dialog.draft : '',
 					submitting: Boolean(dialog.submitting),
-					params: dialog.params && typeof dialog.params === 'object'
-						? dialog.params
-						: {},
+					params: dialog.params && typeof dialog.params === 'object' ? dialog.params : {}
 				}
 			}
 			if (snap.nodeGenerationTasksById && typeof snap.nodeGenerationTasksById === 'object') {
 				state.nodeGenerationTasksById = snap.nodeGenerationTasksById
 			}
-			if (snap.nodeGenerationTaskIdsByNodeId && typeof snap.nodeGenerationTaskIdsByNodeId === 'object') {
+			if (
+				snap.nodeGenerationTaskIdsByNodeId &&
+				typeof snap.nodeGenerationTaskIdsByNodeId === 'object'
+			) {
 				state.nodeGenerationTaskIdsByNodeId = snap.nodeGenerationTaskIdsByNodeId
 			}
 			// 多选标签
@@ -2489,9 +3302,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			} else {
 				state.savedSelectionFrames = []
 			}
-			state.nodeCheckboxVisible = typeof snap.nodeCheckboxVisible === 'boolean'
-				? snap.nodeCheckboxVisible
-				: true
+			state.nodeCheckboxVisible =
+				typeof snap.nodeCheckboxVisible === 'boolean' ? snap.nodeCheckboxVisible : true
 		},
 		moveSelectedNodesByDelta(state, payload: { dx?: number; dy?: number }) {
 			const dx = payload?.dx != null ? Number(payload.dx) : 0
@@ -2526,7 +3338,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			// 删除节点后，彻底清空选择状态，避免误选中其它节点。
 			state.selectedNodeId = null
 			state.selectedNodeIds = []
-			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
+			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId])
+				state.selectedEdgeId = null
 		},
 		upsertNode(state: WorkflowState, payload: { node: WorkflowNode }) {
 			const n = payload?.node
@@ -2542,7 +3355,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				worldY: Number.isFinite(Number(n.worldY)) ? Number(n.worldY) : Number(prev?.worldY ?? 0),
 				inputs: Array.isArray(n.inputs) ? n.inputs : (prev?.inputs ?? []),
 				outputs: Array.isArray(n.outputs) ? n.outputs : (prev?.outputs ?? []),
-				createdAt: Number.isFinite(Number(n.createdAt)) ? Number(n.createdAt) : (prev?.createdAt ?? Date.now()),
+				createdAt: Number.isFinite(Number(n.createdAt))
+					? Number(n.createdAt)
+					: (prev?.createdAt ?? Date.now())
 			}
 			const next = state.nodesById[id]
 			if (next.type === 'story') syncStoryAnchors(next)
@@ -2568,7 +3383,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				resourceId: null,
 				inputs: [{ id: 'in-0', label: '入口' }],
 				outputs: [{ id: 'out-0', label: '出口' }],
-				createdAt: Date.now(),
+				createdAt: Date.now()
 			}
 			state.nodesById[id] = node
 			state.nodeOrder.push(id)
@@ -2618,9 +3433,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			// 删除节点后，彻底清空选择状态，避免误选中其它节点。
 			state.selectedNodeIds = []
 			state.selectedNodeId = null
-			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
+			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId])
+				state.selectedEdgeId = null
 		},
-		addEdge(state, payload: { fromNodeId: string; fromAnchorId: string; toNodeId: string; toAnchorId: string }) {
+		addEdge(
+			state,
+			payload: { fromNodeId: string; fromAnchorId: string; toNodeId: string; toAnchorId: string }
+		) {
 			const fromNodeId = String(payload?.fromNodeId ?? '').trim()
 			const toNodeId = String(payload?.toNodeId ?? '').trim()
 			if (!fromNodeId || !toNodeId) return
@@ -2628,7 +3447,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const toAnchorId = String(payload?.toAnchorId ?? 'in-0')
 			// Check if the input anchor supports multiple connections
 			const toNode = state.nodesById[toNodeId]
-			const inputAnchor = Array.isArray(toNode.inputs) ? toNode.inputs.find((a) => a.id === toAnchorId) : null
+			const inputAnchor = Array.isArray(toNode.inputs)
+				? toNode.inputs.find((a) => a.id === toAnchorId)
+				: null
 			const supportsMultiInput = inputAnchor?.multiInput === true
 			// Only replace existing connection if multiInput is not enabled
 			if (!supportsMultiInput) {
@@ -2648,7 +3469,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				fromAnchorId: String(payload?.fromAnchorId ?? 'out-0'),
 				toNodeId,
 				toAnchorId,
-				createdAt: Date.now(),
+				createdAt: Date.now()
 			}
 			state.edgesById[id] = edge
 			state.edgeOrder.push(id)
@@ -2675,7 +3496,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 			}
 			state.edgeOrder = state.edgeOrder.filter((edgeId) => !!state.edgesById[edgeId])
-			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId]) state.selectedEdgeId = null
+			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId])
+				state.selectedEdgeId = null
 		},
 		openNodeChatDialog(state, payload: { nodeId: string; nodeType: WorkflowNodeChatType }) {
 			state.nodeChatDialog.visible = true
@@ -2723,7 +3545,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				state.nodeGenerationTaskIdsByNodeId[task.nodeId] = [task.id, ...list]
 			}
 		},
-		patchNodeGenerationTask(state, payload: { taskId: string; patch: Partial<WorkflowNodeGenerationTask> }) {
+		patchNodeGenerationTask(
+			state,
+			payload: { taskId: string; patch: Partial<WorkflowNodeGenerationTask> }
+		) {
 			const task = state.nodeGenerationTasksById[payload.taskId]
 			if (!task) return
 			Object.assign(task, payload.patch)
@@ -2735,7 +3560,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!line) return
 			task.detailLines = [...task.detailLines, line].slice(-120)
 		},
-		appendNodeGenerationResult(state, payload: { taskId: string; result: WorkflowNodeGenerationTask['results'][number] }) {
+		appendNodeGenerationResult(
+			state,
+			payload: { taskId: string; result: WorkflowNodeGenerationTask['results'][number] }
+		) {
 			const task = state.nodeGenerationTasksById[payload.taskId]
 			if (!task) return
 			task.results = [...task.results, payload.result]
@@ -2770,7 +3598,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (modifier) {
 				// Ctrl/Cmd：toggle
 				if (state.selectedNodeIds.includes(id)) {
-					state.selectedNodeIds = state.selectedNodeIds.filter(n => n !== id)
+					state.selectedNodeIds = state.selectedNodeIds.filter((n) => n !== id)
 					if (state.selectedNodeId === id) {
 						state.selectedNodeId = state.selectedNodeIds[0] ?? null
 					}
@@ -2788,13 +3616,16 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.selectedEdgeId = null
 		},
 		// —— 多选标签 ——
-		upsertSelectionTag(state, payload: {
-			key: string
-			label: string
-			nodeIds: string[]
-			color?: string
-			note?: string
-		}) {
+		upsertSelectionTag(
+			state,
+			payload: {
+				key: string
+				label: string
+				nodeIds: string[]
+				color?: string
+				note?: string
+			}
+		) {
 			const key = String(payload?.key ?? '').trim()
 			if (!key) return
 			const label = String(payload?.label ?? '').trim()
@@ -2812,7 +3643,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				color: payload?.color ?? existing?.color,
 				note: payload?.note ?? existing?.note,
 				createdAt: existing?.createdAt ?? now,
-				updatedAt: now,
+				updatedAt: now
 			}
 		},
 		removeSelectionTag(state, payload: { key: string }) {
@@ -2828,12 +3659,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const nodeIds = Array.isArray(payload?.nodeIds) ? payload.nodeIds.slice().sort() : []
 			const now = Date.now()
 
-			const existingIdx = state.savedSelectionFrames.findIndex((f: SavedSelectionFrame) => f.id === id)
+			const existingIdx = state.savedSelectionFrames.findIndex(
+				(f: SavedSelectionFrame) => f.id === id
+			)
 			if (existingIdx >= 0) {
 				state.savedSelectionFrames[existingIdx] = {
 					...state.savedSelectionFrames[existingIdx],
 					label,
-					nodeIds,
+					nodeIds
 				}
 			} else {
 				state.savedSelectionFrames.push({ id, label, nodeIds, createdAt: now })
@@ -2842,8 +3675,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		removeSavedSelectionFrame(state: WorkflowState, payload: { id: string }) {
 			const id = String(payload?.id ?? '').trim()
 			if (!id) return
-			state.savedSelectionFrames = state.savedSelectionFrames.filter((f: SavedSelectionFrame) => f.id !== id)
-		},
+			state.savedSelectionFrames = state.savedSelectionFrames.filter(
+				(f: SavedSelectionFrame) => f.id !== id
+			)
+		}
 	},
 	actions: {
 		setChatDraft({ commit }, payload: { text: string }) {
@@ -2868,9 +3703,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const ids = Array.isArray(payload?.nodeIds) ? payload.nodeIds : []
 			const dx = Number(payload?.dx ?? 0)
 			const dy = Number(payload?.dy ?? 0)
-			
+
 			if (!Number.isFinite(dx) || !Number.isFinite(dy) || !ids.length) return
-			
+
 			// 只移动直接传入的节点，不自动扩展到其他选区
 			// 嵌套选区的联动是自然的：拖动父选区时子选区的节点本来就在父选区中
 			commit('moveNodesBy', { nodeIds: ids, dx, dy })
@@ -2897,7 +3732,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const node = state.nodesById[payload.nodeId]
 			if (!node) return
 			const nodeType = node.type as WorkflowNodeChatType
-			if (nodeType !== 'text' && nodeType !== 'image' && nodeType !== 'video' && nodeType !== 'model3d') return
+			if (
+				nodeType !== 'text' &&
+				nodeType !== 'image' &&
+				nodeType !== 'video' &&
+				nodeType !== 'model3d'
+			)
+				return
 			commit('openNodeChatDialog', { nodeId: payload.nodeId, nodeType })
 		},
 		closeNodeChatDialog({ commit }) {
@@ -2917,24 +3758,40 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			// and eventually release the submitting flag on completion.
 			console.log('[AIWorkflow] submitNodeChat:', payload)
 		},
-		async submitNodeChatWithDeps(_, args: { deps: Record<string, unknown>; payload: WorkflowNodeChatSubmitPayload }) {
-			const mod = await import('../../views/AIWorkflow/node-business/chat/useAIWorkflowNodeGeneration')
-			await mod.runNodeGenerationTask(args.deps as Parameters<typeof mod.runNodeGenerationTask>[0], args.payload)
+		async submitNodeChatWithDeps(
+			_,
+			args: { deps: Record<string, unknown>; payload: WorkflowNodeChatSubmitPayload }
+		) {
+			const mod =
+				await import('../../views/AIWorkflow/node-business/chat/useAIWorkflowNodeGeneration')
+			await mod.runNodeGenerationTask(
+				args.deps as Parameters<typeof mod.runNodeGenerationTask>[0],
+				args.payload
+			)
 		},
-		toggleNodeSelection({ commit }, payload: { nodeId: string; modifier?: boolean; range?: boolean }) {
+		toggleNodeSelection(
+			{ commit },
+			payload: { nodeId: string; modifier?: boolean; range?: boolean }
+		) {
 			commit('toggleNodeSelection', payload)
 		},
-		upsertSelectionTag({ commit }, payload: { key: string; label: string; nodeIds: string[]; color?: string; note?: string }) {
+		upsertSelectionTag(
+			{ commit },
+			payload: { key: string; label: string; nodeIds: string[]; color?: string; note?: string }
+		) {
 			commit('upsertSelectionTag', payload)
 		},
 		removeSelectionTag({ commit }, payload: { key: string }) {
 			commit('removeSelectionTag', payload)
 		},
-		upsertSavedSelectionFrame({ commit }, payload: { id: string; label: string; nodeIds: string[] }) {
+		upsertSavedSelectionFrame(
+			{ commit },
+			payload: { id: string; label: string; nodeIds: string[] }
+		) {
 			commit('upsertSavedSelectionFrame', payload)
 		},
 		removeSavedSelectionFrame({ commit }, payload: { id: string }) {
 			commit('removeSavedSelectionFrame', payload)
-		},
-	},
+		}
+	}
 })

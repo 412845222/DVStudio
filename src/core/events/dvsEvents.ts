@@ -6,7 +6,7 @@ export const DVS_EVENTS = {
 	EditorStateRestored: 'dvs:editor/state-restored',
 	EditorSaved: 'dvs:editor/saved',
 	EditorNodePatched: 'dvs:editor/node/patched',
-	EditorNodeDeleted: 'dvs:editor/node/deleted',
+	EditorNodeDeleted: 'dvs:editor/node/deleted'
 } as const
 
 export type DvsTimelineNavDetail = {

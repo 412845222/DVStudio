@@ -1,345 +1,311 @@
 <template>
-  <div class="vs-ai">
-    <div class="vs-ai-left">
-      <div class="vs-ai-head">
-        <div class="vs-ai-title">AI 总结</div>
-        <button
-          v-if="props.layerId && cues.length"
-          class="vs-btn"
-          type="button"
-          :disabled="busy"
-          @click="rerunUnderstanding"
-        >
-          重新总结
-        </button>
-        <div class="vs-ai-meta">图层：{{ layerId || "未选择" }}</div>
-        <div v-if="busy" class="vs-ai-status">
-          <span class="vs-ai-spinner" aria-hidden="true" />
-          <span class="vs-ai-status-text">{{ statusText }}</span>
-        </div>
-      </div>
-      <div v-if="errorText" class="vs-ai-error">{{ errorText }}</div>
-      <div class="vs-ai-mdview">
-        <div v-if="!props.layerId" class="vs-ai-md-empty">请先选择字幕图层</div>
-        <div v-else-if="!cues.length" class="vs-ai-md-empty">当前图层没有字幕段落</div>
-        <div v-else-if="phase === 'checking'" class="vs-ai-md-empty">
-          正在检查 AI 连接...
-        </div>
-        <div v-else-if="phase === 'summarizing'" class="vs-ai-md-empty">
-          正在理解字幕并生成总结...
-        </div>
-        <template v-else>
-          <section class="vs-ai-md-sec">
-            <div class="vs-ai-md-sec-title">字幕整体理解</div>
-            <div v-if="summary.understanding?.summary" class="vs-ai-understanding">
-              <div class="vs-ai-understanding-text">
-                {{ summary.understanding.summary }}
-              </div>
-              <div
-                v-if="summary.understanding.points?.length"
-                class="vs-ai-understanding-points"
-              >
-                <div
-                  v-for="(pt, i) in summary.understanding.points"
-                  :key="'pt-' + i"
-                  class="vs-ai-understanding-point"
-                >
-                  - {{ pt }}
-                </div>
-              </div>
-            </div>
-            <div v-else class="vs-ai-md-empty">暂无总结内容</div>
-          </section>
+	<div class="vs-ai">
+		<div class="vs-ai-left">
+			<div class="vs-ai-head">
+				<div class="vs-ai-title">AI 总结</div>
+				<button
+					v-if="props.layerId && cues.length"
+					class="vs-btn"
+					type="button"
+					:disabled="busy"
+					@click="rerunUnderstanding"
+				>
+					重新总结
+				</button>
+				<div class="vs-ai-meta">图层：{{ layerId || '未选择' }}</div>
+				<div v-if="busy" class="vs-ai-status">
+					<span class="vs-ai-spinner" aria-hidden="true" />
+					<span class="vs-ai-status-text">{{ statusText }}</span>
+				</div>
+			</div>
+			<div v-if="errorText" class="vs-ai-error">{{ errorText }}</div>
+			<div class="vs-ai-mdview">
+				<div v-if="!props.layerId" class="vs-ai-md-empty">请先选择字幕图层</div>
+				<div v-else-if="!cues.length" class="vs-ai-md-empty">当前图层没有字幕段落</div>
+				<div v-else-if="phase === 'checking'" class="vs-ai-md-empty">正在检查 AI 连接...</div>
+				<div v-else-if="phase === 'summarizing'" class="vs-ai-md-empty">
+					正在理解字幕并生成总结...
+				</div>
+				<template v-else>
+					<section class="vs-ai-md-sec">
+						<div class="vs-ai-md-sec-title">字幕整体理解</div>
+						<div v-if="summary.understanding?.summary" class="vs-ai-understanding">
+							<div class="vs-ai-understanding-text">
+								{{ summary.understanding.summary }}
+							</div>
+							<div v-if="summary.understanding.points?.length" class="vs-ai-understanding-points">
+								<div
+									v-for="(pt, i) in summary.understanding.points"
+									:key="'pt-' + i"
+									class="vs-ai-understanding-point"
+								>
+									- {{ pt }}
+								</div>
+							</div>
+						</div>
+						<div v-else class="vs-ai-md-empty">暂无总结内容</div>
+					</section>
 
-          <section class="vs-ai-md-sec">
-            <div class="vs-ai-md-sec-title-row">
-              <div class="vs-ai-md-sec-title">段落标题（进度条）</div>
-              <button
-                class="vs-btn"
-                type="button"
-                :disabled="!canGenerateProgressBar"
-                @click="generateProgressBarLayer"
-              >
-                添加进度条
-              </button>
-            </div>
-            <div v-if="segmentsItems.length" class="vs-ai-seg-list">
-              <div
-                v-for="(it, i) in segmentsItems"
-                :key="'seg-' + i"
-                class="vs-ai-seg-item"
-              >
-                <div class="vs-ai-seg-meta">
-                  {{ i + 1 }}. cue {{ it.startCue }}-{{ it.endCue }}
-                </div>
-                <input
-                  class="vs-ai-seg-input"
-                  type="text"
-                  :maxlength="12"
-                  :placeholder="'4~8字标题'"
-                  :value="String(it.title || '')"
-                  @input="onSegmentTitleInput(i, ($event.target as HTMLInputElement).value)"
-                />
-              </div>
-            </div>
-            <div v-else class="vs-ai-md-empty">
-              尚未生成段落标题（会在整体理解后自动生成）
-            </div>
-          </section>
+					<section class="vs-ai-md-sec">
+						<div class="vs-ai-md-sec-title-row">
+							<div class="vs-ai-md-sec-title">段落标题（进度条）</div>
+							<button
+								class="vs-btn"
+								type="button"
+								:disabled="!canGenerateProgressBar"
+								@click="generateProgressBarLayer"
+							>
+								添加进度条
+							</button>
+						</div>
+						<div v-if="segmentsItems.length" class="vs-ai-seg-list">
+							<div v-for="(it, i) in segmentsItems" :key="'seg-' + i" class="vs-ai-seg-item">
+								<div class="vs-ai-seg-meta">{{ i + 1 }}. cue {{ it.startCue }}-{{ it.endCue }}</div>
+								<input
+									class="vs-ai-seg-input"
+									type="text"
+									:maxlength="12"
+									:placeholder="'4~8字标题'"
+									:value="String(it.title || '')"
+									@input="onSegmentTitleInput(i, ($event.target as HTMLInputElement).value)"
+								/>
+							</div>
+						</div>
+						<div v-else class="vs-ai-md-empty">尚未生成段落标题（会在整体理解后自动生成）</div>
+					</section>
 
-          <section class="vs-ai-md-sec">
-            <div class="vs-ai-md-sec-title-row">
-              <div class="vs-ai-md-sec-title">配色与风格建议</div>
-              <button
-                class="vs-btn"
-                type="button"
-                :disabled="!canGenerateStyleAdvice"
-                @click="generateStyleAdvice"
-              >
-                生成配色建议
-              </button>
-            </div>
-            <div v-if="summary.style?.notes?.length" class="vs-ai-style">
-              <div
-                v-for="(n, i) in summary.style.notes"
-                :key="String(i) + '-' + String(n)"
-                class="vs-ai-style-note"
-              >
-                {{ n }}
-              </div>
-            </div>
-            <div v-else class="vs-ai-md-empty">暂无风格建议</div>
-            <div class="vs-ai-palette">
-              <div class="vs-ai-palette-head">
-                <div class="vs-ai-palette-title">配色预览</div>
-                <button
-                  class="vs-btn"
-                  type="button"
-                  :disabled="!canGeneratePalette"
-                  @click="generatePalette"
-                >
-                  {{ paletteActionLabel }}
-                </button>
-              </div>
-              <div v-if="paletteEntries.length" class="vs-ai-palette-grid">
-                <div
-                  v-for="([k, v], i) in paletteEntries"
-                  :key="k + '-' + i"
-                  class="vs-ai-palette-item"
-                >
-                  <span
-                    class="vs-ai-palette-swatch"
-                    :style="{ backgroundColor: String(v) }"
-                  />
-                  <span class="vs-ai-palette-key">{{ k }}</span>
-                  <span class="vs-ai-palette-val">{{ v }}</span>
-                </div>
-              </div>
-              <div v-else class="vs-ai-palette-hint">
-                尚未生成配色，点击“生成配色”即可生成
-              </div>
-            </div>
-          </section>
+					<section class="vs-ai-md-sec">
+						<div class="vs-ai-md-sec-title-row">
+							<div class="vs-ai-md-sec-title">配色与风格建议</div>
+							<button
+								class="vs-btn"
+								type="button"
+								:disabled="!canGenerateStyleAdvice"
+								@click="generateStyleAdvice"
+							>
+								生成配色建议
+							</button>
+						</div>
+						<div v-if="summary.style?.notes?.length" class="vs-ai-style">
+							<div
+								v-for="(n, i) in summary.style.notes"
+								:key="String(i) + '-' + String(n)"
+								class="vs-ai-style-note"
+							>
+								{{ n }}
+							</div>
+						</div>
+						<div v-else class="vs-ai-md-empty">暂无风格建议</div>
+						<div class="vs-ai-palette">
+							<div class="vs-ai-palette-head">
+								<div class="vs-ai-palette-title">配色预览</div>
+								<button
+									class="vs-btn"
+									type="button"
+									:disabled="!canGeneratePalette"
+									@click="generatePalette"
+								>
+									{{ paletteActionLabel }}
+								</button>
+							</div>
+							<div v-if="paletteEntries.length" class="vs-ai-palette-grid">
+								<div
+									v-for="([k, v], i) in paletteEntries"
+									:key="k + '-' + i"
+									class="vs-ai-palette-item"
+								>
+									<span class="vs-ai-palette-swatch" :style="{ backgroundColor: String(v) }" />
+									<span class="vs-ai-palette-key">{{ k }}</span>
+									<span class="vs-ai-palette-val">{{ v }}</span>
+								</div>
+							</div>
+							<div v-else class="vs-ai-palette-hint">尚未生成配色，点击“生成配色”即可生成</div>
+						</div>
+					</section>
 
-          <section class="vs-ai-md-sec">
-            <div class="vs-ai-md-sec-title-row">
-              <div class="vs-ai-md-sec-title">可复用高级组件描述</div>
-              <button
-                class="vs-btn"
-                type="button"
-                :disabled="!canGenerateTemplateSuggestions"
-                @click="generateTemplateSuggestions"
-              >
-                生成组件描述
-              </button>
-            </div>
-            <div v-if="!templateItems.length" class="vs-ai-md-empty">暂无模板建议</div>
-            <div v-if="templateItems.length" class="vs-ai-template-list">
-              <div v-for="t in templateItems" :key="t.key" class="vs-ai-template-item">
-                <div class="vs-ai-template-main">
-                  <div class="vs-ai-template-title">{{ t.name }}</div>
-                  <div class="vs-ai-template-meta">
-                    <span>templateId: {{ t.templateId }}</span>
-                    <span v-if="t.category">{{ t.category }}</span>
-                  </div>
-                  <div v-if="t.spec?.description?.length" class="vs-ai-template-meta">
-                    <span
-                      v-for="(d, i) in t.spec.description"
-                      :key="t.templateId + '-d-' + i"
-                      >{{ d }}</span
-                    >
-                  </div>
-                </div>
-                <div class="vs-ai-template-actions">
-                  <button
-                    class="vs-btn"
-                    type="button"
-                    :disabled="localBusy"
-                    @click="previewTemplate(t)"
-                  >
-                    生成预览
-                  </button>
-                  <button
-                    class="vs-btn"
-                    type="button"
-                    :disabled="t.saved || localBusy"
-                    @click="(e: MouseEvent) => saveTemplateAsComponent(t, e)"
-                  >
-                    {{ t.saved ? "已保存" : "保存组件" }}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-        </template>
-      </div>
-    </div>
+					<section class="vs-ai-md-sec">
+						<div class="vs-ai-md-sec-title-row">
+							<div class="vs-ai-md-sec-title">可复用高级组件描述</div>
+							<button
+								class="vs-btn"
+								type="button"
+								:disabled="!canGenerateTemplateSuggestions"
+								@click="generateTemplateSuggestions"
+							>
+								生成组件描述
+							</button>
+						</div>
+						<div v-if="!templateItems.length" class="vs-ai-md-empty">暂无模板建议</div>
+						<div v-if="templateItems.length" class="vs-ai-template-list">
+							<div v-for="t in templateItems" :key="t.key" class="vs-ai-template-item">
+								<div class="vs-ai-template-main">
+									<div class="vs-ai-template-title">{{ t.name }}</div>
+									<div class="vs-ai-template-meta">
+										<span>templateId: {{ t.templateId }}</span>
+										<span v-if="t.category">{{ t.category }}</span>
+									</div>
+									<div v-if="t.spec?.description?.length" class="vs-ai-template-meta">
+										<span v-for="(d, i) in t.spec.description" :key="t.templateId + '-d-' + i">
+											{{ d }}
+										</span>
+									</div>
+								</div>
+								<div class="vs-ai-template-actions">
+									<button
+										class="vs-btn"
+										type="button"
+										:disabled="localBusy"
+										@click="previewTemplate(t)"
+									>
+										生成预览
+									</button>
+									<button
+										class="vs-btn"
+										type="button"
+										:disabled="t.saved || localBusy"
+										@click="(e: MouseEvent) => saveTemplateAsComponent(t, e)"
+									>
+										{{ t.saved ? '已保存' : '保存组件' }}
+									</button>
+								</div>
+							</div>
+						</div>
+					</section>
+				</template>
+			</div>
+		</div>
 
-    <div class="vs-ai-right">
-      <div class="ai-chat__title">
-        <div class="ai-chat__title-left">
-          <span class="ai-chat__title-text">对话</span>
-          <span v-if="busy" class="ai-chat__title-status">{{ taskStatusLabel }}</span>
-        </div>
-        <div class="ai-chat__title-actions">
-          <button
-            class="ai-chat__icon"
-            type="button"
-            :title="deepMode ? '深度思考模式：开' : '深度思考模式：关'"
-            @click="toggleDeepMode"
-          >
-            {{ deepMode ? "深" : "浅" }}
-          </button>
-          <span class="vs-ai-meta">{{ chatMeta }}</span>
-        </div>
-      </div>
+		<div class="vs-ai-right">
+			<div class="ai-chat__title">
+				<div class="ai-chat__title-left">
+					<span class="ai-chat__title-text">对话</span>
+					<span v-if="busy" class="ai-chat__title-status">{{ taskStatusLabel }}</span>
+				</div>
+				<div class="ai-chat__title-actions">
+					<button
+						class="ai-chat__icon"
+						type="button"
+						:title="deepMode ? '深度思考模式：开' : '深度思考模式：关'"
+						@click="toggleDeepMode"
+					>
+						{{ deepMode ? '深' : '浅' }}
+					</button>
+					<span class="vs-ai-meta">{{ chatMeta }}</span>
+				</div>
+			</div>
 
-      <div class="ai-chat__body">
-        <div ref="listEl" class="ai-chat__list">
-          <div v-if="!messages.length && !showRunningBubble" class="vs-ai-empty">
-            还没有消息
-          </div>
-          <div v-for="m in messages" :key="m.id" class="ai-chat__msg" :class="[m.role]">
-            <div class="ai-chat__bubble">
-              <div class="ai-chat__role">{{ m.role === "user" ? "我" : "AI" }}</div>
-              <div class="ai-chat__text">{{ m.text }}</div>
-              <div
-                v-if="m.role === 'assistant' && m.paletteEntries?.length"
-                class="vs-ai-chat-palette"
-              >
-                <div class="vs-ai-chat-palette-head">
-                  <div class="vs-ai-chat-palette-title">配色预览</div>
-                  <button
-                    class="vs-btn"
-                    type="button"
-                    :disabled="m.applied || localBusy"
-                    @click="applyPaletteFromMessage(m)"
-                  >
-                    {{ m.applied ? "已应用" : "确认应用此配色" }}
-                  </button>
-                </div>
-                <div class="vs-ai-palette-grid">
-                  <div
-                    v-for="([k, v], i) in m.paletteEntries"
-                    :key="k + '-' + i"
-                    class="vs-ai-palette-item"
-                  >
-                    <span
-                      class="vs-ai-palette-swatch"
-                      :style="{ backgroundColor: String(v) }"
-                    />
-                    <span class="vs-ai-palette-key">{{ k }}</span>
-                    <span class="vs-ai-palette-val">{{ v }}</span>
-                  </div>
-                </div>
-              </div>
-              <div
-                v-if="
-                  m.role === 'assistant' &&
-                  m.panelPatch &&
-                  typeof m.panelPatch === 'object'
-                "
-                class="vs-ai-chat-palette"
-              >
-                <div class="vs-ai-chat-palette-head">
-                  <div class="vs-ai-chat-palette-title">修改提案</div>
-                  <button
-                    class="vs-btn"
-                    type="button"
-                    :disabled="m.applied || localBusy"
-                    @click="applyPanelPatchFromMessage(m)"
-                  >
-                    {{ m.applied ? "已应用" : "应用修改" }}
-                  </button>
-                </div>
-                <div class="vs-ai-meta">
-                  将更新：{{
-                    m.panelPatchTarget === "both"
-                      ? "风格建议 + 组件描述"
-                      : m.panelPatchTarget === "style"
-                      ? "风格建议"
-                      : m.panelPatchTarget === "templates"
-                      ? "组件描述"
-                      : "（未知）"
-                  }}
-                </div>
-              </div>
-              <div v-if="isRunning(m) && taskStatusLabel" class="ai-chat__phase">
-                {{ taskStatusLabel }}
-              </div>
-              <div v-if="isRunning(m)" class="ai-chat__typing" aria-label="AI 正在处理">
-                <span class="ai-chat__dot" />
-                <span class="ai-chat__dot" />
-                <span class="ai-chat__dot" />
-              </div>
-            </div>
-          </div>
+			<div class="ai-chat__body">
+				<div ref="listEl" class="ai-chat__list">
+					<div v-if="!messages.length && !showRunningBubble" class="vs-ai-empty">还没有消息</div>
+					<div v-for="m in messages" :key="m.id" class="ai-chat__msg" :class="[m.role]">
+						<div class="ai-chat__bubble">
+							<div class="ai-chat__role">{{ m.role === 'user' ? '我' : 'AI' }}</div>
+							<div class="ai-chat__text">{{ m.text }}</div>
+							<div
+								v-if="m.role === 'assistant' && m.paletteEntries?.length"
+								class="vs-ai-chat-palette"
+							>
+								<div class="vs-ai-chat-palette-head">
+									<div class="vs-ai-chat-palette-title">配色预览</div>
+									<button
+										class="vs-btn"
+										type="button"
+										:disabled="m.applied || localBusy"
+										@click="applyPaletteFromMessage(m)"
+									>
+										{{ m.applied ? '已应用' : '确认应用此配色' }}
+									</button>
+								</div>
+								<div class="vs-ai-palette-grid">
+									<div
+										v-for="([k, v], i) in m.paletteEntries"
+										:key="k + '-' + i"
+										class="vs-ai-palette-item"
+									>
+										<span class="vs-ai-palette-swatch" :style="{ backgroundColor: String(v) }" />
+										<span class="vs-ai-palette-key">{{ k }}</span>
+										<span class="vs-ai-palette-val">{{ v }}</span>
+									</div>
+								</div>
+							</div>
+							<div
+								v-if="m.role === 'assistant' && m.panelPatch && typeof m.panelPatch === 'object'"
+								class="vs-ai-chat-palette"
+							>
+								<div class="vs-ai-chat-palette-head">
+									<div class="vs-ai-chat-palette-title">修改提案</div>
+									<button
+										class="vs-btn"
+										type="button"
+										:disabled="m.applied || localBusy"
+										@click="applyPanelPatchFromMessage(m)"
+									>
+										{{ m.applied ? '已应用' : '应用修改' }}
+									</button>
+								</div>
+								<div class="vs-ai-meta">
+									将更新：{{
+										m.panelPatchTarget === 'both'
+											? '风格建议 + 组件描述'
+											: m.panelPatchTarget === 'style'
+												? '风格建议'
+												: m.panelPatchTarget === 'templates'
+													? '组件描述'
+													: '（未知）'
+									}}
+								</div>
+							</div>
+							<div v-if="isRunning(m) && taskStatusLabel" class="ai-chat__phase">
+								{{ taskStatusLabel }}
+							</div>
+							<div v-if="isRunning(m)" class="ai-chat__typing" aria-label="AI 正在处理">
+								<span class="ai-chat__dot" />
+								<span class="ai-chat__dot" />
+								<span class="ai-chat__dot" />
+							</div>
+						</div>
+					</div>
 
-          <div v-if="showRunningBubble" class="ai-chat__msg assistant">
-            <div class="ai-chat__bubble">
-              <div class="ai-chat__role">AI</div>
-              <div v-if="taskStatusLabel" class="ai-chat__phase">
-                {{ taskStatusLabel }}
-              </div>
-              <div class="ai-chat__typing" aria-label="AI 正在处理">
-                <span class="ai-chat__dot" />
-                <span class="ai-chat__dot" />
-                <span class="ai-chat__dot" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+					<div v-if="showRunningBubble" class="ai-chat__msg assistant">
+						<div class="ai-chat__bubble">
+							<div class="ai-chat__role">AI</div>
+							<div v-if="taskStatusLabel" class="ai-chat__phase">
+								{{ taskStatusLabel }}
+							</div>
+							<div class="ai-chat__typing" aria-label="AI 正在处理">
+								<span class="ai-chat__dot" />
+								<span class="ai-chat__dot" />
+								<span class="ai-chat__dot" />
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
 
-      <div v-if="thoughtOpen" class="vs-ai-thought" aria-label="思考面板">
-        <div class="vs-ai-thought-head">
-          <div class="vs-ai-thought-title">思考 / 进度</div>
-          <button
-            class="vs-ai-thought-close"
-            type="button"
-            title="关闭"
-            @click="closeThought"
-          >
-            ×
-          </button>
-        </div>
-        <div class="vs-ai-thought-body">{{ thoughtText }}</div>
-      </div>
+			<div v-if="thoughtOpen" class="vs-ai-thought" aria-label="思考面板">
+				<div class="vs-ai-thought-head">
+					<div class="vs-ai-thought-title">思考 / 进度</div>
+					<button class="vs-ai-thought-close" type="button" title="关闭" @click="closeThought">
+						×
+					</button>
+				</div>
+				<div class="vs-ai-thought-body">{{ thoughtText }}</div>
+			</div>
 
-      <form class="ai-chat__input" @submit.prevent="sendFromInput">
-        <input
-          v-model="draft"
-          class="ai-chat__text-input"
-          type="text"
-          :placeholder="chatPlaceholder"
-          :disabled="!chatEnabled"
-        />
-        <button class="ai-chat__send" type="submit" :disabled="!chatEnabled || !canSend">
-          发送
-        </button>
-      </form>
-    </div>
-  </div>
+			<form class="ai-chat__input" @submit.prevent="sendFromInput">
+				<input
+					v-model="draft"
+					class="ai-chat__text-input"
+					type="text"
+					:placeholder="chatPlaceholder"
+					:disabled="!chatEnabled"
+				/>
+				<button class="ai-chat__send" type="submit" :disabled="!chatEnabled || !canSend">
+					发送
+				</button>
+			</form>
+		</div>
+	</div>
 </template>
 
 <script setup lang="ts">
@@ -357,8 +323,26 @@ import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import { TimelineStore } from '../../../store/timeline'
 import { VideoStudioStore } from '../../../store/videostudio'
 import { SubtitleAIService } from '../../../network/SubtitleAIService'
-import type { AgentToUiMessage, AgentToUiTaskStatusMessage, AgentToUiErrorMessage, AgentToUiSubtitleSummaryDeltaMessage, AgentToUiTextMessage, AgentToUiChatMessage, AgentToUiComponentTemplateMessage } from '../../../core/agentToUI'
-import { isRecord as isRecordGuard, isArray as isArrayGuard, isString as isStringGuard, isNumber as isNumberGuard, safeGetString as utilsSafeGetString, safeGetArray as utilsSafeGetArray, safeGetNumber, safeGetRecord, isFunction as isFunctionGuard } from '../../../types/utils'
+import type {
+	AgentToUiMessage,
+	AgentToUiTaskStatusMessage,
+	AgentToUiErrorMessage,
+	AgentToUiSubtitleSummaryDeltaMessage,
+	AgentToUiTextMessage,
+	AgentToUiChatMessage,
+	AgentToUiComponentTemplateMessage
+} from '../../../core/agentToUI'
+import {
+	isRecord as isRecordGuard,
+	isArray as isArrayGuard,
+	isString as isStringGuard,
+	isNumber as isNumberGuard,
+	safeGetString as utilsSafeGetString,
+	safeGetArray as utilsSafeGetArray,
+	safeGetNumber,
+	safeGetRecord,
+	isFunction as isFunctionGuard
+} from '../../../types/utils'
 import { DwebCanvasGLKey } from '../VideoSceneRuntime'
 import { flyThumbnailPng } from '../parts/flyThumbnail'
 import {
@@ -370,7 +354,7 @@ import {
 	type SubtitleUnderstanding,
 	type SubtitleSegments,
 	type SubtitleStyle,
-	type SubtitlePlanItem,
+	type SubtitlePlanItem
 } from '../subtitleAI/subtitleSummaryState'
 import type { SubtitleCue, SubtitleCueRange } from '../../../core/timeline/types'
 
@@ -500,7 +484,7 @@ const safeGetString = (obj: unknown, key: string): string => {
 	return v ?? ''
 }
 
-const safeGetArray = <T>(obj: unknown, key: string, pred: (x: unknown) => x is T): T[] => {
+const safeGetArray = <T,>(obj: unknown, key: string, pred: (x: unknown) => x is T): T[] => {
 	const v = utilsSafeGetArray(obj, key, pred)
 	return v ?? []
 }
@@ -515,18 +499,26 @@ const paletteEntries = computed(() => {
 		.map(([k, v]) => [k, v] as [string, string])
 })
 
-const cues = computed<SubtitleCue[]>(() => (props.layerId ? (TimelineStore.state.subtitleCuesByLayer?.[props.layerId] ?? []) : []))
-const cueRanges = computed<SubtitleCueRange[]>(() => (props.layerId ? (TimelineStore.state.subtitleCueRangesByLayer?.[props.layerId] ?? []) : []))
+const cues = computed<SubtitleCue[]>(() =>
+	props.layerId ? (TimelineStore.state.subtitleCuesByLayer?.[props.layerId] ?? []) : []
+)
+const cueRanges = computed<SubtitleCueRange[]>(() =>
+	props.layerId ? (TimelineStore.state.subtitleCueRangesByLayer?.[props.layerId] ?? []) : []
+)
 
 const segmentsItems = computed<SegmentItem[]>(() => {
 	const items = summary.value.segments?.items
-	return Array.isArray(items) ? items.map((it): SegmentItem => ({
-		title: isString(it?.title) ? it.title : '',
-		startCue: isNumberGuard(it?.startCue) ? it.startCue : 0,
-		endCue: isNumberGuard(it?.endCue) ? it.endCue : 0,
-		startTimeMs: isNumberGuard(it?.startTimeMs) ? it.startTimeMs : null,
-		endTimeMs: isNumberGuard(it?.endTimeMs) ? it.endTimeMs : null,
-	})) : []
+	return Array.isArray(items)
+		? items.map(
+				(it): SegmentItem => ({
+					title: isString(it?.title) ? it.title : '',
+					startCue: isNumberGuard(it?.startCue) ? it.startCue : 0,
+					endCue: isNumberGuard(it?.endCue) ? it.endCue : 0,
+					startTimeMs: isNumberGuard(it?.startTimeMs) ? it.startTimeMs : null,
+					endTimeMs: isNumberGuard(it?.endTimeMs) ? it.endTimeMs : null
+				})
+			)
+		: []
 })
 
 type Phase = 'idle' | 'checking' | 'summarizing' | 'ready' | 'chatting' | 'error'
@@ -538,12 +530,22 @@ const summaryReady = ref(false)
 const localBusy = ref(false)
 const localBusyLabel = ref<string>('')
 
-const busy = computed(() => phase.value === 'checking' || phase.value === 'summarizing' || phase.value === 'chatting' || localBusy.value)
+const busy = computed(
+	() =>
+		phase.value === 'checking' ||
+		phase.value === 'summarizing' ||
+		phase.value === 'chatting' ||
+		localBusy.value
+)
 // Do not block all actions just because an error message is shown.
 // Some errors are just prerequisite hints (e.g. "先生成风格建议") and should not lock the panel.
-const chatEnabled = computed(() => summaryReady.value && phase.value !== 'chatting' && !localBusy.value)
+const chatEnabled = computed(
+	() => summaryReady.value && phase.value !== 'chatting' && !localBusy.value
+)
 
-const canGeneratePalette = computed(() => summaryReady.value && phase.value !== 'chatting' && !localBusy.value)
+const canGeneratePalette = computed(
+	() => summaryReady.value && phase.value !== 'chatting' && !localBusy.value
+)
 
 const paletteActionLabel = computed(() => (paletteEntries.value.length ? '重新生成' : '生成配色'))
 
@@ -555,7 +557,9 @@ const chatMeta = computed(() => {
 	return '就绪'
 })
 
-const chatPlaceholder = computed(() => (chatEnabled.value ? '输入消息（将请求后端 AI）' : '等待字幕总结完成...'))
+const chatPlaceholder = computed(() =>
+	chatEnabled.value ? '输入消息（将请求后端 AI）' : '等待字幕总结完成...'
+)
 
 const messages = ref<ChatMessage[]>([])
 const draft = ref<string>('')
@@ -624,7 +628,7 @@ const pushProgressToChat = async (text: string) => {
 	messages.value.push({
 		id: `p-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 		role: 'assistant',
-		text: `【进度】${t}`,
+		text: `【进度】${t}`
 	})
 	await scrollToBottom()
 }
@@ -653,7 +657,7 @@ const taskStatusLabel = computed(() => {
 		done: '完成',
 		started: '已开始…',
 		streaming: '连接模型…',
-		writing: '生成内容…',
+		writing: '生成内容…'
 	}
 	return map[p] || p
 })
@@ -720,14 +724,19 @@ const loadSummaryCache = (layerId: string): SummaryCacheEntry | null => {
 const saveSummaryCache = (layerId: string) => {
 	try {
 		const cuesHash = computeCuesHash(cues.value)
-		const entry: SummaryCacheEntry = { layerId, cuesHash, summary: summary.value, cachedAt: new Date().toISOString() }
+		const entry: SummaryCacheEntry = {
+			layerId,
+			cuesHash,
+			summary: summary.value,
+			cachedAt: new Date().toISOString()
+		}
 		const raw = localStorage.getItem(SUMMARY_CACHE_KEY)
 		let parsed: Record<string, unknown> = {}
 		if (raw) {
 			const parsedRaw: unknown = JSON.parse(raw)
 			if (isRecord(parsedRaw)) parsed = parsedRaw
 		}
-		const next: SummaryCacheStorage = { ...parsed as SummaryCacheStorage, [layerId]: entry }
+		const next: SummaryCacheStorage = { ...(parsed as SummaryCacheStorage), [layerId]: entry }
 		localStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify(next))
 	} catch {
 		// ignore
@@ -796,7 +805,8 @@ const buildSummaryNarrative = (s: SubtitleSummaryState): string => {
 	if (intro) lines.push(intro)
 
 	const u = s.understanding
-	const hasUnderstanding = !!String(u?.summary || '').trim() || (Array.isArray(u?.points) && u.points.length)
+	const hasUnderstanding =
+		!!String(u?.summary || '').trim() || (Array.isArray(u?.points) && u.points.length)
 	if (hasUnderstanding) {
 		lines.push('')
 		lines.push('【整体理解】')
@@ -837,11 +847,16 @@ const buildSummaryNarrative = (s: SubtitleSummaryState): string => {
 	}
 
 	const st = s.style
-	const notes = Array.isArray(st?.notes) ? st.notes.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim()) : []
-	const pal = st?.palette && isRecord(st.palette) ? Object.entries(st.palette).filter((entry): entry is [string, string] => {
-		const [k, v] = entry
-		return typeof k === 'string' && !!k.trim() && typeof v === 'string' && !!v.trim()
-	}) : []
+	const notes = Array.isArray(st?.notes)
+		? st.notes.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim())
+		: []
+	const pal =
+		st?.palette && isRecord(st.palette)
+			? Object.entries(st.palette).filter((entry): entry is [string, string] => {
+					const [k, v] = entry
+					return typeof k === 'string' && !!k.trim() && typeof v === 'string' && !!v.trim()
+				})
+			: []
 	if (notes.length || pal.length) {
 		lines.push('')
 		lines.push('【风格】')
@@ -891,7 +906,10 @@ const onSegmentTitleInput = (idx: number, titleRaw: string) => {
 		if (i !== idx) return it
 		return { ...it, title: nextTitle }
 	})
-	summary.value = applySubtitleSummaryDelta(summary.value, { section: 'segments', data: { items: nextItems } })
+	summary.value = applySubtitleSummaryDelta(summary.value, {
+		section: 'segments',
+		data: { items: nextItems }
+	})
 }
 
 const canGenerateProgressBar = computed(() => {
@@ -956,20 +974,24 @@ const generateProgressBarLayer = async () => {
 
 		// Compute segment time bounds from cues/timeMs.
 		const cuesArr = cues.value
-		const startMs = cuesArr.length > 0 && typeof cuesArr[0]?.startMs === 'number' ? cuesArr[0].startMs : 0
+		const startMs =
+			cuesArr.length > 0 && typeof cuesArr[0]?.startMs === 'number' ? cuesArr[0].startMs : 0
 		const lastCue = cuesArr.length > 0 ? cuesArr[cuesArr.length - 1] : null
-		const endMs = lastCue && typeof lastCue.endMs === 'number' ? lastCue.endMs : Math.max(1, startMs + 1)
+		const endMs =
+			lastCue && typeof lastCue.endMs === 'number' ? lastCue.endMs : Math.max(1, startMs + 1)
 		const durMs = Math.max(1, endMs - startMs)
 		const getItemStartMs = (it: SegmentItem): number | null => {
 			if (typeof it.startTimeMs === 'number') return it.startTimeMs
 			const sc = it.startCue
-			if (sc != null && cuesArr[sc] && typeof cuesArr[sc].startMs === 'number') return cuesArr[sc].startMs
+			if (sc != null && cuesArr[sc] && typeof cuesArr[sc].startMs === 'number')
+				return cuesArr[sc].startMs
 			return null
 		}
 		const getItemEndMs = (it: SegmentItem): number | null => {
 			if (typeof it.endTimeMs === 'number') return it.endTimeMs
 			const ec = it.endCue
-			if (ec != null && cuesArr[ec] && typeof cuesArr[ec].endMs === 'number') return cuesArr[ec].endMs
+			if (ec != null && cuesArr[ec] && typeof cuesArr[ec].endMs === 'number')
+				return cuesArr[ec].endMs
 			return null
 		}
 		const toRatio01 = (ms: number) => Math.max(0, Math.min(1, (ms - startMs) / durMs))
@@ -998,11 +1020,7 @@ const generateProgressBarLayer = async () => {
 			const nextItem = i + 1 < items.length ? items[i + 1] : null
 			const nextStartMs = nextItem ? getItemStartMs(nextItem) : null
 			const eMs =
-				typeof eMsRaw === 'number'
-					? eMsRaw
-					: typeof nextStartMs === 'number'
-						? nextStartMs
-						: endMs
+				typeof eMsRaw === 'number' ? eMsRaw : typeof nextStartMs === 'number' ? nextStartMs : endMs
 			const startRatio = toRatio01(sMs)
 			const endRatio = i === items.length - 1 ? 1 : toRatio01(Math.max(sMs, eMs))
 			let startPx = Math.max(0, Math.min(barW, Math.round(startRatio * barW)))
@@ -1024,29 +1042,43 @@ const generateProgressBarLayer = async () => {
 				name: `Segment ${i + 1}`,
 				category: 'user',
 				userType: 'rect',
-				transform: { x: segCenterLocalX, y: 0, width: Math.round(segW), height: barH, rotation: 0, opacity: 1 },
+				transform: {
+					x: segCenterLocalX,
+					y: 0,
+					width: Math.round(segW),
+					height: barH,
+					rotation: 0,
+					opacity: 1
+				},
 				props: {
 					fillColor: fg,
 					fillOpacity: 0.18,
 					borderColor: fg,
 					borderOpacity: 0.35,
 					borderWidth: 1,
-					cornerRadius: 0,
-				},
+					cornerRadius: 0
+				}
 			})
 			titleChildren.push({
 				id: tId,
 				name: `Segment Title ${i + 1}`,
 				category: 'user',
 				userType: 'text',
-				transform: { x: segCenterLocalX, y: 0, width: Math.round(segW), height: barH, rotation: 0, opacity: 1 },
+				transform: {
+					x: segCenterLocalX,
+					y: 0,
+					width: Math.round(segW),
+					height: barH,
+					rotation: 0,
+					opacity: 1
+				},
 				props: {
 					textContent: title || `段落${i + 1}`,
 					textAlign: 'center',
 					fontSize: baseFontSize,
 					fontColor: text,
-					fontStyle: 'normal',
-				},
+					fontStyle: 'normal'
+				}
 			})
 
 			// marker at segment start (except first)
@@ -1059,22 +1091,29 @@ const generateProgressBarLayer = async () => {
 					name: `Marker ${i + 1}`,
 					category: 'user',
 					userType: 'rect',
-					transform: { x: mx, y: 0, width: markerSize, height: markerSize, rotation: 0, opacity: 1 },
+					transform: {
+						x: mx,
+						y: 0,
+						width: markerSize,
+						height: markerSize,
+						rotation: 0,
+						opacity: 1
+					},
 					props: {
 						fillColor: fg,
 						fillOpacity: 1,
 						borderColor: fg,
 						borderOpacity: 0.85,
 						borderWidth: 1,
-						cornerRadius: 999,
-					},
+						cornerRadius: 999
+					}
 				})
 			}
 
 			segmentsForSpec.push({
 				startFrame: computeFrameFromMs(sMs),
 				endFrame: computeFrameFromMs(Math.max(sMs, eMs)),
-				title: title || `段落${i + 1}`,
+				title: title || `段落${i + 1}`
 			})
 			playedKeyframes.push({ frame: computeFrameFromMs(sMs), width: startPx })
 		}
@@ -1084,15 +1123,24 @@ const generateProgressBarLayer = async () => {
 			name: 'Played Overlay',
 			category: 'user',
 			userType: 'rect',
-			transform: { x: barLeftLocalX, y: 0, width: 0, height: barH, rotation: 0, opacity: 1, pivotX: 0, pivotY: 0.5 },
+			transform: {
+				x: barLeftLocalX,
+				y: 0,
+				width: 0,
+				height: barH,
+				rotation: 0,
+				opacity: 1,
+				pivotX: 0,
+				pivotY: 0.5
+			},
 			props: {
 				fillColor: fg,
 				fillOpacity: 0.28,
 				borderColor: fg,
 				borderOpacity: 0,
 				borderWidth: 0,
-				cornerRadius: 0,
-			},
+				cornerRadius: 0
+			}
 		}
 		const root: LooseSceneNode = {
 			id: rootId,
@@ -1106,14 +1154,9 @@ const generateProgressBarLayer = async () => {
 				borderColor: fg,
 				borderOpacity: 0.45,
 				borderWidth: 2,
-				cornerRadius: 0,
+				cornerRadius: 0
 			},
-			children: [
-				...segmentRectChildren,
-				playedOverlayChild,
-				...markerChildren,
-				...titleChildren,
-			],
+			children: [...segmentRectChildren, playedOverlayChild, ...markerChildren, ...titleChildren]
 		}
 
 		await store.dispatch('addNodeTree', { node: root, layerId })
@@ -1129,11 +1172,11 @@ const generateProgressBarLayer = async () => {
 						textColor: text,
 						marker: { shape: 'circle', size: 6, color: fg, borderColor: fg },
 						playedOverlayColor: fg,
-						playedOverlayBorderColor: fg,
+						playedOverlayBorderColor: fg
 					},
 					segments: segmentsForSpec,
-					nodeIds: { rootId, playedOverlayId: playedId, segmentIds, titleIds, markerIds },
-				},
+					nodeIds: { rootId, playedOverlayId: playedId, segmentIds, titleIds, markerIds }
+				}
 			})
 		} catch {
 			// ignore
@@ -1158,8 +1201,8 @@ const generateProgressBarLayer = async () => {
 				startFrame: f,
 				endFrame: f,
 				nodesById: {
-					[playedId]: { transform: { x: barLeftLocalX, width: keyframesMap.get(f) ?? 0 } },
-				},
+					[playedId]: { transform: { x: barLeftLocalX, width: keyframesMap.get(f) ?? 0 } }
+				}
 			})
 		}
 		for (let i = 0; i + 1 < frames.length; i++) {
@@ -1169,19 +1212,31 @@ const generateProgressBarLayer = async () => {
 			await TimelineStore.dispatch('enableEasingSegment', { layerId, startFrame: a, endFrame: b })
 			await TimelineStore.dispatch('setEasingCurve', {
 				segmentKey: `${layerId}:${a}:${b}`,
-				curve: { x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' },
+				curve: { x1: 0, y1: 0, x2: 1, y2: 1, preset: 'linear' }
 			})
 		}
 
 		const layersForSnapshot = buildLayersForStageSnapshot()
-		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: 0, endFrame: 0, layers: layersForSnapshot })
-		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: endFrame, endFrame: endFrame, layers: layersForSnapshot })
+		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
+			startFrame: 0,
+			endFrame: 0,
+			layers: layersForSnapshot
+		})
+		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
+			startFrame: endFrame,
+			endFrame: endFrame,
+			layers: layersForSnapshot
+		})
 
 		await store.dispatch('setSelectedNode', { nodeId: rootId })
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e)
 		errorText.value = msg
-		messages.value.push({ id: `e-${Date.now()}`, role: 'assistant', text: `生成进度条失败：${msg}` })
+		messages.value.push({
+			id: `e-${Date.now()}`,
+			role: 'assistant',
+			text: `生成进度条失败：${msg}`
+		})
 	} finally {
 		localBusy.value = false
 		localBusyLabel.value = ''
@@ -1209,7 +1264,6 @@ const syncSummaryNarrative = (assistantId: string) => {
 	void scrollToBottom()
 }
 
-
 type PanelPatchTarget = 'style' | 'templates' | 'both' | 'none'
 
 const handleAgentMsg = (
@@ -1229,8 +1283,10 @@ const handleAgentMsg = (
 			if (!summaryReady.value) summaryReady.value = true
 			if (phase.value === 'summarizing') phase.value = 'ready'
 			statusText.value = '字幕整体理解完成'
-			summaryChatIntro.value = '字幕整体理解已生成（段落标题生成中…）。你可以先继续提问，或先生成配色/组件建议。'
-			if (typeof progressAssistantId.value === 'string' && progressAssistantId.value) syncSummaryNarrative(progressAssistantId.value)
+			summaryChatIntro.value =
+				'字幕整体理解已生成（段落标题生成中…）。你可以先继续提问，或先生成配色/组件建议。'
+			if (typeof progressAssistantId.value === 'string' && progressAssistantId.value)
+				syncSummaryNarrative(progressAssistantId.value)
 		}
 		{
 			const text = typeof msg === 'string' && msg.trim() ? msg.trim() : String(ph ?? '').trim()
@@ -1254,32 +1310,49 @@ const handleAgentMsg = (
 		const data: unknown = payload.data
 		if (typeof section === 'string' && section.trim()) {
 			const applyToSummary = opts.applyToSummary !== false
-			if (applyToSummary) summary.value = applySubtitleSummaryDelta(summary.value, { section, data })
+			if (applyToSummary)
+				summary.value = applySubtitleSummaryDelta(summary.value, { section, data })
 			if (opts.target === 'summary' && section === 'understanding') {
 				const s = safeGetString(data, 'summary').trim()
 				if (s && phase.value === 'summarizing') {
 					if (!summaryReady.value) summaryReady.value = true
 					phase.value = 'ready'
 					statusText.value = '字幕整体理解完成'
-					summaryChatIntro.value = '字幕整体理解已生成（段落标题生成中…）。你可以先继续提问，或先生成配色/组件建议。'
+					summaryChatIntro.value =
+						'字幕整体理解已生成（段落标题生成中…）。你可以先继续提问，或先生成配色/组件建议。'
 				}
 			}
-			if (opts.target === 'summary' && typeof progressAssistantId.value === 'string' && progressAssistantId.value) {
+			if (
+				opts.target === 'summary' &&
+				typeof progressAssistantId.value === 'string' &&
+				progressAssistantId.value
+			) {
 				syncSummaryNarrative(progressAssistantId.value)
 			}
 			if (opts.target === 'chat' && typeof opts.assistantId === 'string' && opts.assistantId) {
 				if (section === 'understanding') {
 					const s = safeGetString(data, 'summary').trim()
-					const pts = safeGetArray(data, 'points', (x): x is string => typeof x === 'string' && !!x.trim()).map(x => x.trim())
+					const pts = safeGetArray(
+						data,
+						'points',
+						(x): x is string => typeof x === 'string' && !!x.trim()
+					).map((x) => x.trim())
 					let out = ''
 					if (s) out += `【字幕整体理解】\n${s}\n`
 					if (pts.length) out += `\n【要点】\n${pts.map((x) => `- ${x}`).join('\n')}\n`
 					if (out) appendAssistantText(opts.assistantId, out + '\n')
 				}
 				if (section === 'style') {
-					const notes = safeGetArray(data, 'notes', (x): x is string => typeof x === 'string' && !!x.trim()).map(x => x.trim())
+					const notes = safeGetArray(
+						data,
+						'notes',
+						(x): x is string => typeof x === 'string' && !!x.trim()
+					).map((x) => x.trim())
 					if (notes.length) {
-						appendAssistantText(opts.assistantId, `【配色与风格建议】\n${notes.map((x) => `- ${x}`).join('\n')}\n\n`)
+						appendAssistantText(
+							opts.assistantId,
+							`【配色与风格建议】\n${notes.map((x) => `- ${x}`).join('\n')}\n\n`
+						)
 					}
 				}
 				if (section === 'templates') {
@@ -1290,7 +1363,11 @@ const handleAgentMsg = (
 							const name = safeGetString(t, 'name').trim()
 							const tid = safeGetString(t, 'templateId').trim()
 							lines.push(`- ${name || tid || '（未命名）'}${tid ? `（${tid}）` : ''}`)
-							const desc = safeGetArray(t, 'description', (x): x is string => typeof x === 'string' && !!x.trim())
+							const desc = safeGetArray(
+								t,
+								'description',
+								(x): x is string => typeof x === 'string' && !!x.trim()
+							)
 							for (const d of desc.slice(0, 4)) if (d.trim()) lines.push(`  - ${d.trim()}`)
 						}
 						appendAssistantText(opts.assistantId, lines.join('\n') + '\n\n')
@@ -1323,7 +1400,7 @@ const handleAgentMsg = (
 								role: 'assistant',
 								text: tipText,
 								paletteEntries: entries,
-								styleData: { palette },
+								styleData: { palette }
 							})
 							void scrollToBottom()
 						}
@@ -1342,7 +1419,9 @@ const handleAgentMsg = (
 		const targetId =
 			opts.target === 'chat' && typeof opts.assistantId === 'string' && opts.assistantId
 				? opts.assistantId
-				: opts.target === 'summary' && typeof progressAssistantId.value === 'string' && progressAssistantId.value
+				: opts.target === 'summary' &&
+					  typeof progressAssistantId.value === 'string' &&
+					  progressAssistantId.value
 					? progressAssistantId.value
 					: ''
 		if (targetId) pushStreamText(targetId, readable)
@@ -1356,7 +1435,10 @@ const handleAgentMsg = (
 		const panelPatch: unknown = requiresApply ? meta?.panelPatch : null
 		const panelPatchTargetRaw = String(meta?.panelPatchTarget || '').trim()
 		const panelPatchTarget: PanelPatchTarget =
-			panelPatchTargetRaw === 'style' || panelPatchTargetRaw === 'templates' || panelPatchTargetRaw === 'both' || panelPatchTargetRaw === 'none'
+			panelPatchTargetRaw === 'style' ||
+			panelPatchTargetRaw === 'templates' ||
+			panelPatchTargetRaw === 'both' ||
+			panelPatchTargetRaw === 'none'
 				? panelPatchTargetRaw
 				: 'none'
 		const safeContent = extractReadableText(c)
@@ -1383,8 +1465,11 @@ const handleAgentMsg = (
 			id,
 			role: 'assistant',
 			text: '',
-			panelPatch: panelPatch && typeof panelPatch === 'object' ? (panelPatch as { style?: unknown; templates?: unknown }) : undefined,
-			panelPatchTarget,
+			panelPatch:
+				panelPatch && typeof panelPatch === 'object'
+					? (panelPatch as { style?: unknown; templates?: unknown })
+					: undefined,
+			panelPatchTarget
 		})
 		pushStreamText(id, safeContent)
 		return
@@ -1442,7 +1527,10 @@ const extractReadableText = (raw: string): string => {
 
 	// Fast path: exact JSON object/array.
 	// If it is JSON but not a known envelope, hide it to prevent leaking raw JSON into the UI.
-	if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+	if (
+		(trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+		(trimmed.startsWith('[') && trimmed.endsWith(']'))
+	) {
 		const obj = tryParse(trimmed)
 		if (obj) return extractReadableTextFromAgentJson(obj) ?? ''
 	}
@@ -1510,10 +1598,10 @@ const repairComponentTemplate = (input: unknown, fallbackId: string): RepairTemp
 			boolean: 'boolean',
 			color: 'color',
 			hex: 'color',
-			'image': 'asset:image',
-			'asset:image': 'asset:image',
+			image: 'asset:image',
+			'asset:image': 'asset:image'
 		}
-		const mappedType = rawType ? (typeMap[rawType.toLowerCase()] || rawType) : ''
+		const mappedType = rawType ? typeMap[rawType.toLowerCase()] || rawType : ''
 		const okTypes = new Set(['string', 'number', 'boolean', 'color', 'asset:image'])
 		const finalType = okTypes.has(mappedType) ? mappedType : 'string'
 		nextParams.push({ ...p, key, type: finalType })
@@ -1643,11 +1731,14 @@ const normalizeToHex6 = (input: string): string | null => {
 		const r = s0[1]
 		const g = s0[2]
 		const b = s0[3]
-		return (`#${r}${r}${g}${g}${b}${b}`).toUpperCase()
+		return `#${r}${r}${g}${g}${b}${b}`.toUpperCase()
 	}
-	const m = s0.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([\d.]+))?\s*\)$/i)
+	const m = s0.match(
+		/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([\d.]+))?\s*\)$/i
+	)
 	if (m) {
-		const toHex2 = (n: number) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0').toUpperCase()
+		const toHex2 = (n: number) =>
+			Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0').toUpperCase()
 		return `#${toHex2(parseInt(m[1], 10))}${toHex2(parseInt(m[2], 10))}${toHex2(parseInt(m[3], 10))}`
 	}
 	// Try resolving named colors / CSS vars in browser.
@@ -1657,9 +1748,12 @@ const normalizeToHex6 = (input: string): string | null => {
 		document.body.appendChild(el)
 		const c = getComputedStyle(el).color
 		document.body.removeChild(el)
-		const mm = c.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([\d.]+))?\s*\)$/i)
+		const mm = c.match(
+			/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([\d.]+))?\s*\)$/i
+		)
 		if (!mm) return null
-		const toHex2 = (n: number) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0').toUpperCase()
+		const toHex2 = (n: number) =>
+			Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0').toUpperCase()
 		return `#${toHex2(parseInt(mm[1], 10))}${toHex2(parseInt(mm[2], 10))}${toHex2(parseInt(mm[3], 10))}`
 	} catch {
 		return null
@@ -1677,8 +1771,8 @@ const buildPreviewContextPack = (activeLayerId: string) => {
 		lastStageOps: [],
 		subtitleSummary: {
 			style: summary.value.style,
-			outline: summary.value.outline,
-		},
+			outline: summary.value.outline
+		}
 	}
 }
 
@@ -1693,15 +1787,22 @@ const buildPreviewPromptInput = (t: TemplateItem) => {
 		const out: string[] = []
 		const cat = String(t.category || '').trim()
 		const sum = String(summary.value.understanding?.summary || '').trim()
-		out.push(`结构：用一个容器矩形(root)+标题文本+正文/要点文本+分割线组成${cat ? '，偏' + cat : ''}`)
+		out.push(
+			`结构：用一个容器矩形(root)+标题文本+正文/要点文本+分割线组成${cat ? '，偏' + cat : ''}`
+		)
 		out.push('布局：标题在上方，内容在下方；可选左侧色条或右侧图片占位')
 		if (sum) out.push(`主题：围绕“${sum.slice(0, 40)}”选择主色与强调色`)
-		out.push('配色：若提供 palette，则只使用给定 palette（background/text/primary/accent/neutral）绑定到 fill/border/font/line')
+		out.push(
+			'配色：若提供 palette，则只使用给定 palette（background/text/primary/accent/neutral）绑定到 fill/border/font/line'
+		)
 		out.push('滤镜：边框/线条/标题字体至少一处添加 glow（可辅以轻微 blur）')
 		return out
 	})()
 	const finalDesc = descLines.length ? descLines : fallbackDesc
-	const paletteMap = summary.value.style?.palette && typeof summary.value.style.palette === 'object' ? summary.value.style.palette : {}
+	const paletteMap =
+		summary.value.style?.palette && typeof summary.value.style.palette === 'object'
+			? summary.value.style.palette
+			: {}
 	const paletteWhitelist = (() => {
 		const ok = new Set<string>()
 		for (const [, v] of paletteEntries.value) {
@@ -1721,13 +1822,20 @@ const buildPreviewPromptInput = (t: TemplateItem) => {
 		palette: hasPalette ? paletteWhitelist : undefined,
 		paletteMap,
 		paletteLocked: hasPalette,
-		requireGlow: true,
+		requireGlow: true
 	}
 }
 
 const handlePreviewAgentMsg = async (
 	m: AgentToUiMessage,
-	opts: { assistantId: string; layerId: string; templateId: string; templateName?: string; sampleTitle?: string; sampleText?: string }
+	opts: {
+		assistantId: string
+		layerId: string
+		templateId: string
+		templateName?: string
+		sampleTitle?: string
+		sampleText?: string
+	}
 ) => {
 	if (m.type === 'agentToUi/taskStatus') {
 		const mRecord = isRecord(m) ? m : {}
@@ -1776,8 +1884,10 @@ const handlePreviewAgentMsg = async (
 	if (m.type === 'agentToUi/componentTemplate') {
 		taskPhase.value = 'self_check'
 		statusText.value = '自检：检查唯一 root 与可保存要求…'
-		const checkMsgId = opts.assistantId || pushAssistantMsg('自检中：检查唯一root根组件、模板结构可保存…')
-		if (opts.assistantId) appendAssistantText(checkMsgId, '自检中：检查唯一root根组件、模板结构可保存…')
+		const checkMsgId =
+			opts.assistantId || pushAssistantMsg('自检中：检查唯一root根组件、模板结构可保存…')
+		if (opts.assistantId)
+			appendAssistantText(checkMsgId, '自检中：检查唯一root根组件、模板结构可保存…')
 
 		const mRecord = isRecord(m) ? m : {}
 		const payload = safeGetRecord(mRecord, 'payload')
@@ -1794,21 +1904,35 @@ const handlePreviewAgentMsg = async (
 
 		const validated = validateComponentTemplate(repaired as unknown as ComponentTemplate)
 		if (!validated.ok) throw new Error(`ComponentTemplate invalid: ${validated.errors.join('; ')}`)
-		generatedTemplateById.value = { ...generatedTemplateById.value, [opts.templateId]: validated.value }
+		generatedTemplateById.value = {
+			...generatedTemplateById.value,
+			[opts.templateId]: validated.value
+		}
 
 		const params = buildDefaultTemplateParams(validated.value, {
 			title: String(opts.templateName || validated.value?.name || opts.templateId || '').trim(),
 			subtitle: String(opts.sampleTitle || '').trim(),
 			body: String(opts.sampleText || '').trim(),
-			text: String(opts.sampleText || '').trim(),
+			text: String(opts.sampleText || '').trim()
 		})
-		const rootId = await instantiateIntoLayerWithParams(opts.layerId, validated.value, params as Record<string, JsonValue>)
-		previewRootIdByTemplateId.value = { ...previewRootIdByTemplateId.value, [opts.templateId]: rootId }
+		const rootId = await instantiateIntoLayerWithParams(
+			opts.layerId,
+			validated.value,
+			params as Record<string, JsonValue>
+		)
+		previewRootIdByTemplateId.value = {
+			...previewRootIdByTemplateId.value,
+			[opts.templateId]: rootId
+		}
 		const f = Math.max(0, Math.floor(TimelineStore.state.currentFrame ?? 0))
 		await setOpacityKeyframes(opts.layerId, rootId, [{ frame: f, opacity: 1 }])
 		try {
 			const layersForSnapshot = buildLayersForStageSnapshot()
-			await TimelineStore.dispatch('setStageKeyframeSnapshotRange', { startFrame: f, endFrame: f, layers: layersForSnapshot })
+			await TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
+				startFrame: f,
+				endFrame: f,
+				layers: layersForSnapshot
+			})
 		} catch {
 			// ignore snapshot failures
 		}
@@ -1875,7 +1999,8 @@ const startUnderstanding = async () => {
 	summary.value = createEmptySubtitleSummaryState()
 	draft.value = ''
 	summaryChatIntro.value = `我正在读取字幕并生成“字幕整体理解”（共 ${cues.value?.length || 0} 段）…`
-	if (typeof progressAssistantId.value === 'string' && progressAssistantId.value) syncSummaryNarrative(progressAssistantId.value)
+	if (typeof progressAssistantId.value === 'string' && progressAssistantId.value)
+		syncSummaryNarrative(progressAssistantId.value)
 
 	try {
 		for await (const ev of service.streamUnderstand({
@@ -1883,7 +2008,7 @@ const startUnderstanding = async () => {
 			cues: cues.value,
 			cueRanges: cueRanges.value,
 			scope: 'overall',
-			signal: understandAborter.signal,
+			signal: understandAborter.signal
 		})) {
 			if (ev.type === 'msg') {
 				handleAgentMsg(ev.message, { target: 'summary' })
@@ -1902,8 +2027,10 @@ const startUnderstanding = async () => {
 		summaryReady.value = true
 		phase.value = 'ready'
 		statusText.value = '字幕整体理解完成'
-		summaryChatIntro.value = '字幕整体理解已生成。你可以在右侧继续提问，或在左侧逐步生成配色/组件建议。'
-		if (typeof progressAssistantId.value === 'string' && progressAssistantId.value) syncSummaryNarrative(progressAssistantId.value)
+		summaryChatIntro.value =
+			'字幕整体理解已生成。你可以在右侧继续提问，或在左侧逐步生成配色/组件建议。'
+		if (typeof progressAssistantId.value === 'string' && progressAssistantId.value)
+			syncSummaryNarrative(progressAssistantId.value)
 		saveSummaryCache(layerId)
 	} catch (e) {
 		if (understandAborter.signal.aborted) return
@@ -1925,7 +2052,11 @@ const generateStyleAdvice = async () => {
 	localBusyLabel.value = '生成配色建议'
 	statusText.value = '生成配色与风格建议…'
 
-	messages.value.push({ id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`, role: 'user', text: '生成配色与风格建议' })
+	messages.value.push({
+		id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+		role: 'user',
+		text: '生成配色与风格建议'
+	})
 	await scrollToBottom()
 	const assistantId = pushAssistantMsg('')
 	await scrollToBottom()
@@ -1937,7 +2068,7 @@ const generateStyleAdvice = async () => {
 		for await (const ev of service.streamStyleAdvice({
 			layerId,
 			understanding: summary.value.understanding ?? {},
-			signal: styleAborter.signal,
+			signal: styleAborter.signal
 		})) {
 			if (ev.type === 'msg') {
 				handleAgentMsg(ev.message, { target: 'chat', assistantId, applyToSummary: true })
@@ -1949,7 +2080,11 @@ const generateStyleAdvice = async () => {
 		statusText.value = '配色与风格建议已生成'
 	} catch (e) {
 		if (styleAborter.signal.aborted) return
-		messages.value.push({ id: `e-${Date.now()}`, role: 'assistant', text: e instanceof Error ? e.message : String(e) })
+		messages.value.push({
+			id: `e-${Date.now()}`,
+			role: 'assistant',
+			text: e instanceof Error ? e.message : String(e)
+		})
 	} finally {
 		localBusy.value = false
 		localBusyLabel.value = ''
@@ -1971,7 +2106,11 @@ const generateTemplateSuggestions = async () => {
 	localBusyLabel.value = '生成组件描述'
 	statusText.value = '生成可复用高级组件描述…'
 
-	messages.value.push({ id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`, role: 'user', text: '生成可复用高级组件描述' })
+	messages.value.push({
+		id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+		role: 'user',
+		text: '生成可复用高级组件描述'
+	})
 	await scrollToBottom()
 	const assistantId = pushAssistantMsg('')
 	await scrollToBottom()
@@ -1983,7 +2122,7 @@ const generateTemplateSuggestions = async () => {
 		for await (const ev of service.streamTemplateSuggestions({
 			layerId,
 			understanding: summary.value.understanding ?? {},
-			signal: templatesAborter.signal,
+			signal: templatesAborter.signal
 		})) {
 			if (ev.type === 'msg') {
 				handleAgentMsg(ev.message, { target: 'chat', assistantId, applyToSummary: true })
@@ -1995,7 +2134,11 @@ const generateTemplateSuggestions = async () => {
 		statusText.value = '组件描述已生成'
 	} catch (e) {
 		if (templatesAborter.signal.aborted) return
-		messages.value.push({ id: `e-${Date.now()}`, role: 'assistant', text: e instanceof Error ? e.message : String(e) })
+		messages.value.push({
+			id: `e-${Date.now()}`,
+			role: 'assistant',
+			text: e instanceof Error ? e.message : String(e)
+		})
 	} finally {
 		localBusy.value = false
 		localBusyLabel.value = ''
@@ -2014,7 +2157,11 @@ const sendText = async (text: string, opts?: { clearDraft?: boolean }) => {
 
 	if (opts?.clearDraft !== false) draft.value = ''
 
-	messages.value.push({ id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`, role: 'user', text: t })
+	messages.value.push({
+		id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+		role: 'user',
+		text: t
+	})
 	await scrollToBottom()
 
 	const layerId = props.layerId
@@ -2031,7 +2178,10 @@ const sendText = async (text: string, opts?: { clearDraft?: boolean }) => {
 	activeAssistantId.value = null
 
 	const requestMessages = messages.value
-		.filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string' && m.text.trim())
+		.filter(
+			(m) =>
+				(m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string' && m.text.trim()
+		)
 		.map((m) => ({ role: m.role, content: m.text }))
 
 	const assistantId = `a-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -2045,7 +2195,7 @@ const sendText = async (text: string, opts?: { clearDraft?: boolean }) => {
 			summary: summary.value,
 			messages: requestMessages,
 			deepMode: deepMode.value,
-			signal: chatAborter.signal,
+			signal: chatAborter.signal
 		})) {
 			if (ev.type === 'msg') {
 				handleAgentMsg(ev.message, { target: 'chat', assistantId })
@@ -2055,7 +2205,7 @@ const sendText = async (text: string, opts?: { clearDraft?: boolean }) => {
 				messages.value.push({
 					id: `e-${Date.now()}`,
 					role: 'assistant',
-					text: `请求失败：${ev.error.message}`,
+					text: `请求失败：${ev.error.message}`
 				})
 				break
 			}
@@ -2066,7 +2216,7 @@ const sendText = async (text: string, opts?: { clearDraft?: boolean }) => {
 		messages.value.push({
 			id: `e-${Date.now()}`,
 			role: 'assistant',
-			text: e instanceof Error ? e.message : String(e),
+			text: e instanceof Error ? e.message : String(e)
 		})
 	} finally {
 		if (!chatAborter?.signal.aborted) {
@@ -2107,21 +2257,34 @@ const applyPanelPatchFromMessage = async (m: ChatMessage) => {
 	try {
 		const stylePatch = safeGetRecord(patch, 'style')
 		if (stylePatch) {
-			summary.value = applySubtitleSummaryDelta(summary.value, { section: 'style', data: stylePatch })
+			summary.value = applySubtitleSummaryDelta(summary.value, {
+				section: 'style',
+				data: stylePatch
+			})
 		}
 		const templatesPatch = safeGetArray(patch, 'templates', isRecord)
 		if (templatesPatch) {
-			summary.value = applySubtitleSummaryDelta(summary.value, { section: 'templates', data: templatesPatch })
+			summary.value = applySubtitleSummaryDelta(summary.value, {
+				section: 'templates',
+				data: templatesPatch
+			})
 		}
 		m.applied = true
 		if (props.layerId) saveSummaryCache(props.layerId)
 		{
 			const t = m.panelPatchTarget
-			const what = t === 'both' ? '风格建议与组件描述' : t === 'style' ? '风格建议' : t === 'templates' ? '组件描述' : '修改'
+			const what =
+				t === 'both'
+					? '风格建议与组件描述'
+					: t === 'style'
+						? '风格建议'
+						: t === 'templates'
+							? '组件描述'
+							: '修改'
 			messages.value.push({
 				id: `a-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 				role: 'assistant',
-				text: `已应用${what}到左侧面板。`,
+				text: `已应用${what}到左侧面板。`
 			})
 		}
 	} finally {
@@ -2136,7 +2299,11 @@ const isRunning = (m: ChatMessage) => {
 	return m.role === 'assistant' && !!activeAssistantId.value && m.id === activeAssistantId.value
 }
 
-const showRunningBubble = computed(() => (phase.value === 'checking' || phase.value === 'summarizing' || localBusy.value) && messages.value.length === 0)
+const showRunningBubble = computed(
+	() =>
+		(phase.value === 'checking' || phase.value === 'summarizing' || localBusy.value) &&
+		messages.value.length === 0
+)
 
 const sendFromInput = async () => {
 	await sendText(draft.value, { clearDraft: true })
@@ -2158,7 +2325,7 @@ const generatePalette = async () => {
 		messages.value.push({
 			id: `a-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 			role: 'assistant',
-			text: '请先生成“配色与风格建议”，再生成配色预览。',
+			text: '请先生成“配色与风格建议”，再生成配色预览。'
 		})
 		await scrollToBottom()
 		return
@@ -2168,7 +2335,11 @@ const generatePalette = async () => {
 	localBusyLabel.value = '生成配色'
 	statusText.value = '生成配色…'
 	progressAssistantId.value = null
-	messages.value.push({ id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`, role: 'user', text: '生成配色预览' })
+	messages.value.push({
+		id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+		role: 'user',
+		text: '生成配色预览'
+	})
 	await scrollToBottom()
 	const assistantId = pushAssistantMsg('')
 	await scrollToBottom()
@@ -2181,9 +2352,12 @@ const generatePalette = async () => {
 		const nonceHint = `nonce=${nonce}（请以此作为随机种子，让每次生成的配色都不同）`
 		for await (const ev of service.streamPalette({
 			layerId,
-			summary: { understanding: summary.value.understanding ?? {}, style: summary.value.style ?? {} },
+			summary: {
+				understanding: summary.value.understanding ?? {},
+				style: summary.value.style ?? {}
+			},
 			text: nonceHint,
-			signal: paletteAborter.signal,
+			signal: paletteAborter.signal
 		})) {
 			if (ev.type === 'msg') {
 				handleAgentMsg(ev.message, { target: 'chat', assistantId, applyToSummary: true })
@@ -2253,18 +2427,15 @@ const loadComponentLibrary = (): SavedComponent[] => {
 				const xCreatedAt = safeGetString(x, 'createdAt')
 				const xName = safeGetString(x, 'name')
 				return {
-					id:
-						xId && xId.trim()
-							? xId
-							: `${xTemplateId || ''}::${xSavedAt || ''}`,
-					createdAt: xCreatedAt || (xSavedAt || new Date().toISOString()),
+					id: xId && xId.trim() ? xId : `${xTemplateId || ''}::${xSavedAt || ''}`,
+					createdAt: xCreatedAt || xSavedAt || new Date().toISOString(),
 					templateId: xTemplateId,
 					name: xName,
 					template: x.template as ComponentTemplate,
 					savedAt: xSavedAt || new Date().toISOString(),
 					thumbAssetId: safeGetString(x, 'thumbAssetId') || undefined,
 					thumbDataUrl: safeGetString(x, 'thumbDataUrl') || undefined,
-					thumbUrl: safeGetString(x, 'thumbUrl') || undefined,
+					thumbUrl: safeGetString(x, 'thumbUrl') || undefined
 				}
 			})
 			.filter((x: SavedComponent) => x.id && x.templateId && x.name)
@@ -2288,25 +2459,28 @@ const templateItems = computed((): TemplateItem[] => {
 	const list = Array.isArray(summary.value.templates) ? summary.value.templates : []
 	return list
 		.map((spec, idx) => {
-		const specRecord = isRecord(spec) ? spec : {}
-		const templateId = safeGetString(specRecord, 'templateId').trim() || `template-${idx + 1}`
-		const name = safeGetString(specRecord, 'name') || templateId
-		const key = `${templateId}__${idx}`
-		const rawDesc = safeGetArray(specRecord, 'description', isString)
-		const cleanedDesc = rawDesc
-			.map((x) => x.trim())
-			.filter((x) => !!x)
-			.slice(0, 12)
-		const category = safeGetString(specRecord, 'category') || undefined
-		const patchedSpec: SubtitleTemplateSuggestion = { ...spec as SubtitleTemplateSuggestion, description: cleanedDesc }
-		return {
-			key,
-			templateId,
-			name,
-			category,
-			spec: patchedSpec,
-			saved: !!savedComponentMap.value[key],
-		}
+			const specRecord = isRecord(spec) ? spec : {}
+			const templateId = safeGetString(specRecord, 'templateId').trim() || `template-${idx + 1}`
+			const name = safeGetString(specRecord, 'name') || templateId
+			const key = `${templateId}__${idx}`
+			const rawDesc = safeGetArray(specRecord, 'description', isString)
+			const cleanedDesc = rawDesc
+				.map((x) => x.trim())
+				.filter((x) => !!x)
+				.slice(0, 12)
+			const category = safeGetString(specRecord, 'category') || undefined
+			const patchedSpec: SubtitleTemplateSuggestion = {
+				...(spec as SubtitleTemplateSuggestion),
+				description: cleanedDesc
+			}
+			return {
+				key,
+				templateId,
+				name,
+				category,
+				spec: patchedSpec,
+				saved: !!savedComponentMap.value[key]
+			}
 		})
 		.filter((t) => Array.isArray(t.spec.description) && t.spec.description.length > 0)
 })
@@ -2376,28 +2550,44 @@ const saveTemplateAsComponent = async (t: TemplateItem, ev?: MouseEvent) => {
 	const createdAt = new Date().toISOString()
 	const id = `cmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
 	const uniqueName = makeUniqueName(t.name || t.templateId)
-	const baseTplId = isString(template?.templateId) && template.templateId.trim() ? template.templateId : t.templateId
+	const baseTplId =
+		isString(template?.templateId) && template.templateId.trim()
+			? template.templateId
+			: t.templateId
 	const uniqueTemplateId = makeUniqueTemplateId(baseTplId)
-	const savedTemplate: ComponentTemplate = { ...template, templateId: uniqueTemplateId, name: uniqueName }
+	const savedTemplate: ComponentTemplate = {
+		...template,
+		templateId: uniqueTemplateId,
+		name: uniqueName
+	}
 
 	let thumbAssetId: string | undefined
 	let thumbDataUrl: string | undefined
 	try {
 		const layerId = previewLayerByTemplateId.value[t.templateId]
-		const rootId = previewRootIdByTemplateId.value[t.templateId] || safeIdPart(`${t.templateId}:root`)
+		const rootId =
+			previewRootIdByTemplateId.value[t.templateId] || safeIdPart(`${t.templateId}:root`)
 		const dwebCanvas = dwebCanvasRef?.value ?? null
 		if (layerId && rootId && dwebCanvas) {
 			const layer = findLayer(store.state, layerId)
 			const root = layer ? findNode(layer.nodeTree ?? [], rootId) : null
 			const tr = isRecord(root) ? root.transform : undefined
-			if (isRecord(tr) && isNumber(tr.x) && isNumber(tr.y) && isNumber(tr.width) && isNumber(tr.height)) {
+			if (
+				isRecord(tr) &&
+				isNumber(tr.x) &&
+				isNumber(tr.y) &&
+				isNumber(tr.width) &&
+				isNumber(tr.height)
+			) {
 				const rotation = isNumber(tr.rotation) ? tr.rotation : 0
 				const corners = rotatedRectCorners(
 					{ x: tr.x, y: tr.y },
 					{ width: Math.max(1, tr.width), height: Math.max(1, tr.height) },
 					rotation
 				)
-				const pts = [corners.tl, corners.tr, corners.bl, corners.br].map((p) => dwebCanvas.worldToScreen(p))
+				const pts = [corners.tl, corners.tr, corners.bl, corners.br].map((p) =>
+					dwebCanvas.worldToScreen(p)
+				)
 				const xs = pts.map((p) => p.x)
 				const ys = pts.map((p) => p.y)
 				const minX = Math.min(...xs)
@@ -2414,15 +2604,20 @@ const saveTemplateAsComponent = async (t: TemplateItem, ev?: MouseEvent) => {
 					store.commit('upsertImageAsset', { id: thumbAssetId, url: thumbDataUrl, name: t.name })
 					const fromEl = (ev?.currentTarget as HTMLElement | null) ?? null
 					const fromRect = fromEl?.getBoundingClientRect?.()
-					const toEl = document.querySelector('[data-dvs="component-library-btn"]') as HTMLElement | null
+					const toEl = document.querySelector(
+						'[data-dvs="component-library-btn"]'
+					) as HTMLElement | null
 					const toRect = toEl?.getBoundingClientRect?.()
 					if (fromRect && toRect) {
 						void flyThumbnailPng({
 							dataUrl: thumbDataUrl,
-							from: { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 },
+							from: {
+								x: fromRect.left + fromRect.width / 2,
+								y: fromRect.top + fromRect.height / 2
+							},
 							to: { x: toRect.left + toRect.width / 2, y: toRect.top + toRect.height / 2 },
 							initialSize: { width: 160, height: 100 },
-							ms: 360,
+							ms: 360
 						})
 					}
 				}
@@ -2436,7 +2631,7 @@ const saveTemplateAsComponent = async (t: TemplateItem, ev?: MouseEvent) => {
 		messages.value.push({
 			id: `a-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 			role: 'assistant',
-			text: `已保存组件：${uniqueName}（templateId: ${uniqueTemplateId}）`,
+			text: `已保存组件：${uniqueName}（templateId: ${uniqueTemplateId}）`
 		})
 		await scrollToBottom()
 	} catch {
@@ -2451,7 +2646,7 @@ const saveTemplateAsComponent = async (t: TemplateItem, ev?: MouseEvent) => {
 		template: savedTemplate,
 		savedAt: new Date().toISOString(),
 		thumbAssetId,
-		thumbDataUrl,
+		thumbDataUrl
 	}
 	let finalSaved = saved
 	try {
@@ -2462,14 +2657,14 @@ const saveTemplateAsComponent = async (t: TemplateItem, ev?: MouseEvent) => {
 			thumbAssetId: saved.thumbAssetId,
 			thumbDataUrl: saved.thumbDataUrl,
 			clientId: saved.id,
-			createdAt: saved.createdAt,
+			createdAt: saved.createdAt
 		})
 		finalSaved = {
 			...saved,
 			id: res.item.id || saved.id,
 			createdAt: res.item.createdAt || saved.createdAt,
 			savedAt: res.item.savedAt || saved.savedAt,
-			thumbUrl: res.item.thumbUrl,
+			thumbUrl: res.item.thumbUrl
 		}
 	} catch {
 		// fallback to local storage only
@@ -2498,20 +2693,28 @@ const createTimelineAndStageLayer = async (name: string, opts?: { activate?: boo
 }
 
 const instantiateIntoLayer = async (layerId: string, template: ComponentTemplate) => {
-	const instantiated = componentTemplateApi.instantiateTemplate(template, {}, {
-		getNodeId: ({ templateId, localId }) => {
-			const base = safeIdPart(`${templateId}:${localId}`)
-			let id = base
-			let i = 1
-			while (nodeExistsInAnyLayer(store.state.layers, id)) id = `${base}__${i++}`
-			return id
-		},
-	})
+	const instantiated = componentTemplateApi.instantiateTemplate(
+		template,
+		{},
+		{
+			getNodeId: ({ templateId, localId }) => {
+				const base = safeIdPart(`${templateId}:${localId}`)
+				let id = base
+				let i = 1
+				while (nodeExistsInAnyLayer(store.state.layers, id)) id = `${base}__${i++}`
+				return id
+			}
+		}
+	)
 	await store.dispatch('addNodeTree', { node: instantiated.root, layerId })
 	return instantiated.root?.id as string
 }
 
-const instantiateIntoLayerWithParams = async (layerId: string, template: ComponentTemplate, params: Record<string, JsonValue>) => {
+const instantiateIntoLayerWithParams = async (
+	layerId: string,
+	template: ComponentTemplate,
+	params: Record<string, JsonValue>
+) => {
 	const instantiated = componentTemplateApi.instantiateTemplate(template, params ?? {}, {
 		getNodeId: ({ templateId, localId }) => {
 			const base = safeIdPart(`${templateId}:${localId}`)
@@ -2519,7 +2722,7 @@ const instantiateIntoLayerWithParams = async (layerId: string, template: Compone
 			let i = 1
 			while (nodeExistsInAnyLayer(store.state.layers, id)) id = `${base}__${i++}`
 			return id
-		},
+		}
 	})
 	await store.dispatch('addNodeTree', { node: instantiated.root, layerId })
 	return instantiated.root?.id as string
@@ -2537,7 +2740,10 @@ const collectSubtitleText = (startCue: number, endCue: number) => {
 	return out.join(' ')
 }
 
-const normalizeParamKey = (k: unknown) => String(k ?? '').trim().replace(/\s+/g, '')
+const normalizeParamKey = (k: unknown) =>
+	String(k ?? '')
+		.trim()
+		.replace(/\s+/g, '')
 
 const buildDefaultTemplateParams = (
 	template: ComponentTemplate,
@@ -2556,9 +2762,16 @@ const buildDefaultTemplateParams = (
 		const nk = normalizeParamKey(key).toLowerCase()
 		if (params[key] !== undefined) continue
 
-		if (nk === 'title' || nk.endsWith('.title') || nk.includes('title')) params[key] = title || subtitle || 'Title'
+		if (nk === 'title' || nk.endsWith('.title') || nk.includes('title'))
+			params[key] = title || subtitle || 'Title'
 		else if (nk === 'subtitle' || nk.includes('sub')) params[key] = subtitle || ''
-		else if (nk === 'body' || nk === 'text' || nk === 'content' || nk.includes('desc') || nk.includes('summary'))
+		else if (
+			nk === 'body' ||
+			nk === 'text' ||
+			nk === 'content' ||
+			nk.includes('desc') ||
+			nk.includes('summary')
+		)
 			params[key] = body || text || ''
 		else if (it?.default !== undefined) params[key] = it.default
 	}
@@ -2577,16 +2790,24 @@ const appendAssistantText = (assistantId: string, delta: string) => {
 	pushStreamText(assistantId, delta)
 }
 
-const setOpacityKeyframes = async (layerId: string, nodeId: string, frames: Array<{ frame: number; opacity: number }>) => {
+const setOpacityKeyframes = async (
+	layerId: string,
+	nodeId: string,
+	frames: Array<{ frame: number; opacity: number }>
+) => {
 	for (const it of frames) {
-		await TimelineStore.dispatch('addKeyframeRange', { layerId, startFrame: it.frame, endFrame: it.frame })
+		await TimelineStore.dispatch('addKeyframeRange', {
+			layerId,
+			startFrame: it.frame,
+			endFrame: it.frame
+		})
 		await TimelineStore.dispatch('setNodeKeyframeSnapshotRange', {
 			layerId,
 			startFrame: it.frame,
 			endFrame: it.frame,
 			nodesById: {
-				[nodeId]: { transform: { opacity: it.opacity } },
-			},
+				[nodeId]: { transform: { opacity: it.opacity } }
+			}
 		})
 	}
 }
@@ -2602,7 +2823,7 @@ const previewTemplate = async (t: TemplateItem) => {
 	messages.value.push({
 		id: `u-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 		role: 'user',
-		text: `生成预览：${t.name}`,
+		text: `生成预览：${t.name}`
 	})
 	await scrollToBottom()
 	const assistantId = pushAssistantMsg('正在创建预览图层…\n')
@@ -2634,7 +2855,9 @@ const previewTemplate = async (t: TemplateItem) => {
 		if (import.meta.env.DEV) {
 			try {
 				const w = window as unknown as Record<string, unknown>
-				const baseUrlOverride = isString(w.__DWEB_BACKEND_BASE_URL) ? w.__DWEB_BACKEND_BASE_URL : undefined
+				const baseUrlOverride = isString(w.__DWEB_BACKEND_BASE_URL)
+					? w.__DWEB_BACKEND_BASE_URL
+					: undefined
 				const baseUrlStorage = window.localStorage.getItem('dweb.backendBaseUrl')
 				const paletteArr = isArray(promptInput.palette, isString) ? promptInput.palette : []
 				// eslint-disable-next-line no-console
@@ -2643,7 +2866,11 @@ const previewTemplate = async (t: TemplateItem) => {
 					paletteCount: paletteArr.length,
 					paletteLocked: promptInput.paletteLocked,
 					requireGlow: promptInput.requireGlow,
-				backendBaseUrl: baseUrlOverride || import.meta.env.VITE_BACKEND_BASE_URL || baseUrlStorage || '(same-origin/proxy)',
+					backendBaseUrl:
+						baseUrlOverride ||
+						import.meta.env.VITE_BACKEND_BASE_URL ||
+						baseUrlStorage ||
+						'(same-origin/proxy)'
 				})
 			} catch {
 				// ignore
@@ -2660,7 +2887,7 @@ const previewTemplate = async (t: TemplateItem) => {
 			promptInput,
 			contextPack: buildPreviewContextPack(layerId),
 			debug: true,
-			signal: aborter.signal,
+			signal: aborter.signal
 		})) {
 			if (import.meta.env.DEV) {
 				// eslint-disable-next-line no-console
@@ -2678,7 +2905,7 @@ const previewTemplate = async (t: TemplateItem) => {
 						console.log('[template:stream GOT componentTemplate]', {
 							templateId: tpl ? safeGetString(tpl, 'templateId') : undefined,
 							rootLocalId: tpl ? safeGetString(tpl, 'rootLocalId') : undefined,
-							nodeCount: tpl ? safeGetArray(tpl, 'nodes', isRecord).length : undefined,
+							nodeCount: tpl ? safeGetArray(tpl, 'nodes', isRecord).length : undefined
 						})
 					} catch {
 						// ignore
@@ -2690,7 +2917,7 @@ const previewTemplate = async (t: TemplateItem) => {
 					templateId: t.templateId,
 					templateName: t.name,
 					sampleTitle,
-					sampleText,
+					sampleText
 				})
 				continue
 			}
@@ -2720,7 +2947,6 @@ const previewTemplate = async (t: TemplateItem) => {
 		activeAssistantId.value = null
 	}
 }
-
 
 watch(
 	() => props.layerId,
@@ -2754,762 +2980,762 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .vs-ai {
-  flex: 1 1 auto;
-  display: flex;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-  padding: 10px;
+	flex: 1 1 auto;
+	display: flex;
+	gap: 10px;
+	min-width: 0;
+	min-height: 0;
+	padding: 10px;
 }
 
 .vs-ai-left {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
 }
 
 .vs-ai-right {
-  flex: 0 0 280px;
-  min-width: 240px;
-  max-width: 360px;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  position: relative;
+	flex: 0 0 280px;
+	min-width: 240px;
+	max-width: 360px;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	position: relative;
 }
 
 /* Chat styles aligned with AIChatDialog */
 .ai-chat__title {
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 10px;
-  background: var(--dweb-defualt-dark);
-  border-bottom: 1px solid var(--vscode-border);
-  cursor: default;
+	height: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 10px;
+	background: var(--dweb-defualt-dark);
+	border-bottom: 1px solid var(--vscode-border);
+	cursor: default;
 }
 
 .vs-ai-md-sec-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 }
 
 .ai-chat__title-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
 }
 
 .ai-chat__title-text {
-  font-size: 12px;
-  font-weight: 600;
+	font-size: 12px;
+	font-weight: 600;
 }
 
 .ai-chat__title-status {
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
-  white-space: nowrap;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	white-space: nowrap;
 }
 
 .ai-chat__title-actions {
-  display: flex;
-  gap: 6px;
+	display: flex;
+	gap: 6px;
 }
 
 .ai-chat__icon {
-  width: 26px;
-  height: 24px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
+	width: 26px;
+	height: 24px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	font-size: 14px;
+	line-height: 1;
 }
 
 .ai-chat__icon:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__body {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
 }
 
 .ai-chat__list {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  z-index: 2;
-  overflow: auto;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	flex: 1;
+	min-height: 0;
+	position: relative;
+	z-index: 2;
+	overflow: auto;
+	padding: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .ai-chat__msg {
-  display: flex;
+	display: flex;
 }
 
 .ai-chat__msg.user {
-  justify-content: flex-end;
+	justify-content: flex-end;
 }
 
 .ai-chat__msg.assistant {
-  justify-content: flex-start;
+	justify-content: flex-start;
 }
 
 .ai-chat__bubble {
-  max-width: 90%;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  border-radius: 0;
-  padding: 8px 10px;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
+	max-width: 90%;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	border-radius: 0;
+	padding: 8px 10px;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 
 .ai-chat__msg.user .ai-chat__bubble {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__msg.assistant .ai-chat__bubble {
-  border-color: var(--vscode-border);
+	border-color: var(--vscode-border);
 }
 
 .ai-chat__role {
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
-  margin-bottom: 4px;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	margin-bottom: 4px;
 }
 
 .ai-chat__text {
-  white-space: pre-wrap;
-  word-break: break-word;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 
 .ai-chat__phase {
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
+	margin-top: 6px;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
 }
 
 .ai-chat__typing {
-  height: 16px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
 }
 
 .ai-chat__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--vscode-fg-muted);
-  opacity: 0.25;
-  animation: ai-chat-dot 900ms infinite ease-in-out;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--vscode-fg-muted);
+	opacity: 0.25;
+	animation: ai-chat-dot 900ms infinite ease-in-out;
 }
 
 .ai-chat__dot:nth-child(2) {
-  animation-delay: 150ms;
+	animation-delay: 150ms;
 }
 
 .ai-chat__dot:nth-child(3) {
-  animation-delay: 300ms;
+	animation-delay: 300ms;
 }
 
 @keyframes ai-chat-dot {
-  0%,
-  100% {
-    opacity: 0.25;
-  }
-  50% {
-    opacity: 1;
-  }
+	0%,
+	100% {
+		opacity: 0.25;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 .ai-chat__input {
-  height: 44px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 8px;
-  border-top: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
+	height: 44px;
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	padding: 8px;
+	border-top: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
 }
 
 .ai-chat__text-input {
-  flex: 1;
-  min-width: 0;
-  height: 28px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  padding: 0 10px;
-  font-size: 12px;
+	flex: 1;
+	min-width: 0;
+	height: 28px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	padding: 0 10px;
+	font-size: 12px;
 }
 
 .ai-chat__text-input:focus {
-  outline: none;
-  border-color: var(--vscode-border-accent);
+	outline: none;
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__send {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  font-size: 12px;
+	height: 28px;
+	padding: 0 10px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	font-size: 12px;
 }
 
 .ai-chat__send:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .vs-ai-thought {
-  flex: 0 0 auto;
-  border-top: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  padding: 8px;
-  max-height: 160px;
-  overflow: auto;
+	flex: 0 0 auto;
+	border-top: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	padding: 8px;
+	max-height: 160px;
+	overflow: auto;
 }
 
 .vs-ai-thought-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 8px;
 }
 
 .vs-ai-thought-title {
-  font-size: 12px;
-  opacity: 0.8;
+	font-size: 12px;
+	opacity: 0.8;
 }
 
 .vs-ai-thought-close {
-  width: 24px;
-  height: 24px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  line-height: 1;
+	width: 24px;
+	height: 24px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	line-height: 1;
 }
 
 .vs-ai-thought-close:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .vs-ai-thought-body {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
-  line-height: 1.35;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-size: 12px;
+	line-height: 1.35;
 }
 .vs-ai-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--vscode-border);
+	flex: 0 0 auto;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	padding: 8px 10px;
+	border-bottom: 1px solid var(--vscode-border);
 }
 
 .vs-ai-status {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
 }
 
 .vs-ai-status-text {
-  font-size: 12px;
-  color: var(--vscode-fg-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 220px;
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 220px;
 }
 
 .vs-ai-spinner {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  border: 2px solid var(--vscode-border);
-  border-top-color: var(--vscode-border-accent);
-  animation: vs-ai-spin 900ms linear infinite;
-  flex: 0 0 auto;
+	width: 12px;
+	height: 12px;
+	border-radius: 999px;
+	border: 2px solid var(--vscode-border);
+	border-top-color: var(--vscode-border-accent);
+	animation: vs-ai-spin 900ms linear infinite;
+	flex: 0 0 auto;
 }
 
 @keyframes vs-ai-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .vs-ai-error {
-  border-bottom: 1px solid var(--vscode-border);
-  padding: 8px 10px;
-  font-size: 12px;
-  color: var(--vscode-error);
+	border-bottom: 1px solid var(--vscode-border);
+	padding: 8px 10px;
+	font-size: 12px;
+	color: var(--vscode-error);
 }
 
 .vs-ai-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
+	font-size: 12px;
+	color: var(--vscode-fg);
 }
 
 .vs-ai-meta {
-  font-size: 12px;
-  color: var(--vscode-fg-muted);
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
 }
 
 .vs-ai-mdview {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  padding: 10px;
-  color: var(--vscode-fg);
-  font-size: 12px;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 10px;
+	color: var(--vscode-fg);
+	font-size: 12px;
 }
 
 .vs-ai-md-empty {
-  color: var(--vscode-fg-muted);
-  font-size: 12px;
+	color: var(--vscode-fg-muted);
+	font-size: 12px;
 }
 
 .vs-ai-md-sec {
-  border: 1px solid var(--vscode-border);
-  border-radius: 8px;
-  padding: 10px;
-  margin-bottom: 10px;
+	border: 1px solid var(--vscode-border);
+	border-radius: 8px;
+	padding: 10px;
+	margin-bottom: 10px;
 }
 
 .vs-ai-md-sec-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
-  margin-bottom: 6px;
+	font-size: 12px;
+	color: var(--vscode-fg);
+	margin-bottom: 6px;
 }
 
 .vs-ai-understanding-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+	line-height: 1.5;
 }
 
 .vs-ai-understanding-points {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+	margin-top: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
 }
 
 .vs-ai-understanding-point {
-  color: var(--vscode-fg);
-  white-space: pre-wrap;
+	color: var(--vscode-fg);
+	white-space: pre-wrap;
 }
 
 .vs-ai-lib {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
 }
 
 .vs-ai-lib-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
 }
 
 .vs-ai-lib-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  border: 1px solid var(--vscode-border);
-  border-radius: 8px;
-  background: transparent;
-  padding: 6px 8px;
-  cursor: pointer;
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	text-align: left;
+	border: 1px solid var(--vscode-border);
+	border-radius: 8px;
+	background: transparent;
+	padding: 6px 8px;
+	cursor: pointer;
 }
 
 .vs-ai-lib-item.active {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .vs-ai-lib-thumb {
-  width: 36px;
-  height: 24px;
-  border-radius: 6px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
+	width: 36px;
+	height: 24px;
+	border-radius: 6px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
 }
 
 .vs-ai-lib-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--vscode-fg);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 12px;
+	color: var(--vscode-fg);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .vs-ai-lib-body {
-  border-top: 1px solid var(--vscode-border);
-  padding-top: 10px;
+	border-top: 1px solid var(--vscode-border);
+	padding-top: 10px;
 }
 
 .vs-ai-lib-form-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
-  margin-bottom: 8px;
+	font-size: 12px;
+	color: var(--vscode-fg);
+	margin-bottom: 8px;
 }
 
 .vs-ai-lib-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .vs-ai-lib-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 
 .vs-ai-lib-field-label {
-  flex: 0 0 120px;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--vscode-fg-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+	flex: 0 0 120px;
+	min-width: 0;
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .vs-ai-lib-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 1px solid var(--vscode-border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--vscode-fg);
-  padding: 6px 8px;
-  font-size: 12px;
+	flex: 1 1 auto;
+	min-width: 0;
+	border: 1px solid var(--vscode-border);
+	border-radius: 8px;
+	background: transparent;
+	color: var(--vscode-fg);
+	padding: 6px 8px;
+	font-size: 12px;
 }
 
 .vs-ai-lib-checkbox {
-  width: 16px;
-  height: 16px;
+	width: 16px;
+	height: 16px;
 }
 
 .vs-ai-lib-actions {
-  margin-top: 10px;
-  display: flex;
-  gap: 8px;
+	margin-top: 10px;
+	display: flex;
+	gap: 8px;
 }
 
 @keyframes vs-ai-pulse {
-  0% {
-    border-color: var(--vscode-border);
-  }
-  50% {
-    border-color: var(--vscode-border-accent);
-  }
-  100% {
-    border-color: var(--vscode-border);
-  }
+	0% {
+		border-color: var(--vscode-border);
+	}
+	50% {
+		border-color: var(--vscode-border-accent);
+	}
+	100% {
+		border-color: var(--vscode-border);
+	}
 }
 
 .vs-ai-lib--pulse {
-  animation: vs-ai-pulse 0.7s ease-in-out 1;
+	animation: vs-ai-pulse 0.7s ease-in-out 1;
 }
 
 .vs-ai-md-html :deep(p),
 .vs-ai-md-html :deep(ul),
 .vs-ai-md-html :deep(ol) {
-  margin: 0 0 8px;
+	margin: 0 0 8px;
 }
 
 .vs-ai-md-html :deep(code) {
-  border: 1px solid var(--vscode-border);
-  border-radius: 6px;
-  padding: 0 4px;
+	border: 1px solid var(--vscode-border);
+	border-radius: 6px;
+	padding: 0 4px;
 }
 
 .vs-ai-md-html :deep(a) {
-  color: var(--vscode-border-accent);
+	color: var(--vscode-border-accent);
 }
 
 .vs-ai-palette {
-  margin-top: 10px;
-  border-top: 1px solid var(--vscode-border);
-  padding-top: 10px;
+	margin-top: 10px;
+	border-top: 1px solid var(--vscode-border);
+	padding-top: 10px;
 }
 
 .vs-ai-palette-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 
 .vs-ai-palette-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
+	font-size: 12px;
+	color: var(--vscode-fg);
 }
 
 .vs-ai-palette-head .vs-btn {
-  margin-left: auto;
+	margin-left: auto;
 }
 
 .vs-ai-palette-grid {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+	margin-top: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
 }
 
 .vs-ai-palette-item {
-  display: grid;
-  grid-template-columns: 14px 90px 1fr;
-  align-items: center;
-  gap: 8px;
+	display: grid;
+	grid-template-columns: 14px 90px 1fr;
+	align-items: center;
+	gap: 8px;
 }
 
 .vs-ai-palette-swatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  border: 1px solid var(--vscode-border);
+	width: 14px;
+	height: 14px;
+	border-radius: 4px;
+	border: 1px solid var(--vscode-border);
 }
 
 .vs-ai-palette-key {
-  color: var(--vscode-fg);
+	color: var(--vscode-fg);
 }
 
 .vs-ai-palette-val {
-  color: var(--vscode-fg-muted);
+	color: var(--vscode-fg-muted);
 }
 
 .vs-ai-palette-hint {
-  margin-top: 8px;
-  color: var(--vscode-fg-muted);
-  font-size: 12px;
+	margin-top: 8px;
+	color: var(--vscode-fg-muted);
+	font-size: 12px;
 }
 
 .vs-ai-confirm {
-  margin-top: 10px;
-  border-top: 1px solid var(--vscode-border);
-  padding-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+	margin-top: 10px;
+	border-top: 1px solid var(--vscode-border);
+	padding-top: 10px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 
 .vs-ai-confirm-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
+	font-size: 12px;
+	color: var(--vscode-fg);
 }
 
 .vs-ai-confirm-meta {
-  font-size: 12px;
-  color: var(--vscode-fg-muted);
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
 }
 
 .vs-ai-confirm .vs-btn {
-  margin-left: auto;
+	margin-left: auto;
 }
 
 .vs-ai-plan {
-  margin-top: 10px;
-  border-top: 1px solid var(--vscode-border);
-  padding-top: 10px;
+	margin-top: 10px;
+	border-top: 1px solid var(--vscode-border);
+	padding-top: 10px;
 }
 
 .vs-ai-plan-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
 }
 
 .vs-ai-plan-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
+	font-size: 12px;
+	color: var(--vscode-fg);
 }
 
 .vs-ai-plan-hint {
-  font-size: 12px;
-  color: var(--vscode-fg-muted);
-  margin-left: auto;
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	margin-left: auto;
 }
 
 .vs-ai-plan-list {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	margin-top: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .vs-ai-plan-item {
-  border: 1px solid var(--vscode-border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+	border: 1px solid var(--vscode-border);
+	border-radius: 8px;
+	padding: 8px 10px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
 }
 
 .vs-ai-plan-main {
-  flex: 1 1 auto;
-  min-width: 0;
+	flex: 1 1 auto;
+	min-width: 0;
 }
 
 .vs-ai-plan-item-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+	font-size: 12px;
+	color: var(--vscode-fg);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .vs-ai-plan-item-meta {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
-  display: flex;
-  gap: 10px;
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	display: flex;
+	gap: 10px;
 }
 
 .vs-ai-template-list {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	margin-top: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .vs-ai-template-item {
-  border: 1px solid var(--vscode-border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+	border: 1px solid var(--vscode-border);
+	border-radius: 8px;
+	padding: 8px 10px;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
 }
 
 .vs-ai-template-main {
-  flex: 1 1 auto;
-  min-width: 0;
+	flex: 1 1 auto;
+	min-width: 0;
 }
 
 .vs-ai-template-actions {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
 }
 
 .vs-ai-template-actions .vs-btn {
-  white-space: nowrap;
+	white-space: nowrap;
 }
 
 .vs-ai-template-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+	font-size: 12px;
+	color: var(--vscode-fg);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .vs-ai-template-meta {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
-  display: flex;
-  gap: 10px;
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	display: flex;
+	gap: 10px;
 }
 
 .vs-ai-chat-palette {
-  margin-top: 8px;
-  border-top: 1px solid var(--vscode-border);
-  padding-top: 8px;
+	margin-top: 8px;
+	border-top: 1px solid var(--vscode-border);
+	padding-top: 8px;
 }
 
 .vs-ai-chat-palette-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 
 .vs-ai-chat-palette-title {
-  font-size: 12px;
-  color: var(--vscode-fg);
+	font-size: 12px;
+	color: var(--vscode-fg);
 }
 
 .vs-ai-chat-palette-head .vs-btn {
-  margin-left: auto;
+	margin-left: auto;
 }
 
 .vs-ai-empty {
-  color: var(--vscode-fg-muted);
-  font-size: 12px;
+	color: var(--vscode-fg-muted);
+	font-size: 12px;
 }
 
 .vs-input {
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  border-radius: 8px;
-  height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	border-radius: 8px;
+	height: 28px;
+	padding: 0 8px;
+	font-size: 12px;
 }
 
 .vs-btn {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-border);
-  background: transparent;
-  color: var(--vscode-fg);
-  cursor: pointer;
-  font-size: 12px;
+	height: 28px;
+	padding: 0 10px;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-border);
+	background: transparent;
+	color: var(--vscode-fg);
+	cursor: pointer;
+	font-size: 12px;
 }
 
 .vs-btn:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 </style>

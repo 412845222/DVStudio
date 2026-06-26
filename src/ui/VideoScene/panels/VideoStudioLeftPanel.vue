@@ -13,7 +13,11 @@
 		</div>
 		<SubtitleEditorPanel v-if="mode === 'subtitle'" :layer-id="layerId" />
 		<AiSubtitleUnderstandingPanel v-else-if="mode === 'subtitle-ai'" :layer-id="layerId" />
-		<ComponentLibraryPanel v-else-if="mode === 'component-library'" :key="refreshToken" :layer-id="layerId" />
+		<ComponentLibraryPanel
+			v-else-if="mode === 'component-library'"
+			:key="refreshToken"
+			:layer-id="layerId"
+		/>
 		<div
 			class="vs-left-splitter"
 			:class="{ dragging: isDragging }"

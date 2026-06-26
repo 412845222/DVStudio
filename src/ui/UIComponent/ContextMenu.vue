@@ -1,20 +1,30 @@
 <template>
-	<div
-		v-if="visible"
-		ref="menuEl"
-		class="ctx-menu"
-		:style="style"
-		role="menu"
-		@pointerdown.stop
-	>
+	<div v-if="visible" ref="menuEl" class="ctx-menu" :style="style" role="menu" @pointerdown.stop>
 		<div v-for="(section, idx) in sections" :key="idx" class="ctx-section">
 			<div v-if="section.title" class="ctx-section-title">{{ section.title }}</div>
 			<div v-for="item in section.items" :key="item.id" class="ctx-item" :class="itemClass(item)">
-				<button class="ctx-button" type="button" :disabled="item.disabled" @click="onClick(item)" @mouseenter="item.children?.length && getSubmenuStyle(item.id, $event)">
+				<button
+					class="ctx-button"
+					type="button"
+					:disabled="item.disabled"
+					@click="onClick(item)"
+					@mouseenter="item.children?.length && getSubmenuStyle(item.id, $event)"
+				>
 					<span class="ctx-label">{{ item.label }}</span>
 					<span v-if="item.children?.length" class="ctx-arrow">▶</span>
 				</button>
-				<div v-if="item.children?.length" class="ctx-submenu" :style="submenuPositions[item.id] ? { left: `${submenuPositions[item.id].x}px`, top: `${submenuPositions[item.id].y}px` } : {}">
+				<div
+					v-if="item.children?.length"
+					class="ctx-submenu"
+					:style="
+						submenuPositions[item.id]
+							? {
+									left: `${submenuPositions[item.id].x}px`,
+									top: `${submenuPositions[item.id].y}px`
+								}
+							: {}
+					"
+				>
 					<button
 						v-for="child in item.children"
 						:key="child.id"
@@ -81,7 +91,7 @@ const updatePosition = async () => {
 	const maxY = Math.max(minY, window.innerHeight - rect.height - pad)
 	pos.value = {
 		x: clamp(props.x, pad, maxX),
-		y: clamp(props.y, minY, maxY),
+		y: clamp(props.y, minY, maxY)
 	}
 }
 
@@ -89,7 +99,7 @@ watch(() => [props.visible, props.x, props.y, props.sections], updatePosition, {
 
 const style = computed(() => ({
 	left: `${pos.value.x}px`,
-	top: `${pos.value.y}px`,
+	top: `${pos.value.y}px`
 }))
 
 const getSubmenuStyle = (itemId: string, event: MouseEvent) => {
@@ -114,7 +124,7 @@ const getSubmenuStyle = (itemId: string, event: MouseEvent) => {
 	submenuPositions.value[itemId] = { x, y }
 	return {
 		left: `${x}px`,
-		top: `${y}px`,
+		top: `${y}px`
 	}
 }
 
@@ -124,7 +134,7 @@ onBeforeUnmount(() => {
 
 const itemClass = (item: ContextMenuItem) => ({
 	hasChildren: !!item.children?.length,
-	disabled: !!item.disabled,
+	disabled: !!item.disabled
 })
 
 const onClick = (item: ContextMenuItem) => {

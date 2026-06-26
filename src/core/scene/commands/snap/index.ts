@@ -6,7 +6,7 @@ export type {
 	ResizeSnapSession,
 	SnapContext,
 	SnapLock,
-	StageBounds,
+	StageBounds
 } from './types'
 
 export { beginMoveSnapSessionForNode, stepMoveSnapSession } from './moveSession'

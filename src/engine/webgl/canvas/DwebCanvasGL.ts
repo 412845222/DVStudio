@@ -6,12 +6,22 @@ import {
 	worldToScreen as worldToScreenImpl,
 	type Vec2,
 	type ViewportInset,
-	type ViewportState,
+	type ViewportState
 } from '../camera'
 import { previewCompileAndLinkProgram, compileShader, linkProgram } from '../pipeline'
-import { fsBasicColor, fsBasicTexture, fsRoundedRect, fsRoundedMaskTexture, vsBasic2d } from '../material'
+import {
+	fsBasicColor,
+	fsBasicTexture,
+	fsRoundedRect,
+	fsRoundedMaskTexture,
+	vsBasic2d
+} from '../material'
 import { DwebImagePool, type DwebImageWrapMode } from '../resources/DwebImagePool'
-import { createSolidTexture, setTextureWrap as setTextureWrapImpl, updateTextureFromCanvas as updateTextureFromCanvasImpl } from '../texture'
+import {
+	createSolidTexture,
+	setTextureWrap as setTextureWrapImpl,
+	updateTextureFromCanvas as updateTextureFromCanvasImpl
+} from '../texture'
 import { CanvasPostProcess } from './postprocess/pipeline'
 
 export type { Vec2, ViewportInset, ViewportState } from '../camera'
@@ -24,7 +34,8 @@ export type UvRect = { u0: number; v0: number; u1: number; v1: number }
 
 const cssVarColor = (name: string, fallbackHex: string): string => {
 	try {
-		if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined') return fallbackHex
+		if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined')
+			return fallbackHex
 		const v = (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim()
 		return v || fallbackHex
 	} catch {
@@ -34,7 +45,15 @@ const cssVarColor = (name: string, fallbackHex: string): string => {
 
 const hexToRgba = (hex: string, alpha = 1): RGBA => {
 	const h = hex.replace('#', '').trim()
-	const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16)
+	const n = parseInt(
+		h.length === 3
+			? h
+					.split('')
+					.map((c) => c + c)
+					.join('')
+			: h,
+		16
+	)
 	if (!Number.isFinite(n)) return { r: 1, g: 1, b: 1, a: alpha }
 	return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255, a: alpha }
 }
@@ -134,7 +153,11 @@ export class DwebCanvasGL {
 
 	constructor(canvas: HTMLCanvasElement | OffscreenCanvas) {
 		this.canvas = canvas
-		const gl = canvas.getContext('webgl2', { alpha: true, antialias: true, premultipliedAlpha: false }) as WebGL2RenderingContext | null
+		const gl = canvas.getContext('webgl2', {
+			alpha: true,
+			antialias: true,
+			premultipliedAlpha: false
+		}) as WebGL2RenderingContext | null
 		if (!gl) throw new Error('WebGL2 context is not available')
 		this.gl = gl
 
@@ -144,10 +167,18 @@ export class DwebCanvasGL {
 		this.texProg = this.createProgram(vsBasic2d, fsBasicTexture, false)
 		this.roundedRectProg = this.createRoundedRectProgram(vsBasic2d, fsRoundedRect)
 		this.roundedMaskTexProg = this.createRoundedMaskTextureProgram(vsBasic2d, fsRoundedMaskTexture)
-		this.localProgColor = this.createLocalProgram(this.vsLocal2d(), this.fsLocalColor(), { kind: 'color' })
-		this.localProgTex = this.createLocalProgram(this.vsLocal2d(), this.fsLocalTex(), { kind: 'tex' })
-		this.localProgRoundedRect = this.createLocalProgram(this.vsLocal2d(), fsRoundedRect, { kind: 'roundedRect' })
-		this.localProgRoundedMaskTex = this.createLocalProgram(this.vsLocal2d(), fsRoundedMaskTexture, { kind: 'roundedMaskTex' })
+		this.localProgColor = this.createLocalProgram(this.vsLocal2d(), this.fsLocalColor(), {
+			kind: 'color'
+		})
+		this.localProgTex = this.createLocalProgram(this.vsLocal2d(), this.fsLocalTex(), {
+			kind: 'tex'
+		})
+		this.localProgRoundedRect = this.createLocalProgram(this.vsLocal2d(), fsRoundedRect, {
+			kind: 'roundedRect'
+		})
+		this.localProgRoundedMaskTex = this.createLocalProgram(this.vsLocal2d(), fsRoundedMaskTexture, {
+			kind: 'roundedMaskTex'
+		})
 
 		this.whiteTex = this.createSolidTexture({ r: 1, g: 1, b: 1, a: 1 })
 		gl.enable(gl.BLEND)
@@ -158,7 +189,8 @@ export class DwebCanvasGL {
 		this.isDisposed = true
 		if (this.rafId != null) {
 			try {
-				if (this.rafKind === 'raf' && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(this.rafId)
+				if (this.rafKind === 'raf' && typeof cancelAnimationFrame !== 'undefined')
+					cancelAnimationFrame(this.rafId)
 				else if (this.rafKind === 'timeout') clearTimeout(this.rafId)
 			} catch {
 				// ignore
@@ -196,8 +228,23 @@ export class DwebCanvasGL {
 		padY: number,
 		filters: any[],
 		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number }) => void
-	): { tex: WebGLTexture; padX: number; padY: number; uv: { u0: number; v0: number; u1: number; v1: number } } {
-		return this.postprocess.applyFilters(this.gl, this, id, contentW, contentH, padX, padY, filters, renderLocal)
+	): {
+		tex: WebGLTexture
+		padX: number
+		padY: number
+		uv: { u0: number; v0: number; u1: number; v1: number }
+	} {
+		return this.postprocess.applyFilters(
+			this.gl,
+			this,
+			id,
+			contentW,
+			contentH,
+			padX,
+			padY,
+			filters,
+			renderLocal
+		)
 	}
 
 	setScene(scene: IDwebGLScene | null) {
@@ -205,7 +252,11 @@ export class DwebCanvasGL {
 		this.requestRender()
 	}
 
-	setSize(width: number, height: number, dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1) {
+	setSize(
+		width: number,
+		height: number,
+		dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1
+	) {
 		this.dpr = dpr
 		// Both HTMLCanvasElement and OffscreenCanvas have width/height.
 		this.canvas.width = Math.max(1, Math.floor(width * dpr))
@@ -273,7 +324,11 @@ export class DwebCanvasGL {
 		this.requestRender()
 	}
 
-	fitToStage(stageSize: { width: number; height: number }, paddingPx = 24, inset: ViewportInset = {}) {
+	fitToStage(
+		stageSize: { width: number; height: number },
+		paddingPx = 24,
+		inset: ViewportInset = {}
+	) {
 		applyFitToStage(this.viewport, this.size, stageSize, paddingPx, inset)
 		this.onViewportChange?.(this.viewport)
 		this.requestRender()
@@ -394,7 +449,7 @@ export class DwebCanvasGL {
 		return {
 			dataUrl: outCanvas.toDataURL('image/png'),
 			width: outCanvas.width,
-			height: outCanvas.height,
+			height: outCanvas.height
 		}
 	}
 
@@ -460,7 +515,10 @@ export class DwebCanvasGL {
 		const make2dCanvas = (
 			w: number,
 			h: number
-		): { canvas: HTMLCanvasElement | OffscreenCanvas; ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D } | null => {
+		): {
+			canvas: HTMLCanvasElement | OffscreenCanvas
+			ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+		} | null => {
 			try {
 				if (typeof document !== 'undefined') {
 					const cc = document.createElement('canvas')
@@ -509,7 +567,8 @@ export class DwebCanvasGL {
 
 		const blob = await (async () => {
 			try {
-				if (typeof (outCanvas as any).convertToBlob === 'function') return await (outCanvas as any).convertToBlob({ type: 'image/png' })
+				if (typeof (outCanvas as any).convertToBlob === 'function')
+					return await (outCanvas as any).convertToBlob({ type: 'image/png' })
 				if (typeof (outCanvas as any).toBlob === 'function') {
 					return await new Promise<Blob | null>((resolve) => {
 						;(outCanvas as any).toBlob((b: Blob | null) => resolve(b), 'image/png')
@@ -530,7 +589,10 @@ export class DwebCanvasGL {
 	 * Capture raw RGBA bytes (top-left origin) from the current framebuffer.
 	 * This avoids PNG encode cost and is suitable for piping into ffmpeg.
 	 */
-	captureRgbaBytesFromScreenRect(rect: { x: number; y: number; width: number; height: number }, opts?: { padPx?: number }): { pixels: Uint8Array; width: number; height: number } | null {
+	captureRgbaBytesFromScreenRect(
+		rect: { x: number; y: number; width: number; height: number },
+		opts?: { padPx?: number }
+	): { pixels: Uint8Array; width: number; height: number } | null {
 		if (this.isDisposed) return null
 		const pad = Math.max(0, Math.floor(Number(opts?.padPx ?? 0) || 0))
 		const dpr = Math.max(1, this.dpr)
@@ -601,11 +663,16 @@ export class DwebCanvasGL {
 	 * 受控的 shader 预览编译：仅编译+链接，返回 ok/log。
 	 * 不会缓存 program，也不执行绘制。
 	 */
-	compileAndLinkProgram(vertexSource: string, fragmentSource: string): { ok: boolean; log: string } {
+	compileAndLinkProgram(
+		vertexSource: string,
+		fragmentSource: string
+	): { ok: boolean; log: string } {
 		return previewCompileAndLinkProgram(this.gl, vertexSource, fragmentSource)
 	}
 
-	getThemeColor(name: '--vscode-border-accent' | '--vscode-border' | '--dweb-defualt-dark' | '--dweb-defualt') {
+	getThemeColor(
+		name: '--vscode-border-accent' | '--vscode-border' | '--dweb-defualt-dark' | '--dweb-defualt'
+	) {
 		if (name === '--vscode-border-accent') return cssVarColor(name, '#3aa8b4')
 		if (name === '--vscode-border') return cssVarColor(name, '#2b2b2b')
 		if (name === '--dweb-defualt-dark') return cssVarColor(name, '#1f1f1f')
@@ -619,7 +686,11 @@ export class DwebCanvasGL {
 		return hexToRgba(m[0].startsWith('#') ? m[0] : `#${m[0]}`, alpha)
 	}
 
-	updateTextureFromImage(tex: WebGLTexture, img: TexImageSource, options?: { wrap?: TextureWrapMode }) {
+	updateTextureFromImage(
+		tex: WebGLTexture,
+		img: TexImageSource,
+		options?: { wrap?: TextureWrapMode }
+	) {
 		const gl = this.gl
 		gl.bindTexture(gl.TEXTURE_2D, tex)
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
@@ -641,7 +712,17 @@ export class DwebCanvasGL {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode)
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode)
 		gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
+		gl.texImage2D(
+			gl.TEXTURE_2D,
+			0,
+			gl.RGBA,
+			1,
+			1,
+			0,
+			gl.RGBA,
+			gl.UNSIGNED_BYTE,
+			new Uint8Array([0, 0, 0, 0])
+		)
 	}
 
 	/** Create a dynamic texture that can be updated via updateTextureFromImage (e.g. HTMLVideoElement). */
@@ -669,7 +750,10 @@ export class DwebCanvasGL {
 		return this.imagePool.getSize(src)
 	}
 
-	preloadImages(items: Array<{ src: string; wrap?: DwebImageWrapMode }>, opts?: { timeoutMs?: number }): Promise<void> {
+	preloadImages(
+		items: Array<{ src: string; wrap?: DwebImageWrapMode }>,
+		opts?: { timeoutMs?: number }
+	): Promise<void> {
 		return this.imagePool.preload(this.gl, this, items, opts)
 	}
 
@@ -677,7 +761,15 @@ export class DwebCanvasGL {
 		this.drawQuad(x, y, w, h, color, rotation)
 	}
 
-	drawTexturedRect(x: number, y: number, w: number, h: number, texture: WebGLTexture, opacity = 1, rotation = 0) {
+	drawTexturedRect(
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		texture: WebGLTexture,
+		opacity = 1,
+		rotation = 0
+	) {
 		const gl = this.gl
 		this.useProgram(this.texProg)
 		this.setCommonUniforms(this.texProg)
@@ -731,8 +823,20 @@ export class DwebCanvasGL {
 		gl.uniform2f(this.roundedRectProg.uSize, Math.max(1, w), Math.max(1, h))
 		gl.uniform1f(this.roundedRectProg.uRadius, Math.max(0, radius))
 		gl.uniform1f(this.roundedRectProg.uBorderWidth, Math.max(0, borderWidth))
-		gl.uniform4f(this.roundedRectProg.uFillColor, fillColor.r, fillColor.g, fillColor.b, fillColor.a)
-		gl.uniform4f(this.roundedRectProg.uBorderColor, borderColor.r, borderColor.g, borderColor.b, borderColor.a)
+		gl.uniform4f(
+			this.roundedRectProg.uFillColor,
+			fillColor.r,
+			fillColor.g,
+			fillColor.b,
+			fillColor.a
+		)
+		gl.uniform4f(
+			this.roundedRectProg.uBorderColor,
+			borderColor.r,
+			borderColor.g,
+			borderColor.b,
+			borderColor.a
+		)
 		this.uploadQuadVerts(x, y, w, h, rotation)
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
@@ -787,7 +891,15 @@ export class DwebCanvasGL {
 
 	// ----- Local drawing helpers (for offscreen targets) -----
 
-	drawLocalRect(target: { w: number; h: number; scale?: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
+	drawLocalRect(
+		target: { w: number; h: number; scale?: number },
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		color: RGBA,
+		rotation = 0
+	) {
 		this.drawLocalQuad(target, x, y, w, h, color, rotation)
 	}
 
@@ -853,9 +965,30 @@ export class DwebCanvasGL {
 		gl.uniform2f(this.localProgRoundedRect.uSize!, Math.max(1, w * scale), Math.max(1, h * scale))
 		gl.uniform1f(this.localProgRoundedRect.uRadius!, Math.max(0, radius * scale))
 		gl.uniform1f(this.localProgRoundedRect.uBorderWidth!, Math.max(0, borderWidth * scale))
-		gl.uniform4f(this.localProgRoundedRect.uFillColor!, fillColor.r, fillColor.g, fillColor.b, fillColor.a)
-		gl.uniform4f(this.localProgRoundedRect.uBorderColor!, borderColor.r, borderColor.g, borderColor.b, borderColor.a)
-		this.uploadLocalQuadVerts(this.localProgRoundedRect, x, y, w, h, rotation, undefined, target.scale)
+		gl.uniform4f(
+			this.localProgRoundedRect.uFillColor!,
+			fillColor.r,
+			fillColor.g,
+			fillColor.b,
+			fillColor.a
+		)
+		gl.uniform4f(
+			this.localProgRoundedRect.uBorderColor!,
+			borderColor.r,
+			borderColor.g,
+			borderColor.b,
+			borderColor.a
+		)
+		this.uploadLocalQuadVerts(
+			this.localProgRoundedRect,
+			x,
+			y,
+			w,
+			h,
+			rotation,
+			undefined,
+			target.scale
+		)
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
@@ -886,8 +1019,16 @@ export class DwebCanvasGL {
 		gl.bindTexture(gl.TEXTURE_2D, texture)
 		gl.uniform1i(this.localProgRoundedMaskTex.uSampler!, 0)
 		gl.uniform1f(this.localProgRoundedMaskTex.uAlpha!, opacity)
-		gl.uniform2f(this.localProgRoundedMaskTex.uSize!, Math.max(1, maskW * scale), Math.max(1, maskH * scale))
-		gl.uniform2f(this.localProgRoundedMaskTex.uImageSize!, Math.max(1, w * scale), Math.max(1, h * scale))
+		gl.uniform2f(
+			this.localProgRoundedMaskTex.uSize!,
+			Math.max(1, maskW * scale),
+			Math.max(1, maskH * scale)
+		)
+		gl.uniform2f(
+			this.localProgRoundedMaskTex.uImageSize!,
+			Math.max(1, w * scale),
+			Math.max(1, h * scale)
+		)
 		// Calculate offset in local space
 		const offsetX = x - maskCx
 		const offsetY = y - maskCy
@@ -923,7 +1064,11 @@ export class DwebCanvasGL {
 		throw new Error('No canvas implementation available')
 	}
 
-	updateTextureFromCanvas(tex: WebGLTexture, canvas: TexImageSource, options?: { wrap?: TextureWrapMode }) {
+	updateTextureFromCanvas(
+		tex: WebGLTexture,
+		canvas: TexImageSource,
+		options?: { wrap?: TextureWrapMode }
+	) {
 		updateTextureFromCanvasImpl(this.gl, tex, canvas, options)
 	}
 
@@ -946,7 +1091,10 @@ export class DwebCanvasGL {
 		const hh = h / 2
 		const cos = Math.cos(rotation)
 		const sin = Math.sin(rotation)
-		const rot = (dx: number, dy: number) => ({ x: x + dx * cos - dy * sin, y: y + dx * sin + dy * cos })
+		const rot = (dx: number, dy: number) => ({
+			x: x + dx * cos - dy * sin,
+			y: y + dx * sin + dy * cos
+		})
 		const p0 = rot(-hw, -hh)
 		const p1 = rot(hw, -hh)
 		const p2 = rot(hw, hh)
@@ -980,7 +1128,7 @@ export class DwebCanvasGL {
 			p3.x,
 			p3.y,
 			u0,
-			v1,
+			v1
 		])
 		const gl = this.gl
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo)
@@ -1099,17 +1247,53 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		const uColor = opt.kind === 'color' ? gl.getUniformLocation(program, 'u_color')! : undefined
 		const uSampler = opt.kind !== 'color' ? gl.getUniformLocation(program, 'u_sampler')! : undefined
 		const uAlpha = opt.kind !== 'color' ? gl.getUniformLocation(program, 'u_alpha')! : undefined
-		const uSize = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_size')! : (opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_maskSize')! : undefined)
-		const uRadius = opt.kind === 'roundedRect' || opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_radius')! : undefined
-		const uImageSize = opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_imageSize')! : undefined
-		const uOffset = opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_offset')! : undefined
-		const uBorderWidth = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_borderWidth')! : undefined
-		const uFillColor = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_fillColor')! : undefined
-		const uBorderColor = opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_borderColor')! : undefined
-		return { program, aPos, aUv, uResolution, uColor, uSampler, uAlpha, uSize, uRadius, uBorderWidth, uFillColor, uBorderColor, uImageSize, uOffset }
+		const uSize =
+			opt.kind === 'roundedRect'
+				? gl.getUniformLocation(program, 'u_size')!
+				: opt.kind === 'roundedMaskTex'
+					? gl.getUniformLocation(program, 'u_maskSize')!
+					: undefined
+		const uRadius =
+			opt.kind === 'roundedRect' || opt.kind === 'roundedMaskTex'
+				? gl.getUniformLocation(program, 'u_radius')!
+				: undefined
+		const uImageSize =
+			opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_imageSize')! : undefined
+		const uOffset =
+			opt.kind === 'roundedMaskTex' ? gl.getUniformLocation(program, 'u_offset')! : undefined
+		const uBorderWidth =
+			opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_borderWidth')! : undefined
+		const uFillColor =
+			opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_fillColor')! : undefined
+		const uBorderColor =
+			opt.kind === 'roundedRect' ? gl.getUniformLocation(program, 'u_borderColor')! : undefined
+		return {
+			program,
+			aPos,
+			aUv,
+			uResolution,
+			uColor,
+			uSampler,
+			uAlpha,
+			uSize,
+			uRadius,
+			uBorderWidth,
+			uFillColor,
+			uBorderColor,
+			uImageSize,
+			uOffset
+		}
 	}
 
-	private drawLocalQuad(target: { w: number; h: number; scale?: number }, x: number, y: number, w: number, h: number, color: RGBA, rotation = 0) {
+	private drawLocalQuad(
+		target: { w: number; h: number; scale?: number },
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		color: RGBA,
+		rotation = 0
+	) {
 		const gl = this.gl
 		gl.useProgram(this.localProgColor.program)
 		gl.uniform2f(this.localProgColor.uResolution!, target.w, target.h)
@@ -1136,7 +1320,10 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		const hh = (h * s) / 2
 		const cos = Math.cos(rotation)
 		const sin = Math.sin(rotation)
-		const rot = (dx: number, dy: number) => ({ x: x0 + dx * cos - dy * sin, y: y0 + dx * sin + dy * cos })
+		const rot = (dx: number, dy: number) => ({
+			x: x0 + dx * cos - dy * sin,
+			y: y0 + dx * sin + dy * cos
+		})
 		const p0 = rot(-hw, -hh)
 		const p1 = rot(hw, -hh)
 		const p2 = rot(hw, hh)
@@ -1165,7 +1352,7 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 			p3.x,
 			p3.y,
 			uv.u0,
-			uv.v1,
+			uv.v1
 		])
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.localVbo)
 		gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW)
@@ -1200,10 +1387,25 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		const uBorderWidth = gl.getUniformLocation(program, 'u_borderWidth')!
 		const uFillColor = gl.getUniformLocation(program, 'u_fillColor')!
 		const uBorderColor = gl.getUniformLocation(program, 'u_borderColor')!
-		return { program, aPos, aUv, uResolution, uPan, uZoom, uSize, uRadius, uBorderWidth, uFillColor, uBorderColor }
+		return {
+			program,
+			aPos,
+			aUv,
+			uResolution,
+			uPan,
+			uZoom,
+			uSize,
+			uRadius,
+			uBorderWidth,
+			uFillColor,
+			uBorderColor
+		}
 	}
 
-	private createRoundedMaskTextureProgram(vsSrc: string, fsSrc: string): RoundedMaskTextureProgramInfo {
+	private createRoundedMaskTextureProgram(
+		vsSrc: string,
+		fsSrc: string
+	): RoundedMaskTextureProgramInfo {
 		const gl = this.gl
 		const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc)
 		const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc)
@@ -1229,13 +1431,26 @@ void main(){ outColor = texture(u_sampler, v_uv) * vec4(1.0,1.0,1.0,u_alpha); }`
 		const uRadius = gl.getUniformLocation(program, 'u_radius')!
 		const uSampler = gl.getUniformLocation(program, 'u_sampler')!
 		const uAlpha = gl.getUniformLocation(program, 'u_alpha')!
-		return { program, aPos, aUv, uResolution, uPan, uZoom, uMaskSize, uImageSize, uOffset, uRadius, uSampler, uAlpha }
+		return {
+			program,
+			aPos,
+			aUv,
+			uResolution,
+			uPan,
+			uZoom,
+			uMaskSize,
+			uImageSize,
+			uOffset,
+			uRadius,
+			uSampler,
+			uAlpha
+		}
 	}
 }
 
 export const themeRgba = {
 	accent: (alpha = 1) => hexToRgba(cssVarColor('--vscode-border-accent', '#3aa8b4'), alpha),
 	border: (alpha = 1) => hexToRgba(cssVarColor('--vscode-border', '#2b2b2b'), alpha),
-	bg: (alpha = 1) => hexToRgba(cssVarColor('--dweb-defualt', '#111111'), alpha),	
-	bgDark: (alpha = 1) => hexToRgba(cssVarColor('--dweb-defualt-dark', '#1f1f1f'), alpha),
+	bg: (alpha = 1) => hexToRgba(cssVarColor('--dweb-defualt', '#111111'), alpha),
+	bgDark: (alpha = 1) => hexToRgba(cssVarColor('--dweb-defualt-dark', '#1f1f1f'), alpha)
 }

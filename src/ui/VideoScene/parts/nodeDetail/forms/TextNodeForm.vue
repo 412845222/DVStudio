@@ -3,11 +3,18 @@
 		<div class="vs-group-title">文本</div>
 		<label class="vs-row">
 			<span class="vs-k">内容</span>
-			<textarea v-model="draft.textContent" class="vs-input vs-textarea wide" rows="4" @change="applyText" />
+			<textarea
+				v-model="draft.textContent"
+				class="vs-input vs-textarea wide"
+				rows="4"
+				@change="applyText"
+			/>
 		</label>
 		<div class="vs-row vs-row-actions">
 			<span class="vs-k" />
-			<button class="vs-quick-btn vs-text-action" type="button" @click="applyTextToAllFrames">应用所有帧</button>
+			<button class="vs-quick-btn vs-text-action" type="button" @click="applyTextToAllFrames">
+				应用所有帧
+			</button>
 		</div>
 		<label class="vs-row">
 			<span class="vs-k">字号</span>
@@ -21,17 +28,37 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="(e: any) => onNumberScrubPointerDown(e, () => draft.fontSize, (v) => (draft.fontSize = v), { step: 1, min: 1, max: 999999, onCommit: applyText })"
+				@pointerdown="
+					(e: any) =>
+						onNumberScrubPointerDown(
+							e,
+							() => draft.fontSize,
+							(v) => (draft.fontSize = v),
+							{ step: 1, min: 1, max: 999999, onCommit: applyText }
+						)
+				"
 			/>
 		</label>
 		<label class="vs-row">
 			<span class="vs-k">颜色</span>
-			<input v-model="draft.fontColor" class="vs-input" type="text" placeholder="#ffffff" @change="applyText" />
+			<input
+				v-model="draft.fontColor"
+				class="vs-input"
+				type="text"
+				placeholder="#ffffff"
+				@change="applyText"
+			/>
 			<input v-model="draft.fontColor" class="vs-color" type="color" @input="applyText" />
 		</label>
 		<label class="vs-row">
 			<span class="vs-k">样式</span>
-			<input v-model="draft.fontStyle" class="vs-input" type="text" placeholder="normal" @change="applyText" />
+			<input
+				v-model="draft.fontStyle"
+				class="vs-input"
+				type="text"
+				placeholder="normal"
+				@change="applyText"
+			/>
 		</label>
 		<label class="vs-row">
 			<span class="vs-k">对齐</span>
@@ -41,7 +68,10 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'left' }"
 					title="左对齐"
-					@click.stop.prevent="draft.textAlign = 'left'; applyText()"
+					@click.stop.prevent="
+						draft.textAlign = 'left'
+						applyText()
+					"
 				>
 					L
 				</button>
@@ -50,7 +80,10 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'center' }"
 					title="居中"
-					@click.stop.prevent="draft.textAlign = 'center'; applyText()"
+					@click.stop.prevent="
+						draft.textAlign = 'center'
+						applyText()
+					"
 				>
 					C
 				</button>
@@ -59,7 +92,10 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'right' }"
 					title="右对齐"
-					@click.stop.prevent="draft.textAlign = 'right'; applyText()"
+					@click.stop.prevent="
+						draft.textAlign = 'right'
+						applyText()
+					"
 				>
 					R
 				</button>
@@ -83,7 +119,12 @@ defineProps<{
 	draft: DraftText
 	applyText: () => void
 	applyTextToAllFrames: () => void
-	onNumberScrubPointerDown: (e: PointerEvent, get: () => number, set: (v: number) => void, opt: NumberScrubOptions) => void
+	onNumberScrubPointerDown: (
+		e: PointerEvent,
+		get: () => number,
+		set: (v: number) => void,
+		opt: NumberScrubOptions
+	) => void
 	onNumberInputDblClick: (e: MouseEvent) => void
 	onNumberInputFocus: (e: FocusEvent) => void
 	onNumberInputBlur: (e: FocusEvent) => void

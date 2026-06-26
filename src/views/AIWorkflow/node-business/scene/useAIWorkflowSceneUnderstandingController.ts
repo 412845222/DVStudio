@@ -7,7 +7,9 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		streamSceneUnderstand: (payload: any, signal?: AbortSignal) => AsyncIterable<any>
 		streamSceneLighting: (payload: any, signal?: AbortSignal) => AsyncIterable<any>
 	}
-	connectedSceneUnderstandImageInputs: (nodeId: string) => Array<{ url: string; width?: number; height?: number }>
+	connectedSceneUnderstandImageInputs: (
+		nodeId: string
+	) => Array<{ url: string; width?: number; height?: number }>
 	connectedImageInputUrl: (nodeId: string, anchorId: string) => string | null
 	connectedTextInputValue: (nodeId: string, anchorId: string) => string
 	normalizeMeshyImageInputValue: (value: string, defaultName: string) => Promise<string>
@@ -26,7 +28,10 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 	}
 
 	const formatJsonLikeDraft = (raw: string) => {
-		const text = String(raw ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+		const text = String(raw ?? '')
+			.replace(/\r\n/g, '\n')
+			.replace(/\r/g, '\n')
+			.trim()
 		if (!text) return ''
 		try {
 			return JSON.stringify(JSON.parse(text), null, 2)
@@ -96,16 +101,20 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 	const formatSceneUnderstandDraftOutput = (raw: string) => formatJsonLikeDraft(String(raw ?? ''))
 
 	const flushSceneUnderstandDraft = (nodeId: string, rawOverride?: string) => {
-		const raw = typeof rawOverride === 'string'
-			? rawOverride
-			: sceneUnderstandDraftBuffers.get(nodeId) ?? String(options.store.state.nodesById[nodeId]?.sceneUnderstandingSettings?.rawOutput ?? '')
+		const raw =
+			typeof rawOverride === 'string'
+				? rawOverride
+				: (sceneUnderstandDraftBuffers.get(nodeId) ??
+					String(
+						options.store.state.nodesById[nodeId]?.sceneUnderstandingSettings?.rawOutput ?? ''
+					))
 		sceneUnderstandDraftBuffers.set(nodeId, raw)
 		options.store.commit('setNodeSceneUnderstandingSettings', {
 			nodeId,
 			sceneUnderstandingSettings: {
 				outputJson: formatSceneUnderstandDraftOutput(raw),
-				rawOutput: raw,
-			},
+				rawOutput: raw
+			}
 		})
 	}
 
@@ -153,8 +162,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				resultSummary: '',
 				rewriteUsed: false,
 				rewriteAttempts: 0,
-				mock: false,
-			},
+				mock: false
+			}
 		})
 	}
 
@@ -170,21 +179,30 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				status: 'canceled',
 				message: '已终止当前场景理解请求。',
 				statusText: 'SSE 请求已终止，可重新运行。',
-				progress: 0,
-			},
+				progress: 0
+			}
 		})
 	}
 
 	const sceneUnderstandPhaseState = (phase: string, message: string) => {
-		const normalized = String(phase || '').trim().toLowerCase()
+		const normalized = String(phase || '')
+			.trim()
+			.toLowerCase()
 		if (normalized === 'started') return { progress: 8, statusText: message || '场景理解已开始。' }
-		if (normalized === 'prepare_input') return { progress: 16, statusText: message || '正在规范化输入图片。' }
-		if (normalized === 'connect') return { progress: 26, statusText: message || '正在连接模型服务。' }
-		if (normalized === 'submit') return { progress: 36, statusText: message || '已提交请求，等待远端服务接收。' }
-		if (normalized === 'streaming') return { progress: 52, statusText: message || '远端服务流式处理中。' }
-		if (normalized === 'writing') return { progress: 72, statusText: message || '远端服务正在生成结构化结果。' }
-		if (normalized === 'parse') return { progress: 88, statusText: message || '正在解析远端返回 JSON。' }
-		if (normalized === 'rewrite') return { progress: 80, statusText: message || '正在请求模型紧凑重写 JSON。' }
+		if (normalized === 'prepare_input')
+			return { progress: 16, statusText: message || '正在规范化输入图片。' }
+		if (normalized === 'connect')
+			return { progress: 26, statusText: message || '正在连接模型服务。' }
+		if (normalized === 'submit')
+			return { progress: 36, statusText: message || '已提交请求，等待远端服务接收。' }
+		if (normalized === 'streaming')
+			return { progress: 52, statusText: message || '远端服务流式处理中。' }
+		if (normalized === 'writing')
+			return { progress: 72, statusText: message || '远端服务正在生成结构化结果。' }
+		if (normalized === 'parse')
+			return { progress: 88, statusText: message || '正在解析远端返回 JSON。' }
+		if (normalized === 'rewrite')
+			return { progress: 80, statusText: message || '正在请求模型紧凑重写 JSON。' }
 		if (normalized === 'done') return { progress: 100, statusText: message || '场景理解完成。' }
 		if (normalized === 'canceled') return { progress: 0, statusText: message || '场景理解已终止。' }
 		if (normalized === 'error') return { progress: 100, statusText: message || '场景理解失败。' }
@@ -192,25 +210,33 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 	}
 
 	const onNodeSceneUnderstandingSettingsUpdate = (nodeId: string, payload: Record<string, any>) => {
-		options.store.commit('setNodeSceneUnderstandingSettings', { nodeId, sceneUnderstandingSettings: payload })
+		options.store.commit('setNodeSceneUnderstandingSettings', {
+			nodeId,
+			sceneUnderstandingSettings: payload
+		})
 	}
 
 	const onNodeRequestSceneModels = async (nodeId: string) => {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node || node.type !== 'scene-understanding') return
-		const mode = node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
+		const mode =
+			node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
 		options.store.commit('setNodeSceneUnderstandingSettings', {
 			nodeId,
-			sceneUnderstandingSettings: { status: 'loading-models', message: mode === 'scene-lighting' ? '正在加载灯光理解模型列表…' : '正在加载模型列表…' },
+			sceneUnderstandingSettings: {
+				status: 'loading-models',
+				message: mode === 'scene-lighting' ? '正在加载灯光理解模型列表…' : '正在加载模型列表…'
+			}
 		})
 		try {
-			const res = mode === 'scene-lighting'
-				? await options.sceneSkillService.listSceneLightingModels()
-				: await options.sceneSkillService.listSceneUnderstandModels()
+			const res =
+				mode === 'scene-lighting'
+					? await options.sceneSkillService.listSceneLightingModels()
+					: await options.sceneSkillService.listSceneUnderstandModels()
 			if (!res.ok) {
 				options.store.commit('setNodeSceneUnderstandingSettings', {
 					nodeId,
-					sceneUnderstandingSettings: { status: 'error', message: res.error || '读取模型列表失败' },
+					sceneUnderstandingSettings: { status: 'error', message: res.error || '读取模型列表失败' }
 				})
 				options.pushToast(`场景理解模型列表读取失败：${res.error || 'unknown'}`, 'warn')
 				return
@@ -221,17 +247,23 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				nodeId,
 				sceneUnderstandingSettings: {
 					availableModels: models,
-					selectedModel: String(node.sceneUnderstandingSettings?.selectedModel || fallbackModel || '').trim(),
+					selectedModel: String(
+						node.sceneUnderstandingSettings?.selectedModel || fallbackModel || ''
+					).trim(),
 					status: 'idle',
 					message: models.length ? `已加载 ${models.length} 个模型。` : '当前没有可用模型。',
-					statusText: models.length ? (mode === 'scene-lighting' ? '灯光理解模型列表已刷新。' : '模型列表已刷新，可直接发起场景理解。') : '未发现可用模型。',
-				},
+					statusText: models.length
+						? mode === 'scene-lighting'
+							? '灯光理解模型列表已刷新。'
+							: '模型列表已刷新，可直接发起场景理解。'
+						: '未发现可用模型。'
+				}
 			})
 		} catch (err: unknown) {
 			const message = getErrorMessage(err)
 			options.store.commit('setNodeSceneUnderstandingSettings', {
 				nodeId,
-				sceneUnderstandingSettings: { status: 'error', message },
+				sceneUnderstandingSettings: { status: 'error', message }
 			})
 			options.pushToast(`场景理解模型列表读取失败：${message}`, 'warn')
 		}
@@ -240,14 +272,22 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 	const onNodeRunSceneUnderstanding = async (nodeId: string) => {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node || node.type !== 'scene-understanding') return
-		const mode = node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
+		const mode =
+			node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
 		const rawImageInputs = options.connectedSceneUnderstandImageInputs(nodeId)
-		const imageUrl = String(rawImageInputs[0]?.url ?? options.connectedImageInputUrl(nodeId, 'in-image') ?? '').trim()
+		const imageUrl = String(
+			rawImageInputs[0]?.url ?? options.connectedImageInputUrl(nodeId, 'in-image') ?? ''
+		).trim()
 		const promptText = String(options.connectedTextInputValue(nodeId, 'in-text') ?? '').trim()
-		const layoutJson = String(options.connectedTextInputValue(nodeId, 'in-layout-json') ?? '').trim()
+		const layoutJson = String(
+			options.connectedTextInputValue(nodeId, 'in-layout-json') ?? ''
+		).trim()
 		const model = String(node.sceneUnderstandingSettings?.selectedModel ?? '').trim()
 		if (!imageUrl) {
-			options.pushToast(mode === 'scene-lighting' ? '场景灯光理解节点缺少图片输入。' : '场景理解节点缺少图片输入。', 'warn')
+			options.pushToast(
+				mode === 'scene-lighting' ? '场景灯光理解节点缺少图片输入。' : '场景理解节点缺少图片输入。',
+				'warn'
+			)
 			return
 		}
 		if (mode === 'scene-lighting' && !layoutJson) {
@@ -255,7 +295,10 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			return
 		}
 		if (!model) {
-			options.pushToast(mode === 'scene-lighting' ? '请先选择灯光理解模型。' : '请先选择场景理解模型。', 'warn')
+			options.pushToast(
+				mode === 'scene-lighting' ? '请先选择灯光理解模型。' : '请先选择场景理解模型。',
+				'warn'
+			)
 			return
 		}
 
@@ -264,7 +307,10 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			sceneUnderstandingSettings: {
 				status: 'running',
 				message: mode === 'scene-lighting' ? '正在调用场景灯光理解技能…' : '正在调用场景理解技能…',
-				statusText: mode === 'scene-lighting' ? '准备上传参考图和布局 JSON 并请求远端服务…' : '准备上传输入图片并请求远端服务…',
+				statusText:
+					mode === 'scene-lighting'
+						? '准备上传参考图和布局 JSON 并请求远端服务…'
+						: '准备上传输入图片并请求远端服务…',
 				progress: 4,
 				provider: 'volcengine-ark',
 				providerStatusText: '请求尚未发送',
@@ -276,16 +322,24 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				lastInputImageUrl: imageUrl,
 				lastInputImageUrls: rawImageInputs.map((item) => item.url),
 				lastInputPrompt: promptText,
-				lastInputLayoutJson: layoutJson,
-			},
+				lastInputLayoutJson: layoutJson
+			}
 		})
 
 		let controller: AbortController | null = null
 		try {
-			const normalizedImageInputs: Array<{ imageUrl?: string; imageDataUrl?: string; width?: number; height?: number }> = []
+			const normalizedImageInputs: Array<{
+				imageUrl?: string
+				imageDataUrl?: string
+				width?: number
+				height?: number
+			}> = []
 			for (let index = 0; index < rawImageInputs.length; index += 1) {
 				const rawInput = rawImageInputs[index]
-				const normalizedImageInput = await options.normalizeMeshyImageInputValue(rawInput.url, `scene_understand_input_${index + 1}`)
+				const normalizedImageInput = await options.normalizeMeshyImageInputValue(
+					rawInput.url,
+					`scene_understand_input_${index + 1}`
+				)
 				if (!normalizedImageInput) continue
 				normalizedImageInputs.push(
 					normalizedImageInput.startsWith('data:')
@@ -296,7 +350,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			if (!normalizedImageInputs.length) {
 				options.store.commit('setNodeSceneUnderstandingSettings', {
 					nodeId,
-					sceneUnderstandingSettings: { status: 'error', message: '场景理解输入图片无效。' },
+					sceneUnderstandingSettings: { status: 'error', message: '场景理解输入图片无效。' }
 				})
 				options.pushToast('场景理解输入图片无效。', 'warn')
 				return
@@ -309,15 +363,16 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				...(mode === 'scene-lighting' ? { layoutJson } : {}),
 				...(firstImage?.imageDataUrl ? { imageDataUrl: firstImage.imageDataUrl } : {}),
 				...(firstImage?.imageUrl ? { imageUrl: firstImage.imageUrl } : {}),
-				imageInputs: normalizedImageInputs,
+				imageInputs: normalizedImageInputs
 			}
 			stopSceneUnderstandRun(nodeId)
 			controller = new AbortController()
 			sceneUnderstandRunControllers.set(nodeId, controller)
 
-			const stream = mode === 'scene-lighting'
-				? options.sceneSkillService.streamSceneLighting(payload as any, controller.signal)
-				: options.sceneSkillService.streamSceneUnderstand(payload, controller.signal)
+			const stream =
+				mode === 'scene-lighting'
+					? options.sceneSkillService.streamSceneLighting(payload as any, controller.signal)
+					: options.sceneSkillService.streamSceneUnderstand(payload, controller.signal)
 			for await (const ev of stream) {
 				if (ev.type === 'done') break
 				if (ev.type === 'error') {
@@ -327,10 +382,13 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							status: 'error',
 							message: ev.error.message || '场景理解失败',
 							statusText: 'SSE 事件解析失败。',
-							progress: 100,
-						},
+							progress: 100
+						}
 					})
-					options.pushToast(`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${ev.error.message || 'unknown'}`, 'warn')
+					options.pushToast(
+						`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${ev.error.message || 'unknown'}`,
+						'warn'
+					)
 					break
 				}
 
@@ -338,7 +396,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				if (msg?.type === 'agentToUi/text') {
 					const deltaText = String(msg?.payload?.text ?? '')
 					if (deltaText) {
-						const prevRaw = sceneUnderstandDraftBuffers.get(nodeId) ?? String(options.store.state.nodesById[nodeId]?.sceneUnderstandingSettings?.rawOutput ?? '')
+						const prevRaw =
+							sceneUnderstandDraftBuffers.get(nodeId) ??
+							String(
+								options.store.state.nodesById[nodeId]?.sceneUnderstandingSettings?.rawOutput ?? ''
+							)
 						const nextRaw = `${prevRaw}${deltaText}`
 						scheduleSceneUnderstandDraftFlush(nodeId, nextRaw)
 					}
@@ -371,8 +433,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							progress: nextState.progress,
 							provider: 'volcengine-ark',
 							providerStatusText: phaseMessage || '远端服务处理中',
-							...(resetDraft ? { outputJson: '', rawOutput: '' } : {}),
-						},
+							...(resetDraft ? { outputJson: '', rawOutput: '' } : {})
+						}
 					})
 					continue
 				}
@@ -387,15 +449,29 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 						sceneUnderstandingSettings: {
 							status: 'error',
 							message: String(payloadErr?.message ?? '场景理解失败'),
-							statusText: String(details?.providerStatusText ?? payloadErr?.message ?? '远端服务返回错误'),
+							statusText: String(
+								details?.providerStatusText ?? payloadErr?.message ?? '远端服务返回错误'
+							),
 							progress: 100,
 							provider: typeof details?.provider === 'string' ? details.provider : 'volcengine-ark',
-							providerStatusText: typeof details?.providerStatusText === 'string' ? details.providerStatusText : undefined,
-							remoteStatusCode: Number.isFinite(Number(details?.remoteStatusCode ?? details?.status)) ? Number(details?.remoteStatusCode ?? details?.status) : undefined,
-							rawOutput: String(options.store.state.nodesById[nodeId]?.sceneUnderstandingSettings?.rawOutput ?? ''),
-						},
+							providerStatusText:
+								typeof details?.providerStatusText === 'string'
+									? details.providerStatusText
+									: undefined,
+							remoteStatusCode: Number.isFinite(
+								Number(details?.remoteStatusCode ?? details?.status)
+							)
+								? Number(details?.remoteStatusCode ?? details?.status)
+								: undefined,
+							rawOutput: String(
+								options.store.state.nodesById[nodeId]?.sceneUnderstandingSettings?.rawOutput ?? ''
+							)
+						}
 					})
-					options.pushToast(`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${String(payloadErr?.message ?? 'unknown')}`, 'warn')
+					options.pushToast(
+						`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${String(payloadErr?.message ?? 'unknown')}`,
+						'warn'
+					)
 					break
 				}
 
@@ -414,16 +490,29 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 								outputJson: String(payloadResult?.outputJson ?? ''),
 								rawOutput: String(payloadResult?.rawOutput ?? ''),
 								resultSummary: String(payloadResult?.summary ?? ''),
-								provider: typeof payloadResult?.provider === 'string' ? payloadResult.provider : 'volcengine-ark',
-								providerStatusText: typeof payloadResult?.providerStatusText === 'string' ? payloadResult.providerStatusText : undefined,
-								remoteStatusCode: Number.isFinite(Number(payloadResult?.remoteStatusCode)) ? Number(payloadResult.remoteStatusCode) : undefined,
+								provider:
+									typeof payloadResult?.provider === 'string'
+										? payloadResult.provider
+										: 'volcengine-ark',
+								providerStatusText:
+									typeof payloadResult?.providerStatusText === 'string'
+										? payloadResult.providerStatusText
+										: undefined,
+								remoteStatusCode: Number.isFinite(Number(payloadResult?.remoteStatusCode))
+									? Number(payloadResult.remoteStatusCode)
+									: undefined,
 								lastRunAt: Date.now(),
 								rewriteUsed: payloadResult?.rewriteUsed === true,
-								rewriteAttempts: Number.isFinite(Number(payloadResult?.rewriteAttempts)) ? Number(payloadResult?.rewriteAttempts) : 0,
-								mock: payloadResult?.mock === true,
-							},
+								rewriteAttempts: Number.isFinite(Number(payloadResult?.rewriteAttempts))
+									? Number(payloadResult?.rewriteAttempts)
+									: 0,
+								mock: payloadResult?.mock === true
+							}
 						})
-						options.pushToast(`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}完成${payloadResult?.mock ? '（Mock）' : ''}。`, 'info')
+						options.pushToast(
+							`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}完成${payloadResult?.mock ? '（Mock）' : ''}。`,
+							'info'
+						)
 					} catch (parseErr: unknown) {
 						const parseMsg = getErrorMessage(parseErr)
 						options.store.commit('setNodeSceneUnderstandingSettings', {
@@ -432,10 +521,13 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 								status: 'error',
 								message: `场景理解结果解析失败：${parseMsg}`,
 								statusText: '流式返回完成，但最终 JSON 解析失败。',
-								progress: 100,
-							},
+								progress: 100
+							}
 						})
-						options.pushToast(`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：结果解析失败`, 'warn')
+						options.pushToast(
+							`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：结果解析失败`,
+							'warn'
+						)
 					}
 				}
 			}
@@ -450,8 +542,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 						status: 'canceled',
 						message: '已终止当前场景理解请求。',
 						statusText: '请求已取消。',
-						progress: 0,
-					},
+						progress: 0
+					}
 				})
 				return
 			}
@@ -462,10 +554,13 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					status: 'error',
 					message,
 					statusText: '请求链路发生异常，未获得远端可解析响应。',
-					progress: 100,
-				},
+					progress: 100
+				}
 			})
-			options.pushToast(`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${message}`, 'warn')
+			options.pushToast(
+				`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${message}`,
+				'warn'
+			)
 		} finally {
 			if (controller && sceneUnderstandRunControllers.get(nodeId) === controller) {
 				sceneUnderstandRunControllers.delete(nodeId)
@@ -487,6 +582,6 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		onNodeSceneUnderstandingSettingsUpdate,
 		onNodeRequestSceneModels,
 		onNodeRunSceneUnderstanding,
-		cleanupSceneUnderstandingRuntime,
+		cleanupSceneUnderstandingRuntime
 	}
 }

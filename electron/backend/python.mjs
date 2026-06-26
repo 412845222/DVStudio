@@ -34,12 +34,20 @@ function _canRun(cmd, args) {
 export function detectPythonCommand() {
 	if (_hasBundledPython()) {
 		const bundledPy = _getBundledPythonExe()
-		return { command: bundledPy, argsPrefix: [], isBundled: true, pythonDir: _getBundledPythonDir() }
+		return {
+			command: bundledPy,
+			argsPrefix: [],
+			isBundled: true,
+			pythonDir: _getBundledPythonDir()
+		}
 	}
 
-	if (_canRun('py', ['-3', '--version'])) return { command: 'py', argsPrefix: ['-3'], isBundled: false }
-	if (_canRun('python', ['--version'])) return { command: 'python', argsPrefix: [], isBundled: false }
-	if (_canRun('python3', ['--version'])) return { command: 'python3', argsPrefix: [], isBundled: false }
+	if (_canRun('py', ['-3', '--version']))
+		return { command: 'py', argsPrefix: ['-3'], isBundled: false }
+	if (_canRun('python', ['--version']))
+		return { command: 'python', argsPrefix: [], isBundled: false }
+	if (_canRun('python3', ['--version']))
+		return { command: 'python3', argsPrefix: [], isBundled: false }
 	return null
 }
 
@@ -47,16 +55,18 @@ export function getPythonSubprocessEnv(pyInfo, baseEnv = process.env) {
 	const env = { ...baseEnv }
 	const djangoDir = getDjangoAppDir()
 
-	const pathKey = Object.keys(env).find(k => k.toLowerCase() === 'path') || 'PATH'
+	const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path') || 'PATH'
 	const existingPath = env[pathKey] || ''
 
 	if (pyInfo?.isBundled && pyInfo.pythonDir) {
-		env[pathKey] = `${pyInfo.pythonDir}${path.delimiter}${pyInfo.pythonDir}${path.sep}Scripts${path.delimiter}${existingPath}`
+		env[pathKey] =
+			`${pyInfo.pythonDir}${path.delimiter}${pyInfo.pythonDir}${path.sep}Scripts${path.delimiter}${existingPath}`
 		env.PYTHONHOME = pyInfo.pythonDir
 	}
 
 	// Ensure django-app directory is in PYTHONPATH so imports work
-	const pythonPathKey = Object.keys(env).find(k => k.toLowerCase() === 'pythonpath') || 'PYTHONPATH'
+	const pythonPathKey =
+		Object.keys(env).find((k) => k.toLowerCase() === 'pythonpath') || 'PYTHONPATH'
 	const existingPythonPath = env[pythonPathKey] || ''
 	const paths = [djangoDir]
 	if (existingPythonPath) {
@@ -80,7 +90,7 @@ function _parseVersion(v) {
 	return {
 		major: Number(m[1]),
 		minor: Number(m[2]),
-		patch: Number(m[3]),
+		patch: Number(m[3])
 	}
 }
 
@@ -92,7 +102,7 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 			meetsRequirement: false,
 			recommended: false,
 			isBundled: false,
-			detail: '不存在 Python 环境（未检测到内置 Python 或系统 python/py 命令）。',
+			detail: '不存在 Python 环境（未检测到内置 Python 或系统 python/py 命令）。'
 		}
 	}
 
@@ -103,7 +113,7 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 		const r = spawnSync(found.command, [...found.argsPrefix, '--version'], {
 			encoding: 'utf-8',
 			windowsHide: true,
-			env,
+			env
 		})
 		detail = _firstLine(r.stdout || r.stderr) || ''
 		parsed = _parseVersion(detail)
@@ -115,7 +125,7 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 			isBundled: !!found.isBundled,
 			command: found.command,
 			argsPrefix: found.argsPrefix,
-			detail: `Python 版本检测失败：${String(e?.message || e)}`,
+			detail: `Python 版本检测失败：${String(e?.message || e)}`
 		}
 	}
 
@@ -127,7 +137,9 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 		recommended = true
 		if (!detail) detail = '内置 Python 运行时'
 	} else {
-		meetsRequirement = !!parsed && (parsed.major > minMajor || (parsed.major === minMajor && parsed.minor >= minMinor))
+		meetsRequirement =
+			!!parsed &&
+			(parsed.major > minMajor || (parsed.major === minMajor && parsed.minor >= minMinor))
 		recommended = !!parsed && parsed.major === 3 && parsed.minor === 11
 	}
 
@@ -139,7 +151,7 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 			isBundled: !!found.isBundled,
 			command: found.command,
 			argsPrefix: found.argsPrefix,
-			detail: `无法解析 Python 版本：${detail || 'unknown'}`,
+			detail: `无法解析 Python 版本：${detail || 'unknown'}`
 		}
 	}
 
@@ -151,6 +163,6 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 		command: found.command,
 		argsPrefix: found.argsPrefix,
 		version: parsed ? `${parsed.major}.${parsed.minor}.${parsed.patch}` : 'bundled',
-		detail: detail || `Python ${parsed?.major || 3}.${parsed?.minor || 11}.${parsed?.patch || 0}`,
+		detail: detail || `Python ${parsed?.major || 3}.${parsed?.minor || 11}.${parsed?.patch || 0}`
 	}
 }

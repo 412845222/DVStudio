@@ -2,7 +2,11 @@ import { upgradeNodeType } from '../../scene/nodesType'
 import type { EditorSnapshot } from '../../editor/types'
 import type { JsonValue } from '../../shared/json'
 import type { NodeBaseDTO, NodeType } from '../../scene/nodesType'
-import type { VideoSceneNodeProps, VideoSceneTreeNode, VideoSceneUserNodeType } from '../../scene/types'
+import type {
+	VideoSceneNodeProps,
+	VideoSceneTreeNode,
+	VideoSceneUserNodeType
+} from '../../scene/types'
 
 type LegacyTransform = {
 	x?: unknown
@@ -18,7 +22,10 @@ type LegacyTransform = {
 	opacity?: unknown
 }
 
-const walkTree = (nodes: VideoSceneTreeNode[] | undefined, onNode: (node: VideoSceneTreeNode) => void) => {
+const walkTree = (
+	nodes: VideoSceneTreeNode[] | undefined,
+	onNode: (node: VideoSceneTreeNode) => void
+) => {
 	if (!nodes) return
 	for (const n of nodes) {
 		onNode(n)
@@ -36,8 +43,8 @@ const normalizeLayerRoot = (layer: { name: string; nodeTree: VideoSceneTreeNode[
 			name: layer.name,
 			category: 'project',
 			projectKind: 'group',
-			children,
-		},
+			children
+		}
 	]
 }
 
@@ -52,7 +59,16 @@ export const normalizeSnapshotV1 = (snapshot: EditorSnapshot): EditorSnapshot =>
 		walkTree(layer.nodeTree, (node) => {
 			if (node.category !== 'user') return
 			const t = (node.userType ?? 'base') as unknown as NodeType
-			const tr: LegacyTransform = node.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 10, height: 10, rotation: 0, opacity: 1 }
+			const tr: LegacyTransform = node.transform ?? {
+				x: 0,
+				y: 0,
+				scaleX: 1,
+				scaleY: 1,
+				width: 10,
+				height: 10,
+				rotation: 0,
+				opacity: 1
+			}
 			const legacyScale = toNumber(tr.scale, 1)
 			const scaleX = toNumber(tr.scaleX, legacyScale)
 			const scaleY = toNumber(tr.scaleY, legacyScale)
@@ -71,9 +87,9 @@ export const normalizeSnapshotV1 = (snapshot: EditorSnapshot): EditorSnapshot =>
 					width: toNumber(tr.width, 200),
 					height: toNumber(tr.height, 120),
 					rotation: toNumber(tr.rotation, 0),
-					opacity: toNumber(tr.opacity, 1),
+					opacity: toNumber(tr.opacity, 1)
 				},
-				props: (node.props ?? {}) as Record<string, JsonValue>,
+				props: (node.props ?? {}) as Record<string, JsonValue>
 			}
 			const upgraded = upgradeNodeType(dto, t)
 			node.userType = upgraded.type as unknown as VideoSceneUserNodeType

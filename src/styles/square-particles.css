@@ -4,78 +4,80 @@
    ============================================================ */
 
 .sq-container {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  opacity: var(--sq-container-opacity, 1);
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	overflow: hidden;
+	opacity: var(--sq-container-opacity, 1);
 }
 
 .sq-particle {
-  position: absolute;
-  display: block;
-  background: var(--sq-color);
-  box-shadow:
-    0 0 8px color-mix(in srgb, var(--sq-color) 80%, transparent),
-    0 0 2px color-mix(in srgb, var(--sq-color) 100%, transparent);
-  opacity: var(--sq-opacity, 0.45);
-  animation: sq-drift var(--sq-duration, 8s) cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
-  animation-delay: var(--sq-delay, 0s);
-  will-change: transform, opacity;
+	position: absolute;
+	display: block;
+	background: var(--sq-color);
+	box-shadow:
+		0 0 8px color-mix(in srgb, var(--sq-color) 80%, transparent),
+		0 0 2px color-mix(in srgb, var(--sq-color) 100%, transparent);
+	opacity: var(--sq-opacity, 0.45);
+	animation: sq-drift var(--sq-duration, 8s) cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+	animation-delay: var(--sq-delay, 0s);
+	will-change: transform, opacity;
 }
 
 /* Hovered state: brighter */
 .sq-particle.sq-hovered {
-  opacity: calc(var(--sq-opacity, 0.45) * 1.7);
-  animation-duration: calc(var(--sq-duration, 8s) * 0.7);
+	opacity: calc(var(--sq-opacity, 0.45) * 1.7);
+	animation-duration: calc(var(--sq-duration, 8s) * 0.7);
 }
 
 /* Running state (for AI workflow nodes): fast & vibrant */
 .sq-particle.sq-running {
-  opacity: calc(var(--sq-opacity, 0.45) * 1.5);
-  animation-duration: calc(var(--sq-duration, 8s) * 0.4);
-  box-shadow:
-    0 0 10px var(--sq-color),
-    0 0 3px var(--sq-color);
+	opacity: calc(var(--sq-opacity, 0.45) * 1.5);
+	animation-duration: calc(var(--sq-duration, 8s) * 0.4);
+	box-shadow:
+		0 0 10px var(--sq-color),
+		0 0 3px var(--sq-color);
 }
 
 /* Error state */
 .sq-particle.sq-error {
-  opacity: calc(var(--sq-opacity, 0.45) * 1.4);
-  animation-duration: calc(var(--sq-duration, 8s) * 0.5);
+	opacity: calc(var(--sq-opacity, 0.45) * 1.4);
+	animation-duration: calc(var(--sq-duration, 8s) * 0.5);
 }
 
 /* --- Animation: slow upward drift with slight horizontal sway + rotation --- */
 
 @keyframes sq-drift {
-  0% {
-    transform: translate3d(0, 0, 0) rotate(0deg);
-    opacity: 0;
-  }
-  12% {
-    opacity: var(--sq-opacity, 0.45);
-  }
-  50% {
-    transform: translate3d(var(--sq-sway, 10px), -40%, 0) rotate(calc(var(--sq-rotate, 180deg) * 0.5));
-  }
-  88% {
-    opacity: var(--sq-opacity, 0.45);
-  }
-  100% {
-    transform: translate3d(calc(var(--sq-sway, 10px) * -1), -100%, 0) rotate(var(--sq-rotate, 180deg));
-    opacity: 0;
-  }
+	0% {
+		transform: translate3d(0, 0, 0) rotate(0deg);
+		opacity: 0;
+	}
+	12% {
+		opacity: var(--sq-opacity, 0.45);
+	}
+	50% {
+		transform: translate3d(var(--sq-sway, 10px), -40%, 0)
+			rotate(calc(var(--sq-rotate, 180deg) * 0.5));
+	}
+	88% {
+		opacity: var(--sq-opacity, 0.45);
+	}
+	100% {
+		transform: translate3d(calc(var(--sq-sway, 10px) * -1), -100%, 0)
+			rotate(var(--sq-rotate, 180deg));
+		opacity: 0;
+	}
 }
 
 /* --- Reduced motion --- */
 @media (prefers-reduced-motion: reduce) {
-  .sq-particle {
-    animation-duration: 30s !important;
-    opacity: calc(var(--sq-opacity, 0.45) * 0.5) !important;
-  }
-  .sq-particle.sq-hovered,
-  .sq-particle.sq-running,
-  .sq-particle.sq-error {
-    opacity: calc(var(--sq-opacity, 0.45) * 0.7) !important;
-  }
+	.sq-particle {
+		animation-duration: 30s !important;
+		opacity: calc(var(--sq-opacity, 0.45) * 0.5) !important;
+	}
+	.sq-particle.sq-hovered,
+	.sq-particle.sq-running,
+	.sq-particle.sq-error {
+		opacity: calc(var(--sq-opacity, 0.45) * 0.7) !important;
+	}
 }

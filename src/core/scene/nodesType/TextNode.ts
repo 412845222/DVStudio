@@ -15,13 +15,16 @@ export const normalizeTextNodeProps = (base: TextNodePropsInput): TextNodeProps 
 	const fontSize = Number.isFinite(fontSizeRaw) ? fontSizeRaw : 24
 	const fontColor = typeof base?.fontColor === 'string' ? base.fontColor : '#ffffff'
 	const fontStyle = typeof base?.fontStyle === 'string' ? base.fontStyle : 'normal'
-	const textAlign = base?.textAlign === 'left' || base?.textAlign === 'right' || base?.textAlign === 'center' ? base.textAlign : 'center'
+	const textAlign =
+		base?.textAlign === 'left' || base?.textAlign === 'right' || base?.textAlign === 'center'
+			? base.textAlign
+			: 'center'
 	return {
 		textContent,
 		fontSize,
 		fontColor,
 		fontStyle,
-		textAlign,
+		textAlign
 	}
 }
 
@@ -34,7 +37,7 @@ export class TextNode extends NodeBase {
 			fontSize: 24,
 			fontColor: '#ffffff',
 			fontStyle: 'normal',
-			textAlign: 'center',
+			textAlign: 'center'
 		}
 	}
 
@@ -44,8 +47,12 @@ export class TextNode extends NodeBase {
 			id: dto.id,
 			name: dto.name,
 			type: 'text',
-			transform: { ...dto.transform, width: Math.max(1, dto.transform.width ?? 240), height: Math.max(1, dto.transform.height ?? 60) },
-			props,
+			transform: {
+				...dto.transform,
+				width: Math.max(1, dto.transform.width ?? 240),
+				height: Math.max(1, dto.transform.height ?? 60)
+			},
+			props
 		}
 	}
 }

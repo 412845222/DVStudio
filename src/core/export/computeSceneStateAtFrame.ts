@@ -1,6 +1,10 @@
 import type { VideoSceneState } from '../scene'
 import { containsFrame, getPrevNext } from '../../store/timeline/spans'
-import { canInterpolateNumber, cubicBezierYforX, lerpNumber } from '../../ui/TimeLine/core/curveTick'
+import {
+	canInterpolateNumber,
+	cubicBezierYforX,
+	lerpNumber
+} from '../../ui/TimeLine/core/curveTick'
 import type { CubicBezier } from '../../ui/TimeLine/core/curveTick'
 import { cloneJsonSafe } from '../shared/cloneJsonSafe'
 import { interpolateColorString } from '../../ui/VideoScene/anim/color'
@@ -99,7 +103,8 @@ type TimelineStateLike = {
 	easingCurves: Record<string, CubicBezier>
 }
 
-const makeSegmentKey = (layerId: string, startFrame: number, endFrame: number) => `${layerId}:${startFrame}:${endFrame}`
+const makeSegmentKey = (layerId: string, startFrame: number, endFrame: number) =>
+	`${layerId}:${startFrame}:${endFrame}`
 
 const buildNodeIndex = (nodes: NodeLike[] | undefined, out: Map<string, NodeLike>) => {
 	if (!nodes) return
@@ -109,7 +114,11 @@ const buildNodeIndex = (nodes: NodeLike[] | undefined, out: Map<string, NodeLike
 	}
 }
 
-const getLayerNodeSnapshotAt = (timeline: TimelineStateLike, layerId: string, frameIndex: number): Record<string, NodeSnapshot> | null => {
+const getLayerNodeSnapshotAt = (
+	timeline: TimelineStateLike,
+	layerId: string,
+	frameIndex: number
+): Record<string, NodeSnapshot> | null => {
 	const map = timeline.nodeKeyframesByLayer?.[layerId]
 	if (!map) return null
 	const snap = map[String(Math.floor(frameIndex))]
@@ -166,7 +175,8 @@ const interpolateFilterList = (a: JsonValue, b: JsonValue, t: number): JsonValue
 			const vb = fb[kk]
 			const cc = interpolateColorString(va, vb, t)
 			if (cc != null) next[kk] = cc
-			else if (canInterpolateNumber(va) && canInterpolateNumber(vb)) next[kk] = lerpNumber(va, vb, t)
+			else if (canInterpolateNumber(va) && canInterpolateNumber(vb))
+				next[kk] = lerpNumber(va, vb, t)
 			else next[kk] = vb !== undefined ? vb : va
 		}
 		out.push(next)
@@ -174,7 +184,11 @@ const interpolateFilterList = (a: JsonValue, b: JsonValue, t: number): JsonValue
 	return out
 }
 
-const applySnapshotToLayer = (layers: LayerLike[], layerId: string, snap: Record<string, NodeSnapshot>) => {
+const applySnapshotToLayer = (
+	layers: LayerLike[],
+	layerId: string,
+	snap: Record<string, NodeSnapshot>
+) => {
 	const layer = layers.find((l) => String(l?.id) === layerId)
 	if (!layer) return
 	const index = new Map<string, NodeLike>()
@@ -189,8 +203,10 @@ const applySnapshotToLayer = (layers: LayerLike[], layerId: string, snap: Record
 			node.transform = node.transform ?? {}
 			if (isNumber(targetT.scale) && Number.isFinite(targetT.scale)) {
 				const legacy = Math.max(0, Math.min(1, targetT.scale))
-				if (!(isNumber(targetT.scaleX) && Number.isFinite(targetT.scaleX))) node.transform.scaleX = legacy
-				if (!(isNumber(targetT.scaleY) && Number.isFinite(targetT.scaleY))) node.transform.scaleY = legacy
+				if (!(isNumber(targetT.scaleX) && Number.isFinite(targetT.scaleX)))
+					node.transform.scaleX = legacy
+				if (!(isNumber(targetT.scaleY) && Number.isFinite(targetT.scaleY)))
+					node.transform.scaleY = legacy
 				node.transform.scale = legacy
 			}
 			const keys = ['x', 'y', 'scaleX', 'scaleY', 'width', 'height', 'rotation', 'opacity'] as const
@@ -210,7 +226,11 @@ const applySnapshotToLayer = (layers: LayerLike[], layerId: string, snap: Record
 	}
 }
 
-const findNodeInLayers = (layers: LayerLike[], layerId: string, nodeId: string): NodeLike | null => {
+const findNodeInLayers = (
+	layers: LayerLike[],
+	layerId: string,
+	nodeId: string
+): NodeLike | null => {
 	const layer = layers.find((l) => String(l?.id) === layerId)
 	if (!layer) return null
 	const index = new Map<string, NodeLike>()
@@ -231,19 +251,29 @@ const applyProgressStyleFromSpecToLayers = (timeline: TimelineStateLike, layers:
 		const nodeIds = spec.nodeIds ?? {}
 		const rootId = String(nodeIds.rootId ?? '').trim()
 		const playedId = String(nodeIds.playedOverlayId ?? '').trim()
-		const segmentIds: string[] = Array.isArray(nodeIds.segmentIds) ? nodeIds.segmentIds.filter(isString) : []
-		const titleIds: string[] = Array.isArray(nodeIds.titleIds) ? nodeIds.titleIds.filter(isString) : []
-		const markerIds: string[] = Array.isArray(nodeIds.markerIds) ? nodeIds.markerIds.filter(isString) : []
+		const segmentIds: string[] = Array.isArray(nodeIds.segmentIds)
+			? nodeIds.segmentIds.filter(isString)
+			: []
+		const titleIds: string[] = Array.isArray(nodeIds.titleIds)
+			? nodeIds.titleIds.filter(isString)
+			: []
+		const markerIds: string[] = Array.isArray(nodeIds.markerIds)
+			? nodeIds.markerIds.filter(isString)
+			: []
 
 		const bg = isString(style.backgroundColor) ? style.backgroundColor : null
 		const border = isString(style.borderColor) ? style.borderColor : null
 		const text = isString(style.textColor) ? style.textColor : null
 		const played = isString(style.playedOverlayColor) ? style.playedOverlayColor : null
-		const playedBorder = isString(style.playedOverlayBorderColor) ? style.playedOverlayBorderColor : null
+		const playedBorder = isString(style.playedOverlayBorderColor)
+			? style.playedOverlayBorderColor
+			: null
 		const bgFilters = Array.isArray(style.backgroundFilters) ? style.backgroundFilters : null
 		const segFilters = Array.isArray(style.segmentFilters) ? style.segmentFilters : null
 		const titleFilters = Array.isArray(style.titleFilters) ? style.titleFilters : null
-		const playedFilters = Array.isArray(style.playedOverlayFilters) ? style.playedOverlayFilters : null
+		const playedFilters = Array.isArray(style.playedOverlayFilters)
+			? style.playedOverlayFilters
+			: null
 
 		const patchPropsIf = (nodeId: string, patch: Record<string, JsonValue | undefined>) => {
 			const id = String(nodeId ?? '').trim()
@@ -280,7 +310,7 @@ const applyProgressStyleFromSpecToLayers = (timeline: TimelineStateLike, layers:
 		if (playedId) {
 			const playedPatch: Record<string, JsonValue | undefined> = {
 				borderWidth: 1,
-				borderOpacity: 0.55,
+				borderOpacity: 0.55
 			}
 			if (played != null) playedPatch.fillColor = played
 			if (playedBorder != null) playedPatch.borderColor = playedBorder
@@ -330,15 +360,24 @@ const snapProgressPlayedOverlayForExport = (timeline: TimelineStateLike, layers:
 		node.transform = node.transform ?? {}
 		const t = node.transform
 		if (isNumber(t.width) && Number.isFinite(t.width)) t.width = Math.max(0, Math.round(t.width))
-		if (isNumber(t.height) && Number.isFinite(t.height)) t.height = Math.max(0, Math.round(t.height))
+		if (isNumber(t.height) && Number.isFinite(t.height))
+			t.height = Math.max(0, Math.round(t.height))
 	}
 }
 
-const applySubtitleEmptyOutsideCue = (timeline: TimelineStateLike, layers: LayerLike[], layerId: string, frameIndex: number) => {
+const applySubtitleEmptyOutsideCue = (
+	timeline: TimelineStateLike,
+	layers: LayerLike[],
+	layerId: string,
+	frameIndex: number
+) => {
 	const kind = timeline.layerKindById?.[layerId] ?? 'normal'
 	if (kind !== 'subtitle') return
 	const spans = timeline.subtitleSpansByLayer?.[layerId] ?? []
-	const inCue = containsFrame(spans as unknown as Parameters<typeof containsFrame>[0], Math.floor(frameIndex))
+	const inCue = containsFrame(
+		spans as unknown as Parameters<typeof containsFrame>[0],
+		Math.floor(frameIndex)
+	)
 	if (inCue) return
 	const nodeId = String(timeline.subtitleTextNodeIdByLayer?.[layerId] ?? '').trim()
 	if (!nodeId) return
@@ -348,7 +387,11 @@ const applySubtitleEmptyOutsideCue = (timeline: TimelineStateLike, layers: Layer
 	if (String(node.props?.textContent ?? '') !== '') node.props.textContent = ''
 }
 
-const applySubtitleLayersAtFrame = (timeline: TimelineStateLike, layers: LayerLike[], frameIndex: number) => {
+const applySubtitleLayersAtFrame = (
+	timeline: TimelineStateLike,
+	layers: LayerLike[],
+	frameIndex: number
+) => {
 	const fi = Math.floor(Number(frameIndex))
 	if (!Number.isFinite(fi)) return
 
@@ -414,7 +457,10 @@ const getStageKeyframeFrames = (timeline: TimelineStateLike) => {
 	return out
 }
 
-const getPrevNextStageKeyframe = (sortedFrames: number[], frameIndex: number): { prev: number | null; next: number | null } => {
+const getPrevNextStageKeyframe = (
+	sortedFrames: number[],
+	frameIndex: number
+): { prev: number | null; next: number | null } => {
 	const fi = Math.floor(frameIndex)
 	if (!Number.isFinite(fi) || sortedFrames.length === 0) return { prev: null, next: null }
 	let lo = 0
@@ -429,7 +475,11 @@ const getPrevNextStageKeyframe = (sortedFrames: number[], frameIndex: number): {
 	return { prev, next }
 }
 
-const applyLegacyNodeKeyframesAtFrame = (timeline: TimelineStateLike, layers: LayerLike[], frameIndex: number) => {
+const applyLegacyNodeKeyframesAtFrame = (
+	timeline: TimelineStateLike,
+	layers: LayerLike[],
+	frameIndex: number
+) => {
 	const fi = Math.floor(Number(frameIndex))
 	if (!Number.isFinite(fi)) return
 
@@ -483,7 +533,16 @@ const applyLegacyNodeKeyframesAtFrame = (timeline: TimelineStateLike, layers: La
 			const pb = sb?.props ?? {}
 			const next: NodeSnapshot = {}
 			if (ta || tb) {
-				const keys = ['x', 'y', 'scaleX', 'scaleY', 'width', 'height', 'rotation', 'opacity'] as const
+				const keys = [
+					'x',
+					'y',
+					'scaleX',
+					'scaleY',
+					'width',
+					'height',
+					'rotation',
+					'opacity'
+				] as const
 				const tt: NodeTransformLike = {}
 				for (const k of keys) {
 					let va = ta ? ta[k] : undefined
@@ -496,7 +555,8 @@ const applyLegacyNodeKeyframesAtFrame = (timeline: TimelineStateLike, layers: La
 						if (va === undefined && ta && canInterpolateNumber(ta.scale)) va = ta.scale
 						if (vb === undefined && tb && canInterpolateNumber(tb.scale)) vb = tb.scale
 					}
-					if (canInterpolateNumber(va) && canInterpolateNumber(vb)) tt[k] = lerpNumber(va, vb, easedT)
+					if (canInterpolateNumber(va) && canInterpolateNumber(vb))
+						tt[k] = lerpNumber(va, vb, easedT)
 					else if (vb != null) tt[k] = vb
 					else if (va != null) tt[k] = va
 				}
@@ -512,7 +572,8 @@ const applyLegacyNodeKeyframesAtFrame = (timeline: TimelineStateLike, layers: La
 					else {
 						const cc = interpolateColorString(va, vb, easedT)
 						if (cc != null) tp[k] = cc
-						else if (canInterpolateNumber(va) && canInterpolateNumber(vb)) tp[k] = lerpNumber(va, vb, easedT)
+						else if (canInterpolateNumber(va) && canInterpolateNumber(vb))
+							tp[k] = lerpNumber(va, vb, easedT)
 						else tp[k] = vb !== undefined ? vb : va
 					}
 				}
@@ -533,7 +594,11 @@ const buildLayerMap = (layers: LayerLike[]) => {
 	return map
 }
 
-export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineState: TimelineStateLike, frameIndex: number): VideoSceneState => {
+export const computeSceneStateAtFrame = (
+	baseState: VideoSceneState,
+	timelineState: TimelineStateLike,
+	frameIndex: number
+): VideoSceneState => {
 	const fi = Math.floor(Number(frameIndex))
 	if (!Number.isFinite(fi)) return baseState
 
@@ -629,7 +694,16 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 			const ot = outNode.transform
 			const nt = nextNode.transform
 			if (ot && nt) {
-				const keys = ['x', 'y', 'scaleX', 'scaleY', 'width', 'height', 'rotation', 'opacity'] as const
+				const keys = [
+					'x',
+					'y',
+					'scaleX',
+					'scaleY',
+					'width',
+					'height',
+					'rotation',
+					'opacity'
+				] as const
 				for (const k of keys) {
 					let va = ot[k]
 					let vb = nt[k]
@@ -641,7 +715,8 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 						if (va === undefined && canInterpolateNumber(ot.scale)) va = ot.scale
 						if (vb === undefined && canInterpolateNumber(nt.scale)) vb = nt.scale
 					}
-					if (canInterpolateNumber(va) && canInterpolateNumber(vb)) ot[k] = lerpNumber(va, vb, easedT)
+					if (canInterpolateNumber(va) && canInterpolateNumber(vb))
+						ot[k] = lerpNumber(va, vb, easedT)
 				}
 			}
 
@@ -659,7 +734,12 @@ export const computeSceneStateAtFrame = (baseState: VideoSceneState, timelineSta
 						outNode.props[k] = interpolateFilterList(va, vb, easedT)
 					}
 				} else {
-					const cc = interpolateColorString(va, vb, easedT, isString(va) && va.trim().startsWith('#') ? 'hex' : undefined)
+					const cc = interpolateColorString(
+						va,
+						vb,
+						easedT,
+						isString(va) && va.trim().startsWith('#') ? 'hex' : undefined
+					)
 					if (cc != null) {
 						outNode.props = outNode.props ?? {}
 						outNode.props[k] = cc

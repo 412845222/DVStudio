@@ -42,9 +42,9 @@ class ResizeSnapSessionImpl extends SnapSessionBase<
 				stageWidth: args.stageWidth,
 				stageHeight: args.stageHeight,
 				zoom: args.zoom,
-				basePx: args.basePx,
+				basePx: args.basePx
 			}),
-			lock: null,
+			lock: null
 		}
 	}
 
@@ -69,7 +69,7 @@ class ResizeSnapSessionImpl extends SnapSessionBase<
 			nodeLinesY: this.ctx.nodeLinesY,
 			stage: this.ctx.stage,
 			threshold: this.ctx.threshold,
-			lock: this.lock,
+			lock: this.lock
 		})
 	}
 
@@ -102,19 +102,55 @@ class ResizeSnapSessionImpl extends SnapSessionBase<
 		const movingModeY: SnapModeY = corner === 'tl' || corner === 'tr' ? 't' : 'b'
 		const candNodesX: SnapCandidateX[] = [
 			{ mode: movingModeX, v: movingX },
-			{ mode: 'c', v: cx },
+			{ mode: 'c', v: cx }
 		]
 		const candNodesY: SnapCandidateY[] = [
 			{ mode: movingModeY, v: movingY },
-			{ mode: 'c', v: cy },
+			{ mode: 'c', v: cy }
 		]
 		const candStageX: SnapCandidateX[] = [{ mode: movingModeX, v: movingX }]
 		const candStageY: SnapCandidateY[] = [{ mode: movingModeY, v: movingY }]
 
-		const sxNodes = applyResizeSnapAxis('x', args.anchorWorld.x, movingX, args.nodeLinesX, candNodesX, threshold, minSize, lock)
-		const syNodes = applyResizeSnapAxis('y', args.anchorWorld.y, movingY, args.nodeLinesY, candNodesY, threshold, minSize, lock)
-		const sxStage = applyResizeSnapAxis('x', args.anchorWorld.x, movingX, [stage.left, stage.right], candStageX, threshold, minSize, lock)
-		const syStage = applyResizeSnapAxis('y', args.anchorWorld.y, movingY, [stage.top, stage.bottom], candStageY, threshold, minSize, lock)
+		const sxNodes = applyResizeSnapAxis(
+			'x',
+			args.anchorWorld.x,
+			movingX,
+			args.nodeLinesX,
+			candNodesX,
+			threshold,
+			minSize,
+			lock
+		)
+		const syNodes = applyResizeSnapAxis(
+			'y',
+			args.anchorWorld.y,
+			movingY,
+			args.nodeLinesY,
+			candNodesY,
+			threshold,
+			minSize,
+			lock
+		)
+		const sxStage = applyResizeSnapAxis(
+			'x',
+			args.anchorWorld.x,
+			movingX,
+			[stage.left, stage.right],
+			candStageX,
+			threshold,
+			minSize,
+			lock
+		)
+		const syStage = applyResizeSnapAxis(
+			'y',
+			args.anchorWorld.y,
+			movingY,
+			[stage.top, stage.bottom],
+			candStageY,
+			threshold,
+			minSize,
+			lock
+		)
 
 		const sx = (sxStage.dist ?? Infinity) < (sxNodes.dist ?? Infinity) ? sxStage : sxNodes
 		const sy = (syStage.dist ?? Infinity) < (syNodes.dist ?? Infinity) ? syStage : syNodes
@@ -141,7 +177,7 @@ class ResizeSnapSessionImpl extends SnapSessionBase<
 			cy,
 			snappedLineX: sx.snappedLine,
 			snappedLineY: sy.snappedLine,
-			lock: Object.keys(nextLock).length ? nextLock : null,
+			lock: Object.keys(nextLock).length ? nextLock : null
 		}
 	}
 }
@@ -174,6 +210,6 @@ export const stepResizeSnapSession = (args: {
 		movingY: args.movingY,
 		cx: args.cx,
 		cy: args.cy,
-		minSize: args.minSize,
+		minSize: args.minSize
 	})
 }

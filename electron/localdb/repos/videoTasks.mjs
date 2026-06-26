@@ -36,15 +36,17 @@ function rowToVideoTask(row) {
 		errorMessage: row.error_message,
 		statusText: row.status_text,
 		projectId: row.project_id ? Number(row.project_id) : null,
-		remoteCreatedAt: row.remote_created_at === null || row.remote_created_at === undefined
-			? null
-			: Number(row.remote_created_at),
-		remoteUpdatedAt: row.remote_updated_at === null || row.remote_updated_at === undefined
-			? null
-			: Number(row.remote_updated_at),
+		remoteCreatedAt:
+			row.remote_created_at === null || row.remote_created_at === undefined
+				? null
+				: Number(row.remote_created_at),
+		remoteUpdatedAt:
+			row.remote_updated_at === null || row.remote_updated_at === undefined
+				? null
+				: Number(row.remote_updated_at),
 		syncedAt: isoToMs(row.synced_at),
 		createdAt: isoToMs(row.created_at),
-		updatedAt: isoToMs(row.updated_at),
+		updatedAt: isoToMs(row.updated_at)
 	}
 }
 
@@ -53,9 +55,11 @@ export function createVideoTasksRepo() {
 
 	const listStmt = db.prepare('SELECT * FROM video_tasks ORDER BY updated_at DESC, id DESC')
 	const listByProjectStmt = db.prepare(
-		'SELECT * FROM video_tasks WHERE project_id = ? ORDER BY updated_at DESC, id DESC',
+		'SELECT * FROM video_tasks WHERE project_id = ? ORDER BY updated_at DESC, id DESC'
 	)
-	const getByRemoteTaskIdStmt = db.prepare('SELECT * FROM video_tasks WHERE remote_task_id = ? LIMIT 1')
+	const getByRemoteTaskIdStmt = db.prepare(
+		'SELECT * FROM video_tasks WHERE remote_task_id = ? LIMIT 1'
+	)
 	const insertStmt = db.prepare(
 		`INSERT INTO video_tasks (
       remote_task_id, provider, model, task_type, source, status, prompt, ratio, resolution,
@@ -73,7 +77,7 @@ export function createVideoTasksRepo() {
       @lastFrameUrlRemote, @lastFrameUrlLocal, @lastFrameSourcePathLocal,
       @downloadStatus, @downloadProgress, @downloadError, @errorMessage, @statusText,
       @projectId, @remoteCreatedAt, @remoteUpdatedAt
-    )`,
+    )`
 	)
 	const updateStmt = db.prepare(
 		`UPDATE video_tasks SET
@@ -90,13 +94,14 @@ export function createVideoTasksRepo() {
       download_error = @downloadError, error_message = @errorMessage, status_text = @statusText,
       project_id = @projectId, remote_created_at = @remoteCreatedAt, remote_updated_at = @remoteUpdatedAt,
       synced_at = datetime('now'), updated_at = datetime('now')
-    WHERE remote_task_id = @remoteTaskId`,
+    WHERE remote_task_id = @remoteTaskId`
 	)
 	const deleteStmt = db.prepare('DELETE FROM video_tasks WHERE remote_task_id = ?')
 
 	function normalize(input) {
 		const raw = input || {}
-		const toBool = (v) => v === true || v === 1 || (typeof v === 'string' && v.toLowerCase() === 'true')
+		const toBool = (v) =>
+			v === true || v === 1 || (typeof v === 'string' && v.toLowerCase() === 'true')
 		const toNullableInt = (v) => (v === null || v === undefined || v === '' ? null : Number(v))
 		return {
 			remoteTaskId: String(raw.remoteTaskId || raw.remote_task_id || '').trim(),
@@ -120,20 +125,25 @@ export function createVideoTasksRepo() {
 			responsePayload: stringifyOptionalJson(raw.responsePayload || raw.response_payload),
 			videoUrlRemote: String(raw.videoUrlRemote || raw.video_url_remote || '').trim(),
 			videoUrlLocal: String(raw.videoUrlLocal || raw.video_url_local || '').trim(),
-			videoSourcePathLocal: String(raw.videoSourcePathLocal || raw.video_source_path_local || '').trim(),
+			videoSourcePathLocal: String(
+				raw.videoSourcePathLocal || raw.video_source_path_local || ''
+			).trim(),
 			lastFrameUrlRemote: String(raw.lastFrameUrlRemote || raw.last_frame_url_remote || '').trim(),
 			lastFrameUrlLocal: String(raw.lastFrameUrlLocal || raw.last_frame_url_local || '').trim(),
-			lastFrameSourcePathLocal: String(raw.lastFrameSourcePathLocal || raw.last_frame_source_path_local || '').trim(),
+			lastFrameSourcePathLocal: String(
+				raw.lastFrameSourcePathLocal || raw.last_frame_source_path_local || ''
+			).trim(),
 			downloadStatus: String(raw.downloadStatus || raw.download_status || 'idle').trim(),
 			downloadProgress: Number(raw.downloadProgress || raw.download_progress) || 0,
 			downloadError: String(raw.downloadError || raw.download_error || '').trim(),
 			errorMessage: String(raw.errorMessage || raw.error_message || '').trim(),
 			statusText: String(raw.statusText || raw.status_text || '').trim(),
-			projectId: raw.projectId === undefined || raw.projectId === null || raw.projectId === ''
-				? null
-				: Number(raw.projectId) || null,
+			projectId:
+				raw.projectId === undefined || raw.projectId === null || raw.projectId === ''
+					? null
+					: Number(raw.projectId) || null,
 			remoteCreatedAt: toNullableInt(raw.remoteCreatedAt || raw.remote_created_at),
-			remoteUpdatedAt: toNullableInt(raw.remoteUpdatedAt || raw.remote_updated_at),
+			remoteUpdatedAt: toNullableInt(raw.remoteUpdatedAt || raw.remote_updated_at)
 		}
 	}
 

@@ -8,8 +8,10 @@ const A = (a1: number, a2: number) => 1.0 - 3.0 * a2 + 3.0 * a1
 const B = (a1: number, a2: number) => 3.0 * a2 - 6.0 * a1
 const C = (a1: number) => 3.0 * a1
 
-const calcBezier = (t: number, a1: number, a2: number) => ((A(a1, a2) * t + B(a1, a2)) * t + C(a1)) * t
-const getSlope = (t: number, a1: number, a2: number) => 3.0 * A(a1, a2) * t * t + 2.0 * B(a1, a2) * t + C(a1)
+const calcBezier = (t: number, a1: number, a2: number) =>
+	((A(a1, a2) * t + B(a1, a2)) * t + C(a1)) * t
+const getSlope = (t: number, a1: number, a2: number) =>
+	3.0 * A(a1, a2) * t * t + 2.0 * B(a1, a2) * t + C(a1)
 
 const binarySubdivide = (x: number, a: number, b: number, x1: number, x2: number) => {
 	let currentX: number
@@ -63,7 +65,9 @@ export const cubicBezierYforX = (curve: CubicBezier, x: number) => {
 	}
 	--currentSample
 
-	const dist = (cx - sampleValues[currentSample]) / (sampleValues[currentSample + 1] - sampleValues[currentSample])
+	const dist =
+		(cx - sampleValues[currentSample]) /
+		(sampleValues[currentSample + 1] - sampleValues[currentSample])
 	let guessT = intervalStart + dist * kSampleStepSize
 
 	const initialSlope = getSlope(guessT, x1, x2)
@@ -86,4 +90,5 @@ export const lerpNumber = (a: number, b: number, t: number) => {
 	return aa + (bb - aa) * t
 }
 
-export const canInterpolateNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+export const canInterpolateNumber = (v: unknown): v is number =>
+	typeof v === 'number' && Number.isFinite(v)

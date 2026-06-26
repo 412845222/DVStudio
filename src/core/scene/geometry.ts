@@ -7,19 +7,26 @@ export type RectCorners = {
 	br: Vec2
 }
 
-export const rotatedRectCorners = (center: Vec2, size: { width: number; height: number }, rotation: number): RectCorners => {
+export const rotatedRectCorners = (
+	center: Vec2,
+	size: { width: number; height: number },
+	rotation: number
+): RectCorners => {
 	const cx = center.x
 	const cy = center.y
 	const w = Number.isFinite(Number(size.width)) ? Number(size.width) : 0
 	const h = Number.isFinite(Number(size.height)) ? Number(size.height) : 0
 	const cos = Math.cos(rotation)
 	const sin = Math.sin(rotation)
-	const rot = (dx: number, dy: number): Vec2 => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
+	const rot = (dx: number, dy: number): Vec2 => ({
+		x: cx + dx * cos - dy * sin,
+		y: cy + dx * sin + dy * cos
+	})
 	return {
 		tl: rot(-w / 2, -h / 2),
 		tr: rot(w / 2, -h / 2),
 		bl: rot(-w / 2, h / 2),
-		br: rot(w / 2, h / 2),
+		br: rot(w / 2, h / 2)
 	}
 }
 
@@ -66,11 +73,15 @@ export const normalizeLineLocalPoints = (args: {
 		endX,
 		endY,
 		anchorX: toFiniteNumber(props.anchorX, suggestedAnchor.anchorX),
-		anchorY: toFiniteNumber(props.anchorY, suggestedAnchor.anchorY),
+		anchorY: toFiniteNumber(props.anchorY, suggestedAnchor.anchorY)
 	}
 }
 
-export const scaleLineLocalPoints = (local: LineLocalPoints, scaleX = 1, scaleY = 1): LineLocalPoints => {
+export const scaleLineLocalPoints = (
+	local: LineLocalPoints,
+	scaleX = 1,
+	scaleY = 1
+): LineLocalPoints => {
 	const sx = Number.isFinite(Number(scaleX)) ? Number(scaleX) : 1
 	const sy = Number.isFinite(Number(scaleY)) ? Number(scaleY) : 1
 	return {
@@ -79,7 +90,7 @@ export const scaleLineLocalPoints = (local: LineLocalPoints, scaleX = 1, scaleY 
 		endX: local.endX * sx,
 		endY: local.endY * sy,
 		anchorX: local.anchorX * sx,
-		anchorY: local.anchorY * sy,
+		anchorY: local.anchorY * sy
 	}
 }
 
@@ -117,20 +128,27 @@ export const suggestLineAnchorLocal = (args: {
 	const bend = Math.max(18, Math.min(Math.max(width, height) * 0.32, len * 0.28, 120))
 	return {
 		anchorX: (startX + endX) / 2 + nx * bend,
-		anchorY: (startY + endY) / 2 + ny * bend,
+		anchorY: (startY + endY) / 2 + ny * bend
 	}
 }
 
-export const lineControlPointsWorld = (center: Vec2, rotation: number, local: LineLocalPoints): LineWorldPoints => {
+export const lineControlPointsWorld = (
+	center: Vec2,
+	rotation: number,
+	local: LineLocalPoints
+): LineWorldPoints => {
 	const cx = center.x
 	const cy = center.y
 	const cos = Math.cos(rotation)
 	const sin = Math.sin(rotation)
-	const rot = (dx: number, dy: number): Vec2 => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
+	const rot = (dx: number, dy: number): Vec2 => ({
+		x: cx + dx * cos - dy * sin,
+		y: cy + dx * sin + dy * cos
+	})
 	return {
 		start: rot(local.startX, local.startY),
 		anchor: rot(local.anchorX, local.anchorY),
-		end: rot(local.endX, local.endY),
+		end: rot(local.endX, local.endY)
 	}
 }
 

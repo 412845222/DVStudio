@@ -14,7 +14,9 @@ export type ExportTemplateFromSelectionArgs = {
 
 const nowId = () => `tpl_${Date.now().toString(36)}`
 
-const cloneProps = (props?: Record<string, JsonValue>): Record<string, JsonValue> => ({ ...(props ?? {}) })
+const cloneProps = (props?: Record<string, JsonValue>): Record<string, JsonValue> => ({
+	...(props ?? {})
+})
 
 const toTransform = (n: VideoSceneTreeNode): TemplateNodeTransform | undefined => {
 	if (!n.transform) return undefined
@@ -27,7 +29,7 @@ const toTransform = (n: VideoSceneTreeNode): TemplateNodeTransform | undefined =
 		width: n.transform.width,
 		height: n.transform.height,
 		rotation: n.transform.rotation,
-		opacity: n.transform.opacity,
+		opacity: n.transform.opacity
 	}
 }
 
@@ -43,7 +45,9 @@ const collectSubtreeUserNodes = (root: VideoSceneTreeNode): VideoSceneTreeNode[]
 	return out
 }
 
-export function exportTemplateFromSelection(args: ExportTemplateFromSelectionArgs): ComponentTemplate {
+export function exportTemplateFromSelection(
+	args: ExportTemplateFromSelectionArgs
+): ComponentTemplate {
 	const selected = args.selectedNodeIds.map((id) => String(id || '').trim()).filter(Boolean)
 	if (selected.length === 0) {
 		throw new Error('exportTemplateFromSelection: selectedNodeIds is empty')
@@ -117,7 +121,7 @@ export function exportTemplateFromSelection(args: ExportTemplateFromSelectionArg
 			name: n.name,
 			parentLocalId,
 			transform: toTransform(n),
-			props: cloneProps(n.props),
+			props: cloneProps(n.props)
 		}
 	})
 
@@ -147,6 +151,6 @@ export function exportTemplateFromSelection(args: ExportTemplateFromSelectionArg
 		description: args.description,
 		params: [],
 		nodes: templateNodes,
-		rootLocalId,
+		rootLocalId
 	}
 }

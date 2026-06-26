@@ -23,7 +23,7 @@ type ServiceOptions = {
 
 const jsonHeaders = (devToken?: string) => {
 	const h: Record<string, string> = {
-		'Content-Type': 'application/json',
+		'Content-Type': 'application/json'
 	}
 	if (devToken) h['X-DEV-TOKEN'] = devToken
 	return h
@@ -68,7 +68,7 @@ const coerceAgentToUiMessage = (v: unknown): AgentToUiMessage | null => {
 			id,
 			createdAt: now,
 			type: 'agentToUi/componentTemplate',
-			payload: { template: tpl },
+			payload: { template: tpl }
 		} as AgentToUiMessage
 	}
 
@@ -100,11 +100,13 @@ export class SubtitleAIService {
 	async ping(): Promise<AiPingResponse> {
 		const res = await fetch(this.url('/api/ai/ping'), {
 			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			throw new Error(`ping failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`ping failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 		return (await res.json()) as AiPingResponse
 	}
@@ -116,12 +118,17 @@ export class SubtitleAIService {
 		scope?: string
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
-		yield* this.streamSse('/api/ai/subtitle/understand:stream', {
-			layerId: params.layerId,
-			cues: params.cues,
-			cueRanges: params.cueRanges,
-			scope: typeof params.scope === 'string' && params.scope.trim() ? params.scope.trim() : undefined,
-		}, params.signal)
+		yield* this.streamSse(
+			'/api/ai/subtitle/understand:stream',
+			{
+				layerId: params.layerId,
+				cues: params.cues,
+				cueRanges: params.cueRanges,
+				scope:
+					typeof params.scope === 'string' && params.scope.trim() ? params.scope.trim() : undefined
+			},
+			params.signal
+		)
 	}
 
 	async *streamStyleAdvice(params: {
@@ -129,10 +136,14 @@ export class SubtitleAIService {
 		understanding: unknown
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
-		yield* this.streamSse('/api/ai/subtitle/style:stream', {
-			layerId: params.layerId,
-			understanding: params.understanding,
-		}, params.signal)
+		yield* this.streamSse(
+			'/api/ai/subtitle/style:stream',
+			{
+				layerId: params.layerId,
+				understanding: params.understanding
+			},
+			params.signal
+		)
 	}
 
 	async *streamTemplateSuggestions(params: {
@@ -140,10 +151,14 @@ export class SubtitleAIService {
 		understanding: unknown
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
-		yield* this.streamSse('/api/ai/subtitle/templates:stream', {
-			layerId: params.layerId,
-			understanding: params.understanding,
-		}, params.signal)
+		yield* this.streamSse(
+			'/api/ai/subtitle/templates:stream',
+			{
+				layerId: params.layerId,
+				understanding: params.understanding
+			},
+			params.signal
+		)
 	}
 
 	async *streamChat(params: {
@@ -156,15 +171,19 @@ export class SubtitleAIService {
 		messages: Array<{ role: 'user' | 'assistant'; content: string }>
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
-		yield* this.streamSse('/api/ai/subtitle/chat:stream', {
-			layerId: params.layerId,
-			cues: params.cues,
-			cueRanges: params.cueRanges,
-			deepMode: !!params.deepMode,
-			markdown: params.markdown ?? '',
-			summary: params.summary,
-			messages: params.messages,
-		}, params.signal)
+		yield* this.streamSse(
+			'/api/ai/subtitle/chat:stream',
+			{
+				layerId: params.layerId,
+				cues: params.cues,
+				cueRanges: params.cueRanges,
+				deepMode: !!params.deepMode,
+				markdown: params.markdown ?? '',
+				summary: params.summary,
+				messages: params.messages
+			},
+			params.signal
+		)
 	}
 
 	async *streamPanelChat(params: {
@@ -174,12 +193,16 @@ export class SubtitleAIService {
 		deepMode?: boolean
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
-		yield* this.streamSse('/api/ai/subtitle/panel-chat:stream', {
-			layerId: params.layerId,
-			deepMode: !!params.deepMode,
-			summary: params.summary,
-			messages: params.messages,
-		}, params.signal)
+		yield* this.streamSse(
+			'/api/ai/subtitle/panel-chat:stream',
+			{
+				layerId: params.layerId,
+				deepMode: !!params.deepMode,
+				summary: params.summary,
+				messages: params.messages
+			},
+			params.signal
+		)
 	}
 
 	async *streamPalette(params: {
@@ -188,11 +211,15 @@ export class SubtitleAIService {
 		text?: string
 		signal?: AbortSignal
 	}): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
-		yield* this.streamSse('/api/ai/subtitle/palette:stream', {
-			layerId: params.layerId,
-			summary: params.summary,
-			text: params.text,
-		}, params.signal)
+		yield* this.streamSse(
+			'/api/ai/subtitle/palette:stream',
+			{
+				layerId: params.layerId,
+				summary: params.summary,
+				text: params.text
+			},
+			params.signal
+		)
 	}
 
 	async *streamTemplate(params: {
@@ -214,22 +241,27 @@ export class SubtitleAIService {
 				viewport: params.viewport,
 				provider: params.provider,
 				model: params.model,
-				responseMode: 'agentToUi-jsonl',
+				responseMode: 'agentToUi-jsonl'
 			},
 			params.signal,
 			params.debug ? 'template:stream' : undefined
 		)
 	}
 
-	private async *streamSse(path: string, body: unknown, signal?: AbortSignal, debugLabel?: string): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
+	private async *streamSse(
+		path: string,
+		body: unknown,
+		signal?: AbortSignal,
+		debugLabel?: string
+	): AsyncGenerator<SubtitleAIStreamEvent, void, void> {
 		const res = await fetch(this.url(path), {
 			method: 'POST',
 			headers: {
 				...jsonHeaders(this.devToken),
-				Accept: 'text/event-stream',
+				Accept: 'text/event-stream'
 			},
 			body: JSON.stringify(body ?? {}),
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
@@ -262,7 +294,15 @@ export class SubtitleAIService {
 					if (msg) return [{ type: 'msg', message: msg }]
 					return []
 				} catch (e: unknown) {
-					return [{ type: 'error', error: { message: 'SSE msg JSON.parse failed', details: { raw: data, error: String(e) } } }]
+					return [
+						{
+							type: 'error',
+							error: {
+								message: 'SSE msg JSON.parse failed',
+								details: { raw: data, error: String(e) }
+							}
+						}
+					]
 				}
 			}
 

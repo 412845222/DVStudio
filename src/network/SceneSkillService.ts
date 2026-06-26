@@ -32,7 +32,14 @@ export type SceneUnderstandRunResponse =
 			remoteStatusCode?: number
 			mock?: boolean
 	  }
-	| { ok: false; error: string; status?: number; provider?: string; providerStatusText?: string; remoteStatusCode?: number }
+	| {
+			ok: false
+			error: string
+			status?: number
+			provider?: string
+			providerStatusText?: string
+			remoteStatusCode?: number
+	  }
 
 export type SceneUnderstandImageInput = {
 	imageUrl?: string
@@ -85,7 +92,7 @@ export type SceneLayoutRunResponse =
 	| { ok: false; error: string; status?: number }
 
 const jsonHeaders = {
-	'Content-Type': 'application/json',
+	'Content-Type': 'application/json'
 }
 
 const safeJson = async (res: Response) => {
@@ -132,39 +139,50 @@ export class SceneSkillService {
 	private async fetchWithLog(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
 		const url = typeof input === 'string' ? input : (input as Request).url || String(input)
 		const method = String(init?.method || 'GET').toUpperCase()
-		const start = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+		const start =
+			typeof performance !== 'undefined' && typeof performance.now === 'function'
+				? performance.now()
+				: Date.now()
 		try {
 			const res = await fetch(input, init)
-			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			const end =
+				typeof performance !== 'undefined' && typeof performance.now === 'function'
+					? performance.now()
+					: Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				status: res.status,
 				durationMs: Math.max(0, Math.round(end - start)),
-				tag: 'scene-skill',
+				tag: 'scene-skill'
 			})
 			return res
 		} catch (err: unknown) {
-			const end = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+			const end =
+				typeof performance !== 'undefined' && typeof performance.now === 'function'
+					? performance.now()
+					: Date.now()
 			logBlueprintRequest({
 				url,
 				method,
 				durationMs: Math.max(0, Math.round(end - start)),
 				errorMessage: getErrorMessage(err),
-				tag: 'scene-skill',
+				tag: 'scene-skill'
 			})
 			throw err
 		}
 	}
 
 	async listSceneUnderstandModels(): Promise<SceneUnderstandModelsResponse> {
-		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/models'), { method: 'GET' })
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/models'), {
+			method: 'GET'
+		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `scene-understand/models failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `scene-understand/models failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as SceneUnderstandModelsResponse
@@ -181,27 +199,29 @@ export class SceneSkillService {
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/run'), {
 			method: 'POST',
 			headers: jsonHeaders,
-			body: JSON.stringify(payload ?? {}),
+			body: JSON.stringify(payload ?? {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `scene-understand/run failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `scene-understand/run failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as SceneUnderstandRunResponse
 	}
 
 	async listSceneLightingModels(): Promise<SceneLightingModelsResponse> {
-		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/models'), { method: 'GET' })
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/models'), {
+			method: 'GET'
+		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `scene-lighting/models failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `scene-lighting/models failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as SceneLightingModelsResponse
@@ -219,14 +239,14 @@ export class SceneSkillService {
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/run'), {
 			method: 'POST',
 			headers: jsonHeaders,
-			body: JSON.stringify(payload ?? {}),
+			body: JSON.stringify(payload ?? {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `scene-lighting/run failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `scene-lighting/run failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as SceneLightingRunResponse
@@ -241,15 +261,17 @@ export class SceneSkillService {
 			method: 'POST',
 			headers: {
 				...jsonHeaders,
-				Accept: 'text/event-stream',
+				Accept: 'text/event-stream'
 			},
 			body: JSON.stringify(payload ?? {}),
-			signal,
+			signal
 		})
 
 		if (!res.ok || !res.body) {
 			const body = await safeJson(res)
-			throw new Error(`SSE stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`SSE stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 
 		const reader = res.body.getReader()
@@ -267,14 +289,24 @@ export class SceneSkillService {
 
 			if (name === 'done') return [{ type: 'done' }]
 			if (name === 'error') {
-				return [{ type: 'error', error: { message: extractSseErrorMessage(data), details: undefined } }]
+				return [
+					{ type: 'error', error: { message: extractSseErrorMessage(data), details: undefined } }
+				]
 			}
 			try {
 				const v = JSON.parse(data) as unknown
 				if (isAgentToUiMessage(v)) return [{ type: 'msg', message: v }]
 				return []
 			} catch (e: unknown) {
-				return [{ type: 'error', error: { message: 'SSE msg JSON.parse failed', details: { raw: data, error: String(e) } } }]
+				return [
+					{
+						type: 'error',
+						error: {
+							message: 'SSE msg JSON.parse failed',
+							details: { raw: data, error: String(e) }
+						}
+					}
+				]
 			}
 		}
 
@@ -346,18 +378,21 @@ export class SceneSkillService {
 		yield* this.streamSse('/api/agent-skills/scene-lighting/run:stream', payload, signal)
 	}
 
-	async runSceneLayout(payload: { nodeId: string; inputJson: string }): Promise<SceneLayoutRunResponse> {
+	async runSceneLayout(payload: {
+		nodeId: string
+		inputJson: string
+	}): Promise<SceneLayoutRunResponse> {
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-layout/run'), {
 			method: 'POST',
 			headers: jsonHeaders,
-			body: JSON.stringify(payload ?? {}),
+			body: JSON.stringify(payload ?? {})
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
 				ok: false,
 				status: res.status,
-				error: `scene-layout/run failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
+				error: `scene-layout/run failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
 		return (await res.json()) as SceneLayoutRunResponse

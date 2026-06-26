@@ -18,7 +18,7 @@ function formatTimestamp(date) {
 		'-',
 		pad(date.getHours()),
 		pad(date.getMinutes()),
-		pad(date.getSeconds()),
+		pad(date.getSeconds())
 	].join('')
 }
 
@@ -28,7 +28,7 @@ function run(command, args, options = {}) {
 			cwd: repoRoot,
 			stdio: options.captureOutput ? ['ignore', 'pipe', 'pipe'] : 'inherit',
 			shell: false,
-			windowsHide: true,
+			windowsHide: true
 		})
 
 		let stdout = ''
@@ -49,13 +49,21 @@ function run(command, args, options = {}) {
 				return
 			}
 			const output = stderr.trim() || stdout.trim()
-			reject(new Error(output ? `${command} exited with code ${String(code)}: ${output}` : `${command} exited with code ${String(code)}`))
+			reject(
+				new Error(
+					output
+						? `${command} exited with code ${String(code)}: ${output}`
+						: `${command} exited with code ${String(code)}`
+				)
+			)
 		})
 	})
 }
 
 async function listPackFiles() {
-	const { stdout } = await run('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'], { captureOutput: true })
+	const { stdout } = await run('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'], {
+		captureOutput: true
+	})
 	return stdout
 		.split('\u0000')
 		.map((item) => item.trim())

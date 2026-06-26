@@ -1,7 +1,18 @@
 import { TimelineStore } from '../../../store/timeline'
-import { VideoSceneStore, type VideoSceneLayer, type VideoSceneNodeProps, type VideoSceneNodeTransform, type VideoSceneTreeNode } from '../../../store/videoscene'
+import {
+	VideoSceneStore,
+	type VideoSceneLayer,
+	type VideoSceneNodeProps,
+	type VideoSceneNodeTransform,
+	type VideoSceneTreeNode
+} from '../../../store/videoscene'
 import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
-import { canInterpolateNumber, cubicBezierYforX, lerpNumber, type CubicBezier } from '../../TimeLine/core/curveTick'
+import {
+	canInterpolateNumber,
+	cubicBezierYforX,
+	lerpNumber,
+	type CubicBezier
+} from '../../TimeLine/core/curveTick'
 import { cloneJsonSafe } from '../../../core/shared/cloneJsonSafe'
 import { interpolateColorString } from './color'
 import type { JsonValue } from '../../../core/shared/json'
@@ -38,9 +49,13 @@ type ProgressBarSpec = {
 	}
 }
 
-const makeSegmentKey = (layerId: string, startFrame: number, endFrame: number) => `${layerId}:${startFrame}:${endFrame}`
+const makeSegmentKey = (layerId: string, startFrame: number, endFrame: number) =>
+	`${layerId}:${startFrame}:${endFrame}`
 
-const buildNodeIndex = (nodes: VideoSceneTreeNode[] | undefined, out: Map<string, VideoSceneTreeNode>) => {
+const buildNodeIndex = (
+	nodes: VideoSceneTreeNode[] | undefined,
+	out: Map<string, VideoSceneTreeNode>
+) => {
 	if (!nodes) return
 	for (const n of nodes) {
 		out.set(n.id, n)
@@ -48,14 +63,18 @@ const buildNodeIndex = (nodes: VideoSceneTreeNode[] | undefined, out: Map<string
 	}
 }
 
-const getLayerNodeSnapshotAt = (layerId: string, frameIndex: number): Record<string, NodeSnapshot> | null => {
+const getLayerNodeSnapshotAt = (
+	layerId: string,
+	frameIndex: number
+): Record<string, NodeSnapshot> | null => {
 	const map = TimelineStore.state.nodeKeyframesByLayer?.[layerId]
 	if (!map) return null
 	const snap = map[String(Math.floor(frameIndex))]
 	return snap ?? null
 }
 
-const getNumeric = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const getNumeric = (v: unknown): number | null =>
+	typeof v === 'number' && Number.isFinite(v) ? v : null
 
 const lerpAngleRad = (a: number, b: number, t: number): number => {
 	// Interpolate using the shortest angular distance to avoid long-way spins across wrap boundaries.
@@ -129,7 +148,8 @@ const interpolateFilterList = (a: JsonValue, b: JsonValue, t: number): JsonValue
 			const vb = (fb as Record<string, JsonValue>)[kk]
 			const cc = interpolateColorString(va, vb, t)
 			if (cc != null) next[kk] = cc
-			else if (canInterpolateNumber(va) && canInterpolateNumber(vb)) next[kk] = lerpNumber(va, vb, t)
+			else if (canInterpolateNumber(va) && canInterpolateNumber(vb))
+				next[kk] = lerpNumber(va, vb, t)
 			else next[kk] = vb !== undefined ? vb : va
 		}
 		out.push(next)
@@ -153,16 +173,26 @@ const applySnapshotToLayer = (layerId: string, snap: Record<string, NodeSnapshot
 			const patch: Partial<VideoSceneNodeTransform> = {}
 			if (getNumeric(targetT.x) != null && targetT.x !== cur?.x) patch.x = targetT.x
 			if (getNumeric(targetT.y) != null && targetT.y !== cur?.y) patch.y = targetT.y
-			if (getNumeric(targetT.width) != null && targetT.width !== cur?.width) patch.width = targetT.width
-			if (getNumeric(targetT.height) != null && targetT.height !== cur?.height) patch.height = targetT.height
-			if (getNumeric(targetT.scale) != null && targetT.scale !== cur?.scale) patch.scale = targetT.scale
-			if (getNumeric(targetT.scaleX) != null && targetT.scaleX !== cur?.scaleX) patch.scaleX = targetT.scaleX
-			if (getNumeric(targetT.scaleY) != null && targetT.scaleY !== cur?.scaleY) patch.scaleY = targetT.scaleY
-			if (getNumeric(targetT.rotation) != null && targetT.rotation !== cur?.rotation) patch.rotation = targetT.rotation
-			if (getNumeric(targetT.opacity) != null && targetT.opacity !== cur?.opacity) patch.opacity = targetT.opacity
-			if (getNumeric(targetT.pivotX) != null && clamp01(targetT.pivotX) !== clamp01(cur?.pivotX)) patch.pivotX = clamp01(targetT.pivotX)
-			if (getNumeric(targetT.pivotY) != null && clamp01(targetT.pivotY) !== clamp01(cur?.pivotY)) patch.pivotY = clamp01(targetT.pivotY)
-			if (Object.keys(patch).length) VideoSceneStore.dispatch('updateNodeTransform', { layerId, nodeId, patch })
+			if (getNumeric(targetT.width) != null && targetT.width !== cur?.width)
+				patch.width = targetT.width
+			if (getNumeric(targetT.height) != null && targetT.height !== cur?.height)
+				patch.height = targetT.height
+			if (getNumeric(targetT.scale) != null && targetT.scale !== cur?.scale)
+				patch.scale = targetT.scale
+			if (getNumeric(targetT.scaleX) != null && targetT.scaleX !== cur?.scaleX)
+				patch.scaleX = targetT.scaleX
+			if (getNumeric(targetT.scaleY) != null && targetT.scaleY !== cur?.scaleY)
+				patch.scaleY = targetT.scaleY
+			if (getNumeric(targetT.rotation) != null && targetT.rotation !== cur?.rotation)
+				patch.rotation = targetT.rotation
+			if (getNumeric(targetT.opacity) != null && targetT.opacity !== cur?.opacity)
+				patch.opacity = targetT.opacity
+			if (getNumeric(targetT.pivotX) != null && clamp01(targetT.pivotX) !== clamp01(cur?.pivotX))
+				patch.pivotX = clamp01(targetT.pivotX)
+			if (getNumeric(targetT.pivotY) != null && clamp01(targetT.pivotY) !== clamp01(cur?.pivotY))
+				patch.pivotY = clamp01(targetT.pivotY)
+			if (Object.keys(patch).length)
+				VideoSceneStore.dispatch('updateNodeTransform', { layerId, nodeId, patch })
 		}
 
 		const targetP = s.props
@@ -172,12 +202,17 @@ const applySnapshotToLayer = (layerId: string, snap: Record<string, NodeSnapshot
 			for (const [k, v] of Object.entries(targetP)) {
 				if (curP[k] !== v) patch[k] = v
 			}
-			if (Object.keys(patch).length) VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
+			if (Object.keys(patch).length)
+				VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId, patch })
 		}
 	}
 }
 
-const interpolateSnapshots = (a: Record<string, NodeSnapshot>, b: Record<string, NodeSnapshot>, t: number): Record<string, NodeSnapshot> => {
+const interpolateSnapshots = (
+	a: Record<string, NodeSnapshot>,
+	b: Record<string, NodeSnapshot>,
+	t: number
+): Record<string, NodeSnapshot> => {
 	const out: Record<string, NodeSnapshot> = {}
 	const ids = new Set<string>([...Object.keys(a), ...Object.keys(b)])
 	for (const nodeId of ids) {
@@ -210,8 +245,10 @@ const interpolateSnapshots = (a: Record<string, NodeSnapshot>, b: Record<string,
 			const apy = ta ? getNumeric(ta.pivotY) : null
 			const bpx = tb ? getNumeric(tb.pivotX) : null
 			const bpy = tb ? getNumeric(tb.pivotY) : null
-			if (apx != null || bpx != null) tt.pivotX = t >= 1 ? clamp01(bpx, clamp01(apx, 0.5)) : clamp01(apx, 0.5)
-			if (apy != null || bpy != null) tt.pivotY = t >= 1 ? clamp01(bpy, clamp01(apy, 0.5)) : clamp01(apy, 0.5)
+			if (apx != null || bpx != null)
+				tt.pivotX = t >= 1 ? clamp01(bpx, clamp01(apx, 0.5)) : clamp01(apx, 0.5)
+			if (apy != null || bpy != null)
+				tt.pivotY = t >= 1 ? clamp01(bpy, clamp01(apy, 0.5)) : clamp01(apy, 0.5)
 			next.transform = tt
 		}
 
@@ -226,7 +263,8 @@ const interpolateSnapshots = (a: Record<string, NodeSnapshot>, b: Record<string,
 				else {
 					const cc = interpolateColorString(va, vb, t)
 					if (cc != null) tp[k] = cc
-					else if (canInterpolateNumber(va) && canInterpolateNumber(vb)) tp[k] = lerpNumber(va, vb, t)
+					else if (canInterpolateNumber(va) && canInterpolateNumber(vb))
+						tp[k] = lerpNumber(va, vb, t)
 					else {
 						if (vb === undefined) tp[k] = va
 						else if (va === undefined) tp[k] = vb
@@ -265,11 +303,14 @@ const applyProgressStyleFromSpec = (layerId: string) => {
 	const border = typeof style.borderColor === 'string' ? style.borderColor : null
 	const text = typeof style.textColor === 'string' ? style.textColor : null
 	const played = typeof style.playedOverlayColor === 'string' ? style.playedOverlayColor : null
-	const playedBorder = typeof style.playedOverlayBorderColor === 'string' ? style.playedOverlayBorderColor : null
+	const playedBorder =
+		typeof style.playedOverlayBorderColor === 'string' ? style.playedOverlayBorderColor : null
 	const bgFilters = Array.isArray(style.backgroundFilters) ? style.backgroundFilters : null
 	const segFilters = Array.isArray(style.segmentFilters) ? style.segmentFilters : null
 	const titleFilters = Array.isArray(style.titleFilters) ? style.titleFilters : null
-	const playedFilters = Array.isArray(style.playedOverlayFilters) ? style.playedOverlayFilters : null
+	const playedFilters = Array.isArray(style.playedOverlayFilters)
+		? style.playedOverlayFilters
+		: null
 
 	const patchPropsIf = (nodeId: string, patch: VideoSceneNodeProps) => {
 		const id = String(nodeId ?? '').trim()
@@ -282,7 +323,8 @@ const applyProgressStyleFromSpec = (layerId: string) => {
 			if (v === undefined) continue
 			if (cur[k] !== v) out[k] = v
 		}
-		if (Object.keys(out).length) VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId: id, patch: out })
+		if (Object.keys(out).length)
+			VideoSceneStore.dispatch('updateNodeProps', { layerId, nodeId: id, patch: out })
 	}
 
 	if (rootId) {
@@ -322,7 +364,11 @@ const applyProgressStyleFromSpec = (layerId: string) => {
 	for (const id of markerIds) {
 		const mid = String(id ?? '').trim()
 		if (!mid) continue
-		VideoSceneStore.dispatch('updateNodeTransform', { layerId, nodeId: mid, patch: { width: mSize, height: mSize } })
+		VideoSceneStore.dispatch('updateNodeTransform', {
+			layerId,
+			nodeId: mid,
+			patch: { width: mSize, height: mSize }
+		})
 		const patch: VideoSceneNodeProps = { borderWidth: 1, borderOpacity: 0.85, cornerRadius: cr }
 		if (mColor) patch.fillColor = mColor
 		if (mBorder) patch.borderColor = mBorder
@@ -347,7 +393,9 @@ const applySubtitleEmptyOutsideCue = (layerId: string, frameIndex: number) => {
 }
 
 const getLayerStageSnapshotAt = (layerId: string, frameIndex: number) => {
-	const map = TimelineStore.state.stageKeyframesByFrame as Record<string, { layers: VideoSceneLayer[] }> | undefined
+	const map = TimelineStore.state.stageKeyframesByFrame as
+		| Record<string, { layers: VideoSceneLayer[] }>
+		| undefined
 	if (!map) return null
 	const hit = map[String(Math.floor(frameIndex))]
 	const layers = Array.isArray(hit?.layers) ? hit!.layers : null
@@ -377,7 +425,8 @@ const applyNormalLayerAtFrame = (layerId: string, frameIndex: number) => {
 			const { prev } = getPrevNext(spans, fi)
 			if (prev != null) {
 				const prevLayer = getLayerStageSnapshotAt(layerId, prev)
-				if (prevLayer) VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] })
+				if (prevLayer)
+					VideoSceneStore.dispatch('applyStageSnapshot', { layers: [cloneJsonSafe(prevLayer)] })
 				else resetToBaseline()
 			} else {
 				resetToBaseline()
@@ -449,9 +498,14 @@ const applyNormalLayerAtFrame = (layerId: string, frameIndex: number) => {
 			}
 			const ra = ot.rotation
 			const rb = nt.rotation
-			if (canInterpolateNumber(ra) && canInterpolateNumber(rb)) ot.rotation = lerpAngleRad(ra, rb, easedT)
-			if (canInterpolateNumber(ot.pivotX) || canInterpolateNumber(nt.pivotX)) ot.pivotX = easedT >= 1 ? clamp01(nt.pivotX, clamp01(ot.pivotX, 0.5)) : clamp01(ot.pivotX, 0.5)
-			if (canInterpolateNumber(ot.pivotY) || canInterpolateNumber(nt.pivotY)) ot.pivotY = easedT >= 1 ? clamp01(nt.pivotY, clamp01(ot.pivotY, 0.5)) : clamp01(ot.pivotY, 0.5)
+			if (canInterpolateNumber(ra) && canInterpolateNumber(rb))
+				ot.rotation = lerpAngleRad(ra, rb, easedT)
+			if (canInterpolateNumber(ot.pivotX) || canInterpolateNumber(nt.pivotX))
+				ot.pivotX =
+					easedT >= 1 ? clamp01(nt.pivotX, clamp01(ot.pivotX, 0.5)) : clamp01(ot.pivotX, 0.5)
+			if (canInterpolateNumber(ot.pivotY) || canInterpolateNumber(nt.pivotY))
+				ot.pivotY =
+					easedT >= 1 ? clamp01(nt.pivotY, clamp01(ot.pivotY, 0.5)) : clamp01(ot.pivotY, 0.5)
 		}
 
 		const op = outNode.props ?? {}
@@ -468,7 +522,12 @@ const applyNormalLayerAtFrame = (layerId: string, frameIndex: number) => {
 					outNode.props[k] = interpolateFilterList(va, vb, easedT)
 				}
 			} else {
-				const cc = interpolateColorString(va, vb, easedT, (typeof va === 'string' && va.trim().startsWith('#')) ? 'hex' : undefined)
+				const cc = interpolateColorString(
+					va,
+					vb,
+					easedT,
+					typeof va === 'string' && va.trim().startsWith('#') ? 'hex' : undefined
+				)
 				if (cc != null) {
 					outNode.props = outNode.props ?? {}
 					outNode.props[k] = cc
@@ -558,8 +617,10 @@ const applyProgressLayersAtFrame = (frameIndex: number) => {
 		if (!node || node.category !== 'user') return
 		const t = node.transform
 		if (t) {
-			if (typeof t.width === 'number' && Number.isFinite(t.width)) t.width = Math.max(0, Math.round(t.width))
-			if (typeof t.height === 'number' && Number.isFinite(t.height)) t.height = Math.max(0, Math.round(t.height))
+			if (typeof t.width === 'number' && Number.isFinite(t.width))
+				t.width = Math.max(0, Math.round(t.width))
+			if (typeof t.height === 'number' && Number.isFinite(t.height))
+				t.height = Math.max(0, Math.round(t.height))
 		}
 	}
 
@@ -624,7 +685,6 @@ const applyProgressLayersAtFrame = (frameIndex: number) => {
 		snapPlayedOverlayTransform(layerId)
 		continue
 	}
-
 }
 
 const applyTimelineAnimationAtFrameLegacy = (frameIndex: number) => {

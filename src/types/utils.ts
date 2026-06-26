@@ -55,94 +55,88 @@ export type ResolveType<T> = T extends Promise<infer R> ? R : T
 
 /** 判断值是否为非 null 的对象（包括数组） */
 export function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+	return typeof value === 'object' && value !== null
 }
 
 /** 判断值是否为纯对象（非数组、非 null） */
 export function isRecord(value: unknown): value is Record<string, unknown> {
-  return isObject(value) && !Array.isArray(value)
+	return isObject(value) && !Array.isArray(value)
 }
 
 /** 判断值是否为字符串 */
 export function isString(value: unknown): value is string {
-  return typeof value === 'string'
+	return typeof value === 'string'
 }
 
 /** 判断值是否为数字（且不是 NaN） */
 export function isNumber(value: unknown): value is number {
-  return typeof value === 'number' && !Number.isNaN(value)
+	return typeof value === 'number' && !Number.isNaN(value)
 }
 
 /** 判断值是否为布尔值 */
 export function isBoolean(value: unknown): value is boolean {
-  return typeof value === 'boolean'
+	return typeof value === 'boolean'
 }
 
 /** 判断值是否为 null 或 undefined */
 export function isNull(value: unknown): value is null | undefined {
-  return value === null || value === undefined
+	return value === null || value === undefined
 }
 
 /** 判断值是否为函数 */
 export function isFunction(value: unknown): value is AnyFunction {
-  return typeof value === 'function'
+	return typeof value === 'function'
 }
 
 /** 判断值是否为数组，可选项守卫验证每个元素 */
-export function isArray<T>(
-  value: unknown,
-  itemGuard?: (v: unknown) => v is T
-): value is T[] {
-  if (!Array.isArray(value)) return false
-  if (itemGuard) return value.every(itemGuard)
-  return true
+export function isArray<T>(value: unknown, itemGuard?: (v: unknown) => v is T): value is T[] {
+	if (!Array.isArray(value)) return false
+	if (itemGuard) return value.every(itemGuard)
+	return true
 }
 
 /** 判断对象是否拥有指定的自有属性键 */
-export function hasKey<K extends string>(
-  obj: unknown,
-  key: K
-): obj is Record<K, unknown> {
-  return isRecord(obj) && key in obj
+export function hasKey<K extends string>(obj: unknown, key: K): obj is Record<K, unknown> {
+	return isRecord(obj) && key in obj
 }
 
 /** 判断对象是否拥有指定的字符串属性，且属性值满足类型守卫 */
 export function hasKeyOfType<K extends string, V>(
-  obj: unknown,
-  key: K,
-  guard: (v: unknown) => v is V
+	obj: unknown,
+	key: K,
+	guard: (v: unknown) => v is V
 ): obj is Record<K, V> {
-  return hasKey(obj, key) && guard(obj[key])
+	return hasKey(obj, key) && guard(obj[key])
 }
 
 /** 判断值是否为有效数字字符串 */
 export function isNumericString(value: unknown): value is string {
-  return isString(value) && !Number.isNaN(Number(value))
+	return isString(value) && !Number.isNaN(Number(value))
 }
 
 /** 判断值是否为非空字符串 */
 export function isNonEmptyString(value: unknown): value is string {
-  return isString(value) && value.trim().length > 0
+	return isString(value) && value.trim().length > 0
 }
 
 /** 判断值是否为 HTMLElement */
 export function isHTMLElement(value: unknown): value is HTMLElement {
-  return typeof HTMLElement !== 'undefined' && value instanceof HTMLElement
+	return typeof HTMLElement !== 'undefined' && value instanceof HTMLElement
 }
 
 /** 判断值是否为 File */
 export function isFile(value: unknown): value is File {
-  return typeof File !== 'undefined' && value instanceof File
+	return typeof File !== 'undefined' && value instanceof File
 }
 
 /** 判断值是否为 Blob */
 export function isBlob(value: unknown): value is Blob {
-  return typeof Blob !== 'undefined' && value instanceof Blob
+	return typeof Blob !== 'undefined' && value instanceof Blob
 }
 
 /** 判断值是否为 Error */
 export function isError(value: unknown): value is Error {
-  return value instanceof Error
+	return value instanceof Error
 }
 
 // ─── 类型安全的工具函数 ──────────────────────────────────────────────────────
@@ -154,17 +148,17 @@ export function isError(value: unknown): value is Error {
  * @param fallback 解析失败时的回退值
  */
 export function safeJsonParse<T>(
-  text: string | null | undefined,
-  guard: (value: unknown) => value is T,
-  fallback: T
+	text: string | null | undefined,
+	guard: (value: unknown) => value is T,
+	fallback: T
 ): T {
-  if (isNull(text)) return fallback
-  try {
-    const parsed = JSON.parse(text)
-    return guard(parsed) ? parsed : fallback
-  } catch {
-    return fallback
-  }
+	if (isNull(text)) return fallback
+	try {
+		const parsed = JSON.parse(text)
+		return guard(parsed) ? parsed : fallback
+	} catch {
+		return fallback
+	}
 }
 
 /**
@@ -174,27 +168,27 @@ export function safeJsonParse<T>(
  * @param fallback 读取失败时的回退值
  */
 export function getStorageItem<T>(
-  key: string,
-  guard: (value: unknown) => value is T,
-  fallback: T
+	key: string,
+	guard: (value: unknown) => value is T,
+	fallback: T
 ): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return safeJsonParse(raw, guard, fallback)
-  } catch {
-    return fallback
-  }
+	try {
+		const raw = localStorage.getItem(key)
+		return safeJsonParse(raw, guard, fallback)
+	} catch {
+		return fallback
+	}
 }
 
 /**
  * 类型安全的 localStorage 写入
  */
 export function setStorageItem<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    // 静默失败，localStorage 可能不可用
-  }
+	try {
+		localStorage.setItem(key, JSON.stringify(value))
+	} catch {
+		// 静默失败，localStorage 可能不可用
+	}
 }
 
 /**
@@ -205,26 +199,26 @@ export function setStorageItem<T>(key: string, value: T): void {
  * @param fallback 路径不存在或类型不匹配时的回退值
  */
 export function getPropByPath<T>(
-  obj: unknown,
-  path: string,
-  guard: (v: unknown) => v is T,
-  fallback: T
+	obj: unknown,
+	path: string,
+	guard: (v: unknown) => v is T,
+	fallback: T
 ): T {
-  const keys = path.split('.')
-  let current: unknown = obj
-  for (const key of keys) {
-    if (!hasKey(current, key)) return fallback
-    current = current[key]
-  }
-  return guard(current) ? current : fallback
+	const keys = path.split('.')
+	let current: unknown = obj
+	for (const key of keys) {
+		if (!hasKey(current, key)) return fallback
+		current = current[key]
+	}
+	return guard(current) ? current : fallback
 }
 
 /**
  * 确保值是数组：如果已经是数组则原样返回，否则包装成单元素数组
  */
 export function ensureArray<T>(value: T | T[] | null | undefined): T[] {
-  if (isNull(value)) return []
-  return Array.isArray(value) ? value : [value]
+	if (isNull(value)) return []
+	return Array.isArray(value) ? value : [value]
 }
 
 /**
@@ -237,23 +231,23 @@ export const noop: Noop = () => {}
  * 注意：仅在你 100% 确定类型安全时使用
  */
 export function assertType<T>(value: unknown): T {
-  return value as T
+	return value as T
 }
 
 /**
  * 创建一个带类型守卫的数组过滤器
  */
 export function filterGuard<T>(
-  guard: (value: unknown) => value is T
+	guard: (value: unknown) => value is T
 ): (value: unknown) => value is T {
-  return guard
+	return guard
 }
 
 /**
  * 将联合类型收窄为具体类型的工具（用于 switch/case 穷尽检查）
  */
 export function exhaustiveCheck(value: never, message?: string): never {
-  throw new Error(message || `Unhandled case: ${String(value)}`)
+	throw new Error(message || `Unhandled case: ${String(value)}`)
 }
 
 /**
@@ -261,18 +255,18 @@ export function exhaustiveCheck(value: never, message?: string): never {
  * 用于 catch (e: unknown) 块
  */
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (isString(error)) return error
-  if (isRecord(error) && isString(error.message)) return error.message
-  return String(error)
+	if (error instanceof Error) return error.message
+	if (isString(error)) return error
+	if (isRecord(error) && isString(error.message)) return error.message
+	return String(error)
 }
 
 /**
  * 从 unknown 类型的错误中安全提取 Error 对象
  */
 export function toError(error: unknown): Error {
-  if (error instanceof Error) return error
-  return new Error(getErrorMessage(error))
+	if (error instanceof Error) return error
+	return new Error(getErrorMessage(error))
 }
 
 // ─── 安全属性访问辅助函数 ────────────────────────────────────────────────────
@@ -281,38 +275,38 @@ export function toError(error: unknown): Error {
  * 从 unknown 对象中安全获取字符串属性
  */
 export function safeGetString(obj: unknown, key: string): string | undefined {
-  if (!hasKey(obj, key)) return undefined
-  const value = obj[key]
-  return isString(value) ? value : undefined
+	if (!hasKey(obj, key)) return undefined
+	const value = obj[key]
+	return isString(value) ? value : undefined
 }
 
 /**
  * 从 unknown 对象中安全获取数字属性
  */
 export function safeGetNumber(obj: unknown, key: string): number | undefined {
-  if (!hasKey(obj, key)) return undefined
-  const value = obj[key]
-  return isNumber(value) ? value : undefined
+	if (!hasKey(obj, key)) return undefined
+	const value = obj[key]
+	return isNumber(value) ? value : undefined
 }
 
 /**
  * 从 unknown 对象中安全获取数组属性，并验证每个元素类型
  */
 export function safeGetArray<T>(
-  obj: unknown,
-  key: string,
-  itemGuard: (v: unknown) => v is T
+	obj: unknown,
+	key: string,
+	itemGuard: (v: unknown) => v is T
 ): T[] | undefined {
-  if (!hasKey(obj, key)) return undefined
-  const value = obj[key]
-  return isArray(value, itemGuard) ? value : undefined
+	if (!hasKey(obj, key)) return undefined
+	const value = obj[key]
+	return isArray(value, itemGuard) ? value : undefined
 }
 
 /**
  * 从 unknown 对象中安全获取 Record<string, unknown> 属性
  */
 export function safeGetRecord(obj: unknown, key: string): Record<string, unknown> | undefined {
-  if (!hasKey(obj, key)) return undefined
-  const value = obj[key]
-  return isRecord(value) ? value : undefined
+	if (!hasKey(obj, key)) return undefined
+	const value = obj[key]
+	return isRecord(value) ? value : undefined
 }

@@ -35,31 +35,39 @@ export class TextRenderer extends NodeRenderer {
 		const tex = this.getTextTexture(canvas, node)
 		const w = Math.max(1, Number(node.transform.width ?? 1))
 		const h = Math.max(1, Number(node.transform.height ?? 1))
-		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
-		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const px =
+			typeof (node.transform as any).pivotX === 'number'
+				? Math.max(0, Math.min(1, Number((node.transform as any).pivotX)))
+				: 0.5
+		const py =
+			typeof (node.transform as any).pivotY === 'number'
+				? Math.max(0, Math.min(1, Number((node.transform as any).pivotY)))
+				: 0.5
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
 		canvas.drawTexturedRect(cx, cy, w, h, tex, ctx.opacity, ctx.rotation)
 	}
 
-	renderLocal(canvas: DwebCanvasGL, target: LocalTargetSize, node: RenderNode, ctx: RenderContext): void {
+	renderLocal(
+		canvas: DwebCanvasGL,
+		target: LocalTargetSize,
+		node: RenderNode,
+		ctx: RenderContext
+	): void {
 		const tex = this.getTextTexture(canvas, node)
 		const w = Math.max(1, Number(node.transform.width ?? 1))
 		const h = Math.max(1, Number(node.transform.height ?? 1))
-		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
-		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const px =
+			typeof (node.transform as any).pivotX === 'number'
+				? Math.max(0, Math.min(1, Number((node.transform as any).pivotX)))
+				: 0.5
+		const py =
+			typeof (node.transform as any).pivotY === 'number'
+				? Math.max(0, Math.min(1, Number((node.transform as any).pivotY)))
+				: 0.5
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
-		canvas.drawLocalTexturedRect(
-			target,
-			cx,
-			cy,
-			w,
-			h,
-			tex,
-			ctx.opacity,
-			ctx.rotation
-		)
+		canvas.drawLocalTexturedRect(target, cx, cy, w, h, tex, ctx.opacity, ctx.rotation)
 	}
 
 	private getTextTexture(canvas: DwebCanvasGL, node: RenderNode): WebGLTexture {
@@ -71,7 +79,9 @@ export class TextRenderer extends NodeRenderer {
 		const fontStyle = node.props?.fontStyle ?? 'normal'
 		const textAlignRaw = String((node.props as any)?.textAlign ?? 'center')
 		const textAlign: CanvasTextAlign =
-			textAlignRaw === 'left' || textAlignRaw === 'right' || textAlignRaw === 'center' ? (textAlignRaw as any) : 'center'
+			textAlignRaw === 'left' || textAlignRaw === 'right' || textAlignRaw === 'center'
+				? (textAlignRaw as any)
+				: 'center'
 		// NOTE: key must include layout-affecting props (e.g. textAlign), otherwise cache will keep old layout.
 		// IMPORTANT: texture is generated in *unscaled local* space; do NOT include world width/height in the cache key.
 		const key = `text:${node.id}:${node.text ?? ''}:${node.fontSize ?? 24}:${fontColor}:${fontStyle}:${textAlign}:${localW}:${localH}`

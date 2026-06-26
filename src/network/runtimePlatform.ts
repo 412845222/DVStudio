@@ -14,26 +14,27 @@
 
 type Platform = 'electron' | 'web' | 'unknown'
 
-const VITE_PLATFORM_OVERRIDE = (typeof import.meta !== 'undefined' && import.meta.env.VITE_PLATFORM) || ''
+const VITE_PLATFORM_OVERRIDE =
+	(typeof import.meta !== 'undefined' && import.meta.env.VITE_PLATFORM) || ''
 
 export const getRuntimePlatform = (): Platform => {
-  if (typeof window === 'undefined') return 'unknown'
-  // Explicit runtime injection
-  if (window?.__DWEB_RUNTIME__?.platform === 'electron') return 'electron'
-  if (window?.__DWEB_RUNTIME__?.platform === 'web') return 'web'
-  // Preload bridge exists -> electron
-  if (typeof window?.dweb?.common?.getBackendBaseUrl === 'function') return 'electron'
-  // process.versions.electron -> electron (legacy fallback)
-  try {
-    if (window.process?.versions?.electron) return 'electron'
-  } catch {
-    // ignore
-  }
-  // Build-time override via env
-  if (VITE_PLATFORM_OVERRIDE === 'electron') return 'electron'
-  if (VITE_PLATFORM_OVERRIDE === 'web') return 'web'
-  // Fallback: non-electron browser == web
-  return 'web'
+	if (typeof window === 'undefined') return 'unknown'
+	// Explicit runtime injection
+	if (window?.__DWEB_RUNTIME__?.platform === 'electron') return 'electron'
+	if (window?.__DWEB_RUNTIME__?.platform === 'web') return 'web'
+	// Preload bridge exists -> electron
+	if (typeof window?.dweb?.common?.getBackendBaseUrl === 'function') return 'electron'
+	// process.versions.electron -> electron (legacy fallback)
+	try {
+		if (window.process?.versions?.electron) return 'electron'
+	} catch {
+		// ignore
+	}
+	// Build-time override via env
+	if (VITE_PLATFORM_OVERRIDE === 'electron') return 'electron'
+	if (VITE_PLATFORM_OVERRIDE === 'web') return 'web'
+	// Fallback: non-electron browser == web
+	return 'web'
 }
 
 export const isElectron = () => getRuntimePlatform() === 'electron'
@@ -41,11 +42,11 @@ export const isWeb = () => getRuntimePlatform() === 'web'
 
 // Convenience for exposing debug info to the in-browser debug panel.
 export const runtimeDescription = (): Record<string, string> => {
-  const base = (typeof window !== 'undefined' && window.__DWEB_BACKEND_BASE_URL__) || ''
-  return {
-    platform: getRuntimePlatform(),
-    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-    backendBaseUrl: base,
-    vitePlatformOverride: String(VITE_PLATFORM_OVERRIDE || ''),
-  }
+	const base = (typeof window !== 'undefined' && window.__DWEB_BACKEND_BASE_URL__) || ''
+	return {
+		platform: getRuntimePlatform(),
+		userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+		backendBaseUrl: base,
+		vitePlatformOverride: String(VITE_PLATFORM_OVERRIDE || '')
+	}
 }

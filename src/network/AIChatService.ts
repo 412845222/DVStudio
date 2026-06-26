@@ -35,7 +35,7 @@ type ServiceOptions = {
 
 const jsonHeaders = (devToken?: string) => {
 	const h: Record<string, string> = {
-		'Content-Type': 'application/json',
+		'Content-Type': 'application/json'
 	}
 	if (devToken) h['X-DEV-TOKEN'] = devToken
 	return h
@@ -76,11 +76,13 @@ export class AIChatService {
 		const res = await fetch(this.url('/api/chat/conversations'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ title }),
+			body: JSON.stringify({ title })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			throw new Error(`createConversation failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`createConversation failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 		return (await res.json()) as CreateConversationResponse
 	}
@@ -97,21 +99,23 @@ export class AIChatService {
 		const res = await fetch(
 			this.url(`/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages`),
 			{
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({
-				content: params.content,
-				contextPack: params.contextPack,
-				provider: params.provider,
-				model: params.model,
-				promptPreset: params.promptPreset,
-				promptInput: params.promptInput,
-			}),
+				method: 'POST',
+				headers: jsonHeaders(this.devToken),
+				body: JSON.stringify({
+					content: params.content,
+					contextPack: params.contextPack,
+					provider: params.provider,
+					model: params.model,
+					promptPreset: params.promptPreset,
+					promptInput: params.promptInput
+				})
 			}
 		)
 		if (!res.ok) {
 			const body = await safeJson(res)
-			throw new Error(`sendMessage failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`sendMessage failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 		return (await res.json()) as SendMessageResponse
 	}
@@ -136,28 +140,35 @@ export class AIChatService {
 		promptInput?: unknown
 		signal?: AbortSignal
 	}): AsyncGenerator<AIChatStreamEvent, void, void> {
-		const res = await fetch(this.url(`/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages:stream`), {
-			method: 'POST',
-			headers: {
-				...jsonHeaders(this.devToken),
-				Accept: 'text/event-stream',
-			},
-			body: JSON.stringify({
-				content: params.content,
-				contextPack: params.contextPack,
-				viewport: params.viewport,
-				provider: params.provider,
-				model: params.model,
-				responseMode: params.responseMode ?? 'agentToUi-jsonl',
-				promptPreset: params.promptPreset,
-				promptInput: params.promptInput,
-			}),
-			signal: params.signal,
-		})
+		const res = await fetch(
+			this.url(
+				`/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages:stream`
+			),
+			{
+				method: 'POST',
+				headers: {
+					...jsonHeaders(this.devToken),
+					Accept: 'text/event-stream'
+				},
+				body: JSON.stringify({
+					content: params.content,
+					contextPack: params.contextPack,
+					viewport: params.viewport,
+					provider: params.provider,
+					model: params.model,
+					responseMode: params.responseMode ?? 'agentToUi-jsonl',
+					promptPreset: params.promptPreset,
+					promptInput: params.promptInput
+				}),
+				signal: params.signal
+			}
+		)
 
 		if (!res.ok || !res.body) {
 			const body = await safeJson(res)
-			throw new Error(`streamMessage failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`streamMessage failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 
 		const reader = res.body.getReader()
@@ -175,7 +186,9 @@ export class AIChatService {
 			payload: Record<string, unknown>
 		}
 
-		const coerceToMessageCandidate = (v: Record<string, unknown>): AgentToUiMessageCandidate | null => {
+		const coerceToMessageCandidate = (
+			v: Record<string, unknown>
+		): AgentToUiMessageCandidate | null => {
 			if (v.schemaVersion !== 1) return null
 			if (!isStringGuard(v.type) || !isStringGuard(v.id) || !isStringGuard(v.createdAt)) return null
 			if (!('payload' in v)) return null
@@ -186,7 +199,7 @@ export class AIChatService {
 				type: v.type,
 				id: v.id,
 				createdAt: v.createdAt,
-				payload,
+				payload
 			}
 		}
 
@@ -215,7 +228,7 @@ export class AIChatService {
 				if (!isStringGuard(phase) && isStringGuard(message)) {
 					const patched: AgentToUiMessageCandidate = {
 						...candidate,
-						payload: { ...payload, phase: 'writing' },
+						payload: { ...payload, phase: 'writing' }
 					}
 					return isAgentToUiMessage(patched) ? patched : null
 				}
@@ -233,8 +246,8 @@ export class AIChatService {
 							payload: {
 								...payload,
 								target: 'nodeId',
-								nodeId: match[1].trim(),
-							},
+								nodeId: match[1].trim()
+							}
 						}
 						return isAgentToUiMessage(patched) ? patched : null
 					}
@@ -274,8 +287,8 @@ export class AIChatService {
 					return [
 						{
 							type: 'error',
-							error: { message: 'SSE msg JSON.parse failed', details: { raw: data } },
-						},
+							error: { message: 'SSE msg JSON.parse failed', details: { raw: data } }
+						}
 					]
 				}
 			}
@@ -346,7 +359,7 @@ export class AIChatService {
 			type: 'agentToUi/text',
 			id: `local-${Date.now()}`,
 			createdAt: new Date().toISOString(),
-			payload: { text },
+			payload: { text }
 		}
 	}
 }

@@ -27,8 +27,13 @@
 			title="展开导航"
 		>
 			<svg viewBox="0 0 24 24" fill="none">
-				<path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8"
-					stroke-linecap="round" stroke-linejoin="round"/>
+				<path
+					d="M5 12h14M13 6l6 6-6 6"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 		</button>
 
@@ -42,8 +47,13 @@
 				title="收起导航"
 			>
 				<svg viewBox="0 0 24 24" fill="none">
-					<path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8"
-						stroke-linecap="round" stroke-linejoin="round"/>
+					<path
+						d="M19 12H5M11 6l-6 6 6 6"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</button>
 
@@ -69,18 +79,43 @@
 						<circle cx="6" cy="6" r="2" stroke="currentColor" stroke-width="1.8" />
 						<circle cx="18" cy="6" r="2" stroke="currentColor" stroke-width="1.8" />
 						<circle cx="12" cy="18" r="2" stroke="currentColor" stroke-width="1.8" />
-						<path d="M8 7.2L10.6 16.8M16 7.2L13.4 16.8M8 6h8"
-							stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+						<path
+							d="M8 7.2L10.6 16.8M16 7.2L13.4 16.8M8 6h8"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<svg v-else-if="item.key === 'studio'" viewBox="0 0 24 24" fill="none">
-						<rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8" />
-						<path d="M8 20h8M10 18v2M14 18v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-						<path d="M7.5 9.5h9M7.5 13h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+						<rect
+							x="3"
+							y="4"
+							width="18"
+							height="14"
+							rx="2"
+							stroke="currentColor"
+							stroke-width="1.8"
+						/>
+						<path
+							d="M8 20h8M10 18v2M14 18v2"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+						/>
+						<path
+							d="M7.5 9.5h9M7.5 13h6"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<svg v-else viewBox="0 0 24 24" fill="none">
 						<path
 							d="M12 3.5l2 1.2 2.3-.3.9 2.1 2.1.9-.3 2.3 1.2 2-1.2 2 .3 2.3-2.1.9-.9 2.1-2.3-.3-2 1.2-2-1.2-2.3.3-.9-2.1-2.1-.9.3-2.3-1.2-2 1.2-2-.3-2.3 2.1-.9.9-2.1 2.3.3 2-1.2z"
-							stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+							stroke="currentColor"
+							stroke-width="1.4"
+							stroke-linejoin="round"
+						/>
 						<circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6" />
 					</svg>
 				</span>
@@ -112,8 +147,18 @@ const router = useRouter()
 const expandedState = ref(props.expanded)
 const isCollapsed = ref(props.collapsed)
 
-watch(() => props.expanded, v => { expandedState.value = v })
-watch(() => props.collapsed, v => { isCollapsed.value = v })
+watch(
+	() => props.expanded,
+	(v) => {
+		expandedState.value = v
+	}
+)
+watch(
+	() => props.collapsed,
+	(v) => {
+		isCollapsed.value = v
+	}
+)
 
 // 统一粒子系统（DOM-based，来自 composables/useSquareParticles.ts）
 const sideNavParticles = useSquareParticles({ count: 10, seed: 42, baseOpacity: 0.6 })
@@ -122,7 +167,7 @@ const items = computed(() => [
 	{ key: 'projects', label: '项目列表', active: route.name === 'ProjectList' },
 	{ key: 'workflow', label: 'AI素材工作流', active: route.name === 'AIWorkflow' },
 	// { key: 'studio', label: '动画编辑器', active: route.name === 'VideoStudio' },
-	{ key: 'settings', label: '设置', active: route.name === 'Settings' },
+	{ key: 'settings', label: '设置', active: route.name === 'Settings' }
 ])
 
 function onHover(v: boolean) {
@@ -221,7 +266,7 @@ function toggleCollapsed() {
 }
 
 /* 粒子层（统一 useSquareParticles） */
-@import "../../styles/square-particles.css";
+@import '../../styles/square-particles.css';
 
 .gsn-particles {
 	position: absolute;
@@ -256,7 +301,10 @@ function toggleCollapsed() {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	transition: background 160ms ease, border-color 160ms ease, transform 140ms ease;
+	transition:
+		background 160ms ease,
+		border-color 160ms ease,
+		transform 140ms ease;
 }
 
 .gsn-toggle:hover {
@@ -302,7 +350,11 @@ function toggleCollapsed() {
 	margin: 0;
 	cursor: pointer;
 	overflow: hidden;
-	transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+	transition:
+		background 160ms ease,
+		border-color 160ms ease,
+		box-shadow 160ms ease,
+		color 160ms ease;
 }
 
 .global-side-nav.expanded .gsn-item {
@@ -345,7 +397,9 @@ function toggleCollapsed() {
 	max-width: 0;
 	opacity: 0;
 	white-space: nowrap;
-	transition: max-width 180ms ease, opacity 140ms ease;
+	transition:
+		max-width 180ms ease,
+		opacity 140ms ease;
 	font-size: 12.5px;
 	color: inherit;
 	flex: 0 0 auto;

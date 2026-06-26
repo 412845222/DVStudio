@@ -1,94 +1,94 @@
 <template>
-  <div class="vs-detail">
-    <div class="vs-detail-header">节点属性</div>
-    <div v-if="!selected" class="vs-empty">未选中节点</div>
-    <form v-else class="vs-form" @submit.prevent>
-      <label class="vs-row">
-        <span class="vs-k">名称</span>
-        <input
-          v-model="draft.name"
-          class="vs-input wide"
-          type="text"
-          @change="applyName"
-        />
-      </label>
+	<div class="vs-detail">
+		<div class="vs-detail-header">节点属性</div>
+		<div v-if="!selected" class="vs-empty">未选中节点</div>
+		<form v-else class="vs-form" @submit.prevent>
+			<label class="vs-row">
+				<span class="vs-k">名称</span>
+				<input v-model="draft.name" class="vs-input wide" type="text" @change="applyName" />
+			</label>
 
-      <label class="vs-row">
-        <span class="vs-k">类型</span>
-        <select v-model="draft.type" class="vs-input" @change="applyType">
-          <option value="base">基础</option>
-          <option value="rect">矩形</option>
-          <option value="text">文本</option>
-          <option value="image">图片</option>
-          <option value="line">线条</option>
-        </select>
-      </label>
+			<label class="vs-row">
+				<span class="vs-k">类型</span>
+				<select v-model="draft.type" class="vs-input" @change="applyType">
+					<option value="base">基础</option>
+					<option value="rect">矩形</option>
+					<option value="text">文本</option>
+					<option value="image">图片</option>
+					<option value="line">线条</option>
+				</select>
+			</label>
 
-      <CommonTransformForm
-        :draft="draft"
-        :applyTransform="applyTransform"
-        :applyQuick="applyQuick"
-        :onNumberScrubPointerDown="onNumberScrubPointerDown"
-        :onNumberInputDblClick="onNumberInputDblClick"
-        :onNumberInputFocus="onNumberInputFocus"
-        :onNumberInputBlur="onNumberInputBlur"
-      />
+			<CommonTransformForm
+				:draft="draft"
+				:applyTransform="applyTransform"
+				:applyQuick="applyQuick"
+				:onNumberScrubPointerDown="onNumberScrubPointerDown"
+				:onNumberInputDblClick="onNumberInputDblClick"
+				:onNumberInputFocus="onNumberInputFocus"
+				:onNumberInputBlur="onNumberInputBlur"
+			/>
 
-      <RectNodeForm
-        v-if="draft.type === 'rect'"
-        :draft="draft"
-        :applyRect="() => applyProps('rect')"
-        :onNumberScrubPointerDown="onNumberScrubPointerDown"
-        :onNumberInputDblClick="onNumberInputDblClick"
-        :onNumberInputFocus="onNumberInputFocus"
-        :onNumberInputBlur="onNumberInputBlur"
-      />
+			<RectNodeForm
+				v-if="draft.type === 'rect'"
+				:draft="draft"
+				:applyRect="() => applyProps('rect')"
+				:onNumberScrubPointerDown="onNumberScrubPointerDown"
+				:onNumberInputDblClick="onNumberInputDblClick"
+				:onNumberInputFocus="onNumberInputFocus"
+				:onNumberInputBlur="onNumberInputBlur"
+			/>
 
-      <TextNodeForm
-        v-else-if="draft.type === 'text'"
-        :draft="draft"
-        :applyText="() => applyProps('text')"
-		:applyTextToAllFrames="applyTextToAllFrames"
-        :onNumberScrubPointerDown="onNumberScrubPointerDown"
-        :onNumberInputDblClick="onNumberInputDblClick"
-        :onNumberInputFocus="onNumberInputFocus"
-        :onNumberInputBlur="onNumberInputBlur"
-      />
+			<TextNodeForm
+				v-else-if="draft.type === 'text'"
+				:draft="draft"
+				:applyText="() => applyProps('text')"
+				:applyTextToAllFrames="applyTextToAllFrames"
+				:onNumberScrubPointerDown="onNumberScrubPointerDown"
+				:onNumberInputDblClick="onNumberInputDblClick"
+				:onNumberInputFocus="onNumberInputFocus"
+				:onNumberInputBlur="onNumberInputBlur"
+			/>
 
-      <ImageNodeForm
-        v-else-if="draft.type === 'image'"
-        :draft="draft"
-        :currentImageUrl="currentImageUrl"
-        @pick-file="onPickNodeImageFile"
-        @set-fit="setImageFit"
-      />
+			<ImageNodeForm
+				v-else-if="draft.type === 'image'"
+				:draft="draft"
+				:currentImageUrl="currentImageUrl"
+				@pick-file="onPickNodeImageFile"
+				@set-fit="setImageFit"
+			/>
 
-      <LineNodeForm
-        v-else-if="draft.type === 'line'"
-        :draft="draft"
-        :applyLine="applyLine"
-        :onNumberScrubPointerDown="onNumberScrubPointerDown"
-        :onNumberInputDblClick="onNumberInputDblClick"
-        :onNumberInputFocus="onNumberInputFocus"
-        :onNumberInputBlur="onNumberInputBlur"
-      />
+			<LineNodeForm
+				v-else-if="draft.type === 'line'"
+				:draft="draft"
+				:applyLine="applyLine"
+				:onNumberScrubPointerDown="onNumberScrubPointerDown"
+				:onNumberInputDblClick="onNumberInputDblClick"
+				:onNumberInputFocus="onNumberInputFocus"
+				:onNumberInputBlur="onNumberInputBlur"
+			/>
 
-      <NodeFiltersForm
-        :layerId="selected.layerId"
-        :nodeId="selected.node.id"
-        :filters="filters"
-      />
-    </form>
-  </div>
+			<NodeFiltersForm :layerId="selected.layerId" :nodeId="selected.node.id" :filters="filters" />
+		</form>
+	</div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import { useStore } from 'vuex'
-import { VideoSceneKey, type VideoSceneState, type VideoSceneTreeNode, type VideoSceneUserNodeType } from '../../../../store/videoscene'
+import {
+	VideoSceneKey,
+	type VideoSceneState,
+	type VideoSceneTreeNode,
+	type VideoSceneUserNodeType
+} from '../../../../store/videoscene'
 import { TimelineStore } from '../../../../store/timeline'
 import { VideoStudioKey, type VideoStudioState } from '../../../../store/videostudio'
-import type { VideoSceneImageAsset, VideoSceneNodeTransform, VideoSceneNodeProps } from '../../../../core/scene/types'
+import type {
+	VideoSceneImageAsset,
+	VideoSceneNodeTransform,
+	VideoSceneNodeProps
+} from '../../../../core/scene/types'
 import { isNumber, isString } from '../../../../types/utils'
 import CommonTransformForm from './forms/CommonTransformForm.vue'
 import ImageNodeForm from './forms/ImageNodeForm.vue'
@@ -146,7 +146,8 @@ type NodeDraft = {
 	lineStyle: LineStyle
 }
 
-const { onNumberScrubPointerDown, onNumberInputDblClick, onNumberInputFocus, onNumberInputBlur } = useNumberScrub()
+const { onNumberScrubPointerDown, onNumberInputDblClick, onNumberInputFocus, onNumberInputBlur } =
+	useNumberScrub()
 
 type SelectedInfo = { layerId: string; node: VideoSceneTreeNode; parent: VideoSceneTreeNode | null }
 
@@ -154,7 +155,8 @@ const findSelected = (): SelectedInfo | null => {
 	const nodeId = store.state.selectedNodeId
 	if (!nodeId) return null
 	for (const layer of store.state.layers) {
-		const stack: Array<{ node: VideoSceneTreeNode; parent: VideoSceneTreeNode | null }> = layer.nodeTree.map((n) => ({ node: n, parent: null }))
+		const stack: Array<{ node: VideoSceneTreeNode; parent: VideoSceneTreeNode | null }> =
+			layer.nodeTree.map((n) => ({ node: n, parent: null }))
 		while (stack.length) {
 			const it = stack.shift()!
 			const n = it.node
@@ -203,17 +205,25 @@ const draft = reactive<NodeDraft>({
 	anchorY: -30,
 	lineColor: '#ffffff',
 	lineWidth: 4,
-	lineStyle: 'solid',
+	lineStyle: 'solid'
 })
 
-const getNumberFromProps = (props: VideoSceneNodeProps | undefined, key: string, fallback: number): number => {
+const getNumberFromProps = (
+	props: VideoSceneNodeProps | undefined,
+	key: string,
+	fallback: number
+): number => {
 	if (!props) return fallback
 	const v = props[key]
 	if (isNumber(v)) return v
 	return fallback
 }
 
-const getStringFromProps = (props: VideoSceneNodeProps | undefined, key: string, fallback: string): string => {
+const getStringFromProps = (
+	props: VideoSceneNodeProps | undefined,
+	key: string,
+	fallback: string
+): string => {
 	if (!props) return fallback
 	const v = props[key]
 	if (isString(v)) return v
@@ -230,7 +240,8 @@ const getTextAlign = (props: VideoSceneNodeProps | undefined, fallback: TextAlig
 const getImageFit = (props: VideoSceneNodeProps | undefined, fallback: ImageFit): ImageFit => {
 	if (!props) return fallback
 	const v = props.imageFit
-	if (v === 'contain' || v === 'cover' || v === 'fill' || v === 'none' || v === 'scale-down') return v
+	if (v === 'contain' || v === 'cover' || v === 'fill' || v === 'none' || v === 'scale-down')
+		return v
 	return fallback
 }
 
@@ -250,7 +261,8 @@ const currentImageUrl = computed(() => {
 	return String(draft.imagePath || '').trim()
 })
 
-const genImageAssetId = () => `img-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const genImageAssetId = () =>
+	`img-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
 const onPickNodeImageFile = (file: File) => {
 	const url = URL.createObjectURL(file)
@@ -290,7 +302,18 @@ const syncFromStore = () => {
 	const n = s.node
 	draft.name = n.name ?? ''
 	draft.type = n.category === 'user' ? (n.userType ?? 'base') : 'base'
-	const t: VideoSceneNodeTransform = n.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 200, height: 120, rotation: 0, opacity: 1, pivotX: 0.5, pivotY: 0.5 }
+	const t: VideoSceneNodeTransform = n.transform ?? {
+		x: 0,
+		y: 0,
+		scaleX: 1,
+		scaleY: 1,
+		width: 200,
+		height: 120,
+		rotation: 0,
+		opacity: 1,
+		pivotX: 0.5,
+		pivotY: 0.5
+	}
 	const legacyScale = clampScale(t.scale, 1)
 	draft.x = Number(t.x ?? 0)
 	draft.y = Number(t.y ?? 0)
@@ -315,7 +338,9 @@ const syncFromStore = () => {
 	draft.fontStyle = getStringFromProps(p, 'fontStyle', draft.fontStyle)
 	draft.textAlign = getTextAlign(p, draft.textAlign)
 	draft.imageId = getStringFromProps(p, 'imageId', draft.imageId)
-	const fromAsset: VideoSceneImageAsset | undefined = draft.imageId ? store.state.imageAssets[draft.imageId] : undefined
+	const fromAsset: VideoSceneImageAsset | undefined = draft.imageId
+		? store.state.imageAssets[draft.imageId]
+		: undefined
 	const assetUrl = String(fromAsset?.url ?? '').trim()
 	const assetName = String(fromAsset?.name ?? '').trim()
 	draft.imagePath = assetUrl || getStringFromProps(p, 'imagePath', '').trim()
@@ -343,7 +368,18 @@ watch(
 		const s = selected.value
 		if (!s) return ''
 		const n = s.node
-		const t: VideoSceneNodeTransform = n.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 200, height: 120, rotation: 0, opacity: 1, pivotX: 0.5, pivotY: 0.5 }
+		const t: VideoSceneNodeTransform = n.transform ?? {
+			x: 0,
+			y: 0,
+			scaleX: 1,
+			scaleY: 1,
+			width: 200,
+			height: 120,
+			rotation: 0,
+			opacity: 1,
+			pivotX: 0.5,
+			pivotY: 0.5
+		}
 		const p: VideoSceneNodeProps = n.props ?? {}
 		return JSON.stringify({
 			id: n.id,
@@ -383,7 +419,7 @@ watch(
 			anchorY: p.anchorY,
 			lineColor: p.lineColor,
 			lineWidth: p.lineWidth,
-			lineStyle: p.lineStyle,
+			lineStyle: p.lineStyle
 		})
 	},
 	() => syncFromStore(),
@@ -425,8 +461,8 @@ const applyTransform = () => {
 			rotation: degToRad(draft.rotation),
 			opacity: draft.opacity,
 			pivotX: Math.max(0, Math.min(1, Number(draft.pivotX))),
-			pivotY: Math.max(0, Math.min(1, Number(draft.pivotY))),
-		},
+			pivotY: Math.max(0, Math.min(1, Number(draft.pivotY)))
+		}
 	})
 }
 
@@ -434,7 +470,18 @@ type QuickAction = 'left' | 'right' | 'hcenter' | 'vcenter' | 'fillW' | 'fillH'
 const applyQuick = (action: QuickAction) => {
 	const s = selected.value
 	if (!s) return
-	const t: VideoSceneNodeTransform = s.node.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 200, height: 120, rotation: 0, opacity: 1, pivotX: 0.5, pivotY: 0.5 }
+	const t: VideoSceneNodeTransform = s.node.transform ?? {
+		x: 0,
+		y: 0,
+		scaleX: 1,
+		scaleY: 1,
+		width: 200,
+		height: 120,
+		rotation: 0,
+		opacity: 1,
+		pivotX: 0.5,
+		pivotY: 0.5
+	}
 	const parentW = s.parent?.transform?.width ?? studioStore.state.stage.width
 	const parentH = s.parent?.transform?.height ?? studioStore.state.stage.height
 	const w = Math.max(1, Number(t.width ?? draft.width))
@@ -472,7 +519,7 @@ const applyQuick = (action: QuickAction) => {
 	store.dispatch('updateNodeTransform', {
 		layerId: s.layerId,
 		nodeId: s.node.id,
-		patch: { x: nextX, y: nextY, width: nextW, height: nextH },
+		patch: { x: nextX, y: nextY, width: nextW, height: nextH }
 	})
 }
 
@@ -489,8 +536,8 @@ const applyProps = (kind: 'rect' | 'text' | 'image' | 'line') => {
 				borderColor: draft.borderColor,
 				borderOpacity: draft.borderOpacity,
 				borderWidth: draft.borderWidth,
-				cornerRadius: draft.cornerRadius,
-			},
+				cornerRadius: draft.cornerRadius
+			}
 		})
 		return
 	}
@@ -503,8 +550,8 @@ const applyProps = (kind: 'rect' | 'text' | 'image' | 'line') => {
 				fontSize: draft.fontSize,
 				fontColor: draft.fontColor,
 				fontStyle: draft.fontStyle,
-				textAlign: draft.textAlign,
-			},
+				textAlign: draft.textAlign
+			}
 		})
 		return
 	}
@@ -521,15 +568,20 @@ const applyProps = (kind: 'rect' | 'text' | 'image' | 'line') => {
 				anchorY: draft.anchorY,
 				lineColor: draft.lineColor,
 				lineWidth: draft.lineWidth,
-				lineStyle: draft.lineStyle,
-			},
+				lineStyle: draft.lineStyle
+			}
 		})
 		return
 	}
 	store.dispatch('updateNodeProps', {
 		layerId: s.layerId,
 		nodeId: s.node.id,
-		patch: { imageId: draft.imageId, imagePath: draft.imagePath, imageFit: draft.imageFit, imageName: draft.imageName },
+		patch: {
+			imageId: draft.imageId,
+			imagePath: draft.imagePath,
+			imageFit: draft.imageFit,
+			imageName: draft.imageName
+		}
 	})
 }
 
@@ -542,16 +594,15 @@ const applyTextToAllFrames = () => {
 		layerId: s.layerId,
 		nodeId: s.node.id,
 		patch: {
-			textContent: draft.textContent,
-		},
+			textContent: draft.textContent
+		}
 	})
 	TimelineStore.dispatch('applyNodeTextContentAcrossKeyframes', {
 		layerId: s.layerId,
 		nodeId: s.node.id,
-		textContent: draft.textContent,
+		textContent: draft.textContent
 	})
 }
-
 
 const filters = computed(() => {
 	const s = selected.value
@@ -564,338 +615,338 @@ const filters = computed(() => {
 
 <style>
 .vs-detail {
-  padding: 10px;
-  color: var(--vscode-fg);
-  font-size: 12px;
+	padding: 10px;
+	color: var(--vscode-fg);
+	font-size: 12px;
 }
 
 .vs-detail-header {
-  height: 26px;
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
-  color: var(--vscode-fg);
+	height: 26px;
+	display: flex;
+	align-items: center;
+	margin-bottom: 8px;
+	color: var(--vscode-fg);
 }
 
 .vs-empty {
-  padding: 10px;
-  color: var(--vscode-fg-muted);
+	padding: 10px;
+	color: var(--vscode-fg-muted);
 }
 
 .vs-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
 }
 
 .vs-group {
-  padding-top: 6px;
-  border-top: 1px solid var(--vscode-border);
+	padding-top: 6px;
+	border-top: 1px solid var(--vscode-border);
 }
 
 .vs-group-title {
-  margin-bottom: 6px;
-  color: var(--vscode-fg-muted);
+	margin-bottom: 6px;
+	color: var(--vscode-fg-muted);
 }
 
 .vs-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
 }
 
 .vs-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  max-width: 100%;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
 }
 
 .vs-k {
-  width: 48px;
-  color: var(--vscode-fg-muted);
-  flex: 0 0 auto;
+	width: 48px;
+	color: var(--vscode-fg-muted);
+	flex: 0 0 auto;
 }
 
 .vs-image-pick {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	flex: 1;
+	min-width: 0;
 }
 
 .vs-image-preview {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  border: 1px solid var(--vscode-border);
-  overflow: hidden;
-  background: var(--dweb-defualt);
-  flex: 0 0 auto;
+	width: 56px;
+	height: 56px;
+	border-radius: 10px;
+	border: 1px solid var(--vscode-border);
+	overflow: hidden;
+	background: var(--dweb-defualt);
+	flex: 0 0 auto;
 }
 
 .vs-image-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	display: block;
 }
 
 .vs-image-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+	flex: 1;
 }
 
 .vs-image-name {
-  font-size: 12px;
-  color: var(--vscode-fg);
-  opacity: 0.9;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+	font-size: 12px;
+	color: var(--vscode-fg);
+	opacity: 0.9;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .vs-hidden-input {
-  display: none;
+	display: none;
 }
 
 .vs-input {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 6px 8px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  outline: none;
+	flex: 1 1 0;
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	outline: none;
 }
 
 .vs-input.wide {
-  max-width: 100%;
+	max-width: 100%;
 }
 
 .vs-input:focus {
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-scrub {
-  cursor: ew-resize;
+	cursor: ew-resize;
 }
 
 .vs-scrub:focus {
-  cursor: text;
+	cursor: text;
 }
 
 .vs-textarea {
-  resize: vertical;
-  min-height: 72px;
-  line-height: 18px;
-  white-space: pre-wrap;
+	resize: vertical;
+	min-height: 72px;
+	line-height: 18px;
+	white-space: pre-wrap;
 }
 
 .vs-color {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: transparent;
-  box-sizing: border-box;
+	flex: 0 0 auto;
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: transparent;
+	box-sizing: border-box;
 }
 
 .vs-color:focus {
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-quick {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  flex: 1 1 0;
-  min-width: 0;
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	flex: 1 1 0;
+	min-width: 0;
 }
 
 .vs-quick-btn {
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .vs-quick-btn:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .vs-quick-btn.active {
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-quick-btn:focus {
-  outline: none;
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	outline: none;
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-quick-btn svg {
-  width: 16px;
-  height: 16px;
-  fill: currentColor;
-  opacity: 0.9;
+	width: 16px;
+	height: 16px;
+	fill: currentColor;
+	opacity: 0.9;
 }
 
 .vs-filter-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	position: relative;
 }
 
 .vs-filter-title-actions {
-  flex: 0 0 auto;
+	flex: 0 0 auto;
 }
 
 .vs-filter-menu {
-  position: absolute;
-  right: 0;
-  top: 24px;
-  min-width: 140px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  box-shadow: var(--dweb-shadow);
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
+	position: absolute;
+	right: 0;
+	top: 24px;
+	min-width: 140px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	box-shadow: var(--dweb-shadow);
+	z-index: 10;
+	display: flex;
+	flex-direction: column;
 }
 
 .vs-filter-menu-item {
-  text-align: left;
-  padding: 6px 8px;
-  border: none;
-  background: transparent;
-  color: var(--vscode-fg);
-  cursor: pointer;
+	text-align: left;
+	padding: 6px 8px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-fg);
+	cursor: pointer;
 }
 
 .vs-filter-menu-item:hover {
-  background: var(--dweb-defualt-dark);
+	background: var(--dweb-defualt-dark);
 }
 
 .vs-filter-empty {
-  padding: 6px 0;
-  color: var(--vscode-fg-muted);
+	padding: 6px 0;
+	color: var(--vscode-fg-muted);
 }
 
 .vs-filter-item {
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .vs-filter-item + .vs-filter-item {
-  margin-top: 8px;
+	margin-top: 8px;
 }
 
 .vs-filter-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 }
 
 .vs-filter-item-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--vscode-fg);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--vscode-fg);
 }
 
 .vs-filter-drag {
-  color: var(--vscode-fg-muted);
-  cursor: grab;
-  user-select: none;
+	color: var(--vscode-fg-muted);
+	cursor: grab;
+	user-select: none;
 }
 
 .vs-filter-item-actions {
-  display: inline-flex;
-  gap: 6px;
+	display: inline-flex;
+	gap: 6px;
 }
 
 .vs-filter-icon-btn {
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
 }
 
 .vs-filter-icon-btn:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .vs-filter-icon-btn:focus {
-  outline: none;
-  border-color: var(--dweb-green-main);
-  box-shadow: var(--dweb-shadow);
+	outline: none;
+	border-color: var(--dweb-green-main);
+	box-shadow: var(--dweb-shadow);
 }
 
 .vs-filter-item-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .vs-filter-shader-actions {
-  display: flex;
-  justify-content: flex-end;
+	display: flex;
+	justify-content: flex-end;
 }
 
 .vs-filter-btn {
-  padding: 6px 10px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
+	padding: 6px 10px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
 }
 
 .vs-filter-btn:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .vs-filter-log {
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  padding: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	padding: 8px;
 }
 
 .vs-filter-log-pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--vscode-fg);
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--vscode-fg);
 }
 </style>

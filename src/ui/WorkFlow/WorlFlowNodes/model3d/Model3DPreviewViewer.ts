@@ -20,7 +20,9 @@ type MeshLike = {
 	material?: MaterialLike | MaterialLike[]
 }
 type Vector3Like = {
-	x: number; y: number; z: number
+	x: number
+	y: number
+	z: number
 	clone(): Vector3Like
 	copy(v: Vector3Like): Vector3Like
 	set(x: number, y: number, z: number): Vector3Like
@@ -87,7 +89,12 @@ type OrbitControlsLike = {
 	dispose(): void
 }
 type GLTFLoaderLike = {
-	load(url: string, onLoad: (gltf: GLTFResult) => void, onProgress?: (event: { loaded: number; total: number }) => void, onError?: (err: unknown) => void): void
+	load(
+		url: string,
+		onLoad: (gltf: GLTFResult) => void,
+		onProgress?: (event: { loaded: number; total: number }) => void,
+		onError?: (err: unknown) => void
+	): void
 }
 
 export type Model3DPreviewOptions = {
@@ -110,7 +117,15 @@ const disposeMaterial = (material: MaterialLike | MaterialLike[]) => {
 	const list = Array.isArray(material) ? material : [material]
 	for (const item of list) {
 		if (!item || typeof item.dispose !== 'function') continue
-		const mapKeys = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap'] as const
+		const mapKeys = [
+			'map',
+			'normalMap',
+			'roughnessMap',
+			'metalnessMap',
+			'emissiveMap',
+			'aoMap',
+			'alphaMap'
+		] as const
 		for (const key of mapKeys) {
 			const value = item[key]
 			if (isDisposableTexture(value)) value.dispose()
@@ -148,17 +163,28 @@ export class Model3DPreviewViewer {
 	private readonly handlePointerMove: (event: PointerEvent) => void
 	private readonly handleWheel: (event: WheelEvent) => void
 
-	constructor(private readonly canvas: HTMLCanvasElement, options?: Model3DPreviewOptions) {
+	constructor(
+		private readonly canvas: HTMLCanvasElement,
+		options?: Model3DPreviewOptions
+	) {
 		this.scene = new THREE.Scene() as unknown as SceneLike
 		this.scene.background = new THREE.Color('#0f1720')
 		this.camera = new THREE.PerspectiveCamera(40, 1, 0.01, 1000) as unknown as CameraLike
 		this.camera.position.set(3.5, 2.2, 3.5)
-		this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true }) as unknown as WebGLRendererLike
+		this.renderer = new THREE.WebGLRenderer({
+			canvas,
+			antialias: true,
+			alpha: true,
+			preserveDrawingBuffer: true
+		}) as unknown as WebGLRendererLike
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace
 		this.renderer.setPixelRatio(Math.max(1, Math.min(window.devicePixelRatio || 1, 2)))
 		this.renderer.setClearColor('#0f1720', 1)
 
-		this.controls = new OrbitControls(this.camera as unknown as { position: Vector3Like }, canvas) as unknown as OrbitControlsLike
+		this.controls = new OrbitControls(
+			this.camera as unknown as { position: Vector3Like },
+			canvas
+		) as unknown as OrbitControlsLike
 		this.controls.enableDamping = true
 		this.controls.dampingFactor = 0.08
 		this.controls.minDistance = 0.4
@@ -188,13 +214,19 @@ export class Model3DPreviewViewer {
 		canvas.addEventListener('pointermove', this.handlePointerMove, { passive: true })
 		canvas.addEventListener('wheel', this.handleWheel, { passive: true })
 
-		this.ambientLight = new THREE.HemisphereLight('#dbeafe', '#233146', 1.15) as unknown as LightLike
+		this.ambientLight = new THREE.HemisphereLight(
+			'#dbeafe',
+			'#233146',
+			1.15
+		) as unknown as LightLike
 		this.directionalLight = new THREE.DirectionalLight('#ffffff', 2) as unknown as LightLike
 		this.directionalLight.position.set(4, 8, 5)
 		this.scene.add(this.ambientLight)
 		this.scene.add(this.directionalLight)
 
-		this.grid = new THREE.GridHelper(8, 16, '#64748b', '#334155') as unknown as Object3Dlike & { visible: boolean }
+		this.grid = new THREE.GridHelper(8, 16, '#64748b', '#334155') as unknown as Object3Dlike & {
+			visible: boolean
+		}
 		this.grid.position.y = 0
 		this.axes = new THREE.AxesHelper(1.5) as unknown as Object3Dlike & { visible: boolean }
 		this.scene.add(this.grid)
@@ -205,9 +237,8 @@ export class Model3DPreviewViewer {
 		this.requestRenderBurst(2, 24)
 
 		this.loader = new GLTFLoader() as unknown as GLTFLoaderLike
-		this.resizeObserver = typeof ResizeObserver !== 'undefined'
-			? new ResizeObserver(() => this.resize())
-			: null
+		this.resizeObserver =
+			typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.resize()) : null
 		this.resizeObserver?.observe(this.canvas)
 	}
 
@@ -282,7 +313,11 @@ export class Model3DPreviewViewer {
 		this.interactiveActive = active === true
 		this.controls.enabled = this.interactiveActive
 		if (!this.interactiveActive) this.orbiting = false
-		this.requestRenderBurst(this.controls.autoRotate === true && this.interactiveActive ? 28 : 2, 24, true)
+		this.requestRenderBurst(
+			this.controls.autoRotate === true && this.interactiveActive ? 28 : 2,
+			24,
+			true
+		)
 	}
 
 	setOptions(options?: Model3DPreviewOptions) {
@@ -296,10 +331,17 @@ export class Model3DPreviewViewer {
 		if (typeof options.gridVisible === 'boolean') this.grid.visible = options.gridVisible
 		if (typeof options.axesVisible === 'boolean') this.axes.visible = options.axesVisible
 		if (typeof options.autoRotate === 'boolean') this.controls.autoRotate = options.autoRotate
-		this.requestRenderBurst(this.controls.autoRotate === true && this.interactiveActive ? 24 : 2, 24, true)
+		this.requestRenderBurst(
+			this.controls.autoRotate === true && this.interactiveActive ? 24 : 2,
+			24,
+			true
+		)
 	}
 
-	async loadModel(url: string, onProgress?: (payload: { loaded: number; total: number; ratio: number }) => void) {
+	async loadModel(
+		url: string,
+		onProgress?: (payload: { loaded: number; total: number; ratio: number }) => void
+	) {
 		const source = String(url || '').trim()
 		if (!source) {
 			this.clearModel()
@@ -317,7 +359,7 @@ export class Model3DPreviewViewer {
 					onProgress({
 						loaded,
 						total,
-						ratio: Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0,
+						ratio: Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0
 					})
 				},
 				(err: unknown) => reject(err)
@@ -361,23 +403,59 @@ export class Model3DPreviewViewer {
 	private frameObject(object: Object3Dlike) {
 		const box = new THREE.Box3().setFromObject(object) as unknown as Box3Like
 		if (box.isEmpty()) return
-		const sizeVec = { x: 0, y: 0, z: 0, clone() { return this }, copy() { return this }, set() { return this } } as unknown as Vector3Like
-		const centerVec = { x: 0, y: 0, z: 0, clone() { return this }, copy() { return this }, set() { return this } } as unknown as Vector3Like
+		const sizeVec = {
+			x: 0,
+			y: 0,
+			z: 0,
+			clone() {
+				return this
+			},
+			copy() {
+				return this
+			},
+			set() {
+				return this
+			}
+		} as unknown as Vector3Like
+		const centerVec = {
+			x: 0,
+			y: 0,
+			z: 0,
+			clone() {
+				return this
+			},
+			copy() {
+				return this
+			},
+			set() {
+				return this
+			}
+		} as unknown as Vector3Like
 		const size = box.getSize(sizeVec)
 		const center = box.getCenter(centerVec)
 		const radius = Math.max(size.x, size.y, size.z, 0.2)
 		this.controls.target.copy(center)
 		this.camera.near = Math.max(0.01, radius / 100)
 		this.camera.far = Math.max(100, radius * 30)
-		this.camera.position.set(center.x + radius * 1.8, center.y + radius * 1.2, center.z + radius * 1.8)
+		this.camera.position.set(
+			center.x + radius * 1.8,
+			center.y + radius * 1.2,
+			center.z + radius * 1.8
+		)
 		this.camera.updateProjectionMatrix()
 		this.controls.update()
 		this.requestRenderBurst(8, 24)
 	}
 
 	private resize() {
-		const width = Math.max(1, Math.floor(this.canvas.clientWidth || this.canvas.parentElement?.clientWidth || 1))
-		const height = Math.max(1, Math.floor(this.canvas.clientHeight || this.canvas.parentElement?.clientHeight || 1))
+		const width = Math.max(
+			1,
+			Math.floor(this.canvas.clientWidth || this.canvas.parentElement?.clientWidth || 1)
+		)
+		const height = Math.max(
+			1,
+			Math.floor(this.canvas.clientHeight || this.canvas.parentElement?.clientHeight || 1)
+		)
 		this.renderer.setSize(width, height, false)
 		this.camera.aspect = width / height
 		this.camera.updateProjectionMatrix()

@@ -34,13 +34,15 @@ const uploadOne = async (frameIndex: number, blob: Blob) => {
 	const url = `${baseUrl || ''}/api/export/jobs/${encodeURIComponent(jobId)}/frames`
 	const res = await fetch(url, { method: 'POST', body: fd })
 	if (!res.ok) {
-		let preview = ''
+		let preview
 		try {
 			preview = (await res.text()).slice(0, 300)
 		} catch {
 			preview = ''
 		}
-		throw new Error(`上传帧失败：${res.status} ${res.statusText}${preview ? `，body: ${preview}` : ''}`)
+		throw new Error(
+			`上传帧失败：${res.status} ${res.statusText}${preview ? `，body: ${preview}` : ''}`
+		)
 	}
 }
 

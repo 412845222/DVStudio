@@ -52,7 +52,17 @@ export class DwebImagePool {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, initMode)
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, initMode)
 		gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
+		gl.texImage2D(
+			gl.TEXTURE_2D,
+			0,
+			gl.RGBA,
+			1,
+			1,
+			0,
+			gl.RGBA,
+			gl.UNSIGNED_BYTE,
+			new Uint8Array([0, 0, 0, 0])
+		)
 
 		const entry: CacheEntry = { src: key, tex, width: 1, height: 1, wrap, status: 'loading' }
 		entry.readyPromise = new Promise((resolve) => {
@@ -90,7 +100,11 @@ export class DwebImagePool {
 
 		const loadViaFetchImageBitmap = async () => {
 			try {
-				const res = await fetch(key, { mode: 'cors', credentials: 'omit', cache: 'force-cache' as any })
+				const res = await fetch(key, {
+					mode: 'cors',
+					credentials: 'omit',
+					cache: 'force-cache' as any
+				})
 				if (!res.ok) throw new Error(`HTTP ${res.status}`)
 				const blob = await res.blob()
 				const bmp = await createImageBitmap(blob)
@@ -122,7 +136,8 @@ export class DwebImagePool {
 		}
 
 		if (typeof Image !== 'undefined') loadViaDomImage()
-		else if (typeof fetch !== 'undefined' && typeof createImageBitmap !== 'undefined') void loadViaFetchImageBitmap()
+		else if (typeof fetch !== 'undefined' && typeof createImageBitmap !== 'undefined')
+			void loadViaFetchImageBitmap()
 		else {
 			entry.status = 'error'
 			entry.readyResolve?.()

@@ -13,10 +13,11 @@ export type ConsumeComponentTemplateResult =
 			template: ComponentTemplate
 			params: Record<string, JsonValue>
 			instantiated: ReturnType<typeof instantiateValidatedTemplate>
-		}
+	  }
 	| { ok: false; errors: string[] }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+	typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const toJsonValue = (v: unknown): JsonValue | undefined => {
 	if (v === null) return null
@@ -53,7 +54,9 @@ const toJsonRecord = (v: unknown): Record<string, JsonValue> => {
 	return out
 }
 
-export function consumeAgentToUiComponentTemplateMessage(v: unknown): ConsumeComponentTemplateResult {
+export function consumeAgentToUiComponentTemplateMessage(
+	v: unknown
+): ConsumeComponentTemplateResult {
 	if (!isAgentToUiComponentTemplateMessage(v)) {
 		return { ok: false, errors: ['AgentToUI message invalid or not componentTemplate'] }
 	}
@@ -75,7 +78,7 @@ export function consumeAgentToUiComponentTemplateMessage(v: unknown): ConsumeCom
 			intent: payload.intent,
 			template,
 			params,
-			instantiated,
+			instantiated
 		}
 	} catch (e) {
 		return { ok: false, errors: [e instanceof Error ? e.message : String(e)] }

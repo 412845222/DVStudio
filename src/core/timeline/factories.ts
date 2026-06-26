@@ -39,5 +39,5 @@ export const createDefaultTimelineState = (): TimelineState => ({
 	progressVersion: 0,
 
 	audioByLayerId: {},
-	audioVersion: 0,
+	audioVersion: 0
 })

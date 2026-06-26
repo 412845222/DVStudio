@@ -10,9 +10,9 @@ export const createVideoSceneLayer = (layerId: string, name: string): VideoScene
 			name,
 			category: 'project',
 			projectKind: 'group',
-			children: [],
-		},
-	],
+			children: []
+		}
+	]
 })
 
 export const createDefaultVideoSceneState = (): VideoSceneState => ({
@@ -24,13 +24,13 @@ export const createDefaultVideoSceneState = (): VideoSceneState => ({
 		{
 			id: 'layer-1',
 			name: '图层1',
-			nodeTree: createVideoSceneLayer('layer-1', '图层1').nodeTree,
-		},
+			nodeTree: createVideoSceneLayer('layer-1', '图层1').nodeTree
+		}
 	],
 	activeLayerId: 'layer-1',
 	selectedNodeId: null,
 	selectedNodeIds: [],
 	focusedNodeId: null,
 	layoutInsets: { leftPanelWidth: 0, rightPanelWidth: 240, bottomToolbarHeight: 40 },
-	imageAssets: {},
+	imageAssets: {}
 })

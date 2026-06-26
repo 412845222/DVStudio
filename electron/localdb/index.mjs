@@ -1,4 +1,10 @@
-import { closeLocalDb, getLocalDb, getLocalDbFilePath, openLocalDb, resolveLocalDbFilePath } from './db.mjs'
+import {
+	closeLocalDb,
+	getLocalDb,
+	getLocalDbFilePath,
+	openLocalDb,
+	resolveLocalDbFilePath
+} from './db.mjs'
 import { ensureLocalDbSchema } from './migrations.mjs'
 import { createProjectsRepo } from './repos/projects.mjs'
 import { createMeshyTasksRepo } from './repos/meshyTasks.mjs'
@@ -58,12 +64,41 @@ export function initLocalDb({ backendDataDir, userDataDir, appSecret } = {}) {
 	const secret = appSecret || backendDir || userDir || 'localdb'
 
 	const candidates = []
-	if (backendDir) candidates.push({ dbFilePath: resolveLocalDbFilePath({ backendDataDir: backendDir, userDataDir: userDir || backendDir }), baseDir: backendDir, appSecret: secret, tag: 'backend' })
-	if (userDir && userDir !== backendDir) candidates.push({ dbFilePath: nodePath.resolve(userDir, 'localdb.sqlite3'), baseDir: userDir, appSecret: secret, tag: 'userData' })
-	if (tmpDir && tmpDir !== backendDir && tmpDir !== userDir) candidates.push({ dbFilePath: nodePath.resolve(tmpDir, 'dweb-localdb.sqlite3'), baseDir: tmpDir, appSecret: secret, tag: 'tmpdir' })
+	if (backendDir)
+		candidates.push({
+			dbFilePath: resolveLocalDbFilePath({
+				backendDataDir: backendDir,
+				userDataDir: userDir || backendDir
+			}),
+			baseDir: backendDir,
+			appSecret: secret,
+			tag: 'backend'
+		})
+	if (userDir && userDir !== backendDir)
+		candidates.push({
+			dbFilePath: nodePath.resolve(userDir, 'localdb.sqlite3'),
+			baseDir: userDir,
+			appSecret: secret,
+			tag: 'userData'
+		})
+	if (tmpDir && tmpDir !== backendDir && tmpDir !== userDir)
+		candidates.push({
+			dbFilePath: nodePath.resolve(tmpDir, 'dweb-localdb.sqlite3'),
+			baseDir: tmpDir,
+			appSecret: secret,
+			tag: 'tmpdir'
+		})
 	if (candidates.length === 0) {
-		const lastResort = nodePath.resolve(nodePath.resolve(os.homedir ? os.homedir() : os.tmpdir(), '.dweb'), 'localdb.sqlite3')
-		candidates.push({ dbFilePath: lastResort, baseDir: nodePath.dirname(lastResort), appSecret: secret, tag: 'homedir' })
+		const lastResort = nodePath.resolve(
+			nodePath.resolve(os.homedir ? os.homedir() : os.tmpdir(), '.dweb'),
+			'localdb.sqlite3'
+		)
+		candidates.push({
+			dbFilePath: lastResort,
+			baseDir: nodePath.dirname(lastResort),
+			appSecret: secret,
+			tag: 'homedir'
+		})
 	}
 
 	let firstErr = null
@@ -82,7 +117,7 @@ export function ensureLocalDbInitialized(options = {}) {
 		const initResult = initLocalDb({
 			backendDataDir: options?.backendDataDir,
 			userDataDir: options?.userDataDir,
-			appSecret: options?.appSecret,
+			appSecret: options?.appSecret
 		})
 		return { ok: true, alreadyInitialized: false, repos: reposSnapshot, init: initResult }
 	} catch (err) {
@@ -96,12 +131,17 @@ export function getRepos() {
 }
 
 export function getReposSafe() {
-	if (!reposSnapshot) return { ok: false, error: lastInitError || '[localdb]尚未初始化，请先调用initLocalDb' }
+	if (!reposSnapshot)
+		return { ok: false, error: lastInitError || '[localdb]尚未初始化，请先调用initLocalDb' }
 	return { ok: true, repos: reposSnapshot }
 }
 
 export function resetLocalDbForTesting() {
-	try { closeLocalDb() } catch { /* ignore */ }
+	try {
+		closeLocalDb()
+	} catch {
+		/* ignore */
+	}
 	reposSnapshot = null
 	lastInitError = null
 }

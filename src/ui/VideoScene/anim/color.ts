@@ -137,7 +137,12 @@ export const convertColorString = (raw: unknown, format: ColorFormat): string | 
 	return format === 'hex' ? rgbaToHex(c) : rgbaToRgbString(c)
 }
 
-export const interpolateColorString = (a: unknown, b: unknown, t: number, preferred?: ColorFormat): string | null => {
+export const interpolateColorString = (
+	a: unknown,
+	b: unknown,
+	t: number,
+	preferred?: ColorFormat
+): string | null => {
 	const ca = parseColor(a)
 	const cb = parseColor(b)
 	if (!ca || !cb) return null
@@ -150,7 +155,7 @@ export const interpolateColorString = (a: unknown, b: unknown, t: number, prefer
 		r: lerpNumber(ca.r, cb.r, t),
 		g: lerpNumber(ca.g, cb.g, t),
 		b: lerpNumber(ca.b, cb.b, t),
-		a: lerpNumber(ca.a, cb.a, t),
+		a: lerpNumber(ca.a, cb.a, t)
 	}
 	return fmt === 'hex' ? rgbaToHex(out) : rgbaToRgbString(out)
 }

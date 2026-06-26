@@ -37,6 +37,7 @@ export function createProgram(
 	gl.deleteShader(vs)
 	gl.deleteShader(fs)
 	const aPos = gl.getAttribLocation(program, opt.aPos)
-	const uSampler = opt.withSampler && opt.uSampler ? gl.getUniformLocation(program, opt.uSampler) : null
+	const uSampler =
+		opt.withSampler && opt.uSampler ? gl.getUniformLocation(program, opt.uSampler) : null
 	return { program, aPos, uSampler }
 }

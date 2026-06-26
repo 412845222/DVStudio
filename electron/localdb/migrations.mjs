@@ -115,7 +115,9 @@ function runV1(db) {
       FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL
     );
   `)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_video_tasks_remote_task_id ON video_tasks(remote_task_id);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_video_tasks_remote_task_id ON video_tasks(remote_task_id);`
+	)
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_video_tasks_project_id ON video_tasks(project_id);`)
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_video_tasks_status ON video_tasks(status);`)
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_video_tasks_updated_at ON video_tasks(updated_at DESC);`)

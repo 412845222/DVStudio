@@ -11,5 +11,10 @@ export abstract class NodeRenderer {
 	 * - 坐标原点在 target 中心
 	 * - 不受 viewport pan/zoom 影响
 	 */
-	abstract renderLocal(canvas: DwebCanvasGL, target: LocalTargetSize, node: RenderNode, ctx: RenderContext): void
+	abstract renderLocal(
+		canvas: DwebCanvasGL,
+		target: LocalTargetSize,
+		node: RenderNode,
+		ctx: RenderContext
+	): void
 }

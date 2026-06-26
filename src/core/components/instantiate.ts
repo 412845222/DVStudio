@@ -6,11 +6,19 @@ import { computeTextAutoSize } from '../scene/commands/nodes/textAutoSize'
 import { genId as defaultGenId } from '../scene/commands/nodes/utils'
 import { normalizeTextNodeProps } from '../scene/nodesType/TextNode'
 
-import type { ComponentTemplate, InstantiateTemplateOptions, InstantiateTemplateResult, TemplateNodeTransform } from './types'
+import type {
+	ComponentTemplate,
+	InstantiateTemplateOptions,
+	InstantiateTemplateResult,
+	TemplateNodeTransform
+} from './types'
 import { validateComponentTemplate } from './validate'
 import { isRecord } from '../../types/utils'
 
-const toUserType = (templateType: string, fallback: VideoSceneUserNodeType): VideoSceneUserNodeType => {
+const toUserType = (
+	templateType: string,
+	fallback: VideoSceneUserNodeType
+): VideoSceneUserNodeType => {
 	if (templateType === 'group') return 'base'
 	if (templateType === 'base') return 'base'
 	if (templateType === 'rect') return 'rect'
@@ -28,7 +36,8 @@ const buildDefaults = (template: ComponentTemplate): Record<string, JsonValue> =
 	return out
 }
 
-const resolveParam = (params: Record<string, JsonValue>, key: string): JsonValue | undefined => params[key]
+const resolveParam = (params: Record<string, JsonValue>, key: string): JsonValue | undefined =>
+	params[key]
 
 const substituteInString = (s: string, params: Record<string, JsonValue>): JsonValue => {
 	const pure = /^\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}$/.exec(s)
@@ -64,7 +73,10 @@ const coerceNumber = (v: JsonValue): number | null => {
 	return null
 }
 
-const applyTransformPatch = (base: VideoSceneNodeTransform, patch?: TemplateNodeTransform): VideoSceneNodeTransform => {
+const applyTransformPatch = (
+	base: VideoSceneNodeTransform,
+	patch?: TemplateNodeTransform
+): VideoSceneNodeTransform => {
 	if (!patch) return base
 	const next: VideoSceneNodeTransform = { ...base }
 	const clampScale = (v: unknown) => {
@@ -147,7 +159,7 @@ const createUserNode = (
 		width: tr.width,
 		height: tr.height,
 		rotation: tr.rotation,
-		opacity: tr.opacity,
+		opacity: tr.opacity
 	}
 	const transform = applyTransformPatch(baseTransform, transformPatch)
 	const finalProps: Record<string, JsonValue> = { ...(upgraded.props ?? {}), ...props }
@@ -159,7 +171,14 @@ const createUserNode = (
 			transform.height = size.height
 		}
 	} else if (userType === 'line') {
-		Object.assign(finalProps, normalizeLineLocalPoints({ props: finalProps, width: transform.width, height: transform.height }))
+		Object.assign(
+			finalProps,
+			normalizeLineLocalPoints({
+				props: finalProps,
+				width: transform.width,
+				height: transform.height
+			})
+		)
 	}
 	return {
 		id: upgraded.id,
@@ -168,7 +187,7 @@ const createUserNode = (
 		category: 'user',
 		userType: upgraded.type as unknown as VideoSceneUserNodeType,
 		transform,
-		props: finalProps,
+		props: finalProps
 	}
 }
 
@@ -189,14 +208,13 @@ export function instantiateValidatedTemplate(
 	paramsInput: Record<string, JsonValue> = {},
 	options: InstantiateTemplateOptions = {}
 ): InstantiateTemplateResult {
-
 	const fallbackUserType = options.fallbackUserType ?? 'base'
 	const genId = options.genId ?? defaultGenId
 	const getNodeId = options.getNodeId
 
 	const params: Record<string, JsonValue> = {
 		...buildDefaults(template),
-		...paramsInput,
+		...paramsInput
 	}
 
 	const localIdToNode: Record<string, VideoSceneTreeNode> = {}
@@ -209,9 +227,16 @@ export function instantiateValidatedTemplate(
 		const substitutedProps = deepSubstitute(n.props, params)
 		const props = isRecord(substitutedProps) ? substitutedProps : {}
 
-		const substitutedTransform = n.transform ? (deepSubstitute(n.transform as unknown as JsonValue, params)) : undefined
-		const transformPatch = substitutedTransform && isRecord(substitutedTransform) ? (substitutedTransform as unknown as TemplateNodeTransform) : n.transform
-		const forcedId = getNodeId ? getNodeId({ templateId: template.templateId, localId: n.localId, userType }) : undefined
+		const substitutedTransform = n.transform
+			? deepSubstitute(n.transform as unknown as JsonValue, params)
+			: undefined
+		const transformPatch =
+			substitutedTransform && isRecord(substitutedTransform)
+				? (substitutedTransform as unknown as TemplateNodeTransform)
+				: n.transform
+		const forcedId = getNodeId
+			? getNodeId({ templateId: template.templateId, localId: n.localId, userType })
+			: undefined
 		const node = createUserNode(forcedId, userType, name, props, transformPatch, genId)
 		localIdToNode[n.localId] = node
 		localIdToNodeId[n.localId] = node.id

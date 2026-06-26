@@ -10,7 +10,7 @@ import type {
 	AgentToUiSubtitleSummaryDeltaMessage,
 	AgentToUiTaskStatusMessage,
 	AgentToUiTextMessage,
-	AgentToUiVideoScenePlanMessage,
+	AgentToUiVideoScenePlanMessage
 } from './types'
 import { isRecord, isString, isArray } from '../../types/utils'
 
@@ -50,7 +50,9 @@ export function isAgentToUiMessage(v: unknown): v is AgentToUiMessage {
 	}
 }
 
-export function isAgentToUiSubtitleSummaryDeltaMessage(v: unknown): v is AgentToUiSubtitleSummaryDeltaMessage {
+export function isAgentToUiSubtitleSummaryDeltaMessage(
+	v: unknown
+): v is AgentToUiSubtitleSummaryDeltaMessage {
 	if (!isRecord(v)) return false
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/subtitleSummaryDelta') return false
@@ -80,7 +82,8 @@ export function isAgentToUiPatchNodeMessage(v: unknown): v is AgentToUiPatchNode
 	const patch = payload.patch
 	if ('name' in patch && patch.name !== undefined && !isString(patch.name)) return false
 	if ('userType' in patch && patch.userType !== undefined && !isString(patch.userType)) return false
-	if ('transform' in patch && patch.transform !== undefined && !isRecord(patch.transform)) return false
+	if ('transform' in patch && patch.transform !== undefined && !isRecord(patch.transform))
+		return false
 	if ('props' in patch && patch.props !== undefined && !isRecord(patch.props)) return false
 
 	return true
@@ -139,7 +142,8 @@ export function isAgentToUiApplyFilterMessage(v: unknown): v is AgentToUiApplyFi
 	if (payload.target === 'nodeId') {
 		if (!isString(payload.nodeId) || !payload.nodeId.trim()) return false
 	}
-	if (payload.mode !== undefined && payload.mode !== 'append' && payload.mode !== 'replace') return false
+	if (payload.mode !== undefined && payload.mode !== 'append' && payload.mode !== 'replace')
+		return false
 	if (!isRecord(payload.filter)) return false
 	if (!isString(payload.filter.type) || !payload.filter.type.trim()) return false
 	return true
@@ -169,7 +173,8 @@ export function isAgentToUiTaskStatusMessage(v: unknown): v is AgentToUiTaskStat
 	)
 		return false
 	if (payload.message !== undefined && !isString(payload.message)) return false
-	if ('details' in payload && payload.details !== undefined && !isRecord(payload.details)) return false
+	if ('details' in payload && payload.details !== undefined && !isRecord(payload.details))
+		return false
 	return true
 }
 
@@ -188,8 +193,15 @@ export function isAgentToUiVideoScenePlanMessage(v: unknown): v is AgentToUiVide
 	if (!isRecord(v.payload)) return false
 	const { payload } = v
 	if (!('plan' in payload)) return false
-	if ('summary' in payload && payload.summary !== undefined && !isString(payload.summary)) return false
-	if ('intent' in payload && payload.intent !== undefined && payload.intent !== 'preview' && payload.intent !== 'insert') return false
+	if ('summary' in payload && payload.summary !== undefined && !isString(payload.summary))
+		return false
+	if (
+		'intent' in payload &&
+		payload.intent !== undefined &&
+		payload.intent !== 'preview' &&
+		payload.intent !== 'insert'
+	)
+		return false
 	return true
 }
 
@@ -209,7 +221,9 @@ export function isAgentToUiErrorMessage(v: unknown): v is AgentToUiErrorMessage 
 	return isString(v.payload.code) && isString(v.payload.message)
 }
 
-export function isAgentToUiComponentTemplateMessage(v: unknown): v is AgentToUiComponentTemplateMessage {
+export function isAgentToUiComponentTemplateMessage(
+	v: unknown
+): v is AgentToUiComponentTemplateMessage {
 	if (!isRecord(v)) return false
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/componentTemplate') return false
@@ -218,7 +232,13 @@ export function isAgentToUiComponentTemplateMessage(v: unknown): v is AgentToUiC
 
 	if (!('template' in payload)) return false
 
-	if (payload.intent !== undefined && payload.intent !== 'preview' && payload.intent !== 'insert' && payload.intent !== 'template') return false
+	if (
+		payload.intent !== undefined &&
+		payload.intent !== 'preview' &&
+		payload.intent !== 'insert' &&
+		payload.intent !== 'template'
+	)
+		return false
 
 	if (payload.params !== undefined && !isRecord(payload.params)) return false
 

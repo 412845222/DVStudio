@@ -1,5 +1,10 @@
 <template>
-	<div v-if="visible && worldRect" class="wf-sel-frame-overlay" :style="overlayStyle" data-bp-ui-overlay="true">
+	<div
+		v-if="visible && worldRect"
+		class="wf-sel-frame-overlay"
+		:style="overlayStyle"
+		data-bp-ui-overlay="true"
+	>
 		<!-- 标签栏 -->
 		<div class="wf-sel-frame-tag-bar" :style="tagBarStyle">
 			<!-- 编辑模式：输入框 + 保存按钮 -->
@@ -15,7 +20,11 @@
 				<button class="wf-sel-frame-btn wf-sel-frame-save" title="保存" @click.stop="onSave">
 					保存
 				</button>
-				<button class="wf-sel-frame-btn wf-sel-frame-cancel" title="取消" @click.stop="onCancelEdit">
+				<button
+					class="wf-sel-frame-btn wf-sel-frame-cancel"
+					title="取消"
+					@click.stop="onCancelEdit"
+				>
 					×
 				</button>
 			</template>
@@ -26,7 +35,11 @@
 					<span class="wf-sel-frame-tag-text">{{ displayLabel }}</span>
 				</button>
 				<span class="wf-sel-frame-count">{{ nodeCount }}个节点</span>
-				<button class="wf-sel-frame-btn wf-sel-frame-delete" title="取消框选" @click.stop="emit('delete')">
+				<button
+					class="wf-sel-frame-btn wf-sel-frame-delete"
+					title="取消框选"
+					@click.stop="emit('delete')"
+				>
 					×
 				</button>
 			</template>
@@ -65,11 +78,14 @@ const editDraft = ref('')
 const editInputRef = ref<HTMLInputElement | null>(null)
 
 // 当 label prop 变化时，同步 editDraft（但不覆盖 savedLabel）
-watch(() => props.label, (newLabel) => {
-	if (newLabel && !savedLabel.value) {
-		editDraft.value = newLabel
+watch(
+	() => props.label,
+	(newLabel) => {
+		if (newLabel && !savedLabel.value) {
+			editDraft.value = newLabel
+		}
 	}
-})
+)
 
 // 开始编辑
 const onStartEdit = () => {
@@ -90,10 +106,10 @@ const onCancelEdit = () => {
 const onSave = () => {
 	const label = editDraft.value.trim()
 	if (label) {
-		savedLabel.value = label  // 立即更新本地显示
-		emit('tag-save', label)   // 通知父组件写入 store/JSON
+		savedLabel.value = label // 立即更新本地显示
+		emit('tag-save', label) // 通知父组件写入 store/JSON
 	} else {
-		savedLabel.value = ''     // 清空标签
+		savedLabel.value = '' // 清空标签
 		emit('tag-save', '')
 	}
 	isEditing.value = false
@@ -104,7 +120,7 @@ const worldToScreen = (p: { x: number; y: number }) => {
 	const c = { x: props.canvasWidth / 2, y: props.canvasHeight / 2 }
 	return {
 		x: c.x + props.panX + p.x * props.zoom,
-		y: c.y + props.panY + p.y * props.zoom,
+		y: c.y + props.panY + p.y * props.zoom
 	}
 }
 
@@ -123,7 +139,7 @@ const overlayStyle = computed(() => {
 		left: `${left}px`,
 		top: `${top}px`,
 		width: `${Math.max(width, 40)}px`,
-		height: `${Math.max(height, 20)}px`,
+		height: `${Math.max(height, 20)}px`
 	}
 })
 
@@ -137,7 +153,7 @@ const tagBarStyle = computed(() => {
 	return {
 		left: '50%',
 		top: `${-tagHeight - 4}px`,
-		transform: 'translateX(-50%)',
+		transform: 'translateX(-50%)'
 	}
 })
 </script>
@@ -163,7 +179,9 @@ const tagBarStyle = computed(() => {
 	white-space: nowrap;
 	backdrop-filter: blur(8px);
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-	transition: background 150ms ease, border-color 150ms ease;
+	transition:
+		background 150ms ease,
+		border-color 150ms ease;
 	user-select: none;
 }
 

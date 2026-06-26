@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute, useRouter, type RouteLocationNormalized, type NavigationGuardNext } from 'vue-router'
+import {
+	useRoute,
+	useRouter,
+	type RouteLocationNormalized,
+	type NavigationGuardNext
+} from 'vue-router'
 import { ThemeStore } from '../../store/theme'
 
 const props = defineProps<{
@@ -20,26 +25,10 @@ type Particle = { id: number; style: Record<string, string> }
 const particleCount = 22
 
 // 深色模式调色板（适合暗色背景，粒子色更亮，带发光感）
-const darkPalette = [
-	'#1f9d84',
-	'#27b99c',
-	'#17a773',
-	'#4caf88',
-	'#148a73',
-	'#2ec4a6',
-	'#0f6d5c',
-]
+const darkPalette = ['#1f9d84', '#27b99c', '#17a773', '#4caf88', '#148a73', '#2ec4a6', '#0f6d5c']
 
 // 浅色模式调色板（适合亮色背景，主色稍深以保证对比）
-const lightPalette = [
-	'#17a773',
-	'#1f9d84',
-	'#0f6d5c',
-	'#27b99c',
-	'#2ec4a6',
-	'#4caf88',
-	'#148a73',
-]
+const lightPalette = ['#17a773', '#1f9d84', '#0f6d5c', '#27b99c', '#2ec4a6', '#4caf88', '#148a73']
 
 // 根据当前主题选择调色板
 function currentPalette(): string[] {
@@ -73,8 +62,8 @@ function buildParticles(): Particle[] {
 				background: color,
 				'--color': color,
 				'--base-opacity': opacity,
-				'--sway': sway + 'px',
-			},
+				'--sway': sway + 'px'
+			}
 		})
 	}
 	return list
@@ -123,7 +112,7 @@ const NAV_LABELS: Record<string, string> = {
 	Welcome: '欢迎',
 	AIWorkflow: 'AI 素材工作流',
 	VideoStudio: '动画编辑器',
-	Settings: '设置',
+	Settings: '设置'
 }
 
 const isDisabled = computed(() => Boolean(props.disabled))
@@ -134,10 +123,20 @@ const MIN_TRANSITION_MS = 2400
 // 防止在 overlay 仍在播放时重复导航
 let navigationInFlight = false
 
-const beforeHook = async (to: RouteLocationNormalized, from: RouteLocationNormalized, next: NavigationGuardNext) => {
-	if (isDisabled.value) { next(); return }
+const beforeHook = async (
+	to: RouteLocationNormalized,
+	from: RouteLocationNormalized,
+	next: NavigationGuardNext
+) => {
+	if (isDisabled.value) {
+		next()
+		return
+	}
 	// 初始加载或同页面跳转不触发
-	if (!from || !from.name || from.name === to.name) { next(); return }
+	if (!from || !from.name || from.name === to.name) {
+		next()
+		return
+	}
 
 	if (navigationInFlight) {
 		// 正在过渡中：直接跳过并让其继续
@@ -154,7 +153,7 @@ const beforeHook = async (to: RouteLocationNormalized, from: RouteLocationNormal
 
 	await Promise.all([
 		animateTo(62, 900),
-		sleep(220), // 保留一小段让粒子进入并稳定
+		sleep(220) // 保留一小段让粒子进入并稳定
 	])
 
 	// —— 阶段 B：中等保持阶段（60% → 80%）——
@@ -166,13 +165,21 @@ const beforeHook = async (to: RouteLocationNormalized, from: RouteLocationNormal
 }
 
 const afterHook = async (to: RouteLocationNormalized, from: RouteLocationNormalized) => {
-	if (isDisabled.value) { resetState(); return }
-	if (!from || !from.name || from.name === to.name) { resetState(); return }
+	if (isDisabled.value) {
+		resetState()
+		return
+	}
+	if (!from || !from.name || from.name === to.name) {
+		resetState()
+		return
+	}
 
 	// —— 阶段 D：冲刺到 100% 并淡出 ——
 	try {
 		await animateTo(100, 420)
-	} catch (_) { /* ignore */ }
+	} catch (_) {
+		/* ignore */
+	}
 	// 给用户留下一小段 100% 感知，再淡出
 	await sleep(280)
 
@@ -212,21 +219,13 @@ onBeforeUnmount(() => {
 			<div class="pto-blur" />
 
 			<div class="pto-particles" aria-hidden="true">
-				<span
-					v-for="p in particles"
-					:key="p.id"
-					class="pto-particle"
-					:style="p.style"
-				/>
+				<span v-for="p in particles" :key="p.id" class="pto-particle" :style="p.style" />
 			</div>
 
 			<div class="pto-panel">
 				<div class="pto-label">{{ currentLabel }}</div>
 				<div class="pto-bar">
-					<div
-						class="pto-bar-fill"
-						:style="{ width: progress + '%' }"
-					/>
+					<div class="pto-bar-fill" :style="{ width: progress + '%' }" />
 					<div class="pto-bar-shimmer" />
 				</div>
 				<div class="pto-percent">{{ Math.round(progress) }}%</div>
@@ -249,7 +248,10 @@ onBeforeUnmount(() => {
 .pto-blur {
 	position: absolute;
 	inset: 0;
-	background: var(--pto-overlay-bg, color-mix(in srgb, var(--theme-bg-secondary, #1e1e1e) 62%, transparent));
+	background: var(
+		--pto-overlay-bg,
+		color-mix(in srgb, var(--theme-bg-secondary, #1e1e1e) 62%, transparent)
+	);
 	backdrop-filter: blur(18px) saturate(140%);
 	-webkit-backdrop-filter: blur(18px) saturate(140%);
 }
@@ -311,10 +313,14 @@ onBeforeUnmount(() => {
 	padding: 14px 22px 14px 18px;
 	min-width: 320px;
 	background: var(--pto-panel-bg, rgba(14, 22, 20, 0.78));
-	border: 1px solid var(--pto-panel-border, color-mix(in srgb, var(--theme-accent, #1f9d84) 50%, transparent));
+	border: 1px solid
+		var(--pto-panel-border, color-mix(in srgb, var(--theme-accent, #1f9d84) 50%, transparent));
 	box-shadow:
 		var(--pto-panel-shadow-1, 0 16px 48px rgba(0, 0, 0, 0.6)),
-		var(--pto-panel-shadow-2, 0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent));
+		var(
+			--pto-panel-shadow-2,
+			0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent)
+		);
 	z-index: 2;
 }
 
@@ -330,8 +336,12 @@ onBeforeUnmount(() => {
 	position: relative;
 	width: 220px;
 	height: 8px;
-	background: var(--pto-bar-track-bg, color-mix(in srgb, var(--theme-accent, #1f9d84) 8%, transparent));
-	border: 1px solid var(--pto-bar-track-border, color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent));
+	background: var(
+		--pto-bar-track-bg,
+		color-mix(in srgb, var(--theme-accent, #1f9d84) 8%, transparent)
+	);
+	border: 1px solid
+		var(--pto-bar-track-border, color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent));
 	overflow: hidden;
 	flex: 1;
 }
@@ -341,17 +351,25 @@ onBeforeUnmount(() => {
 	top: 0;
 	left: 0;
 	height: 100%;
-	background: var(--pto-bar-fill, linear-gradient(90deg, #0f6d5c 0%, #17a773 25%, #1f9d84 55%, #27b99c 80%, #2ec4a6 100%));
+	background: var(
+		--pto-bar-fill,
+		linear-gradient(90deg, #0f6d5c 0%, #17a773 25%, #1f9d84 55%, #27b99c 80%, #2ec4a6 100%)
+	);
 	background-size: 200% 100%;
 	box-shadow:
 		0 0 12px var(--pto-bar-glow, color-mix(in srgb, var(--theme-accent, #1f9d84) 45%, transparent)),
-		inset 0 0 0 1px var(--pto-bar-inner-border, color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent));
+		inset 0 0 0 1px
+			var(--pto-bar-inner-border, color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent));
 	animation: pto-bar-shimmer 1.8s linear infinite;
 }
 
 @keyframes pto-bar-shimmer {
-	0% { background-position: 200% 0; }
-	100% { background-position: -200% 0; }
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
 }
 
 .pto-bar-shimmer {
@@ -374,8 +392,12 @@ onBeforeUnmount(() => {
 }
 
 @keyframes pto-shimmer-drift {
-	from { background-position: 0 0; }
-	to { background-position: 10px 0; }
+	from {
+		background-position: 0 0;
+	}
+	to {
+		background-position: 10px 0;
+	}
 }
 
 .pto-percent {
