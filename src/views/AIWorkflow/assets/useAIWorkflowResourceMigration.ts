@@ -45,8 +45,7 @@ type WorkflowNode = {
 	}
 	[key: string]: unknown
 }
-
-type UseAIWorkflowResourceMigrationOptions = {
+export type UseAIWorkflowResourceMigrationOptions = {
 	store: {
 		state: {
 			resourceOrder: string[]
@@ -58,9 +57,7 @@ type UseAIWorkflowResourceMigrationOptions = {
 	}
 	resolveBackendUrl: (value: string) => string
 	normalizeSourcePathKey: (raw: unknown) => string
-	// SAFE-ANY: callback parameter type is provided by caller, contravariance makes strict typing impractical
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	isDjangoManagedResource: (resource: any) => boolean
+	isDjangoManagedResource: (resource: unknown) => boolean
 	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportedAssetResult | null>
 	deleteAsset: (payload: DeleteAssetPayload) => Promise<{ ok: boolean; error?: unknown }>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void

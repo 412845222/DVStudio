@@ -1,7 +1,9 @@
 import type {
 	WorkflowSceneLayoutManualModelBinding,
-	WorkflowSceneLayoutModelBinding
+	WorkflowSceneLayoutModelBinding,
+	WorkflowMeshyNodeSettings
 } from '../../../../aiworkflow/types'
+import type { SceneDecomposeInputItem } from './sceneDecomposeShared'
 import { isMeshyRemoteUrl } from '../meshy/useAIWorkflowMeshyAssets'
 
 export const useAIWorkflowSceneLayoutModelBindings = (options: {
@@ -10,13 +12,9 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			nodesById: Record<string, Record<string, unknown>>
 		}
 	}
-	// SAFE-ANY: callback parameter contravariance - caller provides more specific types
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	isSceneLayoutModelTargetItem: (item: any) => boolean
+	isSceneLayoutModelTargetItem: (item: SceneDecomposeInputItem) => boolean
 	getIncomingEdges: (nodeId: string, anchorId?: string) => unknown[]
-	// SAFE-ANY: callback parameter contravariance - caller provides more specific types
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	getMeshyEffectiveModelSource: (settings: any) => {
+	getMeshyEffectiveModelSource: (settings: WorkflowMeshyNodeSettings | Record<string, unknown> | null | undefined) => {
 		preferredUrl?: string | null
 		assetUrl?: string | null
 		assetPath?: string | null
@@ -65,7 +63,7 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 		for (const item of allLayoutItems) {
 			const objectId = String((item as Record<string, unknown>)?.id ?? '').trim()
 			if (!objectId) continue
-			if (options.isSceneLayoutModelTargetItem(item)) allowedObjectIds.add(objectId)
+			if (options.isSceneLayoutModelTargetItem(item as SceneDecomposeInputItem)) allowedObjectIds.add(objectId)
 		}
 		for (const objectId of manualBindingsMap.keys()) {
 			if (objectId) allowedObjectIds.add(objectId)

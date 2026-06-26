@@ -17,8 +17,8 @@ export const useAIWorkflowResourceRecordCleanup = (payload: {
 		}) => Promise<{ ok: boolean; error?: unknown }>
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
-	isComfyForwardResource: (resource: any) => boolean
-	isDjangoManagedResource: (resource: any) => boolean
+	isComfyForwardResource: (resource: unknown) => boolean
+	isDjangoManagedResource: (resource: unknown) => boolean
 	mediaRelativePathFromUrl: (rawUrl: string) => string
 	removeResourceRecordOnly: (resourceId: string) => void
 }) => {

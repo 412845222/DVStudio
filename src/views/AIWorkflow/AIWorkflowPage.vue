@@ -7796,9 +7796,9 @@ const { mediaRelativePathFromUrl, migrateCurrentResourcesToProjectScope } =
 		store,
 		resolveBackendUrl,
 		normalizeSourcePathKey,
-		isDjangoManagedResource,
-		importAssetIntoProjectScope: (payload) => importAssetIntoProjectScope(payload),
-		deleteAsset: (payload) => blueprintProjectService.deleteAsset(payload),
+		isDjangoManagedResource: isDjangoManagedResource as (resource: unknown) => boolean,
+		importAssetIntoProjectScope: (payload: Parameters<typeof importAssetIntoProjectScope>[0]) => importAssetIntoProjectScope(payload),
+	deleteAsset: (payload: Parameters<typeof blueprintProjectService.deleteAsset>[0]) => blueprintProjectService.deleteAsset(payload),
 		pushToast
 	})
 
@@ -7808,8 +7808,8 @@ const { removeResourceByPolicy, onRemoveResource, onRefreshMissingResourceRecord
 		currentProjectId,
 		blueprintProjectService,
 		pushToast,
-		isComfyForwardResource,
-		isDjangoManagedResource,
+		isComfyForwardResource: isComfyForwardResource as (resource: unknown) => boolean,
+		isDjangoManagedResource: isDjangoManagedResource as (resource: unknown) => boolean,
 		mediaRelativePathFromUrl,
 		removeResourceRecordOnly
 	})
