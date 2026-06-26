@@ -100,16 +100,15 @@ const collectReferenceImages = async (
 	maxRefs: number = 4
 ): Promise<Array<{ name: string; blob: Blob }>> => {
 	const state = deps.store.state as {
-		nodesById: Record<string, any>
-		edgesById: Record<string, any>
+		nodesById: Record<string, Record<string, unknown>>
+		edgesById: Record<string, Record<string, unknown>>
 		edgeOrder: string[]
-		resourcesById: Record<string, any>
+		resourcesById: Record<string, Record<string, unknown>>
 	}
 	const node = state.nodesById[nodeId]
 	if (!node) return []
 
-	// Find all incoming edges to this node.
-	const incoming: Array<any> = []
+	const incoming: Array<Record<string, unknown>> = []
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
@@ -119,10 +118,9 @@ const collectReferenceImages = async (
 	const refs: Array<{ name: string; blob: Blob }> = []
 	for (const edge of incoming) {
 		if (refs.length >= maxRefs) break
-		const sourceNode = state.nodesById[edge.fromNodeId]
+		const sourceNode = state.nodesById[String(edge.fromNodeId ?? '')]
 		if (!sourceNode) continue
 
-		// Prefer an explicit resource on the source node.
 		const resourceRid = String(sourceNode.resourceId ?? '').trim()
 		let candidateUrl: string = ''
 		if (resourceRid) {
@@ -130,8 +128,10 @@ const collectReferenceImages = async (
 			candidateUrl = typeof res?.url === 'string' ? String(res.url) : ''
 		}
 		if (!candidateUrl) {
-			// Fallback: try the "last generated" image url if available for image nodes.
-			const imageSettings = sourceNode.imageSettings ?? {}
+			const imageSettings =
+				typeof sourceNode.imageSettings === 'object' && sourceNode.imageSettings
+					? (sourceNode.imageSettings as Record<string, unknown>)
+					: {}
 			const lastGenerated =
 				typeof imageSettings?.lastGeneratedImageUrl === 'string'
 					? String(imageSettings.lastGeneratedImageUrl)
@@ -157,7 +157,7 @@ const collectReferenceImages = async (
 				blob = await resp.blob()
 			}
 			if (!blob || blob.size === 0) continue
-			const name = `ref-${sourceNode.type || 'image'}-${edge.fromNodeId}-${Date.now()}.png`
+			const name = `ref-${String(sourceNode.type || 'image')}-${String(edge.fromNodeId)}-${Date.now()}.png`
 			refs.push({ name, blob })
 		} catch {
 			continue
@@ -166,7 +166,7 @@ const collectReferenceImages = async (
 	return refs
 }
 
-const normalizeImageModel = (params: Record<string, any>) => {
+const normalizeImageModel = (params: Record<string, unknown>) => {
 	const rawModel = String(params?.imageModel ?? params?.model ?? '').trim()
 	// Meshy 图片生成模型
 	if (rawModel === 'meshy') {
@@ -184,7 +184,7 @@ const normalizeImageModel = (params: Record<string, any>) => {
 	return { kind: 'seedream', model: rawModel || 'doubao-seedream-4-5-251128' }
 }
 
-const normalizeVideoModel = (params: Record<string, any>) => {
+const normalizeVideoModel = (params: Record<string, unknown>) => {
 	const rawModel = String(params?.videoModel ?? params?.model ?? '').trim()
 	if (rawModel.startsWith('jimeng')) return { kind: 'jimeng', model: rawModel }
 	// When user picks 'seedance' as the interface, the actual model ID is in seedanceModelVersion.
@@ -201,11 +201,11 @@ const normalizeVideoModel = (params: Record<string, any>) => {
  */
 const pollMeshyTaskStatus = async (
 	deps: NodeGenerationApiDeps,
-	svc: any,
+	svc: ComfyUIBridgeService,
 	taskId: string,
 	generationTaskId: string,
 	nodeId: string,
-	taskType: string // 任务类型：'text-to-image' | 'image-to-image'
+	taskType: string
 ) => {
 	const maxPolls = 120 // 最大轮询次数（约4分钟）
 	const pollInterval = 2000 // 2秒间隔
@@ -333,7 +333,7 @@ const pollMeshyTaskStatus = async (
 			}
 
 			if (status === 'FAILED') {
-				const errorMsg = String(taskRes.errorMessage || taskRes.task_error?.message || '未知错误')
+				const errorMsg = String(taskRes.errorMessage || '未知错误')
 				throw new Error(`Meshy 任务失败：${errorMsg}`)
 			}
 
@@ -502,7 +502,7 @@ const runTextTask = async (
 	const modelId =
 		String(params.modelId ?? params.textModelVersion ?? '').trim() ||
 		(provider === 'deepseek' ? 'deepseek-chat' : 'doubao-seed-2-0-pro-260215')
-	const body: Record<string, any> = { content: payload.prompt, provider, modelId }
+	const body: Record<string, unknown> = { content: payload.prompt, provider, modelId }
 	if (params.speed) body.speed = params.speed
 	if (params.thinking) body.thinking = params.thinking
 	if (params.responseFormat) body.responseFormat = params.responseFormat
@@ -510,19 +510,25 @@ const runTextTask = async (
 
 	let accumulated = ''
 	try {
+		// SAFE-ANY: service call with extended params beyond typed signature
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		for await (const ev of (svc as any).blueprintChatStream({
 			content: String(body.content ?? ''),
 			history: body.history,
-			provider: body.provider,
-			modelId: body.modelId
+			provider: String(body.provider ?? ''),
+			modelId: String(body.modelId ?? '')
 		})) {
 			if (ev.type === 'done') break
 			if (ev.type === 'error') {
 				throw new Error(String(ev.error?.message ?? 'unknown'))
 			}
-			const message = ev.message as any
+			const message = ev.message as Record<string, unknown>
 			if (message?.type === 'agentToUi/text') {
-				const delta = String(message.payload?.text ?? '')
+				const payload =
+					typeof message.payload === 'object' && message.payload
+						? (message.payload as Record<string, unknown>)
+						: {}
+				const delta = String(payload.text ?? '')
 				if (delta) accumulated += delta
 				updateTask(deps, task.id, {
 					progress: Math.min(75, task.progress + 2),
@@ -531,7 +537,11 @@ const runTextTask = async (
 				continue
 			}
 			if (message?.type === 'agentToUi/taskStatus') {
-				const line = String(message.payload?.message ?? message.payload?.phase ?? '')
+				const payload =
+					typeof message.payload === 'object' && message.payload
+						? (message.payload as Record<string, unknown>)
+						: {}
+				const line = String(payload.message ?? payload.phase ?? '')
 				if (line) appendDetail(deps, task.id, line)
 				continue
 			}
@@ -542,6 +552,8 @@ const runTextTask = async (
 		appendDetail(deps, task.id, `流式调用失败：${fallbackMsg}`)
 		updateTask(deps, task.id, { status: 'running', statusText: '尝试失败回退…' })
 		try {
+			// SAFE-ANY: service call with extended params beyond typed signature
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const plain = await (svc as any).blueprintChat(body)
 			const text =
 				typeof plain?.text === 'string'
@@ -615,7 +627,7 @@ const runImageTask = async (
 
 		try {
 			// 构建 Meshy API 请求体
-			const meshyPayload: Record<string, any> = {
+			const meshyPayload: Record<string, unknown> = {
 				mode: taskType,
 				ai_model: meshyAiModel,
 				prompt: payload.prompt,
@@ -645,11 +657,11 @@ const runImageTask = async (
 				for (const ref of refs) {
 					refForm.append('refImages', ref.blob, ref.name)
 				}
-				const createRes = await (svc as any).meshyGenerateImage(refForm)
+				const createRes = await svc.meshyGenerateImage(refForm)
 				if (!createRes.ok) {
 					throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
 				}
-				const taskId = String(createRes.taskId || createRes.result || '').trim()
+				const taskId = String(createRes.taskId || '').trim()
 				if (!taskId) throw new Error('Meshy 返回空任务 ID')
 				appendDetail(deps, task.id, `任务已创建：${taskId}`)
 
@@ -671,11 +683,11 @@ const runImageTask = async (
 				// 轮询任务状态
 				await pollMeshyTaskStatus(deps, svc, taskId, task.id, payload.nodeId, taskType)
 			} else {
-				const createRes = await (svc as any).meshyGenerate(meshyPayload)
+				const createRes = await svc.meshyGenerate(meshyPayload)
 				if (!createRes.ok) {
 					throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
 				}
-				const taskId = String(createRes.taskId || createRes.result || '').trim()
+				const taskId = String(createRes.taskId || '').trim()
 				if (!taskId) throw new Error('Meshy 返回空任务 ID')
 				appendDetail(deps, task.id, `任务已创建：${taskId}`)
 
@@ -719,10 +731,10 @@ const runImageTask = async (
 
 	const stream =
 		kind === 'jimeng'
-			? (svc as any).jimengImageGenerateStream(form)
+			? svc.jimengImageGenerateStream(form)
 			: kind === 'nanobanana'
-				? (svc as any).nanoBananaGenerateStream(form)
-				: (svc as any).seedreamGenerateStream(form)
+				? svc.nanoBananaGenerateStream(form)
+				: svc.seedreamGenerateStream(form)
 
 	let produced = 0
 	for await (const ev of stream) {
@@ -731,12 +743,16 @@ const runImageTask = async (
 			const message = String(ev.error?.message ?? 'unknown')
 			throw new Error(message)
 		}
-		const message = ev.message as any
+		const message = ev.message as Record<string, unknown>
 		if (message?.type === 'agentToUi/chatMessage') {
-			const obj: any = (() => {
+			const msgPayload =
+				typeof message.payload === 'object' && message.payload
+					? (message.payload as Record<string, unknown>)
+					: {}
+			const obj: Record<string, unknown> | null = (() => {
 				try {
-					const raw = String(message.payload?.content ?? '')
-					return raw ? JSON.parse(raw) : null
+					const raw = String(msgPayload.content ?? '')
+					return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
 				} catch {
 					return null
 				}
@@ -765,12 +781,20 @@ const runImageTask = async (
 			continue
 		}
 		if (message?.type === 'agentToUi/taskStatus') {
-			const line = String(message.payload?.message ?? message.payload?.phase ?? '')
+			const payload =
+				typeof message.payload === 'object' && message.payload
+					? (message.payload as Record<string, unknown>)
+					: {}
+			const line = String(payload.message ?? payload.phase ?? '')
 			if (line) appendDetail(deps, task.id, line)
 			continue
 		}
 		if (message?.type === 'agentToUi/error') {
-			const line = String(message.payload?.message ?? 'unknown')
+			const payload =
+				typeof message.payload === 'object' && message.payload
+					? (message.payload as Record<string, unknown>)
+					: {}
+			const line = String(payload.message ?? 'unknown')
 			throw new Error(line)
 		}
 	}
@@ -833,8 +857,8 @@ const runVideoTask = async (
 
 	const stream =
 		kind === 'jimeng'
-			? (svc as any).jimengVideoGenerateStream(form)
-			: (svc as any).seedanceGenerateStream(form)
+			? svc.jimengVideoGenerateStream(form)
+			: svc.seedanceGenerateStream(form)
 
 	let produced = 0
 	for await (const ev of stream) {
@@ -843,12 +867,16 @@ const runVideoTask = async (
 			const message = String(ev.error?.message ?? 'unknown')
 			throw new Error(message)
 		}
-		const message = ev.message as any
+		const message = ev.message as Record<string, unknown>
 		if (message?.type === 'agentToUi/chatMessage') {
-			const obj: any = (() => {
+			const msgPayload =
+				typeof message.payload === 'object' && message.payload
+					? (message.payload as Record<string, unknown>)
+					: {}
+			const obj: Record<string, unknown> | null = (() => {
 				try {
-					const raw = String(message.payload?.content ?? '')
-					return raw ? JSON.parse(raw) : null
+					const raw = String(msgPayload.content ?? '')
+					return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
 				} catch {
 					return null
 				}
@@ -884,7 +912,11 @@ const runVideoTask = async (
 			continue
 		}
 		if (message?.type === 'agentToUi/taskStatus') {
-			const line = String(message.payload?.message ?? message.payload?.phase ?? '')
+			const msgPayload =
+				typeof message.payload === 'object' && message.payload
+					? (message.payload as Record<string, unknown>)
+					: {}
+			const line = String(msgPayload.message ?? msgPayload.phase ?? '')
 			if (line) {
 				appendDetail(deps, task.id, line)
 				updateTask(deps, task.id, {
@@ -896,7 +928,11 @@ const runVideoTask = async (
 			continue
 		}
 		if (message?.type === 'agentToUi/error') {
-			const line = String(message.payload?.message ?? 'unknown')
+			const msgPayload =
+				typeof message.payload === 'object' && message.payload
+					? (message.payload as Record<string, unknown>)
+					: {}
+			const line = String(msgPayload.message ?? 'unknown')
 			throw new Error(line)
 		}
 	}
@@ -912,7 +948,7 @@ const runVideoTask = async (
 
 const pollMeshy3DTaskStatus = async (
 	deps: NodeGenerationApiDeps,
-	svc: any,
+	svc: ComfyUIBridgeService,
 	taskId: string,
 	generationTaskId: string,
 	nodeId: string,
@@ -986,7 +1022,7 @@ const pollMeshy3DTaskStatus = async (
 				const modelUrls =
 					taskRes.modelUrls && typeof taskRes.modelUrls === 'object' ? taskRes.modelUrls : {}
 				const preferredModelUrl = String(taskRes.preferredModelUrl || '').trim()
-				const thumbnailUrl = String(taskRes.thumbnailUrl || taskRes.thumbnail_url || '').trim()
+				const thumbnailUrl = String(taskRes.thumbnailUrl || '').trim()
 
 				let finalModelUrl = preferredModelUrl
 				let finalFormat = outputFormat || 'glb'
@@ -1113,7 +1149,7 @@ const pollMeshy3DTaskStatus = async (
 			}
 
 			if (status === 'FAILED') {
-				const errorMsg = String(taskRes.errorMessage || taskRes.task_error?.message || '未知错误')
+				const errorMsg = String(taskRes.errorMessage || '未知错误')
 				throw new Error(`Meshy 3D 任务失败：${errorMsg}`)
 			}
 
@@ -1187,7 +1223,7 @@ const runModel3dMeshyTask = async (
 	if (payload.prompt) appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
 
 	try {
-		const meshyPayload: Record<string, any> = {
+		const meshyPayload: Record<string, unknown> = {
 			mode: meshyMode,
 			ai_model: meshyAiModel
 		}
@@ -1249,13 +1285,13 @@ const runModel3dMeshyTask = async (
 
 		updateTask(deps, task.id, { statusText: `正在提交 Meshy 3D 任务…`, progress: 15 })
 
-		const createRes = await (svc as any).meshyGenerate(meshyPayload)
+		const createRes = await svc.meshyGenerate(meshyPayload)
 
 		if (!createRes.ok) {
 			throw new Error(String(createRes.error || 'Meshy 3D 任务创建失败'))
 		}
 
-		const meshyTaskId = String(createRes.taskId || createRes.result || '').trim()
+		const meshyTaskId = String(createRes.taskId || '').trim()
 		if (!meshyTaskId) throw new Error('Meshy 返回空任务 ID')
 
 		appendDetail(deps, task.id, `任务已创建：${meshyTaskId}`)

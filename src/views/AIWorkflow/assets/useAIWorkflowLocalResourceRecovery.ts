@@ -13,23 +13,23 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 	store: {
 		state: {
 			resourceOrder: string[]
-			resourcesById: Record<string, any>
+			resourcesById: Record<string, unknown>
 			nodeOrder: string[]
-			nodesById: Record<string, any>
+			nodesById: Record<string, unknown>
 		}
-		commit: (type: string, value: any) => void
+		commit: (type: string, value: unknown) => void
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	setObjectUrl: (key: string, url: string) => void
 	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video') => void
-	getLocalFileHandle: (key: string) => Promise<any>
-	ensureReadPermission: (handle: any) => Promise<boolean>
+	getLocalFileHandle: (key: string) => Promise<FileSystemHandle | null>
+	ensureReadPermission: (handle: FileSystemHandle) => Promise<boolean>
 	canUseFileSystemHandles: () => boolean
 	collectDroppedFilesFromHandle: (
-		handle: any,
+		handle: FileSystemHandle,
 		pathPrefix?: string
-	) => Promise<Array<{ file?: File; fsHandle?: any }>>
-	putLocalFileHandle: (key: string, handle: any) => Promise<boolean>
+	) => Promise<Array<{ file?: File; fsHandle?: FileSystemHandle }>>
+	putLocalFileHandle: (key: string, handle: FileSystemHandle) => Promise<boolean>
 }) => {
 	const recoverLocalResourcesFromHandles = async (opts?: {
 		silent?: boolean
@@ -48,7 +48,7 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 		const missing: Array<{ rid: string; key: string; name: string; kind: 'image' | 'video' }> = []
 		const denied: Array<{ rid: string; key: string; name: string; kind: 'image' | 'video' }> = []
 
-		const pendingPatches: Array<{ resourceId: string; patch: any }> = []
+		const pendingPatches: Array<{ resourceId: string; patch: Record<string, unknown> }> = []
 		const pendingSizeTasks: Array<{ nodeId: string; url: string; kind: 'image' | 'video' }> = []
 
 		const flushPending = async () => {
@@ -64,7 +64,7 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 		}
 
 		for (const rid of payload.store.state.resourceOrder) {
-			const r = payload.store.state.resourcesById[rid] as any
+			const r = payload.store.state.resourcesById[rid] as Record<string, unknown>
 			if (!r) continue
 
 			const url = typeof r.url === 'string' ? String(r.url).trim() : ''
@@ -101,7 +101,8 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 
 			let file: File
 			try {
-				file = await (handle as any).getFile()
+				const getFile = (handle as Record<string, unknown>).getFile as () => Promise<File>
+				file = await getFile()
 			} catch {
 				stats.fileReadFailed += 1
 				continue
@@ -122,7 +123,7 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 
 			const kind = (r.kind === 'video' ? 'video' : 'image') as 'image' | 'video'
 			for (const nodeId of payload.store.state.nodeOrder) {
-				const n = payload.store.state.nodesById[nodeId] as any
+				const n = payload.store.state.nodesById[nodeId] as Record<string, unknown>
 				if (!n || n.resourceId !== rid) continue
 				pendingSizeTasks.push({ nodeId, url: objectUrl, kind })
 			}
@@ -141,10 +142,11 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 			)
 			if (ok) {
 				try {
-					const dir = await (window as any).showDirectoryPicker?.()
+					const showDirectoryPicker = (window as unknown as Record<string, unknown>).showDirectoryPicker as (() => Promise<FileSystemDirectoryHandle>) | undefined
+					const dir = await showDirectoryPicker?.()
 					if (dir) {
 						const dropped = await payload.collectDroppedFilesFromHandle(dir, '')
-						const byName = new Map<string, any>()
+						const byName = new Map<string, FileSystemHandle>()
 						for (const it of dropped) {
 							if (!it?.file || !it?.fsHandle) continue
 							const nm = String(it.file.name || '').trim()

@@ -1,7 +1,35 @@
 import type { BlueprintProjectService } from '../../../network/BlueprintProjectService'
+import type { WorkflowResource, WorkflowNode } from '../../../aiworkflow/types'
+
+type UploadedAsset = {
+	url?: string
+	absolutePath?: string
+	projectRelativePath?: string
+	relativePath?: string
+	[key: string]: unknown
+}
+
+type UploadAssetResult = {
+	ok: boolean
+	asset?: UploadedAsset
+	[key: string]: unknown
+}
+
+type FileWithPath = File & {
+	path?: string
+}
+
+type AIWorkflowStore = {
+	state: {
+		resourcesById: Record<string, WorkflowResource>
+		nodesById: Record<string, WorkflowNode>
+		[key: string]: unknown
+	}
+	commit: (type: string, payload?: Record<string, unknown>) => void
+}
 
 export const useAIWorkflowNodeAssetBinding = (options: {
-	store: any
+	store: AIWorkflowStore
 	makeResourceId: () => string
 	setObjectUrl: (key: string, url: string) => void
 	revokeTrackedObjectUrlsForResource: (key: string) => void
@@ -23,7 +51,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 	}) => void
 	ensureVideoResourcePoster: (resourceId: string, url: string) => Promise<void>
 	revokeNodeModel3DObjectUrl: (nodeId: string) => void
-	isDjangoManagedResource: (resource: any) => boolean
+	isDjangoManagedResource: (resource: WorkflowResource | null | undefined) => boolean
 }) => {
 	const imageResourcePersistingIds = new Set<string>()
 	const videoResourcePersistingIds = new Set<string>()
@@ -44,7 +72,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		const resourceId = String(payload.resourceId ?? '').trim()
 		if (!resourceId || imageResourcePersistingIds.has(resourceId)) return
 
-		const current = options.store.state.resourcesById?.[resourceId] as any
+		const current = options.store.state.resourcesById?.[resourceId]
 		if (!current || current.kind !== 'image' || options.isDjangoManagedResource(current)) return
 
 		imageResourcePersistingIds.add(resourceId)
@@ -59,7 +87,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			)
 			if (!uploaded.ok) return
 
-			const asset = (uploaded as any).asset ?? {}
+			const asset = (uploaded as UploadAssetResult).asset ?? {}
 			const localizedUrl = options.resolveBackendUrl(String(asset.url || ''))
 			const localizedPath = String(asset.absolutePath || '').trim()
 			const localizedProjectRelativePath = String(
@@ -67,7 +95,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			).trim()
 			if (!localizedUrl) return
 
-			const latest = options.store.state.resourcesById?.[resourceId] as any
+			const latest = options.store.state.resourcesById?.[resourceId]
 			const previousUrl = String(latest?.url ?? '').trim()
 			if (previousUrl.startsWith('blob:')) {
 				options.revokeTrackedObjectUrlsForResource(resourceId)
@@ -79,7 +107,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					url: localizedUrl,
 					sourcePath: localizedPath || undefined,
 					projectRelativePath: localizedProjectRelativePath || undefined
-				} as any
+				}
 			})
 
 			const boundNode = options.store.state.nodesById[payload.nodeId]
@@ -104,7 +132,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		const resourceId = String(payload.resourceId ?? '').trim()
 		if (!resourceId || videoResourcePersistingIds.has(resourceId)) return
 
-		const current = options.store.state.resourcesById?.[resourceId] as any
+		const current = options.store.state.resourcesById?.[resourceId]
 		if (!current || current.kind !== 'video' || options.isDjangoManagedResource(current)) return
 
 		videoResourcePersistingIds.add(resourceId)
@@ -119,7 +147,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			)
 			if (!uploaded.ok) return
 
-			const asset = (uploaded as any).asset ?? {}
+			const asset = (uploaded as UploadAssetResult).asset ?? {}
 			const localizedUrl = options.resolveBackendUrl(String(asset.url || ''))
 			const localizedPath = String(asset.absolutePath || '').trim()
 			const localizedProjectRelativePath = String(
@@ -127,7 +155,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			).trim()
 			if (!localizedUrl) return
 
-			const latest = options.store.state.resourcesById?.[resourceId] as any
+			const latest = options.store.state.resourcesById?.[resourceId]
 			const previousUrl = String(latest?.url ?? '').trim()
 			if (previousUrl.startsWith('blob:')) {
 				options.revokeTrackedObjectUrlsForResource(resourceId)
@@ -139,7 +167,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					url: localizedUrl,
 					sourcePath: localizedPath || undefined,
 					projectRelativePath: localizedProjectRelativePath || undefined
-				} as any
+				}
 			})
 
 			const boundNode = options.store.state.nodesById[payload.nodeId]
@@ -168,7 +196,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node) return
 		const sourcePath =
-			typeof (file as any)?.path === 'string' ? String((file as any).path).trim() : ''
+			typeof (file as FileWithPath)?.path === 'string' ? String((file as FileWithPath).path).trim() : ''
 
 		let finalUrl = ''
 		let assetAbsPath = ''
@@ -184,7 +212,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					{ projectId: currentProjectId }
 				)
 				if (uploaded.ok) {
-					const asset = (uploaded as any).asset ?? {}
+					const asset = (uploaded as UploadAssetResult).asset ?? {}
 					finalUrl = options.resolveBackendUrl(String(asset.url || ''))
 					assetAbsPath = String(asset.absolutePath || '').trim()
 					assetRelPath = String(asset.projectRelativePath || asset.relativePath || '').trim()
@@ -407,7 +435,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		const lowerName = String(file.name || '').toLowerCase()
 		const modelFormat = lowerName.endsWith('.gltf') ? 'gltf' : 'glb'
 		const sourcePath =
-			typeof (file as any)?.path === 'string' ? String((file as any).path).trim() : ''
+			typeof (file as FileWithPath)?.path === 'string' ? String((file as FileWithPath).path).trim() : ''
 		let assetUrl = ''
 		let assetPath = ''
 
@@ -418,7 +446,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					projectId: currentProjectId
 				})
 				if (uploaded.ok) {
-					const asset = (uploaded as any).asset ?? {}
+					const asset = (uploaded as UploadAssetResult).asset ?? {}
 					assetUrl = options.resolveBackendUrl(String(asset.url || ''))
 					assetPath = String(asset.absolutePath || '').trim()
 				}

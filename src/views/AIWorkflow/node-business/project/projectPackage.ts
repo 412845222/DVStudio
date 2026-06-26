@@ -93,18 +93,20 @@ const decodeJsonPointer = (pointer: string) => {
 	return raw.replace(/^\//, '').split('/').map(pointerToPathSegment)
 }
 
-export const setValueByJsonPointer = (root: any, pointer: string, value: unknown) => {
+export const setValueByJsonPointer = (root: Record<string, unknown>, pointer: string, value: unknown) => {
 	const path = decodeJsonPointer(pointer)
 	if (!path.length) return false
-	let cur: any = root
+	let cur: Record<string, unknown> = root
 	for (let i = 0; i < path.length - 1; i += 1) {
 		const key = path[i]
 		if (cur == null || typeof cur !== 'object' || !(key in cur)) return false
-		cur = cur[key]
+		const next = cur[key]
+		if (next == null || typeof next !== 'object') return false
+		cur = next as Record<string, unknown>
 	}
 	const lastKey = path[path.length - 1]
 	if (cur == null || typeof cur !== 'object' || !(lastKey in cur)) return false
-	cur[lastKey] = value as any
+	cur[lastKey] = value
 	return true
 }
 
@@ -142,33 +144,39 @@ export const collectPackageReferencedResourceIds = (snapshot: AIWorkflowDraftSna
 	const out = new Set<string>()
 	const nodeOrder = Array.isArray(snapshot?.nodeOrder) ? snapshot.nodeOrder : []
 	const nodesById =
-		snapshot?.nodesById && typeof snapshot.nodesById === 'object' ? snapshot.nodesById : {}
+		snapshot?.nodesById && typeof snapshot.nodesById === 'object'
+			? (snapshot.nodesById as Record<string, unknown>)
+			: ({} as Record<string, unknown>)
 	const resourcesById =
 		snapshot?.resourcesById && typeof snapshot.resourcesById === 'object'
-			? snapshot.resourcesById
-			: {}
+			? (snapshot.resourcesById as Record<string, unknown>)
+			: ({} as Record<string, unknown>)
 
 	for (const rawNodeId of nodeOrder) {
 		const nodeId = String(rawNodeId || '').trim()
 		if (!nodeId) continue
-		const node = (nodesById as any)?.[nodeId]
+		const node = nodesById?.[nodeId]
 		if (!node || typeof node !== 'object') continue
+		const nodeObj = node as Record<string, unknown>
 
-		const resourceId = String((node as any).resourceId ?? '').trim()
-		if (resourceId && (resourcesById as any)?.[resourceId]) out.add(resourceId)
+		const resourceId = String(nodeObj.resourceId ?? '').trim()
+		if (resourceId && resourcesById?.[resourceId]) out.add(resourceId)
 
 		if (
-			String((node as any).type || '')
+			String(nodeObj.type || '')
 				.trim()
 				.toLowerCase() !== 'scene-decompose'
 		)
 			continue
-		const outputs = Array.isArray((node as any).sceneDecomposeSettings?.outputs)
-			? (node as any).sceneDecomposeSettings.outputs
+		const settings = nodeObj.sceneDecomposeSettings
+		const settingsObj = settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
+		const outputs = Array.isArray(settingsObj?.outputs)
+			? (settingsObj?.outputs as unknown[])
 			: []
 		for (const item of outputs) {
-			const generatedResourceId = String((item as any)?.generatedResourceId ?? '').trim()
-			if (generatedResourceId && (resourcesById as any)?.[generatedResourceId])
+			const itemObj = item && typeof item === 'object' ? (item as Record<string, unknown>) : null
+			const generatedResourceId = String(itemObj?.generatedResourceId ?? '').trim()
+			if (generatedResourceId && resourcesById?.[generatedResourceId])
 				out.add(generatedResourceId)
 		}
 	}
@@ -176,32 +184,37 @@ export const collectPackageReferencedResourceIds = (snapshot: AIWorkflowDraftSna
 	return out
 }
 
-export const collectPackageNodeAssetCandidates = (snapshot: any) => {
+export const collectPackageNodeAssetCandidates = (snapshot: unknown) => {
 	const out: AIWorkflowProjectPackageSnapshotAssetCandidate[] = []
 	const seenPointer = new Set<string>()
-	const nodeOrder = Array.isArray(snapshot?.nodeOrder) ? snapshot.nodeOrder : []
+	const snapObj = snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : null
+	const nodeOrder = Array.isArray(snapObj?.nodeOrder) ? (snapObj?.nodeOrder as unknown[]) : []
 	const nodesById =
-		snapshot?.nodesById && typeof snapshot.nodesById === 'object' ? snapshot.nodesById : {}
+		snapObj?.nodesById && typeof snapObj.nodesById === 'object'
+			? (snapObj.nodesById as Record<string, unknown>)
+			: ({} as Record<string, unknown>)
 
 	for (const rawNodeId of nodeOrder) {
 		const nodeId = String(rawNodeId || '').trim()
 		if (!nodeId) continue
-		const node = (nodesById as any)?.[nodeId]
+		const node = nodesById?.[nodeId]
 		if (!node || typeof node !== 'object') continue
-		const nodeType = String((node as any).type || '')
+		const nodeObj = node as Record<string, unknown>
+		const nodeType = String(nodeObj.type || '')
 			.trim()
 			.toLowerCase()
 
 		if (nodeType === 'model3d') {
-			const settings = (node as any).model3dSettings
+			const settings = nodeObj.model3dSettings
 			if (!settings || typeof settings !== 'object') continue
+			const settingsObj = settings as Record<string, unknown>
 			const name =
-				String(settings.modelSourceName || node.alias || node.title || nodeId).trim() || nodeId
+				String(settingsObj.modelSourceName || nodeObj.alias || nodeObj.title || nodeId).trim() || nodeId
 			pushPackageSnapshotAssetCandidate(
 				out,
 				seenPointer,
 				['nodesById', nodeId, 'model3dSettings', 'modelUrl'],
-				settings.modelUrl,
+				settingsObj.modelUrl,
 				'file',
 				name
 			)
@@ -209,7 +222,7 @@ export const collectPackageNodeAssetCandidates = (snapshot: any) => {
 				out,
 				seenPointer,
 				['nodesById', nodeId, 'model3dSettings', 'modelAssetUrl'],
-				settings.modelAssetUrl,
+				settingsObj.modelAssetUrl,
 				'file',
 				name
 			)
@@ -217,20 +230,22 @@ export const collectPackageNodeAssetCandidates = (snapshot: any) => {
 		}
 
 		if (nodeType === 'scene-layout') {
-			const settings = (node as any).sceneLayoutSettings
-			const bindings = Array.isArray(settings?.manualModelBindings)
-				? settings.manualModelBindings
+			const settings = nodeObj.sceneLayoutSettings
+			const settingsObj = settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
+			const bindings = Array.isArray(settingsObj?.manualModelBindings)
+				? (settingsObj?.manualModelBindings as unknown[])
 				: []
 			for (let i = 0; i < bindings.length; i += 1) {
 				const binding = bindings[i]
 				if (!binding || typeof binding !== 'object') continue
-				const objectId = String((binding as any).objectId || '').trim() || `binding_${i}`
-				const name = String((binding as any).modelSourceName || objectId).trim() || objectId
+				const bindingObj = binding as Record<string, unknown>
+				const objectId = String(bindingObj.objectId || '').trim() || `binding_${i}`
+				const name = String(bindingObj.modelSourceName || objectId).trim() || objectId
 				pushPackageSnapshotAssetCandidate(
 					out,
 					seenPointer,
 					['nodesById', nodeId, 'sceneLayoutSettings', 'manualModelBindings', i, 'modelUrl'],
-					(binding as any).modelUrl,
+					bindingObj.modelUrl,
 					'file',
 					name
 				)
@@ -238,7 +253,7 @@ export const collectPackageNodeAssetCandidates = (snapshot: any) => {
 					out,
 					seenPointer,
 					['nodesById', nodeId, 'sceneLayoutSettings', 'manualModelBindings', i, 'modelAssetUrl'],
-					(binding as any).modelAssetUrl,
+					bindingObj.modelAssetUrl,
 					'file',
 					name
 				)
@@ -247,14 +262,15 @@ export const collectPackageNodeAssetCandidates = (snapshot: any) => {
 		}
 
 		if (nodeType === 'meshy') {
-			const settings = (node as any).meshySettings
+			const settings = nodeObj.meshySettings
 			if (!settings || typeof settings !== 'object') continue
-			const name = String(node.alias || node.title || nodeId).trim() || nodeId
+			const settingsObj = settings as Record<string, unknown>
+			const name = String(nodeObj.alias || nodeObj.title || nodeId).trim() || nodeId
 			pushPackageSnapshotAssetCandidate(
 				out,
 				seenPointer,
 				['nodesById', nodeId, 'meshySettings', 'meshyThumbnailUrl'],
-				settings.meshyThumbnailUrl,
+				settingsObj.meshyThumbnailUrl,
 				'image',
 				`${name}_thumbnail`
 			)
@@ -262,7 +278,7 @@ export const collectPackageNodeAssetCandidates = (snapshot: any) => {
 				out,
 				seenPointer,
 				['nodesById', nodeId, 'meshySettings', 'meshyOutputAssetUrl'],
-				settings.meshyOutputAssetUrl,
+				settingsObj.meshyOutputAssetUrl,
 				'file',
 				`${name}_model`
 			)

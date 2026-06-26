@@ -1,5 +1,5 @@
 import { DwebCanvasGL, DwebVideoScene } from '../engine/webgl'
-import { computeSceneStateAtFrame } from '../core/export/computeSceneStateAtFrame'
+import { computeSceneStateAtFrame, TimelineStateLike } from '../core/export/computeSceneStateAtFrame'
 import type { VideoSceneState } from '../core/scene'
 
 type InitMsg = {
@@ -19,7 +19,7 @@ type InitMsg = {
 		repeat: boolean
 	}
 	baseSceneState: VideoSceneState
-	timelineState: any
+	timelineState: TimelineStateLike
 }
 
 type RenderUploadMsg = { type: 'renderUpload'; frameIndex: number }
@@ -34,15 +34,34 @@ type OutMsg =
 	| { type: 'uploadedBatch'; startIndex: number; count: number }
 	| { type: 'error'; frameIndex: number; message: string }
 
+// Worker self.postMessage typed wrapper
+const workerPost = (msg: OutMsg) => self.postMessage(msg)
+
+// SAFE-ANY: Error handling needs to safely extract message from unknown error
+function getErrorMessage(e: unknown): string {
+	if (e instanceof Error) return e.message
+	if (typeof e === 'string') return e
+	return String(e)
+}
+
+// SAFE-ANY: Extract frameIndex from unknown message in error context
+function getMsgFrameIndex(msg: InMsg): number {
+	if (msg && typeof msg === 'object' && 'frameIndex' in msg) {
+		const fi = (msg as Record<string, unknown>).frameIndex
+		return typeof fi === 'number' ? fi : -1
+	}
+	return -1
+}
+
 let jobId = ''
 let width = 0
 let height = 0
 let frameCount = 0
 let uploadMode: 'disk' | 'pipe' = 'disk'
-let stageBackground: any = null
+let stageBackground: InitMsg['stageBackground'] | null = null
 let ignoreStageBackground = false
 let baseSceneState: VideoSceneState | null = null
-let timelineState: any = null
+let timelineState: TimelineStateLike | null = null
 
 let canvas: DwebCanvasGL | null = null
 let scene: DwebVideoScene | null = null
@@ -125,7 +144,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 			canvas.setSize(width, height, 1)
 			canvas.fitToStage({ width, height }, 0, { left: 0, top: 0, right: 0, bottom: 0 })
 			canvas.setScene(scene)
-			;(self as any).postMessage({ type: 'ready' } satisfies OutMsg)
+			workerPost({ type: 'ready' })
 			return
 		}
 
@@ -134,7 +153,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 			const fi = Math.floor(msg.frameIndex)
 			if (!(fi >= 0 && fi < frameCount)) throw new Error('frameIndex 越界')
 
-			const stateAt = computeSceneStateAtFrame(baseSceneState!, timelineState, fi)
+			const stateAt = computeSceneStateAtFrame(baseSceneState!, timelineState!, fi)
 			scene!.setState(stateAt)
 			const images = scene!.collectImageSources()
 			const imageKey = images
@@ -155,7 +174,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 				if (!cap?.blob) throw new Error('抓帧失败（capture png blob 返回空）')
 				await uploadFramePng(jobId, fi, cap.blob)
 			}
-			;(self as any).postMessage({ type: 'uploaded', frameIndex: fi } satisfies OutMsg)
+			workerPost({ type: 'uploaded', frameIndex: fi })
 			return
 		}
 
@@ -171,7 +190,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 			const out = new Uint8Array(frameBytes * c)
 			for (let i = 0; i < c; i++) {
 				const fi = si + i
-				const stateAt = computeSceneStateAtFrame(baseSceneState!, timelineState, fi)
+				const stateAt = computeSceneStateAtFrame(baseSceneState!, timelineState!, fi)
 				scene!.setState(stateAt)
 				const images = scene!.collectImageSources()
 				const imageKey = images
@@ -188,20 +207,20 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
 				out.set(cap.pixels, i * frameBytes)
 			}
 			await uploadFramesRawBatch(jobId, si, c, out)
-			;(self as any).postMessage({
+			workerPost({
 				type: 'uploadedBatch',
 				startIndex: si,
 				count: c
-			} satisfies OutMsg)
+			})
 			return
 		}
 	} catch (e) {
-		const fi = (msg as any)?.frameIndex
-		;(self as any).postMessage({
+		const fi = getMsgFrameIndex(msg)
+		workerPost({
 			type: 'error',
-			frameIndex: typeof fi === 'number' ? fi : -1,
-			message: String((e as any)?.message ?? e)
-		} satisfies OutMsg)
+			frameIndex: fi,
+			message: getErrorMessage(e)
+		})
 	}
 }
 

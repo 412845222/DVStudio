@@ -1,47 +1,52 @@
 export const useAIWorkflowUnrealExportActions = (payload: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
+			nodesById: Record<string, unknown>
 		}
-		commit: (type: string, value: any) => void
+		commit: (type: string, value: unknown) => void
 	}
 	unrealExportService: {
 		createJob: (input: {
 			targetSessionId: string
 			sourceNodeId: string
 			sceneName: string
-			exportPayload: any
-		}) => Promise<any>
+			exportPayload: Record<string, unknown>
+		}) => Promise<Record<string, unknown>>
 	}
 	connectedTextInputValue: (nodeId: string, inputId: string) => string
-	getUnrealExportSourceSceneLayoutNode: (nodeId: string) => any
+	getUnrealExportSourceSceneLayoutNode: (nodeId: string) => unknown
 	getResolvedLayoutForUnreal: (
 		sceneLayoutNodeId: string
-	) => Promise<{ ok: true; exportData: any } | { ok: false; error: string }>
-	connectedSceneLayoutModelBindings: (nodeId: string) => any[]
+	) => Promise<{ ok: true; exportData: unknown } | { ok: false; error: string }>
+	connectedSceneLayoutModelBindings: (nodeId: string) => unknown[]
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }) => {
-	const normalizeResolvedLayoutSlots = (slots: any[]) => {
+	const normalizeResolvedLayoutSlots = (slots: unknown[]) => {
 		return slots
 			.filter((slot) => {
 				if (!slot || typeof slot !== 'object') return false
-				const slotId = String(slot.slotId ?? '').trim()
-				const sourceObjectId = String(slot.sourceObjectId ?? '').trim()
+				const slotObj = slot as Record<string, unknown>
+				const slotId = String(slotObj.slotId ?? '').trim()
+				const sourceObjectId = String(slotObj.sourceObjectId ?? '').trim()
 				if (!slotId || !sourceObjectId) return false
-				if (!slot.previewInstanceTransform || typeof slot.previewInstanceTransform !== 'object')
+				if (!slotObj.previewInstanceTransform || typeof slotObj.previewInstanceTransform !== 'object')
 					return false
-				if (!slot.modelBinding || typeof slot.modelBinding !== 'object') return false
+				if (!slotObj.modelBinding || typeof slotObj.modelBinding !== 'object') return false
 				return true
 			})
-			.map((slot) => ({ ...slot }))
-			.sort((a, b) => String(a.slotId ?? '').localeCompare(String(b.slotId ?? '')))
+			.map((slot) => ({ ...(slot as Record<string, unknown>) }))
+			.sort((a, b) =>
+				String((a as Record<string, unknown>).slotId ?? '').localeCompare(
+					String((b as Record<string, unknown>).slotId ?? '')
+				)
+			)
 	}
 
 	const buildUnrealExportPayload = async (
 		nodeId: string,
 		exportMode: 'scene-layout' | 'lighting-only' = 'scene-layout'
 	) => {
-		const node = payload.store.state.nodesById[nodeId] as any
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node || node.type !== 'unreal-export') return { ok: false as const, error: '节点不存在' }
 		const layoutJson = String(
 			payload.connectedTextInputValue(nodeId, 'in-layout-json') ?? ''
@@ -53,14 +58,14 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		).trim()
 		if (exportMode === 'lighting-only' && !lightingJson)
 			return { ok: false as const, error: '当前节点缺少灯光 JSON 输入。' }
-		const sourceNode = payload.getUnrealExportSourceSceneLayoutNode(nodeId)
-		const sourceSceneLayoutSettings = sourceNode?.sceneLayoutSettings ?? null
-		const modelBindings = sourceNode ? payload.connectedSceneLayoutModelBindings(sourceNode.id) : []
+		const sourceNode = payload.getUnrealExportSourceSceneLayoutNode(nodeId) as Record<string, unknown> | null
+		const sourceSceneLayoutSettings = sourceNode?.sceneLayoutSettings as Record<string, unknown> | null
+		const modelBindings = sourceNode && sourceNode.id ? payload.connectedSceneLayoutModelBindings(String(sourceNode.id)) : []
 		const layoutItems = Array.isArray(sourceSceneLayoutSettings?.layoutItems)
-			? (sourceSceneLayoutSettings?.layoutItems ?? [])
+			? (sourceSceneLayoutSettings?.layoutItems as unknown[] ?? [])
 			: []
 		const manualModelBindings = Array.isArray(sourceSceneLayoutSettings?.manualModelBindings)
-			? (sourceSceneLayoutSettings?.manualModelBindings ?? [])
+			? (sourceSceneLayoutSettings?.manualModelBindings as unknown[] ?? [])
 			: []
 		const sourceSceneLayoutNodeId =
 			sourceNode?.type === 'scene-layout' ? String(sourceNode.id ?? '').trim() : ''
@@ -68,7 +73,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			return { ok: false as const, error: '当前 Unreal 导出节点未连接场景布局节点。' }
 		}
 		const connectedModelBindings = Array.isArray(modelBindings)
-			? modelBindings.filter((item: any) => item?.connected)
+			? modelBindings.filter((item: unknown) => (item as Record<string, unknown>)?.connected)
 			: []
 		if (exportMode === 'scene-layout' && connectedModelBindings.length <= 0) {
 			return {
@@ -77,9 +82,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			}
 		}
 
-		let resolvedLayoutSlots: any[] = []
+		let resolvedLayoutSlots: unknown[] = []
 		let resolvedLayoutWarnings: string[] = []
-		let resolvedActorOrigin: Record<string, any> | null = null
+		let resolvedActorOrigin: Record<string, unknown> | null = null
 		let resolvedSourceItemCount = 0
 		if (exportMode === 'scene-layout') {
 			const resolvedResult = await payload.getResolvedLayoutForUnreal(sourceSceneLayoutNodeId)
@@ -91,18 +96,18 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			}
 			const exportData =
 				resolvedResult.exportData && typeof resolvedResult.exportData === 'object'
-					? resolvedResult.exportData
+					? (resolvedResult.exportData as Record<string, unknown>)
 					: null
-			const rawSlots = Array.isArray(exportData?.slots) ? exportData.slots : []
+			const rawSlots = exportData && Array.isArray(exportData.slots) ? (exportData.slots as unknown[]) : []
 			resolvedLayoutSlots = normalizeResolvedLayoutSlots(rawSlots)
-			resolvedLayoutWarnings = Array.isArray(exportData?.warnings)
-				? exportData.warnings.map((item: any) => String(item ?? '').trim()).filter(Boolean)
+			resolvedLayoutWarnings = exportData && Array.isArray(exportData.warnings)
+				? (exportData.warnings as unknown[]).map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
 				: []
 			resolvedActorOrigin =
 				exportData?.actorOrigin && typeof exportData.actorOrigin === 'object'
-					? { ...exportData.actorOrigin }
+					? { ...(exportData.actorOrigin as Record<string, unknown>) }
 					: null
-			resolvedSourceItemCount = Number.isFinite(Number(exportData?.sourceItemCount))
+			resolvedSourceItemCount = exportData && Number.isFinite(Number(exportData.sourceItemCount))
 				? Number(exportData.sourceItemCount)
 				: 0
 			if (resolvedLayoutSlots.length <= 0) {
@@ -145,11 +150,11 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 	}
 
 	const onNodeExportUnrealScene = async (nodeId: string) => {
-		const node = payload.store.state.nodesById[nodeId] as any
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node || node.type !== 'unreal-export') return
-		const settings = node.unrealExportSettings ?? {}
+		const settings = (node.unrealExportSettings as Record<string, unknown>) ?? {}
 		const targetSessionId = String(
-			settings.targetSessionId ?? settings.connectedSession?.sessionId ?? ''
+			settings.targetSessionId ?? (settings.connectedSession as Record<string, unknown>)?.sessionId ?? ''
 		).trim()
 		if (!targetSessionId) {
 			payload.pushToast('当前 Unreal 导出节点尚未连接虚幻插件。', 'warn')
@@ -172,24 +177,25 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					: undefined
 			}
 		})
-		const res = await payload.unrealExportService.createJob({
+		const res = (await payload.unrealExportService.createJob({
 			targetSessionId,
 			sourceNodeId: built.payload.sourceNodeId,
 			sceneName: built.payload.sceneName,
 			exportPayload: built.payload
-		})
+		})) as Record<string, unknown>
 		if (!res.ok) {
 			payload.store.commit('setNodeUnrealExportSettings', {
 				nodeId,
 				unrealExportSettings: {
 					connectionStatus: 'error',
 					statusText: '导出任务创建失败',
-					message: res.error || 'unknown'
+					message: (res.error as string) || 'unknown'
 				}
 			})
 			payload.pushToast(`创建 Unreal 导出任务失败：${res.error || 'unknown'}`, 'warn')
 			return
 		}
+		const job = res.job as Record<string, unknown>
 		payload.store.commit('setNodeUnrealExportSettings', {
 			nodeId,
 			unrealExportSettings: {
@@ -197,27 +203,27 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				statusText: '已连接，导出任务已入队',
 				message: '请在虚幻插件中点击“接收布局数据”。',
 				lastExportMode: 'scene-layout',
-				lastExportJobId: res.job.jobId,
+				lastExportJobId: job.jobId,
 				lastExportStatus: 'queued',
 				lastExportStage: '导出任务已入队',
 				lastExportProgress: 5,
-				lastExportMessage: String(res.job.message ?? '').trim() || '等待插件拉取',
+				lastExportMessage: String(job.message ?? '').trim() || '等待插件拉取',
 				lastLayoutProtocolVersion: 4,
 				lastSlotCount: Number.isFinite(Number(built.payload.resolvedSlotCount))
 					? Number(built.payload.resolvedSlotCount)
 					: undefined,
-				lastExportAt: Number(res.job.createdAt ?? Date.now()) || Date.now()
+				lastExportAt: Number(job.createdAt ?? Date.now()) || Date.now()
 			}
 		})
-		payload.pushToast(`Unreal 导出任务已创建：${res.job.jobId}`, 'info')
+		payload.pushToast(`Unreal 导出任务已创建：${job.jobId}`, 'info')
 	}
 
 	const onNodeExportUnrealLighting = async (nodeId: string) => {
-		const node = payload.store.state.nodesById[nodeId] as any
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node || node.type !== 'unreal-export') return
-		const settings = node.unrealExportSettings ?? {}
+		const settings = (node.unrealExportSettings as Record<string, unknown>) ?? {}
 		const targetSessionId = String(
-			settings.targetSessionId ?? settings.connectedSession?.sessionId ?? ''
+			settings.targetSessionId ?? (settings.connectedSession as Record<string, unknown>)?.sessionId ?? ''
 		).trim()
 		if (!targetSessionId) {
 			payload.pushToast('当前 Unreal 导出节点尚未连接虚幻插件。', 'warn')
@@ -237,24 +243,25 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				lastExportMode: 'lighting-only'
 			}
 		})
-		const res = await payload.unrealExportService.createJob({
+		const res = (await payload.unrealExportService.createJob({
 			targetSessionId,
 			sourceNodeId: built.payload.sourceNodeId,
 			sceneName: built.payload.sceneName,
 			exportPayload: built.payload
-		})
+		})) as Record<string, unknown>
 		if (!res.ok) {
 			payload.store.commit('setNodeUnrealExportSettings', {
 				nodeId,
 				unrealExportSettings: {
 					connectionStatus: 'error',
 					statusText: '灯光任务创建失败',
-					message: res.error || 'unknown'
+					message: (res.error as string) || 'unknown'
 				}
 			})
 			payload.pushToast(`创建 Unreal 灯光任务失败：${res.error || 'unknown'}`, 'warn')
 			return
 		}
+		const job = res.job as Record<string, unknown>
 		payload.store.commit('setNodeUnrealExportSettings', {
 			nodeId,
 			unrealExportSettings: {
@@ -262,15 +269,15 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				statusText: '已连接，灯光任务已入队',
 				message: '请在虚幻插件中选择场景Actor并点击“接收灯光数据”。',
 				lastExportMode: 'lighting-only',
-				lastExportJobId: res.job.jobId,
+				lastExportJobId: job.jobId,
 				lastExportStatus: 'queued',
 				lastExportStage: '灯光任务已入队',
 				lastExportProgress: 5,
-				lastExportMessage: String(res.job.message ?? '').trim() || '等待插件拉取',
-				lastExportAt: Number(res.job.createdAt ?? Date.now()) || Date.now()
+				lastExportMessage: String(job.message ?? '').trim() || '等待插件拉取',
+				lastExportAt: Number(job.createdAt ?? Date.now()) || Date.now()
 			}
 		})
-		payload.pushToast(`Unreal 灯光任务已创建：${res.job.jobId}`, 'info')
+		payload.pushToast(`Unreal 灯光任务已创建：${job.jobId}`, 'info')
 	}
 
 	return {

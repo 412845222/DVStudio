@@ -1,5 +1,21 @@
 import type { WorkflowImageCrop, WorkflowPixelRect } from '../../../../aiworkflow/types'
 
+export interface SceneDecomposeInputItem {
+	id?: unknown
+	name?: unknown
+	label?: unknown
+	description?: unknown
+	category?: unknown
+	subCategory?: unknown
+	semanticRole?: unknown
+	keyElementType?: unknown
+	relationTags?: unknown
+	observedImageIndices?: unknown
+	sourceImageIndex?: unknown
+	imageRect?: unknown
+	imageRectPixels?: unknown
+}
+
 const MIN_CROP_WIDTH_PX = 350
 const MIN_ASPECT_RATIO = 1.0
 const MAX_ASPECT_RATIO = 16 / 9
@@ -14,15 +30,16 @@ export const slugSceneDecomposeId = (value: unknown, index: number) => {
 	return slug || `object-${index + 1}`
 }
 
-export const buildSceneDecomposeDescription = (item: any, fallbackName: string) => {
+export const buildSceneDecomposeDescription = (item: SceneDecomposeInputItem, fallbackName: string) => {
 	const lines: string[] = []
 	const name = String(item?.name ?? fallbackName).trim()
 	const description = String(item?.description ?? '').trim()
 	const category = String(item?.category ?? '').trim()
 	const subCategory = String(item?.subCategory ?? '').trim()
-	const observed = Array.isArray(item?.observedImageIndices)
-		? item.observedImageIndices
-				.map((value: any) => Number(value))
+	const observedImageIndices = item?.observedImageIndices
+	const observed = Array.isArray(observedImageIndices)
+		? observedImageIndices
+				.map((value: unknown) => Number(value))
 				.filter((value: number) => Number.isFinite(value) && value > 0)
 		: []
 
@@ -34,26 +51,28 @@ export const buildSceneDecomposeDescription = (item: any, fallbackName: string) 
 	return lines.join('\n').trim() || fallbackName
 }
 
-export const extractSceneDecomposeItems = (parsed: any) => {
-	if (Array.isArray(parsed?.objects)) return parsed.objects as any[]
-	if (Array.isArray(parsed?.layoutItems)) return parsed.layoutItems as any[]
-	if (Array.isArray(parsed)) return parsed as any[]
-	return [] as any[]
+export const extractSceneDecomposeItems = (parsed: unknown): SceneDecomposeInputItem[] => {
+	const obj = parsed as Record<string, unknown>
+	if (Array.isArray(obj?.objects)) return obj.objects as SceneDecomposeInputItem[]
+	if (Array.isArray(obj?.layoutItems)) return obj.layoutItems as SceneDecomposeInputItem[]
+	if (Array.isArray(parsed)) return parsed as SceneDecomposeInputItem[]
+	return []
 }
 
-export const inferSceneDecomposeSourceImageIndex = (item: any) => {
+export const inferSceneDecomposeSourceImageIndex = (item: SceneDecomposeInputItem) => {
 	const direct = Number(item?.sourceImageIndex)
 	if (Number.isFinite(direct) && direct > 0) return Math.max(1, Math.floor(direct))
-	const observed = Array.isArray(item?.observedImageIndices)
-		? item.observedImageIndices
-				.map((value: any) => Number(value))
+	const observedImageIndices = item?.observedImageIndices
+	const observed = Array.isArray(observedImageIndices)
+		? observedImageIndices
+				.map((value: unknown) => Number(value))
 				.filter((value: number) => Number.isFinite(value) && value > 0)
 		: []
 	if (observed.length) return Math.max(1, Math.floor(observed[0]))
 	return 1
 }
 
-export const shouldSkipSceneDecomposeItem = (item: any) => {
+export const shouldSkipSceneDecomposeItem = (item: SceneDecomposeInputItem) => {
 	const id = String(item?.id ?? '')
 		.trim()
 		.toLowerCase()
@@ -63,16 +82,18 @@ export const shouldSkipSceneDecomposeItem = (item: any) => {
 	const keyElementType = String(item?.keyElementType ?? '')
 		.trim()
 		.toLowerCase()
-	const relationTags = Array.isArray(item?.relationTags)
-		? item.relationTags.map((value: any) =>
+	const relationTagsArr = item?.relationTags
+	const relationTags = Array.isArray(relationTagsArr)
+		? relationTagsArr.map((value: unknown) =>
 				String(value ?? '')
 					.trim()
 					.toLowerCase()
 			)
 		: []
-	const observed = Array.isArray(item?.observedImageIndices)
-		? item.observedImageIndices
-				.map((value: any) => Number(value))
+	const observedImageIndices = item?.observedImageIndices
+	const observed = Array.isArray(observedImageIndices)
+		? observedImageIndices
+				.map((value: unknown) => Number(value))
 				.filter((value: number) => Number.isFinite(value) && value > 0)
 		: []
 
@@ -87,14 +108,15 @@ export const shouldSkipSceneDecomposeItem = (item: any) => {
 	return false
 }
 
-export const isSceneLayoutModelTargetItem = (item: any) => !shouldSkipSceneDecomposeItem(item)
+export const isSceneLayoutModelTargetItem = (item: SceneDecomposeInputItem) => !shouldSkipSceneDecomposeItem(item)
 
-export const hasValidSceneDecomposeImageRect = (imageRect: any) => {
+export const hasValidSceneDecomposeImageRect = (imageRect: unknown) => {
 	if (!imageRect || typeof imageRect !== 'object') return false
-	const x = Number(imageRect.x)
-	const y = Number(imageRect.y)
-	const width = Number(imageRect.width)
-	const height = Number(imageRect.height)
+	const obj = imageRect as Record<string, unknown>
+	const x = Number(obj.x)
+	const y = Number(obj.y)
+	const width = Number(obj.width)
+	const height = Number(obj.height)
 	return (
 		Number.isFinite(x) &&
 		Number.isFinite(y) &&
@@ -105,12 +127,13 @@ export const hasValidSceneDecomposeImageRect = (imageRect: any) => {
 	)
 }
 
-export const hasValidSceneDecomposePixelRect = (imageRectPixels: any) => {
+export const hasValidSceneDecomposePixelRect = (imageRectPixels: unknown) => {
 	if (!imageRectPixels || typeof imageRectPixels !== 'object') return false
-	const x = Number(imageRectPixels.x)
-	const y = Number(imageRectPixels.y)
-	const width = Number(imageRectPixels.width)
-	const height = Number(imageRectPixels.height)
+	const obj = imageRectPixels as Record<string, unknown>
+	const x = Number(obj.x)
+	const y = Number(obj.y)
+	const width = Number(obj.width)
+	const height = Number(obj.height)
 	return (
 		Number.isFinite(x) &&
 		Number.isFinite(y) &&
@@ -169,8 +192,8 @@ export const ensureSceneDecomposeSourceDimensions = async (source: {
 }
 
 export const normalizeSceneDecomposeCrop = (
-	imageRect: any,
-	imageRectPixels: any,
+	imageRect: unknown,
+	imageRectPixels: unknown,
 	source: { width?: number; height?: number },
 	opts?: { allowFullImageFallback?: boolean }
 ): {
@@ -182,12 +205,14 @@ export const normalizeSceneDecomposeCrop = (
 } | null => {
 	const width = Number(source.width ?? 0)
 	const height = Number(source.height ?? 0)
+	const imageRectObj = imageRect as Record<string, unknown>
+	const imageRectPixelsObj = imageRectPixels as Record<string, unknown>
 	if (hasValidSceneDecomposeImageRect(imageRect)) {
 		let crop: WorkflowImageCrop = {
-			x: Math.max(0, Math.min(1, Number(imageRect.x))),
-			y: Math.max(0, Math.min(1, Number(imageRect.y))),
-			width: Math.max(0.0001, Math.min(1, Number(imageRect.width))),
-			height: Math.max(0.0001, Math.min(1, Number(imageRect.height)))
+			x: Math.max(0, Math.min(1, Number(imageRectObj.x))),
+			y: Math.max(0, Math.min(1, Number(imageRectObj.y))),
+			width: Math.max(0.0001, Math.min(1, Number(imageRectObj.width))),
+			height: Math.max(0.0001, Math.min(1, Number(imageRectObj.height)))
 		}
 		if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
 			crop = adjustCropForMinimumSize(crop, width, height)
@@ -195,17 +220,17 @@ export const normalizeSceneDecomposeCrop = (
 		const outputWidth =
 			Number.isFinite(width) && width > 0
 				? Math.max(1, Math.round(width * crop.width))
-				: Math.max(1, Math.round(Number(imageRectPixels?.width ?? 1024 * crop.width)))
+				: Math.max(1, Math.round(Number(imageRectPixelsObj?.width ?? 1024 * crop.width)))
 		const outputHeight =
 			Number.isFinite(height) && height > 0
 				? Math.max(1, Math.round(height * crop.height))
-				: Math.max(1, Math.round(Number(imageRectPixels?.height ?? 1024 * crop.height)))
+				: Math.max(1, Math.round(Number(imageRectPixelsObj?.height ?? 1024 * crop.height)))
 		const pixelRect = hasValidSceneDecomposePixelRect(imageRectPixels)
 			? {
-					x: Number(imageRectPixels.x),
-					y: Number(imageRectPixels.y),
-					width: Math.max(1, Number(imageRectPixels.width)),
-					height: Math.max(1, Number(imageRectPixels.height))
+					x: Number(imageRectPixelsObj.x),
+					y: Number(imageRectPixelsObj.y),
+					width: Math.max(1, Number(imageRectPixelsObj.width)),
+					height: Math.max(1, Number(imageRectPixelsObj.height))
 				}
 			: undefined
 		return { crop, pixelRect, outputWidth, outputHeight, cropMode: 'cropped' }
@@ -218,10 +243,10 @@ export const normalizeSceneDecomposeCrop = (
 		Number.isFinite(height) &&
 		height > 0
 	) {
-		const px = Number(imageRectPixels.x)
-		const py = Number(imageRectPixels.y)
-		const pw = Math.max(1, Number(imageRectPixels.width))
-		const ph = Math.max(1, Number(imageRectPixels.height))
+		const px = Number(imageRectPixelsObj.x)
+		const py = Number(imageRectPixelsObj.y)
+		const pw = Math.max(1, Number(imageRectPixelsObj.width))
+		const ph = Math.max(1, Number(imageRectPixelsObj.height))
 		let crop: WorkflowImageCrop = {
 			x: Math.max(0, Math.min(1, px / width)),
 			y: Math.max(0, Math.min(1, py / height)),

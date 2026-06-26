@@ -11,8 +11,8 @@ import type { InputParamPreviewRef } from './useAIWorkflowTextOutputResolver'
 export const useAIWorkflowNodeExtraProps = (payload: {
 	store: {
 		state: {
-			resourcesById: Record<string, any>
-			nodesById: Record<string, any>
+			resourcesById: Record<string, unknown>
+			nodesById: Record<string, unknown>
 		}
 	}
 	connectedTextInputValue: (nodeId: string, inputId: string) => string
@@ -41,7 +41,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 	connectedSceneDecomposeImageInputs: (
 		nodeId: string
 	) => Array<{ url: string; width?: number; height?: number }>
-	connectedSceneLayoutModelBindings: (nodeId: string) => any[]
+	connectedSceneLayoutModelBindings: (nodeId: string) => unknown[]
 	viewportMotionActive: { value: boolean }
 	active3DPreviewNodeId: { value: string }
 	getThreePreviewState: (
@@ -51,14 +51,14 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 	performancePriorityMode: { value: boolean }
 	nodeCount: { value: number }
 	connectedMeshySourcePreview: (nodeId: string) => { url: string; label: string }
-	buildMeshyNodePresentationSettings: (settings: any) => any
+	buildMeshyNodePresentationSettings: (settings: Record<string, unknown> | null | undefined) => Record<string, unknown> | null
 	connectedMeshyPrompt: (nodeId: string) => string
 	connectedMeshyImageUrls: (nodeId: string) => string[]
 	nodeMediaReloadToken: (nodeId: string) => number
-	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => any
+	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => Record<string, unknown> | null
 	getUpstreamCroppedImageUrl: (node: WorkflowNode) => string | null
 }) => {
-	const extraPropsCache = new Map<string, Record<string, any>>()
+	const extraPropsCache = new Map<string, Record<string, unknown>>()
 
 	const getUpstreamPassThroughImageNode = (node: WorkflowNode): WorkflowNode | null => {
 		if (node.type !== 'image') return null
@@ -67,7 +67,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			payload.getFirstIncomingEdge(node.id, 'in-image') ||
 			payload.getFirstIncomingEdge(node.id, 'in-resource')
 		if (!edge) return null
-		const fromNode = payload.store.state.nodesById[edge.fromNodeId] as WorkflowNode | undefined
+		const fromNode = payload.store.state.nodesById[String(edge.fromNodeId)] as WorkflowNode | undefined
 		if (!fromNode || fromNode.type !== 'image') return null
 		if (!fromNode.resourceId) return null
 		return fromNode
@@ -95,8 +95,8 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		const rid = String(sourceNode.resourceId ?? '').trim()
 		const resource = rid ? payload.store.state.resourcesById[rid] : null
 		const resourceSourcePath =
-			resource && typeof (resource as any).sourcePath === 'string'
-				? String((resource as any).sourcePath).trim()
+			resource && typeof (resource as Record<string, unknown>).sourcePath === 'string'
+				? String((resource as Record<string, unknown>).sourcePath).trim()
 				: ''
 
 		const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(
@@ -127,7 +127,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		}
 	}
 
-	const withMotionSafeProps = (node: WorkflowNode, props: Record<string, any>) => {
+	const withMotionSafeProps = (node: WorkflowNode, props: Record<string, unknown>) => {
 		if (props.previewSuspended === true) return props
 		if (node.type === 'scene-layout' || node.type === 'model3d') {
 			return {
@@ -149,7 +149,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		return false
 	}
 
-	const buildMotionReducedProps = (node: WorkflowNode): Record<string, any> => {
+	const buildMotionReducedProps = (node: WorkflowNode): Record<string, unknown> => {
 		if (node.type === 'scene-layout') {
 			return {
 				sceneLayoutSettings: sanitizeWorkflowUrlFieldsDeep(node.sceneLayoutSettings ?? null),
@@ -200,8 +200,8 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			const rid = String(node.resourceId ?? '').trim()
 			const resource = rid ? payload.store.state.resourcesById[rid] : null
 			const resourceSourcePath =
-				resource && typeof (resource as any).sourcePath === 'string'
-					? String((resource as any).sourcePath).trim()
+				resource && typeof (resource as Record<string, unknown>).sourcePath === 'string'
+					? String((resource as Record<string, unknown>).sourcePath).trim()
 					: ''
 			const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 320))
 			const imagePreviewUrl640 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 640))
@@ -209,8 +209,8 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			const resourcePosterUrl = (() => {
 				if (!rid) return null
 				const raw =
-					typeof (resource as any)?.posterUrl === 'string'
-						? String((resource as any).posterUrl).trim()
+					typeof (resource as Record<string, unknown>)?.posterUrl === 'string'
+						? String((resource as Record<string, unknown>).posterUrl).trim()
 						: ''
 				const safe = sanitizeWorkflowMediaUrl(raw)
 				return safe || null
@@ -251,7 +251,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		return buildNodeExtraProps(node)
 	}
 
-	const buildNodeExtraProps = (node: WorkflowNode): Record<string, any> => {
+	const buildNodeExtraProps = (node: WorkflowNode): Record<string, unknown> => {
 		if (node.type === 'text') {
 			const linkedInput =
 				Array.isArray(node.inputs) && node.inputs.length
@@ -263,7 +263,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			}
 		}
 		if (node.type === 'text-merge') {
-			const items = Array.isArray((node as any).textMergeItems) ? (node as any).textMergeItems : []
+			const items = Array.isArray((node as Record<string, unknown>).textMergeItems) ? (node as Record<string, unknown>).textMergeItems : []
 			return {
 				mergeItems: items,
 				mergedText: payload.computeMergedText(node.id)
@@ -290,8 +290,8 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			const rid = String(node.resourceId ?? '').trim()
 			const resource = rid ? payload.store.state.resourcesById[rid] : null
 			const resourceSourcePath =
-				resource && typeof (resource as any).sourcePath === 'string'
-					? String((resource as any).sourcePath).trim()
+				resource && typeof (resource as Record<string, unknown>).sourcePath === 'string'
+					? String((resource as Record<string, unknown>).sourcePath).trim()
 					: ''
 			const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 320))
 			const imagePreviewUrl640 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 640))
@@ -299,8 +299,8 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			const resourcePosterUrl = (() => {
 				if (!rid) return null
 				const raw =
-					typeof (resource as any)?.posterUrl === 'string'
-						? String((resource as any).posterUrl).trim()
+					typeof (resource as Record<string, unknown>)?.posterUrl === 'string'
+						? String((resource as Record<string, unknown>).posterUrl).trim()
 						: ''
 				const safe = sanitizeWorkflowMediaUrl(raw)
 				return safe || null
@@ -322,7 +322,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		if (node.type === 'rotate-image') {
 			return {
 				inputUrl: sanitizeWorkflowMediaUrl(payload.rotateImagePreviewUrl(node)),
-				rotatePromptText: String((node as any).rotatePromptText ?? '')
+				rotatePromptText: String((node as Record<string, unknown>).rotatePromptText ?? '')
 			}
 		}
 		if (node.type === 'scene-understanding') {
@@ -366,7 +366,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		}
 		if (node.type === 'unreal-export') {
 			return {
-				unrealExportSettings: (node as any).unrealExportSettings ?? null,
+				unrealExportSettings: (node as Record<string, unknown>).unrealExportSettings ?? null,
 				linkedLayoutJsonText: payload.connectedTextInputValue(node.id, 'in-layout-json'),
 				linkedLightingJsonText: payload.connectedTextInputValue(node.id, 'in-lighting-json')
 			}

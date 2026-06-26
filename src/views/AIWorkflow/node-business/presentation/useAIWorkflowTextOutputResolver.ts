@@ -1,5 +1,5 @@
 import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
-import type { WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
+import type { WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
 
 export type InputParamPreviewRef = {
 	edgeId?: string
@@ -22,16 +22,16 @@ export type InputTextConnectedRef = InputParamPreviewRef & {
 export const useAIWorkflowTextOutputResolver = (payload: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
-			resourcesById: Record<string, any>
+			nodesById: Record<string, WorkflowNode>
+			resourcesById: Record<string, unknown>
 		}
 	}
-	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => any
-	getIncomingEdges: (nodeId: string, anchorId?: string) => any[]
+	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => unknown
+	getIncomingEdges: (nodeId: string, anchorId?: string) => unknown[]
 	serializeSceneLayoutSelectedPlaceholder: (nodeId: string) => string
 	serializeSceneLayoutOutput: (nodeId: string) => string
-	nodeResourceUrl: (node: any) => string | null
-	nodeImagePreviewUrl: (node: any, maxSize: number) => string | null
+	nodeResourceUrl: (node: WorkflowNode) => string | null
+	nodeImagePreviewUrl: (node: WorkflowNode, maxSize: number) => string | null
 }) => {
 	const previewText = (value: string, maxLength = 80) => {
 		const text = String(value ?? '').trim()
@@ -39,38 +39,39 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
 	}
 
-	const resolveNodeName = (node: any) =>
+	const resolveNodeName = (node: WorkflowNode) =>
 		String(node?.alias ?? node?.title ?? '').trim() || undefined
 
-	const resolveVideoPosterUrl = (node: any) => {
+	const resolveVideoPosterUrl = (node: WorkflowNode) => {
 		const rid = String(node?.resourceId ?? '').trim()
 		if (!rid) return ''
-		const resource = payload.store.state.resourcesById[rid] as any
+		const resource = payload.store.state.resourcesById[rid] as Record<string, unknown>
 		const poster = typeof resource?.posterUrl === 'string' ? String(resource.posterUrl).trim() : ''
 		return sanitizeWorkflowMediaUrl(poster) || ''
 	}
 
-	const resolveModel3DLabel = (node: any) => {
-		const settings = node?.model3dSettings ?? {}
+	const resolveModel3DLabel = (node: WorkflowNode) => {
+		const settings = node.model3dSettings
 		return String(
-			settings.modelSourceName ??
-				settings.lastInputSourceName ??
-				settings.modelProjectRelativePath ??
-				settings.modelSourcePath ??
-				settings.modelUrl ??
+			settings?.modelSourceName ??
+				settings?.lastInputSourceName ??
+				settings?.modelProjectRelativePath ??
+				settings?.modelSourcePath ??
+				settings?.modelUrl ??
 				''
 		).trim()
 	}
 
 	const connectedTextInputValue = (nodeId: string, inputId: string) => {
-		const edge = payload.getFirstIncomingEdge(nodeId, String(inputId ?? ''))
+		const edge = payload.getFirstIncomingEdge(nodeId, String(inputId ?? '')) as Record<string, unknown> | null
 		if (!edge) return ''
-		return getTextOutputForNode(edge.fromNodeId, undefined, String(edge.fromAnchorId ?? ''))
+		return getTextOutputForNode(String(edge.fromNodeId), undefined, String(edge.fromAnchorId ?? ''))
 	}
 
-	const sceneDecomposeTextOutputForAnchor = (node: any, anchorId: string) => {
-		if (node.type !== 'scene-decompose') return ''
-		const settings = node.sceneDecomposeSettings
+	const sceneDecomposeTextOutputForAnchor = (node: unknown, anchorId: string) => {
+		const n = node as Record<string, unknown>
+		if (n.type !== 'scene-decompose') return ''
+		const settings = n.sceneDecomposeSettings as Record<string, unknown> | undefined
 		const rawOutputs = settings?.outputs
 		const outputs: WorkflowSceneDecomposeOutput[] = Array.isArray(rawOutputs) ? rawOutputs : []
 		const item = outputs.find(
@@ -90,15 +91,16 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		if (v.has(visitKey)) return ''
 		v.add(visitKey)
 
-		const node = payload.store.state.nodesById[nodeId] as any
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node) return ''
 		if (node.type === 'text') {
-			const inputAnchor = Array.isArray(node.inputs)
-				? node.inputs.find(
-						(anchor: any) =>
-							String(anchor?.mediaType ?? '') === 'text' || String(anchor?.id ?? '') === 'in-text'
-					)
-				: null
+			const inputs = Array.isArray(node.inputs) ? node.inputs : []
+			const inputAnchor = inputs.find(
+				(anchor: unknown) => {
+					const a = anchor as Record<string, unknown>
+					return String(a?.mediaType ?? '') === 'text' || String(a?.id ?? '') === 'in-text'
+				}
+			) as Record<string, unknown> | undefined
 			if (inputAnchor?.id) {
 				const linkedText = connectedTextInputValue(nodeId, String(inputAnchor.id))
 				if (String(linkedText ?? '').trim()) return String(linkedText)
@@ -107,8 +109,10 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		}
 		if (node.type === 'rotate-image') return String(node.rotatePromptText ?? '')
 		if (node.type === 'text-merge') return computeMergedText(nodeId, v)
-		if (node.type === 'scene-understanding')
-			return String(node.sceneUnderstandingSettings?.outputJson ?? '')
+		if (node.type === 'scene-understanding') {
+			const settings = node.sceneUnderstandingSettings as Record<string, unknown> | undefined
+			return String(settings?.outputJson ?? '')
+		}
 		if (node.type === 'scene-decompose')
 			return sceneDecomposeTextOutputForAnchor(node, String(fromAnchorId ?? ''))
 		if (node.type === 'scene-layout') {
@@ -121,17 +125,18 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 	}
 
 	function computeMergedText(nodeId: string, visited?: Set<string>): string {
-		const node = payload.store.state.nodesById[nodeId] as any
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node || node.type !== 'text-merge') return ''
 		const items = Array.isArray(node.textMergeItems) ? node.textMergeItems : []
 		const parts: string[] = []
 		for (const item of items) {
-			const itemId = String(item?.id ?? '').trim()
+			const it = item as Record<string, unknown>
+			const itemId = String(it?.id ?? '').trim()
 			if (!itemId) continue
 			const anchorId = `in-${itemId}`
-			const edge = payload.getFirstIncomingEdge(nodeId, anchorId)
+			const edge = payload.getFirstIncomingEdge(nodeId, anchorId) as Record<string, unknown> | null
 			if (!edge) continue
-			parts.push(getTextOutputForNode(edge.fromNodeId, visited, String(edge.fromAnchorId ?? '')))
+			parts.push(getTextOutputForNode(String(edge.fromNodeId), visited, String(edge.fromAnchorId ?? '')))
 		}
 		return parts.join('\n')
 	}
@@ -141,12 +146,13 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		const seen = new Set<string>()
 		const incomingEdges = payload.getIncomingEdges(nodeId)
 		for (const edge of incomingEdges) {
-			const fromNodeId = String(edge?.fromNodeId ?? '').trim()
-			const toAnchorId = String(edge?.toAnchorId ?? '').trim()
-			const fromAnchorId = String(edge?.fromAnchorId ?? '').trim()
-			const edgeId = String(edge?.id ?? '').trim()
+			const e = edge as Record<string, unknown>
+			const fromNodeId = String(e?.fromNodeId ?? '').trim()
+			const toAnchorId = String(e?.toAnchorId ?? '').trim()
+			const fromAnchorId = String(e?.fromAnchorId ?? '').trim()
+			const edgeId = String(e?.id ?? '').trim()
 			if (!fromNodeId) continue
-			const fromNode = payload.store.state.nodesById[fromNodeId]
+			const fromNode = payload.store.state.nodesById[fromNodeId] as Record<string, unknown>
 			if (!fromNode) continue
 
 			const base = {

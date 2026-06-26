@@ -1,13 +1,17 @@
 import type { Ref } from 'vue'
-import type { WorkflowSceneLayoutManualModelBinding } from '../../../aiworkflow/types'
+import type {
+	WorkflowNode,
+	WorkflowSceneLayoutItem,
+	WorkflowSceneLayoutManualModelBinding
+} from '../../../aiworkflow/types'
 import type { BlueprintProjectService } from '../../../network/BlueprintProjectService'
 
 export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
+			nodesById: Record<string, WorkflowNode>
 		}
-		commit: (type: string, value: any) => void
+		commit: (type: string, value: unknown) => void
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	revokeSceneLayoutManualModelObjectUrl: (nodeId: string, objectId?: string) => void
@@ -40,10 +44,10 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		}
 
 		const layoutItems = Array.isArray(node.sceneLayoutSettings?.layoutItems)
-			? node.sceneLayoutSettings.layoutItems
+			? node.sceneLayoutSettings!.layoutItems
 			: []
 		const selectedLayoutItem = layoutItems.find(
-			(item: any) => String(item?.id ?? '').trim() === selectedLayoutItemId
+			(item: WorkflowSceneLayoutItem) => String(item?.id ?? '').trim() === selectedLayoutItemId
 		)
 		if (!selectedLayoutItem) {
 			payload.pushToast('当前占位体不存在，请重新选择后再试。', 'warn')
@@ -57,7 +61,9 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		payload.setObjectUrl(objectKey, objectUrl)
 
 		const sourcePath =
-			typeof (file as any)?.path === 'string' ? String((file as any).path).trim() : ''
+			typeof (file as unknown as Record<string, unknown>)?.path === 'string'
+				? String((file as unknown as Record<string, unknown>).path).trim()
+				: ''
 		const modelFormat = lowerName.endsWith('.gltf') ? 'gltf' : 'glb'
 		let assetUrl = ''
 		let assetPath = ''
@@ -69,7 +75,7 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 					projectId
 				})
 				if (uploaded.ok) {
-					const asset = (uploaded as any).asset ?? {}
+					const asset = uploaded.asset ?? {}
 					assetUrl = payload.resolveBackendUrl(String(asset.url || ''))
 					assetPath = String(asset.absolutePath || '').trim()
 				}
@@ -79,11 +85,11 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		}
 
 		const currentBindings = Array.isArray(node.sceneLayoutSettings?.manualModelBindings)
-			? (node.sceneLayoutSettings.manualModelBindings as WorkflowSceneLayoutManualModelBinding[])
+			? (node.sceneLayoutSettings!.manualModelBindings as WorkflowSceneLayoutManualModelBinding[])
 			: []
-		const nextLayoutItems = layoutItems.map((item: any) => {
+		const nextLayoutItems = layoutItems.map((item: WorkflowSceneLayoutItem) => {
 			if (String(item?.id ?? '').trim() !== selectedLayoutItemId) return item
-			const nextItem = { ...item } as any
+			const nextItem = { ...item } as WorkflowSceneLayoutItem
 			delete nextItem.orientationFix
 			delete nextItem.fillMode
 			delete nextItem.fillCount
@@ -133,7 +139,7 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		if (!objectId) return
 
 		const currentBindings = Array.isArray(node.sceneLayoutSettings?.manualModelBindings)
-			? (node.sceneLayoutSettings.manualModelBindings as WorkflowSceneLayoutManualModelBinding[])
+			? (node.sceneLayoutSettings!.manualModelBindings as WorkflowSceneLayoutManualModelBinding[])
 			: []
 		if (!currentBindings.length) return
 
@@ -147,11 +153,11 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		)
 		const nextLayoutItems = (
 			Array.isArray(node.sceneLayoutSettings?.layoutItems)
-				? node.sceneLayoutSettings.layoutItems
+				? node.sceneLayoutSettings!.layoutItems
 				: []
-		).map((item: any) => {
+		).map((item: WorkflowSceneLayoutItem) => {
 			if (String(item?.id ?? '').trim() !== objectId) return item
-			const nextItem = { ...item } as any
+			const nextItem = { ...item } as WorkflowSceneLayoutItem
 			delete nextItem.orientationFix
 			delete nextItem.fillMode
 			delete nextItem.fillCount
@@ -174,10 +180,10 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		payload.revokeSceneLayoutManualModelObjectUrl(nodeId, objectId)
 
 		const layoutItems = Array.isArray(node.sceneLayoutSettings?.layoutItems)
-			? node.sceneLayoutSettings.layoutItems
+			? node.sceneLayoutSettings!.layoutItems
 			: []
 		const selectedLayoutItem = layoutItems.find(
-			(item: any) => String(item?.id ?? '').trim() === objectId
+			(item: WorkflowSceneLayoutItem) => String(item?.id ?? '').trim() === objectId
 		)
 		const displayName =
 			String(selectedLayoutItem?.name ?? selectedLayoutItem?.id ?? objectId).trim() || objectId

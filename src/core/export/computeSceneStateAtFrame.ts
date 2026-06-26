@@ -90,7 +90,7 @@ type StageKeyframeSnapshot = {
 	layers: LayerLike[]
 }
 
-type TimelineStateLike = {
+export type TimelineStateLike = {
 	layers: LayerLike[]
 	keyframeSpansByLayer: Record<string, KeyframeSpanLike[]>
 	nodeKeyframesByLayer?: Record<string, Record<string, Record<string, NodeSnapshot>>>

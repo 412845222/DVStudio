@@ -19,10 +19,58 @@ export type AIWorkflowDraggedNanoPreviewMeta = {
 	localReady?: boolean
 }
 
-export type AIWorkflowDroppedFile = { file: File; relativePath: string; fsHandle?: any }
+export type AIWorkflowDroppedFile = {
+	file: File
+	relativePath: string
+	fsHandle?: FileSystemHandle
+}
+
+// File System API minimal type definitions (browser APIs not in standard lib)
+interface FileSystemEntry {
+	isFile: boolean
+	isDirectory: boolean
+	name: string
+	fullPath?: string
+	createReader?: () => FileSystemDirectoryReader
+	file?: (successCallback: (file: File) => void, errorCallback?: (err: unknown) => void) => void
+}
+
+interface FileSystemDirectoryReader {
+	readEntries: (
+		successCallback: (entries: FileSystemEntry[]) => void,
+		errorCallback?: (err: unknown) => void
+	) => void
+}
+
+interface FileSystemFileHandle extends FileSystemHandle {
+	getFile: () => Promise<File>
+}
+
+interface FileSystemDirectoryHandle extends FileSystemHandle {
+	entries: () => AsyncIterableIterator<[string, FileSystemHandle]> | IterableIterator<[string, FileSystemHandle]>
+}
+
+type MeshyTaskItem = {
+	taskId?: string
+	nodeId?: string
+	meshySettings?: Record<string, unknown>
+	[key: string]: unknown
+}
+
+type AIWorkflowStoreState = {
+	resourcesById?: Record<string, { url?: string; name?: string; sourcePath?: string; posterUrl?: string }>
+	selectedNodeId?: string | null
+	[key: string]: unknown
+}
+
+type AIWorkflowStore = {
+	state: AIWorkflowStoreState
+	commit: (type: string, payload?: Record<string, unknown>) => void
+	dispatch?: (type: string, payload?: Record<string, unknown>) => Promise<unknown> | unknown
+}
 
 export const useAIWorkflowDropAssets = (options: {
-	store: any
+	store: AIWorkflowStore
 	makeResourceId: () => string
 	setObjectUrl: (key: string, url: string) => void
 	resolveBackendUrl: (value: string) => string
@@ -41,7 +89,7 @@ export const useAIWorkflowDropAssets = (options: {
 		worldY: number
 	}) => Promise<void>
 	createNodeFromDraggedMeshyTask: (payload: {
-		item: Record<string, any>
+		item: MeshyTaskItem
 		worldX: number
 		worldY: number
 	}) => boolean | void
@@ -64,7 +112,7 @@ export const useAIWorkflowDropAssets = (options: {
 		const raw = dt.getData('application/x-dweb-nanobanana-preview-meta')
 		if (!raw) return null
 		try {
-			const parsed = JSON.parse(raw) as any
+			const parsed = JSON.parse(raw) as Record<string, unknown>
 			const url = String(parsed?.url || '').trim()
 			const fallbackUrl = String(parsed?.fallbackUrl || '').trim()
 			const sourcePath = String(parsed?.sourcePath || '').trim()
@@ -97,7 +145,7 @@ export const useAIWorkflowDropAssets = (options: {
 		const raw = dt.getData('application/x-dweb-resource-item')
 		if (!raw) return null
 		try {
-			const parsed = JSON.parse(raw) as any
+			const parsed = JSON.parse(raw) as Record<string, unknown>
 			const resourceId = String(parsed?.resourceId ?? '').trim()
 			const kind = String(parsed?.kind ?? '')
 				.trim()
@@ -116,20 +164,20 @@ export const useAIWorkflowDropAssets = (options: {
 		}
 	}
 
-	const getDraggedMeshyTaskItem = (e: DragEvent): Record<string, any> | null => {
+	const getDraggedMeshyTaskItem = (e: DragEvent): MeshyTaskItem | null => {
 		const dt = e.dataTransfer
 		if (!dt) return null
 		const raw = dt.getData('application/x-dweb-meshy-task-item')
 		if (!raw) return null
 		try {
-			const parsed = JSON.parse(raw) as any
+			const parsed = JSON.parse(raw) as Record<string, unknown>
 			if (!parsed || typeof parsed !== 'object') return null
 			const taskId = String(parsed?.taskId ?? '').trim()
 			const nodeId = String(parsed?.nodeId ?? '').trim()
 			const settings = parsed?.meshySettings
 			if (!taskId && !nodeId) return null
 			if (!settings || typeof settings !== 'object') return null
-			return parsed
+			return parsed as MeshyTaskItem
 		} catch {
 			return null
 		}
@@ -146,15 +194,16 @@ export const useAIWorkflowDropAssets = (options: {
 		return null
 	}
 
-	const readAllDirectoryEntries = async (dirEntry: any): Promise<any[]> => {
+	const readAllDirectoryEntries = async (dirEntry: FileSystemEntry): Promise<FileSystemEntry[]> => {
+		if (!dirEntry.createReader) return []
 		const reader = dirEntry.createReader()
-		const out: any[] = []
+		const out: FileSystemEntry[] = []
 		// readEntries returns at most 100 entries per call.
 		while (true) {
-			const batch: any[] = await new Promise((resolve, reject) => {
+			const batch: FileSystemEntry[] = await new Promise((resolve, reject) => {
 				reader.readEntries(
-					(entries: any[]) => resolve(entries || []),
-					(err: any) => reject(err)
+					(entries: FileSystemEntry[]) => resolve(entries || []),
+					(err: unknown) => reject(err)
 				)
 			})
 			if (!batch.length) break
@@ -164,15 +213,16 @@ export const useAIWorkflowDropAssets = (options: {
 	}
 
 	const collectDroppedFilesFromEntry = async (
-		entry: any,
+		entry: FileSystemEntry,
 		pathPrefix = ''
 	): Promise<AIWorkflowDroppedFile[]> => {
 		if (!entry) return []
 		if (entry.isFile) {
 			const file = await new Promise<File>((resolve, reject) => {
+				if (!entry.file) return reject(new Error('not a file'))
 				entry.file(
 					(f: File) => resolve(f),
-					(err: any) => reject(err)
+					(err: unknown) => reject(err)
 				)
 			})
 			const rel = `${pathPrefix}${file.name}`
@@ -183,7 +233,7 @@ export const useAIWorkflowDropAssets = (options: {
 			const nextPrefix = dirName ? `${pathPrefix}${dirName}/` : pathPrefix
 			const children = await readAllDirectoryEntries(entry)
 			const nested = await Promise.all(
-				children.map((c: any) => collectDroppedFilesFromEntry(c, nextPrefix))
+				children.map((c: FileSystemEntry) => collectDroppedFilesFromEntry(c, nextPrefix))
 			)
 			return nested.flat()
 		}
@@ -191,33 +241,47 @@ export const useAIWorkflowDropAssets = (options: {
 	}
 
 	const collectDroppedFilesFromHandle = async (
-		handle: any,
+		handle: FileSystemHandle,
 		pathPrefix = ''
 	): Promise<AIWorkflowDroppedFile[]> => {
 		if (!handle) return []
-		const kind = String((handle as any).kind || '')
+		const kind = String(handle.kind || '')
 		if (kind === 'file') {
 			try {
-				const file = await (handle as any).getFile()
-				const rel = `${pathPrefix}${file.name || String((handle as any).name ?? '')}`
+				const fileHandle = handle as FileSystemFileHandle
+				const file = await fileHandle.getFile()
+				const rel = `${pathPrefix}${file.name || String(handle.name ?? '')}`
 				return [{ file, relativePath: rel, fsHandle: handle }]
 			} catch {
 				return []
 			}
 		}
 		if (kind === 'directory') {
-			const dirName = String((handle as any).name ?? '')
+			const dirHandle = handle as FileSystemDirectoryHandle
+			const dirName = String(handle.name ?? '')
 			const nextPrefix = dirName ? `${pathPrefix}${dirName}/` : pathPrefix
 			const out: AIWorkflowDroppedFile[] = []
 			try {
-				const entries = (handle as any).entries?.()
-				if (entries && typeof entries[Symbol.asyncIterator] === 'function') {
-					for await (const [_name, child] of entries as any) {
-						out.push(...(await collectDroppedFilesFromHandle(child, nextPrefix)))
+				const entries = dirHandle.entries?.()
+				if (entries) {
+					// Try async iteration first, fall back to sync
+					let isAsync = false
+					try {
+						const asyncIter = (entries as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator]
+						isAsync = typeof asyncIter === 'function'
+					} catch {
+						isAsync = false
 					}
-				} else if (entries && typeof entries[Symbol.iterator] === 'function') {
-					for (const [_name, child] of entries as any) {
-						out.push(...(await collectDroppedFilesFromHandle(child, nextPrefix)))
+					if (isAsync) {
+						for await (const [_name, child] of entries as AsyncIterableIterator<
+							[string, FileSystemHandle]
+						>) {
+							out.push(...(await collectDroppedFilesFromHandle(child, nextPrefix)))
+						}
+					} else {
+						for (const [_name, child] of entries as IterableIterator<[string, FileSystemHandle]>) {
+							out.push(...(await collectDroppedFilesFromHandle(child, nextPrefix)))
+						}
 					}
 				}
 			} catch {
@@ -230,21 +294,24 @@ export const useAIWorkflowDropAssets = (options: {
 
 	const collectDroppedFiles = async (dt: DataTransfer): Promise<AIWorkflowDroppedFile[]> => {
 		// Prefer File System Access API handles (can be persisted via IndexedDB for refresh recovery).
-		const fsItems = Array.from(dt.items ?? []).filter(
-			(it) => (it as any).kind === 'file' && typeof (it as any).getAsFileSystemHandle === 'function'
-		)
-		if (fsItems.length) {
+		const itemsWithHandle = Array.from(dt.items ?? []).filter(
+			(it) =>
+				it.kind === 'file' &&
+				typeof (it as DataTransferItem & { getAsFileSystemHandle?: () => Promise<FileSystemHandle> })
+					.getAsFileSystemHandle === 'function'
+		) as Array<DataTransferItem & { getAsFileSystemHandle: () => Promise<FileSystemHandle> }>
+		if (itemsWithHandle.length) {
 			const handles = await Promise.all(
-				fsItems.map(async (it) => {
+				itemsWithHandle.map(async (it) => {
 					try {
-						return await (it as any).getAsFileSystemHandle()
+						return await it.getAsFileSystemHandle()
 					} catch {
 						return null
 					}
 				})
 			)
 			const nested = await Promise.all(
-				handles.filter(Boolean).map((h) => collectDroppedFilesFromHandle(h, ''))
+				handles.filter((h): h is FileSystemHandle => !!h).map((h) => collectDroppedFilesFromHandle(h, ''))
 			)
 			const flat = nested.flat()
 			if (flat.length) return flat
@@ -252,9 +319,10 @@ export const useAIWorkflowDropAssets = (options: {
 
 		// Prefer entries API (Chromium) so we can traverse directories.
 		const items = Array.from(dt.items ?? []).filter((it) => it.kind === 'file')
-		const entries: any[] = []
+		const entries: FileSystemEntry[] = []
 		for (const it of items) {
-			const e = (it as any).webkitGetAsEntry?.()
+			const e = (it as DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null })
+				.webkitGetAsEntry?.()
 			if (e) entries.push(e)
 		}
 		if (entries.length) {
@@ -288,7 +356,7 @@ export const useAIWorkflowDropAssets = (options: {
 		worldX: number
 		worldY: number
 	}) => {
-		const resource = options.store.state.resourcesById?.[payload.item.resourceId] as any
+		const resource = options.store.state.resourcesById?.[payload.item.resourceId]
 		if (!resource) return false
 
 		options.store.commit('addNodeAt', {
@@ -303,7 +371,7 @@ export const useAIWorkflowDropAssets = (options: {
 		const mediaUrl = String(resource?.url || payload.item.url || '').trim()
 		const sourcePath = String(resource?.sourcePath || payload.item.sourcePath || '').trim()
 		const posterUrl =
-			payload.item.kind === 'video' ? String((resource as any)?.posterUrl || '').trim() : ''
+			payload.item.kind === 'video' ? String(resource?.posterUrl || '').trim() : ''
 
 		options.bindMediaResourceToNode(
 			nodeId,

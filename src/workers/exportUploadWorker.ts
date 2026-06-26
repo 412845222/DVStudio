@@ -19,12 +19,18 @@ type OutMsg =
 	| { type: 'uploaded'; frameIndex: number }
 	| { type: 'error'; frameIndex: number; message: string }
 
+// Worker self.postMessage typed wrapper
+const workerPost = (msg: OutMsg) => self.postMessage(msg)
+
+// SAFE-ANY: Error handling needs to safely extract message from unknown error
+function getErrorMessage(e: unknown): string {
+	if (e instanceof Error) return e.message
+	if (typeof e === 'string') return e
+	return String(e)
+}
+
 let jobId = ''
 let baseUrl = ''
-
-const post = (msg: OutMsg) => {
-	;(self as any).postMessage(msg)
-}
 
 const uploadOne = async (frameIndex: number, blob: Blob) => {
 	if (!jobId) throw new Error('worker 未初始化（缺少 jobId）')
@@ -52,7 +58,7 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
 	if (msg.type === 'init') {
 		jobId = String(msg.jobId || '')
 		baseUrl = String(msg.baseUrl || '')
-		post({ type: 'ready' })
+		workerPost({ type: 'ready' })
 		return
 	}
 	if (msg.type === 'upload') {
@@ -60,8 +66,8 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
 		const blob = msg.blob
 		Promise.resolve()
 			.then(() => uploadOne(frameIndex, blob))
-			.then(() => post({ type: 'uploaded', frameIndex }))
-			.catch((e) => post({ type: 'error', frameIndex, message: String((e as any)?.message ?? e) }))
+			.then(() => workerPost({ type: 'uploaded', frameIndex }))
+			.catch((e) => workerPost({ type: 'error', frameIndex, message: getErrorMessage(e) }))
 		return
 	}
 }

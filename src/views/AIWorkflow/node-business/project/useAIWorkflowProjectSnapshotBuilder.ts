@@ -5,7 +5,7 @@ import { AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION } from '../../../../aiworkflow/p
 type UseAIWorkflowProjectSnapshotBuilderOptions = {
 	store: {
 		state: WorkflowState
-		commit: (type: string, payload: any) => void
+		commit: (type: string, payload: unknown) => void
 	}
 	currentProjectId: { value: number | null }
 	resolveBackendUrl: (value: string) => string
@@ -47,18 +47,18 @@ export const useAIWorkflowProjectSnapshotBuilder = (
 		for (const rid of payload.store.state.resourceOrder) {
 			const resource = payload.store.state.resourcesById[rid]
 			if (!resource) continue
-			const rawUrl = typeof (resource as any).url === 'string' ? String((resource as any).url) : ''
+			const rawUrl = typeof resource.url === 'string' ? String(resource.url) : ''
 			const sourcePath =
-				typeof (resource as any).sourcePath === 'string'
-					? String((resource as any).sourcePath).trim()
+				typeof resource.sourcePath === 'string'
+					? String(resource.sourcePath).trim()
 					: ''
 			const projectRelativePath =
-				typeof (resource as any).projectRelativePath === 'string'
-					? String((resource as any).projectRelativePath).trim()
+				typeof resource.projectRelativePath === 'string'
+					? String(resource.projectRelativePath).trim()
 					: ''
 			const localFileKey =
-				typeof (resource as any).localFileKey === 'string'
-					? String((resource as any).localFileKey).trim()
+				typeof resource.localFileKey === 'string'
+					? String(resource.localFileKey).trim()
 					: ''
 
 			// Skip resources that have projectRelativePath but no sourcePath and no valid URL
@@ -91,7 +91,7 @@ export const useAIWorkflowProjectSnapshotBuilder = (
 			let persistUrl = rawUrl ? payload.resolveBackendUrl(rawUrl) : ''
 			let backendAbsolutePath = ''
 			let backendProjectRelativePath = projectRelativePath
-			const kind = ((resource as any).kind === 'video' ? 'video' : 'image') as 'image' | 'video'
+			const kind = (resource.kind === 'video' ? 'video' : 'image') as 'image' | 'video'
 
 			if (
 				!isLocal &&
@@ -109,7 +109,7 @@ export const useAIWorkflowProjectSnapshotBuilder = (
 						const uploaded = await payload.uploadLocalResourceAndGetUrl(
 							rawUrl,
 							kind,
-							String((resource as any).name || kind),
+							String(resource.name || kind),
 							{
 								projectId: payload.currentProjectId.value
 							}
@@ -138,15 +138,15 @@ export const useAIWorkflowProjectSnapshotBuilder = (
 			}
 
 			resourcesById[rid] = {
-				...(resource as any),
+				...resource,
 				url: persistUrl,
 				// Prefer backend absolute path when uploaded; otherwise keep existing (local) sourcePath.
 				sourcePath: backendAbsolutePath || sourcePath || '',
 				projectRelativePath: backendProjectRelativePath || undefined,
 				localFileKey: localFileKey || undefined,
 				// posterUrl is usually blob: and can't survive refresh; keep it only when we have a stable url.
-				posterUrl: persistUrl ? (resource as any).posterUrl : undefined
-			} as any
+				posterUrl: persistUrl ? resource.posterUrl : undefined
+			}
 			resourceOrder.push(rid)
 		}
 
@@ -160,9 +160,9 @@ export const useAIWorkflowProjectSnapshotBuilder = (
 			for (const id of payload.store.state.nodeOrder) {
 				const node = payload.store.state.nodesById[id]
 				if (!node) continue
-				const resourceId = String((node as any).resourceId ?? '').trim()
+				const resourceId = String(node.resourceId ?? '').trim()
 				if (resourceId && omittedResourceIds.has(resourceId)) {
-					next[id] = { ...(node as any), resourceId: undefined }
+					next[id] = { ...node, resourceId: undefined }
 				} else {
 					next[id] = node
 				}

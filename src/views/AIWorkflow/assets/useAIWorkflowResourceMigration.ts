@@ -18,20 +18,50 @@ type DeleteAssetPayload = {
 	relativePath?: string
 }
 
+type ImportedAssetResult = {
+	url?: string
+	sourcePath?: string
+	absolutePath?: string
+	[key: string]: unknown
+}
+
+type WorkflowResource = {
+	kind?: string
+	name?: string
+	url?: string
+	sourcePath?: string
+	posterUrl?: string
+	posterSourcePath?: string
+	localFileKey?: string
+	[key: string]: unknown
+}
+
+type WorkflowNode = {
+	type?: string
+	model3dSettings?: Record<string, unknown>
+	sceneLayoutSettings?: {
+		manualModelBindings?: WorkflowSceneLayoutManualModelBinding[]
+		[key: string]: unknown
+	}
+	[key: string]: unknown
+}
+
 type UseAIWorkflowResourceMigrationOptions = {
 	store: {
 		state: {
 			resourceOrder: string[]
-			resourcesById: Record<string, any>
+			resourcesById: Record<string, WorkflowResource>
 			nodeOrder: string[]
-			nodesById: Record<string, any>
+			nodesById: Record<string, WorkflowNode>
 		}
-		commit: (type: string, payload: any) => void
+		commit: (type: string, payload: Record<string, unknown>) => void
 	}
 	resolveBackendUrl: (value: string) => string
 	normalizeSourcePathKey: (raw: unknown) => string
+	// SAFE-ANY: callback parameter type is provided by caller, contravariance makes strict typing impractical
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	isDjangoManagedResource: (resource: any) => boolean
-	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<any>
+	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportedAssetResult | null>
 	deleteAsset: (payload: DeleteAssetPayload) => Promise<{ ok: boolean; error?: unknown }>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }
@@ -158,7 +188,7 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 
 		const ids = options.store.state.resourceOrder.slice()
 		for (const rid of ids) {
-			const r = options.store.state.resourcesById?.[rid] as any
+			const r = options.store.state.resourcesById?.[rid]
 			if (!r) continue
 			const kind = (String(r.kind || '').toLowerCase() === 'video' ? 'video' : 'image') as
 				| 'image'
@@ -187,9 +217,9 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 				if (!imported) {
 					failed += 1
 				} else {
-					const nextUrl = options.resolveBackendUrl(String((imported as any).url || ''))
+					const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
 					const nextSourcePath = String(
-						(imported as any).sourcePath || (imported as any).absolutePath || ''
+						imported.sourcePath || imported.absolutePath || ''
 					).trim()
 					if (nextUrl || nextSourcePath) {
 						options.store.commit('patchResource', {
@@ -198,7 +228,7 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 								url: nextUrl || rawUrl,
 								sourcePath: nextSourcePath || rawSourcePath || undefined,
 								localFileKey: undefined
-							} as any
+							}
 						})
 
 						if (options.isDjangoManagedResource(mediaRef) && (rawUrl || rawSourcePath)) {
@@ -217,9 +247,9 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 				}
 			}
 
-			const latest = options.store.state.resourcesById?.[rid] as any
-			const posterUrl = String((latest as any)?.posterUrl || '').trim()
-			const posterSourcePath = String((latest as any)?.posterSourcePath || '').trim()
+			const latest = options.store.state.resourcesById?.[rid]
+			const posterUrl = String(latest?.posterUrl || '').trim()
+			const posterSourcePath = String(latest?.posterSourcePath || '').trim()
 			if (!(posterUrl || posterSourcePath)) continue
 
 			const posterRef = { url: posterUrl, sourcePath: posterSourcePath, projectRootPath }
@@ -245,9 +275,9 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 				continue
 			}
 
-			const nextPosterUrl = options.resolveBackendUrl(String((importedPoster as any).url || ''))
+			const nextPosterUrl = options.resolveBackendUrl(String(importedPoster.url || ''))
 			const nextPosterSourcePath = String(
-				(importedPoster as any).sourcePath || (importedPoster as any).absolutePath || ''
+				importedPoster.sourcePath || importedPoster.absolutePath || ''
 			).trim()
 			if (!nextPosterUrl && !nextPosterSourcePath) {
 				failed += 1
@@ -259,7 +289,7 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 				patch: {
 					posterUrl: nextPosterUrl || posterUrl,
 					posterSourcePath: nextPosterSourcePath || posterSourcePath || undefined
-				} as any
+				}
 			})
 
 			if (posterRefDjangoManaged && (posterUrl || posterSourcePath)) {
@@ -275,17 +305,26 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 		}
 
 		for (const nodeId of options.store.state.nodeOrder.slice()) {
-			const node = options.store.state.nodesById?.[nodeId] as any
+			const node = options.store.state.nodesById?.[nodeId]
 			if (!node) continue
 
 			if (node.type === 'model3d') {
 				const settings = node.model3dSettings ?? {}
-				const currentUrl = String(settings.modelAssetUrl ?? settings.modelUrl ?? '').trim()
-				const sourcePath = String(settings.modelAssetPath ?? settings.modelSourcePath ?? '').trim()
+				const currentUrl = String(
+					(settings as Record<string, unknown>).modelAssetUrl ??
+						(settings as Record<string, unknown>).modelUrl ??
+						''
+				).trim()
+				const sourcePath = String(
+					(settings as Record<string, unknown>).modelAssetPath ??
+						(settings as Record<string, unknown>).modelSourcePath ??
+						''
+				).trim()
 				const sourceUrl = currentUrl && !currentUrl.startsWith('file:') ? currentUrl : ''
+				const settingsRec = settings as Record<string, unknown>
 				const name = String(
-					settings.modelSourceName ||
-						`model_${nodeId}.${settings.modelFormat === 'gltf' ? 'gltf' : 'glb'}`
+					settingsRec.modelSourceName ||
+						`model_${nodeId}.${settingsRec.modelFormat === 'gltf' ? 'gltf' : 'glb'}`
 				).trim()
 				const imported = await migrateModelAssetRef({
 					sourcePath,
@@ -295,9 +334,9 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 					projectId: pid
 				})
 				if (!imported) continue
-				const nextUrl = options.resolveBackendUrl(String((imported as any).url || ''))
+				const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
 				const nextSourcePath = String(
-					(imported as any).sourcePath || (imported as any).absolutePath || ''
+					imported.sourcePath || imported.absolutePath || ''
 				).trim()
 				if (!nextUrl && !nextSourcePath) {
 					failed += 1
@@ -306,7 +345,7 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 				options.store.commit('setNodeModel3DSettings', {
 					nodeId,
 					model3dSettings: {
-						...(settings as any),
+						...settings,
 						modelUrl: nextUrl || currentUrl,
 						modelAssetUrl: nextUrl || currentUrl,
 						modelSourcePath: nextSourcePath || sourcePath || undefined,
@@ -328,14 +367,15 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 			let bindingFailed = false
 			const nextBindings = [] as WorkflowSceneLayoutManualModelBinding[]
 			for (const binding of manualBindings) {
-				const currentUrl = String((binding as any).modelAssetUrl ?? binding?.modelUrl ?? '').trim()
+				const bindingRec = binding as Record<string, unknown>
+				const currentUrl = String(bindingRec.modelAssetUrl ?? bindingRec.modelUrl ?? '').trim()
 				const sourcePath = String(
-					(binding as any).modelAssetPath ?? binding?.modelSourcePath ?? ''
+					bindingRec.modelAssetPath ?? bindingRec.modelSourcePath ?? ''
 				).trim()
 				const sourceUrl = currentUrl && !currentUrl.startsWith('file:') ? currentUrl : ''
 				const name = String(
-					binding?.modelSourceName ||
-						`scene_layout_${nodeId}_${String(binding?.objectId || 'object').trim()}.${binding?.modelFormat === 'gltf' ? 'gltf' : 'glb'}`
+					bindingRec.modelSourceName ||
+						`scene_layout_${nodeId}_${String(bindingRec.objectId || 'object').trim()}.${bindingRec.modelFormat === 'gltf' ? 'gltf' : 'glb'}`
 				).trim()
 				const imported = await migrateModelAssetRef({
 					sourcePath,
@@ -348,9 +388,9 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 					nextBindings.push(binding)
 					continue
 				}
-				const nextUrl = options.resolveBackendUrl(String((imported as any).url || ''))
+				const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
 				const nextSourcePath = String(
-					(imported as any).sourcePath || (imported as any).absolutePath || ''
+					imported.sourcePath || imported.absolutePath || ''
 				).trim()
 				if (!nextUrl && !nextSourcePath) {
 					bindingFailed = true
@@ -372,7 +412,7 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 			options.store.commit('setNodeSceneLayoutSettings', {
 				nodeId,
 				sceneLayoutSettings: {
-					...(settings as any),
+					...settings,
 					manualModelBindings: nextBindings
 				}
 			})

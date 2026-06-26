@@ -92,16 +92,16 @@ const getMatchKeysFromResource = (r: WorkflowResource): string[] => {
 	const rid = normStr(r.id)
 	if (rid) keys.push(rid)
 
-	const url = normStr((r as any).url)
+	const url = normStr(r.url)
 	if (url) keys.push(url)
 
-	const sourcePath = normStr((r as any).sourcePath)
+	const sourcePath = normStr(r.sourcePath)
 	if (sourcePath) keys.push(sourcePath)
 
-	const poster = normStr((r as any).posterUrl)
+	const poster = normStr(r.posterUrl)
 	if (poster) keys.push(poster)
 
-	const posterSourcePath = normStr((r as any).posterSourcePath)
+	const posterSourcePath = normStr(r.posterSourcePath)
 	if (posterSourcePath) keys.push(posterSourcePath)
 
 	return keys
@@ -196,27 +196,27 @@ const collectCandidateUrlsFromNode = (
 	const type = String(node.type ?? '').trim()
 
 	// 通用：node.resourceId
-	const rid = normStr((node as any).resourceId)
+	const rid = normStr(node.resourceId)
 	if (rid) out.push({ value: rid, source: 'node.resourceId' })
 
 	// 通用：node.resourcePath（项目相对路径）
-	const rpath = normStr((node as any).resourcePath)
+	const rpath = normStr(node.resourcePath)
 	if (rpath) out.push({ value: rpath, source: 'node.resourceId', description: '资源路径' })
 
 	// 文本节点：textValue
 	if (type === 'text') {
-		const tv = normStr((node as any).textValue)
+		const tv = normStr(node.textValue)
 		if (tv) out.push({ value: tv, source: 'node.textValue' })
 	}
 
 	// 场景理解节点：输入图像
 	if (type === 'scene-understanding') {
-		const su = (node as any).sceneUnderstandingSettings
+		const su = node.sceneUnderstandingSettings
 		if (su) {
 			const img = normStr(su.lastInputImageUrl)
 			if (img) out.push({ value: img, source: 'sceneUnderstanding.input', description: '输入图像' })
 
-			const imgs: unknown = su.lastInputImageUrls
+			const imgs = su.lastInputImageUrls
 			if (Array.isArray(imgs)) {
 				for (const imgUrl of imgs) {
 					const u = normStr(imgUrl)
@@ -228,7 +228,7 @@ const collectCandidateUrlsFromNode = (
 
 	// 场景布局节点：手动模型绑定
 	if (type === 'scene-layout') {
-		const sl = (node as any).sceneLayoutSettings
+		const sl = node.sceneLayoutSettings
 		if (sl && Array.isArray(sl.manualModelBindings)) {
 			for (const mb of sl.manualModelBindings) {
 				const mUrl = normStr(mb?.modelUrl)
@@ -265,7 +265,7 @@ const collectCandidateUrlsFromNode = (
 
 	// 场景分解节点：输出生成的资源
 	if (type === 'scene-decompose') {
-		const sd = (node as any).sceneDecomposeSettings
+		const sd = node.sceneDecomposeSettings
 		if (sd && Array.isArray(sd.outputs)) {
 			for (const o of sd.outputs) {
 				const genId = normStr(o?.generatedResourceId)
@@ -281,22 +281,23 @@ const collectCandidateUrlsFromNode = (
 
 	// ComfyUI 节点：输出媒体 URL + sourcePath
 	if (type === 'comfyui') {
-		const cu = (node as any).comfyuiSettings
+		const cu = node.comfyuiSettings
 		if (cu && Array.isArray(cu.outputs)) {
 			for (const outItem of cu.outputs) {
-				const url = normStr(outItem?.url)
+				const outItemRec = outItem as Record<string, unknown>
+				const url = normStr(outItemRec.url)
 				if (url)
 					out.push({
 						value: url,
 						source: 'comfyui.output',
-						description: String(outItem?.label ?? outItem?.anchorId ?? '输出')
+						description: String(outItemRec.label ?? outItemRec.anchorId ?? '输出')
 					})
-				const sp = normStr(outItem?.sourcePath)
+				const sp = normStr(outItemRec.sourcePath)
 				if (sp)
 					out.push({
 						value: sp,
 						source: 'comfyui.output',
-						description: String(outItem?.label ?? outItem?.anchorId ?? '输出')
+						description: String(outItemRec.label ?? outItemRec.anchorId ?? '输出')
 					})
 			}
 		}
@@ -304,12 +305,12 @@ const collectCandidateUrlsFromNode = (
 
 	// Meshy 节点：输入参考图 + 输出资产
 	if (type === 'meshy') {
-		const ms = (node as any).meshySettings
+		const ms = node.meshySettings
 		if (ms) {
 			const img = normStr(ms.meshyImageUrl)
 			if (img) out.push({ value: img, source: 'meshy.input', description: '参考图' })
 
-			const imgs: unknown = ms.meshyImageUrls
+			const imgs = ms.meshyImageUrls
 			if (Array.isArray(imgs)) {
 				for (const imgUrl of imgs) {
 					const u = normStr(imgUrl)
@@ -323,10 +324,10 @@ const collectCandidateUrlsFromNode = (
 			const outThumb = normStr(ms.meshyThumbnailUrl)
 			if (outThumb) out.push({ value: outThumb, source: 'meshy.output', description: '缩略图' })
 
-			const modelUrls: any = ms.meshyModelUrls
+			const modelUrls = ms.meshyModelUrls
 			if (modelUrls && typeof modelUrls === 'object') {
 				for (const key of Object.keys(modelUrls)) {
-					const v = normStr(modelUrls[key])
+					const v = normStr((modelUrls as Record<string, unknown>)[key])
 					if (v) out.push({ value: v, source: 'meshy.output', description: `模型格式:${key}` })
 				}
 			}
@@ -335,7 +336,7 @@ const collectCandidateUrlsFromNode = (
 
 	// 3D 模型节点：模型输入/资产
 	if (type === 'model3d') {
-		const m3 = (node as any).model3dSettings
+		const m3 = node.model3dSettings
 		if (m3) {
 			const urls = [
 				'modelUrl',
@@ -346,7 +347,7 @@ const collectCandidateUrlsFromNode = (
 				'lastInputPlaceholderJson'
 			]
 			for (const key of urls) {
-				const v = normStr((m3 as any)[key])
+				const v = normStr((m3 as Record<string, unknown>)[key])
 				if (v)
 					out.push({
 						value: v,

@@ -10,7 +10,7 @@ import {
 
 export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 	store: {
-		commit: (type: string, value: any) => void
+		commit: (type: string, value: unknown) => void
 	}
 	currentProjectId: { value: number | null }
 	isElectronRuntime: boolean
@@ -29,36 +29,42 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 		return String(fallbackUrl || '').trim()
 	}
 
-	const sanitizeBlueprintSnapshotForRuntime = (snapshot: any): AIWorkflowDraftSnapshot => {
-		let cloned: any = snapshot
+	const sanitizeBlueprintSnapshotForRuntime = (snapshot: unknown): AIWorkflowDraftSnapshot => {
+		let cloned: Record<string, unknown> = {}
 		try {
-			cloned = JSON.parse(JSON.stringify(snapshot))
+			cloned = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>
 		} catch {
 			// keep original object when deep clone fails
 		}
 
 		if (!cloned || typeof cloned !== 'object') return snapshot as AIWorkflowDraftSnapshot
 
-		const nodesById =
-			cloned.nodesById && typeof cloned.nodesById === 'object' ? cloned.nodesById : {}
-		const nodeOrder = Array.isArray(cloned.nodeOrder) ? cloned.nodeOrder : Object.keys(nodesById)
+		const nodesByIdRaw = cloned.nodesById
+		const nodesById: Record<string, Record<string, unknown>> =
+			nodesByIdRaw && typeof nodesByIdRaw === 'object'
+				? (nodesByIdRaw as Record<string, Record<string, unknown>>)
+				: {}
+		const nodeOrderRaw = cloned.nodeOrder
+		const nodeOrder = Array.isArray(nodeOrderRaw) ? nodeOrderRaw : Object.keys(nodesById)
 		for (const rawNodeId of nodeOrder) {
 			const nodeId = String(rawNodeId ?? '').trim()
 			if (!nodeId) continue
 			const node = nodesById[nodeId]
 			if (!node || typeof node !== 'object') continue
-			const nodeType = String((node as any).type ?? '')
+			const nodeType = String(node.type ?? '')
 				.trim()
 				.toLowerCase()
 
 			if (nodeType === 'scene-decompose') {
-				const settings = (node as any).sceneDecomposeSettings
-				const outputs = Array.isArray(settings?.outputs) ? settings.outputs : []
-				;(node as any).sceneDecomposeSettings = {
+				const settings = node.sceneDecomposeSettings as Record<string, unknown> | undefined
+				const outputsRaw = settings?.outputs
+				const outputs = Array.isArray(outputsRaw) ? outputsRaw : []
+				node.sceneDecomposeSettings = {
 					...(settings && typeof settings === 'object' ? settings : {}),
 					outputs: outputs
-						.filter((item: any) => item && typeof item === 'object')
-						.map((item: any, index: number) => {
+						.filter((item) => item && typeof item === 'object')
+						.map((itemRaw, index: number) => {
+							const item = itemRaw as Record<string, unknown>
 							const fallbackId = `legacy-${index + 1}`
 							const id =
 								String(item.id ?? item.objectId ?? item.name ?? fallbackId).trim() || fallbackId
@@ -80,14 +86,16 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 			}
 
 			if (nodeType === 'scene-layout') {
-				const settings = (node as any).sceneLayoutSettings
-				const manualModelBindings = Array.isArray(settings?.manualModelBindings)
-					? settings.manualModelBindings.filter((item: any) => item && typeof item === 'object')
+				const settings = node.sceneLayoutSettings as Record<string, unknown> | undefined
+				const manualBindingsRaw = settings?.manualModelBindings
+				const manualModelBindings = Array.isArray(manualBindingsRaw)
+					? manualBindingsRaw.filter((item) => item && typeof item === 'object')
 					: []
-				const layoutItems = Array.isArray(settings?.layoutItems)
-					? settings.layoutItems.filter((item: any) => item && typeof item === 'object')
+				const layoutItemsRaw = settings?.layoutItems
+				const layoutItems = Array.isArray(layoutItemsRaw)
+					? layoutItemsRaw.filter((item) => item && typeof item === 'object')
 					: []
-				;(node as any).sceneLayoutSettings = {
+				node.sceneLayoutSettings = {
 					...(settings && typeof settings === 'object' ? settings : {}),
 					layoutItems,
 					manualModelBindings
@@ -95,8 +103,11 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 			}
 		}
 
-		const resourcesById =
-			cloned.resourcesById && typeof cloned.resourcesById === 'object' ? cloned.resourcesById : {}
+		const resourcesByIdRaw = cloned.resourcesById
+		const resourcesById: Record<string, Record<string, unknown>> =
+			resourcesByIdRaw && typeof resourcesByIdRaw === 'object'
+				? (resourcesByIdRaw as Record<string, Record<string, unknown>>)
+				: {}
 		const runtimeProjectId = Number(payload.currentProjectId?.value ?? 0)
 
 		// 清洗与规范化所有资源引用
@@ -107,19 +118,19 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 			if (!resource || typeof resource !== 'object') continue
 
 			const kind =
-				String((resource as any).kind ?? '').toLowerCase() === 'video' ? 'video' : 'image'
+				String(resource.kind ?? '').toLowerCase() === 'video' ? 'video' : 'image'
 
 			// 清洗资源名称：去除中文等非法字符
-			const safeName = sanitizeResourceName((resource as any).name, `${kind}_${resourceId}`)
+			const safeName = sanitizeResourceName(String(resource.name ?? ''), `${kind}_${resourceId}`)
 
 			const projectRelativePath = String(
-				(resource as any).projectRelativePath ?? (resource as any).relativePath ?? ''
+				resource.projectRelativePath ?? resource.relativePath ?? ''
 			).trim()
 			const posterProjectRelativePath = String(
-				(resource as any).posterProjectRelativePath ?? ''
+				resource.posterProjectRelativePath ?? ''
 			).trim()
-			const sourcePath = sanitizeLocalFilePath((resource as any).sourcePath)
-			const rawUrl = String((resource as any).url ?? '').trim()
+			const sourcePath = sanitizeLocalFilePath(String(resource.sourcePath ?? ''))
+			const rawUrl = String(resource.url ?? '').trim()
 
 			// 检测并清理 file:// 协议 URL
 			const urlIsFileProtocol = isFileProtocolUrl(rawUrl)
@@ -155,7 +166,7 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 			}
 
 			// 海报 URL 同样处理
-			const rawPosterUrl = String((resource as any).posterUrl ?? '').trim()
+			const rawPosterUrl = String(resource.posterUrl ?? '').trim()
 			const posterUrlIsFileProtocol = isFileProtocolUrl(rawPosterUrl)
 			const originalPosterUrl = posterUrlIsFileProtocol
 				? ''
@@ -191,9 +202,9 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 				runtimePosterUrl = ''
 			}
 
-			;(resourcesById as any)[resourceId] = {
-				...(resource as any),
-				id: String((resource as any).id ?? resourceId),
+			resourcesById[resourceId] = {
+				...resource,
+				id: String(resource.id ?? resourceId),
 				name: safeName,
 				projectRelativePath: resolvedRelPath || undefined,
 				posterProjectRelativePath: resolvedPosterRelPath || undefined,
