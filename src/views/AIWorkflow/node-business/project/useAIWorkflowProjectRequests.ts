@@ -1,28 +1,29 @@
 import type { Ref } from 'vue'
+import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { isElectron } from '../../../../electronBridge'
 
 export const useAIWorkflowProjectRequests = (payload: {
-	activeRecoverySession: Ref<any>
+	activeRecoverySession: Ref<unknown>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	cancelActiveRecoverySession: () => void
-	createEmptyDraftSnapshot: () => any
+	createEmptyDraftSnapshot: () => AIWorkflowDraftSnapshot
 	store: {
-		commit: (type: string, value: any) => void
+		commit: (type: string, value: unknown) => void
 	}
 	setUnsavedProject: (name?: string) => void
-	reuseRecordConfirm: Ref<any>
+	reuseRecordConfirm: Ref<unknown>
 	resetComfyRuntime: () => void
 	comfyAnchorAssignments: Map<string, Map<string, string>>
-	comfyAnchorLocalizedOutputs: Map<string, Map<string, any>>
+	comfyAnchorLocalizedOutputs: Map<string, Map<string, unknown>>
 	loadProjectById: (projectId: number) => Promise<boolean>
 	recoverComfyUIRunStates: (opts?: { silent?: boolean }) => Promise<void>
 	blueprintProjectService: {
-		deleteProject: (projectId: number) => Promise<any>
+		deleteProject: (projectId: number) => Promise<{ ok: boolean; error?: string }>
 		openProjectFolder: (payload: {
 			rootPath: string
 			name?: string
 			create?: boolean
-		}) => Promise<any>
+		}) => Promise<{ ok: boolean; error?: string }>
 	}
 	currentProjectId: Ref<number | null>
 	refreshProjectList: () => Promise<void>
@@ -33,15 +34,18 @@ export const useAIWorkflowProjectRequests = (payload: {
 	}) => Promise<{ ok: boolean; changed: number; failed: number }>
 }) => {
 	const pickProjectFolder = async () => {
-		const bridge = (window as any)?.dweb?.aiworkflow
+		const w = window as unknown as Record<string, unknown>
+		const dweb = w.dweb as Record<string, unknown> | undefined
+		const bridge = dweb?.aiworkflow as Record<string, unknown> | undefined
 		if (!bridge || typeof bridge.selectProjectFolder !== 'function') {
 			return { ok: false as const, error: '当前运行环境不支持选择项目文件夹。' }
 		}
-		const result = await bridge.selectProjectFolder()
+		const result = await (bridge.selectProjectFolder as () => Promise<Record<string, unknown>>)()
 		const canceled = Boolean(result?.canceled)
 		if (canceled)
 			return { ok: false as const, canceled: true as const, error: '已取消选择文件夹。' }
-		const path = String(result?.filePaths?.[0] || '').trim()
+		const filePaths = result.filePaths as unknown[] | undefined
+		const path = String(filePaths?.[0] || '').trim()
 		if (!path) return { ok: false as const, error: '未选择有效文件夹。' }
 		return { ok: true as const, path }
 	}
@@ -90,13 +94,13 @@ export const useAIWorkflowProjectRequests = (payload: {
 			rootPath: trimmedRoot,
 			name: fallbackName,
 			create: true
-		})
+		}) as { ok: boolean; error?: string; project?: { id?: number; name?: string } }
 		if (!opened?.ok) {
 			payload.pushToast(`新建项目失败：${String(opened?.error || 'unknown')}`, 'error')
 			return
 		}
 
-		const project = (opened as any).project ?? {}
+		const project = opened.project ?? {}
 		const projectId = Number(project?.id || 0)
 		if (!Number.isFinite(projectId) || projectId <= 0) {
 			payload.pushToast('新建项目失败：返回项目ID无效。', 'error')
@@ -141,9 +145,9 @@ export const useAIWorkflowProjectRequests = (payload: {
 		const id = Number(request?.projectId)
 		if (!Number.isFinite(id) || id <= 0) return
 
-		const res = await payload.blueprintProjectService.deleteProject(id)
+		const res = await payload.blueprintProjectService.deleteProject(id) as { ok: boolean; error?: string }
 		if (!res.ok) {
-			payload.pushToast('删除项目失败：' + String((res as any).error || 'unknown'), 'error')
+			payload.pushToast('删除项目失败：' + String(res.error || 'unknown'), 'error')
 			return
 		}
 

@@ -223,7 +223,7 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
 		renderedCount += 1
 	}
 
-	;(self as any).postMessage({
+	;(self as unknown as { postMessage: (data: unknown) => void }).postMessage({
 		type: 'result',
 		version: Number(msg.version) || 0,
 		mutationVersion: Number(msg.mutationVersion) || 0,

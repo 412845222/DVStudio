@@ -241,24 +241,26 @@ export const useAIWorkflowDropAssets = (options: {
 	}
 
 	const collectDroppedFilesFromHandle = async (
-		handle: FileSystemHandle,
+		handle: unknown,
 		pathPrefix = ''
 	): Promise<AIWorkflowDroppedFile[]> => {
-		if (!handle) return []
-		const kind = String(handle.kind || '')
+		if (!handle || typeof handle !== 'object') return []
+		const kind = String((handle as FileSystemHandle).kind || '')
 		if (kind === 'file') {
 			try {
 				const fileHandle = handle as FileSystemFileHandle
 				const file = await fileHandle.getFile()
-				const rel = `${pathPrefix}${file.name || String(handle.name ?? '')}`
-				return [{ file, relativePath: rel, fsHandle: handle }]
+				const h = handle as FileSystemHandle
+				const rel = `${pathPrefix}${file.name || String(h.name ?? '')}`
+				return [{ file, relativePath: rel, fsHandle: h }]
 			} catch {
 				return []
 			}
 		}
 		if (kind === 'directory') {
 			const dirHandle = handle as FileSystemDirectoryHandle
-			const dirName = String(handle.name ?? '')
+			const h = handle as FileSystemHandle
+			const dirName = String(h.name ?? '')
 			const nextPrefix = dirName ? `${pathPrefix}${dirName}/` : pathPrefix
 			const out: AIWorkflowDroppedFile[] = []
 			try {

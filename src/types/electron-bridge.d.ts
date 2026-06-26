@@ -36,7 +36,7 @@ declare global {
 
 	interface PlatformEventPayload {
 		event: PlatformEventName
-		data: any
+		data: unknown
 	}
 
 	interface DwebPlatformUser {

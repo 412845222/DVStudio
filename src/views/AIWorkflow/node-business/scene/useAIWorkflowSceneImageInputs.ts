@@ -19,10 +19,10 @@ const parseSceneImageAnchorOrder = (anchorId: string) => {
 export const useAIWorkflowSceneImageInputs = (payload: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
+			nodesById: Record<string, WorkflowNode>
 		}
 	}
-	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => any
+	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => { fromNodeId: string; fromAnchorId?: string } | null | undefined
 	connectedImageInputSource: (nodeId: string, inputId: string) => WorkflowImageInputSource | null
 }) => {
 	const connectedSceneUnderstandImageInputs = (nodeId: string) => {
@@ -58,8 +58,8 @@ export const useAIWorkflowSceneImageInputs = (payload: {
 				const inputAnchorId = String(anchor?.id ?? '')
 				const edge = payload.getFirstIncomingEdge(nodeId, inputAnchorId)
 				if (!edge) return null
-				const fromNodeId = String((edge as any).fromNodeId ?? '').trim()
-				const fromAnchorId = String((edge as any).fromAnchorId ?? '').trim()
+				const fromNodeId = String(edge.fromNodeId ?? '').trim()
+				const fromAnchorId = String(edge.fromAnchorId ?? '').trim()
 				const fromNode = payload.store.state.nodesById[fromNodeId]
 				if (!fromNode || !fromNodeId || !fromAnchorId) return null
 				return {
@@ -95,8 +95,8 @@ export const useAIWorkflowSceneImageInputs = (payload: {
 		const inputAnchorId = sceneDecomposeImageInputAnchorId(sourceImageIndex)
 		const edge = payload.getFirstIncomingEdge(nodeId, inputAnchorId)
 		if (!edge) return null as WorkflowImageInputRef | null
-		const fromNodeId = String((edge as any).fromNodeId ?? '').trim()
-		const fromAnchorId = String((edge as any).fromAnchorId ?? '').trim()
+		const fromNodeId = String(edge.fromNodeId ?? '').trim()
+		const fromAnchorId = String(edge.fromAnchorId ?? '').trim()
 		const fromNode = payload.store.state.nodesById[fromNodeId]
 		if (!fromNode || !fromNodeId || !fromAnchorId) return null
 		return {

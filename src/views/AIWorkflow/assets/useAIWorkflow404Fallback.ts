@@ -13,7 +13,7 @@ import type { WorkflowState } from '../../../aiworkflow/types'
  * 404 错误回退处理结果
  */
 export type Fallback404Result =
-	| { kind: 'recovered'; url: string; assetName: string; repairedUrl: string; newAsset?: any }
+	| { kind: 'recovered'; url: string; assetName: string; repairedUrl: string; newAsset?: unknown }
 	| {
 			kind: 'missing'
 			url: string
@@ -51,7 +51,7 @@ export type PendingMissingAsset = {
 	/** 撤销快照：执行删除前记录的备份数据，供「撤销」使用 */
 	undoSnapshot?: {
 		resourcesByIdPatch?: Record<string, WorkflowResource | null>
-		nodePatches?: Array<{ nodeId: string; path: string; oldValue: any }>
+		nodePatches?: Array<{ nodeId: string; path: string; oldValue: unknown }>
 	}
 	/** 是否已处理（用户确认或取消） */
 	resolved?: boolean
@@ -114,7 +114,7 @@ export interface AIWorkflow404FallbackOptions {
 	/** 从 url 查找绑定该 url 的节点/资源（来源定位） */
 	findBindingSources?: (url: string) => ResourceBindingSource[]
 	/** 恢复成功回调（重新加载资源、刷新节点显示） */
-	onRecovered?: (result: { url: string; newUrl: string; assetName: string; newAsset?: any }) => void
+	onRecovered?: (result: { url: string; newUrl: string; assetName: string; newAsset?: unknown }) => void
 	/** 找到缺失资产（文件确实不存在）回调，通常用于弹确认框 */
 	onMissingAsset?: (pending: PendingMissingAsset) => void
 	/** Toast 通知函数 */
@@ -331,13 +331,19 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 				notify(`资源缺失：${assetName}`, 'warn')
 				recovering.value = false
 				return { kind: 'missing' as const, url: trimmed, assetName, missingPath: relPath, sources }
-			} catch (err) {
+			} catch (err: unknown) {
 				console.warn('[404-fallback] unexpected error:', err)
 				recovering.value = false
+				let reason = 'unknown error'
+				if (err instanceof Error) {
+					reason = err.message
+				} else {
+					reason = String(err)
+				}
 				return {
 					kind: 'ignored' as const,
 					url: trimmed,
-					reason: `exception: ${String((err as any)?.message || err)}`
+					reason: `exception: ${reason}`
 				}
 			} finally {
 				inflightUrls.delete(trimmed)
@@ -681,24 +687,24 @@ function defaultFindBindingSources(
 	return sources
 }
 
-function getDeepValue(obj: any, path: string): any {
+function getDeepValue(obj: Record<string, unknown>, path: string): unknown {
 	if (!obj || !path) return undefined
 	const parts = path.split('.')
-	let cur = obj
+	let cur: Record<string, unknown> | unknown = obj
 	for (const p of parts) {
 		if (cur == null) return undefined
-		cur = cur[p]
+		cur = (cur as Record<string, unknown>)[p]
 	}
 	return cur
 }
 
-function setDeepValue(obj: any, path: string, value: any) {
+function setDeepValue(obj: Record<string, unknown>, path: string, value: unknown) {
 	if (!obj || !path) return
 	const parts = path.split('.')
-	let cur = obj
+	let cur: Record<string, unknown> = obj
 	for (let i = 0; i < parts.length - 1; i++) {
 		if (cur[parts[i]] == null) cur[parts[i]] = {}
-		cur = cur[parts[i]]
+		cur = cur[parts[i]] as Record<string, unknown>
 	}
 	cur[parts[parts.length - 1]] = value
 }

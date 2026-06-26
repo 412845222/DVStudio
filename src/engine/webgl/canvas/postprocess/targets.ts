@@ -265,7 +265,16 @@ export class FilterTargetsPool {
 					cfg.type,
 					null
 				)
-			} catch (e) {
+			} catch (e: unknown) {
+				let info = ''
+				if (e instanceof Error) {
+					info = e.message
+				} else if (typeof e === 'string') {
+					info = e
+				} else if (e && typeof e === 'object') {
+					const eo = e as Record<string, unknown>
+					info = String(eo.message ?? '')
+				}
 				diag.push({
 					t: Date.now(),
 					k: 'allocFail',
@@ -276,7 +285,7 @@ export class FilterTargetsPool {
 					targetsBefore,
 					bytesPerPixel: cfg.bytesPerPixel,
 					format: cfg.bytesPerPixel === 8 ? 'rgba16f' : 'rgba8',
-					info: String((e as any)?.message || e || '')
+					info
 				})
 				try {
 					gl.deleteTexture(tex)

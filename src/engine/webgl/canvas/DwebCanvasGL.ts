@@ -22,7 +22,7 @@ import {
 	setTextureWrap as setTextureWrapImpl,
 	updateTextureFromCanvas as updateTextureFromCanvasImpl
 } from '../texture'
-import { CanvasPostProcess } from './postprocess/pipeline'
+import { CanvasPostProcess, type Filter } from './postprocess/pipeline'
 
 export type { Vec2, ViewportInset, ViewportState } from '../camera'
 
@@ -128,7 +128,7 @@ export class DwebCanvasGL {
 	viewport: ViewportState = { pan: { x: 0, y: 0 }, zoom: 1 }
 	onViewportChange?: (viewport: ViewportState) => void
 
-	private rafId: number | null = null
+	private rafId: number | ReturnType<typeof setTimeout> | null = null
 	private rafKind: 'raf' | 'timeout' | null = null
 	private isDisposed = false
 
@@ -190,8 +190,8 @@ export class DwebCanvasGL {
 		if (this.rafId != null) {
 			try {
 				if (this.rafKind === 'raf' && typeof cancelAnimationFrame !== 'undefined')
-					cancelAnimationFrame(this.rafId)
-				else if (this.rafKind === 'timeout') clearTimeout(this.rafId)
+					cancelAnimationFrame(this.rafId as number)
+				else if (this.rafKind === 'timeout') clearTimeout(this.rafId as ReturnType<typeof setTimeout>)
 			} catch {
 				// ignore
 			}
@@ -226,7 +226,7 @@ export class DwebCanvasGL {
 		contentH: number,
 		padX: number,
 		padY: number,
-		filters: any[],
+		filters: Filter[],
 		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number }) => void
 	): {
 		tex: WebGLTexture
@@ -351,7 +351,7 @@ export class DwebCanvasGL {
 			this.rafId = null
 			this.rafKind = null
 			this.render()
-		}, 0) as any
+		}, 0)
 	}
 
 	/**
@@ -555,9 +555,14 @@ export class DwebCanvasGL {
 				const th = Math.max(1, Math.round(hPx * scale))
 				const c2 = make2dCanvas(tw, th)
 				if (c2) {
-					;(c2.ctx as any).imageSmoothingEnabled = true
-					;(c2.ctx as any).imageSmoothingQuality = 'high'
-					;(c2.ctx as any).drawImage(outCanvas as any, 0, 0, outW, outH, 0, 0, tw, th)
+					const ctx2d = c2.ctx as CanvasRenderingContext2D
+					if (typeof ctx2d.imageSmoothingEnabled === 'boolean') {
+						ctx2d.imageSmoothingEnabled = true
+					}
+					if (typeof ctx2d.imageSmoothingQuality === 'string') {
+						ctx2d.imageSmoothingQuality = 'high'
+					}
+					c2.ctx.drawImage(outCanvas, 0, 0, outW, outH, 0, 0, tw, th)
 					outCanvas = c2.canvas
 					outW = tw
 					outH = th
@@ -567,11 +572,14 @@ export class DwebCanvasGL {
 
 		const blob = await (async () => {
 			try {
-				if (typeof (outCanvas as any).convertToBlob === 'function')
-					return await (outCanvas as any).convertToBlob({ type: 'image/png' })
-				if (typeof (outCanvas as any).toBlob === 'function') {
+				const canvasWithConvert = outCanvas as unknown as Record<string, unknown>
+				if (typeof canvasWithConvert.convertToBlob === 'function') {
+					return await (canvasWithConvert.convertToBlob as (opts?: { type?: string }) => Promise<Blob>)({ type: 'image/png' })
+				}
+				const canvasWithToBlob = outCanvas as unknown as Record<string, unknown>
+				if (typeof canvasWithToBlob.toBlob === 'function') {
 					return await new Promise<Blob | null>((resolve) => {
-						;(outCanvas as any).toBlob((b: Blob | null) => resolve(b), 'image/png')
+						(canvasWithToBlob.toBlob as (callback: (b: Blob | null) => void, type?: string) => void)((b) => resolve(b), 'image/png')
 					})
 				}
 				return null
@@ -580,8 +588,8 @@ export class DwebCanvasGL {
 			}
 		})()
 		if (!blob) return null
-		const widthOut = (outCanvas as any).width ?? outW
-		const heightOut = (outCanvas as any).height ?? outH
+		const widthOut = outCanvas.width ?? outW
+		const heightOut = outCanvas.height ?? outH
 		return { blob, width: widthOut, height: heightOut }
 	}
 
@@ -1046,7 +1054,7 @@ export class DwebCanvasGL {
 		setTextureWrapImpl(this.gl, tex, wrap)
 	}
 
-	create1x1TransparentCanvas() {
+	create1x1TransparentCanvas(): HTMLCanvasElement | OffscreenCanvas {
 		if (typeof document !== 'undefined') {
 			const c = document.createElement('canvas')
 			c.width = 1
@@ -1059,7 +1067,7 @@ export class DwebCanvasGL {
 			const c = new OffscreenCanvas(1, 1)
 			const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D | null
 			if (ctx) ctx.clearRect(0, 0, 1, 1)
-			return c as any
+			return c
 		}
 		throw new Error('No canvas implementation available')
 	}

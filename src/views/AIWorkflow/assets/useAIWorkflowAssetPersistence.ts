@@ -18,12 +18,31 @@ type ImportAssetIntoProjectScopePayload = {
 	bucket?: 'assets' | 'thumbnails'
 }
 
+type UploadAssetResult = {
+	ok: boolean
+	error?: string
+	asset?: {
+		url?: string
+		absolutePath?: string
+		projectRelativePath?: string
+		relativePath?: string
+	}
+}
+
+type ImportAssetResult = {
+	url?: string
+	sourcePath?: string
+	absolutePath?: string
+	projectRelativePath?: string
+	relativePath?: string
+}
+
 type UseAIWorkflowAssetPersistenceOptions = {
 	blueprintProjectService: Pick<BlueprintProjectService, 'uploadAsset'>
 	getCurrentProjectId: () => number | null | undefined
 	resolveBackendUrl: (value: string) => string
 	fileFromUrl: (url: string, fileNameBase: string) => Promise<File>
-	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<any>
+	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportAssetResult | null | undefined>
 }
 
 export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersistenceOptions) => {
@@ -56,11 +75,11 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 			file,
 			kind,
 			projectId > 0 ? { projectId } : undefined
-		)
+		) as UploadAssetResult
 		if (!uploaded.ok) {
-			throw new Error(String((uploaded as any).error || 'upload failed'))
+			throw new Error(String(uploaded.error || 'upload failed'))
 		}
-		const asset = (uploaded as any).asset ?? {}
+		const asset = uploaded.asset ?? {}
 		const next = {
 			url: options.resolveBackendUrl(String(asset.url || '')),
 			absolutePath: String(asset.absolutePath || ''),
@@ -121,13 +140,13 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 			})
 			if (imported) {
 				return {
-					url: options.resolveBackendUrl(String((imported as any).url || '')),
+					url: options.resolveBackendUrl(String(imported.url || '')),
 					absolutePath: String(
-						(imported as any).sourcePath || (imported as any).absolutePath || ''
+						imported.sourcePath || imported.absolutePath || ''
 					).trim(),
 					projectRelativePath:
 						String(
-							(imported as any).projectRelativePath || (imported as any).relativePath || ''
+							imported.projectRelativePath || imported.relativePath || ''
 						).trim() || undefined
 				}
 			}

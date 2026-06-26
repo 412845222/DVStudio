@@ -1,11 +1,12 @@
 import type { Ref } from 'vue'
+import type { WorkflowNode } from '../../../aiworkflow/types'
 
 export const useAIWorkflowNodeResourceCleanup = (payload: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
+			nodesById: Record<string, WorkflowNode>
 		}
-		commit: (type: string, value?: any) => void
+		commit: (type: string, value?: unknown) => void
 	}
 	selectedNodeIds: Ref<string[]>
 	revokeNodeModel3DObjectUrl: (nodeId: string) => void
@@ -20,7 +21,7 @@ export const useAIWorkflowNodeResourceCleanup = (payload: {
 		for (const nodeId of nodeIds) {
 			const node = payload.store.state.nodesById[String(nodeId || '').trim()]
 			if (!node) continue
-			const rid = String((node as any).resourceId ?? '').trim()
+			const rid = String(node.resourceId ?? '').trim()
 			if (rid) out.add(rid)
 		}
 		return out
@@ -28,7 +29,7 @@ export const useAIWorkflowNodeResourceCleanup = (payload: {
 
 	const resourceUsed = (resourceId: string) => {
 		return Object.values(payload.store.state.nodesById).some(
-			(node) => (node as any).resourceId === resourceId
+			(node) => node.resourceId === resourceId
 		)
 	}
 
@@ -77,7 +78,7 @@ export const useAIWorkflowNodeResourceCleanup = (payload: {
 		const node = payload.store.state.nodesById[nodeId]
 		if (!node) return
 
-		const prevRid = String((node as any).resourceId ?? '').trim()
+		const prevRid = String(node.resourceId ?? '').trim()
 		const nextRid = input.resourceId ? String(input.resourceId).trim() : ''
 		payload.store.commit('setNodeResource', { nodeId, resourceId: nextRid || null })
 

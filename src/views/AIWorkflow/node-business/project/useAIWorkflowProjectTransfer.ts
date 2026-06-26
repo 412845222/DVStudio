@@ -23,11 +23,11 @@ export const useAIWorkflowProjectTransfer = (payload: {
 	revokeTrackedObjectUrlsForResource: (resourceId: string) => void
 	getTrackedObjectUrlEntries: () => Array<[string, string]>
 	revokeObjectUrl: (key: string) => void
-	stripUnrealExportRuntimeFromSnapshot: (snapshot: any) => any
+	stripUnrealExportRuntimeFromSnapshot: (snapshot: AIWorkflowDraftSnapshot) => AIWorkflowDraftSnapshot
 	getObjectUrl: (key: string) => string | undefined
 	setObjectUrl: (key: string, url: string) => void
-	setValueByJsonPointer: (root: any, pointer: string, value: unknown) => boolean
-	sanitizeBlueprintSnapshotForRuntime: (snapshot: any) => AIWorkflowDraftSnapshot
+	setValueByJsonPointer: (root: Record<string, unknown>, pointer: string, value: unknown) => boolean
+	sanitizeBlueprintSnapshotForRuntime: (snapshot: Record<string, unknown>) => AIWorkflowDraftSnapshot
 	hydrateBlueprintSnapshotSafely: (
 		snapshot: AIWorkflowDraftSnapshot,
 		sourceLabel: string
@@ -93,11 +93,11 @@ export const useAIWorkflowProjectTransfer = (payload: {
 				const rid = String(asset?.resourceId || '').trim()
 				const target = String(asset?.target || '').trim() as AIWorkflowProjectPackageAssetTarget
 				const filePath = String(asset?.filePath || '').trim()
-				const snapshotPointer = String((asset as any)?.snapshotPointer || '').trim()
+				const snapshotPointer = String(asset.snapshotPointer || '').trim()
 				if (!filePath || (target !== 'url' && target !== 'posterUrl' && target !== 'snapshotField'))
 					continue
 
-				const resource = rid ? (nextSnapshot.resourcesById as any)?.[rid] : null
+				const resource = rid ? nextSnapshot.resourcesById?.[rid] : null
 				if (target !== 'snapshotField' && !resource) continue
 
 				const zf = zip.file(filePath)
@@ -140,7 +140,7 @@ export const useAIWorkflowProjectTransfer = (payload: {
 						const resolvedUrl = imported?.url ?? `package://${filePath}`
 						if (
 							!snapshotPointer ||
-							!payload.setValueByJsonPointer(nextSnapshot as any, snapshotPointer, resolvedUrl)
+							!payload.setValueByJsonPointer(nextSnapshot as Record<string, unknown>, snapshotPointer, resolvedUrl)
 						) {
 							missingAssets.push(`${filePath}#${snapshotPointer || 'pointer-missing'}`)
 							continue
@@ -158,11 +158,13 @@ export const useAIWorkflowProjectTransfer = (payload: {
 						}
 						const resolvedUrl = imported?.url ?? `package://${filePath}`
 						payload.setObjectUrl(objectKey, resolvedUrl)
-						resource[target] = resolvedUrl
-						resource.sourcePath = imported?.relativePath ?? undefined
-						resource.projectRelativePath = imported?.relativePath ?? undefined
-						resource.posterSourcePath = undefined
-						resource.localFileKey = undefined
+						if (resource) {
+							resource[target] = resolvedUrl
+							resource.sourcePath = imported?.relativePath ?? undefined
+							resource.projectRelativePath = imported?.relativePath ?? undefined
+							resource.posterSourcePath = undefined
+							resource.localFileKey = undefined
+						}
 					}
 				} else {
 					// ── 回退路径：使用浏览器临时 blob URL（Web 模式或无 projectId）──
@@ -179,7 +181,7 @@ export const useAIWorkflowProjectTransfer = (payload: {
 						}
 						if (
 							!snapshotPointer ||
-							!payload.setValueByJsonPointer(nextSnapshot as any, snapshotPointer, objectUrl)
+							!payload.setValueByJsonPointer(nextSnapshot as Record<string, unknown>, snapshotPointer, objectUrl)
 						) {
 							try {
 								URL.revokeObjectURL(objectUrl)
@@ -201,10 +203,12 @@ export const useAIWorkflowProjectTransfer = (payload: {
 							}
 						}
 						payload.setObjectUrl(objectKey, objectUrl)
-						resource[target] = objectUrl
-						resource.sourcePath = undefined
-						resource.posterSourcePath = undefined
-						resource.localFileKey = undefined
+						if (resource) {
+							resource[target] = objectUrl
+							resource.sourcePath = undefined
+							resource.posterSourcePath = undefined
+							resource.localFileKey = undefined
+						}
 					}
 				}
 			}

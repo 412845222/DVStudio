@@ -145,8 +145,8 @@ export class MediaResourceImportManager {
 
 			const failBatch = (reason: string) => {
 				for (const t of batch) {
-					const resourceId = String((t as any).resourceId ?? '').trim()
-					const kind = (t as any).kind === 'video' ? 'video' : 'image'
+					const resourceId = String(t.resourceId ?? '').trim()
+					const kind = t.kind === 'video' ? 'video' : 'image'
 					const cb = callbacks.get(resourceId)
 					if (!cb) continue
 					try {
@@ -164,9 +164,9 @@ export class MediaResourceImportManager {
 					clearTimeout(timeoutId)
 					timeoutId = 0
 				}
-				slot.worker.removeEventListener('message', onMessage as any)
-				slot.worker.removeEventListener('error', onError as any)
-				slot.worker.removeEventListener('messageerror', onError as any)
+				slot.worker.removeEventListener('message', onMessage as EventListener)
+				slot.worker.removeEventListener('error', onError as EventListener)
+				slot.worker.removeEventListener('messageerror', onError as EventListener)
 				slot.busy = false
 				this.inFlight = Math.max(0, this.inFlight - batch.length)
 				this.pump()
@@ -195,9 +195,9 @@ export class MediaResourceImportManager {
 				finalize()
 			}
 
-			slot.worker.addEventListener('message', onMessage as any)
-			slot.worker.addEventListener('error', onError as any)
-			slot.worker.addEventListener('messageerror', onError as any)
+			slot.worker.addEventListener('message', onMessage as EventListener)
+			slot.worker.addEventListener('error', onError as EventListener)
+			slot.worker.addEventListener('messageerror', onError as EventListener)
 
 			const req: WorkerRequest = {
 				type: 'process',

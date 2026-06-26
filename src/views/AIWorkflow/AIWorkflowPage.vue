@@ -6424,7 +6424,7 @@ const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate } = useAIWorkfl
 	fileFromUrl,
 	uploadLocalResourceAndGetUrl,
 	resolveBackendUrl,
-	getChatService: () => localExecChatService as any,
+	getChatService: () => localExecChatService,
 	onSeedanceTaskObserved
 })
 
@@ -6437,7 +6437,7 @@ const { buildPersistableSnapshotWithOptions } = useAIWorkflowProjectSnapshotBuil
 	persistExternalAssetToProject,
 	pushToast,
 	stripUnrealExportRuntimeFromNodes
-} as any)
+})
 
 const { sanitizeBlueprintSnapshotForRuntime, hydrateBlueprintSnapshotSafely } =
 	useAIWorkflowProjectSnapshotRuntime({

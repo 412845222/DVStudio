@@ -1,7 +1,9 @@
+import type { WorkflowResource } from '../../../aiworkflow/types'
+
 export const useAIWorkflowResourceRecordCleanup = (payload: {
 	store: {
 		state: {
-			resourcesById: Record<string, any>
+			resourcesById: Record<string, WorkflowResource>
 		}
 	}
 	currentProjectId: { value: number | null }
@@ -26,11 +28,11 @@ export const useAIWorkflowResourceRecordCleanup = (payload: {
 	): Promise<{ removed: boolean; reason: 'record' | 'django-file' | 'skip' | 'error' }> => {
 		const rid = String(resourceId || '').trim()
 		if (!rid) return { removed: false, reason: 'skip' }
-		const resource = payload.store.state.resourcesById?.[rid] as any
+		const resource = payload.store.state.resourcesById?.[rid]
 		if (!resource) return { removed: false, reason: 'skip' }
 
-		const posterUrl = String((resource as any)?.posterUrl || '').trim()
-		const posterSourcePath = String((resource as any)?.posterSourcePath || '').trim()
+		const posterUrl = String(resource?.posterUrl || '').trim()
+		const posterSourcePath = String(resource?.posterSourcePath || '').trim()
 
 		const deletePosterAssetIfNeeded = async () => {
 			if (!posterUrl && !posterSourcePath) return

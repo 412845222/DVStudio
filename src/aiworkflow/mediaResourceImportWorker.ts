@@ -40,12 +40,11 @@ const safeCreateObjectUrl = (file: File): string => {
 
 const safeGetImageSize = async (file: File): Promise<{ width: number; height: number } | null> => {
 	try {
-		// createImageBitmap can run in workers (off-main-thread decode).
 		const bmp = await createImageBitmap(file)
-		const width = Math.max(1, Math.floor((bmp as any).width || 1))
-		const height = Math.max(1, Math.floor((bmp as any).height || 1))
+		const width = Math.max(1, Math.floor(bmp.width || 1))
+		const height = Math.max(1, Math.floor(bmp.height || 1))
 		try {
-			;(bmp as any).close?.()
+			bmp.close?.()
 		} catch {
 			// ignore
 		}
@@ -62,9 +61,9 @@ self.addEventListener('message', async (ev: MessageEvent<ProcessMessage>) => {
 	const results: MediaImportResult[] = []
 
 	for (const t of msg.tasks) {
-		const resourceId = String((t as any)?.resourceId ?? '').trim()
-		const kind = (t as any)?.kind === 'video' ? 'video' : 'image'
-		const file = (t as any)?.file as File | undefined
+		const resourceId = String(t.resourceId ?? '').trim()
+		const kind = t.kind === 'video' ? 'video' : 'image'
+		const file = t.file as File | undefined
 
 		if (!resourceId || !file) {
 			results.push({
@@ -86,7 +85,7 @@ self.addEventListener('message', async (ev: MessageEvent<ProcessMessage>) => {
 			url = safeCreateObjectUrl(file)
 
 			// Best-effort: capture absolute source path (Electron / desktop runtimes may provide this).
-			const p = (file as any)?.path
+			const p = (file as unknown as { path?: string }).path
 			if (typeof p === 'string' && p.trim()) sourcePath = p.trim()
 
 			// 2) For images, decode size off-main-thread.
@@ -105,5 +104,5 @@ self.addEventListener('message', async (ev: MessageEvent<ProcessMessage>) => {
 	}
 
 	const out: ResultMessage = { type: 'result', results }
-	;(self as any).postMessage(out)
+	self.postMessage(out)
 })

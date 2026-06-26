@@ -17,7 +17,7 @@ export const useAIWorkflowRotateImageOutput = (payload: {
 	) => void
 	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video') => void
 	dataUrlToBlob: (dataUrl: string) => Blob
-	commitPatchResource: (input: { resourceId: string; patch: any }) => void
+	commitPatchResource: (input: { resourceId: string; patch: Partial<{ name?: string; url?: string }> }) => void
 	commitAddResource: (input: {
 		id: string
 		kind: 'image' | 'video'
@@ -54,7 +54,7 @@ export const useAIWorkflowRotateImageOutput = (payload: {
 		if (existing && existing.kind === 'image') {
 			payload.commitPatchResource({
 				resourceId: existingResourceId,
-				patch: { name, url: dataUrl } as any
+				patch: { name, url: dataUrl }
 			})
 		} else {
 			outputResourceId = payload.makeResourceId()

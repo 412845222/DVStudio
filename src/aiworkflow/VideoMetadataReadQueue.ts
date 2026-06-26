@@ -85,7 +85,7 @@ export class VideoMetadataReadQueue {
 			el.crossOrigin = 'anonymous'
 		}
 		// playsinline is harmless here; some browsers behave better.
-		;(el as any).playsInline = true
+		el.playsInline = true
 		this.activeEls.set(task.id, el)
 
 		try {
@@ -108,8 +108,8 @@ export class VideoMetadataReadQueue {
 
 					el.onloadedmetadata = () => {
 						window.clearTimeout(tid)
-						const w = Math.max(1, Math.floor((el as any).videoWidth || 1))
-						const h = Math.max(1, Math.floor((el as any).videoHeight || 1))
+						const w = Math.max(1, Math.floor(el.videoWidth || 1))
+						const h = Math.max(1, Math.floor(el.videoHeight || 1))
 						finish({ width: w, height: h })
 					}
 					el.onerror = () => {

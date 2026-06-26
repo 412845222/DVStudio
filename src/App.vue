@@ -78,7 +78,7 @@ const route = useRoute()
 const contentEl = ref<HTMLElement | null>(null)
 const navExpanded = ref(false)
 const navCollapsed = ref(false)
-const isElectronRuntime = (window as any)?.__DWEB_RUNTIME__?.isElectron === true
+const isElectronRuntime = ((window as unknown as Record<string, unknown>).__DWEB_RUNTIME__ as { isElectron?: boolean } | undefined)?.isElectron === true
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
@@ -115,9 +115,10 @@ const {
 } = useSteamEntry()
 
 function openExternalUrl(url: string) {
-	const w = window as any
-	if (w?.dweb?.common?.openExternalUrl) {
-		w.dweb.common.openExternalUrl(url)
+	const w = window as unknown as Record<string, unknown>
+	const dweb = w.dweb as { common?: { openExternalUrl?: (url: string) => void } } | undefined
+	if (dweb?.common?.openExternalUrl) {
+		dweb.common.openExternalUrl(url)
 	} else {
 		window.open(url, '_blank', 'noopener,noreferrer')
 	}

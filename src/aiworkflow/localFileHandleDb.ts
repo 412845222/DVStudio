@@ -1,4 +1,11 @@
-type AnyFileHandle = any
+interface FileSystemHandleLike {
+	kind: 'file' | 'directory'
+	name: string
+	queryPermission?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<'granted' | 'denied' | 'prompt'>
+	requestPermission?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<'granted' | 'denied' | 'prompt'>
+}
+
+type AnyFileHandle = FileSystemHandleLike
 
 const DB_NAME = 'dweb-aiworkflow-local-files'
 const DB_VERSION = 1
@@ -23,11 +30,10 @@ const openDb = (): Promise<IDBDatabase> => {
 }
 
 export const canUseFileSystemHandles = (): boolean => {
-	// Detect minimal support; we still treat handle types as any.
-	return typeof (window as any).showOpenFilePicker === 'function'
+	return typeof (window as unknown as { showOpenFilePicker?: Function }).showOpenFilePicker === 'function'
 }
 
-export const putLocalFileHandle = async (key: string, handle: AnyFileHandle): Promise<boolean> => {
+export const putLocalFileHandle = async (key: string, handle: unknown): Promise<boolean> => {
 	const k = String(key || '').trim()
 	if (!k || !handle) return false
 	try {
@@ -44,12 +50,12 @@ export const putLocalFileHandle = async (key: string, handle: AnyFileHandle): Pr
 	}
 }
 
-export const getLocalFileHandle = async (key: string): Promise<AnyFileHandle | null> => {
+export const getLocalFileHandle = async (key: string): Promise<unknown | null> => {
 	const k = String(key || '').trim()
 	if (!k) return null
 	try {
 		const db = await openDb()
-		const v = await new Promise<any>((resolve, reject) => {
+		const v = await new Promise<unknown>((resolve, reject) => {
 			const tx = db.transaction(STORE_NAME, 'readonly')
 			tx.onerror = () => reject(tx.error ?? new Error('tx failed'))
 			const req = tx.objectStore(STORE_NAME).get(k)
@@ -78,11 +84,11 @@ export const deleteLocalFileHandle = async (key: string): Promise<void> => {
 	}
 }
 
-export const ensureReadPermission = async (handle: AnyFileHandle): Promise<boolean> => {
-	if (!handle) return false
+export const ensureReadPermission = async (handle: unknown): Promise<boolean> => {
+	if (!handle || typeof handle !== 'object') return false
 	try {
-		const qp = (handle as any).queryPermission
-		const rp = (handle as any).requestPermission
+		const qp = (handle as FileSystemHandleLike).queryPermission
+		const rp = (handle as FileSystemHandleLike).requestPermission
 		if (typeof qp === 'function') {
 			const s = await qp.call(handle, { mode: 'read' })
 			if (s === 'granted') return true
@@ -91,7 +97,6 @@ export const ensureReadPermission = async (handle: AnyFileHandle): Promise<boole
 			const s = await rp.call(handle, { mode: 'read' })
 			return s === 'granted'
 		}
-		// If permission API is absent, assume usable.
 		return true
 	} catch {
 		return false

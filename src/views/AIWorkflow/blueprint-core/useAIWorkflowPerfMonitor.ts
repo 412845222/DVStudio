@@ -261,7 +261,7 @@ export const useAIWorkflowPerfMonitor = (payload: {
 			typeof window !== 'undefined' &&
 			'PerformanceObserver' in window
 		) {
-			const PerfObserver = (window as any).PerformanceObserver as
+			const PerfObserver = window.PerformanceObserver as
 				| typeof PerformanceObserver
 				| undefined
 			const supported =

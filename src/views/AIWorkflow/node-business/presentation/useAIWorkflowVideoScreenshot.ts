@@ -1,6 +1,8 @@
+import type { WorkflowAnchorSpec, WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
+
 export const useAIWorkflowVideoScreenshot = (payload: {
-	getNode: (nodeId: string) => any
-	getEdges: () => Array<any>
+	getNode: (nodeId: string) => WorkflowNode | null
+	getEdges: () => WorkflowEdge[]
 	dataUrlToBlob: (dataUrl: string) => Blob
 	onNodeUploadResource: (
 		nodeId: string,
@@ -27,7 +29,7 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 
 		const outIds = new Set(
 			(Array.isArray(node.outputs) ? node.outputs : [])
-				.map((output: any) => String(output?.id ?? '').trim())
+				.map((output: WorkflowAnchorSpec) => String(output?.id ?? '').trim())
 				.filter(Boolean)
 		)
 		const outIdCheckEnabled = outIds.size > 0

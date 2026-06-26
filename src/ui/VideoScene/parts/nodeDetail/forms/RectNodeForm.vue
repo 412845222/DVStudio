@@ -23,8 +23,8 @@
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
 				@pointerdown="
-					(e: any) =>
-						onNumberScrubPointerDown(
+					(e: PointerEvent) =>
+					onNumberScrubPointerDown(
 							e,
 							() => draft.fillOpacity,
 							(v) => (draft.fillOpacity = v),
@@ -55,8 +55,8 @@
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
 				@pointerdown="
-					(e: any) =>
-						onNumberScrubPointerDown(
+					(e: PointerEvent) =>
+					onNumberScrubPointerDown(
 							e,
 							() => draft.borderOpacity,
 							(v) => (draft.borderOpacity = v),
@@ -78,8 +78,8 @@
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
 				@pointerdown="
-					(e: any) =>
-						onNumberScrubPointerDown(
+					(e: PointerEvent) =>
+					onNumberScrubPointerDown(
 							e,
 							() => draft.borderWidth,
 							(v) => (draft.borderWidth = v),
@@ -101,8 +101,8 @@
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
 				@pointerdown="
-					(e: any) =>
-						onNumberScrubPointerDown(
+					(e: PointerEvent) =>
+					onNumberScrubPointerDown(
 							e,
 							() => draft.cornerRadius,
 							(v) => (draft.cornerRadius = v),

@@ -4,8 +4,12 @@ import type { WorkflowNode } from '../../../../aiworkflow/types'
 export const useAIWorkflowResourceActions = (payload: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
-			resourcesById: Record<string, any>
+			nodesById: Record<string, WorkflowNode>
+			resourcesById: Record<string, {
+				sourcePath?: string
+				projectRelativePath?: string
+				url?: string
+			}>
 		}
 	}
 	selectedNodeId: Ref<string | null>
@@ -115,7 +119,7 @@ export const useAIWorkflowResourceActions = (payload: {
 
 		const rid = String(node.resourceId || '').trim()
 		if (!rid) return ''
-		const resource = payload.store.state.resourcesById[rid] as any
+		const resource = payload.store.state.resourcesById[rid]
 		if (!resource) return ''
 
 		const sourcePath = String(resource?.sourcePath ?? '').trim()

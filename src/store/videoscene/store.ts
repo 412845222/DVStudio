@@ -59,16 +59,17 @@ const clampPx = (v: unknown, fallback: number) => {
 	return Math.max(0, n)
 }
 
-const normalizeNodeIdentityInPlace = (node: any) => {
+const normalizeNodeIdentityInPlace = (node: unknown) => {
 	if (!node || typeof node !== 'object') return
-	if (typeof node.id !== 'string' || !node.id.trim()) {
-		node.id = `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+	const n = node as Record<string, unknown>
+	if (typeof n.id !== 'string' || !String(n.id).trim()) {
+		(n as Record<string, unknown>).id = `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 	}
-	if (typeof node.createdAt !== 'number' || !Number.isFinite(node.createdAt)) {
-		node.createdAt = Date.now()
+	if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt as number)) {
+		(n as Record<string, unknown>).createdAt = Date.now()
 	}
-	if (Array.isArray(node.children)) {
-		for (const c of node.children) normalizeNodeIdentityInPlace(c)
+	if (Array.isArray(n.children)) {
+		for (const c of n.children) normalizeNodeIdentityInPlace(c)
 	}
 }
 
@@ -82,14 +83,15 @@ const deepCloneJson = <T>(v: T): T => {
 	return JSON.parse(JSON.stringify(v)) as T
 }
 
-const cloneNodeTreeWithFreshIds = (node: any): any => {
+const cloneNodeTreeWithFreshIds = (node: unknown): unknown => {
 	const n = deepCloneJson(node)
-	const walk = (x: any) => {
+	const walk = (x: unknown) => {
 		if (!x || typeof x !== 'object') return
-		x.id = `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-		x.createdAt = Date.now()
-		if (Array.isArray(x.children) && x.children.length) {
-			for (const c of x.children) walk(c)
+		const obj = x as Record<string, unknown>
+		obj.id = `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+		obj.createdAt = Date.now()
+		if (Array.isArray(obj.children) && obj.children.length) {
+			for (const c of obj.children) walk(c)
 		}
 	}
 	walk(n)
@@ -293,7 +295,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			const rawIds = Array.isArray(payload.nodeIds) ? payload.nodeIds : []
 			const ids = Array.from(new Set(rawIds.map((s) => String(s || '').trim()).filter(Boolean)))
 			if (!ids.length) return
-			const patch = payload.patch && typeof payload.patch === 'object' ? payload.patch : ({} as any)
+			const patch = payload.patch && typeof payload.patch === 'object' ? payload.patch : ({} as NodePropsPatch)
 			for (const nodeId of ids) updateUserNodeProps(layer, nodeId, patch)
 		},
 		pasteNodeTreeAsSibling(
@@ -312,7 +314,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 				? Math.max(0, Math.floor(payload.targetIndex))
 				: 0
 			if (!payload.node || typeof payload.node !== 'object') return
-			const cloned = cloneNodeTreeWithFreshIds(payload.node as any) as VideoSceneTreeNode
+			const cloned = cloneNodeTreeWithFreshIds(payload.node) as VideoSceneTreeNode
 			const r = addNodeTreeToLayer({
 				state,
 				layerId: payload.layerId,
@@ -333,8 +335,8 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			const incomingLayers = Array.isArray(payload.layers) ? payload.layers : []
 			for (const layer of incomingLayers) {
 				if (!layer || typeof layer !== 'object') continue
-				if (Array.isArray((layer as any).nodeTree)) {
-					for (const n of (layer as any).nodeTree) normalizeNodeIdentityInPlace(n)
+				if (Array.isArray((layer as VideoSceneLayer).nodeTree)) {
+					for (const n of (layer as VideoSceneLayer).nodeTree) normalizeNodeIdentityInPlace(n)
 				}
 			}
 
@@ -344,7 +346,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			const current = Array.isArray(state.layers) ? state.layers : []
 			const incomingById = new Map<string, VideoSceneLayer>()
 			for (const l of incomingLayers) {
-				const id = String((l as any)?.id ?? '').trim()
+				const id = String((l as VideoSceneLayer).id ?? '').trim()
 				if (!id) continue
 				incomingById.set(id, l)
 			}
@@ -353,7 +355,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			const seen = new Set<string>()
 			// Keep existing order, replacing layers that are present in the incoming snapshot.
 			for (const l of current) {
-				const id = String((l as any)?.id ?? '').trim()
+				const id = String((l as VideoSceneLayer).id ?? '').trim()
 				if (!id) continue
 				const next = incomingById.get(id)
 				out.push(next ?? l)
@@ -364,7 +366,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			// Otherwise, unknown layers are likely stale snapshots and must not resurrect deleted layers.
 			if (current.length === 0) {
 				for (const l of incomingLayers) {
-					const id = String((l as any)?.id ?? '').trim()
+					const id = String((l as VideoSceneLayer).id ?? '').trim()
 					if (!id || seen.has(id)) continue
 					out.push(l)
 					seen.add(id)
@@ -410,7 +412,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			const layer = findLayer(state, layerId)
 			if (!layer) return
 
-			const p = payload.patch || ({} as any)
+			const p = payload.patch || ({} as Record<string, unknown>)
 			if (typeof p.userType === 'string' && p.userType.trim()) {
 				setUserNodeType(layer, nodeId, p.userType as VideoSceneUserNodeType)
 			}
@@ -651,9 +653,9 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 
 			const collectSubtreeIds = (node: VideoSceneTreeNode | null | undefined, out: Set<string>) => {
 				if (!node) return
-				const id = String((node as any).id ?? '').trim()
+				const id = String(node.id ?? '').trim()
 				if (id) out.add(id)
-				const children = (node as any).children
+				const children = node.children
 				if (Array.isArray(children) && children.length) {
 					for (const c of children) collectSubtreeIds(c, out)
 				}
@@ -685,7 +687,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 				...payload,
 				nodeIds: ids,
 				purgeNodeIds: Array.from(purge)
-			} as any)
+			})
 		},
 		deleteNodeById({ dispatch }, payload: { nodeId: string; layerId?: string }) {
 			dispatch('deleteNodesById', { nodeIds: [payload.nodeId], layerId: payload.layerId })
