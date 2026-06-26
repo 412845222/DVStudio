@@ -20,6 +20,7 @@ interface Window {
   __DWEB_REPO_URL__?: string
   __DWEB_RUNTIME__?: { platform?: 'electron' | 'web' }
   __DWEB_BACKEND_BASE_URL__?: string
+  __DWEB_BACKEND_MODE__?: 'normal' | 'migration'
   __DWEB_CLIENT_SETTINGS?: import('./electronBridge/types').ClientSettings
   __DWEB_AIWF_AUTO_HELLO?: string
   __DWEB_AIWF_AUTO_HELLO_TEXT?: string
@@ -29,6 +30,10 @@ interface Window {
   dweb?: {
     common?: {
       getBackendBaseUrl?: () => string
+      health?: () => Promise<{ ok: boolean; value?: { status: string; timestamp: number; localdb: boolean; db: boolean }; error?: string }>
+      echo?: (payload: unknown) => Promise<{ ok: boolean; value?: { echo: unknown; timestamp: number }; error?: string }>
+      getUserAgreement?: () => Promise<{ ok: boolean; value?: { content: string }; error?: string }>
+      getMigrationStatus?: () => Promise<unknown>
       pingBackend?: () => Promise<import('./electronBridge/types').BackendPingResult>
       startBackend?: () => Promise<import('./electronBridge/types').BackendStartResult>
       restartBackend?: () => Promise<import('./electronBridge/types').BackendRestartResult>
@@ -48,6 +53,40 @@ interface Window {
       cleanupOldProject?: () => Promise<import('./electronBridge/types').CleanupOldProjectResult | null>
       getClientSettings?: () => Promise<import('./electronBridge/types').ClientSettingsResult>
       saveClientSettings?: (payload: import('./electronBridge/types').ClientSettings) => Promise<import('./electronBridge/types').ClientSettingsResult>
+      invokeStream?: <T = unknown>(baseChannel: string, payload?: Record<string, unknown>) => AsyncGenerator<T, void, void>
+    }
+    meshy?: {
+      health?: () => Promise<{ ok: boolean; configured: boolean }>
+      generate?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; mode?: string; taskId?: string; status?: string; raw?: unknown; error?: string }>
+      getTask?: (payload: { taskId: string; mode?: string }) => Promise<import('./network/ComfyUIBridgeService').MeshyTaskResponse>
+      listTasks?: (payload?: { projectId?: number | string; status?: string; target?: string; family?: string; limit?: number }) => Promise<{ ok: boolean; items?: import('./network/ComfyUIBridgeService').MeshyTaskMirrorItem[]; error?: string }>
+      taskDetail?: (payload: { taskId: string }) => Promise<import('./network/ComfyUIBridgeService').MeshyTaskDetailResponse>
+      stop?: (payload: { taskId: string; mode?: string }) => Promise<import('./network/ComfyUIBridgeService').MeshyTaskActionResponse>
+      deleteTask?: (payload: { taskId: string }) => Promise<import('./network/ComfyUIBridgeService').MeshyTaskActionResponse>
+      balance?: () => Promise<import('./network/ComfyUIBridgeService').MeshyBalanceResponse>
+    }
+    seedance?: {
+      health?: () => Promise<{ ok: boolean; configured: boolean }>
+      generateStream?: (payload: Record<string, unknown>) => AsyncGenerator<import('./network/ComfyUIBridgeService').SeedanceGenerateStreamEvent, void, void>
+      list?: (payload?: { projectId?: number | string; status?: string; model?: string; limit?: number }) => Promise<{ ok: boolean; items?: import('./network/ComfyUIBridgeService').SeedanceTaskMirrorItem[]; error?: string }>
+      taskDetail?: (payload: { taskId: string }) => Promise<import('./network/ComfyUIBridgeService').SeedanceTaskDetailResponse>
+      sync?: (payload?: Record<string, unknown>) => Promise<import('./network/ComfyUIBridgeService').SeedanceSyncTasksResponse>
+    }
+    projects?: {
+      list?: () => Promise<{ ok: boolean; projects?: unknown[]; error?: string }>
+      save?: (payload: { name: string; snapshot: unknown; projectId?: number | null }) => Promise<{ ok: boolean; project?: unknown; error?: string }>
+      load?: (payload: { id: number | string }) => Promise<{ ok: boolean; project?: unknown; snapshot?: unknown; error?: string }>
+      delete?: (payload: { id: number | string }) => Promise<{ ok: boolean; id?: number; error?: string }>
+      openFolder?: (payload: { rootPath: string; name?: string; create?: boolean }) => Promise<{ ok: boolean; project?: unknown; error?: string }>
+    }
+    projectAssets?: {
+      health?: () => Promise<{ ok: boolean; route?: string; schemaVersion?: number; error?: string }>
+      upload?: (payload: unknown) => Promise<{ ok: boolean; asset?: unknown; error?: string }>
+      import?: (payload: unknown) => Promise<{ ok: boolean; asset?: unknown; error?: string }>
+      delete?: (payload: unknown) => Promise<{ ok: boolean; fileDeleted?: boolean; error?: string }>
+      resolve?: (payload: unknown) => Promise<{ ok: boolean; resolved?: boolean; asset?: unknown; error?: string }>
+      repair?: (payload: unknown) => Promise<{ ok: boolean; repaired?: boolean; asset?: unknown; error?: string }>
+      repairAll?: (payload: unknown) => Promise<{ ok: boolean; patches?: Record<string, unknown>; failed?: string[]; changed?: number; error?: string }>
     }
     window?: {
       minimize?: () => Promise<{ ok: boolean; error?: string }>

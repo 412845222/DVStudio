@@ -98,6 +98,33 @@ export const useAIWorkflowResourceActions = (payload: {
 		}
 	}
 
+	const isBinCachePath = (value: string) => {
+		const v = String(value || '').trim().toLowerCase().replace(/\\/g, '/')
+		if (!v) return false
+		if (v.endsWith('.bin')) return true
+		return v.includes('/.dvcache/bin/')
+	}
+
+	const toFolderIfBin = (value: string) => {
+		if (!value) return ''
+		if (isBinCachePath(value)) {
+			const sep = value.lastIndexOf('/')
+			const sepWin = value.lastIndexOf('\\')
+			const lastSep = Math.max(sep, sepWin)
+			if (lastSep > 0) {
+				return value.slice(0, lastSep)
+			}
+		}
+		return value
+	}
+
+	const pickPreferredMediaPath = (candidates: (string | null | undefined)[]) => {
+		const valid = candidates.map((c) => String(c || '').trim()).filter(Boolean)
+		if (!valid.length) return ''
+		const nonBin = valid.find((p) => !isBinCachePath(p))
+		return toFolderIfBin(nonBin || valid[0])
+	}
+
 	const selectedNodeLocalResourcePath = computed(() => {
 		if (!payload.selectedNodeId.value) return ''
 		const node = payload.store.state.nodesById[payload.selectedNodeId.value]
@@ -105,9 +132,10 @@ export const useAIWorkflowResourceActions = (payload: {
 
 		if (node.type === 'model3d') {
 			const assetPath = String(node.model3dSettings?.modelAssetPath ?? '').trim()
-			if (isAbsoluteLocalPath(assetPath)) return assetPath
 			const sourcePath = String(node.model3dSettings?.modelSourcePath ?? '').trim()
-			if (isAbsoluteLocalPath(sourcePath)) return sourcePath
+			const result = pickPreferredMediaPath([assetPath, sourcePath])
+			if (result && isAbsoluteLocalPath(result)) return result
+			if (result) return result
 			return ''
 		}
 
@@ -118,29 +146,41 @@ export const useAIWorkflowResourceActions = (payload: {
 		const resource = payload.store.state.resourcesById[rid] as any
 		if (!resource) return ''
 
+		const candidates: (string | null | undefined)[] = []
+
 		const sourcePath = String(resource?.sourcePath ?? '').trim()
-		if (isAbsoluteLocalPath(sourcePath)) return sourcePath
+		candidates.push(sourcePath)
 
 		const projectRelativePath = String(resource?.projectRelativePath ?? '').trim()
 		if (projectRelativePath) {
 			const pid = payload.getProjectId?.() ?? undefined
 			const resolved = resolveFromProjectRelativePath(projectRelativePath, pid)
-			if (resolved) return resolved
+			candidates.push(resolved)
 		}
 
 		const rawUrl = String(resource?.url ?? '').trim()
 		if (rawUrl) {
 			if (/^file:\/\//i.test(rawUrl)) {
-				const urlObj = new URL(rawUrl)
-				return decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1')
+				try {
+					const urlObj = new URL(rawUrl)
+					candidates.push(decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1'))
+				} catch {}
 			}
 			if (rawUrl.toLowerCase().startsWith('dweb://project-assets')) {
 				const fromDweb = resolveFromDwebProjectAssetUrl(rawUrl)
-				if (fromDweb) return fromDweb
+				candidates.push(fromDweb)
 			}
 		}
 
-		return ''
+		const localAssetPath = String(resource?.localAssetPath ?? '').trim()
+		candidates.push(localAssetPath)
+
+		const absolutePath = String(resource?.absolutePath ?? '').trim()
+		candidates.push(absolutePath)
+
+		const result = pickPreferredMediaPath(candidates)
+		if (result && isAbsoluteLocalPath(result)) return result
+		return result
 	})
 
 	const canOpenSelectedNodeFolder = computed(() => {

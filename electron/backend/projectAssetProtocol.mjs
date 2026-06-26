@@ -747,10 +747,11 @@ export function cleanupProjectRootBinFiles(projectId) {
 		}
 	}
 
-	const commonSkipDirs = [CACHE_DIR, '.git', 'node_modules', '.venv', '__pycache__', 'Content']
+	const commonSkipDirs = [CACHE_DIR, '.git', 'node_modules', '.venv', '__pycache__']
 
 	const scanTargets = [
 		{ dir: root, recursive: false },
+		{ dir: path.resolve(root, 'Content', 'Media'), recursive: true, skipDirNames: ['thumbnails', 'generated', 'exports', ...commonSkipDirs] },
 		{ dir: path.resolve(root, 'generated-assets'), recursive: true, skipDirNames: commonSkipDirs }
 	]
 
@@ -1119,7 +1120,7 @@ function normalizeLocalSourcePath(rawSourcePath) {
 	return raw
 }
 
-export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFilename) {
+export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFilename, options = {}) {
 	const id = Number(projectId)
 	const sourcePath = normalizeLocalSourcePath(rawSourcePath)
 	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
@@ -1156,14 +1157,11 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
 	const base = safeName.replace(/\.[^.]+$/, '') || `asset-${Date.now()}`
 	const filename = `${base}${ext}`
 
-	const subDir = path.resolve(root, 'Content', 'Media')
-	try {
-		fs.mkdirSync(subDir, { recursive: true })
-	} catch (err) {
-		return { ok: false, error: `mkdir failed: ${String(err?.message || err)}` }
-	}
+	const effectiveBucket = options.bucket || (ext === '.bin' ? 'cache' : undefined)
+	const target = resolveAssetTargetDir(id, effectiveBucket)
+	if (!target) return { ok: false, error: 'failed to resolve target directory' }
 
-	let absolutePath = path.resolve(subDir, filename)
+	let absolutePath = path.resolve(target.targetDir, filename)
 	const resolvedTarget = path.resolve(absolutePath)
 	const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
 
@@ -1212,7 +1210,8 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
 			ok: true,
 			absolutePath,
 			relativePath,
-			size: st.size
+			size: st.size,
+			bucket: effectiveBucket || 'assets'
 		}
 	} catch (err) {
 		return { ok: false, error: `stat failed: ${String(err?.message || err)}` }
@@ -1227,8 +1226,9 @@ function sanitizeFilename(name) {
 	if (idx >= 0) safe = safe.slice(idx + 1)
 	// Check for non-ASCII characters (e.g. Chinese/Japanese/Korean) and replace with safe fallback
 	if (/[^\x00-\x7F]/.test(safe)) {
+		const origExt = path.extname(safe)
 		const hash = Math.abs(Array.from(safe).reduce((acc, c) => acc + c.charCodeAt(0), 0) % 100000)
-		safe = `asset_${hash}_${Date.now().toString(36)}`
+		safe = `asset_${hash}_${Date.now().toString(36)}${origExt}`
 	}
 	safe = safe.replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_')
 	safe = safe.replace(/^[\s.]+/, '')
@@ -1289,6 +1289,129 @@ function inferExtension(safeName, rawUrl) {
 	}
 
 	return '.bin'
+}
+
+const MEDIA_MAGIC_SIGNATURES = [
+	{ ext: '.png', magic: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), mask: null, offset: 0 },
+	{ ext: '.jpg', magic: Buffer.from([0xff, 0xd8, 0xff]), mask: null, offset: 0 },
+	{ ext: '.gif', magic: Buffer.from('GIF87a'), mask: null, offset: 0 },
+	{ ext: '.gif', magic: Buffer.from('GIF89a'), mask: null, offset: 0 },
+	{ ext: '.webp', magic: Buffer.from('RIFF'), mask: null, offset: 0, extraCheck: { offset: 8, magic: Buffer.from('WEBP') } },
+	{ ext: '.wav', magic: Buffer.from('RIFF'), mask: null, offset: 0, extraCheck: { offset: 8, magic: Buffer.from('WAVE') } },
+	{ ext: '.bmp', magic: Buffer.from('BM'), mask: null, offset: 0 },
+	{ ext: '.mov', magic: Buffer.from('ftyp'), mask: null, offset: 4, extraCheck: { offset: 8, magic: Buffer.from('qt  ') } },
+	{ ext: '.mp4', magic: Buffer.from('ftyp'), mask: null, offset: 4 },
+	{ ext: '.webm', magic: Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), mask: null, offset: 0 },
+	{ ext: '.mp3', magic: Buffer.from([0xff, 0xfb]), mask: null, offset: 0 },
+	{ ext: '.mp3', magic: Buffer.from('ID3'), mask: null, offset: 0 },
+	{ ext: '.ogg', magic: Buffer.from('OggS'), mask: null, offset: 0 },
+	{ ext: '.flac', magic: Buffer.from('fLaC'), mask: null, offset: 0 },
+	{ ext: '.glb', magic: Buffer.from('glTF'), mask: null, offset: 0 }
+]
+
+function detectMediaExtensionFromBuffer(buffer) {
+	if (!buffer || buffer.length < 12) return null
+	const head = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer)
+	for (const sig of MEDIA_MAGIC_SIGNATURES) {
+		if (head.length < sig.offset + sig.magic.length) continue
+		let matches = true
+		if (sig.mask) {
+			for (let i = 0; i < sig.magic.length; i++) {
+				if ((head[sig.offset + i] & sig.mask[i]) !== (sig.magic[i] & sig.mask[i])) { matches = false; break }
+			}
+		} else {
+			for (let i = 0; i < sig.magic.length; i++) {
+				if (head[sig.offset + i] !== sig.magic[i]) { matches = false; break }
+			}
+		}
+		if (!matches) continue
+		if (sig.extraCheck) {
+			const ec = sig.extraCheck
+			if (head.length < ec.offset + ec.magic.length) continue
+			let ecMatch = true
+			for (let i = 0; i < ec.magic.length; i++) {
+				if (head[ec.offset + i] !== ec.magic[i]) { ecMatch = false; break }
+			}
+			if (!ecMatch) continue
+		}
+		return sig.ext
+	}
+	return null
+}
+
+export function migrateBinCacheMediaToMedia({ projectId, binFilePath, kind, preferredName }) {
+	const id = Number(projectId)
+	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+	const root = projectRootById.get(id)
+	if (!root) return { ok: false, error: 'project root not registered' }
+
+	const binPath = path.resolve(String(binFilePath || '').trim())
+	if (!binPath || !fs.existsSync(binPath)) return { ok: false, error: 'bin file not found' }
+
+	const ext = path.extname(binPath).toLowerCase()
+	if (ext !== '.bin') return { ok: false, error: 'not a .bin file', noMigrationNeeded: true }
+
+	const cacheBinDir = path.resolve(root, CACHE_DIR, 'bin')
+	const isBinCache = binPath.startsWith(cacheBinDir + path.sep) || binPath === cacheBinDir
+
+	const contentMediaDir = path.resolve(root, 'Content', 'Media')
+	const isInMedia = binPath.startsWith(contentMediaDir + path.sep)
+
+	if (!isBinCache && !isInMedia) {
+		return { ok: false, error: 'bin file is not in cache or media directory', noMigrationNeeded: true }
+	}
+
+	let buf
+	try {
+		const fd = fs.openSync(binPath, 'r')
+		buf = Buffer.alloc(Math.min(64, fs.fstatSync(fd).size))
+		fs.readSync(fd, buf, 0, buf.length, 0)
+		fs.closeSync(fd)
+	} catch {
+		return { ok: false, error: 'failed to read file header' }
+	}
+
+	const detectedExt = detectMediaExtensionFromBuffer(buf)
+	if (!detectedExt) return { ok: false, error: 'unable to detect media type from file content' }
+
+	const kindToDir = {
+		image: 'images',
+		video: 'videos',
+		audio: 'audio',
+		model: 'models',
+		file: ''
+	}
+	const kindLower = String(kind || '').toLowerCase()
+	const subDir = kindToDir[kindLower] || ''
+	const targetDir = subDir ? path.resolve(contentMediaDir, subDir) : contentMediaDir
+	fs.mkdirSync(targetDir, { recursive: true })
+
+	const nameBase = String(preferredName || '').trim()
+	const existingBase = path.basename(binPath, path.extname(binPath))
+	const safeBase = (nameBase || existingBase || `asset-${Date.now()}`).replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_').slice(0, 80)
+	const finalPath = makeUniqueFilename(targetDir, safeBase, detectedExt)
+
+	try {
+		fs.copyFileSync(binPath, finalPath)
+	} catch (err) {
+		return { ok: false, error: 'copy file failed: ' + String(err?.message || err) }
+	}
+
+	const asset = buildAssetPayload(id, finalPath, root, {
+		kind: kindLower || 'file',
+		name: path.basename(finalPath),
+		contentType: null,
+		sourcePath: finalPath
+	})
+
+	try {
+		fs.unlinkSync(binPath)
+		asset.oldBinCleaned = true
+	} catch {
+		asset.oldBinCleaned = false
+	}
+
+	return { ok: true, migrated: true, asset }
 }
 
 function fetchRemoteUrl(rawUrl, targetPath) {
@@ -1472,9 +1595,10 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
 				return { ok: true, asset }
 			}
 
-			const target = resolveAssetTargetDir(id, bucket)
-			if (!target) return { ok: false, error: 'project root not registered' }
 			const ext = path.extname(safeName) || '.bin'
+			const effectiveBucket = bucket || (ext === '.bin' ? 'cache' : undefined)
+			const target = resolveAssetTargetDir(id, effectiveBucket)
+			if (!target) return { ok: false, error: 'project root not registered' }
 			const base = path.basename(safeName, ext) || 'asset'
 			const finalPath = makeUniqueFilename(target.targetDir, base, ext)
 			if (resolvedSrc !== finalPath) {
@@ -1642,6 +1766,23 @@ export function repairProjectAsset({ projectId, kind, name, projectRelativePath 
 
 	const hit = scanDirForName(mediaRoot, targetName) || scanDirForName(generatedRoot, targetName)
 	if (!hit) return { ok: true, repaired: false, reason: 'not_found' }
+
+	const lowerHit = hit.toLowerCase().replace(/\\/g, '/')
+	const isBin = lowerHit.endsWith('.bin') || lowerHit.includes(path.resolve(root, '.dvcache', 'bin').toLowerCase().replace(/\\/g, '/') + '/')
+	if (isBin) {
+		const kindLower = String(kind || '').toLowerCase()
+		if (kindLower === 'image' || kindLower === 'video' || kindLower === 'audio') {
+			const migrated = migrateBinCacheMediaToMedia({
+				projectId: id,
+				binFilePath: hit,
+				kind: kindLower,
+				preferredName: targetName
+			})
+			if (migrated?.ok && migrated.migrated && migrated.asset) {
+				return { ok: true, repaired: true, asset: migrated.asset }
+			}
+		}
+	}
 
 	const asset = buildAssetPayload(id, hit, root, {
 		kind: kind || 'file',

@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 1
+const TARGET_VERSION = 3
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -136,7 +136,165 @@ function runV1(db) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_api_keys_provider ON api_keys(provider);`)
 }
 
-const MIGRATIONS = [runV1]
+function runV2(db) {
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_conversations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      model TEXT,
+      system_prompt TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC);`)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      model TEXT,
+      tokens_used INTEGER,
+      created_at INTEGER NOT NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, created_at);`)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS export_jobs (
+      id TEXT PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      config TEXT NOT NULL,
+      progress REAL DEFAULT 0,
+      error TEXT,
+      output_path TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_export_jobs_project ON export_jobs(project_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_export_jobs_status ON export_jobs(status);`)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS export_frames (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id TEXT NOT NULL REFERENCES export_jobs(id) ON DELETE CASCADE,
+      frame_index INTEGER NOT NULL,
+      file_path TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_export_frames_job ON export_frames(job_id, frame_index);`)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS editor_components (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT,
+      thumbnail_path TEXT,
+      data TEXT NOT NULL,
+      tags TEXT,
+      source TEXT NOT NULL DEFAULT 'builtin',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS comfyui_workflows (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      data TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS comfyui_jobs (
+      id TEXT PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      progress REAL DEFAULT 0,
+      outputs TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_comfyui_jobs_project ON comfyui_jobs(project_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_comfyui_jobs_status ON comfyui_jobs(status);`)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS codex_sessions (
+      id TEXT PRIMARY KEY,
+      cwd TEXT,
+      model TEXT,
+      agent_mode TEXT,
+      permission_profile TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS codex_messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES codex_sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT,
+      tool_calls TEXT,
+      created_at INTEGER NOT NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_codex_messages_session ON codex_messages(session_id, created_at);`)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS ref_image_cache (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      original_path TEXT NOT NULL,
+      cache_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(provider, cache_key)
+    );
+  `)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS unreal_export_sessions (
+      id TEXT PRIMARY KEY,
+      client_info TEXT,
+      last_heartbeat INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `)
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS unreal_export_jobs (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES unreal_export_sessions(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      payload TEXT NOT NULL,
+      result TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_unreal_jobs_session ON unreal_export_jobs(session_id, status);`)
+}
+
+function runV3(db) {
+	db.exec(`ALTER TABLE editor_components ADD COLUMN template_id TEXT`)
+	db.exec(`ALTER TABLE editor_components ADD COLUMN thumb_asset_id TEXT`)
+	db.exec(`ALTER TABLE editor_components ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1`)
+	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_editor_components_template_id ON editor_components(template_id)`)
+}
+
+const MIGRATIONS = [runV1, runV2, runV3]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)

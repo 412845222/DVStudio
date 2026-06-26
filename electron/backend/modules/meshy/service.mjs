@@ -1,0 +1,736 @@
+import { getHttpClient } from '../../core/http-client.mjs'
+import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
+
+const MESHY_API_BASE = 'https://api.meshy.ai'
+
+const MODE_PATH_MAP = {
+  'text-to-3d': '/openapi/v2/text-to-3d',
+  'image-to-3d': '/openapi/v1/image-to-3d',
+  'multi-image-to-3d': '/openapi/v1/multi-image-to-3d',
+  'text-to-image': '/openapi/v1/text-to-image',
+  'image-to-image': '/openapi/v1/image-to-image',
+  'retexture': '/openapi/v1/retexture',
+  'remesh': '/openapi/v1/remesh',
+}
+
+function getModePath(mode) {
+  const m = String(mode || '').trim().toLowerCase()
+  if (m === 'refine') return MODE_PATH_MAP['text-to-3d']
+  return MODE_PATH_MAP[m] || null
+}
+
+function getApiKey(ctx) {
+  const repo = ctx.localdb?.apiKeys
+  if (!repo) throw internalError('apiKeys repo not available')
+  const result = repo.getPlaintext('meshy')
+  if (!result.ok) throw internalError(result.error || 'failed to read meshy api key')
+  const key = String(result.plaintext || '').trim()
+  if (!key) throw invalidParamsError('meshy api key is not configured')
+  return key
+}
+
+function extractTaskId(obj) {
+  if (!obj || typeof obj !== 'object') return ''
+  if (typeof obj.result === 'string' && obj.result.trim()) return obj.result.trim()
+  if (typeof obj.id === 'string' && obj.id.trim()) return obj.id.trim()
+  if (typeof obj.task_id === 'string' && obj.task_id.trim()) return obj.task_id.trim()
+  return ''
+}
+
+function pickFirstUrl(obj) {
+  if (typeof obj === 'string') return obj.trim()
+  if (obj && typeof obj === 'object') {
+    const keys = ['glb', 'pre_remeshed_glb', 'fbx', 'obj', 'stl', 'usdz', 'rigged_character_glb_url', 'rigged_character_fbx_url', 'animation_glb_url', 'animation_fbx_url', 'processed_usdz_url', 'processed_armature_fbx_url']
+    for (const key of keys) {
+      const value = obj[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+  }
+  return ''
+}
+
+function pickFirstImageUrl(obj) {
+  if (typeof obj === 'string') return obj.trim()
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const value = String(item || '').trim()
+      if (value) return value
+    }
+  }
+  if (obj && typeof obj === 'object') {
+    const imageUrls = obj.image_urls
+    if (Array.isArray(imageUrls)) {
+      for (const item of imageUrls) {
+        const value = String(item || '').trim()
+        if (value) return value
+      }
+    }
+    for (const key of ['image_url', 'thumbnail_url']) {
+      const value = String(obj[key] || '').trim()
+      if (value) return value
+    }
+  }
+  return ''
+}
+
+function normalizeTask(mode, taskId, obj) {
+  if (!obj || typeof obj !== 'object') {
+    return { ok: true, mode, taskId, status: 'unknown', progress: 0, thumbnailUrl: '', modelUrls: {}, preferredModelUrl: '', statusText: 'invalid response' }
+  }
+
+  const rawStatus = String(obj.status || '').trim().toLowerCase()
+  const status = rawStatus || 'unknown'
+  let progress = 0
+  try {
+    progress = Math.max(0, Math.min(100, parseInt(String(obj.progress || '0'), 10)))
+  } catch {
+    progress = 0
+  }
+
+  const resultObj = obj.result && typeof obj.result === 'object' ? obj.result : {}
+  const thumbnailUrl = String(obj.thumbnail_url || resultObj.thumbnail_url || '').trim()
+  let modelUrls = obj.model_urls && typeof obj.model_urls === 'object' ? obj.model_urls : {}
+  if (!Object.keys(modelUrls).length && resultObj.model_urls && typeof resultObj.model_urls === 'object') {
+    modelUrls = resultObj.model_urls
+  }
+  modelUrls = Object.fromEntries(Object.entries(modelUrls).filter(([_, v]) => String(v || '').trim()).map(([k, v]) => [k, String(v).trim()]))
+  const preferredModelUrl = pickFirstUrl(modelUrls)
+
+  let imageUrlsRaw = obj.image_urls
+  if (!Array.isArray(imageUrlsRaw)) imageUrlsRaw = resultObj.image_urls
+  const imageUrls = Array.isArray(imageUrlsRaw) ? imageUrlsRaw.map(x => String(x || '').trim()).filter(x => x) : []
+  const preferredImageUrl = pickFirstImageUrl(imageUrls)
+  const primaryRemoteUrl = preferredModelUrl || preferredImageUrl
+
+  const taskErrorRaw = obj.task_error && typeof obj.task_error === 'object' ? obj.task_error : {}
+  const errorMessage = String(taskErrorRaw.message || obj.error || '').trim()
+
+  let statusText = String(obj.status_text || '').trim()
+  if (!statusText) {
+    if (status === 'pending' || status === 'queued') statusText = 'Meshy：任务排队中'
+    else if (status === 'running' || status === 'processing' || status === 'in_progress') statusText = `Meshy：生成中 ${progress}%`
+    else if (status === 'succeeded' || status === 'success' || status === 'completed') statusText = 'Meshy：生成完成'
+    else if (status === 'failed' || status === 'error') statusText = errorMessage || 'Meshy：生成失败'
+  }
+
+  return {
+    ok: true,
+    mode,
+    taskId,
+    status,
+    progress,
+    thumbnailUrl,
+    modelUrls,
+    imageUrls,
+    preferredImageUrl,
+    sourceImageUrl: preferredImageUrl,
+    preferredModelUrl: primaryRemoteUrl,
+    sourceModelUrl: primaryRemoteUrl,
+    statusText,
+    errorMessage,
+    raw: obj,
+  }
+}
+
+function serializeRepoTask(row) {
+  if (!row) return null
+  const msCreatedAt = Number(row.createdAt)
+  const msUpdatedAt = Number(row.updatedAt)
+  const msSyncedAt = Number(row.syncedAt || row.updatedAt)
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    mode: row.mode,
+    target: row.taskTarget || '3d',
+    family: row.taskFamily || row.mode,
+    relationKind: row.relationKind || 'model',
+    rootTaskId: row.rootTaskId || row.taskId,
+    parentTaskId: row.parentTaskId || '',
+    capabilities: Array.isArray(row.capabilities) ? row.capabilities : ['model'],
+    status: row.status || 'idle',
+    progress: Number(row.progress) || 0,
+    prompt: row.prompt || '',
+    negativePrompt: row.negativePrompt || '',
+    imageCount: Number(row.imageCount) || 0,
+    thumbnailUrl: row.thumbnailUrl || '',
+    preferredModelUrl: row.preferredModelUrl || '',
+    localAssetUrl: row.localAssetUrl || '',
+    localAssetPath: row.localAssetPath || '',
+    sourceModelUrl: row.sourceModelUrl || '',
+    errorMessage: row.errorMessage || '',
+    statusText: row.statusText || '',
+    lastNodeId: row.lastNodeId || '',
+    projectId: row.projectId ?? null,
+    remoteCreatedAt: row.remoteCreatedAt || null,
+    remoteFinishedAt: row.remoteFinishedAt || '',
+    createdAt: msCreatedAt ? new Date(msCreatedAt).toISOString() : new Date().toISOString(),
+    updatedAt: msUpdatedAt ? new Date(msUpdatedAt).toISOString() : new Date().toISOString(),
+    syncedAt: msSyncedAt ? new Date(msSyncedAt).toISOString() : new Date().toISOString(),
+    requestPayload: row.requestPayload && typeof row.requestPayload === 'object' ? row.requestPayload : {},
+    responsePayload: row.responsePayload && typeof row.responsePayload === 'object' ? row.responsePayload : {},
+    children: [],
+  }
+}
+
+function computeEffectiveFields(item) {
+  const child = (kind) => {
+    if (!Array.isArray(item.children)) return null
+    return item.children.find(c => c.relationKind === kind && c.status && ['succeeded', 'success', 'completed'].includes(String(c.status).toLowerCase())) || null
+  }
+  const textureChild = child('texture')
+  const riggingChild = child('rigging')
+  const animationChild = child('animation')
+  const remeshChild = child('remesh')
+  item.hasTextureChild = !!textureChild
+  item.hasRiggingChild = !!riggingChild
+  item.hasAnimationChild = !!animationChild
+
+  let effectiveTaskId = item.taskId
+  let effectiveRelationKind = item.relationKind
+  let effectiveStatus = item.status
+  let effectiveProgress = item.progress
+  let effectivePreferredModelUrl = item.preferredModelUrl
+  let effectiveLocalAssetUrl = item.localAssetUrl
+  let effectiveLocalAssetPath = item.localAssetPath
+  let effectiveThumbnailUrl = item.thumbnailUrl
+
+  if (textureChild) {
+    effectiveTaskId = textureChild.taskId
+    effectiveRelationKind = 'texture'
+    effectiveStatus = textureChild.status
+    effectiveProgress = textureChild.progress
+    effectivePreferredModelUrl = textureChild.preferredModelUrl || effectivePreferredModelUrl
+    effectiveLocalAssetUrl = textureChild.localAssetUrl || effectiveLocalAssetUrl
+    effectiveLocalAssetPath = textureChild.localAssetPath || effectiveLocalAssetPath
+    effectiveThumbnailUrl = textureChild.thumbnailUrl || effectiveThumbnailUrl
+  }
+  if (remeshChild) {
+    effectiveTaskId = remeshChild.taskId
+    effectiveRelationKind = 'remesh'
+    effectiveStatus = remeshChild.status
+    effectiveProgress = remeshChild.progress
+    effectivePreferredModelUrl = remeshChild.preferredModelUrl || effectivePreferredModelUrl
+    effectiveLocalAssetUrl = remeshChild.localAssetUrl || effectiveLocalAssetUrl
+    effectiveLocalAssetPath = remeshChild.localAssetPath || effectiveLocalAssetPath
+  }
+  if (riggingChild) {
+    effectiveTaskId = riggingChild.taskId
+    effectiveRelationKind = 'rigging'
+    effectiveStatus = riggingChild.status
+    effectiveProgress = riggingChild.progress
+    effectivePreferredModelUrl = riggingChild.preferredModelUrl || effectivePreferredModelUrl
+    effectiveLocalAssetUrl = riggingChild.localAssetUrl || effectiveLocalAssetUrl
+    effectiveLocalAssetPath = riggingChild.localAssetPath || effectiveLocalAssetPath
+  }
+  if (animationChild) {
+    effectiveTaskId = animationChild.taskId
+    effectiveRelationKind = 'animation'
+    effectiveStatus = animationChild.status
+    effectiveProgress = animationChild.progress
+    effectivePreferredModelUrl = animationChild.preferredModelUrl || effectivePreferredModelUrl
+    effectiveLocalAssetUrl = animationChild.localAssetUrl || effectiveLocalAssetUrl
+    effectiveLocalAssetPath = animationChild.localAssetPath || effectiveLocalAssetPath
+  }
+
+  item.effectiveTaskId = effectiveTaskId
+  item.effectiveRelationKind = effectiveRelationKind
+  item.effectiveStatus = effectiveStatus
+  item.effectiveProgress = effectiveProgress
+  item.effectivePreferredModelUrl = effectivePreferredModelUrl
+  item.effectiveLocalAssetUrl = effectiveLocalAssetUrl
+  item.effectiveLocalAssetPath = effectiveLocalAssetPath
+  item.effectiveThumbnailUrl = effectiveThumbnailUrl
+
+  if (Array.isArray(item.children)) {
+    for (const c of item.children) {
+      computeEffectiveFields(c)
+    }
+  }
+  return item
+}
+
+function buildTaskTree(rows) {
+  const items = rows.map(serializeRepoTask).filter(Boolean)
+  const nodeMap = new Map()
+  const roots = []
+
+  for (const item of items) {
+    const tid = String(item.taskId || '').trim()
+    if (!tid) continue
+    nodeMap.set(tid, { ...item, children: [] })
+  }
+
+  for (const item of items) {
+    const tid = String(item.taskId || '').trim()
+    if (!tid) continue
+    const node = nodeMap.get(tid)
+    if (!node) continue
+    const parentId = String(item.parentTaskId || '').trim()
+    const rootId = String(item.rootTaskId || tid).trim()
+    node.rootTaskId = rootId
+    if (parentId && nodeMap.has(parentId) && parentId !== tid) {
+      nodeMap.get(parentId).children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+
+  for (const root of roots) {
+    root.children.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    computeEffectiveFields(root)
+  }
+  roots.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+  return roots
+}
+
+function childOrder(a, b) {
+  const orderMap = { texture: 0, remesh: 1, rigging: 2, animation: 3, model: 4 }
+  const oa = orderMap[a.relationKind] ?? 99
+  const ob = orderMap[b.relationKind] ?? 99
+  if (oa !== ob) return oa - ob
+  return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+}
+
+function targetAndFamily(mode, payload) {
+  const rawTarget = String((payload || {}).target || '').trim().toLowerCase()
+  const rawFamily = String((payload || {}).family || '').trim().toLowerCase()
+  if (rawFamily) {
+    if (rawFamily === 'text-to-image' || rawFamily === 'image-to-image') return ['image', rawFamily]
+    return ['3d', rawFamily]
+  }
+  if (rawTarget === 'image') return ['image', 'text-to-image']
+  if (mode === 'text-to-image') return ['image', 'text-to-image']
+  if (mode === 'image-to-image') return ['image', 'image-to-image']
+  if (mode === 'image-to-3d') return ['3d', 'image-to-3d']
+  if (mode === 'multi-image-to-3d') return ['3d', 'multi-image-to-3d']
+  if (mode === 'retexture') return ['3d', 'retexture']
+  if (mode === 'remesh') return ['3d', 'remesh']
+  return ['3d', 'text-to-3d']
+}
+
+function imageCount(payload) {
+  if (!payload || typeof payload !== 'object') return 0
+  if (Array.isArray(payload.image_urls)) return payload.image_urls.map(x => String(x || '').trim()).filter(x => x).length
+  if (Array.isArray(payload.reference_image_urls)) return payload.reference_image_urls.map(x => String(x || '').trim()).filter(x => x).length
+  return String(payload.image_url || '').trim() ? 1 : 0
+}
+
+function firstNonEmptyStr(payload, keys) {
+  if (!payload || typeof payload !== 'object') return ''
+  for (const key of keys) {
+    const value = String(payload[key] || '').trim()
+    if (value) return value
+  }
+  return ''
+}
+
+function relationKindForFamily(family) {
+  const raw = String(family || '').trim().toLowerCase()
+  if (raw === 'retexture' || raw === 'texture' || raw === 'textured') return 'texture'
+  if (raw === 'rigging' || raw === 'rig' || raw === 'bind-skeleton' || raw === 'skeleton') return 'rigging'
+  if (raw === 'animation' || raw === 'bind-animation' || raw === 'motion') return 'animation'
+  if (raw === 'remesh') return 'remesh'
+  return 'model'
+}
+
+function capabilitiesForRelation(relationKind) {
+  const caps = ['model']
+  if (relationKind === 'texture') caps.push('textured')
+  if (relationKind === 'rigging') caps.push('rigged')
+  if (relationKind === 'animation') caps.push('animated')
+  return caps
+}
+
+function buildCreatePayload(payload) {
+  let mode = String(payload.mode || payload.family || '').trim().toLowerCase()
+  if (mode === 'refine') mode = 'text-to-3d'
+  if (mode === 'animations') mode = 'animation'
+  if (mode === 'rigging' || mode === 'animation') return [null, null, 'mode is not supported yet']
+
+  const endpoint = getModePath(mode)
+  if (!endpoint) return [null, null, 'mode is invalid']
+
+  const body = {}
+  const prompt = String(payload.prompt || '').trim()
+
+  if (mode === 'text-to-3d') {
+    if (!prompt) return [null, null, 'prompt is required']
+    body.prompt = prompt
+    const stage = String(payload.stage || 'preview').trim()
+    if (stage === 'preview' || stage === 'refine') body.mode = stage
+    const previewTaskId = String(payload.preview_task_id || '').trim()
+    if (previewTaskId) body.preview_task_id = previewTaskId
+    const negativePrompt = String(payload.negative_prompt || '').trim()
+    if (negativePrompt) body.negative_prompt = negativePrompt
+  } else if (mode === 'image-to-3d') {
+    const imageUrl = String(payload.image_url || '').trim()
+    if (!imageUrl) return [null, null, 'image_url is required']
+    body.image_url = imageUrl
+    if (prompt) body.prompt = prompt
+  } else if (mode === 'multi-image-to-3d') {
+    const imageUrls = Array.isArray(payload.image_urls) ? payload.image_urls.map(x => String(x || '').trim()).filter(x => x).slice(0, 4) : []
+    if (!imageUrls.length) return [null, null, 'image_urls is required']
+    body.image_urls = imageUrls
+    if (prompt) body.prompt = prompt
+  } else if (mode === 'text-to-image') {
+    if (!prompt) return [null, null, 'prompt is required']
+    let aiModel = String(payload.ai_model || '').trim().toLowerCase()
+    if (!['nano-banana', 'nano-banana-pro'].includes(aiModel)) aiModel = 'nano-banana'
+    body.ai_model = aiModel
+    body.prompt = prompt
+  } else if (mode === 'image-to-image') {
+    if (!prompt) return [null, null, 'prompt is required']
+    let aiModel = String(payload.ai_model || '').trim().toLowerCase()
+    if (!['nano-banana', 'nano-banana-pro'].includes(aiModel)) aiModel = 'nano-banana'
+    let refsAny = payload.reference_image_urls
+    if (!Array.isArray(refsAny)) refsAny = payload.image_urls
+    const refs = Array.isArray(refsAny) ? refsAny.map(x => String(x || '').trim()).filter(x => x).slice(0, 5) : []
+    if (!refs.length) return [null, null, 'reference_image_urls is required']
+    body.ai_model = aiModel
+    body.prompt = prompt
+    body.reference_image_urls = refs
+  } else if (mode === 'retexture') {
+    const inputTaskId = String(payload.input_task_id || payload.preview_task_id || '').trim()
+    const modelUrl = String(payload.model_url || '').trim()
+    if (inputTaskId) body.input_task_id = inputTaskId
+    else if (modelUrl) body.model_url = modelUrl
+    else return [null, null, 'input_task_id or model_url is required']
+    let textStylePrompt = String(payload.text_style_prompt || payload.texture_prompt || '').trim()
+    const imageStyleUrl = String(payload.image_style_url || payload.texture_image_url || '').trim()
+    if (!textStylePrompt && prompt) textStylePrompt = prompt
+    if (!textStylePrompt && !imageStyleUrl) return [null, null, 'text_style_prompt or image_style_url is required']
+    if (textStylePrompt) body.text_style_prompt = textStylePrompt
+    if (imageStyleUrl) body.image_style_url = imageStyleUrl
+  } else if (mode === 'remesh') {
+    const inputTaskId = String(payload.input_task_id || payload.preview_task_id || '').trim()
+    const modelUrl = String(payload.model_url || '').trim()
+    if (inputTaskId) body.input_task_id = inputTaskId
+    else if (modelUrl) body.model_url = modelUrl
+    else return [null, null, 'input_task_id or model_url is required']
+  }
+
+  let extraKeys = []
+  if (['text-to-3d', 'image-to-3d', 'multi-image-to-3d'].includes(mode)) {
+    extraKeys = ['ai_model', 'model_type', 'topology', 'target_polycount', 'symmetry_mode', 'should_remesh', 'save_pre_remeshed_model', 'should_texture', 'enable_pbr', 'pose_mode', 'texture_prompt', 'texture_image_url', 'moderation', 'image_enhancement', 'remove_lighting', 'target_formats', 'negative_prompt']
+  } else if (['text-to-image', 'image-to-image'].includes(mode)) {
+    extraKeys = ['aspect_ratio', 'generate_multi_view', 'pose_mode', 'seed']
+  } else if (mode === 'retexture') {
+    extraKeys = ['topology', 'target_polycount', 'texture_richness', 'target_formats']
+  } else if (mode === 'remesh') {
+    extraKeys = ['target_formats', 'topology', 'target_polycount', 'resize_height', 'origin_at', 'convert_format_only']
+  }
+
+  for (const key of extraKeys) {
+    if (key in body) continue
+    const value = payload[key]
+    if (value === undefined || value === null) continue
+    if (typeof value === 'string' && !value.trim()) continue
+    if (Array.isArray(value) && !value.length) continue
+    body[key] = value
+  }
+
+  return [mode, body, null]
+}
+
+export async function generateModel(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const client = getHttpClient()
+  const repo = ctx.localdb?.meshyTasks
+  if (!repo) throw internalError('meshyTasks repo not available')
+
+  const [mode, body, buildErr] = buildCreatePayload(payload || {})
+  if (buildErr) throw invalidParamsError(buildErr)
+
+  const endpoint = getModePath(mode)
+  const url = `${MESHY_API_BASE}${endpoint}`
+
+  const res = await client.post(url, body, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    timeout: 45000,
+  })
+
+  if (!res.ok) {
+    const errMsg = typeof res.body === 'object' && res.body?.message ? res.body.message : `HTTP ${res.status}`
+    throw upstreamError(`meshy generate failed: ${errMsg}`)
+  }
+
+  const taskId = extractTaskId(res.body)
+  if (!taskId) throw upstreamError('meshy generate failed: no task_id in response')
+
+  const [target, family] = targetAndFamily(mode, payload)
+  const relationKind = relationKindForFamily(family)
+  const parentTaskId = firstNonEmptyStr(payload, ['parentTaskId', 'parent_task_id', 'sourceTaskId', 'source_task_id', 'upstreamTaskId', 'upstream_task_id', 'preview_task_id'])
+  const rootTaskId = firstNonEmptyStr(payload, ['rootTaskId', 'root_task_id']) || parentTaskId || taskId
+  const capabilities = capabilitiesForRelation(relationKind)
+
+  repo.upsert({
+    taskId,
+    mode,
+    taskTarget: target,
+    taskFamily: family,
+    relationKind,
+    rootTaskId,
+    parentTaskId,
+    capabilities,
+    status: 'pending',
+    progress: 0,
+    prompt: body.prompt || '',
+    negativePrompt: body.negative_prompt || '',
+    imageCount: imageCount(payload),
+    thumbnailUrl: '',
+    preferredModelUrl: '',
+    sourceModelUrl: '',
+    errorMessage: '',
+    statusText: 'Meshy：任务已创建',
+    requestPayload: payload,
+    responsePayload: res.body,
+    projectId: payload?.projectId,
+    lastNodeId: payload?.lastNodeId || '',
+    remoteCreatedAt: new Date().toISOString(),
+    remoteFinishedAt: '',
+  })
+
+  return { ok: true, mode, taskId, status: 'pending', raw: res.body }
+}
+
+export async function getTask(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const client = getHttpClient()
+  const repo = ctx.localdb?.meshyTasks
+  if (!repo) throw internalError('meshyTasks repo not available')
+
+  const taskId = String(payload?.taskId || payload?.id || '').trim()
+  const mode = String(payload?.mode || 'text-to-3d').trim()
+  if (!taskId) throw invalidParamsError('taskId is required')
+
+  const endpoint = getModePath(mode)
+  if (!endpoint) throw invalidParamsError('invalid mode')
+
+  const url = `${MESHY_API_BASE}${endpoint}/${encodeURIComponent(taskId)}`
+
+  const res = await client.get(url, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    timeout: 30000,
+  })
+
+  if (!res.ok) {
+    if (res.status === 404) throw notFoundError('meshy task not found')
+    const errMsg = typeof res.body === 'object' && res.body?.message ? res.body.message : `HTTP ${res.status}`
+    throw upstreamError(`meshy getTask failed: ${errMsg}`)
+  }
+
+  const normalized = normalizeTask(mode, taskId, res.body)
+
+  const [target, family] = targetAndFamily(mode, normalized.raw)
+  repo.upsert({
+    taskId,
+    mode,
+    taskTarget: target,
+    taskFamily: family,
+    status: normalized.status,
+    progress: normalized.progress,
+    thumbnailUrl: normalized.thumbnailUrl,
+    preferredModelUrl: normalized.preferredModelUrl,
+    sourceModelUrl: normalized.sourceModelUrl,
+    errorMessage: normalized.errorMessage,
+    statusText: normalized.statusText,
+    responsePayload: normalized.raw,
+    remoteFinishedAt: ['succeeded', 'success', 'completed', 'failed', 'error'].includes(normalized.status) ? new Date().toISOString() : '',
+  })
+
+  return normalized
+}
+
+export async function listTasks(ctx, payload) {
+  const repo = ctx.localdb?.meshyTasks
+  if (!repo) throw internalError('meshyTasks repo not available')
+
+  let rows = repo.list()
+
+  if (payload?.status) {
+    const targetStatus = String(payload.status).trim().toLowerCase()
+    rows = rows.filter(item => item.status === targetStatus)
+  }
+  if (payload?.target && payload.target !== 'all') {
+    rows = rows.filter(item => item.taskTarget === payload.target)
+  }
+  if (payload?.family) {
+    const targetFamily = String(payload.family).trim().toLowerCase()
+    rows = rows.filter(item => item.taskFamily === targetFamily)
+  }
+
+  const rootIds = new Set()
+  for (const row of rows) {
+    rootIds.add(String(row.rootTaskId || row.taskId).trim() || String(row.taskId))
+  }
+  const merged = new Map()
+  for (const row of rows) {
+    merged.set(String(row.taskId), row)
+  }
+  for (const rootId of rootIds) {
+    if (!merged.has(rootId)) {
+      const rootRow = repo.getByTaskId(rootId)
+      if (rootRow) merged.set(rootId, rootRow)
+    }
+  }
+  const allRows = Array.from(merged.values())
+
+  let items = buildTaskTree(allRows)
+
+  if (payload?.limit) {
+    const limit = Math.max(1, Math.min(200, Number(payload.limit) || 80))
+    items = items.slice(0, limit)
+  }
+
+  return { ok: true, items }
+}
+
+export async function getTaskDetail(ctx, payload) {
+  const taskId = String(payload?.taskId || payload?.id || '').trim()
+  if (!taskId) throw invalidParamsError('taskId is required')
+
+  const repo = ctx.localdb?.meshyTasks
+  if (!repo) throw internalError('meshyTasks repo not available')
+
+  const local = repo.getByTaskId(taskId)
+  if (!local) {
+    throw notFoundError('meshy task not found')
+  }
+
+  const mode = local.mode || 'text-to-3d'
+
+  let normalized
+  try {
+    normalized = await getTask(ctx, { taskId, mode })
+  } catch {
+    normalized = null
+  }
+
+  const rootTaskId = String(local.rootTaskId || taskId).trim() || taskId
+  const rows = []
+  const rootRow = repo.getByTaskId(rootTaskId)
+  if (rootRow) rows.push(rootRow)
+
+  const allRows = repo.list()
+  for (const row of allRows) {
+    if (String(row.rootTaskId || '') === rootTaskId && String(row.taskId) !== rootTaskId) {
+      rows.push(row)
+    }
+  }
+
+  const items = buildTaskTree(rows)
+  let item = items[0] || serializeRepoTask(local)
+  if (item) {
+    item.selectedTaskId = taskId
+  }
+
+  return { ok: true, item: item || { ok: false, error: 'task not found' } }
+}
+
+export async function stopTask(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const client = getHttpClient()
+  const repo = ctx.localdb?.meshyTasks
+  if (!repo) throw internalError('meshyTasks repo not available')
+
+  const taskId = String(payload?.taskId || '').trim()
+  const mode = String(payload?.mode || 'text-to-3d').trim()
+  if (!taskId) throw invalidParamsError('taskId is required')
+
+  const endpoint = getModePath(mode)
+  if (!endpoint) throw invalidParamsError('invalid mode')
+
+  const url = `${MESHY_API_BASE}${endpoint}/${encodeURIComponent(taskId)}/cancel`
+
+  let stopOk = true
+  try {
+    const res = await client.post(url, {}, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      timeout: 15000,
+    })
+    if (!res.ok) stopOk = false
+  } catch {
+    stopOk = false
+  }
+
+  repo.upsert({
+    taskId,
+    mode,
+    status: 'cancelled',
+    statusText: 'Meshy：任务已停止',
+    errorMessage: stopOk ? '' : 'stop request failed, marked as cancelled locally',
+  })
+
+  return { ok: true, taskId, status: 'cancelled' }
+}
+
+export async function deleteTask(ctx, payload) {
+  const repo = ctx.localdb?.meshyTasks
+  if (!repo) throw internalError('meshyTasks repo not available')
+
+  const taskId = String(payload?.taskId || '').trim()
+  if (!taskId) throw invalidParamsError('taskId is required')
+
+  const existing = repo.getByTaskId(taskId)
+  if (!existing) throw notFoundError('meshy task not found')
+
+  const allRows = repo.list()
+  const rootId = String(existing.rootTaskId || taskId).trim()
+  const toDelete = []
+  for (const row of allRows) {
+    const rid = String(row.rootTaskId || row.taskId).trim()
+    if (rid === rootId || String(row.taskId) === taskId) {
+      toDelete.push(String(row.taskId))
+    }
+  }
+
+  for (const tid of toDelete) {
+    repo.remove(tid)
+  }
+
+  return { ok: true, taskId, deleted: true }
+}
+
+export async function getBalance(ctx) {
+  const repo = ctx.localdb?.apiKeys
+  if (!repo) throw internalError('apiKeys repo not available')
+
+  const keyResult = repo.getPlaintext('meshy')
+  if (!keyResult.ok || !keyResult.plaintext) {
+    return { ok: true, available: false, configured: false, displayText: '未配置Meshy API Key', detail: '' }
+  }
+
+  const apiKey = keyResult.plaintext
+  const client = getHttpClient()
+  const url = `${MESHY_API_BASE}/openapi/v2/balances`
+
+  try {
+    const res = await client.get(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      timeout: 10000,
+    })
+
+    if (!res.ok) {
+      return { ok: true, available: false, configured: true, displayText: '无法查询余额', detail: `HTTP ${res.status}` }
+    }
+
+    const balance = res.body
+    let displayText = '余额查询成功'
+    if (balance && typeof balance === 'object') {
+      if (typeof balance.credits === 'number') displayText = `余额: ${balance.credits} credits`
+      else if (typeof balance.balance === 'number') displayText = `余额: ${balance.balance}`
+      else if (typeof balance.free_balance === 'number') displayText = `免费额度: ${balance.free_balance}`
+    }
+
+    return { ok: true, available: true, configured: true, displayText, detail: balance }
+  } catch (err) {
+    return { ok: true, available: false, configured: true, displayText: '余额查询失败', detail: err?.message || String(err) }
+  }
+}
+
+export async function health(ctx) {
+  const repo = ctx.localdb?.apiKeys
+  if (!repo) return { ok: true, configured: false }
+  const keyResult = repo.getPlaintext('meshy')
+  return { ok: true, configured: !!(keyResult.ok && keyResult.plaintext) }
+}

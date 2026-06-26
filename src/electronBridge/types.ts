@@ -20,6 +20,7 @@ export type BackendRuntimeState = {
 	lastError: string
 	setupRunning: boolean
 	updatedAt: number
+	mode?: 'normal' | 'migration'
 }
 
 export type BackendLogsResult = {

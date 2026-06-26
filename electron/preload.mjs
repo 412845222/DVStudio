@@ -4,6 +4,115 @@ function invoke(channel, payload) {
 	return ipcRenderer.invoke(channel, payload)
 }
 
+function createInvokeStream(baseChannel) {
+	return function invokeStream(payload) {
+		const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+		const dataChannel = `${baseChannel}:data`
+		const endChannel = `${baseChannel}:end`
+		const errorChannel = `${baseChannel}:error`
+		const streamChannel = `${baseChannel}:stream`
+
+		let registered = false
+		let buffer = []
+		let done = false
+		let error = null
+		let resolveNext = null
+		let rejectNext = null
+
+		function onData(_event, rid, chunk) {
+			if (rid !== requestId) return
+			let parsed
+			try {
+				parsed = typeof chunk === 'string' ? JSON.parse(chunk) : chunk
+			} catch {
+				parsed = chunk
+			}
+			if (resolveNext) {
+				const res = resolveNext
+				resolveNext = null
+				rejectNext = null
+				res({ value: parsed, done: false })
+			} else {
+				buffer.push(parsed)
+			}
+		}
+
+		function onEnd(_event, rid) {
+			if (rid !== requestId) return
+			cleanup()
+			done = true
+			if (resolveNext) {
+				const res = resolveNext
+				resolveNext = null
+				rejectNext = null
+				res({ value: undefined, done: true })
+			}
+		}
+
+		function onError(_event, rid, err) {
+			if (rid !== requestId) return
+			cleanup()
+			error = err?.error || err?.message || String(err)
+			if (rejectNext) {
+				const rej = rejectNext
+				resolveNext = null
+				rejectNext = null
+				rej(new Error(error))
+			}
+		}
+
+		function cleanup() {
+			if (!registered) return
+			registered = false
+			ipcRenderer.removeListener(dataChannel, onData)
+			ipcRenderer.removeListener(endChannel, onEnd)
+			ipcRenderer.removeListener(errorChannel, onError)
+		}
+
+		ipcRenderer.on(dataChannel, onData)
+		ipcRenderer.on(endChannel, onEnd)
+		ipcRenderer.on(errorChannel, onError)
+		registered = true
+
+		invoke(streamChannel, { requestId, ...payload }).catch(err => {
+			cleanup()
+			error = err?.message || String(err)
+			done = true
+			if (rejectNext) {
+				const rej = rejectNext
+				resolveNext = null
+				rejectNext = null
+				rej(new Error(error))
+			}
+		})
+
+		const generator = {
+			[Symbol.asyncIterator]() { return this },
+			next() {
+				if (error) return Promise.reject(new Error(error))
+				if (buffer.length > 0) return Promise.resolve({ value: buffer.shift(), done: false })
+				if (done) return Promise.resolve({ value: undefined, done: true })
+				return new Promise((resolve, reject) => {
+					resolveNext = resolve
+					rejectNext = reject
+				})
+			},
+			return() {
+				cleanup()
+				done = true
+				return Promise.resolve({ value: undefined, done: true })
+			},
+			throw(err) {
+				cleanup()
+				error = err?.message || String(err)
+				return Promise.reject(err)
+			},
+		}
+
+		return { generator, requestId }
+	}
+}
+
 const BACKEND_RUNTIME_CHANNEL = 'dweb:backendRuntime:changed'
 const backendRuntimeListenerMap = new Map()
 let backendRuntimeListenerSeed = 0
@@ -35,7 +144,9 @@ ipcRenderer.on(RESOURCE_MANAGER_DATA_CHANNEL, (_event, payload) => {
 
 // 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
 const BACKEND_BASE_URL = await invoke('dweb:getBackendBaseUrl')
+const BACKEND_RUNTIME_STATE = await invoke('dweb:backendRuntime:getState')
 contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', BACKEND_BASE_URL)
+contextBridge.exposeInMainWorld('__DWEB_BACKEND_MODE__', BACKEND_RUNTIME_STATE?.mode || 'normal')
 
 const CLIENT_SETTINGS = await invoke('dweb:settings:get')
 contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', CLIENT_SETTINGS?.ok ? CLIENT_SETTINGS.data : null)
@@ -58,6 +169,10 @@ contextBridge.exposeInMainWorld('__DWEB_RUNTIME__', {
 contextBridge.exposeInMainWorld('dweb', {
 	common: {
 		getBackendBaseUrl: () => invoke('dweb:getBackendBaseUrl'),
+		health: () => invoke('dweb:system:health'),
+		echo: (payload) => invoke('dweb:system:echo', payload),
+		getUserAgreement: () => invoke('dweb:system:legal:agreement'),
+		getMigrationStatus: () => invoke('dweb:system:migration-status'),
 		getBackendRuntimeState: () => invoke('dweb:backendRuntime:getState'),
 		onBackendRuntimeStateChanged: (handler) => {
 			if (typeof handler !== 'function') return -1
@@ -97,6 +212,52 @@ contextBridge.exposeInMainWorld('dweb', {
 		openExternalUrl: (payload) => invoke('dweb:app:openExternalUrl', payload),
 		openFolderForPath: (payload) => invoke('dweb:app:openFolderForPath', payload),
 		runBootstrapInstaller: () => invoke('dweb:bootstrap:install'),
+		invokeStream: (baseChannel, payload) => {
+			const { generator } = createInvokeStream(baseChannel)(payload)
+			return generator
+		},
+	},
+	meshy: {
+		health: () => invoke('dweb:meshy:health'),
+		generate: (payload) => invoke('dweb:meshy:generate', payload || {}),
+		getTask: (payload) => invoke('dweb:meshy:get-task', payload || {}),
+		listTasks: (payload) => invoke('dweb:meshy:list-tasks', payload || {}),
+		taskDetail: (payload) => invoke('dweb:meshy:task-detail', payload || {}),
+		stop: (payload) => invoke('dweb:meshy:stop', payload || {}),
+		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
+		balance: () => invoke('dweb:meshy:balance'),
+	},
+	seedance: {
+		health: () => invoke('dweb:seedance:health'),
+		generateStream: (payload) => {
+			const { generator } = createInvokeStream('dweb:seedance:generate')(payload || {})
+			return generator
+		},
+		list: (payload) => invoke('dweb:seedance:list', payload || {}),
+		taskDetail: (payload) => invoke('dweb:seedance:task-detail', payload || {}),
+		sync: (payload) => invoke('dweb:seedance:sync', payload || {}),
+	},
+	projects: {
+		list: () => invoke('dweb:projects:list'),
+		save: (payload) => invoke('dweb:projects:save', payload || {}),
+		load: (payload) => invoke('dweb:projects:load', payload || {}),
+		delete: (payload) => invoke('dweb:projects:delete', payload || {}),
+		openFolder: (payload) => invoke('dweb:projects:open-folder', payload || {}),
+	},
+	projectAssets: {
+		health: () => invoke('dweb:project-assets:health'),
+		upload: (payload) => invoke('dweb:project-assets:upload', payload || {}),
+		import: (payload) => invoke('dweb:project-assets:import', payload || {}),
+		delete: (payload) => invoke('dweb:project-assets:delete', payload || {}),
+		resolve: (payload) => invoke('dweb:project-assets:resolve', payload || {}),
+		repair: (payload) => invoke('dweb:project-assets:repair', payload || {}),
+		repairAll: (payload) => invoke('dweb:project-assets:repair-all', payload || {}),
+		registerRoot: (payload) => invoke('dweb:project-assets:register-root', payload || {}),
+		clearRoot: (payload) => invoke('dweb:project-assets:clear-root', payload || {}),
+		validateRoot: (payload) => invoke('dweb:project-assets:validate-root', payload || {}),
+		rootSnapshot: () => invoke('dweb:project-assets:root-snapshot'),
+		diagnose: (payload) => invoke('dweb:project-assets:diagnose', payload || {}),
+		accessLogs: (payload) => invoke('dweb:project-assets:access-logs', payload || {}),
 	},
 	window: {
 		minimize: () => invoke('dweb:window:minimize'),

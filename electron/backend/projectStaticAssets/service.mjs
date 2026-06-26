@@ -5,6 +5,7 @@ import {
 	downloadUrlToProjectRoot,
 	getProjectRootById,
 	importProjectAsset,
+	migrateBinCacheMediaToMedia,
 	resolveProjectAsset,
 	uploadProjectAsset,
 	deleteProjectAsset,
@@ -44,6 +45,38 @@ function fileExists(filePath) {
 	} catch {
 		return false
 	}
+}
+
+function isBinCacheFile(root, filePath) {
+	if (!filePath) return false
+	const normalized = String(filePath).toLowerCase().replace(/\\/g, '/')
+	if (normalized.endsWith('.bin')) return true
+	const cacheBinDir = path.resolve(root, '.dvcache', 'bin').toLowerCase().replace(/\\/g, '/')
+	return normalized.includes(cacheBinDir + '/')
+}
+
+function migrateBinIfMedia(pid, root, filePath, resourceId, resource) {
+	if (!fileExists(filePath)) return null
+	if (!isBinCacheFile(root, filePath)) return null
+	const kind = assetKind(resource)
+	if (kind === 'file' || kind === 'model') return null
+	const name = assetName(resourceId, resource)
+	const result = migrateBinCacheMediaToMedia({
+		projectId: pid,
+		binFilePath: filePath,
+		kind,
+		preferredName: name
+	})
+	if (result?.ok && result.migrated && result.asset) {
+		return makeCanonicalAsset(
+			pid,
+			root,
+			result.asset.absolutePath || result.asset.sourcePath,
+			resourceId,
+			resource
+		)
+	}
+	return null
 }
 
 function scanForBasename(root, targetName) {
@@ -109,19 +142,27 @@ async function repairOneProjectAsset(projectId, resourceId, resource) {
 
 	for (const rel of candidates.filter(Boolean)) {
 		const resolved = safeResolveProjectRelative(root, rel)
-		if (fileExists(resolved))
+		if (fileExists(resolved)) {
+			const migrated = migrateBinIfMedia(pid, root, resolved, resourceId, resource)
+			if (migrated) return migrated
 			return makeCanonicalAsset(pid, root, resolved, resourceId, resource, rel)
+		}
 	}
 
 	const sourcePath = fileUrlToPath(
 		String(resource.sourcePath || resource.absolutePath || '').trim()
 	)
 	if (fileExists(sourcePath)) {
+		const migrated = migrateBinIfMedia(pid, root, sourcePath, resourceId, resource)
+		if (migrated) return migrated
 		const copied = await copyFileToProjectRoot(pid, sourcePath, assetName(resourceId, resource))
 		const rel = String(copied?.relativePath || '').trim()
 		const abs = String(copied?.absolutePath || '').trim()
-		if (copied?.ok && rel && fileExists(abs))
+		if (copied?.ok && rel && fileExists(abs)) {
+			const copiedMigrated = migrateBinIfMedia(pid, root, abs, resourceId, resource)
+			if (copiedMigrated) return copiedMigrated
 			return makeCanonicalAsset(pid, root, abs, resourceId, resource, rel)
+		}
 	}
 
 	const sourceUrl = String(resource.url || '').trim()
@@ -150,7 +191,11 @@ async function repairOneProjectAsset(projectId, resourceId, resource) {
 	const generatedRoot = path.resolve(root, 'Content', 'Generated')
 	for (const name of names) {
 		const hit = scanForBasename(mediaRoot, name) || scanForBasename(generatedRoot, name)
-		if (hit) return makeCanonicalAsset(pid, root, hit, resourceId, resource)
+		if (hit) {
+			const migrated = migrateBinIfMedia(pid, root, hit, resourceId, resource)
+			if (migrated) return migrated
+			return makeCanonicalAsset(pid, root, hit, resourceId, resource)
+		}
 	}
 
 	const repaired = repairProjectAsset({
