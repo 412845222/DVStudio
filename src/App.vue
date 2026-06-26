@@ -8,7 +8,7 @@
 		}"
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
-		<GlobalTitleBar v-if="isElectronRuntime && !isPreviewWindow" class="app-titlebar" />
+		<GlobalTitleBar v-if="isElectronRuntime &amp;&amp; !isPreviewWindow" class="app-titlebar" />
 		<GlobalSideNav
 			v-if="!isPreviewWindow"
 			class="app-side-nav"
@@ -16,6 +16,7 @@
 			:collapsed="navCollapsed"
 			@expand-change="onNavExpandChange"
 			@collapsed-change="onNavCollapsedChange"
+			@toggle-steam-panel="toggleSteamPanel()"
 		/>
 		<main ref="contentEl" class="app-content">
 			<router-view v-slot="{ Component }">
@@ -30,6 +31,23 @@
 			@dismiss="hideStartupProgress"
 		/>
 		<PageTransitionOverlay v-if="!isPreviewWindow" />
+		<SteamEntryOverlay
+			v-if="!isPreviewWindow && !isResourceManagerWindow && isRealPlatform"
+			:visible="steamEntryVisible"
+			:is-connecting="steamEntryConnecting"
+			:is-connected="steamEntryConnected"
+			:user="steamEntryUser"
+			:error="steamEntryError"
+			@close="hideSteamEntry"
+		/>
+		<SteamPanel
+			v-if="!isPreviewWindow && !isResourceManagerWindow && isRealPlatform"
+			:visible="steamPanelOpen"
+			:is-real-platform="isRealPlatform"
+			:user="platformUser"
+			@close="closeSteamPanel()"
+			@action="handleSteamPanelAction"
+		/>
 	</div>
 </template>
 
@@ -45,7 +63,11 @@ import GlobalTitleBar from './ui/UIComponent/GlobalTitleBar.vue'
 import StartupProgressBar from './ui/UIComponent/StartupProgressBar.vue'
 import PageTransitionOverlay from './ui/UIComponent/PageTransitionOverlay.vue'
 import GlobalPageBackground from './ui/UIComponent/GlobalPageBackground.vue'
+import SteamEntryOverlay from './ui/UIComponent/SteamEntryOverlay.vue'
+import SteamPanel from './ui/Steam/SteamPanel.vue'
 import { useStartupProgress } from './composables/useStartupProgress'
+import { usePlatform, useSteamEntry } from './platformBridge'
+import { useSteamPanel } from './composables/useSteamPanel'
 
 provide(VideoStudioKey, VideoStudioStore)
 provide(TimelineKey, TimelineStore)
@@ -79,6 +101,42 @@ const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() 
 })
 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
+
+const { isRealPlatform, user: platformUser } = usePlatform()
+const { isOpen: steamPanelOpen, open: openSteamPanel, close: closeSteamPanel, toggle: toggleSteamPanel } = useSteamPanel(isRealPlatform)
+
+const {
+	showOverlay: steamEntryVisible,
+	isConnecting: steamEntryConnecting,
+	isConnected: steamEntryConnected,
+	user: steamEntryUser,
+	error: steamEntryError,
+	hideOverlay: hideSteamEntry,
+} = useSteamEntry()
+
+function openExternalUrl(url: string) {
+	const w = window as any
+	if (w?.dweb?.common?.openExternalUrl) {
+		w.dweb.common.openExternalUrl(url)
+	} else {
+		window.open(url, '_blank', 'noopener,noreferrer')
+	}
+}
+
+function handleSteamPanelAction(actionId: string) {
+	switch (actionId) {
+		case 'store':
+			openExternalUrl('https://store.steampowered.com/')
+			break
+		case 'community':
+			openExternalUrl('https://steamcommunity.com/')
+			break
+		case 'friends':
+		case 'open-panel':
+		default:
+			break
+	}
+}
 
 function onNavExpandChange(expanded: boolean) {
 	navExpanded.value = expanded

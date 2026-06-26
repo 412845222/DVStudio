@@ -8,6 +8,9 @@ const BACKEND_RUNTIME_CHANNEL = 'dweb:backendRuntime:changed'
 const backendRuntimeListenerMap = new Map()
 let backendRuntimeListenerSeed = 0
 
+const platformListenerMap = new Map()
+let platformListenerSeed = 0
+
 // ===== 资源管理器窗口：预注册监听器 + 数据缓存 =====
 // 关键：在 preload 脚本加载时（早于 Vue 挂载）就注册 IPC 监听器
 // 避免主窗口推送数据时 Vue 组件尚未挂载导致消息丢失
@@ -19,17 +22,11 @@ let resourceManagerDataListenerSeed = 0
 ipcRenderer.on(RESOURCE_MANAGER_DATA_CHANNEL, (_event, payload) => {
 	try {
 		const resCount = Array.isArray(payload?.resources) ? payload.resources.length : 0
-		console.log(
-			`[preload:resource-manager] received data: ${resCount} resources, nodesById=${payload?.nodesById ? typeof payload.nodesById : 'missing'}, nodeOrder=${Array.isArray(payload?.nodeOrder) ? payload.nodeOrder.length : 'N/A'}`
-		)
+		console.log(`[preload:resource-manager] received data: ${resCount} resources, nodesById=${payload?.nodesById ? typeof payload.nodesById : 'missing'}, nodeOrder=${Array.isArray(payload?.nodeOrder) ? payload.nodeOrder.length : 'N/A'}`)
 		resourceManagerLatestData = payload
 		// 通知所有已注册的 Vue 侧处理器
 		for (const handler of resourceManagerDataHandlers.values()) {
-			try {
-				handler(payload)
-			} catch (err) {
-				console.warn('[preload:resource-manager] handler error:', err)
-			}
+			try { handler(payload) } catch (err) { console.warn('[preload:resource-manager] handler error:', err) }
 		}
 	} catch (err) {
 		console.warn('[preload:resource-manager] failed to process data:', err)
@@ -41,21 +38,15 @@ const BACKEND_BASE_URL = await invoke('dweb:getBackendBaseUrl')
 contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', BACKEND_BASE_URL)
 
 const CLIENT_SETTINGS = await invoke('dweb:settings:get')
-contextBridge.exposeInMainWorld(
-	'__DWEB_CLIENT_SETTINGS',
-	CLIENT_SETTINGS?.ok ? CLIENT_SETTINGS.data : null
-)
+contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', CLIENT_SETTINGS?.ok ? CLIENT_SETTINGS.data : null)
 
 contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO', process.env.DWEB_AIWF_AUTO_HELLO || '')
-contextBridge.exposeInMainWorld(
-	'__DWEB_AIWF_AUTO_HELLO_TEXT',
-	process.env.DWEB_AIWF_AUTO_HELLO_TEXT || ''
-)
+contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO_TEXT', process.env.DWEB_AIWF_AUTO_HELLO_TEXT || '')
 
 // 运行环境标记：用于区分 Web 部署 vs Electron 客户端
 contextBridge.exposeInMainWorld('__DWEB_RUNTIME__', {
 	platform: 'electron',
-	isElectron: true
+	isElectron: true,
 })
 
 /**
@@ -105,7 +96,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		revealUserDataDir: () => invoke('dweb:app:revealUserDataDir'),
 		openExternalUrl: (payload) => invoke('dweb:app:openExternalUrl', payload),
 		openFolderForPath: (payload) => invoke('dweb:app:openFolderForPath', payload),
-		runBootstrapInstaller: () => invoke('dweb:bootstrap:install')
+		runBootstrapInstaller: () => invoke('dweb:bootstrap:install'),
 	},
 	window: {
 		minimize: () => invoke('dweb:window:minimize'),
@@ -113,7 +104,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		isMaximized: () => invoke('dweb:window:isMaximized'),
 		reload: () => invoke('dweb:window:reload'),
 		openDevTools: () => invoke('dweb:window:openDevTools'),
-		close: () => invoke('dweb:window:close')
+		close: () => invoke('dweb:window:close'),
 	},
 	aiworkflow: {
 		pingBackend: () => invoke('dweb:backend:ping'),
@@ -123,10 +114,8 @@ contextBridge.exposeInMainWorld('dweb', {
 		clearProjectRoot: (payload) => invoke('dweb:aiworkflow:clearProjectRoot', payload || {}),
 		getProjectRootSnapshot: () => invoke('dweb:aiworkflow:getProjectRootSnapshot'),
 		getProjectRootById: (payload) => invoke('dweb:aiworkflow:getProjectRootById', payload || {}),
-		downloadUrlToProjectRoot: (payload) =>
-			invoke('dweb:aiworkflow:downloadUrlToProjectRoot', payload || {}),
-		copyFileToProjectRoot: (payload) =>
-			invoke('dweb:aiworkflow:copyFileToProjectRoot', payload || {}),
+		downloadUrlToProjectRoot: (payload) => invoke('dweb:aiworkflow:downloadUrlToProjectRoot', payload || {}),
+		copyFileToProjectRoot: (payload) => invoke('dweb:aiworkflow:copyFileToProjectRoot', payload || {}),
 		fetchAsArrayBuffer: (payload) => invoke('dweb:aiworkflow:fetchAsArrayBuffer', payload || {}),
 
 		// ---- 静态资产管理（纯本地；取代 Django assets/* API） ----
@@ -151,30 +140,30 @@ contextBridge.exposeInMainWorld('dweb', {
 				save: (payload) => invoke('dweb:localdb:projects:save', payload || {}),
 				load: (payload) => invoke('dweb:localdb:projects:load', payload || {}),
 				delete: (payload) => invoke('dweb:localdb:projects:delete', payload || {}),
-				openFolder: (payload) => invoke('dweb:localdb:projects:openFolder', payload || {})
+				openFolder: (payload) => invoke('dweb:localdb:projects:openFolder', payload || {}),
 			},
 			meshy: {
 				list: (payload) => invoke('dweb:localdb:meshy:list', payload || {}),
 				get: (payload) => invoke('dweb:localdb:meshy:get', payload || {}),
 				upsert: (payload) => invoke('dweb:localdb:meshy:upsert', payload || {}),
-				remove: (payload) => invoke('dweb:localdb:meshy:remove', payload || {})
+				remove: (payload) => invoke('dweb:localdb:meshy:remove', payload || {}),
 			},
 			video: {
 				list: (payload) => invoke('dweb:localdb:video:list', payload || {}),
 				get: (payload) => invoke('dweb:localdb:video:get', payload || {}),
 				upsert: (payload) => invoke('dweb:localdb:video:upsert', payload || {}),
-				remove: (payload) => invoke('dweb:localdb:video:remove', payload || {})
+				remove: (payload) => invoke('dweb:localdb:video:remove', payload || {}),
 			},
 			apiKeys: {
 				list: () => invoke('dweb:localdb:apiKeys:list'),
 				get: (payload) => invoke('dweb:localdb:apiKeys:get', payload || {}),
 				set: (payload) => invoke('dweb:localdb:apiKeys:set', payload || {}),
 				getPlaintext: (payload) => invoke('dweb:localdb:apiKeys:getPlaintext', payload || {}),
-				remove: (payload) => invoke('dweb:localdb:apiKeys:remove', payload || {})
-			}
+				remove: (payload) => invoke('dweb:localdb:apiKeys:remove', payload || {}),
+			},
 		},
 		projectAssets: {
-			repairAll: (payload) => invoke('dweb:aiworkflow:projectAssets:repairAll', payload || {})
+			repairAll: (payload) => invoke('dweb:aiworkflow:projectAssets:repairAll', payload || {}),
 		},
 		migrateFromDjango: (payload) => invoke('dweb:localdb:migrateFromDjango', payload || {}),
 		// ---- 图片预览原生窗口（Electron BrowserWindow） ----
@@ -188,11 +177,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:image-markup:exported'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try {
-					handler(payload)
-				} catch {
-					/* ignore */
-				}
+				try { handler(payload) } catch { /* ignore */ }
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -230,11 +215,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:resource-manager:event'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try {
-					handler(payload)
-				} catch {
-					/* ignore */
-				}
+				try { handler(payload) } catch { /* ignore */ }
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -256,11 +237,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:resource-manager:notify'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try {
-					handler(payload)
-				} catch {
-					/* ignore */
-				}
+				try { handler(payload) } catch { /* ignore */ }
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -282,11 +259,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			resourceManagerDataHandlers.set(id, handler)
 			// 如果已有缓存数据，立即回调一次
 			if (resourceManagerLatestData !== null) {
-				try {
-					handler(resourceManagerLatestData)
-				} catch {
-					/* ignore */
-				}
+				try { handler(resourceManagerLatestData) } catch { /* ignore */ }
 			}
 			return id
 		},
@@ -295,10 +268,41 @@ contextBridge.exposeInMainWorld('dweb', {
 			if (!resourceManagerDataHandlers.has(id)) return { ok: false }
 			resourceManagerDataHandlers.delete(id)
 			return { ok: true }
-		}
+		},
 	},
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),
-		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options)
-	}
+		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options),
+	},
+	platform: {
+		getStatus: () => invoke('platform:get-status'),
+		getActive: () => invoke('platform:get-active'),
+		getUser: () => invoke('platform:get-user'),
+		isAvailable: () => invoke('platform:is-available'),
+		overlayIsEnabled: () => invoke('platform:overlay:is-enabled'),
+		overlayIsActive: () => invoke('platform:overlay:is-active'),
+		overlayOpenUrl: (url) => invoke('platform:overlay:open-url', url),
+		overlayActivate: (dialog) => invoke('platform:overlay:activate', dialog),
+		dlcIsInstalled: (dlcAppId) => invoke('platform:dlc:is-installed', dlcAppId),
+		dlcGetInstalled: () => invoke('platform:dlc:get-installed'),
+		onEvent: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++platformListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch {}
+			}
+			platformListenerMap.set(id, wrapped)
+			ipcRenderer.on('platform:event', wrapped)
+			invoke('platform:request-status')
+			return id
+		},
+		offEvent: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = platformListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('platform:event', wrapped)
+			platformListenerMap.delete(id)
+			return { ok: true }
+		},
+	},
 })
