@@ -10,6 +10,12 @@ import { createProjectsRepo } from './repos/projects.mjs'
 import { createMeshyTasksRepo } from './repos/meshyTasks.mjs'
 import { createVideoTasksRepo } from './repos/videoTasks.mjs'
 import { createApiKeysRepo } from './repos/apiKeys.mjs'
+import { createChatConversationsRepo } from './repos/chatConversations.mjs'
+import { createExportJobsRepo } from './repos/exportJobs.mjs'
+import { createEditorComponentsRepo } from './repos/editorComponents.mjs'
+import { createComfyuiWorkflowsRepo } from './repos/comfyuiWorkflows.mjs'
+import { createComfyuiJobsRepo } from './repos/comfyuiJobs.mjs'
+import { createRefImageCacheRepo } from './repos/refImageCache.mjs'
 import fs from 'node:fs'
 import nodePath from 'node:path'
 import os from 'node:os'
@@ -46,7 +52,13 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 		const meshyTasks = createMeshyTasksRepo()
 		const videoTasks = createVideoTasksRepo()
 		const apiKeys = createApiKeysRepo({ appSecret: appSecret || baseDir || 'localdb' })
-		reposSnapshot = { projects, meshyTasks, videoTasks, apiKeys, dbFilePath, schemaInfo, tag }
+		const chatConversations = createChatConversationsRepo()
+		const exportJobs = createExportJobsRepo({ backendDataDir: baseDir })
+		const editorComponents = createEditorComponentsRepo({ backendDataDir: baseDir })
+		const comfyuiWorkflows = createComfyuiWorkflowsRepo()
+		const comfyuiJobs = createComfyuiJobsRepo()
+		const refImageCache = createRefImageCacheRepo()
+		reposSnapshot = { projects, meshyTasks, videoTasks, apiKeys, chatConversations, exportJobs, editorComponents, comfyuiWorkflows, comfyuiJobs, refImageCache, dbFilePath, schemaInfo, tag }
 		lastInitError = null
 		return { ok: true, tag, dbFilePath, schemaInfo }
 	} catch (err) {

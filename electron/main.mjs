@@ -45,6 +45,7 @@ import {
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
 import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
+import { initBackend, shutdownBackend } from './backend/index.mjs'
 import { platformPreflight, platformInit, platformShutdown, registerPlatformIpc, setMainWindowForPlatform } from './platform/index.mjs'
 
 // dweb:// must be registered as a privileged scheme before app ready,
@@ -201,12 +202,13 @@ let backendPythonForKill = ''
 
 let backendRuntimeState = {
 	running: false,
-	healthy: false,
+	healthy: true,
 	baseUrl: '',
 	port: 0,
 	lastError: '',
 	setupRunning: false,
 	updatedAt: 0,
+	mode: 'migration',
 }
 
 function createDefaultSetupSteps() {
@@ -1131,7 +1133,9 @@ async function bootBackend(options = {}) {
 		baseUrl: backendBaseUrl,
 		port: backendPort,
 		lastError: '',
+		mode: 'normal',
 	})
+	ensureBackendHealthMonitor()
 }
 
 async function waitBackendProcessExit(proc, { timeoutMs = 8000 } = {}) {
@@ -2169,7 +2173,6 @@ async function main() {
 	initRuntimeLogger()
 	registerRuntimeDiagnostics()
 	registerDwebProjectAssetProtocol()
-	ensureBackendHealthMonitor()
 	ensureClientResourceLayout()
 	loadClientSettings()
 
@@ -2220,22 +2223,25 @@ async function main() {
 	appendRuntimeLog(`[app] isPackaged=${app.isPackaged} platform=${process.platform} execPath=${process.execPath}`)
 
 	await createWindow()
-	void withBackendOpLock(async () => {
-		try {
-			appendRuntimeLog('[app] auto setup workflow start')
-			const result = await runSetupWorkflow({ reason: 'app-start' })
-			if (!result?.ok) {
-				const msg = String(result?.error || 'setup failed')
-				backendLastError = msg
-				pushBackendLog(`[error] auto setup failed: ${msg}`)
-				updateBackendRuntimeState({ lastError: backendLastError, healthy: false })
-			}
-		} catch (e) {
-			backendLastError = String(e?.message || e)
-			pushBackendLog(`[error] auto setup exception: ${backendLastError}`)
-			updateBackendRuntimeState({ lastError: backendLastError, healthy: false })
-		}
+
+	try {
+		initBackend(mainWindow)
+		appendRuntimeLog('[new-backend] initialized successfully')
+	} catch (err) {
+		appendRuntimeLog(`[new-backend] init failed: ${String(err?.message || err)}`)
+	}
+
+	appendRuntimeLog('[app] MIGRATION MODE: Django auto-start disabled. New Electron backend active.')
+	updateBackendRuntimeState({
+		running: false,
+		healthy: true,
+		baseUrl: '',
+		port: 0,
+		lastError: '',
+		mode: 'migration',
 	})
+	appendRuntimeLog('[app] Use dweb:system:migration-status to check migration progress.')
+	appendRuntimeLog('[app] Django can still be started manually via dweb:backend:start if needed.')
 }
 
 app.on('window-all-closed', () => {
@@ -2249,6 +2255,7 @@ app.on('before-quit', async () => {
 		backendHealthTimer = null
 	}
 	platformShutdown()
+	shutdownBackend()
 	await stopBackend()
 })
 

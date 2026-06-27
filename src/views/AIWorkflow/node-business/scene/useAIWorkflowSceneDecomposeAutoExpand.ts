@@ -204,44 +204,90 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			String(value ?? '')
 				.replace(/\s+/g, ' ')
 				.trim()
-		const isWindowLikeObject = (name: string) => /窗|window|glass|玻璃/i.test(String(name ?? ''))
+		const isWindowLikeObject = (output: WorkflowSceneDecomposeOutput) => {
+			const haystack = [
+				output.name,
+				output.category,
+				output.material,
+				output.visualDetails,
+				output.description,
+				output.objectId
+			]
+				.filter(Boolean)
+				.join(' ')
+			return /窗|window|glass|玻璃/i.test(haystack)
+		}
+		const buildObjectSubjectPhrase = (output: WorkflowSceneDecomposeOutput) => {
+			const name = normalizePromptText(String(output.name ?? '')) || '对象'
+			const category = normalizePromptText(String(output.category ?? ''))
+			const material = normalizePromptText(String(output.material ?? ''))
+			const visual = normalizePromptText(String(output.visualDetails ?? ''))
+			if (visual && visual.length > name.length) return visual
+			const parts: string[] = [name]
+			if (category && !name.includes(category)) parts.push(`（${category}）`)
+			if (material) parts.push(`，材质为${material}`)
+			return parts.join('')
+		}
 		const buildMeshyImagePrompt = (output: WorkflowSceneDecomposeOutput) => {
-			const objectName = normalizePromptText(String(output.name ?? '对象')) || '对象'
-			const windowLike = isWindowLikeObject(objectName)
+			const subject = buildObjectSubjectPhrase(output)
+			const windowLike = isWindowLikeObject(output)
 			const windowExtra = windowLike
 				? [
 						'目标是窗户构件本体，只保留窗框与玻璃，不要出现室内或室外场景内容。',
 						'玻璃不要反射任何环境，不要透视看到后方画面，可使用中性灰或轻微磨砂半透明玻璃占位。'
 					]
 				: []
+			const desc = normalizePromptText(String(output.description ?? ''))
 			return [
-				`请生成“${objectName}”的单体三维建模参考图。`,
+				`请生成"${subject}"的单体三维建模参考图。`,
+				desc && desc.length > 6 ? `识别特征：${desc}。` : '',
 				'仅保留一个目标物体，居中展示，完整可见，正交风格，方图构图，纯白背景。',
 				'保留目标物体的真实外形比例、结构层级和材质分区，线条清晰，边界干净。',
 				...windowExtra,
 				'禁止出现环境、房间、地面、墙面、道具、人物、文字、水印。',
 				'禁止镜面反射、禁止高光反射出其他画面、禁止投影干扰。',
 				'结果应适合下游 3D 重建与低模建模参考。'
-			].join(' ')
+			]
+				.filter(Boolean)
+				.join(' ')
 		}
 
 		const buildMeshy3dPrompt = (output: WorkflowSceneDecomposeOutput) => {
-			const objectName = normalizePromptText(String(output.name ?? '对象')) || '对象'
-			const windowLike = isWindowLikeObject(objectName)
+			const subject = buildObjectSubjectPhrase(output)
+			const windowLike = isWindowLikeObject(output)
 			const windowExtra = windowLike
 				? [
 						'若目标为窗户，仅建模窗框与玻璃平面占位，不要把室内外场景烘焙进模型。',
 						'玻璃材质保持干净中性，不要反射或贴图出其他房间画面。'
 					]
 				: []
+			const desc = normalizePromptText(String(output.description ?? ''))
 			return [
-				`请基于参考图生成“${objectName}”的单体低模 3D 模型。`,
+				`请基于参考图生成"${subject}"的单体低模 3D 模型。`,
+				desc && desc.length > 6 ? `识别特征：${desc}。` : '',
 				'仅建模目标物体本体，保持可识别轮廓、主要结构和材质分区。',
 				'网格应轻量、拓扑清晰、比例稳定，便于场景布局预览和后续编辑。',
 				...windowExtra,
 				'禁止包含背景、底座、墙地面、文字、水印、支撑架或其他附加物体。',
 				'输出为可独立使用的单体模型资产。'
-			].join(' ')
+			]
+				.filter(Boolean)
+				.join(' ')
+		}
+
+		const buildNodeAlias = (output: WorkflowSceneDecomposeOutput, suffix: string) => {
+			const name = normalizePromptText(String(output.name ?? '')) || '对象'
+			const category = normalizePromptText(String(output.category ?? ''))
+			const shortId = String(output.objectId ?? output.id ?? '')
+				.split('-')
+				.slice(-1)[0]
+			const label = category && !name.includes(category) ? `${name}·${category}` : name
+			const idTag = shortId ? ` [${shortId}]` : ''
+			return `${label}${idTag} ${suffix}`
+		}
+		const buildNodeTitle = (output: WorkflowSceneDecomposeOutput, fallback: string) => {
+			const name = normalizePromptText(String(output.name ?? '')) || fallback
+			return name
 		}
 
 		const autoConnectGroupsToSceneLayout = (
@@ -294,9 +340,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const imageNodeId = createNode({
 				worldX: columnCenterX(0),
 				worldY: currentY,
-				title: output.name || '拆解图片',
+				title: buildNodeTitle(output, '拆解图片'),
 				type: 'image',
-				alias: output.name ? `${output.name} 图像` : '拆解图像'
+				alias: buildNodeAlias(output, '拆解图')
 			})
 			if (!imageNodeId) continue
 			// 输出锚点已归一化：所有下游节点统一从场景拆解节点的 out-main 锚点连出
@@ -314,9 +360,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const imagePromptNodeId = createNode({
 				worldX: columnCenterX(1),
 				worldY: currentY,
-				title: output.name || '图像 Prompt',
+				title: buildNodeTitle(output, '图像 Prompt'),
 				type: 'text',
-				alias: output.name ? `${output.name} 图像Prompt` : '图像Prompt'
+				alias: buildNodeAlias(output, '图像Prompt')
 			})
 			if (!imagePromptNodeId) continue
 			options.store.commit('upsertNode', {
@@ -332,9 +378,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const generatedImageNodeId = createNode({
 				worldX: columnCenterX(2),
 				worldY: currentY,
-				title: output.name || '生成图像',
+				title: buildNodeTitle(output, '生成图像'),
 				type: 'image',
-				alias: output.name ? `${output.name} 生成图像` : '生成图像'
+				alias: buildNodeAlias(output, '生成图像')
 			})
 			if (!generatedImageNodeId) continue
 			// 连接图像Prompt输出到生成图像节点
@@ -365,9 +411,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const modelPromptNodeId = createNode({
 				worldX: columnCenterX(3),
 				worldY: currentY,
-				title: output.name || '3D Prompt',
+				title: buildNodeTitle(output, '3D Prompt'),
 				type: 'text',
-				alias: output.name ? `${output.name} 3DPrompt` : '3DPrompt'
+				alias: buildNodeAlias(output, '3DPrompt')
 			})
 			if (!modelPromptNodeId) continue
 			options.store.commit('upsertNode', {
@@ -383,9 +429,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const model3dNodeId = createNode({
 				worldX: columnCenterX(4),
 				worldY: currentY,
-				title: output.name || '3D 模型',
+				title: buildNodeTitle(output, '3D 模型'),
 				type: 'model3d',
-				alias: output.name ? `${output.name} 3D模型` : '3D模型'
+				alias: buildNodeAlias(output, '3D模型')
 			})
 			if (!model3dNodeId) continue
 			// 配置3D模型节点为Meshy模式

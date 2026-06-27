@@ -5,6 +5,7 @@ import {
 	downloadUrlToProjectRoot,
 	getProjectRootById,
 	importProjectAsset,
+	migrateBinCacheMediaToMedia,
 	resolveProjectAsset,
 	uploadProjectAsset,
 	deleteProjectAsset,
@@ -46,25 +47,106 @@ function fileExists(filePath) {
 	}
 }
 
-function scanForBasename(root, targetName) {
+function isBinCacheFile(root, filePath) {
+	if (!filePath) return false
+	const normalized = String(filePath).toLowerCase().replace(/\\/g, '/')
+	if (normalized.endsWith('.bin')) return true
+	const cacheBinDir = path.resolve(root, '.dvcache', 'bin').toLowerCase().replace(/\\/g, '/')
+	return normalized.includes(cacheBinDir + '/')
+}
+
+function migrateBinIfMedia(pid, root, filePath, resourceId, resource) {
+	if (!fileExists(filePath)) return null
+	if (!isBinCacheFile(root, filePath)) return null
+	const kind = assetKind(resource)
+	if (kind === 'file' || kind === 'model') return null
+	const name = assetName(resourceId, resource)
+	const result = migrateBinCacheMediaToMedia({
+		projectId: pid,
+		binFilePath: filePath,
+		kind,
+		preferredName: name
+	})
+	if (result?.ok && result.migrated && result.asset) {
+		return makeCanonicalAsset(
+			pid,
+			root,
+			result.asset.absolutePath || result.asset.sourcePath,
+			resourceId,
+			resource
+		)
+	}
+	return null
+}
+
+function scanForBasename(projectRoot, targetName) {
 	const name = String(targetName || '').trim()
+	const root = String(projectRoot || '').trim()
 	if (!root || !name || !fs.existsSync(root)) return ''
-	const stack = [root]
-	while (stack.length) {
-		const current = stack.pop()
-		let entries = []
+	const skipDirs = new Set(['node_modules', '.git', '__pycache__', '.venv'])
+	const allowedHiddenDirs = new Set(['.dvcache'])
+	const searchRoots = [
+		path.resolve(root, 'Content', 'Media'),
+		path.resolve(root, 'Content', 'Generated'),
+		path.resolve(root, 'generated-assets'),
+		path.resolve(root, '.dvcache', 'bin')
+	].filter((dir) => {
 		try {
-			entries = fs.readdirSync(current, { withFileTypes: true })
+			return fs.existsSync(dir) && fs.statSync(dir).isDirectory()
 		} catch {
-			continue
+			return false
 		}
-		for (const entry of entries) {
-			const full = path.resolve(current, entry.name)
-			if (entry.isFile() && entry.name === name) return full
-			if (entry.isDirectory() && entry.name !== 'node_modules') stack.push(full)
+	})
+	if (searchRoots.length === 0) return ''
+
+	const nameLower = name.toLowerCase()
+	const hasExt = path.extname(nameLower).length > 0
+
+	let exactMatch = ''
+	let basenameMatch = ''
+	let prefixMatch = ''
+
+	for (const searchRoot of searchRoots) {
+		const stack = [searchRoot]
+		while (stack.length) {
+			const current = stack.pop()
+			let entries = []
+			try {
+				entries = fs.readdirSync(current, { withFileTypes: true })
+			} catch {
+				continue
+			}
+			for (const entry of entries) {
+				const full = path.resolve(current, entry.name)
+				if (entry.isFile()) {
+					const entryLower = entry.name.toLowerCase()
+					if (entryLower === nameLower) {
+						return full
+					}
+					if (!hasExt && !basenameMatch) {
+						const entryBase = path.basename(entryLower, path.extname(entryLower))
+						if (entryBase === nameLower) {
+							basenameMatch = full
+						}
+					}
+					if (!prefixMatch && entryLower.startsWith(nameLower)) {
+						const sep = entryLower.charAt(nameLower.length)
+						if (sep === '.' || sep === '_' || sep === '-') {
+							prefixMatch = full
+						}
+					}
+				}
+				if (entry.isDirectory() && !skipDirs.has(entry.name)) {
+					const isHidden = entry.name.startsWith('.')
+					if (!isHidden || allowedHiddenDirs.has(entry.name)) {
+						stack.push(full)
+					}
+				}
+			}
 		}
 	}
-	return ''
+
+	return basenameMatch || prefixMatch || ''
 }
 
 function makeCanonicalAsset(projectId, root, filePath, resourceId, resource, relOverride = '') {
@@ -109,19 +191,27 @@ async function repairOneProjectAsset(projectId, resourceId, resource) {
 
 	for (const rel of candidates.filter(Boolean)) {
 		const resolved = safeResolveProjectRelative(root, rel)
-		if (fileExists(resolved))
+		if (fileExists(resolved)) {
+			const migrated = migrateBinIfMedia(pid, root, resolved, resourceId, resource)
+			if (migrated) return migrated
 			return makeCanonicalAsset(pid, root, resolved, resourceId, resource, rel)
+		}
 	}
 
 	const sourcePath = fileUrlToPath(
 		String(resource.sourcePath || resource.absolutePath || '').trim()
 	)
 	if (fileExists(sourcePath)) {
+		const migrated = migrateBinIfMedia(pid, root, sourcePath, resourceId, resource)
+		if (migrated) return migrated
 		const copied = await copyFileToProjectRoot(pid, sourcePath, assetName(resourceId, resource))
 		const rel = String(copied?.relativePath || '').trim()
 		const abs = String(copied?.absolutePath || '').trim()
-		if (copied?.ok && rel && fileExists(abs))
+		if (copied?.ok && rel && fileExists(abs)) {
+			const copiedMigrated = migrateBinIfMedia(pid, root, abs, resourceId, resource)
+			if (copiedMigrated) return copiedMigrated
 			return makeCanonicalAsset(pid, root, abs, resourceId, resource, rel)
+		}
 	}
 
 	const sourceUrl = String(resource.url || '').trim()
@@ -146,11 +236,13 @@ async function repairOneProjectAsset(projectId, resourceId, resource) {
 		if (base) names.add(base)
 	}
 
-	const mediaRoot = path.resolve(root, 'Content', 'Media')
-	const generatedRoot = path.resolve(root, 'Content', 'Generated')
 	for (const name of names) {
-		const hit = scanForBasename(mediaRoot, name) || scanForBasename(generatedRoot, name)
-		if (hit) return makeCanonicalAsset(pid, root, hit, resourceId, resource)
+		const hit = scanForBasename(root, name)
+		if (hit) {
+			const migrated = migrateBinIfMedia(pid, root, hit, resourceId, resource)
+			if (migrated) return migrated
+			return makeCanonicalAsset(pid, root, hit, resourceId, resource)
+		}
 	}
 
 	const repaired = repairProjectAsset({

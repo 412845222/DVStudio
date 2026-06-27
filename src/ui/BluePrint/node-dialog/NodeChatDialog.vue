@@ -146,7 +146,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatParams, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 import {
 	NODE_CHAT_TYPE_LABELS,
 	NODE_CHAT_TYPE_ICONS,
@@ -164,7 +164,7 @@ const props = defineProps<{
 	nodeType: WorkflowNodeChatType | null
 	draft: string
 	submitting: boolean
-	params: Record<string, unknown>
+	params: WorkflowNodeChatParams
 	nodeWidth?: number
 	inputParamPreviewRefs?: InputParamPreviewRef[]
 }>()
@@ -172,7 +172,7 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'close'): void
 	(e: 'update:draft', value: string): void
-	(e: 'update:params', params: Record<string, unknown>): void
+	(e: 'update:params', params: WorkflowNodeChatParams): void
 	(e: 'submit', payload: WorkflowNodeChatSubmitPayload): void
 	(e: 'remove-param-ref', item: InputParamPreviewRef): void
 }>()
@@ -200,9 +200,9 @@ const typeDescription = computed(() => {
 	return NODE_CHAT_TYPE_DESCRIPTIONS[props.nodeType]
 })
 
-const currentParams = computed<Record<string, unknown>>(() => {
+const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
 	if (props.nodeType && props.params[props.nodeType]) {
-		return props.params[props.nodeType] as Record<string, unknown>
+		return props.params[props.nodeType]!
 	}
 	return {}
 })
@@ -277,9 +277,9 @@ const handleSubmit = () => {
 	emit('submit', payload)
 }
 
-const onParamsUpdate = (nextParams: Record<string, unknown>) => {
+const onParamsUpdate = (nextParams: WorkflowNodeChatParamRecord) => {
 	if (!props.nodeType) return
-	const merged = { ...props.params, [props.nodeType]: nextParams }
+	const merged: WorkflowNodeChatParams = { ...props.params, [props.nodeType]: nextParams }
 	emit('update:params', merged)
 }
 

@@ -14,6 +14,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			resourcesById: Record<string, unknown>
 			nodesById: Record<string, unknown>
 		}
+		commit: (mutation: string, payload: unknown) => void
 	}
 	connectedTextInputValue: (nodeId: string, inputId: string) => string
 	computeMergedText: (nodeId: string, visited?: Set<string>) => string
@@ -257,8 +258,15 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 				Array.isArray(node.inputs) && node.inputs.length
 					? payload.connectedTextInputValue(node.id, String(node.inputs[0]?.id ?? ''))
 					: ''
+			const currentTextValue = String(node.textValue ?? '')
+			const effectiveText = String(linkedInput || currentTextValue || '')
+			if (linkedInput && linkedInput !== currentTextValue) {
+				queueMicrotask(() => {
+					payload.store.commit('setNodeTextValue', { nodeId: node.id, textValue: linkedInput })
+				})
+			}
 			return {
-				textValue: String(linkedInput || node.textValue || ''),
+				textValue: effectiveText,
 				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id)
 			}
 		}

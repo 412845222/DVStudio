@@ -3,6 +3,7 @@ import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
 import { logBlueprintRequest } from './blueprintRequestLog'
 import { isRecord, isString, getErrorMessage } from '../types/utils'
+import { isMigrationMode, hasIpcModule } from './ipcClient'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -91,6 +92,10 @@ export type SceneLayoutRunResponse =
 	  }
 	| { ok: false; error: string; status?: number }
 
+function isAgentSkillsIpcAvailable(): boolean {
+	return isMigrationMode() && hasIpcModule('agentSkills') && typeof window.dweb?.agentSkills === 'object'
+}
+
 const jsonHeaders = {
 	'Content-Type': 'application/json'
 }
@@ -174,6 +179,14 @@ export class SceneSkillService {
 	}
 
 	async listSceneUnderstandModels(): Promise<SceneUnderstandModelsResponse> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.sceneUnderstand?.models?.()
+				if (result) return result as SceneUnderstandModelsResponse
+			} catch (err) {
+				console.warn('[SceneSkillService] sceneUnderstand.models IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/models'), {
 			method: 'GET'
 		})
@@ -196,6 +209,14 @@ export class SceneSkillService {
 		imageDataUrl?: string
 		imageInputs?: SceneUnderstandImageInput[]
 	}): Promise<SceneUnderstandRunResponse> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.sceneUnderstand?.run?.(payload)
+				if (result) return result as SceneUnderstandRunResponse
+			} catch (err) {
+				console.warn('[SceneSkillService] sceneUnderstand.run IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-understand/run'), {
 			method: 'POST',
 			headers: jsonHeaders,
@@ -213,6 +234,14 @@ export class SceneSkillService {
 	}
 
 	async listSceneLightingModels(): Promise<SceneLightingModelsResponse> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.sceneLighting?.models?.()
+				if (result) return result as SceneLightingModelsResponse
+			} catch (err) {
+				console.warn('[SceneSkillService] sceneLighting.models IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/models'), {
 			method: 'GET'
 		})
@@ -236,6 +265,14 @@ export class SceneSkillService {
 		imageDataUrl?: string
 		imageInputs?: SceneUnderstandImageInput[]
 	}): Promise<SceneLightingRunResponse> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.sceneLighting?.run?.(payload)
+				if (result) return result as SceneLightingRunResponse
+			} catch (err) {
+				console.warn('[SceneSkillService] sceneLighting.run IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-lighting/run'), {
 			method: 'POST',
 			headers: jsonHeaders,
@@ -360,6 +397,30 @@ export class SceneSkillService {
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<SceneUnderstandStreamEvent, void, void> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const generator = window.dweb?.agentSkills?.sceneUnderstand?.runStream?.(payload)
+				if (generator) {
+					for await (const chunk of generator) {
+						let parsed = chunk
+						if (typeof chunk === 'string') {
+							try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+						}
+						if (parsed && typeof parsed === 'object') {
+							if ((parsed as any).type === 'done') { yield { type: 'done' }; return }
+							if ((parsed as any).type === 'error') { yield parsed as any; return }
+							if ((parsed as any).type === 'msg' && isAgentToUiMessage((parsed as any).message)) {
+								yield { type: 'msg', message: (parsed as any).message }; continue
+							}
+						}
+					}
+					yield { type: 'done' }
+					return
+				}
+			} catch (err) {
+				console.warn('[SceneSkillService] sceneUnderstand.runStream IPC failed:', err)
+			}
+		}
 		yield* this.streamSse('/api/agent-skills/scene-understand/run:stream', payload, signal)
 	}
 
@@ -375,6 +436,30 @@ export class SceneSkillService {
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<SceneLightingStreamEvent, void, void> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const generator = window.dweb?.agentSkills?.sceneLighting?.runStream?.(payload)
+				if (generator) {
+					for await (const chunk of generator) {
+						let parsed = chunk
+						if (typeof chunk === 'string') {
+							try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+						}
+						if (parsed && typeof parsed === 'object') {
+							if ((parsed as any).type === 'done') { yield { type: 'done' }; return }
+							if ((parsed as any).type === 'error') { yield parsed as any; return }
+							if ((parsed as any).type === 'msg' && isAgentToUiMessage((parsed as any).message)) {
+								yield { type: 'msg', message: (parsed as any).message }; continue
+							}
+						}
+					}
+					yield { type: 'done' }
+					return
+				}
+			} catch (err) {
+				console.warn('[SceneSkillService] sceneLighting.runStream IPC failed:', err)
+			}
+		}
 		yield* this.streamSse('/api/agent-skills/scene-lighting/run:stream', payload, signal)
 	}
 
@@ -382,6 +467,14 @@ export class SceneSkillService {
 		nodeId: string
 		inputJson: string
 	}): Promise<SceneLayoutRunResponse> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.sceneLayout?.run?.(payload)
+				if (result) return result as SceneLayoutRunResponse
+			} catch (err) {
+				console.warn('[SceneSkillService] sceneLayout.run IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/scene-layout/run'), {
 			method: 'POST',
 			headers: jsonHeaders,

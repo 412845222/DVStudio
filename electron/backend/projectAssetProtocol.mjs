@@ -189,6 +189,75 @@ function diagnoseFilePath(root, relPath) {
 	return result
 }
 
+function scanDirForName(dir, targetName) {
+	if (!dir || !fs.existsSync(dir)) return null
+	const skipDirs = new Set(['node_modules', '.git', '__pycache__', '.venv'])
+	const allowedHiddenDirs = new Set(['.dvcache'])
+	const nameLower = String(targetName || '').trim().toLowerCase()
+	const hasExt = path.extname(nameLower).length > 0
+	let exactMatch = null
+	let basenameMatch = null
+	let prefixMatch = null
+	try {
+		const stack = [dir]
+		while (stack.length) {
+			const current = stack.pop()
+			let entries
+			try {
+				entries = fs.readdirSync(current, { withFileTypes: true })
+			} catch {
+				continue
+			}
+			for (const entry of entries) {
+				const full = path.resolve(current, entry.name)
+				if (entry.isFile()) {
+					const entryLower = entry.name.toLowerCase()
+					if (entryLower === nameLower) {
+						return full
+					}
+					if (!hasExt) {
+						const entryBase = path.basename(entryLower, path.extname(entryLower))
+						if (entryBase === nameLower && !basenameMatch) {
+							basenameMatch = full
+						}
+						if (!prefixMatch && entryLower.startsWith(nameLower)) {
+							const sep = entryLower.charAt(nameLower.length)
+							if (sep === '.' || sep === '_' || sep === '-') {
+								prefixMatch = full
+							}
+						}
+					}
+				}
+				if (entry.isDirectory() && !skipDirs.has(entry.name)) {
+					const isHidden = entry.name.startsWith('.')
+					if (!isHidden || allowedHiddenDirs.has(entry.name)) {
+						stack.push(full)
+					}
+				}
+			}
+		}
+	} catch {
+		// ignore
+	}
+	return basenameMatch || prefixMatch
+}
+
+function findFileByBasenameInProject(root, targetName) {
+	const name = String(targetName || '').trim()
+	if (!root || !name) return null
+	const searchDirs = [
+		path.resolve(root, 'Content', 'Media'),
+		path.resolve(root, 'Content', 'Generated'),
+		path.resolve(root, 'generated-assets'),
+		path.resolve(root, CACHE_DIR, 'bin')
+	]
+	for (const dir of searchDirs) {
+		const hit = scanDirForName(dir, name)
+		if (hit) return hit
+	}
+	return null
+}
+
 function guessMimeType(filePath) {
 	const lower = String(filePath || '').toLowerCase()
 	const extMap = {
@@ -381,8 +450,32 @@ function handleProjectAssetRequest(request) {
 	const isBinRequest = reqExt === '.bin'
 	if (isBinRequest && parts.length >= 1) {
 		const fileName = parts[parts.length - 1]
+		const baseNoExt = path.basename(fileName, '.bin')
 		candidates.push(CACHE_BIN_DIR + '/' + fileName)
 		candidates.push(CACHE_DIR + '/' + fileName)
+		const mediaSubDirs = ['images', 'videos', 'audio', 'models']
+		const mediaExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.mp4', '.mov', '.webm', '.glb']
+		for (const sub of mediaSubDirs) {
+			for (const ext of mediaExts) {
+				candidates.push('Content/Media/' + sub + '/' + baseNoExt + ext)
+			}
+		}
+		for (const ext of mediaExts) {
+			candidates.push('Content/Media/' + baseNoExt + ext)
+			candidates.push('Content/Generated/' + baseNoExt + ext)
+		}
+	}
+
+	if (parts.length >= 1) {
+		const fileName = parts[parts.length - 1]
+		const fileExt = path.extname(fileName).toLowerCase()
+		if (fileExt && fileExt !== '.bin') {
+			const mediaSubDirs = ['images', 'videos', 'audio', 'models', 'thumbnails', 'exports', 'generated']
+			for (const sub of mediaSubDirs) {
+				candidates.push('Content/Media/' + sub + '/' + fileName)
+			}
+			candidates.push('Content/Generated/' + fileName)
+		}
 	}
 
 	let resolvedPath = null
@@ -412,6 +505,21 @@ function handleProjectAssetRequest(request) {
 			}
 		}
 		if (resolvedPath) break
+	}
+
+	if (!resolvedPath && parts.length >= 1) {
+		const fileName = parts[parts.length - 1]
+		const fallbackHit = findFileByBasenameInProject(root, fileName)
+		if (fallbackHit) {
+			resolvedPath = fallbackHit
+			resolvedFromRoot = root
+			triedCandidates.push({
+				root: root,
+				candidate: `[fallback-search]${fileName}`,
+				resolved: fallbackHit,
+				reason: 'found_by_basename_search'
+			})
+		}
 	}
 
 	let filePath = resolvedPath
@@ -475,6 +583,44 @@ function handleProjectAssetRequest(request) {
 			resolvedPath: filePath
 		})
 		return new Response('Asset Is Not A File', { status: 404 })
+	}
+
+	const fileExt = path.extname(filePath).toLowerCase()
+	if (fileExt === '.bin') {
+		const reqExt2 = path.extname(rel).toLowerCase()
+		const isMediaRequest = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.mp4', '.mov', '.webm', '.mp3', '.wav', '.ogg', '.glb'].includes(reqExt2)
+		const kindGuess = reqExt2 === '.mp4' || reqExt2 === '.mov' || reqExt2 === '.webm' ? 'video'
+			: reqExt2 === '.mp3' || reqExt2 === '.wav' || reqExt2 === '.ogg' ? 'audio'
+			: reqExt2 === '.glb' ? 'file' : 'image'
+		if (isMediaRequest || (!reqExt2 || reqExt2 === '.bin')) {
+			try {
+				const preferredName = path.basename(rel)
+				const migrated = migrateBinCacheMediaToMedia({
+					projectId: parsed.projectId,
+					binFilePath: filePath,
+					kind: isMediaRequest ? kindGuess : 'image',
+					preferredName
+				})
+				if (migrated?.ok && migrated.migrated && migrated.asset?.absolutePath && fs.existsSync(migrated.asset.absolutePath)) {
+					filePath = migrated.asset.absolutePath
+					try {
+						stat = fs.statSync(filePath)
+					} catch {
+						// keep old stat
+					}
+					logAccess({
+						status: 'BIN_MIGRATED_ON_THE_FLY',
+						projectId: parsed.projectId,
+						requestedPath: rel,
+						resolvedPath: filePath,
+						candidateCount: candidates.length,
+						size: stat.size
+					})
+				}
+			} catch (migrationErr) {
+				console.debug('[dweb-protocol] on-the-fly bin migration failed:', String(migrationErr?.message || migrationErr))
+			}
+		}
 	}
 
 	logAccess({
@@ -747,11 +893,13 @@ export function cleanupProjectRootBinFiles(projectId) {
 		}
 	}
 
-	const commonSkipDirs = [CACHE_DIR, '.git', 'node_modules', '.venv', '__pycache__', 'Content']
+	const rootSkipDirs = [CACHE_DIR, '.git', 'node_modules', '.venv', '__pycache__']
+	const mediaSkipDirs = ['thumbnails', 'generated', 'exports', '.git', 'node_modules', '.venv', '__pycache__']
 
 	const scanTargets = [
 		{ dir: root, recursive: false },
-		{ dir: path.resolve(root, 'generated-assets'), recursive: true, skipDirNames: commonSkipDirs }
+		{ dir: path.resolve(root, 'Content', 'Media'), recursive: true, skipDirNames: mediaSkipDirs },
+		{ dir: path.resolve(root, 'generated-assets'), recursive: true, skipDirNames: rootSkipDirs }
 	]
 
 	const binFiles = []
@@ -1119,7 +1267,7 @@ function normalizeLocalSourcePath(rawSourcePath) {
 	return raw
 }
 
-export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFilename) {
+export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFilename, options = {}) {
 	const id = Number(projectId)
 	const sourcePath = normalizeLocalSourcePath(rawSourcePath)
 	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
@@ -1156,14 +1304,11 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
 	const base = safeName.replace(/\.[^.]+$/, '') || `asset-${Date.now()}`
 	const filename = `${base}${ext}`
 
-	const subDir = path.resolve(root, 'Content', 'Media')
-	try {
-		fs.mkdirSync(subDir, { recursive: true })
-	} catch (err) {
-		return { ok: false, error: `mkdir failed: ${String(err?.message || err)}` }
-	}
+	const effectiveBucket = options.bucket || (ext === '.bin' ? 'cache' : undefined)
+	const target = resolveAssetTargetDir(id, effectiveBucket)
+	if (!target) return { ok: false, error: 'failed to resolve target directory' }
 
-	let absolutePath = path.resolve(subDir, filename)
+	let absolutePath = path.resolve(target.targetDir, filename)
 	const resolvedTarget = path.resolve(absolutePath)
 	const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
 
@@ -1212,7 +1357,8 @@ export async function copyFileToProjectRoot(projectId, rawSourcePath, desiredFil
 			ok: true,
 			absolutePath,
 			relativePath,
-			size: st.size
+			size: st.size,
+			bucket: effectiveBucket || 'assets'
 		}
 	} catch (err) {
 		return { ok: false, error: `stat failed: ${String(err?.message || err)}` }
@@ -1227,8 +1373,9 @@ function sanitizeFilename(name) {
 	if (idx >= 0) safe = safe.slice(idx + 1)
 	// Check for non-ASCII characters (e.g. Chinese/Japanese/Korean) and replace with safe fallback
 	if (/[^\x00-\x7F]/.test(safe)) {
+		const origExt = path.extname(safe)
 		const hash = Math.abs(Array.from(safe).reduce((acc, c) => acc + c.charCodeAt(0), 0) % 100000)
-		safe = `asset_${hash}_${Date.now().toString(36)}`
+		safe = `asset_${hash}_${Date.now().toString(36)}${origExt}`
 	}
 	safe = safe.replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_')
 	safe = safe.replace(/^[\s.]+/, '')
@@ -1289,6 +1436,129 @@ function inferExtension(safeName, rawUrl) {
 	}
 
 	return '.bin'
+}
+
+const MEDIA_MAGIC_SIGNATURES = [
+	{ ext: '.png', magic: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), mask: null, offset: 0 },
+	{ ext: '.jpg', magic: Buffer.from([0xff, 0xd8, 0xff]), mask: null, offset: 0 },
+	{ ext: '.gif', magic: Buffer.from('GIF87a'), mask: null, offset: 0 },
+	{ ext: '.gif', magic: Buffer.from('GIF89a'), mask: null, offset: 0 },
+	{ ext: '.webp', magic: Buffer.from('RIFF'), mask: null, offset: 0, extraCheck: { offset: 8, magic: Buffer.from('WEBP') } },
+	{ ext: '.wav', magic: Buffer.from('RIFF'), mask: null, offset: 0, extraCheck: { offset: 8, magic: Buffer.from('WAVE') } },
+	{ ext: '.bmp', magic: Buffer.from('BM'), mask: null, offset: 0 },
+	{ ext: '.mov', magic: Buffer.from('ftyp'), mask: null, offset: 4, extraCheck: { offset: 8, magic: Buffer.from('qt  ') } },
+	{ ext: '.mp4', magic: Buffer.from('ftyp'), mask: null, offset: 4 },
+	{ ext: '.webm', magic: Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), mask: null, offset: 0 },
+	{ ext: '.mp3', magic: Buffer.from([0xff, 0xfb]), mask: null, offset: 0 },
+	{ ext: '.mp3', magic: Buffer.from('ID3'), mask: null, offset: 0 },
+	{ ext: '.ogg', magic: Buffer.from('OggS'), mask: null, offset: 0 },
+	{ ext: '.flac', magic: Buffer.from('fLaC'), mask: null, offset: 0 },
+	{ ext: '.glb', magic: Buffer.from('glTF'), mask: null, offset: 0 }
+]
+
+function detectMediaExtensionFromBuffer(buffer) {
+	if (!buffer || buffer.length < 12) return null
+	const head = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer)
+	for (const sig of MEDIA_MAGIC_SIGNATURES) {
+		if (head.length < sig.offset + sig.magic.length) continue
+		let matches = true
+		if (sig.mask) {
+			for (let i = 0; i < sig.magic.length; i++) {
+				if ((head[sig.offset + i] & sig.mask[i]) !== (sig.magic[i] & sig.mask[i])) { matches = false; break }
+			}
+		} else {
+			for (let i = 0; i < sig.magic.length; i++) {
+				if (head[sig.offset + i] !== sig.magic[i]) { matches = false; break }
+			}
+		}
+		if (!matches) continue
+		if (sig.extraCheck) {
+			const ec = sig.extraCheck
+			if (head.length < ec.offset + ec.magic.length) continue
+			let ecMatch = true
+			for (let i = 0; i < ec.magic.length; i++) {
+				if (head[ec.offset + i] !== ec.magic[i]) { ecMatch = false; break }
+			}
+			if (!ecMatch) continue
+		}
+		return sig.ext
+	}
+	return null
+}
+
+export function migrateBinCacheMediaToMedia({ projectId, binFilePath, kind, preferredName }) {
+	const id = Number(projectId)
+	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+	const root = projectRootById.get(id)
+	if (!root) return { ok: false, error: 'project root not registered' }
+
+	const binPath = path.resolve(String(binFilePath || '').trim())
+	if (!binPath || !fs.existsSync(binPath)) return { ok: false, error: 'bin file not found' }
+
+	const ext = path.extname(binPath).toLowerCase()
+	if (ext !== '.bin') return { ok: false, error: 'not a .bin file', noMigrationNeeded: true }
+
+	const cacheBinDir = path.resolve(root, CACHE_DIR, 'bin')
+	const isBinCache = binPath.startsWith(cacheBinDir + path.sep) || binPath === cacheBinDir
+
+	const contentMediaDir = path.resolve(root, 'Content', 'Media')
+	const isInMedia = binPath.startsWith(contentMediaDir + path.sep)
+
+	if (!isBinCache && !isInMedia) {
+		return { ok: false, error: 'bin file is not in cache or media directory', noMigrationNeeded: true }
+	}
+
+	let buf
+	try {
+		const fd = fs.openSync(binPath, 'r')
+		buf = Buffer.alloc(Math.min(64, fs.fstatSync(fd).size))
+		fs.readSync(fd, buf, 0, buf.length, 0)
+		fs.closeSync(fd)
+	} catch {
+		return { ok: false, error: 'failed to read file header' }
+	}
+
+	const detectedExt = detectMediaExtensionFromBuffer(buf)
+	if (!detectedExt) return { ok: false, error: 'unable to detect media type from file content' }
+
+	const kindToDir = {
+		image: 'images',
+		video: 'videos',
+		audio: 'audio',
+		model: 'models',
+		file: ''
+	}
+	const kindLower = String(kind || '').toLowerCase()
+	const subDir = kindToDir[kindLower] || ''
+	const targetDir = subDir ? path.resolve(contentMediaDir, subDir) : contentMediaDir
+	fs.mkdirSync(targetDir, { recursive: true })
+
+	const nameBase = String(preferredName || '').trim()
+	const existingBase = path.basename(binPath, path.extname(binPath))
+	const safeBase = (nameBase || existingBase || `asset-${Date.now()}`).replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_').slice(0, 80)
+	const finalPath = makeUniqueFilename(targetDir, safeBase, detectedExt)
+
+	try {
+		fs.copyFileSync(binPath, finalPath)
+	} catch (err) {
+		return { ok: false, error: 'copy file failed: ' + String(err?.message || err) }
+	}
+
+	const asset = buildAssetPayload(id, finalPath, root, {
+		kind: kindLower || 'file',
+		name: path.basename(finalPath),
+		contentType: null,
+		sourcePath: finalPath
+	})
+
+	try {
+		fs.unlinkSync(binPath)
+		asset.oldBinCleaned = true
+	} catch {
+		asset.oldBinCleaned = false
+	}
+
+	return { ok: true, migrated: true, asset }
 }
 
 function fetchRemoteUrl(rawUrl, targetPath) {
@@ -1472,9 +1742,10 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
 				return { ok: true, asset }
 			}
 
-			const target = resolveAssetTargetDir(id, bucket)
-			if (!target) return { ok: false, error: 'project root not registered' }
 			const ext = path.extname(safeName) || '.bin'
+			const effectiveBucket = bucket || (ext === '.bin' ? 'cache' : undefined)
+			const target = resolveAssetTargetDir(id, effectiveBucket)
+			if (!target) return { ok: false, error: 'project root not registered' }
 			const base = path.basename(safeName, ext) || 'asset'
 			const finalPath = makeUniqueFilename(target.targetDir, base, ext)
 			if (resolvedSrc !== finalPath) {
@@ -1602,30 +1873,6 @@ export function resolveProjectAsset({ projectId, kind, name, projectRelativePath
 	return { ok: true, resolved: false, reason: 'not_found' }
 }
 
-function scanDirForName(dir, targetName) {
-	if (!dir || !fs.existsSync(dir)) return null
-	try {
-		const stack = [dir]
-		while (stack.length) {
-			const current = stack.pop()
-			let entries
-			try {
-				entries = fs.readdirSync(current, { withFileTypes: true })
-			} catch {
-				continue
-			}
-			for (const entry of entries) {
-				const full = path.resolve(current, entry.name)
-				if (entry.isFile() && entry.name === targetName) return full
-				if (entry.isDirectory()) stack.push(full)
-			}
-		}
-	} catch {
-		// ignore
-	}
-	return null
-}
-
 export function repairProjectAsset({ projectId, kind, name, projectRelativePath }) {
 	const id = Number(projectId)
 	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
@@ -1637,11 +1884,25 @@ export function repairProjectAsset({ projectId, kind, name, projectRelativePath 
 		String(name || '').trim() || path.basename(String(projectRelativePath || '')).trim()
 	if (!targetName) return { ok: false, error: 'name or projectRelativePath is required' }
 
-	const mediaRoot = path.resolve(root, 'Content', 'Media')
-	const generatedRoot = path.resolve(root, 'Content', 'Generated')
-
-	const hit = scanDirForName(mediaRoot, targetName) || scanDirForName(generatedRoot, targetName)
+	const hit = findFileByBasenameInProject(root, targetName)
 	if (!hit) return { ok: true, repaired: false, reason: 'not_found' }
+
+	const lowerHit = hit.toLowerCase().replace(/\\/g, '/')
+	const isBin = lowerHit.endsWith('.bin') || lowerHit.includes(path.resolve(root, '.dvcache', 'bin').toLowerCase().replace(/\\/g, '/') + '/')
+	if (isBin) {
+		const kindLower = String(kind || '').toLowerCase()
+		if (kindLower === 'image' || kindLower === 'video' || kindLower === 'audio') {
+			const migrated = migrateBinCacheMediaToMedia({
+				projectId: id,
+				binFilePath: hit,
+				kind: kindLower,
+				preferredName: targetName
+			})
+			if (migrated?.ok && migrated.migrated && migrated.asset) {
+				return { ok: true, repaired: true, asset: migrated.asset }
+			}
+		}
+	}
 
 	const asset = buildAssetPayload(id, hit, root, {
 		kind: kind || 'file',
@@ -1804,6 +2065,18 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 		candidates.push(CACHE_DIR + '/' + fileName)
 	}
 
+	if (parts.length >= 1) {
+		const fileName = parts[parts.length - 1]
+		const fileExt = path.extname(fileName).toLowerCase()
+		if (fileExt && fileExt !== '.bin') {
+			const mediaSubDirs = ['images', 'videos', 'audio', 'models', 'thumbnails', 'exports', 'generated']
+			for (const sub of mediaSubDirs) {
+				candidates.push('Content/Media/' + sub + '/' + fileName)
+			}
+			candidates.push('Content/Generated/' + fileName)
+		}
+	}
+
 	// 去重
 	const uniqCandidates = Array.from(new Set(candidates.filter(Boolean)))
 
@@ -1841,6 +2114,31 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 			result.candidates.push(entry)
 		}
 		if (hitPath) break
+	}
+
+	if (!hitPath && parts.length >= 1) {
+		const fileName = parts[parts.length - 1]
+		const fallbackHit = findFileByBasenameInProject(root, fileName)
+		if (fallbackHit) {
+			hitPath = fallbackHit
+			result.resolvedTo = fallbackHit
+			result.fileExists = true
+			result.fileIsFile = true
+			try {
+				result.fileSize = Number(fs.statSync(fallbackHit).size || 0)
+			} catch {
+				result.fileSize = 0
+			}
+			result.candidates.push({
+				root: root,
+				candidate: `[fallback-search]${fileName}`,
+				resolved: fallbackHit,
+				reason: 'found_by_basename_search',
+				exists: true,
+				isFile: true,
+				size: result.fileSize
+			})
+		}
 	}
 
 	if (hitPath) {

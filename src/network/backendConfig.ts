@@ -9,23 +9,27 @@ const normalizeBaseUrl = (url: string) => {
 
 /**
  * Backend base URL resolution priority:
- * 1) window.__DWEB_BACKEND_BASE_URL (runtime override)
- * 2) import.meta.env.VITE_BACKEND_BASE_URL (build-time env)
- * 3) localStorage (runtime persisted)
- * 4) default Django dev server: http://127.0.0.1:5800
+ * 1) window.__DWEB_BACKEND_BASE_URL (runtime override from Electron preload)
+ * 2) window.__DWEB_BACKEND_MODE__ === 'migration' → '' (no Django, use IPC only)
+ * 3) import.meta.env.VITE_BACKEND_BASE_URL (build-time env)
+ * 4) localStorage (runtime persisted)
+ * 5) default Django dev server: http://127.0.0.1:5800
  */
 export const getBackendBaseUrl = (): string => {
 	const isElectronRuntime =
 		window?.__DWEB_RUNTIME__?.platform === 'electron' ||
 		typeof window?.dweb?.common?.getBackendBaseUrl === 'function'
 
-	// Electron 下必须优先使用 preload 注入的实时后端地址，
-	// 避免 localStorage 里的历史值（例如 5800 的旧服务）导致请求打到错误后端。
 	const fromWindow =
 		typeof window?.__DWEB_BACKEND_BASE_URL__ === 'string' ? window.__DWEB_BACKEND_BASE_URL__ : ''
+	const backendMode = typeof window?.__DWEB_BACKEND_MODE__ === 'string' ? window.__DWEB_BACKEND_MODE__ : ''
 	const fromEnv = import.meta.env.VITE_BACKEND_BASE_URL ?? ''
 	const fromStorage = localStorage.getItem(STORAGE_KEY) ?? ''
+
 	if (isElectronRuntime) {
+		if (backendMode === 'migration') {
+			return ''
+		}
 		return normalizeBaseUrl(fromWindow || fromStorage || fromEnv || DEFAULT_BACKEND_BASE_URL)
 	}
 	return normalizeBaseUrl(fromWindow || fromEnv || fromStorage || DEFAULT_BACKEND_BASE_URL)

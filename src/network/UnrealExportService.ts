@@ -1,6 +1,7 @@
 import { getBackendBaseUrl } from './backendConfig'
 import { logBlueprintRequest } from './blueprintRequestLog'
 import { getErrorMessage } from '../types/utils'
+import { isMigrationMode, hasIpcModule } from './ipcClient'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -88,6 +89,10 @@ const safeJson = async (res: Response) => {
 	}
 }
 
+function isAgentSkillsIpcAvailable(): boolean {
+	return isMigrationMode() && hasIpcModule('agentSkills') && typeof window.dweb?.agentSkills === 'object'
+}
+
 export class UnrealExportService {
 	private readonly getBaseUrl: () => string
 
@@ -146,6 +151,32 @@ export class UnrealExportService {
 	}
 
 	async listSessions(): Promise<UnrealExportSessionsResponse> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.unreal?.sessions?.()
+				if (result) {
+					const r = result as any
+					const sessions = Array.isArray(r.sessions) ? r.sessions.map((s: any) => ({
+						sessionId: s.id || s.sessionId,
+						displayName: s.clientInfo?.displayName || s.displayName,
+						projectName: s.clientInfo?.projectName || s.projectName,
+						projectPath: s.clientInfo?.projectPath || s.projectPath,
+						saveDirectory: s.clientInfo?.saveDirectory || s.saveDirectory,
+						assetRootPath: s.clientInfo?.assetRootPath || s.assetRootPath,
+						pluginVersion: s.clientInfo?.pluginVersion || s.pluginVersion,
+						engineVersion: s.clientInfo?.engineVersion || s.engineVersion,
+						hostName: s.clientInfo?.hostName || s.hostName,
+						connectedAt: s.createdAt || s.connectedAt,
+						lastSeenAt: s.lastHeartbeat || s.lastSeenAt,
+						activeJobId: s.jobs?.[s.jobs.length - 1] || s.activeJobId,
+						status: Date.now() - (s.lastHeartbeat || 0) > 30000 ? 'stale' : 'connected'
+					})) : []
+					return { ok: true, sessions }
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.sessions IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/sessions'), {
 			method: 'GET'
 		})
@@ -161,6 +192,36 @@ export class UnrealExportService {
 	}
 
 	async createJob(payload: UnrealExportRequest): Promise<UnrealExportCreateJobResponse> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.unreal?.createJob?.({
+					sessionId: payload.targetSessionId,
+					type: 'export',
+					payload: {
+						sourceNodeId: payload.sourceNodeId,
+						sceneName: payload.sceneName,
+						...payload.exportPayload
+					}
+				})
+				if (result) {
+					const r = result as any
+					if (r.ok === false) {
+						return { ok: false, error: r.error || 'createJob failed', status: r.status }
+					}
+					return {
+						ok: true,
+						job: {
+							jobId: r.jobId || r.job?.id,
+							status: r.job?.status || 'pending',
+							message: r.job?.message,
+							createdAt: r.job?.createdAt
+						}
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.createJob IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/jobs/create'), {
 			method: 'POST',
 			headers: jsonHeaders,
@@ -180,6 +241,39 @@ export class UnrealExportService {
 	async getJob(jobId: string): Promise<UnrealExportJobResponse> {
 		const normalizedJobId = String(jobId ?? '').trim()
 		if (!normalizedJobId) return { ok: false, error: 'jobId is required', status: 400 }
+
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.unreal?.jobDetail?.({ jobId: normalizedJobId })
+				if (result) {
+					const r = result as any
+					if (r.ok === false) {
+						return { ok: false, error: r.error || 'job not found', status: r.status || 404 }
+					}
+					if (r.job) {
+						const j = r.job
+						return {
+							ok: true,
+							job: {
+								jobId: j.id || normalizedJobId,
+								targetSessionId: j.sessionId,
+								sourceNodeId: j.payload?.sourceNodeId,
+								sceneName: j.payload?.sceneName,
+								status: j.status || 'unknown',
+								message: j.error || j.result?.message,
+								createdAt: j.createdAt,
+								updatedAt: j.updatedAt,
+								resultData: j.result,
+								exportPayload: j.payload
+							}
+						}
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.jobDetail IPC failed:', err)
+			}
+		}
+
 		const res = await this.fetchWithLog(
 			this.url(`/api/agent-skills/unreal-export/jobs/${encodeURIComponent(normalizedJobId)}`),
 			{ method: 'GET' }
@@ -193,5 +287,17 @@ export class UnrealExportService {
 			}
 		}
 		return (await res.json()) as UnrealExportJobResponse
+	}
+
+	async getHttpPort(): Promise<{ ok: boolean; port?: number; error?: string }> {
+		if (isAgentSkillsIpcAvailable()) {
+			try {
+				const result = await window.dweb?.agentSkills?.unreal?.getHttpPort?.()
+				if (result) return result as { ok: boolean; port?: number; error?: string }
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.getHttpPort IPC failed:', err)
+			}
+		}
+		return { ok: false, error: 'IPC not available' }
 	}
 }
