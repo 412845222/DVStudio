@@ -2,7 +2,7 @@ import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
 import { isRecord as isRecordGuard, isString as isStringGuard } from '../types/utils'
 import { getBackendBaseUrl } from './backendConfig'
-import { isMigrationMode, hasIpcApi, ipcOrHttp, unwrapIpcResult, normalizeTimestamp, normalizeId } from './ipcClient'
+import { isMigrationMode, hasIpcApi, ipcOrHttp, unwrapIpcResult, normalizeTimestamp, normalizeId, type IpcResult } from './ipcClient'
 
 export type AIChatUsage = {
 	prompt_tokens?: number
@@ -99,7 +99,7 @@ function createAssistantTextMessage(content: string): AgentToUiMessage {
 function normalizeConversation(raw: unknown): Conversation | null {
 	if (!raw || typeof raw !== 'object') return null
 	const r = raw as Record<string, unknown>
-	const id = normalizeId(r.id)
+	const id = normalizeId(r.id as number | string | undefined)
 	if (!id) return null
 	return {
 		id,
@@ -114,7 +114,7 @@ function normalizeConversation(raw: unknown): Conversation | null {
 function normalizeMessage(raw: unknown): ChatMessage | null {
 	if (!raw || typeof raw !== 'object') return null
 	const r = raw as Record<string, unknown>
-	const id = normalizeId(r.id)
+	const id = normalizeId(r.id as number | string | undefined)
 	if (!id) return null
 	const role = String(r.role || 'user')
 	return {
@@ -149,7 +149,7 @@ const safeJson = async (res: Response) => {
 	}
 }
 
-async function httpCreateConversation(title?: string, baseUrlFn: () => string, devToken?: string): Promise<CreateConversationResponse> {
+async function httpCreateConversation(baseUrlFn: () => string, title?: string, devToken?: string): Promise<CreateConversationResponse> {
 	const base = baseUrlFn()
 	const res = await fetch(`${base}/api/chat/conversations`, {
 		method: 'POST',
@@ -320,15 +320,16 @@ export class AIChatService {
 				const createFn = bridge.dweb?.chat?.conversations?.create
 				if (typeof createFn !== 'function') throw new Error('IPC chat.conversations.create not available')
 				const result = await createFn({ title })
-				const unwrapped = unwrapIpcResult<{ conversation?: { id?: string; title?: string; createdAt?: number | string } }>(result)
-				const conv = unwrapped?.conversation || unwrapped
+				const unwrapped = unwrapIpcResult<{ conversation?: { id?: string; title?: string; createdAt?: number | string } }>(result as IpcResult<{ conversation?: { id?: string; title?: string; createdAt?: number | string } }>)
+				const rawConv = unwrapped?.conversation || unwrapped
+				const conv = rawConv as { id?: string; title?: string; createdAt?: number | string }
 				return {
 					id: String(conv?.id || ''),
 					title: conv?.title ? String(conv.title) : title,
-					createdAt: normalizeTimestamp(conv?.createdAt as number | string | undefined),
+					createdAt: normalizeTimestamp(conv?.createdAt),
 				}
 			},
-			() => httpCreateConversation(title, this.getBaseUrl, this.devToken)
+			() => httpCreateConversation(this.getBaseUrl, title, this.devToken)
 		)
 	}
 
@@ -339,7 +340,7 @@ export class AIChatService {
 				const listFn = bridge.dweb?.chat?.conversations?.list
 				if (typeof listFn !== 'function') throw new Error('IPC chat.conversations.list not available')
 				const result = await listFn()
-				const unwrapped = unwrapIpcResult<{ items?: unknown[] }>(result)
+				const unwrapped = unwrapIpcResult<{ items?: unknown[] }>(result as IpcResult<{ items?: unknown[] }>)
 				const items = Array.isArray(unwrapped?.items) ? unwrapped.items : (Array.isArray(unwrapped) ? unwrapped : [])
 				return { items: items.map(normalizeConversation).filter(Boolean) as Conversation[] }
 			},
@@ -362,7 +363,7 @@ export class AIChatService {
 				const getFn = bridge.dweb?.chat?.conversations?.get
 				if (typeof getFn !== 'function') throw new Error('IPC chat.conversations.get not available')
 				const result = await getFn({ id: conversationId })
-				const unwrapped = unwrapIpcResult<{ conversation?: unknown; messages?: unknown[] }>(result)
+				const unwrapped = unwrapIpcResult<{ conversation?: unknown; messages?: unknown[] }>(result as IpcResult<{ conversation?: unknown; messages?: unknown[] }>)
 				const conv = normalizeConversation(unwrapped?.conversation || unwrapped)
 				const msgs = Array.isArray(unwrapped?.messages) ? unwrapped.messages : []
 				if (!conv) throw new Error('conversation not found')
@@ -395,7 +396,7 @@ export class AIChatService {
 				const deleteFn = bridge.dweb?.chat?.conversations?.delete
 				if (typeof deleteFn !== 'function') throw new Error('IPC chat.conversations.delete not available')
 				const result = await deleteFn({ id: conversationId })
-				const unwrapped = unwrapIpcResult<{ ok?: boolean; id?: string }>(result)
+				const unwrapped = unwrapIpcResult<{ ok?: boolean; id?: string }>(result as IpcResult<{ ok?: boolean; id?: string }>)
 				return { ok: Boolean(unwrapped?.ok !== false), id: String(unwrapped?.id || conversationId) }
 			},
 			async () => {
@@ -416,7 +417,7 @@ export class AIChatService {
 				const updateFn = bridge.dweb?.chat?.conversations?.updateTitle
 				if (typeof updateFn !== 'function') throw new Error('IPC chat.conversations.updateTitle not available')
 				const result = await updateFn({ id: conversationId, title })
-				const unwrapped = unwrapIpcResult<{ ok?: boolean; conversation?: unknown }>(result)
+				const unwrapped = unwrapIpcResult<{ ok?: boolean; conversation?: unknown }>(result as IpcResult<{ ok?: boolean; conversation?: unknown }>)
 				const conv = normalizeConversation(unwrapped?.conversation)
 				return { ok: Boolean(unwrapped?.ok !== false), conversation: conv || undefined }
 			},
@@ -443,17 +444,18 @@ export class AIChatService {
 		promptPreset?: string
 		promptInput?: unknown
 	}): Promise<SendMessageResponse> {
-		return ipcOrHttp(
+		return ipcOrHttp<SendMessageResponse>(
 			async () => {
 				const bridge = getIpcBridge()
 				const sendFn = bridge.dweb?.chat?.messages?.send
 				if (typeof sendFn !== 'function') throw new Error('IPC chat.messages.send not available')
 				const result = await sendFn(params)
-				const unwrapped = unwrapIpcResult<{ message?: unknown; usage?: AIChatUsage }>(result)
+				const unwrapped = unwrapIpcResult<{ message?: unknown; usage?: AIChatUsage }>(result as IpcResult<{ message?: unknown; usage?: AIChatUsage }>)
 				return {
+					userMessage: undefined,
 					assistantMessage: unwrapped?.message,
 					usage: unwrapped?.usage,
-				}
+				} as SendMessageResponse
 			},
 			() => httpSendMessage(params, this.getBaseUrl, this.devToken)
 		)

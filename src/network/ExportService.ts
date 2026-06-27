@@ -1,5 +1,5 @@
 import { isRecord, isString, getErrorMessage } from '../types/utils'
-import { isMigrationMode, hasIpcApi, ipcOrHttp, ipcStreamOrHttp, unwrapIpcResult } from './ipcClient'
+import { isMigrationMode, hasIpcApi, ipcOrHttp, ipcStreamOrHttp, unwrapIpcResult, type IpcResult } from './ipcClient'
 import { getBackendBaseUrl } from './backendConfig'
 
 export type ExportFormat = 'mp4' | 'mov'
@@ -271,7 +271,7 @@ export const ExportService = {
 				const createFn = bridge.dweb?.export?.jobs?.create
 				if (typeof createFn !== 'function') throw new Error('IPC export.jobs.create not available')
 				const result = await createFn(req)
-				return normalizeJob(unwrapIpcResult(result))
+				return normalizeJob(unwrapIpcResult(result as IpcResult<ExportJobInfo>))
 			},
 			() => httpCreateJob(req)
 		)
@@ -290,7 +290,7 @@ export const ExportService = {
 					data: base64,
 					filename: `frame_${String(Math.floor(frameIndex)).padStart(6, '0')}.png`,
 				})
-				const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result)
+				const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result as IpcResult<{ job?: ExportJobInfo }>)
 				if (unwrapped?.job) return normalizeJob(unwrapped.job)
 				return normalizeJob(unwrapped)
 			},
@@ -305,7 +305,7 @@ export const ExportService = {
 				const uploadFn = bridge.dweb?.export?.frames?.uploadRaw
 				if (typeof uploadFn !== 'function') throw new Error('IPC export.frames.uploadRaw not available')
 				const result = await uploadFn({ jobId, frameIndex: Math.floor(frameIndex), filePath })
-				const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result)
+				const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result as IpcResult<{ job?: ExportJobInfo }>)
 				if (unwrapped?.job) return normalizeJob(unwrapped.job)
 				return normalizeJob(unwrapped)
 			},
@@ -338,7 +338,7 @@ export const ExportService = {
 						data: base64,
 						filename: `frame_${String(idx).padStart(6, '0')}.png`,
 					})
-					const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result)
+					const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result as IpcResult<{ job?: ExportJobInfo }>)
 					if (unwrapped?.job) lastJob = normalizeJob(unwrapped.job)
 					else lastJob = normalizeJob(unwrapped)
 				}
@@ -392,7 +392,7 @@ export const ExportService = {
 					outputPath: opts?.outputPath,
 					...opts,
 				})
-				return normalizeJob(unwrapIpcResult(result))
+				return normalizeJob(unwrapIpcResult(result as IpcResult<ExportJobInfo>))
 			},
 			() => httpFinalize(jobId, opts)
 		)
@@ -470,7 +470,7 @@ export const ExportService = {
 				const getFn = bridge.dweb?.export?.jobs?.get
 				if (typeof getFn !== 'function') throw new Error('IPC export.jobs.get not available')
 				const result = await getFn({ id: jobId })
-				return normalizeJob(unwrapIpcResult(result))
+				return normalizeJob(unwrapIpcResult(result as IpcResult<ExportJobInfo>))
 			},
 			() => httpGetJob(jobId)
 		)
@@ -483,7 +483,7 @@ export const ExportService = {
 				const fileFn = bridge.dweb?.export?.jobs?.file
 				if (typeof fileFn !== 'function') throw new Error('IPC export.jobs.file not available')
 				const result = await fileFn({ id: jobId })
-				const unwrapped = unwrapIpcResult<{ filePath?: string; fileName?: string }>(result)
+				const unwrapped = unwrapIpcResult<{ filePath?: string; fileName?: string }>(result as IpcResult<{ filePath?: string; fileName?: string }>)
 				return {
 					filePath: String(unwrapped?.filePath || ''),
 					fileName: String(unwrapped?.fileName || ''),

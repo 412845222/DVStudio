@@ -176,10 +176,10 @@ export const useAIWorkflowResourceActions = (payload: {
 			}
 		}
 
-		const localAssetPath = String(resource?.localAssetPath ?? '').trim()
+		const localAssetPath = String((resource as Record<string, unknown>)?.localAssetPath ?? '').trim()
 		candidates.push(localAssetPath)
 
-		const absolutePath = String(resource?.absolutePath ?? '').trim()
+		const absolutePath = String((resource as Record<string, unknown>)?.absolutePath ?? '').trim()
 		candidates.push(absolutePath)
 
 		const result = pickPreferredMediaPath(candidates)

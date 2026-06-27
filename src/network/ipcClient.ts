@@ -1,4 +1,4 @@
-type IpcResult<T = unknown> = {
+export type IpcResult<T = unknown> = {
   ok: boolean
   value?: T
   error?: string
