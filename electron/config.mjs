@@ -51,13 +51,6 @@ export function getResourcesPath() {
 	return getRepoRoot()
 }
 
-export function getDjangoAppDir() {
-	if (_isPackaged && _resourcesPath) {
-		return path.resolve(_resourcesPath, 'django-app')
-	}
-	return path.resolve(getRepoRoot(), 'django-app')
-}
-
 export function getWindowIconPath() {
 	return path.resolve(getRepoRoot(), 'public', 'favicon.ico')
 }

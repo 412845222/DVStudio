@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { getStaticRuntimeDir, getDjangoAppDir } from '../config.mjs'
+import { getStaticRuntimeDir } from '../config.mjs'
 
 function _getBundledPythonDir() {
 	return path.resolve(getStaticRuntimeDir(), 'python-win32-x64')
@@ -53,7 +53,6 @@ export function detectPythonCommand() {
 
 export function getPythonSubprocessEnv(pyInfo, baseEnv = process.env) {
 	const env = { ...baseEnv }
-	const djangoDir = getDjangoAppDir()
 
 	const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path') || 'PATH'
 	const existingPath = env[pathKey] || ''
@@ -64,11 +63,12 @@ export function getPythonSubprocessEnv(pyInfo, baseEnv = process.env) {
 		env.PYTHONHOME = pyInfo.pythonDir
 	}
 
-	// Ensure django-app directory is in PYTHONPATH so imports work
+	// Add Python Bridge scripts directory to PYTHONPATH
+	const pythonBridgeScriptsDir = path.resolve(import.meta.dirname, 'python-bridge', 'scripts')
 	const pythonPathKey =
 		Object.keys(env).find((k) => k.toLowerCase() === 'pythonpath') || 'PYTHONPATH'
 	const existingPythonPath = env[pythonPathKey] || ''
-	const paths = [djangoDir]
+	const paths = [pythonBridgeScriptsDir]
 	if (existingPythonPath) {
 		paths.push(existingPythonPath)
 	}
