@@ -79,6 +79,22 @@ type RepairAssetResponse =
 
 type ElectronBridge = {
 	dweb?: {
+		projects?: {
+			list?: () => Promise<unknown>
+			save?: (p: unknown) => Promise<unknown>
+			load?: (p: { id: number | string }) => Promise<unknown>
+			delete?: (p: { id: number | string }) => Promise<unknown>
+			openFolder?: (p: unknown) => Promise<unknown>
+		}
+		projectAssets?: {
+			health?: () => Promise<unknown>
+			upload?: (p: unknown) => Promise<unknown>
+			import?: (p: unknown) => Promise<unknown>
+			delete?: (p: unknown) => Promise<unknown>
+			resolve?: (p: unknown) => Promise<unknown>
+			repair?: (p: unknown) => Promise<unknown>
+			repairAll?: (p: unknown) => Promise<unknown>
+		}
 		aiworkflow?: {
 			db?: {
 				_initState?: () => Promise<{ ok?: boolean } | null>
@@ -206,6 +222,23 @@ export class BlueprintProjectService {
 		return window as unknown as ElectronBridge
 	}
 
+	private isElectronRuntime(): boolean {
+		const bridge = this.getElectronBridge()
+		return (
+			bridge.dweb?.__DWEB_RUNTIME__?.platform === 'electron' ||
+			typeof bridge.dweb?.common?.getBackendBaseUrl === 'function'
+		)
+	}
+
+	private isMigrationMode(): boolean {
+		if (!this.isElectronRuntime()) return false
+		const bridge = this.getElectronBridge()
+		const mode = (window as unknown as { __DWEB_BACKEND_MODE__?: string }).__DWEB_BACKEND_MODE__
+		if (mode === 'migration') return true
+		const base = this.getBaseUrl()
+		return !base || base.trim() === ''
+	}
+
 	private async _ensureElectronLocalDb(): Promise<boolean> {
 		const bridge = this.getElectronBridge()
 		const db = bridge.dweb?.aiworkflow?.db
@@ -220,12 +253,30 @@ export class BlueprintProjectService {
 		}
 	}
 
-	private isElectronRuntime(): boolean {
+	private async electronNewProjects<T>(
+		fn: (api: NonNullable<NonNullable<ElectronBridge['dweb']>['projects']>) => Promise<T> | T
+	): Promise<T | null> {
 		const bridge = this.getElectronBridge()
-		return (
-			bridge.dweb?.__DWEB_RUNTIME__?.platform === 'electron' ||
-			typeof bridge.dweb?.common?.getBackendBaseUrl === 'function'
-		)
+		const api = bridge.dweb?.projects
+		if (typeof api !== 'object' || api === null) return null
+		try {
+			return await Promise.resolve(fn(api as NonNullable<NonNullable<ElectronBridge['dweb']>['projects']>))
+		} catch {
+			return null
+		}
+	}
+
+	private async electronNewAssets<T>(
+		fn: (api: NonNullable<NonNullable<ElectronBridge['dweb']>['projectAssets']>) => Promise<T> | T
+	): Promise<T | null> {
+		const bridge = this.getElectronBridge()
+		const api = bridge.dweb?.projectAssets
+		if (typeof api !== 'object' || api === null) return null
+		try {
+			return await Promise.resolve(fn(api as NonNullable<NonNullable<ElectronBridge['dweb']>['projectAssets']>))
+		} catch {
+			return null
+		}
 	}
 
 	private async electronDb<T>(
@@ -281,6 +332,10 @@ export class BlueprintProjectService {
 		}
 	}
 
+	private migrationError(msg: string): { ok: false; error: string } {
+		return { ok: false, error: `migration mode: ${msg} (no Django fallback)` }
+	}
+
 	private url(path: string) {
 		const base = (this.getBaseUrl?.() ?? '').trim().replace(/\/$/, '')
 		if (!base) return path
@@ -333,6 +388,20 @@ export class BlueprintProjectService {
 	}
 
 	async listProjects(): Promise<ListProjectsResponse> {
+		const newResult = await this.electronNewProjects((api) => api.list?.())
+		if (newResult !== null && newResult !== undefined) {
+			let rows: BlueprintProjectItem[] = []
+			if (isArray(newResult)) {
+				rows = newResult
+					.map(coerceProjectItem)
+					.filter((p): p is BlueprintProjectItem => p !== null)
+			} else if (isRecord(newResult) && isArray(newResult.projects)) {
+				rows = newResult.projects
+					.map(coerceProjectItem)
+					.filter((p): p is BlueprintProjectItem => p !== null)
+			}
+			return { ok: true, projects: rows }
+		}
 		const electronResult = await this.electronDb((projects) => projects.list?.())
 		if (electronResult !== null && electronResult !== undefined) {
 			let rows: BlueprintProjectItem[] = []
@@ -348,6 +417,9 @@ export class BlueprintProjectService {
 			return { ok: true, projects: rows }
 		}
 		if (this.isElectronRuntime()) {
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/list requires electron IPC')
+			}
 			return {
 				ok: false,
 				error: 'electron localdb unavailable: projects/list requires localdb in Electron runtime'
@@ -367,6 +439,26 @@ export class BlueprintProjectService {
 
 	async saveProject(payload: SaveProjectRequest): Promise<SaveProjectResponse> {
 		const safeSnapshot = normalizeForIpc(payload.snapshot)
+		const newResult = await this.electronNewProjects((api) =>
+			api.save?.({
+				projectId: payload.projectId,
+				snapshot: safeSnapshot,
+				name: payload.name
+			})
+		)
+		if (newResult !== null && newResult !== undefined) {
+			const resultRecord = isRecord(newResult) ? newResult : null
+			if (resultRecord && resultRecord.ok === false) {
+				return { ok: false, error: getErrorMessage(resultRecord.error) || 'save failed' }
+			}
+			const project =
+				resultRecord && isRecord(resultRecord.project)
+					? coerceProjectItem(resultRecord.project)
+					: coerceProjectItem(newResult)
+			if (project) {
+				return { ok: true, project }
+			}
+		}
 		const electronResult = await this.electronDb((projects) =>
 			projects.save?.({
 				projectId: payload.projectId,
@@ -385,6 +477,9 @@ export class BlueprintProjectService {
 			}
 		}
 		if (this.isElectronRuntime()) {
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/save requires electron IPC')
+			}
 			return {
 				ok: false,
 				error: 'electron localdb unavailable: projects/save requires localdb in Electron runtime'
@@ -407,6 +502,33 @@ export class BlueprintProjectService {
 	}
 
 	async loadProject(projectId: number): Promise<LoadProjectResponse> {
+		const newResult = await this.electronNewProjects((api) => api.load?.({ id: projectId }))
+		if (newResult !== null && newResult !== undefined) {
+			const resultRecord = isRecord(newResult) ? newResult : null
+			if (resultRecord && resultRecord.ok === false) {
+				return { ok: false, error: getErrorMessage(resultRecord.error) || 'load failed' }
+			}
+			if (resultRecord && isRecord(resultRecord.project)) {
+				const project = coerceProjectItem(resultRecord.project)
+				const snapshot = resultRecord.snapshot
+				if (project) {
+					return { ok: true, project, snapshot }
+				}
+			} else {
+				const project = coerceProjectItem(newResult)
+				if (project) {
+					let snapshot: unknown = undefined
+					if (project.data) {
+						try {
+							snapshot = JSON.parse(project.data)
+						} catch {
+							snapshot = undefined
+						}
+					}
+					return { ok: true, project, snapshot }
+				}
+			}
+		}
 		const electronResult = await this.electronDb((projects) => projects.load?.({ id: projectId }))
 		if (electronResult !== null && electronResult !== undefined) {
 			const resultRecord = isRecord(electronResult) ? electronResult : null
@@ -440,6 +562,9 @@ export class BlueprintProjectService {
 			}
 		}
 		if (this.isElectronRuntime()) {
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/load requires electron IPC')
+			}
 			return {
 				ok: false,
 				error: 'electron localdb unavailable: projects/load requires localdb in Electron runtime'
@@ -463,6 +588,15 @@ export class BlueprintProjectService {
 	}
 
 	async deleteProject(projectId: number): Promise<DeleteProjectResponse> {
+		const newResult = await this.electronNewProjects((api) => api.delete?.({ id: projectId }))
+		if (newResult !== null && newResult !== undefined) {
+			const resultRecord = isRecord(newResult) ? newResult : null
+			if (resultRecord && resultRecord.ok === false) {
+				return { ok: false, error: getErrorMessage(resultRecord.error) || 'delete failed' }
+			}
+			const returnedId = resultRecord && isNumber(resultRecord.id) ? resultRecord.id : projectId
+			return { ok: true, id: returnedId }
+		}
 		const electronResult = await this.electronDb((projects) => projects.delete?.({ id: projectId }))
 		if (electronResult !== null && electronResult !== undefined) {
 			const resultRecord = isRecord(electronResult) ? electronResult : null
@@ -472,6 +606,9 @@ export class BlueprintProjectService {
 			return { ok: true, id: projectId }
 		}
 		if (this.isElectronRuntime()) {
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/delete requires electron IPC')
+			}
 			return {
 				ok: false,
 				error: 'electron localdb unavailable: projects/delete requires localdb in Electron runtime'
@@ -498,6 +635,26 @@ export class BlueprintProjectService {
 		name?: string
 		create?: boolean
 	}): Promise<OpenProjectFolderResponse> {
+		const newResult = await this.electronNewProjects((api) =>
+			api.openFolder?.({
+				rootPath: payload.rootPath,
+				name: payload.name,
+				create: payload.create
+			})
+		)
+		if (newResult !== null && newResult !== undefined) {
+			const resultRecord = isRecord(newResult) ? newResult : null
+			if (resultRecord && resultRecord.ok === false) {
+				return { ok: false, error: getErrorMessage(resultRecord.error) || 'open folder failed' }
+			}
+			const project =
+				resultRecord && isRecord(resultRecord.project)
+					? coerceProjectItem(resultRecord.project)
+					: coerceProjectItem(newResult)
+			if (project) {
+				return { ok: true, project }
+			}
+		}
 		const electronResult = await this.electronDb((projects) =>
 			projects.openFolder?.({
 				rootPath: payload.rootPath,
@@ -516,6 +673,9 @@ export class BlueprintProjectService {
 			}
 		}
 		if (this.isElectronRuntime()) {
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/folder/open requires electron IPC')
+			}
 			return {
 				ok: false,
 				error:
@@ -546,15 +706,20 @@ export class BlueprintProjectService {
 		if (this.isElectronRuntime()) {
 			try {
 				const ab = await file.arrayBuffer()
-				const electronResult = await this.electronAsset<unknown>('uploadProjectAsset', {
+				const uploadPayload = {
 					name: file.name,
 					kind,
 					contentType: file.type || undefined,
 					arrayBuffer: ab,
 					projectId: opts?.projectId ? Number(opts.projectId) : null,
 					bucket: opts?.bucket
-				})
-				const resultRecord = isRecord(electronResult) ? electronResult : null
+				}
+				const newResult = await this.electronNewAssets<unknown>((api) => api.upload?.(normalizeForIpc(uploadPayload)))
+				let resultRecord = isRecord(newResult) ? newResult : null
+				if (!resultRecord) {
+					const legacyResult = await this.electronAsset<unknown>('uploadProjectAsset', uploadPayload)
+					resultRecord = isRecord(legacyResult) ? legacyResult : null
+				}
 				if (resultRecord && resultRecord.ok === true) {
 					const asset = coerceUploadedAsset(resultRecord.asset)
 					if (asset) {
@@ -566,6 +731,9 @@ export class BlueprintProjectService {
 						ok: false,
 						error: `upload via electron failed: ${getErrorMessage(resultRecord.error) || 'unknown'}`
 					}
+				}
+				if (this.isMigrationMode()) {
+					return this.migrationError('projects/assets/upload requires electron IPC')
 				}
 			} catch (err: unknown) {
 				return { ok: false, error: `upload via electron failed: ${getErrorMessage(err)}` }
@@ -606,15 +774,20 @@ export class BlueprintProjectService {
 		bucket?: 'assets' | 'thumbnails'
 	}): Promise<ImportAssetResponse> {
 		if (this.isElectronRuntime()) {
-			const electronResult = await this.electronAsset<unknown>('importProjectAsset', {
+			const importPayload = {
 				projectId: payload.projectId ? Number(payload.projectId) : null,
 				kind: payload.kind,
 				name: payload.name,
 				sourcePath: payload.sourcePath,
 				sourceUrl: payload.sourceUrl,
 				bucket: payload.bucket
-			})
-			const resultRecord = isRecord(electronResult) ? electronResult : null
+			}
+			const newResult = await this.electronNewAssets<unknown>((api) => api.import?.(normalizeForIpc(importPayload)))
+			let resultRecord = isRecord(newResult) ? newResult : null
+			if (!resultRecord) {
+				const legacyResult = await this.electronAsset<unknown>('importProjectAsset', importPayload)
+				resultRecord = isRecord(legacyResult) ? legacyResult : null
+			}
 			if (resultRecord && resultRecord.ok === true) {
 				const asset = coerceUploadedAsset(resultRecord.asset)
 				if (asset) {
@@ -626,6 +799,9 @@ export class BlueprintProjectService {
 					ok: false,
 					error: `import via electron failed: ${getErrorMessage(resultRecord.error) || 'unknown'}`
 				}
+			}
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/assets/import requires electron IPC')
 			}
 		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/import'), {
@@ -653,13 +829,23 @@ export class BlueprintProjectService {
 		projectRelativePath?: string
 	}): Promise<DeleteAssetResponse> {
 		if (this.isElectronRuntime()) {
-			const electronResult = await this.electronAsset<unknown>('deleteProjectAsset', {
+			const deletePayload = {
 				projectId: payload.projectId ? Number(payload.projectId) : null,
-				relativePath: payload.relativePath,
+				relPath: payload.relativePath || payload.projectRelativePath,
 				url: payload.url,
 				sourcePath: payload.sourcePath
-			})
-			const resultRecord = isRecord(electronResult) ? electronResult : null
+			}
+			const newResult = await this.electronNewAssets<unknown>((api) => api.delete?.(normalizeForIpc(deletePayload)))
+			let resultRecord = isRecord(newResult) ? newResult : null
+			if (!resultRecord) {
+				const legacyResult = await this.electronAsset<unknown>('deleteProjectAsset', {
+					projectId: payload.projectId ? Number(payload.projectId) : null,
+					relativePath: payload.relativePath,
+					url: payload.url,
+					sourcePath: payload.sourcePath
+				})
+				resultRecord = isRecord(legacyResult) ? legacyResult : null
+			}
 			if (resultRecord && resultRecord.ok === true) {
 				return {
 					ok: true,
@@ -672,6 +858,9 @@ export class BlueprintProjectService {
 					ok: false,
 					error: `delete via electron failed: ${getErrorMessage(resultRecord.error) || 'unknown'}`
 				}
+			}
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/assets/delete requires electron IPC')
 			}
 		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/delete'), {
@@ -699,15 +888,27 @@ export class BlueprintProjectService {
 		projectRelativePath?: string
 	}): Promise<ResolveAssetResponse> {
 		if (this.isElectronRuntime()) {
-			const electronResult = await this.electronAsset<unknown>('resolveProjectAsset', {
+			const resolvePayload = {
 				projectId: payload.projectId ? Number(payload.projectId) : null,
 				kind: payload.kind,
 				name: payload.name,
+				relPath: payload.projectRelativePath,
 				sourcePath: payload.sourcePath,
-				sourceUrl: payload.sourceUrl,
-				projectRelativePath: payload.projectRelativePath
-			})
-			const resultRecord = isRecord(electronResult) ? electronResult : null
+				sourceUrl: payload.sourceUrl
+			}
+			const newResult = await this.electronNewAssets<unknown>((api) => api.resolve?.(normalizeForIpc(resolvePayload)))
+			let resultRecord = isRecord(newResult) ? newResult : null
+			if (!resultRecord) {
+				const legacyResult = await this.electronAsset<unknown>('resolveProjectAsset', {
+					projectId: payload.projectId ? Number(payload.projectId) : null,
+					kind: payload.kind,
+					name: payload.name,
+					sourcePath: payload.sourcePath,
+					sourceUrl: payload.sourceUrl,
+					projectRelativePath: payload.projectRelativePath
+				})
+				resultRecord = isRecord(legacyResult) ? legacyResult : null
+			}
 			if (resultRecord && resultRecord.ok === true) {
 				const asset = coerceUploadedAsset(resultRecord.asset)
 				return {
@@ -722,6 +923,9 @@ export class BlueprintProjectService {
 					ok: false,
 					error: `resolve via electron failed: ${getErrorMessage(resultRecord.error) || 'unknown'}`
 				}
+			}
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/assets/resolve requires electron IPC')
 			}
 		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/resolve'), {
@@ -747,13 +951,23 @@ export class BlueprintProjectService {
 		projectRelativePath?: string
 	}): Promise<RepairAssetResponse> {
 		if (this.isElectronRuntime()) {
-			const electronResult = await this.electronAsset<unknown>('repairProjectAsset', {
+			const repairPayload = {
 				projectId: payload.projectId ? Number(payload.projectId) : null,
 				kind: payload.kind,
 				name: payload.name,
-				projectRelativePath: payload.projectRelativePath
-			})
-			const resultRecord = isRecord(electronResult) ? electronResult : null
+				relPath: payload.projectRelativePath
+			}
+			const newResult = await this.electronNewAssets<unknown>((api) => api.repair?.(normalizeForIpc(repairPayload)))
+			let resultRecord = isRecord(newResult) ? newResult : null
+			if (!resultRecord) {
+				const legacyResult = await this.electronAsset<unknown>('repairProjectAsset', {
+					projectId: payload.projectId ? Number(payload.projectId) : null,
+					kind: payload.kind,
+					name: payload.name,
+					projectRelativePath: payload.projectRelativePath
+				})
+				resultRecord = isRecord(legacyResult) ? legacyResult : null
+			}
 			if (resultRecord && resultRecord.ok === true) {
 				const asset = coerceUploadedAsset(resultRecord.asset)
 				return {
@@ -768,6 +982,9 @@ export class BlueprintProjectService {
 					ok: false,
 					error: `repair via electron failed: ${getErrorMessage(resultRecord.error) || 'unknown'}`
 				}
+			}
+			if (this.isMigrationMode()) {
+				return this.migrationError('projects/assets/repair requires electron IPC')
 			}
 		}
 		const res = await this.fetchWithLog(this.url('/api/workflow/projects/assets/repair'), {

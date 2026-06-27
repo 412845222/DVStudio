@@ -2,6 +2,7 @@ import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
 import { isRecord as isRecordGuard, isString as isStringGuard } from '../types/utils'
 import { getBackendBaseUrl } from './backendConfig'
+import { isMigrationMode, hasIpcApi, ipcOrHttp, unwrapIpcResult, normalizeTimestamp, normalizeId, type IpcResult } from './ipcClient'
 
 export type AIChatUsage = {
 	prompt_tokens?: number
@@ -22,10 +23,108 @@ export type CreateConversationResponse = {
 	createdAt?: string
 }
 
+export type Conversation = {
+	id: string
+	title?: string
+	createdAt?: string
+	updatedAt?: string
+	model?: string
+	systemPrompt?: string
+}
+
+export type ChatMessage = {
+	id: string
+	role: 'user' | 'assistant' | 'system'
+	content: string
+	createdAt?: string
+	model?: string
+	tokensUsed?: number
+}
+
+export type GetConversationResponse = {
+	conversation: Conversation
+	messages: ChatMessage[]
+}
+
 export type SendMessageResponse = {
 	userMessage?: unknown
 	assistantMessage?: unknown
 	usage?: AIChatUsage
+}
+
+type ChatIpcBridge = {
+	dweb?: {
+		chat?: {
+			conversations?: {
+				list?: () => Promise<unknown>
+				create?: (payload: unknown) => Promise<unknown>
+				get?: (payload: { id: string }) => Promise<unknown>
+				delete?: (payload: { id: string }) => Promise<unknown>
+				updateTitle?: (payload: { id: string; title: string }) => Promise<unknown>
+			}
+			messages?: {
+				send?: (payload: unknown) => Promise<unknown>
+				stream?: (payload: unknown) => AsyncGenerator<unknown>
+			}
+		}
+	}
+}
+
+function getIpcBridge(): ChatIpcBridge {
+	return window as unknown as ChatIpcBridge
+}
+
+function generateId(): string {
+	try {
+		if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+			return crypto.randomUUID()
+		}
+	} catch {
+		// ignore
+	}
+	return `m-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function createAssistantTextMessage(content: string): AgentToUiMessage {
+	const now = new Date().toISOString()
+	return {
+		schemaVersion: 1,
+		id: generateId(),
+		createdAt: now,
+		type: 'agentToUi/assistantText',
+		payload: { text: content },
+	}
+}
+
+function normalizeConversation(raw: unknown): Conversation | null {
+	if (!raw || typeof raw !== 'object') return null
+	const r = raw as Record<string, unknown>
+	const id = normalizeId(r.id as number | string | undefined)
+	if (!id) return null
+	return {
+		id,
+		title: r.title ? String(r.title) : undefined,
+		createdAt: normalizeTimestamp(r.createdAt as number | string | undefined),
+		updatedAt: normalizeTimestamp(r.updatedAt as number | string | undefined),
+		model: r.model ? String(r.model) : undefined,
+		systemPrompt: r.systemPrompt ? String(r.systemPrompt) : undefined,
+	}
+}
+
+function normalizeMessage(raw: unknown): ChatMessage | null {
+	if (!raw || typeof raw !== 'object') return null
+	const r = raw as Record<string, unknown>
+	const id = normalizeId(r.id as number | string | undefined)
+	if (!id) return null
+	const role = String(r.role || 'user')
+	return {
+		id,
+		role: (role === 'assistant' || role === 'system') ? role : 'user',
+		content: String(r.content || ''),
+		createdAt: normalizeTimestamp(r.createdAt as number | string | undefined),
+		model: r.model ? String(r.model) : undefined,
+		tokensUsed: r.tokensUsed !== undefined ? Number(r.tokensUsed) : undefined,
+	}
 }
 
 type ServiceOptions = {
@@ -47,6 +146,148 @@ const safeJson = async (res: Response) => {
 		return { ok: true as const, value: JSON.parse(text) }
 	} catch {
 		return { ok: false as const, text }
+	}
+}
+
+async function httpCreateConversation(baseUrlFn: () => string, title?: string, devToken?: string): Promise<CreateConversationResponse> {
+	const base = baseUrlFn()
+	const res = await fetch(`${base}/api/chat/conversations`, {
+		method: 'POST',
+		headers: jsonHeaders(devToken),
+		body: JSON.stringify({ title })
+	})
+	if (!res.ok) {
+		const body = await safeJson(res)
+		throw new Error(
+			`createConversation failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+		)
+	}
+	return (await res.json()) as CreateConversationResponse
+}
+
+async function httpSendMessage(
+	params: {
+		conversationId: string
+		content: string
+		contextPack?: unknown
+		provider?: string
+		model?: string
+		promptPreset?: string
+		promptInput?: unknown
+	},
+	baseUrlFn: () => string,
+	devToken?: string
+): Promise<SendMessageResponse> {
+	const base = baseUrlFn()
+	const res = await fetch(
+		`${base}/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages`,
+		{
+			method: 'POST',
+			headers: jsonHeaders(devToken),
+			body: JSON.stringify({
+				content: params.content,
+				contextPack: params.contextPack,
+				provider: params.provider,
+				model: params.model,
+				promptPreset: params.promptPreset,
+				promptInput: params.promptInput,
+			})
+		}
+	)
+	if (!res.ok) {
+		const body = await safeJson(res)
+		throw new Error(
+			`sendMessage failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+		)
+	}
+	return (await res.json()) as SendMessageResponse
+}
+
+async function* httpStreamMessage(
+	params: {
+		conversationId: string
+		content: string
+		contextPack?: unknown
+		provider?: string
+		model?: string
+		promptPreset?: string
+		promptInput?: unknown
+	},
+	baseUrlFn: () => string,
+	devToken?: string
+): AsyncGenerator<AIChatStreamEvent> {
+	const base = baseUrlFn()
+	const response = await fetch(
+		`${base}/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages:stream`,
+		{
+			method: 'POST',
+			headers: { ...jsonHeaders(devToken), Accept: 'text/event-stream' },
+			body: JSON.stringify({
+				content: params.content,
+				contextPack: params.contextPack,
+				provider: params.provider,
+				model: params.model,
+				promptPreset: params.promptPreset,
+				promptInput: params.promptInput,
+			})
+		}
+	)
+	if (!response.ok || !response.body) {
+		yield { type: 'error', error: { message: `Stream failed: ${response.status}` } }
+		return
+	}
+	const reader = response.body.getReader()
+	const decoder = new TextDecoder()
+	let buffer = ''
+	let assistantContent = ''
+	try {
+		while (true) {
+			const { done, value } = await reader.read()
+			if (done) break
+			buffer += decoder.decode(value, { stream: true })
+			const lines = buffer.split('\n')
+			buffer = lines.pop() || ''
+			for (const line of lines) {
+				const trimmed = line.trim()
+				if (!trimmed || !trimmed.startsWith('data:')) continue
+				const data = trimmed.slice(5).trim()
+				if (!data || data === '[DONE]') continue
+				try {
+					const parsed = JSON.parse(data)
+					if (parsed && typeof parsed === 'object') {
+						const r = parsed as Record<string, unknown>
+						if (r.type === 'delta' && isStringGuard(r.content)) {
+							assistantContent += r.content
+							yield { type: 'msg', message: createAssistantTextMessage(assistantContent) }
+						} else if (r.type === 'msg' && isRecordGuard(r.message) && isAgentToUiMessage(r.message)) {
+							yield { type: 'msg', message: r.message as AgentToUiMessage }
+						} else if (r.type === 'usage' && isRecordGuard(r.usage)) {
+							yield { type: 'usage', usage: r.usage as AIChatUsage }
+						} else if (r.type === 'error') {
+							yield { type: 'error', error: { message: String(r.error || 'Stream error') } }
+							return
+						} else if (r.type === 'done') {
+							yield { type: 'done' }
+							return
+						} else if (r.delta && isRecordGuard(r.delta) && isStringGuard(r.delta.content)) {
+							assistantContent += r.delta.content
+							yield { type: 'msg', message: createAssistantTextMessage(assistantContent) }
+						} else if (r.choices && Array.isArray(r.choices)) {
+							const delta = r.choices[0]?.delta
+							if (delta && isStringGuard(delta.content)) {
+								assistantContent += delta.content
+								yield { type: 'msg', message: createAssistantTextMessage(assistantContent) }
+							}
+						}
+					}
+				} catch {
+					// ignore parse errors
+				}
+			}
+		}
+		yield { type: 'done' }
+	} finally {
+		reader.releaseLock()
 	}
 }
 
@@ -73,18 +314,125 @@ export class AIChatService {
 	}
 
 	async createConversation(title?: string): Promise<CreateConversationResponse> {
-		const res = await fetch(this.url('/api/chat/conversations'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ title })
-		})
-		if (!res.ok) {
-			const body = await safeJson(res)
-			throw new Error(
-				`createConversation failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
-			)
-		}
-		return (await res.json()) as CreateConversationResponse
+		return ipcOrHttp(
+			async () => {
+				const bridge = getIpcBridge()
+				const createFn = bridge.dweb?.chat?.conversations?.create
+				if (typeof createFn !== 'function') throw new Error('IPC chat.conversations.create not available')
+				const result = await createFn({ title })
+				const unwrapped = unwrapIpcResult<{ conversation?: { id?: string; title?: string; createdAt?: number | string } }>(result as IpcResult<{ conversation?: { id?: string; title?: string; createdAt?: number | string } }>)
+				const rawConv = unwrapped?.conversation || unwrapped
+				const conv = rawConv as { id?: string; title?: string; createdAt?: number | string }
+				return {
+					id: String(conv?.id || ''),
+					title: conv?.title ? String(conv.title) : title,
+					createdAt: normalizeTimestamp(conv?.createdAt),
+				}
+			},
+			() => httpCreateConversation(this.getBaseUrl, title, this.devToken)
+		)
+	}
+
+	async listConversations(limit = 50): Promise<{ items: Conversation[] }> {
+		return ipcOrHttp(
+			async () => {
+				const bridge = getIpcBridge()
+				const listFn = bridge.dweb?.chat?.conversations?.list
+				if (typeof listFn !== 'function') throw new Error('IPC chat.conversations.list not available')
+				const result = await listFn()
+				const unwrapped = unwrapIpcResult<{ items?: unknown[] }>(result as IpcResult<{ items?: unknown[] }>)
+				const items = Array.isArray(unwrapped?.items) ? unwrapped.items : (Array.isArray(unwrapped) ? unwrapped : [])
+				return { items: items.map(normalizeConversation).filter(Boolean) as Conversation[] }
+			},
+			async () => {
+				const res = await fetch(`${this.url('/api/chat/conversations')}?limit=${limit}`, {
+					headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+				})
+				if (!res.ok) throw new Error(`listConversations failed: ${res.status}`)
+				const data = await res.json()
+				const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : [])
+				return { items: items.map(normalizeConversation).filter(Boolean) as Conversation[] }
+			}
+		)
+	}
+
+	async getConversation(conversationId: string): Promise<GetConversationResponse> {
+		return ipcOrHttp(
+			async () => {
+				const bridge = getIpcBridge()
+				const getFn = bridge.dweb?.chat?.conversations?.get
+				if (typeof getFn !== 'function') throw new Error('IPC chat.conversations.get not available')
+				const result = await getFn({ id: conversationId })
+				const unwrapped = unwrapIpcResult<{ conversation?: unknown; messages?: unknown[] }>(result as IpcResult<{ conversation?: unknown; messages?: unknown[] }>)
+				const conv = normalizeConversation(unwrapped?.conversation || unwrapped)
+				const msgs = Array.isArray(unwrapped?.messages) ? unwrapped.messages : []
+				if (!conv) throw new Error('conversation not found')
+				return {
+					conversation: conv,
+					messages: msgs.map(normalizeMessage).filter(Boolean) as ChatMessage[],
+				}
+			},
+			async () => {
+				const res = await fetch(`${this.url('/api/chat/conversations')}/${encodeURIComponent(conversationId)}`, {
+					headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+				})
+				if (!res.ok) throw new Error(`getConversation failed: ${res.status}`)
+				const data = await res.json()
+				const conv = normalizeConversation(data?.conversation || data)
+				const msgs = Array.isArray(data?.messages) ? data.messages : []
+				if (!conv) throw new Error('conversation not found')
+				return {
+					conversation: conv,
+					messages: msgs.map(normalizeMessage).filter(Boolean) as ChatMessage[],
+				}
+			}
+		)
+	}
+
+	async deleteConversation(conversationId: string): Promise<{ ok: boolean; id: string }> {
+		return ipcOrHttp(
+			async () => {
+				const bridge = getIpcBridge()
+				const deleteFn = bridge.dweb?.chat?.conversations?.delete
+				if (typeof deleteFn !== 'function') throw new Error('IPC chat.conversations.delete not available')
+				const result = await deleteFn({ id: conversationId })
+				const unwrapped = unwrapIpcResult<{ ok?: boolean; id?: string }>(result as IpcResult<{ ok?: boolean; id?: string }>)
+				return { ok: Boolean(unwrapped?.ok !== false), id: String(unwrapped?.id || conversationId) }
+			},
+			async () => {
+				const res = await fetch(`${this.url('/api/chat/conversations')}/${encodeURIComponent(conversationId)}`, {
+					method: 'DELETE',
+					headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
+				})
+				if (!res.ok) throw new Error(`deleteConversation failed: ${res.status}`)
+				return { ok: true, id: conversationId }
+			}
+		)
+	}
+
+	async updateConversationTitle(conversationId: string, title: string): Promise<{ ok: boolean; conversation?: Conversation }> {
+		return ipcOrHttp(
+			async () => {
+				const bridge = getIpcBridge()
+				const updateFn = bridge.dweb?.chat?.conversations?.updateTitle
+				if (typeof updateFn !== 'function') throw new Error('IPC chat.conversations.updateTitle not available')
+				const result = await updateFn({ id: conversationId, title })
+				const unwrapped = unwrapIpcResult<{ ok?: boolean; conversation?: unknown }>(result as IpcResult<{ ok?: boolean; conversation?: unknown }>)
+				const conv = normalizeConversation(unwrapped?.conversation)
+				return { ok: Boolean(unwrapped?.ok !== false), conversation: conv || undefined }
+			},
+			async () => {
+				const res = await fetch(`${this.url('/api/chat/conversations')}/${encodeURIComponent(conversationId)}/title`, {
+					method: 'PATCH',
+					headers: { ...jsonHeaders(this.devToken) },
+					body: JSON.stringify({ title }),
+				})
+				if (!res.ok) throw new Error(`updateTitle failed: ${res.status}`)
+				const data = await res.json()
+				const conv = normalizeConversation(data?.conversation)
+				return { ok: true, conversation: conv || undefined }
+			}
+		)
 	}
 
 	async sendMessage(params: {
@@ -96,271 +444,76 @@ export class AIChatService {
 		promptPreset?: string
 		promptInput?: unknown
 	}): Promise<SendMessageResponse> {
-		const res = await fetch(
-			this.url(`/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages`),
-			{
-				method: 'POST',
-				headers: jsonHeaders(this.devToken),
-				body: JSON.stringify({
-					content: params.content,
-					contextPack: params.contextPack,
-					provider: params.provider,
-					model: params.model,
-					promptPreset: params.promptPreset,
-					promptInput: params.promptInput
-				})
-			}
+		return ipcOrHttp<SendMessageResponse>(
+			async () => {
+				const bridge = getIpcBridge()
+				const sendFn = bridge.dweb?.chat?.messages?.send
+				if (typeof sendFn !== 'function') throw new Error('IPC chat.messages.send not available')
+				const result = await sendFn(params)
+				const unwrapped = unwrapIpcResult<{ message?: unknown; usage?: AIChatUsage }>(result as IpcResult<{ message?: unknown; usage?: AIChatUsage }>)
+				return {
+					userMessage: undefined,
+					assistantMessage: unwrapped?.message,
+					usage: unwrapped?.usage,
+				} as SendMessageResponse
+			},
+			() => httpSendMessage(params, this.getBaseUrl, this.devToken)
 		)
-		if (!res.ok) {
-			const body = await safeJson(res)
-			throw new Error(
-				`sendMessage failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
-			)
-		}
-		return (await res.json()) as SendMessageResponse
 	}
 
-	/**
-	 * Stream messages via SSE.
-	 * Expected events (recommended):
-	 * - event: msg,   data: <AgentToUI envelope JSON>
-	 * - event: usage, data: {prompt_tokens, completion_tokens, total_tokens, cost}
-	 * - event: done
-	 * - event: error, data: {message,...}
-	 */
 	async *streamMessage(params: {
 		conversationId: string
 		content: string
 		contextPack?: unknown
-		viewport?: unknown
 		provider?: string
 		model?: string
-		responseMode?: string
 		promptPreset?: string
 		promptInput?: unknown
+		responseMode?: string
+		viewport?: unknown
 		signal?: AbortSignal
-	}): AsyncGenerator<AIChatStreamEvent, void, void> {
-		const res = await fetch(
-			this.url(
-				`/api/chat/conversations/${encodeURIComponent(params.conversationId)}/messages:stream`
-			),
-			{
-				method: 'POST',
-				headers: {
-					...jsonHeaders(this.devToken),
-					Accept: 'text/event-stream'
-				},
-				body: JSON.stringify({
-					content: params.content,
-					contextPack: params.contextPack,
-					viewport: params.viewport,
-					provider: params.provider,
-					model: params.model,
-					responseMode: params.responseMode ?? 'agentToUi-jsonl',
-					promptPreset: params.promptPreset,
-					promptInput: params.promptInput
-				}),
-				signal: params.signal
-			}
-		)
-
-		if (!res.ok || !res.body) {
-			const body = await safeJson(res)
-			throw new Error(
-				`streamMessage failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
-			)
-		}
-
-		const reader = res.body.getReader()
-		const decoder = new TextDecoder('utf-8')
-
-		let buffer = ''
-		let eventName: string | undefined
-		let dataLines: string[] = []
-
-		type AgentToUiMessageCandidate = {
-			schemaVersion: number
-			type: string
-			id: string
-			createdAt: string
-			payload: Record<string, unknown>
-		}
-
-		const coerceToMessageCandidate = (
-			v: Record<string, unknown>
-		): AgentToUiMessageCandidate | null => {
-			if (v.schemaVersion !== 1) return null
-			if (!isStringGuard(v.type) || !isStringGuard(v.id) || !isStringGuard(v.createdAt)) return null
-			if (!('payload' in v)) return null
-			const payload = v.payload
-			if (!isRecordGuard(payload)) return null
-			return {
-				schemaVersion: 1,
-				type: v.type,
-				id: v.id,
-				createdAt: v.createdAt,
-				payload
-			}
-		}
-
-		const logMsg = (m: AgentToUiMessage) => {
-			try {
-				if (m.type === 'agentToUi/error') {
-					console.error('[AIChatService][msg:error]', m)
-				} else {
-					console.debug('[AIChatService][msg]', m)
-				}
-			} catch {
-				// ignore logging failures
-			}
-		}
-
-		const coerceAgentToUiMessage = (v: unknown): AgentToUiMessage | null => {
-			if (!isRecordGuard(v)) return null
-			const candidate = coerceToMessageCandidate(v)
-			if (!candidate) return null
-			const { payload } = candidate
-
-			// Fix common model mistakes for taskStatus: missing payload.phase.
-			if (candidate.type === 'agentToUi/taskStatus') {
-				const phase = payload.phase
-				const message = payload.message
-				if (!isStringGuard(phase) && isStringGuard(message)) {
-					const patched: AgentToUiMessageCandidate = {
-						...candidate,
-						payload: { ...payload, phase: 'writing' }
-					}
-					return isAgentToUiMessage(patched) ? patched : null
-				}
-			}
-
-			// Fix common model mistakes for applyFilter:
-			// - payload.target mistakenly set to "nodeId:xxx" (should be target="nodeId" and nodeId="xxx").
-			if (candidate.type === 'agentToUi/applyFilter') {
-				const target = payload.target
-				if (isStringGuard(target)) {
-					const match = target.match(/^nodeId\s*:\s*(.+)$/)
-					if (match && match[1] && !isStringGuard(payload.nodeId)) {
-						const patched: AgentToUiMessageCandidate = {
-							...candidate,
-							payload: {
-								...payload,
-								target: 'nodeId',
-								nodeId: match[1].trim()
+	}): AsyncGenerator<AIChatStreamEvent> {
+		if (isMigrationMode() && hasIpcApi()) {
+			const bridge = getIpcBridge()
+			const streamFn = bridge.dweb?.chat?.messages?.stream
+			if (typeof streamFn === 'function') {
+				try {
+					let assistantContent = ''
+					const generator = streamFn(params)
+					for await (const chunk of generator) {
+						let parsed = chunk
+						if (typeof chunk === 'string') {
+							try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+						}
+						if (parsed && typeof parsed === 'object') {
+							const r = parsed as Record<string, unknown>
+							if (r.type === 'delta' && isStringGuard(r.content)) {
+								assistantContent += r.content
+								yield { type: 'msg', message: createAssistantTextMessage(assistantContent) }
+							} else if (r.type === 'msg' && isRecordGuard(r.message) && isAgentToUiMessage(r.message)) {
+								yield { type: 'msg', message: r.message as AgentToUiMessage }
+							} else if (r.type === 'usage' && isRecordGuard(r.usage)) {
+								yield { type: 'usage', usage: r.usage as AIChatUsage }
+							} else if (r.type === 'done') {
+								yield { type: 'done' }
+								return
+							} else if (r.type === 'error') {
+								yield { type: 'error', error: { message: String(r.error || 'Stream error') } }
+								return
+							} else if (r.content && isStringGuard(r.content) && !r.type) {
+								assistantContent += r.content
+								yield { type: 'msg', message: createAssistantTextMessage(assistantContent) }
 							}
 						}
-						return isAgentToUiMessage(patched) ? patched : null
 					}
+					yield { type: 'done' }
+					return
+				} catch (err) {
+					console.warn('[AIChatService] IPC stream failed, falling back to HTTP:', err)
 				}
-			}
-
-			return null
-		}
-
-		const flush = (): AIChatStreamEvent[] => {
-			if (dataLines.length === 0 && !eventName) return []
-			const data = dataLines.join('\n')
-			const name = eventName
-			eventName = undefined
-			dataLines = []
-
-			if (!name || name === 'msg') {
-				try {
-					const v = JSON.parse(data)
-					if (isAgentToUiMessage(v)) {
-						logMsg(v)
-						return [{ type: 'msg', message: v }]
-					}
-
-					const patched = coerceAgentToUiMessage(v)
-					if (patched) {
-						logMsg(patched)
-						return [{ type: 'msg', message: patched }]
-					}
-
-					// Non-AgentToUI JSON: ignore silently to keep the stream stable.
-					console.warn('[AIChatService] Invalid AgentToUI message ignored:', v)
-					return []
-				} catch (e) {
-					// STRICT: do not turn parse failures into user-visible text (would leak JSON).
-					console.error('[AIChatService] SSE msg JSON.parse failed:', { error: e, raw: data })
-					return [
-						{
-							type: 'error',
-							error: { message: 'SSE msg JSON.parse failed', details: { raw: data } }
-						}
-					]
-				}
-			}
-
-			if (name === 'usage') {
-				try {
-					const usage = JSON.parse(data) as AIChatUsage
-					console.debug('[AIChatService][usage]', usage)
-					return [{ type: 'usage', usage }]
-				} catch {
-					return [{ type: 'usage', usage: {} }]
-				}
-			}
-			if (name === 'done') return [{ type: 'done' }]
-			if (name === 'error') {
-				try {
-					const parsed = JSON.parse(data) as unknown
-					console.error('[AIChatService][sse:error]', parsed)
-					if (isRecordGuard(parsed) && isStringGuard(parsed.message)) {
-						return [{ type: 'error', error: { message: parsed.message, details: parsed.details } }]
-					}
-					return [{ type: 'error', error: { message: isStringGuard(parsed) ? parsed : data } }]
-				} catch {
-					console.error('[AIChatService][sse:error]', data)
-					return [{ type: 'error', error: { message: data } }]
-				}
-			}
-
-			// unknown event
-			return [{ type: 'error', error: { message: `Unknown SSE event: ${name}`, details: data } }]
-		}
-
-		while (true) {
-			const { value, done } = await reader.read()
-			if (done) break
-			buffer += decoder.decode(value, { stream: true })
-
-			let idx: number
-			while ((idx = buffer.indexOf('\n')) >= 0) {
-				const line = buffer.slice(0, idx)
-				buffer = buffer.slice(idx + 1)
-
-				const l = line.replace(/\r$/, '')
-				if (l === '') {
-					for (const ev of flush()) yield ev
-					continue
-				}
-
-				if (l.startsWith('event:')) {
-					eventName = l.slice('event:'.length).trim()
-					continue
-				}
-				if (l.startsWith('data:')) {
-					dataLines.push(l.slice('data:'.length).trimStart())
-					continue
-				}
-				// ignore comments/other fields
 			}
 		}
-
-		// flush tail
-		for (const ev of flush()) yield ev
-	}
-
-	private toTextMessage(text: string): AgentToUiMessage {
-		return {
-			schemaVersion: 1,
-			type: 'agentToUi/text',
-			id: `local-${Date.now()}`,
-			createdAt: new Date().toISOString(),
-			payload: { text }
-		}
+		yield* httpStreamMessage(params, this.getBaseUrl, this.devToken)
 	}
 }
 

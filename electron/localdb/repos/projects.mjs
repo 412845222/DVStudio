@@ -358,7 +358,16 @@ export function createProjectsRepo({ backendDataDir }) {
 		const row = getByIdStmt.get(n)
 		if (!row) return { ok: false, error: 'project not found' }
 		const isFolderBacked = Boolean(row.root_path && String(row.root_path).trim())
-		deleteStmt.run(n)
+		const run = db.transaction(() => {
+			try {
+				db.prepare('UPDATE meshy_tasks SET project_id = NULL WHERE project_id = ?').run(n)
+			} catch (_) {}
+			try {
+				db.prepare('UPDATE video_tasks SET project_id = NULL WHERE project_id = ?').run(n)
+			} catch (_) {}
+			deleteStmt.run(n)
+		})
+		run()
 		if (!isFolderBacked) {
 			try {
 				const legacyDir = path.resolve(mediaRoot, String(n))

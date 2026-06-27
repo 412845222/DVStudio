@@ -79,8 +79,10 @@ export type AgentToUiTaskStatusPhase =
 	| 'prepare_input'
 	| 'connect'
 	| 'submit'
-	| 'streaming'
+	| 'thinking'
 	| 'writing'
+	| 'streaming'
+	| 'continue'
 	| 'parse'
 	| 'rewrite'
 	| 'template'
@@ -94,7 +96,13 @@ export type AgentToUiTaskStatusPayload = {
 	details?: Record<string, unknown>
 }
 
+export type AgentToUiReasoningPayload = {
+	text: string
+}
+
 export type AgentToUiTextMessage = AgentToUiEnvelope<'agentToUi/text', AgentToUiTextPayload>
+export type AgentToUiAssistantTextMessage = AgentToUiEnvelope<'agentToUi/assistantText', AgentToUiTextPayload>
+export type AgentToUiReasoningMessage = AgentToUiEnvelope<'agentToUi/reasoning', AgentToUiReasoningPayload>
 export type AgentToUiChatMessage = AgentToUiEnvelope<
 	'agentToUi/chatMessage',
 	AgentToUiChatMessagePayload
@@ -207,6 +215,8 @@ export type AgentToUiDeleteNodeMessage = AgentToUiEnvelope<
 
 export type AgentToUiMessage =
 	| AgentToUiTextMessage
+	| AgentToUiAssistantTextMessage
+	| AgentToUiReasoningMessage
 	| AgentToUiChatMessage
 	| AgentToUiVideoScenePlanMessage
 	| AgentToUiErrorMessage

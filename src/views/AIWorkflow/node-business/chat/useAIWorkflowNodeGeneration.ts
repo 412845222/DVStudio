@@ -655,13 +655,39 @@ const runImageTask = async (
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
 	form.set('imageModel', model)
-	if (typeof params.aspectRatio === 'string' && params.aspectRatio)
-		form.set('aspectRatio', params.aspectRatio)
-	if (typeof params.resolution === 'string' && params.resolution)
-		form.set('resolution', params.resolution)
-	const quantity = Number(params.quantity ?? 1)
-	if (Number.isFinite(quantity) && quantity > 0)
-		form.set('quantity', String(Math.min(8, Math.max(1, Math.floor(quantity)))))
+
+	const isSeedream = kind === 'seedream'
+
+	if (isSeedream) {
+		const seedreamModelVersion = String(params.seedreamModelVersion || 'doubao-seedream-4-5-251128').trim()
+		const seedreamSize = String(params.seedreamSize || '2K').trim()
+		const seedreamAspectRatio = String(params.seedreamAspectRatio || '1:1').trim()
+		const seedreamQuantity = Number(params.seedreamQuantity ?? 1)
+		const seedreamWatermark = Boolean(params.seedreamWatermark)
+		const seedreamSeed = Number(params.seedreamSeed ?? -1)
+		const seedreamNegativePrompt = String(params.seedreamNegativePrompt || '').trim()
+		const seedreamOutputFormat = String(params.seedreamOutputFormat || 'jpeg').trim()
+
+		form.set('model', seedreamModelVersion)
+		form.set('size', seedreamSize)
+		form.set('aspectRatio', seedreamAspectRatio)
+		form.set('outputFormat', seedreamOutputFormat)
+		form.set('quantity', String(Math.min(4, Math.max(1, Math.floor(seedreamQuantity)))))
+		form.set('watermark', seedreamWatermark ? '1' : '0')
+		if (seedreamNegativePrompt) form.set('negativePrompt', seedreamNegativePrompt)
+		if (Number.isFinite(seedreamSeed) && seedreamSeed >= 0) form.set('seed', String(Math.floor(seedreamSeed)))
+
+		appendDetail(deps, task.id, `Seedream 型号：${seedreamModelVersion}`)
+		appendDetail(deps, task.id, `分辨率：${seedreamSize}，宽高比：${seedreamAspectRatio}`)
+	} else {
+		if (typeof params.aspectRatio === 'string' && params.aspectRatio)
+			form.set('aspectRatio', params.aspectRatio)
+		if (typeof params.resolution === 'string' && params.resolution)
+			form.set('resolution', params.resolution)
+		const quantity = Number(params.quantity ?? 1)
+		if (Number.isFinite(quantity) && quantity > 0)
+			form.set('quantity', String(Math.min(8, Math.max(1, Math.floor(quantity)))))
+	}
 
 	// Collect connected reference images for meshy image-to-image or seedream.
 	const refs = await collectReferenceImages(deps, payload.nodeId, 5)
@@ -675,6 +701,7 @@ const runImageTask = async (
 		const meshyGenerateMultiView = Boolean(params?.meshyGenerateMultiView)
 		const meshyNegativePrompt = String(params?.meshyNegativePrompt || '').trim()
 		const meshySeed = Number(params?.meshySeed ?? 0)
+		const meshyQuantity = Number(params?.meshyOutputImageCount ?? 1)
 		const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
 
 		appendDetail(deps, task.id, `Meshy 模式：${taskType}`)
@@ -687,7 +714,7 @@ const runImageTask = async (
 				ai_model: meshyAiModel,
 				prompt: payload.prompt,
 				negative_prompt: meshyNegativePrompt,
-				output_image_count: quantity
+				output_image_count: Math.min(4, Math.max(1, Math.floor(meshyQuantity)))
 			}
 
 			if (!hasRefImages) {

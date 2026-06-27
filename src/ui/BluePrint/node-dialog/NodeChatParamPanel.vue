@@ -221,7 +221,111 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy'" class="bp-node-chat-param-row">
+				<!-- Seedream 专属参数 -->
+				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">分辨率</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in currentSeedreamResolutionOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.seedreamSize === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('seedreamSize', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">宽高比</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in aspectRatioOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.seedreamAspectRatio === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('seedreamAspectRatio', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">生成数量</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="n in seedreamQuantityOptions"
+							:key="n"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.seedreamQuantity === n }"
+							:disabled="disabled"
+							@click="updateParam('seedreamQuantity', n)"
+						>
+							{{ n }}x
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'seedream' && showSeedreamOutputFormat" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">输出格式</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in currentSeedreamOutputFormatOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.seedreamOutputFormat === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('seedreamOutputFormat', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">高级设置</span>
+					<div class="bp-node-chat-param-advanced">
+						<label class="bp-node-chat-param-toggle">
+							<input
+								type="checkbox"
+								:checked="params.seedreamWatermark"
+								:disabled="disabled"
+								@change="updateParam('seedreamWatermark', ($event.target as HTMLInputElement).checked)"
+							/>
+							<span>添加水印</span>
+						</label>
+						<div class="bp-node-chat-param-seed">
+							<label>种子</label>
+							<input
+								type="number"
+								:value="params.seedreamSeed"
+								:disabled="disabled"
+								placeholder="-1 随机"
+								@input="
+									updateParam('seedreamSeed', parseInt(($event.target as HTMLInputElement).value) || -1)
+								"
+							/>
+						</div>
+					</div>
+				</div>
+				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">负向提示</span>
+					<div class="bp-node-chat-param-input">
+						<input
+							type="text"
+							:value="params.seedreamNegativePrompt"
+							:disabled="disabled"
+							placeholder="输入不想要的内容..."
+							@input="updateParam('seedreamNegativePrompt', ($event.target as HTMLInputElement).value)"
+						/>
+					</div>
+				</div>
+				<!-- 通用参数（非 meshy/非 seedream 使用） -->
+				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">尺寸</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -237,7 +341,7 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy'" class="bp-node-chat-param-row">
+				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">宽高比</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -288,7 +392,7 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy'" class="bp-node-chat-param-row">
+				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">生成数量</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -671,7 +775,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 import {
 	NODE_CHAT_ASPECT_RATIO_OPTIONS,
 	NODE_CHAT_RESOLUTION_OPTIONS,
@@ -689,6 +793,7 @@ import {
 	NODE_CHAT_VIDEO_MODEL_OPTIONS,
 	NODE_CHAT_MODEL3D_PROVIDER_OPTIONS,
 	NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS,
+	NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS,
 	NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_SEED_MODEL_VERSION_OPTIONS,
@@ -702,17 +807,20 @@ import {
 	NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS,
 	NODE_CHAT_MESHY_POSE_MODE_OPTIONS,
 	NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
-	getMeshyImageAspectRatioOptions
+	getMeshyImageAspectRatioOptions,
+	getSeedreamResolutionOptions,
+	getSeedreamOutputFormatOptions,
+	supportsSeedreamOutputFormat
 } from './nodeChatConfig'
 
 const props = defineProps<{
 	nodeType: WorkflowNodeChatType
-	params: Record<string, unknown>
+	params: WorkflowNodeChatParamRecord
 	disabled?: boolean
 }>()
 
 const emit = defineEmits<{
-	(e: 'update:params', params: Record<string, unknown>): void
+	(e: 'update:params', params: WorkflowNodeChatParamRecord): void
 }>()
 
 const collapsed = ref(false)
@@ -721,8 +829,36 @@ const toggleCollapse = () => {
 	collapsed.value = !collapsed.value
 }
 
-const updateParam = (key: string, value: unknown) => {
-	const next = { ...props.params, [key]: value }
+const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value: WorkflowNodeChatParamRecord[K]) => {
+	const next: WorkflowNodeChatParamRecord = { ...props.params, [key]: value }
+
+	if (key === 'seedreamModelVersion' && typeof value === 'string') {
+		const modelVer = value
+		const allowedResolutions = getSeedreamResolutionOptions(modelVer).map(o => o.value)
+		if (!allowedResolutions.includes(String(next.seedreamSize))) {
+			next.seedreamSize = allowedResolutions[0]
+		}
+		if (!supportsSeedreamOutputFormat(modelVer)) {
+			next.seedreamOutputFormat = 'jpeg'
+		} else {
+			const allowedFormats = getSeedreamOutputFormatOptions(modelVer).map(o => o.value)
+			if (!allowedFormats.includes(String(next.seedreamOutputFormat))) {
+				next.seedreamOutputFormat = allowedFormats[0]
+			}
+		}
+	}
+
+	if (key === 'model' && value === 'seedream') {
+		const ver = String(next.seedreamModelVersion || 'doubao-seedream-4-5-251128')
+		const allowedResolutions = getSeedreamResolutionOptions(ver).map(o => o.value)
+		if (!allowedResolutions.includes(String(next.seedreamSize))) {
+			next.seedreamSize = allowedResolutions[0]
+		}
+		if (!supportsSeedreamOutputFormat(ver)) {
+			next.seedreamOutputFormat = 'jpeg'
+		}
+	}
+
 	emit('update:params', next)
 }
 
@@ -763,6 +899,26 @@ const currentMeshyAspectRatioOptions = computed(() => {
 			: 'nano-banana'
 	return getMeshyImageAspectRatioOptions(modelVal)
 })
+
+const seedreamVersion = computed(() => {
+	return typeof props.params.seedreamModelVersion === 'string'
+		? props.params.seedreamModelVersion
+		: 'doubao-seedream-4-5-251128'
+})
+
+const currentSeedreamResolutionOptions = computed(() => {
+	return getSeedreamResolutionOptions(seedreamVersion.value)
+})
+
+const currentSeedreamOutputFormatOptions = computed(() => {
+	return getSeedreamOutputFormatOptions(seedreamVersion.value)
+})
+
+const showSeedreamOutputFormat = computed(() => {
+	return supportsSeedreamOutputFormat(seedreamVersion.value)
+})
+
+const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
 </script>
 
 <style scoped>

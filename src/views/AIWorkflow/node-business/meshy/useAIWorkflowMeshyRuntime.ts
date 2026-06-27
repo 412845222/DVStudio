@@ -496,10 +496,47 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		}
 	}
 
-	const startMeshyPoll = (nodeId: string, taskId: string, mode: string) => {
-		const node = getNodeFromStore(nodeId)
-		if (node?.type === 'model3d') return
+	const getNodeMeshyTaskId = (node: WorkflowNodeLike | null): string => {
+		if (!node) return ''
+		if (node.type === 'image') {
+			const imgSettings = isRecord(node.imageSettings) ? node.imageSettings : {}
+			const meshyImg = isRecord(imgSettings.meshyImageSettings)
+				? imgSettings.meshyImageSettings
+				: {}
+			return String(meshyImg.taskId ?? '').trim()
+		}
+		if (node.type === 'model3d') {
+			const m3dSettings = isRecord(node.model3dSettings) ? node.model3dSettings : {}
+			const meshyM3d = isRecord(m3dSettings.meshyModelSettings)
+				? m3dSettings.meshyModelSettings
+				: {}
+			return String(meshyM3d.taskId ?? '').trim()
+		}
+		const meshySettings = isRecord(node.meshySettings) ? node.meshySettings : {}
+		return String(meshySettings.meshyTaskId ?? '').trim()
+	}
 
+	const getNodeMeshyTaskFamily = (node: WorkflowNodeLike | null): string => {
+		if (!node) return ''
+		if (node.type === 'image') {
+			const imgSettings = isRecord(node.imageSettings) ? node.imageSettings : {}
+			const meshyImg = isRecord(imgSettings.meshyImageSettings)
+				? imgSettings.meshyImageSettings
+				: {}
+			return String(meshyImg.taskFamily ?? 'text-to-image').trim()
+		}
+		if (node.type === 'model3d') {
+			const m3dSettings = isRecord(node.model3dSettings) ? node.model3dSettings : {}
+			const meshyM3d = isRecord(m3dSettings.meshyModelSettings)
+				? m3dSettings.meshyModelSettings
+				: {}
+			return String(meshyM3d.taskFamily ?? 'text-to-3d').trim()
+		}
+		const meshySettings = isRecord(node.meshySettings) ? node.meshySettings : {}
+		return String(meshySettings.meshyTaskFamily ?? '').trim()
+	}
+
+	const startMeshyPoll = (nodeId: string, taskId: string, mode: string) => {
 		stopMeshyPoll(nodeId)
 		meshyTerminalNotified.delete(nodeId)
 		meshyPollErrorCounts.delete(nodeId)
@@ -572,6 +609,48 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		meshyPollTimers.set(nodeId, timer)
 	}
 
+	const recoverMeshyTaskStates = async (opts?: { silent?: boolean }) => {
+		const meshyNodes: WorkflowNodeLike[] = []
+		for (const id of options.store.state.nodeOrder) {
+			const n = options.store.state.nodesById[id] as WorkflowNodeLike | undefined
+			if (n && (n.type === 'image' || n.type === 'model3d')) {
+				const status = getNodeMeshyTaskStatus(n)
+				if (status === 'pending' || status === 'running' || status === 'queued' || status === 'in_progress') {
+					meshyNodes.push(n)
+				}
+			}
+		}
+
+		for (const node of meshyNodes) {
+			const nodeId = node.id as string
+			const taskId = getNodeMeshyTaskId(node)
+			const taskFamily = getNodeMeshyTaskFamily(node)
+			if (!taskId) {
+				commitMeshyTaskFailed(nodeId, node, '任务ID丢失，无法恢复')
+				continue
+			}
+
+			try {
+				const res = await options.getComfyService().meshyTask(taskId, taskFamily)
+				if (!res.ok) {
+					if (!opts?.silent) {
+						options.pushToast(`节点「${node.alias || node.title || nodeId}」Meshy任务查询失败`, 'warn')
+					}
+					continue
+				}
+
+				const finalStatus = await applyMeshyTaskResult(nodeId, res)
+				if (finalStatus === 'pending' || finalStatus === 'running' || finalStatus === 'queued' || finalStatus === 'in_progress') {
+					startMeshyPoll(nodeId, taskId, taskFamily)
+				}
+			} catch {
+				if (!opts?.silent) {
+					options.pushToast(`节点「${node.alias || node.title || nodeId}」Meshy任务恢复失败`, 'warn')
+				}
+			}
+		}
+	}
+
 	const clearMeshyRuntime = () => {
 		for (const timer of meshyPollTimers.values()) window.clearInterval(timer)
 		meshyPollTimers.clear()
@@ -583,6 +662,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		stopMeshyPoll,
 		applyMeshyTaskResult,
 		startMeshyPoll,
+		recoverMeshyTaskStates,
 		clearMeshyRuntime
 	}
 }

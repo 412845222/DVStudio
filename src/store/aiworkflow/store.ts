@@ -964,6 +964,9 @@ const normalizeSceneDecomposeSettings = (
 					return {
 						id,
 						name: isString(itemObj.name) ? itemObj.name : undefined,
+						category: isString(itemObj.category) ? itemObj.category : undefined,
+						material: isString(itemObj.material) ? itemObj.material : undefined,
+						visualDetails: isString(itemObj.visualDetails) ? itemObj.visualDetails : undefined,
 						description: isString(itemObj.description) ? itemObj.description : undefined,
 						cropMode: itemObj.cropMode === 'fallback' ? 'fallback' : 'cropped',
 						sourceImageIndex: Number.isFinite(sourceImageIndex)

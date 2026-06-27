@@ -10,6 +10,8 @@ import type {
 	AgentToUiSubtitleSummaryDeltaMessage,
 	AgentToUiTaskStatusMessage,
 	AgentToUiTextMessage,
+	AgentToUiAssistantTextMessage,
+	AgentToUiReasoningMessage,
 	AgentToUiVideoScenePlanMessage
 } from './types'
 import { isRecord, isString, isArray } from '../../types/utils'
@@ -25,6 +27,10 @@ export function isAgentToUiMessage(v: unknown): v is AgentToUiMessage {
 	switch (v.type) {
 		case 'agentToUi/text':
 			return isAgentToUiTextMessage(v)
+		case 'agentToUi/assistantText':
+			return isAgentToUiAssistantTextMessage(v)
+		case 'agentToUi/reasoning':
+			return isAgentToUiReasoningMessage(v)
 		case 'agentToUi/chatMessage':
 			return isAgentToUiChatMessage(v)
 		case 'agentToUi/videoScenePlan':
@@ -162,8 +168,10 @@ export function isAgentToUiTaskStatusMessage(v: unknown): v is AgentToUiTaskStat
 		phase !== 'prepare_input' &&
 		phase !== 'connect' &&
 		phase !== 'submit' &&
-		phase !== 'streaming' &&
+		phase !== 'thinking' &&
 		phase !== 'writing' &&
+		phase !== 'streaming' &&
+		phase !== 'continue' &&
 		phase !== 'parse' &&
 		phase !== 'rewrite' &&
 		phase !== 'template' &&
@@ -209,6 +217,22 @@ export function isAgentToUiTextMessage(v: unknown): v is AgentToUiTextMessage {
 	if (!isRecord(v)) return false
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/text') return false
+	if (!isRecord(v.payload)) return false
+	return isString(v.payload.text)
+}
+
+export function isAgentToUiReasoningMessage(v: unknown): v is AgentToUiReasoningMessage {
+	if (!isRecord(v)) return false
+	if (v.schemaVersion !== 1) return false
+	if (v.type !== 'agentToUi/reasoning') return false
+	if (!isRecord(v.payload)) return false
+	return isString(v.payload.text)
+}
+
+export function isAgentToUiAssistantTextMessage(v: unknown): v is AgentToUiAssistantTextMessage {
+	if (!isRecord(v)) return false
+	if (v.schemaVersion !== 1) return false
+	if (v.type !== 'agentToUi/assistantText') return false
 	if (!isRecord(v.payload)) return false
 	return isString(v.payload.text)
 }
