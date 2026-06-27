@@ -13,6 +13,7 @@ import { routes as comfyuiRoutes } from './modules/comfyui/routes.mjs'
 import { routes as thirdPartyRoutes } from './modules/third-party/routes.mjs'
 import { routes as agentSkillsRoutes } from './modules/agent-skills/routes.mjs'
 import { routes as codexRoutes } from './modules/codex/routes.mjs'
+import { routes as subtitleRoutes } from './modules/subtitle/routes.mjs'
 import { startUnrealHttpServer, stopUnrealHttpServer } from './modules/agent-skills/service.mjs'
 import { setProjectRoot } from './projectAssetProtocol.mjs'
 import { getRepos } from '../localdb/index.mjs'
@@ -72,6 +73,7 @@ export function initBackend(mainWindow, deps = {}) {
     ...thirdPartyRoutes,
     ...agentSkillsRoutes,
     ...codexRoutes,
+    ...subtitleRoutes,
   ]
 
   _router = createRouter({

@@ -31,7 +31,7 @@ release-*.7z
 /.vscode/
 /.cloudbase/
 
-# --- Python / Django ---
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -52,12 +52,12 @@ venv/
 ENV/
 env/
 
-# Django
+# Django (legacy - entire directory ignored after migration to Python Bridge)
+django-app/
 *.sqlite3
 db.sqlite3
-local_settings.py
-media/
-staticfiles/
+django_secret_key.txt
+**/django_secret_key.txt
 
 # Tests / tooling
 .pytest_cache/
@@ -73,20 +73,8 @@ coverage.xml
 .env.*
 *.key
 *.pem
-django_secret_key.txt
-**/django_secret_key.txt
 **/deepseek_secrets.py
 **/nanobanana_secrets.py
-django-app/dwebapp/deepseek_secrets.py
-django-app/dwebapp/nanobanana_secrets.py
-
-# Copied backend workspace artifacts (frontend repo keeps backend source only)
-django-app/db.sqlite3
-django-app/media/
-django-app/staticfiles/
-django-app/.dweb_exports/
-django-app/.dweb-deps.lock
-django-app/**/__pycache__/
 
 # Editor directories and files
 .idea

@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process'
 
-import { getDjangoAppDir } from '../config.mjs'
 import { detectPythonCommand } from './python.mjs'
 
 function run(cmd, args, options = {}) {
@@ -36,9 +35,8 @@ export function collectDiagnostics() {
 	if (simulateEmpty) {
 		return {
 			python: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
-			djangoImport: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
+			pythonBridge: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
 			ffmpeg: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
-			djangoCheck: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' }
 		}
 	}
 
@@ -56,14 +54,9 @@ export function collectDiagnostics() {
 		}
 	})()
 
-	const djangoImport = (() => {
-		if (!py) return { ok: false, detail: 'Python not found.' }
-		const r = run(py.command, [
-			...py.argsPrefix,
-			'-c',
-			'import django; print(django.get_version())'
-		])
-		return { ok: r.ok, detail: pickFirstLine(r.stdout || r.stderr) }
+	const pythonBridge = (() => {
+		if (!py) return { ok: false, detail: 'Python not found (required for Python Bridge).' }
+		return { ok: true, detail: 'Python Bridge available (no Django dependency)' }
 	})()
 
 	const ffmpeg = (() => {
@@ -71,17 +64,9 @@ export function collectDiagnostics() {
 		return { ok: r.ok, detail: pickFirstLine(r.stdout || r.stderr) }
 	})()
 
-	const djangoCheck = (() => {
-		if (!py) return { ok: false, detail: 'Python not found.' }
-		const djangoDir = getDjangoAppDir()
-		const r = run(py.command, [...py.argsPrefix, 'manage.py', 'check'], { cwd: djangoDir })
-		return { ok: r.ok, detail: pickFirstLine(r.stderr || r.stdout) || (r.ok ? 'OK' : 'Failed') }
-	})()
-
 	return {
 		python,
-		djangoImport,
+		pythonBridge,
 		ffmpeg,
-		djangoCheck
 	}
 }

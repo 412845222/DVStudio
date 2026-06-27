@@ -1,6 +1,0 @@
-Django==4.2.11
-djangorestframework==3.14.0
-django-cors-headers==4.4.0
-cryptography==42.0.8
-certifi>=2024.0.0
-Pillow>=10.4.0
