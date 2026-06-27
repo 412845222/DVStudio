@@ -3,9 +3,10 @@
   "private": true,
   "version": "0.1.1",
   "main": "electron/main.mjs",
-  "description": "DVStudio (Dweb Video Studio) - Vite + Vue 3 + TypeScript + WebGL2 视频动画模板/编辑器，支持时间轴关键帧与 AI 对话辅助生成/修改场景。",
-  "license": "MIT",
+  "description": "DVStudio - Vite + Vue 3 + TypeScript + WebGL2 视频动画模板/编辑器，支持时间轴关键帧与 AI 对话辅助生成/修改场景。",
+  "license": "MPL-2.0",
   "author": "DwebStudio",
+  "copyright": "Copyright (c) 2026 DwebStudio",
   "homepage": "https://www.dweb.club/",
   "repository": {
     "type": "git",
@@ -141,7 +142,7 @@
   },
   "build": {
     "appId": "club.dweb.dvstudio",
-    "productName": "Dweb Video Studio",
+    "productName": "DVStudio",
     "asar": true,
     "directories": {
       "output": "release"
@@ -198,7 +199,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Dweb Video Studio",
+      "shortcutName": "DVStudio",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",

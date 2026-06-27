@@ -14,6 +14,15 @@ import {
 } from './core/events/dvsEvents'
 import { VideoSceneStore } from './store/videoscene'
 import { TimelineStore } from './store/timeline'
+import { getAppName } from './network/appInfo'
+
+if (typeof document !== 'undefined' && document.title) {
+	try {
+		document.title = getAppName()
+	} catch {
+		// ignore
+	}
+}
 
 // 运行环境标记：Web 模式默认注入；Electron 模式由 preload 注入（且可能是只读属性）。
 const w = window as unknown as Record<string, unknown>

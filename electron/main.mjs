@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol } from 'electron'
 
-import { APP_NAME, getDjangoAppDir, getRepoRoot, getWindowIconPath } from './config.mjs'
+import { APP_NAME, APP_VERSION, APP_COPYRIGHT, APP_HOMEPAGE, APP_REPO_URL, APP_LICENSE, getDjangoAppDir, getRepoRoot, getWindowIconPath } from './config.mjs'
 import { killExistingDjangoRunservers, pickBackendPort, startDjangoServer, waitForBackendReady } from './backend/django.mjs'
 import { collectDiagnostics } from './backend/diagnostics.mjs'
 import { detectPythonInfo } from './backend/python.mjs'
@@ -2158,6 +2158,14 @@ async function stopBackend() {
 
 async function main() {
 	app.setName(APP_NAME)
+	app.setAboutPanelOptions({
+		applicationName: APP_NAME,
+		applicationVersion: APP_VERSION,
+		copyright: APP_COPYRIGHT,
+		website: APP_HOMEPAGE,
+		credits: `${APP_REPO_URL}\nLicensed under ${APP_LICENSE}`,
+		version: APP_VERSION,
+	})
 	initRuntimeLogger()
 	registerRuntimeDiagnostics()
 	registerDwebProjectAssetProtocol()
@@ -2170,7 +2178,7 @@ async function main() {
 			type: 'warning',
 			title: '安装目录权限提示',
 			message: '当前安装目录无写入权限',
-			detail: 'Dweb Video Studio 已安装到受系统保护的目录（如 Program Files），应用数据和日志将保存到用户目录（AppData）。\n\n如需完全便携化使用（所有文件保存在安装目录），请重新安装到非系统保护目录（如 D:\\Dweb Video Studio）。',
+			detail: `${APP_NAME} 已安装到受系统保护的目录（如 Program Files），应用数据和日志将保存到用户目录（AppData）。\n\n如需完全便携化使用（所有文件保存在安装目录），请重新安装到非系统保护目录。`,
 			buttons: ['我知道了'],
 			defaultId: 0,
 			noLink: true,

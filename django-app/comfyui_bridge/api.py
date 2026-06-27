@@ -2490,7 +2490,7 @@ def blueprint_chat(request: Request) -> Response:
     messages: List[Dict[str, str]] = [
         {
             "role": "system",
-            "content": "你是 Dweb Video Studio 的蓝图工作流助手。请用简洁中文回答，并尽量给出可执行的步骤或参数建议。",
+            "content": "你是 DVStudio 的蓝图工作流助手。请用简洁中文回答，并尽量给出可执行的步骤或参数建议。",
         }
     ]
 
@@ -5995,7 +5995,7 @@ def blueprint_chat_stream(request: HttpRequest) -> HttpResponseBase:
     messages: List[Dict[str, str]] = [
         {
             "role": "system",
-            "content": "你是 Dweb Video Studio 的蓝图工作流助手。请用简洁中文回答，并尽量给出可执行的步骤或参数建议。",
+            "content": "你是 DVStudio 的蓝图工作流助手。请用简洁中文回答，并尽量给出可执行的步骤或参数建议。",
         }
     ]
 
