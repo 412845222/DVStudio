@@ -7977,6 +7977,7 @@ const onFocusNode = canvasInteraction.onFocusNode
 
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
 	store.dispatch('moveNodesBy', payload)
+	scheduleAsyncEdgeRender()
 }
 
 onBeforeUnmount(() => {
