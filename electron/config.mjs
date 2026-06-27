@@ -1,17 +1,37 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const APP_NAME = 'Dweb Video Studio'
+export const APP_NAME = (() => {
+	const env = String(process.env.DWEB_APP_NAME || process.env.DWEB_PRODUCT_NAME || '').trim()
+	if (env) return env
+	return 'DVStudio'
+})()
+
+export const APP_ID = (() => {
+	const env = String(process.env.DWEB_APP_ID || '').trim()
+	if (env) return env
+	return 'club.dweb.dvstudio'
+})()
+
+export const APP_VERSION = '0.1.1'
+export const APP_COPYRIGHT = 'Copyright (c) 2026 DwebStudio'
+export const APP_LICENSE = 'MPL-2.0'
+export const APP_HOMEPAGE = 'https://www.dweb.club/'
+export const APP_REPO_URL = 'https://github.com/412845222/DVStudio'
 
 let _isPackaged = false
 let _resourcesPath = ''
 
 try {
 	const electron = await import('electron')
-	if (electron.app) {
-		_isPackaged = electron.app.isPackaged
-		_resourcesPath = process.resourcesPath || ''
+	const electronApp = electron.default?.app || electron.app
+	if (electronApp && typeof electronApp.isPackaged === 'boolean') {
+		_isPackaged = electronApp.isPackaged
+	} else {
+		const rp = process.resourcesPath
+		_isPackaged = typeof rp === 'string' && rp.length > 0 && !rp.includes('node_modules')
 	}
+	_resourcesPath = process.resourcesPath || ''
 } catch {
 	_isPackaged = false
 	_resourcesPath = ''

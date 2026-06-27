@@ -322,7 +322,7 @@ class CopilotCliBridgeClient:
         elif agent_mode == "plan":
             lines.append("You are in Plan mode. Produce an implementation plan first. Do not edit files or run commands.")
         else:
-            lines.append("You are in Agent mode inside Dweb Video Studio. Help with the workspace task and report useful progress.")
+            lines.append("You are in Agent mode inside DVStudio. Help with the workspace task and report useful progress.")
         lines.append(f"Working directory: {cwd}")
         if references:
             lines.append("Workspace references:")

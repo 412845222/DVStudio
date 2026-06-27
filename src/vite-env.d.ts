@@ -15,20 +15,41 @@ interface ImportMeta {
 }
 
 declare const __DWEB_REPO_URL__: string
+declare const __DWEB_APP_VERSION__: string
+declare const __DWEB_APP_NAME__: string
+declare const __DWEB_APP_COPYRIGHT__: string
+
+type DwebAppInfo = {
+	appName: string
+	appId?: string
+	appVersion: string
+	copyright: string
+	license: string
+	homepage: string
+	repoUrl: string
+}
 
 interface Window {
-  __DWEB_REPO_URL__?: string
-  __DWEB_RUNTIME__?: { platform?: 'electron' | 'web' }
-  __DWEB_BACKEND_BASE_URL__?: string
-  __DWEB_CLIENT_SETTINGS?: import('./electronBridge/types').ClientSettings
-  __DWEB_AIWF_AUTO_HELLO?: string
-  __DWEB_AIWF_AUTO_HELLO_TEXT?: string
-  __DWEB_LOCAL_EXEC_BASE_PATH?: string
-  __DWEB_LOCAL_EXEC_STREAM_MODE?: string
-  process?: { versions?: { electron?: string } }
-  dweb?: {
-    common?: {
-      getBackendBaseUrl?: () => string
+	__DWEB_REPO_URL__?: string
+	__DWEB_APP_VERSION__?: string
+	__DWEB_APP_NAME__?: string
+	__DWEB_RUNTIME__?: {
+		platform?: 'electron' | 'web'
+		isElectron?: boolean
+		appName?: string
+		appVersion?: string
+	}
+	__DWEB_BACKEND_BASE_URL__?: string
+	__DWEB_CLIENT_SETTINGS?: import('./electronBridge/types').ClientSettings
+	__DWEB_AIWF_AUTO_HELLO?: string
+	__DWEB_AIWF_AUTO_HELLO_TEXT?: string
+	__DWEB_LOCAL_EXEC_BASE_PATH?: string
+	__DWEB_LOCAL_EXEC_STREAM_MODE?: string
+	process?: { versions?: { electron?: string } }
+	dweb?: {
+		common?: {
+			getAppInfo?: () => DwebAppInfo
+			getBackendBaseUrl?: () => string
       pingBackend?: () => Promise<import('./electronBridge/types').BackendPingResult>
       startBackend?: () => Promise<import('./electronBridge/types').BackendStartResult>
       restartBackend?: () => Promise<import('./electronBridge/types').BackendRestartResult>

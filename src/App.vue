@@ -48,6 +48,7 @@
 			@close="closeSteamPanel()"
 			@action="handleSteamPanelAction"
 		/>
+		<AboutDialog />
 	</div>
 </template>
 
@@ -65,6 +66,7 @@ import PageTransitionOverlay from './ui/UIComponent/PageTransitionOverlay.vue'
 import GlobalPageBackground from './ui/UIComponent/GlobalPageBackground.vue'
 import SteamEntryOverlay from './ui/UIComponent/SteamEntryOverlay.vue'
 import SteamPanel from './ui/Steam/SteamPanel.vue'
+import AboutDialog from './ui/UIComponent/AboutDialog.vue'
 import { useStartupProgress } from './composables/useStartupProgress'
 import { usePlatform, useSteamEntry } from './platformBridge'
 import { useSteamPanel } from './composables/useSteamPanel'
