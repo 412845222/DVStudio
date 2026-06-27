@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { APP_NAME, APP_ID, APP_VERSION, APP_COPYRIGHT, APP_LICENSE, APP_HOMEPAGE, APP_REPO_URL } from './config.mjs'
 
 function invoke(channel, payload) {
 	return ipcRenderer.invoke(channel, payload)
@@ -158,6 +159,8 @@ contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO_TEXT', process.env.DWEB_
 contextBridge.exposeInMainWorld('__DWEB_RUNTIME__', {
 	platform: 'electron',
 	isElectron: true,
+	appName: APP_NAME,
+	appVersion: APP_VERSION,
 })
 
 /**
@@ -168,6 +171,15 @@ contextBridge.exposeInMainWorld('__DWEB_RUNTIME__', {
  */
 contextBridge.exposeInMainWorld('dweb', {
 	common: {
+		getAppInfo: () => ({
+			appName: APP_NAME,
+			appId: APP_ID,
+			appVersion: APP_VERSION,
+			copyright: APP_COPYRIGHT,
+			license: APP_LICENSE,
+			homepage: APP_HOMEPAGE,
+			repoUrl: APP_REPO_URL,
+		}),
 		getBackendBaseUrl: () => invoke('dweb:getBackendBaseUrl'),
 		health: () => invoke('dweb:system:health'),
 		echo: (payload) => invoke('dweb:system:echo', payload),

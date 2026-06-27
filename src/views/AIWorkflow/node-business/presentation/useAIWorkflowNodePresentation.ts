@@ -171,7 +171,7 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 
 	const nodeImagePreviewVersion = (node: WorkflowNode) => {
 		if (!['image', 'video', 'rotate-image'].includes(node.type) || !node.resourceId) return null
-		const resource = store.state.resourcesById[node.resourceId] as any
+		const resource = store.state.resourcesById[node.resourceId]
 		if (!resource || typeof resource !== 'object') return null
 
 		const explicit = String(resource.previewVersion ?? '').trim()
@@ -223,7 +223,7 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 
 	const nodeImagePreviewUrl = (node: WorkflowNode, maxSize: number) => {
 		if (!['image', 'video', 'rotate-image'].includes(node.type) || !node.resourceId) return null
-		const resource = store.state.resourcesById[node.resourceId] as any
+		const resource = store.state.resourcesById[node.resourceId]
 		if (!resource || typeof resource !== 'object') return null
 
 		const previewVersion = nodeImagePreviewVersion(node)

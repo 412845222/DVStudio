@@ -2,6 +2,7 @@ import type { DwebCanvasGL } from '../canvas/DwebCanvasGL'
 import { NodeRenderer } from './NodeRenderer'
 import type { LocalTargetSize, RenderContext, RenderNode } from './types'
 import { normalizeLineLocalPoints, scaleLineLocalPoints } from '../../../core/scene/geometry'
+import type { VideoSceneNodeTransform } from '../../../core/scene'
 
 export class LineRenderer extends NodeRenderer {
 	readonly type = 'line' as const
@@ -28,22 +29,23 @@ export class LineRenderer extends NodeRenderer {
 	) {
 		const w = Math.max(1, Number(node.transform.width ?? 1))
 		const h = Math.max(1, Number(node.transform.height ?? 1))
-		const sx0 = Number((node.transform as any)?.scaleX ?? 1)
-		const sy0 = Number((node.transform as any)?.scaleY ?? 1)
+		const t = node.transform as VideoSceneNodeTransform
+		const sx0 = Number(t.scaleX ?? 1)
+		const sy0 = Number(t.scaleY ?? 1)
 		const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
 		const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
 		const sAvg = Math.max(0, (sx + sy) / 2)
 		const px =
-			typeof (node.transform as any).pivotX === 'number'
-				? Math.max(0, Math.min(1, Number((node.transform as any).pivotX)))
+			typeof t.pivotX === 'number'
+				? Math.max(0, Math.min(1, Number(t.pivotX)))
 				: 0.5
 		const py =
-			typeof (node.transform as any).pivotY === 'number'
-				? Math.max(0, Math.min(1, Number((node.transform as any).pivotY)))
+			typeof t.pivotY === 'number'
+				? Math.max(0, Math.min(1, Number(t.pivotY)))
 				: 0.5
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
-		const pObj = (node.props as any) ?? {}
+		const pObj = node.props as Record<string, unknown> ?? {}
 		const local = normalizeLineLocalPoints({ props: pObj, width: w, height: h })
 		const scaled = scaleLineLocalPoints(local, sx, sy)
 		const startX = scaled.startX
@@ -52,10 +54,10 @@ export class LineRenderer extends NodeRenderer {
 		const endY = scaled.endY
 		const anchorX = scaled.anchorX
 		const anchorY = scaled.anchorY
-		const lineWidthPx = Math.max(1, Number((node.props as any)?.lineWidth ?? 4))
-		const lineStyle = String((node.props as any)?.lineStyle ?? 'solid')
+		const lineWidthPx = Math.max(1, Number(pObj.lineWidth ?? 4))
+		const lineStyle = String(pObj.lineStyle ?? 'solid')
 		const color = canvas.parseHexColor(
-			String((node.props as any)?.lineColor ?? '#ffffff'),
+			String(pObj.lineColor ?? '#ffffff'),
 			ctx.opacity
 		)
 		// For offscreen filter rendering, the effective pixels-per-world-unit may be clamped.
@@ -67,7 +69,7 @@ export class LineRenderer extends NodeRenderer {
 				? Math.max(
 						1e-3,
 						Number(
-							((target as any)?.scale ?? canvas.getFilterScale()) ||
+							(target?.scale ?? canvas.getFilterScale()) ||
 								zoomWorldToCssPx * canvas.getPixelRatio()
 						) / Math.max(1, canvas.getPixelRatio())
 					)

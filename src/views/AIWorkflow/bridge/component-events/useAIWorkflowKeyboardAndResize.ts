@@ -104,13 +104,10 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 
 		ev.preventDefault()
 		const handled = payload.pasteMediaData(cd)
-		if (typeof handled === 'object' && (handled as any).then) {
-			Promise.resolve(handled as Promise<boolean>).then((ok) => {
-				if (!ok) payload.pasteNodesAtCanvasCenter()
-			})
-		} else if (!handled) {
-			payload.pasteNodesAtCanvasCenter()
-		}
+		const handledPromise = Promise.resolve(handled)
+		handledPromise.then((ok) => {
+			if (!ok) payload.pasteNodesAtCanvasCenter()
+		})
 	}
 
 	const onContentResize = () => {
@@ -119,13 +116,13 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 
 	const mountWindowEvents = () => {
 		window.addEventListener('keydown', onWorkflowKeyDown, true)
-		window.addEventListener('paste', onWorkflowPaste as any, true)
+		window.addEventListener('paste', onWorkflowPaste as EventListener, true)
 		window.addEventListener('dweb:content/resize', onContentResize as EventListener, true)
 	}
 
 	const unmountWindowEvents = () => {
 		window.removeEventListener('keydown', onWorkflowKeyDown, true)
-		window.removeEventListener('paste', onWorkflowPaste as any, true)
+		window.removeEventListener('paste', onWorkflowPaste as EventListener, true)
 		window.removeEventListener('dweb:content/resize', onContentResize as EventListener, true)
 	}
 

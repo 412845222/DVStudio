@@ -4,18 +4,21 @@ import type { ComfyLocalizedOutput } from '../comfy/comfyOutputResolver'
 export const useAIWorkflowMediaPreviewSources = (payload: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
-			resourcesById: Record<string, any>
+			nodesById: Record<string, WorkflowNode>
+			resourcesById: Record<string, {
+				kind?: string
+				url?: string
+			}>
 		}
 	}
-	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => any
+	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => { fromNodeId: string; fromAnchorId?: string } | null | undefined
 	nodeResourceUrl: (node: WorkflowNode) => string | null
 	connectedImageOutputUrl: (fromNode: WorkflowNode, fromAnchorId: string) => string
 	comfyOutputForAnchor: (
 		outputs: ComfyLocalizedOutput[],
 		anchorId: string,
 		expectedKind: 'image' | 'video'
-	) => any
+	) => { url?: string } | null | undefined
 }) => {
 	const storyPreview = (node: WorkflowNode) => {
 		const resourceInput = node.inputs?.find(
@@ -51,7 +54,7 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 		if (fromNode.type === 'image' || fromNode.type === 'video') {
 			const cropEnabled = !!fromNode.imageSettings?.cropEnabled
 			const crop = fromNode.type === 'image' ? (fromNode.imageSettings?.crop ?? null) : null
-			return { kind: fromNode.type, url: payload.nodeResourceUrl(fromNode), cropEnabled, crop }
+			return { kind: fromNode.type as 'image' | 'video', url: payload.nodeResourceUrl(fromNode), cropEnabled, crop }
 		}
 		return {
 			kind: null as null,
@@ -69,9 +72,9 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 		const fromNode = payload.store.state.nodesById[edge.fromNodeId]
 		if (!fromNode) return null as string | null
 
-		const rid = String((fromNode as any).resourceId ?? '').trim()
+		const rid = String(fromNode.resourceId ?? '').trim()
 		if (rid) {
-			const r = payload.store.state.resourcesById[rid] as any
+			const r = payload.store.state.resourcesById[rid]
 			if (r && String(r.kind ?? '').trim() === 'image') {
 				const url = String(r.url ?? '').trim()
 				if (url) return url
@@ -80,14 +83,14 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 
 		if (fromNode.type === 'comfyui') {
 			const outputs = Array.isArray(fromNode.comfyuiSettings?.outputs)
-				? (fromNode.comfyuiSettings!.outputs! as ComfyLocalizedOutput[])
+				? fromNode.comfyuiSettings!.outputs!
 				: []
 			const media = payload.comfyOutputForAnchor(
 				outputs,
-				String((edge as any).fromAnchorId ?? ''),
+				String(edge.fromAnchorId ?? ''),
 				'image'
 			)
-			const url = String((media as any)?.url ?? '').trim()
+			const url = String(media?.url ?? '').trim()
 			if (url) return url
 		}
 
@@ -105,7 +108,7 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 		}
 
 		if (fromNode.type === 'comfyui') {
-			return payload.connectedImageOutputUrl(fromNode, String((edge as any).fromAnchorId ?? ''))
+			return payload.connectedImageOutputUrl(fromNode, String(edge.fromAnchorId ?? ''))
 		}
 
 		return null as string | null
@@ -147,7 +150,7 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 
 		if (fromNode.type === 'comfyui') {
 			const url = String(
-				payload.connectedImageOutputUrl(fromNode, String((edge as any).fromAnchorId ?? '')) ?? ''
+				payload.connectedImageOutputUrl(fromNode, String(edge.fromAnchorId ?? '')) ?? ''
 			).trim()
 			if (!url) return null
 			return { url }
@@ -158,10 +161,10 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 			const rawOutputs = settings?.outputs
 			const outputs: WorkflowSceneDecomposeOutput[] = Array.isArray(rawOutputs) ? rawOutputs : []
 			const item = outputs.find(
-				(entry) => String(entry?.imageAnchorId ?? '') === String((edge as any).fromAnchorId ?? '')
+				(entry) => String(entry?.imageAnchorId ?? '') === String(edge.fromAnchorId ?? '')
 			)
 			const url = String(
-				payload.connectedImageOutputUrl(fromNode, String((edge as any).fromAnchorId ?? '')) ?? ''
+				payload.connectedImageOutputUrl(fromNode, String(edge.fromAnchorId ?? '')) ?? ''
 			).trim()
 			if (!url) return null
 			return {

@@ -17,7 +17,7 @@ export type BlueprintProjectItem = {
 
 export type BlueprintSnapshot = unknown
 
-type ListProjectsResponse =
+export type ListProjectsResponse =
 	| { ok: true; projects: BlueprintProjectItem[] }
 	| { ok: false; error: string; status?: number }
 

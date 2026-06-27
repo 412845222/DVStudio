@@ -1,4 +1,4 @@
-Dweb Video Studio LAN transfer package
+DVStudio LAN transfer package
 Package: dweb-video-studio-lan-transfer-20260407-100012
 CreatedAt: 2026-04-07T02:02:02.217Z
 Branch: main

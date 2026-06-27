@@ -164,7 +164,7 @@ export const useAIWorkflowEdgeRenderer = (payload: {
 			edgePathWorker = new Worker(new URL('./workers/edgePathWorker.ts', import.meta.url), {
 				type: 'module'
 			})
-			edgePathWorker.onmessage = (ev: MessageEvent<any>) => {
+			edgePathWorker.onmessage = (ev: MessageEvent<{ type: string; version?: number; mutationVersion?: number; edges?: unknown[]; stats?: { culledCount?: number; renderedCount?: number; inputCount?: number } }>) => {
 				if (disposed) return
 				const msg = ev?.data
 				if (!msg || msg.type !== 'result') return

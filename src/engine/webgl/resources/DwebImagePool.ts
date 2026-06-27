@@ -103,13 +103,13 @@ export class DwebImagePool {
 				const res = await fetch(key, {
 					mode: 'cors',
 					credentials: 'omit',
-					cache: 'force-cache' as any
+					cache: 'force-cache' as RequestCache
 				})
 				if (!res.ok) throw new Error(`HTTP ${res.status}`)
 				const blob = await res.blob()
 				const bmp = await createImageBitmap(blob)
-				entry.width = Math.max(1, (bmp as any).width || 1)
-				entry.height = Math.max(1, (bmp as any).height || 1)
+				entry.width = Math.max(1, bmp.width || 1)
+				entry.height = Math.max(1, bmp.height || 1)
 				entry.status = 'ready'
 				gl.bindTexture(gl.TEXTURE_2D, tex)
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
@@ -120,7 +120,7 @@ export class DwebImagePool {
 				gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
 				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp)
 				try {
-					;(bmp as any).close?.()
+					bmp.close?.()
 				} catch {
 					// ignore
 				}

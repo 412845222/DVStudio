@@ -19,10 +19,12 @@ import {
 	type AIWorkflowProjectPackageV1
 } from './projectPackage'
 
+import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
+
 export const useAIWorkflowProjectPackageExport = (payload: {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
-	buildPersistableSnapshotWithOptions: (opts: { uploadLocalResources: boolean }) => Promise<any>
-	stripUnrealExportRuntimeFromSnapshot: (snapshot: any) => any
+	buildPersistableSnapshotWithOptions: (opts: { uploadLocalResources: boolean }) => Promise<AIWorkflowDraftSnapshot>
+	stripUnrealExportRuntimeFromSnapshot: (snapshot: AIWorkflowDraftSnapshot) => AIWorkflowDraftSnapshot
 	currentProjectName: { value: string }
 }) => {
 	const packageExportProgress = ref({ active: false, progress: 0, stage: '', detail: '' })
@@ -86,7 +88,7 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 				{ filePath: string; blob: Blob; kind: AIWorkflowProjectPackageAssetKind }
 			>()
 			const totalResourceFetches = referencedResourceIds.reduce((count, rid) => {
-				const resource = snapshot.resourcesById[rid] as any
+				const resource = snapshot.resourcesById[rid]
 				if (!resource) return count
 				return (
 					count +
@@ -102,20 +104,20 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 			}
 
 			for (const rid of referencedResourceIds) {
-				const resource = snapshot.resourcesById[rid] as any
+				const resource = snapshot.resourcesById[rid]
 				if (!resource) continue
 				const kind =
-					resource?.kind === 'video' ? 'video' : resource?.kind === 'image' ? 'image' : null
+					resource.kind === 'video' ? 'video' : resource.kind === 'image' ? 'image' : null
 				if (!kind) continue
 
 				const targets: AIWorkflowProjectPackageAssetTarget[] = ['url', 'posterUrl']
 				for (const target of targets) {
-					const currentUrl = cleanupPackagedAssetUrl(resource?.[target])
+					const currentUrl = cleanupPackagedAssetUrl(resource[target as keyof typeof resource])
 					if (!currentUrl || currentUrl.startsWith('package://')) continue
 
 					updateFetchProgress(
 						'收集资源池资产',
-						`${processedFetchSteps + 1}/${totalFetchSteps} · ${String(resource?.name || rid)}`
+						`${processedFetchSteps + 1}/${totalFetchSteps} · ${String(resource.name || rid)}`
 					)
 
 					const blob = await fetchAssetBlobForPackage(currentUrl, resolveBackendUrl)
@@ -124,7 +126,7 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 						skipped += 1
 						updateFetchProgress(
 							'收集资源池资产',
-							`${processedFetchSteps}/${totalFetchSteps} · 跳过 ${String(resource?.name || rid)}`
+							`${processedFetchSteps}/${totalFetchSteps} · 跳过 ${String(resource.name || rid)}`
 						)
 						continue
 					}
@@ -143,7 +145,7 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 						mimeType: String(blob.type || ''),
 						size: Number(blob.size || 0)
 					})
-					resource[target] = `package://${filePath}`
+					;(resource as unknown as Record<string, string>)[target] = `package://${filePath}`
 					updateFetchProgress(
 						'收集资源池资产',
 						`${processedFetchSteps}/${totalFetchSteps} · 已打包 ${String(resource?.name || rid)}`
@@ -200,7 +202,7 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 					)
 				}
 
-				setValueByJsonPointer(snapshot as any, item.pointer, `package://${cached.filePath}`)
+				setValueByJsonPointer(snapshot as Record<string, unknown>, item.pointer, `package://${cached.filePath}`)
 				assets.push({
 					target: 'snapshotField',
 					filePath: cached.filePath,

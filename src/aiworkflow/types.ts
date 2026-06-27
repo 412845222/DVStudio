@@ -769,7 +769,7 @@ export type WorkflowNode = {
 	/** For chat dialog: user-entered draft text */
 	nodeChatDraft?: string
 	/** For chat dialog: user-configured params */
-	nodeChatParams?: Record<string, any>
+	nodeChatParams?: Record<string, unknown>
 	worldX: number
 	worldY: number
 	width: number

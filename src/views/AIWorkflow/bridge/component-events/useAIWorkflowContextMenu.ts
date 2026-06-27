@@ -222,9 +222,10 @@ export const useAIWorkflowContextMenu = (payload: {
 				payload
 					.downloadUrlAsBlob(url, filename)
 					.then(() => payload.pushToast('已开始下载。', 'info'))
-					.catch((err: any) =>
-						payload.pushToast('下载失败：' + String(err?.message ?? err ?? 'unknown'), 'error')
-					)
+					.catch((err: unknown) => {
+						const errMsg = err instanceof Error ? err.message : String(err ?? 'unknown')
+						payload.pushToast('下载失败：' + errMsg, 'error')
+					})
 			}
 		}
 
@@ -235,7 +236,11 @@ export const useAIWorkflowContextMenu = (payload: {
 					.openFolderForPath(filePath)
 					.then((res) => {
 						if (!res?.ok) {
-							const message = String((res as any)?.error || 'unknown')
+							let message = 'unknown'
+							if (res && typeof res === 'object') {
+								const ro = res as Record<string, unknown>
+								message = String(ro.error ?? 'unknown')
+							}
 							if (/No handler registered/i.test(message)) {
 								payload.pushToast(
 									'打开文件夹失败：Electron 主进程未加载新 IPC，请重启桌面端后重试。',
@@ -246,8 +251,16 @@ export const useAIWorkflowContextMenu = (payload: {
 							payload.pushToast('打开文件夹失败：' + message, 'warn')
 						}
 					})
-					.catch((err: any) => {
-						const message = String(err?.message ?? err ?? 'unknown')
+					.catch((err: unknown) => {
+						let message = 'unknown'
+						if (err instanceof Error) {
+							message = err.message
+						} else if (err && typeof err === 'object') {
+							const eo = err as Record<string, unknown>
+							message = String(eo.message ?? err)
+						} else {
+							message = String(err)
+						}
 						if (/No handler registered/i.test(message)) {
 							payload.pushToast(
 								'打开文件夹失败：Electron 主进程未加载新 IPC，请重启桌面端后重试。',

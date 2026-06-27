@@ -1,9 +1,11 @@
+import type { WorkflowNode } from '../../../../aiworkflow/types'
+
 export const useAIWorkflowSceneLayoutSettings = (payload: {
 	store: {
 		state: {
-			nodesById: Record<string, any>
+			nodesById: Record<string, WorkflowNode>
 		}
-		commit: (type: string, value: any) => void
+		commit: (type: string, value: unknown) => void
 	}
 }) => {
 	const onNodeSceneLayoutLightingPreviewUpdate = (nodeId: string, enabled: boolean) => {

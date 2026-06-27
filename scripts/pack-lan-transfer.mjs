@@ -203,7 +203,7 @@ async function copyFilesToStaging(files, stagingDir) {
 async function writeManifest(stagingDir, metadata, files, packageName) {
 	const manifestPath = path.join(stagingDir, 'TRANSFER_MANIFEST.txt')
 	const lines = [
-		'Dweb Video Studio LAN transfer package',
+		'DVStudio LAN transfer package',
 		`Package: ${packageName}`,
 		`CreatedAt: ${new Date().toISOString()}`,
 		`Branch: ${metadata.branch}`,

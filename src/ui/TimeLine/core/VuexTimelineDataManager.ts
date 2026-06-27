@@ -252,9 +252,7 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 			return { ...cloned, id: nextId }
 		}
 
-		// SAFE-ANY: remapRefs handles arbitrary nested object structure with ID remapping
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const remapRefs = (v: any, keyHint = ''): any => {
+		const remapRefs = (v: unknown, keyHint = ''): unknown => {
 			if (v == null) return v
 			if (typeof v === 'string') {
 				const hit = idMap.get(v)
@@ -264,14 +262,12 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 				return v.map((it: unknown) => remapRefs(it, keyHint))
 			}
 			if (typeof v === 'object') {
-				const out: Record<string, unknown> = Array.isArray(v)
-					? ([] as unknown as Record<string, unknown>)
-					: {}
-				for (const [k, vv] of Object.entries(v)) {
+				const out: Record<string, unknown> = {}
+				for (const [k, vv] of Object.entries(v as Record<string, unknown>)) {
 					if (typeof vv === 'string' && (shouldRemapKey(k) || shouldRemapKeyPlural(k))) {
 						out[k] = idMap.get(vv) ?? vv
 					} else if (Array.isArray(vv) && shouldRemapKeyPlural(k)) {
-						out[k] = (vv as string[]).map((s) => (typeof s === 'string' ? (idMap.get(s) ?? s) : s))
+						out[k] = (vv as unknown[]).map((s) => (typeof s === 'string' ? (idMap.get(s) ?? s) : s))
 					} else {
 						out[k] = remapRefs(vv, k)
 					}

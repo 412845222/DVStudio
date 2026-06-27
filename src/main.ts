@@ -14,11 +14,20 @@ import {
 } from './core/events/dvsEvents'
 import { VideoSceneStore } from './store/videoscene'
 import { TimelineStore } from './store/timeline'
+import { getAppName } from './network/appInfo'
+
+if (typeof document !== 'undefined' && document.title) {
+	try {
+		document.title = getAppName()
+	} catch {
+		// ignore
+	}
+}
 
 // 运行环境标记：Web 模式默认注入；Electron 模式由 preload 注入（且可能是只读属性）。
-const w = window as any
+const w = window as unknown as Record<string, unknown>
 if (!w.__DWEB_RUNTIME__) {
-	w.__DWEB_RUNTIME__ = { platform: 'web', isElectron: false }
+	w.__DWEB_RUNTIME__ = { platform: 'web', isElectron: false } as unknown
 }
 
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
@@ -106,10 +115,10 @@ window.addEventListener(DVS_EVENTS.EditorNodePatched, (e) => {
 		nodeId: detail.nodeId,
 		layerId: detail.layerId,
 		patch: {
-			name: detail.patch?.name as any,
-			userType: detail.patch?.userType as any,
-			transform: (detail.patch?.transform as any) ?? undefined,
-			props: (detail.patch?.props as any) ?? undefined
+			name: detail.patch?.name as unknown,
+			userType: detail.patch?.userType as unknown,
+			transform: detail.patch?.transform ?? undefined,
+			props: detail.patch?.props ?? undefined
 		}
 	})
 })
@@ -164,7 +173,7 @@ const onMouseNav = (e: MouseEvent | PointerEvent) => {
 }
 
 window.addEventListener('pointerdown', onMouseNav, { capture: true })
-window.addEventListener('auxclick', onMouseNav as any, { capture: true })
+window.addEventListener('auxclick', onMouseNav as EventListener, { capture: true })
 
 // 兜底：某些浏览器/鼠标驱动会直接触发“历史回退”而吞掉页面可监听的鼠标事件。
 // 这里用 popstate 拦截回退，并转成时间轴后退。

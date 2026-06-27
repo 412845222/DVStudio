@@ -177,13 +177,13 @@ const { onRemoveResource, onRefreshMissingResourceRecords } = useAIWorkflowResou
 	currentProjectId,
 	blueprintProjectService,
 	pushToast,
-	isComfyForwardResource: (resource: { url?: string }) => {
+	isComfyForwardResource: (resource) => {
 		const forwardUrls = ['result.image', 'image.upscaled.image', 'images.output', '.intermediate.']
-		const url = String(resource?.url || '').toLowerCase()
+		const url = String((resource as { url?: string })?.url || '').toLowerCase()
 		return forwardUrls.some((u) => url.includes(u)) && url.includes('comfyui')
 	},
-	isDjangoManagedResource: (resource: { url?: string }) => {
-		const url = String(resource?.url || '').trim()
+	isDjangoManagedResource: (resource) => {
+		const url = String((resource as { url?: string })?.url || '').trim()
 		if (!url) return false
 		if (url.startsWith('dweb://')) return true
 		if (url.startsWith('file://') || url.startsWith('blob:')) return false

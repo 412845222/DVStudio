@@ -570,14 +570,10 @@ const runTextTask = async (
 
 	let accumulated = ''
 	try {
-		// SAFE-ANY: service call with extended params beyond typed signature
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		for await (const ev of (svc as any).blueprintChatStream({
-			content: String(body.content ?? ''),
-			history: body.history,
-			provider: String(body.provider ?? ''),
-			modelId: String(body.modelId ?? '')
-		})) {
+			for await (const ev of (svc as ComfyUIBridgeService).blueprintChatStream({
+				content: String(body.content ?? ''),
+				history: body.history as Array<{ role: 'user' | 'assistant' | 'system'; content: string }> | undefined
+			})) {
 			if (ev.type === 'done') break
 			if (ev.type === 'error') {
 				throw new Error(String(ev.error?.message ?? 'unknown'))
@@ -612,15 +608,14 @@ const runTextTask = async (
 		appendDetail(deps, task.id, `流式调用失败：${fallbackMsg}`)
 		updateTask(deps, task.id, { status: 'running', statusText: '尝试失败回退…' })
 		try {
-			// SAFE-ANY: service call with extended params beyond typed signature
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const plain = await (svc as any).blueprintChat(body)
+			const plain = await (svc as ComfyUIBridgeService).blueprintChat({
+				content: String(body.content ?? ''),
+				history: body.history as Array<{ role: 'user' | 'assistant' | 'system'; content: string }> | undefined
+			})
 			const text =
-				typeof plain?.text === 'string'
-					? plain.text
-					: typeof plain?.content === 'string'
-						? plain.content
-						: ''
+				plain.ok && typeof plain.assistant === 'string'
+					? plain.assistant
+					: ''
 			if (text) accumulated = text
 		} catch (fallbackErr: unknown) {
 			appendDetail(deps, task.id, `兜底请求失败：${getErrorMessage(fallbackErr)}`)

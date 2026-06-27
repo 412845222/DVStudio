@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* three module is shimmed as any in vite-env-three.d.ts; runtime calls are valid, type references use custom Like types */
+/* three module is shimmed; runtime calls are valid, type references use custom Like types */
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
@@ -18,7 +17,6 @@ import type {
 	WorkflowSceneLightingPreviewConfig
 } from '../../../../aiworkflow/types'
 
-type GltfTemplateLike = Object3Dlike & { clone(recursive?: boolean): Object3Dlike }
 type AnchorPoint = { center: Vector3Like; base: Vector3Like; top: Vector3Like }
 type RelationLine = {
 	childId: string
@@ -125,6 +123,7 @@ type Object3Dlike = {
 	children: Object3Dlike[]
 	material?: unknown
 	geometry?: unknown
+	clone(recursive?: boolean): Object3Dlike
 	lookAt(x: number | Vector3Like, y?: number, z?: number): void
 	updateMatrixWorld(force?: boolean): void
 	traverse(callback: (object: Object3Dlike) => void): void
@@ -134,9 +133,19 @@ type Object3Dlike = {
 	getWorldQuaternion(target: QuaternionLike): QuaternionLike
 	getWorldScale(target: Vector3Like): Vector3Like
 }
+type GltfTemplateLike = Object3Dlike
 type MeshLike = Object3Dlike & {
 	material: MaterialWithMaps | MaterialWithMaps[]
 	geometry: Disposable
+}
+type ClonableMaterial = MaterialWithMaps & { clone(): ClonableMaterial }
+type ClonableGeometry = Disposable & { clone?(): ClonableGeometry }
+type DisposableMesh = Object3Dlike & {
+	material: MaterialWithMaps | MaterialWithMaps[] | unknown
+	geometry: (Disposable & { dispose(): void; clone?(): Disposable & { dispose(): void } }) | unknown
+}
+type BoundModelChild = Object3Dlike & {
+	userData: { itemId?: unknown; isBoundModel?: boolean } & Record<string, unknown>
 }
 type LineLike = Object3Dlike & {
 	material: { opacity?: number; dispose?: () => void }
@@ -2372,19 +2381,21 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	private cloneModelScene(template: GltfTemplateLike) {
-		const cloned: any = template.clone(true)
-		cloned.traverse((entry: any) => {
+		const cloned: GltfTemplateLike = template.clone(true)
+		cloned.traverse((entry: Object3Dlike) => {
 			if (entry instanceof THREE.Mesh) {
-				if (entry.geometry && typeof entry.geometry.clone === 'function') {
-					entry.geometry = entry.geometry.clone()
+				const meshEntry = entry as unknown as DisposableMesh
+				const geom = meshEntry.geometry as ClonableGeometry | undefined
+				if (geom && typeof geom.clone === 'function') {
+					meshEntry.geometry = geom.clone() as Disposable
 				}
-				const material = entry.material
+				const material = meshEntry.material
 				if (Array.isArray(material)) {
-					entry.material = material.map((item: any) =>
+					meshEntry.material = material.map((item: ClonableMaterial | null) =>
 						item && typeof item.clone === 'function' ? item.clone() : item
 					)
-				} else if (material && typeof material.clone === 'function') {
-					entry.material = material.clone()
+				} else if (material && typeof (material as ClonableMaterial).clone === 'function') {
+					meshEntry.material = (material as ClonableMaterial).clone()
 				}
 			}
 		})
@@ -2446,11 +2457,13 @@ export class SceneLayoutPreviewViewer {
 		const existingModel = this.boundModelsById.get(itemId)
 		if (existingModel) {
 			this.group.remove(existingModel)
-			;(existingModel as any).traverse((entry: any) => {
+			existingModel.traverse((entry: Object3Dlike) => {
 				if (entry instanceof THREE.Mesh) {
-					entry.geometry?.dispose()
-					if (entry.material)
-						disposeMaterial(entry.material as MaterialWithMaps | MaterialWithMaps[])
+					const meshEntry = entry as unknown as DisposableMesh
+					const geom = meshEntry.geometry as Disposable | undefined
+					geom?.dispose()
+					if (meshEntry.material)
+						disposeMaterial(meshEntry.material as MaterialWithMaps | MaterialWithMaps[])
 				}
 			})
 		}
@@ -2462,25 +2475,28 @@ export class SceneLayoutPreviewViewer {
 		const targetId = String(itemId ?? '').trim()
 		if (!targetId) return
 		for (let index = this.group.children.length - 1; index >= 0; index -= 1) {
-			const child: any = this.group.children[index]
+			const child: BoundModelChild | undefined = this.group.children[index] as BoundModelChild | undefined
 			if (!child) continue
 			const directItemId = String(child.userData?.itemId ?? '').trim()
 			const directIsBoundModel = child.userData?.isBoundModel === true
 			let matched = directIsBoundModel && directItemId === targetId
 			if (!matched) {
-				child.traverse((entry: any) => {
+				child.traverse((entry: Object3Dlike) => {
 					if (matched) return
-					const entryItemId = String(entry?.userData?.itemId ?? '').trim()
-					if (entryItemId === targetId && entry?.userData?.isBoundModel === true) matched = true
+					const entryChild = entry as unknown as BoundModelChild
+					const entryItemId = String(entryChild?.userData?.itemId ?? '').trim()
+					if (entryItemId === targetId && entryChild?.userData?.isBoundModel === true) matched = true
 				})
 			}
 			if (!matched) continue
 			this.group.remove(child)
-			child.traverse((entry: any) => {
+			child.traverse((entry: Object3Dlike) => {
 				if (entry instanceof THREE.Mesh) {
-					entry.geometry?.dispose()
-					if (entry.material)
-						disposeMaterial(entry.material as MaterialWithMaps | MaterialWithMaps[])
+					const meshEntry = entry as unknown as DisposableMesh
+					const geom = meshEntry.geometry as Disposable | undefined
+					geom?.dispose()
+					if (meshEntry.material)
+						disposeMaterial(meshEntry.material as MaterialWithMaps | MaterialWithMaps[])
 				}
 			})
 		}
@@ -4325,9 +4341,13 @@ export class SceneLayoutPreviewViewer {
 		this.edgesById.clear()
 		for (const model of this.boundModelsById.values()) {
 			this.group.remove(model)
-			;(model as any).traverse((entry: any) => {
-				if (entry.geometry && typeof entry.geometry.dispose === 'function') entry.geometry.dispose()
-				if (entry.material) disposeMaterial(entry.material as MaterialWithMaps | MaterialWithMaps[])
+			model.traverse((entry: Object3Dlike) => {
+				if (entry instanceof THREE.Mesh) {
+					const meshEntry = entry as unknown as DisposableMesh
+					const geom = meshEntry.geometry as Disposable | undefined
+					if (geom && typeof geom.dispose === 'function') geom.dispose()
+					if (meshEntry.material) disposeMaterial(meshEntry.material as MaterialWithMaps | MaterialWithMaps[])
+				}
 			})
 		}
 		this.boundModelsById.clear()
@@ -4339,11 +4359,15 @@ export class SceneLayoutPreviewViewer {
 			material.dispose()
 		}
 		while (this.group.children.length) {
-			const child: any = this.group.children.pop()
+			const child: Object3Dlike | undefined = this.group.children.pop() as Object3Dlike | undefined
 			if (!child) continue
-			child.traverse((entry: any) => {
-				if (entry.geometry && typeof entry.geometry.dispose === 'function') entry.geometry.dispose()
-				if (entry.material) disposeMaterial(entry.material as MaterialWithMaps | MaterialWithMaps[])
+			child.traverse((entry: Object3Dlike) => {
+				if (entry instanceof THREE.Mesh) {
+					const meshEntry = entry as unknown as DisposableMesh
+					const geom = meshEntry.geometry as Disposable | undefined
+					if (geom && typeof geom.dispose === 'function') geom.dispose()
+					if (meshEntry.material) disposeMaterial(meshEntry.material as MaterialWithMaps | MaterialWithMaps[])
+				}
 			})
 		}
 	}

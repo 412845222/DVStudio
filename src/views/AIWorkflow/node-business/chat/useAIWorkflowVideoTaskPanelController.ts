@@ -31,17 +31,21 @@ const isSucceededVideoTask = (item: VideoTaskPanelItem | null | undefined) => {
 	return status === 'succeeded' || status === 'success'
 }
 
+type SeedanceTaskListResult = { ok: boolean; error?: string; items?: SeedanceTaskMirrorItem[] }
+type SeedanceTaskDetailResult = { ok: boolean; error?: string; item?: SeedanceTaskMirrorItem }
+type SeedanceSyncResult = { ok: boolean; error?: string; item?: SeedanceTaskMirrorItem }
+
 export const useAIWorkflowVideoTaskPanelController = (options: {
 	comfyService: {
-		seedanceTasks: (query?: { status?: string; model?: string; limit?: number }) => Promise<any>
-		seedanceTaskDetail: (taskId: string) => Promise<any>
+		seedanceTasks: (query?: { status?: string; model?: string; limit?: number }) => Promise<SeedanceTaskListResult>
+		seedanceTaskDetail: (taskId: string) => Promise<SeedanceTaskDetailResult>
 		seedanceSyncTasks: (payload?: {
 			taskId?: string
 			pageNum?: number
 			pageSize?: number
 			projectId?: number
 			saveMedia?: boolean
-		}) => Promise<any>
+		}) => Promise<SeedanceSyncResult>
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	getCurrentProjectId: () => number | null

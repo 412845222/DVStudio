@@ -1,11 +1,19 @@
 ; ============================================
-; Dweb Video Studio - NSIS Custom Installer Script
+; DVStudio - NSIS Custom Installer Script
 ; Brand: Dark theme + Emerald Green (#1f9d84)
+;
+; 更名指南：修改产品名称时需同步修改以下位置：
+;   1. electron/config.mjs 中 APP_NAME 默认值（支持 DWEB_APP_NAME 环境变量覆盖）
+;   2. package.json 中 build.productName 字段
+;   3. package.json 中 build.nsis.shortcutName 字段
+;   4. 本文件 BrandingText 文本（见下方）
+;   5. package.json 中 description 字段（可选，产品描述）
+;   6. public/favicon.ico 替换为产品图标（可选）
 ; ============================================
 
 !macro customHeader
   ; Set branding text shown at the bottom of the installer
-  BrandingText "Dweb Video Studio"
+  BrandingText "DVStudio"
 !macroend
 
 !macro customInit
