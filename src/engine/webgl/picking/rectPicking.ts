@@ -20,18 +20,25 @@ const isLocked = (props: unknown): boolean => {
 	return Boolean(p.locked)
 }
 
-export function hitTestRotatedRects(nodes: PickableRectNode[], worldPoint: Vec2): PickingHit | null {
+export function hitTestRotatedRects(
+	nodes: PickableRectNode[],
+	worldPoint: Vec2
+): PickingHit | null {
 	for (let i = nodes.length - 1; i >= 0; i--) {
 		const n = nodes[i]
 		if (isLocked(n.props)) continue
 		const rotation = getRotation(n.transform)
 		const w = n.transform.width
 		const h = n.transform.height
-		const px = typeof (n.transform as any).pivotX === 'number' && Number.isFinite((n.transform as any).pivotX)
-			? Math.max(0, Math.min(1, Number((n.transform as any).pivotX)))
+		const px =
+		typeof n.transform.pivotX === 'number' &&
+		Number.isFinite(n.transform.pivotX)
+			? Math.max(0, Math.min(1, Number(n.transform.pivotX)))
 			: 0.5
-		const py = typeof (n.transform as any).pivotY === 'number' && Number.isFinite((n.transform as any).pivotY)
-			? Math.max(0, Math.min(1, Number((n.transform as any).pivotY)))
+	const py =
+		typeof n.transform.pivotY === 'number' &&
+		Number.isFinite(n.transform.pivotY)
+			? Math.max(0, Math.min(1, Number(n.transform.pivotY)))
 			: 0.5
 
 		// hitTest: 旋转矩形，先把点旋回局部坐标再做 AABB
@@ -67,11 +74,15 @@ export function queryRotatedRectsInWorldRect(
 		const cy = n.transform.y
 		const w = n.transform.width
 		const h = n.transform.height
-		const px = typeof (n.transform as any).pivotX === 'number' && Number.isFinite((n.transform as any).pivotX)
-			? Math.max(0, Math.min(1, Number((n.transform as any).pivotX)))
+		const px =
+		typeof n.transform.pivotX === 'number' &&
+		Number.isFinite(n.transform.pivotX)
+			? Math.max(0, Math.min(1, Number(n.transform.pivotX)))
 			: 0.5
-		const py = typeof (n.transform as any).pivotY === 'number' && Number.isFinite((n.transform as any).pivotY)
-			? Math.max(0, Math.min(1, Number((n.transform as any).pivotY)))
+	const py =
+		typeof n.transform.pivotY === 'number' &&
+		Number.isFinite(n.transform.pivotY)
+			? Math.max(0, Math.min(1, Number(n.transform.pivotY)))
 			: 0.5
 		const dx0 = -w * px
 		const dx1 = w * (1 - px)
@@ -85,7 +96,10 @@ export function queryRotatedRectsInWorldRect(
 		if (rotation) {
 			const cos = Math.cos(rotation)
 			const sin = Math.sin(rotation)
-			const rot = (dx: number, dy: number) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos })
+			const rot = (dx: number, dy: number) => ({
+				x: cx + dx * cos - dy * sin,
+				y: cy + dx * sin + dy * cos
+			})
 			const p1 = rot(dx0, dy0)
 			const p2 = rot(dx1, dy0)
 			const p3 = rot(dx0, dy1)

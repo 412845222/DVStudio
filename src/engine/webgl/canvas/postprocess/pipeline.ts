@@ -1,11 +1,50 @@
+import { getErrorMessage } from '../../../../types/utils'
 import { fsPostBlur, fsPostGlowComposite, vsPostBlur, vsPostGlowComposite } from '../../shaders'
 import type { DwebCanvasGL } from '../DwebCanvasGL'
 import { createProgram } from './program'
 import { FilterTargetsPool } from './targets'
 import type { FilterTargets, PostProg } from './types'
 
-type CustomCached = { prog: PostProg; ok: true; log: string } | { prog: null; ok: false; log: string }
+type CustomCached =
+	| { prog: PostProg; ok: true; log: string }
+	| { prog: null; ok: false; log: string }
 type UvRect = { u0: number; v0: number; u1: number; v1: number }
+
+interface BlurFilter {
+	type: 'blur'
+	blurX?: number
+	blurY?: number
+	iterations?: number
+	__blurX?: number
+	__blurY?: number
+	__iterations?: number
+	__maxStepPx?: number
+	__maxIterations?: number
+}
+
+interface GlowFilter {
+	type: 'glow'
+	intensity?: number
+	color?: string
+	blurX?: number
+	blurY?: number
+	iterations?: number
+	inner?: boolean
+	knockout?: boolean
+	__blurX?: number
+	__blurY?: number
+	__iterations?: number
+	__maxStepPx?: number
+	__maxIterations?: number
+}
+
+interface CustomShaderFilter {
+	type: 'customShader'
+	vertex?: string
+	fragment?: string
+}
+
+export type Filter = BlurFilter | GlowFilter | CustomShaderFilter
 
 export class CanvasPostProcess {
 	private postVbo: WebGLBuffer | null = null
@@ -66,7 +105,7 @@ export class CanvasPostProcess {
 			frame.reuse,
 			frame.clampBudget,
 			frame.clampDim,
-			frame.clampPixels,
+			frame.clampPixels
 		].join('|')
 		if (sig === this.lastPerfSig && now - this.lastPerfLogAt < intervalMs * 3) return
 		this.lastPerfSig = sig
@@ -80,7 +119,7 @@ export class CanvasPostProcess {
 				maxTarget: `${total.maxW}x${total.maxH}`,
 				tex: total.format,
 				frame,
-				budget: { maxTargets: total.maxTargets, maxBytesMB: mb(total.maxBytes) },
+				budget: { maxTargets: total.maxTargets, maxBytesMB: mb(total.maxBytes) }
 			})
 		} catch {
 			// ignore
@@ -95,8 +134,14 @@ export class CanvasPostProcess {
 		contentH: number,
 		padX: number,
 		padY: number,
-		filters: any[],
-		renderLocal: (target: { w: number; h: number; contentW: number; contentH: number; scale?: number }) => void
+		filters: Filter[],
+		renderLocal: (target: {
+			w: number
+			h: number
+			contentW: number
+			contentH: number
+			scale?: number
+		}) => void
 	): { tex: WebGLTexture; padX: number; padY: number; uv: UvRect } {
 		this.ensureResources(gl)
 
@@ -104,7 +149,15 @@ export class CanvasPostProcess {
 		// Note: we may clamp it below this to avoid runaway allocations under extreme zoom.
 		const desiredScale = canvas.getFilterScale()
 		const safe = this.computeSafeScaleAndPad(gl, contentW, contentH, padX, padY, desiredScale)
-		const t = this.targets.ensureWithPadding(gl, id, contentW, contentH, safe.padX, safe.padY, safe.scale)
+		const t = this.targets.ensureWithPadding(
+			gl,
+			id,
+			contentW,
+			contentH,
+			safe.padX,
+			safe.padY,
+			safe.scale
+		)
 		// IMPORTANT: the targets pool may further clamp allocation (e.g. maxDim/pixel budget)
 		// beyond what computeSafeScaleAndPad anticipated. If we render with a scale larger
 		// than the *effective* allocated scale, we will draw past the FBO bounds, which
@@ -113,7 +166,10 @@ export class CanvasPostProcess {
 		const renderScale = Math.max(1e-3, Math.min(Number(safe.scale) || 1, targetScale))
 		// If we had to clamp the offscreen scale, keeping blur radius in pixels would enlarge
 		// it in world space. Adjust blur parameters based on the *actual* render scale.
-		const scaleAdjust = Math.max(1e-3, Math.min(1, renderScale / Math.max(1e-3, Number(desiredScale) || 1)))
+		const scaleAdjust = Math.max(
+			1e-3,
+			Math.min(1, renderScale / Math.max(1e-3, Number(desiredScale) || 1))
+		)
 
 		const prevBlend = gl.isEnabled(gl.BLEND)
 		gl.disable(gl.BLEND)
@@ -127,34 +183,84 @@ export class CanvasPostProcess {
 
 		let currentTex: WebGLTexture = t.tex0
 		for (const f of filters) {
-			const ft = String(f?.type || '')
-			if (ft === 'blur') {
-				let blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
-				let blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
-				const iterations = Math.max(1, Math.floor(Number((f as any).__iterations ?? f.iterations ?? 1) || 1))
-				let maxStepPx = Math.max(1e-3, Number((f as any).__maxStepPx ?? 8) || 8)
-				const maxIterations = Math.max(1, Math.floor(Number((f as any).__maxIterations ?? 12) || 12))
+			if (f.type === 'blur') {
+				let blurX = Math.max(0, Number(f.__blurX ?? f.blurX ?? 0) || 0)
+				let blurY = Math.max(0, Number(f.__blurY ?? f.blurY ?? 0) || 0)
+				const iterations = Math.max(
+					1,
+					Math.floor(Number(f.__iterations ?? f.iterations ?? 1) || 1)
+				)
+				let maxStepPx = Math.max(1e-3, Number(f.__maxStepPx ?? 8) || 8)
+				const maxIterations = Math.max(
+					1,
+					Math.floor(Number(f.__maxIterations ?? 12) || 12)
+				)
 				blurX *= scaleAdjust
 				blurY *= scaleAdjust
 				maxStepPx *= scaleAdjust
 				if (currentTex === t.tex0) {
-					currentTex = this.blurInto(gl, t, currentTex, t.fbo1, t.tex1, t.fbo2, t.tex2, blurX, blurY, iterations, maxStepPx, maxIterations)
+					currentTex = this.blurInto(
+						gl,
+						t,
+						currentTex,
+						t.fbo1,
+						t.tex1,
+						t.fbo2,
+						t.tex2,
+						blurX,
+						blurY,
+						iterations,
+						maxStepPx,
+						maxIterations
+					)
 				} else if (currentTex === t.tex1) {
-					currentTex = this.blurInto(gl, t, currentTex, t.fbo0, t.tex0, t.fbo2, t.tex2, blurX, blurY, iterations, maxStepPx, maxIterations)
+					currentTex = this.blurInto(
+						gl,
+						t,
+						currentTex,
+						t.fbo0,
+						t.tex0,
+						t.fbo2,
+						t.tex2,
+						blurX,
+						blurY,
+						iterations,
+						maxStepPx,
+						maxIterations
+					)
 				} else {
-					currentTex = this.blurInto(gl, t, currentTex, t.fbo1, t.tex1, t.fbo0, t.tex0, blurX, blurY, iterations, maxStepPx, maxIterations)
+					currentTex = this.blurInto(
+						gl,
+						t,
+						currentTex,
+						t.fbo1,
+						t.tex1,
+						t.fbo0,
+						t.tex0,
+						blurX,
+						blurY,
+						iterations,
+						maxStepPx,
+						maxIterations
+					)
 				}
 				continue
 			}
-			if (ft === 'glow') {
+			if (f.type === 'glow') {
 				if (!this.postProgGlowComposite) continue
-				const intensity = Math.max(0, Number((f as any).intensity ?? 1))
+				const intensity = Math.max(0, Number(f.intensity ?? 1))
 				if (intensity <= 1e-4) continue
-				let blurX = Math.max(0, Number((f as any).__blurX ?? f.blurX ?? 0) || 0)
-				let blurY = Math.max(0, Number((f as any).__blurY ?? f.blurY ?? 0) || 0)
-				const iterations = Math.max(1, Math.floor(Number((f as any).__iterations ?? f.iterations ?? 1) || 1))
-				let maxStepPx = Math.max(1e-3, Number((f as any).__maxStepPx ?? 8) || 8)
-				const maxIterations = Math.max(1, Math.floor(Number((f as any).__maxIterations ?? 12) || 12))
+				let blurX = Math.max(0, Number(f.__blurX ?? f.blurX ?? 0) || 0)
+				let blurY = Math.max(0, Number(f.__blurY ?? f.blurY ?? 0) || 0)
+				const iterations = Math.max(
+					1,
+					Math.floor(Number(f.__iterations ?? f.iterations ?? 1) || 1)
+				)
+				let maxStepPx = Math.max(1e-3, Number(f.__maxStepPx ?? 8) || 8)
+				const maxIterations = Math.max(
+					1,
+					Math.floor(Number(f.__maxIterations ?? 12) || 12)
+				)
 				blurX *= scaleAdjust
 				blurY *= scaleAdjust
 				maxStepPx *= scaleAdjust
@@ -222,7 +328,7 @@ export class CanvasPostProcess {
 				currentTex = outTex
 				continue
 			}
-			if (ft === 'customShader') {
+			if (f.type === 'customShader') {
 				const code = this.getCustomProgram(gl, String(f.vertex ?? ''), String(f.fragment ?? ''))
 				if (!code.ok || !code.prog) continue
 				let dstFbo: WebGLFramebuffer
@@ -247,7 +353,12 @@ export class CanvasPostProcess {
 
 		// restore main framebuffer/viewport
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-		gl.viewport(0, 0, (gl.canvas as HTMLCanvasElement).width, (gl.canvas as HTMLCanvasElement).height)
+		gl.viewport(
+			0,
+			0,
+			(gl.canvas as HTMLCanvasElement).width,
+			(gl.canvas as HTMLCanvasElement).height
+		)
 		if (prevBlend) gl.enable(gl.BLEND)
 
 		// When target dimensions are quantized or clamped, t.w/t.h may be larger than the
@@ -317,7 +428,7 @@ export class CanvasPostProcess {
 			this.postProgBlur = createProgram(gl, vsPostBlur, fsPostBlur, {
 				aPos: 'a_position',
 				uSampler: 'u_sampler',
-				withSampler: true,
+				withSampler: true
 			})
 			this.postProgBlur.uTexel = gl.getUniformLocation(this.postProgBlur.program, 'u_texel')
 			this.postProgBlur.uDir = gl.getUniformLocation(this.postProgBlur.program, 'u_dir')
@@ -327,13 +438,28 @@ export class CanvasPostProcess {
 			this.postProgGlowComposite = createProgram(gl, vsPostGlowComposite, fsPostGlowComposite, {
 				aPos: 'a_position',
 				uSampler: 'u_sampler',
-				withSampler: true,
+				withSampler: true
 			})
-			this.postProgGlowComposite.uSampler2 = gl.getUniformLocation(this.postProgGlowComposite.program, 'u_blur')
-			this.postProgGlowComposite.uColor = gl.getUniformLocation(this.postProgGlowComposite.program, 'u_glowColor')
-			this.postProgGlowComposite.uIntensity = gl.getUniformLocation(this.postProgGlowComposite.program, 'u_intensity')
-			this.postProgGlowComposite.uInner = gl.getUniformLocation(this.postProgGlowComposite.program, 'u_inner')
-			this.postProgGlowComposite.uKnockout = gl.getUniformLocation(this.postProgGlowComposite.program, 'u_knockout')
+			this.postProgGlowComposite.uSampler2 = gl.getUniformLocation(
+				this.postProgGlowComposite.program,
+				'u_blur'
+			)
+			this.postProgGlowComposite.uColor = gl.getUniformLocation(
+				this.postProgGlowComposite.program,
+				'u_glowColor'
+			)
+			this.postProgGlowComposite.uIntensity = gl.getUniformLocation(
+				this.postProgGlowComposite.program,
+				'u_intensity'
+			)
+			this.postProgGlowComposite.uInner = gl.getUniformLocation(
+				this.postProgGlowComposite.program,
+				'u_inner'
+			)
+			this.postProgGlowComposite.uKnockout = gl.getUniformLocation(
+				this.postProgGlowComposite.program,
+				'u_knockout'
+			)
 		}
 	}
 
@@ -408,18 +534,26 @@ export class CanvasPostProcess {
 		gl.drawArrays(gl.TRIANGLES, 0, 6)
 	}
 
-	private getCustomProgram(gl: WebGL2RenderingContext, vertex: string, fragment: string): CustomCached {
+	private getCustomProgram(
+		gl: WebGL2RenderingContext,
+		vertex: string,
+		fragment: string
+	): CustomCached {
 		const key = `${vertex}\n---\n${fragment}`
 		const cached = this.postProgCustomCache.get(key)
 		if (cached) return cached
 		try {
-			const prog = createProgram(gl, vertex, fragment, { aPos: 'a_position', uSampler: 'u_sampler', withSampler: true })
+			const prog = createProgram(gl, vertex, fragment, {
+				aPos: 'a_position',
+				uSampler: 'u_sampler',
+				withSampler: true
+			})
 			prog.uTexel = gl.getUniformLocation(prog.program, 'u_texel')
 			const it: CustomCached = { prog, ok: true, log: gl.getProgramInfoLog(prog.program) || '' }
 			this.postProgCustomCache.set(key, it)
 			return it
-		} catch (e: any) {
-			const dummy: CustomCached = { prog: null, ok: false, log: String(e?.message ?? e) }
+		} catch (e: unknown) {
+			const dummy: CustomCached = { prog: null, ok: false, log: getErrorMessage(e) }
 			this.postProgCustomCache.set(key, dummy)
 			return dummy
 		}

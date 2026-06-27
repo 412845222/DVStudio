@@ -1,4 +1,6 @@
 import type { WorkflowMeshyNodeSettings } from '../../../../aiworkflow/types'
+import { isRecord } from '../../../../types/utils'
+import type { MeshyEffectiveOutput, MeshyRelationKind, MeshyTaskStatus } from './types'
 
 const normalizeText = (value: unknown) => String(value ?? '').trim()
 
@@ -24,35 +26,45 @@ export const sanitizeMeshyPreviewUrl = (value: unknown) => {
 		if (url.protocol !== 'http:' && url.protocol !== 'https:') return ''
 		const host = String(url.hostname || '').toLowerCase()
 		if (host === 'localhost' || host === '127.0.0.1') return text
-		if (typeof window !== 'undefined' && host === String(window.location.hostname || '').toLowerCase()) return text
+		if (
+			typeof window !== 'undefined' &&
+			host === String(window.location.hostname || '').toLowerCase()
+		)
+			return text
 		return ''
 	} catch {
 		return ''
 	}
 }
 
-export const getMeshyTaskTarget = (value: Record<string, any> | WorkflowMeshyNodeSettings | null | undefined) => {
-	return normalizeText((value as any)?.meshyTaskTarget ?? (value as any)?.target) === 'image' ? 'image' : '3d'
+export const getMeshyTaskTarget = (
+	value: WorkflowMeshyNodeSettings | Record<string, unknown> | null | undefined
+) => {
+	const record = isRecord(value) ? value : {}
+	const meshyTaskTarget = normalizeText(record.meshyTaskTarget ?? record.target)
+	return meshyTaskTarget === 'image' ? 'image' : '3d'
 }
 
-export const pickMeshyPreferredFormat = (urls: Record<string, string> | null | undefined): 'glb' | 'gltf' => {
-	const record = urls && typeof urls === 'object' ? urls : {}
-	const glb = normalizeText((record as any)?.glb ?? (record as any)?.pre_remeshed_glb)
+export const pickMeshyPreferredFormat = (
+	urls: Record<string, unknown> | null | undefined
+): 'glb' | 'gltf' => {
+	const record = isRecord(urls) ? urls : {}
+	const glb = normalizeText(record.glb ?? record.pre_remeshed_glb)
 	if (glb) return 'glb'
 	return 'gltf'
 }
 
-export const pickMeshyPreferredModelUrl = (urls: Record<string, string> | null | undefined) => {
-	const record = urls && typeof urls === 'object' ? urls : {}
+export const pickMeshyPreferredModelUrl = (urls: Record<string, unknown> | null | undefined) => {
+	const record = isRecord(urls) ? urls : {}
 	const keys = ['glb', 'pre_remeshed_glb', 'fbx', 'obj', 'stl', 'usdz'] as const
 	for (const key of keys) {
-		const url = normalizeText((record as any)?.[key])
+		const url = normalizeText(record[key])
 		if (url) return url
 	}
 	return ''
 }
 
-export const pickMeshyPreferredImageUrl = (urls: string[] | null | undefined) => {
+export const pickMeshyPreferredImageUrl = (urls: unknown[] | null | undefined) => {
 	const list = Array.isArray(urls) ? urls : []
 	for (const raw of list) {
 		const value = normalizeText(raw)
@@ -61,19 +73,23 @@ export const pickMeshyPreferredImageUrl = (urls: string[] | null | undefined) =>
 	return ''
 }
 
-export const getMeshyDisplayThumbnailUrl = (settings: WorkflowMeshyNodeSettings | Record<string, any> | null | undefined) => {
-	const value = settings && typeof settings === 'object' ? settings : {}
-	const relationSummary = value.meshyRelationSummary && typeof value.meshyRelationSummary === 'object' ? value.meshyRelationSummary : {}
-	const outputSummary = value.meshyOutputSummary && typeof value.meshyOutputSummary === 'object' ? value.meshyOutputSummary : {}
+export const getMeshyDisplayThumbnailUrl = (
+	settings: WorkflowMeshyNodeSettings | Record<string, unknown> | null | undefined
+) => {
+	const value = isRecord(settings) ? settings : {}
+	const relationSummary = isRecord(value.meshyRelationSummary) ? value.meshyRelationSummary : {}
+	const outputSummary = isRecord(value.meshyOutputSummary) ? value.meshyOutputSummary : {}
 	const target = getMeshyTaskTarget(value)
 	const localAssetUrl = normalizeText(
-		relationSummary.effectiveLocalAssetUrl ?? value.meshyOutputAssetUrl ?? outputSummary.assetUrl,
+		relationSummary.effectiveLocalAssetUrl ?? value.meshyOutputAssetUrl ?? outputSummary.assetUrl
 	)
-	const has3DModelOutput = target === '3d' && !!normalizeText(
-		relationSummary.effectivePreferredModelUrl ?? outputSummary.preferredUrl ?? localAssetUrl,
-	)
+	const has3DModelOutput =
+		target === '3d' &&
+		!!normalizeText(
+			relationSummary.effectivePreferredModelUrl ?? outputSummary.preferredUrl ?? localAssetUrl
+		)
 	const thumbnailUrl = normalizeText(
-		relationSummary.effectiveThumbnailUrl ?? outputSummary.thumbnailUrl ?? value.meshyThumbnailUrl,
+		relationSummary.effectiveThumbnailUrl ?? outputSummary.thumbnailUrl ?? value.meshyThumbnailUrl
 	)
 
 	if (target === 'image') {
@@ -88,7 +104,9 @@ export const getMeshyDisplayThumbnailUrl = (settings: WorkflowMeshyNodeSettings 
 	return sanitizeMeshyPreviewUrl(thumbnailUrl)
 }
 
-export const buildMeshyNodePresentationSettings = (settings: WorkflowMeshyNodeSettings | null | undefined) => {
+export const buildMeshyNodePresentationSettings = (
+	settings: WorkflowMeshyNodeSettings | null | undefined
+) => {
 	if (!settings) return null
 	const safeThumbnailUrl = getMeshyDisplayThumbnailUrl(settings)
 	return {
@@ -96,90 +114,125 @@ export const buildMeshyNodePresentationSettings = (settings: WorkflowMeshyNodeSe
 		meshyThumbnailUrl: safeThumbnailUrl || undefined,
 		meshyOutputSummary: settings.meshyOutputSummary
 			? {
-				...settings.meshyOutputSummary,
-				thumbnailUrl: safeThumbnailUrl || undefined,
-			}
+					...settings.meshyOutputSummary,
+					thumbnailUrl: safeThumbnailUrl || undefined
+				}
 			: settings.meshyOutputSummary,
 		meshyRelationSummary: settings.meshyRelationSummary
 			? {
-				...settings.meshyRelationSummary,
-				effectiveThumbnailUrl: safeThumbnailUrl || undefined,
-			}
-			: settings.meshyRelationSummary,
+					...settings.meshyRelationSummary,
+					effectiveThumbnailUrl: safeThumbnailUrl || undefined
+				}
+			: settings.meshyRelationSummary
 	}
 }
 
-export const getMeshyEffectiveModelSource = (settings: WorkflowMeshyNodeSettings | Record<string, any> | null | undefined) => {
-	const value = settings && typeof settings === 'object' ? settings : {}
-	const relationSummary = value.meshyRelationSummary && typeof value.meshyRelationSummary === 'object' ? value.meshyRelationSummary : {}
-	const outputSummary = value.meshyOutputSummary && typeof value.meshyOutputSummary === 'object' ? value.meshyOutputSummary : {}
-	const modelUrls = value.meshyModelUrls && typeof value.meshyModelUrls === 'object' ? value.meshyModelUrls : {}
+export const getMeshyEffectiveModelSource = (
+	settings: WorkflowMeshyNodeSettings | Record<string, unknown> | null | undefined
+) => {
+	const value = isRecord(settings) ? settings : {}
+	const relationSummary = isRecord(value.meshyRelationSummary) ? value.meshyRelationSummary : {}
+	const outputSummary = isRecord(value.meshyOutputSummary) ? value.meshyOutputSummary : {}
+	const modelUrls = isRecord(value.meshyModelUrls) ? value.meshyModelUrls : {}
 	const assetUrl = normalizeText(
-		relationSummary.effectiveLocalAssetUrl ?? value.meshyOutputAssetUrl ?? outputSummary.assetUrl,
+		relationSummary.effectiveLocalAssetUrl ?? value.meshyOutputAssetUrl ?? outputSummary.assetUrl
 	)
 	const assetPath = normalizeText(
-		relationSummary.effectiveLocalAssetPath ?? value.meshyOutputAssetPath ?? outputSummary.assetPath,
+		relationSummary.effectiveLocalAssetPath ?? value.meshyOutputAssetPath ?? outputSummary.assetPath
 	)
 	const preferredUrl =
 		normalizeText(relationSummary.effectivePreferredModelUrl ?? outputSummary.preferredUrl) ||
 		assetUrl ||
 		pickMeshyPreferredModelUrl(modelUrls)
-	const format = normalizeText(outputSummary.format).toLowerCase() === 'gltf' ? 'gltf' : pickMeshyPreferredFormat(modelUrls)
+	const format =
+		normalizeText(outputSummary.format).toLowerCase() === 'gltf'
+			? 'gltf'
+			: pickMeshyPreferredFormat(modelUrls)
 	return {
 		preferredUrl,
 		assetUrl,
 		assetPath,
-		format,
+		format
 	}
 }
 
-export const getMeshyEffectiveImageSource = (settings: WorkflowMeshyNodeSettings | Record<string, any> | null | undefined) => {
-	const value = settings && typeof settings === 'object' ? settings : {}
-	const relationSummary = value.meshyRelationSummary && typeof value.meshyRelationSummary === 'object' ? value.meshyRelationSummary : {}
-	const outputSummary = value.meshyOutputSummary && typeof value.meshyOutputSummary === 'object' ? value.meshyOutputSummary : {}
+export const getMeshyEffectiveImageSource = (
+	settings: WorkflowMeshyNodeSettings | Record<string, unknown> | null | undefined
+) => {
+	const value = isRecord(settings) ? settings : {}
+	const relationSummary = isRecord(value.meshyRelationSummary) ? value.meshyRelationSummary : {}
+	const outputSummary = isRecord(value.meshyOutputSummary) ? value.meshyOutputSummary : {}
 	const summaryImageUrls = Array.isArray(outputSummary.imageUrls)
-		? outputSummary.imageUrls.map((x: any) => normalizeText(x)).filter(Boolean)
+		? outputSummary.imageUrls.map((x: unknown) => normalizeText(x)).filter(Boolean)
 		: []
 	const preferredUrl =
 		normalizeText(
 			relationSummary.effectivePreferredImageUrl ??
-			relationSummary.effectivePreferredModelUrl ??
-			outputSummary.preferredUrl,
+				relationSummary.effectivePreferredModelUrl ??
+				outputSummary.preferredUrl
 		) || pickMeshyPreferredImageUrl(summaryImageUrls)
 	const assetUrl =
 		normalizeText(
-			relationSummary.effectiveLocalAssetUrl ?? value.meshyOutputAssetUrl ?? outputSummary.assetUrl,
+			relationSummary.effectiveLocalAssetUrl ?? value.meshyOutputAssetUrl ?? outputSummary.assetUrl
 		) || preferredUrl
 	const assetPath = normalizeText(
-		relationSummary.effectiveLocalAssetPath ?? value.meshyOutputAssetPath ?? outputSummary.assetPath,
+		relationSummary.effectiveLocalAssetPath ?? value.meshyOutputAssetPath ?? outputSummary.assetPath
 	)
 	const imageUrls = summaryImageUrls.length ? summaryImageUrls : preferredUrl ? [preferredUrl] : []
 	return {
 		preferredUrl,
 		assetUrl,
 		assetPath,
-		imageUrls,
+		imageUrls
 	}
 }
 
-export const pickMeshyEffectiveOutput = (item: Record<string, any>) => {
+const normalizeMeshyRelationKind = (value: unknown): MeshyRelationKind => {
+	const text = normalizeText(value)
+	if (text === 'texture' || text === 'rigging' || text === 'animation' || text === 'remesh')
+		return text
+	return 'model'
+}
+
+const normalizeMeshyTaskStatus = (value: unknown): MeshyTaskStatus => {
+	const text = normalizeText(value)
+	if (
+		text === 'pending' ||
+		text === 'running' ||
+		text === 'succeeded' ||
+		text === 'failed' ||
+		text === 'canceled'
+	)
+		return text
+	return 'idle'
+}
+
+export const pickMeshyEffectiveOutput = (item: Record<string, unknown>): MeshyEffectiveOutput => {
 	const target = getMeshyTaskTarget(item)
 	const preferredImageUrl = normalizeText(item.effectivePreferredImageUrl ?? item.preferredImageUrl)
-	const preferredModelUrl = normalizeText(item.effectivePreferredModelUrl ?? item.preferredModelUrl ?? item.localAssetUrl)
+	const preferredModelUrl = normalizeText(
+		item.effectivePreferredModelUrl ?? item.preferredModelUrl ?? item.localAssetUrl
+	)
 	const preferredUrl = preferredImageUrl || preferredModelUrl
 	const imageUrls = Array.isArray(item.imageUrls)
-		? item.imageUrls.map((x: any) => normalizeText(x)).filter(Boolean)
+		? item.imageUrls.map((x: unknown) => normalizeText(x)).filter(Boolean)
 		: []
 	const localAssetUrl = normalizeText(item.effectiveLocalAssetUrl ?? item.localAssetUrl)
 	const localAssetPath = normalizeText(item.effectiveLocalAssetPath ?? item.localAssetPath)
 	const thumbnailUrl =
 		target === 'image'
-			? sanitizeMeshyPreviewUrl(localAssetUrl) || sanitizeMeshyPreviewUrl(item.effectiveThumbnailUrl ?? item.thumbnailUrl)
+			? sanitizeMeshyPreviewUrl(localAssetUrl) ||
+				sanitizeMeshyPreviewUrl(item.effectiveThumbnailUrl ?? item.thumbnailUrl)
 			: sanitizeMeshyPreviewUrl(item.effectiveThumbnailUrl ?? item.thumbnailUrl)
 	const effectiveTaskId = normalizeText(item.effectiveTaskId ?? item.taskId)
-	const effectiveRelationKind = normalizeText(item.effectiveRelationKind ?? item.relationKind)
-	const effectiveStatus = normalizeText(item.effectiveStatus ?? item.status ?? 'idle')
-	const effectiveProgress = Math.max(0, Math.min(100, Number(item.effectiveProgress ?? item.progress ?? 0)))
+	const effectiveRelationKind = normalizeMeshyRelationKind(
+		item.effectiveRelationKind ?? item.relationKind
+	)
+	const effectiveStatus = normalizeMeshyTaskStatus(item.effectiveStatus ?? item.status ?? 'idle')
+	const effectiveProgress = Math.max(
+		0,
+		Math.min(100, Number(item.effectiveProgress ?? item.progress ?? 0))
+	)
 	return {
 		preferredImageUrl,
 		preferredModelUrl,
@@ -191,6 +244,6 @@ export const pickMeshyEffectiveOutput = (item: Record<string, any>) => {
 		effectiveTaskId,
 		effectiveRelationKind,
 		effectiveStatus,
-		effectiveProgress,
+		effectiveProgress
 	}
 }

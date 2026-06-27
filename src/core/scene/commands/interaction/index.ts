@@ -5,8 +5,15 @@ import type { HitTestResult, MarqueeSelectionResolution } from './types'
 
 export type { HitTestResult, MarqueeSelectionResolution } from './types'
 
-export const computeMovableSelectionIds = (layerNodeTree: VideoSceneTreeNode[], nodeIds: string[]) => {
-	const uniq = Array.from(new Set((Array.isArray(nodeIds) ? nodeIds : []).map((s) => String(s || '').trim()).filter(Boolean)))
+export const computeMovableSelectionIds = (
+	layerNodeTree: VideoSceneTreeNode[],
+	nodeIds: string[]
+) => {
+	const uniq = Array.from(
+		new Set(
+			(Array.isArray(nodeIds) ? nodeIds : []).map((s) => String(s || '').trim()).filter(Boolean)
+		)
+	)
 	const selected = new Set(uniq)
 
 	const parent = new Map<string, string | null>()
@@ -24,7 +31,10 @@ export const computeMovableSelectionIds = (layerNodeTree: VideoSceneTreeNode[], 
 	})
 }
 
-export const getNodeLocalXY = (layerNodeTree: VideoSceneTreeNode[], nodeId: string): { x: number; y: number } | null => {
+export const getNodeLocalXY = (
+	layerNodeTree: VideoSceneTreeNode[],
+	nodeId: string
+): { x: number; y: number } | null => {
 	const id = String(nodeId || '').trim()
 	if (!id) return null
 	const n = findNode(layerNodeTree, id)
@@ -71,8 +81,12 @@ export const resolveMarqueeSelection = (args: {
 	return { type: 'multi', nodeIds }
 }
 
-export const shouldCollapseMultiSelectionOnPointerUp = (args: { movedPx: number; thresholdPx?: number }): boolean => {
-	const threshold = typeof args.thresholdPx === 'number' && Number.isFinite(args.thresholdPx) ? args.thresholdPx : 3
+export const shouldCollapseMultiSelectionOnPointerUp = (args: {
+	movedPx: number
+	thresholdPx?: number
+}): boolean => {
+	const threshold =
+		typeof args.thresholdPx === 'number' && Number.isFinite(args.thresholdPx) ? args.thresholdPx : 3
 	const movedPx = Number(args.movedPx)
 	if (!Number.isFinite(movedPx)) return false
 	return movedPx < threshold

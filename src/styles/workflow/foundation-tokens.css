@@ -1,57 +1,61 @@
 :root {
-  /* Color palette - defined by theme-tokens.css */
-  --aiwf-color-graphite-950: var(--aiwf-color-graphite-950, #15181c);
-  --aiwf-color-graphite-900: var(--aiwf-color-graphite-900, #1d2227);
-  --aiwf-color-graphite-820: var(--aiwf-color-graphite-820, #242a30);
-  --aiwf-color-graphite-760: var(--aiwf-color-graphite-760, #30373f);
-  --aiwf-color-text: var(--aiwf-color-text, #edf2f4);
-  --aiwf-color-text-muted: var(--aiwf-color-text-muted, #aeb8bd);
-  --aiwf-color-text-subtle: var(--aiwf-color-text-subtle, #7f8b91);
-  --aiwf-color-primary: var(--aiwf-color-primary, #1f9d84);
-  --aiwf-color-primary-hover: var(--aiwf-color-primary-hover, #27b99c);
-  --aiwf-color-primary-soft: var(--aiwf-color-primary-soft, rgba(31, 157, 132, 0.18));
-  --aiwf-color-accent: var(--aiwf-color-accent, #d9982b);
-  --aiwf-color-accent-soft: var(--aiwf-color-accent-soft, rgba(217, 152, 43, 0.18));
-  --aiwf-color-info: var(--aiwf-color-info, #4fb7c5);
-  --aiwf-color-info-soft: var(--aiwf-color-info-soft, rgba(79, 183, 197, 0.18));
-  --aiwf-color-danger: var(--aiwf-color-danger, #cf5a46);
-  --aiwf-color-danger-soft: var(--aiwf-color-danger-soft, rgba(207, 90, 70, 0.18));
-  --aiwf-color-success: var(--aiwf-color-success, #4caf88);
-  --aiwf-color-success-soft: var(--aiwf-color-success-soft, rgba(76, 175, 136, 0.18));
-  --aiwf-color-warning: var(--aiwf-color-warning, #d9ad4a);
-  --aiwf-color-warning-soft: var(--aiwf-color-warning-soft, rgba(217, 173, 74, 0.2));
+	/* Color palette - defined by theme-tokens.css */
+	--aiwf-color-graphite-950: var(--aiwf-color-graphite-950, #15181c);
+	--aiwf-color-graphite-900: var(--aiwf-color-graphite-900, #1d2227);
+	--aiwf-color-graphite-820: var(--aiwf-color-graphite-820, #242a30);
+	--aiwf-color-graphite-760: var(--aiwf-color-graphite-760, #30373f);
+	--aiwf-color-text: var(--aiwf-color-text, #edf2f4);
+	--aiwf-color-text-muted: var(--aiwf-color-text-muted, #aeb8bd);
+	--aiwf-color-text-subtle: var(--aiwf-color-text-subtle, #7f8b91);
+	--aiwf-color-primary: var(--aiwf-color-primary, #1f9d84);
+	--aiwf-color-primary-hover: var(--aiwf-color-primary-hover, #27b99c);
+	--aiwf-color-primary-soft: var(--aiwf-color-primary-soft, rgba(31, 157, 132, 0.18));
+	--aiwf-color-accent: var(--aiwf-color-accent, #d9982b);
+	--aiwf-color-accent-soft: var(--aiwf-color-accent-soft, rgba(217, 152, 43, 0.18));
+	--aiwf-color-info: var(--aiwf-color-info, #4fb7c5);
+	--aiwf-color-info-soft: var(--aiwf-color-info-soft, rgba(79, 183, 197, 0.18));
+	--aiwf-color-danger: var(--aiwf-color-danger, #cf5a46);
+	--aiwf-color-danger-soft: var(--aiwf-color-danger-soft, rgba(207, 90, 70, 0.18));
+	--aiwf-color-success: var(--aiwf-color-success, #4caf88);
+	--aiwf-color-success-soft: var(--aiwf-color-success-soft, rgba(76, 175, 136, 0.18));
+	--aiwf-color-warning: var(--aiwf-color-warning, #d9ad4a);
+	--aiwf-color-warning-soft: var(--aiwf-color-warning-soft, rgba(217, 173, 74, 0.2));
 
-  --aiwf-space-1: 4px;
-  --aiwf-space-2: 8px;
-  --aiwf-space-3: 12px;
-  --aiwf-space-4: 16px;
-  --aiwf-space-5: 20px;
-  --aiwf-space-6: 24px;
+	--aiwf-space-1: 4px;
+	--aiwf-space-2: 8px;
+	--aiwf-space-3: 12px;
+	--aiwf-space-4: 16px;
+	--aiwf-space-5: 20px;
+	--aiwf-space-6: 24px;
 
-  --aiwf-radius-sm: 0;
-  --aiwf-radius-md: 0;
-  --aiwf-radius-lg: 0;
-  --aiwf-radius-pill: 0;
+	--aiwf-radius-sm: 0;
+	--aiwf-radius-md: 0;
+	--aiwf-radius-lg: 0;
+	--aiwf-radius-pill: 0;
 
-  --aiwf-border-subtle: var(--aiwf-border-subtle, rgba(237, 242, 244, 0.1));
-  --aiwf-border-default: var(--aiwf-border-default, rgba(237, 242, 244, 0.16));
-  --aiwf-border-strong: var(--aiwf-border-strong, rgba(237, 242, 244, 0.26));
+	--aiwf-border-subtle: var(--aiwf-border-subtle, rgba(237, 242, 244, 0.1));
+	--aiwf-border-default: var(--aiwf-border-default, rgba(237, 242, 244, 0.16));
+	--aiwf-border-strong: var(--aiwf-border-strong, rgba(237, 242, 244, 0.26));
 
-  --aiwf-shadow-sm: var(--aiwf-shadow-sm, 0 4px 14px rgba(0, 0, 0, 0.22));
-  --aiwf-shadow-md: var(--aiwf-shadow-md, 0 12px 32px rgba(0, 0, 0, 0.3));
-  --aiwf-shadow-lg: var(--aiwf-shadow-lg, 0 20px 54px rgba(0, 0, 0, 0.42));
-  --aiwf-shadow-focus: var(--aiwf-shadow-focus, 0 0 0 1px rgba(31, 157, 132, 0.55), 0 0 18px rgba(31, 157, 132, 0.2));
+	--aiwf-shadow-sm: var(--aiwf-shadow-sm, 0 4px 14px rgba(0, 0, 0, 0.22));
+	--aiwf-shadow-md: var(--aiwf-shadow-md, 0 12px 32px rgba(0, 0, 0, 0.3));
+	--aiwf-shadow-lg: var(--aiwf-shadow-lg, 0 20px 54px rgba(0, 0, 0, 0.42));
+	--aiwf-shadow-focus: var(
+		--aiwf-shadow-focus,
+		0 0 0 1px rgba(31, 157, 132, 0.55),
+		0 0 18px rgba(31, 157, 132, 0.2)
+	);
 
-  --aiwf-motion-fast: 120ms ease;
-  --aiwf-motion-base: 180ms ease;
-  --aiwf-motion-shell: 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+	--aiwf-motion-fast: 120ms ease;
+	--aiwf-motion-base: 180ms ease;
+	--aiwf-motion-shell: 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 
-  --aiwf-z-canvas: 1;
-  --aiwf-z-node-compact: 4;
-  --aiwf-z-chrome: 20;
-  --aiwf-z-overlay: 10;
-  --aiwf-z-overlay-utility: 80;
-  --aiwf-z-floating: 101;
-  --aiwf-z-popover: 120;
-  --aiwf-z-alert: 130;
+	--aiwf-z-canvas: 1;
+	--aiwf-z-node-compact: 4;
+	--aiwf-z-chrome: 20;
+	--aiwf-z-overlay: 10;
+	--aiwf-z-overlay-utility: 80;
+	--aiwf-z-floating: 101;
+	--aiwf-z-popover: 120;
+	--aiwf-z-alert: 130;
 }

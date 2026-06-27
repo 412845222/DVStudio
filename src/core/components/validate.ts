@@ -1,10 +1,17 @@
 import type { ComponentTemplate, ComponentTemplateParamType, TemplateNode } from './types'
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+	typeof v === 'object' && v !== null && !Array.isArray(v)
 const isString = (v: unknown): v is string => typeof v === 'string'
 const isArray = Array.isArray
 
-const paramTypes: ComponentTemplateParamType[] = ['string', 'number', 'boolean', 'color', 'asset:image']
+const paramTypes: ComponentTemplateParamType[] = [
+	'string',
+	'number',
+	'boolean',
+	'color',
+	'asset:image'
+]
 
 export type ValidateResult<T> = { ok: true; value: T } | { ok: false; errors: string[] }
 
@@ -12,13 +19,15 @@ export function validateComponentTemplate(v: unknown): ValidateResult<ComponentT
 	const errors: string[] = []
 	if (!isRecord(v)) return { ok: false, errors: ['template: not an object'] }
 	if (v.schemaVersion !== 1) errors.push('schemaVersion must be 1')
-	if (!isString(v.templateId) || !v.templateId.trim()) errors.push('templateId must be non-empty string')
+	if (!isString(v.templateId) || !v.templateId.trim())
+		errors.push('templateId must be non-empty string')
 	if (!isString(v.name) || !v.name.trim()) errors.push('name must be non-empty string')
-	if (!isString(v.rootLocalId) || !v.rootLocalId.trim()) errors.push('rootLocalId must be non-empty string')
+	if (!isString(v.rootLocalId) || !v.rootLocalId.trim())
+		errors.push('rootLocalId must be non-empty string')
 
-	const params = (v.params ?? [])
+	const params = v.params ?? []
 	if (!isArray(params)) errors.push('params must be an array')
-	const nodes = (v.nodes ?? [])
+	const nodes = v.nodes ?? []
 	if (!isArray(nodes)) errors.push('nodes must be an array')
 
 	const paramKeySet = new Set<string>()
@@ -56,7 +65,8 @@ export function validateComponentTemplate(v: unknown): ValidateResult<ComponentT
 			if (nodeLocalIds.has(n.localId)) errors.push(`nodes[].localId duplicated: ${n.localId}`)
 			nodeLocalIds.add(n.localId)
 
-			if (!isString(n.type) || !n.type.trim()) errors.push(`nodes[${n.localId}].type must be non-empty string`)
+			if (!isString(n.type) || !n.type.trim())
+				errors.push(`nodes[${n.localId}].type must be non-empty string`)
 			if (!isRecord(n.props)) errors.push(`nodes[${n.localId}].props must be object`)
 			if (n.transform !== undefined) {
 				if (!isRecord(n.transform)) {
@@ -99,8 +109,10 @@ export function validateComponentTemplate(v: unknown): ValidateResult<ComponentT
 			errors.push(`nodes[${localId}].parentLocalId must be string when provided`)
 			continue
 		}
-		if (parentLocalId === localId) errors.push(`nodes[${localId}].parentLocalId cannot reference itself`)
-		if (!nodeLocalIds.has(parentLocalId)) errors.push(`nodes[${localId}].parentLocalId not found: ${parentLocalId}`)
+		if (parentLocalId === localId)
+			errors.push(`nodes[${localId}].parentLocalId cannot reference itself`)
+		if (!nodeLocalIds.has(parentLocalId))
+			errors.push(`nodes[${localId}].parentLocalId not found: ${parentLocalId}`)
 	}
 
 	if (errors.length) return { ok: false, errors }

@@ -4,7 +4,14 @@
 			<div class="vs-subtitle-head">
 				<div class="vs-subtitle-title">字幕段落</div>
 				<div class="vs-subtitle-meta">{{ cues.length }} 条</div>
-				<button v-if="showAiSummaryBtn" class="vs-btn vs-ai-summary-btn" type="button" @click="openAiSummary">AI总结</button>
+				<button
+					v-if="showAiSummaryBtn"
+					class="vs-btn vs-ai-summary-btn"
+					type="button"
+					@click="openAiSummary"
+				>
+					AI总结
+				</button>
 			</div>
 			<div ref="listEl" class="vs-subtitle-list">
 				<button
@@ -42,15 +49,35 @@
 				<div class="vs-form-row">
 					<label class="vs-label">样式</label>
 					<div class="vs-style-row">
-						<select v-model="editFontStyle" class="vs-input" @change="commitStyle('fontStyle', editFontStyle)">
+						<select
+							v-model="editFontStyle"
+							class="vs-input"
+							@change="commitStyle('fontStyle', editFontStyle)"
+						>
 							<option value="normal">normal</option>
 							<option value="bold">bold</option>
 							<option value="italic">italic</option>
 							<option value="bold italic">bold italic</option>
 						</select>
-						<input v-model.number="editFontSize" class="vs-input" type="number" min="1" step="1" @change="commitStyle('fontSize', editFontSize)" />
-						<input v-model="editFontColor" class="vs-input vs-color" type="color" @change="commitStyle('fontColor', editFontColor)" />
-						<select v-model="editTextAlign" class="vs-input" @change="commitStyle('textAlign', editTextAlign)">
+						<input
+							v-model.number="editFontSize"
+							class="vs-input"
+							type="number"
+							min="1"
+							step="1"
+							@change="commitStyle('fontSize', editFontSize)"
+						/>
+						<input
+							v-model="editFontColor"
+							class="vs-input vs-color"
+							type="color"
+							@change="commitStyle('fontColor', editFontColor)"
+						/>
+						<select
+							v-model="editTextAlign"
+							class="vs-input"
+							@change="commitStyle('textAlign', editTextAlign)"
+						>
 							<option value="left">left</option>
 							<option value="center">center</option>
 							<option value="right">right</option>
@@ -59,10 +86,14 @@
 				</div>
 
 				<div class="vs-actions">
-					<button v-if="!isPerCue" class="vs-btn" type="button" @click="enablePerCue">单独配置</button>
+					<button v-if="!isPerCue" class="vs-btn" type="button" @click="enablePerCue">
+						单独配置
+					</button>
 					<button v-else class="vs-btn" type="button" @click="clearPerCue">恢复默认</button>
 					<button class="vs-btn" type="button" @click="applyToAll">应用到所有</button>
-					<span class="vs-actions-hint">{{ isPerCue ? '当前：仅作用于该条字幕' : '当前：默认样式（作用于所有字幕）' }}</span>
+					<span class="vs-actions-hint">
+						{{ isPerCue ? '当前：仅作用于该条字幕' : '当前：默认样式（作用于所有字幕）' }}
+					</span>
 				</div>
 
 				<div class="vs-form-row">
@@ -71,23 +102,57 @@
 					<div v-else class="vs-node-grid">
 						<label class="vs-node-field">
 							<span class="vs-node-k">X</span>
-							<input v-model.number="nodeX" class="vs-input" type="number" step="1" @change="applyNodeTransform" />
+							<input
+								v-model.number="nodeX"
+								class="vs-input"
+								type="number"
+								step="1"
+								@change="applyNodeTransform"
+							/>
 						</label>
 						<label class="vs-node-field">
 							<span class="vs-node-k">Y</span>
-							<input v-model.number="nodeY" class="vs-input" type="number" step="1" @change="applyNodeTransform" />
+							<input
+								v-model.number="nodeY"
+								class="vs-input"
+								type="number"
+								step="1"
+								@change="applyNodeTransform"
+							/>
 						</label>
 						<label class="vs-node-field">
 							<span class="vs-node-k">宽</span>
-							<input v-model.number="nodeW" class="vs-input" type="number" min="1" step="1" @change="applyNodeTransform" />
+							<input
+								v-model.number="nodeW"
+								class="vs-input"
+								type="number"
+								min="1"
+								step="1"
+								@change="applyNodeTransform"
+							/>
 						</label>
 						<label class="vs-node-field">
 							<span class="vs-node-k">高</span>
-							<input v-model.number="nodeH" class="vs-input" type="number" min="1" step="1" @change="applyNodeTransform" />
+							<input
+								v-model.number="nodeH"
+								class="vs-input"
+								type="number"
+								min="1"
+								step="1"
+								@change="applyNodeTransform"
+							/>
 						</label>
 						<label class="vs-node-field">
 							<span class="vs-node-k">透明</span>
-							<input v-model.number="nodeOpacity" class="vs-input" type="number" min="0" max="1" step="0.01" @change="applyNodeOpacity" />
+							<input
+								v-model.number="nodeOpacity"
+								class="vs-input"
+								type="number"
+								min="0"
+								max="1"
+								step="0.01"
+								@change="applyNodeOpacity"
+							/>
 						</label>
 					</div>
 				</div>
@@ -108,14 +173,29 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { DVS_EVENTS, type DvsSubtitleCueSelectDetail } from '../../../core/events/dvsEvents'
 import { TimelineStore } from '../../../store/timeline'
 import { VideoSceneStore } from '../../../store/videoscene'
-import { findLayer, findNode, type VideoSceneNodeTransform } from '../../../core/scene'
+import {
+	findLayer,
+	findNode,
+	type VideoSceneNodeTransform,
+	type VideoSceneNodeProps
+} from '../../../core/scene'
 import { buildSubtitleGeneratedKeyframes } from '../../../core/subtitle/subtitleKeyframes'
 import NodeFiltersForm from '../parts/nodeDetail/forms/NodeFiltersForm.vue'
+import type {
+	SubtitleCue,
+	SubtitleCueRange,
+	SubtitleTextStyle,
+	NodeFilterSpec
+} from '../../../core/timeline/types'
 
 const props = defineProps<{ layerId: string | null }>()
 
-const cues = computed(() => (props.layerId ? (TimelineStore.state.subtitleCuesByLayer?.[props.layerId] ?? []) : []))
-const cueRanges = computed(() => (props.layerId ? (TimelineStore.state.subtitleCueRangesByLayer?.[props.layerId] ?? []) : []))
+const cues = computed(() =>
+	props.layerId ? (TimelineStore.state.subtitleCuesByLayer?.[props.layerId] ?? []) : []
+)
+const cueRanges = computed(() =>
+	props.layerId ? (TimelineStore.state.subtitleCueRangesByLayer?.[props.layerId] ?? []) : []
+)
 
 const showAiSummaryBtn = computed(() => !!props.layerId && cues.value.length > 0)
 
@@ -125,19 +205,22 @@ const openAiSummary = () => {
 	void VideoSceneStore.dispatch('openLeftPanel', { mode: 'subtitle-ai', layerId: props.layerId })
 }
 
-const boundNodeId = computed(() => (props.layerId ? (TimelineStore.state.subtitleTextNodeIdByLayer?.[props.layerId] ?? null) : null))
+const boundNodeId = computed(() =>
+	props.layerId ? (TimelineStore.state.subtitleTextNodeIdByLayer?.[props.layerId] ?? null) : null
+)
 const boundNode = computed(() => {
 	const layerId = props.layerId
 	const nodeId = boundNodeId.value
 	if (!layerId || !nodeId) return null
-	const layer = findLayer(VideoSceneStore.state as any, layerId)
+	const layer = findLayer(VideoSceneStore.state, layerId)
 	if (!layer) return null
 	return findNode(layer.nodeTree, nodeId)
 })
 
-const boundFilters = computed(() => {
-	const p: any = (boundNode.value as any)?.props
-	return Array.isArray(p?.filters) ? (p.filters as any[]) : []
+const boundFilters = computed<NodeFilterSpec[]>(() => {
+	const props = boundNode.value?.props
+	const filters = props?.filters
+	return Array.isArray(filters) ? (filters as NodeFilterSpec[]) : []
 })
 
 const selectedIndex = ref(0)
@@ -182,15 +265,22 @@ const ensureCueVisible = (idx: number, paddingPx?: number) => {
 	if (el.clientHeight <= pad * 2 + item.offsetHeight) return
 	if (targetTop >= minTop && targetBottom <= maxBottom) return
 	if (targetTop < minTop) el.scrollTop = Math.max(0, targetTop - pad)
-	else if (targetBottom > maxBottom) el.scrollTop = Math.max(0, targetBottom + pad - el.clientHeight)
+	else if (targetBottom > maxBottom)
+		el.scrollTop = Math.max(0, targetBottom + pad - el.clientHeight)
 }
 
-const getDefaultStyle = (layerId: string) =>
-	TimelineStore.state.subtitleDefaultStyleByLayer?.[layerId] ?? ({ fontSize: 36, fontColor: '#ffffff', fontStyle: 'normal', textAlign: 'center' } as any)
+const getDefaultStyle = (layerId: string): SubtitleTextStyle =>
+	TimelineStore.state.subtitleDefaultStyleByLayer?.[layerId] ?? {
+		fontSize: 36,
+		fontColor: '#ffffff',
+		fontStyle: 'normal',
+		textAlign: 'center'
+	}
 
-const getOverride = (layerId: string, idx: number) => TimelineStore.state.subtitleOverrideStyleByLayer?.[layerId]?.[String(idx)] ?? null
+const getOverride = (layerId: string, idx: number): Partial<SubtitleTextStyle> | null =>
+	TimelineStore.state.subtitleOverrideStyleByLayer?.[layerId]?.[String(idx)] ?? null
 
-const effectiveStyle = computed(() => {
+const effectiveStyle = computed<SubtitleTextStyle>(() => {
 	const layerId = props.layerId
 	const idx = selectedIndex.value
 	if (!layerId) return getDefaultStyle('')
@@ -222,14 +312,13 @@ const nodeH = ref<number>(120)
 const nodeOpacity = ref<number>(1)
 
 const syncNodeFromStore = () => {
-	const t: any = (boundNode.value as any)?.transform
+	const t = boundNode.value?.transform
 	if (!t) return
 	nodeX.value = Number(t.x ?? 0) || 0
 	nodeY.value = Number(t.y ?? 0) || 0
 	nodeW.value = Math.max(1, Number(t.width ?? 1) || 1)
 	nodeH.value = Math.max(1, Number(t.height ?? 1) || 1)
 	const op = Number(t.opacity)
-	// default to 1 if unset/invalid
 	nodeOpacity.value = Number.isFinite(op) ? Math.max(0, Math.min(1, op)) : 1
 }
 
@@ -244,8 +333,8 @@ const applyNodeTransform = async () => {
 			x: Number(nodeX.value) || 0,
 			y: Number(nodeY.value) || 0,
 			width: Math.max(1, Number(nodeW.value) || 1),
-			height: Math.max(1, Number(nodeH.value) || 1),
-		},
+			height: Math.max(1, Number(nodeH.value) || 1)
+		}
 	})
 }
 
@@ -267,18 +356,13 @@ function syncEditorFromStore() {
 	selectedIndex.value = idx
 
 	editText.value = String(cues.value[idx]?.text ?? '')
-	const s = effectiveStyle.value as any
-	editFontSize.value = Number(s.fontSize ?? 36)
-	editFontColor.value = String(s.fontColor ?? '#ffffff')
-	editFontStyle.value = String(s.fontStyle ?? 'normal')
-	editTextAlign.value =
-		(String(s.textAlign ?? 'center') as any) === 'left'
-			? 'left'
-			: (String(s.textAlign ?? 'center') as any) === 'right'
-				? 'right'
-				: 'center'
+	const s = effectiveStyle.value
+	editFontSize.value = s.fontSize
+	editFontColor.value = s.fontColor
+	editFontStyle.value = s.fontStyle
+	editTextAlign.value = s.textAlign
 
-		syncNodeFromStore()
+	syncNodeFromStore()
 }
 
 watch(
@@ -302,7 +386,7 @@ const select = (idx: number, opts?: { jump?: boolean; scroll?: boolean; paddingP
 	const layerId = props.layerId
 	if (!layerId) return
 	if (opts?.jump === false) return
-	const r: any = cueRanges.value[selectedIndex.value]
+	const r: SubtitleCueRange | undefined = cueRanges.value[selectedIndex.value]
 	const startFrame = Number(r?.startFrame)
 	if (Number.isFinite(startFrame)) {
 		void TimelineStore.dispatch('jumpToFrameCentered', { frameIndex: Math.floor(startFrame) })
@@ -311,7 +395,7 @@ const select = (idx: number, opts?: { jump?: boolean; scroll?: boolean; paddingP
 
 const onExternalCueSelect = (ev: Event) => {
 	const ce = ev as CustomEvent<DvsSubtitleCueSelectDetail>
-	const d: any = ce?.detail
+	const d = ce?.detail
 	const layerId = props.layerId
 	if (!layerId || !d) return
 	if (String(d.layerId) !== layerId) return
@@ -321,7 +405,7 @@ const onExternalCueSelect = (ev: Event) => {
 }
 
 onMounted(() => {
-	window.addEventListener(DVS_EVENTS.SubtitleCueSelect, onExternalCueSelect as any)
+	window.addEventListener(DVS_EVENTS.SubtitleCueSelect, onExternalCueSelect as EventListener)
 })
 
 const pad2 = (n: number) => String(Math.max(0, Math.floor(n))).padStart(2, '0')
@@ -335,10 +419,12 @@ const formatMs = (ms: number) => {
 }
 
 const cueTimeText = (idx: number) => {
-	const c: any = cues.value[idx]
-	if (c && typeof c.startMs === 'number' && typeof c.endMs === 'number') return `${formatMs(c.startMs)} → ${formatMs(c.endMs)}`
-	const r: any = cueRanges.value[idx]
-	if (r && Number.isFinite(r.startFrame) && Number.isFinite(r.endFrame)) return `F${r.startFrame} → F${r.endFrame}`
+	const c: SubtitleCue | undefined = cues.value[idx]
+	if (c && typeof c.startMs === 'number' && typeof c.endMs === 'number')
+		return `${formatMs(c.startMs)} → ${formatMs(c.endMs)}`
+	const r: SubtitleCueRange | undefined = cueRanges.value[idx]
+	if (r && Number.isFinite(r.startFrame) && Number.isFinite(r.endFrame))
+		return `F${r.startFrame} → F${r.endFrame}`
 	return `#${idx + 1}`
 }
 
@@ -347,7 +433,7 @@ const regen = async () => {
 	if (!layerId) return
 	const nodeId = TimelineStore.state.subtitleTextNodeIdByLayer?.[layerId]
 	if (!nodeId) return
-	const sceneLayer = findLayer(VideoSceneStore.state as any, layerId)
+	const sceneLayer = findLayer(VideoSceneStore.state, layerId)
 	if (!sceneLayer) return
 	const node = findNode(sceneLayer.nodeTree, nodeId)
 	if (!node?.transform) return
@@ -357,13 +443,17 @@ const regen = async () => {
 	const gen = buildSubtitleGeneratedKeyframes({
 		layerId,
 		nodeId,
-		cues: cues.value as any,
-		cueRanges: cueRanges.value as any,
+		cues: cues.value,
+		cueRanges: cueRanges.value,
 		defaultStyle,
 		overridesByCueIndex,
-		nodeTransform: node.transform as VideoSceneNodeTransform,
+		nodeTransform: node.transform as VideoSceneNodeTransform
 	})
-	await TimelineStore.dispatch('setSubtitleGeneratedKeyframes', { layerId, frames: gen.frames, nodeKeyframesByFrame: gen.nodeKeyframesByFrame })
+	await TimelineStore.dispatch('setSubtitleGeneratedKeyframes', {
+		layerId,
+		frames: gen.frames,
+		nodeKeyframesByFrame: gen.nodeKeyframesByFrame
+	})
 }
 
 let textTimer: number | null = null
@@ -373,21 +463,33 @@ const scheduleCommitText = () => {
 		textTimer = null
 		const layerId = props.layerId
 		if (!layerId) return
-		await TimelineStore.dispatch('setSubtitleCueText', { layerId, cueIndex: selectedIndex.value, text: editText.value })
+		await TimelineStore.dispatch('setSubtitleCueText', {
+			layerId,
+			cueIndex: selectedIndex.value,
+			text: editText.value
+		})
 		await regen()
 	}, 180)
 }
 
 onBeforeUnmount(() => {
 	if (textTimer != null) window.clearTimeout(textTimer)
-	window.removeEventListener(DVS_EVENTS.SubtitleCueSelect, onExternalCueSelect as any)
+	window.removeEventListener(DVS_EVENTS.SubtitleCueSelect, onExternalCueSelect as EventListener)
 })
 
-const commitStyle = async (key: 'fontSize' | 'fontColor' | 'fontStyle' | 'textAlign', value: any) => {
+const commitStyle = async (
+	key: keyof SubtitleTextStyle,
+	value: SubtitleTextStyle[keyof SubtitleTextStyle]
+) => {
 	const layerId = props.layerId
 	if (!layerId) return
-	const patch: any = { [key]: value }
-	if (isPerCue.value) await TimelineStore.dispatch('setSubtitleOverrideStyle', { layerId, cueIndex: selectedIndex.value, style: patch })
+	const patch: Partial<SubtitleTextStyle> = { [key]: value } as Partial<SubtitleTextStyle>
+	if (isPerCue.value)
+		await TimelineStore.dispatch('setSubtitleOverrideStyle', {
+			layerId,
+			cueIndex: selectedIndex.value,
+			style: patch
+		})
 	else await TimelineStore.dispatch('setSubtitleDefaultStyle', { layerId, style: patch })
 	await regen()
 }
@@ -395,14 +497,22 @@ const commitStyle = async (key: 'fontSize' | 'fontColor' | 'fontStyle' | 'textAl
 const enablePerCue = async () => {
 	const layerId = props.layerId
 	if (!layerId) return
-	await TimelineStore.dispatch('setSubtitleOverrideStyle', { layerId, cueIndex: selectedIndex.value, style: {} })
+	await TimelineStore.dispatch('setSubtitleOverrideStyle', {
+		layerId,
+		cueIndex: selectedIndex.value,
+		style: {}
+	})
 	syncEditorFromStore()
 }
 
 const clearPerCue = async () => {
 	const layerId = props.layerId
 	if (!layerId) return
-	await TimelineStore.dispatch('setSubtitleOverrideStyle', { layerId, cueIndex: selectedIndex.value, style: null })
+	await TimelineStore.dispatch('setSubtitleOverrideStyle', {
+		layerId,
+		cueIndex: selectedIndex.value,
+		style: null
+	})
 	syncEditorFromStore()
 	await regen()
 }
@@ -410,7 +520,7 @@ const clearPerCue = async () => {
 const applyToAll = async () => {
 	const layerId = props.layerId
 	if (!layerId) return
-	await TimelineStore.dispatch('applySubtitleStyleToAll', { layerId, style: effectiveStyle.value as any })
+	await TimelineStore.dispatch('applySubtitleStyleToAll', { layerId, style: effectiveStyle.value })
 	syncEditorFromStore()
 	await regen()
 }

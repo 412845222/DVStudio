@@ -1,205 +1,205 @@
 <template>
-  <div
-    v-if="open && (!minimized || animating)"
-    ref="shellRef"
-    class="ai-chat"
-    :class="{ entering, minimizing }"
-    :style="shellStyle"
-    @pointerdown.stop
-  >
-    <div class="ai-chat__title" @pointerdown.prevent="onTitlePointerDown">
-      <div class="ai-chat__title-left">
-        <span class="ai-chat__title-text">AI助手</span>
-        <span v-if="sending" class="ai-chat__title-status">{{ taskStatusLabel }}</span>
-      </div>
-      <div class="ai-chat__title-actions">
-        <button
-          class="ai-chat__icon"
-          type="button"
-          :title="deepMode ? '深度思考模式：开' : '深度思考模式：关'"
-          @click="toggleDeepMode"
-        >
-          {{ deepMode ? "深" : "浅" }}
-        </button>
-        <button
-          v-if="sending"
-          class="ai-chat__icon"
-          type="button"
-          title="停止"
-          @click="stopTask"
-        >
-          ⏹
-        </button>
-        <button class="ai-chat__icon" type="button" title="最小化" @click="onMinimize">
-          —
-        </button>
-        <button class="ai-chat__icon" type="button" title="关闭" @click="onClose">
-          ×
-        </button>
-      </div>
-    </div>
-    <div
-      class="ai-chat__resize ai-chat__resize--right"
-      @pointerdown.stop.prevent="onResizePointerDown($event, 'right')"
-    />
-    <div
-      class="ai-chat__resize ai-chat__resize--bottom"
-      @pointerdown.stop.prevent="onResizePointerDown($event, 'bottom')"
-    />
-    <div
-      class="ai-chat__resize ai-chat__resize--corner"
-      @pointerdown.stop.prevent="onResizePointerDown($event, 'corner')"
-    />
+	<div
+		v-if="open && (!minimized || animating)"
+		ref="shellRef"
+		class="ai-chat"
+		:class="{ entering, minimizing }"
+		:style="shellStyle"
+		@pointerdown.stop
+	>
+		<div class="ai-chat__title" @pointerdown.prevent="onTitlePointerDown">
+			<div class="ai-chat__title-left">
+				<span class="ai-chat__title-text">AI助手</span>
+				<span v-if="sending" class="ai-chat__title-status">{{ taskStatusLabel }}</span>
+			</div>
+			<div class="ai-chat__title-actions">
+				<button
+					class="ai-chat__icon"
+					type="button"
+					:title="deepMode ? '深度思考模式：开' : '深度思考模式：关'"
+					@click="toggleDeepMode"
+				>
+					{{ deepMode ? '深' : '浅' }}
+				</button>
+				<button v-if="sending" class="ai-chat__icon" type="button" title="停止" @click="stopTask">
+					⏹
+				</button>
+				<button class="ai-chat__icon" type="button" title="最小化" @click="onMinimize">—</button>
+				<button class="ai-chat__icon" type="button" title="关闭" @click="onClose">×</button>
+			</div>
+		</div>
+		<div
+			class="ai-chat__resize ai-chat__resize--right"
+			@pointerdown.stop.prevent="onResizePointerDown($event, 'right')"
+		/>
+		<div
+			class="ai-chat__resize ai-chat__resize--bottom"
+			@pointerdown.stop.prevent="onResizePointerDown($event, 'bottom')"
+		/>
+		<div
+			class="ai-chat__resize ai-chat__resize--corner"
+			@pointerdown.stop.prevent="onResizePointerDown($event, 'corner')"
+		/>
 
-    <div class="ai-chat__controls">
-      <label class="ai-chat__control">
-        <span class="ai-chat__control-label">来源</span>
-        <select v-model="modelApiSource" class="ai-chat__select" :disabled="sending">
-          <option
-            v-for="source in textApiSourceOptions"
-            :key="source.value"
-            :value="source.value"
-          >
-            {{ source.label }}
-          </option>
-        </select>
-      </label>
-      <label class="ai-chat__control ai-chat__control--grow">
-        <span class="ai-chat__control-label">模型</span>
-        <select
-          v-model="textModelId"
-          class="ai-chat__select"
-          :disabled="sending || !textModelOptions.length"
-        >
-          <option v-if="!textModelOptions.length" value="">当前组合暂无模型</option>
-          <option v-for="model in textModelOptions" :key="model.id" :value="model.id">
-            {{ model.label }}
-          </option>
-        </select>
-      </label>
-    </div>
+		<div class="ai-chat__controls">
+			<label class="ai-chat__control">
+				<span class="ai-chat__control-label">来源</span>
+				<select v-model="modelApiSource" class="ai-chat__select" :disabled="sending">
+					<option v-for="source in textApiSourceOptions" :key="source.value" :value="source.value">
+						{{ source.label }}
+					</option>
+				</select>
+			</label>
+			<label class="ai-chat__control ai-chat__control--grow">
+				<span class="ai-chat__control-label">模型</span>
+				<select
+					v-model="textModelId"
+					class="ai-chat__select"
+					:disabled="sending || !textModelOptions.length"
+				>
+					<option v-if="!textModelOptions.length" value="">当前组合暂无模型</option>
+					<option v-for="model in textModelOptions" :key="model.id" :value="model.id">
+						{{ model.label }}
+					</option>
+				</select>
+			</label>
+		</div>
 
-    <div class="ai-chat__body">
-      <div ref="listRef" class="ai-chat__list" @scroll.passive="onListScroll">
-        <div v-for="m in messages" :key="m.id" class="ai-chat__msg" :class="[m.role]">
-          <div class="ai-chat__bubble">
-            <div class="ai-chat__role">{{ m.role === "user" ? "我" : "AI" }}</div>
-            <div class="ai-chat__text">{{ m.text }}</div>
-            <div v-if="isRunning(m) && taskStatusLabel" class="ai-chat__phase">
-              {{ taskStatusLabel }}
-            </div>
-            <div v-if="isRunning(m)" class="ai-chat__typing" aria-label="AI 正在处理">
-              <span class="ai-chat__dot" />
-              <span class="ai-chat__dot" />
-              <span class="ai-chat__dot" />
-            </div>
-            <div v-if="showStageActions(m) || !!m.scenePlanJson" class="ai-chat__actions">
-              <button
-                v-if="canGenerateScenePlanAnimation(m)"
-                class="ai-chat__action-btn ai-chat__action-btn--primary"
-                type="button"
-                :disabled="sending"
-                @click="onClickGenerateAnimation(m)"
-              >
-                生成动画
-              </button>
-              <button
-                v-if="m.scenePlanJson"
-                class="ai-chat__action-btn"
-                type="button"
-                :disabled="sending"
-                @click="copyScenePlanJson(m)"
-              >
-                复制场景计划JSON
-              </button>
-              <button
-                v-if="showStageActions(m)"
-                class="ai-chat__action-btn"
-                type="button"
-                :disabled="sending"
-                @click="(e) => saveToComponentLibrary(m, e)"
-              >
-                保存到组件库
-              </button>
-              <button
-                v-if="showStageActions(m)"
-                class="ai-chat__action-btn"
-                type="button"
-                :disabled="sending"
-                @click="regenerateLast"
-              >
-                重新生成
-              </button>
-              <button
-                v-if="showStageActions(m)"
-                class="ai-chat__action-btn"
-                type="button"
-                :disabled="sending"
-                @click="undoStage"
-              >
-                撤回
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+		<div class="ai-chat__body">
+			<div ref="listRef" class="ai-chat__list" @scroll.passive="onListScroll">
+				<div v-for="m in messages" :key="m.id" class="ai-chat__msg" :class="[m.role]">
+					<div class="ai-chat__bubble">
+						<div class="ai-chat__role">{{ m.role === 'user' ? '我' : 'AI' }}</div>
+						<div class="ai-chat__text">{{ m.text }}</div>
+						<div v-if="isRunning(m) && taskStatusLabel" class="ai-chat__phase">
+							{{ taskStatusLabel }}
+						</div>
+						<div v-if="isRunning(m)" class="ai-chat__typing" aria-label="AI 正在处理">
+							<span class="ai-chat__dot" />
+							<span class="ai-chat__dot" />
+							<span class="ai-chat__dot" />
+						</div>
+						<div v-if="showStageActions(m) || !!m.scenePlanJson" class="ai-chat__actions">
+							<button
+								v-if="canGenerateScenePlanAnimation(m)"
+								class="ai-chat__action-btn ai-chat__action-btn--primary"
+								type="button"
+								:disabled="sending"
+								@click="onClickGenerateAnimation(m)"
+							>
+								生成动画
+							</button>
+							<button
+								v-if="m.scenePlanJson"
+								class="ai-chat__action-btn"
+								type="button"
+								:disabled="sending"
+								@click="copyScenePlanJson(m)"
+							>
+								复制场景计划JSON
+							</button>
+							<button
+								v-if="showStageActions(m)"
+								class="ai-chat__action-btn"
+								type="button"
+								:disabled="sending"
+								@click="(e: MouseEvent) => saveToComponentLibrary(m, e)"
+							>
+								保存到组件库
+							</button>
+							<button
+								v-if="showStageActions(m)"
+								class="ai-chat__action-btn"
+								type="button"
+								:disabled="sending"
+								@click="regenerateLast"
+							>
+								重新生成
+							</button>
+							<button
+								v-if="showStageActions(m)"
+								class="ai-chat__action-btn"
+								type="button"
+								:disabled="sending"
+								@click="undoStage"
+							>
+								撤回
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
 
-    <form class="ai-chat__input" @submit.prevent="send">
-      <input
-        v-model="draft"
-        class="ai-chat__text-input"
-        type="text"
-        placeholder="输入问题..."
-        :disabled="sending"
-        @keydown.enter.exact.prevent="send"
-      />
-      <button class="ai-chat__send" type="submit" :disabled="!canSend">发送</button>
-    </form>
+		<form class="ai-chat__input" @submit.prevent="send">
+			<input
+				v-model="draft"
+				class="ai-chat__text-input"
+				type="text"
+				placeholder="输入问题..."
+				:disabled="sending"
+				@keydown.enter.exact.prevent="send"
+			/>
+			<button class="ai-chat__send" type="submit" :disabled="!canSend">发送</button>
+		</form>
 
-    <div class="ai-chat__thought" :class="{ open: thoughtOpen }" aria-label="思考面板">
-      <div class="ai-chat__thought-head">
-        <div class="ai-chat__thought-title">思考</div>
-        <button
-          class="ai-chat__thought-close"
-          type="button"
-          title="关闭思考"
-          @click="closeThought"
-        >
-          ×
-        </button>
-      </div>
-      <div class="ai-chat__thought-text">{{ thoughtText }}</div>
-    </div>
-  </div>
+		<div class="ai-chat__thought" :class="{ open: thoughtOpen }" aria-label="思考面板">
+			<div class="ai-chat__thought-head">
+				<div class="ai-chat__thought-title">思考</div>
+				<button class="ai-chat__thought-close" type="button" title="关闭思考" @click="closeThought">
+					×
+				</button>
+			</div>
+			<div class="ai-chat__thought-text">{{ thoughtText }}</div>
+		</div>
+	</div>
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
 import { useStore } from 'vuex'
 import { aiChatService } from '../../network/AIChatService'
 import type { AgentToUiMessage } from '../../core/agentToUI'
 import {
 	compileVideoScenePlan,
 	normalizeVideoScenePlan,
-	type VideoScenePlan,
+	type VideoScenePlan
 } from '../../core/agentToUI/videoScenePlan'
 import {
 	CHAT_API_SOURCE_OPTIONS,
 	getChatModelById,
 	getChatModelOptions,
-	type ChatApiSource,
+	type ChatApiSource
 } from '../../ai/models/chatModels'
-import { componentTemplateApi } from '../../core/components'
+import { componentTemplateApi, type ComponentTemplate } from '../../core/components'
 import { ComponentLibraryService } from '../../network/ComponentLibraryService'
-import { findLayer, findNode, nodeExistsInAnyLayer, rotatedRectCorners } from '../../core/scene'
+import {
+	findLayer,
+	findNode,
+	nodeExistsInAnyLayer,
+	rotatedRectCorners,
+	type VideoSceneTreeNode
+} from '../../core/scene'
 import { TimelineStore } from '../../store/timeline'
 import { VideoSceneKey, type VideoSceneState } from '../../store/videoscene'
 import { editorPersistence } from '../../adapters/editorPersistence'
-import { dispatchDvsEditorNodeDeleted, dispatchDvsEditorNodePatched } from '../../adapters/windowEventBridge'
+import {
+	dispatchDvsEditorNodeDeleted,
+	dispatchDvsEditorNodePatched
+} from '../../adapters/windowEventBridge'
 import { DwebCanvasGLKey } from '../VideoScene/VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from '../VideoScene/anim/timelineAnimation'
 import { flyThumbnailPng } from '../VideoScene/parts/flyThumbnail'
+import {
+	isRecord,
+	isString,
+	isArray,
+	hasKeyOfType,
+	isNumber,
+	isBoolean,
+	isNull
+} from '../../types/utils'
+import type { JsonValue } from '../../core/shared/json'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -215,16 +215,52 @@ type ChatMessage = {
 	scenePlanApplyStatus?: 'pending' | 'applied' | 'skipped'
 }
 
-const props = defineProps<{ open: boolean; minimized: boolean; anchor?: { x: number; y: number } | null }>()
+type StageFilter = {
+	target: 'selection' | 'nodeId'
+	nodeId?: string
+	layerId?: string
+	mode: 'append' | 'replace'
+	filter: Record<string, JsonValue>
+}
+
+type StageOps = {
+	insertedNodeIds: string[]
+	filters: StageFilter[]
+}
+
+type ViewportContext = {
+	panX?: number
+	panY?: number
+	zoom?: number
+	screenW: number
+	screenH: number
+	centerWorld: { x: number; y: number }
+}
+
+type TemplateNodeLike = {
+	localId?: unknown
+	type?: unknown
+	props?: unknown
+	transform?: unknown
+	parentLocalId?: unknown
+	children?: unknown
+	[key: string]: unknown
+}
+
+const props = defineProps<{
+	open: boolean
+	minimized: boolean
+	anchor?: { x: number; y: number } | null
+}>()
 const emit = defineEmits<{ 'update:open': [boolean]; 'update:minimized': [boolean] }>()
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 
-const dwebCanvasRef = inject<any>(DwebCanvasGLKey, null)
+const dwebCanvasRef = inject(DwebCanvasGLKey, null)
 
 const debugAgentToUi = (() => {
 	try {
-		return (import.meta as any)?.env?.DEV || window.localStorage.getItem('dvs.aiChat.debug') === '1'
+		return import.meta.env.DEV || window.localStorage.getItem('dvs.aiChat.debug') === '1'
 	} catch {
 		return false
 	}
@@ -252,7 +288,10 @@ const MAX_DIALOG_H = 760
 const DIALOG_SIZE_KEY = 'dvs.aiChat.dialogSize'
 
 const pos = ref<{ x: number; y: number }>({ x: 12, y: 12 })
-const dialogSize = ref<{ width: number; height: number }>({ width: DEFAULT_DIALOG_W, height: DEFAULT_DIALOG_H })
+const dialogSize = ref<{ width: number; height: number }>({
+	width: DEFAULT_DIALOG_W,
+	height: DEFAULT_DIALOG_H
+})
 const dragged = ref(false)
 const entering = ref(false)
 const minimizing = ref(false)
@@ -261,15 +300,17 @@ const animTransform = ref<string>('')
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
-const getDialogWidth = () => clamp(dialogSize.value.width, MIN_DIALOG_W, Math.min(MAX_DIALOG_W, window.innerWidth - 16))
-const getDialogHeight = () => clamp(dialogSize.value.height, MIN_DIALOG_H, Math.min(MAX_DIALOG_H, window.innerHeight - 16))
+const getDialogWidth = () =>
+	clamp(dialogSize.value.width, MIN_DIALOG_W, Math.min(MAX_DIALOG_W, window.innerWidth - 16))
+const getDialogHeight = () =>
+	clamp(dialogSize.value.height, MIN_DIALOG_H, Math.min(MAX_DIALOG_H, window.innerHeight - 16))
 
 const clampDialogPosition = (next: { x: number; y: number }) => {
 	const w = getDialogWidth()
 	const h = getDialogHeight()
 	return {
 		x: clamp(next.x, 8, Math.max(8, window.innerWidth - w - 8)),
-		y: clamp(next.y, 8, Math.max(8, window.innerHeight - h - 8)),
+		y: clamp(next.y, 8, Math.max(8, window.innerHeight - h - 8))
 	}
 }
 
@@ -280,7 +321,7 @@ const loadDialogSize = () => {
 		const parsed = JSON.parse(raw)
 		dialogSize.value = {
 			width: clamp(Number(parsed?.width) || DEFAULT_DIALOG_W, MIN_DIALOG_W, MAX_DIALOG_W),
-			height: clamp(Number(parsed?.height) || DEFAULT_DIALOG_H, MIN_DIALOG_H, MAX_DIALOG_H),
+			height: clamp(Number(parsed?.height) || DEFAULT_DIALOG_H, MIN_DIALOG_H, MAX_DIALOG_H)
 		}
 	} catch {
 		dialogSize.value = { width: DEFAULT_DIALOG_W, height: DEFAULT_DIALOG_H }
@@ -320,14 +361,14 @@ const computeMinimizeTransform = () => {
 	return `translate(${dx}px, ${dy}px) scale(0.05)`
 }
 
-const shellStyle = computed(() => {
+const shellStyle = computed<CSSProperties>(() => {
 	return {
 		left: `${pos.value.x}px`,
 		top: `${pos.value.y}px`,
 		width: `${getDialogWidth()}px`,
 		height: `${getDialogHeight()}px`,
-		transform: minimizing.value ? animTransform.value : '',
-	} as any
+		transform: minimizing.value ? animTransform.value : ''
+	}
 })
 
 const messages = ref<ChatMessage[]>([
@@ -335,8 +376,8 @@ const messages = ref<ChatMessage[]>([
 		id: 'm0',
 		role: 'assistant',
 		text: '你好，我是 VideoStudio AI 助手。你可以描述要生成的 WebGL 视频界面与预设动画。',
-		at: Date.now(),
-	},
+		at: Date.now()
+	}
 ])
 
 const deepMode = ref(false)
@@ -371,7 +412,12 @@ const loadModelPrefs = () => {
 	try {
 		const savedSource = window.localStorage.getItem('dvs.aiChat.modelApiSource')
 		const savedModel = window.localStorage.getItem('dvs.aiChat.textModelId')
-		if (savedSource === 'all' || savedSource === 'deepseek' || savedSource === 'gemini' || savedSource === 'bytedance') {
+		if (
+			savedSource === 'all' ||
+			savedSource === 'deepseek' ||
+			savedSource === 'gemini' ||
+			savedSource === 'bytedance'
+		) {
 			modelApiSource.value = savedSource
 		}
 		if (typeof savedModel === 'string' && savedModel.trim()) textModelId.value = savedModel.trim()
@@ -390,12 +436,20 @@ const persistModelPrefs = () => {
 	}
 }
 
-const textApiSourceOptions = CHAT_API_SOURCE_OPTIONS.filter((item) => item.value === 'all' || item.value === 'deepseek' || item.value === 'bytedance')
+const textApiSourceOptions = CHAT_API_SOURCE_OPTIONS.filter(
+	(item) => item.value === 'all' || item.value === 'deepseek' || item.value === 'bytedance'
+)
 
-const textModelOptions = computed(() => getChatModelOptions('text', modelApiSource.value).filter((item) => item.apiSource === 'deepseek' || item.apiSource === 'bytedance'))
+const textModelOptions = computed(() =>
+	getChatModelOptions('text', modelApiSource.value).filter(
+		(item) => item.apiSource === 'deepseek' || item.apiSource === 'bytedance'
+	)
+)
 
 const activeTextModel = computed(() => getChatModelById(textModelId.value))
-const activeProvider = computed(() => (activeTextModel.value?.apiSource === 'bytedance' ? 'bytedance' : 'deepseek'))
+const activeProvider = computed(() =>
+	activeTextModel.value?.apiSource === 'bytedance' ? 'bytedance' : 'deepseek'
+)
 
 const normalizeTextModelSelection = () => {
 	let list = textModelOptions.value
@@ -446,14 +500,23 @@ const onListScroll = () => {
 	pinnedToBottom.value = isNearBottom(el)
 }
 
-type TaskPhase = 'idle' | 'started' | 'streaming' | 'writing' | 'template' | 'done' | 'stopped' | 'error'
+type TaskPhase =
+	| 'idle'
+	| 'started'
+	| 'streaming'
+	| 'writing'
+	| 'template'
+	| 'done'
+	| 'stopped'
+	| 'error'
 const taskPhase = ref<TaskPhase>('idle')
 const taskPhaseMessage = ref<string>('')
 
 const taskStatusLabel = computed(() => {
 	if (stoppedByUser.value) return '已停止'
 	if (!sending.value) return ''
-	if (typeof taskPhaseMessage.value === 'string' && taskPhaseMessage.value.trim()) return taskPhaseMessage.value.trim()
+	if (typeof taskPhaseMessage.value === 'string' && taskPhaseMessage.value.trim())
+		return taskPhaseMessage.value.trim()
 	const p = taskPhase.value
 	if (p === 'started') return '已开始…'
 	if (p === 'streaming') return '连接模型…'
@@ -463,11 +526,6 @@ const taskStatusLabel = computed(() => {
 })
 
 const lastUserText = ref<string>('')
-
-type StageOps = {
-	insertedNodeIds: string[]
-	filters: Array<{ target: 'selection' | 'nodeId'; nodeId?: string; layerId?: string; mode: 'append' | 'replace'; filter: any }>
-}
 
 const lastStageOps = ref<StageOps>({ insertedNodeIds: [], filters: [] })
 
@@ -487,20 +545,25 @@ const stopTyping = () => {
 	typingQueue = ''
 }
 
-const isRecord = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null
+type TemplateLike = {
+	nodes?: unknown
+	rootLocalId?: unknown
+	[key: string]: unknown
+}
 
 const sanitizeComponentTemplate = (template: unknown): unknown => {
 	if (!isRecord(template)) return template
-	const nodes = (template as any).nodes
+	const tpl = template as TemplateLike
+	const nodes = tpl.nodes
 	if (!Array.isArray(nodes)) return template
-	const rootLocalId = typeof (template as any).rootLocalId === 'string' ? String((template as any).rootLocalId) : ''
+	const rootLocalId = isString(tpl.rootLocalId) ? tpl.rootLocalId : ''
 	const localIdSet = new Set<string>()
 	for (const n of nodes) {
-		if (n && typeof n === 'object' && typeof (n as any).localId === 'string') localIdSet.add((n as any).localId)
+		if (isRecord(n) && isString(n.localId)) localIdSet.add(n.localId)
 	}
 
 	const normalizeParentLocalId = (parentLocalId: unknown): string | undefined => {
-		if (typeof parentLocalId !== 'string') return undefined
+		if (!isString(parentLocalId)) return undefined
 		const raw = parentLocalId.trim()
 		if (!raw) return undefined
 		if (localIdSet.has(raw)) return raw
@@ -511,23 +574,25 @@ const sanitizeComponentTemplate = (template: unknown): unknown => {
 		return undefined
 	}
 
-	const nextNodes = nodes.map((n: any) => {
+	const nextNodes = nodes.map((n: unknown) => {
 		if (!isRecord(n)) return n
-		const next: any = { ...n }
-		// validate.ts requires props to be an object for every node.
+		const node = n as TemplateNodeLike
+		const next: TemplateNodeLike = { ...node }
 		if (!isRecord(next.props)) next.props = {}
-		// if transform provided but invalid, drop it (validator requires object when provided).
 		if (next.transform !== undefined && !isRecord(next.transform)) delete next.transform
-		// parentLocalId: must reference an existing localId inside the same template.
-		if (typeof next.localId === 'string' && next.localId === rootLocalId) {
-			// Root must not have parentLocalId.
+		if (isString(next.localId) && next.localId === rootLocalId) {
 			if (next.parentLocalId !== undefined) delete next.parentLocalId
 		} else if (next.parentLocalId !== undefined) {
 			const normalized = normalizeParentLocalId(next.parentLocalId)
 			if (!normalized) {
 				if (debugAgentToUi) {
 					try {
-						console.warn('[AIChat] drop invalid parentLocalId:', next.parentLocalId, 'on node', next.localId)
+						console.warn(
+							'[AIChat] drop invalid parentLocalId:',
+							next.parentLocalId,
+							'on node',
+							next.localId
+						)
 					} catch {
 						// ignore
 					}
@@ -536,7 +601,14 @@ const sanitizeComponentTemplate = (template: unknown): unknown => {
 			} else if (normalized !== next.parentLocalId) {
 				if (debugAgentToUi) {
 					try {
-						console.warn('[AIChat] normalize parentLocalId:', next.parentLocalId, '=>', normalized, 'on node', next.localId)
+						console.warn(
+							'[AIChat] normalize parentLocalId:',
+							next.parentLocalId,
+							'=>',
+							normalized,
+							'on node',
+							next.localId
+						)
 					} catch {
 						// ignore
 					}
@@ -546,18 +618,30 @@ const sanitizeComponentTemplate = (template: unknown): unknown => {
 		}
 		return next
 	})
-	return { ...(template as any), nodes: nextNodes }
+	return { ...template, nodes: nextNodes }
 }
 
-const applyFilterToSelection = async (filter: Record<string, any>, mode: 'append' | 'replace' = 'append') => {
+const getNodeFilters = (node: VideoSceneTreeNode): Record<string, JsonValue>[] => {
+	const filters = node.props?.filters
+	return isArray(filters, (v): v is Record<string, JsonValue> => isRecord(v)) ? filters : []
+}
+
+const applyFilterToSelection = async (
+	filter: Record<string, JsonValue>,
+	mode: 'append' | 'replace' = 'append'
+) => {
 	const layer = findLayer(store.state, store.state.activeLayerId)
 	if (!layer) throw new Error('active layer not found')
-	const selectedIds = store.state.selectedNodeIds?.length ? store.state.selectedNodeIds : (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
+	const selectedIds = store.state.selectedNodeIds?.length
+		? store.state.selectedNodeIds
+		: store.state.selectedNodeId
+			? [store.state.selectedNodeId]
+			: []
 	if (!selectedIds.length) throw new Error('当前没有选中节点')
 	for (const nodeId of selectedIds) {
 		const node = findNode(layer.nodeTree, nodeId)
 		if (!node || node.category !== 'user') continue
-		const prev = Array.isArray((node.props as any)?.filters) ? ((node.props as any).filters as any[]) : []
+		const prev = getNodeFilters(node)
 		const next = mode === 'replace' ? [filter] : [...prev, filter]
 		await store.dispatch('updateNodeProps', { nodeId, patch: { filters: next } })
 	}
@@ -565,11 +649,13 @@ const applyFilterToSelection = async (filter: Record<string, any>, mode: 'append
 
 const applyFilterToNodeId = async (
 	nodeId: string,
-	filter: Record<string, any>,
+	filter: Record<string, JsonValue>,
 	mode: 'append' | 'replace' = 'append',
 	preferredLayerId?: string
 ) => {
-	const tryLayerIds = [preferredLayerId, store.state.activeLayerId].filter((x): x is string => typeof x === 'string' && !!x)
+	const tryLayerIds = [preferredLayerId, store.state.activeLayerId].filter(
+		(x): x is string => isString(x) && !!x
+	)
 	const visited = new Set<string>()
 
 	const findInLayer = (layerId: string) => {
@@ -584,9 +670,13 @@ const applyFilterToNodeId = async (
 		visited.add(lid)
 		const hit = findInLayer(lid)
 		if (hit) {
-			const prev = Array.isArray((hit.node.props as any)?.filters) ? ((hit.node.props as any).filters as any[]) : []
+			const prev = getNodeFilters(hit.node)
 			const next = mode === 'replace' ? [filter] : [...prev, filter]
-			await store.dispatch('updateNodeProps', { layerId: hit.layerId, nodeId, patch: { filters: next } })
+			await store.dispatch('updateNodeProps', {
+				layerId: hit.layerId,
+				nodeId,
+				patch: { filters: next }
+			})
 			return
 		}
 	}
@@ -595,9 +685,13 @@ const applyFilterToNodeId = async (
 		if (visited.has(layer.id)) continue
 		const hit = findInLayer(layer.id)
 		if (hit) {
-			const prev = Array.isArray((hit.node.props as any)?.filters) ? ((hit.node.props as any).filters as any[]) : []
+			const prev = getNodeFilters(hit.node)
 			const next = mode === 'replace' ? [filter] : [...prev, filter]
-			await store.dispatch('updateNodeProps', { layerId: hit.layerId, nodeId, patch: { filters: next } })
+			await store.dispatch('updateNodeProps', {
+				layerId: hit.layerId,
+				nodeId,
+				patch: { filters: next }
+			})
 			return
 		}
 	}
@@ -605,13 +699,20 @@ const applyFilterToNodeId = async (
 	throw new Error(`未找到节点：${nodeId}`)
 }
 
-const collectNodeIds = (root: any): string[] => {
+type TreeNodeLike = {
+	id?: unknown
+	children?: unknown
+	[key: string]: unknown
+}
+
+const collectNodeIds = (root: unknown): string[] => {
 	const out: string[] = []
-	const visit = (n: any) => {
-		if (!n || typeof n !== 'object') return
-		if (typeof n.id === 'string') out.push(n.id)
-		const children = (n as any).children
-		if (Array.isArray(children)) children.forEach(visit)
+	const visit = (n: unknown) => {
+		if (!isRecord(n)) return
+		const node = n as TreeNodeLike
+		if (isString(node.id)) out.push(node.id)
+		const children = node.children
+		if (isArray(children)) children.forEach(visit)
 	}
 	visit(root)
 	return out
@@ -622,22 +723,24 @@ const buildContextPack = () => {
 	const layer = findLayer(store.state, activeLayerId)
 	const selectedNodeIds = store.state.selectedNodeIds?.length
 		? store.state.selectedNodeIds
-		: (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
+		: store.state.selectedNodeId
+			? [store.state.selectedNodeId]
+			: []
 
-	let selectedNodes: any[] = []
+	let selectedNodes: VideoSceneTreeNode[] = []
 	if (layer && selectedNodeIds.length) {
 		selectedNodes = selectedNodeIds
 			.map((id) => findNode(layer.nodeTree, id))
-			.filter((n) => !!n)
+			.filter((n): n is VideoSceneTreeNode => !!n)
 	}
 
 	return {
 		activeLayerId,
-		layers: store.state.layers.map((l: any) => ({ id: l.id, name: l.name })),
+		layers: store.state.layers.map((l) => ({ id: l.id, name: l.name })),
 		selectedNodeIds,
 		selectedNodes,
-		activeLayer: layer ? { id: layer.id, name: (layer as any).name, nodeTree: layer.nodeTree } : null,
-		lastStageOps: lastStageOps.value,
+		activeLayer: layer ? { id: layer.id, name: layer.name, nodeTree: layer.nodeTree } : null,
+		lastStageOps: lastStageOps.value
 	}
 }
 
@@ -653,10 +756,10 @@ const buildVideoGuiPromptInput = (text: string) => {
 		deepMode: deepMode.value,
 		activeLayer: activeLayer
 			? {
-				id: activeLayer.id,
-				name: activeLayer.name,
-				nodeCount: Array.isArray(activeLayer.nodeTree) ? activeLayer.nodeTree.length : 0,
-			}
+					id: activeLayer.id,
+					name: activeLayer.name,
+					nodeCount: Array.isArray(activeLayer.nodeTree) ? activeLayer.nodeTree.length : 0
+				}
 			: null,
 		selectedNodeIds: contextPack.selectedNodeIds,
 		selectedNodes,
@@ -666,8 +769,8 @@ const buildVideoGuiPromptInput = (text: string) => {
 			output: ['componentTemplate', 'videoScenePlan'],
 			animationMode: 'preset-only',
 			preferPalette: true,
-			preferIncrementalEdit: selectedNodes.length > 0,
-		},
+			preferIncrementalEdit: selectedNodes.length > 0
+		}
 	}
 }
 
@@ -680,9 +783,12 @@ const coerceNumber = (v: unknown): number | undefined => {
 	return undefined
 }
 
-const toComponentTemplateLike = (v: unknown, opts?: { defaultCenterWorld?: { x: number; y: number } }): unknown => {
+const toComponentTemplateLike = (
+	v: unknown,
+	opts?: { defaultCenterWorld?: { x: number; y: number } }
+): unknown => {
 	let obj: unknown = v
-	if (typeof obj === 'string') {
+	if (isString(obj)) {
 		try {
 			obj = JSON.parse(obj)
 		} catch {
@@ -691,65 +797,89 @@ const toComponentTemplateLike = (v: unknown, opts?: { defaultCenterWorld?: { x: 
 	}
 	if (!isRecord(obj)) return v
 
-	// Already looks like a ComponentTemplate.
-	if (obj.schemaVersion === 1 && typeof obj.templateId === 'string' && Array.isArray(obj.nodes) && typeof obj.rootLocalId === 'string') {
+	const objRecord = obj as Record<string, unknown>
+	if (
+		objRecord.schemaVersion === 1 &&
+		isString(objRecord.templateId) &&
+		isArray(objRecord.nodes) &&
+		isString(objRecord.rootLocalId)
+	) {
 		return obj
 	}
 
-	// Heuristic: model returned a single node-like object.
-	const nodeType = typeof obj.type === 'string' ? obj.type : 'text'
+	const nodeType = isString(objRecord.type) ? objRecord.type : 'text'
 	const center = opts?.defaultCenterWorld
-	const transform = {
-		x: coerceNumber(obj.x) ?? center?.x ?? 0,
-		y: coerceNumber(obj.y) ?? center?.y ?? 0,
-		width: coerceNumber(obj.width),
-		height: coerceNumber(obj.height),
-		rotation: coerceNumber(obj.rotation),
-		opacity: coerceNumber(obj.opacity),
+	const transform: Record<string, number | undefined> = {
+		x: coerceNumber(objRecord.x) ?? center?.x ?? 0,
+		y: coerceNumber(objRecord.y) ?? center?.y ?? 0,
+		width: coerceNumber(objRecord.width),
+		height: coerceNumber(objRecord.height),
+		rotation: coerceNumber(objRecord.rotation),
+		opacity: coerceNumber(objRecord.opacity)
 	}
 
-	const reserved = new Set(['type', 'id', 'localId', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'name', 'children', 'parentId'])
-	const props: Record<string, any> = isRecord(obj.props) ? { ...obj.props } : {}
-	for (const [k, val] of Object.entries(obj)) {
+	const reserved = new Set([
+		'type',
+		'id',
+		'localId',
+		'x',
+		'y',
+		'width',
+		'height',
+		'rotation',
+		'opacity',
+		'name',
+		'children',
+		'parentId',
+		'props'
+	])
+	const props: Record<string, unknown> = isRecord(objRecord.props) ? { ...objRecord.props } : {}
+	for (const [k, val] of Object.entries(objRecord)) {
 		if (reserved.has(k)) continue
-		if (k === 'props') continue
 		props[k] = val
 	}
 
 	return {
 		schemaVersion: 1,
 		templateId: `ai_${Date.now()}`,
-		name: typeof obj.name === 'string' ? obj.name : 'AI生成节点',
+		name: isString(objRecord.name) ? objRecord.name : 'AI生成节点',
 		params: [],
 		nodes: [
 			{
 				localId: 'root',
 				type: nodeType,
 				props,
-				transform,
-			},
+				transform
+			}
 		],
-		rootLocalId: 'root',
+		rootLocalId: 'root'
 	}
 }
 
-const normalizeTemplateForViewport = (template: any, opts?: { defaultCenterWorld?: { x: number; y: number } }) => {
+const normalizeTemplateForViewport = (
+	template: unknown,
+	opts?: { defaultCenterWorld?: { x: number; y: number } }
+) => {
 	if (!isRecord(template)) return template
-	if (!Array.isArray((template as any).nodes)) return template
-	const rootId = (template as any).rootLocalId
-	if (typeof rootId !== 'string') return template
-	const nodes = (template as any).nodes
-	const idx = nodes.findIndex((n: any) => n && typeof n === 'object' && n.localId === rootId)
+	const tpl = template as TemplateLike
+	if (!isArray(tpl.nodes)) return template
+	const rootId = tpl.rootLocalId
+	if (!isString(rootId)) return template
+	const nodes = tpl.nodes
+	const idx = nodes.findIndex(
+		(n): n is Record<string, unknown> => isRecord(n) && n.localId === rootId
+	)
 	if (idx < 0) return template
 	const node = nodes[idx]
 	if (!isRecord(node)) return template
-	const t = isRecord((node as any).transform) ? (node as any).transform : {}
-	const cx = coerceNumber(t.x)
-	const cy = coerceNumber(t.y)
+	const nodeRecord = node as Record<string, unknown>
+	const t = isRecord(nodeRecord.transform) ? nodeRecord.transform : {}
+	const cx = coerceNumber((t as Record<string, unknown>).x)
+	const cy = coerceNumber((t as Record<string, unknown>).y)
 	if (cx != null && cy != null) return template
 	const center = opts?.defaultCenterWorld
 	if (!center) return template
-	const nextNode = { ...node, transform: { ...t, x: cx ?? center.x, y: cy ?? center.y } }
+	const nextNode = { ...nodeRecord, transform: { ...t, x: cx ?? center.x, y: cy ?? center.y } }
 	const nextNodes = nodes.slice()
 	nextNodes[idx] = nextNode
 	return { ...template, nodes: nextNodes }
@@ -775,7 +905,7 @@ const extractReadableText = (raw: string): string => {
 	const trimmed = text.trim()
 	if (!trimmed) return ''
 
-	const tryParse = (s: string): any | null => {
+	const tryParse = (s: string): unknown => {
 		try {
 			return JSON.parse(s)
 		} catch {
@@ -783,14 +913,14 @@ const extractReadableText = (raw: string): string => {
 		}
 	}
 
-	// Fast path: exact JSON object/array.
-	// If it is JSON but not a known envelope, hide it to prevent leaking raw JSON into the UI.
-	if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+	if (
+		(trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+		(trimmed.startsWith('[') && trimmed.endsWith(']'))
+	) {
 		const obj = tryParse(trimmed)
 		if (obj) return extractReadableTextFromAgentJson(obj) ?? ''
 	}
 
-	// Embedded JSON object within other text (or pretty-printed JSON fragments).
 	const first = trimmed.indexOf('{')
 	const last = trimmed.lastIndexOf('}')
 	if (first >= 0 && last > first) {
@@ -799,7 +929,6 @@ const extractReadableText = (raw: string): string => {
 		if (obj) {
 			const extracted = extractReadableTextFromAgentJson(obj)
 			if (extracted) return extracted
-			// Strip JSON fragment to avoid leaking raw JSON into the UI.
 			const stripped = (trimmed.slice(0, first) + trimmed.slice(last + 1)).trim()
 			return stripped
 		}
@@ -808,15 +937,21 @@ const extractReadableText = (raw: string): string => {
 	return text
 }
 
-const extractReadableTextFromAgentJson = (obj: any): string | null => {
-	const t = obj?.type
-	const p = obj?.payload
-	if (t === 'agentToUi/chatMessage' && typeof p?.content === 'string') return p.content
-	if (t === 'agentToUi/chat' && typeof p?.message === 'string') return p.message
-	if (t === 'agentToUi/chat' && typeof p?.content === 'string') return p.content
-	if (t === 'agentToUi/text' && typeof p?.text === 'string') return p.text
-	// Some backends/models may embed an envelope under payload.
-	if (isRecord(p) && typeof p.text === 'string') {
+type AgentJsonEnvelope = {
+	type?: unknown
+	payload?: unknown
+}
+
+const extractReadableTextFromAgentJson = (obj: unknown): string | null => {
+	if (!isRecord(obj)) return null
+	const envelope = obj as AgentJsonEnvelope
+	const t = envelope.type
+	const p = envelope.payload
+	if (t === 'agentToUi/chatMessage' && isRecord(p) && isString(p.content)) return p.content
+	if (t === 'agentToUi/chat' && isRecord(p) && isString(p.message)) return p.message
+	if (t === 'agentToUi/chat' && isRecord(p) && isString(p.content)) return p.content
+	if (t === 'agentToUi/text' && isRecord(p) && isString(p.text)) return p.text
+	if (isRecord(p) && isString(p.text)) {
 		const inner = p.text.trim()
 		if (inner.startsWith('{') && inner.endsWith('}')) {
 			try {
@@ -839,8 +974,14 @@ const pushStreamText = (assistantId: string, text: string) => {
 	ensureTyping(assistantId)
 }
 
-const getViewportContext = (): any | null => {
-	const canvas = dwebCanvasRef?.value
+type DwebCanvasLike = {
+	size: { width: number; height: number }
+	viewport?: { pan?: { x?: number; y?: number }; zoom?: number }
+	screenToWorld: (p: { x: number; y: number }) => { x: number; y: number }
+}
+
+const getViewportContext = (): ViewportContext | null => {
+	const canvas = dwebCanvasRef?.value as DwebCanvasLike | null
 	if (!canvas) return null
 	try {
 		const size = canvas.size
@@ -853,7 +994,7 @@ const getViewportContext = (): any | null => {
 			zoom: vp?.zoom,
 			screenW: size.width,
 			screenH: size.height,
-			centerWorld,
+			centerWorld
 		}
 	} catch {
 		return null
@@ -957,7 +1098,7 @@ const onResizePointerDown = (e: PointerEvent, mode: 'right' | 'bottom' | 'corner
 		startX: e.clientX,
 		startY: e.clientY,
 		startWidth: getDialogWidth(),
-		startHeight: getDialogHeight(),
+		startHeight: getDialogHeight()
 	}
 	;(e.target as HTMLElement)?.setPointerCapture?.(e.pointerId)
 }
@@ -972,12 +1113,22 @@ const onPointerMove = (e: PointerEvent) => {
 	if (!resizing) return
 	const dx = e.clientX - resizing.startX
 	const dy = e.clientY - resizing.startY
-	const nextWidth = resizing.mode === 'bottom'
-		? resizing.startWidth
-		: clamp(resizing.startWidth + dx, MIN_DIALOG_W, Math.min(MAX_DIALOG_W, window.innerWidth - pos.value.x - 8))
-	const nextHeight = resizing.mode === 'right'
-		? resizing.startHeight
-		: clamp(resizing.startHeight + dy, MIN_DIALOG_H, Math.min(MAX_DIALOG_H, window.innerHeight - pos.value.y - 8))
+	const nextWidth =
+		resizing.mode === 'bottom'
+			? resizing.startWidth
+			: clamp(
+					resizing.startWidth + dx,
+					MIN_DIALOG_W,
+					Math.min(MAX_DIALOG_W, window.innerWidth - pos.value.x - 8)
+				)
+	const nextHeight =
+		resizing.mode === 'right'
+			? resizing.startHeight
+			: clamp(
+					resizing.startHeight + dy,
+					MIN_DIALOG_H,
+					Math.min(MAX_DIALOG_H, window.innerHeight - pos.value.y - 8)
+				)
 	dialogSize.value = { width: nextWidth, height: nextHeight }
 }
 
@@ -1006,9 +1157,8 @@ onBeforeUnmount(() => {
 
 const isAbortError = (e: unknown) => {
 	return (
-		e instanceof DOMException && e.name === 'AbortError'
-	) || (
-		e instanceof Error && /abort/i.test(e.name + ' ' + e.message)
+		(e instanceof DOMException && e.name === 'AbortError') ||
+		(e instanceof Error && /abort/i.test(e.name + ' ' + e.message))
 	)
 }
 
@@ -1043,7 +1193,13 @@ const sendText = async (text: string) => {
 
 	const assistantId = `a-${Date.now()}`
 	activeAssistantId.value = assistantId
-	messages.value.push({ id: assistantId, role: 'assistant', text: '', at: Date.now(), stageOps: { insertedNodeIds: [] } })
+	messages.value.push({
+		id: assistantId,
+		role: 'assistant',
+		text: '',
+		at: Date.now(),
+		stageOps: { insertedNodeIds: [] }
+	})
 	await scrollToBottom({ force: true })
 
 	try {
@@ -1062,7 +1218,7 @@ const sendText = async (text: string) => {
 			promptPreset: 'video_scene_plan_v1',
 			promptInput: buildVideoGuiPromptInput(text),
 			viewport: getViewportContext() ?? undefined,
-			signal: aborter.signal,
+			signal: aborter.signal
 		})) {
 			if (ev.type === 'msg') {
 				const m = ev.message as AgentToUiMessage
@@ -1076,18 +1232,18 @@ const sendText = async (text: string) => {
 				if (m.type === 'agentToUi/applyFilter') {
 					taskPhase.value = 'template'
 					try {
-						const payload: any = (m as any).payload
-						const filter = payload?.filter
-						const mode = payload?.mode === 'replace' ? 'replace' : 'append'
-						if (!isRecord(filter)) throw new Error('filter 必须是对象')
-						if (payload?.target === 'nodeId' && typeof payload?.nodeId === 'string') {
-							await applyFilterToNodeId(payload.nodeId, filter, mode, typeof payload?.layerId === 'string' ? payload.layerId : undefined)
+						const payload = m.payload
+						const filter = payload.filter as Record<string, JsonValue>
+						const mode: 'append' | 'replace' = payload.mode === 'replace' ? 'replace' : 'append'
+						if (payload.target === 'nodeId' && isString(payload.nodeId)) {
+							const layerId = isString(payload.layerId) ? payload.layerId : undefined
+							await applyFilterToNodeId(payload.nodeId, filter, mode, layerId)
 							lastStageOps.value.filters.push({
 								target: 'nodeId',
 								nodeId: payload.nodeId,
-								layerId: typeof payload?.layerId === 'string' ? payload.layerId : undefined,
+								layerId,
 								mode,
-								filter,
+								filter
 							})
 						} else {
 							await applyFilterToSelection(filter, mode)
@@ -1095,23 +1251,31 @@ const sendText = async (text: string) => {
 						}
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) {
-							const ft = String(filter?.type ?? '')
-							const targetLabel = payload?.target === 'nodeId' && typeof payload?.nodeId === 'string' ? `节点 ${payload.nodeId}` : '选中节点'
-							messages.value[idx].text = (messages.value[idx].text || '') + `\n\n已为${targetLabel}应用滤镜：${ft || 'filter'}。`
+							const ft = String(filter.type ?? '')
+							const targetLabel =
+								payload.target === 'nodeId' && isString(payload.nodeId)
+									? `节点 ${payload.nodeId}`
+									: '选中节点'
+							messages.value[idx].text =
+								(messages.value[idx].text || '') +
+								`\n\n已为${targetLabel}应用滤镜：${ft || 'filter'}。`
 						}
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) messages.value[idx].text = (messages.value[idx].text || '') + `\n\n滤镜应用失败：${err instanceof Error ? err.message : String(err)}`
+						if (idx >= 0)
+							messages.value[idx].text =
+								(messages.value[idx].text || '') +
+								`\n\n滤镜应用失败：${err instanceof Error ? err.message : String(err)}`
 					}
 					continue
 				}
 				if (m.type === 'agentToUi/taskStatus') {
-					const phase = (m as any).payload?.phase
-					const msg = (m as any).payload?.message
-					if (typeof msg === 'string') taskPhaseMessage.value = msg
-					// 思考内容不进聊天记录：仅刷新左侧单一思考栏。
+					const payload = m.payload
+					const phase = payload.phase
+					const msg = payload.message
+					if (isString(msg)) taskPhaseMessage.value = msg
 					{
-						const text = (typeof msg === 'string' && msg.trim()) ? msg.trim() : String(phase ?? '').trim()
+						const text = isString(msg) && msg.trim() ? msg.trim() : String(phase ?? '').trim()
 						if (text) {
 							thoughtText.value = text
 							if (!thoughtDismissed.value) thoughtOpen.value = true
@@ -1135,47 +1299,63 @@ const sendText = async (text: string) => {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
 					try {
-						const payloadAny: any = (m as any).payload
-						const targetLayerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-						const rawParentId = payloadAny?.parentId
+						const payload = m.payload
+						const targetLayerId =
+							isString(payload.layerId) && payload.layerId.trim()
+								? payload.layerId.trim()
+								: undefined
+						const rawParentId = payload.parentId
 						const targetParentId: string | null | undefined =
 							rawParentId === null
 								? null
-								: typeof rawParentId === 'string' && rawParentId.trim()
+								: isString(rawParentId) && rawParentId.trim()
 									? rawParentId.trim()
 									: undefined
-						const nodeUnknown: unknown = payloadAny?.node
+						const nodeUnknown = payload.node
 						if (!isRecord(nodeUnknown)) throw new Error('insertNode.payload.node 必须是对象')
+						const nodeRecord = nodeUnknown as Record<string, unknown>
 
 						let finalLayerId = targetLayerId
 						if (finalLayerId && !findLayer(store.state, finalLayerId)) {
-							if (debugAgentToUi) console.warn('[AIChat] insertNode: layerId not found, fallback to activeLayer:', finalLayerId)
+							if (debugAgentToUi)
+								console.warn(
+									'[AIChat] insertNode: layerId not found, fallback to activeLayer:',
+									finalLayerId
+								)
 							finalLayerId = undefined
 						}
 						let finalParentId: string | null | undefined = targetParentId
-						if (typeof finalParentId === 'string' && finalParentId !== 'root') {
+						if (isString(finalParentId) && finalParentId !== 'root') {
 							const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
-							const exists = layer ? !!findNode(layer.nodeTree, finalParentId) : nodeExistsInAnyLayer(store.state.layers, finalParentId)
+							const exists = layer
+								? !!findNode(layer.nodeTree, finalParentId)
+								: nodeExistsInAnyLayer(store.state.layers, finalParentId)
 							if (!exists) {
-								if (debugAgentToUi) console.warn('[AIChat] insertNode: parentId not found, fallback to root:', finalParentId)
+								if (debugAgentToUi)
+									console.warn(
+										'[AIChat] insertNode: parentId not found, fallback to root:',
+										finalParentId
+									)
 								finalParentId = undefined
 							}
 						}
 
-						// Minimal normalization: ensure props is object, prefer user nodes.
-						const n: any = { ...(nodeUnknown as any) }
+						const n: Record<string, unknown> = { ...nodeRecord }
 						if (!isRecord(n.props)) n.props = {}
-						if (typeof n.category !== 'string') n.category = 'user'
+						if (!isString(n.category)) n.category = 'user'
 						if (n.category === 'user') {
-							if (typeof n.userType !== 'string') {
-								// Allow shorthand 'type' from template-like payloads.
-								if (typeof n.type === 'string') n.userType = n.type
+							if (!isString(n.userType)) {
+								if (isString(n.type)) n.userType = n.type
 							}
-							if (!isRecord(n.transform)) n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
+							if (!isRecord(n.transform))
+								n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
 						}
-						await store.dispatch('addNodeTree', { node: n, layerId: finalLayerId, parentId: finalParentId })
+						await store.dispatch('addNodeTree', {
+							node: n as unknown as VideoSceneTreeNode,
+							layerId: finalLayerId,
+							parentId: finalParentId
+						})
 
-						// best-effort: collect inserted ids if present
 						try {
 							const inserted = collectNodeIds(n)
 							lastStageOps.value.insertedNodeIds.push(...inserted)
@@ -1198,7 +1378,9 @@ const sendText = async (text: string) => {
 						}
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) messages.value[idx].text = `节点插入失败：${err instanceof Error ? err.message : String(err)}`
+						if (idx >= 0)
+							messages.value[idx].text =
+								`节点插入失败：${err instanceof Error ? err.message : String(err)}`
 					}
 					continue
 				}
@@ -1206,22 +1388,32 @@ const sendText = async (text: string) => {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
 					try {
-						const payloadAny: any = (m as any).payload
-						const nodeId = typeof payloadAny?.nodeId === 'string' ? payloadAny.nodeId.trim() : ''
+						const payload = m.payload
+						const nodeId = isString(payload.nodeId) ? payload.nodeId.trim() : ''
 						if (!nodeId) throw new Error('patchNode.payload.nodeId 必须是非空字符串')
-						const patch = payloadAny?.patch
+						const patch = payload.patch
 						if (!isRecord(patch)) throw new Error('patchNode.payload.patch 必须是对象')
-						const layerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-						dispatchDvsEditorNodePatched({ nodeId, layerId, patch })
+						const layerId =
+							isString(payload.layerId) && payload.layerId.trim()
+								? payload.layerId.trim()
+								: undefined
+						dispatchDvsEditorNodePatched({
+							nodeId,
+							layerId,
+							patch: patch as Record<string, JsonValue>
+						})
 
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) {
 							messages.value[idx].hasStageResult = true
-							messages.value[idx].text = (messages.value[idx].text || '') + `\n\n已修改节点：${nodeId}。`
+							messages.value[idx].text =
+								(messages.value[idx].text || '') + `\n\n已修改节点：${nodeId}。`
 						}
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) messages.value[idx].text = `节点修改失败：${err instanceof Error ? err.message : String(err)}`
+						if (idx >= 0)
+							messages.value[idx].text =
+								`节点修改失败：${err instanceof Error ? err.message : String(err)}`
 					}
 					continue
 				}
@@ -1229,13 +1421,16 @@ const sendText = async (text: string) => {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
 					try {
-						const payloadAny: any = (m as any).payload
-						const layerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
+						const payload = m.payload
+						const layerId =
+							isString(payload.layerId) && payload.layerId.trim()
+								? payload.layerId.trim()
+								: undefined
 						const ids: string[] = []
-						if (typeof payloadAny?.nodeId === 'string' && payloadAny.nodeId.trim()) ids.push(payloadAny.nodeId.trim())
-						if (Array.isArray(payloadAny?.nodeIds)) {
-							for (const s of payloadAny.nodeIds) {
-								if (typeof s === 'string' && s.trim()) ids.push(s.trim())
+						if (isString(payload.nodeId) && payload.nodeId.trim()) ids.push(payload.nodeId.trim())
+						if (isArray(payload.nodeIds, isString)) {
+							for (const s of payload.nodeIds) {
+								if (s.trim()) ids.push(s.trim())
 							}
 						}
 						const uniq = Array.from(new Set(ids))
@@ -1245,31 +1440,35 @@ const sendText = async (text: string) => {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) {
 							messages.value[idx].hasStageResult = true
-							messages.value[idx].text = (messages.value[idx].text || '') + `\n\n已删除节点：${uniq.join(', ')}。`
+							messages.value[idx].text =
+								(messages.value[idx].text || '') + `\n\n已删除节点：${uniq.join(', ')}。`
 						}
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) messages.value[idx].text = `节点删除失败：${err instanceof Error ? err.message : String(err)}`
+						if (idx >= 0)
+							messages.value[idx].text =
+								`节点删除失败：${err instanceof Error ? err.message : String(err)}`
 					}
 					continue
 				}
 				if (m.type === 'agentToUi/chatMessage') {
 					taskPhase.value = 'writing'
-					const content = (m as any).payload?.content
-					if (typeof content === 'string') pushStreamText(assistantId, content)
+					const content = m.payload.content
+					if (isString(content)) pushStreamText(assistantId, content)
 					continue
 				}
 				if (m.type === 'agentToUi/videoScenePlan') {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
-					const payloadAny: any = (m as any).payload
-					const normalizedPlan = normalizeVideoScenePlan(payloadAny?.plan)
-					const summary = typeof payloadAny?.summary === 'string' && payloadAny.summary.trim()
-						? payloadAny.summary.trim()
-						: '已生成一份 VideoScene 场景计划 JSON，可用于后续动画编译。'
+					const payload = m.payload
+					const normalizedPlan = normalizeVideoScenePlan(payload.plan)
+					const summary =
+						isString(payload.summary) && payload.summary.trim()
+							? payload.summary.trim()
+							: '已生成一份 VideoScene 场景计划 JSON，可用于后续动画编译。'
 					let scenePlanJson = ''
 					try {
-						scenePlanJson = JSON.stringify(payloadAny?.plan ?? null, null, 2)
+						scenePlanJson = JSON.stringify(payload.plan ?? null, null, 2)
 					} catch {
 						scenePlanJson = ''
 					}
@@ -1287,25 +1486,28 @@ const sendText = async (text: string) => {
 					taskPhase.value = 'error'
 					stopTyping()
 					const idx = messages.value.findIndex((x) => x.id === assistantId)
-					if (idx >= 0) messages.value[idx].text = `后端错误：${m.payload.code} ${m.payload.message}`
+					if (idx >= 0)
+						messages.value[idx].text = `后端错误：${m.payload.code} ${m.payload.message}`
 					break
 				}
 				if (m.type === 'agentToUi/componentTemplate') {
 					taskPhase.value = 'template'
 					receivedAnyText.value = true
-					// Instantiate and insert into stage.
 					try {
-						const payloadAny: any = (m as any).payload
-						const targetLayerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-						const rawParentId = payloadAny?.parentId
+						const payload = m.payload
+						const targetLayerId =
+							isString(payload.layerId) && payload.layerId.trim()
+								? payload.layerId.trim()
+								: undefined
+						const rawParentId = payload.parentId
 						const targetParentId: string | null | undefined =
 							rawParentId === null
 								? null
-								: typeof rawParentId === 'string' && rawParentId.trim()
+								: isString(rawParentId) && rawParentId.trim()
 									? rawParentId.trim()
 									: undefined
 
-						let template: unknown = m.payload.template
+						let template: unknown = payload.template
 						if (debugAgentToUi) {
 							try {
 								console.debug('[AIChat] componentTemplate raw:', template)
@@ -1315,9 +1517,12 @@ const sendText = async (text: string) => {
 						}
 						try {
 							const vp = getViewportContext()
-							const center = vp?.centerWorld && typeof vp.centerWorld.x === 'number' && typeof vp.centerWorld.y === 'number' ? vp.centerWorld : undefined
+							const center =
+								vp?.centerWorld && isNumber(vp.centerWorld.x) && isNumber(vp.centerWorld.y)
+									? vp.centerWorld
+									: undefined
 							template = toComponentTemplateLike(template, { defaultCenterWorld: center })
-							template = normalizeTemplateForViewport(template as any, { defaultCenterWorld: center })
+							template = normalizeTemplateForViewport(template, { defaultCenterWorld: center })
 							template = sanitizeComponentTemplate(template)
 							if (debugAgentToUi) {
 								try {
@@ -1330,32 +1535,50 @@ const sendText = async (text: string) => {
 							// ignore and let instantiateTemplate throw
 						}
 						const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
-						const instantiated = componentTemplateApi.instantiateTemplate(template as any, {}, {
-							getNodeId: ({ templateId, localId }) => {
-								const base = safeIdPart(`${templateId}:${localId}`)
-								let id = base
-								let i = 1
-								while (nodeExistsInAnyLayer(store.state.layers, id)) {
-									id = `${base}__${i++}`
+						const instantiated = componentTemplateApi.instantiateTemplate(
+							template as ComponentTemplate,
+							{},
+							{
+								getNodeId: ({ templateId, localId }) => {
+									const base = safeIdPart(`${templateId}:${localId}`)
+									let id = base
+									let i = 1
+									while (nodeExistsInAnyLayer(store.state.layers, id)) {
+										id = `${base}__${i++}`
+									}
+									return id
 								}
-								return id
-							},
-						})
+							}
+						)
 						let finalLayerId = targetLayerId
 						if (finalLayerId && !findLayer(store.state, finalLayerId)) {
-							if (debugAgentToUi) console.warn('[AIChat] componentTemplate: layerId not found, fallback to activeLayer:', finalLayerId)
+							if (debugAgentToUi)
+								console.warn(
+									'[AIChat] componentTemplate: layerId not found, fallback to activeLayer:',
+									finalLayerId
+								)
 							finalLayerId = undefined
 						}
 						let finalParentId: string | null | undefined = targetParentId
-						if (typeof finalParentId === 'string' && finalParentId !== 'root') {
+						if (isString(finalParentId) && finalParentId !== 'root') {
 							const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
-							const exists = layer ? !!findNode(layer.nodeTree, finalParentId) : nodeExistsInAnyLayer(store.state.layers, finalParentId)
+							const exists = layer
+								? !!findNode(layer.nodeTree, finalParentId)
+								: nodeExistsInAnyLayer(store.state.layers, finalParentId)
 							if (!exists) {
-								if (debugAgentToUi) console.warn('[AIChat] componentTemplate: parentId not found, fallback to root:', finalParentId)
+								if (debugAgentToUi)
+									console.warn(
+										'[AIChat] componentTemplate: parentId not found, fallback to root:',
+										finalParentId
+									)
 								finalParentId = undefined
 							}
 						}
-						await store.dispatch('addNodeTree', { node: instantiated.root, layerId: finalLayerId, parentId: finalParentId })
+						await store.dispatch('addNodeTree', {
+							node: instantiated.root,
+							layerId: finalLayerId,
+							parentId: finalParentId
+						})
 						{
 							const inserted = collectNodeIds(instantiated.root)
 							lastStageOps.value.insertedNodeIds.push(...inserted)
@@ -1371,17 +1594,14 @@ const sendText = async (text: string) => {
 							messages.value[idx].hasStageResult = true
 							messages.value[idx].text =
 								(messages.value[idx].text || '') +
-								`\n\n已插入舞台节点（intent=${m.payload.intent ?? 'insert'}${finalParentId !== undefined ? `, parentId=${String(finalParentId)}` : ''}${finalLayerId ? `, layerId=${finalLayerId}` : ''}）。`
+								`\n\n已插入舞台节点（intent=${payload.intent ?? 'insert'}${finalParentId !== undefined ? `, parentId=${String(finalParentId)}` : ''}${finalLayerId ? `, layerId=${finalLayerId}` : ''}）。`
 						}
 						updateScenePlanReadyHint(assistantId)
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) messages.value[idx].text = `模板插入失败：${err instanceof Error ? err.message : String(err)}`
-					}
-					const idx = messages.value.findIndex((x) => x.id === assistantId)
-					if (idx >= 0) {
-						// keep a small marker
-						messages.value[idx].text = (messages.value[idx].text || '')
+						if (idx >= 0)
+							messages.value[idx].text =
+								`模板插入失败：${err instanceof Error ? err.message : String(err)}`
 					}
 					continue
 				}
@@ -1398,7 +1618,8 @@ const sendText = async (text: string) => {
 
 		// Auto self-check round (single pass) when stage was changed.
 		if (!stoppedByUser.value && taskPhase.value !== 'error') {
-			const didMutateStage = lastStageOps.value.insertedNodeIds.length > 0 || lastStageOps.value.filters.length > 0
+			const didMutateStage =
+				lastStageOps.value.insertedNodeIds.length > 0 || lastStageOps.value.filters.length > 0
 			if (didMutateStage) {
 				selfCheckActive.value = true
 				// 不新增“思考/自检”气泡，避免与流式反馈重复；复用主 assistant 消息。
@@ -1412,22 +1633,23 @@ const sendText = async (text: string) => {
 						'【自检回合】请基于 contextPack.stage 与 lastStageOps，对刚才插入/修改的节点做一致性检查：\n' +
 						'1) 字段名与类型是否符合编辑器（尤其是 text.props.textAlign）。\n' +
 						'2) 文本节点是否会被裁切：text 节点通常不需要强行写 transform.width/height；如果写了也要足够容纳 textContent（含\\n换行）。\n' +
-							'3) 如果发现问题：优先使用 agentToUi/patchNode 或 agentToUi/deleteNode 按 nodeId 精确修改/删除（避免新建导致错乱）；仅在确实需要新增内容时才用 agentToUi/insertNode 或 agentToUi/componentTemplate(intent="insert")；也可用 agentToUi/applyFilter 做轻量修正；如果无需修改，输出一条 chatMessage 说明“自检通过”。',
+						'3) 如果发现问题：优先使用 agentToUi/patchNode 或 agentToUi/deleteNode 按 nodeId 精确修改/删除（避免新建导致错乱）；仅在确实需要新增内容时才用 agentToUi/insertNode 或 agentToUi/componentTemplate(intent="insert")；也可用 agentToUi/applyFilter 做轻量修正；如果无需修改，输出一条 chatMessage 说明“自检通过”。',
 					contextPack: buildContextPack(),
-						provider: activeProvider.value,
-						model: textModelId.value || undefined,
+					provider: activeProvider.value,
+					model: textModelId.value || undefined,
 					responseMode: 'agentToUi-jsonl',
 					viewport: getViewportContext() ?? undefined,
-					signal: aborter.signal,
+					signal: aborter.signal
 				})) {
 					if (ev2.type === 'msg') {
 						const m2 = ev2.message as AgentToUiMessage
 						if (m2.type === 'agentToUi/taskStatus') {
-							const phase = (m2 as any).payload?.phase
-							const msg = (m2 as any).payload?.message
-							if (typeof msg === 'string') taskPhaseMessage.value = msg
+							const payload = m2.payload
+							const phase = payload.phase
+							const msg = payload.message
+							if (isString(msg)) taskPhaseMessage.value = msg
 							{
-								const text = (typeof msg === 'string' && msg.trim()) ? msg.trim() : String(phase ?? '').trim()
+								const text = isString(msg) && msg.trim() ? msg.trim() : String(phase ?? '').trim()
 								if (text) {
 									thoughtText.value = text
 									if (!thoughtDismissed.value) thoughtOpen.value = true
@@ -1443,12 +1665,13 @@ const sendText = async (text: string) => {
 							continue
 						}
 						if (m2.type === 'agentToUi/applyFilter') {
-							const payload: any = (m2 as any).payload
-							const filter = payload?.filter
-							const mode = payload?.mode === 'replace' ? 'replace' : 'append'
+							const payload = m2.payload
+							const filter = payload.filter as Record<string, JsonValue>
+							const mode: 'append' | 'replace' = payload.mode === 'replace' ? 'replace' : 'append'
 							if (isRecord(filter)) {
-								if (payload?.target === 'nodeId' && typeof payload?.nodeId === 'string') {
-									await applyFilterToNodeId(payload.nodeId, filter, mode, typeof payload?.layerId === 'string' ? payload.layerId : undefined)
+								if (payload.target === 'nodeId' && isString(payload.nodeId)) {
+									const layerId = isString(payload.layerId) ? payload.layerId : undefined
+									await applyFilterToNodeId(payload.nodeId, filter, mode, layerId)
 								} else {
 									await applyFilterToSelection(filter, mode)
 								}
@@ -1457,49 +1680,73 @@ const sendText = async (text: string) => {
 						}
 						if (m2.type === 'agentToUi/componentTemplate') {
 							try {
-								const payloadAny: any = (m2 as any).payload
-								const targetLayerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-								const rawParentId = payloadAny?.parentId
+								const payload = m2.payload
+								const targetLayerId =
+									isString(payload.layerId) && payload.layerId.trim()
+										? payload.layerId.trim()
+										: undefined
+								const rawParentId = payload.parentId
 								const targetParentId: string | null | undefined =
 									rawParentId === null
 										? null
-										: typeof rawParentId === 'string' && rawParentId.trim()
+										: isString(rawParentId) && rawParentId.trim()
 											? rawParentId.trim()
 											: undefined
 
-								let template: unknown = m2.payload.template
+								let template: unknown = payload.template
 								const vp = getViewportContext()
-								const center = vp?.centerWorld && typeof vp.centerWorld.x === 'number' && typeof vp.centerWorld.y === 'number' ? vp.centerWorld : undefined
+								const center =
+									vp?.centerWorld && isNumber(vp.centerWorld.x) && isNumber(vp.centerWorld.y)
+										? vp.centerWorld
+										: undefined
 								template = toComponentTemplateLike(template, { defaultCenterWorld: center })
-								template = normalizeTemplateForViewport(template as any, { defaultCenterWorld: center })
+								template = normalizeTemplateForViewport(template, { defaultCenterWorld: center })
 								template = sanitizeComponentTemplate(template)
 								const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
-								const instantiated = componentTemplateApi.instantiateTemplate(template as any, {}, {
-									getNodeId: ({ templateId, localId }) => {
-										const base = safeIdPart(`${templateId}:${localId}`)
-										let id = base
-										let i = 1
-										while (nodeExistsInAnyLayer(store.state.layers, id)) {
-											id = `${base}__${i++}`
+								const instantiated = componentTemplateApi.instantiateTemplate(
+									template as ComponentTemplate,
+									{},
+									{
+										getNodeId: ({ templateId, localId }) => {
+											const base = safeIdPart(`${templateId}:${localId}`)
+											let id = base
+											let i = 1
+											while (nodeExistsInAnyLayer(store.state.layers, id)) {
+												id = `${base}__${i++}`
+											}
+											return id
 										}
-										return id
-									},
-								})
+									}
+								)
 								let finalLayerId = targetLayerId
 								if (finalLayerId && !findLayer(store.state, finalLayerId)) {
-									if (debugAgentToUi) console.warn('[AIChat] self-check componentTemplate: layerId not found, fallback to activeLayer:', finalLayerId)
+									if (debugAgentToUi)
+										console.warn(
+											'[AIChat] self-check componentTemplate: layerId not found, fallback to activeLayer:',
+											finalLayerId
+										)
 									finalLayerId = undefined
 								}
 								let finalParentId: string | null | undefined = targetParentId
-								if (typeof finalParentId === 'string' && finalParentId !== 'root') {
+								if (isString(finalParentId) && finalParentId !== 'root') {
 									const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
-									const exists = layer ? !!findNode(layer.nodeTree, finalParentId) : nodeExistsInAnyLayer(store.state.layers, finalParentId)
+									const exists = layer
+										? !!findNode(layer.nodeTree, finalParentId)
+										: nodeExistsInAnyLayer(store.state.layers, finalParentId)
 									if (!exists) {
-										if (debugAgentToUi) console.warn('[AIChat] self-check componentTemplate: parentId not found, fallback to root:', finalParentId)
+										if (debugAgentToUi)
+											console.warn(
+												'[AIChat] self-check componentTemplate: parentId not found, fallback to root:',
+												finalParentId
+											)
 										finalParentId = undefined
 									}
 								}
-								await store.dispatch('addNodeTree', { node: instantiated.root, layerId: finalLayerId, parentId: finalParentId })
+								await store.dispatch('addNodeTree', {
+									node: instantiated.root,
+									layerId: finalLayerId,
+									parentId: finalParentId
+								})
 							} catch {
 								// ignore
 							}
@@ -1507,43 +1754,62 @@ const sendText = async (text: string) => {
 						}
 						if (m2.type === 'agentToUi/insertNode') {
 							try {
-								const payloadAny: any = (m2 as any).payload
-								const targetLayerId = typeof payloadAny?.layerId === 'string' && payloadAny.layerId.trim() ? payloadAny.layerId.trim() : undefined
-								const rawParentId = payloadAny?.parentId
+								const payload = m2.payload
+								const targetLayerId =
+									isString(payload.layerId) && payload.layerId.trim()
+										? payload.layerId.trim()
+										: undefined
+								const rawParentId = payload.parentId
 								const targetParentId: string | null | undefined =
 									rawParentId === null
 										? null
-										: typeof rawParentId === 'string' && rawParentId.trim()
+										: isString(rawParentId) && rawParentId.trim()
 											? rawParentId.trim()
 											: undefined
-								const nodeUnknown: unknown = payloadAny?.node
+								const nodeUnknown = payload.node
 								if (!isRecord(nodeUnknown)) throw new Error('insertNode.payload.node 必须是对象')
+								const nodeRecord = nodeUnknown as Record<string, unknown>
 
 								let finalLayerId = targetLayerId
 								if (finalLayerId && !findLayer(store.state, finalLayerId)) {
-									if (debugAgentToUi) console.warn('[AIChat] self-check insertNode: layerId not found, fallback to activeLayer:', finalLayerId)
+									if (debugAgentToUi)
+										console.warn(
+											'[AIChat] self-check insertNode: layerId not found, fallback to activeLayer:',
+											finalLayerId
+										)
 									finalLayerId = undefined
 								}
 								let finalParentId: string | null | undefined = targetParentId
-								if (typeof finalParentId === 'string' && finalParentId !== 'root') {
+								if (isString(finalParentId) && finalParentId !== 'root') {
 									const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
-									const exists = layer ? !!findNode(layer.nodeTree, finalParentId) : nodeExistsInAnyLayer(store.state.layers, finalParentId)
+									const exists = layer
+										? !!findNode(layer.nodeTree, finalParentId)
+										: nodeExistsInAnyLayer(store.state.layers, finalParentId)
 									if (!exists) {
-										if (debugAgentToUi) console.warn('[AIChat] self-check insertNode: parentId not found, fallback to root:', finalParentId)
+										if (debugAgentToUi)
+											console.warn(
+												'[AIChat] self-check insertNode: parentId not found, fallback to root:',
+												finalParentId
+											)
 										finalParentId = undefined
 									}
 								}
 
-								const n: any = { ...(nodeUnknown as any) }
+								const n: Record<string, unknown> = { ...nodeRecord }
 								if (!isRecord(n.props)) n.props = {}
-								if (typeof n.category !== 'string') n.category = 'user'
+								if (!isString(n.category)) n.category = 'user'
 								if (n.category === 'user') {
-									if (typeof n.userType !== 'string') {
-										if (typeof n.type === 'string') n.userType = n.type
+									if (!isString(n.userType)) {
+										if (isString(n.type)) n.userType = n.type
 									}
-									if (!isRecord(n.transform)) n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
+									if (!isRecord(n.transform))
+										n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
 								}
-								await store.dispatch('addNodeTree', { node: n, layerId: finalLayerId, parentId: finalParentId })
+								await store.dispatch('addNodeTree', {
+									node: n as unknown as VideoSceneTreeNode,
+									layerId: finalLayerId,
+									parentId: finalParentId
+								})
 							} catch {
 								// ignore
 							}
@@ -1554,14 +1820,17 @@ const sendText = async (text: string) => {
 							continue
 						}
 						if (m2.type === 'agentToUi/chatMessage') {
-							const content = (m2 as any).payload?.content
-							if (typeof content === 'string') pushStreamText(assistantId, content)
+							const content = m2.payload.content
+							if (isString(content)) pushStreamText(assistantId, content)
 							continue
 						}
 						if (m2.type === 'agentToUi/error') {
 							stopTyping()
 							const idx = messages.value.findIndex((x) => x.id === assistantId)
-							if (idx >= 0) messages.value[idx].text = (messages.value[idx].text || '') + `\n\n自检失败：${m2.payload.code} ${m2.payload.message}`
+							if (idx >= 0)
+								messages.value[idx].text =
+									(messages.value[idx].text || '') +
+									`\n\n自检失败：${m2.payload.code} ${m2.payload.message}`
 							break
 						}
 					}
@@ -1595,7 +1864,7 @@ type SavedComponent = {
 	createdAt: string
 	templateId: string
 	name: string
-	template: any
+	template: ComponentTemplate
 	savedAt: string
 	thumbAssetId?: string
 	thumbDataUrl?: string
@@ -1623,7 +1892,11 @@ const findLayerIdForNodeId = (nodeId: string): string | null => {
 }
 
 const easingCurveForPreset = (preset?: string) => {
-	switch (String(preset || '').trim().toLowerCase()) {
+	switch (
+		String(preset || '')
+			.trim()
+			.toLowerCase()
+	) {
 		case 'ease-out':
 			return { x1: 0.16, y1: 1, x2: 0.3, y2: 1, preset: 'ease-out' }
 		case 'ease-in-out':
@@ -1636,14 +1909,37 @@ const easingCurveForPreset = (preset?: string) => {
 	}
 }
 
+type StageKeyframeEntry = {
+	layers?: unknown
+}
+
+type LayerLike = {
+	id?: unknown
+}
+
 const layerHasExistingTimelineData = (layerId: string) => {
 	const spans = TimelineStore.state.keyframeSpansByLayer[layerId] ?? []
 	if (Array.isArray(spans) && spans.length) return true
-	const nodeMap = (TimelineStore.state.nodeKeyframesByLayer as any)?.[layerId]
-	if (nodeMap && Object.keys(nodeMap).length) return true
-	for (const entry of Object.values(TimelineStore.state.stageKeyframesByFrame ?? {})) {
-		const layers = Array.isArray((entry as any)?.layers) ? (entry as any).layers : []
-		if (layers.some((layer: any) => String(layer?.id ?? '') === layerId)) return true
+	const nodeKeyframesByLayer = TimelineStore.state.nodeKeyframesByLayer as
+		| Record<string, unknown>
+		| undefined
+	const nodeMap = nodeKeyframesByLayer?.[layerId]
+	if (nodeMap && isRecord(nodeMap) && Object.keys(nodeMap).length) return true
+	const stageKeyframesByFrame = TimelineStore.state.stageKeyframesByFrame as
+		| Record<string, StageKeyframeEntry>
+		| undefined
+	if (stageKeyframesByFrame) {
+		for (const entry of Object.values(stageKeyframesByFrame)) {
+			const layers = entry?.layers
+			if (isArray(layers)) {
+				if (
+					layers.some(
+						(layer: unknown) => isRecord(layer) && String((layer as LayerLike).id ?? '') === layerId
+					)
+				)
+					return true
+			}
+		}
 	}
 	return false
 }
@@ -1657,7 +1953,11 @@ const appendUniqueMessageNote = (m: ChatMessage, note: string) => {
 const canGenerateScenePlanAnimation = (m: ChatMessage) => {
 	if (m.role !== 'assistant') return false
 	if (!m.scenePlanData) return false
-	const insertedNodeIds = Array.from(new Set((m.stageOps?.insertedNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)))
+	const insertedNodeIds = Array.from(
+		new Set(
+			(m.stageOps?.insertedNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)
+		)
+	)
 	if (!insertedNodeIds.length) return false
 	return m.scenePlanApplyStatus !== 'applied' && m.scenePlanApplyStatus !== 'skipped'
 }
@@ -1667,30 +1967,48 @@ const updateScenePlanReadyHint = (assistantId: string) => {
 	if (idx < 0) return
 	const message = messages.value[idx]
 	if (!canGenerateScenePlanAnimation(message)) return
-	appendUniqueMessageNote(message, '场景计划已就绪，点击“生成动画”可在当前静态布局基础上写入关键帧。')
+	appendUniqueMessageNote(
+		message,
+		'场景计划已就绪，点击“生成动画”可在当前静态布局基础上写入关键帧。'
+	)
 }
 
 const generateScenePlanAnimations = async (message: ChatMessage) => {
 	if (!message.scenePlanData) return
-	if (message.scenePlanApplyStatus === 'applied' || message.scenePlanApplyStatus === 'skipped') return
-	const insertedNodeIds = Array.from(new Set((message.stageOps?.insertedNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)))
+	if (message.scenePlanApplyStatus === 'applied' || message.scenePlanApplyStatus === 'skipped')
+		return
+	const insertedNodeIds = Array.from(
+		new Set(
+			(message.stageOps?.insertedNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)
+		)
+	)
 	if (!insertedNodeIds.length) {
 		message.scenePlanApplyStatus = 'skipped'
 		appendUniqueMessageNote(message, '动画生成失败：未找到本次生成的节点。')
 		return
 	}
 
-	const layerIds = Array.from(new Set(insertedNodeIds.map((id) => findLayerIdForNodeId(id)).filter((id): id is string => !!id)))
+	const layerIds = Array.from(
+		new Set(
+			insertedNodeIds.map((id) => findLayerIdForNodeId(id)).filter((id): id is string => !!id)
+		)
+	)
 	if (layerIds.length !== 1) {
 		message.scenePlanApplyStatus = 'skipped'
-		appendUniqueMessageNote(message, '动画生成失败：本次生成的节点分布在多个图层，暂不支持一键编译。')
+		appendUniqueMessageNote(
+			message,
+			'动画生成失败：本次生成的节点分布在多个图层，暂不支持一键编译。'
+		)
 		return
 	}
 
 	const layerId = layerIds[0]
 	if (layerHasExistingTimelineData(layerId)) {
 		message.scenePlanApplyStatus = 'skipped'
-		appendUniqueMessageNote(message, '动画生成失败：目标图层已有时间轴数据，为避免覆盖现有关键帧，本次仅保留场景计划 JSON。')
+		appendUniqueMessageNote(
+			message,
+			'动画生成失败：目标图层已有时间轴数据，为避免覆盖现有关键帧，本次仅保留场景计划 JSON。'
+		)
 		return
 	}
 
@@ -1705,7 +2023,7 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 		layer,
 		insertedNodeIds,
 		rootNodeId: insertedNodeIds[0],
-		plan: message.scenePlanData,
+		plan: message.scenePlanData
 	})
 	if (!compiled || !compiled.appliedPlanCount) {
 		message.scenePlanApplyStatus = 'skipped'
@@ -1714,18 +2032,26 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 	}
 
 	for (const item of compiled.keyframes) {
-		await TimelineStore.dispatch('addKeyframeRange', { layerId, startFrame: item.frame, endFrame: item.frame })
+		await TimelineStore.dispatch('addKeyframeRange', {
+			layerId,
+			startFrame: item.frame,
+			endFrame: item.frame
+		})
 		await TimelineStore.dispatch('setStageKeyframeSnapshotRange', {
 			startFrame: item.frame,
 			endFrame: item.frame,
-			layers: [item.layerSnapshot],
+			layers: [item.layerSnapshot]
 		})
 	}
 	for (const seg of compiled.easingSegments) {
-		await TimelineStore.dispatch('enableEasingSegment', { layerId, startFrame: seg.startFrame, endFrame: seg.endFrame })
+		await TimelineStore.dispatch('enableEasingSegment', {
+			layerId,
+			startFrame: seg.startFrame,
+			endFrame: seg.endFrame
+		})
 		await TimelineStore.dispatch('setEasingCurve', {
 			segmentKey: `${layerId}:${seg.startFrame}:${seg.endFrame}`,
-			curve: easingCurveForPreset(seg.easingPreset),
+			curve: easingCurveForPreset(seg.easingPreset)
 		})
 	}
 
@@ -1747,12 +2073,25 @@ const onClickGenerateAnimation = async (m: ChatMessage) => {
 	await generateScenePlanAnimations(m)
 }
 
-const ensureTemplateTextParams = (template: any) => {
-	if (!template || typeof template !== 'object') return template
-	if (!Array.isArray((template as any).params)) (template as any).params = []
-	if (!Array.isArray((template as any).nodes)) return template
+type MutableTemplate = {
+	params: unknown[]
+	nodes: unknown[]
+}
 
-	const used = new Set<string>((template as any).params.map((p: any) => (typeof p?.key === 'string' ? p.key : '')).filter(Boolean))
+type MutableTemplateNode = {
+	type?: unknown
+	props?: Record<string, unknown>
+}
+
+const ensureTemplateTextParams = <T,>(template: T): T => {
+	if (!isRecord(template)) return template
+	const tpl = template as unknown as MutableTemplate
+	if (!Array.isArray(tpl.params)) tpl.params = []
+	if (!Array.isArray(tpl.nodes)) return template
+
+	const used = new Set<string>(
+		tpl.params.map((p: unknown) => (isRecord(p) && isString(p.key) ? p.key : '')).filter(Boolean)
+	)
 	const baseKeys = ['title', 'subtitle', 'text']
 	let seq = 0
 	const nextKey = () => {
@@ -1767,18 +2106,19 @@ const ensureTemplateTextParams = (template: any) => {
 		return k
 	}
 
-	for (const n of (template as any).nodes) {
-		if (!n || typeof n !== 'object') continue
-		if (String((n as any).type || '') !== 'text') continue
-		const props = (n as any).props
-		if (!props || typeof props !== 'object') continue
-		const v = (props as any).textContent
-		if (typeof v !== 'string') continue
+	for (const n of tpl.nodes) {
+		if (!isRecord(n)) continue
+		const node = n as unknown as MutableTemplateNode
+		if (String(node.type ?? '') !== 'text') continue
+		const props = node.props
+		if (!isRecord(props)) continue
+		const v = props.textContent
+		if (!isString(v)) continue
 		const text = v.trim()
 		if (!text) continue
 		const key = nextKey()
-		;(template as any).params.push({ key, type: 'string', default: v })
-		;(props as any).textContent = `{{ ${key} }}`
+		tpl.params.push({ key, type: 'string', default: v })
+		props.textContent = `{{ ${key} }}`
 	}
 	return template
 }
@@ -1813,7 +2153,11 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		}
 
 		const layerIds = Array.from(
-			new Set(ids.map((id) => findLayerIdForNodeId(id)).filter((x): x is string => typeof x === 'string' && !!x.trim()))
+			new Set(
+				ids
+					.map((id) => findLayerIdForNodeId(id))
+					.filter((x): x is string => typeof x === 'string' && !!x.trim())
+			)
 		)
 		if (layerIds.length !== 1) {
 			m.text = (m.text || '') + '\n\n保存失败：本次生成的节点跨多个图层，暂不支持一键保存。'
@@ -1850,31 +2194,48 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		const templateId = makeUniqueTemplateId(baseTplId)
 		const name = makeUniqueName(`AI组件-${templateId}`)
 
-		let template: any = componentTemplateApi.exportTemplateFromSelection({
+		let template = componentTemplateApi.exportTemplateFromSelection({
 			layerNodeTree: layer.nodeTree,
 			selectedNodeIds: ids,
 			templateId,
-			name,
+			name
 		})
 		template = ensureTemplateTextParams(template)
 
-		// Best-effort thumbnail capture from current WebGL canvas (nodes area, not whole stage).
+		type Point2D = { x: number; y: number }
+		type CanvasWithCapture = DwebCanvasLike & {
+			capturePngFromScreenRect: (
+				rect: { x: number; y: number; width: number; height: number },
+				opts: { maxSidePx: number; padPx: number }
+			) => Promise<{ dataUrl?: string } | null>
+			worldToScreen: (p: Point2D) => Point2D
+		}
+
 		let thumbAssetId: string | undefined
 		let thumbDataUrl: string | undefined
 		try {
-			const dwebCanvas = dwebCanvasRef?.value ?? null
+			const dwebCanvas = dwebCanvasRef?.value as CanvasWithCapture | null
 			if (dwebCanvas) {
-				const pts: { x: number; y: number }[] = []
+				const pts: Point2D[] = []
 				for (const nodeId of ids) {
-					const n = findNode(layer.nodeTree ?? [], nodeId) as any
-					const tr: any = n?.transform
-					if (!tr || typeof tr.x !== 'number' || typeof tr.y !== 'number' || typeof tr.width !== 'number' || typeof tr.height !== 'number') continue
+					const n = findNode(layer.nodeTree ?? [], nodeId)
+					const tr = n?.transform
+					if (
+						!tr ||
+						!isNumber(tr.x) ||
+						!isNumber(tr.y) ||
+						!isNumber(tr.width) ||
+						!isNumber(tr.height)
+					)
+						continue
 					const corners = rotatedRectCorners(
 						{ x: tr.x, y: tr.y },
 						{ width: Math.max(1, tr.width), height: Math.max(1, tr.height) },
 						Number(tr.rotation ?? 0)
 					)
-					const sp = [corners.tl, corners.tr, corners.bl, corners.br].map((p: any) => dwebCanvas.worldToScreen(p))
+					const sp = [corners.tl, corners.tr, corners.bl, corners.br].map((p) =>
+						dwebCanvas.worldToScreen(p)
+					)
 					pts.push(...sp)
 				}
 				if (pts.length) {
@@ -1894,15 +2255,20 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 						store.commit('upsertImageAsset', { id: thumbAssetId, url: thumbDataUrl, name })
 						const fromEl = (ev?.currentTarget as HTMLElement | null) ?? null
 						const fromRect = fromEl?.getBoundingClientRect?.()
-						const toEl = document.querySelector('[data-dvs="component-library-btn"]') as HTMLElement | null
+						const toEl = document.querySelector(
+							'[data-dvs="component-library-btn"]'
+						) as HTMLElement | null
 						const toRect = toEl?.getBoundingClientRect?.()
 						if (fromRect && toRect) {
 							void flyThumbnailPng({
 								dataUrl: shot.dataUrl,
-								from: { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 },
+								from: {
+									x: fromRect.left + fromRect.width / 2,
+									y: fromRect.top + fromRect.height / 2
+								},
 								to: { x: toRect.left + toRect.width / 2, y: toRect.top + toRect.height / 2 },
 								initialSize: { width: 160, height: 100 },
-								ms: 360,
+								ms: 360
 							})
 						}
 					}
@@ -1921,7 +2287,7 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 			template,
 			savedAt,
 			thumbAssetId,
-			thumbDataUrl,
+			thumbDataUrl
 		}
 		try {
 			const res = await componentService.upsertComponent({
@@ -1931,14 +2297,14 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 				thumbAssetId,
 				thumbDataUrl,
 				clientId: entry.id,
-				createdAt: entry.createdAt,
+				createdAt: entry.createdAt
 			})
 			entry = {
 				...entry,
 				id: res.item.id || entry.id,
 				createdAt: res.item.createdAt || entry.createdAt,
 				savedAt: res.item.savedAt || entry.savedAt,
-				thumbUrl: res.item.thumbUrl,
+				thumbUrl: res.item.thumbUrl
 			}
 		} catch {
 			// fallback to local storage only
@@ -1947,7 +2313,9 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		const list = loadComponentLibrary().filter((x) => x.templateId !== entry.templateId)
 		list.unshift(entry)
 		persistComponentLibrary(list)
-		window.dispatchEvent(new CustomEvent('dvs:componentLibrary/refresh', { detail: { templateId } }))
+		window.dispatchEvent(
+			new CustomEvent('dvs:componentLibrary/refresh', { detail: { templateId } })
+		)
 		m.text = (m.text || '') + `\n\n已保存到组件库：${name}`
 	} catch (e) {
 		m.text = (m.text || '') + `\n\n保存失败：${e instanceof Error ? e.message : String(e)}`
@@ -2003,396 +2371,400 @@ const isRunning = (m: ChatMessage) => {
 
 <style scoped>
 .ai-chat {
-  position: fixed;
-  left: 12px;
-  top: 12px;
-  min-width: 460px;
-  min-height: 420px;
-  border: 1px solid var(--vscode-border);
-  border-radius: 0;
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
-  opacity: 1;
-  transform: translate(0, 0) scale(1);
-  transition: transform 180ms ease, opacity 180ms ease;
+	position: fixed;
+	left: 12px;
+	top: 12px;
+	min-width: 460px;
+	min-height: 420px;
+	border: 1px solid var(--vscode-border);
+	border-radius: 0;
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	z-index: 6;
+	display: flex;
+	flex-direction: column;
+	overflow: visible;
+	opacity: 1;
+	transform: translate(0, 0) scale(1);
+	transition:
+		transform 180ms ease,
+		opacity 180ms ease;
 }
 
 .ai-chat__resize {
-  position: absolute;
-  z-index: 2;
+	position: absolute;
+	z-index: 2;
 }
 
 .ai-chat__resize--right {
-  top: 36px;
-  right: -2px;
-  width: 8px;
-  height: calc(100% - 36px);
-  cursor: ew-resize;
+	top: 36px;
+	right: -2px;
+	width: 8px;
+	height: calc(100% - 36px);
+	cursor: ew-resize;
 }
 
 .ai-chat__resize--bottom {
-  left: 0;
-  bottom: -2px;
-  width: 100%;
-  height: 8px;
-  cursor: ns-resize;
+	left: 0;
+	bottom: -2px;
+	width: 100%;
+	height: 8px;
+	cursor: ns-resize;
 }
 
 .ai-chat__resize--corner {
-  right: -2px;
-  bottom: -2px;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
+	right: -2px;
+	bottom: -2px;
+	width: 14px;
+	height: 14px;
+	cursor: nwse-resize;
 }
 
 .ai-chat.entering {
-  opacity: 0;
-  transform: translate(0, 8px) scale(0.98);
+	opacity: 0;
+	transform: translate(0, 8px) scale(0.98);
 }
 
 .ai-chat__title {
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 10px;
-  background: var(--dweb-defualt-dark);
-  border-bottom: 1px solid var(--vscode-border);
-  cursor: move;
+	height: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 10px;
+	background: var(--dweb-defualt-dark);
+	border-bottom: 1px solid var(--vscode-border);
+	cursor: move;
 }
 
 .ai-chat__title-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
 }
 
 .ai-chat__title-status {
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
-  white-space: nowrap;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	white-space: nowrap;
 }
 
 .ai-chat__title-text {
-  font-size: 12px;
-  font-weight: 600;
+	font-size: 12px;
+	font-weight: 600;
 }
 
 .ai-chat__title-actions {
-  display: flex;
-  gap: 6px;
+	display: flex;
+	gap: 6px;
 }
 
 .ai-chat__icon {
-  width: 26px;
-  height: 24px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
+	width: 26px;
+	height: 24px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	font-size: 14px;
+	line-height: 1;
 }
 
 .ai-chat__icon:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__controls {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  border-bottom: 1px solid var(--vscode-border);
-  background: color-mix(in srgb, var(--dweb-defualt-dark) 72%, transparent);
+	display: flex;
+	gap: 8px;
+	padding: 8px;
+	border-bottom: 1px solid var(--vscode-border);
+	background: color-mix(in srgb, var(--dweb-defualt-dark) 72%, transparent);
 }
 
 .ai-chat__control {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 0 0 106px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+	flex: 0 0 106px;
 }
 
 .ai-chat__control--grow {
-  flex: 1 1 auto;
+	flex: 1 1 auto;
 }
 
 .ai-chat__control-label {
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
 }
 
 .ai-chat__select {
-  width: 100%;
-  height: 28px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  font-size: 12px;
-  padding: 0 8px;
+	width: 100%;
+	height: 28px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	font-size: 12px;
+	padding: 0 8px;
 }
 
 .ai-chat__select:focus {
-  outline: none;
-  border-color: var(--vscode-border-accent);
+	outline: none;
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__list {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .ai-chat__msg {
-  display: flex;
+	display: flex;
 }
 
 .ai-chat__msg.user {
-  justify-content: flex-end;
+	justify-content: flex-end;
 }
 
 .ai-chat__msg.assistant {
-  justify-content: flex-start;
+	justify-content: flex-start;
 }
 
 .ai-chat__bubble {
-  max-width: 96%;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  border-radius: 0;
-  padding: 8px 10px;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
+	max-width: 96%;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	border-radius: 0;
+	padding: 8px 10px;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 
 .ai-chat__msg.thought .ai-chat__bubble {
-  border-style: dashed;
-  opacity: 0.85;
+	border-style: dashed;
+	opacity: 0.85;
 }
 
 .ai-chat__msg.thought .ai-chat__text {
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
 }
 
 .ai-chat__text {
-  white-space: pre-wrap;
-  word-break: break-word;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 
 .ai-chat__phase {
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
+	margin-top: 6px;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
 }
 
 .ai-chat__typing {
-  height: 16px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
 }
 
 .ai-chat__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--vscode-fg-muted);
-  opacity: 0.25;
-  animation: ai-chat-dot 900ms infinite ease-in-out;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--vscode-fg-muted);
+	opacity: 0.25;
+	animation: ai-chat-dot 900ms infinite ease-in-out;
 }
 
 .ai-chat__dot:nth-child(2) {
-  animation-delay: 150ms;
+	animation-delay: 150ms;
 }
 
 .ai-chat__dot:nth-child(3) {
-  animation-delay: 300ms;
+	animation-delay: 300ms;
 }
 
 @keyframes ai-chat-dot {
-  0%,
-  100% {
-    opacity: 0.25;
-  }
-  50% {
-    opacity: 1;
-  }
+	0%,
+	100% {
+		opacity: 0.25;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 .ai-chat__msg.user .ai-chat__bubble {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__msg.assistant .ai-chat__bubble {
-  border-color: var(--vscode-border);
+	border-color: var(--vscode-border);
 }
 
 .ai-chat__role {
-  font-size: 11px;
-  color: var(--vscode-fg-muted);
-  margin-bottom: 4px;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	margin-bottom: 4px;
 }
 
 .ai-chat__actions {
-  margin-top: 8px;
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+	margin-top: 8px;
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 
 .ai-chat__action-btn {
-  min-height: 24px;
-  padding: 4px 10px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  font-size: 12px;
-  white-space: normal;
+	min-height: 24px;
+	padding: 4px 10px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	font-size: 12px;
+	white-space: normal;
 }
 
 .ai-chat__action-btn:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .ai-chat__input {
-  height: 44px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 8px;
-  border-top: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
+	height: 44px;
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	padding: 8px;
+	border-top: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
 }
 
 .ai-chat__text-input {
-  flex: 1;
-  min-width: 0;
-  height: 28px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  padding: 0 10px;
-  font-size: 12px;
+	flex: 1;
+	min-width: 0;
+	height: 28px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	padding: 0 10px;
+	font-size: 12px;
 }
 
 .ai-chat__text-input:focus {
-  outline: none;
-  border-color: var(--vscode-border-accent);
+	outline: none;
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__send {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  font-size: 12px;
+	height: 28px;
+	padding: 0 10px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	font-size: 12px;
 }
 
 .ai-chat__send:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 .ai-chat__body {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
 }
 
 .ai-chat__thought {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  margin-top: 6px;
-  max-height: 220px;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt-dark);
-  padding: 8px;
-  box-sizing: border-box;
-  transform: translateY(-8px);
-  opacity: 0;
-  transition: transform 180ms ease, opacity 180ms ease;
-  z-index: 3;
-  overflow: auto;
-  pointer-events: none;
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 100%;
+	margin-top: 6px;
+	max-height: 220px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	padding: 8px;
+	box-sizing: border-box;
+	transform: translateY(-8px);
+	opacity: 0;
+	transition:
+		transform 180ms ease,
+		opacity 180ms ease;
+	z-index: 3;
+	overflow: auto;
+	pointer-events: none;
 }
 
 .ai-chat__thought.open {
-  transform: translateY(0);
-  opacity: 1;
-  pointer-events: auto;
+	transform: translateY(0);
+	opacity: 1;
+	pointer-events: auto;
 }
 
 .ai-chat__thought-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 8px;
 }
 
 .ai-chat__thought-title {
-  font-size: 12px;
-  opacity: 0.8;
+	font-size: 12px;
+	opacity: 0.8;
 }
 
 .ai-chat__thought-close {
-  width: 24px;
-  height: 24px;
-  border-radius: 0;
-  border: 1px solid var(--vscode-border);
-  background: var(--dweb-defualt);
-  color: var(--vscode-fg);
-  cursor: pointer;
-  line-height: 1;
+	width: 24px;
+	height: 24px;
+	border-radius: 0;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg);
+	cursor: pointer;
+	line-height: 1;
 }
 
 .ai-chat__thought-close:hover {
-  border-color: var(--vscode-border-accent);
+	border-color: var(--vscode-border-accent);
 }
 
 .ai-chat__thought-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
-  line-height: 1.35;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-size: 12px;
+	line-height: 1.35;
 }
 
 .ai-chat__list {
-  min-height: 0;
-  position: relative;
-  z-index: 2;
+	min-height: 0;
+	position: relative;
+	z-index: 2;
 }
 </style>

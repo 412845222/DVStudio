@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # DVStudio pre-push hook
 #
-# Prevents direct pushes to the protected branches `main` and `dev`.
-# All changes must go through a feature branch -> pull request -> merge.
+# 1. Prevents direct pushes to the protected branches `main` and `dev`.
+# 2. Runs quality checks (typecheck + test) before pushing to feature branches.
 #
-# To disable the protection temporarily (e.g., during initial repo setup),
-# set the environment variable `DWEB_GIT_ALLOW_DIRECT_PUSH=1`.
+# To disable branch protection temporarily:
+#   DWEB_GIT_ALLOW_DIRECT_PUSH=1 git push ...
+#
+# To skip quality checks temporarily:
+#   DWEB_SKIP_QUALITY_CHECK=1 git push ...
 #
 # To install this hook run `npm run git:setup-hooks`.
 
@@ -14,20 +17,34 @@ set -euo pipefail
 PROTECTED_BRANCHES=("main" "dev")
 COLOR_RED='\033[0;31m'
 COLOR_YELLOW='\033[1;33m'
+COLOR_GREEN='\033[0;32m'
 COLOR_CYAN='\033[0;36m'
 COLOR_NONE='\033[0m'
 
 echo_info() { printf "${COLOR_CYAN}[dvstudio/git]${COLOR_NONE} %s\n" "$*"; }
 echo_warn() { printf "${COLOR_YELLOW}[dvstudio/git]${COLOR_NONE} %s\n" "$*"; }
 echo_error() { printf "${COLOR_RED}[dvstudio/git]${COLOR_NONE} %s\n" "$*"; }
+echo_success() { printf "${COLOR_GREEN}[dvstudio/git]${COLOR_NONE} %s\n" "$*"; }
+
+SKIP_QUALITY="${DWEB_SKIP_QUALITY_CHECK:-0}"
 
 if [ "${DWEB_GIT_ALLOW_DIRECT_PUSH:-0}" = "1" ]; then
   echo_warn "DWEB_GIT_ALLOW_DIRECT_PUSH=1 检测到：允许绕过分支保护直接推送。"
-  exit 0
+  if [ "$SKIP_QUALITY" = "1" ]; then
+    echo_warn "DWEB_SKIP_QUALITY_CHECK=1 检测到：跳过质量检查。"
+    exit 0
+  fi
+  echo_info "运行质量检查..."
+  if npm run quality 2>&1; then
+    echo_success "质量检查通过。"
+    exit 0
+  else
+    echo_error "质量检查未通过，推送已取消。"
+    echo "若确需跳过，请设置 DWEB_SKIP_QUALITY_CHECK=1"
+    exit 1
+  fi
 fi
 
-# `git push` passes us the target branch via stdin as "localref localsha remoteref remotesha".
-# Multiple lines are possible when pushing more than one ref at once.
 input_stdin="$(cat || true)"
 if [ -z "${input_stdin}" ]; then
   echo_info "未检测到待推送的引用，跳过保护检测。"
@@ -74,5 +91,23 @@ if [ -n "${target_branch}" ]; then
   exit 1
 fi
 
-echo_info "未命中受保护分支 (main/dev)，推送继续。"
-exit 0
+if [ "$SKIP_QUALITY" = "1" ]; then
+  echo_warn "DWEB_SKIP_QUALITY_CHECK=1 检测到：跳过质量检查。"
+  echo_info "未命中受保护分支 (main/dev)，推送继续。"
+  exit 0
+fi
+
+echo_info "运行质量检查 (typecheck + test)..."
+if npm run quality 2>&1; then
+  echo_success "质量检查通过。"
+  echo_info "未命中受保护分支 (main/dev)，推送继续。"
+  exit 0
+else
+  echo_error "质量检查未通过，推送已取消。"
+  echo ""
+  echo "请修复上述问题后再推送，或临时跳过检查："
+  echo ""
+  echo "       DWEB_SKIP_QUALITY_CHECK=1 git push"
+  echo ""
+  exit 1
+fi

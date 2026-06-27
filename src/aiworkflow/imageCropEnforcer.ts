@@ -44,7 +44,7 @@ export const computeEnforcedLandscapeCrop = (
 			sourceCrop: { sx, sy, sw, sh },
 			outputWidth: sw,
 			outputHeight: sh,
-			adjusted: false,
+			adjusted: false
 		}
 	}
 
@@ -124,7 +124,7 @@ export const computeEnforcedLandscapeCrop = (
 		outputWidth: finalOutputW,
 		outputHeight: finalOutputH,
 		adjusted: true,
-		reason,
+		reason
 	}
 }
 
@@ -158,18 +158,18 @@ const loadImageForCrop = async (src: string): Promise<LoadedImage | null> => {
 				if (canBitmap) {
 					const bitmap = await createImageBitmap(blob)
 					return {
-						width: Math.max(1, Math.floor((bitmap as any).width || 1)),
-						height: Math.max(1, Math.floor((bitmap as any).height || 1)),
+						width: Math.max(1, Math.floor(bitmap.width || 1)),
+						height: Math.max(1, Math.floor(bitmap.height || 1)),
 						draw: (ctx, sx, sy, sw, sh, dx, dy, dw, dh) => {
 							ctx.drawImage(bitmap, sx, sy, sw, sh, dx, dy, dw, dh)
 						},
 						cleanup: () => {
 							try {
-								(bitmap as any).close?.()
+								bitmap.close?.()
 							} catch {
 								// ignore
 							}
-						},
+						}
 					}
 				}
 				if (typeof Image !== 'undefined') {
@@ -196,7 +196,7 @@ const loadImageForCrop = async (src: string): Promise<LoadedImage | null> => {
 							} catch {
 								// ignore
 							}
-						},
+						}
 					}
 				}
 			}
@@ -219,7 +219,7 @@ const loadImageForCrop = async (src: string): Promise<LoadedImage | null> => {
 		height: Math.max(1, Math.floor(img.naturalHeight || img.height || 1)),
 		draw: (ctx, sx, sy, sw, sh, dx, dy, dw, dh) => {
 			ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)
-		},
+		}
 	}
 }
 
@@ -238,7 +238,7 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 	const srcH = Math.max(1, Math.floor(image.height || 1))
 
 	const enforced = computeEnforcedLandscapeCrop(srcW, srcH, payload.crop, {
-		minWidth: payload.minWidth,
+		minWidth: payload.minWidth
 	})
 
 	const outW = Math.max(1, enforced.outputWidth)
@@ -255,7 +255,7 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 					ctx.imageSmoothingQuality = 'high'
 					ctx.clearRect(0, 0, outW, outH)
 					image.draw(ctx, sx, sy, sw, sh, 0, 0, outW, outH)
-					const toBlob = (offscreen as any).convertToBlob
+					const toBlob = (offscreen as unknown as { convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob> }).convertToBlob
 					if (typeof toBlob === 'function') {
 						const out = await toBlob.call(offscreen, { type: 'image/png' })
 						image.cleanup?.()
@@ -286,13 +286,10 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 
 		return await new Promise<Blob | null>((resolve) => {
 			try {
-				canvasEl.toBlob(
-					(b) => {
-						image.cleanup?.()
-						resolve(b)
-					},
-					'image/png'
-				)
+				canvasEl.toBlob((b) => {
+					image.cleanup?.()
+					resolve(b)
+				}, 'image/png')
 			} catch {
 				image.cleanup?.()
 				resolve(null)
@@ -322,6 +319,6 @@ export const uvCropToPixelRect = (
 		sx: clamp(sx, 0, srcW - 1),
 		sy: clamp(sy, 0, srcH - 1),
 		sw: clamp(sw, 1, srcW - sx),
-		sh: clamp(sh, 1, srcH - sy),
+		sh: clamp(sh, 1, srcH - sy)
 	}
 }

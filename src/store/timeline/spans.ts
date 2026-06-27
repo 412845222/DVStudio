@@ -51,7 +51,11 @@ export const normalizeSpans = (spans: TimelineFrameSpan[]): TimelineFrameSpan[] 
 	return segmentsToSpans(segs)
 }
 
-export const clipSpans = (spans: TimelineFrameSpan[], minFrame: number, maxFrame: number): TimelineFrameSpan[] => {
+export const clipSpans = (
+	spans: TimelineFrameSpan[],
+	minFrame: number,
+	maxFrame: number
+): TimelineFrameSpan[] => {
 	const minF = Math.floor(minFrame)
 	const maxF = Math.floor(maxFrame)
 	if (!Number.isFinite(minF) || !Number.isFinite(maxF) || maxF < minF) return []
@@ -65,7 +69,11 @@ export const clipSpans = (spans: TimelineFrameSpan[], minFrame: number, maxFrame
 	return segmentsToSpans(mergeSegments(segs))
 }
 
-export const addRange = (spans: TimelineFrameSpan[], startFrame: number, endFrame: number): TimelineFrameSpan[] => {
+export const addRange = (
+	spans: TimelineFrameSpan[],
+	startFrame: number,
+	endFrame: number
+): TimelineFrameSpan[] => {
 	const a = Math.floor(Math.min(startFrame, endFrame))
 	const b = Math.floor(Math.max(startFrame, endFrame))
 	if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return normalizeSpans(spans)
@@ -73,7 +81,11 @@ export const addRange = (spans: TimelineFrameSpan[], startFrame: number, endFram
 	return segmentsToSpans(segs)
 }
 
-export const removeRange = (spans: TimelineFrameSpan[], startFrame: number, endFrame: number): TimelineFrameSpan[] => {
+export const removeRange = (
+	spans: TimelineFrameSpan[],
+	startFrame: number,
+	endFrame: number
+): TimelineFrameSpan[] => {
 	const a = Math.floor(Math.min(startFrame, endFrame))
 	const b = Math.floor(Math.max(startFrame, endFrame))
 	if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return normalizeSpans(spans)
@@ -109,7 +121,11 @@ export const containsFrame = (spans: TimelineFrameSpan[], frameIndex: number): b
 	return fi <= spanEnd(arr[idx])
 }
 
-export const rangeIntersects = (spans: TimelineFrameSpan[], startFrame: number, endFrame: number): boolean => {
+export const rangeIntersects = (
+	spans: TimelineFrameSpan[],
+	startFrame: number,
+	endFrame: number
+): boolean => {
 	const a = Math.floor(Math.min(startFrame, endFrame))
 	const b = Math.floor(Math.max(startFrame, endFrame))
 	if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return false
@@ -131,7 +147,11 @@ export const rangeIntersects = (spans: TimelineFrameSpan[], startFrame: number, 
 	return false
 }
 
-export const rangeFullyCovered = (spans: TimelineFrameSpan[], startFrame: number, endFrame: number): boolean => {
+export const rangeFullyCovered = (
+	spans: TimelineFrameSpan[],
+	startFrame: number,
+	endFrame: number
+): boolean => {
 	const a = Math.floor(Math.min(startFrame, endFrame))
 	const b = Math.floor(Math.max(startFrame, endFrame))
 	if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return false
@@ -157,7 +177,10 @@ export const rangeFullyCovered = (spans: TimelineFrameSpan[], startFrame: number
 	return cur > b
 }
 
-export const getPrevNext = (spans: TimelineFrameSpan[], frameIndex: number): { prev: number | null; next: number | null } => {
+export const getPrevNext = (
+	spans: TimelineFrameSpan[],
+	frameIndex: number
+): { prev: number | null; next: number | null } => {
 	const fi = Math.floor(frameIndex)
 	if (!Number.isFinite(fi) || spans.length === 0) return { prev: null, next: null }
 
@@ -175,7 +198,11 @@ export const getPrevNext = (spans: TimelineFrameSpan[], frameIndex: number): { p
 	return { prev, next }
 }
 
-export const toggleRange = (spans: TimelineFrameSpan[], startFrame: number, endFrame: number): TimelineFrameSpan[] => {
+export const toggleRange = (
+	spans: TimelineFrameSpan[],
+	startFrame: number,
+	endFrame: number
+): TimelineFrameSpan[] => {
 	const a = Math.floor(Math.min(startFrame, endFrame))
 	const b = Math.floor(Math.max(startFrame, endFrame))
 	if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return normalizeSpans(spans)

@@ -1,46 +1,54 @@
-export type AIWorkflowDraggedMeshyTaskItem = Record<string, any>
+import { isRecord } from '../../../../types/utils'
+import type { MeshyDraggedTaskPayload, MeshyStoreLike, MeshyTaskStatus } from './types'
+
+export type AIWorkflowDraggedMeshyTaskItem = MeshyDraggedTaskPayload & {
+	meshySettings?: Record<string, unknown>
+}
 
 export const useAIWorkflowMeshyDrop = (options: {
-  store: any
-  pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
+	store: MeshyStoreLike
+	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }) => {
-  const createNodeFromDraggedMeshyTask = (payload: {
-    item: AIWorkflowDraggedMeshyTaskItem
-    worldX: number
-    worldY: number
-  }) => {
-    options.store.commit('addNodeAt', {
-      worldX: payload.worldX,
-      worldY: payload.worldY,
-      title: 'Meshy 任务',
-    })
-    const nodeId = options.store.state.selectedNodeId
-    if (!nodeId) return true
+	const createNodeFromDraggedMeshyTask = (payload: {
+		item: AIWorkflowDraggedMeshyTaskItem
+		worldX: number
+		worldY: number
+	}) => {
+		options.store.commit('addNodeAt', {
+			worldX: payload.worldX,
+			worldY: payload.worldY,
+			title: 'Meshy 任务'
+		})
+		const nodeId = options.store.state.selectedNodeId
+		if (!nodeId) return true
 
-    options.store.commit('setNodeType', { nodeId, type: 'meshy' })
-    options.store.commit('setNodeMeshySettings', {
-      nodeId,
-      meshySettings: {
-        ...(payload.item.meshySettings ?? {}),
-        meshyTaskStatus: String(payload.item.meshySettings?.meshyTaskStatus ?? 'idle') as any,
-        meshyTaskId:
-          String(payload.item.taskId ?? payload.item.meshySettings?.meshyTaskId ?? '').trim() || undefined,
-        meshyStatusText:
-          String(payload.item.meshySettings?.meshyStatusText ?? '').trim() || undefined,
-        meshyInputSummary: payload.item.meshySettings?.meshyInputSummary ?? undefined,
-        meshyOutputSummary: payload.item.meshySettings?.meshyOutputSummary ?? undefined,
-      },
-    })
-    options.store.commit('setNodeAlias', {
-      nodeId,
-      alias:
-        String(payload.item.alias ?? payload.item.title ?? 'Meshy任务节点').trim() || 'Meshy任务节点',
-    })
-    options.pushToast('已从 Meshy 任务中心创建节点。', 'info')
-    return true
-  }
+		const itemSettings = isRecord(payload.item.meshySettings) ? payload.item.meshySettings : {}
+		const taskStatus = String(itemSettings.meshyTaskStatus ?? 'idle').trim() as MeshyTaskStatus
 
-  return {
-    createNodeFromDraggedMeshyTask,
-  }
+		options.store.commit('setNodeType', { nodeId, type: 'meshy' })
+		options.store.commit('setNodeMeshySettings', {
+			nodeId,
+			meshySettings: {
+				...itemSettings,
+				meshyTaskStatus: taskStatus,
+				meshyTaskId:
+					String(payload.item.taskId ?? itemSettings.meshyTaskId ?? '').trim() || undefined,
+				meshyStatusText: String(itemSettings.meshyStatusText ?? '').trim() || undefined,
+				meshyInputSummary: itemSettings.meshyInputSummary ?? undefined,
+				meshyOutputSummary: itemSettings.meshyOutputSummary ?? undefined
+			}
+		})
+		options.store.commit('setNodeAlias', {
+			nodeId,
+			alias:
+				String(payload.item.alias ?? payload.item.title ?? 'Meshy任务节点').trim() ||
+				'Meshy任务节点'
+		})
+		options.pushToast('已从 Meshy 任务中心创建节点。', 'info')
+		return true
+	}
+
+	return {
+		createNodeFromDraggedMeshyTask
+	}
 }

@@ -25,7 +25,7 @@ const includeEntries = [
 	'index.html',
 	'README.md',
 	'LICENSE',
-	'.gitignore',
+	'.gitignore'
 ]
 
 const excludedRootEntries = new Set([
@@ -42,7 +42,7 @@ const excludedRootEntries = new Set([
 	'aidoc',
 	'temp-patch-world-render.ts',
 	'dweb-runtime.log',
-	'count_lines.py',
+	'count_lines.py'
 ])
 
 const excludedNames = new Set([
@@ -67,10 +67,21 @@ const excludedNames = new Set([
 	'release',
 	'release-*',
 	'docs',
-	'aidoc',
+	'aidoc'
 ])
 
-const excludedExtensions = ['.log', '.tmp', '.temp', '.bak', '.old', '.orig', '.rej', '.patch', '.swp', '.swo']
+const excludedExtensions = [
+	'.log',
+	'.tmp',
+	'.temp',
+	'.bak',
+	'.old',
+	'.orig',
+	'.rej',
+	'.patch',
+	'.swp',
+	'.swo'
+]
 
 const djangoExcludedRelativePaths = new Set([
 	'db.sqlite3',
@@ -78,7 +89,7 @@ const djangoExcludedRelativePaths = new Set([
 	'media',
 	'staticfiles',
 	'.dweb_exports',
-	'.dweb-deps.lock',
+	'.dweb-deps.lock'
 ])
 
 const rootMarkdownAllowList = new Set(['README.md', 'LICENSE'])
@@ -92,7 +103,7 @@ function formatTimestamp(date) {
 		'-',
 		pad(date.getHours()),
 		pad(date.getMinutes()),
-		pad(date.getSeconds()),
+		pad(date.getSeconds())
 	].join('')
 }
 
@@ -137,14 +148,17 @@ async function copyEntry(sourcePath, destinationPath, context) {
 		for (const child of children) {
 			const childSourcePath = path.join(sourcePath, child.name)
 			const childDestinationPath = path.join(destinationPath, child.name)
-			const childRelativePath = context.relativePath ? path.join(context.relativePath, child.name) : child.name
+			const childRelativePath = context.relativePath
+				? path.join(context.relativePath, child.name)
+				: child.name
 
 			if (shouldSkipGeneralEntry(child.name)) continue
-			if (context.scope === 'django-app' && shouldSkipDjangoRelativePath(childRelativePath)) continue
+			if (context.scope === 'django-app' && shouldSkipDjangoRelativePath(childRelativePath))
+				continue
 
 			await copyEntry(childSourcePath, childDestinationPath, {
 				scope: context.scope,
-				relativePath: childRelativePath,
+				relativePath: childRelativePath
 			})
 		}
 		return
@@ -160,7 +174,7 @@ function run(command, args, options = {}) {
 			cwd: repoRoot,
 			stdio: options.captureOutput ? ['ignore', 'pipe', 'pipe'] : 'inherit',
 			shell: false,
-			windowsHide: true,
+			windowsHide: true
 		})
 
 		let stdout = ''
@@ -181,12 +195,22 @@ function run(command, args, options = {}) {
 				return
 			}
 			const output = stderr.trim() || stdout.trim()
-			reject(new Error(output ? `${command} exited with code ${String(code)}: ${output}` : `${command} exited with code ${String(code)}`))
+			reject(
+				new Error(
+					output
+						? `${command} exited with code ${String(code)}: ${output}`
+						: `${command} exited with code ${String(code)}`
+				)
+			)
 		})
 	})
 }
 
-async function copyFileToRelativeMediaPath(mediaRelativePath, mediaRootSourceDir, mediaRootDestinationDir) {
+async function copyFileToRelativeMediaPath(
+	mediaRelativePath,
+	mediaRootSourceDir,
+	mediaRootDestinationDir
+) {
 	const normalized = normalizeRelativePath(mediaRelativePath).replace(/^media\//, '')
 	const sourcePath = path.join(mediaRootSourceDir, toWindowsPath(normalized))
 	const destinationPath = path.join(mediaRootDestinationDir, toWindowsPath(normalized))
@@ -212,7 +236,7 @@ function extractMediaRelativePath(value) {
 		'nanobanana_ref_cache/',
 		'seedance_outputs/',
 		'seedream_outputs/',
-		'seedream_ref_cache/',
+		'seedream_ref_cache/'
 	]
 	for (const root of knownRoots) {
 		if (value.startsWith(root)) return value
@@ -240,13 +264,13 @@ async function getLatestBlueprintProject() {
 		'import json, sqlite3',
 		'conn = sqlite3.connect(r"DVSResource\\BackendData\\db.sqlite3")',
 		'cur = conn.cursor()',
-		'table = cur.execute("select count(1) from sqlite_master where type=\'table\' and name=\'comfyui_blueprint_project\'").fetchone()',
+		"table = cur.execute(\"select count(1) from sqlite_master where type='table' and name='comfyui_blueprint_project'\").fetchone()",
 		'if not table or int(table[0]) == 0:',
 		'    raise SystemExit("Missing table comfyui_blueprint_project in DVSResource/BackendData/db.sqlite3. Please run app setup first.")',
 		'row = cur.execute("select id, name, data from comfyui_blueprint_project order by updated_at desc, id desc limit 1").fetchone()',
 		'if row is None:',
 		'    raise SystemExit("No blueprint project found in DVSResource/BackendData/db.sqlite3")',
-		'print(json.dumps({"id": row[0], "name": row[1], "data": row[2]}, ensure_ascii=False))',
+		'print(json.dumps({"id": row[0], "name": row[1], "data": row[2]}, ensure_ascii=False))'
 	].join('\n')
 
 	const { stdout } = await run(pythonCommand, ['-c', queryScript], { captureOutput: true })
@@ -269,8 +293,16 @@ async function packageSelectedDvsResource(stagingDir) {
 	collectMediaReferences(blueprintJson, mediaReferences)
 
 	await mkdir(destinationBackendDataDir, { recursive: true })
-	await cp(path.join(sourceDvsRoot, 'UserSettings'), path.join(destinationDvsRoot, 'UserSettings'), { recursive: true, force: true })
-	await cp(path.join(sourceBackendDataDir, 'db.sqlite3'), path.join(destinationBackendDataDir, 'db.sqlite3'), { force: true, recursive: false })
+	await cp(
+		path.join(sourceDvsRoot, 'UserSettings'),
+		path.join(destinationDvsRoot, 'UserSettings'),
+		{ recursive: true, force: true }
+	)
+	await cp(
+		path.join(sourceBackendDataDir, 'db.sqlite3'),
+		path.join(destinationBackendDataDir, 'db.sqlite3'),
+		{ force: true, recursive: false }
+	)
 
 	for (const mediaRelativePath of mediaReferences) {
 		await copyFileToRelativeMediaPath(mediaRelativePath, sourceMediaDir, destinationMediaDir)
@@ -287,12 +319,19 @@ async function packageSelectedDvsResource(stagingDir) {
 		'conn.close()',
 		'vacuum_conn = sqlite3.connect(db_path)',
 		'vacuum_conn.execute("VACUUM")',
-		'vacuum_conn.close()',
+		'vacuum_conn.close()'
 	].join('\n')
 
-	await run(pythonCommand, ['-c', filterDbScript, path.join(destinationBackendDataDir, 'db.sqlite3'), String(latestProject.id)])
+	await run(pythonCommand, [
+		'-c',
+		filterDbScript,
+		path.join(destinationBackendDataDir, 'db.sqlite3'),
+		String(latestProject.id)
+	])
 
-	process.stdout.write(`[pack:sample] selected blueprint project: ${latestProject.name} (#${String(latestProject.id)})\n`)
+	process.stdout.write(
+		`[pack:sample] selected blueprint project: ${latestProject.name} (#${String(latestProject.id)})\n`
+	)
 	process.stdout.write(`[pack:sample] selected blueprint data: media/${blueprintRelativePath}\n`)
 	process.stdout.write(`[pack:sample] selected media references: ${String(mediaReferences.size)}\n`)
 }

@@ -1,14 +1,28 @@
 import { getBackendBaseUrl } from './backendConfig'
 
+export type ComponentTemplate = unknown
+
 export type ComponentLibraryItem = {
 	id: string
 	createdAt?: string
 	savedAt?: string
 	templateId: string
 	name: string
-	template: any
+	template: ComponentTemplate
 	thumbAssetId?: string
 	thumbUrl?: string
+}
+
+export type ImportComponentItem = {
+	id?: string
+	createdAt?: string
+	savedAt?: string
+	templateId: string
+	name: string
+	template: ComponentTemplate
+	thumbAssetId?: string
+	thumbUrl?: string
+	thumbDataUrl?: string
 }
 
 export type ListComponentsResponse = {
@@ -36,7 +50,7 @@ type ServiceOptions = {
 
 const jsonHeaders = (devToken?: string) => {
 	const h: Record<string, string> = {
-		'Content-Type': 'application/json',
+		'Content-Type': 'application/json'
 	}
 	if (devToken) h['X-DEV-TOKEN'] = devToken
 	return h
@@ -45,7 +59,7 @@ const jsonHeaders = (devToken?: string) => {
 const safeJson = async (res: Response) => {
 	const text = await res.text()
 	try {
-		return { ok: true as const, value: JSON.parse(text) }
+		return { ok: true as const, value: JSON.parse(text) as unknown }
 	} catch {
 		return { ok: false as const, text }
 	}
@@ -73,18 +87,27 @@ export class ComponentLibraryService {
 		return `${base}/${path}`
 	}
 
-	async listComponents(params?: { q?: string; limit?: number; offset?: number }): Promise<ListComponentsResponse> {
+	async listComponents(params?: {
+		q?: string
+		limit?: number
+		offset?: number
+	}): Promise<ListComponentsResponse> {
 		const q = params?.q ? `q=${encodeURIComponent(params.q)}` : ''
 		const limit = Number.isFinite(Number(params?.limit)) ? `limit=${Number(params?.limit)}` : ''
 		const offset = Number.isFinite(Number(params?.offset)) ? `offset=${Number(params?.offset)}` : ''
 		const query = [q, limit, offset].filter(Boolean).join('&')
-		const res = await fetch(this.url(`/api/editor/component-library/components${query ? `?${query}` : ''}`), {
-			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
-		})
+		const res = await fetch(
+			this.url(`/api/editor/component-library/components${query ? `?${query}` : ''}`),
+			{
+				method: 'GET',
+				headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
-			throw new Error(`listComponents failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`listComponents failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 		return (await res.json()) as ListComponentsResponse
 	}
@@ -92,7 +115,7 @@ export class ComponentLibraryService {
 	async upsertComponent(payload: {
 		templateId: string
 		name: string
-		template: any
+		template: ComponentTemplate
 		thumbAssetId?: string
 		thumbDataUrl?: string
 		clientId?: string
@@ -101,36 +124,45 @@ export class ComponentLibraryService {
 		const res = await fetch(this.url('/api/editor/component-library/components'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload),
+			body: JSON.stringify(payload)
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			throw new Error(`upsertComponent failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`upsertComponent failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 		return (await res.json()) as UpsertComponentResponse
 	}
 
 	async deleteComponent(id: string): Promise<{ ok: boolean }> {
-		const res = await fetch(this.url(`/api/editor/component-library/components/${encodeURIComponent(id)}`), {
-			method: 'DELETE',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
-		})
+		const res = await fetch(
+			this.url(`/api/editor/component-library/components/${encodeURIComponent(id)}`),
+			{
+				method: 'DELETE',
+				headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
-			throw new Error(`deleteComponent failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`deleteComponent failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 		return (await res.json()) as { ok: boolean }
 	}
 
-	async importComponents(items: Array<any>): Promise<ImportComponentsResponse> {
+	async importComponents(items: ImportComponentItem[]): Promise<ImportComponentsResponse> {
 		const res = await fetch(this.url('/api/editor/component-library/import'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ items }),
+			body: JSON.stringify({ items })
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
-			throw new Error(`importComponents failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`)
+			throw new Error(
+				`importComponents failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
 		}
 		return (await res.json()) as ImportComponentsResponse
 	}

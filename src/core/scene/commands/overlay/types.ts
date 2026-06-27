@@ -8,5 +8,9 @@ export type NodeOverlayCorners = {
 export type NodeOverlayGeometry = {
 	corners: NodeOverlayCorners
 	sizeText: string
-	linePoints?: { start: { x: number; y: number }; anchor: { x: number; y: number }; end: { x: number; y: number } }
+	linePoints?: {
+		start: { x: number; y: number }
+		anchor: { x: number; y: number }
+		end: { x: number; y: number }
+	}
 }

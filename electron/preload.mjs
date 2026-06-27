@@ -8,6 +8,9 @@ const BACKEND_RUNTIME_CHANNEL = 'dweb:backendRuntime:changed'
 const backendRuntimeListenerMap = new Map()
 let backendRuntimeListenerSeed = 0
 
+const platformListenerMap = new Map()
+let platformListenerSeed = 0
+
 // ===== 资源管理器窗口：预注册监听器 + 数据缓存 =====
 // 关键：在 preload 脚本加载时（早于 Vue 挂载）就注册 IPC 监听器
 // 避免主窗口推送数据时 Vue 组件尚未挂载导致消息丢失
@@ -270,5 +273,36 @@ contextBridge.exposeInMainWorld('dweb', {
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),
 		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options),
+	},
+	platform: {
+		getStatus: () => invoke('platform:get-status'),
+		getActive: () => invoke('platform:get-active'),
+		getUser: () => invoke('platform:get-user'),
+		isAvailable: () => invoke('platform:is-available'),
+		overlayIsEnabled: () => invoke('platform:overlay:is-enabled'),
+		overlayIsActive: () => invoke('platform:overlay:is-active'),
+		overlayOpenUrl: (url) => invoke('platform:overlay:open-url', url),
+		overlayActivate: (dialog) => invoke('platform:overlay:activate', dialog),
+		dlcIsInstalled: (dlcAppId) => invoke('platform:dlc:is-installed', dlcAppId),
+		dlcGetInstalled: () => invoke('platform:dlc:get-installed'),
+		onEvent: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++platformListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch {}
+			}
+			platformListenerMap.set(id, wrapped)
+			ipcRenderer.on('platform:event', wrapped)
+			invoke('platform:request-status')
+			return id
+		},
+		offEvent: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = platformListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('platform:event', wrapped)
+			platformListenerMap.delete(id)
+			return { ok: true }
+		},
 	},
 })

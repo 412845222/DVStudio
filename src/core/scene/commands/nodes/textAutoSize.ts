@@ -16,7 +16,6 @@ const getMeasureCtx = (): CanvasRenderingContext2D | null => {
 }
 
 const fallbackEstimate = (text: string, fontSize: number) => {
-	// Rough average glyph width: ~0.6em
 	const lines = text.split(/\r?\n/g)
 	const maxLen = Math.max(1, ...lines.map((l) => l.length))
 	const w = Math.ceil(maxLen * fontSize * 0.6)
@@ -24,13 +23,23 @@ const fallbackEstimate = (text: string, fontSize: number) => {
 	return { w, h }
 }
 
-export const computeTextAutoSize = (props: TextLikeProps): { width: number; height: number } | null => {
+const getNumberFromUnknown = (v: unknown, fallback: number): number => {
+	const n = Number(v)
+	return Number.isFinite(n) ? n : fallback
+}
+
+const getStringFromUnknown = (v: unknown, fallback: string): string => {
+	return typeof v === 'string' ? v : fallback
+}
+
+export const computeTextAutoSize = (
+	props: TextLikeProps
+): { width: number; height: number } | null => {
 	const raw = props?.textContent
 	const text = typeof raw === 'string' ? raw : String(raw ?? '')
-	const fontSize = Math.max(1, Number((props as any)?.fontSize ?? 24))
-	const fontStyle = String((props as any)?.fontStyle ?? 'normal')
+	const fontSize = Math.max(1, getNumberFromUnknown(props.fontSize, 24))
+	const fontStyle = getStringFromUnknown(props.fontStyle, 'normal')
 
-	// Padding in local/world units (same coordinate system as node.transform)
 	const padX = Math.max(2, Math.round(fontSize * 0.6))
 	const padY = Math.max(2, Math.round(fontSize * 0.4))
 

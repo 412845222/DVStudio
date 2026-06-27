@@ -1,8 +1,13 @@
 import { NodeBase, type NodeBaseDTO, type NodeType, upgradeNodeType } from '../../nodesType'
 import { normalizeLineLocalPoints } from '../../geometry'
 import { collectAllNames, findLayer, findNode, makeUniqueName } from '../../tree'
-import type { VideoSceneLayer, VideoSceneNodeTransform, VideoSceneTreeNode, VideoSceneUserNodeType } from '../../types'
-import { normalizeTextNodeProps } from '../../nodesType/TextNode'
+import type {
+	VideoSceneLayer,
+	VideoSceneNodeTransform,
+	VideoSceneTreeNode,
+	VideoSceneUserNodeType
+} from '../../types'
+import { normalizeTextNodeProps, type TextNodePropsInput } from '../../nodesType/TextNode'
 
 import type { NodePropsPatch, NodeTransformPatch } from './types'
 import type { SelectionPatch } from '../selection/types'
@@ -10,7 +15,38 @@ import { setSingleSelection } from '../selection'
 import { genId } from './utils'
 import { computeTextAutoSize } from './textAutoSize'
 
-export type { AddRenderableNodeArgs, AddRenderableNodeResult, NodePropsPatch, NodeTransformPatch } from './types'
+export type {
+	AddRenderableNodeArgs,
+	AddRenderableNodeResult,
+	NodePropsPatch,
+	NodeTransformPatch
+} from './types'
+
+type LegacyTransform = {
+	x?: unknown
+	y?: unknown
+	scaleX?: unknown
+	scaleY?: unknown
+	scale?: unknown
+	pivotX?: unknown
+	pivotY?: unknown
+	width?: unknown
+	height?: unknown
+	rotation?: unknown
+	opacity?: unknown
+}
+
+type LegacyNode = {
+	id?: unknown
+	createdAt?: unknown
+	name?: unknown
+	category?: unknown
+	userType?: unknown
+	type?: unknown
+	transform?: LegacyTransform | unknown
+	props?: unknown
+	children?: unknown
+}
 
 export const createRenderableNode = (type: VideoSceneUserNodeType): VideoSceneTreeNode => {
 	const id = genId(type)
@@ -27,6 +63,7 @@ export const createRenderableNode = (type: VideoSceneUserNodeType): VideoSceneTr
 						: 'Line'
 	)
 	const upgraded = upgradeNodeType(base, type as unknown as NodeType)
+	const tr = upgraded.transform
 	return {
 		id: upgraded.id,
 		createdAt: Date.now(),
@@ -34,18 +71,18 @@ export const createRenderableNode = (type: VideoSceneUserNodeType): VideoSceneTr
 		category: 'user',
 		userType: upgraded.type as unknown as VideoSceneUserNodeType,
 		transform: {
-			x: upgraded.transform.x,
-			y: upgraded.transform.y,
-			scaleX: (upgraded.transform as any).scaleX ?? (upgraded.transform as any).scale ?? 1,
-			scaleY: (upgraded.transform as any).scaleY ?? (upgraded.transform as any).scale ?? 1,
-			pivotX: (upgraded.transform as any).pivotX ?? 0.5,
-			pivotY: (upgraded.transform as any).pivotY ?? 0.5,
-			width: upgraded.transform.width,
-			height: upgraded.transform.height,
-			rotation: upgraded.transform.rotation,
-			opacity: upgraded.transform.opacity,
+			x: tr.x,
+			y: tr.y,
+			scaleX: tr.scaleX,
+			scaleY: tr.scaleY,
+			pivotX: tr.pivotX,
+			pivotY: tr.pivotY,
+			width: tr.width,
+			height: tr.height,
+			rotation: tr.rotation,
+			opacity: tr.opacity
 		},
-		props: upgraded.props ?? {},
+		props: upgraded.props ?? {}
 	}
 }
 
@@ -92,69 +129,98 @@ export const addNodeTreeToLayer = (args: {
 	if (!layer) return null
 	const node = args.node
 
-	const normalizeNodeTreeInPlace = (n: any) => {
+	const normalizeNodeTreeInPlace = (n: LegacyNode) => {
 		const clampScale = (v: unknown, fallback = 1) => {
 			const x = Number(v)
 			if (!Number.isFinite(x)) return fallback
 			return Math.max(0, Math.min(100, x))
 		}
 		if (!n || typeof n !== 'object') return
-		if (typeof n.id !== 'string' || !n.id.trim()) n.id = genId('node')
-		if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt)) n.createdAt = Date.now()
-		if (typeof n.name !== 'string' || !n.name.trim()) n.name = 'Node'
-		// Ensure category is present (default to user because addNodeTreeToLayer is mainly for renderables).
-		if (n.category !== 'user' && n.category !== 'project') n.category = 'user'
+		if (typeof n.id !== 'string' || !n.id.trim()) (n as Record<string, unknown>).id = genId('node')
+		if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt as number))
+			(n as Record<string, unknown>).createdAt = Date.now()
+		if (typeof n.name !== 'string' || !n.name.trim()) (n as Record<string, unknown>).name = 'Node'
+		if (n.category !== 'user' && n.category !== 'project')
+			(n as Record<string, unknown>).category = 'user'
 
 		if (n.category === 'user') {
-			// Match createRenderableNode() output shape.
 			if (!n.transform || typeof n.transform !== 'object') {
-				n.transform = { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 200, height: 120, rotation: 0, opacity: 1 }
+				;(n as Record<string, unknown>).transform = {
+					x: 0,
+					y: 0,
+					scaleX: 1,
+					scaleY: 1,
+					pivotX: 0.5,
+					pivotY: 0.5,
+					width: 200,
+					height: 120,
+					rotation: 0,
+					opacity: 1
+				}
 			} else {
-				const t = n.transform as any
+				const t = n.transform as LegacyTransform
 				const legacyScale = clampScale(t.scale, 1)
 				const sx = clampScale(t.scaleX, legacyScale)
 				const sy = clampScale(t.scaleY, legacyScale)
-				n.transform = {
+				;(n as Record<string, unknown>).transform = {
 					x: typeof t.x === 'number' && Number.isFinite(t.x) ? t.x : 0,
 					y: typeof t.y === 'number' && Number.isFinite(t.y) ? t.y : 0,
 					scaleX: sx,
 					scaleY: sy,
 					scale: legacyScale,
 					pivotX:
-						typeof t.pivotX === 'number' && Number.isFinite(t.pivotX) ? Math.max(0, Math.min(1, t.pivotX)) : 0.5,
+						typeof t.pivotX === 'number' && Number.isFinite(t.pivotX)
+							? Math.max(0, Math.min(1, t.pivotX))
+							: 0.5,
 					pivotY:
-						typeof t.pivotY === 'number' && Number.isFinite(t.pivotY) ? Math.max(0, Math.min(1, t.pivotY)) : 0.5,
-					width: typeof t.width === 'number' && Number.isFinite(t.width) ? Math.max(1, t.width) : 200,
-					height: typeof t.height === 'number' && Number.isFinite(t.height) ? Math.max(1, t.height) : 120,
+						typeof t.pivotY === 'number' && Number.isFinite(t.pivotY)
+							? Math.max(0, Math.min(1, t.pivotY))
+							: 0.5,
+					width:
+						typeof t.width === 'number' && Number.isFinite(t.width) ? Math.max(1, t.width) : 200,
+					height:
+						typeof t.height === 'number' && Number.isFinite(t.height) ? Math.max(1, t.height) : 120,
 					rotation: typeof t.rotation === 'number' && Number.isFinite(t.rotation) ? t.rotation : 0,
 					opacity:
-						typeof t.opacity === 'number' && Number.isFinite(t.opacity) ? Math.max(0, Math.min(1, t.opacity)) : 1,
+						typeof t.opacity === 'number' && Number.isFinite(t.opacity)
+							? Math.max(0, Math.min(1, t.opacity))
+							: 1
 				}
 			}
-			if (!n.props || typeof n.props !== 'object' || Array.isArray(n.props)) n.props = {}
+			if (!n.props || typeof n.props !== 'object' || Array.isArray(n.props))
+				(n as Record<string, unknown>).props = {}
 
-			// Text autosize: always derive w/h from text + font on insertion.
-			const t = String((n as any).userType ?? (n as any).type ?? '')
-			if (t === 'text') {
-				n.props = normalizeTextNodeProps(n.props ?? {}) as any
-				const size = computeTextAutoSize(n.props ?? {})
-				if (size) {
-					n.transform.width = size.width
-					n.transform.height = size.height
+			const userTypeStr = String(n.userType ?? n.type ?? '')
+			if (userTypeStr === 'text') {
+				const normalizedProps = normalizeTextNodeProps((n.props ?? {}) as TextNodePropsInput)
+				;(n as Record<string, unknown>).props = normalizedProps
+				const size = computeTextAutoSize(normalizedProps)
+				if (size && n.transform && typeof n.transform === 'object') {
+					;(n.transform as VideoSceneNodeTransform).width = size.width
+					;(n.transform as VideoSceneNodeTransform).height = size.height
 				}
-			} else if (t === 'line') {
-				Object.assign(n.props, normalizeLineLocalPoints({ props: n.props as any, width: n.transform.width, height: n.transform.height }))
+			} else if (userTypeStr === 'line') {
+				const propsRecord = n.props as Record<string, unknown>
+				const tr = n.transform as VideoSceneNodeTransform | undefined
+				Object.assign(
+					n.props as object,
+					normalizeLineLocalPoints({
+						props: propsRecord,
+						width: tr?.width ?? 200,
+						height: tr?.height ?? 120
+					})
+				)
 			}
 		}
 
 		if (Array.isArray(n.children)) {
-			for (const c of n.children) normalizeNodeTreeInPlace(c)
+			for (const c of n.children as LegacyNode[]) normalizeNodeTreeInPlace(c)
 		} else if (n.children !== undefined) {
-			delete n.children
+			delete (n as Record<string, unknown>).children
 		}
 	}
 
-	normalizeNodeTreeInPlace(node)
+	normalizeNodeTreeInPlace(node as unknown as LegacyNode)
 
 	const existingNames = collectAllNames(layer.nodeTree)
 	ensureUniqueNamesForTree(node, existingNames)
@@ -170,7 +236,10 @@ export const addNodeTreeToLayer = (args: {
 	return { node, selection: setSingleSelection(node.id) }
 }
 
-const normalizeTransformPatch = (prev: VideoSceneNodeTransform, patch: NodeTransformPatch): VideoSceneNodeTransform => {
+const normalizeTransformPatch = (
+	prev: VideoSceneNodeTransform,
+	patch: NodeTransformPatch
+): VideoSceneNodeTransform => {
 	const clampScale = (v: unknown, fallback = 1) => {
 		const x = Number(v)
 		if (!Number.isFinite(x)) return fallback
@@ -178,26 +247,73 @@ const normalizeTransformPatch = (prev: VideoSceneNodeTransform, patch: NodeTrans
 	}
 	const x = typeof patch.x === 'number' && Number.isFinite(patch.x) ? patch.x : prev.x
 	const y = typeof patch.y === 'number' && Number.isFinite(patch.y) ? patch.y : prev.y
-	const legacyScaleRaw = (patch as any).scale
-	const legacyScale = clampScale(legacyScaleRaw, (prev as any).scale ?? 1)
-	const sxRaw = (patch as any).scaleX
-	const syRaw = (patch as any).scaleY
-	const scaleX = typeof sxRaw === 'number' && Number.isFinite(sxRaw) ? clampScale(sxRaw, 1) : prev.scaleX ?? legacyScale ?? 1
-	const scaleY = typeof syRaw === 'number' && Number.isFinite(syRaw) ? clampScale(syRaw, 1) : prev.scaleY ?? legacyScale ?? 1
-	const pivotX = typeof (patch as any).pivotX === 'number' && Number.isFinite((patch as any).pivotX) ? Math.max(0, Math.min(1, (patch as any).pivotX)) : (prev as any).pivotX
-	const pivotY = typeof (patch as any).pivotY === 'number' && Number.isFinite((patch as any).pivotY) ? Math.max(0, Math.min(1, (patch as any).pivotY)) : (prev as any).pivotY
-	const width = typeof patch.width === 'number' && Number.isFinite(patch.width) ? Math.max(1, patch.width) : prev.width
-	const height = typeof patch.height === 'number' && Number.isFinite(patch.height) ? Math.max(1, patch.height) : prev.height
-	const rotation = typeof patch.rotation === 'number' && Number.isFinite(patch.rotation) ? patch.rotation : prev.rotation
+	const legacyScale = clampScale(patch.scale, prev.scale ?? 1)
+	const scaleX =
+		typeof patch.scaleX === 'number' && Number.isFinite(patch.scaleX)
+			? clampScale(patch.scaleX, 1)
+			: (prev.scaleX ?? legacyScale)
+	const scaleY =
+		typeof patch.scaleY === 'number' && Number.isFinite(patch.scaleY)
+			? clampScale(patch.scaleY, 1)
+			: (prev.scaleY ?? legacyScale)
+	const pivotX =
+		typeof patch.pivotX === 'number' && Number.isFinite(patch.pivotX)
+			? Math.max(0, Math.min(1, patch.pivotX))
+			: prev.pivotX
+	const pivotY =
+		typeof patch.pivotY === 'number' && Number.isFinite(patch.pivotY)
+			? Math.max(0, Math.min(1, patch.pivotY))
+			: prev.pivotY
+	const width =
+		typeof patch.width === 'number' && Number.isFinite(patch.width)
+			? Math.max(1, patch.width)
+			: prev.width
+	const height =
+		typeof patch.height === 'number' && Number.isFinite(patch.height)
+			? Math.max(1, patch.height)
+			: prev.height
+	const rotation =
+		typeof patch.rotation === 'number' && Number.isFinite(patch.rotation)
+			? patch.rotation
+			: prev.rotation
 	const opacity =
-		typeof patch.opacity === 'number' && Number.isFinite(patch.opacity) ? Math.max(0, Math.min(1, patch.opacity)) : prev.opacity
-	return { x, y, scaleX, scaleY, scale: legacyScale ?? 1, pivotX: pivotX ?? 0.5, pivotY: pivotY ?? 0.5, width, height, rotation, opacity }
+		typeof patch.opacity === 'number' && Number.isFinite(patch.opacity)
+			? Math.max(0, Math.min(1, patch.opacity))
+			: prev.opacity
+	return {
+		x,
+		y,
+		scaleX,
+		scaleY,
+		scale: legacyScale,
+		pivotX,
+		pivotY,
+		width,
+		height,
+		rotation,
+		opacity
+	}
 }
 
-export const updateUserNodeTransform = (layer: VideoSceneLayer, nodeId: string, patch: NodeTransformPatch): boolean => {
+export const updateUserNodeTransform = (
+	layer: VideoSceneLayer,
+	nodeId: string,
+	patch: NodeTransformPatch
+): boolean => {
 	const node = findNode(layer.nodeTree, nodeId)
 	if (!node || node.category !== 'user') return false
-	const prev: VideoSceneNodeTransform = (node.transform as any) ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 10, height: 10, rotation: 0, opacity: 1 }
+	const prev: VideoSceneNodeTransform = node.transform ?? {
+		x: 0,
+		y: 0,
+		scaleX: 1,
+		scaleY: 1,
+		pivotX: 0.5,
+		pivotY: 0.5,
+		width: 10,
+		height: 10,
+		rotation: 0,
+		opacity: 1
+	}
 	node.transform = normalizeTransformPatch(prev, patch)
 	return true
 }
@@ -209,20 +325,26 @@ export const updateNodeName = (layer: VideoSceneLayer, nodeId: string, name: str
 	return true
 }
 
-export const updateUserNodeProps = (layer: VideoSceneLayer, nodeId: string, patch: NodePropsPatch): boolean => {
+export const updateUserNodeProps = (
+	layer: VideoSceneLayer,
+	nodeId: string,
+	patch: NodePropsPatch
+): boolean => {
 	const node = findNode(layer.nodeTree, nodeId)
 	if (!node || node.category !== 'user') return false
 	if (!node.props) node.props = {}
 	Object.assign(node.props, patch)
 
-	// Text autosize: any time text/font changes, recompute width/height.
 	if (String(node.userType ?? '') === 'text' && node.transform) {
-		node.props = normalizeTextNodeProps(node.props ?? {}) as any
+		const normalizedProps = normalizeTextNodeProps(node.props)
+		node.props = normalizedProps
 		const hasTextChange = Object.prototype.hasOwnProperty.call(patch, 'textContent')
-		const hasFontChange = Object.prototype.hasOwnProperty.call(patch, 'fontSize') || Object.prototype.hasOwnProperty.call(patch, 'fontStyle')
+		const hasFontChange =
+			Object.prototype.hasOwnProperty.call(patch, 'fontSize') ||
+			Object.prototype.hasOwnProperty.call(patch, 'fontStyle')
 		const hasAlignChange = Object.prototype.hasOwnProperty.call(patch, 'textAlign')
 		if (hasTextChange || hasFontChange || hasAlignChange) {
-			const size = computeTextAutoSize(node.props as any)
+			const size = computeTextAutoSize(normalizedProps)
 			if (size) {
 				node.transform.width = size.width
 				node.transform.height = size.height
@@ -232,41 +354,58 @@ export const updateUserNodeProps = (layer: VideoSceneLayer, nodeId: string, patc
 	return true
 }
 
-export const setUserNodeType = (layer: VideoSceneLayer, nodeId: string, type: VideoSceneUserNodeType): boolean => {
+export const setUserNodeType = (
+	layer: VideoSceneLayer,
+	nodeId: string,
+	type: VideoSceneUserNodeType
+): boolean => {
 	const node = findNode(layer.nodeTree, nodeId)
 	if (!node || node.category !== 'user') return false
+	const nodeTr = node.transform
 	const current: NodeBaseDTO = NodeBase.normalize({
 		id: node.id,
 		name: node.name,
 		type: (node.userType ?? 'base') as unknown as NodeType,
 		transform: {
-			x: node.transform?.x ?? 0,
-			y: node.transform?.y ?? 0,
-			scaleX: (node.transform as any)?.scaleX ?? (node.transform as any)?.scale ?? 1,
-			scaleY: (node.transform as any)?.scaleY ?? (node.transform as any)?.scale ?? 1,
-			pivotX: (node.transform as any)?.pivotX ?? 0.5,
-			pivotY: (node.transform as any)?.pivotY ?? 0.5,
-			width: node.transform?.width ?? 200,
-			height: node.transform?.height ?? 120,
-			rotation: node.transform?.rotation ?? 0,
-			opacity: node.transform?.opacity ?? 1,
+			x: nodeTr?.x ?? 0,
+			y: nodeTr?.y ?? 0,
+			scaleX: nodeTr?.scaleX ?? nodeTr?.scale ?? 1,
+			scaleY: nodeTr?.scaleY ?? nodeTr?.scale ?? 1,
+			pivotX: nodeTr?.pivotX ?? 0.5,
+			pivotY: nodeTr?.pivotY ?? 0.5,
+			width: nodeTr?.width ?? 200,
+			height: nodeTr?.height ?? 120,
+			rotation: nodeTr?.rotation ?? 0,
+			opacity: nodeTr?.opacity ?? 1
 		},
-		props: node.props ?? {},
+		props: node.props ?? {}
 	})
 	const upgraded = upgradeNodeType(current, type as unknown as NodeType)
 	node.userType = upgraded.type as unknown as VideoSceneUserNodeType
 	node.props = upgraded.props ?? {}
-	const tr: any = (node.transform ??= { x: 0, y: 0, scaleX: 1, scaleY: 1, pivotX: 0.5, pivotY: 0.5, width: 10, height: 10, rotation: 0, opacity: 1 })
-	const legacyScale = (upgraded.transform as any).scale ?? tr.scale ?? 1
-	tr.scaleX = (upgraded.transform as any).scaleX ?? legacyScale
-	tr.scaleY = (upgraded.transform as any).scaleY ?? legacyScale
+	const tr: VideoSceneNodeTransform = (node.transform ??= {
+		x: 0,
+		y: 0,
+		scaleX: 1,
+		scaleY: 1,
+		pivotX: 0.5,
+		pivotY: 0.5,
+		width: 10,
+		height: 10,
+		rotation: 0,
+		opacity: 1
+	})
+	const ut = upgraded.transform
+	const legacyScale = ut.scale ?? tr.scale ?? 1
+	tr.scaleX = ut.scaleX ?? legacyScale
+	tr.scaleY = ut.scaleY ?? legacyScale
 	tr.scale = legacyScale
-	tr.width = upgraded.transform.width
-	tr.height = upgraded.transform.height
-	tr.rotation = upgraded.transform.rotation
-	tr.opacity = upgraded.transform.opacity
+	tr.width = ut.width
+	tr.height = ut.height
+	tr.rotation = ut.rotation
+	tr.opacity = ut.opacity
 	if (type === 'text') {
-		const size = computeTextAutoSize(node.props as any)
+		const size = computeTextAutoSize(node.props)
 		if (size) {
 			tr.width = size.width
 			tr.height = size.height

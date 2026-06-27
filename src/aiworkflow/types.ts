@@ -1,5 +1,7 @@
 import type { WorkflowResource } from './resource/types'
 
+export type { WorkflowResource }
+
 export type WorkflowViewport = {
 	zoom: number
 	panX: number
@@ -420,7 +422,15 @@ export type WorkflowUnrealExportNodeSettings = {
 	lastHeartbeatAt?: number
 	lastExportMode?: 'scene-layout' | 'lighting-only'
 	lastExportJobId?: string
-	lastExportStatus?: 'queued' | 'picked' | 'downloading' | 'importing' | 'assembling-actor' | 'applying-lighting' | 'completed' | 'failed'
+	lastExportStatus?:
+		| 'queued'
+		| 'picked'
+		| 'downloading'
+		| 'importing'
+		| 'assembling-actor'
+		| 'applying-lighting'
+		| 'completed'
+		| 'failed'
 	lastExportStage?: string
 	lastExportProgress?: number
 	lastExportMessage?: string
@@ -623,7 +633,13 @@ export type WorkflowMeshyTaskFamily =
 	| 'text-to-image'
 	| 'image-to-image'
 
-export type WorkflowMeshyTaskStatus = 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+export type WorkflowMeshyTaskStatus =
+	| 'idle'
+	| 'pending'
+	| 'running'
+	| 'succeeded'
+	| 'failed'
+	| 'canceled'
 
 export type WorkflowMeshyRelationKind = 'model' | 'texture' | 'rigging' | 'animation' | 'remesh'
 
@@ -711,7 +727,9 @@ export type WorkflowMeshyNodeSettings = {
 	meshyProgress?: number
 	meshyStatusText?: string
 	meshyThumbnailUrl?: string
-	meshyModelUrls?: Partial<Record<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz' | 'pre_remeshed_glb', string>>
+	meshyModelUrls?: Partial<
+		Record<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz' | 'pre_remeshed_glb', string>
+	>
 	meshyOutputAssetUrl?: string
 	meshyOutputAssetPath?: string
 	meshyErrorMessage?: string
@@ -747,7 +765,7 @@ export type WorkflowNode = {
 	/** For chat dialog: user-entered draft text */
 	nodeChatDraft?: string
 	/** For chat dialog: user-configured params */
-	nodeChatParams?: Record<string, any>
+	nodeChatParams?: Record<string, unknown>
 	worldX: number
 	worldY: number
 	width: number
@@ -773,13 +791,25 @@ export type WorkflowNodeChatType = 'text' | 'image' | 'video' | 'model3d'
 
 export type WorkflowNodeChatImageParams = {
 	modelId?: string
+	model?: string
+	nanobananaModelVersion?: string
+	seedreamModelVersion?: string
 	resolution?: string
 	aspectRatio?: string
 	quantity?: number
+	meshyImageAiModel?: string
+	meshyAspectRatio?: string
+	meshyNegativePrompt?: string
+	meshyPoseMode?: string
+	meshyGenerateMultiView?: boolean
+	meshySeed?: number
+	meshyOutputImageCount?: number
 }
 
 export type WorkflowNodeChatVideoParams = {
 	modelId?: string
+	model?: string
+	seedanceModelVersion?: string
 	mode?: 'auto' | 'text_to_video' | 'image_to_video' | 'first-last' | 'reference'
 	resolution?: string
 	ratio?: string
@@ -787,6 +817,8 @@ export type WorkflowNodeChatVideoParams = {
 	seed?: number
 	generateAudio?: boolean
 	watermark?: boolean
+	cameraFixed?: boolean
+	returnLastFrame?: boolean
 }
 
 export type WorkflowNodeChatModel3DParams = {
@@ -814,7 +846,7 @@ export type WorkflowNodeChatSubmitPayload = {
 	nodeId: string
 	nodeType: WorkflowNodeChatType
 	prompt: string
-	params: Record<string, any>
+	params: Record<string, unknown>
 }
 
 export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error'
@@ -866,6 +898,10 @@ export type WorkflowState = {
 	savedSelectionFrames: SavedSelectionFrame[]
 	/** 是否显示节点级多选框（运行时开关） */
 	nodeCheckboxVisible: boolean
+	/** 当前项目 ID */
+	projectId: number | null
+	/** 当前项目根路径 */
+	projectRootPath: string
 }
 
 export type WorkflowSelectionTarget =

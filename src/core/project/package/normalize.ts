@@ -2,9 +2,30 @@ import { upgradeNodeType } from '../../scene/nodesType'
 import type { EditorSnapshot } from '../../editor/types'
 import type { JsonValue } from '../../shared/json'
 import type { NodeBaseDTO, NodeType } from '../../scene/nodesType'
-import type { VideoSceneNodeProps, VideoSceneTreeNode, VideoSceneUserNodeType } from '../../scene/types'
+import type {
+	VideoSceneNodeProps,
+	VideoSceneTreeNode,
+	VideoSceneUserNodeType
+} from '../../scene/types'
 
-const walkTree = (nodes: VideoSceneTreeNode[] | undefined, onNode: (node: VideoSceneTreeNode) => void) => {
+type LegacyTransform = {
+	x?: unknown
+	y?: unknown
+	scaleX?: unknown
+	scaleY?: unknown
+	scale?: unknown
+	pivotX?: unknown
+	pivotY?: unknown
+	width?: unknown
+	height?: unknown
+	rotation?: unknown
+	opacity?: unknown
+}
+
+const walkTree = (
+	nodes: VideoSceneTreeNode[] | undefined,
+	onNode: (node: VideoSceneTreeNode) => void
+) => {
 	if (!nodes) return
 	for (const n of nodes) {
 		onNode(n)
@@ -22,8 +43,8 @@ const normalizeLayerRoot = (layer: { name: string; nodeTree: VideoSceneTreeNode[
 			name: layer.name,
 			category: 'project',
 			projectKind: 'group',
-			children,
-		},
+			children
+		}
 	]
 }
 
@@ -38,10 +59,19 @@ export const normalizeSnapshotV1 = (snapshot: EditorSnapshot): EditorSnapshot =>
 		walkTree(layer.nodeTree, (node) => {
 			if (node.category !== 'user') return
 			const t = (node.userType ?? 'base') as unknown as NodeType
-			const tr = node.transform ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, width: 10, height: 10, rotation: 0, opacity: 1 }
-			const legacyScale = toNumber((tr as any).scale, 1)
-			const scaleX = toNumber((tr as any).scaleX, legacyScale)
-			const scaleY = toNumber((tr as any).scaleY, legacyScale)
+			const tr: LegacyTransform = node.transform ?? {
+				x: 0,
+				y: 0,
+				scaleX: 1,
+				scaleY: 1,
+				width: 10,
+				height: 10,
+				rotation: 0,
+				opacity: 1
+			}
+			const legacyScale = toNumber(tr.scale, 1)
+			const scaleX = toNumber(tr.scaleX, legacyScale)
+			const scaleY = toNumber(tr.scaleY, legacyScale)
 			const dto: NodeBaseDTO = {
 				id: node.id,
 				name: node.name,
@@ -52,14 +82,14 @@ export const normalizeSnapshotV1 = (snapshot: EditorSnapshot): EditorSnapshot =>
 					scaleX,
 					scaleY,
 					scale: legacyScale,
-					pivotX: toNumber((tr as any).pivotX, 0.5),
-					pivotY: toNumber((tr as any).pivotY, 0.5),
+					pivotX: toNumber(tr.pivotX, 0.5),
+					pivotY: toNumber(tr.pivotY, 0.5),
 					width: toNumber(tr.width, 200),
 					height: toNumber(tr.height, 120),
 					rotation: toNumber(tr.rotation, 0),
-					opacity: toNumber(tr.opacity, 1),
+					opacity: toNumber(tr.opacity, 1)
 				},
-				props: (node.props ?? {}) as Record<string, JsonValue>,
+				props: (node.props ?? {}) as Record<string, JsonValue>
 			}
 			const upgraded = upgradeNodeType(dto, t)
 			node.userType = upgraded.type as unknown as VideoSceneUserNodeType

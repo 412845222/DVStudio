@@ -15,20 +15,120 @@ export type ChatModelCatalogItem = {
 }
 
 const COPILOT_CLI_MODELS: ChatModelCatalogItem[] = [
-	{ id: 'auto', label: 'Auto', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI', recommended: true },
-	{ id: 'gpt-5.3-codex', label: 'GPT-5.3-Codex', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI', recommended: true },
-	{ id: 'gpt-5.4', label: 'GPT-5.4', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gpt-5.2-codex', label: 'GPT-5.2-Codex', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gpt-5.2', label: 'GPT-5.2', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gpt-5.1-codex-max', label: 'GPT-5.1-Codex Max', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gpt-5.1-codex', label: 'GPT-5.1-Codex', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gpt-5.1', label: 'GPT-5.1', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gpt-5.1-codex-mini', label: 'GPT-5.1-Codex Mini', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gpt-5-mini', label: 'GPT-5 Mini', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gpt-4.1', label: 'GPT-4.1', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'claude-opus-4.6', label: 'Claude Opus 4.6', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
-	{ id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview', needType: 'text', apiSource: 'local-exec', legacyModelKey: 'codex', vendor: 'Copilot CLI' },
+	{
+		id: 'auto',
+		label: 'Auto',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI',
+		recommended: true
+	},
+	{
+		id: 'gpt-5.3-codex',
+		label: 'GPT-5.3-Codex',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI',
+		recommended: true
+	},
+	{
+		id: 'gpt-5.4',
+		label: 'GPT-5.4',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gpt-5.2-codex',
+		label: 'GPT-5.2-Codex',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gpt-5.2',
+		label: 'GPT-5.2',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gpt-5.1-codex-max',
+		label: 'GPT-5.1-Codex Max',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gpt-5.1-codex',
+		label: 'GPT-5.1-Codex',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gpt-5.1',
+		label: 'GPT-5.1',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gpt-5.1-codex-mini',
+		label: 'GPT-5.1-Codex Mini',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gpt-5-mini',
+		label: 'GPT-5 Mini',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gpt-4.1',
+		label: 'GPT-4.1',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'claude-sonnet-4.6',
+		label: 'Claude Sonnet 4.6',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'claude-opus-4.6',
+		label: 'Claude Opus 4.6',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	},
+	{
+		id: 'gemini-3-pro-preview',
+		label: 'Gemini 3 Pro Preview',
+		needType: 'text',
+		apiSource: 'local-exec',
+		legacyModelKey: 'codex',
+		vendor: 'Copilot CLI'
+	}
 ]
 
 export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
@@ -40,7 +140,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'deepseek',
 		legacyModelKey: 'deepseek',
 		vendor: 'DeepSeek',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'doubao-seed-2-0-pro-260215',
@@ -51,7 +151,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		vendor: '字节方舟',
 		recommended: true,
 		supportsStructuredOutput: true,
-		supportsVision: true,
+		supportsVision: true
 	},
 	{
 		id: 'doubao-seed-2-0-lite-260215',
@@ -62,7 +162,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		vendor: '字节方舟',
 		recommended: true,
 		supportsStructuredOutput: true,
-		supportsVision: true,
+		supportsVision: true
 	},
 	{
 		id: 'doubao-seed-2-0-mini-260215',
@@ -73,7 +173,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		vendor: '字节方舟',
 		recommended: true,
 		supportsStructuredOutput: true,
-		supportsVision: true,
+		supportsVision: true
 	},
 	{
 		id: 'doubao-seed-2-0-code-preview-260215',
@@ -84,7 +184,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		vendor: '字节方舟',
 		recommended: true,
 		supportsStructuredOutput: true,
-		supportsVision: true,
+		supportsVision: true
 	},
 	{
 		id: 'doubao-seed-1-8-251228',
@@ -95,7 +195,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		vendor: '字节方舟',
 		recommended: true,
 		supportsStructuredOutput: true,
-		supportsVision: true,
+		supportsVision: true
 	},
 	{
 		id: 'doubao-seed-code-preview-251028',
@@ -104,7 +204,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '字节方舟',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'doubao-seed-1-6-lite-251015',
@@ -114,7 +214,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		legacyModelKey: 'deepseek',
 		vendor: '字节方舟',
 		recommended: true,
-		supportsVision: true,
+		supportsVision: true
 	},
 	{
 		id: 'doubao-seed-1-6-flash-250828',
@@ -125,7 +225,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		vendor: '字节方舟',
 		recommended: true,
 		supportsStructuredOutput: true,
-		supportsVision: true,
+		supportsVision: true
 	},
 	{
 		id: 'doubao-seed-1-6-vision-250815',
@@ -136,7 +236,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		vendor: '字节方舟',
 		recommended: true,
 		supportsStructuredOutput: true,
-		supportsVision: true,
+		supportsVision: true
 	},
 	{
 		id: 'doubao-seed-translation-250915',
@@ -145,7 +245,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '字节方舟',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'glm-4-7-251222',
@@ -154,7 +254,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '智谱 AI',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'glm-4-5-air',
@@ -163,7 +263,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '智谱 AI',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'deepseek-v3-2-251201',
@@ -172,7 +272,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: 'DeepSeek',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'deepseek-v3-1-terminus',
@@ -181,7 +281,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: 'DeepSeek',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'deepseek-v3-1-250821',
@@ -190,7 +290,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: 'DeepSeek',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'deepseek-v3-250324',
@@ -199,7 +299,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: 'DeepSeek',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'deepseek-r1-250528',
@@ -208,7 +308,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: 'DeepSeek',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'kimi-k2-250905',
@@ -217,7 +317,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '月之暗面',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'qwen3-32b',
@@ -226,7 +326,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '通义千问',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'qwen3-14b',
@@ -235,7 +335,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '通义千问',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'qwen3-8b',
@@ -244,7 +344,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '通义千问',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'qwen3-0-6b',
@@ -253,7 +353,7 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '通义千问',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'qwen2-5-72b',
@@ -262,134 +362,134 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '通义千问',
-		recommended: true,
+		recommended: true
 	},
 	{
 		id: 'gemini-2.5-flash-image',
 		label: 'NanoBanana（Gemini 2.5 Flash Image）',
 		needType: 'image',
 		apiSource: 'gemini',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'gemini-3.1-flash-image-preview',
 		label: 'NanoBanana 2（Gemini 3.1 Flash Image 预览版）',
 		needType: 'image',
 		apiSource: 'gemini',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'gemini-3-pro-image-preview',
 		label: 'NanoBanana Pro（Gemini 3 Pro Image 预览版）',
 		needType: 'image',
 		apiSource: 'gemini',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'doubao-seedream-4-5-251128',
 		label: 'Seedream 4.5 (推荐)',
 		needType: 'image',
 		apiSource: 'bytedance',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'doubao-seedream-3-0-t2i-250415',
 		label: 'Seedream 3.0',
 		needType: 'image',
 		apiSource: 'bytedance',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'doubao-seedream-4-0-250828',
 		label: 'Seedream 4.0',
 		needType: 'image',
 		apiSource: 'bytedance',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'doubao-seedream-5-0-260128',
 		label: 'Seedream 5.0',
 		needType: 'image',
 		apiSource: 'bytedance',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'jimeng-image-3.0',
 		label: '即梦 图片 3.0',
 		needType: 'image',
 		apiSource: 'bytedance',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'jimeng-image-4.0',
 		label: '即梦 图片 4.0',
 		needType: 'image',
 		apiSource: 'bytedance',
-		legacyModelKey: 'nanobanana',
+		legacyModelKey: 'nanobanana'
 	},
 	{
 		id: 'doubao-seedance-2-0-260128',
 		label: 'Seedance 2.0',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
+		legacyModelKey: 'seedance'
 	},
 	{
 		id: 'doubao-seedance-2-0-fast-260128',
 		label: 'Seedance 2.0 Fast',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
+		legacyModelKey: 'seedance'
 	},
 	{
 		id: 'doubao-seedance-1-5-pro-251215',
 		label: 'Seedance 1.5 Pro',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
+		legacyModelKey: 'seedance'
 	},
 	{
 		id: 'doubao-seedance-1-0-pro-250528',
 		label: 'Seedance 1.0 Pro',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
+		legacyModelKey: 'seedance'
 	},
 	{
 		id: 'doubao-seedance-1-0-pro-fast-251015',
 		label: 'Seedance 1.0 Pro Fast',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
+		legacyModelKey: 'seedance'
 	},
 	{
 		id: 'doubao-seedance-1-0-lite-i2v-250428',
 		label: 'Seedance 1.0 Lite I2V',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
+		legacyModelKey: 'seedance'
 	},
 	{
 		id: 'doubao-seedance-1-0-lite-t2v-250428',
 		label: 'Seedance 1.0 Lite T2V',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
+		legacyModelKey: 'seedance'
 	},
 	{
 		id: 'jimeng-video-3.0',
 		label: '即梦 视频 3.0',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
+		legacyModelKey: 'seedance'
 	},
 	{
 		id: 'jimeng-video-3.0-pro',
 		label: '即梦 视频 3.0 Pro',
 		needType: 'video',
 		apiSource: 'bytedance',
-		legacyModelKey: 'seedance',
-	},
+		legacyModelKey: 'seedance'
+	}
 ]
 
 export const CHAT_API_SOURCE_OPTIONS: Array<{ value: ChatApiSource; label: string }> = [
@@ -397,7 +497,7 @@ export const CHAT_API_SOURCE_OPTIONS: Array<{ value: ChatApiSource; label: strin
 	{ value: 'deepseek', label: 'DeepSeek' },
 	{ value: 'gemini', label: 'Gemini' },
 	{ value: 'bytedance', label: '火山方舟' },
-	{ value: 'local-exec', label: '本地执行层' },
+	{ value: 'local-exec', label: '本地执行层' }
 ]
 
 export const needTypeFromLegacyModel = (mk: ChatLegacyModelKey): ChatNeedType => {

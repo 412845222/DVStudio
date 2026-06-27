@@ -13,7 +13,11 @@ export function compileShader(gl: WebGL2RenderingContext, type: number, src: str
 	return shader
 }
 
-export function linkProgram(gl: WebGL2RenderingContext, vs: WebGLShader, fs: WebGLShader): WebGLProgram {
+export function linkProgram(
+	gl: WebGL2RenderingContext,
+	vs: WebGLShader,
+	fs: WebGLShader
+): WebGLProgram {
 	const program = gl.createProgram()
 	if (!program) throw new Error('createProgram failed')
 	gl.attachShader(program, vs)

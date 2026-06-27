@@ -1,4 +1,7 @@
-import type { BlueprintAssetKind, BlueprintProjectService } from '../../../network/BlueprintProjectService'
+import type {
+	BlueprintAssetKind,
+	BlueprintProjectService
+} from '../../../network/BlueprintProjectService'
 
 type PersistedAssetReference = {
 	url: string
@@ -15,12 +18,31 @@ type ImportAssetIntoProjectScopePayload = {
 	bucket?: 'assets' | 'thumbnails'
 }
 
+type UploadAssetResult = {
+	ok: boolean
+	error?: string
+	asset?: {
+		url?: string
+		absolutePath?: string
+		projectRelativePath?: string
+		relativePath?: string
+	}
+}
+
+type ImportAssetResult = {
+	url?: string
+	sourcePath?: string
+	absolutePath?: string
+	projectRelativePath?: string
+	relativePath?: string
+}
+
 type UseAIWorkflowAssetPersistenceOptions = {
 	blueprintProjectService: Pick<BlueprintProjectService, 'uploadAsset'>
 	getCurrentProjectId: () => number | null | undefined
 	resolveBackendUrl: (value: string) => string
 	fileFromUrl: (url: string, fileNameBase: string) => Promise<File>
-	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<any>
+	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportAssetResult | null | undefined>
 }
 
 export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersistenceOptions) => {
@@ -38,32 +60,31 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		localUrl: string,
 		kind: BlueprintAssetKind,
 		resourceName: string,
-		opts?: { projectId?: number | null },
+		opts?: { projectId?: number | null }
 	): Promise<PersistedAssetReference> => {
 		const currentProjectId = Number(opts?.projectId ?? options.getCurrentProjectId() ?? 0)
-		const projectId = Number.isFinite(currentProjectId) && currentProjectId > 0 ? currentProjectId : 0
+		const projectId =
+			Number.isFinite(currentProjectId) && currentProjectId > 0 ? currentProjectId : 0
 		const cacheKey = `${projectId}|${localUrl}`
 		const cached = localUrlUploadedAssetCache.get(cacheKey)
 		if (cached) return cached
 
 		const safeName = sanitizeResourceName(resourceName, `${kind || 'resource'}_${Date.now()}`)
-		const file = await options.fileFromUrl(
-			localUrl,
-			safeName.replace(/\.[^.]+$/, ''),
-		)
+		const file = await options.fileFromUrl(localUrl, safeName.replace(/\.[^.]+$/, ''))
 		const uploaded = await options.blueprintProjectService.uploadAsset(
 			file,
 			kind,
-			projectId > 0 ? { projectId } : undefined,
-		)
+			projectId > 0 ? { projectId } : undefined
+		) as UploadAssetResult
 		if (!uploaded.ok) {
-			throw new Error(String((uploaded as any).error || 'upload failed'))
+			throw new Error(String(uploaded.error || 'upload failed'))
 		}
-		const asset = (uploaded as any).asset ?? {}
+		const asset = uploaded.asset ?? {}
 		const next = {
 			url: options.resolveBackendUrl(String(asset.url || '')),
 			absolutePath: String(asset.absolutePath || ''),
-			projectRelativePath: String(asset.projectRelativePath || asset.relativePath || '').trim() || undefined,
+			projectRelativePath:
+				String(asset.projectRelativePath || asset.relativePath || '').trim() || undefined
 		}
 		if (!next.url) throw new Error('empty uploaded asset url')
 		localUrlUploadedAssetCache.set(cacheKey, next)
@@ -77,10 +98,14 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		sourcePath?: string
 	}) => {
 		const currentProjectId = Number(options.getCurrentProjectId() ?? 0)
-		const projectId = Number.isFinite(currentProjectId) && currentProjectId > 0 ? currentProjectId : 0
+		const projectId =
+			Number.isFinite(currentProjectId) && currentProjectId > 0 ? currentProjectId : 0
 		let sourceUrl = String(payload.sourceUrl ?? '').trim()
 		let sourcePath = String(payload.sourcePath ?? '').trim()
-		const safeName = sanitizeResourceName(payload.name, `${payload.kind || 'resource'}_${Date.now()}`)
+		const safeName = sanitizeResourceName(
+			payload.name,
+			`${payload.kind || 'resource'}_${Date.now()}`
+		)
 		if (sourceUrl) {
 			sourceUrl = options.resolveBackendUrl(sourceUrl)
 		}
@@ -94,11 +119,13 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		if (!sourceUrl && !sourcePath) return null
 
 		if (sourceUrl && (sourceUrl.startsWith('blob:') || sourceUrl.startsWith('data:'))) {
-			const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, safeName, { projectId })
+			const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, safeName, {
+				projectId
+			})
 			return {
 				url: uploaded.url,
 				absolutePath: uploaded.absolutePath,
-				projectRelativePath: uploaded.projectRelativePath,
+				projectRelativePath: uploaded.projectRelativePath
 			}
 		}
 
@@ -109,24 +136,31 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 				projectId,
 				sourcePath: sourcePath || undefined,
 				sourceUrl: sourceUrl || undefined,
-				bucket: 'assets',
+				bucket: 'assets'
 			})
 			if (imported) {
 				return {
-					url: options.resolveBackendUrl(String((imported as any).url || '')),
-					absolutePath: String((imported as any).sourcePath || (imported as any).absolutePath || '').trim(),
-					projectRelativePath: String((imported as any).projectRelativePath || (imported as any).relativePath || '').trim() || undefined,
+					url: options.resolveBackendUrl(String(imported.url || '')),
+					absolutePath: String(
+						imported.sourcePath || imported.absolutePath || ''
+					).trim(),
+					projectRelativePath:
+						String(
+							imported.projectRelativePath || imported.relativePath || ''
+						).trim() || undefined
 				}
 			}
 		}
 
 		if (sourceUrl) {
 			try {
-				const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, safeName, { projectId })
+				const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, safeName, {
+					projectId
+				})
 				return {
 					url: uploaded.url,
 					absolutePath: uploaded.absolutePath || sourcePath,
-					projectRelativePath: uploaded.projectRelativePath,
+					projectRelativePath: uploaded.projectRelativePath
 				}
 			} catch {
 				// Keep original sourceUrl below if fetch/import fails.
@@ -136,11 +170,13 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		// 图片/视频节点不允许远程地址直渲，导入失败时直接返回空。
 		if (payload.kind === 'image' || payload.kind === 'video') return null
 
-		return sourceUrl ? { url: sourceUrl, absolutePath: sourcePath, projectRelativePath: undefined } : null
+		return sourceUrl
+			? { url: sourceUrl, absolutePath: sourcePath, projectRelativePath: undefined }
+			: null
 	}
 
 	return {
 		uploadLocalResourceAndGetUrl,
-		persistExternalAssetToProject,
+		persistExternalAssetToProject
 	}
 }

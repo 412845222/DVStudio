@@ -7,14 +7,18 @@ import router from './router'
 import { editorPersistence, setEditorSaveHandler } from './adapters/editorPersistence'
 import { editorRecentCache } from './adapters/editorRecentCache'
 import { dispatchDvsTimelineNav } from './adapters/windowEventBridge'
-import { DVS_EVENTS, type DvsEditorNodeDeleteDetail, type DvsEditorNodePatchDetail } from './core/events/dvsEvents'
+import {
+	DVS_EVENTS,
+	type DvsEditorNodeDeleteDetail,
+	type DvsEditorNodePatchDetail
+} from './core/events/dvsEvents'
 import { VideoSceneStore } from './store/videoscene'
 import { TimelineStore } from './store/timeline'
 
 // 运行环境标记：Web 模式默认注入；Electron 模式由 preload 注入（且可能是只读属性）。
-const w = window as any
+const w = window as unknown as Record<string, unknown>
 if (!w.__DWEB_RUNTIME__) {
-	w.__DWEB_RUNTIME__ = { platform: 'web', isElectron: false }
+	w.__DWEB_RUNTIME__ = { platform: 'web', isElectron: false } as unknown
 }
 
 // 全局拦截浏览器默认交互：避免右键菜单/保存网页干扰编辑器体验
@@ -26,8 +30,6 @@ window.addEventListener('contextmenu', (e) => {
 setEditorSaveHandler((payload) => {
 	editorRecentCache.save(payload)
 })
-
-
 
 window.addEventListener(
 	'keydown',
@@ -50,7 +52,12 @@ window.addEventListener(
 		}
 
 		// Ctrl+Z/Ctrl+Y: 撤销/重做（输入框内交给浏览器原生文本撤销）
-		if (!isEditable && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+		if (
+			!isEditable &&
+			(e.ctrlKey || e.metaKey) &&
+			!e.shiftKey &&
+			(e.key === 'z' || e.key === 'Z')
+		) {
 			e.preventDefault()
 			e.stopPropagation()
 			editorPersistence.undo()
@@ -65,7 +72,9 @@ window.addEventListener(
 
 		// Backspace/Delete: 删除选中节点（仅在非输入框且确实有舞台选中时触发）
 		if (!isEditable && (e.key === 'Backspace' || e.key === 'Delete')) {
-			const selected = Array.isArray(VideoSceneStore.state.selectedNodeIds) ? VideoSceneStore.state.selectedNodeIds : []
+			const selected = Array.isArray(VideoSceneStore.state.selectedNodeIds)
+				? VideoSceneStore.state.selectedNodeIds
+				: []
 			if (selected.length) {
 				e.preventDefault()
 				e.stopPropagation()
@@ -97,18 +106,21 @@ window.addEventListener(DVS_EVENTS.EditorNodePatched, (e) => {
 		nodeId: detail.nodeId,
 		layerId: detail.layerId,
 		patch: {
-			name: detail.patch?.name as any,
-			userType: detail.patch?.userType as any,
-			transform: (detail.patch?.transform as any) ?? undefined,
-			props: (detail.patch?.props as any) ?? undefined,
-		},
+			name: detail.patch?.name as unknown,
+			userType: detail.patch?.userType as unknown,
+			transform: detail.patch?.transform ?? undefined,
+			props: detail.patch?.props ?? undefined
+		}
 	})
 })
 
 window.addEventListener(DVS_EVENTS.EditorNodeDeleted, (e) => {
 	const detail = (e as CustomEvent<DvsEditorNodeDeleteDetail>).detail
 	if (!detail || typeof detail.nodeId !== 'string' || !detail.nodeId.trim()) return
-	void VideoSceneStore.dispatch('deleteNodeById', { nodeId: detail.nodeId, layerId: detail.layerId })
+	void VideoSceneStore.dispatch('deleteNodeById', {
+		nodeId: detail.nodeId,
+		layerId: detail.layerId
+	})
 })
 
 // NOTE:
@@ -125,7 +137,10 @@ let lastMouseNavDir: -1 | 1 | 0 = 0
 const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	const me = e as MouseEvent
 	const btn = me.button
-	const mask = typeof (me as { buttons?: unknown }).buttons === 'number' ? (me as { buttons: number }).buttons : 0
+	const mask =
+		typeof (me as { buttons?: unknown }).buttons === 'number'
+			? (me as { buttons: number }).buttons
+			: 0
 	const isBack = btn === 3 || (mask & 8) === 8
 	const isForward = btn === 4 || (mask & 16) === 16
 	if (!isBack && !isForward) return
@@ -133,7 +148,10 @@ const onMouseNav = (e: MouseEvent | PointerEvent) => {
 	// One physical click can fire multiple events (e.g. pointerdown + auxclick, or down/up pairs)
 	// depending on browser/driver. De-dupe to avoid scrolling twice.
 	const dir: -1 | 1 = isBack ? -1 : 1
-	const now = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+	const now =
+		typeof performance !== 'undefined' && typeof performance.now === 'function'
+			? performance.now()
+			: Date.now()
 	if (dir === lastMouseNavDir && now - lastMouseNavAt < 250) return
 	lastMouseNavAt = now
 	lastMouseNavDir = dir
@@ -146,7 +164,7 @@ const onMouseNav = (e: MouseEvent | PointerEvent) => {
 }
 
 window.addEventListener('pointerdown', onMouseNav, { capture: true })
-window.addEventListener('auxclick', onMouseNav as any, { capture: true })
+window.addEventListener('auxclick', onMouseNav as EventListener, { capture: true })
 
 // 兜底：某些浏览器/鼠标驱动会直接触发“历史回退”而吞掉页面可监听的鼠标事件。
 // 这里用 popstate 拦截回退，并转成时间轴后退。

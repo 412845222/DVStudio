@@ -28,7 +28,7 @@ export class EasingCurveCanvas {
 			right,
 			bottom,
 			width: Math.max(1, right - left),
-			height: Math.max(1, bottom - top),
+			height: Math.max(1, bottom - top)
 		}
 	}
 
@@ -36,7 +36,7 @@ export class EasingCurveCanvas {
 		const r = this.getPlotRect()
 		return {
 			x: r.left + clamp01(x01) * r.width,
-			y: r.top + (1 - clamp01(y01)) * r.height,
+			y: r.top + (1 - clamp01(y01)) * r.height
 		}
 	}
 
@@ -161,7 +161,7 @@ export class EasingCurveCanvas {
 		const plot = this.getPlotRect()
 		return {
 			x: clamp01((x - plot.left) / Math.max(1, plot.width)),
-			y: clamp01(1 - (y - plot.top) / Math.max(1, plot.height)),
+			y: clamp01(1 - (y - plot.top) / Math.max(1, plot.height))
 		}
 	}
 }

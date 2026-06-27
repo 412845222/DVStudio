@@ -32,7 +32,7 @@ function rowToMeshyTask(row) {
 		remoteCreatedAt: row.remote_created_at,
 		remoteFinishedAt: row.remote_finished_at,
 		createdAt: isoToMs(row.created_at),
-		updatedAt: isoToMs(row.updated_at),
+		updatedAt: isoToMs(row.updated_at)
 	}
 }
 
@@ -41,7 +41,7 @@ export function createMeshyTasksRepo() {
 
 	const listStmt = db.prepare('SELECT * FROM meshy_tasks ORDER BY updated_at DESC, id DESC')
 	const listByProjectStmt = db.prepare(
-		'SELECT * FROM meshy_tasks WHERE project_id = ? ORDER BY updated_at DESC, id DESC',
+		'SELECT * FROM meshy_tasks WHERE project_id = ? ORDER BY updated_at DESC, id DESC'
 	)
 	const getByTaskIdStmt = db.prepare('SELECT * FROM meshy_tasks WHERE task_id = ? LIMIT 1')
 	const insertStmt = db.prepare(
@@ -57,7 +57,7 @@ export function createMeshyTasksRepo() {
       @thumbnailUrl, @preferredModelUrl, @localAssetUrl, @localAssetPath, @sourceModelUrl,
       @errorMessage, @statusText, @requestPayload, @responsePayload, @projectId, @lastNodeId,
       @remoteCreatedAt, @remoteFinishedAt
-    )`,
+    )`
 	)
 	const updateStmt = db.prepare(
 		`UPDATE meshy_tasks SET
@@ -72,7 +72,7 @@ export function createMeshyTasksRepo() {
       project_id = @projectId, last_node_id = @lastNodeId,
       remote_created_at = @remoteCreatedAt, remote_finished_at = @remoteFinishedAt,
       updated_at = datetime('now')
-    WHERE task_id = @taskId`,
+    WHERE task_id = @taskId`
 	)
 	const deleteByTaskIdStmt = db.prepare('DELETE FROM meshy_tasks WHERE task_id = ?')
 
@@ -101,12 +101,13 @@ export function createMeshyTasksRepo() {
 			statusText: String(raw.statusText || raw.status_text || '').trim(),
 			requestPayload: stringifyOptionalJson(raw.requestPayload || raw.request_payload),
 			responsePayload: stringifyOptionalJson(raw.responsePayload || raw.response_payload),
-			projectId: raw.projectId === undefined || raw.projectId === null || raw.projectId === ''
-				? null
-				: Number(raw.projectId) || null,
+			projectId:
+				raw.projectId === undefined || raw.projectId === null || raw.projectId === ''
+					? null
+					: Number(raw.projectId) || null,
 			lastNodeId: String(raw.lastNodeId || raw.last_node_id || '').trim(),
 			remoteCreatedAt: String(raw.remoteCreatedAt || raw.remote_created_at || '').trim(),
-			remoteFinishedAt: String(raw.remoteFinishedAt || raw.remote_finished_at || '').trim(),
+			remoteFinishedAt: String(raw.remoteFinishedAt || raw.remote_finished_at || '').trim()
 		}
 	}
 

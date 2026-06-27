@@ -2,16 +2,54 @@
 	<div v-if="visible" class="wf-toolbar">
 		<button class="wf-toolbar-btn" type="button" @click="emit('copy')">
 			<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-toolbar-icon">
-				<rect x="5" y="5" width="9" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" />
-				<rect x="2" y="2" width="9" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" />
+				<rect
+					x="5"
+					y="5"
+					width="9"
+					height="9"
+					rx="1"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+				/>
+				<rect
+					x="2"
+					y="2"
+					width="9"
+					height="9"
+					rx="1"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+				/>
 			</svg>
 			复制
 		</button>
 		<button class="wf-toolbar-btn" type="button" @click="emit('paste')">
 			<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-toolbar-icon">
-				<path d="M4 2h8a1 1 0 0 1 1 1v11l-2-2H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-				<path d="M10 5h3v6h-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-				<path d="M5 9l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+				<path
+					d="M4 2h8a1 1 0 0 1 1 1v11l-2-2H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+					stroke-linecap="round"
+				/>
+				<path
+					d="M10 5h3v6h-3"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
+				<path
+					d="M5 9l3 3 3-3"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 			粘贴
 		</button>
@@ -46,7 +84,7 @@ const emit = defineEmits<{
 	gap: 6px;
 	padding: 5px 8px;
 	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
-	background: color-mix(in srgb, rgba(21, 24, 28, 0.90) 96%, transparent);
+	background: color-mix(in srgb, rgba(21, 24, 28, 0.9) 96%, transparent);
 	backdrop-filter: blur(14px) saturate(140%);
 	-webkit-backdrop-filter: blur(14px) saturate(140%);
 	border-radius: 2px;
@@ -61,7 +99,7 @@ const emit = defineEmits<{
 /* L-bracket corners */
 .wf-toolbar::before,
 .wf-toolbar::after {
-	content: "";
+	content: '';
 	position: absolute;
 	pointer-events: none;
 	width: 10px;

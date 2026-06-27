@@ -8,7 +8,7 @@ export type {
 	ImportProjectResultV1,
 	ProjectJsonV1,
 	ProjectPackageV1,
-	ProjectSchemaVersion,
+	ProjectSchemaVersion
 } from './types'
 export {
 	createEmptyManifestV1,
@@ -17,10 +17,14 @@ export {
 	parseProjectJsonV1,
 	parseProjectPackageV1,
 	stringifyProjectJson,
-	stringifyProjectPackageV1,
+	stringifyProjectPackageV1
 } from './serialize'
 
 export { buildManifestFromSnapshotV1, collectUsedImageAssetIdsFromSnapshot } from './assets'
 export { normalizeSnapshotV1 } from './normalize'
 export { rewriteImageAssetIdsOnImportV1 } from './rewriteAssetIds'
-export { exportSnapshotToProjectPackageV1, exportSnapshotToProjectPackageV1String, importProjectPackageV1String } from './io'
+export {
+	exportSnapshotToProjectPackageV1,
+	exportSnapshotToProjectPackageV1String,
+	importProjectPackageV1String
+} from './io'

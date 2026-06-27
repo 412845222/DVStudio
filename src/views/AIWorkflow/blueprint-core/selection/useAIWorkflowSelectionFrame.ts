@@ -6,22 +6,26 @@ import { makeSelectionTagKey } from '../../../../aiworkflow/domain/selection/sel
 /**
  * 计算多选节点的包围盒（世界坐标）
  */
+type BoundsNode = { worldX?: number; worldY?: number; width?: number; height?: number }
+
 const computeWorldBounds = (
-	nodesById: Record<string, any>,
-	selectedNodeIds: string[],
+	nodesById: Record<string, BoundsNode>,
+	selectedNodeIds: string[]
 ): { x0: number; y0: number; x1: number; y1: number } | null => {
 	if (selectedNodeIds.length < 2) return null
 
-	let x0 = Infinity, y0 = Infinity
-	let x1 = -Infinity, y1 = -Infinity
+	let x0 = Infinity,
+		y0 = Infinity
+	let x1 = -Infinity,
+		y1 = -Infinity
 
 	for (const id of selectedNodeIds) {
 		const node = nodesById[id]
 		if (!node) continue
-		const nx = node.worldX ?? 0
-		const ny = node.worldY ?? 0
-		const nw = node.width ?? 200
-		const nh = node.height ?? 160
+		const nx = Number(node.worldX ?? 0)
+		const ny = Number(node.worldY ?? 0)
+		const nw = Number(node.width ?? 200)
+		const nh = Number(node.height ?? 160)
 		// 节点中心在 (nx, ny)，计算左上角和右下角
 		const left = nx - nw / 2
 		const top = ny - nh / 2
@@ -62,11 +66,13 @@ export const useAIWorkflowSelectionFrame = (payload: {
 		if (!visible.value) return null
 		const nodesById = store.state.nodesById
 		// 强制触发依赖追踪
-		void JSON.stringify(Object.keys(nodesById).map(id => ({
-			id,
-			x: nodesById[id]?.worldX,
-			y: nodesById[id]?.worldY,
-		})))
+		void JSON.stringify(
+			Object.keys(nodesById).map((id) => ({
+				id,
+				x: nodesById[id]?.worldX,
+				y: nodesById[id]?.worldY
+			}))
+		)
 		return computeWorldBounds(nodesById, payload.selectedNodeIds.value)
 	})
 
@@ -89,6 +95,6 @@ export const useAIWorkflowSelectionFrame = (payload: {
 		nodeCount,
 		nodeIds,
 		currentTagKey,
-		savedFrames,
+		savedFrames
 	}
 }

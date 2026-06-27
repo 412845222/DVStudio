@@ -45,6 +45,7 @@ import {
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
 import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
+import { platformPreflight, platformInit, platformShutdown, registerPlatformIpc, setMainWindowForPlatform } from './platform/index.mjs'
 
 // dweb:// must be registered as a privileged scheme before app ready,
 // otherwise renderer-side fetch/XHR treats it as unsupported.
@@ -64,6 +65,24 @@ try {
 } catch (err) {
 	console.error('[dweb-protocol] privileged scheme register failed:', err)
 }
+
+function earlySetupSteamEnv() {
+	try {
+		let appId = 480
+		const cwdAppIdPath = path.join(process.cwd(), 'steam_appid.txt')
+		if (fs.existsSync(cwdAppIdPath)) {
+			const content = fs.readFileSync(cwdAppIdPath, 'utf8').trim()
+			const parsed = parseInt(content, 10)
+			if (!isNaN(parsed) && parsed > 0) appId = parsed
+		}
+		process.env.SteamAppId = String(appId)
+		process.env.SteamGameId = String(appId)
+		console.log('[platform:steam] Early SteamAppId set:', appId)
+	} catch (err) {
+		console.warn('[platform:steam] Early Steam env setup failed:', err.message)
+	}
+}
+earlySetupSteamEnv()
 
 const isDev = !!process.env.ELECTRON_DEV || !app.isPackaged
 
@@ -1212,6 +1231,8 @@ async function createWindow() {
 		},
 	})
 
+	setMainWindowForPlatform(mainWindow)
+
 	// Ensure native menu bar stays hidden (Windows/Linux).
 	try {
 		Menu.setApplicationMenu(null)
@@ -2179,6 +2200,15 @@ async function main() {
 	}
 
 	registerIpc()
+
+	const platStatus = await platformInit()
+	registerPlatformIpc()
+	if (platStatus?.available) {
+		appendRuntimeLog(`[platform] ${platStatus.activeDisplayName} connected. User: ${platStatus.user?.displayName || 'unknown'}`)
+	} else {
+		appendRuntimeLog(`[platform] Running in ${platStatus?.activeDisplayName || 'Mock'} mode`)
+	}
+
 	appendRuntimeLog(`[app] isPackaged=${app.isPackaged} platform=${process.platform} execPath=${process.execPath}`)
 
 	await createWindow()
@@ -2210,7 +2240,13 @@ app.on('before-quit', async () => {
 		clearInterval(backendHealthTimer)
 		backendHealthTimer = null
 	}
+	platformShutdown()
 	await stopBackend()
 })
 
-app.whenReady().then(main)
+// Platform preflight check (must run before app.whenReady, e.g. Steam RestartAppIfNecessary)
+if (platformPreflight()) {
+	app.quit()
+} else {
+	app.whenReady().then(main)
+}

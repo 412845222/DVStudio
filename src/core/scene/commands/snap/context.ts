@@ -10,7 +10,7 @@ export const getStageBounds = (stageWidth: number, stageHeight: number): StageBo
 		left: -w / 2,
 		right: w / 2,
 		top: -h / 2,
-		bottom: h / 2,
+		bottom: h / 2
 	}
 }
 
@@ -25,7 +25,7 @@ export const buildEmptySnapContext = (args: BeginSnapContextArgs): SnapContext =
 		nodeLinesX: [],
 		nodeLinesY: [],
 		stage: getStageBounds(args.stageWidth, args.stageHeight),
-		threshold: computeSnapThreshold(args.zoom, args.basePx ?? 6),
+		threshold: computeSnapThreshold(args.zoom, args.basePx ?? 6)
 	}
 }
 
@@ -46,11 +46,14 @@ export const buildSnapContextForLayer = (args: {
 		nodeLinesX: xs,
 		nodeLinesY: ys,
 		stage: getStageBounds(args.stageWidth, args.stageHeight),
-		threshold: computeSnapThreshold(args.zoom, args.basePx ?? 6),
+		threshold: computeSnapThreshold(args.zoom, args.basePx ?? 6)
 	}
 }
 
-const collectSnapTargets = (layerNodeTree: VideoSceneTreeNode[], excludeNodeId: string): SnapTarget[] => {
+const collectSnapTargets = (
+	layerNodeTree: VideoSceneTreeNode[],
+	excludeNodeId: string
+): SnapTarget[] => {
 	const exclude = String(excludeNodeId || '').trim()
 	const out: SnapTarget[] = []
 
@@ -67,7 +70,7 @@ const collectSnapTargets = (layerNodeTree: VideoSceneTreeNode[], excludeNodeId: 
 					cx: world.x,
 					cy: world.y,
 					w: Math.max(1, Number(n.transform.width ?? 1)),
-					h: Math.max(1, Number(n.transform.height ?? 1)),
+					h: Math.max(1, Number(n.transform.height ?? 1))
 				})
 			}
 
@@ -88,4 +91,3 @@ const buildSnapLines = (targets: SnapTarget[]) => {
 	}
 	return { xs, ys }
 }
-

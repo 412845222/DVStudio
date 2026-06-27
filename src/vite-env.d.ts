@@ -1,9 +1,113 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly VITE_PLATFORM?: string
+  readonly VITE_BACKEND_BASE_URL?: string
+  readonly VITE_AIWF_AUTO_HELLO?: string
+  readonly VITE_AIWF_AUTO_HELLO_TEXT?: string
+  readonly VITE_LOCAL_EXEC_BASE_PATH?: string
+  readonly VITE_LOCAL_EXEC_STREAM_MODE?: string
+  readonly DEV?: boolean
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
 declare const __DWEB_REPO_URL__: string
+
+interface Window {
+  __DWEB_REPO_URL__?: string
+  __DWEB_RUNTIME__?: { platform?: 'electron' | 'web' }
+  __DWEB_BACKEND_BASE_URL__?: string
+  __DWEB_CLIENT_SETTINGS?: import('./electronBridge/types').ClientSettings
+  __DWEB_AIWF_AUTO_HELLO?: string
+  __DWEB_AIWF_AUTO_HELLO_TEXT?: string
+  __DWEB_LOCAL_EXEC_BASE_PATH?: string
+  __DWEB_LOCAL_EXEC_STREAM_MODE?: string
+  process?: { versions?: { electron?: string } }
+  dweb?: {
+    common?: {
+      getBackendBaseUrl?: () => string
+      pingBackend?: () => Promise<import('./electronBridge/types').BackendPingResult>
+      startBackend?: () => Promise<import('./electronBridge/types').BackendStartResult>
+      restartBackend?: () => Promise<import('./electronBridge/types').BackendRestartResult>
+      getBackendStatus?: () => Promise<import('./electronBridge/types').BackendStatus | null>
+      getBackendRuntimeState?: () => Promise<import('./electronBridge/types').BackendRuntimeState | null>
+      onBackendRuntimeStateChanged?: (handler: (state: import('./electronBridge/types').BackendRuntimeState) => void) => number | string
+      offBackendRuntimeStateChanged?: (listenerId: number | string) => void
+      getBackendLogs?: (options?: { since?: number }) => Promise<import('./electronBridge/types').BackendLogsResult | null>
+      clearBackendLogs?: () => Promise<{ ok: boolean } | null>
+      collectDiagnostics?: () => Promise<import('./electronBridge/types').DiagnosticsResult | null>
+      revealUserDataDir?: () => Promise<{ ok: boolean } | null>
+      openFolderForPath?: (payload: { path: string }) => Promise<import('./electronBridge/types').OpenFolderResult | null>
+      openExternalUrl?: (payload: { url: string }) => Promise<{ ok: boolean; error?: string }>
+      runBootstrapInstaller?: () => Promise<import('./electronBridge/types').BootstrapInstallResult | null>
+      getSetupState?: () => Promise<import('./electronBridge/types').SetupState | null>
+      runSetupWorkflow?: (payload?: { reason?: string; retryKey?: string }) => Promise<import('./electronBridge/types').SetupRunResult>
+      cleanupOldProject?: () => Promise<import('./electronBridge/types').CleanupOldProjectResult | null>
+      getClientSettings?: () => Promise<import('./electronBridge/types').ClientSettingsResult>
+      saveClientSettings?: (payload: import('./electronBridge/types').ClientSettings) => Promise<import('./electronBridge/types').ClientSettingsResult>
+    }
+    window?: {
+      minimize?: () => Promise<{ ok: boolean; error?: string }>
+      toggleMaximize?: () => Promise<{ ok: boolean; maximized?: boolean; error?: string }>
+      close?: () => Promise<{ ok: boolean; error?: string }>
+      reload?: () => Promise<{ ok: boolean; error?: string }>
+      openDevTools?: () => Promise<{ ok: boolean; opened?: boolean; error?: string }>
+    }
+    aiworkflow?: {
+      db?: {
+        _initState?: () => Promise<{ ok?: boolean; error?: string; dbFilePath?: string }>
+        _ensureInitialized?: (payload?: Record<string, unknown>) => Promise<{ ok?: boolean; error?: string }>
+        projects?: {
+          list?: () => Promise<unknown>
+          openFolder?: (payload: { rootPath: string; name: string; create: boolean }) => Promise<{
+            ok?: boolean
+            project?: { id: number }
+            error?: string
+          }>
+          delete?: (payload: { id: number }) => Promise<unknown>
+        }
+      }
+      selectProjectFolder?: () => Promise<import('./electronBridge/types').DirectoryPickResult>
+      registerProjectRoot?: (payload: { projectId: number; rootPath: string }) => Promise<{ ok: boolean; cleared?: boolean; created?: boolean; root?: string; error?: string } | null>
+      clearProjectRoot?: (payload: { projectId: number }) => Promise<{ ok: boolean; error?: string } | null>
+      getProjectRootSnapshot?: () => Promise<Record<string, string> | null>
+      getProjectRootById?: (payload: { projectId: number }) => Promise<string | null>
+      downloadUrlToProjectRoot?: (payload: { projectId: number; url: string; desiredFilename?: string }) => Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; error?: string } | null>
+      copyFileToProjectRoot?: (payload: { projectId: number; sourcePath: string; desiredFilename?: string }) => Promise<{ ok: boolean; absolutePath?: string; relativePath?: string; size?: number; reused?: boolean; error?: string } | null>
+      fetchAsArrayBuffer?: (payload: { url: string }) => Promise<{ ok: boolean; buffer?: Uint8Array; mime?: string; error?: string } | null>
+      uploadProjectAsset?: (payload: { projectId: number; kind?: string; name?: string; arrayBuffer: ArrayBuffer; contentType?: string; bucket?: string }) => Promise<{ ok: boolean; asset?: import('./electronBridge/types').UploadedProjectAsset; error?: string } | null>
+      importProjectAsset?: (payload: { projectId: number; kind?: string; name?: string; sourcePath?: string; sourceUrl?: string; bucket?: string }) => Promise<{ ok: boolean; asset?: import('./electronBridge/types').UploadedProjectAsset; error?: string } | null>
+      projectAssets?: {
+        repairAll?: (payload: { projectId: number; resourcesById: Record<string, unknown> }) => Promise<{ ok: boolean; patches?: Record<string, unknown>; failed?: string[]; changed?: number; error?: string } | null>
+      }
+      diagnoseAsset?: (payload: { projectId?: number; relPath?: string; url?: string }) => Promise<import('./electronBridge').DwebAssetDiagnoseResult | null>
+      validateProjectRoot?: (payload: { projectId: number; expectedRootPath?: string }) => Promise<{ ok: boolean; reRegistered?: boolean; registerResult?: unknown; validation?: { valid: boolean; projectId: number; root?: string; mediaDirExists?: boolean; mediaDir?: string; error?: string }; error?: string } | null>
+      getAssetAccessLogs?: (payload: { maxEntries: number }) => Promise<{ ok: boolean; logs?: unknown[]; error?: string } | null>
+      getCacheStats?: (payload: { projectId: number }) => Promise<import('./electronBridge').ProjectCacheStatsResult | null>
+      clearCache?: (payload: { projectId: number }) => Promise<import('./electronBridge').ProjectCacheClearResult | null>
+      openResourceManager?: (payload: { projectId: number; title: string }) => Promise<{ ok: boolean; error?: string }>
+      closeResourceManager?: () => Promise<{ ok: boolean; error?: string }>
+      focusResourceManager?: () => Promise<{ ok: boolean; error?: string }>
+      sendResourceManagerData?: (payload: { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] }) => Promise<{ ok: boolean; error?: string }>
+      broadcastResourceEvent?: (payload: { event: string; data?: unknown }) => Promise<{ ok: boolean; error?: string }>
+      notifyResourceEvent?: (payload: { event: string; data?: unknown }) => Promise<{ ok: boolean; error?: string }>
+      getResourceManagerData?: () => { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] } | null
+      requestResourceManagerData?: () => Promise<{ ok: boolean; data?: { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] }; error?: string }>
+      onResourceManagerEvent?: (handler: (payload: { event: string; data?: unknown }) => void) => number
+      offResourceManagerEvent?: (listenerId: number) => Promise<{ ok: boolean; error?: string }>
+      onResourceManagerNotify?: (handler: (payload: { event: string; data?: unknown }) => void) => number
+      offResourceManagerNotify?: (listenerId: number) => Promise<{ ok: boolean; error?: string }>
+      onResourceManagerData?: (handler: (payload: { resources?: unknown[]; nodesById?: Record<string, unknown>; nodeOrder?: string[] }) => void) => number
+      offResourceManagerData?: (listenerId: number) => Promise<{ ok: boolean; error?: string }>
+    }
+  }
+}
 
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
-  const component: DefineComponent<{}, {}, any>
+  const component: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
   export default component
 }

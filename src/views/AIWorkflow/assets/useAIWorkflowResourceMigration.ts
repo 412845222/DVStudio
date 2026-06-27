@@ -2,361 +2,431 @@ import type { WorkflowSceneLayoutManualModelBinding } from '../../../aiworkflow/
 import type { BlueprintAssetKind } from '../../../network/BlueprintProjectService'
 
 type ImportAssetIntoProjectScopePayload = {
-  kind: BlueprintAssetKind
-  name: string
-  projectId: number
-  sourcePath?: string
-  sourceUrl?: string
-  bucket?: 'assets' | 'thumbnails'
+	kind: BlueprintAssetKind
+	name: string
+	projectId: number
+	sourcePath?: string
+	sourceUrl?: string
+	bucket?: 'assets' | 'thumbnails'
 }
 
 type DeleteAssetPayload = {
-  projectId: number | null
-  resourceId?: string
-  url?: string
-  sourcePath?: string
-  relativePath?: string
+	projectId: number | null
+	resourceId?: string
+	url?: string
+	sourcePath?: string
+	relativePath?: string
 }
 
-type UseAIWorkflowResourceMigrationOptions = {
-  store: {
-    state: {
-      resourceOrder: string[]
-      resourcesById: Record<string, any>
-      nodeOrder: string[]
-      nodesById: Record<string, any>
-    }
-    commit: (type: string, payload: any) => void
-  }
-  resolveBackendUrl: (value: string) => string
-  normalizeSourcePathKey: (raw: unknown) => string
-  isDjangoManagedResource: (resource: any) => boolean
-  importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<any>
-  deleteAsset: (payload: DeleteAssetPayload) => Promise<{ ok: boolean; error?: unknown }>
-  pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
+type ImportedAssetResult = {
+	url?: string
+	sourcePath?: string
+	absolutePath?: string
+	[key: string]: unknown
 }
 
-export const useAIWorkflowResourceMigration = (
-  options: UseAIWorkflowResourceMigrationOptions
-) => {
-  const mediaRelativePathFromUrl = (rawUrl: string) => {
-    const v = String(rawUrl || '').trim()
-    if (!v) return ''
-    try {
-      const u = new URL(v, window.location.origin)
-      const m = u.pathname.match(/\/media\/(.+)$/)
-      if (!m) return ''
-      return decodeURIComponent(String(m[1] || '').trim())
-    } catch {
-      const m = v.match(/\/media\/(.+)$/)
-      return m ? decodeURIComponent(String(m[1] || '').trim()) : ''
-    }
-  }
+type WorkflowResource = {
+	kind?: string
+	name?: string
+	url?: string
+	sourcePath?: string
+	posterUrl?: string
+	posterSourcePath?: string
+	localFileKey?: string
+	[key: string]: unknown
+}
 
-  const isProjectScopedMediaRef = (
-    projectId: number,
-    input: { url?: unknown; sourcePath?: unknown; projectRootPath?: unknown }
-  ) => {
-    const pid = Number(projectId)
-    if (!Number.isFinite(pid) || pid <= 0) return false
-    const marker = `/blueprint_projects/${Math.floor(pid)}/`
+type WorkflowNode = {
+	type?: string
+	model3dSettings?: Record<string, unknown>
+	sceneLayoutSettings?: {
+		manualModelBindings?: WorkflowSceneLayoutManualModelBinding[]
+		[key: string]: unknown
+	}
+	[key: string]: unknown
+}
+export type UseAIWorkflowResourceMigrationOptions = {
+	store: {
+		state: {
+			resourceOrder: string[]
+			resourcesById: Record<string, WorkflowResource>
+			nodeOrder: string[]
+			nodesById: Record<string, WorkflowNode>
+		}
+		commit: (type: string, payload: Record<string, unknown>) => void
+	}
+	resolveBackendUrl: (value: string) => string
+	normalizeSourcePathKey: (raw: unknown) => string
+	isDjangoManagedResource: (resource: unknown) => boolean
+	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportedAssetResult | null>
+	deleteAsset: (payload: DeleteAssetPayload) => Promise<{ ok: boolean; error?: unknown }>
+	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
+}
 
-    const sourcePathKey = options.normalizeSourcePathKey(input?.sourcePath)
-    if (sourcePathKey && sourcePathKey.includes(marker)) return true
+export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMigrationOptions) => {
+	const mediaRelativePathFromUrl = (rawUrl: string) => {
+		const v = String(rawUrl || '').trim()
+		if (!v) return ''
+		try {
+			const u = new URL(v, window.location.origin)
+			const m = u.pathname.match(/\/media\/(.+)$/)
+			if (!m) return ''
+			return decodeURIComponent(String(m[1] || '').trim())
+		} catch {
+			const m = v.match(/\/media\/(.+)$/)
+			return m ? decodeURIComponent(String(m[1] || '').trim()) : ''
+		}
+	}
 
-    // 如果传入了项目根目录（Electron 客户端），则检查 sourcePath 是否位于该根目录之内
-    // 典型路径：<root>/Content/Media/xxx.ext
-    const rawRoot = typeof input?.projectRootPath === 'string' ? String(input.projectRootPath).trim() : ''
-    const normRoot = rawRoot ? rawRoot.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() : ''
-    if (normRoot && sourcePathKey && sourcePathKey.startsWith(normRoot + '/')) return true
+	const isProjectScopedMediaRef = (
+		projectId: number,
+		input: { url?: unknown; sourcePath?: unknown; projectRootPath?: unknown }
+	) => {
+		const pid = Number(projectId)
+		if (!Number.isFinite(pid) || pid <= 0) return false
+		const marker = `/blueprint_projects/${Math.floor(pid)}/`
 
-    const url = String(input?.url ?? '').trim()
-    if (!url) return false
+		const sourcePathKey = options.normalizeSourcePathKey(input?.sourcePath)
+		if (sourcePathKey && sourcePathKey.includes(marker)) return true
 
-    // Electron dweb://project-assets?projectId=<pid>&path=... 视为项目根目录内资源
-    const lowerUrl = url.toLowerCase()
-    if (lowerUrl.startsWith('dweb://project-assets')) {
-      try {
-        const u = new URL(url)
-        const p = Number(u.searchParams.get('projectId') || '0')
-        if (Number.isFinite(p) && p > 0 && p === Math.floor(pid)) return true
-      } catch {
-        // fall through
-      }
-    }
+		// 如果传入了项目根目录（Electron 客户端），则检查 sourcePath 是否位于该根目录之内
+		// 典型路径：<root>/Content/Media/xxx.ext
+		const rawRoot =
+			typeof input?.projectRootPath === 'string' ? String(input.projectRootPath).trim() : ''
+		const normRoot = rawRoot ? rawRoot.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() : ''
+		if (normRoot && sourcePathKey && sourcePathKey.startsWith(normRoot + '/')) return true
 
-    try {
-      const u = new URL(url, window.location.origin)
-      return `${u.pathname}${u.search}`.toLowerCase().includes(marker)
-    } catch {
-      return url.toLowerCase().includes(marker)
-    }
-  }
+		const url = String(input?.url ?? '').trim()
+		if (!url) return false
 
-  const isTemporaryThumbnailRef = (input: { url?: unknown; sourcePath?: unknown }) => {
-    const marker = '/aiworkflow_projects/thumbnails/'
-    const sourcePathKey = options.normalizeSourcePathKey(input?.sourcePath)
-    if (sourcePathKey && sourcePathKey.includes(marker)) return true
+		// Electron dweb://project-assets?projectId=<pid>&path=... 视为项目根目录内资源
+		const lowerUrl = url.toLowerCase()
+		if (lowerUrl.startsWith('dweb://project-assets')) {
+			try {
+				const u = new URL(url)
+				const p = Number(u.searchParams.get('projectId') || '0')
+				if (Number.isFinite(p) && p > 0 && p === Math.floor(pid)) return true
+			} catch {
+				// fall through
+			}
+		}
 
-    const url = String(input?.url ?? '').trim()
-    if (!url) return false
-    try {
-      const u = new URL(url, window.location.origin)
-      return `${u.pathname}${u.search}`.toLowerCase().includes(marker)
-    } catch {
-      return url.toLowerCase().includes(marker)
-    }
-  }
+		try {
+			const u = new URL(url, window.location.origin)
+			return `${u.pathname}${u.search}`.toLowerCase().includes(marker)
+		} catch {
+			return url.toLowerCase().includes(marker)
+		}
+	}
 
-  const makePosterMigrationFileName = (resourceName: string, resourceId: string) => {
-    const base = String(resourceName || '').trim().replace(/[\\/:*?"<>|]+/g, '_')
-    const noExt = base.replace(/\.[^.]+$/, '')
-    const stem = (noExt || `resource_${resourceId}`).slice(0, 80)
-    return `poster_${stem}.jpg`
-  }
+	const isTemporaryThumbnailRef = (input: { url?: unknown; sourcePath?: unknown }) => {
+		const marker = '/aiworkflow_projects/thumbnails/'
+		const sourcePathKey = options.normalizeSourcePathKey(input?.sourcePath)
+		if (sourcePathKey && sourcePathKey.includes(marker)) return true
 
-  const migrateCurrentResourcesToProjectScope = async (
-    projectId: number,
-    opts?: { silent?: boolean; projectRootPath?: string }
-  ): Promise<{ changed: number; failed: number }> => {
-    const pid = Number(projectId)
-    if (!Number.isFinite(pid) || pid <= 0) return { changed: 0, failed: 0 }
+		const url = String(input?.url ?? '').trim()
+		if (!url) return false
+		try {
+			const u = new URL(url, window.location.origin)
+			return `${u.pathname}${u.search}`.toLowerCase().includes(marker)
+		} catch {
+			return url.toLowerCase().includes(marker)
+		}
+	}
 
-    const projectRootPath = typeof opts?.projectRootPath === 'string' ? opts.projectRootPath : ''
+	const makePosterMigrationFileName = (resourceName: string, resourceId: string) => {
+		const base = String(resourceName || '')
+			.trim()
+			.replace(/[\\/:*?"<>|]+/g, '_')
+		const noExt = base.replace(/\.[^.]+$/, '')
+		const stem = (noExt || `resource_${resourceId}`).slice(0, 80)
+		return `poster_${stem}.jpg`
+	}
 
-    let changed = 0
-    let failed = 0
+	const migrateCurrentResourcesToProjectScope = async (
+		projectId: number,
+		opts?: { silent?: boolean; projectRootPath?: string }
+	): Promise<{ changed: number; failed: number }> => {
+		const pid = Number(projectId)
+		if (!Number.isFinite(pid) || pid <= 0) return { changed: 0, failed: 0 }
 
-    const migrateModelAssetRef = async (payload: {
-      sourcePath?: string
-      sourceUrl?: string
-      currentUrl?: string
-      name: string
-      projectId: number
-    }) => {
-      const sourcePath = String(payload.sourcePath || '').trim()
-      const sourceUrl = String(payload.sourceUrl || '').trim()
-      const currentUrl = String(payload.currentUrl || '').trim()
-      const ref = { url: currentUrl, sourcePath, projectRootPath }
-      const needsMigration =
-        !isProjectScopedMediaRef(payload.projectId, ref) &&
-        (Boolean(sourcePath)
-          || currentUrl.startsWith('blob:')
-          || currentUrl.startsWith('data:')
-          || options.isDjangoManagedResource(ref))
-      if (!needsMigration) return null
-      return options.importAssetIntoProjectScope({
-        kind: 'file',
-        name: payload.name,
-        projectId: payload.projectId,
-        sourcePath: sourcePath || undefined,
-        sourceUrl: sourceUrl || undefined,
-        bucket: 'assets',
-      })
-    }
+		const projectRootPath = typeof opts?.projectRootPath === 'string' ? opts.projectRootPath : ''
 
-    const ids = options.store.state.resourceOrder.slice()
-    for (const rid of ids) {
-      const r = options.store.state.resourcesById?.[rid] as any
-      if (!r) continue
-      const kind = (String(r.kind || '').toLowerCase() === 'video' ? 'video' : 'image') as 'image' | 'video'
-      const name = String(r.name || `${kind}_${rid}`).trim() || `${kind}_${rid}`
+		let changed = 0
+		let failed = 0
 
-      const rawUrl = String(r?.url || '').trim()
-      const rawSourcePath = String(r?.sourcePath || '').trim()
-      const mediaRef = { url: rawUrl, sourcePath: rawSourcePath, projectRootPath }
-      const mediaIsProjectScoped = isProjectScopedMediaRef(pid, mediaRef)
-      const urlLooksLocal = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')
-      const sourceUrlForImport = rawUrl && !rawUrl.startsWith('file:') ? rawUrl : ''
-      const mediaNeedsMigration =
-        !mediaIsProjectScoped
-        && (Boolean(rawSourcePath) || urlLooksLocal || options.isDjangoManagedResource(mediaRef))
-      if (mediaNeedsMigration) {
-        const imported = await options.importAssetIntoProjectScope({
-          kind,
-          name,
-          projectId: pid,
-          sourcePath: rawSourcePath || undefined,
-          sourceUrl: sourceUrlForImport || undefined,
-          bucket: 'assets',
-        })
+		const migrateModelAssetRef = async (payload: {
+			sourcePath?: string
+			sourceUrl?: string
+			currentUrl?: string
+			name: string
+			projectId: number
+		}) => {
+			const sourcePath = String(payload.sourcePath || '').trim()
+			const sourceUrl = String(payload.sourceUrl || '').trim()
+			const currentUrl = String(payload.currentUrl || '').trim()
+			const ref = { url: currentUrl, sourcePath, projectRootPath }
+			const needsMigration =
+				!isProjectScopedMediaRef(payload.projectId, ref) &&
+				(Boolean(sourcePath) ||
+					currentUrl.startsWith('blob:') ||
+					currentUrl.startsWith('data:') ||
+					options.isDjangoManagedResource(ref))
+			if (!needsMigration) return null
+			return options.importAssetIntoProjectScope({
+				kind: 'file',
+				name: payload.name,
+				projectId: payload.projectId,
+				sourcePath: sourcePath || undefined,
+				sourceUrl: sourceUrl || undefined,
+				bucket: 'assets'
+			})
+		}
 
-        if (!imported) {
-          failed += 1
-        } else {
-          const nextUrl = options.resolveBackendUrl(String((imported as any).url || ''))
-          const nextSourcePath = String((imported as any).sourcePath || (imported as any).absolutePath || '').trim()
-          if (nextUrl || nextSourcePath) {
-            options.store.commit('patchResource', {
-              resourceId: rid,
-              patch: {
-                url: nextUrl || rawUrl,
-                sourcePath: nextSourcePath || rawSourcePath || undefined,
-                localFileKey: undefined,
-              } as any,
-            })
+		const ids = options.store.state.resourceOrder.slice()
+		for (const rid of ids) {
+			const r = options.store.state.resourcesById?.[rid]
+			if (!r) continue
+			const kind = (String(r.kind || '').toLowerCase() === 'video' ? 'video' : 'image') as
+				| 'image'
+				| 'video'
+			const name = String(r.name || `${kind}_${rid}`).trim() || `${kind}_${rid}`
 
-            if (options.isDjangoManagedResource(mediaRef) && (rawUrl || rawSourcePath)) {
-              await options.deleteAsset({
-                projectId: pid,
-                url: rawUrl || undefined,
-                sourcePath: rawSourcePath || undefined,
-                relativePath: mediaRelativePathFromUrl(rawUrl) || undefined,
-              })
-            }
+			const rawUrl = String(r?.url || '').trim()
+			const rawSourcePath = String(r?.sourcePath || '').trim()
+			const mediaRef = { url: rawUrl, sourcePath: rawSourcePath, projectRootPath }
+			const mediaIsProjectScoped = isProjectScopedMediaRef(pid, mediaRef)
+			const urlLooksLocal = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')
+			const sourceUrlForImport = rawUrl && !rawUrl.startsWith('file:') ? rawUrl : ''
+			const mediaNeedsMigration =
+				!mediaIsProjectScoped &&
+				(Boolean(rawSourcePath) || urlLooksLocal || options.isDjangoManagedResource(mediaRef))
+			if (mediaNeedsMigration) {
+				const imported = await options.importAssetIntoProjectScope({
+					kind,
+					name,
+					projectId: pid,
+					sourcePath: rawSourcePath || undefined,
+					sourceUrl: sourceUrlForImport || undefined,
+					bucket: 'assets'
+				})
 
-            changed += 1
-          } else {
-            failed += 1
-          }
-        }
-      }
+				if (!imported) {
+					failed += 1
+				} else {
+					const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
+					const nextSourcePath = String(
+						imported.sourcePath || imported.absolutePath || ''
+					).trim()
+					if (nextUrl || nextSourcePath) {
+						options.store.commit('patchResource', {
+							resourceId: rid,
+							patch: {
+								url: nextUrl || rawUrl,
+								sourcePath: nextSourcePath || rawSourcePath || undefined,
+								localFileKey: undefined
+							}
+						})
 
-      const latest = options.store.state.resourcesById?.[rid] as any
-      const posterUrl = String((latest as any)?.posterUrl || '').trim()
-      const posterSourcePath = String((latest as any)?.posterSourcePath || '').trim()
-      if (!(posterUrl || posterSourcePath)) continue
+						if (options.isDjangoManagedResource(mediaRef) && (rawUrl || rawSourcePath)) {
+							await options.deleteAsset({
+								projectId: pid,
+								url: rawUrl || undefined,
+								sourcePath: rawSourcePath || undefined,
+								relativePath: mediaRelativePathFromUrl(rawUrl) || undefined
+							})
+						}
 
-      const posterRef = { url: posterUrl, sourcePath: posterSourcePath, projectRootPath }
-      const posterRefDjangoManaged = options.isDjangoManagedResource(posterRef)
-      const posterIsTemporary = isTemporaryThumbnailRef(posterRef)
-      const posterNeedsMigration =
-        posterIsTemporary
-        && !isProjectScopedMediaRef(pid, posterRef)
-        && Boolean(posterSourcePath || posterRefDjangoManaged)
-      if (!posterNeedsMigration) continue
+						changed += 1
+					} else {
+						failed += 1
+					}
+				}
+			}
 
-      const importedPoster = await options.importAssetIntoProjectScope({
-        kind: 'image',
-        name: makePosterMigrationFileName(name, rid),
-        projectId: pid,
-        sourcePath: posterSourcePath || undefined,
-        sourceUrl: posterUrl || undefined,
-        bucket: 'thumbnails',
-      })
+			const latest = options.store.state.resourcesById?.[rid]
+			const posterUrl = String(latest?.posterUrl || '').trim()
+			const posterSourcePath = String(latest?.posterSourcePath || '').trim()
+			if (!(posterUrl || posterSourcePath)) continue
 
-      if (!importedPoster) {
-        failed += 1
-        continue
-      }
+			const posterRef = { url: posterUrl, sourcePath: posterSourcePath, projectRootPath }
+			const posterRefDjangoManaged = options.isDjangoManagedResource(posterRef)
+			const posterIsTemporary = isTemporaryThumbnailRef(posterRef)
+			const posterNeedsMigration =
+				posterIsTemporary &&
+				!isProjectScopedMediaRef(pid, posterRef) &&
+				Boolean(posterSourcePath || posterRefDjangoManaged)
+			if (!posterNeedsMigration) continue
 
-      const nextPosterUrl = options.resolveBackendUrl(String((importedPoster as any).url || ''))
-      const nextPosterSourcePath = String((importedPoster as any).sourcePath || (importedPoster as any).absolutePath || '').trim()
-      if (!nextPosterUrl && !nextPosterSourcePath) {
-        failed += 1
-        continue
-      }
+			const importedPoster = await options.importAssetIntoProjectScope({
+				kind: 'image',
+				name: makePosterMigrationFileName(name, rid),
+				projectId: pid,
+				sourcePath: posterSourcePath || undefined,
+				sourceUrl: posterUrl || undefined,
+				bucket: 'thumbnails'
+			})
 
-      options.store.commit('patchResource', {
-        resourceId: rid,
-        patch: {
-          posterUrl: nextPosterUrl || posterUrl,
-          posterSourcePath: nextPosterSourcePath || posterSourcePath || undefined,
-        } as any,
-      })
+			if (!importedPoster) {
+				failed += 1
+				continue
+			}
 
-      if (posterRefDjangoManaged && (posterUrl || posterSourcePath)) {
-        await options.deleteAsset({
-          projectId: pid,
-          url: posterUrl || undefined,
-          sourcePath: posterSourcePath || undefined,
-          relativePath: mediaRelativePathFromUrl(posterUrl) || undefined,
-        })
-      }
+			const nextPosterUrl = options.resolveBackendUrl(String(importedPoster.url || ''))
+			const nextPosterSourcePath = String(
+				importedPoster.sourcePath || importedPoster.absolutePath || ''
+			).trim()
+			if (!nextPosterUrl && !nextPosterSourcePath) {
+				failed += 1
+				continue
+			}
 
-      changed += 1
-    }
+			options.store.commit('patchResource', {
+				resourceId: rid,
+				patch: {
+					posterUrl: nextPosterUrl || posterUrl,
+					posterSourcePath: nextPosterSourcePath || posterSourcePath || undefined
+				}
+			})
 
-    for (const nodeId of options.store.state.nodeOrder.slice()) {
-      const node = options.store.state.nodesById?.[nodeId] as any
-      if (!node) continue
+			if (posterRefDjangoManaged && (posterUrl || posterSourcePath)) {
+				await options.deleteAsset({
+					projectId: pid,
+					url: posterUrl || undefined,
+					sourcePath: posterSourcePath || undefined,
+					relativePath: mediaRelativePathFromUrl(posterUrl) || undefined
+				})
+			}
 
-      if (node.type === 'model3d') {
-        const settings = node.model3dSettings ?? {}
-        const currentUrl = String(settings.modelAssetUrl ?? settings.modelUrl ?? '').trim()
-        const sourcePath = String(settings.modelAssetPath ?? settings.modelSourcePath ?? '').trim()
-        const sourceUrl = currentUrl && !currentUrl.startsWith('file:') ? currentUrl : ''
-        const name = String(settings.modelSourceName || `model_${nodeId}.${settings.modelFormat === 'gltf' ? 'gltf' : 'glb'}`).trim()
-        const imported = await migrateModelAssetRef({ sourcePath, sourceUrl, currentUrl, name, projectId: pid })
-        if (!imported) continue
-        const nextUrl = options.resolveBackendUrl(String((imported as any).url || ''))
-        const nextSourcePath = String((imported as any).sourcePath || (imported as any).absolutePath || '').trim()
-        if (!nextUrl && !nextSourcePath) {
-          failed += 1
-          continue
-        }
-        options.store.commit('setNodeModel3DSettings', {
-          nodeId,
-          model3dSettings: {
-            ...(settings as any),
-            modelUrl: nextUrl || currentUrl,
-            modelAssetUrl: nextUrl || currentUrl,
-            modelSourcePath: nextSourcePath || sourcePath || undefined,
-            modelAssetPath: nextSourcePath || sourcePath || undefined,
-          },
-        })
-        changed += 1
-        continue
-      }
+			changed += 1
+		}
 
-      if (node.type !== 'scene-layout') continue
-      const settings = node.sceneLayoutSettings ?? {}
-      const manualBindings = Array.isArray(settings.manualModelBindings) ? settings.manualModelBindings : []
-      if (!manualBindings.length) continue
+		for (const nodeId of options.store.state.nodeOrder.slice()) {
+			const node = options.store.state.nodesById?.[nodeId]
+			if (!node) continue
 
-      let bindingChanged = false
-      let bindingFailed = false
-      const nextBindings = [] as WorkflowSceneLayoutManualModelBinding[]
-      for (const binding of manualBindings) {
-        const currentUrl = String((binding as any).modelAssetUrl ?? binding?.modelUrl ?? '').trim()
-        const sourcePath = String((binding as any).modelAssetPath ?? binding?.modelSourcePath ?? '').trim()
-        const sourceUrl = currentUrl && !currentUrl.startsWith('file:') ? currentUrl : ''
-        const name = String(binding?.modelSourceName || `scene_layout_${nodeId}_${String(binding?.objectId || 'object').trim()}.${binding?.modelFormat === 'gltf' ? 'gltf' : 'glb'}`).trim()
-        const imported = await migrateModelAssetRef({ sourcePath, sourceUrl, currentUrl, name, projectId: pid })
-        if (!imported) {
-          nextBindings.push(binding)
-          continue
-        }
-        const nextUrl = options.resolveBackendUrl(String((imported as any).url || ''))
-        const nextSourcePath = String((imported as any).sourcePath || (imported as any).absolutePath || '').trim()
-        if (!nextUrl && !nextSourcePath) {
-          bindingFailed = true
-          nextBindings.push(binding)
-          continue
-        }
-        bindingChanged = true
-        nextBindings.push({
-          ...binding,
-          modelUrl: nextUrl || currentUrl,
-          modelAssetUrl: nextUrl || currentUrl,
-          modelSourcePath: nextSourcePath || sourcePath || undefined,
-          modelAssetPath: nextSourcePath || sourcePath || undefined,
-        })
-      }
+			if (node.type === 'model3d') {
+				const settings = node.model3dSettings ?? {}
+				const currentUrl = String(
+					(settings as Record<string, unknown>).modelAssetUrl ??
+						(settings as Record<string, unknown>).modelUrl ??
+						''
+				).trim()
+				const sourcePath = String(
+					(settings as Record<string, unknown>).modelAssetPath ??
+						(settings as Record<string, unknown>).modelSourcePath ??
+						''
+				).trim()
+				const sourceUrl = currentUrl && !currentUrl.startsWith('file:') ? currentUrl : ''
+				const settingsRec = settings as Record<string, unknown>
+				const name = String(
+					settingsRec.modelSourceName ||
+						`model_${nodeId}.${settingsRec.modelFormat === 'gltf' ? 'gltf' : 'glb'}`
+				).trim()
+				const imported = await migrateModelAssetRef({
+					sourcePath,
+					sourceUrl,
+					currentUrl,
+					name,
+					projectId: pid
+				})
+				if (!imported) continue
+				const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
+				const nextSourcePath = String(
+					imported.sourcePath || imported.absolutePath || ''
+				).trim()
+				if (!nextUrl && !nextSourcePath) {
+					failed += 1
+					continue
+				}
+				options.store.commit('setNodeModel3DSettings', {
+					nodeId,
+					model3dSettings: {
+						...settings,
+						modelUrl: nextUrl || currentUrl,
+						modelAssetUrl: nextUrl || currentUrl,
+						modelSourcePath: nextSourcePath || sourcePath || undefined,
+						modelAssetPath: nextSourcePath || sourcePath || undefined
+					}
+				})
+				changed += 1
+				continue
+			}
 
-      if (bindingFailed) failed += 1
-      if (!bindingChanged) continue
-      options.store.commit('setNodeSceneLayoutSettings', {
-        nodeId,
-        sceneLayoutSettings: {
-          ...(settings as any),
-          manualModelBindings: nextBindings,
-        },
-      })
-      changed += 1
-    }
+			if (node.type !== 'scene-layout') continue
+			const settings = node.sceneLayoutSettings ?? {}
+			const manualBindings = Array.isArray(settings.manualModelBindings)
+				? settings.manualModelBindings
+				: []
+			if (!manualBindings.length) continue
 
-    if (!opts?.silent && changed > 0) {
-      options.pushToast(`已迁移 ${changed} 条资源到项目专属目录。`, 'info')
-    }
-    if (!opts?.silent && failed > 0) {
-      options.pushToast(`有 ${failed} 条资源迁移失败，已保留原路径。`, 'warn')
-    }
-    return { changed, failed }
-  }
+			let bindingChanged = false
+			let bindingFailed = false
+			const nextBindings = [] as WorkflowSceneLayoutManualModelBinding[]
+			for (const binding of manualBindings) {
+				const bindingRec = binding as Record<string, unknown>
+				const currentUrl = String(bindingRec.modelAssetUrl ?? bindingRec.modelUrl ?? '').trim()
+				const sourcePath = String(
+					bindingRec.modelAssetPath ?? bindingRec.modelSourcePath ?? ''
+				).trim()
+				const sourceUrl = currentUrl && !currentUrl.startsWith('file:') ? currentUrl : ''
+				const name = String(
+					bindingRec.modelSourceName ||
+						`scene_layout_${nodeId}_${String(bindingRec.objectId || 'object').trim()}.${bindingRec.modelFormat === 'gltf' ? 'gltf' : 'glb'}`
+				).trim()
+				const imported = await migrateModelAssetRef({
+					sourcePath,
+					sourceUrl,
+					currentUrl,
+					name,
+					projectId: pid
+				})
+				if (!imported) {
+					nextBindings.push(binding)
+					continue
+				}
+				const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
+				const nextSourcePath = String(
+					imported.sourcePath || imported.absolutePath || ''
+				).trim()
+				if (!nextUrl && !nextSourcePath) {
+					bindingFailed = true
+					nextBindings.push(binding)
+					continue
+				}
+				bindingChanged = true
+				nextBindings.push({
+					...binding,
+					modelUrl: nextUrl || currentUrl,
+					modelAssetUrl: nextUrl || currentUrl,
+					modelSourcePath: nextSourcePath || sourcePath || undefined,
+					modelAssetPath: nextSourcePath || sourcePath || undefined
+				})
+			}
 
-  return {
-    mediaRelativePathFromUrl,
-    migrateCurrentResourcesToProjectScope,
-  }
+			if (bindingFailed) failed += 1
+			if (!bindingChanged) continue
+			options.store.commit('setNodeSceneLayoutSettings', {
+				nodeId,
+				sceneLayoutSettings: {
+					...settings,
+					manualModelBindings: nextBindings
+				}
+			})
+			changed += 1
+		}
+
+		if (!opts?.silent && changed > 0) {
+			options.pushToast(`已迁移 ${changed} 条资源到项目专属目录。`, 'info')
+		}
+		if (!opts?.silent && failed > 0) {
+			options.pushToast(`有 ${failed} 条资源迁移失败，已保留原路径。`, 'warn')
+		}
+		return { changed, failed }
+	}
+
+	return {
+		mediaRelativePathFromUrl,
+		migrateCurrentResourcesToProjectScope
+	}
 }

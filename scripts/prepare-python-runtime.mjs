@@ -29,7 +29,7 @@ function findCachedFile(filename) {
 	const searchPaths = [
 		path.resolve(CACHE_DIR, filename),
 		path.resolve(TEMP_DIR, filename),
-		path.resolve(REPO_ROOT, filename),
+		path.resolve(REPO_ROOT, filename)
 	]
 	for (const p of searchPaths) {
 		if (fs.existsSync(p) && fs.statSync(p).size > 0) {
@@ -63,38 +63,44 @@ function downloadFile(url, destPath, filename) {
 				reject(new Error('Too many redirects'))
 				return
 			}
-			https.get(currentUrl, (res) => {
-				if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-					res.resume()
-					get(new URL(res.headers.location, currentUrl).toString(), redirectCount + 1)
-					return
-				}
-				if (res.statusCode !== 200) {
-					res.resume()
-					reject(new Error(`Download failed: HTTP ${res.statusCode} for ${currentUrl}`))
-					return
-				}
-				const file = createWriteStream(tempPath)
-				pipeline(res, file)
-					.then(() => {
-						fs.renameSync(tempPath, destPath)
-						try {
-							const cacheDest = path.resolve(CACHE_DIR, filename)
-							fs.copyFileSync(destPath, cacheDest)
-							log(`Downloaded and cached to ${path.relative(REPO_ROOT, cacheDest)}`)
-						} catch {
-							log(`Downloaded to ${path.relative(REPO_ROOT, destPath)} (cache copy skipped)`)
-						}
-						resolve(destPath)
-					})
-					.catch((err) => {
-						try { fs.unlinkSync(tempPath) } catch {}
-						reject(err)
-					})
-			}).on('error', (err) => {
-				try { fs.unlinkSync(tempPath) } catch {}
-				reject(err)
-			})
+			https
+				.get(currentUrl, (res) => {
+					if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+						res.resume()
+						get(new URL(res.headers.location, currentUrl).toString(), redirectCount + 1)
+						return
+					}
+					if (res.statusCode !== 200) {
+						res.resume()
+						reject(new Error(`Download failed: HTTP ${res.statusCode} for ${currentUrl}`))
+						return
+					}
+					const file = createWriteStream(tempPath)
+					pipeline(res, file)
+						.then(() => {
+							fs.renameSync(tempPath, destPath)
+							try {
+								const cacheDest = path.resolve(CACHE_DIR, filename)
+								fs.copyFileSync(destPath, cacheDest)
+								log(`Downloaded and cached to ${path.relative(REPO_ROOT, cacheDest)}`)
+							} catch {
+								log(`Downloaded to ${path.relative(REPO_ROOT, destPath)} (cache copy skipped)`)
+							}
+							resolve(destPath)
+						})
+						.catch((err) => {
+							try {
+								fs.unlinkSync(tempPath)
+							} catch {}
+							reject(err)
+						})
+				})
+				.on('error', (err) => {
+					try {
+						fs.unlinkSync(tempPath)
+					} catch {}
+					reject(err)
+				})
 		}
 
 		get(url)
@@ -111,14 +117,14 @@ function extractZip(zipPath, destDir) {
 		}
 		Expand-Archive -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force
 	`
-	const result = spawnSync('powershell', [
-		'-NoProfile',
-		'-ExecutionPolicy', 'Bypass',
-		'-Command', psCommand
-	], {
-		stdio: 'inherit',
-		windowsHide: true,
-	})
+	const result = spawnSync(
+		'powershell',
+		['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCommand],
+		{
+			stdio: 'inherit',
+			windowsHide: true
+		}
+	)
 	if (result.status !== 0) {
 		throw new Error(`Failed to extract zip: exit code ${result.status}`)
 	}
@@ -129,10 +135,12 @@ function runCommand(cmd, args, options = {}) {
 	const result = spawnSync(cmd, args, {
 		stdio: 'inherit',
 		windowsHide: true,
-		...options,
+		...options
 	})
 	if (result.status !== 0) {
-		throw new Error(`Command failed: ${path.basename(cmd)} ${args.join(' ')} (exit code ${result.status})`)
+		throw new Error(
+			`Command failed: ${path.basename(cmd)} ${args.join(' ')} (exit code ${result.status})`
+		)
 	}
 	return result
 }
@@ -163,7 +171,7 @@ function configurePythonRuntime(pythonDir) {
 			path.join('Lib', 'site-packages'),
 			'',
 			'import site',
-			'',
+			''
 		]
 		fs.writeFileSync(pthFile, pthLines.join('\n'), 'utf-8')
 		log(`Configured ${path.basename(pthFile)} for pip installation`)
@@ -210,7 +218,9 @@ function cleanRuntime(pythonDir) {
 			} else if (ent.isFile()) {
 				for (const ext of extsToDelete) {
 					if (ent.name.endsWith(ext)) {
-						try { fs.unlinkSync(full) } catch {}
+						try {
+							fs.unlinkSync(full)
+						} catch {}
 						break
 					}
 				}
@@ -241,7 +251,9 @@ async function main() {
 	}
 
 	if (process.platform !== 'win32') {
-		log('Warning: Python runtime preparation is only needed for Windows packaging. Skipping on non-Windows platform.')
+		log(
+			'Warning: Python runtime preparation is only needed for Windows packaging. Skipping on non-Windows platform.'
+		)
 		process.exit(0)
 	}
 
@@ -266,43 +278,64 @@ async function main() {
 		const requirementsPath = path.resolve(REPO_ROOT, 'django-app', 'requirements.txt')
 		if (fs.existsSync(requirementsPath)) {
 			log('Installing requirements from django-app/requirements.txt...')
-			runCommand(pythonExe, [
-				'-m', 'pip', 'install',
-				'--no-warn-script-location',
-				'--no-cache-dir',
-				'-r', requirementsPath
-			], { cwd: PYTHON_RUNTIME_DIR })
+			runCommand(
+				pythonExe,
+				[
+					'-m',
+					'pip',
+					'install',
+					'--no-warn-script-location',
+					'--no-cache-dir',
+					'-r',
+					requirementsPath
+				],
+				{ cwd: PYTHON_RUNTIME_DIR }
+			)
 		} else {
 			log('Warning: requirements.txt not found, installing minimal dependencies...')
-			runCommand(pythonExe, [
-				'-m', 'pip', 'install',
-				'--no-warn-script-location',
-				'--no-cache-dir',
-				'Django==4.2.11',
-				'djangorestframework==3.14.0',
-				'django-cors-headers==4.4.0',
-				'cryptography==42.0.8',
-				'Pillow>=10.4.0',
-				'certifi>=2024.0.0'
-			], { cwd: PYTHON_RUNTIME_DIR })
+			runCommand(
+				pythonExe,
+				[
+					'-m',
+					'pip',
+					'install',
+					'--no-warn-script-location',
+					'--no-cache-dir',
+					'Django==4.2.11',
+					'djangorestframework==3.14.0',
+					'django-cors-headers==4.4.0',
+					'cryptography==42.0.8',
+					'Pillow>=10.4.0',
+					'certifi>=2024.0.0'
+				],
+				{ cwd: PYTHON_RUNTIME_DIR }
+			)
 		}
 
 		finalizePythonRuntime(PYTHON_RUNTIME_DIR)
 
 		cleanRuntime(PYTHON_RUNTIME_DIR)
 
-		fs.writeFileSync(markerFile, `Prepared at ${new Date().toISOString()}\nPython ${PYTHON_VERSION}\n`, 'utf-8')
+		fs.writeFileSync(
+			markerFile,
+			`Prepared at ${new Date().toISOString()}\nPython ${PYTHON_VERSION}\n`,
+			'utf-8'
+		)
 
 		log('Python runtime preparation complete!')
 	} catch (err) {
 		log(`ERROR: ${err.message}`)
 		console.error(err)
 		if (fs.existsSync(PYTHON_RUNTIME_DIR)) {
-			try { fs.rmSync(PYTHON_RUNTIME_DIR, { recursive: true, force: true }) } catch {}
+			try {
+				fs.rmSync(PYTHON_RUNTIME_DIR, { recursive: true, force: true })
+			} catch {}
 		}
 		process.exit(1)
 	} finally {
-		try { fs.rmSync(TEMP_DIR, { recursive: true, force: true }) } catch {}
+		try {
+			fs.rmSync(TEMP_DIR, { recursive: true, force: true })
+		} catch {}
 	}
 }
 

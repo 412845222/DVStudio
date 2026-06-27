@@ -36,7 +36,7 @@ export const moveNodeInLayer = (args: MoveNodeArgs): boolean => {
 		moved.transform = {
 			...moved.transform,
 			x: rx / psx,
-			y: ry / psy,
+			y: ry / psy
 		}
 	}
 

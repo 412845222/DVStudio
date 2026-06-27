@@ -6,13 +6,19 @@ import { computeTextAutoSize } from '../scene/commands/nodes/textAutoSize'
 import { genId as defaultGenId } from '../scene/commands/nodes/utils'
 import { normalizeTextNodeProps } from '../scene/nodesType/TextNode'
 
-import type { ComponentTemplate, InstantiateTemplateOptions, InstantiateTemplateResult, TemplateNodeTransform } from './types'
+import type {
+	ComponentTemplate,
+	InstantiateTemplateOptions,
+	InstantiateTemplateResult,
+	TemplateNodeTransform
+} from './types'
 import { validateComponentTemplate } from './validate'
+import { isRecord } from '../../types/utils'
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-
-const toUserType = (templateType: string, fallback: VideoSceneUserNodeType): VideoSceneUserNodeType => {
-	// 约定：模板里的 group 先映射为可渲染的 base（未来可引入真正的 group userType 或专用容器节点）
+const toUserType = (
+	templateType: string,
+	fallback: VideoSceneUserNodeType
+): VideoSceneUserNodeType => {
 	if (templateType === 'group') return 'base'
 	if (templateType === 'base') return 'base'
 	if (templateType === 'rect') return 'rect'
@@ -30,10 +36,10 @@ const buildDefaults = (template: ComponentTemplate): Record<string, JsonValue> =
 	return out
 }
 
-const resolveParam = (params: Record<string, JsonValue>, key: string): JsonValue | undefined => params[key]
+const resolveParam = (params: Record<string, JsonValue>, key: string): JsonValue | undefined =>
+	params[key]
 
 const substituteInString = (s: string, params: Record<string, JsonValue>): JsonValue => {
-	// 如果是纯占位符且对应参数不是 string，则返回原类型的 JsonValue
 	const pure = /^\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}$/.exec(s)
 	if (pure) {
 		const key = pure[1]
@@ -51,9 +57,8 @@ const deepSubstitute = (v: JsonValue, params: Record<string, JsonValue>): JsonVa
 	if (typeof v === 'string') return substituteInString(v, params)
 	if (typeof v === 'number' || typeof v === 'boolean' || v === null) return v
 	if (Array.isArray(v)) return v.map((it) => deepSubstitute(it, params)) as JsonValue
-	// object
 	const out: Record<string, JsonValue> = {}
-	for (const [k, vv] of Object.entries(v as Record<string, JsonValue>)) {
+	for (const [k, vv] of Object.entries(v)) {
 		out[k] = deepSubstitute(vv, params)
 	}
 	return out
@@ -68,7 +73,10 @@ const coerceNumber = (v: JsonValue): number | null => {
 	return null
 }
 
-const applyTransformPatch = (base: VideoSceneNodeTransform, patch?: TemplateNodeTransform): VideoSceneNodeTransform => {
+const applyTransformPatch = (
+	base: VideoSceneNodeTransform,
+	patch?: TemplateNodeTransform
+): VideoSceneNodeTransform => {
 	if (!patch) return base
 	const next: VideoSceneNodeTransform = { ...base }
 	const clampScale = (v: unknown) => {
@@ -139,30 +147,38 @@ const createUserNode = (
 	const id = typeof forcedId === 'string' && forcedId.trim() ? forcedId.trim() : genId(userType)
 	const base: NodeBaseDTO = NodeBase.create(id, name)
 	const upgraded = upgradeNodeType(base, userType as unknown as NodeType)
+	const tr = upgraded.transform
 	const baseTransform: VideoSceneNodeTransform = {
-		x: upgraded.transform.x,
-		y: upgraded.transform.y,
-		scaleX: (upgraded.transform as any).scaleX ?? (upgraded.transform as any).scale ?? 1,
-		scaleY: (upgraded.transform as any).scaleY ?? (upgraded.transform as any).scale ?? 1,
-		scale: (upgraded.transform as any).scale ?? 1,
-		pivotX: (upgraded.transform as any).pivotX ?? 0.5,
-		pivotY: (upgraded.transform as any).pivotY ?? 0.5,
-		width: upgraded.transform.width,
-		height: upgraded.transform.height,
-		rotation: upgraded.transform.rotation,
-		opacity: upgraded.transform.opacity,
+		x: tr.x,
+		y: tr.y,
+		scaleX: tr.scaleX ?? tr.scale ?? 1,
+		scaleY: tr.scaleY ?? tr.scale ?? 1,
+		scale: tr.scale ?? 1,
+		pivotX: tr.pivotX ?? 0.5,
+		pivotY: tr.pivotY ?? 0.5,
+		width: tr.width,
+		height: tr.height,
+		rotation: tr.rotation,
+		opacity: tr.opacity
 	}
 	const transform = applyTransformPatch(baseTransform, transformPatch)
 	const finalProps: Record<string, JsonValue> = { ...(upgraded.props ?? {}), ...props }
 	if (userType === 'text') {
-		Object.assign(finalProps, normalizeTextNodeProps(finalProps as any))
-		const size = computeTextAutoSize(finalProps as any)
+		Object.assign(finalProps, normalizeTextNodeProps(finalProps))
+		const size = computeTextAutoSize(finalProps)
 		if (size) {
 			transform.width = size.width
 			transform.height = size.height
 		}
 	} else if (userType === 'line') {
-		Object.assign(finalProps, normalizeLineLocalPoints({ props: finalProps as any, width: transform.width, height: transform.height }))
+		Object.assign(
+			finalProps,
+			normalizeLineLocalPoints({
+				props: finalProps,
+				width: transform.width,
+				height: transform.height
+			})
+		)
 	}
 	return {
 		id: upgraded.id,
@@ -171,7 +187,7 @@ const createUserNode = (
 		category: 'user',
 		userType: upgraded.type as unknown as VideoSceneUserNodeType,
 		transform,
-		props: finalProps,
+		props: finalProps
 	}
 }
 
@@ -192,17 +208,15 @@ export function instantiateValidatedTemplate(
 	paramsInput: Record<string, JsonValue> = {},
 	options: InstantiateTemplateOptions = {}
 ): InstantiateTemplateResult {
-
 	const fallbackUserType = options.fallbackUserType ?? 'base'
 	const genId = options.genId ?? defaultGenId
 	const getNodeId = options.getNodeId
 
 	const params: Record<string, JsonValue> = {
 		...buildDefaults(template),
-		...paramsInput,
+		...paramsInput
 	}
 
-	// 1) create all nodes
 	const localIdToNode: Record<string, VideoSceneTreeNode> = {}
 	const localIdToNodeId: Record<string, string> = {}
 	const parentLocalIdByLocalId: Record<string, string | undefined> = {}
@@ -211,18 +225,24 @@ export function instantiateValidatedTemplate(
 		const userType = toUserType(n.type, fallbackUserType)
 		const name = String(n.name ?? defaultNameForType(userType))
 		const substitutedProps = deepSubstitute(n.props, params)
-		const props = isRecord(substitutedProps) ? (substitutedProps as Record<string, JsonValue>) : {}
+		const props = isRecord(substitutedProps) ? substitutedProps : {}
 
-		const substitutedTransform = n.transform ? (deepSubstitute(n.transform as unknown as JsonValue, params) as JsonValue) : undefined
-		const transformPatch = substitutedTransform && isRecord(substitutedTransform) ? (substitutedTransform as unknown as TemplateNodeTransform) : n.transform
-		const forcedId = getNodeId ? getNodeId({ templateId: template.templateId, localId: n.localId, userType }) : undefined
+		const substitutedTransform = n.transform
+			? deepSubstitute(n.transform as unknown as JsonValue, params)
+			: undefined
+		const transformPatch =
+			substitutedTransform && isRecord(substitutedTransform)
+				? (substitutedTransform as unknown as TemplateNodeTransform)
+				: n.transform
+		const forcedId = getNodeId
+			? getNodeId({ templateId: template.templateId, localId: n.localId, userType })
+			: undefined
 		const node = createUserNode(forcedId, userType, name, props, transformPatch, genId)
 		localIdToNode[n.localId] = node
 		localIdToNodeId[n.localId] = node.id
 		parentLocalIdByLocalId[n.localId] = n.parentLocalId
 	}
 
-	// 2) build tree
 	for (const n of template.nodes) {
 		const parentLocalId = parentLocalIdByLocalId[n.localId]
 		if (!parentLocalId) continue

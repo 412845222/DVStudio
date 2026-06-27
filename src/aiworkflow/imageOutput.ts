@@ -71,18 +71,18 @@ export const exportWorkflowImageOutputPng = async (payload: {
 					if (canBitmap) {
 						const bitmap = await createImageBitmap(blob)
 						return {
-							width: Math.max(1, Math.floor((bitmap as any).width || 1)),
-							height: Math.max(1, Math.floor((bitmap as any).height || 1)),
+							width: Math.max(1, Math.floor(bitmap.width || 1)),
+							height: Math.max(1, Math.floor(bitmap.height || 1)),
 							draw: (ctx, sx, sy, sw, sh, dx, dy, dw, dh) => {
 								ctx.drawImage(bitmap, sx, sy, sw, sh, dx, dy, dw, dh)
 							},
 							cleanup: () => {
 								try {
-									(bitmap as any).close?.()
+									bitmap.close?.()
 								} catch {
 									// ignore
 								}
-							},
+							}
 						}
 					}
 					if (typeof Image !== 'undefined') {
@@ -109,7 +109,7 @@ export const exportWorkflowImageOutputPng = async (payload: {
 								} catch {
 									// ignore
 								}
-							},
+							}
 						}
 					}
 				}
@@ -132,7 +132,7 @@ export const exportWorkflowImageOutputPng = async (payload: {
 			height: Math.max(1, Math.floor(img.naturalHeight || img.height || 1)),
 			draw: (ctx, sx, sy, sw, sh, dx, dy, dw, dh) => {
 				ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)
-			},
+			}
 		}
 	}
 
@@ -154,7 +154,7 @@ export const exportWorkflowImageOutputPng = async (payload: {
 			ctx.imageSmoothingEnabled = true
 			ctx.clearRect(0, 0, cropW, cropH)
 			image.draw(ctx, sx, sy, sw, sh, 0, 0, cropW, cropH)
-			const toBlob = (offscreen as any).convertToBlob
+			const toBlob = (offscreen as unknown as { convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob> }).convertToBlob
 			if (typeof toBlob === 'function') {
 				const out = await toBlob.call(offscreen, { type: 'image/png' })
 				image.cleanup?.()

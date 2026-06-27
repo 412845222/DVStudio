@@ -1,4 +1,9 @@
-import { lineControlPointsWorld, normalizeLineLocalPoints, rotatedRectCorners, scaleLineLocalPoints } from '../../geometry'
+import {
+	lineControlPointsWorld,
+	normalizeLineLocalPoints,
+	rotatedRectCorners,
+	scaleLineLocalPoints
+} from '../../geometry'
 import type { VideoSceneNodeProps } from '../../types'
 import type { NodeOverlayGeometry } from './types'
 
@@ -27,8 +32,12 @@ export const buildNodeOverlayGeometry = (args: {
 	const w = w0 * sx
 	const h = h0 * sy
 	const rotation = Number(args.rotation ?? 0)
-	const pivotX = Number.isFinite(Number(args.pivotX)) ? Math.max(0, Math.min(1, Number(args.pivotX))) : 0.5
-	const pivotY = Number.isFinite(Number(args.pivotY)) ? Math.max(0, Math.min(1, Number(args.pivotY))) : 0.5
+	const pivotX = Number.isFinite(Number(args.pivotX))
+		? Math.max(0, Math.min(1, Number(args.pivotX)))
+		: 0.5
+	const pivotY = Number.isFinite(Number(args.pivotY))
+		? Math.max(0, Math.min(1, Number(args.pivotY)))
+		: 0.5
 
 	// transform.x/y 是 pivot 点；rotatedRectCorners 需要中心点。
 	// centerLocal = (0.5 - pivot) * size，再按 rotation 旋转到世界。
@@ -38,20 +47,19 @@ export const buildNodeOverlayGeometry = (args: {
 	const sin = Math.sin(rotation)
 	const center = {
 		x: args.worldPivot.x + dx * cos - dy * sin,
-		y: args.worldPivot.y + dx * sin + dy * cos,
+		y: args.worldPivot.y + dx * sin + dy * cos
 	}
 
 	const corners = rotatedRectCorners(center, { width: w, height: h }, rotation)
 	const sizeText = `${Math.round(w)}×${Math.round(h)}`
 
 	if (args.userType === 'line') {
-		const p = normalizeLineLocalPoints({ props: args.props as any, width: w0, height: h0 })
+		const lineProps: Partial<
+			Record<'startX' | 'startY' | 'endX' | 'endY' | 'anchorX' | 'anchorY', unknown>
+		> = args.props ?? {}
+		const p = normalizeLineLocalPoints({ props: lineProps, width: w0, height: h0 })
 		const scaled = scaleLineLocalPoints(p, sx, sy)
-		const linePoints = lineControlPointsWorld(
-			center,
-			rotation,
-			scaled
-		)
+		const linePoints = lineControlPointsWorld(center, rotation, scaled)
 		return { corners, sizeText, linePoints }
 	}
 

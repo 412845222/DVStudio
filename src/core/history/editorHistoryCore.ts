@@ -25,7 +25,7 @@ export const createEditorHistoryCore = (args: {
 	const now = args.now ?? (() => Date.now())
 	const timers: HistoryTimers = args.timers ?? {
 		setTimeout: (handler, timeoutMs) => setTimeout(handler, timeoutMs),
-		clearTimeout: (id) => clearTimeout(id),
+		clearTimeout: (id) => clearTimeout(id)
 	}
 
 	const past: EditorSnapshot[] = []
@@ -111,7 +111,7 @@ export const createEditorHistoryCore = (args: {
 			savedAt,
 			snapshot,
 			json,
-			projectPackageJson: exportSnapshotToProjectPackageV1String(snapshot),
+			projectPackageJson: exportSnapshotToProjectPackageV1String(snapshot)
 		}
 
 		args.onSaved?.(payload)
@@ -148,6 +148,6 @@ export const createEditorHistoryCore = (args: {
 		flushPendingCapture,
 		commitCaptureNow,
 		replaceCurrent,
-		setEditorSaveHandler,
+		setEditorSaveHandler
 	}
 }

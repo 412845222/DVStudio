@@ -1,6 +1,7 @@
 import type { DwebCanvasGL } from '../canvas/DwebCanvasGL'
 import { NodeRenderer } from './NodeRenderer'
 import type { LocalTargetSize, RenderContext, RenderNode } from './types'
+import type { VideoSceneNodeTransform } from '../../../core/scene'
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 
@@ -16,15 +17,25 @@ export class RectRenderer extends NodeRenderer {
 
 		const w = node.transform.width
 		const h = node.transform.height
-		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
-		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const t = node.transform as VideoSceneNodeTransform
+		const px =
+			typeof t.pivotX === 'number'
+				? Math.max(0, Math.min(1, Number(t.pivotX)))
+				: 0.5
+		const py =
+			typeof t.pivotY === 'number'
+				? Math.max(0, Math.min(1, Number(t.pivotY)))
+				: 0.5
 		// Canvas drawRect API is center-based; convert pivot-based (x,y) to center.
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
 
 		if (cornerRadius > 0.5) {
 			const fillColor = canvas.parseHexColor(String(node.props?.fillColor ?? '#3aa1ff'), fillA)
-			const borderColor = canvas.parseHexColor(String(node.props?.borderColor ?? '#9cdcfe'), borderA)
+			const borderColor = canvas.parseHexColor(
+				String(node.props?.borderColor ?? '#9cdcfe'),
+				borderA
+			)
 			const borderPx0 = Math.max(0, Number(node.props?.borderWidth ?? 1))
 			let bw = borderPx0 / canvas.viewport.zoom
 			bw = Math.max(0, Math.min(bw, Math.min(w, h) / 2))
@@ -41,10 +52,16 @@ export class RectRenderer extends NodeRenderer {
 		let bw = borderPx / canvas.viewport.zoom
 		bw = Math.max(0, Math.min(bw, Math.min(w, h) / 2))
 		if (bw > 0 && borderA > 0) {
-			const borderColor = canvas.parseHexColor(String(node.props?.borderColor ?? '#9cdcfe'), borderA)
+			const borderColor = canvas.parseHexColor(
+				String(node.props?.borderColor ?? '#9cdcfe'),
+				borderA
+			)
 			const cos = Math.cos(ctx.rotation)
 			const sin = Math.sin(ctx.rotation)
-			const ro = (ox: number, oy: number) => ({ x: cx + ox * cos - oy * sin, y: cy + ox * sin + oy * cos })
+			const ro = (ox: number, oy: number) => ({
+				x: cx + ox * cos - oy * sin,
+				y: cy + ox * sin + oy * cos
+			})
 
 			const top = ro(0, -h / 2 + bw / 2)
 			canvas.drawRect(top.x, top.y, w, bw, borderColor, ctx.rotation)
@@ -57,7 +74,12 @@ export class RectRenderer extends NodeRenderer {
 		}
 	}
 
-	renderLocal(canvas: DwebCanvasGL, target: LocalTargetSize, node: RenderNode, ctx: RenderContext): void {
+	renderLocal(
+		canvas: DwebCanvasGL,
+		target: LocalTargetSize,
+		node: RenderNode,
+		ctx: RenderContext
+	): void {
 		const fillOpacity = clamp01(Number(node.props?.fillOpacity ?? 1))
 		const borderOpacity = clamp01(Number(node.props?.borderOpacity ?? 1))
 		const fillA = clamp01(ctx.opacity * fillOpacity)
@@ -66,18 +88,39 @@ export class RectRenderer extends NodeRenderer {
 
 		const nodeW = Math.max(1, Number(node.transform.width ?? 1))
 		const nodeH = Math.max(1, Number(node.transform.height ?? 1))
-		const px = typeof (node.transform as any).pivotX === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotX))) : 0.5
-		const py = typeof (node.transform as any).pivotY === 'number' ? Math.max(0, Math.min(1, Number((node.transform as any).pivotY))) : 0.5
+		const t = node.transform as VideoSceneNodeTransform
+		const px =
+			typeof t.pivotX === 'number'
+				? Math.max(0, Math.min(1, Number(t.pivotX)))
+				: 0.5
+		const py =
+			typeof t.pivotY === 'number'
+				? Math.max(0, Math.min(1, Number(t.pivotY)))
+				: 0.5
 		const cx = node.transform.x + (0.5 - px) * nodeW
 		const cy = node.transform.y + (0.5 - py) * nodeH
 
 		if (cornerRadius > 0.5) {
 			const fillColor = canvas.parseHexColor(String(node.props?.fillColor ?? '#3aa1ff'), fillA)
-			const borderColor = canvas.parseHexColor(String(node.props?.borderColor ?? '#9cdcfe'), borderA)
+			const borderColor = canvas.parseHexColor(
+				String(node.props?.borderColor ?? '#9cdcfe'),
+				borderA
+			)
 			const borderPx0 = Math.max(0, Number(node.props?.borderWidth ?? 1))
 			let bw = borderPx0 / canvas.viewport.zoom
 			bw = Math.max(0, Math.min(bw, Math.min(nodeW, nodeH) / 2))
-			canvas.drawLocalRoundedRect(target, cx, cy, nodeW, nodeH, cornerRadius, fillColor, borderColor, bw, ctx.rotation)
+			canvas.drawLocalRoundedRect(
+				target,
+				cx,
+				cy,
+				nodeW,
+				nodeH,
+				cornerRadius,
+				fillColor,
+				borderColor,
+				bw,
+				ctx.rotation
+			)
 			return
 		}
 
@@ -90,10 +133,16 @@ export class RectRenderer extends NodeRenderer {
 		let bw = borderPx / canvas.viewport.zoom
 		bw = Math.max(0, Math.min(bw, Math.min(nodeW, nodeH) / 2))
 		if (bw > 0 && borderA > 0) {
-			const borderColor = canvas.parseHexColor(String(node.props?.borderColor ?? '#9cdcfe'), borderA)
+			const borderColor = canvas.parseHexColor(
+				String(node.props?.borderColor ?? '#9cdcfe'),
+				borderA
+			)
 			const cos = Math.cos(ctx.rotation)
 			const sin = Math.sin(ctx.rotation)
-			const ro = (ox: number, oy: number) => ({ x: cx + ox * cos - oy * sin, y: cy + ox * sin + oy * cos })
+			const ro = (ox: number, oy: number) => ({
+				x: cx + ox * cos - oy * sin,
+				y: cy + ox * sin + oy * cos
+			})
 
 			const top = ro(0, -nodeH / 2 + bw / 2)
 			canvas.drawLocalRect(target, top.x, top.y, nodeW, bw, borderColor, ctx.rotation)

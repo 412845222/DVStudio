@@ -1,9 +1,18 @@
 import type { Store } from 'vuex'
 import type { TimelineState } from '../../../store/timeline'
 import { containsFrame, getPrevNext } from '../../../store/timeline/spans'
-import { VideoSceneStore, type VideoSceneNodeProps, type VideoSceneNodeTransform, type VideoSceneTreeNode } from '../../../store/videoscene'
+import {
+	VideoSceneStore,
+	type VideoSceneNodeProps,
+	type VideoSceneNodeTransform,
+	type VideoSceneTreeNode,
+	type VideoSceneLayer
+} from '../../../store/videoscene'
 import { TimelineDataManager, type FrameCellPayload } from './TimelineDataManager'
-import { stripSubtitleTextContentFromNodeSnapshots, stripSubtitleTextContentFromStageLayers } from '../../../core/subtitle/sanitizeStageSnapshot'
+import {
+	stripSubtitleTextContentFromNodeSnapshots,
+	stripSubtitleTextContentFromStageLayers
+} from '../../../core/subtitle/sanitizeStageSnapshot'
 
 const clampInt = (v: unknown, min: number, max: number) => {
 	const n = Math.floor(Number(v))
@@ -12,52 +21,65 @@ const clampInt = (v: unknown, min: number, max: number) => {
 }
 
 const cellKey = (layerId: string, frameIndex: number) => `${layerId}:${frameIndex}`
-const segmentKey = (layerId: string, startFrame: number, endFrame: number) => `${layerId}:${startFrame}:${endFrame}`
+const segmentKey = (layerId: string, startFrame: number, endFrame: number) =>
+	`${layerId}:${startFrame}:${endFrame}`
 
 type NodeSnapshot = { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }
 
-const deepCloneFallback = <T,>(value: T, seen = new WeakMap<object, any>()): T => {
+// JSON-like value for deep clone (avoids any)
+type JsonValue = string | number | boolean | null | undefined | JsonObject | JsonArray
+interface JsonObject {
+	[key: string]: JsonValue
+}
+type JsonArray = JsonValue[]
+
+// SAFE-ANY: Deep clone utility for JSON-compatible values with circular reference detection
+const deepCloneFallback = <T extends JsonValue>(value: T, seen = new WeakMap<object, T>()): T => {
 	if (value == null) return value
 	if (typeof value !== 'object') return value
-	if (value instanceof Date) return new Date(value.getTime()) as any
+	if (value instanceof Date) return new Date(value.getTime()) as unknown as T
 
-	const obj = value as unknown as object
+	const obj = value as JsonObject
 	const cached = seen.get(obj)
 	if (cached) return cached
 
 	if (Array.isArray(value)) {
-		const out: any[] = []
-		seen.set(obj, out)
-		for (const item of value as any[]) out.push(deepCloneFallback(item, seen))
-		return out as any
+		const out: JsonArray = []
+		seen.set(obj, out as unknown as T)
+		for (const item of value) out.push(deepCloneFallback(item, seen))
+		return out as unknown as T
 	}
 
-	const proto = Object.getPrototypeOf(obj)
-	const out: any = proto === null ? Object.create(null) : {}
-	seen.set(obj, out)
-	for (const k of Object.keys(obj as any)) out[k] = deepCloneFallback((obj as any)[k], seen)
-	return out
+	const out: JsonObject = {}
+	seen.set(obj, out as unknown as T)
+	for (const k of Object.keys(obj)) out[k] = deepCloneFallback(obj[k], seen)
+	return out as T
 }
 
-const cloneJsonSafe = <T,>(v: T): T => {
+const cloneJsonSafe = <T>(v: T): T => {
 	try {
 		return JSON.parse(JSON.stringify(v)) as T
 	} catch {
 		try {
-			return (globalThis as any).structuredClone ? ((globalThis as any).structuredClone(v) as T) : deepCloneFallback(v)
+			return globalThis.structuredClone
+				? (globalThis.structuredClone(v) as T)
+				: deepCloneFallback(v as JsonValue) as T
 		} catch {
-			return deepCloneFallback(v)
+			return deepCloneFallback(v as JsonValue) as T
 		}
 	}
 }
 
-const collectUserNodeSnapshots = (nodes: VideoSceneTreeNode[] | undefined, out: Record<string, NodeSnapshot>) => {
+const collectUserNodeSnapshots = (
+	nodes: VideoSceneTreeNode[] | undefined,
+	out: Record<string, NodeSnapshot>
+) => {
 	if (!nodes) return
 	for (const n of nodes) {
 		if (n.category === 'user') {
 			out[n.id] = {
 				transform: n.transform ? { ...n.transform } : undefined,
-				props: n.props ? cloneJsonSafe(n.props) : undefined,
+				props: n.props ? cloneJsonSafe(n.props) : undefined
 			}
 		}
 		if (n.children?.length) collectUserNodeSnapshots(n.children, out)
@@ -81,7 +103,9 @@ const parseFrameIndexFromKey = (key: string) => {
 }
 
 export class VuexTimelineDataManager extends TimelineDataManager {
-	private clipboard: (FrameCellPayload & { layerId?: string; nodeTree?: VideoSceneTreeNode[] }) | null = null
+	private clipboard:
+		| (FrameCellPayload & { layerId?: string; nodeTree?: VideoSceneTreeNode[] })
+		| null = null
 
 	constructor(private store: Store<TimelineState>) {
 		super()
@@ -110,7 +134,9 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		const fi = clampInt(frameIndex, 0, this.store.state.frameCount - 1)
 		const seg = this.getKeyframeSegmentForFrame(layerId, fi)
 		if (!seg) return false
-		return this.store.state.easingSegmentKeys.includes(segmentKey(layerId, seg.startFrame, seg.endFrame))
+		return this.store.state.easingSegmentKeys.includes(
+			segmentKey(layerId, seg.startFrame, seg.endFrame)
+		)
 	}
 
 	canEnableEasing(layerId: string, frameIndex: number): boolean {
@@ -118,10 +144,15 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		if (this.isKeyframe(layerId, fi)) return false
 		const seg = this.getKeyframeSegmentForFrame(layerId, fi)
 		if (!seg) return false
-		return !this.store.state.easingSegmentKeys.includes(segmentKey(layerId, seg.startFrame, seg.endFrame))
+		return !this.store.state.easingSegmentKeys.includes(
+			segmentKey(layerId, seg.startFrame, seg.endFrame)
+		)
 	}
 
-	private getKeyframeSegmentForFrame(layerId: string, frameIndex: number): { startFrame: number; endFrame: number } | null {
+	private getKeyframeSegmentForFrame(
+		layerId: string,
+		frameIndex: number
+	): { startFrame: number; endFrame: number } | null {
 		const fi = clampInt(frameIndex, 0, this.store.state.frameCount - 1)
 		// 关键帧本身不属于段内
 		if (this.isKeyframe(layerId, fi)) return null
@@ -137,14 +168,22 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		const fi = clampInt(frameIndex, 0, this.store.state.frameCount - 1)
 		const seg = this.getKeyframeSegmentForFrame(layerId, fi)
 		if (!seg) return
-		this.store.dispatch('enableEasingSegment', { layerId, startFrame: seg.startFrame, endFrame: seg.endFrame })
+		this.store.dispatch('enableEasingSegment', {
+			layerId,
+			startFrame: seg.startFrame,
+			endFrame: seg.endFrame
+		})
 	}
 
 	disableEasing(layerId: string, frameIndex: number): void {
 		const fi = clampInt(frameIndex, 0, this.store.state.frameCount - 1)
 		const seg = this.getKeyframeSegmentForFrame(layerId, fi)
 		if (!seg) return
-		this.store.dispatch('disableEasingSegment', { layerId, startFrame: seg.startFrame, endFrame: seg.endFrame })
+		this.store.dispatch('disableEasingSegment', {
+			layerId,
+			startFrame: seg.startFrame,
+			endFrame: seg.endFrame
+		})
 	}
 
 	copyFrame(layerId: string, frameIndex: number): void {
@@ -159,7 +198,7 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 			isKeyframe: true,
 			easingEnabled: this.isEasingEnabled(layerId, frameIndex),
 			layerId,
-			nodeTree,
+			nodeTree
 		}
 	}
 
@@ -169,16 +208,20 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 
 	private buildUsedNodeIdSet(): Set<string> {
 		const used = new Set<string>()
-		for (const layer of (VideoSceneStore.state.layers ?? []) as any[]) {
-			const walk = (nodes: any[] | undefined) => {
-				if (!Array.isArray(nodes)) return
-				for (const n of nodes) {
-					const id = String(n?.id ?? '').trim()
-					if (id) used.add(id)
-					if (Array.isArray(n?.children) && n.children.length) walk(n.children)
-				}
+		const layers = VideoSceneStore.state.layers
+		if (!layers) return used
+
+		const walk = (nodes: VideoSceneTreeNode[] | undefined) => {
+			if (!Array.isArray(nodes)) return
+			for (const n of nodes) {
+				const id = String(n?.id ?? '').trim()
+				if (id) used.add(id)
+				if (Array.isArray(n?.children) && n.children.length) walk(n.children)
 			}
-			walk((layer as any)?.nodeTree)
+		}
+
+		for (const layer of layers) {
+			walk(layer.nodeTree)
 		}
 		return used
 	}
@@ -199,36 +242,32 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		const used = this.buildUsedNodeIdSet()
 		const idMap = new Map<string, string>()
 
-		const cloneNode = (n: any): any => {
-			if (!n || typeof n !== 'object') return n
+		// SAFE-ANY: cloneNode handles dynamic VideoSceneTreeNode structure with arbitrary props
+		const cloneNode = (n: VideoSceneTreeNode): VideoSceneTreeNode => {
 			const oldId = String(n.id ?? '').trim()
 			const base = this.safeIdPart(`${targetLayerId}:${oldId || 'node'}`)
 			const nextId = this.allocateId(base, used)
 			if (oldId) idMap.set(oldId, nextId)
-			const out: any = { ...cloneJsonSafe(n), id: nextId }
-			if (Array.isArray(n.children)) out.children = n.children.map(cloneNode)
-			return out
+			const cloned = cloneJsonSafe(n)
+			return { ...cloned, id: nextId }
 		}
 
-		const shouldRemapKey = (k: string) => /(^|_)(id|nodeId|maskId|clipId)$/.test(k) || /(Id|NodeId|MaskId|ClipId|TargetId|ParentId)$/.test(k)
-		const shouldRemapKeyPlural = (k: string) => /(Ids|NodeIds)$/.test(k)
-
-		const remapRefs = (v: any, keyHint = ''): any => {
+		const remapRefs = (v: unknown, keyHint = ''): unknown => {
 			if (v == null) return v
 			if (typeof v === 'string') {
 				const hit = idMap.get(v)
 				return hit ?? v
 			}
 			if (Array.isArray(v)) {
-				return v.map((it) => remapRefs(it, keyHint))
+				return v.map((it: unknown) => remapRefs(it, keyHint))
 			}
 			if (typeof v === 'object') {
-				const out: any = Array.isArray(v) ? [] : {}
-				for (const [k, vv] of Object.entries(v)) {
+				const out: Record<string, unknown> = {}
+				for (const [k, vv] of Object.entries(v as Record<string, unknown>)) {
 					if (typeof vv === 'string' && (shouldRemapKey(k) || shouldRemapKeyPlural(k))) {
 						out[k] = idMap.get(vv) ?? vv
 					} else if (Array.isArray(vv) && shouldRemapKeyPlural(k)) {
-						out[k] = vv.map((s) => (typeof s === 'string' ? (idMap.get(s) ?? s) : s))
+						out[k] = (vv as unknown[]).map((s) => (typeof s === 'string' ? (idMap.get(s) ?? s) : s))
 					} else {
 						out[k] = remapRefs(vv, k)
 					}
@@ -238,19 +277,24 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 			return v
 		}
 
+		const shouldRemapKey = (k: string) =>
+			/(^|_)(id|nodeId|maskId|clipId)$/.test(k) ||
+			/(Id|NodeId|MaskId|ClipId|TargetId|ParentId)$/.test(k)
+		const shouldRemapKeyPlural = (k: string) => /(Ids|NodeIds)$/.test(k)
+
 		const cloned = (Array.isArray(nodeTree) ? nodeTree : []).map(cloneNode)
 		// Second pass: remap likely id references inside props/transform blobs.
-		const walkPatch = (nodes: any[]) => {
+		const walkPatch = (nodes: VideoSceneTreeNode[]) => {
 			for (const n of nodes) {
 				if (n && typeof n === 'object') {
-					if (n.props && typeof n.props === 'object') n.props = remapRefs(n.props)
-					if (n.transform && typeof n.transform === 'object') n.transform = remapRefs(n.transform)
+					if (n.props && typeof n.props === 'object') n.props = remapRefs(n.props) as VideoSceneNodeProps
+					if (n.transform && typeof n.transform === 'object') n.transform = remapRefs(n.transform) as VideoSceneNodeTransform
 					if (Array.isArray(n.children) && n.children.length) walkPatch(n.children)
 				}
 			}
 		}
 		walkPatch(cloned)
-		return cloned as VideoSceneTreeNode[]
+		return cloned
 	}
 
 	pasteFrame(layerId: string, frameIndex: number): void {
@@ -259,23 +303,28 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		if (!this.clipboard.isKeyframe) return
 		const fi = clampInt(frameIndex, 0, this.store.state.frameCount - 1)
 		const sourceLayerId = String(this.clipboard.layerId ?? '').trim()
-		const srcTree = Array.isArray(this.clipboard.nodeTree) ? this.clipboard.nodeTree : ([] as any[])
-		if (!srcTree) return
+		const srcTree: VideoSceneTreeNode[] = Array.isArray(this.clipboard.nodeTree)
+			? this.clipboard.nodeTree
+			: []
+		if (!srcTree.length) return
 
 		// Cross-layer paste: overwrite target layer content.
 		// To avoid global nodeId collisions across layers, remap ids when sourceLayerId != target layerId.
-		const targetTree = sourceLayerId && sourceLayerId !== layerId
-			? this.remapNodeTreeForTargetLayer(cloneJsonSafe(srcTree) as any, layerId)
-			: (cloneJsonSafe(srcTree) as any)
+		const targetTree =
+			sourceLayerId && sourceLayerId !== layerId
+				? this.remapNodeTreeForTargetLayer(cloneJsonSafe(srcTree), layerId)
+				: cloneJsonSafe(srcTree)
 
 		// Apply to stage ONLY if the playhead is at this frame.
 		// Otherwise, we only update the keyframe snapshot and let the timeline renderer drive the stage.
-		const playhead = Math.floor(Number((this.store.state as any).currentFrame ?? 0))
+		const playhead = Math.floor(Number(this.store.state.currentFrame ?? 0))
 		if (playhead === fi) {
 			const existing = VideoSceneStore.state.layers.find((l) => l.id === layerId)
-			const nextLayer = existing ? (cloneJsonSafe(existing) as any) : ({ id: layerId, name: layerId } as any)
+			const nextLayer = existing
+				? cloneJsonSafe(existing)
+				: ({ id: layerId, name: layerId } as VideoSceneLayer)
 			nextLayer.nodeTree = targetTree
-			VideoSceneStore.dispatch('applyStageSnapshot', { layers: [nextLayer] as any })
+			VideoSceneStore.dispatch('applyStageSnapshot', { layers: [nextLayer] })
 		}
 
 		// Ensure the target frame is a keyframe and persist stage snapshot so it holds to the right.
@@ -283,13 +332,26 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		// Persist per-layer stage snapshot so it holds to the right.
 		const isSubtitle = (this.store.state.layerKindById?.[layerId] ?? 'normal') === 'subtitle'
 		const baseLayer = VideoSceneStore.state.layers.find((l) => l.id === layerId)
-		const snapLayer = baseLayer ? (cloneJsonSafe(baseLayer) as any) : ({ id: layerId, name: layerId } as any)
+		const snapLayer = baseLayer
+			? cloneJsonSafe(baseLayer)
+			: ({ id: layerId, name: layerId } as VideoSceneLayer)
 		snapLayer.nodeTree = targetTree
-		const layersForSnapshot = isSubtitle ? stripSubtitleTextContentFromStageLayers([snapLayer] as any, layerId) : ([snapLayer] as any)
-		this.store.dispatch('setStageKeyframeSnapshotRange', { startFrame: fi, endFrame: fi, layers: layersForSnapshot })
+		const layersForSnapshot = isSubtitle
+			? stripSubtitleTextContentFromStageLayers([snapLayer], layerId)
+			: [snapLayer]
+		this.store.dispatch('setStageKeyframeSnapshotRange', {
+			startFrame: fi,
+			endFrame: fi,
+			layers: layersForSnapshot
+		})
 		if (isSubtitle) {
 			const nodesById = stripSubtitleTextContentFromNodeSnapshots(captureLayerSnapshot(layerId))
-			this.store.dispatch('setNodeKeyframeSnapshotRange', { layerId, startFrame: fi, endFrame: fi, nodesById })
+			this.store.dispatch('setNodeKeyframeSnapshotRange', {
+				layerId,
+				startFrame: fi,
+				endFrame: fi,
+				nodesById
+			})
 		}
 	}
 

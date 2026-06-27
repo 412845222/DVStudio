@@ -4,19 +4,27 @@ import type {
 	VideoSceneRenderStep,
 	VideoSceneState,
 	VideoSceneTreeNode,
-	VideoSceneUserNodeType,
+	VideoSceneUserNodeType
 } from './types'
 import type { WorldPosResult } from './treeTypes'
 
-export const findLayer = (state: Pick<VideoSceneState, 'layers'>, layerId: string) => state.layers.find((l) => l.id === layerId)
+export const findLayer = (state: Pick<VideoSceneState, 'layers'>, layerId: string) =>
+	state.layers.find((l) => l.id === layerId)
 
-export const getLayerNodeTree = (state: Pick<VideoSceneState, 'layers'>, layerId: string): VideoSceneTreeNode[] => {
+export const getLayerNodeTree = (
+	state: Pick<VideoSceneState, 'layers'>,
+	layerId: string
+): VideoSceneTreeNode[] => {
 	return findLayer(state, layerId)?.nodeTree ?? []
 }
 
 export const walkTree = (
 	nodes: VideoSceneTreeNode[],
-	visit: (node: VideoSceneTreeNode, parent: VideoSceneTreeNode | null, list: VideoSceneTreeNode[]) => boolean | void,
+	visit: (
+		node: VideoSceneTreeNode,
+		parent: VideoSceneTreeNode | null,
+		list: VideoSceneTreeNode[]
+	) => boolean | void,
 	parent: VideoSceneTreeNode | null = null
 ): boolean => {
 	for (const node of nodes) {
@@ -30,7 +38,10 @@ export const walkTree = (
 	return false
 }
 
-export const detachNode = (root: VideoSceneTreeNode[], nodeId: string): VideoSceneTreeNode | null => {
+export const detachNode = (
+	root: VideoSceneTreeNode[],
+	nodeId: string
+): VideoSceneTreeNode | null => {
 	let removed: VideoSceneTreeNode | null = null
 	walkTree(root, (node, _parent, list) => {
 		if (node.id !== nodeId) return
@@ -81,7 +92,11 @@ export const makeUniqueName = (existingNames: string[], baseName: string) => {
 	return `${desired} ${maxN + 1}`
 }
 
-export const isDescendant = (root: VideoSceneTreeNode[], maybeAncestorId: string, nodeId: string) => {
+export const isDescendant = (
+	root: VideoSceneTreeNode[],
+	maybeAncestorId: string,
+	nodeId: string
+) => {
 	const ancestor = findNode(root, maybeAncestorId)
 	if (!ancestor) return false
 	const children = ancestor.children
@@ -103,10 +118,10 @@ export const findWorldPos = (root: VideoSceneTreeNode[], nodeId: string): WorldP
 			const hasT = !!n.transform
 			const dx = hasT ? Number(n.transform?.x ?? 0) : 0
 			const dy = hasT ? Number(n.transform?.y ?? 0) : 0
-			const localRotation = hasT ? Number((n.transform as any)?.rotation ?? 0) : 0
-			const localScaleLegacy = hasT ? clampScale((n.transform as any)?.scale, 1) : 1
-			const localScaleX = hasT ? clampScale((n.transform as any)?.scaleX, localScaleLegacy) : 1
-			const localScaleY = hasT ? clampScale((n.transform as any)?.scaleY, localScaleLegacy) : 1
+			const localRotation = hasT ? Number(n.transform?.rotation ?? 0) : 0
+			const localScaleLegacy = hasT ? clampScale(n.transform?.scale, 1) : 1
+			const localScaleX = hasT ? clampScale(n.transform?.scaleX, localScaleLegacy) : 1
+			const localScaleY = hasT ? clampScale(n.transform?.scaleY, localScaleLegacy) : 1
 			const cos = Math.cos(parentWorld.rotation)
 			const sin = Math.sin(parentWorld.rotation)
 			const tdx = dx * parentWorld.scaleX
@@ -114,13 +129,12 @@ export const findWorldPos = (root: VideoSceneTreeNode[], nodeId: string): WorldP
 			const rdx = tdx * cos - tdy * sin
 			const rdy = tdx * sin + tdy * cos
 			const world = hasT
-				?
-					{
+				? {
 						x: parentWorld.x + rdx,
 						y: parentWorld.y + rdy,
 						scaleX: parentWorld.scaleX * localScaleX,
 						scaleY: parentWorld.scaleY * localScaleY,
-						rotation: parentWorld.rotation + localRotation,
+						rotation: parentWorld.rotation + localRotation
 					}
 				: parentWorld
 			const nextParentWorld = hasT ? world : parentWorld
@@ -135,15 +149,17 @@ export const findWorldPos = (root: VideoSceneTreeNode[], nodeId: string): WorldP
 	return dfs(root, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
 }
 
-export const buildRenderPipeline = (state: Pick<VideoSceneState, 'layers'>): VideoSceneRenderStep[] => {
+export const buildRenderPipeline = (
+	state: Pick<VideoSceneState, 'layers'>
+): VideoSceneRenderStep[] => {
 	const steps: VideoSceneRenderStep[] = []
 	for (const layer of state.layers) {
 		const dfs = (nodes: VideoSceneTreeNode[], path: string[]) => {
 			for (const n of nodes) {
 				const category = n.category
-				const type = (n.category === 'user' ? (n.userType ?? 'rect') : (n.projectKind ?? 'unknown')) as
-					| VideoSceneProjectNodeKind
-					| VideoSceneUserNodeType
+				const type = (
+					n.category === 'user' ? (n.userType ?? 'rect') : (n.projectKind ?? 'unknown')
+				) as VideoSceneProjectNodeKind | VideoSceneUserNodeType
 				steps.push({ layerId: layer.id, nodeId: n.id, category, type, path: [...path, n.id] })
 				if (n.children?.length) dfs(n.children, [...path, n.id])
 			}
@@ -153,7 +169,10 @@ export const buildRenderPipeline = (state: Pick<VideoSceneState, 'layers'>): Vid
 	return steps
 }
 
-export const findLayerIdByNodeIdInLayers = (layers: VideoSceneLayer[], nodeId: string): string | null => {
+export const findLayerIdByNodeIdInLayers = (
+	layers: VideoSceneLayer[],
+	nodeId: string
+): string | null => {
 	const id = String(nodeId || '').trim()
 	if (!id) return null
 	for (const layer of layers) {
@@ -180,7 +199,10 @@ export type UserNodeWithWorldHit = {
 	world: { x: number; y: number; scaleX: number; scaleY: number; rotation: number }
 }
 
-export const findUserNodeWithWorldInLayers = (layers: VideoSceneLayer[], nodeId: string): UserNodeWithWorldHit | null => {
+export const findUserNodeWithWorldInLayers = (
+	layers: VideoSceneLayer[],
+	nodeId: string
+): UserNodeWithWorldHit | null => {
 	const id = String(nodeId || '').trim()
 	if (!id) return null
 	for (const layer of layers) {

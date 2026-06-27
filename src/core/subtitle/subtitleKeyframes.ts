@@ -3,7 +3,10 @@ import type { VideoSceneNodeProps, VideoSceneNodeTransform } from '../scene'
 
 export type SubtitleGeneratedKeyframes = {
 	frames: number[]
-	nodeKeyframesByFrame: Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>>
+	nodeKeyframesByFrame: Record<
+		string,
+		Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>
+	>
 }
 
 const frameKey = (frameIndex: number) => String(Math.floor(frameIndex))
@@ -28,9 +31,16 @@ export const buildSubtitleGeneratedKeyframes = (args: {
 	const frames = new Set<number>()
 	frames.add(0)
 
-	const map: Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>> = {}
+	const map: Record<
+		string,
+		Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>
+	> = {}
 
-	const write = (frameIndex: number, props: VideoSceneNodeProps, transform?: VideoSceneNodeTransform) => {
+	const write = (
+		frameIndex: number,
+		props: VideoSceneNodeProps,
+		transform?: VideoSceneNodeTransform
+	) => {
 		const fi = Math.floor(frameIndex)
 		frames.add(fi)
 		const fk = frameKey(fi)
@@ -39,13 +49,17 @@ export const buildSubtitleGeneratedKeyframes = (args: {
 	}
 
 	// frame 0: hidden baseline (do NOT force opacity; keep node's base opacity)
-	write(0, {
-		textContent: '',
-		fontSize: args.defaultStyle.fontSize,
-		fontColor: args.defaultStyle.fontColor,
-		fontStyle: args.defaultStyle.fontStyle,
-		textAlign: args.defaultStyle.textAlign,
-	}, args.nodeTransform)
+	write(
+		0,
+		{
+			textContent: '',
+			fontSize: args.defaultStyle.fontSize,
+			fontColor: args.defaultStyle.fontColor,
+			fontStyle: args.defaultStyle.fontStyle,
+			textAlign: args.defaultStyle.textAlign
+		},
+		args.nodeTransform
+	)
 
 	for (let i = 0; i < n; i++) {
 		const cue = cues[i]
@@ -61,7 +75,7 @@ export const buildSubtitleGeneratedKeyframes = (args: {
 			fontSize: style.fontSize,
 			fontColor: style.fontColor,
 			fontStyle: style.fontStyle,
-			textAlign: style.textAlign,
+			textAlign: style.textAlign
 		}
 		write(startFrame, props, args.nodeTransform)
 

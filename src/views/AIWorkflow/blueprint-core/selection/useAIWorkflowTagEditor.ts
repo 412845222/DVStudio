@@ -1,10 +1,11 @@
 import { ref, computed, type Ref } from 'vue'
 import type { Store } from 'vuex'
 import type { WorkflowState } from '../../../../aiworkflow/types'
-import { makeSelectionTagKey } from "../../../../aiworkflow/domain/selection/selectionTagUtils";
+import { makeSelectionTagKey } from '../../../../aiworkflow/domain/selection/selectionTagUtils'
 
 // 生成简单 UUID
-const generateId = () => 'ssf_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
+const generateId = () =>
+	'ssf_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
 
 export const useAIWorkflowTagEditor = (payload: {
 	store: Store<WorkflowState>
@@ -69,7 +70,7 @@ export const useAIWorkflowTagEditor = (payload: {
 		payload.store.commit('upsertSelectionTag', {
 			key,
 			label,
-			nodeIds,
+			nodeIds
 		})
 
 		// 新格式：创建/更新持久化选区框（使用标签名作为 id 的一部分确保唯一）
@@ -77,7 +78,7 @@ export const useAIWorkflowTagEditor = (payload: {
 		payload.store.commit('upsertSavedSelectionFrame', {
 			id: frameId,
 			label,
-			nodeIds,
+			nodeIds
 		})
 
 		closeEditor()
@@ -115,6 +116,6 @@ export const useAIWorkflowTagEditor = (payload: {
 		clearSelectionOnly,
 		screenX: computed(() => screenPosition.value.x),
 		screenY: computed(() => screenPosition.value.y),
-		initialLabel: computed(() => existingTag.value?.label ?? ''),
+		initialLabel: computed(() => existingTag.value?.label ?? '')
 	}
 }

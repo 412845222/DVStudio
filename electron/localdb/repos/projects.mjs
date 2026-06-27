@@ -25,7 +25,7 @@ const PROJECT_REQUIRED_DIRS = [
 	'Saved/task-cache',
 	'Intermediate/imports',
 	'Intermediate/tmp',
-	'Intermediate/previews',
+	'Intermediate/previews'
 ]
 
 function nowIso() {
@@ -54,7 +54,7 @@ function serializeProjectRow(row) {
 		folderBacked: Boolean(row.root_path && String(row.root_path).trim()),
 		createdAt: isoToMs(row.created_at),
 		updatedAt: isoToMs(row.updated_at),
-		lastOpenedAt: isoToMs(row.last_opened_at),
+		lastOpenedAt: isoToMs(row.last_opened_at)
 	}
 }
 
@@ -68,7 +68,7 @@ function resolveFolderLayout(rootPath) {
 	return {
 		root,
 		manifest: path.resolve(root, PROJECT_MANIFEST_REL),
-		blueprint: path.resolve(root, PROJECT_BLUEPRINT_REL),
+		blueprint: path.resolve(root, PROJECT_BLUEPRINT_REL)
 	}
 }
 
@@ -106,7 +106,7 @@ function emptyBlueprintSnapshot() {
 		resourcesById: {},
 		resourceOrder: [],
 		selectedNodeId: null,
-		selectedNodeIds: [],
+		selectedNodeIds: []
 	}
 }
 
@@ -120,7 +120,7 @@ function validateBlueprintSnapshot(snapshot) {
 		'edgesById',
 		'edgeOrder',
 		'resourcesById',
-		'resourceOrder',
+		'resourceOrder'
 	]
 	for (const key of required) {
 		if (!(key in snapshot)) return null
@@ -156,17 +156,17 @@ function ensureFolderLayout({ project, rootPath, snapshot, create }) {
 			videos: 'Content/Media/videos',
 			audio: 'Content/Media/audio',
 			models: 'Content/Media/models',
-			thumbnails: 'Content/Media/thumbnails',
+			thumbnails: 'Content/Media/thumbnails'
 		},
 		generatedRoots: {
 			comfy: 'Content/Generated/comfy',
 			meshy: 'Content/Generated/meshy',
 			dreammaker: 'Content/Generated/dreammaker',
 			fal: 'Content/Generated/fal',
-			unreal: 'Content/Generated/unreal',
+			unreal: 'Content/Generated/unreal'
 		},
 		createdAt: Date.now(),
-		updatedAt: Date.now(),
+		updatedAt: Date.now()
 	}
 	writeAtomicJson(layout.manifest, manifest)
 	return { ok: true, layout, manifest }
@@ -180,14 +180,18 @@ export function createProjectsRepo({ backendDataDir }) {
 
 	const listStmt = db.prepare('SELECT * FROM projects ORDER BY updated_at DESC, id DESC')
 	const getByIdStmt = db.prepare('SELECT * FROM projects WHERE id = ?')
-	const getByRootPathStmt = db.prepare('SELECT * FROM projects WHERE root_path = ? AND root_path <> \'\' LIMIT 1')
+	const getByRootPathStmt = db.prepare(
+		"SELECT * FROM projects WHERE root_path = ? AND root_path <> '' LIMIT 1"
+	)
 	const insertStmt = db.prepare(
-		'INSERT INTO projects (name, data, project_uuid, root_path, manifest_path, storage_version, last_opened_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+		'INSERT INTO projects (name, data, project_uuid, root_path, manifest_path, storage_version, last_opened_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
 	)
 	const updateStmt = db.prepare(
-		'UPDATE projects SET name = ?, data = ?, project_uuid = ?, root_path = ?, manifest_path = ?, storage_version = ?, last_opened_at = ?, updated_at = datetime(\'now\') WHERE id = ?',
+		"UPDATE projects SET name = ?, data = ?, project_uuid = ?, root_path = ?, manifest_path = ?, storage_version = ?, last_opened_at = ?, updated_at = datetime('now') WHERE id = ?"
 	)
-	const touchOpenedStmt = db.prepare('UPDATE projects SET last_opened_at = datetime(\'now\'), updated_at = datetime(\'now\') WHERE id = ?')
+	const touchOpenedStmt = db.prepare(
+		"UPDATE projects SET last_opened_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
+	)
 	const deleteStmt = db.prepare('DELETE FROM projects WHERE id = ?')
 
 	function list() {
@@ -215,7 +219,8 @@ export function createProjectsRepo({ backendDataDir }) {
 	function readSnapshot(project) {
 		if (!project) return { ok: false, error: 'project not found' }
 		const filePath = resolveSnapshotPath(project)
-		if (!filePath || !fs.existsSync(filePath)) return { ok: false, error: 'project snapshot not found' }
+		if (!filePath || !fs.existsSync(filePath))
+			return { ok: false, error: 'project snapshot not found' }
 		const parsed = readJsonIfExists(filePath)
 		const validated = validateBlueprintSnapshot(parsed)
 		if (!validated) return { ok: false, error: 'project snapshot is invalid' }
@@ -227,7 +232,12 @@ export function createProjectsRepo({ backendDataDir }) {
 		if (!validated) return { ok: false, error: 'snapshot is invalid' }
 		validated.savedAt = Date.now()
 		if (project?.rootPath) {
-			const layout = ensureFolderLayout({ project, rootPath: project.rootPath, snapshot: validated, create: true })
+			const layout = ensureFolderLayout({
+				project,
+				rootPath: project.rootPath,
+				snapshot: validated,
+				create: true
+			})
 			if (!layout.ok) return { ok: false, error: layout.error }
 			writeAtomicJson(layout.layout.blueprint, validated)
 			return { ok: true, dataPath: PROJECT_BLUEPRINT_REL, manifestPath: layout.layout.manifest }
@@ -254,12 +264,20 @@ export function createProjectsRepo({ backendDataDir }) {
 				write.manifestPath || existing.manifestPath || '',
 				PROJECT_STORAGE_VERSION,
 				nowIso(),
-				existing.id,
+				existing.id
 			)
 			return { ok: true, project: getById(existing.id) }
 		}
 		const info = db.transaction(() => {
-			const insertResult = insertStmt.run(nameText, '', randomUuid(), '', '', PROJECT_STORAGE_VERSION, nowIso())
+			const insertResult = insertStmt.run(
+				nameText,
+				'',
+				randomUuid(),
+				'',
+				'',
+				PROJECT_STORAGE_VERSION,
+				nowIso()
+			)
 			const newId = Number(insertResult?.lastInsertRowid ?? 0)
 			const newProject = getById(newId)
 			const write = writeSnapshot(newProject, snapshot)
@@ -272,7 +290,7 @@ export function createProjectsRepo({ backendDataDir }) {
 				write.manifestPath || '',
 				PROJECT_STORAGE_VERSION,
 				nowIso(),
-				newId,
+				newId
 			)
 			return getById(newId)
 		})()
@@ -306,7 +324,7 @@ export function createProjectsRepo({ backendDataDir }) {
 					path.resolve(root, PROJECT_MANIFEST_REL),
 					PROJECT_STORAGE_VERSION,
 					nowIso(),
-					existingRow.id,
+					existingRow.id
 				)
 				projectRow = getById(existingRow.id)
 			} else {
@@ -318,7 +336,7 @@ export function createProjectsRepo({ backendDataDir }) {
 					root,
 					path.resolve(root, PROJECT_MANIFEST_REL),
 					PROJECT_STORAGE_VERSION,
-					nowIso(),
+					nowIso()
 				)
 				projectRow = getById(Number(insertResult?.lastInsertRowid ?? 0))
 			}
@@ -363,7 +381,7 @@ export function createProjectsRepo({ backendDataDir }) {
 			mediaRoot,
 			PROJECT_BLUEPRINT_REL,
 			PROJECT_MANIFEST_REL,
-			PROJECT_STORAGE_VERSION,
-		},
+			PROJECT_STORAGE_VERSION
+		}
 	}
 }

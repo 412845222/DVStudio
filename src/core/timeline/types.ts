@@ -78,7 +78,13 @@ export type ProgressBarSpec = {
 
 export type TimelineCellKey = string // `${layerId}:${frameIndex}`
 
-export type TimelineEasingCurve = { x1: number; y1: number; x2: number; y2: number; preset?: string }
+export type TimelineEasingCurve = {
+	x1: number
+	y1: number
+	x2: number
+	y2: number
+	preset?: string
+}
 
 export type TimelineFrameSpan = number | { start: number; end: number } // inclusive
 
@@ -117,7 +123,10 @@ export type TimelineState = {
 
 	nodeKeyframesByLayer: Record<
 		string,
-		Record<string, Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>>
+		Record<
+			string,
+			Record<string, { transform?: VideoSceneNodeTransform; props?: VideoSceneNodeProps }>
+		>
 	>
 	nodeKeyframeVersion: number
 

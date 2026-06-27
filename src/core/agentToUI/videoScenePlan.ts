@@ -37,9 +37,12 @@ export type CompiledVideoScenePlan = {
 	firstFrame: number
 }
 
-type TransformStatePatch = Partial<Pick<VideoSceneNodeTransform, 'x' | 'y' | 'scaleX' | 'scaleY' | 'scale' | 'opacity'>>
+type TransformStatePatch = Partial<
+	Pick<VideoSceneNodeTransform, 'x' | 'y' | 'scaleX' | 'scaleY' | 'scale' | 'opacity'>
+>
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+	typeof v === 'object' && v !== null && !Array.isArray(v)
 const clampInt = (value: unknown, fallback: number, min: number, max: number) => {
 	const n = Math.floor(Number(value))
 	if (!Number.isFinite(n)) return fallback
@@ -59,10 +62,18 @@ const numeric = (value: unknown, fallback = 0) => {
 	const n = Number(value)
 	return Number.isFinite(n) ? n : fallback
 }
-const slug = (value: unknown) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+const slug = (value: unknown) =>
+	String(value ?? '')
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '')
 
 const canonicalPreset = (value: unknown): VideoSceneAnimationPreset | null => {
-	switch (String(value ?? '').trim().toLowerCase()) {
+	switch (
+		String(value ?? '')
+			.trim()
+			.toLowerCase()
+	) {
 		case 'fade-in':
 		case 'scale-in':
 		case 'slide-up':
@@ -78,7 +89,10 @@ const canonicalPreset = (value: unknown): VideoSceneAnimationPreset | null => {
 	}
 }
 
-const buildNodeIndex = (nodes: VideoSceneTreeNode[] | undefined, out: Map<string, VideoSceneTreeNode>) => {
+const buildNodeIndex = (
+	nodes: VideoSceneTreeNode[] | undefined,
+	out: Map<string, VideoSceneTreeNode>
+) => {
 	if (!Array.isArray(nodes)) return
 	for (const node of nodes) {
 		if (!node || typeof node !== 'object') continue
@@ -87,7 +101,10 @@ const buildNodeIndex = (nodes: VideoSceneTreeNode[] | undefined, out: Map<string
 	}
 }
 
-const visitNodes = (nodes: VideoSceneTreeNode[] | undefined, fn: (node: VideoSceneTreeNode) => void) => {
+const visitNodes = (
+	nodes: VideoSceneTreeNode[] | undefined,
+	fn: (node: VideoSceneTreeNode) => void
+) => {
 	if (!Array.isArray(nodes)) return
 	for (const node of nodes) {
 		if (!node || typeof node !== 'object') continue
@@ -110,7 +127,7 @@ const ensureTransform = (node: VideoSceneTreeNode): VideoSceneNodeTransform => {
 		width: Math.max(1, numeric(src.width, 1)),
 		height: Math.max(1, numeric(src.height, 1)),
 		rotation: numeric(src.rotation, 0),
-		opacity: clampOpacity(src.opacity, 1),
+		opacity: clampOpacity(src.opacity, 1)
 	}
 	node.transform = transform
 	return transform
@@ -131,11 +148,17 @@ const collectInsertedNodes = (layer: VideoSceneLayer, insertedNodeIds: string[])
 	return out
 }
 
-const resolveTargetNodeIds = (layer: VideoSceneLayer, insertedNodeIds: string[], rootNodeId: string, target: string): string[] => {
+const resolveTargetNodeIds = (
+	layer: VideoSceneLayer,
+	insertedNodeIds: string[],
+	rootNodeId: string,
+	target: string
+): string[] => {
 	const targetRaw = String(target || '').trim()
 	const targetSlug = slug(targetRaw)
 	if (!targetSlug) return []
-	if (targetSlug === 'root' || targetSlug === 'container' || targetSlug === 'panel') return [rootNodeId]
+	if (targetSlug === 'root' || targetSlug === 'container' || targetSlug === 'panel')
+		return [rootNodeId]
 	if (targetSlug === 'all' || targetSlug === 'group') return insertedNodeIds.slice()
 
 	const insertedNodes = collectInsertedNodes(layer, insertedNodeIds)
@@ -143,18 +166,25 @@ const resolveTargetNodeIds = (layer: VideoSceneLayer, insertedNodeIds: string[],
 	for (const node of insertedNodes) {
 		const id = String(node.id || '').trim()
 		if (!id) continue
-		const fields = [node.id, node.name, (node as any).title, (node as any).alias, (node.props as any)?.textContent]
+		const nodeRecord = node as unknown as Record<string, unknown>
+		const fields = [node.id, node.name, nodeRecord.title, nodeRecord.alias, node.props?.textContent]
 		const slugs = fields.map((value) => slug(value)).filter(Boolean)
 		if (slugs.includes(targetSlug)) {
 			matched.add(id)
 			continue
 		}
-		if (slugs.some((value) => value.endsWith(targetSlug) || value.includes(targetSlug))) matched.add(id)
+		if (slugs.some((value) => value.endsWith(targetSlug) || value.includes(targetSlug)))
+			matched.add(id)
 	}
 
 	if (matched.size) return Array.from(matched)
-	const pathTail = targetRaw.split('/').map((part) => part.trim()).filter(Boolean).pop()
-	if (pathTail && slug(pathTail) !== targetSlug) return resolveTargetNodeIds(layer, insertedNodeIds, rootNodeId, pathTail)
+	const pathTail = targetRaw
+		.split('/')
+		.map((part) => part.trim())
+		.filter(Boolean)
+		.pop()
+	if (pathTail && slug(pathTail) !== targetSlug)
+		return resolveTargetNodeIds(layer, insertedNodeIds, rootNodeId, pathTail)
 	return []
 }
 
@@ -167,20 +197,48 @@ const computeIntroState = (
 	const fromScale = clampScale(params?.fromScale, defaults.scale ?? 1)
 	const offsetX = numeric(params?.offsetX, defaults.offsetX ?? 0)
 	const offsetY = numeric(params?.offsetY, defaults.offsetY ?? 0)
-	return { x: base.x + offsetX, y: base.y + offsetY, scaleX: fromScale, scaleY: fromScale, scale: fromScale, opacity: fromOpacity }
+	return {
+		x: base.x + offsetX,
+		y: base.y + offsetY,
+		scaleX: fromScale,
+		scaleY: fromScale,
+		scale: fromScale,
+		opacity: fromOpacity
+	}
 }
 
-const computeOutroState = (base: VideoSceneNodeTransform, params: Record<string, unknown> | undefined) => {
+const computeOutroState = (
+	base: VideoSceneNodeTransform,
+	params: Record<string, unknown> | undefined
+) => {
 	const toOpacity = clampOpacity(params?.toOpacity, 0)
 	const toScale = clampScale(params?.toScale, 0.96)
 	const offsetX = numeric(params?.offsetX, 0)
 	const offsetY = numeric(params?.offsetY, -20)
-	return { x: base.x + offsetX, y: base.y + offsetY, scaleX: toScale, scaleY: toScale, scale: toScale, opacity: toOpacity }
+	return {
+		x: base.x + offsetX,
+		y: base.y + offsetY,
+		scaleX: toScale,
+		scaleY: toScale,
+		scale: toScale,
+		opacity: toOpacity
+	}
 }
 
-const computeOvershootState = (base: VideoSceneNodeTransform, params: Record<string, unknown> | undefined, fallbackScale: number) => {
+const computeOvershootState = (
+	base: VideoSceneNodeTransform,
+	params: Record<string, unknown> | undefined,
+	fallbackScale: number
+) => {
 	const scale = clampScale(params?.peakScale, fallbackScale)
-	return { x: base.x, y: base.y, scaleX: scale, scaleY: scale, scale: scale, opacity: clampOpacity(params?.peakOpacity, base.opacity) }
+	return {
+		x: base.x,
+		y: base.y,
+		scaleX: scale,
+		scaleY: scale,
+		scale: scale,
+		opacity: clampOpacity(params?.peakOpacity, base.opacity)
+	}
 }
 
 const applyPatchToNode = (node: VideoSceneTreeNode, patch: Partial<VideoSceneNodeTransform>) => {
@@ -190,10 +248,13 @@ const applyPatchToNode = (node: VideoSceneTreeNode, patch: Partial<VideoSceneNod
 	if (patch.scaleX !== undefined) transform.scaleX = clampScale(patch.scaleX, transform.scaleX)
 	if (patch.scaleY !== undefined) transform.scaleY = clampScale(patch.scaleY, transform.scaleY)
 	if (patch.scale !== undefined) transform.scale = clampScale(patch.scale, transform.scale ?? 1)
-	if (patch.opacity !== undefined) transform.opacity = clampOpacity(patch.opacity, transform.opacity)
+	if (patch.opacity !== undefined)
+		transform.opacity = clampOpacity(patch.opacity, transform.opacity)
 	if (patch.rotation !== undefined) transform.rotation = numeric(patch.rotation, transform.rotation)
-	if (patch.width !== undefined) transform.width = Math.max(1, numeric(patch.width, transform.width))
-	if (patch.height !== undefined) transform.height = Math.max(1, numeric(patch.height, transform.height))
+	if (patch.width !== undefined)
+		transform.width = Math.max(1, numeric(patch.width, transform.width))
+	if (patch.height !== undefined)
+		transform.height = Math.max(1, numeric(patch.height, transform.height))
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -223,7 +284,11 @@ const keyframesForItem = (item: VideoSceneAnimationItem) => {
 	return [start, end]
 }
 
-const stateForFrame = (item: VideoSceneAnimationItem, base: VideoSceneNodeTransform, frame: number) => {
+const stateForFrame = (
+	item: VideoSceneAnimationItem,
+	base: VideoSceneNodeTransform,
+	frame: number
+) => {
 	const frames = keyframesForItem(item)
 	const start = frames[0]
 	const end = frames[frames.length - 1]
@@ -234,17 +299,21 @@ const stateForFrame = (item: VideoSceneAnimationItem, base: VideoSceneNodeTransf
 		item.preset === 'slide-up'
 			? { opacity: 0, scale: 1, offsetY: 32 }
 			: item.preset === 'scale-in'
-			? { opacity: 0, scale: 0.92, offsetY: 0 }
-			: item.preset === 'focus'
-			? { opacity: 0, scale: 0.96, offsetY: 12 }
-			: item.preset === 'scan-line'
-			? { opacity: 0, scale: 1, offsetY: 18 }
-			: item.preset === 'underline-draw'
-			? { opacity: 0, scale: 0.2, offsetY: 0 }
-			: { opacity: 0, scale: 1, offsetY: 0 }
+				? { opacity: 0, scale: 0.92, offsetY: 0 }
+				: item.preset === 'focus'
+					? { opacity: 0, scale: 0.96, offsetY: 12 }
+					: item.preset === 'scan-line'
+						? { opacity: 0, scale: 1, offsetY: 18 }
+						: item.preset === 'underline-draw'
+							? { opacity: 0, scale: 0.2, offsetY: 0 }
+							: { opacity: 0, scale: 1, offsetY: 0 }
 	const introState = computeIntroState(base, params, introDefault)
 	const outroState = computeOutroState(base, params)
-	const overshootState = computeOvershootState(base, params, item.preset === 'number-pop' ? 1.08 : 1.05)
+	const overshootState = computeOvershootState(
+		base,
+		params,
+		item.preset === 'number-pop' ? 1.08 : 1.05
+	)
 
 	switch (item.preset) {
 		case 'fade-in':
@@ -270,7 +339,8 @@ const stateForFrame = (item: VideoSceneAnimationItem, base: VideoSceneNodeTransf
 			if (frame <= start) return numberIntro
 			if (frame >= end) return base
 			if (frame === frames[1]) return overshootState
-			if (progress <= 0.5) return lerpTransformState(numberIntro, overshootState, progress / 0.5, base)
+			if (progress <= 0.5)
+				return lerpTransformState(numberIntro, overshootState, progress / 0.5, base)
 			return lerpTransformState(overshootState, base, (progress - 0.5) / 0.5, base)
 		default:
 			return base
@@ -311,7 +381,7 @@ export const normalizeVideoScenePlan = (raw: unknown): VideoScenePlan | null => 
 			startFrame: clampInt(item.startFrame, 0, 0, 999999),
 			durationFrames: clampInt(item.durationFrames, 12, 1, 999999),
 			easingPreset: typeof item.easingPreset === 'string' ? item.easingPreset.trim() : undefined,
-			params: isRecord(item.params) ? item.params : undefined,
+			params: isRecord(item.params) ? item.params : undefined
 		})
 	}
 	return {
@@ -319,7 +389,7 @@ export const normalizeVideoScenePlan = (raw: unknown): VideoScenePlan | null => 
 		version: Number.isFinite(Number(raw.version)) ? Number(raw.version) : undefined,
 		goal: typeof raw.goal === 'string' ? raw.goal : undefined,
 		summary: typeof raw.summary === 'string' ? raw.summary : undefined,
-		animationPlan,
+		animationPlan
 	}
 }
 
@@ -329,14 +399,19 @@ export const compileVideoScenePlan = (args: {
 	rootNodeId: string
 	plan: VideoScenePlan
 }): CompiledVideoScenePlan | null => {
-	const insertedNodeIds = Array.from(new Set(args.insertedNodeIds.map((id) => String(id || '').trim()).filter(Boolean)))
+	const insertedNodeIds = Array.from(
+		new Set(args.insertedNodeIds.map((id) => String(id || '').trim()).filter(Boolean))
+	)
 	if (!insertedNodeIds.length) return null
 	const baseLayer = cloneJsonSafe(args.layer) as VideoSceneLayer
 	const rootNodeId = String(args.rootNodeId || insertedNodeIds[0] || '').trim()
 	if (!rootNodeId) return null
 
 	const applicablePlans = args.plan.animationPlan
-		.map((item) => ({ item, targetNodeIds: resolveTargetNodeIds(baseLayer, insertedNodeIds, rootNodeId, item.target) }))
+		.map((item) => ({
+			item,
+			targetNodeIds: resolveTargetNodeIds(baseLayer, insertedNodeIds, rootNodeId, item.target)
+		}))
 		.filter((entry) => entry.targetNodeIds.length > 0)
 	if (!applicablePlans.length) return null
 
@@ -369,15 +444,24 @@ export const compileVideoScenePlan = (args: {
 		easingSegments.push({
 			startFrame,
 			endFrame,
-			easingPreset: resolveSegmentEasingPreset(applicablePlans, startFrame, endFrame),
+			easingPreset: resolveSegmentEasingPreset(applicablePlans, startFrame, endFrame)
 		})
 	}
 
 	return {
 		keyframes,
-		easingSegments: easingSegments.filter((seg, index, arr) => arr.findIndex((it) => it.startFrame === seg.startFrame && it.endFrame === seg.endFrame) === index),
-		appliedTargetNodeIds: Array.from(new Set(applicablePlans.flatMap((entry) => entry.targetNodeIds))),
+		easingSegments: easingSegments.filter(
+			(seg, index, arr) =>
+				arr.findIndex((it) => it.startFrame === seg.startFrame && it.endFrame === seg.endFrame) ===
+				index
+		),
+		appliedTargetNodeIds: Array.from(
+			new Set(applicablePlans.flatMap((entry) => entry.targetNodeIds))
+		),
 		appliedPlanCount: applicablePlans.length,
-		firstFrame: applicablePlans.reduce((min, entry) => Math.min(min, entry.item.startFrame), frameList[0] ?? 0),
+		firstFrame: applicablePlans.reduce(
+			(min, entry) => Math.min(min, entry.item.startFrame),
+			frameList[0] ?? 0
+		)
 	}
 }

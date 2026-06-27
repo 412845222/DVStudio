@@ -83,7 +83,9 @@ const emit = defineEmits<{
 	opacity: 0;
 	overflow: hidden;
 	white-space: nowrap;
-	transition: max-width 160ms ease, opacity 120ms ease;
+	transition:
+		max-width 160ms ease,
+		opacity 120ms ease;
 	color: var(--vscode-fg);
 }
 

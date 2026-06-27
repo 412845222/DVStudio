@@ -10,12 +10,9 @@ import type {
 	AgentToUiSubtitleSummaryDeltaMessage,
 	AgentToUiTaskStatusMessage,
 	AgentToUiTextMessage,
-	AgentToUiVideoScenePlanMessage,
+	AgentToUiVideoScenePlanMessage
 } from './types'
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-
-const isString = (v: unknown): v is string => typeof v === 'string'
+import { isRecord, isString, isArray } from '../../types/utils'
 
 export function isAgentToUiMessage(v: unknown): v is AgentToUiMessage {
 	if (!isRecord(v)) return false
@@ -53,14 +50,17 @@ export function isAgentToUiMessage(v: unknown): v is AgentToUiMessage {
 	}
 }
 
-export function isAgentToUiSubtitleSummaryDeltaMessage(v: unknown): v is AgentToUiSubtitleSummaryDeltaMessage {
+export function isAgentToUiSubtitleSummaryDeltaMessage(
+	v: unknown
+): v is AgentToUiSubtitleSummaryDeltaMessage {
 	if (!isRecord(v)) return false
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/subtitleSummaryDelta') return false
 	if (!isRecord(v.payload)) return false
-	const section = (v.payload as any).section
-	if (!isString(section) || !section.trim()) return false
-	if (!('data' in (v.payload as any))) return false
+	const { payload } = v
+	if (!('section' in payload)) return false
+	if (!isString(payload.section) || !payload.section.trim()) return false
+	if (!('data' in payload)) return false
 	return true
 }
 
@@ -69,17 +69,22 @@ export function isAgentToUiPatchNodeMessage(v: unknown): v is AgentToUiPatchNode
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/patchNode') return false
 	if (!isRecord(v.payload)) return false
-	if (!isString((v.payload as any).nodeId) || !(v.payload as any).nodeId.trim()) return false
-	if (!isRecord((v.payload as any).patch)) return false
+	const { payload } = v
+	if (!('nodeId' in payload)) return false
+	if (!isString(payload.nodeId) || !payload.nodeId.trim()) return false
+	if (!('patch' in payload)) return false
+	if (!isRecord(payload.patch)) return false
 
-	const layerId = (v.payload as any).layerId
-	if (layerId !== undefined && (!isString(layerId) || !layerId.trim())) return false
+	if ('layerId' in payload) {
+		if (!isString(payload.layerId) || !payload.layerId.trim()) return false
+	}
 
-	const patch = (v.payload as any).patch
-	if (patch.name !== undefined && !isString(patch.name)) return false
-	if (patch.userType !== undefined && !isString(patch.userType)) return false
-	if (patch.transform !== undefined && !isRecord(patch.transform)) return false
-	if (patch.props !== undefined && !isRecord(patch.props)) return false
+	const patch = payload.patch
+	if ('name' in patch && patch.name !== undefined && !isString(patch.name)) return false
+	if ('userType' in patch && patch.userType !== undefined && !isString(patch.userType)) return false
+	if ('transform' in patch && patch.transform !== undefined && !isRecord(patch.transform))
+		return false
+	if ('props' in patch && patch.props !== undefined && !isRecord(patch.props)) return false
 
 	return true
 }
@@ -89,20 +94,20 @@ export function isAgentToUiDeleteNodeMessage(v: unknown): v is AgentToUiDeleteNo
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/deleteNode') return false
 	if (!isRecord(v.payload)) return false
+	const { payload } = v
 
-	const layerId = (v.payload as any).layerId
-	if (layerId !== undefined && (!isString(layerId) || !layerId.trim())) return false
+	if ('layerId' in payload) {
+		if (!isString(payload.layerId) || !payload.layerId.trim()) return false
+	}
 
-	const nodeId = (v.payload as any).nodeId
-	const nodeIds = (v.payload as any).nodeIds
-	const hasNodeId = nodeId !== undefined && nodeId !== null
-	const hasNodeIds = nodeIds !== undefined && nodeIds !== null
+	const hasNodeId = 'nodeId' in payload && payload.nodeId !== null
+	const hasNodeIds = 'nodeIds' in payload && payload.nodeIds !== null
 	if (!hasNodeId && !hasNodeIds) return false
-	if (hasNodeId && (!isString(nodeId) || !nodeId.trim())) return false
+	if (hasNodeId && (!isString(payload.nodeId) || !payload.nodeId.trim())) return false
 	if (hasNodeIds) {
-		if (!Array.isArray(nodeIds) || nodeIds.length === 0) return false
-		for (const s of nodeIds) {
-			if (!isString(s) || !s.trim()) return false
+		if (!isArray(payload.nodeIds, isString) || payload.nodeIds.length === 0) return false
+		for (const s of payload.nodeIds) {
+			if (!s.trim()) return false
 		}
 	}
 	return true
@@ -113,13 +118,16 @@ export function isAgentToUiInsertNodeMessage(v: unknown): v is AgentToUiInsertNo
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/insertNode') return false
 	if (!isRecord(v.payload)) return false
-	if (!('node' in v.payload)) return false
+	const { payload } = v
+	if (!('node' in payload)) return false
 
-	const layerId = (v.payload as any).layerId
-	if (layerId !== undefined && (!isString(layerId) || !layerId.trim())) return false
+	if ('layerId' in payload) {
+		if (!isString(payload.layerId) || !payload.layerId.trim()) return false
+	}
 
-	const parentId = (v.payload as any).parentId
-	if (parentId !== undefined && parentId !== null && (!isString(parentId) || !parentId.trim())) return false
+	if ('parentId' in payload && payload.parentId !== null) {
+		if (!isString(payload.parentId) || !payload.parentId.trim()) return false
+	}
 
 	return true
 }
@@ -129,15 +137,15 @@ export function isAgentToUiApplyFilterMessage(v: unknown): v is AgentToUiApplyFi
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/applyFilter') return false
 	if (!isRecord(v.payload)) return false
-	const target = v.payload.target
-	if (target !== 'selection' && target !== 'nodeId') return false
-	if (target === 'nodeId') {
-		if (!isString(v.payload.nodeId) || !v.payload.nodeId.trim()) return false
+	const { payload } = v
+	if (payload.target !== 'selection' && payload.target !== 'nodeId') return false
+	if (payload.target === 'nodeId') {
+		if (!isString(payload.nodeId) || !payload.nodeId.trim()) return false
 	}
-	const mode = v.payload.mode
-	if (mode !== undefined && mode !== 'append' && mode !== 'replace') return false
-	if (!isRecord(v.payload.filter)) return false
-	if (!isString((v.payload.filter as any).type) || !(v.payload.filter as any).type.trim()) return false
+	if (payload.mode !== undefined && payload.mode !== 'append' && payload.mode !== 'replace')
+		return false
+	if (!isRecord(payload.filter)) return false
+	if (!isString(payload.filter.type) || !payload.filter.type.trim()) return false
 	return true
 }
 
@@ -146,8 +154,9 @@ export function isAgentToUiTaskStatusMessage(v: unknown): v is AgentToUiTaskStat
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/taskStatus') return false
 	if (!isRecord(v.payload)) return false
-	if (!isString(v.payload.phase)) return false
-	const phase = v.payload.phase
+	const { payload } = v
+	if (!isString(payload.phase)) return false
+	const phase = payload.phase
 	if (
 		phase !== 'started' &&
 		phase !== 'prepare_input' &&
@@ -163,10 +172,9 @@ export function isAgentToUiTaskStatusMessage(v: unknown): v is AgentToUiTaskStat
 		phase !== 'error'
 	)
 		return false
-	const msg = v.payload.message
-	if (msg !== undefined && !isString(msg)) return false
-	const details = (v.payload as any).details
-	if (details !== undefined && !isRecord(details)) return false
+	if (payload.message !== undefined && !isString(payload.message)) return false
+	if ('details' in payload && payload.details !== undefined && !isRecord(payload.details))
+		return false
 	return true
 }
 
@@ -183,11 +191,17 @@ export function isAgentToUiVideoScenePlanMessage(v: unknown): v is AgentToUiVide
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/videoScenePlan') return false
 	if (!isRecord(v.payload)) return false
-	if (!('plan' in v.payload)) return false
-	const summary = (v.payload as any).summary
-	if (summary !== undefined && !isString(summary)) return false
-	const intent = (v.payload as any).intent
-	if (intent !== undefined && intent !== 'preview' && intent !== 'insert') return false
+	const { payload } = v
+	if (!('plan' in payload)) return false
+	if ('summary' in payload && payload.summary !== undefined && !isString(payload.summary))
+		return false
+	if (
+		'intent' in payload &&
+		payload.intent !== undefined &&
+		payload.intent !== 'preview' &&
+		payload.intent !== 'insert'
+	)
+		return false
 	return true
 }
 
@@ -207,26 +221,34 @@ export function isAgentToUiErrorMessage(v: unknown): v is AgentToUiErrorMessage 
 	return isString(v.payload.code) && isString(v.payload.message)
 }
 
-export function isAgentToUiComponentTemplateMessage(v: unknown): v is AgentToUiComponentTemplateMessage {
+export function isAgentToUiComponentTemplateMessage(
+	v: unknown
+): v is AgentToUiComponentTemplateMessage {
 	if (!isRecord(v)) return false
 	if (v.schemaVersion !== 1) return false
 	if (v.type !== 'agentToUi/componentTemplate') return false
 	if (!isRecord(v.payload)) return false
+	const { payload } = v
 
-	// template is validated by core/components in later milestone; here only require presence.
-	if (!('template' in v.payload)) return false
+	if (!('template' in payload)) return false
 
-	const intent = v.payload.intent
-	if (intent !== undefined && intent !== 'preview' && intent !== 'insert' && intent !== 'template') return false
+	if (
+		payload.intent !== undefined &&
+		payload.intent !== 'preview' &&
+		payload.intent !== 'insert' &&
+		payload.intent !== 'template'
+	)
+		return false
 
-	const params = v.payload.params
-	if (params !== undefined && !isRecord(params)) return false
+	if (payload.params !== undefined && !isRecord(payload.params)) return false
 
-	const layerId = (v.payload as any).layerId
-	if (layerId !== undefined && (!isString(layerId) || !layerId.trim())) return false
+	if ('layerId' in payload) {
+		if (!isString(payload.layerId) || !payload.layerId.trim()) return false
+	}
 
-	const parentId = (v.payload as any).parentId
-	if (parentId !== undefined && parentId !== null && (!isString(parentId) || !parentId.trim())) return false
+	if ('parentId' in payload && payload.parentId !== null) {
+		if (!isString(payload.parentId) || !payload.parentId.trim()) return false
+	}
 
 	return true
 }

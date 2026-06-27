@@ -28,7 +28,7 @@ function readProjects(db) {
       COALESCE(manifest_path, '') AS manifest_path,
       COALESCE(storage_version, 1) AS storage_version,
       last_opened_at, created_at, updated_at
-      FROM comfyui_blueprint_project ORDER BY updated_at DESC`,
+      FROM comfyui_blueprint_project ORDER BY updated_at DESC`
 		)
 		.all()
 }
@@ -64,7 +64,7 @@ function readMeshyTasks(db) {
 		'remote_created_at',
 		'remote_finished_at',
 		'created_at',
-		'updated_at',
+		'updated_at'
 	].join(', ')
 	return db.prepare(`SELECT ${cols} FROM third_party_meshy_task_mirror`).all()
 }
@@ -108,7 +108,7 @@ function readVideoTasks(db) {
 		'remote_updated_at',
 		'synced_at',
 		'created_at',
-		'updated_at',
+		'updated_at'
 	].join(', ')
 	return db.prepare(`SELECT ${cols} FROM third_party_video_generation_task_mirror`).all()
 }
@@ -116,7 +116,9 @@ function readVideoTasks(db) {
 function readApiKeys(db) {
 	if (!tableExists(db, 'dweb_api_key_secret')) return []
 	return db
-		.prepare('SELECT id, provider, key_encrypted, key_fingerprint, updated_at, created_at FROM dweb_api_key_secret')
+		.prepare(
+			'SELECT id, provider, key_encrypted, key_fingerprint, updated_at, created_at FROM dweb_api_key_secret'
+		)
 		.all()
 }
 
@@ -163,11 +165,18 @@ export function runLegacyDbMigration({ legacyDbPath, backendDataDir, force = fal
 	const repos = getRepos()
 	const legacy = openLegacyDb(dbFilePath)
 	try {
-		const stats = { projects: 0, meshyTasks: 0, videoTasks: 0, apiKeys: { total: 0, ok: 0, skipped: 0, failed: 0 } }
+		const stats = {
+			projects: 0,
+			meshyTasks: 0,
+			videoTasks: 0,
+			apiKeys: { total: 0, ok: 0, skipped: 0, failed: 0 }
+		}
 
 		// ---- projects ----
 		const legacyProjects = readProjects(legacy)
-		const existingProjectIds = new Set(repos.projects.list().map((p) => String(p.name) + '::' + String(p.rootPath)))
+		const existingProjectIds = new Set(
+			repos.projects.list().map((p) => String(p.name) + '::' + String(p.rootPath))
+		)
 		for (const lp of legacyProjects) {
 			try {
 				const key = String(lp.name || '') + '::' + String(lp.root_path || '')
@@ -178,15 +187,18 @@ export function runLegacyDbMigration({ legacyDbPath, backendDataDir, force = fal
 					snapshot = parseOptionalJson(fs.readFileSync(snapshotPath, 'utf-8'))
 				} else if (snapshotPath && backendDataDir) {
 					const candidate = path.resolve(String(backendDataDir), snapshotPath)
-					if (fs.existsSync(candidate)) snapshot = parseOptionalJson(fs.readFileSync(candidate, 'utf-8'))
+					if (fs.existsSync(candidate))
+						snapshot = parseOptionalJson(fs.readFileSync(candidate, 'utf-8'))
 				}
 				if (lp.root_path) {
 					// 先 openProjectFolder；若已存在则走后续 saveProject
 					repos.projects.openProjectFolder({ rootPath: lp.root_path, name: lp.name, create: true })
 				}
-				const existingFolder = lp.root_path && repos.projects.list().find(
-					(p) => String(p.rootPath || '').trim() === String(lp.root_path || '').trim(),
-				)
+				const existingFolder =
+					lp.root_path &&
+					repos.projects
+						.list()
+						.find((p) => String(p.rootPath || '').trim() === String(lp.root_path || '').trim())
 				const projectIdToSave = existingFolder ? existingFolder.id : undefined
 				repos.projects.saveProject({
 					name: lp.name || '(未命名项目)',
@@ -201,9 +213,9 @@ export function runLegacyDbMigration({ legacyDbPath, backendDataDir, force = fal
 						resourcesById: {},
 						resourceOrder: [],
 						selectedNodeId: null,
-						selectedNodeIds: [],
+						selectedNodeIds: []
 					},
-					projectId: projectIdToSave,
+					projectId: projectIdToSave
 				})
 				stats.projects += 1
 			} catch (e) {
@@ -213,16 +225,20 @@ export function runLegacyDbMigration({ legacyDbPath, backendDataDir, force = fal
 
 		// 建立 old_project_id → new_project_id 的映射（用于 task 关联）
 		const byRowId = new Map()
-		for (const p of repos.projects.list()) byRowId.set(String(p.name) + '::' + String(p.rootPath), p.id)
+		for (const p of repos.projects.list())
+			byRowId.set(String(p.name) + '::' + String(p.rootPath), p.id)
 
 		// ---- meshy tasks ----
 		const projectByName = new Map(repos.projects.list().map((p) => [String(p.name), p.id]))
 		for (const lt of readMeshyTasks(legacy)) {
 			try {
 				if (!lt.task_id) continue
-				const projectId = lt.project_id && projectByName.size
-					? (projectByName.get(String(legacyProjects.find((p) => p.id === lt.project_id)?.name || '')) || null)
-					: null
+				const projectId =
+					lt.project_id && projectByName.size
+						? projectByName.get(
+								String(legacyProjects.find((p) => p.id === lt.project_id)?.name || '')
+							) || null
+						: null
 				repos.meshyTasks.upsert({
 					taskId: lt.task_id,
 					mode: lt.mode,
@@ -249,7 +265,7 @@ export function runLegacyDbMigration({ legacyDbPath, backendDataDir, force = fal
 					projectId,
 					lastNodeId: lt.last_node_id,
 					remoteCreatedAt: lt.remote_created_at,
-					remoteFinishedAt: lt.remote_finished_at,
+					remoteFinishedAt: lt.remote_finished_at
 				})
 				stats.meshyTasks += 1
 			} catch (_) {
@@ -296,7 +312,7 @@ export function runLegacyDbMigration({ legacyDbPath, backendDataDir, force = fal
 					statusText: lt.status_text,
 					projectId,
 					remoteCreatedAt: lt.remote_created_at,
-					remoteUpdatedAt: lt.remote_updated_at,
+					remoteUpdatedAt: lt.remote_updated_at
 				})
 				stats.videoTasks += 1
 			} catch (_) {
@@ -309,6 +325,10 @@ export function runLegacyDbMigration({ legacyDbPath, backendDataDir, force = fal
 
 		return { ok: true, stats }
 	} finally {
-		try { legacy.close() } catch (_) { /* ignore */ }
+		try {
+			legacy.close()
+		} catch (_) {
+			/* ignore */
+		}
 	}
 }
