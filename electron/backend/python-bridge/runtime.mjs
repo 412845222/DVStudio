@@ -12,10 +12,11 @@
 import { spawn, ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { detectPythonCommand } from '../python.mjs'
+import { getPythonBridgeScriptsDir } from '../../config.mjs'
 import { createLineReader, createLineWriter, JsonRpcTransport } from './rpc.mjs'
 import { getPipManager } from './pip.mjs'
 
-const SCRIPTS_DIR = path.resolve(import.meta.dirname, 'scripts')
+const SCRIPTS_DIR = getPythonBridgeScriptsDir()
 const WORKER_SCRIPT = path.resolve(SCRIPTS_DIR, 'worker.py')
 
 // Constants
@@ -401,9 +402,8 @@ export class PythonWorkerRuntime {
   // === Private methods ===
 
   _getDevPythonPath() {
-    // In dev mode, include django-app for code reuse during migration
-    const djangoApp = path.resolve(import.meta.dirname, '../../..', 'django-app')
-    return djangoApp
+    const scriptsDir = path.resolve(import.meta.dirname, 'scripts')
+    return scriptsDir
   }
 
   _generateRequestId() {

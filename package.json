@@ -39,14 +39,8 @@
   "scripts": {
     "dev": "vite",
     "dev:vite:5173": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "dev:web": "cross-env VITE_PLATFORM=web VITE_BACKEND_BASE_URL=http://127.0.0.1:5800 DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
-    "dev:web:empty": "cross-env VITE_PLATFORM=web DWEB_SIMULATE_EMPTY_ENV=1 VITE_BACKEND_BASE_URL=http://127.0.0.1:5800 DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
-    "dev:web:all": "concurrently -k -n vite,django -c blue,yellow \"npm run dev:web\" \"npm run dev:django\"",
-    "dev:web:all:py3": "concurrently -k -n vite,django -c blue,yellow \"npm run dev:web\" \"python3 django-app/manage.py runserver 5800\"",
-    "dev:django": "python django-app/manage.py runserver 5800",
-    "dev:backend:mac": "if [ -x ../../.venv/bin/python ]; then ../../.venv/bin/python django-app/manage.py runserver 5800; elif [ -x ../.venv/bin/python ]; then ../.venv/bin/python django-app/manage.py runserver 5800; else python django-app/manage.py runserver 5800; fi",
-    "setup:django:mac": "if [ -x ../../.venv/bin/python ]; then ../../.venv/bin/python django-app/manage.py migrate; elif [ -x ../.venv/bin/python ]; then ../.venv/bin/python django-app/manage.py migrate; else python django-app/manage.py migrate; fi",
-    "start:dev:mac": "concurrently -k -n vite,django \"npm run dev:vite:5173\" \"npm run dev:backend:mac\"",
+    "dev:web": "cross-env VITE_PLATFORM=web DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:web:empty": "cross-env VITE_PLATFORM=web DWEB_SIMULATE_EMPTY_ENV=1 DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
     "check:copilot-sse": "node scripts/check-copilot-sse.mjs",
     "smoke:copilot-dev": "node scripts/run-copilot-dev-smoke.mjs",
     "dev:electron:app": "cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs",
@@ -55,7 +49,7 @@
     "dev:electron:empty": "cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource DWEB_SIMULATE_EMPTY_ENV=1 ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs\"",
     "install:better-sqlite3": "cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs",
     "setup:steam": "node scripts/setup-steam-dev.mjs",
-    "clean:runtime-django": "node scripts/clean-runtime-django.mjs",
+    "clean:runtime-legacy": "node scripts/clean-runtime-django.mjs",
     "build": "vue-tsc && vite build",
     "gen:win-icon": "node scripts/gen-win-icon.mjs",
     "gen:installer-bitmaps": "node scripts/gen-installer-bitmaps.mjs",
@@ -155,8 +149,8 @@
     ],
     "extraResources": [
       {
-        "from": "django-app",
-        "to": "django-app"
+        "from": "electron/backend/python-bridge/scripts",
+        "to": "python-bridge-scripts"
       },
       {
         "from": "electron/static",

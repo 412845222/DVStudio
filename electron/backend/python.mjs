@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { getStaticRuntimeDir } from '../config.mjs'
+import { getStaticRuntimeDir, getPythonBridgeScriptsDir } from '../config.mjs'
 
 function _getBundledPythonDir() {
 	return path.resolve(getStaticRuntimeDir(), 'python-win32-x64')
@@ -64,7 +64,7 @@ export function getPythonSubprocessEnv(pyInfo, baseEnv = process.env) {
 	}
 
 	// Add Python Bridge scripts directory to PYTHONPATH
-	const pythonBridgeScriptsDir = path.resolve(import.meta.dirname, 'python-bridge', 'scripts')
+	const pythonBridgeScriptsDir = getPythonBridgeScriptsDir()
 	const pythonPathKey =
 		Object.keys(env).find((k) => k.toLowerCase() === 'pythonpath') || 'PYTHONPATH'
 	const existingPythonPath = env[pythonPathKey] || ''
