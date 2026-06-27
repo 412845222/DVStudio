@@ -2,9 +2,12 @@ import { nextTick } from 'vue'
 import type { WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
 import {
 	buildSceneDecomposeDescription,
+	buildSceneDecomposePromptVisualDetails,
 	extractSceneDecomposeItems,
 	hasValidSceneDecomposeImageRect,
 	hasValidSceneDecomposePixelRect,
+	inferSceneDecomposeCategory,
+	inferSceneDecomposeObjectName,
 	inferSceneDecomposeSourceImageIndex,
 	normalizeSceneDecomposeCrop,
 	shouldSkipSceneDecomposeItem,
@@ -157,8 +160,9 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				const objectId = String(item?.id ?? '').trim() || outputId
 				const sourceImageIndex = inferSceneDecomposeSourceImageIndex(item)
 				const source = options.connectedSceneDecomposeImageInputAt(nodeId, sourceImageIndex)
-				const objectName =
-					String(item?.name ?? item?.label ?? `对象 ${index + 1}`).trim() || `对象 ${index + 1}`
+				const objectName = inferSceneDecomposeObjectName(item, index)
+				const objectCategory = inferSceneDecomposeCategory(item)
+				const objectMaterial = String(item?.material ?? '').trim()
 				const taskLabel = `${objectName}（参考图 ${sourceImageIndex}）`
 				options.store.commit('setNodeSceneDecomposeSettings', {
 					nodeId,
@@ -214,6 +218,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				const enforced = computeEnforcedLandscapeCrop(srcW, srcH, pixelCrop, { minWidth: 350 })
 
 				const description = buildSceneDecomposeDescription(item, objectName)
+				const visualDetails = buildSceneDecomposePromptVisualDetails(item, objectName)
 				const transferFile = await options.buildImageTransferFileFromCrop({
 					sourceUrl: source.url,
 					sourceName: objectName,
@@ -246,6 +251,9 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					id: outputId,
 					objectId,
 					name: objectName,
+					category: objectCategory,
+					material: objectMaterial,
+					visualDetails,
 					description,
 					cropMode: enforced.adjusted ? `${cropInfo.cropMode}-enforced` : cropInfo.cropMode,
 					sourceImageIndex,

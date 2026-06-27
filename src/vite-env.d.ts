@@ -154,6 +154,42 @@ interface Window {
         chatStream?: (payload: Record<string, unknown>) => AsyncGenerator<import('./network/ComfyUIBridgeService').BlueprintChatStreamEvent, void, void>
       }
     }
+    agentSkills?: {
+      sceneUnderstand?: {
+        models?: () => Promise<import('./network/SceneSkillService').SceneUnderstandModelsResponse>
+        run?: (payload: Record<string, unknown>) => Promise<import('./network/SceneSkillService').SceneUnderstandRunResponse>
+        runStream?: (payload: Record<string, unknown>) => AsyncGenerator<{ type?: string; message?: import('./core/agentToUI').AgentToUiMessage; error?: { message: string; details?: unknown }; [key: string]: unknown }, void, void>
+      }
+      sceneLighting?: {
+        models?: () => Promise<import('./network/SceneSkillService').SceneLightingModelsResponse>
+        run?: (payload: Record<string, unknown>) => Promise<import('./network/SceneSkillService').SceneLightingRunResponse>
+        runStream?: (payload: Record<string, unknown>) => AsyncGenerator<{ type?: string; message?: import('./core/agentToUI').AgentToUiMessage; error?: { message: string; details?: unknown }; [key: string]: unknown }, void, void>
+      }
+      sceneLayout?: {
+        run?: (payload: Record<string, unknown>) => Promise<import('./network/SceneSkillService').SceneLayoutRunResponse>
+      }
+      unreal?: {
+        sessions?: () => Promise<{ ok: boolean; sessions?: unknown[]; error?: string }>
+        register?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; sessionId?: string; session?: unknown; error?: string }>
+        sessionDetail?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; session?: unknown; error?: string }>
+        createJob?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; jobId?: string; job?: unknown; error?: string }>
+        jobDetail?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; job?: unknown; error?: string }>
+        heartbeat?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+        pickJob?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; job?: unknown; error?: string }>
+        getHttpPort?: () => Promise<{ ok: boolean; port?: number; error?: string }>
+      }
+    }
+    codex?: {
+      health?: () => Promise<import('./network/ComfyUIBridgeService').CodexHealthResponse>
+      listSessions?: (payload?: { projectId?: number | null }) => Promise<import('./network/ComfyUIBridgeService').CodexListSessionsResponse>
+      createSession?: (payload?: { title?: string; cwd?: string; model?: string; projectId?: number | null }) => Promise<import('./network/ComfyUIBridgeService').CodexCreateSessionResponse>
+      listMessages?: (payload: { sessionId: string; projectId?: number | null }) => Promise<import('./network/ComfyUIBridgeService').CodexListMessagesResponse>
+      updateSession?: (payload: { sessionId: string; projectId?: number | null; title?: string }) => Promise<import('./network/ComfyUIBridgeService').CodexUpdateSessionResponse>
+      deleteSession?: (payload: { sessionId: string; projectId?: number | null }) => Promise<{ ok?: boolean; error?: string }>
+      submitApproval?: (payload: { sessionId: string; messageId: string; decision: 'accept' | 'decline'; projectId?: number | null }) => Promise<import('./network/ComfyUIBridgeService').CodexApprovalResponse>
+      sendMessageStream?: (payload: { sessionId: string; content: string; [key: string]: unknown }) => AsyncGenerator<{ event?: string; data?: unknown; type?: string; error?: { message: string; details?: unknown } }, void, void>
+      cancel?: (payload: { sessionId: string }) => Promise<{ ok?: boolean; error?: string }>
+    }
     projects?: {
       list?: () => Promise<{ ok: boolean; projects?: unknown[]; error?: string }>
       save?: (payload: { name: string; snapshot: unknown; projectId?: number | null }) => Promise<{ ok: boolean; project?: unknown; error?: string }>

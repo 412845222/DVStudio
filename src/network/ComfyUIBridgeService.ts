@@ -461,6 +461,10 @@ function isComfyRuntimeIpcAvailable(): boolean {
 	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.comfyui?.runtime
 }
 
+function isCodexIpcAvailable(): boolean {
+	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.codex
+}
+
 async function filesToDataUrlFiles(files: File[]): Promise<Array<{ name: string; dataUrl: string }>> {
 	const out: Array<{ name: string; dataUrl: string }> = []
 	for (let i = 0; i < files.length; i++) {
@@ -551,6 +555,38 @@ async function* consumeThirdPartyIpcStream(
 					yield { type: 'msg', message: (parsed as any).message }; continue
 				}
 				yield parsed as any
+			}
+		}
+		yield { type: 'done' }
+	} catch (err: unknown) {
+		yield { type: 'error', error: { message: getErrorMessage(err) || `${fallbackLabel} failed via IPC` } }
+	}
+}
+
+async function* consumeCodexIpcStream(
+	generator: AsyncIterable<unknown>,
+	fallbackLabel: string
+): AsyncGenerator<CodexStreamEvent, void, void> {
+	try {
+		for await (const chunk of generator) {
+			let parsed = chunk
+			if (typeof chunk === 'string') {
+				try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+			}
+			if (parsed && typeof parsed === 'object') {
+				if ((parsed as any).type === 'error') {
+					yield { type: 'error', error: { message: (parsed as any).error?.message || 'Stream error' } }
+					return
+				}
+				if ((parsed as any).event === 'done' || (parsed as any).type === 'done') {
+					yield { type: 'done' }
+					return
+				}
+				const eventName = (parsed as any).event || (parsed as any).type
+				const data = (parsed as any).data ?? parsed
+				if (eventName) {
+					yield { type: 'event', event: eventName, data }
+				}
 			}
 		}
 		yield { type: 'done' }
@@ -861,6 +897,14 @@ export class ComfyUIBridgeService {
 	}
 
 	async codexHealth(): Promise<CodexHealthResponse> {
+		if (isCodexIpcAvailable()) {
+			try {
+				const result = await window.dweb?.codex?.health?.()
+				if (result) return result as CodexHealthResponse
+			} catch (err) {
+				console.warn('[ComfyUIBridgeService] codex.health IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.localExecUrl('/health'), {
 			method: 'GET',
 			headers: jsonHeaders(this.devToken)
@@ -873,6 +917,15 @@ export class ComfyUIBridgeService {
 	}
 
 	async codexListSessions(projectId: number | null): Promise<CodexListSessionsResponse> {
+		if (isCodexIpcAvailable()) {
+			try {
+				const result = await window.dweb?.codex?.listSessions?.({ projectId: projectId ?? undefined })
+				if (result && !('error' in result)) return result as CodexListSessionsResponse
+				if (result && 'error' in result) return result as { error: string }
+			} catch (err) {
+				console.warn('[ComfyUIBridgeService] codex.listSessions IPC failed:', err)
+			}
+		}
 		const pid = Number.isFinite(projectId as number) ? Number(projectId) : NaN
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
 		const res = await this.fetchWithLog(this.localExecUrl(`/sessions${query}`), {
@@ -891,6 +944,15 @@ export class ComfyUIBridgeService {
 	async codexCreateSession(
 		payload: { title?: string; cwd?: string; model?: string; projectId?: number | null } = {}
 	): Promise<CodexCreateSessionResponse> {
+		if (isCodexIpcAvailable()) {
+			try {
+				const result = await window.dweb?.codex?.createSession?.(payload)
+				if (result && !('error' in result)) return result as CodexCreateSessionResponse
+				if (result && 'error' in result) return result as { error: string }
+			} catch (err) {
+				console.warn('[ComfyUIBridgeService] codex.createSession IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.localExecUrl('/sessions'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -911,6 +973,15 @@ export class ComfyUIBridgeService {
 	): Promise<CodexListMessagesResponse> {
 		const sid = String(sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
+		if (isCodexIpcAvailable()) {
+			try {
+				const result = await window.dweb?.codex?.listMessages?.({ sessionId: sid, projectId: projectId ?? undefined })
+				if (result && !('error' in result)) return result as CodexListMessagesResponse
+				if (result && 'error' in result) return result as { error: string }
+			} catch (err) {
+				console.warn('[ComfyUIBridgeService] codex.listMessages IPC failed:', err)
+			}
+		}
 		const pid = Number.isFinite(projectId as number) ? Number(projectId) : NaN
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
 		const res = await this.fetchWithLog(
@@ -934,6 +1005,15 @@ export class ComfyUIBridgeService {
 	}): Promise<CodexUpdateSessionResponse> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
+		if (isCodexIpcAvailable()) {
+			try {
+				const result = await window.dweb?.codex?.updateSession?.({ sessionId: sid, title: payload.title, projectId: payload.projectId ?? undefined })
+				if (result && !('error' in result)) return result as CodexUpdateSessionResponse
+				if (result && 'error' in result) return result as { error: string }
+			} catch (err) {
+				console.warn('[ComfyUIBridgeService] codex.updateSession IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(this.localExecUrl(`/sessions/${encodeURIComponent(sid)}`), {
 			method: 'PATCH',
 			headers: jsonHeaders(this.devToken),
@@ -952,6 +1032,14 @@ export class ComfyUIBridgeService {
 	}): Promise<{ ok?: boolean; error?: string }> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
+		if (isCodexIpcAvailable()) {
+			try {
+				const result = await window.dweb?.codex?.deleteSession?.({ sessionId: sid, projectId: payload.projectId ?? undefined })
+				if (result) return result as { ok?: boolean; error?: string }
+			} catch (err) {
+				console.warn('[ComfyUIBridgeService] codex.deleteSession IPC failed:', err)
+			}
+		}
 		const pid = Number.isFinite(payload.projectId as number) ? Number(payload.projectId) : NaN
 		const query = Number.isFinite(pid) ? `?projectId=${encodeURIComponent(String(pid))}` : ''
 		const res = await this.fetchWithLog(
@@ -978,6 +1066,19 @@ export class ComfyUIBridgeService {
 	}): Promise<CodexApprovalResponse> {
 		const sid = String(payload.sessionId || '').trim()
 		if (!sid) return { error: 'sessionId is required' }
+		if (isCodexIpcAvailable()) {
+			try {
+				const result = await window.dweb?.codex?.submitApproval?.({
+					sessionId: sid,
+					messageId: payload.messageId,
+					decision: payload.decision,
+					projectId: payload.projectId ?? undefined
+				})
+				if (result) return result as CodexApprovalResponse
+			} catch (err) {
+				console.warn('[ComfyUIBridgeService] codex.submitApproval IPC failed:', err)
+			}
+		}
 		const res = await this.fetchWithLog(
 			this.localExecUrl(`/sessions/${encodeURIComponent(sid)}/approvals`),
 			{
@@ -1015,6 +1116,18 @@ export class ComfyUIBridgeService {
 		if (!sid) {
 			yield { type: 'error', error: { message: 'sessionId is required' } }
 			return
+		}
+		if (isCodexIpcAvailable() && !useTestStream) {
+			try {
+				const ipcPayload = { sessionId: sid, ...payload }
+				const generator = window.dweb?.codex?.sendMessageStream?.(ipcPayload)
+				if (generator) {
+					yield* consumeCodexIpcStream(generator, 'codex/send-message:stream')
+					return
+				}
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] codex/send-message:stream IPC failed, falling back to HTTP:', err)
+			}
 		}
 		const streamPath = useTestStream
 			? `/sessions/${encodeURIComponent(sid)}/messages:stream-test`

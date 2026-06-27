@@ -116,6 +116,7 @@ export type WorkflowSceneUnderstandingNodeSettings = {
 	outputJson?: string
 	rawOutput?: string
 	resultSummary?: string
+	reasoningText?: string
 	lastRunAt?: number
 	lastInputImageUrl?: string
 	lastInputImageUrls?: string[]
@@ -480,6 +481,9 @@ export type WorkflowSceneDecomposeOutput = {
 	id: string
 	objectId?: string
 	name?: string
+	category?: string
+	material?: string
+	visualDetails?: string
 	description?: string
 	cropMode?: 'cropped' | 'fallback' | 'cropped-enforced' | 'fallback-enforced'
 	sourceImageIndex: number

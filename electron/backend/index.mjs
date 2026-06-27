@@ -11,6 +11,9 @@ import { routes as chatRoutes } from './modules/chat/routes.mjs'
 import { routes as exportRoutes } from './modules/export/routes.mjs'
 import { routes as comfyuiRoutes } from './modules/comfyui/routes.mjs'
 import { routes as thirdPartyRoutes } from './modules/third-party/routes.mjs'
+import { routes as agentSkillsRoutes } from './modules/agent-skills/routes.mjs'
+import { routes as codexRoutes } from './modules/codex/routes.mjs'
+import { startUnrealHttpServer, stopUnrealHttpServer } from './modules/agent-skills/service.mjs'
 import { setProjectRoot } from './projectAssetProtocol.mjs'
 import { getRepos } from '../localdb/index.mjs'
 
@@ -67,6 +70,8 @@ export function initBackend(mainWindow, deps = {}) {
     ...exportRoutes,
     ...comfyuiRoutes,
     ...thirdPartyRoutes,
+    ...agentSkillsRoutes,
+    ...codexRoutes,
   ]
 
   _router = createRouter({
@@ -78,6 +83,14 @@ export function initBackend(mainWindow, deps = {}) {
   _router.register()
 
   restoreProjectRoots()
+
+  startUnrealHttpServer().then(result => {
+    if (result.ok) {
+      logger.info(`Unreal HTTP server listening on port ${result.port}`)
+    } else {
+      logger.warn(`Failed to start Unreal HTTP server: ${result.error}`)
+    }
+  })
 
   logger.info(`New backend initialized with ${allRoutes.length} routes`)
   return _router
@@ -91,6 +104,7 @@ export function shutdownBackend() {
   if (_router) {
     _router.unregister()
     _router = null
+    stopUnrealHttpServer()
     logger.info('Backend shut down')
   }
 }

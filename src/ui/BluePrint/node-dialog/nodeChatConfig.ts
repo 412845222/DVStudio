@@ -55,11 +55,11 @@ export const NODE_CHAT_RESOLUTION_OPTIONS = [
 export const NODE_CHAT_QUANTITY_OPTIONS = [1, 2, 4, 6, 8]
 
 export const NODE_CHAT_VIDEO_MODE_OPTIONS = [
-	{ value: 'auto', label: '自动' },
-	{ value: 'text_to_video', label: '文生视频' },
-	{ value: 'image_to_video', label: '首帧图生' },
-	{ value: 'first-last', label: '首尾帧' },
-	{ value: 'reference', label: '多模态参考' }
+	{ value: 'auto' as const, label: '自动' },
+	{ value: 'text_to_video' as const, label: '文生视频' },
+	{ value: 'image_to_video' as const, label: '首帧图生' },
+	{ value: 'first-last' as const, label: '首尾帧' },
+	{ value: 'reference' as const, label: '多模态参考' }
 ]
 
 export const NODE_CHAT_VIDEO_DURATION_OPTIONS = [
@@ -130,9 +130,9 @@ export const NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS = [
 ]
 
 export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
-	{ value: 'fast', label: '快速' },
-	{ value: 'normal', label: '标准' },
-	{ value: 'slow', label: '精细' }
+	{ value: 'fast' as const, label: '快速' },
+	{ value: 'normal' as const, label: '标准' },
+	{ value: 'slow' as const, label: '精细' }
 ]
 
 export const NODE_CHAT_TEXT_MODEL_OPTIONS = [
@@ -312,7 +312,7 @@ export const supportsSeedreamOutputFormat = (modelVersion: string) => {
 
 export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [{ value: 'seedance', label: 'Seedance (字节方舟)' }]
 
-export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [{ value: 'meshy', label: 'Meshy' }]
+export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [{ value: 'meshy' as const, label: 'Meshy' }]
 
 export const NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS = [
 	{ value: 'doubao-seedance-2-0-260128', label: 'Seedance 2.0' },

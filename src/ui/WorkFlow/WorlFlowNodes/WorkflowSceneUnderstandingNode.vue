@@ -59,6 +59,10 @@
 						<span>{{ statusText }}</span>
 						<span>{{ progressValue }}%</span>
 					</div>
+					<div v-if="reasoningText" ref="reasoningEl" class="wf-scene-understand-reasoning">
+						<div class="wf-scene-understand-reasoning-title">💭 模型思考</div>
+						<pre class="wf-scene-understand-reasoning-content">{{ reasoningText }}</pre>
+					</div>
 				</div>
 
 				<div class="wf-scene-understand-grid">
@@ -87,7 +91,7 @@
 
 				<label class="wf-scene-understand-field">
 					<span class="wf-scene-understand-label">理解模式</span>
-					<select class="wf-scene-understand-input" :value="currentMode" @change="onModeChange">
+					<select class="wf-scene-understand-input" :value="currentMode" :disabled="running" @change="onModeChange">
 						<option value="scene-layout">场景布局理解</option>
 						<option value="scene-lighting">场景灯光理解</option>
 					</select>
@@ -99,6 +103,7 @@
 						<select
 							class="wf-scene-understand-input"
 							:value="selectedModel"
+							:disabled="running"
 							@change="onModelChange"
 						>
 							<option v-for="item in availableModels" :key="item.id" :value="item.id">
@@ -108,7 +113,7 @@
 						<button
 							class="wf-scene-understand-btn ghost"
 							type="button"
-							:disabled="loadingModels"
+							:disabled="loadingModels || running"
 							@click.stop="emit('request-scene-models')"
 						>
 							{{ loadingModels ? '刷新中…' : '刷新模型' }}
@@ -122,6 +127,7 @@
 						<div class="wf-scene-understand-meta">{{ resultMeta }}</div>
 					</div>
 					<textarea
+						ref="outputEl"
 						class="wf-scene-understand-output"
 						:value="outputJson"
 						readonly
@@ -144,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import type {
 	WorkflowSceneUnderstandModelOption,
@@ -248,6 +254,7 @@ const messageText = computed(() =>
 const statusText = computed(() =>
 	String(settings.value?.statusText ?? settings.value?.providerStatusText ?? messageText.value)
 )
+const reasoningText = computed(() => String(settings.value?.reasoningText ?? ''))
 const progressValue = computed(() => {
 	const raw = Number(settings.value?.progress ?? 0)
 	if (!Number.isFinite(raw)) return 0
@@ -267,9 +274,12 @@ const linkedImageCount = computed(() => {
 	return String(props.linkedImageUrl ?? '').trim() ? 1 : 0
 })
 const linkedLayoutJson = computed(() => String(props.linkedLayoutJsonText ?? '').trim())
+const selfOutputJson = computed(() => String(settings.value?.outputJson ?? '').trim())
+const effectiveLayoutJson = computed(() => linkedLayoutJson.value || selfOutputJson.value)
 const canRun = computed(() => {
+	if (running.value) return false
 	if (!linkedImageCount.value || !selectedModel.value) return false
-	if (currentMode.value === 'scene-lighting') return !!linkedLayoutJson.value
+	if (currentMode.value === 'scene-lighting') return !!effectiveLayoutJson.value
 	return true
 })
 
@@ -280,8 +290,8 @@ const linkedPromptPreview = computed(() => {
 })
 
 const linkedLayoutJsonPreview = computed(() => {
-	const text = linkedLayoutJson.value
-	if (!text) return '请连接场景布局 JSON 输出'
+	const text = effectiveLayoutJson.value
+	if (!text) return '请先运行场景理解生成布局 JSON 或连接外部输入'
 	return text.length > 56 ? `${text.slice(0, 56)}…` : text
 })
 
@@ -349,6 +359,35 @@ const onModeChange = (e: Event) => {
 				: '当前为场景布局理解模式，请接入参考图后生成 JSON。'
 	})
 }
+
+const reasoningEl = ref<HTMLDivElement | null>(null)
+const outputEl = ref<HTMLTextAreaElement | null>(null)
+
+const scrollToBottom = (el: HTMLElement | null) => {
+	if (!el) return
+	nextTick(() => {
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				el.scrollTop = el.scrollHeight
+			})
+		})
+	})
+}
+
+watch(reasoningText, () => {
+	if (running.value) scrollToBottom(reasoningEl.value)
+})
+
+watch(outputJson, () => {
+	if (running.value) scrollToBottom(outputEl.value)
+})
+
+watch(running, (isRunning) => {
+	if (isRunning) {
+		scrollToBottom(reasoningEl.value)
+		scrollToBottom(outputEl.value)
+	}
+})
 
 onMounted(() => {
 	if (!availableModels.value.length) emit('request-scene-models')
@@ -503,5 +542,34 @@ onMounted(() => {
 .wf-scene-understand-btn:disabled {
 	opacity: 0.55;
 	cursor: not-allowed;
+}
+
+.wf-scene-understand-reasoning {
+	margin-top: 8px;
+	padding: 8px;
+	border: 1px solid rgba(148, 163, 184, 0.2);
+	background: rgba(30, 41, 59, 0.5);
+	border-radius: 6px;
+	max-height: 160px;
+	overflow-y: auto;
+}
+
+.wf-scene-understand-reasoning-title {
+	font-size: 11px;
+	font-weight: 600;
+	opacity: 0.7;
+	margin-bottom: 4px;
+	color: #93c5fd;
+}
+
+.wf-scene-understand-reasoning-content {
+	margin: 0;
+	font-size: 11px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+	opacity: 0.75;
+	font-family: Consolas, Monaco, monospace;
+	color: #cbd5e1;
 }
 </style>

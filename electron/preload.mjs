@@ -340,6 +340,51 @@ contextBridge.exposeInMainWorld('dweb', {
 			},
 		},
 	},
+	agentSkills: {
+		sceneUnderstand: {
+			models: () => invoke('dweb:agent-skills:scene-understand:models'),
+			run: (payload) => invoke('dweb:agent-skills:scene-understand:run', payload || {}),
+			runStream: (payload) => {
+				const { generator } = createInvokeStream('dweb:agent-skills:scene-understand:run')(payload || {})
+				return generator
+			},
+		},
+		sceneLighting: {
+			models: () => invoke('dweb:agent-skills:scene-lighting:models'),
+			run: (payload) => invoke('dweb:agent-skills:scene-lighting:run', payload || {}),
+			runStream: (payload) => {
+				const { generator } = createInvokeStream('dweb:agent-skills:scene-lighting:run')(payload || {})
+				return generator
+			},
+		},
+		sceneLayout: {
+			run: (payload) => invoke('dweb:agent-skills:scene-layout:run', payload || {}),
+		},
+		unreal: {
+			sessions: () => invoke('dweb:agent-skills:unreal:sessions'),
+			register: (payload) => invoke('dweb:agent-skills:unreal:register', payload || {}),
+			sessionDetail: (payload) => invoke('dweb:agent-skills:unreal:session-detail', payload || {}),
+			createJob: (payload) => invoke('dweb:agent-skills:unreal:create-job', payload || {}),
+			jobDetail: (payload) => invoke('dweb:agent-skills:unreal:job-detail', payload || {}),
+			heartbeat: (payload) => invoke('dweb:agent-skills:unreal:heartbeat', payload || {}),
+			pickJob: (payload) => invoke('dweb:agent-skills:unreal:pick-job', payload || {}),
+			getHttpPort: () => invoke('dweb:agent-skills:unreal:get-http-port'),
+		},
+	},
+	codex: {
+		health: () => invoke('dweb:codex:health'),
+		listSessions: (payload) => invoke('dweb:codex:list-sessions', payload || {}),
+		createSession: (payload) => invoke('dweb:codex:create-session', payload || {}),
+		listMessages: (payload) => invoke('dweb:codex:list-messages', payload || {}),
+		updateSession: (payload) => invoke('dweb:codex:update-session', payload || {}),
+		deleteSession: (payload) => invoke('dweb:codex:delete-session', payload || {}),
+		submitApproval: (payload) => invoke('dweb:codex:submit-approval', payload || {}),
+		sendMessageStream: (payload) => {
+			const { generator } = createInvokeStream('dweb:codex:send-message')(payload || {})
+			return generator
+		},
+		cancel: (payload) => invoke('dweb:codex:cancel', payload || {}),
+	},
 	projects: {
 		list: () => invoke('dweb:projects:list'),
 		save: (payload) => invoke('dweb:projects:save', payload || {}),

@@ -52,6 +52,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 	const sceneUnderstandRunControllers = new Map<string, AbortController>()
 	const sceneUnderstandDraftBuffers = new Map<string, string>()
 	const sceneUnderstandDraftTimers = new Map<string, number>()
+	const sceneUnderstandReasoningBuffers = new Map<string, string>()
 
 	const clearSceneUnderstandDraftSchedule = (nodeId: string) => {
 		const timer = sceneUnderstandDraftTimers.get(nodeId)
@@ -189,6 +190,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		stopSceneUnderstandRun(nodeId)
 		clearSceneUnderstandDraftSchedule(nodeId)
 		sceneUnderstandDraftBuffers.delete(nodeId)
+		sceneUnderstandReasoningBuffers.delete(nodeId)
 		options.store.commit('setNodeSceneUnderstandingSettings', {
 			nodeId,
 			sceneUnderstandingSettings: {
@@ -202,6 +204,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				outputJson: '',
 				rawOutput: '',
 				resultSummary: '',
+				reasoningText: '',
 				rewriteUsed: false,
 				rewriteAttempts: 0,
 				mock: false
@@ -215,46 +218,69 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		stopSceneUnderstandRun(nodeId)
 		flushSceneUnderstandDraft(nodeId)
 		clearSceneUnderstandDraftSchedule(nodeId)
+		sceneUnderstandReasoningBuffers.delete(nodeId)
 		options.store.commit('setNodeSceneUnderstandingSettings', {
 			nodeId,
 			sceneUnderstandingSettings: {
 				status: 'canceled',
 				message: '已终止当前场景理解请求。',
 				statusText: 'SSE 请求已终止，可重新运行。',
-				progress: 0
+				progress: 0,
+				reasoningText: ''
 			}
 		})
 	}
 
-	const sceneUnderstandPhaseState = (phase: string, message: string) => {
+	const sceneUnderstandPhaseState = (phase: string, message: string, contentLength = 0) => {
 		const normalized = String(phase || '')
 			.trim()
 			.toLowerCase()
+		if (normalized === 'start') return { progress: 5, statusText: message || '任务已启动。' }
 		if (normalized === 'started') return { progress: 8, statusText: message || '场景理解已开始。' }
 		if (normalized === 'prepare_input')
-			return { progress: 16, statusText: message || '正在规范化输入图片。' }
+			return { progress: 15, statusText: message || '正在规范化输入图片。' }
 		if (normalized === 'connect')
-			return { progress: 26, statusText: message || '正在连接模型服务。' }
+			return { progress: 25, statusText: message || '正在连接模型服务。' }
 		if (normalized === 'submit')
-			return { progress: 36, statusText: message || '已提交请求，等待远端服务接收。' }
-		if (normalized === 'streaming')
-			return { progress: 52, statusText: message || '远端服务流式处理中。' }
+			return { progress: 35, statusText: message || '已提交请求，等待远端服务接收。' }
+		if (normalized === 'thinking')
+			return { progress: 40, statusText: message || '模型正在深度思考分析图片...' }
 		if (normalized === 'writing')
-			return { progress: 72, statusText: message || '远端服务正在生成结构化结果。' }
+			return { progress: 72, statusText: message || '思考完成，正在输出结构化JSON...' }
+		if (normalized === 'streaming') {
+			const estimatedProgress = Math.min(80, 78 + Math.min(12, Math.floor(contentLength / 200)))
+			return { progress: estimatedProgress, statusText: message || '远端服务正在生成内容...' }
+		}
+		if (normalized === 'continue')
+			return { progress: 85, statusText: message || '输出较长，正在续写后续内容...' }
 		if (normalized === 'parse')
-			return { progress: 88, statusText: message || '正在解析远端返回 JSON。' }
+			return { progress: 90, statusText: message || '正在解析远端返回 JSON。' }
 		if (normalized === 'rewrite')
 			return { progress: 80, statusText: message || '正在请求模型紧凑重写 JSON。' }
 		if (normalized === 'done') return { progress: 100, statusText: message || '场景理解完成。' }
 		if (normalized === 'canceled') return { progress: 0, statusText: message || '场景理解已终止。' }
 		if (normalized === 'error') return { progress: 100, statusText: message || '场景理解失败。' }
-		return { progress: 44, statusText: message || '正在等待远端服务响应。' }
+		return { progress: 40, statusText: message || '正在等待远端服务响应。' }
 	}
 
 	const onNodeSceneUnderstandingSettingsUpdate = (nodeId: string, payload: Record<string, unknown>) => {
+		const currentSettings = getNodeSceneUnderstandingSettings(nodeId)
+		const isRunning = currentSettings?.status === 'running'
+		let safePayload = payload
+		if (isRunning) {
+			safePayload = { ...payload }
+			if ('outputJson' in payload) delete safePayload.outputJson
+			if ('rawOutput' in payload) delete safePayload.rawOutput
+			if ('resultSummary' in payload) delete safePayload.resultSummary
+			if ('message' in payload && !('statusText' in payload) && !('progress' in payload)) delete safePayload.message
+			const newStatus = payload.status
+			if (typeof newStatus === 'string' && !['running', 'completed', 'error', 'canceled'].includes(newStatus)) {
+				delete safePayload.status
+			}
+		}
 		options.store.commit('setNodeSceneUnderstandingSettings', {
 			nodeId,
-			sceneUnderstandingSettings: payload
+			sceneUnderstandingSettings: safePayload
 		})
 	}
 
@@ -262,6 +288,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		const node = getNodeRecord(nodeId)
 		if (!node || node.type !== 'scene-understanding') return
 		const settings = getNodeSceneUnderstandingSettings(nodeId)
+		if (settings?.status === 'running') return
 		const mode = settings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
 		options.store.commit('setNodeSceneUnderstandingSettings', {
 			nodeId,
@@ -323,9 +350,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			rawImageInputs[0]?.url ?? options.connectedImageInputUrl(nodeId, 'in-image') ?? ''
 		).trim()
 		const promptText = String(options.connectedTextInputValue(nodeId, 'in-text') ?? '').trim()
-		const layoutJson = String(
+		const externalLayoutJson = String(
 			options.connectedTextInputValue(nodeId, 'in-layout-json') ?? ''
 		).trim()
+		const selfOutputJson = String(settings?.outputJson ?? '').trim()
+		const layoutJson = externalLayoutJson || selfOutputJson
 		const model = String(
 			typeof settings?.selectedModel === 'string' ? settings.selectedModel : ''
 		).trim()
@@ -337,7 +366,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			return
 		}
 		if (mode === 'scene-lighting' && !layoutJson) {
-			options.pushToast('场景灯光理解节点缺少布局 JSON 输入。', 'warn')
+			options.pushToast('场景灯光理解需要布局 JSON，请先运行场景理解或连接外部布局 JSON 输入。', 'warn')
 			return
 		}
 		if (!model) {
@@ -363,6 +392,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				remoteStatusCode: undefined,
 				outputJson: '',
 				rawOutput: '',
+				reasoningText: '',
 				rewriteUsed: false,
 				rewriteAttempts: 0,
 				lastInputImageUrl: imageUrl,
@@ -414,6 +444,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			stopSceneUnderstandRun(nodeId)
 			controller = new AbortController()
 			sceneUnderstandRunControllers.set(nodeId, controller)
+			sceneUnderstandReasoningBuffers.set(nodeId, '')
 
 			const stream =
 				mode === 'scene-lighting'
@@ -464,13 +495,37 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					continue
 				}
 
+				if (msg.type === 'agentToUi/reasoning') {
+					const payload = msg.payload as Record<string, unknown>
+					const deltaText = typeof payload.text === 'string' ? payload.text : ''
+					if (deltaText) {
+						const prevReasoning = sceneUnderstandReasoningBuffers.get(nodeId) ?? ''
+						const nextReasoning = `${prevReasoning}${deltaText}`
+						sceneUnderstandReasoningBuffers.set(nodeId, nextReasoning)
+						const maxDisplayLen = 2000
+						const displayText = nextReasoning.length > maxDisplayLen
+							? `...${nextReasoning.slice(-maxDisplayLen)}`
+							: nextReasoning
+						options.store.commit('setNodeSceneUnderstandingSettings', {
+							nodeId,
+							sceneUnderstandingSettings: {
+								reasoningText: displayText
+							}
+						})
+					}
+					continue
+				}
+
 				if (msg.type === 'agentToUi/taskStatus') {
 					const payload = msg.payload as Record<string, unknown>
 					const phase = typeof payload.phase === 'string' ? payload.phase : ''
 					const phaseMessage = typeof payload.message === 'string' ? payload.message : ''
 					const details = isRecord(payload.details) ? payload.details : ({} as Record<string, unknown>)
 					const resetDraft = details.resetDraft === true
-					const nextState = sceneUnderstandPhaseState(phase, phaseMessage)
+					const currentSettings = getNodeSceneUnderstandingSettings(nodeId)
+					const draftLen = sceneUnderstandDraftBuffers.get(nodeId)?.length ?? 0
+					const currentRawLen = String(currentSettings?.rawOutput ?? '').length + draftLen
+					const nextState = sceneUnderstandPhaseState(phase, phaseMessage, currentRawLen)
 					if (resetDraft) {
 						clearSceneUnderstandDraftSchedule(nodeId)
 						sceneUnderstandDraftBuffers.set(nodeId, '')
@@ -642,6 +697,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		for (const timer of sceneUnderstandDraftTimers.values()) window.clearTimeout(timer)
 		sceneUnderstandDraftTimers.clear()
 		sceneUnderstandDraftBuffers.clear()
+		sceneUnderstandReasoningBuffers.clear()
 		for (const controller of sceneUnderstandRunControllers.values()) controller.abort()
 		sceneUnderstandRunControllers.clear()
 	}

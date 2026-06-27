@@ -17,6 +17,8 @@ type DwebGlobal = {
     projectAssets?: Record<string, unknown>
     meshy?: Record<string, unknown>
     seedance?: Record<string, unknown>
+    agentSkills?: Record<string, unknown>
+    codex?: Record<string, unknown>
     aiworkflow?: Record<string, unknown>
   }
   __DWEB_BACKEND_MODE__?: string
@@ -66,6 +68,10 @@ export function hasIpcModule(moduleName: string): boolean {
   if (moduleName === 'aiworkflow') return typeof dweb.aiworkflow === 'object' && dweb.aiworkflow !== null
   if (moduleName === 'meshy') return typeof dweb.meshy === 'object' && dweb.meshy !== null
   if (moduleName === 'seedance') return typeof dweb.seedance === 'object' && dweb.seedance !== null
+  if (moduleName === 'agentSkills' || moduleName === 'agent-skills') {
+    return typeof dweb.agentSkills === 'object' && dweb.agentSkills !== null
+  }
+  if (moduleName === 'codex') return typeof dweb.codex === 'object' && dweb.codex !== null
   return false
 }
 

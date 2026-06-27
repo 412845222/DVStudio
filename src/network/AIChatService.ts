@@ -467,6 +467,9 @@ export class AIChatService {
 		model?: string
 		promptPreset?: string
 		promptInput?: unknown
+		responseMode?: string
+		viewport?: unknown
+		signal?: AbortSignal
 	}): AsyncGenerator<AIChatStreamEvent> {
 		if (isMigrationMode() && hasIpcApi()) {
 			const bridge = getIpcBridge()
@@ -511,3 +514,5 @@ export class AIChatService {
 		yield* httpStreamMessage(params, this.getBaseUrl, this.devToken)
 	}
 }
+
+export const aiChatService = new AIChatService()

@@ -31,10 +31,13 @@
 			<div class="wf-text" @pointerdown.stop>
 				<div class="wf-text-label">文本内容（多行）</div>
 				<textarea
+					ref="textareaEl"
 					class="wf-textarea"
 					:value="textValue"
 					placeholder="在这里输入文本资源…"
 					@input="onTextInput"
+					@focus="onFocus"
+					@blur="onBlur"
 				/>
 			</div>
 		</template>
@@ -42,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 
 type AnchorSpec = {
@@ -123,6 +126,32 @@ const onTextInput = (e: Event) => {
 	const v = String((e.target as HTMLTextAreaElement).value ?? '')
 	emit('update-text-value', { textValue: v })
 }
+
+const textareaEl = ref<HTMLTextAreaElement | null>(null)
+const isUserEditing = ref(false)
+
+const onFocus = () => {
+	isUserEditing.value = true
+}
+
+const onBlur = () => {
+	isUserEditing.value = false
+}
+
+const scrollToBottom = (el: HTMLElement | null) => {
+	if (!el) return
+	nextTick(() => {
+		el.scrollTop = el.scrollHeight
+	})
+}
+
+watch(textValue, (newVal, oldVal) => {
+	if (isUserEditing.value) return
+	if (!newVal) return
+	if (newVal.length > (oldVal?.length ?? 0)) {
+		scrollToBottom(textareaEl.value)
+	}
+})
 </script>
 
 <style scoped>
