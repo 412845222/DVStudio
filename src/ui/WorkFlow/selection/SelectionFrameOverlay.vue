@@ -44,6 +44,12 @@
 				</button>
 			</template>
 		</div>
+
+		<!-- 透明可拖拽区域 -->
+		<div
+			class="wf-sel-frame-drag-area"
+			@pointerdown="onDragAreaPointerDown"
+		/>
 	</div>
 </template>
 
@@ -65,6 +71,7 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'tag-save', label: string): void
 	(e: 'delete'): void
+	(e: 'drag-move', payload: { dx: number; dy: number }): void
 }>()
 
 // 本地维护的已保存标签（优先于 props.label）
@@ -113,6 +120,63 @@ const onSave = () => {
 		emit('tag-save', '')
 	}
 	isEditing.value = false
+}
+
+// 拖拽状态
+const isDragging = ref(false)
+const dragStartClient = ref({ x: 0, y: 0 })
+
+// 拖拽区域 pointerdown 处理
+const onDragAreaPointerDown = (event: PointerEvent) => {
+	// 忽略非左键
+	if (event.button !== 0) return
+	// 忽略编辑状态
+	if (isEditing.value) return
+
+	event.preventDefault()
+	event.stopPropagation()
+
+	isDragging.value = true
+	dragStartClient.value = { x: event.clientX, y: event.clientY }
+
+	// 设置指针捕获
+	const target = event.currentTarget as HTMLElement | null
+	if (target?.setPointerCapture && Number.isFinite(event.pointerId)) {
+		try {
+			target.setPointerCapture(event.pointerId)
+		} catch {
+			// ignore pointer capture failure
+		}
+	}
+
+	const onMove = (moveEvent: PointerEvent) => {
+		if (!isDragging.value) return
+		moveEvent.preventDefault()
+
+		const dx = moveEvent.clientX - dragStartClient.value.x
+		const dy = moveEvent.clientY - dragStartClient.value.y
+		dragStartClient.value = { x: moveEvent.clientX, y: moveEvent.clientY }
+
+		emit('drag-move', { dx, dy })
+	}
+
+	const onUp = (upEvent: PointerEvent) => {
+		isDragging.value = false
+		window.removeEventListener('pointermove', onMove)
+		window.removeEventListener('pointerup', onUp)
+		window.removeEventListener('pointercancel', onUp)
+		if (target?.releasePointerCapture && Number.isFinite(upEvent.pointerId)) {
+			try {
+				target.releasePointerCapture(upEvent.pointerId)
+			} catch {
+				// ignore release failure
+			}
+		}
+	}
+
+	window.addEventListener('pointermove', onMove, { capture: true, passive: false })
+	window.addEventListener('pointerup', onUp, true)
+	window.addEventListener('pointercancel', onUp, true)
 }
 
 // 世界坐标转屏幕坐标
@@ -165,6 +229,14 @@ const tagBarStyle = computed(() => {
 	z-index: 10;
 }
 
+.wf-sel-frame-drag-area {
+	position: absolute;
+	inset: 0;
+	cursor: move;
+	z-index: 0;
+	/* 透明覆盖层，监听拖拽事件 */
+}
+
 .wf-sel-frame-tag-bar {
 	position: absolute;
 	display: inline-flex;
@@ -183,6 +255,7 @@ const tagBarStyle = computed(() => {
 		background 150ms ease,
 		border-color 150ms ease;
 	user-select: none;
+	z-index: 1;
 }
 
 .wf-sel-frame-tag-bar:hover {
