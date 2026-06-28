@@ -28,7 +28,7 @@ env:
 
 jobs:
   lint-check:
-    name: Lint Check ( advisory )
+    name: Lint Check (advisory)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -41,7 +41,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies ( skip scripts )
+      - name: Install dependencies (skip scripts)
         run: npm ci --ignore-scripts
 
       - name: Run ESLint
@@ -60,7 +60,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies ( skip scripts )
+      - name: Install dependencies (skip scripts)
         run: npm ci --ignore-scripts
 
       - name: Run TypeScript check
@@ -80,7 +80,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies ( skip scripts )
+      - name: Install dependencies (skip scripts)
         run: npm ci --ignore-scripts
 
       - name: Run Vitest tests
@@ -100,10 +100,9 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         continue-on-error: true
 
-  backend-test:
-    name: Backend Tests
+  python-bridge-check:
+    name: Python Bridge Syntax Check
     runs-on: ubuntu-latest
-    needs: [type-check]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -112,22 +111,28 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: 'django-app/requirements.txt'
 
-      - name: Install Python dependencies
-        working-directory: django-app
-        run: pip install -r requirements.txt
+      - name: Check Python syntax (compile all .py files)
+        run: |
+          python -m py_compile electron/backend/python-bridge/scripts/worker.py
+          python -m py_compile electron/backend/python-bridge/scripts/common/rpc.py
+          python -m py_compile electron/backend/python-bridge/scripts/common/worker_logging.py
+          python -m py_compile electron/backend/python-bridge/scripts/subtitle/__init__.py
+          python -m py_compile electron/backend/python-bridge/scripts/subtitle/handlers.py
+          python -m py_compile electron/backend/python-bridge/scripts/subtitle/utils.py
+        shell: bash
 
-      - name: Run Django tests
-        working-directory: django-app
-        run: python manage.py test --verbosity=2
+      - name: Verify Python worker can start and respond to ping
+        run: |
+          cd electron/backend/python-bridge/scripts
+          echo '{"jsonrpc":"2.0","id":"test-ping","method":"ping","params":{}}' | timeout 10 python worker.py --log-level WARN 2>/dev/null | head -5
+        shell: bash
         continue-on-error: true
 
   build-check:
     name: Build Check
     runs-on: ubuntu-latest
-    needs: [frontend-test, backend-test]
+    needs: [frontend-test, python-bridge-check]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -140,10 +145,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Rebuild better-sqlite3
-        run: npm run install:better-sqlite3
-        continue-on-error: true
 
       - name: Run Vite build
         run: npx vite build

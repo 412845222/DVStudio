@@ -68,3 +68,7 @@ export function getStaticRuntimeDir() {
 	}
 	return path.resolve(getRepoRoot(), 'electron', 'static', 'runtime')
 }
+
+export function getPythonBridgeScriptsDir() {
+	return path.resolve(getRepoRoot(), 'electron', 'backend', 'python-bridge', 'scripts')
+}

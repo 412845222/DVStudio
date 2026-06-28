@@ -520,7 +520,7 @@ export const runNodeGenerationTask = async (
 			/Failed to connect/i.test(raw) ||
 			/ECONNREFUSED/i.test(raw)
 		const message = looksLikeNetworkError
-			? `后端不可达（${raw}）。请确认 django-app 已在 127.0.0.1:5800 启动，或在 Settings 页面设置正确的后端地址。`
+			? `后端不可达（${raw}）。Electron 环境下请使用 IPC 调用，无需 HTTP 后端。`
 			: raw
 		appendDetail(deps, task.id, message)
 		updateTask(deps, task.id, {

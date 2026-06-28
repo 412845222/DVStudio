@@ -88,7 +88,17 @@ function safeResolveProjectFile(root, relPath) {
 		}
 	}
 	const resolvedRoot = path.resolve(rootStr)
-	if (normalized !== resolvedRoot && !normalized.startsWith(resolvedRoot + path.sep)) {
+	const normalizedNorm = path.normalize(normalized)
+	const resolvedRootNorm = path.normalize(resolvedRoot)
+	const rootWithSep = resolvedRootNorm.endsWith(path.sep)
+		? resolvedRootNorm
+		: resolvedRootNorm + path.sep
+	const isInside =
+		normalizedNorm === resolvedRootNorm ||
+		normalizedNorm.startsWith(rootWithSep) ||
+		(process.platform === 'win32' &&
+			normalizedNorm.toLowerCase().startsWith(rootWithSep.toLowerCase()))
+	if (!isInside) {
 		return {
 			resolved: null,
 			reason: 'path_outside_project',
@@ -509,16 +519,19 @@ function handleProjectAssetRequest(request) {
 
 	if (!resolvedPath && parts.length >= 1) {
 		const fileName = parts[parts.length - 1]
-		const fallbackHit = findFileByBasenameInProject(root, fileName)
-		if (fallbackHit) {
-			resolvedPath = fallbackHit
-			resolvedFromRoot = root
-			triedCandidates.push({
-				root: root,
-				candidate: `[fallback-search]${fileName}`,
-				resolved: fallbackHit,
-				reason: 'found_by_basename_search'
-			})
+		for (const rootCandidate of rootCandidates) {
+			const fallbackHit = findFileByBasenameInProject(rootCandidate, fileName)
+			if (fallbackHit) {
+				resolvedPath = fallbackHit
+				resolvedFromRoot = String(rootCandidate || '')
+				triedCandidates.push({
+					root: rootCandidate,
+					candidate: `[fallback-search]${fileName}`,
+					resolved: fallbackHit,
+					reason: 'found_by_basename_search'
+				})
+				break
+			}
 		}
 	}
 
@@ -2082,6 +2095,7 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 
 	// --- 5. 逐个候选路径尝试解析 ---
 	let hitPath = null
+	let hitRoot = null
 	for (const rc of rootCandidates) {
 		for (const c of uniqCandidates) {
 			const r = safeResolveProjectFile(rc, c)
@@ -2102,6 +2116,7 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 					entry.size = Number(st.size || 0)
 					if (entry.isFile && !hitPath) {
 						hitPath = r.resolved
+						hitRoot = rc
 						result.resolvedTo = r.resolved
 						result.fileExists = true
 						result.fileIsFile = true
@@ -2118,38 +2133,57 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 
 	if (!hitPath && parts.length >= 1) {
 		const fileName = parts[parts.length - 1]
-		const fallbackHit = findFileByBasenameInProject(root, fileName)
-		if (fallbackHit) {
-			hitPath = fallbackHit
-			result.resolvedTo = fallbackHit
-			result.fileExists = true
-			result.fileIsFile = true
-			try {
-				result.fileSize = Number(fs.statSync(fallbackHit).size || 0)
-			} catch {
-				result.fileSize = 0
+		for (const rootCandidate of rootCandidates) {
+			const fallbackHit = findFileByBasenameInProject(rootCandidate, fileName)
+			if (fallbackHit) {
+				hitPath = fallbackHit
+				result.resolvedTo = fallbackHit
+				result.fileExists = true
+				result.fileIsFile = true
+				try {
+					result.fileSize = Number(fs.statSync(fallbackHit).size || 0)
+				} catch {
+					result.fileSize = 0
+				}
+				result.candidates.push({
+					root: rootCandidate,
+					candidate: `[fallback-search]${fileName}`,
+					resolved: fallbackHit,
+					reason: 'found_by_basename_search',
+					exists: true,
+					isFile: true,
+					size: result.fileSize
+				})
+				if (hitPath) {
+					result.diagnostics.push({
+						check: 'file_found',
+						status: 'OK',
+						message: `文件可解析至: ${hitPath}`
+					})
+					try {
+						result.repairedAsset = buildAssetPayload(pid, hitPath, rootCandidate, {
+							kind: inferKindFromFile(hitPath),
+							name: path.basename(hitPath),
+							contentType: null,
+							sourcePath: hitPath
+						})
+					} catch {
+						/* ignore */
+					}
+				}
+				break
 			}
-			result.candidates.push({
-				root: root,
-				candidate: `[fallback-search]${fileName}`,
-				resolved: fallbackHit,
-				reason: 'found_by_basename_search',
-				exists: true,
-				isFile: true,
-				size: result.fileSize
-			})
 		}
 	}
 
-	if (hitPath) {
+	if (hitPath && !result.repairedAsset) {
 		result.diagnostics.push({
 			check: 'file_found',
 			status: 'OK',
 			message: `文件可解析至: ${hitPath}`
 		})
-		// 文件实际上存在，构造修复后的 asset payload
 		try {
-			result.repairedAsset = buildAssetPayload(pid, hitPath, root, {
+			result.repairedAsset = buildAssetPayload(pid, hitPath, hitRoot || root, {
 				kind: inferKindFromFile(hitPath),
 				name: path.basename(hitPath),
 				contentType: null,
@@ -2158,6 +2192,9 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 		} catch {
 			/* ignore */
 		}
+	}
+
+	if (hitPath) {
 		return result
 	}
 

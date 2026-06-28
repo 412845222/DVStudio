@@ -129,12 +129,82 @@ export function createMeshyTasksRepo() {
 		return normalized
 	}
 
+	/**
+	 * 将已有 DB 行直接映射为 updateStmt 所需的 params 格式，
+	 * 不经过 normalize()，避免 JSON 字段被重复 JSON.stringify。
+	 */
+	function existingRowToParams(row) {
+		return {
+			taskId: String(row.task_id || '').trim(),
+			mode: String(row.mode || '').trim(),
+			taskTarget: String(row.task_target || '').trim(),
+			taskFamily: String(row.task_family || '').trim(),
+			relationKind: String(row.relation_kind || '').trim(),
+			rootTaskId: String(row.root_task_id || '').trim(),
+			parentTaskId: String(row.parent_task_id || '').trim(),
+			capabilities: row.capabilities ?? null,
+			status: String(row.status || 'idle').trim(),
+			progress: Number(row.progress) || 0,
+			prompt: String(row.prompt || '').trim(),
+			negativePrompt: String(row.negative_prompt || '').trim(),
+			imageCount: Number(row.image_count) || 0,
+			thumbnailUrl: String(row.thumbnail_url || '').trim(),
+			preferredModelUrl: String(row.preferred_model_url || '').trim(),
+			localAssetUrl: String(row.local_asset_url || '').trim(),
+			localAssetPath: String(row.local_asset_path || '').trim(),
+			sourceModelUrl: String(row.source_model_url || '').trim(),
+			errorMessage: String(row.error_message || '').trim(),
+			statusText: String(row.status_text || '').trim(),
+			requestPayload: row.request_payload ?? null,
+			responsePayload: row.response_payload ?? null,
+			projectId: row.project_id ? Number(row.project_id) : null,
+			lastNodeId: String(row.last_node_id || '').trim(),
+			remoteCreatedAt: String(row.remote_created_at || '').trim(),
+			remoteFinishedAt: String(row.remote_finished_at || '').trim()
+		}
+	}
+
 	function upsert(input) {
-		const params = normalize(input)
+		const raw = input || {}
+		const params = normalize(raw)
 		if (!params.taskId) return { ok: false, error: 'taskId is required' }
 		const existing = getByTaskIdStmt.get(params.taskId)
-		if (existing) updateStmt.run(params)
-		else insertStmt.run(params)
+		if (existing) {
+			// 更新时保留已有值，仅覆盖用户在 input 中显式提供的字段
+			const existingParams = existingRowToParams(existing)
+			const hasKey = (camel, snake) => (camel in raw) || (snake in raw)
+			const merged = {
+				taskId: params.taskId,
+				mode: hasKey('mode', 'mode') ? params.mode : existingParams.mode,
+				taskTarget: hasKey('taskTarget', 'task_target') ? params.taskTarget : existingParams.taskTarget,
+				taskFamily: hasKey('taskFamily', 'task_family') ? params.taskFamily : existingParams.taskFamily,
+				relationKind: hasKey('relationKind', 'relation_kind') ? params.relationKind : existingParams.relationKind,
+				rootTaskId: hasKey('rootTaskId', 'root_task_id') ? params.rootTaskId : existingParams.rootTaskId,
+				parentTaskId: hasKey('parentTaskId', 'parent_task_id') ? params.parentTaskId : existingParams.parentTaskId,
+				capabilities: hasKey('capabilities', 'capabilities') ? params.capabilities : existingParams.capabilities,
+				status: hasKey('status', 'status') ? params.status : existingParams.status,
+				progress: hasKey('progress', 'progress') ? params.progress : existingParams.progress,
+				prompt: hasKey('prompt', 'prompt') ? params.prompt : existingParams.prompt,
+				negativePrompt: hasKey('negativePrompt', 'negative_prompt') ? params.negativePrompt : existingParams.negativePrompt,
+				imageCount: hasKey('imageCount', 'image_count') ? params.imageCount : existingParams.imageCount,
+				thumbnailUrl: hasKey('thumbnailUrl', 'thumbnail_url') ? params.thumbnailUrl : existingParams.thumbnailUrl,
+				preferredModelUrl: hasKey('preferredModelUrl', 'preferred_model_url') ? params.preferredModelUrl : existingParams.preferredModelUrl,
+				localAssetUrl: hasKey('localAssetUrl', 'local_asset_url') ? params.localAssetUrl : existingParams.localAssetUrl,
+				localAssetPath: hasKey('localAssetPath', 'local_asset_path') ? params.localAssetPath : existingParams.localAssetPath,
+				sourceModelUrl: hasKey('sourceModelUrl', 'source_model_url') ? params.sourceModelUrl : existingParams.sourceModelUrl,
+				errorMessage: hasKey('errorMessage', 'error_message') ? params.errorMessage : existingParams.errorMessage,
+				statusText: hasKey('statusText', 'status_text') ? params.statusText : existingParams.statusText,
+				requestPayload: hasKey('requestPayload', 'request_payload') ? params.requestPayload : existingParams.requestPayload,
+				responsePayload: hasKey('responsePayload', 'response_payload') ? params.responsePayload : existingParams.responsePayload,
+				projectId: hasKey('projectId', 'project_id') ? params.projectId : existingParams.projectId,
+				lastNodeId: hasKey('lastNodeId', 'last_node_id') ? params.lastNodeId : existingParams.lastNodeId,
+				remoteCreatedAt: hasKey('remoteCreatedAt', 'remote_created_at') ? params.remoteCreatedAt : existingParams.remoteCreatedAt,
+				remoteFinishedAt: hasKey('remoteFinishedAt', 'remote_finished_at') ? params.remoteFinishedAt : existingParams.remoteFinishedAt
+			}
+			updateStmt.run(merged)
+		} else {
+			insertStmt.run(params)
+		}
 		return { ok: true, task: getByTaskId(params.taskId) }
 	}
 

@@ -214,6 +214,7 @@
 						@clear-scene-layout-model-binding="
 							onNodeClearSceneLayoutModelBinding(node.id, $event.objectId)
 						"
+						@update-model-bindings="onNodeUpdateSceneLayoutModelBindings(node.id, $event)"
 						@connect-comfyui="onComfyUIConnect(node.id, $event)"
 						@copy="() => onNodeCopy(node.id)"
 						@clear-node="() => onNodeClear(node.id)"
@@ -807,6 +808,7 @@ import type {
 	WorkflowNodeChatParams,
 	WorkflowNodeChatSubmitPayload,
 	WorkflowSceneDecomposeOutput,
+	WorkflowSceneLayoutManualModelBinding,
 	WorkflowSelectionTarget,
 	WorkflowState
 } from '../../aiworkflow/types'
@@ -6161,6 +6163,19 @@ const { onNodeUploadSceneLayoutModelFile, onNodeClearSceneLayoutModelBinding } =
 		resolveBackendUrl
 	})
 
+const onNodeUpdateSceneLayoutModelBindings = (nodeId: string, bindings: WorkflowSceneLayoutManualModelBinding[]) => {
+	const node = store.state.nodesById[String(nodeId)]
+	if (!node || node.type !== 'scene-layout') return
+	const currentSettings = node.sceneLayoutSettings ?? {}
+	store.commit('setNodeSceneLayoutSettings', {
+		nodeId,
+		sceneLayoutSettings: {
+			...currentSettings,
+			manualModelBindings: bindings
+		}
+	})
+}
+
 const {
 	createNodeFromDraggedResource,
 	createNodeFromNanoPreview,
@@ -7108,15 +7123,20 @@ const handleImageMarkupExported = (payload: {
 	width: number
 	height: number
 	sourceName?: string | null
+	exportType?: 'markup' | 'screenshot'
 }) => {
 	const fromNodeId = imageMarkupContext.value.nodeId
+	const exportType = payload.exportType || 'markup'
+	const isScreenshot = exportType === 'screenshot'
+	const typeLabel = isScreenshot ? '截图' : '标记图像'
+	const typeSuffix = isScreenshot ? 'screenshot' : 'marked'
 	const baseName = (
 		imageMarkupContext.value.name ||
 		payload.sourceName ||
-		'marked-image.png'
+		(isScreenshot ? 'screenshot.png' : 'marked-image.png')
 	).replace(/\.[^.]+$/, '')
 	if (!fromNodeId) {
-		pushToast('找不到源图片节点，无法生成新节点。', 'warn')
+		pushToast(`找不到源图片节点，无法生成${typeLabel}节点。`, 'warn')
 		return
 	}
 	try {
@@ -7125,23 +7145,23 @@ const handleImageMarkupExported = (payload: {
 
 		const baseX = Number(fromNode.worldX || 0)
 		const baseY = Number(fromNode.worldY || 0)
-		const title = `${fromNode.title ? fromNode.title + ' ' : ''}标记图像`
+		const title = `${fromNode.title ? fromNode.title + ' ' : ''}${typeLabel}`
 
 		store.commit('addNodeAt', { worldX: baseX + 400, worldY: baseY, title })
 		const newNodeId = String(store.state.selectedNodeId || '').trim()
 		if (!newNodeId || !store.state.nodesById[newNodeId]) {
-			pushToast('创建标记图像节点失败。', 'error')
+			pushToast(`创建${typeLabel}节点失败。`, 'error')
 			return
 		}
 
-		const resourceId = `res-markup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
-		const resourceName = `${baseName}-marked-${Date.now()}.png`.slice(0, 200)
+		const resourceId = `res-${typeSuffix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+		const resourceName = `${baseName}-${typeSuffix}-${Date.now()}.png`.slice(0, 200)
 		const newResource: WorkflowResource = {
 			id: resourceId,
 			kind: 'image',
 			name: resourceName,
 			url: payload.dataUrl,
-			localFileKey: `markup:${newNodeId}`,
+			localFileKey: `${typeSuffix}:${newNodeId}`,
 			createdAt: Date.now()
 		}
 		store.commit('addResource', newResource)
@@ -7157,9 +7177,7 @@ const handleImageMarkupExported = (payload: {
 				outputWidth: w,
 				outputHeight: h,
 				naturalWidth: w,
-				naturalHeight: h,
-				cropEnabled: false,
-				crop: { x: 0, y: 0, width: 1, height: 1 }
+				naturalHeight: h
 			}
 		})
 
@@ -7178,10 +7196,10 @@ const handleImageMarkupExported = (payload: {
 		}
 
 		closeImageMarkupDialog()
-		pushToast('已在当前图片节点右侧生成新的图片节点，并自动连接原节点。', 'info')
+		pushToast(`已在当前图片节点右侧生成新的${typeLabel}节点，并自动连接原节点。`, 'info')
 	} catch (err) {
 		console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
-		pushToast('生成标记图像节点失败。', 'error')
+		pushToast(`生成${typeLabel}节点失败。`, 'error')
 	}
 }
 
@@ -7977,6 +7995,7 @@ const onFocusNode = canvasInteraction.onFocusNode
 
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
 	store.dispatch('moveNodesBy', payload)
+	scheduleAsyncEdgeRender()
 }
 
 onBeforeUnmount(() => {

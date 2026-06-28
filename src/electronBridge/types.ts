@@ -35,9 +35,8 @@ export type BackendLogsResult = {
 
 export type DiagnosticsPayload = {
 	python: { ok: boolean; detail?: string; command?: string; argsPrefix?: string[] }
-	djangoImport: { ok: boolean; detail?: string }
+	pythonBridge: { ok: boolean; detail?: string }
 	ffmpeg: { ok: boolean; detail?: string }
-	djangoCheck: { ok: boolean; detail?: string }
 }
 
 export type DiagnosticsResult = { ok: boolean; data?: DiagnosticsPayload; error?: string }
@@ -98,8 +97,6 @@ export type ClientSettings = {
 	geminiModel: string
 	bytedanceApiKey: string
 	meshyApiKey: string
-	jimengAccessKeyId: string
-	jimengSecretKey: string
 }
 
 export type ClientSettingsResult = {

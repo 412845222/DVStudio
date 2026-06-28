@@ -5,7 +5,9 @@ import type {
 	WorkflowThreePreviewState
 } from '../../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
 
-type InternalPreviewState = WorkflowThreePreviewState
+type InternalPreviewState = WorkflowThreePreviewState & {
+	activatedOnce?: boolean
+}
 
 const THREE_PREVIEW_TYPES = new Set<WorkflowNode['type']>(['scene-layout', 'model3d'])
 
@@ -14,7 +16,8 @@ const createMaskedState = (canStart: boolean, requestId = 0): InternalPreviewSta
 	canStart,
 	progress: 0,
 	label: '',
-	requestId
+	requestId,
+	activatedOnce: false
 })
 
 export const useAIWorkflowThreejsLifecycleManager = (payload: {
@@ -47,18 +50,34 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		current.label = ''
 	}
 
+	const kickoffAutoStart = (current: InternalPreviewState) => {
+		if (current.phase === 'loading' || current.phase === 'interactive') return
+		current.phase = 'loading'
+		current.canStart = true
+		current.progress = 0.04
+		current.label = '准备渲染资源'
+		current.requestId = (Number(current.requestId) || 0) + 1
+	}
+
 	watch(
 		() => [activeNodeId.value, payload.selectedNodeIds.value.join('|')] as const,
 		([activeId]) => {
-			const nextMap = { ...stateMap.value }
-			for (const nodeId of Object.keys(nextMap)) {
+			for (const nodeId of Object.keys(stateMap.value)) {
 				if (nodeId === activeId) {
-					ensureState(nodeId, true)
+					const current = ensureState(nodeId, true)
+					if (current.activatedOnce && current.phase === 'masked') {
+						kickoffAutoStart(current)
+					}
 					continue
 				}
 				setMaskedState(nodeId, false)
 			}
-			if (activeId) ensureState(activeId, true)
+			if (activeId) {
+				const current = ensureState(activeId, true)
+				if (current.activatedOnce && current.phase === 'masked') {
+					kickoffAutoStart(current)
+				}
+			}
 		},
 		{ immediate: true }
 	)
@@ -75,18 +94,31 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 			if (!current) return createMaskedState(false)
 			return { ...current, phase: 'masked', canStart: false, progress: 0, label: '' }
 		}
-		return { ...ensureState(targetId, true) }
+		const current = ensureState(targetId, true)
+		if (current.activatedOnce && current.phase === 'masked') {
+			kickoffAutoStart(current)
+		}
+		return { ...current }
 	}
 
 	const startPreviewSession = (nodeId: string) => {
 		const targetId = String(nodeId ?? '').trim()
 		if (!targetId || targetId !== activeNodeId.value) return
 		const current = ensureState(targetId, true)
-		if (current.phase === 'loading') return
-		current.phase = 'loading'
-		current.progress = 0.04
-		current.label = '准备渲染资源'
-		current.requestId += 1
+		if (current.phase === 'loading' || current.phase === 'interactive') return
+		kickoffAutoStart(current)
+	}
+
+	const markPreviewContentChanged = (nodeId: string) => {
+		const targetId = String(nodeId ?? '').trim()
+		const current = stateMap.value[targetId]
+		if (!current) return
+		current.activatedOnce = false
+		if (current.phase === 'interactive') {
+			current.phase = 'masked'
+			current.progress = 0
+			current.label = ''
+		}
 	}
 
 	const updatePreviewProgress = (
@@ -118,6 +150,7 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		const targetId = String(nodeId ?? '').trim()
 		const current = stateMap.value[targetId]
 		if (!current || targetId !== activeNodeId.value) return
+		current.activatedOnce = true
 		if (current.phase === 'interactive' && current.progress === 1 && current.label === '渲染已就绪')
 			return
 		current.phase = 'interactive'
@@ -132,6 +165,7 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		if (!current) return
 		if (current.phase === 'masked' && current.progress === 0 && current.label === '') return
 		current.phase = 'masked'
+		current.canStart = true
 		current.progress = 0
 		current.label = ''
 	}
@@ -139,6 +173,7 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 	return {
 		getNodePreviewState,
 		startPreviewSession,
+		markPreviewContentChanged,
 		updatePreviewProgress,
 		completePreviewSession,
 		failPreviewSession

@@ -26,6 +26,9 @@ type Vector3Like = {
 	clone(): Vector3Like
 	copy(v: Vector3Like): Vector3Like
 	set(x: number, y: number, z: number): Vector3Like
+	add(v: Vector3Like): Vector3Like
+	multiplyScalar(s: number): Vector3Like
+	normalize(): Vector3Like
 }
 type Object3Dlike = {
 	position: Vector3Like
@@ -42,6 +45,8 @@ type Box3Like = {
 	getSize(v: Vector3Like): Vector3Like
 	getCenter(v: Vector3Like): Vector3Like
 	setFromObject(obj: Object3Dlike): Box3Like
+	min: Vector3Like
+	max: Vector3Like
 }
 type GLTFResult = {
 	scene: Object3Dlike & { clone(recursive?: boolean): Object3Dlike }
@@ -138,6 +143,20 @@ const isMeshLike = (obj: unknown): obj is MeshLike => {
 	return isObject(obj)
 }
 
+export type Model3DViewState = {
+	cameraPosition: { x: number; y: number; z: number }
+	target: { x: number; y: number; z: number }
+	near: number
+	far: number
+	minDistance: number
+	maxDistance: number
+}
+
+type GridHelperLike = Object3Dlike & {
+	geometry: { dispose(): void }
+	material: { dispose(): void } | { dispose(): void }[]
+}
+
 export class Model3DPreviewViewer {
 	private readonly renderer: WebGLRendererLike
 	private readonly scene: SceneLike
@@ -145,8 +164,8 @@ export class Model3DPreviewViewer {
 	private readonly controls: OrbitControlsLike
 	private readonly ambientLight: LightLike
 	private readonly directionalLight: LightLike
-	private readonly grid: Object3Dlike & { visible: boolean }
-	private readonly axes: Object3Dlike & { visible: boolean }
+	private grid: GridHelperLike
+	private axes: GridHelperLike
 	private readonly loader: GLTFLoaderLike
 	private readonly resizeObserver: ResizeObserver | null
 	private currentObject: Object3Dlike | null = null
@@ -224,13 +243,11 @@ export class Model3DPreviewViewer {
 		this.scene.add(this.ambientLight)
 		this.scene.add(this.directionalLight)
 
-		this.grid = new THREE.GridHelper(8, 16, '#64748b', '#334155') as unknown as Object3Dlike & {
-			visible: boolean
-		}
+		this.grid = new THREE.GridHelper(8, 16, '#64748b', '#334155')
 		this.grid.position.y = 0
-		this.axes = new THREE.AxesHelper(1.5) as unknown as Object3Dlike & { visible: boolean }
-		this.scene.add(this.grid)
-		this.scene.add(this.axes)
+		this.axes = new THREE.AxesHelper(1.5)
+		this.scene.add(this.grid as unknown as Object3Dlike)
+		this.scene.add(this.axes as unknown as Object3Dlike)
 
 		this.setOptions(options)
 		this.resize()
@@ -340,7 +357,8 @@ export class Model3DPreviewViewer {
 
 	async loadModel(
 		url: string,
-		onProgress?: (payload: { loaded: number; total: number; ratio: number }) => void
+		onProgress?: (payload: { loaded: number; total: number; ratio: number }) => void,
+		cachedView?: Model3DViewState | null
 	) {
 		const source = String(url || '').trim()
 		if (!source) {
@@ -365,7 +383,43 @@ export class Model3DPreviewViewer {
 				(err: unknown) => reject(err)
 			)
 		})
-		this.setObject(gltf.scene)
+		this.setObject(gltf.scene, cachedView)
+	}
+
+	getViewState(): Model3DViewState | null {
+		if (!this.currentObject) return null
+		return {
+			cameraPosition: {
+				x: this.camera.position.x,
+				y: this.camera.position.y,
+				z: this.camera.position.z
+			},
+			target: {
+				x: this.controls.target.x,
+				y: this.controls.target.y,
+				z: this.controls.target.z
+			},
+			near: this.camera.near,
+			far: this.camera.far,
+			minDistance: this.controls.minDistance,
+			maxDistance: this.controls.maxDistance
+		}
+	}
+
+	private applyViewState(view: Model3DViewState) {
+		this.camera.position.set(view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z)
+		this.controls.target.set(view.target.x, view.target.y, view.target.z)
+		this.camera.near = view.near
+		this.camera.far = view.far
+		this.controls.minDistance = view.minDistance
+		this.controls.maxDistance = view.maxDistance
+		this.camera.updateProjectionMatrix()
+		this.controls.update()
+	}
+
+	restoreView(view: Model3DViewState) {
+		this.applyViewState(view)
+		this.requestRenderBurst(6, 28)
 	}
 
 	captureSnapshotDataUrl() {
@@ -386,65 +440,101 @@ export class Model3DPreviewViewer {
 			}
 		})
 		this.currentObject = null
+		this.updateEnvironmentScale(3)
 		this.controls.target.set(0, 0.8, 0)
 		this.camera.position.set(3.5, 2.2, 3.5)
+		this.camera.near = 0.01
+		this.camera.far = 1000
+		this.controls.minDistance = 0.4
+		this.controls.maxDistance = 50
+		this.camera.updateProjectionMatrix()
 		this.controls.update()
 		this.requestRenderBurst(4, 24)
 	}
 
-	private setObject(object: Object3Dlike) {
+	private setObject(object: Object3Dlike, cachedView?: Model3DViewState | null) {
 		this.clearModel()
 		this.currentObject = object
 		this.scene.add(object)
-		this.frameObject(object)
+		this.frameObject(object, cachedView)
 		this.requestRenderBurst(10, 24)
 	}
 
-	private frameObject(object: Object3Dlike) {
-		const box = new THREE.Box3().setFromObject(object) as unknown as Box3Like
+	private updateEnvironmentScale(targetSize: number) {
+		const gridSize = Math.max(2, Math.ceil(targetSize * 2.5))
+		const gridDivisions = gridSize <= 10 ? 16 : gridSize <= 50 ? 20 : 30
+		const axesSize = Math.max(1, targetSize * 0.6)
+		const disposeHelper = (helper: GridHelperLike | null) => {
+			if (!helper) return
+			this.scene.remove(helper)
+			if (helper.geometry) helper.geometry.dispose()
+			const mat = helper.material
+			if (Array.isArray(mat)) {
+				mat.forEach((m) => m?.dispose?.())
+			} else if (mat && typeof mat.dispose === 'function') {
+				mat.dispose()
+			}
+		}
+		disposeHelper(this.grid)
+		disposeHelper(this.axes)
+		this.grid = new THREE.GridHelper(gridSize, gridDivisions, '#64748b', '#334155') as unknown as GridHelperLike
+		this.grid.position.y = 0
+		this.axes = new THREE.AxesHelper(axesSize) as unknown as GridHelperLike
+		this.scene.add(this.grid)
+		this.scene.add(this.axes)
+	}
+
+	private frameObject(object: Object3Dlike, cachedView?: Model3DViewState | null) {
+		object.position.y = 0
+		const box = new THREE.Box3().setFromObject(object as any)
 		if (box.isEmpty()) return
-		const sizeVec = {
-			x: 0,
-			y: 0,
-			z: 0,
-			clone() {
-				return this
-			},
-			copy() {
-				return this
-			},
-			set() {
-				return this
-			}
-		} as unknown as Vector3Like
-		const centerVec = {
-			x: 0,
-			y: 0,
-			z: 0,
-			clone() {
-				return this
-			},
-			copy() {
-				return this
-			},
-			set() {
-				return this
-			}
-		} as unknown as Vector3Like
-		const size = box.getSize(sizeVec)
-		const center = box.getCenter(centerVec)
-		const radius = Math.max(size.x, size.y, size.z, 0.2)
-		this.controls.target.copy(center)
-		this.camera.near = Math.max(0.01, radius / 100)
-		this.camera.far = Math.max(100, radius * 30)
-		this.camera.position.set(
-			center.x + radius * 1.8,
-			center.y + radius * 1.2,
-			center.z + radius * 1.8
-		)
+
+		const bottomOffset = -box.min.y
+		object.position.y = bottomOffset
+
+		box.setFromObject(object as any)
+		const sizeVec = new THREE.Vector3()
+		const centerVec = new THREE.Vector3()
+		box.getSize(sizeVec)
+		box.getCenter(centerVec)
+
+		const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z, 0.2)
+		const horizontalRadius = Math.max(sizeVec.x, sizeVec.z) * 0.5
+
+		this.updateEnvironmentScale(Math.max(maxDim, horizontalRadius * 2))
+
+		if (cachedView) {
+			this.camera.position.set(
+				cachedView.cameraPosition.x,
+				cachedView.cameraPosition.y,
+				cachedView.cameraPosition.z
+			)
+			this.controls.target.set(cachedView.target.x, cachedView.target.y, cachedView.target.z)
+			this.camera.near = cachedView.near
+			this.camera.far = cachedView.far
+			this.controls.minDistance = cachedView.minDistance
+			this.controls.maxDistance = cachedView.maxDistance
+		} else {
+			this.controls.target.copy(centerVec as unknown as Vector3Like)
+
+			const fovRad = (this.camera.fov * Math.PI) / 180
+			const distance = (maxDim * 1.5) / (2 * Math.tan(fovRad / 2))
+			const camDist = Math.max(distance, maxDim * 2.2, horizontalRadius * 2.8)
+
+			this.camera.near = Math.max(0.001, camDist / 1000)
+			this.camera.far = Math.max(camDist * 20, maxDim * 50)
+			this.controls.minDistance = Math.max(0.05, maxDim * 0.2)
+			this.controls.maxDistance = Math.max(camDist * 8, maxDim * 30)
+
+			const dir = new THREE.Vector3(1.2, 0.9, 1.2).normalize()
+			this.camera.position
+				.copy(this.controls.target)
+				.add((dir as unknown as Vector3Like).multiplyScalar(camDist))
+		}
+
 		this.camera.updateProjectionMatrix()
 		this.controls.update()
-		this.requestRenderBurst(8, 24)
+		this.requestRenderBurst(16, 30)
 	}
 
 	private resize() {

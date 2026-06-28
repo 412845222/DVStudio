@@ -1,5 +1,9 @@
 # AI 工作流蓝图开发指引 (AI Workflow Guide)
 
+## ⚠️ 重要架构变更
+
+**后端通信已从 Django HTTP 改为 Electron IPC**。所有后端调用通过 `src/network/ipcClient.ts` 走 Electron IPC 通道，不再使用 HTTP 请求到 localhost。
+
 ## 1. 核心概念
 - **Blueprint (蓝图)**: 整个工作流的载体，包含节点 (Nodes) 和连线 (Edges)。
 - **Node (节点)**: 工作流中的基本单元，具有输入锚点 (Input Anchors) 和输出锚点 (Output Anchors)。
@@ -24,28 +28,29 @@
 3. **实现领域逻辑**（可选）: 在 `src/aiworkflow/domain/<area>/` 下放置纯函数（如 ComfyUI 输入输出解析、URL 校验、世界坐标拾取等）。
 4. **开发 UI 组件**: 在 `src/ui/WorkFlow/WorlFlowNodes/` 下创建 `Workflow<New>Node.vue`（**注意 `WorlFlow` 拼写沿用历史**），继承或参考 `WorkflowNodeBase.vue`。
 5. **实现节点聊天对话框**（如需要）: 复用 `src/ui/BluePrint/node-dialog/` 中的 `NodeChatDialog` / `NodeChatInput` / `NodeChatParamPanel` 组件。
-6. **实现执行逻辑**: 在 `src/views/AIWorkflow/node-business/<area>/` 中实现节点业务（composable 形式），处理命令请求 / 状态同步 / 错误处理。
+6. **实现执行逻辑**: 在 `src/views/AIWorkflow/node-business/<area>/` 中实现节点业务（composable 形式），通过 `ipcClient` 调用对应后端 IPC 模块。
 7. **注册面板**: 在 `BlueprintProjectToolbar.vue` / 节点菜单（`DwebCanvasNodeSearchMenu`）中加入该节点。
 8. **更新 inspector 面板**: `src/ui/WorkFlow/WorkflowInspectorPanel.vue` 与 `src/views/AIWorkflow/node-business/` 中的 composable 联动。
 
 ## 4. 已有节点类型（`src/ui/WorkFlow/WorlFlowNodes/`）
 
-| 节点 | 文件 | 说明 |
-| --- | --- | --- |
-| Image | `WorkflowImageNode.vue` | 图片节点 |
-| Video | `WorkflowVideoNode.vue` | 视频节点 |
-| Text | `WorkflowTextNode.vue` | 文本节点 |
-| Story | `WorkflowStoryNode.vue` | 剧情节点（多分支） |
-| TextMerge | `WorkflowTextMergeNode.vue` | 文本合并 |
-| ComfyUI | `WorkflowComfyUINode.vue` | ComfyUI 推理 |
-| Model3D | `WorkflowModel3DNode.vue` | 3D 模型 |
-| MeshyModel | `WorkflowMeshyModelNode.vue` | Meshy 3D 生成 |
-| SceneLayout | `WorkflowSceneLayoutNode.vue` | 场景布局 |
-| SceneUnderstanding | `WorkflowSceneUnderstandingNode.vue` | 场景理解 |
-| SceneDecompose | `WorkflowSceneDecomposeNode.vue` | 场景拆解 |
-| RotateImage | `WorkflowRotateImageNode.vue` | 图片旋转 |
-| UnrealExport | `WorkflowUnrealExportNode.vue` | Unreal 导出 |
-| ImageMarkup | `ImageMarkupDialog.vue` | 图片标注对话框 |
+| 节点 | 文件 | 说明 | 后端模块 |
+| --- | --- | --- | --- |
+| Image | `WorkflowImageNode.vue` | 图片节点 | - |
+| Video | `WorkflowVideoNode.vue` | 视频节点 | - |
+| Text | `WorkflowTextNode.vue` | 文本节点 | - |
+| Story | `WorkflowStoryNode.vue` | 剧情节点（多分支） | - |
+| TextMerge | `WorkflowTextMergeNode.vue` | 文本合并 | - |
+| ComfyUI | `WorkflowComfyUINode.vue` | ComfyUI 推理 | `comfyui` |
+| Model3D | `WorkflowModel3DNode.vue` | 3D 模型 | - |
+| MeshyModel | `WorkflowMeshyModelNode.vue` | Meshy 3D 生成 | `meshy` |
+| SceneLayout | `WorkflowSceneLayoutNode.vue` | 场景布局 | `agent-skills` |
+| SceneUnderstanding | `WorkflowSceneUnderstandingNode.vue` | 场景理解 | `agent-skills` |
+| SceneDecompose | `WorkflowSceneDecomposeNode.vue` | 场景拆解 | `agent-skills` |
+| RotateImage | `WorkflowRotateImageNode.vue` | 图片旋转 | - |
+| UnrealExport | `WorkflowUnrealExportNode.vue` | Unreal 导出 | `agent-skills` |
+| ImageMarkup | `ImageMarkupDialog.vue` | 图片标注对话框 | - |
+| Seedance | （待确认） | Seedance 视频生成 | `seedance` |
 
 子目录：
 - `three-preview/WorkflowThreePreviewShell.vue` + `types.ts`：Three.js 预览外壳
@@ -63,10 +68,11 @@
 | `bridge/component-events/` | 右键菜单、键盘、节点预览、资源操作 |
 | `bridge/feedback/` | Toast 状态等反馈 |
 | `concurrency/` | 并发相关 |
-| `network/` | 网络请求相关 |
+| `network/` | 网络请求相关（通过 IPC 客户端调用后端） |
 | `node-business/chat/` | AI 对话 / 节点生成 / 视频任务面板 |
 | `node-business/comfy/` | ComfyUI 业务（连接、输出路由、运行时、类型定义） |
 | `node-business/meshy/` | Meshy 业务（资产、命令、拖拽、任务面板、输入解析、请求、运行时） |
+| `node-business/seedance/` | Seedance 业务（视频生成任务） |
 | `node-business/presentation/` | 节点展示（媒体预览源、文本输出、截图、旋转图片输出、节点额外属性） |
 | `node-business/project/` | 项目相关（catalog import、snapshot、transfer、unreal、package、identity） |
 | `node-business/scene/` | 场景相关（拆解、布局、场景理解、元数据、模型绑定） |
@@ -94,7 +100,7 @@
 - `VideoFirstFrameCaptureQueue.ts`：首帧捕获队列
 - `VideoMetadataReadQueue.ts`：视频元数据读取队列
 
-## 7. 节点截图缓存（`src/views/AIWorkflow/node-screenshot/`）—— 新增
+## 7. 节点截图缓存（`src/views/AIWorkflow/node-screenshot/`）
 
 为提升工作流画布性能，节点截图使用 IndexedDB 持久化缓存：
 
@@ -112,29 +118,65 @@
 - `nodeChatConfig.ts`：节点聊天配置
 - `index.ts`：统一导出
 
-通过节点上的聊天按钮打开，用于针对单个节点进行 AI 交互（如生成文本描述、调整参数等）。
+通过节点上的聊天按钮打开，用于针对单个节点进行 AI 交互（如生成文本描述、调整参数等）。聊天通过 `chat` 后端 IPC 模块的流式通道实现。
 
 ## 9. 后端通信
 
-### 9.1 ComfyUI 桥接
-- 前端通过 `src/network/ComfyUIBridgeService.ts` 与 Django `comfyui_bridge` 通信。
+> 所有后端通信通过 Electron IPC 进行，不再使用 HTTP 请求到 Django。前端使用 `src/network/ipcClient.ts` 的 `ipcCall()` 和 `ipcStream()` 调用后端。
+
+### 9.1 IPC 客户端使用
+
+```typescript
+import { ipcCall, ipcStream, hasIpcModule } from '../network/ipcClient'
+
+// 检测模块可用性
+if (hasIpcModule('comfyui')) {
+  // 普通调用
+  const result = await ipcCall(() => window.dweb.comfyui.submit(workflow))
+}
+
+// 流式调用（AI 对话等）
+const generator = ipcStream(() => window.dweb.chat.sendMessageStream({ message: 'hello' }))
+for await (const chunk of generator) {
+  // 处理流式数据
+}
+```
+
+### 9.2 ComfyUI 桥接
+- 前端通过 `src/network/ComfyUIBridgeService.ts` 与后端 `comfyui` IPC 模块通信。
 - 后端负责将请求转发给实际的 ComfyUI 服务，并处理跨域、任务队列、SSL CDN 兼容等问题。
-- 节点状态（排队中、执行中、完成、失败）需要实时同步到前端 Vuex 状态中。
+- 节点状态（排队中、执行中、完成、失败）通过 LocalDB `comfyui_jobs` 表同步到前端 Vuex 状态中。
+- IPC 通道前缀：`dweb:comfyui:`
 
-### 9.2 三方 API 网关（Meshy / Seedance / NanoBanana / SeeDream / 即梦）
-> **双层路由结构**（与 `04_BACKEND_GUIDE.md` 第 8 节一致）：
-> - **共享实现库**：`django-app/comfyui_bridge/api.py` —— 包含所有三方服务的实现函数
-> - **新路由层**：`django-app/third_party_api_gateway/` —— 包装实现并暴露为 HTTP 端点
-> - 路由前缀：`/api/third-party/`（**不是** `/api/workflow/`，不要混淆）
-- 实现函数位置：`django-app/comfyui_bridge/api.py`（被 `third_party_api_gateway/api.py` 复用）
-- 路由挂载位置：`django-app/third_party_api_gateway/urls.py`（挂载到 `dwebsite/urls.py` 的 `/api/third-party/`）
-- 模型定义位置：`django-app/third_party_api_gateway/models.py`（`MeshyTaskMirror` + `VideoGenerationTaskMirror`，表名 `third_party_*_mirror`）
-- 任务状态由 LocalDB 镜像表（`meshy_tasks` / `video_tasks`）保存，前端通过 `window.dweb.aiworkflow.db.meshy.*` 与 `window.dweb.aiworkflow.db.video.*` 访问
+### 9.3 三方 API 集成（Meshy / Seedance / NanoBanana / SeeDream / 即梦）
+> 所有三方 API 直接在 Electron 主进程通过 `core/http-client.mjs` 调用，不再经过 Django HTTP 网关。
 
-### 9.3 AI 对话
-- 通过 `src/network/AIChatService.ts` 走 SSE 流式输出。
-- 默认后端为 GitHub Copilot CLI（`/api/workflow/copilot/*`），兼容 Codex CLI（`/api/workflow/codex/*`）。
-- 节点级聊天复用同一 SSE 通道，但通过节点上下文参数区分。
+- **Meshy**：后端模块 `meshy/`，IPC 通道前缀 `dweb:meshy:`
+  - 任务存储在 LocalDB `meshy_tasks` 表
+  - 前端通过 `window.dweb.meshy.*` 访问
+- **Seedance**：后端模块 `seedance/`，IPC 通道前缀 `dweb:seedance:`
+  - 任务存储在 LocalDB `video_tasks` 表
+  - 前端通过 `window.dweb.seedance.*` 访问
+- **其他三方服务**（NanoBanana / SeeDream / 即梦等）：后端模块 `third-party/`，IPC 通道前缀 `dweb:third-party:`
+- **任务状态访问**：前端可通过 `window.dweb.aiworkflow.db.*` 直接查询 LocalDB 中的任务状态
+
+### 9.4 AI 对话
+- 通过 `src/network/AIChatService.ts` 走 IPC 流式通道（`dweb:chat:sendMessage`，stream: true）。
+- 默认后端直接在 Electron 主进程调用外部 AI API（DeepSeek、Gemini 等），不再依赖 Copilot/Codex CLI（可选模块 `codex/` 仍保留）。
+- 节点级聊天复用同一 IPC 流通道，但通过节点上下文参数区分。
+- API 密钥存储在 LocalDB `api_keys` 表（AES-256-GCM 加密）。
+
+### 9.5 Agent Skills
+- 通过后端模块 `agent-skills/` 实现，IPC 通道前缀 `dweb:agent-skills:`
+- 包含场景理解、场景布局、场景拆解、Unreal 导出等功能
+- Unreal 导出通过内置 HTTP 服务器与 Unreal 插件通信
+- 前端通过 `src/network/SceneSkillService.ts` 调用
+
+### 9.6 项目与资产管理
+- 项目 CRUD：后端模块 `projects/`，IPC `dweb:projects:*`
+- 项目资产元数据：后端模块 `project-assets/`，IPC `dweb:project-assets:*`
+- 资产二进制操作（上传/导入/删除）：通过 `projectStaticAssets/service.mjs` 的 IPC 通道
+- 资产读取：通过 `dweb://` 自定义协议直接从磁盘读取
 
 ## 10. 渲染与交互
 
@@ -149,19 +191,21 @@
 - 项目工具栏：`src/ui/WorkFlow/BlueprintProjectToolbar.vue`
 - 资源面板：`src/ui/WorkFlow/ResourceManagerPanel.vue`
 - Meshy 任务面板：`src/ui/WorkFlow/MeshyTaskPanel.vue`
-- 视频任务面板：`src/ui/WorkFlow/VideoTaskPanel.vue`
+- Seedance/视频任务面板：`src/ui/WorkFlow/VideoTaskPanel.vue`
 - 日志面板：`src/ui/WorkFlow/BlueprintLogPanel.vue`
 - 锚点提示：`src/ui/WorkFlow/AnchorTooltip.vue`
 
 ## 11. 关键约定
 
-- **数据流向**：用户操作 → 节点 composable → Vuex mutation → 画布重新渲染；远端状态由 AI Service 流式回写到 Vuex。
+- **数据流向**：用户操作 → 节点 composable → Vuex mutation → 画布重新渲染；远端状态由 IPC 后端通过流式通道或 LocalDB 变更回写到 Vuex。
 - **节点 ID 与锚点 ID**：由 `src/core/project/package/ids.ts` 工厂生成，**禁止**在 UI 层手动拼接。
 - **连线规则**：`comfyui_bridge` / `anchorKinds.ts` 决定哪些 mediaType 可以互连。
 - **资源 URL 解析**：所有展示 / 上传的资源 URL 走 `src/network/backendConfig.ts` 的 `resolveBackendUrl()`，dweb:// 协议自动被 Electron 拦截。
 - **蓝图快照**：保存项目时使用 `src/aiworkflow/persistence/blueprintSnapshot.ts` 序列化，反序列化必须做版本兼容处理。
 - **平台感知**：工作流中的平台特有功能（如 Steam 分享）必须通过 `src/platformBridge/` 访问，使用 Mock 降级。
 - **截图缓存**：节点缩略图优先使用 `node-screenshot/` 缓存，避免重复渲染。
+- **IPC 优先**：所有后端调用使用 `src/network/ipcClient.ts`，不要直接发起 HTTP 请求到 localhost（迁移期兼容代码除外）。
+- **禁止外部 API 调用**：前端不要直接调用外部 AI 厂商 API，必须通过后端 IPC 模块以保护 API Key。
 
 ## 12. 关键文件位置速查
 
@@ -179,6 +223,12 @@
 | 节点搜索菜单 | `src/ui/UIComponent/DwebCanvasNodeSearchMenu.vue` |
 | ComfyUI 服务 | `src/network/ComfyUIBridgeService.ts` |
 | AI 对话服务 | `src/network/AIChatService.ts` |
-| ComfyUI 后端 | `django-app/comfyui_bridge/api.py`（共享实现库） |
-| 三方 API 网关路由层 | `django-app/third_party_api_gateway/{api,urls,models}.py`（挂在 `/api/third-party/`） |
+| Scene Skill 服务 | `src/network/SceneSkillService.ts` |
+| IPC 客户端 | `src/network/ipcClient.ts` |
+| ComfyUI 后端模块 | `electron/backend/modules/comfyui/` |
+| Meshy 后端模块 | `electron/backend/modules/meshy/` |
+| Seedance 后端模块 | `electron/backend/modules/seedance/` |
+| Chat 后端模块 | `electron/backend/modules/chat/` |
+| Agent Skills 后端模块 | `electron/backend/modules/agent-skills/` |
+| Third-Party 后端模块 | `electron/backend/modules/third-party/` |
 | 节点 Inspector 数据 composable | `src/views/AIWorkflow/node-business/` |

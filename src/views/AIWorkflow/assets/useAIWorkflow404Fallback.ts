@@ -314,7 +314,11 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 					url: trimmed,
 					assetName,
 					requestedPath: relPath,
-					absolutePath: diag?.root && relPath ? `${diag.root}/${relPath}` : undefined,
+					absolutePath:
+						diag?.resolvedTo ||
+						(diag?.root && relPath
+							? diag.root.replace(/\\/g, '/') + '/' + relPath.replace(/^\/+/, '')
+							: undefined),
 					sources,
 					similarFiles: diag?.similarFiles,
 					diagnostics: diag || undefined

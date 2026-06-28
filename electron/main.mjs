@@ -7,18 +7,10 @@ import { spawn } from 'node:child_process'
 
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol } from 'electron'
 
-import { APP_NAME, APP_VERSION, APP_COPYRIGHT, APP_HOMEPAGE, APP_REPO_URL, APP_LICENSE, getDjangoAppDir, getRepoRoot, getWindowIconPath } from './config.mjs'
-import { killExistingDjangoRunservers, pickBackendPort, startDjangoServer, waitForBackendReady } from './backend/django.mjs'
+import { APP_NAME, APP_VERSION, APP_COPYRIGHT, APP_HOMEPAGE, APP_REPO_URL, APP_LICENSE, getRepoRoot, getWindowIconPath } from './config.mjs'
 import { collectDiagnostics } from './backend/diagnostics.mjs'
 import { detectPythonInfo } from './backend/python.mjs'
 import { cleanupOldRuntimeProject } from './backend/runtimeCleanup.mjs'
-import {
-	copyDjangoTemplateToRuntime,
-	syncDjangoTemplateToRuntime,
-	ensureRuntimeDjangoProjectScaffold,
-	ensureRuntimeRequirements,
-	sanitizeRuntimeDjangoDir,
-} from './backend/djangoProject.mjs'
 import {
 	registerDwebProjectAssetProtocol,
 	setProjectRoot,
@@ -44,12 +36,10 @@ import {
 } from './backend/projectStaticAssets/service.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
-import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
 import { initBackend, shutdownBackend } from './backend/index.mjs'
+import { getPythonBridge } from './backend/python-bridge/index.mjs'
 import { platformPreflight, platformInit, platformShutdown, registerPlatformIpc, setMainWindowForPlatform } from './platform/index.mjs'
 
-// dweb:// must be registered as a privileged scheme before app ready,
-// otherwise renderer-side fetch/XHR treats it as unsupported.
 try {
 	protocol.registerSchemesAsPrivileged([
 		{
@@ -124,21 +114,13 @@ function configurePortablePaths() {
 configurePortablePaths()
 
 let mainWindow = null
-let backend = null
-let backendBaseUrl = ''
-let backendPort = 0
 let backendLastError = ''
-let backendPythonCommand = ''
 let clientSettings = null
 
 const FIXED_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
-// Nano Banana image generation requires an image-capable model.
-// Ref: https://ai.google.dev/gemini-api/docs/image-generation
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 
-// Download a URL and return { buffer: Uint8Array, mime: string }
-// Used to bypass browser CORS when consuming signed CDN URLs (e.g. seedance results).
 function fetchRawBuffer(rawUrl) {
 	return new Promise((resolve, reject) => {
 		let parsed
@@ -188,7 +170,6 @@ function fetchRawBuffer(rawUrl) {
 let bootstrapProc = null
 
 const BACKEND_LOG_MAX_LINES = 2000
-const BACKEND_HEALTH_PING_INTERVAL_MS = 15_000
 const backendLogLines = []
 
 let setupRunning = false
@@ -196,9 +177,6 @@ let setupUpdatedAt = 0
 let setupSteps = []
 let runtimeLogFile = ''
 let backendOpLock = Promise.resolve()
-let backendHealthTimer = null
-let backendDjangoDir = ''
-let backendPythonForKill = ''
 
 let backendRuntimeState = {
 	running: false,
@@ -208,18 +186,15 @@ let backendRuntimeState = {
 	lastError: '',
 	setupRunning: false,
 	updatedAt: 0,
-	mode: 'migration',
+	mode: 'ipc',
 }
 
 function createDefaultSetupSteps() {
 	return [
 		{ key: 'python', label: 'Python 环境检查（>=3.11，推荐 3.11）', status: 'unknown', detail: '', progress: 0 },
 		{ key: 'resource', label: '创建 DVSResource 目录', status: 'unknown', detail: '', progress: 0 },
-		{ key: 'venv', label: '创建/复用 Python 虚拟环境', status: 'unknown', detail: '', progress: 0 },
-		{ key: 'djangoProject', label: '准备 Django 项目（复制源码/生成配置）', status: 'unknown', detail: '', progress: 0 },
-		{ key: 'django', label: '启动 Django 后端', status: 'unknown', detail: '', progress: 0 },
-		{ key: 'dependencyCheck', label: '依赖检查', status: 'unknown', detail: '', progress: 0 },
-		{ key: 'dependencyInstall', label: '依赖安装', status: 'unknown', detail: '', progress: 0 },
+		{ key: 'pythonBridge', label: '初始化 Python Bridge 工作进程', status: 'unknown', detail: '', progress: 0 },
+		{ key: 'nodeBackend', label: '初始化 Node.js IPC 后端', status: 'unknown', detail: '', progress: 0 },
 		{ key: 'ffmpeg', label: 'ffmpeg（可选）', status: 'unknown', detail: '', progress: 0 },
 	]
 }
@@ -243,7 +218,6 @@ function emitBackendRuntimeState() {
 		try {
 			if (!win.isDestroyed()) win.webContents.send('dweb:backendRuntime:changed', payload)
 		} catch {
-			// ignore
 		}
 	}
 }
@@ -354,47 +328,12 @@ function runSyncWithLogs(cmd, args, { cwd, label, timeoutMs = 0 } = {}) {
 				try {
 					r.kill('SIGKILL')
 				} catch {
-					// ignore
 				}
 				stderr += `\nTimeout after ${timeoutMs}ms`
 				resolve(finalize({ ok: false, code: 124, timedOut: true, error: `timeout ${timeoutMs}ms` }))
 			}, Number(timeoutMs))
 		}
 	})
-}
-
-const DJANGO_RUNTIME_CHECK_CODE = [
-	'import django',
-	'from django.core.management import execute_from_command_line',
-	'import rest_framework',
-	'import corsheaders',
-	'from cryptography.fernet import Fernet',
-	'print(django.get_version())',
-].join('; ')
-
-async function checkDjangoRuntimeDependencies(pythonCommand) {
-	return await runSyncWithLogs(
-		pythonCommand,
-		['-c', DJANGO_RUNTIME_CHECK_CODE],
-		{ label: '检查 Django 关键依赖' },
-	)
-}
-
-async function installDjangoRuntimeDependencies({ pythonCommand, djangoRuntimeDir, forceReinstall = false }) {
-	const reqPath = path.resolve(djangoRuntimeDir, 'requirements.txt')
-	const args = ['-m', 'pip', 'install']
-	if (forceReinstall) {
-		args.push('--upgrade', '--force-reinstall', '--no-cache-dir')
-	}
-	args.push('-r', reqPath)
-	return await runSyncWithLogs(
-		pythonCommand,
-		args,
-		{
-			cwd: djangoRuntimeDir,
-			label: forceReinstall ? '强制重装 Django 项目依赖' : '安装 Django 项目依赖',
-		},
-	)
 }
 
 async function tryInstallPythonOnWindows() {
@@ -443,7 +382,6 @@ function appendRuntimeLog(line) {
 	try {
 		fs.appendFileSync(runtimeLogFile, `[${nowTs()}] ${String(line || '')}\n`, 'utf-8')
 	} catch {
-		// ignore logging failure
 	}
 }
 
@@ -459,7 +397,6 @@ function initRuntimeLogger() {
 			runtimeLogFile = p
 			break
 		} catch {
-			// try next
 		}
 	}
 	if (runtimeLogFile) {
@@ -487,8 +424,6 @@ function onBackendChunk(kind, chunk) {
 	for (const raw of text.split(/\r?\n/)) {
 		const line = raw.trimEnd()
 		if (!line) continue
-		// welcome 页会主动 ping，runserver 默认会打印 GET /api/ai/ping；这里过滤掉以免刷屏
-		if (line.includes('GET /api/ai/ping')) continue
 		pushBackendLog(`[${kind}] ${line}`)
 	}
 }
@@ -570,17 +505,12 @@ function getClientRootDir() {
 function getDvsResourceDir() {
 	const envResourceDir = String(process.env.DWEB_RESOURCE_DIR || '').trim()
 	if (envResourceDir) return path.resolve(envResourceDir)
-	// 交付客户端：运行时数据固定放在 EXE 同级目录下的 DVSResource。
 	if (app.isPackaged) return path.resolve(getClientRootDir(), 'DVSResource')
 	return path.resolve(getClientRootDir(), 'DVSResource')
 }
 
 function getBackendDataDir() {
 	return path.resolve(getDvsResourceDir(), 'BackendData')
-}
-
-function getRuntimeDjangoAppDir() {
-	return path.resolve(getDvsResourceDir(), 'django-app')
 }
 
 function getUserSettingsDir() {
@@ -600,8 +530,7 @@ function getDefaultClientSettings() {
 		geminiApiKey: '',
 		geminiModel: FIXED_GEMINI_MODEL,
 		bytedanceApiKey: '',
-		jimengAccessKeyId: '',
-		jimengSecretKey: '',
+		meshyApiKey: '',
 	}
 }
 
@@ -637,104 +566,6 @@ function saveClientSettings(next) {
 	return { ...clientSettings }
 }
 
-function getVenvDir() {
-	return path.resolve(getDvsResourceDir(), '.venv')
-}
-
-function getVenvPythonPath() {
-	if (process.platform === 'win32') return path.resolve(getVenvDir(), 'Scripts', 'python.exe')
-	return path.resolve(getVenvDir(), 'bin', 'python')
-}
-
-function isCrossPlatformVenv(venvDir) {
-	const winPy = path.resolve(venvDir, 'Scripts', 'python.exe')
-	const unixPy = path.resolve(venvDir, 'bin', 'python')
-	if (process.platform === 'win32') return fs.existsSync(unixPy) && !fs.existsSync(winPy)
-	return fs.existsSync(winPy) && !fs.existsSync(unixPy)
-}
-
-function countFilesRecursively(dir) {
-	if (!fs.existsSync(dir)) return 0
-	let count = 0
-	const stack = [dir]
-	while (stack.length > 0) {
-		const current = stack.pop()
-		let entries = []
-		try {
-			entries = fs.readdirSync(current, { withFileTypes: true })
-		} catch {
-			continue
-		}
-		for (const ent of entries) {
-			const full = path.resolve(current, ent.name)
-			if (ent.isDirectory()) {
-				stack.push(full)
-				continue
-			}
-			if (ent.isFile()) count += 1
-		}
-	}
-	return count
-}
-
-function migrateLegacyRuntimeData({ runtimeDjangoDir, backendDataDir, log = () => {} }) {
-	const legacyDb = path.resolve(runtimeDjangoDir, 'db.sqlite3')
-	const targetDb = path.resolve(backendDataDir, 'db.sqlite3')
-	const legacySecret = path.resolve(runtimeDjangoDir, 'django_secret_key.txt')
-	const targetSecret = path.resolve(backendDataDir, 'django_secret_key.txt')
-	const legacyMedia = path.resolve(runtimeDjangoDir, 'media')
-	const targetMedia = path.resolve(backendDataDir, 'media')
-
-	if (fs.existsSync(legacyDb)) {
-		const legacySize = fs.statSync(legacyDb).size
-		const targetSize = fs.existsSync(targetDb) ? fs.statSync(targetDb).size : 0
-		const shouldCopy = !fs.existsSync(targetDb) || (targetSize < 1024 * 1024 && legacySize > targetSize)
-		if (shouldCopy) {
-			fs.mkdirSync(backendDataDir, { recursive: true })
-			fs.copyFileSync(legacyDb, targetDb)
-			log(`[data-migrate] 已迁移历史数据库到 BackendData: ${legacySize} bytes`)
-		}
-	}
-
-	if (fs.existsSync(legacySecret) && !fs.existsSync(targetSecret)) {
-		fs.mkdirSync(backendDataDir, { recursive: true })
-		fs.copyFileSync(legacySecret, targetSecret)
-		log('[data-migrate] 已迁移历史 django_secret_key.txt 到 BackendData')
-	}
-
-	if (fs.existsSync(legacyMedia)) {
-		const legacyCount = countFilesRecursively(legacyMedia)
-		const targetCount = countFilesRecursively(targetMedia)
-		if (legacyCount > targetCount) {
-			fs.mkdirSync(targetMedia, { recursive: true })
-			fs.cpSync(legacyMedia, targetMedia, { recursive: true, force: false, errorOnExist: false })
-			log(`[data-migrate] 已迁移历史 media 到 BackendData（legacy=${legacyCount}, target=${targetCount}）`)
-		}
-	}
-}
-
-function getBackendSettingsEnv() {
-	const s = clientSettings || getDefaultClientSettings()
-	const safeSettings = {
-		...s,
-		deepseekApiKey: '',
-		geminiApiKey: '',
-		bytedanceApiKey: '',
-		jimengAccessKeyId: '',
-		jimengSecretKey: '',
-		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
-		deepseekModel: FIXED_DEEPSEEK_MODEL,
-		geminiModel: FIXED_GEMINI_MODEL,
-	}
-	return {
-		DEEPSEEK_BASE_URL: FIXED_DEEPSEEK_BASE_URL,
-		DEEPSEEK_MODEL: FIXED_DEEPSEEK_MODEL,
-		NANOBANANA_MODEL: FIXED_GEMINI_MODEL,
-		DWEB_DEFAULT_RESOLUTION: String(s.defaultResolution || ''),
-		DWEB_CLIENT_SETTINGS_JSON: JSON.stringify(safeSettings),
-	}
-}
-
 async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 	if (setupRunning) return { ok: true, state: getSetupState(), running: true }
 
@@ -745,13 +576,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 
 	let pyInfo = null
 	const resourceDir = getDvsResourceDir()
-	const venvDir = getVenvDir()
-	const venvPython = getVenvPythonPath()
-	const djangoTemplateDir = app.isPackaged
-		? path.resolve(process.resourcesPath, 'django-app')
-		: getDjangoAppDir()
 	const backendDataDir = getBackendDataDir()
-	const djangoRuntimeDir = getRuntimeDjangoAppDir()
 
 	try {
 		setStep('python', { status: 'running', progress: 25, detail: '正在检测 Python 版本...' })
@@ -807,243 +632,55 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		})
 		if (layout.settingsFile) loadClientSettings()
 
-		let activePythonCommand = ''
-		if (pyInfo.isBundled) {
-			setStep('venv', { status: 'ok', progress: 100, detail: '使用内置 Python 运行时，无需虚拟环境' })
-			activePythonCommand = pyInfo.command
-		} else {
-			setStep('venv', { status: 'running', progress: 55, detail: '正在检查虚拟环境...' })
-			if (fs.existsSync(venvDir) && isCrossPlatformVenv(venvDir)) {
-				setStep('venv', {
-					status: 'running',
-					progress: 60,
-					detail: '检测到跨平台虚拟环境（Windows/macOS 不匹配），正在重建...',
-				})
-				fs.rmSync(venvDir, { recursive: true, force: true })
-			}
-			if (!fs.existsSync(venvPython)) {
-				const r = await runSyncWithLogs(pyInfo.command, [...(pyInfo.argsPrefix || []), '-m', 'venv', venvDir], {
-					label: '创建 Python 虚拟环境',
-				})
-				if (!r.ok) {
-					setStep('venv', {
-						status: 'error',
-						progress: 100,
-						detail: '虚拟环境创建失败，请检查 Python 安装权限和磁盘空间。',
-					})
-					pushBackendLog('[建议] 虚拟环境创建失败：请尝试“以管理员身份运行”或检查杀毒软件拦截。')
-					return { ok: false, state: getSetupState(), error: 'venv-create-failed' }
-				}
-				setStep('venv', { status: 'ok', progress: 100, detail: `已创建：${venvDir}` })
-			} else {
-				setStep('venv', { status: 'ok', progress: 100, detail: `已检测到：${venvDir}` })
-			}
-
-			if (!fs.existsSync(venvPython)) {
-				setStep('venv', {
-					status: 'error',
-					progress: 100,
-					detail: '未找到虚拟环境 Python，可重试创建。',
-				})
-				return { ok: false, state: getSetupState(), error: 'venv-python-missing' }
-			}
-			activePythonCommand = venvPython
-		}
-
-		backendPythonCommand = activePythonCommand
-		migrateLegacyRuntimeData({
-			runtimeDjangoDir: djangoRuntimeDir,
-			backendDataDir,
-			log: (line) => pushBackendLog(line),
-		})
-
-		setStep('djangoProject', {
-			status: 'running',
-			progress: 65,
-			detail: isDev ? '正在同步 Django 开发源码...' : '正在准备 Django 运行时项目...',
-		})
+		setStep('pythonBridge', { status: 'running', progress: 60, detail: '正在初始化 Python Bridge...' })
 		try {
-			if (!fs.existsSync(djangoTemplateDir)) {
-				throw new Error(`Django template dir not found: ${djangoTemplateDir}`)
-			}
-			if (isDev) {
-				syncDjangoTemplateToRuntime({
-					templateDir: djangoTemplateDir,
-					runtimeDir: djangoRuntimeDir,
-					log: (line) => pushBackendLog(line),
-				})
-			} else {
-				copyDjangoTemplateToRuntime({
-					templateDir: djangoTemplateDir,
-					runtimeDir: djangoRuntimeDir,
-					log: (line) => pushBackendLog(line),
-				})
-			}
-			if (!pyInfo.isBundled) {
-				ensureRuntimeRequirements({
-					templateDir: djangoTemplateDir,
-					runtimeDir: djangoRuntimeDir,
-					log: (line) => pushBackendLog(line),
-				})
-			}
-			ensureRuntimeDjangoProjectScaffold({
-				runtimeDir: djangoRuntimeDir,
-				log: (line) => pushBackendLog(line),
-			})
-			const sanitized = sanitizeRuntimeDjangoDir({
-				runtimeDir: djangoRuntimeDir,
-				log: (line) => pushBackendLog(line),
-			})
-			setStep('djangoProject', {
+			const pythonBridge = getPythonBridge()
+			setStep('pythonBridge', {
 				status: 'ok',
 				progress: 100,
-				detail: `运行时目录：${djangoRuntimeDir}${sanitized?.removed?.length ? `（已清理 ${sanitized.removed.length} 个运行时文件）` : ''}`,
+				detail: 'Python Bridge 已就绪（使用系统 Python）',
 			})
+			pushBackendLog('[setup] Python Bridge 初始化完成')
 		} catch (e) {
-			pushBackendLog(`[setup] Django 项目准备异常：${String(e?.stack || e?.message || e)}`)
-			setStep('djangoProject', {
+			pushBackendLog(`[setup] Python Bridge 初始化异常：${String(e?.stack || e?.message || e)}`)
+			setStep('pythonBridge', {
 				status: 'error',
 				progress: 100,
-				detail: `Django 项目准备失败：${String(e?.message || e)}`,
+				detail: `Python Bridge 初始化失败：${String(e?.message || e)}`,
 			})
-			return { ok: false, state: getSetupState(), error: 'django-project-prepare-failed' }
+			return { ok: false, state: getSetupState(), error: 'python-bridge-init-failed' }
 		}
 
-		setStep('django', { status: 'running', progress: 70, detail: '正在启动 Django...' })
-		await stopBackend()
+		setStep('nodeBackend', { status: 'running', progress: 80, detail: '正在初始化 Node.js IPC 后端...' })
 		try {
-			await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
-			setStep('django', {
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				initBackend(mainWindow)
+			}
+			updateBackendRuntimeState({
+				running: true,
+				healthy: true,
+				baseUrl: '',
+				port: 0,
+				lastError: '',
+				mode: 'ipc',
+			})
+			setStep('nodeBackend', {
 				status: 'ok',
 				progress: 100,
-				detail: `启动成功：${backendBaseUrl}`,
+				detail: 'Node.js IPC 后端已就绪',
 			})
-
-			if (pyInfo.isBundled) {
-				setStep('dependencyCheck', { status: 'ok', progress: 100, detail: '内置依赖已预装，无需检查' })
-				setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '无需安装。' })
-			} else {
-				setStep('dependencyCheck', { status: 'running', progress: 80, detail: '正在检查关键依赖...' })
-				const check = await checkDjangoRuntimeDependencies(activePythonCommand)
-				if (check.ok) {
-					const versionLine = splitLines(check.stdout || check.stderr)[0] || ''
-					setStep('dependencyCheck', {
-						status: 'ok',
-						progress: 100,
-						detail: `依赖齐全${versionLine ? `（Django ${versionLine}）` : ''}`,
-					})
-					setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '无需安装。' })
-				} else {
-					setStep('dependencyCheck', {
-						status: 'error',
-						progress: 100,
-						detail: '依赖不完整或已损坏（运行时导入失败）。',
-					})
-					setStep('dependencyInstall', { status: 'running', progress: 90, detail: '正在强制重装项目依赖...' })
-					const install = await installDjangoRuntimeDependencies({
-						pythonCommand: activePythonCommand,
-						djangoRuntimeDir,
-						forceReinstall: true,
-					})
-					if (!install.ok) {
-						setStep('dependencyInstall', {
-							status: 'error',
-							progress: 100,
-							detail: '依赖强制重装失败，请检查网络或 pip 源配置。',
-						})
-						pushBackendLog('[建议] 依赖安装失败：请检查网络，或配置可用的 pip 镜像后重试。')
-						return { ok: false, state: getSetupState(), error: 'dependency-install-failed' }
-					}
-					setStep('dependencyCheck', {
-						status: 'ok',
-						progress: 100,
-						detail: '依赖安装完成并可用。',
-					})
-					setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '依赖安装完成。' })
-
-					setStep('django', { status: 'running', progress: 95, detail: '依赖已补齐，正在重启 Django...' })
-					await stopBackend()
-					await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
-					setStep('django', { status: 'ok', progress: 100, detail: `启动成功：${backendBaseUrl}` })
-				}
-			}
-		} catch (startErr) {
-			if (pyInfo.isBundled) {
-				setStep('django', {
-					status: 'error',
-					progress: 100,
-					detail: `内置环境启动失败：${String(startErr?.message || startErr)}`,
-				})
-				pushBackendLog('[错误] 内置 Python 运行时启动失败，请尝试重新安装应用。')
-				return { ok: false, state: getSetupState(), error: 'bundled-django-start-failed' }
-			}
-			setStep('django', {
+			pushBackendLog('[setup] Node.js IPC 后端初始化完成')
+		} catch (e) {
+			pushBackendLog(`[setup] Node.js IPC 后端初始化异常：${String(e?.stack || e?.message || e)}`)
+			setStep('nodeBackend', {
 				status: 'error',
 				progress: 100,
-				detail: `首次启动失败：${String(startErr?.message || startErr)}`,
+				detail: `Node.js IPC 后端初始化失败：${String(e?.message || e)}`,
 			})
-
-			setStep('dependencyCheck', { status: 'running', progress: 80, detail: '正在检查关键依赖...' })
-			const check = await checkDjangoRuntimeDependencies(activePythonCommand)
-			if (!check.ok) {
-				setStep('dependencyCheck', {
-					status: 'error',
-					progress: 100,
-					detail: '依赖检查失败（关键模块缺失或包已损坏）。',
-				})
-
-				setStep('dependencyInstall', { status: 'running', progress: 90, detail: '正在强制重装项目依赖...' })
-				const install = await installDjangoRuntimeDependencies({
-					pythonCommand: activePythonCommand,
-					djangoRuntimeDir,
-					forceReinstall: true,
-				})
-				if (!install.ok) {
-					setStep('dependencyInstall', {
-						status: 'error',
-						progress: 100,
-						detail: '依赖强制重装失败，请检查网络或 pip 源配置。',
-					})
-					pushBackendLog('[建议] 依赖安装失败：请检查网络，或配置可用的 pip 镜像后重试。')
-					return { ok: false, state: getSetupState(), error: 'dependency-install-failed' }
-				}
-				setStep('dependencyCheck', {
-					status: 'ok',
-					progress: 100,
-					detail: '依赖安装完成并可用。',
-				})
-				setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '依赖安装完成。' })
-			} else {
-				const versionLine = splitLines(check.stdout || check.stderr)[0] || ''
-				setStep('dependencyCheck', {
-					status: 'ok',
-					progress: 100,
-					detail: `Django 已可用 ${versionLine ? `(${versionLine})` : ''}`,
-				})
-				setStep('dependencyInstall', { status: 'ok', progress: 100, detail: '无需安装。' })
-			}
-
-			setStep('django', { status: 'running', progress: 95, detail: '依赖就绪，正在重新启动 Django...' })
-			try {
-				await stopBackend()
-				await bootBackend({ pythonCommand: activePythonCommand, djangoDir: djangoRuntimeDir })
-				setStep('django', {
-					status: 'ok',
-					progress: 100,
-					detail: `启动成功：${backendBaseUrl}`,
-				})
-			} catch (e2) {
-				setStep('django', {
-					status: 'error',
-					progress: 100,
-					detail: `重试启动失败：${String(e2?.message || e2)}`,
-				})
-				pushBackendLog('[建议] Django 仍启动失败：请查看上方错误，重点关注数据库权限、端口占用和 settings 配置。')
-				return { ok: false, state: getSetupState(), error: 'django-restart-failed' }
-			}
+			return { ok: false, state: getSetupState(), error: 'node-backend-init-failed' }
 		}
 
-		setStep('ffmpeg', { status: 'running', progress: 60, detail: '检测 ffmpeg（可选）...' })
+		setStep('ffmpeg', { status: 'running', progress: 90, detail: '检测 ffmpeg（可选）...' })
 		const ff = await runSyncWithLogs('ffmpeg', ['-version'], { label: '检测 ffmpeg（可选）', timeoutMs: 8000 })
 		if (ff.ok) {
 			const line = splitLines(ff.stdout || ff.stderr)[0] || 'ffmpeg detected'
@@ -1058,147 +695,12 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		}
 
 		pushBackendLog('[setup] 环境准备完成。')
-		return { ok: true, state: getSetupState(), baseUrl: backendBaseUrl, port: backendPort }
+		return { ok: true, state: getSetupState() }
 	} finally {
 		setupRunning = false
 		updateBackendRuntimeState({ setupRunning: false })
 		setupUpdatedAt = Date.now()
 	}
-}
-
-async function bootBackend(options = {}) {
-	backendLastError = ''
-	const pyCommand = options.pythonCommand || backendPythonCommand || ''
-	const djangoDir = options.djangoDir || getRuntimeDjangoAppDir()
-	backendDjangoDir = djangoDir
-	backendPythonForKill = pyCommand
-	pushBackendLog('[backend] 启动前清理旧进程...')
-
-	try {
-		killExistingDjangoRunservers({
-			pythonCommand: pyCommand,
-			djangoDir,
-			onLog: (line) => pushBackendLog(line),
-		})
-	} catch (e) {
-		pushBackendLog(`[backend] 清理遗留进程失败：${String(e?.message || e)}`)
-	}
-
-	backendPort = await pickBackendPort({ preferred: 5800, range: 100 })
-	backendBaseUrl = `http://127.0.0.1:${backendPort}`
-	pushBackendLog(`[backend] 端口选择：${backendPort}`)
-
-	const child = startDjangoServer({
-		port: backendPort,
-		djangoDir,
-		dataDir: getBackendDataDir(),
-		onLog: (line) => pushBackendLog(line),
-		extraEnv: {
-			...getBackendSettingsEnv(),
-			...(pyCommand ? { __DWEB_PYTHON_COMMAND: pyCommand } : {}),
-		},
-	})
-	backend = child
-	pushBackendLog(`[backend] Django 进程已启动，pid=${child.pid || 'unknown'}`)
-
-	child.stdout?.on('data', (s) => {
-		// 生产可写入 logs/；开发期直接输出到控制台
-		process.stdout.write(`[django] ${s}`)
-		onBackendChunk('stdout', s)
-	})
-	child.stderr?.on('data', (s) => {
-		process.stderr.write(`[django] ${s}`)
-		onBackendChunk('stderr', s)
-	})
-
-	child.once('exit', (code) => {
-		if (backend === child) backend = null
-		pushBackendLog(`[exit] Django exited with code ${code}`)
-		updateBackendRuntimeState({
-			running: false,
-			healthy: false,
-			baseUrl: backendBaseUrl,
-			port: backendPort,
-			lastError: backendLastError || (code && code !== 0 ? `Django exited with code ${code}` : ''),
-		})
-		if (code && code !== 0) {
-			console.error(`Django exited with code ${code}`)
-		}
-	})
-
-	await waitForBackendReady(backendBaseUrl, { timeoutMs: 25000 })
-	updateBackendRuntimeState({
-		running: true,
-		healthy: true,
-		baseUrl: backendBaseUrl,
-		port: backendPort,
-		lastError: '',
-		mode: 'normal',
-	})
-	ensureBackendHealthMonitor()
-}
-
-async function waitBackendProcessExit(proc, { timeoutMs = 8000 } = {}) {
-	if (!proc) return true
-	if (proc.killed) return true
-	return await new Promise((resolve) => {
-		let done = false
-		const finish = (ok) => {
-			if (done) return
-			done = true
-			resolve(ok)
-		}
-		const timer = setTimeout(() => {
-			try {
-				proc.kill('SIGKILL')
-			} catch {
-				// ignore
-			}
-			finish(false)
-		}, timeoutMs)
-		proc.once('exit', () => {
-			clearTimeout(timer)
-			finish(true)
-		})
-	})
-}
-
-async function refreshBackendHealth() {
-	if (!backend || !backendBaseUrl) {
-		updateBackendRuntimeState({
-			running: false,
-			healthy: false,
-			baseUrl: backendBaseUrl,
-			port: backendPort,
-			lastError: backendLastError || '',
-		})
-		return
-	}
-	try {
-		const res = await fetch(`${backendBaseUrl}/api/ai/ping`, { method: 'GET' })
-		updateBackendRuntimeState({
-			running: true,
-			healthy: !!res.ok,
-			baseUrl: backendBaseUrl,
-			port: backendPort,
-			lastError: res.ok ? '' : `backend ping status ${res.status}`,
-		})
-	} catch (e) {
-		updateBackendRuntimeState({
-			running: !!backend,
-			healthy: false,
-			baseUrl: backendBaseUrl,
-			port: backendPort,
-			lastError: String(e?.message || e || 'backend ping failed'),
-		})
-	}
-}
-
-function ensureBackendHealthMonitor() {
-	if (backendHealthTimer != null) return
-	backendHealthTimer = setInterval(() => {
-		void refreshBackendHealth()
-	}, BACKEND_HEALTH_PING_INTERVAL_MS)
 }
 
 async function withBackendOpLock(task) {
@@ -1237,11 +739,9 @@ async function createWindow() {
 
 	setMainWindowForPlatform(mainWindow)
 
-	// Ensure native menu bar stays hidden (Windows/Linux).
 	try {
 		Menu.setApplicationMenu(null)
 	} catch {
-		// ignore
 	}
 	mainWindow.setMenuBarVisibility(false)
 	mainWindow.removeMenu()
@@ -1294,11 +794,9 @@ async function createWindow() {
 	})
 
 	mainWindow.on('maximize', () => {
-		// 最大化事件处理
 	})
 
 	mainWindow.on('unmaximize', () => {
-		// 还原事件处理
 	})
 }
 
@@ -1352,7 +850,6 @@ async function animateWindowBounds(win, targetBounds) {
 					height: Math.round(currentHeight),
 				})
 			} catch {
-				// ignore
 			}
 
 			if (t < 1) {
@@ -1361,7 +858,6 @@ async function animateWindowBounds(win, targetBounds) {
 				try {
 					win.setBounds(targetBounds)
 				} catch {
-					// ignore
 				}
 				windowAnimating = false
 				resolve()
@@ -1381,10 +877,9 @@ function registerIpc() {
 		}
 	}
 
-	ipcMain.handle('dweb:getBackendBaseUrl', async () => backendBaseUrl)
+	ipcMain.handle('dweb:getBackendBaseUrl', async () => '')
 	ipcMain.handle('dweb:backendRuntime:getState', async () => snapshotBackendRuntimeState())
 
-	// Window controls (for custom title bar)
 	ipcMain.handle('dweb:window:minimize', async (e) => {
 		const win = getSenderWindow(e)
 		if (!win) return { ok: false, error: 'No window.' }
@@ -1468,25 +963,20 @@ function registerIpc() {
 		}
 	})
 	ipcMain.handle('dweb:backend:getStatus', async () => ({
-		running: !!backend,
-		baseUrl: backendBaseUrl,
-		port: backendPort,
+		running: backendRuntimeState.running,
+		baseUrl: '',
+		port: 0,
 		lastError: backendLastError,
 		logLineCount: backendLogLines.length,
+		mode: 'ipc',
 	}))
 
 	ipcMain.handle('dweb:backend:ping', async () => {
-		try {
-			const res = await fetch(`${backendBaseUrl}/api/ai/ping`)
-			return { ok: res.ok, status: res.status }
-		} catch (e) {
-			return { ok: false, error: String(e?.message || e) }
-		}
+		return { ok: backendRuntimeState.healthy, status: backendRuntimeState.healthy ? 200 : 503, mode: 'ipc' }
 	})
 
 	ipcMain.handle('dweb:backend:start', async () => {
 		return withBackendOpLock(async () => {
-			await stopBackend()
 			try {
 				const setupResult = await runSetupWorkflow({ reason: 'manual-start' })
 				if (!setupResult.ok) {
@@ -1498,19 +988,19 @@ function registerIpc() {
 				updateBackendRuntimeState({ lastError: backendLastError, healthy: false })
 				return { ok: false, error: backendLastError }
 			}
-			return { ok: true, baseUrl: backendBaseUrl, port: backendPort }
+			return { ok: true, mode: 'ipc' }
 		})
 	})
 
 	ipcMain.handle('dweb:backend:restart', async () => {
 		return withBackendOpLock(async () => {
-			await stopBackend()
 			try {
+				shutdownBackend()
 				const setupResult = await runSetupWorkflow({ reason: 'manual-restart' })
 				if (!setupResult.ok) {
 					return { ok: false, error: setupResult.error || 'setup failed' }
 				}
-				return { ok: true, baseUrl: backendBaseUrl, port: backendPort }
+				return { ok: true, mode: 'ipc' }
 			} catch (e) {
 				backendLastError = String(e?.message || e)
 				pushBackendLog(`[error] ${backendLastError}`)
@@ -1527,10 +1017,11 @@ function registerIpc() {
 			ok: true,
 			lines,
 			total: backendLogLines.length,
-			baseUrl: backendBaseUrl,
-			port: backendPort,
-			running: !!backend,
+			baseUrl: '',
+			port: 0,
+			running: backendRuntimeState.running,
 			lastError: backendLastError,
+			mode: 'ipc',
 		}
 	})
 
@@ -1564,7 +1055,6 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:setup:cleanupOldProject', async () => {
 		try {
-			await stopBackend()
 			const result = cleanupOldRuntimeProject({
 				resourceDir: getDvsResourceDir(),
 				log: (line) => pushBackendLog(line),
@@ -1618,7 +1108,6 @@ function registerIpc() {
 			if (!raw) return { ok: false, error: 'empty path' }
 			const normalized = path.normalize(raw)
 			if (!fs.existsSync(normalized)) {
-				// 文件不存在，尝试打开父文件夹
 				const dir = path.dirname(normalized)
 				if (dir && fs.existsSync(dir)) {
 					const openErr = await shell.openPath(dir)
@@ -1629,17 +1118,14 @@ function registerIpc() {
 			}
 			const stat = fs.statSync(normalized)
 			if (stat.isDirectory()) {
-				// 是文件夹，直接打开
 				const openErr = await shell.openPath(normalized)
 				if (openErr) return { ok: false, error: String(openErr) }
 				return { ok: true }
 			}
-			// 是文件，先尝试使用 showItemInFolder 在资源管理器中显示并选中该文件
 			try {
 				shell.showItemInFolder(normalized)
 				return { ok: true }
 			} catch {
-				// 回退到打开父文件夹
 				const dir = path.dirname(normalized)
 				const openErr = await shell.openPath(dir)
 				if (openErr) return { ok: false, error: String(openErr) }
@@ -1734,7 +1220,6 @@ function registerIpc() {
 		}
 	})
 
-	// Project asset operations (local only; replaces Django backend assets/* API)
 	ipcMain.handle('dweb:aiworkflow:uploadProjectAsset', async (_e, payload) => {
 		try {
 			return uploadBufferProjectAsset(payload || {})
@@ -1785,7 +1270,6 @@ function registerIpc() {
 		}
 	})
 
-	// 诊断单个 dweb:// URL：返回项目根注册状态、磁盘文件是否存在、候选路径、相似文件、修复建议。
 	ipcMain.handle('dweb:aiworkflow:diagnoseAsset', async (_e, payload) => {
 		try {
 			return diagnoseDwebAsset(payload || {})
@@ -1794,7 +1278,6 @@ function registerIpc() {
 		}
 	})
 
-	// 校验/重注册项目根目录。传入 expectedRootPath（磁盘真实路径）时，若当前注册值与磁盘不一致会强制重新 setProjectRoot。
 	ipcMain.handle('dweb:aiworkflow:validateProjectRoot', async (_e, payload) => {
 		const projectId = Number(payload?.projectId)
 		if (!Number.isFinite(projectId) || projectId <= 0) {
@@ -1808,13 +1291,11 @@ function registerIpc() {
 		return { ok: true, validation: validateProjectRoot(projectId) }
 	})
 
-	// 获取最近 dweb 协议访问日志（用于调试/错误上报）。
 	ipcMain.handle('dweb:aiworkflow:getAssetAccessLogs', async (_e, payload) => {
 		const maxEntries = Number(payload?.maxEntries)
 		return { ok: true, logs: getAccessLogs(Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : 100) }
 	})
 
-	// 项目缓存统计：统计 .dvcache 目录下文件数量和总大小
 	ipcMain.handle('dweb:project-cache:stats', async (_e, payload) => {
 		const projectId = Number(payload?.projectId)
 		if (!Number.isFinite(projectId) || projectId <= 0) {
@@ -1827,7 +1308,6 @@ function registerIpc() {
 		}
 	})
 
-	// 项目缓存清理：清空 .dvcache 目录下的所有缓存文件
 	ipcMain.handle('dweb:project-cache:clear', async (_e, payload) => {
 		const projectId = Number(payload?.projectId)
 		if (!Number.isFinite(projectId) || projectId <= 0) {
@@ -1840,7 +1320,6 @@ function registerIpc() {
 		}
 	})
 
-	// Fetch a URL in the main process (bypasses browser CORS) and return Uint8Array / mime
 	ipcMain.handle('dweb:aiworkflow:fetchAsArrayBuffer', async (_e, payload) => {
 		const url = String(payload?.url || '').trim()
 		if (!url) return { ok: false, error: 'url is empty' }
@@ -1863,21 +1342,6 @@ function registerIpc() {
 		console.error('[main] localdb ipc register failed:', err)
 	}
 
-	ipcMain.handle('dweb:localdb:migrateFromDjango', async (_e, payload) => {
-		try {
-			const legacy = String(payload?.legacyDbPath || '').trim() || path.resolve(getBackendDataDir(), 'db.sqlite3')
-			const result = runLegacyDbMigration({
-				legacyDbPath: legacy,
-				backendDataDir: payload?.backendDataDir || getBackendDataDir(),
-				force: Boolean(payload?.force),
-			})
-			return result
-		} catch (err) {
-			return { ok: false, error: String(err?.message || err) }
-		}
-	})
-
-	// 图片预览原生窗口
 	let imageMarkupWindow = null
 	ipcMain.handle('dweb:image-markup:open', async (_e, payload) => {
 		console.log('[main] dweb:image-markup:open payload:', JSON.stringify(payload))
@@ -1887,7 +1351,6 @@ function registerIpc() {
 			console.log('[main] url resolved:', url, 'name:', name)
 			if (!url) return { ok: false, error: 'missing url' }
 
-			// 如果已存在，则先关闭
 			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
 				try { imageMarkupWindow.close() } catch {}
 			}
@@ -1944,8 +1407,8 @@ function registerIpc() {
 				width: Number(payload?.width || 0) || 0,
 				height: Number(payload?.height || 0) || 0,
 				sourceName: String(payload?.sourceName || ''),
+				exportType: payload?.exportType === 'screenshot' ? 'screenshot' : 'markup',
 			})
-			// 关闭预览窗口
 			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
 				try { imageMarkupWindow.close() } catch {}
 			}
@@ -1956,7 +1419,6 @@ function registerIpc() {
 		}
 	})
 
-	// ===== 资源管理器原生窗口 =====
 	let resourceManagerWindow = null
 
 	ipcMain.handle('dweb:resource-manager:open', async (_e, payload) => {
@@ -1965,7 +1427,6 @@ function registerIpc() {
 			const projectId = payload?.projectId ?? null
 			const title = String(payload?.title || '资源管理器').slice(0, 200)
 
-			// 若已存在，直接聚焦，不重建
 			if (resourceManagerWindow && !resourceManagerWindow.isDestroyed()) {
 				resourceManagerWindow.focus()
 				return { ok: true, focused: true }
@@ -1975,7 +1436,6 @@ function registerIpc() {
 			const repoRoot = path.resolve(here, '..')
 			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
 
-			// 构建 URL query 参数
 			const queryParams = new URLSearchParams()
 			if (projectId != null) queryParams.set('projectId', String(projectId))
 			if (title) queryParams.set('title', title)
@@ -2047,8 +1507,6 @@ function registerIpc() {
 		return { ok: true }
 	})
 
-	// 资源管理器窗口 → 主窗口事件广播
-	// 事件类型: 'remove' | 'preview' | 'refresh-missing' | 'drop-to-node' | 'focus-node'
 	ipcMain.handle('dweb:resource-manager:broadcast', async (_e, payload) => {
 		const event = String(payload?.event || '').trim()
 		if (!event) return { ok: false, error: 'missing event name' }
@@ -2070,7 +1528,6 @@ function registerIpc() {
 		}
 	})
 
-	// 主窗口 → 资源管理器窗口事件通知（资源列表变化时通知刷新）
 	ipcMain.handle('dweb:resource-manager:notify', async (_e, payload) => {
 		const event = String(payload?.event || '').trim()
 		if (!event) return { ok: false, error: 'missing event name' }
@@ -2088,11 +1545,9 @@ function registerIpc() {
 		}
 	})
 
-	// 主窗口 → 资源管理器窗口发送初始数据（资源列表、节点数据）
 	let resourceManagerLatestData = null
 
 	ipcMain.handle('dweb:resource-manager:send-data', async (_e, payload) => {
-		// 缓冲最近一次收到的数据（用于资源管理器窗口后续主动请求）
 		resourceManagerLatestData = payload
 
 		if (!resourceManagerWindow || resourceManagerWindow.isDestroyed()) {
@@ -2106,7 +1561,6 @@ function registerIpc() {
 		}
 	})
 
-	// 资源管理器窗口 → 主窗口：主动请求数据
 	ipcMain.handle('dweb:resource-manager:request-data', async () => {
 		const payload = resourceManagerLatestData
 		return { ok: true, data: payload }
@@ -2114,48 +1568,17 @@ function registerIpc() {
 }
 
 async function stopBackend() {
-	const proc = backend
-	if (!proc) {
-		pushBackendLog('[backend] stopBackend: 当前无活动进程，执行残留清理。')
-		try {
-			killExistingDjangoRunservers({
-				pythonCommand: backendPythonForKill,
-				djangoDir: backendDjangoDir || getRuntimeDjangoAppDir(),
-				onLog: (line) => pushBackendLog(line),
-			})
-		} catch {
-			// ignore
-		}
-		return
-	}
-	pushBackendLog(`[backend] stopBackend: 准备停止 pid=${proc.pid || 'unknown'}`)
+	shutdownBackend()
 	try {
-		proc.kill('SIGTERM')
+		const pythonBridge = getPythonBridge()
+		await pythonBridge.shutdown()
 	} catch {
-		// ignore
-	}
-	const exited = await waitBackendProcessExit(proc, { timeoutMs: 8000 })
-	if (exited) {
-		pushBackendLog('[backend] stopBackend: 进程已退出。')
-	}
-	if (!exited) {
-		pushBackendLog('[backend] 旧 Django 进程未及时退出，已尝试强制结束。')
-	}
-	backend = null
-	try {
-		killExistingDjangoRunservers({
-			pythonCommand: backendPythonForKill,
-			djangoDir: backendDjangoDir || getRuntimeDjangoAppDir(),
-			onLog: (line) => pushBackendLog(line),
-		})
-	} catch {
-		// ignore
 	}
 	updateBackendRuntimeState({
 		running: false,
 		healthy: false,
-		baseUrl: backendBaseUrl,
-		port: backendPort,
+		baseUrl: '',
+		port: 0,
 		lastError: backendLastError || '',
 	})
 }
@@ -2224,42 +1647,32 @@ async function main() {
 
 	await createWindow()
 
-	try {
-		initBackend(mainWindow)
-		appendRuntimeLog('[new-backend] initialized successfully')
-	} catch (err) {
-		appendRuntimeLog(`[new-backend] init failed: ${String(err?.message || err)}`)
-	}
-
-	appendRuntimeLog('[app] MIGRATION MODE: Django auto-start disabled. New Electron backend active.')
 	updateBackendRuntimeState({
-		running: false,
+		running: true,
 		healthy: true,
 		baseUrl: '',
 		port: 0,
 		lastError: '',
-		mode: 'migration',
+		mode: 'ipc',
 	})
-	appendRuntimeLog('[app] Use dweb:system:migration-status to check migration progress.')
-	appendRuntimeLog('[app] Django can still be started manually via dweb:backend:start if needed.')
+	appendRuntimeLog('[app] Node.js IPC backend active (mode=ipc)')
+
+	try {
+		await runSetupWorkflow({ reason: 'init' })
+	} catch (err) {
+		appendRuntimeLog(`[app] setup workflow failed: ${String(err?.message || err)}`)
+	}
 }
 
 app.on('window-all-closed', () => {
-	// macOS 常规行为是保留；这里先按 Windows 体验直接退出
 	app.quit()
 })
 
 app.on('before-quit', async () => {
-	if (backendHealthTimer != null) {
-		clearInterval(backendHealthTimer)
-		backendHealthTimer = null
-	}
 	platformShutdown()
-	shutdownBackend()
 	await stopBackend()
 })
 
-// Platform preflight check (must run before app.whenReady, e.g. Steam RestartAppIfNecessary)
 if (platformPreflight()) {
 	app.quit()
 } else {

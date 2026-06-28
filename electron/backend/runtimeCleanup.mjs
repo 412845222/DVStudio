@@ -13,7 +13,7 @@ function removeDirSafe(dirPath) {
 }
 
 /**
- * Remove old runtime django project artifacts under DVSResource.
+ * Remove old runtime artifacts under DVSResource (legacy Django cleanup).
  * Keeps UserSettings by default.
  */
 export function cleanupOldRuntimeProject({

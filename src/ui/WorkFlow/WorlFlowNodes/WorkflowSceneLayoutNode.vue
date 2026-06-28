@@ -326,7 +326,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import {
 	SceneLayoutPreviewViewer,
-	type SceneLayoutPreviewPerfSnapshot
+	type SceneLayoutPreviewPerfSnapshot,
+	type SceneLayoutViewState
 } from './sceneLayout/SceneLayoutPreviewViewer'
 import WorkflowThreePreviewShell from './three-preview/WorkflowThreePreviewShell.vue'
 import type {
@@ -341,6 +342,7 @@ import type {
 	WorkflowThreePreviewState
 } from './three-preview/types'
 import { isObject, isString } from '../../../types/utils'
+import { diagnoseDwebAsset } from '../../../electronBridge'
 
 type AnchorSpec = {
 	id: string
@@ -369,6 +371,16 @@ const SCENE_LAYOUT_SNAPSHOT_CACHE = (() => {
 	if (existing instanceof Map) return existing as Map<string, string>
 	const created = new Map<string, string>()
 	root[SCENE_LAYOUT_SNAPSHOT_CACHE_KEY] = created
+	return created
+})()
+
+const SCENE_LAYOUT_VIEWSTATE_CACHE_KEY = '__DWEB_SCENE_LAYOUT_VIEWSTATE_CACHE__'
+const SCENE_LAYOUT_VIEWSTATE_CACHE = (() => {
+	const root = globalThis as Record<string, unknown>
+	const existing = root[SCENE_LAYOUT_VIEWSTATE_CACHE_KEY]
+	if (existing instanceof Map) return existing as Map<string, SceneLayoutViewState>
+	const created = new Map<string, SceneLayoutViewState>()
+	root[SCENE_LAYOUT_VIEWSTATE_CACHE_KEY] = created
 	return created
 })()
 
@@ -451,6 +463,7 @@ const emit = defineEmits<{
 	(e: 'set-selected-placeholder-output', itemId: string): void
 	(e: 'upload-scene-layout-model-file', payload: { file: File; objectId?: string }): void
 	(e: 'clear-scene-layout-model-binding', payload: { objectId: string }): void
+	(e: 'update-model-bindings', bindings: WorkflowSceneLayoutModelBinding[]): void
 	(e: 'start-three-preview'): void
 	(e: 'three-preview-progress', payload?: WorkflowThreePreviewProgressPayload): void
 	(e: 'three-preview-ready'): void
@@ -487,6 +500,7 @@ let viewerInitPending = false
 let viewerInitCooldownUntil = 0
 let activePreviewRequestId = 0
 let perfPollTimer: ReturnType<typeof setInterval> | null = null
+let cachedLayoutSignature = ''
 
 const cacheSnapshot = (value: string) => {
 	if (!snapshotCacheKey) return
@@ -976,16 +990,27 @@ const syncViewerState = () => {
 	viewer.setRenderSuspended(previewSuspended.value)
 	viewer.setInteractive(previewInteractive.value)
 	viewer.setSelectedItem(effectiveHidePlaceholderCubes ? '' : selectedPreviewItemId.value)
-	viewer.setLayout(layoutItems.value, settings.value?.camera, {
-		transparent: renderTransparent.value,
-		previewMode: previewMode.value,
-		lightingPreviewEnabled: lightingPreviewEnabled.value,
-		lightingDebugEnabled: lightingDebugEnabled.value,
-		lightingControls: lightingControls.value,
-		lightingJson: String(props.linkedLightingJsonText ?? ''),
-		modelBindings: sceneLayoutModelBindings.value,
-		hidePlaceholderCubes: effectiveHidePlaceholderCubes
-	})
+	const currentSignature = layoutItemsSignature.value
+	const cachedView =
+		currentSignature === cachedLayoutSignature
+			? SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+			: null
+	viewer.setLayout(
+		layoutItems.value,
+		cachedView ? null : settings.value?.camera,
+		{
+			transparent: renderTransparent.value,
+			previewMode: previewMode.value,
+			lightingPreviewEnabled: lightingPreviewEnabled.value,
+			lightingDebugEnabled: lightingDebugEnabled.value,
+			lightingControls: lightingControls.value,
+			lightingJson: String(props.linkedLightingJsonText ?? ''),
+			modelBindings: sceneLayoutModelBindings.value,
+			hidePlaceholderCubes: effectiveHidePlaceholderCubes
+		},
+		cachedView
+	)
+	cachedLayoutSignature = currentSignature
 	if (!previewMode.value) {
 		viewer.requestStaticFrames()
 	}
@@ -1001,6 +1026,13 @@ const captureSnapshot = () => {
 	if (!next) return
 	snapshotUrl.value = next
 	cacheSnapshot(next)
+}
+
+const saveViewState = () => {
+	if (!viewer) return
+	const state = viewer.getViewState()
+	if (!state) return
+	SCENE_LAYOUT_VIEWSTATE_CACHE.set(snapshotCacheKey, state)
 }
 
 const onSceneLayoutModelFileChange = (event: Event) => {
@@ -1041,6 +1073,9 @@ const createViewerNow = () => {
 				const nextSelectedId = String(itemId ?? '').trim()
 				if (nextSelectedId === selectedPreviewItemId.value) return
 				selectedPreviewItemId.value = nextSelectedId
+			},
+			onModelLoadError: async (url, itemId) => {
+				await attemptRepairSceneLayoutModelUrl(url, itemId)
 			}
 		})
 		viewerInitCooldownUntil = 0
@@ -1078,6 +1113,7 @@ const disposeViewer = () => {
 	viewerInitCooldownUntil = 0
 	stopPerfPolling()
 	if (!viewer) return
+	saveViewState()
 	captureSnapshot()
 	viewer.dispose()
 	viewer = null
@@ -1093,6 +1129,39 @@ const waitForViewerReady = async () => {
 		if (viewer) return true
 	}
 	return false
+}
+
+const attemptRepairSceneLayoutModelUrl = async (url: string, itemId: string): Promise<void> => {
+	try {
+		const parsed = new URL(url)
+		if (parsed.protocol !== 'dweb:' || parsed.hostname !== 'project-assets') {
+			return
+		}
+		const projectId = Number(parsed.searchParams.get('projectId') || '0')
+		const relPath = String(parsed.searchParams.get('path') || '').trim()
+		if (!Number.isFinite(projectId) || projectId <= 0 || !relPath) {
+			return
+		}
+		const diag = await diagnoseDwebAsset({ projectId, relPath, url })
+		if (!diag?.ok || !diag.repairedAsset?.url) {
+			return
+		}
+		const currentBindings = Array.isArray(props.sceneLayoutModelBindings)
+			? props.sceneLayoutModelBindings
+			: []
+		const bindingIndex = currentBindings.findIndex((b) => String(b.objectId ?? '') === itemId)
+		if (bindingIndex === -1) return
+		const updatedBindings = [...currentBindings]
+		updatedBindings[bindingIndex] = {
+			...updatedBindings[bindingIndex],
+			modelUrl: diag.repairedAsset.url,
+			modelAssetUrl: diag.repairedAsset.url,
+			modelSourcePath: diag.repairedAsset.sourcePath || updatedBindings[bindingIndex].modelSourcePath
+		}
+		emit('update-model-bindings', updatedBindings)
+	} catch {
+		// ignore
+	}
 }
 
 const startPreviewLoad = async (requestId: number) => {
@@ -1200,6 +1269,7 @@ watch(
 
 onBeforeUnmount(() => {
 	stopPerfPolling()
+	saveViewState()
 	cacheSnapshot(snapshotUrl.value)
 	disposeViewer()
 })
@@ -1223,16 +1293,24 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	viewer.setRenderSuspended(false)
 	viewer.setInteractive(true)
 	viewer.setSelectedItem(selectedPreviewItemId.value)
-	viewer.setLayout(layoutItems.value, settings.value?.camera, {
-		transparent: renderTransparent.value,
-		previewMode: true,
-		lightingPreviewEnabled: lightingPreviewEnabled.value,
-		lightingDebugEnabled: lightingDebugEnabled.value,
-		lightingControls: lightingControls.value,
-		lightingJson: String(props.linkedLightingJsonText ?? ''),
-		modelBindings: sceneLayoutModelBindings.value,
-		hidePlaceholderCubes: hidePlaceholderCubes.value
-	})
+	const currentSignature = layoutItemsSignature.value
+	const cachedViewForExport = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+	viewer.setLayout(
+		layoutItems.value,
+		cachedViewForExport ? null : settings.value?.camera,
+		{
+			transparent: renderTransparent.value,
+			previewMode: true,
+			lightingPreviewEnabled: lightingPreviewEnabled.value,
+			lightingDebugEnabled: lightingDebugEnabled.value,
+			lightingControls: lightingControls.value,
+			lightingJson: String(props.linkedLightingJsonText ?? ''),
+			modelBindings: sceneLayoutModelBindings.value,
+			hidePlaceholderCubes: hidePlaceholderCubes.value
+		},
+		cachedViewForExport
+	)
+	cachedLayoutSignature = currentSignature
 	try {
 		const exportData = await viewer.exportResolvedLayoutForUnreal()
 		if (!exportData.slots.length) {
