@@ -310,8 +310,14 @@ function targetAndFamily(mode, payload) {
 
 function imageCount(payload) {
   if (!payload || typeof payload !== 'object') return 0
-  if (Array.isArray(payload.image_urls)) return payload.image_urls.map(x => String(x || '').trim()).filter(x => x).length
-  if (Array.isArray(payload.reference_image_urls)) return payload.reference_image_urls.map(x => String(x || '').trim()).filter(x => x).length
+  if (Array.isArray(payload.image_urls)) {
+    const count = payload.image_urls.map(x => String(x || '').trim()).filter(x => x).length
+    if (count > 0) return count
+  }
+  if (Array.isArray(payload.reference_image_urls)) {
+    const count = payload.reference_image_urls.map(x => String(x || '').trim()).filter(x => x).length
+    if (count > 0) return count
+  }
   return String(payload.image_url || '').trim() ? 1 : 0
 }
 
@@ -702,7 +708,7 @@ export async function getBalance(ctx) {
 
   const apiKey = keyResult.plaintext
   const client = getHttpClient()
-  const url = `${MESHY_API_BASE}/openapi/v2/balances`
+  const url = `${MESHY_API_BASE}/openapi/v1/balance`
 
   try {
     const res = await client.get(url, {
@@ -715,12 +721,12 @@ export async function getBalance(ctx) {
     }
 
     const balance = res.body
-    let displayText = '余额查询成功'
-    if (balance && typeof balance === 'object') {
-      if (typeof balance.credits === 'number') displayText = `余额: ${balance.credits} credits`
-      else if (typeof balance.balance === 'number') displayText = `余额: ${balance.balance}`
-      else if (typeof balance.free_balance === 'number') displayText = `免费额度: ${balance.free_balance}`
-    }
+    const balanceValue = typeof balance === 'object' && balance !== null
+      ? (typeof balance.balance === 'number' ? balance.balance : null)
+      : null
+    const displayText = balanceValue !== null
+      ? `余额: ${balanceValue} credits`
+      : '余额查询成功（无法解析余额数值）'
 
     return { ok: true, available: true, configured: true, displayText, detail: balance }
   } catch (err) {

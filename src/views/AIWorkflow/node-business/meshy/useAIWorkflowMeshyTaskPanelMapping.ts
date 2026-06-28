@@ -81,12 +81,65 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 		return '未启动'
 	}
 
+	/**
+	 * 从 settings 中读取值，优先使用 meshy 前缀 key（远程 payload），
+	 * 回退到原始 key（本地节点 settings）。
+	 */
+	const getSettingsValue = (
+		settings: Record<string, unknown>,
+		prefixedKey: string,
+		plainKey: string
+	): string => {
+		const prefixed = String(settings[prefixedKey] ?? '').trim()
+		if (prefixed) return prefixed
+		return String(settings[plainKey] ?? '').trim()
+	}
+
+	const getSettingsNumber = (
+		settings: Record<string, unknown>,
+		prefixedKey: string,
+		plainKey: string,
+		fallback = 0
+	): number => {
+		const prefixed = settings[prefixedKey]
+		if (typeof prefixed === 'number' || typeof prefixed === 'string') {
+			const parsed = Number(prefixed)
+			if (Number.isFinite(parsed)) return parsed
+		}
+		const plain = settings[plainKey]
+		if (typeof plain === 'number' || typeof plain === 'string') {
+			const parsed = Number(plain)
+			if (Number.isFinite(parsed)) return parsed
+		}
+		return fallback
+	}
+
 	const mapMeshyPanelItemToDetail = (item: MeshyTaskPanelItem): MeshyTaskPanelDetail => {
 		const settings =
 			item.payload?.meshySettings && typeof item.payload.meshySettings === 'object'
 				? (item.payload.meshySettings as Record<string, unknown>)
 				: {}
 		const targetLabel = item.target === 'image' ? '图像链路' : '3D链路'
+
+		// 从 settings 中读取 outputSummary 和 relationSummary（兼容两种 key 格式）
+		const outputSummary = (settings.meshyOutputSummary ?? settings.outputSummary ?? {}) as Record<
+			string,
+			unknown
+		>
+		const relationSummary = (settings.meshyRelationSummary ?? settings.relationSummary ?? {}) as Record<
+			string,
+			unknown
+		>
+		const inputSummary = (settings.meshyInputSummary ?? {}) as Record<string, unknown>
+
+		// imageCount: 优先从 meshyInputSummary 读取，其次从 settings 的 outputImageCount / imageCount
+		const imageCount =
+			Number(inputSummary.imageCount ?? 0) > 0
+				? Number(inputSummary.imageCount ?? 0)
+				: getSettingsNumber(settings, 'meshyOutputImageCount', 'outputImageCount') > 0
+					? getSettingsNumber(settings, 'meshyOutputImageCount', 'outputImageCount')
+					: getSettingsNumber(settings, 'meshyImageCount', 'imageCount')
+
 		return {
 			id: item.id,
 			title: item.title,
@@ -98,29 +151,32 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 			statusLabel: item.statusLabel,
 			progress: item.progress,
 			prompt: item.promptPreview,
-			negativePrompt: String(settings.meshyNegativePrompt ?? '').trim() || undefined,
-			statusText: String(settings.meshyStatusText ?? '').trim() || undefined,
-			errorMessage: String(settings.meshyErrorMessage ?? '').trim() || undefined,
+			negativePrompt: getSettingsValue(settings, 'meshyNegativePrompt', 'negativePrompt') || undefined,
+			statusText: getSettingsValue(settings, 'meshyStatusText', 'statusText') || undefined,
+			errorMessage: getSettingsValue(settings, 'meshyErrorMessage', 'errorMessage') || undefined,
 			preferredModelUrl:
 				String(
-					(settings.meshyRelationSummary as Record<string, unknown>)?.effectivePreferredImageUrl ??
-						(settings.meshyOutputSummary as Record<string, unknown>)?.preferredUrl ??
+					relationSummary.effectivePreferredImageUrl ??
+						relationSummary.effectivePreferredModelUrl ??
+						outputSummary.preferredUrl ??
 						''
 				).trim() || undefined,
 			assetUrl:
 				String(
 					settings.meshyOutputAssetUrl ??
-						(settings.meshyOutputSummary as Record<string, unknown>)?.assetUrl ??
+						settings.outputAssetUrl ??
+						outputSummary.assetUrl ??
 						''
 				).trim() || undefined,
 			assetPath:
 				String(
 					settings.meshyOutputAssetPath ??
-						(settings.meshyOutputSummary as Record<string, unknown>)?.assetPath ??
+						settings.outputAssetPath ??
+						outputSummary.assetPath ??
 						''
 				).trim() || undefined,
 			thumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings) || undefined,
-			imageCount: Number((settings.meshyInputSummary as Record<string, unknown>)?.imageCount ?? 0),
+			imageCount,
 			createdAtLabel: formatMeshyDetailTime(item.createdAt),
 			updatedAtLabel: formatMeshyDetailTime(item.createdAt),
 			sourceLabel: options.isRemoteLoaded() ? '后端镜像列表' : '本地节点状态',
