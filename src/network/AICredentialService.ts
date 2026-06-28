@@ -7,8 +7,6 @@ export type CredentialProvidersStatus = {
 	gemini: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	bytedance: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	meshy: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
-	jimengAccessKeyId: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
-	jimengSecretKey: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 }
 
 export type SaveCredentialRequest = {
@@ -16,8 +14,6 @@ export type SaveCredentialRequest = {
 	geminiApiKey?: string
 	bytedanceApiKey?: string
 	meshyApiKey?: string
-	jimengAccessKeyId?: string
-	jimengSecretKey?: string
 }
 
 export type SaveCredentialResponse = {
@@ -51,8 +47,6 @@ const PROVIDER_FIELDS: Array<{ field: keyof SaveCredentialRequest; provider: str
 	{ field: 'geminiApiKey', provider: 'gemini', statusKey: 'gemini' },
 	{ field: 'bytedanceApiKey', provider: 'bytedance', statusKey: 'bytedance' },
 	{ field: 'meshyApiKey', provider: 'meshy', statusKey: 'meshy' },
-	{ field: 'jimengAccessKeyId', provider: 'jimengAccessKeyId', statusKey: 'jimengAccessKeyId' },
-	{ field: 'jimengSecretKey', provider: 'jimengSecretKey', statusKey: 'jimengSecretKey' },
 ]
 
 function emptyStatus(): CredentialProvidersStatus {
@@ -61,8 +55,6 @@ function emptyStatus(): CredentialProvidersStatus {
 		gemini: { hasKey: false, fingerprint: '', updatedAt: null },
 		bytedance: { hasKey: false, fingerprint: '', updatedAt: null },
 		meshy: { hasKey: false, fingerprint: '', updatedAt: null },
-		jimengAccessKeyId: { hasKey: false, fingerprint: '', updatedAt: null },
-		jimengSecretKey: { hasKey: false, fingerprint: '', updatedAt: null },
 	}
 }
 

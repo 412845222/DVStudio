@@ -97,8 +97,6 @@ export type ClientSettings = {
 	geminiModel: string
 	bytedanceApiKey: string
 	meshyApiKey: string
-	jimengAccessKeyId: string
-	jimengSecretKey: string
 }
 
 export type ClientSettingsResult = {

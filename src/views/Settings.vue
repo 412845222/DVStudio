@@ -49,8 +49,6 @@ const form = reactive<ClientSettings>({
 	geminiModel: FIXED_GEMINI_MODEL,
 	bytedanceApiKey: '',
 	meshyApiKey: '',
-	jimengAccessKeyId: '',
-	jimengSecretKey: '',
 })
 
 // 模态框状态
