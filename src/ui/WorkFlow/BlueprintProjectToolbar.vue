@@ -293,38 +293,26 @@
 						<span>任务管理</span>
 					</div>
 					<button
-						class="aiwf-floating-rail-popover__item"
-						type="button"
-						@click="emitThenClose('open-meshy-task-panel')"
-					>
-						<svg viewBox="0 0 16 16" aria-hidden="true" class="aiwf-floating-rail-popover__icon">
-							<path d="M12 3L8 7 4 3H2v10h12V3h-2z" />
-							<path d="M8 7v6" />
-						</svg>
-						<span>Meshy</span>
-					</button>
-					<button
-						class="aiwf-floating-rail-popover__item"
-						type="button"
-						@click="emitThenClose('open-gemini-task-panel')"
-					>
-						<svg viewBox="0 0 16 16" aria-hidden="true" class="aiwf-floating-rail-popover__icon">
-							<circle cx="8" cy="8" r="6" />
-							<path d="M8 3v6M3 8h6" />
-						</svg>
-						<span>Gemini</span>
-					</button>
-					<button
-						class="aiwf-floating-rail-popover__item"
-						type="button"
-						@click="emitThenClose('open-seedream-task-panel')"
-					>
-						<svg viewBox="0 0 16 16" aria-hidden="true" class="aiwf-floating-rail-popover__icon">
-							<rect x="2" y="4" width="12" height="8" rx="2" />
-							<path d="M6 8h4" />
-						</svg>
-						<span>字节方舟</span>
-					</button>
+					class="aiwf-floating-rail-popover__item"
+					type="button"
+					@click="emitThenClose('open-meshy-task-panel')"
+				>
+					<span>Meshy</span>
+				</button>
+				<button
+					class="aiwf-floating-rail-popover__item"
+					type="button"
+					@click="emitThenClose('open-gemini-task-panel')"
+				>
+					<span>Gemini</span>
+				</button>
+				<button
+					class="aiwf-floating-rail-popover__item"
+					type="button"
+					@click="emitThenClose('open-seedream-task-panel')"
+				>
+					<span>字节方舟</span>
+				</button>
 				</template>
 			</section>
 		</Transition>
