@@ -712,6 +712,7 @@ export class ComfyUIBridgeService {
 		history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 		provider?: string
 		modelId?: string
+		refImages?: string[]
 	}): Promise<BlueprintChatResponse> {
 		if (isThirdPartyIpcAvailable()) {
 			try {
@@ -720,7 +721,8 @@ export class ComfyUIBridgeService {
 					message: payload.content,
 					history: payload.history || [],
 					provider: payload.provider,
-					modelId: payload.modelId
+					modelId: payload.modelId,
+					refImages: payload.refImages || []
 				}
 				const ipcResult = await (window as any).dweb.thirdParty.blueprint.chat(ipcPayload)
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -776,6 +778,7 @@ export class ComfyUIBridgeService {
 			history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 			provider?: string
 			modelId?: string
+			refImages?: string[]
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<BlueprintChatStreamEvent, void, void> {
@@ -786,7 +789,8 @@ export class ComfyUIBridgeService {
 					message: payload.content,
 					history: payload.history || [],
 					provider: payload.provider,
-					modelId: payload.modelId
+					modelId: payload.modelId,
+					refImages: payload.refImages || []
 				}
 				const generator = (window as any).dweb.thirdParty.blueprint.chatStream(ipcPayload)
 				yield* consumeThirdPartyIpcStream(generator, 'blueprint/chat:stream')

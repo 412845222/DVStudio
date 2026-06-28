@@ -293,26 +293,28 @@
 						<span>任务管理</span>
 					</div>
 					<button
-					class="aiwf-floating-rail-popover__item"
-					type="button"
-					@click="emitThenClose('open-meshy-task-panel')"
-				>
-					<span>Meshy</span>
-				</button>
-				<button
-					class="aiwf-floating-rail-popover__item"
-					type="button"
-					@click="emitThenClose('open-gemini-task-panel')"
-				>
-					<span>Gemini</span>
-				</button>
-				<button
-					class="aiwf-floating-rail-popover__item"
-					type="button"
-					@click="emitThenClose('open-seedream-task-panel')"
-				>
-					<span>字节方舟</span>
-				</button>
+						class="aiwf-floating-rail-popover__item"
+						type="button"
+						@click="emitThenClose('open-meshy-task-panel')"
+					>
+						<span>Meshy</span>
+					</button>
+					<button
+						class="aiwf-floating-rail-popover__item"
+						type="button"
+						disabled
+						title="Gemini 任务面板尚未实现"
+						@click="emitThenClose('open-gemini-task-panel')"
+					>
+						<span>Gemini</span>
+					</button>
+					<button
+						class="aiwf-floating-rail-popover__item"
+						type="button"
+						@click="emitThenClose('open-ark-task-panel')"
+					>
+						<span>字节方舟</span>
+					</button>
 				</template>
 			</section>
 		</Transition>
@@ -487,7 +489,7 @@ const emit = defineEmits<{
 	(e: 'request-export-package'): void
 	(e: 'open-meshy-task-panel'): void
 	(e: 'open-gemini-task-panel'): void
-	(e: 'open-seedream-task-panel'): void
+	(e: 'open-ark-task-panel'): void
 }>()
 
 const toolbarWrapRef = ref<HTMLElement | null>(null)
@@ -548,7 +550,7 @@ const emitThenClose = (
 		| 'open-resource-manager'
 		| 'open-meshy-task-panel'
 		| 'open-gemini-task-panel'
-		| 'open-seedream-task-panel'
+		| 'open-ark-task-panel'
 ) => {
 	;(emit as (event: typeof eventName) => void)(eventName)
 	activePanel.value = ''

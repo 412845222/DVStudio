@@ -256,6 +256,7 @@
 						@start-three-preview="onNodeStartThreePreview(node.id)"
 						@retry-meshy-fetch="onNodeRetryMeshyFetch(node.id)"
 						@open-meshy-task-panel="onOpenMeshyTaskPanel"
+						@open-ark-task-panel="onOpenArkTaskPanel"
 						@three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
 						@three-preview-ready="onNodeThreePreviewReady(node.id)"
 						@three-preview-error="onNodeThreePreviewError(node.id)"
@@ -428,8 +429,8 @@
 					@request-export="onRequestExportProject"
 					@request-export-package="onRequestExportProjectPackage"
 					@open-meshy-task-panel="onOpenMeshyTaskPanel"
+					@open-ark-task-panel="onOpenArkTaskPanel"
 					@open-gemini-task-panel="() => {}"
-					@open-seedream-task-panel="() => {}"
 				/>
 
 				<div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
@@ -564,6 +565,20 @@
 					@sync-remote="syncRemoteVideoTasks"
 					@select-task="selectVideoTask"
 					@media-error="onVideoTaskPanelMediaError"
+				/>
+
+				<ArkTaskPanel
+					:open="arkTaskDialogOpen"
+					:tasks="arkTaskItems"
+					:refresh-busy="arkTaskRefreshBusy"
+					:detail-task-id="arkTaskDetailTaskId"
+					:detail-task="arkTaskDetail"
+					:detail-loading="arkTaskDetailLoading"
+					:data-status-text="arkTaskDataStatusText"
+					@close="closeArkTaskDialog"
+					@refresh="onRefreshArkTaskPanel"
+					@preview-task="onPreviewArkTask"
+					@task-action="onArkTaskPanelAction"
 				/>
 
 				<ToastStack :items="toasts" @close="removeToast" @hover="setToastHovering" />
@@ -776,6 +791,10 @@ import MeshyTaskPanel, {
 	type MeshyTaskPanelItem
 } from '../../ui/WorkFlow/MeshyTaskPanel.vue'
 import VideoTaskPanel from '../../ui/WorkFlow/VideoTaskPanel.vue'
+import ArkTaskPanel, {
+	type ArkTaskPanelDetail,
+	type ArkTaskPanelItem
+} from '../../ui/WorkFlow/ArkTaskPanel.vue'
 import WorkflowInspectorPanel from '../../ui/UIComponent/WorkflowInspectorPanel.vue'
 import BottomChatDock, {
 	type BottomChatMessage,
@@ -802,6 +821,7 @@ import type {
 	WorkflowEdge,
 	WorkflowImageCrop,
 	WorkflowModel3DNodeSettings,
+	WorkflowSceneLayoutManualModelBinding,
 	WorkflowUnrealExportNodeSettings,
 	WorkflowUnrealResolvedLayoutExport,
 	WorkflowNode,
@@ -929,6 +949,7 @@ import { useAIWorkflowMeshyRequest } from './node-business/meshy/useAIWorkflowMe
 import { useAIWorkflowMeshyTaskPanelController } from './node-business/meshy/useAIWorkflowMeshyTaskPanelController'
 import { useAIWorkflowMeshyRuntime } from './node-business/meshy/useAIWorkflowMeshyRuntime'
 import { useAIWorkflowVideoTaskPanelController } from './node-business/chat/useAIWorkflowVideoTaskPanelController'
+import { useAIWorkflowArkTaskPanel } from './node-business/ark/useAIWorkflowArkTaskPanel'
 import {
 	fileExtensionFromUrl,
 	normalizeMeshyTaskStatus
@@ -2630,6 +2651,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			comfyService,
 			resolveBackendUrl,
 			resolveBackendFetchUrl,
+			getProjectId: () => currentProjectId.value,
 			pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
 				chatMessages.value = [
 					...chatMessages.value,
@@ -7258,6 +7280,10 @@ const onOpenMeshyTaskPanel = () => {
 	openMeshyTaskDialog()
 }
 
+const onOpenArkTaskPanel = () => {
+	openArkTaskDialog()
+}
+
 const onNodeRetryMeshyFetch = async (nodeId: string) => {
 	const node = store.state.nodesById[nodeId]
 	if (!node || node.type !== 'model3d') return
@@ -7306,6 +7332,22 @@ const {
 	pushToast,
 	getCurrentProjectId: () => currentProjectId.value
 })
+
+// ===== 火山方舟 ARK 任务面板 =====
+const {
+	arkTaskDialogOpen,
+	arkTaskItems,
+	arkTaskRefreshBusy,
+	arkTaskDetail,
+	arkTaskDetailTaskId,
+	arkTaskDetailLoading,
+	arkTaskDataStatusText,
+	openArkTaskDialog,
+	closeArkTaskDialog,
+	onRefreshArkTaskPanel,
+	onPreviewArkTask,
+	onArkTaskPanelAction
+} = useAIWorkflowArkTaskPanel(currentProjectId)
 
 async function onSeedanceTaskObserved(taskId: string, stage: 'created' | 'completed') {
 	const nextTaskId = String(taskId || '').trim()
