@@ -36,7 +36,6 @@ import {
 } from './backend/projectStaticAssets/service.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
-import { runLegacyDbMigration } from './localdb/ipc/djangoMigrate.mjs'
 import { initBackend, shutdownBackend } from './backend/index.mjs'
 import { getPythonBridge } from './backend/python-bridge/index.mjs'
 import { platformPreflight, platformInit, platformShutdown, registerPlatformIpc, setMainWindowForPlatform } from './platform/index.mjs'
@@ -531,8 +530,7 @@ function getDefaultClientSettings() {
 		geminiApiKey: '',
 		geminiModel: FIXED_GEMINI_MODEL,
 		bytedanceApiKey: '',
-		jimengAccessKeyId: '',
-		jimengSecretKey: '',
+		meshyApiKey: '',
 	}
 }
 
@@ -1343,20 +1341,6 @@ function registerIpc() {
 	} catch (err) {
 		console.error('[main] localdb ipc register failed:', err)
 	}
-
-	ipcMain.handle('dweb:localdb:migrateFromDjango', async (_e, payload) => {
-		try {
-			const legacy = String(payload?.legacyDbPath || '').trim() || path.resolve(getBackendDataDir(), 'db.sqlite3')
-			const result = runLegacyDbMigration({
-				legacyDbPath: legacy,
-				backendDataDir: payload?.backendDataDir || getBackendDataDir(),
-				force: Boolean(payload?.force),
-			})
-			return result
-		} catch (err) {
-			return { ok: false, error: String(err?.message || err) }
-		}
-	})
 
 	let imageMarkupWindow = null
 	ipcMain.handle('dweb:image-markup:open', async (_e, payload) => {
