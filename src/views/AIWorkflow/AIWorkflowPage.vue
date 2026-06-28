@@ -808,6 +808,7 @@ import type {
 	WorkflowNodeChatParams,
 	WorkflowNodeChatSubmitPayload,
 	WorkflowSceneDecomposeOutput,
+	WorkflowSceneLayoutManualModelBinding,
 	WorkflowSelectionTarget,
 	WorkflowState
 } from '../../aiworkflow/types'
