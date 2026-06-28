@@ -764,6 +764,11 @@ const rotateOffsetByAxis = (
 	}
 }
 
+export type SceneLayoutViewState = {
+	cameraPosition: { x: number; y: number; z: number }
+	target: { x: number; y: number; z: number }
+}
+
 export class SceneLayoutPreviewViewer {
 	private readonly renderer: WebGLRendererLike
 	private readonly scene: SceneLike
@@ -1116,8 +1121,9 @@ export class SceneLayoutPreviewViewer {
 		cameraCfg?: {
 			position?: { x: number; y: number; z: number }
 			target?: { x: number; y: number; z: number }
-		},
-		renderOptions?: SceneLayoutRenderOptions
+		} | null,
+		renderOptions?: SceneLayoutRenderOptions,
+		cachedView?: SceneLayoutViewState | null
 	) {
 		const previousSelection = this.selectedId
 		this.layoutRevision += 1
@@ -1228,7 +1234,13 @@ export class SceneLayoutPreviewViewer {
 			.sort()
 			.join('|')
 		if (prevItemIds !== nextItemIds) this.cameraDirty = false
-		this.applyCamera(cameraCfg, { forcePreviewFrame: previewModeChanged })
+		const effectiveCamera = cachedView
+			? { position: cachedView.cameraPosition, target: cachedView.target }
+			: cameraCfg
+		this.applyCamera(effectiveCamera, {
+			forcePreviewFrame: previewModeChanged,
+			allowAutoFit: !cachedView
+		})
 		this.selectItem(this.hidePlaceholderCubes ? '' : previousSelection)
 		this.requestRender()
 		if (previewMode && bindingMap.size) {
@@ -2093,19 +2105,24 @@ export class SceneLayoutPreviewViewer {
 		cameraCfg?: {
 			position?: { x: number; y: number; z: number }
 			target?: { x: number; y: number; z: number }
-		},
-		options?: { forcePreviewFrame?: boolean }
+		} | null,
+		options?: { forcePreviewFrame?: boolean; allowAutoFit?: boolean }
 	) {
+		const allowAutoFit = options?.allowAutoFit !== false
 		if (options?.forcePreviewFrame !== true && this.cameraDirty) {
 			this.requestRender()
 			return
 		}
 		if (this.previewModeActive) {
-			this.frameItemsFromRight()
-			return
+			if (allowAutoFit || !this.hasUsableCamera(cameraCfg)) {
+				this.frameItemsFromRight()
+				return
+			}
 		}
 		if (!this.hasUsableCamera(cameraCfg)) {
-			this.frameItemsFromRight()
+			if (allowAutoFit) {
+				this.frameItemsFromRight()
+			}
 			return
 		}
 		if (cameraCfg?.position) {
@@ -2122,6 +2139,7 @@ export class SceneLayoutPreviewViewer {
 				safeNumber(cameraCfg.target.z, this.controls.target.z)
 			)
 		}
+		this.cameraDirty = true
 		this.controls.update()
 		this.requestRender()
 	}
@@ -2129,7 +2147,7 @@ export class SceneLayoutPreviewViewer {
 	private hasUsableCamera(cameraCfg?: {
 		position?: { x: number; y: number; z: number }
 		target?: { x: number; y: number; z: number }
-	}) {
+	} | null) {
 		return !!(
 			cameraCfg?.position &&
 			cameraCfg?.target &&
@@ -4402,6 +4420,20 @@ export class SceneLayoutPreviewViewer {
 			return snapshotCanvas.toDataURL('image/png')
 		} catch {
 			return ''
+		}
+	}
+
+	getViewState(): SceneLayoutViewState | null {
+		if (this.disposed) return null
+		if (!this.currentItems.length) return null
+		const cam = this.camera
+		return {
+			cameraPosition: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+			target: {
+				x: this.controls.target.x,
+				y: this.controls.target.y,
+				z: this.controls.target.z
+			}
 		}
 	}
 

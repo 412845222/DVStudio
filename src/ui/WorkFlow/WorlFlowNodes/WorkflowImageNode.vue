@@ -48,24 +48,6 @@
 						@load="onPreviewImageLoad"
 						@error="onPreviewImageError"
 					/>
-
-					<div v-if="cropMode" class="wf-crop-overlay" @pointerdown.stop>
-						<div class="wf-crop-mask" :style="maskTopStyle" />
-						<div class="wf-crop-mask" :style="maskLeftStyle" />
-						<div class="wf-crop-mask" :style="maskRightStyle" />
-						<div class="wf-crop-mask" :style="maskBottomStyle" />
-
-						<div
-							class="wf-crop-box"
-							:style="cropBoxStyle"
-							@pointerdown.stop="onCropPointerDown($event, 'move')"
-						>
-							<div class="wf-crop-handle nw" @pointerdown.stop="onCropPointerDown($event, 'nw')" />
-							<div class="wf-crop-handle ne" @pointerdown.stop="onCropPointerDown($event, 'ne')" />
-							<div class="wf-crop-handle sw" @pointerdown.stop="onCropPointerDown($event, 'sw')" />
-							<div class="wf-crop-handle se" @pointerdown.stop="onCropPointerDown($event, 'se')" />
-						</div>
-					</div>
 				</div>
 
 				<div v-else class="wf-media-empty">
@@ -105,7 +87,7 @@
 						type="button"
 						:disabled="!resourceUrl"
 						@click.stop="onPreviewClick"
-						title="原图预览：在 Electron 新窗口查看原图，支持缩放、旋转、红色画笔标记并导出为新节点"
+						title="原图预览：在 Electron 新窗口查看原图，支持缩放、旋转、红色画笔标记、截图并导出为新节点"
 					>
 						<svg class="wf-icon" viewBox="0 0 24 24" aria-hidden="true">
 							<path
@@ -119,21 +101,6 @@
 							<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2" />
 						</svg>
 						<span>原图</span>
-					</button>
-
-					<button
-						class="wf-toolbar-btn"
-						type="button"
-						:disabled="!resourceUrl"
-						@click.stop="toggleCropMode"
-						title="裁剪"
-					>
-						<svg class="wf-icon" viewBox="0 0 24 24" aria-hidden="true">
-							<path
-								fill="currentColor"
-								d="M7 3a1 1 0 0 1 1 1v2h9a1 1 0 0 1 1 1v9h2a1 1 0 1 1 0 2h-2v2a1 1 0 1 1-2 0v-2H9a1 1 0 0 1-1-1V8H6a1 1 0 1 1 0-2h2V4a1 1 0 0 1 1-1Zm3 5v9h9V8h-9Z"
-							/>
-						</svg>
 					</button>
 
 					<div class="wf-res">
@@ -301,7 +268,7 @@ const normalizedPreview320 = computed(() => String(props.resourcePreviewUrl320 ?
 const normalizedPreview640 = computed(() => String(props.resourcePreviewUrl640 ?? '').trim())
 
 const desiredPreviewTier = computed(() => {
-	if (cropMode.value || props.selected) return 0
+	if (props.selected) return 0
 	const zoom = Math.max(0.01, Number(props.zoom) || 1)
 	if (zoom <= 0.36) return 320
 	if (zoom <= 0.65) return 640
@@ -332,8 +299,6 @@ const usingPreviewResource = computed(() => {
 
 const wrapSize = ref({ w: 1, h: 1 })
 
-const clamp01 = (n: number) => Math.max(0, Math.min(1, n))
-
 const outputWidth = computed(() => {
 	const v = props.imageSettings?.outputWidth
 	return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null
@@ -352,56 +317,18 @@ const naturalHeight = computed(() => {
 	return Number.isFinite(Number(v)) ? Math.max(1, Math.floor(Number(v))) : null
 })
 
-const hasAspectLock = computed(() => false)
-
-const crop = computed(() => {
-	const c = props.imageSettings?.crop
-	if (!c) return { x: 0, y: 0, width: 1, height: 1 }
-	return {
-		x: clamp01(Number(c.x) || 0),
-		y: clamp01(Number(c.y) || 0),
-		width: clamp01(Number(c.width) || 1),
-		height: clamp01(Number(c.height) || 1)
-	}
-})
-
-const cropMode = ref(false)
-const cropEnabled = computed(() => Boolean(props.imageSettings?.cropEnabled))
-
-watch(
-	() => cropEnabled.value,
-	(v) => {
-		cropMode.value = v
-	},
-	{ immediate: true }
-)
-
-const effectiveOutputWidth = computed(() => {
-	const base = outputWidth.value ?? naturalWidth.value
-	if (!base) return null
-	if (!cropEnabled.value) return base
-	return Math.max(1, Math.round(base * Math.max(0.01, crop.value.width)))
-})
-
-const effectiveOutputHeight = computed(() => {
-	const base = outputHeight.value ?? naturalHeight.value
-	if (!base) return null
-	if (!cropEnabled.value) return base
-	return Math.max(1, Math.round(base * Math.max(0.01, crop.value.height)))
-})
-
 const outputAspect = computed(() => {
-	const w = cropMode.value ? naturalWidth.value : effectiveOutputWidth.value
-	const h = cropMode.value ? naturalHeight.value : effectiveOutputHeight.value
+	const w = outputWidth.value ?? naturalWidth.value
+	const h = outputHeight.value ?? naturalHeight.value
 	if (!w || !h) return null
 	return Math.max(1e-6, w / h)
 })
 
 const outputWidthDisplay = computed(() =>
-	effectiveOutputWidth.value != null ? String(effectiveOutputWidth.value) : ''
+	outputWidth.value != null ? String(outputWidth.value) : ''
 )
 const outputHeightDisplay = computed(() =>
-	effectiveOutputHeight.value != null ? String(effectiveOutputHeight.value) : ''
+	outputHeight.value != null ? String(outputHeight.value) : ''
 )
 
 const previewWrapStyle = computed(() => {
@@ -424,31 +351,6 @@ const displayRect = computed<DisplayRect>(() => {
 })
 
 const previewImageStyle = computed(() => {
-	if (cropMode.value) {
-		return {
-			left: '0px',
-			top: '0px',
-			width: '100%',
-			height: '100%',
-			objectFit: 'contain',
-			objectPosition: 'center'
-		} as Record<string, string>
-	}
-	if (cropEnabled.value) {
-		const c = crop.value
-		const w = Math.max(0.01, clamp01(Number(c.width) || 0))
-		const h = Math.max(0.01, clamp01(Number(c.height) || 0))
-		const x = clamp01(Number(c.x) || 0)
-		const y = clamp01(Number(c.y) || 0)
-		const scaleW = 100 / w
-		const scaleH = 100 / h
-		return {
-			left: `${-x * scaleW}%`,
-			top: `${-y * scaleH}%`,
-			width: `${scaleW}%`,
-			height: `${scaleH}%`
-		} as Record<string, string>
-	}
 	return {
 		left: '0px',
 		top: '0px',
@@ -458,72 +360,6 @@ const previewImageStyle = computed(() => {
 		objectPosition: 'center'
 	} as Record<string, string>
 })
-
-const cropBoxPx = computed(() => {
-	if (!cropMode.value) return null
-	const dr = displayRect.value
-	const c = crop.value
-	return {
-		x: dr.x + c.x * dr.w,
-		y: dr.y + c.y * dr.h,
-		w: c.width * dr.w,
-		h: c.height * dr.h
-	}
-})
-
-const cropBoxStyle = computed(() => {
-	const b = cropBoxPx.value
-	if (!b) return { display: 'none' }
-	return { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` }
-})
-
-const maskTopStyle = computed(() => {
-	const b = cropBoxPx.value
-	if (!b) return { display: 'none' }
-	return { left: '0px', top: '0px', width: '100%', height: `${Math.max(0, b.y)}px` }
-})
-const maskBottomStyle = computed(() => {
-	const b = cropBoxPx.value
-	if (!b) return { display: 'none' }
-	const y = b.y + b.h
-	return {
-		left: '0px',
-		top: `${y}px`,
-		width: '100%',
-		height: `${Math.max(0, wrapSize.value.h - y)}px`
-	}
-})
-const maskLeftStyle = computed(() => {
-	const b = cropBoxPx.value
-	if (!b) return { display: 'none' }
-	return {
-		left: '0px',
-		top: `${b.y}px`,
-		width: `${Math.max(0, b.x)}px`,
-		height: `${b.h}px`
-	}
-})
-const maskRightStyle = computed(() => {
-	const b = cropBoxPx.value
-	if (!b) return { display: 'none' }
-	const x = b.x + b.w
-	return {
-		left: `${x}px`,
-		top: `${b.y}px`,
-		width: `${Math.max(0, wrapSize.value.w - x)}px`,
-		height: `${b.h}px`
-	}
-})
-
-const cropToUv = (c: { x: number; y: number; width: number; height: number }) => {
-	const x0 = clamp01(c.x)
-	const y0 = clamp01(c.y)
-	const x1 = clamp01(x0 + clamp01(c.width))
-	const y1 = clamp01(y0 + clamp01(c.height))
-	// DwebCanvasGL UV uses top-left origin (v=0 at top).
-	// So we should NOT flip v here, otherwise the image becomes vertically inverted.
-	return { u0: x0, u1: x1, v0: y0, v1: y1 }
-}
 
 const { getCachedResource, loadResource, getResourceSize } = useAIWorkflowResourceCache()
 
@@ -550,8 +386,6 @@ const ensureNaturalSizeFallback = async () => {
 		if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
 			patch.outputWidth = cachedSize.width
 			patch.outputHeight = cachedSize.height
-			patch.cropEnabled = false
-			patch.crop = { x: 0, y: 0, width: 1, height: 1 }
 		}
 		emit('update-image-settings', patch)
 		pendingResourceReset.value = false
@@ -567,8 +401,6 @@ const ensureNaturalSizeFallback = async () => {
 		if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
 			patch.outputWidth = cached.size.width
 			patch.outputHeight = cached.size.height
-			patch.cropEnabled = false
-			patch.crop = { x: 0, y: 0, width: 1, height: 1 }
 		}
 		emit('update-image-settings', patch)
 		pendingResourceReset.value = false
@@ -584,8 +416,6 @@ const ensureNaturalSizeFallback = async () => {
 		if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
 			patch.outputWidth = resource.size.width
 			patch.outputHeight = resource.size.height
-			patch.cropEnabled = false
-			patch.crop = { x: 0, y: 0, width: 1, height: 1 }
 		}
 		emit('update-image-settings', patch)
 		pendingResourceReset.value = false
@@ -601,24 +431,12 @@ const toFileUrl = (path: string) => {
 	}
 }
 
-const toggleCropMode = async () => {
-	if (!props.resourceUrl) return
-	const next = !cropMode.value
-	cropMode.value = next
-	emit('update-image-settings', { cropEnabled: next })
-	if (next) {
-		await nextTick()
-		await ensureNaturalSizeFallback()
-	}
-}
-
 const applyOutputQualityByWidth = async (nextW: number) => {
 	await ensureNaturalSizeFallback()
 	const natW = naturalWidth.value
 	const natH = naturalHeight.value
 	if (!natW || !natH) return
-	const cropWidth = cropEnabled.value ? Math.max(0.01, crop.value.width) : 1
-	const w = Math.max(1, Math.round(Math.max(1, nextW) / cropWidth))
+	const w = Math.max(1, Math.round(Math.max(1, nextW)))
 	const h = Math.max(1, Math.round((w * natH) / Math.max(1e-6, natW)))
 	emit('update-image-settings', { outputWidth: w, outputHeight: h })
 }
@@ -628,8 +446,7 @@ const applyOutputQualityByHeight = async (nextH: number) => {
 	const natW = naturalWidth.value
 	const natH = naturalHeight.value
 	if (!natW || !natH) return
-	const cropHeight = cropEnabled.value ? Math.max(0.01, crop.value.height) : 1
-	const h = Math.max(1, Math.round(Math.max(1, nextH) / cropHeight))
+	const h = Math.max(1, Math.round(Math.max(1, nextH)))
 	const w = Math.max(1, Math.round((h * natW) / Math.max(1e-6, natH)))
 	emit('update-image-settings', { outputWidth: w, outputHeight: h })
 }
@@ -646,92 +463,6 @@ const onOutputHeightChange = (e: Event) => {
 	const v = Math.max(1, Math.floor(Number(input.value) || 0))
 	if (!v) return
 	void applyOutputQualityByHeight(v)
-}
-
-type CropDragMode = 'move' | 'nw' | 'ne' | 'sw' | 'se'
-
-let drag: {
-	mode: CropDragMode
-	startClientX: number
-	startClientY: number
-	startCrop: { x: number; y: number; width: number; height: number }
-	startBox: { x: number; y: number; w: number; h: number }
-} | null = null
-
-const emitCrop = (next: { x: number; y: number; width: number; height: number }) => {
-	const x = clamp01(next.x)
-	const y = clamp01(next.y)
-	const w = Math.max(0.01, clamp01(next.width))
-	const h = Math.max(0.01, clamp01(next.height))
-	let nx = x
-	let ny = y
-	let nw = w
-	let nh = h
-	if (nx + nw > 1) nx = 1 - nw
-	if (ny + nh > 1) ny = 1 - nh
-	emit('update-image-settings', { crop: { x: nx, y: ny, width: nw, height: nh } })
-}
-
-const onCropPointerDown = (ev: PointerEvent, mode: CropDragMode) => {
-	if (!cropBoxPx.value) return
-	const b = cropBoxPx.value
-	drag = {
-		mode,
-		startClientX: ev.clientX,
-		startClientY: ev.clientY,
-		startCrop: { ...crop.value },
-		startBox: { ...b }
-	}
-	;(ev.target as HTMLElement | null)?.setPointerCapture?.(ev.pointerId)
-	const onMove = (e: PointerEvent) => {
-		if (!drag || !cropBoxPx.value) return
-		const dr = displayRect.value
-		const dxPx = e.clientX - drag.startClientX
-		const dyPx = e.clientY - drag.startClientY
-		const dxN = dxPx / Math.max(1, dr.w)
-		const dyN = dyPx / Math.max(1, dr.h)
-		const natW = naturalWidth.value
-		const natH = naturalHeight.value
-
-		if (drag.mode === 'move') {
-			emitCrop({
-				x: drag.startCrop.x + dxN,
-				y: drag.startCrop.y + dyN,
-				width: drag.startCrop.width,
-				height: drag.startCrop.height
-			})
-			return
-		}
-
-		let x0 = drag.startCrop.x
-		let y0 = drag.startCrop.y
-		let x1 = drag.startCrop.x + drag.startCrop.width
-		let y1 = drag.startCrop.y + drag.startCrop.height
-		if (drag.mode === 'nw' || drag.mode === 'sw') x0 += dxN
-		if (drag.mode === 'ne' || drag.mode === 'se') x1 += dxN
-		if (drag.mode === 'nw' || drag.mode === 'ne') y0 += dyN
-		if (drag.mode === 'sw' || drag.mode === 'se') y1 += dyN
-
-		x0 = clamp01(x0)
-		y0 = clamp01(y0)
-		x1 = clamp01(x1)
-		y1 = clamp01(y1)
-		let w = Math.max(0.01, x1 - x0)
-		let h = Math.max(0.01, y1 - y0)
-
-		// Free-form crop: no aspect lock. Output resolution is only quality scaling.
-
-		emitCrop({ x: x0, y: y0, width: w, height: h })
-	}
-	const onUp = () => {
-		window.removeEventListener('pointermove', onMove)
-		window.removeEventListener('pointerup', onUp)
-		window.removeEventListener('pointercancel', onUp)
-		drag = null
-	}
-	window.addEventListener('pointermove', onMove)
-	window.addEventListener('pointerup', onUp)
-	window.addEventListener('pointercancel', onUp)
 }
 
 const onUploadClick = () => {
@@ -759,7 +490,6 @@ const initPreviewLayoutObserver = () => {
 	ro.observe(previewWrap.value)
 
 	wrapSize.value = {
-		// Use layout size (exclude CSS transforms like viewport zoom scaling).
 		w: Math.max(1, Math.floor(previewWrap.value.clientWidth || 1)),
 		h: Math.max(1, Math.floor(previewWrap.value.clientHeight || 1))
 	}
@@ -789,8 +519,6 @@ const onPreviewImageLoad = () => {
 		if (pendingResourceReset.value || !outputWidth.value || !outputHeight.value) {
 			patch.outputWidth = w
 			patch.outputHeight = h
-			patch.cropEnabled = false
-			patch.crop = { x: 0, y: 0, width: 1, height: 1 }
 		}
 		emit('update-image-settings', patch)
 		pendingResourceReset.value = false
@@ -830,7 +558,6 @@ watch(
 		const next = String(nextUrl ?? '').trim()
 		const prev = String(prevUrl ?? '').trim()
 		if (!next) {
-			cropMode.value = false
 			pendingResourceReset.value = false
 			lastResourceUrl.value = ''
 			failedPreviewUrl.value = ''
@@ -851,11 +578,6 @@ watch(
 
 watch(
 	() => [
-		cropMode.value,
-		crop.value.x,
-		crop.value.y,
-		crop.value.width,
-		crop.value.height,
 		outputWidth.value,
 		outputHeight.value
 	],
@@ -866,7 +588,6 @@ watch(
 )
 
 defineExpose({
-	/** Export the node output PNG (offscreen canvas render, cropped + scaled to output resolution). */
 	exportPngBlob: async () => {
 		const src = effectiveSourceUrl.value
 		if (!src) return null
@@ -877,7 +598,7 @@ defineExpose({
 			src,
 			outputWidth: w,
 			outputHeight: h,
-			crop: cropEnabled.value ? crop.value : null
+			crop: null
 		})
 	}
 })
@@ -890,7 +611,6 @@ onBeforeUnmount(() => {
 	try {
 		ro?.disconnect()
 	} catch {
-		// ignore
 	}
 	ro = null
 	previewImg.value = null
@@ -924,126 +644,6 @@ onBeforeUnmount(() => {
 	position: absolute;
 	display: block;
 	max-width: none;
-}
-
-.wf-crop-overlay {
-	position: absolute;
-	inset: 0;
-	user-select: none;
-}
-
-.wf-crop-mask {
-	position: absolute;
-	background: rgba(0, 0, 0, 0.55);
-}
-
-.wf-crop-box {
-	position: absolute;
-	border: 1px solid var(--vscode-border-accent);
-	box-shadow: var(--vscode-shadow);
-}
-
-.wf-crop-handle {
-	position: absolute;
-	width: 10px;
-	height: 10px;
-	background: var(--dweb-defualt);
-	border: 1px solid var(--vscode-border-accent);
-}
-
-.wf-crop-handle.nw {
-	left: -6px;
-	top: -6px;
-	cursor: nwse-resize;
-}
-.wf-crop-handle.ne {
-	right: -6px;
-	top: -6px;
-	cursor: nesw-resize;
-}
-.wf-crop-handle.sw {
-	left: -6px;
-	bottom: -6px;
-	cursor: nesw-resize;
-}
-.wf-crop-handle.se {
-	right: -6px;
-	bottom: -6px;
-	cursor: nwse-resize;
-}
-
-.wf-media-top-btn {
-	position: absolute;
-	left: 8px;
-	top: 8px;
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 5px 10px;
-	border-radius: 4px;
-	border: 1px solid var(--vscode-border);
-	background: rgba(0, 0, 0, 0.65);
-	color: #ffffff;
-	cursor: pointer;
-	font-size: 12px;
-	z-index: 80;
-	pointer-events: auto;
-}
-
-.wf-media-top-btn:hover {
-	background: rgba(192, 57, 43, 0.9);
-	border-color: #d94a37;
-}
-
-.wf-media-top-icon {
-	width: 14px;
-	height: 14px;
-	display: inline-block;
-}
-
-.wf-media-preview-btn {
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	transform: translate(-50%, -50%);
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 6px;
-	padding: 8px 16px;
-	border-radius: 6px;
-	border: 1px solid var(--vscode-border);
-	background: rgba(0, 0, 0, 0.55);
-	color: #ffffff;
-	cursor: pointer;
-	font-size: 13px;
-	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-	opacity: 1;
-	transition:
-		background 160ms ease,
-		transform 160ms ease,
-		opacity 160ms ease;
-	z-index: 50;
-	white-space: nowrap;
-	pointer-events: auto;
-}
-
-.wf-media-preview-btn:hover {
-	background: rgba(192, 57, 43, 0.9);
-	border-color: #d94a37;
-	transform: translate(-50%, -50%) scale(1.02);
-}
-
-.wf-media-preview-icon {
-	width: 16px;
-	height: 16px;
-	display: inline-block;
-}
-
-.wf-media-preview-text {
-	display: inline-block;
-	line-height: 1;
-	pointer-events: none;
 }
 
 .wf-media-empty {

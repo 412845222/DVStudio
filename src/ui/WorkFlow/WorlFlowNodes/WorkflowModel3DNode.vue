@@ -63,11 +63,11 @@
 					<WorkflowThreePreviewShell
 						:state="threePreviewState"
 						:snapshotUrl="snapshotUrl"
-						:empty="!modelUrl"
+						:empty="!effectiveModelUrl"
 						emptyTitle="3D 模型预览"
 						emptyText="可上传本地 GLB / GLTF，也可以从 Meshy 节点输入模型结果。"
 						maskedTitle="实时渲染已卸载"
-						maskedText="重新选中当前节点后，点击按钮再进入实时 Three.js 预览。"
+						maskedText="重新选中当前节点后，将自动恢复上一次的渲染视角。"
 						@start="emit('start-three-preview')"
 					>
 						<canvas
@@ -77,7 +77,7 @@
 							:data-wf-model3d-canvas-node-id="nodeId"
 						/>
 						<template #overlay>
-							<div v-if="modelUrl && viewerLive && !errorMessage" class="wf-model3d-gesture-tip">
+							<div v-if="effectiveModelUrl && viewerLive && !errorMessage" class="wf-model3d-gesture-tip">
 								拖拽旋转 · 滚轮拉近/拉远
 							</div>
 							<div v-if="errorMessage" class="wf-model3d-overlay error">{{ errorMessage }}</div>
@@ -92,10 +92,10 @@
 					</div>
 					<div class="wf-model3d-action-buttons">
 						<button class="wf-model3d-btn" type="button" @click.stop="onUploadClick">
-							{{ modelUrl ? '更换模型' : '上传模型' }}
+							{{ effectiveModelUrl ? '更换模型' : '上传模型' }}
 						</button>
 						<button
-							v-if="modelUrl"
+							v-if="effectiveModelUrl"
 							class="wf-model3d-btn ghost"
 							type="button"
 							@click.stop="emit('clear-resource')"
@@ -192,10 +192,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { getErrorMessage } from '../../../types/utils'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { Model3DPreviewViewer } from './model3d/Model3DPreviewViewer'
+import type { Model3DViewState } from './model3d/Model3DPreviewViewer'
 import type { WorkflowModel3DNodeSettings } from '../../../aiworkflow/types'
 import WorkflowThreePreviewShell from './three-preview/WorkflowThreePreviewShell.vue'
 import type {
@@ -209,6 +210,26 @@ type AnchorSpec = {
 	offsetY?: number
 	mediaType?: 'generic' | 'image' | 'video' | 'text' | 'flow'
 }
+
+const MODEL3D_SNAPSHOT_CACHE_KEY = '__DWEB_MODEL3D_SNAPSHOT_CACHE__'
+const MODEL3D_SNAPSHOT_CACHE = (() => {
+	const root = globalThis as Record<string, unknown>
+	const existing = root[MODEL3D_SNAPSHOT_CACHE_KEY]
+	if (existing instanceof Map) return existing as Map<string, string>
+	const created = new Map<string, string>()
+	root[MODEL3D_SNAPSHOT_CACHE_KEY] = created
+	return created
+})()
+
+const MODEL3D_VIEWSTATE_CACHE_KEY = '__DWEB_MODEL3D_VIEWSTATE_CACHE__'
+const MODEL3D_VIEWSTATE_CACHE = (() => {
+	const root = globalThis as Record<string, unknown>
+	const existing = root[MODEL3D_VIEWSTATE_CACHE_KEY]
+	if (existing instanceof Map) return existing as Map<string, Model3DViewState>
+	const created = new Map<string, Model3DViewState>()
+	root[MODEL3D_VIEWSTATE_CACHE_KEY] = created
+	return created
+})()
 
 const props = defineProps<{
 	nodeId: string
@@ -236,8 +257,6 @@ const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: n
 const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
 const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy') => { emit('set-type', type) }
 const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
-
-
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -284,16 +303,45 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
-const snapshotUrl = ref('')
+const snapshotCacheKey = String(props.nodeId ?? '').trim()
+const snapshotUrl = ref(
+	snapshotCacheKey ? String(MODEL3D_SNAPSHOT_CACHE.get(snapshotCacheKey) ?? '') : ''
+)
 const errorMessage = ref('')
 let viewer: Model3DPreviewViewer | null = null
-let loadRunId = 0
+let viewerInitRaf = 0
+let viewerInitPending = false
+let viewerInitCooldownUntil = 0
 let activePreviewRequestId = 0
+let cachedModelSignature = ''
+
+const cacheSnapshot = (value: string) => {
+	if (!snapshotCacheKey) return
+	const next = String(value ?? '').trim()
+	if (!next) return
+	MODEL3D_SNAPSHOT_CACHE.set(snapshotCacheKey, next)
+}
 
 const settings = computed(() => props.model3dSettings ?? null)
 const rawThreePreviewState = computed(() => props.threePreviewState ?? null)
 const previewSuspended = computed(() => props.previewSuspended === true)
-const modelUrl = computed(() => String(settings.value?.modelUrl ?? '').trim())
+const effectiveModelUrl = computed(() => {
+	const primary = String(settings.value?.modelUrl ?? '').trim()
+	if (primary) return primary
+	const fallback = String(settings.value?.modelAssetUrl ?? '').trim()
+	return fallback
+})
+const modelSignature = computed(() => {
+	const parts = [
+		effectiveModelUrl.value,
+		String(settings.value?.backgroundColor ?? ''),
+		String(settings.value?.lightIntensity ?? ''),
+		String(settings.value?.gridVisible ?? ''),
+		String(settings.value?.axesVisible ?? ''),
+		String(settings.value?.autoRotate ?? '')
+	]
+	return parts.join('|')
+})
 const backgroundColor = computed(() => String(settings.value?.backgroundColor ?? '#0f1720'))
 const lightIntensity = computed(() => Number(settings.value?.lightIntensity ?? 1.25))
 const gridVisible = computed(() => settings.value?.gridVisible !== false)
@@ -337,6 +385,7 @@ const meshyFetchErrorText = computed(() => {
 
 const threePreviewState = computed(() => rawThreePreviewState.value)
 const previewPhase = computed(() => threePreviewState.value?.phase ?? 'masked')
+const previewInteractive = computed(() => previewPhase.value === 'interactive')
 const viewerLive = computed(
 	() => previewPhase.value === 'loading' || previewPhase.value === 'interactive'
 )
@@ -347,37 +396,12 @@ const emitPreviewProgress = (progress: number, label: string) => {
 	emit('three-preview-progress', { progress, label })
 }
 
-const ensureViewer = () => {
-	if (viewer || !canvasRef.value) {
-		return
+const clearViewerInitSchedule = () => {
+	if (viewerInitRaf) {
+		cancelAnimationFrame(viewerInitRaf)
+		viewerInitRaf = 0
 	}
-	viewer = new Model3DPreviewViewer(canvasRef.value, {
-		backgroundColor: backgroundColor.value,
-		lightIntensity: lightIntensity.value,
-		gridVisible: gridVisible.value,
-		axesVisible: axesVisible.value,
-		autoRotate: autoRotate.value
-	})
-	viewer.setRenderSuspended(false)
-	viewer.setInteractive(false)
-}
-
-const disposeViewer = () => {
-	if (!viewer) {
-		return
-	}
-	viewer.dispose()
-	viewer = null
-}
-
-const captureSnapshot = () => {
-	const next = viewer?.captureSnapshotDataUrl() ?? ''
-	if (next) snapshotUrl.value = next
-}
-
-const teardownViewer = () => {
-	captureSnapshot()
-	disposeViewer()
+	viewerInitPending = false
 }
 
 const applyViewerOptions = () => {
@@ -390,36 +414,182 @@ const applyViewerOptions = () => {
 	})
 }
 
-const loadModel = async (requestId?: number) => {
-	const current = ++loadRunId
-	errorMessage.value = ''
-	if (!viewerLive.value) {
-		return
-	}
-	ensureViewer()
-	applyViewerOptions()
+const syncViewerState = () => {
 	if (!viewer) return
-	if (!modelUrl.value) {
+	applyViewerOptions()
+	const url = effectiveModelUrl.value
+	if (!url) {
 		viewer.clearModel()
+		cachedModelSignature = ''
 		return
 	}
-	if (requestId != null) emitPreviewProgress(0.14, '初始化渲染器')
+	const currentSignature = modelSignature.value
+	const cachedView =
+		currentSignature === cachedModelSignature
+			? MODEL3D_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+			: null
+	if (currentSignature !== cachedModelSignature) {
+		viewer.clearModel()
+	}
+	cachedModelSignature = currentSignature
+	if (cachedView) {
+		viewer.restoreView(cachedView)
+	}
+}
+
+const createViewerNow = () => {
+	const canvas = canvasRef.value
+	if (viewer || !canvas) return
+	if (!canvas.isConnected) return
+	const rect = canvas.getBoundingClientRect()
+	if (rect.width <= 0 || rect.height <= 0) return
 	try {
-		await viewer.loadModel(modelUrl.value, (payload) => {
+		viewer = new Model3DPreviewViewer(canvas, {
+			backgroundColor: backgroundColor.value,
+			lightIntensity: lightIntensity.value,
+			gridVisible: gridVisible.value,
+			axesVisible: axesVisible.value,
+			autoRotate: autoRotate.value
+		})
+		viewerInitCooldownUntil = 0
+		viewer.setRenderSuspended(previewSuspended.value)
+		viewer.setInteractive(false)
+		syncViewerState()
+	} catch (err) {
+		viewer = null
+		viewerInitCooldownUntil = Date.now() + 400
+		errorMessage.value =
+			(err instanceof Error ? err.message : String(err ?? 'unknown')) || '预览器初始化失败'
+	}
+}
+
+const ensureViewer = () => {
+	if (viewer || viewerInitPending) return
+	if (!canvasRef.value) return
+	if (Date.now() < viewerInitCooldownUntil) return
+	viewerInitPending = true
+	nextTick(() => {
+		if (!viewerInitPending) return
+		viewerInitRaf = requestAnimationFrame(() => {
+			viewerInitRaf = 0
+			viewerInitPending = false
+			createViewerNow()
+			if (!viewer && canvasRef.value && canvasRef.value.isConnected) {
+				const rect = canvasRef.value.getBoundingClientRect()
+				if (rect.width <= 0 || rect.height <= 0) {
+					viewerInitCooldownUntil = Date.now() + 80
+					ensureViewer()
+				}
+			}
+		})
+	})
+}
+
+const disposeViewer = () => {
+	clearViewerInitSchedule()
+	viewerInitCooldownUntil = 0
+	if (!viewer) return
+	saveViewState()
+	captureSnapshot()
+	viewer.dispose()
+	viewer = null
+}
+
+const waitForViewerReady = async () => {
+	for (let attempt = 0; attempt < 8; attempt += 1) {
+		ensureViewer()
+		if (viewer) return true
+		await nextTick()
+		if (viewer) return true
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+		if (viewer) return true
+	}
+	return !!viewer
+}
+
+const captureSnapshot = () => {
+	const next = viewer?.captureSnapshotDataUrl() ?? ''
+	if (!next) return
+	snapshotUrl.value = next
+	cacheSnapshot(next)
+}
+
+const saveViewState = () => {
+	if (!viewer) return
+	const state = viewer.getViewState()
+	if (!state) return
+	MODEL3D_VIEWSTATE_CACHE.set(snapshotCacheKey, state)
+}
+
+const loadModelIntoViewer = async (requestId?: number) => {
+	const url = effectiveModelUrl.value
+	if (!viewer) return false
+	if (!url) {
+		viewer.clearModel()
+		cachedModelSignature = ''
+		if (requestId != null && requestId === activePreviewRequestId) {
+			errorMessage.value = '未绑定模型。'
+			emit('three-preview-error')
+		}
+		return false
+	}
+	const currentSignature = modelSignature.value
+	const cachedView =
+		currentSignature === cachedModelSignature
+			? MODEL3D_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+			: null
+	applyViewerOptions()
+	if (requestId != null) emitPreviewProgress(0.2, '加载模型资源')
+	try {
+		await viewer.loadModel(url, (payload) => {
 			if (requestId == null) return
+			if (requestId !== activePreviewRequestId) return
 			const ratio = Number(payload?.ratio ?? 0)
 			emitPreviewProgress(0.2 + Math.max(0, Math.min(1, ratio)) * 0.72, '加载模型资源')
-		})
-		if (current !== loadRunId) return
-		if (requestId != null && requestId === activePreviewRequestId) {
-			emitPreviewProgress(0.98, '同步交互状态')
-			emit('three-preview-ready')
-		}
+		}, cachedView)
+		cachedModelSignature = currentSignature
+		return true
 	} catch (err: unknown) {
-		if (current !== loadRunId) return
 		errorMessage.value = getErrorMessage(err) || '模型加载失败'
 		viewer.clearModel()
+		cachedModelSignature = ''
+		if (requestId != null) emit('three-preview-error')
+		return false
+	}
+}
+
+const startPreviewLoad = async (requestId: number) => {
+	activePreviewRequestId = requestId
+	errorMessage.value = ''
+	emitPreviewProgress(0.12, '初始化渲染器')
+	const ready = await waitForViewerReady()
+	if (activePreviewRequestId !== requestId) return
+	if (!ready || !viewer) {
+		errorMessage.value = '预览器初始化超时，请重试。'
 		emit('three-preview-error')
+		return
+	}
+	viewer.setRenderSuspended(false)
+	applyViewerOptions()
+	if (activePreviewRequestId !== requestId) return
+	emitPreviewProgress(0.3, '准备模型资源')
+	const url = effectiveModelUrl.value
+	if (!url) {
+		errorMessage.value = '未绑定模型。'
+		viewer.clearModel()
+		cachedModelSignature = ''
+		emit('three-preview-error')
+		return
+	}
+	const loaded = await loadModelIntoViewer(requestId)
+	if (activePreviewRequestId !== requestId || !viewer) return
+	if (loaded) {
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+		if (activePreviewRequestId !== requestId || !viewer) return
+		saveViewState()
+		captureSnapshot()
+		emitPreviewProgress(0.98, '同步交互状态')
+		emit('three-preview-ready')
 	}
 }
 
@@ -436,13 +606,6 @@ const onPreviewWheel = (e: WheelEvent) => {
 }
 const onPreviewContextMenu = (e: MouseEvent) =>
 	emit('preview-contextmenu', { clientX: e.clientX, clientY: e.clientY })
-const onModelUrlInput = (e: Event) => {
-	const next = String((e.target as HTMLInputElement).value ?? '').trim()
-	updateSettings({
-		modelUrl: next,
-		modelFormat: next.toLowerCase().endsWith('.gltf') ? 'gltf' : next ? 'glb' : undefined
-	})
-}
 const onBackgroundInput = (e: Event) =>
 	updateSettings({ backgroundColor: String((e.target as HTMLInputElement).value || '#0f1720') })
 const onLightIntensityChange = (e: Event) =>
@@ -458,49 +621,57 @@ const onAxesToggle = (e: Event) =>
 const onAutoRotateToggle = (e: Event) =>
 	updateSettings({ autoRotate: (e.target as HTMLInputElement).checked })
 
+watch(modelSignature, () => {
+	if (!viewer) return
+	if (previewPhase.value === 'masked') return
+	saveViewState()
+	syncViewerState()
+})
+
 watch(
-	() => [previewPhase.value, threePreviewState.value?.requestId ?? 0] as const,
-	([phase, requestId]) => {
-		if (phase === 'masked') {
-			activePreviewRequestId = 0
-			teardownViewer()
-			return
+	() => previewInteractive.value,
+	(active) => {
+		viewer?.setInteractive(active)
+		if (active) {
+			viewer?.setRenderSuspended(previewSuspended.value)
 		}
-		ensureViewer()
-		viewer?.setRenderSuspended(previewSuspended.value)
-		if (phase === 'loading') {
-			if (!modelUrl.value) return
-			if (requestId === activePreviewRequestId) return
-			activePreviewRequestId = requestId
-			void loadModel(requestId)
-			return
-		}
-		viewer?.setInteractive(true)
 	},
 	{ immediate: true, flush: 'post' }
 )
 
 watch(previewSuspended, (suspended) => {
 	if (!viewer || previewPhase.value === 'masked') return
+	if (suspended) {
+		captureSnapshot()
+	}
 	viewer.setRenderSuspended(suspended)
 })
 
-watch([backgroundColor, lightIntensity, gridVisible, axesVisible, autoRotate], () => {
-	applyViewerOptions()
-})
-
-watch(modelUrl, () => {
-	errorMessage.value = ''
-	if (!modelUrl.value) {
-		snapshotUrl.value = ''
-		viewer?.clearModel()
-		return
-	}
-	if (previewPhase.value === 'masked') return
-	void loadModel()
-})
+watch(
+	() => [previewPhase.value, threePreviewState.value?.requestId ?? 0] as const,
+	([phase, requestId]) => {
+		if (phase === 'masked') {
+			activePreviewRequestId = 0
+			if (viewer) captureSnapshot()
+			disposeViewer()
+			return
+		}
+		ensureViewer()
+		viewer?.setRenderSuspended(previewSuspended.value)
+		if (phase === 'loading') {
+			if (requestId === activePreviewRequestId) return
+			void startPreviewLoad(requestId)
+			return
+		}
+		syncViewerState()
+		viewer?.setInteractive(true)
+	},
+	{ immediate: true, flush: 'post' }
+)
 
 onBeforeUnmount(() => {
+	saveViewState()
+	cacheSnapshot(snapshotUrl.value)
 	disposeViewer()
 })
 </script>
@@ -588,92 +759,6 @@ onBeforeUnmount(() => {
 	border-color: rgb(239 68 68 / 0.9);
 }
 
-.wf-model3d-meshy-status {
-	display: grid;
-	gap: 6px;
-	padding: 10px 12px;
-	border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
-	background: rgb(from var(--dweb-defualt-dark) r g b / 0.72);
-}
-
-.wf-model3d-meshy-status.is-pending {
-	border-color: rgb(90 180 255 / 0.45);
-}
-
-.wf-model3d-meshy-status.is-running {
-	border-color: rgb(250 204 21 / 0.55);
-}
-
-.wf-model3d-meshy-status.is-success {
-	border-color: rgb(34 197 94 / 0.55);
-}
-
-.wf-model3d-meshy-status.is-error {
-	border-color: rgb(239 68 68 / 0.55);
-}
-
-.wf-model3d-meshy-status-head {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	font-size: 12px;
-}
-
-.wf-model3d-meshy-status-label {
-	font-weight: 600;
-	color: var(--vscode-fg);
-	white-space: nowrap;
-}
-
-.wf-model3d-meshy-status.is-running .wf-model3d-meshy-status-label {
-	color: rgb(250 204 21);
-}
-
-.wf-model3d-meshy-status.is-pending .wf-model3d-meshy-status-label {
-	color: rgb(96 165 250);
-}
-
-.wf-model3d-meshy-status.is-success .wf-model3d-meshy-status-label {
-	color: rgb(34 197 94);
-}
-
-.wf-model3d-meshy-status.is-error .wf-model3d-meshy-status-label {
-	color: rgb(248 113 113);
-}
-
-.wf-model3d-meshy-status-text {
-	color: var(--vscode-fg-muted);
-	font-size: 12px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.wf-model3d-meshy-progress {
-	width: 100%;
-	height: 4px;
-	background: rgb(from var(--vscode-border) r g b / 0.45);
-	overflow: hidden;
-}
-
-.wf-model3d-meshy-progress-fill {
-	height: 100%;
-	background: linear-gradient(90deg, rgb(96 165 250 / 0.85), rgb(52 211 153 / 0.85));
-	transition: width 400ms ease;
-}
-
-.wf-model3d-meshy-status.is-running .wf-model3d-meshy-progress-fill {
-	background: linear-gradient(90deg, rgb(250 204 21 / 0.85), rgb(251 146 60 / 0.85));
-}
-
-.wf-model3d-meshy-status.is-success .wf-model3d-meshy-progress-fill {
-	background: rgb(34 197 94 / 0.85);
-}
-
-.wf-model3d-meshy-status.is-error .wf-model3d-meshy-progress-fill {
-	background: rgb(239 68 68 / 0.75);
-}
-
 .wf-model3d-viewer-shell {
 	position: relative;
 	min-height: 220px;
@@ -721,23 +806,8 @@ onBeforeUnmount(() => {
 	backdrop-filter: blur(4px);
 }
 
-.wf-model3d-overlay.empty {
-	align-content: center;
-	gap: 6px;
-}
-
 .wf-model3d-overlay.error {
 	color: #fecaca;
-}
-
-.wf-model3d-overlay-title {
-	font-size: 14px;
-	font-weight: 600;
-}
-
-.wf-model3d-overlay-text {
-	font-size: 12px;
-	color: var(--vscode-fg-muted);
 }
 
 .wf-model3d-actions {

@@ -59,6 +59,7 @@ export const useAIWorkflowResourceActions = (payload: {
 	const isAbsoluteLocalPath = (value: string) => {
 		const v = String(value || '').trim()
 		if (!v) return false
+		if (/^https?:\/\//i.test(v)) return false
 		return (
 			/^[a-zA-Z]:[\\/]/.test(v) ||
 			v.startsWith('/') ||
@@ -135,9 +136,79 @@ export const useAIWorkflowResourceActions = (payload: {
 		if (!node) return ''
 
 		if (node.type === 'model3d') {
-			const assetPath = String(node.model3dSettings?.modelAssetPath ?? '').trim()
-			const sourcePath = String(node.model3dSettings?.modelSourcePath ?? '').trim()
-			const result = pickPreferredMediaPath([assetPath, sourcePath])
+			const msettings = node.model3dSettings ?? {}
+			const candidates: (string | null | undefined)[] = []
+
+			const rid = String(node.resourceId || '').trim()
+			if (rid) {
+				const resource = payload.store.state.resourcesById[rid]
+				if (resource) {
+					const resourceSourcePath = String(resource?.sourcePath ?? '').trim()
+					candidates.push(resourceSourcePath)
+
+					const resourceProjectRelativePath = String(resource?.projectRelativePath ?? '').trim()
+					if (resourceProjectRelativePath) {
+						const pid = payload.getProjectId?.() ?? undefined
+						const resolved = resolveFromProjectRelativePath(resourceProjectRelativePath, pid)
+						candidates.push(resolved)
+					}
+
+					const resourceUrl = String(resource?.url ?? '').trim()
+					if (resourceUrl) {
+						if (/^file:\/\//i.test(resourceUrl)) {
+							try {
+								const urlObj = new URL(resourceUrl)
+								candidates.push(decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1'))
+							} catch {}
+						}
+						if (resourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
+							const fromDweb = resolveFromDwebProjectAssetUrl(resourceUrl)
+							candidates.push(fromDweb)
+						}
+					}
+
+					const localAssetPath = String((resource as Record<string, unknown>)?.localAssetPath ?? '').trim()
+					candidates.push(localAssetPath)
+
+					const absolutePath = String((resource as Record<string, unknown>)?.absolutePath ?? '').trim()
+					candidates.push(absolutePath)
+				}
+			}
+
+			const assetPath = String(msettings.modelAssetPath ?? '').trim()
+			if (!/^https?:\/\//i.test(assetPath)) {
+				candidates.push(assetPath)
+			}
+
+			const sourcePath = String(msettings.modelSourcePath ?? '').trim()
+			if (!/^https?:\/\//i.test(sourcePath)) {
+				candidates.push(sourcePath)
+			}
+
+			const projectRelativePath = String(
+				msettings.modelAssetProjectRelativePath ?? msettings.modelProjectRelativePath ?? ''
+			).trim()
+			if (projectRelativePath) {
+				const pid = payload.getProjectId?.() ?? undefined
+				const resolved = resolveFromProjectRelativePath(projectRelativePath, pid)
+				candidates.push(resolved)
+			}
+
+			const rawUrl = String(msettings.modelUrl ?? msettings.modelAssetUrl ?? '').trim()
+			if (rawUrl) {
+				if (/^file:\/\//i.test(rawUrl)) {
+					try {
+						const urlObj = new URL(rawUrl)
+						candidates.push(decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1'))
+					} catch {}
+				}
+				if (rawUrl.toLowerCase().startsWith('dweb://project-assets')) {
+					const fromDweb = resolveFromDwebProjectAssetUrl(rawUrl)
+					candidates.push(fromDweb)
+				}
+			}
+
+			const result = pickPreferredMediaPath(candidates)
 			if (result && isAbsoluteLocalPath(result)) return result
 			if (result) return result
 			return ''
