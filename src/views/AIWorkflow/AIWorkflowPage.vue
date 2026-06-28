@@ -214,6 +214,7 @@
 						@clear-scene-layout-model-binding="
 							onNodeClearSceneLayoutModelBinding(node.id, $event.objectId)
 						"
+						@update-model-bindings="onNodeUpdateSceneLayoutModelBindings(node.id, $event)"
 						@connect-comfyui="onComfyUIConnect(node.id, $event)"
 						@copy="() => onNodeCopy(node.id)"
 						@clear-node="() => onNodeClear(node.id)"
@@ -6160,6 +6161,19 @@ const { onNodeUploadSceneLayoutModelFile, onNodeClearSceneLayoutModelBinding } =
 		blueprintProjectService,
 		resolveBackendUrl
 	})
+
+const onNodeUpdateSceneLayoutModelBindings = (nodeId: string, bindings: WorkflowSceneLayoutManualModelBinding[]) => {
+	const node = store.state.nodesById[String(nodeId)]
+	if (!node || node.type !== 'scene-layout') return
+	const currentSettings = node.sceneLayoutSettings ?? {}
+	store.commit('setNodeSceneLayoutSettings', {
+		nodeId,
+		sceneLayoutSettings: {
+			...currentSettings,
+			manualModelBindings: bindings
+		}
+	})
+}
 
 const {
 	createNodeFromDraggedResource,
