@@ -12,6 +12,7 @@ export type NodeGenerationApiDeps = {
 	comfyService?: ComfyUIBridgeService | null
 	resolveBackendUrl: (raw: string) => string
 	resolveBackendFetchUrl?: (raw: string) => string
+	getProjectId?: () => number | null
 	pushToast?: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	/** Bind produced asset url to the originating node, e.g. as its resource. */
 	bindImageResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
@@ -568,11 +569,29 @@ const runTextTask = async (
 	if (params.responseFormat) body.responseFormat = params.responseFormat
 	if (params.maxTokens) body.maxTokens = params.maxTokens
 
+	// Collect connected reference images from input anchors
+	const refs = await collectReferenceImages(deps, payload.nodeId, 5)
+	const refImages: string[] = []
+	for (const ref of refs) {
+		try {
+			const dataUri = await blobToBase64DataUri(ref.blob)
+			if (dataUri) refImages.push(dataUri)
+		} catch {
+			// skip failed images
+		}
+	}
+	if (refImages.length > 0) {
+		appendDetail(deps, task.id, `参考图数量：${refImages.length}`)
+	}
+
 	let accumulated = ''
 	try {
 			for await (const ev of (svc as ComfyUIBridgeService).blueprintChatStream({
 				content: String(body.content ?? ''),
-				history: body.history as Array<{ role: 'user' | 'assistant' | 'system'; content: string }> | undefined
+				history: body.history as Array<{ role: 'user' | 'assistant' | 'system'; content: string }> | undefined,
+				provider: String(body.provider ?? ''),
+				modelId: String(body.modelId ?? ''),
+				refImages
 			})) {
 			if (ev.type === 'done') break
 			if (ev.type === 'error') {
@@ -610,7 +629,10 @@ const runTextTask = async (
 		try {
 			const plain = await (svc as ComfyUIBridgeService).blueprintChat({
 				content: String(body.content ?? ''),
-				history: body.history as Array<{ role: 'user' | 'assistant' | 'system'; content: string }> | undefined
+				history: body.history as Array<{ role: 'user' | 'assistant' | 'system'; content: string }> | undefined,
+				provider: String(body.provider ?? ''),
+				modelId: String(body.modelId ?? ''),
+				refImages
 			})
 			const text =
 				plain.ok && typeof plain.assistant === 'string'
@@ -655,6 +677,8 @@ const runImageTask = async (
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
 	form.set('imageModel', model)
+	const imgProjectId = deps.getProjectId?.() ?? null
+	if (imgProjectId != null) form.set('projectId', String(imgProjectId))
 
 	const isSeedream = kind === 'seedream'
 
@@ -909,6 +933,8 @@ const runVideoTask = async (
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
 	form.set('model', model)
+	const projectId = deps.getProjectId?.() ?? null
+	if (projectId != null) form.set('projectId', String(projectId))
 	if (typeof params.mode === 'string' && params.mode) form.set('mode', params.mode)
 	if (typeof params.ratio === 'string' && params.ratio) form.set('ratio', params.ratio)
 	if (typeof params.resolution === 'string' && params.resolution)

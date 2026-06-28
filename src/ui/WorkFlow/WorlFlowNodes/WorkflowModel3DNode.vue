@@ -194,6 +194,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { getErrorMessage } from '../../../types/utils'
+import { diagnoseDwebAsset } from '../../../electronBridge'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { Model3DPreviewViewer } from './model3d/Model3DPreviewViewer'
 import type { Model3DViewState } from './model3d/Model3DPreviewViewer'
@@ -554,7 +555,58 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		viewer.clearModel()
 		cachedModelSignature = ''
 		if (requestId != null) emit('three-preview-error')
+
+		const repairResult = await attemptRepairModelUrl(url, requestId)
+		if (repairResult.success && repairResult.newUrl) {
+			errorMessage.value = ''
+			if (requestId != null && requestId === activePreviewRequestId) {
+				emitPreviewProgress(0.3, '修复资源引用')
+			}
+			try {
+				await viewer.loadModel(repairResult.newUrl, (payload) => {
+					if (requestId == null) return
+					if (requestId !== activePreviewRequestId) return
+					const ratio = Number(payload?.ratio ?? 0)
+					emitPreviewProgress(0.3 + Math.max(0, Math.min(1, ratio)) * 0.65, '加载模型资源')
+				}, cachedView)
+				cachedModelSignature = modelSignature.value
+				return true
+			} catch {
+				errorMessage.value = '模型加载失败'
+				viewer.clearModel()
+				cachedModelSignature = ''
+				if (requestId != null) emit('three-preview-error')
+				return false
+			}
+		}
+
 		return false
+	}
+}
+
+const attemptRepairModelUrl = async (url: string, requestId?: number): Promise<{ success: boolean; newUrl?: string }> => {
+	try {
+		const parsed = new URL(url)
+		if (parsed.protocol !== 'dweb:' || parsed.hostname !== 'project-assets') {
+			return { success: false }
+		}
+		const projectId = Number(parsed.searchParams.get('projectId') || '0')
+		const relPath = String(parsed.searchParams.get('path') || '').trim()
+		if (!Number.isFinite(projectId) || projectId <= 0 || !relPath) {
+			return { success: false }
+		}
+		const diag = await diagnoseDwebAsset({ projectId, relPath, url })
+		if (!diag?.ok || !diag.repairedAsset?.url) {
+			return { success: false }
+		}
+		updateSettings({
+			modelUrl: diag.repairedAsset.url,
+			modelAssetUrl: diag.repairedAsset.url,
+			modelSourcePath: diag.repairedAsset.sourcePath || settings.value?.modelSourcePath
+		})
+		return { success: true, newUrl: diag.repairedAsset.url }
+	} catch {
+		return { success: false }
 	}
 }
 

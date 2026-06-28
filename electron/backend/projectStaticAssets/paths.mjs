@@ -75,7 +75,14 @@ export function safeResolveProjectRelative(projectRoot, relPath) {
 	if (!root || !rel) return null
 	const resolvedRoot = path.resolve(root)
 	const candidate = path.resolve(resolvedRoot, ...rel.split('/'))
-	if (candidate !== resolvedRoot && !candidate.startsWith(resolvedRoot + path.sep)) return null
+	const candidateNorm = path.normalize(candidate)
+	const rootNorm = path.normalize(resolvedRoot)
+	const rootWithSep = rootNorm.endsWith(path.sep) ? rootNorm : rootNorm + path.sep
+	const isInside =
+		candidateNorm === rootNorm ||
+		candidateNorm.startsWith(rootWithSep) ||
+		(process.platform === 'win32' && candidateNorm.toLowerCase().startsWith(rootWithSep.toLowerCase()))
+	if (!isInside) return null
 	return candidate
 }
 

@@ -5,6 +5,7 @@ import path from 'node:path'
 import { internalError, invalidParamsError, upstreamError } from '../../core/errors.mjs'
 import { getHttpClient } from '../../core/http-client.mjs'
 import { getLocalDbFilePath } from '../../../localdb/db.mjs'
+import { getRepos } from '../../../localdb/index.mjs'
 
 function generateMsgId() {
 	return `m-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`
@@ -87,6 +88,20 @@ function wrapResultMsg(data) {
 const NANOBANANA_API_BASE = 'https://api.meshy.ai/openapi'
 const SEEDREAM_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 const JIMENG_API_BASE = 'https://visual.volcengineapi.com'
+
+/**
+ * 记录火山方舟任务到 ark_tasks 表
+ */
+function recordArkTask(params) {
+	try {
+		const repos = getRepos()
+		const repo = repos?.arkTasks
+		if (!repo) return
+		repo.upsert(params)
+	} catch {
+		// 忽略记录错误，不影响主流程
+	}
+}
 
 function getApiKeyRepo(ctx) {
 	const repo = ctx.localdb?.apiKeys
@@ -570,6 +585,24 @@ export async function* seedreamGenerateStream(ctx, payload) {
 
 	console.log('[seedream] generating, model=', model, 'size=', size, 'n=', n, 'watermark=', watermark, 'hasRefImages=', hasRefImages, 'is5Model=', is5Model)
 
+	const taskId = `seedream-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+	const projectId = p.projectId ? Number(p.projectId) : null
+	const nodeId = String(p.nodeId || '').trim()
+	recordArkTask({
+		taskId,
+		provider: 'bytedance',
+		apiType: 'seedream',
+		apiAction: 'image_generation',
+		model,
+		status: 'queued',
+		prompt,
+		negativePrompt,
+		statusText: '正在提交图片生成任务…',
+		requestPayload: { model, prompt, size, n, watermark, hasRefImages },
+		projectId,
+		nodeId
+	})
+
 	try {
 		yield wrapTaskStatusMsg(`正在使用 ${model} 生成图片…`, 'generating')
 		const client = getHttpClient()
@@ -585,6 +618,13 @@ export async function* seedreamGenerateStream(ctx, payload) {
 		if (!resp.ok) {
 			const errMsg = resp.body?.error?.message || resp.body?.message || `HTTP ${resp.status}`
 			console.error('[seedream] API error:', resp.status, JSON.stringify(resp.body?.error || resp.body || {}).slice(0, 500))
+			recordArkTask({
+				taskId,
+				status: 'failed',
+				errorMessage: errMsg,
+				statusText: '生成失败',
+				responsePayload: { status: resp.status, body: resp.body }
+			})
 			throw new Error(errMsg)
 		}
 
@@ -598,9 +638,24 @@ export async function* seedreamGenerateStream(ctx, payload) {
 		}
 
 		if (imageUrls.length === 0) {
+			recordArkTask({
+				taskId,
+				status: 'failed',
+				errorMessage: 'seedream returned no images',
+				statusText: '未返回图片'
+			})
 			yield wrapStreamError('seedream returned no images')
 			return
 		}
+
+		recordArkTask({
+			taskId,
+			status: 'succeeded',
+			resultUrls: imageUrls,
+			thumbnailUrl: imageUrls[0] || '',
+			statusText: `已生成 ${imageUrls.length} 张图片`,
+			responsePayload: { imageCount: imageUrls.length }
+		})
 
 		for (const imgUrl of imageUrls) {
 			yield wrapChatMsg({ imageUrl: imgUrl })
@@ -608,6 +663,12 @@ export async function* seedreamGenerateStream(ctx, payload) {
 		yield wrapDone()
 	} catch (err) {
 		console.error('[seedream] generation error:', err)
+		recordArkTask({
+			taskId,
+			status: 'failed',
+			errorMessage: String(err?.message || err),
+			statusText: '生成异常'
+		})
 		yield wrapStreamError(String(err?.message || err))
 	}
 }
@@ -664,6 +725,22 @@ export async function* jimengImageGenerateStream(ctx, payload) {
 		else if (ref && typeof ref.data === 'string') allRefImages.push(ref.data)
 	}
 	if (allRefImages.length) body.ref_images = allRefImages
+	const taskId = `jimeng-img-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+	const projectId = p.projectId ? Number(p.projectId) : null
+	const nodeId = String(p.nodeId || '').trim()
+	recordArkTask({
+		taskId,
+		provider: 'bytedance',
+		apiType: 'jimeng',
+		apiAction: 'image_generation',
+		model: reqKey,
+		status: 'queued',
+		prompt,
+		statusText: '正在提交即梦图片生成任务…',
+		requestPayload: { reqKey: reqKey, prompt, aspectRatio },
+		projectId,
+		nodeId
+	})
 	try {
 		yield wrapTaskStatusMsg('Generating image with Jimeng...', 'generating')
 		const signed = buildJimengSignedRequest({
@@ -680,18 +757,45 @@ export async function* jimengImageGenerateStream(ctx, payload) {
 			timeout: 60000
 		})
 		if (!res.ok) {
+			recordArkTask({
+				taskId,
+				status: 'failed',
+				errorMessage: `HTTP ${res.status}`,
+				statusText: '生成失败'
+			})
 			yield wrapStreamError(`HTTP ${res.status}`)
 			return
 		}
 		const result = res.body || {}
 		const imageUrl = String(result?.data?.image_url || result?.image_url || result?.url || '').trim()
 		if (imageUrl) {
+			recordArkTask({
+				taskId,
+				status: 'succeeded',
+				resultUrls: [imageUrl],
+				thumbnailUrl: imageUrl,
+				statusText: '已生成图片',
+				responsePayload: { imageUrl }
+			})
 			yield wrapChatMsg({ imageUrl })
 		} else {
+			recordArkTask({
+				taskId,
+				status: 'succeeded',
+				resultText: JSON.stringify(result),
+				statusText: '已生成',
+				responsePayload: result
+			})
 			yield wrapChatMsg(result)
 		}
 		yield wrapDone()
 	} catch (err) {
+		recordArkTask({
+			taskId,
+			status: 'failed',
+			errorMessage: String(err?.message || err),
+			statusText: '生成异常'
+		})
 		yield wrapStreamError(String(err?.message || err))
 	}
 }
@@ -728,6 +832,22 @@ export async function* jimengVideoGenerateStream(ctx, payload) {
 	if (p.width !== undefined) body.width = Number(p.width)
 	if (p.height !== undefined) body.height = Number(p.height)
 	if (p.seed !== undefined && p.seed !== null) body.seed = Number(p.seed)
+	const taskId = `jimeng-video-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+	const projectId = p.projectId ? Number(p.projectId) : null
+	const nodeId = String(p.nodeId || '').trim()
+	recordArkTask({
+		taskId,
+		provider: 'bytedance',
+		apiType: 'jimeng',
+		apiAction: 'video_generation',
+		model: reqKey,
+		status: 'queued',
+		prompt,
+		statusText: '正在提交即梦视频生成任务…',
+		requestPayload: { reqKey: reqKey, prompt, width: body.width, height: body.height },
+		projectId,
+		nodeId
+	})
 	try {
 		yield wrapTaskStatusMsg('Generating video with Jimeng...', 'generating')
 		const signed = buildJimengSignedRequest({
@@ -744,18 +864,45 @@ export async function* jimengVideoGenerateStream(ctx, payload) {
 			timeout: 120000
 		})
 		if (!res.ok) {
+			recordArkTask({
+				taskId,
+				status: 'failed',
+				errorMessage: `HTTP ${res.status}`,
+				statusText: '生成失败'
+			})
 			yield wrapStreamError(`HTTP ${res.status}`)
 			return
 		}
 		const result = res.body || {}
 		const videoUrl = String(result?.data?.video_url || result?.video_url || result?.url || '').trim()
 		if (videoUrl) {
+			recordArkTask({
+				taskId,
+				status: 'succeeded',
+				resultUrls: [videoUrl],
+				thumbnailUrl: '',
+				statusText: '已生成视频',
+				responsePayload: { videoUrl }
+			})
 			yield wrapChatMsg({ videoUrl, videoUrlRemote: videoUrl })
 		} else {
+			recordArkTask({
+				taskId,
+				status: 'succeeded',
+				resultText: JSON.stringify(result),
+				statusText: '已生成',
+				responsePayload: result
+			})
 			yield wrapChatMsg(result)
 		}
 		yield wrapDone()
 	} catch (err) {
+		recordArkTask({
+			taskId,
+			status: 'failed',
+			errorMessage: String(err?.message || err),
+			statusText: '生成异常'
+		})
 		yield wrapStreamError(String(err?.message || err))
 	}
 }
@@ -820,12 +967,45 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	const useModel = String(p.modelId || p.model || cfg.model).trim()
+	const taskId = `chat-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+	const projectId = p.projectId ? Number(p.projectId) : null
+	const nodeId = String(p.nodeId || '').trim()
+	recordArkTask({
+		taskId,
+		provider: 'bytedance',
+		apiType: 'blueprintChat',
+		apiAction: 'text_chat',
+		model: useModel,
+		status: 'queued',
+		prompt: message,
+		statusText: '正在调用文本模型…',
+		requestPayload: { model: useModel, messageLength: message.length },
+		projectId,
+		nodeId
+	})
 	const chatMessages = [{ role: 'system', content: systemPrompt }]
 	const allHistory = history.length > 0 ? history : messages
 	for (const m of allHistory) {
 		if (m && m.role && m.content) chatMessages.push({ role: m.role, content: String(m.content) })
 	}
-	chatMessages.push({ role: 'user', content: message })
+
+	// Build user message: support multimodal (image + text) when refImages are provided
+	const refImages = Array.isArray(p.refImages) ? p.refImages.filter(Boolean) : []
+	const hasRefImages = refImages.length > 0
+	if (hasRefImages) {
+		const userContent = []
+		for (const img of refImages) {
+			userContent.push({
+				type: 'image_url',
+				image_url: { url: String(img) }
+			})
+		}
+		userContent.push({ type: 'text', text: message })
+		chatMessages.push({ role: 'user', content: userContent })
+	} else {
+		chatMessages.push({ role: 'user', content: message })
+	}
+
 	let fullContent = ''
 	try {
 		const client = getHttpClient()
@@ -849,7 +1029,20 @@ export async function* blueprintChatStream(ctx, payload) {
 			} catch {}
 		}
 		yield wrapDone()
+		recordArkTask({
+			taskId,
+			status: 'succeeded',
+			resultText: fullContent,
+			statusText: '文本生成完成',
+			responsePayload: { contentLength: fullContent.length }
+		})
 	} catch (err) {
+		recordArkTask({
+			taskId,
+			status: 'failed',
+			errorMessage: String(err?.message || err),
+			statusText: '文本生成失败'
+		})
 		yield wrapStreamError(String(err?.message || err))
 	}
 }
@@ -904,7 +1097,23 @@ export async function blueprintChat(ctx, payload) {
 	for (const m of history) {
 		if (m && m.role && m.content) chatMessages.push({ role: m.role, content: String(m.content) })
 	}
-	chatMessages.push({ role: 'user', content: message })
+
+	// Build user message: support multimodal (image + text) when refImages are provided
+	const refImages = Array.isArray(p.refImages) ? p.refImages.filter(Boolean) : []
+	const hasRefImages = refImages.length > 0
+	if (hasRefImages) {
+		const userContent = []
+		for (const img of refImages) {
+			userContent.push({
+				type: 'image_url',
+				image_url: { url: String(img) }
+			})
+		}
+		userContent.push({ type: 'text', text: message })
+		chatMessages.push({ role: 'user', content: userContent })
+	} else {
+		chatMessages.push({ role: 'user', content: message })
+	}
 
 	try {
 		const client = getHttpClient()

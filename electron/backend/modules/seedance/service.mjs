@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { getHttpClient } from '../../core/http-client.mjs'
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
+import { getRepos } from '../../../localdb/index.mjs'
 
 const SEEDANCE_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 const DEFAULT_MODEL = 'doubao-seedance-2-0-260128'
@@ -202,6 +203,17 @@ function serializeVideoTask(row) {
   }
 }
 
+function recordArkTask(params) {
+	try {
+		const repos = getRepos()
+		const repo = repos?.arkTasks
+		if (!repo) return
+		repo.upsert(params)
+	} catch {
+		// 忽略记录错误，不影响主流程
+	}
+}
+
 export async function* generateVideoStream(ctx, payload) {
   const apiKey = getApiKey(ctx)
   const client = getHttpClient()
@@ -341,6 +353,21 @@ export async function* generateVideoStream(ctx, payload) {
       remoteUpdatedAt: Date.now(),
     })
 
+    recordArkTask({
+      taskId: `seedance-${taskId}`,
+      provider: 'bytedance',
+      apiType: 'seedance',
+      apiAction: 'video_generation',
+      model,
+      status: 'queued',
+      prompt,
+      statusText: 'Seedance：任务已创建，等待生成',
+      requestPayload: createPayload,
+      responsePayload: createObj,
+      projectId,
+      remoteTaskId: taskId,
+    })
+
     yield wrapTaskStatusMsg(`Seedance：任务已创建（${taskId}），等待生成…`, 'streaming')
 
     const startTime = Date.now()
@@ -377,6 +404,24 @@ export async function* generateVideoStream(ctx, payload) {
           usage: taskObj.usage || null,
           responsePayload: taskObj,
           remoteUpdatedAt: Date.now(),
+        })
+
+        const resultUrls = [videoUrl]
+        if (lastFrameUrl) resultUrls.push(lastFrameUrl)
+        recordArkTask({
+          taskId: `seedance-${taskId}`,
+          provider: 'bytedance',
+          apiType: 'seedance',
+          apiAction: 'video_generation',
+          model,
+          status: 'succeeded',
+          prompt,
+          resultUrls,
+          thumbnailUrl: lastFrameUrl || videoUrl,
+          statusText: 'Seedance：完成',
+          responsePayload: taskObj,
+          projectId,
+          remoteTaskId: taskId,
         })
 
         const outPayload = {
@@ -418,6 +463,21 @@ export async function* generateVideoStream(ctx, payload) {
           remoteUpdatedAt: Date.now(),
         })
 
+        recordArkTask({
+          taskId: `seedance-${taskId}`,
+          provider: 'bytedance',
+          apiType: 'seedance',
+          apiAction: 'video_generation',
+          model,
+          status: 'failed',
+          prompt,
+          errorMessage: errMsg,
+          statusText: `Seedance：${status}`,
+          responsePayload: taskObj,
+          projectId,
+          remoteTaskId: taskId,
+        })
+
         throw new Error(`Seedance task failed: ${errMsg}`)
       }
 
@@ -425,6 +485,21 @@ export async function* generateVideoStream(ctx, payload) {
       const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000))
       const suffix = billingText ? `；计费：${billingText}` : ''
       const statusMsg = `Seedance：${status || 'running'}（${elapsed}s）${suffix}`
+
+      recordArkTask({
+        taskId: `seedance-${taskId}`,
+        provider: 'bytedance',
+        apiType: 'seedance',
+        apiAction: 'video_generation',
+        model,
+        status: 'running',
+        prompt,
+        statusText: statusMsg,
+        responsePayload: taskObj,
+        projectId,
+        remoteTaskId: taskId,
+      })
+
       yield wrapTaskStatusMsg(statusMsg, 'streaming')
 
       if (Date.now() - startTime >= POLL_TIMEOUT_MS) {
@@ -525,6 +600,25 @@ export async function syncTasks(ctx, payload) {
       remoteUpdatedAt: Date.now(),
     })
 
+    const resultUrls = videoUrl ? [videoUrl] : []
+    if (lastFrameUrl) resultUrls.push(lastFrameUrl)
+    recordArkTask({
+      taskId: `seedance-${taskId}`,
+      provider: 'bytedance',
+      apiType: 'seedance',
+      apiAction: 'video_generation',
+      model: String(taskObj.model || model || DEFAULT_MODEL).trim(),
+      status: remoteStatus === 'success' || remoteStatus === 'succeeded' ? 'succeeded' : remoteStatus,
+      prompt: String(taskObj.prompt || '').trim(),
+      resultUrls,
+      thumbnailUrl: lastFrameUrl || videoUrl || '',
+      errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(taskObj.error || '').trim() : '',
+      statusText: remoteStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${remoteStatus}`,
+      responsePayload: taskObj,
+      projectId,
+      remoteTaskId: taskId,
+    })
+
     const local = repo.getByRemoteTaskId(taskId)
     const item = serializeVideoTask(local)
     return { ok: true, item, total: 1, remote: taskObj }
@@ -575,6 +669,25 @@ export async function syncTasks(ctx, payload) {
       responsePayload: remoteTask,
       projectId,
       remoteUpdatedAt: Date.now(),
+    })
+
+    const batchResultUrls = videoUrl ? [videoUrl] : []
+    if (lastFrameUrl) batchResultUrls.push(lastFrameUrl)
+    recordArkTask({
+      taskId: `seedance-${remoteTaskId}`,
+      provider: 'bytedance',
+      apiType: 'seedance',
+      apiAction: 'video_generation',
+      model: String(remoteTask.model || model || DEFAULT_MODEL).trim(),
+      status: taskStatus === 'success' || taskStatus === 'succeeded' ? 'succeeded' : taskStatus,
+      prompt: String(remoteTask.prompt || '').trim(),
+      resultUrls: batchResultUrls,
+      thumbnailUrl: lastFrameUrl || videoUrl || '',
+      errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
+      statusText: taskStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${taskStatus}`,
+      responsePayload: remoteTask,
+      projectId,
+      remoteTaskId,
     })
 
     const local = repo.getByRemoteTaskId(remoteTaskId)

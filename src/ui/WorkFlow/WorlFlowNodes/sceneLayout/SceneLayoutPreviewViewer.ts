@@ -256,6 +256,7 @@ type GLTFLoaderLike = {
 type ViewerOptions = {
 	onLayoutChange?: (items: WorkflowSceneLayoutItem[]) => void
 	onSelectionChange?: (itemId: string) => void
+	onModelLoadError?: (url: string, itemId: string) => void
 }
 
 type SceneLayoutRenderOptions = {
@@ -2355,7 +2356,7 @@ export class SceneLayoutPreviewViewer {
 			return false
 
 		try {
-			const template = await this.loadModelTemplate(sourceUrl)
+			const template = await this.loadModelTemplate(sourceUrl, itemId)
 			if (
 				this.disposed ||
 				revision !== this.layoutRevision ||
@@ -2388,12 +2389,17 @@ export class SceneLayoutPreviewViewer {
 		}
 	}
 
-	private loadModelTemplate(url: string) {
+	private loadModelTemplate(url: string, itemId: string) {
 		const source = String(url ?? '').trim()
 		if (!source) return Promise.reject(new Error('empty model source'))
 		const cached = this.modelTemplateCache.get(source)
 		if (cached) return cached
-		const next = this.loader.loadAsync(source).then((gltf: GLTFResult) => gltf.scene)
+		const next = this.loader.loadAsync(source).then((gltf: GLTFResult) => gltf.scene).catch((err) => {
+			if (this.options.onModelLoadError) {
+				this.options.onModelLoadError(source, itemId)
+			}
+			throw err
+		})
 		this.modelTemplateCache.set(source, next)
 		return next
 	}
@@ -2534,7 +2540,7 @@ export class SceneLayoutPreviewViewer {
 			this.disposeBoundModel(targetId)
 			return false
 		}
-		const template = await this.loadModelTemplate(sourceUrl)
+		const template = await this.loadModelTemplate(sourceUrl, targetId)
 		if (this.disposed) return false
 		this.disposeBoundModel(targetId)
 		this.mountBoundModel(targetId, item, mesh, template, mode)
@@ -3368,7 +3374,7 @@ export class SceneLayoutPreviewViewer {
 			}
 		}
 		try {
-			const template = await this.loadModelTemplate(sourceUrl)
+			const template = await this.loadModelTemplate(sourceUrl, this.selectedId)
 			if (this.disposed) {
 				return { ok: false, applied: false, mode: 'normal', message: '预览器已释放。' }
 			}
@@ -3442,7 +3448,7 @@ export class SceneLayoutPreviewViewer {
 				message: '当前绑定没有可用的模型地址，无法循环填充。'
 			}
 		}
-		const template = await this.loadModelTemplate(sourceUrl)
+		const template = await this.loadModelTemplate(sourceUrl, this.selectedId)
 		if (item.fillMode) {
 			this.clearFillState(item)
 			const mode = item.orientationFix ? 'oriented' : 'normal'
@@ -3555,7 +3561,7 @@ export class SceneLayoutPreviewViewer {
 			}
 		}
 		try {
-			const template = await this.loadModelTemplate(sourceUrl)
+			const template = await this.loadModelTemplate(sourceUrl, this.selectedId)
 			this.clearFillState(item)
 			item.fitMode = 'forced'
 			item.fitUpdatedAt = Date.now()

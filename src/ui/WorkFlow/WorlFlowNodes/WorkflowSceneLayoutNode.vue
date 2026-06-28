@@ -342,6 +342,7 @@ import type {
 	WorkflowThreePreviewState
 } from './three-preview/types'
 import { isObject, isString } from '../../../types/utils'
+import { diagnoseDwebAsset } from '../../../electronBridge'
 
 type AnchorSpec = {
 	id: string
@@ -462,6 +463,7 @@ const emit = defineEmits<{
 	(e: 'set-selected-placeholder-output', itemId: string): void
 	(e: 'upload-scene-layout-model-file', payload: { file: File; objectId?: string }): void
 	(e: 'clear-scene-layout-model-binding', payload: { objectId: string }): void
+	(e: 'update-model-bindings', bindings: WorkflowSceneLayoutModelBinding[]): void
 	(e: 'start-three-preview'): void
 	(e: 'three-preview-progress', payload?: WorkflowThreePreviewProgressPayload): void
 	(e: 'three-preview-ready'): void
@@ -1071,6 +1073,9 @@ const createViewerNow = () => {
 				const nextSelectedId = String(itemId ?? '').trim()
 				if (nextSelectedId === selectedPreviewItemId.value) return
 				selectedPreviewItemId.value = nextSelectedId
+			},
+			onModelLoadError: async (url, itemId) => {
+				await attemptRepairSceneLayoutModelUrl(url, itemId)
 			}
 		})
 		viewerInitCooldownUntil = 0
@@ -1124,6 +1129,39 @@ const waitForViewerReady = async () => {
 		if (viewer) return true
 	}
 	return false
+}
+
+const attemptRepairSceneLayoutModelUrl = async (url: string, itemId: string): Promise<void> => {
+	try {
+		const parsed = new URL(url)
+		if (parsed.protocol !== 'dweb:' || parsed.hostname !== 'project-assets') {
+			return
+		}
+		const projectId = Number(parsed.searchParams.get('projectId') || '0')
+		const relPath = String(parsed.searchParams.get('path') || '').trim()
+		if (!Number.isFinite(projectId) || projectId <= 0 || !relPath) {
+			return
+		}
+		const diag = await diagnoseDwebAsset({ projectId, relPath, url })
+		if (!diag?.ok || !diag.repairedAsset?.url) {
+			return
+		}
+		const currentBindings = Array.isArray(props.sceneLayoutModelBindings)
+			? props.sceneLayoutModelBindings
+			: []
+		const bindingIndex = currentBindings.findIndex((b) => String(b.objectId ?? '') === itemId)
+		if (bindingIndex === -1) return
+		const updatedBindings = [...currentBindings]
+		updatedBindings[bindingIndex] = {
+			...updatedBindings[bindingIndex],
+			modelUrl: diag.repairedAsset.url,
+			modelAssetUrl: diag.repairedAsset.url,
+			modelSourcePath: diag.repairedAsset.sourcePath || updatedBindings[bindingIndex].modelSourcePath
+		}
+		emit('update-model-bindings', updatedBindings)
+	} catch {
+		// ignore
+	}
 }
 
 const startPreviewLoad = async (requestId: number) => {
