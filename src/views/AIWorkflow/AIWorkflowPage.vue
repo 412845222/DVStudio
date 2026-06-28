@@ -821,6 +821,7 @@ import type {
 	WorkflowEdge,
 	WorkflowImageCrop,
 	WorkflowModel3DNodeSettings,
+	WorkflowSceneLayoutManualModelBinding,
 	WorkflowUnrealExportNodeSettings,
 	WorkflowUnrealResolvedLayoutExport,
 	WorkflowNode,
