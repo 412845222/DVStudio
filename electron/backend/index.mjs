@@ -6,6 +6,7 @@ import { routes as projectsRoutes } from './modules/projects/routes.mjs'
 import { routes as projectAssetsRoutes } from './modules/project-assets/routes.mjs'
 import { routes as meshyRoutes } from './modules/meshy/routes.mjs'
 import { routes as seedanceRoutes } from './modules/seedance/routes.mjs'
+import { routes as arkRoutes } from './modules/ark/routes.mjs'
 import { routes as editorRoutes } from './modules/editor/routes.mjs'
 import { routes as chatRoutes } from './modules/chat/routes.mjs'
 import { routes as exportRoutes } from './modules/export/routes.mjs'
@@ -66,6 +67,7 @@ export function initBackend(mainWindow, deps = {}) {
     ...projectAssetsRoutes,
     ...meshyRoutes,
     ...seedanceRoutes,
+    ...arkRoutes,
     ...editorRoutes,
     ...chatRoutes,
     ...exportRoutes,

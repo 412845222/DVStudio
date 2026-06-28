@@ -365,6 +365,9 @@ export function createProjectsRepo({ backendDataDir }) {
 			try {
 				db.prepare('UPDATE video_tasks SET project_id = NULL WHERE project_id = ?').run(n)
 			} catch (_) {}
+			try {
+				db.prepare('UPDATE ark_tasks SET project_id = NULL WHERE project_id = ?').run(n)
+			} catch (_) {}
 			deleteStmt.run(n)
 		})
 		run()
