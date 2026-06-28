@@ -376,7 +376,51 @@ function handleProjectAssetRequest(request) {
 		return new Response('Bad Request', { status: 400 })
 	}
 	const root = projectRootById.get(parsed.projectId)
-	if (!root) {
+	let primaryRootCandidates = []
+	if (root) {
+		primaryRootCandidates = [root]
+		try {
+			const normalizedRoot = String(root || '')
+				.replace(/\\/g, '/')
+				.replace(/\/+$/, '')
+				.toLowerCase()
+			if (normalizedRoot.endsWith('/content/media')) {
+				primaryRootCandidates.push(path.resolve(String(root || ''), '..', '..'))
+			} else if (normalizedRoot.endsWith('/generated-assets')) {
+				primaryRootCandidates.push(path.resolve(String(root || ''), '..'))
+			}
+		} catch {
+			// ignore
+		}
+	}
+
+	const allRootCandidates = [...primaryRootCandidates]
+	try {
+		for (const [otherId, otherRoot] of projectRootById.entries()) {
+			if (otherId === parsed.projectId) continue
+			if (!otherRoot || allRootCandidates.includes(otherRoot)) continue
+			allRootCandidates.push(otherRoot)
+			try {
+				const normOther = String(otherRoot)
+					.replace(/\\/g, '/')
+					.replace(/\/+$/, '')
+					.toLowerCase()
+				if (normOther.endsWith('/content/media')) {
+					const parent = path.resolve(String(otherRoot), '..', '..')
+					if (!allRootCandidates.includes(parent)) allRootCandidates.push(parent)
+				} else if (normOther.endsWith('/generated-assets')) {
+					const parent = path.resolve(String(otherRoot), '..')
+					if (!allRootCandidates.includes(parent)) allRootCandidates.push(parent)
+				}
+			} catch {
+				// ignore
+			}
+		}
+	} catch {
+		// ignore
+	}
+
+	if (!root && allRootCandidates.length === 0) {
 		logAccess({
 			status: 'ROOT_NOT_REGISTERED',
 			projectId: parsed.projectId,
@@ -388,20 +432,7 @@ function handleProjectAssetRequest(request) {
 		})
 	}
 
-	const rootCandidates = [root]
-	try {
-		const normalizedRoot = String(root || '')
-			.replace(/\\/g, '/')
-			.replace(/\/+$/, '')
-			.toLowerCase()
-		if (normalizedRoot.endsWith('/content/media')) {
-			rootCandidates.push(path.resolve(String(root || ''), '..', '..'))
-		} else if (normalizedRoot.endsWith('/generated-assets')) {
-			rootCandidates.push(path.resolve(String(root || ''), '..'))
-		}
-	} catch {
-		// ignore
-	}
+	const rootCandidates = allRootCandidates
 
 	const rel = String(parsed.relPath || '')
 		.trim()
@@ -1972,64 +2003,85 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 		return result
 	}
 
-	// --- 2. 检查项目根注册 ---
+	// --- 2. 收集项目根候选（包括指定projectId的根和所有其他已注册项目的根作为兜底）---
 	const root = projectRootById.get(pid)
 	result.registered = !!root
-	if (!root) {
-		result.diagnostics.push({ check: 'root_registered', status: 'FAIL', message: '项目根未注册' })
-		result.suggestion = 're_register_root'
-		return result
-	}
-	result.root = root
+	result.root = root || null
 
-	// --- 3. 验证注册的根路径在磁盘上是否有效 ---
-	try {
-		const st = fs.statSync(root)
-		result.rootExists = true
-		result.rootValid = st.isDirectory()
-		if (!result.rootValid) {
-			result.diagnostics.push({
-				check: 'root_is_directory',
-				status: 'FAIL',
-				message: `注册的根路径不是文件夹: ${root}`
-			})
-			result.suggestion = 're_register_root'
-			return result
+	const rootToProjectId = new Map()
+	const buildRootCandidatesFor = (baseRoot, basePid) => {
+		const list = []
+		if (baseRoot) {
+			list.push(baseRoot)
+			rootToProjectId.set(baseRoot, basePid)
 		}
-		result.diagnostics.push({
-			check: 'root_is_directory',
-			status: 'OK',
-			message: `项目根有效: ${root}`
-		})
-	} catch (err) {
-		result.diagnostics.push({
-			check: 'root_exists',
-			status: 'FAIL',
-			message: `项目根不存在或无法访问: ${root} | ${String(err?.message || err)}`
-		})
+		try {
+			const nr = String(baseRoot).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+			if (nr.endsWith('/content/media')) {
+				const parent = path.resolve(String(baseRoot), '..', '..')
+				list.push(parent)
+				if (!rootToProjectId.has(parent)) rootToProjectId.set(parent, basePid)
+			} else if (nr.endsWith('/generated-assets')) {
+				const parent = path.resolve(String(baseRoot), '..')
+				list.push(parent)
+				if (!rootToProjectId.has(parent)) rootToProjectId.set(parent, basePid)
+			}
+		} catch { /* ignore */ }
+		return list
+	}
+
+	let rootCandidates = []
+	if (root) {
+		rootCandidates = buildRootCandidatesFor(root, pid)
+		try {
+			const rootStat = fs.statSync(root)
+			result.rootExists = true
+			result.rootValid = rootStat.isDirectory()
+			if (result.rootValid) {
+				result.diagnostics.push({
+					check: 'root_is_directory',
+					status: 'OK',
+					message: `项目根有效: ${root}`
+				})
+			}
+		} catch (err) {
+			result.rootExists = false
+			result.rootValid = false
+			result.diagnostics.push({
+				check: 'root_exists',
+				status: 'FAIL',
+				message: `项目根不存在或无法访问: ${root} | ${String(err?.message || err)}`
+			})
+		}
+	} else {
+		result.diagnostics.push({ check: 'root_registered', status: 'FAIL', message: `指定projectId=${pid}的项目根未注册，将尝试在其他已注册项目中查找` })
+	}
+
+	try {
+		for (const [otherId, otherRoot] of projectRootById.entries()) {
+			if (otherId === pid) continue
+			if (!otherRoot) continue
+			for (const rc of buildRootCandidatesFor(otherRoot, otherId)) {
+				if (!rootCandidates.includes(rc)) rootCandidates.push(rc)
+			}
+		}
+	} catch { /* ignore */ }
+
+	if (rootCandidates.length === 0) {
+		result.diagnostics.push({ check: 'any_root_registered', status: 'FAIL', message: '没有任何已注册的项目根' })
 		result.suggestion = 're_register_root'
 		return result
 	}
 
-	// --- 4. 复现 handleProjectAssetRequest 的候选路径搜索逻辑 ---
+	let hitProjectId = pid
+
+	// --- 3. 解析请求路径 ---
 	const rel = String(result.requestedPath || '')
 		.replace(/\\/g, '/')
 		.trim()
 	if (!rel) {
 		result.diagnostics.push({ check: 'rel_path', status: 'FAIL', message: '请求路径为空' })
 		return result
-	}
-
-	const rootCandidates = [root]
-	try {
-		const normalizedRoot = String(root).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
-		if (normalizedRoot.endsWith('/content/media')) {
-			rootCandidates.push(path.resolve(String(root), '..', '..'))
-		} else if (normalizedRoot.endsWith('/generated-assets')) {
-			rootCandidates.push(path.resolve(String(root), '..'))
-		}
-	} catch {
-		/* ignore */
 	}
 
 	let cleanRel = rel
@@ -2117,6 +2169,7 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 					if (entry.isFile && !hitPath) {
 						hitPath = r.resolved
 						hitRoot = rc
+						hitProjectId = rootToProjectId.get(rc) || pid
 						result.resolvedTo = r.resolved
 						result.fileExists = true
 						result.fileIsFile = true
@@ -2137,6 +2190,8 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 			const fallbackHit = findFileByBasenameInProject(rootCandidate, fileName)
 			if (fallbackHit) {
 				hitPath = fallbackHit
+				hitRoot = rootCandidate
+				hitProjectId = rootToProjectId.get(rootCandidate) || pid
 				result.resolvedTo = fallbackHit
 				result.fileExists = true
 				result.fileIsFile = true
@@ -2161,7 +2216,7 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 						message: `文件可解析至: ${hitPath}`
 					})
 					try {
-						result.repairedAsset = buildAssetPayload(pid, hitPath, rootCandidate, {
+						result.repairedAsset = buildAssetPayload(hitProjectId, hitPath, rootCandidate, {
 							kind: inferKindFromFile(hitPath),
 							name: path.basename(hitPath),
 							contentType: null,
@@ -2183,7 +2238,9 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 			message: `文件可解析至: ${hitPath}`
 		})
 		try {
-			result.repairedAsset = buildAssetPayload(pid, hitPath, hitRoot || root, {
+			const effectiveRoot = hitRoot || root || (rootCandidates.length > 0 ? rootCandidates[0] : null)
+			const effectivePid = hitProjectId || pid
+			result.repairedAsset = buildAssetPayload(effectivePid, hitPath, effectiveRoot, {
 				kind: inferKindFromFile(hitPath),
 				name: path.basename(hitPath),
 				contentType: null,
@@ -2198,20 +2255,22 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 		return result
 	}
 
-	// --- 6. 文件未找到：在 Content/Media 和 Content/Generated 中模糊搜索同名文件 ---
+	// --- 6. 文件未找到：在所有候选项目根的 Content/Media 和 Content/Generated 中模糊搜索同名文件 ---
 	result.diagnostics.push({
 		check: 'file_found',
 		status: 'FAIL',
 		message: `所有候选路径都未找到文件: ${rel}`
 	})
 	const targetBase = path.basename(rel).split('?')[0].split('#')[0]
-	const searchDirs = [
-		path.resolve(root, 'Content', 'Media'),
-		path.resolve(root, 'Content', 'Generated'),
-		path.resolve(root, 'generated-assets'),
-		path.resolve(root, CACHE_BIN_DIR),
-		path.resolve(root, CACHE_DIR)
-	]
+	const searchDirs = []
+	for (const rc of rootCandidates) {
+		if (!rc) continue
+		searchDirs.push(path.resolve(rc, 'Content', 'Media'))
+		searchDirs.push(path.resolve(rc, 'Content', 'Generated'))
+		searchDirs.push(path.resolve(rc, 'generated-assets'))
+		searchDirs.push(path.resolve(rc, CACHE_BIN_DIR))
+		searchDirs.push(path.resolve(rc, CACHE_DIR))
+	}
 	const similar = []
 	const targetLower = targetBase.toLowerCase()
 	for (const dir of searchDirs) {
@@ -2225,11 +2284,24 @@ export function diagnoseDwebAsset({ projectId, relPath, url }) {
 			status: 'INFO',
 			message: `在项目目录找到 ${similar.length} 个相似文件，可作为修复参考`
 		})
-		// 尝试按文件名精确匹配修复
 		const exactHit = similar.find((s) => s.name === targetBase) || similar[0]
 		if (exactHit) {
 			try {
-				result.repairedAsset = buildAssetPayload(pid, exactHit.path, root, {
+				let exactHitRoot = root || (rootCandidates.length > 0 ? rootCandidates[0] : null)
+				let exactHitPid = pid
+				for (const rc of rootCandidates) {
+					if (!rc) continue
+					const normRc = path.resolve(rc)
+					const normHit = path.resolve(exactHit.path)
+					const rcWithSep = normRc.endsWith(path.sep) ? normRc : normRc + path.sep
+					if (normHit === normRc || normHit.startsWith(rcWithSep) ||
+						(process.platform === 'win32' && normHit.toLowerCase().startsWith(rcWithSep.toLowerCase()))) {
+						exactHitRoot = rc
+						exactHitPid = rootToProjectId.get(rc) || pid
+						break
+					}
+				}
+				result.repairedAsset = buildAssetPayload(exactHitPid, exactHit.path, exactHitRoot, {
 					kind: inferKindFromFile(exactHit.path),
 					name: exactHit.name,
 					contentType: null,
