@@ -1,5 +1,9 @@
 # 前端开发指引 (Frontend Guide)
 
+## ⚠️ 重要架构变更
+
+**后端通信已从 Django HTTP 改为 Electron IPC**。所有后端调用通过 `src/network/ipcClient.ts` 走 Electron IPC 通道，不再使用 HTTP 请求到 localhost。
+
 ## 1. 技术栈
 - **框架**: Vue 3（Composition API, `<script setup lang="ts">`）
 - **语言**: TypeScript
@@ -160,29 +164,49 @@
 - `ui/`：页面内嵌 UI（`AIWorkflowDebugPanel.vue`）
 
 ## 9. Network 层（`src/network/`）
-- `AIChatService.ts`：AI 对话（Copilot CLI / Codex CLI），流式 SSE
+- **`ipcClient.ts`**：**IPC 统一客户端（核心）**
+  - `hasIpcApi()` / `hasIpcModule(namespace)`：检测 IPC 可用性
+  - `ipcCall<T>()`：调用 IPC 方法并自动解包 `{ ok, value, error }` 格式
+  - `ipcStream<T>()`：调用流式 IPC 方法，返回异步生成器
+  - `unwrapIpcResult()`：手动解包 IPC 返回结果
+  - `ipcOrHttp()` / `ipcStreamOrHttp()`：迁移期兼容层（优先 IPC，失败回退 HTTP）
+- `AIChatService.ts`：AI 对话（外部 API 直连，流式 IPC）
 - `AICredentialService.ts`：API 凭证管理
-- `ComfyUIBridgeService.ts`：ComfyUI 桥接
-- `BlueprintProjectService.ts`：项目保存 / 加载
-- `ComponentLibraryService.ts`：组件库
-- `ExportService.ts`：导出任务
+- `ComfyUIBridgeService.ts`：ComfyUI 桥接（IPC）
+- `BlueprintProjectService.ts`：项目保存 / 加载（IPC）
+- `ComponentLibraryService.ts`：组件库（IPC）
+- `ExportService.ts`：导出任务（IPC）
 - `UnrealExportService.ts`：Unreal 导出
 - `LegalDocService.ts`：法律文档
 - `LocalExecChatService.ts`：本地执行型对话
-- `SceneSkillService.ts`：场景理解 / 灯光 / 布局 / Unreal 等 Agent Skills
-- `SubtitleAIService.ts`：字幕 AI（subtitle / palette / template 等）
-- `backendConfig.ts`：后端地址解析 + `resolveBackendUrl()` 工具
-- `runtimePlatform.ts`：运行平台检测
+- `SceneSkillService.ts`：场景理解 / 灯光 / 布局 / Unreal 等 Agent Skills（IPC）
+- `SubtitleAIService.ts`：字幕 AI（subtitle / palette / template 等，IPC）
+- `backendConfig.ts`：配置 + `resolveBackendUrl()` 工具
+- `runtimePlatform.ts`：运行平台检测（electron / web / unknown）
 - `blueprintRequestLog.ts`：请求日志
 
 ## 10. Electron 桥接（`src/electronBridge/`）
+- 所有 IPC 调用通过此层封装，**禁止**在组件中直接使用 `window.dweb.*`。
 - 命名空间：
-  - `common.*`：后端地址/状态、设置、setup、诊断、窗口、引导安装
-  - `aiworkflow.*`：项目/资源/Meshy/Video 任务、LocalDB、API 密钥、图片标注、资源管理器
-  - `videostudio.*`：导出目录等
+  - `common.*`：应用信息、后端状态、设置、诊断、窗口控制、引导安装
+  - `chat.*`：AI 对话（含流式通道）
+  - `export.*`：导出服务
+  - `editor.*`：编辑器后端（组件库等）
+  - `comfyui.*`：ComfyUI 桥接
+  - `thirdParty.*`：三方 API
+  - `projects.*`：项目管理
+  - `projectAssets.*`：项目资产
+  - `meshy.*`：Meshy 3D
+  - `seedance.*`：Seedance 视频
+  - `agentSkills.*`：Agent Skills
+  - `codex.*`：Codex/Copilot（可选）
+  - `aiworkflow.*`：项目根注册、资产操作、资源管理器、图片标注、LocalDB 访问
   - `window.*`：最小化/最大化/重载/开发者工具
   - `platform.*`：平台能力（Steam 状态/用户/好友/Overlay/DLC/热键）
 - 详细函数清单请查阅 `src/electronBridge/index.ts` 与 `src/electronBridge/types.ts`。
+- **IPC 调用统一使用 `src/network/ipcClient.ts`**：
+  - 普通调用：`ipcCall(() => window.dweb.<namespace>.<method>(...args))`
+  - 流式调用：`ipcStream(() => window.dweb.<namespace>.<method>Stream(...args))`
 
 ## 11. 平台桥接层（`src/platformBridge/`）—— 新增模块
 > 所有平台相关功能（Steam 等）必须通过此层访问，禁止直接调用 `window.dweb.platform.*`。

@@ -1,152 +1,414 @@
 # 后端开发指引 (Backend Guide)
 
+## ⚠️ 重要提示
+
+**Django 已完全移除**。本项目后端不再使用 Django 或任何 HTTP 服务器框架。所有后端逻辑运行在 Electron 主进程中，通过 IPC 与渲染进程通信。
+
 ## 1. 技术栈
-- **框架**: Django 4.2.11（**不是泛指 Django 4+**）
-- **语言**: Python 3.11+
-- **Web API**: Django REST Framework 3.14
-- **核心依赖**（见 `django-app/requirements.txt`）：
-  - `Django==4.2.11`
-  - `djangorestframework==3.14.0`
-  - `django-cors-headers==4.4.0`
-  - `cryptography==42.0.8`（API 密钥加密辅助）
-  - `certifi>=2024.0.0`（CDN SSL 兼容）
-  - `Pillow>=10.4.0`
-- **SSE 实现**: **Django 原生 `StreamingHttpResponse`**，**不依赖** `sse-starlette` 或 `sse-starlette-serve`。
-  - 统一封装在 `dwebapp/ai/api/chat/utils.py` 的 `_sse` / `_apply_sse_headers` 工具中
-  - 所有 Copilot/Codex/字幕/调色板/模板/导出/Agent Skills 等流式接口均使用此 SSE 通道
-- **CORS**: `corsheaders`，`CORS_ALLOW_ALL_ORIGINS = True`（开发环境简化）
 
-## 2. App 划分
+- **运行环境**: Electron 主进程 Node.js（ESM 模块，`.mjs` 后缀）
+- **通信方式**: Electron IPC（`ipcMain.handle` / `ipcRenderer.invoke`）
+- **流式传输**: IPC 三通道模式（`:stream` 启动 + `:data` 数据块 + `:end` 结束 + `:error` 错误）
+- **外部 HTTP 调用**: 内置 `electron/backend/core/http-client.mjs`（支持普通请求 + SSE 流式请求）
+- **本地数据库**: better-sqlite3（通过 `electron/localdb/` 访问）
+- **日志**: `electron/backend/core/logger.mjs`
+- **错误处理**: `electron/backend/core/errors.mjs`（统一错误类型 + wrapError 包装）
+- **Python Bridge**（可选）: 仅用于字幕处理等计算密集型任务，非核心依赖
 
-| App | 路径 | 用途 |
-| --- | --- | --- |
-| `dwebapp` | `django-app/dwebapp/` | 核心 App：健康检查、AI 凭证、AI 对话、字幕理解、Export Jobs、法律文档、用户协议 |
-| `dweb_models` | `django-app/dweb_models/` | DBVision 自动生成的共享模型（通常为空壳） |
-| `codex_bridge` | `django-app/codex_bridge/` | **GitHub Copilot CLI（首选）** 与 **Codex CLI（兼容）** 桥接；提供 `/api/workflow/copilot/*` 与 `/api/workflow/codex/*` |
-| `aiworkflow_project` | `django-app/aiworkflow_project/` | 工作流项目 + 资产 API（`assets/` 写操作主要被 Electron 主进程调用） |
-| `comfyui_bridge` | `django-app/comfyui_bridge/` | ComfyUI 桥接 + 项目模型；同时是**三方 API 共享实现库**（Meshy / Seedance / NanoBanana / SeeDream / 即梦 的实现函数都在 `api.py`） |
-| `third_party_api_gateway` | `django-app/third_party_api_gateway/` | 三方 API 网关**新路由层**（挂在 `/api/third-party/`）；包装 `comfyui_bridge.api` 中的实现并暴露为 HTTP 端点；**模型（`MeshyTaskMirror` / `VideoGenerationTaskMirror`）实际定义在此** |
-| `dvs_editor` | `django-app/dvs_editor/` | 视频编辑器后端支持：组件库（`/api/editor/component-library/*`） |
-| `agentSkills` | `django-app/agentSkills/` | Agent Skills：场景理解 / 灯光 / 布局 / Unreal 导出（`/api/agent-skills/*`） |
+## 2. 后端目录结构
 
-注册入口：`django-app/dwebsite/settings.py` 的 `INSTALLED_APPS` 与 `django-app/dwebsite/urls.py` 的 `urlpatterns`。
-
-## 3. AI 对话与 SSE（`dwebapp/ai/api/`）
-
-> 实现已被拆分到 `dwebapp/ai/api/` 包；`chat_api.py` 仍然作为 re-export 兼容旧 import 路径。
-
-- `chat/`：SSE 对话实现
-  - `utils.py`：SSE 工具、SSE 头部、深求（DeepSeek）配置、Agent-to-UI 协议解析
-  - `views.py`：`create_conversation` / `send_message` / `stream_message`
-- `subtitle_understanding/`：字幕理解相关工具（`utils.py`）
-- `credentials_api.py`：API 凭证（明文读取不直接暴露，由 `credentials_store.py` 加密存储）
-- `credentials_store.py`：基于 `cryptography.fernet` 的加密封装
-
-> **Copilot / Codex** 的实现不在 `dwebapp/ai/` 中，而是在 `codex_bridge/services/{copilot_cli,codex,orchestrator}.py`。`dwebapp/ai/api/chat` 主要负责把 SSE 数据流以 Agent-to-UI 协议格式返回前端。
-
-## 4. 提示词与 Agent Skills（`dwebapp/ai/skills/`）
-- `palette/`：调色板生成
-- `subtitle/`：字幕分段 / 标题 / 摘要 / 风格 / 模板 / 面板补丁
-- `component_template/`：组件模板生成（含 `presets.py` 预设）
-- `outline_style/`：大纲 → 样式
-- `conversation_component/`：对话式组件
-- `video_gui/`：视频 GUI 规划（含 `presets.py` 预设）
-- `protocol/`：Agent ↔ UI 协议（`agent_to_ui_jsonl` / `message_builder`）
-- 每个 skill 子目录下通常包含：`agent.py`（实现）+ 多个 `*.md`（提示词 / 模板）+ `*.py`（辅助解析）
-- 共用工具：`dwebapp/ai/_md_prompts.py`
-
-## 5. Agent Skills App（`django-app/agentSkills/`）
-- `skills/`：Skill 实现子目录
-  - `sceneLayoutSkill/`：场景布局 Skill（`sceneLayout_skill.py`）
-  - `sceneUnderstandSkill/`：场景理解 Skills
-    - `lightAgentSkill/`：灯光 Skill（含 system_prompt.md、schema 定义）
-    - `layoutAgentSkill/`：布局 Skill（含 system_prompt.md、schema 定义）
-    - `sceneLighting_skill.py` / `sceneUnderstand_skill.py` 等
-- `unreal_export.py`：Unreal 导出实现
-- `views.py`：API 视图
-- `urls.py`：路由（`/api/agent-skills/*`）
-
-## 6. CodeX / Copilot 桥接（`codex_bridge/`）
-- `services/copilot_cli.py`：Copilot CLI 可执行文件路径解析（本地 `node_modules/@github/copilot`、`npx`、nvm、Scoop、WinGet 等）
-- `services/codex.py`：Codex CLI 包装
-- `services/orchestrator.py`：`CodexOrchestrator` 统一选择 Copilot / Codex 桥接
-- `views.py`：会话管理、SSE 流式输出、health_check、workspace_references
-- `models.py`：`ChatSession` / `ChatMessage`
-- `management/commands/codex_smoke_test.py`：smoke 测试命令
-- `smoke_reports/`：历史 smoke 报告
-- 环境变量：
-  - `COPILOT_CLI_*`：Copilot CLI 配置（默认启用）
-  - `CODEX_*`：Codex CLI 配置（兼容，可选）
-  - `DWEB_LOG_LEVEL`：codex_bridge logger 级别
-
-## 7. 工作流项目与资产（`aiworkflow_project/`）
-- `models.py`：`BlueprintProject`（表名 `comfyui_blueprint_project`，与 LocalDB `projects` 表互为镜像）
-- `projects/api.py`：项目 CRUD（list / save / load / delete / open-folder）
-- `projects/storage.py`：项目快照加载 / 保存
-- `assets/api.py`：资产上传 / 导入 / 删除 / 解析 / 修复（**当前不通过 `urls.py` 暴露给前端**，主要被 Electron `projectStaticAssets/service.mjs` 调用）
-- `urls.py` 当前只挂载了 `assets/health`，其余端点保留为内嵌函数式 API
-
-## 8. ComfyUI + 三方 API 网关（`comfyui_bridge/` + `third_party_api_gateway/`）
-- **共享实现库**：`comfyui_bridge/api.py` —— 核心实现，包含 ComfyUI、Meshy、Seedance、NanoBanana、SeeDream、即梦等所有三方服务的调用函数
-- `comfyui_bridge/models.py`：**仅包含 `BlueprintProject`**（表名 `comfyui_blueprint_project`）
-- `comfyui_bridge/urls.py`：对外暴露 ComfyUI 相关路由（`/api/workflow/`）
-- **新路由层**：`third_party_api_gateway/` —— 包装 `comfyui_bridge.api` 中的实现
-  - `api.py`：包装共享实现并暴露为 HTTP 路由
-  - `urls.py`：`/api/third-party/` 下所有路由
-  - `models.py`：**`MeshyTaskMirror` + `VideoGenerationTaskMirror` 实际定义在此**（表名 `third_party_meshy_task_mirror` / `third_party_video_generation_task_mirror`）
-- **路由前缀**：
-  - ComfyUI 与项目 CRUD：`/api/workflow/`（来自 `comfyui_bridge/urls.py`）
-  - 三方 API 网关：`/api/third-party/`（来自 `third_party_api_gateway/urls.py`）
-- **新增三方 API 接入**统一在 `third_party_api_gateway/` 添加新 URL + View 实现，复用 `comfyui_bridge.api` 中的实现函数
-
-## 9. 数据库与迁移
-
-### 9.1 Django SQLite
-- 默认使用 SQLite（本地桌面端场景）。
-- 数据库文件路径由 `DWEB_DATA_DIR` 环境变量控制（`django-app/dwebsite/settings.py` 中解析）：
-  - 若 `DWEB_DATA_DIR` 为空 / 未设置，则使用 `BASE_DIR`（开发模式）
-  - 否则使用 `DWEB_DATA_DIR/db.sqlite3`（生产 / 运行时）
-- `SECRET_KEY` 在首次启动时自动生成并写入 `DWEB_DATA_DIR/django_secret_key.txt`
-- `STATIC_ROOT` / `MEDIA_ROOT` 也使用 `DWEB_DATA_DIR`
-- 上传大小上限：`DWEB_UPLOAD_LIMIT_BYTES`（默认 256MB）
-
-### 9.2 Electron LocalDB（better-sqlite3）
-- 位于 `electron/localdb/`，**与 Django SQLite 是双轨**：
-  - **LocalDB 是运行时事实来源**（新项目/任务/凭证都先写这里，表名 `projects` / `meshy_tasks` / `video_tasks` / `api_keys`）
-  - Django SQLite 主要承担"迁移期镜像"角色（`comfyui_blueprint_project` / `third_party_meshy_task_mirror` / `third_party_video_generation_task_mirror`）
-- 新增表 / 字段时：先在 `electron/localdb/migrations.mjs` 写 `runV<n>(db)`，并在文件顶部 `TARGET_VERSION += 1`
-- Django 侧的 Django ORM 模型（`models.py` 的 `managed = False`）**只用于查询**和单元测试；**不要**通过 Django 的 migration 改表结构
-
-### 9.3 Django 迁移命令
-```bash
-# 在 django-app 目录中
-python manage.py makemigrations <app>
-python manage.py migrate
 ```
-- 在 Electron 模式下，主进程会调用 `runLegacyDbMigration`（`electron/localdb/ipc/djangoMigrate.mjs`）在升级/启动时执行 `migrate`。
-- **不要**把 `models.py` 改成 `managed = True`，除非明确要把 Django 也作为写入路径。
+electron/backend/
+├── index.mjs              # 后端入口（initBackend/shutdownBackend）
+├── router.mjs             # IPC 路由注册器（createRouter）
+├── context.mjs            # 请求上下文工厂
+├── diagnostics.mjs        # 诊断信息收集
+├── python.mjs             # Python 环境检测
+├── runtimeCleanup.mjs     # 旧运行时清理
+├── projectAssetProtocol.mjs  # dweb:// 协议实现
+├── core/                  # 核心工具库
+│   ├── logger.mjs
+│   ├── errors.mjs
+│   ├── http-client.mjs    # HTTP 客户端（外部 API 调用）
+│   ├── sse-parser.mjs     # SSE 解析器
+│   └── stream.mjs         # IPC 流处理器
+├── modules/               # 功能模块（按业务域划分）
+│   ├── system/            # 系统模块
+│   ├── projects/          # 项目管理
+│   ├── project-assets/    # 项目资产
+│   ├── chat/              # AI 对话
+│   ├── codex/             # Codex/Copilot CLI
+│   ├── comfyui/           # ComfyUI 桥接
+│   ├── meshy/             # Meshy 3D
+│   ├── seedance/          # Seedance 视频
+│   ├── third-party/       # 三方 API 网关
+│   ├── editor/            # 编辑器（组件库等）
+│   ├── export/            # 导出
+│   ├── subtitle/          # 字幕处理
+│   └── agent-skills/      # Agent Skills
+├── projectStaticAssets/   # 静态资产服务
+│   ├── manifest.mjs
+│   ├── paths.mjs
+│   └── service.mjs
+└── python-bridge/         # Python Bridge（可选）
+    ├── index.mjs
+    ├── runtime.mjs
+    ├── rpc.mjs
+    ├── pip.mjs
+    └── scripts/           # Python 侧脚本
+```
 
-## 10. 第三方调用规范
-- **统一入口**: 所有大模型请求应通过 `dwebapp.ai` 模块或 `comfyui_bridge` / `codex_bridge` 内的封装函数发起，**禁止**在 Views 中直接拼 HTTP。
-- **流式输出 (SSE)**: 对话类接口（`/api/chat/...`、`/api/agent-skills/.../...:stream` 等）必须通过 `dwebapp.ai.api.chat.utils._sse` 工具返回 `StreamingHttpResponse`。
-- **API 凭证**: 不得在日志或错误信息中输出明文 API Key；通过 `credentials_store.py` 的密文存储 + 运行时解密。
-- **CDN SSL 兼容**: 字节方舟等 CDN 存在 SSL EOF / TLS 兼容问题，下载工具（如 `assets/api.py` 中的 `_stream_url_to_file`）使用 `certifi` + 自定义 SSL context + 指数退避重试。
+## 3. 后端核心机制
 
-## 11. 关键文件位置速查
+### 3.1 入口与初始化
 
-| 关注点 | 路径 |
-| --- | --- |
-| Django 设置 | `django-app/dwebsite/settings.py` |
-| Django URL 入口 | `django-app/dwebsite/urls.py` |
-| 核心 App | `django-app/dwebapp/` |
-| AI 对话实现 | `django-app/dwebapp/ai/api/chat/` |
-| 字幕理解 | `django-app/dwebapp/ai/api/subtitle_understanding/` |
-| dwebapp Skills | `django-app/dwebapp/ai/skills/`（palette / subtitle / protocol 等） |
-| Copilot / Codex 桥接 | `django-app/codex_bridge/services/` |
-| 项目 + 资产 | `django-app/aiworkflow_project/` |
-| ComfyUI 桥接 + 共享实现 | `django-app/comfyui_bridge/api.py`（**共享实现库，被 `third_party_api_gateway` 复用**） |
-| ComfyUI 模型 | `django-app/comfyui_bridge/models.py`（`BlueprintProject`） |
-| 三方 API 网关（新路由层） | `django-app/third_party_api_gateway/{api,urls,models}.py`（挂在 `/api/third-party/`） |
-| 三方 API 模型 | `django-app/third_party_api_gateway/models.py`（`MeshyTaskMirror` + `VideoGenerationTaskMirror`） |
-| 组件库 | `django-app/dvs_editor/api/component_library.py` + `django-app/dvs_editor/models.py` |
-| Agent Skills App | `django-app/agentSkills/`（sceneLayoutSkill / sceneUnderstandSkill / unreal_export） |
+后端入口在 [electron/backend/index.mjs](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/index.mjs)：
+
+```javascript
+import { initBackend, shutdownBackend } from './backend/index.mjs'
+
+// 初始化（在 main.mjs 的 app.whenReady() 后调用）
+initBackend(mainWindow, deps)
+
+// 关闭（应用退出时调用）
+shutdownBackend()
+```
+
+`initBackend()` 会：
+1. 收集所有模块的 routes
+2. 创建 router 并注册所有 IPC 通道
+3. 恢复已注册的项目根路径
+4. 启动 Unreal HTTP 服务器（用于 Unreal 集成）
+
+### 3.2 Router 机制
+
+[electron/backend/router.mjs](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/router.mjs) 提供统一的 IPC 路由注册：
+
+- 自动包装 handler，统一 `{ ok, value, error }` 返回格式
+- 自动捕获异常并包装为标准化错误
+- 支持流式 handler（`stream: true`），通过 `createStreamHandler` 处理
+- 自动检查重复 channel 注册
+
+### 3.3 统一返回格式
+
+所有 IPC handler **必须**返回以下格式之一：
+
+```javascript
+// 成功
+{ ok: true, value: <返回数据> }
+// 或直接返回数据（router 会自动包装为 { ok: true, value: data }）
+return data
+
+// 失败
+{ ok: false, error: '错误消息' }
+// 或抛出异常（router 会自动捕获并包装）
+throw new Error('错误消息')
+```
+
+前端使用 `src/network/ipcClient.ts` 的 `unwrapIpcResult()` 或 `ipcCall()` 自动解包。
+
+### 3.4 请求上下文（Context）
+
+每个请求通过 `context.mjs` 的工厂函数创建上下文，包含：
+
+- `mainWindow`: 主窗口引用
+- `repos`: LocalDB 仓库集合（projects, meshyTasks, videoTasks, apiKeys 等）
+- 其他依赖（在 initBackend 时通过 deps 传入）
+
+### 3.5 流式响应（IPC Stream）
+
+对于需要流式输出的场景（如 AI 对话），使用 IPC 三通道模式：
+
+1. 前端调用 `channel:stream` 启动流
+2. 后端通过 `channel:data` 事件发送数据块（带 requestId）
+3. 后端通过 `channel:end` 事件通知结束（带 requestId）
+4. 出错时通过 `channel:error` 发送错误（带 requestId）
+
+使用 `core/stream.mjs` 的 `createStreamHandler` 简化流处理：
+
+```javascript
+// routes.mjs
+{
+  channel: 'dweb:chat:sendMessage',
+  stream: true,
+  handler: chatStreamHandler
+}
+
+// handlers.mjs - 流 handler 接收 (ctx, payload, event) 并返回异步生成器
+async function* chatStreamHandler(ctx, payload) {
+  for await (const chunk of callExternalAI(payload)) {
+    yield chunk  // 每个 yield 会作为 :data 事件发送
+  }
+}
+```
+
+前端使用 `preload.mjs` 中的 `createIpcStreamGenerator` 创建异步迭代器。
+
+### 3.6 核心工具
+
+#### Logger ([core/logger.mjs](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/core/logger.mjs))
+```javascript
+import logger from './core/logger.mjs'
+logger.info('message')
+logger.warn('warning')
+logger.error('error', err)
+logger.debug('debug info')
+```
+
+#### Errors ([core/errors.mjs](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/core/errors.mjs))
+```javascript
+import { UpstreamError, ValidationError, wrapError } from './core/errors.mjs'
+
+throw new ValidationError('参数无效')
+throw new UpstreamError('外部 API 调用失败')
+// wrapError 会自动将任意错误包装为标准格式
+```
+
+#### HTTP Client ([core/http-client.mjs](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/core/http-client.mjs))
+
+用于调用外部 AI/三方 API（DeepSeek、Gemini、Meshy、Seedance 等）：
+
+```javascript
+import { getHttpClient } from './core/http-client.mjs'
+
+const http = getHttpClient()
+
+// 普通请求
+const res = await http.post('https://api.example.com/endpoint', { key: 'value' })
+if (res.ok) {
+  console.log(res.body)
+}
+
+// SSE 流式请求
+for await (const line of http.postStream('https://api.example.com/stream', body)) {
+  // 处理 SSE 行
+}
+```
+
+## 4. 功能模块规范
+
+### 4.1 模块结构
+
+每个功能模块位于 `electron/backend/modules/<module-name>/`，必须包含：
+
+| 文件 | 必填 | 用途 |
+| --- | --- | --- |
+| `routes.mjs` | 是 | 导出 `routes` 数组，定义该模块的所有 IPC 通道 |
+| `handlers.mjs` | 是 | 实现每个路由的 handler 函数 |
+| `service.mjs` | 否 | 业务逻辑层（复杂模块建议抽取到 service） |
+
+### 4.2 routes.mjs 格式
+
+```javascript
+// modules/example/routes.mjs
+import { helloHandler, streamHandler } from './handlers.mjs'
+
+export const routes = [
+  {
+    channel: 'dweb:example:hello',
+    handler: helloHandler,
+    // stream: false  // 默认非流式
+  },
+  {
+    channel: 'dweb:example:stream',
+    handler: streamHandler,
+    stream: true,  // 标记为流式 handler
+  },
+]
+```
+
+**Channel 命名规范**: `dweb:<module>:<action>`
+- 模块名使用 kebab-case（如 `project-assets`、`third-party`、`agent-skills`）
+- 使用动词或名词清晰描述操作
+
+### 4.3 handlers.mjs 格式
+
+```javascript
+// modules/example/handlers.mjs
+import { ValidationError } from '../../core/errors.mjs'
+
+export async function helloHandler(ctx, payload, event) {
+  const name = String(payload?.name || 'World')
+  return { message: `Hello, ${name}!` }
+  // 或返回 { ok: true, value: { message: ... } }
+}
+
+// 流式 handler: async generator
+export async function* streamHandler(ctx, payload) {
+  const count = Number(payload?.count || 5)
+  for (let i = 0; i < count; i++) {
+    yield { index: i, text: `Chunk ${i}` }
+    await new Promise(r => setTimeout(r, 100))
+  }
+}
+```
+
+### 4.4 注册新模块
+
+在 [electron/backend/index.mjs](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/index.mjs) 中：
+
+1. 导入 routes：
+```javascript
+import { routes as exampleRoutes } from './modules/example/routes.mjs'
+```
+
+2. 添加到 allRoutes 数组：
+```javascript
+const allRoutes = [
+  // ... 现有路由
+  ...exampleRoutes,
+]
+```
+
+3. 如有需要，在 preload.mjs 中暴露对应的前端 API（参考现有模块的暴露方式）。
+
+## 5. 现有后端模块详解
+
+### 5.1 System 模块 (`modules/system/`)
+- **职责**: 系统健康检查、迁移状态、诊断信息
+- **Channels**:
+  - `dweb:system:ping` - 健康检查
+  - `dweb:system:migration-checklist` - 迁移检查清单
+  - `dweb:diagnostics:collect` - 收集诊断信息（通过 main.mjs 注册）
+
+### 5.2 Projects 模块 (`modules/projects/`)
+- **职责**: 项目 CRUD（列表/保存/加载/删除/从文件夹打开）
+- **Channels**: `dweb:projects:list`, `dweb:projects:save`, `dweb:projects:load`, `dweb:projects:delete`, `dweb:projects:open-folder` 等
+- **数据来源**: LocalDB `projects` 表（唯一事实来源）
+
+### 5.3 Project Assets 模块 (`modules/project-assets/`)
+- **职责**: 项目资产元数据管理
+- **Channels**: 资产列表、元数据查询等
+- **注意**: 资产的二进制操作（上传/导入/下载）通过 `projectStaticAssets/service.mjs` 和 `dweb://` 协议处理
+
+### 5.4 Chat 模块 (`modules/chat/`)
+- **职责**: AI 对话服务（直接调用外部 AI API）
+- **Channels**:
+  - `dweb:chat:sendMessage` (stream) - 发送消息并流式返回响应
+  - `dweb:chat:listModels` - 获取可用模型列表
+- **支持的 AI 提供商**: DeepSeek（默认）、Gemini、ByteDance（豆包）等
+- **API 密钥存储**: LocalDB `api_keys` 表（AES-256-GCM 加密）
+- **HTTP 调用**: 使用 `core/http-client.mjs` 直接调用外部 API
+
+### 5.5 Codex 模块 (`modules/codex/`)
+- **职责**: GitHub Copilot CLI / Codex CLI 集成（可选）
+- **Channels**: `dweb:codex:sendMessage` (stream) 等
+- **注意**: 这是可选功能，需要本地安装 Copilot/Codex CLI
+
+### 5.6 ComfyUI 模块 (`modules/comfyui/`)
+- **职责**: ComfyUI 工作流桥接
+- **Channels**: ComfyUI 工作流提交、状态查询、结果获取等
+- **任务存储**: LocalDB `comfyui_jobs` 表
+
+### 5.7 Meshy 模块 (`modules/meshy/`)
+- **职责**: Meshy 3D 模型生成 API 集成
+- **Channels**: 3D 生成任务提交、状态查询、结果下载等
+- **任务存储**: LocalDB `meshy_tasks` 表
+- **HTTP 调用**: 通过 `core/http-client.mjs` 调用 Meshy API
+
+### 5.8 Seedance 模块 (`modules/seedance/`)
+- **职责**: Seedance 视频生成 API 集成
+- **Channels**: 视频生成任务提交、状态查询等
+- **任务存储**: LocalDB `video_tasks` 表
+
+### 5.9 Third-Party 模块 (`modules/third-party/`)
+- **职责**: 三方 API 统一网关
+- **Channels**: 统一的三方 API 调用入口
+- **包含**: NanoBanana、SeeDream、即梦（Jimeng）等三方服务
+
+### 5.10 Editor 模块 (`modules/editor/`)
+- **职责**: 视频编辑器后端支持（组件库等）
+- **Channels**: 组件库列表、组件 CRUD 等
+
+### 5.11 Export 模块 (`modules/export/`)
+- **职责**: 视频/项目导出
+- **Channels**: 导出任务提交、状态查询、ffmpeg 调用（通过 child_process）
+- **任务存储**: LocalDB `export_jobs` 表
+
+### 5.12 Subtitle 模块 (`modules/subtitle/`)
+- **职责**: 字幕处理（字幕解析、SRT 导出、AI 字幕等）
+- **Channels**: 字幕解析、格式化等
+- **注意**: 部分计算密集型任务通过 **Python Bridge** 执行
+
+### 5.13 Agent Skills 模块 (`modules/agent-skills/`)
+- **职责**: Agent Skills（场景理解、灯光、布局、Unreal 导出等）
+- **Channels**: 场景理解、布局建议、Unreal 导出等
+- **特殊功能**: 内置独立 HTTP 服务器用于 Unreal Engine 集成（`startUnrealHttpServer`）
+
+## 6. Python Bridge（可选）
+
+[electron/backend/python-bridge/](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/python-bridge/) 提供可选的 Python 工作进程支持：
+
+- **用途**: 字幕处理等需要 Python 生态的计算密集型任务
+- **非核心依赖**: 核心功能（AI 对话、工作流、资产管理等）不依赖 Python
+- **组件**:
+  - `runtime.mjs`: Python 子进程管理
+  - `rpc.mjs`: Node.js ↔ Python RPC 通信
+  - `pip.mjs`: pip 包管理（按需安装依赖）
+  - `scripts/worker.py`: Python worker 进程入口
+  - `scripts/subtitle/`: 字幕处理 Python 实现
+
+**使用原则**:
+1. 新增核心功能优先使用 Node.js 实现
+2. 仅在必须使用 Python 特定库（如某些音频/视频处理库）时才使用 Python Bridge
+3. Python 相关功能必须有优雅降级（Python 不可用时给出明确提示）
+
+## 7. LocalDB 访问
+
+后端模块通过 context 中的 `repos` 访问 LocalDB：
+
+```javascript
+export async function exampleHandler(ctx, payload) {
+  const { projects, apiKeys, meshyTasks } = ctx.repos
+  
+  // 查询项目
+  const projectList = projects.list()
+  
+  // 保存 API Key（自动加密）
+  await apiKeys.set('deepseek', { apiKey: 'sk-xxx', baseUrl: '...' })
+  
+  // 获取 API Key（自动解密）
+  const key = await apiKeys.get('deepseek')
+  
+  return { ok: true }
+}
+```
+
+LocalDB 仓库位于 [electron/localdb/repos/](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/localdb/repos/)，包含：
+- `projects.mjs` - 项目仓库
+- `apiKeys.mjs` - API 密钥（加密存储）
+- `meshyTasks.mjs` - Meshy 任务
+- `videoTasks.mjs` - 视频生成任务
+- `comfyuiJobs.mjs` - ComfyUI 任务
+- `exportJobs.mjs` - 导出任务
+
+新增数据字段必须通过 [electron/localdb/migrations.mjs](file:///G:/DwebStudio/DwebVideoStudio/DVStudio/electron/localdb/migrations.mjs) 添加迁移。
+
+## 8. 前端调用方式
+
+前端通过 `src/electronBridge/index.ts` 和 `src/network/ipcClient.ts` 调用后端：
+
+```typescript
+import { ipcCall, hasIpcModule } from '../network/ipcClient'
+
+// 检测模块可用性
+if (hasIpcModule('chat')) {
+  // 调用 IPC
+  const result = await ipcCall(() => window.dweb.chat.sendMessage({ message: 'hello' }))
+}
+
+// 流式调用
+const generator = window.dweb.chat.sendMessageStream({ message: 'hello' })
+for await (const chunk of generator) {
+  // 处理流式数据
+}
+```
+
+## 9. 禁止事项
+
+1. **禁止添加新的 HTTP 服务器**：除了 Unreal 导出专用的 HTTP 服务器外，不要在后端启动任何 HTTP 服务器
+2. **禁止直接使用 Django**：不要添加任何 Django/Python HTTP 服务器相关代码
+3. **禁止在后端操作 DOM**：后端运行在 Electron 主进程，不能访问 window/document
+4. **禁止硬编码外部 API 地址**：外部 API 的 base URL 和密钥应允许用户配置（存储在 LocalDB 或 settings.json）
+5. **禁止在 handler 中执行长时间阻塞操作**：使用异步生成器（stream）处理长时间运行的任务
+6. **禁止直接修改 dweb:// 协议路径外的文件**：文件操作必须限制在项目根目录或 DVSResource 目录内

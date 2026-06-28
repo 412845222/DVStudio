@@ -24,6 +24,15 @@
 				>
 					画笔
 				</button>
+				<button
+					class="imp-btn"
+					type="button"
+					:class="{ active: mode === 'screenshot' }"
+					@click="setMode('screenshot')"
+					title="截图模式：框选区域截图"
+				>
+					截图
+				</button>
 				<span class="imp-sep"></span>
 				<button class="imp-btn" type="button" @click="zoomBy(1.2)" title="放大">放大</button>
 				<button class="imp-btn" type="button" @click="zoomBy(1 / 1.2)" title="缩小">缩小</button>
@@ -38,31 +47,48 @@
 				<button class="imp-btn" type="button" @click="rotateBy(90)" title="向右旋转 90°">
 					右旋
 				</button>
-				<span class="imp-sep"></span>
-				<label class="imp-brush-label">
-					画笔粗细：
-					<input
-						type="range"
-						min="1"
-						max="40"
-						step="1"
-						v-model.number="brushSize"
-						class="imp-brush-range"
-					/>
-					<span class="imp-brush-size">{{ brushSize }}px</span>
-				</label>
-				<span class="imp-sep"></span>
-				<button class="imp-btn" type="button" @click="clearBrush" title="清除所有画笔标记">
-					清除标记
-				</button>
-				<button
-					class="imp-btn imp-btn-primary"
-					type="button"
-					@click="onExportMarkup"
-					title="导出带有标记的图像，作为新节点连入原图片节点下游"
-				>
-					导出标记
-				</button>
+				<template v-if="mode === 'brush'">
+					<span class="imp-sep"></span>
+					<label class="imp-brush-label">
+						画笔粗细：
+						<input
+							type="range"
+							min="1"
+							max="40"
+							step="1"
+							v-model.number="brushSize"
+							class="imp-brush-range"
+						/>
+						<span class="imp-brush-size">{{ brushSize }}px</span>
+					</label>
+					<span class="imp-sep"></span>
+					<button class="imp-btn" type="button" @click="clearBrush" title="清除所有画笔标记">
+						清除标记
+					</button>
+					<button
+						class="imp-btn imp-btn-primary"
+						type="button"
+						@click="onExportMarkup"
+						title="导出带有标记的图像，作为新节点连入原图片节点下游"
+					>
+						导出标记
+					</button>
+				</template>
+				<template v-if="mode === 'screenshot'">
+					<span class="imp-sep"></span>
+					<button class="imp-btn" type="button" @click="resetScreenshot" title="重置截图选框">
+						重置选框
+					</button>
+					<button
+						class="imp-btn imp-btn-primary"
+						type="button"
+						:disabled="!screenshotRect"
+						@click="onExportScreenshot"
+						title="确认截图并导出为新节点"
+					>
+						确认截图
+					</button>
+				</template>
 				<button class="imp-btn" type="button" @click="onClose" title="关闭窗口">关闭</button>
 			</div>
 		</div>
@@ -85,6 +111,9 @@
 			<div v-if="imageLoaded && naturalWidth" class="imp-info">
 				原始尺寸：{{ naturalWidth }} × {{ naturalHeight }} | 缩放：{{ Math.round(zoom * 100) }}% |
 				旋转：{{ rotation }}°
+				<span v-if="mode === 'screenshot' && screenshotRect">
+					| 截图区域：{{ Math.round(screenshotRect.w) }} × {{ Math.round(screenshotRect.h) }}
+				</span>
 			</div>
 		</div>
 	</div>
@@ -93,13 +122,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, onMounted } from 'vue'
 
-type Mode = 'view' | 'brush'
+type Mode = 'view' | 'brush' | 'screenshot'
 
 type ExportImageMarkupPayload = {
 	dataUrl: string
 	width: number
 	height: number
 	sourceName: string
+	exportType: 'markup' | 'screenshot'
 }
 
 type ImageMarkupDwebBridge = {
@@ -124,6 +154,8 @@ const brushSize = ref<number>(6)
 const brushStrokes = ref<Array<Array<{ x: number; y: number }>>>([])
 const currentStroke = ref<Array<{ x: number; y: number }> | null>(null)
 
+const screenshotRect = ref<{ x: number; y: number; w: number; h: number } | null>(null)
+
 const naturalWidth = ref<number>(0)
 const naturalHeight = ref<number>(0)
 const imageLoaded = ref<boolean>(false)
@@ -134,6 +166,16 @@ let dragState: { startX: number; startY: number; origOffsetX: number; origOffset
 	null
 let wheelAccum = 0
 let wheelTimer: number | null = null
+
+type ScreenshotDragMode = 'new' | 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | null
+let screenshotDrag: {
+	mode: ScreenshotDragMode
+	startClientX: number
+	startClientY: number
+	startRect: { x: number; y: number; w: number; h: number }
+} | null = null
+
+const HANDLE_SIZE = 8
 
 const canvasStyle = computed(() => {
 	const w = naturalWidth.value || 1
@@ -147,7 +189,30 @@ const canvasStyle = computed(() => {
 })
 
 const setMode = (m: Mode) => {
+	if (mode.value === m) return
 	mode.value = m
+	if (m === 'screenshot') {
+		resetScreenshot()
+	} else {
+		screenshotRect.value = null
+	}
+	redrawOverlay()
+}
+
+const resetScreenshot = () => {
+	const w = naturalWidth.value
+	const h = naturalHeight.value
+	if (w > 0 && h > 0) {
+		screenshotRect.value = {
+			x: Math.round(w * 0.1),
+			y: Math.round(h * 0.1),
+			w: Math.round(w * 0.8),
+			h: Math.round(h * 0.8)
+		}
+	} else {
+		screenshotRect.value = null
+	}
+	redrawOverlay()
 }
 
 const zoomBy = (factor: number) => {
@@ -216,6 +281,28 @@ const pointerToImageCoords = (
 	return { x: localX * scaleX, y: localY * scaleY }
 }
 
+const getScreenshotHandleAt = (px: number, py: number): ScreenshotDragMode => {
+	const rect = screenshotRect.value
+	if (!rect) return null
+	const half = HANDLE_SIZE / 2
+	const { x, y, w, h } = rect
+	const right = x + w
+	const bottom = y + h
+
+	const near = (v: number, target: number) => Math.abs(v - target) <= half
+
+	if (near(px, x) && near(py, y)) return 'nw'
+	if (near(px, right) && near(py, y)) return 'ne'
+	if (near(px, right) && near(py, bottom)) return 'se'
+	if (near(px, x) && near(py, bottom)) return 'sw'
+	if (near(py, y) && px > x && px < right) return 'n'
+	if (near(px, right) && py > y && py < bottom) return 'e'
+	if (near(py, bottom) && px > x && px < right) return 's'
+	if (near(px, x) && py > y && py < bottom) return 'w'
+	if (px >= x && px <= right && py >= y && py <= bottom) return 'move'
+	return null
+}
+
 const onMouseDown = (e: MouseEvent) => {
 	if (e.button !== 0) return
 	if (mode.value === 'view') {
@@ -232,6 +319,28 @@ const onMouseDown = (e: MouseEvent) => {
 		if (!pt) return
 		currentStroke.value = [pt]
 		redrawOverlay()
+		return
+	}
+	if (mode.value === 'screenshot') {
+		const pt = pointerToImageCoords(e.clientX, e.clientY)
+		if (!pt) return
+		const handle = getScreenshotHandleAt(pt.x, pt.y)
+		if (handle) {
+			screenshotDrag = {
+				mode: handle,
+				startClientX: e.clientX,
+				startClientY: e.clientY,
+				startRect: screenshotRect.value ? { ...screenshotRect.value } : { x: 0, y: 0, w: 0, h: 0 }
+			}
+		} else {
+			screenshotDrag = {
+				mode: 'new',
+				startClientX: e.clientX,
+				startClientY: e.clientY,
+				startRect: { x: pt.x, y: pt.y, w: 0, h: 0 }
+			}
+			screenshotRect.value = { x: pt.x, y: pt.y, w: 0, h: 0 }
+		}
 	}
 }
 
@@ -246,6 +355,88 @@ const onMouseMove = (e: MouseEvent) => {
 		if (!pt) return
 		currentStroke.value.push(pt)
 		redrawOverlay()
+		return
+	}
+	if (mode.value === 'screenshot' && screenshotDrag && screenshotDrag.mode) {
+		const pt = pointerToImageCoords(e.clientX, e.clientY)
+		if (!pt) return
+		const imgW = naturalWidth.value || 1
+		const imgH = naturalHeight.value || 1
+		const sr = screenshotDrag.startRect
+		const minSize = 10
+
+		if (screenshotDrag.mode === 'new') {
+			const x = Math.min(pt.x, sr.x)
+			const y = Math.min(pt.y, sr.y)
+			const w = Math.abs(pt.x - sr.x)
+			const h = Math.abs(pt.y - sr.y)
+			screenshotRect.value = {
+				x: Math.max(0, Math.min(imgW, x)),
+				y: Math.max(0, Math.min(imgH, y)),
+				w: Math.max(0, Math.min(w, imgW, imgH)),
+				h: Math.max(0, Math.min(h, imgW, imgH))
+			}
+		} else if (screenshotDrag.mode === 'move') {
+			const startPt = pointerToImageCoords(screenshotDrag.startClientX, screenshotDrag.startClientY)
+			if (startPt) {
+				const dx = pt.x - startPt.x
+				const dy = pt.y - startPt.y
+				let nx = sr.x + dx
+				let ny = sr.y + dy
+				nx = Math.max(0, Math.min(imgW - sr.w, nx))
+				ny = Math.max(0, Math.min(imgH - sr.h, ny))
+				screenshotRect.value = { x: nx, y: ny, w: sr.w, h: sr.h }
+			}
+		} else {
+			let { x, y, w, h } = sr
+			const right = sr.x + sr.w
+			const bottom = sr.y + sr.h
+
+			switch (screenshotDrag.mode) {
+				case 'n':
+					y = Math.min(pt.y, bottom - minSize)
+					h = bottom - y
+					break
+				case 's':
+					h = Math.max(minSize, pt.y - sr.y)
+					break
+				case 'w':
+					x = Math.min(pt.x, right - minSize)
+					w = right - x
+					break
+				case 'e':
+					w = Math.max(minSize, pt.x - sr.x)
+					break
+				case 'nw':
+					x = Math.min(pt.x, right - minSize)
+					y = Math.min(pt.y, bottom - minSize)
+					w = right - x
+					h = bottom - y
+					break
+				case 'ne':
+					y = Math.min(pt.y, bottom - minSize)
+					w = Math.max(minSize, pt.x - sr.x)
+					h = bottom - y
+					break
+				case 'sw':
+					x = Math.min(pt.x, right - minSize)
+					w = right - x
+					h = Math.max(minSize, pt.y - sr.y)
+					break
+				case 'se':
+					w = Math.max(minSize, pt.x - sr.x)
+					h = Math.max(minSize, pt.y - sr.y)
+					break
+			}
+
+			x = Math.max(0, x)
+			y = Math.max(0, y)
+			w = Math.max(minSize, Math.min(w, imgW - x))
+			h = Math.max(minSize, Math.min(h, imgH - y))
+
+			screenshotRect.value = { x, y, w, h }
+		}
+		redrawOverlay()
 	}
 }
 
@@ -256,6 +447,13 @@ const onMouseUp = () => {
 	if (mode.value === 'brush' && currentStroke.value && currentStroke.value.length > 0) {
 		brushStrokes.value.push(currentStroke.value)
 		currentStroke.value = null
+		redrawOverlay()
+	}
+	if (screenshotDrag) {
+		screenshotDrag = null
+		if (screenshotRect.value && (screenshotRect.value.w < 10 || screenshotRect.value.h < 10)) {
+			screenshotRect.value = null
+		}
 		redrawOverlay()
 	}
 }
@@ -290,6 +488,40 @@ const drawStroke = (
 	ctx.restore()
 }
 
+const drawScreenshotOverlay = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+	const rect = screenshotRect.value
+	if (!rect) return
+
+	ctx.save()
+	ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+	ctx.fillRect(0, 0, w, rect.y)
+	ctx.fillRect(0, rect.y + rect.h, w, h - rect.y - rect.h)
+	ctx.fillRect(0, rect.y, rect.x, rect.h)
+	ctx.fillRect(rect.x + rect.w, rect.y, w - rect.x - rect.w, rect.h)
+
+	ctx.strokeStyle = '#4c9aff'
+	ctx.lineWidth = 2
+	ctx.setLineDash([6, 4])
+	ctx.strokeRect(rect.x, rect.y, rect.w, rect.h)
+	ctx.setLineDash([])
+
+	ctx.fillStyle = '#4c9aff'
+	const handles: Array<[number, number]> = [
+		[rect.x, rect.y],
+		[rect.x + rect.w / 2, rect.y],
+		[rect.x + rect.w, rect.y],
+		[rect.x + rect.w, rect.y + rect.h / 2],
+		[rect.x + rect.w, rect.y + rect.h],
+		[rect.x + rect.w / 2, rect.y + rect.h],
+		[rect.x, rect.y + rect.h],
+		[rect.x, rect.y + rect.h / 2]
+	]
+	for (const [hx, hy] of handles) {
+		ctx.fillRect(hx - HANDLE_SIZE / 2, hy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE)
+	}
+	ctx.restore()
+}
+
 const redrawOverlay = () => {
 	const overlay = overlayRef.value
 	const img = sourceImage.value
@@ -302,6 +534,9 @@ const redrawOverlay = () => {
 	for (const stroke of brushStrokes.value) drawStroke(ctx, stroke, brushSize.value)
 	if (currentStroke.value && currentStroke.value.length > 0) {
 		drawStroke(ctx, currentStroke.value, brushSize.value)
+	}
+	if (mode.value === 'screenshot') {
+		drawScreenshotOverlay(ctx, overlay.width, overlay.height)
 	}
 }
 
@@ -325,6 +560,7 @@ const loadImage = async (url: string) => {
 	naturalHeight.value = 0
 	brushStrokes.value = []
 	currentStroke.value = null
+	screenshotRect.value = null
 	const img = new Image()
 	img.crossOrigin = 'anonymous'
 	await new Promise<void>((resolve, reject) => {
@@ -372,6 +608,33 @@ const composeExportDataUrl = (): { dataUrl: string; width: number; height: numbe
 	return { dataUrl, width: exportCanvas.width, height: exportCanvas.height }
 }
 
+const composeScreenshotDataUrl = (): { dataUrl: string; width: number; height: number } | null => {
+	const base = canvasRef.value
+	if (!base) return null
+	const rect = screenshotRect.value
+	if (!rect || rect.w < 10 || rect.h < 10) return null
+
+	const img = sourceImage.value
+	if (!img) return null
+
+	const sx = Math.max(0, Math.floor(rect.x))
+	const sy = Math.max(0, Math.floor(rect.y))
+	const sw = Math.min(base.width - sx, Math.floor(rect.w))
+	const sh = Math.min(base.height - sy, Math.floor(rect.h))
+	if (sw < 1 || sh < 1) return null
+
+	const exportCanvas = document.createElement('canvas')
+	exportCanvas.width = sw
+	exportCanvas.height = sh
+	const ctx = exportCanvas.getContext('2d')
+	if (!ctx) return null
+
+	ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+
+	const dataUrl = exportCanvas.toDataURL('image/png')
+	return { dataUrl, width: sw, height: sh }
+}
+
 const onExportMarkup = async () => {
 	if (!imageLoaded.value) return
 	const result = composeExportDataUrl()
@@ -383,7 +646,8 @@ const onExportMarkup = async () => {
 				dataUrl: result.dataUrl,
 				width: result.width,
 				height: result.height,
-				sourceName: sourceName.value || 'marked-image'
+				sourceName: sourceName.value || 'marked-image',
+				exportType: 'markup'
 			})
 			return
 		}
@@ -393,13 +657,34 @@ const onExportMarkup = async () => {
 	alert('当前环境不支持直接导出到原工作流。您仍可右键保存图像。')
 }
 
+const onExportScreenshot = async () => {
+	if (!imageLoaded.value) return
+	const result = composeScreenshotDataUrl()
+	if (!result) return
+	try {
+		const w = window as Window & ImageMarkupDwebBridge
+		if (w.dweb?.aiworkflow && typeof w.dweb.aiworkflow.exportImageMarkup === 'function') {
+			await w.dweb.aiworkflow.exportImageMarkup({
+				dataUrl: result.dataUrl,
+				width: result.width,
+				height: result.height,
+				sourceName: sourceName.value || 'screenshot',
+				exportType: 'screenshot'
+			})
+			return
+		}
+	} catch (err) {
+		console.warn('[ImageMarkupPreview] screenshot export failed', err)
+	}
+	alert('当前环境不支持直接导出到原工作流。')
+}
+
 const onClose = () => {
 	try {
 		if (typeof window.close === 'function') {
 			window.close()
 		}
 	} catch {
-		/* ignore */
 	}
 }
 
@@ -513,6 +798,10 @@ onBeforeUnmount(() => {
 	background: #2f9e44;
 	border-color: #51cf66;
 }
+.imp-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
 
 .imp-sep {
 	display: inline-block;
@@ -550,6 +839,9 @@ onBeforeUnmount(() => {
 		#121317;
 }
 .imp-viewport.brush {
+	cursor: crosshair;
+}
+.imp-viewport.screenshot {
 	cursor: crosshair;
 }
 

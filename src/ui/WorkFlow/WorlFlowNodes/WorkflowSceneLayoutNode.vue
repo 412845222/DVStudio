@@ -326,7 +326,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import {
 	SceneLayoutPreviewViewer,
-	type SceneLayoutPreviewPerfSnapshot
+	type SceneLayoutPreviewPerfSnapshot,
+	type SceneLayoutViewState
 } from './sceneLayout/SceneLayoutPreviewViewer'
 import WorkflowThreePreviewShell from './three-preview/WorkflowThreePreviewShell.vue'
 import type {
@@ -369,6 +370,16 @@ const SCENE_LAYOUT_SNAPSHOT_CACHE = (() => {
 	if (existing instanceof Map) return existing as Map<string, string>
 	const created = new Map<string, string>()
 	root[SCENE_LAYOUT_SNAPSHOT_CACHE_KEY] = created
+	return created
+})()
+
+const SCENE_LAYOUT_VIEWSTATE_CACHE_KEY = '__DWEB_SCENE_LAYOUT_VIEWSTATE_CACHE__'
+const SCENE_LAYOUT_VIEWSTATE_CACHE = (() => {
+	const root = globalThis as Record<string, unknown>
+	const existing = root[SCENE_LAYOUT_VIEWSTATE_CACHE_KEY]
+	if (existing instanceof Map) return existing as Map<string, SceneLayoutViewState>
+	const created = new Map<string, SceneLayoutViewState>()
+	root[SCENE_LAYOUT_VIEWSTATE_CACHE_KEY] = created
 	return created
 })()
 
@@ -487,6 +498,7 @@ let viewerInitPending = false
 let viewerInitCooldownUntil = 0
 let activePreviewRequestId = 0
 let perfPollTimer: ReturnType<typeof setInterval> | null = null
+let cachedLayoutSignature = ''
 
 const cacheSnapshot = (value: string) => {
 	if (!snapshotCacheKey) return
@@ -976,16 +988,27 @@ const syncViewerState = () => {
 	viewer.setRenderSuspended(previewSuspended.value)
 	viewer.setInteractive(previewInteractive.value)
 	viewer.setSelectedItem(effectiveHidePlaceholderCubes ? '' : selectedPreviewItemId.value)
-	viewer.setLayout(layoutItems.value, settings.value?.camera, {
-		transparent: renderTransparent.value,
-		previewMode: previewMode.value,
-		lightingPreviewEnabled: lightingPreviewEnabled.value,
-		lightingDebugEnabled: lightingDebugEnabled.value,
-		lightingControls: lightingControls.value,
-		lightingJson: String(props.linkedLightingJsonText ?? ''),
-		modelBindings: sceneLayoutModelBindings.value,
-		hidePlaceholderCubes: effectiveHidePlaceholderCubes
-	})
+	const currentSignature = layoutItemsSignature.value
+	const cachedView =
+		currentSignature === cachedLayoutSignature
+			? SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+			: null
+	viewer.setLayout(
+		layoutItems.value,
+		cachedView ? null : settings.value?.camera,
+		{
+			transparent: renderTransparent.value,
+			previewMode: previewMode.value,
+			lightingPreviewEnabled: lightingPreviewEnabled.value,
+			lightingDebugEnabled: lightingDebugEnabled.value,
+			lightingControls: lightingControls.value,
+			lightingJson: String(props.linkedLightingJsonText ?? ''),
+			modelBindings: sceneLayoutModelBindings.value,
+			hidePlaceholderCubes: effectiveHidePlaceholderCubes
+		},
+		cachedView
+	)
+	cachedLayoutSignature = currentSignature
 	if (!previewMode.value) {
 		viewer.requestStaticFrames()
 	}
@@ -1001,6 +1024,13 @@ const captureSnapshot = () => {
 	if (!next) return
 	snapshotUrl.value = next
 	cacheSnapshot(next)
+}
+
+const saveViewState = () => {
+	if (!viewer) return
+	const state = viewer.getViewState()
+	if (!state) return
+	SCENE_LAYOUT_VIEWSTATE_CACHE.set(snapshotCacheKey, state)
 }
 
 const onSceneLayoutModelFileChange = (event: Event) => {
@@ -1078,6 +1108,7 @@ const disposeViewer = () => {
 	viewerInitCooldownUntil = 0
 	stopPerfPolling()
 	if (!viewer) return
+	saveViewState()
 	captureSnapshot()
 	viewer.dispose()
 	viewer = null
@@ -1200,6 +1231,7 @@ watch(
 
 onBeforeUnmount(() => {
 	stopPerfPolling()
+	saveViewState()
 	cacheSnapshot(snapshotUrl.value)
 	disposeViewer()
 })
@@ -1223,16 +1255,24 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	viewer.setRenderSuspended(false)
 	viewer.setInteractive(true)
 	viewer.setSelectedItem(selectedPreviewItemId.value)
-	viewer.setLayout(layoutItems.value, settings.value?.camera, {
-		transparent: renderTransparent.value,
-		previewMode: true,
-		lightingPreviewEnabled: lightingPreviewEnabled.value,
-		lightingDebugEnabled: lightingDebugEnabled.value,
-		lightingControls: lightingControls.value,
-		lightingJson: String(props.linkedLightingJsonText ?? ''),
-		modelBindings: sceneLayoutModelBindings.value,
-		hidePlaceholderCubes: hidePlaceholderCubes.value
-	})
+	const currentSignature = layoutItemsSignature.value
+	const cachedViewForExport = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+	viewer.setLayout(
+		layoutItems.value,
+		cachedViewForExport ? null : settings.value?.camera,
+		{
+			transparent: renderTransparent.value,
+			previewMode: true,
+			lightingPreviewEnabled: lightingPreviewEnabled.value,
+			lightingDebugEnabled: lightingDebugEnabled.value,
+			lightingControls: lightingControls.value,
+			lightingJson: String(props.linkedLightingJsonText ?? ''),
+			modelBindings: sceneLayoutModelBindings.value,
+			hidePlaceholderCubes: hidePlaceholderCubes.value
+		},
+		cachedViewForExport
+	)
+	cachedLayoutSignature = currentSignature
 	try {
 		const exportData = await viewer.exportResolvedLayoutForUnreal()
 		if (!exportData.slots.length) {
