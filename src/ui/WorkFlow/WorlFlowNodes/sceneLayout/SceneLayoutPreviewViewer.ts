@@ -327,12 +327,12 @@ const cloneItem = (item: WorkflowSceneLayoutItem): WorkflowSceneLayoutItem => ({
 	orientationFix: item.orientationFix ? { ...item.orientationFix } : undefined
 })
 
-const safeNumber = (value: unknown, fallback: number) => {
+export const safeNumber = (value: unknown, fallback: number) => {
 	const num = Number(value)
 	return Number.isFinite(num) ? num : fallback
 }
 
-type OrientationOffset = {
+export type OrientationOffset = {
 	yaw: number
 	pitch: number
 	roll: number
@@ -361,9 +361,7 @@ type AlignmentRule = {
 	z: 'min' | 'center' | 'max'
 }
 
-type FillAxis = 'x' | 'y' | 'z'
-
-type AxisName = 'x' | 'y' | 'z'
+export type FillAxis = 'x' | 'y' | 'z'
 
 type FillSuggestion = {
 	axis: FillAxis
@@ -390,14 +388,14 @@ const FILL_AXIS_SCALE_MIN = 0.55
 const FILL_AXIS_SCALE_MAX = 1.45
 const FILL_MAX_COUNT = 24
 
-const normalizeAngleDeg = (value: number) => {
+export const normalizeAngleDeg = (value: number) => {
 	let next = Number.isFinite(value) ? value : 0
 	while (next > 180) next -= 360
 	while (next <= -180) next += 360
 	return next
 }
 
-const orientationOffsetEquals = (a: OrientationOffset, b: OrientationOffset, eps = 0.01) => {
+export const orientationOffsetEquals = (a: OrientationOffset, b: OrientationOffset, eps = 0.01) => {
 	return (
 		Math.abs(normalizeAngleDeg(a.yaw - b.yaw)) <= eps &&
 		Math.abs(normalizeAngleDeg(a.pitch - b.pitch)) <= eps &&
@@ -405,9 +403,9 @@ const orientationOffsetEquals = (a: OrientationOffset, b: OrientationOffset, eps
 	)
 }
 
-const roundOrientation = (value: number) => Math.round(normalizeAngleDeg(value) * 100) / 100
+export const roundOrientation = (value: number) => Math.round(normalizeAngleDeg(value) * 100) / 100
 
-const canonicalWallRole = (value: unknown) => {
+export const canonicalWallRole = (value: unknown) => {
 	const raw = String(value ?? '')
 		.trim()
 		.toLowerCase()
@@ -419,14 +417,14 @@ const canonicalWallRole = (value: unknown) => {
 	return raw
 }
 
-const canonicalWallRoleYaw = (role: string) => {
+export const canonicalWallRoleYaw = (role: string) => {
 	if (role === 'left') return 90
 	if (role === 'right') return 270
 	if (role === 'back') return 180
 	return 0
 }
 
-const isWallMountedSupportSurface = (item: WorkflowSceneLayoutItem) => {
+export const isWallMountedSupportSurface = (item: WorkflowSceneLayoutItem) => {
 	const placement = String(item.placement ?? '')
 		.trim()
 		.toLowerCase()
@@ -475,7 +473,7 @@ const isWallMountedSupportSurface = (item: WorkflowSceneLayoutItem) => {
 	)
 }
 
-const isDeskLikeSurface = (item: WorkflowSceneLayoutItem) => {
+export const isDeskLikeSurface = (item: WorkflowSceneLayoutItem) => {
 	if (isWallMountedSupportSurface(item)) return true
 	const semanticRole = String(item.semanticRole ?? '')
 		.trim()
@@ -537,7 +535,7 @@ const resolvePreviewDisplaySize = (item: WorkflowSceneLayoutItem) => {
 	return { width, height, depth }
 }
 
-const isWallSurfaceLike = (item: WorkflowSceneLayoutItem) => {
+export const isWallSurfaceLike = (item: WorkflowSceneLayoutItem) => {
 	const placement = String(item.placement ?? '')
 		.trim()
 		.toLowerCase()
@@ -723,7 +721,7 @@ const buildOrientationCandidates = () => {
 	return out
 }
 
-const fillModeToAxis = (mode: WorkflowSceneLayoutItem['fillMode']): FillAxis | null => {
+export const fillModeToAxis = (mode: WorkflowSceneLayoutItem['fillMode']): FillAxis | null => {
 	if (mode === 'fill-x') return 'x'
 	if (mode === 'fill-y') return 'y'
 	if (mode === 'fill-z') return 'z'
@@ -734,35 +732,6 @@ const fillAxisLabel = (axis: FillAxis) => {
 	if (axis === 'x') return 'X'
 	if (axis === 'y') return 'Y'
 	return 'Z'
-}
-
-const axisRotationValue = (offset: OrientationOffset, axis: AxisName) => {
-	if (axis === 'x') return offset.pitch
-	if (axis === 'y') return offset.yaw
-	return offset.roll
-}
-
-const rotateOffsetByAxis = (
-	offset: OrientationOffset,
-	axis: AxisName,
-	delta: number
-): OrientationOffset => {
-	if (axis === 'x') {
-		return {
-			...offset,
-			pitch: normalizeAngleDeg(offset.pitch + delta)
-		}
-	}
-	if (axis === 'y') {
-		return {
-			...offset,
-			yaw: normalizeAngleDeg(offset.yaw + delta)
-		}
-	}
-	return {
-		...offset,
-		roll: normalizeAngleDeg(offset.roll + delta)
-	}
 }
 
 export type SceneLayoutViewState = {
@@ -2580,85 +2549,15 @@ export class SceneLayoutPreviewViewer {
 		return orientationChanged
 	}
 
-	private resolveDominantMismatchAxis(
-		size: { x: number; y: number; z: number },
-		target: { x: number; y: number; z: number }
-	): AxisName {
-		const axes: AxisName[] = ['x', 'y', 'z']
-		let bestAxis: AxisName = 'y'
-		let bestScore = -Infinity
-		for (const axis of axes) {
-			const ratio = target[axis] / Math.max(size[axis], 0.0001)
-			const score = Math.abs(Math.log(Math.max(ratio, 0.0001)))
-			if (score > bestScore) {
-				bestAxis = axis
-				bestScore = score
-			}
+	private cycleOrientationYaw(existingOffset: OrientationOffset): OrientationOffset {
+		const currentYaw = normalizeAngleDeg(existingOffset.yaw)
+		const roundedYaw = Math.round(currentYaw / 90) * 90
+		const nextYaw = normalizeAngleDeg(roundedYaw + 90)
+		return {
+			yaw: nextYaw,
+			pitch: existingOffset.pitch,
+			roll: existingOffset.roll
 		}
-		return bestAxis
-	}
-
-	private resolveManualOrientationOffset(
-		object: Object3Dlike,
-		baseScale: Vector3Like,
-		baseQuaternion: QuaternionLike,
-		basePosition: Vector3Like,
-		target: { x: number; y: number; z: number },
-		item: WorkflowSceneLayoutItem,
-		existingOffset: OrientationOffset
-	) {
-		const current = this.measureOrientationCandidate(
-			object,
-			baseScale,
-			baseQuaternion,
-			basePosition,
-			target,
-			existingOffset
-		)
-		const preferredAxis = this.resolveDominantMismatchAxis(current.size, target)
-		const surfaceAxes = this.resolveManualRotationAxes(item, preferredAxis)
-		const fallbackAxes = (['x', 'y', 'z'] as AxisName[]).filter(
-			(axis) => !surfaceAxes.includes(axis)
-		)
-		const orderedAxes = [...surfaceAxes, ...fallbackAxes]
-		const candidateOffsets: OrientationOffset[] = []
-		for (const axis of orderedAxes) {
-			candidateOffsets.push(rotateOffsetByAxis(existingOffset, axis, 90))
-			candidateOffsets.push(rotateOffsetByAxis(existingOffset, axis, -90))
-		}
-		if (preferredAxis === 'y') {
-			candidateOffsets.push(rotateOffsetByAxis(existingOffset, 'y', 180))
-		}
-		const uniqueCandidates: OrientationOffset[] = []
-		for (const offset of candidateOffsets) {
-			const constrained = this.applySurfaceFacingConstraint(offset, item)
-			if (orientationOffsetEquals(constrained, existingOffset)) continue
-			if (uniqueCandidates.some((entry) => orientationOffsetEquals(entry, constrained))) continue
-			uniqueCandidates.push(constrained)
-		}
-		const measuredCandidates = uniqueCandidates
-			.map((offset) =>
-				this.measureOrientationCandidate(
-					object,
-					baseScale,
-					baseQuaternion,
-					basePosition,
-					target,
-					offset,
-					item
-				)
-			)
-			.sort((left, right) => left.score - right.score)
-		const nextOffset = measuredCandidates[0]?.offset
-		if (nextOffset) return nextOffset
-		for (const axis of orderedAxes) {
-			const fallback = this.applySurfaceFacingConstraint(
-				rotateOffsetByAxis(existingOffset, axis, 90),
-				item
-			)
-			if (!orientationOffsetEquals(fallback, existingOffset)) return fallback
-		}
-		return this.applySurfaceFacingConstraint(existingOffset, item)
 	}
 
 	private resolveAxisReferenceScale(
@@ -2866,17 +2765,38 @@ export class SceneLayoutPreviewViewer {
 			return 'ceiling-mounted'
 		}
 
-		if (isWallSurfaceLike(item)) {
-			return 'wall-mounted'
-		}
-
-		if (
+		const isExplicitlyFloorStanding =
 			mountType.includes('floor') ||
 			placement === 'on-floor' ||
 			semanticRole.includes('floor-standing') ||
 			item.shouldTouchGround === true
-		) {
+
+		const isExplicitlyWallMounted =
+			mountType.includes('wall') ||
+			placement.includes('wall') ||
+			supportSurface.includes('wall')
+
+		const tokens = [
+			String(item.name ?? ''),
+			String(item.category ?? ''),
+			String(item.subCategory ?? ''),
+			semanticRole
+		]
+			.join(' ')
+			.toLowerCase()
+
+		const isFloorStandingByToken =
+			!isExplicitlyWallMounted &&
+			/(chair|seat|sofa|couch|table|desk|cabinet|wardrobe|bed|stool|bench|bookcase|bookshelf|椅|沙发|桌|柜|床|凳|衣柜|书柜|书架)/.test(
+				tokens
+			)
+
+		if (isExplicitlyFloorStanding || isFloorStandingByToken) {
 			return 'floor-standing'
+		}
+
+		if (isWallSurfaceLike(item)) {
+			return 'wall-mounted'
 		}
 
 		if (
@@ -2888,23 +2808,9 @@ export class SceneLayoutPreviewViewer {
 			return 'surface-placed'
 		}
 
-		const tokens = [
-			String(item.name ?? ''),
-			String(item.category ?? ''),
-			String(item.subCategory ?? ''),
-			semanticRole
-		]
-			.join(' ')
-			.toLowerCase()
-
 		if (
-			/(chair|seat|sofa|couch|table|desk|cabinet|wardrobe|bed|stool|bench|shelf|bookcase|椅|沙发|桌|柜|床|凳|书架|衣柜)/.test(
-				tokens
-			)
+			/(lamp|light|chandelier|pendant|灯|吊灯|吸顶灯)/.test(tokens)
 		) {
-			return 'floor-standing'
-		}
-		if (/(lamp|light|chandelier|pendant|灯|吊灯|吸顶灯)/.test(tokens)) {
 			if (mountType.includes('ceiling') || /ceiling|pendant|chandelier|吊|吸顶/.test(tokens)) {
 				return 'ceiling-mounted'
 			}
@@ -3030,29 +2936,6 @@ export class SceneLayoutPreviewViewer {
 		modelObject.updateMatrixWorld(true)
 	}
 
-	private resolveManualRotationAxes(
-		item: WorkflowSceneLayoutItem,
-		preferredAxis: AxisName
-	): AxisName[] {
-		const semanticClass = this.classifyObjectSemantics(item)
-		switch (semanticClass) {
-			case 'floor-standing':
-			case 'surface-placed':
-			case 'support-surface':
-			case 'unknown':
-				return ['y']
-			case 'wall-mounted':
-			case 'wall-support':
-				return ['y']
-			case 'ceiling-mounted':
-				return ['y']
-			case 'structure':
-				return []
-			default:
-				return ['y']
-		}
-	}
-
 	private prepareModelPreview(
 		object: Object3Dlike,
 		item: WorkflowSceneLayoutItem,
@@ -3064,6 +2947,7 @@ export class SceneLayoutPreviewViewer {
 		const basePosition = object.position.clone()
 
 		const existingOffset = this.resolveExistingOrientationOffset(item)
+		
 		const decision = this.resolveOrientationDecision(
 			object,
 			baseScale,
@@ -3092,73 +2976,8 @@ export class SceneLayoutPreviewViewer {
 
 		const rotatedBox = new THREE.Box3().setFromObject(object)
 		if (!rotatedBox.isEmpty()) {
-			const size = rotatedBox.getSize(new THREE.Vector3())
-			const placeholderScaleX = target.x / Math.max(size.x, 0.001)
-			const placeholderScaleY = target.y / Math.max(size.y, 0.001)
-			const placeholderScaleZ = target.z / Math.max(size.z, 0.001)
-			const previewScaleMode = String(item.previewScaleMode ?? 'placeholder')
-				.trim()
-				.toLowerCase()
-			const useForcedScale = item.fitMode === 'forced'
-			const useModelScale = !useForcedScale && previewScaleMode === 'model'
-			const fillAxis = fillModeToAxis(item.fillMode)
-			const fillAxisScale = Number.isFinite(Number(item.fillAxisScale))
-				? Number(item.fillAxisScale)
-				: 1
-			const uniformScale = Math.max(
-				0.0001,
-				Math.min(placeholderScaleX, placeholderScaleY, placeholderScaleZ)
-			)
-			const allowDeform = Boolean(
-				(item as { allowDeformInForcedMode?: unknown }).allowDeformInForcedMode
-			)
-			const scaleX = useForcedScale
-				? allowDeform
-					? placeholderScaleX
-					: uniformScale
-				: fillAxis === 'x'
-					? Math.max(fillAxisScale, 0.0001)
-					: useModelScale || !!fillAxis
-						? fillAxis
-							? placeholderScaleX
-							: uniformScale
-						: placeholderScaleX
-			const scaleY = useForcedScale
-				? allowDeform
-					? placeholderScaleY
-					: uniformScale
-				: fillAxis === 'y'
-					? Math.max(fillAxisScale, 0.0001)
-					: useModelScale || !!fillAxis
-						? fillAxis
-							? placeholderScaleY
-							: uniformScale
-						: placeholderScaleY
-			const scaleZ = useForcedScale
-				? allowDeform
-					? placeholderScaleZ
-					: uniformScale
-				: fillAxis === 'z'
-					? Math.max(fillAxisScale, 0.0001)
-					: useModelScale || !!fillAxis
-						? fillAxis
-							? placeholderScaleZ
-							: uniformScale
-						: placeholderScaleZ
-			object.scale.multiply(
-				new THREE.Vector3(
-					Math.max(scaleX, 0.0001),
-					Math.max(scaleY, 0.0001),
-					Math.max(scaleZ, 0.0001)
-				)
-			)
-			object.updateMatrixWorld(true)
-		}
-
-		const normalizedBox = new THREE.Box3().setFromObject(object)
-		if (!normalizedBox.isEmpty()) {
-			const center = normalizedBox.getCenter(new THREE.Vector3())
-			const min = normalizedBox.min.clone()
+			const center = rotatedBox.getCenter(new THREE.Vector3())
+			const min = rotatedBox.min.clone()
 			object.position.x += -center.x
 			object.position.y += -min.y
 			object.position.z += -center.z
@@ -3214,6 +3033,7 @@ export class SceneLayoutPreviewViewer {
 				clone.updateMatrixWorld(true)
 				boundRoot.add(clone)
 			}
+			this.applyBoundModelWorldTransform(boundRoot, placeholderMesh)
 			this.arrangeFilledClonesInWorld(boundRoot, placeholderMesh, item)
 		}
 		return boundRoot
@@ -3223,7 +3043,6 @@ export class SceneLayoutPreviewViewer {
 		if (!boundRoot || !placeholderMesh) return
 		boundRoot.position.copy(placeholderMesh.position)
 		boundRoot.rotation.copy(placeholderMesh.rotation)
-		boundRoot.scale.copy(placeholderMesh.scale)
 		boundRoot.updateMatrixWorld(true)
 	}
 
@@ -3246,11 +3065,17 @@ export class SceneLayoutPreviewViewer {
 		const clones = boundRoot.children.slice()
 		const count = clones.length
 		if (!count) return
+
+		const savedPos = boundRoot.position.clone()
+		const savedQuat = boundRoot.quaternion.clone()
 		boundRoot.position.set(0, 0, 0)
-		boundRoot.rotation.set(0, 0, 0)
+		boundRoot.quaternion.setFromEuler(new THREE.Euler(0, 0, 0, 'XYZ'))
 		boundRoot.scale.set(1, 1, 1)
 		boundRoot.updateMatrixWorld(true)
-		const placeholderSize = placeholderBox.getSize(new THREE.Vector3())
+
+		const placeholderSize = new THREE.Vector3(
+			...this.resolvePlaceholderWorldSize(item).toArray()
+		)
 		const axisLength = placeholderSize[fillAxis] / Math.max(count, 1)
 		const semanticClass = this.classifyObjectSemantics(item)
 		const alignmentRule = this.getAlignmentRule(item, semanticClass)
@@ -3287,6 +3112,32 @@ export class SceneLayoutPreviewViewer {
 
 			this.alignModelToTarget(clone, cellMin, cellMax, alignmentRule)
 		}
+
+		const cloneWorldTransforms = clones.map((clone) => {
+			clone.updateMatrixWorld(true)
+			const pos = new THREE.Vector3()
+			const quat = new THREE.Quaternion()
+			clone.getWorldPosition(pos)
+			clone.getWorldQuaternion(quat)
+			return { pos, quat }
+		})
+
+		boundRoot.position.copy(savedPos)
+		boundRoot.quaternion.copy(savedQuat)
+		boundRoot.scale.set(1, 1, 1)
+		boundRoot.updateMatrixWorld(true)
+
+		const invMatrix = new THREE.Matrix4().copy(boundRoot.matrixWorld).invert()
+		const parentQuatInverse = new THREE.Quaternion().copy(boundRoot.quaternion).invert()
+		for (let i = 0; i < clones.length; i += 1) {
+			const clone = clones[i]
+			const { pos: worldPos, quat: worldQuat } = cloneWorldTransforms[i]
+			const localPos = worldPos.clone().applyMatrix4(invMatrix)
+			clone.position.copy(localPos)
+			const localQuat = parentQuatInverse.clone().multiply(worldQuat)
+			clone.quaternion.copy(localQuat)
+		}
+		boundRoot.updateMatrixWorld(true)
 	}
 
 	private fitBoundModelToPlaceholderWorld(
@@ -3295,17 +3146,36 @@ export class SceneLayoutPreviewViewer {
 		item: WorkflowSceneLayoutItem
 	) {
 		const placeholderBox = this.getWorldBox(placeholderMesh)
-		const modelBox = this.getWorldBox(boundRoot)
-		if (!placeholderBox || !modelBox) return
-		const placeholderSize = placeholderBox.getSize(new THREE.Vector3())
+		if (!placeholderBox) return
+
+		const savedPosition = boundRoot.position.clone()
+		const savedQuaternion = boundRoot.quaternion.clone()
+
+		boundRoot.position.set(0, 0, 0)
+		boundRoot.quaternion.setFromEuler(new THREE.Euler(0, 0, 0, 'XYZ'))
+		boundRoot.scale.set(1, 1, 1)
+		boundRoot.updateMatrixWorld(true)
+
+		const modelBox = new THREE.Box3().setFromObject(boundRoot)
 		const modelSize = modelBox.getSize(new THREE.Vector3())
+
+		const placeholderSize = new THREE.Vector3(
+			...this.resolvePlaceholderWorldSize(item).toArray()
+		)
+
 		const fillAxis = fillModeToAxis(item.fillMode)
 		const isForced = item.fitMode === 'forced'
 		const allowDeform = Boolean(
 			(item as { allowDeformInForcedMode?: unknown }).allowDeformInForcedMode
 		)
+		const previewScaleMode = String(item.previewScaleMode ?? 'placeholder')
+			.trim()
+			.toLowerCase()
+		const usePlaceholderScale = !isForced && previewScaleMode === 'placeholder'
 		const semanticClass = this.classifyObjectSemantics(item)
 		const alignmentRule = this.getAlignmentRule(item, semanticClass)
+
+		let finalScale = new THREE.Vector3(1, 1, 1)
 
 		if (fillAxis && !isForced) {
 			const fillScale = placeholderSize[fillAxis] / Math.max(modelSize[fillAxis], 0.001)
@@ -3314,27 +3184,40 @@ export class SceneLayoutPreviewViewer {
 				placeholderSize.y / Math.max(modelSize.y, 0.001),
 				placeholderSize.z / Math.max(modelSize.z, 0.001)
 			)
-			boundRoot.scale.multiplyScalar(Math.max(0.0001, Math.min(fillScale, uniformScale)))
-			boundRoot.updateMatrixWorld(true)
+			const s = Math.max(0.0001, Math.min(fillScale, uniformScale))
+			finalScale.set(s, s, s)
 		} else {
-			let scaleFactor: number
 			if (isForced && allowDeform) {
 				const sx = placeholderSize.x / Math.max(modelSize.x, 0.001)
 				const sy = placeholderSize.y / Math.max(modelSize.y, 0.001)
 				const sz = placeholderSize.z / Math.max(modelSize.z, 0.001)
-				boundRoot.scale.multiply(
-					new THREE.Vector3(Math.max(0.0001, sx), Math.max(0.0001, sy), Math.max(0.0001, sz))
+				finalScale.set(
+					Math.max(0.0001, sx),
+					Math.max(0.0001, sy),
+					Math.max(0.0001, sz)
 				)
-				boundRoot.updateMatrixWorld(true)
+			} else if (usePlaceholderScale) {
+				const sx = placeholderSize.x / Math.max(modelSize.x, 0.001)
+				const sy = placeholderSize.y / Math.max(modelSize.y, 0.001)
+				const sz = placeholderSize.z / Math.max(modelSize.z, 0.001)
+				finalScale.set(
+					Math.max(0.0001, sx),
+					Math.max(0.0001, sy),
+					Math.max(0.0001, sz)
+				)
 			} else {
-				scaleFactor = this.calculateUniformScaleToFit(
+				const scaleFactor = this.calculateUniformScaleToFit(
 					{ x: modelSize.x, y: modelSize.y, z: modelSize.z },
 					{ x: placeholderSize.x, y: placeholderSize.y, z: placeholderSize.z }
 				)
-				boundRoot.scale.multiplyScalar(scaleFactor)
-				boundRoot.updateMatrixWorld(true)
+				finalScale.set(scaleFactor, scaleFactor, scaleFactor)
 			}
 		}
+
+		boundRoot.position.copy(savedPosition)
+		boundRoot.quaternion.copy(savedQuaternion)
+		boundRoot.scale.copy(finalScale)
+		boundRoot.updateMatrixWorld(true)
 
 		this.alignModelToTarget(
 			boundRoot,
@@ -3374,35 +3257,27 @@ export class SceneLayoutPreviewViewer {
 			}
 		}
 		try {
-			const template = await this.loadModelTemplate(sourceUrl, this.selectedId)
-			if (this.disposed) {
-				return { ok: false, applied: false, mode: 'normal', message: '预览器已释放。' }
-			}
-			const probe = this.cloneModelScene(template)
-			const target = this.resolvePlaceholderWorldSize(item)
-			const baseScale = probe.scale.clone()
-			const baseQuaternion = probe.quaternion.clone()
-			const basePosition = probe.position.clone()
 			const existingOffset = this.resolveExistingOrientationOffset(item)
-			const nextOffset = this.resolveManualOrientationOffset(
-				probe,
-				baseScale,
-				baseQuaternion,
-				basePosition,
-				target,
-				item,
-				existingOffset
-			)
+			const cycled = this.cycleOrientationYaw(existingOffset)
+			const semanticClass = this.classifyObjectSemantics(item)
+			const constrained = this.applyManualOrientationConstraint(cycled, semanticClass)
+
 			item.orientationFix = {
 				mode: 'manual',
-				yaw: roundOrientation(nextOffset.yaw),
-				pitch: roundOrientation(nextOffset.pitch),
-				roll: roundOrientation(nextOffset.roll),
+				yaw: roundOrientation(constrained.yaw),
+				pitch: roundOrientation(constrained.pitch),
+				roll: roundOrientation(constrained.roll),
 				confidence: 'low',
 				updatedAt: Date.now()
 			}
-			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
-			const message = `已沿 ${fillAxisLabel(this.resolveDominantMismatchAxis(this.measureOrientationCandidate(probe, baseScale, baseQuaternion, basePosition, target, existingOffset).size, target))} 轴方向尝试旋转修正。`
+
+			this.clearFillState(item)
+
+			const yawLabel = roundOrientation(constrained.yaw)
+			const message = `已调整朝向为 ${yawLabel}°（${yawLabel === 0 ? '初始' : yawLabel === 180 || yawLabel === -180 ? '反向' : '侧向'}）。再次点击可继续旋转 90°。`
+
+			await this.rebuildBoundModelForItem(this.selectedId, 'keep')
+
 			const fitChanged = this.setFitState(item, 'oriented', message)
 			if (fitChanged || item.orientationFix) this.emitLayoutChange()
 			this.requestRender()
@@ -3659,7 +3534,14 @@ export class SceneLayoutPreviewViewer {
 			const improvement = current.score - best.score
 			nextOffset = improvement > ORIENTATION_IMPROVEMENT_THRESHOLD ? best.offset : existingOffset
 		}
-		nextOffset = this.applySurfaceFacingConstraint(nextOffset, item)
+		if (mode !== 'keep') {
+			nextOffset = this.applySurfaceFacingConstraint(nextOffset, item)
+		} else {
+			nextOffset = this.applyManualOrientationConstraint(
+				nextOffset,
+				this.classifyObjectSemantics(item)
+			)
+		}
 		const finalBest = this.measureOrientationCandidate(
 			object,
 			baseScale,
@@ -3760,6 +3642,38 @@ export class SceneLayoutPreviewViewer {
 			score,
 			scaleRatio
 		}
+	}
+
+	private applyManualOrientationConstraint(
+		offset: OrientationOffset,
+		semanticClass: ObjectSemanticClass
+	): OrientationOffset {
+		let yaw = normalizeAngleDeg(offset.yaw)
+		let pitch = normalizeAngleDeg(offset.pitch)
+		let roll = normalizeAngleDeg(offset.roll)
+
+		switch (semanticClass) {
+			case 'floor-standing':
+			case 'surface-placed':
+			case 'support-surface':
+			case 'wall-mounted':
+			case 'wall-support':
+			case 'unknown':
+				pitch = 0
+				roll = 0
+				break
+			case 'ceiling-mounted':
+				pitch = -90
+				roll = 0
+				break
+			case 'structure':
+				yaw = 0
+				pitch = 0
+				roll = 0
+				break
+		}
+
+		return { ...offset, yaw, pitch, roll }
 	}
 
 	private applySurfaceFacingConstraint(
@@ -4256,13 +4170,21 @@ export class SceneLayoutPreviewViewer {
 			pitch: THREE.MathUtils.radToDeg(mesh.rotation.x),
 			roll: THREE.MathUtils.radToDeg(mesh.rotation.z)
 		}
+		item.scale = {
+			x: mesh.scale.x,
+			y: mesh.scale.y,
+			z: mesh.scale.z
+		}
 		if (edge) {
 			edge.position.copy(mesh.position)
 			edge.rotation.copy(mesh.rotation)
 			edge.scale.copy(mesh.scale)
 		}
 		const boundModel = this.boundModelsById.get(this.selectedId)
-		if (boundModel) this.applyBoundModelWorldTransform(boundModel, mesh)
+		if (boundModel) {
+			this.applyBoundModelWorldTransform(boundModel, mesh)
+			this.fitBoundModelToPlaceholderWorld(boundModel, mesh, item)
+		}
 		this.updateRelationLinesFor(this.selectedId)
 	}
 
