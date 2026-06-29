@@ -49,6 +49,8 @@ const form = reactive<ClientSettings>({
 	geminiModel: FIXED_GEMINI_MODEL,
 	bytedanceApiKey: '',
 	meshyApiKey: '',
+	githubToken: '',
+	anthropicApiKey: '',
 })
 
 // 模态框状态
@@ -99,6 +101,28 @@ const providers: ProviderConfig[] = [
 		docsUrl: 'https://docs.meshy.ai/reference/api-key',
 		formKey: 'meshyApiKey',
 		formValue: (s: ClientSettings) => s.meshyApiKey,
+	},
+	{
+		key: 'github',
+		name: 'GitHub',
+		desc: 'Copilot CLI 等 GitHub 相关服务',
+		accent: '#24292e',
+		icon: 'GH',
+		fields: [{ key: 'githubToken', label: 'Personal Access Token', placeholder: 'ghp_...', mask: true }],
+		docsUrl: 'https://github.com/settings/tokens',
+		formKey: 'githubToken',
+		formValue: (s: ClientSettings) => s.githubToken,
+	},
+	{
+		key: 'anthropic',
+		name: 'Anthropic',
+		desc: 'Claude CLI / Claude 大模型',
+		accent: '#cc785c',
+		icon: 'AN',
+		fields: [{ key: 'anthropicApiKey', label: 'API Key', placeholder: 'sk-ant-...', mask: true }],
+		docsUrl: 'https://console.anthropic.com/keys',
+		formKey: 'anthropicApiKey',
+		formValue: (s: ClientSettings) => s.anthropicApiKey,
 	},
 ]
 
@@ -152,7 +176,7 @@ async function load() {
 	form.geminiModel = FIXED_GEMINI_MODEL
 	// Keep API keys from loaded settings - do NOT clear them
 	// Keys are stored in client settings alongside encrypted backend storage
-	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey'] as const) {
+	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken', 'anthropicApiKey'] as const) {
 		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
 	}
 	loading.value = false
@@ -163,7 +187,9 @@ function needsAgreement() {
 		String(form.deepseekApiKey || '').trim() ||
 			String(form.geminiApiKey || '').trim() ||
 			String(form.bytedanceApiKey || '').trim() ||
-			String(form.meshyApiKey || '').trim()
+			String(form.meshyApiKey || '').trim() ||
+			String(form.githubToken || '').trim() ||
+			String(form.anthropicApiKey || '').trim()
 	)
 }
 
@@ -178,11 +204,15 @@ async function doSubmit() {
 		geminiApiKey: string
 		bytedanceApiKey: string
 		meshyApiKey: string
+		githubToken: string
+		anthropicApiKey: string
 	} = {
 		deepseekApiKey: String(form.deepseekApiKey || '').trim(),
 		geminiApiKey: String(form.geminiApiKey || '').trim(),
 		bytedanceApiKey: String(form.bytedanceApiKey || '').trim(),
 		meshyApiKey: String(form.meshyApiKey || '').trim(),
+		githubToken: String(form.githubToken || '').trim(),
+		anthropicApiKey: String(form.anthropicApiKey || '').trim(),
 	}
 	const keyRes = await saveEncryptedAICredentials(keyPayload)
 	if (!keyRes.ok) {

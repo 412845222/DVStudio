@@ -4,10 +4,13 @@ import type {
 	LocalExecFlowEvent,
 	LocalExecSessionItem,
 	NanoBananaConfig,
-	SeedanceConfig
+	SeedanceConfig,
+	AgentBackendType
 } from '../../../../ui/UIComponent/BottomChatDock.vue'
 import type { WorkflowAnchorSpec, WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import type { BlueprintChatStreamEvent } from '../../../../network/ComfyUIBridgeService'
+import { agentStream, agentAbort, type AgentStreamChunk } from '../../../../network/AgentChatService'
+import { cliSendMessage, cliCancel, type CLIStreamChunk } from '../../../../network/CLIChatService'
 import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/utils'
 
 type LocalExecSessionCreateResult = {
@@ -154,6 +157,7 @@ type ChatGenerationPayload = {
 	chatTaskStatusText: Ref<string>
 	localExecStreamMode: Ref<'real' | 'mock'>
 	agentConversationMode: Ref<'agent' | 'ask' | 'plan'>
+	agentBackend: Ref<AgentBackendType>
 	codexSessions: Ref<LocalExecSessionItem[]>
 	codexActiveSessionId: Ref<string>
 	codexFlowEvents: Ref<LocalExecFlowEvent[]>
@@ -170,6 +174,7 @@ type ChatGenerationPayload = {
 	nanoModelUsed: Ref<string>
 	nanoDetail: Ref<string>
 	currentProjectId: Ref<number | null>
+	currentProjectName: Ref<string>
 	ensureProjectId?: (opts?: { silent?: boolean }) => Promise<number | null>
 	NANO_ANCHOR_NODE_ID: string
 	NANO_REF_IMAGE_MAX: number
@@ -192,6 +197,9 @@ type ChatGenerationPayload = {
 	resolveBackendUrl: (value: string) => string
 	getChatService: () => ChatBridgeService
 	onSeedanceTaskObserved?: (taskId: string, stage: 'created' | 'completed') => void
+	getSelectedNode?: () => WorkflowNode | null | undefined
+	getAllNodes?: () => WorkflowNode[]
+	getAllEdges?: () => WorkflowEdge[]
 }
 
 export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
@@ -216,6 +224,350 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			}
 		})
 		if (!changed) return
+	}
+
+	const updateAssistantMessageThinking = (messageId: string, updater: (prev: string) => string) => {
+		const id = String(messageId || '').trim()
+		if (!id) return
+		let changed = false
+		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
+			if (message.id !== id) return message
+			changed = true
+			return {
+				...message,
+				thinkingContent: updater(String(message.thinkingContent || ''))
+			}
+		})
+		if (!changed) return
+	}
+
+	const addToolCallToMessage = (
+		messageId: string,
+		toolCall: { id: string; name: string; status: string; args?: unknown }
+	) => {
+		const id = String(messageId || '').trim()
+		if (!id) return
+		let changed = false
+		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
+			if (message.id !== id) return message
+			changed = true
+			const existingToolCalls = message.toolCalls ? [...message.toolCalls] : []
+			existingToolCalls.push({
+				id: toolCall.id,
+				name: toolCall.name,
+				status: toolCall.status as 'pending' | 'running' | 'completed' | 'error',
+				args: toolCall.args as Record<string, unknown> | undefined
+			})
+			return {
+				...message,
+				toolCalls: existingToolCalls
+			}
+		})
+		if (!changed) return
+	}
+
+	const updateToolCallInMessage = (
+		messageId: string,
+		toolCallId: string,
+		updates: { status?: string; result?: unknown; error?: string }
+	) => {
+		const id = String(messageId || '').trim()
+		const tcId = String(toolCallId || '').trim()
+		if (!id || !tcId) return
+		let changed = false
+		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
+			if (message.id !== id || !message.toolCalls) return message
+			const updatedToolCalls = message.toolCalls.map((tc) => {
+				if (tc.id !== tcId) return tc
+				changed = true
+				return {
+					...tc,
+					status: updates.status ? (updates.status as 'pending' | 'running' | 'completed' | 'error') : tc.status,
+					result: updates.result !== undefined ? updates.result : tc.result,
+					error: updates.error !== undefined ? updates.error : tc.error
+				}
+			})
+			return changed ? { ...message, toolCalls: updatedToolCalls } : message
+		})
+		if (!changed) return
+	}
+
+	const pushAgentFlow = (item: LocalExecFlowEvent) => {
+		const existing = payload.codexFlowEvents.value.find((ev) => ev.id === item.id)
+		if (existing) {
+			payload.codexFlowEvents.value = payload.codexFlowEvents.value.map((ev) =>
+				ev.id === item.id ? { ...ev, ...item } : ev
+			)
+		} else {
+			payload.codexFlowEvents.value = [item, ...payload.codexFlowEvents.value]
+		}
+	}
+
+	const collectBlueprintContext = () => {
+		const nodes = typeof payload.getAllNodes === 'function' ? payload.getAllNodes() : []
+		const edges = typeof payload.getAllEdges === 'function' ? payload.getAllEdges() : []
+		const selectedNode = typeof payload.getSelectedNode === 'function' ? payload.getSelectedNode() : null
+
+		const nodeTypeStats: Record<string, number> = {}
+		for (const n of nodes) {
+			const t = String(n.type || 'unknown')
+			nodeTypeStats[t] = (nodeTypeStats[t] || 0) + 1
+		}
+
+		const nodeSummaries = nodes.slice(0, 50).map((n) => ({
+			id: String(n.id || ''),
+			type: String(n.type || ''),
+			label: String((n as { title?: string }).title || (n as { name?: string }).name || n.type || ''),
+		}))
+
+		const edgeSummaries = edges.slice(0, 100).map((e) => ({
+			from: String(e.fromNodeId || ''),
+			to: String(e.toNodeId || ''),
+			fromPort: String(e.fromAnchorId || ''),
+			toPort: String(e.toAnchorId || ''),
+		}))
+
+		const selectedNodeSummary = selectedNode
+			? {
+					id: String(selectedNode.id || ''),
+					type: String(selectedNode.type || ''),
+					label: String(
+						(selectedNode as { title?: string }).title ||
+							(selectedNode as { name?: string }).name ||
+							selectedNode.type || ''
+					),
+					config: (selectedNode as { config?: unknown }).config || {},
+				}
+			: null
+
+		return {
+			blueprint: {
+				selectedNode: selectedNodeSummary,
+				nodes: nodeSummaries,
+				nodeCount: nodes.length,
+				nodeTypeStats,
+				connections: edgeSummaries,
+				edgeCount: edges.length,
+			},
+			project: {
+				id: payload.currentProjectId.value,
+				name: payload.currentProjectName.value || '',
+			},
+			availableActions: [
+				'get_blueprint_state',
+				'create_node',
+				'delete_node',
+				'update_node_config',
+				'connect_nodes',
+				'disconnect_nodes',
+				'list_node_types',
+				'get_project_info',
+			],
+			restrictions: {
+				maxNodes: 500,
+				disallowDeleteSystemNodes: true,
+			},
+		}
+	}
+
+	const handleAgentStream = async (
+		content: string,
+		history: Array<{ role: string; content: string }>,
+		assistantMsgId: string
+	) => {
+		setTaskStatus('AI 任务：Agent 正在思考…')
+		let receivedDone = false
+		let receivedError = false
+
+		const context = collectBlueprintContext()
+
+		for await (const chunk of agentStream({
+			prompt: content,
+			model: payload.chatModelId.value,
+			systemPrompt: history.find((h) => h.role === 'system')?.content,
+			context,
+		})) {
+			if (chunk.type === 'done') {
+				receivedDone = true
+				setTaskStatus('AI 任务：完成')
+				break
+			}
+			if (chunk.type === 'error') {
+				receivedError = true
+				payload.chatRunState.value = 'error'
+				setTaskStatus('AI 任务：错误')
+				payload.pushToast('Agent 对话失败：' + chunk.message, 'warn')
+				break
+			}
+			if (chunk.type === 'text') {
+				updateAssistantMessageContent(assistantMsgId, (prev) => prev + chunk.content)
+				setTaskStatus('AI 任务：Agent 正在生成回复…')
+				continue
+			}
+			if (chunk.type === 'thinking_delta') {
+				updateAssistantMessageThinking(assistantMsgId, (prev) => prev + chunk.content)
+				setTaskStatus('AI 任务：Agent 正在思考…')
+				continue
+			}
+			if (chunk.type === 'thought') {
+				setTaskStatus('AI 任务：Agent 正在思考…')
+				continue
+			}
+			if (chunk.type === 'tool_call_start') {
+				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
+				addToolCallToMessage(assistantMsgId, {
+					id: tcId,
+					name: chunk.tool,
+					status: 'running',
+					args: chunk.input
+				})
+				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '调用中…',
+					status: 'pending',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_call_end') {
+				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
+				updateToolCallInMessage(assistantMsgId, tcId, {
+					status: 'completed',
+					result: chunk.output
+				})
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '完成',
+					status: 'completed',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_call_error') {
+				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
+				updateToolCallInMessage(assistantMsgId, tcId, {
+					status: 'error',
+					error: chunk.error
+				})
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '失败',
+					status: 'failed',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_call') {
+				const tcId = `tool-${chunk.tool}-${Date.now()}`
+				addToolCallToMessage(assistantMsgId, {
+					id: tcId,
+					name: chunk.tool,
+					status: 'running',
+					args: chunk.input
+				})
+				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '调用中…',
+					status: 'pending',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_result') {
+				const tcId = `tool-${chunk.tool}-${Date.now()}`
+				updateToolCallInMessage(assistantMsgId, tcId, {
+					status: 'completed',
+					result: chunk.output
+				})
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '完成',
+					status: 'completed',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+		}
+
+		const finalText =
+			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
+		if (!String(finalText).trim() && !receivedError && !receivedDone) {
+			payload.pushToast('Agent 返回为空，请重试。', 'warn')
+		}
+	}
+
+	const handleCLIStream = async (
+		content: string,
+		history: Array<{ role: string; content: string }>,
+		assistantMsgId: string
+	) => {
+		setTaskStatus('AI 任务：CLI 适配器正在执行…')
+		let receivedDone = false
+		let receivedError = false
+
+		for await (const chunk of cliSendMessage({
+			message: content,
+			context: history.map((h) => `${h.role}: ${h.content}`).join('\n'),
+		})) {
+			if (chunk.type === 'done') {
+				receivedDone = true
+				setTaskStatus('AI 任务：完成')
+				break
+			}
+			if (chunk.type === 'error') {
+				receivedError = true
+				payload.chatRunState.value = 'error'
+				setTaskStatus('AI 任务：错误')
+				payload.pushToast('CLI 对话失败：' + chunk.message, 'warn')
+				break
+			}
+			if (chunk.type === 'text') {
+				updateAssistantMessageContent(assistantMsgId, (prev) => prev + chunk.content)
+				setTaskStatus('AI 任务：CLI 正在生成回复…')
+				continue
+			}
+			if (chunk.type === 'tool_call') {
+				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				pushAgentFlow({
+					id: `cli-tool-${chunk.tool}-${Date.now()}`,
+					kind: 'skill',
+					title: `CLI Tool · ${chunk.tool}`,
+					detail: '调用中…',
+					status: 'pending',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_result') {
+				pushAgentFlow({
+					id: `cli-tool-${chunk.tool}-${Date.now()}`,
+					kind: 'skill',
+					title: `CLI Tool · ${chunk.tool}`,
+					detail: '完成',
+					status: 'completed',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+		}
+
+		const finalText =
+			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
+		if (!String(finalText).trim() && !receivedError && !receivedDone) {
+			payload.pushToast('CLI 返回为空，请重试。', 'warn')
+		}
 	}
 
 	const seedanceSupportsServiceTier = (modelId: string) =>
@@ -351,6 +703,22 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			const svc = payload.getChatService()
 
 			if (payload.chatModelKey.value === 'codex') {
+				const backend = payload.agentBackend.value
+
+				if (backend === 'dvsagent') {
+					await handleAgentStream(content, history, assistantMsg.id)
+					payload.chatSending.value = false
+					payload.chatRunState.value = 'idle'
+					return
+				}
+
+				if (backend === 'cli') {
+					await handleCLIStream(content, history, assistantMsg.id)
+					payload.chatSending.value = false
+					payload.chatRunState.value = 'idle'
+					return
+				}
+
 				let projectId = payload.currentProjectId.value
 				if (projectId == null && payload.ensureProjectId) {
 					projectId = await payload.ensureProjectId({ silent: true })

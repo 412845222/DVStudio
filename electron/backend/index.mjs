@@ -12,11 +12,15 @@ import { routes as exportRoutes } from './modules/export/routes.mjs'
 import { routes as comfyuiRoutes } from './modules/comfyui/routes.mjs'
 import { routes as thirdPartyRoutes } from './modules/third-party/routes.mjs'
 import { routes as agentSkillsRoutes } from './modules/agent-skills/routes.mjs'
-import { routes as codexRoutes } from './modules/codex/routes.mjs'
+import { routes as mcpRoutes } from './modules/mcp/routes.mjs'
+import { routes as agentRoutes } from './modules/agent/routes.mjs'
+import { routes as cliAdapterRoutes } from './modules/cli-adapters/routes.mjs'
 import { routes as subtitleRoutes } from './modules/subtitle/routes.mjs'
 import { startUnrealHttpServer, stopUnrealHttpServer } from './modules/agent-skills/service.mjs'
 import { setProjectRoot } from './projectAssetProtocol.mjs'
 import { getRepos } from '../localdb/index.mjs'
+import { registerBuiltinTools } from './modules/mcp/builtinTools.mjs'
+import { mcpServerManager } from './modules/mcp/client.mjs'
 
 function restoreProjectRoots() {
   try {
@@ -72,7 +76,9 @@ export function initBackend(mainWindow, deps = {}) {
     ...comfyuiRoutes,
     ...thirdPartyRoutes,
     ...agentSkillsRoutes,
-    ...codexRoutes,
+    ...mcpRoutes,
+    ...agentRoutes,
+    ...cliAdapterRoutes,
     ...subtitleRoutes,
   ]
 
@@ -85,6 +91,8 @@ export function initBackend(mainWindow, deps = {}) {
   _router.register()
 
   restoreProjectRoots()
+
+  registerBuiltinTools(mcpServerManager)
 
   startUnrealHttpServer().then(result => {
     if (result.ok) {

@@ -1,5 +1,32 @@
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
 
+// 适配器
+import { DeepSeekAdapter } from './adapters/deepseek.mjs';
+import { BytedanceAdapter } from './adapters/bytedance.mjs';
+import { GeminiAdapter } from './adapters/gemini.mjs';
+
+/**
+ * 获取 API 适配器
+ * @param {string} apiSource - API 来源
+ * @param {object} config - 配置
+ * @returns {BaseAdapter}
+ */
+function getAdapter(apiSource, config = {}) {
+  switch (apiSource) {
+    case 'deepseek':
+      return new DeepSeekAdapter(config);
+    case 'bytedance':
+      return new BytedanceAdapter(config);
+    case 'gemini':
+      return new GeminiAdapter(config);
+    case 'openai':
+      // OpenAI 兼容 DeepSeek 格式
+      return new DeepSeekAdapter({ ...config, baseUrl: 'https://api.openai.com/v1' });
+    default:
+      return new DeepSeekAdapter(config);
+  }
+}
+
 function getConversationsRepo(ctx) {
 	const repo = ctx.localdb?.chatConversations
 	if (!repo) throw internalError('chatConversations repo not available')
@@ -206,6 +233,7 @@ export async function* streamMessage(ctx, payload) {
 	messages.push({ role: 'user', content })
 
 	let assistantContent = ''
+	let reasoningContent = ''
 	let tokensUsed = 0
 	try {
 		const stream = client.postStream(`${cfg.baseUrl}/chat/completions`, {
@@ -227,10 +255,18 @@ export async function* streamMessage(ctx, payload) {
 			if (data === '[DONE]') break
 			try {
 				const parsed = JSON.parse(data)
-				const delta = parsed?.choices?.[0]?.delta?.content
+				const delta = parsed?.choices?.[0]?.delta
 				if (delta) {
-					assistantContent += delta
-					yield JSON.stringify({ type: 'delta', content: delta })
+					// 文本内容
+					if (delta.content) {
+						assistantContent += delta.content
+						yield JSON.stringify({ type: 'delta', content: delta.content })
+					}
+					// 思考过程 (reasoning_content - DeepSeek R1 等)
+					if (delta.reasoning_content) {
+						reasoningContent += delta.reasoning_content
+						yield JSON.stringify({ type: 'thinking_delta', content: delta.reasoning_content })
+					}
 				}
 				if (parsed?.usage?.total_tokens) tokensUsed = Number(parsed.usage.total_tokens)
 			} catch {}
@@ -242,10 +278,177 @@ export async function* streamMessage(ctx, payload) {
 			model: useModel,
 			tokensUsed
 		})
-		yield JSON.stringify({ type: 'done', message: addedMsg.message })
+		yield JSON.stringify({ type: 'done', message: addedMsg.message, reasoning: reasoningContent })
 	} catch (err) {
 		const errMsg = String(err?.message || err)
 		repo.addMessage({ conversationId, role: 'assistant', content: `[Error] ${errMsg}`, model: useModel })
 		yield JSON.stringify({ type: 'error', error: errMsg })
+	}
+}
+
+/**
+ * 使用工具调用的流式消息
+ * @param {object} ctx - 上下文
+ * @param {object} payload - 负载
+ */
+export async function* streamMessageWithTools(ctx, payload) {
+	const repo = getConversationsRepo(ctx)
+	const client = ctx.httpClient
+	const p = payload || {}
+	const conversationId = String(p.conversationId || '').trim()
+	const content = String(p.content || '').trim()
+	const model = String(p.model || '').trim()
+	const apiSource = String(p.apiSource || 'deepseek').toLowerCase()
+	const tools = p.tools || []
+
+	if (!conversationId) {
+		yield JSON.stringify({ type: 'error', error: 'conversationId is required' })
+		return
+	}
+	if (!content) {
+		yield JSON.stringify({ type: 'error', error: 'content is required' })
+		return
+	}
+
+	const conv = repo.get(conversationId)
+	if (!conv) {
+		yield JSON.stringify({ type: 'error', error: 'conversation not found' })
+		return
+	}
+
+	repo.addMessage({ conversationId, role: 'user', content, model })
+
+	const { provider, apiKey } = resolveProviderAndKey(ctx, model || conv.model)
+	const cfg = getProviderConfig(provider, apiKey)
+	if (!cfg.apiKey) {
+		yield JSON.stringify({ type: 'error', error: `${provider} API key is not configured` })
+		return
+	}
+
+	const useModel = model || conv.model || cfg.model
+	const adapter = getAdapter(apiSource, { baseUrl: cfg.baseUrl, apiKey })
+
+	// 构建消息列表
+	const messages = []
+	if (conv.systemPrompt) messages.push({ role: 'system', content: conv.systemPrompt })
+	const history = repo.getMessages(conversationId)
+	for (const msg of history) {
+		messages.push({ role: msg.role, content: msg.content })
+	}
+	messages.push({ role: 'user', content })
+
+	// 调用适配器的流式方法
+	const stream = adapter.streamWithTools(useModel, messages, tools, { httpClient: client })
+
+	let assistantContent = ''
+	let reasoningContent = ''
+	let toolCalls = []
+
+	for await (const event of stream) {
+		if (event.type === 'text_delta') {
+			assistantContent += event.delta
+			yield JSON.stringify({ type: 'delta', content: event.delta })
+		} else if (event.type === 'thinking_delta') {
+			reasoningContent += event.delta
+			yield JSON.stringify({ type: 'thinking_delta', content: event.delta })
+		} else if (event.type === 'tool_call') {
+			toolCalls.push(event)
+			yield JSON.stringify({ type: 'tool_call', id: event.id, name: event.name, arguments: event.arguments })
+		} else if (event.type === 'done') {
+			assistantContent = event.content
+			if (event.thinking) reasoningContent = event.thinking
+		}
+	}
+
+	// 保存消息
+	const addedMsg = repo.addMessage({
+		conversationId,
+		role: 'assistant',
+		content: assistantContent,
+		model: useModel,
+		tokensUsed: 0,
+		toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : undefined
+	})
+
+	yield JSON.stringify({ type: 'done', message: addedMsg.message, reasoning: reasoningContent })
+}
+
+/**
+ * 使用工具调用的非流式消息
+ * @param {object} ctx - 上下文
+ * @param {object} payload - 负载
+ */
+export async function sendMessageWithTools(ctx, payload) {
+	const repo = getConversationsRepo(ctx)
+	const client = ctx.httpClient
+	const p = payload || {}
+	const conversationId = String(p.conversationId || '').trim()
+	const content = String(p.content || '').trim()
+	const model = String(p.model || '').trim()
+	const apiSource = String(p.apiSource || 'deepseek').toLowerCase()
+	const tools = p.tools || []
+
+	if (!conversationId) throw invalidParamsError('conversationId is required')
+	if (!content) throw invalidParamsError('content is required')
+
+	const conv = repo.get(conversationId)
+	if (!conv) throw notFoundError('conversation not found')
+
+	repo.addMessage({ conversationId, role: 'user', content, model })
+
+	const { provider, apiKey } = resolveProviderAndKey(ctx, model || conv.model)
+	const cfg = getProviderConfig(provider, apiKey)
+	if (!cfg.apiKey) throw invalidParamsError(`${provider} API key is not configured`)
+
+	const useModel = model || conv.model || cfg.model
+	const adapter = getAdapter(apiSource, { baseUrl: cfg.baseUrl, apiKey })
+
+	// 构建消息列表
+	const messages = []
+	if (conv.systemPrompt) messages.push({ role: 'system', content: conv.systemPrompt })
+	const history = repo.getMessages(conversationId)
+	for (const msg of history) {
+		messages.push({ role: msg.role, content: msg.content })
+	}
+	messages.push({ role: 'user', content })
+
+	const result = await adapter.sendWithTools(useModel, messages, tools, { httpClient: client })
+
+	const addedMsg = repo.addMessage({
+		conversationId,
+		role: 'assistant',
+		content: result.content,
+		model: useModel,
+		tokensUsed: result.raw?.usage?.total_tokens || 0,
+		toolCalls: result.toolCalls ? JSON.stringify(result.toolCalls) : undefined
+	})
+
+	return {
+		ok: true,
+		message: addedMsg.message,
+		conversationId,
+		reasoning: result.reasoning,
+		usage: result.raw?.usage || null
+	}
+}
+
+/**
+ * 获取支持工具调用的模型列表
+ * @param {object} ctx - 上下文
+ */
+export function getModelsWithTools(ctx) {
+	return {
+		deepseek: ['deepseek-chat', 'deepseek-v3'],
+		bytedance: [
+			'doubao-seed-2-0-pro-260215',
+			'doubao-seed-2-0-lite-260215',
+			'glm-4-7-251222',
+			'glm-4-5-air',
+			'deepseek-v3-2-251201',
+			'kimi-k2-250905',
+			'qwen3-32b',
+			'qwen3-14b'
+		],
+		gemini: [] // Gemini 暂不支持
 	}
 }
