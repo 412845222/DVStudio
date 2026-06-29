@@ -147,10 +147,6 @@ export const useAIWorkflowMeshyRequest = (options: {
 			}
 		}
 
-		if (family === 'remesh') {
-			return { ok: false, error: 'Remesh 独立任务接口尚未接入，当前版本先接通主模型与贴图闭环。' }
-		}
-
 		const mode = (
 			family === 'text-to-image'
 				? 'text-to-image'
@@ -164,19 +160,23 @@ export const useAIWorkflowMeshyRequest = (options: {
 								? 'retexture'
 								: family === 'remesh'
 									? 'remesh'
-									: family === 'rigging'
-										? 'rigging'
-										: family === 'animation'
-											? 'animation'
-											: 'text-to-3d'
+									: family === 'uv-unwrap'
+										? 'uv-unwrap'
+										: family === 'rigging'
+											? 'rigging'
+											: family === 'animation'
+												? 'animation'
+												: 'text-to-3d'
 		) as MeshyRequestMode
 
 		const stage = family === 'refine' || family === 'retexture' ? 'refine' : 'preview'
 		const relationKind =
 			family === 'retexture'
 				? 'texture'
-				: String(settings.meshyRelationKind ?? relationSummary.relationKind ?? 'model').trim() ||
-					'model'
+				: family === 'remesh'
+					? 'remesh'
+					: String(settings.meshyRelationKind ?? relationSummary.relationKind ?? 'model').trim() ||
+						'model'
 		const imageLimit = family === 'image-to-image' ? 5 : 4
 		const manualImageUrls = Array.isArray(settings.meshyImageUrls)
 			? settings.meshyImageUrls.map((x) => String(x ?? '').trim()).filter(Boolean)
@@ -326,6 +326,10 @@ export const useAIWorkflowMeshyRequest = (options: {
 			payload.should_texture = true
 			payload.texture_prompt = String(settings.meshyTexturePrompt ?? '').trim() || payload.prompt
 		}
+		if (family === 'remesh' || family === 'uv-unwrap') {
+			const linkedInputTaskId = String(linkedModelInput?.inputTaskId ?? '').trim()
+			payload.preview_task_id = manualPreviewTaskId || linkedInputTaskId || ''
+		}
 
 		if (family === 'text-to-3d' || family === 'refine' || family === 'retexture') {
 			if (!payload.prompt) return { ok: false, error: '请先填写 Meshy 提示词。' }
@@ -351,6 +355,10 @@ export const useAIWorkflowMeshyRequest = (options: {
 			}
 		} else if (mode === 'image-to-3d') {
 			if (!payload.image_url) return { ok: false, error: 'Image to 3D 需要填写图片 URL。' }
+		} else if (family === 'remesh' || family === 'uv-unwrap') {
+			if (!payload.preview_task_id && !payload.model_url) {
+				return { ok: false, error: `${family === 'remesh' ? 'Remesh' : 'UV Unwrap'} 阶段需要 Preview Task ID 或上游 3D 模型输入。` }
+			}
 		} else {
 			const imgUrls = payload.image_urls ?? []
 			if (!imgUrls.length) {

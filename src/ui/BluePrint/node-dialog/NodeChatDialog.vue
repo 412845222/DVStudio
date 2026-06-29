@@ -136,8 +136,10 @@
 				:key="`param-panel-${JSON.stringify(currentParams)}`"
 				class="bp-node-chat-param-popover"
 				:node-type="nodeType"
+				:node-id="nodeId"
 				:params="currentParams"
 				:disabled="submitting"
+				:input-param-preview-refs="inputParamPreviewRefsResolved"
 				@update:params="onParamsUpdate"
 			/>
 		</div>
