@@ -163,7 +163,7 @@ export class BaseCLIAdapter {
    * @param {object} options 
    * @returns {AsyncGenerator} 事件生成器
    */
-  async *sendMessage(sessionId, content, options = {}) {
+  async sendMessage(sessionId, content, options = {}) {
     throw new Error('sendMessage must be implemented by subclass');
   }
 

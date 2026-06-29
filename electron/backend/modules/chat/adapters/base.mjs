@@ -17,7 +17,7 @@ export class BaseAdapter {
    * @param {object} options - 额外选项
    * @returns {AsyncGenerator} 事件生成器
    */
-  async *streamWithTools(modelId, messages, tools = [], options = {}) {
+  async streamWithTools(modelId, messages, tools = [], options = {}) {
     throw new Error('streamWithTools must be implemented by subclass');
   }
 
@@ -28,7 +28,7 @@ export class BaseAdapter {
    * @param {object} options - 额外选项
    * @returns {AsyncGenerator} 事件生成器
    */
-  async *streamText(modelId, messages, options = {}) {
+  async streamText(modelId, messages, options = {}) {
     throw new Error('streamText must be implemented by subclass');
   }
 

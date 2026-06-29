@@ -254,11 +254,8 @@ export class ClaudeCliAdapter extends BaseCLIAdapter {
    * 等待进程结束
    */
   async *waitForProcess(proc, sessionId, accumulatedContent) {
-    let done = false;
-    
-    return new Promise((resolve) => {
+    yield new Promise((resolve) => {
       proc.on('close', (code) => {
-        done = true;
         resolve({ content: accumulatedContent, exitCode: code });
       });
     });
