@@ -97,6 +97,8 @@ export type ClientSettings = {
 	geminiModel: string
 	bytedanceApiKey: string
 	meshyApiKey: string
+	githubToken: string
+	anthropicApiKey: string
 }
 
 export type ClientSettingsResult = {

@@ -339,8 +339,8 @@
 				:collapsed="chatCollapsed"
 				:taskStatus="chatTaskStatus"
 				placement="right-drawer"
-				:panelMode="chatPanelMode"
 				:agentMode="agentConversationMode"
+				:agentBackend="agentBackend"
 				:localExecStreamMode="localExecStreamMode"
 				:agentWorkingDirectory="agentWorkingDirectory"
 				:modelKey="chatModelKey"
@@ -364,8 +364,8 @@
 				:codexFlowEvents="codexFlowEvents"
 				@send="onSend"
 				@stop="onStop"
-				@update:panel-mode="chatPanelMode = $event"
 				@update:agent-mode="agentConversationMode = $event"
+				@update:agent-backend="agentBackend = $event"
 				@update:local-exec-stream-mode="localExecStreamMode = $event"
 				@update:model-key="
 					(v: unknown) => {
@@ -798,11 +798,11 @@ import ArkTaskPanel, {
 import WorkflowInspectorPanel from '../../ui/UIComponent/WorkflowInspectorPanel.vue'
 import BottomChatDock, {
 	type BottomChatMessage,
-	type ChatPanelMode,
 	type LocalExecFlowEvent,
 	type LocalExecSessionItem,
 	type NanoBananaConfig,
-	type SeedanceConfig
+	type SeedanceConfig,
+	type AgentBackendType
 } from '../../ui/UIComponent/BottomChatDock.vue'
 import ContextMenu from '../../ui/UIComponent/ContextMenu.vue'
 import ToastStack from '../../ui/UIComponent/ToastStack.vue'
@@ -969,6 +969,7 @@ import { useAIWorkflowProjectTransfer } from './node-business/project/useAIWorkf
 import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useAIWorkflowProjectUnrealSnapshot'
 import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
 import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
+import { useAgentToolBridge, type ToolApprovalItem } from './node-business/chat/useAgentToolBridge'
 import {
 	comfyOutputForAnchor,
 	type ComfyLocalizedOutput
@@ -1156,8 +1157,8 @@ const shouldCollapseChatDrawerByViewport = () => true
 // NOTE: must be declared before any watch/computed that references it.
 const chatModelKey = ref<'deepseek' | 'nanobanana' | 'seedance' | 'codex'>('codex')
 const chatModelId = ref<string>('auto')
-const chatPanelMode = ref<ChatPanelMode>('regular')
 const agentConversationMode = ref<'agent' | 'ask' | 'plan'>('agent')
+const agentBackend = ref<AgentBackendType>('dvsagent')
 const chatCollapsed = ref(shouldCollapseChatDrawerByViewport())
 
 const nodes = computed(() =>
@@ -3048,6 +3049,7 @@ const chatRunState = ref<'idle' | 'sending' | 'stopping' | 'error'>('idle')
 const codexSessions = ref<LocalExecSessionItem[]>([])
 const codexActiveSessionId = ref<string>('')
 const codexFlowEvents = ref<LocalExecFlowEvent[]>([])
+const toolApprovalQueue = ref<ToolApprovalItem[]>([])
 
 const nanoPreviewUrl = ref<string>('')
 const nanoPreviewUrls = ref<string[]>([])
@@ -5574,22 +5576,13 @@ const currentProjectName = ref('')
 const currentProjectRootPath = ref('')
 const noProjectSelected = ref(false)
 const agentWorkingDirectory = computed(() => {
+	const rootPath = String(currentProjectRootPath.value || '').trim()
 	const projectName = String(currentProjectName.value || '').trim()
-	if (projectName) return `/Users/dweb/Desktop/dweb-video-studio · ${projectName}`
-	return '/Users/dweb/Desktop/dweb-video-studio'
+	if (rootPath && projectName) return `${rootPath} · ${projectName}`
+	if (rootPath) return rootPath
+	if (projectName) return projectName
+	return ''
 })
-
-watch(
-	() => chatModelKey.value,
-	(v, prev) => {
-		if (v === 'codex') {
-			chatPanelMode.value = 'agent'
-		} else if (prev === 'codex') {
-			chatPanelMode.value = 'regular'
-		}
-	},
-	{ immediate: true }
-)
 
 watch(
 	() => chatModelKey.value,
@@ -5603,7 +5596,6 @@ watch(
 watch(
 	() => currentProjectId.value,
 	() => {
-		if (chatPanelMode.value !== 'agent') return
 		void loadCodexSessions()
 	}
 )
@@ -6443,6 +6435,7 @@ const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate } = useAIWorkfl
 	chatTaskStatusText,
 	localExecStreamMode,
 	agentConversationMode,
+	agentBackend,
 	codexSessions,
 	codexActiveSessionId,
 	codexFlowEvents,
@@ -6459,6 +6452,7 @@ const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate } = useAIWorkfl
 	nanoModelUsed,
 	nanoDetail,
 	currentProjectId,
+	currentProjectName,
 	ensureProjectId: ensureProjectForLocalExec,
 	NANO_ANCHOR_NODE_ID,
 	NANO_REF_IMAGE_MAX,
@@ -6471,7 +6465,23 @@ const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate } = useAIWorkfl
 	uploadLocalResourceAndGetUrl,
 	resolveBackendUrl,
 	getChatService: () => localExecChatService,
-	onSeedanceTaskObserved
+	onSeedanceTaskObserved,
+	getSelectedNode: () => selectedNode.value,
+	getAllNodes: () => nodes.value,
+	getAllEdges: () => renderEdges.value,
+})
+
+const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupAgentToolListener } = useAgentToolBridge({
+	store,
+	toolApprovalQueue,
+	pushToast,
+	getSelectedNode: () => selectedNode.value,
+	getAllNodes: () => nodes.value,
+	getAllEdges: () => renderEdges.value,
+	getProjectInfo: () => ({
+		id: currentProjectId.value,
+		name: currentProjectName.value,
+	}),
 })
 
 const { buildPersistableSnapshotWithOptions } = useAIWorkflowProjectSnapshotBuilder({
@@ -8092,6 +8102,7 @@ onBeforeUnmount(() => {
 	} catch {
 		/* ignore */
 	}
+	cleanupAgentToolListener()
 })
 
 let uninstallGlobal404Handlers: (() => void) | null = null
@@ -8112,6 +8123,8 @@ onMounted(() => {
 		level: 'INFO',
 		tag: 'init'
 	})
+
+	setupAgentToolListener()
 
 	const rawProjectId = String((route.query as Record<string, unknown>)?.projectId ?? '').trim()
 	const parsedProjectId = Number(rawProjectId)
@@ -8152,7 +8165,6 @@ onMounted(() => {
 			if (chatModelKey.value !== 'codex') chatModelKey.value = 'codex'
 			agentConversationMode.value = 'agent'
 			chatCollapsed.value = false
-			chatPanelMode.value = 'agent'
 			if (!String(chatDraft.value || '').trim()) {
 				store.commit('setChatDraft', { text: resolveAutoHelloText() })
 			}

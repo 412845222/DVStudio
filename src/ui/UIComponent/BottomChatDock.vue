@@ -12,39 +12,13 @@
 		@pointerdown.stop
 		@wheel.stop
 	>
-		<button class="chat-collapsed-handle" type="button" @click="requestExpand">AI 对话</button>
+		<button class="chat-collapsed-handle" type="button" @click="requestExpand">Agent对话</button>
 
 		<div class="chat-content" :aria-hidden="collapsed ? 'true' : 'false'">
 			<div class="chat-history">
 				<div class="chat-history-bar" @pointerdown.stop="onDockDragStart">
 					<div class="chat-history-title">
-						<div class="chat-panel-tabs">
-							<button
-								class="chat-panel-tab"
-								:class="{ active: isRegularMode }"
-								type="button"
-								@pointerdown.stop
-								@click.stop="onSwitchPanelMode('regular')"
-							>
-								常规
-							</button>
-							<button
-								class="chat-panel-tab"
-								:class="{ active: isAgentMode }"
-								type="button"
-								@pointerdown.stop
-								@click.stop="onSwitchPanelMode('agent')"
-							>
-								Agent对话
-							</button>
-						</div>
-						<template v-if="isRegularMode && isVisualGenMode">
-							<span>{{ visualPanelTitle }}</span>
-							<span class="nano-title-tag">{{ nanoInterfaceLabel }}</span>
-							<span v-if="nanoModelTag" class="nano-title-tag">实际：{{ nanoModelTag }}</span>
-						</template>
-						<template v-else-if="isAgentMode">Conversation</template>
-						<template v-else>对话历史</template>
+						Agent对话
 					</div>
 					<button
 						class="chat-history-minimize"
@@ -67,291 +41,80 @@
 				<div
 					ref="historyBodyRef"
 					class="chat-history-body"
-					:class="{ nanobanana: isVisualGenMode }"
 				>
-					<template v-if="isRegularMode && isVisualGenMode">
-						<div class="nano-panel">
-							<div v-if="nanoAnchorNodeId && nanoRefAnchors?.length" class="nano-anchor-col">
-								<div class="nano-anchor-col-title">参考图</div>
-								<div class="nano-anchor-col-list">
-									<div
-										v-for="(a, i) in nanoRefAnchors"
-										:key="a.id"
-										class="nano-anchor-item"
-										:class="{
-											hover: nanoHoverAnchorId === a.id,
-											connected: !!a.connected
-										}"
-									>
-										<div
-											class="nano-ref-dot"
-											:data-wf-node-id="nanoAnchorNodeId"
-											:data-wf-anchor-id="a.id"
-											data-wf-dir="in"
-											:title="a.connected ? '已连接：' + (a.connectedFrom || '') : '未连接'"
-											@pointerup.stop="emitWorkflowEndLink(a.id, i)"
-										/>
-										<div class="nano-anchor-label">{{ a.label }}</div>
-									</div>
-								</div>
-							</div>
-
-							<div class="nano-left">
-								<div class="nano-field" v-if="modelKey === 'nanobanana'">
-									<div class="nano-label">比例</div>
-									<select class="nano-input" :disabled="sending" v-model="nanoConfig.aspectRatio">
-										<option value="1:1">1:1</option>
-										<option value="2:3">2:3</option>
-										<option value="3:2">3:2</option>
-										<option value="3:4">3:4</option>
-										<option value="4:3">4:3</option>
-										<option value="4:5">4:5</option>
-										<option value="5:4">5:4</option>
-										<option value="9:16">9:16</option>
-										<option value="16:9">16:9</option>
-										<option value="21:9">21:9</option>
-									</select>
-									<div class="nano-hint">
-										按 Seedream 接口自动映射输出尺寸；支持参考图 + 文本提示词。
-									</div>
-								</div>
-
-								<div class="nano-field" v-if="modelKey === 'nanobanana'">
-									<div class="nano-label">数量</div>
-									<select
-										class="nano-input"
-										:disabled="sending"
-										v-model.number="nanoConfig.quantity"
-									>
-										<option :value="1">1</option>
-										<option :value="2">2</option>
-										<option :value="3">3</option>
-										<option :value="4">4</option>
-									</select>
-								</div>
-
-								<SeedanceVideoForm
-									v-if="modelKey === 'seedance'"
-									:config="seedanceConfig"
-									:sending="sending"
-									@update:config="onSeedanceConfigChange"
-								/>
-
-								<MeshyImageForm
-									v-if="modelKey === 'meshy'"
-									:config="meshyImageConfig"
-									@update:config="onMeshyImageConfigChange"
-								/>
-
-								<div class="chat-history-status" aria-live="polite">
-									执行状态：{{
-										nanoStatus ||
-										(sending
-											? modelKey === 'seedance'
-												? 'Seedance：生成中…'
-												: 'Seedream：生成中…'
-											: modelKey === 'seedance'
-												? 'Seedance：待生成'
-												: 'Seedream：待生成')
-									}}
-								</div>
-								<div v-if="nanoDetail" class="nano-detail" aria-live="polite">
-									{{ nanoDetail }}
-								</div>
-								<div class="nano-billing" aria-live="polite">
-									用时：{{ nanoElapsedText }}；预计：{{ nanoEstimateText }}
-								</div>
-								<div class="nano-billing" aria-live="polite">
-									费用（usage）：{{ nanoBilling || '—' }}
-								</div>
-							</div>
-
-							<div class="nano-right">
-								<div class="nano-preview">
-									<div class="nano-preview-grid" :class="`count-${nanoPreviewSlots.length}`">
-										<div
-											v-for="(slot, idx) in nanoPreviewSlots"
-											:key="`slot-${idx}`"
-											class="nano-preview-item"
-											:class="{
-												loading: !!slot.loading,
-												'video-pending': modelKey === 'seedance' && !slot.localReady,
-												'video-ready': modelKey === 'seedance' && slot.localReady
-											}"
-											:draggable="
-												modelKey === 'seedance' ? !!slot.url && !!slot.localReady : !!slot.url
-											"
-											@dragstart="
-												slot.url
-													? onNanoPreviewDragStart(
-															$event,
-															slot.url,
-															modelKey === 'seedance' ? 'video' : 'image',
-															slot.fallbackUrl,
-															slot.sourcePath,
-															slot.localReady ? slot.url : '',
-															slot.fallbackUrl,
-															slot.downloadStatus,
-															slot.localReady
-														)
-													: undefined
-											"
-										>
-											<template v-if="slot.url">
-												<video
-													v-if="modelKey === 'seedance'"
-													:src="slot.url"
-													controls
-													preload="metadata"
-													draggable="false"
-													class="nano-preview-video"
-												/>
-												<img
-													v-else
-													:src="slot.url"
-													:alt="`preview-${idx + 1}`"
-													draggable="false"
-													:class="{ loading: !!slot.loading && !slot.url }"
-												/>
-											</template>
-											<div v-else class="nano-preview-empty">暂无预览图 {{ idx + 1 }}</div>
-											<div
-												v-if="slot.loading && !slot.url"
-												class="nano-preview-item-loading"
-												aria-hidden="true"
-											/>
-											<div v-if="modelKey === 'seedance' && slot.url" class="nano-preview-status">
-												<div class="nano-preview-status-text">
-													{{ slot.localReady ? '已落地到项目资源' : '下载到项目中' }}
-													<span>{{ slot.downloadProgress }}%</span>
-												</div>
-												<div class="nano-preview-progress-track">
-													<div
-														class="nano-preview-progress-fill"
-														:style="{ width: `${slot.downloadProgress}%` }"
-													/>
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					</template>
-
-					<template v-else-if="isAgentMode">
-						<div class="agent-panel">
-							<div class="agent-session-bar">
-								<div class="agent-session-row">
-									<div class="agent-session-label">对话</div>
-									<button
-										class="codex-mini-btn"
-										type="button"
-										@click="emit('codex-create-session')"
-									>
-										New Conversation
-									</button>
-								</div>
-								<div class="agent-session-controls">
-									<select
-										class="chat-dock-toolbar-select agent-session-select"
-										:value="codexActiveSessionId"
-										@change="onAgentSessionChange"
-									>
-										<option v-if="!codexSessions.length" value="">New Conversation</option>
-										<option v-for="s in codexSessions" :key="s.id" :value="s.id">
-											{{ s.title || 'New Conversation' }}
-										</option>
-									</select>
-									<select
-										class="chat-dock-toolbar-select agent-mode-select"
-										:value="agentMode"
-										@change="onAgentModeChange"
-									>
-										<option value="agent">Agent</option>
-										<option value="ask">Ask</option>
-										<option value="plan">Plan</option>
-									</select>
-									<select
-										class="chat-dock-toolbar-select agent-stream-mode-select"
-										:value="localExecStreamMode"
-										@change="onLocalExecStreamModeChange"
-									>
-										<option value="real">SSE Real</option>
-										<option value="mock">SSE Mock</option>
-									</select>
-									<button
-										class="codex-mini-btn"
-										type="button"
-										:disabled="!codexActiveSessionId"
-										@click.stop="onRenameActiveAgentSession"
-									>
-										改名
-									</button>
-									<button
-										class="codex-mini-btn danger"
-										type="button"
-										:disabled="!codexActiveSessionId"
-										@click.stop="onDeleteActiveAgentSession"
-									>
-										删除
-									</button>
-								</div>
-							</div>
-
-							<div v-if="!messages?.length" class="agent-empty-state">
-								Start a new Agent conversation.
-							</div>
-							<div v-else class="chat-history-list agent-chat-list">
-								<div
-									v-for="m in messages"
-									:key="m.id"
-									class="chat-msg"
-									:class="
-										m.role === 'user' ? 'user' : m.role === 'assistant' ? 'assistant' : 'system'
-									"
+					<div class="agent-panel">
+						<div class="agent-session-bar">
+							<div class="agent-session-row">
+								<div class="agent-session-label">对话</div>
+								<button
+									class="codex-mini-btn"
+									type="button"
+									@click="emit('codex-create-session')"
 								>
-									<div class="chat-msg-bubble">
-										<div class="chat-msg-role">
-											{{ m.role === 'user' ? '你' : m.role === 'assistant' ? 'Agent' : '系统' }}
-										</div>
-										<div class="chat-msg-content">{{ m.content }}</div>
-									</div>
-								</div>
+									New Conversation
+								</button>
 							</div>
-
-							<div v-if="agentApprovalEvents.length" class="agent-flow-list">
-								<div v-for="ev in agentApprovalEvents" :key="ev.id" class="codex-flow-item pending">
-									<div class="codex-flow-title">{{ ev.title || '等待审批' }}</div>
-									<div class="codex-flow-meta">
-										{{ agentFlowDetail(ev) || '需要你确认后继续执行' }}
-									</div>
-									<div v-if="ev.approvalRequestId && ev.messageId" class="codex-approval-row">
-										<button
-											class="codex-mini-btn"
-											type="button"
-											@click="onCodexApproval(ev.messageId!, 'accept')"
-										>
-											同意
-										</button>
-										<button
-											class="codex-mini-btn danger"
-											type="button"
-											@click="onCodexApproval(ev.messageId!, 'decline')"
-										>
-											拒绝
-										</button>
-									</div>
-								</div>
+							<div class="agent-session-controls">
+								<select
+									class="chat-dock-toolbar-select agent-backend-select"
+									style="display: none"
+									:value="agentBackend"
+									@change="onAgentBackendChange"
+								>
+									<option value="codex">Claude Codex</option>
+									<option value="dvsagent">DVSAgent</option>
+									<option value="cli">CLI Adapter</option>
+								</select>
+								<select
+									class="chat-dock-toolbar-select agent-session-select"
+									:value="codexActiveSessionId"
+									@change="onAgentSessionChange"
+								>
+									<option v-if="!codexSessions.length" value="">New Conversation</option>
+									<option v-for="s in codexSessions" :key="s.id" :value="s.id">
+										{{ s.title || 'New Conversation' }}
+									</option>
+								</select>
+								<select
+									class="chat-dock-toolbar-select agent-mode-select"
+									:value="agentMode"
+									@change="onAgentModeChange"
+								>
+									<option value="agent">Agent</option>
+									<option value="ask">Ask</option>
+									<option value="plan">Plan</option>
+								</select>
+								<select
+									class="chat-dock-toolbar-select agent-stream-mode-select"
+									:value="localExecStreamMode"
+									@change="onLocalExecStreamModeChange"
+								>
+									<option value="real">SSE Real</option>
+									<option value="mock">SSE Mock</option>
+								</select>
+								<button
+									class="codex-mini-btn"
+									type="button"
+									:disabled="!codexActiveSessionId"
+									@click.stop="onRenameActiveAgentSession"
+								>
+									改名
+								</button>
+								<button
+									class="codex-mini-btn danger"
+									type="button"
+									:disabled="!codexActiveSessionId"
+									@click.stop="onDeleteActiveAgentSession"
+								>
+									删除
+								</button>
 							</div>
 						</div>
-					</template>
 
-					<template v-else>
-						<div v-if="!messages?.length" class="chat-history-empty">
-							暂无对话，先在下方输入并发送。
+						<div v-if="!messages?.length" class="agent-empty-state">
+							Start a new Agent conversation.
 						</div>
-						<div v-else class="chat-history-list">
+						<div v-else class="chat-history-list agent-chat-list">
 							<div
 								v-for="m in messages"
 								:key="m.id"
@@ -362,18 +125,64 @@
 							>
 								<div class="chat-msg-bubble">
 									<div class="chat-msg-role">
-										{{ m.role === 'user' ? '你' : m.role === 'assistant' ? 'AI' : '系统' }}
+										{{ m.role === 'user' ? '你' : m.role === 'assistant' ? 'Agent' : '系统' }}
 									</div>
-									<div class="chat-msg-content">{{ m.content }}</div>
+									<template v-if="m.role === 'assistant'">
+										<ThinkingBlock
+											v-if="m.thinkingContent || m.toolCalls?.length"
+											:content="m.thinkingContent || ''"
+											:is-thinking="!m.content && !m.toolCalls?.length"
+										/>
+										<div v-if="m.toolCalls?.length" class="chat-msg-tool-calls">
+											<ToolCallCard
+												v-for="tc in m.toolCalls"
+												:key="tc.id"
+												:tool-name="tc.name"
+												:status="tc.status"
+												:args="tc.args"
+												:result="tc.result"
+												:error="tc.error"
+											/>
+										</div>
+										<div v-if="m.content" class="chat-msg-content">{{ m.content }}</div>
+									</template>
+									<template v-else>
+										<div class="chat-msg-content">{{ m.content }}</div>
+									</template>
 								</div>
 							</div>
 						</div>
-					</template>
+
+						<div v-if="agentApprovalEvents.length" class="agent-flow-list">
+							<div v-for="ev in agentApprovalEvents" :key="ev.id" class="codex-flow-item pending">
+								<div class="codex-flow-title">{{ ev.title || '等待审批' }}</div>
+								<div class="codex-flow-meta">
+									{{ agentFlowDetail(ev) || '需要你确认后继续执行' }}
+								</div>
+								<div v-if="ev.approvalRequestId && ev.messageId" class="codex-approval-row">
+									<button
+										class="codex-mini-btn"
+										type="button"
+										@click="onCodexApproval(ev.messageId!, 'accept')"
+									>
+										同意
+									</button>
+									<button
+										class="codex-mini-btn danger"
+										type="button"
+										@click="onCodexApproval(ev.messageId!, 'decline')"
+									>
+										拒绝
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
 				</div>
 			</div>
 
 			<div class="chat-dock-body">
-				<div v-if="isAgentMode" class="agent-working-dir">
+				<div class="agent-working-dir">
 					<span>Working Directory</span>
 					<span class="agent-working-dir-path">{{ agentWorkingDirectory }}</span>
 				</div>
@@ -392,15 +201,7 @@
 					:value="modelValue"
 					class="chat-dock-input"
 					rows="2"
-					:placeholder="
-						isAgentMode
-							? 'Type a message. Press Enter to send, Shift+Enter for new line.'
-							: modelKey === 'nanobanana'
-								? '输入 Seedream 图片提示词（支持参考图）…'
-								: modelKey === 'seedance'
-									? '输入 Seedance 生视频提示词（支持文字+参考图）…'
-									: '在这里输入需求，后续会驱动工作流生成…'
-					"
+					placeholder="Type a message. Press Enter to send, Shift+Enter for new line."
 					:disabled="sending"
 					@focus="emit('focus-input')"
 					@input="onInput"
@@ -410,10 +211,20 @@
 
 				<div class="chat-dock-footer">
 					<div class="chat-dock-footer-left">
+						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-agent-backend">
+							<select
+								class="chat-dock-toolbar-select agent-backend-select"
+								:value="agentBackend"
+								@change="onAgentBackendChange"
+							>
+								<option value="dvsagent">DVSAgent</option>
+								<option value="codex">Claude Codex</option>
+								<option value="cli">CLI Adapter</option>
+							</select>
+						</div>
 						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-model">
 							<div class="chat-dock-toolbar-label">模型</div>
 							<select
-								v-if="isAgentMode"
 								class="chat-dock-toolbar-select"
 								:value="activeModelId"
 								:disabled="sending || !modelOptions.length"
@@ -422,36 +233,6 @@
 								<option v-if="!modelOptions.length" value="">Copilot CLI 默认模型</option>
 								<option v-for="model in modelOptions" :key="model.id" :value="model.id">
 									{{ model.label }}
-								</option>
-							</select>
-							<select
-								v-else
-								class="chat-dock-toolbar-select"
-								:value="activeModelId"
-								:disabled="sending || !modelOptions.length"
-								@change="onModelSelectionChange"
-							>
-								<option v-if="!modelOptions.length" value="">当前组合暂无模型</option>
-								<option v-for="model in modelOptions" :key="model.id" :value="model.id">
-									{{ model.label }}
-								</option>
-							</select>
-						</div>
-
-						<div v-if="!isAgentMode" class="chat-dock-toolbar-item chat-dock-toolbar-item-mini">
-							<div class="chat-dock-toolbar-label">来源</div>
-							<select
-								class="chat-dock-toolbar-select"
-								:value="apiSource"
-								:disabled="sending"
-								@change="onApiSourceChange"
-							>
-								<option
-									v-for="source in visibleApiSourceOptions"
-									:key="source.value"
-									:value="source.value"
-								>
-									{{ source.label }}
 								</option>
 							</select>
 						</div>
@@ -476,6 +257,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideoForm.vue'
 import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
+import ThinkingBlock from '../AIChat/ThinkingBlock.vue'
+import ToolCallCard from '../AIChat/ToolCallCard.vue'
 import {
 	CHAT_API_SOURCE_OPTIONS,
 	CHAT_MODEL_CATALOG,
@@ -487,10 +270,21 @@ import {
 	type ChatNeedType
 } from '../../ai/models/chatModels'
 
+export type ToolCallInfo = {
+	id: string
+	name: string
+	status: 'pending' | 'running' | 'completed' | 'error'
+	args?: Record<string, unknown>
+	result?: unknown
+	error?: string
+}
+
 export type BottomChatMessage = {
 	id: string
 	role: 'user' | 'assistant' | 'system'
 	content: string
+	thinkingContent?: string
+	toolCalls?: ToolCallInfo[]
 }
 
 export type NanoBananaConfig = {
@@ -525,7 +319,7 @@ export type NanoBananaRefAnchor = {
 
 export type LocalExecSource = 'copilot-cli' | 'legacy-codex'
 
-export type ChatPanelMode = 'regular' | 'agent'
+export type AgentBackendType = 'codex' | 'dvsagent' | 'cli'
 export type AgentConversationMode = 'agent' | 'ask' | 'plan'
 
 export type LocalExecSessionItem = {
@@ -559,7 +353,7 @@ const props = defineProps<{
 	collapsed?: boolean
 	taskStatus?: string
 	placement?: 'bottom' | 'right-drawer'
-	panelMode?: ChatPanelMode
+	agentBackend?: AgentBackendType
 	agentMode?: AgentConversationMode
 	localExecStreamMode?: 'real' | 'mock'
 	agentWorkingDirectory?: string
@@ -592,7 +386,7 @@ const emit = defineEmits<{
 	(e: 'request-expand'): void
 	(e: 'request-collapse'): void
 	(e: 'focus-input'): void
-	(e: 'update:panelMode', v: ChatPanelMode): void
+	(e: 'update:agentBackend', v: AgentBackendType): void
 	(e: 'update:agentMode', v: AgentConversationMode): void
 	(e: 'update:localExecStreamMode', v: 'real' | 'mock'): void
 	(e: 'update:modelKey', v: ChatLegacyModelKey): void
@@ -645,13 +439,6 @@ const dockStyle = computed(() => {
 const MODEL_CATALOG = CHAT_MODEL_CATALOG
 const apiSourceOptions = CHAT_API_SOURCE_OPTIONS
 
-const normalizePanelMode = (raw: unknown): ChatPanelMode => {
-	const text = String(raw || '')
-		.trim()
-		.toLowerCase()
-	return text === 'agent' ? 'agent' : 'regular'
-}
-
 let layoutRaf = 0
 const emitLayoutChanged = () => {
 	if (layoutRaf) return
@@ -679,22 +466,22 @@ const emitLayoutChanged = () => {
 	})
 }
 
-const visibleApiSourceOptions = computed(() => {
-	if (isAgentMode.value) return apiSourceOptions.filter((item) => item.value === 'local-exec')
-	return apiSourceOptions.filter((item) => item.value !== 'local-exec')
-})
+const visibleApiSourceOptions = computed(() =>
+	apiSourceOptions.filter((item) => item.value === 'local-exec')
+)
 
 const modelKey = computed(() => (props.modelKey ?? 'deepseek') as ChatLegacyModelKey)
 
-const resolvedPanelMode = computed<ChatPanelMode>(() => {
-	if (props.panelMode === 'regular' || props.panelMode === 'agent') {
-		return normalizePanelMode(props.panelMode)
-	}
-	return modelKey.value === 'codex' ? 'agent' : 'regular'
-})
+const isAgentMode = computed(() => true)
+const isRegularMode = computed(() => false)
 
-const isAgentMode = computed(() => resolvedPanelMode.value === 'agent')
-const isRegularMode = computed(() => resolvedPanelMode.value === 'regular')
+const agentBackend = computed<AgentBackendType>(() => {
+	const backend = String(props.agentBackend || '')
+		.trim()
+		.toLowerCase()
+	if (backend === 'codex' || backend === 'cli') return backend as AgentBackendType
+	return 'dvsagent'
+})
 
 const agentWorkingDirectory = computed(() => {
 	const text = String(props.agentWorkingDirectory || '').trim()
@@ -734,20 +521,14 @@ const displayTaskStatus = computed(() => {
 
 const sendButtonDisabled = computed(() => {
 	if (isStoppingState.value) return true
-	if (isAgentMode.value && isSendingState.value) return false
-	return !!props.sending || (isVisualGenMode.value && !activeModelOption.value)
+	if (isSendingState.value) return false
+	return !!props.sending
 })
 
 const sendButtonLabel = computed(() => {
-	if (isAgentMode.value) {
-		if (isStoppingState.value) return '正在停止…'
-		if (isSendingState.value) return '停止'
-		return '发送'
-	}
-	if (modelKey.value === 'nanobanana' || modelKey.value === 'seedance') {
-		return props.sending ? '生成中…' : '生成'
-	}
-	return props.sending ? '发送中…' : '发送'
+	if (isStoppingState.value) return '正在停止…'
+	if (isSendingState.value) return '停止'
+	return '发送'
 })
 
 const agentMode = computed<AgentConversationMode>(() => {
@@ -761,11 +542,7 @@ const agentMode = computed<AgentConversationMode>(() => {
 const needType = ref<ChatNeedType>(needTypeFromLegacyModel(modelKey.value))
 const apiSource = ref<ChatApiSource>('all')
 
-const isVisualGenMode = computed(
-	() =>
-		isRegularMode.value &&
-		(modelKey.value === 'nanobanana' || modelKey.value === 'seedance' || modelKey.value === 'meshy')
-)
+const isVisualGenMode = computed(() => false)
 
 const nanoConfig = ref<NanoBananaConfig>({
 	aspectRatio: '1:1',
@@ -815,19 +592,9 @@ const onMeshyImageConfigChange = (nextConfig: MeshyImageConfig) => {
 
 const textModel = ref('auto')
 
-const modelOptions = computed(() => {
-	if (isAgentMode.value) {
-		return getChatModelOptions('text', 'local-exec')
-	}
-	return getChatModelOptions(needType.value, apiSource.value)
-})
+const modelOptions = computed(() => getChatModelOptions('text', 'local-exec'))
 
-const activeModelId = computed(() => {
-	if (isAgentMode.value) return String(textModel.value || '').trim()
-	if (needType.value === 'image') return String(nanoConfig.value.imageModel || '').trim()
-	if (needType.value === 'video') return String(seedanceConfig.value.model || '').trim()
-	return String(textModel.value || '').trim()
-})
+const activeModelId = computed(() => String(textModel.value || '').trim())
 
 const activeModelOption = computed(() => {
 	const id = activeModelId.value
@@ -845,58 +612,16 @@ watch(
 const applyModelSelection = (modelId: string) => {
 	const id = String(modelId || '').trim()
 	if (!id) return
-	if (isAgentMode.value) {
-		textModel.value = id
-		return
-	}
-	if (needType.value === 'image') {
-		if (
-			id === 'gemini-2.5-flash-image' ||
-			id === 'gemini-3.1-flash-image-preview' ||
-			id === 'gemini-3-pro-image-preview' ||
-			id === 'doubao-seedream-4-5-251128' ||
-			id === 'doubao-seedream-4-0-250828' ||
-			id === 'doubao-seedream-5-0-260128' ||
-			id === 'jimeng-image-3.0' ||
-			id === 'jimeng-image-4.0'
-		) {
-			nanoConfig.value.imageModel = id
-		}
-		return
-	}
-	if (needType.value === 'video') {
-		const isVideoModel = MODEL_CATALOG.some((item) => item.needType === 'video' && item.id === id)
-		if (isVideoModel) {
-			seedanceConfig.value.model = id
-		}
-		return
-	}
 	textModel.value = id
 }
 
 const normalizeModelSelection = () => {
-	if (isAgentMode.value) {
-		needType.value = 'text'
-		if (apiSource.value !== 'local-exec') apiSource.value = 'local-exec'
-		const list = modelOptions.value
-		if (!list.length) return
-		if (!list.some((m) => m.id === activeModelId.value)) {
-			textModel.value = list[0].id
-		}
-		return
-	}
-
-	if (apiSource.value === 'local-exec') {
-		apiSource.value = 'all'
-	}
-	let list = modelOptions.value
-	if (!list.length && apiSource.value !== 'all') {
-		apiSource.value = 'all'
-		list = modelOptions.value
-	}
+	needType.value = 'text'
+	if (apiSource.value !== 'local-exec') apiSource.value = 'local-exec'
+	const list = modelOptions.value
 	if (!list.length) return
 	if (!list.some((m) => m.id === activeModelId.value)) {
-		applyModelSelection(list[0].id)
+		textModel.value = list[0].id
 	}
 }
 
@@ -1093,9 +818,6 @@ watch(
 watch(
 	() => props.modelKey,
 	() => {
-		if (!isAgentMode.value) {
-			needType.value = needTypeFromLegacyModel(modelKey.value)
-		}
 		normalizeModelSelection()
 		void scrollHistoryToBottom()
 		void nextTick().then(() => emitLayoutChanged())
@@ -1103,26 +825,9 @@ watch(
 )
 
 watch(
-	() => [needType.value, apiSource.value, resolvedPanelMode.value] as const,
+	() => [needType.value, apiSource.value] as const,
 	() => {
 		normalizeModelSelection()
-	},
-	{ immediate: true }
-)
-
-watch(
-	() => resolvedPanelMode.value,
-	(mode) => {
-		if (mode === 'agent') {
-			needType.value = 'text'
-			if (apiSource.value !== 'local-exec') apiSource.value = 'local-exec'
-			if (modelKey.value !== 'codex') emit('update:modelKey', 'codex')
-		} else {
-			if (apiSource.value === 'local-exec') apiSource.value = 'all'
-			if (modelKey.value === 'codex') emit('update:modelKey', 'deepseek')
-		}
-		normalizeModelSelection()
-		void nextTick().then(() => emitLayoutChanged())
 	},
 	{ immediate: true }
 )
@@ -1195,9 +900,12 @@ const onAgentModelSelectionChange = (e: Event) => {
 	emit('update:modelKey', 'codex')
 }
 
-const onSwitchPanelMode = (mode: ChatPanelMode) => {
-	if (mode === resolvedPanelMode.value) return
-	emit('update:panelMode', mode)
+const onAgentBackendChange = (e: Event) => {
+	const value = String((e.target as HTMLSelectElement).value || '')
+		.trim()
+		.toLowerCase()
+	const backend = (value === 'codex' || value === 'cli') ? value as AgentBackendType : 'dvsagent'
+	emit('update:agentBackend', backend)
 }
 
 const onLocalExecStreamModeChange = (e: Event) => {
@@ -1269,29 +977,19 @@ const emitGenerate = () => {
 }
 
 const onEnterSend = () => {
-	if (isAgentMode.value && isSendingState.value) {
+	if (isSendingState.value) {
 		if (!isStoppingState.value) emit('stop')
 		return
 	}
-	if (
-		isRegularMode.value &&
-		(modelKey.value === 'nanobanana' || modelKey.value === 'seedance' || modelKey.value === 'meshy')
-	)
-		emitGenerate()
-	else emit('send')
+	emit('send')
 }
 
 const onClickSend = () => {
-	if (isAgentMode.value && isSendingState.value) {
+	if (isSendingState.value) {
 		if (!isStoppingState.value) emit('stop')
 		return
 	}
-	if (
-		isRegularMode.value &&
-		(modelKey.value === 'nanobanana' || modelKey.value === 'seedance' || modelKey.value === 'meshy')
-	)
-		emitGenerate()
-	else emit('send')
+	emit('send')
 }
 
 const visualPanelTitle = computed(() =>
