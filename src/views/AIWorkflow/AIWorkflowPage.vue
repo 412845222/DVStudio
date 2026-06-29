@@ -1357,6 +1357,7 @@ const screenshotWarmupDetail = ref('')
 const warmupForceRenderNodeIds = ref<Set<string>>(new Set())
 const warmupExitingFullRender = ref(false)
 const nearDragNodeIds = ref<Set<string>>(new Set())
+const panningFullRenderSnapshot = ref<Set<string> | null>(null)
 
 const autoWireInProgress = ref(false)
 const autoWireSourceNodeId = ref<string | null>(null)
@@ -1555,6 +1556,10 @@ const isNodeInViewport = (node: WorkflowNode): boolean => {
 }
 
 const fullRenderNodeIds = computed<Set<string>>(() => {
+	if (panningFullRenderSnapshot.value) {
+		return panningFullRenderSnapshot.value
+	}
+
 	// ==========================================
 	// Step 1: 核心激活节点（用户直接交互的节点）
 	// 这些节点无论是否在视口内，都必须完整渲染
@@ -1573,6 +1578,11 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 	if (linkHoverId) {
 		const nid = String(linkHoverId).trim()
 		if (nid) coreIds.add(nid)
+	}
+
+	if (nodeChatDialog.value.visible && nodeChatDialog.value.nodeId) {
+		const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
+		if (chatNodeId) coreIds.add(chatNodeId)
 	}
 
 	if (coreIds.size === 0) return coreIds
@@ -8018,10 +8028,12 @@ watch(
 const onCanvasPanningStart = () => {
 	canvasInteraction.cancelFocusAnimation()
 	linkInteraction.setPanning(true)
+	panningFullRenderSnapshot.value = new Set(fullRenderNodeIds.value)
 }
 
 const onCanvasPanningEnd = () => {
 	linkInteraction.setPanning(false)
+	panningFullRenderSnapshot.value = null
 }
 
 const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
