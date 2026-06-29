@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 3
+const TARGET_VERSION = 4
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -294,7 +294,42 @@ function runV3(db) {
 	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_editor_components_template_id ON editor_components(template_id)`)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3]
+function runV4(db) {
+	// 统一火山方舟任务记录表：覆盖 seedream / seedance / jimeng / chat
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS ark_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL DEFAULT 'bytedance',
+      api_type TEXT NOT NULL DEFAULT '',
+      api_action TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'queued',
+      prompt TEXT NOT NULL DEFAULT '',
+      negative_prompt TEXT NOT NULL DEFAULT '',
+      result_urls TEXT,
+      result_text TEXT NOT NULL DEFAULT '',
+      thumbnail_url TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      status_text TEXT NOT NULL DEFAULT '',
+      request_payload TEXT,
+      response_payload TEXT,
+      project_id INTEGER,
+      node_id TEXT NOT NULL DEFAULT '',
+      remote_task_id TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_ark_tasks_task_id ON ark_tasks(task_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_ark_tasks_project_id ON ark_tasks(project_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_ark_tasks_api_type ON ark_tasks(api_type);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_ark_tasks_status ON ark_tasks(status);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_ark_tasks_updated_at ON ark_tasks(updated_at DESC);`)
+}
+
+const MIGRATIONS = [runV1, runV2, runV3, runV4]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)

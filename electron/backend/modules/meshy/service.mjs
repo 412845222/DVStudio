@@ -11,6 +11,7 @@ const MODE_PATH_MAP = {
   'image-to-image': '/openapi/v1/image-to-image',
   'retexture': '/openapi/v1/retexture',
   'remesh': '/openapi/v1/remesh',
+  'uv-unwrap': '/openapi/v1/uv-unwrap',
 }
 
 function getModePath(mode) {
@@ -305,13 +306,20 @@ function targetAndFamily(mode, payload) {
   if (mode === 'multi-image-to-3d') return ['3d', 'multi-image-to-3d']
   if (mode === 'retexture') return ['3d', 'retexture']
   if (mode === 'remesh') return ['3d', 'remesh']
+  if (mode === 'uv-unwrap') return ['3d', 'uv-unwrap']
   return ['3d', 'text-to-3d']
 }
 
 function imageCount(payload) {
   if (!payload || typeof payload !== 'object') return 0
-  if (Array.isArray(payload.image_urls)) return payload.image_urls.map(x => String(x || '').trim()).filter(x => x).length
-  if (Array.isArray(payload.reference_image_urls)) return payload.reference_image_urls.map(x => String(x || '').trim()).filter(x => x).length
+  if (Array.isArray(payload.image_urls)) {
+    const count = payload.image_urls.map(x => String(x || '').trim()).filter(x => x).length
+    if (count > 0) return count
+  }
+  if (Array.isArray(payload.reference_image_urls)) {
+    const count = payload.reference_image_urls.map(x => String(x || '').trim()).filter(x => x).length
+    if (count > 0) return count
+  }
   return String(payload.image_url || '').trim() ? 1 : 0
 }
 
@@ -401,7 +409,16 @@ function buildCreatePayload(payload) {
     if (!textStylePrompt && !imageStyleUrl) return [null, null, 'text_style_prompt or image_style_url is required']
     if (textStylePrompt) body.text_style_prompt = textStylePrompt
     if (imageStyleUrl) body.image_style_url = imageStyleUrl
+    let aiModel = String(payload.ai_model || '').trim().toLowerCase()
+    if (!['meshy-5', 'meshy-6', 'latest'].includes(aiModel)) aiModel = 'latest'
+    body.ai_model = aiModel
   } else if (mode === 'remesh') {
+    const inputTaskId = String(payload.input_task_id || payload.preview_task_id || '').trim()
+    const modelUrl = String(payload.model_url || '').trim()
+    if (inputTaskId) body.input_task_id = inputTaskId
+    else if (modelUrl) body.model_url = modelUrl
+    else return [null, null, 'input_task_id or model_url is required']
+  } else if (mode === 'uv-unwrap') {
     const inputTaskId = String(payload.input_task_id || payload.preview_task_id || '').trim()
     const modelUrl = String(payload.model_url || '').trim()
     if (inputTaskId) body.input_task_id = inputTaskId
@@ -415,9 +432,11 @@ function buildCreatePayload(payload) {
   } else if (['text-to-image', 'image-to-image'].includes(mode)) {
     extraKeys = ['aspect_ratio', 'generate_multi_view', 'pose_mode', 'seed']
   } else if (mode === 'retexture') {
-    extraKeys = ['topology', 'target_polycount', 'texture_richness', 'target_formats']
+    extraKeys = ['ai_model', 'enable_original_uv', 'enable_pbr', 'hd_texture', 'remove_lighting', 'target_formats', 'alpha_thumbnail']
   } else if (mode === 'remesh') {
-    extraKeys = ['target_formats', 'topology', 'target_polycount', 'resize_height', 'origin_at', 'convert_format_only']
+    extraKeys = ['target_formats', 'topology', 'target_polycount', 'decimation_mode', 'resize_height', 'origin_at', 'convert_format_only']
+  } else if (mode === 'uv-unwrap') {
+    extraKeys = []
   }
 
   for (const key of extraKeys) {
@@ -702,7 +721,7 @@ export async function getBalance(ctx) {
 
   const apiKey = keyResult.plaintext
   const client = getHttpClient()
-  const url = `${MESHY_API_BASE}/openapi/v2/balances`
+  const url = `${MESHY_API_BASE}/openapi/v1/balance`
 
   try {
     const res = await client.get(url, {
@@ -715,12 +734,12 @@ export async function getBalance(ctx) {
     }
 
     const balance = res.body
-    let displayText = '余额查询成功'
-    if (balance && typeof balance === 'object') {
-      if (typeof balance.credits === 'number') displayText = `余额: ${balance.credits} credits`
-      else if (typeof balance.balance === 'number') displayText = `余额: ${balance.balance}`
-      else if (typeof balance.free_balance === 'number') displayText = `免费额度: ${balance.free_balance}`
-    }
+    const balanceValue = typeof balance === 'object' && balance !== null
+      ? (typeof balance.balance === 'number' ? balance.balance : null)
+      : null
+    const displayText = balanceValue !== null
+      ? `余额: ${balanceValue} credits`
+      : '余额查询成功（无法解析余额数值）'
 
     return { ok: true, available: true, configured: true, displayText, detail: balance }
   } catch (err) {

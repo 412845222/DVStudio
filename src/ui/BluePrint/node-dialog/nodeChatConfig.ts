@@ -85,7 +85,10 @@ export const NODE_CHAT_VIDEO_RATIO_OPTIONS = [
 export const NODE_CHAT_MESHY_MODE_OPTIONS = [
 	{ value: 'text-to-3d', label: 'Text to 3D' },
 	{ value: 'image-to-3d', label: 'Image to 3D' },
-	{ value: 'multi-image-to-3d', label: 'Multi-Image to 3D' }
+	{ value: 'multi-image-to-3d', label: 'Multi-Image to 3D' },
+	{ value: 'remesh', label: '重建网格 (ReMesh)' },
+	{ value: 'retexture', label: '重新纹理 (ReTexture)' },
+	{ value: 'uv-unwrap', label: 'UV Unwrap' }
 ]
 
 export const NODE_CHAT_MESHY_AI_MODEL_OPTIONS = [
@@ -127,6 +130,12 @@ export const NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS = [
 	{ value: 'obj', label: 'OBJ' },
 	{ value: 'stl', label: 'STL' },
 	{ value: 'usdz', label: 'USDZ' }
+]
+
+export const NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS = [
+	{ value: 'auto', label: 'auto' },
+	{ value: 'fast', label: 'fast' },
+	{ value: 'accurate', label: 'accurate' }
 ]
 
 export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
@@ -387,7 +396,17 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 				meshyPoseMode: '',
 				meshyOutputFormat: 'glb',
 				meshyMultiView: false,
-				meshySeed: -1
+				meshySeed: -1,
+				meshyTargetPolycount: 30000,
+				meshyDecimationMode: 'auto',
+				meshyEnableOriginalUv: true,
+				meshyEnablePbr: false,
+				meshyHdTexture: false,
+				meshyRemoveLighting: true,
+				meshyAlphaThumbnail: false,
+				meshyStyleSource: 'text',
+				meshyTextureImageUrl: '',
+				meshyTextureImageNodeId: ''
 			}
 		default:
 			return {}

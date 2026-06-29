@@ -438,6 +438,13 @@ contextBridge.exposeInMainWorld('dweb', {
 		taskDetail: (payload) => invoke('dweb:seedance:task-detail', payload || {}),
 		sync: (payload) => invoke('dweb:seedance:sync', payload || {}),
 	},
+	// ===== 火山方舟（ARK）任务面板 =====
+	ark: {
+		listTasks: (payload) => invoke('dweb.ark.listTasks', payload || {}),
+		getTaskDetail: (payload) => invoke('dweb.ark.getTaskDetail', payload || {}),
+		deleteTask: (payload) => invoke('dweb.ark.deleteTask', payload || {}),
+		recordTask: (payload) => invoke('dweb.ark.recordTask', payload || {}),
+	},
 	// ===== ComfyUI =====
 	comfyui: {
 		runtime: {
