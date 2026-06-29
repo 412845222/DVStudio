@@ -634,6 +634,7 @@ export type WorkflowMeshyTaskFamily =
 	| 'refine'
 	| 'retexture'
 	| 'remesh'
+	| 'uv-unwrap'
 	| 'text-to-image'
 	| 'image-to-image'
 
@@ -695,7 +696,7 @@ export type WorkflowMeshyNodeSettings = {
 	meshyParentTaskId?: string
 	meshyCapabilities?: WorkflowMeshyCapability[]
 	meshyHelpTopic?: string
-	meshyMode?: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d'
+	meshyMode?: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'remesh' | 'retexture' | 'uv-unwrap'
 	meshyStage?: 'preview' | 'refine'
 	meshyPrompt?: string
 	meshyNegativePrompt?: string
@@ -714,15 +715,20 @@ export type WorkflowMeshyNodeSettings = {
 	meshyAnimationActionId?: number
 	meshyTopology?: 'triangle' | 'quad'
 	meshyTargetPolycount?: number
+	meshyDecimationMode?: 'auto' | 'fast' | 'accurate'
+	meshyEnableOriginalUv?: boolean
+	meshyEnablePbr?: boolean
+	meshyHdTexture?: boolean
+	meshyRemoveLighting?: boolean
+	meshyAlphaThumbnail?: boolean
+	meshyStyleSource?: 'text' | 'image'
 	meshySymmetryMode?: 'off' | 'auto' | 'on'
 	meshyShouldRemesh?: boolean
 	meshySavePreRemeshedModel?: boolean
 	meshyShouldTexture?: boolean
-	meshyEnablePbr?: boolean
 	meshyPoseMode?: '' | 'a-pose' | 't-pose'
 	meshyModeration?: boolean
 	meshyImageEnhancement?: boolean
-	meshyRemoveLighting?: boolean
 	meshyAutoSize?: boolean
 	meshyOriginAt?: 'bottom' | 'center'
 	meshyTargetFormats?: Array<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz'>
@@ -861,6 +867,16 @@ export type WorkflowNodeChatModel3DParams = {
 	meshyOutputFormat?: string
 	meshyMultiView?: boolean
 	meshySeed?: number
+	meshyTargetPolycount?: number
+	meshyDecimationMode?: string
+	meshyEnableOriginalUv?: boolean
+	meshyEnablePbr?: boolean
+	meshyHdTexture?: boolean
+	meshyRemoveLighting?: boolean
+	meshyAlphaThumbnail?: boolean
+	meshyStyleSource?: string
+	meshyTextureImageUrl?: string
+	meshyTextureImageNodeId?: string
 }
 
 export type WorkflowNodeChatParamRecord =

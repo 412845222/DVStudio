@@ -17,6 +17,7 @@ export type MeshyTaskFamily =
 	| 'refine'
 	| 'retexture'
 	| 'remesh'
+	| 'uv-unwrap'
 	| 'rigging'
 	| 'animation'
 	| 'text-to-image'
@@ -30,10 +31,11 @@ export type MeshyRequestMode =
 	| 'image-to-image'
 	| 'retexture'
 	| 'remesh'
+	| 'uv-unwrap'
 	| 'rigging'
 	| 'animation'
 
-export type MeshyRelationKind = 'model' | 'texture' | 'rigging' | 'animation' | 'remesh'
+export type MeshyRelationKind = 'model' | 'texture' | 'rigging' | 'animation' | 'remesh' | 'uv-unwrap'
 
 export type MeshyCapability = 'model' | 'textured' | 'rigged' | 'animated'
 

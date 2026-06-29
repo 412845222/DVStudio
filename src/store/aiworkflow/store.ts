@@ -1063,6 +1063,7 @@ const normalizeMeshyTaskFamily = (
 		family === 'refine' ||
 		family === 'retexture' ||
 		family === 'remesh' ||
+		family === 'uv-unwrap' ||
 		family === 'text-to-image' ||
 		family === 'image-to-image'
 	) {
@@ -1083,6 +1084,9 @@ const meshyLegacyModeForFamily = (
 	if (family === 'image-to-3d') return 'image-to-3d'
 	if (family === 'multi-image-to-3d') return 'multi-image-to-3d'
 	if (family === 'text-to-3d' || family === 'refine') return 'text-to-3d'
+	if (family === 'remesh') return 'remesh'
+	if (family === 'retexture') return 'retexture'
+	if (family === 'uv-unwrap') return 'uv-unwrap'
 	return undefined
 }
 
@@ -1327,7 +1331,13 @@ const normalizeMeshySettings = (rawSettings: unknown): WorkflowMeshyNodeSettings
 					? 'multi-image-to-3d'
 					: raw.meshyMode === 'text-to-3d'
 						? 'text-to-3d'
-						: undefined),
+						: raw.meshyMode === 'remesh'
+							? 'remesh'
+							: raw.meshyMode === 'retexture'
+								? 'retexture'
+								: raw.meshyMode === 'uv-unwrap'
+									? 'uv-unwrap'
+									: undefined),
 		meshyStage:
 			meshyLegacyStageForFamily(meshyTaskFamily) ??
 			(raw.meshyStage === 'refine'
@@ -2727,7 +2737,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 								meshyModelSettingsRaw.taskFamily === 'text-to-3d' ||
 								meshyModelSettingsRaw.taskFamily === 'image-to-3d' ||
 								meshyModelSettingsRaw.taskFamily === 'multi-image-to-3d' ||
-								meshyModelSettingsRaw.taskFamily === 'retexture'
+								meshyModelSettingsRaw.taskFamily === 'retexture' ||
+								meshyModelSettingsRaw.taskFamily === 'remesh' ||
+								meshyModelSettingsRaw.taskFamily === 'uv-unwrap'
 									? meshyModelSettingsRaw.taskFamily
 									: undefined,
 							modelType:

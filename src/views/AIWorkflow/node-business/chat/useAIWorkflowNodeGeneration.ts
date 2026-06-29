@@ -167,6 +167,90 @@ const collectReferenceImages = async (
 	return refs
 }
 
+const collectReferenceImagesWithUrl = async (
+	deps: NodeGenerationApiDeps,
+	nodeId: string,
+	maxRefs: number = 4
+): Promise<Array<{ name: string; blob: Blob; url: string; fromNodeId: string }>> => {
+	const state = deps.store.state as {
+		nodesById: Record<string, Record<string, unknown>>
+		edgesById: Record<string, Record<string, unknown>>
+		edgeOrder: string[]
+		resourcesById: Record<string, Record<string, unknown>>
+	}
+	const node = state.nodesById[nodeId]
+	if (!node) return []
+
+	const incoming: Array<Record<string, unknown>> = []
+	for (const edgeId of state.edgeOrder) {
+		const edge = state.edgesById[edgeId]
+		if (!edge) continue
+		if (String(edge.toNodeId ?? '') === String(nodeId)) incoming.push(edge)
+	}
+
+	const refs: Array<{ name: string; blob: Blob; url: string; fromNodeId: string }> = []
+	for (const edge of incoming) {
+		if (refs.length >= maxRefs) break
+		const fromNodeId = String(edge.fromNodeId ?? '')
+		const sourceNode = state.nodesById[fromNodeId]
+		if (!sourceNode) continue
+
+		const resourceRid = String(sourceNode.resourceId ?? '').trim()
+		let candidateUrl: string = ''
+		if (resourceRid) {
+			const res = state.resourcesById[resourceRid]
+			candidateUrl = typeof res?.url === 'string' ? String(res.url) : ''
+		}
+		if (!candidateUrl) {
+			const imageSettings =
+				typeof sourceNode.imageSettings === 'object' && sourceNode.imageSettings
+					? (sourceNode.imageSettings as Record<string, unknown>)
+					: {}
+			const lastGenerated =
+				typeof imageSettings?.lastGeneratedImageUrl === 'string'
+					? String(imageSettings.lastGeneratedImageUrl)
+					: ''
+			candidateUrl = lastGenerated
+		}
+		if (!candidateUrl) {
+			const meshySettings =
+				typeof sourceNode.meshySettings === 'object' && sourceNode.meshySettings
+					? (sourceNode.meshySettings as Record<string, unknown>)
+					: {}
+			const outputSummary =
+				typeof meshySettings?.meshyOutputSummary === 'object' && meshySettings.meshyOutputSummary
+					? (meshySettings.meshyOutputSummary as Record<string, unknown>)
+					: {}
+			const preferredUrl = typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
+			const thumbnailUrl = typeof outputSummary?.thumbnailUrl === 'string' ? String(outputSummary.thumbnailUrl) : ''
+			candidateUrl = preferredUrl || thumbnailUrl
+		}
+		if (!candidateUrl) continue
+
+		const fetchUrl =
+			typeof deps.resolveBackendFetchUrl === 'function'
+				? deps.resolveBackendFetchUrl(candidateUrl)
+				: deps.resolveBackendUrl(candidateUrl)
+		try {
+			let blob: Blob | null = null
+			if (typeof deps.downloadUrlAsBlob === 'function') {
+				blob = await deps.downloadUrlAsBlob(fetchUrl)
+			}
+			if (!blob) {
+				const resp = await fetch(fetchUrl)
+				if (!resp.ok) continue
+				blob = await resp.blob()
+			}
+			if (!blob || blob.size === 0) continue
+			const name = `ref-${String(sourceNode.type || 'image')}-${fromNodeId}-${Date.now()}.png`
+			refs.push({ name, blob, url: candidateUrl, fromNodeId })
+		} catch {
+			continue
+		}
+	}
+	return refs
+}
+
 const normalizeImageModel = (params: Record<string, unknown>) => {
 	const rawModel = String(params?.imageModel ?? params?.model ?? '').trim()
 	// Meshy 图片生成模型
@@ -1302,6 +1386,135 @@ const blobToBase64DataUri = async (blob: Blob): Promise<string> => {
 	})
 }
 
+const normalizeModelUrlForMeshy = async (deps: NodeGenerationApiDeps, rawUrl: string, _label?: string): Promise<string> => {
+	const value = String(rawUrl ?? '').trim()
+	if (!value) return ''
+	if (value.startsWith('data:')) return value
+
+	// Handle dweb:// URLs first before any resolution
+	if (value.startsWith('dweb://')) {
+		try {
+			let blob: Blob | null = null
+			if (typeof deps.downloadUrlAsBlob === 'function') {
+				blob = await deps.downloadUrlAsBlob(value)
+			}
+			if (!blob) {
+				const resp = await fetch(value)
+				if (!resp.ok) return ''
+				blob = await resp.blob()
+			}
+			if (!blob || blob.size === 0) return ''
+			return await blobToBase64DataUri(blob)
+		} catch (err) {
+			console.warn(`[Meshy] failed to convert dweb model URL to data URL: ${value}`, err)
+			return ''
+		}
+	}
+
+	const resolved =
+		value.startsWith('http://') || value.startsWith('https://') || value.startsWith('blob:')
+			? value
+			: deps.resolveBackendUrl(value)
+
+	if (resolved.startsWith('blob:')) {
+		try {
+			const resp = await fetch(resolved)
+			if (!resp.ok) return ''
+			const blob = await resp.blob()
+			if (!blob || blob.size === 0) return ''
+			return await blobToBase64DataUri(blob)
+		} catch {
+			return ''
+		}
+	}
+
+	if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+		try {
+			const parsed = new URL(resolved)
+			const hostname = parsed.hostname
+			if (
+				hostname === 'localhost' ||
+				hostname === '127.0.0.1' ||
+				hostname.startsWith('192.168.') ||
+				hostname.startsWith('10.') ||
+				hostname.endsWith('.local')
+			) {
+				let blob: Blob | null = null
+				if (typeof deps.downloadUrlAsBlob === 'function') {
+					blob = await deps.downloadUrlAsBlob(resolved)
+				}
+				if (!blob) {
+					const resp = await fetch(resolved)
+					if (!resp.ok) return resolved
+					blob = await resp.blob()
+				}
+				if (!blob || blob.size === 0) return resolved
+				return await blobToBase64DataUri(blob)
+			}
+		} catch {
+			// keep resolved url
+		}
+		return resolved
+	}
+
+	return resolved
+}
+
+const resolveModel3DInput = async (
+	deps: NodeGenerationApiDeps,
+	nodeId: string
+): Promise<{ inputTaskId?: string; modelUrl?: string } | null> => {
+	const state = deps.store.state
+	// 1. 查找 in-model 输入边
+	const edge = Object.values(state.edgesById || {}).find(
+		(e) => String(e.toNodeId ?? '') === String(nodeId) && String(e.toAnchorId ?? '').trim() === 'in-model'
+	)
+	if (edge) {
+		const fromNode = state.nodesById[String(edge.fromNodeId ?? '')]
+		if (!fromNode) return null
+		if (fromNode.type === 'meshy') {
+			const settings = (fromNode as Record<string, unknown>).meshySettings as Record<string, unknown> | undefined
+			const relationSummary = settings && typeof settings.meshyRelationSummary === 'object' && settings.meshyRelationSummary !== null
+				? (settings.meshyRelationSummary as Record<string, unknown>)
+				: {}
+			const taskId = String(settings?.meshyTaskId ?? relationSummary?.effectiveTaskId ?? '').trim()
+			if (taskId) return { inputTaskId: taskId }
+			const outputSummary = settings && typeof settings.meshyOutputSummary === 'object' && settings.meshyOutputSummary !== null
+				? (settings.meshyOutputSummary as Record<string, unknown>)
+				: {}
+			const sourceUrl = String(
+				relationSummary?.preferredUrl ?? outputSummary?.preferredUrl ?? ''
+			).trim()
+			if (sourceUrl) {
+				const normalized = await normalizeModelUrlForMeshy(deps, sourceUrl, `meshy_model_${fromNode.id}`)
+				if (normalized) return { modelUrl: normalized }
+			}
+		}
+		if (fromNode.type === 'model3d') {
+			const m3d = (fromNode as Record<string, unknown>).model3dSettings as Record<string, unknown> | undefined
+			const url = String(m3d?.modelAssetUrl ?? m3d?.modelUrl ?? '').trim()
+			if (url) {
+				const normalized = await normalizeModelUrlForMeshy(deps, url, `model3d_${fromNode.id}`)
+				if (normalized) return { modelUrl: normalized }
+			}
+		}
+	}
+	// 2. 回退到当前节点自身的已有模型
+	const selfNode = state.nodesById[String(nodeId)]
+	if (selfNode) {
+		const selfM3d = (selfNode as Record<string, unknown>).model3dSettings as Record<string, unknown> | undefined
+		const url = String(selfM3d?.modelAssetUrl ?? selfM3d?.modelUrl ?? '').trim()
+		if (url) {
+			const normalized = await normalizeModelUrlForMeshy(deps, url, `self_model_${nodeId}`)
+			if (normalized) return { modelUrl: normalized }
+		}
+		const selfMeshy = (selfNode as Record<string, unknown>).meshyModelSettings as Record<string, unknown> | undefined
+		const taskId = String(selfMeshy?.taskId ?? '').trim()
+		if (taskId) return { inputTaskId: taskId }
+	}
+	return null
+}
+
 const runModel3dMeshyTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
@@ -1319,6 +1532,16 @@ const runModel3dMeshyTask = async (
 	const meshyOriginAt = String(params.meshyOriginAt || '').trim()
 	const meshyPoseMode = String(params.meshyPoseMode || '').trim()
 	const meshySeed = Number(params.meshySeed ?? -1)
+	const meshyTargetPolycount = Number(params.meshyTargetPolycount ?? 30000)
+	const meshyDecimationMode = String(params.meshyDecimationMode || '').trim()
+	const meshyEnableOriginalUv = Boolean(params.meshyEnableOriginalUv ?? true)
+	const meshyEnablePbr = Boolean(params.meshyEnablePbr ?? false)
+	const meshyHdTexture = Boolean(params.meshyHdTexture ?? false)
+	const meshyRemoveLighting = Boolean(params.meshyRemoveLighting ?? true)
+	const meshyAlphaThumbnail = Boolean(params.meshyAlphaThumbnail ?? false)
+	const meshyStyleSource = String(params.meshyStyleSource || 'text').trim()
+
+	const isPostProcessMode = meshyMode === 'remesh' || meshyMode === 'retexture' || meshyMode === 'uv-unwrap'
 
 	updateTask(deps, task.id, {
 		status: 'running',
@@ -1326,27 +1549,42 @@ const runModel3dMeshyTask = async (
 		progress: 10
 	})
 	appendDetail(deps, task.id, `模式：${meshyMode}`)
-	appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
-	appendDetail(deps, task.id, `输出格式：${meshyOutputFormat}`)
+	if (!isPostProcessMode) appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
+	if (meshyOutputFormat && meshyMode !== 'uv-unwrap') appendDetail(deps, task.id, `输出格式：${meshyOutputFormat}`)
 	if (payload.prompt) appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
 
 	try {
 		const meshyPayload: Record<string, unknown> = {
-			mode: meshyMode,
-			ai_model: meshyAiModel
+			mode: meshyMode
+		}
+
+		if (!isPostProcessMode) {
+			meshyPayload.ai_model = meshyAiModel
 		}
 
 		if (payload.prompt) {
 			meshyPayload.prompt = payload.prompt
 		}
 
-		if (meshyModelType) meshyPayload.model_type = meshyModelType
-		if (meshyTopology) meshyPayload.topology = meshyTopology
-		if (meshySymmetryMode) meshyPayload.symmetry_mode = meshySymmetryMode
-		if (meshyOriginAt) meshyPayload.origin_at = meshyOriginAt
-		if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
-		if (meshyOutputFormat) meshyPayload.output_format = meshyOutputFormat
-		if (meshySeed > 0) meshyPayload.seed = meshySeed
+		if (meshyModelType && !isPostProcessMode) meshyPayload.model_type = meshyModelType
+		if (meshyTopology && meshyMode !== 'retexture' && meshyMode !== 'uv-unwrap') meshyPayload.topology = meshyTopology
+		if (meshySymmetryMode && !isPostProcessMode) meshyPayload.symmetry_mode = meshySymmetryMode
+		if (meshyOriginAt && (!isPostProcessMode || meshyMode === 'remesh')) meshyPayload.origin_at = meshyOriginAt
+		if (meshyPoseMode && !isPostProcessMode) meshyPayload.pose_mode = meshyPoseMode
+		if (meshyOutputFormat && meshyMode !== 'uv-unwrap') meshyPayload.output_format = meshyOutputFormat
+		if (!isPostProcessMode && meshySeed > 0) meshyPayload.seed = meshySeed
+		if (isPostProcessMode && Number.isFinite(meshyTargetPolycount)) meshyPayload.target_polycount = Math.max(100, Math.min(300000, Math.floor(meshyTargetPolycount)))
+		if (meshyMode === 'remesh' && meshyDecimationMode) meshyPayload.decimation_mode = meshyDecimationMode
+		if (meshyMode === 'retexture') {
+			if (meshyStyleSource === 'text' && payload.prompt) {
+				meshyPayload.text_style_prompt = payload.prompt
+			}
+			meshyPayload.enable_original_uv = meshyEnableOriginalUv
+			meshyPayload.enable_pbr = meshyEnablePbr
+			meshyPayload.hd_texture = meshyHdTexture
+			meshyPayload.remove_lighting = meshyRemoveLighting
+			meshyPayload.alpha_thumbnail = meshyAlphaThumbnail
+		}
 
 		let refImages: Array<{ name: string; blob: Blob }> = []
 		let imageDataUris: string[] = []
@@ -1388,6 +1626,43 @@ const runModel3dMeshyTask = async (
 				meshyPayload.image_url = imageDataUris[0]
 			} else if (meshyMode === 'multi-image-to-3d') {
 				meshyPayload.image_urls = imageDataUris
+			}
+		}
+
+		// retexture with image style: use user-selected image or first connected
+		if (meshyMode === 'retexture' && meshyStyleSource === 'image') {
+			const styleRefs = await collectReferenceImagesWithUrl(deps, payload.nodeId, 4)
+			const selectedNodeId = String(params.meshyTextureImageNodeId || '').trim()
+			let selectedRef: { name: string; blob: Blob; url: string; fromNodeId: string } | null = null
+			if (selectedNodeId && styleRefs.length > 0) {
+				selectedRef = styleRefs.find(ref => ref.fromNodeId === selectedNodeId) || null
+			}
+			if (!selectedRef && styleRefs.length > 0) {
+				selectedRef = styleRefs[0]
+			}
+			if (selectedRef) {
+				try {
+					const dataUri = await blobToBase64DataUri(selectedRef.blob)
+					if (dataUri) {
+						meshyPayload.image_style_url = dataUri
+						appendDetail(deps, task.id, `已使用${selectedNodeId ? '选择的' : '连接的'}图片作为纹理风格参考`)
+					}
+				} catch {
+					// skip
+				}
+			}
+		}
+
+		if (isPostProcessMode) {
+			const modelInput = await resolveModel3DInput(deps, payload.nodeId)
+			if (modelInput?.inputTaskId) {
+				meshyPayload.input_task_id = modelInput.inputTaskId
+				appendDetail(deps, task.id, `上游任务ID：${modelInput.inputTaskId}`)
+			} else if (modelInput?.modelUrl) {
+				meshyPayload.model_url = modelInput.modelUrl
+				appendDetail(deps, task.id, `输入模型URL已就绪`)
+			} else {
+				throw new Error(`${meshyMode === 'remesh' ? '重建网格' : meshyMode === 'retexture' ? '重新纹理' : 'UV Unwrap'} 需要连接上游 3D 模型输入或已有模型数据`)
 			}
 		}
 
