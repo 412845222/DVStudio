@@ -7,6 +7,7 @@ import {
 } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
 
 import type { InputParamPreviewRef } from './useAIWorkflowTextOutputResolver'
+import { watch } from 'vue'
 
 export const useAIWorkflowNodeExtraProps = (payload: {
 	store: {
@@ -88,7 +89,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		return null
 	}
 
-	const buildImageNodeProps = (node: WorkflowNode, shedHeavy: boolean, withInputRefs: boolean) => {
+	const buildImageNodeProps = (node: WorkflowNode) => {
 		const effective = resolveImageNodeEffectiveSource(node)
 		const sourceNode = effective?.sourceNode ?? node
 		const isPassThrough = effective?.isPassThrough ?? false
@@ -118,138 +119,32 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			resourceUrl:
 				upstreamCroppedImageUrl || sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(sourceNode)),
 			resourceSourcePath: resourceSourcePath || null,
-			resourcePreviewUrl320: shedHeavy ? null : imagePreviewUrl320 || null,
-			resourcePreviewUrl640: shedHeavy ? null : imagePreviewUrl640 || imagePreviewUrl320 || null,
+			// 始终保留预览图，不清空已加载的图片
+			resourcePreviewUrl320: imagePreviewUrl320 || null,
+			resourcePreviewUrl640: imagePreviewUrl640 || imagePreviewUrl320 || null,
 			resourcePreviewVersion: imagePreviewVersion || null,
 			resourceName: payload.nodeResourceName(sourceNode),
-			inputParamPreviewRefs: withInputRefs ? payload.getInputParamPreviewRefs(node.id) : [],
+			// 始终保留输入参数引用
+			inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id),
 			imageSettings,
 			upstreamCroppedImageUrl: upstreamCroppedImageUrl
 		}
 	}
 
-	const withMotionSafeProps = (node: WorkflowNode, props: Record<string, unknown>) => {
-		if (props.previewSuspended === true) return props
-		if (node.type === 'scene-layout' || node.type === 'model3d') {
-			return {
-				...props,
-				previewSuspended: true
-			}
-		}
-		return props
-	}
-
-	const MOTION_SHED_THRESHOLD = 80
 	const ALWAYS_SHED_THRESHOLD = 220
 
 	const shouldShedHeavyMedia = () => {
 		if (!payload.performancePriorityMode.value) return false
 		const count = Number(payload.nodeCount.value) || 0
 		if (count >= ALWAYS_SHED_THRESHOLD) return true
-		if (payload.viewportMotionActive.value && count >= MOTION_SHED_THRESHOLD) return true
+		// 运动期间不再因节点数阈值清空资源，由缓存机制保证
 		return false
 	}
 
-	const buildMotionReducedProps = (node: WorkflowNode): Record<string, unknown> => {
-		if (node.type === 'scene-layout') {
-			return {
-				sceneLayoutSettings: sanitizeWorkflowUrlFieldsDeep(node.sceneLayoutSettings ?? null),
-				linkedJsonText: '',
-				linkedLightingJsonText: '',
-				sceneLayoutModelBindings: [],
-				threePreviewState: null,
-				previewSuspended: true
-			}
-		}
-		if (node.type === 'model3d') {
-			return {
-				model3dSettings: sanitizeWorkflowUrlFieldsDeep(node.model3dSettings ?? null),
-				threePreviewState: null,
-				inputParamPreviewRefs: [],
-				previewSuspended: true
-			}
-		}
-		if (node.type === 'scene-understanding') {
-			return {
-				sceneUnderstandingSettings: node.sceneUnderstandingSettings ?? null,
-				linkedImageUrl: '',
-				linkedImageUrls: [],
-				linkedLayoutJsonText: '',
-				linkedPromptText: ''
-			}
-		}
-		if (node.type === 'scene-decompose') {
-			return {
-				sceneDecomposeSettings: node.sceneDecomposeSettings ?? null,
-				linkedImageUrls: [],
-				linkedJsonText: ''
-			}
-		}
-		if (node.type === 'meshy') {
-			return {
-				meshySettings: payload.buildMeshyNodePresentationSettings(node.meshySettings ?? null),
-				connectedPrompt: '',
-				connectedImageUrls: [],
-				sourcePreviewUrl: '',
-				sourcePreviewLabel: ''
-			}
-		}
-		if (node.type === 'image') {
-			return buildImageNodeProps(node, true, false)
-		}
-		if (node.type === 'video') {
-			const rid = String(node.resourceId ?? '').trim()
-			const resource = rid ? payload.store.state.resourcesById[rid] : null
-			const resourceSourcePath =
-				resource && typeof (resource as Record<string, unknown>).sourcePath === 'string'
-					? String((resource as Record<string, unknown>).sourcePath).trim()
-					: ''
-			const imagePreviewUrl320 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 320))
-			const imagePreviewUrl640 = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 640))
-			const imagePreviewVersion = String(payload.nodeImagePreviewVersion(node) ?? '').trim()
-			const resourcePosterUrl = (() => {
-				if (!rid) return null
-				const raw =
-					typeof (resource as Record<string, unknown>)?.posterUrl === 'string'
-						? String((resource as Record<string, unknown>).posterUrl).trim()
-						: ''
-				const safe = sanitizeWorkflowMediaUrl(raw)
-				return safe || null
-			})()
-			return {
-				resourceUrl: sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node)),
-				resourceSourcePath: resourceSourcePath || null,
-				resourcePreviewUrl320: imagePreviewUrl320 || null,
-				resourcePreviewUrl640: imagePreviewUrl640 || imagePreviewUrl320 || null,
-				resourcePreviewVersion: imagePreviewVersion || null,
-				resourceName: payload.nodeResourceName(node),
-				inputParamPreviewRefs: [],
-				posterUrl: resourcePosterUrl,
-				videoSettings: node.videoSettings ?? null,
-				screenshotEnabled: payload.connectedImageTargetsFromVideo(node.id).length > 0,
-				reloadToken: payload.nodeMediaReloadToken(node.id)
-			}
-		}
-		if (node.type === 'rotate-image') {
-			return {
-				inputUrl: '',
-				rotatePromptText: ''
-			}
-		}
-		if (node.type === 'story') {
-			const pw = node.storySettings?.previewWidth
-			const ph = node.storySettings?.previewHeight
-			return {
-				branches: [],
-				previewUrl: '',
-				previewKind: null,
-				previewCropEnabled: false,
-				previewCrop: null,
-				previewWidth: Number.isFinite(Number(pw)) ? Number(pw) : 1920,
-				previewHeight: Number.isFinite(Number(ph)) ? Number(ph) : 1080
-			}
-		}
-		return buildNodeExtraProps(node)
+	// buildMotionReducedProps 已废弃，运动期间不再调用
+	// @deprecated use buildNodeExtraProps instead
+	const buildMotionReducedProps = (_node: WorkflowNode): Record<string, unknown> => {
+		return {}
 	}
 
 	const buildNodeExtraProps = (node: WorkflowNode): Record<string, unknown> => {
@@ -292,7 +187,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			}
 		}
 		if (node.type === 'image') {
-			return buildImageNodeProps(node, false, true)
+			return buildImageNodeProps(node)
 		}
 		if (node.type === 'video') {
 			const rid = String(node.resourceId ?? '').trim()
@@ -417,27 +312,57 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		if (!nodeId) return buildNodeExtraProps(node)
 
 		const isMotionActive = payload.viewportMotionActive.value
-		const nodeCount = Number(payload.nodeCount.value) || 0
 
 		if (isMotionActive) {
-			if (nodeCount < MOTION_SHED_THRESHOLD) {
-				const cached = extraPropsCache.get(nodeId)
-				if (cached) return withMotionSafeProps(node, cached)
-				const next = buildNodeExtraProps(node)
-				extraPropsCache.set(nodeId, next)
-				return withMotionSafeProps(node, next)
-			}
+			// 运动期间始终使用缓存，保留所有已加载资源
 			const cached = extraPropsCache.get(nodeId)
-			if (cached) return withMotionSafeProps(node, cached)
-			const next = buildMotionReducedProps(node)
+			if (cached) {
+				return {
+					...cached,
+					previewSuspended: ['scene-layout', 'model3d'].includes(node.type)
+				}
+			}
+
+			// 缓存不存在时，构建完整 props 并缓存
+			const next = buildNodeExtraProps(node)
 			extraPropsCache.set(nodeId, next)
-			return withMotionSafeProps(node, next)
+			return {
+				...next,
+				previewSuspended: ['scene-layout', 'model3d'].includes(node.type)
+			}
 		}
 
-		extraPropsCache.delete(nodeId)
-
-		return buildNodeExtraProps(node)
+		// 非运动期间，缓存完整 props
+		const full = buildNodeExtraProps(node)
+		extraPropsCache.set(nodeId, full)
+		return full
 	}
+
+	// 监听视口运动状态变化，平移开始时预填充缓存
+	// 关键：保留真实的 threePreviewState，避免被 getNodePreviewState 强制置为 masked
+	// 当非活跃的 scene-layout/model3d 节点被查询时，getNodePreviewState 会返回 phase: 'masked'
+	// 为了避免 viewer 被 dispose，需要在平移开始时缓存真实的 threePreviewState
+	watch(
+		() => payload.viewportMotionActive.value,
+		(isMotionNow, wasMotionBefore) => {
+			if (isMotionNow && !wasMotionBefore) {
+				// 平移开始：预填充所有节点的缓存
+				const nodes = Object.values(payload.store.state.nodesById) as WorkflowNode[]
+				for (const node of nodes) {
+					const nodeId = String(node.id ?? '').trim()
+					if (!nodeId) continue
+					// 缓存已存在则跳过
+					if (extraPropsCache.has(nodeId)) continue
+					// 构建完整 props 并缓存
+					const full = buildNodeExtraProps(node)
+					extraPropsCache.set(nodeId, full)
+				}
+			} else if (!isMotionNow && wasMotionBefore) {
+				// 平移结束：清空缓存以确保下次获取最新状态
+				extraPropsCache.clear()
+			}
+		}
+	)
 
 	return {
 		nodeExtraProps
