@@ -1,5 +1,5 @@
 <template>
-	<div ref="layerRef" class="aiwf-canvas-anchor-layer">
+	<div ref="layerRef" class="aiwf-canvas-anchor-layer" :class="{ 'aiwf-anchor-layer-hidden': hideVisuals }">
 		<div
 			v-for="node in nodes"
 			:key="node.id"
@@ -64,10 +64,12 @@ interface Props {
 	nodes: CanvasAnchorNode[]
 	viewport: ViewportState
 	selectedNodeIds?: string[]
+	hideVisuals?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-	selectedNodeIds: () => []
+	selectedNodeIds: () => [],
+	hideVisuals: false
 })
 
 const emit = defineEmits<{
@@ -408,5 +410,14 @@ const onInputAnchorPointerUp = (
 	box-shadow:
 		0 0 0 2px var(--dweb-blue, #3498db),
 		0 0 14px var(--dweb-blue, #3498db) !important;
+}
+
+.aiwf-anchor-layer-hidden {
+	opacity: 0;
+	pointer-events: none !important;
+}
+
+.aiwf-anchor-layer-hidden .wf-anchor-hit {
+	pointer-events: none !important;
 }
 </style>

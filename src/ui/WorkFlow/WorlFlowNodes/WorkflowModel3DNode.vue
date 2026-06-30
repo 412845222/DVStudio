@@ -18,6 +18,7 @@
 		:hoverOutputAnchorId="hoverOutputAnchorId"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
+		@update:world-position="(p) => emit('update:worldPosition', p)"
 		@select="(id) => emit('select', id)"
 		@start-link="onStartLink"
 		@end-link="onEndLink"
@@ -262,6 +263,7 @@ const onResize = (payload: { width: number; height: number; worldX: number; worl
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
 	(e: 'update:worldY', v: number): void
+	(e: 'update:worldPosition', p: { worldX: number; worldY: number }): void
 	(e: 'select', nodeId: string): void
 	(e: 'preview-contextmenu', payload: { clientX: number; clientY: number }): void
 	(
@@ -315,6 +317,8 @@ let viewerInitPending = false
 let viewerInitCooldownUntil = 0
 let activePreviewRequestId = 0
 let cachedModelSignature = ''
+let cameraUserControlled = false
+let initialSyncDone = false
 
 const cacheSnapshot = (value: string) => {
 	if (!snapshotCacheKey) return
@@ -326,12 +330,14 @@ const cacheSnapshot = (value: string) => {
 const settings = computed(() => props.model3dSettings ?? null)
 const rawThreePreviewState = computed(() => props.threePreviewState ?? null)
 const previewSuspended = computed(() => props.previewSuspended === true)
+const previewRequestId = computed(() => Number(rawThreePreviewState.value?.requestId ?? 0))
 const effectiveModelUrl = computed(() => {
 	const primary = String(settings.value?.modelUrl ?? '').trim()
 	if (primary) return primary
 	const fallback = String(settings.value?.modelAssetUrl ?? '').trim()
 	return fallback
 })
+const modelUrlSignature = computed(() => effectiveModelUrl.value)
 const modelSignature = computed(() => {
 	const parts = [
 		effectiveModelUrl.value,
@@ -405,13 +411,21 @@ const clearViewerInitSchedule = () => {
 	viewerInitPending = false
 }
 
+const onCameraInteractionStart = () => {
+	cameraUserControlled = true
+}
+const onCameraInteractionEnd = () => {
+	saveViewState()
+}
 const applyViewerOptions = () => {
 	viewer?.setOptions({
 		backgroundColor: backgroundColor.value,
 		lightIntensity: lightIntensity.value,
 		gridVisible: gridVisible.value,
 		axesVisible: axesVisible.value,
-		autoRotate: autoRotate.value
+		autoRotate: autoRotate.value,
+		onCameraInteractionStart,
+		onCameraInteractionEnd
 	})
 }
 
@@ -422,20 +436,38 @@ const syncViewerState = () => {
 	if (!url) {
 		viewer.clearModel()
 		cachedModelSignature = ''
+		cameraUserControlled = false
+		initialSyncDone = false
 		return
 	}
 	const currentSignature = modelSignature.value
-	const cachedView =
-		currentSignature === cachedModelSignature
-			? MODEL3D_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
-			: null
-	if (currentSignature !== cachedModelSignature) {
+	const currentUrlSignature = modelUrlSignature.value
+	const prevUrlSignature = cachedModelSignature.split('|')[0]
+	const urlChanged = currentUrlSignature !== prevUrlSignature
+	if (urlChanged || !cachedModelSignature) {
+		cameraUserControlled = false
+		initialSyncDone = false
 		viewer.clearModel()
+		cachedModelSignature = currentSignature
+		return
 	}
-	cachedModelSignature = currentSignature
-	if (cachedView) {
-		viewer.restoreView(cachedView)
+	if (currentSignature !== cachedModelSignature) {
+		cachedModelSignature = currentSignature
+		if (!cameraUserControlled) {
+			const cachedView = MODEL3D_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+			if (cachedView) {
+				viewer.restoreView(cachedView)
+			}
+		}
+		return
 	}
+	if (!initialSyncDone && !cameraUserControlled) {
+		const cachedView = MODEL3D_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+		if (cachedView) {
+			viewer.restoreView(cachedView)
+		}
+	}
+	initialSyncDone = true
 }
 
 const createViewerNow = () => {
@@ -494,6 +526,8 @@ const disposeViewer = () => {
 	captureSnapshot()
 	viewer.dispose()
 	viewer = null
+	cameraUserControlled = false
+	initialSyncDone = false
 }
 
 const waitForViewerReady = async () => {
@@ -528,6 +562,8 @@ const loadModelIntoViewer = async (requestId?: number) => {
 	if (!url) {
 		viewer.clearModel()
 		cachedModelSignature = ''
+		cameraUserControlled = false
+		initialSyncDone = false
 		if (requestId != null && requestId === activePreviewRequestId) {
 			errorMessage.value = '未绑定模型。'
 			emit('three-preview-error')
@@ -535,10 +571,17 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		return false
 	}
 	const currentSignature = modelSignature.value
+	const currentUrlSignature = modelUrlSignature.value
+	const prevUrlSignature = cachedModelSignature.split('|')[0]
+	const urlChanged = currentUrlSignature !== prevUrlSignature
 	const cachedView =
-		currentSignature === cachedModelSignature
+		!urlChanged && cachedModelSignature
 			? MODEL3D_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
 			: null
+	if (urlChanged) {
+		cameraUserControlled = false
+		initialSyncDone = false
+	}
 	applyViewerOptions()
 	if (requestId != null) emitPreviewProgress(0.2, '加载模型资源')
 	try {
@@ -549,11 +592,14 @@ const loadModelIntoViewer = async (requestId?: number) => {
 			emitPreviewProgress(0.2 + Math.max(0, Math.min(1, ratio)) * 0.72, '加载模型资源')
 		}, cachedView)
 		cachedModelSignature = currentSignature
+		initialSyncDone = true
 		return true
 	} catch (err: unknown) {
 		errorMessage.value = getErrorMessage(err) || '模型加载失败'
 		viewer.clearModel()
 		cachedModelSignature = ''
+		cameraUserControlled = false
+		initialSyncDone = false
 		if (requestId != null) emit('three-preview-error')
 
 		const repairResult = await attemptRepairModelUrl(url, requestId)
@@ -568,13 +614,17 @@ const loadModelIntoViewer = async (requestId?: number) => {
 					if (requestId !== activePreviewRequestId) return
 					const ratio = Number(payload?.ratio ?? 0)
 					emitPreviewProgress(0.3 + Math.max(0, Math.min(1, ratio)) * 0.65, '加载模型资源')
-				}, cachedView)
+				}, null)
 				cachedModelSignature = modelSignature.value
+				cameraUserControlled = false
+				initialSyncDone = true
 				return true
 			} catch {
 				errorMessage.value = '模型加载失败'
 				viewer.clearModel()
 				cachedModelSignature = ''
+				cameraUserControlled = false
+				initialSyncDone = false
 				if (requestId != null) emit('three-preview-error')
 				return false
 			}
@@ -676,8 +726,9 @@ const onAutoRotateToggle = (e: Event) =>
 watch(modelSignature, () => {
 	if (!viewer) return
 	if (previewPhase.value === 'masked') return
+	if (previewPhase.value === 'loading') return
 	saveViewState()
-	syncViewerState()
+	applyViewerOptions()
 })
 
 watch(
@@ -700,10 +751,12 @@ watch(previewSuspended, (suspended) => {
 })
 
 watch(
-	() => [previewPhase.value, threePreviewState.value?.requestId ?? 0] as const,
+	() => [previewPhase.value, previewRequestId.value] as const,
 	([phase, requestId]) => {
 		if (phase === 'masked') {
 			activePreviewRequestId = 0
+			cameraUserControlled = false
+			initialSyncDone = false
 			if (viewer) captureSnapshot()
 			disposeViewer()
 			return

@@ -101,6 +101,63 @@ export class CanvasWarmupCoordinator {
 	}
 
 	/**
+	 * 临时包装回调（用于在不替换初始回调的情况下追加外层进度反馈）
+	 * 返回一个restore函数，调用后恢复原始回调
+	 */
+	wrapCallbacks(
+		onProgress?: (progress: number, detail: string) => void,
+		onComplete?: () => void,
+		onError?: (error: Error, nodeId: string) => void
+	): () => void {
+		const origProgress = this.options.onProgress
+		const origComplete = this.options.onComplete
+		const origError = this.options.onError
+		if (onProgress) {
+			this.options.onProgress = (p, d) => {
+				onProgress(p, d)
+				origProgress?.(p, d)
+			}
+		}
+		if (onComplete) {
+			this.options.onComplete = () => {
+				onComplete()
+				origComplete?.()
+			}
+		}
+		if (onError) {
+			this.options.onError = (e, id) => {
+				onError(e, id)
+				origError?.(e, id)
+			}
+		}
+		return () => {
+			this.options.onProgress = origProgress
+			this.options.onComplete = origComplete
+			this.options.onError = origError
+		}
+	}
+
+	/**
+	 * 设置并发数
+	 */
+	setConcurrency(n: number): void {
+		this.options.concurrency = Math.max(1, n)
+	}
+
+	/**
+	 * 清理已完成/错误的任务记录，使下一次warmup可以重新添加这些节点
+	 */
+	reset(): void {
+		for (const [nodeId, task] of this.tasks) {
+			if (task.status === 'ready') {
+				this.tasks.delete(nodeId)
+			} else if (task.status === 'error') {
+				this.tasks.delete(nodeId)
+			}
+		}
+	}
+
+	/**
 	 * 添加预热任务
 	 */
 	addTask(
@@ -227,7 +284,7 @@ export class CanvasWarmupCoordinator {
 	}
 
 	/**
-	 * 开始预热
+	 * 开始预热（滑动窗口并发，一个完成立即启动下一个）
 	 */
 	async warmup(): Promise<void> {
 		if (this.disposed) return
@@ -245,22 +302,29 @@ export class CanvasWarmupCoordinator {
 		this.phase = 'running'
 		this.options.onProgress?.(0, `准备预热 ${total} 个节点...`)
 
-		// 分批处理
-		let processed = 0
+		let completed = 0
+		let nextIndex = 0
+		const concurrency = Math.max(1, this.options.concurrency)
 
-		for (let i = 0; i < pendingTasks.length; i += this.options.concurrency) {
-			if (this.disposed) break
-
-			const batch = pendingTasks.slice(i, i + this.options.concurrency)
-
-			// 并发加载
-			const promises = batch.map(task => this.loadTask(task))
-			await Promise.allSettled(promises)
-
-			processed += batch.length
-			const progress = processed / total
-			this.options.onProgress?.(progress, `预热中 ${processed}/${total}...`)
+		const runNext = async (): Promise<void> => {
+			while (!this.disposed) {
+				const idx = nextIndex++
+				if (idx >= pendingTasks.length) return
+				const task = pendingTasks[idx]
+				if (!task || task.status !== 'pending') continue
+				await this.loadTask(task)
+				completed++
+				const progress = total > 0 ? completed / total : 1
+				this.options.onProgress?.(progress, `预热中 ${completed}/${total}...`)
+			}
 		}
+
+		const workers: Promise<void>[] = []
+		const workerCount = Math.min(concurrency, total)
+		for (let w = 0; w < workerCount; w++) {
+			workers.push(runNext())
+		}
+		await Promise.allSettled(workers)
 
 		const status = this.getStatus()
 		this.phase = status.error > 0 ? 'error' : 'complete'

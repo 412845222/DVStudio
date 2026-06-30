@@ -107,15 +107,11 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 	// 预热所有截图
 	const warmupAll = async (
 		screenshotMap: Map<string, ScreenshotCacheEntry>,
-		viewportRect?: { x0: number; y0: number; x1: number; y1: number }
+		viewportRect?: { x0: number; y0: number; x1: number; y1: number },
+		onProgress?: (progress: number, detail: string) => void
 	) => {
-		console.log('[CanvasScreenshot] warmupAll called, map size:', screenshotMap.size)
-		console.log('[CanvasScreenshot] map entries:', Array.from(screenshotMap.entries()).map(([k, v]) => ({ nodeId: k, hasDataUrl: !!v?.dataUrl, dataUrlLength: v?.dataUrl?.length })))
-
 		if (!canvasPool.value || !warmupCoordinator) {
-			console.log('[CanvasScreenshot] Initializing canvasPool and warmupCoordinator')
 			init()
-			console.log('[CanvasScreenshot] After init, canvasPool:', canvasPool.value, 'warmupCoordinator:', warmupCoordinator)
 		}
 
 		if (!warmupCoordinator) {
@@ -123,41 +119,47 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 			return
 		}
 
-		// 清空之前的错误
 		warmupErrors.value = []
 
 		const entries = Array.from(screenshotMap.values())
-		console.log('[CanvasScreenshot] entries to warmup:', entries.length, entries.map(e => ({ nodeId: e.nodeId, hasDataUrl: !!e.dataUrl })))
 
 		if (entries.length === 0) {
-			console.log('[CanvasScreenshot] No entries to warmup, returning')
 			warmupProgress.value = 1
 			warmupDetail.value = '没有需要预热的截图'
+			onProgress?.(1, warmupDetail.value)
 			return
 		}
 
 		isWarmingUp.value = true
 		warmupProgress.value = 0
 		warmupDetail.value = `准备预热 ${entries.length} 个截图...`
+		onProgress?.(0, warmupDetail.value)
 
-		// 如果有视口信息，使用视口感知批量添加
+		warmupCoordinator.reset()
+
+		const restoreCallbacks = onProgress
+			? warmupCoordinator.wrapCallbacks(
+					(p, d) => onProgress(p, d),
+					() => onProgress?.(1, '预热完成')
+				)
+			: undefined
+
 		if (viewportRect) {
 			// TODO: 需要传入节点位置信息
-			// warmupCoordinator.addViewportAwareBatch(...)
 		} else {
-			console.log('[CanvasScreenshot] Adding batch to warmupCoordinator, tasks before:', warmupCoordinator.getStatus())
 			warmupCoordinator.addBatch(
 				entries.map(entry => ({
 					nodeId: entry.nodeId,
 					entry
 				}))
 			)
-			console.log('[CanvasScreenshot] tasks after addBatch:', warmupCoordinator.getStatus())
 		}
 
-		console.log('[CanvasScreenshot] Starting warmup')
-		await warmupCoordinator.warmup()
-		console.log('[CanvasScreenshot] Warmup completed')
+		try {
+			await warmupCoordinator.warmup()
+		} finally {
+			restoreCallbacks?.()
+		}
 	}
 
 	// 预热新截图
@@ -243,20 +245,12 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 
 	// 检查是否有Bitmap
 	const hasBitmap = (nodeId: string): boolean => {
-		const result = canvasPool.value?.hasBitmap(nodeId) ?? false
-		if (!result && import.meta.env.DEV) {
-			console.log('[CanvasScreenshot] hasBitmap(' + nodeId + ') = false, canvasPool:', canvasPool.value)
-		}
-		return result
+		return canvasPool.value?.hasBitmap(nodeId) ?? false
 	}
 
 	// 获取Bitmap
 	const getBitmap = (nodeId: string) => {
-		const result = canvasPool.value?.getBitmap(nodeId) ?? null
-		if (!result && import.meta.env.DEV) {
-			console.log('[CanvasScreenshot] getBitmap(' + nodeId + ') = null, canvasPool:', canvasPool.value)
-		}
-		return result
+		return canvasPool.value?.getBitmap(nodeId) ?? null
 	}
 
 	// 获取完整Entry (含bitmap实际尺寸)

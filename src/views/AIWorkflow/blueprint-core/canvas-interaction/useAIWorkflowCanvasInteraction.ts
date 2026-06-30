@@ -74,6 +74,29 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 		payload.scheduleAsyncEdgeRender()
 	}
 
+	const onNodeDragPosition = (nodeId: string, pos: { worldX: number; worldY: number }) => {
+		payload.markViewportMotion()
+		const node = payload.store.state.nodesById[nodeId]
+		if (!node) return
+		const nextX = Number(pos.worldX)
+		const nextY = Number(pos.worldY)
+		if (!Number.isFinite(nextX) || !Number.isFinite(nextY)) return
+		const dx = nextX - node.worldX
+		const dy = nextY - node.worldY
+		if (
+			payload.selectedNodeIds.value.length > 1 &&
+			payload.selectedNodeIds.value.includes(nodeId)
+		) {
+			if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6) {
+				payload.store.commit('moveSelectedNodesByDelta', { dx, dy })
+			}
+			payload.scheduleAsyncEdgeRender()
+			return
+		}
+		payload.store.commit('setNodePosition', { nodeId, worldX: nextX, worldY: nextY })
+		payload.scheduleAsyncEdgeRender()
+	}
+
 	const onSelectNode = (nodeId: string) => {
 		if (
 			payload.selectedNodeIds.value.length === 1 &&
@@ -286,6 +309,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 		onCanvasPointerDown,
 		onNodeX,
 		onNodeY,
+		onNodeDragPosition,
 		onSelectNode,
 		onSelectEdge,
 		onCompactNodePointerDown,

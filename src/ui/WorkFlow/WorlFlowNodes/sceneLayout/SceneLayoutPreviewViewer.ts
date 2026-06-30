@@ -257,6 +257,8 @@ type ViewerOptions = {
 	onLayoutChange?: (items: WorkflowSceneLayoutItem[]) => void
 	onSelectionChange?: (itemId: string) => void
 	onModelLoadError?: (url: string, itemId: string) => void
+	onCameraInteractionStart?: () => void
+	onCameraInteractionEnd?: () => void
 }
 
 type SceneLayoutRenderOptions = {
@@ -909,6 +911,8 @@ export class SceneLayoutPreviewViewer {
 	private pendingBindingRevision = 0
 	private idleTimer: ReturnType<typeof setInterval> | null = null
 	private rightClickPickCache: { ts: number; x: number; y: number; itemId: string } | null = null
+	private onCameraInteractionStart: (() => void) | null = null
+	private onCameraInteractionEnd: (() => void) | null = null
 	private readonly baseHemisphereLight: HemisphereLightLike
 	private readonly baseDirectionalLight: LightLike
 	private readonly baseDirectionalTarget: Object3Dlike
@@ -1054,6 +1058,9 @@ export class SceneLayoutPreviewViewer {
 		this.resizeObserver =
 			typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.resize()) : null
 		this.resizeObserver?.observe(this.canvas)
+
+		this.onCameraInteractionStart = options.onCameraInteractionStart ?? null
+		this.onCameraInteractionEnd = options.onCameraInteractionEnd ?? null
 	}
 
 	private handleControlsChange = () => {
@@ -1066,11 +1073,13 @@ export class SceneLayoutPreviewViewer {
 		this.orbiting = true
 		this.cameraDirty = true
 		this.requestRender()
+		this.onCameraInteractionStart?.()
 	}
 
 	private handleControlsEnd = () => {
 		this.orbiting = false
 		this.requestRender()
+		this.onCameraInteractionEnd?.()
 	}
 
 	private requestRender() {
@@ -1121,14 +1130,7 @@ export class SceneLayoutPreviewViewer {
 		}
 		this.lastRenderTs = now
 		this.ensureTransformAttachmentValid()
-		if (
-			this.orbiting ||
-			this.transforming ||
-			this.controls.autoRotate === true ||
-			this.controls.enableDamping === true
-		) {
-			this.controls.update()
-		}
+		this.controls.update()
 		const renderStart = typeof performance !== 'undefined' ? performance.now() : Date.now()
 		this.renderer.render(this.scene, this.camera)
 		const renderEnd = typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -1136,7 +1138,7 @@ export class SceneLayoutPreviewViewer {
 		this.perfRenderMsLast = renderCost
 		this.perfRenderMsEma =
 			this.perfRenderMsEma > 0 ? this.perfRenderMsEma * 0.82 + renderCost * 0.18 : renderCost
-		if (this.interactiveActive) {
+		if (this.controls.autoRotate === true && this.interactiveActive) {
 			if (!this.raf) this.raf = window.requestAnimationFrame(() => this.renderFrame())
 		}
 	}

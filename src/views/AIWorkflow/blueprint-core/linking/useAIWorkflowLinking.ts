@@ -13,6 +13,16 @@ import {
 	type WorkflowAnchorMagnetTarget
 } from './useWorkflowAnchorMagnet'
 
+export type CanvasAnchorRender = {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	direction: 'in' | 'out'
+	screenX: number
+	screenY: number
+	mediaType?: string
+}
+
 type LinkDraft = {
 	fromNodeId: string
 	fromAnchorId: string
@@ -26,15 +36,26 @@ type DropTarget = {
 	anchorId: string
 	anchorIndex: number
 	direction: 'in' | 'out'
-	element?: HTMLElement | null
 	centerClient?: { x: number; y: number }
 	centerCanvas?: { x: number; y: number }
 	distance?: number
 	phase?: 'idle' | 'armed' | 'snapped' | 'dragging' | 'release'
 	screenMagnetX?: number
 	screenMagnetY?: number
-	magnetX?: number
-	magnetY?: number
+}
+
+type AnchorVisualState = {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	direction: 'in' | 'out'
+	screenX: number
+	screenY: number
+	mediaType?: string
+	phase: 'idle' | 'armed' | 'snapped' | 'dragging' | 'release'
+	magnetX: number
+	magnetY: number
+	compatible: boolean | null
 }
 
 type TooltipState = {
@@ -71,6 +92,7 @@ export const useAIWorkflowLinking = (payload: {
 	) => { x: number; y: number }
 	buildPath: (start: { x: number; y: number }, end: { x: number; y: number }) => string
 	pushToast: (message: string, type?: 'info' | 'warn' | 'error') => void
+	canvasAnchors?: Ref<CanvasAnchorRender[]>
 	onLinkConnected?: (payload: {
 		fromNodeId: string
 		fromAnchorId: string
@@ -89,19 +111,17 @@ export const useAIWorkflowLinking = (payload: {
 	const linkDraft = ref<LinkDraft | null>(null)
 	const dropTarget = ref<DropTarget | null>(null)
 	const tooltipState = ref<TooltipState | null>(null)
+	const anchorVisualStates = ref<Map<string, AnchorVisualState>>(new Map())
 	const anchorCompatibility = ref<Record<string, boolean | null>>({})
 	let cleanupLink: (() => void) | null = null
 	const magnet = useWorkflowAnchorMagnet()
-	let lastMagnetEl: HTMLElement | null = null
-	let sourceMagnetEl: HTMLElement | null = null
 	let sourceDragOriginClient: { x: number; y: number } | null = null
 	let releaseTimers: Array<ReturnType<typeof setTimeout>> = []
 	let hoverRafId: number | null = null
 	let lastHoverPointer: { x: number; y: number } | null = null
 	let activeScreenToWorld: ScreenToWorldFn | null = null
 	const isPanning = ref(false)
-	const HOVER_THROTTLE_MS = 50
-	let lastHoverTime = 0
+	const HOVER_THROTTLE_MS = 16
 
 	watch(
 		() => payload.store.state.viewport.zoom,
@@ -116,31 +136,141 @@ export const useAIWorkflowLinking = (payload: {
 		cleanupLink = null
 		magnet.setDragging(false)
 		clearReleaseTimers()
-		if (lastMagnetEl) {
-			scheduleAnchorRelease(lastMagnetEl)
-			lastMagnetEl = null
-		}
-		if (sourceMagnetEl) {
-			scheduleAnchorRelease(sourceMagnetEl)
-			sourceMagnetEl = null
-		}
 		sourceDragOriginClient = null
 		activeScreenToWorld = null
 		linkDraft.value = null
 		dropTarget.value = null
 		tooltipState.value = null
 		anchorCompatibility.value = {}
+		anchorVisualStates.value = new Map()
 	}
-
-	const attrEscape = (value: string) =>
-		String(value ?? '')
-			.replace(/\\/g, '\\\\')
-			.replace(/"/g, '\\"')
 
 	function clearReleaseTimers() {
 		for (const timer of releaseTimers) clearTimeout(timer)
 		releaseTimers = []
 	}
+
+	const anchorKey = (nodeId: string, dir: string, anchorId: string) =>
+		`${nodeId}-${dir}-${anchorId}`
+
+	const buildAnchorCandidates = (
+		directions: Array<'in' | 'out'>
+	): WorkflowAnchorMagnetCandidate[] => {
+		if (payload.canvasAnchors) {
+			const candidates: WorkflowAnchorMagnetCandidate[] = []
+			for (const a of payload.canvasAnchors.value) {
+				if (!directions.includes(a.direction)) continue
+				candidates.push({
+					nodeId: a.nodeId,
+					anchorId: a.anchorId,
+					anchorIndex: a.anchorIndex,
+					direction: a.direction,
+					center: { x: a.screenX, y: a.screenY },
+					mediaType: a.mediaType
+				})
+			}
+			return candidates
+		}
+
+		if (typeof document === 'undefined') return []
+		const result: WorkflowAnchorMagnetCandidate[] = []
+		const elements = Array.from(
+			document.querySelectorAll<HTMLElement>('[data-wf-node-id][data-wf-anchor-id][data-wf-dir]')
+		)
+		for (const el of elements) {
+			const direction = String(el.dataset.wfDir ?? '') === 'out' ? 'out' : 'in'
+			if (!directions.includes(direction)) continue
+			const rect = el.getBoundingClientRect()
+			if (rect.width <= 0 || rect.height <= 0) continue
+			const nodeId = String(el.dataset.wfNodeId ?? '').trim()
+			const anchorId = String(el.dataset.wfAnchorId ?? '').trim()
+			if (!nodeId || !anchorId) continue
+			const rawIndex = Number(el.dataset.wfAnchorIndex)
+			result.push({
+				nodeId,
+				anchorId,
+				anchorIndex: Number.isFinite(rawIndex) ? rawIndex : 0,
+				direction,
+				center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+			})
+		}
+		return result
+	}
+
+	const getPointerInMagnetSpace = (clientPoint: { x: number; y: number }) => {
+		if (payload.canvasAnchors) {
+			const cp = payload.clientToCanvasPoint(clientPoint)
+			return cp ?? { x: 0, y: 0 }
+		}
+		return { x: clientPoint.x, y: clientPoint.y }
+	}
+
+	const updateAnchorVisualStates = (target: WorkflowAnchorMagnetTarget | null) => {
+		if (!payload.canvasAnchors) {
+			applyMagnetToDom(target)
+			return
+		}
+
+		const states = new Map<string, AnchorVisualState>()
+		const sourceKey = linkDraft.value
+			? anchorKey(linkDraft.value.fromNodeId, 'out', linkDraft.value.fromAnchorId)
+			: null
+		const targetKey = target
+			? anchorKey(target.nodeId, target.direction, target.anchorId)
+			: null
+		let compatCheck: boolean | null = null
+
+		if (sourceKey && target && target.direction === 'in' && linkDraft.value) {
+			compatCheck = canLinkAnchors(
+				payload.store.state.nodesById,
+				linkDraft.value.fromNodeId,
+				linkDraft.value.fromAnchorId,
+				target.nodeId,
+				target.anchorId
+			)
+		}
+
+		for (const a of payload.canvasAnchors.value) {
+			const key = anchorKey(a.nodeId, a.direction, a.anchorId)
+			let phase: AnchorVisualState['phase'] = 'idle'
+			let mx = 0
+			let my = 0
+			let compat: boolean | null = null
+
+			if (sourceKey && key === sourceKey) {
+				phase = 'dragging'
+			} else if (targetKey && key === targetKey) {
+				phase = (target.phase === 'dragging' ? 'dragging' : target.phase) as AnchorVisualState['phase']
+				if (target.direction === 'in' && linkDraft.value) {
+					mx = 0
+					my = 0
+				} else {
+					mx = target.screenMagnetX
+					my = target.screenMagnetY
+				}
+				compat = compatCheck
+			}
+
+			states.set(key, {
+				nodeId: a.nodeId,
+				anchorId: a.anchorId,
+				anchorIndex: a.anchorIndex,
+				direction: a.direction,
+				screenX: a.screenX,
+				screenY: a.screenY,
+				mediaType: a.mediaType,
+				phase,
+				magnetX: mx,
+				magnetY: my,
+				compatible: compat
+			})
+		}
+
+		anchorVisualStates.value = states
+	}
+
+	let lastMagnetDomEl: HTMLElement | null = null
+	let sourceMagnetDomEl: HTMLElement | null = null
 
 	const clearMagnetOnElement = (el: HTMLElement | null) => {
 		if (!el) return
@@ -165,6 +295,37 @@ export const useAIWorkflowLinking = (payload: {
 		releaseTimers.push(timer)
 	}
 
+	const applyMagnetToDom = (target: WorkflowAnchorMagnetTarget | null) => {
+		clearReleaseTimers()
+		if (!target) {
+			if (lastMagnetDomEl) {
+				scheduleAnchorRelease(lastMagnetDomEl)
+				lastMagnetDomEl = null
+			}
+			return
+		}
+		const el = anchorElement(target.nodeId, target.anchorId, target.direction)
+		if (!el) {
+			if (lastMagnetDomEl) {
+				scheduleAnchorRelease(lastMagnetDomEl)
+				lastMagnetDomEl = null
+			}
+			return
+		}
+		if (lastMagnetDomEl && lastMagnetDomEl !== el) {
+			scheduleAnchorRelease(lastMagnetDomEl)
+		}
+		el.dataset.magnetPhase = String(target.phase ?? 'idle')
+		const suppressInputShift = Boolean(linkDraft.value) && target.direction === 'in'
+		const mx = suppressInputShift ? 0 : Number(target.screenMagnetX ?? 0) || 0
+		const my = suppressInputShift ? 0 : Number(target.screenMagnetY ?? 0) || 0
+		el.style.setProperty('--wf-anchor-magnet-x', `${mx}px`)
+		el.style.setProperty('--wf-anchor-magnet-y', `${my}px`)
+		el.style.setProperty('--wf-handle-magnet-x', `${mx}px`)
+		el.style.setProperty('--wf-handle-magnet-y', `${my}px`)
+		lastMagnetDomEl = el
+	}
+
 	const anchorElement = (
 		nodeId: string,
 		anchorId: string,
@@ -172,8 +333,8 @@ export const useAIWorkflowLinking = (payload: {
 	): HTMLElement | null => {
 		if (typeof document === 'undefined') return null
 		const selector = [
-			`[data-wf-node-id="${attrEscape(String(nodeId ?? ''))}"]`,
-			`[data-wf-anchor-id="${attrEscape(String(anchorId ?? ''))}"]`,
+			`[data-wf-node-id="${String(nodeId ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`,
+			`[data-wf-anchor-id="${String(anchorId ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`,
 			`[data-wf-dir="${direction}"]`
 		].join('')
 		const el = document.querySelector(selector)
@@ -185,109 +346,54 @@ export const useAIWorkflowLinking = (payload: {
 		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
 	}
 
-	const anchorCenterCanvas = (el: HTMLElement) =>
-		payload.clientToCanvasPoint(anchorCenterClient(el))
+	const getWrapRect = () => {
+		const wrap = document.querySelector('.bp-wrap')
+		return wrap instanceof HTMLElement ? wrap.getBoundingClientRect() : null
+	}
 
-	const collectAnchorCandidates = (
-		args: {
-			directions?: Array<'in' | 'out'>
-			legalOnly?: boolean
-		} = {}
-	): WorkflowAnchorMagnetCandidate[] => {
-		if (typeof document === 'undefined') return []
-		const directions = new Set(args.directions ?? ['in', 'out'])
-		const candidates: WorkflowAnchorMagnetCandidate[] = []
-		const elements = Array.from(
-			document.querySelectorAll<HTMLElement>('[data-wf-node-id][data-wf-anchor-id][data-wf-dir]')
-		)
-		for (const el of elements) {
-			const direction = String(el.dataset.wfDir ?? '') === 'out' ? 'out' : 'in'
-			if (!directions.has(direction)) continue
-			const rect = el.getBoundingClientRect()
-			if (rect.width <= 0 || rect.height <= 0) continue
-			const nodeId = String(el.dataset.wfNodeId ?? '').trim()
-			const anchorId = String(el.dataset.wfAnchorId ?? '').trim()
-			if (!nodeId || !anchorId) continue
-			if (args.legalOnly && linkDraft.value && direction === 'in') {
-				if (
-					!canLinkAnchors(
-						payload.store.state.nodesById,
-						linkDraft.value.fromNodeId,
-						linkDraft.value.fromAnchorId,
-						nodeId,
-						anchorId
-					)
-				)
-					continue
-			}
-			const rawIndex = Number(el.dataset.wfAnchorIndex)
-			candidates.push({
-				nodeId,
-				anchorId,
-				anchorIndex: Number.isFinite(rawIndex) ? rawIndex : 0,
-				direction,
-				center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
-				element: el
-			})
-		}
-		return candidates
+	const canvasToClient = (canvasPt: { x: number; y: number }) => {
+		const rect = getWrapRect()
+		if (!rect) return { x: 0, y: 0 }
+		return { x: rect.left + canvasPt.x, y: rect.top + canvasPt.y }
 	}
 
 	const toDropTarget = (target: WorkflowAnchorMagnetTarget): DropTarget => {
-		const centerCanvas = target.element
-			? anchorCenterCanvas(target.element)
-			: payload.clientToCanvasPoint(target.center)
+		if (payload.canvasAnchors) {
+			const centerClient = canvasToClient(target.center)
+			return {
+				nodeId: target.nodeId,
+				anchorId: target.anchorId,
+				anchorIndex: target.anchorIndex,
+				direction: target.direction,
+				centerClient,
+				centerCanvas: { x: target.center.x, y: target.center.y },
+				distance: target.distance,
+				phase: target.phase,
+				screenMagnetX: target.screenMagnetX,
+				screenMagnetY: target.screenMagnetY
+			}
+		}
+		const centerCanvas = payload.clientToCanvasPoint(target.center)
 		return {
 			nodeId: target.nodeId,
 			anchorId: target.anchorId,
 			anchorIndex: target.anchorIndex,
 			direction: target.direction,
-			element: target.element,
 			centerClient: target.center,
 			centerCanvas: centerCanvas ?? undefined,
 			distance: target.distance,
 			phase: target.phase,
 			screenMagnetX: target.screenMagnetX,
-			screenMagnetY: target.screenMagnetY,
-			magnetX: target.magnetX,
-			magnetY: target.magnetY
+			screenMagnetY: target.screenMagnetY
 		}
 	}
 
-	const applyMagnetVisual = (target: DropTarget | null) => {
-		clearReleaseTimers()
-		if (!target) {
-			if (lastMagnetEl) {
-				scheduleAnchorRelease(lastMagnetEl)
-				lastMagnetEl = null
-			}
-			return
+	const applyMagnetVisual = (target: WorkflowAnchorMagnetTarget | null) => {
+		if (payload.canvasAnchors) {
+			updateAnchorVisualStates(target)
+		} else {
+			applyMagnetToDom(target)
 		}
-
-		const el = target.element ?? anchorElement(target.nodeId, target.anchorId, target.direction)
-		if (!el) {
-			if (lastMagnetEl) {
-				scheduleAnchorRelease(lastMagnetEl)
-				lastMagnetEl = null
-			}
-			return
-		}
-
-		if (lastMagnetEl && lastMagnetEl !== el) {
-			scheduleAnchorRelease(lastMagnetEl)
-		}
-
-		el.dataset.magnetPhase = String(target.phase ?? 'idle')
-		// During link drag, keep input anchors visually stable (highlight/phase only)
-		// to avoid endpoint jitter caused by animated DOM center re-sampling.
-		const suppressInputShift = Boolean(linkDraft.value) && target.direction === 'in'
-		const magnetX = suppressInputShift ? 0 : Number(target.magnetX ?? 0) || 0
-		const magnetY = suppressInputShift ? 0 : Number(target.magnetY ?? 0) || 0
-		el.style.setProperty('--wf-anchor-magnet-x', `${magnetX}px`)
-		el.style.setProperty('--wf-anchor-magnet-y', `${magnetY}px`)
-		el.style.setProperty('--wf-handle-magnet-x', `${magnetX}px`)
-		el.style.setProperty('--wf-handle-magnet-y', `${magnetY}px`)
-		lastMagnetEl = el
 	}
 
 	const updateTooltipState = (target: DropTarget | null) => {
@@ -296,29 +402,53 @@ export const useAIWorkflowLinking = (payload: {
 			anchorCompatibility.value = {}
 			return
 		}
-
-		const targetNode = payload.store.state.nodesById[target.nodeId]
-		if (!targetNode) {
-			tooltipState.value = null
-			anchorCompatibility.value = {}
+		if (payload.canvasAnchors) {
+			const targetNode = payload.store.state.nodesById[target.nodeId]
+			if (!targetNode) {
+				tooltipState.value = null
+				return
+			}
+			const anchors = target.direction === 'in' ? targetNode.inputs : targetNode.outputs
+			const anchor = anchors.find((a) => a.id === target.anchorId)
+			if (!anchor) {
+				tooltipState.value = null
+				return
+			}
+			const canvasPt = target.centerCanvas ?? { x: 0, y: 0 }
+			const wrap = document.querySelector('.bp-wrap')
+			const wrapRect = wrap?.getBoundingClientRect()
+			const clientPos = wrapRect
+				? { x: wrapRect.left + canvasPt.x, y: wrapRect.top + canvasPt.y }
+				: { x: 0, y: 0 }
+			const compatible = canLinkAnchors(
+				payload.store.state.nodesById,
+				linkDraft.value.fromNodeId,
+				linkDraft.value.fromAnchorId,
+				target.nodeId,
+				target.anchorId
+			)
+			tooltipState.value = {
+				visible: true,
+				type: anchor.mediaType ?? 'generic',
+				direction: target.direction,
+				label: anchor.label,
+				acceptedTypes: anchor.acceptedMediaTypes,
+				compatible,
+				position: clientPos
+			}
+			anchorCompatibility.value = {
+				[`${target.nodeId}-${target.direction}-${target.anchorId}`]: compatible,
+				[`${linkDraft.value.fromNodeId}-out-${linkDraft.value.fromAnchorId}`]: compatible
+			}
 			return
 		}
 
-		const anchors = target.direction === 'in' ? targetNode.inputs : targetNode.outputs
-		const anchor = anchors.find((a) => a.id === target.anchorId)
-		if (!anchor) {
-			tooltipState.value = null
-			anchorCompatibility.value = {}
-			return
-		}
-
-		const el = target.element ?? anchorElement(target.nodeId, target.anchorId, target.direction)
+		const el = anchorElement(target.nodeId, target.anchorId, target.direction)
 		if (!el) {
 			tooltipState.value = null
 			anchorCompatibility.value = {}
 			return
 		}
-
 		const rect = el.getBoundingClientRect()
 		const compatible = canLinkAnchors(
 			payload.store.state.nodesById,
@@ -327,45 +457,42 @@ export const useAIWorkflowLinking = (payload: {
 			target.nodeId,
 			target.anchorId
 		)
-
 		const targetKey = `${target.nodeId}-${target.direction}-${target.anchorId}`
 		const sourceKey = `${linkDraft.value.fromNodeId}-out-${linkDraft.value.fromAnchorId}`
 		anchorCompatibility.value = {
 			[targetKey]: compatible,
 			[sourceKey]: compatible
 		}
-
+		const targetNode = payload.store.state.nodesById[target.nodeId]
+		const anchors = targetNode ? (target.direction === 'in' ? targetNode.inputs : targetNode.outputs) : []
+		const anchor = anchors.find((a) => a.id === target.anchorId)
 		tooltipState.value = {
 			visible: true,
-			type: anchor.mediaType ?? 'generic',
+			type: anchor?.mediaType ?? 'generic',
 			direction: target.direction,
-			label: anchor.label,
-			acceptedTypes: anchor.acceptedMediaTypes,
+			label: anchor?.label,
+			acceptedTypes: anchor?.acceptedMediaTypes,
 			compatible,
-			position: {
-				x: rect.left + rect.width / 2,
-				y: rect.top + rect.height / 2
-			}
+			position: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
 		}
 	}
 
 	const runHoverMagnet = () => {
 		hoverRafId = null
 		if (linkDraft.value || !lastHoverPointer) return
+		const pt = getPointerInMagnetSpace(lastHoverPointer)
 		const target = magnet.resolveTarget({
-			candidates: collectAnchorCandidates({ directions: ['in', 'out'] }),
-			pointer: lastHoverPointer,
+			candidates: buildAnchorCandidates(['in', 'out']),
+			pointer: pt,
 			dragging: false
 		})
-		applyMagnetVisual(target ? toDropTarget(target) : null)
+		applyMagnetVisual(target)
 	}
 
 	const onHoverPointerMove = (event: PointerEvent) => {
 		if (linkDraft.value || isPanning.value) return
-
 		const canvasEl = document.querySelector('.bp-wrap')
 		if (!canvasEl) return
-
 		const rect = canvasEl.getBoundingClientRect()
 		const padding = 20
 		if (
@@ -376,11 +503,6 @@ export const useAIWorkflowLinking = (payload: {
 		) {
 			return
 		}
-
-		const now = Date.now()
-		if (now - lastHoverTime < HOVER_THROTTLE_MS) return
-		lastHoverTime = now
-
 		lastHoverPointer = { x: event.clientX, y: event.clientY }
 		if (hoverRafId != null) return
 		hoverRafId = requestAnimationFrame(runHoverMagnet)
@@ -398,7 +520,24 @@ export const useAIWorkflowLinking = (payload: {
 	watch(
 		() => [linkDraft.value, dropTarget.value],
 		() => {
-			applyMagnetVisual(dropTarget.value)
+			if (dropTarget.value) {
+				const center = dropTarget.value.centerClient ?? { x: 0, y: 0 }
+				const fakeTarget: WorkflowAnchorMagnetTarget = {
+					nodeId: dropTarget.value.nodeId,
+					anchorId: dropTarget.value.anchorId,
+					anchorIndex: dropTarget.value.anchorIndex,
+					direction: dropTarget.value.direction,
+					center,
+					distance: dropTarget.value.distance ?? 0,
+					radiusPx: 22,
+					screenMagnetX: dropTarget.value.screenMagnetX ?? 0,
+					screenMagnetY: dropTarget.value.screenMagnetY ?? 0,
+					phase: (dropTarget.value.phase ?? 'idle') as 'idle' | 'armed' | 'snapped' | 'dragging'
+				}
+				applyMagnetVisual(fakeTarget)
+			} else {
+				applyMagnetVisual(null)
+			}
 			updateTooltipState(dropTarget.value)
 			payload.scheduleAsyncEdgeRender()
 		},
@@ -424,21 +563,13 @@ export const useAIWorkflowLinking = (payload: {
 	}
 
 	const findDropTarget = (clientPoint: { x: number; y: number }) => {
+		const pt = getPointerInMagnetSpace(clientPoint)
 		const target = magnet.resolveTarget({
-			candidates: collectAnchorCandidates({ directions: ['in'], legalOnly: false }),
-			pointer: clientPoint,
+			candidates: buildAnchorCandidates(['in']),
+			pointer: pt,
 			dragging: false
 		})
 		return target ? toDropTarget(target) : null
-	}
-
-	const applySourceDragVisual = (_clientPoint: { x: number; y: number }) => {
-		if (!sourceMagnetEl) return
-		sourceMagnetEl.dataset.magnetPhase = 'dragging'
-		sourceMagnetEl.style.setProperty('--wf-anchor-magnet-x', `0px`)
-		sourceMagnetEl.style.setProperty('--wf-anchor-magnet-y', `0px`)
-		sourceMagnetEl.style.setProperty('--wf-handle-magnet-x', `0px`)
-		sourceMagnetEl.style.setProperty('--wf-handle-magnet-y', `0px`)
 	}
 
 	const onStartLink = (
@@ -462,17 +593,22 @@ export const useAIWorkflowLinking = (payload: {
 		}
 		activeScreenToWorld = screenToWorld
 		magnet.setDragging(true)
-		const nextSourceEl = anchorElement(startPayload.nodeId, startPayload.anchorId, 'out')
-		if (lastMagnetEl && lastMagnetEl !== nextSourceEl) scheduleAnchorRelease(lastMagnetEl)
-		lastMagnetEl = null
-		sourceMagnetEl = nextSourceEl
-		if (sourceMagnetEl) {
-			sourceMagnetEl.dataset.magnetPhase = 'dragging'
-			sourceMagnetEl.style.setProperty('--wf-anchor-magnet-x', '0px')
-			sourceMagnetEl.style.setProperty('--wf-anchor-magnet-y', '0px')
-			sourceMagnetEl.style.setProperty('--wf-handle-magnet-x', '0px')
-			sourceMagnetEl.style.setProperty('--wf-handle-magnet-y', '0px')
-			sourceDragOriginClient = anchorCenterClient(sourceMagnetEl)
+
+		if (!payload.canvasAnchors) {
+			const nextSourceEl = anchorElement(startPayload.nodeId, startPayload.anchorId, 'out')
+			if (lastMagnetDomEl && lastMagnetDomEl !== nextSourceEl) scheduleAnchorRelease(lastMagnetDomEl)
+			lastMagnetDomEl = null
+			sourceMagnetDomEl = nextSourceEl
+			if (sourceMagnetDomEl) {
+				sourceMagnetDomEl.dataset.magnetPhase = 'dragging'
+				sourceMagnetDomEl.style.setProperty('--wf-anchor-magnet-x', '0px')
+				sourceMagnetDomEl.style.setProperty('--wf-anchor-magnet-y', '0px')
+				sourceMagnetDomEl.style.setProperty('--wf-handle-magnet-x', '0px')
+				sourceMagnetDomEl.style.setProperty('--wf-handle-magnet-y', '0px')
+				sourceDragOriginClient = anchorCenterClient(sourceMagnetDomEl)
+			} else {
+				sourceDragOriginClient = null
+			}
 		} else {
 			sourceDragOriginClient = null
 		}
@@ -500,17 +636,13 @@ export const useAIWorkflowLinking = (payload: {
 			event.preventDefault()
 			const next = payload.clientToCanvasPoint({ x: event.clientX, y: event.clientY })
 			if (!next) return
-			applySourceDragVisual({ x: event.clientX, y: event.clientY })
 			const nextTarget = findDropTarget({ x: event.clientX, y: event.clientY })
 			dropTarget.value = nextTarget
 			const snappedCanvas =
 				nextTarget &&
 				(nextTarget.phase === 'snapped' || nextTarget.distance === 0) &&
 				nextTarget.centerCanvas
-					? {
-							x: nextTarget.centerCanvas.x,
-							y: nextTarget.centerCanvas.y
-						}
+					? { x: nextTarget.centerCanvas.x, y: nextTarget.centerCanvas.y }
 					: null
 			linkDraft.value.endCanvas = snappedCanvas ?? next
 		}
@@ -650,6 +782,27 @@ export const useAIWorkflowLinking = (payload: {
 		clearLinkInteraction()
 	}
 
+	const hitTestAnchor = (
+		clientX: number,
+		clientY: number
+	): { nodeId: string; anchorId: string; anchorIndex: number; direction: 'in' | 'out' } | null => {
+		if (!payload.canvasAnchors) return null
+		const cp = payload.clientToCanvasPoint({ x: clientX, y: clientY })
+		if (!cp) return null
+		let best: { dist: number; nodeId: string; anchorId: string; anchorIndex: number; direction: 'in' | 'out' } | null = null
+		const hitRadius = magnet.hitRadiusPx.value
+		for (const a of payload.canvasAnchors.value) {
+			const dx = cp.x - a.screenX
+			const dy = cp.y - a.screenY
+			const dist = Math.hypot(dx, dy)
+			if (dist > hitRadius) continue
+			if (!best || dist < best.dist) {
+				best = { dist, nodeId: a.nodeId, anchorId: a.anchorId, anchorIndex: a.anchorIndex, direction: a.direction }
+			}
+		}
+		return best ? { nodeId: best.nodeId, anchorId: best.anchorId, anchorIndex: best.anchorIndex, direction: best.direction } : null
+	}
+
 	const draftRender = (
 		_worldToScreen: (point: { x: number; y: number }) => { x: number; y: number }
 	): AIWorkflowDraftRender => {
@@ -699,6 +852,8 @@ export const useAIWorkflowLinking = (payload: {
 		isLinking: computed(() => !!linkDraft.value),
 		linkingFromNodeId: computed(() => linkDraft.value?.fromNodeId ?? null),
 		linkingHoverNodeId: computed(() => dropTarget.value?.nodeId ?? null),
+		anchorVisualStates,
+		hitTestAnchor,
 		setPanning
 	}
 }

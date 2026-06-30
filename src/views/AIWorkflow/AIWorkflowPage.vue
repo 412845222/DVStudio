@@ -53,6 +53,7 @@
 					:nodes="canvasNodeEntries"
 					:viewport="viewport"
 					:selected-node-ids="selectedNodeIds"
+					:hide-visuals="true"
 					@start-link="onStartLink($event, vp.screenToWorld)"
 					@end-link="onEndLink"
 				/>
@@ -63,7 +64,9 @@
 					:draft="asyncDraftRender"
 					:motionActive="viewportMotionActive"
 					:zoom="viewport.zoom"
+					:anchors="canvasAnchorRenderList"
 					@select-edge="onSelectEdge"
+					@anchor-pointerdown="onCanvasAnchorPointerDown"
 				/>
 
 				<div
@@ -221,6 +224,7 @@
 						@update-video-settings="onNodeVideoSettingsUpdate(node.id, $event)"
 						@update:world-x="onNodeX(node.id, $event)"
 						@update:world-y="onNodeY(node.id, $event)"
+						@update:world-position="onNodeDragPosition(node.id, $event)"
 						@upload-model-file="onNodeUploadModel3DFile(node.id, $event.file)"
 						@upload-resource="onNodeUploadResource(node.id, $event.file, $event.kind)"
 						@upload-scene-layout-model-file="
@@ -1408,11 +1412,19 @@ const {
 	getBitmap,
 	getEntry: getCanvasEntry,
 	invalidate: invalidateCanvasScreenshot,
+	loadScreenshot: loadScreenshotToCanvas,
 	dispose: disposeCanvasScreenshot
 } = useAIWorkflowCanvasScreenshot({
 	maxBitmapCount: 500,
 	maxMemoryMB: 200,
-	concurrency: 4
+	concurrency: (() => {
+		try {
+			const cores = navigator.hardwareConcurrency || 4
+			return Math.min(12, Math.max(6, cores))
+		} catch {
+			return 8
+		}
+	})()
 })
 
 // NodeCanvasLayer组件引用
@@ -1444,7 +1456,9 @@ const initCanvasScreenshotPool = () => {
 }
 
 // Canvas节点数据 (用于NodeCanvasLayer渲染)
+const canvasScreenshotRefreshTick = ref(0)
 const canvasNodeEntries = computed(() => {
+	canvasScreenshotRefreshTick.value
 	if (!canvasScreenshotEnabled.value) return []
 	
 	return safeVisibleRenderNodes.value
@@ -1764,12 +1778,13 @@ const findNodeElementForScreenshot = (hostEl: HTMLElement): HTMLElement | null =
 const scheduleNodeScreenshot = async (
 	node: WorkflowNode,
 	retryCount: number = 0,
-	priority: ScreenshotPriority = 'normal'
+	priority: ScreenshotPriority = 'normal',
+	allowFullRender: boolean = false
 ) => {
 	const nodeId = String(node?.id ?? '').trim()
 	if (!nodeId) return
-	if (selectedNodeIds.value.includes(nodeId)) return
-	if (fullRenderNodeIds.value.has(nodeId)) return
+	if (!allowFullRender && selectedNodeIds.value.includes(nodeId)) return
+	if (!allowFullRender && fullRenderNodeIds.value.has(nodeId)) return
 
 	const hostEl = nodeHostRefs.get(nodeId)
 	if (!hostEl) {
@@ -1844,6 +1859,18 @@ const scheduleNodeScreenshot = async (
 			const newMap = new Map(nodeScreenshotMap.value)
 			newMap.set(nodeId, entry)
 			nodeScreenshotMap.value = newMap
+			invalidateCanvasScreenshot(nodeId)
+			try {
+				await loadScreenshotToCanvas(entry)
+			} catch {}
+			canvasScreenshotPool.value = {
+				getEntry: (nid: string) => {
+					const e = getCanvasEntry(nid)
+					if (!e) return null
+					return { bitmap: e.bitmap, width: e.width, height: e.height }
+				}
+			}
+			canvasScreenshotRefreshTick.value++
 			const cacheCtx = getScreenshotCacheContext()
 			void saveScreenshotToDisk(
 				cacheCtx.projectId,
@@ -1938,11 +1965,13 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	let diskLoadedCount = 0
 	if (!forceRecapture) {
-		screenshotWarmupProgress.value = 0.05
-		screenshotWarmupDetail.value = '正在加载磁盘缓存...'
+		screenshotWarmupProgress.value = 0.03
+		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
 		try {
 			const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
-			for (const node of allNodes) {
+			const totalNodes = allNodes.length
+			for (let i = 0; i < totalNodes; i++) {
+				const node = allNodes[i]
 				const nodeId = node.id
 				const version = getNodeScreenshotVersion(node)
 				const diskEntry = diskCache.get(nodeId)
@@ -1966,6 +1995,12 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 						SCREENSHOT_PADDING
 					)
 					diskLoadedCount++
+				}
+				if (i % 10 === 0 || i === totalNodes - 1) {
+					const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
+					screenshotWarmupProgress.value = 0.03 + ratio * 0.06
+					screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes}...`
+					if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 				}
 			}
 		} catch (err) {
@@ -2017,9 +2052,20 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	if (total === 0) {
 		await nextTick()
 		await waitForFrames(1)
-		screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存...`
-		await warmupCanvasAll(newMap)
+		screenshotWarmupProgress.value = 0.1
+		screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+		await warmupCanvasAll(
+			newMap,
+			undefined,
+			(p: number, d: string) => {
+				screenshotWarmupProgress.value = 0.1 + p * 0.88
+				screenshotWarmupDetail.value = d
+			}
+		)
 		initCanvasScreenshotPool()
+		screenshotWarmupProgress.value = 0.99
+		screenshotWarmupDetail.value = '完成'
+		await waitForFrames(1)
 		screenshotWarmupOpen.value = false
 		screenshotWarmupDetail.value = ''
 		return
@@ -2102,7 +2148,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 			screenshotCompleted++
 			const ratio = screenshotCompleted / total
-			screenshotWarmupProgress.value = 0.1 + ratio * 0.9
+			screenshotWarmupProgress.value = 0.1 + ratio * 0.78
 			screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${screenshotCompleted}/${total}...`
 		})()
 		promises.push(promise)
@@ -2131,7 +2177,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 		if (screenshotStarted > 0) {
 			const ratio = screenshotStarted / total
-			screenshotWarmupProgress.value = 0.1 + ratio * 0.15 + (screenshotCompleted / total) * 0.75
+			screenshotWarmupProgress.value = 0.1 + ratio * 0.12 + (screenshotCompleted / total) * 0.66
 			screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${screenshotCompleted}/${total}（渲染就绪 ${screenshotStarted}）...`
 		}
 	}
@@ -2155,23 +2201,26 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	warmupForceRenderNodeIds.value = new Set()
 	await nextTick()
 	warmupExitingFullRender.value = false
-	screenshotWarmupDetail.value = `截图完成，共 ${allNodes.length} 个节点（磁盘缓存${diskLoadedCount}）`
-	await waitForFrames(2)
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
 
 	// === Canvas截图预热：加载所有截图到内存 ===
-	screenshotWarmupOpen.value = true
-	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存...`
+	screenshotWarmupProgress.value = 0.88
+	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+	await waitForFrames(1)
 
-	// 步骤1：将所有节点的截图加载到内存（从磁盘缓存）
-	await warmupCanvasAll(newMap)
+	await warmupCanvasAll(
+		newMap,
+		undefined,
+		(p: number, d: string) => {
+			screenshotWarmupProgress.value = 0.88 + p * 0.11
+			screenshotWarmupDetail.value = d
+		}
+	)
 
-	// 步骤2：初始化Canvas截图池（为渲染器提供截图访问）
 	initCanvasScreenshotPool()
 
-	screenshotWarmupDetail.value = `Canvas截图加载完成`
-	await waitForFrames(2)
+	screenshotWarmupProgress.value = 0.99
+	screenshotWarmupDetail.value = '完成'
+	await waitForFrames(1)
 
 	screenshotWarmupOpen.value = false
 	screenshotWarmupDetail.value = ''
@@ -2398,11 +2447,12 @@ watch(
 watch(
 	() => safeVisibleRenderNodes.value,
 	() => {
+		if (viewportMotionActive.value) return
 		nextTick(() => {
 			scheduleVisibleNodeScreenshots()
 		})
 	},
-	{ deep: true, flush: 'post' }
+	{ flush: 'post' }
 )
 
 const previousNodeSizes = new Map<string, { w: number; h: number }>()
@@ -2422,8 +2472,12 @@ watch(
 				const node = nodes.value.find((n) => String(n.id) === nodeId)
 				if (node) {
 					screenshotPool.invalidateScreenshot(nodeId)
+					invalidateCanvasScreenshot(nodeId)
 					if (currentFullRenderIds.has(nodeId)) {
 						nodesNeedingScreenshotRefresh.add(nodeId)
+						if (selectedNodeIds.value.includes(nodeId)) {
+							userSelectedNodesNeedingRefresh.add(nodeId)
+						}
 					} else {
 						resizedNodes.push(node)
 					}
@@ -2438,7 +2492,7 @@ watch(
 			nextTick(() => {
 				setTimeout(() => {
 					for (const node of resizedNodes) {
-						void scheduleNodeScreenshot(node, 0, 'normal')
+						void scheduleNodeScreenshot(node, 0, 'high')
 					}
 				}, 200)
 			})
@@ -2447,11 +2501,25 @@ watch(
 	{ deep: true, flush: 'post' }
 )
 
+let prevSelectedNodeIds: string[] = []
+const userSelectedNodesNeedingRefresh = new Set<string>()
 watch(
-	() => selectedNodeIds.value,
-	() => {
+	() => selectedNodeIds.value.slice(),
+	(newIds) => {
+		const newlySelected = newIds.filter((id) => !prevSelectedNodeIds.includes(id))
+		prevSelectedNodeIds = newIds.slice()
+
 		nextTick(() => {
 			scheduleVisibleNodeScreenshots()
+
+			for (const nodeId of newlySelected) {
+				userSelectedNodesNeedingRefresh.add(nodeId)
+				invalidateCanvasScreenshot(nodeId)
+				screenshotPool.invalidateScreenshot(nodeId)
+				const newMap = new Map(nodeScreenshotMap.value)
+				newMap.delete(nodeId)
+				nodeScreenshotMap.value = newMap
+			}
 		})
 	},
 	{ deep: true, flush: 'post' }
@@ -2543,11 +2611,13 @@ const loadCachedScreenshotsToCanvas = async () => {
 	const newMap = new Map<string, ScreenshotCacheEntry>()
 
 	let diskLoadedCount = 0
-	screenshotWarmupProgress.value = 0.1
 	try {
+		screenshotWarmupProgress.value = 0.05
+		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
 		const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
-		console.log('[Screenshot Warmup] diskCache entries:', diskCache.size)
-		for (const node of allNodes) {
+		const totalNodes = allNodes.length
+		for (let i = 0; i < totalNodes; i++) {
+			const node = allNodes[i]
 			const nodeId = node.id
 			const version = getNodeScreenshotVersion(node)
 			const diskEntry = diskCache.get(nodeId)
@@ -2572,26 +2642,35 @@ const loadCachedScreenshotsToCanvas = async () => {
 				)
 				diskLoadedCount++
 			}
+			if (i % 10 === 0 || i === totalNodes - 1) {
+				const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
+				screenshotWarmupProgress.value = 0.05 + ratio * 0.2
+				screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes}...`
+				if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
+			}
 		}
 	} catch (err) {
 		console.warn('[Screenshot Warmup] load from disk failed:', err)
 	}
 
-	console.log('[Screenshot Warmup] cache load result:', {
-		allNodes: allNodes.length,
-		diskLoaded: diskLoadedCount,
-		newMapSize: newMap.size
-	})
-
 	nodeScreenshotMap.value = newMap
 
-	screenshotWarmupProgress.value = 0.3
-	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存...`
+	screenshotWarmupProgress.value = 0.28
+	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
 
-	await warmupCanvasAll(newMap)
+	await warmupCanvasAll(
+		newMap,
+		undefined,
+		(p: number, d: string) => {
+			screenshotWarmupProgress.value = 0.3 + p * 0.68
+			screenshotWarmupDetail.value = d
+		}
+	)
 	initCanvasScreenshotPool()
 
-	await waitForFrames(2)
+	screenshotWarmupProgress.value = 0.98
+	screenshotWarmupDetail.value = '完成'
+	await waitForFrames(1)
 
 	screenshotWarmupOpen.value = false
 	screenshotWarmupDetail.value = ''
@@ -6081,6 +6160,97 @@ const buildPath = (start: { x: number; y: number }, end: { x: number; y: number 
 
 const EDGE_VIEWPORT_CULL_MARGIN_PX = 240
 
+const worldToCanvasLocal = (point: { x: number; y: number }) => {
+	const vw = canvasViewportSize.value.width
+	const vh = canvasViewportSize.value.height
+	const zoom = Math.max(0.01, Number(viewport.value.zoom) || 1)
+	return {
+		x: vw / 2 + (Number(viewport.value.panX) || 0) + point.x * zoom,
+		y: vh / 2 + (Number(viewport.value.panY) || 0) + point.y * zoom
+	}
+}
+
+const anchorCullMargin = 60
+const computeCanvasAnchorRenders = () => {
+	const vw = canvasViewportSize.value.width
+	const vh = canvasViewportSize.value.height
+	if (vw <= 0 || vh <= 0) return []
+	const margin = anchorCullMargin
+	const out: Array<{
+		nodeId: string
+		anchorId: string
+		anchorIndex: number
+		direction: 'in' | 'out'
+		screenX: number
+		screenY: number
+		mediaType?: string
+	}> = []
+	for (const node of renderNodes.value) {
+		if (node.id === NANO_ANCHOR_NODE_ID) continue
+		if (getNodeRenderMode(node.id) === 'full') continue
+		const inputs = Array.isArray(node.inputs) ? node.inputs : []
+		const outputs = Array.isArray(node.outputs) ? node.outputs : []
+		const inCount = inputs.length
+		const outCount = outputs.length
+		for (let i = 0; i < inCount; i++) {
+			const a = inputs[i]
+			if (!a) continue
+			const wp = anchorWorld(node, 'in', i, inCount, a)
+			const sp = worldToCanvasLocal(wp)
+			if (sp.x < -margin || sp.y < -margin || sp.x > vw + margin || sp.y > vh + margin) continue
+			out.push({
+				nodeId: node.id,
+				anchorId: String(a.id ?? ''),
+				anchorIndex: i,
+				direction: 'in',
+				screenX: sp.x,
+				screenY: sp.y,
+				mediaType: a.mediaType === 'generic' ? 'resource' : a.mediaType
+			})
+		}
+		for (let i = 0; i < outCount; i++) {
+			const a = outputs[i]
+			if (!a) continue
+			const wp = anchorWorld(node, 'out', i, outCount, a)
+			const sp = worldToCanvasLocal(wp)
+			if (sp.x < -margin || sp.y < -margin || sp.x > vw + margin || sp.y > vh + margin) continue
+			out.push({
+				nodeId: node.id,
+				anchorId: String(a.id ?? ''),
+				anchorIndex: i,
+				direction: 'out',
+				screenX: sp.x,
+				screenY: sp.y,
+				mediaType: a.mediaType === 'generic' ? 'resource' : a.mediaType
+			})
+		}
+	}
+	return out
+}
+
+const canvasAnchors = computed(computeCanvasAnchorRenders)
+
+const canvasAnchorRenderList = computed(() => {
+	const states = linkInteraction?.anchorVisualStates.value ?? new Map()
+	return canvasAnchors.value.map((a) => {
+		const key = `${a.nodeId}-${a.direction}-${a.anchorId}`
+		const s = states.get(key)
+		return {
+			nodeId: a.nodeId,
+			anchorId: a.anchorId,
+			anchorIndex: a.anchorIndex,
+			direction: a.direction as 'in' | 'out',
+			x: a.screenX,
+			y: a.screenY,
+			mediaType: a.mediaType,
+			phase: (s?.phase ?? 'idle') as 'idle' | 'armed' | 'snapped' | 'dragging' | 'release',
+			magnetX: s?.magnetX ?? 0,
+			magnetY: s?.magnetY ?? 0,
+			compatible: s?.compatible ?? null
+		}
+	})
+})
+
 const shouldCullEdgeByViewport = (
 	start: { x: number; y: number },
 	end: { x: number; y: number },
@@ -7147,6 +7317,7 @@ const linkInteraction = useAIWorkflowLinking({
 	anchorWorld,
 	buildPath,
 	pushToast,
+	canvasAnchors,
 	onLinkConnected: ({ fromNodeId, fromAnchorId, toNodeId, toAnchorId }) => {
 		const fromNode = store.state.nodesById[fromNodeId]
 		const toNode = store.state.nodesById[toNodeId]
@@ -8212,6 +8383,37 @@ const isLinking = linkInteraction.isLinking
 const linkingFromNodeId = linkInteraction.linkingFromNodeId
 const linkingHoverNodeId = linkInteraction.linkingHoverNodeId
 
+const canvasScreenToWorld = (point: { x: number; y: number }) => {
+	const vw = canvasViewportSize.value.width
+	const vh = canvasViewportSize.value.height
+	const zoom = Math.max(0.01, Number(viewport.value.zoom) || 1)
+	const panX = Number(viewport.value.panX) || 0
+	const panY = Number(viewport.value.panY) || 0
+	return {
+		x: (point.x - vw / 2 - panX) / zoom,
+		y: (point.y - vh / 2 - panY) / zoom
+	}
+}
+
+const onCanvasAnchorPointerDown = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	direction: 'in' | 'out'
+	event: PointerEvent
+}) => {
+	if (payload.direction !== 'out') return
+	onStartLink(
+		{
+			nodeId: payload.nodeId,
+			anchorId: payload.anchorId,
+			anchorIndex: payload.anchorIndex,
+			event: payload.event
+		},
+		canvasScreenToWorld
+	)
+}
+
 watch(
 	() => Array.from(fullRenderNodeIds.value),
 	(newIds, oldIds) => {
@@ -8232,6 +8434,8 @@ watch(
 				const node = nodes.value.find((n) => String(n.id) === nodeId)
 				if (!node) continue
 				nodesNeedingScreenshotRefresh.delete(nodeId)
+				const needsUserRefresh = userSelectedNodesNeedingRefresh.has(nodeId)
+				userSelectedNodesNeedingRefresh.delete(nodeId)
 				const version = getNodeScreenshotVersion(node)
 				const existingCached = screenshotPool.getCachedScreenshot(nodeId, version)
 				const currentMapEntry = nodeScreenshotMap.value.get(nodeId)
@@ -8247,8 +8451,14 @@ watch(
 					continue
 				}
 
+				if (!isWarmupExit && !needsUserRefresh && mapEntryValid && existingCached) {
+					reused.push(node)
+					continue
+				}
+
 				if (!isWarmupExit) {
 					screenshotPool.invalidateScreenshot(nodeId)
+					invalidateCanvasScreenshot(nodeId)
 					const newMap = new Map(nodeScreenshotMap.value)
 					newMap.delete(nodeId)
 					nodeScreenshotMap.value = newMap
@@ -8323,6 +8533,7 @@ const onCanvasPanningEnd = () => {
 const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
 const onNodeX = canvasInteraction.onNodeX
 const onNodeY = canvasInteraction.onNodeY
+const onNodeDragPosition = canvasInteraction.onNodeDragPosition
 const onSelectNode = canvasInteraction.onSelectNode
 const onSelectEdge = canvasInteraction.onSelectEdge
 const onCompactNodePointerDown = canvasInteraction.onCompactNodePointerDown

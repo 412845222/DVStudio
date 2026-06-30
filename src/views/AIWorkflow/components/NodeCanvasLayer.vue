@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { CanvasNodeRenderer } from '../node-screenshot/canvasNodeRenderer'
 import type { VisibleNodeEntry, ScreenshotPoolProvider, ViewportState } from '../node-screenshot'
 
@@ -27,14 +27,24 @@ let renderer: CanvasNodeRenderer | null = null
 let resizeObserver: ResizeObserver | null = null
 let rafId: number | null = null
 let parentEl: HTMLElement | null = null
+let dirty = false
 
-const renderLoop = () => {
-	if (renderer) {
+const scheduleRender = () => {
+	if (rafId !== null) return
+	dirty = true
+	rafId = requestAnimationFrame(() => {
+		rafId = null
+		if (!dirty || !renderer) return
+		dirty = false
 		renderer.setViewport(props.viewport)
 		renderer.setNodes(props.nodes)
 		renderer.render(props.viewport)
-	}
-	rafId = requestAnimationFrame(renderLoop)
+	})
+}
+
+const markDirty = () => {
+	dirty = true
+	scheduleRender()
 }
 
 const handleResize = () => {
@@ -74,6 +84,7 @@ const isInteractiveUiTarget = (target: EventTarget | null): boolean => {
 	if (el.closest('.wf-sel-frame-tag-bar')) return true
 	if (el.closest('[data-bp-ui-overlay="true"]')) return true
 	if (el.closest('.bp-boxsel')) return true
+	if (el.closest('.wf-three-shell')) return true
 	return false
 }
 
@@ -90,6 +101,9 @@ const onParentPointerDownCapture = (event: PointerEvent) => {
 	}
 }
 
+watch(() => props.viewport, () => { markDirty() }, { deep: true })
+watch(() => props.nodes, () => { markDirty() }, { deep: false })
+
 onMounted(() => {
 	if (!canvasRef.value) return
 
@@ -102,7 +116,7 @@ onMounted(() => {
 	resizeObserver.observe(canvasRef.value)
 
 	renderer.resize()
-	rafId = requestAnimationFrame(renderLoop)
+	markDirty()
 
 	parentEl = canvasRef.value.parentElement as HTMLElement | null
 	parentEl?.addEventListener('pointerdown', onParentPointerDownCapture, true)
@@ -122,6 +136,10 @@ onBeforeUnmount(() => {
 	}
 	resizeObserver = null
 	renderer = null
+})
+
+defineExpose({
+	markDirty
 })
 </script>
 

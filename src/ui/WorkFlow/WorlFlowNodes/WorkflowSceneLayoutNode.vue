@@ -18,6 +18,7 @@
 		:hoverOutputAnchorId="hoverOutputAnchorId"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
+		@update:world-position="(p) => emit('update:worldPosition', p)"
 		@select="(id) => emit('select', id)"
 		@start-link="onStartLink"
 		@end-link="onEndLink"
@@ -419,6 +420,7 @@ const onResize = (payload: { width: number; height: number; worldX: number; worl
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
 	(e: 'update:worldY', v: number): void
+	(e: 'update:worldPosition', p: { worldX: number; worldY: number }): void
 	(e: 'select', nodeId: string): void
 	(
 		e: 'start-link',
@@ -501,6 +503,7 @@ let viewerInitCooldownUntil = 0
 let activePreviewRequestId = 0
 let perfPollTimer: ReturnType<typeof setInterval> | null = null
 let cachedLayoutSignature = ''
+let cameraUserControlled = false
 
 const cacheSnapshot = (value: string) => {
 	if (!snapshotCacheKey) return
@@ -861,16 +864,21 @@ watch(
 			String(props.linkedLightingJsonText ?? '')
 		] as const,
 	() => {
-		viewer?.setLayout(layoutItems.value, undefined, {
-			transparent: renderTransparent.value,
-			previewMode: previewMode.value,
-			lightingPreviewEnabled: lightingPreviewEnabled.value,
-			lightingDebugEnabled: lightingDebugEnabled.value,
-			lightingControls: lightingControls.value,
-			lightingJson: String(props.linkedLightingJsonText ?? ''),
-			modelBindings: sceneLayoutModelBindings.value,
-			hidePlaceholderCubes: hidePlaceholderCubes.value
-		})
+		viewer?.setLayout(
+			layoutItems.value,
+			cameraUserControlled ? null : undefined,
+			{
+				transparent: renderTransparent.value,
+				previewMode: previewMode.value,
+				lightingPreviewEnabled: lightingPreviewEnabled.value,
+				lightingDebugEnabled: lightingDebugEnabled.value,
+				lightingControls: lightingControls.value,
+				lightingJson: String(props.linkedLightingJsonText ?? ''),
+				modelBindings: sceneLayoutModelBindings.value,
+				hidePlaceholderCubes: hidePlaceholderCubes.value
+			},
+			cameraUserControlled ? null : undefined
+		)
 	},
 	{ immediate: false }
 )
@@ -878,6 +886,7 @@ watch(
 watch(
 	() => cameraSignature.value,
 	() => {
+		if (cameraUserControlled) return
 		viewer?.applyCamera(settings.value?.camera)
 	},
 	{ immediate: false }
@@ -991,8 +1000,12 @@ const syncViewerState = () => {
 	viewer.setInteractive(previewInteractive.value)
 	viewer.setSelectedItem(effectiveHidePlaceholderCubes ? '' : selectedPreviewItemId.value)
 	const currentSignature = layoutItemsSignature.value
+	const signatureChanged = currentSignature !== cachedLayoutSignature
+	if (signatureChanged) {
+		cameraUserControlled = false
+	}
 	const cachedView =
-		currentSignature === cachedLayoutSignature
+		!signatureChanged && !cameraUserControlled
 			? SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
 			: null
 	viewer.setLayout(
@@ -1008,7 +1021,7 @@ const syncViewerState = () => {
 			modelBindings: sceneLayoutModelBindings.value,
 			hidePlaceholderCubes: effectiveHidePlaceholderCubes
 		},
-		cachedView
+		cameraUserControlled ? null : cachedView
 	)
 	cachedLayoutSignature = currentSignature
 	if (!previewMode.value) {
@@ -1076,6 +1089,12 @@ const createViewerNow = () => {
 			},
 			onModelLoadError: async (url, itemId) => {
 				await attemptRepairSceneLayoutModelUrl(url, itemId)
+			},
+			onCameraInteractionStart: () => {
+				cameraUserControlled = true
+			},
+			onCameraInteractionEnd: () => {
+				saveViewState()
 			}
 		})
 		viewerInitCooldownUntil = 0

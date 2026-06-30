@@ -125,12 +125,20 @@ export class CanvasNodeRenderer {
 		const worldX = (screenX - canvasW / 2 - vp.panX) / vp.zoom
 		const worldY = (screenY - canvasH / 2 - vp.panY) / vp.zoom
 
+		const pool = this.poolProvider()
+
 		for (let i = this.currentNodes.length - 1; i >= 0; i--) {
 			const node = this.currentNodes[i]
-			const nodeLeft = node.worldX - node.width / 2
-			const nodeRight = node.worldX + node.width / 2
-			const nodeTop = node.worldY - node.height / 2
-			const nodeBottom = node.worldY + node.height / 2
+			const entry = pool?.getEntry(node.id)
+			const hitW = entry?.width ?? node.width
+			const hitH = entry?.height ?? node.height
+			const halfW = hitW / 2
+			const halfH = hitH / 2
+
+			const nodeLeft = node.worldX - halfW
+			const nodeRight = node.worldX + halfW
+			const nodeTop = node.worldY - halfH
+			const nodeBottom = node.worldY + halfH
 
 			if (worldX >= nodeLeft && worldX <= nodeRight && worldY >= nodeTop && worldY <= nodeBottom) {
 				return { nodeId: node.id }

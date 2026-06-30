@@ -8,20 +8,14 @@ export type WorkflowAnchorMagnetCandidate = {
 	anchorIndex: number
 	direction: 'in' | 'out'
 	center: { x: number; y: number }
-	element?: HTMLElement | null
+	mediaType?: string
 }
 
 export type WorkflowAnchorMagnetTarget = WorkflowAnchorMagnetCandidate & {
-	nodeId: string
-	anchorId: string
-	anchorIndex: number
-	direction: 'in' | 'out'
 	distance: number
 	radiusPx: number
 	screenMagnetX: number
 	screenMagnetY: number
-	magnetX: number
-	magnetY: number
 	phase: WorkflowAnchorMagnetPhase
 }
 
@@ -45,30 +39,13 @@ export const useWorkflowAnchorMagnet = () => {
 	const snappedNodeId = ref('')
 	const snappedAnchorId = ref('')
 
-	const params = {
-		zoomExponent: 1,
-		hitBase: 34,
-		hitMin: 20,
-		hitMax: 76,
-		dockBase: 8,
-		dockMin: 3,
-		dockMax: 14,
-		lockRatio: 0.5
-	}
+	const HIT_RADIUS_PX = 22
+	const DOCK_RADIUS_PX = 8
+	const LOCK_RADIUS_PX = 5
 
-	const hitRadiusPx = computed(() => {
-		const z = Math.max(0.01, Number(zoom.value) || 1)
-		const scaled = params.hitBase / Math.pow(z, params.zoomExponent)
-		return clamp(scaled, params.hitMin, params.hitMax)
-	})
-
-	const dockRadiusPx = computed(() => {
-		const z = Math.max(0.01, Number(zoom.value) || 1)
-		const scaled = params.dockBase / Math.pow(z, params.zoomExponent)
-		return clamp(scaled, params.dockMin, params.dockMax)
-	})
-
-	const lockRadiusPx = computed(() => Math.max(1, dockRadiusPx.value * params.lockRatio))
+	const hitRadiusPx = computed(() => HIT_RADIUS_PX)
+	const dockRadiusPx = computed(() => DOCK_RADIUS_PX)
+	const lockRadiusPx = computed(() => LOCK_RADIUS_PX)
 
 	const setZoom = (value: number) => {
 		zoom.value = Number.isFinite(value) ? value : 1
@@ -80,11 +57,6 @@ export const useWorkflowAnchorMagnet = () => {
 			snappedNodeId.value = ''
 			snappedAnchorId.value = ''
 		}
-	}
-
-	const toCssOffset = (screenOffset: number) => {
-		const z = Math.max(0.01, Number(zoom.value) || 1)
-		return screenOffset / z
 	}
 
 	const resolveTarget = (args: {
@@ -115,16 +87,10 @@ export const useWorkflowAnchorMagnet = () => {
 
 			const next: WorkflowAnchorMagnetTarget = {
 				...candidate,
-				nodeId: candidate.nodeId,
-				anchorId: candidate.anchorId,
-				anchorIndex: candidate.anchorIndex,
-				direction: candidate.direction,
 				distance,
 				radiusPx: radius,
 				screenMagnetX,
 				screenMagnetY,
-				magnetX: toCssOffset(screenMagnetX),
-				magnetY: toCssOffset(screenMagnetY),
 				phase: isDragging ? 'dragging' : phase
 			}
 
@@ -180,7 +146,6 @@ export const useWorkflowAnchorMagnet = () => {
 		setDragging,
 		resolveTarget,
 		phaseForAnchor,
-		toCssOffset,
 		hitRadiusPx,
 		dockRadiusPx,
 		lockRadiusPx

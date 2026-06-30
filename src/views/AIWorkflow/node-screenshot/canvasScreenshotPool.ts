@@ -106,25 +106,27 @@ export class CanvasScreenshotPool {
 	 * 使用createImageBitmap加载
 	 */
 	private async loadWithImageBitmap(entry: ScreenshotCacheEntry): Promise<CanvasScreenshotEntry> {
-		console.log('[CanvasScreenshotPool] loadWithImageBitmap:', entry.nodeId, 'dataUrl length:', entry.dataUrl?.length)
-		
-		const response = await fetch(entry.dataUrl)
-		console.log('[CanvasScreenshotPool] fetch response:', response.status)
-		
-		const blob = await response.blob()
-		console.log('[CanvasScreenshotPool] blob size:', blob.size, 'type:', blob.type)
-		
 		if (typeof createImageBitmap !== 'function') {
 			throw new Error('createImageBitmap not supported')
 		}
 
-		const bitmap = await createImageBitmap(blob, {
+		const img = new Image()
+		img.decoding = 'async'
+
+		const loaded = new Promise<void>((resolve, reject) => {
+			img.onload = () => resolve()
+			img.onerror = () => reject(new Error(`Failed to load image for node ${entry.nodeId}`))
+		})
+		img.src = entry.dataUrl
+		if (!img.complete) {
+			await loaded
+		}
+
+		const bitmap = await createImageBitmap(img, {
 			imageOrientation: 'none',
 			premultiplyAlpha: 'none',
 			colorSpaceConversion: 'none'
 		})
-
-		console.log('[CanvasScreenshotPool] bitmap created:', bitmap.width, 'x', bitmap.height)
 
 		this.pruneIfNeeded()
 
@@ -132,8 +134,8 @@ export class CanvasScreenshotPool {
 			nodeId: entry.nodeId,
 			version: entry.version,
 			bitmap,
-			width: entry.width,
-			height: entry.height,
+			width: entry.width || img.naturalWidth,
+			height: entry.height || img.naturalHeight,
 			worldX: 0,
 			worldY: 0,
 			radius: 8,
@@ -142,7 +144,6 @@ export class CanvasScreenshotPool {
 		}
 
 		this.entries.set(entry.nodeId, canvasEntry)
-		console.log('[CanvasScreenshotPool] entry added, entries size:', this.entries.size)
 		return canvasEntry
 	}
 
