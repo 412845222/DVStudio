@@ -9,12 +9,7 @@ export type DwebCanvasMenuNodeActionId =
 	| 'model3d'
 	| 'meshy'
 	| 'rotate-image'
-	| 'text-merge'
-	| 'story'
-	| 'base'
-	| 'text-input'
-	| 'canvas'
-	| 'sticky-note'
+	| 'unreal-export'
 
 export type DwebCanvasMenuSpecialActionId = 'upload'
 
@@ -61,6 +56,7 @@ export type Newui2NodeTopCategoryId =
 	| 'scene'
 	| 'model3d'
 	| 'materials'
+	| 'plugin'
 
 export type Newui2NodeTopCategoryIconKey =
 	| 'inputs'
@@ -71,6 +67,7 @@ export type Newui2NodeTopCategoryIconKey =
 	| 'scene'
 	| 'model3d'
 	| 'materials'
+	| 'plugin'
 
 export type Newui2NodeTopCategory = {
 	id: Newui2NodeTopCategoryId
