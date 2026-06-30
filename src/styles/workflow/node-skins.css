@@ -20,8 +20,7 @@
 	overflow: visible;
 	transition:
 		border-color 220ms ease,
-		box-shadow 260ms ease,
-		transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+		box-shadow 260ms ease;
 }
 
 /* L-shaped corner brackets for .wf-node */

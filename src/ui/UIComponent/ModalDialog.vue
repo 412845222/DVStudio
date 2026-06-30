@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 const props = withDefaults(
 	defineProps<{
 		open: boolean
@@ -6,20 +7,28 @@ const props = withDefaults(
 		confirmText?: string
 		closeText?: string
 		disableConfirm?: boolean
+		zIndex?: number
 	}>(),
 	{
 		title: '',
 		confirmText: '确认',
 		closeText: '关闭',
-		disableConfirm: false
+		disableConfirm: false,
+		zIndex: undefined
 	}
 )
 
 const emit = defineEmits<{ (e: 'confirm'): void; (e: 'close'): void }>()
+
+const overlayStyle = computed(() => {
+	const s: Record<string, string | number> = { pointerEvents: 'auto' }
+	if (props.zIndex != null) s.zIndex = props.zIndex
+	return s
+})
 </script>
 
 <template>
-	<div v-if="props.open" class="dvs-modal-overlay" @click.self="emit('close')">
+	<div v-if="props.open" class="dvs-modal-overlay" :style="overlayStyle" @click.self="emit('close')">
 		<div class="dvs-modal" role="dialog" aria-modal="true">
 			<div class="dvs-modal-head">
 				<div class="dvs-modal-title">{{ props.title }}</div>

@@ -320,6 +320,7 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
 	(e: 'update:worldY', v: number): void
+	(e: 'update:worldPosition', payload: { worldX: number; worldY: number }): void
 	(e: 'select', nodeId: string): void
 	(
 		e: 'start-link',
@@ -661,8 +662,9 @@ const onPointerDown = (e: PointerEvent) => {
 		ev.preventDefault()
 		const dx = ev.clientX - drag.startClient.x
 		const dy = ev.clientY - drag.startClient.y
-		emit('update:worldX', drag.startWorld.x + dx / z)
-		emit('update:worldY', drag.startWorld.y + dy / z)
+		const worldX = drag.startWorld.x + dx / z
+		const worldY = drag.startWorld.y + dy / z
+		emit('update:worldPosition', { worldX, worldY })
 	}
 	const onUp = (ev: PointerEvent) => {
 		drag = null
