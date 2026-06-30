@@ -20,4 +20,5 @@ export const routes = [
 	{ channel: 'dweb:agent-skills:unreal:check-plugin', handler: handlers.unrealCheckPlugin },
 	{ channel: 'dweb:agent-skills:unreal:install-plugin', handler: handlers.unrealInstallPlugin },
 	{ channel: 'dweb:agent-skills:unreal:get-plugin-info', handler: handlers.unrealGetPluginInfo },
+	{ channel: 'dweb:agent-skills:unreal:disconnect-session', handler: handlers.unrealDisconnectSession },
 ]

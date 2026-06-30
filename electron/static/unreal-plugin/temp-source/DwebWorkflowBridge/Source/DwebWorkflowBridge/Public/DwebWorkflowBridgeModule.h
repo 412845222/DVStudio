@@ -10,7 +10,6 @@ class FJsonObject;
 class FReply;
 struct FDwebWorkflowLayoutSlot;
 class SDockTab;
-template <typename OptionType> class SComboBox;
 class UWorld;
 
 class FDwebWorkflowBridgeModule : public IModuleInterface
@@ -24,10 +23,8 @@ private:
 	void OpenPluginWindow();
 	TSharedRef<SDockTab> OnSpawnPluginTab(const class FSpawnTabArgs& SpawnTabArgs);
 
-	FReply OnConnectWorkflowClicked();
-	FReply OnCheckConnectionClicked();
-	FReply OnReceiveLayoutClicked();
-	FReply OnReceiveLightingClicked();
+	FReply OnConnectOrDisconnectClicked();
+	void DisconnectSession();
 
 	void RegisterSession();
 	void SendHeartbeat();
@@ -41,7 +38,7 @@ private:
 	bool SaveJsonFile(const FString& OutputPath, const TSharedPtr<FJsonObject>& JsonObject, FString& OutError) const;
 	bool ImportReferencedModelAssets(const FString& JobId, const TSharedPtr<FJsonObject>& ExportPayload, const FString& ModelsAssetPath, TArray<TSharedPtr<FJsonValue>>& OutImportedAssets, int32& OutImportedAssetCount, int32& OutPendingDownloadCount, FString& OutError);
 	bool ImportSingleModelAsset(const FString& SourceFilePath, const FString& ModelsAssetPath, const FString& DesiredAssetName, FString& OutImportedAssetPath, FString& OutError);
-	bool ResolveBindingLocalModelSourcePath(const TSharedPtr<FJsonObject>& BindingObject, const TSharedPtr<FJsonObject>& ManualBindingObject, FString& OutSourceFilePath, FString& OutSourceLabel, bool& bOutRequiresDownload) const;
+	bool ResolveBindingLocalModelSourcePath(const TSharedPtr<FJsonObject>& BindingObject, const TSharedPtr<FJsonObject>& ManualBindingObject, const FString& ProjectRootPath, FString& OutSourceFilePath, FString& OutSourceLabel, bool& bOutRequiresDownload) const;
 	bool CreateSceneBlueprintShell(const FString& SceneContentPath, const FString& BlueprintAssetName, FString& OutBlueprintAssetPath, FString& OutError);
 	bool AssembleSceneBlueprintComponents(const FString& JobId, const FString& BlueprintAssetPath, const FString& ModelsAssetPath, const TArray<TSharedPtr<FJsonValue>>& ResolvedLayoutSlots, const TArray<TSharedPtr<FJsonValue>>& LayoutItems, const TArray<TSharedPtr<FJsonValue>>& ImportedAssets, int32 LayoutProtocolVersion, int32& OutAssembledComponentCount, int32& OutMaterialOverrideCount, int32& OutSkippedSlotCount, FString& OutError);
 	FString BuildSceneContentPath(const FString& SceneName) const;
@@ -50,7 +47,7 @@ private:
 	bool SpawnLightingActors(UWorld* World, const FString& SceneName, const TSharedPtr<FJsonObject>& LightingPayload, AActor* AnchorActor, int32& OutSpawnedLightCount, FString& OutError);
 	void RefreshSceneActorOptions();
 	AActor* ResolveSelectedSceneActor() const;
-	FText BuildSelectedSceneActorText() const;
+	AActor* AutoResolveSceneActor() const;
 	bool HandleHeartbeatTick(float DeltaTime);
 
 	void AppendLog(const FString& Line);
@@ -59,11 +56,10 @@ private:
 	bool ParseJson(const FString& Text, TSharedPtr<FJsonObject>& OutObject) const;
 	FString SanitizeFileName(const FString& InValue) const;
 	bool LoadConnectionConfig();
-	FString GetConnectionConfigPath() const;
+	void GetConnectionConfigPaths(TArray<FString>& OutPaths) const;
 
 	static const FName BridgeTabName;
 
-	TSharedPtr<SComboBox<TSharedPtr<FString>>> SceneActorComboBox;
 	TArray<TSharedPtr<FString>> SceneActorOptions;
 
 	TUniquePtr<FAutoConsoleCommand> OpenTabConsoleCommand;
@@ -73,9 +69,14 @@ private:
 	FString AssetRootPath;
 	FString SelectedSceneActorPath;
 	FString SessionId;
+	FString CurrentJobId;
 	FString ConnectionStatus;
 	FString CurrentStageText;
 	float CurrentProgressPercent = 0.0f;
 	FString LatestLog;
 	bool bHeartbeatInFlight = false;
+	bool bPollInFlight = false;
+	bool bIsProcessingJob = false;
+	bool bConnected = false;
+	bool bAutoConnectOnStartup = true;
 };

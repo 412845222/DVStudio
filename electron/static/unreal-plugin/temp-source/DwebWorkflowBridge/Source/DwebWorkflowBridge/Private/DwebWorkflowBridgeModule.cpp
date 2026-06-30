@@ -59,6 +59,12 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/Material.h"
+#include "Engine/Texture.h"
+#include "Engine/AssetManager.h"
+#include "RenderingThread.h"
+#include "Engine/StreamableManager.h"
+#include "ContentStreaming.h"
 
 #define LOCTEXT_NAMESPACE "FDwebWorkflowBridgeModule"
 
@@ -141,6 +147,41 @@ namespace
 		return FMath::Clamp(DistanceCm, Rule->MinDistanceCm, Rule->MaxDistanceCm);
 	}
 
+	void FlushAllPendingAsyncLoading()
+	{
+		FlushAsyncLoading();
+		IStreamingManager::Get().StreamAllResources(0.0f);
+	}
+
+	void EnsureStaticMeshFullyLoaded(UStaticMesh* StaticMesh)
+	{
+		if (!StaticMesh)
+		{
+			return;
+		}
+
+		FlushAllPendingAsyncLoading();
+
+		const int32 MaterialCount = StaticMesh->GetStaticMaterials().Num();
+		for (int32 MatIndex = 0; MatIndex < MaterialCount; ++MatIndex)
+		{
+			UMaterialInterface* MatInterface = StaticMesh->GetMaterial(MatIndex);
+			if (!MatInterface)
+			{
+				continue;
+			}
+
+			MatInterface->SetFlags(RF_Public | RF_Standalone);
+			UMaterial* BaseMaterial = MatInterface->GetBaseMaterial();
+			if (BaseMaterial)
+			{
+				BaseMaterial->SetFlags(RF_Public | RF_Standalone);
+			}
+		}
+
+		FlushAllPendingAsyncLoading();
+	}
+
 	TArray<TSharedPtr<FJsonValue>> BuildLightingMappingTableJson()
 	{
 		TArray<TSharedPtr<FJsonValue>> Rows;
@@ -174,18 +215,213 @@ namespace
 		return Normalized.StartsWith(TEXT("http://")) || Normalized.StartsWith(TEXT("https://"));
 	}
 
-	bool IsLikelyLocalFilePath(const FString& InValue)
+	bool IsDwebProjectAssetUrl(const FString& InValue)
 	{
 		const FString Normalized = InValue.TrimStartAndEnd();
-		if (Normalized.IsEmpty())
+		return Normalized.StartsWith(TEXT("dweb://project-assets"));
+	}
+
+	bool IsSupportedModelFileExtension(const FString& InPath)
+	{
+		const FString Normalized = InPath.TrimStartAndEnd().ToLower();
+		return Normalized.EndsWith(TEXT(".glb"))
+			|| Normalized.EndsWith(TEXT(".gltf"))
+			|| Normalized.EndsWith(TEXT(".fbx"))
+			|| Normalized.EndsWith(TEXT(".obj"))
+			|| Normalized.EndsWith(TEXT(".stl"))
+			|| Normalized.EndsWith(TEXT(".dae"));
+	}
+
+	FString UrlDecode(const FString& InValue)
+	{
+		FString Result;
+		Result.Reserve(InValue.Len());
+		const TCHAR* Ptr = *InValue;
+		while (*Ptr)
+		{
+			if (*Ptr == TCHAR('%') && *(Ptr + 1) && *(Ptr + 2))
+			{
+				TCHAR Hex[3] = { *(Ptr + 1), *(Ptr + 2), 0 };
+				int32 Dec = FParse::HexNumber(Hex);
+				if (Dec > 0)
+				{
+					Result.AppendChar((TCHAR)Dec);
+					Ptr += 3;
+					continue;
+				}
+			}
+			else if (*Ptr == TCHAR('+'))
+			{
+				Result.AppendChar(TCHAR(' '));
+				++Ptr;
+				continue;
+			}
+			Result.AppendChar(*Ptr);
+			++Ptr;
+		}
+		return Result;
+	}
+
+	FString TryFixDvcacheBinPath(const FString& InPath, const FString& ProjectRoot)
+	{
+		FString Normalized = InPath;
+		Normalized.ReplaceInline(TEXT("/"), TEXT("\\"));
+		const FString Lower = Normalized.ToLower();
+
+		int32 DvcachePos = Lower.Find(TEXT(".dvcache\\bin\\"));
+		if (DvcachePos == INDEX_NONE)
+		{
+			DvcachePos = Lower.Find(TEXT("dvcache\\bin\\"));
+		}
+		if (DvcachePos == INDEX_NONE)
+		{
+			return FString();
+		}
+
+		FString FilePart = Normalized.RightChop(DvcachePos);
+		int32 SlashPos = FilePart.Find(TEXT("\\"), ESearchCase::IgnoreCase, ESearchDir::FromStart, 1);
+		if (SlashPos != INDEX_NONE)
+		{
+			FilePart = FilePart.Mid(SlashPos + 1);
+		}
+
+		FString BaseName = FPaths::GetBaseFilename(FilePart);
+		FString MeshyId;
+
+		if (BaseName.StartsWith(TEXT("meshy-3d-")))
+		{
+			MeshyId = BaseName.Mid(9);
+		}
+		else if (BaseName.StartsWith(TEXT("meshy_3d_")))
+		{
+			MeshyId = BaseName.Mid(9);
+		}
+		else if (BaseName.StartsWith(TEXT("meshy-")))
+		{
+			MeshyId = BaseName.Mid(6);
+		}
+		else if (BaseName.StartsWith(TEXT("meshy_")))
+		{
+			MeshyId = BaseName.Mid(6);
+		}
+
+		if (MeshyId.IsEmpty())
+		{
+			return FString();
+		}
+
+		TArray<FString> Candidates;
+		Candidates.Add(FString::Printf(TEXT("Content\\Media\\meshy-3d-%s.glb"), *MeshyId));
+		Candidates.Add(FString::Printf(TEXT("Content\\Media\\meshy_%s.glb"), *MeshyId));
+		Candidates.Add(FString::Printf(TEXT("Content/Media/meshy-3d-%s.glb"), *MeshyId));
+		Candidates.Add(FString::Printf(TEXT("Content/Media/meshy_%s.glb"), *MeshyId));
+
+		for (const FString& Rel : Candidates)
+		{
+			FString TestPath = FPaths::ConvertRelativePathToFull(Rel);
+			if (FPaths::FileExists(TestPath) && IsSupportedModelFileExtension(TestPath))
+			{
+				return TestPath;
+			}
+			if (!ProjectRoot.IsEmpty())
+			{
+				FString Combined = FPaths::Combine(ProjectRoot, Rel);
+				Combined = FPaths::ConvertRelativePathToFull(Combined);
+				if (FPaths::FileExists(Combined) && IsSupportedModelFileExtension(Combined))
+				{
+					return Combined;
+				}
+			}
+		}
+
+		return FString();
+	}
+
+	bool ParseDwebProjectAssetUrl(const FString& InUrl, FString& OutRelativePath)
+	{
+		OutRelativePath.Reset();
+		const FString Normalized = InUrl.TrimStartAndEnd();
+		if (!IsDwebProjectAssetUrl(Normalized))
 		{
 			return false;
 		}
-		if (Normalized.StartsWith(TEXT("file:///")) || Normalized.StartsWith(TEXT("file://")))
+
+		const FString Prefix = TEXT("dweb://project-assets");
+		FString UrlToParse = Normalized;
+
+		if (UrlToParse.StartsWith(Prefix))
 		{
-			return true;
+			int32 PrefixLen = Prefix.Len();
+			if (UrlToParse.Len() > PrefixLen && UrlToParse[PrefixLen] == TCHAR('?'))
+			{
+				UrlToParse.RightChopInline(PrefixLen + 1);
+			}
+			else
+			{
+				int32 QueryPos = UrlToParse.Find(TEXT("?"));
+				if (QueryPos != INDEX_NONE)
+				{
+					UrlToParse.RightChopInline(QueryPos + 1);
+				}
+				else if (UrlToParse.Len() > PrefixLen + 1)
+				{
+					UrlToParse.RightChopInline(PrefixLen + 1);
+				}
+				else
+				{
+					return false;
+				}
+			}
 		}
-		return IFileManager::Get().FileExists(*Normalized) || IFileManager::Get().DirectoryExists(*Normalized);
+
+		TArray<FString> ParamPairs;
+		UrlToParse.ParseIntoArray(ParamPairs, TEXT("&"), true);
+		for (const FString& Pair : ParamPairs)
+		{
+			int32 EqPos = Pair.Find(TEXT("="));
+			if (EqPos != INDEX_NONE)
+			{
+				FString Key = Pair.Left(EqPos).TrimStartAndEnd();
+				FString Value = Pair.Mid(EqPos + 1).TrimStartAndEnd();
+				if (Key.Equals(TEXT("path"), ESearchCase::IgnoreCase))
+				{
+					OutRelativePath = UrlDecode(Value);
+					OutRelativePath.ReplaceInline(TEXT("/"), TEXT("\\"));
+					return !OutRelativePath.IsEmpty();
+				}
+			}
+		}
+
+		if (!UrlToParse.IsEmpty() && !UrlToParse.Contains(TEXT("=")))
+		{
+			OutRelativePath = UrlDecode(UrlToParse);
+			OutRelativePath.ReplaceInline(TEXT("/"), TEXT("\\"));
+			if (OutRelativePath.StartsWith(TEXT("\\")))
+			{
+				OutRelativePath.RightChopInline(1);
+			}
+			const FString Lower = OutRelativePath.ToLower();
+			return !OutRelativePath.IsEmpty() && (
+				Lower.Contains(TEXT(".glb"))
+				|| Lower.Contains(TEXT(".gltf"))
+				|| Lower.Contains(TEXT(".fbx"))
+				|| Lower.Contains(TEXT(".obj"))
+				|| Lower.Contains(TEXT(".stl"))
+				|| Lower.Contains(TEXT(".dae"))
+			);
+		}
+
+		return false;
+	}
+
+	bool IsAbsolutePath(const FString& InPath)
+	{
+		const FString Normalized = InPath.TrimStartAndEnd();
+		if (Normalized.IsEmpty()) return false;
+		if (Normalized.StartsWith(TEXT("file:///")) || Normalized.StartsWith(TEXT("file://"))) return true;
+		if (Normalized.Len() >= 2 && FChar::IsAlpha(Normalized[0]) && Normalized[1] == TCHAR(':')) return true;
+		if (Normalized.StartsWith(TEXT("\\")) || Normalized.StartsWith(TEXT("/"))) return true;
+		return false;
 	}
 
 	FString NormalizeLocalFilePath(const FString& InValue)
@@ -201,6 +437,77 @@ namespace
 		}
 		Normalized.ReplaceInline(TEXT("/"), TEXT("\\"));
 		return FPaths::ConvertRelativePathToFull(Normalized);
+	}
+
+	bool IsLikelyLocalFilePath(const FString& InValue)
+	{
+		const FString Normalized = InValue.TrimStartAndEnd();
+		if (Normalized.IsEmpty())
+		{
+			return false;
+		}
+		if (Normalized.StartsWith(TEXT("file:///")) || Normalized.StartsWith(TEXT("file://")))
+		{
+			return true;
+		}
+		return IFileManager::Get().FileExists(*Normalized) || IFileManager::Get().DirectoryExists(*Normalized);
+	}
+
+	FString TryInferProjectRootFromAbsolutePath(const FString& AbsoluteFilePath)
+	{
+		FString Normalized = NormalizeLocalFilePath(AbsoluteFilePath);
+		if (Normalized.IsEmpty() || !FPaths::FileExists(Normalized))
+		{
+			return FString();
+		}
+
+		FString CurrentPath = FPaths::GetPath(Normalized);
+		while (!CurrentPath.IsEmpty() && CurrentPath.Len() > 3)
+		{
+			FString ContentFolder = FPaths::Combine(CurrentPath, TEXT("Content"));
+			if (IFileManager::Get().DirectoryExists(*ContentFolder))
+			{
+				return CurrentPath;
+			}
+			FString ParentPath = FPaths::GetPath(CurrentPath);
+			if (ParentPath == CurrentPath)
+			{
+				break;
+			}
+			CurrentPath = ParentPath;
+		}
+		return FString();
+	}
+
+	FString TryResolvePathWithProjectRoot(const FString& InPath, const FString& ProjectRoot)
+	{
+		const FString TrimmedPath = InPath.TrimStartAndEnd();
+		const FString TrimmedRoot = ProjectRoot.TrimStartAndEnd();
+		if (TrimmedPath.IsEmpty() || TrimmedRoot.IsEmpty())
+		{
+			return FString();
+		}
+
+		FString RelativePart = TrimmedPath;
+		while (RelativePart.StartsWith(TEXT("/")) || RelativePart.StartsWith(TEXT("\\")))
+		{
+			RelativePart.RightChopInline(1);
+		}
+
+		FString RootNormalized = TrimmedRoot;
+		while (RootNormalized.EndsWith(TEXT("/")) || RootNormalized.EndsWith(TEXT("\\")))
+		{
+			RootNormalized.LeftChopInline(1);
+		}
+
+		FString Combined = FPaths::Combine(RootNormalized, RelativePart);
+		Combined = FPaths::ConvertRelativePathToFull(Combined);
+		if (FPaths::FileExists(Combined) && IsSupportedModelFileExtension(Combined))
+		{
+			return Combined;
+		}
+
+		return FString();
 	}
 
 	double ReadNumberField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, double DefaultValue = 0.0)
@@ -645,17 +952,14 @@ const FName FDwebWorkflowBridgeModule::BridgeTabName(TEXT("DwebWorkflowBridge"))
 
 void FDwebWorkflowBridgeModule::StartupModule()
 {
-	BackendUrl = TEXT("http://127.0.0.1:5800");
+	BackendUrl = TEXT("http://127.0.0.1:5860");
 	AssetRootPath = TEXT("/Game/DVStudio");
-	ConnectionStatus = TEXT("Disconnected");
-	CurrentStageText = TEXT("Waiting for task");
+	ConnectionStatus = TEXT("Waiting for DVStudio...");
+	CurrentStageText = TEXT("Waiting for connection");
 	CurrentProgressPercent = 0.0f;
-	LatestLog = TEXT("Plugin started. Click 'Wait for Connection' in DVStudio to connect.");
+	LatestLog = TEXT("Plugin started. Auto-discovering DVStudio backend...");
 
-	if (LoadConnectionConfig())
-	{
-		LatestLog = FString::Printf(TEXT("Plugin started. Loaded backend URL from config: %s"), *BackendUrl);
-	}
+	LoadConnectionConfig();
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(BridgeTabName, FOnSpawnTab::CreateRaw(this, &FDwebWorkflowBridgeModule::OnSpawnPluginTab))
 		.SetDisplayName(LOCTEXT("BridgeTabTitle", "Dweb Workflow Bridge"))
@@ -669,7 +973,7 @@ void FDwebWorkflowBridgeModule::StartupModule()
 		FConsoleCommandDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::OpenPluginWindow)
 	);
 
-	HeartbeatTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::HandleHeartbeatTick), 10.0f);
+	HeartbeatTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::HandleHeartbeatTick), 3.0f);
 }
 
 void FDwebWorkflowBridgeModule::ShutdownModule()
@@ -707,6 +1011,7 @@ void FDwebWorkflowBridgeModule::OpenPluginWindow()
 
 TSharedRef<SDockTab> FDwebWorkflowBridgeModule::OnSpawnPluginTab(const FSpawnTabArgs& SpawnTabArgs)
 {
+	RefreshSceneActorOptions();
 	return SNew(SDockTab)
 		.TabRole(ETabRole::NomadTab)
 		[
@@ -714,81 +1019,45 @@ TSharedRef<SDockTab> FDwebWorkflowBridgeModule::OnSpawnPluginTab(const FSpawnTab
 			.Padding(14.0f)
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("PanelTitle", "Dweb Workflow Bridge"))
 					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]()
 					{
-						return FText::FromString(FString::Printf(TEXT("Connection: %s"), *ConnectionStatus));
+						return FText::FromString(FString::Printf(TEXT("Status: %s"), *ConnectionStatus));
 					})
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
+					[
+						SNew(SButton)
+						.Text_Lambda([this]()
+						{
+							return SessionId.IsEmpty()
+								? LOCTEXT("ConnectButton", "Connect to DVStudio")
+								: LOCTEXT("DisconnectButton", "Disconnect");
+						})
+						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnConnectOrDisconnectClicked)
+					]
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
 				[
-					SNew(STextBlock).Text(LOCTEXT("SceneActorSelectorLabel", "Target Actor"))
+					SNew(STextBlock).Text(LOCTEXT("ProgressLabel", "Task Progress"))
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
-				[
-					SAssignNew(SceneActorComboBox, SComboBox<TSharedPtr<FString>>)
-					.OptionsSource(&SceneActorOptions)
-					.OnComboBoxOpening(FSimpleDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::RefreshSceneActorOptions))
-					.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
-					{
-						return SNew(STextBlock)
-							.Text(FText::FromString(Item.IsValid() ? *Item : TEXT("")));
-					})
-					.OnSelectionChanged_Lambda([this](TSharedPtr<FString> Item, ESelectInfo::Type)
-					{
-						SelectedSceneActorPath = Item.IsValid() ? *Item : FString();
-					})
-					[
-						SNew(STextBlock)
-						.Text_Lambda([this]() { return BuildSelectedSceneActorText(); })
-					]
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
-					[
-						SNew(SButton)
-						.Text(LOCTEXT("ConnectWorkflowButton", "Connect Workflow"))
-						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnConnectWorkflowClicked)
-					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
-					[
-						SNew(SButton)
-						.Text(LOCTEXT("CheckConnectionButton", "Check Connection"))
-						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnCheckConnectionClicked)
-					]
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
-					[
-						SNew(SButton)
-						.Text(LOCTEXT("ReceiveLayoutButton", "Receive Layout Assets"))
-						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnReceiveLayoutClicked)
-					]
-					+ SHorizontalBox::Slot().AutoWidth()
-					[
-						SNew(SButton)
-						.Text(LOCTEXT("ReceiveLightingButton", "Receive Lighting Data"))
-						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnReceiveLightingClicked)
-					]
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]()
 					{
-						return FText::FromString(FString::Printf(TEXT("Progress: %s · %.0f%%"), *CurrentStageText, CurrentProgressPercent));
+						return FText::FromString(FString::Printf(TEXT("%s · %.0f%%"), *CurrentStageText, CurrentProgressPercent));
 					})
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
@@ -796,7 +1065,7 @@ TSharedRef<SDockTab> FDwebWorkflowBridgeModule::OnSpawnPluginTab(const FSpawnTab
 					SNew(SProgressBar)
 					.Percent_Lambda([this]() { return CurrentProgressPercent <= 0.0f ? 0.0f : CurrentProgressPercent / 100.0f; })
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 10, 0, 10)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0, 10, 0, 6)
 				[
 					SNew(SSeparator)
 				]
@@ -814,66 +1083,33 @@ TSharedRef<SDockTab> FDwebWorkflowBridgeModule::OnSpawnPluginTab(const FSpawnTab
 		];
 }
 
-FReply FDwebWorkflowBridgeModule::OnConnectWorkflowClicked()
+FReply FDwebWorkflowBridgeModule::OnConnectOrDisconnectClicked()
 {
 	if (!SessionId.IsEmpty())
 	{
-		SendHeartbeat();
-		AppendLog(TEXT("Checking existing connection..."));
+		DisconnectSession();
 		return FReply::Handled();
 	}
 	RegisterSession();
 	return FReply::Handled();
 }
 
-FReply FDwebWorkflowBridgeModule::OnCheckConnectionClicked()
+void FDwebWorkflowBridgeModule::DisconnectSession()
 {
 	if (SessionId.IsEmpty())
 	{
-		AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
-		return FReply::Handled();
+		return;
 	}
-
-	SendHeartbeat();
-	AppendLog(TEXT("Checking DVStudio client connection status..."));
-	return FReply::Handled();
-}
-
-FReply FDwebWorkflowBridgeModule::OnReceiveLayoutClicked()
-{
-	if (SessionId.IsEmpty())
-	{
-		AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
-		return FReply::Handled();
-	}
-
-	AppendLog(TEXT("Receiving layout assets..."));
-	PollNextJob(false);
-	return FReply::Handled();
-}
-
-FReply FDwebWorkflowBridgeModule::OnReceiveLightingClicked()
-{
-	if (SessionId.IsEmpty())
-	{
-		AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
-		return FReply::Handled();
-	}
-
-	if (SelectedSceneActorPath.TrimStartAndEnd().IsEmpty())
-	{
-		RefreshSceneActorOptions();
-	}
-
-	if (SelectedSceneActorPath.TrimStartAndEnd().IsEmpty())
-	{
-		AppendLog(TEXT("Please select a target Actor before receiving lighting data."));
-		return FReply::Handled();
-	}
-
-	AppendLog(TEXT("Receiving lighting data..."));
-	PollNextJob(false);
-	return FReply::Handled();
+	SessionId.Empty();
+	bConnected = false;
+	bIsProcessingJob = false;
+	bPollInFlight = false;
+	bHeartbeatInFlight = false;
+	CurrentJobId.Empty();
+	CurrentProgressPercent = 0.0f;
+	CurrentStageText = TEXT("Waiting for task");
+	UpdateConnectionStatus(TEXT("Disconnected"));
+	AppendLog(TEXT("Disconnected from DVStudio."));
 }
 
 void FDwebWorkflowBridgeModule::RegisterSession()
@@ -931,17 +1167,31 @@ void FDwebWorkflowBridgeModule::RegisterSession()
 
 		const FString PreviousSessionId = SessionId;
 		SessionId = ReadStringField(RootObject, TEXT("sessionId"));
-		if (SessionId.IsEmpty())
+		FString ProjectId = ReadStringField(RootObject, TEXT("projectId"));
+		const TSharedPtr<FJsonObject>* SessionObject = nullptr;
+		if (RootObject->TryGetObjectField(TEXT("session"), SessionObject) && SessionObject && SessionObject->IsValid())
 		{
-			const TSharedPtr<FJsonObject>* SessionObject = nullptr;
-			if (RootObject->TryGetObjectField(TEXT("session"), SessionObject) && SessionObject && SessionObject->IsValid())
+			if (SessionId.IsEmpty())
 			{
 				SessionId = ReadStringField(*SessionObject, TEXT("id"));
 			}
+			if (ProjectId.IsEmpty())
+			{
+				ProjectId = ReadStringField(*SessionObject, TEXT("projectId"));
+			}
 		}
-		const FString ProjectId = ReadStringField(RootObject, TEXT("session.projectId"));
+		if (ProjectId.IsEmpty())
+		{
+			ProjectId = FString(FApp::GetProjectName());
+		}
+		const bool bReused = ReadBoolField(RootObject, TEXT("reused"));
+		bConnected = true;
 		UpdateConnectionStatus(FString::Printf(TEXT("Connected %s"), ProjectId.IsEmpty() ? *SessionId : *ProjectId));
-		AppendLog(FString::Printf(TEXT("Connected successfully. SessionId=%s%s"), *SessionId, PreviousSessionId.IsEmpty() || PreviousSessionId == SessionId ? TEXT("") : TEXT("(session reused/switched)")));
+		AppendLog(FString::Printf(TEXT("Connected successfully. SessionId=%s%s"), *SessionId, bReused ? TEXT(" (session reused)") : (PreviousSessionId.IsEmpty() || PreviousSessionId == SessionId ? TEXT("") : TEXT(" (session switched)"))));
+		if (!bIsProcessingJob && !bPollInFlight)
+		{
+			PollNextJob(true);
+		}
 	});
 	Request->ProcessRequest();
 }
@@ -975,6 +1225,7 @@ void FDwebWorkflowBridgeModule::SendHeartbeat()
 		bHeartbeatInFlight = false;
 		if (!bWasSuccessful || !Response.IsValid())
 		{
+			bConnected = false;
 			UpdateConnectionStatus(TEXT("Disconnected"));
 			AppendLog(TEXT("Heartbeat failed: backend not responding."));
 			return;
@@ -983,6 +1234,7 @@ void FDwebWorkflowBridgeModule::SendHeartbeat()
 		TSharedPtr<FJsonObject> RootObj;
 		if (!ParseJson(Response->GetContentAsString(), RootObj) || !RootObj.IsValid())
 		{
+			bConnected = false;
 			UpdateConnectionStatus(TEXT("Disconnected"));
 			AppendLog(TEXT("Heartbeat failed: invalid response."));
 			return;
@@ -995,18 +1247,25 @@ void FDwebWorkflowBridgeModule::SendHeartbeat()
 			int32 StatusCode = Response->GetResponseCode();
 			if (StatusCode == 404)
 			{
+				bConnected = false;
 				AppendLog(TEXT("Session expired. Reconnecting..."));
 				SessionId.Empty();
 				UpdateConnectionStatus(TEXT("Disconnected"));
 				RegisterSession();
 				return;
 			}
+			bConnected = false;
 			UpdateConnectionStatus(TEXT("Disconnected"));
 			AppendLog(TEXT("Heartbeat failed."));
 			return;
 		}
 
+		bConnected = true;
 		UpdateConnectionStatus(FString::Printf(TEXT("Connected %s"), FApp::GetProjectName()));
+		if (!bIsProcessingJob && !bPollInFlight)
+		{
+			PollNextJob(true);
+		}
 	});
 	Request->ProcessRequest();
 }
@@ -1064,25 +1323,61 @@ void FDwebWorkflowBridgeModule::PollNextJob(bool bSilentIfEmpty)
 {
 	if (SessionId.IsEmpty())
 	{
-		AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
+		if (!bSilentIfEmpty)
+		{
+			AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
+		}
 		return;
 	}
 
+	if (bPollInFlight || bIsProcessingJob)
+	{
+		return;
+	}
+
+	bPollInFlight = true;
+	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+	Root->SetStringField(TEXT("sessionId"), SessionId);
+	FString Body;
+	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Body);
+	FJsonSerializer::Serialize(Root, Writer);
+
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
 	Request->SetURL(BuildApiUrl(TEXT("/api/agent-skills/unreal/pick-job")));
-	Request->SetVerb(TEXT("GET"));
+	Request->SetVerb(TEXT("POST"));
+	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
+	Request->SetContentAsString(Body);
 	Request->OnProcessRequestComplete().BindLambda([this, bSilentIfEmpty](FHttpRequestPtr, FHttpResponsePtr Response, bool bWasSuccessful)
 	{
+		bPollInFlight = false;
 		if (!bWasSuccessful || !Response.IsValid())
 		{
-			AppendLog(TEXT("Failed to check tasks: backend not responding."));
+			if (!bSilentIfEmpty)
+			{
+				AppendLog(TEXT("Failed to check tasks: backend not responding."));
+			}
 			return;
 		}
 
 		TSharedPtr<FJsonObject> RootObject;
 		if (!ParseJson(Response->GetContentAsString(), RootObject) || !RootObject.IsValid())
 		{
-			AppendLog(TEXT("Failed to check tasks: JSON parse error."));
+			if (!bSilentIfEmpty)
+			{
+				AppendLog(TEXT("Failed to check tasks: JSON parse error."));
+			}
+			return;
+		}
+
+		bool bOk = false;
+		RootObject->TryGetBoolField(TEXT("ok"), bOk);
+		if (!bOk)
+		{
+			if (!bSilentIfEmpty)
+			{
+				const FString ErrorMsg = ReadStringField(RootObject, TEXT("error"), TEXT("Unknown error"));
+				AppendLog(FString::Printf(TEXT("Failed to check tasks: %s"), *ErrorMsg));
+			}
 			return;
 		}
 
@@ -1096,32 +1391,65 @@ void FDwebWorkflowBridgeModule::PollNextJob(bool bSilentIfEmpty)
 			return;
 		}
 
-		const FString JobId = ReadStringField(*JobObject, TEXT("jobId"));
+		bIsProcessingJob = true;
+		CurrentJobId = ReadStringField(*JobObject, TEXT("jobId"));
 		const FString SceneName = ReadStringField(*JobObject, TEXT("sceneName"), TEXT("DwebSceneExport"));
-		AppendLog(FString::Printf(TEXT("Received export job %s, scene: %s. Starting scene generation in current level."), *JobId, *SceneName));
-		UpdateConnectionStatus(FString::Printf(TEXT("Executing job %s"), *JobId));
+		const FString JobAssetRootPath = ReadStringField(*JobObject, TEXT("assetRootPath"));
+		if (!JobAssetRootPath.IsEmpty())
+		{
+			AssetRootPath = JobAssetRootPath;
+		}
+		const FString JobType = ReadStringField(*JobObject, TEXT("type"), TEXT("export"));
+		AppendLog(FString::Printf(TEXT("Received export job %s, scene: %s. Starting execution..."), *CurrentJobId, *SceneName));
+		UpdateConnectionStatus(FString::Printf(TEXT("Executing job %s"), *CurrentJobId));
+		CurrentStageText = TEXT("Preparing asset import");
+		CurrentProgressPercent = 10.0f;
 		{
 			TSharedPtr<FJsonObject> InitialProgress = MakeShared<FJsonObject>();
 			InitialProgress->SetStringField(TEXT("stage"), TEXT("Preparing asset import"));
 			InitialProgress->SetNumberField(TEXT("progress"), 10.0);
-			UpdateJobStatus(JobId, TEXT("importing"), TEXT("Unreal plugin preparing asset export"), InitialProgress);
+			UpdateJobStatus(CurrentJobId, TEXT("importing"), TEXT("Unreal plugin preparing asset export"), InitialProgress);
 		}
 
 		FString ResultMessage;
 		TSharedPtr<FJsonObject> ResultData;
-		if (ExecuteExportJob(*JobObject, ResultMessage, ResultData))
+		bool bJobSuccess = false;
+		const TSharedPtr<FJsonObject>* ExportPayloadPtr = nullptr;
+		const bool bHasPayload = (*JobObject)->TryGetObjectField(TEXT("exportPayload"), ExportPayloadPtr) && ExportPayloadPtr && ExportPayloadPtr->IsValid();
+		const FString PayloadExportMode = bHasPayload ? ReadStringField(*ExportPayloadPtr, TEXT("exportMode"), TEXT("scene-layout")).TrimStartAndEnd() : TEXT("scene-layout");
+		if (JobType.Equals(TEXT("lighting"), ESearchCase::IgnoreCase) || PayloadExportMode.Equals(TEXT("lighting-only"), ESearchCase::IgnoreCase))
 		{
-			UpdateJobStatus(JobId, TEXT("completed"), ResultMessage, ResultData);
-			UpdateConnectionStatus(FString::Printf(TEXT("Connected, job %s completed"), *JobId));
+			if (bHasPayload)
+			{
+				bJobSuccess = ExecuteLightingOnlyJob(CurrentJobId, SceneName, *ExportPayloadPtr, ResultMessage, ResultData);
+			}
+			else
+			{
+				ResultMessage = TEXT("Execution failed: missing exportPayload.");
+			}
+		}
+		else
+		{
+			bJobSuccess = ExecuteExportJob(*JobObject, ResultMessage, ResultData);
+		}
+
+		bIsProcessingJob = false;
+		if (bJobSuccess)
+		{
+			UpdateJobStatus(CurrentJobId, TEXT("completed"), ResultMessage, ResultData);
+			UpdateConnectionStatus(FString::Printf(TEXT("Connected %s"), FApp::GetProjectName()));
 			AppendLog(ResultMessage);
 		}
 		else
 		{
 			const FString ErrorMessage = ResultMessage.IsEmpty() ? TEXT("Export job execution failed.") : ResultMessage;
-			UpdateJobStatus(JobId, TEXT("failed"), ErrorMessage, ResultData);
-			UpdateConnectionStatus(FString::Printf(TEXT("Job %s failed"), *JobId));
+			UpdateJobStatus(CurrentJobId, TEXT("failed"), ErrorMessage, ResultData);
+			UpdateConnectionStatus(FString::Printf(TEXT("Connected %s"), FApp::GetProjectName()));
 			AppendLog(ErrorMessage);
 		}
+		CurrentJobId.Empty();
+		CurrentProgressPercent = 0.0f;
+		CurrentStageText = TEXT("Waiting for task");
 	});
 	Request->ProcessRequest();
 }
@@ -1176,6 +1504,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	OutResultData->SetStringField(TEXT("stage"), TEXT("Analyzing export job"));
 	OutResultData->SetNumberField(TEXT("progress"), 25.0);
 	OutResultData->SetStringField(TEXT("modelsAssetPath"), ModelsAssetPath);
+	UpdateJobStatus(JobId, TEXT("importing"), TEXT("Analyzing layout and model bindings"), OutResultData);
 
 	int32 PendingModelCount = 0;
 	for (const TSharedPtr<FJsonValue>& BindingValue : (ModelBindingsPtr ? *ModelBindingsPtr : TArray<TSharedPtr<FJsonValue>>()))
@@ -1315,10 +1644,10 @@ bool FDwebWorkflowBridgeModule::ExecuteLightingOnlyJob(const FString& JobId, con
 		return false;
 	}
 
-	AActor* AnchorActor = ResolveSelectedSceneActor();
+	AActor* AnchorActor = AutoResolveSceneActor();
 	if (!AnchorActor)
 	{
-		OutMessage = TEXT("Execution failed: no valid target Actor selected." );
+		OutMessage = TEXT("Execution failed: no valid scene Actor found. Export a scene layout first.");
 		return false;
 	}
 
@@ -1445,21 +1774,68 @@ bool FDwebWorkflowBridgeModule::ImportReferencedModelAssets(const FString& JobId
 		return true;
 	}
 
-	TMap<FString, TSharedPtr<FJsonObject>> ManualBindingsByObjectId;
-	for (const TSharedPtr<FJsonValue>& ManualBindingValue : (ManualBindingsPtr ? *ManualBindingsPtr : TArray<TSharedPtr<FJsonValue>>()))
+	FString ProjectRootPath = ReadStringField(ExportPayload, TEXT("dwebProjectRootPath")).TrimStartAndEnd();
+	if (ProjectRootPath.IsEmpty())
 	{
-		const TSharedPtr<FJsonObject> ManualBindingObject = ManualBindingValue.IsValid() ? ManualBindingValue->AsObject() : nullptr;
-		if (!ManualBindingObject.IsValid())
+		ProjectRootPath = ReadStringField(ExportPayload, TEXT("projectRootPath")).TrimStartAndEnd();
+	}
+	if (!ProjectRootPath.IsEmpty())
+	{
+		ProjectRootPath = NormalizeLocalFilePath(ProjectRootPath);
+	}
+
+	if (ProjectRootPath.IsEmpty())
+	{
+		for (const TSharedPtr<FJsonValue>& BindingValue : *ModelBindingsPtr)
 		{
-			continue;
-		}
-		const FString ObjectId = ReadStringField(ManualBindingObject, TEXT("objectId")).TrimStartAndEnd();
-		if (!ObjectId.IsEmpty())
-		{
-			ManualBindingsByObjectId.Add(ObjectId, ManualBindingObject);
+			const TSharedPtr<FJsonObject> BindingObject = BindingValue.IsValid() ? BindingValue->AsObject() : nullptr;
+			if (!BindingObject.IsValid())
+			{
+				continue;
+			}
+			TArray<FString> CandidatePaths;
+			CandidatePaths.Add(ReadStringField(BindingObject, TEXT("modelSourcePath")));
+			CandidatePaths.Add(ReadStringField(BindingObject, TEXT("modelAssetPath")));
+			for (const FString& Candidate : CandidatePaths)
+			{
+				FString Trimmed = Candidate.TrimStartAndEnd();
+				if (!Trimmed.IsEmpty() && IsAbsolutePath(Trimmed))
+				{
+					FString Inferred = TryInferProjectRootFromAbsolutePath(Trimmed);
+					if (!Inferred.IsEmpty())
+					{
+						ProjectRootPath = Inferred;
+						UE_LOG(LogTemp, Log, TEXT("DwebWorkflow: Inferred project root from model path: %s -> %s"), *Trimmed, *ProjectRootPath);
+						break;
+					}
+				}
+			}
+			if (!ProjectRootPath.IsEmpty())
+			{
+				break;
+			}
 		}
 	}
 
+	TMap<FString, TSharedPtr<FJsonObject>> ManualBindingsByObjectId;
+	if (ManualBindingsPtr)
+	{
+		for (const TSharedPtr<FJsonValue>& ManualBindingValue : *ManualBindingsPtr)
+		{
+			const TSharedPtr<FJsonObject> ManualBindingObject = ManualBindingValue.IsValid() ? ManualBindingValue->AsObject() : nullptr;
+			if (!ManualBindingObject.IsValid())
+			{
+				continue;
+			}
+			const FString ObjectId = ReadStringField(ManualBindingObject, TEXT("objectId")).TrimStartAndEnd();
+			if (!ObjectId.IsEmpty())
+			{
+				ManualBindingsByObjectId.Add(ObjectId, ManualBindingObject);
+			}
+		}
+	}
+
+	TMap<FString, FString> ImportedPathBySourcePath;
 	const int32 TotalBindingCount = ModelBindingsPtr->Num();
 	for (int32 BindingIndex = 0; BindingIndex < TotalBindingCount; ++BindingIndex)
 	{
@@ -1478,11 +1854,11 @@ bool FDwebWorkflowBridgeModule::ImportReferencedModelAssets(const FString& JobId
 		FString LocalSourcePath;
 		FString SourceLabel;
 		bool bRequiresDownload = false;
-		ResolveBindingLocalModelSourcePath(BindingObject, ManualBindingObject, LocalSourcePath, SourceLabel, bRequiresDownload);
+		ResolveBindingLocalModelSourcePath(BindingObject, ManualBindingObject, ProjectRootPath, LocalSourcePath, SourceLabel, bRequiresDownload);
 
 		const float ProgressBase = 30.0f + (45.0f * (BindingIndex / FMath::Max(1.0f, static_cast<float>(TotalBindingCount))));
 		TSharedPtr<FJsonObject> ImportProgress = MakeShared<FJsonObject>();
-		ImportProgress->SetStringField(TEXT("stage"), TEXT("Importing glTF/glb assets"));
+		ImportProgress->SetStringField(TEXT("stage"), TEXT("Importing 3D model assets"));
 		ImportProgress->SetNumberField(TEXT("progress"), ProgressBase);
 		ImportProgress->SetStringField(TEXT("modelsAssetPath"), ModelsAssetPath);
 		ImportProgress->SetStringField(TEXT("currentObjectId"), ObjectId);
@@ -1506,14 +1882,37 @@ bool FDwebWorkflowBridgeModule::ImportReferencedModelAssets(const FString& JobId
 			continue;
 		}
 
+		const FString NormalizedSourcePath = NormalizeLocalFilePath(LocalSourcePath);
+		const FString* ExistingImportedPath = ImportedPathBySourcePath.Find(NormalizedSourcePath);
+		if (ExistingImportedPath && !ExistingImportedPath->IsEmpty())
+		{
+			++OutImportedAssetCount;
+			TSharedPtr<FJsonObject> ImportedObject = MakeShared<FJsonObject>();
+			ImportedObject->SetStringField(TEXT("objectId"), ObjectId);
+			ImportedObject->SetStringField(TEXT("assetName"), AssetName);
+			ImportedObject->SetStringField(TEXT("sourceFilePath"), LocalSourcePath);
+			ImportedObject->SetStringField(TEXT("assetPath"), *ExistingImportedPath);
+			ImportedObject->SetStringField(TEXT("status"), TEXT("imported"));
+			OutImportedAssets.Add(MakeShared<FJsonValueObject>(ImportedObject));
+			continue;
+		}
+
 		FString ImportedAssetPath;
 		FString ImportError;
 		if (!ImportSingleModelAsset(LocalSourcePath, ModelsAssetPath, AssetName, ImportedAssetPath, ImportError))
 		{
-			OutError = FString::Printf(TEXT("Object %s import failed: %s"), *AssetName, *ImportError);
-			return false;
+			UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow: Skipping model %s (%s): %s"), *AssetName, *LocalSourcePath, *ImportError);
+			TSharedPtr<FJsonObject> FailedObject = MakeShared<FJsonObject>();
+			FailedObject->SetStringField(TEXT("objectId"), ObjectId);
+			FailedObject->SetStringField(TEXT("assetName"), AssetName);
+			FailedObject->SetStringField(TEXT("sourceFilePath"), LocalSourcePath);
+			FailedObject->SetStringField(TEXT("error"), ImportError);
+			FailedObject->SetStringField(TEXT("status"), TEXT("skipped"));
+			OutImportedAssets.Add(MakeShared<FJsonValueObject>(FailedObject));
+			continue;
 		}
 
+		ImportedPathBySourcePath.Add(NormalizedSourcePath, ImportedAssetPath);
 		++OutImportedAssetCount;
 		TSharedPtr<FJsonObject> ImportedObject = MakeShared<FJsonObject>();
 		ImportedObject->SetStringField(TEXT("objectId"), ObjectId);
@@ -1524,6 +1923,8 @@ bool FDwebWorkflowBridgeModule::ImportReferencedModelAssets(const FString& JobId
 		OutImportedAssets.Add(MakeShared<FJsonValueObject>(ImportedObject));
 	}
 
+	FlushAllPendingAsyncLoading();
+
 	return true;
 }
 
@@ -1533,6 +1934,12 @@ bool FDwebWorkflowBridgeModule::ImportSingleModelAsset(const FString& SourceFile
 	if (!FPaths::FileExists(NormalizedSourcePath))
 	{
 		OutError = FString::Printf(TEXT("Source file does not exist: %s"), *NormalizedSourcePath);
+		return false;
+	}
+
+	if (!IsSupportedModelFileExtension(NormalizedSourcePath))
+	{
+		OutError = FString::Printf(TEXT("Unsupported model format (supported: .glb/.gltf/.fbx/.obj/.stl/.dae): %s"), *NormalizedSourcePath);
 		return false;
 	}
 
@@ -1576,15 +1983,53 @@ bool FDwebWorkflowBridgeModule::ImportSingleModelAsset(const FString& SourceFile
 		return false;
 	}
 
+	UStaticMesh* ImportedStaticMesh = Cast<UStaticMesh>(PreferredObject);
+	if (ImportedStaticMesh)
+	{
+		EnsureStaticMeshFullyLoaded(ImportedStaticMesh);
+	}
+	else
+	{
+		FlushAllPendingAsyncLoading();
+	}
+
 	OutImportedAssetPath = PreferredObject->GetPathName();
 	return true;
 }
 
-bool FDwebWorkflowBridgeModule::ResolveBindingLocalModelSourcePath(const TSharedPtr<FJsonObject>& BindingObject, const TSharedPtr<FJsonObject>& ManualBindingObject, FString& OutSourceFilePath, FString& OutSourceLabel, bool& bOutRequiresDownload) const
+bool FDwebWorkflowBridgeModule::ResolveBindingLocalModelSourcePath(const TSharedPtr<FJsonObject>& BindingObject, const TSharedPtr<FJsonObject>& ManualBindingObject, const FString& ProjectRootPath, FString& OutSourceFilePath, FString& OutSourceLabel, bool& bOutRequiresDownload) const
 {
 	OutSourceFilePath.Reset();
 	OutSourceLabel.Reset();
 	bOutRequiresDownload = false;
+
+	auto TrySetValidSourcePath = [&](const FString& CandidatePath, const FString& Label) -> bool
+	{
+		FString Normalized = NormalizeLocalFilePath(CandidatePath);
+		if (FPaths::FileExists(Normalized) && IsSupportedModelFileExtension(Normalized))
+		{
+			OutSourceFilePath = Normalized;
+			OutSourceLabel = Label.IsEmpty() ? OutSourceFilePath : Label;
+			bOutRequiresDownload = false;
+			return true;
+		}
+
+		FString FixedPath = TryFixDvcacheBinPath(CandidatePath, ProjectRootPath);
+		if (!FixedPath.IsEmpty())
+		{
+			FString FixedNormalized = NormalizeLocalFilePath(FixedPath);
+			if (FPaths::FileExists(FixedNormalized) && IsSupportedModelFileExtension(FixedNormalized))
+			{
+				OutSourceFilePath = FixedNormalized;
+				OutSourceLabel = Label.IsEmpty() ? (OutSourceFilePath + TEXT(" [fixed-from-dvcache]")) : (Label + TEXT(" [fixed-from-dvcache]"));
+				bOutRequiresDownload = false;
+				UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow: Fixed dvcache path '%s' -> '%s'"), *CandidatePath, *FixedNormalized);
+				return true;
+			}
+		}
+
+		return false;
+	};
 
 	auto TryPickCandidate = [&](const FString& Candidate, const FString& Label) -> bool
 	{
@@ -1593,25 +2038,97 @@ bool FDwebWorkflowBridgeModule::ResolveBindingLocalModelSourcePath(const TShared
 		{
 			return false;
 		}
+
 		if (IsHttpLikeUrl(Trimmed))
 		{
 			bOutRequiresDownload = true;
 			OutSourceLabel = Label.IsEmpty() ? Trimmed : Label;
 			return false;
 		}
-		if (IsLikelyLocalFilePath(Trimmed))
+
+		const FString LowerTrimmed = Trimmed.ToLower();
+		const bool bLikelyDvcacheBin = LowerTrimmed.Contains(TEXT(".dvcache")) && LowerTrimmed.Contains(TEXT("bin"));
+
+		if (IsDwebProjectAssetUrl(Trimmed))
 		{
-			OutSourceFilePath = NormalizeLocalFilePath(Trimmed);
-			OutSourceLabel = Label.IsEmpty() ? OutSourceFilePath : Label;
-			bOutRequiresDownload = false;
-			return FPaths::FileExists(OutSourceFilePath);
+			FString RelativePath;
+			if (ParseDwebProjectAssetUrl(Trimmed, RelativePath))
+			{
+				if (TrySetValidSourcePath(RelativePath, Label + TEXT(":dweb-parsed")))
+				{
+					return true;
+				}
+				if (!ProjectRootPath.IsEmpty())
+				{
+					FString Resolved = TryResolvePathWithProjectRoot(RelativePath, ProjectRootPath);
+					if (!Resolved.IsEmpty())
+					{
+						OutSourceFilePath = Resolved;
+						OutSourceLabel = Label.IsEmpty() ? OutSourceFilePath : Label;
+						bOutRequiresDownload = false;
+						return true;
+					}
+					FString FixedRel = TryFixDvcacheBinPath(RelativePath, ProjectRootPath);
+					if (!FixedRel.IsEmpty())
+					{
+						FString FixedNorm = NormalizeLocalFilePath(FixedRel);
+						if (FPaths::FileExists(FixedNorm) && IsSupportedModelFileExtension(FixedNorm))
+						{
+							OutSourceFilePath = FixedNorm;
+							OutSourceLabel = Label + TEXT(" [fixed-from-dvcache]");
+							bOutRequiresDownload = false;
+							UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow: Fixed dvcache dweb path '%s' -> '%s'"), *RelativePath, *FixedNorm);
+							return true;
+						}
+					}
+				}
+			}
+			return false;
 		}
+
+		if (bLikelyDvcacheBin)
+		{
+			if (TrySetValidSourcePath(Trimmed, Label))
+			{
+				return true;
+			}
+		}
+
+		if (IsSupportedModelFileExtension(Trimmed))
+		{
+			if (TrySetValidSourcePath(Trimmed, Label))
+			{
+				return true;
+			}
+
+			if (!IsAbsolutePath(Trimmed) && !ProjectRootPath.IsEmpty())
+			{
+				FString Resolved = TryResolvePathWithProjectRoot(Trimmed, ProjectRootPath);
+				if (!Resolved.IsEmpty())
+				{
+					OutSourceFilePath = Resolved;
+					OutSourceLabel = Label.IsEmpty() ? OutSourceFilePath : Label;
+					bOutRequiresDownload = false;
+					return true;
+				}
+			}
+		}
+
+		if (IsLikelyLocalFilePath(Trimmed) && (IsSupportedModelFileExtension(Trimmed) || bLikelyDvcacheBin))
+		{
+			return TrySetValidSourcePath(Trimmed, Label);
+		}
+
 		return false;
 	};
 
 	if (ManualBindingObject.IsValid())
 	{
 		if (TryPickCandidate(ReadStringField(ManualBindingObject, TEXT("modelSourcePath")), TEXT("manual:modelSourcePath")))
+		{
+			return true;
+		}
+		if (TryPickCandidate(ReadStringField(ManualBindingObject, TEXT("modelAssetPath")), TEXT("manual:modelAssetPath")))
 		{
 			return true;
 		}
@@ -1793,11 +2310,14 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 
 		if (UStaticMesh* StaticMesh = LoadObject<UStaticMesh>(nullptr, *AssetPath))
 		{
+			EnsureStaticMeshFullyLoaded(StaticMesh);
 			ImportedMeshByObjectId.Add(ObjectId, StaticMesh);
 			ImportedAssetPathByObjectId.Add(ObjectId, AssetPath);
 			ImportedSourcePathByObjectId.Add(ObjectId, ReadStringField(ImportedObject, TEXT("sourceFilePath")));
 		}
 	}
+
+	FlushAllPendingAsyncLoading();
 
 	if (ImportedMeshByObjectId.Num() <= 0 || (LayoutItems.Num() <= 0 && ResolvedLayoutSlots.Num() <= 0))
 	{
@@ -2027,9 +2547,20 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 					if (!MaterialOverride.MaterialAssetPath.IsEmpty())
 					{
 						MaterialOverride.MaterialInterface = LoadObject<UMaterialInterface>(nullptr, *MaterialOverride.MaterialAssetPath);
+						if (!MaterialOverride.MaterialInterface)
+						{
+							MaterialOverride.bEnabled = false;
+						}
 					}
-					Slot.MaterialOverrides.Add(MaterialOverride);
-					++OutMaterialOverrideCount;
+					else
+					{
+						MaterialOverride.bEnabled = false;
+					}
+					if (MaterialOverride.bEnabled && MaterialOverride.MaterialInterface)
+					{
+						Slot.MaterialOverrides.Add(MaterialOverride);
+						++OutMaterialOverrideCount;
+					}
 				}
 			}
 
@@ -2115,9 +2646,20 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 				if (!MaterialOverride.MaterialAssetPath.IsEmpty())
 				{
 					MaterialOverride.MaterialInterface = LoadObject<UMaterialInterface>(nullptr, *MaterialOverride.MaterialAssetPath);
+					if (!MaterialOverride.MaterialInterface)
+					{
+						MaterialOverride.bEnabled = false;
+					}
 				}
-				MaterialOverrides.Add(MaterialOverride);
-				++OutMaterialOverrideCount;
+				else
+				{
+					MaterialOverride.bEnabled = false;
+				}
+				if (MaterialOverride.bEnabled && MaterialOverride.MaterialInterface)
+				{
+					MaterialOverrides.Add(MaterialOverride);
+					++OutMaterialOverrideCount;
+				}
 			}
 		}
 
@@ -2197,6 +2739,9 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 	LayoutDefaults->ImportSummary.SkippedSlotCount = OutSkippedSlotCount;
 	LayoutDefaults->ImportSummary.Warnings = MoveTemp(SummaryWarnings);
 	LayoutDefaults->LastImportJobId = JobId;
+
+	FlushAllPendingAsyncLoading();
+
 	SyncBlueprintMeshListNodes(Blueprint, LayoutDefaults->LayoutSlots);
 
 	Blueprint->Modify();
@@ -2207,7 +2752,13 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 	}
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+
+	FlushAllPendingAsyncLoading();
+
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+	FlushAllPendingAsyncLoading();
+
 	return true;
 }
 
@@ -2555,15 +3106,6 @@ void FDwebWorkflowBridgeModule::RefreshSceneActorOptions()
 	{
 		SelectedSceneActorPath.Reset();
 	}
-
-	if (SceneActorComboBox.IsValid())
-	{
-		SceneActorComboBox->RefreshOptions();
-		if (SelectedOption.IsValid())
-		{
-			SceneActorComboBox->SetSelectedItem(SelectedOption);
-		}
-	}
 }
 
 AActor* FDwebWorkflowBridgeModule::ResolveSelectedSceneActor() const
@@ -2596,25 +3138,30 @@ AActor* FDwebWorkflowBridgeModule::ResolveSelectedSceneActor() const
 	return nullptr;
 }
 
-FText FDwebWorkflowBridgeModule::BuildSelectedSceneActorText() const
+AActor* FDwebWorkflowBridgeModule::AutoResolveSceneActor() const
 {
-	AActor* Actor = ResolveSelectedSceneActor();
-	if (Actor)
+	UWorld* World = GetEditorWorld();
+	if (!World)
 	{
-#if WITH_EDITOR
-		return FText::FromString(FString::Printf(TEXT("%s (%s)"), *Actor->GetActorLabel(), *Actor->GetPathName()));
-#else
-		return FText::FromString(Actor->GetPathName());
-#endif
+		return nullptr;
 	}
 
-	const FString RawSelection = SelectedSceneActorPath.TrimStartAndEnd();
-	if (!RawSelection.IsEmpty())
+	AActor* FirstLayoutActor = nullptr;
+	for (TActorIterator<ADwebWorkflowLayoutActorBase> It(World); It; ++It)
 	{
-		return FText::FromString(RawSelection);
+		AActor* Actor = *It;
+		if (IsValid(Actor))
+		{
+			FirstLayoutActor = Actor;
+			break;
+		}
+	}
+	if (FirstLayoutActor)
+	{
+		return FirstLayoutActor;
 	}
 
-	return LOCTEXT("NoSceneActorSelected", "Please select target Actor");
+	return ResolveSelectedSceneActor();
 }
 
 bool FDwebWorkflowBridgeModule::HandleHeartbeatTick(float DeltaTime)
@@ -2622,6 +3169,17 @@ bool FDwebWorkflowBridgeModule::HandleHeartbeatTick(float DeltaTime)
 	if (!SessionId.IsEmpty())
 	{
 		SendHeartbeat();
+	}
+	else if (bAutoConnectOnStartup && !bHeartbeatInFlight && !bPollInFlight)
+	{
+		static double LastAutoConnectAttempt = 0.0;
+		const double Now = FPlatformTime::Seconds();
+		if (Now - LastAutoConnectAttempt > 3.0)
+		{
+			LastAutoConnectAttempt = Now;
+			LoadConnectionConfig();
+			RegisterSession();
+		}
 	}
 	return true;
 }
@@ -2669,40 +3227,78 @@ FString FDwebWorkflowBridgeModule::SanitizeFileName(const FString& InValue) cons
 }
 
 
-FString FDwebWorkflowBridgeModule::GetConnectionConfigPath() const
+void FDwebWorkflowBridgeModule::GetConnectionConfigPaths(TArray<FString>& OutPaths) const
 {
-	return FPaths::ConvertRelativePathToFull(FPaths::ProjectPluginsDir() / TEXT("DwebWorkflowBridge") / TEXT("connection-config.json"));
+	OutPaths.Reset();
+
+	const FString ProjectPluginConfig = FPaths::ConvertRelativePathToFull(FPaths::ProjectPluginsDir() / TEXT("DwebWorkflowBridge") / TEXT("dvstudio-unreal-bridge.json"));
+	OutPaths.Add(ProjectPluginConfig);
+
+	const FString ProjectSavedConfig = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("dvstudio-unreal-bridge.json"));
+	OutPaths.Add(ProjectSavedConfig);
+
+	const FString UserHome = FPlatformProcess::UserHomeDir();
+	if (!UserHome.IsEmpty())
+	{
+#if PLATFORM_WINDOWS
+		OutPaths.Add(FPaths::Combine(UserHome, TEXT("AppData"), TEXT("Roaming"), TEXT("DVStudio"), TEXT("dvstudio-unreal-bridge.json")));
+		OutPaths.Add(FPaths::Combine(UserHome, TEXT(".dvstudio"), TEXT("dvstudio-unreal-bridge.json")));
+#elif PLATFORM_MAC
+		OutPaths.Add(FPaths::Combine(UserHome, TEXT("Library"), TEXT("Application Support"), TEXT("DVStudio"), TEXT("dvstudio-unreal-bridge.json")));
+		OutPaths.Add(FPaths::Combine(UserHome, TEXT(".dvstudio"), TEXT("dvstudio-unreal-bridge.json")));
+#else
+		OutPaths.Add(FPaths::Combine(UserHome, TEXT(".config"), TEXT("dvstudio"), TEXT("dvstudio-unreal-bridge.json")));
+		OutPaths.Add(FPaths::Combine(UserHome, TEXT(".dvstudio"), TEXT("dvstudio-unreal-bridge.json")));
+#endif
+	}
 }
 
 bool FDwebWorkflowBridgeModule::LoadConnectionConfig()
 {
-	const FString ConfigPath = GetConnectionConfigPath();
-	if (!FPaths::FileExists(ConfigPath))
+	TArray<FString> ConfigPaths;
+	GetConnectionConfigPaths(ConfigPaths);
+
+	for (const FString& ConfigPath : ConfigPaths)
 	{
-		return false;
+		if (ConfigPath.IsEmpty() || !FPaths::FileExists(ConfigPath))
+		{
+			continue;
+		}
+
+		FString JsonString;
+		if (!FFileHelper::LoadFileToString(JsonString, *ConfigPath))
+		{
+			continue;
+		}
+
+		TSharedPtr<FJsonObject> ConfigObject;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+		if (!FJsonSerializer::Deserialize(Reader, ConfigObject) || !ConfigObject.IsValid())
+		{
+			continue;
+		}
+
+		FString NewBackendUrl = ReadStringField(ConfigObject, TEXT("backendUrl"));
+		if (NewBackendUrl.IsEmpty())
+		{
+			double PortValue = 0.0;
+			const FString Host = ReadStringField(ConfigObject, TEXT("host"), TEXT("127.0.0.1"));
+			if (ConfigObject->TryGetNumberField(TEXT("port"), PortValue) && PortValue > 0.0)
+			{
+				const int32 Port = static_cast<int32>(PortValue);
+				NewBackendUrl = FString::Printf(TEXT("http://%s:%d"), *Host, Port);
+			}
+		}
+
+		if (!NewBackendUrl.IsEmpty())
+		{
+			BackendUrl = NewBackendUrl;
+			AppendLog(FString::Printf(TEXT("Loaded connection config from: %s"), *ConfigPath));
+			return true;
+		}
 	}
 
-	FString JsonString;
-	if (!FFileHelper::LoadFileToString(JsonString, *ConfigPath))
-	{
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> ConfigObject;
-	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-	if (!FJsonSerializer::Deserialize(Reader, ConfigObject) || !ConfigObject.IsValid())
-	{
-		return false;
-	}
-
-	const FString NewBackendUrl = ReadStringField(ConfigObject, TEXT("backendUrl"));
-	if (NewBackendUrl.IsEmpty())
-	{
-		return false;
-	}
-
-	BackendUrl = NewBackendUrl;
-	return true;
+	return false;
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -2,12 +2,18 @@
 
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 
 namespace
 {
 	const FName DwebGeneratedSlotNodeTag(TEXT("DwebGeneratedSlotNode"));
 	const FName DwebGeneratedSurfaceNodeTag(TEXT("DwebGeneratedSurfaceNode"));
 	const FName DwebGeneratedMeshTag(TEXT("DwebGeneratedSlotMesh"));
+
+	void FlushDwebPendingLoading()
+	{
+		FlushAsyncLoading();
+	}
 }
 
 ADwebWorkflowLayoutActorBase::ADwebWorkflowLayoutActorBase()
@@ -180,6 +186,8 @@ void ADwebWorkflowLayoutActorBase::ApplyLayoutSlotsToComponents()
 		MeshComponent->SetStaticMesh(Slot.StaticMeshAsset);
 		MeshComponent->SetRelativeTransform(Slot.MeshRelativeTransform);
 
+		FlushDwebPendingLoading();
+
 		for (const FDwebWorkflowMaterialOverride& MaterialOverride : Slot.MaterialOverrides)
 		{
 			if (!MaterialOverride.bEnabled || !MaterialOverride.MaterialInterface)
@@ -201,6 +209,8 @@ void ADwebWorkflowLayoutActorBase::ApplyLayoutSlotsToComponents()
 		MeshComponent->RegisterComponent();
 		GeneratedMeshComponents.Add(MeshComponent);
 	}
+
+	FlushDwebPendingLoading();
 
 	LastImportJobId = ImportSummary.LastImportJobId;
 }

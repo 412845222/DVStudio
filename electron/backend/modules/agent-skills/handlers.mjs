@@ -75,3 +75,7 @@ export async function unrealInstallPlugin(ctx, payload) {
 export function unrealGetPluginInfo() {
 	return service.unrealGetPluginInfo()
 }
+
+export function unrealDisconnectSession(ctx, payload) {
+	return service.unrealDisconnectSession(ctx, payload)
+}

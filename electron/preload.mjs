@@ -492,6 +492,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			checkPlugin: (payload) => invoke('dweb:agent-skills:unreal:check-plugin', payload || {}),
 			installPlugin: (payload) => invoke('dweb:agent-skills:unreal:install-plugin', payload || {}),
 			getPluginInfo: () => invoke('dweb:agent-skills:unreal:get-plugin-info'),
+			disconnectSession: (payload) => invoke('dweb:agent-skills:unreal:disconnect-session', payload || {}),
 		},
 	},
 	// ===== MCP 工具 =====

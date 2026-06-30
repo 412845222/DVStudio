@@ -107,6 +107,7 @@ type UnrealIpcApi = {
 	checkPlugin?: (payload: { projectPath: string }) => Promise<unknown>
 	installPlugin?: (payload: { projectPath: string }) => Promise<unknown>
 	getPluginInfo?: () => Promise<unknown>
+	disconnectSession?: (payload: Record<string, unknown>) => Promise<unknown>
 }
 
 function getUnrealIpc(): UnrealIpcApi | null {
@@ -291,7 +292,7 @@ export class UnrealExportService {
 								sourceNodeId: j.payload?.sourceNodeId,
 								sceneName: j.payload?.sceneName,
 								status: j.status || 'unknown',
-								message: j.error || j.result?.message,
+								message: j.message || j.error || j.result?.message,
 								createdAt: j.createdAt,
 								updatedAt: j.updatedAt,
 								resultData: j.result,
@@ -317,7 +318,29 @@ export class UnrealExportService {
 				error: `unreal-export/jobs/${normalizedJobId} failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
-		return (await res.json()) as UnrealExportJobResponse
+		const raw = await res.json() as any
+		if (!raw || !raw.ok) {
+			return { ok: false, error: raw?.error || 'getJob failed', status: res.status }
+		}
+		if (!raw.job) {
+			return { ok: true, job: null }
+		}
+		const j = raw.job
+		return {
+			ok: true,
+			job: {
+				jobId: j.id || j.jobId || normalizedJobId,
+				targetSessionId: j.sessionId,
+				sourceNodeId: j.payload?.sourceNodeId,
+				sceneName: j.payload?.sceneName,
+				status: j.status || 'unknown',
+				message: j.message || j.error || j.result?.message,
+				createdAt: j.createdAt,
+				updatedAt: j.updatedAt,
+				resultData: j.result,
+				exportPayload: j.payload
+			}
+		}
 	}
 
 	async getHttpPort(): Promise<{ ok: boolean; port?: number; error?: string }> {
@@ -451,5 +474,38 @@ export class UnrealExportService {
 			}
 		}
 		return { ok: false, pluginName: 'DwebWorkflowBridge', pluginVersion: '', error: 'IPC not available' }
+	}
+
+	async disconnectSession(sessionId: string): Promise<{ ok: boolean; error?: string }> {
+		const normalizedSessionId = String(sessionId ?? '').trim()
+		if (!normalizedSessionId) return { ok: false, error: 'sessionId is required' }
+
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.disconnectSession) {
+			try {
+				const result = await unrealIpc.disconnectSession({ sessionId: normalizedSessionId })
+				if (result) {
+					const r = result as any
+					return { ok: r.ok === true, error: r.error }
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.disconnectSession IPC failed:', err)
+			}
+		}
+
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/sessions/disconnect'), {
+			method: 'POST',
+			headers: jsonHeaders,
+			body: JSON.stringify({ sessionId: normalizedSessionId })
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				error: `disconnect failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			}
+		}
+		const raw = await res.json() as any
+		return { ok: raw?.ok === true, error: raw?.error }
 	}
 }

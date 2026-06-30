@@ -311,9 +311,64 @@ export async function installPluginToProject(projectPath) {
 			fs.mkdirSync(pluginsDir, { recursive: true })
 		}
 
+		const misplacedUplugin = path.join(pluginsDir, PLUGIN_DESCRIPTOR)
+		const misplacedSource = path.join(pluginsDir, 'Source')
+		if (fs.existsSync(misplacedUplugin) || fs.existsSync(misplacedSource)) {
+			try {
+				if (fs.existsSync(pluginDir)) {
+					fs.rmSync(pluginDir, { recursive: true, force: true })
+				}
+				fs.mkdirSync(pluginDir, { recursive: true })
+				if (fs.existsSync(misplacedUplugin)) {
+					fs.renameSync(misplacedUplugin, path.join(pluginDir, PLUGIN_DESCRIPTOR))
+				}
+				if (fs.existsSync(misplacedSource)) {
+					fs.renameSync(misplacedSource, path.join(pluginDir, 'Source'))
+				}
+				const misplacedBinaries = path.join(pluginsDir, 'Binaries')
+				if (fs.existsSync(misplacedBinaries)) {
+					fs.renameSync(misplacedBinaries, path.join(pluginDir, 'Binaries'))
+				}
+				const misplacedContent = path.join(pluginsDir, 'Content')
+				if (fs.existsSync(misplacedContent)) {
+					fs.renameSync(misplacedContent, path.join(pluginDir, 'Content'))
+				}
+				const misplacedResources = path.join(pluginsDir, 'Resources')
+				if (fs.existsSync(misplacedResources)) {
+					fs.renameSync(misplacedResources, path.join(pluginDir, 'Resources'))
+				}
+			} catch { /* ignore cleanup errors */ }
+		}
+
 		await extractZipWithPowershell(zipPath, pluginsDir)
 
-		const upluginPath = path.join(pluginDir, PLUGIN_DESCRIPTOR)
+		let upluginPath = path.join(pluginDir, PLUGIN_DESCRIPTOR)
+		if (!fs.existsSync(upluginPath)) {
+			const rootUplugin = path.join(pluginsDir, PLUGIN_DESCRIPTOR)
+			if (fs.existsSync(rootUplugin)) {
+				try {
+					if (!fs.existsSync(pluginDir)) {
+						fs.mkdirSync(pluginDir, { recursive: true })
+					}
+					const entries = fs.readdirSync(pluginsDir)
+					for (const entry of entries) {
+						const srcPath = path.join(pluginsDir, entry)
+						const destPath = path.join(pluginDir, entry)
+						if (entry.toLowerCase() === PLUGIN_NAME.toLowerCase()) {
+							continue
+						}
+						const stat = fs.statSync(srcPath)
+						if (stat.isDirectory()) {
+							fs.renameSync(srcPath, destPath)
+						} else if (entry.toLowerCase().endsWith('.uplugin') || entry.toLowerCase() === 'source') {
+							fs.renameSync(srcPath, destPath)
+						}
+					}
+				} catch { /* ignore recovery errors */ }
+			}
+		}
+
+		upluginPath = path.join(pluginDir, PLUGIN_DESCRIPTOR)
 		if (!fs.existsSync(upluginPath)) {
 			if (backupDir && fs.existsSync(backupDir)) {
 				try { fs.renameSync(backupDir, pluginDir) } catch { /* ignore */ }

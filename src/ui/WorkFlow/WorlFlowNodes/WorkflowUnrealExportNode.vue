@@ -34,124 +34,7 @@
 					<div class="wf-unreal-export-status-copy">{{ statusCopy }}</div>
 				</div>
 
-				<div v-if="showEditorStatus" class="wf-unreal-export-editor-status">
-					<div class="wf-unreal-export-editor-row">
-						<span class="wf-unreal-export-editor-label">编辑器状态</span>
-						<span class="wf-unreal-export-editor-value" :class="editorStatusClass">
-							{{ editorStatusText }}
-						</span>
-					</div>
-					<div v-if="editorProcessName" class="wf-unreal-export-editor-row">
-						<span class="wf-unreal-export-editor-label">项目名称</span>
-						<span class="wf-unreal-export-editor-value">{{ editorProcessName }}</span>
-					</div>
-				</div>
-
-				<div v-if="showPluginInstall" class="wf-unreal-export-plugin-install">
-			<div class="wf-unreal-export-plugin-title">
-				{{ pluginSectionTitle }}
-			</div>
-			<div v-if="!pluginInstalled && !isInstallingPlugin" class="wf-unreal-export-plugin-path">
-				<input
-					v-model="localProjectPath"
-					type="text"
-					class="wf-unreal-export-plugin-path-input"
-					placeholder="请输入虚幻项目根路径或 .uproject 文件路径"
-					@keydown.enter="handleInstallPlugin"
-				/>
-			</div>
-			<div v-if="pluginInstallError" class="wf-unreal-export-plugin-error">
-				{{ pluginInstallError }}
-			</div>
-		</div>
-
-		<div v-if="showAssetPathSettings" class="wf-unreal-export-asset-path">
-			<div class="wf-unreal-export-asset-path-title">资产路径配置</div>
-			<div class="wf-unreal-export-asset-path-row">
-				<label class="wf-unreal-export-asset-path-label">资产根路径</label>
-				<input
-					v-model="localAssetRootPath"
-					type="text"
-					class="wf-unreal-export-asset-path-input"
-					@change="handleSetAssetRootPath"
-				/>
-				<button class="wf-unreal-export-asset-path-btn" type="button" @click.stop="handleSetAssetRootPath">
-					确认
-				</button>
-			</div>
-		</div>
-
-				<div class="wf-unreal-export-actions">
-					<button
-						v-if="showDetectButton"
-						class="wf-unreal-export-btn"
-						type="button"
-						:disabled="isCheckingEditor"
-						@click.stop="emit('detect-editor')"
-					>
-						{{ isCheckingEditor ? '检测中...' : '检测虚幻编辑器' }}
-					</button>
-
-					<button
-						v-if="showInstallButton"
-						class="wf-unreal-export-btn"
-						type="button"
-						:disabled="!canInstallPlugin"
-						@click.stop="handleInstallPlugin"
-					>
-						{{ isInstallingPlugin ? '安装中...' : '安装插件' }}
-					</button>
-
-					<button
-						v-if="showRefreshAfterRestart"
-						class="wf-unreal-export-btn"
-						type="button"
-						@click.stop="emit('detect-editor')"
-					>
-						我已重启，重新检测
-					</button>
-
-					<button
-						v-if="showWaitConnectionButton"
-						class="wf-unreal-export-btn"
-						type="button"
-						@click.stop="emit('await-unreal-connection')"
-					>
-						{{ connectionButtonLabel }}
-					</button>
-
-					<button
-						v-if="isConnected"
-						class="wf-unreal-export-btn ghost"
-						type="button"
-						:disabled="!hasLightingInput"
-						@click.stop="emit('export-unreal-lighting')"
-					>
-						导出灯光
-					</button>
-					<button
-						v-if="isConnected"
-						class="wf-unreal-export-btn ghost"
-						type="button"
-						:disabled="!hasLayoutInput"
-						@click.stop="emit('export-unreal-scene')"
-					>
-						导出场景
-					</button>
-				</div>
-
-				<div v-if="showOpenPluginGuide" class="wf-unreal-export-guide">
-					<div class="wf-unreal-export-guide-title">操作提示</div>
-					<div class="wf-unreal-export-guide-text">
-						请在虚幻编辑器中打开插件面板：
-						<br />
-						<span class="wf-unreal-export-guide-path">Window → Dweb → Dweb Workflow Bridge</span>
-						<br />
-						然后点击「等待连接」按钮开始连接。
-					</div>
-				</div>
-
-				<div v-if="progressVisible" class="wf-unreal-export-progress">
+				<div v-if="isExporting || progressPercent > 0" class="wf-unreal-export-progress">
 					<div class="wf-unreal-export-progress-bar">
 						<div
 							class="wf-unreal-export-progress-fill"
@@ -160,6 +43,84 @@
 					</div>
 					<div class="wf-unreal-export-progress-copy">{{ progressCopy }}</div>
 				</div>
+
+				<div v-if="showAssetPathSettings" class="wf-unreal-export-asset-path">
+					<div class="wf-unreal-export-asset-path-row">
+						<label class="wf-unreal-export-asset-path-label">资产根路径</label>
+						<input
+							v-model="localAssetRootPath"
+							type="text"
+							class="wf-unreal-export-asset-path-input"
+							@change="handleSetAssetRootPath"
+						/>
+					</div>
+				</div>
+
+				<div class="wf-unreal-export-actions">
+					<button
+						v-if="showPrimaryExportButton"
+						class="wf-unreal-export-btn primary"
+						type="button"
+						:disabled="isBusy"
+						@click.stop="emit('export-unreal-scene')"
+					>
+						{{ isBusy ? '处理中...' : '一键导出场景' }}
+					</button>
+
+					<template v-if="isConnected">
+						<button
+							class="wf-unreal-export-btn"
+							type="button"
+							:disabled="isExporting"
+							@click.stop="emit('export-unreal-scene')"
+						>
+							{{ isExporting ? '导出中...' : '导出场景' }}
+						</button>
+						<button
+							class="wf-unreal-export-btn ghost"
+							type="button"
+							:disabled="!hasLightingInput || isExporting"
+							@click.stop="emit('export-unreal-lighting')"
+						>
+							导出灯光
+						</button>
+						<button
+							class="wf-unreal-export-btn danger"
+							type="button"
+							:disabled="isExporting"
+							@click.stop="emit('disconnect-unreal')"
+						>
+							断开连接
+						</button>
+					</template>
+
+					<button
+						v-if="showRetryButton"
+						class="wf-unreal-export-btn"
+						type="button"
+						@click.stop="emit('export-unreal-scene')"
+					>
+						重试
+					</button>
+				</div>
+
+				<div v-if="showRestartHint" class="wf-unreal-export-guide">
+					<div class="wf-unreal-export-guide-title">需要重启编辑器</div>
+					<div class="wf-unreal-export-guide-text">
+						插件安装成功！请重启虚幻编辑器，然后重新打开项目后点击「一键导出场景」继续。
+					</div>
+				</div>
+
+				<div v-if="showConnectionGuide" class="wf-unreal-export-guide">
+					<div class="wf-unreal-export-guide-title">等待虚幻插件连接</div>
+					<div class="wf-unreal-export-guide-text">
+						请在虚幻编辑器中打开插件面板：
+						<br />
+						<span class="wf-unreal-export-guide-path">Window → Dweb → Dweb Workflow Bridge</span>
+						<br />
+						然后点击「Connect to DVStudio」按钮建立连接。
+					</div>
+				</div>
 			</div>
 		</template>
 
@@ -167,23 +128,17 @@
 			<div class="wf-unreal-export-footer" @pointerdown.stop>
 				<div class="wf-unreal-export-grid">
 					<div>布局输入</div>
-					<div>{{ hasLayoutInput ? '已连接' : '未连接' }}</div>
+					<div :class="hasLayoutInput ? 'is-ok' : 'is-empty'">{{ hasLayoutInput ? '已连接' : '未连接' }}</div>
 					<div>灯光输入</div>
-					<div>{{ hasLightingInput ? '已连接' : '未连接' }}</div>
-					<div>目标工程</div>
-					<div>{{ projectNameDisplay }}</div>
-					<div>会话</div>
-					<div>{{ sessionDisplay }}</div>
+					<div :class="hasLightingInput ? 'is-ok' : 'is-empty'">{{ hasLightingInput ? '已连接' : '未连接' }}</div>
+					<div v-if="projectNameDisplay !== '未连接'">目标工程</div>
+					<div v-if="projectNameDisplay !== '未连接'">{{ projectNameDisplay }}</div>
 					<div>资产路径</div>
 					<div>{{ assetRootPathDisplay }}</div>
-					<div v-if="lastLightingSummary">灯光导入</div>
-					<div v-if="lastLightingSummary">{{ lastLightingSummary }}</div>
-					<div v-if="lastSlotCountText">布局协议</div>
-					<div v-if="lastSlotCountText">{{ lastLayoutProtocolVersionText }}</div>
+					<div v-if="lastExportJobId">最近任务</div>
+					<div v-if="lastExportJobId">{{ lastExportJobId.slice(-12) }}</div>
 					<div v-if="lastSlotCountText">插槽写入</div>
 					<div v-if="lastSlotCountText">{{ lastSlotCountText }}</div>
-					<div v-if="lastActorBaseClassText">Actor基类</div>
-					<div v-if="lastActorBaseClassText">{{ lastActorBaseClassText }}</div>
 				</div>
 				<div class="wf-unreal-export-copy">{{ detailCopy }}</div>
 			</div>
@@ -267,6 +222,7 @@ const emit = defineEmits<{
 	(e: 'await-unreal-connection'): void
 	(e: 'export-unreal-lighting'): void
 	(e: 'export-unreal-scene'): void
+	(e: 'disconnect-unreal'): void
 	(e: 'set-asset-root-path', assetRootPath: string): void
 }>()
 
@@ -275,43 +231,22 @@ const hasLayoutInput = computed(() => String(props.linkedLayoutJsonText ?? '').t
 const hasLightingInput = computed(
 	() => String(props.linkedLightingJsonText ?? '').trim().length > 0
 )
-const isConnected = computed(() => settings.value?.connectionStatus === 'connected')
 
-const editorStatus = computed(() => settings.value?.editorStatus ?? 'unknown')
+const connectionStatus = computed(() => String(settings.value?.connectionStatus ?? 'idle'))
+const isConnected = computed(() => connectionStatus.value === 'connected' || connectionStatus.value === 'exporting')
+const isExporting = computed(() => connectionStatus.value === 'exporting')
+const isBusy = computed(() => {
+	const s = connectionStatus.value
+	return s === 'checking-editor' || s === 'checking-plugin' || s === 'installing-plugin' ||
+		s === 'waiting-connection' || s === 'activating-upstream' || s === 'creating-job' ||
+		s === 'exporting'
+})
+
 const pluginStatus = computed(() => settings.value?.pluginStatus ?? 'unknown')
-const isCheckingEditor = computed(() => editorStatus.value === 'checking')
-const isEditorRunning = computed(() => editorStatus.value === 'running')
-const isEditorNotRunning = computed(() => editorStatus.value === 'not-running')
+const editorStatus = computed(() => settings.value?.editorStatus ?? 'unknown')
+const needsRestart = computed(() => pluginStatus.value === 'needs-restart')
 
-const isCheckingPlugin = computed(() => pluginStatus.value === 'checking')
-const isInstallingPlugin = computed(() => pluginStatus.value === 'installing')
-const pluginInstalled = computed(() => pluginStatus.value === 'installed')
-const pluginNotInstalled = computed(() => pluginStatus.value === 'not-installed')
-const pluginNeedsRestart = computed(() => pluginStatus.value === 'needs-restart')
-const pluginInstallError = computed(() => settings.value?.pluginInstallError ?? '')
-
-const editorProcessName = computed(() => settings.value?.editorProcess?.projectName ?? '')
-const editorProcessPath = computed(() => settings.value?.editorProcess?.projectPath ?? '')
-
-const localProjectPath = ref('')
 const localAssetRootPath = ref('/Game/DVStudio')
-watch(
-	() => settings.value?.pluginInstallConfig?.targetProjectPath,
-	(val) => {
-		if (val && !localProjectPath.value) {
-			localProjectPath.value = val
-		}
-	},
-	{ immediate: true }
-)
-watch(
-	() => editorProcessPath.value,
-	(val) => {
-		if (val && !localProjectPath.value) {
-			localProjectPath.value = val
-		}
-	}
-)
 watch(
 	() => settings.value?.assetRootPath,
 	(val) => {
@@ -322,214 +257,113 @@ watch(
 	{ immediate: true }
 )
 
-const canInstallPlugin = computed(() => {
-	if (isInstallingPlugin.value) return false
-	const trimmed = localProjectPath.value.trim()
-	return trimmed.length > 0
-})
-
 const statusTone = computed(() => {
-	const connStatus = String(settings.value?.connectionStatus ?? 'idle')
-	if (connStatus === 'connected') return 'connected'
-	if (connStatus === 'error') return 'error'
-	if (connStatus === 'waiting' || connStatus === 'exporting') return 'waiting'
-
-	if (isInstallingPlugin.value) return 'waiting'
-	if (pluginNeedsRestart.value) return 'waiting'
-	if (pluginNotInstalled.value) return 'error'
-	if (isEditorNotRunning.value) return 'error'
-	if (isCheckingEditor.value || isCheckingPlugin.value) return 'waiting'
-	if (pluginInstalled.value && isEditorRunning.value) return 'idle'
+	const s = connectionStatus.value
+	if (s === 'connected') return 'connected'
+	if (s === 'error') return 'error'
+	if (s === 'editor-not-running') return 'error'
+	if (s === 'exporting' || s === 'checking-editor' || s === 'checking-plugin' ||
+		s === 'installing-plugin' || s === 'waiting-connection' || s === 'activating-upstream' ||
+		s === 'creating-job') return 'waiting'
+	if (s === 'needs-restart') return 'waiting'
+	if (s === 'idle') return 'idle'
 	return 'idle'
 })
 
 const statusTitle = computed(() => {
-	const connStatus = String(settings.value?.connectionStatus ?? 'idle')
-	if (connStatus === 'connected') return '虚幻编辑器已连接'
-	if (connStatus === 'waiting') return '等待虚幻插件连接'
-	if (connStatus === 'exporting') return '导出任务已发送'
-	if (connStatus === 'error') return '连接失败'
-
-	if (isInstallingPlugin.value) return '正在安装插件...'
-	if (pluginNeedsRestart.value) return '插件已安装，请重启编辑器'
-	if (pluginNotInstalled.value) return '插件未安装'
-	if (isEditorNotRunning.value) return '虚幻编辑器未启动'
-	if (isCheckingEditor.value) return '正在检测虚幻编辑器...'
-	if (isCheckingPlugin.value) return '正在检测插件...'
-	if (pluginInstalled.value && isEditorRunning.value) return '插件已就绪，请打开插件面板'
-	return '未建立连接'
+	const s = connectionStatus.value
+	switch (s) {
+		case 'connected': return '虚幻编辑器已连接'
+		case 'exporting': return '导出任务进行中'
+		case 'checking-editor': return '检测虚幻编辑器中...'
+		case 'editor-not-running': return '虚幻编辑器未启动'
+		case 'checking-plugin': return '检测插件中...'
+		case 'installing-plugin': return '正在安装插件...'
+		case 'needs-restart': return '插件已安装，请重启编辑器'
+		case 'waiting-connection': return '等待虚幻插件连接'
+		case 'activating-upstream': return '激活上游场景节点中...'
+		case 'creating-job': return '创建导出任务中...'
+		case 'error': return '出错了'
+		case 'idle':
+		default: return '准备就绪'
+	}
 })
 
 const statusCopy = computed(() => {
-	const connStatus = String(settings.value?.connectionStatus ?? 'idle')
-	if (connStatus === 'connected') {
-		return settings.value?.statusText ?? '连接已建立，可以执行导出操作。'
+	const s = connectionStatus.value
+	const customMsg = String(settings.value?.message ?? '').trim()
+	if (customMsg) return customMsg
+	switch (s) {
+		case 'connected': return '连接已建立，可以执行导出操作。'
+		case 'exporting': return '虚幻插件正在处理导出任务...'
+		case 'checking-editor': return '正在检查虚幻编辑器是否运行...'
+		case 'editor-not-running': return '请先启动虚幻编辑器并打开项目。'
+		case 'checking-plugin': return '正在检查项目插件状态...'
+		case 'installing-plugin': return '正在自动安装 DwebWorkflowBridge 插件...'
+		case 'needs-restart': return '插件安装成功！请重启虚幻编辑器。'
+		case 'waiting-connection': return '请在虚幻编辑器插件面板点击 Connect 按钮...'
+		case 'activating-upstream': return '正在激活场景布局预览...'
+		case 'creating-job': return '正在创建导出任务...'
+		case 'error': return String(settings.value?.statusText ?? '发生错误，请重试。')
+		case 'idle':
+		default: return '点击「一键导出场景」开始导出流程，系统会自动完成检测、连接和导出。'
 	}
-	if (connStatus === 'waiting') {
-		return settings.value?.statusText ?? '正在等待虚幻插件连接...'
-	}
-	if (connStatus === 'exporting') {
-		return settings.value?.statusText ?? '导出任务正在处理中...'
-	}
-	if (connStatus === 'error') {
-		return settings.value?.message ?? '连接失败，请检查后重试。'
-	}
-
-	if (isInstallingPlugin.value) return '正在将 DwebWorkflowBridge 插件安装到目标项目...'
-	if (pluginNeedsRestart.value) return '安装完成！请重启虚幻编辑器以加载插件，然后点击下方按钮重新检测。'
-	if (pluginNotInstalled.value) return '当前项目未检测到 DwebWorkflowBridge 插件，请输入项目路径后点击安装。'
-	if (isEditorNotRunning.value) return '未检测到正在运行的 Unreal Editor，请先启动虚幻编辑器并打开项目。'
-	if (isCheckingEditor.value) return '正在检测系统中运行的虚幻编辑器进程...'
-	if (isCheckingPlugin.value) return '正在检查项目是否安装了 DwebWorkflowBridge 插件...'
-	if (pluginInstalled.value && isEditorRunning.value) return '检测到虚幻编辑器已运行且插件已安装，请打开插件面板后点击连接。'
-	return String(settings.value?.message ?? '点击「检测虚幻编辑器」开始检查状态。').trim()
 })
 
-const connectionButtonLabel = computed(() => (isConnected.value ? '已连接' : '等待连接'))
-
-const showDetectButton = computed(() => {
-	const connStatus = String(settings.value?.connectionStatus ?? 'idle')
-	if (connStatus === 'connected') return false
-	return !isConnected.value
-})
-
-const showEditorStatus = computed(() => {
-	return editorStatus.value !== 'unknown'
-})
-
-const editorStatusText = computed(() => {
-	if (isCheckingEditor.value) return '检测中'
-	if (isEditorRunning.value) return '已运行'
-	if (isEditorNotRunning.value) return '未运行'
-	return '未检测'
-})
-
-const editorStatusClass = computed(() => {
-	if (isCheckingEditor.value) return 'is-checking'
-	if (isEditorRunning.value) return 'is-running'
-	if (isEditorNotRunning.value) return 'is-not-running'
-	return ''
-})
-
-const showPluginInstall = computed(() => {
+const showPrimaryExportButton = computed(() => {
 	if (isConnected.value) return false
-	if (pluginInstalled.value) return false
-	if (isEditorNotRunning.value && pluginStatus.value === 'unknown') return false
-	return pluginNotInstalled.value || isCheckingPlugin.value || isInstallingPlugin.value || pluginNeedsRestart.value || pluginStatus.value === 'install-error'
+	if (needsRestart.value) return false
+	if (connectionStatus.value === 'error') return false
+	return true
 })
 
-const pluginSectionTitle = computed(() => {
-	if (isInstallingPlugin.value) return '插件安装中'
-	if (pluginNeedsRestart.value) return '安装完成'
-	if (pluginNotInstalled.value) return '安装 DwebWorkflowBridge 插件'
-	if (isCheckingPlugin.value) return '检测插件状态'
-	if (pluginStatus.value === 'install-error') return '安装失败'
-	return '插件管理'
+const showRetryButton = computed(() => {
+	return connectionStatus.value === 'error' || connectionStatus.value === 'editor-not-running'
 })
 
-const showInstallButton = computed(() => {
-	if (isConnected.value) return false
-	return pluginNotInstalled.value || pluginStatus.value === 'install-error'
-})
+const showRestartHint = computed(() => needsRestart.value)
+const showConnectionGuide = computed(() => connectionStatus.value === 'waiting-connection')
 
-const showRefreshAfterRestart = computed(() => {
-	if (isConnected.value) return false
-	return pluginNeedsRestart.value
-})
-
-const showWaitConnectionButton = computed(() => {
-	if (isConnected.value) return false
-	return pluginInstalled.value && isEditorRunning.value
-})
-
-const showOpenPluginGuide = computed(() => {
-	if (isConnected.value) return false
-	return pluginInstalled.value && isEditorRunning.value
-})
-
-const showAssetPathSettings = computed(() => {
-	return isConnected.value || (pluginInstalled.value && isEditorRunning.value)
-})
+const showAssetPathSettings = computed(() => isConnected.value || connectionStatus.value === 'idle')
 
 const projectNameDisplay = computed(
-	() => String(settings.value?.connectedSession?.projectName ?? '').trim() || editorProcessName.value || '未连接'
-)
-const sessionDisplay = computed(
-	() =>
-		String(
-			settings.value?.connectedSession?.sessionId ?? settings.value?.targetSessionId ?? ''
-		).trim() || '未分配'
+	() => String(settings.value?.connectedSession?.projectName ?? settings.value?.editorProcess?.projectName ?? '').trim() || '未连接'
 )
 
 const assetRootPathDisplay = computed(
-	() =>
-		String(
-			settings.value?.connectedSession?.assetRootPath ??
-				settings.value?.lastBlueprintAssetPath ??
-				''
-		).trim() || '/Game/DwebWorkflowExports'
+	() => String(settings.value?.assetRootPath ?? '').trim() || '/Game/DVStudio'
 )
+
 const progressPercent = computed(() => {
 	const value = Number(settings.value?.lastExportProgress ?? 0)
 	return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 0
 })
-const progressVisible = computed(() => progressPercent.value > 0 && progressPercent.value < 100)
 const progressCopy = computed(() => {
 	const stage = String(settings.value?.lastExportStage ?? '').trim()
-	return `${stage || '准备导入资产'} · ${progressPercent.value}%`
+	const msg = String(settings.value?.lastExportMessage ?? '').trim()
+	return `${stage || msg || '处理中'} · ${progressPercent.value}%`
 })
-const lastActorBaseClassText = computed(() =>
-	String(settings.value?.lastActorBaseClass ?? '').trim()
-)
-const lastLightingSummary = computed(() => {
-	const lightCount = Number(settings.value?.lastSpawnedLightCount)
-	const actorLabel = String(settings.value?.lastLightingTargetActor ?? '').trim()
-	if (!Number.isFinite(lightCount) && !actorLabel) return ''
-	const parts = [
-		Number.isFinite(lightCount) ? `${lightCount} lights` : '',
-		actorLabel ? `目标Actor：${actorLabel}` : ''
-	].filter(Boolean)
-	return parts.join(' · ')
-})
-const lastLayoutProtocolVersionText = computed(() => {
-	const value = Number(settings.value?.lastLayoutProtocolVersion)
-	return Number.isFinite(value) ? `v${value}` : ''
-})
+
+const lastExportJobId = computed(() => String(settings.value?.lastExportJobId ?? '').trim())
 const lastSlotCountText = computed(() => {
 	const slotCount = Number(settings.value?.lastSlotCount)
 	const appliedSlotCount = Number(settings.value?.lastAppliedSlotCount)
-	const materialOverrideCount = Number(settings.value?.lastMaterialOverrideCount)
 	if (!Number.isFinite(slotCount) && !Number.isFinite(appliedSlotCount)) return ''
 	const parts = [
 		Number.isFinite(slotCount) ? `${slotCount} slots` : '',
-		Number.isFinite(appliedSlotCount) ? `${appliedSlotCount} applied` : '',
-		Number.isFinite(materialOverrideCount) && materialOverrideCount > 0
-			? `${materialOverrideCount} material overrides`
-			: ''
+		Number.isFinite(appliedSlotCount) ? `${appliedSlotCount} applied` : ''
 	].filter(Boolean)
 	return parts.join(' · ')
 })
-const detailCopy = computed(() => {
-	const exportJobId = String(settings.value?.lastExportJobId ?? '').trim()
-	const exportStatus = String(settings.value?.lastExportStatus ?? '').trim()
-	const exportMessage = String(settings.value?.lastExportMessage ?? '').trim()
-	const blueprintAssetPath = String(settings.value?.lastBlueprintAssetPath ?? '').trim()
-	const modelsAssetPath = String(settings.value?.lastModelsAssetPath ?? '').trim()
-	if (exportJobId) {
-		const pathSummary =
-			blueprintAssetPath || modelsAssetPath ? ` · ${blueprintAssetPath || modelsAssetPath}` : ''
-		return `最近任务 ${exportJobId}${exportStatus ? ` · ${exportStatus}` : ''}${exportMessage ? ` · ${exportMessage}` : ''}${pathSummary}`
-	}
-	if (!hasLayoutInput.value) return '请先把场景布局节点的"布局JSON"输出接入当前节点。'
-	if (!hasLightingInput.value) return '当前没有灯光 JSON 输入，导出时会按纯布局场景处理。'
-	return '连接建立后，当前节点会把布局、灯光和模型绑定信息打包成导出任务。'
-})
 
-const handleInstallPlugin = () => {
-	const path = localProjectPath.value.trim()
-	if (!path) return
-	emit('install-plugin', path)
-}
+const detailCopy = computed(() => {
+	const exportStatus = String(settings.value?.lastExportStatus ?? '').trim()
+	if (exportStatus === 'completed') return '上一次导出已成功完成。'
+	if (exportStatus === 'failed') return `上一次导出失败：${String(settings.value?.lastExportMessage ?? 'unknown')}`
+	if (!hasLayoutInput.value) return '请先连接场景布局节点的「布局JSON」输出。'
+	if (isConnected.value) return '连接已就绪，点击「导出场景」开始导出。'
+	return '点击「一键导出场景」，系统将自动完成编辑器检测、插件安装、连接建立和场景导出。'
+})
 
 const handleSetAssetRootPath = () => {
 	const path = localAssetRootPath.value.trim()
@@ -541,27 +375,29 @@ const handleSetAssetRootPath = () => {
 .wf-unreal-export {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 10px;
 }
 
 .wf-unreal-export-status {
 	border: 1px solid rgba(148, 163, 184, 0.28);
-	border-radius: 12px;
-	padding: 12px;
+	border-radius: 10px;
+	padding: 10px 12px;
 	background: rgba(15, 23, 42, 0.68);
 }
 
 .wf-unreal-export-status.is-connected {
 	border-color: rgba(74, 222, 128, 0.45);
+	background: rgba(34, 197, 94, 0.1);
 }
 
-.wf-unreal-export-status.is-waiting,
-.wf-unreal-export-status.is-exporting {
+.wf-unreal-export-status.is-waiting {
 	border-color: rgba(251, 191, 36, 0.45);
+	background: rgba(251, 191, 36, 0.08);
 }
 
 .wf-unreal-export-status.is-error {
 	border-color: rgba(248, 113, 113, 0.45);
+	background: rgba(239, 68, 68, 0.08);
 }
 
 .wf-unreal-export-status-title {
@@ -571,95 +407,14 @@ const handleSetAssetRootPath = () => {
 }
 
 .wf-unreal-export-status-copy {
-	margin-top: 6px;
-	font-size: 12px;
+	margin-top: 4px;
+	font-size: 11px;
 	line-height: 1.5;
 	color: rgba(226, 232, 240, 0.78);
 }
 
-.wf-unreal-export-editor-status {
-	border: 1px solid rgba(148, 163, 184, 0.15);
-	border-radius: 8px;
-	padding: 10px;
-	background: rgba(15, 23, 42, 0.4);
-}
-
-.wf-unreal-export-editor-row {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	font-size: 12px;
-	gap: 8px;
-}
-
-.wf-unreal-export-editor-row + .wf-unreal-export-editor-row {
-	margin-top: 4px;
-}
-
-.wf-unreal-export-editor-label {
-	color: rgba(148, 163, 184, 0.8);
-	flex-shrink: 0;
-}
-
-.wf-unreal-export-editor-value {
-	color: #e2e8f0;
-	text-align: right;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.wf-unreal-export-editor-value.is-running {
-	color: rgb(74, 222, 128);
-}
-
-.wf-unreal-export-editor-value.is-not-running {
-	color: rgb(248, 113, 113);
-}
-
-.wf-unreal-export-editor-value.is-checking {
-	color: rgb(251, 191, 36);
-}
-
-.wf-unreal-export-plugin-install {
-	border: 1px solid rgba(251, 191, 36, 0.2);
-	border-radius: 8px;
-	padding: 10px;
-	background: rgba(251, 191, 36, 0.08);
-}
-
-.wf-unreal-export-plugin-title {
-	font-size: 12px;
-	font-weight: 600;
-	color: #fbbf24;
-	margin-bottom: 8px;
-}
-
-.wf-unreal-export-plugin-path-input {
-	width: 100%;
-	padding: 6px 10px;
-	font-size: 12px;
-	background: rgba(15, 23, 42, 0.8);
-	border: 1px solid rgba(148, 163, 184, 0.3);
-	border-radius: 6px;
-	color: #e2e8f0;
-	outline: none;
-	box-sizing: border-box;
-}
-
-.wf-unreal-export-plugin-path-input:focus {
-	border-color: rgba(96, 165, 250, 0.6);
-}
-
-.wf-unreal-export-plugin-error {
-	margin-top: 6px;
-	font-size: 11px;
-	color: rgb(248, 113, 113);
-	line-height: 1.4;
-}
-
 .wf-unreal-export-guide {
-	border: 1px solid rgba(96, 165, 250, 0.2);
+	border: 1px solid rgba(59, 130, 246, 0.25);
 	border-radius: 8px;
 	padding: 10px;
 	background: rgba(59, 130, 246, 0.08);
@@ -669,11 +424,11 @@ const handleSetAssetRootPath = () => {
 	font-size: 12px;
 	font-weight: 600;
 	color: #60a5fa;
-	margin-bottom: 6px;
+	margin-bottom: 4px;
 }
 
 .wf-unreal-export-guide-text {
-	font-size: 12px;
+	font-size: 11px;
 	line-height: 1.6;
 	color: rgba(226, 232, 240, 0.8);
 }
@@ -686,15 +441,8 @@ const handleSetAssetRootPath = () => {
 .wf-unreal-export-asset-path {
 	border: 1px solid rgba(148, 163, 184, 0.15);
 	border-radius: 8px;
-	padding: 10px;
+	padding: 8px 10px;
 	background: rgba(15, 23, 42, 0.4);
-}
-
-.wf-unreal-export-asset-path-title {
-	font-size: 12px;
-	font-weight: 600;
-	color: #60a5fa;
-	margin-bottom: 8px;
 }
 
 .wf-unreal-export-asset-path-row {
@@ -703,12 +451,8 @@ const handleSetAssetRootPath = () => {
 	align-items: center;
 }
 
-.wf-unreal-export-asset-path-row + .wf-unreal-export-asset-path-row {
-	margin-top: 8px;
-}
-
 .wf-unreal-export-asset-path-label {
-	font-size: 12px;
+	font-size: 11px;
 	color: rgba(148, 163, 184, 0.8);
 	flex-shrink: 0;
 	width: 70px;
@@ -716,8 +460,8 @@ const handleSetAssetRootPath = () => {
 
 .wf-unreal-export-asset-path-input {
 	flex: 1;
-	padding: 6px 10px;
-	font-size: 12px;
+	padding: 5px 8px;
+	font-size: 11px;
 	background: rgba(15, 23, 42, 0.8);
 	border: 1px solid rgba(148, 163, 184, 0.3);
 	border-radius: 6px;
@@ -730,38 +474,21 @@ const handleSetAssetRootPath = () => {
 	border-color: rgba(96, 165, 250, 0.6);
 }
 
-.wf-unreal-export-asset-path-btn {
-	appearance: none;
-	border: 1px solid rgba(96, 165, 250, 0.35);
-	background: rgba(59, 130, 246, 0.18);
-	color: #dbeafe;
-	border-radius: 6px;
-	padding: 6px 12px;
-	font-size: 12px;
-	cursor: pointer;
-	flex-shrink: 0;
-}
-
-.wf-unreal-export-asset-path-btn:disabled {
-	cursor: not-allowed;
-	opacity: 0.55;
-}
-
 .wf-unreal-export-actions {
 	display: flex;
-	gap: 10px;
+	gap: 8px;
 	flex-wrap: wrap;
 }
 
 .wf-unreal-export-progress {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 4px;
 }
 
 .wf-unreal-export-progress-bar {
 	width: 100%;
-	height: 8px;
+	height: 6px;
 	border-radius: 999px;
 	overflow: hidden;
 	background: rgba(148, 163, 184, 0.18);
@@ -771,52 +498,73 @@ const handleSetAssetRootPath = () => {
 	height: 100%;
 	border-radius: inherit;
 	background: linear-gradient(90deg, rgba(59, 130, 246, 0.95), rgba(34, 197, 94, 0.9));
+	transition: width 0.3s ease;
 }
 
 .wf-unreal-export-progress-copy {
-	font-size: 12px;
+	font-size: 11px;
 	color: rgba(226, 232, 240, 0.76);
 }
 
 .wf-unreal-export-btn {
 	appearance: none;
 	border: 1px solid rgba(96, 165, 250, 0.35);
-	background: rgba(59, 130, 246, 0.18);
+	background: rgba(59, 130, 246, 0.2);
 	color: #dbeafe;
-	border-radius: 0;
-	padding: 8px 12px;
+	border-radius: 6px;
+	padding: 7px 14px;
 	font-size: 12px;
 	cursor: pointer;
+	font-weight: 500;
+}
+
+.wf-unreal-export-btn.primary {
+	background: rgba(59, 130, 246, 0.35);
+	border-color: rgba(96, 165, 250, 0.5);
 }
 
 .wf-unreal-export-btn.ghost {
 	border-color: rgba(148, 163, 184, 0.3);
-	background: rgba(15, 23, 42, 0.42);
+	background: rgba(15, 23, 42, 0.5);
 	color: #e2e8f0;
+}
+
+.wf-unreal-export-btn.danger {
+	border-color: rgba(248, 113, 113, 0.35);
+	background: rgba(239, 68, 68, 0.15);
+	color: #fca5a5;
 }
 
 .wf-unreal-export-btn:disabled {
 	cursor: not-allowed;
-	opacity: 0.55;
+	opacity: 0.5;
 }
 
 .wf-unreal-export-footer {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 8px;
 }
 
 .wf-unreal-export-grid {
 	display: grid;
 	grid-template-columns: auto 1fr;
-	gap: 6px 12px;
-	font-size: 12px;
-	color: rgba(226, 232, 240, 0.8);
+	gap: 4px 10px;
+	font-size: 11px;
+	color: rgba(226, 232, 240, 0.75);
+}
+
+.wf-unreal-export-grid .is-ok {
+	color: rgb(74, 222, 128);
+}
+
+.wf-unreal-export-grid .is-empty {
+	color: rgba(148, 163, 184, 0.6);
 }
 
 .wf-unreal-export-copy {
-	font-size: 12px;
+	font-size: 11px;
 	line-height: 1.5;
-	color: rgba(226, 232, 240, 0.72);
+	color: rgba(226, 232, 240, 0.6);
 }
 </style>

@@ -1258,7 +1258,6 @@ const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 	const layoutItems = Array.isArray(node.sceneLayoutSettings?.layoutItems)
 		? node
 				.sceneLayoutSettings!.layoutItems!.filter((item) => String(item?.id ?? '').trim())
-				.filter((item) => isSceneLayoutModelTarget(item))
 		: []
 	const modelInputs = previewMode
 		? layoutItems.map((item) => ({

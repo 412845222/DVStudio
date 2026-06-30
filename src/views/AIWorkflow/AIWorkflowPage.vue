@@ -224,6 +224,7 @@
 						@check-plugin="onNodeCheckPlugin(node.id, $event)"
 						@install-plugin="onNodeInstallPlugin(node.id, $event)"
 						@set-asset-root-path="onNodeSetAssetRootPath(node.id, $event)"
+						@disconnect-unreal="onNodeDisconnect(node.id)"
 						@end-link="onEndLink"
 						@export-unreal-lighting="onNodeExportUnrealLighting(node.id)"
 						@export-unreal-scene="onNodeExportUnrealScene(node.id)"
@@ -5044,7 +5045,7 @@ const {
 	connectedImageInputSource
 })
 
-const { sceneLayoutModelInputAnchorId, connectedSceneLayoutModelBindings } =
+const { sceneLayoutModelInputAnchorId, connectedSceneLayoutModelBindings, validateModelBindings } =
 	useAIWorkflowSceneLayoutModelBindings({
 		store,
 		isSceneLayoutModelTargetItem,
@@ -5571,6 +5572,19 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	} catch (err: unknown) {
 		return { ok: false as const, error: getErrorMessage(err) }
 	}
+}
+
+const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
+	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+	if (!normalizedNodeId) return
+	const node = store.state.nodesById[normalizedNodeId] as Record<string, unknown> | undefined
+	if (!node || node.type !== 'scene-layout') return
+	const settings = (node.sceneLayoutSettings as Record<string, unknown>) ?? {}
+	if (settings.previewMode === true) return
+	store.commit('setNodeSceneLayoutSettings', {
+		nodeId: normalizedNodeId,
+		sceneLayoutSettings: { previewMode: true }
+	})
 }
 
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
@@ -6100,6 +6114,7 @@ const {
 	buildUnrealExportPayload,
 	onNodeExportUnrealScene,
 	onNodeExportUnrealLighting,
+	onNodeDisconnect,
 	onNodeDetectEditor,
 	onNodeCheckPlugin,
 	onNodeInstallPlugin,
@@ -6111,7 +6126,10 @@ const {
 	getUnrealExportSourceSceneLayoutNode,
 	getResolvedLayoutForUnreal,
 	connectedSceneLayoutModelBindings,
-	pushToast
+	validateModelBindings,
+	pushToast,
+	activateSceneLayoutPreview,
+	waitForNextTick: () => nextTick()
 })
 
 const {

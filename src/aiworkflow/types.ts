@@ -349,7 +349,7 @@ export type WorkflowUnrealResolvedModelBinding = {
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowUnrealResolvedLayoutSlot = {
@@ -481,6 +481,8 @@ export type WorkflowUnrealExportNodeSettings = {
 	assetPathValidationError?: string
 }
 
+export type WorkflowModelFormat = 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae'
+
 export type WorkflowSceneLayoutManualModelBinding = {
 	objectId: string
 	modelUrl?: string
@@ -490,7 +492,7 @@ export type WorkflowSceneLayoutManualModelBinding = {
 	modelAssetPath?: string
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowSceneLayoutModelBinding = {
@@ -507,7 +509,7 @@ export type WorkflowSceneLayoutModelBinding = {
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowSceneDecomposeOutput = {
@@ -635,7 +637,7 @@ export type WorkflowModel3DNodeSettings = {
 	modelGenerationSource?: 'upload' | 'comfyui' | 'meshy'
 	meshyModelSettings?: WorkflowMeshyModelSettings
 	modelUrl?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 	modelSourceName?: string
 	modelSourcePath?: string
 	modelProjectRelativePath?: string
