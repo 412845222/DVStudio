@@ -446,6 +446,35 @@ export type WorkflowUnrealExportNodeSettings = {
 	lastMaterialOverrideCount?: number
 	lastExportAt?: number
 	autoPoll?: boolean
+
+	editorStatus?: 'unknown' | 'checking' | 'not-running' | 'running'
+	editorCheckedAt?: number
+	editorProcess?: {
+		pid?: number
+		projectPath?: string
+		projectName?: string
+		engineVersion?: string
+	} | null
+	editorProcesses?: Array<{
+		pid: number
+		projectPath: string
+		projectName: string
+	}>
+
+	pluginStatus?:
+		| 'unknown'
+		| 'checking'
+		| 'not-installed'
+		| 'installed'
+		| 'installing'
+		| 'install-error'
+		| 'needs-restart'
+	pluginCheckedAt?: number
+	pluginVersion?: string
+	pluginInstallError?: string
+	pluginInstallConfig?: {
+		targetProjectPath?: string
+	}
 }
 
 export type WorkflowSceneLayoutManualModelBinding = {

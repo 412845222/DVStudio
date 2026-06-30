@@ -1485,3 +1485,118 @@ export function stopUnrealHttpServer() {
 		unrealHttpPort = 0
 	}
 }
+
+import {
+	detectUnrealEditorProcesses,
+	checkPluginInstalled,
+	installPluginToProject,
+	getPluginInfo,
+	writePluginConnectionConfig
+} from './unreal-editor-detector.mjs'
+
+export async function unrealDetectEditor() {
+	try {
+		const result = await detectUnrealEditorProcesses()
+		if (!result.ok) {
+			return { ok: false, running: false, processes: [], error: result.error }
+		}
+		return {
+			ok: true,
+			running: result.running,
+			processes: result.processes.map((p) => ({
+				pid: p.pid,
+				projectPath: p.projectPath,
+				projectName: p.projectName
+			}))
+		}
+	} catch (err) {
+		return {
+			ok: false,
+			running: false,
+			processes: [],
+			error: err.message || String(err)
+		}
+	}
+}
+
+export function unrealCheckPlugin(ctx, payload) {
+	const p = payload || {}
+	const projectPath = String(p.projectPath || '').trim()
+	if (!projectPath) {
+		return { ok: false, installed: false, error: 'projectPath is required' }
+	}
+	try {
+		const result = checkPluginInstalled(projectPath)
+		if (!result.ok) {
+			return { ok: false, installed: false, error: result.error }
+		}
+		return {
+			ok: true,
+			installed: result.installed,
+			pluginVersion: result.pluginVersion,
+			pluginPath: result.pluginPath,
+			projectRoot: result.projectRoot,
+			projectName: result.projectName
+		}
+	} catch (err) {
+		return {
+			ok: false,
+			installed: false,
+			error: err.message || String(err)
+		}
+	}
+}
+
+export async function unrealInstallPlugin(ctx, payload) {
+	const p = payload || {}
+	const projectPath = String(p.projectPath || '').trim()
+	if (!projectPath) {
+		return { ok: false, installed: false, error: 'projectPath is required' }
+	}
+	try {
+		const result = await installPluginToProject(projectPath)
+		if (!result.ok) {
+			return { ok: false, installed: false, error: result.error }
+		}
+		if (result.installed && unrealHttpPort > 0) {
+			writePluginConnectionConfig(projectPath, unrealHttpPort)
+		}
+		return {
+			ok: true,
+			installed: result.installed,
+			pluginPath: result.pluginPath,
+			pluginVersion: result.pluginVersion,
+			projectRoot: result.projectRoot,
+			projectName: result.projectName,
+			needsRestart: result.needsRestart
+		}
+	} catch (err) {
+		return {
+			ok: false,
+			installed: false,
+			error: err.message || String(err)
+		}
+	}
+}
+
+export function unrealGetPluginInfo() {
+	try {
+		const result = getPluginInfo()
+		if (!result.ok) {
+			return { ok: false, pluginName: result.pluginName, pluginVersion: '', error: result.error }
+		}
+		return {
+			ok: true,
+			pluginName: result.pluginName,
+			pluginVersion: result.pluginVersion,
+			packageSize: result.packageSize
+		}
+	} catch (err) {
+		return {
+			ok: false,
+			pluginName: 'DwebWorkflowBridge',
+			pluginVersion: '',
+			error: err.message || String(err)
+		}
+	}
+}

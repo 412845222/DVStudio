@@ -93,6 +93,29 @@ function isAgentSkillsIpcAvailable(): boolean {
 	return isMigrationMode() && hasIpcModule('agentSkills') && typeof window.dweb?.agentSkills === 'object'
 }
 
+type UnrealIpcApi = {
+	sessions?: () => Promise<unknown>
+	register?: (payload: Record<string, unknown>) => Promise<unknown>
+	sessionDetail?: (payload: Record<string, unknown>) => Promise<unknown>
+	createJob?: (payload: Record<string, unknown>) => Promise<unknown>
+	jobDetail?: (payload: Record<string, unknown>) => Promise<unknown>
+	heartbeat?: (payload: Record<string, unknown>) => Promise<unknown>
+	pickJob?: (payload: Record<string, unknown>) => Promise<unknown>
+	getHttpPort?: () => Promise<unknown>
+	detectEditor?: () => Promise<unknown>
+	checkPlugin?: (payload: { projectPath: string }) => Promise<unknown>
+	installPlugin?: (payload: { projectPath: string }) => Promise<unknown>
+	getPluginInfo?: () => Promise<unknown>
+}
+
+function getUnrealIpc(): UnrealIpcApi | null {
+	if (!isAgentSkillsIpcAvailable()) return null
+	const agentSkills = window.dweb?.agentSkills as Record<string, unknown> | undefined
+	const unreal = agentSkills?.unreal
+	if (unreal && typeof unreal === 'object') return unreal as UnrealIpcApi
+	return null
+}
+
 export class UnrealExportService {
 	private readonly getBaseUrl: () => string
 
@@ -151,9 +174,10 @@ export class UnrealExportService {
 	}
 
 	async listSessions(): Promise<UnrealExportSessionsResponse> {
-		if (isAgentSkillsIpcAvailable()) {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.sessions) {
 			try {
-				const result = await window.dweb?.agentSkills?.unreal?.sessions?.()
+				const result = await unrealIpc.sessions()
 				if (result) {
 					const r = result as any
 					const sessions = Array.isArray(r.sessions) ? r.sessions.map((s: any) => ({
@@ -192,9 +216,10 @@ export class UnrealExportService {
 	}
 
 	async createJob(payload: UnrealExportRequest): Promise<UnrealExportCreateJobResponse> {
-		if (isAgentSkillsIpcAvailable()) {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.createJob) {
 			try {
-				const result = await window.dweb?.agentSkills?.unreal?.createJob?.({
+				const result = await unrealIpc.createJob({
 					sessionId: payload.targetSessionId,
 					type: 'export',
 					payload: {
@@ -242,9 +267,10 @@ export class UnrealExportService {
 		const normalizedJobId = String(jobId ?? '').trim()
 		if (!normalizedJobId) return { ok: false, error: 'jobId is required', status: 400 }
 
-		if (isAgentSkillsIpcAvailable()) {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.jobDetail) {
 			try {
-				const result = await window.dweb?.agentSkills?.unreal?.jobDetail?.({ jobId: normalizedJobId })
+				const result = await unrealIpc.jobDetail({ jobId: normalizedJobId })
 				if (result) {
 					const r = result as any
 					if (r.ok === false) {
@@ -290,14 +316,135 @@ export class UnrealExportService {
 	}
 
 	async getHttpPort(): Promise<{ ok: boolean; port?: number; error?: string }> {
-		if (isAgentSkillsIpcAvailable()) {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.getHttpPort) {
 			try {
-				const result = await window.dweb?.agentSkills?.unreal?.getHttpPort?.()
+				const result = await unrealIpc.getHttpPort()
 				if (result) return result as { ok: boolean; port?: number; error?: string }
 			} catch (err) {
 				console.warn('[UnrealExportService] unreal.getHttpPort IPC failed:', err)
 			}
 		}
 		return { ok: false, error: 'IPC not available' }
+	}
+
+	async detectEditor(): Promise<{
+		ok: boolean
+		running: boolean
+		processes: Array<{ pid: number; projectPath: string; projectName: string }>
+		error?: string
+	}> {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.detectEditor) {
+			try {
+				const result = await unrealIpc.detectEditor()
+				if (result) {
+					const r = result as any
+					return {
+						ok: r.ok === true,
+						running: Boolean(r.running),
+						processes: Array.isArray(r.processes) ? r.processes : [],
+						error: r.error
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.detectEditor IPC failed:', err)
+			}
+		}
+		return { ok: false, running: false, processes: [], error: 'IPC not available' }
+	}
+
+	async checkPlugin(projectPath: string): Promise<{
+		ok: boolean
+		installed: boolean
+		pluginVersion?: string
+		pluginPath?: string
+		projectRoot?: string
+		projectName?: string
+		error?: string
+	}> {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.checkPlugin) {
+			try {
+				const result = await unrealIpc.checkPlugin({ projectPath })
+				if (result) {
+					const r = result as any
+					return {
+						ok: r.ok === true,
+						installed: Boolean(r.installed),
+						pluginVersion: r.pluginVersion,
+						pluginPath: r.pluginPath,
+						projectRoot: r.projectRoot,
+						projectName: r.projectName,
+						error: r.error
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.checkPlugin IPC failed:', err)
+			}
+		}
+		return { ok: false, installed: false, error: 'IPC not available' }
+	}
+
+	async installPlugin(projectPath: string): Promise<{
+		ok: boolean
+		installed: boolean
+		pluginPath?: string
+		pluginVersion?: string
+		projectRoot?: string
+		projectName?: string
+		needsRestart?: boolean
+		error?: string
+	}> {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.installPlugin) {
+			try {
+				const result = await unrealIpc.installPlugin({ projectPath })
+				if (result) {
+					const r = result as any
+					return {
+						ok: r.ok === true,
+						installed: Boolean(r.installed),
+						pluginPath: r.pluginPath,
+						pluginVersion: r.pluginVersion,
+						projectRoot: r.projectRoot,
+						projectName: r.projectName,
+						needsRestart: Boolean(r.needsRestart),
+						error: r.error
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.installPlugin IPC failed:', err)
+			}
+		}
+		return { ok: false, installed: false, error: 'IPC not available' }
+	}
+
+	async getPluginInfo(): Promise<{
+		ok: boolean
+		pluginName: string
+		pluginVersion: string
+		packageSize?: number
+		error?: string
+	}> {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.getPluginInfo) {
+			try {
+				const result = await unrealIpc.getPluginInfo()
+				if (result) {
+					const r = result as any
+					return {
+						ok: r.ok === true,
+						pluginName: r.pluginName || 'DwebWorkflowBridge',
+						pluginVersion: r.pluginVersion || '',
+						packageSize: r.packageSize,
+						error: r.error
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.getPluginInfo IPC failed:', err)
+			}
+		}
+		return { ok: false, pluginName: 'DwebWorkflowBridge', pluginVersion: '', error: 'IPC not available' }
 	}
 }

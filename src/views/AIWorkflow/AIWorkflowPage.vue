@@ -220,6 +220,9 @@
 						@clear-node="() => onNodeClear(node.id)"
 						@delete="() => onNodeDelete(node.id)"
 						@delete-meshy-task="onNodeDeleteMeshyTask(node.id)"
+						@detect-editor="onNodeDetectEditor(node.id)"
+						@check-plugin="onNodeCheckPlugin(node.id, $event)"
+						@install-plugin="onNodeInstallPlugin(node.id, $event)"
 						@end-link="onEndLink"
 						@export-unreal-lighting="onNodeExportUnrealLighting(node.id)"
 						@export-unreal-scene="onNodeExportUnrealScene(node.id)"
@@ -6092,16 +6095,22 @@ function sourceTypeLabel(type: string): string {
 	}
 }
 
-const { buildUnrealExportPayload, onNodeExportUnrealScene, onNodeExportUnrealLighting } =
-	useAIWorkflowUnrealExportActions({
-		store,
-		unrealExportService,
-		connectedTextInputValue,
-		getUnrealExportSourceSceneLayoutNode,
-		getResolvedLayoutForUnreal,
-		connectedSceneLayoutModelBindings,
-		pushToast
-	})
+const {
+	buildUnrealExportPayload,
+	onNodeExportUnrealScene,
+	onNodeExportUnrealLighting,
+	onNodeDetectEditor,
+	onNodeCheckPlugin,
+	onNodeInstallPlugin
+} = useAIWorkflowUnrealExportActions({
+	store,
+	unrealExportService,
+	connectedTextInputValue,
+	getUnrealExportSourceSceneLayoutNode,
+	getResolvedLayoutForUnreal,
+	connectedSceneLayoutModelBindings,
+	pushToast
+})
 
 const {
 	resetSceneUnderstandingNodeState,

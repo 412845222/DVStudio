@@ -12,6 +12,31 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			sceneName: string
 			exportPayload: Record<string, unknown>
 		}) => Promise<Record<string, unknown>>
+		detectEditor: () => Promise<{
+			ok: boolean
+			running: boolean
+			processes: Array<{ pid: number; projectPath: string; projectName: string }>
+			error?: string
+		}>
+		checkPlugin: (projectPath: string) => Promise<{
+			ok: boolean
+			installed: boolean
+			pluginVersion?: string
+			pluginPath?: string
+			projectRoot?: string
+			projectName?: string
+			error?: string
+		}>
+		installPlugin: (projectPath: string) => Promise<{
+			ok: boolean
+			installed: boolean
+			pluginPath?: string
+			pluginVersion?: string
+			projectRoot?: string
+			projectName?: string
+			needsRestart?: boolean
+			error?: string
+		}>
 	}
 	connectedTextInputValue: (nodeId: string, inputId: string) => string
 	getUnrealExportSourceSceneLayoutNode: (nodeId: string) => unknown
@@ -280,9 +305,189 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		payload.pushToast(`Unreal 灯光任务已创建：${job.jobId}`, 'info')
 	}
 
+	const onNodeDetectEditor = async (nodeId: string) => {
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
+		if (!node || node.type !== 'unreal-export') return
+
+		payload.store.commit('setNodeUnrealExportSettings', {
+			nodeId,
+			unrealExportSettings: {
+				editorStatus: 'checking',
+				editorCheckedAt: Date.now()
+			}
+		})
+
+		try {
+			const result = await payload.unrealExportService.detectEditor()
+			if (!result.ok) {
+				payload.store.commit('setNodeUnrealExportSettings', {
+					nodeId,
+					unrealExportSettings: {
+						editorStatus: 'unknown',
+						editorCheckedAt: Date.now(),
+						editorProcess: null,
+						editorProcesses: []
+					}
+				})
+				payload.pushToast(`检测虚幻编辑器失败: ${result.error || 'unknown'}`, 'warn')
+				return
+			}
+
+			const firstProcess = result.processes?.[0] || null
+			payload.store.commit('setNodeUnrealExportSettings', {
+				nodeId,
+				unrealExportSettings: {
+					editorStatus: result.running ? 'running' : 'not-running',
+					editorCheckedAt: Date.now(),
+					editorProcess: firstProcess
+						? {
+								pid: firstProcess.pid,
+								projectPath: firstProcess.projectPath,
+								projectName: firstProcess.projectName
+							}
+						: null,
+					editorProcesses: result.processes || []
+				}
+			})
+
+			if (result.running && firstProcess?.projectPath) {
+				onNodeCheckPlugin(nodeId, firstProcess.projectPath)
+			}
+		} catch (err) {
+			payload.store.commit('setNodeUnrealExportSettings', {
+				nodeId,
+				unrealExportSettings: {
+					editorStatus: 'unknown',
+					editorCheckedAt: Date.now()
+				}
+			})
+			payload.pushToast(`检测虚幻编辑器异常: ${(err as Error).message || 'unknown'}`, 'warn')
+		}
+	}
+
+	const onNodeCheckPlugin = async (nodeId: string, projectPath: string) => {
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
+		if (!node || node.type !== 'unreal-export') return
+
+		const trimmedPath = String(projectPath || '').trim()
+		if (!trimmedPath) {
+			payload.pushToast('请先指定虚幻项目路径', 'warn')
+			return
+		}
+
+		payload.store.commit('setNodeUnrealExportSettings', {
+			nodeId,
+			unrealExportSettings: {
+				pluginStatus: 'checking',
+				pluginCheckedAt: Date.now(),
+				pluginInstallConfig: {
+					targetProjectPath: trimmedPath
+				}
+			}
+		})
+
+		try {
+			const result = await payload.unrealExportService.checkPlugin(trimmedPath)
+			if (!result.ok) {
+				payload.store.commit('setNodeUnrealExportSettings', {
+					nodeId,
+					unrealExportSettings: {
+						pluginStatus: 'unknown',
+						pluginCheckedAt: Date.now(),
+						pluginInstallError: result.error
+					}
+				})
+				payload.pushToast(`检测插件失败: ${result.error || 'unknown'}`, 'warn')
+				return
+			}
+
+			payload.store.commit('setNodeUnrealExportSettings', {
+				nodeId,
+				unrealExportSettings: {
+					pluginStatus: result.installed ? 'installed' : 'not-installed',
+					pluginCheckedAt: Date.now(),
+					pluginVersion: result.pluginVersion,
+					pluginInstallConfig: {
+						targetProjectPath: result.projectRoot || trimmedPath
+					}
+				}
+			})
+		} catch (err) {
+			payload.store.commit('setNodeUnrealExportSettings', {
+				nodeId,
+				unrealExportSettings: {
+					pluginStatus: 'unknown',
+					pluginCheckedAt: Date.now(),
+					pluginInstallError: (err as Error).message
+				}
+			})
+			payload.pushToast(`检测插件异常: ${(err as Error).message || 'unknown'}`, 'warn')
+		}
+	}
+
+	const onNodeInstallPlugin = async (nodeId: string, projectPath: string) => {
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
+		if (!node || node.type !== 'unreal-export') return
+
+		const trimmedPath = String(projectPath || '').trim()
+		if (!trimmedPath) {
+			payload.pushToast('请先指定虚幻项目路径', 'warn')
+			return
+		}
+
+		payload.store.commit('setNodeUnrealExportSettings', {
+			nodeId,
+			unrealExportSettings: {
+				pluginStatus: 'installing',
+				pluginInstallConfig: {
+					targetProjectPath: trimmedPath
+				}
+			}
+		})
+
+		try {
+			const result = await payload.unrealExportService.installPlugin(trimmedPath)
+			if (!result.ok) {
+				payload.store.commit('setNodeUnrealExportSettings', {
+					nodeId,
+					unrealExportSettings: {
+						pluginStatus: 'install-error',
+						pluginInstallError: result.error
+					}
+				})
+				payload.pushToast(`插件安装失败: ${result.error || 'unknown'}`, 'error')
+				return
+			}
+
+			payload.store.commit('setNodeUnrealExportSettings', {
+				nodeId,
+				unrealExportSettings: {
+					pluginStatus: 'needs-restart',
+					pluginVersion: result.pluginVersion,
+					pluginInstallConfig: {
+						targetProjectPath: result.projectRoot || trimmedPath
+					}
+				}
+			})
+			payload.pushToast('插件安装成功！请重启虚幻编辑器以加载插件', 'info')
+		} catch (err) {
+			payload.store.commit('setNodeUnrealExportSettings', {
+				nodeId,
+				unrealExportSettings: {
+					pluginStatus: 'install-error',
+					pluginInstallError: (err as Error).message
+				}
+			})
+			payload.pushToast(`插件安装异常: ${(err as Error).message || 'unknown'}`, 'error')
+		}
+	}
+
 	return {
 		buildUnrealExportPayload,
 		onNodeExportUnrealScene,
-		onNodeExportUnrealLighting
+		onNodeExportUnrealLighting,
+		onNodeDetectEditor,
+		onNodeCheckPlugin,
+		onNodeInstallPlugin
 	}
 }

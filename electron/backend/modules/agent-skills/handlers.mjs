@@ -59,3 +59,19 @@ export function unrealPickJob(ctx, payload) {
 export function unrealGetHttpPort() {
 	return { ok: true, port: service.getUnrealHttpPort() }
 }
+
+export async function unrealDetectEditor() {
+	return service.unrealDetectEditor()
+}
+
+export function unrealCheckPlugin(ctx, payload) {
+	return service.unrealCheckPlugin(ctx, payload)
+}
+
+export async function unrealInstallPlugin(ctx, payload) {
+	return service.unrealInstallPlugin(ctx, payload)
+}
+
+export function unrealGetPluginInfo() {
+	return service.unrealGetPluginInfo()
+}
