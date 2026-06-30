@@ -981,7 +981,7 @@ import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useA
 import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
 import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
 import { useAgentToolBridge, type ToolApprovalItem } from './node-business/chat/useAgentToolBridge'
-import { NEWUI2_NODE_CATALOG } from '../../aiworkflow/nodeLibrary'
+import { NEWUI2_NODE_CATALOG, NEWUI2_NODE_CATALOG_CATEGORIES, NEWUI2_NODE_TOP_CATEGORIES, NEWUI2_NODE_SPECIAL_GROUPS } from '../../aiworkflow/nodeLibrary'
 import {
 	comfyOutputForAnchor,
 	type ComfyLocalizedOutput
@@ -6871,10 +6871,6 @@ const {
 	onNodeSearchMenuUploadFile,
 	onLinkDropOnCanvas,
 	openNodeSearchMenu,
-	NEWUI2_NODE_CATALOG,
-	NEWUI2_NODE_CATALOG_CATEGORIES,
-	NEWUI2_NODE_TOP_CATEGORIES,
-	NEWUI2_NODE_SPECIAL_GROUPS
 } = useAIWorkflowContextMenu({
 	store,
 	selectedNodeId,
