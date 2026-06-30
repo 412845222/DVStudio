@@ -120,7 +120,7 @@ class CLIAdapterManager {
   async *sendMessage(sessionId, content, options = {}) {
     const adapterName = this.sessions.get(sessionId);
     if (!adapterName) {
-      yield JSON.stringify({ type: 'error', error: 'Session not found' });
+      yield { type: 'error', error: 'Session not found' };
       return;
     }
 

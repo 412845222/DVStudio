@@ -3583,7 +3583,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.nodeChatDialog.nodeId = payload.nodeId
 			state.nodeChatDialog.nodeType = payload.nodeType
 			const node = state.nodesById[payload.nodeId]
-			state.nodeChatDialog.draft = node?.nodeChatDraft ?? ''
+			let draft = ''
+			if (payload.nodeType !== 'text') {
+				draft = node?.textValue ?? ''
+			}
+			if (!draft) {
+				const nodePrompt = (node as Record<string, unknown>).prompt
+				draft = typeof nodePrompt === 'string' ? nodePrompt : ''
+			}
+			if (!draft) {
+				draft = node?.nodeChatDraft ?? ''
+			}
+			state.nodeChatDialog.draft = draft
 			state.nodeChatDialog.submitting = false
 			state.nodeChatDialog.params = node?.nodeChatParams ?? {}
 		},
@@ -3600,6 +3611,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const node = state.nodesById[state.nodeChatDialog.nodeId]
 				if (node) {
 					node.nodeChatDraft = payload.text
+					;(node as Record<string, unknown>).prompt = payload.text
 				}
 			}
 		},

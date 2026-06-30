@@ -367,11 +367,14 @@
 				:codexSessions="codexSessions"
 				:codexActiveSessionId="codexActiveSessionId"
 				:codexFlowEvents="codexFlowEvents"
+				:thinkingEffort="chatThinkingEffort"
+				:contextUsage="chatContextUsage"
 				@send="onSend"
 				@stop="onStop"
 				@update:agent-mode="agentConversationMode = $event"
 				@update:agent-backend="agentBackend = $event"
 				@update:local-exec-stream-mode="localExecStreamMode = $event"
+				@update:thinking-effort="chatThinkingEffort = $event"
 				@update:model-key="
 					(v: unknown) => {
 						if (
@@ -389,12 +392,14 @@
 				@codex-delete-session="onCodexDeleteSession"
 				@codex-rename-session="onCodexRenameSession"
 				@codex-approval="onCodexApproval"
+				@user-choice-select="handleUserChoiceSelect($event.messageId, $event.choiceIndex, $event.choiceText)"
 				@workflow-end-link="onEndLink"
 				@request-expand="chatCollapsed = false"
 				@request-collapse="chatCollapsed = true"
 				@focus-input="chatCollapsed = false"
 				@layout-changed="onDockLayoutChanged"
 				@safe-area-changed="onDockSafeAreaChanged"
+				@locate-node="onFocusNode"
 			/>
 
 			<div class="aiwf-overlay-top-left">
@@ -876,6 +881,12 @@ import {
 	getBackendBaseUrl
 } from '../../network/backendConfig'
 import {
+	agentListConversations,
+	agentCreateConversation,
+	agentDeleteConversation,
+	agentGetConversationMessages
+} from '../../network/AgentChatService'
+import {
 	isElectron,
 	openFolderForPath,
 	downloadUrlToProjectRoot,
@@ -975,6 +986,7 @@ import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useA
 import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
 import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
 import { useAgentToolBridge, type ToolApprovalItem } from './node-business/chat/useAgentToolBridge'
+import { NEWUI2_NODE_CATALOG, NEWUI2_NODE_CATALOG_CATEGORIES, NEWUI2_NODE_TOP_CATEGORIES, NEWUI2_NODE_SPECIAL_GROUPS } from '../../aiworkflow/nodeLibrary'
 import {
 	comfyOutputForAnchor,
 	type ComfyLocalizedOutput
@@ -1078,6 +1090,9 @@ interface DwebRuntimeWindow {
 			onImageMarkupExported?: (callback: (payload: unknown) => void) => number
 			offImageMarkupExported?: (listenerId: number) => void
 		}
+		agent?: {
+			stream?: (payload: unknown) => AsyncGenerator<unknown>
+		}
 	}
 }
 
@@ -1162,6 +1177,8 @@ const shouldCollapseChatDrawerByViewport = () => true
 // NOTE: must be declared before any watch/computed that references it.
 const chatModelKey = ref<'deepseek' | 'nanobanana' | 'seedance' | 'codex'>('codex')
 const chatModelId = ref<string>('auto')
+const chatThinkingEffort = ref<'disabled' | 'low' | 'medium' | 'high'>('medium')
+const chatContextUsage = ref<{ tokenCount: number; budget: number; usage: number; truncated?: boolean } | null>(null)
 const agentConversationMode = ref<'agent' | 'ask' | 'plan'>('agent')
 const agentBackend = ref<AgentBackendType>('dvsagent')
 const chatCollapsed = ref(shouldCollapseChatDrawerByViewport())
@@ -3189,6 +3206,15 @@ onMounted(() => {
 	} catch (err) {
 		console.warn('[AIWorkflowPage] registerImageMarkupExportListener failed', err)
 	}
+	if (isElectronRuntime) {
+		const w = window as Window & DwebRuntimeWindow
+		if (w.dweb?.agent?.stream) {
+			agentBackend.value = 'dvsagent'
+		} else {
+			agentBackend.value = 'copilot'
+			console.warn('[AIWorkflowPage] DVSAgent IPC 不可用，已回退到 Copilot CLI')
+		}
+	}
 })
 
 onBeforeUnmount(() => {
@@ -3319,20 +3345,24 @@ function ensureProjectForLocalExec(opts?: { silent?: boolean }): Promise<number 
 }
 
 const loadCodexSessions = async () => {
-	const projectId = await ensureProjectForLocalExec({ silent: true })
-	if (projectId == null) {
-		codexSessions.value = []
-		codexActiveSessionId.value = ''
-		return
-	}
+	const projectPath = String(currentProjectRootPath.value || '').trim()
 	try {
-		const res = (await localExecChatService.localExecListSessions(projectId)) as LocalExecListResult
-		const items = Array.isArray(res?.items) ? res.items : []
-		codexSessions.value = items
-			.map((item: unknown) => mapCodexSession(item as CodexSessionRow))
-			.filter((s: LocalExecSessionItem) => !!s.id)
+		const res = await agentListConversations(projectPath)
+		if (!res?.ok) {
+			codexSessions.value = []
+			codexActiveSessionId.value = ''
+			return
+		}
+		const conversations = Array.isArray(res.conversations) ? res.conversations : []
+		codexSessions.value = conversations.map((c) => ({
+			id: c.id,
+			title: c.title || '新对话',
+			modelName: c.model || '',
+			status: 'active'
+		}))
 		if (!codexActiveSessionId.value && codexSessions.value.length) {
 			codexActiveSessionId.value = codexSessions.value[0].id
+			void onCodexSelectSession(codexActiveSessionId.value)
 		}
 	} catch {
 		codexSessions.value = []
@@ -3340,58 +3370,49 @@ const loadCodexSessions = async () => {
 }
 
 const onCodexCreateSession = async () => {
-	const projectId = await ensureProjectForLocalExec()
-	if (projectId == null) {
-		pushToast('无法创建 Copilot CLI 会话：自动保存项目失败。', 'warn')
-		return
-	}
+	const projectPath = String(currentProjectRootPath.value || '').trim()
 	try {
-		const created = (await localExecChatService.localExecCreateSession({
-			title: 'AI Workflow Copilot CLI 会话',
-			model: chatModelId.value,
-			projectId
-		})) as LocalExecListResult
-		if (created?.error) {
-			pushToast('创建 Copilot CLI 会话失败：' + String(created.error), 'warn')
+		const res = await agentCreateConversation('新对话', chatModelId.value, projectPath)
+		if (!res?.ok) {
+			pushToast('创建会话失败：' + String(res?.error || '未知错误'), 'warn')
 			return
 		}
-		const item = mapCodexSession(created as unknown as CodexSessionRow)
-		if (!item.id) {
-			pushToast('创建 Copilot CLI 会话失败：返回会话ID为空', 'warn')
+		const conversation = res.conversation as { id: string; title: string; model: string } | undefined
+		if (!conversation?.id) {
+			pushToast('创建会话失败：返回会话ID为空', 'warn')
 			return
+		}
+		const item = {
+			id: conversation.id,
+			title: conversation.title || '新对话',
+			modelName: conversation.model || '',
+			status: 'active'
 		}
 		codexSessions.value = [item, ...codexSessions.value.filter((s) => s.id !== item.id)]
 		codexActiveSessionId.value = item.id
 		chatMessages.value = []
 	} catch (err: unknown) {
-		pushToast('创建 Copilot CLI 会话失败：' + getErrorMessage(err), 'warn')
+		pushToast('创建会话失败：' + getErrorMessage(err), 'warn')
 	}
 }
 
 const onCodexSelectSession = async (sessionId: string) => {
-	const projectId = await ensureProjectForLocalExec()
-	if (projectId == null) {
-		pushToast('无法加载会话：自动保存项目失败。', 'warn')
-		return
-	}
 	const sid = String(sessionId || '').trim()
 	if (!sid) return
 	codexActiveSessionId.value = sid
 	codexFlowEvents.value = []
 	try {
-		const data = (await localExecChatService.localExecListMessages(
-			sid,
-			projectId
-		)) as LocalExecListResult
-		const items = Array.isArray(data?.items) ? data.items : []
-		chatMessages.value = items.map((m: unknown) => {
-			const msg = m as CodexMessageRow
-			return {
-				id: String(msg?.id || makeChatId()),
-				role: msg?.role === 'assistant' || msg?.role === 'system' ? msg.role : 'user',
-				content: String(msg?.content || '')
-			} as WorkflowChatMessage
-		})
+		const res = await agentGetConversationMessages(sid)
+		if (!res?.ok) {
+			chatMessages.value = []
+			return
+		}
+		const items = Array.isArray(res.messages) ? res.messages : []
+		chatMessages.value = items.map((m) => ({
+			id: String(m.id || makeChatId()),
+			role: m.role === 'assistant' || m.role === 'system' ? m.role : 'user',
+			content: String(m.content || '')
+		}))
 	} catch {
 		chatMessages.value = []
 	}
@@ -3429,21 +3450,13 @@ const onCodexApproval = async (payloadValue: {
 }
 
 const onCodexDeleteSession = async (sessionId: string) => {
-	const projectId = await ensureProjectForLocalExec()
-	if (projectId == null) {
-		pushToast('无法删除会话：自动保存项目失败。', 'warn')
-		return
-	}
 	const sid = String(sessionId || '').trim()
 	if (!sid) return
-	const ok = window.confirm('确认删除该 Copilot CLI 会话吗？')
+	const ok = window.confirm('确认删除该会话吗？')
 	if (!ok) return
-	const result = (await localExecChatService.localExecDeleteSession({
-		sessionId: sid,
-		projectId
-	})) as LocalExecListResult
-	if (result?.error) {
-		pushToast('删除会话失败：' + String(result.error), 'warn')
+	const res = await agentDeleteConversation(sid)
+	if (!res?.ok) {
+		pushToast('删除会话失败：' + String(res?.error || '未知错误'), 'warn')
 		return
 	}
 	codexSessions.value = codexSessions.value.filter((s) => s.id !== sid)
@@ -6453,11 +6466,13 @@ const { uploadLocalResourceAndGetUrl, persistExternalAssetToProject } =
 		importAssetIntoProjectScope: (payload) => importAssetIntoProjectScope(payload)
 	})
 
-const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate } = useAIWorkflowChatGeneration({
+const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate, handleUserChoiceSelect } = useAIWorkflowChatGeneration({
 	store,
 	chatModelKey,
 	chatDraft,
 	chatModelId,
+	chatThinkingEffort,
+	chatContextUsage,
 	chatMessages,
 	chatSending,
 	chatRunState,
@@ -6507,10 +6522,29 @@ const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupA
 	getSelectedNode: () => selectedNode.value,
 	getAllNodes: () => nodes.value,
 	getAllEdges: () => renderEdges.value,
+	getNodeTypes: (category) => {
+		const cat = String(category || '').trim().toLowerCase()
+		return NEWUI2_NODE_CATALOG
+			.filter((item) => {
+				if (!cat) return true
+				if (item.topCategoryId === cat) return true
+				if (item.primaryCategoryId === cat) return true
+				if ((item.categoryIds as string[])?.includes(cat)) return true
+				return false
+			})
+			.map((item) => ({
+				type: item.actionId,
+				label: item.label,
+				category: item.topCategoryId,
+			}))
+	},
 	getProjectInfo: () => ({
 		id: currentProjectId.value,
 		name: currentProjectName.value,
 	}),
+	viewport: computed(() => viewport.value),
+	canvasViewportSize: computed(() => canvasViewportSize.value),
+	focusNode: (nodeId) => onFocusNode(nodeId),
 })
 
 const { buildPersistableSnapshotWithOptions } = useAIWorkflowProjectSnapshotBuilder({
@@ -6866,10 +6900,6 @@ const {
 	onNodeSearchMenuUploadFile,
 	onLinkDropOnCanvas,
 	openNodeSearchMenu,
-	NEWUI2_NODE_CATALOG,
-	NEWUI2_NODE_CATALOG_CATEGORIES,
-	NEWUI2_NODE_TOP_CATEGORIES,
-	NEWUI2_NODE_SPECIAL_GROUPS
 } = useAIWorkflowContextMenu({
 	store,
 	selectedNodeId,
@@ -8185,6 +8215,12 @@ onMounted(() => {
 	if (isElectronRuntime) {
 		chatModelKey.value = 'codex'
 		agentConversationMode.value = 'agent'
+		const w = window as Window & DwebRuntimeWindow
+		if (w.dweb?.agent?.stream) {
+			agentBackend.value = 'dvsagent'
+		} else {
+			agentBackend.value = 'copilot'
+		}
 	}
 
 	if (isElectronRuntime && shouldAutoHelloOnLaunch && !autoHelloSent) {

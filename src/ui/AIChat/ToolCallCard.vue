@@ -21,6 +21,7 @@
 				<span v-else class="tool-call-card__icon-dot" />
 			</span>
 			<span class="tool-call-card__name">{{ displayToolName }}</span>
+			<span v-if="executionDescription" class="tool-call-card__description">{{ executionDescription }}</span>
 			<span class="tool-call-card__status-text">{{ statusLabel }}</span>
 			<span class="tool-call-card__toggle">
 				<svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'expanded': expanded }">
@@ -28,25 +29,27 @@
 				</svg>
 			</span>
 		</button>
-		<div v-show="expanded" class="tool-call-card__body">
-			<div v-if="hasArgs" class="tool-call-card__section">
-				<div class="tool-call-card__section-title">参数</div>
-				<pre class="tool-call-card__code">{{ formattedArgs }}</pre>
+		<Transition name="tool-call-body">
+			<div v-show="expanded" class="tool-call-card__body">
+				<div v-if="hasArgs" class="tool-call-card__section">
+					<div class="tool-call-card__section-title">参数</div>
+					<pre class="tool-call-card__code">{{ formattedArgs }}</pre>
+				</div>
+				<div v-if="status === 'completed' && result !== undefined" class="tool-call-card__section">
+					<div class="tool-call-card__section-title">结果</div>
+					<pre class="tool-call-card__code tool-call-card__code--result">{{ formattedResult }}</pre>
+				</div>
+				<div v-if="status === 'error' && error" class="tool-call-card__section">
+					<div class="tool-call-card__section-title">错误</div>
+					<pre class="tool-call-card__code tool-call-card__code--error">{{ error }}</pre>
+				</div>
 			</div>
-			<div v-if="status === 'completed' && result !== undefined" class="tool-call-card__section">
-				<div class="tool-call-card__section-title">结果</div>
-				<pre class="tool-call-card__code tool-call-card__code--result">{{ formattedResult }}</pre>
-			</div>
-			<div v-if="status === 'error' && error" class="tool-call-card__section">
-				<div class="tool-call-card__section-title">错误</div>
-				<pre class="tool-call-card__code tool-call-card__code--error">{{ error }}</pre>
-			</div>
-		</div>
+		</Transition>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 type ToolCallStatus = 'pending' | 'running' | 'completed' | 'error'
 
@@ -57,13 +60,26 @@ interface Props {
 	result?: unknown
 	error?: string
 	defaultExpanded?: boolean
+	autoCollapsed?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	defaultExpanded: false,
+	autoCollapsed: false,
 })
 
-const expanded = ref(props.defaultExpanded)
+const expanded = ref(props.defaultExpanded && !props.autoCollapsed)
+
+watch(
+	() => props.autoCollapsed,
+	(newVal) => {
+		if (newVal) {
+			setTimeout(() => {
+				expanded.value = false
+			}, 300)
+		}
+	}
+)
 
 const toggleExpanded = () => {
 	expanded.value = !expanded.value
@@ -82,6 +98,41 @@ const statusLabel = computed(() => {
 		case 'error': return '出错'
 		default: return props.status
 	}
+})
+
+const executionDescription = computed(() => {
+	if (props.status !== 'completed') return ''
+	
+	const toolDescMap: Record<string, (args: Record<string, unknown>) => string> = {
+		create_node: (args) => {
+			const type = String(args.type || '')
+			const title = String(args.title || '')
+			return title ? `创建「${title}」` : `创建 ${type.replace(/_/g, ' ')}`
+		},
+		update_node_config: (args) => {
+			const nodeId = String(args.nodeId || '')
+			return `更新节点配置 ${nodeId.slice(-8)}`
+		},
+		delete_node: (args) => {
+			const nodeId = String(args.nodeId || '')
+			return `删除节点 ${nodeId.slice(-8)}`
+		},
+		connect_nodes: (args) => {
+			const from = String(args.fromNodeId || '')
+			const to = String(args.toNodeId || '')
+			return `连接 ${from.slice(-8)} → ${to.slice(-8)}`
+		},
+		list_node_types: () => '获取节点类型列表',
+		get_blueprint_state: () => '获取蓝图状态',
+		get_project_info: () => '获取项目信息',
+	}
+	
+	const descFn = toolDescMap[props.toolName]
+	if (descFn && props.args) {
+		return descFn(props.args)
+	}
+	
+	return ''
 })
 
 const hasArgs = computed(() => {
@@ -111,34 +162,35 @@ const formattedResult = computed(() => {
 
 <style scoped>
 .tool-call-card {
-	border: 1px solid var(--tool-border, rgba(148, 163, 184, 0.2));
-	border-radius: 6px;
-	background: var(--tool-bg, rgba(30, 41, 59, 0.5));
+	border: 1px solid var(--tool-border, rgba(148, 163, 184, 0.15));
+	border-radius: 3px;
+	background: var(--tool-bg, rgba(30, 41, 59, 0.2));
 	overflow: hidden;
 	transition: border-color 200ms ease;
+	margin-bottom: 4px;
 }
 
 .tool-call-card.status-pending {
-	--tool-border: rgba(148, 163, 184, 0.3);
-	--tool-bg: rgba(30, 41, 59, 0.3);
+	--tool-border: rgba(148, 163, 184, 0.2);
+	--tool-bg: rgba(30, 41, 59, 0.15);
 	--tool-accent: #94a3b8;
 }
 
 .tool-call-card.status-running {
-	--tool-border: rgba(59, 130, 246, 0.4);
-	--tool-bg: rgba(30, 58, 138, 0.2);
+	--tool-border: rgba(59, 130, 246, 0.3);
+	--tool-bg: rgba(30, 58, 138, 0.1);
 	--tool-accent: #3b82f6;
 }
 
 .tool-call-card.status-completed {
-	--tool-border: rgba(16, 185, 129, 0.3);
-	--tool-bg: rgba(6, 78, 59, 0.2);
+	--tool-border: rgba(16, 185, 129, 0.2);
+	--tool-bg: rgba(6, 78, 59, 0.08);
 	--tool-accent: #10b981;
 }
 
 .tool-call-card.status-error {
-	--tool-border: rgba(239, 68, 68, 0.4);
-	--tool-bg: rgba(127, 29, 29, 0.2);
+	--tool-border: rgba(239, 68, 68, 0.3);
+	--tool-bg: rgba(127, 29, 29, 0.1);
 	--tool-accent: #ef4444;
 }
 
@@ -146,33 +198,33 @@ const formattedResult = computed(() => {
 	width: 100%;
 	display: flex;
 	align-items: center;
-	gap: 10px;
-	padding: 10px 12px;
+	gap: 6px;
+	padding: 4px 8px;
 	border: none;
 	background: transparent;
 	color: var(--tool-accent);
-	font-size: 13px;
+	font-size: 11px;
 	cursor: pointer;
 	text-align: left;
 	transition: background-color 150ms ease;
 }
 
 .tool-call-card__header:hover {
-	background: color-mix(in srgb, var(--tool-accent) 8%, transparent);
+	background: color-mix(in srgb, var(--tool-accent) 5%, transparent);
 }
 
 .tool-call-card__status-icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 18px;
-	height: 18px;
+	width: 12px;
+	height: 12px;
 	flex-shrink: 0;
 }
 
 .tool-call-card__spinner {
-	width: 16px;
-	height: 16px;
+	width: 10px;
+	height: 10px;
 	animation: tool-spin 1s linear infinite;
 }
 
@@ -182,18 +234,18 @@ const formattedResult = computed(() => {
 }
 
 .tool-call-card__icon-check {
-	width: 18px;
-	height: 18px;
+	width: 12px;
+	height: 12px;
 }
 
 .tool-call-card__icon-error {
-	width: 18px;
-	height: 18px;
+	width: 12px;
+	height: 12px;
 }
 
 .tool-call-card__icon-dot {
-	width: 8px;
-	height: 8px;
+	width: 5px;
+	height: 5px;
 	border-radius: 50%;
 	background: var(--tool-accent);
 }
@@ -203,12 +255,24 @@ const formattedResult = computed(() => {
 	font-weight: 500;
 	color: var(--wf-text-primary, #e5e7eb);
 	text-transform: capitalize;
+	font-size: 11px;
+}
+
+.tool-call-card__description {
+	font-size: 10px;
+	color: var(--wf-text-muted, #9ca3af);
+	flex-shrink: 0;
+	margin-left: 6px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 180px;
 }
 
 .tool-call-card__status-text {
-	font-size: 12px;
+	font-size: 10px;
 	color: var(--tool-accent);
-	opacity: 0.9;
+	opacity: 0.8;
 	flex-shrink: 0;
 }
 
@@ -216,16 +280,16 @@ const formattedResult = computed(() => {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 16px;
-	height: 16px;
+	width: 12px;
+	height: 12px;
 	color: var(--wf-text-muted, #9ca3af);
-	opacity: 0.7;
+	opacity: 0.6;
 	flex-shrink: 0;
 }
 
 .tool-call-card__toggle svg {
-	width: 14px;
-	height: 14px;
+	width: 10px;
+	height: 10px;
 	transition: transform 200ms ease;
 }
 
@@ -234,35 +298,35 @@ const formattedResult = computed(() => {
 }
 
 .tool-call-card__body {
-	padding: 0 12px 12px;
+	padding: 0 8px 8px;
 	border-top: 1px solid var(--tool-border);
 }
 
 .tool-call-card__section {
-	margin-top: 10px;
+	margin-top: 6px;
 }
 
 .tool-call-card__section-title {
-	font-size: 11px;
+	font-size: 9px;
 	font-weight: 500;
 	color: var(--wf-text-muted, #9ca3af);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
-	margin-bottom: 6px;
+	margin-bottom: 3px;
 }
 
 .tool-call-card__code {
 	margin: 0;
-	padding: 8px 10px;
-	border-radius: 4px;
-	background: rgba(0, 0, 0, 0.3);
+	padding: 4px 6px;
+	border-radius: 2px;
+	background: rgba(0, 0, 0, 0.2);
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-	font-size: 11px;
-	line-height: 1.5;
+	font-size: 10px;
+	line-height: 1.4;
 	color: var(--wf-text-secondary, #d1d5db);
 	white-space: pre-wrap;
 	word-break: break-all;
-	max-height: 160px;
+	max-height: 100px;
 	overflow-y: auto;
 }
 
@@ -272,5 +336,25 @@ const formattedResult = computed(() => {
 
 .tool-call-card__code--error {
 	color: #fca5a5;
+}
+
+.tool-call-body-enter-active,
+.tool-call-body-leave-active {
+	transition: all 300ms ease;
+	overflow: hidden;
+}
+
+.tool-call-body-enter-from,
+.tool-call-body-leave-to {
+	max-height: 0;
+	opacity: 0;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.tool-call-body-enter-to,
+.tool-call-body-leave-from {
+	max-height: 200px;
+	opacity: 1;
 }
 </style>

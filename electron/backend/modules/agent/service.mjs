@@ -14,7 +14,32 @@ import { DeepSeekAdapter } from '../chat/adapters/deepseek.mjs';
 import { BytedanceAdapter } from '../chat/adapters/bytedance.mjs';
 import { GeminiAdapter } from '../chat/adapters/gemini.mjs';
 
-const MAX_TOOL_CALLS = 10; // 工具调用循环保护
+const MAX_TOOL_CALLS = 10;
+
+// 各模型的上下文预算（输入 token 上限）
+const MODEL_CONTEXT_BUDGETS = {
+  'doubao-seed-1-6': 224000,
+  'doubao-seed-1-6-flash': 224000,
+  'doubao-seed-1-6-thinking': 224000,
+  'doubao-seed-1-6-vision': 224000,
+  'doubao-seed-2-0': 224000,
+  'doubao-seed-2-1': 224000,
+  'doubao-seed-evolving': 224000,
+  'deepseek-v3': 96000,
+  'deepseek-v3-1': 96000,
+  'deepseek-v3-2': 96000,
+  'deepseek-v4': 96000,
+  'deepseek-r1': 256000,
+  'deepseek-r3': 256000,
+  'kimi-k2': 256000,
+  'glm-4': 128000,
+  'glm-4-5': 128000,
+  'qwen2': 128000,
+  'qwen3': 128000,
+};
+
+// 默认上下文预算
+const DEFAULT_CONTEXT_BUDGET = 96000;
 
 /**
  * 获取 API 适配器
@@ -35,9 +60,37 @@ function getAdapter(apiSource, config = {}) {
 }
 
 /**
- * 构建消息列表（支持多模态）
+ * 估算文本的 token 数量
+ * 中文/日文/韩文等 CJK 字符约 1.3 tokens，英文约 0.75 tokens
  */
-function buildMessages(content, attachments = [], context = null) {
+function estimateTokens(text) {
+  if (!text) return 0;
+  const str = String(text);
+  // CJK 字符
+  const cjkChars = str.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/g) || [];
+  // 其他字符
+  const otherChars = str.length - cjkChars.length;
+  // 粗略估算：CJK 字符约 1.3 tokens，其他约 0.75 tokens
+  return Math.ceil(cjkChars.length * 1.3 + otherChars * 0.75);
+}
+
+/**
+ * 根据模型 ID 获取上下文预算
+ */
+function getContextBudget(modelId) {
+  const id = String(modelId || '').toLowerCase();
+  for (const [pattern, budget] of Object.entries(MODEL_CONTEXT_BUDGETS)) {
+    if (id.includes(pattern)) {
+      return budget;
+    }
+  }
+  return DEFAULT_CONTEXT_BUDGET;
+}
+
+/**
+ * 构建消息列表（支持多模态和对话历史）
+ */
+function buildMessages(content, attachments = [], context = null, history = [], modelId = '') {
   const messages = [];
 
   // 添加上下文（system prompt）
@@ -46,6 +99,12 @@ function buildMessages(content, attachments = [], context = null) {
     if (contextPrompt) {
       messages.push({ role: 'system', content: contextPrompt });
     }
+  }
+
+  // 添加对话历史（过滤掉 system 消息，因为系统提示已经在上面添加了）
+  if (Array.isArray(history) && history.length > 0) {
+    const filteredHistory = history.filter((m) => m.role !== 'system');
+    messages.push(...filteredHistory);
   }
 
   // 添加用户消息（支持多模态）
@@ -67,7 +126,20 @@ function buildMessages(content, attachments = [], context = null) {
     messages.push({ role: 'user', content });
   }
 
-  return messages;
+  // 估算 tokens
+  const tokenCount = messages.reduce((sum, msg) => {
+    const msgContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+    return sum + estimateTokens(msgContent);
+  }, 0);
+
+  const budget = getContextBudget(modelId);
+
+  return {
+    messages,
+    tokenCount,
+    budget,
+    usage: Math.min(100, Math.round((tokenCount / budget) * 100))
+  };
 }
 
 /**
@@ -209,6 +281,7 @@ function parseToolArguments(args) {
  * @param {object} payload.context - 工作流上下文
  * @param {Array} payload.tools - 可用工具列表
  * @param {object} payload.apiKeys - API Key 配置
+ * @param {string} payload.thinkingEffort - 思考深度配置 (disabled/low/medium/high)
  */
 export async function* streamAgentMessage(ctx, payload) {
   const p = payload || {};
@@ -219,12 +292,13 @@ export async function* streamAgentMessage(ctx, payload) {
   const context = p.context || null;
   const tools = Array.isArray(p.tools) ? p.tools : [];
   const apiKeys = p.apiKeys || {};
+  const thinkingEffort = String(p.thinkingEffort || 'medium').toLowerCase();
 
   // 检测是否为 CLI 模式
   const cliMode = p.cliMode === true || ['claude', 'codex', 'copilot'].includes(apiSource);
 
   if (!content) {
-    yield JSON.stringify({ type: 'error', error: 'content is required' });
+    yield { type: 'error', message: 'content is required' };
     return;
   }
 
@@ -235,7 +309,7 @@ export async function* streamAgentMessage(ctx, payload) {
   }
 
   // API 模式（原逻辑）
-  yield* streamViaAPI(ctx, { ...p, content, modelId, apiSource, context, tools, apiKeys });
+  yield* streamViaAPI(ctx, { ...p, content, modelId, apiSource, context, tools, apiKeys, thinkingEffort });
 }
 
 /**
@@ -263,10 +337,10 @@ async function* streamViaCLI(ctx, payload) {
     // 检查 CLI 可用性
     const availability = await cliAdapterManager.checkAvailability(cliAdapter, cliConfig);
     if (!availability.available) {
-      yield JSON.stringify({ 
+      yield { 
         type: 'error', 
-        error: `${availability.status}: ${cliAdapter} is not available - ${availability.error || ''}` 
-      });
+        message: `${availability.status}: ${cliAdapter} is not available - ${availability.error || ''}` 
+      };
       return;
     }
 
@@ -275,46 +349,69 @@ async function* streamViaCLI(ctx, payload) {
       cwd: cliConfig.cwd || process.cwd(),
     }, cliConfig);
 
-    yield JSON.stringify({ type: 'session_start', sessionId, adapter: cliAdapter });
+    yield { type: 'session_start', sessionId, adapter: cliAdapter };
 
     // 发送消息
     let accumulatedContent = '';
 
     for await (const event of cliAdapterManager.sendMessage(sessionId, prompt, {})) {
       // 事件可能是字符串（JSON）或对象
+      let parsedEvent = event;
       if (typeof event === 'string') {
         try {
-          const parsed = JSON.parse(event);
-          if (parsed.type === 'text_delta') {
-            accumulatedContent += parsed.content;
-            yield event;
-          } else if (parsed.type === 'tool_call_start') {
-            yield event;
-          } else if (parsed.type === 'tool_call_end') {
-            yield event;
-          } else if (parsed.type === 'error') {
-            yield event;
-          } else if (parsed.type === 'done') {
-            yield event;
-          }
+          parsedEvent = JSON.parse(event);
         } catch {
-          // 如果不是 JSON，当作文本处理
           accumulatedContent += event;
-          yield JSON.stringify({ type: 'text_delta', content: event });
+          yield { type: 'text', content: event };
+          continue;
         }
-      } else if (event && typeof event === 'object') {
-        if (event.type === 'text_delta') {
-          accumulatedContent += event.content;
+      }
+      
+      if (parsedEvent && typeof parsedEvent === 'object') {
+        if (parsedEvent.type === 'text_delta') {
+          accumulatedContent += parsedEvent.content || '';
+          yield { type: 'text', content: parsedEvent.content || '' };
+        } else if (parsedEvent.type === 'thinking_delta') {
+          yield { type: 'thinking_delta', content: parsedEvent.content || '' };
+        } else if (parsedEvent.type === 'tool_call_start') {
+          yield {
+            type: 'tool_call_start',
+            toolCallId: parsedEvent.id || parsedEvent.toolCallId || '',
+            tool: parsedEvent.name || parsedEvent.tool || '',
+            input: parsedEvent.arguments || parsedEvent.input
+          };
+        } else if (parsedEvent.type === 'tool_call_end') {
+          yield {
+            type: 'tool_call_end',
+            toolCallId: parsedEvent.id || parsedEvent.toolCallId || '',
+            tool: parsedEvent.name || parsedEvent.tool || '',
+            output: parsedEvent.result || parsedEvent.output
+          };
+        } else if (parsedEvent.type === 'tool_call_error') {
+          yield {
+            type: 'tool_call_error',
+            toolCallId: parsedEvent.id || parsedEvent.toolCallId || '',
+            tool: parsedEvent.name || parsedEvent.tool || '',
+            error: parsedEvent.error || parsedEvent.message || 'Unknown tool call error'
+          };
+        } else if (parsedEvent.type === 'error') {
+          yield { type: 'error', message: parsedEvent.error || parsedEvent.message || 'Unknown error' };
+        } else if (parsedEvent.type === 'session_start' || parsedEvent.type === 'session_end') {
+          // 内部事件，不转发给前端
+        } else if (parsedEvent.type === 'done') {
+          // skip, we'll send our own done
+        } else {
+          // pass through other events
+          yield parsedEvent;
         }
-        yield JSON.stringify(event);
       }
     }
 
-    yield JSON.stringify({ type: 'done', content: accumulatedContent });
+    yield { type: 'done', content: accumulatedContent };
 
   } catch (err) {
     logger.error(`Agent CLI stream error: ${err.message}`);
-    yield JSON.stringify({ type: 'error', error: err.message });
+    yield { type: 'error', message: err.message };
   } finally {
     // 结束会话
     if (sessionId) {
@@ -324,6 +421,49 @@ async function* streamViaCLI(ctx, payload) {
     }
   }
 }
+
+/**
+ * 尝试从多个 provider key 名称中获取 API Key
+ */
+function tryGetApiKey(ctx, ...names) {
+  const keyRepo = ctx.localdb?.apiKeys;
+  if (!keyRepo || typeof keyRepo.getPlaintext !== 'function') return '';
+  for (const name of names) {
+    try {
+      const r = keyRepo.getPlaintext(name);
+      if (r && r.ok && r.plaintext && String(r.plaintext).trim()) {
+        return String(r.plaintext).trim();
+      }
+    } catch {}
+  }
+  return '';
+}
+
+/**
+ * 根据 apiSource 解析对应的 API Key（支持多个别名）
+ */
+function resolveApiKey(ctx, apiSource) {
+  switch (apiSource) {
+    case 'bytedance':
+      return tryGetApiKey(ctx, 'bytedance_ark', 'bytedance_text', 'bytedance', 'doubao', 'ark', 'volcengine');
+    case 'deepseek':
+      return tryGetApiKey(ctx, 'deepseek', 'deepseek_api', 'deepseek-chat');
+    case 'gemini':
+      return tryGetApiKey(ctx, 'gemini', 'google_gemini', 'gemini_api');
+    case 'openai':
+      return tryGetApiKey(ctx, 'openai', 'openai_api');
+    default:
+      return tryGetApiKey(ctx, apiSource);
+  }
+}
+
+// 各 apiSource 对应的 baseUrl
+const BASE_URLS = {
+  deepseek: 'https://api.deepseek.com/v1',
+  openai: 'https://api.openai.com/v1',
+  bytedance: 'https://ark.cn-beijing.volces.com/api/v3',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta'
+};
 
 /**
  * API 模式流式对话（原逻辑）
@@ -337,37 +477,31 @@ async function* streamViaAPI(ctx, payload) {
   const context = p.context || null;
   const tools = Array.isArray(p.tools) ? p.tools : [];
   const apiKeys = p.apiKeys || {};
-
-  // 构建消息列表
-  const messages = buildMessages(content, attachments, context);
+  const thinkingEffort = String(p.thinkingEffort || 'medium').toLowerCase();
+  const history = Array.isArray(p.history) ? p.history : [];
 
   // 获取 API 配置
   let baseUrl, apiKey;
-  
-  // 优先使用提供的 API Key
-  if (apiKeys[apiSource]) {
+
+  baseUrl = BASE_URLS[apiSource] || BASE_URLS.deepseek;
+
+  // 优先使用前端传入的 API Key
+  if (apiKeys && apiKeys[apiSource]) {
     apiKey = apiKeys[apiSource];
-    baseUrl = apiSource === 'deepseek' 
-      ? 'https://api.deepseek.com/v1'
-      : apiSource === 'openai'
-        ? 'https://api.openai.com/v1'
-        : 'https://ark.cn-beijing.volces.com/api/v3';
   } else {
-    // 从上下文获取 API Key
-    const keyRepo = ctx.localdb?.apiKeys;
-    if (keyRepo) {
-      if (apiSource === 'deepseek' || apiSource === 'openai') {
-        const result = keyRepo.getPlaintext(apiSource === 'openai' ? 'openai' : 'deepseek');
-        apiKey = result.ok ? result.plaintext : '';
-      }
-    }
-    baseUrl = apiSource === 'deepseek' || apiSource === 'openai'
-      ? 'https://api.deepseek.com/v1'
-      : 'https://ark.cn-beijing.volces.com/api/v3';
+    // 从本地数据库获取（支持多个别名）
+    apiKey = resolveApiKey(ctx, apiSource);
   }
 
   if (!apiKey) {
-    yield JSON.stringify({ type: 'error', error: `${apiSource} API key is not configured` });
+    const vendorLabels = {
+      deepseek: 'DeepSeek',
+      bytedance: '火山方舟',
+      gemini: 'Gemini',
+      openai: 'OpenAI'
+    };
+    const vendorLabel = vendorLabels[apiSource] || apiSource;
+    yield { type: 'error', message: `未检测到 ${vendorLabel} 的 API Key，请先在设置中配置` };
     return;
   }
 
@@ -377,8 +511,13 @@ async function* streamViaAPI(ctx, payload) {
   // 获取可用工具列表（如果未提供，从 MCP 获取）
   let availableTools = tools;
   if (availableTools.length === 0) {
-    const toolsResult = await mcpServerManager.listTools(null);
-    availableTools = toolsResult.tools || [];
+    try {
+      const toolsResult = await mcpServerManager.listTools(null);
+      availableTools = toolsResult.tools || [];
+    } catch (mcpErr) {
+      logger.warn(`Failed to list MCP tools, proceeding without tools: ${mcpErr.message}`);
+      availableTools = [];
+    }
   }
 
   // 工具调用循环
@@ -387,12 +526,35 @@ async function* streamViaAPI(ctx, payload) {
   let reasoningContent = '';
 
   try {
-    // 第一轮：发送消息给模型
-    let currentMessages = [...messages];
+    // 构建消息列表（包含历史）
+    let buildResult = buildMessages(content, attachments, context, history, modelId);
+    let currentMessages = [...buildResult.messages];
+
+    // 如果 token 数量超过预算的 80%，进行截断
+    const budget = buildResult.budget;
+    const TRUNCATION_THRESHOLD = 0.8;
+
+    while (buildResult.tokenCount > budget * TRUNCATION_THRESHOLD) {
+      if (history.length <= 0) break;
+
+      const removedPair = history.splice(0, 2);
+      buildResult = buildMessages(content, attachments, context, history, modelId);
+      currentMessages = [...buildResult.messages];
+    }
+
+    // 发送上下文使用率事件
+    yield {
+      type: 'context_usage',
+      tokenCount: buildResult.tokenCount,
+      budget: buildResult.budget,
+      usage: buildResult.usage,
+      truncated: history.length < p.history?.length
+    };
 
     while (toolCallCount < MAX_TOOL_CALLS) {
       const stream = adapter.streamWithTools(modelId, currentMessages, availableTools, {
-        httpClient: ctx.httpClient
+        httpClient: ctx.httpClient,
+        thinkingEffort
       });
 
       let accumulatedContent = '';
@@ -402,31 +564,32 @@ async function* streamViaAPI(ctx, payload) {
         if (event.type === 'text_delta') {
           accumulatedContent += event.delta;
           finalContent += event.delta;
-          yield JSON.stringify({ type: 'text_delta', content: event.delta });
+          yield { type: 'text', content: event.delta };
         } else if (event.type === 'thinking_delta') {
           reasoningContent += event.delta;
-          yield JSON.stringify({ type: 'thinking_delta', content: event.delta });
+          yield { type: 'thinking_delta', content: event.delta };
         } else if (event.type === 'tool_call') {
           hasToolCall = true;
           toolCallCount++;
 
-          yield JSON.stringify({
+          yield {
             type: 'tool_call_start',
-            id: event.id,
-            name: event.name,
-            arguments: event.arguments
-          });
+            toolCallId: event.id,
+            tool: event.name,
+            input: event.arguments
+          };
 
           // 执行工具调用
           try {
             const args = parseToolArguments(event.arguments);
             const result = await mcpServerManager.callTool(null, event.name, args, event.id);
 
-            yield JSON.stringify({
+            yield {
               type: 'tool_call_end',
-              id: event.id,
-              result
-            });
+              toolCallId: event.id,
+              tool: event.name,
+              output: result
+            };
 
             // 将工具结果添加回消息列表
             currentMessages.push({
@@ -450,11 +613,12 @@ async function* streamViaAPI(ctx, payload) {
             });
 
           } catch (toolErr) {
-            yield JSON.stringify({
+            yield {
               type: 'tool_call_error',
-              id: event.id,
+              toolCallId: event.id,
+              tool: event.name,
               error: toolErr.message
-            });
+            };
           }
         } else if (event.type === 'done') {
           if (event.content) {
@@ -476,17 +640,17 @@ async function* streamViaAPI(ctx, payload) {
     }
 
     if (toolCallCount >= MAX_TOOL_CALLS) {
-      yield JSON.stringify({
+      yield {
         type: 'error',
-        error: `Max tool call iterations (${MAX_TOOL_CALLS}) reached`
-      });
+        message: `Max tool call iterations (${MAX_TOOL_CALLS}) reached`
+      };
     }
 
-    yield JSON.stringify({ type: 'done', content: finalContent, reasoning: reasoningContent });
+    yield { type: 'done', content: finalContent, reasoning: reasoningContent };
 
   } catch (err) {
     logger.error(`Agent stream error: ${err.message}`);
-    yield JSON.stringify({ type: 'error', error: err.message });
+    yield { type: 'error', message: err.message };
   }
 }
 
@@ -520,4 +684,111 @@ export function abortAgent(ctx, payload) {
   // 暂时没有需要清理的状态
   // 后续如果要管理流式 AbortController，在这里处理
   return { ok: true };
+}
+
+/**
+ * 获取 Agent 会话列表
+ */
+export function listAgentConversations(ctx, payload) {
+  const projectPath = String(payload?.projectPath || '').trim();
+  const repo = ctx.localdb?.chatConversations;
+  if (!repo || typeof repo.list !== 'function') {
+    return { ok: false, error: 'chatConversations repo not available' };
+  }
+  try {
+    const conversations = repo.list({ projectPath });
+    return { ok: true, conversations };
+  } catch (err) {
+    logger.error(`List agent conversations error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * 创建 Agent 会话
+ */
+export function createAgentConversation(ctx, payload) {
+  const title = String(payload?.title || '').trim() || '新对话';
+  const model = String(payload?.model || '').trim();
+  const projectPath = String(payload?.projectPath || '').trim();
+  const repo = ctx.localdb?.chatConversations;
+  if (!repo || typeof repo.create !== 'function') {
+    return { ok: false, error: 'chatConversations repo not available' };
+  }
+  try {
+    const result = repo.create({ title, model, projectPath });
+    if (!result.ok) {
+      return result;
+    }
+    return { ok: true, conversation: result.conversation };
+  } catch (err) {
+    logger.error(`Create agent conversation error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * 删除 Agent 会话
+ */
+export function deleteAgentConversation(ctx, payload) {
+  const id = String(payload?.id || '').trim();
+  if (!id) {
+    return { ok: false, error: 'id is required' };
+  }
+  const repo = ctx.localdb?.chatConversations;
+  if (!repo || typeof repo.remove !== 'function') {
+    return { ok: false, error: 'chatConversations repo not available' };
+  }
+  try {
+    const result = repo.remove(id);
+    return result;
+  } catch (err) {
+    logger.error(`Delete agent conversation error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * 获取 Agent 会话消息
+ */
+export function getAgentConversationMessages(ctx, payload) {
+  const conversationId = String(payload?.conversationId || '').trim();
+  if (!conversationId) {
+    return { ok: false, error: 'conversationId is required' };
+  }
+  const repo = ctx.localdb?.chatConversations;
+  if (!repo || typeof repo.getMessages !== 'function') {
+    return { ok: false, error: 'chatConversations repo not available' };
+  }
+  try {
+    const messages = repo.getMessages(conversationId);
+    return { ok: true, messages };
+  } catch (err) {
+    logger.error(`Get agent conversation messages error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * 添加 Agent 会话消息
+ */
+export function addAgentConversationMessage(ctx, payload) {
+  const conversationId = String(payload?.conversationId || '').trim();
+  const role = String(payload?.role || 'user').trim() || 'user';
+  const content = String(payload?.content || '');
+  const model = String(payload?.model || '').trim();
+  if (!conversationId) {
+    return { ok: false, error: 'conversationId is required' };
+  }
+  const repo = ctx.localdb?.chatConversations;
+  if (!repo || typeof repo.addMessage !== 'function') {
+    return { ok: false, error: 'chatConversations repo not available' };
+  }
+  try {
+    const result = repo.addMessage({ conversationId, role, content, model });
+    return result;
+  } catch (err) {
+    logger.error(`Add agent conversation message error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
 }

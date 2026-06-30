@@ -7,7 +7,7 @@ import type {
 import type { SceneDecomposeInputItem } from './sceneDecomposeShared'
 import { isMeshyRemoteUrl } from '../meshy/useAIWorkflowMeshyAssets'
 
-const SUPPORTED_MODEL_EXTENSIONS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
+export const SUPPORTED_MODEL_EXTENSIONS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
 
 const fixDvcacheBinPath = (p: string): string => {
 	if (!p) return p
@@ -78,16 +78,38 @@ const normalizeModelPaths = <T extends {
 	return result
 }
 
-const detectModelFormatFromPath = (pathOrUrl: string): WorkflowModelFormat | undefined => {
+export const detectModelFormatFromPath = (pathOrUrl: string): WorkflowModelFormat | undefined => {
 	if (!pathOrUrl) return undefined
 	const lower = String(pathOrUrl).toLowerCase().trim()
+
+	const detectFromPathString = (p: string): WorkflowModelFormat | undefined => {
+		for (const ext of SUPPORTED_MODEL_EXTENSIONS) {
+			if (p.endsWith(ext)) {
+				return ext.substring(1) as WorkflowModelFormat
+			}
+		}
+		return undefined
+	}
+
 	const queryIndex = lower.indexOf('?')
 	const pathWithoutQuery = queryIndex >= 0 ? lower.substring(0, queryIndex) : lower
-	for (const ext of SUPPORTED_MODEL_EXTENSIONS) {
-		if (pathWithoutQuery.endsWith(ext)) {
-			return ext.substring(1) as WorkflowModelFormat
-		}
+	const directResult = detectFromPathString(pathWithoutQuery)
+	if (directResult) return directResult
+
+	if (lower.startsWith('dweb://') && queryIndex >= 0) {
+		try {
+			const queryStr = lower.substring(queryIndex + 1)
+			const params = new URLSearchParams(queryStr)
+			const pathParam = params.get('path')
+			if (pathParam) {
+				const decodedPath = decodeURIComponent(pathParam).toLowerCase()
+				const pathQueryIndex = decodedPath.indexOf('?')
+				const innerPath = pathQueryIndex >= 0 ? decodedPath.substring(0, pathQueryIndex) : decodedPath
+				return detectFromPathString(innerPath)
+			}
+		} catch {}
 	}
+
 	return undefined
 }
 
