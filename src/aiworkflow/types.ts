@@ -349,7 +349,7 @@ export type WorkflowUnrealResolvedModelBinding = {
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowUnrealResolvedLayoutSlot = {
@@ -446,7 +446,42 @@ export type WorkflowUnrealExportNodeSettings = {
 	lastMaterialOverrideCount?: number
 	lastExportAt?: number
 	autoPoll?: boolean
+
+	editorStatus?: 'unknown' | 'checking' | 'not-running' | 'running'
+	editorCheckedAt?: number
+	editorProcess?: {
+		pid?: number
+		projectPath?: string
+		projectName?: string
+		engineVersion?: string
+	} | null
+	editorProcesses?: Array<{
+		pid: number
+		projectPath: string
+		projectName: string
+	}>
+
+	pluginStatus?:
+		| 'unknown'
+		| 'checking'
+		| 'not-installed'
+		| 'installed'
+		| 'installing'
+		| 'install-error'
+		| 'needs-restart'
+	pluginCheckedAt?: number
+	pluginVersion?: string
+	pluginInstallError?: string
+	pluginInstallConfig?: {
+		targetProjectPath?: string
+	}
+
+	assetRootPath?: string
+	assetPathValidation?: 'valid' | 'invalid' | 'checking'
+	assetPathValidationError?: string
 }
+
+export type WorkflowModelFormat = 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae'
 
 export type WorkflowSceneLayoutManualModelBinding = {
 	objectId: string
@@ -457,7 +492,7 @@ export type WorkflowSceneLayoutManualModelBinding = {
 	modelAssetPath?: string
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowSceneLayoutModelBinding = {
@@ -474,7 +509,7 @@ export type WorkflowSceneLayoutModelBinding = {
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowSceneDecomposeOutput = {
@@ -602,7 +637,7 @@ export type WorkflowModel3DNodeSettings = {
 	modelGenerationSource?: 'upload' | 'comfyui' | 'meshy'
 	meshyModelSettings?: WorkflowMeshyModelSettings
 	modelUrl?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 	modelSourceName?: string
 	modelSourcePath?: string
 	modelProjectRelativePath?: string

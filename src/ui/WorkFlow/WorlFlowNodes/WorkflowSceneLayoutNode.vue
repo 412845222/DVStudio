@@ -82,7 +82,7 @@
 						ref="modelFileInputRef"
 						class="wf-scene-layout-model-file-input"
 						type="file"
-						accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+						accept=".glb,.gltf,.fbx,.obj,.stl,.dae,model/gltf-binary,model/gltf+json,application/octet-stream"
 						@change="onSceneLayoutModelFileChange"
 					/>
 					<WorkflowThreePreviewShell

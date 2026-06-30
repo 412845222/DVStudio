@@ -1,5 +1,5 @@
 <template>
-	<div class="thinking-block" :class="{ 'is-thinking': isThinking }">
+	<div class="thinking-block" :class="{ 'is-thinking': isThinking, 'is-collapsed': collapsed }">
 		<button
 			class="thinking-block__header"
 			type="button"
@@ -55,18 +55,33 @@ const toggleCollapsed = () => {
 }
 
 watch(() => props.isThinking, (val) => {
-	if (val && collapsed.value) {
+	if (val) {
 		collapsed.value = false
 	}
 })
+
+watch(() => props.defaultCollapsed, (val) => {
+	if (!props.isThinking) {
+		collapsed.value = val
+	}
+}, { immediate: true })
 </script>
 
 <style scoped>
 .thinking-block {
-	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
 	border-radius: 4px;
-	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 60%, transparent);
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 40%, transparent);
 	overflow: hidden;
+	transition: opacity 200ms ease;
+}
+
+.thinking-block.is-thinking {
+	opacity: 1;
+}
+
+.thinking-block.is-collapsed {
+	opacity: 0.85;
 }
 
 .thinking-block__header {
@@ -74,36 +89,37 @@ watch(() => props.isThinking, (val) => {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 8px 12px;
+	padding: 6px 10px;
 	border: none;
-	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
-	color: var(--wf-primary, #1f9d84);
-	font-size: 12px;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
+	color: color-mix(in srgb, var(--wf-primary, #1f9d84) 90%, var(--wf-text, #edf2f4));
+	font-size: 11px;
 	cursor: pointer;
 	transition: background-color 150ms ease;
 	text-align: left;
 }
 
 .thinking-block__header:hover {
-	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 18%, transparent);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 14%, transparent);
 }
 
 .thinking-block__icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 16px;
-	height: 16px;
+	width: 14px;
+	height: 14px;
+	flex-shrink: 0;
 }
 
 .thinking-block__icon-text {
-	font-size: 12px;
+	font-size: 11px;
 	line-height: 1;
 }
 
 .thinking-block__spinner {
-	width: 14px;
-	height: 14px;
+	width: 12px;
+	height: 12px;
 	animation: thinking-spin 1s linear infinite;
 	opacity: 0.8;
 }
@@ -122,16 +138,17 @@ watch(() => props.isThinking, (val) => {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 16px;
-	height: 16px;
+	width: 14px;
+	height: 14px;
 	color: currentColor;
 	opacity: 0.7;
 	transition: transform 200ms ease;
+	flex-shrink: 0;
 }
 
 .thinking-block__toggle svg {
-	width: 14px;
-	height: 14px;
+	width: 12px;
+	height: 12px;
 	transition: transform 200ms ease;
 }
 
@@ -140,27 +157,27 @@ watch(() => props.isThinking, (val) => {
 }
 
 .thinking-block__content {
-	padding: 10px 12px;
-	max-height: 240px;
+	padding: 8px 10px;
+	max-height: 200px;
 	overflow-y: auto;
-	border-top: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent);
+	border-top: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent);
 }
 
 .thinking-block__empty {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	padding: 8px 0;
+	padding: 4px 0;
 }
 
 .thinking-block__typing {
 	display: inline-flex;
-	gap: 4px;
+	gap: 3px;
 }
 
 .thinking-block__typing-dot {
-	width: 6px;
-	height: 6px;
+	width: 5px;
+	height: 5px;
 	border-radius: 50%;
 	background: var(--wf-primary, #1f9d84);
 	opacity: 0.4;
@@ -189,9 +206,9 @@ watch(() => props.isThinking, (val) => {
 .thinking-block__text {
 	margin: 0;
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-	font-size: 12px;
+	font-size: 11px;
 	line-height: 1.6;
-	color: var(--wf-text-muted, #9ca3af);
+	color: color-mix(in srgb, var(--wf-text-muted, #9ca3af) 90%, var(--wf-primary, #1f9d84));
 	white-space: pre-wrap;
 	word-break: break-word;
 }

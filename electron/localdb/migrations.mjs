@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 4
+const TARGET_VERSION = 5
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -329,7 +329,13 @@ function runV4(db) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_ark_tasks_updated_at ON ark_tasks(updated_at DESC);`)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3, runV4]
+function runV5(db) {
+	// 为 chat_conversations 添加 project_path 字段，支持按项目路径存储会话
+	db.exec(`ALTER TABLE chat_conversations ADD COLUMN project_path TEXT NOT NULL DEFAULT ''`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_conversations_project_path ON chat_conversations(project_path)`)
+}
+
+const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)

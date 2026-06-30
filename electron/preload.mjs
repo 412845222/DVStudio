@@ -473,9 +473,27 @@ contextBridge.exposeInMainWorld('dweb', {
 	},
 	// ===== Agent 执行器 =====
 	agent: {
-		stream: (payload) => createIpcStreamGenerator('dweb:agent:stream', payload || {}),
-		getContext: (payload) => invoke('dweb:agent:get-context', payload || {}),
+		stream: (payload) => createIpcStreamGenerator('dweb:agent', payload || {}),
+		getContext: (payload) => invoke('dweb:agent:context', payload || {}),
 		abort: (payload) => invoke('dweb:agent:abort', payload || {}),
+	},
+	// ===== Agent Skills =====
+	agentSkills: {
+		unreal: {
+			sessions: () => invoke('dweb:agent-skills:unreal:sessions'),
+			register: (payload) => invoke('dweb:agent-skills:unreal:register', payload || {}),
+			sessionDetail: (payload) => invoke('dweb:agent-skills:unreal:session-detail', payload || {}),
+			createJob: (payload) => invoke('dweb:agent-skills:unreal:create-job', payload || {}),
+			jobDetail: (payload) => invoke('dweb:agent-skills:unreal:job-detail', payload || {}),
+			heartbeat: (payload) => invoke('dweb:agent-skills:unreal:heartbeat', payload || {}),
+			pickJob: (payload) => invoke('dweb:agent-skills:unreal:pick-job', payload || {}),
+			getHttpPort: () => invoke('dweb:agent-skills:unreal:get-http-port'),
+			detectEditor: () => invoke('dweb:agent-skills:unreal:detect-editor'),
+			checkPlugin: (payload) => invoke('dweb:agent-skills:unreal:check-plugin', payload || {}),
+			installPlugin: (payload) => invoke('dweb:agent-skills:unreal:install-plugin', payload || {}),
+			getPluginInfo: () => invoke('dweb:agent-skills:unreal:get-plugin-info'),
+			disconnectSession: (payload) => invoke('dweb:agent-skills:unreal:disconnect-session', payload || {}),
+		},
 	},
 	// ===== MCP 工具 =====
 	mcp: {

@@ -1471,19 +1471,172 @@ export class SceneLayoutPreviewViewer {
 		const slots: WorkflowUnrealResolvedLayoutSlot[] = []
 		const actorOrigin = { x: 0, y: 0, z: 0 }
 
+		// 彻底扫描Three.js场景，找出所有真实模型
+		// 策略：
+		// 1. 遍历group的所有直接子对象
+		// 2. 排除：占位体方块(isPlaceholder=true)、线条(THREE.Line/LineSegments)、辅助对象
+		// 3. 对于剩余对象，检查是否包含Mesh几何体（来自glb/fbx加载的真实模型）
+		// 4. 优先使用isBoundModel标记，同时也检测未标记但有几何体的模型
+		// 5. 从userData中恢复模型源信息(modelUrl等)
+		const sceneBoundModels = new Map<string, GroupLike>()
+		const sceneModelUserData = new Map<string, Record<string, unknown>>()
+		
+		const isLineObject = (obj: unknown): boolean => {
+			if (!obj) return true
+			const o = obj as { isLine?: boolean; isLineSegments?: boolean; type?: string }
+			return o.isLine === true || o.isLineSegments === true || o.type === 'Line' || o.type === 'LineSegments'
+		}
+		
+		const hasGeometry = (obj: unknown): boolean => {
+			if (!obj) return false
+			const o = obj as { isMesh?: boolean; geometry?: unknown; children?: unknown[] }
+			if (o.isMesh === true && o.geometry) return true
+			if (Array.isArray(o.children)) {
+				return o.children.some((child) => hasGeometry(child))
+			}
+			return false
+		}
+		
+		for (const child of this.group.children as unknown as BoundModelChild[]) {
+			if (!child) continue
+			if (child.userData?.isPlaceholder === true) continue
+			if (isLineObject(child)) continue
+			
+			let modelRoot: BoundModelChild | null = null
+			let modelItemId = ''
+			
+			// 首先查找isBoundModel标记
+			if (child.userData?.isBoundModel === true) {
+				modelRoot = child
+				modelItemId = String(child.userData?.itemId ?? '').trim()
+			} else {
+				child.traverse((entry: Object3Dlike) => {
+					if (modelRoot) return
+					const entryChild = entry as unknown as BoundModelChild
+					if (entryChild.userData?.isBoundModel === true) {
+						modelRoot = entryChild
+						modelItemId = String(entryChild.userData?.itemId ?? '').trim()
+					}
+				})
+			}
+			
+			// 如果没找到isBoundModel标记，但该对象包含Mesh几何体，也视为真实模型
+			if (!modelRoot && hasGeometry(child)) {
+				modelRoot = child
+				// 尝试从子节点获取itemId
+				child.traverse((entry: Object3Dlike) => {
+					if (modelItemId) return
+					const entryChild = entry as unknown as BoundModelChild
+					const id = String(entryChild.userData?.itemId ?? '').trim()
+					if (id) modelItemId = id
+				})
+				if (!modelItemId) {
+					modelItemId = `__scene_model_${sceneBoundModels.size}`
+				}
+			}
+			
+			if (modelRoot && modelItemId) {
+				// 找到最上层的模型根节点
+				let rootNode = modelRoot
+				while (rootNode.parent && rootNode.parent !== this.group) {
+					const parent = rootNode.parent as unknown as BoundModelChild
+					if (parent.userData?.isBoundModel === true || hasGeometry(parent)) {
+						rootNode = parent
+					} else {
+						break
+					}
+				}
+				if (!sceneBoundModels.has(modelItemId)) {
+					sceneBoundModels.set(modelItemId, rootNode as unknown as GroupLike)
+					// 收集userData中的模型源信息
+					const userData = rootNode.userData as Record<string, unknown>
+					if (userData) {
+						sceneModelUserData.set(modelItemId, userData)
+					}
+				}
+			}
+		}
+
+		// 合并boundModelsById和场景扫描结果，确保所有真实模型都被包含
+		const allBoundModels = new Map<string, GroupLike>()
+		for (const [id, model] of this.boundModelsById.entries()) {
+			allBoundModels.set(id, model)
+		}
+		for (const [id, model] of sceneBoundModels.entries()) {
+			if (!allBoundModels.has(id)) {
+				allBoundModels.set(id, model)
+				warnings.push(`发现场景中渲染但未在绑定表中的模型 ${id}，已自动包含。`)
+			}
+		}
+
+		// 收集所有需要处理的itemId：currentItems中的 + 场景中发现的额外模型
+		const processedItemIds = new Set<string>()
+		const itemsToProcess: Array<{ item: WorkflowSceneLayoutItem | null; itemId: string }> = []
+		
 		for (const item of this.currentItems) {
 			const itemId = String(item.id ?? '').trim()
 			if (!itemId) continue
-			const binding = this.bindingById.get(itemId)
-			if (!binding?.connected) {
-				warnings.push(`占位体 ${item.name || itemId} 未绑定真实模型，已跳过。`)
-				continue
+			itemsToProcess.push({ item, itemId })
+			processedItemIds.add(itemId)
+		}
+		
+		// 添加场景中发现但currentItems中没有的模型
+		for (const itemId of sceneBoundModels.keys()) {
+			if (!processedItemIds.has(itemId)) {
+				const existingItem = this.currentItems.find(i => String(i.id ?? '').trim() === itemId)
+				itemsToProcess.push({ item: existingItem ?? null, itemId })
+				processedItemIds.add(itemId)
 			}
-			const boundModel = this.boundModelsById.get(itemId)
+		}
+
+		for (const { item, itemId } of itemsToProcess) {
+			let binding = this.bindingById.get(itemId)
+			const boundModel = allBoundModels.get(itemId)
+			
 			if (!boundModel) {
-				warnings.push(`占位体 ${item.name || itemId} 缺少预览中的真实模型结果，已跳过。`)
+				if (item) {
+					warnings.push(`占位体 ${item.name || itemId} 缺少预览中的真实模型结果，已跳过。`)
+				}
 				continue
 			}
+			
+			// 如果bindingById中没有有效的binding，尝试从场景模型userData中恢复
+			if (!binding?.connected) {
+				const sceneUserData = sceneModelUserData.get(itemId)
+				if (sceneUserData) {
+					const modelUrl = String(sceneUserData.modelUrl ?? '').trim()
+					const modelAssetUrl = String(sceneUserData.modelAssetUrl ?? '').trim()
+					if (modelUrl || modelAssetUrl) {
+						const rawSourceType = String(sceneUserData.sourceNodeType ?? '').trim()
+						const validSourceType = (rawSourceType === 'model3d' || rawSourceType === 'meshy' || rawSourceType === 'manual')
+							? rawSourceType
+							: 'model3d' as const
+						binding = {
+							objectId: itemId,
+							inputAnchorId: `in-model-${itemId}`,
+							connected: true,
+							sourceNodeId: String(sceneUserData.sourceNodeId ?? '').trim() || undefined,
+							sourceNodeType: validSourceType,
+							modelUrl: modelUrl || undefined,
+							modelAssetUrl: modelAssetUrl || undefined,
+							modelSourcePath: String(sceneUserData.modelSourcePath ?? '').trim() || undefined,
+							modelAssetPath: String(sceneUserData.modelAssetPath ?? '').trim() || undefined,
+							modelSourceName: String(sceneUserData.modelSourceName ?? '').trim() || undefined,
+							modelFormat: sceneUserData.modelFormat === 'gltf' || sceneUserData.modelFormat === 'glb'
+								? sceneUserData.modelFormat
+								: undefined
+						}
+					}
+				}
+			}
+			
+			if (!binding?.connected) {
+				// 如果模型在场景中存在但没有绑定信息，我们仍然导出它，因为它确实在Three.js中渲染了
+				// 但需要记录警告
+				const displayName = item?.name || itemId
+				warnings.push(`模型 ${displayName} 在场景中渲染但缺少完整绑定信息，将使用场景中的现有数据导出。`)
+			}
+			
 			const placeholderMesh = this.meshesById.get(itemId)
 			const placeholderTransform = placeholderMesh
 				? this.captureObjectTransform(placeholderMesh)
@@ -1494,7 +1647,9 @@ export class SceneLayoutPreviewViewer {
 					? boundModel.children.slice()
 					: [boundModel]
 			const cloneCount = Math.max(instances.length, 1)
-			const parentReferenceResult = this.buildParentReference(item, boundModel, actorOrigin)
+			const parentReferenceResult = item 
+				? this.buildParentReference(item, boundModel, actorOrigin)
+				: { warnings: [], parentReference: { mode: 'root' as const, relativeTransform: this.captureObjectTransform(boundModel, actorOrigin) } }
 			if (parentReferenceResult.warnings.length) warnings.push(...parentReferenceResult.warnings)
 			const slotTransform =
 				parentReferenceResult.parentReference.relativeTransform ??
@@ -1507,7 +1662,7 @@ export class SceneLayoutPreviewViewer {
 				parentReferenceResult.parentReference.mode === 'parent-slot'
 					? parentReferenceResult.parentReference.targetObjectId
 					: undefined
-			const surfaceSemantics = this.buildSurfaceSemantics(item)
+			const surfaceSemantics = item ? this.buildSurfaceSemantics(item) : undefined
 			const constraintDiagnostics: WorkflowUnrealResolvedConstraintDiagnostics = {
 				exportMode:
 					parentReferenceResult.parentReference.mode === 'parent-slot'
@@ -1520,27 +1675,29 @@ export class SceneLayoutPreviewViewer {
 			for (let index = 0; index < instances.length; index += 1) {
 				const instance = instances[index]
 				const slotId = cloneCount > 1 ? `${itemId}__clone_${index + 1}` : itemId
-				const sourceName = String(item.name ?? itemId).trim() || itemId
+				const sourceName = item ? (String(item.name ?? itemId).trim() || itemId) : itemId
 				const orientationMode =
-					item.orientationFix?.mode === 'manual' ? ('manual' as const) : ('auto' as const)
-				const fitMode =
-					item.fitMode === 'forced'
+					item?.orientationFix?.mode === 'manual' ? ('manual' as const) : ('auto' as const)
+				const fitMode = item
+					? item.fitMode === 'forced'
 						? ('forced' as const)
 						: item.fitMode === 'filled'
 							? ('filled' as const)
 							: item.fitMode === 'oriented'
 								? ('oriented' as const)
 								: ('normal' as const)
-				const fillMode =
-					item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z'
+					: ('normal' as const)
+				const fillMode = item
+					? item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z'
 						? item.fillMode
 						: 'single'
+					: 'single'
 				const manualAdjustmentApplied =
 					orientationMode === 'manual' ||
 					fitMode === 'forced' ||
-					(fillMode !== 'single' && Math.max(1, Number(item.fillCount ?? 1)) > 1)
+					(fillMode !== 'single' && Math.max(1, Number(item?.fillCount ?? 1)) > 1)
 				const meshTransform = this.captureLocalTransform(instance)
-				if (item.orientationFix) {
+				if (item?.orientationFix) {
 					const preferredOffset = this.resolveExistingOrientationOffset(item)
 					meshTransform.rotation = {
 						yaw: roundOrientation(preferredOffset.yaw),
@@ -1561,22 +1718,22 @@ export class SceneLayoutPreviewViewer {
 					cloneIndex: index,
 					cloneCount,
 					isClone: cloneCount > 1,
-					previewScaleMode: item.previewScaleMode,
-					fitMode: item.fitMode,
-					fillMode: item.fillMode,
-					fillCount: Number.isFinite(Number(item.fillCount)) ? Number(item.fillCount) : undefined,
-					fillAxisScale: Number.isFinite(Number(item.fillAxisScale))
+					previewScaleMode: item?.previewScaleMode,
+					fitMode: item?.fitMode,
+					fillMode: item?.fillMode,
+					fillCount: item && Number.isFinite(Number(item.fillCount)) ? Number(item.fillCount) : undefined,
+					fillAxisScale: item && Number.isFinite(Number(item.fillAxisScale))
 						? Number(item.fillAxisScale)
 						: undefined,
-					materialOverrides: Array.isArray(item.materialOverrides)
+					materialOverrides: item && Array.isArray(item.materialOverrides)
 						? item.materialOverrides.map((entry) => ({ ...entry }))
 						: undefined,
-					relationTags: Array.isArray(item.relationTags) ? [...item.relationTags] : undefined,
-					notes: String(item.fitMessage ?? item.description ?? '').trim() || undefined,
+					relationTags: item && Array.isArray(item.relationTags) ? [...item.relationTags] : undefined,
+					notes: item ? (String(item.fitMessage ?? item.description ?? '').trim() || undefined) : undefined,
 					surfaceSemantics,
 					parentReference: parentReferenceResult.parentReference,
 					constraintDiagnostics,
-					modelBinding: {
+					modelBinding: binding ? {
 						sourceNodeId: binding.sourceNodeId,
 						sourceNodeType: binding.sourceNodeType,
 						modelUrl: binding.modelUrl,
@@ -1585,7 +1742,7 @@ export class SceneLayoutPreviewViewer {
 						modelAssetPath: binding.modelAssetPath,
 						modelSourceName: binding.modelSourceName,
 						modelFormat: binding.modelFormat
-					},
+					} : undefined,
 					slotTransform,
 					meshTransform,
 					previewInstanceTransform,
@@ -2565,7 +2722,8 @@ export class SceneLayoutPreviewViewer {
 				item,
 				latestMesh,
 				template,
-				autoAdjust ? 'auto' : 'keep'
+				autoAdjust ? 'auto' : 'keep',
+				binding
 			)
 			latestMesh.userData.itemId = item.id
 			const fitChanged = !item.fitMode
@@ -2737,7 +2895,7 @@ export class SceneLayoutPreviewViewer {
 		const template = await this.loadModelTemplate(sourceUrl, targetId)
 		if (this.disposed) return false
 		this.disposeBoundModel(targetId)
-		this.mountBoundModel(targetId, item, mesh, template, mode)
+		this.mountBoundModel(targetId, item, mesh, template, mode, binding)
 		this.requestRender()
 		return true
 	}
@@ -2747,7 +2905,8 @@ export class SceneLayoutPreviewViewer {
 		item: WorkflowSceneLayoutItem,
 		mesh: MeshLike,
 		template: GltfTemplateLike,
-		mode: 'auto' | 'manual' | 'keep'
+		mode: 'auto' | 'manual' | 'keep',
+		binding?: WorkflowSceneLayoutModelBinding
 	) {
 		this.disposeBoundModel(itemId)
 		const modelContent = this.cloneModelScene(template)
@@ -2757,16 +2916,28 @@ export class SceneLayoutPreviewViewer {
 			mode
 		)
 		const modelRoot = this.createBoundModelRoot(modelContent, mesh, item) as unknown as GroupLike
+		const bindingSourceInfo = binding ? {
+			modelUrl: binding.modelUrl,
+			modelAssetUrl: binding.modelAssetUrl,
+			modelSourcePath: binding.modelSourcePath,
+			modelAssetPath: binding.modelAssetPath,
+			modelSourceName: binding.modelSourceName,
+			modelFormat: binding.modelFormat,
+			sourceNodeId: binding.sourceNodeId,
+			sourceNodeType: binding.sourceNodeType
+		} : {}
 		modelRoot.userData = {
 			...(modelRoot.userData ?? {}),
 			itemId: item.id,
-			isBoundModel: true
+			isBoundModel: true,
+			...bindingSourceInfo
 		}
 		modelRoot.traverse((child: Object3Dlike) => {
 			child.userData = {
 				...(child.userData ?? {}),
 				itemId: item.id,
-				isBoundModel: true
+				isBoundModel: true,
+				...bindingSourceInfo
 			}
 		})
 		this.group.add(modelRoot)
@@ -3599,7 +3770,7 @@ export class SceneLayoutPreviewViewer {
 			const hadFill = !!item.fillMode
 			this.clearFillState(item)
 			if (hadFill || this.boundModelsById.has(this.selectedId)) {
-				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
+				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			}
 			const message = hadFill
 				? '未识别到“两轴已基本匹配、一轴待补齐”的状态，已恢复单模型显示。'
@@ -3623,7 +3794,7 @@ export class SceneLayoutPreviewViewer {
 		item.fillAxisScale = suggestion.axisScale
 		item.fillUpdatedAt = Date.now()
 		this.disposeBoundModel(this.selectedId)
-		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
+		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 		const message = `已沿 ${fillAxisLabel(suggestion.axis)} 轴循环填充 ${suggestion.count} 个实例，并按该轴平均缩放铺满占位空间。`
 		this.setFitState(item, 'filled', message)
 		this.emitLayoutChange()
@@ -3665,7 +3836,7 @@ export class SceneLayoutPreviewViewer {
 			this.clearFillState(item)
 			item.fitMode = 'forced'
 			item.fitUpdatedAt = Date.now()
-			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
+			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			const message = '已按比例适配到占位盒（保持模型比例）；切换占位比例/模型比例后会自动清除。'
 			this.setFitState(item, 'forced', message)
 			this.emitLayoutChange()

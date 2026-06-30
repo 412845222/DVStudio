@@ -143,6 +143,48 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		recommended: true
 	},
 	{
+		id: 'doubao-seed-evolving',
+		label: '豆包 Seed 快速迭代版',
+		needType: 'text',
+		apiSource: 'bytedance',
+		legacyModelKey: 'deepseek',
+		vendor: '字节方舟',
+		recommended: true,
+		supportsStructuredOutput: true,
+		supportsVision: true
+	},
+	{
+		id: 'doubao-seed-2-1-pro-260628',
+		label: '豆包 Seed 2.1 Pro',
+		needType: 'text',
+		apiSource: 'bytedance',
+		legacyModelKey: 'deepseek',
+		vendor: '字节方舟',
+		recommended: true,
+		supportsStructuredOutput: true,
+		supportsVision: true
+	},
+	{
+		id: 'doubao-seed-2-1-turbo-260628',
+		label: '豆包 Seed 2.1 Turbo',
+		needType: 'text',
+		apiSource: 'bytedance',
+		legacyModelKey: 'deepseek',
+		vendor: '字节方舟',
+		recommended: true,
+		supportsStructuredOutput: true,
+		supportsVision: true
+	},
+	{
+		id: 'doubao-seed-character-260628',
+		label: '豆包 Seed 角色版',
+		needType: 'text',
+		apiSource: 'bytedance',
+		legacyModelKey: 'deepseek',
+		vendor: '字节方舟',
+		supportsVision: true
+	},
+	{
 		id: 'doubao-seed-2-0-pro-260215',
 		label: '豆包 Seed 2.0 Pro',
 		needType: 'text',
@@ -151,6 +193,24 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		vendor: '字节方舟',
 		recommended: true,
 		supportsStructuredOutput: true,
+		supportsVision: true
+	},
+	{
+		id: 'doubao-seed-2-0-lite-260428',
+		label: '豆包 Seed 2.0 Lite 新版',
+		needType: 'text',
+		apiSource: 'bytedance',
+		legacyModelKey: 'deepseek',
+		vendor: '字节方舟',
+		supportsVision: true
+	},
+	{
+		id: 'doubao-seed-2-0-mini-260428',
+		label: '豆包 Seed 2.0 Mini 新版',
+		needType: 'text',
+		apiSource: 'bytedance',
+		legacyModelKey: 'deepseek',
+		vendor: '字节方舟',
 		supportsVision: true
 	},
 	{
@@ -263,6 +323,24 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		apiSource: 'bytedance',
 		legacyModelKey: 'deepseek',
 		vendor: '智谱 AI',
+		recommended: true
+	},
+	{
+		id: 'deepseek-v4-pro-260425',
+		label: 'DeepSeek V4 Pro',
+		needType: 'text',
+		apiSource: 'bytedance',
+		legacyModelKey: 'deepseek',
+		vendor: 'DeepSeek',
+		recommended: true
+	},
+	{
+		id: 'deepseek-v4-flash-260425',
+		label: 'DeepSeek V4 Flash',
+		needType: 'text',
+		apiSource: 'bytedance',
+		legacyModelKey: 'deepseek',
+		vendor: 'DeepSeek',
 		recommended: true
 	},
 	{

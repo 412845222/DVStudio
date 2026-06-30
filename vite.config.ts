@@ -15,6 +15,7 @@ const APP_NAME = String((pkg as any)?.build?.productName ?? (pkg as any)?.produc
 const APP_COPYRIGHT = String((pkg as any)?.copyright ?? 'Copyright (c) 2026 DwebStudio')
 
 // 根据 env 中的 VITE_BACKEND_BASE_URL（用于开发/测试时指定后端地址）。
+// 默认使用动态端口，由后端在启动时写入环境变量或配置文件
 const VITE_BACKEND_BASE_URL = process.env.VITE_BACKEND_BASE_URL || 'http://127.0.0.1:5800'
 
 // 自定义 HTTP agent: 禁用连接池的 keepAlive，

@@ -108,7 +108,7 @@
 						ref="fileInputRef"
 						class="wf-file-input"
 						type="file"
-						accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+						accept=".glb,.gltf,.fbx,.obj,.stl,.dae,model/gltf-binary,model/gltf+json,application/octet-stream"
 						@change="onFileChange"
 					/>
 				</div>
