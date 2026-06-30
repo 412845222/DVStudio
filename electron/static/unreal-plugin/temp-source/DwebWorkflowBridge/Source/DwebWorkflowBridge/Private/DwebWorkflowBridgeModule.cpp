@@ -1,4 +1,4 @@
-﻿#include "DwebWorkflowBridgeModule.h"
+#include "DwebWorkflowBridgeModule.h"
 
 #include "DwebWorkflowLayoutActorBase.h"
 
@@ -32,6 +32,7 @@
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "InterchangeManager.h"
+#include "InterchangeSourceData.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "LevelEditor.h"
 #include "Math/RotationMatrix.h"
@@ -645,16 +646,15 @@ const FName FDwebWorkflowBridgeModule::BridgeTabName(TEXT("DwebWorkflowBridge"))
 void FDwebWorkflowBridgeModule::StartupModule()
 {
 	BackendUrl = TEXT("http://127.0.0.1:5800");
-	SaveDirectory = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("DwebImports"));
-	AssetRootPath = TEXT("/Game/DwebWorkflowExports");
-	ConnectionStatus = TEXT("未连接");
-	CurrentStageText = TEXT("等待任务");
+	AssetRootPath = TEXT("/Game/DVStudio");
+	ConnectionStatus = TEXT("Disconnected");
+	CurrentStageText = TEXT("Waiting for task");
 	CurrentProgressPercent = 0.0f;
-	LatestLog = TEXT("插件已启动。请在 DVStudio 中点击“等待连接”开始连接。");
+	LatestLog = TEXT("Plugin started. Click 'Wait for Connection' in DVStudio to connect.");
 
 	if (LoadConnectionConfig())
 	{
-		LatestLog = FString::Printf(TEXT("插件已启动。已从配置文件读取后端地址：%s"), *BackendUrl);
+		LatestLog = FString::Printf(TEXT("Plugin started. Loaded backend URL from config: %s"), *BackendUrl);
 	}
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(BridgeTabName, FOnSpawnTab::CreateRaw(this, &FDwebWorkflowBridgeModule::OnSpawnPluginTab))
@@ -725,79 +725,30 @@ TSharedRef<SDockTab> FDwebWorkflowBridgeModule::OnSpawnPluginTab(const FSpawnTab
 					SNew(STextBlock)
 					.Text_Lambda([this]()
 					{
-						return FText::FromString(FString::Printf(TEXT("连接状态：%s"), *ConnectionStatus));
+						return FText::FromString(FString::Printf(TEXT("Connection: %s"), *ConnectionStatus));
 					})
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
 				[
-					SNew(STextBlock).Text(LOCTEXT("BackendUrlLabel", "后端地址"))
+					SNew(STextBlock).Text(LOCTEXT("SceneActorSelectorLabel", "Target Actor"))
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
 				[
-					SAssignNew(BackendUrlTextBox, SEditableTextBox)
-					.Text_Lambda([this]() { return FText::FromString(BackendUrl); })
-					.OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type)
+					SAssignNew(SceneActorComboBox, SComboBox<TSharedPtr<FString>>)
+					.OptionsSource(&SceneActorOptions)
+					.OnComboBoxOpening(FSimpleDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::RefreshSceneActorOptions))
+					.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
 					{
-						BackendUrl = NewText.ToString();
+						return SNew(STextBlock)
+							.Text(FText::FromString(Item.IsValid() ? *Item : TEXT("")));
 					})
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
-				[
-					SNew(STextBlock).Text(LOCTEXT("SaveDirectoryLabel", "保存路径"))
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
-				[
-					SAssignNew(SaveDirectoryTextBox, SEditableTextBox)
-					.Text_Lambda([this]() { return FText::FromString(SaveDirectory); })
-					.OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type)
+					.OnSelectionChanged_Lambda([this](TSharedPtr<FString> Item, ESelectInfo::Type)
 					{
-						SaveDirectory = NewText.ToString();
+						SelectedSceneActorPath = Item.IsValid() ? *Item : FString();
 					})
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
-				[
-					SNew(STextBlock).Text(LOCTEXT("AssetRootPathLabel", "目标资产路径"))
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
-				[
-					SAssignNew(AssetRootPathTextBox, SEditableTextBox)
-					.Text_Lambda([this]() { return FText::FromString(AssetRootPath); })
-					.OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type)
-					{
-						AssetRootPath = NewText.ToString();
-					})
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 4)
-				[
-					SNew(STextBlock).Text(LOCTEXT("SceneActorSelectorLabel", "场景元素选择器（目标Actor）"))
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(0, 0, 8, 0)
 					[
-						SAssignNew(SceneActorComboBox, SComboBox<TSharedPtr<FString>>)
-						.OptionsSource(&SceneActorOptions)
-						.OnComboBoxOpening(FSimpleDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::RefreshSceneActorOptions))
-						.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
-						{
-							return SNew(STextBlock)
-								.Text(FText::FromString(Item.IsValid() ? *Item : TEXT("")));
-						})
-						.OnSelectionChanged_Lambda([this](TSharedPtr<FString> Item, ESelectInfo::Type)
-						{
-							SelectedSceneActorPath = Item.IsValid() ? *Item : FString();
-						})
-						[
-							SNew(STextBlock)
-							.Text_Lambda([this]() { return BuildSelectedSceneActorText(); })
-						]
-					]
-					+ SHorizontalBox::Slot().AutoWidth()
-					[
-						SNew(SButton)
-						.Text(LOCTEXT("RefreshActorsButton", "刷新Actor"))
-						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnRefreshSceneActorsClicked)
+						SNew(STextBlock)
+						.Text_Lambda([this]() { return BuildSelectedSceneActorText(); })
 					]
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
@@ -806,19 +757,29 @@ TSharedRef<SDockTab> FDwebWorkflowBridgeModule::OnSpawnPluginTab(const FSpawnTab
 					+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
 					[
 						SNew(SButton)
-						.Text(LOCTEXT("ConnectWorkflowButton", "连接工作流"))
+						.Text(LOCTEXT("ConnectWorkflowButton", "Connect Workflow"))
 						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnConnectWorkflowClicked)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("CheckConnectionButton", "Check Connection"))
+						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnCheckConnectionClicked)
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("ReceiveLayoutButton", "Receive Layout Assets"))
+						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnReceiveLayoutClicked)
 					]
 					+ SHorizontalBox::Slot().AutoWidth()
 					[
 						SNew(SButton)
-						.Text(LOCTEXT("CheckTaskButton", "检查任务"))
-						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnCheckTaskClicked)
-					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(8, 0, 0, 0)
-					[
-						SNew(SButton)
-						.Text(LOCTEXT("ReceiveLightingButton", "接收灯光数据"))
+						.Text(LOCTEXT("ReceiveLightingButton", "Receive Lighting Data"))
 						.OnClicked_Raw(this, &FDwebWorkflowBridgeModule::OnReceiveLightingClicked)
 					]
 				]
@@ -827,7 +788,7 @@ TSharedRef<SDockTab> FDwebWorkflowBridgeModule::OnSpawnPluginTab(const FSpawnTab
 					SNew(STextBlock)
 					.Text_Lambda([this]()
 					{
-						return FText::FromString(FString::Printf(TEXT("当前进度：%s · %.0f%%"), *CurrentStageText, CurrentProgressPercent));
+						return FText::FromString(FString::Printf(TEXT("Progress: %s · %.0f%%"), *CurrentStageText, CurrentProgressPercent));
 					})
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 10)
@@ -855,20 +816,39 @@ TSharedRef<SDockTab> FDwebWorkflowBridgeModule::OnSpawnPluginTab(const FSpawnTab
 
 FReply FDwebWorkflowBridgeModule::OnConnectWorkflowClicked()
 {
+	if (!SessionId.IsEmpty())
+	{
+		SendHeartbeat();
+		AppendLog(TEXT("Checking existing connection..."));
+		return FReply::Handled();
+	}
 	RegisterSession();
 	return FReply::Handled();
 }
 
-FReply FDwebWorkflowBridgeModule::OnCheckTaskClicked()
+FReply FDwebWorkflowBridgeModule::OnCheckConnectionClicked()
 {
-	PollNextJob(false);
+	if (SessionId.IsEmpty())
+	{
+		AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
+		return FReply::Handled();
+	}
+
+	SendHeartbeat();
+	AppendLog(TEXT("Checking DVStudio client connection status..."));
 	return FReply::Handled();
 }
 
-FReply FDwebWorkflowBridgeModule::OnRefreshSceneActorsClicked()
+FReply FDwebWorkflowBridgeModule::OnReceiveLayoutClicked()
 {
-	RefreshSceneActorOptions();
-	AppendLog(FString::Printf(TEXT("已刷新场景 Actor 列表，共 %d 个可选项。"), SceneActorOptions.Num()));
+	if (SessionId.IsEmpty())
+	{
+		AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
+		return FReply::Handled();
+	}
+
+	AppendLog(TEXT("Receiving layout assets..."));
+	PollNextJob(false);
 	return FReply::Handled();
 }
 
@@ -876,7 +856,7 @@ FReply FDwebWorkflowBridgeModule::OnReceiveLightingClicked()
 {
 	if (SessionId.IsEmpty())
 	{
-		AppendLog(TEXT("当前没有有效会话，请先点击“连接工作流”。"));
+		AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
 		return FReply::Handled();
 	}
 
@@ -887,32 +867,31 @@ FReply FDwebWorkflowBridgeModule::OnReceiveLightingClicked()
 
 	if (SelectedSceneActorPath.TrimStartAndEnd().IsEmpty())
 	{
-		AppendLog(TEXT("请先在“场景元素选择器”中选择一个目标 Actor，再接收灯光数据。"));
+		AppendLog(TEXT("Please select a target Actor before receiving lighting data."));
 		return FReply::Handled();
 	}
 
-	AppendLog(TEXT("开始拉取任务（将优先处理 lighting-only 导出）。"));
+	AppendLog(TEXT("Receiving lighting data..."));
 	PollNextJob(false);
 	return FReply::Handled();
 }
 
 void FDwebWorkflowBridgeModule::RegisterSession()
 {
-	UpdateConnectionStatus(TEXT("正在连接工作流..."));
+	UpdateConnectionStatus(TEXT("Connecting to workflow..."));
 	const FString Url = BuildApiUrl(TEXT("/api/agent-skills/unreal/register"));
 	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
-	if (!SessionId.IsEmpty())
-	{
-		Root->SetStringField(TEXT("sessionId"), SessionId);
-	}
-	Root->SetStringField(TEXT("displayName"), FString::Printf(TEXT("%s Editor"), FApp::GetProjectName()));
-	Root->SetStringField(TEXT("projectName"), FApp::GetProjectName());
-	Root->SetStringField(TEXT("projectPath"), FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()));
-	Root->SetStringField(TEXT("saveDirectory"), SaveDirectory);
-	Root->SetStringField(TEXT("assetRootPath"), AssetRootPath);
-	Root->SetStringField(TEXT("pluginVersion"), TEXT("0.2.0"));
-	Root->SetStringField(TEXT("engineVersion"), FEngineVersion::Current().ToString());
-	Root->SetStringField(TEXT("hostName"), FPlatformProcess::ComputerName());
+	Root->SetStringField(TEXT("projectId"), FApp::GetProjectName());
+	
+	TSharedRef<FJsonObject> ClientInfo = MakeShared<FJsonObject>();
+	ClientInfo->SetStringField(TEXT("displayName"), FString::Printf(TEXT("%s Editor"), FApp::GetProjectName()));
+	ClientInfo->SetStringField(TEXT("projectName"), FApp::GetProjectName());
+	ClientInfo->SetStringField(TEXT("projectPath"), FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()));
+	ClientInfo->SetStringField(TEXT("assetRootPath"), AssetRootPath);
+	ClientInfo->SetStringField(TEXT("pluginVersion"), TEXT("0.3.0"));
+	ClientInfo->SetStringField(TEXT("engineVersion"), FEngineVersion::Current().ToString());
+	ClientInfo->SetStringField(TEXT("hostName"), FPlatformProcess::ComputerName());
+	Root->SetObjectField(TEXT("clientInfo"), ClientInfo);
 
 	FString Body;
 	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Body);
@@ -927,32 +906,42 @@ void FDwebWorkflowBridgeModule::RegisterSession()
 	{
 		if (!bWasSuccessful || !Response.IsValid())
 		{
-			UpdateConnectionStatus(TEXT("连接失败"));
-			AppendLog(TEXT("连接工作流失败：后端无响应。"));
+			UpdateConnectionStatus(TEXT("Connection failed"));
+			AppendLog(TEXT("Connection failed: backend not responding."));
 			return;
 		}
 
 		TSharedPtr<FJsonObject> RootObject;
 		if (!ParseJson(Response->GetContentAsString(), RootObject) || !RootObject.IsValid())
 		{
-			UpdateConnectionStatus(TEXT("连接失败"));
-			AppendLog(TEXT("连接工作流失败：返回 JSON 无法解析。"));
+			UpdateConnectionStatus(TEXT("Connection failed"));
+			AppendLog(TEXT("Connection failed: JSON parse error."));
 			return;
 		}
 
-		const TSharedPtr<FJsonObject>* SessionObject = nullptr;
-		if (!RootObject->TryGetObjectField(TEXT("session"), SessionObject) || !SessionObject || !SessionObject->IsValid())
+		bool bOk = false;
+		RootObject->TryGetBoolField(TEXT("ok"), bOk);
+		if (!bOk)
 		{
-			UpdateConnectionStatus(TEXT("连接失败"));
-			AppendLog(TEXT("连接工作流失败：返回结果缺少 session。"));
+			UpdateConnectionStatus(TEXT("Connection failed"));
+			const FString ErrorMsg = ReadStringField(RootObject, TEXT("error"), TEXT("Unknown error"));
+			AppendLog(FString::Printf(TEXT("Connection failed: %s"), *ErrorMsg));
 			return;
 		}
 
 		const FString PreviousSessionId = SessionId;
-		SessionId = ReadStringField(*SessionObject, TEXT("sessionId"));
-		const FString ProjectName = ReadStringField(*SessionObject, TEXT("projectName"));
-		UpdateConnectionStatus(FString::Printf(TEXT("已连接 %s"), ProjectName.IsEmpty() ? *SessionId : *ProjectName));
-		AppendLog(FString::Printf(TEXT("连接成功。SessionId=%s%s"), *SessionId, PreviousSessionId.IsEmpty() || PreviousSessionId == SessionId ? TEXT("") : TEXT("（已复用/切换会话）")));
+		SessionId = ReadStringField(RootObject, TEXT("sessionId"));
+		if (SessionId.IsEmpty())
+		{
+			const TSharedPtr<FJsonObject>* SessionObject = nullptr;
+			if (RootObject->TryGetObjectField(TEXT("session"), SessionObject) && SessionObject && SessionObject->IsValid())
+			{
+				SessionId = ReadStringField(*SessionObject, TEXT("id"));
+			}
+		}
+		const FString ProjectId = ReadStringField(RootObject, TEXT("session.projectId"));
+		UpdateConnectionStatus(FString::Printf(TEXT("Connected %s"), ProjectId.IsEmpty() ? *SessionId : *ProjectId));
+		AppendLog(FString::Printf(TEXT("Connected successfully. SessionId=%s%s"), *SessionId, PreviousSessionId.IsEmpty() || PreviousSessionId == SessionId ? TEXT("") : TEXT("(session reused/switched)")));
 	});
 	Request->ProcessRequest();
 }
@@ -965,13 +954,59 @@ void FDwebWorkflowBridgeModule::SendHeartbeat()
 	}
 	bHeartbeatInFlight = true;
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
-	Request->SetURL(BuildApiUrl(FString::Printf(TEXT("/api/agent-skills/unreal/heartbeat"), *SessionId)));
+	Request->SetURL(BuildApiUrl(TEXT("/api/agent-skills/unreal/heartbeat")));
 	Request->SetVerb(TEXT("POST"));
 	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
-	Request->SetContentAsString(TEXT("{}"));
-	Request->OnProcessRequestComplete().BindLambda([this](FHttpRequestPtr, FHttpResponsePtr, bool)
+	
+	TSharedRef<FJsonObject> ClientInfo = MakeShared<FJsonObject>();
+	ClientInfo->SetStringField(TEXT("projectName"), FApp::GetProjectName());
+	ClientInfo->SetStringField(TEXT("projectPath"), FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()));
+
+	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+	Root->SetStringField(TEXT("sessionId"), SessionId);
+	Root->SetObjectField(TEXT("clientInfo"), ClientInfo);
+	FString Body;
+	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Body);
+	FJsonSerializer::Serialize(Root, Writer);
+	Request->SetContentAsString(Body);
+	
+	Request->OnProcessRequestComplete().BindLambda([this](FHttpRequestPtr Req, FHttpResponsePtr Response, bool bWasSuccessful)
 	{
 		bHeartbeatInFlight = false;
+		if (!bWasSuccessful || !Response.IsValid())
+		{
+			UpdateConnectionStatus(TEXT("Disconnected"));
+			AppendLog(TEXT("Heartbeat failed: backend not responding."));
+			return;
+		}
+
+		TSharedPtr<FJsonObject> RootObj;
+		if (!ParseJson(Response->GetContentAsString(), RootObj) || !RootObj.IsValid())
+		{
+			UpdateConnectionStatus(TEXT("Disconnected"));
+			AppendLog(TEXT("Heartbeat failed: invalid response."));
+			return;
+		}
+
+		bool bOk = false;
+		RootObj->TryGetBoolField(TEXT("ok"), bOk);
+		if (!bOk)
+		{
+			int32 StatusCode = Response->GetResponseCode();
+			if (StatusCode == 404)
+			{
+				AppendLog(TEXT("Session expired. Reconnecting..."));
+				SessionId.Empty();
+				UpdateConnectionStatus(TEXT("Disconnected"));
+				RegisterSession();
+				return;
+			}
+			UpdateConnectionStatus(TEXT("Disconnected"));
+			AppendLog(TEXT("Heartbeat failed."));
+			return;
+		}
+
+		UpdateConnectionStatus(FString::Printf(TEXT("Connected %s"), FApp::GetProjectName()));
 	});
 	Request->ProcessRequest();
 }
@@ -1011,7 +1046,7 @@ void FDwebWorkflowBridgeModule::UpdateJobStatus(const FString& JobId, const FStr
 	FJsonSerializer::Serialize(Root, Writer);
 
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
-	Request->SetURL(BuildApiUrl(FString::Printf(TEXT("/api/agent-skills/unreal/jobs/$1/update"), *JobId)));
+	Request->SetURL(BuildApiUrl(FString::Printf(TEXT("/api/agent-skills/unreal/jobs/%s/update"), *JobId)));
 	Request->SetVerb(TEXT("POST"));
 	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
 	Request->SetContentAsString(Body);
@@ -1019,7 +1054,7 @@ void FDwebWorkflowBridgeModule::UpdateJobStatus(const FString& JobId, const FStr
 	{
 		if (!bWasSuccessful || !Response.IsValid())
 		{
-			AppendLog(FString::Printf(TEXT("回写任务状态失败：%s -> %s"), *JobId, *Status));
+			AppendLog(FString::Printf(TEXT("Failed to update job status: %s -> %s"), *JobId, *Status));
 		}
 	});
 	Request->ProcessRequest();
@@ -1029,25 +1064,25 @@ void FDwebWorkflowBridgeModule::PollNextJob(bool bSilentIfEmpty)
 {
 	if (SessionId.IsEmpty())
 	{
-		AppendLog(TEXT("当前没有有效会话，请先点击“连接工作流”。"));
+		AppendLog(TEXT("No valid session. Please click 'Connect Workflow' first."));
 		return;
 	}
 
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
-	Request->SetURL(BuildApiUrl(FString::Printf(TEXT("/api/agent-skills/unreal/pick-job"), *SessionId)));
+	Request->SetURL(BuildApiUrl(TEXT("/api/agent-skills/unreal/pick-job")));
 	Request->SetVerb(TEXT("GET"));
 	Request->OnProcessRequestComplete().BindLambda([this, bSilentIfEmpty](FHttpRequestPtr, FHttpResponsePtr Response, bool bWasSuccessful)
 	{
 		if (!bWasSuccessful || !Response.IsValid())
 		{
-			AppendLog(TEXT("检查任务失败：后端无响应。"));
+			AppendLog(TEXT("Failed to check tasks: backend not responding."));
 			return;
 		}
 
 		TSharedPtr<FJsonObject> RootObject;
 		if (!ParseJson(Response->GetContentAsString(), RootObject) || !RootObject.IsValid())
 		{
-			AppendLog(TEXT("检查任务失败：返回 JSON 无法解析。"));
+			AppendLog(TEXT("Failed to check tasks: JSON parse error."));
 			return;
 		}
 
@@ -1056,20 +1091,20 @@ void FDwebWorkflowBridgeModule::PollNextJob(bool bSilentIfEmpty)
 		{
 			if (!bSilentIfEmpty)
 			{
-				AppendLog(TEXT("当前暂无待处理导出任务。"));
+				AppendLog(TEXT("No pending export tasks."));
 			}
 			return;
 		}
 
 		const FString JobId = ReadStringField(*JobObject, TEXT("jobId"));
 		const FString SceneName = ReadStringField(*JobObject, TEXT("sceneName"), TEXT("DwebSceneExport"));
-		AppendLog(FString::Printf(TEXT("收到导出任务 %s，场景名：%s。开始在当前关卡生成基础场景。"), *JobId, *SceneName));
-		UpdateConnectionStatus(FString::Printf(TEXT("正在执行任务 %s"), *JobId));
+		AppendLog(FString::Printf(TEXT("Received export job %s, scene: %s. Starting scene generation in current level."), *JobId, *SceneName));
+		UpdateConnectionStatus(FString::Printf(TEXT("Executing job %s"), *JobId));
 		{
 			TSharedPtr<FJsonObject> InitialProgress = MakeShared<FJsonObject>();
-			InitialProgress->SetStringField(TEXT("stage"), TEXT("准备导入资产"));
+			InitialProgress->SetStringField(TEXT("stage"), TEXT("Preparing asset import"));
 			InitialProgress->SetNumberField(TEXT("progress"), 10.0);
-			UpdateJobStatus(JobId, TEXT("importing"), TEXT("Unreal 插件正在准备资产化导出"), InitialProgress);
+			UpdateJobStatus(JobId, TEXT("importing"), TEXT("Unreal plugin preparing asset export"), InitialProgress);
 		}
 
 		FString ResultMessage;
@@ -1077,14 +1112,14 @@ void FDwebWorkflowBridgeModule::PollNextJob(bool bSilentIfEmpty)
 		if (ExecuteExportJob(*JobObject, ResultMessage, ResultData))
 		{
 			UpdateJobStatus(JobId, TEXT("completed"), ResultMessage, ResultData);
-			UpdateConnectionStatus(FString::Printf(TEXT("已连接，任务 %s 完成"), *JobId));
+			UpdateConnectionStatus(FString::Printf(TEXT("Connected, job %s completed"), *JobId));
 			AppendLog(ResultMessage);
 		}
 		else
 		{
-			const FString ErrorMessage = ResultMessage.IsEmpty() ? TEXT("执行导出任务失败。") : ResultMessage;
+			const FString ErrorMessage = ResultMessage.IsEmpty() ? TEXT("Export job execution failed.") : ResultMessage;
 			UpdateJobStatus(JobId, TEXT("failed"), ErrorMessage, ResultData);
-			UpdateConnectionStatus(FString::Printf(TEXT("任务 %s 失败"), *JobId));
+			UpdateConnectionStatus(FString::Printf(TEXT("Job %s failed"), *JobId));
 			AppendLog(ErrorMessage);
 		}
 	});
@@ -1096,7 +1131,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	OutResultData = MakeShared<FJsonObject>();
 	if (!JobObject.IsValid())
 	{
-		OutMessage = TEXT("执行失败：任务对象为空。");
+		OutMessage = TEXT("Execution failed: job object is null.");
 		return false;
 	}
 
@@ -1105,7 +1140,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	const TSharedPtr<FJsonObject>* ExportPayloadPtr = nullptr;
 	if (!JobObject->TryGetObjectField(TEXT("exportPayload"), ExportPayloadPtr) || !ExportPayloadPtr || !ExportPayloadPtr->IsValid())
 	{
-		OutMessage = TEXT("执行失败：任务缺少 exportPayload。") ;
+		OutMessage = TEXT("Execution failed: missing exportPayload.") ;
 		return false;
 	}
 
@@ -1116,7 +1151,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	FString DirectoryError;
 	if (!SaveJobManifest(JobId, ExportPayload, ManifestPath, DirectoryError))
 	{
-		OutMessage = FString::Printf(TEXT("执行失败：无法写出导出包清单。%s"), *DirectoryError);
+		OutMessage = FString::Printf(TEXT("Execution failed: cannot write export manifest. %s"), *DirectoryError);
 		return false;
 	}
 	OutResultData->SetStringField(TEXT("manifestPath"), ManifestPath);
@@ -1138,7 +1173,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	const FString SceneContentPath = BuildSceneContentPath(SceneName);
 	const FString ModelsAssetPath = SceneContentPath / TEXT("models");
 	const FString BlueprintAssetName = FString::Printf(TEXT("%s_Actor"), *SceneName);
-	OutResultData->SetStringField(TEXT("stage"), TEXT("分析导出任务"));
+	OutResultData->SetStringField(TEXT("stage"), TEXT("Analyzing export job"));
 	OutResultData->SetNumberField(TEXT("progress"), 25.0);
 	OutResultData->SetStringField(TEXT("modelsAssetPath"), ModelsAssetPath);
 
@@ -1160,7 +1195,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	OutResultData->SetNumberField(TEXT("pendingModelImportCount"), PendingModelCount);
 	if (PendingModelCount <= 0)
 	{
-		OutMessage = TEXT("执行失败：当前任务没有可导入的真实模型绑定。已停止占位立方体导出路径。");
+		OutMessage = TEXT("Execution failed: no real model bindings to import. Stopped placeholder export.");
 		return false;
 	}
 
@@ -1186,7 +1221,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	const FString AssetPlanPath = FPaths::Combine(FPaths::GetPath(ManifestPath), TEXT("scene_asset_plan.json"));
 	if (!SaveJsonFile(AssetPlanPath, AssetPlan, AssetPlanError))
 	{
-		OutMessage = FString::Printf(TEXT("执行失败：无法写出资产导入计划。%s"), *AssetPlanError);
+		OutMessage = FString::Printf(TEXT("Execution failed: cannot write asset import plan. %s"), *AssetPlanError);
 		return false;
 	}
 	OutResultData->SetStringField(TEXT("assetPlanPath"), AssetPlanPath);
@@ -1197,7 +1232,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	FString ImportError;
 	if (!ImportReferencedModelAssets(JobId, ExportPayload, ModelsAssetPath, ImportedAssets, ImportedAssetCount, PendingDownloadCount, ImportError))
 	{
-		OutMessage = FString::Printf(TEXT("执行失败：模型导入阶段失败。%s"), *ImportError);
+		OutMessage = FString::Printf(TEXT("Execution failed: model import failed. %s"), *ImportError);
 		return false;
 	}
 	OutResultData->SetArrayField(TEXT("importedAssets"), ImportedAssets);
@@ -1206,31 +1241,31 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	OutResultData->SetNumberField(TEXT("pendingDownloadCount"), PendingDownloadCount);
 
 	TSharedPtr<FJsonObject> AssembleProgress = MakeShared<FJsonObject>();
-	AssembleProgress->SetStringField(TEXT("stage"), TEXT("生成 Actor 资产壳"));
+	AssembleProgress->SetStringField(TEXT("stage"), TEXT("Generating Actor asset shell"));
 	AssembleProgress->SetNumberField(TEXT("progress"), ImportedAssetCount > 0 ? 78.0 : 68.0);
 	AssembleProgress->SetStringField(TEXT("assetRootPath"), AssetRootPath);
 	AssembleProgress->SetStringField(TEXT("modelsAssetPath"), ModelsAssetPath);
 	AssembleProgress->SetNumberField(TEXT("importedAssetCount"), ImportedAssetCount);
 	AssembleProgress->SetNumberField(TEXT("pendingDownloadCount"), PendingDownloadCount);
-	UpdateJobStatus(JobId, TEXT("assembling-actor"), TEXT("正在创建 Unreal Actor 资产壳"), AssembleProgress);
+	UpdateJobStatus(JobId, TEXT("assembling-actor"), TEXT("Creating Unreal Actor asset shell"), AssembleProgress);
 
 	FString BlueprintAssetPath;
 	FString BlueprintError;
 	if (!CreateSceneBlueprintShell(SceneContentPath, BlueprintAssetName, BlueprintAssetPath, BlueprintError))
 	{
-		OutMessage = FString::Printf(TEXT("执行失败：无法创建 Actor 资产壳。%s"), *BlueprintError);
+		OutMessage = FString::Printf(TEXT("Execution failed: cannot create Actor asset shell. %s"), *BlueprintError);
 		return false;
 	}
 
 	TSharedPtr<FJsonObject> ComponentProgress = MakeShared<FJsonObject>();
-	ComponentProgress->SetStringField(TEXT("stage"), TEXT("组装 Blueprint 静态网格组件"));
+	ComponentProgress->SetStringField(TEXT("stage"), TEXT("Assembling Blueprint static mesh components"));
 	ComponentProgress->SetNumberField(TEXT("progress"), 88.0);
 	ComponentProgress->SetStringField(TEXT("assetRootPath"), AssetRootPath);
 	ComponentProgress->SetStringField(TEXT("modelsAssetPath"), ModelsAssetPath);
 	ComponentProgress->SetStringField(TEXT("blueprintAssetPath"), BlueprintAssetPath);
 	ComponentProgress->SetNumberField(TEXT("importedAssetCount"), ImportedAssetCount);
 	ComponentProgress->SetNumberField(TEXT("pendingDownloadCount"), PendingDownloadCount);
-	UpdateJobStatus(JobId, TEXT("assembling-actor"), TEXT("正在挂载静态网格组件到 Blueprint"), ComponentProgress);
+	UpdateJobStatus(JobId, TEXT("assembling-actor"), TEXT("Attaching static mesh components to Blueprint"), ComponentProgress);
 
 	int32 AssembledComponentCount = 0;
 	int32 MaterialOverrideCount = 0;
@@ -1240,7 +1275,7 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	const TArray<TSharedPtr<FJsonValue>> EmptyLayoutItems;
 	if (!AssembleSceneBlueprintComponents(JobId, BlueprintAssetPath, ModelsAssetPath, ResolvedLayoutSlotsPtr ? *ResolvedLayoutSlotsPtr : EmptyResolvedLayoutSlots, LayoutItemsPtr ? *LayoutItemsPtr : EmptyLayoutItems, ImportedAssets, LayoutProtocolVersion, AssembledComponentCount, MaterialOverrideCount, SkippedSlotCount, AssembleError))
 	{
-		OutMessage = FString::Printf(TEXT("执行失败：Blueprint 组件组装失败。%s"), *AssembleError);
+		OutMessage = FString::Printf(TEXT("Execution failed: Blueprint assembly failed. %s"), *AssembleError);
 		return false;
 	}
 
@@ -1252,11 +1287,11 @@ bool FDwebWorkflowBridgeModule::ExecuteExportJob(const TSharedPtr<FJsonObject>& 
 	OutResultData->SetNumberField(TEXT("skippedSlotCount"), SkippedSlotCount);
 	OutResultData->SetNumberField(TEXT("resolvedSlotCount"), ResolvedLayoutSlotsPtr ? ResolvedLayoutSlotsPtr->Num() : 0);
 	OutResultData->SetStringField(TEXT("actorBaseClass"), ADwebWorkflowLayoutActorBase::StaticClass()->GetPathName());
-	OutResultData->SetStringField(TEXT("stage"), TEXT("完成资产壳生成"));
+	OutResultData->SetStringField(TEXT("stage"), TEXT("Completed asset shell generation"));
 	OutResultData->SetNumberField(TEXT("progress"), 100.0);
 
 	OutResultData->SetStringField(TEXT("sceneName"), SceneName);
-	OutMessage = FString::Printf(TEXT("已生成 Unreal 资产壳：Blueprint=%s，Models=%s，本地导入 %d 个模型，已写入 %d 个插槽，材质覆盖 %d 个，待下载 %d 个。"), *BlueprintAssetPath, *ModelsAssetPath, ImportedAssetCount, AssembledComponentCount, MaterialOverrideCount, PendingDownloadCount);
+	OutMessage = FString::Printf(TEXT("Generated Unreal asset shell: Blueprint=%s, Models=%s, imported %d models, attached %d slots, material overrides %d, pending download %d."), *BlueprintAssetPath, *ModelsAssetPath, ImportedAssetCount, AssembledComponentCount, MaterialOverrideCount, PendingDownloadCount);
 	return true;
 }
 
@@ -1264,7 +1299,7 @@ bool FDwebWorkflowBridgeModule::ExecuteLightingOnlyJob(const FString& JobId, con
 {
 	if (!ExportPayload.IsValid())
 	{
-		OutMessage = TEXT("执行失败：灯光任务缺少 exportPayload。");
+		OutMessage = TEXT("Execution failed: lighting job missing exportPayload.");
 		return false;
 	}
 
@@ -1276,28 +1311,28 @@ bool FDwebWorkflowBridgeModule::ExecuteLightingOnlyJob(const FString& JobId, con
 	UWorld* World = GetEditorWorld();
 	if (!World)
 	{
-		OutMessage = TEXT("执行失败：当前没有可用的编辑器世界。");
+		OutMessage = TEXT("Execution failed: no editor world available.");
 		return false;
 	}
 
 	AActor* AnchorActor = ResolveSelectedSceneActor();
 	if (!AnchorActor)
 	{
-		OutMessage = TEXT("执行失败：未选择有效的目标 Actor。请在插件面板先选择场景元素。" );
+		OutMessage = TEXT("Execution failed: no valid target Actor selected." );
 		return false;
 	}
 
 	const FString LightingJsonText = ReadStringField(ExportPayload, TEXT("lightingJson")).TrimStartAndEnd();
 	if (LightingJsonText.IsEmpty())
 	{
-		OutMessage = TEXT("执行失败：lighting-only 任务缺少 lightingJson。" );
+		OutMessage = TEXT("Execution failed: lighting-only job missing lightingJson." );
 		return false;
 	}
 
 	TSharedPtr<FJsonObject> LightingRoot;
 	if (!ParseJson(LightingJsonText, LightingRoot) || !LightingRoot.IsValid())
 	{
-		OutMessage = TEXT("执行失败：lightingJson 不是有效 JSON。" );
+		OutMessage = TEXT("Execution failed: lightingJson is not valid JSON." );
 		return false;
 	}
 
@@ -1305,21 +1340,21 @@ bool FDwebWorkflowBridgeModule::ExecuteLightingOnlyJob(const FString& JobId, con
 	const TSharedPtr<FJsonObject> EffectiveLightingPayload = LightingPayload.IsValid() ? LightingPayload : LightingRoot;
 
 	TSharedPtr<FJsonObject> ProgressData = MakeShared<FJsonObject>();
-	ProgressData->SetStringField(TEXT("stage"), TEXT("应用灯光到目标 Actor"));
+	ProgressData->SetStringField(TEXT("stage"), TEXT("Applying lighting to target Actor"));
 	ProgressData->SetNumberField(TEXT("progress"), 65.0);
 	ProgressData->SetStringField(TEXT("lightingTargetActorPath"), AnchorActor->GetPathName());
-	UpdateJobStatus(JobId, TEXT("applying-lighting"), TEXT("正在将灯光应用到所选 Actor"), ProgressData);
+	UpdateJobStatus(JobId, TEXT("applying-lighting"), TEXT("Applying lighting to selected Actor"), ProgressData);
 
 	int32 SpawnedLightCount = 0;
 	FString LightingError;
 	if (!SpawnLightingActors(World, SceneName, EffectiveLightingPayload, AnchorActor, SpawnedLightCount, LightingError))
 	{
-		OutMessage = FString::Printf(TEXT("执行失败：灯光生成失败。%s"), *LightingError);
+		OutMessage = FString::Printf(TEXT("Execution failed: lighting generation failed. %s"), *LightingError);
 		return false;
 	}
 
 	OutResultData->SetStringField(TEXT("sceneName"), SceneName);
-	OutResultData->SetStringField(TEXT("stage"), TEXT("灯光应用完成"));
+	OutResultData->SetStringField(TEXT("stage"), TEXT("Lighting application completed"));
 	OutResultData->SetNumberField(TEXT("progress"), 100.0);
 	OutResultData->SetNumberField(TEXT("spawnedLightCount"), SpawnedLightCount);
 	OutResultData->SetArrayField(TEXT("lightingTypeMapping"), BuildLightingMappingTableJson());
@@ -1328,7 +1363,7 @@ bool FDwebWorkflowBridgeModule::ExecuteLightingOnlyJob(const FString& JobId, con
 	OutResultData->SetStringField(TEXT("lightingTargetActorLabel"), AnchorActor->GetActorLabel());
 #endif
 
-	OutMessage = FString::Printf(TEXT("灯光应用完成：已在目标 Actor 附近生成 %d 个灯光。"), SpawnedLightCount);
+	OutMessage = FString::Printf(TEXT("Lighting applied: spawned %d lights near target Actor."), SpawnedLightCount);
 	return true;
 }
 
@@ -1341,14 +1376,14 @@ bool FDwebWorkflowBridgeModule::EnsureDirectoryExists(const FString& InDirectory
 {
 	if (InDirectory.TrimStartAndEnd().IsEmpty())
 	{
-		OutError = TEXT("保存目录为空。");
+		OutError = TEXT("Save directory is empty.");
 		return false;
 	}
 
 	IFileManager::Get().MakeDirectory(*InDirectory, true);
 	if (!IFileManager::Get().DirectoryExists(*InDirectory))
 	{
-		OutError = FString::Printf(TEXT("目录创建失败：%s"), *InDirectory);
+		OutError = FString::Printf(TEXT("Failed to create directory: %s"), *InDirectory);
 		return false;
 	}
 	return true;
@@ -1357,7 +1392,7 @@ bool FDwebWorkflowBridgeModule::EnsureDirectoryExists(const FString& InDirectory
 bool FDwebWorkflowBridgeModule::SaveJobManifest(const FString& JobId, const TSharedPtr<FJsonObject>& ExportPayload, FString& OutManifestPath, FString& OutError) const
 {
 	const FString JobFolderName = SanitizeFileName(JobId.IsEmpty() ? TEXT("uejob") : JobId);
-	const FString OutputDirectory = FPaths::Combine(SaveDirectory, JobFolderName);
+	const FString OutputDirectory = FPaths::Combine(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("DwebImports")), JobFolderName);
 	if (!EnsureDirectoryExists(OutputDirectory, OutError))
 	{
 		return false;
@@ -1371,19 +1406,19 @@ bool FDwebWorkflowBridgeModule::SaveJsonFile(const FString& OutputPath, const TS
 {
 	if (!JsonObject.IsValid())
 	{
-		OutError = TEXT("JSON 对象为空。");
+		OutError = TEXT("JSON object is null.");
 		return false;
 	}
 	FString PayloadText;
 	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&PayloadText);
 	if (!FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer))
 	{
-		OutError = TEXT("JSON 序列化失败。");
+		OutError = TEXT("JSON serialization failed.");
 		return false;
 	}
 	if (!FFileHelper::SaveStringToFile(PayloadText, *OutputPath))
 	{
-		OutError = FString::Printf(TEXT("文件写入失败：%s"), *OutputPath);
+		OutError = FString::Printf(TEXT("File write failed: %s"), *OutputPath);
 		return false;
 	}
 	return true;
@@ -1397,7 +1432,7 @@ bool FDwebWorkflowBridgeModule::ImportReferencedModelAssets(const FString& JobId
 	OutError.Reset();
 	if (!ExportPayload.IsValid())
 	{
-		OutError = TEXT("exportPayload 为空。");
+		OutError = TEXT("exportPayload is empty.");
 		return false;
 	}
 
@@ -1447,12 +1482,12 @@ bool FDwebWorkflowBridgeModule::ImportReferencedModelAssets(const FString& JobId
 
 		const float ProgressBase = 30.0f + (45.0f * (BindingIndex / FMath::Max(1.0f, static_cast<float>(TotalBindingCount))));
 		TSharedPtr<FJsonObject> ImportProgress = MakeShared<FJsonObject>();
-		ImportProgress->SetStringField(TEXT("stage"), TEXT("导入 glTF/glb 资产"));
+		ImportProgress->SetStringField(TEXT("stage"), TEXT("Importing glTF/glb assets"));
 		ImportProgress->SetNumberField(TEXT("progress"), ProgressBase);
 		ImportProgress->SetStringField(TEXT("modelsAssetPath"), ModelsAssetPath);
 		ImportProgress->SetStringField(TEXT("currentObjectId"), ObjectId);
 		ImportProgress->SetStringField(TEXT("currentAssetName"), AssetName);
-		UpdateJobStatus(JobId, TEXT("importing"), FString::Printf(TEXT("正在导入模型 %s"), *AssetName), ImportProgress);
+		UpdateJobStatus(JobId, TEXT("importing"), FString::Printf(TEXT("Importing model %s"), *AssetName), ImportProgress);
 
 		if (bRequiresDownload)
 		{
@@ -1475,7 +1510,7 @@ bool FDwebWorkflowBridgeModule::ImportReferencedModelAssets(const FString& JobId
 		FString ImportError;
 		if (!ImportSingleModelAsset(LocalSourcePath, ModelsAssetPath, AssetName, ImportedAssetPath, ImportError))
 		{
-			OutError = FString::Printf(TEXT("对象 %s 导入失败：%s"), *AssetName, *ImportError);
+			OutError = FString::Printf(TEXT("Object %s import failed: %s"), *AssetName, *ImportError);
 			return false;
 		}
 
@@ -1497,7 +1532,7 @@ bool FDwebWorkflowBridgeModule::ImportSingleModelAsset(const FString& SourceFile
 	const FString NormalizedSourcePath = NormalizeLocalFilePath(SourceFilePath);
 	if (!FPaths::FileExists(NormalizedSourcePath))
 	{
-		OutError = FString::Printf(TEXT("源文件不存在：%s"), *NormalizedSourcePath);
+		OutError = FString::Printf(TEXT("Source file does not exist: %s"), *NormalizedSourcePath);
 		return false;
 	}
 
@@ -1505,7 +1540,7 @@ bool FDwebWorkflowBridgeModule::ImportSingleModelAsset(const FString& SourceFile
 	const UInterchangeSourceData* SourceData = SourceDataScope.GetSourceData();
 	if (!SourceData)
 	{
-		OutError = TEXT("无法创建 Interchange SourceData。");
+		OutError = TEXT("Cannot create Interchange SourceData.");
 		return false;
 	}
 
@@ -1518,7 +1553,7 @@ bool FDwebWorkflowBridgeModule::ImportSingleModelAsset(const FString& SourceFile
 	UE::Interchange::FAssetImportResultRef ImportResult = UInterchangeManager::GetInterchangeManager().ImportAssetAsync(ModelsAssetPath, SourceData, ImportParameters);
 	if (!ImportResult->IsValid())
 	{
-		OutError = TEXT("ImportAssetAsync 返回了无效结果。");
+		OutError = TEXT("ImportAssetAsync returned invalid result.");
 		return false;
 	}
 
@@ -1526,7 +1561,7 @@ bool FDwebWorkflowBridgeModule::ImportSingleModelAsset(const FString& SourceFile
 	const TArray<UObject*>& ImportedObjects = ImportResult->GetImportedObjects();
 	if (ImportedObjects.Num() <= 0)
 	{
-		OutError = TEXT("Interchange 未返回导入结果对象。");
+		OutError = TEXT("Interchange did not return import result object.");
 		return false;
 	}
 
@@ -1537,7 +1572,7 @@ bool FDwebWorkflowBridgeModule::ImportSingleModelAsset(const FString& SourceFile
 	}
 	if (!PreferredObject)
 	{
-		OutError = TEXT("Interchange 导入成功但未找到可用资产对象。");
+		OutError = TEXT("Interchange import succeeded but no usable asset objects found.");
 		return false;
 	}
 
@@ -1674,7 +1709,7 @@ bool FDwebWorkflowBridgeModule::CreateSceneBlueprintShell(const FString& SceneCo
 	UPackage* Package = CreatePackage(*UniquePackageName);
 	if (!Package)
 	{
-		OutError = FString::Printf(TEXT("CreatePackage 失败：%s"), *UniquePackageName);
+		OutError = FString::Printf(TEXT("CreatePackage failed: %s"), *UniquePackageName);
 		return false;
 	}
 	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
@@ -1688,7 +1723,7 @@ bool FDwebWorkflowBridgeModule::CreateSceneBlueprintShell(const FString& SceneCo
 	);
 	if (!Blueprint)
 	{
-		OutError = TEXT("CreateBlueprint 返回空对象。");
+		OutError = TEXT("CreateBlueprint returned null.");
 		return false;
 	}
 	FAssetRegistryModule::AssetCreated(Blueprint);
@@ -1707,14 +1742,14 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 
 	if (BlueprintAssetPath.TrimStartAndEnd().IsEmpty())
 	{
-		OutError = TEXT("BlueprintAssetPath 为空。");
+		OutError = TEXT("BlueprintAssetPath is empty.");
 		return false;
 	}
 
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintAssetPath);
 	if (!Blueprint)
 	{
-		OutError = FString::Printf(TEXT("无法加载 Blueprint：%s"), *BlueprintAssetPath);
+		OutError = FString::Printf(TEXT("Cannot load Blueprint: %s"), *BlueprintAssetPath);
 		return false;
 	}
 
@@ -1728,7 +1763,7 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 		: nullptr;
 	if (!LayoutDefaults)
 	{
-		OutError = TEXT("Blueprint 默认对象不是 ADwebWorkflowLayoutActorBase。");
+		OutError = TEXT("Blueprint default object is not ADwebWorkflowLayoutActorBase.");
 		return false;
 	}
 
@@ -1801,7 +1836,7 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 			if (!StaticMeshPtr || !*StaticMeshPtr)
 			{
 				++OutSkippedSlotCount;
-				SummaryWarnings.Add(FString::Printf(TEXT("resolved slot %s 缺少已导入静态网格，已跳过。"), *ReadStringField(ResolvedObject, TEXT("slotId"), SourceObjectId)));
+				SummaryWarnings.Add(FString::Printf(TEXT("Resolved slot %s missing imported static mesh, skipped."), *ReadStringField(ResolvedObject, TEXT("slotId"), SourceObjectId)));
 				continue;
 			}
 
@@ -2018,7 +2053,7 @@ bool FDwebWorkflowBridgeModule::AssembleSceneBlueprintComponents(const FString& 
 		if (!StaticMeshPtr || !*StaticMeshPtr)
 		{
 			++OutSkippedSlotCount;
-			SummaryWarnings.Add(FString::Printf(TEXT("对象 %s 缺少已导入静态网格，已跳过。"), ObjectId.IsEmpty() ? *FString::Printf(TEXT("#%d"), Index + 1) : *ObjectId));
+			SummaryWarnings.Add(FString::Printf(TEXT("Object %s missing imported static mesh, skipped."), ObjectId.IsEmpty() ? *FString::Printf(TEXT("#%d"), Index + 1) : *ObjectId));
 			continue;
 		}
 
@@ -2182,7 +2217,7 @@ bool FDwebWorkflowBridgeModule::SpawnSceneLayoutActors(UWorld* World, const FStr
 	OutPendingModelCount = 0;
 	if (!World)
 	{
-		OutError = TEXT("布局生成失败：无可用世界。") ;
+		OutError = TEXT("Layout generation failed: no world available.") ;
 		return false;
 	}
 
@@ -2579,7 +2614,7 @@ FText FDwebWorkflowBridgeModule::BuildSelectedSceneActorText() const
 		return FText::FromString(RawSelection);
 	}
 
-	return LOCTEXT("NoSceneActorSelected", "请选择目标 Actor");
+	return LOCTEXT("NoSceneActorSelected", "Please select target Actor");
 }
 
 bool FDwebWorkflowBridgeModule::HandleHeartbeatTick(float DeltaTime)
@@ -2631,6 +2666,43 @@ FString FDwebWorkflowBridgeModule::SanitizeFileName(const FString& InValue) cons
 {
 	const FString Trimmed = InValue.TrimStartAndEnd();
 	return FPaths::MakeValidFileName(Trimmed.IsEmpty() ? TEXT("DwebScene") : Trimmed, TCHAR('_'));
+}
+
+
+FString FDwebWorkflowBridgeModule::GetConnectionConfigPath() const
+{
+	return FPaths::ConvertRelativePathToFull(FPaths::ProjectPluginsDir() / TEXT("DwebWorkflowBridge") / TEXT("connection-config.json"));
+}
+
+bool FDwebWorkflowBridgeModule::LoadConnectionConfig()
+{
+	const FString ConfigPath = GetConnectionConfigPath();
+	if (!FPaths::FileExists(ConfigPath))
+	{
+		return false;
+	}
+
+	FString JsonString;
+	if (!FFileHelper::LoadFileToString(JsonString, *ConfigPath))
+	{
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> ConfigObject;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+	if (!FJsonSerializer::Deserialize(Reader, ConfigObject) || !ConfigObject.IsValid())
+	{
+		return false;
+	}
+
+	const FString NewBackendUrl = ReadStringField(ConfigObject, TEXT("backendUrl"));
+	if (NewBackendUrl.IsEmpty())
+	{
+		return false;
+	}
+
+	BackendUrl = NewBackendUrl;
+	return true;
 }
 
 #undef LOCTEXT_NAMESPACE

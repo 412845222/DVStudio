@@ -48,22 +48,38 @@
 				</div>
 
 				<div v-if="showPluginInstall" class="wf-unreal-export-plugin-install">
-					<div class="wf-unreal-export-plugin-title">
-						{{ pluginSectionTitle }}
-					</div>
-					<div v-if="!pluginInstalled && !isInstallingPlugin" class="wf-unreal-export-plugin-path">
-						<input
-							v-model="localProjectPath"
-							type="text"
-							class="wf-unreal-export-plugin-path-input"
-							placeholder="请输入虚幻项目根路径或 .uproject 文件路径"
-							@keydown.enter="handleInstallPlugin"
-						/>
-					</div>
-					<div v-if="pluginInstallError" class="wf-unreal-export-plugin-error">
-						{{ pluginInstallError }}
-					</div>
-				</div>
+			<div class="wf-unreal-export-plugin-title">
+				{{ pluginSectionTitle }}
+			</div>
+			<div v-if="!pluginInstalled && !isInstallingPlugin" class="wf-unreal-export-plugin-path">
+				<input
+					v-model="localProjectPath"
+					type="text"
+					class="wf-unreal-export-plugin-path-input"
+					placeholder="请输入虚幻项目根路径或 .uproject 文件路径"
+					@keydown.enter="handleInstallPlugin"
+				/>
+			</div>
+			<div v-if="pluginInstallError" class="wf-unreal-export-plugin-error">
+				{{ pluginInstallError }}
+			</div>
+		</div>
+
+		<div v-if="showAssetPathSettings" class="wf-unreal-export-asset-path">
+			<div class="wf-unreal-export-asset-path-title">资产路径配置</div>
+			<div class="wf-unreal-export-asset-path-row">
+				<label class="wf-unreal-export-asset-path-label">资产根路径</label>
+				<input
+					v-model="localAssetRootPath"
+					type="text"
+					class="wf-unreal-export-asset-path-input"
+					@change="handleSetAssetRootPath"
+				/>
+				<button class="wf-unreal-export-asset-path-btn" type="button" @click.stop="handleSetAssetRootPath">
+					确认
+				</button>
+			</div>
+		</div>
 
 				<div class="wf-unreal-export-actions">
 					<button
@@ -158,8 +174,6 @@
 					<div>{{ projectNameDisplay }}</div>
 					<div>会话</div>
 					<div>{{ sessionDisplay }}</div>
-					<div>保存路径</div>
-					<div>{{ saveDirectoryDisplay }}</div>
 					<div>资产路径</div>
 					<div>{{ assetRootPathDisplay }}</div>
 					<div v-if="lastLightingSummary">灯光导入</div>
@@ -253,6 +267,7 @@ const emit = defineEmits<{
 	(e: 'await-unreal-connection'): void
 	(e: 'export-unreal-lighting'): void
 	(e: 'export-unreal-scene'): void
+	(e: 'set-asset-root-path', assetRootPath: string): void
 }>()
 
 const settings = computed(() => props.unrealExportSettings ?? null)
@@ -279,6 +294,7 @@ const editorProcessName = computed(() => settings.value?.editorProcess?.projectN
 const editorProcessPath = computed(() => settings.value?.editorProcess?.projectPath ?? '')
 
 const localProjectPath = ref('')
+const localAssetRootPath = ref('/Game/DVStudio')
 watch(
 	() => settings.value?.pluginInstallConfig?.targetProjectPath,
 	(val) => {
@@ -295,6 +311,15 @@ watch(
 			localProjectPath.value = val
 		}
 	}
+)
+watch(
+	() => settings.value?.assetRootPath,
+	(val) => {
+		if (val) {
+			localAssetRootPath.value = val
+		}
+	},
+	{ immediate: true }
 )
 
 const canInstallPlugin = computed(() => {
@@ -422,6 +447,10 @@ const showOpenPluginGuide = computed(() => {
 	return pluginInstalled.value && isEditorRunning.value
 })
 
+const showAssetPathSettings = computed(() => {
+	return isConnected.value || (pluginInstalled.value && isEditorRunning.value)
+})
+
 const projectNameDisplay = computed(
 	() => String(settings.value?.connectedSession?.projectName ?? '').trim() || editorProcessName.value || '未连接'
 )
@@ -431,9 +460,7 @@ const sessionDisplay = computed(
 			settings.value?.connectedSession?.sessionId ?? settings.value?.targetSessionId ?? ''
 		).trim() || '未分配'
 )
-const saveDirectoryDisplay = computed(
-	() => String(settings.value?.connectedSession?.saveDirectory ?? '').trim() || '未设置'
-)
+
 const assetRootPathDisplay = computed(
 	() =>
 		String(
@@ -502,6 +529,11 @@ const handleInstallPlugin = () => {
 	const path = localProjectPath.value.trim()
 	if (!path) return
 	emit('install-plugin', path)
+}
+
+const handleSetAssetRootPath = () => {
+	const path = localAssetRootPath.value.trim()
+	emit('set-asset-root-path', path)
 }
 </script>
 
@@ -649,6 +681,70 @@ const handleInstallPlugin = () => {
 .wf-unreal-export-guide-path {
 	color: #fbbf24;
 	font-family: monospace;
+}
+
+.wf-unreal-export-asset-path {
+	border: 1px solid rgba(148, 163, 184, 0.15);
+	border-radius: 8px;
+	padding: 10px;
+	background: rgba(15, 23, 42, 0.4);
+}
+
+.wf-unreal-export-asset-path-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: #60a5fa;
+	margin-bottom: 8px;
+}
+
+.wf-unreal-export-asset-path-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.wf-unreal-export-asset-path-row + .wf-unreal-export-asset-path-row {
+	margin-top: 8px;
+}
+
+.wf-unreal-export-asset-path-label {
+	font-size: 12px;
+	color: rgba(148, 163, 184, 0.8);
+	flex-shrink: 0;
+	width: 70px;
+}
+
+.wf-unreal-export-asset-path-input {
+	flex: 1;
+	padding: 6px 10px;
+	font-size: 12px;
+	background: rgba(15, 23, 42, 0.8);
+	border: 1px solid rgba(148, 163, 184, 0.3);
+	border-radius: 6px;
+	color: #e2e8f0;
+	outline: none;
+	box-sizing: border-box;
+}
+
+.wf-unreal-export-asset-path-input:focus {
+	border-color: rgba(96, 165, 250, 0.6);
+}
+
+.wf-unreal-export-asset-path-btn {
+	appearance: none;
+	border: 1px solid rgba(96, 165, 250, 0.35);
+	background: rgba(59, 130, 246, 0.18);
+	color: #dbeafe;
+	border-radius: 6px;
+	padding: 6px 12px;
+	font-size: 12px;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.wf-unreal-export-asset-path-btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
 }
 
 .wf-unreal-export-actions {

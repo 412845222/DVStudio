@@ -475,6 +475,10 @@ export type WorkflowUnrealExportNodeSettings = {
 	pluginInstallConfig?: {
 		targetProjectPath?: string
 	}
+
+	assetRootPath?: string
+	assetPathValidation?: 'valid' | 'invalid' | 'checking'
+	assetPathValidationError?: string
 }
 
 export type WorkflowSceneLayoutManualModelBinding = {

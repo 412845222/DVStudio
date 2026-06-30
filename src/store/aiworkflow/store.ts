@@ -970,7 +970,15 @@ const normalizeUnrealExportSettings = (
 							? raw.pluginInstallConfig.targetProjectPath
 							: undefined
 					}
-				: undefined
+				: undefined,
+		assetRootPath: isString(raw.assetRootPath) && raw.assetRootPath.trim() ? raw.assetRootPath.trim() : '/Game/DVStudio',
+		assetPathValidation:
+			raw.assetPathValidation === 'valid' ||
+			raw.assetPathValidation === 'invalid' ||
+			raw.assetPathValidation === 'checking'
+				? raw.assetPathValidation
+				: undefined,
+		assetPathValidationError: isString(raw.assetPathValidationError) ? raw.assetPathValidationError : undefined
 	}
 }
 

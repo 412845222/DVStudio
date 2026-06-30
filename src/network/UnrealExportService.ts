@@ -73,6 +73,7 @@ export type UnrealExportRequest = {
 	targetSessionId: string
 	sourceNodeId: string
 	sceneName: string
+	assetRootPath?: string
 	exportPayload: Record<string, unknown>
 }
 
@@ -216,18 +217,22 @@ export class UnrealExportService {
 	}
 
 	async createJob(payload: UnrealExportRequest): Promise<UnrealExportCreateJobResponse> {
+		const backendPayload = {
+			sessionId: payload.targetSessionId,
+			type: 'export',
+			payload: {
+				sourceNodeId: payload.sourceNodeId,
+				sceneName: payload.sceneName,
+				assetRootPath: payload.assetRootPath,
+				...payload.exportPayload
+			}
+		}
+
 		const unrealIpc = getUnrealIpc()
 		if (unrealIpc?.createJob) {
 			try {
-				const result = await unrealIpc.createJob({
-					sessionId: payload.targetSessionId,
-					type: 'export',
-					payload: {
-						sourceNodeId: payload.sourceNodeId,
-						sceneName: payload.sceneName,
-						...payload.exportPayload
-					}
-				})
+				const serializablePayload = JSON.parse(JSON.stringify(backendPayload))
+				const result = await unrealIpc.createJob(serializablePayload)
 				if (result) {
 					const r = result as any
 					if (r.ok === false) {
@@ -250,7 +255,7 @@ export class UnrealExportService {
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/jobs/create'), {
 			method: 'POST',
 			headers: jsonHeaders,
-			body: JSON.stringify(payload ?? {})
+			body: JSON.stringify(backendPayload)
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)

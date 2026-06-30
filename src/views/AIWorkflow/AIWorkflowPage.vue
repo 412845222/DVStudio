@@ -223,6 +223,7 @@
 						@detect-editor="onNodeDetectEditor(node.id)"
 						@check-plugin="onNodeCheckPlugin(node.id, $event)"
 						@install-plugin="onNodeInstallPlugin(node.id, $event)"
+						@set-asset-root-path="onNodeSetAssetRootPath(node.id, $event)"
 						@end-link="onEndLink"
 						@export-unreal-lighting="onNodeExportUnrealLighting(node.id)"
 						@export-unreal-scene="onNodeExportUnrealScene(node.id)"
@@ -6101,7 +6102,8 @@ const {
 	onNodeExportUnrealLighting,
 	onNodeDetectEditor,
 	onNodeCheckPlugin,
-	onNodeInstallPlugin
+	onNodeInstallPlugin,
+	onNodeSetAssetRootPath
 } = useAIWorkflowUnrealExportActions({
 	store,
 	unrealExportService,

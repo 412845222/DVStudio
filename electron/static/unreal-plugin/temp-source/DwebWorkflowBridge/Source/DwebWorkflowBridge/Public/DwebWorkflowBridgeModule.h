@@ -10,7 +10,6 @@ class FJsonObject;
 class FReply;
 struct FDwebWorkflowLayoutSlot;
 class SDockTab;
-class SEditableTextBox;
 template <typename OptionType> class SComboBox;
 class UWorld;
 
@@ -26,8 +25,8 @@ private:
 	TSharedRef<SDockTab> OnSpawnPluginTab(const class FSpawnTabArgs& SpawnTabArgs);
 
 	FReply OnConnectWorkflowClicked();
-	FReply OnCheckTaskClicked();
-	FReply OnRefreshSceneActorsClicked();
+	FReply OnCheckConnectionClicked();
+	FReply OnReceiveLayoutClicked();
 	FReply OnReceiveLightingClicked();
 
 	void RegisterSession();
@@ -64,9 +63,6 @@ private:
 
 	static const FName BridgeTabName;
 
-	TSharedPtr<SEditableTextBox> BackendUrlTextBox;
-	TSharedPtr<SEditableTextBox> SaveDirectoryTextBox;
-	TSharedPtr<SEditableTextBox> AssetRootPathTextBox;
 	TSharedPtr<SComboBox<TSharedPtr<FString>>> SceneActorComboBox;
 	TArray<TSharedPtr<FString>> SceneActorOptions;
 
@@ -74,7 +70,6 @@ private:
 	FTSTicker::FDelegateHandle HeartbeatTickerHandle;
 
 	FString BackendUrl;
-	FString SaveDirectory;
 	FString AssetRootPath;
 	FString SelectedSceneActorPath;
 	FString SessionId;

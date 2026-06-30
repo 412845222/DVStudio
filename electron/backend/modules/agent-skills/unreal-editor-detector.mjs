@@ -80,12 +80,57 @@ function isValidUprojectPath(projectPath) {
 
 function resolveProjectRootFromUproject(uprojectPath) {
 	if (!uprojectPath) return ''
-	const dir = path.dirname(uprojectPath)
-	const base = path.basename(uprojectPath)
+	const resolved = path.resolve(uprojectPath)
+	const dir = path.dirname(resolved)
+	const base = path.basename(resolved)
 	if (base.toLowerCase().endsWith('.uproject')) {
 		return dir
 	}
-	return uprojectPath
+	return resolved
+}
+
+function ensurePluginEnabledInUproject(uprojectPath) {
+	if (!uprojectPath || !fs.existsSync(uprojectPath)) {
+		return { ok: false, enabled: false, error: `Uproject file not found: ${uprojectPath}` }
+	}
+
+	let projectJson
+	try {
+		projectJson = JSON.parse(fs.readFileSync(uprojectPath, 'utf-8'))
+	} catch (err) {
+		return {
+			ok: false,
+			enabled: false,
+			error: `Unable to parse uproject JSON: ${err.message || err}`
+		}
+	}
+
+	if (!Array.isArray(projectJson.Plugins)) {
+		projectJson.Plugins = []
+	}
+
+	const existingIndex = projectJson.Plugins.findIndex((item) => {
+		if (!item || typeof item !== 'object') return false
+		return String(item.Name || '').trim() === PLUGIN_NAME
+	})
+
+	let changed = false
+	if (existingIndex >= 0) {
+		const existing = projectJson.Plugins[existingIndex] || {}
+		if (existing.Enabled !== true) {
+			projectJson.Plugins[existingIndex] = { ...existing, Enabled: true }
+			changed = true
+		}
+	} else {
+		projectJson.Plugins.push({ Name: PLUGIN_NAME, Enabled: true })
+		changed = true
+	}
+
+	if (changed) {
+		fs.writeFileSync(uprojectPath, `${JSON.stringify(projectJson, null, 2)}\n`, 'utf-8')
+	}
+
+	return { ok: true, enabled: true, changed }
 }
 
 export async function detectUnrealEditorProcesses() {
@@ -158,12 +203,14 @@ export async function detectUnrealEditorProcesses() {
 
 export function detectProjectRootFromUserInput(inputPath) {
 	const trimmed = String(inputPath || '').trim()
-	if (!trimmed) return { ok: false, error: '项目路径不能为空' }
+	if (!trimmed) return { ok: false, error: 'Project path is empty. Please provide a valid .uproject file path or project root directory.' }
 
-	let candidate = trimmed
+	// Resolve relative paths to absolute paths
+	let candidate = path.resolve(trimmed)
+
 	if (candidate.toLowerCase().endsWith('.uproject')) {
 		if (!fs.existsSync(candidate)) {
-			return { ok: false, error: `.uproject 文件不存在: ${candidate}` }
+			return { ok: false, error: `Uproject file not found: ${candidate}. Please check the path and try again.` }
 		}
 		const projectRoot = path.dirname(candidate)
 		return {
@@ -185,10 +232,10 @@ export function detectProjectRootFromUserInput(inputPath) {
 				projectName: extractProjectName(uprojectFile)
 			}
 		}
-		return { ok: false, error: `目录中未找到 .uproject 文件: ${candidate}` }
+		return { ok: false, error: `No .uproject file found in directory: ${candidate}. Please provide the project root directory containing a .uproject file.` }
 	}
 
-	return { ok: false, error: `路径无效或不存在: ${candidate}` }
+	return { ok: false, error: `Path is invalid or does not exist: ${candidate}. Please provide a valid absolute path to the Unreal project.` }
 }
 
 export function checkPluginInstalled(projectPath) {
@@ -285,11 +332,22 @@ export async function installPluginToProject(projectPath) {
 			pluginVersion = String(json.VersionName || json.Version || '').trim()
 		} catch { /* ignore */ }
 
+		const enableResult = ensurePluginEnabledInUproject(resolved.uprojectPath)
+		if (!enableResult.ok) {
+			return {
+				ok: false,
+				installed: false,
+				error: `插件安装成功，但启用插件失败: ${enableResult.error}`
+			}
+		}
+
 		return {
 			ok: true,
 			installed: true,
 			pluginPath: pluginDir,
 			pluginVersion,
+			pluginEnabled: true,
+			pluginEnableUpdated: Boolean(enableResult.changed),
 			projectRoot,
 			projectName: resolved.projectName,
 			needsRestart: true

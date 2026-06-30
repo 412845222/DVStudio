@@ -1233,17 +1233,26 @@ function generateId(prefix) {
 
 export function unrealSessions() {
 	cleanupStaleSessions()
+	const now = Date.now()
 	const items = []
 	for (const [id, session] of unrealSessionsMap) {
+		const isStale = now - session.lastHeartbeat > UNREAL_SESSION_TTL
 		items.push({
+			sessionId: id,
 			id,
 			projectId: session.projectId,
+			projectName: session.clientInfo?.projectName || '',
+			projectPath: session.clientInfo?.projectPath || '',
+			displayName: session.clientInfo?.projectName || session.projectId || id,
 			clientInfo: session.clientInfo,
 			lastHeartbeat: session.lastHeartbeat,
+			lastSeenAt: session.lastHeartbeat,
 			createdAt: session.createdAt,
-			jobCount: session.jobs.length
+			jobCount: session.jobs.length,
+			status: isStale ? 'stale' : 'connected'
 		})
 	}
+	items.sort((a, b) => b.lastHeartbeat - a.lastHeartbeat)
 	return { ok: true, sessions: items }
 }
 
@@ -1251,8 +1260,30 @@ export function unrealRegister(ctx, payload) {
 	const p = payload || {}
 	const projectId = String(p.projectId || '').trim()
 	const clientInfo = asDict(p.clientInfo)
-	const sessionId = generateId('ue')
 	const now = Date.now()
+
+	let existingSession = null
+	if (projectId) {
+		for (const [id, session] of unrealSessionsMap) {
+			if (session.projectId === projectId && now - session.lastHeartbeat < UNREAL_SESSION_TTL * 2) {
+				existingSession = session
+				break
+			}
+		}
+	}
+
+	if (existingSession) {
+		existingSession.lastHeartbeat = now
+		existingSession.clientInfo = { ...existingSession.clientInfo, ...clientInfo }
+		return {
+			ok: true,
+			sessionId: existingSession.id,
+			reused: true,
+			session: { id: existingSession.id, projectId, createdAt: existingSession.createdAt }
+		}
+	}
+
+	const sessionId = generateId('ue')
 	const session = {
 		id: sessionId,
 		projectId,
@@ -1263,7 +1294,7 @@ export function unrealRegister(ctx, payload) {
 		nextJobIndex: 0
 	}
 	unrealSessionsMap.set(sessionId, session)
-	return { ok: true, sessionId, session: { id: sessionId, projectId, createdAt: now } }
+	return { ok: true, sessionId, reused: false, session: { id: sessionId, projectId, createdAt: now } }
 }
 
 export function unrealSessionDetail(ctx, payload) {
@@ -1453,6 +1484,34 @@ export function startUnrealHttpServer() {
 					return sendJson(res, result.ok ? 200 : 404, result)
 				}
 
+				if (req.method === 'GET' && pathname === '/api/agent-skills/unreal/sessions') {
+					const result = unrealSessions()
+					return sendJson(res, 200, result)
+				}
+
+				if (req.method === 'POST' && pathname === '/api/agent-skills/unreal/jobs/create') {
+					const body = await readJsonBody(req)
+					const result = unrealCreateJob(null, body)
+					return sendJson(res, result.ok ? 200 : 400, result)
+				}
+
+				if (req.method === 'GET' && pathname === '/api/agent-skills/unreal-export/sessions') {
+					const result = unrealSessions()
+					return sendJson(res, 200, result)
+				}
+
+				if (req.method === 'POST' && pathname === '/api/agent-skills/unreal-export/jobs/create') {
+					const body = await readJsonBody(req)
+					const result = unrealCreateJob(null, body)
+					return sendJson(res, result.ok ? 200 : 400, result)
+				}
+
+				if (req.method === 'GET' && pathname.startsWith('/api/agent-skills/unreal-export/jobs/')) {
+					const jobId = pathname.split('/').pop()
+					const result = unrealJobDetail(null, { jobId })
+					return sendJson(res, result.ok ? 200 : 404, result)
+				}
+
 				return sendJson(res, 404, { ok: false, error: 'not found' })
 			} catch (err) {
 				logger.error(`Unreal HTTP server error: ${err.message}`)
@@ -1566,6 +1625,8 @@ export async function unrealInstallPlugin(ctx, payload) {
 			installed: result.installed,
 			pluginPath: result.pluginPath,
 			pluginVersion: result.pluginVersion,
+			pluginEnabled: result.pluginEnabled,
+			pluginEnableUpdated: result.pluginEnableUpdated,
 			projectRoot: result.projectRoot,
 			projectName: result.projectName,
 			needsRestart: result.needsRestart

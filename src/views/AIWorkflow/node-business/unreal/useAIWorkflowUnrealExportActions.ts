@@ -6,10 +6,16 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		commit: (type: string, value: unknown) => void
 	}
 	unrealExportService: {
+		listSessions: () => Promise<{
+			ok: boolean
+			sessions?: Array<Record<string, unknown>>
+			error?: string
+		}>
 		createJob: (input: {
 			targetSessionId: string
 			sourceNodeId: string
 			sceneName: string
+			assetRootPath?: string
 			exportPayload: Record<string, unknown>
 		}) => Promise<Record<string, unknown>>
 		detectEditor: () => Promise<{
@@ -174,17 +180,68 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		}
 	}
 
+	const resolveActiveSessionId = async (nodeId: string): Promise<string> => {
+		const sessionsRes = await payload.unrealExportService.listSessions()
+		if (!sessionsRes.ok || !Array.isArray(sessionsRes.sessions)) return ''
+		const sessions = sessionsRes.sessions as Array<Record<string, unknown>>
+		const activeSessions = sessions.filter(
+			(s) => String(s?.status ?? 'connected') !== 'stale'
+		)
+		if (!activeSessions.length) return ''
+
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
+		const settings = (node?.unrealExportSettings as Record<string, unknown>) ?? {}
+		const currentSessionId = String(
+			settings.targetSessionId ?? (settings.connectedSession as Record<string, unknown>)?.sessionId ?? ''
+		).trim()
+
+		if (currentSessionId) {
+			const exact = activeSessions.find(
+				(s) => String(s?.sessionId ?? '') === currentSessionId
+			)
+			if (exact) return currentSessionId
+		}
+
+		const connectedSession = settings.connectedSession as Record<string, unknown> | undefined
+		const currentProjectPath = String(connectedSession?.projectPath ?? '').trim()
+		const currentProjectName = String(connectedSession?.projectName ?? '').trim()
+		const matched = activeSessions.find((s) => {
+			const sp = String(s?.projectPath ?? '').trim()
+			const sn = String(s?.projectName ?? '').trim()
+			if (currentProjectPath && sp && sp === currentProjectPath) return true
+			if (currentProjectName && sn && sn === currentProjectName) return true
+			return false
+		})
+		if (matched) return String(matched.sessionId ?? '')
+
+		return String(activeSessions[0]?.sessionId ?? '')
+	}
+
 	const onNodeExportUnrealScene = async (nodeId: string) => {
 		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node || node.type !== 'unreal-export') return
-		const settings = (node.unrealExportSettings as Record<string, unknown>) ?? {}
-		const targetSessionId = String(
-			settings.targetSessionId ?? (settings.connectedSession as Record<string, unknown>)?.sessionId ?? ''
-		).trim()
+
+		const targetSessionId = await resolveActiveSessionId(nodeId)
 		if (!targetSessionId) {
-			payload.pushToast('当前 Unreal 导出节点尚未连接虚幻插件。', 'warn')
+			payload.pushToast('未检测到虚幻插件连接。请先在虚幻编辑器插件面板点击"Connect Workflow"建立连接，然后再导出。', 'warn')
+			payload.store.commit('setNodeUnrealExportSettings', {
+				nodeId,
+				unrealExportSettings: {
+					connectionStatus: 'waiting',
+					statusText: '等待虚幻插件连接',
+					message: '请在虚幻插件面板点击"Connect Workflow"。'
+				}
+			})
 			return
 		}
+
+		const settings = (node.unrealExportSettings as Record<string, unknown>) ?? {}
+		const assetRootPath = String(settings.assetRootPath ?? '/Game/DVStudio').trim()
+		if (!assetRootPath) {
+			payload.pushToast('请先设置资产根路径（默认 /Game/DVStudio）。', 'warn')
+			return
+		}
+
 		const built = await buildUnrealExportPayload(nodeId, 'scene-layout')
 		if (!built.ok) {
 			payload.pushToast(built.error, 'warn')
@@ -195,8 +252,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			unrealExportSettings: {
 				connectionStatus: 'exporting',
 				statusText: '正在创建导出任务',
-				message: '正在把场景布局数据发送给 Django 后端。',
+				message: '正在把场景布局数据发送给后端。',
 				lastExportMode: 'scene-layout',
+				targetSessionId,
 				lastSlotCount: Number.isFinite(Number(built.payload.resolvedSlotCount))
 					? Number(built.payload.resolvedSlotCount)
 					: undefined
@@ -206,6 +264,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			targetSessionId,
 			sourceNodeId: built.payload.sourceNodeId,
 			sceneName: built.payload.sceneName,
+			assetRootPath,
 			exportPayload: built.payload
 		})) as Record<string, unknown>
 		if (!res.ok) {
@@ -225,8 +284,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			nodeId,
 			unrealExportSettings: {
 				connectionStatus: 'connected',
-				statusText: '已连接，导出任务已入队',
-				message: '请在虚幻插件中点击“接收布局数据”。',
+				statusText: '导出任务已入队，等待插件拉取',
+				message: '请在虚幻插件中点击"Receive Layout Assets"接收资产。',
 				lastExportMode: 'scene-layout',
 				lastExportJobId: job.jobId,
 				lastExportStatus: 'queued',
@@ -240,20 +299,34 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				lastExportAt: Number(job.createdAt ?? Date.now()) || Date.now()
 			}
 		})
-		payload.pushToast(`Unreal 导出任务已创建：${job.jobId}`, 'info')
+		payload.pushToast(`Unreal 导出任务已创建：${job.jobId}。请在虚幻插件中点击"Receive Layout Assets"。`, 'info')
 	}
 
 	const onNodeExportUnrealLighting = async (nodeId: string) => {
 		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node || node.type !== 'unreal-export') return
-		const settings = (node.unrealExportSettings as Record<string, unknown>) ?? {}
-		const targetSessionId = String(
-			settings.targetSessionId ?? (settings.connectedSession as Record<string, unknown>)?.sessionId ?? ''
-		).trim()
+
+		const targetSessionId = await resolveActiveSessionId(nodeId)
 		if (!targetSessionId) {
-			payload.pushToast('当前 Unreal 导出节点尚未连接虚幻插件。', 'warn')
+			payload.pushToast('未检测到虚幻插件连接。请先在虚幻编辑器插件面板点击"Connect Workflow"建立连接，然后再导出。', 'warn')
+			payload.store.commit('setNodeUnrealExportSettings', {
+				nodeId,
+				unrealExportSettings: {
+					connectionStatus: 'waiting',
+					statusText: '等待虚幻插件连接',
+					message: '请在虚幻插件面板点击"Connect Workflow"。'
+				}
+			})
 			return
 		}
+
+		const settings = (node.unrealExportSettings as Record<string, unknown>) ?? {}
+		const assetRootPath = String(settings.assetRootPath ?? '/Game/DVStudio').trim()
+		if (!assetRootPath) {
+			payload.pushToast('请先设置资产根路径（默认 /Game/DVStudio）。', 'warn')
+			return
+		}
+
 		const built = await buildUnrealExportPayload(nodeId, 'lighting-only')
 		if (!built.ok) {
 			payload.pushToast(built.error, 'warn')
@@ -264,14 +337,16 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			unrealExportSettings: {
 				connectionStatus: 'exporting',
 				statusText: '正在创建灯光任务',
-				message: '正在把灯光布局信息发送给 Django 后端。',
-				lastExportMode: 'lighting-only'
+				message: '正在把灯光布局信息发送给后端。',
+				lastExportMode: 'lighting-only',
+				targetSessionId
 			}
 		})
 		const res = (await payload.unrealExportService.createJob({
 			targetSessionId,
 			sourceNodeId: built.payload.sourceNodeId,
 			sceneName: built.payload.sceneName,
+			assetRootPath,
 			exportPayload: built.payload
 		})) as Record<string, unknown>
 		if (!res.ok) {
@@ -291,8 +366,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			nodeId,
 			unrealExportSettings: {
 				connectionStatus: 'connected',
-				statusText: '已连接，灯光任务已入队',
-				message: '请在虚幻插件中选择场景Actor并点击“接收灯光数据”。',
+				statusText: '灯光任务已入队，等待插件拉取',
+				message: '请在虚幻插件中选择场景Actor并点击"Receive Lighting Data"。',
 				lastExportMode: 'lighting-only',
 				lastExportJobId: job.jobId,
 				lastExportStatus: 'queued',
@@ -482,12 +557,41 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		}
 	}
 
+	const onNodeSetAssetRootPath = async (nodeId: string, assetRootPath: string) => {
+		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
+		if (!node || node.type !== 'unreal-export') return
+
+		const trimmedPath = String(assetRootPath || '').trim()
+		if (!trimmedPath) {
+			payload.pushToast('资产根路径不能为空', 'warn')
+			return
+		}
+
+		// Validate that the asset path starts with /Game/
+		if (!trimmedPath.startsWith('/Game/') && !trimmedPath.startsWith('/Game')) {
+			payload.pushToast('资产根路径必须以 /Game/ 开头（例如 /Game/DVStudio）', 'warn')
+			return
+		}
+
+		payload.store.commit('setNodeUnrealExportSettings', {
+			nodeId,
+			unrealExportSettings: {
+				assetRootPath: trimmedPath,
+				assetPathValidation: 'valid',
+				assetPathValidationError: undefined
+			}
+		})
+
+		payload.pushToast(`资产根路径已设置为: ${trimmedPath}`, 'info')
+	}
+
 	return {
 		buildUnrealExportPayload,
 		onNodeExportUnrealScene,
 		onNodeExportUnrealLighting,
 		onNodeDetectEditor,
 		onNodeCheckPlugin,
-		onNodeInstallPlugin
+		onNodeInstallPlugin,
+		onNodeSetAssetRootPath
 	}
 }
