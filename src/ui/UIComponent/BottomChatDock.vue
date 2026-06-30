@@ -45,6 +45,25 @@
 								/>
 							</svg>
 						</button>
+						<button
+							class="chat-history-delete-btn"
+							type="button"
+							title="删除会话"
+							:disabled="!codexActiveSessionId || codexSessions?.length <= 1"
+							@pointerdown.stop
+							@click.stop="emit('codex-delete-session', codexActiveSessionId)"
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path
+									d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									fill="none"
+								/>
+							</svg>
+						</button>
 					</div>
 					<button
 						class="chat-history-minimize"
@@ -75,7 +94,7 @@
 								<div v-if="!messages?.length" class="agent-empty-state">
 									开始一段新的 Agent 对话。
 								</div>
-								<div v-else class="chat-history-list agent-chat-list">
+								<div v-else class="chat-history-list agent-chat-list" ref="chatListRef">
 									<div
 										v-for="m in messages"
 										:key="m.id"
@@ -97,7 +116,7 @@
 												/>
 												<div v-if="m.toolCalls?.length" class="agent-tool-calls">
 													<ToolCallCard
-														v-for="tc in m.toolCalls"
+														v-for="(tc, index) in m.toolCalls"
 														:key="tc.id"
 														:tool-name="tc.name"
 														:status="tc.status"
@@ -105,7 +124,17 @@
 														:result="tc.result"
 														:error="tc.error"
 														:default-expanded="tc.status === 'running'"
+														:auto-collapsed="tc.status === 'completed'"
 													/>
+													<template v-for="tc in m.toolCalls" :key="'loc-' + tc.id">
+														<NodeLocationCard
+															v-if="isCreateNodeToolResult(tc)"
+															:node-id="getToolResultField(tc.result, 'nodeId')"
+															:node-title="getToolResultField(tc.result, 'title')"
+															:node-type="getToolResultField(tc.result, 'nodeType')"
+															@locate="onLocateNode(getToolResultField(tc.result, 'nodeId'))"
+														/>
+													</template>
 												</div>
 												<UserChoicePanel
 													v-if="m.userChoices?.length"
@@ -142,18 +171,58 @@
 					</span>
 				</div>
 
+				<div v-if="contextUsage" class="chat-dock-context-usage">
+					<div class="chat-dock-context-usage-bar">
+						<div
+							class="chat-dock-context-usage-fill"
+							:style="{ width: `${contextUsage.usage}%` }"
+							:class="{ warning: contextUsage.usage >= 80, truncated: contextUsage.truncated }"
+						/>
+					</div>
+					<div class="chat-dock-context-usage-text">
+						{{ formatTokens(contextUsage.tokenCount) }} / {{ formatTokens(contextUsage.budget) }}
+						<span v-if="contextUsage.truncated" class="chat-dock-context-usage-truncated">已截断</span>
+					</div>
+				</div>
+
 				<textarea
 					ref="inputRef"
 					:value="modelValue"
 					class="chat-dock-input"
 					rows="2"
-					placeholder="输入消息，按 Enter 发送，Shift+Enter 换行"
+					placeholder="输入消息，按 Enter 发送，Shift+Enter 换行，输入 / 选择技能"
 					:disabled="sending"
 					@focus="emit('focus-input')"
 					@input="onInput"
 					@keydown.enter.exact.prevent="onEnterSend"
 					@keydown.enter.shift.exact.stop
+					@keydown="onInputKeyDown"
+					@keydown.escape="onEscapeKeyDown"
 				/>
+
+				<div
+					v-if="showSkillPicker"
+					class="chat-dock-skill-picker"
+					ref="skillPickerRef"
+				>
+					<div class="chat-dock-skill-picker-header">选择技能</div>
+					<div class="chat-dock-skill-picker-list">
+						<div
+							v-for="skill in availableSkills"
+							:key="skill.id"
+							class="chat-dock-skill-picker-item"
+							:class="{ active: selectedSkillIndex === availableSkills.indexOf(skill) }"
+							@click="onSkillSelect(skill)"
+							@mouseenter="selectedSkillIndex = availableSkills.indexOf(skill)"
+						>
+							<div class="chat-dock-skill-picker-item-icon">{{ skill.icon }}</div>
+							<div class="chat-dock-skill-picker-item-info">
+								<div class="chat-dock-skill-picker-item-name">{{ skill.name }}</div>
+								<div class="chat-dock-skill-picker-item-desc">{{ skill.description }}</div>
+							</div>
+						</div>
+					</div>
+				</div>
 
 				<div class="chat-dock-footer">
 					<div class="chat-dock-footer-left">
@@ -196,6 +265,21 @@
 								</template>
 							</select>
 						</div>
+						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-thinking">
+							<div class="chat-dock-toolbar-label">思考</div>
+							<select
+								class="chat-dock-toolbar-select thinking-select"
+								:value="thinkingEffort"
+								:disabled="sending || !supportsThinking"
+								@change="onThinkingEffortChange"
+							>
+								<option v-if="!supportsThinking" value="disabled">不支持</option>
+								<option value="disabled">关闭</option>
+								<option value="low">简洁</option>
+								<option value="medium">平衡</option>
+								<option value="high">详细</option>
+							</select>
+						</div>
 					</div>
 
 					<button
@@ -207,6 +291,34 @@
 					>
 						{{ sendButtonLabel }}
 					</button>
+
+					<button
+						class="chat-dock-upload"
+						type="button"
+						title="上传文件"
+						:disabled="sending"
+						@click="onUploadClick"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path
+								d="M12 15v-6m0 0l-3 3m3-3l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								fill="none"
+							/>
+						</svg>
+					</button>
+
+					<input
+						ref="fileInputRef"
+						type="file"
+						class="chat-dock-file-input"
+						multiple
+						accept="image/*,video/*"
+						@change="onFileSelect"
+					/>
 				</div>
 			</div>
 		</div>
@@ -219,6 +331,7 @@ import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideo
 import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
 import ThinkingBlock from '../AIChat/ThinkingBlock.vue'
 import ToolCallCard from '../AIChat/ToolCallCard.vue'
+import NodeLocationCard from '../AIChat/NodeLocationCard.vue'
 import UserChoicePanel from '../AIChat/UserChoicePanel.vue'
 import AgentToolsPanel from '../AIChat/AgentToolsPanel.vue'
 import {
@@ -311,38 +424,40 @@ export type CodexSessionItem = LocalExecSessionItem
 export type CodexFlowEvent = LocalExecFlowEvent
 
 const props = defineProps<{
-	modelValue: string
-	messages?: BottomChatMessage[]
-	sending?: boolean
-	runState?: 'idle' | 'sending' | 'stopping' | 'error'
-	collapsed?: boolean
-	taskStatus?: string
-	placement?: 'bottom' | 'right-drawer'
-	agentBackend?: AgentBackendType
-	agentMode?: AgentConversationMode
-	localExecStreamMode?: 'real' | 'mock'
-	agentWorkingDirectory?: string
-	modelKey?: ChatLegacyModelKey
-	nanoPreviewUrls?: string[]
-	nanoPreviewFallbackUrls?: string[]
-	nanoPreviewSourcePaths?: string[]
-	nanoPreviewLoadingStates?: boolean[]
-	nanoPreviewDownloadStatuses?: string[]
-	nanoPreviewDownloadProgresses?: number[]
-	nanoPreviewLocalReadyStates?: boolean[]
-	nanoPreviewUrl?: string
-	nanoStatus?: string
-	nanoDetail?: string
-	nanoBilling?: string
-	nanoModelUsed?: string
+		modelValue: string
+		messages?: BottomChatMessage[]
+		sending?: boolean
+		runState?: 'idle' | 'sending' | 'stopping' | 'error'
+		collapsed?: boolean
+		taskStatus?: string
+		placement?: 'bottom' | 'right-drawer'
+		agentBackend?: AgentBackendType
+		agentMode?: AgentConversationMode
+		localExecStreamMode?: 'real' | 'mock'
+		agentWorkingDirectory?: string
+		modelKey?: ChatLegacyModelKey
+		nanoPreviewUrls?: string[]
+		nanoPreviewFallbackUrls?: string[]
+		nanoPreviewSourcePaths?: string[]
+		nanoPreviewLoadingStates?: boolean[]
+		nanoPreviewDownloadStatuses?: string[]
+		nanoPreviewDownloadProgresses?: number[]
+		nanoPreviewLocalReadyStates?: boolean[]
+		nanoPreviewUrl?: string
+		nanoStatus?: string
+		nanoDetail?: string
+		nanoBilling?: string
+		nanoModelUsed?: string
 
-	nanoAnchorNodeId?: string
-	nanoRefAnchors?: NanoBananaRefAnchor[]
-	nanoHoverAnchorId?: string | null
-	codexSessions?: CodexSessionItem[]
-	codexActiveSessionId?: string
-	codexFlowEvents?: CodexFlowEvent[]
-}>()
+		nanoAnchorNodeId?: string
+		nanoRefAnchors?: NanoBananaRefAnchor[]
+		nanoHoverAnchorId?: string | null
+		codexSessions?: CodexSessionItem[]
+		codexActiveSessionId?: string
+		codexFlowEvents?: CodexFlowEvent[]
+		thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+		contextUsage?: { tokenCount: number; budget: number; usage: number; truncated?: boolean } | null
+	}>()
 
 const emit = defineEmits<{
 	(e: 'update:modelValue', v: string): void
@@ -366,6 +481,9 @@ const emit = defineEmits<{
 	(e: 'codex-approval', v: { messageId: string; decision: 'accept' | 'decline' }): void
 	(e: 'user-choice-select', v: { messageId: string; choiceIndex: number; choiceText: string }): void
 	(e: 'layout-changed'): void
+	(e: 'update:thinkingEffort', v: 'disabled' | 'low' | 'medium' | 'high'): void
+	(e: 'file-upload', files: Array<{ name: string; type: string; size: number; dataUrl?: string }>): void
+	(e: 'locate-node', nodeId: string): void
 	(
 		e: 'safe-area-changed',
 		rect: { width: number; height: number; right: number; top: number }
@@ -375,11 +493,35 @@ const emit = defineEmits<{
 const historyExpanded = ref(false)
 const historyBodyRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const skillPickerRef = ref<HTMLElement | null>(null)
+const chatListRef = ref<HTMLElement | null>(null)
 const pendingFocus = ref(false)
+
+const showSkillPicker = ref(false)
+const selectedSkillIndex = ref(0)
+
+const availableSkills = ref([
+	{ id: 'scene-understand', name: '场景理解', description: '分析图像中的场景、物体和布局', icon: '🖼️' },
+	{ id: 'scene-lighting', name: '场景光照', description: '优化场景的光照效果和氛围', icon: '💡' },
+	{ id: 'node-create', name: '创建节点', description: '在蓝图中创建工作流节点', icon: '➕' },
+	{ id: 'node-config', name: '配置节点', description: '配置已选中节点的参数', icon: '⚙️' },
+	{ id: 'workflow-plan', name: '工作流规划', description: '根据需求规划完整的工作流', icon: '📋' },
+])
 
 const dockRef = ref<HTMLElement | null>(null)
 const dockLeftPx = ref<number | null>(null)
 let dragCleanup: (() => void) | null = null
+
+function formatTokens(tokens: number): string {
+	if (tokens >= 1000000) {
+		return (tokens / 1000000).toFixed(1) + 'M'
+	}
+	if (tokens >= 1000) {
+		return (tokens / 1000).toFixed(1) + 'K'
+	}
+	return String(tokens)
+}
 
 const clampDockLeft = (left: number) => {
 	const w = window.innerWidth || 0
@@ -600,10 +742,36 @@ const activeModelOption = computed(() => {
 	return modelOptions.value.find((m) => m.id === id) ?? null
 })
 
+const thinkingEffort = computed<'disabled' | 'low' | 'medium' | 'high'>(() => {
+	const effort = String(props.thinkingEffort || '').trim().toLowerCase()
+	if (effort === 'disabled' || effort === 'low' || effort === 'high') {
+		return effort
+	}
+	return 'medium'
+})
+
+const supportsThinking = computed(() => {
+	if (agentBackend.value !== 'dvsagent') return false
+	const modelId = activeModelId.value.toLowerCase()
+	if (!modelId.includes('doubao-seed')) return false
+	const noThinking = ['seedream', 'seedance', 'seed-translation', 'seed-code', 'seed-character']
+	return !noThinking.some((m) => modelId.includes(m))
+})
+
 watch(
 	() => activeModelId.value,
 	(v) => {
 		emit('update:activeModelId', String(v || '').trim())
+	},
+	{ immediate: true }
+)
+
+watch(
+	() => supportsThinking.value,
+	(supports) => {
+		if (!supports) {
+			emit('update:thinkingEffort', 'disabled')
+		}
 	},
 	{ immediate: true }
 )
@@ -934,6 +1102,17 @@ const onAgentBackendChange = (e: Event) => {
 	emit('update:agentBackend', backend)
 }
 
+const onThinkingEffortChange = (e: Event) => {
+	const value = String((e.target as HTMLSelectElement).value || '')
+		.trim()
+		.toLowerCase()
+	let effort: 'disabled' | 'low' | 'medium' | 'high' = 'medium'
+	if (value === 'disabled' || value === 'low' || value === 'high') {
+		effort = value
+	}
+	emit('update:thinkingEffort', effort)
+}
+
 const onLocalExecStreamModeChange = (e: Event) => {
 	const value = String((e.target as HTMLSelectElement).value || '')
 		.trim()
@@ -1016,6 +1195,102 @@ const onClickSend = () => {
 		return
 	}
 	emit('send')
+}
+
+const onInputKeyDown = (e: KeyboardEvent) => {
+	if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+		if (props.modelValue.trim() === '') {
+			e.preventDefault()
+			showSkillPicker.value = true
+			selectedSkillIndex.value = 0
+		}
+	}
+}
+
+const getToolResultField = (result: unknown, field: string): string => {
+	if (!result || typeof result !== 'object') return ''
+	return String((result as Record<string, unknown>)[field] ?? '')
+}
+
+const isCreateNodeToolResult = (tc: { name: string; status: string; result?: unknown }): boolean => {
+	return tc.name === 'create_node' && tc.status === 'completed' && !!tc.result && typeof tc.result === 'object' && 'nodeId' in (tc.result as object)
+}
+
+const onLocateNode = (nodeId: string) => {
+	emit('locate-node', nodeId)
+}
+
+watch(
+	() => props.messages,
+	() => {
+		nextTick(() => {
+			const el = historyBodyRef.value
+			if (el) {
+				el.scrollTo({
+					top: el.scrollHeight,
+					behavior: 'smooth'
+				})
+			}
+		})
+	},
+	{ deep: true }
+)
+
+const onEscapeKeyDown = () => {
+	if (showSkillPicker.value) {
+		showSkillPicker.value = false
+	}
+}
+
+const onSkillSelect = (skill: { id: string; name: string; description: string; icon: string }) => {
+	const skillPrompt = `[${skill.name}] ${skill.description}\n\n`
+	emit('update:modelValue', skillPrompt)
+	showSkillPicker.value = false
+	inputRef.value?.focus()
+}
+
+const onUploadClick = () => {
+	fileInputRef.value?.click()
+}
+
+const onFileSelect = (event: Event) => {
+	const target = event.target as HTMLInputElement
+	const files = target.files
+	if (!files || files.length === 0) return
+
+	const uploadedFiles: Array<{ name: string; type: string; size: number; dataUrl?: string }> = []
+
+	for (let i = 0; i < files.length; i++) {
+		const file = files[i]
+		const fileType = file.type.split('/')[0]
+
+		if (fileType !== 'image' && fileType !== 'video') {
+			continue
+		}
+
+		uploadedFiles.push({
+			name: file.name,
+			type: file.type,
+			size: file.size
+		})
+
+		if (fileType === 'image') {
+			const reader = new FileReader()
+			reader.onload = (e) => {
+				const idx = uploadedFiles.findIndex((f) => f.name === file.name)
+				if (idx !== -1) {
+					uploadedFiles[idx].dataUrl = String(e.target?.result || '')
+				}
+			}
+			reader.readAsDataURL(file)
+		}
+	}
+
+	if (uploadedFiles.length > 0) {
+		emit('file-upload', uploadedFiles)
+	}
+
+	target.value = ''
 }
 
 const visualPanelTitle = computed(() =>
@@ -1464,7 +1739,6 @@ watch(
 
 .chat-history-body.nanobanana {
 	padding: 0;
-	user-select: none;
 }
 
 .nano-panel {
@@ -2069,6 +2343,41 @@ watch(
 	height: 16px;
 }
 
+.chat-history-delete-btn {
+	width: 28px;
+	height: 28px;
+	display: grid;
+	place-items: center;
+	border: 1px solid color-mix(in srgb, var(--wf-danger, #ef4444) 35%, transparent);
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 88%, transparent);
+	color: var(--wf-text, #edf2f4);
+	border-radius: 2px;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition:
+		border-color 220ms ease,
+		color 220ms ease,
+		box-shadow 220ms ease,
+		background-color 220ms ease;
+}
+
+.chat-history-delete-btn:hover:not(:disabled) {
+	border-color: var(--wf-danger, #ef4444);
+	color: var(--wf-danger, #ef4444);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-danger, #ef4444) 30%, transparent);
+	background: color-mix(in srgb, var(--wf-danger, #ef4444) 10%, transparent);
+}
+
+.chat-history-delete-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.chat-history-delete-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
 .chat-panel-tabs {
 	display: inline-flex;
 	align-items: center;
@@ -2262,6 +2571,7 @@ watch(
 	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
+	overflow-x: hidden;
 	padding: 10px;
 	width: 100%;
 	box-sizing: border-box;
@@ -2390,8 +2700,6 @@ watch(
 
 .chat-msg.assistant {
 	align-self: flex-start;
-	width: 100%;
-	max-width: 100%;
 }
 
 .chat-msg.system {
@@ -2405,6 +2713,8 @@ watch(
 	-webkit-backdrop-filter: blur(10px);
 	padding: 10px 12px;
 	border-radius: 6px;
+	max-width: 100%;
+	box-sizing: border-box;
 	transition:
 		border-color 220ms ease,
 		box-shadow 220ms ease,
@@ -2454,6 +2764,52 @@ watch(
 	animation-delay: 0.4s;
 }
 
+.chat-dock-context-usage {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 2px 0;
+	font-size: 11px;
+}
+
+.chat-dock-context-usage-bar {
+	flex: 1;
+	height: 4px;
+	background: color-mix(in srgb, var(--wf-secondary-bg, #2a2a2a) 80%, transparent);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.chat-dock-context-usage-fill {
+	height: 100%;
+	background: var(--wf-primary, #1f9d84);
+	border-radius: 2px;
+	transition: width 0.3s ease;
+}
+
+.chat-dock-context-usage-fill.warning {
+	background: var(--wf-warning, #f59e0b);
+}
+
+.chat-dock-context-usage-fill.truncated {
+	background: var(--wf-danger, #ef4444);
+}
+
+.chat-dock-context-usage-text {
+	white-space: nowrap;
+	color: color-mix(in srgb, var(--wf-primary, #1f9d84) 60%, transparent);
+}
+
+.chat-dock-context-usage-truncated {
+	margin-left: 4px;
+	padding: 1px 4px;
+	background: color-mix(in srgb, var(--wf-danger, #ef4444) 20%, transparent);
+	color: var(--wf-danger, #ef4444);
+	border-radius: 2px;
+	font-size: 10px;
+}
+
 .nano-title-tag {
 	display: inline-flex;
 	align-items: center;
@@ -2495,6 +2851,7 @@ watch(
 	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 88%, transparent);
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
+	position: relative;
 }
 
 .chat-dock-footer {
@@ -2527,6 +2884,20 @@ watch(
 
 .chat-dock-toolbar-item-mini {
 	min-width: 84px;
+}
+
+.chat-dock-toolbar-item-thinking {
+	min-width: 96px;
+	flex-shrink: 0;
+}
+
+.thinking-select {
+	min-width: 72px;
+}
+
+.thinking-select:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .chat-dock-toolbar-label {
@@ -2651,6 +3022,114 @@ watch(
 .chat-dock-input:disabled {
 	opacity: 0.7;
 	cursor: not-allowed;
+}
+
+.chat-dock-upload {
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 88%, transparent);
+	color: var(--wf-primary, #1f9d84);
+	cursor: pointer;
+	border-radius: 2px;
+	padding: 0 8px;
+	min-width: 32px;
+	height: 28px;
+	display: grid;
+	place-items: center;
+	transition:
+		border-color 220ms ease,
+		box-shadow 220ms ease,
+		background-color 220ms ease,
+		color 220ms ease;
+}
+
+.chat-dock-upload:hover:not(:disabled) {
+	border-color: var(--wf-primary, #1f9d84);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+}
+
+.chat-dock-upload:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.chat-dock-upload svg {
+	width: 16px;
+	height: 16px;
+}
+
+.chat-dock-file-input {
+	display: none;
+}
+
+.chat-dock-skill-picker {
+	position: fixed;
+	left: 50%;
+	transform: translateX(-50%);
+	bottom: calc(100% + 8px);
+	min-width: 320px;
+	max-width: min(560px, calc(100% - 32px));
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.98)) 95%, transparent);
+	border-radius: 4px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+	max-height: 300px;
+	overflow: hidden;
+	z-index: 1000;
+}
+
+.chat-dock-skill-picker-header {
+	padding: 10px 12px;
+	font-size: 12px;
+	font-weight: 600;
+	color: color-mix(in srgb, var(--wf-primary, #1f9d84) 70%, transparent);
+	border-bottom: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+}
+
+.chat-dock-skill-picker-list {
+	padding: 4px;
+	max-height: 250px;
+	overflow-y: auto;
+}
+
+.chat-dock-skill-picker-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	cursor: pointer;
+	border-radius: 3px;
+	transition: background-color 180ms ease;
+}
+
+.chat-dock-skill-picker-item:hover,
+.chat-dock-skill-picker-item.active {
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
+}
+
+.chat-dock-skill-picker-item-icon {
+	font-size: 20px;
+	width: 32px;
+	height: 32px;
+	display: grid;
+	place-items: center;
+}
+
+.chat-dock-skill-picker-item-info {
+	flex: 1;
+	min-width: 0;
+}
+
+.chat-dock-skill-picker-item-name {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--wf-text, #edf2f4);
+}
+
+.chat-dock-skill-picker-item-desc {
+	font-size: 11px;
+	color: color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
+	margin-top: 2px;
 }
 
 @keyframes chatStatusDotFade {

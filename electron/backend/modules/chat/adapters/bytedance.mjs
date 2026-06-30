@@ -27,6 +27,24 @@ const BYTEDANCE_NO_VISION_PATTERNS = [
   'jimeng-video'
 ];
 
+// 支持思考的模型前缀（豆包 Seed 系列部分支持）
+const BYTEDANCE_THINKING_MODEL_PREFIXES = [
+  'doubao-seed-evolving',
+  'doubao-seed-2-1-',
+  'doubao-seed-1-6-'
+];
+
+// 不支持思考的模型（明确排除）
+const BYTEDANCE_NO_THINKING_PATTERNS = [
+  'seedream',
+  'seedance',
+  'seed-translation',
+  'seed-code',
+  'seed-character',
+  'jimeng-image',
+  'jimeng-video'
+];
+
 // 支持工具调用的模型前缀
 const BYTEDANCE_TOOL_MODEL_PREFIXES = [
   'doubao-seed-',
@@ -65,22 +83,43 @@ function modelSupportsTools(modelId) {
 
 /**
  * 判断模型是否支持视觉
- * @param {string} modelId 
+ * @param {string} modelId
  * @returns {boolean}
  */
 function modelSupportsVision(modelId) {
   const id = String(modelId || '').toLowerCase();
-  
+
   // 先检查明确排除的模式
   for (const pattern of BYTEDANCE_NO_VISION_PATTERNS) {
     if (id.includes(pattern)) return false;
   }
-  
+
   // 再检查支持的前缀
   for (const prefix of BYTEDANCE_VISION_MODEL_PREFIXES) {
     if (id.startsWith(prefix)) return true;
   }
-  
+
+  return false;
+}
+
+/**
+ * 判断模型是否支持思考过程
+ * @param {string} modelId
+ * @returns {boolean}
+ */
+function modelSupportsThinking(modelId) {
+  const id = String(modelId || '').toLowerCase();
+
+  // 先检查明确排除的模式
+  for (const pattern of BYTEDANCE_NO_THINKING_PATTERNS) {
+    if (id.includes(pattern)) return false;
+  }
+
+  // 再检查支持的前缀
+  for (const prefix of BYTEDANCE_THINKING_MODEL_PREFIXES) {
+    if (id.startsWith(prefix)) return true;
+  }
+
   return false;
 }
 
@@ -161,6 +200,10 @@ export class BytedanceAdapter extends BaseAdapter {
     return modelSupportsVision(modelId);
   }
 
+  supportsThinking(modelId) {
+    return modelSupportsThinking(modelId);
+  }
+
   /**
    * 流式文本输出（带 Tool Calling）
    */
@@ -171,6 +214,7 @@ export class BytedanceAdapter extends BaseAdapter {
     }
 
     const streamTools = tools.length > 0 && this.supportsTools(modelId);
+    const thinkingEffort = options.thinkingEffort || 'medium';
 
     // 火山方舟使用不同的 API 格式
     const body = {
@@ -179,12 +223,23 @@ export class BytedanceAdapter extends BaseAdapter {
       stream: true
     };
 
+    // 添加思考深度配置
+    if (thinkingEffort !== 'disabled' && this.supportsThinking(modelId)) {
+      body.extra_body = {
+        thinking: {
+          type: "enabled",
+          reasoning_effort: thinkingEffort
+        }
+      };
+    }
+
     if (streamTools) {
       body.tools = this._buildToolsSchema(tools);
     }
 
     let accumulatedContent = '';
     let toolCalls = [];
+    let accumulatedThinking = '';
 
     try {
       const stream = client.postStream(`${this.baseUrl}/chat/completions`, {
@@ -208,6 +263,15 @@ export class BytedanceAdapter extends BaseAdapter {
           const delta = parsed?.choices?.[0]?.delta;
 
           if (delta) {
+            // 思考内容增量 (豆包模型可能在 delta.thinking 或 delta.reasoning_content)
+            if (delta.thinking) {
+              accumulatedThinking += delta.thinking;
+              yield { type: 'thinking_delta', delta: delta.thinking };
+            } else if (delta.reasoning_content) {
+              accumulatedThinking += delta.reasoning_content;
+              yield { type: 'thinking_delta', delta: delta.reasoning_content };
+            }
+
             // 文本增量
             if (delta.content) {
               accumulatedContent += delta.content;
@@ -248,7 +312,7 @@ export class BytedanceAdapter extends BaseAdapter {
         yield { type: 'tool_call', id: tc.id, name: tc.name, arguments: tc.arguments };
       }
 
-      yield { type: 'done', content: accumulatedContent };
+      yield { type: 'done', content: accumulatedContent, thinking: accumulatedThinking };
 
     } catch (err) {
       throw upstreamError(`Bytedance API error: ${err.message}`);

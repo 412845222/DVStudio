@@ -13,11 +13,32 @@ export type AgentStreamChunk =
   | { type: 'thought'; content: string }
   | { type: 'error'; message: string }
   | { type: 'done' }
+  | { type: 'context_usage'; tokenCount: number; budget: number; usage: number; truncated?: boolean }
 
 export type AgentContextItem = {
-  type: 'file' | 'selection' | 'project' | 'custom'
-  label: string
-  value: string
+  name: string
+  type: string
+  content: string
+}
+
+export type AgentConversation = {
+	id: string
+	title: string
+	model: string
+	systemPrompt: string
+	projectPath: string
+	createdAt: number
+	updatedAt: number
+}
+
+export type AgentConversationMessage = {
+	id: string
+	conversationId: string
+	role: string
+	content: string
+	model: string
+	tokensUsed: number
+	createdAt: number
 }
 
 export type AgentStreamOptions = {
@@ -29,6 +50,8 @@ export type AgentStreamOptions = {
   sessionId?: string
   apiSource?: string
   apiKeys?: Record<string, string>
+  thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+  history?: Array<{ role: string; content: string }>
 }
 
 type AgentIpcBridge = {
@@ -37,6 +60,11 @@ type AgentIpcBridge = {
       stream?: (payload: unknown) => AsyncGenerator<unknown>
       getContext?: (payload: unknown) => Promise<unknown>
       abort?: (payload: unknown) => Promise<unknown>
+      listConversations?: (payload: unknown) => Promise<unknown>
+      createConversation?: (payload: unknown) => Promise<unknown>
+      deleteConversation?: (payload: unknown) => Promise<unknown>
+      getConversationMessages?: (payload: unknown) => Promise<unknown>
+      addConversationMessage?: (payload: unknown) => Promise<unknown>
     }
   }
 }
@@ -67,6 +95,72 @@ export async function agentAbort(sessionId?: string): Promise<IpcResult<{ aborte
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId }),
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentListConversations(projectPath?: string): Promise<IpcResult<{ conversations: AgentConversation[] }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.listConversations?.({ projectPath }) as Promise<IpcResult<{ conversations: AgentConversation[] }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath }),
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentCreateConversation(title?: string, model?: string, projectPath?: string): Promise<IpcResult<{ conversation: AgentConversation }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.createConversation?.({ title, model, projectPath }) as Promise<IpcResult<{ conversation: AgentConversation }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, model, projectPath }),
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentDeleteConversation(id: string): Promise<IpcResult<{ ok: boolean }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.deleteConversation?.({ id }) as Promise<IpcResult<{ ok: boolean }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/${id}`, {
+        method: 'DELETE',
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentGetConversationMessages(conversationId: string): Promise<IpcResult<{ messages: AgentConversationMessage[] }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.getConversationMessages?.({ conversationId }) as Promise<IpcResult<{ messages: AgentConversationMessage[] }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/${conversationId}/messages`, {
+        method: 'GET',
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentAddConversationMessage(conversationId: string, role: string, content: string, model?: string): Promise<IpcResult<{ ok: boolean }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.addConversationMessage?.({ conversationId, role, content, model }) as Promise<IpcResult<{ ok: boolean }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId, role, content, model }),
       })
       return res.json()
     }
@@ -219,6 +313,15 @@ function normalizeAgentChunk(raw: unknown): AgentStreamChunk | null {
   }
   if (type === 'done' || type === 'end') {
     return { type: 'done' }
+  }
+  if (type === 'context_usage') {
+    return {
+      type: 'context_usage',
+      tokenCount: Number(raw.tokenCount || 0),
+      budget: Number(raw.budget || 0),
+      usage: Number(raw.usage || 0),
+      truncated: Boolean(raw.truncated)
+    }
   }
   if (isString(raw)) {
     return { type: 'text', content: raw }

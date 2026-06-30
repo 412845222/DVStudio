@@ -152,6 +152,8 @@ type ChatGenerationPayload = {
 	chatModelKey: Ref<string>
 	chatDraft: Ref<string>
 	chatModelId: Ref<string>
+	chatThinkingEffort: Ref<'disabled' | 'low' | 'medium' | 'high'>
+	chatContextUsage: Ref<{ tokenCount: number; budget: number; usage: number; truncated?: boolean } | null>
 	chatMessages: Ref<BottomChatMessage[]>
 	chatSending: Ref<boolean>
 	chatRunState: Ref<'idle' | 'sending' | 'stopping' | 'error'>
@@ -452,7 +454,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		content: string,
 		history: Array<{ role: string; content: string }>,
 		assistantMsgId: string,
-		apiSource: string = 'deepseek'
+		apiSource: string = 'deepseek',
+		thinkingEffort: 'disabled' | 'low' | 'medium' | 'high' = 'medium'
 	) => {
 		setTaskStatus('AI 任务：Agent 正在思考…')
 		let receivedDone = false
@@ -478,13 +481,15 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		}
 
 		for await (const chunk of agentStream({
-			prompt: content,
-			model: payload.chatModelId.value,
-			systemPrompt: history.find((h) => h.role === 'system')?.content,
-			context,
-			apiSource: resolvedApiSource,
-			apiKeys,
-		})) {
+		prompt: content,
+		model: payload.chatModelId.value,
+		systemPrompt: history.find((h) => h.role === 'system')?.content,
+		context,
+		apiSource: resolvedApiSource,
+		apiKeys,
+		thinkingEffort,
+		history,
+	})) {
 			if (chunk.type === 'done') {
 				receivedDone = true
 				setTaskStatus('AI 任务：完成')
@@ -509,6 +514,10 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			}
 			if (chunk.type === 'thought') {
 				setTaskStatus('AI 任务：Agent 正在思考…')
+				continue
+			}
+			if (chunk.type === 'context_usage') {
+				payload.chatContextUsage.value = chunk
 				continue
 			}
 			if (chunk.type === 'tool_call_start') {
@@ -810,7 +819,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				const backend = payload.agentBackend.value
 
 				if (backend === 'dvsagent') {
-					await handleAgentStream(content, history, assistantMsg.id)
+					await handleAgentStream(content, history, assistantMsg.id, payload.agentBackend.value, payload.chatThinkingEffort.value)
 					payload.chatSending.value = false
 					payload.chatRunState.value = 'idle'
 					return
