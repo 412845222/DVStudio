@@ -4,11 +4,15 @@ import type {
 	LocalExecFlowEvent,
 	LocalExecSessionItem,
 	NanoBananaConfig,
-	SeedanceConfig
+	SeedanceConfig,
+	AgentBackendType
 } from '../../../../ui/UIComponent/BottomChatDock.vue'
 import type { WorkflowAnchorSpec, WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import type { BlueprintChatStreamEvent } from '../../../../network/ComfyUIBridgeService'
+import { agentStream, agentAbort, type AgentStreamChunk } from '../../../../network/AgentChatService'
+import { cliSendMessage, cliCancel, type CLIStreamChunk } from '../../../../network/CLIChatService'
 import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/utils'
+import { getChatModelById } from '../../../../ai/models/chatModels'
 
 type LocalExecSessionCreateResult = {
 	id?: unknown
@@ -148,12 +152,15 @@ type ChatGenerationPayload = {
 	chatModelKey: Ref<string>
 	chatDraft: Ref<string>
 	chatModelId: Ref<string>
+	chatThinkingEffort: Ref<'disabled' | 'low' | 'medium' | 'high'>
+	chatContextUsage: Ref<{ tokenCount: number; budget: number; usage: number; truncated?: boolean } | null>
 	chatMessages: Ref<BottomChatMessage[]>
 	chatSending: Ref<boolean>
 	chatRunState: Ref<'idle' | 'sending' | 'stopping' | 'error'>
 	chatTaskStatusText: Ref<string>
 	localExecStreamMode: Ref<'real' | 'mock'>
 	agentConversationMode: Ref<'agent' | 'ask' | 'plan'>
+	agentBackend: Ref<AgentBackendType>
 	codexSessions: Ref<LocalExecSessionItem[]>
 	codexActiveSessionId: Ref<string>
 	codexFlowEvents: Ref<LocalExecFlowEvent[]>
@@ -170,6 +177,7 @@ type ChatGenerationPayload = {
 	nanoModelUsed: Ref<string>
 	nanoDetail: Ref<string>
 	currentProjectId: Ref<number | null>
+	currentProjectName: Ref<string>
 	ensureProjectId?: (opts?: { silent?: boolean }) => Promise<number | null>
 	NANO_ANCHOR_NODE_ID: string
 	NANO_REF_IMAGE_MAX: number
@@ -192,6 +200,9 @@ type ChatGenerationPayload = {
 	resolveBackendUrl: (value: string) => string
 	getChatService: () => ChatBridgeService
 	onSeedanceTaskObserved?: (taskId: string, stage: 'created' | 'completed') => void
+	getSelectedNode?: () => WorkflowNode | null | undefined
+	getAllNodes?: () => WorkflowNode[]
+	getAllEdges?: () => WorkflowEdge[]
 }
 
 export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
@@ -216,6 +227,460 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			}
 		})
 		if (!changed) return
+	}
+
+	const updateAssistantMessageThinking = (messageId: string, updater: (prev: string) => string) => {
+		const id = String(messageId || '').trim()
+		if (!id) return
+		let changed = false
+		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
+			if (message.id !== id) return message
+			changed = true
+			return {
+				...message,
+				thinkingContent: updater(String(message.thinkingContent || ''))
+			}
+		})
+		if (!changed) return
+	}
+
+	const addToolCallToMessage = (
+		messageId: string,
+		toolCall: { id: string; name: string; status: string; args?: unknown }
+	) => {
+		const id = String(messageId || '').trim()
+		if (!id) return
+		let changed = false
+		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
+			if (message.id !== id) return message
+			changed = true
+			const existingToolCalls = message.toolCalls ? [...message.toolCalls] : []
+			existingToolCalls.push({
+				id: toolCall.id,
+				name: toolCall.name,
+				status: toolCall.status as 'pending' | 'running' | 'completed' | 'error',
+				args: toolCall.args as Record<string, unknown> | undefined
+			})
+			return {
+				...message,
+				toolCalls: existingToolCalls
+			}
+		})
+		if (!changed) return
+	}
+
+	const updateToolCallInMessage = (
+		messageId: string,
+		toolCallId: string,
+		updates: { status?: string; result?: unknown; error?: string }
+	) => {
+		const id = String(messageId || '').trim()
+		const tcId = String(toolCallId || '').trim()
+		if (!id || !tcId) return
+		let changed = false
+		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
+			if (message.id !== id || !message.toolCalls) return message
+			const updatedToolCalls = message.toolCalls.map((tc) => {
+				if (tc.id !== tcId) return tc
+				changed = true
+				return {
+					...tc,
+					status: updates.status ? (updates.status as 'pending' | 'running' | 'completed' | 'error') : tc.status,
+					result: updates.result !== undefined ? updates.result : tc.result,
+					error: updates.error !== undefined ? updates.error : tc.error
+				}
+			})
+			return changed ? { ...message, toolCalls: updatedToolCalls } : message
+		})
+		if (!changed) return
+	}
+
+	const setMessageUserChoices = (messageId: string, choices: string[]) => {
+		const id = String(messageId || '').trim()
+		if (!id) return
+		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
+			if (message.id !== id) return message
+			return { ...message, userChoices: choices, userChoiceSelected: null }
+		})
+	}
+
+	const setMessageUserChoiceSelected = (messageId: string, choiceIndex: number) => {
+		const id = String(messageId || '').trim()
+		if (!id) return
+		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
+			if (message.id !== id) return message
+			return { ...message, userChoiceSelected: choiceIndex }
+		})
+	}
+
+	const extractChoicesFromText = (text: string): string[] => {
+		const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+		const choices: string[] = []
+		const choicePatterns = [
+			/^\d+[.、\)）]\s*(.+)$/,
+			/^[①②③④⑤⑥⑦⑧⑨⑩]\s*(.+)$/,
+			/^[a-zA-Z][.、\)）]\s*(.+)$/,
+		]
+		for (const line of lines) {
+			for (const pattern of choicePatterns) {
+				const match = line.match(pattern)
+				if (match && match[1]) {
+					choices.push(match[1].trim())
+					break
+				}
+			}
+		}
+		return choices.length >= 2 ? choices : []
+	}
+
+	const pushAgentFlow = (item: LocalExecFlowEvent) => {
+		const existing = payload.codexFlowEvents.value.find((ev) => ev.id === item.id)
+		if (existing) {
+			payload.codexFlowEvents.value = payload.codexFlowEvents.value.map((ev) =>
+				ev.id === item.id ? { ...ev, ...item } : ev
+			)
+		} else {
+			payload.codexFlowEvents.value = [item, ...payload.codexFlowEvents.value]
+		}
+	}
+
+	const collectBlueprintContext = () => {
+		const nodes = typeof payload.getAllNodes === 'function' ? payload.getAllNodes() : []
+		const edges = typeof payload.getAllEdges === 'function' ? payload.getAllEdges() : []
+		const selectedNode = typeof payload.getSelectedNode === 'function' ? payload.getSelectedNode() : null
+
+		const nodeTypeStats: Record<string, number> = {}
+		for (const n of nodes) {
+			const t = String(n.type || 'unknown')
+			nodeTypeStats[t] = (nodeTypeStats[t] || 0) + 1
+		}
+
+		const nodeSummaries = nodes.slice(0, 50).map((n) => ({
+			id: String(n.id || ''),
+			type: String(n.type || ''),
+			label: String((n as { title?: string }).title || (n as { name?: string }).name || n.type || ''),
+		}))
+
+		const edgeSummaries = edges.slice(0, 100).map((e) => ({
+			from: String(e.fromNodeId || ''),
+			to: String(e.toNodeId || ''),
+			fromPort: String(e.fromAnchorId || ''),
+			toPort: String(e.toAnchorId || ''),
+		}))
+
+		const selectedNodeSummary = selectedNode
+			? {
+					id: String(selectedNode.id || ''),
+					type: String(selectedNode.type || ''),
+					label: String(
+						(selectedNode as { title?: string }).title ||
+							(selectedNode as { name?: string }).name ||
+							selectedNode.type || ''
+					),
+					config: (selectedNode as { config?: unknown }).config || {},
+				}
+			: null
+
+		return {
+			blueprint: {
+				selectedNode: selectedNodeSummary,
+				nodes: nodeSummaries,
+				nodeCount: nodes.length,
+				nodeTypeStats,
+				connections: edgeSummaries,
+				edgeCount: edges.length,
+			},
+			project: {
+				id: payload.currentProjectId.value,
+				name: payload.currentProjectName.value || '',
+			},
+			availableActions: [
+				'get_blueprint_state',
+				'create_node',
+				'delete_node',
+				'update_node_config',
+				'connect_nodes',
+				'disconnect_nodes',
+				'list_node_types',
+				'get_project_info',
+			],
+			restrictions: {
+				maxNodes: 500,
+				disallowDeleteSystemNodes: true,
+			},
+		}
+	}
+
+	const getDwebApiKeys = async (): Promise<Record<string, string>> => {
+		const w = window as Window & {
+			dweb?: {
+				aiworkflow?: {
+					db?: {
+						apiKeys?: {
+							getPlaintext?: (provider: string) => Promise<{ ok?: boolean; plaintext?: string }>
+						}
+					}
+				}
+			}
+		}
+		const apiKeysRepo = w.dweb?.aiworkflow?.db?.apiKeys
+		if (!apiKeysRepo?.getPlaintext) return {}
+
+		const providerAliases: Record<string, string[]> = {
+			deepseek: ['deepseek', 'deepseek_api', 'deepseek-chat'],
+			openai: ['openai', 'openai_api'],
+			bytedance: ['bytedance_ark', 'bytedance_text', 'bytedance', 'doubao', 'ark', 'volcengine'],
+			gemini: ['gemini', 'google_gemini', 'gemini_api']
+		}
+
+		const result: Record<string, string> = {}
+		for (const [provider, aliases] of Object.entries(providerAliases)) {
+			for (const alias of aliases) {
+				try {
+					const res = await apiKeysRepo.getPlaintext(alias)
+					if (res?.ok && res.plaintext) {
+						result[provider] = res.plaintext
+						break
+					}
+				} catch {
+					// ignore individual alias errors
+				}
+			}
+		}
+		return result
+	}
+
+	const handleAgentStream = async (
+		content: string,
+		history: Array<{ role: string; content: string }>,
+		assistantMsgId: string,
+		apiSource: string = 'deepseek',
+		thinkingEffort: 'disabled' | 'low' | 'medium' | 'high' = 'medium'
+	) => {
+		setTaskStatus('AI 任务：Agent 正在思考…')
+		let receivedDone = false
+		let receivedError = false
+
+		const context = collectBlueprintContext()
+
+		const isCLIMode = ['claude', 'codex', 'copilot'].includes(apiSource)
+		let apiKeys: Record<string, string> = {}
+		let resolvedApiSource = apiSource
+
+		if (!isCLIMode) {
+			const modelInfo = getChatModelById(payload.chatModelId.value)
+			if (modelInfo && modelInfo.apiSource) {
+				resolvedApiSource = modelInfo.apiSource
+			}
+
+			try {
+				apiKeys = await getDwebApiKeys()
+			} catch {
+				// 忽略前端获取 API Key 失败，后端会自行从 localdb 读取
+			}
+		}
+
+		for await (const chunk of agentStream({
+		prompt: content,
+		model: payload.chatModelId.value,
+		systemPrompt: history.find((h) => h.role === 'system')?.content,
+		context,
+		apiSource: resolvedApiSource,
+		apiKeys,
+		thinkingEffort,
+		history,
+	})) {
+			if (chunk.type === 'done') {
+				receivedDone = true
+				setTaskStatus('AI 任务：完成')
+				break
+			}
+			if (chunk.type === 'error') {
+				receivedError = true
+				payload.chatRunState.value = 'error'
+				setTaskStatus('AI 任务：错误')
+				payload.pushToast('Agent 对话失败：' + chunk.message, 'warn')
+				break
+			}
+			if (chunk.type === 'text') {
+				updateAssistantMessageContent(assistantMsgId, (prev) => prev + chunk.content)
+				setTaskStatus('AI 任务：Agent 正在生成回复…')
+				continue
+			}
+			if (chunk.type === 'thinking_delta') {
+				updateAssistantMessageThinking(assistantMsgId, (prev) => prev + chunk.content)
+				setTaskStatus('AI 任务：Agent 正在思考…')
+				continue
+			}
+			if (chunk.type === 'thought') {
+				setTaskStatus('AI 任务：Agent 正在思考…')
+				continue
+			}
+			if (chunk.type === 'context_usage') {
+				payload.chatContextUsage.value = chunk
+				continue
+			}
+			if (chunk.type === 'tool_call_start') {
+				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
+				addToolCallToMessage(assistantMsgId, {
+					id: tcId,
+					name: chunk.tool,
+					status: 'running',
+					args: chunk.input
+				})
+				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '调用中…',
+					status: 'pending',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_call_end') {
+				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
+				updateToolCallInMessage(assistantMsgId, tcId, {
+					status: 'completed',
+					result: chunk.output
+				})
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '完成',
+					status: 'completed',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_call_error') {
+				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
+				updateToolCallInMessage(assistantMsgId, tcId, {
+					status: 'error',
+					error: chunk.error
+				})
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '失败',
+					status: 'failed',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_call') {
+				const tcId = `tool-${chunk.tool}-${Date.now()}`
+				addToolCallToMessage(assistantMsgId, {
+					id: tcId,
+					name: chunk.tool,
+					status: 'running',
+					args: chunk.input
+				})
+				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '调用中…',
+					status: 'pending',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_result') {
+				const tcId = `tool-${chunk.tool}-${Date.now()}`
+				updateToolCallInMessage(assistantMsgId, tcId, {
+					status: 'completed',
+					result: chunk.output
+				})
+				pushAgentFlow({
+					id: tcId,
+					kind: 'skill',
+					title: `Tool · ${chunk.tool}`,
+					detail: '完成',
+					status: 'completed',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+		}
+
+		const finalText =
+			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
+		if (!String(finalText).trim() && !receivedError && !receivedDone) {
+			payload.pushToast('Agent 返回为空，请重试。', 'warn')
+		}
+		if (finalText) {
+			const choices = extractChoicesFromText(finalText)
+			if (choices.length > 0) {
+				setMessageUserChoices(assistantMsgId, choices)
+			}
+		}
+	}
+
+	const handleCLIStream = async (
+		content: string,
+		history: Array<{ role: string; content: string }>,
+		assistantMsgId: string
+	) => {
+		setTaskStatus('AI 任务：CLI 适配器正在执行…')
+		let receivedDone = false
+		let receivedError = false
+
+		for await (const chunk of cliSendMessage({
+			message: content,
+			context: history.map((h) => `${h.role}: ${h.content}`).join('\n'),
+		})) {
+			if (chunk.type === 'done') {
+				receivedDone = true
+				setTaskStatus('AI 任务：完成')
+				break
+			}
+			if (chunk.type === 'error') {
+				receivedError = true
+				payload.chatRunState.value = 'error'
+				setTaskStatus('AI 任务：错误')
+				payload.pushToast('CLI 对话失败：' + chunk.message, 'warn')
+				break
+			}
+			if (chunk.type === 'text') {
+				updateAssistantMessageContent(assistantMsgId, (prev) => prev + chunk.content)
+				setTaskStatus('AI 任务：CLI 正在生成回复…')
+				continue
+			}
+			if (chunk.type === 'tool_call') {
+				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				pushAgentFlow({
+					id: `cli-tool-${chunk.tool}-${Date.now()}`,
+					kind: 'skill',
+					title: `CLI Tool · ${chunk.tool}`,
+					detail: '调用中…',
+					status: 'pending',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+			if (chunk.type === 'tool_result') {
+				pushAgentFlow({
+					id: `cli-tool-${chunk.tool}-${Date.now()}`,
+					kind: 'skill',
+					title: `CLI Tool · ${chunk.tool}`,
+					detail: '完成',
+					status: 'completed',
+					source: 'copilot-cli',
+				})
+				continue
+			}
+		}
+
+		const finalText =
+			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
+		if (!String(finalText).trim() && !receivedError && !receivedDone) {
+			payload.pushToast('CLI 返回为空，请重试。', 'warn')
+		}
 	}
 
 	const seedanceSupportsServiceTier = (modelId: string) =>
@@ -351,270 +816,293 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			const svc = payload.getChatService()
 
 			if (payload.chatModelKey.value === 'codex') {
-				let projectId = payload.currentProjectId.value
-				if (projectId == null && payload.ensureProjectId) {
-					projectId = await payload.ensureProjectId({ silent: true })
-				}
-				if (projectId == null) {
-					payload.pushToast('无法启动 Copilot CLI：自动保存项目失败。', 'warn')
-					payload.chatRunState.value = 'error'
-					setTaskStatus('AI 任务：启动失败')
+				const backend = payload.agentBackend.value
+
+				if (backend === 'dvsagent') {
+					await handleAgentStream(content, history, assistantMsg.id, payload.agentBackend.value, payload.chatThinkingEffort.value)
+					payload.chatSending.value = false
+					payload.chatRunState.value = 'idle'
 					return
 				}
 
-				const parsed = parseLocalExecSlashCommand(content)
-				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
-				const createSession = svc.localExecCreateSession ?? svc.codexCreateSession
-				const streamMessage = svc.localExecStreamMessage ?? svc.codexStreamMessage
-				if (!sessionId) {
-					setTaskStatus('AI 任务：正在创建会话…')
-					const created = await createSession({
-						title: content.slice(0, 24),
-						model: payload.chatModelId.value,
-						projectId
-					})
-					const createdError = getStringField(created, 'error')
-					if (createdError) {
-						throw new Error(createdError || 'create codex session failed')
+				if (backend === 'copilot') {
+					let projectId = payload.currentProjectId.value
+					if (projectId == null && payload.ensureProjectId) {
+						projectId = await payload.ensureProjectId({ silent: true })
 					}
-					sessionId = getStringField(created, 'id').trim()
-					if (!sessionId) throw new Error('create codex session returned empty id')
-					payload.codexActiveSessionId.value = sessionId
-					payload.codexSessions.value = [
+					if (projectId == null) {
+						payload.pushToast('无法启动 Copilot CLI：自动保存项目失败。', 'warn')
+						payload.chatRunState.value = 'error'
+						setTaskStatus('AI 任务：启动失败')
+						return
+					}
+
+					const parsed = parseLocalExecSlashCommand(content)
+					let sessionId = String(payload.codexActiveSessionId.value || '').trim()
+					const createSession = svc.localExecCreateSession ?? svc.codexCreateSession
+					const streamMessage = svc.localExecStreamMessage ?? svc.codexStreamMessage
+					if (!sessionId) {
+						setTaskStatus('AI 任务：正在创建会话…')
+						const created = await createSession({
+							title: content.slice(0, 24),
+							model: payload.chatModelId.value,
+							projectId
+						})
+						const createdError = getStringField(created, 'error')
+						if (createdError) {
+							throw new Error(createdError || 'create codex session failed')
+						}
+						sessionId = getStringField(created, 'id').trim()
+						if (!sessionId) throw new Error('create codex session returned empty id')
+						payload.codexActiveSessionId.value = sessionId
+						payload.codexSessions.value = [
+							{
+								id: sessionId,
+								title: getStringField(created, 'title').trim() || 'Copilot CLI 会话',
+								status: getStringField(created, 'status') || 'active',
+								modelName: getStringField(created, 'model_name') || payload.chatModelId.value || '',
+								source: 'copilot-cli'
+							},
+							...payload.codexSessions.value.filter((s) => s.id !== sessionId)
+						]
+					}
+
+					pushLocalExecFlow({
+						kind: 'session',
+						title: '会话已就绪',
+						detail: sessionId,
+						status: 'completed',
+						source: 'copilot-cli'
+					})
+					setTaskStatus('AI 任务：会话已就绪，开始执行…')
+
+					let receivedAssistantDone = false
+					let receivedTurnDone = false
+					let receivedError = false
+
+					for await (const ev of streamMessage(
+						sessionId,
 						{
-							id: sessionId,
-							title: getStringField(created, 'title').trim() || 'Copilot CLI 会话',
-							status: getStringField(created, 'status') || 'active',
-							modelName: getStringField(created, 'model_name') || payload.chatModelId.value || '',
-							source: 'copilot-cli'
+							content: parsed.content,
+							references: [],
+							projectId,
+							skillHints: parsed.skillHints,
+							executionHints: parsed.executionHints,
+							agentMode: payload.agentConversationMode.value,
+							permissionProfile: 'default'
 						},
-						...payload.codexSessions.value.filter((s) => s.id !== sessionId)
-					]
-				}
-
-				pushLocalExecFlow({
-					kind: 'session',
-					title: '会话已就绪',
-					detail: sessionId,
-					status: 'completed',
-					source: 'copilot-cli'
-				})
-				setTaskStatus('AI 任务：会话已就绪，开始执行…')
-
-				let receivedAssistantDone = false
-				let receivedTurnDone = false
-				let receivedError = false
-
-				for await (const ev of streamMessage(
-					sessionId,
-					{
-						content: parsed.content,
-						references: [],
-						projectId,
-						skillHints: parsed.skillHints,
-						executionHints: parsed.executionHints,
-						agentMode: payload.agentConversationMode.value,
-						permissionProfile: 'default'
-					},
-					abortController.signal
-				)) {
-					if (ev.type === 'done') break
-					if (ev.type === 'error') {
-						const errMsgRaw = String(ev.error?.message ?? 'unknown')
-						const isAborted = abortController.signal.aborted || /abort/i.test(errMsgRaw)
-						if (isAborted) {
-							setTaskStatus('AI 任务：已停止')
+						abortController.signal
+					)) {
+						if (ev.type === 'done') break
+						if (ev.type === 'error') {
+							const errMsgRaw = String(ev.error?.message ?? 'unknown')
+							const isAborted = abortController.signal.aborted || /abort/i.test(errMsgRaw)
+							if (isAborted) {
+								setTaskStatus('AI 任务：已停止')
+								break
+							}
+							const errMsg = normalizeChatErrorMessage(errMsgRaw)
+							receivedError = true
+							payload.chatRunState.value = 'error'
+							setTaskStatus('AI 任务：错误')
+							payload.pushToast('Copilot CLI 对话失败：' + errMsg, 'warn')
+							pushLocalExecFlow({
+								kind: 'error',
+								title: '流式错误',
+								detail: errMsg,
+								status: 'failed',
+								source: 'copilot-cli'
+							})
 							break
 						}
-						const errMsg = normalizeChatErrorMessage(errMsgRaw)
-						receivedError = true
-						payload.chatRunState.value = 'error'
-						setTaskStatus('AI 任务：错误')
-						payload.pushToast('Copilot CLI 对话失败：' + errMsg, 'warn')
-						pushLocalExecFlow({
-							kind: 'error',
-							title: '流式错误',
-							detail: errMsg,
-							status: 'failed',
-							source: 'copilot-cli'
-						})
-						break
-					}
 
-					if (ev.type !== 'event') continue
-					const name = getStringField(ev, 'event')
-					const data = isRecord(ev.data) ? ev.data : {}
+						if (ev.type !== 'event') continue
+						const name = getStringField(ev, 'event')
+						const data = isRecord(ev.data) ? ev.data : {}
 
-					if (name === 'assistant_delta') {
-						const delta = getStringField(data, 'delta')
-						if (delta) {
-							updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
+						if (name === 'assistant_delta') {
+							const delta = getStringField(data, 'delta')
+							if (delta) {
+								updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
+							}
+							setTaskStatus('AI 任务：正在生成回复…')
+							continue
 						}
-						setTaskStatus('AI 任务：正在生成回复…')
-						continue
-					}
 
-					if (name === 'assistant_done') {
-						receivedAssistantDone = true
-						const doneTextRaw = getStringField(data, 'content')
-						const doneText = doneTextRaw.trim()
-						if (doneText) {
-							updateAssistantMessageContent(assistantMsg.id, () => doneTextRaw)
+						if (name === 'assistant_done') {
+							receivedAssistantDone = true
+							const doneTextRaw = getStringField(data, 'content')
+							const doneText = doneTextRaw.trim()
+							if (doneText) {
+								updateAssistantMessageContent(assistantMsg.id, () => doneTextRaw)
+							}
+							setTaskStatus('AI 任务：回复已生成')
+							continue
 						}
-						setTaskStatus('AI 任务：回复已生成')
-						continue
+
+						if (name === 'plan_update') {
+							pushLocalExecFlow({
+								kind: 'plan',
+								title: '计划更新',
+								detail: getStringField(data, 'explanation'),
+								status: 'completed',
+								source: 'copilot-cli'
+							})
+							continue
+						}
+
+						if (name === 'runtime_context') {
+							const skills = getArrayField(data, 'skills', isUnknown)
+							const mcpServers = getArrayField(data, 'active_mcp_servers', isUnknown)
+							const skillCount = skills.length
+							const mcpCount = mcpServers.length
+							setTaskStatus('AI 任务：正在加载运行时上下文…')
+							pushLocalExecFlow({
+								kind: 'runtime',
+								title:
+									payload.localExecStreamMode.value === 'mock' ? '测试运行时上下文' : '运行时上下文',
+								detail: `skills ${skillCount} · mcp ${mcpCount}`,
+								status: 'completed',
+								source: 'copilot-cli'
+							})
+							continue
+						}
+
+						if (name === 'skill_call') {
+							const skillName = getStringField(data, 'name').trim() || 'skill'
+							const skillStatusRaw = getStringField(data, 'status').trim().toLowerCase()
+							setTaskStatus(`AI 任务：正在调用技能 ${skillName}…`)
+							pushLocalExecFlow({
+								kind: 'skill',
+								title: `Skill · ${skillName}`,
+								detail: getStringField(data, 'description'),
+								status: skillStatusRaw === 'failed' ? 'failed' : 'completed',
+								source: 'copilot-cli',
+								payload: data
+							})
+							continue
+						}
+
+						if (name === 'command_started') {
+							const command = hasKey(data, 'command') ? data.command : ''
+							setTaskStatus('AI 任务：正在执行命令…')
+							pushLocalExecFlow({
+								kind: 'command',
+								title: '命令开始',
+								detail: Array.isArray(command) ? command.join(' ') : String(command || ''),
+								status: 'pending',
+								messageId: getStringField(data, 'message_id'),
+								source: 'copilot-cli',
+								payload: data
+							})
+							continue
+						}
+
+						if (name === 'command_completed') {
+							setTaskStatus('AI 任务：命令完成，继续处理中…')
+							const cmdStatus = getStringField(data, 'status')
+							pushLocalExecFlow({
+								kind: 'command',
+								title: '命令完成',
+								detail: cmdStatus || 'completed',
+								status: cmdStatus.toLowerCase() === 'completed' ? 'completed' : 'failed',
+								messageId: getStringField(data, 'message_id'),
+								source: 'copilot-cli',
+								payload: data
+							})
+							continue
+						}
+
+						if (name === 'file_change_started') {
+							const changes = getArrayField(data, 'changes', isUnknown)
+							pushLocalExecFlow({
+								kind: 'fileChange',
+								title: '文件变更准备',
+								detail: String(changes.length) + ' 项',
+								status: 'pending',
+								messageId: getStringField(data, 'message_id'),
+								source: 'copilot-cli',
+								payload: data
+							})
+							continue
+						}
+
+						if (name === 'file_change_completed') {
+							const changes = getArrayField(data, 'changes', isUnknown)
+							pushLocalExecFlow({
+								kind: 'fileChange',
+								title: '文件变更',
+								detail: String(changes.length) + ' 项',
+								status: 'completed',
+								messageId: getStringField(data, 'message_id'),
+								source: 'copilot-cli',
+								payload: data
+							})
+							continue
+						}
+
+						if (name === 'approval_requested') {
+							const requestId = getStringField(data, 'request_id')
+							pushLocalExecFlow({
+								kind: 'approval',
+								title: '等待审批',
+								detail: requestId || 'request',
+								status: 'pending',
+								messageId: getStringField(data, 'message_id'),
+								approvalRequestId: requestId,
+								source: 'copilot-cli',
+								payload: data
+							})
+							continue
+						}
+
+						if (name === 'error') {
+							const errMsg = normalizeChatErrorMessage(getStringField(data, 'message') || 'unknown')
+							receivedError = true
+							payload.chatRunState.value = 'error'
+							setTaskStatus('AI 任务：错误')
+							payload.pushToast('Copilot CLI 错误：' + errMsg, 'warn')
+							pushLocalExecFlow({
+								kind: 'error',
+								title: '执行错误',
+								detail: errMsg,
+								status: 'failed',
+								source: 'copilot-cli'
+							})
+							continue
+						}
+
+						if (name === 'turn_done') {
+							receivedTurnDone = true
+							setTaskStatus('AI 任务：完成')
+							continue
+						}
 					}
 
-					if (name === 'plan_update') {
-						pushLocalExecFlow({
-							kind: 'plan',
-							title: '计划更新',
-							detail: getStringField(data, 'explanation'),
-							status: 'completed',
-							source: 'copilot-cli'
-						})
-						continue
+					if (abortController.signal.aborted) {
+						setTaskStatus('AI 任务：已停止')
+						return
 					}
 
-					if (name === 'runtime_context') {
-						const skills = getArrayField(data, 'skills', isUnknown)
-						const mcpServers = getArrayField(data, 'active_mcp_servers', isUnknown)
-						const skillCount = skills.length
-						const mcpCount = mcpServers.length
-						setTaskStatus('AI 任务：正在加载运行时上下文…')
-						pushLocalExecFlow({
-							kind: 'runtime',
-							title:
-								payload.localExecStreamMode.value === 'mock' ? '测试运行时上下文' : '运行时上下文',
-							detail: `skills ${skillCount} · mcp ${mcpCount}`,
-							status: 'completed',
-							source: 'copilot-cli'
-						})
-						continue
+					const finalAssistantText =
+						payload.chatMessages.value.find((message) => message.id === assistantMsg.id)?.content ||
+						''
+					if (!String(finalAssistantText).trim() && !receivedError) {
+						payload.pushToast('Copilot CLI 返回为空，请重试。', 'warn')
 					}
-
-					if (name === 'skill_call') {
-						const skillName = getStringField(data, 'name').trim() || 'skill'
-						const skillStatusRaw = getStringField(data, 'status').trim().toLowerCase()
-						setTaskStatus(`AI 任务：正在调用技能 ${skillName}…`)
-						pushLocalExecFlow({
-							kind: 'skill',
-							title: `Skill · ${skillName}`,
-							detail: getStringField(data, 'description'),
-							status: skillStatusRaw === 'failed' ? 'failed' : 'completed',
-							source: 'copilot-cli',
-							payload: data
-						})
-						continue
-					}
-
-					if (name === 'command_started') {
-						const command = hasKey(data, 'command') ? data.command : ''
-						setTaskStatus('AI 任务：正在执行命令…')
-						pushLocalExecFlow({
-							kind: 'command',
-							title: '命令开始',
-							detail: Array.isArray(command) ? command.join(' ') : String(command || ''),
-							status: 'pending',
-							messageId: getStringField(data, 'message_id'),
-							source: 'copilot-cli',
-							payload: data
-						})
-						continue
-					}
-
-					if (name === 'command_completed') {
-						setTaskStatus('AI 任务：命令完成，继续处理中…')
-						const cmdStatus = getStringField(data, 'status')
-						pushLocalExecFlow({
-							kind: 'command',
-							title: '命令完成',
-							detail: cmdStatus || 'completed',
-							status: cmdStatus.toLowerCase() === 'completed' ? 'completed' : 'failed',
-							messageId: getStringField(data, 'message_id'),
-							source: 'copilot-cli',
-							payload: data
-						})
-						continue
-					}
-
-					if (name === 'file_change_started') {
-						const changes = getArrayField(data, 'changes', isUnknown)
-						pushLocalExecFlow({
-							kind: 'fileChange',
-							title: '文件变更准备',
-							detail: String(changes.length) + ' 项',
-							status: 'pending',
-							messageId: getStringField(data, 'message_id'),
-							source: 'copilot-cli',
-							payload: data
-						})
-						continue
-					}
-
-					if (name === 'file_change_completed') {
-						const changes = getArrayField(data, 'changes', isUnknown)
-						pushLocalExecFlow({
-							kind: 'fileChange',
-							title: '文件变更',
-							detail: String(changes.length) + ' 项',
-							status: 'completed',
-							messageId: getStringField(data, 'message_id'),
-							source: 'copilot-cli',
-							payload: data
-						})
-						continue
-					}
-
-					if (name === 'approval_requested') {
-						const requestId = getStringField(data, 'request_id')
-						pushLocalExecFlow({
-							kind: 'approval',
-							title: '等待审批',
-							detail: requestId || 'request',
-							status: 'pending',
-							messageId: getStringField(data, 'message_id'),
-							approvalRequestId: requestId,
-							source: 'copilot-cli',
-							payload: data
-						})
-						continue
-					}
-
-					if (name === 'error') {
-						const errMsg = normalizeChatErrorMessage(getStringField(data, 'message') || 'unknown')
-						receivedError = true
-						payload.chatRunState.value = 'error'
-						setTaskStatus('AI 任务：错误')
-						payload.pushToast('Copilot CLI 错误：' + errMsg, 'warn')
-						pushLocalExecFlow({
-							kind: 'error',
-							title: '执行错误',
-							detail: errMsg,
-							status: 'failed',
-							source: 'copilot-cli'
-						})
-						continue
-					}
-
-					if (name === 'turn_done') {
-						receivedTurnDone = true
-						setTaskStatus('AI 任务：完成')
-						continue
-					}
-				}
-
-				if (abortController.signal.aborted) {
-					setTaskStatus('AI 任务：已停止')
 					return
 				}
 
-				const finalAssistantText =
-					payload.chatMessages.value.find((message) => message.id === assistantMsg.id)?.content ||
-					''
-				if (!String(finalAssistantText).trim() && !receivedError) {
-					payload.pushToast('Copilot CLI 返回为空，请重试。', 'warn')
+				if (backend === 'claude' || backend === 'codex') {
+					await handleAgentStream(content, history, assistantMsg.id, backend)
+					payload.chatSending.value = false
+					payload.chatRunState.value = 'idle'
+					return
 				}
+
+				payload.pushToast('未知的 Agent 后端类型', 'warn')
+				payload.chatSending.value = false
+				payload.chatRunState.value = 'idle'
 				return
 			}
 
@@ -1491,10 +1979,19 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		}
 	}
 
+	const handleUserChoiceSelect = (messageId: string, choiceIndex: number, choiceText: string) => {
+		setMessageUserChoiceSelected(messageId, choiceIndex)
+		payload.chatDraft.value = choiceText
+		setTimeout(() => {
+			onSend()
+		}, 100)
+	}
+
 	return {
 		onSend,
 		onStop,
 		onNanoBananaGenerate,
-		onSeedanceGenerate
+		onSeedanceGenerate,
+		handleUserChoiceSelect
 	}
 }

@@ -257,6 +257,8 @@ type ViewerOptions = {
 	onLayoutChange?: (items: WorkflowSceneLayoutItem[]) => void
 	onSelectionChange?: (itemId: string) => void
 	onModelLoadError?: (url: string, itemId: string) => void
+	onCameraInteractionStart?: () => void
+	onCameraInteractionEnd?: () => void
 }
 
 type SceneLayoutRenderOptions = {
@@ -327,12 +329,133 @@ const cloneItem = (item: WorkflowSceneLayoutItem): WorkflowSceneLayoutItem => ({
 	orientationFix: item.orientationFix ? { ...item.orientationFix } : undefined
 })
 
-const safeNumber = (value: unknown, fallback: number) => {
+export const safeNumber = (value: unknown, fallback: number) => {
 	const num = Number(value)
 	return Number.isFinite(num) ? num : fallback
 }
 
-type OrientationOffset = {
+export const isSameVec3 = (
+	a: { x?: number; y?: number; z?: number } | undefined,
+	b: { x?: number; y?: number; z?: number } | undefined
+): boolean => {
+	if (a === b) return true
+	if (!a || !b) return false
+	return (
+		safeNumber(a.x, 0) === safeNumber(b.x, 0) &&
+		safeNumber(a.y, 0) === safeNumber(b.y, 0) &&
+		safeNumber(a.z, 0) === safeNumber(b.z, 0)
+	)
+}
+
+export const isSameSize = (
+	a: { width?: number; height?: number; depth?: number } | undefined,
+	b: { width?: number; height?: number; depth?: number } | undefined
+): boolean => {
+	if (a === b) return true
+	if (!a || !b) return false
+	return (
+		safeNumber(a.width, 0) === safeNumber(b.width, 0) &&
+		safeNumber(a.height, 0) === safeNumber(b.height, 0) &&
+		safeNumber(a.depth, 0) === safeNumber(b.depth, 0)
+	)
+}
+
+export const isSameRotation = (
+	a: { yaw?: number; pitch?: number; roll?: number } | undefined,
+	b: { yaw?: number; pitch?: number; roll?: number } | undefined
+): boolean => {
+	if (a === b) return true
+	if (!a || !b) return false
+	return (
+		safeNumber(a.yaw, 0) === safeNumber(b.yaw, 0) &&
+		safeNumber(a.pitch, 0) === safeNumber(b.pitch, 0) &&
+		safeNumber(a.roll, 0) === safeNumber(b.roll, 0)
+	)
+}
+
+export const isSameItem = (a: WorkflowSceneLayoutItem, b: WorkflowSceneLayoutItem): boolean => {
+	if (a === b) return true
+	if (a.id !== b.id) return false
+	if (a.name !== b.name) return false
+	if (a.color !== b.color) return false
+	if (a.category !== b.category) return false
+	if (a.subCategory !== b.subCategory) return false
+	if (a.surfaceType !== b.surfaceType) return false
+	if (a.material !== b.material) return false
+	if (!isSameVec3(a.position, b.position)) return false
+	if (!isSameSize(a.size, b.size)) return false
+	if (!isSameVec3(a.scale, b.scale)) return false
+	if (!isSameRotation(a.rotation, b.rotation)) return false
+	if (a.inferred !== b.inferred) return false
+	if (a.fitMode !== b.fitMode) return false
+	if (a.fitMessage !== b.fitMessage) return false
+	if (a.previewScaleMode !== b.previewScaleMode) return false
+	if (a.fillMode !== b.fillMode) return false
+	if (a.fillCount !== b.fillCount) return false
+	if (a.fillAxisScale !== b.fillAxisScale) return false
+	if (a.orientationFix?.mode !== b.orientationFix?.mode) return false
+	if (a.orientationFix?.confidence !== b.orientationFix?.confidence) return false
+	if (a.orientationFix?.yaw !== b.orientationFix?.yaw) return false
+	if (a.orientationFix?.pitch !== b.orientationFix?.pitch) return false
+	if (a.orientationFix?.roll !== b.orientationFix?.roll) return false
+	if (a.parentId !== b.parentId) return false
+	if (a.placement !== b.placement) return false
+	if (a.supportSurface !== b.supportSurface) return false
+	if (a.wallRole !== b.wallRole) return false
+	if (a.semanticRole !== b.semanticRole) return false
+	if (a.keyElementType !== b.keyElementType) return false
+	if (a.mountType !== b.mountType) return false
+	if (a.isKeyElement !== b.isKeyElement) return false
+	if (a.fixedInRoom !== b.fixedInRoom) return false
+	if (a.shouldTouchGround !== b.shouldTouchGround) return false
+	return true
+}
+
+export const isSameItems = (a: WorkflowSceneLayoutItem[], b: WorkflowSceneLayoutItem[]): boolean => {
+	if (a.length !== b.length) return false
+	const len = a.length
+	for (let i = 0; i < len; i++) {
+		if (!isSameItem(a[i], b[i])) return false
+	}
+	return true
+}
+
+export const isSameBinding = (
+	a: WorkflowSceneLayoutModelBinding | undefined,
+	b: WorkflowSceneLayoutModelBinding | undefined
+): boolean => {
+	if (a === b) return true
+	if (!a || !b) return false
+	if (a.objectId !== b.objectId) return false
+	if (a.connected !== b.connected) return false
+	if (a.modelUrl !== b.modelUrl) return false
+	if (a.modelAssetUrl !== b.modelAssetUrl) return false
+	if (a.sourceNodeId !== b.sourceNodeId) return false
+	if (a.sourceNodeType !== b.sourceNodeType) return false
+	return true
+}
+
+export const isSameBindings = (
+	a: WorkflowSceneLayoutModelBinding[] | undefined,
+	b: WorkflowSceneLayoutModelBinding[] | undefined
+): boolean => {
+	const arrA = Array.isArray(a)
+		? a.filter((b) => b && b.connected && String(b.objectId ?? '').trim())
+		: []
+	const arrB = Array.isArray(b)
+		? b.filter((b) => b && b.connected && String(b.objectId ?? '').trim())
+		: []
+	if (arrA.length !== arrB.length) return false
+	const mapB = new Map(arrB.map((nb) => [String(nb.objectId ?? '').trim(), nb]))
+	for (const na of arrA) {
+		const key = String(na.objectId ?? '').trim()
+		const existing = mapB.get(key)
+		if (!isSameBinding(existing, na)) return false
+	}
+	return true
+}
+
+export type OrientationOffset = {
 	yaw: number
 	pitch: number
 	roll: number
@@ -361,9 +484,7 @@ type AlignmentRule = {
 	z: 'min' | 'center' | 'max'
 }
 
-type FillAxis = 'x' | 'y' | 'z'
-
-type AxisName = 'x' | 'y' | 'z'
+export type FillAxis = 'x' | 'y' | 'z'
 
 type FillSuggestion = {
 	axis: FillAxis
@@ -390,14 +511,14 @@ const FILL_AXIS_SCALE_MIN = 0.55
 const FILL_AXIS_SCALE_MAX = 1.45
 const FILL_MAX_COUNT = 24
 
-const normalizeAngleDeg = (value: number) => {
+export const normalizeAngleDeg = (value: number) => {
 	let next = Number.isFinite(value) ? value : 0
 	while (next > 180) next -= 360
 	while (next <= -180) next += 360
 	return next
 }
 
-const orientationOffsetEquals = (a: OrientationOffset, b: OrientationOffset, eps = 0.01) => {
+export const orientationOffsetEquals = (a: OrientationOffset, b: OrientationOffset, eps = 0.01) => {
 	return (
 		Math.abs(normalizeAngleDeg(a.yaw - b.yaw)) <= eps &&
 		Math.abs(normalizeAngleDeg(a.pitch - b.pitch)) <= eps &&
@@ -405,9 +526,9 @@ const orientationOffsetEquals = (a: OrientationOffset, b: OrientationOffset, eps
 	)
 }
 
-const roundOrientation = (value: number) => Math.round(normalizeAngleDeg(value) * 100) / 100
+export const roundOrientation = (value: number) => Math.round(normalizeAngleDeg(value) * 100) / 100
 
-const canonicalWallRole = (value: unknown) => {
+export const canonicalWallRole = (value: unknown) => {
 	const raw = String(value ?? '')
 		.trim()
 		.toLowerCase()
@@ -419,14 +540,14 @@ const canonicalWallRole = (value: unknown) => {
 	return raw
 }
 
-const canonicalWallRoleYaw = (role: string) => {
+export const canonicalWallRoleYaw = (role: string) => {
 	if (role === 'left') return 90
 	if (role === 'right') return 270
 	if (role === 'back') return 180
 	return 0
 }
 
-const isWallMountedSupportSurface = (item: WorkflowSceneLayoutItem) => {
+export const isWallMountedSupportSurface = (item: WorkflowSceneLayoutItem) => {
 	const placement = String(item.placement ?? '')
 		.trim()
 		.toLowerCase()
@@ -475,7 +596,7 @@ const isWallMountedSupportSurface = (item: WorkflowSceneLayoutItem) => {
 	)
 }
 
-const isDeskLikeSurface = (item: WorkflowSceneLayoutItem) => {
+export const isDeskLikeSurface = (item: WorkflowSceneLayoutItem) => {
 	if (isWallMountedSupportSurface(item)) return true
 	const semanticRole = String(item.semanticRole ?? '')
 		.trim()
@@ -537,7 +658,7 @@ const resolvePreviewDisplaySize = (item: WorkflowSceneLayoutItem) => {
 	return { width, height, depth }
 }
 
-const isWallSurfaceLike = (item: WorkflowSceneLayoutItem) => {
+export const isWallSurfaceLike = (item: WorkflowSceneLayoutItem) => {
 	const placement = String(item.placement ?? '')
 		.trim()
 		.toLowerCase()
@@ -723,7 +844,7 @@ const buildOrientationCandidates = () => {
 	return out
 }
 
-const fillModeToAxis = (mode: WorkflowSceneLayoutItem['fillMode']): FillAxis | null => {
+export const fillModeToAxis = (mode: WorkflowSceneLayoutItem['fillMode']): FillAxis | null => {
 	if (mode === 'fill-x') return 'x'
 	if (mode === 'fill-y') return 'y'
 	if (mode === 'fill-z') return 'z'
@@ -734,35 +855,6 @@ const fillAxisLabel = (axis: FillAxis) => {
 	if (axis === 'x') return 'X'
 	if (axis === 'y') return 'Y'
 	return 'Z'
-}
-
-const axisRotationValue = (offset: OrientationOffset, axis: AxisName) => {
-	if (axis === 'x') return offset.pitch
-	if (axis === 'y') return offset.yaw
-	return offset.roll
-}
-
-const rotateOffsetByAxis = (
-	offset: OrientationOffset,
-	axis: AxisName,
-	delta: number
-): OrientationOffset => {
-	if (axis === 'x') {
-		return {
-			...offset,
-			pitch: normalizeAngleDeg(offset.pitch + delta)
-		}
-	}
-	if (axis === 'y') {
-		return {
-			...offset,
-			yaw: normalizeAngleDeg(offset.yaw + delta)
-		}
-	}
-	return {
-		...offset,
-		roll: normalizeAngleDeg(offset.roll + delta)
-	}
 }
 
 export type SceneLayoutViewState = {
@@ -819,6 +911,8 @@ export class SceneLayoutPreviewViewer {
 	private pendingBindingRevision = 0
 	private idleTimer: ReturnType<typeof setInterval> | null = null
 	private rightClickPickCache: { ts: number; x: number; y: number; itemId: string } | null = null
+	private onCameraInteractionStart: (() => void) | null = null
+	private onCameraInteractionEnd: (() => void) | null = null
 	private readonly baseHemisphereLight: HemisphereLightLike
 	private readonly baseDirectionalLight: LightLike
 	private readonly baseDirectionalTarget: Object3Dlike
@@ -964,6 +1058,9 @@ export class SceneLayoutPreviewViewer {
 		this.resizeObserver =
 			typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.resize()) : null
 		this.resizeObserver?.observe(this.canvas)
+
+		this.onCameraInteractionStart = options.onCameraInteractionStart ?? null
+		this.onCameraInteractionEnd = options.onCameraInteractionEnd ?? null
 	}
 
 	private handleControlsChange = () => {
@@ -976,11 +1073,13 @@ export class SceneLayoutPreviewViewer {
 		this.orbiting = true
 		this.cameraDirty = true
 		this.requestRender()
+		this.onCameraInteractionStart?.()
 	}
 
 	private handleControlsEnd = () => {
 		this.orbiting = false
 		this.requestRender()
+		this.onCameraInteractionEnd?.()
 	}
 
 	private requestRender() {
@@ -1031,14 +1130,7 @@ export class SceneLayoutPreviewViewer {
 		}
 		this.lastRenderTs = now
 		this.ensureTransformAttachmentValid()
-		if (
-			this.orbiting ||
-			this.transforming ||
-			this.controls.autoRotate === true ||
-			this.controls.enableDamping === true
-		) {
-			this.controls.update()
-		}
+		this.controls.update()
 		const renderStart = typeof performance !== 'undefined' ? performance.now() : Date.now()
 		this.renderer.render(this.scene, this.camera)
 		const renderEnd = typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -1046,7 +1138,7 @@ export class SceneLayoutPreviewViewer {
 		this.perfRenderMsLast = renderCost
 		this.perfRenderMsEma =
 			this.perfRenderMsEma > 0 ? this.perfRenderMsEma * 0.82 + renderCost * 0.18 : renderCost
-		if (this.interactiveActive) {
+		if (this.controls.autoRotate === true && this.interactiveActive) {
 			if (!this.raf) this.raf = window.requestAnimationFrame(() => this.renderFrame())
 		}
 	}
@@ -1117,6 +1209,87 @@ export class SceneLayoutPreviewViewer {
 		])
 	}
 
+	private isSameVec3(
+		a: { x?: number; y?: number; z?: number } | undefined,
+		b: { x?: number; y?: number; z?: number } | undefined
+	): boolean {
+		return isSameVec3(a, b)
+	}
+
+	private isSameRotation(
+		a: { yaw?: number; pitch?: number; roll?: number } | undefined,
+		b: { yaw?: number; pitch?: number; roll?: number } | undefined
+	): boolean {
+		return isSameRotation(a, b)
+	}
+
+	private isSameSize(
+		a: { width?: number; height?: number; depth?: number } | undefined,
+		b: { width?: number; height?: number; depth?: number } | undefined
+	): boolean {
+		return isSameSize(a, b)
+	}
+
+	private isSameItem(a: WorkflowSceneLayoutItem, b: WorkflowSceneLayoutItem): boolean {
+		return isSameItem(a, b)
+	}
+
+	private isSameItems(newItems: WorkflowSceneLayoutItem[]): boolean {
+		return isSameItems(this.currentItems, newItems)
+	}
+
+	private isSameBinding(
+		a: WorkflowSceneLayoutModelBinding | undefined,
+		b: WorkflowSceneLayoutModelBinding | undefined
+	): boolean {
+		return isSameBinding(a, b)
+	}
+
+	private isSameBindings(newBindings: WorkflowSceneLayoutModelBinding[] | undefined): boolean {
+		const currentArr = Array.from(this.bindingById.values())
+		return isSameBindings(currentArr, newBindings)
+	}
+
+	private updateRenderOptions(renderOptions?: SceneLayoutRenderOptions) {
+		const prevHideCubes = this.hidePlaceholderCubes
+		const prevTransparent = this.transparent
+		const prevLightingDebug = this.lightingDebugEnabled
+
+		this.transparent = renderOptions?.transparent !== false
+		this.hidePlaceholderCubes = renderOptions?.hidePlaceholderCubes === true
+		this.lightingDebugEnabled = renderOptions?.lightingDebugEnabled === true
+
+		const previewMode = renderOptions?.previewMode === true
+		const previewModeChanged = this.previewModeActive !== previewMode
+		this.previewModeActive = previewMode
+		if (previewModeChanged) this.cameraDirty = false
+
+		if (prevHideCubes !== this.hidePlaceholderCubes) {
+			for (const mesh of this.meshesById.values()) mesh.visible = !this.hidePlaceholderCubes
+			for (const edge of this.edgesById.values()) edge.visible = !this.hidePlaceholderCubes
+			if (this.hidePlaceholderCubes) {
+				this.transformControls.detach()
+				this.transformControls.visible = false
+				this.selectedId = ''
+			}
+		}
+
+		if (prevTransparent !== this.transparent) {
+			for (const mesh of this.meshesById.values()) {
+				const mat = mesh.material as typeof THREE.MeshStandardMaterial.prototype
+				if (mat && typeof mat === 'object' && 'transparent' in mat) {
+					mat.transparent = this.transparent
+					mat.depthWrite = !this.transparent
+				}
+			}
+		}
+
+		const lightingEnabled = renderOptions?.lightingPreviewEnabled === true
+		const lightingJson = String(renderOptions?.lightingJson ?? '')
+		const lightingControls = renderOptions?.lightingControls
+		this.applyLightingPreview(lightingEnabled, lightingJson, lightingControls)
+	}
+
 	setLayout(
 		items: WorkflowSceneLayoutItem[],
 		cameraCfg?: {
@@ -1127,6 +1300,27 @@ export class SceneLayoutPreviewViewer {
 		cachedView?: SceneLayoutViewState | null
 	) {
 		const previousSelection = this.selectedId
+
+		const normalizedNewItems = this.normalizeItemsForPreview((items ?? []).map(cloneItem))
+		const itemsSame = this.isSameItems(normalizedNewItems)
+		const bindingsSame = this.isSameBindings(renderOptions?.modelBindings)
+
+		if (itemsSame && bindingsSame) {
+			this.updateRenderOptions(renderOptions)
+			const effectiveCamera = cachedView
+				? { position: cachedView.cameraPosition, target: cachedView.target }
+				: cameraCfg
+			this.applyCamera(effectiveCamera, {
+				forcePreviewFrame: false,
+				allowAutoFit: !cachedView
+			})
+			if (previousSelection && !this.hidePlaceholderCubes) {
+				this.selectItem(previousSelection)
+			}
+			this.requestRender()
+			return
+		}
+
 		this.layoutRevision += 1
 		const revision = this.layoutRevision
 		this.transparent = renderOptions?.transparent !== false
@@ -1148,7 +1342,7 @@ export class SceneLayoutPreviewViewer {
 				.filter((binding) => binding && binding.connected && String(binding.objectId ?? '').trim())
 				.map((binding) => [String(binding.objectId ?? '').trim(), binding])
 		)
-		this.currentItems = this.normalizeItemsForPreview((items ?? []).map(cloneItem))
+		this.currentItems = normalizedNewItems
 		this.clearLayout()
 		this.bindingById.clear()
 		for (const [key, value] of bindingMap.entries()) this.bindingById.set(key, value)
@@ -1277,19 +1471,172 @@ export class SceneLayoutPreviewViewer {
 		const slots: WorkflowUnrealResolvedLayoutSlot[] = []
 		const actorOrigin = { x: 0, y: 0, z: 0 }
 
+		// 彻底扫描Three.js场景，找出所有真实模型
+		// 策略：
+		// 1. 遍历group的所有直接子对象
+		// 2. 排除：占位体方块(isPlaceholder=true)、线条(THREE.Line/LineSegments)、辅助对象
+		// 3. 对于剩余对象，检查是否包含Mesh几何体（来自glb/fbx加载的真实模型）
+		// 4. 优先使用isBoundModel标记，同时也检测未标记但有几何体的模型
+		// 5. 从userData中恢复模型源信息(modelUrl等)
+		const sceneBoundModels = new Map<string, GroupLike>()
+		const sceneModelUserData = new Map<string, Record<string, unknown>>()
+		
+		const isLineObject = (obj: unknown): boolean => {
+			if (!obj) return true
+			const o = obj as { isLine?: boolean; isLineSegments?: boolean; type?: string }
+			return o.isLine === true || o.isLineSegments === true || o.type === 'Line' || o.type === 'LineSegments'
+		}
+		
+		const hasGeometry = (obj: unknown): boolean => {
+			if (!obj) return false
+			const o = obj as { isMesh?: boolean; geometry?: unknown; children?: unknown[] }
+			if (o.isMesh === true && o.geometry) return true
+			if (Array.isArray(o.children)) {
+				return o.children.some((child) => hasGeometry(child))
+			}
+			return false
+		}
+		
+		for (const child of this.group.children as unknown as BoundModelChild[]) {
+			if (!child) continue
+			if (child.userData?.isPlaceholder === true) continue
+			if (isLineObject(child)) continue
+			
+			let modelRoot: BoundModelChild | null = null
+			let modelItemId = ''
+			
+			// 首先查找isBoundModel标记
+			if (child.userData?.isBoundModel === true) {
+				modelRoot = child
+				modelItemId = String(child.userData?.itemId ?? '').trim()
+			} else {
+				child.traverse((entry: Object3Dlike) => {
+					if (modelRoot) return
+					const entryChild = entry as unknown as BoundModelChild
+					if (entryChild.userData?.isBoundModel === true) {
+						modelRoot = entryChild
+						modelItemId = String(entryChild.userData?.itemId ?? '').trim()
+					}
+				})
+			}
+			
+			// 如果没找到isBoundModel标记，但该对象包含Mesh几何体，也视为真实模型
+			if (!modelRoot && hasGeometry(child)) {
+				modelRoot = child
+				// 尝试从子节点获取itemId
+				child.traverse((entry: Object3Dlike) => {
+					if (modelItemId) return
+					const entryChild = entry as unknown as BoundModelChild
+					const id = String(entryChild.userData?.itemId ?? '').trim()
+					if (id) modelItemId = id
+				})
+				if (!modelItemId) {
+					modelItemId = `__scene_model_${sceneBoundModels.size}`
+				}
+			}
+			
+			if (modelRoot && modelItemId) {
+				// 找到最上层的模型根节点
+				let rootNode = modelRoot
+				while (rootNode.parent && rootNode.parent !== this.group) {
+					const parent = rootNode.parent as unknown as BoundModelChild
+					if (parent.userData?.isBoundModel === true || hasGeometry(parent)) {
+						rootNode = parent
+					} else {
+						break
+					}
+				}
+				if (!sceneBoundModels.has(modelItemId)) {
+					sceneBoundModels.set(modelItemId, rootNode as unknown as GroupLike)
+					// 收集userData中的模型源信息
+					const userData = rootNode.userData as Record<string, unknown>
+					if (userData) {
+						sceneModelUserData.set(modelItemId, userData)
+					}
+				}
+			}
+		}
+
+		// 合并boundModelsById和场景扫描结果，确保所有真实模型都被包含
+		const allBoundModels = new Map<string, GroupLike>()
+		for (const [id, model] of this.boundModelsById.entries()) {
+			allBoundModels.set(id, model)
+		}
+		for (const [id, model] of sceneBoundModels.entries()) {
+			if (!allBoundModels.has(id)) {
+				allBoundModels.set(id, model)
+				warnings.push(`发现场景中渲染但未在绑定表中的模型 ${id}，已自动包含。`)
+			}
+		}
+
+		// 收集所有需要处理的itemId：currentItems中的 + 场景中发现的额外模型
+		const processedItemIds = new Set<string>()
+		const itemsToProcess: Array<{ item: WorkflowSceneLayoutItem | null; itemId: string }> = []
+		
 		for (const item of this.currentItems) {
 			const itemId = String(item.id ?? '').trim()
 			if (!itemId) continue
-			const binding = this.bindingById.get(itemId)
-			if (!binding?.connected) {
-				warnings.push(`占位体 ${item.name || itemId} 未绑定真实模型，已跳过。`)
-				continue
+			itemsToProcess.push({ item, itemId })
+			processedItemIds.add(itemId)
+		}
+		
+		// 添加场景中发现但currentItems中没有的模型
+		for (const itemId of sceneBoundModels.keys()) {
+			if (!processedItemIds.has(itemId)) {
+				const existingItem = this.currentItems.find(i => String(i.id ?? '').trim() === itemId)
+				itemsToProcess.push({ item: existingItem ?? null, itemId })
+				processedItemIds.add(itemId)
 			}
-			const boundModel = this.boundModelsById.get(itemId)
+		}
+
+		for (const { item, itemId } of itemsToProcess) {
+			let binding = this.bindingById.get(itemId)
+			const boundModel = allBoundModels.get(itemId)
+			
 			if (!boundModel) {
-				warnings.push(`占位体 ${item.name || itemId} 缺少预览中的真实模型结果，已跳过。`)
+				if (item) {
+					warnings.push(`占位体 ${item.name || itemId} 缺少预览中的真实模型结果，已跳过。`)
+				}
 				continue
 			}
+			
+			// 如果bindingById中没有有效的binding，尝试从场景模型userData中恢复
+			if (!binding?.connected) {
+				const sceneUserData = sceneModelUserData.get(itemId)
+				if (sceneUserData) {
+					const modelUrl = String(sceneUserData.modelUrl ?? '').trim()
+					const modelAssetUrl = String(sceneUserData.modelAssetUrl ?? '').trim()
+					if (modelUrl || modelAssetUrl) {
+						const rawSourceType = String(sceneUserData.sourceNodeType ?? '').trim()
+						const validSourceType = (rawSourceType === 'model3d' || rawSourceType === 'meshy' || rawSourceType === 'manual')
+							? rawSourceType
+							: 'model3d' as const
+						binding = {
+							objectId: itemId,
+							inputAnchorId: `in-model-${itemId}`,
+							connected: true,
+							sourceNodeId: String(sceneUserData.sourceNodeId ?? '').trim() || undefined,
+							sourceNodeType: validSourceType,
+							modelUrl: modelUrl || undefined,
+							modelAssetUrl: modelAssetUrl || undefined,
+							modelSourcePath: String(sceneUserData.modelSourcePath ?? '').trim() || undefined,
+							modelAssetPath: String(sceneUserData.modelAssetPath ?? '').trim() || undefined,
+							modelSourceName: String(sceneUserData.modelSourceName ?? '').trim() || undefined,
+							modelFormat: sceneUserData.modelFormat === 'gltf' || sceneUserData.modelFormat === 'glb'
+								? sceneUserData.modelFormat
+								: undefined
+						}
+					}
+				}
+			}
+			
+			if (!binding?.connected) {
+				// 如果模型在场景中存在但没有绑定信息，我们仍然导出它，因为它确实在Three.js中渲染了
+				// 但需要记录警告
+				const displayName = item?.name || itemId
+				warnings.push(`模型 ${displayName} 在场景中渲染但缺少完整绑定信息，将使用场景中的现有数据导出。`)
+			}
+			
 			const placeholderMesh = this.meshesById.get(itemId)
 			const placeholderTransform = placeholderMesh
 				? this.captureObjectTransform(placeholderMesh)
@@ -1300,7 +1647,9 @@ export class SceneLayoutPreviewViewer {
 					? boundModel.children.slice()
 					: [boundModel]
 			const cloneCount = Math.max(instances.length, 1)
-			const parentReferenceResult = this.buildParentReference(item, boundModel, actorOrigin)
+			const parentReferenceResult = item 
+				? this.buildParentReference(item, boundModel, actorOrigin)
+				: { warnings: [], parentReference: { mode: 'root' as const, relativeTransform: this.captureObjectTransform(boundModel, actorOrigin) } }
 			if (parentReferenceResult.warnings.length) warnings.push(...parentReferenceResult.warnings)
 			const slotTransform =
 				parentReferenceResult.parentReference.relativeTransform ??
@@ -1313,7 +1662,7 @@ export class SceneLayoutPreviewViewer {
 				parentReferenceResult.parentReference.mode === 'parent-slot'
 					? parentReferenceResult.parentReference.targetObjectId
 					: undefined
-			const surfaceSemantics = this.buildSurfaceSemantics(item)
+			const surfaceSemantics = item ? this.buildSurfaceSemantics(item) : undefined
 			const constraintDiagnostics: WorkflowUnrealResolvedConstraintDiagnostics = {
 				exportMode:
 					parentReferenceResult.parentReference.mode === 'parent-slot'
@@ -1326,27 +1675,29 @@ export class SceneLayoutPreviewViewer {
 			for (let index = 0; index < instances.length; index += 1) {
 				const instance = instances[index]
 				const slotId = cloneCount > 1 ? `${itemId}__clone_${index + 1}` : itemId
-				const sourceName = String(item.name ?? itemId).trim() || itemId
+				const sourceName = item ? (String(item.name ?? itemId).trim() || itemId) : itemId
 				const orientationMode =
-					item.orientationFix?.mode === 'manual' ? ('manual' as const) : ('auto' as const)
-				const fitMode =
-					item.fitMode === 'forced'
+					item?.orientationFix?.mode === 'manual' ? ('manual' as const) : ('auto' as const)
+				const fitMode = item
+					? item.fitMode === 'forced'
 						? ('forced' as const)
 						: item.fitMode === 'filled'
 							? ('filled' as const)
 							: item.fitMode === 'oriented'
 								? ('oriented' as const)
 								: ('normal' as const)
-				const fillMode =
-					item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z'
+					: ('normal' as const)
+				const fillMode = item
+					? item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z'
 						? item.fillMode
 						: 'single'
+					: 'single'
 				const manualAdjustmentApplied =
 					orientationMode === 'manual' ||
 					fitMode === 'forced' ||
-					(fillMode !== 'single' && Math.max(1, Number(item.fillCount ?? 1)) > 1)
+					(fillMode !== 'single' && Math.max(1, Number(item?.fillCount ?? 1)) > 1)
 				const meshTransform = this.captureLocalTransform(instance)
-				if (item.orientationFix) {
+				if (item?.orientationFix) {
 					const preferredOffset = this.resolveExistingOrientationOffset(item)
 					meshTransform.rotation = {
 						yaw: roundOrientation(preferredOffset.yaw),
@@ -1367,22 +1718,22 @@ export class SceneLayoutPreviewViewer {
 					cloneIndex: index,
 					cloneCount,
 					isClone: cloneCount > 1,
-					previewScaleMode: item.previewScaleMode,
-					fitMode: item.fitMode,
-					fillMode: item.fillMode,
-					fillCount: Number.isFinite(Number(item.fillCount)) ? Number(item.fillCount) : undefined,
-					fillAxisScale: Number.isFinite(Number(item.fillAxisScale))
+					previewScaleMode: item?.previewScaleMode,
+					fitMode: item?.fitMode,
+					fillMode: item?.fillMode,
+					fillCount: item && Number.isFinite(Number(item.fillCount)) ? Number(item.fillCount) : undefined,
+					fillAxisScale: item && Number.isFinite(Number(item.fillAxisScale))
 						? Number(item.fillAxisScale)
 						: undefined,
-					materialOverrides: Array.isArray(item.materialOverrides)
+					materialOverrides: item && Array.isArray(item.materialOverrides)
 						? item.materialOverrides.map((entry) => ({ ...entry }))
 						: undefined,
-					relationTags: Array.isArray(item.relationTags) ? [...item.relationTags] : undefined,
-					notes: String(item.fitMessage ?? item.description ?? '').trim() || undefined,
+					relationTags: item && Array.isArray(item.relationTags) ? [...item.relationTags] : undefined,
+					notes: item ? (String(item.fitMessage ?? item.description ?? '').trim() || undefined) : undefined,
 					surfaceSemantics,
 					parentReference: parentReferenceResult.parentReference,
 					constraintDiagnostics,
-					modelBinding: {
+					modelBinding: binding ? {
 						sourceNodeId: binding.sourceNodeId,
 						sourceNodeType: binding.sourceNodeType,
 						modelUrl: binding.modelUrl,
@@ -1391,7 +1742,7 @@ export class SceneLayoutPreviewViewer {
 						modelAssetPath: binding.modelAssetPath,
 						modelSourceName: binding.modelSourceName,
 						modelFormat: binding.modelFormat
-					},
+					} : undefined,
 					slotTransform,
 					meshTransform,
 					previewInstanceTransform,
@@ -2371,7 +2722,8 @@ export class SceneLayoutPreviewViewer {
 				item,
 				latestMesh,
 				template,
-				autoAdjust ? 'auto' : 'keep'
+				autoAdjust ? 'auto' : 'keep',
+				binding
 			)
 			latestMesh.userData.itemId = item.id
 			const fitChanged = !item.fitMode
@@ -2543,7 +2895,7 @@ export class SceneLayoutPreviewViewer {
 		const template = await this.loadModelTemplate(sourceUrl, targetId)
 		if (this.disposed) return false
 		this.disposeBoundModel(targetId)
-		this.mountBoundModel(targetId, item, mesh, template, mode)
+		this.mountBoundModel(targetId, item, mesh, template, mode, binding)
 		this.requestRender()
 		return true
 	}
@@ -2553,7 +2905,8 @@ export class SceneLayoutPreviewViewer {
 		item: WorkflowSceneLayoutItem,
 		mesh: MeshLike,
 		template: GltfTemplateLike,
-		mode: 'auto' | 'manual' | 'keep'
+		mode: 'auto' | 'manual' | 'keep',
+		binding?: WorkflowSceneLayoutModelBinding
 	) {
 		this.disposeBoundModel(itemId)
 		const modelContent = this.cloneModelScene(template)
@@ -2563,16 +2916,28 @@ export class SceneLayoutPreviewViewer {
 			mode
 		)
 		const modelRoot = this.createBoundModelRoot(modelContent, mesh, item) as unknown as GroupLike
+		const bindingSourceInfo = binding ? {
+			modelUrl: binding.modelUrl,
+			modelAssetUrl: binding.modelAssetUrl,
+			modelSourcePath: binding.modelSourcePath,
+			modelAssetPath: binding.modelAssetPath,
+			modelSourceName: binding.modelSourceName,
+			modelFormat: binding.modelFormat,
+			sourceNodeId: binding.sourceNodeId,
+			sourceNodeType: binding.sourceNodeType
+		} : {}
 		modelRoot.userData = {
 			...(modelRoot.userData ?? {}),
 			itemId: item.id,
-			isBoundModel: true
+			isBoundModel: true,
+			...bindingSourceInfo
 		}
 		modelRoot.traverse((child: Object3Dlike) => {
 			child.userData = {
 				...(child.userData ?? {}),
 				itemId: item.id,
-				isBoundModel: true
+				isBoundModel: true,
+				...bindingSourceInfo
 			}
 		})
 		this.group.add(modelRoot)
@@ -2580,85 +2945,15 @@ export class SceneLayoutPreviewViewer {
 		return orientationChanged
 	}
 
-	private resolveDominantMismatchAxis(
-		size: { x: number; y: number; z: number },
-		target: { x: number; y: number; z: number }
-	): AxisName {
-		const axes: AxisName[] = ['x', 'y', 'z']
-		let bestAxis: AxisName = 'y'
-		let bestScore = -Infinity
-		for (const axis of axes) {
-			const ratio = target[axis] / Math.max(size[axis], 0.0001)
-			const score = Math.abs(Math.log(Math.max(ratio, 0.0001)))
-			if (score > bestScore) {
-				bestAxis = axis
-				bestScore = score
-			}
+	private cycleOrientationYaw(existingOffset: OrientationOffset): OrientationOffset {
+		const currentYaw = normalizeAngleDeg(existingOffset.yaw)
+		const roundedYaw = Math.round(currentYaw / 90) * 90
+		const nextYaw = normalizeAngleDeg(roundedYaw + 90)
+		return {
+			yaw: nextYaw,
+			pitch: existingOffset.pitch,
+			roll: existingOffset.roll
 		}
-		return bestAxis
-	}
-
-	private resolveManualOrientationOffset(
-		object: Object3Dlike,
-		baseScale: Vector3Like,
-		baseQuaternion: QuaternionLike,
-		basePosition: Vector3Like,
-		target: { x: number; y: number; z: number },
-		item: WorkflowSceneLayoutItem,
-		existingOffset: OrientationOffset
-	) {
-		const current = this.measureOrientationCandidate(
-			object,
-			baseScale,
-			baseQuaternion,
-			basePosition,
-			target,
-			existingOffset
-		)
-		const preferredAxis = this.resolveDominantMismatchAxis(current.size, target)
-		const surfaceAxes = this.resolveManualRotationAxes(item, preferredAxis)
-		const fallbackAxes = (['x', 'y', 'z'] as AxisName[]).filter(
-			(axis) => !surfaceAxes.includes(axis)
-		)
-		const orderedAxes = [...surfaceAxes, ...fallbackAxes]
-		const candidateOffsets: OrientationOffset[] = []
-		for (const axis of orderedAxes) {
-			candidateOffsets.push(rotateOffsetByAxis(existingOffset, axis, 90))
-			candidateOffsets.push(rotateOffsetByAxis(existingOffset, axis, -90))
-		}
-		if (preferredAxis === 'y') {
-			candidateOffsets.push(rotateOffsetByAxis(existingOffset, 'y', 180))
-		}
-		const uniqueCandidates: OrientationOffset[] = []
-		for (const offset of candidateOffsets) {
-			const constrained = this.applySurfaceFacingConstraint(offset, item)
-			if (orientationOffsetEquals(constrained, existingOffset)) continue
-			if (uniqueCandidates.some((entry) => orientationOffsetEquals(entry, constrained))) continue
-			uniqueCandidates.push(constrained)
-		}
-		const measuredCandidates = uniqueCandidates
-			.map((offset) =>
-				this.measureOrientationCandidate(
-					object,
-					baseScale,
-					baseQuaternion,
-					basePosition,
-					target,
-					offset,
-					item
-				)
-			)
-			.sort((left, right) => left.score - right.score)
-		const nextOffset = measuredCandidates[0]?.offset
-		if (nextOffset) return nextOffset
-		for (const axis of orderedAxes) {
-			const fallback = this.applySurfaceFacingConstraint(
-				rotateOffsetByAxis(existingOffset, axis, 90),
-				item
-			)
-			if (!orientationOffsetEquals(fallback, existingOffset)) return fallback
-		}
-		return this.applySurfaceFacingConstraint(existingOffset, item)
 	}
 
 	private resolveAxisReferenceScale(
@@ -2866,17 +3161,38 @@ export class SceneLayoutPreviewViewer {
 			return 'ceiling-mounted'
 		}
 
-		if (isWallSurfaceLike(item)) {
-			return 'wall-mounted'
-		}
-
-		if (
+		const isExplicitlyFloorStanding =
 			mountType.includes('floor') ||
 			placement === 'on-floor' ||
 			semanticRole.includes('floor-standing') ||
 			item.shouldTouchGround === true
-		) {
+
+		const isExplicitlyWallMounted =
+			mountType.includes('wall') ||
+			placement.includes('wall') ||
+			supportSurface.includes('wall')
+
+		const tokens = [
+			String(item.name ?? ''),
+			String(item.category ?? ''),
+			String(item.subCategory ?? ''),
+			semanticRole
+		]
+			.join(' ')
+			.toLowerCase()
+
+		const isFloorStandingByToken =
+			!isExplicitlyWallMounted &&
+			/(chair|seat|sofa|couch|table|desk|cabinet|wardrobe|bed|stool|bench|bookcase|bookshelf|椅|沙发|桌|柜|床|凳|衣柜|书柜|书架)/.test(
+				tokens
+			)
+
+		if (isExplicitlyFloorStanding || isFloorStandingByToken) {
 			return 'floor-standing'
+		}
+
+		if (isWallSurfaceLike(item)) {
+			return 'wall-mounted'
 		}
 
 		if (
@@ -2888,23 +3204,9 @@ export class SceneLayoutPreviewViewer {
 			return 'surface-placed'
 		}
 
-		const tokens = [
-			String(item.name ?? ''),
-			String(item.category ?? ''),
-			String(item.subCategory ?? ''),
-			semanticRole
-		]
-			.join(' ')
-			.toLowerCase()
-
 		if (
-			/(chair|seat|sofa|couch|table|desk|cabinet|wardrobe|bed|stool|bench|shelf|bookcase|椅|沙发|桌|柜|床|凳|书架|衣柜)/.test(
-				tokens
-			)
+			/(lamp|light|chandelier|pendant|灯|吊灯|吸顶灯)/.test(tokens)
 		) {
-			return 'floor-standing'
-		}
-		if (/(lamp|light|chandelier|pendant|灯|吊灯|吸顶灯)/.test(tokens)) {
 			if (mountType.includes('ceiling') || /ceiling|pendant|chandelier|吊|吸顶/.test(tokens)) {
 				return 'ceiling-mounted'
 			}
@@ -3030,29 +3332,6 @@ export class SceneLayoutPreviewViewer {
 		modelObject.updateMatrixWorld(true)
 	}
 
-	private resolveManualRotationAxes(
-		item: WorkflowSceneLayoutItem,
-		preferredAxis: AxisName
-	): AxisName[] {
-		const semanticClass = this.classifyObjectSemantics(item)
-		switch (semanticClass) {
-			case 'floor-standing':
-			case 'surface-placed':
-			case 'support-surface':
-			case 'unknown':
-				return ['y']
-			case 'wall-mounted':
-			case 'wall-support':
-				return ['y']
-			case 'ceiling-mounted':
-				return ['y']
-			case 'structure':
-				return []
-			default:
-				return ['y']
-		}
-	}
-
 	private prepareModelPreview(
 		object: Object3Dlike,
 		item: WorkflowSceneLayoutItem,
@@ -3064,6 +3343,7 @@ export class SceneLayoutPreviewViewer {
 		const basePosition = object.position.clone()
 
 		const existingOffset = this.resolveExistingOrientationOffset(item)
+		
 		const decision = this.resolveOrientationDecision(
 			object,
 			baseScale,
@@ -3092,73 +3372,8 @@ export class SceneLayoutPreviewViewer {
 
 		const rotatedBox = new THREE.Box3().setFromObject(object)
 		if (!rotatedBox.isEmpty()) {
-			const size = rotatedBox.getSize(new THREE.Vector3())
-			const placeholderScaleX = target.x / Math.max(size.x, 0.001)
-			const placeholderScaleY = target.y / Math.max(size.y, 0.001)
-			const placeholderScaleZ = target.z / Math.max(size.z, 0.001)
-			const previewScaleMode = String(item.previewScaleMode ?? 'placeholder')
-				.trim()
-				.toLowerCase()
-			const useForcedScale = item.fitMode === 'forced'
-			const useModelScale = !useForcedScale && previewScaleMode === 'model'
-			const fillAxis = fillModeToAxis(item.fillMode)
-			const fillAxisScale = Number.isFinite(Number(item.fillAxisScale))
-				? Number(item.fillAxisScale)
-				: 1
-			const uniformScale = Math.max(
-				0.0001,
-				Math.min(placeholderScaleX, placeholderScaleY, placeholderScaleZ)
-			)
-			const allowDeform = Boolean(
-				(item as { allowDeformInForcedMode?: unknown }).allowDeformInForcedMode
-			)
-			const scaleX = useForcedScale
-				? allowDeform
-					? placeholderScaleX
-					: uniformScale
-				: fillAxis === 'x'
-					? Math.max(fillAxisScale, 0.0001)
-					: useModelScale || !!fillAxis
-						? fillAxis
-							? placeholderScaleX
-							: uniformScale
-						: placeholderScaleX
-			const scaleY = useForcedScale
-				? allowDeform
-					? placeholderScaleY
-					: uniformScale
-				: fillAxis === 'y'
-					? Math.max(fillAxisScale, 0.0001)
-					: useModelScale || !!fillAxis
-						? fillAxis
-							? placeholderScaleY
-							: uniformScale
-						: placeholderScaleY
-			const scaleZ = useForcedScale
-				? allowDeform
-					? placeholderScaleZ
-					: uniformScale
-				: fillAxis === 'z'
-					? Math.max(fillAxisScale, 0.0001)
-					: useModelScale || !!fillAxis
-						? fillAxis
-							? placeholderScaleZ
-							: uniformScale
-						: placeholderScaleZ
-			object.scale.multiply(
-				new THREE.Vector3(
-					Math.max(scaleX, 0.0001),
-					Math.max(scaleY, 0.0001),
-					Math.max(scaleZ, 0.0001)
-				)
-			)
-			object.updateMatrixWorld(true)
-		}
-
-		const normalizedBox = new THREE.Box3().setFromObject(object)
-		if (!normalizedBox.isEmpty()) {
-			const center = normalizedBox.getCenter(new THREE.Vector3())
-			const min = normalizedBox.min.clone()
+			const center = rotatedBox.getCenter(new THREE.Vector3())
+			const min = rotatedBox.min.clone()
 			object.position.x += -center.x
 			object.position.y += -min.y
 			object.position.z += -center.z
@@ -3214,6 +3429,7 @@ export class SceneLayoutPreviewViewer {
 				clone.updateMatrixWorld(true)
 				boundRoot.add(clone)
 			}
+			this.applyBoundModelWorldTransform(boundRoot, placeholderMesh)
 			this.arrangeFilledClonesInWorld(boundRoot, placeholderMesh, item)
 		}
 		return boundRoot
@@ -3223,7 +3439,6 @@ export class SceneLayoutPreviewViewer {
 		if (!boundRoot || !placeholderMesh) return
 		boundRoot.position.copy(placeholderMesh.position)
 		boundRoot.rotation.copy(placeholderMesh.rotation)
-		boundRoot.scale.copy(placeholderMesh.scale)
 		boundRoot.updateMatrixWorld(true)
 	}
 
@@ -3246,11 +3461,17 @@ export class SceneLayoutPreviewViewer {
 		const clones = boundRoot.children.slice()
 		const count = clones.length
 		if (!count) return
+
+		const savedPos = boundRoot.position.clone()
+		const savedQuat = boundRoot.quaternion.clone()
 		boundRoot.position.set(0, 0, 0)
-		boundRoot.rotation.set(0, 0, 0)
+		boundRoot.quaternion.setFromEuler(new THREE.Euler(0, 0, 0, 'XYZ'))
 		boundRoot.scale.set(1, 1, 1)
 		boundRoot.updateMatrixWorld(true)
-		const placeholderSize = placeholderBox.getSize(new THREE.Vector3())
+
+		const placeholderSize = new THREE.Vector3(
+			...this.resolvePlaceholderWorldSize(item).toArray()
+		)
 		const axisLength = placeholderSize[fillAxis] / Math.max(count, 1)
 		const semanticClass = this.classifyObjectSemantics(item)
 		const alignmentRule = this.getAlignmentRule(item, semanticClass)
@@ -3287,6 +3508,32 @@ export class SceneLayoutPreviewViewer {
 
 			this.alignModelToTarget(clone, cellMin, cellMax, alignmentRule)
 		}
+
+		const cloneWorldTransforms = clones.map((clone) => {
+			clone.updateMatrixWorld(true)
+			const pos = new THREE.Vector3()
+			const quat = new THREE.Quaternion()
+			clone.getWorldPosition(pos)
+			clone.getWorldQuaternion(quat)
+			return { pos, quat }
+		})
+
+		boundRoot.position.copy(savedPos)
+		boundRoot.quaternion.copy(savedQuat)
+		boundRoot.scale.set(1, 1, 1)
+		boundRoot.updateMatrixWorld(true)
+
+		const invMatrix = new THREE.Matrix4().copy(boundRoot.matrixWorld).invert()
+		const parentQuatInverse = new THREE.Quaternion().copy(boundRoot.quaternion).invert()
+		for (let i = 0; i < clones.length; i += 1) {
+			const clone = clones[i]
+			const { pos: worldPos, quat: worldQuat } = cloneWorldTransforms[i]
+			const localPos = worldPos.clone().applyMatrix4(invMatrix)
+			clone.position.copy(localPos)
+			const localQuat = parentQuatInverse.clone().multiply(worldQuat)
+			clone.quaternion.copy(localQuat)
+		}
+		boundRoot.updateMatrixWorld(true)
 	}
 
 	private fitBoundModelToPlaceholderWorld(
@@ -3295,17 +3542,36 @@ export class SceneLayoutPreviewViewer {
 		item: WorkflowSceneLayoutItem
 	) {
 		const placeholderBox = this.getWorldBox(placeholderMesh)
-		const modelBox = this.getWorldBox(boundRoot)
-		if (!placeholderBox || !modelBox) return
-		const placeholderSize = placeholderBox.getSize(new THREE.Vector3())
+		if (!placeholderBox) return
+
+		const savedPosition = boundRoot.position.clone()
+		const savedQuaternion = boundRoot.quaternion.clone()
+
+		boundRoot.position.set(0, 0, 0)
+		boundRoot.quaternion.setFromEuler(new THREE.Euler(0, 0, 0, 'XYZ'))
+		boundRoot.scale.set(1, 1, 1)
+		boundRoot.updateMatrixWorld(true)
+
+		const modelBox = new THREE.Box3().setFromObject(boundRoot)
 		const modelSize = modelBox.getSize(new THREE.Vector3())
+
+		const placeholderSize = new THREE.Vector3(
+			...this.resolvePlaceholderWorldSize(item).toArray()
+		)
+
 		const fillAxis = fillModeToAxis(item.fillMode)
 		const isForced = item.fitMode === 'forced'
 		const allowDeform = Boolean(
 			(item as { allowDeformInForcedMode?: unknown }).allowDeformInForcedMode
 		)
+		const previewScaleMode = String(item.previewScaleMode ?? 'placeholder')
+			.trim()
+			.toLowerCase()
+		const usePlaceholderScale = !isForced && previewScaleMode === 'placeholder'
 		const semanticClass = this.classifyObjectSemantics(item)
 		const alignmentRule = this.getAlignmentRule(item, semanticClass)
+
+		let finalScale = new THREE.Vector3(1, 1, 1)
 
 		if (fillAxis && !isForced) {
 			const fillScale = placeholderSize[fillAxis] / Math.max(modelSize[fillAxis], 0.001)
@@ -3314,27 +3580,40 @@ export class SceneLayoutPreviewViewer {
 				placeholderSize.y / Math.max(modelSize.y, 0.001),
 				placeholderSize.z / Math.max(modelSize.z, 0.001)
 			)
-			boundRoot.scale.multiplyScalar(Math.max(0.0001, Math.min(fillScale, uniformScale)))
-			boundRoot.updateMatrixWorld(true)
+			const s = Math.max(0.0001, Math.min(fillScale, uniformScale))
+			finalScale.set(s, s, s)
 		} else {
-			let scaleFactor: number
 			if (isForced && allowDeform) {
 				const sx = placeholderSize.x / Math.max(modelSize.x, 0.001)
 				const sy = placeholderSize.y / Math.max(modelSize.y, 0.001)
 				const sz = placeholderSize.z / Math.max(modelSize.z, 0.001)
-				boundRoot.scale.multiply(
-					new THREE.Vector3(Math.max(0.0001, sx), Math.max(0.0001, sy), Math.max(0.0001, sz))
+				finalScale.set(
+					Math.max(0.0001, sx),
+					Math.max(0.0001, sy),
+					Math.max(0.0001, sz)
 				)
-				boundRoot.updateMatrixWorld(true)
+			} else if (usePlaceholderScale) {
+				const sx = placeholderSize.x / Math.max(modelSize.x, 0.001)
+				const sy = placeholderSize.y / Math.max(modelSize.y, 0.001)
+				const sz = placeholderSize.z / Math.max(modelSize.z, 0.001)
+				finalScale.set(
+					Math.max(0.0001, sx),
+					Math.max(0.0001, sy),
+					Math.max(0.0001, sz)
+				)
 			} else {
-				scaleFactor = this.calculateUniformScaleToFit(
+				const scaleFactor = this.calculateUniformScaleToFit(
 					{ x: modelSize.x, y: modelSize.y, z: modelSize.z },
 					{ x: placeholderSize.x, y: placeholderSize.y, z: placeholderSize.z }
 				)
-				boundRoot.scale.multiplyScalar(scaleFactor)
-				boundRoot.updateMatrixWorld(true)
+				finalScale.set(scaleFactor, scaleFactor, scaleFactor)
 			}
 		}
+
+		boundRoot.position.copy(savedPosition)
+		boundRoot.quaternion.copy(savedQuaternion)
+		boundRoot.scale.copy(finalScale)
+		boundRoot.updateMatrixWorld(true)
 
 		this.alignModelToTarget(
 			boundRoot,
@@ -3374,35 +3653,27 @@ export class SceneLayoutPreviewViewer {
 			}
 		}
 		try {
-			const template = await this.loadModelTemplate(sourceUrl, this.selectedId)
-			if (this.disposed) {
-				return { ok: false, applied: false, mode: 'normal', message: '预览器已释放。' }
-			}
-			const probe = this.cloneModelScene(template)
-			const target = this.resolvePlaceholderWorldSize(item)
-			const baseScale = probe.scale.clone()
-			const baseQuaternion = probe.quaternion.clone()
-			const basePosition = probe.position.clone()
 			const existingOffset = this.resolveExistingOrientationOffset(item)
-			const nextOffset = this.resolveManualOrientationOffset(
-				probe,
-				baseScale,
-				baseQuaternion,
-				basePosition,
-				target,
-				item,
-				existingOffset
-			)
+			const cycled = this.cycleOrientationYaw(existingOffset)
+			const semanticClass = this.classifyObjectSemantics(item)
+			const constrained = this.applyManualOrientationConstraint(cycled, semanticClass)
+
 			item.orientationFix = {
 				mode: 'manual',
-				yaw: roundOrientation(nextOffset.yaw),
-				pitch: roundOrientation(nextOffset.pitch),
-				roll: roundOrientation(nextOffset.roll),
+				yaw: roundOrientation(constrained.yaw),
+				pitch: roundOrientation(constrained.pitch),
+				roll: roundOrientation(constrained.roll),
 				confidence: 'low',
 				updatedAt: Date.now()
 			}
-			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
-			const message = `已沿 ${fillAxisLabel(this.resolveDominantMismatchAxis(this.measureOrientationCandidate(probe, baseScale, baseQuaternion, basePosition, target, existingOffset).size, target))} 轴方向尝试旋转修正。`
+
+			this.clearFillState(item)
+
+			const yawLabel = roundOrientation(constrained.yaw)
+			const message = `已调整朝向为 ${yawLabel}°（${yawLabel === 0 ? '初始' : yawLabel === 180 || yawLabel === -180 ? '反向' : '侧向'}）。再次点击可继续旋转 90°。`
+
+			await this.rebuildBoundModelForItem(this.selectedId, 'keep')
+
 			const fitChanged = this.setFitState(item, 'oriented', message)
 			if (fitChanged || item.orientationFix) this.emitLayoutChange()
 			this.requestRender()
@@ -3499,7 +3770,7 @@ export class SceneLayoutPreviewViewer {
 			const hadFill = !!item.fillMode
 			this.clearFillState(item)
 			if (hadFill || this.boundModelsById.has(this.selectedId)) {
-				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
+				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			}
 			const message = hadFill
 				? '未识别到“两轴已基本匹配、一轴待补齐”的状态，已恢复单模型显示。'
@@ -3523,7 +3794,7 @@ export class SceneLayoutPreviewViewer {
 		item.fillAxisScale = suggestion.axisScale
 		item.fillUpdatedAt = Date.now()
 		this.disposeBoundModel(this.selectedId)
-		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
+		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 		const message = `已沿 ${fillAxisLabel(suggestion.axis)} 轴循环填充 ${suggestion.count} 个实例，并按该轴平均缩放铺满占位空间。`
 		this.setFitState(item, 'filled', message)
 		this.emitLayoutChange()
@@ -3565,7 +3836,7 @@ export class SceneLayoutPreviewViewer {
 			this.clearFillState(item)
 			item.fitMode = 'forced'
 			item.fitUpdatedAt = Date.now()
-			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep')
+			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			const message = '已按比例适配到占位盒（保持模型比例）；切换占位比例/模型比例后会自动清除。'
 			this.setFitState(item, 'forced', message)
 			this.emitLayoutChange()
@@ -3659,7 +3930,14 @@ export class SceneLayoutPreviewViewer {
 			const improvement = current.score - best.score
 			nextOffset = improvement > ORIENTATION_IMPROVEMENT_THRESHOLD ? best.offset : existingOffset
 		}
-		nextOffset = this.applySurfaceFacingConstraint(nextOffset, item)
+		if (mode !== 'keep') {
+			nextOffset = this.applySurfaceFacingConstraint(nextOffset, item)
+		} else {
+			nextOffset = this.applyManualOrientationConstraint(
+				nextOffset,
+				this.classifyObjectSemantics(item)
+			)
+		}
 		const finalBest = this.measureOrientationCandidate(
 			object,
 			baseScale,
@@ -3760,6 +4038,38 @@ export class SceneLayoutPreviewViewer {
 			score,
 			scaleRatio
 		}
+	}
+
+	private applyManualOrientationConstraint(
+		offset: OrientationOffset,
+		semanticClass: ObjectSemanticClass
+	): OrientationOffset {
+		let yaw = normalizeAngleDeg(offset.yaw)
+		let pitch = normalizeAngleDeg(offset.pitch)
+		let roll = normalizeAngleDeg(offset.roll)
+
+		switch (semanticClass) {
+			case 'floor-standing':
+			case 'surface-placed':
+			case 'support-surface':
+			case 'wall-mounted':
+			case 'wall-support':
+			case 'unknown':
+				pitch = 0
+				roll = 0
+				break
+			case 'ceiling-mounted':
+				pitch = -90
+				roll = 0
+				break
+			case 'structure':
+				yaw = 0
+				pitch = 0
+				roll = 0
+				break
+		}
+
+		return { ...offset, yaw, pitch, roll }
 	}
 
 	private applySurfaceFacingConstraint(
@@ -4256,13 +4566,21 @@ export class SceneLayoutPreviewViewer {
 			pitch: THREE.MathUtils.radToDeg(mesh.rotation.x),
 			roll: THREE.MathUtils.radToDeg(mesh.rotation.z)
 		}
+		item.scale = {
+			x: mesh.scale.x,
+			y: mesh.scale.y,
+			z: mesh.scale.z
+		}
 		if (edge) {
 			edge.position.copy(mesh.position)
 			edge.rotation.copy(mesh.rotation)
 			edge.scale.copy(mesh.scale)
 		}
 		const boundModel = this.boundModelsById.get(this.selectedId)
-		if (boundModel) this.applyBoundModelWorldTransform(boundModel, mesh)
+		if (boundModel) {
+			this.applyBoundModelWorldTransform(boundModel, mesh)
+			this.fitBoundModelToPlaceholderWorld(boundModel, mesh, item)
+		}
 		this.updateRelationLinesFor(this.selectedId)
 	}
 

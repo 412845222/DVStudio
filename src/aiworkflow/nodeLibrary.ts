@@ -104,6 +104,12 @@ export const NEWUI2_NODE_TOP_CATEGORIES: Newui2NodeTopCategory[] = [
 		label: '3D',
 		description: '3D generation, retopo, Blender tools, and Unreal import nodes.',
 		iconKey: 'model3d'
+	},
+	{
+		id: 'plugin',
+		label: 'Plugin',
+		description: 'Third-party platform integration nodes.',
+		iconKey: 'plugin'
 	}
 ]
 
@@ -114,24 +120,19 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		'text',
 		'basic',
 		[],
-		'用于输入、编辑和输出提示词或说明文本。',
+		'用于输入、编辑和输出提示词或说明文本。支持多语言输入，可作为其他节点的文本来源。',
 		['文本', 'prompt', 'llm'],
 		10
 	),
-	'text-input': catalogMetadata('inputs', 'basic', [], '创建文本输入节点。', ['文本输入']),
-	'text-merge': catalogMetadata('text', 'basic', [], '将多个文本输入整合为单一输出。', [
-		'文本整合',
-		'merge'
-	]),
 	'image-generation': catalogMetadata(
 		'image',
 		'image2d',
 		['basic'],
-		'图片生成与四视图工作流的基础图片节点。',
+		'导入或生成图片资源，支持裁剪、缩放和格式转换。',
 		['图片节点', '四视图', 'image'],
 		20
 	),
-	'rotate-image': catalogMetadata('image', 'image2d', [], '旋转图片并生成新视角的图片节点。', [
+	'rotate-image': catalogMetadata('image', 'image2d', [], '对图片进行角度旋转，生成指定视角的新图片。', [
 		'旋转图片',
 		'rotate'
 	]),
@@ -139,7 +140,7 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		'video',
 		'video',
 		['basic'],
-		'视频输入、生成与输出的基础视频节点。',
+		'导入或生成视频资源，支持预览和关键帧提取。',
 		['视频', 'video'],
 		30
 	),
@@ -147,7 +148,7 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		'scene',
 		'image2d',
 		['model3d'],
-		'对图片或文本中的场景信息做结构化理解。',
+		'对图片或文本中的场景信息进行结构化分析，提取场景布局或灯光配置。',
 		['场景理解', 'scene'],
 		undefined,
 		'indoor-scene'
@@ -156,7 +157,7 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		'scene',
 		'model3d',
 		[],
-		'生成或编辑可导向 3D 场景的布局信息。',
+		'生成或编辑可导向3D场景的布局信息，输出占位物体和相机参数。',
 		['场景布局', 'layout'],
 		undefined,
 		'indoor-scene'
@@ -165,12 +166,12 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		'scene',
 		'image2d',
 		['model3d'],
-		'拆解场景图片并输出图片与结构化信息。',
+		'将场景图片拆解为独立的视觉元素和结构化数据。',
 		['场景拆解', 'decompose'],
 		undefined,
 		'indoor-scene'
 	),
-	comfyui: catalogMetadata('image', 'image2d', [], '集成 ComfyUI 工作流进行图像生成和处理。', [
+	comfyui: catalogMetadata('image', 'image2d', [], '集成 ComfyUI 工作流进行高级图像生成和处理。', [
 		'ComfyUI',
 		'工作流'
 	]),
@@ -178,23 +179,21 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		'model3d',
 		'model3d',
 		['basic'],
-		'预览、承接和输出 3D 模型资源。',
+		'预览、承接和输出3D模型资源，支持多种格式。',
 		['3D模型', '模型预览', 'model'],
 		40
 	),
-	meshy: catalogMetadata('model3d', 'model3d', [], '通过 Meshy API 生成高质量 3D 模型。', [
+	meshy: catalogMetadata('model3d', 'model3d', [], '通过 Meshy API 将图片转换为高质量3D模型。', [
 		'Meshy',
 		'3D生成',
 		'图生3D'
 	]),
-	story: catalogMetadata('text', 'basic', [], '创建剧情分支节点，支持多分支叙事。', [
-		'剧情',
-		'故事',
-		'story'
-	]),
-	base: catalogMetadata('inputs', 'basic', [], '创建基础空节点。', ['基础节点']),
-	canvas: catalogMetadata('inputs', 'basic', [], '创建画板节点。', ['画板']),
-	'sticky-note': catalogMetadata('inputs', 'basic', [], '创建便签节点。', ['便签', '备注'])
+	'unreal-export': catalogMetadata('plugin', 'model3d', [], '将场景布局和灯光设置导出到 Unreal Engine 项目中。', [
+		'Unreal',
+		'UE',
+		'导出',
+		'unreal'
+	])
 }
 
 const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
@@ -205,22 +204,6 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		inputKinds: ['text'],
 		outputKinds: ['text'],
 		order: 10
-	},
-	{
-		actionId: 'text-input',
-		nodeType: 'text',
-		label: '文本输入节点',
-		inputKinds: [],
-		outputKinds: ['text'],
-		order: 11
-	},
-	{
-		actionId: 'text-merge',
-		nodeType: 'text-merge',
-		label: '文本整合节点',
-		inputKinds: ['text'],
-		outputKinds: ['text'],
-		order: 12
 	},
 	{
 		actionId: 'image-generation',
@@ -295,36 +278,12 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		order: 41
 	},
 	{
-		actionId: 'story',
-		nodeType: 'story',
-		label: '剧情节点',
-		inputKinds: ['text'],
-		outputKinds: ['text'],
-		order: 50
-	},
-	{
-		actionId: 'base',
-		nodeType: 'base',
-		label: '基础节点',
-		inputKinds: [],
+		actionId: 'unreal-export',
+		nodeType: 'unreal-export',
+		label: 'Unreal导出节点',
+		inputKinds: ['text', 'text'],
 		outputKinds: [],
-		order: 60
-	},
-	{
-		actionId: 'canvas',
-		nodeType: 'canvas',
-		label: '画板节点',
-		inputKinds: [],
-		outputKinds: [],
-		order: 61
-	},
-	{
-		actionId: 'sticky-note',
-		nodeType: 'sticky-note',
-		label: '便签节点',
-		inputKinds: [],
-		outputKinds: [],
-		order: 62
+		order: 70
 	}
 ]
 

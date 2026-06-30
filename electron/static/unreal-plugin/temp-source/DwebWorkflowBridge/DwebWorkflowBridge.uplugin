@@ -1,0 +1,19 @@
+{
+	"FileVersion": 3,
+	"Version": 3,
+	"VersionName": "0.3.0",
+	"FriendlyName": "Dweb Workflow Bridge",
+	"Description": "Connects Dweb Video Studio workflow nodes to the Unreal Editor.",
+	"Category": "Dweb",
+	"CreatedBy": "GitHub Copilot",
+	"EnabledByDefault": true,
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"Modules": [
+		{
+			"Name": "DwebWorkflowBridge",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}

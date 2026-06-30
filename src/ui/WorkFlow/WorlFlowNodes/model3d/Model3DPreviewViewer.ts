@@ -108,6 +108,8 @@ export type Model3DPreviewOptions = {
 	gridVisible?: boolean
 	axesVisible?: boolean
 	autoRotate?: boolean
+	onCameraInteractionStart?: () => void
+	onCameraInteractionEnd?: () => void
 }
 
 const isDisposable = (value: unknown): value is Disposable => {
@@ -178,6 +180,8 @@ export class Model3DPreviewViewer {
 	private orbiting = false
 	private renderSuspended = false
 	private lastMoveBurstTs = 0
+	private onCameraInteractionStart: (() => void) | null = null
+	private onCameraInteractionEnd: (() => void) | null = null
 	private readonly handlePointerDown: (event: PointerEvent) => void
 	private readonly handlePointerMove: (event: PointerEvent) => void
 	private readonly handleWheel: (event: WheelEvent) => void
@@ -276,11 +280,13 @@ export class Model3DPreviewViewer {
 		this.orbiting = true
 		this.lastMoveBurstTs = 0
 		this.requestRenderBurst(14, 24, true)
+		this.onCameraInteractionStart?.()
 	}
 
 	private handleControlsEnd = () => {
 		this.orbiting = false
 		this.requestRenderBurst(8, 20, true)
+		this.onCameraInteractionEnd?.()
 	}
 
 	private requestRenderBurst(frames = 1, fps = 24, replacePending = false) {
@@ -348,6 +354,12 @@ export class Model3DPreviewViewer {
 		if (typeof options.gridVisible === 'boolean') this.grid.visible = options.gridVisible
 		if (typeof options.axesVisible === 'boolean') this.axes.visible = options.axesVisible
 		if (typeof options.autoRotate === 'boolean') this.controls.autoRotate = options.autoRotate
+		if (typeof options.onCameraInteractionStart === 'function') {
+			this.onCameraInteractionStart = options.onCameraInteractionStart
+		}
+		if (typeof options.onCameraInteractionEnd === 'function') {
+			this.onCameraInteractionEnd = options.onCameraInteractionEnd
+		}
 		this.requestRenderBurst(
 			this.controls.autoRotate === true && this.interactiveActive ? 24 : 2,
 			24,

@@ -624,7 +624,7 @@
 							</button>
 						</div>
 					</div>
-					<div class="bp-node-chat-param-row">
+					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
 						<span class="bp-node-chat-param-label">AI模型</span>
 						<div class="bp-node-chat-param-options">
 							<button
@@ -640,7 +640,7 @@
 							</button>
 						</div>
 					</div>
-					<div class="bp-node-chat-param-row">
+					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
 						<span class="bp-node-chat-param-label">模型类型</span>
 						<div class="bp-node-chat-param-options">
 							<button
@@ -656,7 +656,7 @@
 							</button>
 						</div>
 					</div>
-					<div class="bp-node-chat-param-row">
+					<div v-if="showMeshyTopology" class="bp-node-chat-param-row">
 						<span class="bp-node-chat-param-label">拓扑结构</span>
 						<div class="bp-node-chat-param-options">
 							<button
@@ -672,7 +672,7 @@
 							</button>
 						</div>
 					</div>
-					<div class="bp-node-chat-param-row">
+					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
 						<span class="bp-node-chat-param-label">对称模式</span>
 						<div class="bp-node-chat-param-options">
 							<button
@@ -688,7 +688,7 @@
 							</button>
 						</div>
 					</div>
-					<div class="bp-node-chat-param-row">
+					<div v-if="!isMeshyPostProcessMode || params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
 						<span class="bp-node-chat-param-label">原点位置</span>
 						<div class="bp-node-chat-param-options">
 							<button
@@ -704,7 +704,7 @@
 							</button>
 						</div>
 					</div>
-					<div class="bp-node-chat-param-row">
+					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
 						<span class="bp-node-chat-param-label">姿态模式</span>
 						<div class="bp-node-chat-param-options">
 							<button
@@ -720,7 +720,7 @@
 							</button>
 						</div>
 					</div>
-					<div class="bp-node-chat-param-row">
+					<div v-if="params.meshyMode !== 'uv-unwrap'" class="bp-node-chat-param-row">
 						<span class="bp-node-chat-param-label">输出格式</span>
 						<div class="bp-node-chat-param-options">
 							<button
@@ -736,7 +736,165 @@
 							</button>
 						</div>
 					</div>
-					<div class="bp-node-chat-param-row">
+					<div v-if="params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">目标面数</span>
+						<div class="bp-node-chat-param-input">
+							<input
+								type="number"
+								:value="params.meshyTargetPolycount"
+								:disabled="disabled"
+								placeholder="30000"
+								min="100"
+								max="300000"
+								@input="
+									updateParam(
+										'meshyTargetPolycount',
+										parseInt(($event.target as HTMLInputElement).value) || 30000
+									)
+								"
+							/>
+						</div>
+					</div>
+					<div v-if="params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">精简模式</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in meshyDecimationModeOptions"
+								:key="opt.value"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': params.meshyDecimationMode === opt.value }"
+								:disabled="disabled"
+								@click="updateParam('meshyDecimationMode', opt.value)"
+							>
+								{{ opt.label }}
+							</button>
+						</div>
+					</div>
+					<template v-if="params.meshyMode === 'retexture'">
+						<div class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">风格模式</span>
+							<div class="bp-node-chat-param-options">
+								<button
+									type="button"
+									class="bp-node-chat-param-btn"
+									:class="{ 'is-active': params.meshyStyleSource === 'text' }"
+									:disabled="disabled"
+									@click="updateParam('meshyStyleSource', 'text')"
+								>
+									文本描述
+								</button>
+								<button
+									type="button"
+									class="bp-node-chat-param-btn"
+									:class="{ 'is-active': params.meshyStyleSource === 'image' }"
+									:disabled="disabled"
+									@click="updateParam('meshyStyleSource', 'image')"
+								>
+									参考图
+								</button>
+							</div>
+						</div>
+						<div v-if="params.meshyStyleSource === 'image'" class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">参考图</span>
+							<div v-if="retextureConnectedImages.length > 0" class="bp-node-chat-param-thumb-list">
+								<button
+									v-for="img in retextureConnectedImages"
+									:key="img.nodeId"
+									type="button"
+									class="bp-node-chat-param-thumb"
+									:class="{ 'is-selected': params.meshyTextureImageNodeId === img.nodeId }"
+									:disabled="disabled"
+									@click="updateParam('meshyTextureImageNodeId', img.nodeId)"
+								>
+									<img :src="img.thumb || img.url" :alt="img.name" />
+								</button>
+							</div>
+							<span v-else class="bp-node-chat-param-hint">请连接图片节点</span>
+						</div>
+						<div class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">AI模型</span>
+							<div class="bp-node-chat-param-options">
+								<button
+									v-for="opt in meshyAiModelOptions"
+									:key="opt.value"
+									type="button"
+									class="bp-node-chat-param-btn"
+									:class="{ 'is-active': params.meshyAiModel === opt.value }"
+									:disabled="disabled"
+									@click="updateParam('meshyAiModel', opt.value)"
+								>
+									{{ opt.label }}
+								</button>
+							</div>
+						</div>
+						<div class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">UV与网格</span>
+							<div class="bp-node-chat-param-advanced">
+								<label class="bp-node-chat-param-toggle">
+									<input
+										type="checkbox"
+										:checked="params.meshyEnableOriginalUv"
+										:disabled="disabled"
+										@change="
+											updateParam('meshyEnableOriginalUv', ($event.target as HTMLInputElement).checked)
+										"
+									/>
+									<span>保留原始UV（推荐）</span>
+								</label>
+							</div>
+						</div>
+						<div class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">贴图选项</span>
+							<div class="bp-node-chat-param-advanced">
+								<label class="bp-node-chat-param-toggle">
+									<input
+										type="checkbox"
+										:checked="params.meshyEnablePbr"
+										:disabled="disabled"
+										@change="
+											updateParam('meshyEnablePbr', ($event.target as HTMLInputElement).checked)
+										"
+									/>
+									<span>生成PBR贴图</span>
+								</label>
+								<label class="bp-node-chat-param-toggle">
+									<input
+										type="checkbox"
+										:checked="params.meshyHdTexture"
+										:disabled="disabled"
+										@change="
+											updateParam('meshyHdTexture', ($event.target as HTMLInputElement).checked)
+										"
+									/>
+									<span>4K基础色</span>
+								</label>
+								<label class="bp-node-chat-param-toggle">
+									<input
+										type="checkbox"
+										:checked="params.meshyRemoveLighting"
+										:disabled="disabled"
+										@change="
+											updateParam('meshyRemoveLighting', ($event.target as HTMLInputElement).checked)
+										"
+									/>
+									<span>去除光照（推荐）</span>
+								</label>
+								<label class="bp-node-chat-param-toggle">
+									<input
+										type="checkbox"
+										:checked="params.meshyAlphaThumbnail"
+										:disabled="disabled"
+										@change="
+											updateParam('meshyAlphaThumbnail', ($event.target as HTMLInputElement).checked)
+										"
+									/>
+									<span>透明背景预览</span>
+								</label>
+							</div>
+						</div>
+					</template>
+					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
 						<span class="bp-node-chat-param-label">高级设置</span>
 						<div class="bp-node-chat-param-advanced">
 							<label class="bp-node-chat-param-toggle">
@@ -776,6 +934,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
+import type { InputParamPreviewRef } from './index'
 import {
 	NODE_CHAT_ASPECT_RATIO_OPTIONS,
 	NODE_CHAT_RESOLUTION_OPTIONS,
@@ -807,6 +966,7 @@ import {
 	NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS,
 	NODE_CHAT_MESHY_POSE_MODE_OPTIONS,
 	NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
+	NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS,
 	getMeshyImageAspectRatioOptions,
 	getSeedreamResolutionOptions,
 	getSeedreamOutputFormatOptions,
@@ -815,8 +975,10 @@ import {
 
 const props = defineProps<{
 	nodeType: WorkflowNodeChatType
+	nodeId?: string | null
 	params: WorkflowNodeChatParamRecord
 	disabled?: boolean
+	inputParamPreviewRefs?: InputParamPreviewRef[]
 }>()
 
 const emit = defineEmits<{
@@ -886,6 +1048,7 @@ const meshySymmetryModeOptions = NODE_CHAT_MESHY_SYMMETRY_MODE_OPTIONS
 const meshyOriginAtOptions = NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS
 const meshyPoseModeOptions = NODE_CHAT_MESHY_POSE_MODE_OPTIONS
 const meshyOutputFormatOptions = NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS
+const meshyDecimationModeOptions = NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS
 const seedreamModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
 const nanobananaModelVersionOptions = NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS
 const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
@@ -916,6 +1079,45 @@ const currentSeedreamOutputFormatOptions = computed(() => {
 
 const showSeedreamOutputFormat = computed(() => {
 	return supportsSeedreamOutputFormat(seedreamVersion.value)
+})
+
+const isMeshyPostProcessMode = computed(() => {
+	const mode = String(props.params.meshyMode || '')
+	return mode === 'remesh' || mode === 'retexture' || mode === 'uv-unwrap'
+})
+
+const showMeshyTopology = computed(() => {
+	const mode = String(props.params.meshyMode || '')
+	if (mode === 'retexture' || mode === 'uv-unwrap') return false
+	return mode === 'remesh' || !isMeshyPostProcessMode.value
+})
+
+interface ConnectedImageInfo {
+	url: string
+	thumb: string
+	name: string
+	nodeId: string
+}
+
+const retextureConnectedImages = computed<ConnectedImageInfo[]>(() => {
+	if (String(props.params.meshyMode || '') !== 'retexture') return []
+	const refs = props.inputParamPreviewRefs ?? []
+	const results: ConnectedImageInfo[] = []
+	const seenNodeIds = new Set<string>()
+	for (const ref of refs) {
+		if (ref.kind !== 'image') continue
+		const url = ref.previewUrl || ''
+		const fromNodeId = ref.fromNodeId || ''
+		if (!url || !fromNodeId || seenNodeIds.has(fromNodeId)) continue
+		seenNodeIds.add(fromNodeId)
+		results.push({
+			url,
+			thumb: url,
+			name: ref.label || ref.name || `图片-${results.length + 1}`,
+			nodeId: fromNodeId
+		})
+	}
+	return results
 })
 
 const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
@@ -1106,5 +1308,68 @@ const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
 	color: color-mix(in srgb, var(--wf-text, #edf2f4) 50%, transparent);
 	margin-left: 8px;
 	font-style: italic;
+}
+
+.bp-node-chat-param-thumb-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.bp-node-chat-param-thumb {
+	width: 52px;
+	height: 52px;
+	padding: 2px;
+	border: 2px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+	border-radius: 4px;
+	background: transparent;
+	cursor: pointer;
+	overflow: hidden;
+	transition: all 0.2s ease;
+}
+
+.bp-node-chat-param-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+	border-radius: 2px;
+}
+
+.bp-node-chat-param-thumb:hover:not(:disabled) {
+	border-color: var(--wf-primary, #1f9d84);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+}
+
+.bp-node-chat-param-thumb.is-selected {
+	border-color: var(--wf-primary, #1f9d84);
+	box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
+}
+
+.bp-node-chat-param-thumb:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.bp-node-chat-param-thumb-single {
+	min-height: 56px;
+	display: flex;
+	align-items: center;
+}
+
+.bp-node-chat-param-thumb-preview {
+	width: 52px;
+	height: 52px;
+	border: 2px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.bp-node-chat-param-thumb-preview img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
 }
 </style>

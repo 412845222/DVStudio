@@ -38,7 +38,7 @@
 			<span class="aiwf-floating-rail__sep" aria-hidden="true"></span>
 
 			<button
-				class="aiwf-floating-rail__btn"
+				class="aiwf-floating-rail__btn is-primary"
 				:class="{ active: nodeLibraryOpen }"
 				type="button"
 				title="节点库"
@@ -48,18 +48,6 @@
 					<path d="M3 3.5h4v4H3zM9 3.5h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" />
 				</svg>
 				<span class="aiwf-floating-rail__label">节点库</span>
-			</button>
-
-			<button
-				class="aiwf-floating-rail__btn is-primary"
-				type="button"
-				title="添加节点"
-				@click.stop="$emit('quick-add', $event)"
-			>
-				<svg viewBox="0 0 16 16" aria-hidden="true">
-					<path d="M8 3v10M3 8h10" />
-				</svg>
-				<span class="aiwf-floating-rail__label">添加节点</span>
 			</button>
 
 			<span class="aiwf-floating-rail__sep" aria-hidden="true"></span>

@@ -758,6 +758,7 @@ const relationLabelForTask = (task: MeshyTaskPanelItem) => {
 	if (value === 'rigging') return '绑骨任务'
 	if (value === 'animation') return '动作任务'
 	if (value === 'remesh') return '重拓扑任务'
+	if (value === 'uv-unwrap') return 'UV展开任务'
 	if (value === 'model') return '主模型'
 	return ''
 }

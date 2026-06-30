@@ -349,7 +349,7 @@ export type WorkflowUnrealResolvedModelBinding = {
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowUnrealResolvedLayoutSlot = {
@@ -446,7 +446,42 @@ export type WorkflowUnrealExportNodeSettings = {
 	lastMaterialOverrideCount?: number
 	lastExportAt?: number
 	autoPoll?: boolean
+
+	editorStatus?: 'unknown' | 'checking' | 'not-running' | 'running'
+	editorCheckedAt?: number
+	editorProcess?: {
+		pid?: number
+		projectPath?: string
+		projectName?: string
+		engineVersion?: string
+	} | null
+	editorProcesses?: Array<{
+		pid: number
+		projectPath: string
+		projectName: string
+	}>
+
+	pluginStatus?:
+		| 'unknown'
+		| 'checking'
+		| 'not-installed'
+		| 'installed'
+		| 'installing'
+		| 'install-error'
+		| 'needs-restart'
+	pluginCheckedAt?: number
+	pluginVersion?: string
+	pluginInstallError?: string
+	pluginInstallConfig?: {
+		targetProjectPath?: string
+	}
+
+	assetRootPath?: string
+	assetPathValidation?: 'valid' | 'invalid' | 'checking'
+	assetPathValidationError?: string
 }
+
+export type WorkflowModelFormat = 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae'
 
 export type WorkflowSceneLayoutManualModelBinding = {
 	objectId: string
@@ -457,7 +492,7 @@ export type WorkflowSceneLayoutManualModelBinding = {
 	modelAssetPath?: string
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowSceneLayoutModelBinding = {
@@ -474,7 +509,7 @@ export type WorkflowSceneLayoutModelBinding = {
 	modelProjectRelativePath?: string
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 }
 
 export type WorkflowSceneDecomposeOutput = {
@@ -602,7 +637,7 @@ export type WorkflowModel3DNodeSettings = {
 	modelGenerationSource?: 'upload' | 'comfyui' | 'meshy'
 	meshyModelSettings?: WorkflowMeshyModelSettings
 	modelUrl?: string
-	modelFormat?: 'glb' | 'gltf'
+	modelFormat?: WorkflowModelFormat
 	modelSourceName?: string
 	modelSourcePath?: string
 	modelProjectRelativePath?: string
@@ -634,6 +669,7 @@ export type WorkflowMeshyTaskFamily =
 	| 'refine'
 	| 'retexture'
 	| 'remesh'
+	| 'uv-unwrap'
 	| 'text-to-image'
 	| 'image-to-image'
 
@@ -695,7 +731,7 @@ export type WorkflowMeshyNodeSettings = {
 	meshyParentTaskId?: string
 	meshyCapabilities?: WorkflowMeshyCapability[]
 	meshyHelpTopic?: string
-	meshyMode?: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d'
+	meshyMode?: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'remesh' | 'retexture' | 'uv-unwrap'
 	meshyStage?: 'preview' | 'refine'
 	meshyPrompt?: string
 	meshyNegativePrompt?: string
@@ -714,15 +750,20 @@ export type WorkflowMeshyNodeSettings = {
 	meshyAnimationActionId?: number
 	meshyTopology?: 'triangle' | 'quad'
 	meshyTargetPolycount?: number
+	meshyDecimationMode?: 'auto' | 'fast' | 'accurate'
+	meshyEnableOriginalUv?: boolean
+	meshyEnablePbr?: boolean
+	meshyHdTexture?: boolean
+	meshyRemoveLighting?: boolean
+	meshyAlphaThumbnail?: boolean
+	meshyStyleSource?: 'text' | 'image'
 	meshySymmetryMode?: 'off' | 'auto' | 'on'
 	meshyShouldRemesh?: boolean
 	meshySavePreRemeshedModel?: boolean
 	meshyShouldTexture?: boolean
-	meshyEnablePbr?: boolean
 	meshyPoseMode?: '' | 'a-pose' | 't-pose'
 	meshyModeration?: boolean
 	meshyImageEnhancement?: boolean
-	meshyRemoveLighting?: boolean
 	meshyAutoSize?: boolean
 	meshyOriginAt?: 'bottom' | 'center'
 	meshyTargetFormats?: Array<'glb' | 'obj' | 'fbx' | 'stl' | 'usdz'>
@@ -861,6 +902,16 @@ export type WorkflowNodeChatModel3DParams = {
 	meshyOutputFormat?: string
 	meshyMultiView?: boolean
 	meshySeed?: number
+	meshyTargetPolycount?: number
+	meshyDecimationMode?: string
+	meshyEnableOriginalUv?: boolean
+	meshyEnablePbr?: boolean
+	meshyHdTexture?: boolean
+	meshyRemoveLighting?: boolean
+	meshyAlphaThumbnail?: boolean
+	meshyStyleSource?: string
+	meshyTextureImageUrl?: string
+	meshyTextureImageNodeId?: string
 }
 
 export type WorkflowNodeChatParamRecord =

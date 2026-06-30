@@ -11,6 +11,7 @@ const MODE_PATH_MAP = {
   'image-to-image': '/openapi/v1/image-to-image',
   'retexture': '/openapi/v1/retexture',
   'remesh': '/openapi/v1/remesh',
+  'uv-unwrap': '/openapi/v1/uv-unwrap',
 }
 
 function getModePath(mode) {
@@ -305,6 +306,7 @@ function targetAndFamily(mode, payload) {
   if (mode === 'multi-image-to-3d') return ['3d', 'multi-image-to-3d']
   if (mode === 'retexture') return ['3d', 'retexture']
   if (mode === 'remesh') return ['3d', 'remesh']
+  if (mode === 'uv-unwrap') return ['3d', 'uv-unwrap']
   return ['3d', 'text-to-3d']
 }
 
@@ -407,7 +409,16 @@ function buildCreatePayload(payload) {
     if (!textStylePrompt && !imageStyleUrl) return [null, null, 'text_style_prompt or image_style_url is required']
     if (textStylePrompt) body.text_style_prompt = textStylePrompt
     if (imageStyleUrl) body.image_style_url = imageStyleUrl
+    let aiModel = String(payload.ai_model || '').trim().toLowerCase()
+    if (!['meshy-5', 'meshy-6', 'latest'].includes(aiModel)) aiModel = 'latest'
+    body.ai_model = aiModel
   } else if (mode === 'remesh') {
+    const inputTaskId = String(payload.input_task_id || payload.preview_task_id || '').trim()
+    const modelUrl = String(payload.model_url || '').trim()
+    if (inputTaskId) body.input_task_id = inputTaskId
+    else if (modelUrl) body.model_url = modelUrl
+    else return [null, null, 'input_task_id or model_url is required']
+  } else if (mode === 'uv-unwrap') {
     const inputTaskId = String(payload.input_task_id || payload.preview_task_id || '').trim()
     const modelUrl = String(payload.model_url || '').trim()
     if (inputTaskId) body.input_task_id = inputTaskId
@@ -421,9 +432,11 @@ function buildCreatePayload(payload) {
   } else if (['text-to-image', 'image-to-image'].includes(mode)) {
     extraKeys = ['aspect_ratio', 'generate_multi_view', 'pose_mode', 'seed']
   } else if (mode === 'retexture') {
-    extraKeys = ['topology', 'target_polycount', 'texture_richness', 'target_formats']
+    extraKeys = ['ai_model', 'enable_original_uv', 'enable_pbr', 'hd_texture', 'remove_lighting', 'target_formats', 'alpha_thumbnail']
   } else if (mode === 'remesh') {
-    extraKeys = ['target_formats', 'topology', 'target_polycount', 'resize_height', 'origin_at', 'convert_format_only']
+    extraKeys = ['target_formats', 'topology', 'target_polycount', 'decimation_mode', 'resize_height', 'origin_at', 'convert_format_only']
+  } else if (mode === 'uv-unwrap') {
+    extraKeys = []
   }
 
   for (const key of extraKeys) {

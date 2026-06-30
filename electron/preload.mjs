@@ -12,6 +12,9 @@ let backendRuntimeListenerSeed = 0
 const platformListenerMap = new Map()
 let platformListenerSeed = 0
 
+const builtinToolListenerMap = new Map()
+let builtinToolListenerSeed = 0
+
 function createIpcStreamGenerator(baseChannel, payload) {
 	const requestId = (payload && payload.requestId) || Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 	const dataChannel = baseChannel + ':data'
@@ -467,6 +470,70 @@ contextBridge.exposeInMainWorld('dweb', {
 		submitApproval: (payload) => invoke('dweb:codex:submit-approval', payload || {}),
 		sendMessageStream: (payload) => createIpcStreamGenerator('dweb:codex:send-message', payload || {}),
 		cancel: (payload) => invoke('dweb:codex:cancel', payload || {}),
+	},
+	// ===== Agent 执行器 =====
+	agent: {
+		stream: (payload) => createIpcStreamGenerator('dweb:agent', payload || {}),
+		getContext: (payload) => invoke('dweb:agent:context', payload || {}),
+		abort: (payload) => invoke('dweb:agent:abort', payload || {}),
+	},
+	// ===== Agent Skills =====
+	agentSkills: {
+		unreal: {
+			sessions: () => invoke('dweb:agent-skills:unreal:sessions'),
+			register: (payload) => invoke('dweb:agent-skills:unreal:register', payload || {}),
+			sessionDetail: (payload) => invoke('dweb:agent-skills:unreal:session-detail', payload || {}),
+			createJob: (payload) => invoke('dweb:agent-skills:unreal:create-job', payload || {}),
+			jobDetail: (payload) => invoke('dweb:agent-skills:unreal:job-detail', payload || {}),
+			heartbeat: (payload) => invoke('dweb:agent-skills:unreal:heartbeat', payload || {}),
+			pickJob: (payload) => invoke('dweb:agent-skills:unreal:pick-job', payload || {}),
+			getHttpPort: () => invoke('dweb:agent-skills:unreal:get-http-port'),
+			detectEditor: () => invoke('dweb:agent-skills:unreal:detect-editor'),
+			checkPlugin: (payload) => invoke('dweb:agent-skills:unreal:check-plugin', payload || {}),
+			installPlugin: (payload) => invoke('dweb:agent-skills:unreal:install-plugin', payload || {}),
+			getPluginInfo: () => invoke('dweb:agent-skills:unreal:get-plugin-info'),
+			disconnectSession: (payload) => invoke('dweb:agent-skills:unreal:disconnect-session', payload || {}),
+		},
+	},
+	// ===== MCP 工具 =====
+	mcp: {
+		connect: (payload) => invoke('dweb:mcp:connect', payload || {}),
+		disconnect: (payload) => invoke('dweb:mcp:disconnect', payload || {}),
+		listTools: (payload) => invoke('dweb:mcp:list-tools', payload || {}),
+		callTool: (payload) => invoke('dweb:mcp:call-tool', payload || {}),
+		registerBuiltin: (payload) => invoke('dweb:mcp:register-builtin', payload || {}),
+		onBuiltinToolCall: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++builtinToolListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch {}
+			}
+			builtinToolListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:builtin-tool:call', wrapped)
+			return id
+		},
+		offBuiltinToolCall: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = builtinToolListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:builtin-tool:call', wrapped)
+			builtinToolListenerMap.delete(id)
+			return { ok: true }
+		},
+		respondBuiltinTool: (requestId, result) => {
+			ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { result })
+		},
+	},
+	// ===== CLI 适配器 =====
+	cli: {
+		checkAvailability: (payload) => invoke('dweb:cli:check-availability', payload || {}),
+		listAdapters: () => invoke('dweb:cli:list-adapters'),
+		startSession: (payload) => invoke('dweb:cli:start-session', payload || {}),
+		stopSession: (payload) => invoke('dweb:cli:stop-session', payload || {}),
+		sendMessage: (payload) => createIpcStreamGenerator('dweb:cli:send-message', payload || {}),
+		cancel: (payload) => invoke('dweb:cli:cancel', payload || {}),
+		getSession: (payload) => invoke('dweb:cli:get-session', payload || {}),
+		listSessions: () => invoke('dweb:cli:list-sessions'),
 	},
 	platform: {
 		getStatus: () => invoke('platform:get-status'),

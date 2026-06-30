@@ -18,6 +18,7 @@
 		:hoverOutputAnchorId="hoverOutputAnchorId"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
+		@update:world-position="(p) => emit('update:worldPosition', p)"
 		@select="(id) => emit('select', id)"
 		@start-link="onStartLink"
 		@end-link="onEndLink"
@@ -144,6 +145,7 @@ const onResize = (payload: { width: number; height: number; worldX: number; worl
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
 	(e: 'update:worldY', v: number): void
+	(e: 'update:worldPosition', p: { worldX: number; worldY: number }): void
 	(e: 'select', nodeId: string): void
 	(
 		e: 'start-link',

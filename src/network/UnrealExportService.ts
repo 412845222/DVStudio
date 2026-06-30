@@ -73,6 +73,7 @@ export type UnrealExportRequest = {
 	targetSessionId: string
 	sourceNodeId: string
 	sceneName: string
+	assetRootPath?: string
 	exportPayload: Record<string, unknown>
 }
 
@@ -91,6 +92,30 @@ const safeJson = async (res: Response) => {
 
 function isAgentSkillsIpcAvailable(): boolean {
 	return isMigrationMode() && hasIpcModule('agentSkills') && typeof window.dweb?.agentSkills === 'object'
+}
+
+type UnrealIpcApi = {
+	sessions?: () => Promise<unknown>
+	register?: (payload: Record<string, unknown>) => Promise<unknown>
+	sessionDetail?: (payload: Record<string, unknown>) => Promise<unknown>
+	createJob?: (payload: Record<string, unknown>) => Promise<unknown>
+	jobDetail?: (payload: Record<string, unknown>) => Promise<unknown>
+	heartbeat?: (payload: Record<string, unknown>) => Promise<unknown>
+	pickJob?: (payload: Record<string, unknown>) => Promise<unknown>
+	getHttpPort?: () => Promise<unknown>
+	detectEditor?: () => Promise<unknown>
+	checkPlugin?: (payload: { projectPath: string }) => Promise<unknown>
+	installPlugin?: (payload: { projectPath: string }) => Promise<unknown>
+	getPluginInfo?: () => Promise<unknown>
+	disconnectSession?: (payload: Record<string, unknown>) => Promise<unknown>
+}
+
+function getUnrealIpc(): UnrealIpcApi | null {
+	if (!isAgentSkillsIpcAvailable()) return null
+	const agentSkills = window.dweb?.agentSkills as Record<string, unknown> | undefined
+	const unreal = agentSkills?.unreal
+	if (unreal && typeof unreal === 'object') return unreal as UnrealIpcApi
+	return null
 }
 
 export class UnrealExportService {
@@ -151,9 +176,10 @@ export class UnrealExportService {
 	}
 
 	async listSessions(): Promise<UnrealExportSessionsResponse> {
-		if (isAgentSkillsIpcAvailable()) {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.sessions) {
 			try {
-				const result = await window.dweb?.agentSkills?.unreal?.sessions?.()
+				const result = await unrealIpc.sessions()
 				if (result) {
 					const r = result as any
 					const sessions = Array.isArray(r.sessions) ? r.sessions.map((s: any) => ({
@@ -192,17 +218,22 @@ export class UnrealExportService {
 	}
 
 	async createJob(payload: UnrealExportRequest): Promise<UnrealExportCreateJobResponse> {
-		if (isAgentSkillsIpcAvailable()) {
+		const backendPayload = {
+			sessionId: payload.targetSessionId,
+			type: 'export',
+			payload: {
+				sourceNodeId: payload.sourceNodeId,
+				sceneName: payload.sceneName,
+				assetRootPath: payload.assetRootPath,
+				...payload.exportPayload
+			}
+		}
+
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.createJob) {
 			try {
-				const result = await window.dweb?.agentSkills?.unreal?.createJob?.({
-					sessionId: payload.targetSessionId,
-					type: 'export',
-					payload: {
-						sourceNodeId: payload.sourceNodeId,
-						sceneName: payload.sceneName,
-						...payload.exportPayload
-					}
-				})
+				const serializablePayload = JSON.parse(JSON.stringify(backendPayload))
+				const result = await unrealIpc.createJob(serializablePayload)
 				if (result) {
 					const r = result as any
 					if (r.ok === false) {
@@ -225,7 +256,7 @@ export class UnrealExportService {
 		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/jobs/create'), {
 			method: 'POST',
 			headers: jsonHeaders,
-			body: JSON.stringify(payload ?? {})
+			body: JSON.stringify(backendPayload)
 		})
 		if (!res.ok) {
 			const body = await safeJson(res)
@@ -242,9 +273,10 @@ export class UnrealExportService {
 		const normalizedJobId = String(jobId ?? '').trim()
 		if (!normalizedJobId) return { ok: false, error: 'jobId is required', status: 400 }
 
-		if (isAgentSkillsIpcAvailable()) {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.jobDetail) {
 			try {
-				const result = await window.dweb?.agentSkills?.unreal?.jobDetail?.({ jobId: normalizedJobId })
+				const result = await unrealIpc.jobDetail({ jobId: normalizedJobId })
 				if (result) {
 					const r = result as any
 					if (r.ok === false) {
@@ -260,7 +292,7 @@ export class UnrealExportService {
 								sourceNodeId: j.payload?.sourceNodeId,
 								sceneName: j.payload?.sceneName,
 								status: j.status || 'unknown',
-								message: j.error || j.result?.message,
+								message: j.message || j.error || j.result?.message,
 								createdAt: j.createdAt,
 								updatedAt: j.updatedAt,
 								resultData: j.result,
@@ -286,18 +318,194 @@ export class UnrealExportService {
 				error: `unreal-export/jobs/${normalizedJobId} failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
-		return (await res.json()) as UnrealExportJobResponse
+		const raw = await res.json() as any
+		if (!raw || !raw.ok) {
+			return { ok: false, error: raw?.error || 'getJob failed', status: res.status }
+		}
+		if (!raw.job) {
+			return { ok: true, job: null }
+		}
+		const j = raw.job
+		return {
+			ok: true,
+			job: {
+				jobId: j.id || j.jobId || normalizedJobId,
+				targetSessionId: j.sessionId,
+				sourceNodeId: j.payload?.sourceNodeId,
+				sceneName: j.payload?.sceneName,
+				status: j.status || 'unknown',
+				message: j.message || j.error || j.result?.message,
+				createdAt: j.createdAt,
+				updatedAt: j.updatedAt,
+				resultData: j.result,
+				exportPayload: j.payload
+			}
+		}
 	}
 
 	async getHttpPort(): Promise<{ ok: boolean; port?: number; error?: string }> {
-		if (isAgentSkillsIpcAvailable()) {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.getHttpPort) {
 			try {
-				const result = await window.dweb?.agentSkills?.unreal?.getHttpPort?.()
+				const result = await unrealIpc.getHttpPort()
 				if (result) return result as { ok: boolean; port?: number; error?: string }
 			} catch (err) {
 				console.warn('[UnrealExportService] unreal.getHttpPort IPC failed:', err)
 			}
 		}
 		return { ok: false, error: 'IPC not available' }
+	}
+
+	async detectEditor(): Promise<{
+		ok: boolean
+		running: boolean
+		processes: Array<{ pid: number; projectPath: string; projectName: string }>
+		error?: string
+	}> {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.detectEditor) {
+			try {
+				const result = await unrealIpc.detectEditor()
+				if (result) {
+					const r = result as any
+					return {
+						ok: r.ok === true,
+						running: Boolean(r.running),
+						processes: Array.isArray(r.processes) ? r.processes : [],
+						error: r.error
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.detectEditor IPC failed:', err)
+			}
+		}
+		return { ok: false, running: false, processes: [], error: 'IPC not available' }
+	}
+
+	async checkPlugin(projectPath: string): Promise<{
+		ok: boolean
+		installed: boolean
+		pluginVersion?: string
+		pluginPath?: string
+		projectRoot?: string
+		projectName?: string
+		error?: string
+	}> {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.checkPlugin) {
+			try {
+				const result = await unrealIpc.checkPlugin({ projectPath })
+				if (result) {
+					const r = result as any
+					return {
+						ok: r.ok === true,
+						installed: Boolean(r.installed),
+						pluginVersion: r.pluginVersion,
+						pluginPath: r.pluginPath,
+						projectRoot: r.projectRoot,
+						projectName: r.projectName,
+						error: r.error
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.checkPlugin IPC failed:', err)
+			}
+		}
+		return { ok: false, installed: false, error: 'IPC not available' }
+	}
+
+	async installPlugin(projectPath: string): Promise<{
+		ok: boolean
+		installed: boolean
+		pluginPath?: string
+		pluginVersion?: string
+		projectRoot?: string
+		projectName?: string
+		needsRestart?: boolean
+		error?: string
+	}> {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.installPlugin) {
+			try {
+				const result = await unrealIpc.installPlugin({ projectPath })
+				if (result) {
+					const r = result as any
+					return {
+						ok: r.ok === true,
+						installed: Boolean(r.installed),
+						pluginPath: r.pluginPath,
+						pluginVersion: r.pluginVersion,
+						projectRoot: r.projectRoot,
+						projectName: r.projectName,
+						needsRestart: Boolean(r.needsRestart),
+						error: r.error
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.installPlugin IPC failed:', err)
+			}
+		}
+		return { ok: false, installed: false, error: 'IPC not available' }
+	}
+
+	async getPluginInfo(): Promise<{
+		ok: boolean
+		pluginName: string
+		pluginVersion: string
+		packageSize?: number
+		error?: string
+	}> {
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.getPluginInfo) {
+			try {
+				const result = await unrealIpc.getPluginInfo()
+				if (result) {
+					const r = result as any
+					return {
+						ok: r.ok === true,
+						pluginName: r.pluginName || 'DwebWorkflowBridge',
+						pluginVersion: r.pluginVersion || '',
+						packageSize: r.packageSize,
+						error: r.error
+					}
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.getPluginInfo IPC failed:', err)
+			}
+		}
+		return { ok: false, pluginName: 'DwebWorkflowBridge', pluginVersion: '', error: 'IPC not available' }
+	}
+
+	async disconnectSession(sessionId: string): Promise<{ ok: boolean; error?: string }> {
+		const normalizedSessionId = String(sessionId ?? '').trim()
+		if (!normalizedSessionId) return { ok: false, error: 'sessionId is required' }
+
+		const unrealIpc = getUnrealIpc()
+		if (unrealIpc?.disconnectSession) {
+			try {
+				const result = await unrealIpc.disconnectSession({ sessionId: normalizedSessionId })
+				if (result) {
+					const r = result as any
+					return { ok: r.ok === true, error: r.error }
+				}
+			} catch (err) {
+				console.warn('[UnrealExportService] unreal.disconnectSession IPC failed:', err)
+			}
+		}
+
+		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/sessions/disconnect'), {
+			method: 'POST',
+			headers: jsonHeaders,
+			body: JSON.stringify({ sessionId: normalizedSessionId })
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				error: `disconnect failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			}
+		}
+		const raw = await res.json() as any
+		return { ok: raw?.ok === true, error: raw?.error }
 	}
 }

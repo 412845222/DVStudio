@@ -433,7 +433,12 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		const objectKey = `model3d:${nodeId}`
 		options.setObjectUrl(objectKey, url)
 		const lowerName = String(file.name || '').toLowerCase()
-		const modelFormat = lowerName.endsWith('.gltf') ? 'gltf' : 'glb'
+		let modelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
+		if (lowerName.endsWith('.gltf')) modelFormat = 'gltf'
+		else if (lowerName.endsWith('.fbx')) modelFormat = 'fbx'
+		else if (lowerName.endsWith('.obj')) modelFormat = 'obj'
+		else if (lowerName.endsWith('.stl')) modelFormat = 'stl'
+		else if (lowerName.endsWith('.dae')) modelFormat = 'dae'
 		const sourcePath =
 			typeof (file as FileWithPath)?.path === 'string' ? String((file as FileWithPath).path).trim() : ''
 		let assetUrl = ''

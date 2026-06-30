@@ -8,7 +8,7 @@ import type {
 } from './types'
 import { extractMeshyTaskResultFields } from './types'
 
-type Meshy3DTaskMode = 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'retexture'
+type Meshy3DTaskMode = 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'retexture' | 'remesh' | 'uv-unwrap'
 
 type Meshy3DSettings = {
 	meshyTaskTarget?: string
