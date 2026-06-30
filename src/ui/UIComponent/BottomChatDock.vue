@@ -18,7 +18,33 @@
 			<div class="chat-history">
 				<div class="chat-history-bar" @pointerdown.stop="onDockDragStart">
 					<div class="chat-history-title">
-						Agent对话
+						<select
+							class="chat-dock-toolbar-select agent-session-select"
+							:value="codexActiveSessionId"
+							@change="onAgentSessionChange"
+						>
+							<option value="">新对话</option>
+							<option v-for="s in codexSessions" :key="s.id" :value="s.id">
+								{{ s.title || '新对话' }}
+							</option>
+						</select>
+						<button
+							class="chat-history-new-btn"
+							type="button"
+							title="新建会话"
+							@pointerdown.stop
+							@click.stop="emit('codex-create-session')"
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path
+									d="M12 5v14M5 12h14"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									fill="none"
+								/>
+							</svg>
+						</button>
 					</div>
 					<button
 						class="chat-history-minimize"
@@ -43,137 +69,57 @@
 					class="chat-history-body"
 				>
 					<div class="agent-panel">
-						<div class="agent-session-bar">
-							<div class="agent-session-row">
-								<div class="agent-session-label">对话</div>
-								<button
-									class="codex-mini-btn"
-									type="button"
-									@click="emit('codex-create-session')"
-								>
-									New Conversation
-								</button>
-							</div>
-							<div class="agent-session-controls">
-								<select
-									class="chat-dock-toolbar-select agent-backend-select"
-									style="display: none"
-									:value="agentBackend"
-									@change="onAgentBackendChange"
-								>
-									<option value="codex">Claude Codex</option>
-									<option value="dvsagent">DVSAgent</option>
-									<option value="cli">CLI Adapter</option>
-								</select>
-								<select
-									class="chat-dock-toolbar-select agent-session-select"
-									:value="codexActiveSessionId"
-									@change="onAgentSessionChange"
-								>
-									<option v-if="!codexSessions.length" value="">New Conversation</option>
-									<option v-for="s in codexSessions" :key="s.id" :value="s.id">
-										{{ s.title || 'New Conversation' }}
-									</option>
-								</select>
-								<select
-									class="chat-dock-toolbar-select agent-mode-select"
-									:value="agentMode"
-									@change="onAgentModeChange"
-								>
-									<option value="agent">Agent</option>
-									<option value="ask">Ask</option>
-									<option value="plan">Plan</option>
-								</select>
-								<select
-									class="chat-dock-toolbar-select agent-stream-mode-select"
-									:value="localExecStreamMode"
-									@change="onLocalExecStreamModeChange"
-								>
-									<option value="real">SSE Real</option>
-									<option value="mock">SSE Mock</option>
-								</select>
-								<button
-									class="codex-mini-btn"
-									type="button"
-									:disabled="!codexActiveSessionId"
-									@click.stop="onRenameActiveAgentSession"
-								>
-									改名
-								</button>
-								<button
-									class="codex-mini-btn danger"
-									type="button"
-									:disabled="!codexActiveSessionId"
-									@click.stop="onDeleteActiveAgentSession"
-								>
-									删除
-								</button>
-							</div>
-						</div>
 
-						<div v-if="!messages?.length" class="agent-empty-state">
-							Start a new Agent conversation.
-						</div>
-						<div v-else class="chat-history-list agent-chat-list">
-							<div
-								v-for="m in messages"
-								:key="m.id"
-								class="chat-msg"
-								:class="
-									m.role === 'user' ? 'user' : m.role === 'assistant' ? 'assistant' : 'system'
-								"
-							>
-								<div class="chat-msg-bubble">
-									<div class="chat-msg-role">
-										{{ m.role === 'user' ? '你' : m.role === 'assistant' ? 'Agent' : '系统' }}
-									</div>
-									<template v-if="m.role === 'assistant'">
-										<ThinkingBlock
-											v-if="m.thinkingContent || m.toolCalls?.length"
-											:content="m.thinkingContent || ''"
-											:is-thinking="!m.content && !m.toolCalls?.length"
-										/>
-										<div v-if="m.toolCalls?.length" class="chat-msg-tool-calls">
-											<ToolCallCard
-												v-for="tc in m.toolCalls"
-												:key="tc.id"
-												:tool-name="tc.name"
-												:status="tc.status"
-												:args="tc.args"
-												:result="tc.result"
-												:error="tc.error"
-											/>
+						<div class="agent-content-area">
+							<div class="agent-chat-area">
+								<div v-if="!messages?.length" class="agent-empty-state">
+									开始一段新的 Agent 对话。
+								</div>
+								<div v-else class="chat-history-list agent-chat-list">
+									<div
+										v-for="m in messages"
+										:key="m.id"
+										class="chat-msg"
+										:class="
+											m.role === 'user' ? 'user' : m.role === 'assistant' ? 'assistant' : 'system'
+										"
+									>
+										<div class="chat-msg-bubble">
+											<div class="chat-msg-role">
+												{{ m.role === 'user' ? '你' : m.role === 'assistant' ? 'Agent' : '系统' }}
+											</div>
+											<template v-if="m.role === 'assistant'">
+												<ThinkingBlock
+													v-if="m.thinkingContent"
+													:content="m.thinkingContent || ''"
+													:is-thinking="!m.content && (!m.toolCalls?.length || m.toolCalls.every(t => t.status === 'pending'))"
+													:default-collapsed="!!m.content"
+												/>
+												<div v-if="m.toolCalls?.length" class="agent-tool-calls">
+													<ToolCallCard
+														v-for="tc in m.toolCalls"
+														:key="tc.id"
+														:tool-name="tc.name"
+														:status="tc.status"
+														:args="tc.args"
+														:result="tc.result"
+														:error="tc.error"
+														:default-expanded="tc.status === 'running'"
+													/>
+												</div>
+												<UserChoicePanel
+													v-if="m.userChoices?.length"
+													:options="m.userChoices"
+													:disabled="m.userChoiceSelected !== null"
+													@select="(idx, text) => onUserChoiceSelect(m.id, idx, text)"
+												/>
+												<div v-if="m.content" class="chat-msg-content">{{ m.content }}</div>
+											</template>
+											<template v-else>
+												<div class="chat-msg-content">{{ m.content }}</div>
+											</template>
 										</div>
-										<div v-if="m.content" class="chat-msg-content">{{ m.content }}</div>
-									</template>
-									<template v-else>
-										<div class="chat-msg-content">{{ m.content }}</div>
-									</template>
-								</div>
-							</div>
-						</div>
-
-						<div v-if="agentApprovalEvents.length" class="agent-flow-list">
-							<div v-for="ev in agentApprovalEvents" :key="ev.id" class="codex-flow-item pending">
-								<div class="codex-flow-title">{{ ev.title || '等待审批' }}</div>
-								<div class="codex-flow-meta">
-									{{ agentFlowDetail(ev) || '需要你确认后继续执行' }}
-								</div>
-								<div v-if="ev.approvalRequestId && ev.messageId" class="codex-approval-row">
-									<button
-										class="codex-mini-btn"
-										type="button"
-										@click="onCodexApproval(ev.messageId!, 'accept')"
-									>
-										同意
-									</button>
-									<button
-										class="codex-mini-btn danger"
-										type="button"
-										@click="onCodexApproval(ev.messageId!, 'decline')"
-									>
-										拒绝
-									</button>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -183,7 +129,7 @@
 
 			<div class="chat-dock-body">
 				<div class="agent-working-dir">
-					<span>Working Directory</span>
+					<span>工作目录</span>
 					<span class="agent-working-dir-path">{{ agentWorkingDirectory }}</span>
 				</div>
 
@@ -201,7 +147,7 @@
 					:value="modelValue"
 					class="chat-dock-input"
 					rows="2"
-					placeholder="Type a message. Press Enter to send, Shift+Enter for new line."
+					placeholder="输入消息，按 Enter 发送，Shift+Enter 换行"
 					:disabled="sending"
 					@focus="emit('focus-input')"
 					@input="onInput"
@@ -218,8 +164,9 @@
 								@change="onAgentBackendChange"
 							>
 								<option value="dvsagent">DVSAgent</option>
-								<option value="codex">Claude Codex</option>
-								<option value="cli">CLI Adapter</option>
+								<option value="claude">Claude</option>
+								<option value="codex">Codex</option>
+								<option value="copilot">Copilot</option>
 							</select>
 						</div>
 						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-model">
@@ -230,10 +177,23 @@
 								:disabled="sending || !modelOptions.length"
 								@change="onAgentModelSelectionChange"
 							>
-								<option v-if="!modelOptions.length" value="">Copilot CLI 默认模型</option>
-								<option v-for="model in modelOptions" :key="model.id" :value="model.id">
-									{{ model.label }}
-								</option>
+								<option v-if="!modelOptions.length" value="">暂无可用模型</option>
+								<template v-if="agentBackend === 'dvsagent'">
+									<optgroup
+										v-for="group in dvsAgentModelGroups"
+										:key="group.label"
+										:label="group.label"
+									>
+										<option v-for="model in group.models" :key="model.id" :value="model.id">
+											{{ model.label }}
+										</option>
+									</optgroup>
+								</template>
+								<template v-else>
+									<option v-for="model in modelOptions" :key="model.id" :value="model.id">
+										{{ model.label }}
+									</option>
+								</template>
 							</select>
 						</div>
 					</div>
@@ -259,6 +219,8 @@ import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideo
 import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
 import ThinkingBlock from '../AIChat/ThinkingBlock.vue'
 import ToolCallCard from '../AIChat/ToolCallCard.vue'
+import UserChoicePanel from '../AIChat/UserChoicePanel.vue'
+import AgentToolsPanel from '../AIChat/AgentToolsPanel.vue'
 import {
 	CHAT_API_SOURCE_OPTIONS,
 	CHAT_MODEL_CATALOG,
@@ -267,6 +229,7 @@ import {
 	needTypeFromLegacyModel,
 	type ChatApiSource,
 	type ChatLegacyModelKey,
+	type ChatModelCatalogItem,
 	type ChatNeedType
 } from '../../ai/models/chatModels'
 
@@ -285,6 +248,8 @@ export type BottomChatMessage = {
 	content: string
 	thinkingContent?: string
 	toolCalls?: ToolCallInfo[]
+	userChoices?: string[]
+	userChoiceSelected?: number | null
 }
 
 export type NanoBananaConfig = {
@@ -319,7 +284,7 @@ export type NanoBananaRefAnchor = {
 
 export type LocalExecSource = 'copilot-cli' | 'legacy-codex'
 
-export type AgentBackendType = 'codex' | 'dvsagent' | 'cli'
+export type AgentBackendType = 'dvsagent' | 'claude' | 'codex' | 'copilot'
 export type AgentConversationMode = 'agent' | 'ask' | 'plan'
 
 export type LocalExecSessionItem = {
@@ -399,6 +364,7 @@ const emit = defineEmits<{
 	(e: 'codex-delete-session', sessionId: string): void
 	(e: 'codex-rename-session', v: { sessionId: string; title: string }): void
 	(e: 'codex-approval', v: { messageId: string; decision: 'accept' | 'decline' }): void
+	(e: 'user-choice-select', v: { messageId: string; choiceIndex: number; choiceText: string }): void
 	(e: 'layout-changed'): void
 	(
 		e: 'safe-area-changed',
@@ -479,7 +445,9 @@ const agentBackend = computed<AgentBackendType>(() => {
 	const backend = String(props.agentBackend || '')
 		.trim()
 		.toLowerCase()
-	if (backend === 'codex' || backend === 'cli') return backend as AgentBackendType
+	if (backend === 'dvsagent' || backend === 'claude' || backend === 'codex' || backend === 'copilot') {
+		return backend as AgentBackendType
+	}
 	return 'dvsagent'
 })
 
@@ -592,7 +560,38 @@ const onMeshyImageConfigChange = (nextConfig: MeshyImageConfig) => {
 
 const textModel = ref('auto')
 
-const modelOptions = computed(() => getChatModelOptions('text', 'local-exec'))
+const modelOptions = computed(() => {
+	if (props.agentBackend === 'dvsagent') {
+		const allTextModels = CHAT_MODEL_CATALOG.filter(
+			(m) => m.needType === 'text' && m.apiSource !== 'local-exec'
+		)
+		return allTextModels
+	}
+	return getChatModelOptions('text', 'local-exec')
+})
+
+const dvsAgentModelGroups = computed(() => {
+	const groups: Array<{ label: string; models: ChatModelCatalogItem[] }> = []
+	const sourceToLabel: Record<string, string> = {
+		deepseek: 'DeepSeek',
+		bytedance: '火山方舟',
+		gemini: 'Gemini',
+		'local-exec': 'Copilot CLI'
+	}
+	const sources = ['deepseek', 'bytedance', 'gemini']
+	for (const src of sources) {
+		const models = modelOptions.value.filter((m) => m.apiSource === src)
+		if (models.length) {
+			const sorted = [...models].sort((a, b) => {
+				if (a.recommended && !b.recommended) return -1
+				if (!a.recommended && b.recommended) return 1
+				return a.label.localeCompare(b.label)
+			})
+			groups.push({ label: sourceToLabel[src] || src, models: sorted })
+		}
+	}
+	return groups
+})
 
 const activeModelId = computed(() => String(textModel.value || '').trim())
 
@@ -609,6 +608,30 @@ watch(
 	{ immediate: true }
 )
 
+const getDefaultModelId = () => {
+	const list = modelOptions.value
+	if (!list.length) return ''
+	if (agentBackend.value === 'dvsagent') {
+		const doubaoEvolving = list.find((m) => m.id === 'doubao-seed-evolving')
+		if (doubaoEvolving) return doubaoEvolving.id
+		const recommended = list.find((m) => m.recommended && m.apiSource === 'bytedance')
+		if (recommended) return recommended.id
+	}
+	return list[0].id
+}
+
+watch(
+	() => agentBackend.value,
+	() => {
+		const list = modelOptions.value
+		if (!list.length) return
+		if (!list.some((m) => m.id === activeModelId.value)) {
+			textModel.value = getDefaultModelId()
+		}
+	},
+	{ immediate: true }
+)
+
 const applyModelSelection = (modelId: string) => {
 	const id = String(modelId || '').trim()
 	if (!id) return
@@ -621,7 +644,7 @@ const normalizeModelSelection = () => {
 	const list = modelOptions.value
 	if (!list.length) return
 	if (!list.some((m) => m.id === activeModelId.value)) {
-		textModel.value = list[0].id
+		textModel.value = getDefaultModelId()
 	}
 }
 
@@ -904,7 +927,10 @@ const onAgentBackendChange = (e: Event) => {
 	const value = String((e.target as HTMLSelectElement).value || '')
 		.trim()
 		.toLowerCase()
-	const backend = (value === 'codex' || value === 'cli') ? value as AgentBackendType : 'dvsagent'
+	let backend: AgentBackendType = 'dvsagent'
+	if (value === 'dvsagent' || value === 'claude' || value === 'codex' || value === 'copilot') {
+		backend = value as AgentBackendType
+	}
 	emit('update:agentBackend', backend)
 }
 
@@ -1066,6 +1092,37 @@ const agentApprovalEvents = computed(() =>
 		.slice(-3)
 )
 
+const agentToolCalls = computed(() => {
+	if (!props.messages) return []
+	const allTools: Array<{
+		id: string
+		name: string
+		status: 'pending' | 'running' | 'completed' | 'error'
+		args?: Record<string, unknown>
+		result?: unknown
+		error?: string
+		hasDetails?: boolean
+	}> = []
+	for (const m of props.messages) {
+		if (!m.toolCalls?.length) continue
+		for (const tc of m.toolCalls) {
+			const hasArgs = tc.args && Object.keys(tc.args).length > 0
+			const hasResult = tc.result !== undefined && tc.result !== null
+			const hasError = !!tc.error
+			allTools.push({
+				id: tc.id,
+				name: tc.name,
+				status: tc.status as any,
+				args: tc.args,
+				result: tc.result,
+				error: tc.error,
+				hasDetails: hasArgs || hasResult || hasError
+			})
+		}
+	}
+	return allTools.slice(-10)
+})
+
 const agentFlowDetail = (ev: CodexFlowEvent) => {
 	const direct = String(ev.detail || '').trim()
 	if (direct) return direct
@@ -1112,6 +1169,12 @@ const onCodexApproval = (messageId: string, decision: 'accept' | 'decline') => {
 	const id = String(messageId || '').trim()
 	if (!id) return
 	emit('codex-approval', { messageId: id, decision })
+}
+
+const onUserChoiceSelect = (messageId: string, choiceIndex: number, choiceText: string) => {
+	const id = String(messageId || '').trim()
+	if (!id) return
+	emit('user-choice-select', { messageId: id, choiceIndex, choiceText })
 }
 
 const onRenameActiveAgentSession = () => {
@@ -1262,7 +1325,7 @@ watch(
 	top: var(--aiwf-safe-top, 0px);
 	bottom: 10px;
 	transform: translateX(0);
-	width: min(520px, calc(100vw - 20px));
+	width: min(720px, calc(100vw - 20px));
 	height: calc(100vh - var(--aiwf-safe-top, 0px) - 10px);
 	max-height: none;
 	border-radius: 0;
@@ -1966,6 +2029,44 @@ watch(
 	gap: 10px;
 	font-size: 12px;
 	color: var(--wf-text, #edf2f4);
+	flex: 1;
+	min-width: 0;
+}
+
+.chat-history-title .agent-session-select {
+	width: 100%;
+	min-width: 200px;
+	max-width: 300px;
+}
+
+.chat-history-new-btn {
+	width: 28px;
+	height: 28px;
+	display: grid;
+	place-items: center;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 88%, transparent);
+	color: var(--wf-text, #edf2f4);
+	border-radius: 2px;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition:
+		border-color 220ms ease,
+		color 220ms ease,
+		box-shadow 220ms ease,
+		background-color 220ms ease;
+}
+
+.chat-history-new-btn:hover {
+	border-color: var(--wf-primary, #1f9d84);
+	color: var(--wf-primary, #1f9d84);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
+}
+
+.chat-history-new-btn svg {
+	width: 16px;
+	height: 16px;
 }
 
 .chat-panel-tabs {
@@ -2065,10 +2166,46 @@ watch(
 
 .agent-session-bar {
 	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px;
+	border-bottom: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+	flex-shrink: 0;
+	align-items: center;
+}
+
+.agent-content-area {
+	display: flex;
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+}
+
+.agent-chat-area {
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	padding: 8px;
+	border-right: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.agent-side-panel {
+	width: 260px;
+	flex-shrink: 0;
+	overflow-y: auto;
+	padding: 8px;
+	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding: 10px;
-	border-bottom: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+}
+
+@media (max-width: 600px) {
+	.agent-side-panel {
+		display: none;
+	}
 }
 
 .agent-session-row {
@@ -2084,11 +2221,12 @@ watch(
 }
 
 .agent-session-controls {
-	display: grid;
-	grid-template-columns: minmax(160px, 1fr) auto auto auto auto;
+	display: flex;
+	flex-wrap: wrap;
 	gap: 6px;
 	align-items: center;
 	white-space: nowrap;
+	flex: 1;
 }
 
 .agent-session-select {
@@ -2123,8 +2261,17 @@ watch(
 .agent-chat-list {
 	flex: 1;
 	min-height: 0;
-	overflow: auto;
+	overflow-y: auto;
 	padding: 10px;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.agent-tool-calls {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 8px 0;
 }
 
 .agent-runtime-card {
@@ -2232,7 +2379,7 @@ watch(
 }
 
 .chat-msg {
-	max-width: min(720px, 84%);
+	max-width: 92%;
 	display: flex;
 	flex-direction: column;
 }
@@ -2243,6 +2390,8 @@ watch(
 
 .chat-msg.assistant {
 	align-self: flex-start;
+	width: 100%;
+	max-width: 100%;
 }
 
 .chat-msg.system {
@@ -2250,12 +2399,12 @@ watch(
 }
 
 .chat-msg-bubble {
-	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
-	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 88%, transparent);
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 85%, transparent);
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
-	padding: 8px 10px;
-	border-radius: 2px;
+	padding: 10px 12px;
+	border-radius: 6px;
 	transition:
 		border-color 220ms ease,
 		box-shadow 220ms ease,
@@ -2264,7 +2413,8 @@ watch(
 
 .chat-msg.user .chat-msg-bubble {
 	border-color: var(--wf-primary, #1f9d84);
-	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 28%, transparent);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
 }
 
 .chat-dock-status {

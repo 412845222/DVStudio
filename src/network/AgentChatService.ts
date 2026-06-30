@@ -75,33 +75,64 @@ export async function agentAbort(sessionId?: string): Promise<IpcResult<{ aborte
 
 export async function* agentStream(options: AgentStreamOptions): AsyncGenerator<AgentStreamChunk> {
   const bridge = getIpcBridge()
+  const hasIpc = hasIpcApi()
+  const hasAgentStream = !!bridge.dweb?.agent?.stream
 
-  if (hasIpcApi() && bridge.dweb?.agent?.stream) {
+  if (hasIpc && hasAgentStream) {
     try {
-      const gen = bridge.dweb.agent.stream(options)
-      if (!gen || typeof gen[Symbol.asyncIterator] !== 'function') {
-        yield { type: 'error', message: 'Agent stream not available via IPC' }
-        return
-      }
-      for await (const raw of gen) {
-        const chunk = normalizeAgentChunk(raw)
-        if (chunk) yield chunk
+      const streamFn = bridge.dweb?.agent?.stream
+      if (!streamFn) {
+        console.warn('[AgentChatService] Agent stream function not found, falling back to HTTP')
+      } else {
+        const gen = streamFn(options)
+        if (!gen || typeof gen[Symbol.asyncIterator] !== 'function') {
+          console.warn('[AgentChatService] Agent stream not iterable via IPC, falling back to HTTP')
+        } else {
+          let ipcSucceeded = false
+          try {
+            for await (const raw of gen) {
+              const chunk = normalizeAgentChunk(raw)
+              if (chunk) {
+                yield chunk
+                ipcSucceeded = true
+              }
+            }
+          } catch (ipcErr: unknown) {
+            const ipcMsg = ipcErr && typeof ipcErr === 'object' && 'message' in ipcErr
+              ? String((ipcErr as { message: unknown }).message)
+              : String(ipcErr)
+            console.warn('[AgentChatService] IPC stream failed, falling back to HTTP:', ipcMsg)
+            if (ipcSucceeded) {
+              yield { type: 'error', message: ipcMsg }
+              return
+            }
+          }
+          if (ipcSucceeded) {
+            return
+          }
+        }
       }
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : String(err)
-      yield { type: 'error', message: msg }
+      console.warn('[AgentChatService] IPC stream init failed, falling back to HTTP:', msg)
     }
-    return
+  } else if (hasIpc && !hasAgentStream) {
+    console.warn('[AgentChatService] IPC available but dweb.agent.stream not found, falling back to HTTP')
   }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30000)
 
   try {
     const res = await fetch(`${getBackendBaseUrl()}/api/agent/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options),
+      signal: controller.signal,
     })
     if (!res.ok || !res.body) {
-      yield { type: 'error', message: `HTTP ${res.status}` }
+      const errText = res.ok ? 'No response body' : `HTTP ${res.status}`
+      yield { type: 'error', message: errText }
       return
     }
     const reader = res.body.getReader()
@@ -129,7 +160,13 @@ export async function* agentStream(options: AgentStreamOptions): AsyncGenerator<
     yield { type: 'done' }
   } catch (err: unknown) {
     const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : String(err)
-    yield { type: 'error', message: msg }
+    if (msg === 'The operation was aborted.') {
+      yield { type: 'error', message: '请求超时' }
+    } else {
+      yield { type: 'error', message: `Agent 调用失败: ${msg}` }
+    }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 

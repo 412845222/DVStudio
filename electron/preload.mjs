@@ -473,8 +473,8 @@ contextBridge.exposeInMainWorld('dweb', {
 	},
 	// ===== Agent 执行器 =====
 	agent: {
-		stream: (payload) => createIpcStreamGenerator('dweb:agent:stream', payload || {}),
-		getContext: (payload) => invoke('dweb:agent:get-context', payload || {}),
+		stream: (payload) => createIpcStreamGenerator('dweb:agent', payload || {}),
+		getContext: (payload) => invoke('dweb:agent:context', payload || {}),
 		abort: (payload) => invoke('dweb:agent:abort', payload || {}),
 	},
 	// ===== MCP 工具 =====

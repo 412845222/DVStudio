@@ -384,6 +384,7 @@
 				@codex-delete-session="onCodexDeleteSession"
 				@codex-rename-session="onCodexRenameSession"
 				@codex-approval="onCodexApproval"
+				@user-choice-select="handleUserChoiceSelect($event.messageId, $event.choiceIndex, $event.choiceText)"
 				@workflow-end-link="onEndLink"
 				@request-expand="chatCollapsed = false"
 				@request-collapse="chatCollapsed = true"
@@ -1072,6 +1073,9 @@ interface DwebRuntimeWindow {
 		aiworkflow?: {
 			onImageMarkupExported?: (callback: (payload: unknown) => void) => number
 			offImageMarkupExported?: (listenerId: number) => void
+		}
+		agent?: {
+			stream?: (payload: unknown) => AsyncGenerator<unknown>
 		}
 	}
 }
@@ -3183,6 +3187,15 @@ onMounted(() => {
 		}
 	} catch (err) {
 		console.warn('[AIWorkflowPage] registerImageMarkupExportListener failed', err)
+	}
+	if (isElectronRuntime) {
+		const w = window as Window & DwebRuntimeWindow
+		if (w.dweb?.agent?.stream) {
+			agentBackend.value = 'dvsagent'
+		} else {
+			agentBackend.value = 'copilot'
+			console.warn('[AIWorkflowPage] DVSAgent IPC 不可用，已回退到 Copilot CLI')
+		}
 	}
 })
 
@@ -6424,7 +6437,7 @@ const { uploadLocalResourceAndGetUrl, persistExternalAssetToProject } =
 		importAssetIntoProjectScope: (payload) => importAssetIntoProjectScope(payload)
 	})
 
-const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate } = useAIWorkflowChatGeneration({
+const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate, handleUserChoiceSelect } = useAIWorkflowChatGeneration({
 	store,
 	chatModelKey,
 	chatDraft,
@@ -8156,6 +8169,12 @@ onMounted(() => {
 	if (isElectronRuntime) {
 		chatModelKey.value = 'codex'
 		agentConversationMode.value = 'agent'
+		const w = window as Window & DwebRuntimeWindow
+		if (w.dweb?.agent?.stream) {
+			agentBackend.value = 'dvsagent'
+		} else {
+			agentBackend.value = 'copilot'
+		}
 	}
 
 	if (isElectronRuntime && shouldAutoHelloOnLaunch && !autoHelloSent) {

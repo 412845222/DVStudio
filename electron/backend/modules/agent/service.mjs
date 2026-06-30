@@ -224,7 +224,7 @@ export async function* streamAgentMessage(ctx, payload) {
   const cliMode = p.cliMode === true || ['claude', 'codex', 'copilot'].includes(apiSource);
 
   if (!content) {
-    yield JSON.stringify({ type: 'error', error: 'content is required' });
+    yield { type: 'error', message: 'content is required' };
     return;
   }
 
@@ -263,10 +263,10 @@ async function* streamViaCLI(ctx, payload) {
     // 检查 CLI 可用性
     const availability = await cliAdapterManager.checkAvailability(cliAdapter, cliConfig);
     if (!availability.available) {
-      yield JSON.stringify({ 
+      yield { 
         type: 'error', 
-        error: `${availability.status}: ${cliAdapter} is not available - ${availability.error || ''}` 
-      });
+        message: `${availability.status}: ${cliAdapter} is not available - ${availability.error || ''}` 
+      };
       return;
     }
 
@@ -275,46 +275,69 @@ async function* streamViaCLI(ctx, payload) {
       cwd: cliConfig.cwd || process.cwd(),
     }, cliConfig);
 
-    yield JSON.stringify({ type: 'session_start', sessionId, adapter: cliAdapter });
+    yield { type: 'session_start', sessionId, adapter: cliAdapter };
 
     // 发送消息
     let accumulatedContent = '';
 
     for await (const event of cliAdapterManager.sendMessage(sessionId, prompt, {})) {
       // 事件可能是字符串（JSON）或对象
+      let parsedEvent = event;
       if (typeof event === 'string') {
         try {
-          const parsed = JSON.parse(event);
-          if (parsed.type === 'text_delta') {
-            accumulatedContent += parsed.content;
-            yield event;
-          } else if (parsed.type === 'tool_call_start') {
-            yield event;
-          } else if (parsed.type === 'tool_call_end') {
-            yield event;
-          } else if (parsed.type === 'error') {
-            yield event;
-          } else if (parsed.type === 'done') {
-            yield event;
-          }
+          parsedEvent = JSON.parse(event);
         } catch {
-          // 如果不是 JSON，当作文本处理
           accumulatedContent += event;
-          yield JSON.stringify({ type: 'text_delta', content: event });
+          yield { type: 'text', content: event };
+          continue;
         }
-      } else if (event && typeof event === 'object') {
-        if (event.type === 'text_delta') {
-          accumulatedContent += event.content;
+      }
+      
+      if (parsedEvent && typeof parsedEvent === 'object') {
+        if (parsedEvent.type === 'text_delta') {
+          accumulatedContent += parsedEvent.content || '';
+          yield { type: 'text', content: parsedEvent.content || '' };
+        } else if (parsedEvent.type === 'thinking_delta') {
+          yield { type: 'thinking_delta', content: parsedEvent.content || '' };
+        } else if (parsedEvent.type === 'tool_call_start') {
+          yield {
+            type: 'tool_call_start',
+            toolCallId: parsedEvent.id || parsedEvent.toolCallId || '',
+            tool: parsedEvent.name || parsedEvent.tool || '',
+            input: parsedEvent.arguments || parsedEvent.input
+          };
+        } else if (parsedEvent.type === 'tool_call_end') {
+          yield {
+            type: 'tool_call_end',
+            toolCallId: parsedEvent.id || parsedEvent.toolCallId || '',
+            tool: parsedEvent.name || parsedEvent.tool || '',
+            output: parsedEvent.result || parsedEvent.output
+          };
+        } else if (parsedEvent.type === 'tool_call_error') {
+          yield {
+            type: 'tool_call_error',
+            toolCallId: parsedEvent.id || parsedEvent.toolCallId || '',
+            tool: parsedEvent.name || parsedEvent.tool || '',
+            error: parsedEvent.error || parsedEvent.message || 'Unknown tool call error'
+          };
+        } else if (parsedEvent.type === 'error') {
+          yield { type: 'error', message: parsedEvent.error || parsedEvent.message || 'Unknown error' };
+        } else if (parsedEvent.type === 'session_start' || parsedEvent.type === 'session_end') {
+          // 内部事件，不转发给前端
+        } else if (parsedEvent.type === 'done') {
+          // skip, we'll send our own done
+        } else {
+          // pass through other events
+          yield parsedEvent;
         }
-        yield JSON.stringify(event);
       }
     }
 
-    yield JSON.stringify({ type: 'done', content: accumulatedContent });
+    yield { type: 'done', content: accumulatedContent };
 
   } catch (err) {
     logger.error(`Agent CLI stream error: ${err.message}`);
-    yield JSON.stringify({ type: 'error', error: err.message });
+    yield { type: 'error', message: err.message };
   } finally {
     // 结束会话
     if (sessionId) {
@@ -324,6 +347,49 @@ async function* streamViaCLI(ctx, payload) {
     }
   }
 }
+
+/**
+ * 尝试从多个 provider key 名称中获取 API Key
+ */
+function tryGetApiKey(ctx, ...names) {
+  const keyRepo = ctx.localdb?.apiKeys;
+  if (!keyRepo || typeof keyRepo.getPlaintext !== 'function') return '';
+  for (const name of names) {
+    try {
+      const r = keyRepo.getPlaintext(name);
+      if (r && r.ok && r.plaintext && String(r.plaintext).trim()) {
+        return String(r.plaintext).trim();
+      }
+    } catch {}
+  }
+  return '';
+}
+
+/**
+ * 根据 apiSource 解析对应的 API Key（支持多个别名）
+ */
+function resolveApiKey(ctx, apiSource) {
+  switch (apiSource) {
+    case 'bytedance':
+      return tryGetApiKey(ctx, 'bytedance_ark', 'bytedance_text', 'bytedance', 'doubao', 'ark', 'volcengine');
+    case 'deepseek':
+      return tryGetApiKey(ctx, 'deepseek', 'deepseek_api', 'deepseek-chat');
+    case 'gemini':
+      return tryGetApiKey(ctx, 'gemini', 'google_gemini', 'gemini_api');
+    case 'openai':
+      return tryGetApiKey(ctx, 'openai', 'openai_api');
+    default:
+      return tryGetApiKey(ctx, apiSource);
+  }
+}
+
+// 各 apiSource 对应的 baseUrl
+const BASE_URLS = {
+  deepseek: 'https://api.deepseek.com/v1',
+  openai: 'https://api.openai.com/v1',
+  bytedance: 'https://ark.cn-beijing.volces.com/api/v3',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta'
+};
 
 /**
  * API 模式流式对话（原逻辑）
@@ -343,31 +409,26 @@ async function* streamViaAPI(ctx, payload) {
 
   // 获取 API 配置
   let baseUrl, apiKey;
-  
-  // 优先使用提供的 API Key
-  if (apiKeys[apiSource]) {
+
+  baseUrl = BASE_URLS[apiSource] || BASE_URLS.deepseek;
+
+  // 优先使用前端传入的 API Key
+  if (apiKeys && apiKeys[apiSource]) {
     apiKey = apiKeys[apiSource];
-    baseUrl = apiSource === 'deepseek' 
-      ? 'https://api.deepseek.com/v1'
-      : apiSource === 'openai'
-        ? 'https://api.openai.com/v1'
-        : 'https://ark.cn-beijing.volces.com/api/v3';
   } else {
-    // 从上下文获取 API Key
-    const keyRepo = ctx.localdb?.apiKeys;
-    if (keyRepo) {
-      if (apiSource === 'deepseek' || apiSource === 'openai') {
-        const result = keyRepo.getPlaintext(apiSource === 'openai' ? 'openai' : 'deepseek');
-        apiKey = result.ok ? result.plaintext : '';
-      }
-    }
-    baseUrl = apiSource === 'deepseek' || apiSource === 'openai'
-      ? 'https://api.deepseek.com/v1'
-      : 'https://ark.cn-beijing.volces.com/api/v3';
+    // 从本地数据库获取（支持多个别名）
+    apiKey = resolveApiKey(ctx, apiSource);
   }
 
   if (!apiKey) {
-    yield JSON.stringify({ type: 'error', error: `${apiSource} API key is not configured` });
+    const vendorLabels = {
+      deepseek: 'DeepSeek',
+      bytedance: '火山方舟',
+      gemini: 'Gemini',
+      openai: 'OpenAI'
+    };
+    const vendorLabel = vendorLabels[apiSource] || apiSource;
+    yield { type: 'error', message: `未检测到 ${vendorLabel} 的 API Key，请先在设置中配置` };
     return;
   }
 
@@ -377,8 +438,13 @@ async function* streamViaAPI(ctx, payload) {
   // 获取可用工具列表（如果未提供，从 MCP 获取）
   let availableTools = tools;
   if (availableTools.length === 0) {
-    const toolsResult = await mcpServerManager.listTools(null);
-    availableTools = toolsResult.tools || [];
+    try {
+      const toolsResult = await mcpServerManager.listTools(null);
+      availableTools = toolsResult.tools || [];
+    } catch (mcpErr) {
+      logger.warn(`Failed to list MCP tools, proceeding without tools: ${mcpErr.message}`);
+      availableTools = [];
+    }
   }
 
   // 工具调用循环
@@ -402,31 +468,32 @@ async function* streamViaAPI(ctx, payload) {
         if (event.type === 'text_delta') {
           accumulatedContent += event.delta;
           finalContent += event.delta;
-          yield JSON.stringify({ type: 'text_delta', content: event.delta });
+          yield { type: 'text', content: event.delta };
         } else if (event.type === 'thinking_delta') {
           reasoningContent += event.delta;
-          yield JSON.stringify({ type: 'thinking_delta', content: event.delta });
+          yield { type: 'thinking_delta', content: event.delta };
         } else if (event.type === 'tool_call') {
           hasToolCall = true;
           toolCallCount++;
 
-          yield JSON.stringify({
+          yield {
             type: 'tool_call_start',
-            id: event.id,
-            name: event.name,
-            arguments: event.arguments
-          });
+            toolCallId: event.id,
+            tool: event.name,
+            input: event.arguments
+          };
 
           // 执行工具调用
           try {
             const args = parseToolArguments(event.arguments);
             const result = await mcpServerManager.callTool(null, event.name, args, event.id);
 
-            yield JSON.stringify({
+            yield {
               type: 'tool_call_end',
-              id: event.id,
-              result
-            });
+              toolCallId: event.id,
+              tool: event.name,
+              output: result
+            };
 
             // 将工具结果添加回消息列表
             currentMessages.push({
@@ -450,11 +517,12 @@ async function* streamViaAPI(ctx, payload) {
             });
 
           } catch (toolErr) {
-            yield JSON.stringify({
+            yield {
               type: 'tool_call_error',
-              id: event.id,
+              toolCallId: event.id,
+              tool: event.name,
               error: toolErr.message
-            });
+            };
           }
         } else if (event.type === 'done') {
           if (event.content) {
@@ -476,17 +544,17 @@ async function* streamViaAPI(ctx, payload) {
     }
 
     if (toolCallCount >= MAX_TOOL_CALLS) {
-      yield JSON.stringify({
+      yield {
         type: 'error',
-        error: `Max tool call iterations (${MAX_TOOL_CALLS}) reached`
-      });
+        message: `Max tool call iterations (${MAX_TOOL_CALLS}) reached`
+      };
     }
 
-    yield JSON.stringify({ type: 'done', content: finalContent, reasoning: reasoningContent });
+    yield { type: 'done', content: finalContent, reasoning: reasoningContent };
 
   } catch (err) {
     logger.error(`Agent stream error: ${err.message}`);
-    yield JSON.stringify({ type: 'error', error: err.message });
+    yield { type: 'error', message: err.message };
   }
 }
 

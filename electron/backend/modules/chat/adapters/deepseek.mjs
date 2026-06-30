@@ -76,7 +76,7 @@ export class DeepSeekAdapter extends BaseAdapter {
     let thinking = '';
 
     try {
-      const stream = await client.post(`${this.baseUrl}/chat/completions`, {
+      const stream = client.postStream(`${this.baseUrl}/chat/completions`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'

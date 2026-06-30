@@ -7,11 +7,94 @@
 import { BaseAdapter } from './base.mjs';
 import { upstreamError } from '../../../core/errors.mjs';
 
-// 支持视觉的模型列表
+// 不支持工具调用的模型（模式）
+const BYTEDANCE_NO_TOOL_PATTERNS = [
+  'seed-translation',
+  'seedream',
+  'jimeng-image',
+  'seedance',
+  'jimeng-video'
+];
+
+// 不支持视觉的模型（模式）
+const BYTEDANCE_NO_VISION_PATTERNS = [
+  'seed-code',
+  'seed-translation',
+  'seed-character',
+  'seedream',
+  'jimeng-image',
+  'seedance',
+  'jimeng-video'
+];
+
+// 支持工具调用的模型前缀
+const BYTEDANCE_TOOL_MODEL_PREFIXES = [
+  'doubao-seed-',
+  'deepseek-v',
+  'deepseek-r',
+  'glm-',
+  'kimi-',
+  'qwen'
+];
+
+// 支持视觉的模型前缀
+const BYTEDANCE_VISION_MODEL_PREFIXES = [
+  'doubao-seed-',
+];
+
+/**
+ * 判断模型是否支持工具调用
+ * @param {string} modelId 
+ * @returns {boolean}
+ */
+function modelSupportsTools(modelId) {
+  const id = String(modelId || '').toLowerCase();
+  
+  // 先检查明确排除的模式
+  for (const pattern of BYTEDANCE_NO_TOOL_PATTERNS) {
+    if (id.includes(pattern)) return false;
+  }
+  
+  // 再检查支持的前缀
+  for (const prefix of BYTEDANCE_TOOL_MODEL_PREFIXES) {
+    if (id.startsWith(prefix)) return true;
+  }
+  
+  return false;
+}
+
+/**
+ * 判断模型是否支持视觉
+ * @param {string} modelId 
+ * @returns {boolean}
+ */
+function modelSupportsVision(modelId) {
+  const id = String(modelId || '').toLowerCase();
+  
+  // 先检查明确排除的模式
+  for (const pattern of BYTEDANCE_NO_VISION_PATTERNS) {
+    if (id.includes(pattern)) return false;
+  }
+  
+  // 再检查支持的前缀
+  for (const prefix of BYTEDANCE_VISION_MODEL_PREFIXES) {
+    if (id.startsWith(prefix)) return true;
+  }
+  
+  return false;
+}
+
+// 保留原有变量名，向后兼容（动态生成列表）
 const BYTEDANCE_VISION_MODELS = [
+  'doubao-seed-evolving',
+  'doubao-seed-2-1-pro-260628',
+  'doubao-seed-2-1-turbo-260628',
   'doubao-seed-2-0-pro-260215',
   'doubao-seed-2-0-lite-260215',
   'doubao-seed-2-0-mini-260215',
+  'doubao-seed-2-0-lite-260428',
+  'doubao-seed-2-0-mini-260428',
+  'doubao-seed-2-0-code-preview-260215',
   'doubao-seed-1-8-251228',
   'doubao-seed-1-6-flash-250828',
   'doubao-seed-1-6-vision-250815',
@@ -23,14 +106,21 @@ const BYTEDANCE_VISION_MODELS = [
   'jimeng-image-4.0'
 ];
 
-// 支持工具调用的模型
 const BYTEDANCE_TOOL_MODELS = [
+  'doubao-seed-evolving',
+  'doubao-seed-2-1-pro-260628',
+  'doubao-seed-2-1-turbo-260628',
   'doubao-seed-2-0-pro-260215',
   'doubao-seed-2-0-lite-260215',
   'doubao-seed-2-0-mini-260215',
+  'doubao-seed-2-0-lite-260428',
+  'doubao-seed-2-0-mini-260428',
   'doubao-seed-2-0-code-preview-260215',
+  'doubao-seed-character-260628',
   'glm-4-7-251222',
   'glm-4-5-air',
+  'deepseek-v4-pro-260425',
+  'deepseek-v4-flash-260425',
   'deepseek-v3-2-251201',
   'deepseek-v3-1-terminus',
   'deepseek-v3-1-250821',
@@ -64,11 +154,11 @@ export class BytedanceAdapter extends BaseAdapter {
   }
 
   supportsTools(modelId) {
-    return BYTEDANCE_TOOL_MODELS.includes(modelId);
+    return modelSupportsTools(modelId);
   }
 
   supportsVision(modelId) {
-    return BYTEDANCE_VISION_MODELS.includes(modelId);
+    return modelSupportsVision(modelId);
   }
 
   /**
@@ -97,7 +187,7 @@ export class BytedanceAdapter extends BaseAdapter {
     let toolCalls = [];
 
     try {
-      const stream = await client.post(`${this.baseUrl}/chat/completions`, {
+      const stream = client.postStream(`${this.baseUrl}/chat/completions`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
