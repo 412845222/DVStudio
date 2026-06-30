@@ -21,6 +21,7 @@ function serializeConversation(row) {
 		title: row.title || '',
 		model: row.model || '',
 		systemPrompt: row.system_prompt || '',
+		projectPath: row.project_path || '',
 		createdAt: Number(row.created_at) || nowMs(),
 		updatedAt: Number(row.updated_at) || nowMs()
 	}
@@ -43,9 +44,10 @@ export function createChatConversationsRepo() {
 	const db = getLocalDb()
 
 	const listConvsStmt = db.prepare('SELECT * FROM chat_conversations ORDER BY updated_at DESC, created_at DESC')
+	const listConvsByProjectStmt = db.prepare('SELECT * FROM chat_conversations WHERE project_path = ? ORDER BY updated_at DESC, created_at DESC')
 	const getConvStmt = db.prepare('SELECT * FROM chat_conversations WHERE id = ?')
 	const insertConvStmt = db.prepare(
-		'INSERT INTO chat_conversations (id, title, model, system_prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+		'INSERT INTO chat_conversations (id, title, model, system_prompt, project_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
 	)
 	const updateConvTitleStmt = db.prepare(
 		"UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ?"
@@ -60,8 +62,13 @@ export function createChatConversationsRepo() {
 	)
 	const deleteMsgsByConvStmt = db.prepare('DELETE FROM chat_messages WHERE conversation_id = ?')
 
-	function list({ limit } = {}) {
-		let rows = listConvsStmt.all()
+	function list({ limit, projectPath } = {}) {
+		let rows
+		if (projectPath) {
+			rows = listConvsByProjectStmt.all(projectPath)
+		} else {
+			rows = listConvsStmt.all()
+		}
 		const n = Number(limit)
 		if (Number.isFinite(n) && n > 0) rows = rows.slice(0, n)
 		return rows.map(serializeConversation)
@@ -73,14 +80,15 @@ export function createChatConversationsRepo() {
 		return serializeConversation(getConvStmt.get(cid))
 	}
 
-	function create({ id, title, model, systemPrompt } = {}) {
+	function create({ id, title, model, systemPrompt, projectPath } = {}) {
 		const cid = String(id || '').trim() || randomId()
 		const now = nowMs()
 		const titleText = String(title || '新对话').trim() || '新对话'
 		const modelText = String(model || '').trim()
 		const sysPrompt = String(systemPrompt || '').trim()
+		const projPath = String(projectPath || '').trim()
 		if (getConvStmt.get(cid)) return { ok: false, error: 'conversation already exists' }
-		insertConvStmt.run(cid, titleText, modelText, sysPrompt, now, now)
+		insertConvStmt.run(cid, titleText, modelText, sysPrompt, projPath, now, now)
 		return { ok: true, conversation: serializeConversation(getConvStmt.get(cid)) }
 	}
 

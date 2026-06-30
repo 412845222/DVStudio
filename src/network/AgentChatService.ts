@@ -13,11 +13,32 @@ export type AgentStreamChunk =
   | { type: 'thought'; content: string }
   | { type: 'error'; message: string }
   | { type: 'done' }
+  | { type: 'context_usage'; tokenCount: number; budget: number; usage: number; truncated?: boolean }
 
 export type AgentContextItem = {
-  type: 'file' | 'selection' | 'project' | 'custom'
-  label: string
-  value: string
+  name: string
+  type: string
+  content: string
+}
+
+export type AgentConversation = {
+	id: string
+	title: string
+	model: string
+	systemPrompt: string
+	projectPath: string
+	createdAt: number
+	updatedAt: number
+}
+
+export type AgentConversationMessage = {
+	id: string
+	conversationId: string
+	role: string
+	content: string
+	model: string
+	tokensUsed: number
+	createdAt: number
 }
 
 export type AgentStreamOptions = {
@@ -29,6 +50,8 @@ export type AgentStreamOptions = {
   sessionId?: string
   apiSource?: string
   apiKeys?: Record<string, string>
+  thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+  history?: Array<{ role: string; content: string }>
 }
 
 type AgentIpcBridge = {
@@ -37,6 +60,11 @@ type AgentIpcBridge = {
       stream?: (payload: unknown) => AsyncGenerator<unknown>
       getContext?: (payload: unknown) => Promise<unknown>
       abort?: (payload: unknown) => Promise<unknown>
+      listConversations?: (payload: unknown) => Promise<unknown>
+      createConversation?: (payload: unknown) => Promise<unknown>
+      deleteConversation?: (payload: unknown) => Promise<unknown>
+      getConversationMessages?: (payload: unknown) => Promise<unknown>
+      addConversationMessage?: (payload: unknown) => Promise<unknown>
     }
   }
 }
@@ -73,35 +101,132 @@ export async function agentAbort(sessionId?: string): Promise<IpcResult<{ aborte
   )
 }
 
+export async function agentListConversations(projectPath?: string): Promise<IpcResult<{ conversations: AgentConversation[] }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.listConversations?.({ projectPath }) as Promise<IpcResult<{ conversations: AgentConversation[] }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath }),
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentCreateConversation(title?: string, model?: string, projectPath?: string): Promise<IpcResult<{ conversation: AgentConversation }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.createConversation?.({ title, model, projectPath }) as Promise<IpcResult<{ conversation: AgentConversation }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, model, projectPath }),
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentDeleteConversation(id: string): Promise<IpcResult<{ ok: boolean }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.deleteConversation?.({ id }) as Promise<IpcResult<{ ok: boolean }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/${id}`, {
+        method: 'DELETE',
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentGetConversationMessages(conversationId: string): Promise<IpcResult<{ messages: AgentConversationMessage[] }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.getConversationMessages?.({ conversationId }) as Promise<IpcResult<{ messages: AgentConversationMessage[] }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/${conversationId}/messages`, {
+        method: 'GET',
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentAddConversationMessage(conversationId: string, role: string, content: string, model?: string): Promise<IpcResult<{ ok: boolean }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.addConversationMessage?.({ conversationId, role, content, model }) as Promise<IpcResult<{ ok: boolean }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId, role, content, model }),
+      })
+      return res.json()
+    }
+  )
+}
+
 export async function* agentStream(options: AgentStreamOptions): AsyncGenerator<AgentStreamChunk> {
   const bridge = getIpcBridge()
+  const hasIpc = hasIpcApi()
+  const hasAgentStream = !!bridge.dweb?.agent?.stream
 
-  if (hasIpcApi() && bridge.dweb?.agent?.stream) {
+  if (hasIpc && hasAgentStream) {
     try {
-      const gen = bridge.dweb.agent.stream(options)
-      if (!gen || typeof gen[Symbol.asyncIterator] !== 'function') {
-        yield { type: 'error', message: 'Agent stream not available via IPC' }
-        return
-      }
-      for await (const raw of gen) {
-        const chunk = normalizeAgentChunk(raw)
-        if (chunk) yield chunk
+      const streamFn = bridge.dweb?.agent?.stream
+      if (!streamFn) {
+        console.warn('[AgentChatService] Agent stream function not found, falling back to HTTP')
+      } else {
+        const gen = streamFn(options)
+        if (!gen || typeof gen[Symbol.asyncIterator] !== 'function') {
+          console.warn('[AgentChatService] Agent stream not iterable via IPC, falling back to HTTP')
+        } else {
+          let ipcSucceeded = false
+          try {
+            for await (const raw of gen) {
+              const chunk = normalizeAgentChunk(raw)
+              if (chunk) {
+                yield chunk
+                ipcSucceeded = true
+              }
+            }
+          } catch (ipcErr: unknown) {
+            const ipcMsg = ipcErr && typeof ipcErr === 'object' && 'message' in ipcErr
+              ? String((ipcErr as { message: unknown }).message)
+              : String(ipcErr)
+            console.warn('[AgentChatService] IPC stream failed, falling back to HTTP:', ipcMsg)
+            if (ipcSucceeded) {
+              yield { type: 'error', message: ipcMsg }
+              return
+            }
+          }
+          if (ipcSucceeded) {
+            return
+          }
+        }
       }
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : String(err)
-      yield { type: 'error', message: msg }
+      console.warn('[AgentChatService] IPC stream init failed, falling back to HTTP:', msg)
     }
-    return
+  } else if (hasIpc && !hasAgentStream) {
+    console.warn('[AgentChatService] IPC available but dweb.agent.stream not found, falling back to HTTP')
   }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30000)
 
   try {
     const res = await fetch(`${getBackendBaseUrl()}/api/agent/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options),
+      signal: controller.signal,
     })
     if (!res.ok || !res.body) {
-      yield { type: 'error', message: `HTTP ${res.status}` }
+      const errText = res.ok ? 'No response body' : `HTTP ${res.status}`
+      yield { type: 'error', message: errText }
       return
     }
     const reader = res.body.getReader()
@@ -129,7 +254,13 @@ export async function* agentStream(options: AgentStreamOptions): AsyncGenerator<
     yield { type: 'done' }
   } catch (err: unknown) {
     const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : String(err)
-    yield { type: 'error', message: msg }
+    if (msg === 'The operation was aborted.') {
+      yield { type: 'error', message: '请求超时' }
+    } else {
+      yield { type: 'error', message: `Agent 调用失败: ${msg}` }
+    }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -182,6 +313,15 @@ function normalizeAgentChunk(raw: unknown): AgentStreamChunk | null {
   }
   if (type === 'done' || type === 'end') {
     return { type: 'done' }
+  }
+  if (type === 'context_usage') {
+    return {
+      type: 'context_usage',
+      tokenCount: Number(raw.tokenCount || 0),
+      budget: Number(raw.budget || 0),
+      usage: Number(raw.usage || 0),
+      truncated: Boolean(raw.truncated)
+    }
   }
   if (isString(raw)) {
     return { type: 'text', content: raw }

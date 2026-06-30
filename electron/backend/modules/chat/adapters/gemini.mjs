@@ -58,7 +58,7 @@ export class GeminiAdapter extends BaseAdapter {
     const url = `${this.baseUrl}/models/${modelId}:streamGenerateContent?key=${this.apiKey}&alt=sse`;
 
     try {
-      const stream = await client.post(url, {
+      const stream = client.postStream(url, {
         headers: {
           'Content-Type': 'application/json'
         },

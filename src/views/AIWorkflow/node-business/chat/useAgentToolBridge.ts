@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import type { WorkflowNode, WorkflowEdge } from '../../../../aiworkflow/types'
+import { NEWUI2_NODE_CATALOG } from '../../../../aiworkflow/nodeLibrary'
 
 type ToolCallPayload = {
   requestId: string
@@ -21,6 +22,7 @@ type AgentToolBridgeStore = {
     nodesById: Record<string, WorkflowNode>
     edgeOrder: string[]
     edgesById: Record<string, WorkflowEdge>
+    selectedNodeId: string | null
   }
   commit: (type: string, value?: unknown) => void
 }
@@ -34,6 +36,16 @@ type AgentToolBridgePayload = {
   getAllEdges?: () => WorkflowEdge[]
   getNodeTypes?: (category?: string) => Array<{ type: string; label: string; category?: string }>
   getProjectInfo?: () => Record<string, unknown>
+  viewport?: Ref<{
+    zoom: number
+    panX: number
+    panY: number
+  }>
+  canvasViewportSize?: Ref<{
+    width: number
+    height: number
+  }>
+  focusNode?: (nodeId: string) => boolean
 }
 
 const DANGEROUS_TOOLS = new Set(['delete_node', 'disconnect_nodes'])
@@ -199,15 +211,67 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
   }
 
   const createNode = (args: Record<string, unknown>) => {
-    const type = String(args.type || '')
-    if (!type) throw new Error('type is required')
+    const actionId = String(args.type || '')
+    if (!actionId) throw new Error('type is required')
 
-    payload.pushToast(`Agent 请求创建 ${type} 节点，请在蓝图中手动操作`, 'info')
+    const catalogItem = NEWUI2_NODE_CATALOG.find((item) => item.actionId === actionId)
+    const nodeType = catalogItem?.nodeType || actionId
+    const label = catalogItem?.label || actionId
+
+    const title = String(args.title || label).trim() || label
+    const alias = String(args.alias || title).trim() || title
+
+    const zoom = Math.max(0.01, Number(payload.viewport?.value?.zoom) || 1)
+    const panX = Number(payload.viewport?.value?.panX) || 0
+    const panY = Number(payload.viewport?.value?.panY) || 0
+
+    const worldCenterX = -panX / zoom
+    const worldCenterY = -panY / zoom
+
+    payload.store.commit('addNodeAt', {
+      worldX: worldCenterX,
+      worldY: worldCenterY,
+      title
+    })
+
+    const nodeId = String(payload.store.state.selectedNodeId ?? '').trim()
+    if (!nodeId) {
+      payload.pushToast(`创建 ${label} 节点失败：未获取到节点ID`, 'warn')
+      return {
+        ok: false,
+        error: 'Failed to get node ID after creation'
+      }
+    }
+
+    payload.store.commit('setNodeType', { nodeId, type: nodeType })
+    payload.store.commit('setNodeAlias', { nodeId, alias })
+
+    if (args.config && typeof args.config === 'object') {
+      Object.entries(args.config).forEach(([key, value]) => {
+        payload.store.commit('upsertNode', {
+          node: {
+            ...payload.store.state.nodesById[nodeId],
+            id: nodeId,
+            [key]: value
+          }
+        })
+      })
+    }
+
+    const focusNodeFn = payload.focusNode
+    if (typeof focusNodeFn === 'function') {
+      setTimeout(() => {
+        focusNodeFn(nodeId)
+      }, 50)
+    }
+
+    payload.pushToast(`已在蓝图视口中心创建 ${label} 节点`, 'info')
     return {
       ok: true,
-      note: 'Node creation requires manual operation. The user has been notified.',
-      suggestedAction: 'create_node',
-      suggestedType: type,
+      nodeId,
+      nodeType: nodeType,
+      title,
+      position: { x: worldCenterX, y: worldCenterY }
     }
   }
 
@@ -228,12 +292,31 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
     const nodeId = String(args.nodeId || '')
     if (!nodeId) throw new Error('nodeId is required')
 
-    payload.pushToast(`Agent 请求更新节点 ${nodeId} 配置，请在蓝图中手动操作`, 'info')
+    const config = args.config
+    if (config && typeof config === 'object') {
+      Object.entries(config).forEach(([key, value]) => {
+        payload.store.commit('upsertNode', {
+          node: {
+            ...payload.store.state.nodesById[nodeId],
+            id: nodeId,
+            [key]: value
+          }
+        })
+      })
+      const configKeys = Object.keys(config).join(', ')
+      payload.pushToast(`已更新节点 ${nodeId} 配置：${configKeys}`, 'info')
+      return {
+        ok: true,
+        nodeId,
+        updatedKeys: configKeys,
+      }
+    }
+
+    payload.pushToast(`Agent 请求更新节点 ${nodeId} 配置，但未提供配置数据`, 'info')
     return {
       ok: true,
-      note: 'Config update requires manual operation. The user has been notified.',
-      suggestedAction: 'update_node_config',
-      suggestedNodeId: nodeId,
+      note: 'No config data provided for update.',
+      nodeId,
     }
   }
 
