@@ -332,6 +332,127 @@ export const safeNumber = (value: unknown, fallback: number) => {
 	return Number.isFinite(num) ? num : fallback
 }
 
+export const isSameVec3 = (
+	a: { x?: number; y?: number; z?: number } | undefined,
+	b: { x?: number; y?: number; z?: number } | undefined
+): boolean => {
+	if (a === b) return true
+	if (!a || !b) return false
+	return (
+		safeNumber(a.x, 0) === safeNumber(b.x, 0) &&
+		safeNumber(a.y, 0) === safeNumber(b.y, 0) &&
+		safeNumber(a.z, 0) === safeNumber(b.z, 0)
+	)
+}
+
+export const isSameSize = (
+	a: { width?: number; height?: number; depth?: number } | undefined,
+	b: { width?: number; height?: number; depth?: number } | undefined
+): boolean => {
+	if (a === b) return true
+	if (!a || !b) return false
+	return (
+		safeNumber(a.width, 0) === safeNumber(b.width, 0) &&
+		safeNumber(a.height, 0) === safeNumber(b.height, 0) &&
+		safeNumber(a.depth, 0) === safeNumber(b.depth, 0)
+	)
+}
+
+export const isSameRotation = (
+	a: { yaw?: number; pitch?: number; roll?: number } | undefined,
+	b: { yaw?: number; pitch?: number; roll?: number } | undefined
+): boolean => {
+	if (a === b) return true
+	if (!a || !b) return false
+	return (
+		safeNumber(a.yaw, 0) === safeNumber(b.yaw, 0) &&
+		safeNumber(a.pitch, 0) === safeNumber(b.pitch, 0) &&
+		safeNumber(a.roll, 0) === safeNumber(b.roll, 0)
+	)
+}
+
+export const isSameItem = (a: WorkflowSceneLayoutItem, b: WorkflowSceneLayoutItem): boolean => {
+	if (a === b) return true
+	if (a.id !== b.id) return false
+	if (a.name !== b.name) return false
+	if (a.color !== b.color) return false
+	if (a.category !== b.category) return false
+	if (a.subCategory !== b.subCategory) return false
+	if (a.surfaceType !== b.surfaceType) return false
+	if (a.material !== b.material) return false
+	if (!isSameVec3(a.position, b.position)) return false
+	if (!isSameSize(a.size, b.size)) return false
+	if (!isSameVec3(a.scale, b.scale)) return false
+	if (!isSameRotation(a.rotation, b.rotation)) return false
+	if (a.inferred !== b.inferred) return false
+	if (a.fitMode !== b.fitMode) return false
+	if (a.fitMessage !== b.fitMessage) return false
+	if (a.previewScaleMode !== b.previewScaleMode) return false
+	if (a.fillMode !== b.fillMode) return false
+	if (a.fillCount !== b.fillCount) return false
+	if (a.fillAxisScale !== b.fillAxisScale) return false
+	if (a.orientationFix?.mode !== b.orientationFix?.mode) return false
+	if (a.orientationFix?.confidence !== b.orientationFix?.confidence) return false
+	if (a.orientationFix?.yaw !== b.orientationFix?.yaw) return false
+	if (a.orientationFix?.pitch !== b.orientationFix?.pitch) return false
+	if (a.orientationFix?.roll !== b.orientationFix?.roll) return false
+	if (a.parentId !== b.parentId) return false
+	if (a.placement !== b.placement) return false
+	if (a.supportSurface !== b.supportSurface) return false
+	if (a.wallRole !== b.wallRole) return false
+	if (a.semanticRole !== b.semanticRole) return false
+	if (a.keyElementType !== b.keyElementType) return false
+	if (a.mountType !== b.mountType) return false
+	if (a.isKeyElement !== b.isKeyElement) return false
+	if (a.fixedInRoom !== b.fixedInRoom) return false
+	if (a.shouldTouchGround !== b.shouldTouchGround) return false
+	return true
+}
+
+export const isSameItems = (a: WorkflowSceneLayoutItem[], b: WorkflowSceneLayoutItem[]): boolean => {
+	if (a.length !== b.length) return false
+	const len = a.length
+	for (let i = 0; i < len; i++) {
+		if (!isSameItem(a[i], b[i])) return false
+	}
+	return true
+}
+
+export const isSameBinding = (
+	a: WorkflowSceneLayoutModelBinding | undefined,
+	b: WorkflowSceneLayoutModelBinding | undefined
+): boolean => {
+	if (a === b) return true
+	if (!a || !b) return false
+	if (a.objectId !== b.objectId) return false
+	if (a.connected !== b.connected) return false
+	if (a.modelUrl !== b.modelUrl) return false
+	if (a.modelAssetUrl !== b.modelAssetUrl) return false
+	if (a.sourceNodeId !== b.sourceNodeId) return false
+	if (a.sourceNodeType !== b.sourceNodeType) return false
+	return true
+}
+
+export const isSameBindings = (
+	a: WorkflowSceneLayoutModelBinding[] | undefined,
+	b: WorkflowSceneLayoutModelBinding[] | undefined
+): boolean => {
+	const arrA = Array.isArray(a)
+		? a.filter((b) => b && b.connected && String(b.objectId ?? '').trim())
+		: []
+	const arrB = Array.isArray(b)
+		? b.filter((b) => b && b.connected && String(b.objectId ?? '').trim())
+		: []
+	if (arrA.length !== arrB.length) return false
+	const mapB = new Map(arrB.map((nb) => [String(nb.objectId ?? '').trim(), nb]))
+	for (const na of arrA) {
+		const key = String(na.objectId ?? '').trim()
+		const existing = mapB.get(key)
+		if (!isSameBinding(existing, na)) return false
+	}
+	return true
+}
+
 export type OrientationOffset = {
 	yaw: number
 	pitch: number
@@ -1086,6 +1207,87 @@ export class SceneLayoutPreviewViewer {
 		])
 	}
 
+	private isSameVec3(
+		a: { x?: number; y?: number; z?: number } | undefined,
+		b: { x?: number; y?: number; z?: number } | undefined
+	): boolean {
+		return isSameVec3(a, b)
+	}
+
+	private isSameRotation(
+		a: { yaw?: number; pitch?: number; roll?: number } | undefined,
+		b: { yaw?: number; pitch?: number; roll?: number } | undefined
+	): boolean {
+		return isSameRotation(a, b)
+	}
+
+	private isSameSize(
+		a: { width?: number; height?: number; depth?: number } | undefined,
+		b: { width?: number; height?: number; depth?: number } | undefined
+	): boolean {
+		return isSameSize(a, b)
+	}
+
+	private isSameItem(a: WorkflowSceneLayoutItem, b: WorkflowSceneLayoutItem): boolean {
+		return isSameItem(a, b)
+	}
+
+	private isSameItems(newItems: WorkflowSceneLayoutItem[]): boolean {
+		return isSameItems(this.currentItems, newItems)
+	}
+
+	private isSameBinding(
+		a: WorkflowSceneLayoutModelBinding | undefined,
+		b: WorkflowSceneLayoutModelBinding | undefined
+	): boolean {
+		return isSameBinding(a, b)
+	}
+
+	private isSameBindings(newBindings: WorkflowSceneLayoutModelBinding[] | undefined): boolean {
+		const currentArr = Array.from(this.bindingById.values())
+		return isSameBindings(currentArr, newBindings)
+	}
+
+	private updateRenderOptions(renderOptions?: SceneLayoutRenderOptions) {
+		const prevHideCubes = this.hidePlaceholderCubes
+		const prevTransparent = this.transparent
+		const prevLightingDebug = this.lightingDebugEnabled
+
+		this.transparent = renderOptions?.transparent !== false
+		this.hidePlaceholderCubes = renderOptions?.hidePlaceholderCubes === true
+		this.lightingDebugEnabled = renderOptions?.lightingDebugEnabled === true
+
+		const previewMode = renderOptions?.previewMode === true
+		const previewModeChanged = this.previewModeActive !== previewMode
+		this.previewModeActive = previewMode
+		if (previewModeChanged) this.cameraDirty = false
+
+		if (prevHideCubes !== this.hidePlaceholderCubes) {
+			for (const mesh of this.meshesById.values()) mesh.visible = !this.hidePlaceholderCubes
+			for (const edge of this.edgesById.values()) edge.visible = !this.hidePlaceholderCubes
+			if (this.hidePlaceholderCubes) {
+				this.transformControls.detach()
+				this.transformControls.visible = false
+				this.selectedId = ''
+			}
+		}
+
+		if (prevTransparent !== this.transparent) {
+			for (const mesh of this.meshesById.values()) {
+				const mat = mesh.material as typeof THREE.MeshStandardMaterial.prototype
+				if (mat && typeof mat === 'object' && 'transparent' in mat) {
+					mat.transparent = this.transparent
+					mat.depthWrite = !this.transparent
+				}
+			}
+		}
+
+		const lightingEnabled = renderOptions?.lightingPreviewEnabled === true
+		const lightingJson = String(renderOptions?.lightingJson ?? '')
+		const lightingControls = renderOptions?.lightingControls
+		this.applyLightingPreview(lightingEnabled, lightingJson, lightingControls)
+	}
+
 	setLayout(
 		items: WorkflowSceneLayoutItem[],
 		cameraCfg?: {
@@ -1096,6 +1298,27 @@ export class SceneLayoutPreviewViewer {
 		cachedView?: SceneLayoutViewState | null
 	) {
 		const previousSelection = this.selectedId
+
+		const normalizedNewItems = this.normalizeItemsForPreview((items ?? []).map(cloneItem))
+		const itemsSame = this.isSameItems(normalizedNewItems)
+		const bindingsSame = this.isSameBindings(renderOptions?.modelBindings)
+
+		if (itemsSame && bindingsSame) {
+			this.updateRenderOptions(renderOptions)
+			const effectiveCamera = cachedView
+				? { position: cachedView.cameraPosition, target: cachedView.target }
+				: cameraCfg
+			this.applyCamera(effectiveCamera, {
+				forcePreviewFrame: false,
+				allowAutoFit: !cachedView
+			})
+			if (previousSelection && !this.hidePlaceholderCubes) {
+				this.selectItem(previousSelection)
+			}
+			this.requestRender()
+			return
+		}
+
 		this.layoutRevision += 1
 		const revision = this.layoutRevision
 		this.transparent = renderOptions?.transparent !== false
@@ -1117,7 +1340,7 @@ export class SceneLayoutPreviewViewer {
 				.filter((binding) => binding && binding.connected && String(binding.objectId ?? '').trim())
 				.map((binding) => [String(binding.objectId ?? '').trim(), binding])
 		)
-		this.currentItems = this.normalizeItemsForPreview((items ?? []).map(cloneItem))
+		this.currentItems = normalizedNewItems
 		this.clearLayout()
 		this.bindingById.clear()
 		for (const [key, value] of bindingMap.entries()) this.bindingById.set(key, value)
