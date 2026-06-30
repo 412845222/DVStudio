@@ -913,7 +913,72 @@ const normalizeUnrealExportSettings = (
 			? Number(raw.lastMaterialOverrideCount)
 			: undefined,
 		lastExportAt: Number.isFinite(Number(raw.lastExportAt)) ? Number(raw.lastExportAt) : undefined,
-		autoPoll: raw.autoPoll !== false
+		autoPoll: raw.autoPoll !== false,
+		editorStatus:
+			raw.editorStatus === 'checking' ||
+			raw.editorStatus === 'not-running' ||
+			raw.editorStatus === 'running'
+				? raw.editorStatus
+				: 'unknown',
+		editorCheckedAt: Number.isFinite(Number(raw.editorCheckedAt))
+			? Number(raw.editorCheckedAt)
+			: undefined,
+		editorProcess:
+			raw.editorProcess && isRecord(raw.editorProcess)
+				? {
+						pid: Number.isFinite(Number(raw.editorProcess.pid))
+							? Number(raw.editorProcess.pid)
+							: undefined,
+						projectPath: isString(raw.editorProcess.projectPath)
+							? raw.editorProcess.projectPath
+							: undefined,
+						projectName: isString(raw.editorProcess.projectName)
+							? raw.editorProcess.projectName
+							: undefined,
+						engineVersion: isString(raw.editorProcess.engineVersion)
+							? raw.editorProcess.engineVersion
+							: undefined
+					}
+				: null,
+		editorProcesses: Array.isArray(raw.editorProcesses)
+			? raw.editorProcesses
+					.filter((p: unknown) => isRecord(p) && Number.isFinite(Number(p.pid)))
+					.map((p: Record<string, unknown>) => ({
+						pid: Number(p.pid),
+						projectPath: isString(p.projectPath) ? p.projectPath : '',
+						projectName: isString(p.projectName) ? p.projectName : ''
+					}))
+			: undefined,
+		pluginStatus:
+			raw.pluginStatus === 'checking' ||
+			raw.pluginStatus === 'not-installed' ||
+			raw.pluginStatus === 'installed' ||
+			raw.pluginStatus === 'installing' ||
+			raw.pluginStatus === 'install-error' ||
+			raw.pluginStatus === 'needs-restart'
+				? raw.pluginStatus
+				: 'unknown',
+		pluginCheckedAt: Number.isFinite(Number(raw.pluginCheckedAt))
+			? Number(raw.pluginCheckedAt)
+			: undefined,
+		pluginVersion: isString(raw.pluginVersion) ? raw.pluginVersion : undefined,
+		pluginInstallError: isString(raw.pluginInstallError) ? raw.pluginInstallError : undefined,
+		pluginInstallConfig:
+			raw.pluginInstallConfig && isRecord(raw.pluginInstallConfig)
+				? {
+						targetProjectPath: isString(raw.pluginInstallConfig.targetProjectPath)
+							? raw.pluginInstallConfig.targetProjectPath
+							: undefined
+					}
+				: undefined,
+		assetRootPath: isString(raw.assetRootPath) && raw.assetRootPath.trim() ? raw.assetRootPath.trim() : '/Game/DVStudio',
+		assetPathValidation:
+			raw.assetPathValidation === 'valid' ||
+			raw.assetPathValidation === 'invalid' ||
+			raw.assetPathValidation === 'checking'
+				? raw.assetPathValidation
+				: undefined,
+		assetPathValidationError: isString(raw.assetPathValidationError) ? raw.assetPathValidationError : undefined
 	}
 }
 
@@ -1193,7 +1258,6 @@ const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 	const layoutItems = Array.isArray(node.sceneLayoutSettings?.layoutItems)
 		? node
 				.sceneLayoutSettings!.layoutItems!.filter((item) => String(item?.id ?? '').trim())
-				.filter((item) => isSceneLayoutModelTarget(item))
 		: []
 	const modelInputs = previewMode
 		? layoutItems.map((item) => ({

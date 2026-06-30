@@ -1,5 +1,8 @@
 import crypto from 'node:crypto'
+import fs from 'node:fs'
 import http from 'node:http'
+import os from 'node:os'
+import path from 'node:path'
 import { internalError, invalidParamsError, upstreamError } from '../../core/errors.mjs'
 import { getHttpClient } from '../../core/http-client.mjs'
 import logger from '../../core/logger.mjs'
@@ -1233,26 +1236,59 @@ function generateId(prefix) {
 
 export function unrealSessions() {
 	cleanupStaleSessions()
+	const now = Date.now()
 	const items = []
 	for (const [id, session] of unrealSessionsMap) {
+		const isStale = now - session.lastHeartbeat > UNREAL_SESSION_TTL
 		items.push({
+			sessionId: id,
 			id,
 			projectId: session.projectId,
+			projectName: session.clientInfo?.projectName || '',
+			projectPath: session.clientInfo?.projectPath || '',
+			displayName: session.clientInfo?.projectName || session.projectId || id,
 			clientInfo: session.clientInfo,
 			lastHeartbeat: session.lastHeartbeat,
+			lastSeenAt: session.lastHeartbeat,
 			createdAt: session.createdAt,
-			jobCount: session.jobs.length
+			jobCount: session.jobs.length,
+			status: isStale ? 'stale' : 'connected'
 		})
 	}
+	items.sort((a, b) => b.lastHeartbeat - a.lastHeartbeat)
 	return { ok: true, sessions: items }
 }
 
 export function unrealRegister(ctx, payload) {
 	const p = payload || {}
-	const projectId = String(p.projectId || '').trim()
+	const projectId = String(p.projectId || p.clientInfo?.projectName || '').trim()
 	const clientInfo = asDict(p.clientInfo)
-	const sessionId = generateId('ue')
 	const now = Date.now()
+
+	let existingSession = null
+	if (projectId) {
+		for (const [id, session] of unrealSessionsMap) {
+			if (session.projectId === projectId) {
+				existingSession = session
+				break
+			}
+		}
+	}
+
+	if (existingSession) {
+		existingSession.lastHeartbeat = now
+		existingSession.clientInfo = { ...existingSession.clientInfo, ...clientInfo }
+		return {
+			ok: true,
+			sessionId: existingSession.id,
+			projectId,
+			reused: true,
+			session: { id: existingSession.id, projectId, createdAt: existingSession.createdAt }
+		}
+	}
+
+	const safeProjectId = projectId.replace(/[^a-zA-Z0-9_-]/g, '_')
+	const sessionId = safeProjectId ? `ue_${safeProjectId}` : generateId('ue')
 	const session = {
 		id: sessionId,
 		projectId,
@@ -1263,7 +1299,24 @@ export function unrealRegister(ctx, payload) {
 		nextJobIndex: 0
 	}
 	unrealSessionsMap.set(sessionId, session)
-	return { ok: true, sessionId, session: { id: sessionId, projectId, createdAt: now } }
+	return { ok: true, sessionId, projectId, reused: false, session: { id: sessionId, projectId, createdAt: now } }
+}
+
+function formatJobForPlugin(job) {
+	if (!job) return null
+	const payload = asDict(job.payload)
+	return {
+		jobId: job.id,
+		sessionId: job.sessionId,
+		type: job.type,
+		status: job.status,
+		sceneName: String(payload.sceneName || ''),
+		assetRootPath: String(payload.assetRootPath || ''),
+		sourceNodeId: String(payload.sourceNodeId || ''),
+		exportPayload: payload,
+		createdAt: job.createdAt,
+		updatedAt: job.updatedAt
+	}
 }
 
 export function unrealSessionDetail(ctx, payload) {
@@ -1309,7 +1362,17 @@ export function unrealCreateJob(ctx, payload) {
 	unrealJobsMap.set(jobId, job)
 	session.jobs.push(jobId)
 	session.lastHeartbeat = now
-	return { ok: true, jobId, job }
+	return {
+		ok: true,
+		job: {
+			jobId,
+			id: jobId,
+			status: job.status,
+			createdAt: job.createdAt,
+			message: '',
+			sessionId
+		}
+	}
 }
 
 export function unrealJobDetail(ctx, payload) {
@@ -1320,12 +1383,20 @@ export function unrealJobDetail(ctx, payload) {
 	if (!job) return { ok: false, error: 'job not found', status: 404 }
 	job.updatedAt = Date.now()
 	if (p.status) job.status = String(p.status)
-	if (p.result) {
-		job.result = typeof p.result === 'object' ? p.result : { raw: p.result }
+	const message = String(p.message || '').trim()
+	if (message) {
+		job.message = message
 	}
 	if (p.error) {
 		job.error = String(p.error)
-		job.status = 'failed'
+		if (!p.status) job.status = 'failed'
+	}
+	const resultData = asDict(p.resultData)
+	if (resultData && Object.keys(resultData).length > 0) {
+		job.result = { ...(job.result || {}), ...resultData }
+	}
+	if (p.result && typeof p.result === 'object') {
+		job.result = { ...(job.result || {}), ...p.result }
 	}
 	if (p.progress !== undefined) {
 		job.result = job.result || {}
@@ -1335,7 +1406,65 @@ export function unrealJobDetail(ctx, payload) {
 		job.result = job.result || {}
 		job.result.stage = String(p.stage)
 	}
+	if (p.importedAssetCount !== undefined) {
+		job.result = job.result || {}
+		job.result.importedAssetCount = Number(p.importedAssetCount) || 0
+	}
+	if (p.pendingModelImportCount !== undefined) {
+		job.result = job.result || {}
+		job.result.pendingModelImportCount = Number(p.pendingModelImportCount) || 0
+	}
+	if (p.spawnedActorCount !== undefined) {
+		job.result = job.result || {}
+		job.result.spawnedActorCount = Number(p.spawnedActorCount) || 0
+	}
+	if (p.assembledComponentCount !== undefined) {
+		job.result = job.result || {}
+		job.result.assembledComponentCount = Number(p.assembledComponentCount) || 0
+	}
+	if (p.slotCount !== undefined) {
+		job.result = job.result || {}
+		job.result.slotCount = Number(p.slotCount) || 0
+	}
+	if (p.appliedSlotCount !== undefined) {
+		job.result = job.result || {}
+		job.result.appliedSlotCount = Number(p.appliedSlotCount) || 0
+	}
+	if (p.materialOverrideCount !== undefined) {
+		job.result = job.result || {}
+		job.result.materialOverrideCount = Number(p.materialOverrideCount) || 0
+	}
+	if (p.spawnedLightCount !== undefined) {
+		job.result = job.result || {}
+		job.result.spawnedLightCount = Number(p.spawnedLightCount) || 0
+	}
+	if (p.blueprintAssetPath) {
+		job.result = job.result || {}
+		job.result.blueprintAssetPath = String(p.blueprintAssetPath)
+	}
+	if (p.modelsAssetPath) {
+		job.result = job.result || {}
+		job.result.modelsAssetPath = String(p.modelsAssetPath)
+	}
+	if (p.manifestPath) {
+		job.result = job.result || {}
+		job.result.manifestPath = String(p.manifestPath)
+	}
+	if (p.assetRootPath) {
+		job.result = job.result || {}
+		job.result.assetRootPath = String(p.assetRootPath)
+	}
 	return { ok: true, job }
+}
+
+export function unrealDisconnectSession(ctx, payload) {
+	const p = payload || {}
+	const sessionId = String(p.sessionId || p.id || '').trim()
+	if (!sessionId) return { ok: false, error: 'sessionId is required', status: 400 }
+	const session = unrealSessionsMap.get(sessionId)
+	if (!session) return { ok: false, error: 'session not found', status: 404 }
+	unrealSessionsMap.delete(sessionId)
+	return { ok: true, disconnected: true, sessionId }
 }
 
 export function unrealHeartbeat(ctx, payload) {
@@ -1362,14 +1491,82 @@ export function unrealPickJob(ctx, payload) {
 	for (let i = 0; i < session.jobs.length; i++) {
 		const jobId = session.jobs[i]
 		const job = unrealJobsMap.get(jobId)
-		if (job && job.status === 'pending') {
+		if (!job) continue
+		if (job.status === 'pending') {
 			job.status = 'picked'
 			job.pickedAt = Date.now()
 			job.updatedAt = Date.now()
-			return { ok: true, job }
+			return { ok: true, job: formatJobForPlugin(job) }
+		}
+		if (job.status === 'picked' || job.status === 'importing' || job.status === 'downloading' || job.status === 'assembling-actor' || job.status === 'applying-lighting') {
+			job.updatedAt = Date.now()
+			return { ok: true, job: formatJobForPlugin(job) }
 		}
 	}
 	return { ok: true, job: null }
+}
+
+const UNREAL_BRIDGE_CONFIG_FILENAME = 'dvstudio-unreal-bridge.json'
+
+function getUnrealBridgeConfigPaths() {
+	const paths = []
+	const homeDir = os.homedir()
+	if (process.platform === 'win32') {
+		const appData = process.env.APPDATA
+		if (appData) paths.push(path.join(appData, 'DVStudio', UNREAL_BRIDGE_CONFIG_FILENAME))
+		paths.push(path.join(homeDir, 'AppData', 'Roaming', 'DVStudio', UNREAL_BRIDGE_CONFIG_FILENAME))
+	} else if (process.platform === 'darwin') {
+		paths.push(path.join(homeDir, 'Library', 'Application Support', 'DVStudio', UNREAL_BRIDGE_CONFIG_FILENAME))
+	} else {
+		const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config')
+		paths.push(path.join(xdgConfig, 'dvstudio', UNREAL_BRIDGE_CONFIG_FILENAME))
+	}
+	paths.push(path.join(homeDir, '.dvstudio', UNREAL_BRIDGE_CONFIG_FILENAME))
+	return paths
+}
+
+function writeUnrealBridgeConfig(port) {
+	const config = {
+		backendUrl: `http://127.0.0.1:${port}`,
+		port,
+		host: '127.0.0.1',
+		protocol: 'http',
+		updatedAt: Date.now()
+	}
+	const configContent = JSON.stringify(config, null, 2)
+	const errors = []
+	for (const configPath of getUnrealBridgeConfigPaths()) {
+		try {
+			fs.mkdirSync(path.dirname(configPath), { recursive: true })
+			fs.writeFileSync(configPath, configContent, 'utf8')
+			logger.info(`Unreal bridge config written to ${configPath}`)
+		} catch (err) {
+			errors.push(`${configPath}: ${err.message}`)
+		}
+	}
+	return { ok: errors.length === 0, errors, config }
+}
+
+function writeUnrealBridgeConfigToProject(projectPath, port) {
+	if (!projectPath || !port) return { ok: false, error: 'projectPath and port required' }
+	try {
+		const pluginDir = path.join(projectPath, 'Plugins', 'DwebWorkflowBridge')
+		const configPath = path.join(pluginDir, UNREAL_BRIDGE_CONFIG_FILENAME)
+		fs.mkdirSync(pluginDir, { recursive: true })
+		const config = {
+			backendUrl: `http://127.0.0.1:${port}`,
+			port,
+			host: '127.0.0.1',
+			protocol: 'http',
+			projectPath,
+			updatedAt: Date.now()
+		}
+		fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8')
+		logger.info(`Unreal bridge config written to project: ${configPath}`)
+		return { ok: true, configPath, config }
+	} catch (err) {
+		return { ok: false, error: err.message }
+	}
 }
 
 let unrealHttpServer = null
@@ -1453,6 +1650,46 @@ export function startUnrealHttpServer() {
 					return sendJson(res, result.ok ? 200 : 404, result)
 				}
 
+				if (req.method === 'GET' && pathname === '/api/agent-skills/unreal/sessions') {
+					const result = unrealSessions()
+					return sendJson(res, 200, result)
+				}
+
+				if (req.method === 'POST' && pathname === '/api/agent-skills/unreal/jobs/create') {
+					const body = await readJsonBody(req)
+					const result = unrealCreateJob(null, body)
+					return sendJson(res, result.ok ? 200 : 400, result)
+				}
+
+				if (req.method === 'GET' && pathname === '/api/agent-skills/unreal-export/sessions') {
+					const result = unrealSessions()
+					return sendJson(res, 200, result)
+				}
+
+				if (req.method === 'POST' && pathname === '/api/agent-skills/unreal-export/jobs/create') {
+					const body = await readJsonBody(req)
+					const result = unrealCreateJob(null, body)
+					return sendJson(res, result.ok ? 200 : 400, result)
+				}
+
+				if (req.method === 'GET' && pathname.startsWith('/api/agent-skills/unreal-export/jobs/')) {
+					const jobId = pathname.split('/').pop()
+					const result = unrealJobDetail(null, { jobId })
+					return sendJson(res, result.ok ? 200 : 404, result)
+				}
+
+				if (req.method === 'POST' && pathname === '/api/agent-skills/unreal-export/sessions/disconnect') {
+					const body = await readJsonBody(req)
+					const result = unrealDisconnectSession(null, body)
+					return sendJson(res, result.ok ? 200 : 404, result)
+				}
+
+				if (req.method === 'POST' && pathname === '/api/agent-skills/unreal/disconnect') {
+					const body = await readJsonBody(req)
+					const result = unrealDisconnectSession(null, body)
+					return sendJson(res, result.ok ? 200 : 404, result)
+				}
+
 				return sendJson(res, 404, { ok: false, error: 'not found' })
 			} catch (err) {
 				logger.error(`Unreal HTTP server error: ${err.message}`)
@@ -1463,6 +1700,7 @@ export function startUnrealHttpServer() {
 		unrealHttpServer.listen(0, '127.0.0.1', () => {
 			unrealHttpPort = unrealHttpServer.address().port
 			logger.info(`Unreal export HTTP server started on port ${unrealHttpPort}`)
+			writeUnrealBridgeConfig(unrealHttpPort)
 			resolve({ ok: true, port: unrealHttpPort })
 		})
 
@@ -1483,5 +1721,122 @@ export function stopUnrealHttpServer() {
 		unrealHttpServer.close()
 		unrealHttpServer = null
 		unrealHttpPort = 0
+	}
+}
+
+import {
+	detectUnrealEditorProcesses,
+	checkPluginInstalled,
+	installPluginToProject,
+	getPluginInfo,
+	writePluginConnectionConfig
+} from './unreal-editor-detector.mjs'
+
+export async function unrealDetectEditor() {
+	try {
+		const result = await detectUnrealEditorProcesses()
+		if (!result.ok) {
+			return { ok: false, running: false, processes: [], error: result.error }
+		}
+		return {
+			ok: true,
+			running: result.running,
+			processes: result.processes.map((p) => ({
+				pid: p.pid,
+				projectPath: p.projectPath,
+				projectName: p.projectName
+			}))
+		}
+	} catch (err) {
+		return {
+			ok: false,
+			running: false,
+			processes: [],
+			error: err.message || String(err)
+		}
+	}
+}
+
+export function unrealCheckPlugin(ctx, payload) {
+	const p = payload || {}
+	const projectPath = String(p.projectPath || '').trim()
+	if (!projectPath) {
+		return { ok: false, installed: false, error: 'projectPath is required' }
+	}
+	try {
+		const result = checkPluginInstalled(projectPath)
+		if (!result.ok) {
+			return { ok: false, installed: false, error: result.error }
+		}
+		return {
+			ok: true,
+			installed: result.installed,
+			pluginVersion: result.pluginVersion,
+			pluginPath: result.pluginPath,
+			projectRoot: result.projectRoot,
+			projectName: result.projectName
+		}
+	} catch (err) {
+		return {
+			ok: false,
+			installed: false,
+			error: err.message || String(err)
+		}
+	}
+}
+
+export async function unrealInstallPlugin(ctx, payload) {
+	const p = payload || {}
+	const projectPath = String(p.projectPath || '').trim()
+	if (!projectPath) {
+		return { ok: false, installed: false, error: 'projectPath is required' }
+	}
+	try {
+		const result = await installPluginToProject(projectPath)
+		if (!result.ok) {
+			return { ok: false, installed: false, error: result.error }
+		}
+		if (result.installed && unrealHttpPort > 0) {
+			writeUnrealBridgeConfigToProject(projectPath, unrealHttpPort)
+		}
+		return {
+			ok: true,
+			installed: result.installed,
+			pluginPath: result.pluginPath,
+			pluginVersion: result.pluginVersion,
+			pluginEnabled: result.pluginEnabled,
+			pluginEnableUpdated: result.pluginEnableUpdated,
+			projectRoot: result.projectRoot,
+			projectName: result.projectName,
+			needsRestart: result.needsRestart
+		}
+	} catch (err) {
+		return {
+			ok: false,
+			installed: false,
+			error: err.message || String(err)
+		}
+	}
+}
+
+export function unrealGetPluginInfo() {
+	try {
+		const result = getPluginInfo()
+		if (!result.ok) {
+			return { ok: false, pluginName: result.pluginName, pluginVersion: '', error: result.error }
+		}
+		return {
+			ok: true,
+			pluginName: result.pluginName,
+			pluginVersion: result.pluginVersion,
+			packageSize: result.packageSize
+		}
+	} catch (err) {
+		return {
+			ok: false,
+			pluginName: 'DwebWorkflowBridge',
+			pluginVersion: '',
+			error: err.message || String(err)
+		}
 	}
 }

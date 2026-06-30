@@ -55,6 +55,7 @@
     "gen:installer-bitmaps": "node scripts/gen-installer-bitmaps.mjs",
     "gen:logo": "node scripts/gen-logo-assets.mjs",
     "prepare:python-runtime": "node scripts/prepare-python-runtime.mjs",
+    "pack:unreal-plugin": "node scripts/pack-unreal-plugin.mjs",
     "clean:source-pack": "node scripts/remove-dir.mjs release-source",
     "pack:source": "node scripts/pack-source.mjs",
     "clean:lan-pack": "node scripts/remove-dir.mjs release-transfer",

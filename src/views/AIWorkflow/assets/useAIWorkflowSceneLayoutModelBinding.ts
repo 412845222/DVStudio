@@ -38,8 +38,10 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		}
 
 		const lowerName = String(file.name || '').toLowerCase()
-		if (!lowerName.endsWith('.glb') && !lowerName.endsWith('.gltf')) {
-			payload.pushToast('导入模型仅支持 .glb / .gltf。', 'warn')
+		const SUPPORTED_EXTS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
+		const isSupported = SUPPORTED_EXTS.some(ext => lowerName.endsWith(ext))
+		if (!isSupported) {
+			payload.pushToast('导入模型支持 .glb / .gltf / .fbx / .obj / .stl / .dae 格式。', 'warn')
 			return
 		}
 
@@ -64,7 +66,12 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 			typeof (file as unknown as Record<string, unknown>)?.path === 'string'
 				? String((file as unknown as Record<string, unknown>).path).trim()
 				: ''
-		const modelFormat = lowerName.endsWith('.gltf') ? 'gltf' : 'glb'
+		let modelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
+		if (lowerName.endsWith('.gltf')) modelFormat = 'gltf'
+		else if (lowerName.endsWith('.fbx')) modelFormat = 'fbx'
+		else if (lowerName.endsWith('.obj')) modelFormat = 'obj'
+		else if (lowerName.endsWith('.stl')) modelFormat = 'stl'
+		else if (lowerName.endsWith('.dae')) modelFormat = 'dae'
 		let assetUrl = ''
 		let assetPath = ''
 

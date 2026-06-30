@@ -220,6 +220,11 @@
 						@clear-node="() => onNodeClear(node.id)"
 						@delete="() => onNodeDelete(node.id)"
 						@delete-meshy-task="onNodeDeleteMeshyTask(node.id)"
+						@detect-editor="onNodeDetectEditor(node.id)"
+						@check-plugin="onNodeCheckPlugin(node.id, $event)"
+						@install-plugin="onNodeInstallPlugin(node.id, $event)"
+						@set-asset-root-path="onNodeSetAssetRootPath(node.id, $event)"
+						@disconnect-unreal="onNodeDisconnect(node.id)"
 						@end-link="onEndLink"
 						@export-unreal-lighting="onNodeExportUnrealLighting(node.id)"
 						@export-unreal-scene="onNodeExportUnrealScene(node.id)"
@@ -5053,7 +5058,7 @@ const {
 	connectedImageInputSource
 })
 
-const { sceneLayoutModelInputAnchorId, connectedSceneLayoutModelBindings } =
+const { sceneLayoutModelInputAnchorId, connectedSceneLayoutModelBindings, validateModelBindings } =
 	useAIWorkflowSceneLayoutModelBindings({
 		store,
 		isSceneLayoutModelTargetItem,
@@ -5582,6 +5587,19 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	}
 }
 
+const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
+	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+	if (!normalizedNodeId) return
+	const node = store.state.nodesById[normalizedNodeId] as Record<string, unknown> | undefined
+	if (!node || node.type !== 'scene-layout') return
+	const settings = (node.sceneLayoutSettings as Record<string, unknown>) ?? {}
+	if (settings.previewMode === true) return
+	store.commit('setNodeSceneLayoutSettings', {
+		nodeId: normalizedNodeId,
+		sceneLayoutSettings: { previewMode: true }
+	})
+}
+
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
@@ -6105,16 +6123,27 @@ function sourceTypeLabel(type: string): string {
 	}
 }
 
-const { buildUnrealExportPayload, onNodeExportUnrealScene, onNodeExportUnrealLighting } =
-	useAIWorkflowUnrealExportActions({
-		store,
-		unrealExportService,
-		connectedTextInputValue,
-		getUnrealExportSourceSceneLayoutNode,
-		getResolvedLayoutForUnreal,
-		connectedSceneLayoutModelBindings,
-		pushToast
-	})
+const {
+	buildUnrealExportPayload,
+	onNodeExportUnrealScene,
+	onNodeExportUnrealLighting,
+	onNodeDisconnect,
+	onNodeDetectEditor,
+	onNodeCheckPlugin,
+	onNodeInstallPlugin,
+	onNodeSetAssetRootPath
+} = useAIWorkflowUnrealExportActions({
+	store,
+	unrealExportService,
+	connectedTextInputValue,
+	getUnrealExportSourceSceneLayoutNode,
+	getResolvedLayoutForUnreal,
+	connectedSceneLayoutModelBindings,
+	validateModelBindings,
+	pushToast,
+	activateSceneLayoutPreview,
+	waitForNextTick: () => nextTick()
+})
 
 const {
 	resetSceneUnderstandingNodeState,
