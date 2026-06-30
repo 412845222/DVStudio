@@ -109,18 +109,28 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		screenshotMap: Map<string, ScreenshotCacheEntry>,
 		viewportRect?: { x0: number; y0: number; x1: number; y1: number }
 	) => {
+		console.log('[CanvasScreenshot] warmupAll called, map size:', screenshotMap.size)
+		console.log('[CanvasScreenshot] map entries:', Array.from(screenshotMap.entries()).map(([k, v]) => ({ nodeId: k, hasDataUrl: !!v?.dataUrl, dataUrlLength: v?.dataUrl?.length })))
+
 		if (!canvasPool.value || !warmupCoordinator) {
+			console.log('[CanvasScreenshot] Initializing canvasPool and warmupCoordinator')
 			init()
+			console.log('[CanvasScreenshot] After init, canvasPool:', canvasPool.value, 'warmupCoordinator:', warmupCoordinator)
 		}
 
-		if (!warmupCoordinator) return
+		if (!warmupCoordinator) {
+			console.warn('[CanvasScreenshot] warmupCoordinator still null after init')
+			return
+		}
 
 		// 清空之前的错误
 		warmupErrors.value = []
 
 		const entries = Array.from(screenshotMap.values())
+		console.log('[CanvasScreenshot] entries to warmup:', entries.length, entries.map(e => ({ nodeId: e.nodeId, hasDataUrl: !!e.dataUrl })))
 
 		if (entries.length === 0) {
+			console.log('[CanvasScreenshot] No entries to warmup, returning')
 			warmupProgress.value = 1
 			warmupDetail.value = '没有需要预热的截图'
 			return
@@ -135,15 +145,19 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 			// TODO: 需要传入节点位置信息
 			// warmupCoordinator.addViewportAwareBatch(...)
 		} else {
+			console.log('[CanvasScreenshot] Adding batch to warmupCoordinator, tasks before:', warmupCoordinator.getStatus())
 			warmupCoordinator.addBatch(
 				entries.map(entry => ({
 					nodeId: entry.nodeId,
 					entry
 				}))
 			)
+			console.log('[CanvasScreenshot] tasks after addBatch:', warmupCoordinator.getStatus())
 		}
 
+		console.log('[CanvasScreenshot] Starting warmup')
 		await warmupCoordinator.warmup()
+		console.log('[CanvasScreenshot] Warmup completed')
 	}
 
 	// 预热新截图
@@ -229,12 +243,25 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 
 	// 检查是否有Bitmap
 	const hasBitmap = (nodeId: string): boolean => {
-		return canvasPool.value?.hasBitmap(nodeId) ?? false
+		const result = canvasPool.value?.hasBitmap(nodeId) ?? false
+		if (!result && import.meta.env.DEV) {
+			console.log('[CanvasScreenshot] hasBitmap(' + nodeId + ') = false, canvasPool:', canvasPool.value)
+		}
+		return result
 	}
 
 	// 获取Bitmap
 	const getBitmap = (nodeId: string) => {
-		return canvasPool.value?.getBitmap(nodeId) ?? null
+		const result = canvasPool.value?.getBitmap(nodeId) ?? null
+		if (!result && import.meta.env.DEV) {
+			console.log('[CanvasScreenshot] getBitmap(' + nodeId + ') = null, canvasPool:', canvasPool.value)
+		}
+		return result
+	}
+
+	// 获取完整Entry (含bitmap实际尺寸)
+	const getEntry = (nodeId: string) => {
+		return canvasPool.value?.getEntry(nodeId) ?? null
 	}
 
 	// 获取视口内的节点
@@ -302,6 +329,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		// 查询
 		hasBitmap,
 		getBitmap,
+		getEntry,
 		getEntriesInViewport,
 		getState,
 

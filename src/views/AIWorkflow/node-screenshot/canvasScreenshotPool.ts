@@ -106,10 +106,14 @@ export class CanvasScreenshotPool {
 	 * 使用createImageBitmap加载
 	 */
 	private async loadWithImageBitmap(entry: ScreenshotCacheEntry): Promise<CanvasScreenshotEntry> {
-		const response = await fetch(entry.dataUrl)
-		const blob = await response.blob()
+		console.log('[CanvasScreenshotPool] loadWithImageBitmap:', entry.nodeId, 'dataUrl length:', entry.dataUrl?.length)
 		
-		// 检查是否支持createImageBitmap
+		const response = await fetch(entry.dataUrl)
+		console.log('[CanvasScreenshotPool] fetch response:', response.status)
+		
+		const blob = await response.blob()
+		console.log('[CanvasScreenshotPool] blob size:', blob.size, 'type:', blob.type)
+		
 		if (typeof createImageBitmap !== 'function') {
 			throw new Error('createImageBitmap not supported')
 		}
@@ -120,7 +124,8 @@ export class CanvasScreenshotPool {
 			colorSpaceConversion: 'none'
 		})
 
-		// 内存管理: 卸载旧条目
+		console.log('[CanvasScreenshotPool] bitmap created:', bitmap.width, 'x', bitmap.height)
+
 		this.pruneIfNeeded()
 
 		const canvasEntry: CanvasScreenshotEntry = {
@@ -131,12 +136,13 @@ export class CanvasScreenshotPool {
 			height: entry.height,
 			worldX: 0,
 			worldY: 0,
-			radius: 8, // 圆角半径
+			radius: 8,
 			status: 'ready',
 			capturedAt: Date.now()
 		}
 
 		this.entries.set(entry.nodeId, canvasEntry)
+		console.log('[CanvasScreenshotPool] entry added, entries size:', this.entries.size)
 		return canvasEntry
 	}
 

@@ -1,11 +1,5 @@
 /**
  * Node Screenshot 模块统一导出
- * 
- * 导出:
- * - useNodeScreenshotPool.ts: DOM截图池
- * - nodeScreenshotPersistentCache.ts: IndexedDB持久化
- * - canvasScreenshotPool.ts: Canvas2D纹理池 (新增)
- * - canvasWarmupCoordinator.ts: 预热协调器 (新增)
  */
 
 // DOM截图池
@@ -47,7 +41,7 @@ export {
 	CanvasNodeRenderer,
 	type VisibleNodeEntry,
 	type ViewportState,
-	type RenderOptions
+	type ScreenshotPoolProvider
 } from './canvasNodeRenderer'
 
 // Canvas2D碰撞检测
