@@ -49,6 +49,20 @@
 					@select-edge="onSelectEdge"
 				/>
 
+				<!-- Canvas2D节点渲染层 (截图节点Canvas渲染) -->
+				<NodeCanvasLayer
+					ref="nodeCanvasLayerRef"
+					:nodes="canvasNodeEntries"
+					:viewport="viewport"
+					:screenshot-pool="canvasScreenshotPool"
+					:z-index="20"
+					:enable-hit-test="true"
+					:enable-mouse-interaction="true"
+					@hover="onCanvasNodeHover"
+					@click="onCanvasNodeClick"
+					@pointer-down="onCanvasNodePointerDown"
+				/>
+
 				<div
 					v-for="node in safeVisibleRenderNodes"
 					:key="node.id"
@@ -62,9 +76,10 @@
 					"
 				>
 					<!-- Screenshot node (static image + real anchors + particles) -->
-					<div
-						v-if="!fullRenderNodeIds.has(node.id) && nodeScreenshotMap.get(node.id)"
-						class="aiwf-node-screenshot-host"
+				<!-- 渲染模式: canvas(由NodeCanvasLayer) | dom-screenshot | full -->
+				<div
+					v-if="getNodeRenderMode(node.id) === 'dom-screenshot'"
+					class="aiwf-node-screenshot-host"
 						:class="[
 							{ 'aiwf-node-offscreen': isWarmingUpScreenshots },
 							{ 'is-primary-selected': selectedNodeIds.length === 1 && selectedNodeId === node.id },
@@ -149,8 +164,9 @@
 						</div>
 					</div>
 
+					<!-- Full node component (用于选中/激活/无截图的节点) -->
 					<component
-						v-else
+						v-else-if="getNodeRenderMode(node.id) === 'full'"
 						:is="nodeComponent(node)"
 						:ref="setWorkflowNodeComponentRef(node.id, node.type)"
 						:alias="node.alias"
@@ -781,6 +797,7 @@ import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
 import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
+import NodeCanvasLayer from './components/NodeCanvasLayer.vue'
 import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, {
 	type BlueprintProjectListItem
@@ -902,6 +919,8 @@ import {
 	type ScreenshotCacheEntry,
 	type ScreenshotPriority
 } from './node-screenshot'
+// Canvas2D渲染模块
+import { useAIWorkflowCanvasScreenshot } from './blueprint-core/useAIWorkflowCanvasScreenshot'
 import {
 	loadAllScreenshotsForBlueprint,
 	saveScreenshotToDisk,
@@ -1142,6 +1161,9 @@ const { viewport, onViewportUpdate, viewportMotionActive, markViewportMotion, ca
 const performancePriorityMode = ref(false)
 const screenshotAnchorsEnabled = ref(true)
 const screenshotParticlesEnabled = ref(true)
+// Canvas2D截图渲染开关 (默认开启)
+const canvasScreenshotEnabled = ref(true)
+const canvasScreenshotDebugMode = ref(false)
 const compactThresholdNormal = 0.3
 const compactThresholdPerf = 0.35
 const compactThreshold = computed(() => {
@@ -1435,6 +1457,102 @@ const safeVisibleRenderNodes = computed(() => {
 const nodeHostRefs = new Map<string, HTMLElement>()
 const nodeScreenshotMap = shallowRef(new Map<string, ScreenshotCacheEntry>())
 const screenshotPool = createNodeScreenshotPool()
+
+// Canvas2D截图渲染模块
+const {
+	state: canvasScreenshotState,
+	init: initCanvasScreenshot,
+	warmupAll: warmupCanvasAll,
+	hasBitmap,
+	getBitmap,
+	invalidate: invalidateCanvasScreenshot,
+	dispose: disposeCanvasScreenshot
+} = useAIWorkflowCanvasScreenshot({
+	maxBitmapCount: 500,
+	maxMemoryMB: 200,
+	concurrency: 4
+})
+
+// NodeCanvasLayer组件引用
+const nodeCanvasLayerRef = ref<{
+	setSelectedNodes: (nodeIds: string[]) => void
+	setHoveredNode: (nodeId: string | null) => void
+	invalidate: () => void
+	getVisibleNodeIds: () => string[]
+} | null>(null)
+
+// Canvas截图池引用类型
+type CanvasBitmap = ImageBitmap | HTMLCanvasElement
+
+// Canvas截图池引用 (用于传递给NodeCanvasLayer)
+const canvasScreenshotPool = shallowRef<{
+	hasBitmap: (nodeId: string) => boolean
+	getBitmap: (nodeId: string) => CanvasBitmap | null
+} | null>(null)
+
+// 初始化Canvas截图池引用
+const initCanvasScreenshotPool = () => {
+	// 创建一个简单的适配器来提供hasBitmap和getBitmap方法
+	canvasScreenshotPool.value = {
+		hasBitmap: (nodeId: string) => hasBitmap(nodeId),
+		getBitmap: (nodeId: string) => getBitmap(nodeId)
+	}
+}
+
+// Canvas节点数据 (用于NodeCanvasLayer渲染)
+// 包含所有有Canvas截图的节点，替代DOM截图渲染
+const canvasNodeEntries = computed(() => {
+	if (!canvasScreenshotEnabled.value) return []
+	
+	return safeVisibleRenderNodes.value
+		.filter((node) => {
+			const nodeId = String(node.id ?? '').trim()
+			if (!nodeId) return false
+			// 有Canvas截图
+			if (!hasBitmap(nodeId)) return false
+			// 预热期间不渲染 (避免闪烁)
+			if (isWarmingUpScreenshots.value) return false
+			return true
+		})
+		.map((node) => ({
+			id: String(node.id ?? '').trim(),
+			worldX: node.worldX,
+			worldY: node.worldY,
+			width: node.width || 240,
+			height: node.height || 160,
+			radius: 8
+		}))
+})
+
+// 判断节点是否有Canvas截图可以用于Canvas渲染
+const hasCanvasScreenshot = (nodeId: string): boolean => {
+	return canvasScreenshotEnabled.value && hasBitmap(nodeId)
+}
+
+// 节点渲染模式: 'canvas' | 'dom-screenshot' | 'full'
+type NodeRenderMode = 'canvas' | 'dom-screenshot' | 'full'
+
+// 判断节点应该使用哪种渲染模式
+const getNodeRenderMode = (nodeId: string): NodeRenderMode => {
+	// 如果在完整DOM渲染列表中，使用完整渲染
+	if (fullRenderNodeIds.value.has(nodeId)) {
+		return 'full'
+	}
+	
+	// 如果有Canvas截图，使用Canvas渲染
+	if (hasCanvasScreenshot(nodeId)) {
+		return 'canvas'
+	}
+	
+	// 如果有DOM截图，使用DOM截图渲染
+	if (nodeScreenshotMap.value.has(nodeId)) {
+		return 'dom-screenshot'
+	}
+	
+	// 其他情况使用完整渲染
+	return 'full'
+}
+
 const upstreamCroppedImageUrls = new Map<string, string>()
 
 const getUpstreamCroppedImageUrl = (node: WorkflowNode): string | null => {
@@ -2081,6 +2199,26 @@ const warmupAllNodeScreenshots = async () => {
 	await waitForFrames(2)
 	screenshotWarmupOpen.value = false
 	screenshotWarmupDetail.value = ''
+
+	// Canvas2D纹理预热: 在DOM截图预热完成后，异步加载到Canvas2D纹理池
+	if (import.meta.env.DEV) {
+		console.log('[CanvasScreenshot] Starting Canvas texture warmup for', newMap.size, 'nodes')
+	}
+	const canvasWarmupEntries: ScreenshotCacheEntry[] = []
+	for (const [nodeId, entry] of newMap) {
+		if (!hasBitmap(nodeId)) {
+			canvasWarmupEntries.push(entry)
+		}
+	}
+	if (canvasWarmupEntries.length > 0) {
+		// 后台异步加载，不阻塞UI
+		warmupCanvasAll(newMap).catch((err) => {
+			console.warn('[CanvasScreenshot] Canvas warmup failed:', err)
+		})
+		if (import.meta.env.DEV) {
+			console.log('[CanvasScreenshot] Queued', canvasWarmupEntries.length, 'nodes for Canvas warmup')
+		}
+	}
 }
 
 const warmupAutoWireNodes = async (): Promise<void> => {
@@ -2382,6 +2520,13 @@ onMounted(() => {
 	setTimeout(() => {
 		scheduleVisibleNodeScreenshots()
 	}, 1000)
+	
+	// Canvas2D截图渲染初始化
+	initCanvasScreenshot()
+	initCanvasScreenshotPool()
+	if (import.meta.env.DEV) {
+		console.log('[CanvasScreenshot] Initialized, enabled:', canvasScreenshotEnabled.value)
+	}
 })
 
 type NodeRuntimeVisualState = 'idle' | 'running' | 'error'
@@ -8056,6 +8201,34 @@ const onBoxSelect = canvasInteraction.onBoxSelect
 const onNodeSizeChange = canvasInteraction.onNodeSizeChange
 const onFocusNode = canvasInteraction.onFocusNode
 
+// Canvas节点事件处理
+const onCanvasNodeHover = (nodeId: string | null) => {
+	if (canvasScreenshotDebugMode.value) {
+		console.log('[CanvasNode] hover:', nodeId)
+	}
+	// 可以在这里更新全局悬停状态
+}
+
+const onCanvasNodeClick = (nodeId: string) => {
+	if (canvasScreenshotDebugMode.value) {
+		console.log('[CanvasNode] click:', nodeId)
+	}
+	// 将节点切换到完整DOM渲染
+	fullRenderNodeIds.value.add(nodeId)
+	// 触发选中
+	onSelectNode(nodeId)
+}
+
+const onCanvasNodePointerDown = (nodeId: string | null, event: PointerEvent) => {
+	if (canvasScreenshotDebugMode.value) {
+		console.log('[CanvasNode] pointer-down:', nodeId, event)
+	}
+	if (nodeId) {
+		// 将节点切换到完整DOM渲染
+		fullRenderNodeIds.value.add(nodeId)
+	}
+}
+
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
 	store.dispatch('moveNodesBy', payload)
 	scheduleAsyncEdgeRender()
@@ -8096,6 +8269,14 @@ onBeforeUnmount(() => {
 	try {
 		screenshotPool.cleanup()
 	} catch {}
+	// Canvas2D截图渲染清理
+	try {
+		disposeCanvasScreenshot()
+	} catch {
+		if (import.meta.env.DEV) {
+			console.warn('[CanvasScreenshot] cleanup failed')
+		}
+	}
 	// 卸载全局 404 错误拦截器
 	try {
 		uninstallGlobal404Handlers?.()
@@ -8226,6 +8407,52 @@ async function runProjectEnterSequence(
 			},
 			{ errorDetailOnFailure: true }
 		)
+	}
+}
+
+// Canvas截图渲染开发调试命令
+if (import.meta.env.DEV) {
+	// @ts-ignore
+	window.__toggleCanvasScreenshot = () => {
+		canvasScreenshotEnabled.value = !canvasScreenshotEnabled.value
+		console.log('[CanvasScreenshot] Enabled:', canvasScreenshotEnabled.value)
+	}
+
+	// @ts-ignore
+	window.__toggleCanvasDebug = () => {
+		canvasScreenshotDebugMode.value = !canvasScreenshotDebugMode.value
+		console.log('[CanvasScreenshot] Debug mode:', canvasScreenshotDebugMode.value)
+	}
+
+	// @ts-ignore
+	window.__getCanvasScreenshotState = () => {
+		console.log('[CanvasScreenshot] State:', canvasScreenshotState.value)
+		console.log('[CanvasScreenshot] Canvas entries:', canvasNodeEntries.value.length)
+		return canvasScreenshotState.value
+	}
+
+	// @ts-ignore
+	window.__forceCanvasWarmup = async () => {
+		console.log('[CanvasScreenshot] Forcing warmup...')
+		await warmupCanvasAll(nodeScreenshotMap.value)
+		console.log('[CanvasScreenshot] Warmup complete')
+	}
+
+	// @ts-ignore
+	window.__getRenderModes = () => {
+		const nodes = safeVisibleRenderNodes.value
+		const modes = {
+			canvas: 0,
+			'dom-screenshot': 0,
+			full: 0
+		}
+		for (const node of nodes) {
+			const mode = getNodeRenderMode(String(node.id ?? '').trim())
+			modes[mode]++
+		}
+		console.log('[CanvasScreenshot] Render modes:', modes)
+		console.log('[CanvasScreenshot] Total nodes:', nodes.length)
+		return modes
 	}
 }
 </script>
