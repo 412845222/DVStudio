@@ -1,7 +1,5 @@
 type WorkflowNodeType =
-	| 'base'
 	| 'text'
-	| 'text-merge'
 	| 'image'
 	| 'rotate-image'
 	| 'video'
@@ -9,7 +7,6 @@ type WorkflowNodeType =
 	| 'scene-decompose'
 	| 'scene-layout'
 	| 'unreal-export'
-	| 'story'
 	| 'comfyui'
 	| 'model3d'
 	| 'meshy'

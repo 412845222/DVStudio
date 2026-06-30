@@ -17,56 +17,19 @@
 					@mousedown.stop
 					@pointerdown.stop
 				>
-					<header class="dweb-add-node-modal__header">
-						<h2 class="dweb-add-node-modal__title">{{ dialogTitle }}</h2>
-						<button
-							type="button"
-							class="dweb-add-node-modal__close"
-							:aria-label="closeLabel"
-							@click="emit('close')"
-						>
-							<svg viewBox="0 0 16 16" aria-hidden="true">
-								<path d="M4 4l8 8M12 4l-8 8" />
-							</svg>
-						</button>
-					</header>
-
-					<!-- HUD scanline animation layer -->
-					<div class="nsm-hud-scanlines" aria-hidden="true"></div>
-
-					<!-- Sci-fi L corner brackets -->
-					<span class="nsm-bracket nsm-bracket-tl" aria-hidden="true"></span>
-					<span class="nsm-bracket nsm-bracket-tr" aria-hidden="true"></span>
-					<span class="nsm-bracket nsm-bracket-bl" aria-hidden="true"></span>
-					<span class="nsm-bracket nsm-bracket-br" aria-hidden="true"></span>
-
-					<div class="dweb-add-node-modal__search">
-						<svg viewBox="0 0 16 16" aria-hidden="true">
-							<circle cx="7" cy="7" r="4.2" />
-							<path d="M10.2 10.2 13.2 13.2" />
-						</svg>
-						<input
-							ref="searchInputEl"
-							v-model="query"
-							type="search"
-							:placeholder="searchPlaceholder"
-							autocomplete="off"
-							spellcheck="false"
-						/>
-					</div>
-
-					<nav v-if="!hasSearch" class="dweb-add-node-modal__tabs-wrap">
-						<div
-							class="dweb-add-node-modal__tabs dweb-add-node-modal__tabs--top"
+					<!-- Left sidebar with category tabs -->
+					<aside class="dweb-add-node-modal__sidebar">
+						<nav
+							class="dweb-add-node-modal__sidebar-tabs"
 							role="tablist"
-							aria-label="基础分类"
+							aria-label="节点分类"
 							@mouseleave="onTabsMouseLeave"
 						>
 							<button
-								v-for="item in topTabs"
+								v-for="item in leftSidebarTabs"
 								:key="`${item.kind}:${item.id}`"
 								type="button"
-								class="dweb-add-node-modal__tab"
+								class="dweb-add-node-modal__sidebar-tab"
 								:class="{ 'is-active': isTabActive(item) }"
 								role="tab"
 								:aria-selected="isTabActive(item)"
@@ -75,7 +38,7 @@
 								@focus="onTabHover(item)"
 								@click="onTabClick(item)"
 							>
-								<span class="dweb-add-node-modal__tab-icon" aria-hidden="true">
+								<span class="dweb-add-node-modal__sidebar-tab-icon" aria-hidden="true">
 									<svg viewBox="0 0 16 16">
 										<template v-if="item.iconKey === 'inputs'">
 											<path d="M8 11.8V4.2" />
@@ -113,34 +76,11 @@
 											<circle cx="8" cy="8" r="5" />
 											<path d="M3.4 6.3l9.2 0M3.4 9.7l9.2 0" />
 										</template>
-									</svg>
-								</span>
-								<span class="dweb-add-node-modal__tab-label">{{ item.label }}</span>
-							</button>
-						</div>
-						<div
-							v-if="specialTabs.length"
-							class="dweb-add-node-modal__tabs dweb-add-node-modal__tabs--special"
-							role="tablist"
-							aria-label="专项分组"
-							@mouseleave="onTabsMouseLeave"
-						>
-							<button
-								v-for="item in specialTabs"
-								:key="`${item.kind}:${item.id}`"
-								type="button"
-								class="dweb-add-node-modal__tab is-special"
-								:class="{ 'is-active': isTabActive(item) }"
-								role="tab"
-								:aria-selected="isTabActive(item)"
-								:title="item.description || item.label"
-								@mouseenter="onTabHover(item)"
-								@focus="onTabHover(item)"
-								@click="onTabClick(item)"
-							>
-								<span class="dweb-add-node-modal__tab-icon" aria-hidden="true">
-									<svg viewBox="0 0 16 16">
-										<template v-if="item.iconKey === 'object-cluster'">
+										<template v-else-if="item.iconKey === 'plugin'">
+											<path d="M7 2H3v12h10V7l-3-3V2z" />
+											<path d="M9 9v3H7V9" />
+										</template>
+										<template v-else-if="item.iconKey === 'object-cluster'">
 											<circle cx="5.2" cy="6" r="1.6" />
 											<circle cx="10.6" cy="5.2" r="1.6" />
 											<circle cx="8.4" cy="10.4" r="1.6" />
@@ -169,76 +109,117 @@
 										</template>
 									</svg>
 								</span>
-								<span class="dweb-add-node-modal__tab-label">{{ item.label }}</span>
+								<span class="dweb-add-node-modal__sidebar-tab-label">{{ item.label }}</span>
 							</button>
+						</nav>
+					</aside>
+
+					<!-- Right content area -->
+					<div class="dweb-add-node-modal__content">
+						<header class="dweb-add-node-modal__header">
+							<h2 class="dweb-add-node-modal__title">{{ dialogTitle }}</h2>
+							<button
+								type="button"
+								class="dweb-add-node-modal__close"
+								:aria-label="closeLabel"
+								@click="emit('close')"
+							>
+								<svg viewBox="0 0 16 16" aria-hidden="true">
+									<path d="M4 4l8 8M12 4l-8 8" />
+								</svg>
+							</button>
+						</header>
+
+						<!-- HUD scanline animation layer -->
+						<div class="nsm-hud-scanlines" aria-hidden="true"></div>
+
+						<!-- Sci-fi L corner brackets -->
+						<span class="nsm-bracket nsm-bracket-tl" aria-hidden="true"></span>
+						<span class="nsm-bracket nsm-bracket-tr" aria-hidden="true"></span>
+						<span class="nsm-bracket nsm-bracket-bl" aria-hidden="true"></span>
+						<span class="nsm-bracket nsm-bracket-br" aria-hidden="true"></span>
+
+						<div class="dweb-add-node-modal__search">
+							<svg viewBox="0 0 16 16" aria-hidden="true">
+								<circle cx="7" cy="7" r="4.2" />
+								<path d="M10.2 10.2 13.2 13.2" />
+							</svg>
+							<input
+								ref="searchInputEl"
+								v-model="query"
+								type="search"
+								:placeholder="searchPlaceholder"
+								autocomplete="off"
+								spellcheck="false"
+							/>
 						</div>
-					</nav>
 
-					<div class="dweb-add-node-modal__body custom-scrollbar-right">
-						<template v-if="hasSearch">
-							<div v-if="searchResults.length === 0" class="dweb-add-node-modal__empty">
-								{{ emptyHintSearch }}
-							</div>
-							<button
-								v-for="item in searchResults"
-								:key="`search:${item.actionId}`"
-								type="button"
-								class="dweb-add-node-modal__item"
-								@click="onItemSelect(item.actionId)"
-							>
-								<span class="dweb-add-node-modal__item-label">{{ item.label }}</span>
-								<span v-if="item.description" class="dweb-add-node-modal__item-desc">
-									{{ item.description }}
-								</span>
-							</button>
-						</template>
+						<div class="dweb-add-node-modal__body custom-scrollbar-right">
+							<template v-if="hasSearch">
+								<div v-if="searchResults.length === 0" class="dweb-add-node-modal__empty">
+									{{ emptyHintSearch }}
+								</div>
+								<button
+									v-for="item in searchResults"
+									:key="`search:${item.actionId}`"
+									type="button"
+									class="dweb-add-node-modal__item"
+									@click="onItemSelect(item.actionId)"
+								>
+									<span class="dweb-add-node-modal__item-label">{{ item.label }}</span>
+									<span v-if="item.description" class="dweb-add-node-modal__item-desc">
+										{{ item.description }}
+									</span>
+								</button>
+							</template>
 
-						<template v-else>
-							<button
-								v-if="isTopActive && activeTopCategoryId === 'inputs'"
-								type="button"
-								class="dweb-add-node-modal__item dweb-add-node-modal__item--upload"
-								@click="onUploadClick"
-							>
-								<span class="dweb-add-node-modal__item-label">
-									<svg
-										viewBox="0 0 16 16"
-										aria-hidden="true"
-										class="dweb-add-node-modal__upload-icon"
-									>
-										<path d="M8 11.8V4.2" />
-										<path d="M5.2 6.8L8 4l2.8 2.8" />
-										<path d="M3 12.8h10" />
-									</svg>
-									{{ uploadLabel }}
-								</span>
-								<span class="dweb-add-node-modal__item-desc">
-									{{ uploadDescription }}
-								</span>
-							</button>
+							<template v-else>
+								<button
+									v-if="isTopActive && activeTopCategoryId === 'inputs'"
+									type="button"
+									class="dweb-add-node-modal__item dweb-add-node-modal__item--upload"
+									@click="onUploadClick"
+								>
+									<span class="dweb-add-node-modal__item-label">
+										<svg
+											viewBox="0 0 16 16"
+											aria-hidden="true"
+											class="dweb-add-node-modal__upload-icon"
+										>
+											<path d="M8 11.8V4.2" />
+											<path d="M5.2 6.8L8 4l2.8 2.8" />
+											<path d="M3 12.8h10" />
+										</svg>
+										{{ uploadLabel }}
+									</span>
+									<span class="dweb-add-node-modal__item-desc">
+										{{ uploadDescription }}
+									</span>
+								</button>
 
-							<div
-								v-if="
-									activeItems.length === 0 && !(isTopActive && activeTopCategoryId === 'inputs')
-								"
-								class="dweb-add-node-modal__empty"
-							>
-								{{ emptyHintCategory }}
-							</div>
+								<div
+									v-if="
+										activeItems.length === 0 && !(isTopActive && activeTopCategoryId === 'inputs')
+									"
+									class="dweb-add-node-modal__empty"
+								>
+									{{ emptyHintCategory }}
+								</div>
 
-							<button
-								v-for="item in activeItems"
-								:key="`tab:${activeTabKey}:${item.actionId}`"
-								type="button"
-								class="dweb-add-node-modal__item"
-								@click="onItemSelect(item.actionId)"
-							>
-								<span class="dweb-add-node-modal__item-label">{{ item.label }}</span>
-								<span v-if="item.description" class="dweb-add-node-modal__item-desc">
-									{{ item.description }}
-								</span>
-							</button>
-						</template>
+								<button
+									v-for="item in activeItems"
+									:key="`tab:${activeTabKey}:${item.actionId}`"
+									type="button"
+									class="dweb-add-node-modal__item"
+									@click="onItemSelect(item.actionId)"
+								>
+									<span class="dweb-add-node-modal__item-label">{{ item.label }}</span>
+									<span v-if="item.description" class="dweb-add-node-modal__item-desc">
+										{{ item.description }}
+									</span>
+								</button>
+							</template>
+						</div>
 					</div>
 				</div>
 
@@ -373,8 +354,12 @@ const sortItemsForTopCategory = (
 		return left.order - right.order
 	})
 
-const itemsForTopCategory = (categoryId: Newui2NodeTopCategoryId) =>
-	props.items.filter((item) => (item.topCategoryId ?? 'inputs') === categoryId)
+const itemsForTopCategory = (categoryId: Newui2NodeTopCategoryId) => {
+	if (categoryId === 'inputs') {
+		return props.items.filter((item) => typeof item.featuredBasicOrder === 'number')
+	}
+	return props.items.filter((item) => (item.topCategoryId ?? 'inputs') === categoryId)
+}
 
 const itemsForSpecialGroup = (groupId: Newui2NodeSpecialGroupId) =>
 	props.items.filter((item) => item.specialGroupId === groupId)
@@ -483,6 +468,10 @@ const topTabs = computed(() =>
 const specialTabs = computed(() =>
 	unifiedTabs.value.filter((t) => t.kind === 'special' && t.id !== 'motion')
 )
+
+// Left sidebar tabs: all top categories + special groups combined
+const leftSidebarTabs = computed<UnifiedTab[]>(() => unifiedTabs.value)
+
 const isTabActive = (item: UnifiedTab) => {
 	if (item.kind === 'top') return isTopActive.value && item.id === activeTopCategoryId.value
 	return isSpecialActive.value && item.id === activeSpecialGroupId.value
@@ -611,13 +600,13 @@ watch(
 	overflow: hidden;
 }
 
-/* ── Modal container ── */
+/* ── Modal container (horizontal layout: sidebar + content) ── */
 .dweb-add-node-modal {
 	position: relative;
-	width: min(640px, calc(100vw - 32px));
+	width: min(720px, calc(100vw - 32px));
 	max-height: calc(86vh - 16px);
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
 	background:
 		linear-gradient(
 			180deg,
@@ -638,8 +627,104 @@ watch(
 	-webkit-backdrop-filter: blur(20px) saturate(140%);
 }
 
+/* ── Left Sidebar ── */
+.dweb-add-node-modal__sidebar {
+	flex: 0 0 auto;
+	width: 120px;
+	display: flex;
+	flex-direction: column;
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent) 0%,
+		transparent 100%
+	);
+	border-right: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent);
+}
+
+.dweb-add-node-modal__sidebar-tabs {
+	display: flex;
+	flex-direction: column;
+	padding: 8px 0;
+	overflow-y: auto;
+	flex: 1;
+}
+
+.dweb-add-node-modal__sidebar-tab {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	border: 0;
+	border-left: 2px solid transparent;
+	background: transparent;
+	color: var(--wf-text-muted, #aeb8bd);
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	text-align: left;
+	transition:
+		color 160ms ease,
+		background-color 160ms ease,
+		border-color 160ms ease;
+	white-space: nowrap;
+	letter-spacing: 0.01em;
+}
+
+.dweb-add-node-modal__sidebar-tab:hover,
+.dweb-add-node-modal__sidebar-tab:focus-visible {
+	color: var(--wf-text, #edf2f4);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
+	outline: none;
+}
+
+.dweb-add-node-modal__sidebar-tab.is-active {
+	color: var(--wf-primary, #1f9d84);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent);
+	border-left-color: var(--wf-primary, #1f9d84);
+	text-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+}
+
+.dweb-add-node-modal__sidebar-tab-icon {
+	width: 14px;
+	height: 14px;
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.dweb-add-node-modal__sidebar-tab-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.dweb-add-node-modal__sidebar-tab-icon svg path,
+.dweb-add-node-modal__sidebar-tab-icon svg circle {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.35;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.dweb-add-node-modal__sidebar-tab-label {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* ── Right Content Area ── */
+.dweb-add-node-modal__content {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	position: relative;
+}
+
 /* Top pulse glow line */
-.dweb-add-node-modal::before {
+.dweb-add-node-modal__content::before {
 	content: '';
 	position: absolute;
 	left: 4px;
@@ -691,7 +776,7 @@ watch(
 	border-bottom: 1.5px solid var(--wf-primary, #1f9d84);
 	border-right: 1.5px solid var(--wf-primary, #1f9d84);
 }
-.dweb-add-node-modal:hover .nsm-bracket {
+.dweb-add-node-modal__content:hover .nsm-bracket {
 	opacity: 1;
 }
 
@@ -712,7 +797,7 @@ watch(
 	);
 }
 
-.dweb-add-node-modal:hover .nsm-hud-scanlines {
+.dweb-add-node-modal__content:hover .nsm-hud-scanlines {
 	opacity: 0.3;
 }
 
@@ -823,97 +908,11 @@ watch(
 	color: color-mix(in srgb, var(--wf-text-muted, #aeb8bd) 50%, transparent);
 }
 
-/* ── Tabs wrap ── */
-.dweb-add-node-modal__tabs-wrap {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	border-bottom: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
-	z-index: 2;
-}
-
-.dweb-add-node-modal__tabs {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	row-gap: 4px;
-	column-gap: 2px;
-	padding: 5px 8px;
-}
-
-.dweb-add-node-modal__tab {
-	flex: 0 0 auto;
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 4px 8px;
-	border: 1px solid transparent;
-	border-radius: 2px;
-	background: transparent;
-	color: var(--wf-text-muted, #aeb8bd);
-	font-size: 13px;
-	font-weight: 500;
-	cursor: pointer;
-	transition:
-		color 160ms ease,
-		background-color 160ms ease,
-		border-color 160ms ease,
-		box-shadow 160ms ease;
-	white-space: nowrap;
-	letter-spacing: 0.01em;
-}
-
-.dweb-add-node-modal__tab:hover,
-.dweb-add-node-modal__tab:focus-visible {
-	color: var(--wf-text, #edf2f4);
-	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
-	outline: none;
-}
-
-.dweb-add-node-modal__tab.is-active {
-	color: var(--wf-primary, #1f9d84);
-	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 16%, transparent);
-	border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
-	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 28%, transparent);
-	text-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
-}
-
-.dweb-add-node-modal__tab.is-special .dweb-add-node-modal__tab-icon {
-	opacity: 0.85;
-}
-
-.dweb-add-node-modal__tab.is-special.is-active .dweb-add-node-modal__tab-icon {
-	opacity: 1;
-	color: var(--wf-primary, #1f9d84);
-}
-
-.dweb-add-node-modal__tab-icon {
-	width: 14px;
-	height: 14px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.dweb-add-node-modal__tab-icon svg {
-	width: 14px;
-	height: 14px;
-}
-
-.dweb-add-node-modal__tab-icon svg path,
-.dweb-add-node-modal__tab-icon svg circle {
-	fill: none;
-	stroke: currentColor;
-	stroke-width: 1.35;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
 /* ── Body ── */
 .dweb-add-node-modal__body {
 	position: relative;
-	min-height: 140px;
-	max-height: calc(86vh - 16px - 40px - 36px - 38px);
+	min-height: 200px;
+	max-height: calc(86vh - 16px - 40px - 36px);
 	overflow-y: auto;
 	padding: 6px 8px 12px;
 	z-index: 2;
@@ -943,8 +942,8 @@ watch(
 	width: 100%;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 12px 18px;
+	gap: 6px;
+	padding: 14px 18px;
 	border: 0;
 	border-radius: 0;
 	background: transparent;
@@ -962,8 +961,8 @@ watch(
 	content: '';
 	position: absolute;
 	left: -1px;
-	top: 6px;
-	bottom: 6px;
+	top: 8px;
+	bottom: 8px;
 	width: 2px;
 	background: var(--wf-primary, #1f9d84);
 	border-radius: 1px;
@@ -1114,7 +1113,7 @@ watch(
 	.nsm-hud-scanlines {
 		display: none;
 	}
-	.dweb-add-node-modal__tab,
+	.dweb-add-node-modal__sidebar-tab,
 	.dweb-add-node-modal__item,
 	.dweb-add-node-modal__close {
 		transition: none !important;
