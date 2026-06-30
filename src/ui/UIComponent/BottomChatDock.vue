@@ -196,7 +196,7 @@
 					@input="onInput"
 					@keydown.enter.exact.prevent="onEnterSend"
 					@keydown.enter.shift.exact.stop
-					@keydown="onInputKeyDown"
+					@keydown.exact="onInputKeyDown"
 					@keydown.escape="onEscapeKeyDown"
 				/>
 
