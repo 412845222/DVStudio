@@ -141,7 +141,7 @@ export class CanvasWarmupCoordinator {
 	 * 设置并发数
 	 */
 	setConcurrency(n: number): void {
-		this.options.concurrency = Math.max(1, n)
+		this.options.concurrency = Math.max(1, Math.min(16, n))
 	}
 
 	/**
@@ -460,13 +460,6 @@ export class CanvasWarmupCoordinator {
 	 */
 	hasPendingTasks(): boolean {
 		return Array.from(this.tasks.values()).some(t => t.status === 'pending' || t.status === 'loading')
-	}
-
-	/**
-	 * 更新并发数
-	 */
-	setConcurrency(concurrency: number): void {
-		this.options.concurrency = Math.max(1, Math.min(16, concurrency))
 	}
 
 	/**

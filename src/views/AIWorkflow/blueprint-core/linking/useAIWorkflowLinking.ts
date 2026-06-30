@@ -239,7 +239,7 @@ export const useAIWorkflowLinking = (payload: {
 
 			if (sourceKey && key === sourceKey) {
 				phase = 'dragging'
-			} else if (targetKey && key === targetKey) {
+			} else if (targetKey && key === targetKey && target) {
 				phase = (target.phase === 'dragging' ? 'dragging' : target.phase) as AnchorVisualState['phase']
 				if (target.direction === 'in' && linkDraft.value) {
 					mx = 0

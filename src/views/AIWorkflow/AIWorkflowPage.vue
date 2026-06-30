@@ -1480,7 +1480,7 @@ const initCanvasScreenshotPool = () => {
 // Canvas节点数据 (用于NodeCanvasLayer渲染)
 const canvasScreenshotRefreshTick = ref(0)
 const canvasNodeEntries = computed(() => {
-	canvasScreenshotRefreshTick.value
+	void canvasScreenshotRefreshTick.value
 	if (!canvasScreenshotEnabled.value) return []
 	
 	return safeVisibleRenderNodes.value
