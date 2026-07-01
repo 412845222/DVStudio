@@ -5105,7 +5105,7 @@ export class SceneLayoutPreviewViewer {
 		}
 		vAxis.normalize()
 
-		const uAxis = new THREE.Vector3().crossVectors(punchDir, vAxis).normalize()
+		const uAxis = new THREE.Vector3().crossVectors(vAxis, punchDir).normalize()
 
 		let geometrySource: unknown = null
 		let needsDispose = false
@@ -5239,8 +5239,8 @@ export class SceneLayoutPreviewViewer {
 			targetMaxD = Math.max(targetMaxD, d)
 		}
 
-		const startD = minD - 0.1
-		const endD = targetMaxD + 2.0
+		const startD = Math.min(minD, targetMinD) - 3.0
+		const endD = Math.max(maxD, targetMaxD) + 3.0
 		const stretchLength = endD - startD
 
 		let stretchedGeom
