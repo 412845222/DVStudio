@@ -4973,10 +4973,18 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 					String(settings.modelAssetPath ?? settings.modelSourcePath ?? '').trim() || undefined
 			})) as PersistedAsset | null
 			revokeNodeModel3DObjectUrl(nodeId)
+			const finalModelUrl = String(persisted?.url || preferredUrl)
+			if (isMeshyRemoteUrl(finalModelUrl)) {
+				console.warn(
+					'[DVS:syncModel3D] upstream model3d asset not yet localized, skipping commit — node:',
+					nodeId
+				)
+				continue
+			}
 			store.commit('setNodeModel3DSettings', {
 				nodeId,
 				model3dSettings: {
-					modelUrl: String(persisted?.url || preferredUrl),
+					modelUrl: finalModelUrl,
 					modelFormat: format,
 					modelSourceName: name,
 					modelSourcePath:
