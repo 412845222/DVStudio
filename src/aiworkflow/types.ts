@@ -811,6 +811,8 @@ export type WorkflowNode = {
 	nodeChatDraft?: string
 	/** For chat dialog: user-configured params */
 	nodeChatParams?: Record<string, unknown>
+	/** For chat dialog: mirror of nodeChatDraft (legacy prompt field, kept for back-compat) */
+	prompt?: string
 	worldX: number
 	worldY: number
 	width: number
