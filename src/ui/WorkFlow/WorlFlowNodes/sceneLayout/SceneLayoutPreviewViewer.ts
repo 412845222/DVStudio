@@ -3,8 +3,9 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
-import { isObject } from '../../../../types/utils'
+import { isObject, isString } from '../../../../types/utils'
 import type {
 	WorkflowSceneLayoutItem,
 	WorkflowSceneLayoutLightingControls,
@@ -408,6 +409,16 @@ export const isSameItem = (a: WorkflowSceneLayoutItem, b: WorkflowSceneLayoutIte
 	if (a.isKeyElement !== b.isKeyElement) return false
 	if (a.fixedInRoom !== b.fixedInRoom) return false
 	if (a.shouldTouchGround !== b.shouldTouchGround) return false
+	const aHoles = Array.isArray(a.holePunches) ? a.holePunches.length : 0
+	const bHoles = Array.isArray(b.holePunches) ? b.holePunches.length : 0
+	if (aHoles !== bHoles) return false
+	if (aHoles > 0) {
+		for (let i = 0; i < aHoles; i++) {
+			const ah = a.holePunches![i]
+			const bh = b.holePunches![i]
+			if (ah?.id !== bh?.id || ah?.targetItemId !== bh?.targetItemId || ah?.toolItemId !== bh?.toolItemId) return false
+		}
+	}
 	return true
 }
 
@@ -524,6 +535,13 @@ export const orientationOffsetEquals = (a: OrientationOffset, b: OrientationOffs
 		Math.abs(normalizeAngleDeg(a.pitch - b.pitch)) <= eps &&
 		Math.abs(normalizeAngleDeg(a.roll - b.roll)) <= eps
 	)
+}
+
+export const constrainManualOrientation = (offset: OrientationOffset): OrientationOffset => {
+	const yaw = normalizeAngleDeg(offset.yaw)
+	const pitch = normalizeAngleDeg(offset.pitch)
+	const roll = normalizeAngleDeg(offset.roll)
+	return { ...offset, yaw, pitch, roll }
 }
 
 export const roundOrientation = (value: number) => Math.round(normalizeAngleDeg(value) * 100) / 100
@@ -916,6 +934,19 @@ export class SceneLayoutPreviewViewer {
 	private readonly baseHemisphereLight: HemisphereLightLike
 	private readonly baseDirectionalLight: LightLike
 	private readonly baseDirectionalTarget: Object3Dlike
+	private holePunchMode = false
+	private holePunchStep: 'select-target' | 'select-tool' = 'select-target'
+	private holePunchTargetId = ''
+	private holePunchToolId = ''
+	private readonly holePunchHighlightMeshes = new Map<string, MeshLike>()
+	private readonly holedGeometryCache = new Map<string, { geometry: unknown; edgeGeometry: unknown }>()
+	private onHolePunchStateChange: ((state: {
+		mode: boolean
+		step: 'select-target' | 'select-tool'
+		targetId: string
+		toolId: string
+	}) => void) | null = null
+	private exportLogCallback: ((message: string) => void) | null = null
 
 	constructor(
 		private readonly canvas: HTMLCanvasElement,
@@ -1301,7 +1332,7 @@ export class SceneLayoutPreviewViewer {
 	) {
 		const previousSelection = this.selectedId
 
-		const normalizedNewItems = this.normalizeItemsForPreview((items ?? []).map(cloneItem))
+		const normalizedNewItems = this.normalizeItemsForPreview((items ?? []).map(cloneItem), renderOptions?.previewMode === true)
 		const itemsSame = this.isSameItems(normalizedNewItems)
 		const bindingsSame = this.isSameBindings(renderOptions?.modelBindings)
 
@@ -1364,12 +1395,28 @@ export class SceneLayoutPreviewViewer {
 			const pitch = safeNumber(item.rotation?.pitch ?? 0, 0)
 			const roll = safeNumber(item.rotation?.roll ?? 0, 0)
 			const hasBoundModel = previewMode && bindingMap.has(String(item.id ?? '').trim())
+			const hasHolePunches = Array.isArray(item.holePunches) && item.holePunches.length > 0
+			const cachedHoled = hasHolePunches ? this.holedGeometryCache.get(String(item.id ?? '').trim()) : null
 			const displaySize = resolvePreviewDisplaySize(item)
-			const width = displaySize.width
-			const height = displaySize.height
-			const depth = displaySize.depth
-			const geometry = new THREE.BoxGeometry(width, height, depth)
-			geometry.translate(0, height / 2, 0)
+			const width = displaySize.width * scaleX
+			const height = displaySize.height * scaleY
+			const depth = displaySize.depth * scaleZ
+			let geometry: unknown
+			let edgeGeometry: unknown
+			if (cachedHoled && cachedHoled.geometry) {
+				const geomCloneFn = (cachedHoled.geometry as Record<string, unknown>).clone as (() => unknown) | undefined
+				geometry = geomCloneFn ? geomCloneFn.call(cachedHoled.geometry) : cachedHoled.geometry
+				if (cachedHoled.edgeGeometry) {
+					const edgeCloneFn = (cachedHoled.edgeGeometry as Record<string, unknown>).clone as (() => unknown) | undefined
+					edgeGeometry = edgeCloneFn ? edgeCloneFn.call(cachedHoled.edgeGeometry) : cachedHoled.edgeGeometry
+				} else {
+					edgeGeometry = new THREE.EdgesGeometry(geometry as unknown)
+				}
+			} else {
+				geometry = new THREE.BoxGeometry(width, height, depth)
+				;(geometry as { translate: (x: number, y: number, z: number) => void }).translate(0, height / 2, 0)
+				edgeGeometry = new THREE.EdgesGeometry(geometry as unknown)
+			}
 			const inferred = item.inferred === true
 			const material = new THREE.MeshStandardMaterial({
 				color: inferred ? '#cbd5e1' : resolvePlaceholderColor(item),
@@ -1395,8 +1442,8 @@ export class SceneLayoutPreviewViewer {
 				emissive: '#000000',
 				emissiveIntensity: 0
 			})
-			const mesh = new THREE.Mesh(geometry, material)
-			mesh.scale.set(scaleX, scaleY, scaleZ)
+			const mesh = new THREE.Mesh(geometry as unknown, material)
+			mesh.scale.set(1, 1, 1)
 			mesh.position.set(posX, posY, posZ)
 			mesh.rotation.y = (yaw * Math.PI) / 180
 			mesh.rotation.x = (pitch * Math.PI) / 180
@@ -1405,7 +1452,7 @@ export class SceneLayoutPreviewViewer {
 			mesh.userData.label = item.name || item.id
 			mesh.userData.isPlaceholder = true
 			const edge = new THREE.LineSegments(
-				new THREE.EdgesGeometry(geometry),
+				edgeGeometry as unknown,
 				new THREE.LineBasicMaterial({
 					color: '#e2e8f0',
 					transparent: true,
@@ -1414,14 +1461,14 @@ export class SceneLayoutPreviewViewer {
 			)
 			edge.position.copy(mesh.position)
 			edge.rotation.copy(mesh.rotation)
-			edge.scale.copy(mesh.scale)
+			edge.scale.set(1, 1, 1)
 			mesh.visible = !this.hidePlaceholderCubes
 			edge.visible = !this.hidePlaceholderCubes
 			edge.renderOrder = 2
 			this.group.add(mesh)
 			this.group.add(edge)
-			this.meshesById.set(item.id, mesh)
-			this.edgesById.set(item.id, edge)
+			this.meshesById.set(item.id, mesh as unknown as MeshLike)
+			this.edgesById.set(item.id, edge as unknown as LineLike)
 		}
 		this.buildRelationLines()
 		const nextItemIds = this.currentItems
@@ -2511,7 +2558,7 @@ export class SceneLayoutPreviewViewer {
 		)
 	}
 
-	private normalizeItemsForPreview(items: WorkflowSceneLayoutItem[]) {
+	private normalizeItemsForPreview(items: WorkflowSceneLayoutItem[], previewMode: boolean = false) {
 		if (!items.length) return items
 		const firstPass = items.map((item) => {
 			const next = cloneItem(item)
@@ -2556,6 +2603,11 @@ export class SceneLayoutPreviewViewer {
 			}
 			return next
 		})
+
+		if (previewMode) {
+			return firstPass
+		}
+
 		const itemsById = new Map(firstPass.map((item) => [String(item.id ?? '').trim(), item]))
 		const childrenByParent = new Map<string, WorkflowSceneLayoutItem[]>()
 		for (const item of firstPass) {
@@ -4124,21 +4176,9 @@ export class SceneLayoutPreviewViewer {
 
 	private applyManualOrientationConstraint(
 		offset: OrientationOffset,
-		semanticClass: ObjectSemanticClass
+		_semanticClass: ObjectSemanticClass
 	): OrientationOffset {
-		let yaw = normalizeAngleDeg(offset.yaw)
-		let pitch = normalizeAngleDeg(offset.pitch)
-		let roll = normalizeAngleDeg(offset.roll)
-
-		switch (semanticClass) {
-			case 'structure':
-				yaw = 0
-				pitch = 0
-				roll = 0
-				break
-		}
-
-		return { ...offset, yaw, pitch, roll }
+		return constrainManualOrientation(offset)
 	}
 
 	private applySurfaceFacingConstraint(
@@ -4552,7 +4592,11 @@ export class SceneLayoutPreviewViewer {
 			hit = hit.parent as Object3Dlike | undefined
 		}
 		this.rightClickPickCache = { ts: now, x: event.clientX, y: event.clientY, itemId: nextId }
-		this.selectItem(nextId)
+		if (this.holePunchMode && nextId) {
+			this.handleHolePunchPick(nextId)
+		} else {
+			this.selectItem(nextId)
+		}
 	}
 
 	setSelectedItem(itemId: string) {
@@ -4853,6 +4897,972 @@ export class SceneLayoutPreviewViewer {
 		}
 	}
 
+	setHolePunchStateChangeCallback(
+		callback: ((state: {
+			mode: boolean
+			step: 'select-target' | 'select-tool'
+			targetId: string
+			toolId: string
+		}) => void) | null
+	) {
+		this.onHolePunchStateChange = callback
+	}
+
+	startHolePunchMode() {
+		if (this.hidePlaceholderCubes || !this.previewModeActive) return
+		this.holePunchMode = true
+		this.holePunchStep = 'select-target'
+		this.holePunchTargetId = ''
+		this.holePunchToolId = ''
+		this.transformControls.detach()
+		this.transformControls.visible = false
+		this.clearHolePunchHighlights()
+		this.emitHolePunchStateChange()
+		this.requestRender()
+	}
+
+	cancelHolePunchMode() {
+		if (!this.holePunchMode) return
+		this.holePunchMode = false
+		this.holePunchStep = 'select-target'
+		this.holePunchTargetId = ''
+		this.holePunchToolId = ''
+		this.clearHolePunchHighlights()
+		if (this.selectedId) {
+			const mesh = this.meshesById.get(this.selectedId)
+			if (mesh && mesh.visible !== false && this.isObjectInSceneGraph(mesh)) {
+				this.transformControls.attach(mesh)
+				this.transformControls.visible = this.interactiveActive
+			}
+		}
+		this.emitHolePunchStateChange()
+		this.requestRender()
+	}
+
+	private emitHolePunchStateChange() {
+		this.onHolePunchStateChange?.({
+			mode: this.holePunchMode,
+			step: this.holePunchStep,
+			targetId: this.holePunchTargetId,
+			toolId: this.holePunchToolId
+		})
+	}
+
+	private handleHolePunchPick(itemId: string) {
+		if (!this.holePunchMode || !itemId) return
+		if (this.holePunchStep === 'select-target') {
+			this.holePunchTargetId = itemId
+			this.holePunchStep = 'select-tool'
+			this.updateHolePunchHighlights()
+			this.emitHolePunchStateChange()
+			this.requestRender()
+		} else if (this.holePunchStep === 'select-tool') {
+			if (itemId === this.holePunchTargetId) return
+			this.holePunchToolId = itemId
+			this.updateHolePunchHighlights()
+			this.emitHolePunchStateChange()
+			this.requestRender()
+		}
+	}
+
+	private updateHolePunchHighlights() {
+		this.clearHolePunchHighlights()
+		if (this.holePunchTargetId) {
+			this.createHolePunchHighlight(this.holePunchTargetId, '#22c55e')
+		}
+		if (this.holePunchToolId) {
+			this.createHolePunchHighlight(this.holePunchToolId, '#f97316')
+		}
+	}
+
+	private createHolePunchHighlight(itemId: string, color: string) {
+		const mesh = this.meshesById.get(itemId)
+		if (!mesh) return
+		const geom = (mesh as unknown as { geometry?: unknown }).geometry
+		if (!geom) return
+		const highlightGeom = (geom as { clone?: () => unknown }).clone?.() ?? geom
+		const highlightMat = new THREE.MeshBasicMaterial({
+			color,
+			transparent: true,
+			opacity: 0.25,
+			side: THREE.DoubleSide,
+			depthWrite: false
+		})
+		const highlight = new THREE.Mesh(highlightGeom as unknown, highlightMat)
+		const meshAny = mesh as unknown as {
+			position: Vector3Like
+			rotation: { x: number; y: number; z: number; copy?: (v: unknown) => void }
+			scale: Vector3Like
+		}
+		highlight.position.copy(meshAny.position as unknown as Vector3Like)
+		highlight.rotation.copy(meshAny.rotation as unknown as { x: number; y: number; z: number })
+		highlight.scale.copy(meshAny.scale as unknown as Vector3Like)
+		highlight.renderOrder = 3
+		;(highlight as unknown as { userData: Record<string, unknown> }).userData.isHolePunchHighlight = true
+		this.group.add(highlight as unknown as Object3Dlike)
+		this.holePunchHighlightMeshes.set(itemId, highlight as unknown as MeshLike)
+	}
+
+	private clearHolePunchHighlights() {
+		for (const highlight of this.holePunchHighlightMeshes.values()) {
+			this.group.remove(highlight)
+			const geom = (highlight as unknown as { geometry?: Disposable }).geometry
+			if (geom && typeof geom.dispose === 'function') geom.dispose()
+			const mat = (highlight as unknown as { material?: MaterialWithMaps | MaterialWithMaps[] }).material
+			if (mat) disposeMaterial(mat)
+		}
+		this.holePunchHighlightMeshes.clear()
+	}
+
+	async confirmHolePunch(): Promise<{ ok: boolean; message: string }> {
+		if (!this.holePunchMode) return { ok: false, message: '未处于打洞模式。' }
+		if (!this.holePunchTargetId) return { ok: false, message: '请先选择被打洞的占位体。' }
+		if (!this.holePunchToolId) return { ok: false, message: '请选择用来打洞的占位体。' }
+
+		const targetItem = this.currentItems.find((item) => item.id === this.holePunchTargetId)
+		const toolItem = this.currentItems.find((item) => item.id === this.holePunchToolId)
+		if (!targetItem || !toolItem) return { ok: false, message: '找不到对应的占位体数据。' }
+
+		const toolBinding = this.bindingById.get(this.holePunchToolId)
+		if (!toolBinding) {
+			return { ok: false, message: '用来打洞的占位体未绑定真实模型。' }
+		}
+
+		try {
+			await this.applyHolePunch(targetItem, toolItem, toolBinding)
+			const holePunchId = `hp_${Date.now()}`
+			if (!targetItem.holePunches) targetItem.holePunches = []
+			targetItem.holePunches.push({
+				id: holePunchId,
+				targetItemId: this.holePunchTargetId,
+				toolItemId: this.holePunchToolId,
+				createdAt: Date.now()
+			})
+			this.cancelHolePunchMode()
+			this.emitLayoutChange()
+			return { ok: true, message: '打洞成功。' }
+		} catch (err) {
+			const errMessage =
+				isObject(err) && isString((err as { message?: unknown }).message)
+					? (err as { message: string }).message
+					: String(err ?? 'unknown')
+			return { ok: false, message: `打洞失败：${errMessage}` }
+		}
+	}
+
+	private async applyHolePunch(
+		targetItem: WorkflowSceneLayoutItem,
+		toolItem: WorkflowSceneLayoutItem,
+		toolBinding: WorkflowSceneLayoutModelBinding
+	) {
+		const targetMesh = this.meshesById.get(targetItem.id)
+		const toolMesh = this.meshesById.get(toolItem.id)
+		if (!targetMesh || !toolMesh) {
+			throw new Error('找不到对应的网格对象。')
+		}
+
+		targetMesh.updateMatrixWorld(true)
+		toolMesh.updateMatrixWorld(true)
+
+		const targetBox3 = new THREE.Box3()
+		;(targetBox3 as unknown as { setFromObject: (obj: unknown) => void }).setFromObject(targetMesh)
+		const targetSizeVec = new THREE.Vector3()
+		targetBox3.getSize(targetSizeVec)
+		const maxTargetDim = Math.max(targetSizeVec.x, targetSizeVec.y, targetSizeVec.z)
+
+		const toolQuat = new THREE.Quaternion()
+		const toolPosVec = new THREE.Vector3()
+		const toolScaleVec = new THREE.Vector3()
+		;(toolMesh.matrixWorld as unknown as { decompose: (pos: unknown, quat: unknown, scale: unknown) => void }).decompose(toolPosVec, toolQuat, toolScaleVec)
+
+		const toolCenter = new THREE.Vector3()
+		const toolBox3 = new THREE.Box3()
+		;(toolBox3 as unknown as { setFromObject: (obj: unknown) => void }).setFromObject(toolMesh)
+		toolBox3.getCenter(toolCenter)
+
+		const localAxisDirs = [
+			new THREE.Vector3(1, 0, 0).applyQuaternion(toolQuat).normalize(),
+			new THREE.Vector3(-1, 0, 0).applyQuaternion(toolQuat).normalize(),
+			new THREE.Vector3(0, 1, 0).applyQuaternion(toolQuat).normalize(),
+			new THREE.Vector3(0, -1, 0).applyQuaternion(toolQuat).normalize(),
+			new THREE.Vector3(0, 0, 1).applyQuaternion(toolQuat).normalize(),
+			new THREE.Vector3(0, 0, -1).applyQuaternion(toolQuat).normalize()
+		]
+
+		let bestDir = null
+		let bestHitDist = Infinity
+		const ray = new THREE.Ray()
+		const hitPoint = new THREE.Vector3()
+
+		for (const dir of localAxisDirs) {
+			ray.set(toolCenter, dir)
+			const hit = ray.intersectBox(targetBox3, hitPoint)
+			if (hit) {
+				const dist = toolCenter.distanceTo(hit)
+				if (dist < bestHitDist) {
+					bestHitDist = dist
+					bestDir = dir.clone()
+				}
+			}
+		}
+
+		if (!bestDir) {
+			const fallbackDir = new THREE.Vector3()
+			targetBox3.getCenter(fallbackDir)
+			fallbackDir.sub(toolCenter).normalize()
+			bestDir = fallbackDir
+			console.log('=== Hole Punch: No axis hit target, using fallback direction ===', bestDir)
+		} else {
+			console.log('=== Hole Punch: Detected punch direction ===', bestDir, 'hit distance:', bestHitDist)
+		}
+
+		const punchDir = bestDir.normalize()
+
+		const toolLocalY = new THREE.Vector3(0, 1, 0).applyQuaternion(toolQuat)
+		const yDotDir = toolLocalY.dot(punchDir)
+		let vAxis = toolLocalY.clone().sub(punchDir.clone().multiplyScalar(yDotDir))
+		if (vAxis.lengthSq() < 0.001) {
+			vAxis.set(0, 0, 1)
+			const zDotDir = vAxis.dot(punchDir)
+			vAxis.sub(punchDir.clone().multiplyScalar(zDotDir))
+		}
+		vAxis.normalize()
+
+		const uAxis = new THREE.Vector3().crossVectors(vAxis, punchDir).normalize()
+
+		let geometrySource: unknown = null
+		let needsDispose = false
+
+		const existingBoundModel = this.boundModelsById.get(toolItem.id)
+		if (existingBoundModel) {
+			existingBoundModel.updateMatrixWorld(true)
+			geometrySource = existingBoundModel
+			console.log('=== Hole Punch: Using existing bound model from scene ===')
+		} else {
+			const modelUrl = toolBinding.modelUrl || toolBinding.modelAssetUrl
+			if (!modelUrl) {
+				throw new Error('工具占位体未绑定有效的模型URL，且场景中没有已渲染的模型。')
+			}
+			const template = await this.loadModelTemplate(modelUrl, toolItem.id)
+			const modelContent = this.cloneModelScene(template)
+			const toolModelRoot = this.createBoundModelRoot(modelContent, toolMesh, toolItem) as unknown as { traverse: (cb: (child: unknown) => void) => void; updateMatrixWorld: (force: boolean) => void }
+			toolModelRoot.updateMatrixWorld(true)
+			geometrySource = toolModelRoot
+			needsDispose = true
+			console.log('=== Hole Punch: Created new bound model for cross-section ===')
+		}
+
+		const modelGeometries: unknown[] = []
+		;(geometrySource as { traverse: (cb: (child: unknown) => void) => void }).traverse((child: unknown) => {
+			const childAny = child as Record<string, unknown>
+			if (childAny.isMesh && childAny.geometry) {
+				const geomAny = childAny.geometry as Record<string, unknown>
+				const cloned = (geomAny.clone as () => unknown)()
+				const clonedAny = cloned as Record<string, unknown>
+				;(clonedAny.applyMatrix4 as (m: unknown) => void)(childAny.matrixWorld)
+				modelGeometries.push(cloned)
+			}
+		})
+
+		if (modelGeometries.length === 0) {
+			const placeholderGeom = (toolMesh as unknown as { geometry: Record<string, unknown> }).geometry
+			const placeholderCloned = (placeholderGeom.clone as () => unknown)()
+			const placeholderClonedAny = placeholderCloned as Record<string, unknown>
+			;(placeholderClonedAny.applyMatrix4 as (m: unknown) => void)(toolMesh.matrixWorld)
+			modelGeometries.push(placeholderCloned)
+		}
+
+		const modelMergedGeom = this.mergeGeometries(modelGeometries) as { getAttribute: (name: string) => unknown; dispose?: () => void }
+		modelGeometries.forEach(g => ((g as { dispose?: () => void }).dispose?.()))
+
+		const modelPosAttr = (modelMergedGeom as { getAttribute: (name: string) => unknown }).getAttribute('position') as { count: number; getX: (i: number) => number; getY: (i: number) => number; getZ: (i: number) => number } | undefined
+
+		const projectedPoints2D: { u: number; v: number; d: number }[] = []
+		let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity, minD = Infinity, maxD = -Infinity
+
+		if (modelPosAttr) {
+			for (let i = 0; i < modelPosAttr.count; i++) {
+				const px = modelPosAttr.getX(i)
+				const py = modelPosAttr.getY(i)
+				const pz = modelPosAttr.getZ(i)
+				const u = px * uAxis.x + py * uAxis.y + pz * uAxis.z
+				const v = px * vAxis.x + py * vAxis.y + pz * vAxis.z
+				const d = px * punchDir.x + py * punchDir.y + pz * punchDir.z
+				projectedPoints2D.push({ u, v, d })
+				minU = Math.min(minU, u)
+				maxU = Math.max(maxU, u)
+				minV = Math.min(minV, v)
+				maxV = Math.max(maxV, v)
+				minD = Math.min(minD, d)
+				maxD = Math.max(maxD, d)
+			}
+		} else {
+			const fallbackPoints = [
+				{ u: toolCenter.x - 0.5, v: toolCenter.y - 0.5, d: toolCenter.z - 0.5 },
+				{ u: toolCenter.x + 0.5, v: toolCenter.y - 0.5, d: toolCenter.z - 0.5 },
+				{ u: toolCenter.x + 0.5, v: toolCenter.y + 0.5, d: toolCenter.z - 0.5 },
+				{ u: toolCenter.x - 0.5, v: toolCenter.y + 0.5, d: toolCenter.z - 0.5 },
+				{ u: toolCenter.x - 0.5, v: toolCenter.y - 0.5, d: toolCenter.z + 0.5 },
+				{ u: toolCenter.x + 0.5, v: toolCenter.y - 0.5, d: toolCenter.z + 0.5 },
+				{ u: toolCenter.x + 0.5, v: toolCenter.y + 0.5, d: toolCenter.z + 0.5 },
+				{ u: toolCenter.x - 0.5, v: toolCenter.y + 0.5, d: toolCenter.z + 0.5 }
+			]
+			projectedPoints2D.push(...fallbackPoints)
+			minU = toolCenter.x - 0.5; maxU = toolCenter.x + 0.5
+			minV = toolCenter.y - 0.5; maxV = toolCenter.y + 0.5
+			minD = toolCenter.z - 0.5; maxD = toolCenter.z + 0.5
+		}
+
+		const centerU = (minU + maxU) * 0.5
+		const centerV = (minV + maxV) * 0.5
+		const centerD = (minD + maxD) * 0.5
+
+		type Point2D = { x: number; y: number }
+		const convexHull = (points: Point2D[]): Point2D[] => {
+			if (points.length <= 1) return points
+			const sorted = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x)
+			const cross = (o: Point2D, a: Point2D, b: Point2D) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+			const lower: Point2D[] = []
+			for (const p of sorted) {
+				while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
+				lower.push(p)
+			}
+			const upper: Point2D[] = []
+			for (let i = sorted.length - 1; i >= 0; i--) {
+				const p = sorted[i]
+				while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop()
+				upper.push(p)
+			}
+			lower.pop()
+			upper.pop()
+			return lower.concat(upper)
+		}
+
+		const rawHullPoints = convexHull(projectedPoints2D.map(p => ({ x: p.u, y: p.v })))
+		const shrinkFactor = 0.92
+		const hullPoints: Point2D[] = rawHullPoints.map(p => ({
+			x: centerU + (p.x - centerU) * shrinkFactor,
+			y: centerV + (p.y - centerV) * shrinkFactor
+		}))
+
+		const targetCorners = [
+			new THREE.Vector3(targetBox3.min.x, targetBox3.min.y, targetBox3.min.z),
+			new THREE.Vector3(targetBox3.min.x, targetBox3.min.y, targetBox3.max.z),
+			new THREE.Vector3(targetBox3.min.x, targetBox3.max.y, targetBox3.min.z),
+			new THREE.Vector3(targetBox3.min.x, targetBox3.max.y, targetBox3.max.z),
+			new THREE.Vector3(targetBox3.max.x, targetBox3.min.y, targetBox3.min.z),
+			new THREE.Vector3(targetBox3.max.x, targetBox3.min.y, targetBox3.max.z),
+			new THREE.Vector3(targetBox3.max.x, targetBox3.max.y, targetBox3.min.z),
+			new THREE.Vector3(targetBox3.max.x, targetBox3.max.y, targetBox3.max.z)
+		]
+		let targetMinD = Infinity, targetMaxD = -Infinity
+		for (const corner of targetCorners) {
+			const d = corner.dot(punchDir)
+			targetMinD = Math.min(targetMinD, d)
+			targetMaxD = Math.max(targetMaxD, d)
+		}
+
+		const startD = Math.min(minD, targetMinD) - 3.0
+		const endD = Math.max(maxD, targetMaxD) + 3.0
+		const stretchLength = endD - startD
+
+		let stretchedGeom
+		if (hullPoints.length >= 3) {
+			const shape = new THREE.Shape()
+			shape.moveTo(hullPoints[0].x - centerU, hullPoints[0].y - centerV)
+			for (let i = 1; i < hullPoints.length; i++) {
+				shape.lineTo(hullPoints[i].x - centerU, hullPoints[i].y - centerV)
+			}
+			shape.closePath()
+			const extrudeSettings = {
+				depth: stretchLength,
+				bevelEnabled: false,
+				steps: 1,
+				curveSegments: 12
+			}
+			stretchedGeom = new THREE.ExtrudeGeometry(shape, extrudeSettings)
+			stretchedGeom.translate(0, 0, 0)
+		} else {
+			const rawCrossWidth = Math.max(0.05, maxU - minU)
+			const rawCrossHeight = Math.max(0.05, maxV - minV)
+			const crossWidth = rawCrossWidth * shrinkFactor
+			const crossHeight = rawCrossHeight * shrinkFactor
+			stretchedGeom = new THREE.BoxGeometry(crossWidth, crossHeight, stretchLength)
+			stretchedGeom.translate(0, 0, stretchLength * 0.5)
+		}
+
+		const basisMatrix = new THREE.Matrix4()
+		basisMatrix.makeBasis(uAxis, vAxis, punchDir)
+
+		const startWorld = new THREE.Vector3(
+			centerU * uAxis.x + centerV * vAxis.x + startD * punchDir.x,
+			centerU * uAxis.y + centerV * vAxis.y + startD * punchDir.y,
+			centerU * uAxis.z + centerV * vAxis.z + startD * punchDir.z
+		)
+
+		const positionMatrix = new THREE.Matrix4()
+		positionMatrix.makeTranslation(startWorld.x, startWorld.y, startWorld.z)
+
+		const transformMatrix = new THREE.Matrix4()
+		transformMatrix.multiplyMatrices(positionMatrix, basisMatrix)
+
+		stretchedGeom.applyMatrix4(transformMatrix)
+
+		const debugModelBounds = new THREE.Box3().setFromBufferAttribute(modelMergedGeom.getAttribute('position') as unknown)
+		console.log('=== Stretched Tool Geometry (Convex Hull) ===')
+		console.log('Punch direction:', punchDir)
+		console.log('uAxis:', uAxis, 'vAxis:', vAxis)
+		console.log('Model bounds min:', debugModelBounds.min, 'max:', debugModelBounds.max)
+		console.log('Model U range:', minU, 'to', maxU)
+		console.log('Model V range:', minV, 'to', maxV)
+		console.log('Model D range (along punch):', minD, 'to', maxD)
+		console.log('Target D range:', targetMinD, 'to', targetMaxD)
+		console.log('Stretch start/end D:', startD, endD, 'length:', stretchLength)
+		console.log('Projected points count:', projectedPoints2D.length)
+		console.log('Convex hull points count:', hullPoints.length)
+		console.log('Hull points (local to center):', hullPoints.map(p => ({ x: p.x - centerU, y: p.y - centerV })))
+		console.log('Start world:', startWorld)
+
+		const stretchedMesh = new THREE.Mesh(
+			stretchedGeom,
+			new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
+		)
+
+		const targetGeomAny = targetMesh.geometry as Record<string, unknown>
+		const targetWorldMatrix = targetMesh.matrixWorld
+		const inverseTargetMatrix = new THREE.Matrix4()
+		;(inverseTargetMatrix as unknown as { copy: (m: unknown) => unknown }).copy(targetWorldMatrix)
+		;(inverseTargetMatrix as unknown as { invert: () => unknown }).invert()
+
+		const targetWorldGeom = (targetGeomAny.clone as () => unknown)()
+		;(targetWorldGeom as { applyMatrix4: (m: unknown) => void }).applyMatrix4(targetWorldMatrix)
+
+		const csgModule = await import('three-bvh-csg')
+		const { Brush, Evaluator, SUBTRACTION } = csgModule
+		const evaluator = new Evaluator()
+
+		const targetBrush = new Brush() as unknown as { geometry: unknown; material: unknown; markUpdated: () => void }
+		targetBrush.geometry = targetWorldGeom
+		targetBrush.material = new THREE.MeshBasicMaterial()
+		targetBrush.markUpdated()
+
+		const toolBrush = new Brush() as unknown as { geometry: unknown; material: unknown; markUpdated: () => void }
+		toolBrush.geometry = stretchedMesh.geometry
+		toolBrush.material = stretchedMesh.material
+		toolBrush.markUpdated()
+
+		const resultBrush = (evaluator as unknown as { evaluate: (a: unknown, b: unknown, c: unknown) => { geometry: Record<string, unknown> } }).evaluate(targetBrush, toolBrush, SUBTRACTION)
+		const resultGeom = resultBrush.geometry
+
+		const targetVertexCount = (targetWorldGeom as { getAttribute: (name: string) => { count: number } }).getAttribute('position')
+		const resultVertexCount = (resultGeom as { getAttribute: (name: string) => { count: number } }).getAttribute('position')
+
+		console.log('=== Hole Punch Result ===')
+		console.log('Target vertex count:', targetVertexCount.count)
+		console.log('Result vertex count:', resultVertexCount.count)
+		console.log('CSG changed geometry:', targetVertexCount.count !== resultVertexCount.count)
+
+		;(resultGeom as { applyMatrix4: (m: unknown) => void; computeBoundingBox: () => void; computeBoundingSphere: () => void; computeVertexNormals: () => void }).applyMatrix4(inverseTargetMatrix)
+		;(resultGeom as { computeBoundingBox: () => void }).computeBoundingBox()
+		;(resultGeom as { computeBoundingSphere: () => void }).computeBoundingSphere()
+		;(resultGeom as { computeVertexNormals: () => void }).computeVertexNormals()
+
+		const oldGeom = targetMesh.geometry as Disposable
+		if (oldGeom && typeof oldGeom.dispose === 'function') {
+			oldGeom.dispose()
+		}
+		targetMesh.geometry = resultGeom as unknown as Disposable
+
+		const targetEdge = this.edgesById.get(targetItem.id)
+		let newEdgeGeom: unknown = null
+		if (targetEdge) {
+			const oldEdgeGeom = targetEdge.geometry as Disposable
+			if (oldEdgeGeom && typeof oldEdgeGeom.dispose === 'function') {
+				oldEdgeGeom.dispose()
+			}
+			newEdgeGeom = new THREE.EdgesGeometry(resultGeom as unknown)
+			;(targetEdge as unknown as { geometry: unknown }).geometry = newEdgeGeom
+			targetEdge.scale.set(1, 1, 1)
+		}
+
+		const geomCloneFn = (resultGeom as Record<string, unknown>).clone as (() => unknown) | undefined
+		const cachedGeom = geomCloneFn ? geomCloneFn.call(resultGeom) : resultGeom
+		const cachedEdgeGeom = newEdgeGeom
+			? ((newEdgeGeom as Record<string, unknown>).clone as (() => unknown) | undefined)?.call(newEdgeGeom) ?? newEdgeGeom
+			: null
+		const cacheKey = String(targetItem.id ?? '').trim()
+		this.holedGeometryCache.set(cacheKey, { geometry: cachedGeom, edgeGeometry: cachedEdgeGeom })
+
+		;(modelMergedGeom as { dispose?: () => void }).dispose?.()
+		stretchedGeom.dispose()
+		stretchedMesh.geometry.dispose()
+		;(stretchedMesh.material as { dispose?: () => void }).dispose?.()
+		;((targetBrush as unknown as { geometry?: { dispose?: () => void } }).geometry)?.dispose?.()
+		;((toolBrush as unknown as { geometry?: { dispose?: () => void } }).geometry)?.dispose?.()
+
+		if (needsDispose && geometrySource) {
+			(geometrySource as unknown as { traverse?: (cb: (child: unknown) => void) => void }).traverse?.((child: unknown) => {
+				const childAny = child as Record<string, unknown>
+				if (childAny.isMesh && childAny.geometry) {
+					((childAny.geometry as { dispose?: () => void }).dispose?.())
+				}
+			})
+		}
+	}
+
+	private createStretchedToolGeometryFromPlaceholder(
+		toolMesh: unknown,
+		direction: { x: number; y: number; z: number },
+		distance: number,
+		toolCenter: { x: number; y: number; z: number }
+	): unknown {
+		const dirVec = new THREE.Vector3(direction.x, direction.y, direction.z).normalize()
+
+		const toolWorldGeom = ((toolMesh as unknown as { geometry: { clone?: () => unknown } }).geometry.clone?.() ?? (toolMesh as unknown as { geometry: unknown }).geometry)
+		const toolMatrixWorld = (toolMesh as unknown as { matrixWorld: unknown }).matrixWorld
+		;(toolWorldGeom as { applyMatrix4?: (m: unknown) => void }).applyMatrix4?.(toolMatrixWorld)
+
+		const toolQuat = new THREE.Quaternion()
+		const toolPosVec = new THREE.Vector3()
+		const toolScaleVec = new THREE.Vector3()
+		;(toolMatrixWorld as { decompose: (pos: unknown, quat: unknown, scale: unknown) => void }).decompose(toolPosVec, toolQuat, toolScaleVec)
+
+		const toolLocalY = new THREE.Vector3(0, 1, 0).applyQuaternion(toolQuat)
+
+		const vAxis = toolLocalY.clone()
+		const vDotDir = vAxis.dot(dirVec)
+		vAxis.sub(dirVec.clone().multiplyScalar(vDotDir))
+		if (vAxis.lengthSq() < 0.001) {
+			vAxis.set(0, 0, 1)
+			const vDotDir2 = vAxis.dot(dirVec)
+			vAxis.sub(dirVec.clone().multiplyScalar(vDotDir2))
+		}
+		vAxis.normalize()
+
+		const uAxis = new THREE.Vector3().crossVectors(dirVec, vAxis).normalize()
+
+		const posAttr = (toolWorldGeom as unknown as { getAttribute: (name: string) => unknown }).getAttribute('position')
+		let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity
+
+		if (posAttr) {
+			const positions = posAttr as unknown as { count: number; getX: (i: number) => number; getY: (i: number) => number; getZ: (i: number) => number }
+			for (let i = 0; i < positions.count; i++) {
+				const px = positions.getX(i)
+				const py = positions.getY(i)
+				const pz = positions.getZ(i)
+				const u = px * uAxis.x + py * uAxis.y + pz * uAxis.z
+				const v = px * vAxis.x + py * vAxis.y + pz * vAxis.z
+				minU = Math.min(minU, u)
+				maxU = Math.max(maxU, u)
+				minV = Math.min(minV, v)
+				maxV = Math.max(maxV, v)
+			}
+		}
+
+		const crossWidth = Math.max(0.05, maxU - minU)
+		const crossHeight = Math.max(0.05, maxV - minV)
+		const stretchLength = distance * 2
+
+		const stretchedBox = new THREE.BoxGeometry(crossWidth, crossHeight, stretchLength)
+
+		;(stretchedBox as { translate?: (x: number, y: number, z: number) => void }).translate?.(0, 0, stretchLength * 0.5)
+
+		const basisMatrix = new THREE.Matrix4()
+		basisMatrix.makeBasis(uAxis, vAxis, dirVec)
+
+		const positionMatrix = new THREE.Matrix4()
+		;(positionMatrix as unknown as { makeTranslation: (x: number, y: number, z: number) => void }).makeTranslation(toolCenter.x, toolCenter.y, toolCenter.z)
+
+		const transformMatrix = new THREE.Matrix4()
+		transformMatrix.multiply(positionMatrix)
+		transformMatrix.multiply(basisMatrix)
+
+		stretchedBox.applyMatrix4(transformMatrix)
+
+		const resultBounds = new THREE.Box3()
+		const resultPosAttr = (stretchedBox as unknown as { getAttribute: (name: string) => unknown }).getAttribute('position')
+		;(resultBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }).setFromBufferAttribute(resultPosAttr)
+
+		console.log('=== Stretched Placeholder Debug ===')
+		console.log('Direction:', dirVec)
+		console.log('Tool center:', toolCenter)
+		console.log('uAxis:', uAxis, 'vAxis:', vAxis)
+		console.log('Cross width/height:', crossWidth, crossHeight)
+		console.log('Stretch length:', stretchLength)
+		console.log('Result bounds min:', resultBounds.min)
+		console.log('Result bounds max:', resultBounds.max)
+
+		;(toolWorldGeom as { dispose?: () => void }).dispose?.()
+
+		return stretchedBox
+	}
+
+	private createStretchedToolGeometry(
+		toolModel: Object3Dlike,
+		direction: { x: number; y: number; z: number },
+		distance: number,
+		localCenter: { x: number; y: number; z: number }
+	): unknown {
+		console.log('=== Stretched Tool Geometry Debug ===')
+		console.log('Direction:', direction)
+		console.log('Distance:', distance)
+		console.log('Local center:', localCenter)
+
+		const mergedGeometries: unknown[] = []
+
+		;(toolModel as unknown as { updateMatrixWorld: (force: boolean) => void }).updateMatrixWorld(true)
+
+		toolModel.traverse((child: Object3Dlike) => {
+			const childMesh = child as unknown as { isMesh?: boolean; geometry?: unknown; matrixWorld?: unknown }
+			if (childMesh.isMesh && childMesh.geometry) {
+				const geom = (childMesh.geometry as { clone?: () => unknown }).clone?.()
+				if (!geom) return
+				const childMatrix = new THREE.Matrix4() as unknown as { copy: (m: unknown) => void }
+				childMatrix.copy(childMesh.matrixWorld)
+				;(geom as { applyMatrix4?: (m: unknown) => void }).applyMatrix4?.(childMatrix)
+				mergedGeometries.push(geom)
+			}
+		})
+
+		console.log('Merged geometries count:', mergedGeometries.length)
+
+		if (mergedGeometries.length === 0) {
+			console.log('No geometries found, returning fallback box')
+			return new THREE.BoxGeometry(1, 1, 1)
+		}
+
+		const merged = this.mergeGeometries(mergedGeometries as unknown[])
+		const posAttr = (merged as unknown as { getAttribute: (name: string) => unknown }).getAttribute('position')
+		if (!posAttr) {
+			console.log('No position attribute, returning fallback box')
+			return new THREE.BoxGeometry(1, 1, 1)
+		}
+
+		const dirVec = new THREE.Vector3(direction.x, direction.y, direction.z).normalize()
+
+		const geomBounds = new THREE.Box3()
+		;(geomBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }).setFromBufferAttribute(posAttr)
+
+		const geomCenter = new THREE.Vector3() as unknown as Vector3Like
+		;(geomBounds as unknown as { getCenter: (target: Vector3Like) => void }).getCenter(geomCenter)
+
+		const geomSize = new THREE.Vector3() as unknown as Vector3Like
+		;(geomBounds as unknown as { getSize: (target: Vector3Like) => void }).getSize(geomSize)
+
+		console.log('Model bounds min:', (geomBounds as unknown as { min: Vector3Like }).min)
+		console.log('Model bounds max:', (geomBounds as unknown as { max: Vector3Like }).max)
+		console.log('Model center:', geomCenter)
+		console.log('Model size:', geomSize)
+
+		const crossWidth = Math.max(0.1, geomSize.x)
+		const crossHeight = Math.max(0.1, geomSize.y)
+		const stretchLength = distance * 2
+
+		const stretchedBox = new THREE.BoxGeometry(crossWidth, crossHeight, stretchLength)
+
+		const zAxis = new THREE.Vector3(0, 0, 1)
+		const quaternion = new THREE.Quaternion()
+		;(quaternion as unknown as { setFromUnitVectors: (a: unknown, b: unknown) => void }).setFromUnitVectors(zAxis, dirVec)
+
+		const rotationMatrix = new THREE.Matrix4()
+		;(rotationMatrix as unknown as { makeRotationFromQuaternion: (q: unknown) => void }).makeRotationFromQuaternion(quaternion)
+
+		;(stretchedBox as { applyMatrix4?: (m: unknown) => void }).applyMatrix4?.(rotationMatrix)
+
+		const offsetVec = new THREE.Vector3(dirVec.x, dirVec.y, dirVec.z) as unknown as Vector3Like
+		offsetVec.multiplyScalar(stretchLength * 0.5)
+
+		;(stretchedBox as { translate?: (x: number, y: number, z: number) => void }).translate?.(
+			localCenter.x + offsetVec.x,
+			localCenter.y + offsetVec.y,
+			localCenter.z + offsetVec.z
+		)
+
+		const stretchedBounds = new THREE.Box3()
+		;(stretchedBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }).setFromBufferAttribute((stretchedBox as unknown as { getAttribute: (name: string) => unknown }).getAttribute('position'))
+		console.log('Stretched box bounds min:', (stretchedBounds as unknown as { min: Vector3Like }).min)
+		console.log('Stretched box bounds max:', (stretchedBounds as unknown as { max: Vector3Like }).max)
+
+		return stretchedBox
+	}
+
+	private mergeGeometries(geometries: unknown[]): unknown {
+		if (geometries.length === 0) return new THREE.BufferGeometry()
+		if (geometries.length === 1) return geometries[0]
+
+		const merged = new THREE.BufferGeometry()
+		const positions: number[] = []
+		const normals: number[] = []
+		const uvs: number[] = []
+		const indices: number[] = []
+		let indexOffset = 0
+
+		for (const geom of geometries) {
+			const geomAny = geom as {
+				getAttribute?: (name: string) => unknown
+				index?: unknown
+			}
+			const posAttr = geomAny.getAttribute?.('position') as {
+				count: number
+				getX: (i: number) => number
+				getY: (i: number) => number
+				getZ: (i: number) => number
+			} | undefined
+			if (!posAttr) continue
+
+			const normAttr = geomAny.getAttribute?.('normal') as {
+				count: number
+				getX: (i: number) => number
+				getY: (i: number) => number
+				getZ: (i: number) => number
+			} | undefined
+			const uvAttr = geomAny.getAttribute?.('uv') as {
+				count: number
+				getX: (i: number) => number
+				getY: (i: number) => number
+			} | undefined
+
+			for (let i = 0; i < posAttr.count; i++) {
+				positions.push(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i))
+				if (normAttr) {
+					normals.push(normAttr.getX(i), normAttr.getY(i), normAttr.getZ(i))
+				}
+				if (uvAttr) {
+					uvs.push(uvAttr.getX(i), uvAttr.getY(i))
+				}
+			}
+
+			const indexAttr = geomAny.index as {
+				count: number
+				getX: (i: number) => number
+			} | undefined
+			if (indexAttr) {
+				for (let i = 0; i < indexAttr.count; i++) {
+					indices.push(indexAttr.getX(i) + indexOffset)
+				}
+			} else {
+				for (let i = 0; i < posAttr.count; i++) {
+					indices.push(i + indexOffset)
+				}
+			}
+
+			indexOffset += posAttr.count
+		}
+
+		merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+		if (normals.length > 0) {
+			merged.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+		}
+		if (uvs.length > 0) {
+			merged.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+		}
+		merged.setIndex(indices)
+
+		return merged
+	}
+
+	setExportLogCallback(callback: ((message: string) => void) | null) {
+		this.exportLogCallback = callback
+	}
+
+	private logExport(message: string) {
+		console.log(`[GLB Export] ${message}`)
+		this.exportLogCallback?.(message)
+	}
+
+	private sanitizeGeometry(geom: Record<string, unknown>): Record<string, unknown> {
+		try {
+			const getAttributeFn = geom.getAttribute as ((name: string) => unknown) | undefined
+			const posAttr = getAttributeFn?.call(geom, 'position') as {
+				count: number
+				getX: (i: number) => number
+				getY: (i: number) => number
+				getZ: (i: number) => number
+				setXYZ: (i: number, x: number, y: number, z: number) => void
+			} | undefined
+			if (!posAttr || !posAttr.count) return geom
+
+			let badVertices = 0
+			const isFiniteNumber = (v: number) => typeof v === 'number' && Number.isFinite(v) && !Number.isNaN(v)
+			for (let i = 0; i < posAttr.count; i++) {
+				const x = posAttr.getX(i)
+				const y = posAttr.getY(i)
+				const z = posAttr.getZ(i)
+				if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(z)) {
+					posAttr.setXYZ(i, 0, 0, 0)
+					badVertices++
+				}
+			}
+			if (badVertices > 0) {
+				this.logExport(`警告：修复了 ${badVertices} 个无效顶点坐标`)
+			}
+
+			const computeVertexNormals = geom.computeVertexNormals as (() => void) | undefined
+			computeVertexNormals?.call(geom)
+			const computeBoundingBox = geom.computeBoundingBox as (() => void) | undefined
+			computeBoundingBox?.call(geom)
+			const computeBoundingSphere = geom.computeBoundingSphere as (() => void) | undefined
+			computeBoundingSphere?.call(geom)
+		} catch (err) {
+			this.logExport(`顶点清理时出现非致命错误：${err instanceof Error ? err.message : String(err)}，继续导出`)
+		}
+		return geom
+	}
+
+	async exportPlaceholderGLB(itemId: string, name?: string): Promise<ArrayBuffer | null> {
+		this.logExport('开始查找选中的占位体网格...')
+		const mesh = this.meshesById.get(itemId)
+		if (!mesh) {
+			this.logExport('错误：找不到对应的网格对象')
+			return null
+		}
+
+		this.logExport('确保网格矩阵已更新...')
+		mesh.updateMatrixWorld(true)
+
+		const getPositionCount = (g: Record<string, unknown>): number => {
+			const attr = g.attributes as Record<string, { count?: number }> | undefined
+			return attr?.position?.count ?? 0
+		}
+
+		this.logExport('获取当前网格几何体...')
+		const meshGeom = mesh.geometry
+		const meshVertexCount = getPositionCount(meshGeom as unknown as Record<string, unknown>)
+		this.logExport(`当前网格顶点数: ${meshVertexCount}`)
+
+		let sourceGeom: unknown = meshGeom
+
+		const cacheKey = String(itemId ?? '').trim()
+		const cachedEntry = this.holedGeometryCache.get(cacheKey)
+		if (cachedEntry?.geometry && meshVertexCount <= 24) {
+			this.logExport('当前网格疑似简单立方体，尝试使用缓存的打洞几何体...')
+			try {
+				const cachedGeom = cachedEntry.geometry
+				const cachedVertexCount = getPositionCount(cachedGeom as unknown as Record<string, unknown>)
+				this.logExport(`缓存几何体顶点数: ${cachedVertexCount}`)
+				if (cachedVertexCount > 24) {
+					sourceGeom = cachedGeom
+					this.logExport('将使用缓存几何体创建干净副本')
+				}
+			} catch (e) {
+				this.logExport('缓存几何体获取失败，使用当前网格几何体')
+			}
+		}
+
+		this.logExport('创建干净的BufferGeometry副本...')
+		let exportGeometry: Record<string, unknown>
+		try {
+			const newGeom = new THREE.BufferGeometry() as unknown as Record<string, unknown>
+			const sourceAny = sourceGeom as unknown as { attributes: Record<string, { array: Float32Array; itemSize: number; normalized: boolean }>; index?: { array: Uint16Array | Uint32Array } | null }
+			const srcAttrs = sourceAny.attributes
+			const srcIndex = sourceAny.index
+			for (const attrName in srcAttrs) {
+				const srcAttr = srcAttrs[attrName]
+				const array = new Float32Array(srcAttr.array.length)
+				array.set(srcAttr.array)
+				const newAttr = new THREE.BufferAttribute(array, srcAttr.itemSize, srcAttr.normalized)
+				const setAttrFn = newGeom.setAttribute as (name: string, attr: unknown) => void
+				setAttrFn.call(newGeom, attrName, newAttr)
+			}
+			if (srcIndex) {
+				const IndexArrayCtor = srcIndex.array.constructor as Uint16ArrayConstructor | Uint32ArrayConstructor
+				const indexArray = new IndexArrayCtor(srcIndex.array.length)
+				indexArray.set(srcIndex.array)
+				const newIndexAttr = new THREE.BufferAttribute(indexArray, 1)
+				const setIndexFn = newGeom.setIndex as (attr: unknown) => void
+				setIndexFn.call(newGeom, newIndexAttr)
+			}
+			exportGeometry = newGeom
+		} catch (err) {
+			this.logExport(`创建干净几何体副本失败：${err instanceof Error ? err.message : String(err)}，尝试直接克隆...`)
+			const cloneFn = (sourceGeom as Record<string, unknown>).clone as (() => unknown) | undefined
+			exportGeometry = (cloneFn?.call(sourceGeom) as Record<string, unknown>) ?? (sourceGeom as Record<string, unknown>)
+		}
+
+		this.logExport(`导出几何体顶点数: ${getPositionCount(exportGeometry)}`)
+
+		exportGeometry = this.sanitizeGeometry(exportGeometry)
+
+		this.logExport('应用网格世界矩阵到几何体（烘焙变换）...')
+		const applyMatrixFn = exportGeometry.applyMatrix4 as ((m: unknown) => void) | undefined
+		applyMatrixFn?.call(exportGeometry, mesh.matrixWorld)
+
+		this.logExport('计算包围盒...')
+		const computeBBoxFn = exportGeometry.computeBoundingBox as (() => void) | undefined
+		computeBBoxFn?.call(exportGeometry)
+		const bbox = exportGeometry.boundingBox as { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null | undefined
+		if (!bbox || !bbox.min || !bbox.max) {
+			this.logExport('错误：无法计算几何体包围盒')
+			return null
+		}
+
+		this.logExport(`几何体包围盒（世界坐标）：min(${bbox.min.x.toFixed(2)}, ${bbox.min.y.toFixed(2)}, ${bbox.min.z.toFixed(2)}), max(${bbox.max.x.toFixed(2)}, ${bbox.max.y.toFixed(2)}, ${bbox.max.z.toFixed(2)})`)
+
+		const centerX = (bbox.min.x + bbox.max.x) / 2
+		const centerZ = (bbox.min.z + bbox.max.z) / 2
+		this.logExport('平移几何体到原点：底部在y=0，x/z居中...')
+		const translateFn = exportGeometry.translate as ((x: number, y: number, z: number) => void) | undefined
+		translateFn?.call(exportGeometry, -centerX, -bbox.min.y, -centerZ)
+		computeBBoxFn?.call(exportGeometry)
+
+		const finalBbox = exportGeometry.boundingBox as { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null | undefined
+		if (finalBbox?.min && finalBbox?.max) {
+			this.logExport(`平移后包围盒：min(${finalBbox.min.x.toFixed(2)}, ${finalBbox.min.y.toFixed(2)}, ${finalBbox.min.z.toFixed(2)}), max(${finalBbox.max.x.toFixed(2)}, ${finalBbox.max.y.toFixed(2)}, ${finalBbox.max.z.toFixed(2)})`)
+		}
+
+		this.logExport('准备导出材质...')
+		const materialAny = mesh.material as Record<string, unknown> | undefined
+		const materialColor = materialAny?.color as { getHexString?: () => string } | undefined
+		const colorHex = materialColor?.getHexString?.()
+		const exportMaterial = new THREE.MeshStandardMaterial({
+			color: colorHex ? `#${colorHex}` : '#94a3b8',
+			roughness: 0.88,
+			metalness: 0.08
+		})
+
+		this.logExport('创建导出网格...')
+		const exportMesh = new THREE.Mesh(exportGeometry as unknown, exportMaterial)
+		const meshName = String(name || (mesh.userData as Record<string, unknown>)?.label || itemId || 'placeholder').trim() || 'placeholder'
+		exportMesh.name = meshName
+		exportMesh.position.set(0, 0, 0)
+		exportMesh.rotation.set(0, 0, 0)
+		exportMesh.scale.set(1, 1, 1)
+		exportMesh.updateMatrixWorld(true)
+
+		this.logExport('构建导出场景层级...')
+		const root = new THREE.Group()
+		root.name = meshName
+		root.userData = { source: 'scene-layout-placeholder', objectId: itemId, holed: true }
+		root.add(exportMesh)
+		root.updateMatrixWorld(true)
+
+		this.logExport('开始GLB二进制导出...')
+		const exporter = new GLTFExporter()
+		try {
+			const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+				exporter.parse(
+					root as unknown,
+					(result: unknown) => {
+						if (result instanceof ArrayBuffer) {
+							this.logExport(`GLB导出成功，数据大小：${(result.byteLength / 1024).toFixed(1)} KB`)
+							resolve(result)
+							return
+						}
+						reject(new Error('GLB export returned non-binary payload'))
+					},
+					(error: unknown) => reject(error instanceof Error ? error : new Error(String(error ?? 'GLB export failed'))),
+					{ binary: true, onlyVisible: true }
+				)
+			})
+			return arrayBuffer
+		} catch (err) {
+			this.logExport(`GLB导出失败：${err instanceof Error ? err.message : String(err)}`)
+			throw err
+		} finally {
+			(exportMaterial as unknown as { dispose: () => void }).dispose()
+		}
+	}
+
 	dispose() {
 		if (this.disposed) return
 		this.disposed = true
@@ -4865,6 +5875,13 @@ export class SceneLayoutPreviewViewer {
 		this.canvas.removeEventListener('wheel', this.handleWheel)
 		this.canvas.removeEventListener('keydown', this.handleKeyDown)
 		this.resizeObserver?.disconnect()
+		for (const cached of this.holedGeometryCache.values()) {
+			const geom = cached.geometry as { dispose?: () => void } | undefined
+			geom?.dispose?.()
+			const edgeGeom = cached.edgeGeometry as { dispose?: () => void } | undefined
+			edgeGeom?.dispose?.()
+		}
+		this.holedGeometryCache.clear()
 		this.clearLayout()
 		this.controls.removeEventListener('change', this.handleControlsChange)
 		this.controls.removeEventListener('start', this.handleControlsStart)

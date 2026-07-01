@@ -228,6 +228,22 @@
 								>
 									强制适配
 								</button>
+								<button
+									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
+									type="button"
+									:class="{ 'wf-scene-layout-btn-active': holePunchMode }"
+									@click.stop="toggleHolePunchMode"
+								>
+									{{ holePunchButtonLabel }}
+								</button>
+								<button
+									v-if="holePunchMode && holePunchCanConfirm"
+									class="wf-scene-layout-btn primary wf-scene-layout-overlay-btn"
+									type="button"
+									@click.stop="confirmHolePunch"
+								>
+									确认打洞
+								</button>
 							</div>
 							<div
 								v-if="previewMode && previewInteractive && lightingPreviewEnabled"
@@ -606,6 +622,17 @@ const lightingControls = computed<Required<WorkflowSceneLayoutLightingControls>>
 	...(settings.value?.lightingControls ?? {})
 }))
 const hidePlaceholderCubes = computed(() => settings.value?.hidePlaceholderCubes === true)
+const holePunchMode = ref(false)
+const holePunchStep = ref<'select-target' | 'select-tool'>('select-target')
+const holePunchTargetId = ref('')
+const holePunchToolId = ref('')
+const holePunchCanConfirm = computed(() => !!holePunchTargetId.value && !!holePunchToolId.value)
+const holePunchButtonLabel = computed(() => {
+	if (!holePunchMode.value) return '打洞'
+	if (holePunchStep.value === 'select-target') return '选择被打洞的占位体'
+	if (holePunchStep.value === 'select-tool') return '选择用来打洞的占位体'
+	return '打洞'
+})
 const layoutItems = computed(
 	() =>
 		(Array.isArray(settings.value?.layoutItems)
@@ -1082,6 +1109,27 @@ const forceFitSelectedModel = async () => {
 	lastActionMessage.value = result.message
 }
 
+const toggleHolePunchMode = () => {
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	if (holePunchMode.value) {
+		viewer.cancelHolePunchMode()
+	} else {
+		viewer.startHolePunchMode()
+	}
+}
+
+const confirmHolePunch = async () => {
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	const result = await viewer.confirmHolePunch()
+	lastActionMessage.value = result.message
+}
+
 const syncViewerState = () => {
 	if (!viewer) return
 	const effectiveHidePlaceholderCubes = previewMode.value ? hidePlaceholderCubes.value : false
@@ -1185,6 +1233,12 @@ const createViewerNow = () => {
 			onCameraInteractionEnd: () => {
 				saveViewState()
 			}
+		})
+		viewer.setHolePunchStateChangeCallback((state) => {
+			holePunchMode.value = state.mode
+			holePunchStep.value = state.step
+			holePunchTargetId.value = state.targetId
+			holePunchToolId.value = state.toolId
 		})
 		viewerInitCooldownUntil = 0
 		syncViewerState()
@@ -1437,8 +1491,70 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	}
 }
 
+const exportSelectedPlaceholderGLB = async (): Promise<
+	{ ok: true; glbData: ArrayBuffer; name: string } | { ok: false; error: string }
+> => {
+	lastActionMessage.value = '正在准备导出带洞几何体...'
+	if (!canvasRef.value) {
+		lastActionMessage.value = '导出失败：场景布局预览画布尚未挂载。'
+		return { ok: false, error: '场景布局预览画布尚未挂载。' }
+	}
+	if (!previewActive.value) {
+		lastActionMessage.value = '导出失败：请先进入预览模式并完成打洞操作。'
+		return { ok: false, error: '请先进入预览模式并选择要导出的带洞占位体。' }
+	}
+	ensureViewer()
+	if (!viewer) {
+		await nextTick()
+	}
+	if (!viewer) {
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+	}
+	if (!viewer) {
+		lastActionMessage.value = '导出失败：场景布局预览器尚未准备完成。'
+		return { ok: false, error: '场景布局预览器尚未准备完成。' }
+	}
+	viewer.setRenderSuspended(false)
+	viewer.setInteractive(true)
+	const itemId = selectedPreviewItemId.value
+	if (!itemId) {
+		lastActionMessage.value = '导出失败：请先在预览中选择一个打洞后的占位体。'
+		return { ok: false, error: '请先在预览中选择一个占位体。' }
+	}
+	viewer.setSelectedItem(itemId)
+
+	const setViewerLog = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
+	if (setViewerLog) {
+		setViewerLog.call(viewer, (msg: string) => {
+			lastActionMessage.value = `[导出] ${msg}`
+		})
+	}
+
+	lastActionMessage.value = '正在导出带洞几何体为GLB...'
+	try {
+		const selectedItem = layoutItems.value.find((item) => item.id === itemId)
+		const itemName = selectedItem?.name || selectedItem?.id || itemId
+		const glbData = await viewer.exportPlaceholderGLB(itemId, itemName)
+		if (setViewerLog) setViewerLog.call(viewer, null)
+		if (!glbData) {
+			lastActionMessage.value = '导出失败：未能获取几何体数据。'
+			return { ok: false, error: '导出占位体GLB失败，未能获取几何体数据。' }
+		}
+		lastActionMessage.value = `导出成功：${itemName}（带洞几何体）`
+		return { ok: true, glbData, name: itemName }
+	} catch (err) {
+		const setViewerLogCleanup = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
+		if (setViewerLogCleanup) setViewerLogCleanup.call(viewer, null)
+		const errMessage =
+			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
+		lastActionMessage.value = `导出失败：${errMessage}`
+		return { ok: false, error: `导出占位体GLB失败：${errMessage}` }
+	}
+}
+
 defineExpose({
-	getResolvedLayoutForUnreal
+	getResolvedLayoutForUnreal,
+	exportSelectedPlaceholderGLB
 })
 </script>
 
@@ -1486,6 +1602,11 @@ defineExpose({
 .wf-scene-layout-overlay-btn {
 	background: rgba(0, 0, 0, 0.5);
 	backdrop-filter: blur(8px);
+}
+
+.wf-scene-layout-btn-active {
+	background: rgba(59, 130, 246, 0.7) !important;
+	color: #fff !important;
 }
 
 .wf-scene-layout-lighting-dock {

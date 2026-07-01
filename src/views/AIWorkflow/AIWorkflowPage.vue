@@ -4684,94 +4684,30 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
 	) as SceneLayoutPlaceholderPayload | null
 	if (!placeholderPayload) return null
 
-	const positive = (value: unknown, fallback: number) => {
-		const next = Number(value)
-		return Number.isFinite(next) && next > 0 ? next : fallback
-	}
-	const signed = (value: unknown, fallback = 0) => {
-		const next = Number(value)
-		return Number.isFinite(next) ? next : fallback
-	}
-
-	const width = Math.max(
-		0.05,
-		positive(placeholderPayload?.size?.width, 1) *
-			Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.x, 1)))
-	)
-	const height = Math.max(
-		0.05,
-		positive(placeholderPayload?.size?.height, 1) *
-			Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.y, 1)))
-	)
-	const depth = Math.max(
-		0.05,
-		positive(placeholderPayload?.size?.depth, 1) *
-			Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.z, 1)))
-	)
-	const yaw = signed(placeholderPayload?.rotation?.yaw, 0)
-	const pitch = signed(placeholderPayload?.rotation?.pitch, 0)
-	const roll = signed(placeholderPayload?.rotation?.roll, 0)
 	const placeholderId = String(placeholderPayload?.objectId ?? '').trim()
 	const placeholderName =
 		String(placeholderPayload?.name ?? placeholderId ?? 'placeholder').trim() || 'placeholder'
 	const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
 	const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
 
-	const geometry = new THREE.BoxGeometry(width, height, depth)
-	const material = new THREE.MeshStandardMaterial({
-		color: String(placeholderPayload?.color ?? '').trim() || '#94a3b8',
-		roughness: 0.88,
-		metalness: 0.08
-	})
-	const mesh = new THREE.Mesh(geometry, material)
-	mesh.name = placeholderName
-	mesh.position.set(0, height * 0.5, 0)
-	mesh.rotation.set((pitch * Math.PI) / 180, (yaw * Math.PI) / 180, (roll * Math.PI) / 180, 'XYZ')
+	pushToast('正在导出带洞几何体...', 'info')
 
-	const root = new THREE.Group()
-	root.name = placeholderName
-	root.userData = {
-		source: 'scene-layout-placeholder',
-		nodeId,
-		objectId: placeholderId
+	const viewerExportResult = await exportSceneLayoutPlaceholderGLB(nodeId)
+	if (!viewerExportResult.ok || !viewerExportResult.glbData) {
+		const errorMsg = viewerExportResult.ok ? '未能获取GLB数据' : viewerExportResult.error
+		pushToast(`导出带洞几何体失败：${errorMsg}`, 'error')
+		throw new Error(`导出带洞占位体失败：${errorMsg}`)
 	}
-	root.add(mesh)
-	root.updateMatrixWorld(true)
 
-	const exporter = new GLTFExporter()
-	try {
-		const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-			exporter.parse(
-				root,
-				(result: unknown) => {
-					if (result instanceof ArrayBuffer) {
-						resolve(result)
-						return
-					}
-					reject(new Error('placeholder glb export returned non-binary payload'))
-				},
-				(error: unknown) =>
-					reject(
-						error instanceof Error
-							? error
-							: new Error(String(error ?? 'placeholder glb export failed'))
-					),
-				{ binary: true, onlyVisible: true }
-			)
-		})
-
-		const fileName = `${slugSceneLayoutPlaceholderModelName(`${placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
-		const file = new File([arrayBuffer], fileName, { type: 'model/gltf-binary' })
-		return {
-			file,
-			signature,
-			placeholderId,
-			placeholderJson,
-			placeholderName
-		}
-	} finally {
-		geometry.dispose()
-		material.dispose()
+	const fileName = `${slugSceneLayoutPlaceholderModelName(`${viewerExportResult.name || placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
+	const file = new File([viewerExportResult.glbData], fileName, { type: 'model/gltf-binary' })
+	pushToast(`成功导出带洞几何体：${viewerExportResult.name || placeholderName}`, 'info')
+	return {
+		file,
+		signature,
+		placeholderId,
+		placeholderJson,
+		placeholderName: viewerExportResult.name || placeholderName
 	}
 }
 
@@ -4903,7 +4839,10 @@ const { buildMeshyRequestPayload } = useAIWorkflowMeshyRequest({
 	meshyImageOutputCount
 })
 
-const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: boolean }) => {
+const syncModel3DInputFromUpstream = async (
+	nodeId: string,
+	opts?: { warn?: boolean; forceSceneLayoutExport?: boolean }
+) => {
 	const node = store.state.nodesById[nodeId]
 	if (!node || node.type !== 'model3d') return false
 
@@ -5019,6 +4958,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 		}
 
 		if (fromNode.type === 'scene-layout' && fromAnchorId === 'out-selected-placeholder') {
+			if (!opts?.forceSceneLayoutExport) continue
 			const generated = await createSceneLayoutPlaceholderModelFile(fromNode.id)
 			if (!generated) continue
 			const nextSignature = generated.signature
@@ -5060,14 +5000,17 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 	return false
 }
 
-const syncConnectedModel3DTargets = async (fromNodeId: string) => {
+const syncConnectedModel3DTargets = async (
+	fromNodeId: string,
+	opts?: { forceSceneLayoutExport?: boolean }
+) => {
 	const targets = getOutgoingEdges(fromNodeId)
 		.filter((e: WorkflowEdge) => String(e.toAnchorId ?? '') === 'in-resource')
 		.map((e: WorkflowEdge) => String(e.toNodeId ?? '').trim())
 		.filter((id: string, index: number, arr: string[]) => !!id && arr.indexOf(id) === index)
 
 	for (const nodeId of targets) {
-		await syncModel3DInputFromUpstream(nodeId)
+		await syncModel3DInputFromUpstream(nodeId, { forceSceneLayoutExport: opts?.forceSceneLayoutExport })
 	}
 }
 
@@ -5904,6 +5847,9 @@ type SceneLayoutNodeExpose = {
 	getResolvedLayoutForUnreal: () => Promise<
 		{ ok: true; exportData: WorkflowUnrealResolvedLayoutExport } | { ok: false; error: string }
 	>
+	exportSelectedPlaceholderGLB: () => Promise<
+		{ ok: true; glbData: ArrayBuffer; name: string } | { ok: false; error: string }
+	>
 }
 
 const sceneLayoutNodeComponentRefs = new Map<string, SceneLayoutNodeExpose>()
@@ -5913,7 +5859,8 @@ const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 		if (nodeType !== 'scene-layout') return
 		if (
 			instance &&
-			typeof (instance as SceneLayoutNodeExpose).getResolvedLayoutForUnreal === 'function'
+			typeof (instance as SceneLayoutNodeExpose).getResolvedLayoutForUnreal === 'function' &&
+			typeof (instance as SceneLayoutNodeExpose).exportSelectedPlaceholderGLB === 'function'
 		) {
 			sceneLayoutNodeComponentRefs.set(nodeId, instance as SceneLayoutNodeExpose)
 			return
@@ -5933,6 +5880,22 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	}
 	try {
 		return await instance.getResolvedLayoutForUnreal()
+	} catch (err: unknown) {
+		return { ok: false as const, error: getErrorMessage(err) }
+	}
+}
+
+const exportSceneLayoutPlaceholderGLB = async (sceneLayoutNodeId: string) => {
+	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+	if (!normalizedNodeId) {
+		return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+	}
+	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
+	if (!instance || typeof instance.exportSelectedPlaceholderGLB !== 'function') {
+		return { ok: false as const, error: '未找到场景布局预览实例，请先打开预览并选择要传递的占位体。' }
+	}
+	try {
+		return await instance.exportSelectedPlaceholderGLB()
 	} catch (err: unknown) {
 		return { ok: false as const, error: getErrorMessage(err) }
 	}
