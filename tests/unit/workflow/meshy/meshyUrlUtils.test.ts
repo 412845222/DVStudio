@@ -49,7 +49,7 @@ describe('meshyUrlUtils', () => {
 			expect(result.preferredUrl).toBe('')
 			expect(result.assetUrl).toBe('')
 			expect(result.assetPath).toBe('')
-			expect(result.format).toBe('glb')
+			expect(result.format).toBe('gltf')
 		})
 
 		it('should extract model source from relationSummary', () => {
@@ -105,14 +105,25 @@ describe('meshyUrlUtils', () => {
 			expect(result.format).toBe('glb')
 		})
 
-		it('should fall back to gltf format when no glb available', () => {
+		it('should fall back to fbx format when no glb available', () => {
+			const settings = {
+				meshyModelUrls: {
+					fbx: 'model.fbx'
+				}
+			}
+			const result = getMeshyEffectiveModelSource(settings)
+			expect(result.preferredUrl).toBe('model.fbx')
+			expect(result.format).toBe('gltf')
+		})
+
+		it('should return empty preferredUrl for gltf-only meshyModelUrls', () => {
 			const settings = {
 				meshyModelUrls: {
 					gltf: 'model.gltf'
 				}
 			}
 			const result = getMeshyEffectiveModelSource(settings)
-			expect(result.preferredUrl).toBe('model.gltf')
+			expect(result.preferredUrl).toBe('')
 			expect(result.format).toBe('gltf')
 		})
 	})
