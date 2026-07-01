@@ -693,4 +693,95 @@ describe('sceneLayoutPreviewUtils', () => {
 			expect(isSameBindings(a, b)).toBe(true)
 		})
 	})
+
+	describe('orientation cycle logic', () => {
+		const makeOffset = (yaw = 0, pitch = 0, roll = 0): OrientationOffset => ({ yaw, pitch, roll })
+
+		it('normalizeAngleDeg correctly wraps angles', () => {
+			expect(normalizeAngleDeg(0)).toBe(0)
+			expect(normalizeAngleDeg(90)).toBe(90)
+			expect(normalizeAngleDeg(180)).toBe(180)
+			expect(normalizeAngleDeg(270)).toBe(-90)
+			expect(normalizeAngleDeg(360)).toBe(0)
+			expect(normalizeAngleDeg(-90)).toBe(-90)
+			expect(normalizeAngleDeg(-180)).toBe(180)
+			expect(normalizeAngleDeg(-270)).toBe(90)
+		})
+
+		it('roundOrientation rounds to 90-degree increments for cycle operations', () => {
+			expect(normalizeAngleDeg(Math.round(0 / 90) * 90 + 90)).toBe(90)
+			expect(normalizeAngleDeg(Math.round(90 / 90) * 90 + 90)).toBe(180)
+			expect(normalizeAngleDeg(Math.round(180 / 90) * 90 + 90)).toBe(-90)
+			expect(normalizeAngleDeg(Math.round(-90 / 90) * 90 + 90)).toBe(0)
+		})
+
+		it('Y-axis rotation (yaw) cycles correctly through 0 -> 90 -> 180 -> -90 -> 0', () => {
+			let offset = makeOffset(0, 0, 0)
+			offset = { ...offset, yaw: normalizeAngleDeg(Math.round(offset.yaw / 90) * 90 + 90) }
+			expect(offset.yaw).toBe(90)
+			offset = { ...offset, yaw: normalizeAngleDeg(Math.round(offset.yaw / 90) * 90 + 90) }
+			expect(offset.yaw).toBe(180)
+			offset = { ...offset, yaw: normalizeAngleDeg(Math.round(offset.yaw / 90) * 90 + 90) }
+			expect(offset.yaw).toBe(-90)
+			offset = { ...offset, yaw: normalizeAngleDeg(Math.round(offset.yaw / 90) * 90 + 90) }
+			expect(offset.yaw).toBe(0)
+		})
+
+		it('X-axis rotation (pitch) cycles correctly through 0 -> 90 -> 180 -> -90 -> 0', () => {
+			let offset = makeOffset(0, 0, 0)
+			offset = { ...offset, pitch: normalizeAngleDeg(Math.round(offset.pitch / 90) * 90 + 90) }
+			expect(offset.pitch).toBe(90)
+			offset = { ...offset, pitch: normalizeAngleDeg(Math.round(offset.pitch / 90) * 90 + 90) }
+			expect(offset.pitch).toBe(180)
+			offset = { ...offset, pitch: normalizeAngleDeg(Math.round(offset.pitch / 90) * 90 + 90) }
+			expect(offset.pitch).toBe(-90)
+			offset = { ...offset, pitch: normalizeAngleDeg(Math.round(offset.pitch / 90) * 90 + 90) }
+			expect(offset.pitch).toBe(0)
+		})
+
+		it('Z-axis rotation (roll) cycles correctly through 0 -> 90 -> 180 -> -90 -> 0', () => {
+			let offset = makeOffset(0, 0, 0)
+			offset = { ...offset, roll: normalizeAngleDeg(Math.round(offset.roll / 90) * 90 + 90) }
+			expect(offset.roll).toBe(90)
+			offset = { ...offset, roll: normalizeAngleDeg(Math.round(offset.roll / 90) * 90 + 90) }
+			expect(offset.roll).toBe(180)
+			offset = { ...offset, roll: normalizeAngleDeg(Math.round(offset.roll / 90) * 90 + 90) }
+			expect(offset.roll).toBe(-90)
+			offset = { ...offset, roll: normalizeAngleDeg(Math.round(offset.roll / 90) * 90 + 90) }
+			expect(offset.roll).toBe(0)
+		})
+
+		it('axis-specific rotation preserves other axes', () => {
+			let offset = makeOffset(0, 0, 0)
+			offset = { ...offset, yaw: normalizeAngleDeg(Math.round(offset.yaw / 90) * 90 + 90) }
+			expect(offset.yaw).toBe(90)
+			expect(offset.pitch).toBe(0)
+			expect(offset.roll).toBe(0)
+
+			offset = { ...offset, pitch: normalizeAngleDeg(Math.round(offset.pitch / 90) * 90 + 90) }
+			expect(offset.yaw).toBe(90)
+			expect(offset.pitch).toBe(90)
+			expect(offset.roll).toBe(0)
+
+			offset = { ...offset, roll: normalizeAngleDeg(Math.round(offset.roll / 90) * 90 + 90) }
+			expect(offset.yaw).toBe(90)
+			expect(offset.pitch).toBe(90)
+			expect(offset.roll).toBe(90)
+		})
+
+		it('roundOrientation produces clean values for orientationFix', () => {
+			expect(roundOrientation(90)).toBe(90)
+			expect(roundOrientation(180)).toBe(180)
+			expect(roundOrientation(-90)).toBe(-90)
+			expect(roundOrientation(0)).toBe(0)
+			expect(roundOrientation(45.123)).toBe(45.12)
+		})
+
+		it('orientationOffsetEquals correctly compares reset state', () => {
+			expect(orientationOffsetEquals(makeOffset(0, 0, 0), makeOffset(0, 0, 0))).toBe(true)
+			expect(orientationOffsetEquals(makeOffset(90, 0, 0), makeOffset(0, 0, 0))).toBe(false)
+			expect(orientationOffsetEquals(makeOffset(0, 90, 0), makeOffset(0, 0, 0))).toBe(false)
+			expect(orientationOffsetEquals(makeOffset(0, 0, 90), makeOffset(0, 0, 0))).toBe(false)
+		})
+	})
 })

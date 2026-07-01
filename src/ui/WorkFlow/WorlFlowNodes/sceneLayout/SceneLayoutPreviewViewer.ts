@@ -2956,6 +2956,28 @@ export class SceneLayoutPreviewViewer {
 		}
 	}
 
+	private cycleOrientationPitch(existingOffset: OrientationOffset): OrientationOffset {
+		const currentPitch = normalizeAngleDeg(existingOffset.pitch)
+		const roundedPitch = Math.round(currentPitch / 90) * 90
+		const nextPitch = normalizeAngleDeg(roundedPitch + 90)
+		return {
+			yaw: existingOffset.yaw,
+			pitch: nextPitch,
+			roll: existingOffset.roll
+		}
+	}
+
+	private cycleOrientationRoll(existingOffset: OrientationOffset): OrientationOffset {
+		const currentRoll = normalizeAngleDeg(existingOffset.roll)
+		const roundedRoll = Math.round(currentRoll / 90) * 90
+		const nextRoll = normalizeAngleDeg(roundedRoll + 90)
+		return {
+			yaw: existingOffset.yaw,
+			pitch: existingOffset.pitch,
+			roll: nextRoll
+		}
+	}
+
 	private resolveAxisReferenceScale(
 		axis: FillAxis,
 		previewScaleMode: string,
@@ -3624,6 +3646,10 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	async adjustSelectedModelOrientation(): Promise<SceneLayoutActionResult> {
+		return this.rotateSelectedModelByAxis('y')
+	}
+
+	async rotateSelectedModelByAxis(axis: 'x' | 'y' | 'z'): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
 			return { ok: false, applied: false, mode: 'normal', message: '请先选中一个占位体。' }
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
@@ -3654,7 +3680,14 @@ export class SceneLayoutPreviewViewer {
 		}
 		try {
 			const existingOffset = this.resolveExistingOrientationOffset(item)
-			const cycled = this.cycleOrientationYaw(existingOffset)
+			let cycled: OrientationOffset
+			if (axis === 'x') {
+				cycled = this.cycleOrientationPitch(existingOffset)
+			} else if (axis === 'z') {
+				cycled = this.cycleOrientationRoll(existingOffset)
+			} else {
+				cycled = this.cycleOrientationYaw(existingOffset)
+			}
 			const semanticClass = this.classifyObjectSemantics(item)
 			const constrained = this.applyManualOrientationConstraint(cycled, semanticClass)
 
@@ -3669,8 +3702,14 @@ export class SceneLayoutPreviewViewer {
 
 			this.clearFillState(item)
 
-			const yawLabel = roundOrientation(constrained.yaw)
-			const message = `已调整朝向为 ${yawLabel}°（${yawLabel === 0 ? '初始' : yawLabel === 180 || yawLabel === -180 ? '反向' : '侧向'}）。再次点击可继续旋转 90°。`
+			const axisLabel = axis === 'x' ? 'X' : axis === 'y' ? 'Y' : 'Z'
+			const angleLabel =
+				axis === 'x'
+					? roundOrientation(constrained.pitch)
+					: axis === 'z'
+						? roundOrientation(constrained.roll)
+						: roundOrientation(constrained.yaw)
+			const message = `已沿 ${axisLabel} 轴旋转至 ${angleLabel}°。再次点击可继续旋转 90°。`
 
 			await this.rebuildBoundModelForItem(this.selectedId, 'keep')
 
@@ -3686,6 +3725,50 @@ export class SceneLayoutPreviewViewer {
 				applied: false,
 				mode: 'normal',
 				message: '模型模板加载失败，暂时无法调整朝向。'
+			}
+		}
+	}
+
+	async resetSelectedModelOrientation(): Promise<SceneLayoutActionResult> {
+		if (!this.selectedId)
+			return { ok: false, applied: false, mode: 'normal', message: '请先选中一个占位体。' }
+		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
+		const binding = this.bindingById.get(this.selectedId)
+		if (!item || !binding) {
+			return {
+				ok: false,
+				applied: false,
+				mode: 'normal',
+				message: '当前占位体还没有可重置的真实模型。'
+			}
+		}
+		if (!item.orientationFix) {
+			return {
+				ok: true,
+				applied: false,
+				mode: 'normal',
+				message: '当前模型已是初始朝向，无需重置。'
+			}
+		}
+		try {
+			item.orientationFix = undefined
+			this.clearFillState(item)
+			this.clearForcedFitState(item)
+
+			const message = '已撤销旋转，模型恢复到初始朝向。'
+
+			await this.rebuildBoundModelForItem(this.selectedId, 'auto')
+
+			const fitChanged = this.setFitState(item, 'normal', message)
+			if (fitChanged || !item.orientationFix) this.emitLayoutChange()
+			this.requestRender()
+			return { ok: true, applied: true, mode: 'normal', message }
+		} catch {
+			return {
+				ok: false,
+				applied: false,
+				mode: 'normal',
+				message: '模型模板加载失败，暂时无法重置朝向。'
 			}
 		}
 	}
@@ -4049,19 +4132,6 @@ export class SceneLayoutPreviewViewer {
 		let roll = normalizeAngleDeg(offset.roll)
 
 		switch (semanticClass) {
-			case 'floor-standing':
-			case 'surface-placed':
-			case 'support-surface':
-			case 'wall-mounted':
-			case 'wall-support':
-			case 'unknown':
-				pitch = 0
-				roll = 0
-				break
-			case 'ceiling-mounted':
-				pitch = -90
-				roll = 0
-				break
 			case 'structure':
 				yaw = 0
 				pitch = 0
