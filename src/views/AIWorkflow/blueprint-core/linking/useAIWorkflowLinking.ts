@@ -158,8 +158,10 @@ export const useAIWorkflowLinking = (payload: {
 	): WorkflowAnchorMagnetCandidate[] => {
 		if (payload.canvasAnchors) {
 			const candidates: WorkflowAnchorMagnetCandidate[] = []
+			const canvasNodeIds = new Set<string>()
 			for (const a of payload.canvasAnchors.value) {
 				if (!directions.includes(a.direction)) continue
+				canvasNodeIds.add(a.nodeId)
 				candidates.push({
 					nodeId: a.nodeId,
 					anchorId: a.anchorId,
@@ -169,13 +171,43 @@ export const useAIWorkflowLinking = (payload: {
 					mediaType: a.mediaType
 				})
 			}
+			if (typeof document !== 'undefined') {
+				const domElements = Array.from(
+					document.querySelectorAll<HTMLElement>(
+						'.wf-node [data-wf-node-id][data-wf-anchor-id][data-wf-dir]'
+					)
+				)
+				for (const el of domElements) {
+					const direction = String(el.dataset.wfDir ?? '') === 'out' ? 'out' : 'in'
+					if (!directions.includes(direction)) continue
+					const rect = el.getBoundingClientRect()
+					if (rect.width <= 0 || rect.height <= 0) continue
+					const nodeId = String(el.dataset.wfNodeId ?? '').trim()
+					const anchorId = String(el.dataset.wfAnchorId ?? '').trim()
+					if (!nodeId || !anchorId) continue
+					if (canvasNodeIds.has(nodeId)) continue
+					const rawIndex = Number(el.dataset.wfAnchorIndex)
+					const centerClient = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+					const centerCanvas = payload.clientToCanvasPoint(centerClient)
+					if (!centerCanvas) continue
+					candidates.push({
+						nodeId,
+						anchorId,
+						anchorIndex: Number.isFinite(rawIndex) ? rawIndex : 0,
+						direction,
+						center: { x: centerCanvas.x, y: centerCanvas.y }
+					})
+				}
+			}
 			return candidates
 		}
 
 		if (typeof document === 'undefined') return []
 		const result: WorkflowAnchorMagnetCandidate[] = []
 		const elements = Array.from(
-			document.querySelectorAll<HTMLElement>('[data-wf-node-id][data-wf-anchor-id][data-wf-dir]')
+			document.querySelectorAll<HTMLElement>(
+				'.wf-node [data-wf-node-id][data-wf-anchor-id][data-wf-dir]'
+			)
 		)
 		for (const el of elements) {
 			const direction = String(el.dataset.wfDir ?? '') === 'out' ? 'out' : 'in'
@@ -333,7 +365,7 @@ export const useAIWorkflowLinking = (payload: {
 	): HTMLElement | null => {
 		if (typeof document === 'undefined') return null
 		const selector = [
-			`[data-wf-node-id="${String(nodeId ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`,
+			`.wf-node [data-wf-node-id="${String(nodeId ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`,
 			`[data-wf-anchor-id="${String(anchorId ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`,
 			`[data-wf-dir="${direction}"]`
 		].join('')
@@ -391,9 +423,8 @@ export const useAIWorkflowLinking = (payload: {
 	const applyMagnetVisual = (target: WorkflowAnchorMagnetTarget | null) => {
 		if (payload.canvasAnchors) {
 			updateAnchorVisualStates(target)
-		} else {
-			applyMagnetToDom(target)
 		}
+		applyMagnetToDom(target)
 	}
 
 	const updateTooltipState = (target: DropTarget | null) => {

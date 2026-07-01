@@ -1346,6 +1346,9 @@ const warmupForceRenderNodeIds = ref<Set<string>>(new Set())
 const warmupExitingFullRender = ref(false)
 const nearDragNodeIds = ref<Set<string>>(new Set())
 const panningFullRenderSnapshot = ref<Set<string> | null>(null)
+const stableLinkHoverNodeId = ref<string>('')
+let linkHoverStableTimer: ReturnType<typeof setTimeout> | null = null
+const LINK_HOVER_STABLE_DELAY_MS = 400
 
 const warmupConfirmDialogOpen = ref(false)
 
@@ -1650,6 +1653,21 @@ const isNodeInViewport = (node: WorkflowNode): boolean => {
 }
 
 const fullRenderNodeIds = computed<Set<string>>(() => {
+	// ==========================================
+	// 连线过程中（isLinking为true），锁定所有节点为Canvas渲染模式
+	// 锚点交互完全由 WorkflowEdgeLayer (canvas层) + linkInteraction 处理
+	// 无论节点之前是DOM模式还是canvas模式，连线期间一律使用canvas锚点
+	// 彻底避免节点在canvas/DOM模式间切换导致的闪烁
+	// ==========================================
+	if (isLinking.value) {
+		const lockedIds = new Set<string>()
+		if (nodeChatDialog.value.visible && nodeChatDialog.value.nodeId) {
+			const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
+			if (chatNodeId) lockedIds.add(chatNodeId)
+		}
+		return lockedIds
+	}
+
 	if (panningFullRenderSnapshot.value) {
 		return panningFullRenderSnapshot.value
 	}
@@ -1673,7 +1691,7 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 	const linkFromId = linkingFromNodeId.value
 	if (linkFromId) coreIds.add(String(linkFromId))
 
-	const linkHoverId = linkingHoverNodeId.value
+	const linkHoverId = stableLinkHoverNodeId.value
 	if (linkHoverId) {
 		const nid = String(linkHoverId).trim()
 		if (nid) coreIds.add(nid)
@@ -1688,9 +1706,6 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 
 	// ==========================================
 	// Step 2: 直接邻居节点（仅一层，绝不传递）
-	// 必须满足：
-	//   1. 与核心节点直接有线连接
-	//   2. 节点真正在视口几何范围内
 	// ==========================================
 	const result = new Set<string>(coreIds)
 	const nodesById = store.state.nodesById as Record<string, WorkflowNode | undefined>
@@ -7475,6 +7490,41 @@ const {
 })
 getLinkWorkflowWorldToCanvas = () => workflowWorldToCanvas
 scheduleLinkEdgeRender = scheduleAsyncEdgeRender
+
+const clearLinkHoverStableTimer = () => {
+	if (linkHoverStableTimer) {
+		clearTimeout(linkHoverStableTimer)
+		linkHoverStableTimer = null
+	}
+}
+
+watch(
+	() => linkInteraction.linkingHoverNodeId.value,
+	(nextHoverId) => {
+		const hoverId = String(nextHoverId ?? '').trim()
+		if (hoverId) {
+			clearLinkHoverStableTimer()
+			stableLinkHoverNodeId.value = hoverId
+		} else {
+			if (!stableLinkHoverNodeId.value) return
+			clearLinkHoverStableTimer()
+			linkHoverStableTimer = setTimeout(() => {
+				stableLinkHoverNodeId.value = ''
+				linkHoverStableTimer = null
+			}, LINK_HOVER_STABLE_DELAY_MS)
+		}
+	}
+)
+
+watch(
+	() => linkInteraction.isLinking.value,
+	(isLinking) => {
+		if (!isLinking) {
+			clearLinkHoverStableTimer()
+			stableLinkHoverNodeId.value = ''
+		}
+	}
+)
 
 let nearDragRafId: number | null = null
 let nearDragLastPointer: { x: number; y: number } | null = null
