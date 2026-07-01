@@ -703,6 +703,8 @@ namespace
 			return;
 		}
 
+		SCS->Modify();
+
 		TArray<USCS_Node*> ExistingNodes = SCS->GetAllNodes();
 		for (USCS_Node* Node : ExistingNodes)
 		{
@@ -712,11 +714,116 @@ namespace
 			}
 
 			const FString VariableName = Node->GetVariableName().ToString();
-			if (VariableName.StartsWith(TEXT("DwebList_"), ESearchCase::CaseSensitive))
+			if (VariableName.StartsWith(TEXT("SM_"), ESearchCase::CaseSensitive) ||
+				VariableName.StartsWith(TEXT("DwebMesh_"), ESearchCase::CaseSensitive))
 			{
 				SCS->RemoveNode(Node);
 			}
 		}
+
+		USCS_Node* RootNode = SCS->GetDefaultSceneRootNode();
+		if (!RootNode)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow SyncBlueprintMeshListNodes: No default scene root node found."));
+			return;
+		}
+
+		if (USceneComponent* RootComp = Cast<USceneComponent>(RootNode->ComponentTemplate))
+		{
+			RootComp->SetMobility(EComponentMobility::Movable);
+		}
+
+		int32 AddedNodeCount = 0;
+		for (int32 SlotIndex = 0; SlotIndex < LayoutSlots.Num(); ++SlotIndex)
+		{
+			const FDwebWorkflowLayoutSlot& Slot = LayoutSlots[SlotIndex];
+			if (!Slot.bEnabled || !Slot.StaticMeshAsset)
+			{
+				continue;
+			}
+
+			const FTransform FinalTransform = Slot.MeshRelativeTransform;
+
+			UE_LOG(LogTemp, Log, TEXT("DwebWorkflow Slot[%d]: %s Mesh=%s Loc=(%.1f,%.1f,%.1f) Rot=(P=%.1f,Y=%.1f,R=%.1f) Scale=(%.2f,%.2f,%.2f)"),
+				SlotIndex,
+				*Slot.SlotId,
+				Slot.StaticMeshAsset ? *Slot.StaticMeshAsset->GetName() : TEXT("None"),
+				FinalTransform.GetLocation().X, FinalTransform.GetLocation().Y, FinalTransform.GetLocation().Z,
+				FinalTransform.Rotator().Pitch, FinalTransform.Rotator().Yaw, FinalTransform.Rotator().Roll,
+				FinalTransform.GetScale3D().X, FinalTransform.GetScale3D().Y, FinalTransform.GetScale3D().Z);
+
+			FString BaseName = Slot.SlotId.TrimStartAndEnd();
+			if (BaseName.IsEmpty())
+			{
+				BaseName = Slot.DisplayName.TrimStartAndEnd();
+			}
+			if (BaseName.IsEmpty())
+			{
+				BaseName = FString::Printf(TEXT("Slot_%d"), SlotIndex + 1);
+			}
+			for (TCHAR& Ch : BaseName)
+			{
+				if (FChar::IsWhitespace(Ch) || Ch == TEXT('-') || Ch == TEXT('/') || Ch == TEXT('\\') || Ch == TEXT('.') || Ch == TEXT(',') || Ch == TEXT(':') || Ch == TEXT(';'))
+				{
+					Ch = TEXT('_');
+				}
+			}
+			if (BaseName.Len() > 60)
+			{
+				BaseName = BaseName.Left(60);
+			}
+
+			FName NodeName = SCS->GenerateNewComponentName(UStaticMeshComponent::StaticClass(), FName(*FString::Printf(TEXT("SM_%s"), *BaseName)));
+
+			USCS_Node* NewNode = SCS->CreateNode(UStaticMeshComponent::StaticClass(), NodeName);
+			if (!NewNode)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow SyncBlueprintMeshListNodes: Failed to create SCS node for slot %s."), *BaseName);
+				continue;
+			}
+
+			UStaticMeshComponent* MeshTemplate = Cast<UStaticMeshComponent>(NewNode->ComponentTemplate);
+			if (MeshTemplate)
+			{
+				MeshTemplate->SetMobility(EComponentMobility::Movable);
+				MeshTemplate->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				MeshTemplate->SetGenerateOverlapEvents(true);
+				MeshTemplate->SetStaticMesh(Slot.StaticMeshAsset);
+				MeshTemplate->SetRelativeLocation(FinalTransform.GetLocation());
+				MeshTemplate->SetRelativeRotation(FinalTransform.Rotator());
+				MeshTemplate->SetRelativeScale3D(FinalTransform.GetScale3D());
+
+				for (const FDwebWorkflowMaterialOverride& MaterialOverride : Slot.MaterialOverrides)
+				{
+					if (!MaterialOverride.bEnabled || !MaterialOverride.MaterialInterface)
+					{
+						continue;
+					}
+					const int32 MaterialIndex = !MaterialOverride.MaterialSlotName.IsNone()
+						? MeshTemplate->GetMaterialIndex(MaterialOverride.MaterialSlotName)
+						: 0;
+					if (MaterialIndex >= 0)
+					{
+						MeshTemplate->SetMaterial(MaterialIndex, MaterialOverride.MaterialInterface);
+					}
+				}
+			}
+
+			RootNode->AddChildNode(NewNode);
+
+			if (MeshTemplate)
+			{
+				MeshTemplate->SetRelativeLocation(FinalTransform.GetLocation());
+				MeshTemplate->SetRelativeRotation(FinalTransform.Rotator());
+				MeshTemplate->SetRelativeScale3D(FinalTransform.GetScale3D());
+			}
+
+			++AddedNodeCount;
+		}
+
+		SCS->ValidateSceneRootNodes();
+
+		UE_LOG(LogTemp, Display, TEXT("DwebWorkflow SyncBlueprintMeshListNodes: Added %d SCS mesh nodes to blueprint."), AddedNodeCount);
 	}
 
 	TArray<FString> ReadStringArrayField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName)
@@ -3258,7 +3365,7 @@ void FDwebWorkflowBridgeModule::ApplyLayoutComponentsToSelectedActors()
 			FString ParentId = Slot.ParentSlotId.TrimStartAndEnd();
 			if (ParentId.IsEmpty())
 			{
-				FinalTransform = Slot.TransformData.WorldTransform * Slot.MeshRelativeTransform;
+				FinalTransform = Slot.MeshRelativeTransform;
 			}
 			else
 			{
