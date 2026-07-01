@@ -534,6 +534,58 @@ describe('sceneLayoutPreviewUtils', () => {
 			expect(isSameItem(makeItem({ fillAxisScale: 1 }), makeItem({ fillAxisScale: 2 }))).toBe(false)
 		})
 
+		it('returns true when both items have no holePunches', () => {
+			expect(isSameItem(makeItem(), makeItem())).toBe(true)
+			expect(isSameItem(makeItem({ holePunches: undefined }), makeItem({ holePunches: undefined }))).toBe(true)
+		})
+
+		it('returns false when only one item has holePunches', () => {
+			const holes = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 }]
+			expect(isSameItem(makeItem({ holePunches: holes }), makeItem({ holePunches: undefined }))).toBe(false)
+			expect(isSameItem(makeItem({ holePunches: undefined }), makeItem({ holePunches: holes }))).toBe(false)
+		})
+
+		it('returns false when holePunches counts differ', () => {
+			const holes1 = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 }]
+			const holes2 = [
+				{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 },
+				{ id: 'h2', targetItemId: 't2', toolItemId: 'tool2', createdAt: 0 }
+			]
+			expect(isSameItem(makeItem({ holePunches: holes1 }), makeItem({ holePunches: holes2 }))).toBe(false)
+		})
+
+		it('returns false when holePunches id differs', () => {
+			const a = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 }]
+			const b = [{ id: 'h2', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 }]
+			expect(isSameItem(makeItem({ holePunches: a }), makeItem({ holePunches: b }))).toBe(false)
+		})
+
+		it('returns false when holePunches targetItemId differs', () => {
+			const a = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 }]
+			const b = [{ id: 'h1', targetItemId: 't2', toolItemId: 'tool1', createdAt: 0 }]
+			expect(isSameItem(makeItem({ holePunches: a }), makeItem({ holePunches: b }))).toBe(false)
+		})
+
+		it('returns false when holePunches toolItemId differs', () => {
+			const a = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 }]
+			const b = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool2', createdAt: 0 }]
+			expect(isSameItem(makeItem({ holePunches: a }), makeItem({ holePunches: b }))).toBe(false)
+		})
+
+		it('returns true when holePunches match except createdAt (createdAt is not compared)', () => {
+			const a = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 100 }]
+			const b = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 200 }]
+			expect(isSameItem(makeItem({ holePunches: a }), makeItem({ holePunches: b }))).toBe(true)
+		})
+
+		it('returns true when holePunches are identical', () => {
+			const holes = [
+				{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 },
+				{ id: 'h2', targetItemId: 't2', toolItemId: 'tool2', createdAt: 0 }
+			]
+			expect(isSameItem(makeItem({ holePunches: holes }), makeItem({ holePunches: holes.map((h) => ({ ...h })) }))).toBe(true)
+		})
+
 		it('returns true for same object reference', () => {
 			const item = makeItem()
 			expect(isSameItem(item, item)).toBe(true)

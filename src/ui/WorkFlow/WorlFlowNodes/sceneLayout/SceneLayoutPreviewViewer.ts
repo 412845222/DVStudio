@@ -537,6 +537,13 @@ export const orientationOffsetEquals = (a: OrientationOffset, b: OrientationOffs
 	)
 }
 
+export const constrainManualOrientation = (offset: OrientationOffset): OrientationOffset => {
+	const yaw = normalizeAngleDeg(offset.yaw)
+	const pitch = normalizeAngleDeg(offset.pitch)
+	const roll = normalizeAngleDeg(offset.roll)
+	return { ...offset, yaw, pitch, roll }
+}
+
 export const roundOrientation = (value: number) => Math.round(normalizeAngleDeg(value) * 100) / 100
 
 export const canonicalWallRole = (value: unknown) => {
@@ -4172,11 +4179,7 @@ export class SceneLayoutPreviewViewer {
 		offset: OrientationOffset,
 		_semanticClass: ObjectSemanticClass
 	): OrientationOffset {
-		const yaw = normalizeAngleDeg(offset.yaw)
-		const pitch = normalizeAngleDeg(offset.pitch)
-		const roll = normalizeAngleDeg(offset.roll)
-
-		return { ...offset, yaw, pitch, roll }
+		return constrainManualOrientation(offset)
 	}
 
 	private applySurfaceFacingConstraint(
