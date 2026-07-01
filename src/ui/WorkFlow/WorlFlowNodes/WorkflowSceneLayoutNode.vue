@@ -154,13 +154,66 @@
 								>
 									清除模型
 								</button>
-								<button
-									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
-									type="button"
-									@click.stop="adjustSelectedOrientation"
-								>
-									调整朝向
-								</button>
+								<div class="wf-scene-layout-orientation-group">
+									<button
+										class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn wf-scene-layout-orientation-main"
+										type="button"
+										@click.stop="adjustSelectedOrientation"
+									>
+										调整朝向
+									</button>
+									<button
+										class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn wf-scene-layout-orientation-caret"
+										type="button"
+										@click.stop="toggleOrientationDropdown"
+									>
+										<span class="wf-scene-layout-caret-icon">▾</span>
+									</button>
+									<div
+										v-if="orientationDropdownOpen"
+										class="wf-scene-layout-orientation-dropdown"
+										@pointerdown.stop
+									>
+										<div
+											class="wf-scene-layout-dropdown-item"
+											:class="{ active: currentRotationAxis === 'x' }"
+											@click.stop="rotateByAxis('x')"
+										>
+											<span class="wf-scene-layout-dropdown-check">
+												{{ currentRotationAxis === 'x' ? '✓' : '' }}
+											</span>
+											<span>沿 X 轴旋转</span>
+										</div>
+										<div
+											class="wf-scene-layout-dropdown-item"
+											:class="{ active: currentRotationAxis === 'y' }"
+											@click.stop="rotateByAxis('y')"
+										>
+											<span class="wf-scene-layout-dropdown-check">
+												{{ currentRotationAxis === 'y' ? '✓' : '' }}
+											</span>
+											<span>沿 Y 轴旋转</span>
+										</div>
+										<div
+											class="wf-scene-layout-dropdown-item"
+											:class="{ active: currentRotationAxis === 'z' }"
+											@click.stop="rotateByAxis('z')"
+										>
+											<span class="wf-scene-layout-dropdown-check">
+												{{ currentRotationAxis === 'z' ? '✓' : '' }}
+											</span>
+											<span>沿 Z 轴旋转</span>
+										</div>
+										<div class="wf-scene-layout-dropdown-divider"></div>
+										<div
+											class="wf-scene-layout-dropdown-item wf-scene-layout-dropdown-reset"
+											@click.stop="resetOrientation"
+										>
+											<span class="wf-scene-layout-dropdown-check"></span>
+											<span>撤销旋转</span>
+										</div>
+									</div>
+								</div>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
 									type="button"
@@ -481,6 +534,8 @@ const snapshotUrl = ref(
 const renderTransparent = ref(true)
 const selectedPreviewItemId = ref('')
 const lastActionMessage = ref('')
+const orientationDropdownOpen = ref(false)
+const currentRotationAxis = ref<'x' | 'y' | 'z'>('y')
 const lightingPanelCollapsed = ref(true)
 const perfPanelCollapsed = ref(false)
 const perfSnapshot = ref<SceneLayoutPreviewPerfSnapshot>({
@@ -971,7 +1026,41 @@ const adjustSelectedOrientation = async () => {
 		lastActionMessage.value = '预览器尚未准备完成。'
 		return
 	}
-	const result = await viewer.adjustSelectedModelOrientation()
+	const result = await viewer.rotateSelectedModelByAxis(currentRotationAxis.value)
+	lastActionMessage.value = result.message
+}
+
+const toggleOrientationDropdown = () => {
+	orientationDropdownOpen.value = !orientationDropdownOpen.value
+	if (orientationDropdownOpen.value) {
+		requestAnimationFrame(() => {
+			document.addEventListener('click', closeOrientationDropdown, { once: true })
+		})
+	}
+}
+
+const closeOrientationDropdown = () => {
+	orientationDropdownOpen.value = false
+}
+
+const rotateByAxis = async (axis: 'x' | 'y' | 'z') => {
+	currentRotationAxis.value = axis
+	orientationDropdownOpen.value = false
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	const result = await viewer.rotateSelectedModelByAxis(axis)
+	lastActionMessage.value = result.message
+}
+
+const resetOrientation = async () => {
+	orientationDropdownOpen.value = false
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	const result = await viewer.resetSelectedModelOrientation()
 	lastActionMessage.value = result.message
 }
 
@@ -1602,5 +1691,88 @@ defineExpose({
 	grid-template-columns: auto 1fr auto auto;
 	gap: 6px 10px;
 	font-size: 12px;
+}
+
+.wf-scene-layout-orientation-group {
+	position: relative;
+	display: flex;
+	align-items: stretch;
+}
+
+.wf-scene-layout-orientation-main {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+	border-right: none;
+}
+
+.wf-scene-layout-orientation-caret {
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+	padding-left: 6px;
+	padding-right: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.wf-scene-layout-caret-icon {
+	font-size: 10px;
+	line-height: 1;
+}
+
+.wf-scene-layout-orientation-dropdown {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	margin-top: 4px;
+	min-width: 160px;
+	border: 1px solid rgba(148, 163, 184, 0.22);
+	border-radius: 8px;
+	background: rgba(15, 23, 42, 0.95);
+	backdrop-filter: blur(10px);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+	z-index: 10;
+	overflow: hidden;
+}
+
+.wf-scene-layout-dropdown-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	font-size: 12px;
+	color: rgba(226, 232, 240, 0.9);
+	cursor: pointer;
+	transition: background 120ms ease;
+}
+
+.wf-scene-layout-dropdown-item:hover {
+	background: rgba(59, 130, 246, 0.18);
+	color: #fff;
+}
+
+.wf-scene-layout-dropdown-item.active {
+	color: #60a5fa;
+}
+
+.wf-scene-layout-dropdown-item.wf-scene-layout-dropdown-reset {
+	color: rgba(248, 113, 113, 0.9);
+}
+
+.wf-scene-layout-dropdown-item.wf-scene-layout-dropdown-reset:hover {
+	background: rgba(239, 68, 68, 0.15);
+	color: #fca5a5;
+}
+
+.wf-scene-layout-dropdown-check {
+	width: 14px;
+	text-align: center;
+	font-size: 11px;
+}
+
+.wf-scene-layout-dropdown-divider {
+	height: 1px;
+	margin: 4px 0;
+	background: rgba(148, 163, 184, 0.18);
 }
 </style>
