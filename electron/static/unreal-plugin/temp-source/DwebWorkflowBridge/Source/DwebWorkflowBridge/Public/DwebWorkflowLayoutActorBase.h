@@ -5,9 +5,7 @@
 #include "DwebWorkflowLayoutActorBase.generated.h"
 
 class UMaterialInterface;
-class USceneComponent;
 class UStaticMesh;
-class UStaticMeshComponent;
 
 USTRUCT(BlueprintType)
 struct FDwebWorkflowMaterialOverride
@@ -278,38 +276,6 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Dweb Layout")
 	FDwebWorkflowLayoutImportSummary ImportSummary;
 
-	UPROPERTY(EditAnywhere, Category = "Dweb Debug")
-	bool bAutoRebuildOnPropertyChange = true;
-
-	UPROPERTY(EditAnywhere, Category = "Dweb Debug")
-	bool bShowSlotBounds = false;
-
-	UPROPERTY(EditAnywhere, Category = "Dweb Debug")
-	bool bShowSlotLabels = false;
-
 	UPROPERTY(VisibleAnywhere, Category = "Dweb Debug")
 	FString LastImportJobId;
-
-	UFUNCTION(CallInEditor, Category = "Dweb Layout")
-	void RebuildLayoutActor();
-
-protected:
-	virtual void OnConstruction(const FTransform& Transform) override;
-
-#if WITH_EDITOR
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-#endif
-
-private:
-	void ApplyLayoutSlotsToComponents();
-	void ClearGeneratedComponents();
-	FName BuildSlotNodeComponentName(const FDwebWorkflowLayoutSlot& Slot, int32 SlotIndex) const;
-	FName BuildSurfaceNodeComponentName(const FDwebWorkflowLayoutSlot& Slot, int32 SlotIndex) const;
-	FName BuildSlotComponentName(const FDwebWorkflowLayoutSlot& Slot, int32 SlotIndex) const;
-
-	UPROPERTY(Transient, DuplicateTransient)
-	TArray<TObjectPtr<USceneComponent>> GeneratedSlotComponents;
-
-	UPROPERTY(Transient, DuplicateTransient)
-	TArray<TObjectPtr<UStaticMeshComponent>> GeneratedMeshComponents;
 };

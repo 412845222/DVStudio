@@ -1699,10 +1699,30 @@ export class SceneLayoutPreviewViewer {
 				const meshTransform = this.captureLocalTransform(instance)
 				if (item?.orientationFix) {
 					const preferredOffset = this.resolveExistingOrientationOffset(item)
+					// Overriding only the euler rotation while leaving the captured
+					// quaternion untouched creates an internal inconsistency between
+					// `meshTransform.rotation` (euler) and `meshTransform.quaternion`.
+					// Downstream consumers (C++ SceneQuaternionToUnreal /
+					// SceneRotationToUnreal) may pick either field, so we must keep
+					// them in sync. Rebuild the quaternion from the same euler angles
+					// using the same XYZ order used elsewhere (applyBoundModelOrientation).
+					const overrideEuler = new THREE.Euler(
+						THREE.MathUtils.degToRad(Number(preferredOffset.pitch ?? 0)),
+						THREE.MathUtils.degToRad(Number(preferredOffset.yaw ?? 0)),
+						THREE.MathUtils.degToRad(Number(preferredOffset.roll ?? 0)),
+						'XYZ'
+					)
+					const overrideQuaternion = new THREE.Quaternion().setFromEuler(overrideEuler)
 					meshTransform.rotation = {
 						yaw: roundOrientation(preferredOffset.yaw),
 						pitch: roundOrientation(preferredOffset.pitch),
 						roll: roundOrientation(preferredOffset.roll)
+					}
+					meshTransform.quaternion = {
+						x: Number(overrideQuaternion.x || 0),
+						y: Number(overrideQuaternion.y || 0),
+						z: Number(overrideQuaternion.z || 0),
+						w: Number(overrideQuaternion.w || 1)
 					}
 				}
 				const previewInstanceTransform = this.captureObjectTransform(instance, actorOrigin)
