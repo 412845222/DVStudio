@@ -1467,6 +1467,9 @@ export class SceneLayoutPreviewViewer {
 			}
 		}
 
+		// 强制更新整个场景的世界矩阵，确保所有模型的matrixWorld是最新的
+		this.group.updateMatrixWorld(true)
+
 		const warnings: string[] = []
 		const slots: WorkflowUnrealResolvedLayoutSlot[] = []
 		const actorOrigin = { x: 0, y: 0, z: 0 }
@@ -1696,17 +1699,13 @@ export class SceneLayoutPreviewViewer {
 					orientationMode === 'manual' ||
 					fitMode === 'forced' ||
 					(fillMode !== 'single' && Math.max(1, Number(item?.fillCount ?? 1)) > 1)
-				const meshTransform = this.captureLocalTransform(instance)
-				if (item?.orientationFix) {
-					const preferredOffset = this.resolveExistingOrientationOffset(item)
-					meshTransform.rotation = {
-						yaw: roundOrientation(preferredOffset.yaw),
-						pitch: roundOrientation(preferredOffset.pitch),
-						roll: roundOrientation(preferredOffset.roll)
-					}
-				}
+				// 直接从Three.js世界矩阵分解变换（position/quaternion/scale），不做任何手动覆盖
+				// 世界矩阵已经包含了所有变换：位置、rotation(yaw/pitch/roll)、orientationFix朝向修正、缩放、对齐等
+				instance.updateMatrixWorld(true)
+				const meshWorldTransform = this.captureObjectTransform(instance)
+				const meshTransform = meshWorldTransform
 				const previewInstanceTransform = this.captureObjectTransform(instance, actorOrigin)
-				const previewInstanceWorldTransform = this.captureObjectTransform(instance)
+				const previewInstanceWorldTransform = meshWorldTransform
 				slots.push({
 					slotId,
 					sourceSlotId: itemId,

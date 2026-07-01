@@ -13,6 +13,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Containers/Ticker.h"
 #include "Editor.h"
+#include "Selection.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/PointLight.h"
 #include "Engine/RectLight.h"
@@ -578,8 +579,12 @@ namespace
 			const double ScenePitch = ReadNumberField(FallbackRotationObject, TEXT("pitch"), ReadNumberField(FallbackRotationObject, TEXT("x"), 0.0));
 			const double SceneYaw = ReadNumberField(FallbackRotationObject, TEXT("yaw"), ReadNumberField(FallbackRotationObject, TEXT("y"), 0.0));
 			const double SceneRoll = ReadNumberField(FallbackRotationObject, TEXT("roll"), ReadNumberField(FallbackRotationObject, TEXT("z"), 0.0));
+			// Scene (three.js Y-up right-handed) -> Unreal (Z-up left-handed):
+			// scene pitch(X) -> unreal roll(X), sign flipped due to handedness flip
+			// scene yaw(Y)   -> unreal yaw(Z),  sign flipped due to handedness flip
+			// scene roll(Z)  -> unreal pitch(Y), sign flipped due to handedness flip
 			return FRotator(
-				SceneRoll,
+				-SceneRoll,
 				-SceneYaw,
 				-ScenePitch);
 		};
@@ -621,8 +626,14 @@ namespace
 		const double ScenePitch = ReadNumberField(RotationObject, TEXT("pitch"), ReadNumberField(RotationObject, TEXT("x"), 0.0));
 		const double SceneYaw = ReadNumberField(RotationObject, TEXT("yaw"), ReadNumberField(RotationObject, TEXT("y"), 0.0));
 		const double SceneRoll = ReadNumberField(RotationObject, TEXT("roll"), ReadNumberField(RotationObject, TEXT("z"), 0.0));
+		// Scene (three.js Y-up right-handed) -> Unreal (Z-up left-handed):
+		// scene pitch(X) -> unreal roll(X), sign flipped due to handedness flip
+		// scene yaw(Y)   -> unreal yaw(Z),  sign flipped due to handedness flip
+		// scene roll(Z)  -> unreal pitch(Y), sign flipped due to handedness flip
+		// (Previously SceneRoll had the wrong sign here, which broke Z-axis rotation
+		//  in the euler fallback path; quaternion path was already correct.)
 		return FRotator(
-			SceneRoll,
+			-SceneRoll,
 			-SceneYaw,
 			-ScenePitch);
 	}
@@ -692,6 +703,8 @@ namespace
 			return;
 		}
 
+		SCS->Modify();
+
 		TArray<USCS_Node*> ExistingNodes = SCS->GetAllNodes();
 		for (USCS_Node* Node : ExistingNodes)
 		{
@@ -701,55 +714,116 @@ namespace
 			}
 
 			const FString VariableName = Node->GetVariableName().ToString();
-			if (VariableName.StartsWith(TEXT("DwebList_"), ESearchCase::CaseSensitive))
+			if (VariableName.StartsWith(TEXT("SM_"), ESearchCase::CaseSensitive) ||
+				VariableName.StartsWith(TEXT("DwebMesh_"), ESearchCase::CaseSensitive))
 			{
 				SCS->RemoveNode(Node);
 			}
 		}
 
-		USCS_Node* const RootNode = SCS->GetDefaultSceneRootNode();
-		for (int32 Index = 0; Index < LayoutSlots.Num(); ++Index)
+		USCS_Node* RootNode = SCS->GetDefaultSceneRootNode();
+		if (!RootNode)
 		{
-			const FDwebWorkflowLayoutSlot& Slot = LayoutSlots[Index];
+			UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow SyncBlueprintMeshListNodes: No default scene root node found."));
+			return;
+		}
+
+		if (USceneComponent* RootComp = Cast<USceneComponent>(RootNode->ComponentTemplate))
+		{
+			RootComp->SetMobility(EComponentMobility::Movable);
+		}
+
+		int32 AddedNodeCount = 0;
+		for (int32 SlotIndex = 0; SlotIndex < LayoutSlots.Num(); ++SlotIndex)
+		{
+			const FDwebWorkflowLayoutSlot& Slot = LayoutSlots[SlotIndex];
 			if (!Slot.bEnabled || !Slot.StaticMeshAsset)
 			{
 				continue;
 			}
 
-			const FString NameSource = !Slot.SlotId.IsEmpty() ? Slot.SlotId : Slot.DisplayName;
-			USCS_Node* const MeshNode = SCS->CreateNode(
-				UStaticMeshComponent::StaticClass(),
-				*BuildSCSMeshListName(NameSource, Index)
-			);
-			if (!MeshNode)
+			const FTransform FinalTransform = Slot.MeshRelativeTransform;
+
+			UE_LOG(LogTemp, Log, TEXT("DwebWorkflow Slot[%d]: %s Mesh=%s Loc=(%.1f,%.1f,%.1f) Rot=(P=%.1f,Y=%.1f,R=%.1f) Scale=(%.2f,%.2f,%.2f)"),
+				SlotIndex,
+				*Slot.SlotId,
+				Slot.StaticMeshAsset ? *Slot.StaticMeshAsset->GetName() : TEXT("None"),
+				FinalTransform.GetLocation().X, FinalTransform.GetLocation().Y, FinalTransform.GetLocation().Z,
+				FinalTransform.Rotator().Pitch, FinalTransform.Rotator().Yaw, FinalTransform.Rotator().Roll,
+				FinalTransform.GetScale3D().X, FinalTransform.GetScale3D().Y, FinalTransform.GetScale3D().Z);
+
+			FString BaseName = Slot.SlotId.TrimStartAndEnd();
+			if (BaseName.IsEmpty())
 			{
+				BaseName = Slot.DisplayName.TrimStartAndEnd();
+			}
+			if (BaseName.IsEmpty())
+			{
+				BaseName = FString::Printf(TEXT("Slot_%d"), SlotIndex + 1);
+			}
+			for (TCHAR& Ch : BaseName)
+			{
+				if (FChar::IsWhitespace(Ch) || Ch == TEXT('-') || Ch == TEXT('/') || Ch == TEXT('\\') || Ch == TEXT('.') || Ch == TEXT(',') || Ch == TEXT(':') || Ch == TEXT(';'))
+				{
+					Ch = TEXT('_');
+				}
+			}
+			if (BaseName.Len() > 60)
+			{
+				BaseName = BaseName.Left(60);
+			}
+
+			FName NodeName = SCS->GenerateNewComponentName(UStaticMeshComponent::StaticClass(), FName(*FString::Printf(TEXT("SM_%s"), *BaseName)));
+
+			USCS_Node* NewNode = SCS->CreateNode(UStaticMeshComponent::StaticClass(), NodeName);
+			if (!NewNode)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow SyncBlueprintMeshListNodes: Failed to create SCS node for slot %s."), *BaseName);
 				continue;
 			}
 
-			UStaticMeshComponent* const MeshTemplate = Cast<UStaticMeshComponent>(MeshNode->ComponentTemplate);
-			if (!MeshTemplate)
+			UStaticMeshComponent* MeshTemplate = Cast<UStaticMeshComponent>(NewNode->ComponentTemplate);
+			if (MeshTemplate)
 			{
-				continue;
+				MeshTemplate->SetMobility(EComponentMobility::Movable);
+				MeshTemplate->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				MeshTemplate->SetGenerateOverlapEvents(true);
+				MeshTemplate->SetStaticMesh(Slot.StaticMeshAsset);
+				MeshTemplate->SetRelativeLocation(FinalTransform.GetLocation());
+				MeshTemplate->SetRelativeRotation(FinalTransform.Rotator());
+				MeshTemplate->SetRelativeScale3D(FinalTransform.GetScale3D());
+
+				for (const FDwebWorkflowMaterialOverride& MaterialOverride : Slot.MaterialOverrides)
+				{
+					if (!MaterialOverride.bEnabled || !MaterialOverride.MaterialInterface)
+					{
+						continue;
+					}
+					const int32 MaterialIndex = !MaterialOverride.MaterialSlotName.IsNone()
+						? MeshTemplate->GetMaterialIndex(MaterialOverride.MaterialSlotName)
+						: 0;
+					if (MaterialIndex >= 0)
+					{
+						MeshTemplate->SetMaterial(MaterialIndex, MaterialOverride.MaterialInterface);
+					}
+				}
 			}
 
-			MeshTemplate->SetStaticMesh(Slot.StaticMeshAsset);
-			MeshTemplate->SetMobility(EComponentMobility::Movable);
-			MeshTemplate->SetRelativeTransform(Slot.TransformData.RelativeTransform * Slot.MeshRelativeTransform);
-			MeshTemplate->SetVisibility(false, true);
-			MeshTemplate->SetHiddenInGame(true);
-			MeshTemplate->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			MeshTemplate->ComponentTags.Add(FName(TEXT("DwebSCSListOnly")));
-			MeshTemplate->CreationMethod = EComponentCreationMethod::SimpleConstructionScript;
+			RootNode->AddChildNode(NewNode);
 
-			if (RootNode)
+			if (MeshTemplate)
 			{
-				RootNode->AddChildNode(MeshNode);
+				MeshTemplate->SetRelativeLocation(FinalTransform.GetLocation());
+				MeshTemplate->SetRelativeRotation(FinalTransform.Rotator());
+				MeshTemplate->SetRelativeScale3D(FinalTransform.GetScale3D());
 			}
-			else
-			{
-				SCS->AddNode(MeshNode);
-			}
+
+			++AddedNodeCount;
 		}
+
+		SCS->ValidateSceneRootNodes();
+
+		UE_LOG(LogTemp, Display, TEXT("DwebWorkflow SyncBlueprintMeshListNodes: Added %d SCS mesh nodes to blueprint."), AddedNodeCount);
 	}
 
 	TArray<FString> ReadStringArrayField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName)
@@ -973,6 +1047,12 @@ void FDwebWorkflowBridgeModule::StartupModule()
 		FConsoleCommandDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::OpenPluginWindow)
 	);
 
+	ApplyLayoutComponentsCommand = MakeUnique<FAutoConsoleCommand>(
+		TEXT("DwebWorkflow.ApplyLayoutComponents"),
+		TEXT("Apply layout slots as static mesh components to selected DwebWorkflowLayoutActorBase actors."),
+		FConsoleCommandDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::ApplyLayoutComponentsToSelectedActors)
+	);
+
 	HeartbeatTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FDwebWorkflowBridgeModule::HandleHeartbeatTick), 3.0f);
 }
 
@@ -985,6 +1065,7 @@ void FDwebWorkflowBridgeModule::ShutdownModule()
 	}
 
 	OpenTabConsoleCommand.Reset();
+	ApplyLayoutComponentsCommand.Reset();
 	UToolMenus::UnRegisterStartupCallback(this);
 	UToolMenus::UnregisterOwner(this);
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(BridgeTabName);
@@ -3182,6 +3263,201 @@ bool FDwebWorkflowBridgeModule::HandleHeartbeatTick(float DeltaTime)
 		}
 	}
 	return true;
+}
+
+void FDwebWorkflowBridgeModule::ApplyLayoutComponentsToSelectedActors()
+{
+	UWorld* World = GetEditorWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow.ApplyLayoutComponents: No editor world available."));
+		return;
+	}
+
+#if WITH_EDITOR
+	USelection* SelectedActors = GEditor->GetSelectedActors();
+	if (!SelectedActors || SelectedActors->Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow.ApplyLayoutComponents: No selected actors."));
+		return;
+	}
+
+	int32 ProcessedActorCount = 0;
+	int32 AddedComponentCount = 0;
+
+	for (FSelectionIterator It(*SelectedActors); It; ++It)
+	{
+		AActor* SelectedActor = Cast<AActor>(*It);
+		if (!SelectedActor || !IsValid(SelectedActor))
+		{
+			continue;
+		}
+
+		ADwebWorkflowLayoutActorBase* LayoutActor = Cast<ADwebWorkflowLayoutActorBase>(SelectedActor);
+		if (!LayoutActor || LayoutActor->HasAnyFlags(RF_ClassDefaultObject))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow.ApplyLayoutComponents: Selected actor is not a valid DwebWorkflowLayoutActorBase."));
+			continue;
+		}
+
+		if (LayoutActor->LayoutSlots.Num() == 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow.ApplyLayoutComponents: Actor %s has no layout slots."), *LayoutActor->GetName());
+			continue;
+		}
+
+		FScopedTransaction Transaction(FText::FromString(TEXT("Apply Dweb Layout Components")));
+		LayoutActor->Modify();
+
+		USceneComponent* ActorRoot = LayoutActor->GetRootComponent();
+		if (!ActorRoot)
+		{
+			ActorRoot = NewObject<USceneComponent>(LayoutActor, USceneComponent::GetDefaultSceneRootVariableName(), RF_Transactional);
+			ActorRoot->SetMobility(EComponentMobility::Movable);
+			ActorRoot->RegisterComponent();
+			LayoutActor->SetRootComponent(ActorRoot);
+			LayoutActor->AddInstanceComponent(ActorRoot);
+		}
+		ActorRoot->SetMobility(EComponentMobility::Movable);
+
+		TMap<FString, FTransform> SlotRelativeTransforms;
+		SlotRelativeTransforms.Reserve(LayoutActor->LayoutSlots.Num());
+
+		for (const FDwebWorkflowLayoutSlot& Slot : LayoutActor->LayoutSlots)
+		{
+			if (!Slot.bEnabled)
+			{
+				continue;
+			}
+
+			FTransform ParentRelativeTransform = FTransform::Identity;
+			FString ParentId = Slot.ParentSlotId.TrimStartAndEnd();
+			if (!ParentId.IsEmpty())
+			{
+				if (const FTransform* FoundParent = SlotRelativeTransforms.Find(ParentId))
+				{
+					ParentRelativeTransform = *FoundParent;
+				}
+			}
+
+			FTransform SlotTransform;
+			bool bHasParent = !ParentId.IsEmpty();
+			if (bHasParent)
+			{
+				SlotTransform = ParentRelativeTransform * Slot.TransformData.RelativeTransform;
+			}
+			else
+			{
+				SlotTransform = Slot.TransformData.WorldTransform;
+			}
+			SlotRelativeTransforms.Add(Slot.SlotId, SlotTransform);
+		}
+
+		for (int32 SlotIndex = 0; SlotIndex < LayoutActor->LayoutSlots.Num(); ++SlotIndex)
+		{
+			const FDwebWorkflowLayoutSlot& Slot = LayoutActor->LayoutSlots[SlotIndex];
+			if (!Slot.bEnabled || !Slot.StaticMeshAsset)
+			{
+				continue;
+			}
+
+			FTransform FinalTransform;
+			FString ParentId = Slot.ParentSlotId.TrimStartAndEnd();
+			if (ParentId.IsEmpty())
+			{
+				FinalTransform = Slot.MeshRelativeTransform;
+			}
+			else
+			{
+				const FTransform* SlotTransform = SlotRelativeTransforms.Find(Slot.SlotId);
+				FinalTransform = (SlotTransform ? *SlotTransform : FTransform::Identity) * Slot.MeshRelativeTransform;
+			}
+
+			UE_LOG(LogTemp, Log, TEXT("DwebWorkflow.ApplyLayoutComponents: Slot=%s Parent=%s Loc=(%.1f,%.1f,%.1f) Rot=(%.1f,%.1f,%.1f) Scale=(%.2f,%.2f,%.2f)"),
+				*Slot.SlotId,
+				*ParentId,
+				FinalTransform.GetLocation().X, FinalTransform.GetLocation().Y, FinalTransform.GetLocation().Z,
+				FinalTransform.Rotator().Pitch, FinalTransform.Rotator().Yaw, FinalTransform.Rotator().Roll,
+				FinalTransform.GetScale3D().X, FinalTransform.GetScale3D().Y, FinalTransform.GetScale3D().Z);
+
+			FString BaseName = Slot.SlotId.TrimStartAndEnd();
+			if (BaseName.IsEmpty())
+			{
+				BaseName = Slot.DisplayName.TrimStartAndEnd();
+			}
+			if (BaseName.IsEmpty())
+			{
+				BaseName = FString::Printf(TEXT("Slot_%d"), SlotIndex + 1);
+			}
+			for (TCHAR& Ch : BaseName)
+			{
+				if (FChar::IsWhitespace(Ch) || Ch == TEXT('-') || Ch == TEXT('/') || Ch == TEXT('\\') || Ch == TEXT('.') || Ch == TEXT(',') || Ch == TEXT(':') || Ch == TEXT(';'))
+				{
+					Ch = TEXT('_');
+				}
+			}
+			if (BaseName.Len() > 60)
+			{
+				BaseName = BaseName.Left(60);
+			}
+
+			FName ComponentName = MakeUniqueObjectName(LayoutActor, UStaticMeshComponent::StaticClass(), FName(*FString::Printf(TEXT("SM_%s"), *BaseName)));
+
+			UStaticMeshComponent* NewMeshComp = NewObject<UStaticMeshComponent>(
+				LayoutActor,
+				UStaticMeshComponent::StaticClass(),
+				ComponentName,
+				RF_Transactional
+			);
+
+			if (!NewMeshComp)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow.ApplyLayoutComponents: Failed to create StaticMeshComponent for slot %s."), *BaseName);
+				continue;
+			}
+
+			NewMeshComp->SetMobility(EComponentMobility::Movable);
+			NewMeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			NewMeshComp->SetGenerateOverlapEvents(true);
+			NewMeshComp->SetStaticMesh(Slot.StaticMeshAsset);
+			NewMeshComp->SetRelativeTransform(FinalTransform);
+
+			for (const FDwebWorkflowMaterialOverride& MaterialOverride : Slot.MaterialOverrides)
+			{
+				if (!MaterialOverride.bEnabled || !MaterialOverride.MaterialInterface)
+				{
+					continue;
+				}
+				const int32 MaterialIndex = !MaterialOverride.MaterialSlotName.IsNone()
+					? NewMeshComp->GetMaterialIndex(MaterialOverride.MaterialSlotName)
+					: 0;
+				if (MaterialIndex >= 0)
+				{
+					NewMeshComp->SetMaterial(MaterialIndex, MaterialOverride.MaterialInterface);
+				}
+			}
+
+			NewMeshComp->AttachToComponent(ActorRoot, FAttachmentTransformRules::KeepRelativeTransform);
+			LayoutActor->AddInstanceComponent(NewMeshComp);
+			NewMeshComp->RegisterComponent();
+			NewMeshComp->SetRelativeTransform(FinalTransform);
+			NewMeshComp->UpdateComponentToWorld();
+
+			++AddedComponentCount;
+		}
+
+		GEditor->BroadcastLevelActorListChanged();
+		GEditor->RedrawLevelEditingViewports(true);
+		GEditor->SelectActor(LayoutActor, true, true);
+
+		++ProcessedActorCount;
+		UE_LOG(LogTemp, Display, TEXT("DwebWorkflow.ApplyLayoutComponents: Added %d components to actor %s."), AddedComponentCount, *LayoutActor->GetName());
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("DwebWorkflow.ApplyLayoutComponents: Processed %d actors, added %d components total."), ProcessedActorCount, AddedComponentCount);
+#else
+	UE_LOG(LogTemp, Warning, TEXT("DwebWorkflow.ApplyLayoutComponents: Not in editor mode."));
+#endif
 }
 
 void FDwebWorkflowBridgeModule::AppendLog(const FString& Line)

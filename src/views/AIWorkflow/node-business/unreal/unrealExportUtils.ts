@@ -36,9 +36,15 @@ export const buildSlotsFromModelBindings = (
 		}
 	}
 
+	// NOTE: `rotation` MUST use euler-angle shape { yaw, pitch, roll } (in degrees)
+	// because C++ `SceneRotationToUnreal` reads it that way. `quaternion` is the
+	// preferred rotation source on the C++ side (used when valid), so we always
+	// supply an identity quaternion too. Keeping both fields consistent prevents
+	// the euler fallback path from misinterpreting quaternion-shaped data.
 	const identityTransform = {
 		position: { x: 0, y: 0, z: 0 },
-		rotation: { x: 0, y: 0, z: 0, w: 1 },
+		rotation: { yaw: 0, pitch: 0, roll: 0 },
+		quaternion: { x: 0, y: 0, z: 0, w: 1 },
 		scale: { x: 1, y: 1, z: 1 }
 	}
 
