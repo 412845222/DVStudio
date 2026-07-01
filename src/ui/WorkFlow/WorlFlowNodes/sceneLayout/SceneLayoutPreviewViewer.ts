@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
 import { isObject, isString } from '../../../../types/utils'
 import type {
@@ -408,6 +409,16 @@ export const isSameItem = (a: WorkflowSceneLayoutItem, b: WorkflowSceneLayoutIte
 	if (a.isKeyElement !== b.isKeyElement) return false
 	if (a.fixedInRoom !== b.fixedInRoom) return false
 	if (a.shouldTouchGround !== b.shouldTouchGround) return false
+	const aHoles = Array.isArray(a.holePunches) ? a.holePunches.length : 0
+	const bHoles = Array.isArray(b.holePunches) ? b.holePunches.length : 0
+	if (aHoles !== bHoles) return false
+	if (aHoles > 0) {
+		for (let i = 0; i < aHoles; i++) {
+			const ah = a.holePunches![i]
+			const bh = b.holePunches![i]
+			if (ah?.id !== bh?.id || ah?.targetItemId !== bh?.targetItemId || ah?.toolItemId !== bh?.toolItemId) return false
+		}
+	}
 	return true
 }
 
@@ -921,12 +932,14 @@ export class SceneLayoutPreviewViewer {
 	private holePunchTargetId = ''
 	private holePunchToolId = ''
 	private readonly holePunchHighlightMeshes = new Map<string, MeshLike>()
+	private readonly holedGeometryCache = new Map<string, { geometry: unknown; edgeGeometry: unknown }>()
 	private onHolePunchStateChange: ((state: {
 		mode: boolean
 		step: 'select-target' | 'select-tool'
 		targetId: string
 		toolId: string
 	}) => void) | null = null
+	private exportLogCallback: ((message: string) => void) | null = null
 
 	constructor(
 		private readonly canvas: HTMLCanvasElement,
@@ -1375,12 +1388,28 @@ export class SceneLayoutPreviewViewer {
 			const pitch = safeNumber(item.rotation?.pitch ?? 0, 0)
 			const roll = safeNumber(item.rotation?.roll ?? 0, 0)
 			const hasBoundModel = previewMode && bindingMap.has(String(item.id ?? '').trim())
+			const hasHolePunches = Array.isArray(item.holePunches) && item.holePunches.length > 0
+			const cachedHoled = hasHolePunches ? this.holedGeometryCache.get(String(item.id ?? '').trim()) : null
 			const displaySize = resolvePreviewDisplaySize(item)
 			const width = displaySize.width * scaleX
 			const height = displaySize.height * scaleY
 			const depth = displaySize.depth * scaleZ
-			const geometry = new THREE.BoxGeometry(width, height, depth)
-			geometry.translate(0, height / 2, 0)
+			let geometry: unknown
+			let edgeGeometry: unknown
+			if (cachedHoled && cachedHoled.geometry) {
+				const geomCloneFn = (cachedHoled.geometry as Record<string, unknown>).clone as (() => unknown) | undefined
+				geometry = geomCloneFn ? geomCloneFn.call(cachedHoled.geometry) : cachedHoled.geometry
+				if (cachedHoled.edgeGeometry) {
+					const edgeCloneFn = (cachedHoled.edgeGeometry as Record<string, unknown>).clone as (() => unknown) | undefined
+					edgeGeometry = edgeCloneFn ? edgeCloneFn.call(cachedHoled.edgeGeometry) : cachedHoled.edgeGeometry
+				} else {
+					edgeGeometry = new THREE.EdgesGeometry(geometry as unknown)
+				}
+			} else {
+				geometry = new THREE.BoxGeometry(width, height, depth)
+				;(geometry as { translate: (x: number, y: number, z: number) => void }).translate(0, height / 2, 0)
+				edgeGeometry = new THREE.EdgesGeometry(geometry as unknown)
+			}
 			const inferred = item.inferred === true
 			const material = new THREE.MeshStandardMaterial({
 				color: inferred ? '#cbd5e1' : resolvePlaceholderColor(item),
@@ -1406,7 +1435,7 @@ export class SceneLayoutPreviewViewer {
 				emissive: '#000000',
 				emissiveIntensity: 0
 			})
-			const mesh = new THREE.Mesh(geometry, material)
+			const mesh = new THREE.Mesh(geometry as unknown, material)
 			mesh.scale.set(1, 1, 1)
 			mesh.position.set(posX, posY, posZ)
 			mesh.rotation.y = (yaw * Math.PI) / 180
@@ -1416,7 +1445,7 @@ export class SceneLayoutPreviewViewer {
 			mesh.userData.label = item.name || item.id
 			mesh.userData.isPlaceholder = true
 			const edge = new THREE.LineSegments(
-				new THREE.EdgesGeometry(geometry),
+				edgeGeometry as unknown,
 				new THREE.LineBasicMaterial({
 					color: '#e2e8f0',
 					transparent: true,
@@ -1431,8 +1460,8 @@ export class SceneLayoutPreviewViewer {
 			edge.renderOrder = 2
 			this.group.add(mesh)
 			this.group.add(edge)
-			this.meshesById.set(item.id, mesh)
-			this.edgesById.set(item.id, edge)
+			this.meshesById.set(item.id, mesh as unknown as MeshLike)
+			this.edgesById.set(item.id, edge as unknown as LineLike)
 		}
 		this.buildRelationLines()
 		const nextItemIds = this.currentItems
@@ -4141,19 +4170,11 @@ export class SceneLayoutPreviewViewer {
 
 	private applyManualOrientationConstraint(
 		offset: OrientationOffset,
-		semanticClass: ObjectSemanticClass
+		_semanticClass: ObjectSemanticClass
 	): OrientationOffset {
-		let yaw = normalizeAngleDeg(offset.yaw)
-		let pitch = normalizeAngleDeg(offset.pitch)
-		let roll = normalizeAngleDeg(offset.roll)
-
-		switch (semanticClass) {
-			case 'structure':
-				yaw = 0
-				pitch = 0
-				roll = 0
-				break
-		}
+		const yaw = normalizeAngleDeg(offset.yaw)
+		const pitch = normalizeAngleDeg(offset.pitch)
+		const roll = normalizeAngleDeg(offset.roll)
 
 		return { ...offset, yaw, pitch, roll }
 	}
@@ -5351,15 +5372,24 @@ export class SceneLayoutPreviewViewer {
 		targetMesh.geometry = resultGeom as unknown as Disposable
 
 		const targetEdge = this.edgesById.get(targetItem.id)
+		let newEdgeGeom: unknown = null
 		if (targetEdge) {
 			const oldEdgeGeom = targetEdge.geometry as Disposable
 			if (oldEdgeGeom && typeof oldEdgeGeom.dispose === 'function') {
 				oldEdgeGeom.dispose()
 			}
-			const newEdgeGeom = new THREE.EdgesGeometry(resultGeom as unknown)
+			newEdgeGeom = new THREE.EdgesGeometry(resultGeom as unknown)
 			;(targetEdge as unknown as { geometry: unknown }).geometry = newEdgeGeom
 			targetEdge.scale.set(1, 1, 1)
 		}
+
+		const geomCloneFn = (resultGeom as Record<string, unknown>).clone as (() => unknown) | undefined
+		const cachedGeom = geomCloneFn ? geomCloneFn.call(resultGeom) : resultGeom
+		const cachedEdgeGeom = newEdgeGeom
+			? ((newEdgeGeom as Record<string, unknown>).clone as (() => unknown) | undefined)?.call(newEdgeGeom) ?? newEdgeGeom
+			: null
+		const cacheKey = String(targetItem.id ?? '').trim()
+		this.holedGeometryCache.set(cacheKey, { geometry: cachedGeom, edgeGeometry: cachedEdgeGeom })
 
 		;(modelMergedGeom as { dispose?: () => void }).dispose?.()
 		stretchedGeom.dispose()
@@ -5629,6 +5659,208 @@ export class SceneLayoutPreviewViewer {
 		return merged
 	}
 
+	setExportLogCallback(callback: ((message: string) => void) | null) {
+		this.exportLogCallback = callback
+	}
+
+	private logExport(message: string) {
+		console.log(`[GLB Export] ${message}`)
+		this.exportLogCallback?.(message)
+	}
+
+	private sanitizeGeometry(geom: Record<string, unknown>): Record<string, unknown> {
+		try {
+			const getAttributeFn = geom.getAttribute as ((name: string) => unknown) | undefined
+			const posAttr = getAttributeFn?.call(geom, 'position') as {
+				count: number
+				getX: (i: number) => number
+				getY: (i: number) => number
+				getZ: (i: number) => number
+				setXYZ: (i: number, x: number, y: number, z: number) => void
+			} | undefined
+			if (!posAttr || !posAttr.count) return geom
+
+			let badVertices = 0
+			const isFiniteNumber = (v: number) => typeof v === 'number' && Number.isFinite(v) && !Number.isNaN(v)
+			for (let i = 0; i < posAttr.count; i++) {
+				const x = posAttr.getX(i)
+				const y = posAttr.getY(i)
+				const z = posAttr.getZ(i)
+				if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(z)) {
+					posAttr.setXYZ(i, 0, 0, 0)
+					badVertices++
+				}
+			}
+			if (badVertices > 0) {
+				this.logExport(`警告：修复了 ${badVertices} 个无效顶点坐标`)
+			}
+
+			const computeVertexNormals = geom.computeVertexNormals as (() => void) | undefined
+			computeVertexNormals?.call(geom)
+			const computeBoundingBox = geom.computeBoundingBox as (() => void) | undefined
+			computeBoundingBox?.call(geom)
+			const computeBoundingSphere = geom.computeBoundingSphere as (() => void) | undefined
+			computeBoundingSphere?.call(geom)
+		} catch (err) {
+			this.logExport(`顶点清理时出现非致命错误：${err instanceof Error ? err.message : String(err)}，继续导出`)
+		}
+		return geom
+	}
+
+	async exportPlaceholderGLB(itemId: string, name?: string): Promise<ArrayBuffer | null> {
+		this.logExport('开始查找选中的占位体网格...')
+		const mesh = this.meshesById.get(itemId)
+		if (!mesh) {
+			this.logExport('错误：找不到对应的网格对象')
+			return null
+		}
+
+		this.logExport('确保网格矩阵已更新...')
+		mesh.updateMatrixWorld(true)
+
+		const getPositionCount = (g: Record<string, unknown>): number => {
+			const attr = g.attributes as Record<string, { count?: number }> | undefined
+			return attr?.position?.count ?? 0
+		}
+
+		this.logExport('获取当前网格几何体...')
+		const meshGeom = mesh.geometry
+		const meshVertexCount = getPositionCount(meshGeom as unknown as Record<string, unknown>)
+		this.logExport(`当前网格顶点数: ${meshVertexCount}`)
+
+		let sourceGeom: unknown = meshGeom
+
+		const cacheKey = String(itemId ?? '').trim()
+		const cachedEntry = this.holedGeometryCache.get(cacheKey)
+		if (cachedEntry?.geometry && meshVertexCount <= 24) {
+			this.logExport('当前网格疑似简单立方体，尝试使用缓存的打洞几何体...')
+			try {
+				const cachedGeom = cachedEntry.geometry
+				const cachedVertexCount = getPositionCount(cachedGeom as unknown as Record<string, unknown>)
+				this.logExport(`缓存几何体顶点数: ${cachedVertexCount}`)
+				if (cachedVertexCount > 24) {
+					sourceGeom = cachedGeom
+					this.logExport('将使用缓存几何体创建干净副本')
+				}
+			} catch (e) {
+				this.logExport('缓存几何体获取失败，使用当前网格几何体')
+			}
+		}
+
+		this.logExport('创建干净的BufferGeometry副本...')
+		let exportGeometry: Record<string, unknown>
+		try {
+			const newGeom = new THREE.BufferGeometry() as unknown as Record<string, unknown>
+			const sourceAny = sourceGeom as unknown as { attributes: Record<string, { array: Float32Array; itemSize: number; normalized: boolean }>; index?: { array: Uint16Array | Uint32Array } | null }
+			const srcAttrs = sourceAny.attributes
+			const srcIndex = sourceAny.index
+			for (const attrName in srcAttrs) {
+				const srcAttr = srcAttrs[attrName]
+				const array = new Float32Array(srcAttr.array.length)
+				array.set(srcAttr.array)
+				const newAttr = new THREE.BufferAttribute(array, srcAttr.itemSize, srcAttr.normalized)
+				const setAttrFn = newGeom.setAttribute as (name: string, attr: unknown) => void
+				setAttrFn.call(newGeom, attrName, newAttr)
+			}
+			if (srcIndex) {
+				const IndexArrayCtor = srcIndex.array.constructor as Uint16ArrayConstructor | Uint32ArrayConstructor
+				const indexArray = new IndexArrayCtor(srcIndex.array.length)
+				indexArray.set(srcIndex.array)
+				const newIndexAttr = new THREE.BufferAttribute(indexArray, 1)
+				const setIndexFn = newGeom.setIndex as (attr: unknown) => void
+				setIndexFn.call(newGeom, newIndexAttr)
+			}
+			exportGeometry = newGeom
+		} catch (err) {
+			this.logExport(`创建干净几何体副本失败：${err instanceof Error ? err.message : String(err)}，尝试直接克隆...`)
+			const cloneFn = (sourceGeom as Record<string, unknown>).clone as (() => unknown) | undefined
+			exportGeometry = (cloneFn?.call(sourceGeom) as Record<string, unknown>) ?? (sourceGeom as Record<string, unknown>)
+		}
+
+		this.logExport(`导出几何体顶点数: ${getPositionCount(exportGeometry)}`)
+
+		exportGeometry = this.sanitizeGeometry(exportGeometry)
+
+		this.logExport('应用网格世界矩阵到几何体（烘焙变换）...')
+		const applyMatrixFn = exportGeometry.applyMatrix4 as ((m: unknown) => void) | undefined
+		applyMatrixFn?.call(exportGeometry, mesh.matrixWorld)
+
+		this.logExport('计算包围盒...')
+		const computeBBoxFn = exportGeometry.computeBoundingBox as (() => void) | undefined
+		computeBBoxFn?.call(exportGeometry)
+		const bbox = exportGeometry.boundingBox as { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null | undefined
+		if (!bbox || !bbox.min || !bbox.max) {
+			this.logExport('错误：无法计算几何体包围盒')
+			return null
+		}
+
+		this.logExport(`几何体包围盒（世界坐标）：min(${bbox.min.x.toFixed(2)}, ${bbox.min.y.toFixed(2)}, ${bbox.min.z.toFixed(2)}), max(${bbox.max.x.toFixed(2)}, ${bbox.max.y.toFixed(2)}, ${bbox.max.z.toFixed(2)})`)
+
+		const centerX = (bbox.min.x + bbox.max.x) / 2
+		const centerZ = (bbox.min.z + bbox.max.z) / 2
+		this.logExport('平移几何体到原点：底部在y=0，x/z居中...')
+		const translateFn = exportGeometry.translate as ((x: number, y: number, z: number) => void) | undefined
+		translateFn?.call(exportGeometry, -centerX, -bbox.min.y, -centerZ)
+		computeBBoxFn?.call(exportGeometry)
+
+		const finalBbox = exportGeometry.boundingBox as { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null | undefined
+		if (finalBbox?.min && finalBbox?.max) {
+			this.logExport(`平移后包围盒：min(${finalBbox.min.x.toFixed(2)}, ${finalBbox.min.y.toFixed(2)}, ${finalBbox.min.z.toFixed(2)}), max(${finalBbox.max.x.toFixed(2)}, ${finalBbox.max.y.toFixed(2)}, ${finalBbox.max.z.toFixed(2)})`)
+		}
+
+		this.logExport('准备导出材质...')
+		const materialAny = mesh.material as Record<string, unknown> | undefined
+		const materialColor = materialAny?.color as { getHexString?: () => string } | undefined
+		const colorHex = materialColor?.getHexString?.()
+		const exportMaterial = new THREE.MeshStandardMaterial({
+			color: colorHex ? `#${colorHex}` : '#94a3b8',
+			roughness: 0.88,
+			metalness: 0.08
+		})
+
+		this.logExport('创建导出网格...')
+		const exportMesh = new THREE.Mesh(exportGeometry as unknown, exportMaterial)
+		const meshName = String(name || (mesh.userData as Record<string, unknown>)?.label || itemId || 'placeholder').trim() || 'placeholder'
+		exportMesh.name = meshName
+		exportMesh.position.set(0, 0, 0)
+		exportMesh.rotation.set(0, 0, 0)
+		exportMesh.scale.set(1, 1, 1)
+		exportMesh.updateMatrixWorld(true)
+
+		this.logExport('构建导出场景层级...')
+		const root = new THREE.Group()
+		root.name = meshName
+		root.userData = { source: 'scene-layout-placeholder', objectId: itemId, holed: true }
+		root.add(exportMesh)
+		root.updateMatrixWorld(true)
+
+		this.logExport('开始GLB二进制导出...')
+		const exporter = new GLTFExporter()
+		try {
+			const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+				exporter.parse(
+					root as unknown,
+					(result: unknown) => {
+						if (result instanceof ArrayBuffer) {
+							this.logExport(`GLB导出成功，数据大小：${(result.byteLength / 1024).toFixed(1)} KB`)
+							resolve(result)
+							return
+						}
+						reject(new Error('GLB export returned non-binary payload'))
+					},
+					(error: unknown) => reject(error instanceof Error ? error : new Error(String(error ?? 'GLB export failed'))),
+					{ binary: true, onlyVisible: true }
+				)
+			})
+			return arrayBuffer
+		} catch (err) {
+			this.logExport(`GLB导出失败：${err instanceof Error ? err.message : String(err)}`)
+			throw err
+		} finally {
+			(exportMaterial as unknown as { dispose: () => void }).dispose()
+		}
+	}
+
 	dispose() {
 		if (this.disposed) return
 		this.disposed = true
@@ -5641,6 +5873,13 @@ export class SceneLayoutPreviewViewer {
 		this.canvas.removeEventListener('wheel', this.handleWheel)
 		this.canvas.removeEventListener('keydown', this.handleKeyDown)
 		this.resizeObserver?.disconnect()
+		for (const cached of this.holedGeometryCache.values()) {
+			const geom = cached.geometry as { dispose?: () => void } | undefined
+			geom?.dispose?.()
+			const edgeGeom = cached.edgeGeometry as { dispose?: () => void } | undefined
+			edgeGeom?.dispose?.()
+		}
+		this.holedGeometryCache.clear()
 		this.clearLayout()
 		this.controls.removeEventListener('change', this.handleControlsChange)
 		this.controls.removeEventListener('start', this.handleControlsStart)

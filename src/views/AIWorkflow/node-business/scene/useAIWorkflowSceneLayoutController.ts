@@ -11,7 +11,10 @@ export const useAIWorkflowSceneLayoutController = (options: {
 	parseSceneLayoutMetadataItems: (inputJson: string) => unknown[]
 	mergeSceneLayoutItemsWithMetadata: (layoutItems: unknown[], metadataSources: unknown[][]) => unknown[]
 	runSceneLayout: (payload: { nodeId: string; inputJson: string }) => Promise<Record<string, unknown>>
-	syncConnectedModel3DTargets: (nodeId: string) => Promise<void>
+	syncConnectedModel3DTargets: (
+		nodeId: string,
+		opts?: { forceSceneLayoutExport?: boolean }
+	) => Promise<void>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }) => {
 	const onNodeRunSceneLayout = async (nodeId: string) => {
@@ -127,7 +130,7 @@ export const useAIWorkflowSceneLayoutController = (options: {
 				selectedLayoutItemId: outputId
 			}
 		})
-		await options.syncConnectedModel3DTargets(nodeId)
+		await options.syncConnectedModel3DTargets(nodeId, { forceSceneLayoutExport: true })
 	}
 
 	return {

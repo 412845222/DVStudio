@@ -97,6 +97,7 @@ export const useAIWorkflowSceneLayoutMetadata = (options: {
 			size: obj?.size && typeof obj.size === 'object' ? obj.size : undefined,
 			rotation: obj?.rotation && typeof obj.rotation === 'object' ? obj.rotation : undefined,
 			scale: obj?.scale && typeof obj.scale === 'object' ? obj.scale : undefined,
+			holePunches: Array.isArray(obj?.holePunches) ? obj.holePunches : undefined,
 			sourceImageIndex: Number.isFinite(Number(obj?.sourceImageIndex))
 				? Number(obj.sourceImageIndex)
 				: undefined,

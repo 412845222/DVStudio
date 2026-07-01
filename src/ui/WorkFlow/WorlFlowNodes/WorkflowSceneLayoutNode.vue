@@ -1491,8 +1491,70 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	}
 }
 
+const exportSelectedPlaceholderGLB = async (): Promise<
+	{ ok: true; glbData: ArrayBuffer; name: string } | { ok: false; error: string }
+> => {
+	lastActionMessage.value = '正在准备导出带洞几何体...'
+	if (!canvasRef.value) {
+		lastActionMessage.value = '导出失败：场景布局预览画布尚未挂载。'
+		return { ok: false, error: '场景布局预览画布尚未挂载。' }
+	}
+	if (!previewActive.value) {
+		lastActionMessage.value = '导出失败：请先进入预览模式并完成打洞操作。'
+		return { ok: false, error: '请先进入预览模式并选择要导出的带洞占位体。' }
+	}
+	ensureViewer()
+	if (!viewer) {
+		await nextTick()
+	}
+	if (!viewer) {
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+	}
+	if (!viewer) {
+		lastActionMessage.value = '导出失败：场景布局预览器尚未准备完成。'
+		return { ok: false, error: '场景布局预览器尚未准备完成。' }
+	}
+	viewer.setRenderSuspended(false)
+	viewer.setInteractive(true)
+	const itemId = selectedPreviewItemId.value
+	if (!itemId) {
+		lastActionMessage.value = '导出失败：请先在预览中选择一个打洞后的占位体。'
+		return { ok: false, error: '请先在预览中选择一个占位体。' }
+	}
+	viewer.setSelectedItem(itemId)
+
+	const setViewerLog = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
+	if (setViewerLog) {
+		setViewerLog.call(viewer, (msg: string) => {
+			lastActionMessage.value = `[导出] ${msg}`
+		})
+	}
+
+	lastActionMessage.value = '正在导出带洞几何体为GLB...'
+	try {
+		const selectedItem = layoutItems.value.find((item) => item.id === itemId)
+		const itemName = selectedItem?.name || selectedItem?.id || itemId
+		const glbData = await viewer.exportPlaceholderGLB(itemId, itemName)
+		if (setViewerLog) setViewerLog.call(viewer, null)
+		if (!glbData) {
+			lastActionMessage.value = '导出失败：未能获取几何体数据。'
+			return { ok: false, error: '导出占位体GLB失败，未能获取几何体数据。' }
+		}
+		lastActionMessage.value = `导出成功：${itemName}（带洞几何体）`
+		return { ok: true, glbData, name: itemName }
+	} catch (err) {
+		const setViewerLogCleanup = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
+		if (setViewerLogCleanup) setViewerLogCleanup.call(viewer, null)
+		const errMessage =
+			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
+		lastActionMessage.value = `导出失败：${errMessage}`
+		return { ok: false, error: `导出占位体GLB失败：${errMessage}` }
+	}
+}
+
 defineExpose({
-	getResolvedLayoutForUnreal
+	getResolvedLayoutForUnreal,
+	exportSelectedPlaceholderGLB
 })
 </script>
 
