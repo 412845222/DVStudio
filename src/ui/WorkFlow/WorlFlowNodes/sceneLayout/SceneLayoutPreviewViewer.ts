@@ -1467,6 +1467,9 @@ export class SceneLayoutPreviewViewer {
 			}
 		}
 
+		// 强制更新整个场景的世界矩阵，确保所有模型的matrixWorld是最新的
+		this.group.updateMatrixWorld(true)
+
 		const warnings: string[] = []
 		const slots: WorkflowUnrealResolvedLayoutSlot[] = []
 		const actorOrigin = { x: 0, y: 0, z: 0 }
@@ -1696,37 +1699,13 @@ export class SceneLayoutPreviewViewer {
 					orientationMode === 'manual' ||
 					fitMode === 'forced' ||
 					(fillMode !== 'single' && Math.max(1, Number(item?.fillCount ?? 1)) > 1)
-				const meshTransform = this.captureLocalTransform(instance)
-				if (item?.orientationFix) {
-					const preferredOffset = this.resolveExistingOrientationOffset(item)
-					// Overriding only the euler rotation while leaving the captured
-					// quaternion untouched creates an internal inconsistency between
-					// `meshTransform.rotation` (euler) and `meshTransform.quaternion`.
-					// Downstream consumers (C++ SceneQuaternionToUnreal /
-					// SceneRotationToUnreal) may pick either field, so we must keep
-					// them in sync. Rebuild the quaternion from the same euler angles
-					// using the same XYZ order used elsewhere (applyBoundModelOrientation).
-					const overrideEuler = new THREE.Euler(
-						THREE.MathUtils.degToRad(Number(preferredOffset.pitch ?? 0)),
-						THREE.MathUtils.degToRad(Number(preferredOffset.yaw ?? 0)),
-						THREE.MathUtils.degToRad(Number(preferredOffset.roll ?? 0)),
-						'XYZ'
-					)
-					const overrideQuaternion = new THREE.Quaternion().setFromEuler(overrideEuler)
-					meshTransform.rotation = {
-						yaw: roundOrientation(preferredOffset.yaw),
-						pitch: roundOrientation(preferredOffset.pitch),
-						roll: roundOrientation(preferredOffset.roll)
-					}
-					meshTransform.quaternion = {
-						x: Number(overrideQuaternion.x || 0),
-						y: Number(overrideQuaternion.y || 0),
-						z: Number(overrideQuaternion.z || 0),
-						w: Number(overrideQuaternion.w || 1)
-					}
-				}
+				// 直接从Three.js世界矩阵分解变换（position/quaternion/scale），不做任何手动覆盖
+				// 世界矩阵已经包含了所有变换：位置、rotation(yaw/pitch/roll)、orientationFix朝向修正、缩放、对齐等
+				instance.updateMatrixWorld(true)
+				const meshWorldTransform = this.captureObjectTransform(instance)
+				const meshTransform = meshWorldTransform
 				const previewInstanceTransform = this.captureObjectTransform(instance, actorOrigin)
-				const previewInstanceWorldTransform = this.captureObjectTransform(instance)
+				const previewInstanceWorldTransform = meshWorldTransform
 				slots.push({
 					slotId,
 					sourceSlotId: itemId,
