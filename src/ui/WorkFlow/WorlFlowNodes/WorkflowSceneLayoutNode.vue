@@ -228,6 +228,22 @@
 								>
 									强制适配
 								</button>
+								<button
+									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
+									type="button"
+									:class="{ 'wf-scene-layout-btn-active': holePunchMode }"
+									@click.stop="toggleHolePunchMode"
+								>
+									{{ holePunchButtonLabel }}
+								</button>
+								<button
+									v-if="holePunchMode && holePunchCanConfirm"
+									class="wf-scene-layout-btn primary wf-scene-layout-overlay-btn"
+									type="button"
+									@click.stop="confirmHolePunch"
+								>
+									确认打洞
+								</button>
 							</div>
 							<div
 								v-if="previewMode && previewInteractive && lightingPreviewEnabled"
@@ -606,6 +622,17 @@ const lightingControls = computed<Required<WorkflowSceneLayoutLightingControls>>
 	...(settings.value?.lightingControls ?? {})
 }))
 const hidePlaceholderCubes = computed(() => settings.value?.hidePlaceholderCubes === true)
+const holePunchMode = ref(false)
+const holePunchStep = ref<'select-target' | 'select-tool'>('select-target')
+const holePunchTargetId = ref('')
+const holePunchToolId = ref('')
+const holePunchCanConfirm = computed(() => !!holePunchTargetId.value && !!holePunchToolId.value)
+const holePunchButtonLabel = computed(() => {
+	if (!holePunchMode.value) return '打洞'
+	if (holePunchStep.value === 'select-target') return '选择被打洞的占位体'
+	if (holePunchStep.value === 'select-tool') return '选择用来打洞的占位体'
+	return '打洞'
+})
 const layoutItems = computed(
 	() =>
 		(Array.isArray(settings.value?.layoutItems)
@@ -1082,6 +1109,27 @@ const forceFitSelectedModel = async () => {
 	lastActionMessage.value = result.message
 }
 
+const toggleHolePunchMode = () => {
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	if (holePunchMode.value) {
+		viewer.cancelHolePunchMode()
+	} else {
+		viewer.startHolePunchMode()
+	}
+}
+
+const confirmHolePunch = async () => {
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	const result = await viewer.confirmHolePunch()
+	lastActionMessage.value = result.message
+}
+
 const syncViewerState = () => {
 	if (!viewer) return
 	const effectiveHidePlaceholderCubes = previewMode.value ? hidePlaceholderCubes.value : false
@@ -1185,6 +1233,12 @@ const createViewerNow = () => {
 			onCameraInteractionEnd: () => {
 				saveViewState()
 			}
+		})
+		viewer.setHolePunchStateChangeCallback((state) => {
+			holePunchMode.value = state.mode
+			holePunchStep.value = state.step
+			holePunchTargetId.value = state.targetId
+			holePunchToolId.value = state.toolId
 		})
 		viewerInitCooldownUntil = 0
 		syncViewerState()
@@ -1486,6 +1540,11 @@ defineExpose({
 .wf-scene-layout-overlay-btn {
 	background: rgba(0, 0, 0, 0.5);
 	backdrop-filter: blur(8px);
+}
+
+.wf-scene-layout-btn-active {
+	background: rgba(59, 130, 246, 0.7) !important;
+	color: #fff !important;
 }
 
 .wf-scene-layout-lighting-dock {
