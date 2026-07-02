@@ -7780,6 +7780,45 @@ const closeImageMarkupDialog = () => {
 	imageMarkupContext.value = { nodeId: null, url: null, name: null }
 }
 
+// 预热裁剪/截图新建的图片节点：先以完整 DOM 渲染，捕获截图后释放为 canvas 位图
+// 确保新节点不会直接显示占位 canvas，而是先展示完整节点再切换为预热截图
+const warmupCropCreatedNode = async (nodeId: string) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node) return
+	const nid = String(node.id ?? '').trim()
+	if (!nid) return
+
+	// 锁定节点为完整渲染模式，避免在图片解码/截图捕获期间被切换为占位 canvas
+	const pendingSet = new Set(pendingScreenshotNodeIds.value)
+	pendingSet.add(nid)
+	pendingScreenshotNodeIds.value = pendingSet
+
+	try {
+		// 等待节点 DOM 与图片解码完成
+		await nextTick()
+		await waitForFrames(2)
+
+		// 失效可能存在的旧缓存（例如此前在图片未加载时捕获的空白截图）
+		screenshotPool.invalidateScreenshot(nid)
+		invalidateCanvasScreenshot(nid)
+		const clearedMap = new Map(nodeScreenshotMap.value)
+		clearedMap.delete(nid)
+		nodeScreenshotMap.value = clearedMap
+
+		// allowFullRender=true 允许在选中/完整渲染状态下捕获截图
+		// scheduleNodeScreenshot 内部会等待 <img> 加载完成再捕获，确保位图内容完整
+		await scheduleNodeScreenshot(node, 0, 'high', true)
+	} catch (err) {
+		console.warn('[Crop Warmup] failed for node:', nid, err)
+	} finally {
+		// 释放锁定，节点可切换为 canvas 位图渲染（位图已就绪，不会显示占位 canvas）
+		const releaseSet = new Set(pendingScreenshotNodeIds.value)
+		releaseSet.delete(nid)
+		pendingScreenshotNodeIds.value = releaseSet
+		refreshCanvasNodeLayer()
+	}
+}
+
 const handleImageMarkupExported = (payload: {
 	dataUrl: string
 	width: number
@@ -7859,6 +7898,9 @@ const handleImageMarkupExported = (payload: {
 
 		closeImageMarkupDialog()
 		pushToast(`已在当前图片节点右侧生成新的${typeLabel}节点，并自动连接原节点。`, 'info')
+
+		// 触发预热：先以完整节点显示，截图捕获后切换为 canvas 位图，避免直接显示占位 canvas
+		void warmupCropCreatedNode(newNodeId)
 	} catch (err) {
 		console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
 		pushToast(`生成${typeLabel}节点失败。`, 'error')
