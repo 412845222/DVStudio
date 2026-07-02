@@ -3470,6 +3470,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.nodesById[id] = node
 			state.nodeOrder.push(id)
 			state.selectedNodeId = id
+			state.selectedNodeIds = [id]
 			state.selectedEdgeId = null
 		},
 		setNodePosition(state, payload: { nodeId: string; worldX?: number; worldY?: number }) {
