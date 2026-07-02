@@ -359,9 +359,12 @@ const drawCanvas = () => {
 	ctx.clearRect(0, 0, width, height)
 	ctx.lineCap = 'round'
 	ctx.lineJoin = 'round'
-	const lowDetail = Boolean(props.motionActive) || resolveZoomScale() <= 0.32
-	const heavyEdgeCount = displayedEdges.value.length >= 520
+	const zoom = Number(props.zoom) || 1
+	const lowDetail = Boolean(props.motionActive) || zoom <= 0.35
+	const veryLowDetail = zoom <= 0.25
+	const heavyEdgeCount = displayedEdges.value.length >= 400
 	const suppressEffects = lowDetail || heavyEdgeCount
+	const skipAnchors = veryLowDetail || (lowDetail && heavyEdgeCount)
 
 	const drawPath = (
 		path: Path2D,
@@ -422,10 +425,12 @@ const drawCanvas = () => {
 		})
 	}
 
-	for (const anchor of displayedAnchors.value) {
-		const isHovered = anchorKey(anchor) === hoveredAnchorKey.value
-		const isDragging = (anchor.phase ?? 'idle') === 'dragging'
-		drawAnchor(ctx, anchor, isHovered, isDragging, lowDetail)
+	if (!skipAnchors) {
+		for (const anchor of displayedAnchors.value) {
+			const isHovered = anchorKey(anchor) === hoveredAnchorKey.value
+			const isDragging = (anchor.phase ?? 'idle') === 'dragging'
+			drawAnchor(ctx, anchor, isHovered, isDragging, lowDetail)
+		}
 	}
 }
 

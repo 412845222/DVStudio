@@ -45,6 +45,7 @@
 					ref="nodeCanvasLayerRef"
 					:nodes="canvasNodeEntries"
 					:viewport="viewport"
+					:motion-active="viewportMotionActive"
 					:screenshot-pool-provider="canvasScreenshotPoolProvider"
 					@node-click="onCanvasNodeClick"
 				/>
@@ -1482,27 +1483,53 @@ const initCanvasScreenshotPool = () => {
 
 // Canvas节点数据 (用于NodeCanvasLayer渲染)
 const canvasScreenshotRefreshTick = ref(0)
+let cachedCanvasNodeEntries: Array<{
+	id: string
+	worldX: number
+	worldY: number
+	width: number
+	height: number
+	radius?: number
+}> = []
+let lastCanvasEntriesSignature = ''
+
+const buildCanvasNodeEntriesSignature = () => {
+	const fullRenderIds = Array.from(fullRenderNodeIds.value).sort().join('|')
+	return `${canvasScreenshotRefreshTick.value}:${fullRenderIds}:${renderNodes.value.length}:${canvasScreenshotEnabled.value}`
+}
+
 const canvasNodeEntries = computed(() => {
 	void canvasScreenshotRefreshTick.value
 	if (!canvasScreenshotEnabled.value) return []
-	
-	return safeVisibleRenderNodes.value
-		.filter((node) => {
-			const nodeId = String(node.id ?? '').trim()
-			if (!nodeId) return false
-			if (fullRenderNodeIds.value.has(nodeId)) return false
-			return hasBitmap(nodeId)
-		})
-		.map((node) => ({
-			id: String(node.id ?? '').trim(),
+
+	const signature = buildCanvasNodeEntriesSignature()
+	if (signature === lastCanvasEntriesSignature && cachedCanvasNodeEntries.length > 0) {
+		return cachedCanvasNodeEntries
+	}
+
+	const allNodes = renderNodes.value
+	const fullRenderSet = fullRenderNodeIds.value
+	const result: typeof cachedCanvasNodeEntries = []
+
+	for (const node of allNodes) {
+		const nodeId = String(node.id ?? '').trim()
+		if (!nodeId) continue
+		if (fullRenderSet.has(nodeId)) continue
+		if (!hasBitmap(nodeId)) continue
+
+		result.push({
+			id: nodeId,
 			worldX: node.worldX,
 			worldY: node.worldY,
 			width: node.width || 240,
 			height: node.height || 160,
-			radius: 8,
-			inputs: node.inputs,
-			outputs: node.outputs
-		}))
+			radius: 8
+		})
+	}
+
+	cachedCanvasNodeEntries = result
+	lastCanvasEntriesSignature = signature
+	return result
 })
 
 // 判断节点是否有Canvas截图可以用于Canvas渲染
