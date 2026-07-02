@@ -94,3 +94,13 @@ export const buildSlotsFromModelBindings = (
 		String(a.slotId ?? '').localeCompare(String(b.slotId ?? ''))
 	)
 }
+
+export const UNREAL_CONNECTION_FAST_POLL_INTERVAL_MS = 800
+export const UNREAL_CONNECTION_SLOW_POLL_INTERVAL_MS = 1500
+export const UNREAL_CONNECTION_FAST_POLL_COUNT = 10
+
+export function getUnrealConnectionPollInterval(pollCount: number): number {
+	return pollCount < UNREAL_CONNECTION_FAST_POLL_COUNT
+		? UNREAL_CONNECTION_FAST_POLL_INTERVAL_MS
+		: UNREAL_CONNECTION_SLOW_POLL_INTERVAL_MS
+}
