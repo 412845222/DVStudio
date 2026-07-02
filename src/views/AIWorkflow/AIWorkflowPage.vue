@@ -1714,6 +1714,14 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 			const nid = String(id ?? '').trim()
 			if (nid) snapshotWithPending.add(nid)
 		}
+		for (const id of selectedNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (nid) snapshotWithPending.add(nid)
+		}
+		if (nodeChatDialog.value.visible && nodeChatDialog.value.nodeId) {
+			const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
+			if (chatNodeId) snapshotWithPending.add(chatNodeId)
+		}
 		return snapshotWithPending
 	}
 
