@@ -6,10 +6,26 @@ import { createWriteStream } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 
 const PYTHON_VERSION = '3.11.9'
-const PYTHON_EMBED_URL = `https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`
 const PYTHON_ZIP_FILENAME = `python-${PYTHON_VERSION}-embed-amd64.zip`
-const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py'
 const GET_PIP_FILENAME = 'get-pip.py'
+const PIP_INDEX_URL = process.env.PIP_INDEX_URL || 'https://pypi.tuna.tsinghua.edu.cn/simple'
+
+const PYTHON_EMBED_URLS = (process.env.PYTHON_EMBED_MIRROR
+	? [process.env.PYTHON_EMBED_MIRROR]
+	: [
+			`https://mirrors.huaweicloud.com/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`,
+			`https://repo.huaweicloud.com/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`,
+			`https://mirrors.aliyun.com/python-release/windows/python-${PYTHON_VERSION}-embed-amd64.zip`,
+			`https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`
+	  ]
+).filter(Boolean)
+
+const GET_PIP_URLS = (process.env.GET_PIP_MIRROR
+	? [process.env.GET_PIP_MIRROR]
+	: [
+			'https://bootstrap.pypa.io/get-pip.py'
+	  ]
+).filter(Boolean)
 
 const REPO_ROOT = path.resolve(process.cwd())
 const RUNTIME_DIR = path.resolve(REPO_ROOT, 'electron', 'static', 'runtime')
@@ -40,7 +56,7 @@ function findCachedFile(filename) {
 	return null
 }
 
-function downloadFile(url, destPath, filename) {
+function downloadFile(urls, destPath, filename) {
 	return new Promise((resolve, reject) => {
 		const cachedPath = findCachedFile(filename)
 		if (cachedPath) {
@@ -53,57 +69,73 @@ function downloadFile(url, destPath, filename) {
 			return
 		}
 
-		log(`Downloading ${url}...`)
+		const urlList = Array.isArray(urls) ? urls : [urls]
 		const tempPath = `${destPath}.downloading`
 		ensureDir(path.dirname(destPath))
 		ensureDir(CACHE_DIR)
 
-		function get(currentUrl, redirectCount = 0) {
-			if (redirectCount > 10) {
-				reject(new Error('Too many redirects'))
+		async function tryDownload(urlIndex = 0) {
+			if (urlIndex >= urlList.length) {
+				reject(new Error(`All download URLs failed for ${filename}`))
 				return
 			}
-			https
-				.get(currentUrl, (res) => {
-					if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-						res.resume()
-						get(new URL(res.headers.location, currentUrl).toString(), redirectCount + 1)
-						return
-					}
-					if (res.statusCode !== 200) {
-						res.resume()
-						reject(new Error(`Download failed: HTTP ${res.statusCode} for ${currentUrl}`))
-						return
-					}
-					const file = createWriteStream(tempPath)
-					pipeline(res, file)
-						.then(() => {
-							fs.renameSync(tempPath, destPath)
-							try {
-								const cacheDest = path.resolve(CACHE_DIR, filename)
-								fs.copyFileSync(destPath, cacheDest)
-								log(`Downloaded and cached to ${path.relative(REPO_ROOT, cacheDest)}`)
-							} catch {
-								log(`Downloaded to ${path.relative(REPO_ROOT, destPath)} (cache copy skipped)`)
-							}
-							resolve(destPath)
-						})
-						.catch((err) => {
-							try {
-								fs.unlinkSync(tempPath)
-							} catch {}
-							reject(err)
-						})
-				})
-				.on('error', (err) => {
-					try {
-						fs.unlinkSync(tempPath)
-					} catch {}
-					reject(err)
-				})
+
+			const currentUrl = urlList[urlIndex]
+			log(`Downloading ${currentUrl}... (${urlIndex + 1}/${urlList.length})`)
+
+			function get(downloadUrl, redirectCount = 0) {
+				if (redirectCount > 10) {
+					log(`Too many redirects for ${downloadUrl}, trying next mirror...`)
+					tryDownload(urlIndex + 1)
+					return
+				}
+				https
+					.get(downloadUrl, (res) => {
+						if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+							res.resume()
+							get(new URL(res.headers.location, downloadUrl).toString(), redirectCount + 1)
+							return
+						}
+						if (res.statusCode !== 200) {
+							res.resume()
+							log(`Download failed: HTTP ${res.statusCode} for ${downloadUrl}, trying next mirror...`)
+							tryDownload(urlIndex + 1)
+							return
+						}
+						const file = createWriteStream(tempPath)
+						pipeline(res, file)
+							.then(() => {
+								fs.renameSync(tempPath, destPath)
+								try {
+									const cacheDest = path.resolve(CACHE_DIR, filename)
+									fs.copyFileSync(destPath, cacheDest)
+									log(`Downloaded and cached to ${path.relative(REPO_ROOT, cacheDest)}`)
+								} catch {
+									log(`Downloaded to ${path.relative(REPO_ROOT, destPath)} (cache copy skipped)`)
+								}
+								resolve(destPath)
+							})
+							.catch((err) => {
+								try {
+									fs.unlinkSync(tempPath)
+								} catch {}
+								log(`Download error for ${downloadUrl}: ${err.message}, trying next mirror...`)
+								tryDownload(urlIndex + 1)
+							})
+					})
+					.on('error', (err) => {
+						try {
+							fs.unlinkSync(tempPath)
+						} catch {}
+						log(`Network error for ${downloadUrl}: ${err.message}, trying next mirror...`)
+						tryDownload(urlIndex + 1)
+					})
+			}
+
+			get(currentUrl)
 		}
 
-		get(url)
+		tryDownload()
 	})
 }
 
@@ -143,6 +175,13 @@ function runCommand(cmd, args, options = {}) {
 		)
 	}
 	return result
+}
+
+function getPipIndexArgs() {
+	if (PIP_INDEX_URL) {
+		return ['-i', PIP_INDEX_URL, '--trusted-host', new URL(PIP_INDEX_URL).hostname]
+	}
+	return []
 }
 
 function findFileBySuffix(dir, suffix) {
@@ -266,14 +305,14 @@ async function main() {
 	const getPipPath = path.resolve(TEMP_DIR, GET_PIP_FILENAME)
 
 	try {
-		await downloadFile(PYTHON_EMBED_URL, zipPath, PYTHON_ZIP_FILENAME)
-		await downloadFile(GET_PIP_URL, getPipPath, GET_PIP_FILENAME)
+		await downloadFile(PYTHON_EMBED_URLS, zipPath, PYTHON_ZIP_FILENAME)
+		await downloadFile(GET_PIP_URLS, getPipPath, GET_PIP_FILENAME)
 
 		extractZip(zipPath, PYTHON_RUNTIME_DIR)
 		configurePythonRuntime(PYTHON_RUNTIME_DIR)
 
 		log('Installing pip...')
-		runCommand(pythonExe, [getPipPath, '--no-warn-script-location'], { cwd: PYTHON_RUNTIME_DIR })
+		runCommand(pythonExe, [getPipPath, '--no-warn-script-location', ...getPipIndexArgs()], { cwd: PYTHON_RUNTIME_DIR })
 
 		const requirementsPath = path.resolve(REPO_ROOT, 'django-app', 'requirements.txt')
 		if (fs.existsSync(requirementsPath)) {
@@ -287,7 +326,8 @@ async function main() {
 					'--no-warn-script-location',
 					'--no-cache-dir',
 					'-r',
-					requirementsPath
+					requirementsPath,
+					...getPipIndexArgs()
 				],
 				{ cwd: PYTHON_RUNTIME_DIR }
 			)
@@ -306,7 +346,8 @@ async function main() {
 					'django-cors-headers==4.4.0',
 					'cryptography==42.0.8',
 					'Pillow>=10.4.0',
-					'certifi>=2024.0.0'
+					'certifi>=2024.0.0',
+					...getPipIndexArgs()
 				],
 				{ cwd: PYTHON_RUNTIME_DIR }
 			)

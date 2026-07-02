@@ -73,7 +73,7 @@
     "prepack:win": "npm run gen:win-icon",
     "pack:win": "npm run build && electron-builder --dir -w",
     "pack:mac": "npm run build && electron-builder --dir -m",
-    "predist:win": "npm run prepare:python-runtime && npm run gen:logo",
+    "predist:win": "cross-env PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple npm run prepare:python-runtime && npm run gen:logo",
     "dist:win": "node scripts/dist-win.mjs",
     "dist:mac": "node scripts/dist-mac.mjs",
     "preview": "vite preview",

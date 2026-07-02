@@ -1,4 +1,4 @@
-import { normalizeResolvedLayoutSlots, buildSlotsFromModelBindings } from './unrealExportUtils'
+import { normalizeResolvedLayoutSlots, buildSlotsFromModelBindings, getUnrealConnectionPollInterval } from './unrealExportUtils'
 
 export const useAIWorkflowUnrealExportActions = (payload: {
 	store: {
@@ -93,8 +93,11 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			message: '请在虚幻编辑器中打开 Dweb Workflow Bridge 插件面板并点击 Connect 按钮...'
 		})
 
+		let pollCount = 0
 		while (Date.now() - startTime < timeoutMs) {
-			await new Promise((r) => setTimeout(r, 1500))
+			const pollInterval = getUnrealConnectionPollInterval(pollCount)
+			await new Promise((r) => setTimeout(r, pollInterval))
+			pollCount++
 			const sessionsRes = await payload.unrealExportService.listSessions()
 			if (sessionsRes.ok && Array.isArray(sessionsRes.sessions) && sessionsRes.sessions.length > 0) {
 				const active = sessionsRes.sessions.find(
