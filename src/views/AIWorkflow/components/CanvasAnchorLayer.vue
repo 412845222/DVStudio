@@ -1,5 +1,5 @@
 <template>
-	<div ref="layerRef" class="aiwf-canvas-anchor-layer" :class="{ 'aiwf-anchor-layer-hidden': hideVisuals }">
+	<div ref="layerRef" class="aiwf-canvas-anchor-layer" :class="{ 'aiwf-anchor-layer-hidden': hideVisuals, 'aiwf-anchor-layer-paused': motionActive }">
 		<div
 			v-for="node in nodes"
 			:key="node.id"
@@ -65,11 +65,13 @@ interface Props {
 	viewport: ViewportState
 	selectedNodeIds?: string[]
 	hideVisuals?: boolean
+	motionActive?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	selectedNodeIds: () => [],
-	hideVisuals: false
+	hideVisuals: false,
+	motionActive: false
 })
 
 const emit = defineEmits<{
@@ -123,6 +125,17 @@ const worldToScreen = (world: { x: number; y: number }): { x: number; y: number 
 }
 
 const nodeShellStyle = (node: CanvasAnchorNode): Record<string, string> => {
+	if (props.motionActive) {
+		return {
+			position: 'absolute',
+			left: '0',
+			top: '0',
+			width: '0',
+			height: '0',
+			transform: 'translate(-50%, -50%)',
+			pointerEvents: 'none'
+		}
+	}
 	const screen = worldToScreen({ x: node.worldX, y: node.worldY })
 	const zoom = props.viewport.zoom
 	const w = Math.max(80, node.width || 240)
@@ -419,5 +432,9 @@ const onInputAnchorPointerUp = (
 
 .aiwf-anchor-layer-hidden .wf-anchor-hit {
 	pointer-events: none !important;
+}
+
+.aiwf-anchor-layer-paused {
+	display: none !important;
 }
 </style>

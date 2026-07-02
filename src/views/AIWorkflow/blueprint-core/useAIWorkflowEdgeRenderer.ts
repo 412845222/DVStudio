@@ -284,15 +284,29 @@ export const useAIWorkflowEdgeRenderer = (payload: {
 	}
 
 	let lastSyncEdgeRenderAt = 0
-	const SYNC_EDGE_RENDER_MIN_INTERVAL_MS = 16
+	const SYNC_EDGE_RENDER_MIN_INTERVAL_MS = 32
+	const LOW_ZOOM_THRESHOLD = 0.35
 
 	const scheduleAsyncEdgeRender = () => {
 		if (disposed) return
 		if (isViewportMotionActive()) {
 			const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
-			if (now - lastSyncEdgeRenderAt < SYNC_EDGE_RENDER_MIN_INTERVAL_MS) {
+			const zoom = Number(payload.viewport.value.zoom) || 1
+			const isLowZoom = zoom < LOW_ZOOM_THRESHOLD
+			const minInterval = isLowZoom ? 48 : SYNC_EDGE_RENDER_MIN_INTERVAL_MS
+
+			if (now - lastSyncEdgeRenderAt < minInterval) {
 				if (!edgeRenderRaf) {
-					edgeRenderRaf = requestAnimationFrame(rebuildSyncEdgeRenders)
+					edgeRenderRaf = requestAnimationFrame(() => {
+						edgeRenderRaf = 0
+						const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lastSyncEdgeRenderAt
+						if (elapsed >= minInterval) {
+							lastSyncEdgeRenderAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+							rebuildSyncEdgeRenders()
+						} else {
+							scheduleAsyncEdgeRender()
+						}
+					})
 				}
 				return
 			}

@@ -359,9 +359,12 @@ const drawCanvas = () => {
 	ctx.clearRect(0, 0, width, height)
 	ctx.lineCap = 'round'
 	ctx.lineJoin = 'round'
-	const lowDetail = Boolean(props.motionActive) || resolveZoomScale() <= 0.32
-	const heavyEdgeCount = displayedEdges.value.length >= 520
+	const zoom = Number(props.zoom) || 1
+	const lowDetail = Boolean(props.motionActive) || zoom <= 0.35
+	const veryLowDetail = zoom <= 0.25
+	const heavyEdgeCount = displayedEdges.value.length >= 400
 	const suppressEffects = lowDetail || heavyEdgeCount
+	const skipAnchors = veryLowDetail || (lowDetail && heavyEdgeCount)
 
 	const drawPath = (
 		path: Path2D,
@@ -402,8 +405,12 @@ const drawCanvas = () => {
 		ctx.globalAlpha = 1
 	}
 
-	for (const edge of displayedEdges.value) {
-		const path = new Path2D(edge.path)
+	const hitEntriesRef = hitEntries.value
+	const edgesLen = displayedEdges.value.length
+	for (let i = 0; i < edgesLen; i++) {
+		const edge = displayedEdges.value[i]
+		const hitEntry = i < hitEntriesRef.length ? hitEntriesRef[i] : null
+		const path = hitEntry?.path ?? new Path2D(edge.path)
 		const selected = edge.id === props.selectedEdgeId
 		const hovered = edge.id === hoveredEdgeId.value
 		drawPath(path, edge.stroke || '#3aa0ff', resolveStrokeWidth(edge.strokeWidth ?? 2), {
@@ -422,10 +429,12 @@ const drawCanvas = () => {
 		})
 	}
 
-	for (const anchor of displayedAnchors.value) {
-		const isHovered = anchorKey(anchor) === hoveredAnchorKey.value
-		const isDragging = (anchor.phase ?? 'idle') === 'dragging'
-		drawAnchor(ctx, anchor, isHovered, isDragging, lowDetail)
+	if (!skipAnchors) {
+		for (const anchor of displayedAnchors.value) {
+			const isHovered = anchorKey(anchor) === hoveredAnchorKey.value
+			const isDragging = (anchor.phase ?? 'idle') === 'dragging'
+			drawAnchor(ctx, anchor, isHovered, isDragging, lowDetail)
+		}
 	}
 }
 
