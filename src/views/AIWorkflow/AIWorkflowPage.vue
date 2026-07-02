@@ -1346,6 +1346,7 @@ const screenshotWarmupOpen = ref(false)
 const screenshotWarmupDetail = ref('')
 const warmupForceRenderNodeIds = ref<Set<string>>(new Set())
 const warmupExitingFullRender = ref(false)
+const pendingScreenshotNodeIds = ref<Set<string>>(new Set())
 const nearDragNodeIds = ref<Set<string>>(new Set())
 const panningFullRenderSnapshot = ref<Set<string> | null>(null)
 const stableLinkHoverNodeId = ref<string>('')
@@ -1536,6 +1537,14 @@ const canvasNodeEntries = computed(() => {
 	return result
 })
 
+// 刷新Canvas节点层，强制全量重绘
+const refreshCanvasNodeLayer = () => {
+	canvasScreenshotRefreshTick.value++
+	nextTick(() => {
+		nodeCanvasLayerRef.value?.markDirty()
+	})
+}
+
 // 判断节点是否有Canvas截图可以用于Canvas渲染
 const hasCanvasScreenshot = (nodeId: string): boolean => {
 	return canvasScreenshotEnabled.value && hasBitmap(nodeId)
@@ -1692,15 +1701,24 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 			const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
 			if (chatNodeId) lockedIds.add(chatNodeId)
 		}
+		for (const id of pendingScreenshotNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (nid) lockedIds.add(nid)
+		}
 		return lockedIds
 	}
 
 	if (panningFullRenderSnapshot.value) {
-		return panningFullRenderSnapshot.value
+		const snapshotWithPending = new Set(panningFullRenderSnapshot.value)
+		for (const id of pendingScreenshotNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (nid) snapshotWithPending.add(nid)
+		}
+		return snapshotWithPending
 	}
 
 	// ==========================================
-	// Step 1: 核心激活节点（用户直接交互的节点）+ 预热强制渲染节点
+	// Step 1: 核心激活节点（用户直接交互的节点）+ 预热强制渲染节点 + 待截图节点
 	// 这些节点无论是否在视口内，都必须完整渲染
 	// ==========================================
 	const coreIds = new Set<string>()
@@ -1711,6 +1729,11 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 	}
 
 	for (const id of warmupForceRenderNodeIds.value) {
+		const nid = String(id ?? '').trim()
+		if (nid) coreIds.add(nid)
+	}
+
+	for (const id of pendingScreenshotNodeIds.value) {
 		const nid = String(id ?? '').trim()
 		if (nid) coreIds.add(nid)
 	}
@@ -1853,7 +1876,7 @@ const scheduleNodeScreenshot = async (
 	const hostEl = nodeHostRefs.get(nodeId)
 	if (!hostEl) {
 		if (retryCount < 3) {
-			setTimeout(() => scheduleNodeScreenshot(node, retryCount + 1, priority), 100)
+			setTimeout(() => scheduleNodeScreenshot(node, retryCount + 1, priority, allowFullRender), 100)
 		}
 		return
 	}
@@ -1927,14 +1950,8 @@ const scheduleNodeScreenshot = async (
 			try {
 				await loadScreenshotToCanvas(entry)
 			} catch {}
-			canvasScreenshotPool.value = {
-				getEntry: (nid: string) => {
-					const e = getCanvasEntry(nid)
-					if (!e) return null
-					return { bitmap: e.bitmap, width: e.width, height: e.height }
-				}
-			}
-			canvasScreenshotRefreshTick.value++
+			initCanvasScreenshotPool()
+			refreshCanvasNodeLayer()
 			const cacheCtx = getScreenshotCacheContext()
 			void saveScreenshotToDisk(
 				cacheCtx.projectId,
@@ -1988,14 +2005,8 @@ const scheduleVisibleNodeScreenshots = () => {
 						try {
 							await loadScreenshotToCanvas(cached)
 						} catch {}
-						canvasScreenshotPool.value = {
-							getEntry: (nid: string) => {
-								const e = getCanvasEntry(nid)
-								if (!e) return null
-								return { bitmap: e.bitmap, width: e.width, height: e.height }
-							}
-						}
-						canvasScreenshotRefreshTick.value++
+						initCanvasScreenshotPool()
+						refreshCanvasNodeLayer()
 					})()
 					pendingBitmapLoads.push(loadPromise)
 				}
@@ -2145,6 +2156,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 			}
 		)
 		initCanvasScreenshotPool()
+		refreshCanvasNodeLayer()
 		screenshotWarmupProgress.value = 0.99
 		screenshotWarmupDetail.value = '完成'
 		await waitForFrames(1)
@@ -2299,6 +2311,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	)
 
 	initCanvasScreenshotPool()
+	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.99
 	screenshotWarmupDetail.value = '完成'
@@ -2354,6 +2367,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 		if (newMap.size > 0) {
 			await warmupCanvasAll(newMap)
 			initCanvasScreenshotPool()
+			refreshCanvasNodeLayer()
 		}
 		screenshotWarmupOpen.value = false
 		screenshotWarmupDetail.value = ''
@@ -2487,6 +2501,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	if (newMap.size > 0) {
 		await warmupCanvasAll(newMap)
 		initCanvasScreenshotPool()
+		refreshCanvasNodeLayer()
 	}
 	await waitForFrames(2)
 	screenshotWarmupOpen.value = false
@@ -2598,11 +2613,6 @@ watch(
 
 			for (const nodeId of newlySelected) {
 				userSelectedNodesNeedingRefresh.add(nodeId)
-				invalidateCanvasScreenshot(nodeId)
-				screenshotPool.invalidateScreenshot(nodeId)
-				const newMap = new Map(nodeScreenshotMap.value)
-				newMap.delete(nodeId)
-				nodeScreenshotMap.value = newMap
 			}
 		})
 	},
@@ -2751,6 +2761,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 		}
 	)
 	initCanvasScreenshotPool()
+	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.98
 	screenshotWarmupDetail.value = '完成'
@@ -8555,14 +8566,12 @@ watch(
 		}
 		if (nodesExitingFullRender.length > 0) {
 			const isWarmupExit = warmupExitingFullRender.value
-			const visibleExiting: WorkflowNode[] = []
-			const offscreenExiting: WorkflowNode[] = []
-			const reused: WorkflowNode[] = []
+			const pendingCapture: WorkflowNode[] = []
+			const pendingBitmapLoads: Promise<void>[] = []
 			for (const nodeId of nodesExitingFullRender) {
 				const node = nodes.value.find((n) => String(n.id) === nodeId)
 				if (!node) continue
 				nodesNeedingScreenshotRefresh.delete(nodeId)
-				const needsUserRefresh = userSelectedNodesNeedingRefresh.has(nodeId)
 				userSelectedNodesNeedingRefresh.delete(nodeId)
 				const version = getNodeScreenshotVersion(node)
 				const existingCached = screenshotPool.getCachedScreenshot(nodeId, version)
@@ -8575,47 +8584,81 @@ watch(
 						newMap.set(nodeId, existingCached)
 						nodeScreenshotMap.value = newMap
 					}
-					reused.push(node)
+					if (existingCached && !hasBitmap(nodeId)) {
+						const loadPromise = (async () => {
+							try {
+								await loadScreenshotToCanvas(existingCached)
+							} catch {}
+							initCanvasScreenshotPool()
+						})()
+						pendingBitmapLoads.push(loadPromise)
+					}
 					continue
 				}
 
-				if (!isWarmupExit && !needsUserRefresh && mapEntryValid && existingCached) {
-					reused.push(node)
+				if (!isWarmupExit && mapEntryValid && existingCached) {
+					if (existingCached && !hasBitmap(nodeId)) {
+						const loadPromise = (async () => {
+							try {
+								await loadScreenshotToCanvas(existingCached)
+							} catch {}
+							initCanvasScreenshotPool()
+						})()
+						pendingBitmapLoads.push(loadPromise)
+					}
 					continue
 				}
 
-				if (!isWarmupExit) {
-					screenshotPool.invalidateScreenshot(nodeId)
-					invalidateCanvasScreenshot(nodeId)
-					const newMap = new Map(nodeScreenshotMap.value)
-					newMap.delete(nodeId)
-					nodeScreenshotMap.value = newMap
-				}
-
-				if (isNodeInViewport(node)) {
-					visibleExiting.push(node)
-				} else {
-					offscreenExiting.push(node)
-				}
+				pendingCapture.push(node)
 			}
 
-			const captureExiting = (
-				list: WorkflowNode[],
-				delayMs: number,
-				priority: ScreenshotPriority
-			) => {
-				if (list.length === 0) return
-				nextTick(() => {
-					setTimeout(() => {
-						for (const node of list) {
-							void scheduleNodeScreenshot(node, 0, priority)
-						}
-					}, delayMs)
+			if (pendingBitmapLoads.length > 0) {
+				void Promise.all(pendingBitmapLoads).then(() => {
+					refreshCanvasNodeLayer()
 				})
 			}
 
-			captureExiting(visibleExiting, isWarmupExit ? 0 : 80, 'high')
-			captureExiting(offscreenExiting, isWarmupExit ? 50 : 300, 'low')
+			if (pendingCapture.length > 0) {
+				const pendingSet = new Set(pendingScreenshotNodeIds.value)
+				for (const node of pendingCapture) {
+					pendingSet.add(String(node.id))
+				}
+				pendingScreenshotNodeIds.value = pendingSet
+
+				nextTick(() => {
+					setTimeout(() => {
+						const capturePromises: Promise<void>[] = []
+						for (const node of pendingCapture) {
+							const promise = (async () => {
+								const nodeId = String(node.id)
+								try {
+									await scheduleNodeScreenshot(node, 0, 'high', true)
+									const version = getNodeScreenshotVersion(node)
+									const cached = screenshotPool.getCachedScreenshot(nodeId, version)
+									if (cached) {
+										const newMap = new Map(nodeScreenshotMap.value)
+										newMap.set(nodeId, cached)
+										nodeScreenshotMap.value = newMap
+										try {
+											await loadScreenshotToCanvas(cached)
+										} catch {}
+										initCanvasScreenshotPool()
+									}
+								} catch (err) {
+									console.warn('[Screenshot] pending capture failed for node:', nodeId, err)
+								} finally {
+									const newPendingSet = new Set(pendingScreenshotNodeIds.value)
+									newPendingSet.delete(nodeId)
+									pendingScreenshotNodeIds.value = newPendingSet
+									refreshCanvasNodeLayer()
+								}
+							})()
+							capturePromises.push(promise)
+						}
+						void Promise.all(capturePromises)
+					}, isWarmupExit ? 0 : 50)
+				})
+			}
 		}
 		nextTick(() => {
 			scheduleVisibleNodeScreenshots()
