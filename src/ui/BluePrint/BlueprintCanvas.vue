@@ -326,7 +326,7 @@ const drawGrid = () => {
 	const ctx = canvas.getContext('2d')
 	if (!ctx) return
 
-	savedFrameMoveHandles.value = []
+	const collectedHandles: SavedFrameHandle[] = []
 
 	const dpr = GRID_DPR
 	const r = wrap.getBoundingClientRect()
@@ -586,7 +586,7 @@ const drawGrid = () => {
 					height: 20
 				}
 			}
-			savedFrameMoveHandles.value.push(savedFrameHandle)
+			collectedHandles.push(savedFrameHandle)
 
 			// 绘制移动图标（十字箭头样式）
 			ctx.strokeStyle = '#6ee7b7'
@@ -680,9 +680,9 @@ const drawGrid = () => {
 			ctx.lineTo(sCrossX - sCrossSize / 2, sCrossY + sCrossSize / 2)
 			ctx.stroke()
 		}
-	} else {
-		savedFrameMoveHandles.value = []
 	}
+
+	savedFrameMoveHandles.value = collectedHandles
 
 	ctx.globalAlpha = 1
 }

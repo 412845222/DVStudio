@@ -405,8 +405,12 @@ const drawCanvas = () => {
 		ctx.globalAlpha = 1
 	}
 
-	for (const edge of displayedEdges.value) {
-		const path = new Path2D(edge.path)
+	const hitEntriesRef = hitEntries.value
+	const edgesLen = displayedEdges.value.length
+	for (let i = 0; i < edgesLen; i++) {
+		const edge = displayedEdges.value[i]
+		const hitEntry = i < hitEntriesRef.length ? hitEntriesRef[i] : null
+		const path = hitEntry?.path ?? new Path2D(edge.path)
 		const selected = edge.id === props.selectedEdgeId
 		const hovered = edge.id === hoveredEdgeId.value
 		drawPath(path, edge.stroke || '#3aa0ff', resolveStrokeWidth(edge.strokeWidth ?? 2), {

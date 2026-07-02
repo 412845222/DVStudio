@@ -12,7 +12,7 @@
 			</div>
 		</div>
 		<!-- 蓝图节点容器 -->
-		<div class="aiwf-blueprint-container">
+		<div class="aiwf-blueprint-container" :class="{ 'aiwf-viewport-motion': viewportMotionActive }">
 			<BlueprintCanvas
 				class="aiwf-canvas"
 				:viewport="viewport"
@@ -55,6 +55,7 @@
 					:viewport="viewport"
 					:selected-node-ids="selectedNodeIds"
 					:hide-visuals="true"
+					:motion-active="viewportMotionActive"
 					@start-link="onStartLink($event, vp.screenToWorld)"
 					@end-link="onEndLink"
 				/>
@@ -1116,7 +1117,7 @@ ensureAIWorkflowHistory()
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 
-const { viewport, onViewportUpdate, viewportMotionActive, markViewportMotion, canvasViewportSize } =
+const { viewport, onViewportUpdate, viewportMotionActive, markViewportMotion, forceEndViewportMotion, canvasViewportSize } =
 	useAIWorkflowViewport(store, {
 		canvasSelector: '.aiwf-canvas',
 		motionResetMs: 140
@@ -1490,6 +1491,8 @@ let cachedCanvasNodeEntries: Array<{
 	width: number
 	height: number
 	radius?: number
+	inputs?: WorkflowAnchorSpec[]
+	outputs?: WorkflowAnchorSpec[]
 }> = []
 let lastCanvasEntriesSignature = ''
 
@@ -1515,7 +1518,6 @@ const canvasNodeEntries = computed(() => {
 		const nodeId = String(node.id ?? '').trim()
 		if (!nodeId) continue
 		if (fullRenderSet.has(nodeId)) continue
-		if (!hasBitmap(nodeId)) continue
 
 		result.push({
 			id: nodeId,
@@ -1523,7 +1525,9 @@ const canvasNodeEntries = computed(() => {
 			worldY: node.worldY,
 			width: node.width || 240,
 			height: node.height || 160,
-			radius: 8
+			radius: 8,
+			inputs: node.inputs,
+			outputs: node.outputs
 		})
 	}
 
@@ -1543,18 +1547,14 @@ type NodeRenderMode = 'canvas' | 'full'
 
 // 判断节点应该使用哪种渲染模式
 const getNodeRenderMode = (nodeId: string): NodeRenderMode => {
-	// 如果在完整DOM渲染列表中（选中/激活节点），使用完整渲染
 	if (fullRenderNodeIds.value.has(nodeId)) {
 		return 'full'
 	}
-	
-	// 如果有Canvas截图，优先使用Canvas渲染（不受CSS影响）
-	if (hasCanvasScreenshot(nodeId)) {
+
+	if (canvasScreenshotEnabled.value) {
 		return 'canvas'
 	}
-	
-	// 其他情况：等待Canvas截图预热完成后自动切换到canvas模式
-	// 如果一直没有截图，则使用完整渲染
+
 	return 'full'
 }
 
@@ -1955,7 +1955,7 @@ const scheduleNodeScreenshot = async (
 	}
 }
 
-let screenshotScheduleTimer: ReturnType<typeof setTimeout> | null = null
+	let screenshotScheduleTimer: ReturnType<typeof setTimeout> | null = null
 const scheduleVisibleNodeScreenshots = () => {
 	if (screenshotScheduleTimer) {
 		clearTimeout(screenshotScheduleTimer)
@@ -1972,6 +1972,7 @@ const scheduleVisibleNodeScreenshots = () => {
 		})
 
 		let scheduled = 0
+		const pendingBitmapLoads: Promise<void>[] = []
 		for (const node of unselectedNodes) {
 			if (scheduled >= 3) break
 			const nodeId = node.id
@@ -1981,6 +1982,23 @@ const scheduleVisibleNodeScreenshots = () => {
 				const newMap = new Map(nodeScreenshotMap.value)
 				newMap.set(nodeId, cached)
 				nodeScreenshotMap.value = newMap
+				if (!hasBitmap(nodeId)) {
+					invalidateCanvasScreenshot(nodeId)
+					const loadPromise = (async () => {
+						try {
+							await loadScreenshotToCanvas(cached)
+						} catch {}
+						canvasScreenshotPool.value = {
+							getEntry: (nid: string) => {
+								const e = getCanvasEntry(nid)
+								if (!e) return null
+								return { bitmap: e.bitmap, width: e.width, height: e.height }
+							}
+						}
+						canvasScreenshotRefreshTick.value++
+					})()
+					pendingBitmapLoads.push(loadPromise)
+				}
 				continue
 			}
 			if (!screenshotPool.hasCachedScreenshot(nodeId, version)) {
@@ -2500,9 +2518,11 @@ watch(
 	() => viewportMotionActive.value,
 	(isActive) => {
 		if (!isActive) {
-			nextTick(() => {
-				scheduleVisibleNodeScreenshots()
-			})
+			setTimeout(() => {
+				if (!viewportMotionActive.value) {
+					scheduleVisibleNodeScreenshots()
+				}
+			}, 200)
 		}
 	},
 	{ flush: 'post' }
@@ -8475,6 +8495,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 	chatModelKey,
 	chatCollapsed,
 	markViewportMotion,
+	forceEndViewportMotion,
 	scheduleAsyncEdgeRender,
 	canvasViewportSize
 })
@@ -8630,11 +8651,13 @@ const onCanvasPanningStart = () => {
 	canvasInteraction.cancelFocusAnimation()
 	linkInteraction.setPanning(true)
 	panningFullRenderSnapshot.value = new Set(fullRenderNodeIds.value)
+	markViewportMotion()
 }
 
 const onCanvasPanningEnd = () => {
 	linkInteraction.setPanning(false)
 	panningFullRenderSnapshot.value = null
+	forceEndViewportMotion()
 }
 
 const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
@@ -9028,6 +9051,18 @@ if (import.meta.env.DEV) {
 .aiwf-canvas {
 	position: absolute;
 	inset: 0;
+}
+
+.aiwf-viewport-motion .aiwf-canvas,
+.aiwf-viewport-motion .wf-edge-canvas,
+.aiwf-viewport-motion .node-canvas-layer {
+	will-change: transform;
+	contain: layout paint;
+}
+
+.aiwf-viewport-motion .wf-node {
+	contain: layout paint style;
+	will-change: transform;
 }
 
 .aiwf-node-host {

@@ -47,6 +47,8 @@ export class CanvasNodeRenderer {
 	private lowQualityMode: boolean = false
 
 	private currentViewport: ViewportState = { panX: 0, panY: 0, zoom: 1 }
+	private lastRenderedViewport: ViewportState | null = null
+	private forceFullRender: boolean = true
 	private currentNodes: VisibleNodeEntry[] = []
 
 	constructor(
@@ -64,6 +66,7 @@ export class CanvasNodeRenderer {
 		if (this.lowQualityMode === enabled) return
 		this.lowQualityMode = enabled
 		this.renderDpr = enabled ? Math.min(1, this.dpr) : this.dpr
+		this.forceFullRender = true
 		this.resize()
 	}
 
@@ -77,6 +80,7 @@ export class CanvasNodeRenderer {
 		const rect = this.canvas.getBoundingClientRect()
 		this.canvas.width = Math.ceil(rect.width * this.renderDpr)
 		this.canvas.height = Math.ceil(rect.height * this.renderDpr)
+		this.forceFullRender = true
 		this.render(this.currentViewport)
 	}
 
@@ -86,10 +90,90 @@ export class CanvasNodeRenderer {
 
 	setNodes(nodes: VisibleNodeEntry[]): void {
 		this.currentNodes = nodes
+		this.forceFullRender = true
 	}
 
 	markDirty(): void {
+		this.forceFullRender = true
 		this.render(this.currentViewport)
+	}
+
+	private canUsePanReuse(newVp: ViewportState): boolean {
+		if (this.forceFullRender) return false
+		const last = this.lastRenderedViewport
+		if (!last) return false
+		if (Math.abs(newVp.zoom - last.zoom) > 0.0001) return false
+		if (newVp.zoom < 0.2) return false
+		const expectedDpr = this.lowQualityMode ? Math.min(1, this.dpr) : this.dpr
+		if (Math.abs(this.renderDpr - expectedDpr) > 0.001) return false
+		return true
+	}
+
+	private getExposedRegions(
+		lastBounds: ViewportBounds,
+		newBounds: ViewportBounds
+	): Array<{ bounds: ViewportBounds; isNewlyExposed: boolean }> {
+		const regions: Array<{ bounds: ViewportBounds; isNewlyExposed: boolean }> = []
+		const eps = 0.5
+
+		if (newBounds.left < lastBounds.left - eps) {
+			regions.push({
+				bounds: {
+					left: newBounds.left,
+					right: lastBounds.left,
+					top: newBounds.top,
+					bottom: newBounds.bottom
+				},
+				isNewlyExposed: true
+			})
+		}
+		if (newBounds.right > lastBounds.right + eps) {
+			regions.push({
+				bounds: {
+					left: lastBounds.right,
+					right: newBounds.right,
+					top: newBounds.top,
+					bottom: newBounds.bottom
+				},
+				isNewlyExposed: true
+			})
+		}
+		if (newBounds.top < lastBounds.top - eps) {
+			regions.push({
+				bounds: {
+					left: Math.max(newBounds.left, lastBounds.left),
+					right: Math.min(newBounds.right, lastBounds.right),
+					top: newBounds.top,
+					bottom: lastBounds.top
+				},
+				isNewlyExposed: true
+			})
+		}
+		if (newBounds.bottom > lastBounds.bottom + eps) {
+			regions.push({
+				bounds: {
+					left: Math.max(newBounds.left, lastBounds.left),
+					right: Math.min(newBounds.right, lastBounds.right),
+					top: lastBounds.bottom,
+					bottom: newBounds.bottom
+				},
+				isNewlyExposed: true
+			})
+		}
+
+		if (regions.length === 0) {
+			regions.push({ bounds: newBounds, isNewlyExposed: false })
+		}
+
+		return regions
+	}
+
+	private rectIntersects(
+		nodeLeft: number, nodeRight: number, nodeTop: number, nodeBottom: number,
+		b: ViewportBounds
+	): boolean {
+		return !(nodeRight < b.left || nodeLeft > b.right ||
+			nodeBottom < b.top || nodeTop > b.bottom)
 	}
 
 	private getViewportBounds(viewport: ViewportState, canvasW: number, canvasH: number): ViewportBounds {
@@ -212,52 +296,140 @@ export class CanvasNodeRenderer {
 	render(viewport: ViewportState): void {
 		this.currentViewport = viewport
 		const { width, height } = this.canvas
-		this.ctx.clearRect(0, 0, width, height)
-
 		const pool = this.poolProvider()
-		if (!pool) return
+		if (!pool) {
+			this.ctx.clearRect(0, 0, width, height)
+			this.lastRenderedViewport = { ...viewport }
+			this.forceFullRender = false
+			return
+		}
 
 		const canvasW = width / this.renderDpr
 		const canvasH = height / this.renderDpr
 		const zoom = viewport.zoom
 
-		const bounds = this.getViewportBounds(viewport, canvasW, canvasH)
+		const placeholderZoomThreshold = this.lowQualityMode ? 0.5 : 0.15
+		const compactZoomThreshold = this.lowQualityMode ? 0.5 : 0
 
-		this.ctx.save()
-		this.ctx.setTransform(
-			zoom * this.renderDpr,
-			0,
-			0,
-			zoom * this.renderDpr,
-			(canvasW / 2 + viewport.panX) * this.renderDpr,
-			(canvasH / 2 + viewport.panY) * this.renderDpr
-		)
+		const usePanReuse = this.canUsePanReuse(viewport)
+		const newBounds = this.getViewportBounds(viewport, canvasW, canvasH)
 
-		const placeholderZoomThreshold = this.lowQualityMode ? 0.5 : 0.2
-		const compactZoomThreshold = this.lowQualityMode ? 0.8 : 0.5
+		if (usePanReuse && this.lastRenderedViewport) {
+			const lastVp = this.lastRenderedViewport
+			const dPanX = viewport.panX - lastVp.panX
+			const dPanY = viewport.panY - lastVp.panY
+			const offsetX = dPanX * this.renderDpr
+			const offsetY = dPanY * this.renderDpr
 
-		for (const node of this.currentNodes) {
-			if (!this.isNodeVisible(node, bounds)) continue
+			if (Math.abs(offsetX) > 0.5 || Math.abs(offsetY) > 0.5) {
+				this.ctx.save()
+				this.ctx.setTransform(1, 0, 0, 1, 0, 0)
+				this.ctx.drawImage(this.canvas, offsetX, offsetY)
+				this.ctx.restore()
+			}
 
-			const entry = pool.getEntry(node.id)
+			const lastBounds = this.getViewportBounds(lastVp, canvasW, canvasH)
+			const exposedRegions = this.getExposedRegions(lastBounds, newBounds)
 
-			if (!entry) {
-				if (zoom < 0.4) {
-					this.drawNodePlaceholder(this.ctx, node)
+			this.ctx.save()
+			this.ctx.setTransform(
+				zoom * this.renderDpr,
+				0,
+				0,
+				zoom * this.renderDpr,
+				(canvasW / 2 + viewport.panX) * this.renderDpr,
+				(canvasH / 2 + viewport.panY) * this.renderDpr
+			)
+
+			for (const region of exposedRegions) {
+				if (!region.isNewlyExposed) continue
+
+				const worldClipX = region.bounds.left
+				const worldClipY = region.bounds.top
+				const worldClipW = region.bounds.right - region.bounds.left
+				const worldClipH = region.bounds.bottom - region.bounds.top
+				const screenClipX = (canvasW / 2 + viewport.panX + worldClipX * zoom) * this.renderDpr
+				const screenClipY = (canvasH / 2 + viewport.panY + worldClipY * zoom) * this.renderDpr
+				const screenClipW = worldClipW * zoom * this.renderDpr + 2
+				const screenClipH = worldClipH * zoom * this.renderDpr + 2
+
+				this.ctx.save()
+				this.ctx.setTransform(1, 0, 0, 1, 0, 0)
+				this.ctx.clearRect(screenClipX - 1, screenClipY - 1, screenClipW + 2, screenClipH + 2)
+				this.ctx.restore()
+
+				this.ctx.save()
+				this.ctx.beginPath()
+				this.ctx.rect(worldClipX, worldClipY, worldClipW, worldClipH)
+				this.ctx.clip()
+
+				for (const node of this.currentNodes) {
+					const halfW = node.width / 2
+					const halfH = node.height / 2
+					const nl = node.worldX - halfW
+					const nr = node.worldX + halfW
+					const nt = node.worldY - halfH
+					const nb = node.worldY + halfH
+
+					if (!this.rectIntersects(nl, nr, nt, nb, region.bounds)) continue
+
+					const entry = pool.getEntry(node.id)
+
+					if (!entry) {
+						this.drawNodePlaceholder(this.ctx, node)
+						continue
+					}
+
+					if (zoom < placeholderZoomThreshold) {
+						this.drawNodePlaceholder(this.ctx, node)
+					} else if (zoom < compactZoomThreshold) {
+						this.drawNodeCompact(this.ctx, node, entry)
+					} else {
+						this.drawNodeFull(this.ctx, node, entry)
+					}
 				}
-				continue
+
+				this.ctx.restore()
 			}
 
-			if (zoom < placeholderZoomThreshold) {
-				this.drawNodePlaceholder(this.ctx, node)
-			} else if (zoom < compactZoomThreshold) {
-				this.drawNodeCompact(this.ctx, node, entry)
-			} else {
-				this.drawNodeFull(this.ctx, node, entry)
+			this.ctx.restore()
+		} else {
+			this.ctx.clearRect(0, 0, width, height)
+
+			this.ctx.save()
+			this.ctx.setTransform(
+				zoom * this.renderDpr,
+				0,
+				0,
+				zoom * this.renderDpr,
+				(canvasW / 2 + viewport.panX) * this.renderDpr,
+				(canvasH / 2 + viewport.panY) * this.renderDpr
+			)
+
+			for (const node of this.currentNodes) {
+				if (!this.isNodeVisible(node, newBounds)) continue
+
+				const entry = pool.getEntry(node.id)
+
+				if (!entry) {
+					this.drawNodePlaceholder(this.ctx, node)
+					continue
+				}
+
+				if (zoom < placeholderZoomThreshold) {
+					this.drawNodePlaceholder(this.ctx, node)
+				} else if (zoom < compactZoomThreshold) {
+					this.drawNodeCompact(this.ctx, node, entry)
+				} else {
+					this.drawNodeFull(this.ctx, node, entry)
+				}
 			}
+
+			this.ctx.restore()
 		}
 
-		this.ctx.restore()
+		this.lastRenderedViewport = { ...viewport }
+		this.forceFullRender = false
 	}
 
 	hitTest(clientX: number, clientY: number): HitTestResult {
