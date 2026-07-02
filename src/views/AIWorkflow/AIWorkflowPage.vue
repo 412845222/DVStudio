@@ -36,7 +36,9 @@
 				@drop.prevent="onCanvasDrop"
 				@selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
 				@selection-frame-delete="onDeleteSelectionFrame"
+				@selection-frame-drag-start="onSelectionFrameDragStart"
 				@selection-frame-drag="onSelectionFrameDrag"
+				@selection-frame-drag-end="onSelectionFrameDragEnd"
 				@selection-frame-delete-selected="onDeleteSelectedNodes"
 				v-slot="vp"
 			>
@@ -1349,6 +1351,8 @@ const warmupExitingFullRender = ref(false)
 const pendingScreenshotNodeIds = ref<Set<string>>(new Set())
 const nearDragNodeIds = ref<Set<string>>(new Set())
 const panningFullRenderSnapshot = ref<Set<string> | null>(null)
+const selectionFrameDragging = ref(false)
+const selectionFrameDragNodeIds = ref<Set<string>>(new Set())
 const stableLinkHoverNodeId = ref<string>('')
 let linkHoverStableTimer: ReturnType<typeof setTimeout> | null = null
 const LINK_HOVER_STABLE_DELAY_MS = 400
@@ -1498,7 +1502,7 @@ let cachedCanvasNodeEntries: Array<{
 let lastCanvasEntriesSignature = ''
 
 const buildCanvasNodeEntriesSignature = () => {
-	const fullRenderIds = Array.from(fullRenderNodeIds.value).sort().join('|')
+	const fullRenderIds = Array.from(effectiveFullRenderNodeIds.value).sort().join('|')
 	return `${canvasScreenshotRefreshTick.value}:${fullRenderIds}:${renderNodes.value.length}:${canvasScreenshotEnabled.value}`
 }
 
@@ -1512,7 +1516,7 @@ const canvasNodeEntries = computed(() => {
 	}
 
 	const allNodes = renderNodes.value
-	const fullRenderSet = fullRenderNodeIds.value
+	const fullRenderSet = effectiveFullRenderNodeIds.value
 	const result: typeof cachedCanvasNodeEntries = []
 
 	for (const node of allNodes) {
@@ -1556,7 +1560,7 @@ type NodeRenderMode = 'canvas' | 'full'
 
 // 判断节点应该使用哪种渲染模式
 const getNodeRenderMode = (nodeId: string): NodeRenderMode => {
-	if (fullRenderNodeIds.value.has(nodeId)) {
+	if (effectiveFullRenderNodeIds.value.has(nodeId)) {
 		return 'full'
 	}
 
@@ -1787,6 +1791,32 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 		}
 	}
 
+	return result
+})
+
+// 节点拖拽优化：多选框拖拽时，将被拖拽节点切换为canvas轻量绘制模式
+const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
+	const baseIds = fullRenderNodeIds.value
+	if (!selectionFrameDragging.value || selectionFrameDragNodeIds.value.size === 0) {
+		return baseIds
+	}
+
+	// 拖拽期间，排除被拖拽的节点，但保留：
+	// - 有聊天对话框打开的节点
+	// - 待截图的节点
+	const chatNodeId = nodeChatDialog.value.visible ? String(nodeChatDialog.value.nodeId).trim() : ''
+	const pendingIds = pendingScreenshotNodeIds.value
+
+	const result = new Set<string>()
+	for (const id of baseIds) {
+		if (selectionFrameDragNodeIds.value.has(id)) {
+			if (id === chatNodeId || pendingIds.has(id)) {
+				result.add(id)
+			}
+		} else {
+			result.add(id)
+		}
+	}
 	return result
 })
 
@@ -8743,9 +8773,26 @@ const onCanvasNodePointerDown = (nodeId: string | null, _event: PointerEvent) =>
 	}
 }
 
+const onSelectionFrameDragStart = (payload: { nodeIds: string[] }) => {
+	selectionFrameDragging.value = true
+	selectionFrameDragNodeIds.value = new Set(payload.nodeIds)
+	markViewportMotion()
+	refreshCanvasNodeLayer()
+}
+
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
 	store.dispatch('moveNodesBy', payload)
+	markViewportMotion()
 	scheduleAsyncEdgeRender()
+	refreshCanvasNodeLayer()
+}
+
+const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
+	selectionFrameDragging.value = false
+	selectionFrameDragNodeIds.value = new Set()
+	forceEndViewportMotion()
+	refreshCanvasNodeLayer()
+	scheduleVisibleNodeScreenshots()
 }
 
 onBeforeUnmount(() => {

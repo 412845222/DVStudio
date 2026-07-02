@@ -71,7 +71,9 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'tag-save', label: string): void
 	(e: 'delete'): void
+	(e: 'drag-start'): void
 	(e: 'drag-move', payload: { dx: number; dy: number }): void
+	(e: 'drag-end'): void
 }>()
 
 // 本地维护的已保存标签（优先于 props.label）
@@ -139,6 +141,8 @@ const onDragAreaPointerDown = (event: PointerEvent) => {
 	isDragging.value = true
 	dragStartClient.value = { x: event.clientX, y: event.clientY }
 
+	emit('drag-start')
+
 	// 设置指针捕获
 	const target = event.currentTarget as HTMLElement | null
 	if (target?.setPointerCapture && Number.isFinite(event.pointerId)) {
@@ -172,6 +176,7 @@ const onDragAreaPointerDown = (event: PointerEvent) => {
 				// ignore release failure
 			}
 		}
+		emit('drag-end')
 	}
 
 	window.addEventListener('pointermove', onMove, { capture: true, passive: false })

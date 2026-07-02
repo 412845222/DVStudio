@@ -28,7 +28,9 @@
 			@tag-save="(label: string) => emit('selection-frame-tag-save', label)"
 			@delete="emit('selection-frame-delete')"
 			@delete-nodes="emit('selection-frame-delete-selected')"
+			@drag-start="onOverlayDragStart"
 			@drag-move="onOverlayDragMove"
+			@drag-end="onOverlayDragEnd"
 		/>
 
 		<slot
@@ -98,7 +100,9 @@ const emit = defineEmits<{
 	(e: 'canvas-panning-end'): void
 	(e: 'selection-frame-tag-save', label: string): void
 	(e: 'selection-frame-delete', payload?: { frameId?: string }): void
+	(e: 'selection-frame-drag-start', payload: { nodeIds: string[] }): void
 	(e: 'selection-frame-drag', payload: { dx: number; dy: number; nodeIds: string[] }): void
+	(e: 'selection-frame-drag-end', payload: { nodeIds: string[] }): void
 	(e: 'selection-frame-delete-selected'): void
 }>()
 
@@ -217,6 +221,10 @@ const screenToWorld = (p: { x: number; y: number }) => {
 }
 
 // 处理来自 DOM overlay 的拖拽移动
+const onOverlayDragStart = () => {
+	const nodeIds = props.selectionFrame?.nodeIds || []
+	emit('selection-frame-drag-start', { nodeIds })
+}
 const onOverlayDragMove = (payload: { dx: number; dy: number }) => {
 	const z = viewportZoom.value
 	const nodeIds = props.selectionFrame?.nodeIds || []
@@ -225,6 +233,10 @@ const onOverlayDragMove = (payload: { dx: number; dy: number }) => {
 		dy: payload.dy / z,
 		nodeIds
 	})
+}
+const onOverlayDragEnd = () => {
+	const nodeIds = props.selectionFrame?.nodeIds || []
+	emit('selection-frame-drag-end', { nodeIds })
 }
 
 let raf = 0
@@ -929,6 +941,9 @@ const onWrapPointerDown = (e: PointerEvent) => {
 			}
 			dragStartNodes.value = startNodes
 
+			const dragNodeIds = Object.keys(startNodes)
+			emit('selection-frame-drag-start', { nodeIds: dragNodeIds })
+
 			wrap.setPointerCapture(e.pointerId)
 
 			const onMove = (ev: PointerEvent) => {
@@ -942,7 +957,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
 				emit('selection-frame-drag', {
 					dx,
 					dy,
-					nodeIds: Object.keys(dragStartNodes.value)
+					nodeIds: dragNodeIds
 				})
 			}
 
@@ -957,6 +972,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
 				} catch {
 					// ignore
 				}
+				emit('selection-frame-drag-end', { nodeIds: dragNodeIds })
 			}
 
 			wrap.addEventListener('pointermove', onMove)
