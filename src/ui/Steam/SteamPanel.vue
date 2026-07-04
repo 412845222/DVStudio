@@ -28,7 +28,7 @@
 							<div class="panel-subtitle">{{ statusText }}</div>
 						</div>
 					</div>
-					<button class="panel-close-btn" type="button" @click="emit('close')" title="关闭 (Esc)">
+					<button class="panel-close-btn" type="button" @click="emit('close')" :title="t('steam.closePanel')">
 						<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
 							<path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
 						</svg>
@@ -45,7 +45,7 @@
 							<path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
 							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8" />
 						</svg>
-						<span>当前为开发模式（Mock），Steam功能不可用</span>
+						<span>{{ t('steam.mockNotice') }}</span>
 					</div>
 
 					<div v-if="isRealPlatform" class="panel-section">
@@ -58,14 +58,14 @@
 								<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
 								<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/>
 							</svg>
-							<span>好友列表</span>
+							<span>{{ t('steam.friendsList') }}</span>
 						</div>
 						<SteamFriendsList />
 					</div>
 				</div>
 
 				<div class="panel-footer">
-					<span class="footer-hint">按 Shift+Tab 或 Esc 关闭面板</span>
+					<span class="footer-hint">{{ t('steam.closeHint') }}</span>
 				</div>
 			</div>
 		</div>
@@ -76,6 +76,7 @@
 import { computed, ref, nextTick } from 'vue'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import type { DwebPlatformUser } from '../../platformBridge/types'
+import { useI18n } from '../../i18n'
 import SteamUserCard from './SteamUserCard.vue'
 import SteamQuickActions from './SteamQuickActions.vue'
 import SteamFriendsList from './SteamFriendsList.vue'
@@ -93,15 +94,17 @@ const emit = defineEmits<{
 	(e: 'action', actionId: string): void
 }>()
 
+const { t } = useI18n()
+
 const panelEl = ref<HTMLElement | null>(null)
 const contentEl = ref<HTMLElement | null>(null)
 const friendsSectionEl = ref<HTMLElement | null>(null)
 const { particles } = useSquareParticles({ count: 12, seed: 88, baseOpacity: 0.45 })
 
 const statusText = computed(() => {
-	if (!props.isRealPlatform) return '未连接'
-	if (props.user) return '已连接'
-	return '连接中...'
+	if (!props.isRealPlatform) return t('steam.status.notConnected')
+	if (props.user) return t('steam.status.connected')
+	return t('steam.status.connecting')
 })
 
 function handleBackdropClick() {

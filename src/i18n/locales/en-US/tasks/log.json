@@ -1,0 +1,18 @@
+{
+  "tasks.log.title": "Blueprint Log",
+  "tasks.log.searchPlaceholder": "Filter by keyword…",
+  "tasks.log.levelFilter": "Level Filter",
+  "tasks.log.categoryFilter": "Category Filter",
+  "tasks.log.autoScroll": "Auto-scroll",
+  "tasks.log.clear": "Clear",
+  "tasks.log.exportTxt": "Export TXT",
+  "tasks.log.exportJson": "Export JSON",
+  "tasks.log.closeTooltip": "Close (Esc)",
+  "tasks.log.empty": "No log entries yet. Try performing some blueprint operations; new logs will appear here.",
+  "tasks.log.expandDetails": "Click to expand details",
+  "tasks.log.category.runtime": "Runtime",
+  "tasks.log.category.request": "Request",
+  "tasks.log.category.operation": "Operation",
+  "tasks.log.category.system": "System",
+  "tasks.log.confirmClear": "Are you sure you want to clear the current log panel? This will not affect any saved projects."
+}

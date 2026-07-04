@@ -1,0 +1,9 @@
+{
+  "userMenu.notConnected": "未连接",
+  "userMenu.developmentMode": "开发模式 (Mock)",
+  "userMenu.openSteamPanel": "打开 Steam 面板",
+  "userMenu.friendsList": "好友列表",
+  "userMenu.achievements": "成就",
+  "userMenu.comingSoon": "即将推出",
+  "userMenu.steamSettings": "Steam 设置"
+}

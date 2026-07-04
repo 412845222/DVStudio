@@ -14,8 +14,8 @@
 				@dblclick="onHeaderDoubleClick"
 			>
 				<div class="wf-ark-panel-title-wrap">
-					<div class="wf-ark-panel-title">ARK 任务中心</div>
-					<div class="wf-ark-panel-subtitle">火山引擎方舟平台 · Seedream / Seedance / 即梦</div>
+					<div class="wf-ark-panel-title">{{ t('tasks.ark.title') }}</div>
+					<div class="wf-ark-panel-subtitle">{{ t('tasks.ark.subtitle') }}</div>
 				</div>
 				<div class="wf-ark-panel-actions" @pointerdown.stop>
 					<button
@@ -71,7 +71,7 @@
 						v-model.trim="searchText"
 						class="wf-ark-search"
 						type="text"
-						placeholder="按提示词搜索"
+						:placeholder="t('tasks.ark.searchPlaceholder')"
 					/>
 					<button
 						class="wf-ark-panel-btn"
@@ -79,13 +79,13 @@
 						:disabled="refreshBusy"
 						@click="emit('refresh')"
 					>
-						{{ refreshBusy ? '刷新中...' : '刷新' }}
+						{{ refreshBusy ? t('tasks.ark.refreshing') : t('tasks.ark.refresh') }}
 					</button>
-					<div class="wf-ark-panel-stats">共 {{ filteredTasks.length }} 条</div>
+					<div class="wf-ark-panel-stats">{{ t('tasks.ark.totalCount', { count: filteredTasks.length }) }}</div>
 				</div>
 
 				<div v-if="!filteredTasks.length" class="wf-ark-panel-empty">
-					暂无 ARK 任务。先在蓝图里创建或运行 ARK 节点。
+					{{ t('tasks.ark.empty') }}
 				</div>
 
 				<div v-else class="wf-ark-task-list">
@@ -102,7 +102,7 @@
 									{{ apiTypeLabel(task.apiType) }}
 								</span>
 								<span class="wf-ark-task-chip subtle">
-									{{ task.model || '未知模型' }}
+									{{ task.model || t('tasks.ark.unknownModel') }}
 								</span>
 								<span class="wf-ark-task-chip status" :class="`is-${task.status}`">
 									{{ task.statusLabel }}
@@ -114,7 +114,7 @@
 						<div class="wf-ark-task-main">
 							<div class="wf-ark-task-copy">
 								<div class="wf-ark-task-prompt">
-									{{ task.prompt || '未填写提示词' }}
+									{{ task.prompt || t('tasks.ark.noPrompt') }}
 								</div>
 								<div v-if="task.errorMessage" class="wf-ark-task-error">
 									{{ task.errorMessage }}
@@ -136,7 +136,7 @@
 
 						<div class="wf-ark-task-foot">
 							<div class="wf-ark-task-footnote">
-								拖拽到蓝图可创建 ARK 引用节点
+								{{ t('tasks.ark.dragHint') }}
 							</div>
 							<div class="wf-ark-task-action-row">
 								<button
@@ -144,7 +144,7 @@
 									type="button"
 									@click="onPreviewTask(task.id)"
 								>
-									详情
+									{{ t('tasks.ark.details') }}
 								</button>
 								<template v-if="task.apiType === 'seedance' && task.status === 'succeeded'">
 									<button
@@ -153,7 +153,7 @@
 										:disabled="isDownloading(task.id)"
 										@click="onDownloadAsset(task.taskId, 'video')"
 									>
-										{{ isDownloading(task.id) ? '下载中' : '下载' }}
+										{{ isDownloading(task.id) ? t('tasks.ark.downloading') : t('tasks.ark.download') }}
 									</button>
 									<button
 										class="wf-ark-task-preview-btn"
@@ -161,7 +161,7 @@
 										:disabled="isDownloading(task.id)"
 										@click="onImportToNode(task.taskId, 'video')"
 									>
-										{{ isDownloading(task.id) ? '处理中' : '导入' }}
+										{{ isDownloading(task.id) ? t('tasks.ark.processing') : t('tasks.ark.import') }}
 									</button>
 								</template>
 								<button
@@ -169,7 +169,7 @@
 									type="button"
 									@click="onDeleteTask(task.id)"
 								>
-									删除
+									{{ t('tasks.ark.delete') }}
 								</button>
 							</div>
 						</div>
@@ -181,11 +181,11 @@
 						<div class="wf-ark-task-detail-header">
 							<div class="wf-ark-task-detail-title-wrap">
 								<div class="wf-ark-task-detail-title">
-									ARK 任务详情
+									{{ t('tasks.ark.detailTitle') }}
 								</div>
 								<div class="wf-ark-task-detail-subtitle">
 									{{ detailTask?.apiType || 'Unknown' }} ·
-									{{ detailTask?.statusLabel || '读取中' }}
+									{{ detailTask?.statusLabel || t('tasks.ark.loading') }}
 								</div>
 							</div>
 							<div class="wf-ark-task-action-row">
@@ -194,48 +194,48 @@
 									type="button"
 									@click="closeDetail"
 								>
-									关闭
+									{{ t('common.close') }}
 								</button>
 							</div>
 						</div>
 
 						<div v-if="detailLoading" class="wf-ark-task-detail-loading">
-							正在读取任务详情...
+							{{ t('tasks.ark.loadingDetails') }}
 						</div>
 						<div v-else-if="detailTask" class="wf-ark-task-detail-body">
 							<div class="wf-ark-task-detail-grid">
 								<div class="wf-ark-task-detail-card">
-									<div class="wf-ark-task-detail-label">任务 ID</div>
+									<div class="wf-ark-task-detail-label">{{ t('tasks.ark.taskId') }}</div>
 									<div class="wf-ark-task-detail-value monospace">
-										{{ detailTask.taskId || '未写入' }}
+										{{ detailTask.taskId || t('tasks.ark.notWritten') }}
 									</div>
 								</div>
 								<div class="wf-ark-task-detail-card">
-									<div class="wf-ark-task-detail-label">API 类型</div>
+									<div class="wf-ark-task-detail-label">{{ t('tasks.ark.apiType') }}</div>
 									<div class="wf-ark-task-detail-value">
 										{{ apiTypeLabel(detailTask.apiType) }}
 									</div>
 								</div>
 								<div class="wf-ark-task-detail-card">
-									<div class="wf-ark-task-detail-label">模型</div>
+									<div class="wf-ark-task-detail-label">{{ t('tasks.ark.model') }}</div>
 									<div class="wf-ark-task-detail-value">
 										{{ detailTask.model || '-' }}
 									</div>
 								</div>
 								<div class="wf-ark-task-detail-card">
-									<div class="wf-ark-task-detail-label">状态</div>
+									<div class="wf-ark-task-detail-label">{{ t('tasks.ark.status') }}</div>
 									<div class="wf-ark-task-detail-value">
 										{{ detailTask.statusLabel }}
 									</div>
 								</div>
 								<div class="wf-ark-task-detail-card">
-									<div class="wf-ark-task-detail-label">远端任务 ID</div>
+									<div class="wf-ark-task-detail-label">{{ t('tasks.ark.remoteTaskId') }}</div>
 									<div class="wf-ark-task-detail-value monospace">
 										{{ detailTask.remoteTaskId || '-' }}
 									</div>
 								</div>
 								<div class="wf-ark-task-detail-card">
-									<div class="wf-ark-task-detail-label">创建时间</div>
+									<div class="wf-ark-task-detail-label">{{ t('tasks.ark.createdAt') }}</div>
 									<div class="wf-ark-task-detail-value">
 										{{ formatDate(detailTask.createdAt) }}
 									</div>
@@ -243,24 +243,24 @@
 							</div>
 
 							<div v-if="detailTask.prompt" class="wf-ark-task-detail-section">
-								<div class="wf-ark-task-detail-label">提示词</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.prompt') }}</div>
 								<div class="wf-ark-task-detail-block">{{ detailTask.prompt }}</div>
 							</div>
 							<div v-if="detailTask.negativePrompt" class="wf-ark-task-detail-section">
-								<div class="wf-ark-task-detail-label">负向提示词</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.negativePrompt') }}</div>
 								<div class="wf-ark-task-detail-block">
 									{{ detailTask.negativePrompt }}
 								</div>
 							</div>
 							<div v-if="detailTask.resultText" class="wf-ark-task-detail-section">
-								<div class="wf-ark-task-detail-label">结果文本</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.resultText') }}</div>
 								<div class="wf-ark-task-detail-block">{{ detailTask.resultText }}</div>
 							</div>
 							<div
 								v-if="detailTask.resultUrls && detailTask.resultUrls.length"
 								class="wf-ark-task-detail-section"
 							>
-								<div class="wf-ark-task-detail-label">结果链接</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.resultLinks') }}</div>
 								<div class="wf-ark-task-detail-links">
 									<a
 										v-for="(url, idx) in detailTask.resultUrls"
@@ -275,16 +275,16 @@
 								</div>
 							</div>
 							<div v-if="detailTask.apiType === 'seedance'" class="wf-ark-task-detail-section">
-								<div class="wf-ark-task-detail-label">资源状态</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.resourceStatus') }}</div>
 								<div class="wf-ark-task-detail-block" :class="{ error: !detailTask.resourceAvailable }">
 									<template v-if="detailTask.resourceAvailable === true">
-										<span style="color: #bbf7d0">✓ 产物可用，可下载到项目资产</span>
+										<span style="color: #bbf7d0">✓ {{ t('tasks.ark.resourceAvailable') }}</span>
 									</template>
 									<template v-else-if="detailTask.resourceAvailable === false">
-										<span style="color: #fecaca">✗ {{ detailTask.resourceUnavailableReason || '暂无可下载产物' }}</span>
+										<span style="color: #fecaca">✗ {{ detailTask.resourceUnavailableReason || t('tasks.ark.noResource') }}</span>
 									</template>
 									<template v-else>
-										<span>加载中…</span>
+										<span>{{ t('tasks.ark.resourceLoading') }}</span>
 									</template>
 								</div>
 								<div
@@ -297,7 +297,7 @@
 										:disabled="detailTask && isDownloading(detailTask.id)"
 										@click="detailTask && onDownloadAsset(detailTask.taskId, 'video')"
 									>
-										{{ detailTask && isDownloading(detailTask.id) ? '下载中…' : '下载视频到项目' }}
+										{{ detailTask && isDownloading(detailTask.id) ? t('tasks.ark.downloadingVideo') : t('tasks.ark.downloadVideo') }}
 									</button>
 									<button
 										class="wf-ark-panel-btn primary"
@@ -305,31 +305,31 @@
 										:disabled="detailTask && isDownloading(detailTask.id)"
 										@click="detailTask && onImportToNode(detailTask.taskId, 'video')"
 									>
-										{{ detailTask && isDownloading(detailTask.id) ? '处理中…' : '导入并回填视频节点' }}
+										{{ detailTask && isDownloading(detailTask.id) ? t('tasks.ark.importingVideo') : t('tasks.ark.importVideo') }}
 									</button>
 								</div>
 							</div>
 							<div v-if="detailTask.statusText" class="wf-ark-task-detail-section">
-								<div class="wf-ark-task-detail-label">状态说明</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.statusDesc') }}</div>
 								<div class="wf-ark-task-detail-block">{{ detailTask.statusText }}</div>
 							</div>
 							<div v-if="detailTask.errorMessage" class="wf-ark-task-detail-section">
-								<div class="wf-ark-task-detail-label">错误信息</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.errorMessage') }}</div>
 								<div class="wf-ark-task-detail-block error">
 									{{ detailTask.errorMessage }}
 								</div>
 							</div>
 							<div v-if="detailRequestJson" class="wf-ark-task-detail-section">
-								<div class="wf-ark-task-detail-label">请求载荷</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.requestPayload') }}</div>
 								<pre class="wf-ark-task-detail-code">{{ detailRequestJson }}</pre>
 							</div>
 							<div v-if="detailResponseJson" class="wf-ark-task-detail-section">
-								<div class="wf-ark-task-detail-label">响应载荷</div>
+								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.responsePayload') }}</div>
 								<pre class="wf-ark-task-detail-code">{{ detailResponseJson }}</pre>
 							</div>
 						</div>
 						<div v-else class="wf-ark-task-detail-empty">
-							当前任务暂无可展示的详情。
+							{{ t('tasks.ark.noDetails') }}
 						</div>
 					</div>
 				</div>
@@ -373,6 +373,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 export type ArkTaskPanelItem = {
 	id: string
@@ -453,11 +456,11 @@ const apiTypeLabel = (value: string) => {
 		case 'seedance':
 			return 'Seedance'
 		case 'jimeng':
-			return '即梦'
+			return t('tasks.ark.apiTypeJimeng')
 		case 'blueprintChat':
-			return '蓝图对话'
+			return t('tasks.ark.apiTypeBlueprintChat')
 		default:
-			return value || '未知'
+			return value || t('tasks.ark.apiTypeUnknown')
 	}
 }
 
@@ -586,23 +589,23 @@ const filteredTasks = computed(() => {
 })
 
 const sortModeTitle = computed(() =>
-	sortMode.value === 'date-desc' ? '排序：日期（新→旧）' : '排序：日期（旧→新）'
+	sortMode.value === 'date-desc' ? t('tasks.ark.sortDesc') : t('tasks.ark.sortAsc')
 )
 
 const filterTitle = computed(() => {
 	switch (apiTypeFilter.value) {
 		case 'all':
-			return '筛选：全部'
+			return t('tasks.ark.filterAll')
 		case 'seedream':
-			return '筛选：Seedream'
+			return `筛选：Seedream`
 		case 'seedance':
-			return '筛选：Seedance'
+			return `筛选：Seedance`
 		case 'jimeng':
-			return '筛选：即梦'
+			return t('tasks.ark.filterJimeng')
 		case 'blueprintChat':
-			return '筛选：蓝图对话'
+			return t('tasks.ark.filterBlueprintChat')
 		default:
-			return '筛选：全部'
+			return t('tasks.ark.filterAll')
 	}
 })
 

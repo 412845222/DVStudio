@@ -6,14 +6,14 @@
 			class="wf-node-shell"
 			:style="nodeShellStyle(node)"
 		>
-			<div class="wf-anchors wf-anchors-in" aria-label="入口锚点">
+			<div class="wf-anchors wf-anchors-in" :aria-label="t('aiworkflow.canvas.inputAnchors')">
 				<div
 					v-for="a in getInputAnchors(node)"
 					:key="'in-' + a.id"
 					class="wf-anchor-hit"
 					:class="anchorClass(a.mediaType)"
 					:style="anchorStyle(a.offsetY)"
-					:title="a.label || '入口'"
+					:title="a.label || t('aiworkflow.canvas.inputAnchor')"
 					:data-wf-node-id="node.id"
 					:data-wf-anchor-id="a.id"
 					data-wf-dir="in"
@@ -24,14 +24,14 @@
 				/>
 			</div>
 
-			<div class="wf-anchors wf-anchors-out" aria-label="出口锚点">
+			<div class="wf-anchors wf-anchors-out" :aria-label="t('aiworkflow.canvas.outputAnchors')">
 				<div
 					v-for="a in getOutputAnchors(node)"
 					:key="'out-' + a.id"
 					class="wf-anchor-hit"
 					:class="anchorClass(a.mediaType)"
 					:style="anchorStyle(a.offsetY)"
-					:title="a.label || '出口'"
+					:title="a.label || t('aiworkflow.canvas.outputAnchor')"
 					:data-wf-node-id="node.id"
 					:data-wf-anchor-id="a.id"
 					data-wf-dir="out"
@@ -47,8 +47,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, shallowRef } from 'vue'
+import { useI18n } from '../../../i18n'
 import type { WorkflowAnchorSpec } from '../../../aiworkflow/types'
 import type { ViewportState } from '../node-screenshot'
+
+const { t } = useI18n()
 
 interface CanvasAnchorNode {
 	id: string
@@ -168,7 +171,7 @@ const normalizeAnchors = (
 			index,
 			offsetY: typeof a.offsetY === 'number' ? a.offsetY : defaultAnchorOffset(index, anchors.length),
 			mediaType: (a.mediaType ?? 'resource') as string,
-			label: String(a.label ?? (fallbackId === 'in' ? '入口' : '出口'))
+			label: a.label ? String(a.label) : ''
 		}))
 	}
 	return [{
@@ -176,7 +179,7 @@ const normalizeAnchors = (
 		index: 0,
 		offsetY: 0,
 		mediaType: 'resource' as string,
-		label: fallbackId === 'in' ? '入口' : '出口'
+		label: ''
 	}]
 }
 

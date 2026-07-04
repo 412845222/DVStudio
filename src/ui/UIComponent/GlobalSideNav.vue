@@ -2,11 +2,10 @@
 	<nav
 		class="global-side-nav"
 		:class="{ expanded: expandedState, collapsed: isCollapsed }"
-		aria-label="全局导航"
+		:aria-label="t('menu.navAriaLabel')"
 		@mouseenter="onHover(true)"
 		@mouseleave="onHover(false)"
 	>
-		<!-- 漂浮方块粒子背景 (统一 useSquareParticles) -->
 		<div class="gsn-particles" aria-hidden="true">
 			<span
 				v-for="p in sideNavParticles.particles"
@@ -17,14 +16,13 @@
 			></span>
 		</div>
 
-		<!-- 收缩态：只显示一个展开按钮 + 用户头像 -->
 		<template v-if="isCollapsed">
 			<button
 				class="gsn-toggle gsn-toggle-expand"
 				type="button"
 				@click="toggleCollapsed"
-				aria-label="展开导航"
-				title="展开导航"
+				:aria-label="t('menu.expand')"
+				:title="t('menu.expand')"
 			>
 				<svg viewBox="0 0 24 24" fill="none">
 					<path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8"
@@ -42,14 +40,13 @@
 			/>
 		</template>
 
-		<!-- 展开态：折叠按钮 + 导航项 + 用户按钮 -->
 		<template v-else>
 			<button
 				class="gsn-toggle gsn-toggle-collapse"
 				type="button"
 				@click="toggleCollapsed"
-				aria-label="收起导航"
-				title="收起导航"
+				:aria-label="t('menu.collapse')"
+				:title="t('menu.collapse')"
 			>
 				<svg viewBox="0 0 24 24" fill="none">
 					<path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8"
@@ -128,6 +125,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import { usePlatform } from '../../platformBridge/usePlatform'
 import { UserButton, UserMenu } from '../User'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	expanded: boolean
@@ -156,9 +156,9 @@ watch(() => props.collapsed, v => { isCollapsed.value = v })
 const sideNavParticles = useSquareParticles({ count: 10, seed: 42, baseOpacity: 0.6 })
 
 const items = computed(() => [
-	{ key: 'projects', label: '项目列表', active: route.name === 'ProjectList' },
-	{ key: 'workflow', label: 'AI素材工作流', active: route.name === 'AIWorkflow' },
-	{ key: 'settings', label: '设置', active: route.name === 'Settings' },
+	{ key: 'projects', label: t('menu.projects'), active: route.name === 'ProjectList' },
+	{ key: 'workflow', label: t('menu.workflow'), active: route.name === 'AIWorkflow' },
+	{ key: 'settings', label: t('menu.settings'), active: route.name === 'Settings' },
 ])
 
 function onHover(v: boolean) {

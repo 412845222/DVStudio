@@ -4,7 +4,7 @@
 		:class="{ 'is-collapsed': collapsed, 'is-logged-in': isLoggedIn, 'is-mock': !isRealPlatform }"
 		type="button"
 		@click="emit('click')"
-		:title="isLoggedIn ? user?.displayName || 'Steam 用户' : (isRealPlatform ? 'Steam 未登录' : 'Steam 未连接')"
+		:title="tooltipTitle"
 	>
 		<span class="sub-icon" aria-hidden="true">
 			<div v-if="isLoggedIn && user?.avatarUrl" class="sub-avatar" :style="{ backgroundImage: `url(${user.avatarUrl})` }"></div>
@@ -22,6 +22,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { DwebPlatformUser } from '../../platformBridge/types'
+import { useI18n } from '../../i18n'
 
 interface Props {
 	collapsed?: boolean
@@ -38,10 +39,18 @@ const emit = defineEmits<{
 	(e: 'click'): void
 }>()
 
+const { t } = useI18n()
+
+const tooltipTitle = computed(() => {
+	if (props.isLoggedIn) return props.user?.displayName || t('steam.steamUser')
+	if (props.isRealPlatform) return t('steam.steamNotLoggedIn')
+	return t('steam.steamNotConnected')
+})
+
 const displayLabel = computed(() => {
-	if (!props.isRealPlatform) return '未连接'
+	if (!props.isRealPlatform) return t('steam.status.notConnected')
 	if (props.isLoggedIn && props.user) return props.user.displayName
-	return '未登录'
+	return t('steam.userButton.notLoggedIn')
 })
 </script>
 

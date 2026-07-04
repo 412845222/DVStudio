@@ -734,6 +734,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
 import {
 	getErrorMessage,
 	isRecord,
@@ -1116,6 +1117,7 @@ const route = useRoute()
 const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
+const { t } = useI18n()
 ensureAIWorkflowHistory()
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
@@ -7400,8 +7402,8 @@ const selectionActions = computed<WorkflowAction[]>(() => {
 				id: 'delete',
 				label:
 					selectedNodeIds.value.length > 1
-						? `删除所选节点（${selectedNodeIds.value.length}）`
-						: '删除',
+						? t('aiworkflow.contextMenu.deleteSelectedNodes', { count: selectedNodeIds.value.length })
+						: t('aiworkflow.contextMenu.delete'),
 				target: { kind: 'none' }
 			}
 		]
@@ -7410,7 +7412,11 @@ const selectionActions = computed<WorkflowAction[]>(() => {
 		? { kind: 'edge', id: selectedEdgeId.value }
 		: { kind: 'none' }
 	const del = buildDeleteAction(target)
-	return del ? [del] : []
+	if (del) {
+		del.label = t('aiworkflow.contextMenu.delete')
+		return [del]
+	}
+	return []
 })
 
 const {

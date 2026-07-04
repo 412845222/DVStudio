@@ -14,6 +14,8 @@ import {
 } from './core/events/dvsEvents'
 import { VideoSceneStore } from './store/videoscene'
 import { TimelineStore } from './store/timeline'
+import { I18nStore } from './store/i18n'
+import { createI18n } from './i18n'
 import { getAppName } from './network/appInfo'
 
 if (typeof document !== 'undefined' && document.title) {
@@ -204,6 +206,11 @@ const enableHistoryBackTrap = () => {
 	)
 }
 
-createApp(App).use(router).mount('#app')
+const app = createApp(App)
+app.use(createI18n())
+app.use(router)
 
-enableHistoryBackTrap()
+void I18nStore.dispatch('initLocale').then(() => {
+	app.mount('#app')
+	enableHistoryBackTrap()
+})

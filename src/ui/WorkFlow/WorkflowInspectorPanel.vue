@@ -1,38 +1,38 @@
 <template>
 	<aside class="wf-inspector" :class="{ open: open }">
 		<div class="wf-inspector-header">
-			<div class="wf-inspector-title">属性配置</div>
+			<div class="wf-inspector-title">{{ t('aiworkflow.inspector.title') }}</div>
 		</div>
 
-		<div v-if="!hasSelection" class="wf-inspector-empty">未选中节点或连线</div>
+		<div v-if="!hasSelection" class="wf-inspector-empty">{{ t('aiworkflow.inspector.noSelection') }}</div>
 
 		<div v-else class="wf-inspector-body">
 			<div class="wf-section">
-				<div class="wf-section-title">基础信息</div>
+				<div class="wf-section-title">{{ t('aiworkflow.inspector.basicInfo') }}</div>
 				<div v-if="selectedNode" class="wf-kv">
-					<div class="wf-k">名称</div>
+					<div class="wf-k">{{ t('aiworkflow.inspector.name') }}</div>
 					<div class="wf-v">{{ selectedNode.title }}</div>
-					<div class="wf-k">类型</div>
+					<div class="wf-k">{{ t('aiworkflow.inspector.type') }}</div>
 					<div class="wf-v">{{ selectedNode.type }}</div>
 				</div>
 				<div v-else-if="selectedEdge" class="wf-kv">
-					<div class="wf-k">起点</div>
+					<div class="wf-k">{{ t('aiworkflow.inspector.fromNode') }}</div>
 					<div class="wf-v">{{ selectedEdge.fromNodeId }}</div>
-					<div class="wf-k">终点</div>
+					<div class="wf-k">{{ t('aiworkflow.inspector.toNode') }}</div>
 					<div class="wf-v">{{ selectedEdge.toNodeId }}</div>
-					<div class="wf-k">类型</div>
-					<div class="wf-v">连线</div>
+					<div class="wf-k">{{ t('aiworkflow.inspector.type') }}</div>
+					<div class="wf-v">{{ t('aiworkflow.inspector.edgeType') }}</div>
 				</div>
 			</div>
 
 			<div class="wf-section">
-				<div class="wf-section-title">配置</div>
-				<div v-if="selectedNode" class="wf-hint">当前节点暂无可配置属性。</div>
-				<div v-else class="wf-hint">可配置连线样式（占位）。</div>
+				<div class="wf-section-title">{{ t('aiworkflow.inspector.config') }}</div>
+				<div v-if="selectedNode" class="wf-hint">{{ t('aiworkflow.inspector.nodeNoConfig') }}</div>
+				<div v-else class="wf-hint">{{ t('aiworkflow.inspector.edgeStylePlaceholder') }}</div>
 			</div>
 
 			<div v-if="actions.length" class="wf-section">
-				<div class="wf-section-title">操作</div>
+				<div class="wf-section-title">{{ t('aiworkflow.inspector.actions') }}</div>
 				<button
 					v-for="action in actions"
 					:key="action.id"
@@ -48,8 +48,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
 import type { WorkflowEdge, WorkflowNode } from '../../aiworkflow/types'
 import type { WorkflowAction } from '../../aiworkflow/actions'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	open: boolean

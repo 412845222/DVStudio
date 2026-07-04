@@ -1,0 +1,22 @@
+{
+  "aichat.errors.noSelectedNodes": "No nodes selected",
+  "aichat.errors.nodeNotFound": "Node not found: {nodeId}",
+  "aichat.errors.backendError": "Backend error: {code} {message}",
+  "aichat.errors.requestFailed": "Request failed: {message}",
+  "aichat.errors.animationNoNodes": "Animation generation failed: No nodes found from this generation.",
+  "aichat.errors.animationMultiLayer": "Animation generation failed: Generated nodes span multiple layers; one-click compilation is not supported.",
+  "aichat.errors.animationTimelineExists": "Animation generation failed: Target layer already has timeline data. To avoid overwriting existing keyframes, only the scene plan JSON is retained.",
+  "aichat.errors.animationNoLayer": "Animation generation failed: Target layer not found.",
+  "aichat.errors.animationNoTarget": "Animation generation failed: No matching animation target nodes found.",
+  "aichat.errors.saveNoNodes": "Save failed: No nodes found from this generation.",
+  "aichat.errors.saveMultiLayer": "Save failed: Generated nodes span multiple layers; one-click save is not supported.",
+  "aichat.errors.saveNoLayer": "Save failed: Target layer not found.",
+  "aichat.errors.nodeInsertFailed": "Node insertion failed: {error}",
+  "aichat.errors.nodeModifyFailed": "Node modification failed: {error}",
+  "aichat.errors.nodeDeleteFailed": "Node deletion failed: {error}",
+  "aichat.errors.filterFailed": "Filter application failed: {error}",
+  "aichat.errors.saveFailed": "Save failed: {error}",
+  "aichat.errors.jsonCopyFailed": "Failed to copy scene plan JSON to clipboard. Please check browser clipboard permissions.",
+  "aichat.errors.selfCheckFailed": "Self-check failed: {code} {message}",
+  "aichat.errors.templateInsertFailed": "Template insertion failed: {error}"
+}

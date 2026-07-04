@@ -1,11 +1,11 @@
 <template>
-  <header class="global-title-bar" aria-label="窗口标题栏" @dblclick="onDoubleClick">
+  <header class="global-title-bar" :aria-label="t('titlebar.windowTitle')" @dblclick="onDoubleClick">
     <div class="global-title-bar-left">
       <img class="global-title-bar-logo" src="/favicon.ico" alt="" aria-hidden="true" />
       <div class="global-title-bar-title">{{ appName }}</div>
     </div>
 
-    <div class="backend-status-wrap" title="后端状态">
+    <div class="backend-status-wrap" :title="t('titlebar.backendStatus')">
       <span class="backend-status-dot" :class="backendStatusClass" aria-hidden="true" />
       <span class="backend-status-text">{{ backendStatusText }}</span>
       <div
@@ -17,12 +17,12 @@
         aria-valuemin="0"
         aria-valuemax="100"
       >
-        <span class="setup-progress-label">环境 {{ setupPercent }}%</span>
+        <span class="setup-progress-label">{{ t('titlebar.setupProgress', { percent: setupPercent }) }}</span>
         <span class="setup-progress-track" aria-hidden="true">
           <span class="setup-progress-fill" :style="{ width: setupPercent + '%' }" />
         </span>
       </div>
-      <button class="titlebar-btn status-jump" type="button" @click="goWelcome">环境检查</button>
+      <button class="titlebar-btn status-jump" type="button" @click="goWelcome">{{ t('titlebar.envCheck') }}</button>
     </div>
 
     <div class="platform-status-wrap" :title="platformStatusTooltip">
@@ -30,8 +30,9 @@
       <span class="platform-status-text">{{ platformStatusText }}</span>
     </div>
 
-    <div class="global-title-bar-right" aria-label="窗口控制">
-      <button class="theme-toggle-btn" type="button" aria-label="切换深色/浅色模式" title="切换主题" @click="toggleTheme">
+    <div class="global-title-bar-right" :aria-label="t('titlebar.windowControls')">
+      <LanguageSwitcher />
+      <button class="theme-toggle-btn" type="button" :aria-label="t('titlebar.themeToggle')" :title="t('titlebar.themeToggle')" @click="toggleTheme">
         <span class="theme-toggle-track" />
         <span class="theme-toggle-knob" />
         <span class="theme-toggle-icons" aria-hidden="true">
@@ -39,18 +40,18 @@
           <span class="theme-icon-moon">🌙</span>
         </span>
       </button>
-      <button class="titlebar-btn" type="button" aria-label="强制刷新" title="强制刷新" @click="onReload">
+      <button class="titlebar-btn" type="button" :aria-label="t('titlebar.forceReload')" :title="t('titlebar.forceReload')" @click="onReload">
         ↻
       </button>
-      <button class="titlebar-btn" type="button" aria-label="打开开发者工具" title="开发者工具" @click="onOpenDevTools">
+      <button class="titlebar-btn" type="button" :aria-label="t('titlebar.devTools')" :title="t('titlebar.devTools')" @click="onOpenDevTools">
         🛠
       </button>
-      <button class="titlebar-btn" type="button" aria-label="关于" title="关于" @click="onOpenAbout">
+      <button class="titlebar-btn" type="button" :aria-label="t('titlebar.about')" :title="t('titlebar.about')" @click="onOpenAbout">
         ℹ
       </button>
-      <button class="titlebar-btn" type="button" aria-label="最小化" @click="onMinimize">—</button>
-      <button class="titlebar-btn" type="button" aria-label="最大化/还原" @click="onToggleMaximize">□</button>
-      <button class="titlebar-btn danger" type="button" aria-label="关闭" @click="onClose">×</button>
+      <button class="titlebar-btn" type="button" :aria-label="t('titlebar.minimize')" @click="onMinimize">—</button>
+      <button class="titlebar-btn" type="button" :aria-label="t('titlebar.maximize')" @click="onToggleMaximize">□</button>
+      <button class="titlebar-btn danger" type="button" :aria-label="t('titlebar.close')" @click="onClose">×</button>
     </div>
   </header>
 </template>
@@ -73,7 +74,10 @@ import type { BackendRuntimeState, SetupState } from '../../electronBridge/types
 import { ThemeStore } from '../../store/theme'
 import { getAppName } from '../../network/appInfo'
 import { openAboutDialog } from './aboutDialogStore'
+import { useI18n } from '../../i18n'
+import LanguageSwitcher from './LanguageSwitcher.vue'
 
+const { t } = useI18n()
 const router = useRouter()
 
 const appName = getAppName()
@@ -121,7 +125,7 @@ const setupProgressTitle = computed(() => {
     const detail = String(running.detail || '').trim()
     return detail ? `${running.label}：${detail}` : running.label
   }
-  return setupRunning.value ? '环境流程执行中' : '环境流程待机'
+  return setupRunning.value ? t('titlebar.setupRunning') : t('titlebar.setupIdle')
 })
 
 const refreshSetupState = async () => {
@@ -141,11 +145,11 @@ const backendStatusClass = computed(() => {
 
 const backendStatusText = computed(() => {
   const st = backendRuntime.value
-  if (!st) return '后端状态未知'
-  if (st.setupRunning) return '环境流程执行中'
-  if (st.running && st.healthy) return `后端通畅 :${st.port || '-'}`
-  if (st.running && !st.healthy) return '后端异常，请重启'
-  return '后端未启动'
+  if (!st) return t('titlebar.backendStatusUnknown')
+  if (st.setupRunning) return t('titlebar.setupRunning')
+  if (st.running && st.healthy) return t('titlebar.backendRunning', { port: st.port || '-' })
+  if (st.running && !st.healthy) return t('titlebar.backendError')
+  return t('titlebar.backendNotStarted')
 })
 
 onMounted(async () => {
@@ -233,26 +237,27 @@ const platformStatusClass = computed(() => {
 
 const platformStatusText = computed(() => {
   const s = platformStatus.value
-  if (!s) return 'DEV'
+  if (!s) return t('titlebar.platformDevMode')
   if (isSteam.value && user.value?.displayName) {
-    return `Steam: ${user.value.displayName}`
+    return t('titlebar.platformSteam', { name: user.value.displayName })
   }
   if (isRealPlatform.value) {
     return displayName.value
   }
-  return 'DEV'
+  return t('titlebar.platformDevMode')
 })
 
 const platformStatusTooltip = computed(() => {
   const s = platformStatus.value
-  if (!s) return '开发模式 (Mock)'
+  if (!s) return t('titlebar.platformMock')
   if (isSteam.value) {
-    return `Steam 已连接\n用户: ${user.value?.displayName || '未知'}`
+    const userName = user.value?.displayName || t('common.unknown')
+    return `${t('titlebar.platformSteamConnected')}\n${t('titlebar.platformSteamUser', { name: userName })}`
   }
   if (isRealPlatform.value) {
-    return `${displayName.value} 模式`
+    return t('titlebar.platformMode', { name: displayName.value })
   }
-  return '开发模式 (Mock) - 无平台SDK'
+  return t('titlebar.platformNoSdk')
 })
 
 function toggleTheme() {

@@ -1,0 +1,10 @@
+{
+  "about.title": "About {appName}",
+  "about.version": "Version {version}",
+  "about.license": "License",
+  "about.copyright": "Copyright",
+  "about.officialWebsite": "Official Website",
+  "about.githubRepo": "GitHub Repository",
+  "about.confirm": "OK",
+  "about.close": "Close"
+}

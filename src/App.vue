@@ -59,6 +59,7 @@ import { VideoStudioKey, VideoStudioStore } from './store/videostudio'
 import { TimelineKey, TimelineStore } from './store/timeline'
 import { AIWorkflowKey, AIWorkflowStore } from './store/aiworkflow'
 import { ThemeKey, ThemeStore } from './store/theme'
+import { I18nStoreKey, I18nStore } from './store/i18n'
 import GlobalSideNav from './ui/UIComponent/GlobalSideNav.vue'
 import GlobalTitleBar from './ui/UIComponent/GlobalTitleBar.vue'
 import StartupProgressBar from './ui/UIComponent/StartupProgressBar.vue'
@@ -75,6 +76,7 @@ provide(VideoStudioKey, VideoStudioStore)
 provide(TimelineKey, TimelineStore)
 provide(AIWorkflowKey, AIWorkflowStore)
 provide(ThemeKey, ThemeStore)
+provide(I18nStoreKey, I18nStore)
 
 const route = useRoute()
 const contentEl = ref<HTMLElement | null>(null)
@@ -151,6 +153,7 @@ function onNavCollapsedChange(collapsed: boolean) {
 
 onMounted(() => {
 	ThemeStore.dispatch('initTheme')
+	void I18nStore.dispatch('initLocale')
 })
 </script>
 

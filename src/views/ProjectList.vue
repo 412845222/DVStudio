@@ -4,32 +4,32 @@
 
 		<dialog ref="newProjectDialog" class="new-project-dialog">
 			<form @submit.prevent="onNewProjectDialogConfirm">
-				<h3>新建项目</h3>
+				<h3>{{ t('projectList.dialogTitle') }}</h3>
 				<p>
-					文件夹：
+					{{ t('projectList.dialogFolder') }}
 					<span class="folder-path">{{ pendingRootPath }}</span>
 				</p>
 				<label>
-					项目名称
+					{{ t('projectList.dialogProjectName') }}
 					<input
 						ref="newProjectNameInput"
 						v-model="newProjectName"
-						placeholder="输入项目名称"
+						:placeholder="t('projectList.dialogNamePlaceholder')"
 						required
 					/>
 				</label>
 				<div class="dialog-actions">
-					<button type="button" @click="newProjectDialog?.close()">取消</button>
-					<button type="submit" :disabled="!newProjectName.trim()">创建</button>
+					<button type="button" @click="newProjectDialog?.close()">{{ t('projectList.dialogCancel') }}</button>
+					<button type="submit" :disabled="!newProjectName.trim()">{{ t('projectList.dialogCreate') }}</button>
 				</div>
 			</form>
 		</dialog>
 
 		<div class="project-list-shell">
 			<header class="project-list-header">
-				<div class="project-list-title">蓝图项目</div>
+				<div class="project-list-title">{{ t('projectList.title') }}</div>
 				<div class="project-list-sub">
-					选择一个已有项目进入，或点击"新建项目"创建一个新的蓝图项目。
+					{{ t('projectList.subtitle') }}
 				</div>
 				<div class="project-list-search">
 					<input
@@ -37,7 +37,7 @@
 						v-model.trim="keyword"
 						class="project-list-search-input"
 						type="text"
-						placeholder="搜索项目名称…"
+						:placeholder="t('projectList.searchPlaceholder')"
 						maxlength="120"
 						@keydown.esc.prevent="keyword = ''"
 					/>
@@ -47,7 +47,7 @@
 						:disabled="loading"
 						@click="refreshProjects"
 					>
-						{{ loading ? '刷新中…' : '刷新' }}
+						{{ loading ? t('projectList.refreshing') : t('projectList.refresh') }}
 					</button>
 				</div>
 				<div v-if="loadError" class="project-list-error">{{ loadError }}</div>
@@ -92,9 +92,9 @@
 							</svg>
 						</div>
 						<div class="project-card-new-title">
-							{{ creating ? '新建中…' : '新建项目' }}
+							{{ creating ? t('projectList.creating') : t('projectList.newProject') }}
 						</div>
-						<div class="project-card-new-hint">选择一个本地文件夹作为项目根目录。</div>
+						<div class="project-card-new-hint">{{ t('projectList.newProjectHint') }}</div>
 					</div>
 				</button>
 
@@ -128,17 +128,17 @@
 					<div class="project-card-body">
 						<span class="project-card-id">{{ formatProjectId(project.id) }}</span>
 						<div class="project-card-name" :title="project.name">
-							{{ project.name || '未命名项目' }}
+							{{ project.name || t('projectList.unnamedProject') }}
 						</div>
 						<div class="project-card-meta">
 							<div class="project-card-meta-row">
-								<span class="project-card-meta-label">创建时间</span>
+								<span class="project-card-meta-label">{{ t('projectList.createdAt') }}</span>
 								<span class="project-card-meta-value">
 									{{ formatTime(project.createdAt) }}
 								</span>
 							</div>
 							<div class="project-card-meta-row">
-								<span class="project-card-meta-label">最后修改</span>
+								<span class="project-card-meta-label">{{ t('projectList.updatedAt') }}</span>
 								<span class="project-card-meta-value">
 									{{ formatTime(project.updatedAt) }}
 								</span>
@@ -152,7 +152,7 @@
 							:disabled="loading"
 							@click="openProject(project)"
 						>
-							打开
+							{{ t('projectList.open') }}
 						</button>
 						<button
 							class="project-card-action"
@@ -160,7 +160,7 @@
 							:disabled="loading"
 							@click="openProject(project)"
 						>
-							编辑
+							{{ t('projectList.edit') }}
 						</button>
 						<button
 							class="project-card-action project-card-action-danger"
@@ -168,7 +168,7 @@
 							:disabled="deletingId === project.id"
 							@click="onClickDeleteProject(project)"
 						>
-							{{ deletingId === project.id ? '删除中…' : '删除' }}
+							{{ deletingId === project.id ? t('projectList.deleting') : t('projectList.delete') }}
 						</button>
 					</div>
 				</div>
@@ -185,9 +185,9 @@
 						<span class="corner br"></span>
 					</div>
 					<div class="project-card-body">
-						<div class="project-card-empty-title">未找到匹配的项目</div>
+						<div class="project-card-empty-title">{{ t('projectList.noMatchTitle') }}</div>
 						<div class="project-card-empty-hint">
-							尝试修改搜索关键字，或点击右上角"刷新"重新加载。
+							{{ t('projectList.noMatchHint') }}
 						</div>
 					</div>
 				</div>
@@ -204,8 +204,8 @@
 						<span class="corner br"></span>
 					</div>
 					<div class="project-card-body">
-						<div class="project-card-empty-title">还没有项目</div>
-						<div class="project-card-empty-hint">点击左侧"新建项目"创建你的第一个蓝图项目。</div>
+						<div class="project-card-empty-title">{{ t('projectList.noProjectsTitle') }}</div>
+						<div class="project-card-empty-hint">{{ t('projectList.noProjectsHint') }}</div>
 					</div>
 				</div>
 			</section>
@@ -222,8 +222,11 @@ import { useStartupProgress } from '../composables/useStartupProgress'
 import { useSquareParticles, type SquareParticlesResult } from '../composables/useSquareParticles'
 import GlobalPageBackground from '../ui/UIComponent/GlobalPageBackground.vue'
 import { getErrorMessage } from '../types/utils'
+import { useI18n } from '../i18n'
 import '../styles/project-list.css'
 import '../styles/square-particles.css'
+
+const { t } = useI18n()
 
 type ProjectCardItem = {
 	id: number
@@ -301,8 +304,8 @@ async function runStartupCheckSequence() {
 	if (!isElectron()) {
 		return
 	}
-	startupProgress.show('客户端启动检查', null)
-	startupProgress.reset('客户端启动检查')
+	startupProgress.show(t('projectList.startup.checkTitle'), null)
+	startupProgress.reset(t('projectList.startup.checkTitle'))
 
 	const withTimeout = <T,>(
 		label: string,
@@ -310,7 +313,7 @@ async function runStartupCheckSequence() {
 		ms = 8000
 	): Promise<T> => {
 		return new Promise<T>((resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error(`${label} 超时 (${ms}ms)`)), ms)
+			const timer = setTimeout(() => reject(new Error(t('projectList.startup.timeout', { label, ms }))), ms)
 			promiseFactory()
 				.then((v) => {
 					clearTimeout(timer)
@@ -325,53 +328,53 @@ async function runStartupCheckSequence() {
 
 	await startupProgress.runStep(
 		'localdb.init',
-		'初始化本地数据库',
+		t('projectList.startup.initLocalDb'),
 		async () => {
 			const dbBridge = window.dweb?.aiworkflow?.db
 			if (!dbBridge) {
 				startupProgress.updateStep('localdb.init', {
 					status: 'warn',
-					detail: 'IPC 桥不可用，将使用后端数据'
+					detail: t('projectList.error.ipcUnavailable')
 				})
 				return 'fallback'
 			}
 			const initState = await withTimeout(
 				'localdb.init',
 				() =>
-					Promise.resolve(dbBridge._initState?.()).then((v) => v ?? { ok: false, error: '未实现' }),
+					Promise.resolve(dbBridge._initState?.()).then((v) => v ?? { ok: false, error: t('projectList.error.notImplemented') }),
 				5000
 			)
-			if (initState?.ok) return `已就绪 @ ${String(initState.dbFilePath || 'default')}`
+			if (initState?.ok) return t('projectList.startup.readyAt', { path: String(initState.dbFilePath || 'default') })
 			const retry = await withTimeout(
 				'localdb.ensureInitialized',
 				() =>
 					Promise.resolve(dbBridge._ensureInitialized?.({})).then(
-						(v) => v ?? { ok: false, error: '未实现' }
+						(v) => v ?? { ok: false, error: t('projectList.error.notImplemented') }
 					),
 				5000
 			)
 			if (!retry?.ok) {
-				const errMsg = String(retry?.error || '本地数据库初始化失败')
+				const errMsg = String(retry?.error || t('projectList.startup.dbInitFailed'))
 				startupProgress.updateStep('localdb.init', {
 					status: 'warn',
-					detail: errMsg + '（降级使用后端）'
+					detail: errMsg + t('projectList.startup.fallbackToBackend')
 				})
 				return 'fallback'
 			}
-			return '初始化成功'
+			return t('projectList.startup.initSuccess')
 		},
 		{ errorDetailOnFailure: true }
 	)
 
 	const dbOpenResult = await startupProgress.runStep(
 		'localdb.open',
-		'检查本地数据库',
+		t('projectList.startup.checkLocalDb'),
 		async () => {
 			const listFn = localDbBridge()
 			if (typeof listFn !== 'function') {
 				startupProgress.updateStep('localdb.open', {
 					status: 'warn',
-					detail: '未检测到 IPC 列表接口'
+					detail: t('projectList.error.noIpcListInterface')
 				})
 				return -1
 			}
@@ -381,7 +384,7 @@ async function runStartupCheckSequence() {
 			} catch (e: unknown) {
 				startupProgress.updateStep('localdb.open', {
 					status: 'warn',
-					detail: getErrorMessage(e) || '本地数据库调用失败'
+					detail: getErrorMessage(e) || t('projectList.error.dbCallFailed')
 				})
 				return -1
 			}
@@ -403,13 +406,13 @@ async function runStartupCheckSequence() {
 	if (dbOpenResult.ok && typeof dbOpenResult.value === 'number' && dbOpenResult.value >= 0) {
 		startupProgress.updateStep('localdb.open', {
 			status: 'ok',
-			detail: `发现 ${dbOpenResult.value} 个本地项目`
+			detail: t('projectList.startup.foundProjects', { count: dbOpenResult.value })
 		})
 	}
 
 	await startupProgress.runStep(
 		'localdb.projects',
-		'准备项目列表数据',
+		t('projectList.startup.prepareProjectList'),
 		async () => {
 			await refreshProjects(true)
 			return allProjects.value.length
@@ -419,7 +422,7 @@ async function runStartupCheckSequence() {
 
 	startupProgress.updateStep('localdb.projects', {
 		status: 'ok',
-		detail: `共 ${allProjects.value.length} 个项目`
+		detail: t('projectList.startup.totalProjects', { count: allProjects.value.length })
 	})
 	setTimeout(() => startupProgress.hide(), 2000)
 }
@@ -490,7 +493,7 @@ async function refreshProjects(silent = false) {
 		} else {
 			const res = await blueprintProjectService.listProjects()
 			if (!res || !(res as { ok?: boolean }).ok) {
-				const err = String((res as { error?: string })?.error || '加载项目列表失败。')
+				const err = String((res as { error?: string })?.error || t('projectList.error.loadFailed'))
 				if (!silent) loadError.value = err
 				allProjects.value = []
 				return
@@ -519,7 +522,7 @@ async function refreshProjects(silent = false) {
 			// synced hint placeholder (non-blocking)
 		}
 	} catch (e: unknown) {
-		const err = getErrorMessage(e) || '加载项目列表失败。'
+		const err = getErrorMessage(e) || t('projectList.error.loadFailed')
 		if (!silent) loadError.value = err
 	} finally {
 		loading.value = false
@@ -538,12 +541,12 @@ function openProject(project: ProjectCardItem) {
 async function onClickNewProject() {
 	if (creating.value) return
 	if (!isElectron()) {
-		loadError.value = '新建项目需要选择本地文件夹，当前运行环境不支持。'
+		loadError.value = t('projectList.error.newProjectNeedFolder')
 		return
 	}
 	const bridge = window.dweb?.aiworkflow
 	if (typeof bridge?.selectProjectFolder !== 'function') {
-		loadError.value = '当前运行环境不支持选择项目文件夹。'
+		loadError.value = t('projectList.error.cannotSelectFolder')
 		return
 	}
 	try {
@@ -557,7 +560,7 @@ async function onClickNewProject() {
 		newProjectName.value = ''
 		newProjectDialog.value?.showModal()
 	} catch (e: unknown) {
-		loadError.value = getErrorMessage(e) || '选择项目文件夹失败。'
+		loadError.value = getErrorMessage(e) || t('projectList.error.selectFolderFailed')
 	}
 }
 
@@ -573,14 +576,14 @@ async function onNewProjectDialogConfirm() {
 				const retry = await dbBridge._ensureInitialized?.({})
 				if (!retry?.ok) {
 					loadError.value =
-						'本地数据库尚未就绪：' + String(retry?.error || initState?.error || '初始化失败')
+						t('projectList.error.dbNotReady', { error: String(retry?.error || initState?.error || t('projectList.error.createFailed')) })
 					return
 				}
 			}
 		}
 		const openFolderBridge = window.dweb?.aiworkflow?.db?.projects?.openFolder
 		if (typeof openFolderBridge !== 'function') {
-			loadError.value = '当前运行环境不支持创建项目。'
+			loadError.value = t('projectList.error.cannotCreateProject')
 			return
 		}
 		const result = await openFolderBridge({
@@ -589,7 +592,7 @@ async function onNewProjectDialogConfirm() {
 			create: true
 		})
 		if (!result?.ok || !result?.project?.id) {
-			loadError.value = result?.error || '创建项目失败。'
+			loadError.value = result?.error || t('projectList.error.createFailed')
 			return
 		}
 		const projectId = result.project.id
@@ -598,7 +601,7 @@ async function onNewProjectDialogConfirm() {
 			query: { projectId: String(projectId) }
 		})
 	} catch (e: unknown) {
-		loadError.value = getErrorMessage(e) || '创建项目失败。'
+		loadError.value = getErrorMessage(e) || t('projectList.error.createFailed')
 	} finally {
 		creating.value = false
 	}
@@ -607,15 +610,13 @@ async function onNewProjectDialogConfirm() {
 async function onClickDeleteProject(project: ProjectCardItem) {
 	if (!Number.isFinite(project.id) || project.id <= 0) return
 	const ok = window.confirm(
-		`确认删除项目：${
-			project.name || '未命名项目'
-		}？\n\n该操作会删除数据库中该项目的记录；如果该项目未绑定本地文件夹，同时会清理对应的本地资源目录。`
+		t('projectList.deleteConfirmMessage', { name: project.name || t('projectList.unnamedProject') })
 	)
 	if (!ok) return
 	deletingId.value = project.id
 	try {
 		let succeeded = false
-		let errorMsg = '删除项目失败。'
+		let errorMsg = t('projectList.error.deleteFailed')
 		const del = window.dweb?.aiworkflow?.db?.projects?.delete
 		type DeleteResult = { ok?: boolean; error?: string } | boolean | unknown[] | number
 		if (isElectron() && typeof del === 'function') {
@@ -652,7 +653,7 @@ async function onClickDeleteProject(project: ProjectCardItem) {
 		}
 		await refreshProjects(true)
 	} catch (e: unknown) {
-		loadError.value = getErrorMessage(e) || '删除项目失败。'
+		loadError.value = getErrorMessage(e) || t('projectList.error.deleteFailed')
 	} finally {
 		deletingId.value = null
 	}

@@ -1,0 +1,10 @@
+{
+  "about.title": "关于 {appName}",
+  "about.version": "版本 {version}",
+  "about.license": "许可证",
+  "about.copyright": "版权",
+  "about.officialWebsite": "官方网站",
+  "about.githubRepo": "GitHub 仓库",
+  "about.confirm": "确定",
+  "about.close": "关闭"
+}

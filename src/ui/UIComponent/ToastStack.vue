@@ -24,7 +24,7 @@
 						type="button"
 						@click.stop="toggle(item.id)"
 					>
-						{{ isExpanded(item.id) ? '收起' : '展开' }}
+						{{ isExpanded(item.id) ? t('toast.collapse') : t('toast.expand') }}
 					</button>
 					<div v-if="item.actions && item.actions.length" class="wf-toast-actions">
 						<button
@@ -38,7 +38,7 @@
 						</button>
 					</div>
 				</div>
-				<button class="wf-toast-close" type="button" @click="emit('close', item.id)">关闭</button>
+				<button class="wf-toast-close" type="button" @click="emit('close', item.id)">{{ t('toast.close') }}</button>
 			</div>
 		</div>
 	</Teleport>
@@ -46,6 +46,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 export type ToastActionItem = {
 	label: string

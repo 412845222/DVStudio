@@ -1,0 +1,20 @@
+{
+  "aiworkflow.nodeBase.switchNodeType": "Switch Node Type",
+  "aiworkflow.nodeBase.clearNodeContent": "Clear Node Content",
+  "aiworkflow.nodeBase.clear": "Clear",
+  "aiworkflow.nodeBase.copyNode": "Copy Node",
+  "aiworkflow.nodeBase.refreshNode": "Refresh Node",
+  "aiworkflow.nodeBase.deleteNode": "Delete Node",
+  "aiworkflow.nodeBase.bodyPlaceholder": "Content Placeholder",
+  "aiworkflow.nodeBase.footerPlaceholder": "Footer Placeholder",
+  "aiworkflow.nodeBase.inputAnchors": "Input Anchors",
+  "aiworkflow.nodeBase.outputAnchors": "Output Anchors",
+  "aiworkflow.nodeBase.inputAnchor": "Input",
+  "aiworkflow.nodeBase.outputAnchor": "Output",
+  "aiworkflow.nodeBase.taskSubmitting": "Submitting",
+  "aiworkflow.nodeBase.taskRunning": "Generating",
+  "aiworkflow.nodeBase.taskCompleted": "Completed",
+  "aiworkflow.nodeBase.taskError": "Failed",
+  "aiworkflow.nodeBase.taskIdle": "Idle",
+  "aiworkflow.nodeBase.resultsGenerated": "{count} items generated"
+}

@@ -38,19 +38,24 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from '../../i18n'
+
 const emit = defineEmits<{
 	(e: 'action', actionId: string): void
 }>()
 
-const actions = [
-	{ id: 'friends', label: '好友', disabled: false },
-	{ id: 'store', label: '商店', disabled: false },
-	{ id: 'community', label: '社区', disabled: false },
-	{ id: 'achievements', label: '成就', disabled: true },
-]
+const { t } = useI18n()
+
+const actions = computed(() => [
+	{ id: 'friends', label: t('steam.actions.friends'), disabled: false },
+	{ id: 'store', label: t('steam.actions.store'), disabled: false },
+	{ id: 'community', label: t('steam.actions.community'), disabled: false },
+	{ id: 'achievements', label: t('steam.actions.achievements'), disabled: true },
+])
 
 function handleAction(actionId: string) {
-	const action = actions.find(a => a.id === actionId)
+	const action = actions.value.find(a => a.id === actionId)
 	if (action?.disabled) return
 	emit('action', actionId)
 }

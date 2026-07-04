@@ -3,7 +3,7 @@
 		<div v-if="open" class="aiwf-log-panel" data-bp-ui-overlay="true" @pointerdown.stop>
 			<div class="aiwf-log-panel__header">
 				<div class="aiwf-log-panel__title">
-					<span>蓝图日志</span>
+					<span>{{ t('tasks.log.title') }}</span>
 					<small>{{ filteredEntries.length }} / {{ totalEntries }}</small>
 				</div>
 				<div class="aiwf-log-panel__controls">
@@ -11,10 +11,10 @@
 						v-model="keywordFilter"
 						class="aiwf-log-panel__input"
 						type="text"
-						placeholder="关键字过滤…"
+						:placeholder="t('tasks.log.searchPlaceholder')"
 						@keydown.esc="keywordFilter = ''"
 					/>
-					<div class="aiwf-log-panel__chip-group" role="group" aria-label="级别过滤">
+					<div class="aiwf-log-panel__chip-group" role="group" :aria-label="t('tasks.log.levelFilter')">
 						<button
 							v-for="level in ALL_LEVELS"
 							:key="level"
@@ -27,7 +27,7 @@
 							{{ level }}
 						</button>
 					</div>
-					<div class="aiwf-log-panel__chip-group" role="group" aria-label="分类过滤">
+					<div class="aiwf-log-panel__chip-group" role="group" :aria-label="t('tasks.log.categoryFilter')">
 						<button
 							v-for="category in ALL_CATEGORIES"
 							:key="category"
@@ -42,29 +42,29 @@
 					</div>
 					<label class="aiwf-log-panel__toggle">
 						<input v-model="autoScroll" type="checkbox" />
-						<span>自动滚动</span>
+						<span>{{ t('tasks.log.autoScroll') }}</span>
 					</label>
-					<button class="aiwf-log-panel__btn" type="button" @click="onClear">清空</button>
+					<button class="aiwf-log-panel__btn" type="button" @click="onClear">{{ t('common.clear') }}</button>
 					<button class="aiwf-log-panel__btn" type="button" @click="onExport('text')">
-						导出 TXT
+						{{ t('tasks.log.exportTxt') }}
 					</button>
 					<button class="aiwf-log-panel__btn" type="button" @click="onExport('json')">
-						导出 JSON
+						{{ t('tasks.log.exportJson') }}
 					</button>
 					<button
 						class="aiwf-log-panel__btn aiwf-log-panel__btn--close"
 						type="button"
-						title="关闭 (Esc)"
+						:title="t('tasks.log.closeTooltip')"
 						@click="emitClose"
 					>
-						关闭
+						{{ t('common.close') }}
 					</button>
 				</div>
 			</div>
 
 			<div ref="scrollContainerRef" class="aiwf-log-panel__body">
 				<div v-if="filteredEntries.length === 0" class="aiwf-log-panel__empty">
-					暂无日志条目。试着执行一些蓝图操作，新的日志会出现在这里。
+					{{ t('tasks.log.empty') }}
 				</div>
 				<div v-else class="aiwf-log-panel__list" role="list">
 					<div
@@ -81,7 +81,7 @@
 							type="button"
 							class="aiwf-log-panel__item-toggle"
 							:aria-expanded="expandedIds.has(entry.id)"
-							:title="entry.detail !== undefined ? '点击展开详情' : ''"
+							:title="entry.detail !== undefined ? t('tasks.log.expandDetails') : ''"
 							:disabled="entry.detail === undefined"
 							@click="toggleExpand(entry.id)"
 						>
@@ -119,18 +119,15 @@ import {
 	type BlueprintLogLevel,
 	type BlueprintLogEntry
 } from '../../views/AIWorkflow/blueprint-core/blueprintLog'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>()
 
 const ALL_LEVELS: BlueprintLogLevel[] = ['INFO', 'WARN', 'ERROR', 'DEBUG']
 const ALL_CATEGORIES: BlueprintLogCategory[] = ['runtime', 'request', 'operation', 'system']
-const CATEGORY_LABELS: Record<BlueprintLogCategory, string> = {
-	runtime: '运行',
-	request: '请求',
-	operation: '操作',
-	system: '系统'
-}
 
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
 const scrollAnchorRef = ref<HTMLDivElement | null>(null)
@@ -188,7 +185,18 @@ const emitClose = () => {
 }
 
 const labelForCategory = (cat: BlueprintLogCategory): string => {
-	return CATEGORY_LABELS[cat] ?? cat
+	switch (cat) {
+		case 'runtime':
+			return t('tasks.log.category.runtime')
+		case 'request':
+			return t('tasks.log.category.request')
+		case 'operation':
+			return t('tasks.log.category.operation')
+		case 'system':
+			return t('tasks.log.category.system')
+		default:
+			return cat
+	}
 }
 
 const toggleLevel = (level: BlueprintLogLevel) => {
@@ -213,7 +221,7 @@ const toggleExpand = (id: string) => {
 }
 
 const onClear = () => {
-	if (!window.confirm('确定要清空当前日志面板吗？此操作不会影响任何已保存的项目。')) return
+	if (!window.confirm(t('tasks.log.confirmClear'))) return
 	blueprintLog.clear()
 	expandedIds.value = new Set()
 }

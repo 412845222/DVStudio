@@ -4,7 +4,7 @@
 		<div class="video-task-panel__dialog" @pointerdown.stop>
 			<div class="video-task-panel__header">
 				<div>
-					<div class="video-task-panel__title">视频任务</div>
+					<div class="video-task-panel__title">{{ t('tasks.video.title') }}</div>
 					<div class="video-task-panel__status">{{ dataStatusText }}</div>
 				</div>
 				<div class="video-task-panel__actions">
@@ -14,7 +14,7 @@
 						:disabled="refreshBusy || syncBusy"
 						@click="$emit('refresh')"
 					>
-						{{ refreshBusy ? '刷新中…' : '刷新本地' }}
+						{{ refreshBusy ? t('tasks.video.refreshing') : t('tasks.video.refreshLocal') }}
 					</button>
 					<button
 						class="video-task-panel__btn primary"
@@ -22,9 +22,9 @@
 						:disabled="refreshBusy || syncBusy"
 						@click="$emit('sync-remote')"
 					>
-						{{ syncBusy ? '同步中…' : '远端补齐' }}
+						{{ syncBusy ? t('tasks.video.syncing') : t('tasks.video.remoteSync') }}
 					</button>
-					<button class="video-task-panel__btn" type="button" @click="$emit('close')">关闭</button>
+					<button class="video-task-panel__btn" type="button" @click="$emit('close')">{{ t('common.close') }}</button>
 				</div>
 			</div>
 
@@ -48,27 +48,27 @@
 							</span>
 						</div>
 						<div class="video-task-panel__item-prompt">
-							{{ item.prompt || '未记录提示词' }}
+							{{ item.prompt || t('tasks.video.noPrompt') }}
 						</div>
 						<div class="video-task-panel__item-meta">
 							<span>{{ item.ratio || 'adaptive' }}</span>
-							<span>{{ item.duration ? `${item.duration}s` : '时长未记录' }}</span>
+							<span>{{ item.duration ? `${item.duration}s` : t('tasks.video.noDuration') }}</span>
 							<span>{{ formatDateTime(item.updatedAt) }}</span>
 						</div>
 					</button>
 					<div v-if="!tasks.length" class="video-task-panel__empty">
-						暂无视频任务。先在底部对话框发起一次视频生成。
+						{{ t('tasks.video.empty') }}
 					</div>
 				</div>
 
 				<div class="video-task-panel__detail">
-					<div v-if="detailLoading" class="video-task-panel__detail-empty">正在加载任务详情…</div>
+					<div v-if="detailLoading" class="video-task-panel__detail-empty">{{ t('tasks.video.loadingDetails') }}</div>
 					<template v-else-if="detailTask">
 						<div class="video-task-panel__detail-head">
 							<div class="video-task-panel__detail-title">
 								{{ detailTask.model || 'Seedance' }}
 							</div>
-							<div class="video-task-panel__detail-subtitle">任务 ID：{{ detailTask.taskId }}</div>
+							<div class="video-task-panel__detail-subtitle">{{ t('tasks.video.taskId') }}{{ detailTask.taskId }}</div>
 						</div>
 
 						<div v-if="previewVideoUrl(detailTask)" class="video-task-panel__preview-wrap">
@@ -82,31 +82,30 @@
 							/>
 						</div>
 						<div v-else-if="detailTask.videoUrlRemote" class="video-task-panel__preview-empty">
-							当前任务未命中本地视频缓存。远端直链通常只有短期有效期，为避免过期
-							403，这里不再自动直连预览。
+							{{ t('tasks.video.noLocalPreview') }}
 						</div>
 
 						<div class="video-task-panel__kv-grid">
-							<div>状态</div>
+							<div>{{ t('tasks.video.status') }}</div>
 							<div>{{ detailTask.status || 'unknown' }}</div>
-							<div>比例</div>
+							<div>{{ t('tasks.video.ratio') }}</div>
 							<div>{{ detailTask.ratio || 'adaptive' }}</div>
-							<div>分辨率</div>
-							<div>{{ detailTask.resolution || '默认' }}</div>
-							<div>时长</div>
-							<div>{{ detailTask.duration ? `${detailTask.duration}s` : '未记录' }}</div>
-							<div>音频</div>
-							<div>{{ detailTask.generateAudio ? '开启' : '关闭' }}</div>
-							<div>固定镜头</div>
-							<div>{{ detailTask.cameraFixed ? '是' : '否' }}</div>
-							<div>最后同步</div>
+							<div>{{ t('tasks.video.resolution') }}</div>
+							<div>{{ detailTask.resolution || t('tasks.video.defaultRes') }}</div>
+							<div>{{ t('tasks.video.duration') }}</div>
+							<div>{{ detailTask.duration ? `${detailTask.duration}s` : t('tasks.video.notRecorded') }}</div>
+							<div>{{ t('tasks.video.audio') }}</div>
+							<div>{{ detailTask.generateAudio ? t('tasks.video.audioOn') : t('tasks.video.audioOff') }}</div>
+							<div>{{ t('tasks.video.fixedCamera') }}</div>
+							<div>{{ detailTask.cameraFixed ? t('common.yes') : t('common.no') }}</div>
+							<div>{{ t('tasks.video.lastSync') }}</div>
 							<div>{{ formatDateTime(detailTask.syncedAt || detailTask.updatedAt) }}</div>
 						</div>
 
 						<div class="video-task-panel__section">
-							<div class="video-task-panel__section-title">提示词</div>
+							<div class="video-task-panel__section-title">{{ t('tasks.video.prompt') }}</div>
 							<div class="video-task-panel__section-body text-block">
-								{{ detailTask.prompt || '未记录提示词' }}
+								{{ detailTask.prompt || t('tasks.video.noPrompt') }}
 							</div>
 						</div>
 
@@ -114,14 +113,14 @@
 							v-if="detailTask.statusText || detailTask.errorMessage"
 							class="video-task-panel__section"
 						>
-							<div class="video-task-panel__section-title">状态信息</div>
+							<div class="video-task-panel__section-title">{{ t('tasks.video.statusInfo') }}</div>
 							<div class="video-task-panel__section-body text-block">
 								{{ detailTask.errorMessage || detailTask.statusText }}
 							</div>
 						</div>
 
 						<div class="video-task-panel__section">
-							<div class="video-task-panel__section-title">资源链接</div>
+							<div class="video-task-panel__section-title">{{ t('tasks.video.resourceLinks') }}</div>
 							<div class="video-task-panel__section-body links">
 								<a
 									v-if="detailTask.videoUrlLocal"
@@ -129,7 +128,7 @@
 									target="_blank"
 									rel="noreferrer"
 								>
-									本地视频
+									{{ t('tasks.video.localVideo') }}
 								</a>
 								<a
 									v-if="detailTask.videoUrlRemote"
@@ -137,7 +136,7 @@
 									target="_blank"
 									rel="noreferrer"
 								>
-									远端视频
+									{{ t('tasks.video.remoteVideo') }}
 								</a>
 								<a
 									v-if="detailTask.lastFrameUrlLocal"
@@ -145,7 +144,7 @@
 									target="_blank"
 									rel="noreferrer"
 								>
-									本地尾帧
+									{{ t('tasks.video.localLastFrame') }}
 								</a>
 								<a
 									v-if="detailTask.lastFrameUrlRemote"
@@ -153,12 +152,12 @@
 									target="_blank"
 									rel="noreferrer"
 								>
-									远端尾帧
+									{{ t('tasks.video.remoteLastFrame') }}
 								</a>
 							</div>
 						</div>
 					</template>
-					<div v-else class="video-task-panel__detail-empty">选择左侧任务查看详情。</div>
+					<div v-else class="video-task-panel__detail-empty">{{ t('tasks.video.selectToView') }}</div>
 				</div>
 			</div>
 		</div>
@@ -166,6 +165,10 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
+
 export type VideoTaskPanelItem = {
 	taskId: string
 	model: string

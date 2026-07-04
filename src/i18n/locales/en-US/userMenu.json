@@ -1,0 +1,9 @@
+{
+  "userMenu.notConnected": "Not Connected",
+  "userMenu.developmentMode": "Development Mode (Mock)",
+  "userMenu.openSteamPanel": "Open Steam Panel",
+  "userMenu.friendsList": "Friends List",
+  "userMenu.achievements": "Achievements",
+  "userMenu.comingSoon": "Coming Soon",
+  "userMenu.steamSettings": "Steam Settings"
+}

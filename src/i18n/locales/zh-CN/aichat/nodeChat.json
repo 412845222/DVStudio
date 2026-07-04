@@ -1,0 +1,18 @@
+{
+  "aichat.nodeChat.disconnectUpstream": "断开上游参数",
+  "aichat.nodeChat.promptLibrary": "提示词库",
+  "aichat.nodeChat.enhancePrompt": "增强提示词",
+  "aichat.nodeChat.collapseParams": "收起参数",
+  "aichat.nodeChat.paramSettings": "参数设置",
+  "aichat.nodeChat.generating": "生成中...",
+  "aichat.nodeChat.send": "发送",
+  "aichat.nodeChat.placeholder": "输入提示词...",
+  "aichat.nodeChat.textLabel": "文本 {index}",
+  "aichat.nodeChat.imageLabel": "图片 {index}",
+  "aichat.nodeChat.videoLabel": "视频 {index}",
+  "aichat.nodeChat.model3dLabel": "3D 模型 {index}",
+  "aichat.nodeChat.refImage": "图",
+  "aichat.nodeChat.refVideo": "视",
+  "aichat.nodeChat.sendShortcut": "发送",
+  "aichat.nodeChat.newlineShortcut": "换行"
+}

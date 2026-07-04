@@ -12,7 +12,7 @@
 				<span v-else class="thinking-block__icon-text">💭</span>
 			</span>
 			<span class="thinking-block__title">
-				{{ isThinking ? '思考中…' : '思考过程' }}
+				{{ isThinking ? t('aichat.thinking.thinking') : t('aichat.thinking.process') }}
 			</span>
 			<span class="thinking-block__toggle">
 				<svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'expanded': !collapsed }">
@@ -35,6 +35,9 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 interface Props {
 	content?: string

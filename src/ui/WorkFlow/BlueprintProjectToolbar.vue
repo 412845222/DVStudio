@@ -5,7 +5,7 @@
 		data-bp-ui-overlay="true"
 		@pointerdown.stop
 	>
-		<nav class="aiwf-floating-rail" aria-label="AI 工作流统一工具栏">
+		<nav class="aiwf-floating-rail" :aria-label="t('aiworkflow.toolbar.ariaLabel')">
 			<!-- Sci-fi L corner brackets -->
 			<span class="rail-bracket rail-bracket-tl" aria-hidden="true"></span>
 			<span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
@@ -24,14 +24,14 @@
 				class="aiwf-floating-rail__btn"
 				:class="{ active: activePanel === 'project' }"
 				type="button"
-				title="项目"
+				:title="t('aiworkflow.toolbar.project')"
 				@click.stop="togglePanel('project')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M3 4.2h3.6l1.2 1.3H13v6.3H3z" />
 					<path d="M4.6 8.6h6.8" />
 				</svg>
-				<span class="aiwf-floating-rail__label">项目</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.project') }}</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 
@@ -41,13 +41,13 @@
 				class="aiwf-floating-rail__btn is-primary"
 				:class="{ active: nodeLibraryOpen }"
 				type="button"
-				title="节点库"
+				:title="t('aiworkflow.toolbar.nodeLibrary')"
 				@click.stop="$emit('toggle-node-library')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M3 3.5h4v4H3zM9 3.5h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" />
 				</svg>
-				<span class="aiwf-floating-rail__label">节点库</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.nodeLibrary') }}</span>
 			</button>
 
 			<span class="aiwf-floating-rail__sep" aria-hidden="true"></span>
@@ -56,14 +56,14 @@
 				class="aiwf-floating-rail__btn"
 				:class="{ active: activePanel === 'resources' }"
 				type="button"
-				title="资源"
+				:title="t('aiworkflow.toolbar.resources')"
 				@click.stop="togglePanel('resources')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M2.6 5h4l1.2 1.3h5.6v6.2H2.6z" />
 					<path d="M4.6 9h2.8" />
 				</svg>
-				<span class="aiwf-floating-rail__label">资源</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.resources') }}</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 
@@ -71,14 +71,14 @@
 				class="aiwf-floating-rail__btn"
 				:class="{ active: backendLogOpen }"
 				type="button"
-				title="日志"
+				:title="t('aiworkflow.toolbar.log')"
 				@click.stop="$emit('toggle-backend-log')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M3 3h10v10H3z" />
 					<path d="M5 6h6M5 8.5h4M5 11h3" />
 				</svg>
-				<span class="aiwf-floating-rail__label">日志</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.log') }}</span>
 			</button>
 
 			<span class="aiwf-floating-rail__sep" aria-hidden="true"></span>
@@ -87,14 +87,14 @@
 				class="aiwf-floating-rail__btn"
 				:class="{ active: activePanel === 'tasks' }"
 				type="button"
-				title="任务"
+				:title="t('aiworkflow.toolbar.tasks')"
 				@click.stop="togglePanel('tasks')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M3 4h10v8H3z" />
 					<path d="M5 7h6M5 9h4" />
 				</svg>
-				<span class="aiwf-floating-rail__label">任务</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.tasks') }}</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 		</nav>
@@ -103,10 +103,10 @@
 			<section v-if="activePanel" class="aiwf-floating-rail-popover" :class="`is-${activePanel}`">
 				<template v-if="activePanel === 'project'">
 					<button class="aiwf-floating-rail-popover__item" type="button" @click="handleSaveProject">
-						保存项目
+						{{ t('aiworkflow.toolbar.saveProject') }}
 					</button>
 					<button class="aiwf-floating-rail-popover__item" type="button" @click="openLoadDialog">
-						加载项目
+						{{ t('aiworkflow.toolbar.loadProject') }}
 					</button>
 					<div
 						v-if="showRepairAssets"
@@ -119,32 +119,32 @@
 						type="button"
 						@click="emitThenClose('request-repair-assets')"
 					>
-						修复项目资源
+						{{ t('aiworkflow.toolbar.repairAssets') }}
 					</button>
 					<div class="aiwf-floating-rail-popover__sep" aria-hidden="true"></div>
 					<button class="aiwf-floating-rail-popover__item" type="button" @click="openImportFile">
-						导入 JSON
+						{{ t('aiworkflow.toolbar.importJson') }}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="openImportPackageFile"
 					>
-						导入项目 ZIP
+						{{ t('aiworkflow.toolbar.importZip') }}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="emitThenClose('request-export')"
 					>
-						导出 JSON
+						{{ t('aiworkflow.toolbar.exportJson') }}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="emitThenClose('request-export-package')"
 					>
-						导出项目 ZIP
+						{{ t('aiworkflow.toolbar.exportZip') }}
 					</button>
 					<div class="aiwf-floating-rail-popover__sep" aria-hidden="true"></div>
 					<button
@@ -152,7 +152,7 @@
 						type="button"
 						@click="emitThenClose('request-toggle-performance-priority')"
 					>
-						{{ performancePriorityMode ? '性能优先：开' : '性能优先：关' }}
+						{{ performancePriorityMode ? t('aiworkflow.toolbar.performancePriorityOn') : t('aiworkflow.toolbar.performancePriorityOff') }}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
@@ -173,17 +173,17 @@
 						type="button"
 						@click="emitThenClose('request-export-performance-diagnostics')"
 					>
-						导出性能诊断
+						{{ t('aiworkflow.toolbar.exportPerfDiagnostics') }}
 					</button>
 				</template>
 
 				<template v-else-if="activePanel === 'resources'">
 					<div class="aiwf-floating-rail-popover__head">
-						<span>当前蓝图资源</span>
-						<small>{{ resourceList.length }}（已引用 {{ usedResourceCount }}）</small>
+						<span>{{ t('aiworkflow.toolbar.currentBlueprintResources') }}</span>
+						<small>{{ t('aiworkflow.toolbar.resourceCount', { total: resourceList.length, used: usedResourceCount }) }}</small>
 					</div>
 					<div v-if="!enrichedResources.length" class="aiwf-floating-rail-popover__empty">
-						暂无资源
+						{{ t('aiworkflow.toolbar.noResources') }}
 					</div>
 					<div
 						v-else
@@ -200,7 +200,7 @@
 							<button
 								class="aiwf-resource-item__cover"
 								type="button"
-								:title="r.usageCount > 0 ? '点击定位到引用节点' : '该资源未被任何节点引用'"
+								:title="r.usageCount > 0 ? t('aiworkflow.toolbar.locateReferencingNode') : t('aiworkflow.toolbar.resourceNotReferenced')"
 								:disabled="r.usageCount === 0"
 								@click.stop="onResourceCoverClick(r)"
 							>
@@ -231,7 +231,7 @@
 							</button>
 							<div class="aiwf-resource-item__info">
 								<div class="aiwf-resource-item__name" :title="r.name || ''">
-									{{ r.name || '未命名资源' }}
+									{{ r.name || t('aiworkflow.toolbar.unnamedResource') }}
 								</div>
 								<div class="aiwf-resource-item__meta">
 									<span class="aiwf-resource-item__kind" :data-kind="r.kind">
@@ -243,7 +243,7 @@
 											<button
 												class="aiwf-resource-item__node-link"
 												type="button"
-												:title="`定位到节点：${r.usedBy[0].nodeTitle || r.usedBy[0].nodeId}`"
+												:title="t('aiworkflow.toolbar.locateNode', { name: r.usedBy[0].nodeTitle || r.usedBy[0].nodeId })"
 												@click.stop="onResourceNodeClick(r.usedBy[0].nodeId)"
 											>
 												{{ r.usedBy[0].nodeTitle || r.usedBy[0].nodeId }}
@@ -253,18 +253,18 @@
 											</span>
 										</template>
 									</span>
-									<span v-else class="aiwf-resource-item__unused-label">未引用</span>
+									<span v-else class="aiwf-resource-item__unused-label">{{ t('aiworkflow.toolbar.unusedResource') }}</span>
 								</div>
 							</div>
 						</div>
 						<div v-if="hasMoreResources" class="aiwf-resource-list__footer">
-							向下滚动加载更多...
+							{{ t('aiworkflow.toolbar.scrollLoadMore') }}
 						</div>
 						<div
 							v-else-if="enrichedResources.length > RESOURCE_PAGE_SIZE"
 							class="aiwf-resource-list__footer"
 						>
-							已加载全部 {{ enrichedResources.length }} 个资源
+							{{ t('aiworkflow.toolbar.allResourcesLoaded', { count: enrichedResources.length }) }}
 						</div>
 					</div>
 					<button
@@ -272,13 +272,13 @@
 						type="button"
 						@click="emitThenClose('open-resource-manager')"
 					>
-						打开完整资源管理器
+						{{ t('aiworkflow.toolbar.openResourceManager') }}
 					</button>
 				</template>
 
 				<template v-else-if="activePanel === 'tasks'">
 					<div class="aiwf-floating-rail-popover__head">
-						<span>任务管理</span>
+						<span>{{ t('aiworkflow.toolbar.taskManagement') }}</span>
 					</div>
 					<button
 						class="aiwf-floating-rail-popover__item"
@@ -291,7 +291,7 @@
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						disabled
-						title="Gemini 任务面板尚未实现"
+						:title="t('aiworkflow.toolbar.geminiNotImplemented')"
 						@click="emitThenClose('open-gemini-task-panel')"
 					>
 						<span>Gemini</span>
@@ -345,7 +345,7 @@
 					<span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
 					<span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
 					<span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
-					<div class="aiwf-rail-dialog__title">加载蓝图项目</div>
+					<div class="aiwf-rail-dialog__title">{{ t('aiworkflow.toolbar.loadBlueprintProject') }}</div>
 
 					<!-- 搜索框 -->
 					<div class="aiwf-rail-search-wrap">
@@ -353,7 +353,7 @@
 							v-model="searchKeyword"
 							class="aiwf-rail-search-input"
 							type="text"
-							placeholder="搜索项目..."
+							:placeholder="t('aiworkflow.toolbar.searchProject')"
 						/>
 					</div>
 
@@ -389,16 +389,16 @@
 								type="button"
 								@click.stop="onDeleteProject(item.id, item.name)"
 							>
-								删除
+								{{ t('aiworkflow.toolbar.deleteProject') }}
 							</button>
 						</div>
 						<div v-if="!filteredProjects.length" class="aiwf-rail-empty">
-							{{ searchKeyword ? '未找到匹配的项目' : '暂无项目' }}
+							{{ searchKeyword ? t('aiworkflow.toolbar.noMatchingProjects') : t('aiworkflow.toolbar.noProjects') }}
 						</div>
 					</div>
 					<div class="aiwf-rail-dialog__actions">
 						<button class="aiwf-rail-dialog-btn" type="button" @click="loadDialogOpen = false">
-							取消
+							{{ t('common.cancel') }}
 						</button>
 						<button
 							class="aiwf-rail-dialog-btn is-primary"
@@ -406,7 +406,7 @@
 							@click="confirmLoad"
 							:disabled="selectedProjectId == null"
 						>
-							加载
+							{{ t('aiworkflow.toolbar.load') }}
 						</button>
 					</div>
 				</div>
@@ -417,10 +417,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
 import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
 import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import type { WorkflowNode } from '../../aiworkflow/types'
+
+const { t } = useI18n()
 
 export type BlueprintProjectListItem = {
 	id: number
@@ -495,10 +498,10 @@ const backendLogOpen = computed(() => props.backendLogOpen === true)
 const showRepairAssets = computed(() => props.showRepairAssets === true)
 
 const hasProjectName = computed(() => String(props.currentProjectName ?? '').trim().length > 0)
-const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || '未保存项目')
+const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || t('aiworkflow.toolbar.unsavedProject'))
 const statusTitle = computed(() => {
-	if (!hasProjectName.value) return '当前蓝图项目尚未保存'
-	return `当前项目: ${projectTitle.value}`
+	if (!hasProjectName.value) return t('aiworkflow.toolbar.projectNotSaved')
+	return t('aiworkflow.toolbar.currentProject', { name: projectTitle.value })
 })
 
 watch(
@@ -545,10 +548,10 @@ const emitThenClose = (
 }
 
 const anchorsToggleLabel = computed(() =>
-	props.screenshotAnchorsEnabled === false ? '截图节点锚点：关' : '截图节点锚点：开'
+	props.screenshotAnchorsEnabled === false ? t('aiworkflow.toolbar.anchorsOff') : t('aiworkflow.toolbar.anchorsOn')
 )
 const particlesToggleLabel = computed(() =>
-	props.screenshotParticlesEnabled === false ? '矩形粒子效果：关' : '矩形粒子效果：开'
+	props.screenshotParticlesEnabled === false ? t('aiworkflow.toolbar.particlesOff') : t('aiworkflow.toolbar.particlesOn')
 )
 
 const handleSaveProject = () => {
@@ -569,7 +572,7 @@ const confirmLoad = () => {
 }
 
 const onDeleteProject = (projectId: number, projectName: string) => {
-	const ok = window.confirm(`确定删除项目「${projectName || `#${projectId}`}」吗？此操作不可撤销。`)
+	const ok = window.confirm(t('aiworkflow.toolbar.confirmDeleteProject', { name: projectName || `#${projectId}` }))
 	if (!ok) return
 	emit('request-delete-project', { projectId })
 }
@@ -607,17 +610,17 @@ const filteredProjects = computed(() => {
 })
 
 const formatRelativeTime = (ts?: number | null) => {
-	if (!Number.isFinite(Number(ts))) return '更新时间未知'
+	if (!Number.isFinite(Number(ts))) return t('aiworkflow.toolbar.unknownUpdateTime')
 	const now = Date.now()
 	const diff = now - Number(ts)
 	const minutes = Math.floor(diff / 60000)
 	const hours = Math.floor(diff / 3600000)
 	const days = Math.floor(diff / 86400000)
 
-	if (minutes < 1) return '刚刚'
-	if (minutes < 60) return `${minutes}分钟前`
-	if (hours < 24) return `${hours}小时前`
-	if (days < 7) return `${days}天前`
+	if (minutes < 1) return t('aiworkflow.toolbar.justNow')
+	if (minutes < 60) return t('aiworkflow.toolbar.minutesAgo', { count: minutes })
+	if (hours < 24) return t('aiworkflow.toolbar.hoursAgo', { count: hours })
+	if (days < 7) return t('aiworkflow.toolbar.daysAgo', { count: days })
 	return new Date(Number(ts)).toLocaleDateString()
 }
 
@@ -712,10 +715,10 @@ const resourceThumbUrl = (r: ToolbarResourceItem): string => {
 
 const resourceKindLabel = (kind: string): string => {
 	const k = String(kind || '').toLowerCase()
-	if (k === 'image') return '图片'
-	if (k === 'video') return '视频'
-	if (k === 'model3d') return '3D模型'
-	return kind || '资源'
+	if (k === 'image') return t('aiworkflow.toolbar.resourceImage')
+	if (k === 'video') return t('aiworkflow.toolbar.resourceVideo')
+	if (k === 'model3d') return t('aiworkflow.toolbar.resourceModel3d')
+	return kind || t('aiworkflow.toolbar.resource')
 }
 
 const resourceKindIconPath = (kind: string): string => {
