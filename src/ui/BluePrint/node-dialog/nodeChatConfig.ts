@@ -326,6 +326,7 @@ export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [{ value: 'meshy' as const, la
 export const NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS = [
 	{ value: 'doubao-seedance-2-0-260128', label: 'Seedance 2.0' },
 	{ value: 'doubao-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast' },
+	{ value: 'doubao-seedance-2-0-mini-260615', label: 'Seedance 2.0 Mini' },
 	{ value: 'doubao-seedance-1-5-pro-251215', label: 'Seedance v1.5 Pro' },
 	{ value: 'doubao-seedance-1-0-pro-250312', label: 'Seedance v1.0 Pro' },
 	{ value: 'doubao-seedance-1-0-pro-fast-250312', label: 'Seedance v1.0 Pro Fast' },

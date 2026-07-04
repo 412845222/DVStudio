@@ -388,6 +388,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			})
 		} else if (targetNode?.type === 'model3d') {
 			const existingMeshy = existingSettings ?? {}
+			const existingModel3d = isRecord(targetNode.model3dSettings) ? targetNode.model3dSettings : {}
 			const model3dPatch: Record<string, unknown> = {
 				meshyModelSettings: {
 					taskId: patch.meshyTaskId,
@@ -404,14 +405,26 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			}
 
 			if (normalized === 'succeeded' && patch.meshyOutputAssetUrl) {
-				model3dPatch.modelUrl = patch.meshyOutputAssetUrl
-				model3dPatch.modelAssetUrl = patch.meshyOutputAssetUrl
-				model3dPatch.modelAssetPath = patch.meshyOutputAssetPath
-				model3dPatch.modelFormat =
-					isRecord(patch.meshyOutputSummary) && isString(patch.meshyOutputSummary.format)
-						? patch.meshyOutputSummary.format
-						: format
-				model3dPatch.modelGenerationSource = 'meshy'
+				const newAssetUrl = String(patch.meshyOutputAssetUrl)
+				const newIsRemote = isMeshyRemoteUrl(newAssetUrl)
+				const existingModelUrl = String(existingModel3d.modelUrl ?? '').trim()
+				const existingModelAssetUrl = String(existingModel3d.modelAssetUrl ?? '').trim()
+				const existingLocalUrl = !isMeshyRemoteUrl(existingModelAssetUrl)
+					? existingModelAssetUrl
+					: !isMeshyRemoteUrl(existingModelUrl)
+					? existingModelUrl
+					: ''
+
+				if (!newIsRemote || !existingLocalUrl) {
+					model3dPatch.modelUrl = newAssetUrl
+					model3dPatch.modelAssetUrl = newAssetUrl
+					model3dPatch.modelAssetPath = patch.meshyOutputAssetPath
+					model3dPatch.modelFormat =
+						isRecord(patch.meshyOutputSummary) && isString(patch.meshyOutputSummary.format)
+							? patch.meshyOutputSummary.format
+							: format
+					model3dPatch.modelGenerationSource = 'meshy'
+				}
 			}
 
 			options.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: model3dPatch })

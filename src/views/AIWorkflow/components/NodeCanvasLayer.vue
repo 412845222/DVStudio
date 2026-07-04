@@ -14,9 +14,12 @@ interface Props {
 	viewport: ViewportState
 	nodes: VisibleNodeEntry[]
 	screenshotPoolProvider: ScreenshotPoolProvider
+	motionActive?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+	motionActive: false
+})
 
 const emit = defineEmits<{
 	(e: 'node-click', nodeId: string, event: PointerEvent): void
@@ -101,8 +104,19 @@ const onParentPointerDownCapture = (event: PointerEvent) => {
 	}
 }
 
-watch(() => props.viewport, () => { markDirty() }, { deep: true })
+watch(
+	() => [props.viewport.zoom, props.viewport.panX, props.viewport.panY],
+	() => { markDirty() }
+)
 watch(() => props.nodes, () => { markDirty() }, { deep: false })
+watch(
+	() => props.motionActive,
+	(active) => {
+		if (renderer) {
+			renderer.setLowQualityMode(active === true)
+		}
+	}
+)
 
 onMounted(() => {
 	if (!canvasRef.value) return
@@ -115,7 +129,12 @@ onMounted(() => {
 	resizeObserver = new ResizeObserver(handleResize)
 	resizeObserver.observe(canvasRef.value)
 
-	renderer.resize()
+	if (props.motionActive) {
+		renderer.setLowQualityMode(true)
+	} else {
+		renderer.resize()
+	}
+
 	markDirty()
 
 	parentEl = canvasRef.value.parentElement as HTMLElement | null

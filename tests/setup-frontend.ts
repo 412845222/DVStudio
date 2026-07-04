@@ -41,6 +41,40 @@ vi.stubGlobal('dweb', {
     uploadProjectAsset: vi.fn().mockResolvedValue({ ok: true }),
     importProjectAsset: vi.fn().mockResolvedValue({ ok: true }),
   },
+  agentSkills: {
+    sceneUnderstand: {
+      models: vi.fn().mockResolvedValue({ ok: true, models: [{ id: 'test-model', label: 'Test Model' }], defaultModel: 'test-model' }),
+      run: vi.fn().mockResolvedValue({ ok: true, model: 'test-model', outputJson: '{}', summary: 'Test summary' }),
+      runStream: vi.fn().mockImplementation(() => async function* () {
+        yield { type: 'done' }
+      }()),
+    },
+    sceneLighting: {
+      models: vi.fn().mockResolvedValue({ ok: true, models: [{ id: 'lighting-model', label: 'Lighting Model' }], defaultModel: 'lighting-model' }),
+      run: vi.fn().mockResolvedValue({ ok: true, model: 'lighting-model', outputJson: '{}', summary: 'Lighting summary' }),
+      runStream: vi.fn().mockImplementation(() => async function* () {
+        yield { type: 'done' }
+      }()),
+    },
+    sceneLayout: {
+      run: vi.fn().mockResolvedValue({ ok: true, layoutItems: [] }),
+    },
+    unreal: {
+      sessions: vi.fn().mockResolvedValue([]),
+      register: vi.fn().mockResolvedValue({ ok: true }),
+      sessionDetail: vi.fn().mockResolvedValue({}),
+      createJob: vi.fn().mockResolvedValue({ ok: true }),
+      jobDetail: vi.fn().mockResolvedValue({}),
+      heartbeat: vi.fn().mockResolvedValue({ ok: true }),
+      pickJob: vi.fn().mockResolvedValue({ ok: true }),
+      getHttpPort: vi.fn().mockResolvedValue(8080),
+      detectEditor: vi.fn().mockResolvedValue({ ok: false }),
+      checkPlugin: vi.fn().mockResolvedValue({ ok: true }),
+      installPlugin: vi.fn().mockResolvedValue({ ok: true }),
+      getPluginInfo: vi.fn().mockResolvedValue({}),
+      disconnectSession: vi.fn().mockResolvedValue({ ok: true }),
+    },
+  },
 })
 vi.stubGlobal('__DWEB_BACKEND_BASE_URL__', 'http://127.0.0.1:5800')
 vi.stubGlobal('__DWEB_RUNTIME__', { platform: 'web', isElectron: false })

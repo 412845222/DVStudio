@@ -91,10 +91,10 @@ export class CanvasScreenshotPool {
 					return await this.loadWithImageBitmap(entry)
 				} catch (error) {
 					console.warn(`[CanvasScreenshotPool] createImageBitmap failed, fallback to canvas:`, error)
-					return this.loadWithCanvas(entry)
+					return await this.loadWithCanvas(entry)
 				}
 			} else {
-				return this.loadWithCanvas(entry)
+				return await this.loadWithCanvas(entry)
 			}
 		} catch (error) {
 			console.warn(`[CanvasScreenshotPool] Failed to load bitmap for node: ${entry.nodeId}`, error)
@@ -150,68 +150,53 @@ export class CanvasScreenshotPool {
 	/**
 	 * 回退方案: 使用HTMLCanvasElement加载
 	 */
-	private loadWithCanvas(entry: ScreenshotCacheEntry): CanvasScreenshotEntry | null {
-		const img = new Image()
-		img.src = entry.dataUrl
+	private loadWithCanvas(entry: ScreenshotCacheEntry): Promise<CanvasScreenshotEntry | null> {
+		return new Promise((resolve) => {
+			const img = new Image()
 
-		const canvas = document.createElement('canvas')
-		canvas.width = entry.width
-		canvas.height = entry.height
-		const ctx = canvas.getContext('2d')
+			const canvas = document.createElement('canvas')
+			canvas.width = entry.width
+			canvas.height = entry.height
+			const ctx = canvas.getContext('2d')
 
-		if (!ctx) return null
-
-		// 同步绘制 (Image需要等待onload，这里使用阻塞方式)
-		// 注意: 这可能会阻塞主线程，但Canvas通常很小，影响有限
-		if (img.complete && img.naturalWidth > 0) {
-			ctx.drawImage(img, 0, 0, entry.width, entry.height)
-		} else {
-			// 返回占位符，等待异步加载
-			const canvasEntry: CanvasScreenshotEntry = {
-				nodeId: entry.nodeId,
-				version: entry.version,
-				bitmap: canvas,
-				width: entry.width,
-				height: entry.height,
-				worldX: 0,
-				worldY: 0,
-				radius: 8,
-				status: 'loading',
-				capturedAt: Date.now()
+			if (!ctx) {
+				resolve(null)
+				return
 			}
-			this.entries.set(entry.nodeId, canvasEntry)
+
+			const finishLoading = (status: 'ready' | 'error') => {
+				const canvasEntry: CanvasScreenshotEntry = {
+					nodeId: entry.nodeId,
+					version: entry.version,
+					bitmap: canvas,
+					width: entry.width,
+					height: entry.height,
+					worldX: 0,
+					worldY: 0,
+					radius: 8,
+					status,
+					capturedAt: Date.now()
+				}
+				this.entries.set(entry.nodeId, canvasEntry)
+				this.pruneIfNeeded()
+				resolve(status === 'ready' ? canvasEntry : null)
+			}
 
 			img.onload = () => {
 				ctx.drawImage(img, 0, 0, entry.width, entry.height)
-				canvasEntry.status = 'ready'
+				finishLoading('ready')
 			}
 			img.onerror = () => {
-				canvasEntry.status = 'error'
+				finishLoading('error')
 			}
 
-			// 内存管理
-			this.pruneIfNeeded()
-			return canvasEntry
-		}
+			img.src = entry.dataUrl
 
-		// 内存管理
-		this.pruneIfNeeded()
-
-		const canvasEntry: CanvasScreenshotEntry = {
-			nodeId: entry.nodeId,
-			version: entry.version,
-			bitmap: canvas,
-			width: entry.width,
-			height: entry.height,
-			worldX: 0,
-			worldY: 0,
-			radius: 8,
-			status: 'ready',
-			capturedAt: Date.now()
-		}
-
-		this.entries.set(entry.nodeId, canvasEntry)
-		return canvasEntry
+			if (img.complete && img.naturalWidth > 0) {
+				ctx.drawImage(img, 0, 0, entry.width, entry.height)
+				finishLoading('ready')
+			}
+		})
 	}
 
 	/**

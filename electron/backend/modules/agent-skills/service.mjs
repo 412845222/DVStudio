@@ -1734,6 +1734,9 @@ import {
 
 export async function unrealDetectEditor() {
 	try {
+		if (unrealHttpPort > 0) {
+			writeUnrealBridgeConfig(unrealHttpPort)
+		}
 		const result = await detectUnrealEditorProcesses()
 		if (!result.ok) {
 			return { ok: false, running: false, processes: [], error: result.error }
@@ -1768,6 +1771,9 @@ export function unrealCheckPlugin(ctx, payload) {
 		if (!result.ok) {
 			return { ok: false, installed: false, error: result.error }
 		}
+		if (result.installed && unrealHttpPort > 0 && result.projectRoot) {
+			writeUnrealBridgeConfigToProject(result.projectRoot, unrealHttpPort)
+		}
 		return {
 			ok: true,
 			installed: result.installed,
@@ -1796,8 +1802,8 @@ export async function unrealInstallPlugin(ctx, payload) {
 		if (!result.ok) {
 			return { ok: false, installed: false, error: result.error }
 		}
-		if (result.installed && unrealHttpPort > 0) {
-			writeUnrealBridgeConfigToProject(projectPath, unrealHttpPort)
+		if (result.installed && unrealHttpPort > 0 && result.projectRoot) {
+			writeUnrealBridgeConfigToProject(result.projectRoot, unrealHttpPort)
 		}
 		return {
 			ok: true,

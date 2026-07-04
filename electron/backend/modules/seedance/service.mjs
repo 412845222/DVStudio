@@ -2,12 +2,14 @@ import crypto from 'node:crypto'
 import { getHttpClient } from '../../core/http-client.mjs'
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
 import { getRepos } from '../../../localdb/index.mjs'
+import { downloadUrlToProjectRoot } from '../../projectAssetProtocol.mjs'
 
 const SEEDANCE_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 const DEFAULT_MODEL = 'doubao-seedance-2-0-260128'
+const SEEDANCE_2_0_MINI_MODEL = 'doubao-seedance-2-0-mini-260615'
 const DEFAULT_TIMEOUT = 120000
 const POLL_INTERVAL_MS = 5000
-const POLL_TIMEOUT_MS = 900000
+const HEARTBEAT_INTERVAL_MS = 30000
 
 function generateMsgId() {
 	return `m-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`
@@ -103,12 +105,66 @@ function truthy(v) {
 }
 
 function extractVideoUrls(obj) {
-  const content = obj && typeof obj.content === 'object' ? obj.content : null
-  if (!content) return { videoUrl: '', lastFrameUrl: '' }
-  return {
-    videoUrl: String(content.video_url || '').trim(),
-    lastFrameUrl: String(content.last_frame_url || '').trim(),
+  if (!obj || typeof obj !== 'object') return { videoUrl: '', lastFrameUrl: '' }
+  // 1. content 对象（产物阶段）
+  const content = typeof obj.content === 'object' && !Array.isArray(obj.content) ? obj.content : null
+  if (content) {
+    const v = String(content.video_url || content.videoUrl || '').trim()
+    const l = String(content.last_frame_url || content.lastFrameUrl || '').trim()
+    if (v || l) return { videoUrl: v, lastFrameUrl: l }
   }
+  // 2. result 对象
+  const result = typeof obj.result === 'object' && !Array.isArray(obj.result) ? obj.result : null
+  if (result) {
+    const v = String(result.video_url || result.videoUrl || result.video || '').trim()
+    const l = String(result.last_frame_url || result.lastFrameUrl || '').trim()
+    if (v || l) return { videoUrl: v, lastFrameUrl: l }
+  }
+  // 3. 顶层字段
+  const tv = String(obj.video_url || obj.videoUrl || obj.video || '').trim()
+  const tl = String(obj.last_frame_url || obj.lastFrameUrl || '').trim()
+  if (tv || tl) return { videoUrl: tv, lastFrameUrl: tl }
+  // 4. content 数组中可能包含产物 URL（某些返回格式）
+  if (Array.isArray(obj.content)) {
+    for (const item of obj.content) {
+      if (item && typeof item === 'object') {
+        const v = String(item.video_url || item.videoUrl || item.video || '').trim()
+        const l = String(item.last_frame_url || item.lastFrameUrl || '').trim()
+        if (v || l) return { videoUrl: v, lastFrameUrl: l }
+      }
+    }
+  }
+  return { videoUrl: '', lastFrameUrl: '' }
+}
+
+function extractPrompt(obj) {
+  if (!obj || typeof obj !== 'object') return ''
+  // 1. 直接字段
+  if (typeof obj.prompt === 'string' && obj.prompt.trim()) return obj.prompt.trim()
+  // 2. content 数组（原始请求格式）
+  if (Array.isArray(obj.content)) {
+    const textItem = obj.content.find(c => c && c.type === 'text' && typeof c.text === 'string')
+    if (textItem?.text?.trim()) return textItem.text.trim()
+  }
+  // 3. content.text（某些响应格式）
+  if (obj.content && typeof obj.content === 'object') {
+    if (typeof obj.content.text === 'string' && obj.content.text.trim()) return obj.content.text.trim()
+    if (typeof obj.content.prompt === 'string' && obj.content.prompt.trim()) return obj.content.prompt.trim()
+  }
+  // 4. request / requestPayload 嵌套
+  const req = obj.request || obj.requestPayload
+  if (req && typeof req === 'object') {
+    if (typeof req.prompt === 'string' && req.prompt.trim()) return req.prompt.trim()
+    if (Array.isArray(req.content)) {
+      const textItem = req.content.find(c => c && c.type === 'text' && typeof c.text === 'string')
+      if (textItem?.text?.trim()) return textItem.text.trim()
+    }
+    if (req.content && typeof req.content === 'object') {
+      if (typeof req.content.text === 'string' && req.content.text.trim()) return req.content.text.trim()
+      if (typeof req.content.prompt === 'string' && req.content.prompt.trim()) return req.content.prompt.trim()
+    }
+  }
+  return ''
 }
 
 function extractUsageText(obj) {
@@ -372,6 +428,7 @@ export async function* generateVideoStream(ctx, payload) {
 
     const startTime = Date.now()
     let billingText = null
+    let lastHeartbeatAt = 0
 
     while (true) {
       const taskUrl = `${SEEDANCE_API_BASE}/contents/generations/tasks/${encodeURIComponent(taskId)}`
@@ -486,6 +543,15 @@ export async function* generateVideoStream(ctx, payload) {
       const suffix = billingText ? `；计费：${billingText}` : ''
       const statusMsg = `Seedance：${status || 'running'}（${elapsed}s）${suffix}`
 
+      repo.upsert({
+        remoteTaskId: taskId,
+        status: status || 'running',
+        statusText: statusMsg,
+        usage: taskObj.usage || null,
+        responsePayload: taskObj,
+        remoteUpdatedAt: Date.now(),
+      })
+
       recordArkTask({
         taskId: `seedance-${taskId}`,
         provider: 'bytedance',
@@ -502,8 +568,8 @@ export async function* generateVideoStream(ctx, payload) {
 
       yield wrapTaskStatusMsg(statusMsg, 'streaming')
 
-      if (Date.now() - startTime >= POLL_TIMEOUT_MS) {
-        throw new Error(`Seedance task timeout after ${Math.floor(POLL_TIMEOUT_MS / 1000)}s`)
+      if (Date.now() - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS) {
+        lastHeartbeatAt = Date.now()
       }
 
       await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
@@ -589,7 +655,7 @@ export async function syncTasks(ctx, payload) {
       taskType: String(taskObj.task_type || '').trim(),
       source: 'sync',
       status: remoteStatus,
-      prompt: String(taskObj.prompt || '').trim(),
+      prompt: extractPrompt(taskObj),
       videoUrlRemote: videoUrl,
       lastFrameUrlRemote: lastFrameUrl,
       errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(taskObj.error || '').trim() : '',
@@ -609,7 +675,7 @@ export async function syncTasks(ctx, payload) {
       apiAction: 'video_generation',
       model: String(taskObj.model || model || DEFAULT_MODEL).trim(),
       status: remoteStatus === 'success' || remoteStatus === 'succeeded' ? 'succeeded' : remoteStatus,
-      prompt: String(taskObj.prompt || '').trim(),
+      prompt: extractPrompt(taskObj),
       resultUrls,
       thumbnailUrl: lastFrameUrl || videoUrl || '',
       errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(taskObj.error || '').trim() : '',
@@ -660,7 +726,7 @@ export async function syncTasks(ctx, payload) {
       taskType: String(remoteTask.task_type || '').trim(),
       source: 'sync',
       status: taskStatus,
-      prompt: String(remoteTask.prompt || '').trim(),
+      prompt: extractPrompt(remoteTask),
       videoUrlRemote: videoUrl,
       lastFrameUrlRemote: lastFrameUrl,
       errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
@@ -680,7 +746,7 @@ export async function syncTasks(ctx, payload) {
       apiAction: 'video_generation',
       model: String(remoteTask.model || model || DEFAULT_MODEL).trim(),
       status: taskStatus === 'success' || taskStatus === 'succeeded' ? 'succeeded' : taskStatus,
-      prompt: String(remoteTask.prompt || '').trim(),
+      prompt: extractPrompt(remoteTask),
       resultUrls: batchResultUrls,
       thumbnailUrl: lastFrameUrl || videoUrl || '',
       errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
@@ -702,4 +768,266 @@ export async function syncTasks(ctx, payload) {
 export async function health(ctx) {
   const key = tryGetKey(ctx, 'seedance', 'bytedance_seedance', 'bytedance_video', 'bytedance_text', 'bytedance', 'doubao')
   return { ok: true, configured: !!key }
+}
+
+export async function getTaskDetailRemote(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const client = getHttpClient()
+  const repo = ctx.localdb?.videoTasks
+  if (!repo) throw internalError('videoTasks repo not available')
+
+  const taskId = String(payload?.taskId || payload?.id || '').trim()
+  if (!taskId) throw invalidParamsError('taskId is required')
+  const projectId = payload?.projectId ? Number(payload.projectId) || null : null
+
+  const taskUrl = `${SEEDANCE_API_BASE}/contents/generations/tasks/${encodeURIComponent(taskId)}`
+  const taskRes = await client.get(taskUrl, {
+    headers: getHeaders(apiKey),
+    timeout: DEFAULT_TIMEOUT,
+  })
+
+  let remoteStatus = 'unknown'
+  let videoUrl = ''
+  let lastFrameUrl = ''
+  let remoteTask = null
+  let resourceAvailable = false
+  let resourceUnavailableReason = ''
+
+  if (taskRes.status === 404) {
+    remoteStatus = 'not_found'
+    resourceUnavailableReason = '供应商已删除该任务或任务不存在'
+  } else if (!taskRes.ok) {
+    remoteStatus = 'error'
+    resourceUnavailableReason = `查询失败：HTTP ${taskRes.status}`
+  } else {
+    remoteTask = taskRes.body || {}
+    remoteStatus = String(remoteTask.status || 'queued').trim().toLowerCase()
+    const extracted = extractVideoUrls(remoteTask)
+    videoUrl = extracted.videoUrl
+    lastFrameUrl = extracted.lastFrameUrl
+
+    if (remoteStatus === 'succeeded' || remoteStatus === 'success') {
+      resourceAvailable = !!videoUrl
+      if (!videoUrl) resourceUnavailableReason = '任务已完成但未返回视频地址'
+    } else if (['failed', 'error', 'expired', 'cancelled'].includes(remoteStatus)) {
+      resourceAvailable = false
+      const errObj = remoteTask.error
+      resourceUnavailableReason = errObj
+        ? (typeof errObj === 'string' ? errObj : JSON.stringify(errObj))
+        : `任务状态：${remoteStatus}`
+    } else {
+      resourceAvailable = false
+      resourceUnavailableReason = '任务尚未完成，暂无可下载产物'
+    }
+
+    repo.upsert({
+      remoteTaskId: taskId,
+      provider: 'seedance',
+      model: String(remoteTask.model || DEFAULT_MODEL).trim(),
+      taskType: String(remoteTask.task_type || '').trim(),
+      source: 'sync',
+      status: remoteStatus,
+      prompt: extractPrompt(remoteTask),
+      videoUrlRemote: videoUrl,
+      lastFrameUrlRemote: lastFrameUrl,
+      errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(remoteTask.error || '').trim() : '',
+      statusText: remoteStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${remoteStatus}`,
+      usage: remoteTask.usage || null,
+      responsePayload: remoteTask,
+      projectId,
+      remoteUpdatedAt: Date.now(),
+    })
+
+    const resultUrls = videoUrl ? [videoUrl] : []
+    if (lastFrameUrl) resultUrls.push(lastFrameUrl)
+    recordArkTask({
+      taskId: `seedance-${taskId}`,
+      provider: 'bytedance',
+      apiType: 'seedance',
+      apiAction: 'video_generation',
+      model: String(remoteTask.model || DEFAULT_MODEL).trim(),
+      status: remoteStatus === 'success' || remoteStatus === 'succeeded' ? 'succeeded' : remoteStatus,
+      prompt: extractPrompt(remoteTask),
+      resultUrls,
+      thumbnailUrl: lastFrameUrl || videoUrl || '',
+      errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(remoteTask.error || '').trim() : '',
+      statusText: remoteStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${remoteStatus}`,
+      responsePayload: remoteTask,
+      projectId,
+      remoteTaskId: taskId,
+    })
+  }
+
+  const local = repo.getByRemoteTaskId(taskId)
+  const item = local ? serializeVideoTask(local) : null
+
+  return {
+    ok: true,
+    item,
+    remote: remoteTask,
+    remoteStatus,
+    resourceAvailable,
+    resourceUnavailableReason,
+    videoUrlRemote: videoUrl,
+    lastFrameUrlRemote: lastFrameUrl,
+  }
+}
+
+export async function downloadAssetToProject(ctx, payload) {
+  const taskId = String(payload?.taskId || '').trim()
+  const projectId = Number(payload?.projectId) || 0
+  const assetKind = String(payload?.kind || 'video').trim()
+  const preferredName = String(payload?.name || '').trim()
+
+  if (!taskId) throw invalidParamsError('taskId is required')
+  if (!(projectId > 0)) throw invalidParamsError('projectId is required')
+
+  const detail = await getTaskDetailRemote(ctx, { taskId, projectId })
+  if (!detail.resourceAvailable || !detail.videoUrlRemote) {
+    return {
+      ok: false,
+      error: detail.resourceUnavailableReason || '暂无可下载产物',
+      resourceAvailable: false,
+    }
+  }
+
+  const url = assetKind === 'lastFrame' && detail.lastFrameUrlRemote
+    ? detail.lastFrameUrlRemote
+    : detail.videoUrlRemote
+
+  const baseName = preferredName || `seedance-${taskId}`
+  const nameWithExt = assetKind === 'lastFrame' ? `${baseName}.jpg` : `${baseName}.mp4`
+
+  const dl = await downloadUrlToProjectRoot(projectId, url, nameWithExt)
+  if (!dl?.ok) {
+    return { ok: false, error: dl?.error || '下载失败' }
+  }
+
+  const repo = ctx.localdb?.videoTasks
+  if (repo) {
+    if (assetKind === 'lastFrame') {
+      repo.upsert({
+        remoteTaskId: taskId,
+        lastFrameUrlLocal: dl.absolutePath,
+        lastFrameSourcePathLocal: dl.relativePath,
+      })
+    } else {
+      repo.upsert({
+        remoteTaskId: taskId,
+        videoUrlLocal: dl.absolutePath,
+        videoSourcePathLocal: dl.relativePath,
+      })
+    }
+  }
+
+  const dwebUrl = `dweb://project-assets?projectId=${projectId}&path=${encodeURIComponent(dl.relativePath)}`
+
+  return {
+    ok: true,
+    sourcePath: dl.absolutePath,
+    projectRelativePath: dl.relativePath,
+    url: dwebUrl,
+    size: dl.size || 0,
+    kind: assetKind,
+    taskId,
+  }
+}
+
+export async function listAllTasksRemote(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const client = getHttpClient()
+  const repo = ctx.localdb?.videoTasks
+  if (!repo) throw internalError('videoTasks repo not available')
+
+  const pageNum = Math.max(1, parseInt(String(payload?.pageNum || 1), 10) || 1)
+  const pageSize = Math.max(1, Math.min(100, parseInt(String(payload?.pageSize || 50), 10) || 50))
+  const status = String(payload?.status || '').trim()
+  const model = String(payload?.model || '').trim()
+
+  const query = new URLSearchParams({
+    page_num: String(pageNum),
+    page_size: String(pageSize),
+  })
+  if (status) query.set('filter.status', status)
+  if (model) query.set('filter.model', model)
+
+  const url = `${SEEDANCE_API_BASE}/contents/generations/tasks?${query.toString()}`
+  const res = await client.get(url, {
+    headers: getHeaders(apiKey),
+    timeout: DEFAULT_TIMEOUT,
+  })
+
+  if (!res.ok) {
+    const errMsg = typeof res.body === 'object' && res.body?.error?.message ? res.body.error.message : `HTTP ${res.status}`
+    throw upstreamError(`Seedance list tasks failed: ${errMsg}`)
+  }
+
+  const data = res.body || {}
+  const remoteItems = Array.isArray(data.items) ? data.items : (Array.isArray(data.data) ? data.data : [])
+  const syncedItems = []
+
+  for (const remoteTask of remoteItems) {
+    const remoteTaskId = String(remoteTask?.id || '').trim()
+    if (!remoteTaskId) continue
+
+    const { videoUrl, lastFrameUrl } = extractVideoUrls(remoteTask)
+    const taskStatus = String(remoteTask.status || 'queued').trim().toLowerCase()
+    const existing = repo.getByRemoteTaskId(remoteTaskId)
+    const existingProjectId = existing?.projectId ?? null
+
+    const extractedPrompt = extractPrompt(remoteTask)
+    const fallbackPrompt = extractedPrompt || (existing?.prompt ? String(existing.prompt).trim() : '')
+
+    repo.upsert({
+      remoteTaskId,
+      provider: 'seedance',
+      model: String(remoteTask.model || model || DEFAULT_MODEL).trim(),
+      taskType: String(remoteTask.task_type || '').trim(),
+      source: 'sync',
+      status: taskStatus,
+      prompt: fallbackPrompt,
+      videoUrlRemote: videoUrl,
+      lastFrameUrlRemote: lastFrameUrl,
+      errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
+      statusText: taskStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${taskStatus}`,
+      usage: remoteTask.usage || null,
+      responsePayload: remoteTask,
+      projectId: existingProjectId,
+      remoteUpdatedAt: Date.now(),
+    })
+
+    const batchResultUrls = videoUrl ? [videoUrl] : []
+    if (lastFrameUrl) batchResultUrls.push(lastFrameUrl)
+    recordArkTask({
+      taskId: `seedance-${remoteTaskId}`,
+      provider: 'bytedance',
+      apiType: 'seedance',
+      apiAction: 'video_generation',
+      model: String(remoteTask.model || model || DEFAULT_MODEL).trim(),
+      status: taskStatus === 'success' || taskStatus === 'succeeded' ? 'succeeded' : taskStatus,
+      prompt: fallbackPrompt,
+      resultUrls: batchResultUrls,
+      thumbnailUrl: lastFrameUrl || videoUrl || '',
+      errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
+      statusText: taskStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${taskStatus}`,
+      responsePayload: remoteTask,
+      projectId: existingProjectId,
+      remoteTaskId,
+    })
+
+    const local = repo.getByRemoteTaskId(remoteTaskId)
+    if (local) {
+      syncedItems.push(serializeVideoTask(local))
+    }
+  }
+
+  return {
+    ok: true,
+    items: syncedItems,
+    total: syncedItems.length,
+    totalCount: Number(data.total || data.total_count || syncedItems.length),
+    hasMore: Boolean(data.has_more),
+    pageNum,
+    pageSize,
+  }
 }

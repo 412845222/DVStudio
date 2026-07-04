@@ -1,5 +1,10 @@
 import { onBeforeUnmount, ref } from 'vue'
-import type { ToastItem } from '../../../../ui/UIComponent/ToastStack.vue'
+import type { ToastItem, ToastActionItem } from '../../../../ui/UIComponent/ToastStack.vue'
+
+export type PushToastOptions = {
+	persistent?: boolean
+	actions?: ToastActionItem[]
+}
 
 export const useAIWorkflowToastState = (options?: { durationMs?: number }) => {
 	const toasts = ref<ToastItem[]>([])
@@ -49,6 +54,7 @@ export const useAIWorkflowToastState = (options?: { durationMs?: number }) => {
 	const resumeToastTimers = () => {
 		for (const toast of toasts.value) {
 			const id = toast.id
+			if (toast.persistent) continue
 			if (toastTimers.has(id)) continue
 			const remaining = toastRemaining.get(id)
 			if (typeof remaining === 'number') {
@@ -72,12 +78,22 @@ export const useAIWorkflowToastState = (options?: { durationMs?: number }) => {
 		else resumeToastTimers()
 	}
 
-	const pushToast = (message: string, tone: ToastItem['tone'] = 'warn') => {
+	const pushToast = (
+		message: string,
+		tone: ToastItem['tone'] = 'warn',
+		opts?: PushToastOptions
+	) => {
 		if (tone === 'error') {
 			console.error('[AIWorkflow Toast]', message)
 		}
 		const id = `toast-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-		toasts.value = [...toasts.value, { id, message, tone }]
+		const persistent = !!opts?.persistent
+		const actions = Array.isArray(opts?.actions) ? opts!.actions : undefined
+		toasts.value = [...toasts.value, { id, message, tone, persistent, actions }]
+		if (persistent) {
+			// 永不自动消失，不调度定时器
+			return
+		}
 		if (toastHovering.value) {
 			toastRemaining.set(id, durationMs)
 			return

@@ -31,6 +31,7 @@ export const useAIWorkflowViewport = (
 		: 140
 
 	let viewportMotionTimer: number | null = null
+	let viewportMotionHardResetTimer: number | null = null
 	let canvasViewportObserver: ResizeObserver | null = null
 
 	const checkDevToolsState = () => {
@@ -63,6 +64,20 @@ export const useAIWorkflowViewport = (
 		return baseMs
 	}
 
+	const MOTION_HARD_TIMEOUT_MS = 1000
+
+	const forceEndViewportMotion = () => {
+		if (viewportMotionTimer != null) {
+			window.clearTimeout(viewportMotionTimer)
+			viewportMotionTimer = null
+		}
+		if (viewportMotionHardResetTimer != null) {
+			window.clearTimeout(viewportMotionHardResetTimer)
+			viewportMotionHardResetTimer = null
+		}
+		viewportMotionActive.value = false
+	}
+
 	const markViewportMotion = () => {
 		viewportMotionActive.value = true
 		const resetMs = getMotionResetMs()
@@ -71,6 +86,13 @@ export const useAIWorkflowViewport = (
 			viewportMotionTimer = null
 			viewportMotionActive.value = false
 		}, resetMs)
+		if (viewportMotionHardResetTimer != null) window.clearTimeout(viewportMotionHardResetTimer)
+		viewportMotionHardResetTimer = window.setTimeout(() => {
+			viewportMotionHardResetTimer = null
+			if (viewportMotionActive.value) {
+				viewportMotionActive.value = false
+			}
+		}, MOTION_HARD_TIMEOUT_MS)
 	}
 
 	const updateCanvasViewportSize = () => {
@@ -100,8 +122,7 @@ export const useAIWorkflowViewport = (
 	})
 
 	onBeforeUnmount(() => {
-		if (viewportMotionTimer != null) window.clearTimeout(viewportMotionTimer)
-		viewportMotionTimer = null
+		forceEndViewportMotion()
 		canvasViewportObserver?.disconnect()
 		canvasViewportObserver = null
 	})
@@ -111,6 +132,7 @@ export const useAIWorkflowViewport = (
 		onViewportUpdate,
 		viewportMotionActive,
 		markViewportMotion,
+		forceEndViewportMotion,
 		canvasViewportSize,
 		updateCanvasViewportSize,
 		isDevToolsOpen

@@ -332,11 +332,22 @@ const rawThreePreviewState = computed(() => props.threePreviewState ?? null)
 const previewSuspended = computed(() => props.previewSuspended === true)
 const previewRequestId = computed(() => Number(rawThreePreviewState.value?.requestId ?? 0))
 const effectiveModelUrl = computed(() => {
-	const primary = String(settings.value?.modelUrl ?? '').trim()
-	if (primary) return primary
-	const fallback = String(settings.value?.modelAssetUrl ?? '').trim()
-	return fallback
+	const assetUrl = String(settings.value?.modelAssetUrl ?? '').trim()
+	const primaryUrl = String(settings.value?.modelUrl ?? '').trim()
+	if (assetUrl && !isRemoteMeshyUrl(assetUrl)) return assetUrl
+	if (primaryUrl && !isRemoteMeshyUrl(primaryUrl)) return primaryUrl
+	return assetUrl || primaryUrl
 })
+
+const isRemoteMeshyUrl = (url: string): boolean => {
+	if (!url) return false
+	try {
+		const parsed = new URL(url)
+		return /(^|\.)meshy\.ai$/i.test(parsed.hostname)
+	} catch {
+		return /https?:\/\/[^\s]*meshy\.ai(?:\/|$)/i.test(url)
+	}
+}
 const modelUrlSignature = computed(() => effectiveModelUrl.value)
 const modelSignature = computed(() => {
 	const parts = [

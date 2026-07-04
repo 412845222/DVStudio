@@ -49,6 +49,7 @@ private:
 	AActor* ResolveSelectedSceneActor() const;
 	AActor* AutoResolveSceneActor() const;
 	bool HandleHeartbeatTick(float DeltaTime);
+	void ApplyLayoutComponentsToSelectedActors();
 
 	void AppendLog(const FString& Line);
 	void UpdateConnectionStatus(const FString& InStatus);
@@ -63,6 +64,7 @@ private:
 	TArray<TSharedPtr<FString>> SceneActorOptions;
 
 	TUniquePtr<FAutoConsoleCommand> OpenTabConsoleCommand;
+	TUniquePtr<FAutoConsoleCommand> ApplyLayoutComponentsCommand;
 	FTSTicker::FDelegateHandle HeartbeatTickerHandle;
 
 	FString BackendUrl;

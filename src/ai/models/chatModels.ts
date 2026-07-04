@@ -520,6 +520,13 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		legacyModelKey: 'seedance'
 	},
 	{
+		id: 'doubao-seedance-2-0-mini-260615',
+		label: 'Seedance 2.0 Mini',
+		needType: 'video',
+		apiSource: 'bytedance',
+		legacyModelKey: 'seedance'
+	},
+	{
 		id: 'doubao-seedance-1-5-pro-251215',
 		label: 'Seedance 1.5 Pro',
 		needType: 'video',

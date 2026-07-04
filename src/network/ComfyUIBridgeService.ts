@@ -268,6 +268,43 @@ type SeedanceSyncTasksResponse =
 	  }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
+export type SeedanceTaskDetailRemoteResponse =
+	| {
+			ok: true
+			item: SeedanceTaskMirrorItem | null
+			remote: Record<string, unknown> | null
+			remoteStatus: string
+			resourceAvailable: boolean
+			resourceUnavailableReason: string
+			videoUrlRemote: string
+			lastFrameUrlRemote: string
+	  }
+	| { ok: false; error: string; resourceAvailable?: boolean }
+
+export type SeedanceDownloadAssetResponse =
+	| {
+			ok: true
+			sourcePath: string
+			projectRelativePath: string
+			url: string
+			size: number
+			kind: string
+			taskId: string
+	  }
+	| { ok: false; error: string; resourceAvailable?: boolean }
+
+export type SeedanceListAllRemoteResponse =
+	| {
+			ok: true
+			items: SeedanceTaskMirrorItem[]
+			total: number
+			totalCount: number
+			hasMore: boolean
+			pageNum: number
+			pageSize: number
+	  }
+	| { ok: false; error: string }
+
 type MeshyGenerateResponse =
 	| { ok: true; mode: string; taskId: string; status: string; raw?: unknown }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
@@ -2441,6 +2478,91 @@ export class ComfyUIBridgeService {
 			}
 		}
 		return (await res.json()) as SeedanceSyncTasksResponse
+	}
+
+	async seedanceTaskDetailRemote(payload: {
+		taskId: string
+		projectId?: number
+	}): Promise<SeedanceTaskDetailRemoteResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.seedance.taskDetailRemote(payload || {})
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'seedance/task-detail-remote failed via IPC'
+						}
+					}
+					return ipcResult as SeedanceTaskDetailRemoteResponse
+				}
+				return { ok: true, ...ipcResult } as SeedanceTaskDetailRemoteResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'seedance/task-detail-remote failed via IPC'
+				}
+			}
+		}
+		return { ok: false, error: 'seedance task detail remote only available in Electron mode' }
+	}
+
+	async seedanceDownloadAsset(payload: {
+		taskId: string
+		projectId: number
+		kind?: 'video' | 'lastFrame'
+		name?: string
+	}): Promise<SeedanceDownloadAssetResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.seedance.downloadAsset(payload || {})
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'seedance/download-asset failed via IPC'
+						}
+					}
+					return ipcResult as SeedanceDownloadAssetResponse
+				}
+				return { ok: true, ...ipcResult } as SeedanceDownloadAssetResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'seedance/download-asset failed via IPC'
+				}
+			}
+		}
+		return { ok: false, error: 'seedance download asset only available in Electron mode' }
+	}
+
+	async seedanceListAllRemote(payload?: {
+		pageNum?: number
+		pageSize?: number
+		status?: string
+		model?: string
+	}): Promise<SeedanceListAllRemoteResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.seedance.listAllRemote(payload || {})
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'seedance/list-all-remote failed via IPC'
+						}
+					}
+					return ipcResult as SeedanceListAllRemoteResponse
+				}
+				return { ok: true, ...ipcResult } as SeedanceListAllRemoteResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'seedance/list-all-remote failed via IPC'
+				}
+			}
+		}
+		return { ok: false, error: 'seedance list all remote only available in Electron mode' }
 	}
 
 	async meshyStop(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {

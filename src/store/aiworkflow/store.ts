@@ -1812,7 +1812,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					sceneLayoutSettings: normalizeSceneLayoutSettings(n.sceneLayoutSettings),
 					unrealExportSettings: normalizeUnrealExportSettings(n.unrealExportSettings),
 					sceneDecomposeSettings: normalizeSceneDecomposeSettings(n.sceneDecomposeSettings),
-					comfyuiSettings: normalizeComfyUISettings(n.comfyuiSettings)
+					comfyuiSettings: normalizeComfyUISettings(n.comfyuiSettings),
+					nodeChatDraft: isString(n.nodeChatDraft) ? String(n.nodeChatDraft) : undefined,
+					nodeChatParams: isRecord(n.nodeChatParams) ? n.nodeChatParams : undefined,
+					prompt: isString(n.prompt) ? String(n.prompt) : undefined
 				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'text-merge') syncTextMergeAnchors(nextNodesById[nodeId])
@@ -3467,6 +3470,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.nodesById[id] = node
 			state.nodeOrder.push(id)
 			state.selectedNodeId = id
+			state.selectedNodeIds = [id]
 			state.selectedEdgeId = null
 		},
 		setNodePosition(state, payload: { nodeId: string; worldX?: number; worldY?: number }) {

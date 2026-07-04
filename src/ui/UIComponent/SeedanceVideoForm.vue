@@ -181,6 +181,7 @@ const emit = defineEmits<{
 const videoModelOptions: VideoModelOption[] = [
 	{ value: 'doubao-seedance-2-0-260128', label: 'Seedance 2.0' },
 	{ value: 'doubao-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast' },
+	{ value: 'doubao-seedance-2-0-mini-260615', label: 'Seedance 2.0 Mini' },
 	{ value: 'doubao-seedance-1-5-pro-251215', label: 'Seedance 1.5 Pro' },
 	{ value: 'doubao-seedance-1-0-pro-250528', label: 'Seedance 1.0 Pro' },
 	{ value: 'doubao-seedance-1-0-pro-fast-251015', label: 'Seedance 1.0 Pro Fast' },
@@ -194,7 +195,8 @@ const selectedModel = computed(() => String(props.config.model || '').trim())
 const isSeedance20Series = computed(
 	() =>
 		selectedModel.value === 'doubao-seedance-2-0-260128' ||
-		selectedModel.value === 'doubao-seedance-2-0-fast-260128'
+		selectedModel.value === 'doubao-seedance-2-0-fast-260128' ||
+		selectedModel.value === 'doubao-seedance-2-0-mini-260615'
 )
 const isSeedance15 = computed(() => selectedModel.value === 'doubao-seedance-1-5-pro-251215')
 const isSeedance10Lite = computed(
@@ -220,6 +222,9 @@ const resolutionOptions = computed(() => {
 const modelHint = computed(() => {
 	if (selectedModel.value === 'doubao-seedance-2-0-fast-260128') {
 		return '2.0 Fast 适合快速试稿与频繁迭代；镜头语言和多模态参考能力与 2.0 同系。'
+	}
+	if (selectedModel.value === 'doubao-seedance-2-0-mini-260615') {
+		return '2.0 Mini 是轻量版模型，生成速度更快、成本更低，适合快速验证创意和简单场景。'
 	}
 	if (selectedModel.value === 'doubao-seedance-2-0-260128') {
 		return '2.0 适合更稳定的镜头、动作和角色一致性，支持更强的多模态参考。'
@@ -259,7 +264,9 @@ const patchConfig = (patch: Partial<SeedanceVideoFormConfig>) => {
 const onModelChange = (e: Event) => {
 	const model = String((e.target as HTMLSelectElement).value || 'doubao-seedance-2-0-260128').trim()
 	const nextIsSeedance20 =
-		model === 'doubao-seedance-2-0-260128' || model === 'doubao-seedance-2-0-fast-260128'
+		model === 'doubao-seedance-2-0-260128' ||
+		model === 'doubao-seedance-2-0-fast-260128' ||
+		model === 'doubao-seedance-2-0-mini-260615'
 	const nextIsSeedance15 = model === 'doubao-seedance-1-5-pro-251215'
 	const nextIsJimeng = model.startsWith('jimeng-video-')
 	patchConfig({

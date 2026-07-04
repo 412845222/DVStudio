@@ -154,13 +154,66 @@
 								>
 									清除模型
 								</button>
-								<button
-									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
-									type="button"
-									@click.stop="adjustSelectedOrientation"
-								>
-									调整朝向
-								</button>
+								<div class="wf-scene-layout-orientation-group">
+									<button
+										class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn wf-scene-layout-orientation-main"
+										type="button"
+										@click.stop="adjustSelectedOrientation"
+									>
+										调整朝向
+									</button>
+									<button
+										class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn wf-scene-layout-orientation-caret"
+										type="button"
+										@click.stop="toggleOrientationDropdown"
+									>
+										<span class="wf-scene-layout-caret-icon">▾</span>
+									</button>
+									<div
+										v-if="orientationDropdownOpen"
+										class="wf-scene-layout-orientation-dropdown"
+										@pointerdown.stop
+									>
+										<div
+											class="wf-scene-layout-dropdown-item"
+											:class="{ active: currentRotationAxis === 'x' }"
+											@click.stop="rotateByAxis('x')"
+										>
+											<span class="wf-scene-layout-dropdown-check">
+												{{ currentRotationAxis === 'x' ? '✓' : '' }}
+											</span>
+											<span>沿 X 轴旋转</span>
+										</div>
+										<div
+											class="wf-scene-layout-dropdown-item"
+											:class="{ active: currentRotationAxis === 'y' }"
+											@click.stop="rotateByAxis('y')"
+										>
+											<span class="wf-scene-layout-dropdown-check">
+												{{ currentRotationAxis === 'y' ? '✓' : '' }}
+											</span>
+											<span>沿 Y 轴旋转</span>
+										</div>
+										<div
+											class="wf-scene-layout-dropdown-item"
+											:class="{ active: currentRotationAxis === 'z' }"
+											@click.stop="rotateByAxis('z')"
+										>
+											<span class="wf-scene-layout-dropdown-check">
+												{{ currentRotationAxis === 'z' ? '✓' : '' }}
+											</span>
+											<span>沿 Z 轴旋转</span>
+										</div>
+										<div class="wf-scene-layout-dropdown-divider"></div>
+										<div
+											class="wf-scene-layout-dropdown-item wf-scene-layout-dropdown-reset"
+											@click.stop="resetOrientation"
+										>
+											<span class="wf-scene-layout-dropdown-check"></span>
+											<span>撤销旋转</span>
+										</div>
+									</div>
+								</div>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
 									type="button"
@@ -174,6 +227,22 @@
 									@click.stop="forceFitSelectedModel"
 								>
 									强制适配
+								</button>
+								<button
+									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
+									type="button"
+									:class="{ 'wf-scene-layout-btn-active': holePunchMode }"
+									@click.stop="toggleHolePunchMode"
+								>
+									{{ holePunchButtonLabel }}
+								</button>
+								<button
+									v-if="holePunchMode && holePunchCanConfirm"
+									class="wf-scene-layout-btn primary wf-scene-layout-overlay-btn"
+									type="button"
+									@click.stop="confirmHolePunch"
+								>
+									确认打洞
 								</button>
 							</div>
 							<div
@@ -481,6 +550,8 @@ const snapshotUrl = ref(
 const renderTransparent = ref(true)
 const selectedPreviewItemId = ref('')
 const lastActionMessage = ref('')
+const orientationDropdownOpen = ref(false)
+const currentRotationAxis = ref<'x' | 'y' | 'z'>('y')
 const lightingPanelCollapsed = ref(true)
 const perfPanelCollapsed = ref(false)
 const perfSnapshot = ref<SceneLayoutPreviewPerfSnapshot>({
@@ -551,6 +622,17 @@ const lightingControls = computed<Required<WorkflowSceneLayoutLightingControls>>
 	...(settings.value?.lightingControls ?? {})
 }))
 const hidePlaceholderCubes = computed(() => settings.value?.hidePlaceholderCubes === true)
+const holePunchMode = ref(false)
+const holePunchStep = ref<'select-target' | 'select-tool'>('select-target')
+const holePunchTargetId = ref('')
+const holePunchToolId = ref('')
+const holePunchCanConfirm = computed(() => !!holePunchTargetId.value && !!holePunchToolId.value)
+const holePunchButtonLabel = computed(() => {
+	if (!holePunchMode.value) return '打洞'
+	if (holePunchStep.value === 'select-target') return '选择被打洞的占位体'
+	if (holePunchStep.value === 'select-tool') return '选择用来打洞的占位体'
+	return '打洞'
+})
 const layoutItems = computed(
 	() =>
 		(Array.isArray(settings.value?.layoutItems)
@@ -971,7 +1053,41 @@ const adjustSelectedOrientation = async () => {
 		lastActionMessage.value = '预览器尚未准备完成。'
 		return
 	}
-	const result = await viewer.adjustSelectedModelOrientation()
+	const result = await viewer.rotateSelectedModelByAxis(currentRotationAxis.value)
+	lastActionMessage.value = result.message
+}
+
+const toggleOrientationDropdown = () => {
+	orientationDropdownOpen.value = !orientationDropdownOpen.value
+	if (orientationDropdownOpen.value) {
+		requestAnimationFrame(() => {
+			document.addEventListener('click', closeOrientationDropdown, { once: true })
+		})
+	}
+}
+
+const closeOrientationDropdown = () => {
+	orientationDropdownOpen.value = false
+}
+
+const rotateByAxis = async (axis: 'x' | 'y' | 'z') => {
+	currentRotationAxis.value = axis
+	orientationDropdownOpen.value = false
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	const result = await viewer.rotateSelectedModelByAxis(axis)
+	lastActionMessage.value = result.message
+}
+
+const resetOrientation = async () => {
+	orientationDropdownOpen.value = false
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	const result = await viewer.resetSelectedModelOrientation()
 	lastActionMessage.value = result.message
 }
 
@@ -990,6 +1106,27 @@ const forceFitSelectedModel = async () => {
 		return
 	}
 	const result = await viewer.forceFitSelectedModel()
+	lastActionMessage.value = result.message
+}
+
+const toggleHolePunchMode = () => {
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	if (holePunchMode.value) {
+		viewer.cancelHolePunchMode()
+	} else {
+		viewer.startHolePunchMode()
+	}
+}
+
+const confirmHolePunch = async () => {
+	if (!viewer) {
+		lastActionMessage.value = '预览器尚未准备完成。'
+		return
+	}
+	const result = await viewer.confirmHolePunch()
 	lastActionMessage.value = result.message
 }
 
@@ -1096,6 +1233,12 @@ const createViewerNow = () => {
 			onCameraInteractionEnd: () => {
 				saveViewState()
 			}
+		})
+		viewer.setHolePunchStateChangeCallback((state) => {
+			holePunchMode.value = state.mode
+			holePunchStep.value = state.step
+			holePunchTargetId.value = state.targetId
+			holePunchToolId.value = state.toolId
 		})
 		viewerInitCooldownUntil = 0
 		syncViewerState()
@@ -1348,8 +1491,70 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	}
 }
 
+const exportSelectedPlaceholderGLB = async (): Promise<
+	{ ok: true; glbData: ArrayBuffer; name: string } | { ok: false; error: string }
+> => {
+	lastActionMessage.value = '正在准备导出带洞几何体...'
+	if (!canvasRef.value) {
+		lastActionMessage.value = '导出失败：场景布局预览画布尚未挂载。'
+		return { ok: false, error: '场景布局预览画布尚未挂载。' }
+	}
+	if (!previewActive.value) {
+		lastActionMessage.value = '导出失败：请先进入预览模式并完成打洞操作。'
+		return { ok: false, error: '请先进入预览模式并选择要导出的带洞占位体。' }
+	}
+	ensureViewer()
+	if (!viewer) {
+		await nextTick()
+	}
+	if (!viewer) {
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+	}
+	if (!viewer) {
+		lastActionMessage.value = '导出失败：场景布局预览器尚未准备完成。'
+		return { ok: false, error: '场景布局预览器尚未准备完成。' }
+	}
+	viewer.setRenderSuspended(false)
+	viewer.setInteractive(true)
+	const itemId = selectedPreviewItemId.value
+	if (!itemId) {
+		lastActionMessage.value = '导出失败：请先在预览中选择一个打洞后的占位体。'
+		return { ok: false, error: '请先在预览中选择一个占位体。' }
+	}
+	viewer.setSelectedItem(itemId)
+
+	const setViewerLog = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
+	if (setViewerLog) {
+		setViewerLog.call(viewer, (msg: string) => {
+			lastActionMessage.value = `[导出] ${msg}`
+		})
+	}
+
+	lastActionMessage.value = '正在导出带洞几何体为GLB...'
+	try {
+		const selectedItem = layoutItems.value.find((item) => item.id === itemId)
+		const itemName = selectedItem?.name || selectedItem?.id || itemId
+		const glbData = await viewer.exportPlaceholderGLB(itemId, itemName)
+		if (setViewerLog) setViewerLog.call(viewer, null)
+		if (!glbData) {
+			lastActionMessage.value = '导出失败：未能获取几何体数据。'
+			return { ok: false, error: '导出占位体GLB失败，未能获取几何体数据。' }
+		}
+		lastActionMessage.value = `导出成功：${itemName}（带洞几何体）`
+		return { ok: true, glbData, name: itemName }
+	} catch (err) {
+		const setViewerLogCleanup = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
+		if (setViewerLogCleanup) setViewerLogCleanup.call(viewer, null)
+		const errMessage =
+			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
+		lastActionMessage.value = `导出失败：${errMessage}`
+		return { ok: false, error: `导出占位体GLB失败：${errMessage}` }
+	}
+}
+
 defineExpose({
-	getResolvedLayoutForUnreal
+	getResolvedLayoutForUnreal,
+	exportSelectedPlaceholderGLB
 })
 </script>
 
@@ -1397,6 +1602,11 @@ defineExpose({
 .wf-scene-layout-overlay-btn {
 	background: rgba(0, 0, 0, 0.5);
 	backdrop-filter: blur(8px);
+}
+
+.wf-scene-layout-btn-active {
+	background: rgba(59, 130, 246, 0.7) !important;
+	color: #fff !important;
 }
 
 .wf-scene-layout-lighting-dock {
@@ -1602,5 +1812,88 @@ defineExpose({
 	grid-template-columns: auto 1fr auto auto;
 	gap: 6px 10px;
 	font-size: 12px;
+}
+
+.wf-scene-layout-orientation-group {
+	position: relative;
+	display: flex;
+	align-items: stretch;
+}
+
+.wf-scene-layout-orientation-main {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+	border-right: none;
+}
+
+.wf-scene-layout-orientation-caret {
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+	padding-left: 6px;
+	padding-right: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.wf-scene-layout-caret-icon {
+	font-size: 10px;
+	line-height: 1;
+}
+
+.wf-scene-layout-orientation-dropdown {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	margin-top: 4px;
+	min-width: 160px;
+	border: 1px solid rgba(148, 163, 184, 0.22);
+	border-radius: 8px;
+	background: rgba(15, 23, 42, 0.95);
+	backdrop-filter: blur(10px);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+	z-index: 10;
+	overflow: hidden;
+}
+
+.wf-scene-layout-dropdown-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	font-size: 12px;
+	color: rgba(226, 232, 240, 0.9);
+	cursor: pointer;
+	transition: background 120ms ease;
+}
+
+.wf-scene-layout-dropdown-item:hover {
+	background: rgba(59, 130, 246, 0.18);
+	color: #fff;
+}
+
+.wf-scene-layout-dropdown-item.active {
+	color: #60a5fa;
+}
+
+.wf-scene-layout-dropdown-item.wf-scene-layout-dropdown-reset {
+	color: rgba(248, 113, 113, 0.9);
+}
+
+.wf-scene-layout-dropdown-item.wf-scene-layout-dropdown-reset:hover {
+	background: rgba(239, 68, 68, 0.15);
+	color: #fca5a5;
+}
+
+.wf-scene-layout-dropdown-check {
+	width: 14px;
+	text-align: center;
+	font-size: 11px;
+}
+
+.wf-scene-layout-dropdown-divider {
+	height: 1px;
+	margin: 4px 0;
+	background: rgba(148, 163, 184, 0.18);
 }
 </style>

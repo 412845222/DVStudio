@@ -28,7 +28,9 @@
 			@tag-save="(label: string) => emit('selection-frame-tag-save', label)"
 			@delete="emit('selection-frame-delete')"
 			@delete-nodes="emit('selection-frame-delete-selected')"
+			@drag-start="onOverlayDragStart"
 			@drag-move="onOverlayDragMove"
+			@drag-end="onOverlayDragEnd"
 		/>
 
 		<slot
@@ -98,7 +100,9 @@ const emit = defineEmits<{
 	(e: 'canvas-panning-end'): void
 	(e: 'selection-frame-tag-save', label: string): void
 	(e: 'selection-frame-delete', payload?: { frameId?: string }): void
+	(e: 'selection-frame-drag-start', payload: { nodeIds: string[] }): void
 	(e: 'selection-frame-drag', payload: { dx: number; dy: number; nodeIds: string[] }): void
+	(e: 'selection-frame-drag-end', payload: { nodeIds: string[] }): void
 	(e: 'selection-frame-delete-selected'): void
 }>()
 
@@ -217,6 +221,10 @@ const screenToWorld = (p: { x: number; y: number }) => {
 }
 
 // 处理来自 DOM overlay 的拖拽移动
+const onOverlayDragStart = () => {
+	const nodeIds = props.selectionFrame?.nodeIds || []
+	emit('selection-frame-drag-start', { nodeIds })
+}
 const onOverlayDragMove = (payload: { dx: number; dy: number }) => {
 	const z = viewportZoom.value
 	const nodeIds = props.selectionFrame?.nodeIds || []
@@ -226,9 +234,78 @@ const onOverlayDragMove = (payload: { dx: number; dy: number }) => {
 		nodeIds
 	})
 }
+const onOverlayDragEnd = () => {
+	const nodeIds = props.selectionFrame?.nodeIds || []
+	emit('selection-frame-drag-end', { nodeIds })
+}
 
 let raf = 0
 const GRID_DPR = 1
+
+let gridPatternCache: HTMLCanvasElement | null = null
+let gridPatternZoom = -1
+let gridPatternStepPx = 0
+let gridPatternMajorStepPx = 0
+let gridPatternTileSize = 0
+let gridCacheColors: { bg: string; border: string; accent: string; muted: string } | null = null
+
+const getGridColors = () => {
+	const style = getComputedStyle(document.documentElement)
+	return {
+		bg: style.getPropertyValue('--wf-page-bg').trim() ||
+			style.getPropertyValue('--dweb-defualt').trim() ||
+			'#1e1e1e',
+		border: style.getPropertyValue('--wf-border').trim() ||
+			style.getPropertyValue('--vscode-border').trim() ||
+			'rgba(0, 0, 0, 0.12)',
+		accent: style.getPropertyValue('--wf-primary').trim() ||
+			style.getPropertyValue('--vscode-border-accent').trim() ||
+			'#1f9d84',
+		muted: style.getPropertyValue('--wf-text-muted').trim() ||
+			style.getPropertyValue('--vscode-fg-muted').trim() ||
+			'#aeb8bd'
+	}
+}
+
+const buildGridPattern = (stepPx: number, majorStepPx: number, colors: { bg: string; border: string }) => {
+	const tileSize = majorStepPx
+	const patternCanvas = document.createElement('canvas')
+	const dpr = GRID_DPR
+	patternCanvas.width = Math.ceil(tileSize * dpr)
+	patternCanvas.height = Math.ceil(tileSize * dpr)
+	const pctx = patternCanvas.getContext('2d')!
+	pctx.scale(dpr, dpr)
+
+	pctx.fillStyle = 'transparent'
+	pctx.clearRect(0, 0, tileSize, tileSize)
+
+	pctx.strokeStyle = colors.border
+	pctx.globalAlpha = 0.25
+	pctx.lineWidth = 1
+	pctx.beginPath()
+	for (let i = 0; i <= tileSize; i += stepPx) {
+		if (i === tileSize) continue
+		pctx.moveTo(i + 0.5, 0)
+		pctx.lineTo(i + 0.5, tileSize)
+		pctx.moveTo(0, i + 0.5)
+		pctx.lineTo(tileSize, i + 0.5)
+	}
+	pctx.stroke()
+
+	pctx.strokeStyle = colors.border
+	pctx.globalAlpha = 0.45
+	pctx.lineWidth = 1
+	pctx.beginPath()
+	pctx.moveTo(0.5, 0)
+	pctx.lineTo(0.5, tileSize)
+	pctx.moveTo(0, 0.5)
+	pctx.lineTo(tileSize, 0.5)
+	pctx.stroke()
+	pctx.globalAlpha = 1
+
+	return { pattern: patternCanvas, tileSize }
+}
+
 const requestDraw = () => {
 	if (raf) return
 	raf = requestAnimationFrame(() => {
@@ -261,8 +338,7 @@ const drawGrid = () => {
 	const ctx = canvas.getContext('2d')
 	if (!ctx) return
 
-	// 清空已保存选区手柄列表（将在绘制时重新填充）
-	savedFrameMoveHandles.value = []
+	const collectedHandles: SavedFrameHandle[] = []
 
 	const dpr = GRID_DPR
 	const r = wrap.getBoundingClientRect()
@@ -272,57 +348,53 @@ const drawGrid = () => {
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 	ctx.clearRect(0, 0, w, h)
 
-	const style = getComputedStyle(document.documentElement)
-	const bg =
-		style.getPropertyValue('--wf-page-bg').trim() ||
-		style.getPropertyValue('--dweb-defualt').trim() ||
-		'#1e1e1e'
-	const border =
-		style.getPropertyValue('--wf-border').trim() ||
-		style.getPropertyValue('--vscode-border').trim() ||
-		'rgba(0, 0, 0, 0.12)'
-	const accent =
-		style.getPropertyValue('--wf-primary').trim() ||
-		style.getPropertyValue('--vscode-border-accent').trim() ||
-		'#1f9d84'
-	const muted =
-		style.getPropertyValue('--wf-text-muted').trim() ||
-		style.getPropertyValue('--vscode-fg-muted').trim() ||
-		'#aeb8bd'
-
-	ctx.fillStyle = bg
+	const colors = getGridColors()
+	ctx.fillStyle = colors.bg
 	ctx.fillRect(0, 0, w, h)
 
 	const z = viewportZoom.value
 	const stepWorld = 80
-	const stepPx = Math.max(16, stepWorld * z)
-	const majorStepPx = stepPx * 5
-	const c = { x: w / 2 + viewportPanPx.value.x, y: h / 2 + viewportPanPx.value.y }
+	let stepPx = Math.max(16, stepWorld * z)
+	let majorStepPx = stepPx * 5
 
-	const drawLines = (step: number, alpha: number) => {
-		ctx.strokeStyle = border
-		ctx.globalAlpha = alpha
-		ctx.lineWidth = 1
-		ctx.beginPath()
-		const startX = ((c.x % step) + step) % step
-		for (let x = startX; x <= w; x += step) {
-			ctx.moveTo(x + 0.5, 0)
-			ctx.lineTo(x + 0.5, h)
-		}
-		const startY = ((c.y % step) + step) % step
-		for (let y = startY; y <= h; y += step) {
-			ctx.moveTo(0, y + 0.5)
-			ctx.lineTo(w, y + 0.5)
-		}
-		ctx.stroke()
-		ctx.globalAlpha = 1
+	const needRebuildPattern = !gridPatternCache ||
+		gridPatternZoom !== z ||
+		!gridCacheColors ||
+		gridCacheColors.border !== colors.border ||
+		Math.abs(gridPatternStepPx - stepPx) > 0.5
+
+	if (stepPx < 24) {
+		stepPx = Math.max(32, majorStepPx)
+		majorStepPx = stepPx * 5
 	}
 
-	drawLines(stepPx, 0.25)
-	drawLines(majorStepPx, 0.45)
+	if (needRebuildPattern || stepPx !== gridPatternStepPx) {
+		const result = buildGridPattern(stepPx, majorStepPx, colors)
+		gridPatternCache = result.pattern
+		gridPatternTileSize = result.tileSize
+		gridPatternZoom = z
+		gridPatternStepPx = stepPx
+		gridPatternMajorStepPx = majorStepPx
+		gridCacheColors = colors
+	}
+
+	if (gridPatternCache) {
+		const c = { x: w / 2 + viewportPanPx.value.x, y: h / 2 + viewportPanPx.value.y }
+		const tileSize = gridPatternTileSize
+		const offsetX = ((c.x % tileSize) + tileSize) % tileSize
+		const offsetY = ((c.y % tileSize) + tileSize) % tileSize
+
+		ctx.save()
+		for (let y = -tileSize + offsetY; y < h + tileSize; y += tileSize) {
+			for (let x = -tileSize + offsetX; x < w + tileSize; x += tileSize) {
+				ctx.drawImage(gridPatternCache, x, y, tileSize, tileSize)
+			}
+		}
+		ctx.restore()
+	}
 
 	const origin = worldToScreen({ x: 0, y: 0 })
-	ctx.strokeStyle = accent
+	ctx.strokeStyle = colors.accent
 	ctx.globalAlpha = 0.75
 	ctx.lineWidth = 1
 	ctx.beginPath()
@@ -333,9 +405,11 @@ const drawGrid = () => {
 	ctx.stroke()
 	ctx.globalAlpha = 1
 
-	ctx.fillStyle = muted
-	ctx.font = '12px sans-serif'
-	ctx.fillText('0,0', origin.x + 6, origin.y - 6)
+	if (z >= 0.35) {
+		ctx.fillStyle = colors.muted
+		ctx.font = '12px sans-serif'
+		ctx.fillText('0,0', origin.x + 6, origin.y - 6)
+	}
 
 	// --- 绘制多选框选框 ---
 	const selFrame = props.selectionFrame
@@ -524,7 +598,7 @@ const drawGrid = () => {
 					height: 20
 				}
 			}
-			savedFrameMoveHandles.value.push(savedFrameHandle)
+			collectedHandles.push(savedFrameHandle)
 
 			// 绘制移动图标（十字箭头样式）
 			ctx.strokeStyle = '#6ee7b7'
@@ -618,9 +692,9 @@ const drawGrid = () => {
 			ctx.lineTo(sCrossX - sCrossSize / 2, sCrossY + sCrossSize / 2)
 			ctx.stroke()
 		}
-	} else {
-		savedFrameMoveHandles.value = []
 	}
+
+	savedFrameMoveHandles.value = collectedHandles
 
 	ctx.globalAlpha = 1
 }
@@ -867,6 +941,9 @@ const onWrapPointerDown = (e: PointerEvent) => {
 			}
 			dragStartNodes.value = startNodes
 
+			const dragNodeIds = Object.keys(startNodes)
+			emit('selection-frame-drag-start', { nodeIds: dragNodeIds })
+
 			wrap.setPointerCapture(e.pointerId)
 
 			const onMove = (ev: PointerEvent) => {
@@ -880,7 +957,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
 				emit('selection-frame-drag', {
 					dx,
 					dy,
-					nodeIds: Object.keys(dragStartNodes.value)
+					nodeIds: dragNodeIds
 				})
 			}
 
@@ -895,6 +972,7 @@ const onWrapPointerDown = (e: PointerEvent) => {
 				} catch {
 					// ignore
 				}
+				emit('selection-frame-drag-end', { nodeIds: dragNodeIds })
 			}
 
 			wrap.addEventListener('pointermove', onMove)

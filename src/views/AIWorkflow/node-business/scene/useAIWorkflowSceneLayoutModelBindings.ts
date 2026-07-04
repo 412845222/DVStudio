@@ -128,7 +128,12 @@ const extractModelInfoFromSettings = (
 } => {
 	if (!settings) return {}
 	const modelAssetUrl = String(settings.modelAssetUrl ?? '').trim()
-	const modelUrl = String(settings.modelUrl ?? modelAssetUrl ?? '').trim()
+	const rawModelUrl = String(settings.modelUrl ?? '').trim()
+	const modelUrl = (() => {
+		if (modelAssetUrl && !isMeshyRemoteUrl(modelAssetUrl)) return modelAssetUrl
+		if (rawModelUrl && !isMeshyRemoteUrl(rawModelUrl)) return rawModelUrl
+		return modelAssetUrl || rawModelUrl
+	})()
 	const modelAssetPath = String(settings.modelAssetPath ?? '').trim()
 	const modelSourcePath = String(settings.modelSourcePath ?? '').trim()
 	const modelProjectRelativePath = String(settings.modelProjectRelativePath ?? '').trim()

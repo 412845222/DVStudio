@@ -12,7 +12,7 @@
 			</div>
 		</div>
 		<!-- 蓝图节点容器 -->
-		<div class="aiwf-blueprint-container">
+		<div class="aiwf-blueprint-container" :class="{ 'aiwf-viewport-motion': viewportMotionActive }">
 			<BlueprintCanvas
 				class="aiwf-canvas"
 				:viewport="viewport"
@@ -36,7 +36,9 @@
 				@drop.prevent="onCanvasDrop"
 				@selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
 				@selection-frame-delete="onDeleteSelectionFrame"
+				@selection-frame-drag-start="onSelectionFrameDragStart"
 				@selection-frame-drag="onSelectionFrameDrag"
+				@selection-frame-drag-end="onSelectionFrameDragEnd"
 				@selection-frame-delete-selected="onDeleteSelectedNodes"
 				v-slot="vp"
 			>
@@ -45,6 +47,7 @@
 					ref="nodeCanvasLayerRef"
 					:nodes="canvasNodeEntries"
 					:viewport="viewport"
+					:motion-active="viewportMotionActive"
 					:screenshot-pool-provider="canvasScreenshotPoolProvider"
 					@node-click="onCanvasNodeClick"
 				/>
@@ -54,6 +57,7 @@
 					:viewport="viewport"
 					:selected-node-ids="selectedNodeIds"
 					:hide-visuals="true"
+					:motion-active="viewportMotionActive"
 					@start-link="onStartLink($event, vp.screenToWorld)"
 					@end-link="onEndLink"
 				/>
@@ -521,6 +525,7 @@
 					:detail-task-id="arkTaskDetailTaskId"
 					:detail-task="arkTaskDetail"
 					:detail-loading="arkTaskDetailLoading"
+					:downloading-ids="arkTaskDownloading"
 					:data-status-text="arkTaskDataStatusText"
 					@close="closeArkTaskDialog"
 					@refresh="onRefreshArkTaskPanel"
@@ -1115,7 +1120,7 @@ ensureAIWorkflowHistory()
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 
-const { viewport, onViewportUpdate, viewportMotionActive, markViewportMotion, canvasViewportSize } =
+const { viewport, onViewportUpdate, viewportMotionActive, markViewportMotion, forceEndViewportMotion, canvasViewportSize } =
 	useAIWorkflowViewport(store, {
 		canvasSelector: '.aiwf-canvas',
 		motionResetMs: 140
@@ -1344,8 +1349,14 @@ const screenshotWarmupOpen = ref(false)
 const screenshotWarmupDetail = ref('')
 const warmupForceRenderNodeIds = ref<Set<string>>(new Set())
 const warmupExitingFullRender = ref(false)
+const pendingScreenshotNodeIds = ref<Set<string>>(new Set())
 const nearDragNodeIds = ref<Set<string>>(new Set())
 const panningFullRenderSnapshot = ref<Set<string> | null>(null)
+const selectionFrameDragging = ref(false)
+const selectionFrameDragNodeIds = ref<Set<string>>(new Set())
+const stableLinkHoverNodeId = ref<string>('')
+let linkHoverStableTimer: ReturnType<typeof setTimeout> | null = null
+const LINK_HOVER_STABLE_DELAY_MS = 400
 
 const warmupConfirmDialogOpen = ref(false)
 
@@ -1479,19 +1490,43 @@ const initCanvasScreenshotPool = () => {
 
 // Canvas节点数据 (用于NodeCanvasLayer渲染)
 const canvasScreenshotRefreshTick = ref(0)
+let cachedCanvasNodeEntries: Array<{
+	id: string
+	worldX: number
+	worldY: number
+	width: number
+	height: number
+	radius?: number
+	inputs?: WorkflowAnchorSpec[]
+	outputs?: WorkflowAnchorSpec[]
+}> = []
+let lastCanvasEntriesSignature = ''
+
+const buildCanvasNodeEntriesSignature = () => {
+	const fullRenderIds = Array.from(effectiveFullRenderNodeIds.value).sort().join('|')
+	return `${canvasScreenshotRefreshTick.value}:${fullRenderIds}:${renderNodes.value.length}:${canvasScreenshotEnabled.value}`
+}
+
 const canvasNodeEntries = computed(() => {
 	void canvasScreenshotRefreshTick.value
 	if (!canvasScreenshotEnabled.value) return []
-	
-	return safeVisibleRenderNodes.value
-		.filter((node) => {
-			const nodeId = String(node.id ?? '').trim()
-			if (!nodeId) return false
-			if (fullRenderNodeIds.value.has(nodeId)) return false
-			return hasBitmap(nodeId)
-		})
-		.map((node) => ({
-			id: String(node.id ?? '').trim(),
+
+	const signature = buildCanvasNodeEntriesSignature()
+	if (signature === lastCanvasEntriesSignature && cachedCanvasNodeEntries.length > 0) {
+		return cachedCanvasNodeEntries
+	}
+
+	const allNodes = renderNodes.value
+	const fullRenderSet = effectiveFullRenderNodeIds.value
+	const result: typeof cachedCanvasNodeEntries = []
+
+	for (const node of allNodes) {
+		const nodeId = String(node.id ?? '').trim()
+		if (!nodeId) continue
+		if (fullRenderSet.has(nodeId)) continue
+
+		result.push({
+			id: nodeId,
 			worldX: node.worldX,
 			worldY: node.worldY,
 			width: node.width || 240,
@@ -1499,8 +1534,21 @@ const canvasNodeEntries = computed(() => {
 			radius: 8,
 			inputs: node.inputs,
 			outputs: node.outputs
-		}))
+		})
+	}
+
+	cachedCanvasNodeEntries = result
+	lastCanvasEntriesSignature = signature
+	return result
 })
+
+// 刷新Canvas节点层，强制全量重绘
+const refreshCanvasNodeLayer = () => {
+	canvasScreenshotRefreshTick.value++
+	nextTick(() => {
+		nodeCanvasLayerRef.value?.markDirty()
+	})
+}
 
 // 判断节点是否有Canvas截图可以用于Canvas渲染
 const hasCanvasScreenshot = (nodeId: string): boolean => {
@@ -1513,18 +1561,14 @@ type NodeRenderMode = 'canvas' | 'full'
 
 // 判断节点应该使用哪种渲染模式
 const getNodeRenderMode = (nodeId: string): NodeRenderMode => {
-	// 如果在完整DOM渲染列表中（选中/激活节点），使用完整渲染
-	if (fullRenderNodeIds.value.has(nodeId)) {
+	if (effectiveFullRenderNodeIds.value.has(nodeId)) {
 		return 'full'
 	}
-	
-	// 如果有Canvas截图，优先使用Canvas渲染（不受CSS影响）
-	if (hasCanvasScreenshot(nodeId)) {
+
+	if (canvasScreenshotEnabled.value) {
 		return 'canvas'
 	}
-	
-	// 其他情况：等待Canvas截图预热完成后自动切换到canvas模式
-	// 如果一直没有截图，则使用完整渲染
+
 	return 'full'
 }
 
@@ -1650,12 +1694,44 @@ const isNodeInViewport = (node: WorkflowNode): boolean => {
 }
 
 const fullRenderNodeIds = computed<Set<string>>(() => {
+	// ==========================================
+	// 连线过程中（isLinking为true），锁定所有节点为Canvas渲染模式
+	// 锚点交互完全由 WorkflowEdgeLayer (canvas层) + linkInteraction 处理
+	// 无论节点之前是DOM模式还是canvas模式，连线期间一律使用canvas锚点
+	// 彻底避免节点在canvas/DOM模式间切换导致的闪烁
+	// ==========================================
+	if (isLinking.value) {
+		const lockedIds = new Set<string>()
+		if (nodeChatDialog.value.visible && nodeChatDialog.value.nodeId) {
+			const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
+			if (chatNodeId) lockedIds.add(chatNodeId)
+		}
+		for (const id of pendingScreenshotNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (nid) lockedIds.add(nid)
+		}
+		return lockedIds
+	}
+
 	if (panningFullRenderSnapshot.value) {
-		return panningFullRenderSnapshot.value
+		const snapshotWithPending = new Set(panningFullRenderSnapshot.value)
+		for (const id of pendingScreenshotNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (nid) snapshotWithPending.add(nid)
+		}
+		for (const id of selectedNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (nid) snapshotWithPending.add(nid)
+		}
+		if (nodeChatDialog.value.visible && nodeChatDialog.value.nodeId) {
+			const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
+			if (chatNodeId) snapshotWithPending.add(chatNodeId)
+		}
+		return snapshotWithPending
 	}
 
 	// ==========================================
-	// Step 1: 核心激活节点（用户直接交互的节点）+ 预热强制渲染节点
+	// Step 1: 核心激活节点（用户直接交互的节点）+ 预热强制渲染节点 + 待截图节点
 	// 这些节点无论是否在视口内，都必须完整渲染
 	// ==========================================
 	const coreIds = new Set<string>()
@@ -1670,10 +1746,15 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 		if (nid) coreIds.add(nid)
 	}
 
+	for (const id of pendingScreenshotNodeIds.value) {
+		const nid = String(id ?? '').trim()
+		if (nid) coreIds.add(nid)
+	}
+
 	const linkFromId = linkingFromNodeId.value
 	if (linkFromId) coreIds.add(String(linkFromId))
 
-	const linkHoverId = linkingHoverNodeId.value
+	const linkHoverId = stableLinkHoverNodeId.value
 	if (linkHoverId) {
 		const nid = String(linkHoverId).trim()
 		if (nid) coreIds.add(nid)
@@ -1688,9 +1769,6 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 
 	// ==========================================
 	// Step 2: 直接邻居节点（仅一层，绝不传递）
-	// 必须满足：
-	//   1. 与核心节点直接有线连接
-	//   2. 节点真正在视口几何范围内
 	// ==========================================
 	const result = new Set<string>(coreIds)
 	const nodesById = store.state.nodesById as Record<string, WorkflowNode | undefined>
@@ -1714,6 +1792,32 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 		}
 	}
 
+	return result
+})
+
+// 节点拖拽优化：多选框拖拽时，将被拖拽节点切换为canvas轻量绘制模式
+const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
+	const baseIds = fullRenderNodeIds.value
+	if (!selectionFrameDragging.value || selectionFrameDragNodeIds.value.size === 0) {
+		return baseIds
+	}
+
+	// 拖拽期间，排除被拖拽的节点，但保留：
+	// - 有聊天对话框打开的节点
+	// - 待截图的节点
+	const chatNodeId = nodeChatDialog.value.visible ? String(nodeChatDialog.value.nodeId).trim() : ''
+	const pendingIds = pendingScreenshotNodeIds.value
+
+	const result = new Set<string>()
+	for (const id of baseIds) {
+		if (selectionFrameDragNodeIds.value.has(id)) {
+			if (id === chatNodeId || pendingIds.has(id)) {
+				result.add(id)
+			}
+		} else {
+			result.add(id)
+		}
+	}
 	return result
 })
 
@@ -1811,7 +1915,7 @@ const scheduleNodeScreenshot = async (
 	const hostEl = nodeHostRefs.get(nodeId)
 	if (!hostEl) {
 		if (retryCount < 3) {
-			setTimeout(() => scheduleNodeScreenshot(node, retryCount + 1, priority), 100)
+			setTimeout(() => scheduleNodeScreenshot(node, retryCount + 1, priority, allowFullRender), 100)
 		}
 		return
 	}
@@ -1885,14 +1989,8 @@ const scheduleNodeScreenshot = async (
 			try {
 				await loadScreenshotToCanvas(entry)
 			} catch {}
-			canvasScreenshotPool.value = {
-				getEntry: (nid: string) => {
-					const e = getCanvasEntry(nid)
-					if (!e) return null
-					return { bitmap: e.bitmap, width: e.width, height: e.height }
-				}
-			}
-			canvasScreenshotRefreshTick.value++
+			initCanvasScreenshotPool()
+			refreshCanvasNodeLayer()
 			const cacheCtx = getScreenshotCacheContext()
 			void saveScreenshotToDisk(
 				cacheCtx.projectId,
@@ -1913,7 +2011,7 @@ const scheduleNodeScreenshot = async (
 	}
 }
 
-let screenshotScheduleTimer: ReturnType<typeof setTimeout> | null = null
+	let screenshotScheduleTimer: ReturnType<typeof setTimeout> | null = null
 const scheduleVisibleNodeScreenshots = () => {
 	if (screenshotScheduleTimer) {
 		clearTimeout(screenshotScheduleTimer)
@@ -1930,6 +2028,7 @@ const scheduleVisibleNodeScreenshots = () => {
 		})
 
 		let scheduled = 0
+		const pendingBitmapLoads: Promise<void>[] = []
 		for (const node of unselectedNodes) {
 			if (scheduled >= 3) break
 			const nodeId = node.id
@@ -1939,6 +2038,17 @@ const scheduleVisibleNodeScreenshots = () => {
 				const newMap = new Map(nodeScreenshotMap.value)
 				newMap.set(nodeId, cached)
 				nodeScreenshotMap.value = newMap
+				if (!hasBitmap(nodeId)) {
+					invalidateCanvasScreenshot(nodeId)
+					const loadPromise = (async () => {
+						try {
+							await loadScreenshotToCanvas(cached)
+						} catch {}
+						initCanvasScreenshotPool()
+						refreshCanvasNodeLayer()
+					})()
+					pendingBitmapLoads.push(loadPromise)
+				}
 				continue
 			}
 			if (!screenshotPool.hasCachedScreenshot(nodeId, version)) {
@@ -2085,6 +2195,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 			}
 		)
 		initCanvasScreenshotPool()
+		refreshCanvasNodeLayer()
 		screenshotWarmupProgress.value = 0.99
 		screenshotWarmupDetail.value = '完成'
 		await waitForFrames(1)
@@ -2239,6 +2350,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	)
 
 	initCanvasScreenshotPool()
+	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.99
 	screenshotWarmupDetail.value = '完成'
@@ -2294,6 +2406,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 		if (newMap.size > 0) {
 			await warmupCanvasAll(newMap)
 			initCanvasScreenshotPool()
+			refreshCanvasNodeLayer()
 		}
 		screenshotWarmupOpen.value = false
 		screenshotWarmupDetail.value = ''
@@ -2427,6 +2540,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	if (newMap.size > 0) {
 		await warmupCanvasAll(newMap)
 		initCanvasScreenshotPool()
+		refreshCanvasNodeLayer()
 	}
 	await waitForFrames(2)
 	screenshotWarmupOpen.value = false
@@ -2458,9 +2572,11 @@ watch(
 	() => viewportMotionActive.value,
 	(isActive) => {
 		if (!isActive) {
-			nextTick(() => {
-				scheduleVisibleNodeScreenshots()
-			})
+			setTimeout(() => {
+				if (!viewportMotionActive.value) {
+					scheduleVisibleNodeScreenshots()
+				}
+			}, 200)
 		}
 	},
 	{ flush: 'post' }
@@ -2536,11 +2652,6 @@ watch(
 
 			for (const nodeId of newlySelected) {
 				userSelectedNodesNeedingRefresh.add(nodeId)
-				invalidateCanvasScreenshot(nodeId)
-				screenshotPool.invalidateScreenshot(nodeId)
-				const newMap = new Map(nodeScreenshotMap.value)
-				newMap.delete(nodeId)
-				nodeScreenshotMap.value = newMap
 			}
 		})
 	},
@@ -2689,6 +2800,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 		}
 	)
 	initCanvasScreenshotPool()
+	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.98
 	screenshotWarmupDetail.value = '完成'
@@ -4669,94 +4781,30 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
 	) as SceneLayoutPlaceholderPayload | null
 	if (!placeholderPayload) return null
 
-	const positive = (value: unknown, fallback: number) => {
-		const next = Number(value)
-		return Number.isFinite(next) && next > 0 ? next : fallback
-	}
-	const signed = (value: unknown, fallback = 0) => {
-		const next = Number(value)
-		return Number.isFinite(next) ? next : fallback
-	}
-
-	const width = Math.max(
-		0.05,
-		positive(placeholderPayload?.size?.width, 1) *
-			Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.x, 1)))
-	)
-	const height = Math.max(
-		0.05,
-		positive(placeholderPayload?.size?.height, 1) *
-			Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.y, 1)))
-	)
-	const depth = Math.max(
-		0.05,
-		positive(placeholderPayload?.size?.depth, 1) *
-			Math.max(0.01, Math.abs(signed(placeholderPayload?.scale?.z, 1)))
-	)
-	const yaw = signed(placeholderPayload?.rotation?.yaw, 0)
-	const pitch = signed(placeholderPayload?.rotation?.pitch, 0)
-	const roll = signed(placeholderPayload?.rotation?.roll, 0)
 	const placeholderId = String(placeholderPayload?.objectId ?? '').trim()
 	const placeholderName =
 		String(placeholderPayload?.name ?? placeholderId ?? 'placeholder').trim() || 'placeholder'
 	const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
 	const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
 
-	const geometry = new THREE.BoxGeometry(width, height, depth)
-	const material = new THREE.MeshStandardMaterial({
-		color: String(placeholderPayload?.color ?? '').trim() || '#94a3b8',
-		roughness: 0.88,
-		metalness: 0.08
-	})
-	const mesh = new THREE.Mesh(geometry, material)
-	mesh.name = placeholderName
-	mesh.position.set(0, height * 0.5, 0)
-	mesh.rotation.set((pitch * Math.PI) / 180, (yaw * Math.PI) / 180, (roll * Math.PI) / 180, 'XYZ')
+	pushToast('正在导出带洞几何体...', 'info')
 
-	const root = new THREE.Group()
-	root.name = placeholderName
-	root.userData = {
-		source: 'scene-layout-placeholder',
-		nodeId,
-		objectId: placeholderId
+	const viewerExportResult = await exportSceneLayoutPlaceholderGLB(nodeId)
+	if (!viewerExportResult.ok || !viewerExportResult.glbData) {
+		const errorMsg = viewerExportResult.ok ? '未能获取GLB数据' : viewerExportResult.error
+		pushToast(`导出带洞几何体失败：${errorMsg}`, 'error')
+		throw new Error(`导出带洞占位体失败：${errorMsg}`)
 	}
-	root.add(mesh)
-	root.updateMatrixWorld(true)
 
-	const exporter = new GLTFExporter()
-	try {
-		const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-			exporter.parse(
-				root,
-				(result: unknown) => {
-					if (result instanceof ArrayBuffer) {
-						resolve(result)
-						return
-					}
-					reject(new Error('placeholder glb export returned non-binary payload'))
-				},
-				(error: unknown) =>
-					reject(
-						error instanceof Error
-							? error
-							: new Error(String(error ?? 'placeholder glb export failed'))
-					),
-				{ binary: true, onlyVisible: true }
-			)
-		})
-
-		const fileName = `${slugSceneLayoutPlaceholderModelName(`${placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
-		const file = new File([arrayBuffer], fileName, { type: 'model/gltf-binary' })
-		return {
-			file,
-			signature,
-			placeholderId,
-			placeholderJson,
-			placeholderName
-		}
-	} finally {
-		geometry.dispose()
-		material.dispose()
+	const fileName = `${slugSceneLayoutPlaceholderModelName(`${viewerExportResult.name || placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
+	const file = new File([viewerExportResult.glbData], fileName, { type: 'model/gltf-binary' })
+	pushToast(`成功导出带洞几何体：${viewerExportResult.name || placeholderName}`, 'info')
+	return {
+		file,
+		signature,
+		placeholderId,
+		placeholderJson,
+		placeholderName: viewerExportResult.name || placeholderName
 	}
 }
 
@@ -4888,7 +4936,10 @@ const { buildMeshyRequestPayload } = useAIWorkflowMeshyRequest({
 	meshyImageOutputCount
 })
 
-const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: boolean }) => {
+const syncModel3DInputFromUpstream = async (
+	nodeId: string,
+	opts?: { warn?: boolean; forceSceneLayoutExport?: boolean }
+) => {
 	const node = store.state.nodesById[nodeId]
 	if (!node || node.type !== 'model3d') return false
 
@@ -4958,10 +5009,18 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 					String(settings.modelAssetPath ?? settings.modelSourcePath ?? '').trim() || undefined
 			})) as PersistedAsset | null
 			revokeNodeModel3DObjectUrl(nodeId)
+			const finalModelUrl = String(persisted?.url || preferredUrl)
+			if (isMeshyRemoteUrl(finalModelUrl)) {
+				console.warn(
+					'[DVS:syncModel3D] upstream model3d asset not yet localized, skipping commit — node:',
+					nodeId
+				)
+				continue
+			}
 			store.commit('setNodeModel3DSettings', {
 				nodeId,
 				model3dSettings: {
-					modelUrl: String(persisted?.url || preferredUrl),
+					modelUrl: finalModelUrl,
 					modelFormat: format,
 					modelSourceName: name,
 					modelSourcePath:
@@ -4996,6 +5055,7 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 		}
 
 		if (fromNode.type === 'scene-layout' && fromAnchorId === 'out-selected-placeholder') {
+			if (!opts?.forceSceneLayoutExport) continue
 			const generated = await createSceneLayoutPlaceholderModelFile(fromNode.id)
 			if (!generated) continue
 			const nextSignature = generated.signature
@@ -5037,14 +5097,17 @@ const syncModel3DInputFromUpstream = async (nodeId: string, opts?: { warn?: bool
 	return false
 }
 
-const syncConnectedModel3DTargets = async (fromNodeId: string) => {
+const syncConnectedModel3DTargets = async (
+	fromNodeId: string,
+	opts?: { forceSceneLayoutExport?: boolean }
+) => {
 	const targets = getOutgoingEdges(fromNodeId)
 		.filter((e: WorkflowEdge) => String(e.toAnchorId ?? '') === 'in-resource')
 		.map((e: WorkflowEdge) => String(e.toNodeId ?? '').trim())
 		.filter((id: string, index: number, arr: string[]) => !!id && arr.indexOf(id) === index)
 
 	for (const nodeId of targets) {
-		await syncModel3DInputFromUpstream(nodeId)
+		await syncModel3DInputFromUpstream(nodeId, { forceSceneLayoutExport: opts?.forceSceneLayoutExport })
 	}
 }
 
@@ -5881,6 +5944,9 @@ type SceneLayoutNodeExpose = {
 	getResolvedLayoutForUnreal: () => Promise<
 		{ ok: true; exportData: WorkflowUnrealResolvedLayoutExport } | { ok: false; error: string }
 	>
+	exportSelectedPlaceholderGLB: () => Promise<
+		{ ok: true; glbData: ArrayBuffer; name: string } | { ok: false; error: string }
+	>
 }
 
 const sceneLayoutNodeComponentRefs = new Map<string, SceneLayoutNodeExpose>()
@@ -5890,7 +5956,8 @@ const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 		if (nodeType !== 'scene-layout') return
 		if (
 			instance &&
-			typeof (instance as SceneLayoutNodeExpose).getResolvedLayoutForUnreal === 'function'
+			typeof (instance as SceneLayoutNodeExpose).getResolvedLayoutForUnreal === 'function' &&
+			typeof (instance as SceneLayoutNodeExpose).exportSelectedPlaceholderGLB === 'function'
 		) {
 			sceneLayoutNodeComponentRefs.set(nodeId, instance as SceneLayoutNodeExpose)
 			return
@@ -5910,6 +5977,22 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	}
 	try {
 		return await instance.getResolvedLayoutForUnreal()
+	} catch (err: unknown) {
+		return { ok: false as const, error: getErrorMessage(err) }
+	}
+}
+
+const exportSceneLayoutPlaceholderGLB = async (sceneLayoutNodeId: string) => {
+	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+	if (!normalizedNodeId) {
+		return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+	}
+	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
+	if (!instance || typeof instance.exportSelectedPlaceholderGLB !== 'function') {
+		return { ok: false as const, error: '未找到场景布局预览实例，请先打开预览并选择要传递的占位体。' }
+	}
+	try {
+		return await instance.exportSelectedPlaceholderGLB()
 	} catch (err: unknown) {
 		return { ok: false as const, error: getErrorMessage(err) }
 	}
@@ -7476,6 +7559,41 @@ const {
 getLinkWorkflowWorldToCanvas = () => workflowWorldToCanvas
 scheduleLinkEdgeRender = scheduleAsyncEdgeRender
 
+const clearLinkHoverStableTimer = () => {
+	if (linkHoverStableTimer) {
+		clearTimeout(linkHoverStableTimer)
+		linkHoverStableTimer = null
+	}
+}
+
+watch(
+	() => linkInteraction.linkingHoverNodeId.value,
+	(nextHoverId) => {
+		const hoverId = String(nextHoverId ?? '').trim()
+		if (hoverId) {
+			clearLinkHoverStableTimer()
+			stableLinkHoverNodeId.value = hoverId
+		} else {
+			if (!stableLinkHoverNodeId.value) return
+			clearLinkHoverStableTimer()
+			linkHoverStableTimer = setTimeout(() => {
+				stableLinkHoverNodeId.value = ''
+				linkHoverStableTimer = null
+			}, LINK_HOVER_STABLE_DELAY_MS)
+		}
+	}
+)
+
+watch(
+	() => linkInteraction.isLinking.value,
+	(isLinking) => {
+		if (!isLinking) {
+			clearLinkHoverStableTimer()
+			stableLinkHoverNodeId.value = ''
+		}
+	}
+)
+
 let nearDragRafId: number | null = null
 let nearDragLastPointer: { x: number; y: number } | null = null
 
@@ -7663,6 +7781,45 @@ const closeImageMarkupDialog = () => {
 	imageMarkupContext.value = { nodeId: null, url: null, name: null }
 }
 
+// 预热裁剪/截图新建的图片节点：先以完整 DOM 渲染，捕获截图后释放为 canvas 位图
+// 确保新节点不会直接显示占位 canvas，而是先展示完整节点再切换为预热截图
+const warmupCropCreatedNode = async (nodeId: string) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node) return
+	const nid = String(node.id ?? '').trim()
+	if (!nid) return
+
+	// 锁定节点为完整渲染模式，避免在图片解码/截图捕获期间被切换为占位 canvas
+	const pendingSet = new Set(pendingScreenshotNodeIds.value)
+	pendingSet.add(nid)
+	pendingScreenshotNodeIds.value = pendingSet
+
+	try {
+		// 等待节点 DOM 与图片解码完成
+		await nextTick()
+		await waitForFrames(2)
+
+		// 失效可能存在的旧缓存（例如此前在图片未加载时捕获的空白截图）
+		screenshotPool.invalidateScreenshot(nid)
+		invalidateCanvasScreenshot(nid)
+		const clearedMap = new Map(nodeScreenshotMap.value)
+		clearedMap.delete(nid)
+		nodeScreenshotMap.value = clearedMap
+
+		// allowFullRender=true 允许在选中/完整渲染状态下捕获截图
+		// scheduleNodeScreenshot 内部会等待 <img> 加载完成再捕获，确保位图内容完整
+		await scheduleNodeScreenshot(node, 0, 'high', true)
+	} catch (err) {
+		console.warn('[Crop Warmup] failed for node:', nid, err)
+	} finally {
+		// 释放锁定，节点可切换为 canvas 位图渲染（位图已就绪，不会显示占位 canvas）
+		const releaseSet = new Set(pendingScreenshotNodeIds.value)
+		releaseSet.delete(nid)
+		pendingScreenshotNodeIds.value = releaseSet
+		refreshCanvasNodeLayer()
+	}
+}
+
 const handleImageMarkupExported = (payload: {
 	dataUrl: string
 	width: number
@@ -7742,6 +7899,9 @@ const handleImageMarkupExported = (payload: {
 
 		closeImageMarkupDialog()
 		pushToast(`已在当前图片节点右侧生成新的${typeLabel}节点，并自动连接原节点。`, 'info')
+
+		// 触发预热：先以完整节点显示，截图捕获后切换为 canvas 位图，避免直接显示占位 canvas
+		void warmupCropCreatedNode(newNodeId)
 	} catch (err) {
 		console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
 		pushToast(`生成${typeLabel}节点失败。`, 'error')
@@ -7864,13 +8024,88 @@ const {
 	arkTaskDetail,
 	arkTaskDetailTaskId,
 	arkTaskDetailLoading,
+	arkTaskDownloading,
 	arkTaskDataStatusText,
 	openArkTaskDialog,
 	closeArkTaskDialog,
 	onRefreshArkTaskPanel,
 	onPreviewArkTask,
 	onArkTaskPanelAction
-} = useAIWorkflowArkTaskPanel(currentProjectId)
+} = useAIWorkflowArkTaskPanel(currentProjectId, {
+	comfyService,
+	pushToast: (message, tone, opts) => pushToast(message, tone, opts),
+	findVideoNodeByTaskId: (_remoteTaskId: string) => {
+		// TODO: 后续可以根据节点上存储的任务ID来查找对应节点
+		// 目前先返回 null，走新建节点的流程
+		return null
+	},
+	bindVideoResultToNode: async (nodeId: string, url: string) => {
+		const node = store.state.nodesById[nodeId]
+		if (!node) return false
+		const resourceId = `ark-video-${nodeId}-${Date.now()}`
+		const resourceName = `ark_video_${resourceId.slice(-6)}.mp4`
+		const base: GeneratedResourceBase = {
+			id: resourceId,
+			kind: 'video',
+			name: resourceName,
+			url
+		}
+		const pid = Number(currentProjectId.value ?? 0)
+		if (!(pid > 0)) {
+			pushToast('当前项目未激活，无法导入视频。', 'warn')
+			return false
+		}
+		finalizeGeneratedResourceLocalUrl(base, pid)
+		base.url = String(base.url || '').trim()
+		if (!base.url) {
+			pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			return false
+		}
+		store.commit('addResource', base)
+		store.commit('setNodeResource', { nodeId, resourceId })
+		return true
+	},
+	createMediaNodeWithAsset: async (url: string, kind: 'image' | 'video', prompt?: string) => {
+		const pid = Number(currentProjectId.value ?? 0)
+		if (!(pid > 0)) return ''
+		const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')
+		const resourceId = `ark-${kind}-new-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+		const resourceName = kind === 'image'
+			? `ark_image_${timestamp}.png`
+			: `ark_video_${timestamp}.mp4`
+		const base: GeneratedResourceBase = {
+			id: resourceId,
+			kind,
+			name: resourceName,
+			url
+		}
+		finalizeGeneratedResourceLocalUrl(base, pid)
+		base.url = String(base.url || '').trim()
+		if (!base.url) {
+			pushToast((kind === 'image' ? '图片' : '视频') + '资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			return ''
+		}
+		const vp = store.state.viewport
+		const zoom = Math.max(0.01, Number(vp?.zoom) || 1)
+		const panX = Number(vp?.panX) || 0
+		const panY = Number(vp?.panY) || 0
+		const worldCenterX = -panX / zoom
+		const worldCenterY = -panY / zoom
+		const nodeW = 240
+		const nodeH = 160
+		const worldX = worldCenterX - nodeW / 2
+		const worldY = worldCenterY - nodeH / 2
+		const titleLabel = kind === 'image' ? '图片' : '视频'
+		store.commit('addNodeAt', { worldX, worldY, title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
+		const nodeId = store.state.selectedNodeId
+		if (!nodeId) return ''
+		store.commit('setNodeType', { nodeId, type: kind })
+		store.commit('addResource', base)
+		store.commit('setNodeResource', { nodeId, resourceId })
+		autoSizeMediaNode(nodeId, base.url, kind)
+		return nodeId
+	}
+})
 
 async function onSeedanceTaskObserved(taskId: string, stage: 'created' | 'completed') {
 	const nextTaskId = String(taskId || '').trim()
@@ -8427,6 +8662,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 	chatModelKey,
 	chatCollapsed,
 	markViewportMotion,
+	forceEndViewportMotion,
 	scheduleAsyncEdgeRender,
 	canvasViewportSize
 })
@@ -8486,14 +8722,12 @@ watch(
 		}
 		if (nodesExitingFullRender.length > 0) {
 			const isWarmupExit = warmupExitingFullRender.value
-			const visibleExiting: WorkflowNode[] = []
-			const offscreenExiting: WorkflowNode[] = []
-			const reused: WorkflowNode[] = []
+			const pendingCapture: WorkflowNode[] = []
+			const pendingBitmapLoads: Promise<void>[] = []
 			for (const nodeId of nodesExitingFullRender) {
 				const node = nodes.value.find((n) => String(n.id) === nodeId)
 				if (!node) continue
 				nodesNeedingScreenshotRefresh.delete(nodeId)
-				const needsUserRefresh = userSelectedNodesNeedingRefresh.has(nodeId)
 				userSelectedNodesNeedingRefresh.delete(nodeId)
 				const version = getNodeScreenshotVersion(node)
 				const existingCached = screenshotPool.getCachedScreenshot(nodeId, version)
@@ -8506,47 +8740,81 @@ watch(
 						newMap.set(nodeId, existingCached)
 						nodeScreenshotMap.value = newMap
 					}
-					reused.push(node)
+					if (existingCached && !hasBitmap(nodeId)) {
+						const loadPromise = (async () => {
+							try {
+								await loadScreenshotToCanvas(existingCached)
+							} catch {}
+							initCanvasScreenshotPool()
+						})()
+						pendingBitmapLoads.push(loadPromise)
+					}
 					continue
 				}
 
-				if (!isWarmupExit && !needsUserRefresh && mapEntryValid && existingCached) {
-					reused.push(node)
+				if (!isWarmupExit && mapEntryValid && existingCached) {
+					if (existingCached && !hasBitmap(nodeId)) {
+						const loadPromise = (async () => {
+							try {
+								await loadScreenshotToCanvas(existingCached)
+							} catch {}
+							initCanvasScreenshotPool()
+						})()
+						pendingBitmapLoads.push(loadPromise)
+					}
 					continue
 				}
 
-				if (!isWarmupExit) {
-					screenshotPool.invalidateScreenshot(nodeId)
-					invalidateCanvasScreenshot(nodeId)
-					const newMap = new Map(nodeScreenshotMap.value)
-					newMap.delete(nodeId)
-					nodeScreenshotMap.value = newMap
-				}
-
-				if (isNodeInViewport(node)) {
-					visibleExiting.push(node)
-				} else {
-					offscreenExiting.push(node)
-				}
+				pendingCapture.push(node)
 			}
 
-			const captureExiting = (
-				list: WorkflowNode[],
-				delayMs: number,
-				priority: ScreenshotPriority
-			) => {
-				if (list.length === 0) return
-				nextTick(() => {
-					setTimeout(() => {
-						for (const node of list) {
-							void scheduleNodeScreenshot(node, 0, priority)
-						}
-					}, delayMs)
+			if (pendingBitmapLoads.length > 0) {
+				void Promise.all(pendingBitmapLoads).then(() => {
+					refreshCanvasNodeLayer()
 				})
 			}
 
-			captureExiting(visibleExiting, isWarmupExit ? 0 : 80, 'high')
-			captureExiting(offscreenExiting, isWarmupExit ? 50 : 300, 'low')
+			if (pendingCapture.length > 0) {
+				const pendingSet = new Set(pendingScreenshotNodeIds.value)
+				for (const node of pendingCapture) {
+					pendingSet.add(String(node.id))
+				}
+				pendingScreenshotNodeIds.value = pendingSet
+
+				nextTick(() => {
+					setTimeout(() => {
+						const capturePromises: Promise<void>[] = []
+						for (const node of pendingCapture) {
+							const promise = (async () => {
+								const nodeId = String(node.id)
+								try {
+									await scheduleNodeScreenshot(node, 0, 'high', true)
+									const version = getNodeScreenshotVersion(node)
+									const cached = screenshotPool.getCachedScreenshot(nodeId, version)
+									if (cached) {
+										const newMap = new Map(nodeScreenshotMap.value)
+										newMap.set(nodeId, cached)
+										nodeScreenshotMap.value = newMap
+										try {
+											await loadScreenshotToCanvas(cached)
+										} catch {}
+										initCanvasScreenshotPool()
+									}
+								} catch (err) {
+									console.warn('[Screenshot] pending capture failed for node:', nodeId, err)
+								} finally {
+									const newPendingSet = new Set(pendingScreenshotNodeIds.value)
+									newPendingSet.delete(nodeId)
+									pendingScreenshotNodeIds.value = newPendingSet
+									refreshCanvasNodeLayer()
+								}
+							})()
+							capturePromises.push(promise)
+						}
+						void Promise.all(capturePromises)
+					}, isWarmupExit ? 0 : 50)
+				})
+			}
 		}
 		nextTick(() => {
 			scheduleVisibleNodeScreenshots()
@@ -8582,11 +8850,13 @@ const onCanvasPanningStart = () => {
 	canvasInteraction.cancelFocusAnimation()
 	linkInteraction.setPanning(true)
 	panningFullRenderSnapshot.value = new Set(fullRenderNodeIds.value)
+	markViewportMotion()
 }
 
 const onCanvasPanningEnd = () => {
 	linkInteraction.setPanning(false)
 	panningFullRenderSnapshot.value = null
+	forceEndViewportMotion()
 }
 
 const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
@@ -8621,9 +8891,26 @@ const onCanvasNodePointerDown = (nodeId: string | null, _event: PointerEvent) =>
 	}
 }
 
+const onSelectionFrameDragStart = (payload: { nodeIds: string[] }) => {
+	selectionFrameDragging.value = true
+	selectionFrameDragNodeIds.value = new Set(payload.nodeIds)
+	markViewportMotion()
+	refreshCanvasNodeLayer()
+}
+
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
 	store.dispatch('moveNodesBy', payload)
+	markViewportMotion()
 	scheduleAsyncEdgeRender()
+	refreshCanvasNodeLayer()
+}
+
+const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
+	selectionFrameDragging.value = false
+	selectionFrameDragNodeIds.value = new Set()
+	forceEndViewportMotion()
+	refreshCanvasNodeLayer()
+	scheduleVisibleNodeScreenshots()
 }
 
 onBeforeUnmount(() => {
@@ -8980,6 +9267,18 @@ if (import.meta.env.DEV) {
 .aiwf-canvas {
 	position: absolute;
 	inset: 0;
+}
+
+.aiwf-viewport-motion .aiwf-canvas,
+.aiwf-viewport-motion .wf-edge-canvas,
+.aiwf-viewport-motion .node-canvas-layer {
+	will-change: transform;
+	contain: layout paint;
+}
+
+.aiwf-viewport-motion .wf-node {
+	contain: layout paint style;
+	will-change: transform;
 }
 
 .aiwf-node-host {

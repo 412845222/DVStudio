@@ -27,7 +27,10 @@ async function main() {
 	const buildEnv = {
 		ELECTRON_BUILDER_DISABLE_UPDATES_CHECK: 'true',
 		ELECTRON_CACHE: cacheDir,
-		ELECTRON_BUILDER_CACHE: cacheDir
+		ELECTRON_BUILDER_CACHE: cacheDir,
+		PIP_INDEX_URL: process.env.PIP_INDEX_URL || 'https://pypi.tuna.tsinghua.edu.cn/simple',
+		ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
+		ELECTRON_BUILDER_BINARIES_MIRROR: process.env.ELECTRON_BUILDER_BINARIES_MIRROR || 'https://npmmirror.com/mirrors/electron-builder-binaries/'
 	}
 
 	let code = await run('npx', ['vite', 'build'])

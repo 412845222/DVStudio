@@ -321,7 +321,9 @@ export const useAIWorkflowNodeVisibility = (payload: {
 			motionActive &&
 			lastVisibleIdArr.length > 0 &&
 			lastNodeCount === nodeCount &&
-			lastSelectedCount === selectedCount
+			lastSelectedCount === selectedCount &&
+			Math.abs(lastZoom - zoom) < 0.001 &&
+			now - lastComputeAt < motionRecomputeMinIntervalMs
 		) {
 			return lastVisibleIdSet
 		}

@@ -437,6 +437,9 @@ contextBridge.exposeInMainWorld('dweb', {
 		list: (payload) => invoke('dweb:seedance:list', payload || {}),
 		taskDetail: (payload) => invoke('dweb:seedance:task-detail', payload || {}),
 		sync: (payload) => invoke('dweb:seedance:sync', payload || {}),
+		taskDetailRemote: (payload) => invoke('dweb:seedance:task-detail-remote', payload || {}),
+		downloadAsset: (payload) => invoke('dweb:seedance:download-asset', payload || {}),
+		listAllRemote: (payload) => invoke('dweb:seedance:list-all-remote', payload || {}),
 	},
 	// ===== 火山方舟（ARK）任务面板 =====
 	ark: {
@@ -479,6 +482,19 @@ contextBridge.exposeInMainWorld('dweb', {
 	},
 	// ===== Agent Skills =====
 	agentSkills: {
+		sceneUnderstand: {
+			models: () => invoke('dweb:agent-skills:scene-understand:models'),
+			run: (payload) => invoke('dweb:agent-skills:scene-understand:run', payload || {}),
+			runStream: (payload) => createIpcStreamGenerator('dweb:agent-skills:scene-understand:run', payload || {}),
+		},
+		sceneLighting: {
+			models: () => invoke('dweb:agent-skills:scene-lighting:models'),
+			run: (payload) => invoke('dweb:agent-skills:scene-lighting:run', payload || {}),
+			runStream: (payload) => createIpcStreamGenerator('dweb:agent-skills:scene-lighting:run', payload || {}),
+		},
+		sceneLayout: {
+			run: (payload) => invoke('dweb:agent-skills:scene-layout:run', payload || {}),
+		},
 		unreal: {
 			sessions: () => invoke('dweb:agent-skills:unreal:sessions'),
 			register: (payload) => invoke('dweb:agent-skills:unreal:register', payload || {}),

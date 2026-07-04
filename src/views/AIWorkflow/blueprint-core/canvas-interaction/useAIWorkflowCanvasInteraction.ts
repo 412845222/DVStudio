@@ -18,6 +18,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 	chatModelKey: Ref<string>
 	chatCollapsed: Ref<boolean>
 	markViewportMotion: () => void
+	forceEndViewportMotion?: () => void
 	scheduleAsyncEdgeRender: () => void
 	canvasViewportSize: Ref<{ width: number; height: number }>
 }) => {
@@ -265,8 +266,8 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 		const nodeWidth = Number.isFinite(node.width) ? (node.width as number) : DEFAULT_NODE_WIDTH
 		const nodeHeight = Number.isFinite(node.height) ? (node.height as number) : DEFAULT_NODE_HEIGHT
 
-		const nodeCenterX = (node.worldX as number) + nodeWidth / 2
-		const nodeCenterY = (node.worldY as number) + nodeHeight / 2
+		const nodeCenterX = node.worldX as number
+		const nodeCenterY = node.worldY as number
 
 		const targetPanX = -nodeCenterX * zoom
 		const targetPanY = -nodeCenterY * zoom
@@ -292,11 +293,12 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 			const panY = startPanY + dy * t
 
 			payload.store.commit('setViewport', { zoom, panX, panY })
-			payload.markViewportMotion()
 
 			if (rawT < 1) {
+				payload.markViewportMotion()
 				focusAnimationFrameId = requestAnimationFrame(animate)
 			} else {
+				payload.forceEndViewportMotion?.()
 				focusAnimationFrameId = null
 			}
 		}
