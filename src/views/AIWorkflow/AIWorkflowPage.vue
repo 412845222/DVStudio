@@ -900,7 +900,8 @@ import { useAIWorkflowCanvasScreenshot } from './blueprint-core/useAIWorkflowCan
 import {
 	loadAllScreenshotsForBlueprint,
 	saveScreenshotToDisk,
-	cleanupOldScreenshots
+	cleanupOldScreenshots,
+	makeDiskCacheKey
 } from './node-screenshot/nodeScreenshotPersistentCache'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
@@ -1847,9 +1848,10 @@ const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
 	return result
 })
 
-const getNodeScreenshotVersion = (node: WorkflowNode): string => {
+const getNodeScreenshotVersion = (node: WorkflowNode, theme?: 'dark' | 'light'): string => {
+	const targetTheme = theme ?? (themeStore.state.mode as 'dark' | 'light')
 	const parts: string[] = []
-	parts.push(`theme:${themeStore.state.mode}`)
+	parts.push(`theme:${targetTheme}`)
 	parts.push(`t:${node.title || ''}`)
 	parts.push(`a:${node.alias || ''}`)
 	parts.push(`w:${node.width || 240}`)
@@ -2012,7 +2014,8 @@ const scheduleNodeScreenshot = async (
 			const newMap = new Map(nodeScreenshotMap.value)
 			newMap.set(nodeId, entry)
 			nodeScreenshotMap.value = newMap
-			invalidateCanvasScreenshot(nodeId)
+			const activeTheme = themeStore.state.mode as 'dark' | 'light'
+			invalidateCanvasScreenshot(nodeId, activeTheme)
 			try {
 				await loadScreenshotToCanvas(entry)
 			} catch {}
@@ -2065,8 +2068,9 @@ const scheduleVisibleNodeScreenshots = () => {
 				const newMap = new Map(nodeScreenshotMap.value)
 				newMap.set(nodeId, cached)
 				nodeScreenshotMap.value = newMap
-				if (!hasBitmap(nodeId)) {
-					invalidateCanvasScreenshot(nodeId)
+				const activeTheme = themeStore.state.mode as 'dark' | 'light'
+				if (!hasBitmap(nodeId, activeTheme)) {
+					invalidateCanvasScreenshot(nodeId, activeTheme)
 					const loadPromise = (async () => {
 						try {
 							await loadScreenshotToCanvas(cached)
@@ -2129,38 +2133,43 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		try {
 			const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
 			const totalNodes = allNodes.length
+			const currentTheme = themeStore.state.mode as 'dark' | 'light'
+			const otherTheme: 'dark' | 'light' = currentTheme === 'dark' ? 'light' : 'dark'
 			for (let i = 0; i < totalNodes; i++) {
 				const node = allNodes[i]
 				const nodeId = node.id
-				const version = getNodeScreenshotVersion(node)
-				const diskEntry = diskCache.get(nodeId)
-				if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
-					const entryTheme = version.startsWith('theme:light') ? 'light' : 'dark'
-					const screenshotEntry: ScreenshotCacheEntry = {
-						nodeId,
-						version,
-						theme: entryTheme,
-						dataUrl: diskEntry.dataUrl,
-						width: diskEntry.width,
-						height: diskEntry.height,
-						padding: SCREENSHOT_PADDING,
-						capturedAt: Date.now()
+				for (const theme of ['dark', 'light'] as const) {
+					const version = getNodeScreenshotVersion(node, theme)
+					const diskEntry = diskCache.get(makeDiskCacheKey(nodeId, theme))
+					if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
+						screenshotPool.prefillCache(
+							nodeId,
+							version,
+							diskEntry.dataUrl,
+							diskEntry.width,
+							diskEntry.height,
+							SCREENSHOT_PADDING
+						)
+						if (theme === currentTheme) {
+							const screenshotEntry: ScreenshotCacheEntry = {
+								nodeId,
+								version,
+								theme,
+								dataUrl: diskEntry.dataUrl,
+								width: diskEntry.width,
+								height: diskEntry.height,
+								padding: SCREENSHOT_PADDING,
+								capturedAt: Date.now()
+							}
+							newMap.set(nodeId, screenshotEntry)
+						}
+						diskLoadedCount++
 					}
-					newMap.set(nodeId, screenshotEntry)
-					screenshotPool.prefillCache(
-						nodeId,
-						version,
-						diskEntry.dataUrl,
-						diskEntry.width,
-						diskEntry.height,
-						SCREENSHOT_PADDING
-					)
-					diskLoadedCount++
 				}
 				if (i % 10 === 0 || i === totalNodes - 1) {
 					const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
 					screenshotWarmupProgress.value = 0.03 + ratio * 0.06
-					screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes}...`
+					screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes * 2}...`
 					if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 				}
 			}
@@ -2658,7 +2667,7 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 	const versionMap = new Map<string, string>()
 	for (const node of allNodes) {
 		const nid = String(node.id)
-		const version = getNodeScreenshotVersion(node)
+		const version = getNodeScreenshotVersion(node, toTheme)
 		versionMap.set(nid, version)
 		if (!screenshotPool.hasCachedScreenshot(nid, version)) {
 			nodesNeedingCapture.push(node)
@@ -2666,17 +2675,21 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 	}
 
 	if (nodesNeedingCapture.length === 0) {
+		const newMap = new Map(nodeScreenshotMap.value)
 		for (const node of allNodes) {
 			const nid = String(node.id)
-			if (!hasBitmap(nid, toTheme)) {
-				const cachedEntry = screenshotPool.getCachedScreenshot(nid, versionMap.get(nid) || '')
-				if (cachedEntry) {
-					try {
-						await loadScreenshotToCanvas(cachedEntry)
-					} catch {}
-				}
+			const cachedEntry = screenshotPool.getCachedScreenshot(nid, versionMap.get(nid) || '')
+			if (cachedEntry) {
+				newMap.set(nid, cachedEntry)
+			}
+			if (!hasBitmap(nid, toTheme) && cachedEntry) {
+				try {
+					await loadScreenshotToCanvas(cachedEntry)
+				} catch {}
 			}
 		}
+		nodeScreenshotMap.value = newMap
+		initCanvasScreenshotPool()
 		refreshCanvasNodeLayer()
 		return
 	}
@@ -2720,7 +2733,7 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 			}
 
 			if (nodeEl && !signal.aborted) {
-				const version = getNodeScreenshotVersion(node)
+				const version = getNodeScreenshotVersion(node, toTheme)
 				const width = Math.max(80, Math.round(node.width) || 240)
 				const height = Math.max(80, Math.round(node.height) || 160)
 				const entry = await screenshotPool.queueScreenshot(
@@ -2734,7 +2747,7 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 				)
 				if (entry?.dataUrl && !signal.aborted) {
 					newMap.set(nodeId, entry)
-					invalidateCanvasScreenshot(nodeId)
+					invalidateCanvasScreenshot(nodeId, toTheme)
 					try {
 						await loadScreenshotToCanvas(entry)
 					} catch {}
@@ -2806,8 +2819,9 @@ watch(
 			if (prev && (Math.abs(prev.w - w) >= 1 || Math.abs(prev.h - h) >= 1)) {
 				const node = nodes.value.find((n) => String(n.id) === nodeId)
 				if (node) {
-					screenshotPool.invalidateScreenshot(nodeId)
-					invalidateCanvasScreenshot(nodeId)
+					const activeTheme = themeStore.state.mode as 'dark' | 'light'
+					screenshotPool.invalidateScreenshot(nodeId, activeTheme)
+					invalidateCanvasScreenshot(nodeId, activeTheme)
 					if (currentFullRenderIds.has(nodeId)) {
 						nodesNeedingScreenshotRefresh.add(nodeId)
 						if (selectedNodeIds.value.includes(nodeId)) {
@@ -2946,39 +2960,42 @@ const loadCachedScreenshotsToCanvas = async () => {
 		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
 		const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
 		const totalNodes = allNodes.length
+		const currentTheme = themeStore.state.mode as 'dark' | 'light'
 		for (let i = 0; i < totalNodes; i++) {
 			const node = allNodes[i]
 			const nodeId = node.id
-			const version = getNodeScreenshotVersion(node)
-			const diskEntry = diskCache.get(nodeId)
-			if (diskEntry && diskEntry.dataUrl) {
-				const entryVersion = diskEntry.version || version
-				const entryTheme = entryVersion.startsWith('theme:light') ? 'light' : 'dark'
-				const screenshotEntry: ScreenshotCacheEntry = {
-					nodeId,
-					version: entryVersion,
-					theme: entryTheme,
-					dataUrl: diskEntry.dataUrl,
-					width: diskEntry.width,
-					height: diskEntry.height,
-					padding: SCREENSHOT_PADDING,
-					capturedAt: Date.now()
+			for (const theme of ['dark', 'light'] as const) {
+				const version = getNodeScreenshotVersion(node, theme)
+				const diskEntry = diskCache.get(makeDiskCacheKey(nodeId, theme))
+				if (diskEntry && diskEntry.dataUrl && diskEntry.version === version) {
+					screenshotPool.prefillCache(
+						nodeId,
+						version,
+						diskEntry.dataUrl,
+						diskEntry.width,
+						diskEntry.height,
+						SCREENSHOT_PADDING
+					)
+					if (theme === currentTheme) {
+						const screenshotEntry: ScreenshotCacheEntry = {
+							nodeId,
+							version,
+							theme,
+							dataUrl: diskEntry.dataUrl,
+							width: diskEntry.width,
+							height: diskEntry.height,
+							padding: SCREENSHOT_PADDING,
+							capturedAt: Date.now()
+						}
+						newMap.set(nodeId, screenshotEntry)
+					}
+					diskLoadedCount++
 				}
-				newMap.set(nodeId, screenshotEntry)
-				screenshotPool.prefillCache(
-					nodeId,
-					diskEntry.version || version,
-					diskEntry.dataUrl,
-					diskEntry.width,
-					diskEntry.height,
-					SCREENSHOT_PADDING
-				)
-				diskLoadedCount++
 			}
 			if (i % 10 === 0 || i === totalNodes - 1) {
 				const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
 				screenshotWarmupProgress.value = 0.05 + ratio * 0.2
-				screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes}...`
+				screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes * 2}...`
 				if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 			}
 		}
@@ -5443,7 +5460,8 @@ const onNodeMediaReady = (nodeId: string) => {
 
 			const version = getNodeScreenshotVersion(node)
 			if (!screenshotPool.hasCachedScreenshot(nodeId, version)) {
-				screenshotPool.invalidateScreenshot(nodeId)
+				const activeTheme = themeStore.state.mode as 'dark' | 'light'
+				screenshotPool.invalidateScreenshot(nodeId, activeTheme)
 				const newMap = new Map(nodeScreenshotMap.value)
 				newMap.delete(nodeId)
 				nodeScreenshotMap.value = newMap
@@ -5456,7 +5474,9 @@ const onNodeMediaReady = (nodeId: string) => {
 const onNodeInvalidateScreenshot = (nodeId: string) => {
 	if (selectedNodeIds.value.includes(nodeId)) return
 	if (fullRenderNodeIds.value.has(nodeId)) return
-	screenshotPool.invalidateScreenshot(nodeId)
+	const activeTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.invalidateScreenshot(nodeId, activeTheme)
+	invalidateCanvasScreenshot(nodeId, activeTheme)
 	const newMap = new Map(nodeScreenshotMap.value)
 	newMap.delete(nodeId)
 	nodeScreenshotMap.value = newMap
@@ -5736,7 +5756,9 @@ const onNodeThreePreviewProgress = (
 
 const onNodeThreePreviewReady = (nodeId: string) => {
 	completePreviewSession(nodeId)
-	screenshotPool.invalidateScreenshot(nodeId)
+	const activeTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.invalidateScreenshot(nodeId, activeTheme)
+	invalidateCanvasScreenshot(nodeId, activeTheme)
 	const newMap = new Map(nodeScreenshotMap.value)
 	newMap.delete(nodeId)
 	nodeScreenshotMap.value = newMap
@@ -8000,8 +8022,9 @@ const warmupCropCreatedNode = async (nodeId: string) => {
 		await waitForFrames(2)
 
 		// 失效可能存在的旧缓存（例如此前在图片未加载时捕获的空白截图）
-		screenshotPool.invalidateScreenshot(nid)
-		invalidateCanvasScreenshot(nid)
+		const activeTheme = themeStore.state.mode as 'dark' | 'light'
+		screenshotPool.invalidateScreenshot(nid, activeTheme)
+		invalidateCanvasScreenshot(nid, activeTheme)
 		const clearedMap = new Map(nodeScreenshotMap.value)
 		clearedMap.delete(nid)
 		nodeScreenshotMap.value = clearedMap

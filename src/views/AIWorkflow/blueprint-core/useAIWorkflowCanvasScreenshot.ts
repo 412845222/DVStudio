@@ -271,8 +271,8 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 	}
 
 	// 使缓存失效
-	const invalidate = (nodeId: string) => {
-		canvasPool.value?.invalidate(nodeId)
+	const invalidate = (nodeId: string, theme?: 'dark' | 'light') => {
+		canvasPool.value?.invalidate(nodeId, theme)
 	}
 
 	// 清空所有缓存

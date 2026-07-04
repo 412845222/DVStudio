@@ -390,11 +390,12 @@ export class CanvasScreenshotPool {
 	}
 
 	/**
-	 * 使缓存失效（两个主题都失效）
+	 * 使缓存失效，可指定主题；不指定则两个主题都失效
 	 */
-	invalidate(nodeId: string): void {
-		for (const theme of ['dark', 'light'] as const) {
-			const key = this.getKey(nodeId, theme)
+	invalidate(nodeId: string, theme?: 'dark' | 'light'): void {
+		const themes: ('dark' | 'light')[] = theme ? [theme] : ['dark', 'light']
+		for (const t of themes) {
+			const key = this.getKey(nodeId, t)
 			const entry = this.entries.get(key)
 			if (entry) {
 				this.disposeBitmap(entry.bitmap)

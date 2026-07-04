@@ -15,10 +15,20 @@ interface PersistedScreenshotEntry {
 	projectId: string
 	blueprintId: string
 	version: string
+	theme: 'dark' | 'light'
 	dataUrl: string
 	width: number
 	height: number
 	capturedAt: number
+}
+
+const extractThemeFromVersion = (version: string): 'dark' | 'light' => {
+	const m = version.match(/^theme:(dark|light)/)
+	return m ? (m[1] as 'dark' | 'light') : 'dark'
+}
+
+export const makeDiskCacheKey = (nodeId: string, theme: 'dark' | 'light'): string => {
+	return `${nodeId}::${theme}`
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null
@@ -75,6 +85,7 @@ export const saveScreenshotToDisk = async (
 			projectId,
 			blueprintId,
 			version,
+			theme: extractThemeFromVersion(version),
 			dataUrl,
 			width,
 			height,
@@ -116,10 +127,10 @@ export const loadScreenshotFromDisk = async (
 export const loadAllScreenshotsForBlueprint = async (
 	projectId: string,
 	blueprintId: string
-): Promise<Map<string, { dataUrl: string; version: string; width: number; height: number }>> => {
+): Promise<Map<string, { dataUrl: string; version: string; width: number; height: number; theme: 'dark' | 'light'; nodeId: string; capturedAt: number }>> => {
 	const result = new Map<
 		string,
-		{ dataUrl: string; version: string; width: number; height: number }
+		{ dataUrl: string; version: string; width: number; height: number; theme: 'dark' | 'light'; nodeId: string; capturedAt: number }
 	>()
 	try {
 		const db = await openDb()
@@ -133,12 +144,20 @@ export const loadAllScreenshotsForBlueprint = async (
 				const cursor = req.result
 				if (cursor) {
 					const entry = cursor.value as PersistedScreenshotEntry
-					result.set(entry.nodeId, {
-						dataUrl: entry.dataUrl,
-						version: entry.version,
-						width: entry.width,
-						height: entry.height
-					})
+					const theme = entry.theme || extractThemeFromVersion(entry.version)
+					const themeKey = makeDiskCacheKey(entry.nodeId, theme)
+					const existing = result.get(themeKey)
+					if (!existing || entry.capturedAt > existing.capturedAt) {
+						result.set(themeKey, {
+							dataUrl: entry.dataUrl,
+							version: entry.version,
+							width: entry.width,
+							height: entry.height,
+							theme,
+							nodeId: entry.nodeId,
+							capturedAt: entry.capturedAt
+						})
+					}
 					cursor.continue()
 				} else {
 					resolve()

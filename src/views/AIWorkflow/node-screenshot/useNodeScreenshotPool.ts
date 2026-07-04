@@ -396,9 +396,13 @@ export const createNodeScreenshotPool = () => {
 		return cache.get(key) || null
 	}
 
-	const invalidate = (nodeId: string) => {
-		cache.delete(getCacheKey(nodeId, 'dark'))
-		cache.delete(getCacheKey(nodeId, 'light'))
+	const invalidate = (nodeId: string, theme?: 'dark' | 'light') => {
+		if (theme) {
+			cache.delete(getCacheKey(nodeId, theme))
+		} else {
+			cache.delete(getCacheKey(nodeId, 'dark'))
+			cache.delete(getCacheKey(nodeId, 'light'))
+		}
 	}
 
 	const invalidateTheme = (theme: 'dark' | 'light') => {
