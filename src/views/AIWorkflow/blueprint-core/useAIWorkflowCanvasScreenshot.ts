@@ -244,18 +244,18 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 	const state = computed(() => getState())
 
 	// 检查是否有Bitmap
-	const hasBitmap = (nodeId: string): boolean => {
-		return canvasPool.value?.hasBitmap(nodeId) ?? false
+	const hasBitmap = (nodeId: string, theme?: 'dark' | 'light'): boolean => {
+		return canvasPool.value?.hasBitmap(nodeId, theme) ?? false
 	}
 
 	// 获取Bitmap
-	const getBitmap = (nodeId: string) => {
-		return canvasPool.value?.getBitmap(nodeId) ?? null
+	const getBitmap = (nodeId: string, theme?: 'dark' | 'light') => {
+		return canvasPool.value?.getBitmap(nodeId, theme) ?? null
 	}
 
 	// 获取完整Entry (含bitmap实际尺寸)
-	const getEntry = (nodeId: string) => {
-		return canvasPool.value?.getEntry(nodeId) ?? null
+	const getEntry = (nodeId: string, theme?: 'dark' | 'light') => {
+		return canvasPool.value?.getEntry(nodeId, theme) ?? null
 	}
 
 	// 获取视口内的节点
@@ -273,6 +273,12 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 	// 使缓存失效
 	const invalidate = (nodeId: string) => {
 		canvasPool.value?.invalidate(nodeId)
+	}
+
+	// 清空所有缓存
+	const clearAll = () => {
+		canvasPool.value?.clear()
+		cancelPending()
 	}
 
 	// 裁剪到有效节点
@@ -330,6 +336,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		// 更新
 		updatePosition,
 		invalidate,
+		clearAll,
 		pruneToValidNodes,
 
 		// 配置
