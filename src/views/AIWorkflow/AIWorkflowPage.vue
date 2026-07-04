@@ -2648,7 +2648,7 @@ watch(
 	{ flush: 'post' }
 )
 
-const startThemeWarmup = async (toTheme: 'dark' | 'light', fromTheme: 'dark' | 'light') => {
+const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 'light') => {
 	const allNodes = nodes.value.filter((n) => {
 		const nid = String(n?.id ?? '').trim()
 		return nid && !selectedNodeIds.value.includes(nid)

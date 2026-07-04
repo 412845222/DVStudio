@@ -389,7 +389,7 @@ export class CanvasNodeRenderer {
 
 		try {
 			ctx.drawImage(bmp, drawX, drawY, entry.width, entry.height)
-		} catch (err) {
+		} catch {
 		}
 
 		if (mode === 'compact') {

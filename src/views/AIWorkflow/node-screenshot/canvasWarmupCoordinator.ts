@@ -175,7 +175,7 @@ export class CanvasWarmupCoordinator {
 			return
 		}
 
-		if (this.canvasPool.hasBitmapForTheme(nodeId, theme)) {
+		if (this.canvasPool.hasBitmap(nodeId, theme)) {
 			return
 		}
 
@@ -228,7 +228,7 @@ export class CanvasWarmupCoordinator {
 			const isInViewport = this.isNodeInViewport(item, viewportRect)
 			const isNearViewport = this.isNodeNearViewport(item, viewportRect, visibleThreshold)
 
-			let priority: 'high' | 'normal' | 'low' = 'normal'
+			let priority: 'high' | 'normal' | 'low'
 			if (isInViewport) {
 				priority = 'high'
 			} else if (isNearViewport) {

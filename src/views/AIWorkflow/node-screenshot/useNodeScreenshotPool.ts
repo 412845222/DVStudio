@@ -424,15 +424,6 @@ export const createNodeScreenshotPool = () => {
 
 	const getActiveTheme = (): 'dark' | 'light' => activeTheme
 
-	const getCurrentTheme = (): 'dark' | 'light' => {
-		try {
-			const theme = document.documentElement.getAttribute('data-theme')
-			return theme === 'light' ? 'light' : 'dark'
-		} catch {
-			return 'dark'
-		}
-	}
-
 	const setWarmupProgressCallback = (cb: ((info: WarmupProgressInfo) => void) | null) => {
 		onWarmupProgress = cb
 	}
@@ -482,7 +473,6 @@ export const createNodeScreenshotPool = () => {
 
 		// 临时设置文档主题以确保getComputedStyle获取正确的值（仅当host不在正确主题上下文中时）
 		// 注意：host在body下，会继承html[data-theme]，但为了安全显式设置
-		const origHtmlTheme = document.documentElement.getAttribute('data-theme')
 		// 不修改html主题，因为host已设置data-theme且CSS变量是继承的
 
 		const clone = sourceEl.cloneNode(true) as HTMLElement

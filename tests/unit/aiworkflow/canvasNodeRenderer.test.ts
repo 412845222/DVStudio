@@ -50,7 +50,8 @@ const createMockCanvas = (ctx: ReturnType<typeof createMockCtx>) => {
 
 const createMockPoolProvider = (entries: Map<string, { bitmap: any; width: number; height: number }> = new Map()): ScreenshotPoolProvider => {
 	return () => ({
-		getEntry: (nodeId: string) => entries.get(nodeId) || null
+		getEntry: (nodeId: string, _theme?: 'dark' | 'light') => entries.get(nodeId) || null,
+		setActiveTheme: () => {}
 	})
 }
 
@@ -298,6 +299,94 @@ describe('CanvasNodeRenderer', () => {
 
 			const clearRectCallsAfter = ctx.clearRect.mock.calls.length
 			expect(clearRectCallsAfter).toBeGreaterThan(clearRectCallsBefore)
+		})
+	})
+
+	describe('setTheme and cross-fade transition', () => {
+		it('should initialize with dark theme by default', () => {
+			const poolProvider = createMockPoolProvider()
+			const canvas = createMockCanvas(ctx)
+			const renderer = new CanvasNodeRenderer(canvas, poolProvider)
+			expect(renderer.getTheme()).toBe('dark')
+		})
+
+		it('should update theme when setTheme is called', () => {
+			const poolProvider = createMockPoolProvider()
+			const canvas = createMockCanvas(ctx)
+			const renderer = new CanvasNodeRenderer(canvas, poolProvider)
+
+			renderer.setTheme('light')
+			expect(renderer.getTheme()).toBe('light')
+		})
+
+		it('should not start transition when same theme is set', () => {
+			const mockBitmap = document.createElement('canvas')
+			mockBitmap.width = 200
+			mockBitmap.height = 160
+			const poolProvider = createMockPoolProvider(
+				new Map([['node1', { bitmap: mockBitmap, width: 200, height: 160 }]])
+			)
+			const canvas = createMockCanvas(ctx)
+			const renderer = new CanvasNodeRenderer(canvas, poolProvider)
+			renderer.setViewport({ panX: 0, panY: 0, zoom: 1 })
+			renderer.setNodes([createMockNode('node1', 0, 0)])
+			renderer.render({ panX: 0, panY: 0, zoom: 1 })
+
+			renderer.setTheme('dark')
+			expect(renderer.isTransitioning()).toBe(false)
+		})
+
+		it('should start transition when theme changes', () => {
+			const darkBitmap = document.createElement('canvas')
+			darkBitmap.width = 200
+			darkBitmap.height = 160
+			const lightBitmap = document.createElement('canvas')
+			lightBitmap.width = 200
+			lightBitmap.height = 160
+
+			const dualEntries = new Map<string, { bitmap: any; width: number; height: number }>()
+			dualEntries.set('node1::dark', { bitmap: darkBitmap, width: 200, height: 160 })
+			dualEntries.set('node1::light', { bitmap: lightBitmap, width: 200, height: 160 })
+			dualEntries.set('node1', { bitmap: darkBitmap, width: 200, height: 160 })
+
+			const provider = () => ({
+				getEntry: (nodeId: string, theme?: 'dark' | 'light') => {
+					if (theme) {
+						return dualEntries.get(`${nodeId}::${theme}`) || null
+					}
+					return dualEntries.get(nodeId) || null
+				},
+				setActiveTheme: () => {}
+			})
+
+			const canvas = createMockCanvas(ctx)
+			const renderer = new CanvasNodeRenderer(canvas, provider)
+			renderer.setViewport({ panX: 0, panY: 0, zoom: 1 })
+			renderer.setNodes([createMockNode('node1', 0, 0)])
+			renderer.render({ panX: 0, panY: 0, zoom: 1 })
+
+			ctx.drawImage.mockClear()
+			ctx.globalAlpha = 1
+
+			renderer.setTheme('light')
+			renderer.render({ panX: 0, panY: 0, zoom: 1 })
+
+			expect(ctx.drawImage).toHaveBeenCalled()
+			expect(renderer.isTransitioning()).toBe(true)
+		})
+
+		it('should render placeholder colors matching theme', () => {
+			const poolProvider = createMockPoolProvider()
+			const canvas = createMockCanvas(ctx)
+			const renderer = new CanvasNodeRenderer(canvas, poolProvider)
+
+			renderer.setTheme('light')
+			renderer.setViewport({ panX: 0, panY: 0, zoom: 1 })
+			renderer.setNodes([createMockNode('node1', 0, 0)])
+			renderer.render({ panX: 0, panY: 0, zoom: 1 })
+
+			expect(ctx.fillStyle).toBeTruthy()
+			expect(ctx.fill).toHaveBeenCalled()
 		})
 	})
 })

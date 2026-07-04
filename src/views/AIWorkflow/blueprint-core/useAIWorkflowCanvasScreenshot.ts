@@ -8,7 +8,7 @@
  * 4. 内存管理和性能优化
  */
 
-import { ref, shallowRef, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, shallowRef, computed, onBeforeUnmount } from 'vue'
 import type { ScreenshotCacheEntry } from '../node-screenshot'
 import { CanvasScreenshotPool, CanvasWarmupCoordinator } from '../node-screenshot'
 
