@@ -49,6 +49,7 @@
 					:viewport="viewport"
 					:motion-active="viewportMotionActive"
 					:screenshot-pool-provider="canvasScreenshotPoolProvider"
+					:theme="themeStore.state.mode"
 					@node-click="onCanvasNodeClick"
 				/>
 
@@ -612,6 +613,13 @@
 				:progress="screenshotWarmupProgress"
 				:cancellable="false"
 			/>
+
+			<ThemeWarmupProgress
+				:visible="themeWarmupOpen"
+				:title="t('aiworkflow.page.themeWarmup.title', { theme: themeWarmupThemeLabel })"
+				:detail="themeWarmupDetail"
+				:progress="themeWarmupProgress"
+			/>
 		</div>
 		<BlueprintLogPanel v-model:open="blueprintLogPanelOpen" />
 		<AIWorkflowDebugPanel v-if="isWebEnvironment()" :store="store" />
@@ -749,6 +757,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
 import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
 import NodeCanvasLayer from './components/NodeCanvasLayer.vue'
+import ThemeWarmupProgress from './components/ThemeWarmupProgress.vue'
 import CanvasAnchorLayer from './components/CanvasAnchorLayer.vue'
 import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, {
@@ -809,6 +818,8 @@ import {
 import type { AIWorkflowDraftSnapshot } from '../../aiworkflow/persistence/blueprintSnapshot'
 import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
 import { AIWorkflowKey } from '../../store/aiworkflow'
+import { ThemeKey } from '../../store/theme'
+import type { ThemeMode } from '../../store/theme'
 import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
 import { aiWorkflowHistory, ensureAIWorkflowHistory } from '../../adapters/aiWorkflowPersistence'
 import { ComfyUIBridgeService } from '../../network/ComfyUIBridgeService'
@@ -873,6 +884,7 @@ import { useAIWorkflowLinking } from './blueprint-core/linking/useAIWorkflowLink
 import { useAIWorkflowNodePresentation } from './node-business/presentation/useAIWorkflowNodePresentation'
 import {
 	createNodeScreenshotPool,
+	invalidateDocumentStyleCache,
 	SCREENSHOT_PADDING,
 	type ScreenshotCacheEntry,
 	type ScreenshotPriority,
@@ -1112,6 +1124,7 @@ const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
 const { t } = useI18n()
+const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
@@ -1356,6 +1369,15 @@ const LINK_HOVER_STABLE_DELAY_MS = 400
 
 const warmupConfirmDialogOpen = ref(false)
 
+const themeWarmupOpen = ref(false)
+const themeWarmupProgress = ref(0)
+const themeWarmupDetail = ref('')
+const themeWarmupTargetTheme = ref<'dark' | 'light'>('dark')
+const themeWarmupThemeLabel = computed(() =>
+	t(themeWarmupTargetTheme.value === 'light' ? 'aiworkflow.page.themeWarmup.lightLabel' : 'aiworkflow.page.themeWarmup.darkLabel')
+)
+let themeWarmupAbortController: AbortController | null = null
+
 const autoWireInProgress = ref(false)
 const autoWireSourceNodeId = ref<string | null>(null)
 const autoWireCreatedNodeIds = ref<string[]>([])
@@ -1441,6 +1463,8 @@ const {
 	getBitmap,
 	getEntry: getCanvasEntry,
 	invalidate: invalidateCanvasScreenshot,
+	clearAll: clearAllCanvasScreenshots,
+	cancelPending: cancelCanvasWarmup,
 	loadScreenshot: loadScreenshotToCanvas,
 	dispose: disposeCanvasScreenshot
 } = useAIWorkflowCanvasScreenshot({
@@ -1462,9 +1486,11 @@ const nodeCanvasLayerRef = ref<InstanceType<typeof NodeCanvasLayer> | null>(null
 // Canvas截图池引用 (用于传递给NodeCanvasLayer)
 // 注意：始终有值，不会为null
 const canvasScreenshotPool = shallowRef<{
-	getEntry: (nodeId: string) => { bitmap: ImageBitmap | HTMLCanvasElement; width: number; height: number } | null
+	getEntry: (nodeId: string, theme?: 'dark' | 'light') => { bitmap: ImageBitmap | HTMLCanvasElement; width: number; height: number } | null
+	setActiveTheme: (theme: 'dark' | 'light') => void
 }>({
-	getEntry: () => null
+	getEntry: () => null,
+	setActiveTheme: () => {}
 })
 
 const canvasScreenshotPoolProvider = () => canvasScreenshotPool.value
@@ -1472,14 +1498,17 @@ const canvasScreenshotPoolProvider = () => canvasScreenshotPool.value
 // 初始化Canvas截图池引用
 const initCanvasScreenshotPool = () => {
 	canvasScreenshotPool.value = {
-		getEntry: (nodeId: string) => {
-			const entry = getCanvasEntry(nodeId)
+		getEntry: (nodeId: string, theme?: 'dark' | 'light') => {
+			const entry = getCanvasEntry(nodeId, theme)
 			if (!entry) return null
 			return {
 				bitmap: entry.bitmap,
 				width: entry.width,
 				height: entry.height
 			}
+		},
+		setActiveTheme: (theme: 'dark' | 'light') => {
+			screenshotPool.setActiveTheme(theme)
 		}
 	}
 }
@@ -1819,6 +1848,7 @@ const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
 
 const getNodeScreenshotVersion = (node: WorkflowNode): string => {
 	const parts: string[] = []
+	parts.push(`theme:${themeStore.state.mode}`)
 	parts.push(`t:${node.title || ''}`)
 	parts.push(`a:${node.alias || ''}`)
 	parts.push(`w:${node.width || 240}`)
@@ -2104,9 +2134,11 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 				const version = getNodeScreenshotVersion(node)
 				const diskEntry = diskCache.get(nodeId)
 				if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
+					const entryTheme = version.startsWith('theme:light') ? 'light' : 'dark'
 					const screenshotEntry: ScreenshotCacheEntry = {
 						nodeId,
 						version,
+						theme: entryTheme,
 						dataUrl: diskEntry.dataUrl,
 						width: diskEntry.width,
 						height: diskEntry.height,
@@ -2589,6 +2621,175 @@ watch(
 	{ flush: 'post' }
 )
 
+watch(
+	() => themeStore.state.mode,
+	(newTheme, oldTheme) => {
+		invalidateDocumentStyleCache()
+
+		if (themeWarmupAbortController) {
+			themeWarmupAbortController.abort()
+			themeWarmupAbortController = null
+		}
+
+		const fromTheme: 'dark' | 'light' = (oldTheme === 'light' ? 'light' : 'dark')
+		const toTheme: 'dark' | 'light' = (newTheme === 'light' ? 'light' : 'dark')
+
+		if (fromTheme === toTheme) return
+
+		screenshotPool.setActiveTheme(toTheme)
+
+		nextTick(() => {
+			nodeCanvasLayerRef.value?.setTheme(toTheme)
+			refreshCanvasNodeLayer()
+			void startThemeWarmup(toTheme, fromTheme)
+		})
+	},
+	{ flush: 'post' }
+)
+
+const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 'light') => {
+	const allNodes = nodes.value.filter((n) => {
+		const nid = String(n?.id ?? '').trim()
+		return nid && !selectedNodeIds.value.includes(nid)
+	})
+
+	const nodesNeedingCapture: WorkflowNode[] = []
+	const versionMap = new Map<string, string>()
+	for (const node of allNodes) {
+		const nid = String(node.id)
+		const version = getNodeScreenshotVersion(node)
+		versionMap.set(nid, version)
+		if (!screenshotPool.hasCachedScreenshot(nid, version)) {
+			nodesNeedingCapture.push(node)
+		}
+	}
+
+	if (nodesNeedingCapture.length === 0) {
+		for (const node of allNodes) {
+			const nid = String(node.id)
+			if (!hasBitmap(nid, toTheme)) {
+				const cachedEntry = screenshotPool.getCachedScreenshot(nid, versionMap.get(nid) || '')
+				if (cachedEntry) {
+					try {
+						await loadScreenshotToCanvas(cachedEntry)
+					} catch {}
+				}
+			}
+		}
+		refreshCanvasNodeLayer()
+		return
+	}
+
+	themeWarmupAbortController = new AbortController()
+	const signal = themeWarmupAbortController.signal
+
+	themeWarmupTargetTheme.value = toTheme
+	themeWarmupOpen.value = true
+	themeWarmupProgress.value = 0
+	const twLabel = t(toTheme === 'light' ? 'aiworkflow.page.themeWarmup.lightLabel' : 'aiworkflow.page.themeWarmup.darkLabel')
+	themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.preparing', { theme: twLabel })
+
+	const warmupNodeIds = new Set(nodesNeedingCapture.map((n) => String(n.id)))
+	warmupForceRenderNodeIds.value = warmupNodeIds
+
+	await nextTick()
+	await waitForFrames(2)
+
+	const total = nodesNeedingCapture.length
+	let screenshotCompleted = 0
+	const newMap = new Map(nodeScreenshotMap.value)
+	const startedSet = new Set<string>()
+	const promises: Promise<void>[] = []
+
+	const startCapture = async (node: WorkflowNode) => {
+		const nodeId = String(node.id ?? '').trim()
+		if (startedSet.has(nodeId) || signal.aborted) return
+		startedSet.add(nodeId)
+
+		try {
+			let nodeEl: HTMLElement | null = null
+			let retries = 0
+			while (retries < 8 && !nodeEl && !signal.aborted) {
+				await nextTick()
+				await waitForFrames(1)
+				const hostEl = nodeHostRefs.get(nodeId)
+				if (hostEl) {
+					nodeEl = findNodeElementForScreenshot(hostEl)
+				}
+				retries++
+			}
+
+			if (nodeEl && !signal.aborted) {
+				const version = getNodeScreenshotVersion(node)
+				const width = Math.max(80, Math.round(node.width) || 240)
+				const height = Math.max(80, Math.round(node.height) || 160)
+				const entry = await screenshotPool.queueScreenshot(
+					nodeId,
+					nodeEl,
+					version,
+					width,
+					height,
+					SCREENSHOT_PADDING,
+					'normal'
+				)
+				if (entry?.dataUrl && !signal.aborted) {
+					newMap.set(nodeId, entry)
+					invalidateCanvasScreenshot(nodeId)
+					try {
+						await loadScreenshotToCanvas(entry)
+					} catch {}
+				}
+			}
+		} catch (err) {
+			console.warn('[Theme Warmup] failed for node:', nodeId, err)
+		}
+
+		screenshotCompleted++
+		if (!signal.aborted) {
+			const ratio = screenshotCompleted / total
+			themeWarmupProgress.value = ratio
+			themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.progress', { theme: twLabel, completed: String(screenshotCompleted), total: String(total) })
+			refreshCanvasNodeLayer()
+		}
+	}
+
+	const CONCURRENCY = 4
+	for (let i = 0; i < nodesNeedingCapture.length; i += CONCURRENCY) {
+		if (signal.aborted) break
+		const batch = nodesNeedingCapture.slice(i, i + CONCURRENCY)
+		const batchPromises = batch.map((n) => startCapture(n))
+		promises.push(...batchPromises)
+		await Promise.all(batchPromises)
+	}
+
+	await Promise.all(promises)
+
+	if (signal.aborted) {
+		warmupForceRenderNodeIds.value = new Set()
+		themeWarmupAbortController = null
+		return
+	}
+
+	nodeScreenshotMap.value = newMap
+	warmupExitingFullRender.value = true
+	warmupForceRenderNodeIds.value = new Set()
+	await nextTick()
+	warmupExitingFullRender.value = false
+
+	themeWarmupProgress.value = 1
+	themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.done', { theme: twLabel })
+	initCanvasScreenshotPool()
+	refreshCanvasNodeLayer()
+
+	setTimeout(() => {
+		if (themeWarmupTargetTheme.value === toTheme) {
+			themeWarmupOpen.value = false
+		}
+	}, 800)
+
+	themeWarmupAbortController = null
+}
+
 const previousNodeSizes = new Map<string, { w: number; h: number }>()
 const nodesNeedingScreenshotRefresh = new Set<string>()
 watch(
@@ -2681,7 +2882,7 @@ const onConfirmForceWarmup = () => {
 	nodeScreenshotMap.value = new Map()
 	disposeCanvasScreenshot()
 	initCanvasScreenshot()
-	canvasScreenshotPool.value = { getEntry: () => null }
+	canvasScreenshotPool.value = { getEntry: () => null, setActiveTheme: () => {} }
 	initCanvasScreenshotPool()
 	warmupAllNodeScreenshots(true).catch((err) => {
 		console.warn('[Screenshot Warmup] force warmup failed:', err)
@@ -2751,9 +2952,12 @@ const loadCachedScreenshotsToCanvas = async () => {
 			const version = getNodeScreenshotVersion(node)
 			const diskEntry = diskCache.get(nodeId)
 			if (diskEntry && diskEntry.dataUrl) {
+				const entryVersion = diskEntry.version || version
+				const entryTheme = entryVersion.startsWith('theme:light') ? 'light' : 'dark'
 				const screenshotEntry: ScreenshotCacheEntry = {
 					nodeId,
-					version: diskEntry.version || version,
+					version: entryVersion,
+					theme: entryTheme,
 					dataUrl: diskEntry.dataUrl,
 					width: diskEntry.width,
 					height: diskEntry.height,
@@ -3108,7 +3312,7 @@ const createImageNodeAtCenter = (url: string, name?: string): string | null => {
 		store.commit('addNodeAt', {
 			worldX,
 			worldY,
-			title: name || 'Meshy 生成图片'
+			title: name || t('aiworkflow.page.defaultImageNodeTitle')
 		})
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
@@ -3125,7 +3329,7 @@ const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: s
 		store.commit('addNodeAt', {
 			worldX,
 			worldY,
-			title: name || 'Meshy 生成图片'
+			title: name || t('aiworkflow.page.defaultImageNodeTitle')
 		})
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
@@ -6088,7 +6292,7 @@ watch(
 				disposeCanvasScreenshot()
 				initCanvasScreenshot()
 			}
-			canvasScreenshotPool.value = { getEntry: () => null }
+			canvasScreenshotPool.value = { getEntry: () => null, setActiveTheme: () => {} }
 			initCanvasScreenshotPool()
 			if (warmupDebounceTimer) {
 				clearTimeout(warmupDebounceTimer)

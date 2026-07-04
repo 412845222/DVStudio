@@ -5,6 +5,7 @@
 // DOM截图池
 export {
 	createNodeScreenshotPool,
+	invalidateDocumentStyleCache,
 	type NodeScreenshotPool,
 	type ScreenshotCacheEntry,
 	type ScreenshotPriority,
