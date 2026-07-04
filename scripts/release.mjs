@@ -30,13 +30,20 @@ function error(msg) {
 	process.stderr.write(`${COLOR_RED}[release]${COLOR_RESET} ${msg}\n`)
 }
 
+function resolveCmd(cmd) {
+	if (process.platform === 'win32') {
+		return `${cmd}.cmd`
+	}
+	return cmd
+}
+
 function run(cmd, args, options = {}) {
-	const useShell = process.platform === 'win32' && options.shell !== false
-	log(`$ ${cmd} ${args.join(' ')}`)
-	const result = spawnSync(cmd, args, {
+	const resolvedCmd = resolveCmd(cmd)
+	log(`$ ${resolvedCmd} ${args.join(' ')}`)
+	const result = spawnSync(resolvedCmd, args, {
 		cwd: ROOT,
 		stdio: 'inherit',
-		shell: useShell,
+		shell: false,
 		env: {
 			...process.env,
 			...(options.env || {})
@@ -44,7 +51,7 @@ function run(cmd, args, options = {}) {
 		...options
 	})
 	if (result.status !== 0) {
-		throw new Error(`Command failed: ${cmd} ${args.join(' ')} (exit code ${result.status})`)
+		throw new Error(`Command failed: ${resolvedCmd} ${args.join(' ')} (exit code ${result.status})`)
 	}
 	return result
 }
@@ -84,7 +91,8 @@ function bumpVersion(currentVersion) {
 }
 
 function isGitClean() {
-	const result = spawnSync('git', ['status', '--porcelain'], {
+	const gitCmd = resolveCmd('git')
+	const result = spawnSync(gitCmd, ['status', '--porcelain'], {
 		cwd: ROOT,
 		encoding: 'utf8',
 		shell: false
@@ -94,7 +102,8 @@ function isGitClean() {
 }
 
 function getCurrentBranch() {
-	const result = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+	const gitCmd = resolveCmd('git')
+	const result = spawnSync(gitCmd, ['rev-parse', '--abbrev-ref', 'HEAD'], {
 		cwd: ROOT,
 		encoding: 'utf8',
 		shell: false
@@ -103,7 +112,8 @@ function getCurrentBranch() {
 }
 
 function getRemoteUrl() {
-	const result = spawnSync('git', ['remote', 'get-url', 'origin'], {
+	const gitCmd = resolveCmd('git')
+	const result = spawnSync(gitCmd, ['remote', 'get-url', 'origin'], {
 		cwd: ROOT,
 		encoding: 'utf8',
 		shell: false
