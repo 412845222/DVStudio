@@ -1,19 +1,16 @@
-"depotbuild"
+"DepotBuild"
 {
-	"depotid" "{{DEPOT_ID_WIN}}"
-	"contentroot" "content/win64"
-	"depotfrommanifest" "0"
-	"filemapping"
+	"DepotID" "{{DEPOT_ID_WIN}}"
+	"ContentRoot" "content/win64"
+	"FileMapping"
 	{
-		"local" "."
-		"depot" "."
+		"LocalPath" "*"
+		"DepotPath" "."
+		"Recursive" "1"
 	}
-	"ignore"
-	{
-		"*.pdb"
-		"*.bak"
-		"*.log"
-		"node_modules/"
-		"steam_appid.txt"
-	}
+	"FileExclusion" "*.pdb"
+	"FileExclusion" "*.bak"
+	"FileExclusion" "*.log"
+	"FileExclusion" "node_modules/*"
+	"FileExclusion" "steam_appid.txt"
 }

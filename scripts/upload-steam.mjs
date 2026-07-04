@@ -2,6 +2,9 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { loadSteamEnv } from './steam-env.mjs'
+
+loadSteamEnv()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -59,6 +62,10 @@ async function main() {
 
 	fs.mkdirSync(outputDir, { recursive: true })
 
+	function toVdfPath(p) {
+		return p.replace(/\//g, '\\')
+	}
+
 	process.stdout.write(`[upload:steam] AppID: ${steamAppId}\n`)
 	process.stdout.write(`[upload:steam] Version: ${pkg.version}\n`)
 	process.stdout.write(`[upload:steam] Branch: ${steamBranch}\n`)
@@ -75,12 +82,17 @@ async function main() {
 		if (!fs.existsSync(templatePath)) return null
 		if (!depotId) return null
 
+		const contentRootAbs = toVdfPath(path.join(steamPipeDir, 'content', contentSubdir))
 		let content = fs.readFileSync(templatePath, 'utf8')
-		content = content.replace(/\{\{DEPOT_ID_[A-Z]+\}\}/g, depotId)
+		const depIdPlaceholder = content.match(/\{\{DEPOT_ID_[A-Z]+\}\}/)?.[0] || '{{DEPOT_ID_WIN}}'
+		content = content.replace(depIdPlaceholder, depotId)
+		content = content.replace('"content/win64"', `"${contentRootAbs}"`)
+		content = content.replace('"content/mac"', `"${contentRootAbs}"`)
+		content = content.replace('"content/linux"', `"${contentRootAbs}"`)
 		fs.writeFileSync(outputPath, content, 'utf8')
 		generatedFiles.push(outputPath)
 		process.stdout.write(`[upload:steam] Generated: ${outputName}\n`)
-		return outputName
+		return toVdfPath(outputPath)
 	}
 
 	const winDepotFile = generateDepotVdf('depot_build_win.vdf', 'depot_build_win_generated.vdf', steamDepotIdWin, 'win64')
@@ -90,20 +102,27 @@ async function main() {
 	const appTemplatePath = path.join(steamPipeDir, 'app_build.vdf')
 	const appOutputPath = path.join(steamPipeDir, 'app_build_generated.vdf')
 
-	let appContent = fs.readFileSync(appTemplatePath, 'utf8')
-	appContent = appContent.replace(/\{\{APP_ID\}\}/g, steamAppId)
-	appContent = appContent.replace(/\{\{VERSION\}\}/g, pkg.version)
-	appContent = appContent.replace(/\{\{BUILD_OUTPUT\}\}/g, 'output')
-	appContent = appContent.replace(/\{\{BRANCH\}\}/g, steamBranch)
-	appContent = appContent.replace(/"\{\{DEPOT_ID_WIN\}\}"\s+"depot_build_win\.vdf"/g, winDepotFile ? `"${steamDepotIdWin}" "${winDepotFile}"` : '')
-	appContent = appContent.replace(/"\{\{DEPOT_ID_MAC\}\}"\s+"depot_build_mac\.vdf"/g, macDepotFile ? `"${steamDepotIdMac}" "${macDepotFile}"` : '')
-	appContent = appContent.replace(/"\{\{DEPOT_ID_LINUX\}\}"\s+"depot_build_linux\.vdf"/g, linuxDepotFile ? `"${steamDepotIdLinux}" "${linuxDepotFile}"` : '')
+	const contentRootAbs = toVdfPath(contentDir)
+	const buildOutputAbs = toVdfPath(outputDir)
 
-	appContent = appContent.replace(/^\s*\n/gm, '')
+	const depotEntries = []
+	if (winDepotFile) depotEntries.push(`\t\t"${steamDepotIdWin}" "${winDepotFile}"`)
+	if (macDepotFile) depotEntries.push(`\t\t"${steamDepotIdMac}" "${macDepotFile}"`)
+	if (linuxDepotFile) depotEntries.push(`\t\t"${steamDepotIdLinux}" "${linuxDepotFile}"`)
+
+	let appContent = fs.readFileSync(appTemplatePath, 'utf8')
+	appContent = appContent.replace('{{APP_ID}}', steamAppId)
+	appContent = appContent.replace(/\{\{VERSION\}\}/g, pkg.version)
+	appContent = appContent.replace('{{BUILD_OUTPUT}}', buildOutputAbs)
+	appContent = appContent.replace('{{CONTENT_ROOT}}', contentRootAbs)
+	appContent = appContent.replace('{{BRANCH}}', steamBranch)
+	appContent = appContent.replace('{{DEPOT_ENTRIES}}', depotEntries.join('\n'))
 
 	fs.writeFileSync(appOutputPath, appContent, 'utf8')
 	generatedFiles.push(appOutputPath)
 	process.stdout.write(`[upload:steam] Generated: app_build_generated.vdf\n`)
+
+	const appBuildVdfAbsPath = toVdfPath(appOutputPath)
 
 	const steamcmdPath = path.join(
 		repoRoot,
@@ -133,6 +152,11 @@ async function main() {
 
 	process.stdout.write(`[upload:steam] steamcmd path: ${steamcmdPath}\n`)
 	process.stdout.write('\n[upload:steam] === Uploading to SteamPipe ===\n')
+	process.stdout.write('\n' + '='.repeat(60) + '\n')
+	process.stdout.write('  ⚠️  重要提示：如果你的账号启用了 Steam 手机验证器\n')
+	process.stdout.write('  请立即打开手机上的 Steam APP，等待登录确认请求\n')
+	process.stdout.write('  看到确认提示后，点击"确认登录"以继续上传\n')
+	process.stdout.write('='.repeat(60) + '\n\n')
 
 	const loginArgs = ['+login']
 	if (steamUsername) {
@@ -150,7 +174,7 @@ async function main() {
 	try {
 		await run(steamcmdPath, [
 			...loginArgs,
-			'+run_app_build', 'app_build_generated.vdf',
+			'+run_app_build', appBuildVdfAbsPath,
 			'+quit'
 		], { cwd: steamPipeDir })
 
@@ -167,13 +191,12 @@ async function main() {
 		process.stderr.write(`\n[upload:steam] Upload failed: ${err.message}\n`)
 		process.stderr.write('\n[upload:steam] Troubleshooting:\n')
 		process.stderr.write('[upload:steam] 1. Check that STEAM_USERNAME and STEAM_PASSWORD are correct\n')
-		process.stderr.write('[upload:steam] 2. If Steam Guard is enabled, set STEAM_GUARD_CODE environment variable\n')
+		process.stderr.write('[upload:steam] 2. If Steam Guard mobile confirm is needed, open Steam APP on your phone to approve\n')
 		process.stderr.write('[upload:steam] 3. First login may require manual authentication - try running steamcmd.exe directly first:\n')
 		process.stderr.write(`[upload:steam]    "${steamcmdPath}" +login <username> +quit\n`)
 		process.stderr.write('[upload:steam] 4. Check build logs in steam-pipe/output/ for details\n')
-		process.stderr.write('[upload:steam] 5. If using a new account/browser, Steam may block login for 3 days after enabling Steam Guard\n')
+		process.stderr.write('[upload:steam] 5. Generated VDF files kept for debugging in steam-pipe/\n')
 
-		cleanup()
 		process.exit(1)
 	}
 }

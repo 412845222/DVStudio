@@ -104,7 +104,7 @@ const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() 
 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
 
-const { isRealPlatform, user: platformUser } = usePlatform()
+const { isRealPlatform, user: platformUser, overlayActivate } = usePlatform()
 const { isOpen: steamPanelOpen, open: openSteamPanel, close: closeSteamPanel, toggle: toggleSteamPanel } = useSteamPanel(isRealPlatform)
 
 const {
@@ -129,12 +129,21 @@ function openExternalUrl(url: string) {
 function handleSteamPanelAction(actionId: string) {
 	switch (actionId) {
 		case 'store':
-			openExternalUrl('https://store.steampowered.com/')
+			overlayActivate('Steam').catch(() => {
+				openExternalUrl('https://store.steampowered.com/')
+			})
 			break
 		case 'community':
-			openExternalUrl('https://steamcommunity.com/')
+			overlayActivate('Community').catch(() => {
+				openExternalUrl('https://steamcommunity.com/')
+			})
 			break
 		case 'friends':
+			overlayActivate('Friends')
+			break
+		case 'achievements':
+			overlayActivate('Achievements')
+			break
 		case 'open-panel':
 		default:
 			break

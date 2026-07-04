@@ -1,16 +1,13 @@
-"appbuild"
+"AppBuild"
 {
-	"appid" "{{APP_ID}}"
-	"desc" "DVStudio {{VERSION}} (Steam Release)"
-	"buildoutput" "{{BUILD_OUTPUT}}"
-	"contentroot" "content"
-	"setlive" "{{BRANCH}}"
-	"preview" "0"
-	"local" "0"
-	"depots"
+	"AppID" "{{APP_ID}}"
+	"Desc" "DVStudio {{VERSION}} (Steam Release)"
+	"BuildOutput" "{{BUILD_OUTPUT}}"
+	"ContentRoot" "{{CONTENT_ROOT}}"
+	"Preview" "0"
+	"verbose" "1"
+	"Depots"
 	{
-		"{{DEPOT_ID_WIN}}" "depot_build_win.vdf"
-		"{{DEPOT_ID_MAC}}" "depot_build_mac.vdf"
-		"{{DEPOT_ID_LINUX}}" "depot_build_linux.vdf"
+{{DEPOT_ENTRIES}}
 	}
 }

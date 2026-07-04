@@ -1,17 +1,26 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { loadSteamEnv } from './steam-env.mjs'
+
+loadSteamEnv()
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const repoRoot = path.resolve(__dirname, '..')
 
 const isCI = process.env.CI === 'true'
-const steamAppId = process.env.STEAM_APP_ID || '480'
+const steamAppId = process.env.STEAM_APP_ID || '2475710'
 
-function run(cmd, args, { env } = {}) {
+function run(cmd, args, { env, cwd } = {}) {
 	return new Promise((resolve) => {
 		const child = spawn(cmd, args, {
 			stdio: 'inherit',
 			shell: true,
 			env: { ...process.env, ...(env || {}) },
-			windowsHide: true
+			windowsHide: true,
+			cwd: cwd || repoRoot
 		})
 		child.once('exit', (code) => resolve(Number(code || 0)))
 	})
@@ -37,14 +46,18 @@ function getMirrorConfig() {
 }
 
 async function main() {
-	const repoRoot = process.cwd()
+	const pkgPath = path.join(repoRoot, 'package.json')
+	const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+
 	const buildUnpackedDir = path.resolve(repoRoot, 'steam-pipe', 'build', 'win64-unpacked')
 	const contentDir = path.resolve(repoRoot, 'steam-pipe', 'content', 'win64')
 	const cacheDir = path.resolve(repoRoot, '.electron-cache')
+	const tempConfigPath = path.join(repoRoot, 'steam-pipe', 'build', 'electron-builder-steam.json')
 
 	fs.mkdirSync(cacheDir, { recursive: true })
 	fs.mkdirSync(path.dirname(buildUnpackedDir), { recursive: true })
 	fs.mkdirSync(path.dirname(contentDir), { recursive: true })
+	fs.mkdirSync(path.dirname(tempConfigPath), { recursive: true })
 
 	process.stdout.write(`[dist:steam:win] Steam AppID: ${steamAppId}\n`)
 	process.stdout.write(`[dist:steam:win] environment: ${isCI ? 'CI (GitHub Actions)' : 'local'}\n`)
@@ -77,11 +90,32 @@ async function main() {
 	}
 
 	process.stdout.write('\n[dist:steam:win] === Step 3: Electron packaging (portable dir) ===\n')
-	const extraResources = [
-		{ from: 'electron/backend/python-bridge/scripts', to: 'python-bridge-scripts' },
-		{ from: 'electron/static', to: 'static', filter: ['**/*', '!runtime/**'] },
-		{ from: 'electron/static/runtime', to: 'runtime' }
-	]
+
+	const electronBuilderConfig = {
+		...pkg.build,
+		directories: {
+			...pkg.build.directories,
+			output: buildUnpackedDir
+		},
+		asar: true,
+		asarUnpack: 'electron/platform/native/**',
+		win: {
+			...pkg.build.win,
+			target: [
+				{
+					target: 'dir',
+					arch: ['x64']
+				}
+			]
+		},
+		extraResources: pkg.build.extraResources || []
+	}
+
+	delete electronBuilderConfig.nsis
+	delete electronBuilderConfig.mac
+
+	fs.writeFileSync(tempConfigPath, JSON.stringify(electronBuilderConfig, null, 2), 'utf8')
+	process.stdout.write(`[dist:steam:win] Generated electron-builder config: ${tempConfigPath}\n`)
 
 	code = await run(
 		'electron-builder',
@@ -90,9 +124,7 @@ async function main() {
 			'-w',
 			'--publish', 'never',
 			'--projectDir', repoRoot,
-			'--config.directories.output', buildUnpackedDir,
-			'--config.asarUnpack', 'electron/platform/native/**',
-			'--config.extraResources', JSON.stringify(extraResources)
+			'--config', tempConfigPath
 		],
 		{ env: buildEnv }
 	)
@@ -105,17 +137,18 @@ async function main() {
 				'-w',
 				'--publish', 'never',
 				'--projectDir', repoRoot,
-				'--config.directories.output', buildUnpackedDir,
-				'--config.asarUnpack', 'electron/platform/native/**',
-				'--config.extraResources', JSON.stringify(extraResources)
+				'--config', tempConfigPath
 			],
 			{ env: buildEnv }
 		)
 	}
 	if (code !== 0) {
 		process.stderr.write(`[dist:steam:win] FAILED: electron-builder exited with code ${code}\n`)
+		fs.rmSync(tempConfigPath, { force: true })
 		process.exit(code)
 	}
+
+	fs.rmSync(tempConfigPath, { force: true })
 
 	process.stdout.write('\n[dist:steam:win] === Step 4: Post-process build artifacts ===\n')
 
@@ -127,19 +160,67 @@ async function main() {
 		process.exit(1)
 	}
 
-	process.stdout.write(`[dist:steam:win] Cleaning content dir: ${contentDir}\n`)
-	fs.rmSync(contentDir, { recursive: true, force: true })
+	const tempContentDir = `${contentDir}.tmp-${Date.now()}`
+	fs.mkdirSync(tempContentDir, { recursive: true })
 
-	process.stdout.write(`[dist:steam:win] Copying: ${actualUnpackedDir} -> ${contentDir}\n`)
-	fs.cpSync(actualUnpackedDir, contentDir, { recursive: true })
+	process.stdout.write(`[dist:steam:win] Copying build to staging: ${tempContentDir}\n`)
+	fs.cpSync(actualUnpackedDir, tempContentDir, { recursive: true })
 
-	const steamAppidPath = path.join(contentDir, 'steam_appid.txt')
-	process.stdout.write(`[dist:steam:win] Creating steam_appid.txt (AppID: ${steamAppId}) for local testing\n`)
-	fs.writeFileSync(steamAppidPath, steamAppId, 'utf8')
+	const steamAppidInStaging = path.join(tempContentDir, 'steam_appid.txt')
+	if (fs.existsSync(steamAppidInStaging)) {
+		fs.rmSync(steamAppidInStaging, { force: true })
+		process.stdout.write('[dist:steam:win] Removed steam_appid.txt from build root (Steam auto-generates this)\n')
+	}
+
+	const nativeUnpackedAppIdPath = path.join(
+		tempContentDir, 'resources', 'app.asar.unpacked',
+		'electron', 'platform', 'native', 'win32', 'steam_appid.txt'
+	)
+	if (fs.existsSync(nativeUnpackedAppIdPath)) {
+		fs.writeFileSync(nativeUnpackedAppIdPath, steamAppId, 'utf8')
+		process.stdout.write(`[dist:steam:win] Updated native steam_appid.txt to AppID ${steamAppId}\n`)
+	}
+
+	function sleepSync(ms) {
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+	}
+
+	function removeWithRetry(dir, retries = 8) {
+		for (let i = 0; i < retries; i++) {
+			try {
+				fs.rmSync(dir, { recursive: true, force: true })
+				return true
+			} catch (e) {
+				if (i === retries - 1) return false
+				process.stdout.write(`[dist:steam:win] Remove retry (${i + 1}/${retries})...\n`)
+				sleepSync(800)
+			}
+		}
+		return false
+	}
+
+	if (fs.existsSync(contentDir)) {
+		process.stdout.write(`[dist:steam:win] Cleaning old content dir...\n`)
+		const removed = removeWithRetry(contentDir)
+		if (!removed) {
+			process.stdout.write('[dist:steam:win] WARNING: Could not fully remove old content dir (file locked), attempting to overwrite...\n')
+		}
+	}
+
+	process.stdout.write(`[dist:steam:win] Moving staged content to: ${contentDir}\n`)
+	try {
+		fs.renameSync(tempContentDir, contentDir)
+	} catch (renameErr) {
+		process.stdout.write(`[dist:steam:win] Rename failed (${renameErr.message}), using copy...\n`)
+		fs.mkdirSync(contentDir, { recursive: true })
+		fs.cpSync(tempContentDir, contentDir, { recursive: true, force: true })
+		try { fs.rmSync(tempContentDir, { recursive: true, force: true }) } catch (_) {}
+	}
 
 	process.stdout.write('\n[dist:steam:win] === Build completed successfully! ===\n')
 	process.stdout.write(`[dist:steam:win] Content directory: ${contentDir}\n`)
-	process.stdout.write('[dist:steam:win] NOTE: steam_appid.txt is for local testing only and will be excluded from SteamPipe upload\n')
+	process.stdout.write('[dist:steam:win] Note: steam_appid.txt is excluded from depot root (Steam auto-generates it on launch)\n')
+	process.stdout.write('[dist:steam:win] Next: Run "npm run upload:steam" to upload to SteamPipe\n')
 
 	process.exit(0)
 }

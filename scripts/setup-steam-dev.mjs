@@ -69,16 +69,10 @@ try {
 	execSync('npm link dweb-steamjs', { cwd: REPO_ROOT, stdio: 'inherit' })
 
 	const appidPath = path.join(REPO_ROOT, 'steam_appid.txt')
-	const exampleAppidPath = path.join(REPO_ROOT, 'steam_appid.txt.example')
 	if (!fs.existsSync(appidPath)) {
-		if (fs.existsSync(exampleAppidPath)) {
-			fs.copyFileSync(exampleAppidPath, appidPath)
-			console.log('[setup-steam-dev] Created steam_appid.txt from example (default: 480/SpaceWar)')
-		} else {
-			fs.writeFileSync(appidPath, '480', 'utf8')
-			console.log('[setup-steam-dev] Created steam_appid.txt with default AppID 480 (SpaceWar)')
-		}
-		console.log('[setup-steam-dev] You can edit steam_appid.txt to use your own AppID.')
+		fs.writeFileSync(appidPath, '2475710', 'utf8')
+		console.log('[setup-steam-dev] Created steam_appid.txt with AppID 2475710 (DVStudio)')
+		console.log('[setup-steam-dev] You can edit steam_appid.txt to use a different AppID (e.g., 480 for SpaceWar testing).')
 	} else {
 		console.log('[setup-steam-dev] steam_appid.txt already exists, skipping.')
 	}
@@ -88,7 +82,7 @@ try {
 	console.log('')
 	console.log('Next steps:')
 	console.log('  1. Start Steam client and log in')
-	console.log('  2. Verify steam_appid.txt contains your AppID (default: 480)')
+	console.log('  2. Verify steam_appid.txt contains your AppID (default: 2475710)')
 	console.log('  3. Run "npm run dev:electron" to start the app')
 	console.log('  4. Check console for "[platform:steam] initialized" message')
 	console.log('  5. Steam friends list should show you as in-game')

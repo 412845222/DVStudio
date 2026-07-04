@@ -3,10 +3,26 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'module'
+import { app } from 'electron'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const nativeWin32Dir = path.resolve(__dirname, '..', 'native', 'win32')
+
+function getNativeWin32Dir() {
+    const devPath = path.resolve(__dirname, '..', 'native', 'win32')
+    if (!app.isPackaged) {
+        return devPath
+    }
+    const unpackedPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'platform', 'native', 'win32')
+    if (fs.existsSync(unpackedPath)) {
+        return unpackedPath
+    }
+    console.warn('[platform:steam] Native module directory not found at asarUnpacked path:', unpackedPath)
+    console.warn('[platform:steam] Falling back to:', devPath)
+    return devPath
+}
+
+const nativeWin32Dir = getNativeWin32Dir()
 
 function ensureDllPath() {
     const dllPath = path.join(nativeWin32Dir, 'steam_api64.dll')
@@ -24,16 +40,17 @@ function ensureDllPath() {
 ensureDllPath()
 
 function ensureSteamAppIdTxt(appId) {
-    const appIdPath = path.join(nativeWin32Dir, 'steam_appid.txt')
-    if (fs.existsSync(appIdPath)) {
-        try {
-            const cwdPath = path.join(process.cwd(), 'steam_appid.txt')
-            if (!fs.existsSync(cwdPath)) {
-                fs.writeFileSync(cwdPath, String(appId || 480), 'utf8')
-                console.log('[platform:steam] Created steam_appid.txt in cwd:', process.cwd())
-            }
-        } catch {
+    if (process.env.SteamAppId && process.env.SteamGameId) {
+        return
+    }
+    if (!appId) return
+    try {
+        const cwdPath = path.join(process.cwd(), 'steam_appid.txt')
+        if (!fs.existsSync(cwdPath)) {
+            fs.writeFileSync(cwdPath, String(appId), 'utf8')
+            console.log('[platform:steam] Created steam_appid.txt in cwd for dev mode:', process.cwd())
         }
+    } catch {
     }
 }
 
@@ -115,7 +132,7 @@ function wrapNativeModule(native) {
         isAvailable: function () { return native !== null },
         createClient: function (options) {
             const opts = options || {}
-            const appId = opts.appId || 480
+            const appId = opts.appId || 2475710
             const nativeClient = new native.SteamClient({ appId })
 
             const emitter = new EventEmitter()
@@ -249,7 +266,11 @@ class SteamPlatformProvider extends EventEmitter {
         this._client = null
         this._initialized = false
         this._wasLoggedIn = false
+        this._wasOverlayActive = false
         this._overlayActive = false
+        this._wasSteamRunning = false
+        this._initRetries = 0
+        this._isDev = !!process.env.ELECTRON_DEV
     }
 
     get id() { return 'steam' }
@@ -321,6 +342,7 @@ class SteamPlatformProvider extends EventEmitter {
             if (result.ok) {
                 this._initialized = true
                 this._wasLoggedIn = this.isLoggedIn()
+                this._wasOverlayActive = false
                 this._overlayActive = false
                 const userInfo = this.getUserInfo()
                 console.log('[platform:steam] initialized successfully.', userInfo?.displayName || '(user info pending)')
@@ -351,12 +373,35 @@ class SteamPlatformProvider extends EventEmitter {
         }
         this._initialized = false
         this._wasLoggedIn = false
+        this._wasSteamRunning = false
         this._overlayActive = false
+        this._wasOverlayActive = false
     }
 
     runCallbacks() {
-        if (this._client && this._initialized) {
-            try {
+        try {
+            if (!this._client) {
+                this._client = this._steam.createClient({ appId: this._config.appId })
+            }
+
+            if (!this._initialized && this._client) {
+                const isSteamRunning = this._client.isSteamRunning()
+                if (isSteamRunning && !this._wasSteamRunning) {
+                    console.log('[platform:steam] Steam is now running, attempting initialization...')
+                    this._initRetries++
+                    this.init().then((result) => {
+                        if (result.ok) {
+                            console.log('[platform:steam] Dev mode auto-init succeeded')
+                            this.emit('connected', { platformId: 'steam' })
+                            this._wasLoggedIn = this.isLoggedIn()
+                        }
+                    })
+                }
+                this._wasSteamRunning = isSteamRunning
+                return
+            }
+
+            if (this._client && this._initialized) {
                 if (typeof this._client.runCallbacks === 'function') {
                     this._client.runCallbacks()
                 }
@@ -364,11 +409,31 @@ class SteamPlatformProvider extends EventEmitter {
                 if (this._wasLoggedIn && !isLogged) {
                     console.log('[platform:steam] user logged out')
                     this.emit('disconnected', { platformId: 'steam', reason: 'logged-off' })
+                } else if (!this._wasLoggedIn && isLogged) {
+                    console.log('[platform:steam] user logged in')
+                    this.emit('connected', { platformId: 'steam' })
                 }
                 this._wasLoggedIn = isLogged
-            } catch (err) {
-                console.warn('[platform:steam] runCallbacks error:', err.message)
+
+                const isOverlayActive = this.isOverlayActive()
+                if (!this._wasOverlayActive && isOverlayActive) {
+                    console.log('[platform:steam] overlay activated')
+                    this._overlayActive = true
+                    this.emit('overlay-activated', { platformId: 'steam' })
+                } else if (this._wasOverlayActive && !isOverlayActive) {
+                    console.log('[platform:steam] overlay deactivated')
+                    this._overlayActive = false
+                    this.emit('overlay-deactivated', { platformId: 'steam' })
+                }
+                this._wasOverlayActive = isOverlayActive
+
+                if (!this._client.isSteamRunning()) {
+                    console.log('[platform:steam] Steam client stopped running')
+                    this._wasSteamRunning = false
+                }
             }
+        } catch (err) {
+            console.warn('[platform:steam] runCallbacks error:', err.message)
         }
     }
 
@@ -439,20 +504,53 @@ class SteamPlatformProvider extends EventEmitter {
     }
 
     isOverlayEnabled() {
-        return false
+        if (!this._initialized || !this._client) return false
+        try {
+            if (typeof this._client.isOverlayEnabled === 'function') {
+                return this._client.isOverlayEnabled()
+            }
+            return false
+        } catch {
+            return false
+        }
     }
 
     isOverlayActive() {
-        return false
+        if (!this._initialized || !this._client) return false
+        try {
+            if (typeof this._client.isOverlayActive === 'function') {
+                return this._client.isOverlayActive()
+            }
+            return false
+        } catch {
+            return false
+        }
     }
 
     overlayOpenUrl(url) {
-        return { ok: false, errMsg: 'Use in-app panel instead of native Steam Overlay' }
+        if (!this._initialized || !this._client) return { ok: false, errMsg: 'Not initialized' }
+        try {
+            if (typeof this._client.activateGameOverlayToWebPage === 'function') {
+                return this._client.activateGameOverlayToWebPage(url, 'Steam')
+            }
+            return { ok: false, errMsg: 'Overlay web page not supported' }
+        } catch (err) {
+            return { ok: false, errMsg: err.message }
+        }
     }
 
     overlayActivateGameOverlay(dialog) {
-        console.log('[platform:steam] Native Steam Overlay disabled - using in-app panel instead')
-        return { ok: false, errMsg: 'Use in-app panel instead of native Steam Overlay' }
+        if (!this._initialized || !this._client) return { ok: false, errMsg: 'Not initialized' }
+        try {
+            if (typeof this._client.activateGameOverlay === 'function') {
+                const result = this._client.activateGameOverlay(dialog || 'Friends')
+                console.log('[platform:steam] activateGameOverlay result:', result)
+                return result
+            }
+            return { ok: false, errMsg: 'Overlay not available' }
+        } catch (err) {
+            return { ok: false, errMsg: err.message }
+        }
     }
 
     isDlcInstalled(dlcAppId) {
