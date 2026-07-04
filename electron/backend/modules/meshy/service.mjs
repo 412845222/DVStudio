@@ -99,9 +99,48 @@ function normalizeTask(mode, taskId, obj) {
 
   let imageUrlsRaw = obj.image_urls
   if (!Array.isArray(imageUrlsRaw)) imageUrlsRaw = resultObj.image_urls
-  const imageUrls = Array.isArray(imageUrlsRaw) ? imageUrlsRaw.map(x => String(x || '').trim()).filter(x => x) : []
-  const preferredImageUrl = pickFirstImageUrl(imageUrls)
+
+  const collectImageUrls = (source) => {
+    const urls = []
+    if (!source || typeof source !== 'object') return urls
+    if (Array.isArray(source.image_urls)) {
+      for (const u of source.image_urls) {
+        const s = String(u || '').trim()
+        if (s) urls.push(s)
+      }
+    }
+    for (const key of ['image_url', 'thumbnail_url', 'preferred_image_url', 'preferredImageUrl']) {
+      const s = String(source[key] || '').trim()
+      if (s) urls.push(s)
+    }
+    return urls
+  }
+
+  const allFoundUrls = []
+  const urlSet = new Set()
+  for (const source of [obj, resultObj]) {
+    for (const u of collectImageUrls(source)) {
+      if (!urlSet.has(u)) {
+        urlSet.add(u)
+        allFoundUrls.push(u)
+      }
+    }
+  }
+
+  const imageUrls = allFoundUrls.length > 0 ? allFoundUrls : (Array.isArray(imageUrlsRaw) ? imageUrlsRaw.map(x => String(x || '').trim()).filter(x => x) : [])
+  const preferredImageUrl = imageUrls.length > 0 ? imageUrls[0] : ''
   const primaryRemoteUrl = preferredModelUrl || preferredImageUrl
+
+  console.log(`[Meshy Backend] normalizeTask for ${mode}/${taskId}:`, {
+    status,
+    progress,
+    imageUrlsCount: imageUrls.length,
+    imageUrls: imageUrls,
+    preferredImageUrl: preferredImageUrl,
+    hasResultObj: !!obj.result,
+    resultObjKeys: resultObj ? Object.keys(resultObj) : [],
+    topLevelKeys: Object.keys(obj).filter(k => typeof obj[k] !== 'object' || Array.isArray(obj[k]))
+  })
 
   const taskErrorRaw = obj.task_error && typeof obj.task_error === 'object' ? obj.task_error : {}
   const errorMessage = String(taskErrorRaw.message || obj.error || '').trim()

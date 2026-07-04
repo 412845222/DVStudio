@@ -423,9 +423,32 @@ const handleMeshySuccess = async (
 	_taskType: string,
 	taskRes: Extract<MeshyTaskResponse, { ok: true }>
 ) => {
-	const imageUrls = taskRes.imageUrls || []
-	const preferredUrl = taskRes.preferredImageUrl || imageUrls[0] || ''
-	const allUrls = imageUrls.length > 0 ? imageUrls : (preferredUrl ? [preferredUrl] : [])
+	const imageUrls = Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls : []
+	const preferredUrl = String(taskRes.preferredImageUrl || '').trim()
+
+	console.log('[Meshy Poll] 收到任务结果:', {
+		taskId,
+		imageUrlsCount: imageUrls.length,
+		imageUrls: imageUrls,
+		preferredImageUrl: preferredUrl,
+		rawResult: taskRes
+	})
+
+	const urlSet = new Set<string>()
+	const allUrls: string[] = []
+	if (preferredUrl) {
+		urlSet.add(preferredUrl)
+		allUrls.push(preferredUrl)
+	}
+	for (const u of imageUrls) {
+		const us = String(u || '').trim()
+		if (us && !urlSet.has(us)) {
+			urlSet.add(us)
+			allUrls.push(us)
+		}
+	}
+
+	console.log('[Meshy Poll] 去重后allUrls数量:', allUrls.length, 'urls:', allUrls)
 
 	const outputSummary: MeshyOutputSummary = {
 		preferredUrl: '',

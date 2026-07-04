@@ -3600,7 +3600,95 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 			state.nodeChatDialog.draft = draft
 			state.nodeChatDialog.submitting = false
-			state.nodeChatDialog.params = node?.nodeChatParams ?? {}
+
+			// 构建聊天参数：从nodeChatParams读取，并从imageSettings.meshyImageSettings同步meshy参数
+			const existingChatParams: Record<string, unknown> = (node?.nodeChatParams as Record<string, unknown>) ?? {}
+			const typeKey = payload.nodeType
+			const existingTypeParams: Record<string, unknown> =
+				typeof existingChatParams[typeKey] === 'object' && existingChatParams[typeKey] !== null
+					? (existingChatParams[typeKey] as Record<string, unknown>)
+					: {}
+
+			// 从imageSettings.meshyImageSettings同步meshy参数（如果是image节点）
+			const syncedMeshyParams: Record<string, unknown> = {}
+			if (typeKey === 'image' && node) {
+				const imgSettings = (node as Record<string, unknown>).imageSettings as Record<string, unknown> | undefined
+				const meshyImgSettings =
+					typeof imgSettings === 'object' && imgSettings !== null
+						? (imgSettings.meshyImageSettings as Record<string, unknown> | undefined)
+						: undefined
+				if (meshyImgSettings && typeof meshyImgSettings === 'object') {
+					// 从submittedParams中获取提交过的参数（优先）
+					const submittedParams =
+						typeof meshyImgSettings.submittedParams === 'object' && meshyImgSettings.submittedParams !== null
+							? (meshyImgSettings.submittedParams as Record<string, unknown>)
+							: undefined
+
+					if (submittedParams) {
+						// model是meshy的AI模型名（如nano-banana），需要设置params.model='meshy'和params.meshyImageAiModel
+						if (typeof submittedParams.model === 'string' && submittedParams.model) {
+							syncedMeshyParams.model = 'meshy'
+							syncedMeshyParams.meshyImageAiModel = submittedParams.model
+						}
+						// aspectRatio：处理'1:1 (多视图)'格式
+						if (typeof submittedParams.aspectRatio === 'string') {
+							const ar = submittedParams.aspectRatio.replace(/\s*\(多视图\)\s*/g, '').trim()
+							if (ar) syncedMeshyParams.meshyAspectRatio = ar
+						}
+						// generateMultiView：布尔值
+						if (typeof submittedParams.generateMultiView === 'boolean') {
+							syncedMeshyParams.meshyGenerateMultiView = submittedParams.generateMultiView
+						}
+						// poseMode：'无'表示空
+						if (typeof submittedParams.poseMode === 'string' && submittedParams.poseMode && submittedParams.poseMode !== '无') {
+							syncedMeshyParams.meshyPoseMode = submittedParams.poseMode
+						}
+						// negativePrompt：'无'表示空
+						if (typeof submittedParams.negativePrompt === 'string' && submittedParams.negativePrompt && submittedParams.negativePrompt !== '无') {
+							syncedMeshyParams.meshyNegativePrompt = submittedParams.negativePrompt
+						}
+						// seed：'随机'表示-1
+						if (typeof submittedParams.seed === 'number' && submittedParams.seed >= 0) {
+							syncedMeshyParams.meshySeed = submittedParams.seed
+						}
+						// outputCount
+						if (typeof submittedParams.outputCount === 'number' && submittedParams.outputCount > 0) {
+							syncedMeshyParams.meshyOutputImageCount = Math.min(4, Math.floor(submittedParams.outputCount))
+						}
+					}
+
+					// 直接从meshyImageSettings中读取（作为兜底）
+					if (typeof meshyImgSettings.aiModel === 'string' && meshyImgSettings.aiModel && !syncedMeshyParams.meshyImageAiModel) {
+						syncedMeshyParams.meshyImageAiModel = meshyImgSettings.aiModel
+						syncedMeshyParams.model = 'meshy'
+					}
+					if (typeof meshyImgSettings.aspectRatio === 'string' && meshyImgSettings.aspectRatio && !syncedMeshyParams.meshyAspectRatio) {
+						syncedMeshyParams.meshyAspectRatio = meshyImgSettings.aspectRatio
+					}
+					if (typeof meshyImgSettings.generateMultiView === 'boolean' && syncedMeshyParams.meshyGenerateMultiView === undefined) {
+						syncedMeshyParams.meshyGenerateMultiView = meshyImgSettings.generateMultiView
+					}
+					if (typeof meshyImgSettings.poseMode === 'string' && meshyImgSettings.poseMode && !syncedMeshyParams.meshyPoseMode) {
+						syncedMeshyParams.meshyPoseMode = meshyImgSettings.poseMode
+					}
+					if (typeof meshyImgSettings.negativePrompt === 'string' && meshyImgSettings.negativePrompt && !syncedMeshyParams.meshyNegativePrompt) {
+						syncedMeshyParams.meshyNegativePrompt = meshyImgSettings.negativePrompt
+					}
+					if (typeof meshyImgSettings.seed === 'number' && meshyImgSettings.seed >= 0 && syncedMeshyParams.meshySeed === undefined) {
+						syncedMeshyParams.meshySeed = meshyImgSettings.seed
+					}
+					if (typeof meshyImgSettings.outputImageCount === 'number' && meshyImgSettings.outputImageCount > 0 && syncedMeshyParams.meshyOutputImageCount === undefined) {
+						syncedMeshyParams.meshyOutputImageCount = Math.min(4, Math.floor(meshyImgSettings.outputImageCount))
+					}
+				}
+			}
+
+			// 合并参数：现有nodeChatParams优先，然后是从meshyImageSettings同步的参数
+			const mergedTypeParams = { ...syncedMeshyParams, ...existingTypeParams }
+			state.nodeChatDialog.params = {
+				...existingChatParams,
+				[typeKey]: mergedTypeParams
+			}
 		},
 		closeNodeChatDialog(state) {
 			state.nodeChatDialog.visible = false
