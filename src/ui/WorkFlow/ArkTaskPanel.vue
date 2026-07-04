@@ -146,6 +146,24 @@
 								>
 									详情
 								</button>
+								<template v-if="task.apiType === 'seedance' && task.status === 'succeeded'">
+									<button
+										class="wf-ark-task-preview-btn"
+										type="button"
+										:disabled="isDownloading(task.id)"
+										@click="onDownloadAsset(task.taskId, 'video')"
+									>
+										{{ isDownloading(task.id) ? '下载中' : '下载' }}
+									</button>
+									<button
+										class="wf-ark-task-preview-btn"
+										type="button"
+										:disabled="isDownloading(task.id)"
+										@click="onImportToNode(task.taskId, 'video')"
+									>
+										{{ isDownloading(task.id) ? '处理中' : '导入' }}
+									</button>
+								</template>
 								<button
 									class="wf-ark-task-preview-btn danger"
 									type="button"
@@ -256,6 +274,41 @@
 									</a>
 								</div>
 							</div>
+							<div v-if="detailTask.apiType === 'seedance'" class="wf-ark-task-detail-section">
+								<div class="wf-ark-task-detail-label">资源状态</div>
+								<div class="wf-ark-task-detail-block" :class="{ error: !detailTask.resourceAvailable }">
+									<template v-if="detailTask.resourceAvailable === true">
+										<span style="color: #bbf7d0">✓ 产物可用，可下载到项目资产</span>
+									</template>
+									<template v-else-if="detailTask.resourceAvailable === false">
+										<span style="color: #fecaca">✗ {{ detailTask.resourceUnavailableReason || '暂无可下载产物' }}</span>
+									</template>
+									<template v-else>
+										<span>加载中…</span>
+									</template>
+								</div>
+								<div
+									v-if="detailTask.resourceAvailable"
+									class="wf-ark-task-detail-action-row"
+								>
+									<button
+										class="wf-ark-panel-btn primary"
+										type="button"
+										:disabled="isDownloading(detailTask.id)"
+										@click="onDownloadAsset(detailTask.taskId, 'video')"
+									>
+										{{ isDownloading(detailTask.id) ? '下载中…' : '下载视频到项目' }}
+									</button>
+									<button
+										class="wf-ark-panel-btn primary"
+										type="button"
+										:disabled="isDownloading(detailTask.id)"
+										@click="onImportToNode(detailTask.taskId, 'video')"
+									>
+										{{ isDownloading(detailTask.id) ? '处理中…' : '导入并回填视频节点' }}
+									</button>
+								</div>
+							</div>
 							<div v-if="detailTask.statusText" class="wf-ark-task-detail-section">
 								<div class="wf-ark-task-detail-label">状态说明</div>
 								<div class="wf-ark-task-detail-block">{{ detailTask.statusText }}</div>
@@ -339,6 +392,8 @@ export type ArkTaskPanelItem = {
 	nodeId: string
 	createdAt: number
 	updatedAt: number
+	resourceAvailable?: boolean
+	resourceUnavailableReason?: string
 }
 
 export type ArkTaskPanelDetail = {
@@ -363,6 +418,8 @@ export type ArkTaskPanelDetail = {
 	updatedAt: number
 	requestPayload: Record<string, unknown> | null
 	responsePayload: Record<string, unknown> | null
+	resourceAvailable?: boolean
+	resourceUnavailableReason?: string
 }
 
 const props = defineProps<{
@@ -373,6 +430,7 @@ const props = defineProps<{
 	detailTask?: ArkTaskPanelDetail | null
 	detailLoading?: boolean
 	dataStatusText?: string
+	downloadingIds?: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -380,7 +438,7 @@ const emit = defineEmits<{
 	(e: 'refresh'): void
 	(
 		e: 'task-action',
-		payload: { taskId: string; action: 'delete' | 'view-detail' }
+		payload: { taskId: string; action: 'delete' | 'view-detail' | 'download' | 'import' }
 	): void
 	(e: 'preview-task', taskId: string): void
 }>()
@@ -632,7 +690,13 @@ const onTaskDragStart = (event: DragEvent, task: ArkTaskPanelItem) => {
 			apiType: task.apiType,
 			apiAction: task.apiAction,
 			model: task.model,
-			projectId: task.projectId
+			projectId: task.projectId,
+			prompt: task.prompt,
+			resultUrls: task.resultUrls,
+			thumbnailUrl: task.thumbnailUrl,
+			status: task.status,
+			resourceAvailable: task.resourceAvailable,
+			resourceUnavailableReason: task.resourceUnavailableReason
 		}
 		dt.setData('application/x-dweb-ark-task-item', JSON.stringify(payload))
 		dt.setData('text/plain', task.prompt || task.taskId)
@@ -652,6 +716,19 @@ const onPreviewTask = (taskId: string) => {
 
 const onDeleteTask = (taskId: string) => {
 	emit('task-action', { taskId, action: 'delete' })
+}
+
+const isDownloading = (id: string) => {
+	if (!props.downloadingIds) return false
+	return props.downloadingIds.has(String(id || ''))
+}
+
+const onDownloadAsset = (taskId: string, kind: 'video' | 'lastFrame') => {
+	emit('task-action', { taskId, action: 'download' })
+}
+
+const onImportToNode = (taskId: string, kind: 'video' | 'lastFrame') => {
+	emit('task-action', { taskId, action: 'import' })
 }
 
 const panelStyle = computed(() => ({
@@ -1219,6 +1296,12 @@ onBeforeUnmount(() => {
 .wf-ark-task-detail-section {
 	display: grid;
 	gap: 6px;
+}
+
+.wf-ark-task-detail-action-row {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 
 .wf-ark-task-detail-block {

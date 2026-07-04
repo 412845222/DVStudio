@@ -183,6 +183,37 @@ export const useAIWorkflowDropAssets = (options: {
 		}
 	}
 
+	type AIWorkflowDraggedArkTaskItem = {
+		source: string
+		nodeId: string
+		taskId: string
+		apiType: string
+		apiAction: string
+		model: string
+		projectId: number | null
+		prompt: string
+		resultUrls: string[]
+		thumbnailUrl: string
+		status: string
+		resourceAvailable?: boolean
+		resourceUnavailableReason?: string
+	}
+
+	const getDraggedArkTaskItem = (e: DragEvent): AIWorkflowDraggedArkTaskItem | null => {
+		const dt = e.dataTransfer
+		if (!dt) return null
+		const raw = dt.getData('application/x-dweb-ark-task-item')
+		if (!raw) return null
+		try {
+			const parsed = JSON.parse(raw) as Record<string, unknown>
+			if (!parsed || typeof parsed !== 'object') return null
+			if (String(parsed?.source ?? '') !== 'ark-task-panel') return null
+			return parsed as AIWorkflowDraggedArkTaskItem
+		} catch {
+			return null
+		}
+	}
+
 	const inferMediaKindFromFile = (file: File): 'image' | 'video' | null => {
 		const mime = String(file?.type ?? '')
 		if (mime.startsWith('image/')) return 'image'
@@ -460,9 +491,10 @@ export const useAIWorkflowDropAssets = (options: {
 				(dt.files && dt.files.length > 0))
 		const resourceItem = getDraggedResourceItem(e)
 		const meshyTaskItem = getDraggedMeshyTaskItem(e)
+		const arkTaskItem = getDraggedArkTaskItem(e)
 		const nanoMeta = getDraggedNanoPreviewMeta(e)
 		const url = nanoMeta?.url || getDraggedNanoPreviewUrl(e)
-		if (!hasFiles && !url && !resourceItem && !meshyTaskItem) return
+		if (!hasFiles && !url && !resourceItem && !meshyTaskItem && !arkTaskItem) return
 		try {
 			if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
 		} catch {
@@ -477,6 +509,7 @@ export const useAIWorkflowDropAssets = (options: {
 		const dt = e.dataTransfer
 		const draggedResource = getDraggedResourceItem(e)
 		const draggedMeshyTask = getDraggedMeshyTaskItem(e)
+		const draggedArkTask = getDraggedArkTaskItem(e)
 		const nanoMeta = getDraggedNanoPreviewMeta(e)
 		const urlRaw = nanoMeta?.url || getDraggedNanoPreviewUrl(e)
 		if (draggedResource) {
@@ -497,6 +530,41 @@ export const useAIWorkflowDropAssets = (options: {
 				worldX: world.worldX,
 				worldY: world.worldY
 			})
+			return
+		}
+
+		if (draggedArkTask) {
+			const apiType = String(draggedArkTask.apiType || '').trim().toLowerCase()
+			const kind: 'image' | 'video' = apiType === 'seedance' ? 'video' : 'image'
+			const title = apiType === 'seedance' ? '视频' : (apiType === 'seedream' ? '图片' : 'ARK')
+			const prompt = String(draggedArkTask.prompt || '').trim()
+			const resultUrls = Array.isArray(draggedArkTask.resultUrls) ? draggedArkTask.resultUrls : []
+			const firstUrl = resultUrls[0] || ''
+			const thumbnailUrl = String(draggedArkTask.thumbnailUrl || '').trim()
+			const displayUrl = firstUrl || thumbnailUrl
+			const isCompleted = String(draggedArkTask.status || '').trim().toLowerCase() === 'succeeded'
+
+			options.store.commit('addNodeAt', {
+				worldX: world.worldX,
+				worldY: world.worldY,
+				title: prompt ? `${title}：${prompt.slice(0, 20)}` : title
+			})
+			const nodeId = options.store.state.selectedNodeId
+			if (!nodeId) return
+
+			options.store.commit('setNodeType', { nodeId, type: kind })
+
+			if (displayUrl && isCompleted) {
+				const fileName = kind === 'video'
+					? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
+					: `Seedream_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`
+				options.bindMediaResourceToNode(nodeId, kind, displayUrl, fileName)
+				options.autoSizeMediaNode(nodeId, displayUrl, kind)
+			} else if (!isCompleted) {
+				options.pushToast('任务尚未完成，已创建空节点，完成后可重新拖拽或下载产物。', 'info')
+			} else {
+				options.pushToast('该任务暂无可用产物，已创建空节点。', 'warn')
+			}
 			return
 		}
 

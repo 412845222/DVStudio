@@ -525,6 +525,7 @@
 					:detail-task-id="arkTaskDetailTaskId"
 					:detail-task="arkTaskDetail"
 					:detail-loading="arkTaskDetailLoading"
+					:downloading-ids="arkTaskDownloading"
 					:data-status-text="arkTaskDataStatusText"
 					@close="closeArkTaskDialog"
 					@refresh="onRefreshArkTaskPanel"
@@ -8023,13 +8024,88 @@ const {
 	arkTaskDetail,
 	arkTaskDetailTaskId,
 	arkTaskDetailLoading,
+	arkTaskDownloading,
 	arkTaskDataStatusText,
 	openArkTaskDialog,
 	closeArkTaskDialog,
 	onRefreshArkTaskPanel,
 	onPreviewArkTask,
 	onArkTaskPanelAction
-} = useAIWorkflowArkTaskPanel(currentProjectId)
+} = useAIWorkflowArkTaskPanel(currentProjectId, {
+	comfyService,
+	pushToast: (message, tone, opts) => pushToast(message, tone, opts),
+	findVideoNodeByTaskId: (_remoteTaskId: string) => {
+		// TODO: 后续可以根据节点上存储的任务ID来查找对应节点
+		// 目前先返回 null，走新建节点的流程
+		return null
+	},
+	bindVideoResultToNode: async (nodeId: string, url: string) => {
+		const node = store.state.nodesById[nodeId]
+		if (!node) return false
+		const resourceId = `ark-video-${nodeId}-${Date.now()}`
+		const resourceName = `ark_video_${resourceId.slice(-6)}.mp4`
+		const base: GeneratedResourceBase = {
+			id: resourceId,
+			kind: 'video',
+			name: resourceName,
+			url
+		}
+		const pid = Number(currentProjectId.value ?? 0)
+		if (!(pid > 0)) {
+			pushToast('当前项目未激活，无法导入视频。', 'warn')
+			return false
+		}
+		finalizeGeneratedResourceLocalUrl(base, pid)
+		base.url = String(base.url || '').trim()
+		if (!base.url) {
+			pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			return false
+		}
+		store.commit('addResource', base)
+		store.commit('setNodeResource', { nodeId, resourceId })
+		return true
+	},
+	createMediaNodeWithAsset: async (url: string, kind: 'image' | 'video', prompt?: string) => {
+		const pid = Number(currentProjectId.value ?? 0)
+		if (!(pid > 0)) return ''
+		const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')
+		const resourceId = `ark-${kind}-new-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+		const resourceName = kind === 'image'
+			? `ark_image_${timestamp}.png`
+			: `ark_video_${timestamp}.mp4`
+		const base: GeneratedResourceBase = {
+			id: resourceId,
+			kind,
+			name: resourceName,
+			url
+		}
+		finalizeGeneratedResourceLocalUrl(base, pid)
+		base.url = String(base.url || '').trim()
+		if (!base.url) {
+			pushToast((kind === 'image' ? '图片' : '视频') + '资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			return ''
+		}
+		const vp = store.state.viewport
+		const zoom = Math.max(0.01, Number(vp?.zoom) || 1)
+		const panX = Number(vp?.panX) || 0
+		const panY = Number(vp?.panY) || 0
+		const worldCenterX = -panX / zoom
+		const worldCenterY = -panY / zoom
+		const nodeW = 240
+		const nodeH = 160
+		const worldX = worldCenterX - nodeW / 2
+		const worldY = worldCenterY - nodeH / 2
+		const titleLabel = kind === 'image' ? '图片' : '视频'
+		store.commit('addNodeAt', { worldX, worldY, title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
+		const nodeId = store.state.selectedNodeId
+		if (!nodeId) return ''
+		store.commit('setNodeType', { nodeId, type: kind })
+		store.commit('addResource', base)
+		store.commit('setNodeResource', { nodeId, resourceId })
+		autoSizeMediaNode(nodeId, base.url, kind)
+		return nodeId
+	}
+})
 
 async function onSeedanceTaskObserved(taskId: string, stage: 'created' | 'completed') {
 	const nextTaskId = String(taskId || '').trim()

@@ -26,6 +26,17 @@
 					>
 						{{ isExpanded(item.id) ? '收起' : '展开' }}
 					</button>
+					<div v-if="item.actions && item.actions.length" class="wf-toast-actions">
+						<button
+							v-for="(act, idx) in item.actions"
+							:key="idx"
+							class="wf-toast-action-btn"
+							type="button"
+							@click.stop="onActionClick(item, act)"
+						>
+							{{ act.label }}
+						</button>
+					</div>
 				</div>
 				<button class="wf-toast-close" type="button" @click="emit('close', item.id)">关闭</button>
 			</div>
@@ -36,10 +47,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+export type ToastActionItem = {
+	label: string
+	onClick?: () => void
+}
+
 export type ToastItem = {
 	id: string
 	message: string
 	tone?: 'info' | 'warn' | 'error'
+	persistent?: boolean
+	actions?: ToastActionItem[]
 }
 
 const props = defineProps<{
@@ -62,6 +80,16 @@ const toggle = (id: string) => {
 	if (next.has(id)) next.delete(id)
 	else next.add(id)
 	expandedIds.value = next
+}
+
+const onActionClick = (item: ToastItem, action: ToastActionItem) => {
+	try {
+		if (typeof action.onClick === 'function') {
+			action.onClick()
+		}
+	} catch (e) {
+		console.error('[ToastStack] action click error:', e)
+	}
 }
 
 watch(
@@ -160,6 +188,27 @@ const emit = defineEmits<{
 .wf-toast-more:hover {
 	border-color: var(--vscode-hover-border);
 	background: var(--vscode-hover-bg);
+}
+
+.wf-toast-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.wf-toast-action-btn {
+	border: 1px solid var(--vscode-hover-border);
+	background: var(--vscode-hover-bg);
+	color: var(--vscode-fg);
+	padding: 4px 10px;
+	cursor: pointer;
+	font-size: 11px;
+	border-radius: 0;
+}
+
+.wf-toast-action-btn:hover {
+	border-color: var(--vscode-active-border);
+	background: var(--vscode-active-bg);
 }
 
 .wf-toast-close {

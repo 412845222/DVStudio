@@ -437,6 +437,9 @@ contextBridge.exposeInMainWorld('dweb', {
 		list: (payload) => invoke('dweb:seedance:list', payload || {}),
 		taskDetail: (payload) => invoke('dweb:seedance:task-detail', payload || {}),
 		sync: (payload) => invoke('dweb:seedance:sync', payload || {}),
+		taskDetailRemote: (payload) => invoke('dweb:seedance:task-detail-remote', payload || {}),
+		downloadAsset: (payload) => invoke('dweb:seedance:download-asset', payload || {}),
+		listAllRemote: (payload) => invoke('dweb:seedance:list-all-remote', payload || {}),
 	},
 	// ===== 火山方舟（ARK）任务面板 =====
 	ark: {
