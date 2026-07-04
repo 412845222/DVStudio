@@ -11,6 +11,82 @@ const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const steamPipeDir = path.join(repoRoot, 'steam-pipe')
 
+const APP_BUILD_VDF_TEMPLATE = `"AppBuild"
+{
+\t"AppID" "{{APP_ID}}"
+\t"Desc" "{{DESCRIPTION}}"
+\t"BuildOutput" "{{BUILD_OUTPUT}}"
+\t"ContentRoot" "{{CONTENT_ROOT}}"
+\t"Preview" "0"
+\t"verbose" "1"
+{{SET_LIVE_BLOCK}}
+\t"Depots"
+\t{
+{{DEPOT_ENTRIES}}
+\t}
+}`
+
+const DEPOT_BUILD_WIN_VDF_TEMPLATE = `"DepotBuild"
+{
+\t"DepotID" "{{DEPOT_ID_WIN}}"
+\t"ContentRoot" "content/win64"
+\t"FileMapping"
+\t{
+\t\t"LocalPath" "*"
+\t\t"DepotPath" "."
+\t\t"Recursive" "1"
+\t}
+\t"FileExclusion" "*.pdb"
+\t"FileExclusion" "*.bak"
+\t"FileExclusion" "*.log"
+\t"FileExclusion" "node_modules/*"
+\t"FileExclusion" "steam_appid.txt"
+}`
+
+const DEPOT_BUILD_MAC_VDF_TEMPLATE = `"depotbuild"
+{
+\t"depotid" "{{DEPOT_ID_MAC}}"
+\t"contentroot" "content/mac"
+\t"depotfrommanifest" "0"
+\t"filemapping"
+\t{
+\t\t"local" "."
+\t\t"depot" "."
+\t}
+\t"ignore"
+\t{
+\t\t"*.pdb"
+\t\t"*.bak"
+\t\t"*.log"
+\t\t"node_modules/"
+\t}
+}`
+
+const DEPOT_BUILD_LINUX_VDF_TEMPLATE = `"depotbuild"
+{
+\t"depotid" "{{DEPOT_ID_LINUX}}"
+\t"contentroot" "content/linux"
+\t"depotfrommanifest" "0"
+\t"filemapping"
+\t{
+\t\t"local" "."
+\t\t"depot" "."
+\t}
+\t"ignore"
+\t{
+\t\t"*.pdb"
+\t\t"*.bak"
+\t\t"*.log"
+\t\t"node_modules/"
+\t}
+}`
+
+const DEPOT_TEMPLATES = {
+	win: { template: DEPOT_BUILD_WIN_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_WIN}}', contentKey: 'content/win64' },
+	mac: { template: DEPOT_BUILD_MAC_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_MAC}}', contentKey: 'content/mac' },
+	linux: { template: DEPOT_BUILD_LINUX_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_LINUX}}', contentKey: 'content/linux' },
+}
+
 export function parseCliArgs(argv) {
 	const args = {}
 	for (let i = 0; i < argv.length; i++) {
@@ -160,38 +236,30 @@ async function main() {
 
 	process.stdout.write('[upload:steam] === Step 1/3: Generating VDF configs ===\n')
 
+	fs.mkdirSync(steamPipeDir, { recursive: true })
+
 	const generatedFiles = []
 
-	function generateDepotVdf(templateName, outputName, depotId, contentSubdir) {
-		const templatePath = path.join(steamPipeDir, templateName)
+	function generateDepotVdf(platform, outputName, depotId) {
+		const tmpl = DEPOT_TEMPLATES[platform]
 		const outputPath = path.join(steamPipeDir, outputName)
-		if (!fs.existsSync(templatePath)) return null
 		if (!depotId) return null
 
-		const contentRootAbs = toVdfPath(path.join(steamPipeDir, 'content', contentSubdir))
-		let content = fs.readFileSync(templatePath, 'utf8')
-		const depIdPlaceholder = content.match(/\{\{DEPOT_ID_[A-Z]+\}\}/)?.[0] || '{{DEPOT_ID_WIN}}'
-		content = content.replace(depIdPlaceholder, depotId)
-		content = content.replace('"content/win64"', `"${contentRootAbs}"`)
-		content = content.replace('"content/mac"', `"${contentRootAbs}"`)
-		content = content.replace('"content/linux"', `"${contentRootAbs}"`)
+		const contentRootAbs = toVdfPath(path.join(steamPipeDir, tmpl.contentKey))
+		let content = tmpl.template
+		content = content.replace(tmpl.placeholder, depotId)
+		content = content.replace(`"${tmpl.contentKey}"`, `"${contentRootAbs}"`)
 		fs.writeFileSync(outputPath, content, 'utf8')
 		generatedFiles.push(outputPath)
 		process.stdout.write(`[upload:steam] ✓ Generated: ${outputName}\n`)
 		return toVdfPath(outputPath)
 	}
 
-	const winDepotFile = generateDepotVdf('depot_build_win.vdf', 'depot_build_win_generated.vdf', steamDepotIdWin, 'win64')
-	const macDepotFile = generateDepotVdf('depot_build_mac.vdf', 'depot_build_mac_generated.vdf', steamDepotIdMac, 'mac')
-	const linuxDepotFile = generateDepotVdf('depot_build_linux.vdf', 'depot_build_linux_generated.vdf', steamDepotIdLinux, 'linux')
+	const winDepotFile = generateDepotVdf('win', 'depot_build_win_generated.vdf', steamDepotIdWin)
+	const macDepotFile = generateDepotVdf('mac', 'depot_build_mac_generated.vdf', steamDepotIdMac)
+	const linuxDepotFile = generateDepotVdf('linux', 'depot_build_linux_generated.vdf', steamDepotIdLinux)
 
-	const appTemplatePath = path.join(steamPipeDir, 'app_build.vdf')
 	const appOutputPath = path.join(steamPipeDir, 'app_build_generated.vdf')
-
-	if (!fs.existsSync(appTemplatePath)) {
-		process.stderr.write(`[upload:steam] ERROR: App build template not found: ${appTemplatePath}\n`)
-		process.exit(1)
-	}
 
 	const contentRootAbs = toVdfPath(contentDir)
 	const buildOutputAbs = toVdfPath(outputDir)
@@ -201,16 +269,16 @@ async function main() {
 	if (macDepotFile) depotEntries.push(`\t\t"${steamDepotIdMac}" "${macDepotFile}"`)
 	if (linuxDepotFile) depotEntries.push(`\t\t"${steamDepotIdLinux}" "${linuxDepotFile}"`)
 
-	let appContent = fs.readFileSync(appTemplatePath, 'utf8')
-	appContent = appContent.replace('{{APP_ID}}', steamAppId)
-	appContent = appContent.replace(/\{\{VERSION\}\}/g, pkg.version)
-	appContent = appContent.replace('{{BUILD_OUTPUT}}', buildOutputAbs)
-	appContent = appContent.replace('{{CONTENT_ROOT}}', contentRootAbs)
-	appContent = appContent.replace('{{BRANCH}}', steamBranch)
-	appContent = appContent.replace('{{DEPOT_ENTRIES}}', depotEntries.join('\n'))
-	appContent = appContent.replace('{{DESCRIPTION}}', description || `v${pkg.version} build`)
-	const setLiveBlock = setLive ? `\t"SetLive" "${steamBranch}"` : ''
-	appContent = appContent.replace('{{SET_LIVE_BLOCK}}', setLiveBlock)
+	let appContent = renderAppBuildVdf(APP_BUILD_VDF_TEMPLATE, {
+		appId: steamAppId,
+		version: pkg.version,
+		buildOutput: buildOutputAbs,
+		contentRoot: contentRootAbs,
+		branch: steamBranch,
+		depotEntries: depotEntries.join('\n'),
+		description: description || '',
+		setLive,
+	})
 
 	fs.writeFileSync(appOutputPath, appContent, 'utf8')
 	generatedFiles.push(appOutputPath)

@@ -143,20 +143,8 @@ electron/platform/native/*/
 !electron/platform/native/
 
 # ============================================================
-# SteamPipe build & upload (NEVER commit these)
+# SteamPipe build & upload (NEVER commit this directory)
 # ============================================================
-# Ignore everything directly in steam-pipe/ first
-steam-pipe/*
-# Then re-include only the tracked template files
-!steam-pipe/app_build.vdf
-!steam-pipe/depot_build_win.vdf
-!steam-pipe/depot_build_mac.vdf
-!steam-pipe/depot_build_linux.vdf
-!steam-pipe/env.example
-# Explicitly ignore hidden/credential files (git's * doesn't match dotfiles)
-steam-pipe/.*
-# Explicitly ignore generated/cache files
-steam-pipe/*_generated.vdf
-steam-pipe/ssfn*
-steam-pipe/*.mdmp
-steam-pipe/*.log
+# The entire steam-pipe/ directory is local-only (build outputs, credentials, logs).
+# VDF templates are inlined in scripts/upload-steam.mjs; do not track any files here.
+steam-pipe/

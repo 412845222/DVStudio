@@ -8,7 +8,78 @@ const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const steamPipeDir = path.join(repoRoot, 'steam-pipe')
 const envPath = path.join(steamPipeDir, '.env')
-const envExamplePath = path.join(steamPipeDir, 'env.example')
+
+const ENV_EXAMPLE_CONTENT = `# ============================================================
+# Steam 构建与上传环境配置
+# ============================================================
+# 使用方式：
+#   1. 运行 npm run config:steam 交互式配置
+#   2. 或者直接在命令行通过参数传递（优先级更高）
+#   3. 或者设置系统环境变量
+#
+# 配置优先级：命令行参数 > 环境变量 > .env 文件
+#
+# ============================================================
+# 日常发布命令：
+# ============================================================
+#
+# 🔧 仅构建（不上传）：
+#    npm run build:steam
+#
+# 📤 仅上传（需要已有构建产物 steam-pipe/content/win64）：
+#    npm run upload:steam
+#
+# 🚀 构建 + 上传（推荐日常使用，上传到 beta 分支）：
+#    npm run release:steam -- --guard=XXXXX
+#
+# 🌍 构建 + 上传 + 自动发布到分支：
+#    npm run release:steam:live -- --guard=XXXXX --branch=beta
+#
+# 🧪 试运行（只生成VDF不实际上传）：
+#    npm run upload:steam -- --dry-run
+#
+# ============================================================
+# 命令行参数说明（使用 -- 传递给 npm 脚本）：
+# ============================================================
+#   --guard=XXXXX    Steam Guard 验证码（5位字母，手机APP生成）
+#   --user=xxx       Steam 用户名（覆盖 .env 配置）
+#   --pass=xxx       Steam 密码（覆盖 .env 配置）
+#   --branch=xxx     目标分支名（默认 beta）
+#   --set-live       上传后自动发布到指定分支（不指定则仅上传不发布）
+#   --desc="xxx"     构建描述文字
+#   --appid=xxx      AppID（默认 2475710）
+#   --dry-run        试运行模式，不实际上传
+#
+# ============================================================
+# 环境变量（也可以写在 .env 文件中）：
+# ============================================================
+
+# Steam App ID（必填）
+STEAM_APP_ID=2475710
+
+# Depot ID（上传时必填，在 Steamworks 后台创建）
+STEAM_DEPOT_ID_WIN=2475711
+STEAM_DEPOT_ID_MAC=
+STEAM_DEPOT_ID_LINUX=
+
+# Steam 构建账户（建议使用专用构建账户，仅授予发布权限）
+# 如果留空，命令行必须传 --user 参数
+STEAM_USERNAME=
+STEAM_PASSWORD=
+
+# Steam Guard 验证码（可选）
+# 注意：验证码每30秒刷新，请获取最新的再运行命令
+# 首次成功登录后 steamcmd 会缓存 sentry 文件，后续登录可能不需要验证码
+# 建议通过命令行 --guard=XXXXX 传入，避免写在文件中
+STEAM_GUARD_CODE=
+
+# Steam 分支（可选，默认为 beta）
+# 设置为空字符串 "" 表示发布到默认公开分支（谨慎！）
+STEAM_BRANCH=beta
+
+# 构建描述（可选）
+STEAM_BUILD_DESC=
+`
 
 const rl = readline.createInterface({
 	input: process.stdin,
@@ -55,9 +126,14 @@ function questionSilent(prompt, defaultValue = '') {
 }
 
 function parseEnv(filePath) {
+	if (typeof filePath === 'string' && fs.existsSync(filePath)) {
+		return parseEnvContent(fs.readFileSync(filePath, 'utf8'))
+	}
+	return {}
+}
+
+function parseEnvContent(content) {
 	const result = {}
-	if (!fs.existsSync(filePath)) return result
-	const content = fs.readFileSync(filePath, 'utf8')
 	for (const line of content.split('\n')) {
 		const trimmed = line.trim()
 		if (!trimmed || trimmed.startsWith('#')) continue
@@ -71,9 +147,7 @@ function parseEnv(filePath) {
 }
 
 function serializeEnv(config) {
-	const exampleContent = fs.existsSync(envExamplePath)
-		? fs.readFileSync(envExamplePath, 'utf8')
-		: ''
+	const exampleContent = ENV_EXAMPLE_CONTENT
 	const lines = []
 	const written = new Set()
 	for (const line of exampleContent.split('\n')) {
@@ -109,7 +183,7 @@ async function main() {
 	process.stdout.write('所有配置将保存到 steam-pipe/.env 文件中（不会被提交到 Git）。\n\n')
 
 	const existingConfig = parseEnv(envPath)
-	const exampleConfig = parseEnv(envExamplePath)
+	const exampleConfig = parseEnvContent(ENV_EXAMPLE_CONTENT)
 	const defaults = { ...exampleConfig, ...existingConfig }
 
 	const steamAppId = await question('Steam App ID', defaults.STEAM_APP_ID || '2475710')
