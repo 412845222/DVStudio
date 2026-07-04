@@ -1,0 +1,64 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+    paths-ignore:
+      - 'README.md'
+      - 'AGENT_GUIDE.md'
+      - 'agent_docs/**'
+      - 'samples/**'
+      - 'AIPlan/**'
+      - '.github/workflows/pull-request.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    name: Build Windows Installer & Publish Release
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        shell: pwsh
+
+      - name: Build and package Windows installer
+        run: npm run dist:win
+        env:
+          PIP_INDEX_URL: https://pypi.org/simple/
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+        shell: pwsh
+
+      - name: Prepare release artifacts
+        id: prep
+        run: node scripts/ci/prepare-release.mjs
+        shell: pwsh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.prep.outputs.tag }}
+          name: ${{ steps.prep.outputs.release_name }}
+          body_path: ${{ steps.prep.outputs.notes_path }}
+          files: ${{ steps.prep.outputs.installer_path }}
+          draft: false
+          prerelease: ${{ steps.prep.outputs.is_prerelease == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

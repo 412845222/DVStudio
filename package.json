@@ -93,7 +93,8 @@
     "format": "prettier --write \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
     "format:check": "prettier --check \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
     "quality": "npm run typecheck && npm run test",
-    "quality:full": "npm run typecheck && npm run lint && npm run test"
+    "quality:full": "npm run typecheck && npm run lint && npm run test",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
