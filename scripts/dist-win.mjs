@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
 
+const isCI = process.env.CI === 'true'
+
 function run(cmd, args, { env } = {}) {
 	return new Promise((resolve) => {
 		const child = spawn(cmd, args, {
@@ -14,6 +16,25 @@ function run(cmd, args, { env } = {}) {
 	})
 }
 
+function getMirrorConfig() {
+	if (isCI) {
+		return {
+			PIP_INDEX_URL: process.env.PIP_INDEX_URL || 'https://pypi.org/simple/',
+			ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://github.com/electron/electron/releases/download/',
+			ELECTRON_BUILDER_BINARIES_MIRROR:
+				process.env.ELECTRON_BUILDER_BINARIES_MIRROR ||
+				'https://github.com/electron-userland/electron-builder-binaries/releases/download/'
+		}
+	}
+	return {
+		PIP_INDEX_URL: process.env.PIP_INDEX_URL || 'https://pypi.tuna.tsinghua.edu.cn/simple',
+		ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
+		ELECTRON_BUILDER_BINARIES_MIRROR:
+			process.env.ELECTRON_BUILDER_BINARIES_MIRROR ||
+			'https://npmmirror.com/mirrors/electron-builder-binaries/'
+	}
+}
+
 async function main() {
 	const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-')
 	const releaseDir = path.resolve(process.cwd(), `release-${stamp}`)
@@ -21,16 +42,19 @@ async function main() {
 
 	fs.mkdirSync(cacheDir, { recursive: true })
 
+	process.stdout.write(`[dist:win] environment: ${isCI ? 'CI (GitHub Actions)' : 'local'}\n`)
 	process.stdout.write(`[dist:win] output dir: ${releaseDir}\n`)
 	process.stdout.write(`[dist:win] electron cache dir: ${cacheDir}\n`)
+
+	const mirrors = getMirrorConfig()
+	process.stdout.write(`[dist:win] PIP_INDEX_URL: ${mirrors.PIP_INDEX_URL}\n`)
+	process.stdout.write(`[dist:win] ELECTRON_MIRROR: ${mirrors.ELECTRON_MIRROR}\n`)
 
 	const buildEnv = {
 		ELECTRON_BUILDER_DISABLE_UPDATES_CHECK: 'true',
 		ELECTRON_CACHE: cacheDir,
 		ELECTRON_BUILDER_CACHE: cacheDir,
-		PIP_INDEX_URL: process.env.PIP_INDEX_URL || 'https://pypi.tuna.tsinghua.edu.cn/simple',
-		ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
-		ELECTRON_BUILDER_BINARIES_MIRROR: process.env.ELECTRON_BUILDER_BINARIES_MIRROR || 'https://npmmirror.com/mirrors/electron-builder-binaries/'
+		...mirrors
 	}
 
 	let code = await run('npx', ['vite', 'build'])
