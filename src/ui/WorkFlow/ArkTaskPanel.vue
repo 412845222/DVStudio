@@ -294,18 +294,18 @@
 									<button
 										class="wf-ark-panel-btn primary"
 										type="button"
-										:disabled="isDownloading(detailTask.id)"
-										@click="onDownloadAsset(detailTask.taskId, 'video')"
+										:disabled="detailTask && isDownloading(detailTask.id)"
+										@click="detailTask && onDownloadAsset(detailTask.taskId, 'video')"
 									>
-										{{ isDownloading(detailTask.id) ? '下载中…' : '下载视频到项目' }}
+										{{ detailTask && isDownloading(detailTask.id) ? '下载中…' : '下载视频到项目' }}
 									</button>
 									<button
 										class="wf-ark-panel-btn primary"
 										type="button"
-										:disabled="isDownloading(detailTask.id)"
-										@click="onImportToNode(detailTask.taskId, 'video')"
+										:disabled="detailTask && isDownloading(detailTask.id)"
+										@click="detailTask && onImportToNode(detailTask.taskId, 'video')"
 									>
-										{{ isDownloading(detailTask.id) ? '处理中…' : '导入并回填视频节点' }}
+										{{ detailTask && isDownloading(detailTask.id) ? '处理中…' : '导入并回填视频节点' }}
 									</button>
 								</div>
 							</div>
