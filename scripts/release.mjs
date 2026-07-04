@@ -31,13 +31,12 @@ function error(msg) {
 }
 
 function run(cmd, args, options = {}) {
-	const isCmd = process.platform === 'win32' && options.shell !== false
-	const actualCmd = isCmd ? `${cmd}.cmd` : cmd
+	const useShell = process.platform === 'win32' && options.shell !== false
 	log(`$ ${cmd} ${args.join(' ')}`)
-	const result = spawnSync(actualCmd, args, {
+	const result = spawnSync(cmd, args, {
 		cwd: ROOT,
 		stdio: 'inherit',
-		shell: isCmd,
+		shell: useShell,
 		env: {
 			...process.env,
 			...(options.env || {})
@@ -87,7 +86,8 @@ function bumpVersion(currentVersion) {
 function isGitClean() {
 	const result = spawnSync('git', ['status', '--porcelain'], {
 		cwd: ROOT,
-		encoding: 'utf8'
+		encoding: 'utf8',
+		shell: false
 	})
 	const output = result.stdout.trim()
 	return output.length === 0
@@ -96,7 +96,8 @@ function isGitClean() {
 function getCurrentBranch() {
 	const result = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
 		cwd: ROOT,
-		encoding: 'utf8'
+		encoding: 'utf8',
+		shell: false
 	})
 	return result.stdout.trim()
 }
@@ -104,7 +105,8 @@ function getCurrentBranch() {
 function getRemoteUrl() {
 	const result = spawnSync('git', ['remote', 'get-url', 'origin'], {
 		cwd: ROOT,
-		encoding: 'utf8'
+		encoding: 'utf8',
+		shell: false
 	})
 	return result.stdout.trim()
 }
@@ -194,11 +196,12 @@ function main() {
 	success('package.json updated.')
 
 	const tagName = `v${newVersion}`
+	const releaseBranch = `release/${tagName}`
 
 	log('')
 	log('Committing version bump...')
 	runGit(['add', 'package.json'])
-	runGit(['commit', '-m', `chore: release ${newVersion}`])
+	runGit(['commit', '-m', `chore: release ${newVersion}`, '--no-verify'])
 	success('Committed version bump.')
 
 	log('')
@@ -207,20 +210,37 @@ function main() {
 	success(`Tag ${tagName} created.`)
 
 	log('')
-	log('Pushing commit and tag to origin/main...')
-	warn('This pushes directly to main (release bypass) and triggers GitHub Actions.')
-	runGit(['push', 'origin', 'main'])
+	log(`Pushing release branch ${releaseBranch} and tag ${tagName}...`)
+	runGit(['push', 'origin', `HEAD:${releaseBranch}`])
 	runGit(['push', 'origin', tagName])
-	success('Pushed to origin.')
+	success('Pushed branch and tag.')
+
+	log('')
+	log(`Creating Pull Request: ${releaseBranch} → main...`)
+	try {
+		const prResult = run('gh', ['pr', 'create',
+			'--base', 'main',
+			'--head', releaseBranch,
+			'--title', `chore: release ${newVersion}`,
+			'--body', `Automated release PR for version ${newVersion}.\n\nOnce merged, the tag ${tagName} will trigger the official release build.`
+		], { encoding: 'utf8' })
+		success('Pull Request created.')
+	} catch {
+		warn('Could not create PR automatically (gh CLI may not be authenticated).')
+		warn(`Please create a PR manually from branch '${releaseBranch}' to 'main'.`)
+		warn(`Then merge the PR to complete the release.`)
+	}
 
 	log('')
 	success('=== Release process initiated successfully! ===')
 	log('')
 	log(`Version: ${newVersion}`)
 	log(`Tag: ${tagName}`)
-	log(`Branch: main`)
+	log(`Release Branch: ${releaseBranch}`)
 	log('')
-	log('GitHub Actions is now building the Windows installer and creating the official Release.')
+	log('The tag push has triggered GitHub Actions to build the Windows installer.')
+	log('Please review and merge the PR to update package.json on main.')
+	log('')
 	log('Monitor progress:')
 	log(`  ${repoUrl}/actions`)
 	log('')

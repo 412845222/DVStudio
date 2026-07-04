@@ -5,6 +5,8 @@ on:
     branches: [main]
     tags:
       - 'v*'
+    tags-ignore:
+      - 'v*-dev*'
     paths-ignore:
       - 'README.md'
       - 'AGENT_GUIDE.md'
@@ -20,16 +22,64 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  CI: true
+
 jobs:
-  build-and-release:
+  ci:
+    name: CI Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (skip scripts for lint/typecheck/test)
+        run: npm ci --ignore-scripts
+
+      - name: Lint Check (advisory)
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Type Check
+        run: npm run typecheck
+
+      - name: Frontend Tests
+        run: npm run test
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Python Bridge Syntax Check
+        run: |
+          python -m py_compile electron/backend/python-bridge/scripts/worker.py
+          python -m py_compile electron/backend/python-bridge/scripts/common/rpc.py
+          python -m py_compile electron/backend/python-bridge/scripts/common/worker_logging.py
+          python -m py_compile electron/backend/python-bridge/scripts/subtitle/__init__.py
+          python -m py_compile electron/backend/python-bridge/scripts/subtitle/handlers.py
+          python -m py_compile electron/backend/python-bridge/scripts/subtitle/utils.py
+        shell: bash
+
+      - name: Vite Build Check
+        run: npx vite build
+
+  build-release:
     name: Build Windows Installer & Publish Release
     runs-on: windows-2022
-
+    needs: [ci]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -40,19 +90,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
         shell: pwsh
-        env:
-          CI: true
 
       - name: Build and package Windows installer
         run: npm run dist:win
         shell: pwsh
-        env:
-          CI: true
 
       - name: Prepare release artifacts
         id: prep
         run: node scripts/ci/prepare-release.mjs
         shell: pwsh
+
+      - name: Create and push tag for dev preview
+        if: steps.prep.outputs.is_prerelease == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.prep.outputs.tag }}" -m "Release ${{ steps.prep.outputs.tag }}"
+          git push origin "${{ steps.prep.outputs.tag }}"
+        shell: bash
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
