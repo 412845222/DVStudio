@@ -11,10 +11,12 @@ type I18nStoreType = Store<I18nState>
 
 function getStore(): I18nStoreType {
 	try {
-		return useStore(I18nStoreKey)
+		const store = useStore(I18nStoreKey)
+		if (store) return store
 	} catch {
-		return I18nStore
+		// fall through to global store
 	}
+	return I18nStore
 }
 
 export function useI18n() {

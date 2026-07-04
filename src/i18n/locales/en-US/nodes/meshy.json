@@ -16,7 +16,7 @@
   "nodes.meshy.imageConfigTitle": "Image Pipeline Parameters",
   "nodes.meshy.aiModel": "Model",
   "nodes.meshy.outputImageCount": "Output Image Count",
-  "nodes.meshy.outputCountUnit": "",
+  "nodes.meshy.outputCountUnit": "images",
   "nodes.meshy.outputAnchorsHint": "Will generate {count} output anchors (out-image-1 ~ out-image-{count})",
   "nodes.meshy.creditEstimate": "Credit Estimate",
   "nodes.meshy.creditUnit": "credits/image",
