@@ -60,7 +60,16 @@
 							</svg>
 							<span>好友列表</span>
 						</div>
-						<SteamFriendsList />
+						<div class="friends-placeholder" @click="handleFriendsClick">
+							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+								<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+								<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/>
+								<path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+								<path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+							<span class="placeholder-text">点击上方「好友」按钮</span>
+							<span class="placeholder-sub">打开 Steam 好友列表面板</span>
+						</div>
 					</div>
 				</div>
 
@@ -78,7 +87,6 @@ import { useSquareParticles } from '../../composables/useSquareParticles'
 import type { DwebPlatformUser } from '../../platformBridge/types'
 import SteamUserCard from './SteamUserCard.vue'
 import SteamQuickActions from './SteamQuickActions.vue'
-import SteamFriendsList from './SteamFriendsList.vue'
 
 interface Props {
 	visible: boolean
@@ -115,6 +123,10 @@ function handleQuickAction(actionId: string) {
 		})
 	}
 	emit('action', actionId)
+}
+
+function handleFriendsClick() {
+	emit('action', 'friends')
 }
 </script>
 
@@ -334,6 +346,47 @@ function handleQuickAction(actionId: string) {
 .friends-section {
 	flex: 1;
 	min-height: 0;
+}
+
+.friends-placeholder {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 28px 16px;
+	color: var(--theme-text-muted, #6e6e6e);
+	cursor: pointer;
+	border: 1px dashed color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
+	transition: all 160ms ease;
+	border-radius: 0;
+}
+
+.friends-placeholder:hover {
+	color: var(--theme-accent, #1f9d84);
+	border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 50%, transparent);
+	background: color-mix(in srgb, var(--theme-accent, #1f9d84) 6%, transparent);
+}
+
+.friends-placeholder svg {
+	width: 36px;
+	height: 36px;
+	opacity: 0.6;
+}
+
+.friends-placeholder:hover svg {
+	opacity: 1;
+}
+
+.placeholder-text {
+	font-size: 12px;
+	font-weight: 500;
+	letter-spacing: 0.02em;
+}
+
+.placeholder-sub {
+	font-size: 11px;
+	opacity: 0.7;
 }
 
 .panel-footer {

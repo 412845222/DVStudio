@@ -1,0 +1,410 @@
+import { spawn } from 'node:child_process'
+import path from 'node:path'
+import fs from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { loadSteamEnv, getSteamEnvPath } from './steam-env.mjs'
+
+loadSteamEnv()
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const repoRoot = path.resolve(__dirname, '..')
+const steamPipeDir = path.join(repoRoot, 'steam-pipe')
+
+const APP_BUILD_VDF_TEMPLATE = `"AppBuild"
+{
+\t"AppID" "{{APP_ID}}"
+\t"Desc" "{{DESCRIPTION}}"
+\t"BuildOutput" "{{BUILD_OUTPUT}}"
+\t"ContentRoot" "{{CONTENT_ROOT}}"
+\t"Preview" "0"
+\t"verbose" "1"
+{{SET_LIVE_BLOCK}}
+\t"Depots"
+\t{
+{{DEPOT_ENTRIES}}
+\t}
+}`
+
+const DEPOT_BUILD_WIN_VDF_TEMPLATE = `"DepotBuild"
+{
+\t"DepotID" "{{DEPOT_ID_WIN}}"
+\t"ContentRoot" "content/win64"
+\t"FileMapping"
+\t{
+\t\t"LocalPath" "*"
+\t\t"DepotPath" "."
+\t\t"Recursive" "1"
+\t}
+\t"FileExclusion" "*.pdb"
+\t"FileExclusion" "*.bak"
+\t"FileExclusion" "*.log"
+\t"FileExclusion" "node_modules/*"
+\t"FileExclusion" "steam_appid.txt"
+}`
+
+const DEPOT_BUILD_MAC_VDF_TEMPLATE = `"depotbuild"
+{
+\t"depotid" "{{DEPOT_ID_MAC}}"
+\t"contentroot" "content/mac"
+\t"depotfrommanifest" "0"
+\t"filemapping"
+\t{
+\t\t"local" "."
+\t\t"depot" "."
+\t}
+\t"ignore"
+\t{
+\t\t"*.pdb"
+\t\t"*.bak"
+\t\t"*.log"
+\t\t"node_modules/"
+\t}
+}`
+
+const DEPOT_BUILD_LINUX_VDF_TEMPLATE = `"depotbuild"
+{
+\t"depotid" "{{DEPOT_ID_LINUX}}"
+\t"contentroot" "content/linux"
+\t"depotfrommanifest" "0"
+\t"filemapping"
+\t{
+\t\t"local" "."
+\t\t"depot" "."
+\t}
+\t"ignore"
+\t{
+\t\t"*.pdb"
+\t\t"*.bak"
+\t\t"*.log"
+\t\t"node_modules/"
+\t}
+}`
+
+const DEPOT_TEMPLATES = {
+	win: { template: DEPOT_BUILD_WIN_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_WIN}}', contentKey: 'content/win64' },
+	mac: { template: DEPOT_BUILD_MAC_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_MAC}}', contentKey: 'content/mac' },
+	linux: { template: DEPOT_BUILD_LINUX_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_LINUX}}', contentKey: 'content/linux' },
+}
+
+export function parseCliArgs(argv) {
+	const args = {}
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i]
+		if (arg.startsWith('--')) {
+			const eqIdx = arg.indexOf('=')
+			if (eqIdx !== -1) {
+				const key = arg.slice(2, eqIdx)
+				let val = arg.slice(eqIdx + 1)
+				if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+					val = val.slice(1, -1)
+				}
+				args[key] = val
+			} else {
+				const key = arg.slice(2)
+				const nextVal = argv[i + 1]
+				if (nextVal && !nextVal.startsWith('--')) {
+					args[key] = nextVal
+					i++
+				} else {
+					args[key] = true
+				}
+			}
+		}
+	}
+	return args
+}
+
+export function resolveConfigValue(cliArgs, cliKey, envValue, fallback = '') {
+	if (cliArgs[cliKey] !== undefined && cliArgs[cliKey] !== true && cliArgs[cliKey] !== '') {
+		return String(cliArgs[cliKey])
+	}
+	if (envValue) return envValue
+	return fallback
+}
+
+export function renderAppBuildVdf(template, config) {
+	const { appId, version, buildOutput, contentRoot, branch, depotEntries, description, setLive } = config
+	let content = template
+	content = content.replace('{{APP_ID}}', String(appId))
+	content = content.replace(/\{\{VERSION\}\}/g, String(version))
+	content = content.replace('{{BUILD_OUTPUT}}', buildOutput)
+	content = content.replace('{{CONTENT_ROOT}}', contentRoot)
+	content = content.replace('{{BRANCH}}', branch)
+	content = content.replace('{{DEPOT_ENTRIES}}', depotEntries)
+	content = content.replace('{{DESCRIPTION}}', description || `v${version} build`)
+	const setLiveBlock = setLive ? `\t"SetLive" "${branch}"` : ''
+	content = content.replace('{{SET_LIVE_BLOCK}}', setLiveBlock)
+	return content
+}
+
+const isMainModule = (() => {
+	try {
+		const scriptPath = process.argv[1]
+		if (!scriptPath) return false
+		return import.meta.url === pathToFileURL(path.resolve(scriptPath)).href
+	} catch {
+		return false
+	}
+})()
+
+const cliArgs = isMainModule ? parseCliArgs(process.argv.slice(2)) : {}
+
+if (isMainModule) {
+	main().catch((e) => {
+		process.stderr.write(`[upload:steam] FATAL: ${String(e?.message || e)}\n`)
+		process.exit(1)
+	})
+}
+
+function resolveConfig(_name, cliKey, envKey, fallback = '') {
+	return resolveConfigValue(cliArgs, cliKey, process.env[envKey], fallback)
+}
+
+function run(cmd, args, { env, cwd } = {}) {
+	return new Promise((resolve, reject) => {
+		const child = spawn(cmd, args, {
+			stdio: 'inherit',
+			shell: true,
+			env: { ...process.env, ...(env || {}) },
+			windowsHide: true,
+			cwd: cwd || repoRoot
+		})
+		child.once('exit', (code) => {
+			if (code === 0) {
+				resolve(0)
+			} else {
+				reject(new Error(`Command exited with code ${code}`))
+			}
+		})
+		child.once('error', (err) => reject(err))
+	})
+}
+
+async function main() {
+	const pkgPath = path.join(repoRoot, 'package.json')
+	const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+
+	const steamAppId = resolveConfig('AppID', 'appid', 'STEAM_APP_ID', '2475710')
+	const steamUsername = resolveConfig('Username', 'user', 'STEAM_USERNAME', '')
+	const steamPassword = resolveConfig('Password', 'pass', 'STEAM_PASSWORD', '')
+	const steamGuardCode = resolveConfig('GuardCode', 'guard', 'STEAM_GUARD_CODE', '')
+	const steamBranch = resolveConfig('Branch', 'branch', 'STEAM_BRANCH', 'beta')
+	const steamDepotIdWin = resolveConfig('DepotWin', 'depot-win', 'STEAM_DEPOT_ID_WIN', '')
+	const steamDepotIdMac = resolveConfig('DepotMac', 'depot-mac', 'STEAM_DEPOT_ID_MAC', '')
+	const steamDepotIdLinux = resolveConfig('DepotLinux', 'depot-linux', 'STEAM_DEPOT_ID_LINUX', '')
+	const setLive = cliArgs['set-live'] === true || cliArgs['publish'] === true
+	const description = resolveConfig('Description', 'desc', 'STEAM_BUILD_DESC', '')
+	const dryRun = cliArgs['dry-run'] === true || cliArgs['dryrun'] === true
+
+	if (!steamAppId || steamAppId === '0') {
+		process.stderr.write('[upload:steam] ERROR: Steam AppID is required\n')
+		process.stderr.write(`[upload:steam] Set via --appid=<id> or STEAM_APP_ID env var or ${getSteamEnvPath()}\n`)
+		process.exit(1)
+	}
+
+	const contentDir = path.join(steamPipeDir, 'content')
+	const winContentDir = path.join(contentDir, 'win64')
+	const outputDir = path.join(steamPipeDir, 'output')
+
+	if (!fs.existsSync(winContentDir)) {
+		process.stderr.write(`[upload:steam] ERROR: Content directory not found: ${winContentDir}\n`)
+		process.stderr.write('[upload:steam] Run "npm run dist:steam:win" first to build the Steam version\n')
+		process.exit(1)
+	}
+
+	fs.mkdirSync(outputDir, { recursive: true })
+
+	function toVdfPath(p) {
+		return p.replace(/\//g, '\\')
+	}
+
+	process.stdout.write('╔══════════════════════════════════════════════════╗\n')
+	process.stdout.write('║          Steam Build Upload Pipeline              ║\n')
+	process.stdout.write('╚══════════════════════════════════════════════════╝\n\n')
+	process.stdout.write(`  AppID:      ${steamAppId}\n`)
+	process.stdout.write(`  Version:    ${pkg.version}\n`)
+	process.stdout.write(`  Branch:     ${steamBranch}${setLive ? ' (will auto-set live!)' : ''}\n`)
+	process.stdout.write(`  Win Depot:  ${steamDepotIdWin || '(not set)'}\n`)
+	process.stdout.write(`  Mac Depot:  ${steamDepotIdMac || '(not set)'}\n`)
+	process.stdout.write(`  Linux Depot:${steamDepotIdLinux || '(not set)'}\n`)
+	process.stdout.write(`  Username:   ${steamUsername || '(not set, anonymous login)'}\n`)
+	process.stdout.write(`  Guard Code: ${steamGuardCode ? '***' + steamGuardCode.slice(-2) : '(not needed if sentry cached)'}\n`)
+	process.stdout.write(`  Dry Run:    ${dryRun ? 'YES (will not actually upload)' : 'NO'}\n`)
+	if (description) process.stdout.write(`  Description:${description}\n`)
+	process.stdout.write('\n')
+
+	process.stdout.write('[upload:steam] === Step 1/3: Generating VDF configs ===\n')
+
+	fs.mkdirSync(steamPipeDir, { recursive: true })
+
+	const generatedFiles = []
+
+	function generateDepotVdf(platform, outputName, depotId) {
+		const tmpl = DEPOT_TEMPLATES[platform]
+		const outputPath = path.join(steamPipeDir, outputName)
+		if (!depotId) return null
+
+		const contentRootAbs = toVdfPath(path.join(steamPipeDir, tmpl.contentKey))
+		let content = tmpl.template
+		content = content.replace(tmpl.placeholder, depotId)
+		content = content.replace(`"${tmpl.contentKey}"`, `"${contentRootAbs}"`)
+		fs.writeFileSync(outputPath, content, 'utf8')
+		generatedFiles.push(outputPath)
+		process.stdout.write(`[upload:steam] ✓ Generated: ${outputName}\n`)
+		return toVdfPath(outputPath)
+	}
+
+	const winDepotFile = generateDepotVdf('win', 'depot_build_win_generated.vdf', steamDepotIdWin)
+	const macDepotFile = generateDepotVdf('mac', 'depot_build_mac_generated.vdf', steamDepotIdMac)
+	const linuxDepotFile = generateDepotVdf('linux', 'depot_build_linux_generated.vdf', steamDepotIdLinux)
+
+	const appOutputPath = path.join(steamPipeDir, 'app_build_generated.vdf')
+
+	const contentRootAbs = toVdfPath(contentDir)
+	const buildOutputAbs = toVdfPath(outputDir)
+
+	const depotEntries = []
+	if (winDepotFile) depotEntries.push(`\t\t"${steamDepotIdWin}" "${winDepotFile}"`)
+	if (macDepotFile) depotEntries.push(`\t\t"${steamDepotIdMac}" "${macDepotFile}"`)
+	if (linuxDepotFile) depotEntries.push(`\t\t"${steamDepotIdLinux}" "${linuxDepotFile}"`)
+
+	let appContent = renderAppBuildVdf(APP_BUILD_VDF_TEMPLATE, {
+		appId: steamAppId,
+		version: pkg.version,
+		buildOutput: buildOutputAbs,
+		contentRoot: contentRootAbs,
+		branch: steamBranch,
+		depotEntries: depotEntries.join('\n'),
+		description: description || '',
+		setLive,
+	})
+
+	fs.writeFileSync(appOutputPath, appContent, 'utf8')
+	generatedFiles.push(appOutputPath)
+	process.stdout.write('[upload:steam] ✓ Generated: app_build_generated.vdf\n')
+
+	const appBuildVdfAbsPath = toVdfPath(appOutputPath)
+
+	const steamcmdPath = path.join(
+		repoRoot,
+		'SteamworksSDK',
+		'sdk',
+		'sdk',
+		'tools',
+		'ContentBuilder',
+		'builder',
+		'steamcmd.exe'
+	)
+
+	if (!fs.existsSync(steamcmdPath)) {
+		process.stderr.write(`[upload:steam] ERROR: steamcmd.exe not found at: ${steamcmdPath}\n`)
+		process.stderr.write('[upload:steam] Make sure SteamworksSDK is present in the project root\n')
+		cleanup()
+		process.exit(1)
+	}
+
+	function cleanup() {
+		for (const f of generatedFiles) {
+			if (fs.existsSync(f)) {
+				try { fs.rmSync(f, { force: true }) } catch (_) {}
+			}
+		}
+	}
+
+	if (dryRun) {
+		process.stdout.write('\n[upload:steam] === DRY RUN COMPLETE ===\n')
+		process.stdout.write('[upload:steam] VDF files generated but not uploaded.\n')
+		process.stdout.write(`[upload:steam] App build config: ${appOutputPath}\n`)
+		process.stdout.write('\n[upload:steam] To actually upload, remove --dry-run flag.\n')
+		process.exit(0)
+	}
+
+	process.stdout.write('\n[upload:steam] === Step 2/3: Authenticating & Uploading to SteamPipe ===\n')
+	process.stdout.write('─'.repeat(56) + '\n')
+
+	if (!steamUsername) {
+		process.stdout.write('  ⚠️  No username provided - will attempt anonymous login\n')
+		process.stdout.write('  Note: Anonymous login cannot upload builds!\n')
+	}
+	if (!steamPassword && steamUsername) {
+		process.stdout.write('  ⚠️  No password provided - steamcmd will prompt interactively\n')
+	}
+	if (!steamGuardCode && steamUsername && steamPassword) {
+		process.stdout.write('  ℹ️  No guard code provided - if this is first login,\n')
+		process.stdout.write('      steamcmd will prompt for Steam Guard code.\n')
+		process.stdout.write('      Tip: Use --guard=XXXXX to pass the code directly.\n')
+		process.stdout.write('      (Code is the 5-character code from Steam Mobile Authenticator)\n')
+	}
+	process.stdout.write('─'.repeat(56) + '\n\n')
+
+	const loginArgs = ['+login']
+	if (steamUsername) {
+		loginArgs.push(steamUsername)
+		if (steamPassword) {
+			loginArgs.push(steamPassword)
+			if (steamGuardCode) {
+				loginArgs.push(steamGuardCode)
+			}
+		}
+	} else {
+		loginArgs.push('anonymous')
+	}
+
+	try {
+		await run(steamcmdPath, [
+			...loginArgs,
+			'+run_app_build', appBuildVdfAbsPath,
+			'+quit'
+		], { cwd: steamPipeDir })
+
+		process.stdout.write('\n')
+		process.stdout.write('╔══════════════════════════════════════════════════╗\n')
+		process.stdout.write('║          ✅ Upload completed successfully!         ║\n')
+		process.stdout.write('╚══════════════════════════════════════════════════╝\n\n')
+
+		process.stdout.write('[upload:steam] === Step 3/3: Next Steps ===\n\n')
+
+		if (setLive) {
+			process.stdout.write(`  🚀 Build was automatically set live on "${steamBranch}" branch!\n`)
+			process.stdout.write('     Wait 5-15 minutes for Steam CDN propagation.\n')
+		} else {
+			process.stdout.write(`  1. Go to Steamworks Partner backend:\n`)
+			process.stdout.write('     https://partner.steamgames.com/\n')
+			process.stdout.write(`  2. Navigate to: Apps → ${steamAppId} → Edit Steamworks Settings → SteamPipe → Builds\n`)
+			process.stdout.write(`  3. Find the new build (v${pkg.version}) and click "Promote" → select "${steamBranch}"\n`)
+			process.stdout.write(`  4. Wait for CDN propagation (5-15 min), then test with beta branch access\n`)
+			process.stdout.write(`\n`)
+			process.stdout.write(`  💡 To auto-publish in one step, add --set-live flag:\n`)
+			process.stdout.write(`     npm run release:steam -- --guard=XXXXX --set-live\n`)
+		}
+
+		process.stdout.write(`\n`)
+		process.stdout.write(`  📂 Build logs: steam-pipe/output/\n`)
+		process.stdout.write(`  🔍 Test the build:\n`)
+		process.stdout.write(`     - Switch Steam client DVStudio → Properties → Betas → "${steamBranch}"\n`)
+		process.stdout.write(`     - Or for default branch, no beta password needed\n`)
+
+		cleanup()
+	} catch (err) {
+		process.stderr.write(`\n[upload:steam] ❌ Upload failed: ${err.message}\n\n`)
+		process.stderr.write('[upload:steam] === Troubleshooting ===\n\n')
+		process.stderr.write('  1. Authentication issues:\n')
+		process.stderr.write('     - Double-check STEAM_USERNAME and STEAM_PASSWORD in steam-pipe/.env\n')
+		process.stderr.write('     - Get a fresh Steam Guard code from Steam Mobile App and pass it:\n')
+		process.stderr.write('       npm run upload:steam -- --guard=XXXXX\n')
+		process.stderr.write('     - If login keeps failing, try running steamcmd directly first:\n')
+		process.stderr.write(`       "${steamcmdPath}" +login <username> +quit\n\n`)
+		process.stderr.write('  2. Guard code tips:\n')
+		process.stderr.write('     - The guard code is the 5-letter code (e.g. 7G7QM)\n')
+		process.stderr.write('     - It changes every 30 seconds - use a fresh one!\n')
+		process.stderr.write('     - After first successful login, steamcmd caches a sentry file\n')
+		process.stderr.write('       and future logins may not need the guard code.\n\n')
+		process.stderr.write('  3. Other issues:\n')
+		process.stderr.write('     - Check build logs in steam-pipe/output/ for VDF errors\n')
+		process.stderr.write('     - Ensure your Steam account has "Publish" permission for this app\n')
+		process.stderr.write('     - Generated VDF files are kept in steam-pipe/ for debugging\n')
+
+		process.exit(1)
+	}
+}
