@@ -1560,13 +1560,13 @@ const runModel3dMeshyTask = async (
 
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: `正在创建 Meshy 3D 任务（${meshyMode}）…`,
+		statusText: t('aiworkflow.runtime.creatingMeshy3dTask', { mode: meshyMode }),
 		progress: 10
 	})
-	appendDetail(deps, task.id, `模式：${meshyMode}`)
-	if (!isPostProcessMode) appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
-	if (meshyOutputFormat && meshyMode !== 'uv-unwrap') appendDetail(deps, task.id, `输出格式：${meshyOutputFormat}`)
-	if (payload.prompt) appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailMode', { mode: meshyMode }))
+	if (!isPostProcessMode) appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: meshyAiModel }))
+	if (meshyOutputFormat && meshyMode !== 'uv-unwrap') appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputFormat', { format: meshyOutputFormat }))
+	if (payload.prompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
 	try {
 		const meshyPayload: Record<string, unknown> = {
@@ -1615,14 +1615,14 @@ const runModel3dMeshyTask = async (
 			refImages = await collectReferenceImages(deps, payload.nodeId, maxRefs)
 
 			if (refImages.length === 0 && meshyMode === 'image-to-3d') {
-				throw new Error('图生3D 模式需要连接至少一张图片输入')
+				throw new Error(t('aiworkflow.runtime.imageTo3dNeedImage'))
 			}
 
 			if (refImages.length === 0 && meshyMode === 'multi-image-to-3d') {
-				throw new Error('多图生3D 模式需要连接图片输入（1-4 张）')
+				throw new Error(t('aiworkflow.runtime.multiImageTo3dNeedImages'))
 			}
 
-			appendDetail(deps, task.id, `参考图片数量：${refImages.length}`)
+			appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
 
 			for (const ref of refImages) {
 				try {
@@ -1634,7 +1634,7 @@ const runModel3dMeshyTask = async (
 			}
 
 			if (imageDataUris.length === 0) {
-				throw new Error('参考图片读取失败，请检查图片是否有效')
+				throw new Error(t('aiworkflow.runtime.refImageReadFailed'))
 			}
 
 			if (meshyMode === 'image-to-3d') {
@@ -1660,7 +1660,10 @@ const runModel3dMeshyTask = async (
 					const dataUri = await blobToBase64DataUri(selectedRef.blob)
 					if (dataUri) {
 						meshyPayload.image_style_url = dataUri
-						appendDetail(deps, task.id, `已使用${selectedNodeId ? '选择的' : '连接的'}图片作为纹理风格参考`)
+						appendDetail(deps, task.id, selectedNodeId
+							? t('aiworkflow.runtime.usingSelectedImageStyle')
+							: t('aiworkflow.runtime.usingConnectedImageStyle')
+						)
 					}
 				} catch {
 					// skip
@@ -1672,27 +1675,32 @@ const runModel3dMeshyTask = async (
 			const modelInput = await resolveModel3DInput(deps, payload.nodeId)
 			if (modelInput?.inputTaskId) {
 				meshyPayload.input_task_id = modelInput.inputTaskId
-				appendDetail(deps, task.id, `上游任务ID：${modelInput.inputTaskId}`)
+				appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
 			} else if (modelInput?.modelUrl) {
 				meshyPayload.model_url = modelInput.modelUrl
-				appendDetail(deps, task.id, `输入模型URL已就绪`)
+				appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 			} else {
-				throw new Error(`${meshyMode === 'remesh' ? '重建网格' : meshyMode === 'retexture' ? '重新纹理' : 'UV Unwrap'} 需要连接上游 3D 模型输入或已有模型数据`)
+				const modeLabel = meshyMode === 'remesh'
+					? t('aiworkflow.runtime.modeRemesh')
+					: meshyMode === 'retexture'
+						? t('aiworkflow.runtime.modeRetexture')
+						: t('aiworkflow.runtime.modeUvUnwrap')
+				throw new Error(t('aiworkflow.runtime.postProcessNeedInput', { mode: modeLabel }))
 			}
 		}
 
-		updateTask(deps, task.id, { statusText: `正在提交 Meshy 3D 任务…`, progress: 15 })
+		updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.submittingMeshy3dTask'), progress: 15 })
 
 		const createRes = await svc.meshyGenerate(meshyPayload)
 
 		if (!createRes.ok) {
-			throw new Error(String(createRes.error || 'Meshy 3D 任务创建失败'))
+			throw new Error(String(createRes.error || t('aiworkflow.runtime.meshy3dTaskCreateFailed')))
 		}
 
 		const meshyTaskId = String(createRes.taskId || '').trim()
-		if (!meshyTaskId) throw new Error('Meshy 返回空任务 ID')
+		if (!meshyTaskId) throw new Error(t('aiworkflow.runtime.meshyEmptyTaskId'))
 
-		appendDetail(deps, task.id, `任务已创建：${meshyTaskId}`)
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailTaskCreated', { taskId: meshyTaskId }))
 
 		deps.store.commit('setNodeModel3DSettings', {
 			nodeId: payload.nodeId,
@@ -1703,7 +1711,7 @@ const runModel3dMeshyTask = async (
 					taskStatus: 'pending',
 					taskFamily: meshyMode,
 					progress: 15,
-					statusText: `Meshy 3D ${meshyMode} 任务已创建`,
+					statusText: t('aiworkflow.runtime.meshy3dTaskCreatedStatus', { mode: meshyMode }),
 					imageCount: refImages.length,
 					imageUrls: imageDataUris,
 					prompt: payload.prompt
@@ -1713,7 +1721,7 @@ const runModel3dMeshyTask = async (
 
 		updateTask(deps, task.id, {
 			status: 'running',
-			statusText: `Meshy 3D 任务已提交，等待处理…`,
+			statusText: t('aiworkflow.runtime.meshy3dTaskSubmitted'),
 			progress: 15
 		})
 
@@ -1731,10 +1739,10 @@ const runModel3dMeshyTask = async (
 		return { ok: true, taskId: meshyTaskId, mode: meshyMode }
 	} catch (err: unknown) {
 		const errMsg = getErrorMessage(err)
-		pushToast(deps, `Meshy 3D 生成失败：${errMsg}`, 'error')
+		pushToast(deps, t('aiworkflow.runtime.meshy3dGenerateFailed', { error: errMsg }), 'error')
 		updateTask(deps, task.id, {
 			status: 'error',
-			statusText: `失败：${errMsg}`,
+			statusText: t('aiworkflow.runtime.failedStatus', { message: errMsg }),
 			progress: 0,
 			finishedAt: Date.now()
 		})
@@ -1750,15 +1758,15 @@ const runModel3dStub = (
 	appendDetail(
 		deps,
 		task.id,
-		'3D 模型节点暂不直接调用字节方舟接口，请使用 Meshy 节点或本地 ComfyUI 流程。'
+		t('aiworkflow.runtime.model3dStubDetail')
 	)
 	updateTask(deps, task.id, {
 		status: 'error',
-		statusText: '当前节点类型尚未支持直接提交',
-		errorMessage: '3D 生成请使用 Meshy 节点',
+		statusText: t('aiworkflow.runtime.model3dStubStatus'),
+		errorMessage: t('aiworkflow.runtime.model3dStubError'),
 		finishedAt: Date.now()
 	})
-	pushToast(deps, `节点「${labelForType(payload.nodeType)}」尚未在此环境中接入`, 'warn')
+	pushToast(deps, t('aiworkflow.runtime.nodeNotAvailable', { type: labelForType(payload.nodeType) }), 'warn')
 }
 
 export const getLatestTaskForNode = (

@@ -7,5 +7,8 @@
   "aiworkflow.perfMonitor.zeroTimes": "0 times",
   "aiworkflow.perfMonitor.timesWithMs": "{count} times / {ms}ms",
   "aiworkflow.perfMonitor.nodesCount": "{visible} visible / {total} total",
-  "aiworkflow.perfMonitor.edgesVisible": "{visible} visible / {total} total"
+  "aiworkflow.perfMonitor.edgesVisible": "{visible} visible / {total} total",
+  "aiworkflow.perfMonitor.anomalyCountWithDetail": "{count} times / {detail}",
+  "aiworkflow.perfMonitor.nodesCountDetailed": "{visible} visible / {total} total / {compact} compact / {full} full",
+  "aiworkflow.perfMonitor.itemCount": "{count} items"
 }

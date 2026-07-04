@@ -349,12 +349,17 @@ export const useAIWorkflowPerfMonitor = (payload: {
 	})
 	const perfAnomalySummary = computed(() => {
 		if (!perfAnomalyCount.value) return t('aiworkflow.perfMonitor.zeroTimes')
-		return `${perfAnomalyCount.value} 次 / ${perfAnomalyLatestDetail.value || '--'}`
+		return t('aiworkflow.perfMonitor.anomalyCountWithDetail', { count: String(perfAnomalyCount.value), detail: perfAnomalyLatestDetail.value || '--' })
 	})
 
 	const perfNodeSummary = computed(
 		() =>
-			`${t('aiworkflow.perfMonitor.nodesCount', { total: payload.nodesCount.value, visible: payload.visibleNodesCount.value })} / ${payload.compactVisibleNodeCount.value} 轻量 / ${payload.fullVisibleNodeCount.value} 完整`
+			t('aiworkflow.perfMonitor.nodesCountDetailed', {
+				total: String(payload.nodesCount.value),
+				visible: String(payload.visibleNodesCount.value),
+				compact: String(payload.compactVisibleNodeCount.value),
+				full: String(payload.fullVisibleNodeCount.value)
+			})
 	)
 	const perfEdgeSummary = computed(
 		() => t('aiworkflow.perfMonitor.edgesVisible', { total: payload.edgesCount.value, visible: payload.renderEdgesCount.value })
@@ -362,9 +367,9 @@ export const useAIWorkflowPerfMonitor = (payload: {
 	const perfEdgeComputeText = computed(() =>
 		payload.edgeComputeMs.value > 0 ? `${payload.edgeComputeMs.value.toFixed(2)} ms` : '--'
 	)
-	const perfEdgeInputCountText = computed(() => `${Number(payload.edgeInputCount?.value ?? 0)} 条`)
-	const perfEdgeRenderedText = computed(() => `${Number(payload.edgeRenderedCount?.value ?? 0)} 条`)
-	const perfEdgeCulledText = computed(() => `${Number(payload.edgeCulledCount?.value ?? 0)} 条`)
+	const perfEdgeInputCountText = computed(() => t('aiworkflow.perfMonitor.itemCount', { count: String(Number(payload.edgeInputCount?.value ?? 0)) }))
+	const perfEdgeRenderedText = computed(() => t('aiworkflow.perfMonitor.itemCount', { count: String(Number(payload.edgeRenderedCount?.value ?? 0)) }))
+	const perfEdgeCulledText = computed(() => t('aiworkflow.perfMonitor.itemCount', { count: String(Number(payload.edgeCulledCount?.value ?? 0)) }))
 	const perfEdgeCullHitRateText = computed(() => {
 		const input = Number(payload.edgeInputCount?.value ?? 0)
 		const culled = Number(payload.edgeCulledCount?.value ?? 0)

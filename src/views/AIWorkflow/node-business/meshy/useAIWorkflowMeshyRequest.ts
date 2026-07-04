@@ -358,7 +358,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 			if (!payload.image_url) return { ok: false, error: t('tasks.meshy.imageTo3dRequiresImageUrl') }
 		} else if (family === 'remesh' || family === 'uv-unwrap') {
 			if (!payload.preview_task_id && !payload.model_url) {
-				return { ok: false, error: t('tasks.meshy.remeshUvUnwrapRequiresPreviewOrModel', { stage: family === 'remesh' ? 'Remesh' : 'UV Unwrap' }) }
+				return { ok: false, error: t('tasks.meshy.remeshUvUnwrapRequiresPreviewOrModel', { stage: family === 'remesh' ? t('aiworkflow.runtime.modeRemesh') : t('aiworkflow.runtime.modeUvUnwrap') }) }
 			}
 		} else {
 			const imgUrls = payload.image_urls ?? []

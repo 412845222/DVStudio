@@ -2730,7 +2730,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = '正在加载磁盘缓存...'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingDiskCache')
 
 	const cacheCtx = getScreenshotCacheContext()
 
@@ -2742,7 +2742,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 	let diskLoadedCount = 0
 	try {
 		screenshotWarmupProgress.value = 0.05
-		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
 		const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
 		const totalNodes = allNodes.length
 		for (let i = 0; i < totalNodes; i++) {
@@ -2774,7 +2774,10 @@ const loadCachedScreenshotsToCanvas = async () => {
 			if (i % 10 === 0 || i === totalNodes - 1) {
 				const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
 				screenshotWarmupProgress.value = 0.05 + ratio * 0.2
-				screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes}...`
+				screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', {
+					loaded: String(diskLoadedCount),
+					totalNodes: String(totalNodes)
+				})
 				if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 			}
 		}
@@ -2785,7 +2788,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 	nodeScreenshotMap.value = newMap
 
 	screenshotWarmupProgress.value = 0.28
-	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 
 	await warmupCanvasAll(
 		newMap,
@@ -2799,7 +2802,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.98
-	screenshotWarmupDetail.value = '完成'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 	await waitForFrames(1)
 
 	screenshotWarmupOpen.value = false
@@ -2897,8 +2900,8 @@ const compactNodeStateClass = (node: WorkflowNode) => {
 
 const compactNodeStateLabel = (node: WorkflowNode) => {
 	const state = resolveNodeRuntimeVisualState(node)
-	if (state === 'running') return '运行中'
-	if (state === 'error') return '异常'
+	if (state === 'running') return t('aiworkflow.page.runtimeState.running')
+	if (state === 'error') return t('aiworkflow.page.runtimeState.error')
 	return ''
 }
 
@@ -3170,7 +3173,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 						!isStrictLocalRenderableUrl(base.url) ||
 						!isWorkflowLocalAssetUrl(base.url)
 					) {
-						pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 						return false
 					}
 					store.commit('addResource', base)
@@ -3179,12 +3182,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('图片生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.image') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('图片导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3242,7 +3245,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					!isStrictLocalRenderableUrl(base.url) ||
 					!isWorkflowLocalAssetUrl(base.url)
 				) {
-					pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3263,12 +3266,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				const pid = Number(currentProjectId.value ?? 0)
 				const sourceUrl = String(url || '').trim()
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('视频生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.video') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('视频导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3324,7 +3327,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					!isStrictLocalRenderableUrl(base.url) ||
 					!isWorkflowLocalAssetUrl(base.url)
 				) {
-					pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3360,7 +3363,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					finalizeGeneratedResourceLocalUrl(base, pid)
 					base.url = String(base.url || '').trim()
 					if (!base.url) {
-						pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 						return false
 					}
 					store.commit('addResource', base)
@@ -3369,12 +3372,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('3D 模型生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('3D 模型导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3423,7 +3426,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				finalizeGeneratedResourceLocalUrl(base, pid)
 				base.url = String(base.url || '').trim()
 				if (!base.url) {
-					pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3701,7 +3704,7 @@ const nanoRefDockAnchors = computed(() => {
 		const fromTitle = fromNode ? String(fromNode.alias || fromNode.title || fromNode.id) : ''
 		return {
 			id: a.id,
-			label: a.label || `参考图 ${idx + 1}`,
+			label: a.label || t('aiworkflow.page.nanoAnchor.refImageLabel', { index: String(idx + 1) }),
 			connected: !!edge,
 			connectedFrom: fromTitle
 		}
@@ -3711,9 +3714,9 @@ const nanoRefDockAnchors = computed(() => {
 const chatTaskStatusText = ref('')
 const chatTaskStatus = computed(() => {
 	if (chatTaskStatusText.value) return chatTaskStatusText.value
-	if (chatRunState.value === 'stopping') return 'AI 任务：正在停止…'
-	if (chatRunState.value === 'error') return 'AI 任务：错误'
-	return chatSending.value ? 'AI 任务：生成中…' : 'AI 任务：空闲'
+	if (chatRunState.value === 'stopping') return t('aiworkflow.page.chatTask.stopping')
+	if (chatRunState.value === 'error') return t('aiworkflow.page.chatTask.error')
+	return chatSending.value ? t('aiworkflow.page.chatTask.generating') : t('aiworkflow.page.chatTask.idle')
 })
 
 const isElectronRuntime =
@@ -3749,13 +3752,13 @@ const resolveAutoHelloText = () => {
 		(window as Window & DwebRuntimeWindow)?.__DWEB_AIWF_AUTO_HELLO_TEXT || ''
 	).trim()
 	if (winText) return winText
-	return '你好'
+	return t('aiworkflow.page.chat.hello')
 }
 let autoHelloSent = false
 
 const mapCodexSession = (row: CodexSessionRow): LocalExecSessionItem => ({
 	id: String(row?.id || '').trim(),
-	title: String(row?.title || 'Copilot CLI 会话').trim() || 'Copilot CLI 会话',
+	title: String(row?.title || t('aiworkflow.page.chat.defaultSessionTitle')).trim() || t('aiworkflow.page.chat.defaultSessionTitle'),
 	status: String(row?.status || 'active').trim() || 'active',
 	modelName: String(row?.model_name || '').trim(),
 	source: 'copilot-cli'
@@ -3792,7 +3795,7 @@ const loadCodexSessions = async () => {
 		const conversations = Array.isArray(res.conversations) ? res.conversations : []
 		codexSessions.value = conversations.map((c) => ({
 			id: c.id,
-			title: c.title || '新对话',
+			title: c.title || t('aiworkflow.page.chat.newConversation'),
 			modelName: c.model || '',
 			status: 'active'
 		}))
@@ -3808,19 +3811,19 @@ const loadCodexSessions = async () => {
 const onCodexCreateSession = async () => {
 	const projectPath = String(currentProjectRootPath.value || '').trim()
 	try {
-		const res = await agentCreateConversation('新对话', chatModelId.value, projectPath)
+		const res = await agentCreateConversation(t('aiworkflow.page.chat.newConversation'), chatModelId.value, projectPath)
 		if (!res?.ok) {
-			pushToast('创建会话失败：' + String(res?.error || '未知错误'), 'warn')
+			pushToast(t('aiworkflow.page.chat.createSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
 			return
 		}
 		const conversation = res.conversation as { id: string; title: string; model: string } | undefined
 		if (!conversation?.id) {
-			pushToast('创建会话失败：返回会话ID为空', 'warn')
+			pushToast(t('aiworkflow.page.chat.createSessionFailedEmptyId'), 'warn')
 			return
 		}
 		const item = {
 			id: conversation.id,
-			title: conversation.title || '新对话',
+			title: conversation.title || t('aiworkflow.page.chat.newConversation'),
 			modelName: conversation.model || '',
 			status: 'active'
 		}
@@ -3828,7 +3831,7 @@ const onCodexCreateSession = async () => {
 		codexActiveSessionId.value = item.id
 		chatMessages.value = []
 	} catch (err: unknown) {
-		pushToast('创建会话失败：' + getErrorMessage(err), 'warn')
+		pushToast(t('aiworkflow.page.chat.createSessionFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
@@ -3860,12 +3863,12 @@ const onCodexApproval = async (payloadValue: {
 }) => {
 	const projectId = await ensureProjectForLocalExec()
 	if (projectId == null) {
-		pushToast('无法提交审批：自动保存项目失败。', 'warn')
+		pushToast(t('aiworkflow.page.chat.submitApprovalFailedAutoSave'), 'warn')
 		return
 	}
 	const sid = String(codexActiveSessionId.value || '').trim()
 	if (!sid) {
-		pushToast('请先选择 Copilot CLI 会话。', 'warn')
+		pushToast(t('aiworkflow.page.chat.selectSessionFirst'), 'warn')
 		return
 	}
 	try {
@@ -3876,23 +3879,23 @@ const onCodexApproval = async (payloadValue: {
 			projectId
 		})) as LocalExecListResult
 		if (result?.error) {
-			pushToast('审批提交失败：' + String(result.error), 'warn')
+			pushToast(t('aiworkflow.page.chat.approvalSubmitFailed', { error: String(result.error) }), 'warn')
 			return
 		}
-		pushToast('审批已提交。', 'info')
+		pushToast(t('aiworkflow.page.chat.approvalSubmitted'), 'info')
 	} catch (err: unknown) {
-		pushToast('审批提交失败：' + getErrorMessage(err), 'warn')
+		pushToast(t('aiworkflow.page.chat.approvalSubmitFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
 const onCodexDeleteSession = async (sessionId: string) => {
 	const sid = String(sessionId || '').trim()
 	if (!sid) return
-	const ok = window.confirm('确认删除该会话吗？')
+	const ok = window.confirm(t('aiworkflow.page.chat.confirmDeleteSession'))
 	if (!ok) return
 	const res = await agentDeleteConversation(sid)
 	if (!res?.ok) {
-		pushToast('删除会话失败：' + String(res?.error || '未知错误'), 'warn')
+		pushToast(t('aiworkflow.page.chat.deleteSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
 		return
 	}
 	codexSessions.value = codexSessions.value.filter((s) => s.id !== sid)
@@ -3910,7 +3913,7 @@ const onCodexDeleteSession = async (sessionId: string) => {
 const onCodexRenameSession = async (payloadValue: { sessionId: string; title: string }) => {
 	const projectId = await ensureProjectForLocalExec()
 	if (projectId == null) {
-		pushToast('无法重命名会话：自动保存项目失败。', 'warn')
+		pushToast(t('aiworkflow.page.chat.renameSessionFailedAutoSave'), 'warn')
 		return
 	}
 	const sid = String(payloadValue.sessionId || '').trim()
@@ -3922,7 +3925,7 @@ const onCodexRenameSession = async (payloadValue: { sessionId: string; title: st
 		title
 	})) as LocalExecListResult
 	if (result?.error) {
-		pushToast('会话改名失败：' + String(result.error), 'warn')
+		pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: String(result.error) }), 'warn')
 		return
 	}
 	codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
@@ -4049,7 +4052,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 	if (!clipboardData) return false
 	const projectId = Number(currentProjectId.value ?? 0)
 	if (!(projectId > 0)) {
-		pushToast('请先保存项目后，再粘贴媒体资源到蓝图。', 'warn')
+		pushToast(t('aiworkflow.page.media.pasteNeedSaveProject'), 'warn')
 		return false
 	}
 
@@ -4153,7 +4156,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				store.commit('addNodeAt', {
 					worldX: worldX + offset,
 					worldY: worldY + offset,
-					title: kind === 'image' ? '图片' : '视频'
+					title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 				})
 				const nodeId = store.state.selectedNodeId
 				if (nodeId) {
@@ -4201,7 +4204,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 					store.commit('addNodeAt', {
 						worldX: center.worldX,
 						worldY: center.worldY,
-						title: urlKind === 'image' ? '图片' : '视频'
+						title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 					})
 					const nodeId = store.state.selectedNodeId
 					if (nodeId) {
@@ -4218,7 +4221,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				store.commit('addNodeAt', {
 					worldX: center.worldX,
 					worldY: center.worldY,
-					title: urlKind === 'image' ? '图片' : '视频'
+					title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 				})
 				const nodeId = store.state.selectedNodeId
 				if (nodeId) {
@@ -4479,7 +4482,7 @@ const cancelActiveImportSession = (opts?: { cleanupUnresolved?: boolean }) => {
 
 const onCancelImportOverlay = () => {
 	cancelActiveImportSession({ cleanupUnresolved: true })
-	pushToast('已取消导入：保留已完成的节点/资源，清理未完成项。', 'info')
+	pushToast(t('aiworkflow.page.media.importCancelled'), 'info')
 }
 
 const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video') => {
@@ -4783,18 +4786,18 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
 	const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
 	const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
 
-	pushToast('正在导出带洞几何体...', 'info')
+	pushToast(t('aiworkflow.page.placeholder.exporting'), 'info')
 
 	const viewerExportResult = await exportSceneLayoutPlaceholderGLB(nodeId)
 	if (!viewerExportResult.ok || !viewerExportResult.glbData) {
-		const errorMsg = viewerExportResult.ok ? '未能获取GLB数据' : viewerExportResult.error
-		pushToast(`导出带洞几何体失败：${errorMsg}`, 'error')
-		throw new Error(`导出带洞占位体失败：${errorMsg}`)
+		const errorMsg = viewerExportResult.ok ? t('aiworkflow.page.placeholder.failedGetGlb') : viewerExportResult.error
+		pushToast(t('aiworkflow.page.placeholder.exportFailed', { error: String(errorMsg) }), 'error')
+		throw new Error(t('aiworkflow.page.placeholder.exportPlaceholderFailed', { error: String(errorMsg) }))
 	}
 
 	const fileName = `${slugSceneLayoutPlaceholderModelName(`${viewerExportResult.name || placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
 	const file = new File([viewerExportResult.glbData], fileName, { type: 'model/gltf-binary' })
-	pushToast(`成功导出带洞几何体：${viewerExportResult.name || placeholderName}`, 'info')
+	pushToast(t('aiworkflow.page.placeholder.exportSuccess', { name: String(viewerExportResult.name || placeholderName) }), 'info')
 	return {
 		file,
 		signature,
@@ -5080,7 +5083,7 @@ const syncModel3DInputFromUpstream = async (
 					lastInputNodeId: fromNode.id,
 					lastInputSourceUrl: transfer.transferUrl,
 					lastInputSourcePath: String(transfer.assetPath || '').trim() || undefined,
-					lastInputSourceName: `占位体 ${generated.placeholderName}`,
+					lastInputSourceName: `${t('aiworkflow.page.placeholder.term')} ${generated.placeholderName}`,
 					lastInputPlaceholderId: generated.placeholderId || undefined,
 					lastInputPlaceholderJson: generated.placeholderJson || undefined
 				}
@@ -5089,7 +5092,7 @@ const syncModel3DInputFromUpstream = async (
 		}
 	}
 
-	if (opts?.warn) pushToast('未找到可用的上游模型输出。', 'warn')
+	if (opts?.warn) pushToast(t('aiworkflow.page.meshy.noUpstreamOutput'), 'warn')
 	return false
 }
 
@@ -5611,8 +5614,8 @@ const buildResetUnrealExportSettings = (settings?: Record<string, unknown> | nul
 	const autoPollVal = settings?.autoPoll
 	return {
 		connectionStatus: 'idle' as const,
-		statusText: '未建立连接',
-		message: '已清除旧项目中的 Unreal 会话与任务状态，请重新点击“等待连接”。',
+		statusText: t('aiworkflow.page.runtimeState.notConnected'),
+		message: t('aiworkflow.page.unreal.resetCleared'),
 		targetSessionId: undefined,
 		connectedSession: null,
 		lastHeartbeatAt: undefined,
@@ -5668,7 +5671,7 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 	try {
 		const res = await unrealExportService.listSessions()
 		if (!res.ok) {
-			if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${res.error || 'unknown'}`, 'warn')
+			if (!opts?.silent) pushToast(t('aiworkflow.page.unreal.listSessionsFailed', { error: String(res.error || 'unknown') }), 'warn')
 			return { ok: false, hasRunningJob: false, skipped: false }
 		}
 		const sessions: UnrealExportSessionInfo[] = Array.isArray(res.sessions) ? res.sessions : []
@@ -5747,19 +5750,19 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 								? 'exporting'
 								: 'connected',
 						statusText: hasFailedJob
-							? '导出任务执行失败'
+							? t('aiworkflow.page.unreal.exportFailed')
 							: nodeHasRunningJob
-								? '虚幻插件正在执行导出任务'
-								: `已连接 ${String(matchedSession.projectName ?? matchedSession.displayName ?? matchedSession.sessionId).trim() || matchedSession.sessionId}`,
+								? t('aiworkflow.page.unreal.exporting')
+								: t('aiworkflow.page.unreal.connected', { projectName: String(matchedSession.projectName ?? matchedSession.displayName ?? matchedSession.sessionId).trim() || matchedSession.sessionId }),
 						targetSessionId: String(matchedSession.sessionId ?? '').trim(),
 						connectedSession: matchedSession,
 						lastHeartbeatAt: Number(matchedSession.lastSeenAt ?? 0) || undefined,
 						message: latestJobMissing
-							? '旧导出任务已不存在，已清理历史轮询状态。'
+							? t('aiworkflow.page.unreal.oldJobMissing')
 							: latestJobMessage ||
 								(nodeHasRunningJob
-									? '虚幻插件已拉取任务，正在生成场景。'
-									: '虚幻插件已在线，可直接发送导出任务。'),
+									? t('aiworkflow.page.unreal.jobPickedGenerating')
+									: t('aiworkflow.page.unreal.pluginOnline')),
 						lastExportMode: latestJobMissing
 							? undefined
 							: String(latestJob?.exportPayload?.exportMode ?? '').trim() === 'lighting-only'
@@ -5843,9 +5846,9 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 					nodeId: node.id,
 					unrealExportSettings: {
 						connectionStatus: 'waiting',
-						statusText: '等待虚幻插件连接',
+						statusText: t('aiworkflow.page.unreal.waitingForConnection'),
 						connectedSession: null,
-						message: '请在 Unreal 插件面板点击“连接工作流”。',
+						message: t('aiworkflow.page.unreal.clickConnectInPlugin'),
 						targetSessionId: undefined,
 						lastHeartbeatAt: undefined,
 						lastExportJobId: undefined,
@@ -5862,7 +5865,7 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 		}
 		return { ok: true, hasRunningJob, skipped: false }
 	} catch (err: unknown) {
-		if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${getErrorMessage(err)}`, 'warn')
+		if (!opts?.silent) pushToast(t('aiworkflow.page.unreal.listSessionsFailed', { error: getErrorMessage(err) }), 'warn')
 		return { ok: false, hasRunningJob: false, skipped: false }
 	} finally {
 		unrealExportSyncRunning = false
@@ -5928,8 +5931,8 @@ const onNodeAwaitUnrealConnection = async (nodeId: string) => {
 		nodeId,
 		unrealExportSettings: {
 			connectionStatus: 'waiting',
-			statusText: '等待虚幻插件连接',
-			message: '请在 Unreal 编辑器中打开 DwebWorkflowBridge 插件并点击“连接工作流”。',
+			statusText: t('aiworkflow.page.unreal.waitingForConnection'),
+			message: t('aiworkflow.page.unreal.clickConnectInEditor'),
 			autoPoll: true
 		}
 	})
@@ -5965,11 +5968,11 @@ const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
 	if (!normalizedNodeId) {
-		return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.missingNodeId') }
 	}
 	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
 	if (!instance || typeof instance.getResolvedLayoutForUnreal !== 'function') {
-		return { ok: false as const, error: '未找到场景布局预览实例，请先打开并完成预览加载。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.noPreviewInstance') }
 	}
 	try {
 		return await instance.getResolvedLayoutForUnreal()
@@ -5981,11 +5984,11 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 const exportSceneLayoutPlaceholderGLB = async (sceneLayoutNodeId: string) => {
 	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
 	if (!normalizedNodeId) {
-		return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.missingNodeId') }
 	}
 	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
 	if (!instance || typeof instance.exportSelectedPlaceholderGLB !== 'function') {
-		return { ok: false as const, error: '未找到场景布局预览实例，请先打开预览并选择要传递的占位体。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.noPreviewInstanceSelectPlaceholder') }
 	}
 	try {
 		return await instance.exportSelectedPlaceholderGLB()
@@ -6566,7 +6569,7 @@ const {
 			}
 			// 通知节点刷新（触发重新渲染）
 			void nextTick(() => {
-				blueprintLog.append(`资源自动恢复成功：${assetName}`, {
+				blueprintLog.append(t('aiworkflow.page.resourceRecover.success', { assetName }), {
 					category: 'system',
 					level: 'INFO',
 					tag: 'asset-recovery'
@@ -6898,7 +6901,7 @@ const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkf
 		scheduleVideoMetadataRead,
 		autoSizeImageNodeFromDims,
 		onLimitExceeded: (count, limit) => {
-			importLimitAlertMessage.value = `本次检测到 ${count} 个媒体文件，超过批量导入上限 ${limit} 个。请减少后再导入。`
+			importLimitAlertMessage.value = t('aiworkflow.page.importLimit.message', { count: String(count), limit: String(limit) })
 		},
 		getProjectId: () => Number(currentProjectId.value ?? 0) || null,
 		copyFileToProjectRoot: (projectId, sourcePath, desiredFilename) =>
@@ -7233,7 +7236,7 @@ const onPreviewResource = async (resourceId: string) => {
 			? String(r.url || '').trim() || String(r.posterUrl || '').trim()
 			: String(r.url || '').trim()
 	if (!url) {
-		pushToast('资源预览失败：URL 为空。', 'warn')
+		pushToast(t('aiworkflow.page.resourcePreview.failedEmptyUrl'), 'warn')
 		return
 	}
 	try {
@@ -7715,9 +7718,9 @@ const onExportPerfDiagnostics = () => {
 		setTimeout(() => {
 			URL.revokeObjectURL(url)
 		}, 0)
-		pushToast('已导出性能诊断日志。', 'info')
+		pushToast(t('aiworkflow.page.perf.exportedLog'), 'info')
 	} catch (err: unknown) {
-		pushToast(`导出性能诊断日志失败：${getErrorMessage(err)}`, 'warn')
+		pushToast(t('aiworkflow.page.perf.exportLogFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
@@ -7743,7 +7746,7 @@ const onNodeImagePreviewRequestInline = (nodeId: string, ev: unknown) => {
 const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
 	console.log('[AIWorkflowPage] onNodeImagePreviewRequest → nodeId:', nodeId, 'imageUrl:', imageUrl)
 	if (!imageUrl) {
-		pushToast('该图片节点暂无图像资源可预览。', 'warn')
+		pushToast(t('aiworkflow.page.preview.noImageResource'), 'warn')
 		return
 	}
 	imageMarkupContext.value = { nodeId, url: imageUrl, name: null }
@@ -7771,10 +7774,10 @@ const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
 			openPreview({ url: imageUrl, name: nodeId })
 			return
 		}
-		pushToast('当前环境未提供图片预览原生窗口，请在 DVStudio Electron 客户端中使用。', 'warn')
+		pushToast(t('aiworkflow.page.preview.needElectron'), 'warn')
 	} catch (err) {
 		console.warn('[AIWorkflowPage] openImageMarkupPreview failed', err)
-		pushToast('打开图片预览窗口失败。', 'warn')
+		pushToast(t('aiworkflow.page.preview.openFailed'), 'warn')
 	}
 }
 
@@ -7831,7 +7834,7 @@ const handleImageMarkupExported = (payload: {
 	const fromNodeId = imageMarkupContext.value.nodeId
 	const exportType = payload.exportType || 'markup'
 	const isScreenshot = exportType === 'screenshot'
-	const typeLabel = isScreenshot ? '截图' : '标记图像'
+	const typeLabel = isScreenshot ? t('aiworkflow.page.mediaType.screenshot') : t('aiworkflow.page.mediaType.markedImage')
 	const typeSuffix = isScreenshot ? 'screenshot' : 'marked'
 	const baseName = (
 		imageMarkupContext.value.name ||
@@ -7839,7 +7842,7 @@ const handleImageMarkupExported = (payload: {
 		(isScreenshot ? 'screenshot.png' : 'marked-image.png')
 	).replace(/\.[^.]+$/, '')
 	if (!fromNodeId) {
-		pushToast(`找不到源图片节点，无法生成${typeLabel}节点。`, 'warn')
+		pushToast(t('aiworkflow.page.markup.sourceNodeNotFound', { typeLabel }), 'warn')
 		return
 	}
 	try {
@@ -7853,7 +7856,7 @@ const handleImageMarkupExported = (payload: {
 		store.commit('addNodeAt', { worldX: baseX + 400, worldY: baseY, title })
 		const newNodeId = String(store.state.selectedNodeId || '').trim()
 		if (!newNodeId || !store.state.nodesById[newNodeId]) {
-			pushToast(`创建${typeLabel}节点失败。`, 'error')
+			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
 			return
 		}
 
@@ -7899,13 +7902,13 @@ const handleImageMarkupExported = (payload: {
 		}
 
 		closeImageMarkupDialog()
-		pushToast(`已在当前图片节点右侧生成新的${typeLabel}节点，并自动连接原节点。`, 'info')
+		pushToast(t('aiworkflow.page.markup.nodeCreated', { typeLabel }), 'info')
 
 		// 触发预热：先以完整节点显示，截图捕获后切换为 canvas 位图，避免直接显示占位 canvas
 		void warmupCropCreatedNode(newNodeId)
 	} catch (err) {
 		console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
-		pushToast(`生成${typeLabel}节点失败。`, 'error')
+		pushToast(t('aiworkflow.page.markup.generateNodeFailed', { typeLabel }), 'error')
 	}
 }
 
@@ -7975,23 +7978,23 @@ const onNodeRetryMeshyFetch = async (nodeId: string) => {
 	const taskId = String(settings?.taskId ?? '').trim()
 	const mode = String(settings?.taskFamily ?? 'text-to-3d').trim()
 	if (!taskId) {
-		pushToast('当前节点没有可重试的 Meshy 任务 ID。', 'warn')
+		pushToast(t('aiworkflow.page.meshy.noRetryTaskId'), 'warn')
 		return
 	}
 	try {
 		const res = await comfyService.meshyTask(taskId, mode)
 		if (!res?.ok) {
-			pushToast('拉取失败：' + String(res?.error ?? 'unknown'), 'error')
+			pushToast(t('aiworkflow.page.meshy.pullFailed', { error: String(res?.error ?? 'unknown') }), 'error')
 			return
 		}
 		const finalStatus = await applyMeshyTaskResult(nodeId, res as unknown)
 		if (finalStatus === 'succeeded') {
-			pushToast('模型文件拉取成功。', 'info')
+			pushToast(t('aiworkflow.page.meshy.pullSuccess'), 'info')
 		} else {
-			pushToast('任务尚未完成，当前状态：' + finalStatus, 'warn')
+			pushToast(t('aiworkflow.page.meshy.taskNotComplete', { status: finalStatus }), 'warn')
 		}
 	} catch (e: unknown) {
-		pushToast('拉取异常：' + getErrorMessage(e), 'error')
+		pushToast(t('aiworkflow.page.meshy.pullException', { error: getErrorMessage(e) }), 'error')
 	}
 }
 
@@ -8053,13 +8056,13 @@ const {
 		}
 		const pid = Number(currentProjectId.value ?? 0)
 		if (!(pid > 0)) {
-			pushToast('当前项目未激活，无法导入视频。', 'warn')
+			pushToast(t('aiworkflow.page.media.videoProjectNotActive'), 'warn')
 			return false
 		}
 		finalizeGeneratedResourceLocalUrl(base, pid)
 		base.url = String(base.url || '').trim()
 		if (!base.url) {
-			pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 			return false
 		}
 		store.commit('addResource', base)
@@ -8083,7 +8086,7 @@ const {
 		finalizeGeneratedResourceLocalUrl(base, pid)
 		base.url = String(base.url || '').trim()
 		if (!base.url) {
-			pushToast((kind === 'image' ? '图片' : '视频') + '资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }), 'error')
 			return ''
 		}
 		const vp = store.state.viewport
@@ -8096,7 +8099,7 @@ const {
 		const nodeH = 160
 		const worldX = worldCenterX - nodeW / 2
 		const worldY = worldCenterY - nodeH / 2
-		const titleLabel = kind === 'image' ? '图片' : '视频'
+		const titleLabel = kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 		store.commit('addNodeAt', { worldX, worldY, title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
 		const nodeId = store.state.selectedNodeId
 		if (!nodeId) return ''
@@ -8205,7 +8208,7 @@ const onResourceDraggedToBlueprint = (
 ) => {
 	const resource = store.state.resourcesById?.[String(resourceId)]
 	if (!resource) {
-		pushToast('未找到该资源记录。', 'warn')
+		pushToast(t('aiworkflow.page.resourceNode.notFound'), 'warn')
 		return
 	}
 	// 计算世界坐标
@@ -8215,11 +8218,11 @@ const onResourceDraggedToBlueprint = (
 	const worldX = (screenX - vp.panX) / vp.zoom
 	const worldY = (screenY - vp.panY) / vp.zoom
 
-	const title = String(resource.name || resourceId || '资源节点').slice(0, 200)
+	const title = String(resource.name || resourceId || t('aiworkflow.page.resourceNode.defaultTitle')).slice(0, 200)
 	store.commit('addNodeAt', { worldX, worldY, title })
 	const newNodeId = String(store.state.selectedNodeId || '').trim()
 	if (!newNodeId || !store.state.nodesById[newNodeId]) {
-		pushToast('创建资源节点失败。', 'error')
+		pushToast(t('aiworkflow.page.resourceNode.createFailed'), 'error')
 		return
 	}
 	// 将资源绑定到新节点
@@ -8228,7 +8231,7 @@ const onResourceDraggedToBlueprint = (
 		field: 'image',
 		value: resource.url || ''
 	})
-	pushToast(`已将「${title}」添加到蓝图。`, 'info')
+	pushToast(t('aiworkflow.page.resourceNode.addedToBlueprint', { title }), 'info')
 }
 
 const onVideoTaskPanelMediaError = (taskId: string) => {
@@ -8355,7 +8358,7 @@ const onToolbarFocusNode = (p: unknown) => {
 	if (!nodeId) return
 	const ok = tryFocusNodeById(nodeId)
 	if (!ok) {
-		pushSystemToast('引用节点已删除，无法定位。', 'warn')
+		pushSystemToast(t('aiworkflow.page.resourceManager.toastNodeDeleted'), 'warn')
 	}
 }
 
@@ -8400,7 +8403,7 @@ const onResourceManagerWindowEvent = (payload: { event: string; data: unknown })
 			if (dataRec.nodeId) {
 				const ok = tryFocusNodeById(String(dataRec.nodeId))
 				if (!ok) {
-					pushSystemToast('引用节点已删除，无法定位。', 'warn')
+					pushSystemToast(t('aiworkflow.page.resourceManager.toastNodeDeleted'), 'warn')
 				}
 			}
 			break
@@ -8433,7 +8436,7 @@ const openResourceDialog = async () => {
 	if (isElectronRuntime && typeof openManager === 'function') {
 		try {
 			const projectId = currentProjectId.value
-			const title = currentProjectName.value || '资源管理器'
+			const title = currentProjectName.value || t('aiworkflow.page.resourceManager.defaultTitle')
 			const result = await (
 				openManager as (args: {
 					projectId: number | null
@@ -8472,7 +8475,7 @@ const openResourceDialog = async () => {
 	}
 	// Web 环境或 Electron 降级：显示提示
 	// 资源管理器需要 Electron 原生窗口，Web 模式暂不支持
-	pushToast('资源管理器仅在 Electron 客户端中可用', 'warn')
+	pushToast(t('aiworkflow.page.resourceManager.onlyElectron'), 'warn')
 }
 
 watch(meshyTaskDialogOpen, (open) => {
@@ -8979,7 +8982,7 @@ onMounted(() => {
 	startUnrealExportPolling()
 	registerResourceManagerEventListener()
 	void refreshProjectList()
-	blueprintLog.append('蓝图页面已加载，日志面板就绪', {
+	blueprintLog.append(t('aiworkflow.page.blueprintLog.pageReady'), {
 		category: 'system',
 		level: 'INFO',
 		tag: 'init'
@@ -9044,8 +9047,8 @@ async function runProjectEnterSequence(
 	request: { kind: 'open'; projectId: number } | { kind: 'new'; rootPath: string }
 ) {
 	if (isElectron()) {
-		startupProgress.show('进入蓝图项目', 2500)
-		startupProgress.reset('进入蓝图项目')
+		startupProgress.show(t('aiworkflow.page.startup.enterBlueprint'), 2500)
+		startupProgress.reset(t('aiworkflow.page.startup.enterBlueprint'))
 	}
 
 	// Step 1. 读取本地项目数据
@@ -9053,10 +9056,10 @@ async function runProjectEnterSequence(
 	if (request.kind === 'open') {
 		await startupProgress.runStep(
 			'project.load',
-			'读取项目数据',
+			t('aiworkflow.page.startup.loadProjectData'),
 			async () => {
 				const ok = await loadProjectById(request.projectId)
-				if (!ok) throw new Error('项目数据加载失败')
+				if (!ok) throw new Error(t('aiworkflow.page.startup.projectLoadFailed'))
 				projectReady = true
 				return true
 			},
@@ -9065,7 +9068,7 @@ async function runProjectEnterSequence(
 	} else {
 		await startupProgress.runStep(
 			'project.new',
-			'初始化项目',
+			t('aiworkflow.page.startup.initProject'),
 			async () => {
 				await onRequestNewProjectFromPath(request.rootPath)
 				projectReady = true
@@ -9079,7 +9082,7 @@ async function runProjectEnterSequence(
 	if (projectReady) {
 		await startupProgress.runStep(
 			'project.assets',
-			'加载静态资产',
+			t('aiworkflow.page.startup.loadAssets'),
 			async () => {
 				try {
 					await recoverComfyUIRunStates({ silent: true })

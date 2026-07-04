@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { t } from '../../../../i18n'
 import type { VideoTaskPanelItem } from '../../../../ui/WorkFlow/VideoTaskPanel.vue'
 import type { SeedanceTaskMirrorItem } from '../../../../network/ComfyUIBridgeService'
 import { resolveBackendUrl } from '../../../../network/backendConfig'
@@ -86,23 +87,23 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			})
 			if (!res.ok || !res.item) {
 				if (!opts?.silent)
-					options.pushToast('视频任务本地补存失败：' + String(res.error || 'unknown'), 'warn')
+					options.pushToast(t('aiworkflow.runtime.videoTaskLocalSaveFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return item
 			}
 			const nextItem = mapVideoTaskItem(res.item as SeedanceTaskMirrorItem)
 			patchTaskItem(nextItem)
 			return nextItem
 		} catch (err: unknown) {
-			if (!opts?.silent) options.pushToast('视频任务本地补存失败：' + getErrorMessage(err), 'warn')
+			if (!opts?.silent) options.pushToast(t('aiworkflow.runtime.videoTaskLocalSaveFailed', { error: getErrorMessage(err) }), 'warn')
 			return item
 		}
 	}
 
 	const videoTaskPanelStatusText = computed(() => {
-		if (videoTaskLoading.value && !videoTaskLoaded.value) return '正在读取本地 Django 视频任务镜像…'
-		if (videoTaskSyncing.value) return '正在从火山远端补齐任务列表，并同步回本地数据库…'
-		if (videoTaskFallbackReason.value) return `任务中心读取失败：${videoTaskFallbackReason.value}`
-		return '当前展示本地 Seedance 任务镜像；点击“远端补齐”会拉取最近 7 天远端任务。'
+		if (videoTaskLoading.value && !videoTaskLoaded.value) return t('aiworkflow.runtime.videoTaskLoadingLocal')
+		if (videoTaskSyncing.value) return t('aiworkflow.runtime.videoTaskSyncingRemote')
+		if (videoTaskFallbackReason.value) return t('aiworkflow.runtime.videoTaskLoadFailed', { reason: videoTaskFallbackReason.value })
+		return t('aiworkflow.runtime.videoTaskLocalMirrorHint')
 	})
 
 	const refreshVideoTaskItems = async (opts?: { silent?: boolean }) => {
@@ -113,7 +114,7 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			if (!res.ok) {
 				videoTaskFallbackReason.value = String(res.error || 'unknown')
 				if (!opts?.silent)
-					options.pushToast('读取视频任务列表失败：' + String(res.error || 'unknown'), 'warn')
+					options.pushToast(t('aiworkflow.runtime.videoTaskListLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
 			videoTaskItems.value = Array.isArray(res.items)
@@ -126,7 +127,7 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			}
 		} catch (err: unknown) {
 			videoTaskFallbackReason.value = getErrorMessage(err)
-			if (!opts?.silent) options.pushToast('读取视频任务列表失败：' + getErrorMessage(err), 'warn')
+			if (!opts?.silent) options.pushToast(t('aiworkflow.runtime.videoTaskListLoadFailed', { error: getErrorMessage(err) }), 'warn')
 		} finally {
 			videoTaskLoading.value = false
 		}
@@ -141,14 +142,14 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			const res = await options.comfyService.seedanceTaskDetail(nextTaskId)
 			if (!res.ok) {
 				if (!opts?.silent)
-					options.pushToast('读取视频任务详情失败：' + String(res.error || 'unknown'), 'warn')
+					options.pushToast(t('aiworkflow.runtime.videoTaskDetailLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
 			const mapped = res.item ? mapVideoTaskItem(res.item as SeedanceTaskMirrorItem) : null
 			videoTaskDetail.value = await ensureLocalMediaForTask(mapped, opts)
 			patchTaskItem(videoTaskDetail.value)
 		} catch (err: unknown) {
-			if (!opts?.silent) options.pushToast('读取视频任务详情失败：' + getErrorMessage(err), 'warn')
+			if (!opts?.silent) options.pushToast(t('aiworkflow.runtime.videoTaskDetailLoadFailed', { error: getErrorMessage(err) }), 'warn')
 		} finally {
 			videoTaskDetailLoading.value = false
 		}
@@ -166,16 +167,16 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 				saveMedia: false
 			})
 			if (!res.ok) {
-				options.pushToast('远端补齐视频任务失败：' + String(res.error || 'unknown'), 'warn')
+				options.pushToast(t('aiworkflow.runtime.videoTaskRemoteSyncFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
 			await refreshVideoTaskItems({ silent: true })
 			if (videoTaskDetailTaskId.value) {
 				await selectVideoTask(videoTaskDetailTaskId.value, { silent: true })
 			}
-			options.pushToast('已从远端补齐视频任务列表。', 'info')
+			options.pushToast(t('aiworkflow.runtime.videoTaskRemoteSyncSuccess'), 'info')
 		} catch (err: unknown) {
-			options.pushToast('远端补齐视频任务失败：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('aiworkflow.runtime.videoTaskRemoteSyncFailed', { error: getErrorMessage(err) }), 'warn')
 		} finally {
 			videoTaskSyncing.value = false
 		}

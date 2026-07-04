@@ -520,7 +520,7 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 				// keep load flow resilient if static asset canonicalization fails
 			}
 		}
-		if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, '加载项目')) return false
+		if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, t('aiworkflow.runtime.loadProjectSource'))) return false
 		payload.resetCurrentUnrealExportNodeRuntimeState()
 
 		const recoverySessionId = payload.startRecoverySessionFromCurrentState({

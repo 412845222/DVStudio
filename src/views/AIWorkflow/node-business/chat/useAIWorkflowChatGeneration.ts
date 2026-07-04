@@ -1893,8 +1893,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				if (ev.type === 'done') break
 				if (ev.type === 'error') {
 					const errMsg = String(ev.error?.message ?? 'unknown')
-					payload.nanoStatus.value = '失败'
-					appendNanoDetail(`错误：${errMsg}`)
+					payload.nanoStatus.value = t('aiworkflow.runtime.statusFailed')
+					appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
 					payload.pushToast(t('aiworkflow.toast.videoEngineGenFailed', { engine: videoEngineLabel, error: errMsg }), 'warn')
 					break
 				}
@@ -1940,30 +1940,46 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				if (message.type === 'agentToUi/taskStatus') {
 					const msgPayload = isRecord(message.payload) ? message.payload : {}
 					const text = getStringField(msgPayload, 'message').trim()
-					if (text) payload.nanoStatus.value = text
-					if (!isJimengVideoModel && text) {
-						const match = text.match(/任务已创建（([^）]+)）/)
-						const taskId = String(match?.[1] || '').trim()
-						if (taskId && taskId !== observedSeedanceTaskId) {
-							observedSeedanceTaskId = taskId
-							payload.onSeedanceTaskObserved?.(taskId, 'created')
+					let extractedTaskId = ''
+					const directTaskId = getStringField(msgPayload, 'taskId').trim()
+					if (directTaskId) {
+						extractedTaskId = directTaskId
+					} else {
+						const detailsVal = hasKey(msgPayload, 'details') ? (msgPayload as Record<string, unknown>).details : {}
+						const detailsRecord = isRecord(detailsVal) ? detailsVal : {}
+						const detailsTaskId = getStringField(detailsRecord, 'taskId').trim()
+						if (detailsTaskId) {
+							extractedTaskId = detailsTaskId
+						} else if (text) {
+							const cnMatch = text.match(/任务已创建（([^）]+)）/)
+							const enMatch = text.match(/Task created \(([^)]+)\)/i)
+							extractedTaskId = String(cnMatch?.[1] || enMatch?.[1] || '').trim()
 						}
+					}
+					if (extractedTaskId) {
+						payload.nanoStatus.value = t('aiworkflow.runtime.nanoTaskCreated', { taskId: extractedTaskId })
+					} else if (text) {
+						payload.nanoStatus.value = text
+					}
+					if (!isJimengVideoModel && extractedTaskId && extractedTaskId !== observedSeedanceTaskId) {
+						observedSeedanceTaskId = extractedTaskId
+						payload.onSeedanceTaskObserved?.(extractedTaskId, 'created')
 					}
 					continue
 				}
 				if (message.type === 'agentToUi/error') {
 					const msgPayload = isRecord(message.payload) ? message.payload : {}
 					const text = getStringField(msgPayload, 'message') ?? 'unknown'
-					payload.nanoStatus.value = '失败'
-					appendNanoDetail(`错误：${text}`)
+					payload.nanoStatus.value = t('aiworkflow.runtime.statusFailed')
+					appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: text }))
 					payload.pushToast(t('aiworkflow.toast.videoEngineGenFailed', { engine: videoEngineLabel, error: text }), 'warn')
 					break
 				}
 			}
 		} catch (err: unknown) {
 			const errMsg = getErrorMessage(err)
-			payload.nanoStatus.value = '失败'
-			appendNanoDetail(`错误：${errMsg}`)
+			payload.nanoStatus.value = t('aiworkflow.runtime.statusFailed')
+			appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
 			payload.pushToast(t('aiworkflow.toast.videoGenerationFailed', { error: errMsg }), 'warn')
 		} finally {
 			const minShowMs = 900
