@@ -10,14 +10,7 @@ on:
       - 'agent_docs/**'
       - 'samples/**'
       - 'AIPlan/**'
-  push:
-    branches: [main, dev]
-    paths-ignore:
-      - 'README.md'
-      - 'AGENT_GUIDE.md'
-      - 'agent_docs/**'
-      - 'samples/**'
-      - 'AIPlan/**'
+      - '.github/workflows/release.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
