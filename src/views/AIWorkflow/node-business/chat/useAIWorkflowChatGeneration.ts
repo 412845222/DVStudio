@@ -1331,6 +1331,101 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			refFiles.sort((a, b) => a.idx - b.idx)
 			refSources.sort((a, b) => a.idx - b.idx)
 
+			// 智能检测：如果当前选中的是图片节点，收集该节点输入锚点连接的参考图
+			const selectedNode = payload.getSelectedNode()
+			if (selectedNode && selectedNode.type === 'image' && refFiles.length < payload.NANO_REF_IMAGE_MAX) {
+				const imageInputAnchors = Array.isArray(selectedNode.inputs)
+					? (selectedNode.inputs as WorkflowAnchorSpec[])
+					: ([] as WorkflowAnchorSpec[])
+				
+				// 筛选图片输入锚点：in-image, in-resource, in-image-N
+				const isImageInputAnchor = (anchorId: string): boolean => {
+					const id = String(anchorId || '').trim()
+					return id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)
+				}
+				
+				const imageAnchors = imageInputAnchors.filter(a => isImageInputAnchor(String(a.id ?? '')))
+				const sortedImageAnchors = [...imageAnchors].sort(
+					(a, b) => anchorIndexFromId(a.id) - anchorIndexFromId(b.id)
+				)
+				
+				for (const anchor of sortedImageAnchors) {
+					if (refFiles.length >= payload.NANO_REF_IMAGE_MAX) break
+					const edge = payload.getFirstIncomingEdge(
+						String(selectedNode.id ?? ''),
+						String(anchor.id ?? '')
+					)
+					if (!edge) continue
+					const fromNodeId = getStringField(edge, 'fromNodeId')
+					const fromNode = payload.store.state.nodesById[fromNodeId]
+					if (!fromNode) continue
+					const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
+					if (!isImageSource) continue
+					
+					let url = payload.nodeResourceUrl(fromNode)
+					if (!url) continue
+					const nameBase =
+						String(
+							payload.nodeResourceName(fromNode) ?? fromNode.alias ?? fromNode.title ?? 'ref'
+						).trim() || 'ref'
+					// 使用偏移后的索引，避免与聊天框锚点冲突
+					const idx = 100 + anchorIndexFromId(anchor.id)
+
+					if (
+						fromNode.type === 'rotate-image' &&
+						(String(url).startsWith('blob:') ||
+							String(url).startsWith('data:') ||
+							String(url).startsWith('file:') ||
+							String(url).startsWith('/'))
+					) {
+						try {
+							const uploaded = await payload.uploadLocalResourceAndGetUrl(
+								String(url),
+								'image',
+								`${nameBase}_rot`,
+								{ projectId: payload.currentProjectId.value }
+							)
+							const rid = getStringField(fromNode, 'resourceId').trim()
+							if (rid) {
+								const patch: Record<string, unknown> = {
+									url: uploaded.url,
+									sourcePath: uploaded.absolutePath || undefined
+								}
+								if (isString(uploaded.projectRelativePath)) {
+									patch.projectRelativePath = uploaded.projectRelativePath
+								}
+								payload.store.commit('patchResource', {
+									resourceId: rid,
+									patch
+								})
+							}
+							url = uploaded.url
+						} catch {
+							// fallback to original local/blob/data URL below
+						}
+					}
+
+					let file: File | null = null
+					try {
+						if (fromNode.type === 'image') {
+							file = await payload.buildCroppedImageTransferFile(fromNode, url, nameBase)
+						}
+						if (!file) file = await payload.fileFromUrl(url, nameBase)
+					} catch {
+						file = null
+					}
+
+					if (file) {
+						refFiles.push({ idx, file })
+						refSources.push({ idx, nodeType: fromNode.type })
+					}
+				}
+				
+				// 重新排序
+				refFiles.sort((a, b) => a.idx - b.idx)
+				refSources.sort((a, b) => a.idx - b.idx)
+			}
+
 			const rotateRefIdx = refSources
 				.filter((source) => source.nodeType === 'rotate-image')
 				.map((source) => source.idx)
@@ -1434,20 +1529,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				}
 
 				// 根据模式和参数互斥规则传递参数
-				// text-to-image 支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
+				// text-to-image 和 image-to-image 都支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
 				//   注意：generate_multi_view 为 true 时不能设置 aspect_ratio
-				// image-to-image 支持：generate_multi_view, negative_prompt, output_image_count, seed（不支持 aspect_ratio 和 pose_mode）
-				if (taskType === 'text-to-image') {
-					if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
-					if (meshyGenerateMultiView) {
-						meshyPayload.generate_multi_view = true
-					} else if (meshyAspectRatio) {
-						meshyPayload.aspect_ratio = meshyAspectRatio
-						console.log(`[Meshy Image - Chat] text-to-image: EXPLICITLY setting aspect_ratio=${meshyAspectRatio}, model=${selectedMeshyAiModel}`)
-					}
-				} else {
-					meshyPayload.generate_multi_view = meshyGenerateMultiView
-					console.log(`[Meshy Image - Chat] image-to-image: aspect_ratio NOT supported by Meshy API (per official docs)`)
+				if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
+				if (meshyGenerateMultiView) {
+					meshyPayload.generate_multi_view = true
+				} else if (meshyAspectRatio) {
+					meshyPayload.aspect_ratio = meshyAspectRatio
+					console.log(`[Meshy Image - Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyAspectRatio}, model=${selectedMeshyAiModel}`)
 				}
 
 				// 通用参数（两种模式都支持）
@@ -1463,8 +1552,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				const submittedParams = {
 					model: selectedMeshyAiModel || 'nano-banana',
 					mode: taskType,
-					aspectRatio: taskType === 'text-to-image' ? (meshyGenerateMultiView ? '1:1 (多视图)' : meshyAspectRatio) : '基于参考图',
-					poseMode: taskType === 'text-to-image' ? (meshyPoseMode || '无') : '不支持',
+					aspectRatio: meshyGenerateMultiView ? '1:1 (多视图)' : meshyAspectRatio,
+					poseMode: meshyPoseMode || '无',
 					generateMultiView: meshyGenerateMultiView,
 					negativePrompt: meshyNegativePrompt || '无',
 					outputCount: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1,
@@ -1497,12 +1586,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 				appendNanoDetail(`Meshy 模式：${taskType}`)
 				appendNanoDetail(`AI 模型：${selectedMeshyAiModel || 'nano-banana'}`)
-				if (taskType === 'text-to-image') {
-					appendNanoDetail(`宽高比：${meshyGenerateMultiView ? '多视图(1:1)' : meshyAspectRatio}`)
-					if (meshyPoseMode) appendNanoDetail(`姿态模式：${meshyPoseMode}`)
-				} else {
-					appendNanoDetail('图生图模式：宽高比将保持参考图比例')
-				}
+				appendNanoDetail(`宽高比：${meshyGenerateMultiView ? '多视图(1:1)' : meshyAspectRatio}`)
+				if (meshyPoseMode) appendNanoDetail(`姿态模式：${meshyPoseMode}`)
 				if (meshyGenerateMultiView) appendNanoDetail('多视图：开启')
 				appendNanoDetail(`输出数量：${submittedParams.outputCount} 张`)
 				if (meshyNegativePrompt) appendNanoDetail(`负向提示：${meshyNegativePrompt.slice(0, 80)}`)

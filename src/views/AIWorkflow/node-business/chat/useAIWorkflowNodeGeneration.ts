@@ -870,12 +870,8 @@ const runImageTask = async (
 
 		appendDetail(deps, task.id, `Meshy 模式：${taskType}`)
 		appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
-		if (taskType === 'text-to-image') {
-			appendDetail(deps, task.id, `宽高比：${meshyGenerateMultiView ? '多视图(1:1)' : meshyAspectRatio}`)
-			if (meshyPoseMode) appendDetail(deps, task.id, `姿态模式：${meshyPoseMode}`)
-		} else {
-			appendDetail(deps, task.id, '图生图模式：宽高比将保持参考图比例（Meshy API 不支持图生图 aspect_ratio 参数）')
-		}
+		appendDetail(deps, task.id, `宽高比：${meshyGenerateMultiView ? '多视图(1:1)' : meshyAspectRatio}`)
+		if (meshyPoseMode) appendDetail(deps, task.id, `姿态模式：${meshyPoseMode}`)
 		if (meshyGenerateMultiView) appendDetail(deps, task.id, '多视图：开启')
 		appendDetail(deps, task.id, `输出数量：${meshyOutputImageCount} 张`)
 		if (meshyNegativePrompt) appendDetail(deps, task.id, `负向提示：${meshyNegativePrompt.slice(0, 80)}`)
@@ -893,20 +889,14 @@ const runImageTask = async (
 			}
 
 			// 根据模式和参数互斥规则传递参数
-			// text-to-image 支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
+			// text-to-image 和 image-to-image 都支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
 			//   注意：generate_multi_view 为 true 时不能设置 aspect_ratio
-			// image-to-image 支持：generate_multi_view, negative_prompt, output_image_count, seed（不支持 aspect_ratio 和 pose_mode）
-			if (taskType === 'text-to-image') {
-				if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
-				if (meshyGenerateMultiView) {
-					meshyPayload.generate_multi_view = true
-				} else {
-					meshyPayload.aspect_ratio = meshyAspectRatio || '1:1'
-					console.log(`[Meshy Image - Node Chat] text-to-image: EXPLICITLY setting aspect_ratio=${meshyPayload.aspect_ratio}, model=${meshyAiModel}`)
-				}
+			if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
+			if (meshyGenerateMultiView) {
+				meshyPayload.generate_multi_view = true
 			} else {
-				meshyPayload.generate_multi_view = meshyGenerateMultiView
-				console.log(`[Meshy Image - Node Chat] image-to-image: aspect_ratio NOT supported by Meshy API (per official docs)`)
+				meshyPayload.aspect_ratio = meshyAspectRatio || '1:1'
+				console.log(`[Meshy Image - Node Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyPayload.aspect_ratio}, model=${meshyAiModel}`)
 			}
 
 			// 通用参数（两种模式都支持）
@@ -924,8 +914,8 @@ const runImageTask = async (
 			const submittedParams = {
 				model: meshyAiModel,
 				mode: taskType,
-				aspectRatio: taskType === 'text-to-image' ? (meshyGenerateMultiView ? '1:1 (多视图)' : meshyAspectRatio) : '基于参考图',
-				poseMode: taskType === 'text-to-image' ? (meshyPoseMode || '无') : '不支持',
+				aspectRatio: meshyGenerateMultiView ? '1:1 (多视图)' : meshyAspectRatio,
+				poseMode: meshyPoseMode || '无',
 				generateMultiView: meshyGenerateMultiView,
 				negativePrompt: meshyNegativePrompt || '无',
 				outputCount: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1,

@@ -508,7 +508,15 @@ function buildCreatePayload(payload) {
     body.prompt = prompt
     body.reference_image_urls = refs
 
-    // image-to-image only supports generate_multi_view (NO aspect_ratio, NO pose_mode per official docs)
+    console.log(`[Meshy Backend] image-to-image raw params:`, {
+      ai_model_raw: payload.ai_model,
+      aspect_ratio_raw: payload.aspect_ratio,
+      generate_multi_view_raw: payload.generate_multi_view,
+      generate_multi_view_type: typeof payload.generate_multi_view,
+      pose_mode_raw: payload.pose_mode
+    })
+
+    // Normalize generate_multi_view to boolean FIRST (mutual exclusion with aspect_ratio)
     let generateMultiView = payload.generate_multi_view
     if (typeof generateMultiView === 'string') {
       const gvStr = generateMultiView.toLowerCase().trim()
@@ -518,8 +526,38 @@ function buildCreatePayload(payload) {
     } else {
       generateMultiView = Boolean(generateMultiView)
     }
-    if (generateMultiView) {
+
+    // Handle aspect_ratio ONLY IF generate_multi_view is false
+    if (!generateMultiView) {
+      let aspectRatio = String(
+        payload.aspect_ratio ||
+        payload.aspectRatio ||
+        '1:1'
+      ).trim()
+
+      if (!aspectRatio) {
+        aspectRatio = '1:1'
+      }
+
+      // Validate aspect ratio for the selected model
+      let validRatio = '1:1'
+      if (aiModel === 'gpt-image-2') {
+        validRatio = GPT_IMAGE_2_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : '1:1'
+      } else {
+        validRatio = NANO_BANANA_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : '1:1'
+      }
+
+      body.aspect_ratio = validRatio
+      console.log(`[Meshy Backend] image-to-image aspect_ratio set to: ${validRatio} (requested: ${aspectRatio}, model: ${aiModel})`)
+    } else {
       body.generate_multi_view = true
+      console.log(`[Meshy Backend] image-to-image generate_multi_view is TRUE - aspect_ratio will NOT be sent (mutually exclusive)`)
+    }
+
+    // Handle pose_mode
+    const poseMode = String(payload.pose_mode || '').trim()
+    if (poseMode && ['a-pose', 't-pose'].includes(poseMode)) {
+      body.pose_mode = poseMode
     }
 
     // Handle negative_prompt
@@ -540,7 +578,6 @@ function buildCreatePayload(payload) {
 
     console.log(`[Meshy Backend] ===== image-to-image FINAL request body =====`)
     console.log(`[Meshy Backend] ${JSON.stringify({ ...body, reference_image_urls: `[${refs.length} images]` }, null, 2)}`)
-    console.log(`[Meshy Backend] Note: image-to-image API does NOT support aspect_ratio parameter (per official docs)`)
     console.log(`[Meshy Backend] ==================================================`)
   } else if (mode === 'retexture') {
     const inputTaskId = String(payload.input_task_id || payload.preview_task_id || '').trim()

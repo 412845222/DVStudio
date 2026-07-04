@@ -320,15 +320,13 @@ export const useAIWorkflowMeshyRequest = (options: {
 			payload.seed = Math.max(0, Math.floor(seed))
 		}
 
-		if (mode === 'text-to-image') {
+		if (mode === 'text-to-image' || mode === 'image-to-image') {
 			if (poseMode) payload.pose_mode = poseMode
 			if (generateMultiView) {
 				payload.generate_multi_view = true
 			} else if (aspectRatio) {
 				payload.aspect_ratio = aspectRatio
 			}
-		} else if (mode === 'image-to-image') {
-			if (generateMultiView) payload.generate_multi_view = true
 		}
 
 		if (family === 'retexture') {
