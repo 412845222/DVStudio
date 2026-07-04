@@ -5,8 +5,7 @@ on:
     branches: [main]
     tags:
       - 'v*'
-    tags-ignore:
-      - 'v*-dev*'
+      - '!v*-dev*'
     paths-ignore:
       - 'README.md'
       - 'AGENT_GUIDE.md'
