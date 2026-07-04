@@ -61,7 +61,7 @@
 						v-for="(it, idx) in mergeItems"
 						:key="it.id"
 						class="wf-merge-row"
-						:ref="(el: HTMLElement | null) => setRowEl(it.id, el)"
+						:ref="(el: any) => setRowEl(it.id, el as HTMLElement | null)"
 					>
 						<div class="wf-merge-row-left">
 							<div class="wf-merge-row-label">{{ t('nodes.textMerge.itemLabel', { index: idx + 1 }) }}</div>

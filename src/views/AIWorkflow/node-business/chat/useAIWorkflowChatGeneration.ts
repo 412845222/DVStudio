@@ -282,7 +282,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		let changed = false
 		payload.chatMessages.value = payload.chatMessages.value.map((message) => {
 			if (message.id !== id || !message.toolCalls) return message
-			const updatedToolCalls = message.toolCalls.map((tc) => {
+			const updatedToolCalls = message.toolCalls.map((tc: any) => {
 				if (tc.id !== tcId) return tc
 				changed = true
 				return {

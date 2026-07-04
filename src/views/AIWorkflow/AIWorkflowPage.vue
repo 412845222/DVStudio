@@ -79,7 +79,7 @@
 					class="aiwf-node-host"
 					:class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots }"
 					:ref="
-						(el: Element | null) => {
+						(el: any) => {
 							if (el) nodeHostRefs.set(node.id, el as HTMLElement)
 							else nodeHostRefs.delete(node.id)
 						}

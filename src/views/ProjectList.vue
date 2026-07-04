@@ -45,7 +45,7 @@
 						class="project-list-search-refresh"
 						type="button"
 						:disabled="loading"
-						@click="refreshProjects"
+						@click="() => refreshProjects()"
 					>
 						{{ loading ? t('projectList.refreshing') : t('projectList.refresh') }}
 					</button>
