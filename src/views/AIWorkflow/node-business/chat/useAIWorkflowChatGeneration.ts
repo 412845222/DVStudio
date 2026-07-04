@@ -1400,6 +1400,32 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			if (isMeshyModel) {
 				const hasRefImages = refFiles.length > 0
 				const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
+				const meshyAspectRatio = ar || '1:1'
+				const meshyNegativePrompt = String(
+					hasKey(input.config, 'meshyNegativePrompt') ? input.config.meshyNegativePrompt : ''
+				).trim()
+				const meshyOutputImageCount = Number(
+					hasKey(input.config, 'meshyOutputImageCount') ? input.config.meshyOutputImageCount : 1
+				)
+				const meshySeed = Number(
+					hasKey(input.config, 'meshySeed') ? input.config.meshySeed : -1
+				)
+
+				console.log('[Meshy Image - Chat] 原始参数:', {
+					inputConfigAspectRatio: input?.config?.aspectRatio,
+					inputConfigMeshyAspectRatio: input?.config?.meshyAspectRatio,
+					ar,
+					meshyAspectRatio,
+					selectedMeshyAiModel,
+					meshyPoseMode,
+					meshyGenerateMultiView,
+					meshyNegativePrompt,
+					meshyOutputImageCount,
+					meshySeed,
+					hasRefImages,
+					refFileCount: refFiles.length,
+					taskType
+				})
 
 				const meshyPayload: Record<string, unknown> = {
 					mode: taskType,
@@ -1407,117 +1433,130 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					ai_model: selectedMeshyAiModel || 'nano-banana'
 				}
 
-				if (!hasRefImages) {
-					if (ar) meshyPayload.aspect_ratio = ar
+				// 根据模式和参数互斥规则传递参数
+				// text-to-image 支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
+				//   注意：generate_multi_view 为 true 时不能设置 aspect_ratio
+				// image-to-image 支持：generate_multi_view, negative_prompt, output_image_count, seed（不支持 aspect_ratio 和 pose_mode）
+				if (taskType === 'text-to-image') {
 					if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
-					if (meshyGenerateMultiView) meshyPayload.generate_multi_view = true
-				}
-
-				if (hasRefImages) {
-					const form = new FormData()
-					for (const key of Object.keys(meshyPayload)) {
-						form.set(key, String(meshyPayload[key]))
+					if (meshyGenerateMultiView) {
+						meshyPayload.generate_multi_view = true
+					} else if (meshyAspectRatio) {
+						meshyPayload.aspect_ratio = meshyAspectRatio
+						console.log(`[Meshy Image - Chat] text-to-image: EXPLICITLY setting aspect_ratio=${meshyAspectRatio}, model=${selectedMeshyAiModel}`)
 					}
-					for (const r of refFiles) {
-						form.append('refImages', r.file, r.file.name)
-					}
-
-					const res = await svc.meshyGenerateImage(form)
-					if (res.ok) {
-						const taskId = String(res.taskId || '').trim()
-						if (taskId) {
-							appendNanoDetail(`Meshy 任务已创建：${taskId}`)
-							payload.nanoStatus.value = `任务已创建（${taskId}）`
-
-							const pollStatus = async () => {
-								const taskRes = await svc.meshyTask(taskId, taskType)
-								if (taskRes.ok) {
-									const status = String(taskRes.status || '')
-										.trim()
-										.toUpperCase()
-									const progress = Number(taskRes.progress || 0)
-									payload.nanoStatus.value =
-										status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
-
-									if (status === 'SUCCEEDED') {
-										const imageUrl =
-											taskRes.preferredImageUrl ||
-											(Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls[0] : undefined)
-										if (imageUrl && isString(imageUrl)) {
-											const resolvedUrl = payload.resolveBackendUrl(imageUrl)
-											payload.nanoPreviewUrl.value = resolvedUrl
-											payload.nanoPreviewUrls.value = [resolvedUrl]
-											payload.nanoPreviewLoadingStates.value = [false]
-											payload.nanoModelUsed.value = selectedMeshyAiModel
-										}
-									} else if (status === 'FAILED') {
-										const errorMsg = String(taskRes.errorMessage || '未知错误')
-										payload.pushToast(`Meshy 生成失败：${errorMsg}`, 'warn')
-										appendNanoDetail(`错误：${errorMsg}`)
-									} else if (status !== 'CANCELED') {
-										setTimeout(pollStatus, 2000)
-									}
-								}
-							}
-							pollStatus()
-						}
-					} else {
-						const errMsg = String(res.error || 'Meshy 请求失败')
-						payload.pushToast(`Meshy 生成失败：${errMsg}`, 'warn')
-						appendNanoDetail(`错误：${errMsg}`)
-					}
-					completedCount = 1
-					updateProgressStatus()
-					return
 				} else {
-					const res = await svc.meshyGenerate(meshyPayload)
-					if (res.ok) {
-						const taskId = String(res.taskId || '').trim()
-						if (taskId) {
-							appendNanoDetail(`Meshy 任务已创建：${taskId}`)
-							payload.nanoStatus.value = `任务已创建（${taskId}）`
+					meshyPayload.generate_multi_view = meshyGenerateMultiView
+					console.log(`[Meshy Image - Chat] image-to-image: aspect_ratio NOT supported by Meshy API (per official docs)`)
+				}
 
-							const pollStatus = async () => {
-								const taskRes = await svc.meshyTask(taskId, taskType)
-								if (taskRes.ok) {
-									const status = String(taskRes.status || '')
-										.trim()
-										.toUpperCase()
-									const progress = Number(taskRes.progress || 0)
-									payload.nanoStatus.value =
-										status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
+				// 通用参数（两种模式都支持）
+				if (meshyNegativePrompt) meshyPayload.negative_prompt = meshyNegativePrompt
+				if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+					meshyPayload.output_image_count = Math.floor(meshyOutputImageCount)
+				}
+				if (Number.isFinite(meshySeed) && meshySeed >= 0) {
+					meshyPayload.seed = Math.floor(meshySeed)
+				}
 
-									if (status === 'SUCCEEDED') {
-										const imageUrl =
-											taskRes.preferredImageUrl ||
-											(Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls[0] : undefined)
-										if (imageUrl && isString(imageUrl)) {
-											const resolvedUrl = payload.resolveBackendUrl(imageUrl)
-											payload.nanoPreviewUrl.value = resolvedUrl
-											payload.nanoPreviewUrls.value = [resolvedUrl]
-											payload.nanoPreviewLoadingStates.value = [false]
-											payload.nanoModelUsed.value = selectedMeshyAiModel
-										}
-									} else if (status === 'FAILED') {
-										const errorMsg = String(taskRes.errorMessage || '未知错误')
-										payload.pushToast(`Meshy 生成失败：${errorMsg}`, 'warn')
-										appendNanoDetail(`错误：${errorMsg}`)
-									} else if (status !== 'CANCELED') {
-										setTimeout(pollStatus, 2000)
+				// 记录完整提交参数
+				const submittedParams = {
+					model: selectedMeshyAiModel || 'nano-banana',
+					mode: taskType,
+					aspectRatio: taskType === 'text-to-image' ? (meshyGenerateMultiView ? '1:1 (多视图)' : meshyAspectRatio) : '基于参考图',
+					poseMode: taskType === 'text-to-image' ? (meshyPoseMode || '无') : '不支持',
+					generateMultiView: meshyGenerateMultiView,
+					negativePrompt: meshyNegativePrompt || '无',
+					outputCount: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1,
+					seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : '随机',
+					referenceImageCount: hasRefImages ? refFiles.length : 0,
+					submittedAt: new Date().toISOString()
+				}
+				meshyPayload.submittedParams = submittedParams
+
+				console.log('[Meshy Image - Chat] 提交参数:', JSON.stringify(meshyPayload, null, 2))
+
+				// 关键修复：统一使用FormData + meshyGenerateImage路径处理所有情况（文生图/图生图）
+				// 确保参数类型转换一致（布尔值、数字、JSON对象都经过正确处理）
+				const form = new FormData()
+				for (const key of Object.keys(meshyPayload)) {
+					const value = meshyPayload[key]
+					if (typeof value === 'object' && value !== null) {
+						form.set(key, JSON.stringify(value))
+					} else if (typeof value === 'boolean') {
+						form.set(key, value ? 'true' : 'false')
+					} else if (typeof value === 'number') {
+						form.set(key, String(value))
+					} else {
+						form.set(key, String(value))
+					}
+				}
+				for (const r of refFiles) {
+					form.append('refImages', r.file, r.file.name)
+				}
+
+				appendNanoDetail(`Meshy 模式：${taskType}`)
+				appendNanoDetail(`AI 模型：${selectedMeshyAiModel || 'nano-banana'}`)
+				if (taskType === 'text-to-image') {
+					appendNanoDetail(`宽高比：${meshyGenerateMultiView ? '多视图(1:1)' : meshyAspectRatio}`)
+					if (meshyPoseMode) appendNanoDetail(`姿态模式：${meshyPoseMode}`)
+				} else {
+					appendNanoDetail('图生图模式：宽高比将保持参考图比例')
+				}
+				if (meshyGenerateMultiView) appendNanoDetail('多视图：开启')
+				appendNanoDetail(`输出数量：${submittedParams.outputCount} 张`)
+				if (meshyNegativePrompt) appendNanoDetail(`负向提示：${meshyNegativePrompt.slice(0, 80)}`)
+				if (Number.isFinite(meshySeed) && meshySeed >= 0) appendNanoDetail(`随机种子：${meshySeed}`)
+				if (hasRefImages) appendNanoDetail(`参考图数量：${refFiles.length}`)
+
+				console.log('[Meshy Image - Chat] 发送请求（统一FormData路径），hasRefImages:', hasRefImages, 'refCount:', refFiles.length)
+				const res = await svc.meshyGenerateImage(form)
+				if (res.ok) {
+					const taskId = String(res.taskId || '').trim()
+					if (taskId) {
+						appendNanoDetail(`Meshy 任务已创建：${taskId}`)
+						payload.nanoStatus.value = `任务已创建（${taskId}）`
+
+						const pollStatus = async () => {
+							const taskRes = await svc.meshyTask(taskId, taskType)
+							if (taskRes.ok) {
+								const status = String(taskRes.status || '')
+									.trim()
+									.toUpperCase()
+								const progress = Number(taskRes.progress || 0)
+								payload.nanoStatus.value =
+									status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
+
+								if (status === 'SUCCEEDED') {
+									const imageUrl =
+										taskRes.preferredImageUrl ||
+										(Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls[0] : undefined)
+									if (imageUrl && isString(imageUrl)) {
+										const resolvedUrl = payload.resolveBackendUrl(imageUrl)
+										payload.nanoPreviewUrl.value = resolvedUrl
+										payload.nanoPreviewUrls.value = [resolvedUrl]
+										payload.nanoPreviewLoadingStates.value = [false]
+										payload.nanoModelUsed.value = selectedMeshyAiModel
 									}
+								} else if (status === 'FAILED') {
+									const errorMsg = String(taskRes.errorMessage || '未知错误')
+									payload.pushToast(`Meshy 生成失败：${errorMsg}`, 'warn')
+									appendNanoDetail(`错误：${errorMsg}`)
+								} else if (status !== 'CANCELED') {
+									setTimeout(pollStatus, 2000)
 								}
 							}
-							pollStatus()
 						}
-					} else {
-						const errMsg = String(res.error || 'Meshy 请求失败')
-						payload.pushToast(`Meshy 生成失败：${errMsg}`, 'warn')
-						appendNanoDetail(`错误：${errMsg}`)
+						pollStatus()
 					}
-					completedCount = 1
-					updateProgressStatus()
-					return
+				} else {
+					const errMsg = String(res.error || 'Meshy 请求失败')
+					payload.pushToast(`Meshy 生成失败：${errMsg}`, 'warn')
+					appendNanoDetail(`错误：${errMsg}`)
 				}
+				completedCount = 1
+				updateProgressStatus()
+				return
 			}
 
 			let cachedRefIds: string[] = []

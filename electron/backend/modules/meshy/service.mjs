@@ -299,9 +299,9 @@ function targetAndFamily(mode, payload) {
     if (rawFamily === 'text-to-image' || rawFamily === 'image-to-image') return ['image', rawFamily]
     return ['3d', rawFamily]
   }
-  if (rawTarget === 'image') return ['image', 'text-to-image']
   if (mode === 'text-to-image') return ['image', 'text-to-image']
   if (mode === 'image-to-image') return ['image', 'image-to-image']
+  if (rawTarget === 'image') return ['image', 'text-to-image']
   if (mode === 'image-to-3d') return ['3d', 'image-to-3d']
   if (mode === 'multi-image-to-3d') return ['3d', 'multi-image-to-3d']
   if (mode === 'retexture') return ['3d', 'retexture']
@@ -350,6 +350,9 @@ function capabilitiesForRelation(relationKind) {
 }
 
 function buildCreatePayload(payload) {
+  // Log the ENTIRE raw payload first for debugging
+  console.log('[Meshy Backend] buildCreatePayload received raw payload:', JSON.stringify(payload, null, 2))
+
   let mode = String(payload.mode || payload.family || '').trim().toLowerCase()
   if (mode === 'refine') mode = 'text-to-3d'
   if (mode === 'animations') mode = 'animation'
@@ -360,6 +363,10 @@ function buildCreatePayload(payload) {
 
   const body = {}
   const prompt = String(payload.prompt || '').trim()
+
+  // Define valid aspect ratios per model (per official docs)
+  const NANO_BANANA_ASPECT_RATIOS = new Set(['1:1', '16:9', '9:16', '4:3', '3:4'])
+  const GPT_IMAGE_2_ASPECT_RATIOS = new Set(['1:1', '3:2', '2:3'])
 
   if (mode === 'text-to-3d') {
     if (!prompt) return [null, null, 'prompt is required']
@@ -382,14 +389,117 @@ function buildCreatePayload(payload) {
     if (prompt) body.prompt = prompt
   } else if (mode === 'text-to-image') {
     if (!prompt) return [null, null, 'prompt is required']
-    let aiModel = String(payload.ai_model || '').trim().toLowerCase()
-    if (!['nano-banana', 'nano-banana-pro'].includes(aiModel)) aiModel = 'nano-banana'
+
+    // Normalize ai_model - try multiple possible keys
+    let aiModel = String(payload.ai_model || payload.aiModel || payload.model || '').trim().toLowerCase()
+    if (!['nano-banana', 'nano-banana-2', 'nano-banana-pro', 'gpt-image-2'].includes(aiModel)) {
+      // Try to infer from model string
+      if (aiModel.includes('gpt-image-2') || aiModel.includes('gptimage2')) {
+        aiModel = 'gpt-image-2'
+      } else if (aiModel.includes('nano-banana-2') || aiModel.includes('nanobanana2')) {
+        aiModel = 'nano-banana-2'
+      } else if (aiModel.includes('pro')) {
+        aiModel = 'nano-banana-pro'
+      } else if (aiModel.includes('nano-banana') || aiModel.includes('nanobanana')) {
+        aiModel = 'nano-banana'
+      } else {
+        aiModel = 'nano-banana'
+      }
+    }
     body.ai_model = aiModel
     body.prompt = prompt
+
+    console.log(`[Meshy Backend] text-to-image raw params:`, {
+      ai_model_raw: payload.ai_model,
+      aspect_ratio_raw: payload.aspect_ratio,
+      generate_multi_view_raw: payload.generate_multi_view,
+      generate_multi_view_type: typeof payload.generate_multi_view,
+      pose_mode_raw: payload.pose_mode
+    })
+
+    // Normalize generate_multi_view to boolean FIRST (mutual exclusion with aspect_ratio)
+    let generateMultiView = payload.generate_multi_view
+    if (typeof generateMultiView === 'string') {
+      const gvStr = generateMultiView.toLowerCase().trim()
+      generateMultiView = (gvStr === 'true' || gvStr === '1')
+    } else if (typeof generateMultiView === 'number') {
+      generateMultiView = generateMultiView !== 0
+    } else {
+      generateMultiView = Boolean(generateMultiView)
+    }
+
+    // Handle aspect_ratio ONLY IF generate_multi_view is false
+    if (!generateMultiView) {
+      // Try multiple possible keys for aspect ratio
+      let aspectRatio = String(
+        payload.aspect_ratio ||
+        payload.aspectRatio ||
+        '1:1'
+      ).trim()
+
+      if (!aspectRatio) {
+        aspectRatio = '1:1'
+      }
+
+      // Validate aspect ratio for the selected model
+      let validRatio = '1:1'
+      if (aiModel === 'gpt-image-2') {
+        validRatio = GPT_IMAGE_2_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : '1:1'
+      } else {
+        validRatio = NANO_BANANA_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : '1:1'
+      }
+
+      body.aspect_ratio = validRatio
+      console.log(`[Meshy Backend] text-to-image aspect_ratio set to: ${validRatio} (requested: ${aspectRatio}, model: ${aiModel})`)
+    } else {
+      body.generate_multi_view = true
+      console.log(`[Meshy Backend] text-to-image generate_multi_view is TRUE - aspect_ratio will NOT be sent (mutually exclusive per API docs)`)
+    }
+
+    // Handle pose_mode
+    const poseMode = String(payload.pose_mode || '').trim()
+    if (poseMode && ['a-pose', 't-pose'].includes(poseMode)) {
+      body.pose_mode = poseMode
+    }
+
+    // Handle negative_prompt
+    const negativePrompt = String(payload.negative_prompt || '').trim()
+    if (negativePrompt) body.negative_prompt = negativePrompt
+
+    // Handle output_image_count
+    const outputCount = Number(payload.output_image_count || payload.outputImageCount)
+    if (Number.isFinite(outputCount) && outputCount > 0 && outputCount <= 4) {
+      body.output_image_count = Math.floor(outputCount)
+    }
+
+    // Handle seed
+    const seed = Number(payload.seed)
+    if (Number.isFinite(seed) && seed >= 0) {
+      body.seed = Math.floor(seed)
+    }
+
+    console.log(`[Meshy Backend] ===== text-to-image FINAL request body =====`)
+    console.log(`[Meshy Backend] ${JSON.stringify(body, null, 2)}`)
+    console.log(`[Meshy Backend] ==============================================`)
   } else if (mode === 'image-to-image') {
     if (!prompt) return [null, null, 'prompt is required']
-    let aiModel = String(payload.ai_model || '').trim().toLowerCase()
-    if (!['nano-banana', 'nano-banana-pro'].includes(aiModel)) aiModel = 'nano-banana'
+
+    // Normalize ai_model
+    let aiModel = String(payload.ai_model || payload.aiModel || payload.model || '').trim().toLowerCase()
+    if (!['nano-banana', 'nano-banana-2', 'nano-banana-pro', 'gpt-image-2'].includes(aiModel)) {
+      if (aiModel.includes('gpt-image-2') || aiModel.includes('gptimage2')) {
+        aiModel = 'gpt-image-2'
+      } else if (aiModel.includes('nano-banana-2') || aiModel.includes('nanobanana2')) {
+        aiModel = 'nano-banana-2'
+      } else if (aiModel.includes('pro')) {
+        aiModel = 'nano-banana-pro'
+      } else if (aiModel.includes('nano-banana') || aiModel.includes('nanobanana')) {
+        aiModel = 'nano-banana'
+      } else {
+        aiModel = 'nano-banana'
+      }
+    }
+
     let refsAny = payload.reference_image_urls
     if (!Array.isArray(refsAny)) refsAny = payload.image_urls
     const refs = Array.isArray(refsAny) ? refsAny.map(x => String(x || '').trim()).filter(x => x).slice(0, 5) : []
@@ -397,6 +507,41 @@ function buildCreatePayload(payload) {
     body.ai_model = aiModel
     body.prompt = prompt
     body.reference_image_urls = refs
+
+    // image-to-image only supports generate_multi_view (NO aspect_ratio, NO pose_mode per official docs)
+    let generateMultiView = payload.generate_multi_view
+    if (typeof generateMultiView === 'string') {
+      const gvStr = generateMultiView.toLowerCase().trim()
+      generateMultiView = (gvStr === 'true' || gvStr === '1')
+    } else if (typeof generateMultiView === 'number') {
+      generateMultiView = generateMultiView !== 0
+    } else {
+      generateMultiView = Boolean(generateMultiView)
+    }
+    if (generateMultiView) {
+      body.generate_multi_view = true
+    }
+
+    // Handle negative_prompt
+    const negativePrompt = String(payload.negative_prompt || '').trim()
+    if (negativePrompt) body.negative_prompt = negativePrompt
+
+    // Handle output_image_count
+    const outputCount = Number(payload.output_image_count || payload.outputImageCount)
+    if (Number.isFinite(outputCount) && outputCount > 0 && outputCount <= 4) {
+      body.output_image_count = Math.floor(outputCount)
+    }
+
+    // Handle seed
+    const seed = Number(payload.seed)
+    if (Number.isFinite(seed) && seed >= 0) {
+      body.seed = Math.floor(seed)
+    }
+
+    console.log(`[Meshy Backend] ===== image-to-image FINAL request body =====`)
+    console.log(`[Meshy Backend] ${JSON.stringify({ ...body, reference_image_urls: `[${refs.length} images]` }, null, 2)}`)
+    console.log(`[Meshy Backend] Note: image-to-image API does NOT support aspect_ratio parameter (per official docs)`)
+    console.log(`[Meshy Backend] ==================================================`)
   } else if (mode === 'retexture') {
     const inputTaskId = String(payload.input_task_id || payload.preview_task_id || '').trim()
     const modelUrl = String(payload.model_url || '').trim()
@@ -426,25 +571,32 @@ function buildCreatePayload(payload) {
     else return [null, null, 'input_task_id or model_url is required']
   }
 
+  // For 3D modes, still process extra keys
   let extraKeys = []
   if (['text-to-3d', 'image-to-3d', 'multi-image-to-3d'].includes(mode)) {
     extraKeys = ['ai_model', 'model_type', 'topology', 'target_polycount', 'symmetry_mode', 'should_remesh', 'save_pre_remeshed_model', 'should_texture', 'enable_pbr', 'pose_mode', 'texture_prompt', 'texture_image_url', 'moderation', 'image_enhancement', 'remove_lighting', 'target_formats', 'negative_prompt']
-  } else if (['text-to-image', 'image-to-image'].includes(mode)) {
-    extraKeys = ['aspect_ratio', 'generate_multi_view', 'pose_mode', 'seed']
   } else if (mode === 'retexture') {
     extraKeys = ['ai_model', 'enable_original_uv', 'enable_pbr', 'hd_texture', 'remove_lighting', 'target_formats', 'alpha_thumbnail']
   } else if (mode === 'remesh') {
     extraKeys = ['target_formats', 'topology', 'target_polycount', 'decimation_mode', 'resize_height', 'origin_at', 'convert_format_only']
-  } else if (mode === 'uv-unwrap') {
-    extraKeys = []
   }
+  // Note: text-to-image and image-to-image params are handled explicitly above with validation
+
+  const boolKeys = new Set(['generate_multi_view', 'should_remesh', 'save_pre_remeshed_model', 'should_texture', 'enable_pbr', 'enable_original_uv', 'hd_texture', 'remove_lighting', 'alpha_thumbnail'])
 
   for (const key of extraKeys) {
     if (key in body) continue
-    const value = payload[key]
+    let value = payload[key]
     if (value === undefined || value === null) continue
     if (typeof value === 'string' && !value.trim()) continue
     if (Array.isArray(value) && !value.length) continue
+    if (boolKeys.has(key)) {
+      if (typeof value === 'string') {
+        value = value.toLowerCase() === 'true' || value === '1'
+      } else {
+        value = Boolean(value)
+      }
+    }
     body[key] = value
   }
 
@@ -457,11 +609,17 @@ export async function generateModel(ctx, payload) {
   const repo = ctx.localdb?.meshyTasks
   if (!repo) throw internalError('meshyTasks repo not available')
 
+  console.log('[Meshy Backend] 接收到生成请求 payload:', JSON.stringify(payload, null, 2))
+
   const [mode, body, buildErr] = buildCreatePayload(payload || {})
   if (buildErr) throw invalidParamsError(buildErr)
 
+  console.log('[Meshy Backend] 构建的请求 body (mode=' + mode + '):', JSON.stringify(body, null, 2))
+
   const endpoint = getModePath(mode)
   const url = `${MESHY_API_BASE}${endpoint}`
+
+  console.log('[Meshy Backend] 请求端点:', url)
 
   const res = await client.post(url, body, {
     headers: { 'Authorization': `Bearer ${apiKey}` },
@@ -482,6 +640,14 @@ export async function generateModel(ctx, payload) {
   const rootTaskId = firstNonEmptyStr(payload, ['rootTaskId', 'root_task_id']) || parentTaskId || taskId
   const capabilities = capabilitiesForRelation(relationKind)
 
+  const recordedPayload = {
+    ...(payload || {}),
+    _requestBody: body,
+    _requestUrl: url,
+    _requestMode: mode,
+    _submittedAt: new Date().toISOString()
+  }
+
   repo.upsert({
     taskId,
     mode,
@@ -501,7 +667,7 @@ export async function generateModel(ctx, payload) {
     sourceModelUrl: '',
     errorMessage: '',
     statusText: 'Meshy：任务已创建',
-    requestPayload: payload,
+    requestPayload: recordedPayload,
     responsePayload: res.body,
     projectId: payload?.projectId,
     lastNodeId: payload?.lastNodeId || '',

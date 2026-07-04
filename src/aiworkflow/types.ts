@@ -48,6 +48,8 @@ export type WorkflowImageNodeSettings = {
 	/** desired output resolution in pixels */
 	outputWidth?: number
 	outputHeight?: number
+	/** output format */
+	outputFormat?: 'png' | 'jpeg' | 'webp'
 	/** source image natural size in pixels (used for aspect-safe crop constraints) */
 	naturalWidth?: number
 	naturalHeight?: number
@@ -57,15 +59,18 @@ export type WorkflowImageNodeSettings = {
 	crop?: WorkflowImageCrop
 	/** image generation source */
 	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	/** last generated image URL */
+	lastGeneratedImageUrl?: string
 	/** Meshy image generation settings */
 	meshyImageSettings?: {
 		prompt?: string
 		negativePrompt?: string
 		seed?: number
-		aiModel?: 'nano-banana' | 'nano-banana-pro'
+		aiModel?: 'nano-banana' | 'nano-banana-2' | 'nano-banana-pro' | 'gpt-image-2'
 		generateMultiView?: boolean
 		aspectRatio?: string
 		outputImageCount?: number
+		outputCount?: number
 		poseMode?: '' | 'a-pose' | 't-pose'
 		taskId?: string
 		taskFamily?: 'text-to-image' | 'image-to-image'
@@ -74,6 +79,7 @@ export type WorkflowImageNodeSettings = {
 		progress?: number
 		statusText?: string
 		errorMessage?: string
+		submittedParams?: Record<string, unknown>
 		outputSummary?: {
 			preferredUrl?: string
 			imageUrls?: string[]

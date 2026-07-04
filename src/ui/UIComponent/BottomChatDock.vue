@@ -384,6 +384,8 @@ export type NanoBananaConfig = {
 	meshyPoseMode?: string
 	meshyGenerateMultiView?: boolean
 	meshyOutputImageCount?: number
+	meshyNegativePrompt?: string
+	meshySeed?: number
 }
 
 export type SeedanceConfig = SeedanceVideoFormConfig
@@ -1148,9 +1150,11 @@ const emitGenerate = () => {
 				imageModel: 'meshy',
 				meshyImageAiModel: meshyImageConfig.value.aiModel || 'nano-banana',
 				meshyAspectRatio: meshyImageConfig.value.aspectRatio || '1:1',
+				meshyNegativePrompt: meshyImageConfig.value.negativePrompt || '',
 				meshyPoseMode: meshyImageConfig.value.poseMode || '',
 				meshyGenerateMultiView: meshyImageConfig.value.generateMultiView || false,
 				meshyOutputImageCount: meshyImageConfig.value.outputImageCount || 1,
+				meshySeed: meshyImageConfig.value.seed && meshyImageConfig.value.seed > 0 ? meshyImageConfig.value.seed : -1,
 				quantity
 			}
 		})

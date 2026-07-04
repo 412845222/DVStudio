@@ -113,39 +113,76 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const meshyNegativePrompt = String(
 			chatParams.meshyNegativePrompt ?? meshyImageSettings.negativePrompt ?? ''
 		).trim()
-		const meshySeed = Number(chatParams.meshySeed ?? meshyImageSettings.seed ?? 0)
 		const meshyOutputImageCount = Number(
-			chatParams.meshyOutputImageCount ??
-				chatParams.quantity ??
-				meshyImageSettings.outputImageCount ??
-				1
+			chatParams.meshyOutputImageCount ?? meshyImageSettings.outputCount ?? 1
+		)
+		const meshySeed = Number(
+			chatParams.meshySeed ?? meshyImageSettings.seed ?? -1
 		)
 
+		console.log('[Meshy Image Node] 原始参数:', {
+			meshyAiModel,
+			meshyAspectRatio,
+			meshyPoseMode,
+			meshyGenerateMultiView,
+			meshyNegativePrompt,
+			meshyOutputImageCount,
+			meshySeed,
+			nodeId: options.nodeId
+		})
+
+		// 图片节点直接生成按钮：始终为文生图模式（图生图需要通过连线传入参考图，由聊天面板处理）
+		// 严格按照 Meshy 官方文档构建参数
+		// text-to-image 支持：ai_model(必选), prompt(必选), aspect_ratio(可选), generate_multi_view(可选), pose_mode(可选), negative_prompt(可选), output_image_count(可选), seed(可选)
+		const taskType = 'text-to-image'
 		const payload: MeshyGeneratePayload = {
-			target: 'image',
-			family: 'text-to-image',
-			mode: 'text-to-image',
-			stage: 'preview',
-			prompt,
-			negative_prompt: meshyNegativePrompt,
-			output_image_count: meshyOutputImageCount,
-			ai_model: meshyAiModel
+			mode: taskType,
+			ai_model: meshyAiModel,
+			prompt
 		}
 
-		if (meshyPoseMode) payload.pose_mode = meshyPoseMode
+		// 参数互斥：generate_multi_view 为 true 时不能设置 aspect_ratio
 		if (meshyGenerateMultiView) {
 			payload.generate_multi_view = true
 		} else {
 			payload.aspect_ratio = meshyAspectRatio
+			console.log(`[Meshy Image Node] text-to-image: EXPLICITLY setting aspect_ratio=${payload.aspect_ratio}, model=${meshyAiModel}`)
 		}
-		if (Number.isFinite(meshySeed) && meshySeed > 0) payload.seed = meshySeed
+		if (meshyPoseMode) payload.pose_mode = meshyPoseMode
+
+		// 可选参数
+		if (meshyNegativePrompt) payload.negative_prompt = meshyNegativePrompt
+		if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+			payload.output_image_count = Math.floor(meshyOutputImageCount)
+		}
+		if (Number.isFinite(meshySeed) && meshySeed >= 0) {
+			payload.seed = Math.floor(meshySeed)
+		}
+
+		// 记录完整提交参数（用于任务面板显示，后端会过滤掉不会发送给API）
+		const submittedParams = {
+			model: meshyAiModel,
+			mode: taskType,
+			aspectRatio: meshyGenerateMultiView ? '1:1 (多视图)' : meshyAspectRatio,
+			poseMode: meshyPoseMode || '无',
+			generateMultiView: meshyGenerateMultiView,
+			negativePrompt: meshyNegativePrompt || '无',
+			outputCount: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1,
+			seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : '随机',
+			referenceImageCount: 0,
+			submittedAt: new Date().toISOString()
+		}
+		payload.submittedParams = submittedParams
+
+		console.log('[Meshy Image Node] 构建文生图请求 payload:', JSON.stringify(payload, null, 2))
 
 		return {
 			ok: true as const,
 			payload,
 			promptText: prompt,
 			promptSource: 'manual' as const,
-			imageCount: 0
+			imageCount: 0,
+			submittedParams
 		}
 	}
 
@@ -172,12 +209,15 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 
 			updateMeshyImageSettings({
 				taskStatus: 'pending',
+				taskFamily: 'text-to-image',
 				progress: 0,
 				errorMessage: '',
-				statusText: 'Meshy：正在创建任务…'
+				statusText: 'Meshy：正在创建文生图任务…',
+				submittedParams: result.submittedParams
 			})
 
 			try {
+				console.log('[Meshy Image Node] 发送请求 payload:', JSON.stringify(result.payload, null, 2))
 				const res = await options.getComfyService().meshyGenerate(result.payload)
 				if (!res.ok) {
 					const msg = String(res.error ?? 'Meshy 创建任务失败')
@@ -197,8 +237,10 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 				updateMeshyImageSettings({
 					taskId: newTaskId,
 					taskStatus: normalizedStatus === 'idle' ? 'pending' : normalizedStatus,
+					taskFamily: mode,
 					progress: normalizedStatus === 'running' ? 5 : 0,
-					statusText: 'Meshy：任务已创建，开始轮询状态…'
+					statusText: 'Meshy：任务已创建，开始轮询状态…',
+					submittedParams: result.submittedParams
 				})
 
 				if (!newTaskId) {

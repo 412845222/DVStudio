@@ -95,6 +95,11 @@ const appendResult = (
  * The resolved url is also run through `deps.resolveBackendUrl` to ensure
  * any relative / project-internal URLs are resolved correctly.
  */
+const isImageInputAnchor = (anchorId: string): boolean => {
+	const id = String(anchorId || '').trim()
+	return id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)
+}
+
 const collectReferenceImages = async (
 	deps: NodeGenerationApiDeps,
 	nodeId: string,
@@ -113,7 +118,10 @@ const collectReferenceImages = async (
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
-		if (String(edge.toNodeId ?? '') === String(nodeId)) incoming.push(edge)
+		if (String(edge.toNodeId ?? '') !== String(nodeId)) continue
+		const toAnchorId = String(edge.toAnchorId ?? '').trim()
+		if (!isImageInputAnchor(toAnchorId)) continue
+		incoming.push(edge)
 	}
 
 	const refs: Array<{ name: string; blob: Blob }> = []
@@ -139,6 +147,18 @@ const collectReferenceImages = async (
 					: ''
 			candidateUrl = lastGenerated
 		}
+		if (!candidateUrl) {
+			const meshySettings =
+				typeof sourceNode.meshySettings === 'object' && sourceNode.meshySettings
+					? (sourceNode.meshySettings as Record<string, unknown>)
+					: {}
+			const outputSummary =
+				typeof meshySettings?.meshyOutputSummary === 'object' && meshySettings.meshyOutputSummary
+					? (meshySettings.meshyOutputSummary as Record<string, unknown>)
+					: {}
+			const preferredUrl = typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
+			candidateUrl = preferredUrl
+		}
 		if (!candidateUrl) continue
 
 		const fetchUrl =
@@ -146,8 +166,6 @@ const collectReferenceImages = async (
 				? deps.resolveBackendFetchUrl(candidateUrl)
 				: deps.resolveBackendUrl(candidateUrl)
 		try {
-			// In Electron, prefer the main-process download (bypasses CORS).
-			// In the browser, fall back to direct fetch().
 			let blob: Blob | null = null
 			if (typeof deps.downloadUrlAsBlob === 'function') {
 				blob = await deps.downloadUrlAsBlob(fetchUrl)
@@ -185,7 +203,10 @@ const collectReferenceImagesWithUrl = async (
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
-		if (String(edge.toNodeId ?? '') === String(nodeId)) incoming.push(edge)
+		if (String(edge.toNodeId ?? '') !== String(nodeId)) continue
+		const toAnchorId = String(edge.toAnchorId ?? '').trim()
+		if (!isImageInputAnchor(toAnchorId)) continue
+		incoming.push(edge)
 	}
 
 	const refs: Array<{ name: string; blob: Blob; url: string; fromNodeId: string }> = []
@@ -315,6 +336,20 @@ const handleMeshySuccess = async (
 		thumbnailUrl: ''
 	}
 
+	// 先读取当前节点已有的meshyImageSettings（保留submittedParams等）
+	const state = deps.store.state as {
+		nodesById: Record<string, Record<string, unknown>>
+	}
+	const currentNode = state.nodesById[nodeId]
+	const currentImgSettings =
+		currentNode && typeof currentNode.imageSettings === 'object' && currentNode.imageSettings
+			? (currentNode.imageSettings as Record<string, unknown>)
+			: {}
+	const currentMeshySettings =
+		typeof currentImgSettings.meshyImageSettings === 'object' && currentImgSettings.meshyImageSettings
+			? (currentImgSettings.meshyImageSettings as Record<string, unknown>)
+			: {}
+
 	if (preferredUrl) {
 		const resolved = deps.resolveBackendUrl(preferredUrl)
 
@@ -360,6 +395,7 @@ const handleMeshySuccess = async (
 		nodeId,
 		imageSettings: {
 			meshyImageSettings: {
+				...currentMeshySettings,
 				taskId,
 				taskStatus: 'succeeded',
 				progress: 100,
@@ -808,97 +844,147 @@ const runImageTask = async (
 		const meshyPoseMode = String(params?.meshyPoseMode || '').trim()
 		const meshyGenerateMultiView = Boolean(params?.meshyGenerateMultiView)
 		const meshyNegativePrompt = String(params?.meshyNegativePrompt || '').trim()
-		const meshySeed = Number(params?.meshySeed ?? 0)
-		const meshyQuantity = Number(params?.meshyOutputImageCount ?? 1)
+		const meshyOutputImageCount = Number(params?.meshyOutputImageCount ?? 1)
+		const meshySeed = Number(params?.meshySeed ?? -1)
 		const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
+
+		console.log('[Meshy Image - Node Chat] 原始参数:', {
+			paramsMeshyImageAiModel: params?.meshyImageAiModel,
+			paramsMeshyAspectRatio: params?.meshyAspectRatio,
+			paramsAspectRatio: params?.aspectRatio,
+			paramsMeshyNegativePrompt: params?.meshyNegativePrompt,
+			paramsMeshyOutputImageCount: params?.meshyOutputImageCount,
+			paramsMeshySeed: params?.meshySeed,
+			meshyAiModel,
+			meshyAspectRatio,
+			meshyPoseMode,
+			meshyGenerateMultiView,
+			meshyNegativePrompt,
+			meshyOutputImageCount,
+			meshySeed,
+			hasRefImages,
+			refCount: refs.length,
+			taskType,
+			nodeId: payload.nodeId
+		})
 
 		appendDetail(deps, task.id, `Meshy 模式：${taskType}`)
 		appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
+		if (taskType === 'text-to-image') {
+			appendDetail(deps, task.id, `宽高比：${meshyGenerateMultiView ? '多视图(1:1)' : meshyAspectRatio}`)
+			if (meshyPoseMode) appendDetail(deps, task.id, `姿态模式：${meshyPoseMode}`)
+		} else {
+			appendDetail(deps, task.id, '图生图模式：宽高比将保持参考图比例（Meshy API 不支持图生图 aspect_ratio 参数）')
+		}
+		if (meshyGenerateMultiView) appendDetail(deps, task.id, '多视图：开启')
+		appendDetail(deps, task.id, `输出数量：${meshyOutputImageCount} 张`)
+		if (meshyNegativePrompt) appendDetail(deps, task.id, `负向提示：${meshyNegativePrompt.slice(0, 80)}`)
+		if (Number.isFinite(meshySeed) && meshySeed >= 0) appendDetail(deps, task.id, `随机种子：${meshySeed}`)
+		if (hasRefImages) appendDetail(deps, task.id, `参考图数量：${refs.length}`)
 
 		try {
-			// 构建 Meshy API 请求体
+			// 构建 Meshy API 请求体 - 严格按照官方文档
+			// 官方文档：https://docs.meshy.ai/zh/api/text-to-image
+			// 官方文档：https://docs.meshy.ai/zh/api/image-to-image
 			const meshyPayload: Record<string, unknown> = {
 				mode: taskType,
 				ai_model: meshyAiModel,
-				prompt: payload.prompt,
-				negative_prompt: meshyNegativePrompt,
-				output_image_count: Math.min(4, Math.max(1, Math.floor(meshyQuantity)))
+				prompt: payload.prompt
 			}
 
-			if (!hasRefImages) {
-				// text-to-image 参数
-				if (meshyAspectRatio) meshyPayload.aspect_ratio = meshyAspectRatio
+			// 根据模式和参数互斥规则传递参数
+			// text-to-image 支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
+			//   注意：generate_multi_view 为 true 时不能设置 aspect_ratio
+			// image-to-image 支持：generate_multi_view, negative_prompt, output_image_count, seed（不支持 aspect_ratio 和 pose_mode）
+			if (taskType === 'text-to-image') {
 				if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
-				if (meshyGenerateMultiView) meshyPayload.generate_multi_view = true
+				if (meshyGenerateMultiView) {
+					meshyPayload.generate_multi_view = true
+				} else {
+					meshyPayload.aspect_ratio = meshyAspectRatio || '1:1'
+					console.log(`[Meshy Image - Node Chat] text-to-image: EXPLICITLY setting aspect_ratio=${meshyPayload.aspect_ratio}, model=${meshyAiModel}`)
+				}
+			} else {
+				meshyPayload.generate_multi_view = meshyGenerateMultiView
+				console.log(`[Meshy Image - Node Chat] image-to-image: aspect_ratio NOT supported by Meshy API (per official docs)`)
 			}
 
-			if (Number.isFinite(meshySeed) && meshySeed > 0) {
-				meshyPayload.seed = meshySeed
+			// 通用参数（两种模式都支持）
+			if (meshyNegativePrompt) meshyPayload.negative_prompt = meshyNegativePrompt
+			if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+				meshyPayload.output_image_count = Math.floor(meshyOutputImageCount)
 			}
+			if (Number.isFinite(meshySeed) && meshySeed >= 0) {
+				meshyPayload.seed = Math.floor(meshySeed)
+			}
+
+			console.log('[Meshy Image] 提交参数:', JSON.stringify(meshyPayload, null, 2))
+
+			// 记录完整提交参数（用于任务面板显示，不发送给API）
+			const submittedParams = {
+				model: meshyAiModel,
+				mode: taskType,
+				aspectRatio: taskType === 'text-to-image' ? (meshyGenerateMultiView ? '1:1 (多视图)' : meshyAspectRatio) : '基于参考图',
+				poseMode: taskType === 'text-to-image' ? (meshyPoseMode || '无') : '不支持',
+				generateMultiView: meshyGenerateMultiView,
+				negativePrompt: meshyNegativePrompt || '无',
+				outputCount: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1,
+				seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : '随机',
+				referenceImageCount: hasRefImages ? refs.length : 0,
+				submittedAt: new Date().toISOString()
+			}
+
+			// 将submittedParams添加到请求payload中，确保后端能记录
+			meshyPayload.submittedParams = submittedParams
 
 			updateTask(deps, task.id, { statusText: `正在创建 Meshy ${taskType} 任务…`, progress: 20 })
 
-			// 如果有参考图，需要先上传或转换为 URL
-			if (hasRefImages) {
-				const refForm = new FormData()
-				for (const key of Object.keys(meshyPayload)) {
-					refForm.set(key, String(meshyPayload[key]))
+			// 关键修复：统一使用FormData + meshyGenerateImage路径处理所有情况（文生图/图生图）
+			// 确保参数类型转换一致（布尔值、数字、JSON对象都经过正确处理）
+			const form = new FormData()
+			for (const key of Object.keys(meshyPayload)) {
+				const value = meshyPayload[key]
+				if (typeof value === 'object' && value !== null) {
+					form.set(key, JSON.stringify(value))
+				} else if (typeof value === 'boolean') {
+					form.set(key, value ? 'true' : 'false')
+				} else if (typeof value === 'number') {
+					form.set(key, String(value))
+				} else {
+					form.set(key, String(value))
 				}
-				for (const ref of refs) {
-					refForm.append('refImages', ref.blob, ref.name)
-				}
-				const createRes = await svc.meshyGenerateImage(refForm)
-				if (!createRes.ok) {
-					throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
-				}
-				const taskId = String(createRes.taskId || '').trim()
-				if (!taskId) throw new Error('Meshy 返回空任务 ID')
-				appendDetail(deps, task.id, `任务已创建：${taskId}`)
-
-				// 标记图片节点的 imageGenerationSource 为 meshy，使任务面板能找到该节点
-				deps.store.commit('setNodeImageSettings', {
-					nodeId: payload.nodeId,
-					imageSettings: {
-						imageGenerationSource: 'meshy',
-						meshyImageSettings: {
-							taskId,
-							taskStatus: 'pending',
-							taskFamily: taskType,
-							progress: 20,
-							statusText: `Meshy ${taskType} 任务已创建`
-						}
-					}
-				})
-
-				// 轮询任务状态
-				await pollMeshyTaskStatus(deps, svc, taskId, task.id, payload.nodeId, taskType)
-			} else {
-				const createRes = await svc.meshyGenerate(meshyPayload)
-				if (!createRes.ok) {
-					throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
-				}
-				const taskId = String(createRes.taskId || '').trim()
-				if (!taskId) throw new Error('Meshy 返回空任务 ID')
-				appendDetail(deps, task.id, `任务已创建：${taskId}`)
-
-				// 标记图片节点的 imageGenerationSource 为 meshy
-				deps.store.commit('setNodeImageSettings', {
-					nodeId: payload.nodeId,
-					imageSettings: {
-						imageGenerationSource: 'meshy',
-						meshyImageSettings: {
-							taskId,
-							taskStatus: 'pending',
-							taskFamily: taskType,
-							progress: 20,
-							statusText: `Meshy ${taskType} 任务已创建`
-						}
-					}
-				})
-
-				// 轮询任务状态
-				await pollMeshyTaskStatus(deps, svc, taskId, task.id, payload.nodeId, taskType)
 			}
+			for (const ref of refs) {
+				form.append('refImages', ref.blob, ref.name)
+			}
+
+			console.log('[Meshy Image - Node Chat] 发送请求（统一FormData路径），hasRefImages:', hasRefImages, 'refCount:', refs.length)
+			const createRes = await svc.meshyGenerateImage(form)
+			if (!createRes.ok) {
+				throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
+			}
+			const taskId = String(createRes.taskId || '').trim()
+			if (!taskId) throw new Error('Meshy 返回空任务 ID')
+			appendDetail(deps, task.id, `任务已创建：${taskId}`)
+
+			// 标记图片节点的 imageGenerationSource 为 meshy，使任务面板能找到该节点
+			deps.store.commit('setNodeImageSettings', {
+				nodeId: payload.nodeId,
+				imageSettings: {
+					imageGenerationSource: 'meshy',
+					meshyImageSettings: {
+						taskId,
+						taskStatus: 'pending',
+						taskFamily: taskType,
+						progress: 20,
+						statusText: `Meshy ${taskType} 任务已创建`,
+						submittedParams
+					}
+				}
+			})
+
+			// 轮询任务状态
+			await pollMeshyTaskStatus(deps, svc, taskId, task.id, payload.nodeId, taskType)
 
 			return
 		} catch (err: unknown) {

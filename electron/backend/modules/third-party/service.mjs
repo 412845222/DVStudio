@@ -238,7 +238,7 @@ export async function nanobananaGenerate(ctx, payload) {
 	let apiKey = tryGetKey(ctx, 'meshy', 'nanobanana')
 	if (!apiKey) throw invalidParamsError('meshy/nanobanana api key is not configured')
 	let aiModel = String(p.ai_model || p.model || 'nano-banana').trim().toLowerCase()
-	if (!['nano-banana', 'nano-banana-pro'].includes(aiModel)) aiModel = 'nano-banana'
+	if (!['nano-banana', 'nano-banana-2', 'nano-banana-pro', 'gpt-image-2'].includes(aiModel)) aiModel = 'nano-banana'
 	const body = { prompt, ai_model: aiModel }
 	const aspectRatio = String(p.aspect_ratio || p.aspectRatio || '').trim()
 	if (aspectRatio) body.aspect_ratio = aspectRatio
@@ -375,7 +375,7 @@ export async function* nanobananaGenerateStream(ctx, payload) {
 		return
 	}
 	let aiModel = String(p.ai_model || p.model || 'nano-banana').trim().toLowerCase()
-	if (!['nano-banana', 'nano-banana-pro'].includes(aiModel)) aiModel = 'nano-banana'
+	if (!['nano-banana', 'nano-banana-2', 'nano-banana-pro', 'gpt-image-2'].includes(aiModel)) aiModel = 'nano-banana'
 	const body = { prompt, ai_model: aiModel, stream: true }
 	const aspectRatio = String(p.aspect_ratio || p.aspectRatio || '').trim()
 	if (aspectRatio) body.aspect_ratio = aspectRatio
