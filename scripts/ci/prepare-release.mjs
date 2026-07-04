@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
-const DIST_DIR = 'dist';
 const NOTES_PATH = '.release-notes.md';
 
 function getBuildVersion() {
@@ -35,19 +34,34 @@ function getBuildVersion() {
 }
 
 function findInstaller() {
-  if (!fs.existsSync(DIST_DIR)) {
-    console.error(`[prepare-release] ${DIST_DIR}/ directory not found!`);
-    process.exit(1);
+  const cwd = process.cwd();
+  const entries = fs.readdirSync(cwd);
+  const releaseDirs = entries
+    .filter(f => f.startsWith('release-') && fs.statSync(path.join(cwd, f)).isDirectory())
+    .sort()
+    .reverse();
+
+  for (const dir of releaseDirs) {
+    const dirPath = path.join(cwd, dir);
+    const files = fs.readdirSync(dirPath);
+    const installer = files.find(f => f.endsWith('.exe') && f.includes('Setup') && !f.includes('blockmap'));
+    if (installer) {
+      return path.join(dir, installer);
+    }
   }
 
-  const files = fs.readdirSync(DIST_DIR);
-  const installer = files.find(f => f.endsWith('.exe') && f.includes('Setup') && !f.includes('blockmap'));
-  if (!installer) {
-    console.error('[prepare-release] No .exe Setup installer found in dist/. Files:', files);
-    process.exit(1);
+  if (fs.existsSync('dist')) {
+    const distFiles = fs.readdirSync('dist');
+    const installer = distFiles.find(f => f.endsWith('.exe') && f.includes('Setup') && !f.includes('blockmap'));
+    if (installer) {
+      return path.join('dist', installer);
+    }
   }
 
-  return path.join(DIST_DIR, installer);
+  const allDirs = entries.filter(f => fs.statSync(path.join(cwd, f)).isDirectory());
+  console.error('[prepare-release] No .exe Setup installer found. Looked in release-* dirs and dist/.');
+  console.error('Root dirs:', allDirs);
+  process.exit(1);
 }
 
 function getRecentCommits(sha) {
