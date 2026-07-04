@@ -80,39 +80,26 @@ function getRecentCommits(sha) {
   }
 }
 
-async function getExistingDevReleaseCount(baseVersion, date) {
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPOSITORY;
-  if (!token || !repo) return 0;
-
+function getNextDevNumber(baseVersion, date) {
+  const prefix = `v${baseVersion}-dev.${date}.`;
   try {
-    const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
-    const prefix = `v${baseVersion}-dev.${date}.`;
-    let count = 0;
-    let page = 1;
-
-    while (page <= 5) {
-      const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100&page=${page}`, {
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'User-Agent': 'DVStudio-CI'
-        }
-      });
-      if (!res.ok) break;
-      const releases = await res.json();
-      if (!releases.length) break;
-      for (const r of releases) {
-        if (r.tag_name && r.tag_name.startsWith(prefix)) {
-          const numStr = r.tag_name.slice(prefix.length);
-          const n = parseInt(numStr, 10);
-          if (!isNaN(n) && n >= count) count = n;
-        }
+    const tagsOutput = execSync(`git ls-remote --tags origin "${prefix}*"`, { encoding: 'utf8' }).trim();
+    if (!tagsOutput) return 1;
+    const lines = tagsOutput.split('\n').filter(l => l.trim());
+    let maxNum = 0;
+    for (const line of lines) {
+      const parts = line.split('\t');
+      const ref = parts[1] || '';
+      const tagName = ref.replace('refs/tags/', '').replace('^{}', '');
+      if (tagName.startsWith(prefix)) {
+        const numStr = tagName.slice(prefix.length);
+        const n = parseInt(numStr, 10);
+        if (!isNaN(n) && n > maxNum) maxNum = n;
       }
-      page++;
     }
-    return count;
+    return maxNum + 1;
   } catch {
-    return 0;
+    return 1;
   }
 }
 
@@ -123,8 +110,7 @@ async function main() {
 
   if (versionInfo.isPrerelease) {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const existingCount = await getExistingDevReleaseCount(versionInfo.baseVersion, date);
-    const devNumber = existingCount + 1;
+    const devNumber = getNextDevNumber(versionInfo.baseVersion, date);
     versionInfo.version = `${versionInfo.baseVersion}-dev.${date}.${devNumber}`;
     versionInfo.tag = `v${versionInfo.baseVersion}-dev.${date}.${devNumber}`;
     versionInfo.releaseName = `DVStudio v${versionInfo.baseVersion}-dev.${date}.${devNumber} (Dev Preview)`;
