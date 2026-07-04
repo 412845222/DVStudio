@@ -5,26 +5,31 @@ import https from 'node:https'
 import { createWriteStream } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 
+const isCI = process.env.CI === 'true'
 const PYTHON_VERSION = '3.11.9'
 const PYTHON_ZIP_FILENAME = `python-${PYTHON_VERSION}-embed-amd64.zip`
 const GET_PIP_FILENAME = 'get-pip.py'
-const PIP_INDEX_URL = process.env.PIP_INDEX_URL || 'https://pypi.tuna.tsinghua.edu.cn/simple'
+const PIP_INDEX_URL =
+	process.env.PIP_INDEX_URL ||
+	(isCI ? 'https://pypi.org/simple/' : 'https://pypi.tuna.tsinghua.edu.cn/simple')
+
+const OFFICIAL_PYTHON_URL = `https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`
+const CN_PYTHON_URLS = [
+	`https://mirrors.huaweicloud.com/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`,
+	`https://repo.huaweicloud.com/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`,
+	`https://mirrors.aliyun.com/python-release/windows/python-${PYTHON_VERSION}-embed-amd64.zip`
+]
 
 const PYTHON_EMBED_URLS = (process.env.PYTHON_EMBED_MIRROR
 	? [process.env.PYTHON_EMBED_MIRROR]
-	: [
-			`https://mirrors.huaweicloud.com/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`,
-			`https://repo.huaweicloud.com/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`,
-			`https://mirrors.aliyun.com/python-release/windows/python-${PYTHON_VERSION}-embed-amd64.zip`,
-			`https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`
-	  ]
+	: isCI
+		? [OFFICIAL_PYTHON_URL, ...CN_PYTHON_URLS]
+		: [...CN_PYTHON_URLS, OFFICIAL_PYTHON_URL]
 ).filter(Boolean)
 
 const GET_PIP_URLS = (process.env.GET_PIP_MIRROR
 	? [process.env.GET_PIP_MIRROR]
-	: [
-			'https://bootstrap.pypa.io/get-pip.py'
-	  ]
+	: ['https://bootstrap.pypa.io/get-pip.py']
 ).filter(Boolean)
 
 const REPO_ROOT = path.resolve(process.cwd())
@@ -274,6 +279,8 @@ async function main() {
 	const force = args.includes('--force')
 
 	log(`Preparing Python ${PYTHON_VERSION} runtime for Windows x64...`)
+	log(`Environment: ${isCI ? 'CI (GitHub Actions)' : 'local'}`)
+	log(`PIP_INDEX_URL: ${PIP_INDEX_URL}`)
 	log(`Target directory: ${path.relative(REPO_ROOT, PYTHON_RUNTIME_DIR)}`)
 	log(`Cache directory: ${path.relative(REPO_ROOT, CACHE_DIR)}`)
 
