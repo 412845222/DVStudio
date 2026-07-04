@@ -144,7 +144,10 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		return ''
 	}
 
-	const isImageInEdge = (e: WorkflowEdge) => /^in-image-/.test(String(e.toAnchorId ?? ''))
+	const isImageInEdge = (e: WorkflowEdge) => {
+		const id = String(e.toAnchorId ?? '').trim()
+		return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+	}
 
 	const connectedMeshyImageUrls = (nodeId: string) => {
 		const incoming = options.getIncomingEdges(nodeId).filter(isImageInEdge)
@@ -503,8 +506,8 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 	const isImageOutEdge = (e: WorkflowEdge) =>
 		/^out-image(?:-\d+)?$/.test(String(e.fromAnchorId ?? '')) &&
 		(() => {
-			const toAnchorId = String(e.toAnchorId ?? '')
-			return toAnchorId === 'in-image' || toAnchorId === 'in-resource'
+			const toAnchorId = String(e.toAnchorId ?? '').trim()
+			return toAnchorId === 'in-image' || toAnchorId === 'in-resource' || toAnchorId === 'in-0' || /^in-image-\d+$/.test(toAnchorId)
 		})()
 
 	const hasConnectedMeshyConsumer = (node: WorkflowNode) => {
@@ -526,8 +529,8 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 	const isImageOutputEdge = (e: WorkflowEdge) =>
 		/^out-image-(\d+)$/.test(String(e.fromAnchorId ?? '')) &&
 		(() => {
-			const toAnchorId = String(e.toAnchorId ?? '')
-			return toAnchorId === 'in-image' || toAnchorId === 'in-resource'
+			const toAnchorId = String(e.toAnchorId ?? '').trim()
+			return toAnchorId === 'in-image' || toAnchorId === 'in-resource' || toAnchorId === 'in-0' || /^in-image-\d+$/.test(toAnchorId)
 		})()
 
 	const missingMeshyImageOutputAnchors = (node: WorkflowNode) => {

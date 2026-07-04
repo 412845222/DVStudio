@@ -143,6 +143,7 @@ type ChatGenerationStore = {
 		nodesById: Record<string, WorkflowNode>
 		edgeOrder: string[]
 		edgesById: Record<string, WorkflowEdge>
+		resourcesById?: Record<string, Record<string, unknown>>
 	}
 	commit: (type: string, value?: unknown) => void
 }
@@ -1240,6 +1241,39 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				return Number.isFinite(n) ? n : 0
 			}
 
+			const getEffectiveImageUrl = (node: WorkflowNode): string | null => {
+				// 优先级1: resourceId -> resourcesById (本地资产URL)
+				const resourceRid = String(node.resourceId ?? '').trim()
+				if (resourceRid) {
+					const res = payload.store.state.resourcesById?.[resourceRid] as Record<string, unknown> | undefined
+					const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
+					if (resUrl) return resUrl
+				}
+				// 优先级2: imageSettings.lastGeneratedImageUrl (最近生成的图片)
+				const imgSettings = typeof node.imageSettings === 'object' && node.imageSettings
+					? (node.imageSettings as Record<string, unknown>)
+					: {}
+				const lastGenUrl = typeof imgSettings?.lastGeneratedImageUrl === 'string'
+					? String(imgSettings.lastGeneratedImageUrl).trim()
+					: ''
+				if (lastGenUrl) return lastGenUrl
+				// 优先级3: meshySettings.meshyOutputSummary.preferredUrl (Meshy生成结果)
+				const meshySettings = typeof imgSettings?.meshyImageSettings === 'object' && imgSettings.meshyImageSettings
+					? (imgSettings.meshyImageSettings as Record<string, unknown>)
+					: {}
+				const meshySummary = typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
+					? (meshySettings.outputSummary as Record<string, unknown>)
+					: {}
+				const meshyUrl = typeof meshySummary?.preferredUrl === 'string'
+					? String(meshySummary.preferredUrl).trim()
+					: ''
+				if (meshyUrl) return meshyUrl
+				// 优先级4: nodeResourceUrl (标准方法，但它可能对远程URL返回null，所以作为fallback)
+				const standardUrl = payload.nodeResourceUrl(node)
+				if (standardUrl) return standardUrl
+				return null
+			}
+
 			const refFiles: Array<{ idx: number; file: File }> = []
 			const refSources: Array<{ idx: number; nodeType: WorkflowNode['type'] }> = []
 			const pseudo = payload.store.state.nodesById[payload.NANO_ANCHOR_NODE_ID]
@@ -1267,7 +1301,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					)
 					continue
 				}
-				let url = payload.nodeResourceUrl(fromNode)
+				let url = getEffectiveImageUrl(fromNode)
 				if (!url) {
 					payload.pushToast('图片生成参考图来源节点缺少图片资源。', 'warn')
 					continue
@@ -1332,7 +1366,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			refSources.sort((a, b) => a.idx - b.idx)
 
 			// 智能检测：如果当前选中的是图片节点，收集该节点输入锚点连接的参考图
-			const selectedNode = payload.getSelectedNode()
+			const selectedNode = payload.getSelectedNode?.()
 			if (selectedNode && selectedNode.type === 'image' && refFiles.length < payload.NANO_REF_IMAGE_MAX) {
 				const imageInputAnchors = Array.isArray(selectedNode.inputs)
 					? (selectedNode.inputs as WorkflowAnchorSpec[])
@@ -1341,7 +1375,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				// 筛选图片输入锚点：in-image, in-resource, in-image-N
 				const isImageInputAnchor = (anchorId: string): boolean => {
 					const id = String(anchorId || '').trim()
-					return id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)
+					return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
 				}
 				
 				const imageAnchors = imageInputAnchors.filter(a => isImageInputAnchor(String(a.id ?? '')))
@@ -1362,7 +1396,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
 					if (!isImageSource) continue
 					
-					let url = payload.nodeResourceUrl(fromNode)
+					let url = getEffectiveImageUrl(fromNode)
 					if (!url) continue
 					const nameBase =
 						String(

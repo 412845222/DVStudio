@@ -2,6 +2,7 @@ import type { Store } from 'vuex'
 import type {
 	WorkflowNodeChatSubmitPayload,
 	WorkflowNodeGenerationTask,
+	WorkflowNode,
 	WorkflowState
 } from '../../../../aiworkflow/types'
 import { ComfyUIBridgeService, type MeshyTaskResponse } from '../../../../network/ComfyUIBridgeService'
@@ -14,6 +15,9 @@ export type NodeGenerationApiDeps = {
 	resolveBackendFetchUrl?: (raw: string) => string
 	getProjectId?: () => number | null
 	pushToast?: (message: string, tone?: 'info' | 'warn' | 'error') => void
+	nodeResourceUrl?: (node: any) => string | null
+	createImageNodeAtCenter?: (url: string, name?: string) => string | null
+	createImageNodeAt?: (worldX: number, worldY: number, url: string, name?: string) => string | null
 	/** Bind produced asset url to the originating node, e.g. as its resource. */
 	bindImageResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
 	bindVideoResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
@@ -97,13 +101,102 @@ const appendResult = (
  */
 const isImageInputAnchor = (anchorId: string): boolean => {
 	const id = String(anchorId || '').trim()
-	return id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)
+	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+}
+
+const getNodeEffectiveImageUrl = (
+	node: Record<string, unknown>,
+	state: {
+		resourcesById: Record<string, Record<string, unknown>>
+	},
+	nodeResourceUrl?: (n: any) => string | null
+): string => {
+	const resourceRid = String(node.resourceId ?? '').trim()
+	if (resourceRid) {
+		const res = state.resourcesById[resourceRid]
+		const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
+		if (resUrl) {
+			console.log('[collectReferenceImages] 从resourceId获取URL:', resUrl)
+			return resUrl
+		}
+	}
+	const imageSettings =
+		typeof node.imageSettings === 'object' && node.imageSettings
+			? (node.imageSettings as Record<string, unknown>)
+			: {}
+	const lastGenerated =
+		typeof imageSettings?.lastGeneratedImageUrl === 'string'
+			? String(imageSettings.lastGeneratedImageUrl).trim()
+			: ''
+	if (lastGenerated) {
+		console.log('[collectReferenceImages] 从lastGeneratedImageUrl获取URL:', lastGenerated)
+		return lastGenerated
+	}
+	const meshySettings =
+		typeof imageSettings.meshyImageSettings === 'object' && imageSettings.meshyImageSettings
+			? (imageSettings.meshyImageSettings as Record<string, unknown>)
+			: undefined
+	if (meshySettings) {
+		const outputSummary =
+			typeof meshySettings.outputSummary === 'object' && meshySettings.outputSummary
+				? (meshySettings.outputSummary as Record<string, unknown>)
+				: {}
+		const preferredUrl = typeof outputSummary.preferredUrl === 'string' ? String(outputSummary.preferredUrl).trim() : ''
+		if (preferredUrl) {
+			console.log('[collectReferenceImages] 从meshyOutputSummary获取URL:', preferredUrl)
+			return preferredUrl
+		}
+	}
+	if (typeof nodeResourceUrl === 'function') {
+		const standardUrl = nodeResourceUrl(node)
+		if (standardUrl) {
+			console.log('[collectReferenceImages] 从nodeResourceUrl获取URL:', standardUrl)
+			return standardUrl
+		}
+	}
+	return ''
+}
+
+const downloadImageAsBlob = async (
+	deps: NodeGenerationApiDeps,
+	candidateUrl: string
+): Promise<Blob | null> => {
+	const fetchUrl =
+		typeof deps.resolveBackendFetchUrl === 'function'
+			? deps.resolveBackendFetchUrl(candidateUrl)
+			: deps.resolveBackendUrl(candidateUrl)
+
+	console.log('[downloadImageAsBlob] 准备下载, candidateUrl:', candidateUrl, 'fetchUrl:', fetchUrl)
+
+	try {
+		let blob: Blob | null = null
+		if (typeof deps.downloadUrlAsBlob === 'function') {
+			console.log('[downloadImageAsBlob] 使用downloadUrlAsBlob下载')
+			blob = await deps.downloadUrlAsBlob(fetchUrl)
+			console.log('[downloadImageAsBlob] downloadUrlAsBlob结果:', blob ? `size=${blob.size}, type=${blob.type}` : 'null')
+		}
+		if (!blob) {
+			console.log('[downloadImageAsBlob] 使用fetch下载')
+			const resp = await fetch(fetchUrl)
+			console.log('[downloadImageAsBlob] fetch响应:', resp.ok, resp.status)
+			if (!resp.ok) return null
+			blob = await resp.blob()
+		}
+		if (!blob || blob.size === 0) {
+			console.warn('[downloadImageAsBlob] blob为空或大小为0')
+			return null
+		}
+		return blob
+	} catch (e) {
+		console.error('[downloadImageAsBlob] 下载图片失败:', e)
+		return null
+	}
 }
 
 const collectReferenceImages = async (
 	deps: NodeGenerationApiDeps,
 	nodeId: string,
-	maxRefs: number = 4
+	maxRefs: number = 5
 ): Promise<Array<{ name: string; blob: Blob }>> => {
 	const state = deps.store.state as {
 		nodesById: Record<string, Record<string, unknown>>
@@ -112,76 +205,72 @@ const collectReferenceImages = async (
 		resourcesById: Record<string, Record<string, unknown>>
 	}
 	const node = state.nodesById[nodeId]
-	if (!node) return []
+	if (!node) {
+		console.warn('[collectReferenceImages] 节点不存在:', nodeId)
+		return []
+	}
 
+	console.log('[collectReferenceImages] 开始收集参考图, nodeId:', nodeId, '总边数:', state.edgeOrder.length)
+
+	const refs: Array<{ name: string; blob: Blob }> = []
+
+	// Step 1: If the current node has its own image, add it as the first reference
+	const selfUrl = getNodeEffectiveImageUrl(node, state, deps.nodeResourceUrl)
+	if (selfUrl && refs.length < maxRefs) {
+		console.log('[collectReferenceImages] 节点自身图片URL:', selfUrl)
+		const blob = await downloadImageAsBlob(deps, selfUrl)
+		if (blob) {
+			const name = `ref-self-${nodeId}-${Date.now()}.png`
+			refs.push({ name, blob })
+			console.log('[collectReferenceImages] 成功添加节点自身参考图:', name, 'size:', blob.size)
+		}
+	}
+
+	// Step 2: Collect images from connected input edges
 	const incoming: Array<Record<string, unknown>> = []
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
-		if (String(edge.toNodeId ?? '') !== String(nodeId)) continue
+		const toNodeId = String(edge.toNodeId ?? '')
+		if (toNodeId !== String(nodeId)) continue
 		const toAnchorId = String(edge.toAnchorId ?? '').trim()
-		if (!isImageInputAnchor(toAnchorId)) continue
+		const isImageAnchor = isImageInputAnchor(toAnchorId)
+		console.log('[collectReferenceImages] 找到入边:', {
+			edgeId,
+			fromNodeId: String(edge.fromNodeId ?? ''),
+			toNodeId,
+			toAnchorId,
+			isImageAnchor
+		})
+		if (!isImageAnchor) continue
 		incoming.push(edge)
 	}
 
-	const refs: Array<{ name: string; blob: Blob }> = []
+	console.log('[collectReferenceImages] 匹配到的图片输入边数量:', incoming.length)
+
 	for (const edge of incoming) {
 		if (refs.length >= maxRefs) break
 		const sourceNode = state.nodesById[String(edge.fromNodeId ?? '')]
-		if (!sourceNode) continue
-
-		const resourceRid = String(sourceNode.resourceId ?? '').trim()
-		let candidateUrl: string = ''
-		if (resourceRid) {
-			const res = state.resourcesById[resourceRid]
-			candidateUrl = typeof res?.url === 'string' ? String(res.url) : ''
-		}
-		if (!candidateUrl) {
-			const imageSettings =
-				typeof sourceNode.imageSettings === 'object' && sourceNode.imageSettings
-					? (sourceNode.imageSettings as Record<string, unknown>)
-					: {}
-			const lastGenerated =
-				typeof imageSettings?.lastGeneratedImageUrl === 'string'
-					? String(imageSettings.lastGeneratedImageUrl)
-					: ''
-			candidateUrl = lastGenerated
-		}
-		if (!candidateUrl) {
-			const meshySettings =
-				typeof sourceNode.meshySettings === 'object' && sourceNode.meshySettings
-					? (sourceNode.meshySettings as Record<string, unknown>)
-					: {}
-			const outputSummary =
-				typeof meshySettings?.meshyOutputSummary === 'object' && meshySettings.meshyOutputSummary
-					? (meshySettings.meshyOutputSummary as Record<string, unknown>)
-					: {}
-			const preferredUrl = typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
-			candidateUrl = preferredUrl
-		}
-		if (!candidateUrl) continue
-
-		const fetchUrl =
-			typeof deps.resolveBackendFetchUrl === 'function'
-				? deps.resolveBackendFetchUrl(candidateUrl)
-				: deps.resolveBackendUrl(candidateUrl)
-		try {
-			let blob: Blob | null = null
-			if (typeof deps.downloadUrlAsBlob === 'function') {
-				blob = await deps.downloadUrlAsBlob(fetchUrl)
-			}
-			if (!blob) {
-				const resp = await fetch(fetchUrl)
-				if (!resp.ok) continue
-				blob = await resp.blob()
-			}
-			if (!blob || blob.size === 0) continue
-			const name = `ref-${String(sourceNode.type || 'image')}-${String(edge.fromNodeId)}-${Date.now()}.png`
-			refs.push({ name, blob })
-		} catch {
+		if (!sourceNode) {
+			console.warn('[collectReferenceImages] 源节点不存在:', String(edge.fromNodeId ?? ''))
 			continue
 		}
+
+		const sourceUrl = getNodeEffectiveImageUrl(sourceNode, state, deps.nodeResourceUrl)
+		if (!sourceUrl) {
+			console.warn('[collectReferenceImages] 无法获取源节点图片URL, fromNodeId:', String(edge.fromNodeId ?? ''))
+			continue
+		}
+
+		const blob = await downloadImageAsBlob(deps, sourceUrl)
+		if (!blob) continue
+
+		const name = `ref-connected-${String(sourceNode.type || 'image')}-${String(edge.fromNodeId)}-${Date.now()}.png`
+		refs.push({ name, blob })
+		console.log('[collectReferenceImages] 成功添加连接参考图:', name, 'size:', blob.size)
 	}
+
+	console.log('[collectReferenceImages] 最终收集到参考图数量:', refs.length)
 	return refs
 }
 
@@ -235,16 +324,23 @@ const collectReferenceImagesWithUrl = async (
 		}
 		if (!candidateUrl) {
 			const meshySettings =
-				typeof sourceNode.meshySettings === 'object' && sourceNode.meshySettings
-					? (sourceNode.meshySettings as Record<string, unknown>)
-					: {}
-			const outputSummary =
-				typeof meshySettings?.meshyOutputSummary === 'object' && meshySettings.meshyOutputSummary
-					? (meshySettings.meshyOutputSummary as Record<string, unknown>)
-					: {}
-			const preferredUrl = typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
-			const thumbnailUrl = typeof outputSummary?.thumbnailUrl === 'string' ? String(outputSummary.thumbnailUrl) : ''
-			candidateUrl = preferredUrl || thumbnailUrl
+				typeof sourceNode.imageSettings === 'object' && sourceNode.imageSettings
+					? ((sourceNode.imageSettings as Record<string, unknown>).meshyImageSettings as Record<string, unknown> | undefined)
+					: undefined
+			if (meshySettings) {
+				const outputSummary =
+					typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
+						? (meshySettings.outputSummary as Record<string, unknown>)
+						: {}
+				const preferredUrl = typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
+				const thumbnailUrl = typeof outputSummary?.thumbnailUrl === 'string' ? String(outputSummary.thumbnailUrl) : ''
+				candidateUrl = preferredUrl || thumbnailUrl
+			}
+		}
+		// 优先级4: nodeResourceUrl (标准方法)
+		if (!candidateUrl && typeof deps.nodeResourceUrl === 'function') {
+			const standardUrl = deps.nodeResourceUrl(sourceNode as Record<string, unknown>)
+			if (standardUrl) candidateUrl = standardUrl
 		}
 		if (!candidateUrl) continue
 
@@ -329,6 +425,7 @@ const handleMeshySuccess = async (
 ) => {
 	const imageUrls = taskRes.imageUrls || []
 	const preferredUrl = taskRes.preferredImageUrl || imageUrls[0] || ''
+	const allUrls = imageUrls.length > 0 ? imageUrls : (preferredUrl ? [preferredUrl] : [])
 
 	const outputSummary: MeshyOutputSummary = {
 		preferredUrl: '',
@@ -336,13 +433,43 @@ const handleMeshySuccess = async (
 		thumbnailUrl: ''
 	}
 
-	// 先读取当前节点已有的meshyImageSettings（保留submittedParams等）
+	let targetNodeId = nodeId
+	let nodeCreated = false
+	let createdNodes: string[] = []
+
 	const state = deps.store.state as {
 		nodesById: Record<string, Record<string, unknown>>
 	}
-	const currentNode = state.nodesById[nodeId]
+	let currentNode = state.nodesById[targetNodeId]
+
+	if (!currentNode && typeof deps.createImageNodeAtCenter === 'function') {
+		const newNodeId = deps.createImageNodeAtCenter(preferredUrl, 'Meshy 生成结果')
+		if (newNodeId) {
+			targetNodeId = newNodeId
+			nodeCreated = true
+			createdNodes.push(newNodeId)
+			currentNode = state.nodesById[targetNodeId]
+			console.log('[Meshy Poll] 目标节点不存在，已在视口中心创建新节点:', newNodeId)
+		}
+	}
+
+	if (!currentNode) {
+		console.error('[Meshy Poll] 无法找到或创建目标节点，任务结果丢失')
+		updateTask(deps, generationTaskId, {
+			status: 'error',
+			statusText: 'Meshy 图片生成完成，但无法创建节点接收结果',
+			progress: 100,
+			finishedAt: Date.now()
+		})
+		return
+	}
+
+	const currentWorldX = Number(currentNode.worldX ?? 0)
+	const currentWorldY = Number(currentNode.worldY ?? 0)
+	const NODE_SPACING = 350
+
 	const currentImgSettings =
-		currentNode && typeof currentNode.imageSettings === 'object' && currentNode.imageSettings
+		typeof currentNode.imageSettings === 'object' && currentNode.imageSettings
 			? (currentNode.imageSettings as Record<string, unknown>)
 			: {}
 	const currentMeshySettings =
@@ -350,56 +477,114 @@ const handleMeshySuccess = async (
 			? (currentImgSettings.meshyImageSettings as Record<string, unknown>)
 			: {}
 
-	if (preferredUrl) {
-		const resolved = deps.resolveBackendUrl(preferredUrl)
+	const persistedUrls: string[] = []
+
+	for (let i = 0; i < allUrls.length; i++) {
+		const url = allUrls[i]
+		if (!url) continue
+
+		const resolved = deps.resolveBackendUrl(url)
+		let finalUrl = resolved
 
 		if (typeof deps.persistExternalAssetToProject === 'function') {
-			const fileName = `meshy_${taskId}${String(preferredUrl).match(/\.[^.]+$/)?.[0] || '.png'}`
+			const ext = String(url).match(/\.[^.]+$/)?.[0] || '.png'
+			const fileName = `meshy_${taskId}_${i}${ext}`
 			const persisted = await deps.persistExternalAssetToProject({
 				kind: 'image',
 				name: fileName,
 				sourceUrl: resolved
 			})
 			if (persisted) {
-				outputSummary.preferredUrl = String(persisted.url || resolved)
-				outputSummary.imageUrls = imageUrls.map((u: string) => deps.resolveBackendUrl(u))
+				finalUrl = String(persisted.url || resolved)
 				console.log('[Meshy Poll] 资产已持久化:', {
 					taskId,
-					originalUrl: preferredUrl,
-					persistedUrl: persisted.url,
-					absolutePath: persisted.absolutePath
+					index: i,
+					originalUrl: url,
+					persistedUrl: persisted.url
 				})
 			} else {
-				console.warn('[Meshy Poll] 资产持久化失败，使用原始URL:', preferredUrl)
+				console.warn('[Meshy Poll] 资产持久化失败，使用原始URL:', url)
 			}
 		}
 
-		let bound = true
-		if (typeof deps.bindImageResultToNode === 'function') {
-			const bindRet = await deps.bindImageResultToNode(
-				nodeId,
-				outputSummary.preferredUrl || resolved
-			)
-			bound = bindRet !== false
+		persistedUrls.push(finalUrl)
+
+		let bindNodeId = targetNodeId
+		let isNewNode = false
+
+		if (i > 0) {
+			if (typeof deps.createImageNodeAt === 'function') {
+				const newX = currentWorldX + NODE_SPACING * i
+				const newY = currentWorldY
+				const newNodeId = deps.createImageNodeAt(newX, newY, finalUrl, `Meshy 生成结果 ${i + 1}`)
+				if (newNodeId) {
+					bindNodeId = newNodeId
+					isNewNode = true
+					createdNodes.push(newNodeId)
+					console.log('[Meshy Poll] 为额外图片创建新节点:', { index: i, nodeId: newNodeId, x: newX, y: newY })
+				}
+			} else if (typeof deps.createImageNodeAtCenter === 'function') {
+				const newNodeId = deps.createImageNodeAtCenter(finalUrl, `Meshy 生成结果 ${i + 1}`)
+				if (newNodeId) {
+					bindNodeId = newNodeId
+					isNewNode = true
+					createdNodes.push(newNodeId)
+					console.log('[Meshy Poll] 为额外图片在中心创建新节点:', { index: i, nodeId: newNodeId })
+				}
+			}
 		}
-		if (bound) {
-			appendResult(deps, generationTaskId, {
-				kind: 'image',
-				url: outputSummary.preferredUrl || resolved,
-				label: 'Meshy 图片'
-			})
+
+		if (bindNodeId && typeof deps.bindImageResultToNode === 'function') {
+			const bindRet = await deps.bindImageResultToNode(bindNodeId, finalUrl)
+			const bound = bindRet !== false
+			if (bound) {
+				appendResult(deps, generationTaskId, {
+					kind: 'image',
+					url: finalUrl,
+					label: i === 0 ? 'Meshy 图片' : `Meshy 图片 ${i + 1}`
+				})
+
+				if (isNewNode) {
+					const newNodeState = state.nodesById[bindNodeId]
+					if (newNodeState) {
+						deps.store.commit('setNodeImageSettings', {
+							nodeId: bindNodeId,
+							imageSettings: {
+								meshyImageSettings: {
+									taskId,
+									taskStatus: 'succeeded',
+									progress: 100,
+									statusText: 'Meshy 图片生成完成',
+									outputSummary: {
+										preferredUrl: finalUrl,
+										imageUrls: [finalUrl],
+										thumbnailUrl: ''
+									}
+								}
+							}
+						})
+					}
+				}
+			}
 		}
 	}
 
+	if (persistedUrls.length > 0) {
+		outputSummary.preferredUrl = persistedUrls[0]
+		outputSummary.imageUrls = persistedUrls
+	}
+
 	deps.store.commit('setNodeImageSettings', {
-		nodeId,
+		nodeId: targetNodeId,
 		imageSettings: {
 			meshyImageSettings: {
 				...currentMeshySettings,
 				taskId,
 				taskStatus: 'succeeded',
 				progress: 100,
-				statusText: 'Meshy 图片生成完成',
+				statusText: nodeCreated || createdNodes.length > 0
+					? `Meshy 图片生成完成（共 ${allUrls.length} 张，${createdNodes.length} 个新节点已创建）`
+					: `Meshy 图片生成完成（共 ${allUrls.length} 张）`,
 				outputSummary
 			}
 		}
@@ -407,7 +592,9 @@ const handleMeshySuccess = async (
 
 	updateTask(deps, generationTaskId, {
 		status: 'completed',
-		statusText: `Meshy 图片生成完成（共 ${imageUrls.length} 张）`,
+		statusText: nodeCreated || createdNodes.length > 0
+			? `Meshy 图片生成完成（共 ${allUrls.length} 张，${createdNodes.length} 个新节点已创建）`
+			: `Meshy 图片生成完成（共 ${allUrls.length} 张）`,
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -890,20 +1077,21 @@ const runImageTask = async (
 
 			// 根据模式和参数互斥规则传递参数
 			// text-to-image 和 image-to-image 都支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
-			//   注意：generate_multi_view 为 true 时不能设置 aspect_ratio
+			//   注意：generate_multi_view 为 true 时不能设置 aspect_ratio，且强制返回4张图片
 			if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
 			if (meshyGenerateMultiView) {
 				meshyPayload.generate_multi_view = true
+				meshyPayload.output_image_count = 4
 			} else {
 				meshyPayload.aspect_ratio = meshyAspectRatio || '1:1'
 				console.log(`[Meshy Image - Node Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyPayload.aspect_ratio}, model=${meshyAiModel}`)
+				if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+					meshyPayload.output_image_count = Math.floor(meshyOutputImageCount)
+				}
 			}
 
 			// 通用参数（两种模式都支持）
 			if (meshyNegativePrompt) meshyPayload.negative_prompt = meshyNegativePrompt
-			if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
-				meshyPayload.output_image_count = Math.floor(meshyOutputImageCount)
-			}
 			if (Number.isFinite(meshySeed) && meshySeed >= 0) {
 				meshyPayload.seed = Math.floor(meshySeed)
 			}
@@ -918,7 +1106,7 @@ const runImageTask = async (
 				poseMode: meshyPoseMode || '无',
 				generateMultiView: meshyGenerateMultiView,
 				negativePrompt: meshyNegativePrompt || '无',
-				outputCount: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1,
+				outputCount: meshyGenerateMultiView ? 4 : (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1),
 				seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : '随机',
 				referenceImageCount: hasRefImages ? refs.length : 0,
 				submittedAt: new Date().toISOString()

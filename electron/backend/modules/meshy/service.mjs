@@ -453,7 +453,8 @@ function buildCreatePayload(payload) {
       console.log(`[Meshy Backend] text-to-image aspect_ratio set to: ${validRatio} (requested: ${aspectRatio}, model: ${aiModel})`)
     } else {
       body.generate_multi_view = true
-      console.log(`[Meshy Backend] text-to-image generate_multi_view is TRUE - aspect_ratio will NOT be sent (mutually exclusive per API docs)`)
+      body.output_image_count = 4
+      console.log(`[Meshy Backend] text-to-image generate_multi_view is TRUE - aspect_ratio will NOT be sent, output_image_count forced to 4`)
     }
 
     // Handle pose_mode
@@ -551,7 +552,8 @@ function buildCreatePayload(payload) {
       console.log(`[Meshy Backend] image-to-image aspect_ratio set to: ${validRatio} (requested: ${aspectRatio}, model: ${aiModel})`)
     } else {
       body.generate_multi_view = true
-      console.log(`[Meshy Backend] image-to-image generate_multi_view is TRUE - aspect_ratio will NOT be sent (mutually exclusive)`)
+      body.output_image_count = 4
+      console.log(`[Meshy Backend] image-to-image generate_multi_view is TRUE - aspect_ratio will NOT be sent, output_image_count forced to 4`)
     }
 
     // Handle pose_mode
