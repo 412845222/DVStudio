@@ -138,7 +138,7 @@ electron/platform/native/win32/
 !electron/platform/native/README.txt
 
 # SteamPipe build artifacts (never commit generated content)
-steam-pipe/
+steam-pipe/*
 !steam-pipe/app_build.vdf
 !steam-pipe/depot_build_win.vdf
 !steam-pipe/depot_build_mac.vdf
