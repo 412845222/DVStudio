@@ -1,11 +1,12 @@
 "AppBuild"
 {
 	"AppID" "{{APP_ID}}"
-	"Desc" "DVStudio {{VERSION}} (Steam Release)"
+	"Desc" "{{DESCRIPTION}}"
 	"BuildOutput" "{{BUILD_OUTPUT}}"
 	"ContentRoot" "{{CONTENT_ROOT}}"
 	"Preview" "0"
 	"verbose" "1"
+{{SET_LIVE_BLOCK}}
 	"Depots"
 	{
 {{DEPOT_ENTRIES}}
