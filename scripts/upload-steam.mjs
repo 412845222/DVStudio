@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { loadSteamEnv, getSteamEnvPath } from './steam-env.mjs'
 
 loadSteamEnv()
@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const steamPipeDir = path.join(repoRoot, 'steam-pipe')
 
-function parseCliArgs(argv) {
+export function parseCliArgs(argv) {
 	const args = {}
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i]
@@ -39,14 +39,50 @@ function parseCliArgs(argv) {
 	return args
 }
 
-const cliArgs = parseCliArgs(process.argv.slice(2))
-
-function resolveConfig(name, cliKey, envKey, fallback = '') {
+export function resolveConfigValue(cliArgs, cliKey, envValue, fallback = '') {
 	if (cliArgs[cliKey] !== undefined && cliArgs[cliKey] !== true && cliArgs[cliKey] !== '') {
 		return String(cliArgs[cliKey])
 	}
-	if (process.env[envKey]) return process.env[envKey]
+	if (envValue) return envValue
 	return fallback
+}
+
+export function renderAppBuildVdf(template, config) {
+	const { appId, version, buildOutput, contentRoot, branch, depotEntries, description, setLive } = config
+	let content = template
+	content = content.replace('{{APP_ID}}', String(appId))
+	content = content.replace(/\{\{VERSION\}\}/g, String(version))
+	content = content.replace('{{BUILD_OUTPUT}}', buildOutput)
+	content = content.replace('{{CONTENT_ROOT}}', contentRoot)
+	content = content.replace('{{BRANCH}}', branch)
+	content = content.replace('{{DEPOT_ENTRIES}}', depotEntries)
+	content = content.replace('{{DESCRIPTION}}', description || `v${version} build`)
+	const setLiveBlock = setLive ? `\t"SetLive" "${branch}"` : ''
+	content = content.replace('{{SET_LIVE_BLOCK}}', setLiveBlock)
+	return content
+}
+
+const isMainModule = (() => {
+	try {
+		const scriptPath = process.argv[1]
+		if (!scriptPath) return false
+		return import.meta.url === pathToFileURL(path.resolve(scriptPath)).href
+	} catch {
+		return false
+	}
+})()
+
+const cliArgs = isMainModule ? parseCliArgs(process.argv.slice(2)) : {}
+
+if (isMainModule) {
+	main().catch((e) => {
+		process.stderr.write(`[upload:steam] FATAL: ${String(e?.message || e)}\n`)
+		process.exit(1)
+	})
+}
+
+function resolveConfig(_name, cliKey, envKey, fallback = '') {
+	return resolveConfigValue(cliArgs, cliKey, process.env[envKey], fallback)
 }
 
 function run(cmd, args, { env, cwd } = {}) {
@@ -304,8 +340,3 @@ async function main() {
 		process.exit(1)
 	}
 }
-
-main().catch((e) => {
-	process.stderr.write(`[upload:steam] FATAL: ${String(e?.message || e)}\n`)
-	process.exit(1)
-})
