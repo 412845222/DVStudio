@@ -7,7 +7,7 @@ interface ScreenshotEntry {
 }
 
 interface SimpleScreenshotPool {
-	getEntry(nodeId: string): ScreenshotEntry | null
+	getEntry(nodeId: string, theme?: 'dark' | 'light'): ScreenshotEntry | null
 }
 
 export type ScreenshotPoolProvider = () => SimpleScreenshotPool | null
@@ -38,6 +38,16 @@ interface ViewportBounds {
 	bottom: number
 }
 
+interface ThemeTransitionState {
+	fromTheme: 'dark' | 'light'
+	toTheme: 'dark' | 'light'
+	progress: number
+	duration: number
+	startTime: number
+}
+
+const TRANSITION_DURATION = 280
+
 export class CanvasNodeRenderer {
 	private canvas: HTMLCanvasElement
 	private ctx: CanvasRenderingContext2D
@@ -45,6 +55,9 @@ export class CanvasNodeRenderer {
 	private dpr: number = 1
 	private renderDpr: number = 1
 	private lowQualityMode: boolean = false
+	private theme: 'dark' | 'light' = 'dark'
+	private transition: ThemeTransitionState | null = null
+	private animationFrameId: number | null = null
 
 	private currentViewport: ViewportState = { panX: 0, panY: 0, zoom: 1 }
 	private lastRenderedViewport: ViewportState | null = null
@@ -60,6 +73,83 @@ export class CanvasNodeRenderer {
 		this.poolProvider = poolProvider
 		this.dpr = window.devicePixelRatio || 1
 		this.renderDpr = this.dpr
+		this.theme = this.detectCurrentTheme()
+	}
+
+	private detectCurrentTheme(): 'dark' | 'light' {
+		try {
+			const theme = document.documentElement.getAttribute('data-theme')
+			return theme === 'light' ? 'light' : 'dark'
+		} catch {
+			return 'dark'
+		}
+	}
+
+	setTheme(theme: 'dark' | 'light'): void {
+		if (this.theme === theme) {
+			this.transition = null
+			this.stopTransitionAnimation()
+			return
+		}
+
+		const fromTheme = this.theme
+		this.theme = theme
+
+		this.transition = {
+			fromTheme,
+			toTheme: theme,
+			progress: 0,
+			duration: TRANSITION_DURATION,
+			startTime: performance.now()
+		}
+
+		this.forceFullRender = true
+		this.startTransitionAnimation()
+	}
+
+	getTheme(): 'dark' | 'light' {
+		return this.theme
+	}
+
+	isTransitioning(): boolean {
+		return this.transition !== null && this.transition.progress < 1
+	}
+
+	private startTransitionAnimation(): void {
+		this.stopTransitionAnimation()
+
+		const animate = () => {
+			if (!this.transition) return
+
+			const elapsed = performance.now() - this.transition.startTime
+			const rawProgress = Math.min(elapsed / this.transition.duration, 1)
+			this.transition.progress = this.easeInOutCubic(rawProgress)
+
+			this.forceFullRender = true
+			this.render(this.currentViewport)
+
+			if (rawProgress < 1) {
+				this.animationFrameId = requestAnimationFrame(animate)
+			} else {
+				this.transition = null
+				this.animationFrameId = null
+				this.forceFullRender = true
+				this.render(this.currentViewport)
+			}
+		}
+
+		this.animationFrameId = requestAnimationFrame(animate)
+	}
+
+	private stopTransitionAnimation(): void {
+		if (this.animationFrameId !== null) {
+			cancelAnimationFrame(this.animationFrameId)
+			this.animationFrameId = null
+		}
+	}
+
+	private easeInOutCubic(t: number): number {
+		return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 	}
 
 	setLowQualityMode(enabled: boolean): void {
@@ -100,6 +190,7 @@ export class CanvasNodeRenderer {
 
 	private canUsePanReuse(newVp: ViewportState): boolean {
 		if (this.forceFullRender) return false
+		if (this.transition && this.transition.progress < 1) return false
 		const last = this.lastRenderedViewport
 		if (!last) return false
 		if (Math.abs(newVp.zoom - last.zoom) > 0.0001) return false
@@ -224,26 +315,45 @@ export class CanvasNodeRenderer {
 		ctx.closePath()
 	}
 
-	private drawNodePlaceholder(ctx: CanvasRenderingContext2D, node: VisibleNodeEntry) {
+	private getPlaceholderColors(forTheme: 'dark' | 'light') {
+		if (forTheme === 'light') {
+			return {
+				bg: 'rgba(255, 255, 255, 0.88)',
+				border: 'rgba(0, 0, 0, 0.12)',
+				accent: 'rgba(31, 157, 132, 0.45)',
+				compactBorder: 'rgba(31, 157, 132, 0.3)'
+			}
+		}
+		return {
+			bg: 'rgba(30, 34, 42, 0.72)',
+			border: 'rgba(120, 130, 150, 0.45)',
+			accent: 'rgba(31, 157, 132, 0.5)',
+			compactBorder: 'rgba(31, 157, 132, 0.35)'
+		}
+	}
+
+	private drawNodePlaceholder(ctx: CanvasRenderingContext2D, node: VisibleNodeEntry, forTheme: 'dark' | 'light', alpha = 1) {
 		const w = node.width
 		const h = node.height
 		const x = node.worldX - w / 2
 		const y = node.worldY - h / 2
 		const borderRadius = 4
 		const borderWidth = 1.5
+		const colors = this.getPlaceholderColors(forTheme)
 
 		ctx.save()
+		ctx.globalAlpha = alpha
 
-		ctx.fillStyle = 'rgba(30, 34, 42, 0.72)'
+		ctx.fillStyle = colors.bg
 		this.drawRoundedRect(ctx, x, y, w, h, borderRadius)
 		ctx.fill()
 
-		ctx.strokeStyle = 'rgba(120, 130, 150, 0.45)'
+		ctx.strokeStyle = colors.border
 		ctx.lineWidth = borderWidth
 		this.drawRoundedRect(ctx, x, y, w, h, borderRadius)
 		ctx.stroke()
 
-		const accentColor = 'rgba(31, 157, 132, 0.5)'
+		const accentColor = colors.accent
 		const bracketSize = Math.min(12, Math.min(w, h) * 0.1)
 		const bracketWidth = 2
 		ctx.strokeStyle = accentColor
@@ -262,34 +372,99 @@ export class CanvasNodeRenderer {
 		ctx.restore()
 	}
 
-	private drawNodeCompact(ctx: CanvasRenderingContext2D, node: VisibleNodeEntry, entry: ScreenshotEntry) {
+	private drawSingleBitmap(
+		ctx: CanvasRenderingContext2D,
+		node: VisibleNodeEntry,
+		entry: ScreenshotEntry,
+		alpha: number,
+		mode: 'full' | 'compact',
+		forTheme: 'dark' | 'light'
+	) {
 		const bmp = entry.bitmap as CanvasImageSource
 		const drawX = node.worldX - entry.width / 2
 		const drawY = node.worldY - entry.height / 2
 
 		ctx.save()
-		ctx.globalAlpha = 0.7
+		ctx.globalAlpha = alpha
+
 		try {
 			ctx.drawImage(bmp, drawX, drawY, entry.width, entry.height)
-		} catch (err) {
+		} catch {
 		}
-		ctx.globalAlpha = 1
-		ctx.strokeStyle = 'rgba(31, 157, 132, 0.35)'
-		ctx.lineWidth = 1.5
-		const borderRadius = 4
-		this.drawRoundedRect(ctx, drawX, drawY, entry.width, entry.height, borderRadius)
-		ctx.stroke()
+
+		if (mode === 'compact') {
+			ctx.globalAlpha = alpha
+			const colors = this.getPlaceholderColors(forTheme)
+			ctx.strokeStyle = colors.compactBorder
+			ctx.lineWidth = 1.5
+			const borderRadius = 4
+			this.drawRoundedRect(ctx, drawX, drawY, entry.width, entry.height, borderRadius)
+			ctx.stroke()
+		}
+
 		ctx.restore()
 	}
 
-	private drawNodeFull(ctx: CanvasRenderingContext2D, node: VisibleNodeEntry, entry: ScreenshotEntry) {
-		const bmp = entry.bitmap as CanvasImageSource
-		const drawX = node.worldX - entry.width / 2
-		const drawY = node.worldY - entry.height / 2
+	private drawNode(
+		ctx: CanvasRenderingContext2D,
+		node: VisibleNodeEntry,
+		pool: SimpleScreenshotPool,
+		zoom: number,
+		placeholderZoomThreshold: number,
+		compactZoomThreshold: number
+	) {
+		if (this.transition && this.transition.progress < 1) {
+			this.drawNodeWithTransition(ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold)
+		} else {
+			this.drawNodeSingleTheme(ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold, this.theme)
+		}
+	}
 
-		try {
-			ctx.drawImage(bmp, drawX, drawY, entry.width, entry.height)
-		} catch (err) {
+	private drawNodeSingleTheme(
+		ctx: CanvasRenderingContext2D,
+		node: VisibleNodeEntry,
+		pool: SimpleScreenshotPool,
+		zoom: number,
+		placeholderZoomThreshold: number,
+		compactZoomThreshold: number,
+		forTheme: 'dark' | 'light',
+		alpha = 1
+	) {
+		const entry = pool.getEntry(node.id, forTheme)
+
+		if (!entry) {
+			this.drawNodePlaceholder(ctx, node, forTheme, alpha)
+			return
+		}
+
+		if (zoom < placeholderZoomThreshold) {
+			this.drawNodePlaceholder(ctx, node, forTheme, alpha)
+		} else if (zoom < compactZoomThreshold) {
+			this.drawSingleBitmap(ctx, node, entry, alpha * 0.7, 'compact', forTheme)
+		} else {
+			this.drawSingleBitmap(ctx, node, entry, alpha, 'full', forTheme)
+		}
+	}
+
+	private drawNodeWithTransition(
+		ctx: CanvasRenderingContext2D,
+		node: VisibleNodeEntry,
+		pool: SimpleScreenshotPool,
+		zoom: number,
+		placeholderZoomThreshold: number,
+		compactZoomThreshold: number
+	) {
+		if (!this.transition) return
+
+		const { fromTheme, toTheme, progress } = this.transition
+		const fromAlpha = 1 - progress
+		const toAlpha = progress
+
+		if (fromAlpha > 0.01) {
+			this.drawNodeSingleTheme(ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold, fromTheme, fromAlpha)
+		}
+		if (toAlpha > 0.01) {
+			this.drawNodeSingleTheme(ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold, toTheme, toAlpha)
 		}
 	}
 
@@ -373,20 +548,7 @@ export class CanvasNodeRenderer {
 
 					if (!this.rectIntersects(nl, nr, nt, nb, region.bounds)) continue
 
-					const entry = pool.getEntry(node.id)
-
-					if (!entry) {
-						this.drawNodePlaceholder(this.ctx, node)
-						continue
-					}
-
-					if (zoom < placeholderZoomThreshold) {
-						this.drawNodePlaceholder(this.ctx, node)
-					} else if (zoom < compactZoomThreshold) {
-						this.drawNodeCompact(this.ctx, node, entry)
-					} else {
-						this.drawNodeFull(this.ctx, node, entry)
-					}
+					this.drawNode(this.ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold)
 				}
 
 				this.ctx.restore()
@@ -409,20 +571,7 @@ export class CanvasNodeRenderer {
 			for (const node of this.currentNodes) {
 				if (!this.isNodeVisible(node, newBounds)) continue
 
-				const entry = pool.getEntry(node.id)
-
-				if (!entry) {
-					this.drawNodePlaceholder(this.ctx, node)
-					continue
-				}
-
-				if (zoom < placeholderZoomThreshold) {
-					this.drawNodePlaceholder(this.ctx, node)
-				} else if (zoom < compactZoomThreshold) {
-					this.drawNodeCompact(this.ctx, node, entry)
-				} else {
-					this.drawNodeFull(this.ctx, node, entry)
-				}
+				this.drawNode(this.ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold)
 			}
 
 			this.ctx.restore()
@@ -451,7 +600,7 @@ export class CanvasNodeRenderer {
 			const node = this.currentNodes[i]
 			if (!this.isNodeVisible(node, bounds)) continue
 
-			const entry = pool?.getEntry(node.id)
+			const entry = pool?.getEntry(node.id, this.theme)
 			const hitW = entry?.width ?? node.width
 			const hitH = entry?.height ?? node.height
 			const halfW = hitW / 2
@@ -471,5 +620,7 @@ export class CanvasNodeRenderer {
 	}
 
 	dispose(): void {
+		this.stopTransitionAnimation()
+		this.transition = null
 	}
 }
