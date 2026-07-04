@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { isElectron } from '../../../../electronBridge'
+import { t } from '../../../../i18n'
 
 export const useAIWorkflowProjectRequests = (payload: {
 	activeRecoverySession: Ref<unknown>
@@ -69,7 +70,7 @@ export const useAIWorkflowProjectRequests = (payload: {
 		const picked = await pickProjectFolder()
 		if (!picked.ok) {
 			if (!('canceled' in picked && picked.canceled)) {
-				payload.pushToast(String(picked.error || '选择项目文件夹失败。'), 'warn')
+				payload.pushToast(String(picked.error || t('aiworkflow.toast.folderPickFailed')), 'warn')
 			}
 			return
 		}
@@ -96,7 +97,7 @@ export const useAIWorkflowProjectRequests = (payload: {
 			create: true
 		}) as { ok: boolean; error?: string; project?: { id?: number; name?: string } }
 		if (!opened?.ok) {
-			payload.pushToast(`新建项目失败：${String(opened?.error || 'unknown')}`, 'error')
+			payload.pushToast(t('aiworkflow.toast.projectCreateFailed', { error: String(opened?.error || 'unknown') }), 'error')
 			return
 		}
 
@@ -115,7 +116,7 @@ export const useAIWorkflowProjectRequests = (payload: {
 
 		await payload.recoverComfyUIRunStates({ silent: true })
 		await payload.refreshProjectList()
-		payload.pushToast(`已新建项目：${String(project?.name || fallbackName)}`, 'info')
+		payload.pushToast(t('aiworkflow.toast.projectCreated', { name: String(project?.name || fallbackName) }), 'info')
 	}
 
 	const onRequestNewProjectFromPath = async (rootPath: string) => {

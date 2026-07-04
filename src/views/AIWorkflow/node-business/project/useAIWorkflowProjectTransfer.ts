@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type {
 	AIWorkflowProjectPackageAssetTarget,
 	AIWorkflowProjectPackageV1
@@ -260,7 +261,7 @@ export const useAIWorkflowProjectTransfer = (payload: {
 			await payload.recoverComfyUIRunStates({ silent: true })
 
 			if (missingAssets.length > 0) {
-				payload.pushToast(`项目包导入完成，但缺少 ${missingAssets.length} 个资源文件。`, 'warn')
+				payload.pushToast(t('aiworkflow.toast.projectImportIncomplete', { count: missingAssets.length }), 'warn')
 			} else {
 				payload.pushToast('项目包导入成功。', 'info')
 			}

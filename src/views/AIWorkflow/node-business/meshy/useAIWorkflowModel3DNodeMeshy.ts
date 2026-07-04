@@ -1,5 +1,6 @@
 import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type {
 	BuildMeshyRequestResult,
 	MeshyComfyService,
@@ -338,10 +339,10 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 						stopPoll(nodeId)
 						options.updateNodeSettings(nodeId, {
 							meshyTaskStatus: 'failed',
-							meshyStatusText: 'Meshy 状态连续获取失败',
+							meshyStatusText: t('tasks.meshy.pollStatusFailedConsecutive'),
 							meshyErrorMessage: String(res.error ?? 'unknown')
 						})
-						options.pushToast('Meshy 状态连续获取失败，请稍后重试。', 'warn')
+						options.pushToast(t('tasks.meshy.pollStatusFailedConsecutiveToast'), 'warn')
 					}
 					return
 				}
@@ -352,11 +353,11 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 					if (!terminalNotified.has(nodeId)) {
 						terminalNotified.add(nodeId)
 						if (finalStatus === 'succeeded') {
-							options.pushToast('Meshy 3D 模型生成完成。', 'info')
+							options.pushToast(t('tasks.meshy.model3dTaskCompleted'), 'info')
 						} else if (finalStatus === 'failed') {
-							options.pushToast('Meshy 3D 模型生成失败。', 'warn')
+							options.pushToast(t('tasks.meshy.model3dTaskFailed'), 'warn')
 						} else {
-							options.pushToast('Meshy 任务已取消。', 'warn')
+							options.pushToast(t('tasks.meshy.taskCanceled'), 'warn')
 						}
 					}
 					stopPoll(nodeId)
@@ -368,10 +369,10 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 					stopPoll(nodeId)
 					options.updateNodeSettings(nodeId, {
 						meshyTaskStatus: 'failed',
-						meshyStatusText: 'Meshy 状态获取异常',
+						meshyStatusText: t('tasks.meshy.pollStatusException'),
 						meshyErrorMessage: getErrorMessage(err)
 					})
-					options.pushToast('Meshy 状态获取异常，已停止轮询。', 'warn')
+					options.pushToast(t('tasks.meshy.pollStatusExceptionToast'), 'warn')
 				}
 			}
 		}
@@ -387,7 +388,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 
 		const prepared = await options.buildMeshyRequestPayload(node)
 		if (!prepared.ok) {
-			options.pushToast(prepared.error ?? 'Meshy 请求构建失败', 'warn')
+			options.pushToast(prepared.error ?? t('aiworkflow.toast.meshyRequestBuildFailed'), 'warn')
 			options.updateNodeSettings(nodeId, {
 				meshyTaskStatus: 'failed',
 				meshyErrorMessage: prepared.error,
@@ -401,7 +402,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 			meshyTaskStatus: 'pending',
 			meshyProgress: 0,
 			meshyErrorMessage: '',
-			meshyStatusText: 'Meshy：正在创建任务…',
+			meshyStatusText: t('tasks.meshy.creatingTask'),
 			meshyInputSummary: {
 				promptSource: prepared.promptSource,
 				promptText: prepared.promptText || undefined,
@@ -414,7 +415,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		try {
 			const res = await options.getComfyService().meshyGenerate(prepared.payload)
 			if (!res.ok) {
-				const msg = String(res.error ?? 'Meshy 创建任务失败')
+				const msg = String(res.error ?? t('tasks.meshy.createTaskFailed'))
 				options.updateNodeSettings(nodeId, {
 					meshyTaskStatus: 'failed',
 					meshyErrorMessage: msg,
@@ -432,7 +433,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 				meshyTaskId: taskId,
 				meshyTaskStatus: taskStatus === 'idle' ? 'pending' : (taskStatus as MeshyTaskStatus),
 				meshyProgress: taskStatus === 'running' ? 5 : 0,
-				meshyStatusText: 'Meshy：任务已创建，开始轮询状态…'
+				meshyStatusText: t('tasks.meshy.taskCreatedPolling')
 			})
 
 			if (options.shouldRefreshMeshyTaskItems()) {
@@ -440,13 +441,13 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 			}
 
 			if (!taskId) {
-				options.pushToast('Meshy 返回缺少任务 ID。', 'warn')
+				options.pushToast(t('tasks.meshy.missingTaskIdToast'), 'warn')
 				return
 			}
 
 			startPoll(nodeId, taskId, mode)
 		} catch (err: unknown) {
-			const msg = 'Meshy 创建任务异常：' + getErrorMessage(err)
+			const msg = t('tasks.meshy.createTaskException', { error: getErrorMessage(err) })
 			options.updateNodeSettings(nodeId, {
 				meshyTaskStatus: 'failed',
 				meshyErrorMessage: msg,
@@ -468,13 +469,13 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		).trim()
 
 		if (!currentTaskId) {
-			options.pushToast('当前节点还没有可复用的 Meshy 任务结果。', 'warn')
+			options.pushToast(t('tasks.meshy.noReusableTaskResult'), 'warn')
 			return
 		}
 
 		const taskStatus = String(settings.meshyTaskStatus ?? '').trim()
 		if (taskStatus === 'pending' || taskStatus === 'running') {
-			options.pushToast('当前 Meshy 任务仍在进行中，请等待结束后再发起贴图任务。', 'warn')
+			options.pushToast(t('tasks.meshy.retextureTaskInProgressWait'), 'warn')
 			return
 		}
 
@@ -504,7 +505,7 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 			settings.meshyRelationSummary?.effectiveTaskId ?? settings.meshyTaskId ?? ''
 		).trim()
 		if (!taskId) {
-			options.pushToast('当前节点没有进行中的任务。', 'warn')
+			options.pushToast(t('tasks.meshy.noTaskInProgress'), 'warn')
 			return
 		}
 
@@ -513,12 +514,12 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		try {
 			const res = await options.getComfyService().meshyTask(taskId, mode)
 			if (!res.ok) {
-				options.pushToast('刷新任务状态失败：' + String(res.error ?? 'unknown'), 'warn')
+				options.pushToast(t('tasks.meshy.taskStatusRefreshFailed', { error: String(res.error ?? 'unknown') }), 'warn')
 				return
 			}
 			await applyMeshyTaskResult(nodeId, res)
 		} catch (err: unknown) {
-			options.pushToast('刷新任务状态异常：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('tasks.meshy.refreshTaskException', { error: getErrorMessage(err) }), 'warn')
 		}
 	}
 
@@ -528,16 +529,16 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 
 		const status = String(options.getNodeSettings(nodeId)?.meshyTaskStatus ?? '').trim()
 		if (status !== 'pending' && status !== 'running') {
-			options.pushToast('当前没有进行中的任务。', 'warn')
+			options.pushToast(t('tasks.meshy.noRunningTaskGeneric'), 'warn')
 			return
 		}
 
 		stopPoll(nodeId)
 		options.updateNodeSettings(nodeId, {
 			meshyTaskStatus: 'canceled',
-			meshyStatusText: '任务已停止'
+			meshyStatusText: t('tasks.meshy.taskStoppedGeneric')
 		})
-		options.pushToast('Meshy 任务已停止。', 'info')
+		options.pushToast(t('tasks.meshy.taskStoppedToast'), 'info')
 	}
 
 	const deleteTask = (nodeId: string) => {

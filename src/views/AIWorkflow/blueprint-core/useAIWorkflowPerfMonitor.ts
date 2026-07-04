@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { t } from '../../../i18n'
 
 type PerfFrameSample = { time: number; dt: number; dropped: number }
 type PerfLongTaskSample = { time: number; duration: number }
@@ -229,7 +230,7 @@ export const useAIWorkflowPerfMonitor = (payload: {
 					recordPerfAnomaly(
 						ts,
 						'low-fps-streak',
-						`连续 ${perfLowFpsStreak} 帧低于 ${PERF_LOW_FPS_THRESHOLD} FPS`
+						t('aiworkflow.perfMonitor.lowFpsStreak', { count: perfLowFpsStreak, threshold: PERF_LOW_FPS_THRESHOLD })
 					)
 				}
 				const dropped = Math.max(0, Math.round(dt / 16.67) - 1)
@@ -276,7 +277,7 @@ export const useAIWorkflowPerfMonitor = (payload: {
 						const nextSamples = entries.map((entry) => ({ time: now, duration: entry.duration }))
 						for (const entry of entries) {
 							if (entry.duration >= PERF_LONGTASK_ALERT_THRESHOLD_MS) {
-								recordPerfAnomaly(now, 'longtask', `长任务 ${entry.duration.toFixed(1)} ms`)
+								recordPerfAnomaly(now, 'longtask', t('aiworkflow.perfMonitor.longTask', { duration: entry.duration.toFixed(1) }))
 							}
 						}
 						perfLongTasks.push(...nextSamples)
@@ -310,16 +311,26 @@ export const useAIWorkflowPerfMonitor = (payload: {
 		perfLongTaskObserver = null
 	}
 
+	const perfHealthState = computed(() => {
+		if (perfFps.value >= 55 && perfSlowFrames.value <= 2) return 'stable'
+		if (perfFps.value >= 40 && perfSlowFrames.value <= 6) return 'slow'
+		return 'bad'
+	})
+
 	const perfHealthLabel = computed(() => {
-		if (perfFps.value >= 55 && perfSlowFrames.value <= 2) return '稳定'
-		if (perfFps.value >= 40 && perfSlowFrames.value <= 6) return '轻微掉帧'
-		return '明显掉帧'
+		switch (perfHealthState.value) {
+			case 'stable': return t('aiworkflow.perfMonitor.stable')
+			case 'slow': return t('aiworkflow.perfMonitor.slowFrames')
+			default: return t('aiworkflow.perfMonitor.significantDrop')
+		}
 	})
 
 	const perfHealthClass = computed(() => {
-		if (perfHealthLabel.value === '稳定') return 'is-good'
-		if (perfHealthLabel.value === '轻微掉帧') return 'is-warn'
-		return 'is-bad'
+		switch (perfHealthState.value) {
+			case 'stable': return 'is-good'
+			case 'slow': return 'is-warn'
+			default: return 'is-bad'
+		}
 	})
 
 	const perfFpsText = computed(() => (perfFps.value > 0 ? `${Math.round(perfFps.value)}` : '--'))
@@ -333,20 +344,20 @@ export const useAIWorkflowPerfMonitor = (payload: {
 		perfWorstFrameMs.value > 0 ? `${perfWorstFrameMs.value.toFixed(1)} ms` : '--'
 	)
 	const perfLongTaskSummary = computed(() => {
-		if (!perfLongTaskCount.value) return '0 次'
-		return `${perfLongTaskCount.value} 次 / ${perfLongTaskDuration.value.toFixed(0)} ms`
+		if (!perfLongTaskCount.value) return t('aiworkflow.perfMonitor.zeroTimes')
+		return t('aiworkflow.perfMonitor.timesWithMs', { count: perfLongTaskCount.value, ms: perfLongTaskDuration.value.toFixed(0) })
 	})
 	const perfAnomalySummary = computed(() => {
-		if (!perfAnomalyCount.value) return '0 次'
+		if (!perfAnomalyCount.value) return t('aiworkflow.perfMonitor.zeroTimes')
 		return `${perfAnomalyCount.value} 次 / ${perfAnomalyLatestDetail.value || '--'}`
 	})
 
 	const perfNodeSummary = computed(
 		() =>
-			`${payload.nodesCount.value} 总 / ${payload.visibleNodesCount.value} 可见 / ${payload.compactVisibleNodeCount.value} 轻量 / ${payload.fullVisibleNodeCount.value} 完整`
+			`${t('aiworkflow.perfMonitor.nodesCount', { total: payload.nodesCount.value, visible: payload.visibleNodesCount.value })} / ${payload.compactVisibleNodeCount.value} 轻量 / ${payload.fullVisibleNodeCount.value} 完整`
 	)
 	const perfEdgeSummary = computed(
-		() => `${payload.renderEdgesCount.value} 可见 / ${payload.edgesCount.value} 总`
+		() => t('aiworkflow.perfMonitor.edgesVisible', { total: payload.edgesCount.value, visible: payload.renderEdgesCount.value })
 	)
 	const perfEdgeComputeText = computed(() =>
 		payload.edgeComputeMs.value > 0 ? `${payload.edgeComputeMs.value.toFixed(2)} ms` : '--'

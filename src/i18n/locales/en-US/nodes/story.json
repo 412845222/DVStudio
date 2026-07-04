@@ -1,0 +1,13 @@
+{
+  "nodes.story.previewAlt": "Story Preview",
+  "nodes.story.noPreview": "No Preview",
+  "nodes.story.noPreviewSub": "Connect image or video input node",
+  "nodes.story.previewTitle": "Preview",
+  "nodes.story.width": "W",
+  "nodes.story.height": "H",
+  "nodes.story.branchesTitle": "Story Branches",
+  "nodes.story.addBranch": "Add Branch",
+  "nodes.story.branchPlaceholder": "Branch description",
+  "nodes.story.settings": "Settings",
+  "nodes.story.delete": "Delete"
+}

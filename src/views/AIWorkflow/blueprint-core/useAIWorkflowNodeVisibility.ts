@@ -1,5 +1,6 @@
 import { computed, type Ref } from 'vue'
 import type { WorkflowNode } from '../../../aiworkflow/types'
+import { t } from '../../../i18n'
 
 const GRID_CELL_SIZE = 1000
 const SPATIAL_INDEX_THRESHOLD = 80
@@ -144,19 +145,19 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	)
 
 	const compactNodeTypeLabel = (nodeType: string) => {
-		if (nodeType === 'text') return '文本'
-		if (nodeType === 'text-merge') return '拼接'
-		if (nodeType === 'image') return '图片'
-		if (nodeType === 'rotate-image') return '旋图'
-		if (nodeType === 'video') return '视频'
-		if (nodeType === 'scene-understanding') return '理解'
-		if (nodeType === 'scene-decompose') return '分解'
-		if (nodeType === 'scene-layout') return '布局'
-		if (nodeType === 'story') return '剧情'
+		if (nodeType === 'text') return t('aiworkflow.toast.nodeVisibilityText')
+		if (nodeType === 'text-merge') return t('aiworkflow.toast.nodeVisibilityMerge')
+		if (nodeType === 'image') return t('aiworkflow.toast.nodeVisibilityImage')
+		if (nodeType === 'rotate-image') return t('aiworkflow.toast.nodeVisibilityRotate')
+		if (nodeType === 'video') return t('aiworkflow.toast.nodeVisibilityVideo')
+		if (nodeType === 'scene-understanding') return t('aiworkflow.toast.nodeVisibilityUnderstanding')
+		if (nodeType === 'scene-decompose') return t('aiworkflow.toast.nodeVisibilityDecompose')
+		if (nodeType === 'scene-layout') return t('aiworkflow.toast.nodeVisibilityLayout')
+		if (nodeType === 'story') return t('aiworkflow.toast.nodeVisibilityStory')
 		if (nodeType === 'comfyui') return 'Comfy'
 		if (nodeType === 'model3d') return '3D'
 		if (nodeType === 'meshy') return 'Meshy'
-		return '节点'
+		return t('aiworkflow.toast.nodeVisibilityDefault')
 	}
 
 	const compactNodeDisplayName = (node: WorkflowNode) =>
@@ -166,18 +167,18 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	const compactNodeMeta = (node: WorkflowNode) => {
 		const inputCount = Array.isArray(node.inputs) ? node.inputs.length : 0
 		const outputCount = Array.isArray(node.outputs) ? node.outputs.length : 0
-		if (node.type === 'model3d' || node.type === 'scene-layout') return '重预览已折叠'
+		if (node.type === 'model3d' || node.type === 'scene-layout') return t('aiworkflow.toast.heavyPreviewCollapsed')
 		if (node.type === 'image' || node.type === 'video')
-			return `${inputCount} 入 / ${outputCount} 出`
+			return t('aiworkflow.toast.nodeAnchorsInOut', { input: inputCount, output: outputCount })
 		if (node.type === 'scene-understanding' || node.type === 'scene-decompose')
-			return `${outputCount} 输出锚点`
-		return `${inputCount} 入 / ${outputCount} 出`
+			return t('aiworkflow.toast.nodeOutputAnchors', { count: outputCount })
+		return t('aiworkflow.toast.nodeAnchorsInOut', { input: inputCount, output: outputCount })
 	}
 
 	const compactNodeTooltip = (node: WorkflowNode) => {
 		const name = compactNodeDisplayName(node)
 		const meta = compactNodeMeta(node)
-		return `${name} · ${meta} · 当前缩放过小，已切换为轻量占位`
+		return t('aiworkflow.toast.nodeCompactLabel', { name, meta })
 	}
 
 	const compactNodeClass = (node: WorkflowNode) => ({

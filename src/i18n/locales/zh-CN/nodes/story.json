@@ -1,0 +1,13 @@
+{
+  "nodes.story.previewAlt": "剧情预览",
+  "nodes.story.noPreview": "暂无画面预览",
+  "nodes.story.noPreviewSub": "连接图片或视频输入节点",
+  "nodes.story.previewTitle": "画面预览",
+  "nodes.story.width": "宽",
+  "nodes.story.height": "高",
+  "nodes.story.branchesTitle": "剧情分支",
+  "nodes.story.addBranch": "新增分支",
+  "nodes.story.branchPlaceholder": "剧情分支描述",
+  "nodes.story.settings": "设置",
+  "nodes.story.delete": "删除"
+}

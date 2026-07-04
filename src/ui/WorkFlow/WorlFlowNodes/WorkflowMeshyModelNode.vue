@@ -34,7 +34,7 @@
 					<div class="wf-meshy-hero-copy">
 						<div class="wf-meshy-badge-row">
 							<div class="wf-meshy-badge">Meshy</div>
-							<div class="wf-meshy-badge subtle">任务工作站</div>
+						<div class="wf-meshy-badge subtle">{{ t('nodes.meshy.workstationBadge') }}</div>
 						</div>
 						<div class="wf-meshy-title">{{ targetTitle }}</div>
 						<div class="wf-meshy-subtitle">{{ targetSubtitle }}</div>
@@ -53,7 +53,7 @@
 						:class="{ active: meshyTaskTarget === '3d' }"
 						@click.stop="onTargetSelect('3d')"
 					>
-						3D 主链路
+						{{ t('nodes.meshy.target3d') }}
 					</button>
 					<button
 						type="button"
@@ -61,36 +61,36 @@
 						:class="{ active: meshyTaskTarget === 'image' }"
 						@click.stop="onTargetSelect('image')"
 					>
-						图像链路
+						{{ t('nodes.meshy.targetImage') }}
 					</button>
 				</div>
 
 				<div class="wf-meshy-summary-grid">
 					<div class="wf-meshy-summary-card">
-						<div class="wf-meshy-summary-label">当前任务族</div>
+						<div class="wf-meshy-summary-label">{{ t('nodes.meshy.taskFamilyLabel') }}</div>
 						<div class="wf-meshy-summary-value">{{ familyLabel }}</div>
 					</div>
 					<div class="wf-meshy-summary-card">
-						<div class="wf-meshy-summary-label">当前阶段</div>
+						<div class="wf-meshy-summary-label">{{ t('nodes.meshy.currentStageLabel') }}</div>
 						<div class="wf-meshy-summary-value">{{ relationSummaryText }}</div>
 					</div>
 					<div class="wf-meshy-summary-card">
-						<div class="wf-meshy-summary-label">输入摘要</div>
+						<div class="wf-meshy-summary-label">{{ t('nodes.meshy.inputSummaryLabel') }}</div>
 						<div class="wf-meshy-summary-value">{{ inputSummaryText }}</div>
 					</div>
 					<div class="wf-meshy-summary-card">
-						<div class="wf-meshy-summary-label">输出锚点</div>
+						<div class="wf-meshy-summary-label">{{ t('nodes.meshy.outputAnchorLabel') }}</div>
 						<div class="wf-meshy-summary-value">{{ outputSummaryText }}</div>
 					</div>
 					<div class="wf-meshy-summary-card">
-						<div class="wf-meshy-summary-label">高级参数</div>
+						<div class="wf-meshy-summary-label">{{ t('nodes.meshy.advancedParamsLabel') }}</div>
 						<div class="wf-meshy-summary-value">{{ advancedSummaryText }}</div>
 					</div>
 				</div>
 
 				<div v-if="meshyTaskTarget === '3d'" class="wf-meshy-preview-grid">
 					<div class="wf-meshy-thumb-shell wf-meshy-preview-card">
-						<div class="wf-meshy-preview-label">来源预览（首个蓝色输入锚点）</div>
+						<div class="wf-meshy-preview-label">{{ t('nodes.meshy.sourcePreviewLabel') }}</div>
 						<div class="wf-meshy-preview-sub">{{ sourcePreviewLabelText }}</div>
 						<img
 							v-if="safeDisplaySourcePreviewUrl"
@@ -99,11 +99,11 @@
 							alt="meshy source preview"
 							@error="onSourcePreviewError"
 						/>
-						<div v-else class="wf-meshy-preview-empty">当前来源暂无可用预览图</div>
+						<div v-else class="wf-meshy-preview-empty">{{ t('nodes.meshy.sourcePreviewEmpty') }}</div>
 					</div>
 					<div class="wf-meshy-thumb-shell wf-meshy-preview-card">
-						<div class="wf-meshy-preview-label">Meshy 返回预览</div>
-						<div class="wf-meshy-preview-sub">用于确认当前任务结果是否已更新</div>
+						<div class="wf-meshy-preview-label">{{ t('nodes.meshy.meshyPreviewLabel') }}</div>
+						<div class="wf-meshy-preview-sub">{{ t('nodes.meshy.meshyPreviewSub') }}</div>
 						<img
 							v-if="safeDisplayThumbnailUrl"
 							class="wf-meshy-thumb"
@@ -111,7 +111,7 @@
 							alt="meshy output preview"
 							@error="onThumbnailError"
 						/>
-						<div v-else class="wf-meshy-preview-empty">任务未返回缩略图</div>
+						<div v-else class="wf-meshy-preview-empty">{{ t('nodes.meshy.meshyPreviewEmpty') }}</div>
 					</div>
 				</div>
 				<div v-else-if="safeDisplayThumbnailUrl" class="wf-meshy-thumb-shell">
@@ -130,7 +130,7 @@
 				<template v-if="showHeavyEditor">
 					<div class="wf-meshy-row">
 						<label class="wf-meshy-field wf-meshy-field-wide">
-							<span class="wf-meshy-label">任务族</span>
+							<span class="wf-meshy-label">{{ t('nodes.meshy.taskFamily') }}</span>
 							<select class="wf-meshy-input" :value="meshyTaskFamily" @change="onFamilyChange">
 								<option v-for="item in familyOptions" :key="item.value" :value="item.value">
 									{{ item.label }}
@@ -144,24 +144,24 @@
 							v-if="showImageConfigTable"
 							class="wf-meshy-field wf-meshy-field-wide wf-meshy-config-card"
 						>
-							<span class="wf-meshy-label">图像链路参数表</span>
+							<span class="wf-meshy-label">{{ t('nodes.meshy.imageConfigTitle') }}</span>
 							<table class="wf-meshy-config-table">
 								<tbody>
 									<tr>
-										<th>生成模型</th>
+										<th>{{ t('nodes.meshy.aiModel') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
 												:value="meshyAiModel"
 												@change="onAiModelChange"
 											>
-												<option value="nano-banana">nano-banana（标准）</option>
-												<option value="nano-banana-pro">nano-banana-pro（高质量）</option>
+												<option value="nano-banana">{{ t('aiConfig.meshModes.modelNanoBanana') }}</option>
+												<option value="nano-banana-pro">{{ t('aiConfig.meshModes.modelNanoBananaPro') }}</option>
 											</select>
 										</td>
 									</tr>
 									<tr>
-										<th>输出图片数量</th>
+										<th>{{ t('nodes.meshy.outputImageCount') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
@@ -173,26 +173,24 @@
 													:key="count"
 													:value="count"
 												>
-													{{ count }} 张
+													{{ count }} {{ t('nodes.meshy.outputCountUnit') }}
 												</option>
 											</select>
 											<div class="wf-meshy-config-inline">
-												将生成 {{ meshyOutputImageCount }} 个输出锚点（out-image-1 ~ out-image-{{
-													meshyOutputImageCount
-												}}）
+												{{ t('nodes.meshy.outputAnchorsHint', { count: meshyOutputImageCount }) }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>积分预估</th>
+										<th>{{ t('nodes.meshy.creditEstimate') }}</th>
 										<td>
 											<div class="wf-meshy-static-value">
-												单价 {{ imageUnitPrice }} 积分/张，预计消耗 {{ imageEstimatedCost }} 积分
+												{{ t('nodes.meshy.creditCost', { price: imageUnitPrice, cost: imageEstimatedCost }) }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>是否多视图</th>
+										<th>{{ t('nodes.meshy.multiView') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -200,12 +198,12 @@
 													:checked="meshyGenerateMultiView"
 													@change="onGenerateMultiViewToggle"
 												/>
-												<span>{{ meshyGenerateMultiView ? '开启' : '关闭' }}</span>
+												<span>{{ meshyGenerateMultiView ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
 										</td>
 									</tr>
 									<tr>
-										<th>比例（Aspect Ratio）</th>
+										<th>{{ t('nodes.meshy.aspectRatio') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
@@ -223,24 +221,24 @@
 										</td>
 									</tr>
 									<tr>
-										<th>姿势（Pose）</th>
+										<th>{{ t('nodes.meshy.pose') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
 												:value="meshyPoseMode"
 												@change="onPoseModeChange"
 											>
-												<option value="">无</option>
+												<option value="">{{ t('nodes.meshy.poseNone') }}</option>
 												<option value="a-pose">A Pose</option>
 												<option value="t-pose">T Pose</option>
 											</select>
 										</td>
 									</tr>
 									<tr v-if="meshyTaskFamily === 'image-to-image'">
-										<th>参考图输入锚点数量</th>
+										<th>{{ t('nodes.meshy.refImageInputCount') }}</th>
 										<td>
 											<div class="wf-meshy-static-value">
-												固定 5 路（匹配 Meshy image-to-image API）
+												{{ t('nodes.meshy.refImageFixedCount') }}
 											</div>
 										</td>
 									</tr>
@@ -253,7 +251,7 @@
 												min="0"
 												step="1"
 												:value="meshySeed"
-												placeholder="0 表示由后端自动随机"
+												:placeholder="t('nodes.meshy.seedPlaceholder')"
 												@change="onSeedChange"
 											/>
 										</td>
@@ -261,8 +259,7 @@
 								</tbody>
 							</table>
 							<div class="wf-meshy-config-note">
-								注：根据 Meshy 官方文档，开启多视图时不允许同时设置比例；image-to-image
-								参考图支持最多 5 张。
+								{{ t('nodes.meshy.imageConfigNote') }}
 							</div>
 						</div>
 
@@ -270,45 +267,44 @@
 							v-if="showModelTypeField"
 							class="wf-meshy-field wf-meshy-field-wide wf-meshy-config-card"
 						>
-							<span class="wf-meshy-label">3D 生成参数表</span>
+							<span class="wf-meshy-label">{{ t('nodes.meshy.model3dConfigTitle') }}</span>
 							<table class="wf-meshy-config-table">
 								<tbody>
 									<tr>
-										<th>模型版本 (ai_model)</th>
+										<th>{{ t('nodes.meshy.modelVersion') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
 												:value="meshyAiModel"
 												@change="onAiModelChange"
 											>
-												<option value="latest">latest (Meshy 6)</option>
-												<option value="meshy-6">meshy-6</option>
-												<option value="meshy-5">meshy-5</option>
+												<option value="latest">{{ t('aiConfig.meshModes.modelLatest') }}</option>
+												<option value="meshy-6">{{ t('aiConfig.meshModes.modelMeshy6') }}</option>
+												<option value="meshy-5">{{ t('aiConfig.meshModes.modelMeshy5') }}</option>
 											</select>
 											<div class="wf-meshy-config-inline">
-												文档可选值：meshy-5 / meshy-6 / latest。
+												{{ t('nodes.meshy.modelVersionNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>网格模式</th>
+										<th>{{ t('nodes.meshy.meshMode') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
 												:value="meshyModelType"
 												@change="onModelTypeChange"
 											>
-												<option value="standard">标准 Standard</option>
-												<option value="lowpoly">低模 Low Poly</option>
+												<option value="standard">{{ t('aiConfig.meshModes.standard') }}</option>
+												<option value="lowpoly">{{ t('aiConfig.meshModes.lowpoly') }}</option>
 											</select>
 											<div class="wf-meshy-config-inline">
-												当前：{{ modelTypeLabel }}。lowpoly 时 ai_model / topology /
-												target_polycount / should_remesh / save_pre_remeshed_model 会被忽略。
+												{{ t('nodes.meshy.meshModeNote', { mode: modelTypeLabel }) }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>拓扑 (topology)</th>
+										<th>{{ t('nodes.meshy.topology') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
@@ -320,12 +316,12 @@
 												<option value="quad">quad</option>
 											</select>
 											<div class="wf-meshy-config-inline">
-												当 should_remesh=false 时，该参数会被服务端忽略。
+												{{ t('nodes.meshy.topologyNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>目标面数 (target_polycount)</th>
+										<th>{{ t('nodes.meshy.targetPolycount') }}</th>
 										<td>
 											<input
 												class="wf-meshy-input"
@@ -338,12 +334,12 @@
 												@change="onTargetPolycountChange"
 											/>
 											<div class="wf-meshy-config-inline">
-												文档范围：100 - 300000，仅在 remesh 阶段生效。
+												{{ t('nodes.meshy.targetPolycountNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>对称模式 (symmetry_mode)</th>
+										<th>{{ t('nodes.meshy.symmetryMode') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
@@ -355,11 +351,11 @@
 												<option value="on">on</option>
 												<option value="off">off</option>
 											</select>
-											<div class="wf-meshy-config-inline">auto 会根据输入几何自动判断对称性。</div>
+											<div class="wf-meshy-config-inline">{{ t('nodes.meshy.symmetryModeNote') }}</div>
 										</td>
 									</tr>
 									<tr>
-										<th>重建网格 (should_remesh)</th>
+										<th>{{ t('nodes.meshy.shouldRemesh') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -368,15 +364,15 @@
 													:checked="meshyShouldRemesh"
 													@change="onShouldRemeshToggle"
 												/>
-												<span>{{ meshyShouldRemesh ? '开启' : '关闭' }}</span>
+												<span>{{ meshyShouldRemesh ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
 											<div class="wf-meshy-config-inline">
-												关闭后直接返回高精度三角网格，topology 与 target_polycount 不再生效。
+												{{ t('nodes.meshy.shouldRemeshNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>保留重建前模型</th>
+										<th>{{ t('nodes.meshy.savePreRemeshed') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -385,15 +381,15 @@
 													:checked="meshySavePreRemeshedModel"
 													@change="onSavePreRemeshedToggle"
 												/>
-												<span>{{ meshySavePreRemeshedModel ? '开启' : '关闭' }}</span>
+												<span>{{ meshySavePreRemeshedModel ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
 											<div class="wf-meshy-config-inline">
-												对应 save_pre_remeshed_model，仅 should_remesh=true 时生效。
+												{{ t('nodes.meshy.savePreRemeshedNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>生成贴图 (should_texture)</th>
+										<th>{{ t('nodes.meshy.shouldTexture') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -401,15 +397,15 @@
 													:checked="meshyShouldTexture"
 													@change="onShouldTextureToggle"
 												/>
-												<span>{{ meshyShouldTexture ? '开启' : '关闭' }}</span>
+												<span>{{ meshyShouldTexture ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
 											<div class="wf-meshy-config-inline">
-												关闭时仅生成网格；enable_pbr 与贴图引导参数将自动失效。
+												{{ t('nodes.meshy.shouldTextureNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>PBR 材质 (enable_pbr)</th>
+										<th>{{ t('nodes.meshy.enablePbr') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -418,62 +414,62 @@
 													:checked="meshyEnablePbr"
 													@change="onEnablePbrToggle"
 												/>
-												<span>{{ meshyEnablePbr ? '开启' : '关闭' }}</span>
+												<span>{{ meshyEnablePbr ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
 											<div class="wf-meshy-config-inline">
-												开启后输出 base_color + metallic + roughness + normal。
+												{{ t('nodes.meshy.enablePbrNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>贴图提示词 (texture_prompt)</th>
+										<th>{{ t('nodes.meshy.texturePrompt') }}</th>
 										<td>
 											<textarea
 												class="wf-meshy-textarea compact"
 												rows="2"
 												:disabled="!meshyShouldTexture"
 												:value="meshyTexturePrompt"
-												placeholder="可选。最多 600 字符。"
+												:placeholder="t('nodes.meshy.texturePromptPlaceholder')"
 												@input="onTexturePromptInput"
 											/>
 											<div class="wf-meshy-config-inline">
-												文档说明：与 texture_image_url 同时提供时，优先使用 texture_prompt。
+												{{ t('nodes.meshy.texturePromptNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>贴图参考图 (texture_image_url)</th>
+										<th>{{ t('nodes.meshy.textureImageUrl') }}</th>
 										<td>
 											<input
 												class="wf-meshy-input"
 												type="text"
 												:disabled="!meshyShouldTexture"
 												:value="meshyTextureImageUrl"
-												placeholder="可选。支持 URL 或 Data URI。"
+												:placeholder="t('nodes.meshy.textureImageUrlPlaceholder')"
 												@input="onTextureImageUrlInput"
 											/>
 											<div class="wf-meshy-config-inline">
-												用于引导材质风格；与 texture_prompt 二选一更清晰。
+												{{ t('nodes.meshy.textureImageUrlNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>姿势模式 (pose_mode)</th>
+										<th>{{ t('nodes.meshy.poseMode') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
 												:value="meshyPoseMode"
 												@change="onPoseModeChange"
 											>
-												<option value="">无</option>
+												<option value="">{{ t('nodes.meshy.poseNone') }}</option>
 												<option value="a-pose">a-pose</option>
 												<option value="t-pose">t-pose</option>
 											</select>
-											<div class="wf-meshy-config-inline">替代已废弃的 is_a_t_pose。</div>
+											<div class="wf-meshy-config-inline">{{ t('nodes.meshy.poseModeNote') }}</div>
 										</td>
 									</tr>
 									<tr>
-										<th>自动尺寸 (auto_size)</th>
+										<th>{{ t('nodes.meshy.autoSize') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -481,13 +477,13 @@
 													:checked="meshyAutoSize"
 													@change="onAutoSizeToggle"
 												/>
-												<span>{{ meshyAutoSize ? '开启' : '关闭' }}</span>
+												<span>{{ meshyAutoSize ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
-											<div class="wf-meshy-config-inline">开启后由服务自动估算真实高度。</div>
+											<div class="wf-meshy-config-inline">{{ t('nodes.meshy.autoSizeNote') }}</div>
 										</td>
 									</tr>
 									<tr>
-										<th>原点位置 (origin_at)</th>
+										<th>{{ t('nodes.meshy.originAt') }}</th>
 										<td>
 											<select
 												class="wf-meshy-input"
@@ -499,12 +495,12 @@
 												<option value="center">center</option>
 											</select>
 											<div class="wf-meshy-config-inline">
-												仅 auto_size=true 时有效，文档默认 bottom。
+												{{ t('nodes.meshy.originAtNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>内容审核 (moderation)</th>
+										<th>{{ t('nodes.meshy.moderation') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -512,15 +508,15 @@
 													:checked="meshyModeration"
 													@change="onModerationToggle"
 												/>
-												<span>{{ meshyModeration ? '开启' : '关闭' }}</span>
+												<span>{{ meshyModeration ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
 											<div class="wf-meshy-config-inline">
-												会审核 image_url / texture_image_url / texture_prompt。
+												{{ t('nodes.meshy.moderationNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>图像增强 (image_enhancement)</th>
+										<th>{{ t('nodes.meshy.imageEnhancement') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -528,15 +524,15 @@
 													:checked="meshyImageEnhancement"
 													@change="onImageEnhancementToggle"
 												/>
-												<span>{{ meshyImageEnhancement ? '开启' : '关闭' }}</span>
+												<span>{{ meshyImageEnhancement ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
 											<div class="wf-meshy-config-inline">
-												仅 ai_model 为 meshy-6 / latest 时支持。
+												{{ t('nodes.meshy.imageEnhancementNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>去除光照烘焙 (remove_lighting)</th>
+										<th>{{ t('nodes.meshy.removeLighting') }}</th>
 										<td>
 											<label class="wf-meshy-switch-row">
 												<input
@@ -544,15 +540,15 @@
 													:checked="meshyRemoveLighting"
 													@change="onRemoveLightingToggle"
 												/>
-												<span>{{ meshyRemoveLighting ? '开启' : '关闭' }}</span>
+												<span>{{ meshyRemoveLighting ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
 											</label>
 											<div class="wf-meshy-config-inline">
-												使 base color 更纯净，便于在引擎内重打光。
+												{{ t('nodes.meshy.removeLightingNote') }}
 											</div>
 										</td>
 									</tr>
 									<tr>
-										<th>输出格式 (target_formats)</th>
+										<th>{{ t('nodes.meshy.targetFormats') }}</th>
 										<td>
 											<div class="wf-meshy-format-grid">
 												<label
@@ -569,7 +565,7 @@
 												</label>
 											</div>
 											<div class="wf-meshy-config-inline">
-												省略时服务端会返回全部支持格式。建议至少保留 glb。
+												{{ t('nodes.meshy.targetFormatsNote') }}
 											</div>
 										</td>
 									</tr>
@@ -582,11 +578,11 @@
 												min="0"
 												step="1"
 												:value="meshySeed"
-												placeholder="0 表示由后端自动随机"
+												:placeholder="t('nodes.meshy.seedPlaceholder')"
 												@change="onSeedChange"
 											/>
 											<div class="wf-meshy-config-inline">
-												用于复现；同输入与同 seed 时结果更稳定。
+												{{ t('nodes.meshy.seedNote') }}
 											</div>
 										</td>
 									</tr>
@@ -595,51 +591,51 @@
 						</div>
 
 						<label v-if="showPromptField" class="wf-meshy-field wf-meshy-field-wide">
-							<span class="wf-meshy-label">提示词</span>
+							<span class="wf-meshy-label">{{ t('nodes.meshy.prompt') }}</span>
 							<textarea
 								class="wf-meshy-textarea"
 								rows="3"
 								:value="meshyPrompt"
-								placeholder="可直接填写，也可以由文本节点连入。若存在文本输入锚点连接，将优先使用上游文本。"
+								:placeholder="t('nodes.meshy.promptPlaceholder')"
 								@input="onPromptInput"
 							/>
 						</label>
 
 						<label v-if="showNegativePromptField" class="wf-meshy-field wf-meshy-field-wide">
-							<span class="wf-meshy-label">负向提示词</span>
+							<span class="wf-meshy-label">{{ t('nodes.meshy.negativePrompt') }}</span>
 							<textarea
 								class="wf-meshy-textarea compact"
 								rows="2"
 								:value="meshyNegativePrompt"
-								placeholder="例如：low quality, low poly, ugly"
+								:placeholder="t('nodes.meshy.negativePromptPlaceholder')"
 								@input="onNegativePromptInput"
 							/>
 						</label>
 
 						<label v-if="showPreviewTaskField" class="wf-meshy-field wf-meshy-field-wide">
-							<span class="wf-meshy-label">Preview Task ID</span>
+							<span class="wf-meshy-label">{{ t('nodes.meshy.previewTaskId') }}</span>
 							<input
 								class="wf-meshy-input"
 								type="text"
 								:value="meshyPreviewTaskId"
-								placeholder="018a..."
+								:placeholder="t('nodes.meshy.previewTaskIdPlaceholder')"
 								@input="onPreviewTaskIdInput"
 							/>
 						</label>
 
 						<label v-if="showSingleImageField" class="wf-meshy-field wf-meshy-field-wide">
-							<span class="wf-meshy-label">参考图 URL</span>
+							<span class="wf-meshy-label">{{ t('nodes.meshy.refImageUrl') }}</span>
 							<input
 								class="wf-meshy-input"
 								type="text"
 								:value="meshyImageUrl"
-								placeholder="可直接填写，也可由参考图锚点输入覆盖。"
+								:placeholder="t('nodes.meshy.refImageUrlPlaceholder')"
 								@input="onImageUrlInput"
 							/>
 						</label>
 
 						<label v-if="showMultiImageField" class="wf-meshy-field wf-meshy-field-wide">
-							<span class="wf-meshy-label">参考图 URL 列表</span>
+							<span class="wf-meshy-label">{{ t('nodes.meshy.refImageUrlList') }}</span>
 							<textarea
 								class="wf-meshy-textarea compact"
 								rows="3"
@@ -652,7 +648,7 @@
 				</template>
 
 				<div v-else class="wf-meshy-collapsed-note">
-					当前为性能折叠视图，选中该节点后显示完整参数表单。
+					{{ t('nodes.meshy.collapsedNote') }}
 				</div>
 
 				<div class="wf-meshy-actions">
@@ -676,7 +672,7 @@
 								:disabled="!canRefreshTask"
 								@click.stop="emit('refresh-meshy-task')"
 							>
-								刷新状态
+								{{ t('nodes.meshy.refreshStatus') }}
 							</button>
 							<button
 								class="wf-media-btn wf-media-btn-secondary"
@@ -684,7 +680,7 @@
 								:disabled="!canPullOutput"
 								@click.stop="emit('pull-meshy-output')"
 							>
-								拉取产物
+								{{ t('nodes.meshy.pullOutput') }}
 							</button>
 							<button
 								class="wf-media-btn wf-media-btn-secondary"
@@ -692,7 +688,7 @@
 								:disabled="!canRestartAsNewTask"
 								@click.stop="emit('restart-meshy-task')"
 							>
-								重开新任务
+								{{ t('nodes.meshy.restartTask') }}
 							</button>
 						</div>
 						<div class="wf-meshy-followup-row">
@@ -702,7 +698,7 @@
 								:disabled="!canStopTask"
 								@click.stop="emit('stop-meshy-task')"
 							>
-								停止任务
+								{{ t('nodes.meshy.stopTask') }}
 							</button>
 							<button
 								class="wf-media-btn wf-media-btn-secondary"
@@ -710,7 +706,7 @@
 								:disabled="!canDeleteTask"
 								@click.stop="emit('delete-meshy-task')"
 							>
-								删除任务
+								{{ t('nodes.meshy.deleteTask') }}
 							</button>
 						</div>
 					</div>
@@ -738,6 +734,9 @@ import type {
 	WorkflowMeshyTaskFamily,
 	WorkflowMeshyTaskTarget
 } from '../../../aiworkflow/types'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -1000,7 +999,7 @@ watch(
 	}
 )
 const sourcePreviewLabelText = computed(
-	() => String(props.sourcePreviewLabel ?? '来源未连接').trim() || '来源未连接'
+	() => String(props.sourcePreviewLabel ?? t('nodes.meshy.sourceNotConnected')).trim() || t('nodes.meshy.sourceNotConnected')
 )
 const targetFormats = computed(() =>
 	Array.isArray(settings.value?.meshyTargetFormats) && settings.value?.meshyTargetFormats?.length
@@ -1018,41 +1017,42 @@ const connectedImageUrls = computed(() =>
 const familyOptions = computed(() => {
 	if (meshyTaskTarget.value === 'image') {
 		return [
-			{ value: 'text-to-image', label: 'Text to Image' },
-			{ value: 'image-to-image', label: 'Image to Image' }
+			{ value: 'text-to-image', label: t('nodes.meshy.familyTextToImage') },
+			{ value: 'image-to-image', label: t('nodes.meshy.familyImageToImage') }
 		]
 	}
 	return [
-		{ value: 'text-to-3d', label: 'Text to 3D' },
-		{ value: 'image-to-3d', label: 'Image to 3D' },
-		{ value: 'multi-image-to-3d', label: 'Multi-Image to 3D' },
-		{ value: 'refine', label: 'Refine' },
-		{ value: 'remesh', label: 'Remesh' },
-		{ value: 'retexture', label: 'Retexture' }
+		{ value: 'text-to-3d', label: t('nodes.meshy.familyTextTo3d') },
+		{ value: 'image-to-3d', label: t('nodes.meshy.familyImageTo3d') },
+		{ value: 'multi-image-to-3d', label: t('nodes.meshy.familyMultiImageTo3d') },
+		{ value: 'refine', label: t('nodes.meshy.familyRefine') },
+		{ value: 'remesh', label: t('nodes.meshy.familyRemesh') },
+		{ value: 'retexture', label: t('nodes.meshy.familyRetexture') }
 	]
 })
 
-const familyLabelMap: Record<string, string> = {
-	'text-to-3d': 'Text to 3D',
-	'image-to-3d': 'Image to 3D',
-	'multi-image-to-3d': 'Multi-Image to 3D',
-	refine: 'Refine',
-	remesh: 'Remesh',
-	retexture: 'Retexture',
-	'text-to-image': 'Text to Image',
-	'image-to-image': 'Image to Image'
-}
-
-const familyLabel = computed(() => familyLabelMap[meshyTaskFamily.value] ?? meshyTaskFamily.value)
+const familyLabel = computed(() => {
+	const map: Record<string, string> = {
+		'text-to-3d': t('nodes.meshy.familyTextTo3d'),
+		'image-to-3d': t('nodes.meshy.familyImageTo3d'),
+		'multi-image-to-3d': t('nodes.meshy.familyMultiImageTo3d'),
+		refine: t('nodes.meshy.familyRefine'),
+		remesh: t('nodes.meshy.familyRemesh'),
+		retexture: t('nodes.meshy.familyRetexture'),
+		'text-to-image': t('nodes.meshy.familyTextToImage'),
+		'image-to-image': t('nodes.meshy.familyImageToImage')
+	}
+	return map[meshyTaskFamily.value] ?? meshyTaskFamily.value
+})
 const targetTitle = computed(() =>
-	meshyTaskTarget.value === 'image' ? 'Meshy 图像任务' : 'Meshy 3D 任务'
+	meshyTaskTarget.value === 'image' ? t('nodes.meshy.targetTitleImage') : t('nodes.meshy.targetTitle3d')
 )
 const targetSubtitle = computed(() =>
 	meshyTaskTarget.value === 'image'
-		? '节点负责图像链路任务编排、输入摘要和输出分发。'
+		? t('nodes.meshy.targetSubtitleImage')
 		: relationKind.value === 'texture'
-			? '当前节点已切换到贴图阶段，下游 3D 节点将优先消费贴图产物。'
-			: '节点负责 3D 主链路任务编排、输入摘要和输出分发。'
+			? t('nodes.meshy.targetSubtitle3dTexture')
+			: t('nodes.meshy.targetSubtitle3d')
 )
 
 const showPromptField = computed(() => true)
@@ -1076,42 +1076,42 @@ const showMultiImageField = computed(
 )
 const isLowpolyModelType = computed(() => meshyModelType.value === 'lowpoly')
 const modelTypeLabel = computed(() =>
-	isLowpolyModelType.value ? '低模 Low Poly' : '标准 Standard'
+	isLowpolyModelType.value ? t('aiConfig.meshModes.lowpoly') : t('aiConfig.meshModes.standard')
 )
 const modelTypeDocNote = computed(() =>
 	isLowpolyModelType.value
-		? '低模模式会输出更干净的低多边形网格；根据官方文档，ai_model、topology、target_polycount、should_remesh、save_pre_remeshed_model 会被忽略。'
-		: '标准模式会走常规高细节 3D 网格生成流程，适合默认建模链路。'
+		? t('nodes.meshy.meshModeNote', { mode: t('aiConfig.meshModes.lowpoly') })
+		: t('nodes.meshy.meshModeNote', { mode: t('aiConfig.meshModes.standard') })
 )
 
 const multiImagePlaceholder = computed(() => {
 	if (meshyTaskFamily.value === 'image-to-image') {
-		return '每行一个 URL，最多 5 张；若有图像输入锚点连接，将优先使用上游图像。'
+		return t('nodes.meshy.multiImagePlaceholderI2I')
 	}
-	return '每行一个 URL，最多 4 张；若有图像输入锚点连接，将优先使用上游图像。'
+	return t('nodes.meshy.multiImagePlaceholderM2I')
 })
 
 const inputSummaryText = computed(() => {
 	const promptState = connectedPromptText.value
-		? '文本已连入'
+		? t('nodes.meshy.inputTextConnected')
 		: meshyPrompt.value.trim()
-			? '使用手填提示词'
-			: '无提示词'
+			? t('nodes.meshy.inputManualPrompt')
+			: t('nodes.meshy.inputNoPrompt')
 	const imageCount = connectedImageUrls.value.length
 	if (meshyTaskTarget.value === 'image') {
 		return imageCount
-			? `${promptState}，已连入 ${imageCount} 张图片`
-			: `${promptState}，等待图片输入`
+			? `${promptState}${t('nodes.meshy.inputImagesConnected', { count: imageCount })}`
+			: `${promptState}${t('nodes.meshy.inputWaitingImages')}`
 	}
 	return imageCount
-		? `${promptState}，已连入 ${imageCount} 张参考图`
-		: `${promptState}，当前无参考图输入`
+		? `${promptState}${t('nodes.meshy.inputRefImagesConnected', { count: imageCount })}`
+		: `${promptState}${t('nodes.meshy.inputNoRefImages')}`
 })
 
 const outputSummaryText = computed(() =>
 	meshyTaskTarget.value === 'image'
-		? `out-image-1 ~ out-image-${meshyOutputImageCount.value} 连接下游图片输入锚点`
-		: 'out-model 需连接下游资源/模型输入锚点'
+		? t('nodes.meshy.outputSummaryImage', { count: meshyOutputImageCount.value })
+		: t('nodes.meshy.outputSummary3d')
 )
 
 const advancedSummaryText = computed(() =>
@@ -1128,23 +1128,23 @@ const imageAdvancedSummaryText = computed(() => {
 
 const relationSummaryText = computed(() => {
 	const parts: string[] = []
-	if (relationKind.value === 'texture') parts.push('已贴图产物')
-	else if (relationKind.value === 'rigging') parts.push('已绑骨产物')
-	else if (relationKind.value === 'animation') parts.push('已动作产物')
-	else parts.push('裸模型主任务')
-	if (hasTextureChild.value && relationKind.value !== 'texture') parts.push('存在贴图子任务')
-	if (hasRiggingChild.value && relationKind.value !== 'rigging') parts.push('存在绑骨子任务')
-	if (hasAnimationChild.value && relationKind.value !== 'animation') parts.push('存在动作子任务')
+	if (relationKind.value === 'texture') parts.push(t('nodes.meshy.relationTextured'))
+	else if (relationKind.value === 'rigging') parts.push(t('nodes.meshy.relationRigged'))
+	else if (relationKind.value === 'animation') parts.push(t('nodes.meshy.relationAnimated'))
+	else parts.push(t('nodes.meshy.relationBaseModel'))
+	if (hasTextureChild.value && relationKind.value !== 'texture') parts.push(t('nodes.meshy.hasTextureChild'))
+	if (hasRiggingChild.value && relationKind.value !== 'rigging') parts.push(t('nodes.meshy.hasRiggingChild'))
+	if (hasAnimationChild.value && relationKind.value !== 'animation') parts.push(t('nodes.meshy.hasAnimationChild'))
 	return parts.join(' / ')
 })
 
 const statusLabel = computed(() => {
-	if (taskStatus.value === 'running') return '任务执行中'
-	if (taskStatus.value === 'pending') return '任务排队中'
-	if (taskStatus.value === 'succeeded') return '任务已完成'
-	if (taskStatus.value === 'failed') return '任务失败'
-	if (taskStatus.value === 'canceled') return '任务已取消'
-	return '待发起任务'
+	if (taskStatus.value === 'running') return t('nodes.meshy.taskRunning')
+	if (taskStatus.value === 'pending') return t('nodes.meshy.taskPending')
+	if (taskStatus.value === 'succeeded') return t('nodes.meshy.taskSucceeded')
+	if (taskStatus.value === 'failed') return t('nodes.meshy.taskFailed')
+	if (taskStatus.value === 'canceled') return t('nodes.meshy.taskCanceled')
+	return t('nodes.meshy.taskIdle')
 })
 
 const statusValue = computed(() => {
@@ -1159,62 +1159,62 @@ const statusDetail = computed(() =>
 		settings.value?.meshyStatusText ??
 			settings.value?.meshyErrorMessage ??
 			(meshyTaskTarget.value === 'image'
-				? '图像链路后续会接入任务中心和独立帮助面板。'
-				: '3D 结果会通过 out-model 输出给下游节点。')
+				? t('nodes.meshy.statusDetailImage')
+				: t('nodes.meshy.statusDetail3d'))
 	).trim()
 )
 const statusClass = computed(() => `is-${taskStatus.value}`)
 
 const unsupportedReason = computed(() => {
 	if (meshyTaskFamily.value === 'remesh') {
-		return 'Remesh 独立任务接口尚未接入，本批先完成主模型与贴图闭环。'
+		return t('nodes.meshy.remeshUnsupported')
 	}
 	return ''
 })
 
 const generateDisabledReason = computed(() => {
-	if (taskStatus.value === 'pending' || taskStatus.value === 'running') return 'Meshy 任务进行中'
+	if (taskStatus.value === 'pending' || taskStatus.value === 'running') return t('nodes.meshy.errorTaskInProgress')
 	if (unsupportedReason.value) return unsupportedReason.value
-	if (!connectedPromptText.value && !meshyPrompt.value.trim()) return '请填写提示词或连接文本输入'
+	if (!connectedPromptText.value && !meshyPrompt.value.trim()) return t('nodes.meshy.errorNoPrompt')
 	if (meshyTaskFamily.value === 'text-to-image' || meshyTaskFamily.value === 'image-to-image') {
 		if (
 			meshyTaskFamily.value === 'text-to-image' &&
 			meshyGenerateMultiView.value &&
 			!!meshyAspectRatio.value
 		)
-			return '开启多视图时，不能再设置固定比例。'
+			return t('nodes.meshy.errorMultiViewRatio')
 		if (
 			meshyTaskFamily.value === 'image-to-image' &&
 			!connectedImageUrls.value.length &&
 			!multiImageText.value.trim()
 		) {
-			return 'Image to Image 需要至少 1 张参考图 URL 或输入锚点。'
+			return t('nodes.meshy.errorI2INoImage')
 		}
 	}
 	if (meshyTaskFamily.value === 'refine' && !meshyPreviewTaskId.value.trim())
-		return 'Refine 阶段需要 Preview Task ID'
+		return t('nodes.meshy.errorRefineNoId')
 	if (
 		meshyTaskFamily.value === 'image-to-3d' &&
 		!connectedImageUrls.value.length &&
 		!meshyImageUrl.value.trim()
 	)
-		return '请填写图片 URL 或连接参考图'
+		return t('nodes.meshy.errorI2dNoImage')
 	if (
 		meshyTaskFamily.value === 'multi-image-to-3d' &&
 		!connectedImageUrls.value.length &&
 		!multiImageText.value.trim()
 	)
-		return '请至少提供一张参考图'
+		return t('nodes.meshy.errorM2INoImage')
 	return ''
 })
 const canGenerate = computed(() => !generateDisabledReason.value)
 
 const generateButtonText = computed(() => {
-	if (taskStatus.value === 'pending') return '排队中…'
-	if (taskStatus.value === 'running') return '执行中…'
-	if (unsupportedReason.value) return '待接入'
-	if (taskStatus.value === 'succeeded') return '重新执行'
-	return '启动任务'
+	if (taskStatus.value === 'pending') return t('nodes.meshy.queuing')
+	if (taskStatus.value === 'running') return t('nodes.meshy.running')
+	if (unsupportedReason.value) return t('nodes.meshy.pending')
+	if (taskStatus.value === 'succeeded') return t('nodes.meshy.reExecute')
+	return t('nodes.meshy.startTask')
 })
 
 const canTextureFollowup = computed(
@@ -1235,23 +1235,23 @@ const canPullOutput = computed(
 const canRestartAsNewTask = computed(
 	() => !!taskId.value && taskStatus.value !== 'pending' && taskStatus.value !== 'running'
 )
-const textureFollowupLabel = computed(() => (hasTextureChild.value ? '再次贴图' : '生成贴图'))
+const textureFollowupLabel = computed(() => (hasTextureChild.value ? t('nodes.meshy.textureAgain') : t('nodes.meshy.generateTexture')))
 const textureFollowupHint = computed(() => {
-	if (relationKind.value !== 'model') return '当前节点已不是裸模型阶段。'
-	if (taskStatus.value !== 'succeeded') return '需要先生成基础模型后才能继续贴图。'
-	if (!taskId.value) return '缺少基础模型任务 ID。'
-	return '基于当前模型任务继续发起贴图子任务。'
+	if (relationKind.value !== 'model') return t('nodes.meshy.textureHintNotBase')
+	if (taskStatus.value !== 'succeeded') return t('nodes.meshy.textureHintNotSucceeded')
+	if (!taskId.value) return t('nodes.meshy.textureHintNoId')
+	return t('nodes.meshy.textureHintReady')
 })
 
 const actionHint = computed(() => {
 	if (taskStatus.value === 'failed')
-		return String(settings.value?.meshyErrorMessage ?? '任务失败，请调整参数后重试。')
+		return String(settings.value?.meshyErrorMessage ?? t('nodes.meshy.actionHintFailed'))
 	if (unsupportedReason.value) return unsupportedReason.value
 	if (relationKind.value === 'texture')
-		return '当前节点已进入贴图阶段，下游模型节点会优先使用贴图结果。'
+		return t('nodes.meshy.actionHintTexture')
 	return meshyTaskTarget.value === 'image'
-		? '运行前会校验 out-image 是否已连接到下游图片输入。'
-		: '运行前会校验 out-model 是否已连接到下游模型/资源输入。'
+		? t('nodes.meshy.actionHintImage')
+		: t('nodes.meshy.actionHint3d')
 })
 
 const updateSettings = (patch: Partial<WorkflowMeshyNodeSettings>) =>

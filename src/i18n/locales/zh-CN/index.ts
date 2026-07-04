@@ -26,11 +26,39 @@ import aichatErrors from './aichat/errors.json'
 import aichatMessages from './aichat/messages.json'
 import aichatNodeChat from './aichat/nodeChat.json'
 import aichatNodeChatParams from './aichat/nodeChatParams.json'
+import aichatDock from './aichat/dock.json'
+import aiworkflowNodeSearch from './aiworkflow/nodeSearch.json'
+import aiworkflowSelectionToolbar from './aiworkflow/selectionToolbar.json'
+import resourcesPanel from './resources/panel.json'
 import tasksVideo from './tasks/video.json'
 import tasksMeshy from './tasks/meshy.json'
 import tasksArk from './tasks/ark.json'
 import tasksLog from './tasks/log.json'
 import aiConfigNodeChat from './aiConfig/nodeChat.json'
+import nodesText from './nodes/text.json'
+import nodesTextMerge from './nodes/textMerge.json'
+import nodesImage from './nodes/image.json'
+import nodesVideo from './nodes/video.json'
+import nodesStory from './nodes/story.json'
+import nodesModel3d from './nodes/model3d.json'
+import nodesComfyui from './nodes/comfyui.json'
+import nodesMeshy from './nodes/meshy.json'
+import nodesSceneUnderstanding from './nodes/sceneUnderstanding.json'
+import nodesSceneDecompose from './nodes/sceneDecompose.json'
+import nodesSceneLayout from './nodes/sceneLayout.json'
+import nodesUnreal from './nodes/unreal.json'
+import nodesRotateImage from './nodes/rotateImage.json'
+import nodesImageMarkup from './nodes/imageMarkup.json'
+import nodesTagEditor from './nodes/tagEditor.json'
+import uiPreview from './ui/preview.json'
+import aiworkflowPerfMonitor from './aiworkflow/perfMonitor.json'
+import aiworkflowToastMessages from './aiworkflow/toastMessages.json'
+import aiConfigMeshModes from './aiConfig/meshModes.json'
+import aiConfigWatermark from './aiConfig/watermark.json'
+import aiConfigSceneElements from './aiConfig/sceneElements.json'
+import aiworkflowScenePreview from './aiworkflow/scenePreview.json'
+import aiworkflowRuntime from './aiworkflow/runtime.json'
+import aiworkflowPage from './aiworkflow/page.json'
 
 const messages = {
 	...common,
@@ -52,6 +80,8 @@ const messages = {
 	...aiworkflowNodeBase,
 	...aiworkflowContextMenu,
 	...aiworkflowInspector,
+	...aiworkflowNodeSearch,
+	...aiworkflowSelectionToolbar,
 	...nodesTypes,
 	...aichatDialog,
 	...aichatTools,
@@ -60,11 +90,37 @@ const messages = {
 	...aichatMessages,
 	...aichatNodeChat,
 	...aichatNodeChatParams,
+	...aichatDock,
+	...resourcesPanel,
 	...tasksVideo,
 	...tasksMeshy,
 	...tasksArk,
 	...tasksLog,
 	...aiConfigNodeChat,
+	...nodesText,
+	...nodesTextMerge,
+	...nodesImage,
+	...nodesVideo,
+	...nodesStory,
+	...nodesModel3d,
+	...nodesComfyui,
+	...nodesMeshy,
+	...nodesSceneUnderstanding,
+	...nodesSceneDecompose,
+	...nodesSceneLayout,
+	...nodesUnreal,
+	...nodesRotateImage,
+	...nodesImageMarkup,
+	...nodesTagEditor,
+	...uiPreview,
+	...aiworkflowPerfMonitor,
+	...aiworkflowToastMessages,
+	...aiConfigMeshModes,
+	...aiConfigWatermark,
+	...aiConfigSceneElements,
+	...aiworkflowScenePreview,
+	...aiworkflowRuntime,
+	...aiworkflowPage,
 }
 
 const locale: LocalePackage = {

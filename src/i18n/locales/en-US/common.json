@@ -41,5 +41,11 @@
   "common.clear": "Clear",
   "common.copy": "Copy",
   "common.stop": "Stop",
-  "common.start": "Start"
+  "common.start": "Start",
+  "common.enabled": "Enabled",
+  "common.disabled": "Disabled",
+  "common.connected": "Connected",
+  "common.disconnected": "Disconnected",
+  "common.image": "Image",
+  "common.video": "Video"
 }

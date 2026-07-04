@@ -11,6 +11,7 @@
 import { ref, shallowRef, computed, watch, onBeforeUnmount } from 'vue'
 import type { ScreenshotCacheEntry } from '../node-screenshot'
 import { CanvasScreenshotPool, CanvasWarmupCoordinator } from '../node-screenshot'
+import { t } from '../../../i18n'
 
 export interface UseAIWorkflowCanvasScreenshotOptions {
 	/** 最大Bitmap数量，默认500 */
@@ -81,7 +82,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 			onComplete: () => {
 				isWarmingUp.value = false
 				warmupProgress.value = 1
-				warmupDetail.value = '预热完成'
+				warmupDetail.value = t('aiworkflow.toast.warmupComplete')
 			},
 			onError: (error, nodeId) => {
 				warmupErrors.value.push({ nodeId, error: error.message })
@@ -125,14 +126,14 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 
 		if (entries.length === 0) {
 			warmupProgress.value = 1
-			warmupDetail.value = '没有需要预热的截图'
+			warmupDetail.value = t('aiworkflow.toast.noWarmupNeeded')
 			onProgress?.(1, warmupDetail.value)
 			return
 		}
 
 		isWarmingUp.value = true
 		warmupProgress.value = 0
-		warmupDetail.value = `准备预热 ${entries.length} 个截图...`
+		warmupDetail.value = t('aiworkflow.toast.warmupPreparing', { count: entries.length })
 		onProgress?.(0, warmupDetail.value)
 
 		warmupCoordinator.reset()
@@ -140,7 +141,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		const restoreCallbacks = onProgress
 			? warmupCoordinator.wrapCallbacks(
 					(p, d) => onProgress(p, d),
-					() => onProgress?.(1, '预热完成')
+					() => onProgress?.(1, t('aiworkflow.toast.warmupComplete'))
 				)
 			: undefined
 
@@ -184,7 +185,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		if (newEntries.length === 0) return
 
 		isWarmingUp.value = true
-		warmupDetail.value = `预热 ${newEntries.length} 个新截图...`
+		warmupDetail.value = t('aiworkflow.toast.warmupInProgress', { count: newEntries.length })
 
 		warmupCoordinator.addBatch(
 			newEntries.map(entry => ({
@@ -294,7 +295,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 	const cancelPending = () => {
 		warmupCoordinator?.cancelAllPending()
 		isWarmingUp.value = false
-		warmupDetail.value = '已取消预热'
+		warmupDetail.value = t('aiworkflow.toast.warmupCancelled')
 	}
 
 	// 重试失败的预热

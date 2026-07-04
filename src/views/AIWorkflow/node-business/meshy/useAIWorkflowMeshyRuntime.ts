@@ -1,4 +1,5 @@
 import { isRecord, isString } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type {
 	MeshyComfyService,
 	MeshyStoreLike,
@@ -577,8 +578,8 @@ export const useAIWorkflowMeshyRuntime = (options: {
 					meshyPollErrorCounts.set(nodeId, nextCount)
 					if (nextCount >= 4) {
 						stopMeshyPoll(nodeId)
-						commitMeshyTaskFailed(nodeId, currentNode, 'Meshy 状态连续获取失败')
-						options.pushToast('Meshy 状态连续获取失败，请稍后重试。', 'warn')
+						commitMeshyTaskFailed(nodeId, currentNode, t('tasks.meshy.pollStatusFailedConsecutive'))
+						options.pushToast(t('tasks.meshy.pollStatusFailedConsecutiveToast'), 'warn')
 					}
 					return
 				}
@@ -591,16 +592,16 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						const finalTarget = String(mode).includes('image') ? 'image' : '3d'
 						if (finalStatus === 'succeeded') {
 							options.pushToast(
-								finalTarget === 'image' ? 'Meshy 图片任务完成。' : 'Meshy 3D 模型生成完成。',
+								finalTarget === 'image' ? t('tasks.meshy.imageTaskCompleted') : t('tasks.meshy.model3dTaskCompleted'),
 								'info'
 							)
 						} else if (finalStatus === 'failed') {
 							options.pushToast(
-								finalTarget === 'image' ? 'Meshy 图片任务失败。' : 'Meshy 3D 模型生成失败。',
+								finalTarget === 'image' ? t('tasks.meshy.imageTaskFailed') : t('tasks.meshy.model3dTaskFailed'),
 								'warn'
 							)
 						} else {
-							options.pushToast('Meshy 任务已取消。', 'warn')
+							options.pushToast(t('tasks.meshy.taskCanceled'), 'warn')
 						}
 					}
 					stopMeshyPoll(nodeId)
@@ -611,8 +612,8 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				if (nextCount >= 4) {
 					stopMeshyPoll(nodeId)
 					const currentNodeForFail = getNodeFromStore(nodeId)
-					commitMeshyTaskFailed(nodeId, currentNodeForFail, 'Meshy 状态获取异常')
-					options.pushToast('Meshy 状态获取异常，已停止轮询。', 'warn')
+					commitMeshyTaskFailed(nodeId, currentNodeForFail, t('tasks.meshy.pollStatusException'))
+					options.pushToast(t('tasks.meshy.pollStatusExceptionToast'), 'warn')
 				}
 			}
 		}
@@ -639,7 +640,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			const taskId = getNodeMeshyTaskId(node)
 			const taskFamily = getNodeMeshyTaskFamily(node)
 			if (!taskId) {
-				commitMeshyTaskFailed(nodeId, node, '任务ID丢失，无法恢复')
+				commitMeshyTaskFailed(nodeId, node, t('tasks.meshy.taskIdLostCannotRecover'))
 				continue
 			}
 
@@ -647,7 +648,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				const res = await options.getComfyService().meshyTask(taskId, taskFamily)
 				if (!res.ok) {
 					if (!opts?.silent) {
-						options.pushToast(`节点「${node.alias || node.title || nodeId}」Meshy任务查询失败`, 'warn')
+						options.pushToast(t('aiworkflow.toast.meshyQueryFailed', { name: node.alias || node.title || nodeId }), 'warn')
 					}
 					continue
 				}
@@ -658,7 +659,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				}
 			} catch {
 				if (!opts?.silent) {
-					options.pushToast(`节点「${node.alias || node.title || nodeId}」Meshy任务恢复失败`, 'warn')
+					options.pushToast(t('aiworkflow.toast.meshyResumeFailed', { name: node.alias || node.title || nodeId }), 'warn')
 				}
 			}
 		}

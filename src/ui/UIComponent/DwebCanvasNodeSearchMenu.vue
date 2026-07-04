@@ -22,7 +22,7 @@
 						<nav
 							class="dweb-add-node-modal__sidebar-tabs"
 							role="tablist"
-							aria-label="节点分类"
+							:aria-label="categoryAriaLabel"
 							@mouseleave="onTabsMouseLeave"
 						>
 							<button
@@ -117,11 +117,11 @@
 					<!-- Right content area -->
 					<div class="dweb-add-node-modal__content">
 						<header class="dweb-add-node-modal__header">
-							<h2 class="dweb-add-node-modal__title">{{ dialogTitle }}</h2>
+							<h2 class="dweb-add-node-modal__title">{{ resolvedDialogTitle }}</h2>
 							<button
 								type="button"
 								class="dweb-add-node-modal__close"
-								:aria-label="closeLabel"
+								:aria-label="resolvedCloseLabel"
 								@click="emit('close')"
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true">
@@ -148,7 +148,7 @@
 								ref="searchInputEl"
 								v-model="query"
 								type="search"
-								:placeholder="searchPlaceholder"
+								:placeholder="resolvedSearchPlaceholder"
 								autocomplete="off"
 								spellcheck="false"
 							/>
@@ -157,7 +157,7 @@
 						<div class="dweb-add-node-modal__body custom-scrollbar-right">
 							<template v-if="hasSearch">
 								<div v-if="searchResults.length === 0" class="dweb-add-node-modal__empty">
-									{{ emptyHintSearch }}
+									{{ resolvedEmptyHintSearch }}
 								</div>
 								<button
 									v-for="item in searchResults"
@@ -190,10 +190,10 @@
 											<path d="M5.2 6.8L8 4l2.8 2.8" />
 											<path d="M3 12.8h10" />
 										</svg>
-										{{ uploadLabel }}
+										{{ resolvedUploadLabel }}
 									</span>
 									<span class="dweb-add-node-modal__item-desc">
-										{{ uploadDescription }}
+										{{ resolvedUploadDescription }}
 									</span>
 								</button>
 
@@ -203,7 +203,7 @@
 									"
 									class="dweb-add-node-modal__empty"
 								>
-									{{ emptyHintCategory }}
+									{{ resolvedEmptyHintCategory }}
 								</div>
 
 								<button
@@ -237,6 +237,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
 import type {
 	Newui2NodeCatalogCategory,
 	Newui2NodeCatalogItem,
@@ -246,6 +247,8 @@ import type {
 	Newui2NodeTopCategoryId,
 	DwebCanvasMenuNodeActionId
 } from './DwebCanvasMenu.types'
+
+const { t } = useI18n()
 
 const props = withDefaults(
 	defineProps<{
@@ -270,13 +273,13 @@ const props = withDefaults(
 		specialGroups: () => [],
 		uploadAccept:
 			'image/*,video/*,audio/*,.txt,.doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain',
-		dialogTitle: '添加节点',
-		closeLabel: '关闭',
-		searchPlaceholder: '搜索节点、类型或能力',
-		uploadLabel: '上传文件',
-		uploadDescription: '从本地选择图片、视频、音频或文本文件创建对应资源节点。',
-		emptyHintSearch: '没有匹配的节点',
-		emptyHintCategory: '该分类暂无节点'
+		dialogTitle: undefined,
+		closeLabel: undefined,
+		searchPlaceholder: undefined,
+		uploadLabel: undefined,
+		uploadDescription: undefined,
+		emptyHintSearch: undefined,
+		emptyHintCategory: undefined
 	}
 )
 
@@ -285,6 +288,15 @@ const emit = defineEmits<{
 	(e: 'close'): void
 	(e: 'upload-file', file: File): void
 }>()
+
+const resolvedDialogTitle = computed(() => props.dialogTitle ?? t('aiworkflow.nodeSearch.dialogTitle'))
+const resolvedCloseLabel = computed(() => props.closeLabel ?? t('aiworkflow.nodeSearch.closeLabel'))
+const resolvedSearchPlaceholder = computed(() => props.searchPlaceholder ?? t('aiworkflow.nodeSearch.searchPlaceholder'))
+const resolvedUploadLabel = computed(() => props.uploadLabel ?? t('aiworkflow.nodeSearch.uploadLabel'))
+const resolvedUploadDescription = computed(() => props.uploadDescription ?? t('aiworkflow.nodeSearch.uploadDescription'))
+const resolvedEmptyHintSearch = computed(() => props.emptyHintSearch ?? t('aiworkflow.nodeSearch.emptyHintSearch'))
+const resolvedEmptyHintCategory = computed(() => props.emptyHintCategory ?? t('aiworkflow.nodeSearch.emptyHintCategory'))
+const categoryAriaLabel = computed(() => t('aiworkflow.nodeSearch.categoryLabel'))
 
 const dialogEl = ref<HTMLElement | null>(null)
 const searchInputEl = ref<HTMLInputElement | null>(null)

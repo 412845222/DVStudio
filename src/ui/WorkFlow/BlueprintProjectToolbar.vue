@@ -301,7 +301,7 @@
 						type="button"
 						@click="emitThenClose('open-ark-task-panel')"
 					>
-						<span>字节方舟</span>
+						<span>{{ t('tasks.ark.volcArk') }}</span>
 					</button>
 				</template>
 			</section>

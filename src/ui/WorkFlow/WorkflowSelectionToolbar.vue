@@ -23,7 +23,7 @@
 					stroke-width="1.2"
 				/>
 			</svg>
-			复制
+			{{ t('aiworkflow.selectionToolbar.copy') }}
 		</button>
 		<button class="wf-toolbar-btn" type="button" @click="emit('paste')">
 			<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-toolbar-icon">
@@ -51,7 +51,7 @@
 					stroke-linejoin="round"
 				/>
 			</svg>
-			粘贴
+			{{ t('aiworkflow.selectionToolbar.paste') }}
 		</button>
 		<button class="wf-toolbar-btn wf-toolbar-btn--danger" type="button" @click="emit('delete')">
 			<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-toolbar-icon">
@@ -59,12 +59,16 @@
 				<path d="M3 5h10" stroke="currentColor" stroke-width="1.2" />
 				<path d="M6 5V3h4v2" fill="none" stroke="currentColor" stroke-width="1.2" />
 			</svg>
-			删除
+			{{ t('aiworkflow.selectionToolbar.delete') }}
 		</button>
 	</div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
+
 const props = defineProps<{ visible: boolean }>()
 
 const emit = defineEmits<{

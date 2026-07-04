@@ -1,5 +1,6 @@
 import { parseComfyWorkflowIO } from '../../../../aiworkflow/domain/comfyui/parseWorkflowIO'
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 
 export const useAIWorkflowComfyConnection = (payload: {
 	store: {
@@ -59,14 +60,14 @@ export const useAIWorkflowComfyConnection = (payload: {
 							comfyuiSettings: { workflows: wf.workflows }
 						})
 					} else {
-						payload.pushToast('读取工作流列表失败：' + (wf.error || 'unknown'), 'warn')
+						payload.pushToast(t('nodes.comfyui.listWorkflowsFailed', { error: wf.error || 'unknown' }), 'warn')
 						payload.store.commit('setNodeComfyUISettings', {
 							nodeId,
 							comfyuiSettings: { workflows: [] }
 						})
 					}
 				} catch (err: unknown) {
-					payload.pushToast('读取工作流列表失败：' + getErrorMessage(err), 'warn')
+					payload.pushToast(t('nodes.comfyui.listWorkflowsFailed', { error: getErrorMessage(err) }), 'warn')
 					payload.store.commit('setNodeComfyUISettings', {
 						nodeId,
 						comfyuiSettings: { workflows: [] }
@@ -77,7 +78,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 					nodeId,
 					comfyuiSettings: {
 						status: 'error',
-						message: res.error || '连接失败',
+						message: res.error || t('nodes.comfyui.getConnectionFailed'),
 						lastCheckedAt: Date.now()
 					}
 				})
@@ -105,7 +106,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 		try {
 			const res = await payload.comfyService.getWorkflow(baseUrl, workflowPath)
 			if (!res.ok) {
-				payload.pushToast('读取工作流失败：' + (res.error || 'unknown'), 'error')
+				payload.pushToast(t('nodes.comfyui.getWorkflowFailed', { error: res.error || 'unknown' }), 'error')
 				return
 			}
 			const { inputs, outputs, warnings } = parseComfyWorkflowIO(
@@ -123,7 +124,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 				comfyuiSettings: { workflowPath: res.workflowPath || workflowPath }
 			})
 		} catch (err: unknown) {
-			payload.pushToast('读取工作流失败：' + getErrorMessage(err), 'error')
+			payload.pushToast(t('nodes.comfyui.getWorkflowFailed', { error: getErrorMessage(err) }), 'error')
 		}
 	}
 

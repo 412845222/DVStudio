@@ -597,9 +597,9 @@ const filterTitle = computed(() => {
 		case 'all':
 			return t('tasks.ark.filterAll')
 		case 'seedream':
-			return `筛选：Seedream`
+			return t('tasks.ark.filterSeedream')
 		case 'seedance':
-			return `筛选：Seedance`
+			return t('tasks.ark.filterSeedance')
 		case 'jimeng':
 			return t('tasks.ark.filterJimeng')
 		case 'blueprintChat':

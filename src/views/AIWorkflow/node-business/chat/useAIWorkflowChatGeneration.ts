@@ -13,6 +13,7 @@ import { agentStream, agentAbort, type AgentStreamChunk } from '../../../../netw
 import { cliSendMessage, cliCancel, type CLIStreamChunk } from '../../../../network/CLIChatService'
 import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/utils'
 import { getChatModelById } from '../../../../ai/models/chatModels'
+import { t } from '../../../../i18n'
 
 type LocalExecSessionCreateResult = {
 	id?: unknown
@@ -351,8 +352,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 		const nodeTypeStats: Record<string, number> = {}
 		for (const n of nodes) {
-			const t = String(n.type || 'unknown')
-			nodeTypeStats[t] = (nodeTypeStats[t] || 0) + 1
+			const nodeType = String(n.type || 'unknown')
+			nodeTypeStats[nodeType] = (nodeTypeStats[nodeType] || 0) + 1
 		}
 
 		const nodeSummaries = nodes.slice(0, 50).map((n) => ({
@@ -457,7 +458,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		apiSource: string = 'deepseek',
 		thinkingEffort: 'disabled' | 'low' | 'medium' | 'high' = 'medium'
 	) => {
-		setTaskStatus('AI 任务：Agent 正在思考…')
+		setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
 		let receivedDone = false
 		let receivedError = false
 
@@ -492,28 +493,28 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 	})) {
 			if (chunk.type === 'done') {
 				receivedDone = true
-				setTaskStatus('AI 任务：完成')
+				setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
 				break
 			}
 			if (chunk.type === 'error') {
 				receivedError = true
 				payload.chatRunState.value = 'error'
-				setTaskStatus('AI 任务：错误')
-				payload.pushToast('Agent 对话失败：' + chunk.message, 'warn')
+				setTaskStatus(t('aiworkflow.toast.aiTaskError'))
+				payload.pushToast(t('aiworkflow.toast.agentChatFailed', { error: chunk.message }), 'warn')
 				break
 			}
 			if (chunk.type === 'text') {
 				updateAssistantMessageContent(assistantMsgId, (prev) => prev + chunk.content)
-				setTaskStatus('AI 任务：Agent 正在生成回复…')
+				setTaskStatus(t('aiworkflow.toast.aiTaskGenerating'))
 				continue
 			}
 			if (chunk.type === 'thinking_delta') {
 				updateAssistantMessageThinking(assistantMsgId, (prev) => prev + chunk.content)
-				setTaskStatus('AI 任务：Agent 正在思考…')
+				setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
 				continue
 			}
 			if (chunk.type === 'thought') {
-				setTaskStatus('AI 任务：Agent 正在思考…')
+				setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
 				continue
 			}
 			if (chunk.type === 'context_usage') {
@@ -528,12 +529,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					status: 'running',
 					args: chunk.input
 				})
-				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				setTaskStatus(t('aiworkflow.toast.aiTaskCallingTool', { tool: chunk.tool }))
 				pushAgentFlow({
 					id: tcId,
 					kind: 'skill',
 					title: `Tool · ${chunk.tool}`,
-					detail: '调用中…',
+					detail: t('aiworkflow.toast.aiTaskToolCalling'),
 					status: 'pending',
 					source: 'copilot-cli',
 				})
@@ -549,7 +550,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					id: tcId,
 					kind: 'skill',
 					title: `Tool · ${chunk.tool}`,
-					detail: '完成',
+					detail: t('aiworkflow.toast.aiTaskToolComplete'),
 					status: 'completed',
 					source: 'copilot-cli',
 				})
@@ -565,7 +566,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					id: tcId,
 					kind: 'skill',
 					title: `Tool · ${chunk.tool}`,
-					detail: '失败',
+					detail: t('aiworkflow.toast.aiTaskToolFailed'),
 					status: 'failed',
 					source: 'copilot-cli',
 				})
@@ -579,12 +580,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					status: 'running',
 					args: chunk.input
 				})
-				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				setTaskStatus(t('aiworkflow.toast.aiTaskCallingTool', { tool: chunk.tool }))
 				pushAgentFlow({
 					id: tcId,
 					kind: 'skill',
 					title: `Tool · ${chunk.tool}`,
-					detail: '调用中…',
+					detail: t('aiworkflow.toast.aiTaskToolCalling'),
 					status: 'pending',
 					source: 'copilot-cli',
 				})
@@ -600,7 +601,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					id: tcId,
 					kind: 'skill',
 					title: `Tool · ${chunk.tool}`,
-					detail: '完成',
+					detail: t('aiworkflow.toast.aiTaskToolComplete'),
 					status: 'completed',
 					source: 'copilot-cli',
 				})
@@ -611,7 +612,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		const finalText =
 			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
 		if (!String(finalText).trim() && !receivedError && !receivedDone) {
-			payload.pushToast('Agent 返回为空，请重试。', 'warn')
+			payload.pushToast(t('aiworkflow.toast.aiTaskEmptyResponse'), 'warn')
 		}
 		if (finalText) {
 			const choices = extractChoicesFromText(finalText)
@@ -626,7 +627,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		history: Array<{ role: string; content: string }>,
 		assistantMsgId: string
 	) => {
-		setTaskStatus('AI 任务：CLI 适配器正在执行…')
+		setTaskStatus(t('aiworkflow.toast.aiTaskCliExecuting'))
 		let receivedDone = false
 		let receivedError = false
 
@@ -636,28 +637,28 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		})) {
 			if (chunk.type === 'done') {
 				receivedDone = true
-				setTaskStatus('AI 任务：完成')
+				setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
 				break
 			}
 			if (chunk.type === 'error') {
 				receivedError = true
 				payload.chatRunState.value = 'error'
-				setTaskStatus('AI 任务：错误')
-				payload.pushToast('CLI 对话失败：' + chunk.message, 'warn')
+				setTaskStatus(t('aiworkflow.toast.aiTaskError'))
+				payload.pushToast(t('aiworkflow.toast.cliChatFailed', { error: chunk.message }), 'warn')
 				break
 			}
 			if (chunk.type === 'text') {
 				updateAssistantMessageContent(assistantMsgId, (prev) => prev + chunk.content)
-				setTaskStatus('AI 任务：CLI 正在生成回复…')
+				setTaskStatus(t('aiworkflow.toast.aiTaskCliGenerating'))
 				continue
 			}
 			if (chunk.type === 'tool_call') {
-				setTaskStatus(`AI 任务：正在调用工具 ${chunk.tool}…`)
+				setTaskStatus(t('aiworkflow.toast.aiTaskCallingTool', { tool: chunk.tool }))
 				pushAgentFlow({
 					id: `cli-tool-${chunk.tool}-${Date.now()}`,
 					kind: 'skill',
 					title: `CLI Tool · ${chunk.tool}`,
-					detail: '调用中…',
+					detail: t('aiworkflow.toast.aiTaskToolCalling'),
 					status: 'pending',
 					source: 'copilot-cli',
 				})
@@ -668,7 +669,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					id: `cli-tool-${chunk.tool}-${Date.now()}`,
 					kind: 'skill',
 					title: `CLI Tool · ${chunk.tool}`,
-					detail: '完成',
+					detail: t('aiworkflow.toast.aiTaskToolComplete'),
 					status: 'completed',
 					source: 'copilot-cli',
 				})
@@ -679,7 +680,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		const finalText =
 			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
 		if (!String(finalText).trim() && !receivedError && !receivedDone) {
-			payload.pushToast('CLI 返回为空，请重试。', 'warn')
+			payload.pushToast(t('aiworkflow.toast.cliEmptyResponse'), 'warn')
 		}
 	}
 
@@ -712,13 +713,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		const raw = String(input ?? '')
 			.replace(/\r/g, '\n')
 			.trim()
-		if (!raw) return '本地执行异常，请重试。'
+		if (!raw) return t('aiworkflow.toast.localExecError')
 		const lines = raw
 			.split('\n')
 			.map((line) => line.trim())
 			.filter(Boolean)
 		const cleaned = lines.filter((line) => !DEBUGGER_NOISE_RE.some((re) => re.test(line))).join(' ')
-		return cleaned || '本地执行异常，请重试。'
+		return cleaned || t('aiworkflow.toast.localExecError')
 	}
 
 	const parseLocalExecSlashCommand = (raw: string) => {
@@ -811,7 +812,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		activeAbortController = abortController
 		payload.chatSending.value = true
 		payload.chatRunState.value = 'sending'
-		setTaskStatus('AI 任务：正在准备请求…')
+		setTaskStatus(t('aiworkflow.toast.aiTaskPreparing'))
 		try {
 			const svc = payload.getChatService()
 
@@ -831,9 +832,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						projectId = await payload.ensureProjectId({ silent: true })
 					}
 					if (projectId == null) {
-						payload.pushToast('无法启动 Copilot CLI：自动保存项目失败。', 'warn')
+						payload.pushToast(t('aiworkflow.toast.aiTaskAutoSaveFail'), 'warn')
 						payload.chatRunState.value = 'error'
-						setTaskStatus('AI 任务：启动失败')
+						setTaskStatus(t('aiworkflow.toast.aiTaskStartFailed'))
 						return
 					}
 
@@ -842,7 +843,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					const createSession = svc.localExecCreateSession ?? svc.codexCreateSession
 					const streamMessage = svc.localExecStreamMessage ?? svc.codexStreamMessage
 					if (!sessionId) {
-						setTaskStatus('AI 任务：正在创建会话…')
+						setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
 						const created = await createSession({
 							title: content.slice(0, 24),
 							model: payload.chatModelId.value,
@@ -858,7 +859,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						payload.codexSessions.value = [
 							{
 								id: sessionId,
-								title: getStringField(created, 'title').trim() || 'Copilot CLI 会话',
+								title: getStringField(created, 'title').trim() || t('aiworkflow.toast.copilotSession'),
 								status: getStringField(created, 'status') || 'active',
 								modelName: getStringField(created, 'model_name') || payload.chatModelId.value || '',
 								source: 'copilot-cli'
@@ -869,12 +870,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 					pushLocalExecFlow({
 						kind: 'session',
-						title: '会话已就绪',
+						title: t('aiworkflow.toast.sessionReadyTitle'),
 						detail: sessionId,
 						status: 'completed',
 						source: 'copilot-cli'
 					})
-					setTaskStatus('AI 任务：会话已就绪，开始执行…')
+					setTaskStatus(t('aiworkflow.toast.aiTaskSessionReady'))
 
 					let receivedAssistantDone = false
 					let receivedTurnDone = false
@@ -898,17 +899,17 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							const errMsgRaw = String(ev.error?.message ?? 'unknown')
 							const isAborted = abortController.signal.aborted || /abort/i.test(errMsgRaw)
 							if (isAborted) {
-								setTaskStatus('AI 任务：已停止')
+								setTaskStatus(t('aiworkflow.toast.aiTaskStopped'))
 								break
 							}
 							const errMsg = normalizeChatErrorMessage(errMsgRaw)
 							receivedError = true
 							payload.chatRunState.value = 'error'
-							setTaskStatus('AI 任务：错误')
-							payload.pushToast('Copilot CLI 对话失败：' + errMsg, 'warn')
+							setTaskStatus(t('aiworkflow.toast.aiTaskError'))
+							payload.pushToast(t('aiworkflow.toast.copilotCliFailed', { error: errMsg }), 'warn')
 							pushLocalExecFlow({
 								kind: 'error',
-								title: '流式错误',
+								title: t('aiworkflow.toast.streamErrorTitle'),
 								detail: errMsg,
 								status: 'failed',
 								source: 'copilot-cli'
@@ -925,7 +926,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							if (delta) {
 								updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
 							}
-							setTaskStatus('AI 任务：正在生成回复…')
+							setTaskStatus(t('aiworkflow.toast.aiTaskGenerating'))
 							continue
 						}
 
@@ -936,14 +937,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							if (doneText) {
 								updateAssistantMessageContent(assistantMsg.id, () => doneTextRaw)
 							}
-							setTaskStatus('AI 任务：回复已生成')
+							setTaskStatus(t('aiworkflow.toast.responseGenerated'))
 							continue
 						}
 
 						if (name === 'plan_update') {
 							pushLocalExecFlow({
 								kind: 'plan',
-								title: '计划更新',
+								title: t('aiworkflow.toast.planUpdateTitle'),
 								detail: getStringField(data, 'explanation'),
 								status: 'completed',
 								source: 'copilot-cli'
@@ -956,11 +957,11 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							const mcpServers = getArrayField(data, 'active_mcp_servers', isUnknown)
 							const skillCount = skills.length
 							const mcpCount = mcpServers.length
-							setTaskStatus('AI 任务：正在加载运行时上下文…')
+							setTaskStatus(t('aiworkflow.toast.aiTaskLoadingContext'))
 							pushLocalExecFlow({
 								kind: 'runtime',
 								title:
-									payload.localExecStreamMode.value === 'mock' ? '测试运行时上下文' : '运行时上下文',
+									payload.localExecStreamMode.value === 'mock' ? t('aiworkflow.toast.mockRuntimeContext') : t('aiworkflow.runtime.runtimeContextTitle'),
 								detail: `skills ${skillCount} · mcp ${mcpCount}`,
 								status: 'completed',
 								source: 'copilot-cli'
@@ -971,7 +972,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						if (name === 'skill_call') {
 							const skillName = getStringField(data, 'name').trim() || 'skill'
 							const skillStatusRaw = getStringField(data, 'status').trim().toLowerCase()
-							setTaskStatus(`AI 任务：正在调用技能 ${skillName}…`)
+							setTaskStatus(t('aiworkflow.toast.aiTaskSkill', { name: skillName }))
 							pushLocalExecFlow({
 								kind: 'skill',
 								title: `Skill · ${skillName}`,
@@ -985,10 +986,10 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 						if (name === 'command_started') {
 							const command = hasKey(data, 'command') ? data.command : ''
-							setTaskStatus('AI 任务：正在执行命令…')
+							setTaskStatus(t('aiworkflow.toast.aiTaskCommand'))
 							pushLocalExecFlow({
 								kind: 'command',
-								title: '命令开始',
+								title: t('aiworkflow.toast.commandStartTitle'),
 								detail: Array.isArray(command) ? command.join(' ') : String(command || ''),
 								status: 'pending',
 								messageId: getStringField(data, 'message_id'),
@@ -999,11 +1000,11 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						}
 
 						if (name === 'command_completed') {
-							setTaskStatus('AI 任务：命令完成，继续处理中…')
+							setTaskStatus(t('aiworkflow.toast.aiTaskCommandComplete'))
 							const cmdStatus = getStringField(data, 'status')
 							pushLocalExecFlow({
 								kind: 'command',
-								title: '命令完成',
+								title: t('aiworkflow.toast.commandCompleteTitle'),
 								detail: cmdStatus || 'completed',
 								status: cmdStatus.toLowerCase() === 'completed' ? 'completed' : 'failed',
 								messageId: getStringField(data, 'message_id'),
@@ -1017,8 +1018,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							const changes = getArrayField(data, 'changes', isUnknown)
 							pushLocalExecFlow({
 								kind: 'fileChange',
-								title: '文件变更准备',
-								detail: String(changes.length) + ' 项',
+								title: t('aiworkflow.toast.fileChangePrepareTitle'),
+								detail: t('aiworkflow.toast.aiTaskFileChangeCount', { count: changes.length }),
 								status: 'pending',
 								messageId: getStringField(data, 'message_id'),
 								source: 'copilot-cli',
@@ -1031,8 +1032,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							const changes = getArrayField(data, 'changes', isUnknown)
 							pushLocalExecFlow({
 								kind: 'fileChange',
-								title: '文件变更',
-								detail: String(changes.length) + ' 项',
+								title: t('aiworkflow.toast.fileChangeTitle'),
+								detail: t('aiworkflow.toast.aiTaskFileChangeCount', { count: changes.length }),
 								status: 'completed',
 								messageId: getStringField(data, 'message_id'),
 								source: 'copilot-cli',
@@ -1045,7 +1046,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							const requestId = getStringField(data, 'request_id')
 							pushLocalExecFlow({
 								kind: 'approval',
-								title: '等待审批',
+								title: t('aiworkflow.toast.approvalWaitTitle'),
 								detail: requestId || 'request',
 								status: 'pending',
 								messageId: getStringField(data, 'message_id'),
@@ -1060,11 +1061,11 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							const errMsg = normalizeChatErrorMessage(getStringField(data, 'message') || 'unknown')
 							receivedError = true
 							payload.chatRunState.value = 'error'
-							setTaskStatus('AI 任务：错误')
-							payload.pushToast('Copilot CLI 错误：' + errMsg, 'warn')
+							setTaskStatus(t('aiworkflow.toast.aiTaskError'))
+							payload.pushToast(t('aiworkflow.toast.copilotCliFailed', { error: errMsg }), 'warn')
 							pushLocalExecFlow({
 								kind: 'error',
-								title: '执行错误',
+								title: t('aiworkflow.toast.execErrorTitle'),
 								detail: errMsg,
 								status: 'failed',
 								source: 'copilot-cli'
@@ -1074,13 +1075,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 						if (name === 'turn_done') {
 							receivedTurnDone = true
-							setTaskStatus('AI 任务：完成')
+							setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
 							continue
 						}
 					}
 
 					if (abortController.signal.aborted) {
-						setTaskStatus('AI 任务：已停止')
+						setTaskStatus(t('aiworkflow.toast.aiTaskStopped'))
 						return
 					}
 
@@ -1088,7 +1089,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						payload.chatMessages.value.find((message) => message.id === assistantMsg.id)?.content ||
 						''
 					if (!String(finalAssistantText).trim() && !receivedError) {
-						payload.pushToast('Copilot CLI 返回为空，请重试。', 'warn')
+						payload.pushToast(t('aiworkflow.toast.copilotCliEmpty'), 'warn')
 					}
 					return
 				}
@@ -1100,7 +1101,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					return
 				}
 
-				payload.pushToast('未知的 Agent 后端类型', 'warn')
+				payload.pushToast(t('aiworkflow.toast.aiTaskUnknownBackend'), 'warn')
 				payload.chatSending.value = false
 				payload.chatRunState.value = 'idle'
 				return
@@ -1110,8 +1111,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				if (ev.type === 'done') break
 				if (ev.type === 'error') {
 					payload.chatRunState.value = 'error'
-					setTaskStatus('AI 任务：错误')
-					payload.pushToast('AI 对话失败：' + String(ev.error?.message ?? 'unknown'), 'warn')
+					setTaskStatus(t('aiworkflow.toast.aiTaskError'))
+					payload.pushToast(t('aiworkflow.toast.aiChatFailed', { error: String(ev.error?.message ?? 'unknown') }), 'warn')
 					break
 				}
 				if (ev.type === 'msg') {
@@ -1122,26 +1123,24 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						if (delta) {
 							updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
 						}
-						setTaskStatus('AI 任务：正在生成回复…')
+						setTaskStatus(t('aiworkflow.toast.aiTaskGenerating'))
 						continue
 					}
 					if (message.type === 'agentToUi/taskStatus') {
 						const msgPayload = isRecord(message.payload) ? message.payload : {}
 						const phase = getStringField(msgPayload, 'phase')
 						const text = hasKey(msgPayload, 'message') ? msgPayload.message : ''
-						setTaskStatus(
-							'AI 任务：' +
-								String(typeof text === 'string' && text.trim() ? text.trim() : phase || '处理中')
-						)
+						const progressText = String(typeof text === 'string' && text.trim() ? text.trim().slice(0, 40) : phase || '...')
+						setTaskStatus(t('aiworkflow.toast.aiTaskProgress', { text: progressText }))
 						continue
 					}
 					if (message.type === 'agentToUi/error') {
 						const msgPayload = isRecord(message.payload) ? message.payload : {}
 						const text = hasKey(msgPayload, 'message') ? msgPayload.message : 'unknown'
 						payload.chatRunState.value = 'error'
-						setTaskStatus('AI 任务：错误')
+						setTaskStatus(t('aiworkflow.toast.aiTaskError'))
 						payload.pushToast(
-							'AI 对话失败：' + String(typeof text === 'string' ? text : 'unknown'),
+							t('aiworkflow.toast.aiChatFailed', { error: String(typeof text === 'string' ? text : 'unknown') }),
 							'warn'
 						)
 						break
@@ -1152,18 +1151,18 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			const finalAssistantText =
 				payload.chatMessages.value.find((message) => message.id === assistantMsg.id)?.content || ''
 			if (!String(finalAssistantText).trim()) {
-				payload.pushToast('AI 返回为空，请重试。', 'warn')
+				payload.pushToast(t('aiworkflow.toast.aiTaskEmptyResponse'), 'warn')
 			}
 		} catch (err: unknown) {
 			const errMsgRaw = getErrorMessage(err)
 			const aborted = abortController.signal.aborted || /abort/i.test(errMsgRaw)
 			if (aborted) {
-				setTaskStatus('AI 任务：已停止')
+				setTaskStatus(t('aiworkflow.toast.aiTaskStopped'))
 			} else {
 				const errMsg = normalizeChatErrorMessage(errMsgRaw)
 				payload.chatRunState.value = 'error'
-				setTaskStatus('AI 任务：错误')
-				payload.pushToast('AI 对话失败：' + errMsg, 'warn')
+				setTaskStatus(t('aiworkflow.toast.aiTaskError'))
+				payload.pushToast(t('aiworkflow.toast.aiChatFailed', { error: errMsg }), 'warn')
 			}
 		} finally {
 			if (activeAbortController === abortController) activeAbortController = null
@@ -1175,7 +1174,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 	const onStop = () => {
 		if (!payload.chatSending.value) return
 		payload.chatRunState.value = 'stopping'
-		setTaskStatus('AI 任务：正在停止…')
+		setTaskStatus(t('aiworkflow.toast.aiTaskStopping'))
 		activeAbortController?.abort()
 	}
 
@@ -1209,7 +1208,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 		const sendingStartAt = Date.now()
 		payload.chatSending.value = true
-		payload.nanoStatus.value = '准备中…'
+		payload.nanoStatus.value = t('aiworkflow.toast.aiTaskNanoPreparing')
 		payload.nanoBilling.value = ''
 		payload.nanoModelUsed.value = ''
 		payload.nanoDetail.value = ''
@@ -1230,7 +1229,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		payload.nanoPreviewDownloadProgresses.value = Array.from({ length: requestCount }, () => 100)
 		payload.nanoPreviewLocalReadyStates.value = Array.from({ length: requestCount }, () => true)
 		payload.nanoPreviewLoadingStates.value = Array.from({ length: requestCount }, () => true)
-		payload.nanoStatus.value = `并发请求中（0/${requestCount}）`
+		payload.nanoStatus.value = t('aiworkflow.toast.aiTaskNanoConcurrency', { done: 0, total: requestCount })
 		try {
 			const svc = payload.getChatService()
 
@@ -1262,14 +1261,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
 				if (!isImageSource) {
 					payload.pushToast(
-						`图片生成参考图仅支持连接「图片节点/旋转图片节点」输出（当前：${fromNode.type}）。`,
+						t('aiworkflow.toast.imageRefNodeType', { type: fromNode.type }),
 						'warn'
 					)
 					continue
 				}
 				let url = payload.nodeResourceUrl(fromNode)
 				if (!url) {
-					payload.pushToast('图片生成参考图来源节点缺少图片资源。', 'warn')
+					payload.pushToast(t('aiworkflow.toast.imageRefNoResource'), 'warn')
 					continue
 				}
 				const nameBase =
@@ -1379,7 +1378,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			const isJimengImageModel = selectedImageModel.startsWith('jimeng-image-')
 			const isMeshyModel = selectedImageModel === 'meshy'
 			const imageEngineLabel = isJimengImageModel
-				? '即梦图片'
+				? t('aiworkflow.toast.jimengImage')
 				: isSeedreamModel
 					? 'Seedream'
 					: isMeshyModel
@@ -1389,11 +1388,11 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			let completedCount = 0
 			let failedCount = 0
 			const updateProgressStatus = () => {
-				payload.nanoStatus.value = `并发请求中（${completedCount}/${requestCount}）`
+				payload.nanoStatus.value = t('aiworkflow.toast.aiTaskNanoConcurrency', { done: completedCount, total: requestCount })
 				if (completedCount >= requestCount) {
 					const successCount = requestCount - failedCount
 					payload.nanoStatus.value =
-						failedCount > 0 ? `完成（成功 ${successCount}，失败 ${failedCount}）` : '完成'
+						failedCount > 0 ? t('aiworkflow.toast.aiTaskNanoComplete', { success: successCount, failed: failedCount }) : t('aiworkflow.toast.aiTaskComplete')
 				}
 			}
 
@@ -1426,8 +1425,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					if (res.ok) {
 						const taskId = String(res.taskId || '').trim()
 						if (taskId) {
-							appendNanoDetail(`Meshy 任务已创建：${taskId}`)
-							payload.nanoStatus.value = `任务已创建（${taskId}）`
+							appendNanoDetail(t('aiworkflow.runtime.meshyTaskCreated', { taskId }))
+							payload.nanoStatus.value = t('aiworkflow.runtime.nanoTaskCreated', { taskId })
 
 							const pollStatus = async () => {
 								const taskRes = await svc.meshyTask(taskId, taskType)
@@ -1437,7 +1436,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 										.toUpperCase()
 									const progress = Number(taskRes.progress || 0)
 									payload.nanoStatus.value =
-										status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
+										status === 'SUCCEEDED' ? t('aiworkflow.runtime.statusSucceeded') : t('aiworkflow.runtime.statusProgress', { status, progress: String(progress) })
 
 									if (status === 'SUCCEEDED') {
 										const imageUrl =
@@ -1451,9 +1450,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 											payload.nanoModelUsed.value = selectedMeshyAiModel
 										}
 									} else if (status === 'FAILED') {
-										const errorMsg = String(taskRes.errorMessage || '未知错误')
-										payload.pushToast(`Meshy 生成失败：${errorMsg}`, 'warn')
-										appendNanoDetail(`错误：${errorMsg}`)
+										const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
+										payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errorMsg }), 'warn')
+										appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errorMsg }))
 									} else if (status !== 'CANCELED') {
 										setTimeout(pollStatus, 2000)
 									}
@@ -1462,9 +1461,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							pollStatus()
 						}
 					} else {
-						const errMsg = String(res.error || 'Meshy 请求失败')
-						payload.pushToast(`Meshy 生成失败：${errMsg}`, 'warn')
-						appendNanoDetail(`错误：${errMsg}`)
+						const errMsg = String(res.error || t('aiworkflow.runtime.meshyRequestFailed'))
+						payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errMsg }), 'warn')
+						appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
 					}
 					completedCount = 1
 					updateProgressStatus()
@@ -1474,8 +1473,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					if (res.ok) {
 						const taskId = String(res.taskId || '').trim()
 						if (taskId) {
-							appendNanoDetail(`Meshy 任务已创建：${taskId}`)
-							payload.nanoStatus.value = `任务已创建（${taskId}）`
+							appendNanoDetail(t('aiworkflow.runtime.meshyTaskCreated', { taskId }))
+							payload.nanoStatus.value = t('aiworkflow.runtime.nanoTaskCreated', { taskId })
 
 							const pollStatus = async () => {
 								const taskRes = await svc.meshyTask(taskId, taskType)
@@ -1485,7 +1484,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 										.toUpperCase()
 									const progress = Number(taskRes.progress || 0)
 									payload.nanoStatus.value =
-										status === 'SUCCEEDED' ? '完成' : `${status}（${progress}%）`
+										status === 'SUCCEEDED' ? t('aiworkflow.runtime.statusSucceeded') : t('aiworkflow.runtime.statusProgress', { status, progress: String(progress) })
 
 									if (status === 'SUCCEEDED') {
 										const imageUrl =
@@ -1499,9 +1498,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 											payload.nanoModelUsed.value = selectedMeshyAiModel
 										}
 									} else if (status === 'FAILED') {
-										const errorMsg = String(taskRes.errorMessage || '未知错误')
-										payload.pushToast(`Meshy 生成失败：${errorMsg}`, 'warn')
-										appendNanoDetail(`错误：${errorMsg}`)
+										const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
+										payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errorMsg }), 'warn')
+										appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errorMsg }))
 									} else if (status !== 'CANCELED') {
 										setTimeout(pollStatus, 2000)
 									}
@@ -1510,9 +1509,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							pollStatus()
 						}
 					} else {
-						const errMsg = String(res.error || 'Meshy 请求失败')
-						payload.pushToast(`Meshy 生成失败：${errMsg}`, 'warn')
-						appendNanoDetail(`错误：${errMsg}`)
+						const errMsg = String(res.error || t('aiworkflow.runtime.meshyRequestFailed'))
+						payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errMsg }), 'warn')
+						appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
 					}
 					completedCount = 1
 					updateProgressStatus()
@@ -1537,8 +1536,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				if (cacheRes.ok && Array.isArray(cacheRes.cacheIds)) {
 					cachedRefIds = cacheRes.cacheIds.map((v) => String(v || '')).filter(Boolean)
 				} else {
-					const warnMsg = '参考图缓存失败，已回退为直接上传。'
-					appendNanoDetail(`警告：${warnMsg}`)
+					const warnMsg = t('aiworkflow.runtime.refImageCacheFailedFallback')
+					appendNanoDetail(t('aiworkflow.runtime.warningPrefix', { msg: warnMsg }))
 					payload.pushToast(`${imageEngineLabel}：${warnMsg}`, 'warn')
 					useDirectRefUpload = true
 				}
@@ -1568,8 +1567,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						if (ev.type === 'error') {
 							const errMsg = String(ev.error?.message ?? 'unknown')
 							requestFailed = true
-							appendNanoDetail(`请求 ${requestNo} 错误：${errMsg}`)
-							payload.pushToast(`图片生成第 ${requestNo} 张失败：` + errMsg, 'warn')
+							appendNanoDetail(t('aiworkflow.runtime.requestError', { no: String(requestNo), error: errMsg }))
+							payload.pushToast(t('aiworkflow.toast.imageGenFailed', { no: requestNo, error: errMsg }), 'warn')
 							break
 						}
 
@@ -1625,8 +1624,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							const text = hasKey(msgPayload, 'message') ? msgPayload.message : 'unknown'
 							const errMsg = String(typeof text === 'string' ? text : 'unknown')
 							requestFailed = true
-							appendNanoDetail(`请求 ${requestNo} 错误：${errMsg}`)
-							payload.pushToast(`图片生成第 ${requestNo} 张失败：` + errMsg, 'warn')
+							appendNanoDetail(t('aiworkflow.runtime.requestError', { no: String(requestNo), error: errMsg }))
+							payload.pushToast(t('aiworkflow.toast.imageGenFailed', { no: requestNo, error: errMsg }), 'warn')
 							break
 						}
 					}
@@ -1643,9 +1642,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			await Promise.all(Array.from({ length: requestCount }, (_, idx) => runSingleRequest(idx)))
 		} catch (err: unknown) {
 			const errMsg = getErrorMessage(err)
-			payload.nanoStatus.value = '失败'
-			appendNanoDetail(`错误：${errMsg}`)
-			payload.pushToast('图片生成失败：' + errMsg, 'warn')
+			payload.nanoStatus.value = t('aiworkflow.runtime.statusFailed')
+			appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
+			payload.pushToast(t('aiworkflow.toast.imageGenerationFailed', { error: errMsg }), 'warn')
 		} finally {
 			const minShowMs = 900
 			const elapsed = Date.now() - sendingStartAt
@@ -1669,7 +1668,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 		const sendingStartAt = Date.now()
 		payload.chatSending.value = true
-		payload.nanoStatus.value = '准备中…'
+		payload.nanoStatus.value = t('aiworkflow.runtime.statusPreparing')
 		payload.nanoBilling.value = ''
 		payload.nanoModelUsed.value = ''
 		payload.nanoDetail.value = ''
@@ -1686,7 +1685,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			const svc = payload.getChatService()
 			const selectedModel = String(input?.config?.model ?? 'doubao-seedance-2-0-260128').trim()
 			const isJimengVideoModel = selectedModel.startsWith('jimeng-video-')
-			const videoEngineLabel = isJimengVideoModel ? '即梦视频' : 'Seedance'
+			const videoEngineLabel = isJimengVideoModel ? t('aiworkflow.toast.engineJimengVideo') : 'Seedance'
 			let observedSeedanceTaskId = ''
 
 			const anchorIndexFromId = (id: string) => {
@@ -1799,17 +1798,17 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			form.set('taskType', taskType)
 
 			if (isJimengVideoModel && refMode === 'recamera' && !hasRefs) {
-				const msg = '即梦运镜模式需要 1 张参考图。请先连接参考图后再生成。'
-				payload.nanoStatus.value = '参数错误'
-				appendNanoDetail(`错误：${msg}`)
+				const msg = t('aiworkflow.runtime.jimengRecameraNeedsRef')
+				payload.nanoStatus.value = t('aiworkflow.runtime.statusParamError')
+				appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg }))
 				payload.pushToast(msg, 'warn')
 				return
 			}
 
 			if (isJimengVideoModel && isJimengPro && refFiles.length > 1) {
-				const msg = '即梦 3.0 Pro 当前仅支持 1 张首帧参考图。'
-				payload.nanoStatus.value = '参数错误'
-				appendNanoDetail(`错误：${msg}`)
+				const msg = t('aiworkflow.runtime.jimengProOnlyOneFirstFrame')
+				payload.nanoStatus.value = t('aiworkflow.runtime.statusParamError')
+				appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg }))
 				payload.pushToast(msg, 'warn')
 				return
 			}
@@ -1817,14 +1816,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			if (isJimengVideoModel) {
 				const modeText =
 					refMode === 'first'
-						? '首帧'
+						? t('aiworkflow.runtime.jimengModeFirst')
 						: refMode === 'first-last'
-							? '首尾帧'
+							? t('aiworkflow.runtime.jimengModeFirstLast')
 							: refMode === 'recamera'
-								? '运镜'
+								? t('aiworkflow.runtime.jimengModeRecamera')
 								: refMode === 'reference'
-									? '参考图'
-									: '自动'
+									? t('aiworkflow.runtime.jimengModeReference')
+									: t('aiworkflow.runtime.jimengModeAuto')
 				const effectiveCount = !hasRefs
 					? 0
 					: refMode === 'recamera'
@@ -1835,14 +1834,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 								? Math.min(2, refFiles.length)
 								: Math.min(referenceCount, refFiles.length)
 				appendNanoDetail(
-					`即梦参考图策略：${modeText}（输入 ${refFiles.length} 张，生效 ${effectiveCount} 张）`
+					t('aiworkflow.runtime.jimengRefStrategy', { mode: modeText, input: String(refFiles.length), effective: String(effectiveCount) })
 				)
 				if (refMode === 'first-last' && refFiles.length > 2) {
 					appendNanoDetail(
-						'提示：首尾帧模式最多使用 2 张参考图；若需超过 2 张请切换到"自动/参考图"模式。'
+						t('aiworkflow.runtime.jimengFirstLastTip')
 					)
 				}
-				if (!hasRefs) appendNanoDetail('即梦模式：当前为纯文本生视频（无参考图）')
+				if (!hasRefs) appendNanoDetail(t('aiworkflow.runtime.jimengTextToVideoMode'))
 			}
 
 			if (!isJimengVideoModel) {
@@ -1896,7 +1895,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					const errMsg = String(ev.error?.message ?? 'unknown')
 					payload.nanoStatus.value = '失败'
 					appendNanoDetail(`错误：${errMsg}`)
-					payload.pushToast(videoEngineLabel + ' 生成失败：' + errMsg, 'warn')
+					payload.pushToast(t('aiworkflow.toast.videoEngineGenFailed', { engine: videoEngineLabel, error: errMsg }), 'warn')
 					break
 				}
 				const message = ev.message
@@ -1957,7 +1956,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					const text = getStringField(msgPayload, 'message') ?? 'unknown'
 					payload.nanoStatus.value = '失败'
 					appendNanoDetail(`错误：${text}`)
-					payload.pushToast(videoEngineLabel + ' 生成失败：' + text, 'warn')
+					payload.pushToast(t('aiworkflow.toast.videoEngineGenFailed', { engine: videoEngineLabel, error: text }), 'warn')
 					break
 				}
 			}
@@ -1965,7 +1964,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			const errMsg = getErrorMessage(err)
 			payload.nanoStatus.value = '失败'
 			appendNanoDetail(`错误：${errMsg}`)
-			payload.pushToast('视频生成失败：' + errMsg, 'warn')
+			payload.pushToast(t('aiworkflow.toast.videoGenerationFailed', { error: errMsg }), 'warn')
 		} finally {
 			const minShowMs = 900
 			const elapsed = Date.now() - sendingStartAt

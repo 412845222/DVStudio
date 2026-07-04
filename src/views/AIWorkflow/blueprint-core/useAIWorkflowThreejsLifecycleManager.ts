@@ -4,6 +4,7 @@ import type {
 	WorkflowThreePreviewProgressPayload,
 	WorkflowThreePreviewState
 } from '../../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
+import { t } from '../../../i18n'
 
 type InternalPreviewState = WorkflowThreePreviewState & {
 	activatedOnce?: boolean
@@ -88,7 +89,7 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		current.phase = 'loading'
 		current.canStart = true
 		current.progress = 0.04
-		current.label = '准备渲染资源'
+		current.label = t('aiworkflow.toast.preparingRenderResources')
 		current.requestId = (Number(current.requestId) || 0) + 1
 	}
 
@@ -214,12 +215,12 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		const current = stateMap.value[targetId]
 		if (!current || targetId !== activeNodeId.value) return
 		current.activatedOnce = true
-		if (current.phase === 'interactive' && current.progress === 1 && current.label === '渲染已就绪')
+		if (current.phase === 'interactive' && current.progress === 1)
 			return
 		current.phase = 'interactive'
 		current.canStart = true
 		current.progress = 1
-		current.label = '渲染已就绪'
+		current.label = t('aiworkflow.toast.renderReady')
 		const exportState = exportStateMap.get(targetId)
 		if (exportState) syncExportState(exportState, current)
 	}

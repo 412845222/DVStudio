@@ -6,6 +6,7 @@ import type {
 } from '../../../../aiworkflow/types'
 import { ComfyUIBridgeService, type MeshyTaskResponse } from '../../../../network/ComfyUIBridgeService'
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 
 export type NodeGenerationApiDeps = {
 	store: Store<WorkflowState>
@@ -49,6 +50,21 @@ export type NodeGenerationApiDepsAny = NodeGenerationApiDeps
 
 const makeTaskId = () =>
 	`node-gen-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+class FatalTaskError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'FatalTaskError'
+	}
+}
+
+const throwFatal = (message: string): never => {
+	throw new FatalTaskError(message)
+}
+
+const isFatalError = (err: unknown): boolean => {
+	return err instanceof FatalTaskError
+}
 
 const getComfyService = (deps: NodeGenerationApiDeps) => {
 	if (deps.comfyService) return deps.comfyService
@@ -351,7 +367,7 @@ const handleMeshySuccess = async (
 			appendResult(deps, generationTaskId, {
 				kind: 'image',
 				url: outputSummary.preferredUrl || resolved,
-				label: 'Meshy 图片'
+				label: t('aiworkflow.runtime.meshyImageLabel')
 			})
 		}
 	}
@@ -363,7 +379,7 @@ const handleMeshySuccess = async (
 				taskId,
 				taskStatus: 'succeeded',
 				progress: 100,
-				statusText: 'Meshy 图片生成完成',
+				statusText: t('aiworkflow.runtime.meshyImageComplete'),
 				outputSummary
 			}
 		}
@@ -371,7 +387,7 @@ const handleMeshySuccess = async (
 
 	updateTask(deps, generationTaskId, {
 		status: 'completed',
-		statusText: `Meshy 图片生成完成（共 ${imageUrls.length} 张）`,
+		statusText: t('aiworkflow.runtime.meshyImageCompleteCount', { count: String(imageUrls.length) }),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -395,13 +411,13 @@ const handleMeshyTaskStatus = async (
 		appendDetail(
 			deps,
 			generationTaskId,
-			`轮询失败（状态码: ${taskRes.status}）：${taskRes.error}`
+			t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) })
 		)
 		console.warn('[Meshy Poll] 轮询失败:', errorDetails)
 
 		if (taskRes.status === 502) {
-			appendDetail(deps, generationTaskId, `502 Bad Gateway - 后端服务可能暂时不可用，将重试`)
-			pushToast(deps, 'Meshy 服务暂时不可用，正在重试...', 'warn')
+			appendDetail(deps, generationTaskId, t('aiworkflow.runtime.poll502Retry'))
+			pushToast(deps, t('aiworkflow.toast.meshyRetryUnavailable'), 'warn')
 		}
 		return PollingAction.CONTINUE
 	}
@@ -413,7 +429,7 @@ const handleMeshyTaskStatus = async (
 	const progressPct = Math.min(95, Math.max(20, progress))
 
 	updateTask(deps, generationTaskId, {
-		statusText: `Meshy ${taskType} ${status}（${progress}%）`,
+		statusText: t('aiworkflow.runtime.meshyTaskStatus', { taskType, status, progress: String(progress) }),
 		progress: progressPct
 	})
 
@@ -423,12 +439,12 @@ const handleMeshyTaskStatus = async (
 			return PollingAction.STOP
 
 		case 'FAILED': {
-			const errorMsg = String(taskRes.errorMessage || '未知错误')
-			throw new Error(`Meshy 任务失败：${errorMsg}`)
+			const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
+			return throwFatal(t('aiworkflow.runtime.meshyTaskFailed', { error: errorMsg }))
 		}
 
 		case 'CANCELED':
-			throw new Error('Meshy 任务已取消')
+			return throwFatal(t('aiworkflow.runtime.meshyTaskCanceled'))
 
 		default:
 			return PollingAction.CONTINUE
@@ -460,7 +476,7 @@ const createPollingController = async <T>(
 			}
 		} catch (err: unknown) {
 			const errMsg = getErrorMessage(err)
-			if (errMsg.includes('失败') || errMsg.includes('取消')) {
+			if (isFatalError(err)) {
 				throw err
 			}
 
@@ -477,14 +493,14 @@ const createPollingController = async <T>(
 			appendDetail(
 				deps,
 				generationTaskId,
-				`轮询异常（第${i + 1}次，连续${consecutiveErrors}次）：${errMsg}`
+				t('aiworkflow.runtime.pollException', { attempt: String(i + 1), consecutive: String(consecutiveErrors), error: errMsg })
 			)
 			console.error('[Meshy Poll] 轮询异常:', errorDetails)
 
 			if (consecutiveErrors >= 5) {
 				pushToast(
 					deps,
-					`Meshy 轮询连续失败${consecutiveErrors}次，请检查网络连接或后端服务状态。`,
+					t('aiworkflow.runtime.meshyPollConsecutiveFailures', { count: String(consecutiveErrors) }),
 					'warn'
 				)
 			}
@@ -495,7 +511,7 @@ const createPollingController = async <T>(
 		}
 	}
 
-	throw new Error('Meshy 任务超时')
+	throwFatal(t('aiworkflow.runtime.meshyTaskTimeout'))
 }
 
 /**
@@ -531,7 +547,7 @@ const createTask = (payload: WorkflowNodeChatSubmitPayload): WorkflowNodeGenerat
 	nodeId: payload.nodeId,
 	nodeType: payload.nodeType,
 	status: 'submitting',
-	statusText: '正在提交任务…',
+	statusText: t('aiworkflow.runtime.submittingTask'),
 	progress: 5,
 	startedAt: Date.now(),
 	results: [],
@@ -552,12 +568,12 @@ export const runNodeGenerationTask = async (
 ): Promise<NodeGenerationResult> => {
 	const node = deps.store.state.nodesById[payload.nodeId]
 	if (!node) {
-		pushToast(deps, '未找到对应节点，无法发起生成任务。', 'error')
-		return { ok: false, error: '未找到对应节点' }
+		pushToast(deps, t('aiworkflow.toast.nodeNotFound'), 'error')
+		return { ok: false, error: t('aiworkflow.runtime.nodeNotFound') }
 	}
 	if (!payload.prompt.trim() && payload.nodeType !== 'model3d') {
-		pushToast(deps, '请先填写提示词再发起生成。', 'warn')
-		return { ok: false, error: '提示词为空' }
+		pushToast(deps, t('aiworkflow.toast.promptRequired'), 'warn')
+		return { ok: false, error: t('aiworkflow.runtime.promptEmpty') }
 	}
 
 	const task = createTask(payload)
@@ -590,13 +606,12 @@ export const runNodeGenerationTask = async (
 				}
 			} else {
 				runModel3dStub(deps, task, payload)
-				return { ok: false, error: '不支持的 3D 生成提供商' }
+				return { ok: false, error: t('aiworkflow.runtime.unsupported3dProvider') }
 			}
 		}
 		return { ok: true, taskType: 'other' }
 	} catch (err: unknown) {
 		const raw = getErrorMessage(err)
-		// 典型的浏览器网络错误（后端未启、CORS 被拒、或断网）给出更明确的中文提示。
 		const looksLikeNetworkError =
 			/Failed to fetch/i.test(raw) ||
 			/NetworkError/i.test(raw) ||
@@ -605,27 +620,27 @@ export const runNodeGenerationTask = async (
 			/Failed to connect/i.test(raw) ||
 			/ECONNREFUSED/i.test(raw)
 		const message = looksLikeNetworkError
-			? `后端不可达（${raw}）。Electron 环境下请使用 IPC 调用，无需 HTTP 后端。`
+			? t('aiworkflow.runtime.backendUnreachable', { error: raw })
 			: raw
 		appendDetail(deps, task.id, message)
 		updateTask(deps, task.id, {
 			status: 'error',
-			statusText: `失败：${message}`,
+			statusText: t('aiworkflow.runtime.failedStatus', { message }),
 			errorMessage: message,
 			finishedAt: Date.now()
 		})
-		pushToast(deps, `${labelForType(payload.nodeType)}生成失败：${message}`, 'error')
+		pushToast(deps, t('aiworkflow.toast.generationFailed', { type: labelForType(payload.nodeType), message }), 'error')
 		return { ok: false, error: message }
 	} finally {
 		deps.store.commit('setNodeChatSubmitting', { submitting: false })
 	}
 }
 
-const labelForType = (t: WorkflowNodeGenerationTask['nodeType']) => {
-	if (t === 'text') return '文本'
-	if (t === 'image') return '图片'
-	if (t === 'video') return '视频'
-	return '3D 模型'
+const labelForType = (nodeType: WorkflowNodeGenerationTask['nodeType']) => {
+	if (nodeType === 'text') return t('aiworkflow.toast.nodeTypeText')
+	if (nodeType === 'image') return t('aiworkflow.toast.nodeTypeImage')
+	if (nodeType === 'video') return t('aiworkflow.toast.nodeTypeVideo')
+	return t('aiworkflow.toast.nodeTypeModel3d')
 }
 
 const runTextTask = async (
@@ -636,10 +651,10 @@ const runTextTask = async (
 	const svc = getComfyService(deps)
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: '正在调用文本模型（字节方舟 Doubao）…',
+		statusText: t('aiworkflow.runtime.callingTextModel'),
 		progress: 15
 	})
-	appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
 	// Default provider is "bytedance" (Doubao). User params may override to "deepseek".
 	const params = payload.params ?? {}
@@ -665,7 +680,7 @@ const runTextTask = async (
 		}
 	}
 	if (refImages.length > 0) {
-		appendDetail(deps, task.id, `参考图数量：${refImages.length}`)
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
 	}
 
 	let accumulated = ''
@@ -691,7 +706,7 @@ const runTextTask = async (
 				if (delta) accumulated += delta
 				updateTask(deps, task.id, {
 					progress: Math.min(75, task.progress + 2),
-					statusText: '文本模型正在生成内容…'
+					statusText: t('aiworkflow.runtime.textModelGenerating')
 				})
 				continue
 			}
@@ -708,8 +723,8 @@ const runTextTask = async (
 	} catch (err: unknown) {
 		// Fallback: attempt simple non-streaming endpoint to keep the node task observable.
 		const fallbackMsg = getErrorMessage(err)
-		appendDetail(deps, task.id, `流式调用失败：${fallbackMsg}`)
-		updateTask(deps, task.id, { status: 'running', statusText: '尝试失败回退…' })
+		appendDetail(deps, task.id, t('aiworkflow.runtime.streamCallFailed', { error: fallbackMsg }))
+		updateTask(deps, task.id, { status: 'running', statusText: t('aiworkflow.runtime.fallbackAttempt') })
 		try {
 			const plain = await (svc as ComfyUIBridgeService).blueprintChat({
 				content: String(body.content ?? ''),
@@ -724,19 +739,19 @@ const runTextTask = async (
 					: ''
 			if (text) accumulated = text
 		} catch (fallbackErr: unknown) {
-			appendDetail(deps, task.id, `兜底请求失败：${getErrorMessage(fallbackErr)}`)
+			appendDetail(deps, task.id, t('aiworkflow.runtime.fallbackRequestFailed', { error: getErrorMessage(fallbackErr) }))
 			throw err
 		}
 	}
 
 	const finalText = accumulated.trim()
-	if (!finalText) throw new Error('文本模型返回为空')
+	if (!finalText) throw new Error(t('aiworkflow.runtime.textModelEmpty'))
 	appendResult(deps, task.id, { kind: 'text', url: '', label: finalText.slice(0, 80) })
 	if (typeof deps.bindTextResultToNode === 'function')
 		deps.bindTextResultToNode(payload.nodeId, finalText)
 	updateTask(deps, task.id, {
 		status: 'completed',
-		statusText: '文本生成完成',
+		statusText: t('aiworkflow.runtime.textGenerationComplete'),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -752,11 +767,11 @@ const runImageTask = async (
 	const { kind, model } = normalizeImageModel(params)
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: `正在调用图片模型（${kind}）…`,
+		statusText: t('aiworkflow.runtime.callingImageModel', { kind }),
 		progress: 15
 	})
-	appendDetail(deps, task.id, `模型：${model}`)
-	appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailModel', { model }))
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
@@ -785,8 +800,8 @@ const runImageTask = async (
 		if (seedreamNegativePrompt) form.set('negativePrompt', seedreamNegativePrompt)
 		if (Number.isFinite(seedreamSeed) && seedreamSeed >= 0) form.set('seed', String(Math.floor(seedreamSeed)))
 
-		appendDetail(deps, task.id, `Seedream 型号：${seedreamModelVersion}`)
-		appendDetail(deps, task.id, `分辨率：${seedreamSize}，宽高比：${seedreamAspectRatio}`)
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailSeedreamModel', { model: seedreamModelVersion }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailResolution', { size: seedreamSize, ratio: seedreamAspectRatio }))
 	} else {
 		if (typeof params.aspectRatio === 'string' && params.aspectRatio)
 			form.set('aspectRatio', params.aspectRatio)
@@ -812,8 +827,8 @@ const runImageTask = async (
 		const meshyQuantity = Number(params?.meshyOutputImageCount ?? 1)
 		const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
 
-		appendDetail(deps, task.id, `Meshy 模式：${taskType}`)
-		appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailMeshyMode', { mode: taskType }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: meshyAiModel }))
 
 		try {
 			// 构建 Meshy API 请求体
@@ -836,7 +851,7 @@ const runImageTask = async (
 				meshyPayload.seed = meshySeed
 			}
 
-			updateTask(deps, task.id, { statusText: `正在创建 Meshy ${taskType} 任务…`, progress: 20 })
+			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.creatingMeshyTask', { taskType }), progress: 20 })
 
 			// 如果有参考图，需要先上传或转换为 URL
 			if (hasRefImages) {
@@ -849,11 +864,11 @@ const runImageTask = async (
 				}
 				const createRes = await svc.meshyGenerateImage(refForm)
 				if (!createRes.ok) {
-					throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
+					throw new Error(String(createRes.error || t('aiworkflow.runtime.meshyTaskCreateFailed')))
 				}
 				const taskId = String(createRes.taskId || '').trim()
-				if (!taskId) throw new Error('Meshy 返回空任务 ID')
-				appendDetail(deps, task.id, `任务已创建：${taskId}`)
+				if (!taskId) throw new Error(t('aiworkflow.runtime.meshyEmptyTaskId'))
+				appendDetail(deps, task.id, t('aiworkflow.runtime.detailTaskCreated', { taskId }))
 
 				// 标记图片节点的 imageGenerationSource 为 meshy，使任务面板能找到该节点
 				deps.store.commit('setNodeImageSettings', {
@@ -865,7 +880,7 @@ const runImageTask = async (
 							taskStatus: 'pending',
 							taskFamily: taskType,
 							progress: 20,
-							statusText: `Meshy ${taskType} 任务已创建`
+							statusText: t('aiworkflow.runtime.meshyTaskCreatedStatus', { taskType })
 						}
 					}
 				})
@@ -875,11 +890,11 @@ const runImageTask = async (
 			} else {
 				const createRes = await svc.meshyGenerate(meshyPayload)
 				if (!createRes.ok) {
-					throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
+					throw new Error(String(createRes.error || t('aiworkflow.runtime.meshyTaskCreateFailed')))
 				}
 				const taskId = String(createRes.taskId || '').trim()
-				if (!taskId) throw new Error('Meshy 返回空任务 ID')
-				appendDetail(deps, task.id, `任务已创建：${taskId}`)
+				if (!taskId) throw new Error(t('aiworkflow.runtime.meshyEmptyTaskId'))
+				appendDetail(deps, task.id, t('aiworkflow.runtime.detailTaskCreated', { taskId }))
 
 				// 标记图片节点的 imageGenerationSource 为 meshy
 				deps.store.commit('setNodeImageSettings', {
@@ -891,7 +906,7 @@ const runImageTask = async (
 							taskStatus: 'pending',
 							taskFamily: taskType,
 							progress: 20,
-							statusText: `Meshy ${taskType} 任务已创建`
+							statusText: t('aiworkflow.runtime.meshyTaskCreatedStatus', { taskType })
 						}
 					}
 				})
@@ -903,10 +918,10 @@ const runImageTask = async (
 			return
 		} catch (err: unknown) {
 			const errMsg = getErrorMessage(err)
-			pushToast(deps, `Meshy 生成失败：${errMsg}`, 'error')
+			pushToast(deps, t('aiworkflow.toast.meshyGenerateFailed', { error: errMsg }), 'error')
 			updateTask(deps, task.id, {
 				status: 'error',
-				statusText: `失败：${errMsg}`,
+				statusText: t('aiworkflow.runtime.failedStatus', { message: errMsg }),
 				progress: 0,
 				finishedAt: Date.now()
 			})
@@ -956,15 +971,15 @@ const runImageTask = async (
 					bound = bindRet !== false
 				}
 				if (!bound) {
-					appendDetail(deps, task.id, '图片结果已返回，但导入本地资产失败，已跳过远程地址渲染。')
+					appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
 					continue
 				}
 				const resolved = deps.resolveBackendUrl(sourceUrl)
-				appendResult(deps, task.id, { kind: 'image', url: resolved, label: `图 ${produced + 1}` })
+				appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
 				produced += 1
 				updateTask(deps, task.id, {
 					status: 'running',
-					statusText: `已接收图片 ${produced} 张`,
+					statusText: t('aiworkflow.runtime.imagesReceived', { count: String(produced) }),
 					progress: Math.min(95, 40 + produced * 12)
 				})
 			}
@@ -989,10 +1004,10 @@ const runImageTask = async (
 		}
 	}
 
-	if (produced === 0) throw new Error('未接收到图片结果，请检查 API 配置与提示词')
+	if (produced === 0) throw new Error(t('aiworkflow.runtime.noImagesReceived'))
 	updateTask(deps, task.id, {
 		status: 'completed',
-		statusText: `图片生成完成（共 ${produced} 张）`,
+		statusText: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -1008,11 +1023,11 @@ const runVideoTask = async (
 	const { kind, model } = normalizeVideoModel(params)
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: `正在调用视频模型（${kind}）…`,
+		statusText: t('aiworkflow.runtime.callingVideoModel', { kind }),
 		progress: 20
 	})
-	appendDetail(deps, task.id, `模型：${model}`)
-	appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailModel', { model }))
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
@@ -1088,15 +1103,15 @@ const runVideoTask = async (
 						bound = bindRet !== false
 					}
 					if (!bound) {
-						appendDetail(deps, task.id, '视频结果已返回，但导入本地资产失败，已跳过远程地址渲染。')
+						appendDetail(deps, task.id, t('aiworkflow.runtime.videoImportFailed'))
 						continue
 					}
-					appendResult(deps, task.id, { kind: 'video', url, label: '视频结果' })
+					appendResult(deps, task.id, { kind: 'video', url, label: t('aiworkflow.runtime.videoResultLabel') })
 					produced += 1
 				}
 				updateTask(deps, task.id, {
 					status: produced > 0 ? 'completed' : 'running',
-					statusText: downloadStatus || (produced > 0 ? '视频结果已就绪' : '任务处理中…'),
+					statusText: downloadStatus || (produced > 0 ? t('aiworkflow.runtime.videoResultReady') : t('aiworkflow.runtime.taskProcessing')),
 					progress,
 					...(produced > 0 ? { finishedAt: Date.now() } : {})
 				})
@@ -1129,10 +1144,10 @@ const runVideoTask = async (
 		}
 	}
 
-	if (produced === 0) throw new Error('未接收到视频结果，请检查 API 配置与提示词')
+	if (produced === 0) throw new Error(t('aiworkflow.runtime.noVideosReceived'))
 	updateTask(deps, task.id, {
 		status: 'completed',
-		statusText: '视频生成完成',
+		statusText: t('aiworkflow.runtime.videoGenerationComplete'),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -1163,7 +1178,7 @@ const pollMeshy3DTaskStatus = async (
 				appendDetail(
 					deps,
 					generationTaskId,
-					`轮询失败（状态码: ${taskRes.status}）：${taskRes.error}`
+					t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) })
 				)
 				console.warn('[Meshy 3D Poll] 轮询失败:', {
 					status: taskRes.status,
@@ -1180,7 +1195,7 @@ const pollMeshy3DTaskStatus = async (
 			const progress = Number(taskRes.progress ?? 0)
 			const progressPct = status === 'SUCCEEDED' ? 100 : Math.min(99, Math.max(10, progress))
 
-			const statusText = `Meshy 3D ${taskMode} ${status}（${progress}%）`
+			const statusText = t('aiworkflow.runtime.meshy3dTaskStatus', { taskMode, status, progress: String(progress) })
 
 			updateTask(deps, generationTaskId, {
 				statusText,
@@ -1238,7 +1253,7 @@ const pollMeshy3DTaskStatus = async (
 				}
 
 				if (!finalModelUrl) {
-					throw new Error('Meshy 任务成功但未返回模型 URL')
+					return throwFatal(t('aiworkflow.runtime.meshyNoModelUrl'))
 				}
 
 				const resolvedUrl = deps.resolveBackendUrl(finalModelUrl)
@@ -1285,7 +1300,7 @@ const pollMeshy3DTaskStatus = async (
 					appendResult(deps, generationTaskId, {
 						kind: 'model3d',
 						url: persistedUrl,
-						label: `Meshy 3D 模型 (${finalFormat})`
+						label: t('aiworkflow.runtime.meshy3dModelLabel', { format: finalFormat })
 					})
 				}
 
@@ -1294,7 +1309,7 @@ const pollMeshy3DTaskStatus = async (
 					appendResult(deps, generationTaskId, {
 						kind: 'image',
 						url: resolvedThumb,
-						label: '模型预览图'
+						label: t('aiworkflow.runtime.modelPreviewLabel')
 					})
 				}
 
@@ -1314,11 +1329,11 @@ const pollMeshy3DTaskStatus = async (
 							taskFamily: taskMode,
 							progress: 100,
 							statusText: fetchSucceeded
-								? 'Meshy 3D 模型生成完成'
-								: 'Meshy 3D 模型生成完成，但拉取失败',
+								? t('aiworkflow.runtime.meshy3dComplete')
+								: t('aiworkflow.runtime.meshy3dCompleteFetchFailed'),
 							errorMessage: fetchSucceeded
 								? ''
-								: '模型文件拉取失败，请点击重试或在任务面板中手动拉取',
+								: t('aiworkflow.runtime.meshy3dFetchFailedMessage'),
 							outputSummary: {
 								preferredUrl: persistedUrl,
 								assetUrl: persistedUrl,
@@ -1332,8 +1347,8 @@ const pollMeshy3DTaskStatus = async (
 				updateTask(deps, generationTaskId, {
 					status: fetchSucceeded ? 'completed' : 'completed',
 					statusText: fetchSucceeded
-						? `Meshy 3D 模型生成完成`
-						: `Meshy 3D 模型生成完成，但拉取失败`,
+						? t('aiworkflow.runtime.meshy3dComplete')
+						: t('aiworkflow.runtime.meshy3dCompleteFetchFailed'),
 					progress: 100,
 					finishedAt: Date.now()
 				})
@@ -1341,16 +1356,16 @@ const pollMeshy3DTaskStatus = async (
 			}
 
 			if (status === 'FAILED') {
-				const errorMsg = String(taskRes.errorMessage || '未知错误')
-				throw new Error(`Meshy 3D 任务失败：${errorMsg}`)
+				const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
+				return throwFatal(t('aiworkflow.runtime.meshy3dTaskFailed', { error: errorMsg }))
 			}
 
 			if (status === 'CANCELED') {
-				throw new Error('Meshy 3D 任务已取消')
+				return throwFatal(t('aiworkflow.runtime.meshy3dTaskCanceled'))
 			}
 		} catch (err: unknown) {
 			const errMsg = getErrorMessage(err)
-			if (errMsg.includes('失败') || errMsg.includes('取消') || errMsg.includes('未返回模型 URL')) {
+			if (isFatalError(err)) {
 				throw err
 			}
 
@@ -1358,7 +1373,7 @@ const pollMeshy3DTaskStatus = async (
 			appendDetail(
 				deps,
 				generationTaskId,
-				`轮询异常（第${i + 1}次，连续${consecutiveErrors}次）：${errMsg}`
+				t('aiworkflow.runtime.pollException', { attempt: String(i + 1), consecutive: String(consecutiveErrors), error: errMsg })
 			)
 			console.error('[Meshy 3D Poll] 轮询异常:', {
 				message: errMsg,
@@ -1369,12 +1384,12 @@ const pollMeshy3DTaskStatus = async (
 			})
 
 			if (consecutiveErrors >= 10) {
-				throw new Error(`Meshy 3D 任务轮询连续失败 ${consecutiveErrors} 次，任务中止`)
+				return throwFatal(t('aiworkflow.runtime.meshy3dConsecutiveFailures', { count: String(consecutiveErrors) }))
 			}
 		}
 	}
 
-	throw new Error('Meshy 3D 任务超时（超过最大轮询次数）')
+	return throwFatal(t('aiworkflow.runtime.meshy3dTaskTimeout'))
 }
 
 const blobToBase64DataUri = async (blob: Blob): Promise<string> => {

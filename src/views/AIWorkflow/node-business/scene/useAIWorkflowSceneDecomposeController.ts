@@ -19,6 +19,7 @@ import {
 	uvCropToPixelRect
 } from '../../../../aiworkflow/imageCropEnforcer'
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 
 export const useAIWorkflowSceneDecomposeController = (options: {
 	store: {
@@ -65,17 +66,17 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 		if (!inputJson) {
 			options.store.commit('setNodeSceneDecomposeSettings', {
 				nodeId,
-				sceneDecomposeSettings: { status: 'error', message: '场景分解节点缺少 JSON 文本输入。' }
+				sceneDecomposeSettings: { status: 'error', message: t('aiworkflow.runtime.decomposeMissingJson') }
 			})
-			options.pushToast('场景分解节点缺少 JSON 文本输入。', 'warn')
+			options.pushToast(t('aiworkflow.runtime.decomposeMissingJson'), 'warn')
 			return
 		}
 		if (!imageInputs.length) {
 			options.store.commit('setNodeSceneDecomposeSettings', {
 				nodeId,
-				sceneDecomposeSettings: { status: 'error', message: '场景分解节点缺少参考图输入。' }
+				sceneDecomposeSettings: { status: 'error', message: t('aiworkflow.runtime.decomposeMissingImage') }
 			})
-			options.pushToast('场景分解节点缺少参考图输入。', 'warn')
+			options.pushToast(t('aiworkflow.runtime.decomposeMissingImage'), 'warn')
 			return
 		}
 
@@ -83,7 +84,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 			nodeId,
 			sceneDecomposeSettings: {
 				status: 'running',
-				message: '正在按 JSON 中的 sourceImageIndex 生成拆解对象…',
+				message: t('aiworkflow.runtime.decomposeProcessingBySourceIndex'),
 				inputJson,
 				lastRunAt: Date.now(),
 				outputs: []
@@ -98,13 +99,13 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					nodeId,
 					sceneDecomposeSettings: {
 						status: 'error',
-						message: 'JSON 中未找到可拆解的 objects 或 layoutItems 列表。',
+						message: t('aiworkflow.runtime.decomposeNoItemsFound'),
 						inputJson,
 						outputs: []
 					}
 				})
 				options.pushToast(
-					'场景分解失败：JSON 中未找到可拆解的 objects 或 layoutItems 列表。',
+					t('aiworkflow.runtime.decomposeFailed', { error: t('aiworkflow.runtime.decomposeNoItemsFound') }),
 					'warn'
 				)
 				return
@@ -117,7 +118,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					nodeId,
 					sceneDecomposeSettings: {
 						status: 'error',
-						message: 'JSON 中的对象均为结构壳体或缺少可拆解信息。',
+						message: t('aiworkflow.runtime.decomposeItemsStructuralOnly'),
 						inputJson,
 						outputs: [],
 						progress: 0,
@@ -127,7 +128,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 						fallbackCount: 0
 					}
 				})
-				options.pushToast('场景分解失败：没有可拆解的对象。', 'warn')
+				options.pushToast(t('aiworkflow.runtime.decomposeFailed', { error: t('aiworkflow.runtime.decomposeNoItemsToProcess') }), 'warn')
 				return
 			}
 
@@ -135,8 +136,8 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				nodeId,
 				sceneDecomposeSettings: {
 					status: 'running',
-					message: `正在处理 0 / ${totalTasks} 个拆解对象…`,
-					currentStep: '准备解析裁剪任务…',
+					message: t('aiworkflow.runtime.decomposeProcessingProgress', { completed: '0', total: String(totalTasks) }),
+					currentStep: t('aiworkflow.runtime.decomposePreparingCrop'),
 					progress: 0,
 					totalTasks,
 					completedTasks: 0,
@@ -168,13 +169,13 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				const objectName = inferSceneDecomposeObjectName(item, index)
 				const objectCategory = inferSceneDecomposeCategory(item)
 				const objectMaterial = String(item?.material ?? '').trim()
-				const taskLabel = `${objectName}（参考图 ${sourceImageIndex}）`
+				const taskLabel = t('aiworkflow.runtime.decomposeTaskLabel', { name: objectName, index: String(sourceImageIndex) })
 				options.store.commit('setNodeSceneDecomposeSettings', {
 					nodeId,
 					sceneDecomposeSettings: {
 						status: 'running',
-						message: `正在处理 ${completedTasks} / ${totalTasks} 个拆解对象…`,
-						currentStep: `正在裁剪 ${taskLabel}`,
+						message: t('aiworkflow.runtime.decomposeProcessingProgress', { completed: String(completedTasks), total: String(totalTasks) }),
+						currentStep: t('aiworkflow.runtime.decomposeCroppingItem', { label: taskLabel }),
 						progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
 						totalTasks,
 						completedTasks,
@@ -281,8 +282,8 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					nodeId,
 					sceneDecomposeSettings: {
 						status: 'running',
-						message: `正在处理 ${completedTasks} / ${totalTasks} 个拆解对象…`,
-						currentStep: `已完成 ${taskLabel}`,
+						message: t('aiworkflow.runtime.decomposeProcessingProgress', { completed: String(completedTasks), total: String(totalTasks) }),
+						currentStep: t('aiworkflow.runtime.decomposeCompletedItem', { label: taskLabel }),
 						progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 100,
 						totalTasks,
 						completedTasks,
@@ -300,7 +301,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					nodeId,
 					sceneDecomposeSettings: {
 						status: 'error',
-						message: '没有可生成的拆解对象，请检查图片输入、observedImageIndices 或裁切框信息。',
+						message: t('aiworkflow.runtime.decomposeNoGeneratableItems'),
 						inputJson,
 						outputs: [],
 						progress: totalTasks > 0 ? 100 : 0,
@@ -310,7 +311,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 						fallbackCount
 					}
 				})
-				options.pushToast('场景分解失败：没有可生成的拆解对象。', 'warn')
+				options.pushToast(t('aiworkflow.runtime.decomposeFailed', { error: t('aiworkflow.runtime.decomposeNoItemsToGenerate') }), 'warn')
 				return
 			}
 
@@ -320,8 +321,8 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				nodeId,
 				sceneDecomposeSettings: {
 					status: 'running',
-					message: `正在生成 ${outputs.length} 个拆解对象节点…`,
-					currentStep: '准备自动布线',
+					message: t('aiworkflow.runtime.decomposeGeneratingNodes', { count: String(outputs.length) }),
+					currentStep: t('aiworkflow.runtime.decomposePreparingAutowire'),
 					progress: 100,
 					totalTasks,
 					completedTasks,
@@ -336,7 +337,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 
 			const refreshedNode = options.store.state.nodesById[nodeId]
 			if (!refreshedNode || refreshedNode.type !== 'scene-decompose') {
-				options.pushToast('场景分解节点已失效，无法执行自动布线。', 'warn')
+				options.pushToast(t('aiworkflow.runtime.decomposeNodeInvalid'), 'warn')
 				return
 			}
 
@@ -351,8 +352,19 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 			const sceneLayoutConnections = Number(autoExpandResult.sceneLayoutConnections ?? 0)
 			const completedMessage =
 				skippedCount > 0
-					? `已拆解 ${outputs.length} 个对象，其中裁切 ${croppedCount} 个、整图回退 ${fallbackCount} 个，并跳过 ${skippedCount} 个无效对象。`
-					: `已拆解 ${outputs.length} 个对象，其中裁切 ${croppedCount} 个、整图回退 ${fallbackCount} 个，并自动创建 ${createdNodeIds.length} 个下游节点${sceneLayoutConnections > 0 ? `，回连 ${sceneLayoutConnections} 个场景布局模型输入` : ''}。`
+					? t('aiworkflow.runtime.decomposeCompletedWithSkip', {
+							count: String(outputs.length),
+							cropped: String(croppedCount),
+							fallback: String(fallbackCount),
+							skipped: String(skippedCount)
+						})
+					: t('aiworkflow.runtime.decomposeCompletedFull', {
+							count: String(outputs.length),
+							cropped: String(croppedCount),
+							fallback: String(fallbackCount),
+							nodes: String(createdNodeIds.length),
+							layoutMsg: sceneLayoutConnections > 0 ? t('aiworkflow.runtime.decomposeLayoutConnectionMessage', { count: String(sceneLayoutConnections) }) : ''
+						})
 
 			options.store.commit('setNodeSceneDecomposeSettings', {
 				nodeId,
@@ -360,7 +372,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					status: 'completed',
 					message: completedMessage,
 					progress: 100,
-					currentStep: '自动裁剪完成',
+					currentStep: t('aiworkflow.runtime.decomposeAutoCropComplete'),
 					totalTasks,
 					completedTasks,
 					croppedCount,
@@ -372,7 +384,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					lastExpandedCount: createdNodeIds.length
 				}
 			})
-			options.pushToast('场景分解已生成并展开。', 'info')
+			options.pushToast(t('aiworkflow.runtime.decomposeGeneratedExpanded'), 'info')
 
 			options.onAutoWireEnd?.()
 		} catch (err: unknown) {
@@ -386,7 +398,7 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					outputs: []
 				}
 			})
-			options.pushToast(`场景分解失败：${message}`, 'warn')
+			options.pushToast(t('aiworkflow.toast.sceneDecomposeFailed', { error: message }), 'warn')
 			options.onAutoWireEnd?.()
 		}
 	}

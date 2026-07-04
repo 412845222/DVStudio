@@ -1,14 +1,14 @@
 <template>
 	<div class="wf-resource-panel">
 		<div class="wf-resource-header">
-			<div class="wf-resource-title">资源管理器</div>
+			<div class="wf-resource-title">{{ t('resources.panel.title') }}</div>
 			<div class="wf-resource-actions">
 				<div class="wf-resource-view-switch">
 					<button
 						class="wf-resource-icon-btn"
 						:class="{ active: viewMode === 'grid' }"
 						type="button"
-						title="网格视图（大缩略图）"
+						:title="t('resources.panel.gridViewTitle')"
 						@click="viewMode = 'grid'"
 					>
 						<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
@@ -24,7 +24,7 @@
 						class="wf-resource-icon-btn"
 						:class="{ active: viewMode === 'list' }"
 						type="button"
-						title="列表视图（详细信息）"
+						:title="t('resources.panel.listViewTitle')"
 						@click="viewMode = 'list'"
 					>
 						<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
@@ -42,7 +42,7 @@
 					v-if="viewMode === 'grid'"
 					class="wf-resource-icon-btn"
 					type="button"
-					:title="thumbSize === 'sm' ? '缩略图：小' : '缩略图：大'"
+					:title="thumbSizeTitle"
 					@click="toggleThumbSize"
 				>
 					<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
@@ -63,7 +63,7 @@
 				<button
 					class="wf-resource-icon-btn"
 					type="button"
-					title="刷新并清理无缩略图记录"
+					:title="t('resources.panel.refreshTitle')"
 					@click="emitRefreshMissing"
 				>
 					<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
@@ -105,7 +105,7 @@
 						<path v-else d="M12 11l-2 2h4z" fill="currentColor" />
 					</svg>
 				</button>
-				<button class="wf-resource-btn" type="button" title="关闭" @click="emit('close')">x</button>
+				<button class="wf-resource-btn" type="button" :title="t('resources.panel.close')" @click="emit('close')">x</button>
 			</div>
 		</div>
 		<div ref="scrollBodyEl" class="wf-resource-body">
@@ -116,27 +116,27 @@
 						class="wf-resource-filter-btn"
 						:class="{ active: filterMode === 'all' }"
 						@click="onFilterChange('all')"
-						title="显示全部资源"
+						:title="t('resources.panel.filterAllTitle')"
 					>
-						全部
+						{{ t('resources.panel.filterAll') }}
 						<span class="wf-resource-filter-num">({{ counts.total }})</span>
 					</button>
 					<button
 						class="wf-resource-filter-btn"
 						:class="{ active: filterMode === 'used' }"
 						@click="onFilterChange('used')"
-						title="仅显示被节点引用的资源"
+						:title="t('resources.panel.filterUsedTitle')"
 					>
-						已使用
+						{{ t('resources.panel.filterUsed') }}
 						<span class="wf-resource-filter-num">({{ counts.used }})</span>
 					</button>
 					<button
 						class="wf-resource-filter-btn"
 						:class="{ active: filterMode === 'unused' }"
 						@click="onFilterChange('unused')"
-						title="仅显示未被引用的资源（可安全删除）"
+						:title="t('resources.panel.filterUnusedTitle')"
 					>
-						未使用
+						{{ t('resources.panel.filterUnused') }}
 						<span class="wf-resource-filter-num">({{ counts.unused }})</span>
 					</button>
 				</div>
@@ -168,16 +168,16 @@
 						v-model="searchKeyword"
 						class="wf-resource-search-input"
 						type="text"
-						placeholder="搜索资源名称..."
+						:placeholder="t('resources.panel.searchPlaceholder')"
 					/>
 				</div>
 			</div>
 
-			<div v-if="!resources.length" class="wf-resource-empty">暂无资源</div>
+			<div v-if="!resources.length" class="wf-resource-empty">{{ t('resources.panel.empty') }}</div>
 			<div v-else class="wf-resource-stats">
-				共 {{ counts.total }} 条 · 已使用 {{ counts.used }} · 未使用 {{ counts.unused }}
+				{{ t('resources.panel.statsTotal', { total: counts.total }) }} · {{ t('resources.panel.statsUsed', { used: counts.used }) }} · {{ t('resources.panel.statsUnused', { unused: counts.unused }) }}
 				<template v-if="visibleCount < sortedResources.length">
-					· 显示 {{ visibleCount }} / {{ sortedResources.length }}
+					· {{ t('resources.panel.statsVisible', { visible: visibleCount, total: sortedResources.length }) }}
 				</template>
 			</div>
 
@@ -203,7 +203,7 @@
 						>
 							✔ {{ getUsageCount(r.id) }}
 						</div>
-						<div v-else class="wf-resource-unused-badge" title="当前蓝图中未被引用">未使用</div>
+						<div v-else class="wf-resource-unused-badge" :title="t('resources.panel.unreferencedInBlueprint')">{{ t('resources.panel.unusedBadge') }}</div>
 
 						<img
 							v-if="thumbSrc(r) && !hasThumbFailed(String(r.id))"
@@ -235,7 +235,7 @@
 							<button
 								class="wf-resource-overlay-btn"
 								type="button"
-								title="预览"
+								:title="t('resources.panel.preview')"
 								@click.stop="emit('preview', String(r.id))"
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
@@ -251,7 +251,7 @@
 							<button
 								class="wf-resource-overlay-btn"
 								type="button"
-								title="添加至蓝图"
+								:title="t('resources.panel.addToBlueprint')"
 								@click.stop="emit('drop-to-node', String(r.id))"
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
@@ -319,7 +319,7 @@
 							<button
 								class="wf-resource-overlay-btn danger"
 								type="button"
-								:title="isResourceUsed(r.id) ? '该资源已被使用，删除前会提示二次确认' : '删除'"
+								:title="isResourceUsed(r.id) ? t('resources.panel.deleteUsedWarning') : t('resources.panel.delete')"
 								@click.stop="onRemoveClick(String(r.id))"
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
@@ -350,16 +350,16 @@
 
 					<div class="wf-resource-tile__info">
 						<div class="wf-resource-tile__name" :title="r.name || ''">
-							{{ r.name || '未命名资源' }}
+							{{ r.name || t('resources.panel.unnamedResource') }}
 						</div>
 						<div class="wf-resource-tile__meta-row">
 							<span class="wf-resource-tile__kind" :data-kind="r.kind">
 								{{ resourceKindLabel(r.kind) }}
 							</span>
 							<span v-if="isResourceUsed(r.id)" class="wf-resource-tile__usage">
-								{{ getUsageCount(r.id) }}节点
+								{{ t('resources.panel.nodeCount', { count: getUsageCount(r.id) }) }}
 							</span>
-							<span v-else class="wf-resource-tile__unused">未引用</span>
+							<span v-else class="wf-resource-tile__unused">{{ t('resources.panel.unreferenced') }}</span>
 						</div>
 						<div class="wf-resource-tile__date">{{ formatDate(r.createdAt) }}</div>
 					</div>
@@ -371,11 +371,11 @@
 			<!-- 列表视图 -->
 			<div v-if="resources.length && viewMode === 'list'" class="wf-resource-list">
 				<div class="wf-resource-list__header">
-					<div class="wf-resource-list__h-name">名称</div>
-					<div class="wf-resource-list__h-kind">类型</div>
-					<div class="wf-resource-list__h-usage">引用</div>
-					<div class="wf-resource-list__h-date">日期</div>
-					<div class="wf-resource-list__h-actions">操作</div>
+					<div class="wf-resource-list__h-name">{{ t('resources.panel.colName') }}</div>
+					<div class="wf-resource-list__h-kind">{{ t('resources.panel.colType') }}</div>
+					<div class="wf-resource-list__h-usage">{{ t('resources.panel.colUsage') }}</div>
+					<div class="wf-resource-list__h-date">{{ t('resources.panel.colDate') }}</div>
+					<div class="wf-resource-list__h-actions">{{ t('resources.panel.colActions') }}</div>
 				</div>
 				<div
 					v-for="r in visibleResources"
@@ -443,10 +443,10 @@
 						<span v-if="isResourceUsed(r.id)" class="wf-resource-list__badge is-used">
 							✔ {{ getUsageCount(r.id) }}
 						</span>
-						<span v-else class="wf-resource-list__badge is-unused">未使用</span>
+						<span v-else class="wf-resource-list__badge is-unused">{{ t('resources.panel.unusedBadge') }}</span>
 					</div>
 					<div class="wf-resource-list__name" :title="r.name || ''">
-						{{ r.name || '未命名资源' }}
+						{{ r.name || t('resources.panel.unnamedResource') }}
 					</div>
 					<div class="wf-resource-list__kind">
 						<span class="wf-resource-list__kind-tag" :data-kind="r.kind">
@@ -458,7 +458,7 @@
 							<button
 								class="wf-resource-list__node-link"
 								type="button"
-								:title="`定位到：${getUsageInfoForResource(r.id)!.usedBy[0].nodeTitle}`"
+								:title="t('resources.panel.locateToNodeTitle', { nodeTitle: getUsageInfoForResource(r.id)!.usedBy[0].nodeTitle })"
 								@click.stop="onFocusResourceClick(r)"
 							>
 								{{ getUsageInfoForResource(r.id)!.usedBy[0].nodeTitle }}
@@ -467,14 +467,14 @@
 								+{{ getUsageCount(r.id) - 1 }}
 							</span>
 						</template>
-						<span v-else class="wf-resource-list__unused-text">未引用</span>
+						<span v-else class="wf-resource-list__unused-text">{{ t('resources.panel.unreferenced') }}</span>
 					</div>
 					<div class="wf-resource-list__date">{{ formatDate(r.createdAt) }}</div>
 					<div class="wf-resource-list__actions">
 						<button
 							class="wf-resource-list__action-btn"
 							type="button"
-							title="预览"
+							:title="t('resources.panel.preview')"
 							@click.stop="emit('preview', String(r.id))"
 						>
 							👁
@@ -483,7 +483,7 @@
 							v-if="isResourceUsed(r.id)"
 							class="wf-resource-list__action-btn"
 							type="button"
-							title="定位节点"
+							:title="t('resources.panel.locateNode')"
 							@click.stop="onFocusResourceClick(r)"
 						>
 							◎
@@ -491,7 +491,7 @@
 						<button
 							class="wf-resource-list__action-btn danger"
 							type="button"
-							:title="isResourceUsed(r.id) ? '该资源已被使用，删除前会提示二次确认' : '删除'"
+							:title="isResourceUsed(r.id) ? t('resources.panel.deleteUsedWarning') : t('resources.panel.delete')"
 							@click.stop="onRemoveClick(String(r.id))"
 						>
 							✕
@@ -514,6 +514,9 @@ import {
 	computeUsageCounts,
 	getUsageInfo
 } from '../../aiworkflow/resource/usage'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	open?: boolean
@@ -544,11 +547,11 @@ const filterMode = ref<FilterMode>('all')
 const searchKeyword = ref('')
 const typeFilter = ref<string | null>(null)
 
-const typeFilters = [
-	{ key: 'image', label: '图片', shortLabel: '图' },
-	{ key: 'video', label: '视频', shortLabel: '视' },
-	{ key: 'model3d', label: '3D模型', shortLabel: '3D' }
-]
+const typeFilters = computed(() => [
+	{ key: 'image', label: t('resources.panel.typeImage'), shortLabel: t('resources.panel.typeImageShort') },
+	{ key: 'video', label: t('resources.panel.typeVideo'), shortLabel: t('resources.panel.typeVideoShort') },
+	{ key: 'model3d', label: t('resources.panel.typeModel3d'), shortLabel: t('resources.panel.typeModel3dShort') }
+])
 
 const onFilterChange = (m: FilterMode) => {
 	if (filterMode.value === m) return
@@ -584,10 +587,10 @@ const getUsageInfoForResource = (rid: string) => {
 
 const getUsageSummary = (rid: string): string => {
 	const info = getUsageInfo(usageMap.value, rid)
-	if (!info || !info.isUsed) return '未被使用'
+	if (!info || !info.isUsed) return t('resources.panel.notUsed')
 	const refs = info.usedBy.slice(0, 5).map((u) => `· ${u.nodeTitle} (${u.nodeType})`)
-	const head = `被 ${info.usageCount} 个节点引用：\n`
-	const tail = info.usedBy.length > 5 ? `\n...以及其他 ${info.usedBy.length - 5} 个节点` : ''
+	const head = t('resources.panel.usedByNodes', { count: info.usageCount }) + '\n'
+	const tail = info.usedBy.length > 5 ? `\n` + t('resources.panel.moreNodes', { count: info.usedBy.length - 5 }) : ''
 	return head + refs.join('\n') + tail
 }
 
@@ -618,18 +621,19 @@ const onFocusResourceClick = (r: WorkflowResource) => {
 const getFocusTooltip = (rid: string): string => {
 	const info = getUsageInfo(usageMap.value, rid)
 	if (!info?.isUsed || !info.usedBy.length) return ''
+	const nodeTitle = info.usedBy[0].nodeTitle || info.usedBy[0].nodeId
 	if (info.usedBy.length === 1) {
-		return `定位到节点：${info.usedBy[0].nodeTitle || info.usedBy[0].nodeId}`
+		return t('resources.panel.locateToSingleNode', { nodeTitle })
 	}
-	return `定位到首个引用节点：${info.usedBy[0].nodeTitle || info.usedBy[0].nodeId}（共 ${info.usedBy.length} 个引用）`
+	return t('resources.panel.locateToFirstNode', { nodeTitle, count: info.usedBy.length })
 }
 
 const resourceKindLabel = (kind: string): string => {
 	const k = String(kind || '').toLowerCase()
-	if (k === 'image') return '图片'
-	if (k === 'video') return '视频'
-	if (k === 'model3d') return '3D模型'
-	return kind || '资源'
+	if (k === 'image') return t('resources.panel.kindImage')
+	if (k === 'video') return t('resources.panel.kindVideo')
+	if (k === 'model3d') return t('resources.panel.kindModel3d')
+	return kind || t('resources.panel.kindDefault')
 }
 
 const resourceKindIconPath = (kind: string): string => {
@@ -702,17 +706,17 @@ const cycleSortMode = () => {
 const sortModeTitle = computed(() => {
 	switch (sortMode.value) {
 		case 'date-desc':
-			return '排序：日期（新→旧）'
+			return t('resources.panel.sortDateDesc')
 		case 'date-asc':
-			return '排序：日期（旧→新）'
+			return t('resources.panel.sortDateAsc')
 		case 'name-asc':
-			return '排序：名称（A→Z）'
+			return t('resources.panel.sortNameAsc')
 		case 'name-desc':
-			return '排序：名称（Z→A）'
+			return t('resources.panel.sortNameDesc')
 		case 'usage-desc':
-			return '排序：引用数（多→少）'
+			return t('resources.panel.sortUsageDesc')
 		default:
-			return '排序'
+			return t('resources.panel.sortDefault')
 	}
 })
 
@@ -784,6 +788,10 @@ const visibleResources = computed(() => {
 // 而 counts.total 指的是全部资源的总数（用于头部显示）
 const totalCount = computed(() => sortedResources.value.length)
 const visibleCount = computed(() => visibleResources.value.length)
+
+const thumbSizeTitle = computed(() =>
+	thumbSize.value === 'sm' ? t('resources.panel.thumbSizeSmall') : t('resources.panel.thumbSizeLarge')
+)
 
 const thumbSrc = (r: WorkflowResource) => {
 	if (!r) return ''

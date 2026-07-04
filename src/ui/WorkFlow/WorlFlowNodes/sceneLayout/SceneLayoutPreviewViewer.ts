@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
 import { isObject, isString } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type {
 	WorkflowSceneLayoutItem,
 	WorkflowSceneLayoutLightingControls,
@@ -1509,7 +1510,7 @@ export class SceneLayoutPreviewViewer {
 				sourceItemCount: this.currentItems.length,
 				slotCount: 0,
 				actorOrigin: { x: 0, y: 0, z: 0 },
-				warnings: ['导出过程中预览布局发生变化，请重试。'],
+				warnings: [t('aiworkflow.scenePreview.warningLayoutChanged')],
 				slots: []
 			}
 		}
@@ -1615,7 +1616,7 @@ export class SceneLayoutPreviewViewer {
 		for (const [id, model] of sceneBoundModels.entries()) {
 			if (!allBoundModels.has(id)) {
 				allBoundModels.set(id, model)
-				warnings.push(`发现场景中渲染但未在绑定表中的模型 ${id}，已自动包含。`)
+				warnings.push(t('aiworkflow.scenePreview.warningModelNotInBinding', { id }))
 			}
 		}
 
@@ -1645,7 +1646,7 @@ export class SceneLayoutPreviewViewer {
 			
 			if (!boundModel) {
 				if (item) {
-					warnings.push(`占位体 ${item.name || itemId} 缺少预览中的真实模型结果，已跳过。`)
+					warnings.push(t('aiworkflow.scenePreview.warningPlaceholderNoResult', { name: item.name || itemId }))
 				}
 				continue
 			}
@@ -1684,7 +1685,7 @@ export class SceneLayoutPreviewViewer {
 				// 如果模型在场景中存在但没有绑定信息，我们仍然导出它，因为它确实在Three.js中渲染了
 				// 但需要记录警告
 				const displayName = item?.name || itemId
-				warnings.push(`模型 ${displayName} 在场景中渲染但缺少完整绑定信息，将使用场景中的现有数据导出。`)
+				warnings.push(t('aiworkflow.scenePreview.warningModelIncompleteBinding', { name: displayName }))
 			}
 			
 			const placeholderMesh = this.meshesById.get(itemId)
@@ -2781,7 +2782,7 @@ export class SceneLayoutPreviewViewer {
 				? this.setFitState(
 						item,
 						'normal',
-						'当前按占位盒预览，可继续尝试调整朝向、循环填充或强制适配。'
+						t('aiworkflow.scenePreview.boxPreviewHint')
 					)
 				: false
 			this.requestRender()
@@ -3702,7 +3703,7 @@ export class SceneLayoutPreviewViewer {
 
 	async rotateSelectedModelByAxis(axis: 'x' | 'y' | 'z'): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
-			return { ok: false, applied: false, mode: 'normal', message: '请先选中一个占位体。' }
+			return { ok: false, applied: false, mode: 'normal', message: t('aiworkflow.scenePreview.selectPlaceholderFirst') }
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
 		const binding = this.bindingById.get(this.selectedId)
 		const mesh = this.meshesById.get(this.selectedId)
@@ -3711,7 +3712,7 @@ export class SceneLayoutPreviewViewer {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '当前占位体还没有可调整的真实模型。'
+				message: t('aiworkflow.scenePreview.noRotatableModel')
 			}
 		}
 		const sourceUrl = String(binding.modelUrl ?? binding.modelAssetUrl ?? '').trim()
@@ -3719,14 +3720,14 @@ export class SceneLayoutPreviewViewer {
 			const fitChanged = this.setFitState(
 				item,
 				'normal',
-				'当前绑定没有可用的模型地址，无法调整朝向。'
+				t('aiworkflow.scenePreview.noModelUrlForRotation')
 			)
 			if (fitChanged) this.emitLayoutChange()
 			return {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '当前绑定没有可用的模型地址，无法调整朝向。'
+				message: t('aiworkflow.scenePreview.noModelUrlForRotation')
 			}
 		}
 		try {
@@ -3760,7 +3761,7 @@ export class SceneLayoutPreviewViewer {
 					: axis === 'z'
 						? roundOrientation(constrained.roll)
 						: roundOrientation(constrained.yaw)
-			const message = `已沿 ${axisLabel} 轴旋转至 ${angleLabel}°。再次点击可继续旋转 90°。`
+			const message = t('aiworkflow.scenePreview.rotatedTo', { axis: axisLabel, angle: angleLabel })
 
 			await this.rebuildBoundModelForItem(this.selectedId, 'keep')
 
@@ -3769,20 +3770,20 @@ export class SceneLayoutPreviewViewer {
 			this.requestRender()
 			return { ok: true, applied: true, mode: 'oriented', message }
 		} catch {
-			const fitChanged = this.setFitState(item, 'normal', '模型模板加载失败，暂时无法调整朝向。')
+			const fitChanged = this.setFitState(item, 'normal', t('aiworkflow.scenePreview.rotationModelLoadFailed'))
 			if (fitChanged) this.emitLayoutChange()
 			return {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '模型模板加载失败，暂时无法调整朝向。'
+				message: t('aiworkflow.scenePreview.rotationModelLoadFailed')
 			}
 		}
 	}
 
 	async resetSelectedModelOrientation(): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
-			return { ok: false, applied: false, mode: 'normal', message: '请先选中一个占位体。' }
+			return { ok: false, applied: false, mode: 'normal', message: t('aiworkflow.scenePreview.selectPlaceholderFirst') }
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
 		const binding = this.bindingById.get(this.selectedId)
 		if (!item || !binding) {
@@ -3790,7 +3791,7 @@ export class SceneLayoutPreviewViewer {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '当前占位体还没有可重置的真实模型。'
+				message: t('aiworkflow.scenePreview.noResettableModel')
 			}
 		}
 		if (!item.orientationFix) {
@@ -3798,7 +3799,7 @@ export class SceneLayoutPreviewViewer {
 				ok: true,
 				applied: false,
 				mode: 'normal',
-				message: '当前模型已是初始朝向，无需重置。'
+				message: t('aiworkflow.scenePreview.alreadyInitialRotation')
 			}
 		}
 		try {
@@ -3806,7 +3807,7 @@ export class SceneLayoutPreviewViewer {
 			this.clearFillState(item)
 			this.clearForcedFitState(item)
 
-			const message = '已撤销旋转，模型恢复到初始朝向。'
+			const message = t('aiworkflow.scenePreview.rotationReset')
 
 			await this.rebuildBoundModelForItem(this.selectedId, 'auto')
 
@@ -3819,14 +3820,14 @@ export class SceneLayoutPreviewViewer {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '模型模板加载失败，暂时无法重置朝向。'
+				message: t('aiworkflow.scenePreview.resetModelLoadFailed')
 			}
 		}
 	}
 
 	async cycleFillSelectedModel(): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
-			return { ok: false, applied: false, mode: 'normal', message: '请先选中一个占位体。' }
+			return { ok: false, applied: false, mode: 'normal', message: t('aiworkflow.scenePreview.selectPlaceholderFirst') }
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
 		const binding = this.bindingById.get(this.selectedId)
 		const mesh = this.meshesById.get(this.selectedId)
@@ -3835,7 +3836,7 @@ export class SceneLayoutPreviewViewer {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '当前占位体还没有可循环填充的真实模型。'
+				message: t('aiworkflow.scenePreview.noFillableModel')
 			}
 		}
 		const sourceUrl = String(binding.modelUrl ?? binding.modelAssetUrl ?? '').trim()
@@ -3843,21 +3844,21 @@ export class SceneLayoutPreviewViewer {
 			const fitChanged = this.setFitState(
 				item,
 				'normal',
-				'当前绑定没有可用的模型地址，无法循环填充。'
+				t('aiworkflow.scenePreview.noModelUrlForFill')
 			)
 			if (fitChanged) this.emitLayoutChange()
 			return {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '当前绑定没有可用的模型地址，无法循环填充。'
+				message: t('aiworkflow.scenePreview.noModelUrlForFill')
 			}
 		}
 		const template = await this.loadModelTemplate(sourceUrl, this.selectedId)
 		if (item.fillMode) {
 			this.clearFillState(item)
 			const mode = item.orientationFix ? 'oriented' : 'normal'
-			const message = '已取消循环填充，恢复单个模型显示。'
+			const message = t('aiworkflow.scenePreview.fillCanceled')
 			this.setFitState(item, mode, message)
 			await this.rebuildBoundModelForItem(this.selectedId, 'keep')
 			this.emitLayoutChange()
@@ -3882,14 +3883,14 @@ export class SceneLayoutPreviewViewer {
 			const fitChanged = this.setFitState(
 				item,
 				'normal',
-				'当前模型无法测量有效尺寸，暂时不能循环填充。'
+				t('aiworkflow.scenePreview.modelNotMeasurable')
 			)
 			if (fitChanged) this.emitLayoutChange()
 			return {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '当前模型无法测量有效尺寸，暂时不能循环填充。'
+				message: t('aiworkflow.scenePreview.modelNotMeasurable')
 			}
 		}
 		const size = box.getSize(new THREE.Vector3())
@@ -3907,8 +3908,8 @@ export class SceneLayoutPreviewViewer {
 				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			}
 			const message = hadFill
-				? '未识别到“两轴已基本匹配、一轴待补齐”的状态，已恢复单模型显示。'
-				: '当前至少还有两个维度没有进入占位盒约束，暂时不适合循环填充。'
+				? t('aiworkflow.scenePreview.fillAxisMismatch')
+				: t('aiworkflow.scenePreview.fillTooManyUnconstrained')
 			const fitChanged = this.setFitState(
 				item,
 				item.orientationFix ? 'oriented' : 'normal',
@@ -3929,7 +3930,7 @@ export class SceneLayoutPreviewViewer {
 		item.fillUpdatedAt = Date.now()
 		this.disposeBoundModel(this.selectedId)
 		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
-		const message = `已沿 ${fillAxisLabel(suggestion.axis)} 轴循环填充 ${suggestion.count} 个实例，并按该轴平均缩放铺满占位空间。`
+		const message = t('aiworkflow.scenePreview.loopFilled', { axis: fillAxisLabel(suggestion.axis), count: suggestion.count })
 		this.setFitState(item, 'filled', message)
 		this.emitLayoutChange()
 		this.requestRender()
@@ -3938,7 +3939,7 @@ export class SceneLayoutPreviewViewer {
 
 	async forceFitSelectedModel(): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
-			return { ok: false, applied: false, mode: 'normal', message: '请先选中一个占位体。' }
+			return { ok: false, applied: false, mode: 'normal', message: t('aiworkflow.scenePreview.selectPlaceholderFirst') }
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
 		const binding = this.bindingById.get(this.selectedId)
 		const mesh = this.meshesById.get(this.selectedId)
@@ -3947,7 +3948,7 @@ export class SceneLayoutPreviewViewer {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '当前占位体还没有可强制适配的真实模型。'
+				message: t('aiworkflow.scenePreview.noFittableModel')
 			}
 		}
 		const sourceUrl = String(binding.modelUrl ?? binding.modelAssetUrl ?? '').trim()
@@ -3955,14 +3956,14 @@ export class SceneLayoutPreviewViewer {
 			const fitChanged = this.setFitState(
 				item,
 				'normal',
-				'当前绑定没有可用的模型地址，无法强制适配。'
+				t('aiworkflow.scenePreview.noModelUrlForFit')
 			)
 			if (fitChanged) this.emitLayoutChange()
 			return {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '当前绑定没有可用的模型地址，无法强制适配。'
+				message: t('aiworkflow.scenePreview.noModelUrlForFit')
 			}
 		}
 		try {
@@ -3971,19 +3972,19 @@ export class SceneLayoutPreviewViewer {
 			item.fitMode = 'forced'
 			item.fitUpdatedAt = Date.now()
 			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
-			const message = '已按比例适配到占位盒（保持模型比例）；切换占位比例/模型比例后会自动清除。'
+			const message = t('aiworkflow.scenePreview.forceFitApplied')
 			this.setFitState(item, 'forced', message)
 			this.emitLayoutChange()
 			this.requestRender()
 			return { ok: true, applied: true, mode: 'forced', message }
 		} catch {
-			const fitChanged = this.setFitState(item, 'normal', '模型模板加载失败，暂时无法强制适配。')
+			const fitChanged = this.setFitState(item, 'normal', t('aiworkflow.scenePreview.fitModelLoadFailed'))
 			if (fitChanged) this.emitLayoutChange()
 			return {
 				ok: false,
 				applied: false,
 				mode: 'normal',
-				message: '模型模板加载失败，暂时无法强制适配。'
+				message: t('aiworkflow.scenePreview.fitModelLoadFailed')
 			}
 		}
 	}
@@ -4440,7 +4441,7 @@ export class SceneLayoutPreviewViewer {
 		const parentBoundModel = this.boundModelsById.get(parentId)
 		if (!parentBoundModel) {
 			warnings.push(
-				`占位体 ${item.name || item.id} 的父参考 ${parentId} 未生成真实模型，已退回 actor 根节点导出。`
+				t('aiworkflow.scenePreview.warningParentNotGenerated', { name: item.name || item.id, parent: parentId })
 			)
 			return {
 				parentReference: {
@@ -5015,17 +5016,17 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	async confirmHolePunch(): Promise<{ ok: boolean; message: string }> {
-		if (!this.holePunchMode) return { ok: false, message: '未处于打洞模式。' }
-		if (!this.holePunchTargetId) return { ok: false, message: '请先选择被打洞的占位体。' }
-		if (!this.holePunchToolId) return { ok: false, message: '请选择用来打洞的占位体。' }
+		if (!this.holePunchMode) return { ok: false, message: t('aiworkflow.scenePreview.notInHolePunchMode') }
+		if (!this.holePunchTargetId) return { ok: false, message: t('aiworkflow.scenePreview.selectHoleTarget') }
+		if (!this.holePunchToolId) return { ok: false, message: t('aiworkflow.scenePreview.selectHoleTool') }
 
 		const targetItem = this.currentItems.find((item) => item.id === this.holePunchTargetId)
 		const toolItem = this.currentItems.find((item) => item.id === this.holePunchToolId)
-		if (!targetItem || !toolItem) return { ok: false, message: '找不到对应的占位体数据。' }
+		if (!targetItem || !toolItem) return { ok: false, message: t('aiworkflow.scenePreview.placeholderNotFound') }
 
 		const toolBinding = this.bindingById.get(this.holePunchToolId)
 		if (!toolBinding) {
-			return { ok: false, message: '用来打洞的占位体未绑定真实模型。' }
+			return { ok: false, message: t('aiworkflow.scenePreview.toolNotBound') }
 		}
 
 		try {
@@ -5040,13 +5041,13 @@ export class SceneLayoutPreviewViewer {
 			})
 			this.cancelHolePunchMode()
 			this.emitLayoutChange()
-			return { ok: true, message: '打洞成功。' }
+			return { ok: true, message: t('aiworkflow.scenePreview.holePunchSuccess') }
 		} catch (err) {
 			const errMessage =
 				isObject(err) && isString((err as { message?: unknown }).message)
 					? (err as { message: string }).message
 					: String(err ?? 'unknown')
-			return { ok: false, message: `打洞失败：${errMessage}` }
+			return { ok: false, message: t('aiworkflow.scenePreview.holePunchFailed', { error: errMessage }) }
 		}
 	}
 
@@ -5058,7 +5059,7 @@ export class SceneLayoutPreviewViewer {
 		const targetMesh = this.meshesById.get(targetItem.id)
 		const toolMesh = this.meshesById.get(toolItem.id)
 		if (!targetMesh || !toolMesh) {
-			throw new Error('找不到对应的网格对象。')
+			throw new Error(t('aiworkflow.scenePreview.meshNotFound'))
 		}
 
 		targetMesh.updateMatrixWorld(true)
@@ -5141,7 +5142,7 @@ export class SceneLayoutPreviewViewer {
 		} else {
 			const modelUrl = toolBinding.modelUrl || toolBinding.modelAssetUrl
 			if (!modelUrl) {
-				throw new Error('工具占位体未绑定有效的模型URL，且场景中没有已渲染的模型。')
+				throw new Error(t('aiworkflow.scenePreview.toolNoValidUrl'))
 			}
 			const template = await this.loadModelTemplate(modelUrl, toolItem.id)
 			const modelContent = this.cloneModelScene(template)
@@ -5694,7 +5695,7 @@ export class SceneLayoutPreviewViewer {
 				}
 			}
 			if (badVertices > 0) {
-				this.logExport(`警告：修复了 ${badVertices} 个无效顶点坐标`)
+				this.logExport(t('aiworkflow.scenePreview.exportLog.fixedVertices', { count: badVertices }))
 			}
 
 			const computeVertexNormals = geom.computeVertexNormals as (() => void) | undefined
@@ -5704,20 +5705,20 @@ export class SceneLayoutPreviewViewer {
 			const computeBoundingSphere = geom.computeBoundingSphere as (() => void) | undefined
 			computeBoundingSphere?.call(geom)
 		} catch (err) {
-			this.logExport(`顶点清理时出现非致命错误：${err instanceof Error ? err.message : String(err)}，继续导出`)
+			this.logExport(t('aiworkflow.scenePreview.exportLog.vertexCleanupError', { error: err instanceof Error ? err.message : String(err) }))
 		}
 		return geom
 	}
 
 	async exportPlaceholderGLB(itemId: string, name?: string): Promise<ArrayBuffer | null> {
-		this.logExport('开始查找选中的占位体网格...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.findingMesh'))
 		const mesh = this.meshesById.get(itemId)
 		if (!mesh) {
-			this.logExport('错误：找不到对应的网格对象')
+			this.logExport(t('aiworkflow.scenePreview.exportLog.meshNotFound'))
 			return null
 		}
 
-		this.logExport('确保网格矩阵已更新...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.ensuringMatrix'))
 		mesh.updateMatrixWorld(true)
 
 		const getPositionCount = (g: Record<string, unknown>): number => {
@@ -5725,31 +5726,31 @@ export class SceneLayoutPreviewViewer {
 			return attr?.position?.count ?? 0
 		}
 
-		this.logExport('获取当前网格几何体...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.gettingGeometry'))
 		const meshGeom = mesh.geometry
 		const meshVertexCount = getPositionCount(meshGeom as unknown as Record<string, unknown>)
-		this.logExport(`当前网格顶点数: ${meshVertexCount}`)
+		this.logExport(t('aiworkflow.scenePreview.exportLog.vertexCount', { count: meshVertexCount }))
 
 		let sourceGeom: unknown = meshGeom
 
 		const cacheKey = String(itemId ?? '').trim()
 		const cachedEntry = this.holedGeometryCache.get(cacheKey)
 		if (cachedEntry?.geometry && meshVertexCount <= 24) {
-			this.logExport('当前网格疑似简单立方体，尝试使用缓存的打洞几何体...')
+			this.logExport(t('aiworkflow.scenePreview.exportLog.tryCachedGeometry'))
 			try {
 				const cachedGeom = cachedEntry.geometry
 				const cachedVertexCount = getPositionCount(cachedGeom as unknown as Record<string, unknown>)
-				this.logExport(`缓存几何体顶点数: ${cachedVertexCount}`)
+				this.logExport(t('aiworkflow.scenePreview.exportLog.cachedVertexCount', { count: cachedVertexCount }))
 				if (cachedVertexCount > 24) {
 					sourceGeom = cachedGeom
-					this.logExport('将使用缓存几何体创建干净副本')
+					this.logExport(t('aiworkflow.scenePreview.exportLog.usingCachedCopy'))
 				}
 			} catch (e) {
-				this.logExport('缓存几何体获取失败，使用当前网格几何体')
+				this.logExport(t('aiworkflow.scenePreview.exportLog.cacheFailed'))
 			}
 		}
 
-		this.logExport('创建干净的BufferGeometry副本...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.creatingCopy'))
 		let exportGeometry: Record<string, unknown>
 		try {
 			const newGeom = new THREE.BufferGeometry() as unknown as Record<string, unknown>
@@ -5774,43 +5775,49 @@ export class SceneLayoutPreviewViewer {
 			}
 			exportGeometry = newGeom
 		} catch (err) {
-			this.logExport(`创建干净几何体副本失败：${err instanceof Error ? err.message : String(err)}，尝试直接克隆...`)
+			this.logExport(t('aiworkflow.scenePreview.exportLog.copyFailed', { error: err instanceof Error ? err.message : String(err) }))
 			const cloneFn = (sourceGeom as Record<string, unknown>).clone as (() => unknown) | undefined
 			exportGeometry = (cloneFn?.call(sourceGeom) as Record<string, unknown>) ?? (sourceGeom as Record<string, unknown>)
 		}
 
-		this.logExport(`导出几何体顶点数: ${getPositionCount(exportGeometry)}`)
+		this.logExport(t('aiworkflow.scenePreview.exportLog.exportVertexCount', { count: getPositionCount(exportGeometry) }))
 
 		exportGeometry = this.sanitizeGeometry(exportGeometry)
 
-		this.logExport('应用网格世界矩阵到几何体（烘焙变换）...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.applyingMatrix'))
 		const applyMatrixFn = exportGeometry.applyMatrix4 as ((m: unknown) => void) | undefined
 		applyMatrixFn?.call(exportGeometry, mesh.matrixWorld)
 
-		this.logExport('计算包围盒...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.computingBBox'))
 		const computeBBoxFn = exportGeometry.computeBoundingBox as (() => void) | undefined
 		computeBBoxFn?.call(exportGeometry)
 		const bbox = exportGeometry.boundingBox as { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null | undefined
 		if (!bbox || !bbox.min || !bbox.max) {
-			this.logExport('错误：无法计算几何体包围盒')
+			this.logExport(t('aiworkflow.scenePreview.exportLog.bboxFailed'))
 			return null
 		}
 
-		this.logExport(`几何体包围盒（世界坐标）：min(${bbox.min.x.toFixed(2)}, ${bbox.min.y.toFixed(2)}, ${bbox.min.z.toFixed(2)}), max(${bbox.max.x.toFixed(2)}, ${bbox.max.y.toFixed(2)}, ${bbox.max.z.toFixed(2)})`)
+		this.logExport(t('aiworkflow.scenePreview.exportLog.bboxResult', {
+			x1: bbox.min.x.toFixed(2), y1: bbox.min.y.toFixed(2), z1: bbox.min.z.toFixed(2),
+			x2: bbox.max.x.toFixed(2), y2: bbox.max.y.toFixed(2), z2: bbox.max.z.toFixed(2)
+		}))
 
 		const centerX = (bbox.min.x + bbox.max.x) / 2
 		const centerZ = (bbox.min.z + bbox.max.z) / 2
-		this.logExport('平移几何体到原点：底部在y=0，x/z居中...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.translatingOrigin'))
 		const translateFn = exportGeometry.translate as ((x: number, y: number, z: number) => void) | undefined
 		translateFn?.call(exportGeometry, -centerX, -bbox.min.y, -centerZ)
 		computeBBoxFn?.call(exportGeometry)
 
 		const finalBbox = exportGeometry.boundingBox as { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null | undefined
 		if (finalBbox?.min && finalBbox?.max) {
-			this.logExport(`平移后包围盒：min(${finalBbox.min.x.toFixed(2)}, ${finalBbox.min.y.toFixed(2)}, ${finalBbox.min.z.toFixed(2)}), max(${finalBbox.max.x.toFixed(2)}, ${finalBbox.max.y.toFixed(2)}, ${finalBbox.max.z.toFixed(2)})`)
+			this.logExport(t('aiworkflow.scenePreview.exportLog.translatedBBox', {
+				x1: finalBbox.min.x.toFixed(2), y1: finalBbox.min.y.toFixed(2), z1: finalBbox.min.z.toFixed(2),
+				x2: finalBbox.max.x.toFixed(2), y2: finalBbox.max.y.toFixed(2), z2: finalBbox.max.z.toFixed(2)
+			}))
 		}
 
-		this.logExport('准备导出材质...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.preparingMaterials'))
 		const materialAny = mesh.material as Record<string, unknown> | undefined
 		const materialColor = materialAny?.color as { getHexString?: () => string } | undefined
 		const colorHex = materialColor?.getHexString?.()
@@ -5820,7 +5827,7 @@ export class SceneLayoutPreviewViewer {
 			metalness: 0.08
 		})
 
-		this.logExport('创建导出网格...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.creatingMesh'))
 		const exportMesh = new THREE.Mesh(exportGeometry as unknown, exportMaterial)
 		const meshName = String(name || (mesh.userData as Record<string, unknown>)?.label || itemId || 'placeholder').trim() || 'placeholder'
 		exportMesh.name = meshName
@@ -5829,14 +5836,14 @@ export class SceneLayoutPreviewViewer {
 		exportMesh.scale.set(1, 1, 1)
 		exportMesh.updateMatrixWorld(true)
 
-		this.logExport('构建导出场景层级...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.buildingScene'))
 		const root = new THREE.Group()
 		root.name = meshName
 		root.userData = { source: 'scene-layout-placeholder', objectId: itemId, holed: true }
 		root.add(exportMesh)
 		root.updateMatrixWorld(true)
 
-		this.logExport('开始GLB二进制导出...')
+		this.logExport(t('aiworkflow.scenePreview.exportLog.startingGlb'))
 		const exporter = new GLTFExporter()
 		try {
 			const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
@@ -5844,7 +5851,7 @@ export class SceneLayoutPreviewViewer {
 					root as unknown,
 					(result: unknown) => {
 						if (result instanceof ArrayBuffer) {
-							this.logExport(`GLB导出成功，数据大小：${(result.byteLength / 1024).toFixed(1)} KB`)
+							this.logExport(t('aiworkflow.scenePreview.exportLog.glbSuccess', { size: (result.byteLength / 1024).toFixed(1) }))
 							resolve(result)
 							return
 						}
@@ -5856,7 +5863,7 @@ export class SceneLayoutPreviewViewer {
 			})
 			return arrayBuffer
 		} catch (err) {
-			this.logExport(`GLB导出失败：${err instanceof Error ? err.message : String(err)}`)
+			this.logExport(t('aiworkflow.scenePreview.exportLog.glbFailed', { error: err instanceof Error ? err.message : String(err) }))
 			throw err
 		} finally {
 			(exportMaterial as unknown as { dispose: () => void }).dispose()

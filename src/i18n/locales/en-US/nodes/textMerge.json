@@ -1,0 +1,12 @@
+{
+  "nodes.textMerge.mergedLabel": "Merged Text (Read-only)",
+  "nodes.textMerge.placeholder": "Connect text inputs below to see the merged result...",
+  "nodes.textMerge.title": "Text Merge",
+  "nodes.textMerge.add": "Add",
+  "nodes.textMerge.itemLabel": "Merge {index}",
+  "nodes.textMerge.moveUp": "Move Up",
+  "nodes.textMerge.moveDown": "Move Down",
+  "nodes.textMerge.delete": "Delete",
+  "nodes.textMerge.entryAnchors": "Input Anchors",
+  "nodes.textMerge.exit": "Output"
+}

@@ -7,6 +7,7 @@ import {
 } from '../../../../aiworkflow/domain/link/anchorKinds'
 import type { WorkflowAnchorSpec, WorkflowNode, WorkflowState } from '../../../../aiworkflow/types'
 import type { AIWorkflowDraftRender } from '../useAIWorkflowEdgeRenderer'
+import { t } from '../../../../i18n'
 import {
 	useWorkflowAnchorMagnet,
 	type WorkflowAnchorMagnetCandidate,
@@ -739,7 +740,7 @@ export const useAIWorkflowLinking = (payload: {
 			const fromKind = anchorKind(fromNode, linkDraft.value.fromAnchorId, 'out')
 			const toKind = anchorKind(toNode, target.anchorId, 'in')
 			payload.pushToast(
-				`锚点类型不匹配：${anchorKindLabel(fromKind)} → ${anchorKindLabel(toKind)}。resource 输入可接收 image/video/resource。`,
+				`${t('aiworkflow.toast.anchorTypeMismatch', { from: anchorKindLabel(fromKind), to: anchorKindLabel(toKind) })}。resource 输入可接收 image/video/resource。`,
 				'warn'
 			)
 			clearLinkInteraction()
@@ -784,7 +785,7 @@ export const useAIWorkflowLinking = (payload: {
 			const fromKind = anchorKind(fromNode, linkDraft.value.fromAnchorId, 'out')
 			const toKind = anchorKind(toNode, endPayload.anchorId, 'in')
 			payload.pushToast(
-				`锚点类型不匹配：${anchorKindLabel(fromKind)} → ${anchorKindLabel(toKind)}。resource 输入可接收 image/video/resource。`,
+				`${t('aiworkflow.toast.anchorTypeMismatch', { from: anchorKindLabel(fromKind), to: anchorKindLabel(toKind) })}。resource 输入可接收 image/video/resource。`,
 				'warn'
 			)
 			clearLinkInteraction()

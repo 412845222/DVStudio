@@ -1,0 +1,11 @@
+{
+  "aiworkflow.perfMonitor.lowFpsStreak": "{count} consecutive frames below {threshold} FPS",
+  "aiworkflow.perfMonitor.longTask": "Long task {duration}ms",
+  "aiworkflow.perfMonitor.stable": "Stable",
+  "aiworkflow.perfMonitor.slowFrames": "Minor frame drops",
+  "aiworkflow.perfMonitor.significantDrop": "Significant frame drops",
+  "aiworkflow.perfMonitor.zeroTimes": "0 times",
+  "aiworkflow.perfMonitor.timesWithMs": "{count} times / {ms}ms",
+  "aiworkflow.perfMonitor.nodesCount": "{visible} visible / {total} total",
+  "aiworkflow.perfMonitor.edgesVisible": "{visible} visible / {total} total"
+}

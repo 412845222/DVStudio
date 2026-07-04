@@ -41,5 +41,11 @@
   "common.clear": "清空",
   "common.copy": "复制",
   "common.stop": "停止",
-  "common.start": "启动"
+  "common.start": "启动",
+  "common.enabled": "开启",
+  "common.disabled": "关闭",
+  "common.connected": "已连接",
+  "common.disconnected": "未连接",
+  "common.image": "图片",
+  "common.video": "视频"
 }

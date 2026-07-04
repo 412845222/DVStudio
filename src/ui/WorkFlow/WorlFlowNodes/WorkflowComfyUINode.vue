@@ -31,7 +31,7 @@
 		<template #body>
 			<div class="wf-comfy" @pointerdown.stop>
 				<div class="wf-comfy-row">
-					<div class="wf-comfy-label">ComfyUI 地址</div>
+					<div class="wf-comfy-label">{{ t('nodes.comfyui.address') }}</div>
 					<input
 						class="wf-comfy-input"
 						type="text"
@@ -48,7 +48,7 @@
 						:disabled="!baseUrlTrimmed || status === 'connecting'"
 						@click.stop="onConnect"
 					>
-						{{ status === 'connecting' ? '连接中…' : '连接' }}
+						{{ status === 'connecting' ? t('nodes.comfyui.connecting') : t('nodes.comfyui.connect') }}
 					</button>
 					<div class="wf-comfy-status" :class="statusClass">
 						{{ statusText }}
@@ -56,7 +56,7 @@
 				</div>
 
 				<div v-if="status === 'connected'" class="wf-comfy-workflows">
-					<div class="wf-comfy-label">可用工作流</div>
+					<div class="wf-comfy-label">{{ t('nodes.comfyui.availableWorkflows') }}</div>
 					<select
 						class="wf-comfy-select"
 						:value="workflowPath"
@@ -64,7 +64,7 @@
 						@change="onWorkflowChange"
 					>
 						<option value="" disabled>
-							{{ workflows.length ? '请选择工作流…' : '未发现工作流' }}
+							{{ workflows.length ? t('nodes.comfyui.selectWorkflow') : t('nodes.comfyui.noWorkflowsFound') }}
 						</option>
 						<option v-for="wf in workflows" :key="wf.path" :value="wf.path">
 							{{ wf.name || wf.path }}
@@ -73,13 +73,13 @@
 				</div>
 
 				<div v-if="status === 'connected' && workflowPath" class="wf-comfy-row">
-					<div class="wf-comfy-label">正向提示词（可覆盖工作流）</div>
+					<div class="wf-comfy-label">{{ t('nodes.comfyui.positivePrompt') }}</div>
 					<div class="wf-comfy-prompt">
 						<div
 							v-if="positivePromptAnchorIndex >= 0"
 							class="wf-comfy-anchor-hit wf-anchor-text"
 							:class="{ hovered: hoverInputAnchorId === 'in-positive' }"
-							title="文本资源输入（正向提示词）"
+							:title="t('nodes.comfyui.textInputPositive')"
 							:data-wf-node-id="nodeId"
 							data-wf-anchor-id="in-positive"
 							data-wf-dir="in"
@@ -96,20 +96,20 @@
 						<textarea
 							class="wf-comfy-textarea"
 							:value="positivePrompt"
-							placeholder="留空则使用工作流原始值"
+							:placeholder="t('nodes.comfyui.leaveBlankWorkflow')"
 							@input="onPositivePromptInput"
 						/>
 					</div>
 				</div>
 
 				<div v-if="status === 'connected' && workflowPath" class="wf-comfy-row">
-					<div class="wf-comfy-label">负向提示词（可覆盖工作流）</div>
+					<div class="wf-comfy-label">{{ t('nodes.comfyui.negativePrompt') }}</div>
 					<div class="wf-comfy-prompt">
 						<div
 							v-if="negativePromptAnchorIndex >= 0"
 							class="wf-comfy-anchor-hit wf-anchor-text"
 							:class="{ hovered: hoverInputAnchorId === 'in-negative' }"
-							title="文本资源输入（负向提示词）"
+							:title="t('nodes.comfyui.textInputNegative')"
 							:data-wf-node-id="nodeId"
 							data-wf-anchor-id="in-negative"
 							data-wf-dir="in"
@@ -126,7 +126,7 @@
 						<textarea
 							class="wf-comfy-textarea"
 							:value="negativePrompt"
-							placeholder="留空则使用工作流原始值"
+							:placeholder="t('nodes.comfyui.leaveBlankWorkflow')"
 							@input="onNegativePromptInput"
 						/>
 					</div>
@@ -135,7 +135,7 @@
 				<div v-if="status === 'connected' && workflowPath" class="wf-comfy-run">
 					<div class="wf-comfy-runbar">
 						<button class="wf-comfy-btn" type="button" :disabled="runDisabled" @click.stop="onRun">
-							运行
+							{{ t('nodes.comfyui.run') }}
 						</button>
 						<button
 							class="wf-comfy-btn"
@@ -143,7 +143,7 @@
 							:disabled="cancelDisabled"
 							@click.stop="onCancel"
 						>
-							取消
+							{{ t('common.cancel') }}
 						</button>
 					</div>
 
@@ -156,7 +156,7 @@
 				</div>
 
 				<div v-if="mediaOutputs.length" class="wf-comfy-outputs">
-					<div class="wf-comfy-label">产出媒体</div>
+					<div class="wf-comfy-label">{{ t('nodes.comfyui.outputMedia') }}</div>
 					<a
 						v-for="(m, idx) in mediaOutputs"
 						:key="m.url + idx"
@@ -166,7 +166,7 @@
 						rel="noreferrer"
 						@click.stop
 					>
-						{{ m.kind === 'video' ? '视频' : '图片' }} · {{ m.filename || `#${idx + 1}` }}
+						{{ m.kind === 'video' ? t('common.video') : t('common.image') }} · {{ m.filename || `#${idx + 1}` }}
 					</a>
 				</div>
 			</div>
@@ -175,10 +175,10 @@
 		<template #footer>
 			<div class="wf-comfy-inputs" @pointerdown.stop>
 				<div class="wf-comfy-inputs-header">
-					<div class="wf-comfy-inputs-title">工作流输入</div>
+					<div class="wf-comfy-inputs-title">{{ t('nodes.comfyui.workflowInputs') }}</div>
 				</div>
 				<div v-if="!workflowPath" class="wf-comfy-inputs-empty">
-					选择工作流后，会按其输入动态生成锚点
+					{{ t('nodes.comfyui.workflowInputsHint') }}
 				</div>
 				<div v-else>
 					<div v-for="(a, idx) in displayInputs" :key="a.id" class="wf-comfy-input-item">
@@ -194,6 +194,9 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -384,12 +387,12 @@ const cancelDisabled = computed(() => {
 const progressWidth = computed(() => `${progress.value}%`)
 
 const runStatusTextFallback = computed(() => {
-	if (runStatus.value === 'running') return '运行中…'
-	if (runStatus.value === 'canceling') return '取消中…'
-	if (runStatus.value === 'completed') return '已完成'
-	if (runStatus.value === 'failed') return '失败'
-	if (runStatus.value === 'cancelled') return '已取消'
-	return '未运行'
+	if (runStatus.value === 'running') return t('nodes.comfyui.running')
+	if (runStatus.value === 'canceling') return t('nodes.comfyui.statusCanceling')
+	if (runStatus.value === 'completed') return t('nodes.comfyui.statusCompleted')
+	if (runStatus.value === 'failed') return t('nodes.comfyui.statusFailed')
+	if (runStatus.value === 'cancelled') return t('nodes.comfyui.statusCancelled')
+	return t('nodes.comfyui.statusNotRunning')
 })
 
 const runStatusTextDisplay = computed(() => {
@@ -397,11 +400,11 @@ const runStatusTextDisplay = computed(() => {
 })
 
 const statusText = computed(() => {
-	if (!baseUrlTrimmed.value) return '未填写地址'
-	if (status.value === 'connecting') return '正在连接…'
-	if (status.value === 'connected') return '已连接'
-	if (status.value === 'error') return message.value ? `连接失败：${message.value}` : '连接失败'
-	return '未连接'
+	if (!baseUrlTrimmed.value) return t('nodes.comfyui.connNoAddress')
+	if (status.value === 'connecting') return t('nodes.comfyui.connConnecting')
+	if (status.value === 'connected') return t('nodes.comfyui.connConnected')
+	if (status.value === 'error') return message.value ? t('nodes.comfyui.connFailed', { message: message.value }) : t('nodes.comfyui.connFailed', { message: '' })
+	return t('nodes.comfyui.connNotConnected')
 })
 
 const onRun = () => {

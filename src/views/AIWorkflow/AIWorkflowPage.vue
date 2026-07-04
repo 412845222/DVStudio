@@ -2,12 +2,12 @@
 	<div class="aiwf-page">
 		<div v-if="noProjectSelected" class="no-project-guide">
 			<div class="no-project-card">
-				<h2>请先选择或新建项目</h2>
-				<p>从左侧「项目列表」选择已有项目，或点击「新建项目」创建一个新项目。</p>
+				<h2>{{ t('aiworkflow.page.noProject.title') }}</h2>
+				<p>{{ t('aiworkflow.page.noProject.description') }}</p>
 				<button
 				@click="noProjectSelected = false; void $router.push({ name: 'ProjectList' })"
 			>
-					去项目列表
+					{{ t('aiworkflow.page.noProject.goToList') }}
 				</button>
 			</div>
 		</div>
@@ -385,66 +385,60 @@
 				/>
 
 				<div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
-					<div class="aiwf-perf-stats-title">性能监控</div>
+					<div class="aiwf-perf-stats-title">{{ t('aiworkflow.page.perf.title') }}</div>
 					<div class="aiwf-perf-stats-row">
 						<span class="aiwf-perf-stats-label">FPS</span>
 						<span class="aiwf-perf-stats-value">{{ perfFpsText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">帧耗时</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.frameTime') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">平均帧</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.avgFrame') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfAvgFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">最差帧</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.worstFrame') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfWorstFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row aiwf-perf-stats-sep">
-						<span class="aiwf-perf-stats-label">边计算</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.edgeCompute') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeComputeText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">输入边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.inputEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeInputCountText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">渲染边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.renderedEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeRenderedText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">裁剪边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.culledEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeCulledText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">裁剪率</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.cullRate') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeCullHitRateText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row aiwf-perf-stats-sep">
-						<span class="aiwf-perf-stats-label">节点</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.nodes') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfNodeSummary }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">长任务</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.longTasks') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfLongTaskSummary }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">缩放</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.zoom') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfZoomText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">状态</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.status') }}</span>
 						<span
 							class="aiwf-perf-stats-value"
-							:class="
-								perfHealthLabel === '稳定'
-									? 'is-good'
-									: perfHealthLabel === '轻微掉帧'
-										? 'is-warn'
-										: 'is-bad'
-							"
+							:class="perfHealthClass"
 						>
 							{{ perfHealthLabel }}
 						</span>
@@ -459,7 +453,7 @@
 					@pointerdown.stop
 					@click.stop="toggleInspector"
 				>
-					属性
+					{{ t('aiworkflow.page.inspector.toggle') }}
 				</button>
 			</div>
 
@@ -538,7 +532,7 @@
 
 			<div class="aiwf-overlay-alerts" :style="overlayAlertStyle">
 				<div v-if="importLimitAlertMessage" class="aiwf-import-limit-alert" @pointerdown.stop>
-					<div class="aiwf-import-limit-alert-title">批量导入超限</div>
+					<div class="aiwf-import-limit-alert-title">{{ t('aiworkflow.page.importLimit.title') }}</div>
 					<div class="aiwf-import-limit-alert-body">{{ importLimitAlertMessage }}</div>
 					<div class="aiwf-import-limit-alert-actions">
 						<button
@@ -546,49 +540,49 @@
 							type="button"
 							@click="onConfirmImportLimitAlert"
 						>
-							确认
+							{{ t('aiworkflow.page.importLimit.confirm') }}
 						</button>
 					</div>
 				</div>
 
 				<div v-if="reuseRecordConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
-					<div class="aiwf-reuse-alert-title">检测到 Django 记录可复用</div>
+					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.reuseRecord.title') }}</div>
 					<div class="aiwf-reuse-alert-body">
-						模板：{{ reuseRecordConfirm.workflowName || '未知模板' }}
+						{{ t('aiworkflow.page.reuseRecord.template', { name: reuseRecordConfirm.workflowName || t('aiworkflow.page.reuseRecord.unknownTemplate') }) }}
 						<br />
-						记录时间：{{ formatReuseRecordTime(reuseRecordConfirm.savedAt) }}
+						{{ t('aiworkflow.page.reuseRecord.savedAt', { time: formatReuseRecordTime(reuseRecordConfirm.savedAt) }) }}
 					</div>
 					<div class="aiwf-reuse-alert-actions">
 						<button class="aiwf-reuse-alert-btn" type="button" @click="onCancelReuseRecord">
-							取消
+							{{ t('aiworkflow.page.reuseRecord.cancel') }}
 						</button>
 						<button
 							class="aiwf-reuse-alert-btn primary"
 							type="button"
 							@click="onConfirmReuseRecord"
 						>
-							确认复用并运行
+							{{ t('aiworkflow.page.reuseRecord.confirm') }}
 						</button>
 					</div>
 				</div>
 
 				<div v-if="meshyTextureConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
-					<div class="aiwf-reuse-alert-title">生成贴图前确认</div>
+					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.meshyTexture.title') }}</div>
 					<div class="aiwf-reuse-alert-body">
-						当前未检测到新的贴图提示词或贴图参考图。
+						{{ t('aiworkflow.page.meshyTexture.noNewPrompt') }}
 						<br />
-						若继续提交，将复用当前主模型已有提示词和任务结果来发起贴图。
+						{{ t('aiworkflow.page.meshyTexture.willReuse') }}
 					</div>
 					<div class="aiwf-reuse-alert-actions">
 						<button class="aiwf-reuse-alert-btn" type="button" @click="cancelMeshyTextureConfirm">
-							取消
+							{{ t('aiworkflow.page.reuseRecord.cancel') }}
 						</button>
 						<button
 							class="aiwf-reuse-alert-btn primary"
 							type="button"
 							@click="confirmMeshyTextureFollowup"
 						>
-							确认复用并贴图
+							{{ t('aiworkflow.page.meshyTexture.confirm') }}
 						</button>
 					</div>
 				</div>
@@ -613,8 +607,8 @@
 
 			<FullscreenProgressOverlay
 				:open="screenshotWarmupOpen"
-				title="正在生成节点预览缓存"
-				:detail="screenshotWarmupDetail || '请稍候，正在为所有节点生成截图缓存以提升蓝图流畅度...'"
+				:title="t('aiworkflow.page.screenshotWarmup.title')"
+				:detail="screenshotWarmupDetail || t('aiworkflow.page.screenshotWarmup.detail')"
 				:progress="screenshotWarmupProgress"
 				:cancellable="false"
 			/>
@@ -633,20 +627,20 @@
 
 		<ModalDialog
 			:open="warmupConfirmDialogOpen"
-			title="蓝图节点预热"
-			confirmText="是，重新预热"
-			closeText="否，使用缓存"
+			:title="t('aiworkflow.page.warmupConfirm.title')"
+			:confirmText="t('aiworkflow.page.warmupConfirm.confirmText')"
+			:closeText="t('aiworkflow.page.warmupConfirm.closeText')"
 			:zIndex="10000"
 			@confirm="onConfirmForceWarmup"
 			@close="onCancelUseCache"
 		>
 			<div class="aiwf-warmup-confirm-dialog">
 				<p style="margin-top: 0">
-					是否重新预热蓝图节点？
+					{{ t('aiworkflow.page.warmupConfirm.question') }}
 				</p>
 				<p style="margin-bottom: 0; color: var(--text-secondary, #666); font-size: 13px;">
-					选择"是"将清空所有缓存，重新渲染并截图所有节点（较慢）。<br/>
-					选择"否"将加载已有缓存并直接使用Canvas渲染（较快）。
+					{{ t('aiworkflow.page.warmupConfirm.yesDesc') }}<br/>
+					{{ t('aiworkflow.page.warmupConfirm.noDesc') }}
 				</p>
 			</div>
 		</ModalDialog>
@@ -654,32 +648,32 @@
 		<!-- 缺失资产确认对话框 -->
 		<ModalDialog
 			:open="missingAssetDialogOpen"
-			title="资源缺失：文件不存在"
-			confirmText="移除失效引用"
-			closeText="暂不处理"
+			:title="t('aiworkflow.page.missingAsset.title')"
+			:confirmText="t('aiworkflow.page.missingAsset.confirmText')"
+			:closeText="t('aiworkflow.page.missingAsset.closeText')"
 			@confirm="onConfirmRemoveMissingAsset"
 			@close="onCancelMissingAssetDialog"
 		>
 			<div v-if="missingAssetDialogPending" class="aiwf-missing-asset-dialog">
 				<p style="margin-top: 0">
-					系统检测到以下静态资源在磁盘上已不存在，但项目数据中仍存在对它的引用。
-					这可能是由于文件被手动移动或删除，或从其他设备迁移项目时文件未同步。
+					{{ t('aiworkflow.page.missingAsset.description1') }}
+					{{ t('aiworkflow.page.missingAsset.description2') }}
 				</p>
 				<div class="aiwf-missing-asset-info">
 					<div class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">资产名称：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.assetName') }}</span>
 						<span class="aiwf-missing-asset-value">
 							<strong>{{ missingAssetDialogPending.assetName }}</strong>
 						</span>
 					</div>
 					<div class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">请求路径：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.requestedPath') }}</span>
 						<span class="aiwf-missing-asset-value aiewf-mono">
 							{{ missingAssetDialogPending.requestedPath }}
 						</span>
 					</div>
 					<div v-if="missingAssetDialogPending.absolutePath" class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">磁盘路径：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.absolutePath') }}</span>
 						<span class="aiwf-missing-asset-value aiewf-mono" style="word-break: break-all">
 							{{ missingAssetDialogPending.absolutePath }}
 						</span>
@@ -691,22 +685,22 @@
 					class="aiwf-missing-asset-sources"
 				>
 					<div class="aiwf-missing-asset-sources-title">
-						错误调用来源（{{ missingAssetDialogPending.sources.length }} 处引用）：
+						{{ t('aiworkflow.page.missingAsset.sourcesTitle', { count: String(missingAssetDialogPending.sources.length) }) }}
 					</div>
 					<ul class="aiwf-missing-asset-source-list">
 						<li v-for="(s, i) in missingAssetDialogPending.sources" :key="i">
 							<span class="aiwf-source-tag">{{ sourceTypeLabel(s.type) }}</span>
 							<span v-if="s.nodeId">
-								节点
+								{{ t('aiworkflow.page.missingAsset.node') }}
 								<code>{{ s.nodeId }}</code>
 								<span v-if="s.nodeType">（{{ s.nodeType }}）</span>
 							</span>
 							<span v-if="s.resourceId">
-								资源
+								{{ t('aiworkflow.page.missingAsset.resource') }}
 								<code>{{ s.resourceId }}</code>
 							</span>
 							<span v-if="s.field">
-								字段
+								{{ t('aiworkflow.page.missingAsset.field') }}
 								<code>{{ s.field }}</code>
 							</span>
 							<span v-if="s.detail" class="aiwf-source-detail">— {{ s.detail }}</span>
@@ -715,8 +709,8 @@
 				</div>
 
 				<p class="aiwf-missing-asset-tip">
-					点击「移除失效引用」将从项目数据中清除上述引用（不会删除磁盘上的其他文件），操作可撤销。
-					点击「暂不处理」将保留引用，稍后您可以通过右键菜单或重新导入来修复。
+					{{ t('aiworkflow.page.missingAsset.tipRemove') }}
+					{{ t('aiworkflow.page.missingAsset.tipLater') }}
 				</p>
 			</div>
 		</ModalDialog>
@@ -728,7 +722,7 @@
 			class="aiwf-undo-remove-btn"
 			@click="onUndoLastRemove"
 		>
-			↶ 撤销最近一次移除
+			{{ t('aiworkflow.page.undoRemove') }}
 		</button>
 	</div>
 </template>
@@ -1238,7 +1232,7 @@ const screenshotAnchorDefaultOffsets = (idx: number, count: number) => {
 const resolveScreenshotAnchors = (node: WorkflowNode, direction: 'in' | 'out') => {
 	const raw = direction === 'in' ? node.inputs : node.outputs
 	const fallbackId = direction === 'in' ? 'in-0' : 'out-0'
-	const fallbackLabel = direction === 'in' ? '入口' : '出口'
+	const fallbackLabel = direction === 'in' ? t('aiworkflow.page.anchor.input') : t('aiworkflow.page.anchor.output')
 	const list =
 		Array.isArray(raw) && raw.length > 0 ? raw : [{ id: fallbackId } as WorkflowAnchorSpec]
 	return list.map((a, index) => {
@@ -1314,15 +1308,15 @@ const ensureNanoAnchorNode = () => {
 	const existing = store.state.nodesById[NANO_ANCHOR_NODE_ID]
 	const inputs: WorkflowAnchorSpec[] = Array.from({ length: NANO_REF_IMAGE_MAX }, (_, i) => ({
 		id: `ref-${i + 1}`,
-		label: `参考图 ${i + 1}`,
+		label: t('aiworkflow.page.nanoAnchor.refImageLabel', { index: String(i + 1) }),
 		mediaType: 'image'
 	}))
 	const node: WorkflowNode = {
 		id: NANO_ANCHOR_NODE_ID,
 		type: existing?.type || 'base',
-		title: 'NanoBanana 参考图输入',
+		title: t('aiworkflow.page.nanoAnchor.title'),
 		alias: existing?.alias,
-		subtitle: '仅用于对话面板参考图锚点（不在画布显示）',
+		subtitle: t('aiworkflow.page.nanoAnchor.subtitle'),
 		worldX: existing?.worldX ?? 0,
 		worldY: existing?.worldY ?? 0,
 		width: existing?.width ?? 240,
@@ -1372,13 +1366,13 @@ const onAutoWireStart = (sourceNodeId: string) => {
 	autoWireCreatedNodeIds.value = []
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = '正在生成下游节点，请稍候...'
+	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.generating')
 }
 
 const onAutoWireNodeCreated = (nodeId: string) => {
 	autoWireCreatedNodeIds.value.push(nodeId)
 	const count = autoWireCreatedNodeIds.value.length
-	screenshotWarmupDetail.value = `正在生成下游节点... 已创建 ${count} 个节点`
+	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.progress', { count: String(count) })
 }
 
 const onAutoWireEnd = async () => {
@@ -2086,7 +2080,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = forceRecapture ? '准备重新生成所有节点预览...' : '准备中...'
+	screenshotWarmupDetail.value = forceRecapture ? t('aiworkflow.page.warmup.prepareRecapture') : t('aiworkflow.page.warmup.preparing')
 
 	const cacheCtx = getScreenshotCacheContext()
 	void cleanupOldScreenshots(7 * 24 * 60 * 60 * 1000)
@@ -2100,7 +2094,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	let diskLoadedCount = 0
 	if (!forceRecapture) {
 		screenshotWarmupProgress.value = 0.03
-		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
 		try {
 			const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
 			const totalNodes = allNodes.length
@@ -2133,7 +2127,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 				if (i % 10 === 0 || i === totalNodes - 1) {
 					const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
 					screenshotWarmupProgress.value = 0.03 + ratio * 0.06
-					screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes}...`
+					screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', { loaded: String(diskLoadedCount), totalNodes: String(totalNodes) })
 					if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 				}
 			}
@@ -2187,7 +2181,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		await nextTick()
 		await waitForFrames(1)
 		screenshotWarmupProgress.value = 0.1
-		screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 		await warmupCanvasAll(
 			newMap,
 			undefined,
@@ -2199,7 +2193,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		initCanvasScreenshotPool()
 		refreshCanvasNodeLayer()
 		screenshotWarmupProgress.value = 0.99
-		screenshotWarmupDetail.value = '完成'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 		await waitForFrames(1)
 		screenshotWarmupOpen.value = false
 		screenshotWarmupDetail.value = ''
@@ -2216,9 +2210,9 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	screenshotWarmupProgress.value = 0.1
 	if (forceRecapture) {
-		screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，强制重新截图...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.forceRecapture', { nodeCount: String(allNodes.length) })
 	} else {
-		screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，${cachedCount} 个已缓存（磁盘${diskLoadedCount}），准备截图...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readyToCapture', { nodeCount: String(allNodes.length), cached: String(cachedCount), diskLoaded: String(diskLoadedCount) })
 	}
 
 	let screenshotStarted = 0
@@ -2284,7 +2278,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 			screenshotCompleted++
 			const ratio = screenshotCompleted / total
 			screenshotWarmupProgress.value = 0.1 + ratio * 0.78
-			screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${screenshotCompleted}/${total}...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturing', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total) })
 		})()
 		promises.push(promise)
 	}
@@ -2313,7 +2307,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		if (screenshotStarted > 0) {
 			const ratio = screenshotStarted / total
 			screenshotWarmupProgress.value = 0.1 + ratio * 0.12 + (screenshotCompleted / total) * 0.66
-			screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${screenshotCompleted}/${total}（渲染就绪 ${screenshotStarted}）...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturingWithReady', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total), started: String(screenshotStarted) })
 		}
 	}
 
@@ -2339,7 +2333,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	// === Canvas截图预热：加载所有截图到内存 ===
 	screenshotWarmupProgress.value = 0.88
-	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 	await waitForFrames(1)
 
 	await warmupCanvasAll(
@@ -2355,7 +2349,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.99
-	screenshotWarmupDetail.value = '完成'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 	await waitForFrames(1)
 
 	screenshotWarmupOpen.value = false
@@ -2374,7 +2368,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	isWarmingUpScreenshots.value = true
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = `正在渲染 ${newNodes.length} 个新节点...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.renderingNewNodes', { count: String(newNodes.length) })
 
 	warmupForceRenderNodeIds.value = new Set(newNodeIds)
 
@@ -2419,7 +2413,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	screenshotPool.setBurstMode(true)
 
 	screenshotWarmupProgress.value = 0.02
-	screenshotWarmupDetail.value = `正在生成新节点预览 0/${total}...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
 
 	let screenshotStarted = 0
 	let screenshotCompleted = 0
@@ -2482,7 +2476,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 
 			screenshotCompleted++
 			screenshotWarmupProgress.value = screenshotCompleted / total
-			screenshotWarmupDetail.value = `正在生成新节点预览 ${screenshotCompleted}/${total}...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewProgress', { completed: String(screenshotCompleted), total: String(total) })
 		})()
 		promises.push(promise)
 	}
@@ -2510,12 +2504,12 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 
 		if (screenshotStarted === 0) {
 			screenshotWarmupProgress.value = 0.02 + (waitFrames / MAX_WAIT_FRAMES) * 0.08
-			screenshotWarmupDetail.value = `正在等待节点渲染...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
 		} else {
 			const pending = screenshotStarted - screenshotCompleted
 			screenshotWarmupProgress.value =
 				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
-			screenshotWarmupDetail.value = `正在生成新节点预览 ${screenshotCompleted}/${total}（渲染中 ${pending}）...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
 		}
 	}
 
@@ -2538,7 +2532,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	warmupForceRenderNodeIds.value = new Set()
 	await nextTick()
 	warmupExitingFullRender.value = false
-	screenshotWarmupDetail.value = `新节点预热完成，共 ${newNodes.length} 个节点，正在加载Canvas截图...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
 	if (newMap.size > 0) {
 		await warmupCanvasAll(newMap)
 		initCanvasScreenshotPool()
@@ -6634,19 +6628,19 @@ const onUndoLastRemove = () => {
 function sourceTypeLabel(type: string): string {
 	switch (type) {
 		case 'resource':
-			return '[资源记录]'
+			return t('aiworkflow.page.sourceType.resourceRecord')
 		case 'node_input':
-			return '[节点输入]'
+			return t('aiworkflow.page.sourceType.nodeInput')
 		case 'node_output':
-			return '[节点输出]'
+			return t('aiworkflow.page.sourceType.nodeOutput')
 		case 'node_param':
-			return '[节点参数]'
+			return t('aiworkflow.page.sourceType.nodeParam')
 		case 'preview':
-			return '[预览图]'
+			return t('aiworkflow.page.sourceType.preview')
 		case 'poster':
-			return '[封面图]'
+			return t('aiworkflow.page.sourceType.poster')
 		case 'unknown':
-			return '[未知位置]'
+			return t('aiworkflow.page.sourceType.unknown')
 		default:
 			return `[${type}]`
 	}
@@ -7692,6 +7686,7 @@ const {
 	perfEdgeCullHitRateText,
 	perfZoomText,
 	perfHealthLabel,
+	perfHealthClass,
 	buildPerfDiagnosticPayload
 } = useAIWorkflowPerfMonitor({
 	nodesCount: computed(() => nodes.value.length),

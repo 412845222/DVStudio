@@ -40,7 +40,7 @@
 						:disabled="running || !canRun"
 						@click.stop="emit('run-scene-understanding')"
 					>
-						{{ running ? '分析中…' : '生成 JSON' }}
+						{{ running ? t('nodes.sceneUnderstanding.analyzing') : t('nodes.sceneUnderstanding.generateJson') }}
 					</button>
 					<button
 						v-if="running"
@@ -48,7 +48,7 @@
 						type="button"
 						@click.stop="emit('cancel-scene-understanding')"
 					>
-						终止
+						{{ t('nodes.sceneUnderstanding.cancel') }}
 					</button>
 				</div>
 
@@ -61,45 +61,45 @@
 						<span>{{ progressValue }}%</span>
 					</div>
 					<div v-if="reasoningText" ref="reasoningEl" class="wf-scene-understand-reasoning">
-						<div class="wf-scene-understand-reasoning-title">💭 模型思考</div>
+						<div class="wf-scene-understand-reasoning-title">{{ t('nodes.sceneUnderstanding.modelThinking') }}</div>
 						<pre class="wf-scene-understand-reasoning-content">{{ reasoningText }}</pre>
 					</div>
 				</div>
 
 				<div class="wf-scene-understand-grid">
 					<div class="wf-scene-understand-card">
-						<div class="wf-scene-understand-card-title">输入图片</div>
+						<div class="wf-scene-understand-card-title">{{ t('nodes.sceneUnderstanding.inputImage') }}</div>
 						<div class="wf-scene-understand-card-value">
-							{{ linkedImageCount > 0 ? `已连接 ${linkedImageCount} 张` : '未连接' }}
+							{{ linkedImageCount > 0 ? t('nodes.sceneUnderstanding.connectedCount', { count: linkedImageCount }) : t('nodes.sceneUnderstanding.notConnected') }}
 						</div>
 						<div class="wf-scene-understand-card-copy">{{ linkedImageHint }}</div>
 					</div>
 					<div class="wf-scene-understand-card">
 						<div class="wf-scene-understand-card-title">{{ secondaryInputTitle }}</div>
 						<div class="wf-scene-understand-card-value">
-							{{ secondaryInputConnected ? '已连接' : '未连接' }}
+							{{ secondaryInputConnected ? t('nodes.sceneUnderstanding.connected') : t('nodes.sceneUnderstanding.notConnected') }}
 						</div>
 						<div class="wf-scene-understand-card-copy">{{ secondaryInputPreview }}</div>
 					</div>
 					<div v-if="currentMode === 'scene-lighting'" class="wf-scene-understand-card">
-						<div class="wf-scene-understand-card-title">补充提示</div>
+						<div class="wf-scene-understand-card-title">{{ t('nodes.sceneUnderstanding.supplementHint') }}</div>
 						<div class="wf-scene-understand-card-value">
-							{{ linkedPromptText ? '已连接' : '未连接' }}
+							{{ linkedPromptText ? t('nodes.sceneUnderstanding.connected') : t('nodes.sceneUnderstanding.notConnected') }}
 						</div>
 						<div class="wf-scene-understand-card-copy">{{ linkedPromptPreview }}</div>
 					</div>
 				</div>
 
 				<label class="wf-scene-understand-field">
-					<span class="wf-scene-understand-label">理解模式</span>
+					<span class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.understandMode') }}</span>
 					<select class="wf-scene-understand-input" :value="currentMode" :disabled="running" @change="onModeChange">
-						<option value="scene-layout">场景布局理解</option>
-						<option value="scene-lighting">场景灯光理解</option>
+						<option value="scene-layout">{{ t('nodes.sceneUnderstanding.modeSceneLayout') }}</option>
+						<option value="scene-lighting">{{ t('nodes.sceneUnderstanding.modeSceneLighting') }}</option>
 					</select>
 				</label>
 
 				<label class="wf-scene-understand-field">
-					<span class="wf-scene-understand-label">多模态模型</span>
+					<span class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.multimodalModel') }}</span>
 					<div class="wf-scene-understand-model-row">
 						<select
 							class="wf-scene-understand-input"
@@ -117,14 +117,14 @@
 							:disabled="loadingModels || running"
 							@click.stop="emit('request-scene-models')"
 						>
-							{{ loadingModels ? '刷新中…' : '刷新模型' }}
+							{{ loadingModels ? t('nodes.sceneUnderstanding.refreshingModels') : t('nodes.sceneUnderstanding.refreshModels') }}
 						</button>
 					</div>
 				</label>
 
 				<div class="wf-scene-understand-output-shell">
 					<div class="wf-scene-understand-output-head">
-						<div class="wf-scene-understand-label">JSON 输出预览</div>
+						<div class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.jsonOutputPreview') }}</div>
 						<div class="wf-scene-understand-meta">{{ resultMeta }}</div>
 					</div>
 					<textarea
@@ -140,7 +140,7 @@
 
 		<template #footer>
 			<div class="wf-scene-understand-footer" @pointerdown.stop>
-				<div class="wf-scene-understand-footer-title">结果摘要</div>
+				<div class="wf-scene-understand-footer-title">{{ t('nodes.sceneUnderstanding.resultSummary') }}</div>
 				<div class="wf-scene-understand-footer-copy" v-if="providerText">
 					{{ providerText }}
 				</div>
@@ -153,10 +153,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import { useI18n } from '../../../i18n'
 import type {
 	WorkflowSceneUnderstandModelOption,
 	WorkflowSceneUnderstandingNodeSettings
 } from '../../../aiworkflow/types'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -258,7 +261,7 @@ const running = computed(() => status.value === 'running')
 const loadingModels = computed(() => status.value === 'loading-models')
 const outputJson = computed(() => String(settings.value?.outputJson ?? ''))
 const messageText = computed(() =>
-	String(settings.value?.message ?? settings.value?.resultSummary ?? '等待运行场景理解。')
+	String(settings.value?.message ?? settings.value?.resultSummary ?? t('nodes.sceneUnderstanding.waitingToRun'))
 )
 const statusText = computed(() =>
 	String(settings.value?.statusText ?? settings.value?.providerStatusText ?? messageText.value)
@@ -294,18 +297,18 @@ const canRun = computed(() => {
 
 const linkedPromptPreview = computed(() => {
 	const text = String(props.linkedPromptText ?? '').trim()
-	if (!text) return '未连接文本节点'
+	if (!text) return t('nodes.sceneUnderstanding.promptNotConnected')
 	return text.length > 56 ? `${text.slice(0, 56)}…` : text
 })
 
 const linkedLayoutJsonPreview = computed(() => {
 	const text = effectiveLayoutJson.value
-	if (!text) return '请先运行场景理解生成布局 JSON 或连接外部输入'
+	if (!text) return t('nodes.sceneUnderstanding.layoutJsonHint')
 	return text.length > 56 ? `${text.slice(0, 56)}…` : text
 })
 
 const secondaryInputTitle = computed(() =>
-	currentMode.value === 'scene-lighting' ? '布局 JSON' : '提示词输入'
+	currentMode.value === 'scene-lighting' ? t('nodes.sceneUnderstanding.layoutJson') : t('nodes.sceneUnderstanding.promptInput')
 )
 
 const secondaryInputConnected = computed(() =>
@@ -323,30 +326,30 @@ const linkedImageHint = computed(() => {
 		? props.linkedImageUrls.filter((x) => !!String(x ?? '').trim())
 		: []
 	const url = String(urls[0] ?? props.linkedImageUrl ?? '').trim()
-	if (!url) return '请把图片节点连到输入锚点'
-	if (urls.length > 1) return `已按锚点顺序接入 ${urls.length} 张参考图`
-	if (url.startsWith('data:')) return '已接收内嵌图像数据'
+	if (!url) return t('nodes.sceneUnderstanding.imageHintConnect')
+	if (urls.length > 1) return t('nodes.sceneUnderstanding.imageHintMultiCount', { count: urls.length })
+	if (url.startsWith('data:')) return t('nodes.sceneUnderstanding.imageHintEmbedded')
 	return url.length > 44 ? `${url.slice(0, 44)}…` : url
 })
 
 const statusLabel = computed(() => {
-	if (status.value === 'loading-models') return '模型加载中'
-	if (status.value === 'running') return '正在分析'
-	if (status.value === 'canceled') return '已终止'
-	if (status.value === 'completed') return settings.value?.mock ? '已完成（Mock）' : '已完成'
-	if (status.value === 'error') return '执行失败'
-	return '待执行'
+	if (status.value === 'loading-models') return t('nodes.sceneUnderstanding.statusLoadingModels')
+	if (status.value === 'running') return t('nodes.sceneUnderstanding.statusAnalyzing')
+	if (status.value === 'canceled') return t('nodes.sceneUnderstanding.statusCanceled')
+	if (status.value === 'completed') return settings.value?.mock ? t('nodes.sceneUnderstanding.statusCompletedMock') : t('nodes.sceneUnderstanding.statusCompleted')
+	if (status.value === 'error') return t('nodes.sceneUnderstanding.statusError')
+	return t('nodes.sceneUnderstanding.statusIdle')
 })
 
 const outputPlaceholder = computed(() =>
 	currentMode.value === 'scene-lighting'
-		? '点击“生成 JSON”后，灯光理解结果会显示在这里。'
-		: '点击“生成 JSON”后，场景理解结果会显示在这里。'
+		? t('nodes.sceneUnderstanding.outputPlaceholderLighting')
+		: t('nodes.sceneUnderstanding.outputPlaceholderLayout')
 )
 
 const resultMeta = computed(() => {
 	const raw = outputJson.value.trim()
-	if (!raw) return '暂无输出'
+	if (!raw) return t('nodes.sceneUnderstanding.noOutput')
 	return `${raw.length} chars`
 })
 
@@ -364,8 +367,8 @@ const onModeChange = (e: Event) => {
 		resultSummary: '',
 		message:
 			value === 'scene-lighting'
-				? '当前为场景灯光理解模式，请接入布局 JSON 与参考图。'
-				: '当前为场景布局理解模式，请接入参考图后生成 JSON。'
+				? t('nodes.sceneUnderstanding.modeLightingMessage')
+				: t('nodes.sceneUnderstanding.modeLayoutMessage')
 	})
 }
 

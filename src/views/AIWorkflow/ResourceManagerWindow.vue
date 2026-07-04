@@ -34,13 +34,11 @@
 					>
 						<div class="rmw-confirm-header" id="rmw-confirm-title">
 							<span class="rmw-confirm-icon">⚠</span>
-							<span class="rmw-confirm-title-text">确认删除资源？</span>
+							<span class="rmw-confirm-title-text">{{ t('aiworkflow.page.resourceManager.confirmTitle') }}</span>
 						</div>
 						<div class="rmw-confirm-body">
 							<p>
-								该资源正在被以下
-								<strong>{{ confirmDialog.usedBy.length }}</strong>
-								个节点引用，删除后这些节点可能无法正常显示：
+								{{ t('aiworkflow.page.resourceManager.usedBy', { count: String(confirmDialog.usedBy.length) }) }}
 							</p>
 							<ul class="rmw-confirm-list">
 								<li v-for="(u, idx) in confirmDialog.usedBy.slice(0, 10)" :key="idx">
@@ -51,17 +49,17 @@
 									</span>
 								</li>
 								<li v-if="confirmDialog.usedBy.length > 10" class="rmw-confirm-more">
-									以及其他 {{ confirmDialog.usedBy.length - 10 }} 个节点
+									{{ t('aiworkflow.page.resourceManager.andMoreNodes', { count: String(confirmDialog.usedBy.length - 10) }) }}
 								</li>
 							</ul>
-							<p class="rmw-confirm-hint">删除操作无法撤销，请确认是否继续？</p>
+							<p class="rmw-confirm-hint">{{ t('aiworkflow.page.resourceManager.deleteHint') }}</p>
 						</div>
 						<div class="rmw-confirm-footer">
 							<button class="rmw-confirm-btn rmw-confirm-cancel" @click="onCancelRemove">
-								取消
+								{{ t('aiworkflow.page.resourceManager.cancel') }}
 							</button>
 							<button class="rmw-confirm-btn rmw-confirm-danger" @click="onConfirmRemove">
-								确认删除
+								{{ t('aiworkflow.page.resourceManager.confirmDelete') }}
 							</button>
 						</div>
 					</div>
@@ -78,6 +76,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from '../../i18n'
 import { getErrorMessage } from '../../types/utils'
 import { useStore } from 'vuex'
 import type {
@@ -101,6 +100,7 @@ type RmEventPayload = { event: string; data?: unknown }
 
 // ============ 1. Store & Services ============
 const store = useStore<WorkflowState>(AIWorkflowKey)
+const { t } = useI18n()
 const blueprintProjectService = new BlueprintProjectService()
 
 // ============ 1b. 本地缓存的资源数据（从主窗口接收） ============
@@ -110,6 +110,7 @@ const localNodeOrder = ref<string[]>([])
 const dataReceived = ref(false)
 
 // ============ 2. URL Query 解析 ============
+const defaultTitle = t('aiworkflow.page.resourceManager.defaultTitle')
 const routeParams = (() => {
 	const raw = window.location.hash || ''
 	const qIdx = raw.indexOf('?')
@@ -117,7 +118,7 @@ const routeParams = (() => {
 	const params = new URLSearchParams(raw.slice(qIdx + 1))
 	const rawId = params.get('projectId')
 	const projectId = rawId != null ? (Number.isFinite(Number(rawId)) ? Number(rawId) : null) : null
-	const title = decodeURIComponent(params.get('title') || '资源管理器')
+	const title = decodeURIComponent(params.get('title') || defaultTitle)
 	return { projectId, title }
 })()
 
@@ -218,7 +219,7 @@ const {
 
 const progressState = computed<StartupProgressState>(() => ({
 	visible: true,
-	title: progressStateRaw.value.title || '正在加载项目资源…',
+	title: progressStateRaw.value.title || t('aiworkflow.page.resourceManager.loadingTitle'),
 	steps: progressStateRaw.value.steps.map((s: StartupProgressStep) => ({
 		key: s.key,
 		label: s.label,
@@ -302,7 +303,7 @@ const handlePreview = async (resourceId: string) => {
 		r = store.state.resourcesById?.[rid] ?? null
 	}
 	if (!r) {
-		pushToast('资源不存在', 'warn')
+		pushToast(t('aiworkflow.page.resourceManager.toastNotExist'), 'warn')
 		return
 	}
 
@@ -350,7 +351,7 @@ const handlePreview = async (resourceId: string) => {
 		}
 	}
 
-	pushToast('无法定位文件位置', 'warn')
+	pushToast(t('aiworkflow.page.resourceManager.toastCannotLocate'), 'warn')
 }
 
 const handleRefreshMissing = async (resourceIds: string[]) => {
@@ -368,13 +369,13 @@ const handleFocusNode = async (payload: { nodeId: string }) => {
 
 	if (dataReceived.value && localNodesById.value) {
 		if (!localNodesById.value[nodeId]) {
-			pushToast('引用节点已删除，无法定位。', 'warn')
+			pushToast(t('aiworkflow.page.resourceManager.toastNodeDeleted'), 'warn')
 			return
 		}
 	} else {
 		const storeNodes = store.state.nodesById
 		if (storeNodes && !storeNodes[nodeId]) {
-			pushToast('引用节点已删除，无法定位。', 'warn')
+			pushToast(t('aiworkflow.page.resourceManager.toastNodeDeleted'), 'warn')
 			return
 		}
 	}
@@ -468,10 +469,10 @@ onMounted(async () => {
 	}
 
 	// 加载流程 — 进度条分阶段反馈
-	show('正在加载项目资源…', null)
+	show(t('aiworkflow.page.resourceManager.loadingTitle'), null)
 
 	// Step 1: 注册项目资产根目录
-	beginStep('register-root', '注册项目资产根目录')
+	beginStep('register-root', t('aiworkflow.page.resourceManager.stepRegisterRoot'))
 	try {
 		const projectId = currentProjectId.value
 		const rootPath = store.state.projectRootPath
@@ -484,7 +485,7 @@ onMounted(async () => {
 	}
 
 	// Step 2: 从 preload 缓存读取资源数据（关键：数据可能在 Vue 挂载前就到达）
-	beginStep('read-cache', '读取资源数据')
+	beginStep('read-cache', t('aiworkflow.page.resourceManager.stepReadCache'))
 	let readFromCache = false
 	if (dweb?.aiworkflow && typeof dweb.aiworkflow.getResourceManagerData === 'function') {
 		const cached = dweb.aiworkflow.getResourceManagerData()
@@ -527,26 +528,26 @@ onMounted(async () => {
 	}
 
 	const readStatus = dataReceived.value
-		? `已读取 ${localResources.value.length} 条资源`
+		? t('aiworkflow.page.resourceManager.statusReadCount', { count: String(localResources.value.length) })
 		: readFromCache
-			? '缓存中无有效数据'
-			: '未从主窗口接收到数据，使用本地store'
+			? t('aiworkflow.page.resourceManager.statusNoCache')
+			: t('aiworkflow.page.resourceManager.statusNoData')
 	markStepOk('read-cache', readStatus)
 
 	// Step 5: 解析资源记录
-	beginStep('resolve-assets', '解析资源记录')
+	beginStep('resolve-assets', t('aiworkflow.page.resourceManager.stepResolveAssets'))
 	const total = resources.value.length
-	markStepOk('resolve-assets', `共 ${total} 条资源记录`)
+	markStepOk('resolve-assets', t('aiworkflow.page.resourceManager.statusTotalCount', { count: String(total) }))
 
 	// Step 6: 等待首帧渲染（DOM ready）
-	beginStep('render', '渲染界面')
+	beginStep('render', t('aiworkflow.page.resourceManager.stepRender'))
 	await new Promise<void>((resolve) =>
 		requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
 	)
-	markStepOk('render', '界面渲染完成')
+	markStepOk('render', t('aiworkflow.page.resourceManager.statusRenderDone'))
 
 	// Step 7: 准备就绪
-	beginStep('ready', '准备就绪')
+	beginStep('ready', t('aiworkflow.page.resourceManager.stepReady'))
 	markStepOk('ready')
 
 	// 微小延迟确保进度条动画可见，避免快速切换闪烁

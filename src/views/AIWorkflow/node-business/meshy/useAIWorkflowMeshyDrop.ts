@@ -1,4 +1,5 @@
 import { isRecord } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type { MeshyDraggedTaskPayload, MeshyStoreLike, MeshyTaskStatus } from './types'
 
 export type AIWorkflowDraggedMeshyTaskItem = MeshyDraggedTaskPayload & {
@@ -17,7 +18,7 @@ export const useAIWorkflowMeshyDrop = (options: {
 		options.store.commit('addNodeAt', {
 			worldX: payload.worldX,
 			worldY: payload.worldY,
-			title: 'Meshy 任务'
+			title: t('tasks.meshy.taskNodeTitle')
 		})
 		const nodeId = options.store.state.selectedNodeId
 		if (!nodeId) return true
@@ -41,10 +42,10 @@ export const useAIWorkflowMeshyDrop = (options: {
 		options.store.commit('setNodeAlias', {
 			nodeId,
 			alias:
-				String(payload.item.alias ?? payload.item.title ?? 'Meshy任务节点').trim() ||
-				'Meshy任务节点'
+				String(payload.item.alias ?? payload.item.title ?? t('tasks.meshy.taskNodeDefaultAlias')).trim() ||
+				t('tasks.meshy.taskNodeDefaultAlias')
 		})
-		options.pushToast('已从 Meshy 任务中心创建节点。', 'info')
+		options.pushToast(t('tasks.meshy.nodeCreatedFromTaskCenter'), 'info')
 		return true
 	}
 

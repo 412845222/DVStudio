@@ -30,12 +30,12 @@
 	>
 		<template #body>
 			<div class="wf-text" @pointerdown.stop>
-				<div class="wf-text-label">文本内容（多行）</div>
+				<div class="wf-text-label">{{ t('nodes.text.contentLabel') }}</div>
 				<textarea
 					ref="textareaEl"
 					class="wf-textarea"
 					:value="textValue"
-					placeholder="在这里输入文本资源…"
+					:placeholder="t('nodes.text.placeholder')"
 					@input="onTextInput"
 					@focus="onFocus"
 					@blur="onBlur"
@@ -48,6 +48,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string

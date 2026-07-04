@@ -1,5 +1,6 @@
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
 import { comfyAnchorNodeIdFromAnchorId, inferMediaKind } from './comfyOutputResolver'
+import { t } from '../../../../i18n'
 
 type OutputAnchor = {
 	id?: string
@@ -123,7 +124,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 			for (const anchorId of sortedOutputAnchorIds) {
 				const edgesForAnchor = outgoingByAnchor.get(anchorId) ?? []
 				const fromAnchor = outputAnchorMap.get(anchorId)
-				const fromAnchorLabel = String(fromAnchor?.label ?? anchorId ?? '输出锚点')
+				const fromAnchorLabel = String(fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor'))
 				const fromMediaType = fromAnchor?.mediaType as 'image' | 'video' | undefined
 
 				const targetKinds = edgesForAnchor
@@ -138,7 +139,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 				if (fromMediaType === 'image' || fromMediaType === 'video') {
 					if (uniqueTargetKinds.some((k) => k !== fromMediaType)) {
 						alerts.add(
-							`连接类型不匹配：输出锚点「${fromAnchorLabel}」为 ${fromMediaType}，但存在不匹配的下游连接。`
+							t('nodes.comfyui.typeMismatch', { anchor: fromAnchorLabel, mediaType: fromMediaType })
 						)
 					}
 				}
@@ -164,20 +165,21 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 				}
 
 				if (!inferredMediaType) {
-					alerts.add(`ComfyUI 输出锚点「${fromAnchorLabel}」暂无可识别媒体产出。`)
+					alerts.add(t('nodes.comfyui.noMediaOutput', { anchor: fromAnchorLabel }))
 					continue
 				}
 
 				if (fromMediaType !== 'image' && fromMediaType !== 'video') {
 					alerts.add(
-						`ComfyUI 输出锚点「${fromAnchorLabel}」未标注类型，已按 ${inferredMediaType} 分发。`
+						t('nodes.comfyui.unlabeledType', { anchor: fromAnchorLabel, mediaType: inferredMediaType })
 					)
 				}
 
 				const list = inferredMediaType === 'image' ? imageMedia : videoMedia
 				if (!list.length) {
+					const mediaTypeLabel = inferredMediaType === 'image' ? t('nodes.comfyui.imageType') : t('nodes.comfyui.videoType')
 					alerts.add(
-						`ComfyUI 本次未产出${inferredMediaType === 'image' ? '图片' : '视频'}，无法分发到锚点「${fromAnchorLabel}」。`
+						t('nodes.comfyui.noMediaForAnchor', { mediaType: mediaTypeLabel, anchor: fromAnchorLabel })
 					)
 					continue
 				}
@@ -202,7 +204,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 				}
 
 				if (!selectedMedia || !String(selectedMedia.url || '').trim()) {
-					alerts.add(`输出锚点「${fromAnchorLabel}」未匹配到可用产物。`)
+					alerts.add(t('nodes.comfyui.noMatchOutput', { anchor: fromAnchorLabel }))
 					continue
 				}
 
@@ -255,7 +257,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 					}
 
 					if (!localizedFromElectron && payload.isElectron()) {
-						alerts.add(`ComfyUI 产物入库失败：锚点「${fromAnchorLabel}」主进程下载失败。`)
+						alerts.add(t('nodes.comfyui.downloadFailed', { anchor: fromAnchorLabel }))
 						continue
 					}
 
@@ -278,7 +280,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 
 						if (!imported.ok) {
 							alerts.add(
-								`ComfyUI 产物入库失败：锚点「${fromAnchorLabel}」未入库（${String(imported.error || 'unknown')}）`
+								t('nodes.comfyui.importFailed', { anchor: fromAnchorLabel, error: String(imported.error || 'unknown') })
 							)
 							continue
 						}
@@ -286,7 +288,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 						const asset = imported.asset ?? {}
 						const importedUrl = payload.resolveBackendUrl(String(asset.url || ''))
 						if (!String(importedUrl || '').trim()) {
-							alerts.add(`ComfyUI 产物入库失败：锚点「${fromAnchorLabel}」返回了空地址。`)
+							alerts.add(t('nodes.comfyui.emptyUrlReturned', { anchor: fromAnchorLabel }))
 							continue
 						}
 

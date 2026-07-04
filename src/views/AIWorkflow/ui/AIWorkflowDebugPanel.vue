@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from '../../../i18n'
 import type { Store } from 'vuex'
 import { getErrorMessage } from '../../../types/utils'
 import { runtimeDescription } from '../../../network/runtimePlatform'
@@ -13,18 +14,35 @@ const props = defineProps<{
 	store: DebugPanelStore
 }>()
 
+const { t } = useI18n()
+
 const visible = ref(false)
 const collapsed = ref(true)
 
 const platformInfo = computed(() => runtimeDescription())
 
 const backendPingStatus = ref<'idle' | 'checking' | 'reachable' | 'unreachable'>('idle')
-const backendPingMessage = ref('未检测')
+const backendPingMessage = ref('')
 const lastBackendCheck = ref<number | null>(null)
+
+const backendStatusLabel = computed(() => {
+	switch (backendPingStatus.value) {
+		case 'idle': return t('aiworkflow.page.debugPanel.statusIdle')
+		case 'checking': return t('aiworkflow.page.debugPanel.statusChecking')
+		case 'reachable': return t('aiworkflow.page.debugPanel.statusReachable')
+		case 'unreachable': return t('aiworkflow.page.debugPanel.statusUnreachable')
+		default: return backendPingStatus.value
+	}
+})
+
+const backendPingMessageText = computed(() => {
+	if (backendPingMessage.value) return backendPingMessage.value
+	return t('aiworkflow.page.debugPanel.unchecked')
+})
 
 const checkBackend = async () => {
 	backendPingStatus.value = 'checking'
-	backendPingMessage.value = '正在测试后端连通性…'
+	backendPingMessage.value = t('aiworkflow.page.debugPanel.checking')
 	const start = Date.now()
 	try {
 		const res = await fetch('/api/workflow/ping', {
@@ -34,15 +52,15 @@ const checkBackend = async () => {
 		})
 		if (res.ok) {
 			backendPingStatus.value = 'reachable'
-			backendPingMessage.value = `后端可达（HTTP ${res.status}，${Date.now() - start}ms）`
+			backendPingMessage.value = t('aiworkflow.page.debugPanel.reachable', { status: String(res.status), ms: String(Date.now() - start) })
 		} else {
 			backendPingStatus.value = 'unreachable'
-			backendPingMessage.value = `后端返回 HTTP ${res.status}（${Date.now() - start}ms），请检查 django-app 是否已启动。`
+			backendPingMessage.value = t('aiworkflow.page.debugPanel.httpError', { status: String(res.status), ms: String(Date.now() - start) })
 		}
 	} catch (err: unknown) {
 		backendPingStatus.value = 'unreachable'
 		const msg = getErrorMessage(err)
-		backendPingMessage.value = `后端不可达：${msg}。请确认 django-app 已在 http://127.0.0.1:5800 启动，或在 Settings 调整后端地址后重试。`
+		backendPingMessage.value = t('aiworkflow.page.debugPanel.unreachable', { message: msg })
 	} finally {
 		lastBackendCheck.value = Date.now()
 	}
@@ -134,75 +152,75 @@ const toggleCollapsed = () => {
 <template>
 	<div v-if="visible" class="dv-debug-panel" :class="{ 'dv-debug-panel-collapsed': collapsed }">
 		<div class="dv-debug-panel-header" @click="toggleCollapsed">
-			<span class="dv-debug-panel-title">🌐 Web 调试面板 (Alt+Shift+D 切换)</span>
+			<span class="dv-debug-panel-title">🌐 {{ t('aiworkflow.page.debugPanel.title') }}</span>
 			<span class="dv-debug-panel-toggle">{{ collapsed ? '▸' : '▾' }}</span>
 		</div>
 		<div v-if="!collapsed" class="dv-debug-panel-body">
 			<div class="dv-debug-section">
-				<h4>后端连通性</h4>
+				<h4>{{ t('aiworkflow.page.debugPanel.backendConnectivity') }}</h4>
 				<div class="dv-debug-backend-row">
 					<span
 						class="dv-debug-backend-status"
 						:class="`dv-debug-backend-status-${backendPingStatus}`"
 					>
-						{{ backendPingStatus }}
+						{{ backendStatusLabel }}
 					</span>
-					<span class="dv-debug-backend-msg">{{ backendPingMessage }}</span>
+					<span class="dv-debug-backend-msg">{{ backendPingMessageText }}</span>
 					<button
 						class="dv-debug-backend-btn"
 						type="button"
 						@click.stop="checkBackend"
 						:disabled="backendPingStatus === 'checking'"
 					>
-						{{ backendPingStatus === 'checking' ? '检测中…' : '重新检测' }}
+						{{ backendPingStatus === 'checking' ? t('aiworkflow.page.debugPanel.checking') : t('aiworkflow.page.debugPanel.recheck') }}
 					</button>
 				</div>
 				<div class="dv-debug-backend-hint">
-					web 模式下：前端请求走 Vite proxy
-					<code>/api/* → http://127.0.0.1:5800</code>
-					。 请确认
+					{{ t('aiworkflow.page.debugPanel.webModeHint') }}
+					<code>/api/* → http://127.0.0.1:5800</code>。
+					{{ t('aiworkflow.page.debugPanel.confirmRunning') }}
 					<code>python django-app/manage.py runserver 5800</code>
-					或
+					{{ t('aiworkflow.page.debugPanel.or') }}
 					<code>npm run dev:django</code>
-					已启动。
+					{{ t('aiworkflow.page.debugPanel.started') }}
 				</div>
 			</div>
 			<div class="dv-debug-section">
-				<h4>运行环境</h4>
+				<h4>{{ t('aiworkflow.page.debugPanel.runtimeEnv') }}</h4>
 				<dl>
 					<dt>platform</dt>
 					<dd>{{ platformInfo.platform }}</dd>
 					<dt>vitePlatformOverride</dt>
-					<dd>{{ platformInfo.vitePlatformOverride || '(未设置)' }}</dd>
+					<dd>{{ platformInfo.vitePlatformOverride || t('aiworkflow.page.debugPanel.notSet') }}</dd>
 					<dt>backendBaseUrl</dt>
-					<dd>{{ platformInfo.backendBaseUrl || '(未设置)' }}</dd>
+					<dd>{{ platformInfo.backendBaseUrl || t('aiworkflow.page.debugPanel.notSet') }}</dd>
 					<dt>userAgent</dt>
 					<dd class="dv-debug-wrap">{{ platformInfo.userAgent }}</dd>
 				</dl>
 			</div>
 			<div class="dv-debug-section">
-				<h4>节点生成任务 ({{ taskCount }})</h4>
-				<div v-if="!taskList.length" class="dv-debug-empty">暂无任务</div>
-				<div v-for="t in taskList" :key="`${t.nodeId}-${t.startedAt}`" class="dv-debug-task-row">
+				<h4>{{ t('aiworkflow.page.debugPanel.nodeTasks', { count: String(taskCount) }) }}</h4>
+				<div v-if="!taskList.length" class="dv-debug-empty">{{ t('aiworkflow.page.debugPanel.noTasks') }}</div>
+				<div v-for="task in taskList" :key="`${task.nodeId}-${task.startedAt}`" class="dv-debug-task-row">
 					<div class="dv-debug-task-head">
-						<span class="dv-debug-task-kind">{{ t.kind }}</span>
-						<span class="dv-debug-task-nodeid">({{ t.nodeId.slice(0, 8) }}…)</span>
-						<span class="dv-debug-task-status" :class="`dv-debug-task-status-${t.status}`">
-							{{ t.status }}
+						<span class="dv-debug-task-kind">{{ task.kind }}</span>
+						<span class="dv-debug-task-nodeid">({{ task.nodeId.slice(0, 8) }}…)</span>
+						<span class="dv-debug-task-status" :class="`dv-debug-task-status-${task.status}`">
+							{{ task.status }}
 						</span>
-						<span class="dv-debug-task-time">start {{ fmtTime(t.startedAt) }}</span>
+						<span class="dv-debug-task-time">{{ t('aiworkflow.page.debugPanel.start') }} {{ fmtTime(task.startedAt) }}</span>
 					</div>
-					<div v-if="t.statusText" class="dv-debug-task-text">{{ t.statusText }}</div>
+					<div v-if="task.statusText" class="dv-debug-task-text">{{ task.statusText }}</div>
 					<div class="dv-debug-task-bar">
 						<div
 							class="dv-debug-task-bar-fill"
-							:style="{ width: Math.min(100, Math.max(0, t.progress)) + '%' }"
+							:style="{ width: Math.min(100, Math.max(0, task.progress)) + '%' }"
 						></div>
 					</div>
 					<div class="dv-debug-task-meta">
-						进度 {{ Math.round(t.progress) }}% · 结果 {{ t.results }} 项
+						{{ t('aiworkflow.page.debugPanel.progress') }} {{ Math.round(task.progress) }}% · {{ t('aiworkflow.page.debugPanel.results') }} {{ task.results }} {{ t('aiworkflow.page.debugPanel.items') }}
 					</div>
-					<div v-if="t.errorMessage" class="dv-debug-task-error">{{ t.errorMessage }}</div>
+					<div v-if="task.errorMessage" class="dv-debug-task-error">{{ task.errorMessage }}</div>
 				</div>
 			</div>
 		</div>

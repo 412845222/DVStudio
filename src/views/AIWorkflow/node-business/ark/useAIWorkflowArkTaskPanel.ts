@@ -8,6 +8,7 @@ import type {
 } from '../../../../network/ComfyUIBridgeService'
 import { getErrorMessage, isRecord } from '../../../../types/utils'
 import { openFolderForPath } from '../../../../electronBridge'
+import { t } from '../../../../i18n'
 
 interface ArkRawTask {
 	id: string
@@ -57,13 +58,23 @@ interface SeedanceApi {
 	}): Promise<SeedanceListAllRemoteResponse>
 }
 
-const STATUS_LABEL_MAP: Record<string, string> = {
-	queued: '排队中',
-	running: '运行中',
-	succeeded: '已完成',
-	failed: '失败',
-	canceled: '已取消',
-	not_found: '已删除'
+const getStatusLabel = (status: ArkTaskPanelItem['status'] | 'not_found'): string => {
+	switch (status) {
+		case 'queued':
+			return t('tasks.ark.queued')
+		case 'running':
+			return t('tasks.ark.running')
+		case 'succeeded':
+			return t('tasks.ark.succeeded')
+		case 'failed':
+			return t('tasks.ark.failed')
+		case 'canceled':
+			return t('tasks.ark.canceled')
+		case 'not_found':
+			return t('tasks.ark.notFound')
+		default:
+			return t('tasks.ark.unknown')
+	}
 }
 
 const normalizeStatus = (raw: string): ArkTaskPanelItem['status'] => {
@@ -80,7 +91,9 @@ const normalizeStatus = (raw: string): ArkTaskPanelItem['status'] => {
 const normalizeStatusLabel = (status: string, rawLabel: string): string => {
 	const label = String(rawLabel ?? '').trim()
 	if (label) return label
-	return STATUS_LABEL_MAP[normalizeStatus(status)] ?? '未知'
+	const rawStatus = String(status ?? '').trim().toLowerCase()
+	if (rawStatus === 'not_found') return getStatusLabel('not_found')
+	return getStatusLabel(normalizeStatus(status))
 }
 
 const parseJsonField = (value: unknown): Record<string, unknown> | null => {
@@ -389,8 +402,8 @@ export const useAIWorkflowArkTaskPanel = (
 						resultUrls: [],
 						resultText: '',
 						thumbnailUrl: '',
-						errorMessage: res.error || '查询失败',
-						statusText: res.error || '查询失败',
+						errorMessage: res.error || t('tasks.ark.queryFailed'),
+						statusText: res.error || t('tasks.ark.queryFailed'),
 						projectId: projectId.value ?? null,
 						nodeId: '',
 						remoteTaskId: remoteTaskId,
@@ -399,7 +412,7 @@ export const useAIWorkflowArkTaskPanel = (
 						createdAt: Date.now(),
 						updatedAt: Date.now(),
 						resourceAvailable: false,
-						resourceUnavailableReason: res.error || '查询失败'
+						resourceUnavailableReason: res.error || t('tasks.ark.queryFailed')
 					}
 				}
 			}
@@ -443,7 +456,7 @@ export const useAIWorkflowArkTaskPanel = (
 			}
 			const result = await arkApi.deleteTask({ taskId: id })
 			if (!result.ok) {
-				throw new Error(result.error || '删除失败')
+				throw new Error(result.error || t('tasks.ark.deleteFailed'))
 			}
 			await refreshArkTaskItems({ silent: true })
 		} catch (err: unknown) {
@@ -460,7 +473,7 @@ export const useAIWorkflowArkTaskPanel = (
 		if (!id) return { ok: false, error: 'taskId is required' }
 		const pid = projectId.value
 		if (!pid) {
-			pushMsg('当前项目未激活，无法下载资产。', 'warn')
+			pushMsg(t('tasks.ark.projectNotActive'), 'warn')
 			return { ok: false, error: 'project not active' }
 		}
 
@@ -474,7 +487,7 @@ export const useAIWorkflowArkTaskPanel = (
 
 			const isSeedance = id.startsWith('seedance-')
 			if (!isSeedance) {
-				pushMsg('当前仅支持 Seedance 视频任务的产物下载。', 'warn')
+				pushMsg(t('tasks.ark.seedanceOnly'), 'warn')
 				return { ok: false, error: 'unsupported api type' }
 			}
 
@@ -496,23 +509,23 @@ export const useAIWorkflowArkTaskPanel = (
 			}
 
 			if (!res) {
-				pushMsg('下载功能不可用。', 'error')
+				pushMsg(t('tasks.ark.downloadUnavailable'), 'error')
 				return { ok: false, error: 'download api not available' }
 			}
 
 			if (!res.ok) {
-				pushMsg('下载失败：' + String(res.error || 'unknown'), 'error')
+				pushMsg(t('tasks.ark.downloadFailed', { error: String(res.error || 'unknown') }), 'error')
 				return { ok: false, error: res.error }
 			}
 
-			const successMsg = kind === 'lastFrame' ? '首帧图片下载成功。' : '视频文件下载成功。'
+			const successMsg = kind === 'lastFrame' ? t('tasks.ark.firstFrameDownloaded') : t('tasks.ark.videoDownloaded')
 			const folderPath = res.sourcePath || res.projectRelativePath
 			if (folderPath) {
 				pushMsg(successMsg, 'info', {
 					persistent: true,
 					actions: [
 						{
-							label: '打开文件夹',
+							label: t('tasks.ark.openFolder'),
 							onClick: () => {
 								try {
 									openFolderForPath(folderPath)
@@ -534,7 +547,7 @@ export const useAIWorkflowArkTaskPanel = (
 			}
 		} catch (err: unknown) {
 			const msg = getErrorMessage(err)
-			pushMsg('下载异常：' + msg, 'error')
+			pushMsg(t('tasks.ark.downloadError', { msg }), 'error')
 			return { ok: false, error: msg }
 		} finally {
 			const next = new Set(arkTaskDownloading.value)
@@ -548,11 +561,11 @@ export const useAIWorkflowArkTaskPanel = (
 		if (!id) return false
 		const pid = projectId.value
 		if (!pid) {
-			pushMsg('当前项目未激活，无法导入。', 'warn')
+			pushMsg(t('tasks.ark.projectNotActiveImport'), 'warn')
 			return false
 		}
 
-		const task = arkTaskItems.value.find((t) => t.taskId === id)
+		const task = arkTaskItems.value.find((item) => item.taskId === id)
 		const remoteTaskId = id.replace(/^seedance-/, '')
 
 		const dl = await downloadArkTaskAsset(id, kind)
@@ -563,7 +576,7 @@ export const useAIWorkflowArkTaskPanel = (
 		const createNode = options?.createMediaNodeWithAsset
 
 		const mediaKind: 'image' | 'video' = kind === 'lastFrame' ? 'image' : 'video'
-		const mediaLabel = mediaKind === 'image' ? '图片' : '视频'
+		const mediaLabel = mediaKind === 'image' ? t('common.image') : t('common.video')
 
 		let targetNodeId = ''
 		let created = false
@@ -585,7 +598,7 @@ export const useAIWorkflowArkTaskPanel = (
 					created = true
 				}
 			} catch (e: unknown) {
-				pushMsg(`新建${mediaLabel}节点失败：` + getErrorMessage(e), 'error')
+				pushMsg(t('tasks.ark.createNodeFailed', { type: mediaLabel, error: getErrorMessage(e) }), 'error')
 				return false
 			}
 		}
@@ -594,18 +607,18 @@ export const useAIWorkflowArkTaskPanel = (
 			try {
 				const ret = await bindNode(targetNodeId, dl.url)
 				if (ret === false) {
-					pushMsg('节点回填失败。', 'warn')
+					pushMsg(t('tasks.ark.nodeBackfillFailed'), 'warn')
 					return false
 				}
 			} catch (e: unknown) {
-				pushMsg('节点回填失败：' + getErrorMessage(e), 'error')
+				pushMsg(t('tasks.ark.nodeBackfillFailedWithError', { error: getErrorMessage(e) }), 'error')
 				return false
 			}
-			pushMsg(created ? `已新建${mediaLabel}节点并填入产物。` : `已将产物填入${mediaLabel}节点。`, 'info')
+			pushMsg(created ? t('tasks.ark.nodeCreatedAndFilled', { type: mediaLabel }) : t('tasks.ark.nodeFilled', { type: mediaLabel }), 'info')
 			return true
 		}
 
-		pushMsg(`已下载到项目资产，但未能关联到${mediaLabel}节点。`, 'warn')
+		pushMsg(t('tasks.ark.downloadedNotLinked', { type: mediaLabel }), 'warn')
 		return false
 	}
 
@@ -675,15 +688,15 @@ export const useAIWorkflowArkTaskPanel = (
 
 	const dataStatusText = computed(() => {
 		if (arkTaskRefreshBusy.value && !arkTaskLoaded.value) {
-			return '正在从火山方舟远端拉取任务列表...'
+			return t('tasks.ark.loadingList')
 		}
 		if (arkTaskLoaded.value) {
-			return `当前展示远端所有 Seedance/ARK 任务（共 ${arkTaskItems.value.length} 条），可下载产物并回填蓝图节点。`
+			return t('tasks.ark.listSummary', { count: arkTaskItems.value.length })
 		}
 		if (arkTaskFallbackReason.value) {
-			return `加载失败：${arkTaskFallbackReason.value}`
+			return t('tasks.ark.loadFailed', { error: arkTaskFallbackReason.value })
 		}
-		return '打开面板后会自动从远端拉取任务列表。'
+		return t('tasks.ark.autoLoadHint')
 	})
 
 	return {

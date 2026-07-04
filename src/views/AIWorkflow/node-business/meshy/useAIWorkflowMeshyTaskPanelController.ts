@@ -6,6 +6,7 @@ import type {
 	MeshyTaskPanelItem
 } from '../../../../ui/WorkFlow/MeshyTaskPanel.vue'
 import { getErrorMessage, isRecord } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type {
 	MeshyBalanceResponse,
 	MeshyComfyService,
@@ -41,8 +42,8 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 	const meshyTaskDetailLoading = ref(false)
 	const meshyTaskActionBusyTaskId = ref('')
 	const meshyTaskActionBusyType = ref<MeshyTaskPanelAction | ''>('')
-	const meshyBalanceText = ref('读取中...')
-	const meshyBalanceDetail = ref('正在读取 Meshy 余额状态。')
+	const meshyBalanceText = ref(t('tasks.meshy.balanceLoading'))
+	const meshyBalanceDetail = ref(t('tasks.meshy.balanceLoadingDetail'))
 	const meshyBalanceTone = ref<'muted' | 'warn' | 'ok'>('muted')
 
 	const {
@@ -66,7 +67,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			if (!res.ok) {
 				meshyTaskRemoteFallbackReason.value = String(res.error || 'unknown')
 				if (!opts?.silent)
-					options.pushToast('读取 Meshy 任务中心失败：' + String(res.error || 'unknown'), 'warn')
+					options.pushToast(t('tasks.meshy.taskCenterLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
 			meshyTaskRemoteItems.value = Array.isArray(res.items)
@@ -79,7 +80,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		} catch (err: unknown) {
 			meshyTaskRemoteFallbackReason.value = getErrorMessage(err)
 			if (!opts?.silent)
-				options.pushToast('读取 Meshy 任务中心失败：' + getErrorMessage(err), 'warn')
+				options.pushToast(t('tasks.meshy.taskCenterLoadFailed', { error: getErrorMessage(err) }), 'warn')
 		} finally {
 			meshyTaskRemoteLoading.value = false
 		}
@@ -89,22 +90,22 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		try {
 			const res: MeshyBalanceResponse = await options.comfyService.meshyBalance()
 			if (!res.ok) {
-				meshyBalanceText.value = '读取失败'
+				meshyBalanceText.value = t('tasks.meshy.balanceLoadFailed')
 				meshyBalanceDetail.value = String(res.error || 'unknown')
 				meshyBalanceTone.value = 'warn'
 				if (!opts?.silent)
-					options.pushToast('读取 Meshy 余额状态失败：' + String(res.error || 'unknown'), 'warn')
+					options.pushToast(t('tasks.meshy.balanceLoadFailedToast', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
-			meshyBalanceText.value = String(res.displayText || '暂不可读')
+			meshyBalanceText.value = String(res.displayText || t('tasks.meshy.balanceUnavailable'))
 			meshyBalanceDetail.value = String(res.detail || '')
 			meshyBalanceTone.value = res.available ? 'ok' : res.configured ? 'muted' : 'warn'
 		} catch (err: unknown) {
-			meshyBalanceText.value = '读取失败'
+			meshyBalanceText.value = t('tasks.meshy.balanceLoadFailed')
 			meshyBalanceDetail.value = getErrorMessage(err)
 			meshyBalanceTone.value = 'warn'
 			if (!opts?.silent)
-				options.pushToast('读取 Meshy 余额状态失败：' + getErrorMessage(err), 'warn')
+				options.pushToast(t('tasks.meshy.balanceLoadFailedToast', { error: getErrorMessage(err) }), 'warn')
 		}
 	}
 
@@ -165,10 +166,12 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 									(Array.isArray(settings.imageUrls) ? settings.imageUrls.length : 0)
 							)
 				const progress = Math.max(0, Math.min(100, Number(settings.progress ?? 0)))
+				const chainLabel = target === 'image' ? t('tasks.meshy.imageChain') : t('tasks.meshy.model3dChain')
+				const statusFallback = String(settings.statusText ?? settings.errorMessage ?? '').trim() || t('tasks.meshy.pendingExecution')
 				return {
 					id: `${node.id}:${String(settings.taskId ?? family)}`,
 					nodeId: node.id,
-					title: String(node.alias ?? node.title ?? 'Meshy 任务').trim() || 'Meshy 任务',
+					title: String(node.alias ?? node.title ?? t('tasks.meshy.taskNodeTitle')).trim() || t('tasks.meshy.taskNodeTitle'),
 					taskId: String(settings.taskId ?? '').trim() || undefined,
 					target,
 					family,
@@ -176,8 +179,8 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 					status: taskStatus,
 					statusLabel: statusLabelForMeshy(taskStatus),
 					progress,
-					promptPreview: prompt || '未填写提示词',
-					metaText: `${target === 'image' ? '图像链路' : '3D链路'} · ${imageCount} 张图片输入 · ${String(settings.statusText ?? settings.errorMessage ?? '').trim() || '待执行'}`,
+					promptPreview: prompt || t('tasks.meshy.promptNotFilled'),
+					metaText: `${chainLabel} · ${t('tasks.meshy.imageInputsCount', { count: String(imageCount) })} · ${statusFallback}`,
 					relationKind: String(settings.relationKind ?? 'model').trim() || 'model',
 					rootTaskId: String(settings.rootTaskId ?? settings.taskId ?? '').trim() || undefined,
 					parentTaskId: String(settings.parentTaskId ?? '').trim() || undefined,
@@ -204,7 +207,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 						source: 'meshy-task-panel',
 						nodeId: node.id,
 						taskId: String(settings.taskId ?? '').trim() || undefined,
-						title: String(node.title ?? '').trim() || 'Meshy 任务',
+						title: String(node.title ?? '').trim() || t('tasks.meshy.taskNodeTitle'),
 						alias: String(node.alias ?? '').trim() || undefined,
 						meshySettings: JSON.parse(JSON.stringify(settings ?? {}))
 					}
@@ -219,15 +222,15 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 
 	const meshyTaskPanelStatusText = computed(() => {
 		if (meshyTaskRemoteLoading.value && !meshyTaskRemoteLoaded.value) {
-			return '正在从后端镜像同步 Meshy 任务中心...'
+			return t('tasks.meshy.syncingFromBackend')
 		}
 		if (meshyTaskRemoteLoaded.value) {
-			return '当前展示后端镜像任务，可直接拖拽到蓝图复用。'
+			return t('tasks.meshy.backendTasksDisplayed')
 		}
 		if (meshyTaskRemoteFallbackReason.value) {
-			return `后端镜像读取失败，当前已回退显示本地节点状态。原因：${meshyTaskRemoteFallbackReason.value}`
+			return t('tasks.meshy.backendLoadFailedFallback', { reason: meshyTaskRemoteFallbackReason.value })
 		}
-		return '当前先展示本地节点状态；打开面板后会自动尝试同步后端镜像。'
+		return t('tasks.meshy.localStateDisplayed')
 	})
 
 	const openMeshyTaskDialog = () => {
@@ -298,16 +301,16 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		const settings = getMeshySettingsForNode(node) ?? {}
 		const taskId = String(settings.taskId ?? '').trim()
 		if (!taskId) {
-			options.pushToast('当前节点没有可刷新的 Meshy 任务 ID。', 'warn')
+			options.pushToast(t('tasks.meshy.noRefreshableTaskId'), 'warn')
 			return
 		}
 		const mode = String(settings.taskFamily ?? 'text-to-3d')
 		const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
 		if (!refreshed.ok) {
-			options.pushToast('刷新 Meshy 状态失败：' + refreshed.error, 'warn')
+			options.pushToast(t('tasks.meshy.refreshStatusFailed', { error: refreshed.error }), 'warn')
 			return
 		}
-		options.pushToast('Meshy 任务状态已刷新。', 'info')
+		options.pushToast(t('tasks.meshy.statusRefreshed'), 'info')
 	}
 
 	const onNodePullMeshyOutput = async (nodeId: string) => {
@@ -316,26 +319,26 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		const settings = getMeshySettingsForNode(node) ?? {}
 		const taskId = String(settings.taskId ?? '').trim()
 		if (!taskId) {
-			options.pushToast('当前节点没有可拉取的 Meshy 任务 ID。', 'warn')
+			options.pushToast(t('tasks.meshy.noPullableTaskId'), 'warn')
 			return
 		}
 		const mode = String(settings.taskFamily ?? 'text-to-3d')
 		const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
 		if (!refreshed.ok) {
-			options.pushToast('拉取 Meshy 产物失败：' + refreshed.error, 'warn')
+			options.pushToast(t('tasks.meshy.pullArtifactsFailed', { error: refreshed.error }), 'warn')
 			return
 		}
 		if (refreshed.finalStatus !== 'succeeded') {
-			options.pushToast('任务尚未完成，暂无法拉取最终产物。', 'warn')
+			options.pushToast(t('tasks.meshy.taskNotCompletedCannotPull'), 'warn')
 			return
 		}
 
 		if (node.type === 'image') {
-			options.pushToast('Meshy 图片已下载并绑定到当前图片节点。', 'info')
+			options.pushToast(t('tasks.meshy.imageDownloadedBound'), 'info')
 		} else if (node.type === 'model3d') {
-			options.pushToast('Meshy 3D 模型已下载并绑定到当前模型节点。', 'info')
+			options.pushToast(t('tasks.meshy.model3dDownloadedBound'), 'info')
 		} else {
-			options.pushToast('Meshy 产物已同步到当前节点并尝试下发到下游。', 'info')
+			options.pushToast(t('tasks.meshy.artifactsSyncedToNode'), 'info')
 		}
 	}
 
@@ -345,19 +348,19 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		const settings = getMeshySettingsForNode(node) ?? {}
 		const taskId = String(settings.taskId ?? '').trim()
 		if (!taskId) {
-			options.pushToast('当前节点没有运行中的 Meshy 任务。', 'warn')
+			options.pushToast(t('tasks.meshy.noRunningTask'), 'warn')
 			return
 		}
 		const mode = normalizeMeshyModeForTaskAction(String(settings.taskFamily ?? 'text-to-3d'))
 		const res: MeshyTaskActionResponse = await options.comfyService.meshyStop(taskId, mode)
 		if (!res.ok) {
-			options.pushToast('停止 Meshy 任务失败：' + String(res.error || 'unknown'), 'warn')
+			options.pushToast(t('tasks.meshy.stopTaskFailed', { error: String(res.error || 'unknown') }), 'warn')
 			return
 		}
 		options.stopMeshyPoll(nodeId)
 		const patch = {
 			taskStatus: 'canceled' as const,
-			statusText: 'Meshy：任务已停止',
+			statusText: t('tasks.meshy.taskStopped'),
 			errorMessage: ''
 		}
 		if (node.type === 'meshy') {
@@ -373,7 +376,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				model3dSettings: { meshyModelSettings: patch }
 			})
 		}
-		options.pushToast('已停止 Meshy 任务。', 'info')
+		options.pushToast(t('tasks.meshy.taskStoppedToast'), 'info')
 		if (meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value)
 			void refreshMeshyTaskItems({ silent: true })
 	}
@@ -384,13 +387,13 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		const settings = getMeshySettingsForNode(node) ?? {}
 		const taskId = String(settings.taskId ?? '').trim()
 		if (!taskId) {
-			options.pushToast('当前节点没有可删除的 Meshy 任务。', 'warn')
+			options.pushToast(t('tasks.meshy.noDeletableTask'), 'warn')
 			return
 		}
 		const mode = normalizeMeshyModeForTaskAction(String(settings.taskFamily ?? 'text-to-3d'))
 		const res: MeshyTaskActionResponse = await options.comfyService.meshyDelete(taskId, mode)
 		if (!res.ok) {
-			options.pushToast('删除 Meshy 任务失败：' + String(res.error || 'unknown'), 'warn')
+			options.pushToast(t('tasks.meshy.deleteTaskFailed', { error: String(res.error || 'unknown') }), 'warn')
 			return
 		}
 		options.stopMeshyPoll(nodeId)
@@ -398,7 +401,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			taskId: undefined,
 			taskStatus: 'idle' as const,
 			progress: 0,
-			statusText: 'Meshy：任务已删除',
+			statusText: t('tasks.meshy.taskDeleted'),
 			errorMessage: ''
 		}
 		if (node.type === 'meshy') {
@@ -414,7 +417,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				model3dSettings: { meshyModelSettings: patch }
 			})
 		}
-		options.pushToast('已删除 Meshy 任务。', 'info')
+		options.pushToast(t('tasks.meshy.taskDeletedToast'), 'info')
 		if (meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value)
 			void refreshMeshyTaskItems({ silent: true })
 	}
@@ -436,46 +439,46 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				if (nodeId) {
 					const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
 					if (!refreshed.ok) {
-						options.pushToast('刷新任务状态失败：' + refreshed.error, 'warn')
+						options.pushToast(t('tasks.meshy.taskStatusRefreshFailed', { error: refreshed.error }), 'warn')
 					} else {
-						options.pushToast('任务状态已刷新。', 'info')
+						options.pushToast(t('tasks.meshy.taskStatusRefreshed'), 'info')
 					}
 				} else {
 					const res: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, mode)
 					if (!res.ok)
-						options.pushToast('刷新任务状态失败：' + String(res.error || 'unknown'), 'warn')
+						options.pushToast(t('tasks.meshy.taskStatusRefreshFailed', { error: String(res.error || 'unknown') }), 'warn')
 				}
 			} else if (payload.action === 'import-output') {
 				if (!nodeId) {
-					options.pushToast('未找到可接收产物的 Meshy 节点，请先将任务拖回蓝图或绑定节点。', 'warn')
+					options.pushToast(t('tasks.meshy.noReceivingNodeFound'), 'warn')
 				} else {
 					const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
 					if (!refreshed.ok) {
-						options.pushToast('拉取产物失败：' + refreshed.error, 'warn')
+						options.pushToast(t('tasks.meshy.pullArtifactsFailedGeneric', { error: refreshed.error }), 'warn')
 					} else if (refreshed.finalStatus !== 'succeeded') {
-						options.pushToast('任务尚未完成，暂无法拉取最终产物。', 'warn')
+						options.pushToast(t('tasks.meshy.taskNotCompletedCannotPull'), 'warn')
 					} else {
 						const node = options.store.state.nodesById[nodeId]
 						if (node?.type === 'image') {
-							options.pushToast('Meshy 图片已下载并绑定到图片节点。', 'info')
+							options.pushToast(t('tasks.meshy.imageDownloadedBoundGeneric'), 'info')
 						} else if (node?.type === 'model3d') {
-							options.pushToast('Meshy 3D 模型已下载并绑定到模型节点。', 'info')
+							options.pushToast(t('tasks.meshy.model3dDownloadedBoundGeneric'), 'info')
 						} else {
-							options.pushToast('产物已同步到节点并尝试分发到下游。', 'info')
+							options.pushToast(t('tasks.meshy.artifactsSyncedToNodeGeneric'), 'info')
 						}
 					}
 				}
 			} else if (payload.action === 'stop') {
 				const res: MeshyTaskActionResponse = await options.comfyService.meshyStop(taskId, mode)
 				if (!res.ok) {
-					options.pushToast('停止任务失败：' + String(res.error || 'unknown'), 'warn')
+					options.pushToast(t('tasks.meshy.taskActionFailed', { action: t('tasks.meshy.stop'), error: String(res.error || 'unknown') }), 'warn')
 				} else {
 					if (nodeId) {
 						options.stopMeshyPoll(nodeId)
 						const node = options.store.state.nodesById[nodeId]
 						const patch = {
 							taskStatus: 'canceled' as const,
-							statusText: 'Meshy：任务已停止',
+							statusText: t('tasks.meshy.taskStopped'),
 							errorMessage: ''
 						}
 						if (node?.type === 'meshy') {
@@ -492,12 +495,12 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 							})
 						}
 					}
-					options.pushToast('任务已停止。', 'info')
+					options.pushToast(t('tasks.meshy.taskActionPerformed', { action: t('tasks.meshy.stop') }), 'info')
 				}
 			} else if (payload.action === 'delete') {
 				const res: MeshyTaskActionResponse = await options.comfyService.meshyDelete(taskId, mode)
 				if (!res.ok) {
-					options.pushToast('删除任务失败：' + String(res.error || 'unknown'), 'warn')
+					options.pushToast(t('tasks.meshy.taskActionFailed', { action: t('tasks.meshy.delete'), error: String(res.error || 'unknown') }), 'warn')
 				} else {
 					if (nodeId) {
 						options.stopMeshyPoll(nodeId)
@@ -506,7 +509,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 							taskId: undefined,
 							taskStatus: 'idle' as const,
 							progress: 0,
-							statusText: 'Meshy：任务已删除',
+							statusText: t('tasks.meshy.taskDeleted'),
 							errorMessage: ''
 						}
 						if (node?.type === 'meshy') {
@@ -523,7 +526,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 							})
 						}
 					}
-					options.pushToast('任务已删除。', 'info')
+					options.pushToast(t('tasks.meshy.taskActionPerformed', { action: t('tasks.meshy.delete') }), 'info')
 				}
 			}
 			await refreshMeshyTaskItems({ silent: true })
@@ -545,14 +548,14 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		try {
 			const res: MeshyTaskDetailResponse = await options.comfyService.meshyTaskDetail(item.taskId)
 			if (!res.ok) {
-				options.pushToast('读取 Meshy 任务详情失败：' + String(res.error || 'unknown'), 'warn')
+				options.pushToast(t('tasks.meshy.taskDetailLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
 			meshyTaskDetail.value = mapMeshyMirrorItemToDetail(
 				res.item as unknown as Record<string, unknown>
 			)
 		} catch (err: unknown) {
-			options.pushToast('读取 Meshy 任务详情失败：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('tasks.meshy.taskDetailLoadFailed', { error: getErrorMessage(err) }), 'warn')
 		} finally {
 			meshyTaskDetailLoading.value = false
 		}

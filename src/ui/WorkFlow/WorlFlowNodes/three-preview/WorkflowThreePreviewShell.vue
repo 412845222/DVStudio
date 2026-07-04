@@ -10,26 +10,26 @@
 			draggable="false"
 		/>
 		<div v-if="empty" class="wf-three-shell-overlay empty">
-			<div class="wf-three-shell-title">{{ emptyTitle }}</div>
-			<div class="wf-three-shell-text">{{ emptyText }}</div>
+			<div class="wf-three-shell-title">{{ displayEmptyTitle }}</div>
+			<div class="wf-three-shell-text">{{ displayEmptyText }}</div>
 		</div>
 		<div v-else-if="phase === 'loading'" class="wf-three-shell-overlay loading">
-			<div class="wf-three-shell-title">{{ loadingTitle }}</div>
+			<div class="wf-three-shell-title">{{ displayLoadingTitle }}</div>
 			<div class="wf-three-shell-progress-track">
 				<div class="wf-three-shell-progress-fill" :style="progressStyle" />
 			</div>
 			<div class="wf-three-shell-text">{{ progressLabel }}</div>
 		</div>
 		<div v-else-if="showMaskedOverlay" class="wf-three-shell-overlay masked">
-			<div class="wf-three-shell-title">{{ maskedTitle }}</div>
-			<div class="wf-three-shell-text">{{ maskedText }}</div>
+			<div class="wf-three-shell-title">{{ displayMaskedTitle }}</div>
+			<div class="wf-three-shell-text">{{ displayMaskedText }}</div>
 			<button
 				v-if="canStart"
 				class="wf-three-shell-start"
 				type="button"
 				@click.stop="emit('start')"
 			>
-				{{ startLabel }}
+				{{ displayStartLabel }}
 			</button>
 		</div>
 		<div v-else-if="showMaskedDock" class="wf-three-shell-dock masked">
@@ -39,9 +39,9 @@
 				type="button"
 				@click.stop="emit('start')"
 			>
-				{{ startLabel }}
+				{{ displayStartLabel }}
 			</button>
-			<div class="wf-three-shell-dock-copy">{{ maskedTitle }}</div>
+			<div class="wf-three-shell-dock-copy">{{ displayMaskedTitle }}</div>
 		</div>
 		<slot name="overlay" />
 	</div>
@@ -49,7 +49,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '../../../../i18n'
 import type { WorkflowThreePreviewState } from './types'
+
+const { t } = useI18n()
 
 const props = withDefaults(
 	defineProps<{
@@ -67,12 +70,12 @@ const props = withDefaults(
 		state: null,
 		snapshotUrl: '',
 		empty: false,
-		emptyTitle: '预览未就绪',
-		emptyText: '当前节点还没有可渲染内容。',
-		startLabel: '开启渲染',
-		loadingTitle: '正在准备渲染',
-		maskedTitle: '预览已暂停',
-		maskedText: '选中当前节点后，可手动开启实时渲染。'
+		emptyTitle: undefined,
+		emptyText: undefined,
+		startLabel: undefined,
+		loadingTitle: undefined,
+		maskedTitle: undefined,
+		maskedText: undefined
 	}
 )
 
@@ -99,6 +102,13 @@ const progressLabel = computed(() => {
 	if (label) return `${Math.round(progressValue.value * 100)}% · ${label}`
 	return `${Math.round(progressValue.value * 100)}%`
 })
+
+const displayEmptyTitle = computed(() => props.emptyTitle || t('ui.preview.notReadyTitle'))
+const displayEmptyText = computed(() => props.emptyText || t('ui.preview.notReadyText'))
+const displayStartLabel = computed(() => props.startLabel || t('ui.preview.startRender'))
+const displayLoadingTitle = computed(() => props.loadingTitle || t('ui.preview.preparingTitle'))
+const displayMaskedTitle = computed(() => props.maskedTitle || t('ui.preview.pausedTitle'))
+const displayMaskedText = computed(() => props.maskedText || t('ui.preview.pausedText'))
 </script>
 
 <style scoped>

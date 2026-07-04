@@ -1,3 +1,5 @@
+import { t } from '../../../i18n'
+
 type FileWithPath = File & {
 	path?: string
 }
@@ -177,7 +179,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			options.store.commit('addNodeAt', {
 				worldX,
 				worldY,
-				title: item.kind === 'image' ? '图片' : '视频'
+				title: item.kind === 'image' ? t('common.image') : t('common.video')
 			})
 			const nodeId = options.store.state.selectedNodeId
 			if (!nodeId) continue
