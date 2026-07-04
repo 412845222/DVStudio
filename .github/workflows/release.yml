@@ -20,7 +20,7 @@ concurrency:
 jobs:
   build-and-release:
     name: Build Windows Installer & Publish Release
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout code
