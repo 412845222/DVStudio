@@ -270,6 +270,7 @@ class SteamPlatformProvider extends EventEmitter {
         this._overlayActive = false
         this._wasSteamRunning = false
         this._initRetries = 0
+        this._lastInitAttempt = 0
         this._isDev = !!process.env.ELECTRON_DEV
     }
 
@@ -384,16 +385,26 @@ class SteamPlatformProvider extends EventEmitter {
                 this._client = this._steam.createClient({ appId: this._config.appId })
             }
 
-            if (!this._initialized && this._client) {
+            if (!this._client) return
+
+            if (!this._initialized) {
                 const isSteamRunning = this._client.isSteamRunning()
-                if (isSteamRunning && !this._wasSteamRunning) {
-                    console.log('[platform:steam] Steam is now running, attempting initialization...')
+                const now = Date.now()
+                const retryCooldown = this._isDev ? 2000 : 5000
+                const shouldRetry = isSteamRunning && (!this._wasSteamRunning || (now - this._lastInitAttempt > retryCooldown && this._initRetries < 10))
+
+                if (shouldRetry) {
+                    console.log('[platform:steam] Steam is running, attempting initialization...')
+                    this._lastInitAttempt = now
                     this._initRetries++
                     this.init().then((result) => {
                         if (result.ok) {
-                            console.log('[platform:steam] Dev mode auto-init succeeded')
+                            console.log('[platform:steam] Init succeeded, user:', this.getUserInfo()?.displayName || 'unknown')
+                            this._wasSteamRunning = true
                             this.emit('connected', { platformId: 'steam' })
                             this._wasLoggedIn = this.isLoggedIn()
+                        } else {
+                            console.warn('[platform:steam] Init failed:', result.errMsg)
                         }
                     })
                 }
@@ -401,7 +412,7 @@ class SteamPlatformProvider extends EventEmitter {
                 return
             }
 
-            if (this._client && this._initialized) {
+            if (this._initialized) {
                 if (typeof this._client.runCallbacks === 'function') {
                     this._client.runCallbacks()
                 }

@@ -139,10 +139,14 @@ function handleSteamPanelAction(actionId: string) {
 			})
 			break
 		case 'friends':
-			overlayActivate('Friends')
+			overlayActivate('Friends').catch(() => {
+				openExternalUrl('steam://open/friends')
+			})
 			break
 		case 'achievements':
-			overlayActivate('Achievements')
+			overlayActivate('Achievements').catch(() => {
+				openExternalUrl('https://steamcommunity.com/my/stats/2475710/?tab=achievements')
+			})
 			break
 		case 'open-panel':
 		default:
