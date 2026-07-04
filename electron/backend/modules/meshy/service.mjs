@@ -567,41 +567,45 @@ function buildCreatePayload(payload) {
       generateMultiView = Boolean(generateMultiView)
     }
 
-    // Handle aspect_ratio ONLY IF generate_multi_view is false
+    // NOTE: Per Meshy official API docs, /image-to-image endpoint does NOT support aspect_ratio parameter.
+    // We still send it if provided in case API supports it silently, but it may be ignored.
     if (!generateMultiView) {
+      // Try multiple possible keys for aspect ratio
       let aspectRatio = String(
         payload.aspect_ratio ||
         payload.aspectRatio ||
-        '1:1'
+        ''
       ).trim()
 
-      if (!aspectRatio) {
-        aspectRatio = '1:1'
-      }
+      if (aspectRatio) {
+        // Validate aspect ratio for the selected model
+        let validRatio = null
+        if (aiModel === 'gpt-image-2') {
+          validRatio = GPT_IMAGE_2_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : null
+        } else {
+          validRatio = NANO_BANANA_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : null
+        }
 
-      // Validate aspect ratio for the selected model
-      let validRatio = '1:1'
-      if (aiModel === 'gpt-image-2') {
-        validRatio = GPT_IMAGE_2_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : '1:1'
-      } else {
-        validRatio = NANO_BANANA_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : '1:1'
+        if (validRatio) {
+          body.aspect_ratio = validRatio
+          console.log(`[Meshy Backend] image-to-image: passing aspect_ratio=${validRatio} (API may ignore this parameter per docs)`)
+        } else {
+          console.log(`[Meshy Backend] image-to-image: aspect_ratio ${aspectRatio} not valid for model ${aiModel} (or API may not support aspect_ratio at all)`)
+        }
       }
-
-      body.aspect_ratio = validRatio
-      console.log(`[Meshy Backend] image-to-image aspect_ratio set to: ${validRatio} (requested: ${aspectRatio}, model: ${aiModel})`)
     } else {
       body.generate_multi_view = true
       body.output_image_count = 4
-      console.log(`[Meshy Backend] image-to-image generate_multi_view is TRUE - aspect_ratio will NOT be sent, output_image_count forced to 4`)
+      console.log(`[Meshy Backend] image-to-image generate_multi_view is TRUE - output_image_count forced to 4`)
     }
 
-    // Handle pose_mode
+    // Handle pose_mode (send it, API may ignore)
     const poseMode = String(payload.pose_mode || '').trim()
     if (poseMode && ['a-pose', 't-pose'].includes(poseMode)) {
       body.pose_mode = poseMode
     }
 
-    // Handle negative_prompt
+    // Handle negative_prompt (send it, API may ignore)
     const negativePrompt = String(payload.negative_prompt || '').trim()
     if (negativePrompt) body.negative_prompt = negativePrompt
 
@@ -722,7 +726,6 @@ export async function generateModel(ctx, payload) {
     ...(payload || {}),
     _requestBody: body,
     _requestUrl: url,
-    _requestMode: mode,
     _submittedAt: new Date().toISOString()
   }
 
