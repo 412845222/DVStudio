@@ -556,7 +556,11 @@ async function formDataToObject(form: FormData): Promise<Record<string, unknown>
 	if (!obj.negative_prompt && obj.negativePrompt) obj.negative_prompt = obj.negativePrompt
 	if (!obj.ai_model && obj.model && typeof obj.model === 'string') {
 		const modelLower = obj.model.toLowerCase()
-		if (modelLower.includes('nano-banana') || modelLower.includes('nanobanana')) {
+		if (modelLower.includes('gpt-image-2') || modelLower.includes('gptimage2')) {
+			obj.ai_model = 'gpt-image-2'
+		} else if (modelLower.includes('nano-banana-2') || modelLower.includes('nanobanana2')) {
+			obj.ai_model = 'nano-banana-2'
+		} else if (modelLower.includes('nano-banana') || modelLower.includes('nanobanana')) {
 			obj.ai_model = modelLower.includes('pro') ? 'nano-banana-pro' : 'nano-banana'
 		}
 	}
@@ -2165,6 +2169,10 @@ export class ComfyUIBridgeService {
 		const payload: Record<string, unknown> = {}
 		const refImageUrls: string[] = []
 
+		const boolKeys = new Set(['generate_multi_view', 'generateMultiView'])
+		const intKeys = new Set(['seed', 'output_image_count', 'outputImageCount'])
+		const jsonKeys = new Set(['submittedParams'])
+
 		const formAny = form as unknown as {
 			entries: () => IterableIterator<[string, FormDataEntryValue]>
 		}
@@ -2180,6 +2188,21 @@ export class ComfyUIBridgeService {
 				const b64 = btoa(binary)
 				const mime = fileValue.type || 'image/png'
 				refImageUrls.push(`data:${mime};base64,${b64}`)
+			} else if (typeof value === 'string') {
+				let v: unknown = value
+				if (boolKeys.has(key)) {
+					v = value.toLowerCase() === 'true' || value === '1'
+				} else if (intKeys.has(key)) {
+					const n = Number(value)
+					v = Number.isFinite(n) ? n : value
+				} else if (jsonKeys.has(key)) {
+					try {
+						v = JSON.parse(value)
+					} catch {
+						v = value
+					}
+				}
+				payload[key] = v
 			} else {
 				payload[key] = value
 			}
@@ -2188,6 +2211,19 @@ export class ComfyUIBridgeService {
 		if (refImageUrls.length > 0) {
 			payload.reference_image_urls = refImageUrls
 		}
+
+		if (!payload.ai_model && payload.model && typeof payload.model === 'string') {
+			const modelLower = payload.model.toLowerCase()
+			if (modelLower.includes('gpt-image-2') || modelLower.includes('gptimage2')) {
+				payload.ai_model = 'gpt-image-2'
+			} else if (modelLower.includes('nano-banana-2') || modelLower.includes('nanobanana2')) {
+				payload.ai_model = 'nano-banana-2'
+			} else if (modelLower.includes('nano-banana') || modelLower.includes('nanobanana')) {
+				payload.ai_model = modelLower.includes('pro') ? 'nano-banana-pro' : 'nano-banana'
+			}
+		}
+
+		console.log('[Meshy Image Generate] payload:', JSON.stringify(payload, null, 2))
 
 		if (isIpcAvailable()) {
 			try {

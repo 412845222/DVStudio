@@ -1010,6 +1010,13 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 		}
 	}
 
+	if (key === 'meshyImageAiModel' && typeof value === 'string') {
+		const allowedAspectRatios = getMeshyImageAspectRatioOptions(value).map(o => o.value)
+		if (!allowedAspectRatios.includes(String(next.meshyAspectRatio))) {
+			next.meshyAspectRatio = allowedAspectRatios[0] || '1:1'
+		}
+	}
+
 	if (key === 'model' && value === 'seedream') {
 		const ver = String(next.seedreamModelVersion || 'doubao-seedream-4-5-251128')
 		const allowedResolutions = getSeedreamResolutionOptions(ver).map(o => o.value)

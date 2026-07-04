@@ -18,6 +18,30 @@ export const useAIWorkflowResourceActions = (payload: {
 	getProjectId?: () => number | null
 	getProjectRootPath?: (projectId?: number) => string
 }) => {
+	const getMimeTypeFromFilename = (filename: string): string => {
+		const ext = filename.split('.').pop()?.toLowerCase() || ''
+		const mimeMap: Record<string, string> = {
+			png: 'image/png',
+			jpg: 'image/jpeg',
+			jpeg: 'image/jpeg',
+			gif: 'image/gif',
+			webp: 'image/webp',
+			bmp: 'image/bmp',
+			svg: 'image/svg+xml',
+			mp4: 'video/mp4',
+			webm: 'video/webm',
+			mov: 'video/quicktime',
+			avi: 'video/x-msvideo',
+			glb: 'model/gltf-binary',
+			gltf: 'model/gltf+json',
+			fbx: 'application/octet-stream',
+			obj: 'text/plain',
+			stl: 'application/sla',
+			usdz: 'model/vnd.usdz+zip'
+		}
+		return mimeMap[ext] || 'application/octet-stream'
+	}
+
 	const triggerDownloadObjectUrl = (objectUrl: string, filename: string) => {
 		const a = document.createElement('a')
 		a.href = objectUrl
@@ -31,14 +55,49 @@ export const useAIWorkflowResourceActions = (payload: {
 	const downloadUrlAsBlob = async (url: string, filename: string) => {
 		const res = await fetch(url, { credentials: 'include' })
 		if (!res.ok) throw new Error(`HTTP ${res.status}`)
-		const blob = await res.blob()
+		const originalBlob = await res.blob()
+		let mimeType = getMimeTypeFromFilename(filename)
+		const contentType = res.headers.get('content-type')
+		if (contentType && contentType.includes('/')) {
+			const ct = contentType.split(';')[0].trim()
+			if (ct && ct !== 'application/octet-stream') {
+				mimeType = ct
+			}
+		}
+		if (originalBlob.type && originalBlob.type !== 'application/octet-stream') {
+			mimeType = originalBlob.type
+		}
+		const blob = originalBlob.type === mimeType
+			? originalBlob
+			: new Blob([originalBlob], { type: mimeType })
 		const objectUrl = URL.createObjectURL(blob)
 		try {
 			triggerDownloadObjectUrl(objectUrl, filename)
 		} finally {
-			// Give the browser a moment to start the download before revoking.
 			setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 		}
+	}
+
+	const getExtensionFromUrl = (url: string): string => {
+		const u = String(url || '').trim()
+		if (!u) return ''
+		try {
+			if (u.startsWith('data:')) {
+				const m = /^data:image\/(\w+);base64,/.exec(u)
+				if (m) return m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase()
+			}
+			let pathname = u
+			if (u.startsWith('file://')) {
+				pathname = decodeURIComponent(new URL(u).pathname).replace(/^\/+([a-zA-Z]:)/, '$1')
+			} else if (/^https?:\/\//i.test(u)) {
+				pathname = new URL(u).pathname
+			}
+			const ext = pathname.split('.').pop()?.toLowerCase() || ''
+			if (/^(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|avi|glb|gltf|fbx|obj|stl|usdz)$/i.test(ext)) {
+				return ext === 'jpeg' ? 'jpg' : ext
+			}
+		} catch {}
+		return ''
 	}
 
 	const inferSelectedResourceFilename = (node: WorkflowNode) => {
@@ -47,13 +106,48 @@ export const useAIWorkflowResourceActions = (payload: {
 				? String(node.model3dSettings?.modelSourceName ?? '').trim()
 				: String(payload.nodeResourceName(node) ?? '').trim()
 		const safe = raw.replace(/[\\/:*?"<>|]+/g, '_')
-		if (safe) return safe
+		if (safe && /\.\w{2,5}$/.test(safe)) return safe
+
+		let ext = ''
+		if (node.type === 'image') {
+			const rid = String(node.resourceId || '').trim()
+			if (rid) {
+				const resource = payload.store.state.resourcesById[rid]
+				if (resource) {
+					const sourcePath = String(resource?.sourcePath ?? '').trim()
+					const url = String(resource?.url ?? '').trim()
+					const projectRelativePath = String(resource?.projectRelativePath ?? '').trim()
+					ext = getExtensionFromUrl(sourcePath) || getExtensionFromUrl(url) || getExtensionFromUrl(projectRelativePath)
+				}
+			}
+			if (!ext && node.imageSettings?.outputFormat) {
+				const fmt = String(node.imageSettings.outputFormat).toLowerCase()
+				ext = fmt === 'jpeg' ? 'jpg' : fmt
+			}
+			if (!ext) ext = 'png'
+			return safe ? `${safe}.${ext}` : `image-${node.id}.${ext}`
+		}
+
 		if (node.type === 'model3d') {
 			const fmt = String(node.model3dSettings?.modelFormat ?? 'glb').trim() || 'glb'
-			return `model-${node.id}.${fmt}`
+			return safe ? `${safe}.${fmt}` : `model-${node.id}.${fmt}`
 		}
-		if (node.type === 'video') return `video-${node.id}.mp4`
-		return `image-${node.id}.png`
+
+		if (node.type === 'video') {
+			const rid = String(node.resourceId || '').trim()
+			if (rid) {
+				const resource = payload.store.state.resourcesById[rid]
+				if (resource) {
+					const sourcePath = String(resource?.sourcePath ?? '').trim()
+					const url = String(resource?.url ?? '').trim()
+					ext = getExtensionFromUrl(sourcePath) || getExtensionFromUrl(url)
+				}
+			}
+			if (!ext) ext = 'mp4'
+			return safe ? `${safe}.${ext}` : `video-${node.id}.${ext}`
+		}
+
+		return safe || `resource-${node.id}`
 	}
 
 	const isAbsoluteLocalPath = (value: string) => {
