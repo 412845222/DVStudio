@@ -174,10 +174,11 @@ export type MeshyImageSettings = {
 	prompt?: string
 	negativePrompt?: string
 	seed?: number
-	aiModel?: 'nano-banana' | 'nano-banana-pro'
+	aiModel?: 'nano-banana' | 'nano-banana-2' | 'nano-banana-pro' | 'gpt-image-2'
 	generateMultiView?: boolean
 	aspectRatio?: string
 	outputImageCount?: number
+	outputCount?: number
 	poseMode?: '' | 'a-pose' | 't-pose'
 	taskId?: string
 	taskFamily?: 'text-to-image' | 'image-to-image'
@@ -191,6 +192,7 @@ export type MeshyImageSettings = {
 	outputAssetPath?: string
 	outputSummary?: MeshyOutputSummary
 	relationSummary?: MeshyRelationSummary
+	submittedParams?: Record<string, unknown>
 }
 
 export type MeshyModel3DSettings = {
@@ -207,10 +209,10 @@ export type MeshyModel3DSettings = {
 }
 
 export type MeshyGeneratePayload = {
-	target: MeshyTaskTarget
-	family: string
-	mode: MeshyRequestMode
-	stage: 'preview' | 'refine'
+	target?: MeshyTaskTarget
+	family?: string
+	mode: MeshyRequestMode | string
+	stage?: 'preview' | 'refine'
 	prompt: string
 	negative_prompt?: string
 	preview_task_id?: string
@@ -244,6 +246,7 @@ export type MeshyGeneratePayload = {
 	rootTaskId?: string
 	parentTaskId?: string
 	capabilities?: string[]
+	submittedParams?: Record<string, unknown>
 	[key: string]: unknown
 }
 

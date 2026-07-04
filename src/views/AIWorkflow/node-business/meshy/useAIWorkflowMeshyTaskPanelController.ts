@@ -30,6 +30,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 	pickMeshyEffectiveOutput: (item: Record<string, unknown>) => MeshyEffectiveOutput
 	applyMeshyTaskResult: (nodeId: string, task: unknown) => Promise<string>
 	stopMeshyPoll: (nodeId: string) => void
+	createImageNodeAtCenter?: (url: string, name?: string) => string | null
 }) => {
 	const meshyTaskDialogOpen = ref(false)
 	const meshyTaskRemoteItems = ref<MeshyTaskPanelItem[]>([])
@@ -446,18 +447,60 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 						options.pushToast('刷新任务状态失败：' + String(res.error || 'unknown'), 'warn')
 				}
 			} else if (payload.action === 'import-output') {
-				if (!nodeId) {
+				let targetNodeId = nodeId
+				let isNewNode = false
+
+				if (!targetNodeId) {
+					const isImageTask = mode === 'text-to-image' || mode === 'image-to-image'
+					if (isImageTask && typeof options.createImageNodeAtCenter === 'function') {
+						try {
+							const taskRes: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, mode)
+							if (taskRes.ok) {
+								const imageUrls = (taskRes as unknown as { imageUrls?: string[] }).imageUrls || []
+								const preferredUrl = String(
+									(taskRes as unknown as { preferredImageUrl?: string }).preferredImageUrl || imageUrls[0] || ''
+								).trim()
+								const newNodeId = options.createImageNodeAtCenter(preferredUrl, 'Meshy 图片任务')
+								if (newNodeId) {
+									targetNodeId = newNodeId
+									isNewNode = true
+									options.store.commit('setNodeImageSettings', {
+										nodeId: newNodeId,
+										imageSettings: {
+											imageGenerationSource: 'meshy',
+											meshyImageSettings: {
+												taskId,
+												taskStatus: 'pending',
+												taskFamily: mode,
+												progress: 0,
+												statusText: '正在拉取 Meshy 图片产物...'
+											}
+										}
+									})
+									options.pushToast('已在蓝图中心创建图片节点，正在拉取产物...', 'info')
+								}
+							}
+						} catch (e) {
+							console.error('[Meshy Task Panel] 创建节点失败:', e)
+						}
+					}
+				}
+
+				if (!targetNodeId) {
 					options.pushToast('未找到可接收产物的 Meshy 节点，请先将任务拖回蓝图或绑定节点。', 'warn')
 				} else {
-					const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
+					const refreshed = await refreshMeshyTaskToNode(targetNodeId, taskId, mode)
 					if (!refreshed.ok) {
 						options.pushToast('拉取产物失败：' + refreshed.error, 'warn')
 					} else if (refreshed.finalStatus !== 'succeeded') {
 						options.pushToast('任务尚未完成，暂无法拉取最终产物。', 'warn')
 					} else {
-						const node = options.store.state.nodesById[nodeId]
+						const node = options.store.state.nodesById[targetNodeId]
 						if (node?.type === 'image') {
-							options.pushToast('Meshy 图片已下载并绑定到图片节点。', 'info')
+							options.pushToast(
+								isNewNode ? 'Meshy 图片已拉取并绑定到新创建的图片节点。' : 'Meshy 图片已下载并绑定到图片节点。',
+								'info'
+							)
 						} else if (node?.type === 'model3d') {
 							options.pushToast('Meshy 3D 模型已下载并绑定到模型节点。', 'info')
 						} else {
