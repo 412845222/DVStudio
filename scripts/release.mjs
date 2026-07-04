@@ -200,13 +200,13 @@ function main() {
 	log('')
 	log('Running quality checks (typecheck + test)...')
 	try {
-		runNpm(['run', 'quality'])
+		runNpm(['run', 'quality'], { stdio: 'inherit' })
+		success('Quality checks passed.')
 	} catch {
-		error('Quality checks failed. Please fix issues before releasing.')
-		error('You can run `npm run quality` locally to debug.')
-		process.exit(1)
+		warn('Quality checks failed locally. This is advisory only - CI will run all checks before building.')
+		warn('If you want to debug locally, run `npm run quality` separately.')
+		warn('Continuing with release...')
 	}
-	success('Quality checks passed.')
 
 	log('')
 	log(`Updating package.json version to ${newVersion}...`)
