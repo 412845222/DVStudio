@@ -525,6 +525,7 @@
 					:detail-task-id="arkTaskDetailTaskId"
 					:detail-task="arkTaskDetail"
 					:detail-loading="arkTaskDetailLoading"
+					:downloading-ids="arkTaskDownloading"
 					:data-status-text="arkTaskDataStatusText"
 					@close="closeArkTaskDialog"
 					@refresh="onRefreshArkTaskPanel"
@@ -7780,6 +7781,45 @@ const closeImageMarkupDialog = () => {
 	imageMarkupContext.value = { nodeId: null, url: null, name: null }
 }
 
+// 预热裁剪/截图新建的图片节点：先以完整 DOM 渲染，捕获截图后释放为 canvas 位图
+// 确保新节点不会直接显示占位 canvas，而是先展示完整节点再切换为预热截图
+const warmupCropCreatedNode = async (nodeId: string) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node) return
+	const nid = String(node.id ?? '').trim()
+	if (!nid) return
+
+	// 锁定节点为完整渲染模式，避免在图片解码/截图捕获期间被切换为占位 canvas
+	const pendingSet = new Set(pendingScreenshotNodeIds.value)
+	pendingSet.add(nid)
+	pendingScreenshotNodeIds.value = pendingSet
+
+	try {
+		// 等待节点 DOM 与图片解码完成
+		await nextTick()
+		await waitForFrames(2)
+
+		// 失效可能存在的旧缓存（例如此前在图片未加载时捕获的空白截图）
+		screenshotPool.invalidateScreenshot(nid)
+		invalidateCanvasScreenshot(nid)
+		const clearedMap = new Map(nodeScreenshotMap.value)
+		clearedMap.delete(nid)
+		nodeScreenshotMap.value = clearedMap
+
+		// allowFullRender=true 允许在选中/完整渲染状态下捕获截图
+		// scheduleNodeScreenshot 内部会等待 <img> 加载完成再捕获，确保位图内容完整
+		await scheduleNodeScreenshot(node, 0, 'high', true)
+	} catch (err) {
+		console.warn('[Crop Warmup] failed for node:', nid, err)
+	} finally {
+		// 释放锁定，节点可切换为 canvas 位图渲染（位图已就绪，不会显示占位 canvas）
+		const releaseSet = new Set(pendingScreenshotNodeIds.value)
+		releaseSet.delete(nid)
+		pendingScreenshotNodeIds.value = releaseSet
+		refreshCanvasNodeLayer()
+	}
+}
+
 const handleImageMarkupExported = (payload: {
 	dataUrl: string
 	width: number
@@ -7859,6 +7899,9 @@ const handleImageMarkupExported = (payload: {
 
 		closeImageMarkupDialog()
 		pushToast(`已在当前图片节点右侧生成新的${typeLabel}节点，并自动连接原节点。`, 'info')
+
+		// 触发预热：先以完整节点显示，截图捕获后切换为 canvas 位图，避免直接显示占位 canvas
+		void warmupCropCreatedNode(newNodeId)
 	} catch (err) {
 		console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
 		pushToast(`生成${typeLabel}节点失败。`, 'error')
@@ -7981,13 +8024,88 @@ const {
 	arkTaskDetail,
 	arkTaskDetailTaskId,
 	arkTaskDetailLoading,
+	arkTaskDownloading,
 	arkTaskDataStatusText,
 	openArkTaskDialog,
 	closeArkTaskDialog,
 	onRefreshArkTaskPanel,
 	onPreviewArkTask,
 	onArkTaskPanelAction
-} = useAIWorkflowArkTaskPanel(currentProjectId)
+} = useAIWorkflowArkTaskPanel(currentProjectId, {
+	comfyService,
+	pushToast: (message, tone, opts) => pushToast(message, tone, opts),
+	findVideoNodeByTaskId: (_remoteTaskId: string) => {
+		// TODO: 后续可以根据节点上存储的任务ID来查找对应节点
+		// 目前先返回 null，走新建节点的流程
+		return null
+	},
+	bindVideoResultToNode: async (nodeId: string, url: string) => {
+		const node = store.state.nodesById[nodeId]
+		if (!node) return false
+		const resourceId = `ark-video-${nodeId}-${Date.now()}`
+		const resourceName = `ark_video_${resourceId.slice(-6)}.mp4`
+		const base: GeneratedResourceBase = {
+			id: resourceId,
+			kind: 'video',
+			name: resourceName,
+			url
+		}
+		const pid = Number(currentProjectId.value ?? 0)
+		if (!(pid > 0)) {
+			pushToast('当前项目未激活，无法导入视频。', 'warn')
+			return false
+		}
+		finalizeGeneratedResourceLocalUrl(base, pid)
+		base.url = String(base.url || '').trim()
+		if (!base.url) {
+			pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			return false
+		}
+		store.commit('addResource', base)
+		store.commit('setNodeResource', { nodeId, resourceId })
+		return true
+	},
+	createMediaNodeWithAsset: async (url: string, kind: 'image' | 'video', prompt?: string) => {
+		const pid = Number(currentProjectId.value ?? 0)
+		if (!(pid > 0)) return ''
+		const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')
+		const resourceId = `ark-${kind}-new-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+		const resourceName = kind === 'image'
+			? `ark_image_${timestamp}.png`
+			: `ark_video_${timestamp}.mp4`
+		const base: GeneratedResourceBase = {
+			id: resourceId,
+			kind,
+			name: resourceName,
+			url
+		}
+		finalizeGeneratedResourceLocalUrl(base, pid)
+		base.url = String(base.url || '').trim()
+		if (!base.url) {
+			pushToast((kind === 'image' ? '图片' : '视频') + '资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			return ''
+		}
+		const vp = store.state.viewport
+		const zoom = Math.max(0.01, Number(vp?.zoom) || 1)
+		const panX = Number(vp?.panX) || 0
+		const panY = Number(vp?.panY) || 0
+		const worldCenterX = -panX / zoom
+		const worldCenterY = -panY / zoom
+		const nodeW = 240
+		const nodeH = 160
+		const worldX = worldCenterX - nodeW / 2
+		const worldY = worldCenterY - nodeH / 2
+		const titleLabel = kind === 'image' ? '图片' : '视频'
+		store.commit('addNodeAt', { worldX, worldY, title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
+		const nodeId = store.state.selectedNodeId
+		if (!nodeId) return ''
+		store.commit('setNodeType', { nodeId, type: kind })
+		store.commit('addResource', base)
+		store.commit('setNodeResource', { nodeId, resourceId })
+		autoSizeMediaNode(nodeId, base.url, kind)
+		return nodeId
+	}
+})
 
 async function onSeedanceTaskObserved(taskId: string, stage: 'created' | 'completed') {
 	const nextTaskId = String(taskId || '').trim()
