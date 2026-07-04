@@ -297,12 +297,8 @@ export const useAIWorkflowMeshyRequest = (options: {
 			save_pre_remeshed_model: settings.meshySavePreRemeshedModel === true,
 			should_texture: settings.meshyShouldTexture !== false,
 			enable_pbr: settings.meshyShouldTexture !== false && settings.meshyEnablePbr === true,
-			pose_mode: poseMode,
-			aspect_ratio: aspectRatio,
-			generate_multi_view: generateMultiView,
 			auto_size: autoSize,
 			origin_at: autoSize ? originAt : undefined,
-			seed: Number.isFinite(seed) ? Math.max(0, Math.floor(seed)) : undefined,
 			moderation: settings.meshyModeration === true,
 			image_enhancement: settings.meshyImageEnhancement !== false,
 			remove_lighting: settings.meshyRemoveLighting !== false,
@@ -319,6 +315,19 @@ export const useAIWorkflowMeshyRequest = (options: {
 			capabilities: Array.isArray(settings.meshyCapabilities)
 				? (settings.meshyCapabilities as string[])
 				: undefined
+		}
+
+		if (Number.isFinite(seed) && seed > 0) {
+			payload.seed = Math.max(0, Math.floor(seed))
+		}
+
+		if (mode === 'text-to-image' || mode === 'image-to-image') {
+			if (poseMode) payload.pose_mode = poseMode
+			if (generateMultiView) {
+				payload.generate_multi_view = true
+			} else if (aspectRatio) {
+				payload.aspect_ratio = aspectRatio
+			}
 		}
 
 		if (family === 'retexture') {

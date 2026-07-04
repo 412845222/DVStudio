@@ -178,5 +178,12 @@
   "tasks.meshy.noTaskInProgress": "Current node has no task in progress.",
   "tasks.meshy.refreshTaskException": "Task status refresh exception: {error}",
   "tasks.meshy.noRunningTaskGeneric": "No task is currently running.",
-  "tasks.meshy.taskStoppedGeneric": "Task stopped"
+  "tasks.meshy.taskStoppedGeneric": "Task stopped",
+  "tasks.meshy.multiView": "Multi-View",
+  "tasks.meshy.outputCountN": "{count} images",
+  "tasks.meshy.referenceImagesCount": "{count} reference images",
+  "tasks.meshy.pullingImageArtifacts": "Pulling Meshy image artifacts...",
+  "tasks.meshy.nodeCreatedPullingArtifacts": "Image node created at blueprint center, pulling artifacts...",
+  "tasks.meshy.imageTaskNodeName": "Meshy Image Task",
+  "tasks.meshy.imagePulledBoundToNewNode": "Meshy image pulled and bound to newly created image node."
 }

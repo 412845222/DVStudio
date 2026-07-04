@@ -106,7 +106,8 @@
 </template>
 
 <script setup lang="ts">
-import { NODE_CHAT_MESHY_IMAGE_OPTIONS } from '../BluePrint/node-dialog/nodeChatConfig'
+import { computed, watch } from 'vue'
+import { NODE_CHAT_MESHY_IMAGE_OPTIONS, getMeshyImageAspectRatioOptions } from '../BluePrint/node-dialog/nodeChatConfig'
 
 export interface MeshyImageConfig {
 	prompt?: string
@@ -128,8 +129,24 @@ const emit = defineEmits<{
 }>()
 
 const aiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
-const aspectRatioOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aspectRatio
 const poseModeOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.poseMode
+
+const currentAiModel = computed(() => props.config.aiModel || 'nano-banana')
+
+const aspectRatioOptions = computed(() => getMeshyImageAspectRatioOptions(currentAiModel.value))
+
+watch(
+	() => props.config.aiModel,
+	(newModel) => {
+		const model = newModel || 'nano-banana'
+		const supportedRatios = getMeshyImageAspectRatioOptions(model)
+		const currentRatio = props.config.aspectRatio || '1:1'
+		const isRatioSupported = supportedRatios.some(opt => opt.value === currentRatio)
+		if (!isRatioSupported && supportedRatios.length > 0) {
+			updateConfig('aspectRatio', supportedRatios[0].value)
+		}
+	}
+)
 
 const updateConfig = (key: keyof MeshyImageConfig, value: unknown) => {
 	emit('update:config', { ...props.config, [key]: value } as MeshyImageConfig)

@@ -405,5 +405,16 @@
   "aiworkflow.runtime.projectPackageImportFailed": "导入项目包失败：{error}",
   "aiworkflow.runtime.blueprintJsonExported": "已导出蓝图 JSON 文件。",
   "aiworkflow.runtime.exportFailedWithError": "导出失败：{error}",
-  "aiworkflow.runtime.loadProjectSource": "加载项目"
+  "aiworkflow.runtime.loadProjectSource": "加载项目",
+  "aiworkflow.runtime.detailAspectRatio": "宽高比：{ratio}",
+  "aiworkflow.runtime.multiViewEnabled": "多视图：开启",
+  "aiworkflow.runtime.detailPoseMode": "姿态模式：{mode}",
+  "aiworkflow.runtime.detailOutputCount": "输出数量：{count} 张",
+  "aiworkflow.runtime.detailNegativePrompt": "负向提示：{prompt}",
+  "aiworkflow.runtime.detailSeed": "随机种子：{seed}",
+  "aiworkflow.runtime.meshyResultNodeName": "Meshy 生成结果",
+  "aiworkflow.runtime.meshyResultNodeNameIndexed": "Meshy 生成结果 {index}",
+  "aiworkflow.runtime.meshyImageLabelIndexed": "Meshy 图片 {index}",
+  "aiworkflow.runtime.meshyCannotCreateNode": "Meshy 图片生成完成，但无法创建节点接收结果",
+  "aiworkflow.runtime.meshyImageCompleteWithNewNodes": "Meshy 图片生成完成（共 {count} 张，{nodes} 个新节点已创建）"
 }

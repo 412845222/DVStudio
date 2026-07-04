@@ -405,5 +405,16 @@
   "aiworkflow.runtime.projectPackageImportFailed": "Project package import failed: {error}",
   "aiworkflow.runtime.blueprintJsonExported": "Blueprint JSON file exported.",
   "aiworkflow.runtime.exportFailedWithError": "Export failed: {error}",
-  "aiworkflow.runtime.loadProjectSource": "Load Project"
+  "aiworkflow.runtime.loadProjectSource": "Load Project",
+  "aiworkflow.runtime.detailAspectRatio": "Aspect Ratio: {ratio}",
+  "aiworkflow.runtime.multiViewEnabled": "Multi-View: Enabled",
+  "aiworkflow.runtime.detailPoseMode": "Pose Mode: {mode}",
+  "aiworkflow.runtime.detailOutputCount": "Output Count: {count} images",
+  "aiworkflow.runtime.detailNegativePrompt": "Negative Prompt: {prompt}",
+  "aiworkflow.runtime.detailSeed": "Random Seed: {seed}",
+  "aiworkflow.runtime.meshyResultNodeName": "Meshy Result",
+  "aiworkflow.runtime.meshyResultNodeNameIndexed": "Meshy Result {index}",
+  "aiworkflow.runtime.meshyImageLabelIndexed": "Meshy Image {index}",
+  "aiworkflow.runtime.meshyCannotCreateNode": "Meshy image generation completed, but unable to create node to receive results",
+  "aiworkflow.runtime.meshyImageCompleteWithNewNodes": "Meshy image generation completed ({count} images total, {nodes} new nodes created)"
 }

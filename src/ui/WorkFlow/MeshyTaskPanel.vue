@@ -385,6 +385,42 @@
 										{{ detailTask.updatedAtLabel || '-' }}
 									</div>
 								</div>
+								<div v-if="detailTask.aiModel" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">AI 模型</div>
+									<div class="wf-meshy-task-detail-value highlight">
+										{{ detailTask.aiModel }}
+									</div>
+								</div>
+								<div v-if="detailTask.aspectRatio" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">宽高比</div>
+									<div class="wf-meshy-task-detail-value highlight">
+										{{ detailTask.aspectRatio }}
+									</div>
+								</div>
+								<div v-if="detailTask.outputCount" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">输出数量</div>
+									<div class="wf-meshy-task-detail-value">
+										{{ detailTask.outputCount }} 张
+									</div>
+								</div>
+								<div v-if="detailTask.poseMode" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">姿态模式</div>
+									<div class="wf-meshy-task-detail-value">
+										{{ detailTask.poseMode }}
+									</div>
+								</div>
+								<div v-if="detailTask.generateMultiView" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">多视图</div>
+									<div class="wf-meshy-task-detail-value highlight">
+										已启用
+									</div>
+								</div>
+								<div v-if="detailTask.seed != null" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">随机种子</div>
+									<div class="wf-meshy-task-detail-value monospace">
+										{{ detailTask.seed }}
+									</div>
+								</div>
 							</div>
 
 							<div v-if="detailTask.prompt" class="wf-meshy-task-detail-section">
@@ -537,6 +573,12 @@ export type MeshyTaskPanelDetail = {
 	sourceLabel?: string
 	requestPayload?: Record<string, unknown>
 	responsePayload?: Record<string, unknown>
+	aiModel?: string
+	aspectRatio?: string
+	outputCount?: number
+	poseMode?: string
+	generateMultiView?: boolean
+	seed?: number | string
 }
 
 export type MeshyTaskPanelAction = 'refresh' | 'stop' | 'delete' | 'import-output'
@@ -1608,6 +1650,11 @@ onBeforeUnmount(() => {
 .wf-meshy-task-detail-block.monospace,
 .wf-meshy-task-detail-code {
 	font-family: Consolas, 'Courier New', monospace;
+}
+
+.wf-meshy-task-detail-value.highlight {
+	color: #9ed2ff;
+	font-weight: 500;
 }
 
 .wf-meshy-task-detail-section {

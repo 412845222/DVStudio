@@ -3102,6 +3102,41 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 	return rootPath
 }
 
+const createImageNodeAtCenter = (url: string, name?: string): string | null => {
+	try {
+		const { worldX, worldY } = getCanvasCenterWorld()
+		store.commit('addNodeAt', {
+			worldX,
+			worldY,
+			title: name || 'Meshy 生成图片'
+		})
+		const newNodeId = store.state.selectedNodeId
+		if (!newNodeId) return null
+		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		return newNodeId
+	} catch (e) {
+		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
+		return null
+	}
+}
+
+const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: string): string | null => {
+	try {
+		store.commit('addNodeAt', {
+			worldX,
+			worldY,
+			title: name || 'Meshy 生成图片'
+		})
+		const newNodeId = store.state.selectedNodeId
+		if (!newNodeId) return null
+		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		return newNodeId
+	} catch (e) {
+		console.error('[createImageNodeAt] 创建节点失败:', e)
+		return null
+	}
+}
+
 const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 	// 当 draft 为空时，尝试从连接的文本节点获取 prompt
 	let resolvedPrompt = payload.prompt
@@ -3113,7 +3148,6 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 		}
 	}
 	const finalPayload = { ...payload, prompt: resolvedPrompt }
-	store.dispatch('submitNodeChat', finalPayload)
 	const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
 	const castPayload = finalPayload as unknown as Parameters<typeof runNodeGenerationTask>[1]
 	const result = await runNodeGenerationTask(
@@ -3123,6 +3157,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			resolveBackendUrl,
 			resolveBackendFetchUrl,
 			getProjectId: () => currentProjectId.value,
+			nodeResourceUrl,
 			pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
 				chatMessages.value = [
 					...chatMessages.value,
@@ -3462,6 +3497,8 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 
 				return null
 			},
+			createImageNodeAtCenter,
+			createImageNodeAt,
 			persistExternalAssetToProject
 		},
 		castPayload
@@ -7960,7 +7997,8 @@ const {
 	getMeshyDisplayThumbnailUrl,
 	pickMeshyEffectiveOutput,
 	applyMeshyTaskResult,
-	stopMeshyPoll
+	stopMeshyPoll,
+	createImageNodeAtCenter
 })
 
 const onOpenMeshyTaskPanel = () => {

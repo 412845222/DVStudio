@@ -144,6 +144,7 @@ type ChatGenerationStore = {
 		nodesById: Record<string, WorkflowNode>
 		edgeOrder: string[]
 		edgesById: Record<string, WorkflowEdge>
+		resourcesById?: Record<string, Record<string, unknown>>
 	}
 	commit: (type: string, value?: unknown) => void
 }
@@ -1239,6 +1240,39 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				return Number.isFinite(n) ? n : 0
 			}
 
+			const getEffectiveImageUrl = (node: WorkflowNode): string | null => {
+				// 优先级1: resourceId -> resourcesById (本地资产URL)
+				const resourceRid = String(node.resourceId ?? '').trim()
+				if (resourceRid) {
+					const res = payload.store.state.resourcesById?.[resourceRid] as Record<string, unknown> | undefined
+					const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
+					if (resUrl) return resUrl
+				}
+				// 优先级2: imageSettings.lastGeneratedImageUrl (最近生成的图片)
+				const imgSettings = typeof node.imageSettings === 'object' && node.imageSettings
+					? (node.imageSettings as Record<string, unknown>)
+					: {}
+				const lastGenUrl = typeof imgSettings?.lastGeneratedImageUrl === 'string'
+					? String(imgSettings.lastGeneratedImageUrl).trim()
+					: ''
+				if (lastGenUrl) return lastGenUrl
+				// 优先级3: meshySettings.meshyOutputSummary.preferredUrl (Meshy生成结果)
+				const meshySettings = typeof imgSettings?.meshyImageSettings === 'object' && imgSettings.meshyImageSettings
+					? (imgSettings.meshyImageSettings as Record<string, unknown>)
+					: {}
+				const meshySummary = typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
+					? (meshySettings.outputSummary as Record<string, unknown>)
+					: {}
+				const meshyUrl = typeof meshySummary?.preferredUrl === 'string'
+					? String(meshySummary.preferredUrl).trim()
+					: ''
+				if (meshyUrl) return meshyUrl
+				// 优先级4: nodeResourceUrl (标准方法，但它可能对远程URL返回null，所以作为fallback)
+				const standardUrl = payload.nodeResourceUrl(node)
+				if (standardUrl) return standardUrl
+				return null
+			}
+
 			const refFiles: Array<{ idx: number; file: File }> = []
 			const refSources: Array<{ idx: number; nodeType: WorkflowNode['type'] }> = []
 			const pseudo = payload.store.state.nodesById[payload.NANO_ANCHOR_NODE_ID]
@@ -1266,7 +1300,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					)
 					continue
 				}
-				let url = payload.nodeResourceUrl(fromNode)
+				let url = getEffectiveImageUrl(fromNode)
 				if (!url) {
 					payload.pushToast(t('aiworkflow.toast.imageRefNoResource'), 'warn')
 					continue
@@ -1329,6 +1363,101 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 			refFiles.sort((a, b) => a.idx - b.idx)
 			refSources.sort((a, b) => a.idx - b.idx)
+
+			// 智能检测：如果当前选中的是图片节点，收集该节点输入锚点连接的参考图
+			const selectedNode = payload.getSelectedNode?.()
+			if (selectedNode && selectedNode.type === 'image' && refFiles.length < payload.NANO_REF_IMAGE_MAX) {
+				const imageInputAnchors = Array.isArray(selectedNode.inputs)
+					? (selectedNode.inputs as WorkflowAnchorSpec[])
+					: ([] as WorkflowAnchorSpec[])
+				
+				// 筛选图片输入锚点：in-image, in-resource, in-image-N
+				const isImageInputAnchor = (anchorId: string): boolean => {
+					const id = String(anchorId || '').trim()
+					return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+				}
+				
+				const imageAnchors = imageInputAnchors.filter(a => isImageInputAnchor(String(a.id ?? '')))
+				const sortedImageAnchors = [...imageAnchors].sort(
+					(a, b) => anchorIndexFromId(a.id) - anchorIndexFromId(b.id)
+				)
+				
+				for (const anchor of sortedImageAnchors) {
+					if (refFiles.length >= payload.NANO_REF_IMAGE_MAX) break
+					const edge = payload.getFirstIncomingEdge(
+						String(selectedNode.id ?? ''),
+						String(anchor.id ?? '')
+					)
+					if (!edge) continue
+					const fromNodeId = getStringField(edge, 'fromNodeId')
+					const fromNode = payload.store.state.nodesById[fromNodeId]
+					if (!fromNode) continue
+					const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
+					if (!isImageSource) continue
+					
+					let url = getEffectiveImageUrl(fromNode)
+					if (!url) continue
+					const nameBase =
+						String(
+							payload.nodeResourceName(fromNode) ?? fromNode.alias ?? fromNode.title ?? 'ref'
+						).trim() || 'ref'
+					// 使用偏移后的索引，避免与聊天框锚点冲突
+					const idx = 100 + anchorIndexFromId(anchor.id)
+
+					if (
+						fromNode.type === 'rotate-image' &&
+						(String(url).startsWith('blob:') ||
+							String(url).startsWith('data:') ||
+							String(url).startsWith('file:') ||
+							String(url).startsWith('/'))
+					) {
+						try {
+							const uploaded = await payload.uploadLocalResourceAndGetUrl(
+								String(url),
+								'image',
+								`${nameBase}_rot`,
+								{ projectId: payload.currentProjectId.value }
+							)
+							const rid = getStringField(fromNode, 'resourceId').trim()
+							if (rid) {
+								const patch: Record<string, unknown> = {
+									url: uploaded.url,
+									sourcePath: uploaded.absolutePath || undefined
+								}
+								if (isString(uploaded.projectRelativePath)) {
+									patch.projectRelativePath = uploaded.projectRelativePath
+								}
+								payload.store.commit('patchResource', {
+									resourceId: rid,
+									patch
+								})
+							}
+							url = uploaded.url
+						} catch {
+							// fallback to original local/blob/data URL below
+						}
+					}
+
+					let file: File | null = null
+					try {
+						if (fromNode.type === 'image') {
+							file = await payload.buildCroppedImageTransferFile(fromNode, url, nameBase)
+						}
+						if (!file) file = await payload.fileFromUrl(url, nameBase)
+					} catch {
+						file = null
+					}
+
+					if (file) {
+						refFiles.push({ idx, file })
+						refSources.push({ idx, nodeType: fromNode.type })
+					}
+				}
+				
+				// 重新排序
+				refFiles.sort((a, b) => a.idx - b.idx)
+				refSources.sort((a, b) => a.idx - b.idx)
+			}
 
 			const rotateRefIdx = refSources
 				.filter((source) => source.nodeType === 'rotate-image')
@@ -1399,6 +1528,32 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			if (isMeshyModel) {
 				const hasRefImages = refFiles.length > 0
 				const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
+				const meshyAspectRatio = ar || '1:1'
+				const meshyNegativePrompt = String(
+					hasKey(input.config, 'meshyNegativePrompt') ? input.config.meshyNegativePrompt : ''
+				).trim()
+				const meshyOutputImageCount = Number(
+					hasKey(input.config, 'meshyOutputImageCount') ? input.config.meshyOutputImageCount : 1
+				)
+				const meshySeed = Number(
+					hasKey(input.config, 'meshySeed') ? input.config.meshySeed : -1
+				)
+
+				console.log('[Meshy Image - Chat] 原始参数:', {
+					inputConfigAspectRatio: input?.config?.aspectRatio,
+					inputConfigMeshyAspectRatio: input?.config?.meshyAspectRatio,
+					ar,
+					meshyAspectRatio,
+					selectedMeshyAiModel,
+					meshyPoseMode,
+					meshyGenerateMultiView,
+					meshyNegativePrompt,
+					meshyOutputImageCount,
+					meshySeed,
+					hasRefImages,
+					refFileCount: refFiles.length,
+					taskType
+				})
 
 				const meshyPayload: Record<string, unknown> = {
 					mode: taskType,
@@ -1406,117 +1561,120 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					ai_model: selectedMeshyAiModel || 'nano-banana'
 				}
 
-				if (!hasRefImages) {
-					if (ar) meshyPayload.aspect_ratio = ar
-					if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
-					if (meshyGenerateMultiView) meshyPayload.generate_multi_view = true
+				// 根据模式和参数互斥规则传递参数
+				// text-to-image 和 image-to-image 都支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
+				//   注意：generate_multi_view 为 true 时不能设置 aspect_ratio
+				if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
+				if (meshyGenerateMultiView) {
+					meshyPayload.generate_multi_view = true
+				} else if (meshyAspectRatio) {
+					meshyPayload.aspect_ratio = meshyAspectRatio
+					console.log(`[Meshy Image - Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyAspectRatio}, model=${selectedMeshyAiModel}`)
 				}
 
-				if (hasRefImages) {
-					const form = new FormData()
-					for (const key of Object.keys(meshyPayload)) {
-						form.set(key, String(meshyPayload[key]))
+				// 通用参数（两种模式都支持）
+				if (meshyNegativePrompt) meshyPayload.negative_prompt = meshyNegativePrompt
+				if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+					meshyPayload.output_image_count = Math.floor(meshyOutputImageCount)
+				}
+				if (Number.isFinite(meshySeed) && meshySeed >= 0) {
+					meshyPayload.seed = Math.floor(meshySeed)
+				}
+
+				// 记录完整提交参数
+				const submittedParams = {
+					model: selectedMeshyAiModel || 'nano-banana',
+					mode: taskType,
+					aspectRatio: meshyGenerateMultiView ? '1:1 (multi-view)' : meshyAspectRatio,
+					poseMode: meshyPoseMode || 'None',
+					generateMultiView: meshyGenerateMultiView,
+					negativePrompt: meshyNegativePrompt || 'None',
+					outputCount: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1,
+					seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : 'Random',
+					referenceImageCount: hasRefImages ? refFiles.length : 0,
+					submittedAt: new Date().toISOString()
+				}
+				meshyPayload.submittedParams = submittedParams
+
+				console.log('[Meshy Image - Chat] 提交参数:', JSON.stringify(meshyPayload, null, 2))
+
+				// 关键修复：统一使用FormData + meshyGenerateImage路径处理所有情况（文生图/图生图）
+				// 确保参数类型转换一致（布尔值、数字、JSON对象都经过正确处理）
+				const form = new FormData()
+				for (const key of Object.keys(meshyPayload)) {
+					const value = meshyPayload[key]
+					if (typeof value === 'object' && value !== null) {
+						form.set(key, JSON.stringify(value))
+					} else if (typeof value === 'boolean') {
+						form.set(key, value ? 'true' : 'false')
+					} else if (typeof value === 'number') {
+						form.set(key, String(value))
+					} else {
+						form.set(key, String(value))
 					}
-					for (const r of refFiles) {
-						form.append('refImages', r.file, r.file.name)
-					}
+				}
+				for (const r of refFiles) {
+					form.append('refImages', r.file, r.file.name)
+				}
 
-					const res = await svc.meshyGenerateImage(form)
-					if (res.ok) {
-						const taskId = String(res.taskId || '').trim()
-						if (taskId) {
-							appendNanoDetail(t('aiworkflow.runtime.meshyTaskCreated', { taskId }))
-							payload.nanoStatus.value = t('aiworkflow.runtime.nanoTaskCreated', { taskId })
+				appendNanoDetail(t('aiworkflow.runtime.detailMeshyMode', { mode: taskType }))
+				appendNanoDetail(t('aiworkflow.runtime.detailAiModel', { model: selectedMeshyAiModel || 'nano-banana' }))
+				appendNanoDetail(t('aiworkflow.runtime.detailAspectRatio', { ratio: meshyGenerateMultiView ? t('aiworkflow.runtime.multiViewEnabled') : meshyAspectRatio }))
+				if (meshyPoseMode) appendNanoDetail(t('aiworkflow.runtime.detailPoseMode', { mode: meshyPoseMode }))
+				if (meshyGenerateMultiView) appendNanoDetail(t('aiworkflow.runtime.multiViewEnabled'))
+				appendNanoDetail(t('aiworkflow.runtime.detailOutputCount', { count: String(submittedParams.outputCount) }))
+				if (meshyNegativePrompt) appendNanoDetail(t('aiworkflow.runtime.detailNegativePrompt', { prompt: meshyNegativePrompt.slice(0, 80) }))
+				if (Number.isFinite(meshySeed) && meshySeed >= 0) appendNanoDetail(t('aiworkflow.runtime.detailSeed', { seed: String(meshySeed) }))
+				if (hasRefImages) appendNanoDetail(t('aiworkflow.runtime.detailRefImageCount', { count: String(refFiles.length) }))
 
-							const pollStatus = async () => {
-								const taskRes = await svc.meshyTask(taskId, taskType)
-								if (taskRes.ok) {
-									const status = String(taskRes.status || '')
-										.trim()
-										.toUpperCase()
-									const progress = Number(taskRes.progress || 0)
-									payload.nanoStatus.value =
-										status === 'SUCCEEDED' ? t('aiworkflow.runtime.statusSucceeded') : t('aiworkflow.runtime.statusProgress', { status, progress: String(progress) })
+				console.log('[Meshy Image - Chat] 发送请求（统一FormData路径），hasRefImages:', hasRefImages, 'refCount:', refFiles.length)
+				const res = await svc.meshyGenerateImage(form)
+				if (res.ok) {
+					const taskId = String(res.taskId || '').trim()
+					if (taskId) {
+						appendNanoDetail(t('aiworkflow.runtime.meshyTaskCreated', { taskId }))
+						payload.nanoStatus.value = t('aiworkflow.runtime.nanoTaskCreated', { taskId })
 
-									if (status === 'SUCCEEDED') {
-										const imageUrl =
-											taskRes.preferredImageUrl ||
-											(Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls[0] : undefined)
-										if (imageUrl && isString(imageUrl)) {
-											const resolvedUrl = payload.resolveBackendUrl(imageUrl)
-											payload.nanoPreviewUrl.value = resolvedUrl
-											payload.nanoPreviewUrls.value = [resolvedUrl]
-											payload.nanoPreviewLoadingStates.value = [false]
-											payload.nanoModelUsed.value = selectedMeshyAiModel
-										}
-									} else if (status === 'FAILED') {
-										const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
-										payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errorMsg }), 'warn')
-										appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errorMsg }))
-									} else if (status !== 'CANCELED') {
-										setTimeout(pollStatus, 2000)
+						const pollStatus = async () => {
+							const taskRes = await svc.meshyTask(taskId, taskType)
+							if (taskRes.ok) {
+								const status = String(taskRes.status || '')
+									.trim()
+									.toUpperCase()
+								const progress = Number(taskRes.progress || 0)
+								payload.nanoStatus.value =
+									status === 'SUCCEEDED' ? t('aiworkflow.runtime.statusSucceeded') : t('aiworkflow.runtime.statusProgress', { status, progress: String(progress) })
+
+								if (status === 'SUCCEEDED') {
+									const imageUrl =
+										taskRes.preferredImageUrl ||
+										(Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls[0] : undefined)
+									if (imageUrl && isString(imageUrl)) {
+										const resolvedUrl = payload.resolveBackendUrl(imageUrl)
+										payload.nanoPreviewUrl.value = resolvedUrl
+										payload.nanoPreviewUrls.value = [resolvedUrl]
+										payload.nanoPreviewLoadingStates.value = [false]
+										payload.nanoModelUsed.value = selectedMeshyAiModel
 									}
+								} else if (status === 'FAILED') {
+									const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
+									payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errorMsg }), 'warn')
+									appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errorMsg }))
+								} else if (status !== 'CANCELED') {
+									setTimeout(pollStatus, 2000)
 								}
 							}
-							pollStatus()
 						}
-					} else {
-						const errMsg = String(res.error || t('aiworkflow.runtime.meshyRequestFailed'))
-						payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errMsg }), 'warn')
-						appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
+						pollStatus()
 					}
-					completedCount = 1
-					updateProgressStatus()
-					return
 				} else {
-					const res = await svc.meshyGenerate(meshyPayload)
-					if (res.ok) {
-						const taskId = String(res.taskId || '').trim()
-						if (taskId) {
-							appendNanoDetail(t('aiworkflow.runtime.meshyTaskCreated', { taskId }))
-							payload.nanoStatus.value = t('aiworkflow.runtime.nanoTaskCreated', { taskId })
-
-							const pollStatus = async () => {
-								const taskRes = await svc.meshyTask(taskId, taskType)
-								if (taskRes.ok) {
-									const status = String(taskRes.status || '')
-										.trim()
-										.toUpperCase()
-									const progress = Number(taskRes.progress || 0)
-									payload.nanoStatus.value =
-										status === 'SUCCEEDED' ? t('aiworkflow.runtime.statusSucceeded') : t('aiworkflow.runtime.statusProgress', { status, progress: String(progress) })
-
-									if (status === 'SUCCEEDED') {
-										const imageUrl =
-											taskRes.preferredImageUrl ||
-											(Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls[0] : undefined)
-										if (imageUrl && isString(imageUrl)) {
-											const resolvedUrl = payload.resolveBackendUrl(imageUrl)
-											payload.nanoPreviewUrl.value = resolvedUrl
-											payload.nanoPreviewUrls.value = [resolvedUrl]
-											payload.nanoPreviewLoadingStates.value = [false]
-											payload.nanoModelUsed.value = selectedMeshyAiModel
-										}
-									} else if (status === 'FAILED') {
-										const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
-										payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errorMsg }), 'warn')
-										appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errorMsg }))
-									} else if (status !== 'CANCELED') {
-										setTimeout(pollStatus, 2000)
-									}
-								}
-							}
-							pollStatus()
-						}
-					} else {
-						const errMsg = String(res.error || t('aiworkflow.runtime.meshyRequestFailed'))
-						payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errMsg }), 'warn')
-						appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
-					}
-					completedCount = 1
-					updateProgressStatus()
-					return
+					const errMsg = String(res.error || t('aiworkflow.runtime.meshyRequestFailed'))
+					payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errMsg }), 'warn')
+					appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
 				}
+				completedCount = 1
+				updateProgressStatus()
+				return
 			}
 
 			let cachedRefIds: string[] = []

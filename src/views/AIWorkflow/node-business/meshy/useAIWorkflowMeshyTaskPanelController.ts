@@ -31,6 +31,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 	pickMeshyEffectiveOutput: (item: Record<string, unknown>) => MeshyEffectiveOutput
 	applyMeshyTaskResult: (nodeId: string, task: unknown) => Promise<string>
 	stopMeshyPoll: (nodeId: string) => void
+	createImageNodeAtCenter?: (url: string, name?: string) => string | null
 }) => {
 	const meshyTaskDialogOpen = ref(false)
 	const meshyTaskRemoteItems = ref<MeshyTaskPanelItem[]>([])
@@ -449,18 +450,60 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 						options.pushToast(t('tasks.meshy.taskStatusRefreshFailed', { error: String(res.error || 'unknown') }), 'warn')
 				}
 			} else if (payload.action === 'import-output') {
-				if (!nodeId) {
+				let targetNodeId = nodeId
+				let isNewNode = false
+
+				if (!targetNodeId) {
+					const isImageTask = mode === 'text-to-image' || mode === 'image-to-image'
+					if (isImageTask && typeof options.createImageNodeAtCenter === 'function') {
+						try {
+							const taskRes: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, mode)
+							if (taskRes.ok) {
+								const imageUrls = (taskRes as unknown as { imageUrls?: string[] }).imageUrls || []
+								const preferredUrl = String(
+									(taskRes as unknown as { preferredImageUrl?: string }).preferredImageUrl || imageUrls[0] || ''
+								).trim()
+								const newNodeId = options.createImageNodeAtCenter(preferredUrl, t('tasks.meshy.imageTaskNodeName'))
+								if (newNodeId) {
+									targetNodeId = newNodeId
+									isNewNode = true
+									options.store.commit('setNodeImageSettings', {
+										nodeId: newNodeId,
+										imageSettings: {
+											imageGenerationSource: 'meshy',
+											meshyImageSettings: {
+												taskId,
+												taskStatus: 'pending',
+												taskFamily: mode,
+												progress: 0,
+												statusText: t('tasks.meshy.pullingImageArtifacts')
+											}
+										}
+									})
+									options.pushToast(t('tasks.meshy.nodeCreatedPullingArtifacts'), 'info')
+								}
+							}
+						} catch (e) {
+							console.error('[Meshy Task Panel] 创建节点失败:', e)
+						}
+					}
+				}
+
+				if (!targetNodeId) {
 					options.pushToast(t('tasks.meshy.noReceivingNodeFound'), 'warn')
 				} else {
-					const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
+					const refreshed = await refreshMeshyTaskToNode(targetNodeId, taskId, mode)
 					if (!refreshed.ok) {
 						options.pushToast(t('tasks.meshy.pullArtifactsFailedGeneric', { error: refreshed.error }), 'warn')
 					} else if (refreshed.finalStatus !== 'succeeded') {
 						options.pushToast(t('tasks.meshy.taskNotCompletedCannotPull'), 'warn')
 					} else {
-						const node = options.store.state.nodesById[nodeId]
+						const node = options.store.state.nodesById[targetNodeId]
 						if (node?.type === 'image') {
-							options.pushToast(t('tasks.meshy.imageDownloadedBoundGeneric'), 'info')
+							options.pushToast(
+								isNewNode ? t('tasks.meshy.imagePulledBoundToNewNode') : t('tasks.meshy.imageDownloadedBoundGeneric'),
+								'info'
+							)
 						} else if (node?.type === 'model3d') {
 							options.pushToast(t('tasks.meshy.model3dDownloadedBoundGeneric'), 'info')
 						} else {

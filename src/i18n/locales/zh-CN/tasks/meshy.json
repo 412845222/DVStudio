@@ -178,5 +178,12 @@
   "tasks.meshy.noTaskInProgress": "当前节点没有进行中的任务。",
   "tasks.meshy.refreshTaskException": "刷新任务状态异常：{error}",
   "tasks.meshy.noRunningTaskGeneric": "当前没有进行中的任务。",
-  "tasks.meshy.taskStoppedGeneric": "任务已停止"
+  "tasks.meshy.taskStoppedGeneric": "任务已停止",
+  "tasks.meshy.multiView": "多视图",
+  "tasks.meshy.outputCountN": "{count}张",
+  "tasks.meshy.referenceImagesCount": "{count}张参考图",
+  "tasks.meshy.pullingImageArtifacts": "正在拉取 Meshy 图片产物...",
+  "tasks.meshy.nodeCreatedPullingArtifacts": "已在蓝图中心创建图片节点，正在拉取产物...",
+  "tasks.meshy.imageTaskNodeName": "Meshy 图片任务",
+  "tasks.meshy.imagePulledBoundToNewNode": "Meshy 图片已拉取并绑定到新创建的图片节点。"
 }

@@ -206,10 +206,10 @@ const typeDescription = computed(() => {
 })
 
 const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
-	if (props.nodeType && props.params[props.nodeType]) {
-		return props.params[props.nodeType]!
-	}
-	return {}
+	if (!props.nodeType) return {}
+	const defaults = getDefaultParamsForType(props.nodeType) as WorkflowNodeChatParamRecord
+	const saved = (props.params[props.nodeType] ?? {}) as WorkflowNodeChatParamRecord
+	return { ...defaults, ...saved }
 })
 
 const showInputParamRefs = computed(() => {
