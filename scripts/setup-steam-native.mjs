@@ -85,8 +85,8 @@ function main() {
     } else {
         const defaultAppIdPath = path.join(win32Dir, 'steam_appid.txt')
         if (!fs.existsSync(defaultAppIdPath)) {
-            fs.writeFileSync(defaultAppIdPath, '480', 'utf8')
-            console.log('[setup-steam-native] Created default steam_appid.txt (AppID 480/SpaceWar)')
+            fs.writeFileSync(defaultAppIdPath, '2475710', 'utf8')
+            console.log('[setup-steam-native] Created default steam_appid.txt (AppID 2475710)')
             copiedCount++
         }
     }

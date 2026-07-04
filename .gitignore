@@ -132,7 +132,19 @@ html/
 
 # External platform SDKs and native modules (managed separately)
 DwebSteamJS/
+DwebSteamJS/build/
 SteamworksSDK/
 steam_appid.txt
+
+# Steam native modules (deployed by setup-steam-native.mjs, not tracked)
 electron/platform/native/win32/
+electron/platform/native/*/
 !electron/platform/native/README.txt
+!electron/platform/native/
+
+# ============================================================
+# SteamPipe build & upload (NEVER commit this directory)
+# ============================================================
+# The entire steam-pipe/ directory is local-only (build outputs, credentials, logs).
+# VDF templates are inlined in scripts/upload-steam.mjs; do not track any files here.
+steam-pipe/

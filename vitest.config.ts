@@ -17,6 +17,7 @@ export default defineConfig({
       'tests/unit/**/*.test.ts',
       'tests/components/**/*.spec.ts',
       'tests/engine/**/*.test.ts',
+      'tests/scripts/**/*.test.ts',
     ],
     setupFiles: ['./tests/setup-frontend.ts'],
     coverage: {

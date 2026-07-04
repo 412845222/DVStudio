@@ -25,6 +25,10 @@ class PlatformManager {
 			platformEvents.emit('disconnected', data)
 			this._handleProviderDisconnected(provider.id)
 		})
+		provider.on?.('connected', (data) => {
+			platformEvents.emit('connected', data)
+			this._handleProviderConnected(provider.id)
+		})
 		provider.on?.('user-changed', (data) => {
 			platformEvents.emit('user-changed', data)
 			this._broadcastStatus()
@@ -44,6 +48,16 @@ class PlatformManager {
 
 	_handleProviderDisconnected(providerId) {
 		console.log(`[platform] provider ${providerId} disconnected, reselecting active platform...`)
+		const oldActive = this._activeId
+		this._selectActive()
+		if (oldActive !== this._activeId) {
+			console.log(`[platform] active platform changed: ${oldActive} -> ${this._activeId}`)
+		}
+		this._broadcastStatus()
+	}
+
+	_handleProviderConnected(providerId) {
+		console.log(`[platform] provider ${providerId} connected, reselecting active platform...`)
 		const oldActive = this._activeId
 		this._selectActive()
 		if (oldActive !== this._activeId) {

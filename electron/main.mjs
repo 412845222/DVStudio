@@ -59,16 +59,35 @@ try {
 
 function earlySetupSteamEnv() {
 	try {
-		let appId = 480
+		if (process.env.SteamAppId && process.env.SteamGameId) {
+			console.log('[platform:steam] Steam environment already set by Steam client:', process.env.SteamAppId)
+			return
+		}
+		let appId = 0
 		const cwdAppIdPath = path.join(process.cwd(), 'steam_appid.txt')
 		if (fs.existsSync(cwdAppIdPath)) {
 			const content = fs.readFileSync(cwdAppIdPath, 'utf8').trim()
 			const parsed = parseInt(content, 10)
 			if (!isNaN(parsed) && parsed > 0) appId = parsed
 		}
-		process.env.SteamAppId = String(appId)
-		process.env.SteamGameId = String(appId)
-		console.log('[platform:steam] Early SteamAppId set:', appId)
+		if (!appId) {
+			const exeDirAppIdPath = path.join(path.dirname(process.execPath), 'steam_appid.txt')
+			if (fs.existsSync(exeDirAppIdPath)) {
+				const content = fs.readFileSync(exeDirAppIdPath, 'utf8').trim()
+				const parsed = parseInt(content, 10)
+				if (!isNaN(parsed) && parsed > 0) appId = parsed
+			}
+		}
+		if (!appId) {
+			appId = parseInt(process.env.STEAM_APP_ID || '0', 10) || 0
+		}
+		if (appId > 0) {
+			process.env.SteamAppId = String(appId)
+			process.env.SteamGameId = String(appId)
+			console.log('[platform:steam] Early SteamAppId set:', appId)
+		} else {
+			console.log('[platform:steam] No Steam AppID configured, Steam integration will use Mock mode')
+		}
 	} catch (err) {
 		console.warn('[platform:steam] Early Steam env setup failed:', err.message)
 	}

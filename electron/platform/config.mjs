@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 
-const DEFAULT_STEAM_APP_ID = 480
+const PRODUCTION_STEAM_APP_ID = 2475710
 
 function readUserDataConfig() {
 	try {
@@ -21,6 +21,10 @@ function readSteamAppIdTxt() {
 		const candidates = [
 			path.join(process.cwd(), 'steam_appid.txt'),
 		]
+		if (!app.isPackaged) {
+			const nativeWin32Dir = path.join(__dirname, 'native', 'win32')
+			candidates.push(path.join(nativeWin32Dir, 'steam_appid.txt'))
+		}
 		if (app.isReady()) {
 			candidates.push(path.join(path.dirname(process.execPath), 'steam_appid.txt'))
 		}
@@ -39,9 +43,16 @@ export function getSteamConfig() {
 	const userConfig = readUserDataConfig()
 	const txtAppId = readSteamAppIdTxt()
 
-	let appId = DEFAULT_STEAM_APP_ID
-	let configSource = 'default (480/SpaceWar)'
-	if (process.env.STEAM_APP_ID) {
+	let appId = PRODUCTION_STEAM_APP_ID
+	let configSource = `production default (${PRODUCTION_STEAM_APP_ID})`
+
+	if (process.env.SteamAppId) {
+		const id = parseInt(process.env.SteamAppId, 10)
+		if (!isNaN(id) && id > 0) {
+			appId = id
+			configSource = 'Steam client (SteamAppId env)'
+		}
+	} else if (process.env.STEAM_APP_ID) {
 		const id = parseInt(process.env.STEAM_APP_ID, 10)
 		if (!isNaN(id) && id > 0) {
 			appId = id
@@ -58,11 +69,11 @@ export function getSteamConfig() {
 	const config = {
 		appId,
 		webApiKey: userConfig?.webApiKey || process.env.STEAM_WEB_API_KEY || '',
-		environment: userConfig?.environment || 'development',
+		environment: userConfig?.environment || 'production',
 	}
 
 	console.log(`[platform:config] Steam AppID: ${appId} (source: ${configSource})`)
 	return config
 }
 
-export { DEFAULT_STEAM_APP_ID }
+export { PRODUCTION_STEAM_APP_ID }
