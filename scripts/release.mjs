@@ -31,9 +31,6 @@ function error(msg) {
 }
 
 function resolveCmd(cmd) {
-	if (process.platform === 'win32') {
-		return `${cmd}.cmd`
-	}
 	return cmd
 }
 
@@ -50,6 +47,9 @@ function run(cmd, args, options = {}) {
 		},
 		...options
 	})
+	if (result.error) {
+		throw new Error(`Failed to execute ${resolvedCmd}: ${result.error.message}`)
+	}
 	if (result.status !== 0) {
 		throw new Error(`Command failed: ${resolvedCmd} ${args.join(' ')} (exit code ${result.status})`)
 	}
@@ -97,7 +97,10 @@ function isGitClean() {
 		encoding: 'utf8',
 		shell: false
 	})
-	const output = result.stdout.trim()
+	if (result.error) {
+		throw new Error(`Failed to run git: ${result.error.message}`)
+	}
+	const output = (result.stdout || '').trim()
 	return output.length === 0
 }
 
@@ -108,7 +111,10 @@ function getCurrentBranch() {
 		encoding: 'utf8',
 		shell: false
 	})
-	return result.stdout.trim()
+	if (result.error) {
+		throw new Error(`Failed to run git: ${result.error.message}`)
+	}
+	return (result.stdout || '').trim()
 }
 
 function getRemoteUrl() {
@@ -118,7 +124,10 @@ function getRemoteUrl() {
 		encoding: 'utf8',
 		shell: false
 	})
-	return result.stdout.trim()
+	if (result.error) {
+		throw new Error(`Failed to run git: ${result.error.message}`)
+	}
+	return (result.stdout || '').trim()
 }
 
 function getRepoWebUrl(remoteUrl) {
