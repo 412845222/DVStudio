@@ -574,7 +574,7 @@ async function handleOpenOverlayCommunity() {
 				<div class="network-row">
 					<label class="network-label">
 						<span>HTTP代理地址</span>
-						<small style="color: var(--vscode-fg-muted); font-size: 11px;">Clash等代理软件的HTTP端口，通常为 http://127.0.0.1:7890</small>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">本地代理软件的HTTP监听端口，通常为 http://127.0.0.1:7890</small>
 					</label>
 					<input
 						v-model="form.httpProxy"
