@@ -12,7 +12,7 @@
 		@pointerdown.stop
 		@wheel.stop
 	>
-		<button class="chat-collapsed-handle" type="button" @click="requestExpand">Agent对话</button>
+		<button class="chat-collapsed-handle" type="button" @click="requestExpand">{{ t('aichat.dock.handleLabel') }}</button>
 
 		<div class="chat-content" :aria-hidden="collapsed ? 'true' : 'false'">
 			<div class="chat-history">
@@ -23,15 +23,15 @@
 							:value="codexActiveSessionId"
 							@change="onAgentSessionChange"
 						>
-							<option value="">新对话</option>
+							<option value="">{{ t('aichat.dock.newSession') }}</option>
 							<option v-for="s in codexSessions" :key="s.id" :value="s.id">
-								{{ s.title || '新对话' }}
+								{{ s.title || t('aichat.dock.newSession') }}
 							</option>
 						</select>
 						<button
 							class="chat-history-new-btn"
 							type="button"
-							title="新建会话"
+							:title="t('aichat.dock.newSessionTitle')"
 							@pointerdown.stop
 							@click.stop="emit('codex-create-session')"
 						>
@@ -48,7 +48,7 @@
 						<button
 							class="chat-history-delete-btn"
 							type="button"
-							title="删除会话"
+							:title="t('aichat.dock.deleteSessionTitle')"
 							:disabled="!codexActiveSessionId || codexSessions?.length <= 1"
 							@pointerdown.stop
 							@click.stop="emit('codex-delete-session', codexActiveSessionId)"
@@ -68,7 +68,7 @@
 					<button
 						class="chat-history-minimize"
 						type="button"
-						title="关闭"
+						:title="t('aichat.dock.close')"
 						@pointerdown.stop
 						@click.stop="requestCollapse"
 					>
@@ -92,7 +92,7 @@
 						<div class="agent-content-area">
 							<div class="agent-chat-area">
 								<div v-if="!messages?.length" class="agent-empty-state">
-									开始一段新的 Agent 对话。
+									{{ t('aichat.dock.emptyMessage') }}
 								</div>
 								<div v-else class="chat-history-list agent-chat-list" ref="chatListRef">
 									<div
@@ -105,7 +105,7 @@
 									>
 										<div class="chat-msg-bubble">
 											<div class="chat-msg-role">
-												{{ m.role === 'user' ? '你' : m.role === 'assistant' ? 'Agent' : '系统' }}
+												{{ m.role === 'user' ? t('aichat.dock.roleUser') : m.role === 'assistant' ? t('aichat.dock.roleAgent') : t('aichat.dock.roleSystem') }}
 											</div>
 											<template v-if="m.role === 'assistant'">
 												<ThinkingBlock
@@ -158,7 +158,7 @@
 
 			<div class="chat-dock-body">
 				<div class="agent-working-dir">
-					<span>工作目录</span>
+					<span>{{ t('aichat.dock.workingDir') }}</span>
 					<span class="agent-working-dir-path">{{ agentWorkingDirectory }}</span>
 				</div>
 
@@ -181,7 +181,7 @@
 					</div>
 					<div class="chat-dock-context-usage-text">
 						{{ formatTokens(contextUsage.tokenCount) }} / {{ formatTokens(contextUsage.budget) }}
-						<span v-if="contextUsage.truncated" class="chat-dock-context-usage-truncated">已截断</span>
+						<span v-if="contextUsage.truncated" class="chat-dock-context-usage-truncated">{{ t('aichat.dock.truncated') }}</span>
 					</div>
 				</div>
 
@@ -190,7 +190,7 @@
 					:value="modelValue"
 					class="chat-dock-input"
 					rows="2"
-					placeholder="输入消息，按 Enter 发送，Shift+Enter 换行，输入 / 选择技能"
+					:placeholder="t('aichat.dock.inputPlaceholder')"
 					:disabled="sending"
 					@focus="emit('focus-input')"
 					@input="onInput"
@@ -205,7 +205,7 @@
 					class="chat-dock-skill-picker"
 					ref="skillPickerRef"
 				>
-					<div class="chat-dock-skill-picker-header">选择技能</div>
+					<div class="chat-dock-skill-picker-header">{{ t('aichat.dock.skillPickerTitle') }}</div>
 					<div class="chat-dock-skill-picker-list">
 						<div
 							v-for="skill in availableSkills"
@@ -239,14 +239,14 @@
 							</select>
 						</div>
 						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-model">
-							<div class="chat-dock-toolbar-label">模型</div>
+							<div class="chat-dock-toolbar-label">{{ t('aichat.dock.labelModel') }}</div>
 							<select
 								class="chat-dock-toolbar-select"
 								:value="activeModelId"
 								:disabled="sending || !modelOptions.length"
 								@change="onAgentModelSelectionChange"
 							>
-								<option v-if="!modelOptions.length" value="">暂无可用模型</option>
+								<option v-if="!modelOptions.length" value="">{{ t('aichat.dock.noModelAvailable') }}</option>
 								<template v-if="agentBackend === 'dvsagent'">
 									<optgroup
 										v-for="group in dvsAgentModelGroups"
@@ -266,18 +266,18 @@
 							</select>
 						</div>
 						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-thinking">
-							<div class="chat-dock-toolbar-label">思考</div>
+							<div class="chat-dock-toolbar-label">{{ t('aichat.dock.labelThinking') }}</div>
 							<select
 								class="chat-dock-toolbar-select thinking-select"
 								:value="thinkingEffort"
 								:disabled="sending || !supportsThinking"
 								@change="onThinkingEffortChange"
 							>
-								<option v-if="!supportsThinking" value="disabled">不支持</option>
-								<option value="disabled">关闭</option>
-								<option value="low">简洁</option>
-								<option value="medium">平衡</option>
-								<option value="high">详细</option>
+								<option v-if="!supportsThinking" value="disabled">{{ t('aichat.dock.thinkingNotSupported') }}</option>
+								<option value="disabled">{{ t('aichat.dock.thinkingDisabled') }}</option>
+								<option value="low">{{ t('aichat.dock.thinkingLow') }}</option>
+								<option value="medium">{{ t('aichat.dock.thinkingMedium') }}</option>
+								<option value="high">{{ t('aichat.dock.thinkingHigh') }}</option>
 							</select>
 						</div>
 					</div>
@@ -295,7 +295,7 @@
 					<button
 						class="chat-dock-upload"
 						type="button"
-						title="上传文件"
+						:title="t('aichat.dock.uploadFile')"
 						:disabled="sending"
 						@click="onUploadClick"
 					>
@@ -327,6 +327,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
 import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideoForm.vue'
 import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
 import ThinkingBlock from '../AIChat/ThinkingBlock.vue'
@@ -345,6 +346,8 @@ import {
 	type ChatModelCatalogItem,
 	type ChatNeedType
 } from '../../ai/models/chatModels'
+
+const { t } = useI18n()
 
 export type ToolCallInfo = {
 	id: string
@@ -503,12 +506,12 @@ const pendingFocus = ref(false)
 const showSkillPicker = ref(false)
 const selectedSkillIndex = ref(0)
 
-const availableSkills = ref([
-	{ id: 'scene-understand', name: '场景理解', description: '分析图像中的场景、物体和布局', icon: '🖼️' },
-	{ id: 'scene-lighting', name: '场景光照', description: '优化场景的光照效果和氛围', icon: '💡' },
-	{ id: 'node-create', name: '创建节点', description: '在蓝图中创建工作流节点', icon: '➕' },
-	{ id: 'node-config', name: '配置节点', description: '配置已选中节点的参数', icon: '⚙️' },
-	{ id: 'workflow-plan', name: '工作流规划', description: '根据需求规划完整的工作流', icon: '📋' },
+const availableSkills = computed(() => [
+	{ id: 'scene-understand', name: t('aichat.dock.skillSceneUnderstand'), description: t('aichat.dock.skillSceneUnderstandDesc'), icon: '🖼️' },
+	{ id: 'scene-lighting', name: t('aichat.dock.skillSceneLighting'), description: t('aichat.dock.skillSceneLightingDesc'), icon: '💡' },
+	{ id: 'node-create', name: t('aichat.dock.skillNodeCreate'), description: t('aichat.dock.skillNodeCreateDesc'), icon: '➕' },
+	{ id: 'node-config', name: t('aichat.dock.skillNodeConfig'), description: t('aichat.dock.skillNodeConfigDesc'), icon: '⚙️' },
+	{ id: 'workflow-plan', name: t('aichat.dock.skillWorkflowPlan'), description: t('aichat.dock.skillWorkflowPlanDesc'), icon: '📋' },
 ])
 
 const dockRef = ref<HTMLElement | null>(null)
@@ -598,7 +601,7 @@ const agentBackend = computed<AgentBackendType>(() => {
 const agentWorkingDirectory = computed(() => {
 	const text = String(props.agentWorkingDirectory || '').trim()
 	if (text) return text
-	return '当前项目'
+	return t('aichat.dock.currentProject')
 })
 
 const localExecStreamMode = computed<'real' | 'mock'>(() => {
@@ -625,10 +628,10 @@ const showStatusPulse = computed(() => isSendingState.value || isStoppingState.v
 const displayTaskStatus = computed(() => {
 	const status = String(props.taskStatus || '').trim()
 	if (status) return status
-	if (isStoppingState.value) return '正在停止'
-	if (isSendingState.value) return '正在生成'
-	if (runState.value === 'error') return '发生错误'
-	return '就绪'
+	if (isStoppingState.value) return t('aichat.dock.statusStopping')
+	if (isSendingState.value) return t('aichat.dock.statusGenerating')
+	if (runState.value === 'error') return t('aichat.dock.statusError')
+	return t('aichat.dock.statusReady')
 })
 
 const sendButtonDisabled = computed(() => {
@@ -638,9 +641,9 @@ const sendButtonDisabled = computed(() => {
 })
 
 const sendButtonLabel = computed(() => {
-	if (isStoppingState.value) return '正在停止…'
-	if (isSendingState.value) return '停止'
-	return '发送'
+	if (isStoppingState.value) return t('aichat.dock.buttonStopping')
+	if (isSendingState.value) return t('aichat.dock.buttonStop')
+	return t('aichat.dock.buttonSend')
 })
 
 const agentMode = computed<AgentConversationMode>(() => {
@@ -717,10 +720,10 @@ const modelOptions = computed(() => {
 const dvsAgentModelGroups = computed(() => {
 	const groups: Array<{ label: string; models: ChatModelCatalogItem[] }> = []
 	const sourceToLabel: Record<string, string> = {
-		deepseek: 'DeepSeek',
-		bytedance: '火山方舟',
-		gemini: 'Gemini',
-		'local-exec': 'Copilot CLI'
+		deepseek: t('aichat.dock.sourceDeepSeek'),
+		bytedance: t('aichat.dock.sourceByteDance'),
+		gemini: t('aichat.dock.sourceGemini'),
+		'local-exec': t('aichat.dock.sourceCopilotCli')
 	}
 	const sources = ['deepseek', 'bytedance', 'gemini']
 	for (const src of sources) {
@@ -881,8 +884,8 @@ const nanoInterfaceLabel = computed(() => {
 	if (model === 'gemini-2.5-flash-image') return 'NanoBanana'
 	if (model === 'doubao-seedream-4-5-251128') return 'Seedream 4.5'
 	if (model === 'doubao-seedream-4-0-250828') return 'Seedream 4.0'
-	if (model === 'jimeng-image-3.0') return '即梦 图片 3.0'
-	if (model === 'jimeng-image-4.0') return '即梦 图片 4.0'
+	if (model === 'jimeng-image-3.0') return t('aichat.dock.modelJimengImage3')
+	if (model === 'jimeng-image-4.0') return t('aichat.dock.modelJimengImage4')
 	return 'Seedream 5.0'
 })
 
@@ -900,10 +903,10 @@ const nanoModelTag = computed(() => {
 	if (model === 'doubao-seedream-4-5-251128') return 'Seedream 4.5'
 	if (model === 'doubao-seedream-4-0-250828') return 'Seedream 4.0'
 	if (model === 'doubao-seedream-5-0-260128') return 'Seedream 5.0'
-	if (model === 'jimeng-image-3.0') return '即梦 图片 3.0'
-	if (model === 'jimeng-image-4.0') return '即梦 图片 4.0'
-	if (model === 'jimeng-video-3.0') return '即梦 视频 3.0'
-	if (model === 'jimeng-video-3.0-pro') return '即梦 视频 3.0 Pro'
+	if (model === 'jimeng-image-3.0') return t('aichat.dock.modelJimengImage3')
+	if (model === 'jimeng-image-4.0') return t('aichat.dock.modelJimengImage4')
+	if (model === 'jimeng-video-3.0') return t('aichat.dock.modelJimengVideo3')
+	if (model === 'jimeng-video-3.0-pro') return t('aichat.dock.modelJimengVideo3Pro')
 	return model
 })
 
@@ -925,18 +928,18 @@ const nanoConnectedCount = computed(() => {
 })
 
 const nanoEstimateText = computed(() => {
+	const estimateUnit = t('aichat.dock.estimateUnit')
 	if (modelKey.value === 'seedance') {
 		const secBase = seedanceConfig.value.useFrames
 			? Math.max(2, Math.floor((Number(seedanceConfig.value.frames || 121) || 121) / 24))
 			: Math.max(2, Number(seedanceConfig.value.duration || 5) || 5)
 		const sec = Math.max(8, secBase * 3)
-		return `${sec}-${sec + 24}s（估算）`
+		return `${sec}-${sec + 24}s${estimateUnit}`
 	}
-	// No official ETA API. Provide a lightweight heuristic based on ref count.
 	const n = nanoConnectedCount.value
 	const low = 8 + n * 2
 	const high = 25 + n * 4
-	return `${low}-${high}s（估算）`
+	return `${low}-${high}s${estimateUnit}`
 })
 
 const onDockDragStart = (ev: PointerEvent) => {
@@ -1298,7 +1301,7 @@ const onFileSelect = (event: Event) => {
 }
 
 const visualPanelTitle = computed(() =>
-	modelKey.value === 'seedance' ? 'Seedance 生视频' : '图片生成'
+	modelKey.value === 'seedance' ? t('aichat.dock.seedanceGenerate') : t('aichat.dock.imageGenerate')
 )
 
 const onNanoPreviewDragStart = (
@@ -1413,7 +1416,7 @@ const agentFlowDetail = (ev: CodexFlowEvent) => {
 			.trim()
 	}
 	if (ev.kind === 'fileChange' && Array.isArray(payloadValue.changes)) {
-		return `${payloadValue.changes.length} 项`
+		return `${payloadValue.changes.length}${t('aichat.dock.fileChangeItems')}`
 	}
 	return ''
 }
@@ -1435,8 +1438,8 @@ const onRenameCodexSession = (sessionId: string, currentTitle: string) => {
 	const id = String(sessionId || '').trim()
 	if (!id) return
 	const next = window.prompt(
-		'请输入新的会话名称',
-		String(currentTitle || '').trim() || 'Copilot CLI 会话'
+		t('aichat.dock.renamePrompt'),
+		String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
 	)
 	if (next == null) return
 	const title = String(next || '').trim()
@@ -1460,7 +1463,7 @@ const onRenameActiveAgentSession = () => {
 	const sid = codexActiveSessionId.value
 	if (!sid) return
 	const item = codexSessions.value.find((s) => String(s.id || '').trim() === sid)
-	onRenameCodexSession(sid, item?.title || 'Copilot CLI 会话')
+	onRenameCodexSession(sid, item?.title || t('aichat.dock.defaultSessionName'))
 }
 
 const onDeleteActiveAgentSession = () => {

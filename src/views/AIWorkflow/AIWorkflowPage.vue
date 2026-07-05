@@ -2,12 +2,12 @@
 	<div class="aiwf-page">
 		<div v-if="noProjectSelected" class="no-project-guide">
 			<div class="no-project-card">
-				<h2>请先选择或新建项目</h2>
-				<p>从左侧「项目列表」选择已有项目，或点击「新建项目」创建一个新项目。</p>
+				<h2>{{ t('aiworkflow.page.noProject.title') }}</h2>
+				<p>{{ t('aiworkflow.page.noProject.description') }}</p>
 				<button
 				@click="noProjectSelected = false; void $router.push({ name: 'ProjectList' })"
 			>
-					去项目列表
+					{{ t('aiworkflow.page.noProject.goToList') }}
 				</button>
 			</div>
 		</div>
@@ -80,7 +80,7 @@
 					class="aiwf-node-host"
 					:class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots }"
 					:ref="
-						(el: Element | null) => {
+						(el: any) => {
 							if (el) nodeHostRefs.set(node.id, el as HTMLElement)
 							else nodeHostRefs.delete(node.id)
 						}
@@ -386,66 +386,60 @@
 				/>
 
 				<div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
-					<div class="aiwf-perf-stats-title">性能监控</div>
+					<div class="aiwf-perf-stats-title">{{ t('aiworkflow.page.perf.title') }}</div>
 					<div class="aiwf-perf-stats-row">
 						<span class="aiwf-perf-stats-label">FPS</span>
 						<span class="aiwf-perf-stats-value">{{ perfFpsText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">帧耗时</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.frameTime') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">平均帧</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.avgFrame') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfAvgFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">最差帧</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.worstFrame') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfWorstFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row aiwf-perf-stats-sep">
-						<span class="aiwf-perf-stats-label">边计算</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.edgeCompute') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeComputeText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">输入边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.inputEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeInputCountText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">渲染边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.renderedEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeRenderedText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">裁剪边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.culledEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeCulledText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">裁剪率</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.cullRate') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeCullHitRateText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row aiwf-perf-stats-sep">
-						<span class="aiwf-perf-stats-label">节点</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.nodes') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfNodeSummary }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">长任务</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.longTasks') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfLongTaskSummary }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">缩放</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.zoom') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfZoomText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">状态</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.status') }}</span>
 						<span
 							class="aiwf-perf-stats-value"
-							:class="
-								perfHealthLabel === '稳定'
-									? 'is-good'
-									: perfHealthLabel === '轻微掉帧'
-										? 'is-warn'
-										: 'is-bad'
-							"
+							:class="perfHealthClass"
 						>
 							{{ perfHealthLabel }}
 						</span>
@@ -460,7 +454,7 @@
 					@pointerdown.stop
 					@click.stop="toggleInspector"
 				>
-					属性
+					{{ t('aiworkflow.page.inspector.toggle') }}
 				</button>
 			</div>
 
@@ -539,7 +533,7 @@
 
 			<div class="aiwf-overlay-alerts" :style="overlayAlertStyle">
 				<div v-if="importLimitAlertMessage" class="aiwf-import-limit-alert" @pointerdown.stop>
-					<div class="aiwf-import-limit-alert-title">批量导入超限</div>
+					<div class="aiwf-import-limit-alert-title">{{ t('aiworkflow.page.importLimit.title') }}</div>
 					<div class="aiwf-import-limit-alert-body">{{ importLimitAlertMessage }}</div>
 					<div class="aiwf-import-limit-alert-actions">
 						<button
@@ -547,49 +541,49 @@
 							type="button"
 							@click="onConfirmImportLimitAlert"
 						>
-							确认
+							{{ t('aiworkflow.page.importLimit.confirm') }}
 						</button>
 					</div>
 				</div>
 
 				<div v-if="reuseRecordConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
-					<div class="aiwf-reuse-alert-title">检测到 Django 记录可复用</div>
+					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.reuseRecord.title') }}</div>
 					<div class="aiwf-reuse-alert-body">
-						模板：{{ reuseRecordConfirm.workflowName || '未知模板' }}
+						{{ t('aiworkflow.page.reuseRecord.template', { name: reuseRecordConfirm.workflowName || t('aiworkflow.page.reuseRecord.unknownTemplate') }) }}
 						<br />
-						记录时间：{{ formatReuseRecordTime(reuseRecordConfirm.savedAt) }}
+						{{ t('aiworkflow.page.reuseRecord.savedAt', { time: formatReuseRecordTime(reuseRecordConfirm.savedAt) }) }}
 					</div>
 					<div class="aiwf-reuse-alert-actions">
 						<button class="aiwf-reuse-alert-btn" type="button" @click="onCancelReuseRecord">
-							取消
+							{{ t('aiworkflow.page.reuseRecord.cancel') }}
 						</button>
 						<button
 							class="aiwf-reuse-alert-btn primary"
 							type="button"
 							@click="onConfirmReuseRecord"
 						>
-							确认复用并运行
+							{{ t('aiworkflow.page.reuseRecord.confirm') }}
 						</button>
 					</div>
 				</div>
 
 				<div v-if="meshyTextureConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
-					<div class="aiwf-reuse-alert-title">生成贴图前确认</div>
+					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.meshyTexture.title') }}</div>
 					<div class="aiwf-reuse-alert-body">
-						当前未检测到新的贴图提示词或贴图参考图。
+						{{ t('aiworkflow.page.meshyTexture.noNewPrompt') }}
 						<br />
-						若继续提交，将复用当前主模型已有提示词和任务结果来发起贴图。
+						{{ t('aiworkflow.page.meshyTexture.willReuse') }}
 					</div>
 					<div class="aiwf-reuse-alert-actions">
 						<button class="aiwf-reuse-alert-btn" type="button" @click="cancelMeshyTextureConfirm">
-							取消
+							{{ t('aiworkflow.page.reuseRecord.cancel') }}
 						</button>
 						<button
 							class="aiwf-reuse-alert-btn primary"
 							type="button"
 							@click="confirmMeshyTextureFollowup"
 						>
-							确认复用并贴图
+							{{ t('aiworkflow.page.meshyTexture.confirm') }}
 						</button>
 					</div>
 				</div>
@@ -614,15 +608,15 @@
 
 			<FullscreenProgressOverlay
 				:open="screenshotWarmupOpen"
-				title="正在生成节点预览缓存"
-				:detail="screenshotWarmupDetail || '请稍候，正在为所有节点生成截图缓存以提升蓝图流畅度...'"
+				:title="t('aiworkflow.page.screenshotWarmup.title')"
+				:detail="screenshotWarmupDetail || t('aiworkflow.page.screenshotWarmup.detail')"
 				:progress="screenshotWarmupProgress"
 				:cancellable="false"
 			/>
 
 			<ThemeWarmupProgress
 				:visible="themeWarmupOpen"
-				:title="`${themeWarmupTargetTheme === 'light' ? '浅色' : '深色'}主题预热中`"
+				:title="t('aiworkflow.page.themeWarmup.title', { theme: themeWarmupThemeLabel })"
 				:detail="themeWarmupDetail"
 				:progress="themeWarmupProgress"
 			/>
@@ -641,20 +635,20 @@
 
 		<ModalDialog
 			:open="warmupConfirmDialogOpen"
-			title="蓝图节点预热"
-			confirmText="是，重新预热"
-			closeText="否，使用缓存"
+			:title="t('aiworkflow.page.warmupConfirm.title')"
+			:confirmText="t('aiworkflow.page.warmupConfirm.confirmText')"
+			:closeText="t('aiworkflow.page.warmupConfirm.closeText')"
 			:zIndex="10000"
 			@confirm="onConfirmForceWarmup"
 			@close="onCancelUseCache"
 		>
 			<div class="aiwf-warmup-confirm-dialog">
 				<p style="margin-top: 0">
-					是否重新预热蓝图节点？
+					{{ t('aiworkflow.page.warmupConfirm.question') }}
 				</p>
 				<p style="margin-bottom: 0; color: var(--text-secondary, #666); font-size: 13px;">
-					选择"是"将清空所有缓存，重新渲染并截图所有节点（较慢）。<br/>
-					选择"否"将加载已有缓存并直接使用Canvas渲染（较快）。
+					{{ t('aiworkflow.page.warmupConfirm.yesDesc') }}<br/>
+					{{ t('aiworkflow.page.warmupConfirm.noDesc') }}
 				</p>
 			</div>
 		</ModalDialog>
@@ -662,32 +656,32 @@
 		<!-- 缺失资产确认对话框 -->
 		<ModalDialog
 			:open="missingAssetDialogOpen"
-			title="资源缺失：文件不存在"
-			confirmText="移除失效引用"
-			closeText="暂不处理"
+			:title="t('aiworkflow.page.missingAsset.title')"
+			:confirmText="t('aiworkflow.page.missingAsset.confirmText')"
+			:closeText="t('aiworkflow.page.missingAsset.closeText')"
 			@confirm="onConfirmRemoveMissingAsset"
 			@close="onCancelMissingAssetDialog"
 		>
 			<div v-if="missingAssetDialogPending" class="aiwf-missing-asset-dialog">
 				<p style="margin-top: 0">
-					系统检测到以下静态资源在磁盘上已不存在，但项目数据中仍存在对它的引用。
-					这可能是由于文件被手动移动或删除，或从其他设备迁移项目时文件未同步。
+					{{ t('aiworkflow.page.missingAsset.description1') }}
+					{{ t('aiworkflow.page.missingAsset.description2') }}
 				</p>
 				<div class="aiwf-missing-asset-info">
 					<div class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">资产名称：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.assetName') }}</span>
 						<span class="aiwf-missing-asset-value">
 							<strong>{{ missingAssetDialogPending.assetName }}</strong>
 						</span>
 					</div>
 					<div class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">请求路径：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.requestedPath') }}</span>
 						<span class="aiwf-missing-asset-value aiewf-mono">
 							{{ missingAssetDialogPending.requestedPath }}
 						</span>
 					</div>
 					<div v-if="missingAssetDialogPending.absolutePath" class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">磁盘路径：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.absolutePath') }}</span>
 						<span class="aiwf-missing-asset-value aiewf-mono" style="word-break: break-all">
 							{{ missingAssetDialogPending.absolutePath }}
 						</span>
@@ -699,22 +693,22 @@
 					class="aiwf-missing-asset-sources"
 				>
 					<div class="aiwf-missing-asset-sources-title">
-						错误调用来源（{{ missingAssetDialogPending.sources.length }} 处引用）：
+						{{ t('aiworkflow.page.missingAsset.sourcesTitle', { count: String(missingAssetDialogPending.sources.length) }) }}
 					</div>
 					<ul class="aiwf-missing-asset-source-list">
 						<li v-for="(s, i) in missingAssetDialogPending.sources" :key="i">
 							<span class="aiwf-source-tag">{{ sourceTypeLabel(s.type) }}</span>
 							<span v-if="s.nodeId">
-								节点
+								{{ t('aiworkflow.page.missingAsset.node') }}
 								<code>{{ s.nodeId }}</code>
 								<span v-if="s.nodeType">（{{ s.nodeType }}）</span>
 							</span>
 							<span v-if="s.resourceId">
-								资源
+								{{ t('aiworkflow.page.missingAsset.resource') }}
 								<code>{{ s.resourceId }}</code>
 							</span>
 							<span v-if="s.field">
-								字段
+								{{ t('aiworkflow.page.missingAsset.field') }}
 								<code>{{ s.field }}</code>
 							</span>
 							<span v-if="s.detail" class="aiwf-source-detail">— {{ s.detail }}</span>
@@ -723,8 +717,8 @@
 				</div>
 
 				<p class="aiwf-missing-asset-tip">
-					点击「移除失效引用」将从项目数据中清除上述引用（不会删除磁盘上的其他文件），操作可撤销。
-					点击「暂不处理」将保留引用，稍后您可以通过右键菜单或重新导入来修复。
+					{{ t('aiworkflow.page.missingAsset.tipRemove') }}
+					{{ t('aiworkflow.page.missingAsset.tipLater') }}
 				</p>
 			</div>
 		</ModalDialog>
@@ -736,12 +730,13 @@
 			class="aiwf-undo-remove-btn"
 			@click="onUndoLastRemove"
 		>
-			↶ 撤销最近一次移除
+			{{ t('aiworkflow.page.undoRemove') }}
 		</button>
 	</div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
 import {
 	getErrorMessage,
 	isRecord,
@@ -1129,6 +1124,7 @@ const route = useRoute()
 const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
+const { t } = useI18n()
 const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
 
@@ -1250,7 +1246,7 @@ const screenshotAnchorDefaultOffsets = (idx: number, count: number) => {
 const resolveScreenshotAnchors = (node: WorkflowNode, direction: 'in' | 'out') => {
 	const raw = direction === 'in' ? node.inputs : node.outputs
 	const fallbackId = direction === 'in' ? 'in-0' : 'out-0'
-	const fallbackLabel = direction === 'in' ? '入口' : '出口'
+	const fallbackLabel = direction === 'in' ? t('aiworkflow.page.anchor.input') : t('aiworkflow.page.anchor.output')
 	const list =
 		Array.isArray(raw) && raw.length > 0 ? raw : [{ id: fallbackId } as WorkflowAnchorSpec]
 	return list.map((a, index) => {
@@ -1326,15 +1322,15 @@ const ensureNanoAnchorNode = () => {
 	const existing = store.state.nodesById[NANO_ANCHOR_NODE_ID]
 	const inputs: WorkflowAnchorSpec[] = Array.from({ length: NANO_REF_IMAGE_MAX }, (_, i) => ({
 		id: `ref-${i + 1}`,
-		label: `参考图 ${i + 1}`,
+		label: t('aiworkflow.page.nanoAnchor.refImageLabel', { index: String(i + 1) }),
 		mediaType: 'image'
 	}))
 	const node: WorkflowNode = {
 		id: NANO_ANCHOR_NODE_ID,
 		type: existing?.type || 'base',
-		title: 'NanoBanana 参考图输入',
+		title: t('aiworkflow.page.nanoAnchor.title'),
 		alias: existing?.alias,
-		subtitle: '仅用于对话面板参考图锚点（不在画布显示）',
+		subtitle: t('aiworkflow.page.nanoAnchor.subtitle'),
 		worldX: existing?.worldX ?? 0,
 		worldY: existing?.worldY ?? 0,
 		width: existing?.width ?? 240,
@@ -1378,6 +1374,9 @@ const themeWarmupOpen = ref(false)
 const themeWarmupProgress = ref(0)
 const themeWarmupDetail = ref('')
 const themeWarmupTargetTheme = ref<'dark' | 'light'>('dark')
+const themeWarmupThemeLabel = computed(() =>
+	t(themeWarmupTargetTheme.value === 'light' ? 'aiworkflow.page.themeWarmup.lightLabel' : 'aiworkflow.page.themeWarmup.darkLabel')
+)
 let themeWarmupAbortController: AbortController | null = null
 
 const autoWireInProgress = ref(false)
@@ -1390,13 +1389,13 @@ const onAutoWireStart = (sourceNodeId: string) => {
 	autoWireCreatedNodeIds.value = []
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = '正在生成下游节点，请稍候...'
+	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.generating')
 }
 
 const onAutoWireNodeCreated = (nodeId: string) => {
 	autoWireCreatedNodeIds.value.push(nodeId)
 	const count = autoWireCreatedNodeIds.value.length
-	screenshotWarmupDetail.value = `正在生成下游节点... 已创建 ${count} 个节点`
+	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.progress', { count: String(count) })
 }
 
 const onAutoWireEnd = async () => {
@@ -2124,7 +2123,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = forceRecapture ? '准备重新生成所有节点预览...' : '准备中...'
+	screenshotWarmupDetail.value = forceRecapture ? t('aiworkflow.page.warmup.prepareRecapture') : t('aiworkflow.page.warmup.preparing')
 
 	const cacheCtx = getScreenshotCacheContext()
 	void cleanupOldScreenshots(7 * 24 * 60 * 60 * 1000)
@@ -2138,7 +2137,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	let diskLoadedCount = 0
 	if (!forceRecapture) {
 		screenshotWarmupProgress.value = 0.03
-		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
 		try {
 			const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
 			const totalNodes = allNodes.length
@@ -2178,7 +2177,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 				if (i % 10 === 0 || i === totalNodes - 1) {
 					const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
 					screenshotWarmupProgress.value = 0.03 + ratio * 0.06
-					screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes * 2}...`
+					screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', { loaded: String(diskLoadedCount), totalNodes: String(totalNodes * 2) })
 					if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 				}
 			}
@@ -2232,7 +2231,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		await nextTick()
 		await waitForFrames(1)
 		screenshotWarmupProgress.value = 0.1
-		screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 		await warmupCanvasAll(
 			newMap,
 			undefined,
@@ -2244,7 +2243,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		initCanvasScreenshotPool()
 		refreshCanvasNodeLayer()
 		screenshotWarmupProgress.value = 0.99
-		screenshotWarmupDetail.value = '完成'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 		await waitForFrames(1)
 		screenshotWarmupOpen.value = false
 		screenshotWarmupDetail.value = ''
@@ -2261,9 +2260,9 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	screenshotWarmupProgress.value = 0.1
 	if (forceRecapture) {
-		screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，强制重新截图...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.forceRecapture', { nodeCount: String(allNodes.length) })
 	} else {
-		screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，${cachedCount} 个已缓存（磁盘${diskLoadedCount}），准备截图...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readyToCapture', { nodeCount: String(allNodes.length), cached: String(cachedCount), diskLoaded: String(diskLoadedCount) })
 	}
 
 	let screenshotStarted = 0
@@ -2329,7 +2328,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 			screenshotCompleted++
 			const ratio = screenshotCompleted / total
 			screenshotWarmupProgress.value = 0.1 + ratio * 0.78
-			screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${screenshotCompleted}/${total}...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturing', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total) })
 		})()
 		promises.push(promise)
 	}
@@ -2358,7 +2357,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		if (screenshotStarted > 0) {
 			const ratio = screenshotStarted / total
 			screenshotWarmupProgress.value = 0.1 + ratio * 0.12 + (screenshotCompleted / total) * 0.66
-			screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${screenshotCompleted}/${total}（渲染就绪 ${screenshotStarted}）...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturingWithReady', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total), started: String(screenshotStarted) })
 		}
 	}
 
@@ -2384,7 +2383,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	// === Canvas截图预热：加载所有截图到内存 ===
 	screenshotWarmupProgress.value = 0.88
-	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 	await waitForFrames(1)
 
 	await warmupCanvasAll(
@@ -2400,7 +2399,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.99
-	screenshotWarmupDetail.value = '完成'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 	await waitForFrames(1)
 
 	screenshotWarmupOpen.value = false
@@ -2419,7 +2418,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	isWarmingUpScreenshots.value = true
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = `正在渲染 ${newNodes.length} 个新节点...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.renderingNewNodes', { count: String(newNodes.length) })
 
 	warmupForceRenderNodeIds.value = new Set(newNodeIds)
 
@@ -2464,7 +2463,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	screenshotPool.setBurstMode(true)
 
 	screenshotWarmupProgress.value = 0.02
-	screenshotWarmupDetail.value = `正在生成新节点预览 0/${total}...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
 
 	let screenshotStarted = 0
 	let screenshotCompleted = 0
@@ -2527,7 +2526,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 
 			screenshotCompleted++
 			screenshotWarmupProgress.value = screenshotCompleted / total
-			screenshotWarmupDetail.value = `正在生成新节点预览 ${screenshotCompleted}/${total}...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewProgress', { completed: String(screenshotCompleted), total: String(total) })
 		})()
 		promises.push(promise)
 	}
@@ -2555,12 +2554,12 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 
 		if (screenshotStarted === 0) {
 			screenshotWarmupProgress.value = 0.02 + (waitFrames / MAX_WAIT_FRAMES) * 0.08
-			screenshotWarmupDetail.value = `正在等待节点渲染...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
 		} else {
 			const pending = screenshotStarted - screenshotCompleted
 			screenshotWarmupProgress.value =
 				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
-			screenshotWarmupDetail.value = `正在生成新节点预览 ${screenshotCompleted}/${total}（渲染中 ${pending}）...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
 		}
 	}
 
@@ -2583,7 +2582,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	warmupForceRenderNodeIds.value = new Set()
 	await nextTick()
 	warmupExitingFullRender.value = false
-	screenshotWarmupDetail.value = `新节点预热完成，共 ${newNodes.length} 个节点，正在加载Canvas截图...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
 	if (newMap.size > 0) {
 		await warmupCanvasAll(newMap)
 		initCanvasScreenshotPool()
@@ -2710,7 +2709,8 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 	themeWarmupTargetTheme.value = toTheme
 	themeWarmupOpen.value = true
 	themeWarmupProgress.value = 0
-	themeWarmupDetail.value = `正在预热${toTheme === 'light' ? '浅色' : '深色'}主题节点...`
+	const twLabel = t(toTheme === 'light' ? 'aiworkflow.page.themeWarmup.lightLabel' : 'aiworkflow.page.themeWarmup.darkLabel')
+	themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.preparing', { theme: twLabel })
 
 	const warmupNodeIds = new Set(nodesNeedingCapture.map((n) => String(n.id)))
 	warmupForceRenderNodeIds.value = warmupNodeIds
@@ -2771,7 +2771,7 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 		if (!signal.aborted) {
 			const ratio = screenshotCompleted / total
 			themeWarmupProgress.value = ratio
-			themeWarmupDetail.value = `正在预热${toTheme === 'light' ? '浅色' : '深色'}主题节点 ${screenshotCompleted}/${total}...`
+			themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.progress', { theme: twLabel, completed: String(screenshotCompleted), total: String(total) })
 			refreshCanvasNodeLayer()
 		}
 	}
@@ -2800,7 +2800,7 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 	warmupExitingFullRender.value = false
 
 	themeWarmupProgress.value = 1
-	themeWarmupDetail.value = `${toTheme === 'light' ? '浅色' : '深色'}主题预热完成`
+	themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.done', { theme: twLabel })
 	initCanvasScreenshotPool()
 	refreshCanvasNodeLayer()
 
@@ -2959,7 +2959,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = '正在加载磁盘缓存...'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingDiskCache')
 
 	const cacheCtx = getScreenshotCacheContext()
 
@@ -2971,7 +2971,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 	let diskLoadedCount = 0
 	try {
 		screenshotWarmupProgress.value = 0.05
-		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
 		const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
 		const totalNodes = allNodes.length
 		const currentTheme = themeStore.state.mode as 'dark' | 'light'
@@ -3009,7 +3009,10 @@ const loadCachedScreenshotsToCanvas = async () => {
 			if (i % 10 === 0 || i === totalNodes - 1) {
 				const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
 				screenshotWarmupProgress.value = 0.05 + ratio * 0.2
-				screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes * 2}...`
+				screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', {
+					loaded: String(diskLoadedCount),
+					totalNodes: String(totalNodes * 2)
+				})
 				if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 			}
 		}
@@ -3020,7 +3023,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 	nodeScreenshotMap.value = newMap
 
 	screenshotWarmupProgress.value = 0.28
-	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 
 	await warmupCanvasAll(
 		newMap,
@@ -3034,7 +3037,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.98
-	screenshotWarmupDetail.value = '完成'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 	await waitForFrames(1)
 
 	screenshotWarmupOpen.value = false
@@ -3132,8 +3135,8 @@ const compactNodeStateClass = (node: WorkflowNode) => {
 
 const compactNodeStateLabel = (node: WorkflowNode) => {
 	const state = resolveNodeRuntimeVisualState(node)
-	if (state === 'running') return '运行中'
-	if (state === 'error') return '异常'
+	if (state === 'running') return t('aiworkflow.page.runtimeState.running')
+	if (state === 'error') return t('aiworkflow.page.runtimeState.error')
 	return ''
 }
 
@@ -3340,7 +3343,7 @@ const createImageNodeAtCenter = (url: string, name?: string): string | null => {
 		store.commit('addNodeAt', {
 			worldX,
 			worldY,
-			title: name || 'Meshy 生成图片'
+			title: name || t('aiworkflow.page.defaultImageNodeTitle')
 		})
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
@@ -3357,7 +3360,7 @@ const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: s
 		store.commit('addNodeAt', {
 			worldX,
 			worldY,
-			title: name || 'Meshy 生成图片'
+			title: name || t('aiworkflow.page.defaultImageNodeTitle')
 		})
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
@@ -3440,7 +3443,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 						!isStrictLocalRenderableUrl(base.url) ||
 						!isWorkflowLocalAssetUrl(base.url)
 					) {
-						pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 						return false
 					}
 					store.commit('addResource', base)
@@ -3449,12 +3452,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('图片生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.image') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('图片导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3512,7 +3515,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					!isStrictLocalRenderableUrl(base.url) ||
 					!isWorkflowLocalAssetUrl(base.url)
 				) {
-					pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3533,12 +3536,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				const pid = Number(currentProjectId.value ?? 0)
 				const sourceUrl = String(url || '').trim()
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('视频生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.video') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('视频导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3594,7 +3597,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					!isStrictLocalRenderableUrl(base.url) ||
 					!isWorkflowLocalAssetUrl(base.url)
 				) {
-					pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3630,7 +3633,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					finalizeGeneratedResourceLocalUrl(base, pid)
 					base.url = String(base.url || '').trim()
 					if (!base.url) {
-						pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 						return false
 					}
 					store.commit('addResource', base)
@@ -3639,12 +3642,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('3D 模型生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('3D 模型导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3693,7 +3696,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				finalizeGeneratedResourceLocalUrl(base, pid)
 				base.url = String(base.url || '').trim()
 				if (!base.url) {
-					pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3973,7 +3976,7 @@ const nanoRefDockAnchors = computed(() => {
 		const fromTitle = fromNode ? String(fromNode.alias || fromNode.title || fromNode.id) : ''
 		return {
 			id: a.id,
-			label: a.label || `参考图 ${idx + 1}`,
+			label: a.label || t('aiworkflow.page.nanoAnchor.refImageLabel', { index: String(idx + 1) }),
 			connected: !!edge,
 			connectedFrom: fromTitle
 		}
@@ -3983,9 +3986,9 @@ const nanoRefDockAnchors = computed(() => {
 const chatTaskStatusText = ref('')
 const chatTaskStatus = computed(() => {
 	if (chatTaskStatusText.value) return chatTaskStatusText.value
-	if (chatRunState.value === 'stopping') return 'AI 任务：正在停止…'
-	if (chatRunState.value === 'error') return 'AI 任务：错误'
-	return chatSending.value ? 'AI 任务：生成中…' : 'AI 任务：空闲'
+	if (chatRunState.value === 'stopping') return t('aiworkflow.page.chatTask.stopping')
+	if (chatRunState.value === 'error') return t('aiworkflow.page.chatTask.error')
+	return chatSending.value ? t('aiworkflow.page.chatTask.generating') : t('aiworkflow.page.chatTask.idle')
 })
 
 const isElectronRuntime =
@@ -4021,13 +4024,13 @@ const resolveAutoHelloText = () => {
 		(window as Window & DwebRuntimeWindow)?.__DWEB_AIWF_AUTO_HELLO_TEXT || ''
 	).trim()
 	if (winText) return winText
-	return '你好'
+	return t('aiworkflow.page.chat.hello')
 }
 let autoHelloSent = false
 
 const mapCodexSession = (row: CodexSessionRow): LocalExecSessionItem => ({
 	id: String(row?.id || '').trim(),
-	title: String(row?.title || 'Copilot CLI 会话').trim() || 'Copilot CLI 会话',
+	title: String(row?.title || t('aiworkflow.page.chat.defaultSessionTitle')).trim() || t('aiworkflow.page.chat.defaultSessionTitle'),
 	status: String(row?.status || 'active').trim() || 'active',
 	modelName: String(row?.model_name || '').trim(),
 	source: 'copilot-cli'
@@ -4064,7 +4067,7 @@ const loadCodexSessions = async () => {
 		const conversations = Array.isArray(res.conversations) ? res.conversations : []
 		codexSessions.value = conversations.map((c) => ({
 			id: c.id,
-			title: c.title || '新对话',
+			title: c.title || t('aiworkflow.page.chat.newConversation'),
 			modelName: c.model || '',
 			status: 'active'
 		}))
@@ -4080,19 +4083,19 @@ const loadCodexSessions = async () => {
 const onCodexCreateSession = async () => {
 	const projectPath = String(currentProjectRootPath.value || '').trim()
 	try {
-		const res = await agentCreateConversation('新对话', chatModelId.value, projectPath)
+		const res = await agentCreateConversation(t('aiworkflow.page.chat.newConversation'), chatModelId.value, projectPath)
 		if (!res?.ok) {
-			pushToast('创建会话失败：' + String(res?.error || '未知错误'), 'warn')
+			pushToast(t('aiworkflow.page.chat.createSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
 			return
 		}
 		const conversation = res.conversation as { id: string; title: string; model: string } | undefined
 		if (!conversation?.id) {
-			pushToast('创建会话失败：返回会话ID为空', 'warn')
+			pushToast(t('aiworkflow.page.chat.createSessionFailedEmptyId'), 'warn')
 			return
 		}
 		const item = {
 			id: conversation.id,
-			title: conversation.title || '新对话',
+			title: conversation.title || t('aiworkflow.page.chat.newConversation'),
 			modelName: conversation.model || '',
 			status: 'active'
 		}
@@ -4100,7 +4103,7 @@ const onCodexCreateSession = async () => {
 		codexActiveSessionId.value = item.id
 		chatMessages.value = []
 	} catch (err: unknown) {
-		pushToast('创建会话失败：' + getErrorMessage(err), 'warn')
+		pushToast(t('aiworkflow.page.chat.createSessionFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
@@ -4132,12 +4135,12 @@ const onCodexApproval = async (payloadValue: {
 }) => {
 	const projectId = await ensureProjectForLocalExec()
 	if (projectId == null) {
-		pushToast('无法提交审批：自动保存项目失败。', 'warn')
+		pushToast(t('aiworkflow.page.chat.submitApprovalFailedAutoSave'), 'warn')
 		return
 	}
 	const sid = String(codexActiveSessionId.value || '').trim()
 	if (!sid) {
-		pushToast('请先选择 Copilot CLI 会话。', 'warn')
+		pushToast(t('aiworkflow.page.chat.selectSessionFirst'), 'warn')
 		return
 	}
 	try {
@@ -4148,23 +4151,23 @@ const onCodexApproval = async (payloadValue: {
 			projectId
 		})) as LocalExecListResult
 		if (result?.error) {
-			pushToast('审批提交失败：' + String(result.error), 'warn')
+			pushToast(t('aiworkflow.page.chat.approvalSubmitFailed', { error: String(result.error) }), 'warn')
 			return
 		}
-		pushToast('审批已提交。', 'info')
+		pushToast(t('aiworkflow.page.chat.approvalSubmitted'), 'info')
 	} catch (err: unknown) {
-		pushToast('审批提交失败：' + getErrorMessage(err), 'warn')
+		pushToast(t('aiworkflow.page.chat.approvalSubmitFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
 const onCodexDeleteSession = async (sessionId: string) => {
 	const sid = String(sessionId || '').trim()
 	if (!sid) return
-	const ok = window.confirm('确认删除该会话吗？')
+	const ok = window.confirm(t('aiworkflow.page.chat.confirmDeleteSession'))
 	if (!ok) return
 	const res = await agentDeleteConversation(sid)
 	if (!res?.ok) {
-		pushToast('删除会话失败：' + String(res?.error || '未知错误'), 'warn')
+		pushToast(t('aiworkflow.page.chat.deleteSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
 		return
 	}
 	codexSessions.value = codexSessions.value.filter((s) => s.id !== sid)
@@ -4182,7 +4185,7 @@ const onCodexDeleteSession = async (sessionId: string) => {
 const onCodexRenameSession = async (payloadValue: { sessionId: string; title: string }) => {
 	const projectId = await ensureProjectForLocalExec()
 	if (projectId == null) {
-		pushToast('无法重命名会话：自动保存项目失败。', 'warn')
+		pushToast(t('aiworkflow.page.chat.renameSessionFailedAutoSave'), 'warn')
 		return
 	}
 	const sid = String(payloadValue.sessionId || '').trim()
@@ -4194,7 +4197,7 @@ const onCodexRenameSession = async (payloadValue: { sessionId: string; title: st
 		title
 	})) as LocalExecListResult
 	if (result?.error) {
-		pushToast('会话改名失败：' + String(result.error), 'warn')
+		pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: String(result.error) }), 'warn')
 		return
 	}
 	codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
@@ -4321,7 +4324,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 	if (!clipboardData) return false
 	const projectId = Number(currentProjectId.value ?? 0)
 	if (!(projectId > 0)) {
-		pushToast('请先保存项目后，再粘贴媒体资源到蓝图。', 'warn')
+		pushToast(t('aiworkflow.page.media.pasteNeedSaveProject'), 'warn')
 		return false
 	}
 
@@ -4425,7 +4428,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				store.commit('addNodeAt', {
 					worldX: worldX + offset,
 					worldY: worldY + offset,
-					title: kind === 'image' ? '图片' : '视频'
+					title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 				})
 				const nodeId = store.state.selectedNodeId
 				if (nodeId) {
@@ -4473,7 +4476,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 					store.commit('addNodeAt', {
 						worldX: center.worldX,
 						worldY: center.worldY,
-						title: urlKind === 'image' ? '图片' : '视频'
+						title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 					})
 					const nodeId = store.state.selectedNodeId
 					if (nodeId) {
@@ -4490,7 +4493,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				store.commit('addNodeAt', {
 					worldX: center.worldX,
 					worldY: center.worldY,
-					title: urlKind === 'image' ? '图片' : '视频'
+					title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 				})
 				const nodeId = store.state.selectedNodeId
 				if (nodeId) {
@@ -4751,7 +4754,7 @@ const cancelActiveImportSession = (opts?: { cleanupUnresolved?: boolean }) => {
 
 const onCancelImportOverlay = () => {
 	cancelActiveImportSession({ cleanupUnresolved: true })
-	pushToast('已取消导入：保留已完成的节点/资源，清理未完成项。', 'info')
+	pushToast(t('aiworkflow.page.media.importCancelled'), 'info')
 }
 
 const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video') => {
@@ -5055,18 +5058,18 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
 	const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
 	const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
 
-	pushToast('正在导出带洞几何体...', 'info')
+	pushToast(t('aiworkflow.page.placeholder.exporting'), 'info')
 
 	const viewerExportResult = await exportSceneLayoutPlaceholderGLB(nodeId)
 	if (!viewerExportResult.ok || !viewerExportResult.glbData) {
-		const errorMsg = viewerExportResult.ok ? '未能获取GLB数据' : viewerExportResult.error
-		pushToast(`导出带洞几何体失败：${errorMsg}`, 'error')
-		throw new Error(`导出带洞占位体失败：${errorMsg}`)
+		const errorMsg = viewerExportResult.ok ? t('aiworkflow.page.placeholder.failedGetGlb') : viewerExportResult.error
+		pushToast(t('aiworkflow.page.placeholder.exportFailed', { error: String(errorMsg) }), 'error')
+		throw new Error(t('aiworkflow.page.placeholder.exportPlaceholderFailed', { error: String(errorMsg) }))
 	}
 
 	const fileName = `${slugSceneLayoutPlaceholderModelName(`${viewerExportResult.name || placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
 	const file = new File([viewerExportResult.glbData], fileName, { type: 'model/gltf-binary' })
-	pushToast(`成功导出带洞几何体：${viewerExportResult.name || placeholderName}`, 'info')
+	pushToast(t('aiworkflow.page.placeholder.exportSuccess', { name: String(viewerExportResult.name || placeholderName) }), 'info')
 	return {
 		file,
 		signature,
@@ -5352,7 +5355,7 @@ const syncModel3DInputFromUpstream = async (
 					lastInputNodeId: fromNode.id,
 					lastInputSourceUrl: transfer.transferUrl,
 					lastInputSourcePath: String(transfer.assetPath || '').trim() || undefined,
-					lastInputSourceName: `占位体 ${generated.placeholderName}`,
+					lastInputSourceName: `${t('aiworkflow.page.placeholder.term')} ${generated.placeholderName}`,
 					lastInputPlaceholderId: generated.placeholderId || undefined,
 					lastInputPlaceholderJson: generated.placeholderJson || undefined
 				}
@@ -5361,7 +5364,7 @@ const syncModel3DInputFromUpstream = async (
 		}
 	}
 
-	if (opts?.warn) pushToast('未找到可用的上游模型输出。', 'warn')
+	if (opts?.warn) pushToast(t('aiworkflow.page.meshy.noUpstreamOutput'), 'warn')
 	return false
 }
 
@@ -5888,8 +5891,8 @@ const buildResetUnrealExportSettings = (settings?: Record<string, unknown> | nul
 	const autoPollVal = settings?.autoPoll
 	return {
 		connectionStatus: 'idle' as const,
-		statusText: '未建立连接',
-		message: '已清除旧项目中的 Unreal 会话与任务状态，请重新点击“等待连接”。',
+		statusText: t('aiworkflow.page.runtimeState.notConnected'),
+		message: t('aiworkflow.page.unreal.resetCleared'),
 		targetSessionId: undefined,
 		connectedSession: null,
 		lastHeartbeatAt: undefined,
@@ -5945,7 +5948,7 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 	try {
 		const res = await unrealExportService.listSessions()
 		if (!res.ok) {
-			if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${res.error || 'unknown'}`, 'warn')
+			if (!opts?.silent) pushToast(t('aiworkflow.page.unreal.listSessionsFailed', { error: String(res.error || 'unknown') }), 'warn')
 			return { ok: false, hasRunningJob: false, skipped: false }
 		}
 		const sessions: UnrealExportSessionInfo[] = Array.isArray(res.sessions) ? res.sessions : []
@@ -6024,19 +6027,19 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 								? 'exporting'
 								: 'connected',
 						statusText: hasFailedJob
-							? '导出任务执行失败'
+							? t('aiworkflow.page.unreal.exportFailed')
 							: nodeHasRunningJob
-								? '虚幻插件正在执行导出任务'
-								: `已连接 ${String(matchedSession.projectName ?? matchedSession.displayName ?? matchedSession.sessionId).trim() || matchedSession.sessionId}`,
+								? t('aiworkflow.page.unreal.exporting')
+								: t('aiworkflow.page.unreal.connected', { projectName: String(matchedSession.projectName ?? matchedSession.displayName ?? matchedSession.sessionId).trim() || matchedSession.sessionId }),
 						targetSessionId: String(matchedSession.sessionId ?? '').trim(),
 						connectedSession: matchedSession,
 						lastHeartbeatAt: Number(matchedSession.lastSeenAt ?? 0) || undefined,
 						message: latestJobMissing
-							? '旧导出任务已不存在，已清理历史轮询状态。'
+							? t('aiworkflow.page.unreal.oldJobMissing')
 							: latestJobMessage ||
 								(nodeHasRunningJob
-									? '虚幻插件已拉取任务，正在生成场景。'
-									: '虚幻插件已在线，可直接发送导出任务。'),
+									? t('aiworkflow.page.unreal.jobPickedGenerating')
+									: t('aiworkflow.page.unreal.pluginOnline')),
 						lastExportMode: latestJobMissing
 							? undefined
 							: String(latestJob?.exportPayload?.exportMode ?? '').trim() === 'lighting-only'
@@ -6120,9 +6123,9 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 					nodeId: node.id,
 					unrealExportSettings: {
 						connectionStatus: 'waiting',
-						statusText: '等待虚幻插件连接',
+						statusText: t('aiworkflow.page.unreal.waitingForConnection'),
 						connectedSession: null,
-						message: '请在 Unreal 插件面板点击“连接工作流”。',
+						message: t('aiworkflow.page.unreal.clickConnectInPlugin'),
 						targetSessionId: undefined,
 						lastHeartbeatAt: undefined,
 						lastExportJobId: undefined,
@@ -6139,7 +6142,7 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 		}
 		return { ok: true, hasRunningJob, skipped: false }
 	} catch (err: unknown) {
-		if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${getErrorMessage(err)}`, 'warn')
+		if (!opts?.silent) pushToast(t('aiworkflow.page.unreal.listSessionsFailed', { error: getErrorMessage(err) }), 'warn')
 		return { ok: false, hasRunningJob: false, skipped: false }
 	} finally {
 		unrealExportSyncRunning = false
@@ -6205,8 +6208,8 @@ const onNodeAwaitUnrealConnection = async (nodeId: string) => {
 		nodeId,
 		unrealExportSettings: {
 			connectionStatus: 'waiting',
-			statusText: '等待虚幻插件连接',
-			message: '请在 Unreal 编辑器中打开 DwebWorkflowBridge 插件并点击“连接工作流”。',
+			statusText: t('aiworkflow.page.unreal.waitingForConnection'),
+			message: t('aiworkflow.page.unreal.clickConnectInEditor'),
 			autoPoll: true
 		}
 	})
@@ -6242,11 +6245,11 @@ const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
 	if (!normalizedNodeId) {
-		return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.missingNodeId') }
 	}
 	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
 	if (!instance || typeof instance.getResolvedLayoutForUnreal !== 'function') {
-		return { ok: false as const, error: '未找到场景布局预览实例，请先打开并完成预览加载。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.noPreviewInstance') }
 	}
 	try {
 		return await instance.getResolvedLayoutForUnreal()
@@ -6258,11 +6261,11 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 const exportSceneLayoutPlaceholderGLB = async (sceneLayoutNodeId: string) => {
 	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
 	if (!normalizedNodeId) {
-		return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.missingNodeId') }
 	}
 	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
 	if (!instance || typeof instance.exportSelectedPlaceholderGLB !== 'function') {
-		return { ok: false as const, error: '未找到场景布局预览实例，请先打开预览并选择要传递的占位体。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.noPreviewInstanceSelectPlaceholder') }
 	}
 	try {
 		return await instance.exportSelectedPlaceholderGLB()
@@ -6843,7 +6846,7 @@ const {
 			}
 			// 通知节点刷新（触发重新渲染）
 			void nextTick(() => {
-				blueprintLog.append(`资源自动恢复成功：${assetName}`, {
+				blueprintLog.append(t('aiworkflow.page.resourceRecover.success', { assetName }), {
 					category: 'system',
 					level: 'INFO',
 					tag: 'asset-recovery'
@@ -6905,19 +6908,19 @@ const onUndoLastRemove = () => {
 function sourceTypeLabel(type: string): string {
 	switch (type) {
 		case 'resource':
-			return '[资源记录]'
+			return t('aiworkflow.page.sourceType.resourceRecord')
 		case 'node_input':
-			return '[节点输入]'
+			return t('aiworkflow.page.sourceType.nodeInput')
 		case 'node_output':
-			return '[节点输出]'
+			return t('aiworkflow.page.sourceType.nodeOutput')
 		case 'node_param':
-			return '[节点参数]'
+			return t('aiworkflow.page.sourceType.nodeParam')
 		case 'preview':
-			return '[预览图]'
+			return t('aiworkflow.page.sourceType.preview')
 		case 'poster':
-			return '[封面图]'
+			return t('aiworkflow.page.sourceType.poster')
 		case 'unknown':
-			return '[未知位置]'
+			return t('aiworkflow.page.sourceType.unknown')
 		default:
 			return `[${type}]`
 	}
@@ -7175,7 +7178,7 @@ const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkf
 		scheduleVideoMetadataRead,
 		autoSizeImageNodeFromDims,
 		onLimitExceeded: (count, limit) => {
-			importLimitAlertMessage.value = `本次检测到 ${count} 个媒体文件，超过批量导入上限 ${limit} 个。请减少后再导入。`
+			importLimitAlertMessage.value = t('aiworkflow.page.importLimit.message', { count: String(count), limit: String(limit) })
 		},
 		getProjectId: () => Number(currentProjectId.value ?? 0) || null,
 		copyFileToProjectRoot: (projectId, sourcePath, desiredFilename) =>
@@ -7510,7 +7513,7 @@ const onPreviewResource = async (resourceId: string) => {
 			? String(r.url || '').trim() || String(r.posterUrl || '').trim()
 			: String(r.url || '').trim()
 	if (!url) {
-		pushToast('资源预览失败：URL 为空。', 'warn')
+		pushToast(t('aiworkflow.page.resourcePreview.failedEmptyUrl'), 'warn')
 		return
 	}
 	try {
@@ -7673,8 +7676,8 @@ const selectionActions = computed<WorkflowAction[]>(() => {
 				id: 'delete',
 				label:
 					selectedNodeIds.value.length > 1
-						? `删除所选节点（${selectedNodeIds.value.length}）`
-						: '删除',
+						? t('aiworkflow.contextMenu.deleteSelectedNodes', { count: selectedNodeIds.value.length })
+						: t('aiworkflow.contextMenu.delete'),
 				target: { kind: 'none' }
 			}
 		]
@@ -7683,7 +7686,11 @@ const selectionActions = computed<WorkflowAction[]>(() => {
 		? { kind: 'edge', id: selectedEdgeId.value }
 		: { kind: 'none' }
 	const del = buildDeleteAction(target)
-	return del ? [del] : []
+	if (del) {
+		del.label = t('aiworkflow.contextMenu.delete')
+		return [del]
+	}
+	return []
 })
 
 const {
@@ -7959,6 +7966,7 @@ const {
 	perfEdgeCullHitRateText,
 	perfZoomText,
 	perfHealthLabel,
+	perfHealthClass,
 	buildPerfDiagnosticPayload
 } = useAIWorkflowPerfMonitor({
 	nodesCount: computed(() => nodes.value.length),
@@ -7987,9 +7995,9 @@ const onExportPerfDiagnostics = () => {
 		setTimeout(() => {
 			URL.revokeObjectURL(url)
 		}, 0)
-		pushToast('已导出性能诊断日志。', 'info')
+		pushToast(t('aiworkflow.page.perf.exportedLog'), 'info')
 	} catch (err: unknown) {
-		pushToast(`导出性能诊断日志失败：${getErrorMessage(err)}`, 'warn')
+		pushToast(t('aiworkflow.page.perf.exportLogFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
@@ -8015,7 +8023,7 @@ const onNodeImagePreviewRequestInline = (nodeId: string, ev: unknown) => {
 const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
 	console.log('[AIWorkflowPage] onNodeImagePreviewRequest → nodeId:', nodeId, 'imageUrl:', imageUrl)
 	if (!imageUrl) {
-		pushToast('该图片节点暂无图像资源可预览。', 'warn')
+		pushToast(t('aiworkflow.page.preview.noImageResource'), 'warn')
 		return
 	}
 	imageMarkupContext.value = { nodeId, url: imageUrl, name: null }
@@ -8043,10 +8051,10 @@ const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
 			openPreview({ url: imageUrl, name: nodeId })
 			return
 		}
-		pushToast('当前环境未提供图片预览原生窗口，请在 DVStudio Electron 客户端中使用。', 'warn')
+		pushToast(t('aiworkflow.page.preview.needElectron'), 'warn')
 	} catch (err) {
 		console.warn('[AIWorkflowPage] openImageMarkupPreview failed', err)
-		pushToast('打开图片预览窗口失败。', 'warn')
+		pushToast(t('aiworkflow.page.preview.openFailed'), 'warn')
 	}
 }
 
@@ -8104,7 +8112,7 @@ const handleImageMarkupExported = (payload: {
 	const fromNodeId = imageMarkupContext.value.nodeId
 	const exportType = payload.exportType || 'markup'
 	const isScreenshot = exportType === 'screenshot'
-	const typeLabel = isScreenshot ? '截图' : '标记图像'
+	const typeLabel = isScreenshot ? t('aiworkflow.page.mediaType.screenshot') : t('aiworkflow.page.mediaType.markedImage')
 	const typeSuffix = isScreenshot ? 'screenshot' : 'marked'
 	const baseName = (
 		imageMarkupContext.value.name ||
@@ -8112,7 +8120,7 @@ const handleImageMarkupExported = (payload: {
 		(isScreenshot ? 'screenshot.png' : 'marked-image.png')
 	).replace(/\.[^.]+$/, '')
 	if (!fromNodeId) {
-		pushToast(`找不到源图片节点，无法生成${typeLabel}节点。`, 'warn')
+		pushToast(t('aiworkflow.page.markup.sourceNodeNotFound', { typeLabel }), 'warn')
 		return
 	}
 	try {
@@ -8126,7 +8134,7 @@ const handleImageMarkupExported = (payload: {
 		store.commit('addNodeAt', { worldX: baseX + 400, worldY: baseY, title })
 		const newNodeId = String(store.state.selectedNodeId || '').trim()
 		if (!newNodeId || !store.state.nodesById[newNodeId]) {
-			pushToast(`创建${typeLabel}节点失败。`, 'error')
+			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
 			return
 		}
 
@@ -8172,13 +8180,13 @@ const handleImageMarkupExported = (payload: {
 		}
 
 		closeImageMarkupDialog()
-		pushToast(`已在当前图片节点右侧生成新的${typeLabel}节点，并自动连接原节点。`, 'info')
+		pushToast(t('aiworkflow.page.markup.nodeCreated', { typeLabel }), 'info')
 
 		// 触发预热：先以完整节点显示，截图捕获后切换为 canvas 位图，避免直接显示占位 canvas
 		void warmupCropCreatedNode(newNodeId)
 	} catch (err) {
 		console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
-		pushToast(`生成${typeLabel}节点失败。`, 'error')
+		pushToast(t('aiworkflow.page.markup.generateNodeFailed', { typeLabel }), 'error')
 	}
 }
 
@@ -8249,23 +8257,23 @@ const onNodeRetryMeshyFetch = async (nodeId: string) => {
 	const taskId = String(settings?.taskId ?? '').trim()
 	const mode = String(settings?.taskFamily ?? 'text-to-3d').trim()
 	if (!taskId) {
-		pushToast('当前节点没有可重试的 Meshy 任务 ID。', 'warn')
+		pushToast(t('aiworkflow.page.meshy.noRetryTaskId'), 'warn')
 		return
 	}
 	try {
 		const res = await comfyService.meshyTask(taskId, mode)
 		if (!res?.ok) {
-			pushToast('拉取失败：' + String(res?.error ?? 'unknown'), 'error')
+			pushToast(t('aiworkflow.page.meshy.pullFailed', { error: String(res?.error ?? 'unknown') }), 'error')
 			return
 		}
 		const finalStatus = await applyMeshyTaskResult(nodeId, res as unknown)
 		if (finalStatus === 'succeeded') {
-			pushToast('模型文件拉取成功。', 'info')
+			pushToast(t('aiworkflow.page.meshy.pullSuccess'), 'info')
 		} else {
-			pushToast('任务尚未完成，当前状态：' + finalStatus, 'warn')
+			pushToast(t('aiworkflow.page.meshy.taskNotComplete', { status: finalStatus }), 'warn')
 		}
 	} catch (e: unknown) {
-		pushToast('拉取异常：' + getErrorMessage(e), 'error')
+		pushToast(t('aiworkflow.page.meshy.pullException', { error: getErrorMessage(e) }), 'error')
 	}
 }
 
@@ -8327,13 +8335,13 @@ const {
 		}
 		const pid = Number(currentProjectId.value ?? 0)
 		if (!(pid > 0)) {
-			pushToast('当前项目未激活，无法导入视频。', 'warn')
+			pushToast(t('aiworkflow.page.media.videoProjectNotActive'), 'warn')
 			return false
 		}
 		finalizeGeneratedResourceLocalUrl(base, pid)
 		base.url = String(base.url || '').trim()
 		if (!base.url) {
-			pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 			return false
 		}
 		store.commit('addResource', base)
@@ -8357,7 +8365,7 @@ const {
 		finalizeGeneratedResourceLocalUrl(base, pid)
 		base.url = String(base.url || '').trim()
 		if (!base.url) {
-			pushToast((kind === 'image' ? '图片' : '视频') + '资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }), 'error')
 			return ''
 		}
 		const vp = store.state.viewport
@@ -8370,7 +8378,7 @@ const {
 		const nodeH = 160
 		const worldX = worldCenterX - nodeW / 2
 		const worldY = worldCenterY - nodeH / 2
-		const titleLabel = kind === 'image' ? '图片' : '视频'
+		const titleLabel = kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 		store.commit('addNodeAt', { worldX, worldY, title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
 		const nodeId = store.state.selectedNodeId
 		if (!nodeId) return ''
@@ -8479,7 +8487,7 @@ const onResourceDraggedToBlueprint = (
 ) => {
 	const resource = store.state.resourcesById?.[String(resourceId)]
 	if (!resource) {
-		pushToast('未找到该资源记录。', 'warn')
+		pushToast(t('aiworkflow.page.resourceNode.notFound'), 'warn')
 		return
 	}
 	// 计算世界坐标
@@ -8489,11 +8497,11 @@ const onResourceDraggedToBlueprint = (
 	const worldX = (screenX - vp.panX) / vp.zoom
 	const worldY = (screenY - vp.panY) / vp.zoom
 
-	const title = String(resource.name || resourceId || '资源节点').slice(0, 200)
+	const title = String(resource.name || resourceId || t('aiworkflow.page.resourceNode.defaultTitle')).slice(0, 200)
 	store.commit('addNodeAt', { worldX, worldY, title })
 	const newNodeId = String(store.state.selectedNodeId || '').trim()
 	if (!newNodeId || !store.state.nodesById[newNodeId]) {
-		pushToast('创建资源节点失败。', 'error')
+		pushToast(t('aiworkflow.page.resourceNode.createFailed'), 'error')
 		return
 	}
 	// 将资源绑定到新节点
@@ -8502,7 +8510,7 @@ const onResourceDraggedToBlueprint = (
 		field: 'image',
 		value: resource.url || ''
 	})
-	pushToast(`已将「${title}」添加到蓝图。`, 'info')
+	pushToast(t('aiworkflow.page.resourceNode.addedToBlueprint', { title }), 'info')
 }
 
 const onVideoTaskPanelMediaError = (taskId: string) => {
@@ -8629,7 +8637,7 @@ const onToolbarFocusNode = (p: unknown) => {
 	if (!nodeId) return
 	const ok = tryFocusNodeById(nodeId)
 	if (!ok) {
-		pushSystemToast('引用节点已删除，无法定位。', 'warn')
+		pushSystemToast(t('aiworkflow.page.resourceManager.toastNodeDeleted'), 'warn')
 	}
 }
 
@@ -8674,7 +8682,7 @@ const onResourceManagerWindowEvent = (payload: { event: string; data: unknown })
 			if (dataRec.nodeId) {
 				const ok = tryFocusNodeById(String(dataRec.nodeId))
 				if (!ok) {
-					pushSystemToast('引用节点已删除，无法定位。', 'warn')
+					pushSystemToast(t('aiworkflow.page.resourceManager.toastNodeDeleted'), 'warn')
 				}
 			}
 			break
@@ -8707,7 +8715,7 @@ const openResourceDialog = async () => {
 	if (isElectronRuntime && typeof openManager === 'function') {
 		try {
 			const projectId = currentProjectId.value
-			const title = currentProjectName.value || '资源管理器'
+			const title = currentProjectName.value || t('aiworkflow.page.resourceManager.defaultTitle')
 			const result = await (
 				openManager as (args: {
 					projectId: number | null
@@ -8746,7 +8754,7 @@ const openResourceDialog = async () => {
 	}
 	// Web 环境或 Electron 降级：显示提示
 	// 资源管理器需要 Electron 原生窗口，Web 模式暂不支持
-	pushToast('资源管理器仅在 Electron 客户端中可用', 'warn')
+	pushToast(t('aiworkflow.page.resourceManager.onlyElectron'), 'warn')
 }
 
 watch(meshyTaskDialogOpen, (open) => {
@@ -9253,7 +9261,7 @@ onMounted(() => {
 	startUnrealExportPolling()
 	registerResourceManagerEventListener()
 	void refreshProjectList()
-	blueprintLog.append('蓝图页面已加载，日志面板就绪', {
+	blueprintLog.append(t('aiworkflow.page.blueprintLog.pageReady'), {
 		category: 'system',
 		level: 'INFO',
 		tag: 'init'
@@ -9318,8 +9326,8 @@ async function runProjectEnterSequence(
 	request: { kind: 'open'; projectId: number } | { kind: 'new'; rootPath: string }
 ) {
 	if (isElectron()) {
-		startupProgress.show('进入蓝图项目', 2500)
-		startupProgress.reset('进入蓝图项目')
+		startupProgress.show(t('aiworkflow.page.startup.enterBlueprint'), 2500)
+		startupProgress.reset(t('aiworkflow.page.startup.enterBlueprint'))
 	}
 
 	// Step 1. 读取本地项目数据
@@ -9327,10 +9335,10 @@ async function runProjectEnterSequence(
 	if (request.kind === 'open') {
 		await startupProgress.runStep(
 			'project.load',
-			'读取项目数据',
+			t('aiworkflow.page.startup.loadProjectData'),
 			async () => {
 				const ok = await loadProjectById(request.projectId)
-				if (!ok) throw new Error('项目数据加载失败')
+				if (!ok) throw new Error(t('aiworkflow.page.startup.projectLoadFailed'))
 				projectReady = true
 				return true
 			},
@@ -9339,7 +9347,7 @@ async function runProjectEnterSequence(
 	} else {
 		await startupProgress.runStep(
 			'project.new',
-			'初始化项目',
+			t('aiworkflow.page.startup.initProject'),
 			async () => {
 				await onRequestNewProjectFromPath(request.rootPath)
 				projectReady = true
@@ -9353,7 +9361,7 @@ async function runProjectEnterSequence(
 	if (projectReady) {
 		await startupProgress.runStep(
 			'project.assets',
-			'加载静态资产',
+			t('aiworkflow.page.startup.loadAssets'),
 			async () => {
 				try {
 					await recoverComfyUIRunStates({ silent: true })

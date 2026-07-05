@@ -1,4 +1,5 @@
 import { getErrorMessage } from '../../../types/utils'
+import { t } from '../../../i18n'
 
 export type AIWorkflowDraggedResourceItem = {
 	resourceId: string
@@ -395,7 +396,7 @@ export const useAIWorkflowDropAssets = (options: {
 		options.store.commit('addNodeAt', {
 			worldX: payload.worldX,
 			worldY: payload.worldY,
-			title: payload.item.kind === 'image' ? '图片' : '视频'
+			title: payload.item.kind === 'image' ? t('common.image') : t('common.video')
 		})
 		const nodeId = options.store.state.selectedNodeId
 		if (!nodeId) return true
@@ -413,7 +414,7 @@ export const useAIWorkflowDropAssets = (options: {
 			String(
 				resource?.name ||
 					payload.item.name ||
-					(payload.item.kind === 'image' ? '图片资源' : '视频资源')
+					(payload.item.kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : '视频资源')
 			),
 			{
 				sourcePath: sourcePath || undefined,
@@ -445,8 +446,8 @@ export const useAIWorkflowDropAssets = (options: {
 			const statusText = String(payload.meta?.downloadStatus || '').trim()
 			options.pushToast(
 				statusText === 'failed'
-					? '视频本地化失败，当前不能拖入蓝图，请先重试下载。'
-					: '视频仍在下载到项目资源目录，完成后才能拖入蓝图。',
+					? t('aiworkflow.toast.videoLocalizationFailed')
+					: t('aiworkflow.toast.videoStillDownloading'),
 				'warn'
 			)
 			return false
@@ -462,7 +463,7 @@ export const useAIWorkflowDropAssets = (options: {
 		options.store.commit('addNodeAt', {
 			worldX: payload.worldX,
 			worldY: payload.worldY,
-			title: kind === 'video' ? '视频' : '图片'
+			title: kind === 'video' ? t('common.video') : t('common.image')
 		})
 		const nodeId = options.store.state.selectedNodeId
 		if (!nodeId) return true
@@ -536,7 +537,7 @@ export const useAIWorkflowDropAssets = (options: {
 		if (draggedArkTask) {
 			const apiType = String(draggedArkTask.apiType || '').trim().toLowerCase()
 			const kind: 'image' | 'video' = apiType === 'seedance' ? 'video' : 'image'
-			const title = apiType === 'seedance' ? '视频' : (apiType === 'seedream' ? '图片' : 'ARK')
+			const title = apiType === 'seedance' ? t('common.video') : (apiType === 'seedream' ? t('common.image') : 'ARK')
 			const prompt = String(draggedArkTask.prompt || '').trim()
 			const resultUrls = Array.isArray(draggedArkTask.resultUrls) ? draggedArkTask.resultUrls : []
 			const firstUrl = resultUrls[0] || ''
@@ -561,9 +562,9 @@ export const useAIWorkflowDropAssets = (options: {
 				options.bindMediaResourceToNode(nodeId, kind, displayUrl, fileName)
 				options.autoSizeMediaNode(nodeId, displayUrl, kind)
 			} else if (!isCompleted) {
-				options.pushToast('任务尚未完成，已创建空节点，完成后可重新拖拽或下载产物。', 'info')
+				options.pushToast(t('aiworkflow.toast.taskNotCompleteEmptyNode'), 'info')
 			} else {
-				options.pushToast('该任务暂无可用产物，已创建空节点。', 'warn')
+				options.pushToast(t('aiworkflow.toast.taskNoOutput'), 'warn')
 			}
 			return
 		}
@@ -591,7 +592,7 @@ export const useAIWorkflowDropAssets = (options: {
 					return
 				}
 			} catch (err: unknown) {
-				options.pushToast('拖拽导入失败：' + getErrorMessage(err), 'warn')
+				options.pushToast(t('aiworkflow.toast.dragImportFailed', { error: getErrorMessage(err) }), 'warn')
 				// fall through to image-gen URL if present
 			}
 		}

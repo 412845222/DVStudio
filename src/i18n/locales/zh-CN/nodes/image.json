@@ -1,0 +1,12 @@
+{
+  "nodes.image.emptyHint": "未上传图片资源",
+  "nodes.image.emptySub": "点击按钮选择文件",
+  "nodes.image.uploadResource": "上传资源",
+  "nodes.image.replaceResource": "更换资源",
+  "nodes.image.clear": "清空",
+  "nodes.image.screenshot": "截图",
+  "nodes.image.screenshotDisabled": "仅当视频输出连接到图片节点输入时可用",
+  "nodes.image.timeline": "时间轴",
+  "nodes.image.previewTooltip": "原图预览：在 Electron 新窗口查看原图，支持缩放、旋转、红色画笔标记、截图并导出为新节点",
+  "nodes.image.originalImage": "原图"
+}

@@ -1,0 +1,12 @@
+{
+  "aichat.messages.insertedNode": "Stage node inserted",
+  "aichat.messages.insertedNodeWithParent": "Stage node inserted ({details}).",
+  "aichat.messages.modifiedNode": "Node modified: {nodeId}.",
+  "aichat.messages.deletedNodes": "Nodes deleted: {nodes}.",
+  "aichat.messages.appliedFilter": "Filter applied to {target}: {filter}.",
+  "aichat.messages.scenePlanReady": "Scene plan is ready. Click \"Generate Animation\" to write keyframes based on the current static layout.",
+  "aichat.messages.generatedScenePlan": "A VideoScene scene plan JSON has been generated for subsequent animation compilation.",
+  "aichat.messages.savedToLibrary": "Saved to component library: {name}",
+  "aichat.messages.jsonCopied": "Scene plan JSON copied to clipboard.",
+  "aichat.messages.animationGenerated": "Preset animations generated: {count} plans applied to {nodeCount} nodes."
+}

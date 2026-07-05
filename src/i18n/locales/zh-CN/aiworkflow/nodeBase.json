@@ -1,0 +1,20 @@
+{
+  "aiworkflow.nodeBase.switchNodeType": "切换节点类型",
+  "aiworkflow.nodeBase.clearNodeContent": "清空节点内容",
+  "aiworkflow.nodeBase.clear": "清空",
+  "aiworkflow.nodeBase.copyNode": "复制节点",
+  "aiworkflow.nodeBase.refreshNode": "刷新节点",
+  "aiworkflow.nodeBase.deleteNode": "删除节点",
+  "aiworkflow.nodeBase.bodyPlaceholder": "内容占位",
+  "aiworkflow.nodeBase.footerPlaceholder": "底部占位",
+  "aiworkflow.nodeBase.inputAnchors": "入口锚点",
+  "aiworkflow.nodeBase.outputAnchors": "出口锚点",
+  "aiworkflow.nodeBase.inputAnchor": "入口",
+  "aiworkflow.nodeBase.outputAnchor": "出口",
+  "aiworkflow.nodeBase.taskSubmitting": "任务提交中",
+  "aiworkflow.nodeBase.taskRunning": "生成中",
+  "aiworkflow.nodeBase.taskCompleted": "已完成",
+  "aiworkflow.nodeBase.taskError": "生成失败",
+  "aiworkflow.nodeBase.taskIdle": "空闲",
+  "aiworkflow.nodeBase.resultsGenerated": "已生成 {count} 项"
+}

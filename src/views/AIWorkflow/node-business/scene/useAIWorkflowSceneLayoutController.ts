@@ -1,4 +1,5 @@
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 export const useAIWorkflowSceneLayoutController = (options: {
 	store: {
 		state: {
@@ -25,13 +26,13 @@ export const useAIWorkflowSceneLayoutController = (options: {
 		const cachedJson = String(nodeSettings?.inputJson ?? '').trim()
 		const inputJson = linkedJson || cachedJson
 		if (!inputJson) {
-			options.pushToast('场景布局节点缺少 JSON 文本输入。', 'warn')
+			options.pushToast(t('aiworkflow.runtime.layoutMissingJson'), 'warn')
 			return
 		}
 
 		options.store.commit('setNodeSceneLayoutSettings', {
 			nodeId,
-			sceneLayoutSettings: { status: 'running', message: '正在生成场景布局…', inputJson }
+			sceneLayoutSettings: { status: 'running', message: t('aiworkflow.runtime.layoutGenerating'), inputJson }
 		})
 
 		try {
@@ -54,14 +55,14 @@ export const useAIWorkflowSceneLayoutController = (options: {
 					nodeId,
 					sceneLayoutSettings: {
 						status: 'completed',
-						message: `已从输入 JSON 直接载入 ${mergedLayoutItems.length} 个布局对象。`,
+						message: t('aiworkflow.runtime.layoutLoadedDirect', { count: String(mergedLayoutItems.length) }),
 						inputJson,
 						layoutItems: mergedLayoutItems,
 						camera: directHasCamera ? parsedObj.camera : nodeSettings?.camera,
 						lastRunAt: Date.now()
 					}
 				})
-				options.pushToast('场景布局已从输入 JSON 载入。', 'info')
+				options.pushToast(t('aiworkflow.runtime.layoutLoadedDirectToast'), 'info')
 				return
 			}
 
@@ -69,9 +70,9 @@ export const useAIWorkflowSceneLayoutController = (options: {
 			if (!res.ok) {
 				options.store.commit('setNodeSceneLayoutSettings', {
 					nodeId,
-					sceneLayoutSettings: { status: 'error', message: String(res.error || '场景布局失败'), inputJson }
+					sceneLayoutSettings: { status: 'error', message: String(res.error || t('aiworkflow.runtime.layoutFailed')), inputJson }
 				})
-				options.pushToast(`场景布局失败：${res.error || 'unknown'}`, 'warn')
+				options.pushToast(t('aiworkflow.toast.sceneLayoutFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
 			const inputMetadataItems = options.parseSceneLayoutMetadataItems(inputJson)
@@ -83,21 +84,21 @@ export const useAIWorkflowSceneLayoutController = (options: {
 				nodeId,
 				sceneLayoutSettings: {
 					status: 'completed',
-					message: String(res.message || `已生成 ${mergedLayoutItems.length} 个占位物体。`),
+					message: String(res.message || t('aiworkflow.runtime.layoutGeneratedCount', { count: String(mergedLayoutItems.length) })),
 					inputJson,
 					layoutItems: mergedLayoutItems,
 					camera: res.camera,
 					lastRunAt: Date.now()
 				}
 			})
-			options.pushToast('场景布局已更新。', 'info')
+			options.pushToast(t('aiworkflow.runtime.layoutUpdated'), 'info')
 		} catch (err: unknown) {
 			const message = getErrorMessage(err)
 			options.store.commit('setNodeSceneLayoutSettings', {
 				nodeId,
 				sceneLayoutSettings: { status: 'error', message, inputJson }
 			})
-			options.pushToast(`场景布局失败：${message}`, 'warn')
+			options.pushToast(t('aiworkflow.toast.sceneLayoutFailed', { error: message }), 'warn')
 		}
 	}
 

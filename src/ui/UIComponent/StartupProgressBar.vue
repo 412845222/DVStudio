@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 export type StartupProgressStep = {
 	key: string
@@ -36,13 +39,12 @@ const hasFailure = computed(() => props.state.steps.some((s) => s.status === 'er
 
 const primaryText = computed(() => {
 	if (props.state.title) return props.state.title
-	if (hasFailure.value) return '启动过程中出现异常'
-	if (percent.value >= 100) return '启动检查完成'
-	return '启动检查中…'
+	if (hasFailure.value) return t('startup.errorOccurred')
+	if (percent.value >= 100) return t('startup.checkComplete')
+	return t('startup.checking')
 })
 
 const pixelBubbles = computed(() => {
-	// Generate pixel bubble positions for the fill area
 	const bubbles: { x: number; size: number; delay: number; duration: number; hue: number }[] = []
 	for (let i = 0; i < 14; i++) {
 		bubbles.push({
@@ -115,9 +117,9 @@ function statusIcon(status: StartupProgressStep['status']) {
 				class="startup-progress-bar-close"
 				type="button"
 				@click="localVisible = false; $emit('dismiss')"
-				aria-label="关闭"
+				:aria-label="t('startup.close')"
 			>
-				■
+				✕
 			</button>
 		</div>
 		<div class="startup-progress-bar-meter" aria-hidden="true">
@@ -170,18 +172,16 @@ function statusIcon(status: StartupProgressStep['status']) {
 	z-index: 9999;
 	width: 320px;
 	max-width: calc(100vw - 48px);
-	background: rgba(18, 20, 24, 0.82);
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	color: var(--vscode-fg, #e6e6e6);
-	box-shadow:
-		0 12px 48px rgba(0, 0, 0, 0.65),
-		inset 0 1px 0 rgba(255, 255, 255, 0.04);
+	background: var(--theme-bg-tertiary);
+	border: 1px solid var(--theme-border);
+	color: var(--theme-text-primary);
+	box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
 	padding: 16px 18px;
 	font-size: 12px;
 	line-height: 1.6;
-	font-family: 'Cascadia Code', 'Consolas', 'Menlo', 'PingFang SC', 'Microsoft YaHei', monospace;
 	backdrop-filter: blur(24px) saturate(140%);
 	-webkit-backdrop-filter: blur(24px) saturate(140%);
+	border-radius: 10px;
 	animation: startup-progress-bar-fade-in 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -207,7 +207,7 @@ function statusIcon(status: StartupProgressStep['status']) {
 .startup-progress-bar-title {
 	font-size: 13px;
 	font-weight: 600;
-	color: #e6e6e6;
+	color: var(--theme-text-primary);
 	letter-spacing: 0.02em;
 }
 
@@ -216,26 +216,34 @@ function statusIcon(status: StartupProgressStep['status']) {
 	-webkit-appearance: none;
 	background: transparent;
 	border: none;
-	color: var(--vscode-fg-muted, #8a8f98);
-	font-size: 14px;
+	color: var(--theme-text-muted);
+	font-size: 12px;
 	line-height: 1;
 	cursor: pointer;
-	padding: 0 4px;
-	transition: color 160ms ease;
+	padding: 4px;
+	border-radius: 4px;
+	transition: color 160ms ease, background 120ms ease;
 	font-family: inherit;
+	width: 22px;
+	height: 22px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .startup-progress-bar-close:hover {
-	color: #e6e6e6;
+	color: var(--theme-text-primary);
+	background: var(--theme-hover-bg);
 }
 
 .startup-progress-bar-meter {
 	position: relative;
 	height: 12px;
-	background: rgba(255, 255, 255, 0.04);
-	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: var(--theme-bg-secondary);
+	border: 1px solid var(--theme-border);
 	overflow: hidden;
 	margin-bottom: 14px;
+	border-radius: 4px;
 }
 
 .startup-progress-bar-meter-fill {
@@ -297,6 +305,7 @@ function statusIcon(status: StartupProgressStep['status']) {
 	opacity: 0;
 	animation: bubble-float 2.8s ease-in-out infinite;
 	box-shadow: 0 0 2px rgba(255, 255, 255, 0.3);
+	border-radius: 50%;
 }
 
 @keyframes bubble-float {
@@ -348,7 +357,7 @@ function statusIcon(status: StartupProgressStep['status']) {
 	justify-content: flex-end;
 	padding-right: 10px;
 	font-size: 10px;
-	color: rgba(255, 255, 255, 0.7);
+	color: rgba(255, 255, 255, 0.8);
 	letter-spacing: 0.04em;
 	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 	pointer-events: none;
@@ -369,11 +378,11 @@ function statusIcon(status: StartupProgressStep['status']) {
 	display: flex;
 	align-items: flex-start;
 	gap: 10px;
-	color: var(--vscode-fg-muted, #8a8f98);
+	color: var(--theme-text-muted);
 }
 
 .startup-progress-bar-step.is-running {
-	color: var(--vscode-fg, #e6e6e6);
+	color: var(--theme-text-primary);
 }
 
 .startup-progress-bar-step.is-running .startup-progress-bar-step-icon {
@@ -394,7 +403,7 @@ function statusIcon(status: StartupProgressStep['status']) {
 }
 
 .startup-progress-bar-step.is-ok {
-	color: #98c379;
+	color: #10b981;
 }
 
 .startup-progress-bar-step.is-ok .startup-progress-bar-step-icon {
@@ -413,11 +422,11 @@ function statusIcon(status: StartupProgressStep['status']) {
 }
 
 .startup-progress-bar-step.is-warn {
-	color: #e5c07b;
+	color: #f59e0b;
 }
 
 .startup-progress-bar-step.is-error {
-	color: #e06c75;
+	color: #ef4444;
 }
 
 .startup-progress-bar-step-icon {
@@ -441,7 +450,7 @@ function statusIcon(status: StartupProgressStep['status']) {
 
 .startup-progress-bar-step-detail {
 	font-size: 11px;
-	opacity: 0.85;
+	opacity: 0.75;
 	word-break: break-word;
 }
 </style>

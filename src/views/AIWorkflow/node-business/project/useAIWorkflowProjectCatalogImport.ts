@@ -2,6 +2,7 @@ import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import type { ListProjectsResponse } from '../../../../network/BlueprintProjectService'
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 
 export const useAIWorkflowProjectCatalogImport = (payload: {
 	blueprintProjectService: {
@@ -23,7 +24,7 @@ export const useAIWorkflowProjectCatalogImport = (payload: {
 	const refreshProjectList = async () => {
 		const res = await payload.blueprintProjectService.listProjects()
 		if (!res.ok) {
-			payload.pushToast('读取项目列表失败：' + String(res.error || 'unknown'), 'warn')
+			payload.pushToast(t('aiworkflow.runtime.projectListLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
 			return
 		}
 		payload.projectList.value = Array.isArray(res.projects) ? res.projects : []
@@ -37,14 +38,14 @@ export const useAIWorkflowProjectCatalogImport = (payload: {
 			const text = await file.text()
 			const parsed = JSON.parse(text)
 			if (!payload.isValidBlueprintSnapshot(parsed)) {
-				payload.pushToast('导入失败：JSON 不是有效的蓝图项目结构。', 'error')
+				payload.pushToast(t('aiworkflow.runtime.importInvalidJsonStructure'), 'error')
 				return
 			}
 
 			const runtimeSafeSnapshot = payload.sanitizeBlueprintSnapshotForRuntime(
 				payload.stripUnrealExportRuntimeFromSnapshot(parsed)
 			)
-			if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, '导入本地蓝图')) return
+			if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, t('aiworkflow.runtime.importLocalBlueprintSource'))) return
 
 			payload.resetCurrentUnrealExportNodeRuntimeState()
 			payload.setUnsavedProject(
@@ -53,9 +54,9 @@ export const useAIWorkflowProjectCatalogImport = (payload: {
 					.trim()
 			)
 			await payload.recoverComfyUIRunStates({ silent: true })
-			payload.pushToast('已从本地文件加载蓝图。', 'info')
+			payload.pushToast(t('aiworkflow.runtime.localBlueprintLoaded'), 'info')
 		} catch (err: unknown) {
-			payload.pushToast('导入失败：' + getErrorMessage(err), 'error')
+			payload.pushToast(t('aiworkflow.runtime.importFailedWithError', { error: getErrorMessage(err) }), 'error')
 		}
 	}
 

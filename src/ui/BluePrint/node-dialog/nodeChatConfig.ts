@@ -1,10 +1,10 @@
 import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 export const NODE_CHAT_TYPE_LABELS: Record<WorkflowNodeChatType, string> = {
-	text: '文本生成',
-	image: '图片生成',
-	video: '视频生成',
-	model3d: '3D模型生成'
+	text: 'aiConfig.nodeType.text',
+	image: 'aiConfig.nodeType.image',
+	video: 'aiConfig.nodeType.video',
+	model3d: 'aiConfig.nodeType.model3d'
 }
 
 export const NODE_CHAT_TYPE_COLORS: Record<WorkflowNodeChatType, string> = {
@@ -22,26 +22,26 @@ export const NODE_CHAT_TYPE_ICONS: Record<WorkflowNodeChatType, string> = {
 }
 
 export const NODE_CHAT_PLACEHOLDERS: Record<WorkflowNodeChatType, string> = {
-	text: '输入文本内容或描述...',
-	image: '描述你想生成的图片，如：a beautiful sunset over the ocean...',
-	video: '描述你想生成的视频内容，如：a cat running across the beach...',
-	model3d: '描述你想生成的3D模型，如：a medieval castle with towers...'
+	text: 'aiConfig.placeholder.text',
+	image: 'aiConfig.placeholder.image',
+	video: 'aiConfig.placeholder.video',
+	model3d: 'aiConfig.placeholder.model3d'
 }
 
 export const NODE_CHAT_TYPE_DESCRIPTIONS: Record<WorkflowNodeChatType, string> = {
-	text: '输入提示词，AI 将生成文本内容',
-	image: '输入提示词，AI 将生成图片',
-	video: '输入提示词，AI 将生成视频',
-	model3d: '输入提示词，AI 将生成3D模型'
+	text: 'aiConfig.nodeTypeDesc.text',
+	image: 'aiConfig.nodeTypeDesc.image',
+	video: 'aiConfig.nodeTypeDesc.video',
+	model3d: 'aiConfig.nodeTypeDesc.model3d'
 }
 
 export const NODE_CHAT_ASPECT_RATIO_OPTIONS = [
-	{ value: '1:1', label: '1:1 正方形' },
-	{ value: '16:9', label: '16:9 宽屏' },
-	{ value: '9:16', label: '9:16 竖屏' },
-	{ value: '4:3', label: '4:3 标准' },
-	{ value: '3:4', label: '3:4 竖版' },
-	{ value: '21:9', label: '21:9 超宽' }
+	{ value: '1:1', label: 'aiConfig.aspectRatio.square' },
+	{ value: '16:9', label: 'aiConfig.aspectRatio.widescreen' },
+	{ value: '9:16', label: 'aiConfig.aspectRatio.portrait' },
+	{ value: '4:3', label: 'aiConfig.aspectRatio.standard' },
+	{ value: '3:4', label: 'aiConfig.aspectRatio.portrait34' },
+	{ value: '21:9', label: 'aiConfig.aspectRatio.ultrawide' }
 ]
 
 export const NODE_CHAT_RESOLUTION_OPTIONS = [
@@ -55,26 +55,26 @@ export const NODE_CHAT_RESOLUTION_OPTIONS = [
 export const NODE_CHAT_QUANTITY_OPTIONS = [1, 2, 4, 6, 8]
 
 export const NODE_CHAT_VIDEO_MODE_OPTIONS = [
-	{ value: 'auto' as const, label: '自动' },
-	{ value: 'text_to_video' as const, label: '文生视频' },
-	{ value: 'image_to_video' as const, label: '首帧图生' },
-	{ value: 'first-last' as const, label: '首尾帧' },
-	{ value: 'reference' as const, label: '多模态参考' }
+	{ value: 'auto' as const, label: 'aiConfig.videoMode.auto' },
+	{ value: 'text_to_video' as const, label: 'aiConfig.videoMode.textToVideo' },
+	{ value: 'image_to_video' as const, label: 'aiConfig.videoMode.imageToVideo' },
+	{ value: 'first-last' as const, label: 'aiConfig.videoMode.firstLast' },
+	{ value: 'reference' as const, label: 'aiConfig.videoMode.reference' }
 ]
 
 export const NODE_CHAT_VIDEO_DURATION_OPTIONS = [
-	{ value: -1, label: '自动' },
-	{ value: 4, label: '4秒' },
-	{ value: 5, label: '5秒' },
-	{ value: 6, label: '6秒' },
-	{ value: 8, label: '8秒' },
-	{ value: 10, label: '10秒' },
-	{ value: 12, label: '12秒' },
-	{ value: 15, label: '15秒' }
+	{ value: -1, label: 'aiConfig.videoDuration.auto', isAuto: true },
+	{ value: 4, label: 'aiConfig.videoDuration.seconds', seconds: 4 },
+	{ value: 5, label: 'aiConfig.videoDuration.seconds', seconds: 5 },
+	{ value: 6, label: 'aiConfig.videoDuration.seconds', seconds: 6 },
+	{ value: 8, label: 'aiConfig.videoDuration.seconds', seconds: 8 },
+	{ value: 10, label: 'aiConfig.videoDuration.seconds', seconds: 10 },
+	{ value: 12, label: 'aiConfig.videoDuration.seconds', seconds: 12 },
+	{ value: 15, label: 'aiConfig.videoDuration.seconds', seconds: 15 }
 ]
 
 export const NODE_CHAT_VIDEO_RATIO_OPTIONS = [
-	{ value: 'adaptive', label: '自适应' },
+	{ value: 'adaptive', label: 'aiConfig.aspectRatio.adaptive' },
 	{ value: '16:9', label: '16:9' },
 	{ value: '9:16', label: '9:16' },
 	{ value: '1:1', label: '1:1' },
@@ -83,12 +83,12 @@ export const NODE_CHAT_VIDEO_RATIO_OPTIONS = [
 ]
 
 export const NODE_CHAT_MESHY_MODE_OPTIONS = [
-	{ value: 'text-to-3d', label: 'Text to 3D' },
-	{ value: 'image-to-3d', label: 'Image to 3D' },
-	{ value: 'multi-image-to-3d', label: 'Multi-Image to 3D' },
-	{ value: 'remesh', label: '重建网格 (ReMesh)' },
-	{ value: 'retexture', label: '重新纹理 (ReTexture)' },
-	{ value: 'uv-unwrap', label: 'UV Unwrap' }
+	{ value: 'text-to-3d', label: 'aiConfig.meshyMode.textTo3d' },
+	{ value: 'image-to-3d', label: 'aiConfig.meshyMode.imageTo3d' },
+	{ value: 'multi-image-to-3d', label: 'aiConfig.meshyMode.multiImageTo3d' },
+	{ value: 'remesh', label: 'aiConfig.meshyMode.remesh' },
+	{ value: 'retexture', label: 'aiConfig.meshyMode.retexture' },
+	{ value: 'uv-unwrap', label: 'aiConfig.meshyMode.uvUnwrap' }
 ]
 
 export const NODE_CHAT_MESHY_AI_MODEL_OPTIONS = [
@@ -98,30 +98,30 @@ export const NODE_CHAT_MESHY_AI_MODEL_OPTIONS = [
 ]
 
 export const NODE_CHAT_MESHY_MODEL_TYPE_OPTIONS = [
-	{ value: 'standard', label: '标准' },
-	{ value: 'lowpoly', label: '低模' }
+	{ value: 'standard', label: 'aiConfig.meshyModelType.standard' },
+	{ value: 'lowpoly', label: 'aiConfig.meshyModelType.lowpoly' }
 ]
 
 export const NODE_CHAT_MESHY_TOPOLOGY_OPTIONS = [
-	{ value: 'triangle', label: 'triangle' },
-	{ value: 'quad', label: 'quad' }
+	{ value: 'triangle', label: 'aiConfig.meshyTopology.triangle' },
+	{ value: 'quad', label: 'aiConfig.meshyTopology.quad' }
 ]
 
 export const NODE_CHAT_MESHY_SYMMETRY_MODE_OPTIONS = [
-	{ value: 'auto', label: 'auto' },
-	{ value: 'on', label: 'on' },
-	{ value: 'off', label: 'off' }
+	{ value: 'auto', label: 'aiConfig.common.auto' },
+	{ value: 'on', label: 'aiConfig.common.on' },
+	{ value: 'off', label: 'aiConfig.common.off' }
 ]
 
 export const NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS = [
-	{ value: 'bottom', label: '底部' },
-	{ value: 'center', label: '中心' }
+	{ value: 'bottom', label: 'aiConfig.meshyOrigin.bottom' },
+	{ value: 'center', label: 'aiConfig.meshyOrigin.center' }
 ]
 
 export const NODE_CHAT_MESHY_POSE_MODE_OPTIONS = [
-	{ value: '', label: '无' },
-	{ value: 'a-pose', label: 'a-pose' },
-	{ value: 't-pose', label: 't-pose' }
+	{ value: '', label: 'aiConfig.meshyPose.none' },
+	{ value: 'a-pose', label: 'aiConfig.meshyPose.aPose' },
+	{ value: 't-pose', label: 'aiConfig.meshyPose.tPose' }
 ]
 
 export const NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS = [
@@ -133,55 +133,51 @@ export const NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS = [
 ]
 
 export const NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS = [
-	{ value: 'auto', label: 'auto' },
-	{ value: 'fast', label: 'fast' },
-	{ value: 'accurate', label: 'accurate' }
+	{ value: 'auto', label: 'aiConfig.meshyDecimation.auto' },
+	{ value: 'fast', label: 'aiConfig.meshyDecimation.fast' },
+	{ value: 'accurate', label: 'aiConfig.meshyDecimation.accurate' }
 ]
 
 export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
-	{ value: 'fast' as const, label: '快速' },
-	{ value: 'normal' as const, label: '标准' },
-	{ value: 'slow' as const, label: '精细' }
+	{ value: 'fast' as const, label: 'aiConfig.textSpeed.fast' },
+	{ value: 'normal' as const, label: 'aiConfig.textSpeed.normal' },
+	{ value: 'slow' as const, label: 'aiConfig.textSpeed.slow' }
 ]
 
 export const NODE_CHAT_TEXT_MODEL_OPTIONS = [
-	{ value: 'deepseek', label: 'DeepSeek' },
-	{ value: 'bytedance', label: '字节火山方舟' }
+	{ value: 'deepseek', label: 'aiConfig.textModel.deepseek' },
+	{ value: 'bytedance', label: 'aiConfig.textModel.bytedance' }
 ]
 
-// Seed 2.0 模型版本选项（字节方舟）
 export const NODE_CHAT_SEED_MODEL_VERSION_OPTIONS = [
-	{ value: 'doubao-seed-2-0-pro-260215', label: 'Seed 2.0 Pro（深度思考）' },
-	{ value: 'doubao-seed-2-0-lite-260428', label: 'Seed 2.0 Lite（平衡）' },
-	{ value: 'doubao-seed-2-0-mini-260428', label: 'Seed 2.0 Mini（快速）' },
-	{ value: 'doubao-seed-2-0-code-preview-260215', label: 'Seed 2.0 Code（代码增强）' },
-	{ value: 'doubao-seed-1-8-251228', label: 'Seed 1.8（兼容旧版）' }
+	{ value: 'doubao-seed-2-0-pro-260215', label: 'aiConfig.seedVersion.pro' },
+	{ value: 'doubao-seed-2-0-lite-260428', label: 'aiConfig.seedVersion.lite' },
+	{ value: 'doubao-seed-2-0-mini-260428', label: 'aiConfig.seedVersion.mini' },
+	{ value: 'doubao-seed-2-0-code-preview-260215', label: 'aiConfig.seedVersion.code' },
+	{ value: 'doubao-seed-1-8-251228', label: 'aiConfig.seedVersion.v18' }
 ]
 
-// 深度思考开关
 export const NODE_CHAT_TEXT_THINKING_OPTIONS = [
-	{ value: 'enabled', label: '开启深度思考' },
-	{ value: 'disabled', label: '关闭深度思考' }
+	{ value: 'enabled', label: 'aiConfig.thinking.enabled' },
+	{ value: 'disabled', label: 'aiConfig.thinking.disabled' }
 ]
 
-// 输出格式选项
 export const NODE_CHAT_TEXT_RESPONSE_FORMAT_OPTIONS = [
-	{ value: 'text', label: '文本' },
-	{ value: 'json_object', label: 'JSON 对象' }
+	{ value: 'text', label: 'aiConfig.responseFormat.text' },
+	{ value: 'json_object', label: 'aiConfig.responseFormat.json' }
 ]
 
-// 最大输出长度选项
 export const NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS = [
-	{ value: 2048, label: '2048 tokens' },
-	{ value: 4096, label: '4096 tokens' },
-	{ value: 8192, label: '8192 tokens' },
-	{ value: 16384, label: '16384 tokens' }
+	{ value: 2048, label: 'aiConfig.maxTokens.tokens', tokens: 2048 },
+	{ value: 4096, label: 'aiConfig.maxTokens.tokens', tokens: 4096 },
+	{ value: 8192, label: 'aiConfig.maxTokens.tokens', tokens: 8192 },
+	{ value: 16384, label: 'aiConfig.maxTokens.tokens', tokens: 16384 }
 ]
 
 export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
-	{ value: 'nanobanana', label: 'NanoBanana' },
-	{ value: 'seedream', label: 'Seedream (字节方舟)' },
-	{ value: 'meshy', label: 'Meshy' }
+	{ value: 'nanobanana', label: 'aiConfig.imageModel.nanobanana' },
+	{ value: 'seedream', label: 'aiConfig.imageModel.seedream' },
+	{ value: 'meshy', label: 'aiConfig.imageModel.meshy' }
 ]
 
 export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS = [
@@ -238,9 +234,9 @@ export const NODE_CHAT_MESHY_IMAGE_OPTIONS = {
 	],
 	aspectRatio: NODE_CHAT_MESHY_IMAGE_ASPECT_RATIO_OPTIONS['nano-banana'],
 	poseMode: [
-		{ value: '', label: '无' },
-		{ value: 'a-pose', label: 'a-pose' },
-		{ value: 't-pose', label: 't-pose' }
+		{ value: '', label: 'aiConfig.meshyPose.none' },
+		{ value: 'a-pose', label: 'aiConfig.meshyPose.aPose' },
+		{ value: 't-pose', label: 'aiConfig.meshyPose.tPose' }
 	]
 }
 
@@ -252,10 +248,10 @@ export const NODE_CHAT_VIDEO_RESOLUTION_OPTIONS = [
 ]
 
 export const NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS = [
-	{ value: 'doubao-seedream-4-5-251128', label: 'Seedream v4.5 (推荐)' },
-	{ value: 'doubao-seedream-4-0-250828', label: 'Seedream v4.0' },
-	{ value: 'doubao-seedream-5-0-260128', label: 'Seedream v5.0' },
-	{ value: 'doubao-seedream-5-0-lite-260128', label: 'Seedream v5.0 Lite' }
+	{ value: 'doubao-seedream-4-5-251128', label: 'aiConfig.seedreamVersion.v45' },
+	{ value: 'doubao-seedream-4-0-250828', label: 'aiConfig.seedreamVersion.v40' },
+	{ value: 'doubao-seedream-5-0-260128', label: 'aiConfig.seedreamVersion.v50' },
+	{ value: 'doubao-seedream-5-0-lite-260128', label: 'aiConfig.seedreamVersion.v50Lite' }
 ]
 
 export const NODE_CHAT_SEEDREAM_RESOLUTION_OPTIONS = {
@@ -319,9 +315,9 @@ export const supportsSeedreamOutputFormat = (modelVersion: string) => {
 	return modelVersion.includes('5-0')
 }
 
-export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [{ value: 'seedance', label: 'Seedance (字节方舟)' }]
+export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [{ value: 'seedance', label: 'aiConfig.videoModel.seedance' }]
 
-export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [{ value: 'meshy' as const, label: 'Meshy' }]
+export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [{ value: 'meshy' as const, label: 'aiConfig.model3dProvider.meshy' }]
 
 export const NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS = [
 	{ value: 'doubao-seedance-2-0-260128', label: 'Seedance 2.0' },

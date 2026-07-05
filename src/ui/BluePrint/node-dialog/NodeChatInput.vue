@@ -4,7 +4,7 @@
 			ref="textareaRef"
 			class="bp-node-chat-textarea"
 			:value="modelValue"
-			:placeholder="placeholder"
+			:placeholder="resolvedPlaceholder"
 			:disabled="disabled"
 			:rows="minRows"
 			@input="onInput"
@@ -18,11 +18,11 @@
 			</span>
 			<span v-if="focused" class="bp-node-chat-hint">
 				<kbd>Enter</kbd>
-				发送 ·
+				{{ t('aichat.nodeChat.sendShortcut') }} ·
 				<kbd>Shift</kbd>
 				+
 				<kbd>Enter</kbd>
-				换行
+				{{ t('aichat.nodeChat.newlineShortcut') }}
 			</span>
 		</div>
 	</div>
@@ -30,6 +30,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(
 	defineProps<{
@@ -42,7 +45,7 @@ const props = withDefaults(
 		autoResize?: boolean
 	}>(),
 	{
-		placeholder: '输入提示词...',
+		placeholder: undefined,
 		disabled: false,
 		maxLength: 2000,
 		minRows: 2,
@@ -61,6 +64,10 @@ const emit = defineEmits<{
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const focused = ref(false)
 const charCount = computed(() => props.modelValue.length)
+
+const resolvedPlaceholder = computed(() => {
+	return props.placeholder || t('aichat.nodeChat.placeholder')
+})
 
 const clampText = (text: string): string => {
 	if (props.maxLength && text.length > props.maxLength) {

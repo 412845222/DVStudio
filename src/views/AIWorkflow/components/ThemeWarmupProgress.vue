@@ -7,7 +7,7 @@
 				</svg>
 			</div>
 			<div class="twp-body">
-				<div class="twp-title">{{ title }}</div>
+				<div class="twp-title">{{ displayTitle }}</div>
 				<div class="twp-bar">
 					<div class="twp-bar-fill" :style="{ width: `${Math.round(progress * 100)}%` }"></div>
 				</div>
@@ -18,6 +18,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from '../../../i18n'
+
 interface Props {
 	visible: boolean
 	title?: string
@@ -25,11 +28,15 @@ interface Props {
 	progress?: number
 }
 
-withDefaults(defineProps<Props>(), {
-	title: '主题预热中',
+const props = withDefaults(defineProps<Props>(), {
+	title: '',
 	detail: '',
 	progress: 0
 })
+
+const { t } = useI18n()
+
+const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmup.title', { theme: t('aiworkflow.page.themeWarmup.darkLabel') }))
 </script>
 
 <style scoped>

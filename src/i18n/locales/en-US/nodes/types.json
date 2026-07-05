@@ -1,0 +1,16 @@
+{
+  "nodes.type.base": "Base",
+  "nodes.type.text": "Text",
+  "nodes.type.textMerge": "Text Merge",
+  "nodes.type.image": "Image",
+  "nodes.type.rotateImage": "Rotate Image",
+  "nodes.type.video": "Video",
+  "nodes.type.sceneUnderstanding": "Scene Understanding",
+  "nodes.type.sceneDecompose": "Scene Decompose",
+  "nodes.type.sceneLayout": "Scene Layout",
+  "nodes.type.unrealExport": "Unreal Export",
+  "nodes.type.story": "Story",
+  "nodes.type.comfyui": "ComfyUI",
+  "nodes.type.model3d": "3D Model",
+  "nodes.type.meshy": "Meshy 3D Generation"
+}

@@ -1,4 +1,5 @@
 import { normalizeResolvedLayoutSlots, buildSlotsFromModelBindings, getUnrealConnectionPollInterval } from './unrealExportUtils'
+import { t } from '../../../../i18n'
 
 export const useAIWorkflowUnrealExportActions = (payload: {
 	store: {
@@ -89,8 +90,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 	const waitForConnection = async (nodeId: string, timeoutMs: number = 60000): Promise<string | null> => {
 		const startTime = Date.now()
 		setNodeStatus(nodeId, 'waiting-connection', {
-			statusText: '等待虚幻插件连接',
-			message: '请在虚幻编辑器中打开 Dweb Workflow Bridge 插件面板并点击 Connect 按钮...'
+			statusText: t('aiworkflow.runtime.unrealWaitingConnection'),
+			message: t('aiworkflow.runtime.unrealWaitingConnectionMessage')
 		})
 
 		let pollCount = 0
@@ -110,8 +111,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							nodeId,
 							unrealExportSettings: {
 								connectionStatus: 'connected',
-								statusText: '虚幻编辑器已连接',
-								message: `已连接到项目：${active.projectName || ''}`,
+								statusText: t('aiworkflow.runtime.unrealConnected'),
+								message: t('aiworkflow.runtime.unrealConnectedProject', { project: String(active.projectName || '') }),
 								connectedSession: active,
 								targetSessionId: sessionId
 							}
@@ -145,53 +146,55 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 				if (status === 'completed') {
 					stopProgressPolling()
+					const assetCount = importedAssetCount || spawnedActorCount
 					payload.store.commit('setNodeUnrealExportSettings', {
 						nodeId,
 						unrealExportSettings: {
 							connectionStatus: 'connected',
-							statusText: '导出完成',
-							message: `成功导入 ${importedAssetCount || spawnedActorCount} 个资产`,
+							statusText: t('aiworkflow.runtime.unrealExportStatusComplete'),
+							message: t('aiworkflow.runtime.unrealExportSuccessCount', { count: String(assetCount) }),
 							lastExportStatus: 'completed',
 							lastExportProgress: 100,
-							lastExportStage: '完成',
-							lastExportMessage: message || '导出成功',
+							lastExportStage: t('aiworkflow.runtime.unrealExportStageComplete'),
+							lastExportMessage: message || t('aiworkflow.runtime.unrealExportSuccessMessage'),
 							lastBlueprintAssetPath: blueprintAssetPath,
 							lastModelsAssetPath: modelsAssetPath,
 							lastImportedAssetCount: importedAssetCount,
 							lastSpawnedActorCount: spawnedActorCount
 						}
 					})
-					payload.pushToast('Unreal 导出完成！', 'info')
+					payload.pushToast(t('aiworkflow.toast.unrealExportSuccess'), 'info')
 					return
 				}
 
 				if (status === 'failed') {
 					stopProgressPolling()
-					const errMsg = String(job.error ?? message ?? '导出失败')
+					const errMsg = String(job.error ?? message ?? t('aiworkflow.runtime.unrealExportStatusFailed'))
 					payload.store.commit('setNodeUnrealExportSettings', {
 						nodeId,
 						unrealExportSettings: {
 							connectionStatus: 'error',
-							statusText: '导出失败',
+							statusText: t('aiworkflow.runtime.unrealExportStatusFailed'),
 							message: errMsg,
 							lastExportStatus: 'failed',
 							lastExportMessage: errMsg
 						}
 					})
-					payload.pushToast(`Unreal 导出失败：${errMsg}`, 'error')
+					payload.pushToast(t('aiworkflow.toast.unrealExportFailed', { error: errMsg }), 'error')
 					return
 				}
 
+				const currentStage = stage || getStageText(status)
 				payload.store.commit('setNodeUnrealExportSettings', {
 					nodeId,
 					unrealExportSettings: {
 						connectionStatus: 'exporting',
 						lastExportStatus: status,
 						lastExportProgress: Math.max(5, Math.min(99, progress || 5)),
-						lastExportStage: stage || getStageText(status),
-						lastExportMessage: message || getStageText(status),
-						statusText: '导出中',
-						message: `${getStageText(status)}...`
+						lastExportStage: currentStage,
+						lastExportMessage: message || currentStage,
+						statusText: t('aiworkflow.runtime.unrealExportStatusExporting'),
+						message: t('aiworkflow.runtime.unrealStageProcessing', { stage: currentStage })
 					}
 				})
 			} catch (err) {
@@ -204,13 +207,13 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 	const getStageText = (status: string): string => {
 		switch (status) {
-			case 'pending': return '等待虚幻插件接收任务'
-			case 'picked': return '虚幻插件已接收任务'
-			case 'downloading': return '下载模型资产中'
-			case 'importing': return '导入资产到虚幻中'
-			case 'assembling-actor': return '组装Actor中'
-			case 'applying-lighting': return '应用灯光设置中'
-			default: return '处理中'
+			case 'pending': return t('aiworkflow.runtime.unrealStagePending')
+			case 'picked': return t('aiworkflow.runtime.unrealStagePicked')
+			case 'downloading': return t('aiworkflow.runtime.unrealStageDownloading')
+			case 'importing': return t('aiworkflow.runtime.unrealStageImporting')
+			case 'assembling-actor': return t('aiworkflow.runtime.unrealStageAssemblingActor')
+			case 'applying-lighting': return t('aiworkflow.runtime.unrealStageApplyingLighting')
+			default: return t('aiworkflow.runtime.processing')
 		}
 	}
 
@@ -219,7 +222,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		exportMode: 'scene-layout' | 'lighting-only' = 'scene-layout'
 	) => {
 		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
-		if (!node || node.type !== 'unreal-export') return { ok: false as const, error: '节点不存在' }
+		if (!node || node.type !== 'unreal-export') return { ok: false as const, error: t('aiworkflow.runtime.unrealNodeNotExist') }
 
 		const sourceNode = payload.getUnrealExportSourceSceneLayoutNode(nodeId) as Record<string, unknown> | null
 		const sourceSceneLayoutSettings = sourceNode?.sceneLayoutSettings as Record<string, unknown> | null
@@ -229,7 +232,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 		if (exportMode === 'scene-layout') {
 			if (!sourceSceneLayoutNodeId) {
-				return { ok: false as const, error: '当前 Unreal 导出节点未连接场景布局节点。' }
+				return { ok: false as const, error: t('aiworkflow.runtime.unrealNoSceneLayoutConnected') }
 			}
 
 			const connectedModelBindings = Array.isArray(modelBindings)
@@ -249,42 +252,41 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			if (connectedModelBindings.length <= 0) {
 				return {
 					ok: false as const,
-					error: '当前场景没有可导入的真实模型绑定（glb/gltf/fbx等）。请先连接模型资源后再导出。'
+					error: t('aiworkflow.runtime.unrealNoModelBindings')
 				}
 			}
 
 			if (payload.validateModelBindings) {
 				const validation = payload.validateModelBindings(connectedModelBindings)
 				if (validation.invalid && validation.invalid.length > 0) {
-					const invalidReasons = validation.invalid.map(item => item.reason).join('；')
 					const detailLines = validation.invalid.map((item, idx) => {
 						const b = item.binding as Record<string, unknown>
-						const name = String(b.objectName ?? b.objectId ?? `模型${idx + 1}`).trim()
-						const path = String(b.modelSourcePath ?? b.modelAssetPath ?? b.modelUrl ?? b.modelAssetUrl ?? '无路径').trim()
-						return `  × ${name}: ${item.reason} (路径: ${path})`
+						const name = String(b.objectName ?? b.objectId ?? t('aiworkflow.runtime.modelNumber', { num: String(idx + 1) })).trim()
+						const path = String(b.modelSourcePath ?? b.modelAssetPath ?? b.modelUrl ?? b.modelAssetUrl ?? t('aiworkflow.runtime.unrealNoPath')).trim()
+						return t('aiworkflow.runtime.unrealInvalidModelLine', { name, reason: item.reason, path })
 					}).join('\n')
 					return {
 						ok: false as const,
-						error: `资产预检查失败（${validation.invalid.length} 个模型未通过验证）：\n${detailLines}\n\n请修复以上问题后再执行导出。`
+						error: t('aiworkflow.runtime.unrealPrecheckFailed', { count: String(validation.invalid.length), details: detailLines })
 					}
 				}
 				if (validation.warnings && validation.warnings.length > 0) {
-					const warnMsg = `资产验证警告：${validation.warnings.join('；')}`
+					const warnMsg = t('aiworkflow.runtime.unrealValidationWarning', { warnings: validation.warnings.join('；') })
 					payload.pushToast(warnMsg, 'warn')
 				}
-				payload.pushToast(`资产预检查通过：共 ${connectedModelBindings.length} 个模型验证绿灯`, 'info')
+				payload.pushToast(t('aiworkflow.toast.unrealPrecheckPass', { count: String(connectedModelBindings.length) }), 'info')
 			}
 
 			const totalLayoutItems = Array.isArray(sourceSceneLayoutSettings?.layoutItems)
 				? sourceSceneLayoutSettings!.layoutItems.length
 				: 0
 			if (totalLayoutItems > 0 && connectedModelBindings.length < totalLayoutItems) {
-				payload.pushToast(`注意：场景布局有 ${totalLayoutItems} 个占位体，但只有 ${connectedModelBindings.length} 个已绑定模型`, 'warn')
+				payload.pushToast(t('aiworkflow.toast.unrealPrecheckWarning', { total: String(totalLayoutItems), bound: String(connectedModelBindings.length) }), 'warn')
 			}
 
 			setNodeStatus(nodeId, 'activating-upstream', {
-				statusText: '激活上游场景布局节点',
-				message: '正在确保场景布局预览模式已激活...'
+				statusText: t('aiworkflow.runtime.unrealActivatingUpstream'),
+				message: t('aiworkflow.runtime.unrealEnsuringPreview')
 			})
 
 			if (payload.activateSceneLayoutPreview) {
@@ -335,13 +337,13 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			const resolvedLayoutSlots = buildSlotsFromModelBindings(connectedModelBindings, resolvedSlotMap, layoutItems)
 			const generatedSlotCount = resolvedLayoutSlots.filter((s: Record<string, unknown>) => s.generatedFromBinding).length
 			if (generatedSlotCount > 0) {
-				resolvedLayoutWarnings.push(`${generatedSlotCount} 个模型通过绑定直接生成，可能缺少精确的场景变换，将使用默认位置。`)
+				resolvedLayoutWarnings.push(t('aiworkflow.runtime.modelBindingGeneratedDefault', { count: String(generatedSlotCount) }))
 			}
 
 			if (resolvedLayoutSlots.length <= 0) {
 				return {
 					ok: false as const,
-					error: '未能生成场景布局数据，请确保模型绑定可用。'
+					error: t('aiworkflow.runtime.unrealFailedToGenerateLayout')
 				}
 			}
 
@@ -417,8 +419,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							connectionStatus: 'connected',
 							targetSessionId: sid,
 							connectedSession: active,
-							statusText: '虚幻编辑器已连接',
-							message: `已连接到项目：${active.projectName || ''}`
+							statusText: t('aiworkflow.runtime.unrealConnected'),
+							message: t('aiworkflow.runtime.unrealConnectedProject', { project: String(active.projectName || '') })
 						}
 					})
 					return sid
@@ -427,19 +429,19 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		}
 
 		setNodeStatus(nodeId, 'checking-editor', {
-			statusText: '检测虚幻编辑器',
-			message: '正在检查虚幻编辑器是否运行...',
+			statusText: t('aiworkflow.runtime.unrealCheckingEditor'),
+			message: t('aiworkflow.runtime.unrealCheckingEditorMessage'),
 			editorStatus: 'checking'
 		})
 
 		const detectResult = await payload.unrealExportService.detectEditor()
 		if (!detectResult.ok || !detectResult.running || detectResult.processes.length === 0) {
 			setNodeStatus(nodeId, 'editor-not-running', {
-				statusText: '未检测到虚幻编辑器',
-				message: '请先启动虚幻编辑器并打开项目，然后重新点击导出。',
+				statusText: t('aiworkflow.runtime.unrealEditorNotDetected'),
+				message: t('aiworkflow.runtime.unrealEditorNotDetectedMessage'),
 				editorStatus: 'not-running'
 			})
-			payload.pushToast('未检测到正在运行的虚幻编辑器，请先启动编辑器并打开项目。', 'warn')
+			payload.pushToast(t('aiworkflow.toast.unrealEditorNotRunning'), 'warn')
 			return null
 		}
 
@@ -456,16 +458,16 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		})
 
 		setNodeStatus(nodeId, 'checking-plugin', {
-			statusText: '检测插件状态',
-			message: '正在检查项目是否安装了 DwebWorkflowBridge 插件...',
+			statusText: t('aiworkflow.runtime.unrealCheckingPlugin'),
+			message: t('aiworkflow.runtime.unrealCheckingPluginMessage'),
 			pluginStatus: 'checking'
 		})
 
 		const pluginResult = await payload.unrealExportService.checkPlugin(projectPath)
 		if (!pluginResult.ok || !pluginResult.installed) {
 			setNodeStatus(nodeId, 'installing-plugin', {
-				statusText: '正在安装插件',
-				message: '检测到插件未安装，正在自动安装 DwebWorkflowBridge 插件...',
+				statusText: t('aiworkflow.runtime.unrealInstallingPlugin'),
+				message: t('aiworkflow.runtime.unrealInstallingPluginMessage'),
 				pluginStatus: 'installing',
 				pluginInstallConfig: { targetProjectPath: pluginResult.projectRoot || projectPath }
 			})
@@ -473,22 +475,22 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			const installResult = await payload.unrealExportService.installPlugin(pluginResult.projectRoot || projectPath)
 			if (!installResult.ok || !installResult.installed) {
 				setNodeStatus(nodeId, 'error', {
-					statusText: '插件安装失败',
-					message: installResult.error || '自动安装插件失败，请手动安装。',
+					statusText: t('aiworkflow.runtime.unrealPluginInstallFailed'),
+					message: installResult.error || t('aiworkflow.runtime.unrealPluginInstallFailedMessage'),
 					pluginStatus: 'install-error',
 					pluginInstallError: installResult.error
 				})
-				payload.pushToast(`插件安装失败：${installResult.error || 'unknown'}`, 'error')
+				payload.pushToast(t('aiworkflow.toast.unrealPluginInstallFailed', { error: String(installResult.error || 'unknown') }), 'error')
 				return null
 			}
 
 			setNodeStatus(nodeId, 'needs-restart', {
-				statusText: '插件已安装，请重启编辑器',
-				message: 'DwebWorkflowBridge 插件安装成功！请重启虚幻编辑器以加载插件，然后重新点击导出。',
+				statusText: t('aiworkflow.runtime.unrealPluginNeedsRestart'),
+				message: t('aiworkflow.runtime.unrealPluginNeedsRestartMessage'),
 				pluginStatus: 'needs-restart',
 				pluginVersion: installResult.pluginVersion
 			})
-			payload.pushToast('插件安装成功！请重启虚幻编辑器，然后重新点击导出按钮。', 'info')
+			payload.pushToast(t('aiworkflow.toast.unrealPluginInstalled'), 'info')
 			return null
 		}
 
@@ -503,10 +505,10 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		const sessionId = await waitForConnection(nodeId, 90000)
 		if (!sessionId) {
 			setNodeStatus(nodeId, 'error', {
-				statusText: '连接超时',
-				message: '等待虚幻插件连接超时，请确保在虚幻编辑器中打开了插件面板并点击了 Connect 按钮。'
+				statusText: t('aiworkflow.runtime.unrealConnectionTimeoutStatus'),
+				message: t('aiworkflow.runtime.unrealConnectionTimeoutMessage')
 			})
-			payload.pushToast('等待虚幻插件连接超时，请检查插件是否已连接。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.unrealConnectionTimeout'), 'warn')
 			return null
 		}
 
@@ -529,7 +531,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			const built = await buildUnrealExportPayload(nodeId, exportMode)
 			if (!built.ok) {
 				setNodeStatus(nodeId, 'error', {
-					statusText: '准备导出数据失败',
+					statusText: t('aiworkflow.runtime.unrealPrepareFailed'),
 					message: built.error
 				})
 				payload.pushToast(built.error, 'warn')
@@ -537,8 +539,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			}
 
 			setNodeStatus(nodeId, 'creating-job', {
-				statusText: '创建导出任务',
-				message: '正在创建导出任务...'
+				statusText: t('aiworkflow.runtime.unrealCreatingJob'),
+				message: t('aiworkflow.runtime.unrealCreatingJobMessage')
 			})
 
 			const res = (await payload.unrealExportService.createJob({
@@ -551,28 +553,31 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 			if (!res.ok) {
 				setNodeStatus(nodeId, 'error', {
-					statusText: '创建任务失败',
+					statusText: t('aiworkflow.runtime.unrealJobCreateFailed'),
 					message: String(res.error || 'unknown')
 				})
-				payload.pushToast(`创建 Unreal 导出任务失败：${res.error || 'unknown'}`, 'warn')
+				payload.pushToast(t('aiworkflow.toast.unrealJobCreateFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
 
 			const job = res.job as Record<string, unknown>
 			const jobId = String(job.jobId ?? '')
+			const createdToastKey = exportMode === 'lighting-only'
+				? 'aiworkflow.runtime.unrealLightingJobCreatedToast'
+				: 'aiworkflow.runtime.unrealSceneJobCreatedToast'
 
 			payload.store.commit('setNodeUnrealExportSettings', {
 				nodeId,
 				unrealExportSettings: {
 					connectionStatus: 'exporting',
-					statusText: '导出任务已创建',
-					message: '虚幻插件正在自动接收并处理任务...',
+					statusText: t('aiworkflow.runtime.unrealJobCreatedStatus'),
+					message: t('aiworkflow.runtime.unrealJobCreatedMessage'),
 					lastExportMode: exportMode,
 					lastExportJobId: jobId,
 					lastExportStatus: 'pending',
-					lastExportStage: '等待虚幻插件接收任务',
+					lastExportStage: t('aiworkflow.runtime.unrealStagePending'),
 					lastExportProgress: 5,
-					lastExportMessage: '等待虚幻插件拉取任务',
+					lastExportMessage: t('aiworkflow.runtime.unrealWaitingForPull'),
 					lastLayoutProtocolVersion: 4,
 					lastSlotCount: Number.isFinite(Number(built.payload.resolvedSlotCount))
 						? Number(built.payload.resolvedSlotCount)
@@ -582,17 +587,17 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				}
 			})
 
-			payload.pushToast(`Unreal ${exportMode === 'lighting-only' ? '灯光' : '场景'}导出任务已创建，虚幻插件将自动处理。`, 'info')
+			payload.pushToast(t(createdToastKey), 'info')
 
 			await new Promise((r) => setTimeout(r, 1000))
 			await pollJobProgress(nodeId, jobId)
 		} catch (err) {
 			const errMsg = (err as Error).message || 'unknown'
 			setNodeStatus(nodeId, 'error', {
-				statusText: '导出异常',
+				statusText: t('aiworkflow.runtime.unrealExportException'),
 				message: errMsg
 			})
-			payload.pushToast(`导出异常：${errMsg}`, 'error')
+			payload.pushToast(t('aiworkflow.runtime.unrealExportError', { error: errMsg }), 'error')
 		}
 	}
 
@@ -625,8 +630,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			nodeId,
 			unrealExportSettings: {
 				connectionStatus: 'idle',
-				statusText: '未连接',
-				message: '点击导出按钮开始一键导出流程',
+				statusText: t('aiworkflow.runtime.unrealNotConnected'),
+				message: t('aiworkflow.runtime.unrealNotConnectedMessage'),
 				targetSessionId: '',
 				connectedSession: null,
 				editorStatus: 'unknown',
@@ -635,7 +640,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				lastExportProgress: 0
 			}
 		})
-		payload.pushToast('已断开与虚幻编辑器的连接', 'info')
+		payload.pushToast(t('aiworkflow.runtime.disconnectedFromUnreal'), 'info')
 	}
 
 	const onNodeDetectEditor = async (nodeId: string) => {
@@ -651,12 +656,12 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 		const trimmedPath = String(assetRootPath || '').trim()
 		if (!trimmedPath) {
-			payload.pushToast('资产根路径不能为空', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.assetPathEmpty'), 'warn')
 			return
 		}
 
 		if (!trimmedPath.startsWith('/Game/') && !trimmedPath.startsWith('/Game')) {
-			payload.pushToast('资产根路径必须以 /Game/ 开头（例如 /Game/DVStudio）', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.assetPathInvalid'), 'warn')
 			return
 		}
 
@@ -669,7 +674,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			}
 		})
 
-		payload.pushToast(`资产根路径已设置为: ${trimmedPath}`, 'info')
+		payload.pushToast(t('aiworkflow.runtime.assetPathSet', { path: trimmedPath }), 'info')
 	}
 
 	return {

@@ -73,7 +73,7 @@
 							<button
 								class="bp-node-chat-param-ref-remove"
 								type="button"
-								title="断开上游参数"
+								:title="t('aichat.nodeChat.disconnectUpstream')"
 								@click.stop="handleRemoveParamRef(item)"
 							>
 								×
@@ -96,17 +96,17 @@
 							class="bp-node-chat-btn bp-node-chat-btn-secondary"
 							type="button"
 							disabled
-							title="提示词库"
+							:title="t('aichat.nodeChat.promptLibrary')"
 						>
-							提示词库
+							{{ t('aichat.nodeChat.promptLibrary') }}
 						</button>
 						<button
 							class="bp-node-chat-btn bp-node-chat-btn-secondary"
 							type="button"
 							disabled
-							title="增强提示词"
+							:title="t('aichat.nodeChat.enhancePrompt')"
 						>
-							增强提示词
+							{{ t('aichat.nodeChat.enhancePrompt') }}
 						</button>
 					</div>
 					<div class="bp-node-chat-actions">
@@ -116,7 +116,7 @@
 							:disabled="submitting"
 							@click="toggleParams"
 						>
-							{{ showParams ? '收起参数' : '参数设置' }}
+							{{ showParams ? t('aichat.nodeChat.collapseParams') : t('aichat.nodeChat.paramSettings') }}
 						</button>
 						<button
 							class="bp-node-chat-btn bp-node-chat-btn-primary"
@@ -125,7 +125,7 @@
 							@click="handleSubmit"
 						>
 							<span v-if="submitting" class="bp-node-chat-loading"></span>
-							{{ submitting ? '生成中...' : '发送' }}
+							{{ submitting ? t('aichat.nodeChat.generating') : t('aichat.nodeChat.send') }}
 						</button>
 					</div>
 				</div>
@@ -148,6 +148,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '../../../i18n'
 import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatParams, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 import {
 	NODE_CHAT_TYPE_LABELS,
@@ -159,6 +160,8 @@ import {
 import NodeChatInput from './NodeChatInput.vue'
 import NodeChatParamPanel from './NodeChatParamPanel.vue'
 import type { InputParamPreviewRef } from './index'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	visible: boolean
@@ -184,7 +187,7 @@ const showParams = ref(false)
 
 const typeLabel = computed(() => {
 	if (!props.nodeType) return ''
-	return NODE_CHAT_TYPE_LABELS[props.nodeType]
+	return t(NODE_CHAT_TYPE_LABELS[props.nodeType])
 })
 
 const typeIcon = computed(() => {
@@ -193,13 +196,13 @@ const typeIcon = computed(() => {
 })
 
 const placeholder = computed(() => {
-	if (!props.nodeType) return '输入提示词...'
-	return NODE_CHAT_PLACEHOLDERS[props.nodeType]
+	if (!props.nodeType) return t('aichat.nodeChat.placeholder')
+	return t(NODE_CHAT_PLACEHOLDERS[props.nodeType])
 })
 
 const typeDescription = computed(() => {
 	if (!props.nodeType) return ''
-	return NODE_CHAT_TYPE_DESCRIPTIONS[props.nodeType]
+	return t(NODE_CHAT_TYPE_DESCRIPTIONS[props.nodeType])
 })
 
 const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
@@ -224,15 +227,16 @@ const submitDisabled = computed(() => {
 })
 
 const fallbackParamLabel = (item: InputParamPreviewRef, index: number) => {
-	if (item.kind === 'text') return `文本 ${index + 1}`
-	if (item.kind === 'image') return `图片 ${index + 1}`
-	if (item.kind === 'video') return `视频 ${index + 1}`
-	return `3D 模型 ${index + 1}`
+	const i = index + 1
+	if (item.kind === 'text') return t('aichat.nodeChat.textLabel', { index: i })
+	if (item.kind === 'image') return t('aichat.nodeChat.imageLabel', { index: i })
+	if (item.kind === 'video') return t('aichat.nodeChat.videoLabel', { index: i })
+	return t('aichat.nodeChat.model3dLabel', { index: i })
 }
 
 const paramRefIcon = (item: InputParamPreviewRef) => {
-	if (item.kind === 'image') return '图'
-	if (item.kind === 'video') return '视'
+	if (item.kind === 'image') return t('aichat.nodeChat.refImage')
+	if (item.kind === 'video') return t('aichat.nodeChat.refVideo')
 	if (item.kind === 'model3d') return '3D'
 	return 'T'
 }
@@ -255,7 +259,8 @@ const handleRemoveParamRef = (item: InputParamPreviewRef) => {
 const dialogPositionStyle = computed(() => {
 	const width = props.nodeWidth || 280
 	return {
-		width: `${Math.max(width, 320)}px`
+		width: `${Math.max(width, 380)}px`,
+		minWidth: '380px'
 	}
 })
 
@@ -340,8 +345,8 @@ onBeforeUnmount(() => {
 	top: 100%;
 	z-index: 1000;
 	margin-top: 16px;
-	max-width: min(420px, calc(100vw - 40px));
-	min-width: 320px;
+	max-width: min(520px, calc(100vw - 40px));
+	min-width: 380px;
 	transform: translateX(-50%);
 	pointer-events: auto;
 	animation: bp-dialog-slide-in 0.2s ease-out;
@@ -598,7 +603,8 @@ onBeforeUnmount(() => {
 	justify-content: space-between;
 	padding: 10px 14px;
 	border-top: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
-	gap: 10px;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 
 .bp-node-chat-footer-left {
@@ -606,6 +612,8 @@ onBeforeUnmount(() => {
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
+	flex: 1;
+	flex-wrap: wrap;
 }
 
 .bp-node-chat-actions {
@@ -613,6 +621,7 @@ onBeforeUnmount(() => {
 	align-items: center;
 	gap: 8px;
 	flex-shrink: 0;
+	flex-wrap: wrap;
 }
 
 .bp-node-chat-param-popover {
@@ -643,7 +652,10 @@ onBeforeUnmount(() => {
 	font-family: inherit;
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
 	gap: 6px;
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 .bp-node-chat-btn-secondary {

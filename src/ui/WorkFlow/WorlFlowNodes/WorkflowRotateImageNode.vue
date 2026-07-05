@@ -36,12 +36,12 @@
 				@pointerdown.stop.prevent="onDragStart"
 			/>
 			<div class="wf-rotate-overlay" @pointerdown.stop>
-				<div class="wf-view-cube" aria-label="方向立方体">
+				<div class="wf-view-cube" :aria-label="t('nodes.rotateImage.cubeLabel')">
 					<div class="wf-cube-graphic">
 						<button
 							type="button"
 							class="wf-cube-face face-back"
-							title="-Z（背面）"
+							:title="t('nodes.rotateImage.backFace')"
 							@click.stop="onQuickView('-z')"
 						>
 							-Z
@@ -81,7 +81,7 @@
 						<button
 							type="button"
 							class="wf-cube-face face-front"
-							title="+Z（正面）"
+							:title="t('nodes.rotateImage.frontFace')"
 							@click.stop="onQuickView('+z')"
 						>
 							+Z
@@ -89,15 +89,15 @@
 					</div>
 				</div>
 
-				<button type="button" class="wf-reset-btn" title="复位到正面" @click.stop="onResetView">
-					复位
+				<button type="button" class="wf-reset-btn" :title="t('nodes.rotateImage.resetToFront')" @click.stop="onResetView">
+					{{ t('nodes.rotateImage.reset') }}
 				</button>
 			</div>
 		</template>
 
 		<template #footer>
 			<div class="wf-rotate-footer" @pointerdown.stop>
-				<span class="wf-rotate-hint">按住并拖拽图片进行 360° 旋转查看（伪 3D 透视）。</span>
+				<span class="wf-rotate-hint">{{ t('nodes.rotateImage.rotateHint') }}</span>
 			</div>
 		</template>
 	</WorkflowNodeBase>
@@ -106,6 +106,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -192,7 +195,7 @@ const emit = defineEmits<{
 	): void
 }>()
 
-const PLACEHOLDER_SVG =
+const PLACEHOLDER_SVG = computed(() =>
 	`data:image/svg+xml;utf8,` +
 	encodeURIComponent(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
@@ -204,9 +207,10 @@ const PLACEHOLDER_SVG =
   </defs>
   <rect x="0" y="0" width="640" height="360" fill="url(#g)"/>
   <rect x="40" y="40" width="560" height="280" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="2"/>
-  <text x="320" y="178" text-anchor="middle" font-size="24" fill="#ffffff" fill-opacity="0.65" font-family="system-ui,Segoe UI,Arial">示例图片（未连接输入）</text>
-  <text x="320" y="210" text-anchor="middle" font-size="14" fill="#ffffff" fill-opacity="0.45" font-family="system-ui,Segoe UI,Arial">rotate-image node preview</text>
+  <text x="320" y="178" text-anchor="middle" font-size="24" fill="#ffffff" fill-opacity="0.65" font-family="system-ui,Segoe UI,Arial">${t('nodes.rotateImage.placeholderText')}</text>
+  <text x="320" y="210" text-anchor="middle" font-size="14" fill="#ffffff" fill-opacity="0.45" font-family="system-ui,Segoe UI,Arial">${t('nodes.rotateImage.placeholderSubText')}</text>
 </svg>`)
+)
 
 const wrap = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -215,7 +219,7 @@ const dpr = () => Math.max(1, Math.min(2, window.devicePixelRatio || 1))
 
 const inputSrc = computed(() => {
 	const url = String(props.inputUrl ?? '').trim()
-	return url || PLACEHOLDER_SVG
+	return url || PLACEHOLDER_SVG.value
 })
 
 let img: HTMLImageElement | null = null

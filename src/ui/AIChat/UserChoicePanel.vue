@@ -16,7 +16,7 @@
 			</button>
 		</div>
 		<div v-if="selectedIndex !== null && selectedText" class="user-choice-panel__selected">
-			<span class="user-choice-panel__selected-label">已选择：</span>
+			<span class="user-choice-panel__selected-label">{{ t('aichat.userChoice.selected') }}</span>
 			<span class="user-choice-panel__selected-text">{{ selectedText }}</span>
 		</div>
 	</div>
@@ -24,6 +24,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(
 	defineProps<{

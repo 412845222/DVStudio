@@ -1,0 +1,13 @@
+{
+  "aiworkflow.canvas.inputAnchors": "入口锚点",
+  "aiworkflow.canvas.outputAnchors": "出口锚点",
+  "aiworkflow.canvas.inputAnchor": "入口",
+  "aiworkflow.canvas.outputAnchor": "出口",
+  "aiworkflow.canvas.nodesSelected": "{count}个节点",
+  "aiworkflow.canvas.editLabel": "编辑",
+  "aiworkflow.canvas.editTag": "编辑标签",
+  "aiworkflow.canvas.cancelSelection": "取消框选",
+  "aiworkflow.canvas.enterTagName": "输入标签名称...",
+  "aiworkflow.canvas.save": "保存",
+  "aiworkflow.canvas.cancel": "取消"
+}

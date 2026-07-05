@@ -1,5 +1,6 @@
 import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import { isString, isRecord } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type { MeshyNodeSettingsLike, ConnectedMeshyImageInput, MeshyStoreLike } from './types'
 
 export const useAIWorkflowMeshyInputResolver = (options: {
@@ -312,7 +313,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		if (!edge) {
 			return {
 				url: '',
-				label: '未连接模型输入锚点 in-model'
+				label: t('tasks.meshy.modelInputNotConnected')
 			}
 		}
 		const fromNodeId = String(edge.fromNodeId ?? '').trim()
@@ -321,7 +322,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		if (!fromNode) {
 			return {
 				url: '',
-				label: '来源节点不存在'
+				label: t('tasks.meshy.sourceNodeNotExist')
 			}
 		}
 
@@ -330,19 +331,21 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 				fromNode.model3dSettings?.modelSourceName ?? fromNode.alias ?? fromNode.title ?? fromNode.id
 			).trim()
 			const snapshot = options.captureModel3DNodeCanvasPreview(fromNodeId)
+			const displayName = sourceName || fromNodeId
 			return {
 				url: snapshot,
 				label: snapshot
-					? `3D 节点实时截图：${sourceName || fromNodeId}`
-					: `3D 节点已连接：${sourceName || fromNodeId}`
+					? t('tasks.meshy.3dNodeRealtimeScreenshot', { name: displayName })
+					: t('tasks.meshy.3dNodeConnected', { name: displayName })
 			}
 		}
 
 		if (fromNode.type === 'meshy') {
 			const thumbnail = options.getMeshyDisplayThumbnailUrl(getNodeMeshySettings(fromNode))
+			const displayName = String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
 			return {
 				url: thumbnail,
-				label: `来源 Meshy 节点：${String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id}`
+				label: t('tasks.meshy.sourceMeshyNode', { name: displayName })
 			}
 		}
 
@@ -350,13 +353,14 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			const name = String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
 			return {
 				url: '',
-				label: `来源占位体：${name}`
+				label: t('tasks.meshy.sourcePlaceholder', { name })
 			}
 		}
 
+		const displayName = String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
 		return {
 			url: '',
-			label: `来源节点：${String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id}`
+			label: t('tasks.meshy.sourceNode', { name: displayName })
 		}
 	}
 

@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
+import { t } from '../../../../i18n'
 import { useAIWorkflowMeshyRuntime } from './useAIWorkflowMeshyRuntime'
 import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
 import type {
@@ -180,7 +181,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 
 	const buildMeshyImageRequestPayload = async () => {
 		const node = options.getNode()
-		if (!node) return { ok: false as const, error: '节点不存在' }
+		if (!node) return { ok: false as const, error: t('tasks.meshy.nodeNotExist') }
 
 		const chatParams = isRecord(node.nodeChatParams) ? node.nodeChatParams : {}
 		const imgSettings = isRecord(node.imageSettings) ? node.imageSettings : {}
@@ -190,7 +191,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 
 		const prompt = String(chatParams.prompt ?? meshyImageSettings.prompt ?? '').trim()
 		if (!prompt) {
-			return { ok: false as const, error: '请先填写提示词' }
+			return { ok: false as const, error: t('tasks.meshy.promptRequired') }
 		}
 
 		const meshyAiModel = String(
@@ -262,12 +263,12 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const submittedParams = {
 			model: meshyAiModel,
 			mode: taskType,
-			aspectRatio: meshyGenerateMultiView ? '1:1 (多视图)' : meshyAspectRatio,
-			poseMode: meshyPoseMode || '无',
+			aspectRatio: meshyGenerateMultiView ? '1:1 (Multi-View)' : meshyAspectRatio,
+			poseMode: meshyPoseMode || 'None',
 			generateMultiView: meshyGenerateMultiView,
-			negativePrompt: meshyNegativePrompt || '无',
+			negativePrompt: meshyNegativePrompt || 'None',
 			outputCount: meshyGenerateMultiView ? 4 : (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1),
-			seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : '随机',
+			seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : 'Random',
 			referenceImageCount: hasRefImages ? refs.length : 0,
 			submittedAt: new Date().toISOString()
 		}
@@ -288,7 +289,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 
 	const startGeneration = async () => {
 		const node = options.getNode()
-		if (!node) return { ok: false, error: '节点不存在' }
+		if (!node) return { ok: false, error: t('tasks.meshy.nodeNotExist') }
 
 		isLoading.value = true
 		errorMessage.value = null
@@ -313,7 +314,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 				taskFamily: taskType,
 				progress: 0,
 				errorMessage: '',
-				statusText: `Meshy：正在创建${taskType === 'image-to-image' ? '图生图' : '文生图'}任务…`,
+				statusText: t('tasks.meshy.creatingTask'),
 				submittedParams: result.submittedParams
 			})
 
@@ -345,7 +346,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 				}
 
 				if (!res.ok) {
-					const msg = String(res.error ?? 'Meshy 创建任务失败')
+					const msg = String(res.error ?? t('tasks.meshy.createTaskFailed'))
 					errorMessage.value = msg
 					updateMeshyImageSettings({
 						taskStatus: 'failed',
@@ -364,20 +365,20 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 					taskStatus: normalizedStatus === 'idle' ? 'pending' : normalizedStatus,
 					taskFamily: mode,
 					progress: normalizedStatus === 'running' ? 5 : 0,
-					statusText: 'Meshy：任务已创建，开始轮询状态…',
+					statusText: t('tasks.meshy.taskCreatedPolling'),
 					submittedParams: result.submittedParams
 				})
 
 				if (!newTaskId) {
-					options.pushToast('Meshy 返回缺少任务 ID。', 'warn')
-					return { ok: false, error: 'Meshy 返回缺少任务 ID' }
+					options.pushToast(t('tasks.meshy.missingTaskIdToast'), 'warn')
+					return { ok: false, error: t('tasks.meshy.missingTaskId') }
 				}
 
 				startMeshyPoll(options.nodeId, newTaskId, mode)
 
 				return { ok: true, taskId: newTaskId }
 			} catch (err: unknown) {
-				const msg = 'Meshy 创建任务异常：' + getErrorMessage(err)
+				const msg = t('tasks.meshy.createTaskException', { error: getErrorMessage(err) })
 				errorMessage.value = msg
 				updateMeshyImageSettings({
 					taskStatus: 'failed',
@@ -402,13 +403,13 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		try {
 			const res = await options.getComfyService().meshyTask(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast('刷新 Meshy 状态失败：' + String(res.error ?? 'unknown'), 'warn')
+				options.pushToast(t('tasks.meshy.refreshStatusFailed', { error: String(res.error ?? 'unknown') }), 'warn')
 				return
 			}
 			await applyMeshyTaskResult(options.nodeId, res)
-			options.pushToast('Meshy 任务状态已刷新。', 'info')
+			options.pushToast(t('tasks.meshy.statusRefreshed'), 'info')
 		} catch (err: unknown) {
-			options.pushToast('刷新 Meshy 状态异常：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('tasks.meshy.refreshStatusException', { error: getErrorMessage(err) }), 'warn')
 		}
 	}
 
@@ -420,18 +421,18 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		try {
 			const res = await options.getComfyService().meshyStop(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast('停止 Meshy 任务失败：' + String(res.error ?? 'unknown'), 'warn')
+				options.pushToast(t('tasks.meshy.stopTaskFailed', { error: String(res.error ?? 'unknown') }), 'warn')
 				return
 			}
 			stopMeshyPoll(options.nodeId)
 			updateMeshyImageSettings({
 				taskStatus: 'canceled',
-				statusText: 'Meshy：任务已停止',
+				statusText: t('tasks.meshy.taskStopped'),
 				errorMessage: ''
 			})
-			options.pushToast('已停止 Meshy 任务。', 'info')
+			options.pushToast(t('tasks.meshy.taskStoppedToast'), 'info')
 		} catch (err: unknown) {
-			options.pushToast('停止 Meshy 任务异常：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('tasks.meshy.stopTaskException', { error: getErrorMessage(err) }), 'warn')
 		}
 	}
 
@@ -443,7 +444,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		try {
 			const res = await options.getComfyService().meshyDelete(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast('删除 Meshy 任务失败：' + String(res.error ?? 'unknown'), 'warn')
+				options.pushToast(t('tasks.meshy.deleteTaskFailed', { error: String(res.error ?? 'unknown') }), 'warn')
 				return
 			}
 			stopMeshyPoll(options.nodeId)
@@ -451,12 +452,12 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 				taskId: '',
 				taskStatus: 'idle',
 				progress: 0,
-				statusText: 'Meshy：任务已删除',
+				statusText: t('tasks.meshy.taskDeleted'),
 				errorMessage: ''
 			})
-			options.pushToast('已删除 Meshy 任务。', 'info')
+			options.pushToast(t('tasks.meshy.taskDeletedToast'), 'info')
 		} catch (err: unknown) {
-			options.pushToast('删除 Meshy 任务异常：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('tasks.meshy.deleteTaskException', { error: getErrorMessage(err) }), 'warn')
 		}
 	}
 

@@ -11,6 +11,7 @@
 
 import type { CanvasScreenshotPool } from './canvasScreenshotPool'
 import type { ScreenshotCacheEntry } from './useNodeScreenshotPool'
+import { t } from '../../../i18n'
 
 export interface WarmupOptions {
 	/** 并发数，默认4 */
@@ -292,18 +293,18 @@ export class CanvasWarmupCoordinator {
 	async warmup(): Promise<void> {
 		if (this.disposed) return
 
-		const pendingTasks = Array.from(this.tasks.values()).filter(t => t.status === 'pending')
+		const pendingTasks = Array.from(this.tasks.values()).filter(task => task.status === 'pending')
 		const total = pendingTasks.length
 
 		if (total === 0) {
 			this.phase = 'complete'
-			this.options.onProgress?.(1, '没有需要预热的节点')
+			this.options.onProgress?.(1, t('aiworkflow.runtime.noNodesToWarmup'))
 			this.options.onComplete?.()
 			return
 		}
 
 		this.phase = 'running'
-		this.options.onProgress?.(0, `准备预热 ${total} 个节点...`)
+		this.options.onProgress?.(0, t('aiworkflow.runtime.preparingWarmup', { count: String(total) }))
 
 		let completed = 0
 		let nextIndex = 0
@@ -318,7 +319,7 @@ export class CanvasWarmupCoordinator {
 				await this.loadTask(task)
 				completed++
 				const progress = total > 0 ? completed / total : 1
-				this.options.onProgress?.(progress, `预热中 ${completed}/${total}...`)
+				this.options.onProgress?.(progress, t('aiworkflow.runtime.warmingUp', { completed: String(completed), total: String(total) }))
 			}
 		}
 
@@ -333,9 +334,9 @@ export class CanvasWarmupCoordinator {
 		this.phase = status.error > 0 ? 'error' : 'complete'
 
 		if (status.error > 0) {
-			this.options.onProgress?.(1, `预热完成，${status.ready} 成功，${status.error} 失败`)
+			this.options.onProgress?.(1, t('aiworkflow.runtime.warmupCompleteWithErrors', { ready: String(status.ready), error: String(status.error) }))
 		} else {
-			this.options.onProgress?.(1, `预热完成，共 ${total} 个节点`)
+			this.options.onProgress?.(1, t('aiworkflow.runtime.warmupComplete', { count: String(total) }))
 		}
 
 		this.options.onComplete?.()
@@ -541,10 +542,10 @@ export const formatWarmupDetail = (
 ): string => {
 	switch (phase) {
 		case 'dom-screenshot':
-			return `生成截图 ${domCompleted}/${domTotal}...`
+			return t('aiworkflow.runtime.domScreenshotProgress', { completed: String(domCompleted), total: String(domTotal) })
 		case 'canvas-texture':
-			return `加载纹理 ${canvasCompleted}/${canvasTotal}...`
+			return t('aiworkflow.runtime.canvasTextureProgress', { completed: String(canvasCompleted), total: String(canvasTotal) })
 		case 'complete':
-			return `预热完成 (截图${domTotal} + 纹理${canvasTotal})`
+			return t('aiworkflow.runtime.warmupFinalProgress', { domTotal: String(domTotal), canvasTotal: String(canvasTotal) })
 	}
 }

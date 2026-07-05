@@ -1,5 +1,6 @@
 import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import { getErrorMessage, isRecord } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type {
 	MeshyGeneratePayload,
 	MeshyRequestMode,
@@ -108,7 +109,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 		} catch (err: unknown) {
 			return {
 				ok: false,
-				error: `模型输入读取失败：${getErrorMessage(err)}`
+				error: t('tasks.meshy.modelInputReadFailed', { error: getErrorMessage(err) })
 			}
 		}
 		const target = String(settings.meshyTaskTarget ?? '3d') as '3d' | 'image'
@@ -133,8 +134,8 @@ export const useAIWorkflowMeshyRequest = (options: {
 				ok: false,
 				error:
 					target === 'image'
-						? '请先把 Meshy 图片输出锚点连接到下游图片输入后再启动任务。'
-						: '请先把 Meshy 模型输出锚点连接到下游资源/模型输入后再启动任务。'
+						? t('tasks.meshy.connectImageOutputFirst')
+						: t('tasks.meshy.connectModelOutputFirst')
 			}
 		}
 		if (target === 'image') {
@@ -142,7 +143,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 			if (missing.length) {
 				return {
 					ok: false,
-					error: `当前设置需输出 ${outputCount} 张图片，以下输出锚点未连接：${missing.join('、')}`
+					error: t('tasks.meshy.missingImageOutputAnchors', { count: String(outputCount), anchors: missing.join('、') })
 				}
 			}
 		}
@@ -195,7 +196,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 					item.fromNode.id
 				return {
 					ok: false,
-					error: `参考图「${label}」读取失败：${getErrorMessage(err)}`
+					error: t('tasks.meshy.referenceImageReadFailed', { label, error: getErrorMessage(err) })
 				}
 			}
 		}
@@ -207,7 +208,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 			} catch (err: unknown) {
 				return {
 					ok: false,
-					error: `手填参考图读取失败：${getErrorMessage(err)}`
+					error: t('tasks.meshy.manualReferenceImageReadFailed', { error: getErrorMessage(err) })
 				}
 			}
 		}
@@ -222,7 +223,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 		} catch (err: unknown) {
 			return {
 				ok: false,
-				error: `单图参考图读取失败：${getErrorMessage(err)}`
+				error: t('tasks.meshy.singleReferenceImageReadFailed', { error: getErrorMessage(err) })
 			}
 		}
 		const imageUrls = linkedImages.length ? linkedImages : resolvedManualImageUrls
@@ -243,7 +244,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 		} catch (err: unknown) {
 			return {
 				ok: false,
-				error: `贴图参考图读取失败：${getErrorMessage(err)}`
+				error: t('tasks.meshy.textureReferenceImageReadFailed', { error: getErrorMessage(err) })
 			}
 		}
 		if (!textureImageUrl && family === 'retexture') {
@@ -341,37 +342,37 @@ export const useAIWorkflowMeshyRequest = (options: {
 		}
 
 		if (family === 'text-to-3d' || family === 'refine' || family === 'retexture') {
-			if (!payload.prompt) return { ok: false, error: '请先填写 Meshy 提示词。' }
+			if (!payload.prompt) return { ok: false, error: t('tasks.meshy.meshyPromptRequired') }
 			if (family === 'refine' && !payload.preview_task_id && !payload.model_url) {
-				return { ok: false, error: 'Refine 阶段需要 Preview Task ID 或上游 3D 模型输入。' }
+				return { ok: false, error: t('tasks.meshy.refineRequiresPreviewOrModel') }
 			}
 			if (family === 'retexture' && !payload.preview_task_id && !payload.model_url) {
-				return { ok: false, error: 'Retexture 阶段需要 Preview Task ID 或上游 3D 模型输入。' }
+				return { ok: false, error: t('tasks.meshy.retextureRequiresPreviewOrModel') }
 			}
 		} else if (family === 'text-to-image') {
-			if (!payload.prompt) return { ok: false, error: 'Text to Image 需要提示词。' }
+			if (!payload.prompt) return { ok: false, error: t('tasks.meshy.textToImageRequiresPrompt') }
 			if (generateMultiView && !!aspectRatio) {
-				return { ok: false, error: '开启多视图时，不能同时设置固定 aspect_ratio。' }
+				return { ok: false, error: t('tasks.meshy.multiViewNoAspectRatio') }
 			}
 		} else if (family === 'image-to-image') {
-			if (!payload.prompt) return { ok: false, error: 'Image to Image 需要提示词。' }
+			if (!payload.prompt) return { ok: false, error: t('tasks.meshy.imageToImageRequiresPrompt') }
 			const refUrls = payload.reference_image_urls ?? []
 			if (!refUrls.length) {
-				return { ok: false, error: 'Image to Image 至少需要 1 张参考图。' }
+				return { ok: false, error: t('tasks.meshy.imageToImageRequiresOneImage') }
 			}
 			if (refUrls.length > 5) {
 				payload.reference_image_urls = refUrls.slice(0, 5)
 			}
 		} else if (mode === 'image-to-3d') {
-			if (!payload.image_url) return { ok: false, error: 'Image to 3D 需要填写图片 URL。' }
+			if (!payload.image_url) return { ok: false, error: t('tasks.meshy.imageTo3dRequiresImageUrl') }
 		} else if (family === 'remesh' || family === 'uv-unwrap') {
 			if (!payload.preview_task_id && !payload.model_url) {
-				return { ok: false, error: `${family === 'remesh' ? 'Remesh' : 'UV Unwrap'} 阶段需要 Preview Task ID 或上游 3D 模型输入。` }
+				return { ok: false, error: t('tasks.meshy.remeshUvUnwrapRequiresPreviewOrModel', { stage: family === 'remesh' ? t('aiworkflow.runtime.modeRemesh') : t('aiworkflow.runtime.modeUvUnwrap') }) }
 			}
 		} else {
 			const imgUrls = payload.image_urls ?? []
 			if (!imgUrls.length) {
-				return { ok: false, error: 'Multi-Image to 3D 至少需要一张图片 URL。' }
+				return { ok: false, error: t('tasks.meshy.multiImageTo3dRequiresOneImage') }
 			}
 		}
 

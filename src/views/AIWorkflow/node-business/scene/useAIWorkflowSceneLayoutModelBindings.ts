@@ -6,6 +6,7 @@ import type {
 } from '../../../../aiworkflow/types'
 import type { SceneDecomposeInputItem } from './sceneDecomposeShared'
 import { isMeshyRemoteUrl } from '../meshy/useAIWorkflowMeshyAssets'
+import { t } from '../../../../i18n'
 
 export const SUPPORTED_MODEL_EXTENSIONS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
 
@@ -539,7 +540,7 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			const objectName = String(binding.objectName ?? objectId).trim()
 
 			if (!binding.connected) {
-				invalid.push({ binding, reason: `[${objectName}] 未连接模型节点` })
+				invalid.push({ binding, reason: t('aiworkflow.runtime.modelBindingNotConnected', { name: objectName }) })
 				continue
 			}
 
@@ -550,22 +551,22 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 
 			const anyPath = modelUrl || modelAssetUrl || modelSourcePath || modelAssetPath
 			if (!anyPath) {
-				invalid.push({ binding, reason: `[${objectName}] 已连接但未找到模型文件路径` })
+				invalid.push({ binding, reason: t('aiworkflow.runtime.modelBindingNoPath', { name: objectName }) })
 				continue
 			}
 
 			const finalPath = modelSourcePath || modelAssetPath || modelUrl || modelAssetUrl
 			const format = binding.modelFormat || detectModelFormatFromPath(finalPath)
 			if (!format) {
-				warnings.push(`[${objectName}] 无法识别模型格式，将按glb处理: ${finalPath}`)
+				warnings.push(t('aiworkflow.runtime.modelBindingUnknownFormat', { name: objectName, path: finalPath }))
 			} else if (!SUPPORTED_MODEL_EXTENSIONS.includes(`.${format}`)) {
-				warnings.push(`[${objectName}] 模型格式 ${format} 可能不受支持: ${finalPath}`)
+				warnings.push(t('aiworkflow.runtime.modelBindingUnsupportedFormat', { name: objectName, format, path: finalPath }))
 			}
 
 			const looksLikeHttp = /^https?:\/\//i.test(finalPath)
 			const looksLikeLocalFile = /[a-zA-Z]:[\\/]/.test(finalPath) || finalPath.startsWith('/')
 			if (!looksLikeHttp && !looksLikeLocalFile) {
-				warnings.push(`[${objectName}] 路径格式无法识别为URL或本地文件: ${finalPath}`)
+				warnings.push(t('aiworkflow.runtime.modelBindingUnrecognizedPath', { name: objectName, path: finalPath }))
 			}
 
 			valid.push(binding)

@@ -7,7 +7,7 @@
 					<path d="M9 9h6M9 15h6M9 12h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 				</svg>
 			</div>
-			<span class="agent-tools-title">工具</span>
+			<span class="agent-tools-title">{{ t('aichat.toolsPanel.title') }}</span>
 			<span class="agent-tools-count">{{ tools.length }}</span>
 		</div>
 		
@@ -57,7 +57,7 @@
 					<path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 					<path d="M9 9h6M9 15h6M9 12h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
 				</svg>
-				<span>暂无工具调用</span>
+				<span>{{ t('aichat.toolsPanel.empty') }}</span>
 			</div>
 		</div>
 		
@@ -77,17 +77,17 @@
 				</div>
 				
 				<div v-if="tool.args" class="agent-tool-detail-section">
-					<div class="agent-tool-detail-label">参数</div>
+					<div class="agent-tool-detail-label">{{ t('aichat.tools.params') }}</div>
 					<pre class="agent-tool-detail-code">{{ formatJson(tool.args) }}</pre>
 				</div>
 				
 				<div v-if="tool.result" class="agent-tool-detail-section">
-					<div class="agent-tool-detail-label">结果</div>
+					<div class="agent-tool-detail-label">{{ t('aichat.tools.result') }}</div>
 					<pre class="agent-tool-detail-code agent-tool-detail-code--result">{{ formatJson(tool.result) }}</pre>
 				</div>
 				
 				<div v-if="tool.error" class="agent-tool-detail-section">
-					<div class="agent-tool-detail-label">错误</div>
+					<div class="agent-tool-detail-label">{{ t('aichat.tools.errorInfo') }}</div>
 					<pre class="agent-tool-detail-code agent-tool-detail-code--error">{{ tool.error }}</pre>
 				</div>
 			</div>
@@ -97,6 +97,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 interface AgentTool {
 	id: string
@@ -124,10 +127,10 @@ const toggleTool = (id: string) => {
 
 const statusLabel = (status: string) => {
 	switch (status) {
-		case 'pending': return '等待中'
-		case 'running': return '执行中'
-		case 'completed': return '已完成'
-		case 'error': return '出错'
+		case 'pending': return t('aichat.tools.status.pending')
+		case 'running': return t('aichat.tools.status.running')
+		case 'completed': return t('aichat.tools.status.completed')
+		case 'error': return t('aichat.tools.status.failed')
 		default: return status
 	}
 }

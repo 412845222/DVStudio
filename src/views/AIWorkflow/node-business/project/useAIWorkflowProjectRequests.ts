@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { isElectron } from '../../../../electronBridge'
+import { t } from '../../../../i18n'
 
 export const useAIWorkflowProjectRequests = (payload: {
 	activeRecoverySession: Ref<unknown>
@@ -38,15 +39,15 @@ export const useAIWorkflowProjectRequests = (payload: {
 		const dweb = w.dweb as Record<string, unknown> | undefined
 		const bridge = dweb?.aiworkflow as Record<string, unknown> | undefined
 		if (!bridge || typeof bridge.selectProjectFolder !== 'function') {
-			return { ok: false as const, error: '当前运行环境不支持选择项目文件夹。' }
+			return { ok: false as const, error: t('aiworkflow.runtime.folderPickNotSupported') }
 		}
 		const result = await (bridge.selectProjectFolder as () => Promise<Record<string, unknown>>)()
 		const canceled = Boolean(result?.canceled)
 		if (canceled)
-			return { ok: false as const, canceled: true as const, error: '已取消选择文件夹。' }
+			return { ok: false as const, canceled: true as const, error: t('aiworkflow.runtime.folderPickCanceled') }
 		const filePaths = result.filePaths as unknown[] | undefined
 		const path = String(filePaths?.[0] || '').trim()
-		if (!path) return { ok: false as const, error: '未选择有效文件夹。' }
+		if (!path) return { ok: false as const, error: t('aiworkflow.runtime.folderPickInvalid') }
 		return { ok: true as const, path }
 	}
 
@@ -56,20 +57,20 @@ export const useAIWorkflowProjectRequests = (payload: {
 
 	const onRequestNewProject = async () => {
 		if (!isElectron()) {
-			payload.pushToast('新建项目需选择文件夹，仅支持桌面端。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.newProjectDesktopOnly'), 'warn')
 			return
 		}
 		if (payload.activeRecoverySession.value) {
-			payload.pushToast('资源恢复中，请稍候再新建项目。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.recoveryInProgressWait'), 'warn')
 			return
 		}
-		const ok = window.confirm('新建项目将清空当前蓝图未保存改动，是否继续？')
+		const ok = window.confirm(t('aiworkflow.runtime.newProjectConfirm'))
 		if (!ok) return
 
 		const picked = await pickProjectFolder()
 		if (!picked.ok) {
 			if (!('canceled' in picked && picked.canceled)) {
-				payload.pushToast(String(picked.error || '选择项目文件夹失败。'), 'warn')
+				payload.pushToast(String(picked.error || t('aiworkflow.toast.folderPickFailed')), 'warn')
 			}
 			return
 		}
@@ -89,43 +90,43 @@ export const useAIWorkflowProjectRequests = (payload: {
 		payload.comfyAnchorAssignments.clear()
 		payload.comfyAnchorLocalizedOutputs.clear()
 
-		const fallbackName = String(payload.currentProjectName.value || '').trim() || '未命名项目'
+		const fallbackName = String(payload.currentProjectName.value || '').trim() || t('aiworkflow.runtime.untitledProject')
 		const opened = await payload.blueprintProjectService.openProjectFolder({
 			rootPath: trimmedRoot,
 			name: fallbackName,
 			create: true
 		}) as { ok: boolean; error?: string; project?: { id?: number; name?: string } }
 		if (!opened?.ok) {
-			payload.pushToast(`新建项目失败：${String(opened?.error || 'unknown')}`, 'error')
+			payload.pushToast(t('aiworkflow.toast.projectCreateFailed', { error: String(opened?.error || 'unknown') }), 'error')
 			return
 		}
 
 		const project = opened.project ?? {}
 		const projectId = Number(project?.id || 0)
 		if (!Number.isFinite(projectId) || projectId <= 0) {
-			payload.pushToast('新建项目失败：返回项目ID无效。', 'error')
+			payload.pushToast(t('aiworkflow.runtime.newProjectInvalidId'), 'error')
 			return
 		}
 
 		const loaded = await payload.loadProjectById(projectId)
 		if (!loaded) {
-			payload.pushToast('项目已创建，但加载失败。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.projectCreatedButLoadFailed'), 'warn')
 			return
 		}
 
 		await payload.recoverComfyUIRunStates({ silent: true })
 		await payload.refreshProjectList()
-		payload.pushToast(`已新建项目：${String(project?.name || fallbackName)}`, 'info')
+		payload.pushToast(t('aiworkflow.toast.projectCreated', { name: String(project?.name || fallbackName) }), 'info')
 	}
 
 	const onRequestNewProjectFromPath = async (rootPath: string) => {
 		if (!String(rootPath || '').trim()) return
 		if (!isElectron()) {
-			payload.pushToast('新建项目需选择本地文件夹，当前运行环境不支持。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.newProjectLocalFolderOnly'), 'warn')
 			return
 		}
 		if (payload.activeRecoverySession.value) {
-			payload.pushToast('资源恢复中，请稍候再新建项目。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.recoveryInProgressWait'), 'warn')
 			return
 		}
 		await createProjectAtRootPath(rootPath)
@@ -147,7 +148,7 @@ export const useAIWorkflowProjectRequests = (payload: {
 
 		const res = await payload.blueprintProjectService.deleteProject(id) as { ok: boolean; error?: string }
 		if (!res.ok) {
-			payload.pushToast('删除项目失败：' + String(res.error || 'unknown'), 'error')
+			payload.pushToast(t('aiworkflow.runtime.deleteProjectFailed', { error: String(res.error || 'unknown') }), 'error')
 			return
 		}
 
@@ -156,12 +157,12 @@ export const useAIWorkflowProjectRequests = (payload: {
 		}
 
 		await payload.refreshProjectList()
-		payload.pushToast('项目已删除。', 'info')
+		payload.pushToast(t('aiworkflow.runtime.projectDeleted'), 'info')
 	}
 
 	const onRequestRepairProjectAssets = async () => {
 		if (payload.activeRecoverySession.value) {
-			payload.pushToast('资源恢复中，请稍候再执行修复。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.recoveryInProgressRepairWait'), 'warn')
 			return
 		}
 		await payload.repairProjectAssetsNow({ silent: false })

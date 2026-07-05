@@ -550,6 +550,9 @@ function getDefaultClientSettings() {
 		geminiModel: FIXED_GEMINI_MODEL,
 		bytedanceApiKey: '',
 		meshyApiKey: '',
+		ui: {
+			locale: '',
+		},
 	}
 }
 
@@ -563,13 +566,31 @@ function ensureClientResourceLayout() {
 	return { resourceDir: getDvsResourceDir(), settingsDir: getUserSettingsDir(), settingsFile: filePath }
 }
 
+function deepMergeSettings(target, source) {
+	if (!source || typeof source !== 'object') return target
+	const result = { ...target }
+	for (const key of Object.keys(source)) {
+		const sourceVal = source[key]
+		const targetVal = result[key]
+		if (
+			sourceVal && typeof sourceVal === 'object' && !Array.isArray(sourceVal) &&
+			targetVal && typeof targetVal === 'object' && !Array.isArray(targetVal)
+		) {
+			result[key] = deepMergeSettings(targetVal, sourceVal)
+		} else {
+			result[key] = sourceVal
+		}
+	}
+	return result
+}
+
 function loadClientSettings() {
 	const layout = ensureClientResourceLayout()
 	const defaults = getDefaultClientSettings()
 	try {
 		const raw = fs.readFileSync(layout.settingsFile, 'utf-8')
 		const parsed = JSON.parse(raw)
-		clientSettings = { ...defaults, ...(parsed || {}) }
+		clientSettings = deepMergeSettings(defaults, parsed || {})
 	} catch {
 		clientSettings = defaults
 		fs.writeFileSync(layout.settingsFile, JSON.stringify(clientSettings, null, 2), 'utf-8')
@@ -580,7 +601,7 @@ function loadClientSettings() {
 function saveClientSettings(next) {
 	const layout = ensureClientResourceLayout()
 	const defaults = getDefaultClientSettings()
-	clientSettings = { ...defaults, ...(clientSettings || {}), ...(next || {}) }
+	clientSettings = deepMergeSettings(deepMergeSettings(defaults, clientSettings || {}), next || {})
 	fs.writeFileSync(layout.settingsFile, JSON.stringify(clientSettings, null, 2), 'utf-8')
 	return { ...clientSettings }
 }

@@ -30,7 +30,7 @@
 	>
 		<template #body>
 			<div class="wf-merge" @pointerdown.stop>
-				<div class="wf-merge-label">整合后的文本（只读）</div>
+				<div class="wf-merge-label">{{ t('nodes.textMerge.mergedLabel') }}</div>
 				<textarea
 					v-if="hasRenderedText"
 					ref="viewportEl"
@@ -44,7 +44,7 @@
 					@keydown="onViewportKeyDown"
 				/>
 				<div v-else class="wf-merge-output wf-merge-placeholder" data-aiwf-text-selectable="true">
-					连接下方的文本输入后，这里会显示拼接结果…
+					{{ t('nodes.textMerge.placeholder') }}
 				</div>
 			</div>
 		</template>
@@ -52,8 +52,8 @@
 		<template #footer>
 			<div class="wf-merge-footer" @pointerdown.stop>
 				<div class="wf-merge-toolbar">
-					<div class="wf-merge-title">文本拼接</div>
-					<button class="wf-merge-add" type="button" @click="emit('add-merge-item')">添加</button>
+					<div class="wf-merge-title">{{ t('nodes.textMerge.title') }}</div>
+					<button class="wf-merge-add" type="button" @click="emit('add-merge-item')">{{ t('nodes.textMerge.add') }}</button>
 				</div>
 
 				<div class="wf-merge-list">
@@ -61,17 +61,17 @@
 						v-for="(it, idx) in mergeItems"
 						:key="it.id"
 						class="wf-merge-row"
-						:ref="(el: HTMLElement | null) => setRowEl(it.id, el)"
+						:ref="(el: any) => setRowEl(it.id, el as HTMLElement | null)"
 					>
 						<div class="wf-merge-row-left">
-							<div class="wf-merge-row-label">拼接 {{ idx + 1 }}</div>
+							<div class="wf-merge-row-label">{{ t('nodes.textMerge.itemLabel', { index: idx + 1 }) }}</div>
 						</div>
 
 						<div class="wf-merge-row-actions">
 							<button
 								class="wf-merge-action"
 								type="button"
-								title="上移"
+								:title="t('nodes.textMerge.moveUp')"
 								:disabled="idx === 0"
 								@click="emit('move-merge-item', { itemId: it.id, dir: 'up' })"
 							>
@@ -80,7 +80,7 @@
 							<button
 								class="wf-merge-action"
 								type="button"
-								title="下移"
+								:title="t('nodes.textMerge.moveDown')"
 								:disabled="idx === mergeItems.length - 1"
 								@click="emit('move-merge-item', { itemId: it.id, dir: 'down' })"
 							>
@@ -89,10 +89,10 @@
 							<button
 								class="wf-merge-action danger"
 								type="button"
-								title="删除"
+								:title="t('nodes.textMerge.delete')"
 								@click="emit('remove-merge-item', it.id)"
 							>
-								删除
+								{{ t('nodes.textMerge.delete') }}
 							</button>
 						</div>
 					</div>
@@ -104,13 +104,13 @@
 			#anchors="{ inputAnchors, outputAnchors, endLink, startLink, isInputHover, isOutputHover }"
 		>
 			<!-- 输入锚点：悬浮在节点左侧边框，对齐到 footer 列表行 -->
-			<div class="wf-merge-anchors-in" aria-label="入口锚点">
+			<div class="wf-merge-anchors-in" :aria-label="t('nodes.textMerge.entryAnchors')">
 				<div
 					v-for="(it, idx) in mergeItems"
 					:key="it.id"
 					class="wf-anchor-hit wf-anchor-text"
 					:class="{ hovered: isInputHover(anchorId(it.id)) }"
-					:title="`拼接 ${idx + 1}`"
+					:title="t('nodes.textMerge.itemLabel', { index: idx + 1 })"
 					:style="inputAnchorStyle(it.id)"
 					:data-wf-node-id="nodeId"
 					:data-wf-anchor-id="anchorId(it.id)"
@@ -130,7 +130,7 @@
 					:key="a.id"
 					class="wf-anchor-hit"
 					:class="[anchorClass(a), { hovered: isOutputHover(a.id) }]"
-					:title="a.label || '出口'"
+					:title="a.label || t('nodes.textMerge.exit')"
 					:style="anchorStyle(a)"
 					:data-wf-node-id="nodeId"
 					:data-wf-anchor-id="a.id"
@@ -149,6 +149,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string

@@ -9,23 +9,23 @@
 	>
 		<div class="ai-chat__title" @pointerdown.prevent="onTitlePointerDown">
 			<div class="ai-chat__title-left">
-				<span class="ai-chat__title-text">AI助手</span>
+				<span class="ai-chat__title-text">{{ t('aichat.dialog.title') }}</span>
 				<span v-if="sending" class="ai-chat__title-status">{{ taskStatusLabel }}</span>
 			</div>
 			<div class="ai-chat__title-actions">
 				<button
 					class="ai-chat__icon"
 					type="button"
-					:title="deepMode ? '深度思考模式：开' : '深度思考模式：关'"
+					:title="deepMode ? t('aichat.dialog.deepModeOn') : t('aichat.dialog.deepModeOff')"
 					@click="toggleDeepMode"
 				>
-					{{ deepMode ? '深' : '浅' }}
+					{{ deepMode ? t('aichat.dialog.deepModeShortOn') : t('aichat.dialog.deepModeShortOff') }}
 				</button>
-				<button v-if="sending" class="ai-chat__icon" type="button" title="停止" @click="stopTask">
+				<button v-if="sending" class="ai-chat__icon" type="button" :title="t('common.stop')" @click="stopTask">
 					⏹
 				</button>
-				<button class="ai-chat__icon" type="button" title="最小化" @click="onMinimize">—</button>
-				<button class="ai-chat__icon" type="button" title="关闭" @click="onClose">×</button>
+				<button class="ai-chat__icon" type="button" :title="t('aichat.dialog.minimize')" @click="onMinimize">—</button>
+			<button class="ai-chat__icon" type="button" :title="t('common.close')" @click="onClose">×</button>
 			</div>
 		</div>
 		<div
@@ -43,7 +43,7 @@
 
 		<div class="ai-chat__controls">
 			<label class="ai-chat__control">
-				<span class="ai-chat__control-label">来源</span>
+				<span class="ai-chat__control-label">{{ t('aichat.dialog.sourceLabel') }}</span>
 				<select v-model="modelApiSource" class="ai-chat__select" :disabled="sending">
 					<option v-for="source in textApiSourceOptions" :key="source.value" :value="source.value">
 						{{ source.label }}
@@ -51,13 +51,13 @@
 				</select>
 			</label>
 			<label class="ai-chat__control ai-chat__control--grow">
-				<span class="ai-chat__control-label">模型</span>
+				<span class="ai-chat__control-label">{{ t('aichat.dialog.modelLabel') }}</span>
 				<select
 					v-model="textModelId"
 					class="ai-chat__select"
 					:disabled="sending || !textModelOptions.length"
 				>
-					<option v-if="!textModelOptions.length" value="">当前组合暂无模型</option>
+					<option v-if="!textModelOptions.length" value="">{{ t('aichat.dialog.noModelAvailable') }}</option>
 					<option v-for="model in textModelOptions" :key="model.id" :value="model.id">
 						{{ model.label }}
 					</option>
@@ -69,12 +69,12 @@
 			<div ref="listRef" class="ai-chat__list" @scroll.passive="onListScroll">
 				<div v-for="m in messages" :key="m.id" class="ai-chat__msg" :class="[m.role]">
 					<div class="ai-chat__bubble">
-						<div class="ai-chat__role">{{ m.role === 'user' ? '我' : 'AI' }}</div>
+						<div class="ai-chat__role">{{ m.role === 'user' ? t('aichat.dialog.roleUser') : t('aichat.dialog.roleAi') }}</div>
 						<div class="ai-chat__text">{{ m.text }}</div>
 						<div v-if="isRunning(m) && taskStatusLabel" class="ai-chat__phase">
 							{{ taskStatusLabel }}
 						</div>
-						<div v-if="isRunning(m)" class="ai-chat__typing" aria-label="AI 正在处理">
+						<div v-if="isRunning(m)" class="ai-chat__typing" :aria-label="t('aichat.dialog.aiProcessing')">
 							<span class="ai-chat__dot" />
 							<span class="ai-chat__dot" />
 							<span class="ai-chat__dot" />
@@ -87,7 +87,7 @@
 								:disabled="sending"
 								@click="onClickGenerateAnimation(m)"
 							>
-								生成动画
+								{{ t('aichat.dialog.generateAnimation') }}
 							</button>
 							<button
 								v-if="m.scenePlanJson"
@@ -96,7 +96,7 @@
 								:disabled="sending"
 								@click="copyScenePlanJson(m)"
 							>
-								复制场景计划JSON
+								{{ t('aichat.dialog.copyScenePlanJson') }}
 							</button>
 							<button
 								v-if="showStageActions(m)"
@@ -105,7 +105,7 @@
 								:disabled="sending"
 								@click="(e: MouseEvent) => saveToComponentLibrary(m, e)"
 							>
-								保存到组件库
+								{{ t('aichat.dialog.saveToLibrary') }}
 							</button>
 							<button
 								v-if="showStageActions(m)"
@@ -114,7 +114,7 @@
 								:disabled="sending"
 								@click="regenerateLast"
 							>
-								重新生成
+								{{ t('aichat.dialog.regenerate') }}
 							</button>
 							<button
 								v-if="showStageActions(m)"
@@ -123,7 +123,7 @@
 								:disabled="sending"
 								@click="undoStage"
 							>
-								撤回
+								{{ t('aichat.dialog.undo') }}
 							</button>
 						</div>
 					</div>
@@ -136,17 +136,17 @@
 				v-model="draft"
 				class="ai-chat__text-input"
 				type="text"
-				placeholder="输入问题..."
+				:placeholder="t('aichat.dialog.inputPlaceholder')"
 				:disabled="sending"
 				@keydown.enter.exact.prevent="send"
 			/>
-			<button class="ai-chat__send" type="submit" :disabled="!canSend">发送</button>
+			<button class="ai-chat__send" type="submit" :disabled="!canSend">{{ t('aichat.dialog.send') }}</button>
 		</form>
 
-		<div class="ai-chat__thought" :class="{ open: thoughtOpen }" aria-label="思考面板">
+		<div class="ai-chat__thought" :class="{ open: thoughtOpen }" :aria-label="t('aichat.dialog.thoughtPanel')">
 			<div class="ai-chat__thought-head">
-				<div class="ai-chat__thought-title">思考</div>
-				<button class="ai-chat__thought-close" type="button" title="关闭思考" @click="closeThought">
+				<div class="ai-chat__thought-title">{{ t('aichat.dialog.thoughtTitle') }}</div>
+				<button class="ai-chat__thought-close" type="button" :title="t('aichat.dialog.closeThought')" @click="closeThought">
 					×
 				</button>
 			</div>
@@ -200,6 +200,7 @@ import {
 	isNull
 } from '../../types/utils'
 import type { JsonValue } from '../../core/shared/json'
+import { useI18n } from '../../i18n'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -253,6 +254,7 @@ const props = defineProps<{
 	anchor?: { x: number; y: number } | null
 }>()
 const emit = defineEmits<{ 'update:open': [boolean]; 'update:minimized': [boolean] }>()
+const { t } = useI18n()
 
 const store = useStore<VideoSceneState>(VideoSceneKey)
 
@@ -375,7 +377,7 @@ const messages = ref<ChatMessage[]>([
 	{
 		id: 'm0',
 		role: 'assistant',
-		text: '你好，我是 VideoStudio AI 助手。你可以描述要生成的 WebGL 视频界面与预设动画。',
+		text: t('aichat.dialog.welcomeMessage'),
 		at: Date.now()
 	}
 ])
@@ -513,16 +515,16 @@ const taskPhase = ref<TaskPhase>('idle')
 const taskPhaseMessage = ref<string>('')
 
 const taskStatusLabel = computed(() => {
-	if (stoppedByUser.value) return '已停止'
+	if (stoppedByUser.value) return t('aichat.stages.stopped')
 	if (!sending.value) return ''
 	if (typeof taskPhaseMessage.value === 'string' && taskPhaseMessage.value.trim())
 		return taskPhaseMessage.value.trim()
 	const p = taskPhase.value
-	if (p === 'started') return '已开始…'
-	if (p === 'streaming') return '连接模型…'
-	if (p === 'writing') return '生成说明…'
-	if (p === 'template') return '生成组件…'
-	return '任务进行中…'
+	if (p === 'started') return t('aichat.stages.started')
+	if (p === 'streaming') return t('aichat.stages.connecting')
+	if (p === 'writing') return t('aichat.stages.generating')
+	if (p === 'template') return t('aichat.stages.templating')
+	return t('aichat.stages.inProgress')
 })
 
 const lastUserText = ref<string>('')
@@ -637,7 +639,7 @@ const applyFilterToSelection = async (
 		: store.state.selectedNodeId
 			? [store.state.selectedNodeId]
 			: []
-	if (!selectedIds.length) throw new Error('当前没有选中节点')
+	if (!selectedIds.length) throw new Error(t('aichat.errors.noSelectedNodes'))
 	for (const nodeId of selectedIds) {
 		const node = findNode(layer.nodeTree, nodeId)
 		if (!node || node.category !== 'user') continue
@@ -696,7 +698,7 @@ const applyFilterToNodeId = async (
 		}
 	}
 
-	throw new Error(`未找到节点：${nodeId}`)
+	throw new Error(t('aichat.errors.nodeNotFound', { nodeId }))
 }
 
 type TreeNodeLike = {
@@ -842,7 +844,7 @@ const toComponentTemplateLike = (
 	return {
 		schemaVersion: 1,
 		templateId: `ai_${Date.now()}`,
-		name: isString(objRecord.name) ? objRecord.name : 'AI生成节点',
+		name: isString(objRecord.name) ? objRecord.name : t('aichat.dialog.aiNodeName'),
 		params: [],
 		nodes: [
 			{
@@ -1254,18 +1256,18 @@ const sendText = async (text: string) => {
 							const ft = String(filter.type ?? '')
 							const targetLabel =
 								payload.target === 'nodeId' && isString(payload.nodeId)
-									? `节点 ${payload.nodeId}`
-									: '选中节点'
+									? t('aichat.dialog.targetNode', { nodeId: payload.nodeId })
+									: t('aichat.dialog.targetSelection')
 							messages.value[idx].text =
 								(messages.value[idx].text || '') +
-								`\n\n已为${targetLabel}应用滤镜：${ft || 'filter'}。`
+								'\n\n' + t('aichat.messages.appliedFilter', { target: targetLabel, filter: ft || 'filter' })
 						}
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0)
 							messages.value[idx].text =
 								(messages.value[idx].text || '') +
-								`\n\n滤镜应用失败：${err instanceof Error ? err.message : String(err)}`
+								'\n\n' + t('aichat.errors.filterFailed', { error: err instanceof Error ? err.message : String(err) })
 					}
 					continue
 				}
@@ -1372,15 +1374,19 @@ const sendText = async (text: string) => {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) {
 							messages.value[idx].hasStageResult = true
+							const parts = ['insertNode']
+							if (finalParentId !== undefined) parts.push(`parentId=${String(finalParentId)}`)
+							if (finalLayerId) parts.push(`layerId=${finalLayerId}`)
+							const details = parts.join(', ')
 							messages.value[idx].text =
 								(messages.value[idx].text || '') +
-								`\n\n已插入舞台节点（insertNode${finalParentId !== undefined ? `, parentId=${String(finalParentId)}` : ''}${finalLayerId ? `, layerId=${finalLayerId}` : ''}）。`
+								'\n\n' + t('aichat.messages.insertedNodeWithParent', { details })
 						}
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0)
 							messages.value[idx].text =
-								`节点插入失败：${err instanceof Error ? err.message : String(err)}`
+								t('aichat.errors.nodeInsertFailed', { error: err instanceof Error ? err.message : String(err) })
 					}
 					continue
 				}
@@ -1407,13 +1413,13 @@ const sendText = async (text: string) => {
 						if (idx >= 0) {
 							messages.value[idx].hasStageResult = true
 							messages.value[idx].text =
-								(messages.value[idx].text || '') + `\n\n已修改节点：${nodeId}。`
+								(messages.value[idx].text || '') + '\n\n' + t('aichat.messages.modifiedNode', { nodeId })
 						}
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0)
 							messages.value[idx].text =
-								`节点修改失败：${err instanceof Error ? err.message : String(err)}`
+								t('aichat.errors.nodeModifyFailed', { error: err instanceof Error ? err.message : String(err) })
 					}
 					continue
 				}
@@ -1441,13 +1447,13 @@ const sendText = async (text: string) => {
 						if (idx >= 0) {
 							messages.value[idx].hasStageResult = true
 							messages.value[idx].text =
-								(messages.value[idx].text || '') + `\n\n已删除节点：${uniq.join(', ')}。`
+								(messages.value[idx].text || '') + '\n\n' + t('aichat.messages.deletedNodes', { nodes: uniq.join(', ') })
 						}
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0)
 							messages.value[idx].text =
-								`节点删除失败：${err instanceof Error ? err.message : String(err)}`
+								t('aichat.errors.nodeDeleteFailed', { error: err instanceof Error ? err.message : String(err) })
 					}
 					continue
 				}
@@ -1465,7 +1471,7 @@ const sendText = async (text: string) => {
 					const summary =
 						isString(payload.summary) && payload.summary.trim()
 							? payload.summary.trim()
-							: '已生成一份 VideoScene 场景计划 JSON，可用于后续动画编译。'
+							: t('aichat.messages.generatedScenePlan')
 					let scenePlanJson = ''
 					try {
 						scenePlanJson = JSON.stringify(payload.plan ?? null, null, 2)
@@ -1487,7 +1493,7 @@ const sendText = async (text: string) => {
 					stopTyping()
 					const idx = messages.value.findIndex((x) => x.id === assistantId)
 					if (idx >= 0)
-						messages.value[idx].text = `后端错误：${m.payload.code} ${m.payload.message}`
+						messages.value[idx].text = t('aichat.errors.backendError', { code: m.payload.code, message: m.payload.message })
 					break
 				}
 				if (m.type === 'agentToUi/componentTemplate') {
@@ -1592,16 +1598,20 @@ const sendText = async (text: string) => {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0) {
 							messages.value[idx].hasStageResult = true
+							const parts = [`intent=${payload.intent ?? 'insert'}`]
+							if (finalParentId !== undefined) parts.push(`parentId=${String(finalParentId)}`)
+							if (finalLayerId) parts.push(`layerId=${finalLayerId}`)
+							const details = parts.join(', ')
 							messages.value[idx].text =
 								(messages.value[idx].text || '') +
-								`\n\n已插入舞台节点（intent=${payload.intent ?? 'insert'}${finalParentId !== undefined ? `, parentId=${String(finalParentId)}` : ''}${finalLayerId ? `, layerId=${finalLayerId}` : ''}）。`
+								'\n\n' + t('aichat.messages.insertedNodeWithParent', { details })
 						}
 						updateScenePlanReadyHint(assistantId)
 					} catch (err) {
 						const idx = messages.value.findIndex((x) => x.id === assistantId)
 						if (idx >= 0)
 							messages.value[idx].text =
-								`模板插入失败：${err instanceof Error ? err.message : String(err)}`
+								t('aichat.errors.templateInsertFailed', { error: err instanceof Error ? err.message : String(err) })
 					}
 					continue
 				}
@@ -1610,7 +1620,7 @@ const sendText = async (text: string) => {
 				if (stoppedByUser.value) break
 				stopTyping()
 				const idx = messages.value.findIndex((x) => x.id === assistantId)
-				if (idx >= 0) messages.value[idx].text = `请求失败：${ev.error.message}`
+				if (idx >= 0) messages.value[idx].text = t('aichat.errors.requestFailed', { message: ev.error.message })
 				break
 			}
 			if (ev.type === 'done') break
@@ -1622,10 +1632,10 @@ const sendText = async (text: string) => {
 				lastStageOps.value.insertedNodeIds.length > 0 || lastStageOps.value.filters.length > 0
 			if (didMutateStage) {
 				selfCheckActive.value = true
-				// 不新增“思考/自检”气泡，避免与流式反馈重复；复用主 assistant 消息。
+				// 不新增"思考/自检"气泡，避免与流式反馈重复；复用主 assistant 消息。
 				taskPhase.value = 'writing'
-				taskPhaseMessage.value = '自检中…'
-				thoughtText.value = '自检中…'
+				taskPhaseMessage.value = t('aichat.stages.selfChecking')
+				thoughtText.value = t('aichat.stages.selfChecking')
 				if (!thoughtDismissed.value) thoughtOpen.value = true
 				for await (const ev2 of aiChatService.streamMessage({
 					conversationId: conversationId.value,
@@ -1830,7 +1840,7 @@ const sendText = async (text: string) => {
 							if (idx >= 0)
 								messages.value[idx].text =
 									(messages.value[idx].text || '') +
-									`\n\n自检失败：${m2.payload.code} ${m2.payload.message}`
+									'\n\n' + t('aichat.errors.selfCheckFailed', { code: m2.payload.code, message: m2.payload.message })
 							break
 						}
 					}
@@ -1969,7 +1979,7 @@ const updateScenePlanReadyHint = (assistantId: string) => {
 	if (!canGenerateScenePlanAnimation(message)) return
 	appendUniqueMessageNote(
 		message,
-		'场景计划已就绪，点击“生成动画”可在当前静态布局基础上写入关键帧。'
+		t('aichat.messages.scenePlanReady')
 	)
 }
 
@@ -1984,7 +1994,7 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 	)
 	if (!insertedNodeIds.length) {
 		message.scenePlanApplyStatus = 'skipped'
-		appendUniqueMessageNote(message, '动画生成失败：未找到本次生成的节点。')
+		appendUniqueMessageNote(message, t('aichat.errors.animationNoNodes'))
 		return
 	}
 
@@ -1997,7 +2007,7 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 		message.scenePlanApplyStatus = 'skipped'
 		appendUniqueMessageNote(
 			message,
-			'动画生成失败：本次生成的节点分布在多个图层，暂不支持一键编译。'
+			t('aichat.errors.animationMultiLayer')
 		)
 		return
 	}
@@ -2007,7 +2017,7 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 		message.scenePlanApplyStatus = 'skipped'
 		appendUniqueMessageNote(
 			message,
-			'动画生成失败：目标图层已有时间轴数据，为避免覆盖现有关键帧，本次仅保留场景计划 JSON。'
+			t('aichat.errors.animationTimelineExists')
 		)
 		return
 	}
@@ -2015,7 +2025,7 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 	const layer = findLayer(store.state, layerId)
 	if (!layer) {
 		message.scenePlanApplyStatus = 'skipped'
-		appendUniqueMessageNote(message, '动画生成失败：找不到目标图层。')
+		appendUniqueMessageNote(message, t('aichat.errors.animationNoLayer'))
 		return
 	}
 
@@ -2027,7 +2037,7 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 	})
 	if (!compiled || !compiled.appliedPlanCount) {
 		message.scenePlanApplyStatus = 'skipped'
-		appendUniqueMessageNote(message, '动画生成失败：未找到可匹配的动画目标节点。')
+		appendUniqueMessageNote(message, t('aichat.errors.animationNoTarget'))
 		return
 	}
 
@@ -2064,7 +2074,7 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 	message.hasStageResult = true
 	appendUniqueMessageNote(
 		message,
-		`已生成预设动画：${compiled.appliedPlanCount} 条计划，作用于 ${compiled.appliedTargetNodeIds.length} 个节点。`
+		t('aichat.messages.animationGenerated', { count: compiled.appliedPlanCount, nodeCount: compiled.appliedTargetNodeIds.length })
 	)
 }
 
@@ -2148,7 +2158,7 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		const idsRaw = m.stageOps?.insertedNodeIds ?? []
 		const ids = Array.from(new Set(idsRaw.map((x) => String(x || '').trim()).filter(Boolean)))
 		if (!ids.length) {
-			m.text = (m.text || '') + '\n\n保存失败：未找到本次生成的节点。'
+			m.text = (m.text || '') + '\n\n' + t('aichat.errors.saveNoNodes')
 			return
 		}
 
@@ -2160,13 +2170,13 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 			)
 		)
 		if (layerIds.length !== 1) {
-			m.text = (m.text || '') + '\n\n保存失败：本次生成的节点跨多个图层，暂不支持一键保存。'
+			m.text = (m.text || '') + '\n\n' + t('aichat.errors.saveMultiLayer')
 			return
 		}
 		const layerId = layerIds[0]
 		const layer = findLayer(store.state, layerId)
 		if (!layer) {
-			m.text = (m.text || '') + '\n\n保存失败：找不到目标图层。'
+			m.text = (m.text || '') + '\n\n' + t('aichat.errors.saveNoLayer')
 			return
 		}
 
@@ -2316,9 +2326,9 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		window.dispatchEvent(
 			new CustomEvent('dvs:componentLibrary/refresh', { detail: { templateId } })
 		)
-		m.text = (m.text || '') + `\n\n已保存到组件库：${name}`
+		m.text = (m.text || '') + '\n\n' + t('aichat.messages.savedToLibrary', { name })
 	} catch (e) {
-		m.text = (m.text || '') + `\n\n保存失败：${e instanceof Error ? e.message : String(e)}`
+		m.text = (m.text || '') + '\n\n' + t('aichat.errors.saveFailed', { error: e instanceof Error ? e.message : String(e) })
 	}
 }
 
@@ -2327,9 +2337,9 @@ const copyScenePlanJson = async (m: ChatMessage) => {
 	if (!text) return
 	try {
 		await navigator.clipboard.writeText(text)
-		m.text = (m.text || '') + '\n\n场景计划 JSON 已复制到剪贴板。'
+		m.text = (m.text || '') + '\n\n' + t('aichat.messages.jsonCopied')
 	} catch {
-		m.text = (m.text || '') + '\n\n场景计划 JSON 复制失败，请检查浏览器剪贴板权限。'
+		m.text = (m.text || '') + '\n\n' + t('aichat.errors.jsonCopyFailed')
 	}
 }
 

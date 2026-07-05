@@ -1,4 +1,5 @@
 import { getErrorMessage, isRecord } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type {
 	SceneUnderstandModelsResponse,
 	SceneLightingModelsResponse,
@@ -195,8 +196,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			nodeId,
 			sceneUnderstandingSettings: {
 				status: 'idle',
-				message: '等待运行场景理解。',
-				statusText: '状态已重置，可重新发起场景理解。',
+				message: t('aiworkflow.runtime.understandingWaitRun'),
+				statusText: t('aiworkflow.runtime.understandingResetStatus'),
 				progress: 0,
 				provider: undefined,
 				providerStatusText: undefined,
@@ -223,8 +224,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			nodeId,
 			sceneUnderstandingSettings: {
 				status: 'canceled',
-				message: '已终止当前场景理解请求。',
-				statusText: 'SSE 请求已终止，可重新运行。',
+				message: t('aiworkflow.runtime.understandingCanceledMessage'),
+				statusText: t('aiworkflow.runtime.understandingCanceledStatus'),
 				progress: 0,
 				reasoningText: ''
 			}
@@ -235,32 +236,32 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		const normalized = String(phase || '')
 			.trim()
 			.toLowerCase()
-		if (normalized === 'start') return { progress: 5, statusText: message || '任务已启动。' }
-		if (normalized === 'started') return { progress: 8, statusText: message || '场景理解已开始。' }
+		if (normalized === 'start') return { progress: 5, statusText: message || t('aiworkflow.runtime.understandingPhaseStart') }
+		if (normalized === 'started') return { progress: 8, statusText: message || t('aiworkflow.runtime.understandingPhaseStarted') }
 		if (normalized === 'prepare_input')
-			return { progress: 15, statusText: message || '正在规范化输入图片。' }
+			return { progress: 15, statusText: message || t('aiworkflow.runtime.understandingPhasePrepareInput') }
 		if (normalized === 'connect')
-			return { progress: 25, statusText: message || '正在连接模型服务。' }
+			return { progress: 25, statusText: message || t('aiworkflow.runtime.understandingPhaseConnect') }
 		if (normalized === 'submit')
-			return { progress: 35, statusText: message || '已提交请求，等待远端服务接收。' }
+			return { progress: 35, statusText: message || t('aiworkflow.runtime.understandingPhaseSubmit') }
 		if (normalized === 'thinking')
-			return { progress: 40, statusText: message || '模型正在深度思考分析图片...' }
+			return { progress: 40, statusText: message || t('aiworkflow.runtime.understandingPhaseThinking') }
 		if (normalized === 'writing')
-			return { progress: 72, statusText: message || '思考完成，正在输出结构化JSON...' }
+			return { progress: 72, statusText: message || t('aiworkflow.runtime.understandingPhaseWriting') }
 		if (normalized === 'streaming') {
 			const estimatedProgress = Math.min(80, 78 + Math.min(12, Math.floor(contentLength / 200)))
-			return { progress: estimatedProgress, statusText: message || '远端服务正在生成内容...' }
+			return { progress: estimatedProgress, statusText: message || t('aiworkflow.runtime.understandingPhaseStreaming') }
 		}
 		if (normalized === 'continue')
-			return { progress: 85, statusText: message || '输出较长，正在续写后续内容...' }
+			return { progress: 85, statusText: message || t('aiworkflow.runtime.understandingPhaseContinue') }
 		if (normalized === 'parse')
-			return { progress: 90, statusText: message || '正在解析远端返回 JSON。' }
+			return { progress: 90, statusText: message || t('aiworkflow.runtime.understandingPhaseParse') }
 		if (normalized === 'rewrite')
-			return { progress: 80, statusText: message || '正在请求模型紧凑重写 JSON。' }
-		if (normalized === 'done') return { progress: 100, statusText: message || '场景理解完成。' }
-		if (normalized === 'canceled') return { progress: 0, statusText: message || '场景理解已终止。' }
-		if (normalized === 'error') return { progress: 100, statusText: message || '场景理解失败。' }
-		return { progress: 40, statusText: message || '正在等待远端服务响应。' }
+			return { progress: 80, statusText: message || t('aiworkflow.runtime.understandingPhaseRewrite') }
+		if (normalized === 'done') return { progress: 100, statusText: message || t('aiworkflow.runtime.understandingPhaseDone') }
+		if (normalized === 'canceled') return { progress: 0, statusText: message || t('aiworkflow.runtime.understandingPhaseCanceledStatus') }
+		if (normalized === 'error') return { progress: 100, statusText: message || t('aiworkflow.runtime.understandingPhaseError') }
+		return { progress: 40, statusText: message || t('aiworkflow.runtime.understandingPhaseWaiting') }
 	}
 
 	const onNodeSceneUnderstandingSettingsUpdate = (nodeId: string, payload: Record<string, unknown>) => {
@@ -294,7 +295,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			nodeId,
 			sceneUnderstandingSettings: {
 				status: 'loading-models',
-				message: mode === 'scene-lighting' ? '正在加载灯光理解模型列表…' : '正在加载模型列表…'
+				message: t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingLoadingLightingModels' : 'aiworkflow.runtime.understandingLoadingModels')
 			}
 		})
 		try {
@@ -305,9 +306,9 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			if (!res.ok) {
 				options.store.commit('setNodeSceneUnderstandingSettings', {
 					nodeId,
-					sceneUnderstandingSettings: { status: 'error', message: res.error || '读取模型列表失败' }
+					sceneUnderstandingSettings: { status: 'error', message: res.error || t('aiworkflow.runtime.understandingLoadModelsFailed') }
 				})
-				options.pushToast(`场景理解模型列表读取失败：${res.error || 'unknown'}`, 'warn')
+				options.pushToast(t('aiworkflow.toast.sceneModelListFailed', { error: String(res.error || 'unknown') }), 'warn')
 				return
 			}
 			const models = Array.isArray(res.models) ? res.models : []
@@ -322,12 +323,12 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							''
 					).trim(),
 					status: 'idle',
-					message: models.length ? `已加载 ${models.length} 个模型。` : '当前没有可用模型。',
+					message: models.length ? t('aiworkflow.runtime.understandingLoadedModels', { count: String(models.length) }) : t('aiworkflow.runtime.understandingNoModelsAvailable'),
 					statusText: models.length
 						? mode === 'scene-lighting'
-							? '灯光理解模型列表已刷新。'
-							: '模型列表已刷新，可直接发起场景理解。'
-						: '未发现可用模型。'
+							? t('aiworkflow.runtime.understandingLightingModelsRefreshed')
+							: t('aiworkflow.runtime.understandingModelsRefreshed')
+						: t('aiworkflow.runtime.understandingNoModelsFound')
 				}
 			})
 		} catch (err: unknown) {
@@ -336,7 +337,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				nodeId,
 				sceneUnderstandingSettings: { status: 'error', message }
 			})
-			options.pushToast(`场景理解模型列表读取失败：${message}`, 'warn')
+			options.pushToast(t('aiworkflow.toast.sceneModelListFailed', { error: message }), 'warn')
 		}
 	}
 
@@ -360,18 +361,18 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		).trim()
 		if (!imageUrl) {
 			options.pushToast(
-				mode === 'scene-lighting' ? '场景灯光理解节点缺少图片输入。' : '场景理解节点缺少图片输入。',
+				t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingLightingMissingImage' : 'aiworkflow.runtime.understandingMissingImage'),
 				'warn'
 			)
 			return
 		}
 		if (mode === 'scene-lighting' && !layoutJson) {
-			options.pushToast('场景灯光理解需要布局 JSON，请先运行场景理解或连接外部布局 JSON 输入。', 'warn')
+			options.pushToast(t('aiworkflow.runtime.understandingLightingNeedsJson'), 'warn')
 			return
 		}
 		if (!model) {
 			options.pushToast(
-				mode === 'scene-lighting' ? '请先选择灯光理解模型。' : '请先选择场景理解模型。',
+				t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingSelectLightingModel' : 'aiworkflow.runtime.understandingSelectModel'),
 				'warn'
 			)
 			return
@@ -381,14 +382,14 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			nodeId,
 			sceneUnderstandingSettings: {
 				status: 'running',
-				message: mode === 'scene-lighting' ? '正在调用场景灯光理解技能…' : '正在调用场景理解技能…',
+				message: t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingRunningLighting' : 'aiworkflow.runtime.understandingRunning'),
 				statusText:
 					mode === 'scene-lighting'
-						? '准备上传参考图和布局 JSON 并请求远端服务…'
-						: '准备上传输入图片并请求远端服务…',
+						? t('aiworkflow.runtime.understandingPreparingLighting')
+						: t('aiworkflow.runtime.understandingPreparing'),
 				progress: 4,
 				provider: 'volcengine-ark',
-				providerStatusText: '请求尚未发送',
+				providerStatusText: t('aiworkflow.runtime.understandingRequestNotSent'),
 				remoteStatusCode: undefined,
 				outputJson: '',
 				rawOutput: '',
@@ -426,9 +427,9 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			if (!normalizedImageInputs.length) {
 				options.store.commit('setNodeSceneUnderstandingSettings', {
 					nodeId,
-					sceneUnderstandingSettings: { status: 'error', message: '场景理解输入图片无效。' }
+					sceneUnderstandingSettings: { status: 'error', message: t('aiworkflow.runtime.understandingInvalidImage') }
 				})
-				options.pushToast('场景理解输入图片无效。', 'warn')
+				options.pushToast(t('aiworkflow.runtime.understandingInvalidImage'), 'warn')
 				return
 			}
 			const firstImage = normalizedImageInputs[0]
@@ -464,17 +465,18 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			for await (const ev of stream) {
 				if (ev.type === 'done') break
 				if (ev.type === 'error') {
+					const errorMsg = ev.error.message || 'unknown'
 					options.store.commit('setNodeSceneUnderstandingSettings', {
 						nodeId,
 						sceneUnderstandingSettings: {
 							status: 'error',
-							message: ev.error.message || '场景理解失败',
-							statusText: 'SSE 事件解析失败。',
+							message: ev.error.message || t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingPhaseLightingError' : 'aiworkflow.runtime.understandingPhaseError'),
+							statusText: t('aiworkflow.runtime.understandingSseParseFailed'),
 							progress: 100
 						}
 					})
 					options.pushToast(
-						`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${ev.error.message || 'unknown'}`,
+						t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingFailedWithError' : 'aiworkflow.runtime.understandingFailedWithError', { error: errorMsg }),
 						'warn'
 					)
 					break
@@ -541,11 +543,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 										: phase === 'canceled'
 											? 'canceled'
 											: 'running',
-							message: phaseMessage || '正在等待远端服务响应…',
+							message: phaseMessage || t('aiworkflow.runtime.understandingProcessing'),
 							statusText: nextState.statusText,
 							progress: nextState.progress,
 							provider: 'volcengine-ark',
-							providerStatusText: phaseMessage || '远端服务处理中',
+							providerStatusText: phaseMessage || t('aiworkflow.runtime.understandingProcessing'),
 							...(resetDraft ? { outputJson: '', rawOutput: '' } : {})
 						}
 					})
@@ -558,15 +560,16 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					const payloadErr = msg.payload as Record<string, unknown>
 					const details = isRecord(payloadErr.details) ? payloadErr.details : ({} as Record<string, unknown>)
 					const settings = getNodeSceneUnderstandingSettings(nodeId)
+					const errorMsg = String(payloadErr.message ?? 'unknown')
 					options.store.commit('setNodeSceneUnderstandingSettings', {
 						nodeId,
 						sceneUnderstandingSettings: {
 							status: 'error',
-							message: typeof payloadErr.message === 'string' ? payloadErr.message : '场景理解失败',
+							message: typeof payloadErr.message === 'string' ? payloadErr.message : t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingPhaseLightingError' : 'aiworkflow.runtime.understandingPhaseError'),
 							statusText: String(
 								typeof details.providerStatusText === 'string'
 									? details.providerStatusText
-									: payloadErr.message ?? '远端服务返回错误'
+									: payloadErr.message ?? t('aiworkflow.runtime.understandingRemoteError')
 							),
 							progress: 100,
 							provider: typeof details.provider === 'string' ? details.provider : 'volcengine-ark',
@@ -583,7 +586,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 						}
 					})
 					options.pushToast(
-						`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${String(payloadErr.message ?? 'unknown')}`,
+						t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingFailedWithError' : 'aiworkflow.runtime.understandingFailedWithError', { error: errorMsg }),
 						'warn'
 					)
 					break
@@ -596,6 +599,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 						const payloadRaw = msg.payload as Record<string, unknown>
 						const contentStr = typeof payloadRaw.content === 'string' ? payloadRaw.content : '{}'
 						const payloadResult = JSON.parse(contentStr) as Record<string, unknown>
+						const isMock = payloadResult.mock === true
 						options.store.commit('setNodeSceneUnderstandingSettings', {
 							nodeId,
 							sceneUnderstandingSettings: {
@@ -603,11 +607,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 								message:
 									typeof payloadResult.summary === 'string'
 										? payloadResult.summary
-										: '场景理解完成。',
+										: t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingLightingCompleted' : 'aiworkflow.runtime.understandingCompleted'),
 								statusText:
 									typeof payloadResult.providerStatusText === 'string'
 										? payloadResult.providerStatusText
-										: '远端服务已返回结果。',
+										: t('aiworkflow.runtime.understandingResultReady'),
 								progress: 100,
 								outputJson:
 									typeof payloadResult.outputJson === 'string' ? payloadResult.outputJson : '',
@@ -631,11 +635,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 								rewriteAttempts: Number.isFinite(Number(payloadResult.rewriteAttempts))
 									? Number(payloadResult.rewriteAttempts)
 									: 0,
-								mock: payloadResult.mock === true
+								mock: isMock
 							}
 						})
 						options.pushToast(
-							`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}完成${payloadResult.mock === true ? '（Mock）' : ''}。`,
+							t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingCompleteToast' : 'aiworkflow.runtime.understandingCompleteToast', { mock: isMock ? t('aiworkflow.runtime.mockSuffix') : '' }),
 							'info'
 						)
 					} catch (parseErr: unknown) {
@@ -644,13 +648,13 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							nodeId,
 							sceneUnderstandingSettings: {
 								status: 'error',
-								message: `场景理解结果解析失败：${parseMsg}`,
-								statusText: '流式返回完成，但最终 JSON 解析失败。',
+								message: t('aiworkflow.runtime.understandingResultParseFailed', { error: parseMsg }),
+								statusText: t('aiworkflow.runtime.understandingResultParseFailedStatus'),
 								progress: 100
 							}
 						})
 						options.pushToast(
-							`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：结果解析失败`,
+							t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingParseFailedToast' : 'aiworkflow.runtime.understandingParseFailedToast'),
 							'warn'
 						)
 					}
@@ -665,8 +669,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					nodeId,
 					sceneUnderstandingSettings: {
 						status: 'canceled',
-						message: '已终止当前场景理解请求。',
-						statusText: '请求已取消。',
+						message: t('aiworkflow.runtime.understandingCanceledMessage'),
+						statusText: t('aiworkflow.runtime.understandingRequestCanceled'),
 						progress: 0
 					}
 				})
@@ -678,12 +682,12 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				sceneUnderstandingSettings: {
 					status: 'error',
 					message,
-					statusText: '请求链路发生异常，未获得远端可解析响应。',
+					statusText: t('aiworkflow.runtime.understandingRequestError'),
 					progress: 100
 				}
 			})
 			options.pushToast(
-				`${mode === 'scene-lighting' ? '场景灯光理解' : '场景理解'}失败：${message}`,
+				t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingFailedWithError' : 'aiworkflow.runtime.understandingFailedWithError', { error: message }),
 				'warn'
 			)
 		} finally {

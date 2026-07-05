@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { t } from '../../../../i18n'
 import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
 import type {
 	MeshyComfyService,
@@ -51,7 +52,7 @@ export const useAIWorkflowMeshyCommands = (options: {
 				meshyTaskStatus: 'pending',
 				meshyProgress: 0,
 				meshyErrorMessage: '',
-				meshyStatusText: 'Meshy：正在创建任务…',
+				meshyStatusText: t('tasks.meshy.creatingTask'),
 				meshyInputSummary: {
 					promptSource: prepared.promptSource,
 					promptText: prepared.promptText || undefined,
@@ -65,7 +66,7 @@ export const useAIWorkflowMeshyCommands = (options: {
 		try {
 			const res = await options.getComfyService().meshyGenerate(prepared.payload)
 			if (!res.ok) {
-				const msg = String(res.error ?? 'Meshy 创建任务失败')
+				const msg = String(res.error ?? t('tasks.meshy.createTaskFailed'))
 				options.store.commit('setNodeMeshySettings', {
 					nodeId,
 					meshySettings: {
@@ -87,19 +88,19 @@ export const useAIWorkflowMeshyCommands = (options: {
 					meshyTaskId: taskId,
 					meshyTaskStatus: taskStatus === 'idle' ? 'pending' : taskStatus,
 					meshyProgress: taskStatus === 'running' ? 5 : 0,
-					meshyStatusText: 'Meshy：任务已创建，开始轮询状态…'
+					meshyStatusText: t('tasks.meshy.taskCreatedPolling')
 				}
 			})
 			if (options.shouldRefreshMeshyTaskItems()) {
 				void options.refreshMeshyTaskItems({ silent: true })
 			}
 			if (!taskId) {
-				options.pushToast('Meshy 返回缺少任务 ID。', 'warn')
+				options.pushToast(t('tasks.meshy.missingTaskIdToast'), 'warn')
 				return
 			}
 			options.startMeshyPoll(nodeId, taskId, mode)
 		} catch (err: unknown) {
-			const msg = 'Meshy 创建任务异常：' + getErrorMessage(err)
+			const msg = t('tasks.meshy.createTaskException', { error: getErrorMessage(err) })
 			options.store.commit('setNodeMeshySettings', {
 				nodeId,
 				meshySettings: {
@@ -167,15 +168,15 @@ export const useAIWorkflowMeshyCommands = (options: {
 		const taskStatus = String(settings.meshyTaskStatus ?? '').trim()
 
 		if (taskStatus === 'pending' || taskStatus === 'running') {
-			options.pushToast('当前 Meshy 任务仍在进行中，请等待结束后再发起下一步。', 'warn')
+			options.pushToast(t('tasks.meshy.taskInProgressWait'), 'warn')
 			return
 		}
 		if (!currentTaskId) {
-			options.pushToast('当前节点还没有可复用的 Meshy 任务结果。', 'warn')
+			options.pushToast(t('tasks.meshy.noReusableTaskResult'), 'warn')
 			return
 		}
 		if (kind !== 'texture') {
-			options.pushToast('绑骨与动作接口的真实后端任务尚未接入，当前版本先打通贴图闭环。', 'warn')
+			options.pushToast(t('tasks.meshy.riggingAnimationNotAvailable'), 'warn')
 			return
 		}
 
@@ -199,7 +200,7 @@ export const useAIWorkflowMeshyCommands = (options: {
 		const settings = isRecord(nodeRecord.meshySettings) ? nodeRecord.meshySettings : {}
 		const status = String(settings.meshyTaskStatus ?? '').trim()
 		if (status === 'pending' || status === 'running') {
-			options.pushToast('当前任务进行中，无法重开新任务。', 'warn')
+			options.pushToast(t('tasks.meshy.taskRunningCannotRestart'), 'warn')
 			return
 		}
 
@@ -217,7 +218,7 @@ export const useAIWorkflowMeshyCommands = (options: {
 				meshyTaskStatus: 'idle',
 				meshyProgress: 0,
 				meshyErrorMessage: '',
-				meshyStatusText: '已重置为新任务模式，准备创建新任务…',
+				meshyStatusText: t('tasks.meshy.resetToNewTask'),
 				meshyPreviewTaskId: '',
 				meshyRootTaskId: '',
 				meshyParentTaskId: '',

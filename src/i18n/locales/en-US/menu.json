@@ -1,0 +1,12 @@
+{
+  "menu.welcome": "Welcome",
+  "menu.projects": "Projects",
+  "menu.workflow": "AI Workflow",
+  "menu.studio": "Video Studio",
+  "menu.settings": "Settings",
+  "menu.collapse": "Collapse sidebar",
+  "menu.expand": "Expand sidebar",
+  "menu.navAriaLabel": "Global Navigation",
+  "menu.comingSoon": "Coming soon",
+  "menu.switching": "Switching"
+}

@@ -17,6 +17,7 @@ import WorkflowSceneLayoutNode from '../../../../ui/WorkFlow/WorlFlowNodes/Workf
 import WorkflowUnrealExportNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowUnrealExportNode.vue'
 import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
 import { isWorkflowLocalAssetUrl, resolveBackendUrl } from '../../../../network/backendConfig'
+import { t } from '../../../../i18n'
 
 export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 	const clampNodeScale = (zoom: number) => Math.max(0.2, Math.min(6, Number(zoom) || 1))
@@ -69,24 +70,23 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 		} as Record<string, string>
 	}
 
-	/** Chinese type name for top-right badge. */
 	const compactNodeTypeChinese = (node: WorkflowNode): string => {
 		const labels: Record<string, string> = {
-			text: '文本',
-			'text-merge': '文本合并',
-			image: '图片',
-			'rotate-image': '图像旋转',
-			video: '视频',
-			'scene-understanding': '场景理解',
-			'scene-decompose': '场景分解',
-			'scene-layout': '场景布局',
-			'unreal-export': 'UE导出',
-			story: '故事',
+			text: t('aiworkflow.runtime.nodeTypeText'),
+			'text-merge': t('aiworkflow.runtime.nodeTypeTextMerge'),
+			image: t('aiworkflow.runtime.nodeTypeImage'),
+			'rotate-image': t('aiworkflow.runtime.nodeTypeRotateImage'),
+			video: t('aiworkflow.runtime.nodeTypeVideo'),
+			'scene-understanding': t('aiworkflow.runtime.nodeTypeSceneUnderstanding'),
+			'scene-decompose': t('aiworkflow.runtime.nodeTypeSceneDecompose'),
+			'scene-layout': t('aiworkflow.runtime.nodeTypeSceneLayout'),
+			'unreal-export': t('aiworkflow.runtime.nodeTypeUnrealExport'),
+			story: t('aiworkflow.runtime.nodeTypeStory'),
 			comfyui: 'ComfyUI',
-			model3d: '3D模型',
+			model3d: t('aiworkflow.runtime.nodeTypeModel3d'),
 			meshy: 'Meshy'
 		}
-		return labels[node.type] || '节点'
+		return labels[node.type] || t('aiworkflow.runtime.nodeTypeDefault')
 	}
 
 	/** Gradient CSS background for the icon block (left side). */

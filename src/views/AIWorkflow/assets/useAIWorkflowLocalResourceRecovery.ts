@@ -1,4 +1,5 @@
 import { nextTick } from 'vue'
+import { t } from '../../../i18n'
 
 type RecoveryStats = {
 	totalNeedRecover: number
@@ -137,7 +138,7 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 		if (!silent && payload.canUseFileSystemHandles() && (missing.length || denied.length)) {
 			const total = missing.length + denied.length
 			const ok = window.confirm(
-				`检测到 ${total} 个本地资源无法自动恢复（缺少句柄或未授权）。\n\n是否选择包含这些文件的文件夹以重新绑定并恢复加载？`
+				t('aiworkflow.toast.localResourceRecoveryConfirm', { count: String(total) })
 			)
 			if (ok) {
 				try {
@@ -164,7 +165,7 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 						if (stats.rebound > 0) {
 							await recoverLocalResourcesFromHandles({ silent: true })
 							payload.pushToast(
-								`已重新绑定 ${stats.rebound} 个文件句柄，正在恢复资源加载。`,
+								t('aiworkflow.toast.localResourceRebound', { count: stats.rebound }),
 								'info'
 							)
 							return stats
@@ -183,7 +184,7 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 			(stats.missingHandle || stats.permissionDenied)
 		) {
 			payload.pushToast(
-				`本地资源未恢复：缺少句柄 ${stats.missingHandle} 个，未授权 ${stats.permissionDenied} 个。可尝试重新选择文件夹绑定。`,
+				t('aiworkflow.toast.localResourceNotRecovered', { handle: stats.missingHandle, perm: stats.permissionDenied }),
 				'warn'
 			)
 		}

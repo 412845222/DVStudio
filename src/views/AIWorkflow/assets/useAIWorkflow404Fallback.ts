@@ -1,5 +1,6 @@
 import { onBeforeUnmount, ref } from 'vue'
 import type { Store } from 'vuex'
+import { t } from '../../../i18n'
 import {
 	isElectron,
 	diagnoseDwebAsset,
@@ -239,7 +240,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 						to: newUrl,
 						name: newAsset.name
 					})
-					notify(`资源已自动恢复：${newAsset.name}`, 'info')
+					notify(t('aiworkflow.toast.resourceRecovered', { name: newAsset.name }), 'info')
 					if (typeof onRecovered === 'function') {
 						try {
 							onRecovered({ url: trimmed, newUrl, assetName: newAsset.name, newAsset })
@@ -272,7 +273,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 								const diag2 = await diagnoseDwebAsset({ url: trimmed })
 								if (diag2?.fileExists && diag2?.repairedAsset) {
 									autoRecoveredUrls.add(trimmed)
-									notify(`项目根已重新注册，资源已自动恢复：${diag2.repairedAsset.name}`, 'info')
+									notify(t('aiworkflow.toast.projectRootRecovered', { name: diag2.repairedAsset.name }), 'info')
 									if (typeof onRecovered === 'function') {
 										try {
 											onRecovered({
@@ -348,7 +349,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 					}
 				}
 
-				notify(`资源缺失：${assetName}`, 'warn')
+				notify(t('aiworkflow.toast.resourceMissing', { name: assetName }), 'warn')
 				recovering.value = false
 				return { kind: 'missing' as const, url: trimmed, assetName, missingPath: relPath, sources }
 			} catch (err: unknown) {
@@ -473,7 +474,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		pending.resolution = 'removed'
 		removedAssetsHistory.push(pending)
 		pendingMissingAssets.value = pendingMissingAssets.value.filter((p) => p.id !== pendingId)
-		notify(`已移除失效资源引用：${pending.assetName}（可撤销）`, 'info')
+		notify(t('aiworkflow.toast.referenceRemoved', { name: pending.assetName }), 'info')
 		return {
 			ok: true,
 			undoAvailable:
@@ -528,7 +529,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		pending.resolved = false
 		pending.resolution = undefined
 		pending.undoSnapshot = undefined
-		notify(`已撤销：${pending.assetName} 的资源引用已恢复`, 'info')
+		notify(t('aiworkflow.toast.referenceRestored', { name: pending.assetName }), 'info')
 		return true
 	}
 
@@ -702,7 +703,7 @@ function defaultFindBindingSources(
 	}
 
 	if (sources.length === 0) {
-		sources.push({ type: 'unknown', detail: '未能定位到具体引用位置，该 URL 可能直接在模板中使用' })
+		sources.push({ type: 'unknown', detail: t('aiworkflow.toast.unknownLocation') })
 	}
 	return sources
 }

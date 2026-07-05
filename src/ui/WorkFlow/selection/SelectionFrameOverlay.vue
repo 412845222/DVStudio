@@ -13,16 +13,16 @@
 					ref="editInputRef"
 					v-model="editDraft"
 					class="wf-sel-frame-edit-input"
-					placeholder="输入标签名称..."
+					:placeholder="t('aiworkflow.canvas.enterTagName')"
 					@keydown.enter="onSave"
 					@keydown.esc="onCancelEdit"
 				/>
-				<button class="wf-sel-frame-btn wf-sel-frame-save" title="保存" @click.stop="onSave">
-					保存
+				<button class="wf-sel-frame-btn wf-sel-frame-save" :title="t('aiworkflow.canvas.save')" @click.stop="onSave">
+					{{ t('aiworkflow.canvas.save') }}
 				</button>
 				<button
 					class="wf-sel-frame-btn wf-sel-frame-cancel"
-					title="取消"
+					:title="t('aiworkflow.canvas.cancel')"
 					@click.stop="onCancelEdit"
 				>
 					×
@@ -30,14 +30,14 @@
 			</template>
 			<!-- 显示模式 -->
 			<template v-else>
-				<button class="wf-sel-frame-btn" title="编辑标签" @click.stop="onStartEdit">
+				<button class="wf-sel-frame-btn" :title="t('aiworkflow.canvas.editTag')" @click.stop="onStartEdit">
 					<span class="wf-sel-frame-tag-icon">🏷</span>
 					<span class="wf-sel-frame-tag-text">{{ displayLabel }}</span>
 				</button>
-				<span class="wf-sel-frame-count">{{ nodeCount }}个节点</span>
+				<span class="wf-sel-frame-count">{{ t('aiworkflow.canvas.nodesSelected', { count: nodeCount }) }}</span>
 				<button
 					class="wf-sel-frame-btn wf-sel-frame-delete"
-					title="取消框选"
+					:title="t('aiworkflow.canvas.cancelSelection')"
 					@click.stop="emit('delete')"
 				>
 					×
@@ -55,6 +55,9 @@
 
 <script setup lang="ts">
 import { computed, ref, nextTick, watch } from 'vue'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	visible: boolean
@@ -79,7 +82,7 @@ const emit = defineEmits<{
 // 本地维护的已保存标签（优先于 props.label）
 const savedLabel = ref<string>('')
 
-const displayLabel = computed(() => savedLabel.value || props.label || '编辑')
+const displayLabel = computed(() => savedLabel.value || props.label || t('aiworkflow.canvas.editLabel'))
 
 // 编辑状态
 const isEditing = ref(false)

@@ -1,6 +1,7 @@
 import type { WorkflowState } from '../../../../aiworkflow/types'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION } from '../../../../aiworkflow/persistence/blueprintSnapshot'
+import { t } from '../../../../i18n'
 
 type UseAIWorkflowProjectSnapshotBuilderOptions = {
 	store: {
@@ -162,7 +163,7 @@ export const useAIWorkflowProjectSnapshotBuilder = (
 		}
 
 		if (uploadLocal && uploadedCount > 0) {
-			payload.pushToast(`已上传 ${uploadedCount} 个本地资源到后端文件库，刷新后可恢复。`, 'info')
+			payload.pushToast(t('aiworkflow.toast.resourcesUploaded', { count: uploadedCount }), 'info')
 		}
 
 		let nodesById: WorkflowState['nodesById'] = payload.store.state.nodesById

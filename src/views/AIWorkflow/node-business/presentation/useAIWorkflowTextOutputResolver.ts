@@ -1,5 +1,6 @@
 import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
 import type { WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
+import { t } from '../../../../i18n'
 
 export type InputParamPreviewRef = {
 	edgeId?: string
@@ -195,8 +196,8 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 					...base,
 					kind: 'image',
 					previewUrl,
-					label: base.name || '图片输入',
-					meta: '图片'
+					label: base.name || t('aiworkflow.runtime.imageInput'),
+					meta: t('aiworkflow.runtime.imageResource')
 				})
 				continue
 			}
@@ -213,8 +214,8 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 					...base,
 					kind: 'video',
 					previewUrl: previewUrl || undefined,
-					label: base.name || '视频输入',
-					meta: '视频'
+					label: base.name || t('aiworkflow.runtime.videoInput'),
+					meta: t('aiworkflow.runtime.videoResource')
 				})
 				continue
 			}
@@ -228,7 +229,7 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 				refs.push({
 					...base,
 					kind: 'model3d',
-					label: base.name || '3D 模型输入',
+					label: base.name || t('aiworkflow.runtime.model3dInput'),
 					meta: previewText(modelLabel, 60)
 				})
 			}

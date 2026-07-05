@@ -1,0 +1,23 @@
+{
+  "aichat.tools.params": "Parameters",
+  "aichat.tools.result": "Result",
+  "aichat.tools.errorInfo": "Error",
+  "aichat.tools.status.pending": "Pending",
+  "aichat.tools.status.running": "Running",
+  "aichat.tools.status.completed": "Completed",
+  "aichat.tools.status.failed": "Error",
+  "aichat.tools.action.createNode": "Create \"{title}\"",
+  "aichat.tools.action.createNodeByType": "Create {type}",
+  "aichat.tools.action.updateNode": "Update Node Config {nodeId}",
+  "aichat.tools.action.deleteNode": "Delete Node {nodeId}",
+  "aichat.tools.action.connectNodes": "Connect {from} → {to}",
+  "aichat.tools.action.listNodeTypes": "List Node Types",
+  "aichat.tools.action.getBlueprintState": "Get Blueprint State",
+  "aichat.tools.action.getProjectInfo": "Get Project Info",
+  "aichat.toolsPanel.title": "Tools",
+  "aichat.toolsPanel.empty": "No tool calls yet",
+  "aichat.thinking.thinking": "Thinking…",
+  "aichat.thinking.process": "Thought Process",
+  "aichat.userChoice.selected": "Selected: ",
+  "aichat.nodeLocation.locate": "Locate"
+}

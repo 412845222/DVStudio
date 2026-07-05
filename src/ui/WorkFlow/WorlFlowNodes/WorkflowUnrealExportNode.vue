@@ -47,7 +47,7 @@
 
 				<div v-if="showAssetPathSettings" class="wf-unreal-export-asset-path">
 					<div class="wf-unreal-export-asset-path-row">
-						<label class="wf-unreal-export-asset-path-label">资产根路径</label>
+						<label class="wf-unreal-export-asset-path-label">{{ t('nodes.unreal.assetRootPath') }}</label>
 						<input
 							v-model="localAssetRootPath"
 							type="text"
@@ -65,7 +65,7 @@
 						:disabled="isBusy"
 						@click.stop="emit('export-unreal-scene')"
 					>
-						{{ isBusy ? '处理中...' : '一键导出场景' }}
+						{{ isBusy ? t('nodes.unreal.processing') : t('nodes.unreal.title') }}
 					</button>
 
 					<template v-if="isConnected">
@@ -75,7 +75,7 @@
 							:disabled="isExporting"
 							@click.stop="emit('export-unreal-scene')"
 						>
-							{{ isExporting ? '导出中...' : '导出场景' }}
+							{{ isExporting ? t('nodes.unreal.exporting') : t('nodes.unreal.export') }}
 						</button>
 						<button
 							class="wf-unreal-export-btn ghost"
@@ -83,7 +83,7 @@
 							:disabled="!hasLightingInput || isExporting"
 							@click.stop="emit('export-unreal-lighting')"
 						>
-							导出灯光
+							{{ t('nodes.unreal.exportLights') }}
 						</button>
 						<button
 							class="wf-unreal-export-btn danger"
@@ -91,7 +91,7 @@
 							:disabled="isExporting"
 							@click.stop="emit('disconnect-unreal')"
 						>
-							断开连接
+							{{ t('nodes.unreal.disconnect') }}
 						</button>
 					</template>
 
@@ -101,25 +101,25 @@
 						type="button"
 						@click.stop="emit('export-unreal-scene')"
 					>
-						重试
+						{{ t('nodes.unreal.retry') }}
 					</button>
 				</div>
 
 				<div v-if="showRestartHint" class="wf-unreal-export-guide">
-					<div class="wf-unreal-export-guide-title">需要重启编辑器</div>
+					<div class="wf-unreal-export-guide-title">{{ t('nodes.unreal.needsRestartTitle') }}</div>
 					<div class="wf-unreal-export-guide-text">
-						插件安装成功！请重启虚幻编辑器，然后重新打开项目后点击「一键导出场景」继续。
+						{{ t('nodes.unreal.needsRestartText') }}
 					</div>
 				</div>
 
 				<div v-if="showConnectionGuide" class="wf-unreal-export-guide">
-					<div class="wf-unreal-export-guide-title">等待虚幻插件连接</div>
+					<div class="wf-unreal-export-guide-title">{{ t('nodes.unreal.waitingConnectionTitle') }}</div>
 					<div class="wf-unreal-export-guide-text">
-						请在虚幻编辑器中打开插件面板：
+						{{ t('nodes.unreal.waitingConnectionText1') }}
 						<br />
 						<span class="wf-unreal-export-guide-path">Window → Dweb → Dweb Workflow Bridge</span>
 						<br />
-						然后点击「Connect to DVStudio」按钮建立连接。
+						{{ t('nodes.unreal.waitingConnectionText2') }}
 					</div>
 				</div>
 			</div>
@@ -128,17 +128,17 @@
 		<template #footer>
 			<div class="wf-unreal-export-footer" @pointerdown.stop>
 				<div class="wf-unreal-export-grid">
-					<div>布局输入</div>
-					<div :class="hasLayoutInput ? 'is-ok' : 'is-empty'">{{ hasLayoutInput ? '已连接' : '未连接' }}</div>
-					<div>灯光输入</div>
-					<div :class="hasLightingInput ? 'is-ok' : 'is-empty'">{{ hasLightingInput ? '已连接' : '未连接' }}</div>
-					<div v-if="projectNameDisplay !== '未连接'">目标工程</div>
-					<div v-if="projectNameDisplay !== '未连接'">{{ projectNameDisplay }}</div>
-					<div>资产路径</div>
+					<div>{{ t('nodes.unreal.layoutInput') }}</div>
+					<div :class="hasLayoutInput ? 'is-ok' : 'is-empty'">{{ hasLayoutInput ? t('nodes.unreal.connected') : t('nodes.unreal.notConnected') }}</div>
+					<div>{{ t('nodes.unreal.lightingInput') }}</div>
+					<div :class="hasLightingInput ? 'is-ok' : 'is-empty'">{{ hasLightingInput ? t('nodes.unreal.connected') : t('nodes.unreal.notConnected') }}</div>
+					<div v-if="hasProjectName">{{ t('nodes.unreal.targetProject') }}</div>
+					<div v-if="hasProjectName">{{ projectNameDisplayText }}</div>
+					<div>{{ t('nodes.unreal.assetPath') }}</div>
 					<div>{{ assetRootPathDisplay }}</div>
-					<div v-if="lastExportJobId">最近任务</div>
+					<div v-if="lastExportJobId">{{ t('nodes.unreal.recentJob') }}</div>
 					<div v-if="lastExportJobId">{{ lastExportJobId.slice(-12) }}</div>
-					<div v-if="lastSlotCountText">插槽写入</div>
+					<div v-if="lastSlotCountText">{{ t('nodes.unreal.slotWrite') }}</div>
 					<div v-if="lastSlotCountText">{{ lastSlotCountText }}</div>
 				</div>
 				<div class="wf-unreal-export-copy">{{ detailCopy }}</div>
@@ -150,7 +150,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import { useI18n } from '../../../i18n'
 import type { WorkflowUnrealExportNodeSettings } from '../../../aiworkflow/types'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -275,19 +278,19 @@ const statusTone = computed(() => {
 const statusTitle = computed(() => {
 	const s = connectionStatus.value
 	switch (s) {
-		case 'connected': return '虚幻编辑器已连接'
-		case 'exporting': return '导出任务进行中'
-		case 'checking-editor': return '检测虚幻编辑器中...'
-		case 'editor-not-running': return '虚幻编辑器未启动'
-		case 'checking-plugin': return '检测插件中...'
-		case 'installing-plugin': return '正在安装插件...'
-		case 'needs-restart': return '插件已安装，请重启编辑器'
-		case 'waiting-connection': return '等待虚幻插件连接'
-		case 'activating-upstream': return '激活上游场景节点中...'
-		case 'creating-job': return '创建导出任务中...'
-		case 'error': return '出错了'
+		case 'connected': return t('nodes.unreal.statusConnected')
+		case 'exporting': return t('nodes.unreal.statusExporting')
+		case 'checking-editor': return t('nodes.unreal.statusCheckingEditor')
+		case 'editor-not-running': return t('nodes.unreal.statusEditorNotRunning')
+		case 'checking-plugin': return t('nodes.unreal.statusCheckingPlugin')
+		case 'installing-plugin': return t('nodes.unreal.statusInstallingPlugin')
+		case 'needs-restart': return t('nodes.unreal.statusNeedsRestart')
+		case 'waiting-connection': return t('nodes.unreal.statusWaitingConnection')
+		case 'activating-upstream': return t('nodes.unreal.statusActivatingUpstream')
+		case 'creating-job': return t('nodes.unreal.statusCreatingJob')
+		case 'error': return t('nodes.unreal.statusError')
 		case 'idle':
-		default: return '准备就绪'
+		default: return t('nodes.unreal.statusReady')
 	}
 })
 
@@ -296,19 +299,19 @@ const statusCopy = computed(() => {
 	const customMsg = String(settings.value?.message ?? '').trim()
 	if (customMsg) return customMsg
 	switch (s) {
-		case 'connected': return '连接已建立，可以执行导出操作。'
-		case 'exporting': return '虚幻插件正在处理导出任务...'
-		case 'checking-editor': return '正在检查虚幻编辑器是否运行...'
-		case 'editor-not-running': return '请先启动虚幻编辑器并打开项目。'
-		case 'checking-plugin': return '正在检查项目插件状态...'
-		case 'installing-plugin': return '正在自动安装 DwebWorkflowBridge 插件...'
-		case 'needs-restart': return '插件安装成功！请重启虚幻编辑器。'
-		case 'waiting-connection': return '请在虚幻编辑器插件面板点击 Connect 按钮...'
-		case 'activating-upstream': return '正在激活场景布局预览...'
-		case 'creating-job': return '正在创建导出任务...'
-		case 'error': return String(settings.value?.statusText ?? '发生错误，请重试。')
+		case 'connected': return t('nodes.unreal.detailConnected')
+		case 'exporting': return t('nodes.unreal.detailExporting')
+		case 'checking-editor': return t('nodes.unreal.detailCheckingEditor')
+		case 'editor-not-running': return t('nodes.unreal.detailEditorNotRunning')
+		case 'checking-plugin': return t('nodes.unreal.detailCheckingPlugin')
+		case 'installing-plugin': return t('nodes.unreal.detailInstallingPlugin')
+		case 'needs-restart': return t('nodes.unreal.detailNeedsRestart')
+		case 'waiting-connection': return t('nodes.unreal.detailWaitingConnection')
+		case 'activating-upstream': return t('nodes.unreal.detailActivatingUpstream')
+		case 'creating-job': return t('nodes.unreal.detailCreatingJob')
+		case 'error': return String(settings.value?.statusText ?? t('nodes.unreal.detailError'))
 		case 'idle':
-		default: return '点击「一键导出场景」开始导出流程，系统会自动完成检测、连接和导出。'
+		default: return t('nodes.unreal.detailIdle')
 	}
 })
 
@@ -331,6 +334,8 @@ const showAssetPathSettings = computed(() => isConnected.value || connectionStat
 const projectNameDisplay = computed(
 	() => String(settings.value?.connectedSession?.projectName ?? settings.value?.editorProcess?.projectName ?? '').trim() || '未连接'
 )
+const hasProjectName = computed(() => projectNameDisplay.value !== '未连接')
+const projectNameDisplayText = computed(() => hasProjectName.value ? projectNameDisplay.value : t('nodes.unreal.notConnected'))
 
 const assetRootPathDisplay = computed(
 	() => String(settings.value?.assetRootPath ?? '').trim() || '/Game/DVStudio'
@@ -343,7 +348,7 @@ const progressPercent = computed(() => {
 const progressCopy = computed(() => {
 	const stage = String(settings.value?.lastExportStage ?? '').trim()
 	const msg = String(settings.value?.lastExportMessage ?? '').trim()
-	return `${stage || msg || '处理中'} · ${progressPercent.value}%`
+	return t('nodes.unreal.processingProgress', { stage: stage || msg || t('common.running'), percent: progressPercent.value })
 })
 
 const lastExportJobId = computed(() => String(settings.value?.lastExportJobId ?? '').trim())
@@ -360,11 +365,11 @@ const lastSlotCountText = computed(() => {
 
 const detailCopy = computed(() => {
 	const exportStatus = String(settings.value?.lastExportStatus ?? '').trim()
-	if (exportStatus === 'completed') return '上一次导出已成功完成。'
-	if (exportStatus === 'failed') return `上一次导出失败：${String(settings.value?.lastExportMessage ?? 'unknown')}`
-	if (!hasLayoutInput.value) return '请先连接场景布局节点的「布局JSON」输出。'
-	if (isConnected.value) return '连接已就绪，点击「导出场景」开始导出。'
-	return '点击「一键导出场景」，系统将自动完成编辑器检测、插件安装、连接建立和场景导出。'
+	if (exportStatus === 'completed') return t('nodes.unreal.lastExportSuccess')
+	if (exportStatus === 'failed') return t('nodes.unreal.lastExportFailed', { error: String(settings.value?.lastExportMessage ?? 'unknown') })
+	if (!hasLayoutInput.value) return t('nodes.unreal.needLayoutInput')
+	if (isConnected.value) return t('nodes.unreal.readyToExport')
+	return t('nodes.unreal.detailReady')
 })
 
 const handleSetAssetRootPath = () => {
