@@ -231,9 +231,7 @@ export class GeminiAdapter extends BaseAdapter {
       } else if (Array.isArray(msg.content)) {
         for (const part of msg.content) {
           if (part.type === 'text') {
-            parts.push({ text: part.text || (part.text === undefined ? '' : '') });
-          } else if (part.type === 'text' && part.text !== undefined) {
-            parts.push({ text: part.text });
+            parts.push({ text: part.text ?? '' });
           } else if (part.type === 'image_url') {
             const url = part.image_url?.url || '';
             if (url) {
