@@ -51,6 +51,8 @@ const form = reactive<ClientSettings>({
 	deepseekModel: FIXED_DEEPSEEK_MODEL,
 	geminiApiKey: '',
 	geminiModel: FIXED_GEMINI_MODEL,
+	geminiBaseUrl: '',
+	httpProxy: '',
 	bytedanceApiKey: '',
 	meshyApiKey: '',
 	githubToken: '',
@@ -157,6 +159,8 @@ function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettin
 		deepseekModel: FIXED_DEEPSEEK_MODEL,
 		geminiApiKey: form.geminiApiKey,
 		geminiModel: FIXED_GEMINI_MODEL,
+		geminiBaseUrl: String(form.geminiBaseUrl || '').trim(),
+		httpProxy: String(form.httpProxy || '').trim(),
 		bytedanceApiKey: form.bytedanceApiKey,
 		meshyApiKey: form.meshyApiKey,
 		githubToken: form.githubToken,
@@ -269,6 +273,19 @@ function handleResolutionChange() {
 	saveResolution()
 }
 
+async function saveNetworkSettings() {
+	if (saving.value) return
+	saving.value = true
+	try {
+		const r = await saveClientSettings(buildSavePayload())
+		if (r?.ok) showSaveMessage(t('settings.saveSuccess'))
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+	} finally {
+		saving.value = false
+	}
+}
+
 function openSource() {
 	if (!repoUrl) return
 	void openExternalUrl(repoUrl)
@@ -288,6 +305,8 @@ async function load() {
 	form.deepseekBaseUrl = FIXED_DEEPSEEK_BASE_URL
 	form.deepseekModel = FIXED_DEEPSEEK_MODEL
 	form.geminiModel = FIXED_GEMINI_MODEL
+	form.geminiBaseUrl = String(form.geminiBaseUrl || '')
+	form.httpProxy = String(form.httpProxy || '')
 	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken', 'anthropicApiKey'] as const) {
 		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
 	}
@@ -542,6 +561,52 @@ async function handleOpenOverlayCommunity() {
 							{{ t('settings.openCommunity') }}
 						</button>
 					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="settings-section">
+			<div class="section-head">
+				<h2 class="section-title">{{ t('settings.network.title') }}</h2>
+				<p class="section-desc">{{ t('settings.network.desc') }}</p>
+			</div>
+			<div class="network-card">
+				<div class="network-row">
+					<label class="network-label">
+						<span>{{ t('settings.network.httpProxyLabel') }}</span>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">{{ t('settings.network.httpProxyHint') }}</small>
+					</label>
+					<input
+						v-model="form.httpProxy"
+						class="network-input"
+						type="text"
+						placeholder="http://127.0.0.1:7890"
+						autocomplete="off"
+						spellcheck="false"
+						@blur="saveNetworkSettings"
+					/>
+				</div>
+				<div class="network-row">
+					<label class="network-label">
+						<span>{{ t('settings.network.geminiBaseUrlLabel') }}</span>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">{{ t('settings.network.geminiBaseUrlHint') }}</small>
+					</label>
+					<input
+						v-model="form.geminiBaseUrl"
+						class="network-input"
+						type="text"
+						placeholder="https://generativelanguage.googleapis.com/v1beta"
+						autocomplete="off"
+						spellcheck="false"
+						@blur="saveNetworkSettings"
+					/>
+				</div>
+				<div class="network-tip" style="margin-top: 12px; padding: 12px; background: rgba(34,160,107,0.08); border-radius: 6px; font-size: 12px; color: var(--vscode-fg-muted); line-height: 1.6;">
+					<div style="font-weight: 600; color: #22a06b; margin-bottom: 6px;">{{ t('settings.network.proxyGuideTitle') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep1') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep2') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep3') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep4') }}</div>
 				</div>
 			</div>
 		</section>
@@ -873,6 +938,51 @@ async function handleOpenOverlayCommunity() {
 }
 
 .resolution-select:focus {
+	border-color: var(--vscode-border-accent);
+}
+
+.network-card {
+	background: var(--dweb-defualt);
+	border: 1px solid var(--vscode-border);
+	border-radius: 10px;
+	padding: 20px;
+	max-width: 600px;
+}
+
+.network-row {
+	margin-bottom: 16px;
+}
+
+.network-row:last-child {
+	margin-bottom: 0;
+}
+
+.network-label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 8px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-fg);
+}
+
+.network-input {
+	width: 100%;
+	box-sizing: border-box;
+	appearance: none;
+	-webkit-appearance: none;
+	border: 1px solid var(--vscode-border);
+	background: var(--vscode-input-bg, var(--dweb-defualt-dark));
+	color: var(--vscode-fg);
+	font-size: 13px;
+	padding: 10px 12px;
+	border-radius: 6px;
+	outline: none;
+	font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.network-input:focus {
 	border-color: var(--vscode-border-accent);
 }
 

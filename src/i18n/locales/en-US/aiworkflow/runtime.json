@@ -305,6 +305,7 @@
   "aiworkflow.runtime.backendUnreachable": "Backend unreachable ({error}). In Electron environment, please use IPC calls, no HTTP backend needed.",
   "aiworkflow.runtime.failedStatus": "Failed: {message}",
   "aiworkflow.runtime.callingTextModel": "Calling text model (ByteDance Doubao)…",
+  "aiworkflow.runtime.callingTextModelWithProvider": "Calling text model ({provider})…",
   "aiworkflow.runtime.detailPrompt": "Prompt: {prompt}",
   "aiworkflow.runtime.detailRefImageCount": "Reference image count: {count}",
   "aiworkflow.runtime.textModelGenerating": "Text model generating content…",
@@ -416,5 +417,10 @@
   "aiworkflow.runtime.meshyResultNodeNameIndexed": "Meshy Result {index}",
   "aiworkflow.runtime.meshyImageLabelIndexed": "Meshy Image {index}",
   "aiworkflow.runtime.meshyCannotCreateNode": "Meshy image generation completed, but unable to create node to receive results",
-  "aiworkflow.runtime.meshyImageCompleteWithNewNodes": "Meshy image generation completed ({count} images total, {nodes} new nodes created)"
+  "aiworkflow.runtime.meshyImageCompleteWithNewNodes": "Meshy image generation completed ({count} images total, {nodes} new nodes created)",
+  "aiworkflow.runtime.geminiTaskSubmitting": "Submitting task to Google Gemini...",
+  "aiworkflow.runtime.geminiResultNodeName": "Gemini Result",
+  "aiworkflow.runtime.geminiResultNodeNameIndexed": "Gemini Result {index}",
+  "aiworkflow.runtime.geminiCannotCreateNode": "Gemini image generation completed, but unable to create node to receive results",
+  "aiworkflow.runtime.geminiImageCompleteWithNewNodes": "Gemini image generation completed ({count} images total, {nodes} new nodes created)"
 }

@@ -1613,6 +1613,113 @@ export class ComfyUIBridgeService {
 	}
 
 	/**
+	 * Gemini image generation (SSE stream).
+	 * Backend IPC: dweb:third-party:gemini:image:generate:stream
+	 */
+	async *geminiImageGenerateStream(
+		payload: Record<string, unknown>,
+		signal?: AbortSignal
+	): AsyncGenerator<NanoBananaGenerateStreamEvent, void, void> {
+		if (isThirdPartyIpcAvailable()) {
+			try {
+				const generator = (window as any).dweb.thirdParty.gemini.imageGenerateStream(payload)
+				yield* consumeThirdPartyIpcStream(generator, 'gemini/image/generate:stream')
+				return
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] gemini/image/generate:stream IPC failed, falling back to HTTP:', err)
+			}
+		}
+		const headers: Record<string, string> = {
+			Accept: 'text/event-stream',
+			'Content-Type': 'application/json'
+		}
+		if (this.devToken) headers['X-DEV-TOKEN'] = this.devToken
+
+		const res = await this.fetchWithLog(this.url('/api/third-party/gemini/image/generate:stream'), {
+			method: 'POST',
+			headers,
+			body: JSON.stringify(payload),
+			signal
+		})
+
+		if (!res.ok || !res.body) {
+			const body = await safeJson(res)
+			throw new Error(
+				`gemini/image/generate:stream failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
+			)
+		}
+
+		const reader = res.body.getReader()
+		const decoder = new TextDecoder('utf-8')
+
+		let buffer = ''
+		let eventName: string | undefined
+		let dataLines: string[] = []
+
+		const flush = (): NanoBananaGenerateStreamEvent[] => {
+			if (dataLines.length === 0 && !eventName) return []
+			const data = dataLines.join('\n')
+			const name = eventName
+			eventName = undefined
+			dataLines = []
+
+			if (name === 'done') return [{ type: 'done' }]
+			if (name === 'error') {
+				const err = parseSseError(data)
+				return [{ type: 'error', error: err }]
+			}
+			const msg = parseSseAgentMessage(data)
+			if (msg) return [{ type: 'msg', message: msg }]
+			let errDetails: unknown = data
+			try {
+				errDetails = JSON.parse(data) as unknown
+			} catch {
+				// keep raw data
+			}
+			return [
+				{ type: 'error', error: { message: 'invalid AgentToUI envelope', details: errDetails } }
+			]
+		}
+
+		try {
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+				buffer += decoder.decode(value, { stream: true })
+
+				let idx = buffer.indexOf('\n')
+				while (idx >= 0) {
+					const line = buffer.slice(0, idx)
+					buffer = buffer.slice(idx + 1)
+					idx = buffer.indexOf('\n')
+
+					const l = line.replace(/\r$/, '')
+					if (!l.trim()) {
+						for (const ev of flush()) yield ev
+						continue
+					}
+					if (l.startsWith('event:')) {
+						eventName = l.slice('event:'.length).trim()
+						continue
+					}
+					if (l.startsWith('data:')) {
+						dataLines.push(l.slice('data:'.length).trimStart())
+						continue
+					}
+				}
+			}
+		} finally {
+			try {
+				reader.releaseLock()
+			} catch {
+				// ignore
+			}
+		}
+
+		for (const ev of flush()) yield ev
+	}
+
+	/**
 	 * Seedance video generation (SSE stream).
 	 * Backend: POST /api/workflow/seedance/generate:stream
 	 */

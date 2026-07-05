@@ -3,7 +3,11 @@ import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import https from 'node:https'
 import http from 'node:http'
+import dns from 'node:dns'
+import os from 'node:os'
 import { spawn } from 'node:child_process'
+
+dns.setDefaultResultOrder('ipv4first')
 
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol } from 'electron'
 

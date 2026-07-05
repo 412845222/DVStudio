@@ -305,6 +305,7 @@
   "aiworkflow.runtime.backendUnreachable": "后端不可达（{error}）。Electron 环境下请使用 IPC 调用，无需 HTTP 后端。",
   "aiworkflow.runtime.failedStatus": "失败：{message}",
   "aiworkflow.runtime.callingTextModel": "正在调用文本模型（字节方舟 Doubao）…",
+  "aiworkflow.runtime.callingTextModelWithProvider": "正在调用文本模型（{provider}）…",
   "aiworkflow.runtime.detailPrompt": "提示词：{prompt}",
   "aiworkflow.runtime.detailRefImageCount": "参考图数量：{count}",
   "aiworkflow.runtime.textModelGenerating": "文本模型正在生成内容…",
@@ -416,5 +417,10 @@
   "aiworkflow.runtime.meshyResultNodeNameIndexed": "Meshy 生成结果 {index}",
   "aiworkflow.runtime.meshyImageLabelIndexed": "Meshy 图片 {index}",
   "aiworkflow.runtime.meshyCannotCreateNode": "Meshy 图片生成完成，但无法创建节点接收结果",
-  "aiworkflow.runtime.meshyImageCompleteWithNewNodes": "Meshy 图片生成完成（共 {count} 张，{nodes} 个新节点已创建）"
+  "aiworkflow.runtime.meshyImageCompleteWithNewNodes": "Meshy 图片生成完成（共 {count} 张，{nodes} 个新节点已创建）",
+  "aiworkflow.runtime.geminiTaskSubmitting": "正在提交任务到 Google Gemini...",
+  "aiworkflow.runtime.geminiResultNodeName": "Gemini 生成结果",
+  "aiworkflow.runtime.geminiResultNodeNameIndexed": "Gemini 生成结果 {index}",
+  "aiworkflow.runtime.geminiCannotCreateNode": "Gemini 图片生成完成，但无法创建节点接收结果",
+  "aiworkflow.runtime.geminiImageCompleteWithNewNodes": "Gemini 图片生成完成（共 {count} 张，{nodes} 个新节点已创建）"
 }
