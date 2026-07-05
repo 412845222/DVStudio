@@ -15,6 +15,7 @@ const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 const API_KEY_AGREEMENT_VERSION = '1.0'
 
 type ClientSettingsKey = keyof ClientSettings
+type ApiKeyFieldKey = 'deepseekApiKey' | 'geminiApiKey' | 'bytedanceApiKey' | 'meshyApiKey' | 'githubToken' | 'anthropicApiKey'
 
 type ProviderConfig = {
 	key: string
@@ -22,9 +23,9 @@ type ProviderConfig = {
 	descKey: string
 	accent: string
 	icon: string
-	fields: Array<{ key: ClientSettingsKey; label: string; placeholder: string; mask: boolean }>
+	fields: Array<{ key: ApiKeyFieldKey; label: string; placeholder: string; mask: boolean }>
 	docsUrl: string
-	formKey: ClientSettingsKey
+	formKey: ApiKeyFieldKey
 	formValue: (s: ClientSettings) => string
 }
 
@@ -37,7 +38,7 @@ const repoUrl = String(window.__DWEB_REPO_URL__ ?? '').trim()
 const securityAgreementOpen = ref(false)
 const securityAgreementChecked = ref(false)
 const pendingProviderKey = ref<string | null>(null)
-const pendingFieldKey = ref<ClientSettingsKey | null>(null)
+const pendingFieldKey = ref<ApiKeyFieldKey | null>(null)
 const pendingFieldValue = ref('')
 
 const clearOpen = ref(false)
@@ -65,7 +66,7 @@ const form = reactive<ClientSettings>({
 })
 
 const activeProvider = ref<string | null>(null)
-const pendingForm = reactive<Partial<Record<ClientSettingsKey, string>>>({})
+const pendingForm = reactive<Partial<Record<ApiKeyFieldKey, string>>>({})
 
 const hasAcceptedAgreement = computed(() => {
 	return Boolean(form.apiKeySecurityAgreement?.accepted)
@@ -198,10 +199,10 @@ function openProvider(key: string) {
 
 function closeProvider() {
 	activeProvider.value = null
-	for (const k of Object.keys(pendingForm) as ClientSettingsKey[]) delete pendingForm[k]
+	for (const k of Object.keys(pendingForm) as ApiKeyFieldKey[]) delete pendingForm[k]
 }
 
-function handleFieldInput(fieldKey: ClientSettingsKey) {
+function handleFieldInput(fieldKey: ApiKeyFieldKey) {
 	const value = String(pendingForm[fieldKey] || '')
 	if (!hasAcceptedAgreement.value && value.trim()) {
 		pendingProviderKey.value = activeProvider.value
