@@ -113,7 +113,7 @@
 			</button>
 		</div>
 		<div class="wf-node-header">
-			<div class="wf-node-title">{{ alias || title }}</div>
+			<div class="wf-node-title">{{ displayTitle }}</div>
 			<div class="wf-node-type">{{ nodeType }}</div>
 			<div
 				v-if="nodeGenerationTask && nodeGenerationTask.status !== 'idle'"
@@ -464,6 +464,70 @@ const typeLabel = computed(() => {
 	if (props.nodeType === 'model3d') return t('nodes.type.model3d')
 	if (props.nodeType === 'meshy') return t('nodes.type.meshy')
 	return t('nodes.type.base')
+})
+
+const NODE_TYPE_TO_ACTION_ID: Record<string, string> = {
+	'text': 'text-generation',
+	'image': 'image-generation',
+	'rotate-image': 'rotate-image',
+	'video': 'video-generation',
+	'scene-understanding': 'scene-understanding',
+	'scene-layout': 'scene-layout',
+	'scene-decompose': 'scene-decompose',
+	'comfyui': 'comfyui',
+	'model3d': 'model3d',
+	'meshy': 'meshy',
+	'unreal-export': 'unreal-export',
+	'text-merge': 'text-merge',
+	'story': 'story',
+	'base': 'base'
+}
+
+const DEFAULT_ALIASES_ZH = new Set([
+	'文本节点',
+	'图片节点',
+	'旋转图片节点',
+	'视频节点',
+	'场景理解节点',
+	'场景布局节点',
+	'场景分解节点',
+	'虚幻导出节点',
+	'剧情节点',
+	'ComfyUI 节点',
+	'3D模型节点',
+	'Meshy模型生成节点',
+	'文本整合节点',
+	'工作流节点'
+])
+
+const resolvedTitle = computed(() => {
+	const actionId = NODE_TYPE_TO_ACTION_ID[props.nodeType]
+	if (actionId) {
+		const key = `aiworkflow.nodeLibrary.nodes.${actionId}.label`
+		const translated = t(key)
+		if (translated !== key) return translated
+	}
+	return props.title
+})
+
+const isDefaultAlias = computed(() => {
+	const alias = String(props.alias ?? '').trim()
+	if (!alias) return true
+	return DEFAULT_ALIASES_ZH.has(alias)
+})
+
+const displayTitle = computed(() => {
+	if (isDefaultAlias.value) {
+		return resolvedTitle.value
+	}
+	return props.alias || resolvedTitle.value
+})
+
+const displaySubtitle = computed(() => {
+	const key = 'aiworkflow.nodeLibrary.defaultSubtitle'
+	const translated = t(key)
+	if (translated !== key) return translated
+	return props.subtitle
 })
 
 const generationStatusLabel = computed(() => {

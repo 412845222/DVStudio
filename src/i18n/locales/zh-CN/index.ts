@@ -28,6 +28,7 @@ import aichatNodeChat from './aichat/nodeChat.json'
 import aichatNodeChatParams from './aichat/nodeChatParams.json'
 import aichatDock from './aichat/dock.json'
 import aiworkflowNodeSearch from './aiworkflow/nodeSearch.json'
+import aiworkflowNodeLibrary from './aiworkflow/nodeLibrary.json'
 import aiworkflowSelectionToolbar from './aiworkflow/selectionToolbar.json'
 import resourcesPanel from './resources/panel.json'
 import tasksVideo from './tasks/video.json'
@@ -81,6 +82,7 @@ const messages = {
 	...aiworkflowContextMenu,
 	...aiworkflowInspector,
 	...aiworkflowNodeSearch,
+	...aiworkflowNodeLibrary,
 	...aiworkflowSelectionToolbar,
 	...nodesTypes,
 	...aichatDialog,

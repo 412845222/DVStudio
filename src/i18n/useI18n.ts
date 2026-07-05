@@ -41,6 +41,7 @@ export function useI18n() {
 		localeMeta,
 		availableLocales,
 		setLocale,
+		messages,
 	}
 }
 

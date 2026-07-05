@@ -16,6 +16,9 @@ export function translate(messages: TranslateMessages, key: string, params?: Tra
 		}
 		return key
 	}
+	if (Array.isArray(raw)) {
+		return key
+	}
 	return interpolate(raw, params)
 }
 

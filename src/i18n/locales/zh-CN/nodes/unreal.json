@@ -57,6 +57,7 @@
   "nodes.unreal.detailActivatingUpstream": "正在激活场景布局预览...",
   "nodes.unreal.detailCreatingJob": "正在创建导出任务...",
   "nodes.unreal.detailError": "发生错误，请重试。",
+  "nodes.unreal.detailIdle": "点击「一键导出场景」开始导出流程，系统会自动完成检测、连接和导出。",
   "nodes.unreal.detailReady": "点击「一键导出场景」开始导出流程，系统会自动完成检测、连接和导出。",
   "nodes.unreal.processingProgress": "{stage} · {percent}%",
   "nodes.unreal.lastExportSuccess": "上一次导出已成功完成。",
