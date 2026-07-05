@@ -146,7 +146,8 @@ export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
 
 export const NODE_CHAT_TEXT_MODEL_OPTIONS = [
 	{ value: 'deepseek', label: 'aiConfig.textModel.deepseek' },
-	{ value: 'bytedance', label: 'aiConfig.textModel.bytedance' }
+	{ value: 'bytedance', label: 'aiConfig.textModel.bytedance' },
+	{ value: 'gemini', label: 'aiConfig.textModel.gemini' }
 ]
 
 export const NODE_CHAT_SEED_MODEL_VERSION_OPTIONS = [
@@ -175,15 +176,28 @@ export const NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS = [
 ]
 
 export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
-	{ value: 'nanobanana', label: 'aiConfig.imageModel.nanobanana' },
+	{ value: 'gemini', label: 'aiConfig.imageModel.gemini' },
 	{ value: 'seedream', label: 'aiConfig.imageModel.seedream' },
 	{ value: 'meshy', label: 'aiConfig.imageModel.meshy' }
 ]
 
-export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS = [
-	{ value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (NanoBanana)' },
-	{ value: 'gemini-3-pro-image', label: 'Gemini 3 Pro Image (NanoBanana2)' },
-	{ value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview' }
+export const NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS = [
+	{ value: 'gemini-3.1-flash-image-preview', label: 'Nano Banana 2 (Gemini 3.1 Flash Image) [推荐] 🍌🍌' },
+	{ value: 'gemini-3.1-flash-lite-image', label: 'Nano Banana Lite (Gemini 3.1 Flash-Lite Image)' },
+	{ value: 'gemini-3-pro-image-preview', label: 'Nano Banana Pro (Gemini 3 Pro Image)' },
+	{ value: 'gemini-2.5-flash-image', label: 'Nano Banana (Gemini 2.5 Flash Image)' }
+]
+
+export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS = NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS
+
+export const NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS = [
+	{ value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (最新推荐)' },
+	{ value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite (高效低成本)' },
+	{ value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (长上下文)' },
+	{ value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (深度推理)' },
+	{ value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite (最快最省)' },
+	{ value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (预览版)' },
+	{ value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (预览版)' }
 ]
 
 export const NODE_CHAT_MESHY_IMAGE_ASPECT_RATIO_OPTIONS = {
@@ -335,8 +349,9 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 		case 'text':
 			return {
 				modelId: undefined,
-				model: 'bytedance',
-				textModelVersion: 'doubao-seed-2-0-pro-260215',
+				model: 'gemini',
+				textModelVersion: 'gemini-3.5-flash',
+				geminiTextModelVersion: 'gemini-3.5-flash',
 				speed: 'normal',
 				thinking: 'enabled',
 				responseFormat: 'text',
@@ -345,8 +360,9 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 		case 'image':
 			return {
 				modelId: undefined,
-				model: 'seedream',
-				nanobananaModelVersion: 'gemini-2.5-flash-image',
+				model: 'gemini',
+				geminiImageModelVersion: 'gemini-3.1-flash-image-preview',
+				nanobananaModelVersion: 'gemini-3.1-flash-image-preview',
 				meshyImageAiModel: 'nano-banana',
 				meshyAspectRatio: '1:1',
 				meshyNegativePrompt: '',

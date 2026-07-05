@@ -305,6 +305,7 @@
   "aiworkflow.runtime.backendUnreachable": "后端不可达（{error}）。Electron 环境下请使用 IPC 调用，无需 HTTP 后端。",
   "aiworkflow.runtime.failedStatus": "失败：{message}",
   "aiworkflow.runtime.callingTextModel": "正在调用文本模型（字节方舟 Doubao）…",
+  "aiworkflow.runtime.callingTextModelWithProvider": "正在调用文本模型（{provider}）…",
   "aiworkflow.runtime.detailPrompt": "提示词：{prompt}",
   "aiworkflow.runtime.detailRefImageCount": "参考图数量：{count}",
   "aiworkflow.runtime.textModelGenerating": "文本模型正在生成内容…",

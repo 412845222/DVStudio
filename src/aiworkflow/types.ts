@@ -854,6 +854,7 @@ export type WorkflowNodeChatTextParams = {
 	modelId?: string
 	model?: string
 	textModelVersion?: string
+	geminiTextModelVersion?: string
 	speed?: 'fast' | 'normal' | 'slow'
 	thinking?: string
 	responseFormat?: string
@@ -864,6 +865,7 @@ export type WorkflowNodeChatImageParams = {
 	modelId?: string
 	model?: string
 	nanobananaModelVersion?: string
+	geminiImageModelVersion?: string
 	seedreamModelVersion?: string
 	seedreamSize?: string
 	seedreamAspectRatio?: string
@@ -872,6 +874,7 @@ export type WorkflowNodeChatImageParams = {
 	seedreamWatermark?: boolean
 	seedreamSeed?: number
 	seedreamNegativePrompt?: string
+	negativePrompt?: string
 	resolution?: string
 	aspectRatio?: string
 	quantity?: number

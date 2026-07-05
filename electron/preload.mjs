@@ -410,6 +410,9 @@ contextBridge.exposeInMainWorld('dweb', {
 			refCache: (payload) => invoke('dweb:third-party:seedream:ref-cache', payload || {}),
 			generateStream: (payload) => createIpcStreamGenerator('dweb:third-party:seedream:generate', payload || {}),
 		},
+		gemini: {
+			imageGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:gemini:image:generate', payload || {}),
+		},
 		jimeng: {
 			imageGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:jimeng:image:generate', payload || {}),
 			videoGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:jimeng:video:generate', payload || {}),

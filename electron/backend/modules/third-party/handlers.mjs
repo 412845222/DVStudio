@@ -20,6 +20,10 @@ export function seedreamGenerateStream(ctx, payload) {
 	return service.seedreamGenerateStream(ctx, payload)
 }
 
+export function geminiImageGenerateStream(ctx, payload) {
+	return service.geminiImageGenerateStream(ctx, payload)
+}
+
 export function jimengImageGenerateStream(ctx, payload) {
 	return service.jimengImageGenerateStream(ctx, payload)
 }

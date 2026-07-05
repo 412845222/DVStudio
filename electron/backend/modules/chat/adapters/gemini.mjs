@@ -1,7 +1,7 @@
 /**
  * Gemini API 适配器
  * 
- * 支持 Gemini Flash Image 等图片生成模型。
+ * 支持 Gemini 文本/多模态模型和 NanoBanana 图片生成模型。
  */
 
 import { BaseAdapter } from './base.mjs';
@@ -9,12 +9,15 @@ import { upstreamError } from '../../../core/errors.mjs';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
-// 支持视觉的模型
-const GEMINI_VISION_MODELS = [
-  'gemini-2.5-flash-image',
-  'gemini-3.1-flash-image-preview',
-  'gemini-3-pro-image-preview'
-];
+function isImageModel(modelId) {
+  const id = String(modelId || '').toLowerCase();
+  return id.includes('-image');
+}
+
+function isGeminiModel(modelId) {
+  const id = String(modelId || '').toLowerCase();
+  return id.startsWith('gemini-');
+}
 
 /**
  * Gemini 适配器
@@ -35,46 +38,59 @@ export class GeminiAdapter extends BaseAdapter {
   }
 
   supportsTools(modelId) {
-    // Gemini 模型工具调用支持
-    return false; // 暂时不支持，后续根据实际情况开启
+    return false;
   }
 
   supportsVision(modelId) {
-    return GEMINI_VISION_MODELS.some(m => modelId.toLowerCase().includes(m.replace('.', '-')));
+    return isGeminiModel(modelId);
   }
 
-  /**
-   * 流式文本输出
-   * Gemini 使用不同的 API 格式
-   */
+  isImageGenerationModel(modelId) {
+    return isImageModel(modelId);
+  }
+
   async *streamText(modelId, messages, options = {}) {
     const client = options.httpClient;
     if (!client) {
       throw new Error('HTTP client not provided');
     }
 
-    // Gemini API 格式转换
-    const contents = this._convertToGeminiFormat(messages);
+    const { contents, systemInstruction } = this._convertToGeminiFormat(messages);
+    const isImage = isImageModel(modelId);
+    
     const url = `${this.baseUrl}/models/${modelId}:streamGenerateContent?key=${this.apiKey}&alt=sse`;
+
+    const generationConfig = {
+      temperature: options.temperature || 0.9,
+      topP: options.topP || 0.95,
+      topK: options.topK || 40,
+      maxOutputTokens: options.maxOutputTokens || (isImage ? 8192 : 2048)
+    };
+
+    if (isImage) {
+      generationConfig.responseModalities = ['image', 'text'];
+    }
+
+    const requestBody = {
+      contents,
+      generationConfig
+    };
+
+    if (systemInstruction) {
+      requestBody.systemInstruction = systemInstruction;
+    }
 
     try {
       const stream = client.postStream(url, {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: options.temperature || 0.9,
-            topP: options.topP || 0.95,
-            topK: options.topK || 40,
-            maxOutputTokens: options.maxOutputTokens || 2048
-          }
-        }),
-        timeout: options.timeout || 120000
+        body: JSON.stringify(requestBody),
+        timeout: options.timeout || 180000
       });
 
       let accumulatedContent = '';
+      let imageParts = [];
 
       for await (const rawLine of stream) {
         const line = String(rawLine || '').trim();
@@ -86,7 +102,6 @@ export class GeminiAdapter extends BaseAdapter {
         try {
           const parsed = JSON.parse(data);
 
-          // Gemini 流式响应格式
           if (parsed.candidates) {
             for (const candidate of parsed.candidates) {
               if (candidate.content?.parts) {
@@ -94,6 +109,14 @@ export class GeminiAdapter extends BaseAdapter {
                   if (part.text) {
                     accumulatedContent += part.text;
                     yield { type: 'text_delta', delta: part.text };
+                  }
+                  if (part.inlineData) {
+                    imageParts.push(part.inlineData);
+                    yield { 
+                      type: 'image', 
+                      mimeType: part.inlineData.mimeType, 
+                      data: part.inlineData.data 
+                    };
                   }
                 }
               }
@@ -104,49 +127,59 @@ export class GeminiAdapter extends BaseAdapter {
         }
       }
 
-      yield { type: 'done', content: accumulatedContent };
+      yield { 
+        type: 'done', 
+        content: accumulatedContent,
+        images: imageParts
+      };
 
     } catch (err) {
       throw upstreamError(`Gemini API error: ${err.message}`);
     }
   }
 
-  /**
-   * 流式文本输出（带 Tool Calling）- 暂不支持
-   */
   async *streamWithTools(modelId, messages, tools = [], options = {}) {
-    // Gemini 目前不支持此格式，直接使用 streamText
     yield* this.streamText(modelId, messages, options);
   }
 
-  /**
-   * 非流式文本输出
-   */
   async sendWithTools(modelId, messages, tools = [], options = {}) {
     const client = options.httpClient;
     if (!client) {
       throw new Error('HTTP client not provided');
     }
 
-    const contents = this._convertToGeminiFormat(messages);
+    const { contents, systemInstruction } = this._convertToGeminiFormat(messages);
+    const isImage = isImageModel(modelId);
 
     try {
       const url = `${this.baseUrl}/models/${modelId}:generateContent?key=${this.apiKey}`;
+
+      const generationConfig = {
+        temperature: options.temperature || 0.9,
+        topP: options.topP || 0.95,
+        topK: options.topK || 40,
+        maxOutputTokens: options.maxOutputTokens || (isImage ? 8192 : 2048)
+      };
+
+      if (isImage) {
+        generationConfig.responseModalities = ['image', 'text'];
+      }
+
+      const requestBody = {
+        contents,
+        generationConfig
+      };
+
+      if (systemInstruction) {
+        requestBody.systemInstruction = systemInstruction;
+      }
 
       const res = await client.post(url, {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: options.temperature || 0.9,
-            topP: options.topP || 0.95,
-            topK: options.topK || 40,
-            maxOutputTokens: options.maxOutputTokens || 2048
-          }
-        }),
-        timeout: options.timeout || 120000
+        body: JSON.stringify(requestBody),
+        timeout: options.timeout || 180000
       });
 
       if (!res.ok) {
@@ -155,6 +188,7 @@ export class GeminiAdapter extends BaseAdapter {
       }
 
       let content = '';
+      let images = [];
       if (res.body?.candidates) {
         for (const candidate of res.body.candidates) {
           if (candidate.content?.parts) {
@@ -162,27 +196,30 @@ export class GeminiAdapter extends BaseAdapter {
               if (part.text) {
                 content += part.text;
               }
+              if (part.inlineData) {
+                images.push(part.inlineData);
+              }
             }
           }
         }
       }
 
-      return { content, raw: res.body };
+      return { content, images, raw: res.body };
 
     } catch (err) {
       throw upstreamError(`Gemini API error: ${err.message}`);
     }
   }
 
-  /**
-   * 转换消息格式为 Gemini 格式
-   */
   _convertToGeminiFormat(messages) {
     const contents = [];
+    let systemInstruction = null;
 
     for (const msg of messages) {
       if (msg.role === 'system') {
-        // Gemini 使用 systemInstruction
+        systemInstruction = {
+          parts: [{ text: String(msg.content || '') }]
+        };
         continue;
       }
 
@@ -194,13 +231,36 @@ export class GeminiAdapter extends BaseAdapter {
       } else if (Array.isArray(msg.content)) {
         for (const part of msg.content) {
           if (part.type === 'text') {
+            parts.push({ text: part.text || (part.text === undefined ? '' : '') });
+          } else if (part.type === 'text' && part.text !== undefined) {
             parts.push({ text: part.text });
           } else if (part.type === 'image_url') {
-            // 处理图片
+            const url = part.image_url?.url || '';
+            if (url) {
+              if (url.startsWith('data:')) {
+                const matches = url.match(/^data:([^;]+);base64,(.+)$/);
+                if (matches) {
+                  parts.push({
+                    inlineData: {
+                      mimeType: matches[1] || 'image/jpeg',
+                      data: matches[2]
+                    }
+                  });
+                }
+              } else {
+                parts.push({
+                  fileData: {
+                    mimeType: part.image_url?.mime_type || 'image/jpeg',
+                    fileUri: url
+                  }
+                });
+              }
+            }
+          } else if (part.inlineData) {
             parts.push({
               inlineData: {
-                mimeType: part.image_url?.mime_type || 'image/jpeg',
-                data: part.image_url.url.replace(/^data:[^;]+;base64,/, '')
+                mimeType: part.inlineData.mimeType || 'image/jpeg',
+                data: part.inlineData.data
               }
             });
           }
@@ -212,6 +272,6 @@ export class GeminiAdapter extends BaseAdapter {
       }
     }
 
-    return contents;
+    return { contents, systemInstruction };
   }
 }

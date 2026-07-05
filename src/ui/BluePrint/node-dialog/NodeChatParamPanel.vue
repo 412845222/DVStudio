@@ -35,6 +35,22 @@
 						</button>
 					</div>
 				</div>
+				<div v-if="params.model === 'gemini'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in geminiTextModelVersionOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiTextModelVersion === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('geminiTextModelVersion', opt.value)"
+						>
+							{{ translateOpt(opt) }}
+						</button>
+					</div>
+				</div>
 				<div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.seedVersion') }}</span>
 					<div class="bp-node-chat-param-options">
@@ -134,6 +150,22 @@
 						</button>
 					</div>
 				</div>
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in geminiImageModelVersionOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiImageModelVersion === opt.value || params.nanobananaModelVersion === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('geminiImageModelVersion', opt.value)"
+						>
+							{{ translateOpt(opt) }}
+						</button>
+					</div>
+				</div>
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
 					<div class="bp-node-chat-param-options">
@@ -145,22 +177,6 @@
 							:class="{ 'is-active': params.seedreamModelVersion === opt.value }"
 							:disabled="disabled"
 							@click="updateParam('seedreamModelVersion', opt.value)"
-						>
-							{{ translateOpt(opt) }}
-						</button>
-					</div>
-				</div>
-				<div v-if="params.model === 'nanobanana'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
-					<div class="bp-node-chat-param-options">
-						<button
-							v-for="opt in nanobananaModelVersionOptions"
-							:key="opt.value"
-							type="button"
-							class="bp-node-chat-param-btn"
-							:class="{ 'is-active': params.nanobananaModelVersion === opt.value }"
-							:disabled="disabled"
-							@click="updateParam('nanobananaModelVersion', opt.value)"
 						>
 							{{ translateOpt(opt) }}
 						</button>
@@ -952,6 +968,8 @@ import {
 	NODE_CHAT_MODEL3D_PROVIDER_OPTIONS,
 	NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS,
+	NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS,
+	NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_SEED_MODEL_VERSION_OPTIONS,
@@ -994,6 +1012,24 @@ const toggleCollapse = () => {
 
 const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value: WorkflowNodeChatParamRecord[K]) => {
 	const next: WorkflowNodeChatParamRecord = { ...props.params, [key]: value }
+
+	if (key === 'model') {
+		if (value === 'gemini') {
+			if (props.nodeType === 'text' && !next.geminiTextModelVersion) {
+				next.geminiTextModelVersion = 'gemini-3.5-flash'
+			}
+			if (props.nodeType === 'image') {
+				if (!next.geminiImageModelVersion) {
+					next.geminiImageModelVersion = 'gemini-3.1-flash-image-preview'
+				}
+				next.nanobananaModelVersion = next.geminiImageModelVersion
+			}
+		}
+	}
+
+	if (key === 'geminiImageModelVersion' && typeof value === 'string') {
+		next.nanobananaModelVersion = value
+	}
 
 	if (key === 'seedreamModelVersion' && typeof value === 'string') {
 		const modelVer = value
@@ -1058,6 +1094,8 @@ const meshyPoseModeOptions = NODE_CHAT_MESHY_POSE_MODE_OPTIONS
 const meshyOutputFormatOptions = NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS
 const meshyDecimationModeOptions = NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS
 const seedreamModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
+const geminiTextModelVersionOptions = NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS
+const geminiImageModelVersionOptions = NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS
 const nanobananaModelVersionOptions = NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS
 const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
 const meshyImageOutputCountOptions = NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS

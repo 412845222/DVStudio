@@ -88,6 +88,44 @@ function wrapResultMsg(data) {
 const NANOBANANA_API_BASE = 'https://api.meshy.ai/openapi'
 const SEEDREAM_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 const JIMENG_API_BASE = 'https://visual.volcengineapi.com'
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
+
+function convertMessagesToGemini(messages) {
+	const contents = []
+	let systemInstruction = null
+	for (const msg of messages) {
+		if (!msg || !msg.role) continue
+		if (msg.role === 'system') {
+			systemInstruction = { parts: [{ text: String(msg.content || '') }] }
+			continue
+		}
+		const role = msg.role === 'assistant' ? 'model' : 'user'
+		const parts = []
+		const content = msg.content
+		if (typeof content === 'string') {
+			parts.push({ text: content })
+		} else if (Array.isArray(content)) {
+			for (const part of content) {
+				if (!part) continue
+				if (part.type === 'text' && part.text) {
+					parts.push({ text: part.text })
+				} else if (part.type === 'image_url' && part.image_url?.url) {
+					const url = part.image_url.url
+					if (url.startsWith('data:')) {
+						const matches = url.match(/^data:([^;]+);base64,(.+)$/)
+						if (matches) {
+							parts.push({ inlineData: { mimeType: matches[1] || 'image/jpeg', data: matches[2] } })
+						}
+					}
+				}
+			}
+		}
+		if (parts.length > 0) {
+			contents.push({ role, parts })
+		}
+	}
+	return { contents, systemInstruction }
+}
 
 /**
  * 记录火山方舟任务到 ark_tasks 表
@@ -930,8 +968,9 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	const providerConfigs = [
-		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-0-pro-260215' },
-		{ prov: 'deepseek', names: ['deepseek'], baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+		{ prov: 'gemini', names: ['gemini', 'GeminiApiKey', 'gemini_api_key'], baseUrl: GEMINI_API_BASE, model: 'gemini-3.5-flash', isNative: true },
+		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream', 'bytedanceApiKey'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-0-pro-260215' },
+		{ prov: 'deepseek', names: ['deepseek', 'deepseekApiKey'], baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
 		{ prov: 'openai', names: ['openai'], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
 	]
 
@@ -946,7 +985,11 @@ export async function* blueprintChatStream(ctx, payload) {
 					const k = getKeyFor(name)
 					if (k) { cfg = pc; provider = pc.prov; apiKey = k; break }
 				}
-				if (cfg) break
+				if (!cfg || !apiKey) {
+					yield wrapStreamError(`No API key configured for requested provider: ${requestedProvider}. Please configure it in Settings.`)
+					return
+				}
+				break
 			}
 		}
 	}
@@ -962,7 +1005,7 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	if (!cfg || !apiKey) {
-		yield wrapStreamError('No LLM API key configured (bytedance/deepseek/openai)')
+		yield wrapStreamError('No LLM API key configured (gemini/bytedance/deepseek/openai)')
 		return
 	}
 
@@ -972,7 +1015,7 @@ export async function* blueprintChatStream(ctx, payload) {
 	const nodeId = String(p.nodeId || '').trim()
 	recordArkTask({
 		taskId,
-		provider: 'bytedance',
+		provider,
 		apiType: 'blueprintChat',
 		apiAction: 'text_chat',
 		model: useModel,
@@ -1007,26 +1050,65 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	let fullContent = ''
+	let fullImages = []
 	try {
 		const client = getHttpClient()
-		const stream = client.postStream(`${cfg.baseUrl}/chat/completions`, {
-			headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-			body: JSON.stringify({ model: useModel, messages: chatMessages, stream: true }),
-			timeout: 120000
-		})
-		for await (const rawLine of stream) {
-			const line = String(rawLine || '').trim()
-			if (!line.startsWith('data:')) continue
-			const data = line.slice(5).trim()
-			if (data === '[DONE]') break
-			try {
-				const parsed = JSON.parse(data)
-				const delta = parsed?.choices?.[0]?.delta?.content
-				if (delta) {
-					fullContent += delta
-					yield wrapTextMsg(delta)
+		if (cfg.isNative && provider === 'gemini') {
+			const { contents, systemInstruction } = convertMessagesToGemini(chatMessages)
+			const geminiBody = {
+				contents,
+				generationConfig: {
+					responseModalities: ['TEXT']
 				}
-			} catch {}
+			}
+			if (systemInstruction) {
+				geminiBody.systemInstruction = systemInstruction
+			}
+			const url = `${cfg.baseUrl}/models/${useModel}:streamGenerateContent?alt=sse&key=${apiKey}`
+			const stream = client.postStream(url, {
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(geminiBody),
+				timeout: 120000
+			})
+			for await (const rawLine of stream) {
+				const line = String(rawLine || '').trim()
+				if (!line.startsWith('data:')) continue
+				const data = line.slice(5).trim()
+				if (!data || data === '[DONE]') continue
+				try {
+					const parsed = JSON.parse(data)
+					const candidates = parsed?.candidates || []
+					for (const candidate of candidates) {
+						const parts = candidate?.content?.parts || []
+						for (const part of parts) {
+							if (part.text) {
+								fullContent += part.text
+								yield wrapTextMsg(part.text)
+							}
+						}
+					}
+				} catch {}
+			}
+		} else {
+			const stream = client.postStream(`${cfg.baseUrl}/chat/completions`, {
+				headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ model: useModel, messages: chatMessages, stream: true }),
+				timeout: 120000
+			})
+			for await (const rawLine of stream) {
+				const line = String(rawLine || '').trim()
+				if (!line.startsWith('data:')) continue
+				const data = line.slice(5).trim()
+				if (data === '[DONE]') break
+				try {
+					const parsed = JSON.parse(data)
+					const delta = parsed?.choices?.[0]?.delta?.content
+					if (delta) {
+						fullContent += delta
+						yield wrapTextMsg(delta)
+					}
+				} catch {}
+			}
 		}
 		yield wrapDone()
 		recordArkTask({
@@ -1066,19 +1148,25 @@ export async function blueprintChat(ctx, payload) {
 	}
 
 	const providerConfigs = [
-		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-0-pro-260215' },
-		{ prov: 'deepseek', names: ['deepseek'], baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+		{ prov: 'gemini', names: ['gemini', 'GeminiApiKey', 'gemini_api_key'], baseUrl: GEMINI_API_BASE, model: 'gemini-3.5-flash', isNative: true },
+		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream', 'bytedanceApiKey'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-0-pro-260215' },
+		{ prov: 'deepseek', names: ['deepseek', 'deepseekApiKey'], baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
 		{ prov: 'openai', names: ['openai'], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
 	]
 
 	let cfg = null
-	for (const pc of providerConfigs) {
-		if (requestedProvider && (pc.prov === requestedProvider || requestedProvider.includes(pc.prov) || pc.names.some(n => requestedProvider.includes(n)))) {
-			for (const name of pc.names) {
-				const k = getKeyFor(name)
-				if (k) { cfg = { ...pc, apiKey: k }; break }
+	if (requestedProvider) {
+		for (const pc of providerConfigs) {
+			if (pc.prov === requestedProvider || requestedProvider.includes(pc.prov) || pc.names.some(n => requestedProvider.includes(n))) {
+				for (const name of pc.names) {
+					const k = getKeyFor(name)
+					if (k) { cfg = { ...pc, apiKey: k }; break }
+				}
+				if (!cfg) {
+					return { ok: false, error: `No API key configured for requested provider: ${requestedProvider}. Please configure it in Settings.` }
+				}
+				break
 			}
-			if (cfg) break
 		}
 	}
 	if (!cfg) {
@@ -1090,7 +1178,7 @@ export async function blueprintChat(ctx, payload) {
 			if (cfg) break
 		}
 	}
-	if (!cfg) return { ok: false, error: 'No LLM API key configured (bytedance/deepseek/openai)' }
+	if (!cfg) return { ok: false, error: 'No LLM API key configured (gemini/bytedance/deepseek/openai)' }
 
 	const useModel = String(p.modelId || p.model || cfg.model).trim()
 	const chatMessages = [{ role: 'system', content: systemPrompt }]
@@ -1117,23 +1205,222 @@ export async function blueprintChat(ctx, payload) {
 
 	try {
 		const client = getHttpClient()
-		const res = await client.post(`${cfg.baseUrl}/chat/completions`, {
-			model: useModel,
-			messages: chatMessages,
-			stream: false
-		}, {
-			headers: { 'Authorization': `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
-			timeout: 120000
-		})
-		if (!res.ok) {
-			const errMsg = typeof res.body === 'object' && res.body?.error
-				? String(res.body.error.message || JSON.stringify(res.body.error))
-				: `HTTP ${res.status}`
-			return { ok: false, error: errMsg, status: res.status }
+		let assistant = ''
+		let images = []
+		if (cfg.isNative && cfg.prov === 'gemini') {
+			const { contents, systemInstruction } = convertMessagesToGemini(chatMessages)
+			const geminiBody = {
+				contents,
+				generationConfig: {
+					responseModalities: ['TEXT']
+				}
+			}
+			if (systemInstruction) {
+				geminiBody.systemInstruction = systemInstruction
+			}
+			const url = `${cfg.baseUrl}/models/${useModel}:generateContent?key=${cfg.apiKey}`
+			const res = await client.post(url, geminiBody, {
+				headers: { 'Content-Type': 'application/json' },
+				timeout: 120000
+			})
+			if (!res.ok) {
+				const errMsg = typeof res.body === 'object' && res.body?.error
+					? String(res.body.error.message || JSON.stringify(res.body.error))
+					: `HTTP ${res.status}`
+				return { ok: false, error: errMsg, status: res.status }
+			}
+			const candidates = res.body?.candidates || []
+			for (const candidate of candidates) {
+				const parts = candidate?.content?.parts || []
+				for (const part of parts) {
+					if (part.text) {
+						assistant += part.text
+					}
+				}
+			}
+			assistant = assistant.trim()
+		} else {
+			const res = await client.post(`${cfg.baseUrl}/chat/completions`, {
+				model: useModel,
+				messages: chatMessages,
+				stream: false
+			}, {
+				headers: { 'Authorization': `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+				timeout: 120000
+			})
+			if (!res.ok) {
+				const errMsg = typeof res.body === 'object' && res.body?.error
+					? String(res.body.error.message || JSON.stringify(res.body.error))
+					: `HTTP ${res.status}`
+				return { ok: false, error: errMsg, status: res.status }
+			}
+			assistant = String(res.body?.choices?.[0]?.message?.content || '').trim()
 		}
-		const assistant = String(res.body?.choices?.[0]?.message?.content || '').trim()
 		return { ok: true, assistant, model: useModel }
 	} catch (err) {
 		return { ok: false, error: String(err?.message || err) }
+	}
+}
+
+export async function* geminiImageGenerateStream(ctx, payload) {
+	const p = payload || {}
+	const prompt = String(p.prompt || p.message || '').trim()
+	if (!prompt) {
+		yield wrapStreamError('prompt is required')
+		return
+	}
+	const negativePrompt = String(p.negative_prompt || p.negativePrompt || '').trim()
+	const aspectRatio = String(p.aspect_ratio || p.aspectRatio || '1:1').trim()
+	const numImages = Math.max(1, Math.min(4, Number(p.num_images || p.numImages || p.quantity || 1)))
+	const referenceImages = Array.isArray(p.reference_images) ? p.reference_images.filter(Boolean) : []
+	const modelId = String(p.modelId || p.model || 'gemini-3.1-flash-image-preview').trim()
+
+	const repo = getApiKeyRepo(ctx)
+	function getKeyFor(name) {
+		try {
+			const r = repo.getPlaintext(name)
+			if (r.ok && r.plaintext && String(r.plaintext).trim()) return String(r.plaintext).trim()
+		} catch {}
+		return ''
+	}
+	const apiKey = getKeyFor('gemini') || getKeyFor('GeminiApiKey') || getKeyFor('gemini_api_key')
+	if (!apiKey) {
+		yield wrapStreamError('No Gemini API key configured')
+		return
+	}
+
+	const taskId = `gemini-img-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+	const projectId = p.projectId ? Number(p.projectId) : null
+	const nodeId = String(p.nodeId || '').trim()
+	recordArkTask({
+		taskId,
+		provider: 'gemini',
+		apiType: 'imageGenerate',
+		apiAction: 'generate_image',
+		model: modelId,
+		status: 'queued',
+		prompt,
+		statusText: '正在调用Gemini图片模型…',
+		requestPayload: { modelId, prompt, aspectRatio, numImages, hasRefImages: referenceImages.length > 0 },
+		projectId,
+		nodeId
+	})
+
+	try {
+		const client = getHttpClient()
+		const userParts = []
+
+		yield wrapTaskStatusMsg('正在生成图片…', 'generating')
+
+		if (referenceImages.length > 0) {
+			for (const img of referenceImages) {
+				const imgStr = String(img)
+				if (imgStr.startsWith('data:')) {
+					const matches = imgStr.match(/^data:([^;]+);base64,(.+)$/)
+					if (matches) {
+						userParts.push({ inlineData: { mimeType: matches[1] || 'image/jpeg', data: matches[2] } })
+					}
+				} else if (imgStr.startsWith('http://') || imgStr.startsWith('https://')) {
+					userParts.push({ fileData: { mimeType: 'image/jpeg', fileUri: imgStr } })
+				}
+			}
+		}
+
+		let imagePrompt = prompt
+		if (negativePrompt) {
+			imagePrompt = `${imagePrompt}\n\nNegative prompt: ${negativePrompt}`
+		}
+		const ratioHint = {
+			'1:1': 'square (1:1)',
+			'16:9': 'landscape 16:9',
+			'9:16': 'portrait 9:16',
+			'4:3': 'landscape 4:3',
+			'3:4': 'portrait 4:3'
+		}[aspectRatio]
+		if (ratioHint) {
+			imagePrompt = `${imagePrompt}\n\nAspect ratio: ${ratioHint}`
+		}
+		userParts.push({ text: imagePrompt })
+
+		const geminiBody = {
+			contents: [{ role: 'user', parts: userParts }],
+			generationConfig: {
+				responseModalities: ['IMAGE', 'TEXT'],
+				imageConfig: {
+					aspectRatio: aspectRatio
+				}
+			}
+		}
+
+		const url = `${GEMINI_API_BASE}/models/${modelId}:streamGenerateContent?alt=sse&key=${apiKey}`
+		const stream = client.postStream(url, {
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(geminiBody),
+			timeout: 180000
+		})
+
+		let generatedImages = []
+		let generatedText = ''
+		for await (const rawLine of stream) {
+			const line = String(rawLine || '').trim()
+			if (!line.startsWith('data:')) continue
+			const data = line.slice(5).trim()
+			if (!data || data === '[DONE]') continue
+			try {
+				const parsed = JSON.parse(data)
+				yield wrapTaskStatusMsg('正在处理图片…', 'streaming')
+				const candidates = parsed?.candidates || []
+				for (const candidate of candidates) {
+					const parts = candidate?.content?.parts || []
+					for (const part of parts) {
+						if (part.inlineData) {
+							const imgData = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`
+							generatedImages.push(imgData)
+							yield wrapChatMsg({ imageUrl: imgData })
+						}
+						if (part.text) {
+							generatedText += part.text
+						}
+					}
+				}
+			} catch {}
+		}
+
+		if (generatedImages.length === 0 && generatedText) {
+			const imgRegex = /!\[.*?\]\((data:image\/[^)]+)\)/g
+			let match
+			while ((match = imgRegex.exec(generatedText)) !== null && generatedImages.length < numImages) {
+				generatedImages.push(match[1])
+				yield wrapChatMsg({ imageUrl: match[1] })
+			}
+		}
+
+		if (generatedImages.length === 0) {
+			yield wrapStreamError('No images were generated')
+			recordArkTask({
+				taskId,
+				status: 'failed',
+				errorMessage: 'No images returned from Gemini',
+				statusText: '图片生成失败'
+			})
+			return
+		}
+
+		yield wrapDone()
+		recordArkTask({
+			taskId,
+			status: 'succeeded',
+			resultText: `生成${Math.min(generatedImages.length, numImages)}张图片`,
+			statusText: '图片生成完成',
+			responsePayload: { imageCount: Math.min(generatedImages.length, numImages) }
+		})
+	} catch (err) {
+		recordArkTask({
+			taskId,
+			status: 'failed',
+			errorMessage: String(err?.message || err),
+			statusText: '图片生成失败'
+		})
+		yield wrapStreamError(String(err?.message || err))
 	}
 }

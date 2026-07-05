@@ -386,13 +386,17 @@ const collectReferenceImagesWithUrl = async (
 
 const normalizeImageModel = (params: Record<string, unknown>) => {
 	const rawModel = String(params?.imageModel ?? params?.model ?? '').trim()
-	// Meshy 图片生成模型
+
+	if (rawModel === 'gemini' || rawModel === 'nanobanana' || rawModel.startsWith('gemini-')) {
+		const geminiVersion = String(params?.geminiImageModelVersion ?? params?.nanobananaModelVersion ?? '').trim()
+		return { kind: 'gemini', model: geminiVersion || 'gemini-3.1-flash-image-preview' }
+	}
+	// Meshy 图片生成模型（meshy自有模型，非NanoBanana）
 	if (rawModel === 'meshy') {
 		const meshyAiModel = String(params?.meshyImageAiModel || 'nano-banana').trim()
 		return { kind: 'meshy', model: meshyAiModel }
 	}
 	if (rawModel.startsWith('jimeng')) return { kind: 'jimeng', model: rawModel }
-	if (rawModel.startsWith('nanobanana')) return { kind: 'nanobanana', model: rawModel }
 	// When user picks 'seedream' as the interface, the actual model ID is in seedreamModelVersion.
 	if (rawModel === 'seedream') {
 		const seedreamVersion = String(params?.seedreamModelVersion ?? '').trim()
@@ -895,19 +899,32 @@ const runTextTask = async (
 	payload: WorkflowNodeChatSubmitPayload
 ) => {
 	const svc = getComfyService(deps)
-	updateTask(deps, task.id, {
-		status: 'running',
-		statusText: t('aiworkflow.runtime.callingTextModel'),
-		progress: 15
-	})
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
-	// Default provider is "bytedance" (Doubao). User params may override to "deepseek".
+	// Default provider is "gemini" (Google). User params may override to other providers.
 	const params = payload.params ?? {}
-	const provider = String(params.model ?? params.provider ?? 'bytedance').toLowerCase()
-	const modelId =
-		String(params.modelId ?? params.textModelVersion ?? '').trim() ||
-		(provider === 'deepseek' ? 'deepseek-chat' : 'doubao-seed-2-0-pro-260215')
+	const provider = String(params.model ?? params.provider ?? 'gemini').toLowerCase()
+	let modelId = String(params.modelId ?? params.geminiTextModelVersion ?? params.textModelVersion ?? '').trim()
+	if (!modelId) {
+		if (provider === 'deepseek') modelId = 'deepseek-chat'
+		else if (provider === 'gemini') modelId = 'gemini-3.5-flash'
+		else if (provider === 'openai') modelId = 'gpt-4o-mini'
+		else modelId = 'doubao-seed-2-0-pro-260215'
+	}
+
+	const providerDisplayNames: Record<string, string> = {
+		gemini: 'Google Gemini',
+		bytedance: 'ByteDance Doubao',
+		doubao: 'ByteDance Doubao',
+		deepseek: 'DeepSeek',
+		openai: 'OpenAI'
+	}
+	const providerName = providerDisplayNames[provider] || provider
+	updateTask(deps, task.id, {
+		status: 'running',
+		statusText: t('aiworkflow.runtime.callingTextModelWithProvider', { provider: providerName }),
+		progress: 15
+	})
 	const body: Record<string, unknown> = { content: payload.prompt, provider, modelId }
 	if (params.speed) body.speed = params.speed
 	if (params.thinking) body.thinking = params.thinking
@@ -1221,11 +1238,45 @@ const runImageTask = async (
 		for (const ref of refs) form.append('refImages', ref.blob, ref.name)
 	}
 
+	// For Gemini, convert reference images to base64 data URIs and build payload
+	let geminiPayload: Record<string, unknown> | null = null
+	let geminiRefImages: string[] = []
+	if (kind === 'gemini') {
+		for (const ref of refs) {
+			try {
+				const dataUri = await blobToBase64DataUri(ref.blob)
+				if (dataUri) geminiRefImages.push(dataUri)
+			} catch {
+				// skip failed images
+			}
+		}
+		const geminiAspectRatio = String(params?.meshyAspectRatio || params?.aspectRatio || '1:1').trim()
+		const geminiQuantity = Number(params?.quantity ?? params?.meshyOutputImageCount ?? 1)
+		const geminiNegativePrompt = String(params?.meshyNegativePrompt || params?.negativePrompt || '').trim()
+		const geminiProjectId = deps.getProjectId?.() ?? null
+		geminiPayload = {
+			prompt: payload.prompt,
+			modelId: model,
+			model: model,
+			aspectRatio: geminiAspectRatio,
+			quantity: Math.min(4, Math.max(1, Math.floor(geminiQuantity))),
+			numImages: Math.min(4, Math.max(1, Math.floor(geminiQuantity))),
+			negativePrompt: geminiNegativePrompt,
+			reference_images: geminiRefImages,
+			refImages: geminiRefImages,
+			nodeId: payload.nodeId,
+			projectId: geminiProjectId
+		}
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAspectRatio', { ratio: geminiAspectRatio }))
+		if (geminiNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: geminiNegativePrompt.slice(0, 80) }))
+		if (geminiRefImages.length > 0) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(geminiRefImages.length) }))
+	}
+
 	const stream =
-		kind === 'jimeng'
-			? svc.jimengImageGenerateStream(form)
-			: kind === 'nanobanana'
-				? svc.nanoBananaGenerateStream(form)
+		kind === 'gemini'
+			? svc.geminiImageGenerateStream(geminiPayload || {})
+			: kind === 'jimeng'
+				? svc.jimengImageGenerateStream(form)
 				: svc.seedreamGenerateStream(form)
 
 	let produced = 0

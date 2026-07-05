@@ -305,6 +305,7 @@
   "aiworkflow.runtime.backendUnreachable": "Backend unreachable ({error}). In Electron environment, please use IPC calls, no HTTP backend needed.",
   "aiworkflow.runtime.failedStatus": "Failed: {message}",
   "aiworkflow.runtime.callingTextModel": "Calling text model (ByteDance Doubao)…",
+  "aiworkflow.runtime.callingTextModelWithProvider": "Calling text model ({provider})…",
   "aiworkflow.runtime.detailPrompt": "Prompt: {prompt}",
   "aiworkflow.runtime.detailRefImageCount": "Reference image count: {count}",
   "aiworkflow.runtime.textModelGenerating": "Text model generating content…",
