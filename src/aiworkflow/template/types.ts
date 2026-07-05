@@ -20,6 +20,8 @@ export interface TemplateItem {
 	category: TemplateCategory
 	source: TemplateSource
 	thumbnail?: string
+	coverUrl?: string
+	coverPath?: string
 	packagePath?: string
 	packageData?: Blob
 	filePath?: string
@@ -61,4 +63,5 @@ export interface SaveTemplateOptions {
 	tags?: string[]
 	scope: TemplateScope
 	nodeIds?: string[]
+	coverBlob?: Blob | null
 }

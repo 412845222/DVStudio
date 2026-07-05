@@ -195,6 +195,7 @@ declare global {
 					arrayBuffer: ArrayBuffer
 					contentType?: string
 					bucket?: string
+					subPath?: string
 				}): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string }>
 				importProjectAsset(payload: {
 					projectId: number
@@ -203,6 +204,7 @@ declare global {
 					sourcePath?: string
 					sourceUrl?: string
 					bucket?: string
+					subPath?: string
 				}): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string }>
 				projectAssets: {
 					repairAll(payload: {
@@ -238,10 +240,12 @@ declare global {
 							nodeCount: number
 							source: string
 							filePath: string
+							coverPath: string
 							createdAt: number
 							updatedAt: number
 						}>; error?: string }>
 						getBlob?(payload: { id: string }): Promise<{ ok?: boolean; buffer?: ArrayBuffer; error?: string }>
+						getCover?(payload: { id: string }): Promise<{ ok?: boolean; buffer?: ArrayBuffer; mimeType?: string; error?: string }>
 						save?(payload: {
 							id?: string
 							name: string
@@ -250,6 +254,7 @@ declare global {
 							tags?: string[]
 							nodeCount?: number
 							zipBuffer: ArrayBuffer | Uint8Array
+							coverBuffer?: ArrayBuffer | Uint8Array | null
 						}): Promise<{ ok?: boolean; template?: unknown; error?: string }>
 						remove?(payload: { id: string }): Promise<{ ok?: boolean; error?: string }>
 					}

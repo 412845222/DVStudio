@@ -1,37 +1,48 @@
 <template>
-	<Transition name="aiwf-rail-dialog">
+	<Transition name="tc-dialog">
 		<div
 			v-if="open"
-			class="template-center-mask"
+			class="tc-mask"
 			data-bp-ui-overlay="true"
 			@pointerdown.stop
 			@mousedown.stop
 			@contextmenu.prevent.stop
 			@click.self="$emit('update:open', false)"
 		>
-			<div
-				class="template-center-dialog"
-				data-bp-ui-overlay="true"
-				@pointerdown.stop
-				@mousedown.stop
-				@click.stop
-				@contextmenu.prevent.stop
-			>
-				<span class="rail-bracket rail-bracket-tl" aria-hidden="true"></span>
-				<span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
-				<span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
-				<span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
+			<div class="tc-dialog" data-bp-ui-overlay="true" @pointerdown.stop @mousedown.stop @click.stop @contextmenu.prevent.stop>
+				<div class="tc-bg-layer" aria-hidden="true">
+					<div class="tc-bg-gradient"></div>
+					<div class="tc-bg-grid"></div>
+					<div class="tc-bg-glow tc-bg-glow-1"></div>
+					<div class="tc-bg-glow tc-bg-glow-2"></div>
+				</div>
+				<div class="tc-scanline" aria-hidden="true"></div>
+				<div class="sq-container tc-particles" aria-hidden="true">
+					<span
+						v-for="p in particles"
+						:key="p.id"
+						class="sq-particle"
+						:style="p.style"
+					></span>
+				</div>
+				<span class="tc-corner tc-corner-tl" aria-hidden="true"></span>
+				<span class="tc-corner tc-corner-tr" aria-hidden="true"></span>
+				<span class="tc-corner tc-corner-bl" aria-hidden="true"></span>
+				<span class="tc-corner tc-corner-br" aria-hidden="true"></span>
 
-				<div class="template-center-header">
-					<div class="template-center-title">{{ t('aiworkflow.templateCenter.title') }}</div>
-					<div class="template-center-header-actions">
-						<button class="template-new-btn" type="button" @click="$emit('save-template', { scope: 'full' })">
+				<div class="tc-header">
+					<div class="tc-title-wrap">
+						<div class="tc-title">{{ t('aiworkflow.templateCenter.title') }}</div>
+						<div class="tc-title-sub">{{ t('aiworkflow.templateCenter.subtitle') }}</div>
+					</div>
+					<div class="tc-header-actions">
+						<button class="tc-btn tc-btn-primary" type="button" @click="$emit('save-template', { scope: 'full' })">
 							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
 								<path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 							</svg>
 							{{ t('aiworkflow.templateCenter.newTemplate') }}
 						</button>
-						<button class="template-center-close" type="button" @click="$emit('update:open', false)">
+						<button class="tc-btn tc-btn-icon tc-btn-close" type="button" @click="$emit('update:open', false)">
 							<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
 								<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 							</svg>
@@ -39,28 +50,28 @@
 					</div>
 				</div>
 
-				<div class="template-center-toolbar">
-					<div class="template-search-wrap">
-						<svg class="template-search-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+				<div class="tc-toolbar">
+					<div class="tc-search-wrap">
+						<svg class="tc-search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
 							<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
 							<path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
 						</svg>
 						<input
 							v-model="searchKeyword"
-							class="template-search-input"
+							class="tc-search-input"
 							type="text"
 							:placeholder="t('aiworkflow.templateCenter.searchPlaceholder')"
 						/>
 					</div>
 
-					<div class="template-filters">
-						<select v-model="selectedSource" class="template-filter-select">
+					<div class="tc-filters">
+						<select v-model="selectedSource" class="tc-select">
 							<option value="all">{{ t('aiworkflow.templateCenter.allSources') }}</option>
 							<option value="builtin">{{ t('aiworkflow.templateCenter.sourceBuiltin') }}</option>
 							<option value="user">{{ t('aiworkflow.templateCenter.sourceUser') }}</option>
 						</select>
 
-						<select v-model="selectedCategory" class="template-filter-select">
+						<select v-model="selectedCategory" class="tc-select">
 							<option value="all">{{ t('aiworkflow.templateCenter.allCategories') }}</option>
 							<option value="basic">{{ t('aiworkflow.templateCategory.basic') }}</option>
 							<option value="video-generation">{{ t('aiworkflow.templateCategory.video-generation') }}</option>
@@ -71,81 +82,81 @@
 							<option value="other">{{ t('aiworkflow.templateCategory.other') }}</option>
 						</select>
 
-						<select v-model="sortBy" class="template-filter-select">
+						<select v-model="sortBy" class="tc-select">
 							<option value="newest">{{ t('aiworkflow.templateCenter.sortByNewest') }}</option>
 							<option value="name">{{ t('aiworkflow.templateCenter.sortByName') }}</option>
 						</select>
 					</div>
 
-					<div class="template-view-switch">
+					<div class="tc-view-switch">
 						<button
-							class="template-view-btn"
+							class="tc-view-btn"
 							:class="{ active: viewMode === 'grid-large' }"
 							type="button"
 							@click="setViewMode('grid-large')"
 							:title="t('aiworkflow.templateCenter.viewLarge')"
 						>
-							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-								<rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor" />
-								<rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor" />
-								<rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" />
-								<rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" />
+							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+								<rect x="2" y="2" width="5" height="5" fill="currentColor" />
+								<rect x="9" y="2" width="5" height="5" fill="currentColor" />
+								<rect x="2" y="9" width="5" height="5" fill="currentColor" />
+								<rect x="9" y="9" width="5" height="5" fill="currentColor" />
 							</svg>
 						</button>
 						<button
-							class="template-view-btn"
+							class="tc-view-btn"
 							:class="{ active: viewMode === 'grid-small' }"
 							type="button"
 							@click="setViewMode('grid-small')"
 							:title="t('aiworkflow.templateCenter.viewSmall')"
 						>
-							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-								<rect x="1" y="1" width="4" height="4" rx="0.5" fill="currentColor" />
-								<rect x="6" y="1" width="4" height="4" rx="0.5" fill="currentColor" />
-								<rect x="11" y="1" width="4" height="4" rx="0.5" fill="currentColor" />
-								<rect x="1" y="6" width="4" height="4" rx="0.5" fill="currentColor" />
-								<rect x="6" y="6" width="4" height="4" rx="0.5" fill="currentColor" />
-								<rect x="11" y="6" width="4" height="4" rx="0.5" fill="currentColor" />
-								<rect x="1" y="11" width="4" height="4" rx="0.5" fill="currentColor" />
-								<rect x="6" y="11" width="4" height="4" rx="0.5" fill="currentColor" />
-								<rect x="11" y="11" width="4" height="4" rx="0.5" fill="currentColor" />
+							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+								<rect x="1" y="1" width="4" height="4" fill="currentColor" />
+								<rect x="6" y="1" width="4" height="4" fill="currentColor" />
+								<rect x="11" y="1" width="4" height="4" fill="currentColor" />
+								<rect x="1" y="6" width="4" height="4" fill="currentColor" />
+								<rect x="6" y="6" width="4" height="4" fill="currentColor" />
+								<rect x="11" y="6" width="4" height="4" fill="currentColor" />
+								<rect x="1" y="11" width="4" height="4" fill="currentColor" />
+								<rect x="6" y="11" width="4" height="4" fill="currentColor" />
+								<rect x="11" y="11" width="4" height="4" fill="currentColor" />
 							</svg>
 						</button>
 						<button
-							class="template-view-btn"
+							class="tc-view-btn"
 							:class="{ active: viewMode === 'list' }"
 							type="button"
 							@click="setViewMode('list')"
 							:title="t('aiworkflow.templateCenter.viewList')"
 						>
-							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-								<rect x="2" y="3" width="3" height="3" rx="0.5" fill="currentColor" />
-								<rect x="7" y="3.5" width="7" height="2" rx="0.5" fill="currentColor" />
-								<rect x="2" y="7" width="3" height="3" rx="0.5" fill="currentColor" />
-								<rect x="7" y="7.5" width="7" height="2" rx="0.5" fill="currentColor" />
-								<rect x="2" y="11" width="3" height="3" rx="0.5" fill="currentColor" />
-								<rect x="7" y="11.5" width="7" height="2" rx="0.5" fill="currentColor" />
+							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+								<rect x="2" y="3" width="3" height="3" fill="currentColor" />
+								<rect x="7" y="3.5" width="7" height="2" fill="currentColor" />
+								<rect x="2" y="7" width="3" height="3" fill="currentColor" />
+								<rect x="7" y="7.5" width="7" height="2" fill="currentColor" />
+								<rect x="2" y="11" width="3" height="3" fill="currentColor" />
+								<rect x="7" y="11.5" width="7" height="2" fill="currentColor" />
 							</svg>
 						</button>
 					</div>
 				</div>
 
-				<div class="template-center-content">
-					<div v-if="loading" class="template-center-loading">
-						<div class="template-loading-spinner"></div>
+				<div class="tc-content">
+					<div v-if="loading" class="tc-loading">
+						<div class="tc-spinner"></div>
 					</div>
 
-					<div v-else-if="filteredTemplates.length === 0" class="template-center-empty">
+					<div v-else-if="filteredTemplates.length === 0" class="tc-empty">
 						<svg viewBox="0 0 48 48" width="64" height="64" aria-hidden="true">
-							<rect x="8" y="8" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-							<rect x="26" y="8" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-							<rect x="8" y="26" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-							<rect x="26" y="26" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+							<rect x="8" y="8" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+							<rect x="26" y="8" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+							<rect x="8" y="26" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+							<rect x="26" y="26" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
 						</svg>
 						<p>{{ t('aiworkflow.templateCenter.noTemplates') }}</p>
 					</div>
 
-					<div v-else class="template-grid" :class="`template-grid--${viewMode}`">
+					<div v-else class="tc-grid" :class="`tc-grid--${viewMode}`">
 						<TemplateCard
 							v-for="template in filteredTemplates"
 							:key="template.id"
@@ -168,6 +179,7 @@
 import { computed, watch } from 'vue'
 import TemplateCard from './TemplateCard.vue'
 import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
+import { buildSquareParticles } from '../../composables/useSquareParticles'
 import type { TemplateItem, SaveTemplateOptions } from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
 
@@ -199,6 +211,8 @@ const {
 	setViewMode,
 } = useTemplateCenter()
 
+const particles = buildSquareParticles({ count: 12, seed: 999, baseOpacity: 0.35 })
+
 const cardSize = computed(() => {
 	if (viewMode.value === 'grid-large') return 'large'
 	if (viewMode.value === 'grid-small') return 'small'
@@ -229,220 +243,382 @@ function handleDelete(template: TemplateItem) {
 </script>
 
 <style scoped>
-.template-center-mask {
+@import '../../styles/square-particles.css';
+
+.tc-mask {
 	position: fixed;
 	inset: 0;
 	z-index: 2000;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(0, 0, 0, 0.7);
-	backdrop-filter: blur(4px);
+	background: rgba(0, 0, 0, 0.65);
+	backdrop-filter: blur(6px);
+	padding: 24px;
+	box-sizing: border-box;
+	pointer-events: auto;
 }
 
-.template-center-dialog {
+.tc-dialog {
 	--tc-accent: var(--theme-accent, #1f9d84);
 	--tc-accent-hover: var(--theme-accent-hover, #27b99c);
+	--tc-cold: #3aa8b4;
+	--tc-warm: #e5b567;
+	--tc-glow: #27b99c;
+	--tc-fg: var(--theme-text-primary, #eaf2f5);
+	--tc-fg-soft: var(--theme-text-secondary, #9aa0a6);
+	--tc-bg-0: #07090d;
+	--tc-bg-1: #111a22;
+	--tc-card-border: rgba(31, 157, 132, 0.28);
 	position: relative;
-	width: 90vw;
+	width: 100%;
 	max-width: 1100px;
-	height: 80vh;
+	height: 100%;
 	max-height: 750px;
 	display: flex;
 	flex-direction: column;
-	border: 1px solid color-mix(in srgb, var(--tc-accent) 30%, transparent);
-	border-radius: 12px;
-	background: rgba(15, 15, 15, 0.95);
-	backdrop-filter: blur(20px);
-	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px color-mix(in srgb, var(--tc-accent) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 35%, transparent);
+	border-radius: 2px;
+	overflow: hidden;
+	box-shadow:
+		0 24px 80px rgba(0, 0, 0, 0.55),
+		0 0 0 1px color-mix(in srgb, var(--tc-accent) 15%, transparent),
+		0 0 60px color-mix(in srgb, var(--tc-accent) 10%, transparent);
+}
+
+/* Background layers */
+.tc-bg-layer {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
 	overflow: hidden;
 }
 
-.rail-bracket {
+.tc-bg-gradient {
 	position: absolute;
-	width: 20px;
-	height: 20px;
+	inset: 0;
+	background:
+		radial-gradient(ellipse 80% 60% at 20% 15%, color-mix(in srgb, var(--tc-accent) 12%, transparent), transparent 60%),
+		radial-gradient(ellipse 60% 50% at 85% 90%, color-mix(in srgb, var(--tc-cold) 10%, transparent), transparent 55%),
+		linear-gradient(180deg, var(--tc-bg-0) 0%, var(--tc-bg-1) 100%);
+}
+
+.tc-bg-grid {
+	position: absolute;
+	inset: 0;
+	background-image:
+		linear-gradient(to right, color-mix(in srgb, var(--tc-accent) 5%, transparent) 1px, transparent 1px),
+		linear-gradient(to bottom, color-mix(in srgb, var(--tc-accent) 5%, transparent) 1px, transparent 1px);
+	background-size: 48px 48px;
+	opacity: 0.4;
+	mask-image: radial-gradient(ellipse at 50% 40%, #000 40%, transparent 100%);
+	-webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 40%, transparent 100%);
+}
+
+.tc-bg-glow {
+	position: absolute;
+	border-radius: 4px;
+	filter: blur(50px);
+	opacity: 0.6;
+	will-change: transform;
+}
+
+.tc-bg-glow-1 {
+	top: -40px;
+	left: 10%;
+	width: 500px;
+	height: 280px;
+	background: linear-gradient(135deg, color-mix(in srgb, var(--tc-accent) 30%, transparent), transparent 70%);
+	animation: tc-drift-1 18s ease-in-out infinite;
+}
+
+.tc-bg-glow-2 {
+	bottom: -60px;
+	right: 5%;
+	width: 560px;
+	height: 340px;
+	background: linear-gradient(135deg, color-mix(in srgb, var(--tc-cold) 22%, transparent), transparent 70%);
+	animation: tc-drift-2 22s ease-in-out infinite;
+}
+
+@keyframes tc-drift-1 {
+	0%, 100% { transform: translate3d(0, 0, 0); }
+	50% { transform: translate3d(30px, -20px, 0); }
+}
+
+@keyframes tc-drift-2 {
+	0%, 100% { transform: translate3d(0, 0, 0); }
+	50% { transform: translate3d(-25px, 20px, 0); }
+}
+
+.tc-scanline {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 1px;
+	z-index: 1;
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		color-mix(in srgb, var(--tc-accent) 50%, transparent) 50%,
+		transparent 100%
+	);
+	box-shadow: 0 0 10px color-mix(in srgb, var(--tc-accent) 35%, transparent);
+	animation: tc-scan-pulse 10s ease-in-out infinite;
+	pointer-events: none;
+}
+
+@keyframes tc-scan-pulse {
+	0%, 100% { opacity: 0.5; }
+	50% { opacity: 1; }
+}
+
+.tc-particles {
+	z-index: 2;
+}
+
+/* Corner brackets */
+.tc-corner {
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	z-index: 10;
+	pointer-events: none;
 	border-color: var(--tc-accent);
 	border-style: solid;
 	border-width: 0;
-	opacity: 0.7;
-	pointer-events: none;
-	z-index: 10;
+	opacity: 0.8;
+	transition: width 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+		height 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.rail-bracket.tl {
-	top: 8px;
-	left: 8px;
+.tc-corner-tl {
+	top: 6px;
+	left: 6px;
 	border-top-width: 2px;
 	border-left-width: 2px;
 }
-
-.rail-bracket.tr {
-	top: 8px;
-	right: 8px;
+.tc-corner-tr {
+	top: 6px;
+	right: 6px;
 	border-top-width: 2px;
 	border-right-width: 2px;
 }
-
-.rail-bracket.bl {
-	bottom: 8px;
-	left: 8px;
+.tc-corner-bl {
+	bottom: 6px;
+	left: 6px;
 	border-bottom-width: 2px;
 	border-left-width: 2px;
 }
-
-.rail-bracket.br {
-	bottom: 8px;
-	right: 8px;
+.tc-corner-br {
+	bottom: 6px;
+	right: 6px;
 	border-bottom-width: 2px;
 	border-right-width: 2px;
 }
 
-.template-center-header {
+.tc-dialog:hover .tc-corner {
+	width: 20px;
+	height: 20px;
+}
+
+/* Header */
+.tc-header {
+	position: relative;
+	z-index: 5;
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	padding: 18px 24px 14px;
+	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 20%, transparent);
+}
+
+.tc-title-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.tc-title {
+	font-size: 20px;
+	font-weight: 700;
+	color: var(--tc-fg);
+	text-shadow: 0 0 12px color-mix(in srgb, var(--tc-accent) 30%, transparent);
+	letter-spacing: 0.02em;
+}
+
+.tc-title-sub {
+	font-size: 11px;
+	color: var(--tc-fg-soft);
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	padding: 16px 24px;
-	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 15%, transparent);
+	gap: 6px;
+}
+.tc-title-sub::before {
+	content: "";
+	display: inline-block;
+	width: 5px;
+	height: 5px;
+	background: var(--tc-accent);
+	box-shadow: 0 0 6px var(--tc-accent);
 }
 
-.template-center-title {
-	font-size: 18px;
-	font-weight: 600;
-	color: var(--theme-text-primary, #edf2f4);
-}
-
-.template-center-header-actions {
+.tc-header-actions {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 }
 
-.template-new-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	padding: 7px 14px;
-	border: 1px solid var(--tc-accent);
-	border-radius: 6px;
-	background: var(--tc-accent);
-	color: #fff;
-	font-size: 12px;
-	font-weight: 500;
-	cursor: pointer;
-	transition: all 0.2s ease;
-}
-
-.template-new-btn:hover {
-	background: var(--tc-accent-hover);
-	border-color: var(--tc-accent-hover);
-}
-
-.template-center-close {
+.tc-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	gap: 6px;
+	padding: 7px 14px;
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 35%, transparent);
+	background: color-mix(in srgb, var(--tc-fg) 3%, transparent);
+	color: var(--tc-fg);
+	font-size: 12px;
+	letter-spacing: 0.03em;
+	cursor: pointer;
+	border-radius: 2px;
+	transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease, transform 160ms ease;
+	font-family: inherit;
+}
+
+.tc-btn:hover {
+	background: color-mix(in srgb, var(--tc-accent) 10%, transparent);
+	border-color: color-mix(in srgb, var(--tc-accent) 55%, transparent);
+	box-shadow: 0 0 14px color-mix(in srgb, var(--tc-accent) 20%, transparent);
+}
+
+.tc-btn:active {
+	transform: translateY(1px);
+}
+
+.tc-btn-primary {
+	background: color-mix(in srgb, var(--tc-accent) 15%, transparent);
+	border-color: color-mix(in srgb, var(--tc-accent) 55%, transparent);
+	color: var(--tc-glow);
+	font-weight: 600;
+}
+
+.tc-btn-primary:hover {
+	background: var(--tc-accent);
+	border-color: var(--tc-accent);
+	color: #fff;
+	box-shadow: 0 0 18px color-mix(in srgb, var(--tc-accent) 30%, transparent);
+}
+
+.tc-btn-icon {
 	width: 32px;
 	height: 32px;
 	padding: 0;
-	border: none;
-	border-radius: 6px;
-	background: transparent;
-	color: var(--theme-text-muted, #aeb8bd);
-	cursor: pointer;
-	transition: all 0.2s ease;
 }
 
-.template-center-close:hover {
-	background: rgba(255, 255, 255, 0.1);
-	color: var(--theme-text-primary, #edf2f4);
+.tc-btn-close:hover {
+	color: var(--tc-accent);
 }
 
-.template-center-toolbar {
+/* Toolbar */
+.tc-toolbar {
+	position: relative;
+	z-index: 5;
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 10px;
 	padding: 12px 24px;
-	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 10%, transparent);
+	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 12%, transparent);
 	flex-wrap: wrap;
 }
 
-.template-search-wrap {
+.tc-search-wrap {
 	position: relative;
 	flex: 1;
-	min-width: 200px;
+	min-width: 180px;
 }
 
-.template-search-icon {
+.tc-search-icon {
 	position: absolute;
 	left: 10px;
 	top: 50%;
 	transform: translateY(-50%);
-	color: var(--theme-text-muted, #aeb8bd);
+	color: var(--tc-fg-soft);
 	pointer-events: none;
 }
 
-.template-search-input {
+.tc-search-input {
 	width: 100%;
-	padding: 8px 12px 8px 34px;
-	border: 1px solid color-mix(in srgb, var(--tc-accent) 25%, transparent);
-	border-radius: 6px;
-	background: rgba(0, 0, 0, 0.3);
-	color: var(--theme-text-primary, #edf2f4);
-	font-size: 13px;
+	height: 34px;
+	padding: 0 12px 0 32px;
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 28%, transparent);
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--tc-fg) 3%, transparent);
+	color: var(--tc-fg);
+	font-size: 12px;
 	outline: none;
-	transition: border-color 0.2s ease;
 	box-sizing: border-box;
+	transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+	font-family: inherit;
 }
 
-.template-search-input:focus {
-	border-color: var(--tc-accent);
+.tc-search-input::placeholder {
+	color: color-mix(in srgb, var(--tc-fg-soft) 60%, transparent);
 }
 
-.template-search-input::placeholder {
-	color: rgba(174, 184, 189, 0.5);
+.tc-search-input:focus {
+	border-color: color-mix(in srgb, var(--tc-accent) 65%, transparent);
+	background: color-mix(in srgb, var(--tc-fg) 5%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--tc-accent) 25%, transparent),
+		0 0 16px color-mix(in srgb, var(--tc-accent) 12%, transparent);
 }
 
-.template-filters {
+.tc-filters {
 	display: flex;
-	gap: 8px;
+	gap: 6px;
 }
 
-.template-filter-select {
-	padding: 8px 28px 8px 12px;
-	border: 1px solid color-mix(in srgb, var(--tc-accent) 25%, transparent);
-	border-radius: 6px;
-	background: rgba(0, 0, 0, 0.3);
-	color: var(--theme-text-primary, #edf2f4);
+.tc-select {
+	height: 34px;
+	padding: 0 28px 0 10px;
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 28%, transparent);
+	border-radius: 2px;
+	background-color: color-mix(in srgb, var(--tc-fg) 3%, transparent);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5L5 6.5L8 3.5' stroke='%239aa0a6' stroke-width='1.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	background-size: 10px 10px;
+	color: var(--tc-fg);
 	font-size: 12px;
 	outline: none;
 	cursor: pointer;
-	transition: border-color 0.2s ease;
 	appearance: none;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%23aeb8bd' stroke-width='1.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-	background-repeat: no-repeat;
-	background-position: right 8px center;
+	transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease;
+	font-family: inherit;
 }
 
-.template-filter-select:focus {
-	border-color: var(--tc-accent);
+.tc-select:focus {
+	border-color: color-mix(in srgb, var(--tc-accent) 65%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--tc-accent) 25%, transparent);
 }
 
-.template-filter-select option {
-	background: #1a1a1a;
-	color: var(--theme-text-primary, #edf2f4);
+.tc-select option {
+	background: var(--tc-bg-1);
+	color: var(--tc-fg);
 }
 
-.template-view-switch {
+.tc-view-switch {
 	display: flex;
 	gap: 2px;
-	padding: 3px;
-	border: 1px solid color-mix(in srgb, var(--tc-accent) 25%, transparent);
-	border-radius: 6px;
-	background: rgba(0, 0, 0, 0.2);
+	padding: 2px;
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 28%, transparent);
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--tc-fg) 2%, transparent);
 }
 
-.template-view-btn {
+.tc-view-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -450,77 +626,264 @@ function handleDelete(template: TemplateItem) {
 	height: 28px;
 	padding: 0;
 	border: none;
-	border-radius: 4px;
+	border-radius: 2px;
 	background: transparent;
-	color: var(--theme-text-muted, #aeb8bd);
+	color: var(--tc-fg-soft);
 	cursor: pointer;
-	transition: all 0.2s ease;
+	transition: all 200ms ease;
 }
 
-.template-view-btn:hover {
-	color: var(--theme-text-primary, #edf2f4);
-	background: rgba(255, 255, 255, 0.05);
+.tc-view-btn:hover {
+	color: var(--tc-fg);
+	background: color-mix(in srgb, var(--tc-fg) 5%, transparent);
 }
 
-.template-view-btn.active {
+.tc-view-btn.active {
 	background: var(--tc-accent);
 	color: #fff;
+	box-shadow: 0 0 10px color-mix(in srgb, var(--tc-accent) 30%, transparent);
 }
 
-.template-center-content {
+/* Content */
+.tc-content {
+	position: relative;
+	z-index: 5;
 	flex: 1;
 	overflow-y: auto;
 	padding: 20px 24px;
 }
 
-.template-center-loading,
-.template-center-empty {
+.tc-loading,
+.tc-empty {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	height: 100%;
 	min-height: 300px;
-	color: var(--theme-text-muted, #aeb8bd);
+	color: var(--tc-fg-soft);
 	gap: 16px;
 }
 
-.template-loading-spinner {
-	width: 40px;
-	height: 40px;
-	border: 2px solid color-mix(in srgb, var(--tc-accent) 20%, transparent);
+.tc-spinner {
+	width: 36px;
+	height: 36px;
+	border: 2px solid color-mix(in srgb, var(--tc-accent) 18%, transparent);
 	border-top-color: var(--tc-accent);
 	border-radius: 50%;
-	animation: spin 0.8s linear infinite;
+	animation: tc-spin 0.8s linear infinite;
 }
 
-@keyframes spin {
-	to {
-		transform: rotate(360deg);
-	}
+@keyframes tc-spin {
+	to { transform: rotate(360deg); }
 }
 
-.template-center-empty p {
-	font-size: 14px;
+.tc-empty p {
+	font-size: 13px;
 	margin: 0;
 }
 
-.template-grid {
+.tc-grid {
 	display: grid;
-	gap: 16px;
+	gap: 14px;
 }
 
-.template-grid--grid-large {
-	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+.tc-grid--grid-large {
+	grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 }
 
-.template-grid--grid-small {
-	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-	gap: 12px;
+.tc-grid--grid-small {
+	grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+	gap: 10px;
 }
 
-.template-grid--list {
+.tc-grid--list {
 	grid-template-columns: 1fr;
-	gap: 8px;
+	gap: 6px;
+}
+
+/* Transition */
+.tc-dialog-enter-active,
+.tc-dialog-leave-active {
+	transition: opacity 220ms ease, transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.tc-dialog-enter-from,
+.tc-dialog-leave-to {
+	opacity: 0;
+	transform: scale(0.97) translateY(8px);
+}
+
+.tc-dialog-enter-active .tc-bg-glow,
+.tc-dialog-leave-active .tc-bg-glow {
+	animation-play-state: paused;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.tc-bg-glow { animation: none !important; }
+	.tc-scanline { animation: none !important; }
+	.tc-corner { transition: none !important; }
+	.tc-dialog-enter-active,
+	.tc-dialog-leave-active {
+		transition: opacity 150ms ease;
+	}
+	.tc-dialog-enter-from,
+	.tc-dialog-leave-to {
+		transform: none;
+	}
+}
+</style>
+
+<style>
+/* Light theme — global (unscoped) to guarantee cascade works */
+[data-theme='light'] .tc-mask {
+	background: rgba(180, 190, 200, 0.45) !important;
+	backdrop-filter: blur(8px);
+}
+[data-theme='light'] .tc-dialog {
+	--tc-bg-0: #eef2f5 !important;
+	--tc-bg-1: #dfe5eb !important;
+	--tc-fg: #1a1d21 !important;
+	--tc-fg-soft: #4a5058 !important;
+	--tc-glow: #17806d !important;
+	--tc-card-border: rgba(31, 157, 132, 0.22) !important;
+	background: transparent;
+	border-color: rgba(31, 157, 132, 0.3) !important;
+	box-shadow:
+		0 24px 80px rgba(0, 0, 0, 0.15),
+		0 0 0 1px rgba(31, 157, 132, 0.12),
+		0 0 40px rgba(31, 157, 132, 0.08) !important;
+}
+[data-theme='light'] .tc-bg-gradient {
+	background:
+		radial-gradient(ellipse 80% 60% at 20% 15%, rgba(31, 157, 132, 0.08), transparent 60%),
+		radial-gradient(ellipse 60% 50% at 85% 90%, rgba(58, 168, 180, 0.06), transparent 55%),
+		linear-gradient(180deg, #f0f3f6 0%, #dde3ea 100%) !important;
+}
+[data-theme='light'] .tc-bg-grid {
+	opacity: 0.25 !important;
+	background-image:
+		linear-gradient(to right, rgba(31, 157, 132, 0.06) 1px, transparent 1px),
+		linear-gradient(to bottom, rgba(31, 157, 132, 0.06) 1px, transparent 1px) !important;
+}
+[data-theme='light'] .tc-bg-glow-1 {
+	background: linear-gradient(135deg, rgba(31, 157, 132, 0.12), transparent 70%) !important;
+	opacity: 0.5 !important;
+}
+[data-theme='light'] .tc-bg-glow-2 {
+	background: linear-gradient(135deg, rgba(58, 168, 180, 0.1), transparent 70%) !important;
+	opacity: 0.5 !important;
+}
+[data-theme='light'] .tc-scanline {
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		rgba(31, 157, 132, 0.35) 50%,
+		transparent 100%
+	) !important;
+	box-shadow: 0 0 8px rgba(31, 157, 132, 0.2) !important;
+	opacity: 0.6 !important;
+}
+[data-theme='light'] .tc-corner {
+	border-color: #1f9d84 !important;
+	opacity: 0.6 !important;
+}
+[data-theme='light'] .tc-header {
+	border-bottom-color: rgba(31, 157, 132, 0.18) !important;
+}
+[data-theme='light'] .tc-title {
+	color: #1a1d21 !important;
+	text-shadow: none !important;
+}
+[data-theme='light'] .tc-title-sub {
+	color: #4a5058 !important;
+}
+[data-theme='light'] .tc-title-sub::before {
+	box-shadow: 0 0 4px rgba(31, 157, 132, 0.4) !important;
+}
+[data-theme='light'] .tc-btn {
+	background: rgba(255, 255, 255, 0.6) !important;
+	border-color: rgba(31, 157, 132, 0.3) !important;
+	color: #1a1d21 !important;
+}
+[data-theme='light'] .tc-btn:hover {
+	background: rgba(31, 157, 132, 0.1) !important;
+	border-color: rgba(31, 157, 132, 0.5) !important;
+	box-shadow: 0 0 10px rgba(31, 157, 132, 0.12) !important;
+}
+[data-theme='light'] .tc-btn-primary {
+	background: rgba(31, 157, 132, 0.15) !important;
+	border-color: rgba(31, 157, 132, 0.5) !important;
+	color: #17806d !important;
+	text-shadow: none !important;
+}
+[data-theme='light'] .tc-btn-primary:hover {
+	background: #1f9d84 !important;
+	border-color: #1f9d84 !important;
+	color: #fff !important;
+	box-shadow: 0 0 14px rgba(31, 157, 132, 0.25) !important;
+}
+[data-theme='light'] .tc-btn-close:hover {
+	color: #1f9d84 !important;
+	background: rgba(31, 157, 132, 0.1) !important;
+}
+[data-theme='light'] .tc-toolbar {
+	border-bottom-color: rgba(31, 157, 132, 0.12) !important;
+}
+[data-theme='light'] .tc-search-icon {
+	color: #6b7280 !important;
+}
+[data-theme='light'] .tc-search-input,
+[data-theme='light'] .tc-select {
+	background-color: rgba(255, 255, 255, 0.8) !important;
+	border-color: rgba(31, 157, 132, 0.25) !important;
+	color: #1a1d21 !important;
+}
+[data-theme='light'] .tc-search-input::placeholder {
+	color: #8a9099 !important;
+}
+[data-theme='light'] .tc-search-input:focus,
+[data-theme='light'] .tc-select:focus {
+	border-color: rgba(31, 157, 132, 0.55) !important;
+	background-color: #fff !important;
+	box-shadow: 0 0 0 1px rgba(31, 157, 132, 0.2), 0 0 12px rgba(31, 157, 132, 0.08) !important;
+}
+[data-theme='light'] .tc-select {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5L5 6.5L8 3.5' stroke='%234a5058' stroke-width='1.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+	background-repeat: no-repeat !important;
+	background-position: right 8px center !important;
+	background-size: 10px 10px !important;
+}
+[data-theme='light'] .tc-select option {
+	background: #fff;
+	color: #1a1d21;
+}
+[data-theme='light'] .tc-view-switch {
+	background: rgba(0, 0, 0, 0.03) !important;
+	border-color: rgba(31, 157, 132, 0.25) !important;
+}
+[data-theme='light'] .tc-view-btn {
+	color: #6b7280 !important;
+}
+[data-theme='light'] .tc-view-btn:hover {
+	color: #1a1d21 !important;
+	background: rgba(0, 0, 0, 0.05) !important;
+}
+[data-theme='light'] .tc-view-btn.active {
+	background: #1f9d84 !important;
+	color: #fff !important;
+	box-shadow: 0 0 8px rgba(31, 157, 132, 0.25) !important;
+}
+[data-theme='light'] .tc-content {
+	/* scrollbar will adapt */
+}
+[data-theme='light'] .tc-loading,
+[data-theme='light'] .tc-empty {
+	color: #6b7280 !important;
+}
+[data-theme='light'] .tc-spinner {
+	border-color: rgba(31, 157, 132, 0.15) !important;
+	border-top-color: #1f9d84 !important;
 }
 </style>

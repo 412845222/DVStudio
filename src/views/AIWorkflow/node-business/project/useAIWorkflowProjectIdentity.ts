@@ -13,14 +13,18 @@ export const useAIWorkflowProjectIdentity = (payload: {
 	) => {
 		const id = Number(project?.id)
 		const validId = Number.isFinite(id) && id > 0 ? id : null
-		const rootPath = String(project?.rootPath ?? '').trim()
+		const rawRootPath = project?.rootPath
+		const hasRootPath = rawRootPath !== undefined && rawRootPath !== null
+		const rootPath = hasRootPath ? String(rawRootPath).trim() : ''
 		payload.currentProjectId.value = validId
 		payload.currentProjectName.value =
 			String(project?.name ?? fallbackName).trim() || String(fallbackName || '').trim()
 		if (payload.currentProjectRootPath) {
-			payload.currentProjectRootPath.value = rootPath
+			if (hasRootPath) {
+				payload.currentProjectRootPath.value = rootPath
+			}
 		}
-		if (validId && isElectron()) {
+		if (validId && isElectron() && hasRootPath) {
 			await registerProjectRoot(validId, rootPath)
 		}
 		if (payload.currentProjectId.value) {

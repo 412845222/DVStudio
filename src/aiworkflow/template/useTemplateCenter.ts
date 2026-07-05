@@ -14,6 +14,7 @@ const selectedSourceState = ref<TemplateSource | 'all'>('all')
 const sortByState = ref<TemplateSortBy>('newest')
 const viewModeState = ref<TemplateViewMode>('grid-large')
 const selectedTemplateState = ref<TemplateItem | null>(null)
+const coverUrlCache = new Map<string, string>()
 let initialized = false
 
 export function useTemplateCenter() {
@@ -125,6 +126,34 @@ export function useTemplateCenter() {
 		}
 	}
 
+	async function loadTemplateCover(template: TemplateItem): Promise<string | null> {
+		if (template.source === 'builtin' && template.thumbnail) {
+			return template.thumbnail
+		}
+		if (coverUrlCache.has(template.id)) {
+			return coverUrlCache.get(template.id)!
+		}
+		if (template.source !== 'user') return null
+		try {
+			const blob = await persistence.loadTemplateCoverBlob(template.id)
+			if (!blob) return null
+			const url = URL.createObjectURL(blob)
+			coverUrlCache.set(template.id, url)
+			template.coverUrl = url
+			return url
+		} catch {
+			return null
+		}
+	}
+
+	function revokeTemplateCover(templateId: string) {
+		const url = coverUrlCache.get(templateId)
+		if (url) {
+			URL.revokeObjectURL(url)
+			coverUrlCache.delete(templateId)
+		}
+	}
+
 	function selectTemplate(template: TemplateItem | null) {
 		selectedTemplateState.value = template
 	}
@@ -148,6 +177,7 @@ export function useTemplateCenter() {
 		if (template.source === 'user') {
 			const ok = await persistence.deleteUserTemplate(template.id)
 			if (ok) {
+				revokeTemplateCover(template.id)
 				templatesState.value = templatesState.value.filter((t) => t.id !== template.id)
 				if (selectedTemplateState.value?.id === template.id) {
 					selectedTemplateState.value = null
@@ -165,6 +195,7 @@ export function useTemplateCenter() {
 		tags?: string[]
 		blob: Blob
 		nodeCount?: number
+		coverBlob?: Blob | null
 	}): Promise<TemplateItem | null> {
 		const saved = await persistence.saveUserTemplate(options)
 		if (saved) {
@@ -186,6 +217,8 @@ export function useTemplateCenter() {
 		filteredTemplates,
 		loadTemplates,
 		loadTemplatePackage,
+		loadTemplateCover,
+		revokeTemplateCover,
 		selectTemplate,
 		setViewMode,
 		clearFilters,

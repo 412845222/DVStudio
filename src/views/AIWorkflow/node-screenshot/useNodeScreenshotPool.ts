@@ -396,6 +396,16 @@ export const createNodeScreenshotPool = () => {
 		return cache.get(key) || null
 	}
 
+	const getAllCachedForTheme = (theme: 'dark' | 'light'): Map<string, ScreenshotCacheEntry> => {
+		const result = new Map<string, ScreenshotCacheEntry>()
+		for (const [key, entry] of cache) {
+			if (key.endsWith(`::${theme}`)) {
+				result.set(entry.nodeId, entry)
+			}
+		}
+		return result
+	}
+
 	const invalidate = (nodeId: string, theme?: 'dark' | 'light') => {
 		if (theme) {
 			cache.delete(getCacheKey(nodeId, theme))
@@ -966,6 +976,7 @@ export const createNodeScreenshotPool = () => {
 		hasCachedScreenshot: hasCached,
 		hasCachedForTheme,
 		getCachedForTheme,
+		getAllCachedForTheme,
 		invalidateScreenshot: invalidate,
 		invalidateTheme,
 		invalidateAll,

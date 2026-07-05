@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 6
+const TARGET_VERSION = 7
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -355,7 +355,11 @@ function runV6(db) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_source ON aiworkflow_templates(source);`)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6]
+function runV7(db) {
+	db.exec(`ALTER TABLE aiworkflow_templates ADD COLUMN cover_path TEXT NOT NULL DEFAULT '';`)
+}
+
+const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)

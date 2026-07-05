@@ -243,6 +243,7 @@ export async function uploadProjectAsset(payload: {
 	arrayBuffer: ArrayBuffer
 	contentType?: string
 	bucket?: string
+	subPath?: string
 }): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string } | null> {
 	if (!window?.dweb?.aiworkflow?.uploadProjectAsset) return null
 	const pid = Number(payload?.projectId)
@@ -253,7 +254,8 @@ export async function uploadProjectAsset(payload: {
 		name: payload?.name,
 		arrayBuffer: payload?.arrayBuffer,
 		contentType: payload?.contentType,
-		bucket: payload?.bucket
+		bucket: payload?.bucket,
+		subPath: payload?.subPath
 	})
 	return result
 }
@@ -265,6 +267,7 @@ export async function importProjectAsset(payload: {
 	sourcePath?: string
 	sourceUrl?: string
 	bucket?: string
+	subPath?: string
 }): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string } | null> {
 	if (!window?.dweb?.aiworkflow?.importProjectAsset) return null
 	const pid = Number(payload?.projectId)
@@ -275,7 +278,8 @@ export async function importProjectAsset(payload: {
 		name: payload?.name,
 		sourcePath: payload?.sourcePath,
 		sourceUrl: payload?.sourceUrl,
-		bucket: payload?.bucket
+		bucket: payload?.bucket,
+		subPath: payload?.subPath
 	})
 	return result
 }

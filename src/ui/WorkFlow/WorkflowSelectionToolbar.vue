@@ -96,16 +96,17 @@ const emit = defineEmits<{
 	gap: 6px;
 	padding: 5px 8px;
 	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 55%, transparent);
-	background: color-mix(in srgb, rgba(21, 24, 28, 0.9) 96%, transparent);
+	background: var(--wf-surface-base, color-mix(in srgb, var(--theme-bg-primary, #181818) 96%, transparent));
 	backdrop-filter: blur(14px) saturate(140%);
 	-webkit-backdrop-filter: blur(14px) saturate(140%);
 	border-radius: 2px;
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 18%, transparent),
 		0 0 14px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent),
-		0 8px 20px rgba(0, 0, 0, 0.38);
+		var(--aiwf-shadow-sm, 0 8px 20px rgba(0, 0, 0, 0.38));
 	z-index: 200;
 	animation: wf-selection-toolbar-in 160ms ease-out both;
+	pointer-events: auto;
 }
 
 /* L-bracket corners */
@@ -168,7 +169,7 @@ const emit = defineEmits<{
 
 .wf-toolbar-btn--template:hover {
 	border-color: var(--wf-primary, #1f9d84);
-	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+	background: var(--wf-primary, #1f9d84);
 	color: #fff;
 	box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }

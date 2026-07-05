@@ -290,6 +290,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			templates: {
 				list: () => invoke('dweb:localdb:aiworkflowTemplates:list'),
 				getBlob: (payload) => invoke('dweb:localdb:aiworkflowTemplates:getBlob', payload || {}),
+				getCover: (payload) => invoke('dweb:localdb:aiworkflowTemplates:getCover', payload || {}),
 				save: (payload) => invoke('dweb:localdb:aiworkflowTemplates:save', payload || {}),
 				remove: (payload) => invoke('dweb:localdb:aiworkflowTemplates:remove', payload || {}),
 			},

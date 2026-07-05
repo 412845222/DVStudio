@@ -31,6 +31,7 @@ function serializeTemplate(row) {
 		nodeCount: Number(row.node_count) || 0,
 		source: row.source || 'user',
 		filePath: row.file_path || '',
+		coverPath: row.cover_path || '',
 		createdAt: Number(row.created_at) || Date.now(),
 		updatedAt: Number(row.updated_at) || Date.now()
 	}
@@ -50,8 +51,8 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 	const getByIdStmt = db.prepare('SELECT * FROM aiworkflow_templates WHERE id = ?')
 	const insertStmt = db.prepare(
 		`INSERT INTO aiworkflow_templates
-			(id, name, description, category, tags, node_count, source, file_path, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			(id, name, description, category, tags, node_count, source, file_path, cover_path, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	)
 	const deleteStmt = db.prepare('DELETE FROM aiworkflow_templates WHERE id = ?')
 
@@ -59,6 +60,12 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 		if (!templatesDir || !templateId) return ''
 		const safeId = String(templateId).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80)
 		return path.resolve(templatesDir, `${safeId}.zip`)
+	}
+
+	function resolveCoverFilePath(templateId) {
+		if (!templatesDir || !templateId) return ''
+		const safeId = String(templateId).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80)
+		return path.resolve(templatesDir, `${safeId}_cover.png`)
 	}
 
 	function list() {
@@ -88,7 +95,22 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 		}
 	}
 
-	function save({ id, name, description, category, tags, nodeCount, zipBuffer } = {}) {
+	function getCoverBlob(id) {
+		const tid = String(id || '').trim()
+		if (!tid) return { ok: false, error: 'id is required' }
+		const tpl = getById(tid)
+		if (!tpl) return { ok: false, error: 'template not found' }
+		const fp = tpl.coverPath
+		if (!fp || !fs.existsSync(fp)) return { ok: false, error: 'cover not found' }
+		try {
+			const buf = fs.readFileSync(fp)
+			return { ok: true, buffer: buf, mimeType: 'image/png' }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	}
+
+	function save({ id, name, description, category, tags, nodeCount, zipBuffer, coverBuffer } = {}) {
 		const nameText = String(name || '').trim()
 		if (!nameText) return { ok: false, error: 'name is required' }
 		if (!zipBuffer || !(zipBuffer instanceof Uint8Array) && !Buffer.isBuffer(zipBuffer)) {
@@ -105,11 +127,22 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 
 		const filePath = resolveTemplateFilePath(tid)
 		if (!filePath) return { ok: false, error: 'templates directory not available' }
+		const coverPath = resolveCoverFilePath(tid)
 
 		const run = db.transaction(() => {
 			const buf = Buffer.from(zipBuffer)
 			fs.writeFileSync(filePath, buf)
-			insertStmt.run(tid, nameText, desc, cat, tagsJson, nCount, 'user', filePath, now, now)
+
+			let finalCoverPath = ''
+			if (coverBuffer && (coverBuffer instanceof Uint8Array || Buffer.isBuffer(coverBuffer))) {
+				const cBuf = Buffer.from(coverBuffer)
+				fs.writeFileSync(coverPath, cBuf)
+				finalCoverPath = coverPath
+			} else {
+				try { if (fs.existsSync(coverPath)) fs.unlinkSync(coverPath) } catch {}
+			}
+
+			insertStmt.run(tid, nameText, desc, cat, tagsJson, nCount, 'user', filePath, finalCoverPath, now, now)
 			return getById(tid)
 		})
 
@@ -118,6 +151,7 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 			return { ok: true, template: saved }
 		} catch (err) {
 			try { fs.unlinkSync(filePath) } catch {}
+			try { if (coverPath && fs.existsSync(coverPath)) fs.unlinkSync(coverPath) } catch {}
 			return { ok: false, error: String(err?.message || err) }
 		}
 	}
@@ -131,9 +165,17 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 		if (existing.filePath && fs.existsSync(existing.filePath)) {
 			try { fs.unlinkSync(existing.filePath) } catch {}
 		}
+		if (existing.coverPath && fs.existsSync(existing.coverPath)) {
+			try { fs.unlinkSync(existing.coverPath) } catch {}
+		} else {
+			const coverFp = resolveCoverFilePath(tid)
+			if (coverFp && fs.existsSync(coverFp)) {
+				try { fs.unlinkSync(coverFp) } catch {}
+			}
+		}
 		deleteStmt.run(tid)
 		return { ok: true }
 	}
 
-	return { list, getById, getBlob, save, remove, templatesDir }
+	return { list, getById, getBlob, getCoverBlob, save, remove, templatesDir }
 }

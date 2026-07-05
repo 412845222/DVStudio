@@ -47,6 +47,7 @@ export function useTemplatePersistence() {
 				createdAt: item.createdAt,
 				updatedAt: item.updatedAt,
 				nodeCount: item.nodeCount,
+				coverPath: item.coverPath || '',
 				author: 'User',
 			}))
 			templateItems.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
@@ -67,12 +68,17 @@ export function useTemplatePersistence() {
 		tags?: string[]
 		blob: Blob
 		nodeCount?: number
+		coverBlob?: Blob | null
 	}): Promise<TemplateItem | null> {
 		try {
 			await ensureDbReady()
 			const db = getTemplatesDb()
 			if (!db?.save) return null
 			const arrayBuffer = await options.blob.arrayBuffer()
+			let coverArrayBuffer: ArrayBuffer | null = null
+			if (options.coverBlob) {
+				coverArrayBuffer = await options.coverBlob.arrayBuffer()
+			}
 			const result = await db.save({
 				name: options.name,
 				description: options.description,
@@ -80,6 +86,7 @@ export function useTemplatePersistence() {
 				tags: options.tags,
 				nodeCount: options.nodeCount,
 				zipBuffer: arrayBuffer,
+				coverBuffer: coverArrayBuffer,
 			})
 			if (!result?.ok || !result.template) return null
 			const t = result.template as {
@@ -89,6 +96,7 @@ export function useTemplatePersistence() {
 				category: string
 				tags: string[]
 				nodeCount: number
+				coverPath?: string
 				createdAt: number
 				updatedAt: number
 			}
@@ -102,6 +110,7 @@ export function useTemplatePersistence() {
 				createdAt: t.createdAt,
 				updatedAt: t.updatedAt,
 				nodeCount: t.nodeCount,
+				coverPath: t.coverPath || '',
 				author: 'User',
 			}
 			userTemplates.value = [newTemplate, ...userTemplates.value]
@@ -138,6 +147,19 @@ export function useTemplatePersistence() {
 		}
 	}
 
+	async function loadTemplateCoverBlob(templateId: string): Promise<Blob | null> {
+		try {
+			await ensureDbReady()
+			const db = getTemplatesDb()
+			if (!db?.getCover) return null
+			const result = await db.getCover({ id: templateId })
+			if (!result?.ok || !result.buffer) return null
+			return new Blob([result.buffer], { type: result.mimeType || 'image/png' })
+		} catch {
+			return null
+		}
+	}
+
 	return {
 		userTemplates,
 		loadingUserTemplates,
@@ -145,5 +167,6 @@ export function useTemplatePersistence() {
 		saveUserTemplate,
 		deleteUserTemplate,
 		loadTemplateBlob,
+		loadTemplateCoverBlob,
 	}
 }

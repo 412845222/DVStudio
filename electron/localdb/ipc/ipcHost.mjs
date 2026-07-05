@@ -116,6 +116,12 @@ export function registerLocalDbIpc(ipcMain, initOptions = {}) {
 			const buf = r.buffer
 			return { ok: true, buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) }
 		}),
+		'dweb:localdb:aiworkflowTemplates:getCover': safe((payload) => {
+			const r = getRepos().aiworkflowTemplates.getCoverBlob(payload?.id)
+			if (!r.ok) return r
+			const buf = r.buffer
+			return { ok: true, buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), mimeType: r.mimeType }
+		}),
 		'dweb:localdb:aiworkflowTemplates:save': safe((payload) => {
 			let zipBuf = payload?.zipBuffer
 			if (zipBuf) {
@@ -127,6 +133,16 @@ export function registerLocalDbIpc(ipcMain, initOptions = {}) {
 					zipBuf = Buffer.from(zipBuf)
 				}
 			}
+			let coverBuf = payload?.coverBuffer
+			if (coverBuf) {
+				if (coverBuf instanceof ArrayBuffer) {
+					coverBuf = Buffer.from(coverBuf)
+				} else if (ArrayBuffer.isView(coverBuf)) {
+					coverBuf = Buffer.from(coverBuf.buffer, coverBuf.byteOffset, coverBuf.byteLength)
+				} else if (Array.isArray(coverBuf)) {
+					coverBuf = Buffer.from(coverBuf)
+				}
+			}
 			return getRepos().aiworkflowTemplates.save({
 				id: payload?.id,
 				name: payload?.name,
@@ -134,7 +150,8 @@ export function registerLocalDbIpc(ipcMain, initOptions = {}) {
 				category: payload?.category,
 				tags: payload?.tags,
 				nodeCount: payload?.nodeCount,
-				zipBuffer: zipBuf
+				zipBuffer: zipBuf,
+				coverBuffer: coverBuf
 			})
 		}),
 		'dweb:localdb:aiworkflowTemplates:remove': safe((payload) =>
