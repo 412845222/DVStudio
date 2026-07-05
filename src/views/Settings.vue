@@ -574,7 +574,7 @@ async function handleOpenOverlayCommunity() {
 				<div class="network-row">
 					<label class="network-label">
 						<span>HTTP代理地址</span>
-						<small style="color: var(--vscode-fg-muted); font-size: 11px;">PandaFan/Clash等代理软件的HTTP端口，通常为 http://127.0.0.1:7890</small>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">Clash等代理软件的HTTP端口，通常为 http://127.0.0.1:7890</small>
 					</label>
 					<input
 						v-model="form.httpProxy"
@@ -602,8 +602,8 @@ async function handleOpenOverlayCommunity() {
 					/>
 				</div>
 				<div class="network-tip" style="margin-top: 12px; padding: 12px; background: rgba(34,160,107,0.08); border-radius: 6px; font-size: 12px; color: var(--vscode-fg-muted); line-height: 1.6;">
-					<div style="font-weight: 600; color: #22a06b; margin-bottom: 6px;">💡 PandaFan/Clash 用户配置指南</div>
-					<div>1. 打开你的代理软件，找到「HTTP代理端口」设置（PandaFan通常在设置→代理设置中查看）</div>
+					<div style="font-weight: 600; color: #22a06b; margin-bottom: 6px;">💡 代理软件用户配置指南</div>
+					<div>1. 打开你的代理软件，找到「HTTP代理端口」设置（通常在代理设置中查看）</div>
 					<div>2. 将地址填入上方输入框，格式为：http://127.0.0.1:端口号</div>
 					<div>3. 输入框失焦后自动保存，下次发起Gemini请求时将使用该代理</div>
 					<div>4. 留空则不使用代理，直接连接（适合已有系统全局代理的环境）</div>
