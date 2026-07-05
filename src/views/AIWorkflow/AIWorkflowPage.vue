@@ -3378,6 +3378,15 @@ const createImageNodeAtCenter = (url: string, name?: string): string | null => {
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
 		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		if (url) {
+			store.commit('setNodeImageSettings', {
+				nodeId: newNodeId,
+				imageSettings: {
+					imageUrl: url,
+					imageGenerationSource: 'gemini'
+				}
+			})
+		}
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
@@ -3395,6 +3404,15 @@ const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: s
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
 		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		if (url) {
+			store.commit('setNodeImageSettings', {
+				nodeId: newNodeId,
+				imageSettings: {
+					imageUrl: url,
+					imageGenerationSource: 'gemini'
+				}
+			})
+		}
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAt] 创建节点失败:', e)

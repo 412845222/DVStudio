@@ -425,15 +425,69 @@ function wrapGeminiEvent(eventType, data) {
 	})
 }
 
-function getGeminiModelLabel(modelId) {
-	const modelMap = {
-		'gemini-3.1-flash-lite-image': 'Nano Banana Lite',
-		'gemini-2.5-flash-image': 'NanoBanana',
-		'gemini-3.1-flash-image-preview': 'Nano Banana 2',
-		'gemini-3-pro-image-preview': 'Nano Banana Pro'
+const GEMINI_MODEL_CONFIG = {
+	'gemini-3.1-flash-image': {
+		label: 'Nano Banana 2',
+		supportedSizes: ['512px', '1K', '2K', '4K'],
+		defaultSize: '2K',
+		supportedAspectRatios: ['1:1', '1:4', '1:8', '2:3', '3:2', '3:4', '4:1', '4:3', '4:5', '5:4', '8:1', '9:16', '16:9', '21:9'],
+		supportsThinkingLevel: true
+	},
+	'gemini-3.1-flash-lite-image': {
+		label: 'Nano Banana 2 Lite',
+		supportedSizes: ['1K'],
+		defaultSize: '1K',
+		supportedAspectRatios: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+		supportsThinkingLevel: false
+	},
+	'gemini-3-pro-image': {
+		label: 'Nano Banana Pro',
+		supportedSizes: ['1K', '2K', '4K'],
+		defaultSize: '2K',
+		supportedAspectRatios: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+		supportsThinkingLevel: true
+	},
+	'gemini-2.5-flash-image': {
+		label: 'Nano Banana',
+		supportedSizes: ['1K'],
+		defaultSize: '1K',
+		supportedAspectRatios: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+		supportsThinkingLevel: false
 	}
-	const key = String(modelId || '').trim()
-	return modelMap[key] || key
+}
+
+function normalizeGeminiModelId(modelId) {
+	const raw = String(modelId || '').trim()
+	const withoutPreview = raw.replace(/-preview$/, '')
+	if (GEMINI_MODEL_CONFIG[withoutPreview]) {
+		return withoutPreview
+	}
+	if (GEMINI_MODEL_CONFIG[raw]) {
+		return raw
+	}
+	return withoutPreview || 'gemini-3.1-flash-image'
+}
+
+function getGeminiModelLabel(modelId) {
+	const normalized = normalizeGeminiModelId(modelId)
+	return GEMINI_MODEL_CONFIG[normalized]?.label || normalized
+}
+
+function validateGeminiImageParams(modelId, imageSize, aspectRatio) {
+	const normalized = normalizeGeminiModelId(modelId)
+	const config = GEMINI_MODEL_CONFIG[normalized]
+	if (!config) {
+		return { valid: true, modelId: normalized, imageSize: imageSize || '2K', aspectRatio: aspectRatio || '1:1' }
+	}
+	let finalSize = String(imageSize || config.defaultSize).trim()
+	if (!config.supportedSizes.includes(finalSize)) {
+		finalSize = config.defaultSize
+	}
+	let finalRatio = String(aspectRatio || '1:1').trim()
+	if (!config.supportedAspectRatios.includes(finalRatio)) {
+		finalRatio = '1:1'
+	}
+	return { valid: true, modelId: normalized, imageSize: finalSize, aspectRatio: finalRatio, config }
 }
 
 const NANOBANANA_API_BASE = 'https://api.meshy.ai/openapi'
@@ -1690,7 +1744,9 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 		return
 	}
 	const negativePrompt = String(p.negative_prompt || p.negativePrompt || '').trim()
-	const aspectRatio = String(p.aspect_ratio || p.aspectRatio || '1:1').trim()
+	const rawAspectRatio = String(p.aspect_ratio || p.aspectRatio || '1:1').trim()
+	const rawImageSize = String(p.image_size || p.imageSize || '').trim()
+	const thinkingLevel = String(p.thinking_level || p.thinkingLevel || 'minimal').trim()
 	const numImages = Math.max(1, Math.min(4, Number(p.num_images || p.numImages || p.quantity || 1)))
 	const referenceImages = Array.isArray(p.reference_images) ? p.reference_images.filter(Boolean) : []
 	const refImages = Array.isArray(p.refImages) ? p.refImages.filter(Boolean) : []
@@ -1698,7 +1754,12 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 	for (const img of refImages) {
 		if (typeof img === 'string') allRefImages.push(img)
 	}
-	const modelId = String(p.modelId || p.model || 'gemini-3.1-flash-image-preview').trim()
+	const rawModelId = String(p.modelId || p.model || 'gemini-3.1-flash-image').trim()
+	const validation = validateGeminiImageParams(rawModelId, rawImageSize, rawAspectRatio)
+	const modelId = validation.modelId
+	const imageSize = validation.imageSize
+	const aspectRatio = validation.aspectRatio
+	const modelConfig = validation.config
 	const modelLabel = getGeminiModelLabel(modelId)
 
 	const repo = getApiKeyRepo(ctx)
@@ -1729,6 +1790,8 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 			prompt,
 			negativePrompt,
 			aspectRatio,
+			imageSize,
+			thinkingLevel: modelConfig?.supportsThinkingLevel ? thinkingLevel : undefined,
 			numImages,
 			projectId,
 			nodeId,
@@ -1764,16 +1827,6 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 		if (negativePrompt) {
 			imagePrompt = `${imagePrompt}\n\nNegative prompt: ${negativePrompt}`
 		}
-		const ratioHint = {
-			'1:1': 'square (1:1)',
-			'16:9': 'landscape 16:9',
-			'9:16': 'portrait 9:16',
-			'4:3': 'landscape 4:3',
-			'3:4': 'portrait 4:3'
-		}[aspectRatio]
-		if (ratioHint) {
-			imagePrompt = `${imagePrompt}\n\nAspect ratio: ${ratioHint}`
-		}
 		userParts.push({ text: imagePrompt })
 
 		const geminiBody = {
@@ -1782,8 +1835,15 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 				responseModalities: ['image', 'text'],
 				candidateCount: numImages,
 				imageConfig: {
-					aspectRatio: aspectRatio
+					aspectRatio: aspectRatio,
+					imageSize: imageSize
 				}
+			}
+		}
+
+		if (modelConfig?.supportsThinkingLevel && thinkingLevel === 'high') {
+			geminiBody.generationConfig.thinkingConfig = {
+				thinkingBudget: -1
 			}
 		}
 
@@ -1923,14 +1983,18 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 		})
 		yield wrapTaskStatusMsg('生成完成', 'completed', { taskId, progress: 100 })
 
-		for (const img of completedTask.resultImages) {
+		const totalImages = completedTask.resultImages.length
+		for (let i = 0; i < completedTask.resultImages.length; i++) {
+			const img = completedTask.resultImages[i]
 			const imageUrl = img.dwebUrl || `file://${img.localPath.replace(/\\/g, '/')}`
 			yield wrapChatMsg({
 				imageUrl: imageUrl,
 				localPath: img.localPath,
 				filename: img.filename,
 				mimeType: img.mimeType,
-				dwebUrl: img.dwebUrl
+				dwebUrl: img.dwebUrl,
+				imageIndex: i,
+				totalImages: totalImages
 			})
 		}
 

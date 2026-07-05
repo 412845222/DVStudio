@@ -219,10 +219,10 @@
 
 						<div v-if="detailLoading" class="wf-gemini-task-detail-loading">{{ t('tasks.gemini.loadingDetails') }}</div>
 						<div v-else-if="detailTask" class="wf-gemini-task-detail-body">
-							<div v-if="detailTask.thumbnailUrl" class="wf-gemini-task-detail-thumb-section">
+							<div v-if="detailTaskThumbSrc" class="wf-gemini-task-detail-thumb-section">
 								<img
 									class="wf-gemini-task-detail-thumb"
-									:src="detailTask.thumbnailUrl"
+									:src="detailTaskThumbSrc"
 									alt="result"
 								/>
 							</div>
@@ -233,7 +233,7 @@
 									class="wf-gemini-task-detail-image-item"
 								>
 									<img
-										:src="`file://${String((img as Record<string, unknown>).localPath || '').replace(/\\/g, '/')}`"
+										:src="getResultImageUrl(img as Record<string, unknown>)"
 										:alt="`result-${idx}`"
 										class="wf-gemini-task-detail-image-thumb"
 									/>
@@ -268,6 +268,18 @@
 									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.aspectRatio') }}</div>
 									<div class="wf-gemini-task-detail-value highlight">
 										{{ detailTask.aspectRatio || '1:1' }}
+									</div>
+								</div>
+								<div class="wf-gemini-task-detail-card">
+									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.imageSize') }}</div>
+									<div class="wf-gemini-task-detail-value highlight">
+										{{ detailTask.imageSize || '2K' }}
+									</div>
+								</div>
+								<div class="wf-gemini-task-detail-card">
+									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.thinkingLevel') }}</div>
+									<div class="wf-gemini-task-detail-value">
+										{{ detailTask.thinkingLevel || 'minimal' }}
 									</div>
 								</div>
 								<div class="wf-gemini-task-detail-card">
@@ -318,7 +330,7 @@
 										:key="idx"
 										class="wf-gemini-task-detail-block monospace"
 									>
-										[{{ idx + 1 }}] {{ String((img as Record<string, unknown>).localPath || (img as Record<string, unknown>).filename || '') }}
+										[{{ idx + 1 }}] {{ String((img as Record<string, unknown>).filename || (img as Record<string, unknown>).relativePath || (img as Record<string, unknown>).localPath || '') }}
 									</div>
 								</div>
 							</div>
@@ -392,6 +404,8 @@ export type GeminiTaskPanelItem = {
 	metaText: string
 	thumbnailUrl?: string
 	aspectRatio?: string
+	imageSize?: string
+	thinkingLevel?: string
 	numImages?: number
 	negativePrompt?: string
 	resultImages?: Array<Record<string, unknown>>
@@ -419,6 +433,8 @@ export type GeminiTaskPanelDetail = {
 	errorMessage?: string
 	thumbnailUrl?: string
 	aspectRatio?: string
+	imageSize?: string
+	thinkingLevel?: string
 	numImages?: number
 	createdAtLabel?: string
 	updatedAtLabel?: string
@@ -467,11 +483,25 @@ const sortMode = ref<'date-desc' | 'date-asc'>('date-desc')
 const openedDetailTaskId = ref('')
 const failedTaskThumbIds = ref<Set<string>>(new Set())
 
+const getResultImageUrl = (img: Record<string, unknown>): string => {
+	const dwebUrl = String(img?.dwebUrl || '').trim()
+	if (dwebUrl) return dwebUrl
+	const localPath = String(img?.localPath || '').trim()
+	if (localPath) return `file://${localPath.replace(/\\/g, '/')}`
+	return ''
+}
+
 const taskThumbSrc = (task: GeminiTaskPanelItem) => {
 	const id = String(task?.id ?? '').trim()
 	if (!id) return ''
 	if (failedTaskThumbIds.value.has(id)) return ''
-	return String(task?.thumbnailUrl ?? '').trim()
+	const thumb = String(task?.thumbnailUrl ?? '').trim()
+	if (thumb) return thumb
+	const resultImages = Array.isArray(task?.resultImages) ? task.resultImages : []
+	if (resultImages.length > 0) {
+		return getResultImageUrl(resultImages[0] as Record<string, unknown>)
+	}
+	return ''
 }
 
 const onTaskThumbError = (taskId: string) => {
@@ -595,6 +625,17 @@ const detailVisible = computed(() => !!openedDetailTaskId.value)
 const detailLoading = computed(
 	() => props.detailLoading === true && openedDetailTaskId.value === props.detailTaskId
 )
+const detailTaskThumbSrc = computed(() => {
+	const task = detailTask.value
+	if (!task) return ''
+	const thumb = String(task.thumbnailUrl || '').trim()
+	if (thumb) return thumb
+	const resultImages = Array.isArray(task.resultImages) ? task.resultImages : []
+	if (resultImages.length > 0) {
+		return getResultImageUrl(resultImages[0] as Record<string, unknown>)
+	}
+	return ''
+})
 const detailRequestJson = computed(() => {
 	if (!detailTask.value?.requestPayload) return ''
 	try {
@@ -655,11 +696,7 @@ const onTaskDragStart = (event: DragEvent, task: GeminiTaskPanelItem) => {
 		const resultImages = Array.isArray(task.resultImages) ? task.resultImages : []
 		let firstImageUrl = task.thumbnailUrl || ''
 		if (!firstImageUrl && resultImages.length > 0) {
-			const firstImg = resultImages[0] as Record<string, unknown>
-			const localPath = String(firstImg?.localPath || '').trim()
-			if (localPath) {
-				firstImageUrl = `file://${localPath.replace(/\\/g, '/')}`
-			}
+			firstImageUrl = getResultImageUrl(resultImages[0] as Record<string, unknown>)
 		}
 		dt.setData('application/x-dweb-gemini-task-item', JSON.stringify(task.payload))
 		if (firstImageUrl) {

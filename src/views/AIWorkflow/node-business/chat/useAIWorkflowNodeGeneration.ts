@@ -386,12 +386,17 @@ const collectReferenceImagesWithUrl = async (
 
 const normalizeImageModel = (params: Record<string, unknown>) => {
 	const rawModel = String(params?.imageModel ?? params?.model ?? '').trim()
-
-	if (rawModel === 'gemini' || rawModel === 'nanobanana' || rawModel.startsWith('gemini-')) {
-		const geminiVersion = String(params?.geminiImageModelVersion ?? params?.nanobananaModelVersion ?? '').trim()
-		return { kind: 'gemini', model: geminiVersion || 'gemini-3.1-flash-image-preview' }
+	// Gemini/NanoBanana 图片生成模型（统一使用Gemini官方API）
+	if (rawModel === 'gemini' || rawModel === 'nanobanana') {
+		const geminiModelVersion = String(
+			params?.geminiImageModelVersion || 
+			params?.nanobananaModelVersion || 
+			'gemini-3.1-flash-image'
+		).trim()
+		return { kind: 'gemini', model: geminiModelVersion }
 	}
-	// Meshy 图片生成模型（meshy自有模型，非NanoBanana）
+	if (rawModel.startsWith('gemini')) return { kind: 'gemini', model: rawModel }
+	// Meshy 图片生成模型
 	if (rawModel === 'meshy') {
 		const meshyAiModel = String(params?.meshyImageAiModel || 'nano-banana').trim()
 		return { kind: 'meshy', model: meshyAiModel }
@@ -899,32 +904,19 @@ const runTextTask = async (
 	payload: WorkflowNodeChatSubmitPayload
 ) => {
 	const svc = getComfyService(deps)
-	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
-
-	// Default provider is "gemini" (Google). User params may override to other providers.
-	const params = payload.params ?? {}
-	const provider = String(params.model ?? params.provider ?? 'gemini').toLowerCase()
-	let modelId = String(params.modelId ?? params.geminiTextModelVersion ?? params.textModelVersion ?? '').trim()
-	if (!modelId) {
-		if (provider === 'deepseek') modelId = 'deepseek-chat'
-		else if (provider === 'gemini') modelId = 'gemini-3.5-flash'
-		else if (provider === 'openai') modelId = 'gpt-4o-mini'
-		else modelId = 'doubao-seed-2-0-pro-260215'
-	}
-
-	const providerDisplayNames: Record<string, string> = {
-		gemini: 'Google Gemini',
-		bytedance: 'ByteDance Doubao',
-		doubao: 'ByteDance Doubao',
-		deepseek: 'DeepSeek',
-		openai: 'OpenAI'
-	}
-	const providerName = providerDisplayNames[provider] || provider
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: t('aiworkflow.runtime.callingTextModelWithProvider', { provider: providerName }),
+		statusText: t('aiworkflow.runtime.callingTextModel'),
 		progress: 15
 	})
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
+
+	// Default provider is "bytedance" (Doubao). User params may override to "deepseek".
+	const params = payload.params ?? {}
+	const provider = String(params.model ?? params.provider ?? 'bytedance').toLowerCase()
+	const modelId =
+		String(params.modelId ?? params.textModelVersion ?? '').trim() ||
+		(provider === 'deepseek' ? 'deepseek-chat' : 'doubao-seed-2-0-pro-260215')
 	const body: Record<string, unknown> = { content: payload.prompt, provider, modelId }
 	if (params.speed) body.speed = params.speed
 	if (params.thinking) body.thinking = params.thinking
@@ -1233,78 +1225,272 @@ const runImageTask = async (
 		}
 	}
 
+	// Gemini/NanoBanana 图片生成任务（流式SSE，使用官方API）
+	if (kind === 'gemini') {
+		const geminiModelVersion = model
+		const geminiImageSize = String(params?.geminiImageSize || params?.imageSize || '2K').trim()
+		const geminiAspectRatio = String(
+			params?.geminiAspectRatio || 
+			params?.aspectRatio || 
+			'1:1'
+		).trim()
+		const geminiQuantity = Math.max(1, Math.min(4, Number(params?.geminiQuantity ?? params?.quantity ?? 1)))
+		const geminiThinkingLevel = String(params?.geminiThinkingLevel || params?.thinkingLevel || 'minimal').trim()
+		const geminiNegativePrompt = String(params?.geminiNegativePrompt || params?.negativePrompt || '').trim()
+
+		console.log('[Gemini Image - Node Chat] 原始参数:', {
+			geminiModelVersion,
+			geminiImageSize,
+			geminiAspectRatio,
+			geminiQuantity,
+			geminiThinkingLevel,
+			geminiNegativePrompt,
+			hasRefImages,
+			refCount: refs.length,
+			nodeId: payload.nodeId,
+			projectId: imgProjectId
+		})
+
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: geminiModelVersion }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailResolution', { size: geminiImageSize, ratio: geminiAspectRatio }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputCount', { count: String(geminiQuantity) }))
+		if (geminiNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: geminiNegativePrompt.slice(0, 80) }))
+		if (hasRefImages) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refs.length) }))
+
+		try {
+			// 将参考图片转换为base64 data URI
+			const refImages: string[] = []
+			for (const ref of refs) {
+				try {
+					const dataUri = await blobToBase64DataUri(ref.blob)
+					if (dataUri) refImages.push(dataUri)
+				} catch (refErr) {
+					console.warn('[Gemini Image] 参考图片转换失败:', refErr)
+				}
+			}
+
+			// 构造提交给后端的参数
+			const geminiPayload: Record<string, unknown> = {
+				prompt: payload.prompt,
+				model: geminiModelVersion,
+				modelId: geminiModelVersion,
+				imageSize: geminiImageSize,
+				image_size: geminiImageSize,
+				aspectRatio: geminiAspectRatio,
+				aspect_ratio: geminiAspectRatio,
+				numImages: geminiQuantity,
+				num_images: geminiQuantity,
+				quantity: geminiQuantity,
+				thinkingLevel: geminiThinkingLevel,
+				thinking_level: geminiThinkingLevel,
+				negativePrompt: geminiNegativePrompt,
+				negative_prompt: geminiNegativePrompt,
+				refImages: refImages,
+				reference_images: refImages,
+				projectId: imgProjectId,
+				nodeId: payload.nodeId
+			}
+
+			// 记录完整提交参数（用于任务面板显示）
+			const submittedParams = {
+				model: geminiModelVersion,
+				imageSize: geminiImageSize,
+				aspectRatio: geminiAspectRatio,
+				numImages: geminiQuantity,
+				thinkingLevel: geminiThinkingLevel,
+				negativePrompt: geminiNegativePrompt || 'None',
+				referenceImageCount: refImages.length,
+				submittedAt: new Date().toISOString()
+			}
+
+			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.callingGeminiApi'), progress: 20 })
+
+			// 标记图片节点的 imageGenerationSource 为 gemini
+			deps.store.commit('setNodeImageSettings', {
+				nodeId: payload.nodeId,
+				imageSettings: {
+					imageGenerationSource: 'gemini',
+					geminiImageSettings: {
+						taskStatus: 'submitting',
+						progress: 20,
+						statusText: t('aiworkflow.runtime.geminiTaskSubmitting'),
+						submittedParams
+					}
+				}
+			})
+
+			// 调用Gemini图片生成流式接口
+			const state = deps.store.state as {
+				nodesById: Record<string, Record<string, unknown>>
+			}
+			const sourceNode = state.nodesById[payload.nodeId]
+			const sourceWorldX = Number(sourceNode?.worldX ?? 0)
+			const sourceWorldY = Number(sourceNode?.worldY ?? 0)
+			const NODE_SPACING = 350
+
+			let produced = 0
+			let targetNodeId = payload.nodeId
+			const createdNodes: string[] = []
+
+			for await (const ev of svc.geminiImageGenerateStream(geminiPayload)) {
+				if (ev.type === 'done') break
+				if (ev.type === 'error') {
+					const message = String(ev.error?.message ?? 'unknown')
+					throw new Error(message)
+				}
+				const message = ev.message as Record<string, unknown>
+				if (message?.type === 'agentToUi/chatMessage') {
+					const msgPayload =
+						typeof message.payload === 'object' && message.payload
+							? (message.payload as Record<string, unknown>)
+							: {}
+					const obj: Record<string, unknown> | null = (() => {
+						try {
+							const raw = String(msgPayload.content ?? '')
+							return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
+						} catch {
+							return null
+						}
+					})()
+					if (obj) {
+						// 优先使用dwebUrl，其次是imageUrl
+						let sourceUrl = String(obj.dwebUrl || obj.imageUrl || '').trim()
+						if (!sourceUrl) continue
+
+						let bindNodeId = targetNodeId
+						let isNewNode = false
+
+						if (produced > 0) {
+							if (typeof deps.createImageNodeAt === 'function') {
+								const newX = sourceWorldX + NODE_SPACING * produced
+								const newY = sourceWorldY
+								const newNodeId = deps.createImageNodeAt(newX, newY, sourceUrl, t('aiworkflow.runtime.geminiResultNodeNameIndexed', { index: String(produced + 1) }))
+								if (newNodeId) {
+									bindNodeId = newNodeId
+									isNewNode = true
+									createdNodes.push(newNodeId)
+								}
+							} else if (typeof deps.createImageNodeAtCenter === 'function') {
+								const newNodeId = deps.createImageNodeAtCenter(sourceUrl, t('aiworkflow.runtime.geminiResultNodeNameIndexed', { index: String(produced + 1) }))
+								if (newNodeId) {
+									bindNodeId = newNodeId
+									isNewNode = true
+									createdNodes.push(newNodeId)
+								}
+							}
+						}
+
+						let bound = true
+						if (typeof deps.bindImageResultToNode === 'function') {
+							const bindRet = await deps.bindImageResultToNode(bindNodeId, sourceUrl)
+							bound = bindRet !== false
+						}
+						if (!bound) {
+							appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
+							continue
+						}
+						const resolved = deps.resolveBackendUrl(sourceUrl)
+						appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
+						
+						if (isNewNode) {
+							deps.store.commit('setNodeImageSettings', {
+								nodeId: bindNodeId,
+								imageSettings: {
+									imageGenerationSource: 'gemini',
+									geminiImageSettings: {
+										taskStatus: 'completed',
+										progress: 100,
+										statusText: t('tasks.gemini.statusCompleted'),
+										imageUrls: [sourceUrl],
+										thumbnailUrl: sourceUrl
+									}
+								}
+							})
+						}
+
+						produced += 1
+						updateTask(deps, task.id, {
+							status: 'running',
+							statusText: t('aiworkflow.runtime.imagesReceived', { count: String(produced) }),
+							progress: Math.min(95, 40 + produced * 12)
+						})
+					}
+					continue
+				}
+				if (message?.type === 'agentToUi/taskStatus') {
+					const statusPayload =
+						typeof message.payload === 'object' && message.payload
+							? (message.payload as Record<string, unknown>)
+							: {}
+					const line = String(statusPayload.message ?? statusPayload.phase ?? '')
+					if (line) {
+						appendDetail(deps, task.id, line)
+						updateTask(deps, task.id, {
+							statusText: line,
+							progress: Number(statusPayload.progress) || task.progress
+						})
+					}
+					continue
+				}
+				if (message?.type === 'agentToUi/error') {
+					const errPayload =
+						typeof message.payload === 'object' && message.payload
+							? (message.payload as Record<string, unknown>)
+							: {}
+					const line = String(errPayload.message ?? 'unknown')
+					throw new Error(line)
+				}
+			}
+
+			if (produced === 0) throw new Error(t('aiworkflow.runtime.noImagesReceived'))
+			updateTask(deps, task.id, {
+				status: 'completed',
+				statusText: createdNodes.length > 0
+					? t('aiworkflow.runtime.geminiImageCompleteWithNewNodes', { count: String(produced), nodes: String(createdNodes.length) })
+					: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),
+				progress: 100,
+				finishedAt: Date.now()
+			})
+
+			return
+		} catch (err: unknown) {
+			const errMsg = getErrorMessage(err)
+			pushToast(deps, t('aiworkflow.toast.geminiGenerateFailed', { error: errMsg }), 'error')
+			updateTask(deps, task.id, {
+				status: 'error',
+				statusText: t('aiworkflow.runtime.failedStatus', { message: errMsg }),
+				progress: 0,
+				finishedAt: Date.now()
+			})
+			deps.store.commit('setNodeImageSettings', {
+				nodeId: payload.nodeId,
+				imageSettings: {
+					imageGenerationSource: 'gemini',
+					geminiImageSettings: {
+						taskStatus: 'failed',
+						progress: 0,
+						statusText: errMsg,
+						errorMessage: errMsg
+					}
+				}
+			})
+			throw err
+		}
+	}
+
 	// Collect connected reference images (anchor-based input) for seedream image-to-image.
 	if (kind === 'seedream') {
 		for (const ref of refs) form.append('refImages', ref.blob, ref.name)
 	}
 
-	// For Gemini, convert reference images to base64 data URIs and build payload
-	let geminiPayload: Record<string, unknown> | null = null
-	let geminiRefImages: string[] = []
-	if (kind === 'gemini') {
-		for (const ref of refs) {
-			try {
-				const dataUri = await blobToBase64DataUri(ref.blob)
-				if (dataUri) geminiRefImages.push(dataUri)
-			} catch {
-				// skip failed images
-			}
-		}
-		const geminiAspectRatio = String(params?.meshyAspectRatio || params?.aspectRatio || '1:1').trim()
-		const geminiQuantity = Number(params?.quantity ?? params?.meshyOutputImageCount ?? 1)
-		const geminiNegativePrompt = String(params?.meshyNegativePrompt || params?.negativePrompt || '').trim()
-		const geminiProjectId = deps.getProjectId?.() ?? null
-		geminiPayload = {
-			prompt: payload.prompt,
-			modelId: model,
-			model: model,
-			aspectRatio: geminiAspectRatio,
-			quantity: Math.min(4, Math.max(1, Math.floor(geminiQuantity))),
-			numImages: Math.min(4, Math.max(1, Math.floor(geminiQuantity))),
-			negativePrompt: geminiNegativePrompt,
-			reference_images: geminiRefImages,
-			refImages: geminiRefImages,
-			nodeId: payload.nodeId,
-			projectId: geminiProjectId
-		}
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAspectRatio', { ratio: geminiAspectRatio }))
-		if (geminiNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: geminiNegativePrompt.slice(0, 80) }))
-		if (geminiRefImages.length > 0) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(geminiRefImages.length) }))
-
-		// 记录完整提交参数（用于任务面板显示）
-		const submittedParams = {
-			model: model,
-			aspectRatio: geminiAspectRatio,
-			negativePrompt: geminiNegativePrompt || 'None',
-			outputCount: Math.min(4, Math.max(1, Math.floor(geminiQuantity))),
-			referenceImageCount: geminiRefImages.length,
-			submittedAt: new Date().toISOString()
-		}
-
-		// 标记图片节点的 imageGenerationSource 为 gemini，使任务面板能找到该节点
-		deps.store.commit('setNodeImageSettings', {
-			nodeId: payload.nodeId,
-			imageSettings: {
-				imageGenerationSource: 'gemini',
-				geminiImageSettings: {
-					taskStatus: 'submitting',
-					progress: 10,
-					statusText: t('aiworkflow.runtime.submittingTask'),
-					submittedParams
-				}
-			}
-		})
-	}
-
 	const stream =
-		kind === 'gemini'
-			? svc.geminiImageGenerateStream(geminiPayload || {})
-			: kind === 'jimeng'
-				? svc.jimengImageGenerateStream(form)
+		kind === 'jimeng'
+			? svc.jimengImageGenerateStream(form)
+			: kind === 'nanobanana'
+				? svc.nanoBananaGenerateStream(form)
 				: svc.seedreamGenerateStream(form)
 
 	let produced = 0
-	const geminiResultUrls: string[] = []
 	for await (const ev of stream) {
 		if (ev.type === 'done') break
 		if (ev.type === 'error') {
@@ -1312,30 +1498,6 @@ const runImageTask = async (
 			throw new Error(message)
 		}
 		const message = ev.message as Record<string, unknown>
-		if (message?.type === 'agentToUi/taskStatus' && kind === 'gemini') {
-			const statusPayload =
-				typeof message.payload === 'object' && message.payload
-					? (message.payload as Record<string, unknown>)
-					: {}
-			const line = String(statusPayload.message ?? statusPayload.phase ?? '')
-			if (line) appendDetail(deps, task.id, line)
-			const taskId = String(statusPayload.taskId ?? '')
-			const progress = Number(statusPayload.progress ?? 0)
-			if (taskId || progress > 0) {
-				deps.store.commit('setNodeImageSettings', {
-					nodeId: payload.nodeId,
-					imageSettings: {
-						geminiImageSettings: {
-							taskId: taskId || undefined,
-							taskStatus: progress >= 100 ? 'completed' : 'processing',
-							progress: Math.min(95, Math.max(10, progress)),
-							statusText: line || t('aiworkflow.runtime.callingImageModel', { kind: 'gemini' })
-						}
-					}
-				})
-			}
-			continue
-		}
 		if (message?.type === 'agentToUi/chatMessage') {
 			const msgPayload =
 				typeof message.payload === 'object' && message.payload
@@ -1362,7 +1524,6 @@ const runImageTask = async (
 					continue
 				}
 				const resolved = deps.resolveBackendUrl(sourceUrl)
-				geminiResultUrls.push(resolved)
 				appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
 				produced += 1
 				updateTask(deps, task.id, {
@@ -1388,40 +1549,11 @@ const runImageTask = async (
 					? (message.payload as Record<string, unknown>)
 					: {}
 			const line = String(payload.message ?? 'unknown')
-			if (kind === 'gemini') {
-				deps.store.commit('setNodeImageSettings', {
-					nodeId: payload.nodeId,
-					imageSettings: {
-						geminiImageSettings: {
-							taskStatus: 'failed',
-							progress: 0,
-							statusText: line,
-							errorMessage: line
-						}
-					}
-				})
-			}
 			throw new Error(line)
 		}
 	}
 
 	if (produced === 0) throw new Error(t('aiworkflow.runtime.noImagesReceived'))
-
-	if (kind === 'gemini') {
-		deps.store.commit('setNodeImageSettings', {
-			nodeId: payload.nodeId,
-			imageSettings: {
-				geminiImageSettings: {
-					taskStatus: 'completed',
-					progress: 100,
-					statusText: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),
-					imageUrls: geminiResultUrls,
-					thumbnailUrl: geminiResultUrls[0] || ''
-				}
-			}
-		})
-	}
-
 	updateTask(deps, task.id, {
 		status: 'completed',
 		statusText: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),

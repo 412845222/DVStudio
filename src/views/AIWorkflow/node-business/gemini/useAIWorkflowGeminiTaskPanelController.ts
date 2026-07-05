@@ -29,6 +29,8 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 	geminiService: GeminiService
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	createImageNodeAtCenter?: (url: string, name?: string) => string | null
+	createImageNodeAt?: (worldX: number, worldY: number, url: string, name?: string) => string | null
+	getCanvasCenterWorld?: () => { worldX: number; worldY: number }
 }) => {
 	const geminiTaskDialogOpen = ref(false)
 	const geminiTaskItems = ref<GeminiTaskPanelItem[]>([])
@@ -41,6 +43,31 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 	const geminiTaskActionBusyTaskId = ref('')
 	const geminiTaskActionBusyType = ref<GeminiTaskPanelAction | ''>('')
 	const geminiConfigured = ref(false)
+
+	const NODE_SPACING_X = 80
+	const DEFAULT_NODE_WIDTH = 280
+
+	const getImageNodePosition = (imageIndex: number, baseNode: { worldX: number; worldY: number; width?: number }) => {
+		const nodeWidth = baseNode.width || DEFAULT_NODE_WIDTH
+		const offsetX = imageIndex * (nodeWidth + NODE_SPACING_X)
+		return {
+			worldX: baseNode.worldX + offsetX,
+			worldY: baseNode.worldY
+		}
+	}
+
+	const getBatchNodeTitle = (baseTitle: string, totalCount: number, imageIndex: number): string => {
+		if (totalCount <= 1) return baseTitle
+		return `${baseTitle} - ${imageIndex + 1}`
+	}
+
+	const getImageUrlFromResult = (img: Record<string, unknown>): string => {
+		const dwebUrl = String(img.dwebUrl || '').trim()
+		const localPath = String(img.localPath || '').trim()
+		if (dwebUrl) return dwebUrl
+		if (localPath) return `file://${localPath.replace(/\\/g, '/')}`
+		return ''
+	}
 
 	const statusLabelForGemini = (status: string): string => {
 		const value = String(status || '').trim()
@@ -81,6 +108,8 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 		const prompt = String(item.prompt || '').trim()
 		const negativePrompt = String(item.negativePrompt || '').trim()
 		const aspectRatio = String(item.aspectRatio || '1:1').trim()
+		const imageSize = String(item.imageSize || '2K').trim()
+		const thinkingLevel = String(item.thinkingLevel || 'minimal').trim()
 		const numImages = Number(item.numImages) || 1
 		const resultImages = Array.isArray(item.resultImages) ? item.resultImages : []
 		let thumbnailUrl = String(item.thumbnailUrl || '').trim()
@@ -90,13 +119,7 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 
 		if (!thumbnailUrl && resultImages.length > 0) {
 			const firstImg = resultImages[0] as Record<string, unknown>
-			const dwebUrl = String(firstImg?.dwebUrl || '').trim()
-			const localPath = String(firstImg?.localPath || '').trim()
-			if (dwebUrl) {
-				thumbnailUrl = dwebUrl
-			} else if (localPath) {
-				thumbnailUrl = `file://${localPath.replace(/\\/g, '/')}`
-			}
+			thumbnailUrl = getImageUrlFromResult(firstImg)
 		}
 
 		return {
@@ -110,9 +133,11 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 			statusLabel: statusLabelForGemini(status),
 			progress,
 			promptPreview: prompt || t('tasks.gemini.promptNotFilled'),
-			metaText: `${aspectRatio} · ${numImages}张 · ${statusText || statusLabelForGemini(status)}`,
+			metaText: `${imageSize} · ${aspectRatio} · ${numImages}张 · ${statusText || statusLabelForGemini(status)}`,
 			thumbnailUrl: thumbnailUrl || undefined,
 			aspectRatio,
+			imageSize,
+			thinkingLevel,
 			numImages,
 			negativePrompt,
 			resultImages: resultImages as Array<Record<string, unknown>>,
@@ -311,6 +336,8 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 		errorMessage: item.errorMessage,
 		thumbnailUrl: item.thumbnailUrl,
 		aspectRatio: item.aspectRatio,
+		imageSize: item.imageSize,
+		thinkingLevel: item.thinkingLevel,
 		numImages: item.numImages,
 		createdAtLabel: item.createdAtLabel,
 		updatedAtLabel: item.updatedAtLabel,
@@ -420,6 +447,77 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 		return true
 	}
 
+	const applyBatchImagesToBlueprint = async (
+		task: Record<string, unknown>,
+		sourceNodeId?: string,
+		baseTitle?: string
+	): Promise<string[]> => {
+		const resultImages = Array.isArray(task.resultImages) ? task.resultImages : []
+		if (resultImages.length === 0) return []
+
+		const createdNodeIds: string[] = []
+		const modelLabel = String(task.modelLabel || task.model || 'Gemini').trim()
+		const defaultTitle = baseTitle || `${modelLabel}生成结果`
+
+		let baseNode: { worldX: number; worldY: number; width?: number } | null = null
+		let baseWorldX = 0
+		let baseWorldY = 0
+
+		if (sourceNodeId && options.store.state.nodesById[sourceNodeId]) {
+			baseNode = options.store.state.nodesById[sourceNodeId] as any
+			baseWorldX = (baseNode as any).worldX
+			baseWorldY = (baseNode as any).worldY
+		} else {
+			if (typeof options.getCanvasCenterWorld === 'function') {
+				const center = options.getCanvasCenterWorld()
+				baseWorldX = center.worldX
+				baseWorldY = center.worldY
+			}
+			baseNode = { worldX: baseWorldX, worldY: baseWorldY, width: DEFAULT_NODE_WIDTH }
+		}
+
+		const totalCount = resultImages.length
+		const singleImageTask = {
+			...task,
+			resultImages: [] as Array<Record<string, unknown>>
+		}
+
+		for (let i = 0; i < resultImages.length; i++) {
+			const img = resultImages[i]
+			if (!isRecord(img)) continue
+
+			const imgUrl = getImageUrlFromResult(img)
+			if (!imgUrl) continue
+
+			const nodeTitle = getBatchNodeTitle(defaultTitle, totalCount, i)
+			let nodeId: string | null = null
+
+			singleImageTask.resultImages = [img]
+
+			if (i === 0 && sourceNodeId && options.store.state.nodesById[sourceNodeId]) {
+				nodeId = sourceNodeId
+				await applyGeminiTaskResultToNode(sourceNodeId, singleImageTask)
+			} else if (typeof options.createImageNodeAt === 'function' && baseNode) {
+				const pos = getImageNodePosition(i, baseNode)
+				nodeId = options.createImageNodeAt(pos.worldX, pos.worldY, imgUrl, nodeTitle)
+				if (nodeId) {
+					await applyGeminiTaskResultToNode(nodeId, singleImageTask)
+				}
+			} else if (i === 0 && typeof options.createImageNodeAtCenter === 'function') {
+				nodeId = options.createImageNodeAtCenter(imgUrl, nodeTitle)
+				if (nodeId) {
+					await applyGeminiTaskResultToNode(nodeId, singleImageTask)
+				}
+			}
+
+			if (nodeId) {
+				createdNodeIds.push(nodeId)
+			}
+		}
+
+		return createdNodeIds
+	}
+
 	const onGeminiTaskPanelAction = async (payload: {
 		taskId: string
 		action: GeminiTaskPanelAction
@@ -448,8 +546,6 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 					await refreshGeminiTasks({ silent: false })
 				}
 			} else if (payload.action === 'import-output') {
-				let targetNodeId = nodeId
-				let isNewNode = false
 				let taskData: Record<string, unknown> | null = null
 
 				try {
@@ -461,75 +557,39 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 					console.error('[Gemini Task Panel] 获取任务失败:', e)
 				}
 
-				if (!targetNodeId && typeof options.createImageNodeAtCenter === 'function' && taskData) {
-					try {
-						const resultImages = Array.isArray(taskData.resultImages) ? taskData.resultImages : []
-						let preferredUrl = ''
-						for (const img of resultImages) {
-							if (isRecord(img)) {
-								const dwebUrl = String(img.dwebUrl || '').trim()
-								const localPath = String(img.localPath || '').trim()
-								if (dwebUrl) {
-									preferredUrl = dwebUrl
-									break
-								} else if (localPath) {
-									preferredUrl = `file://${localPath.replace(/\\/g, '/')}`
-									break
-								}
-							}
-						}
-						if (preferredUrl) {
-							const modelLabel = String(taskData.modelLabel || taskData.model || 'Gemini').trim()
-							const newNodeId = options.createImageNodeAtCenter(preferredUrl, `${modelLabel}生成结果`)
-							if (newNodeId) {
-								targetNodeId = newNodeId
-								isNewNode = true
-								options.store.commit('setNodeImageSettings', {
-									nodeId: newNodeId,
-									imageSettings: {
-										imageGenerationSource: 'gemini',
-										geminiImageSettings: {
-											taskId,
-											taskStatus: 'processing',
-											progress: 50,
-											statusText: t('tasks.gemini.pullingImageArtifacts')
-										}
-									}
-								})
-							}
-						}
-					} catch (e) {
-						console.error('[Gemini Task Panel] 创建节点失败:', e)
-					}
+				if (!taskData) {
+					options.pushToast(t('tasks.gemini.pullArtifactsFailed', { error: 'task not found' }), 'warn')
+					return
 				}
 
-				if (!targetNodeId) {
-					options.pushToast(t('tasks.gemini.noReceivingNodeFound'), 'warn')
-				} else {
-					try {
-						if (!taskData) {
-							const res = await options.geminiService.getTask({ taskId })
-							if (res.ok && res.task) {
-								taskData = res.task
-							}
-						}
-						if (taskData) {
-							const status = String(taskData.status || '').trim()
-							if (status !== 'completed') {
-								options.pushToast(t('tasks.gemini.taskNotCompletedCannotPull'), 'warn')
-							} else {
-								await applyGeminiTaskResultToNode(targetNodeId, taskData)
-								options.pushToast(
-									isNewNode ? t('tasks.gemini.imageImportedToNewNode') : t('tasks.gemini.imageDownloadedBound'),
-									'info'
-								)
-							}
-						} else {
-							options.pushToast(t('tasks.gemini.pullArtifactsFailed', { error: 'task not found' }), 'warn')
-						}
-					} catch (err: unknown) {
-						options.pushToast(t('tasks.gemini.pullArtifactsFailed', { error: getErrorMessage(err) }), 'warn')
+				const status = String(taskData.status || '').trim()
+				if (status !== 'completed') {
+					options.pushToast(t('tasks.gemini.taskNotCompletedCannotPull'), 'warn')
+					return
+				}
+
+				const resultImages = Array.isArray(taskData.resultImages) ? taskData.resultImages : []
+				if (resultImages.length === 0) {
+					options.pushToast(t('tasks.gemini.noImagesToPull'), 'warn')
+					return
+				}
+
+				const createdNodes = await applyBatchImagesToBlueprint(taskData, nodeId || undefined)
+
+				if (createdNodes.length > 0) {
+					if (createdNodes.length === 1) {
+						options.pushToast(
+							nodeId ? t('tasks.gemini.imageDownloadedBound') : t('tasks.gemini.imageImportedToNewNode'),
+							'info'
+						)
+					} else {
+						options.pushToast(
+							t('tasks.gemini.batchImagesImported', { count: createdNodes.length }),
+							'info'
+						)
 					}
+				} else {
+					options.pushToast(t('tasks.gemini.noReceivingNodeFound'), 'warn')
 				}
 			} else if (payload.action === 'delete') {
 				const res = await options.geminiService.deleteTask({ taskId })

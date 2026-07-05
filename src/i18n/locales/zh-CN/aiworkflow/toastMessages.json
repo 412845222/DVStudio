@@ -127,6 +127,7 @@
   "aiworkflow.toast.promptRequired": "请先填写提示词再发起生成。",
   "aiworkflow.toast.generationFailed": "{type}生成失败：{message}",
   "aiworkflow.toast.meshyGenerateFailed": "Meshy 生成失败：{error}",
+  "aiworkflow.toast.geminiGenerateFailed": "Gemini 生成失败：{error}",
   "aiworkflow.toast.nodeTypeModel3d": "3D 模型",
   "aiworkflow.toast.imageGenFailed": "图片生成第 {no} 张失败：{error}",
   "aiworkflow.toast.imageGenerationFailed": "图片生成失败：{error}",

@@ -107,6 +107,8 @@ function serializeTask(row) {
 		prompt: row.prompt,
 		negativePrompt: row.negativePrompt,
 		aspectRatio: row.aspectRatio,
+		imageSize: row.imageSize || '2K',
+		thinkingLevel: row.thinkingLevel || 'minimal',
 		numImages: Number(row.numImages) || 1,
 		resultImages: Array.isArray(row.resultImages) ? row.resultImages : [],
 		thumbnailUrl: row.thumbnailUrl,
@@ -134,6 +136,8 @@ export function createTaskRecord(ctx, payload) {
 	const prompt = String(payload?.prompt || '').trim()
 	const negativePrompt = String(payload?.negativePrompt || '').trim()
 	const aspectRatio = String(payload?.aspectRatio || '1:1').trim()
+	const imageSize = String(payload?.imageSize || '2K').trim()
+	const thinkingLevel = String(payload?.thinkingLevel || 'minimal').trim()
 	const numImages = Number(payload?.numImages || 1)
 	const projectId = payload?.projectId !== undefined && payload?.projectId !== null && payload?.projectId !== ''
 		? Number(payload.projectId) || null
@@ -149,6 +153,8 @@ export function createTaskRecord(ctx, payload) {
 		prompt,
 		negativePrompt,
 		aspectRatio,
+		imageSize,
+		thinkingLevel,
 		numImages,
 		resultImages: [],
 		thumbnailUrl: '',

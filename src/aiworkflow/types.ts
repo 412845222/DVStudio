@@ -884,6 +884,13 @@ export type WorkflowNodeChatImageParams = {
 	model?: string
 	nanobananaModelVersion?: string
 	geminiImageModelVersion?: string
+	geminiImageSize?: string
+	geminiAspectRatio?: string
+	geminiQuantity?: number
+	geminiThinkingLevel?: string
+	geminiNegativePrompt?: string
+	imageSize?: string
+	thinkingLevel?: string
 	seedreamModelVersion?: string
 	seedreamSize?: string
 	seedreamAspectRatio?: string

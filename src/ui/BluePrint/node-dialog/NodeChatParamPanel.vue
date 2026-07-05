@@ -161,8 +161,27 @@
 							:class="{ 'is-active': params.geminiImageModelVersion === opt.value || params.nanobananaModelVersion === opt.value }"
 							:disabled="disabled"
 							@click="updateParam('geminiImageModelVersion', opt.value)"
+							:title="opt.description"
 						>
-							{{ translateOpt(opt) }}
+							{{ opt.label?.includes('Banana') ? opt.label.split(' (')[0] : translateOpt(opt) }}
+							<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ opt.badge }}</span>
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.resolution') }}（清晰度）</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in currentGeminiImageSizeOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiImageSize === opt.value }"
+							:disabled="disabled"
+							:title="opt.description"
+							@click="updateParam('geminiImageSize', opt.value)"
+						>
+							{{ opt.label }}
 						</button>
 					</div>
 				</div>
@@ -355,7 +374,24 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in currentGeminiAspectRatioOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiAspectRatio === opt.value }"
+							:disabled="disabled"
+							:title="opt.labelZh"
+							@click="updateParam('geminiAspectRatio', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -406,7 +442,23 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="n in geminiQuantityOptions"
+							:key="n"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiQuantity === n }"
+							:disabled="disabled"
+							@click="updateParam('geminiQuantity', n)"
+						>
+							{{ n }}x
+						</button>
+					</div>
+				</div>
+				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -420,6 +472,35 @@
 						>
 							{{ n }}x
 						</button>
+					</div>
+				</div>
+				<div v-if="(params.model === 'gemini' || params.model === 'nanobanana') && showGeminiThinkingLevel" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.thinkingLevel') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in currentGeminiThinkingLevelOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiThinkingLevel === opt.value }"
+							:disabled="disabled"
+							:title="opt.description"
+							@click="updateParam('geminiThinkingLevel', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
+					<div class="bp-node-chat-param-input">
+						<input
+							type="text"
+							:value="params.geminiNegativePrompt"
+							:disabled="disabled"
+							:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
+							@input="updateParam('geminiNegativePrompt', ($event.target as HTMLInputElement).value)"
+						/>
 					</div>
 				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
@@ -952,8 +1033,6 @@ import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../..
 import type { InputParamPreviewRef } from './index'
 import {
 	NODE_CHAT_ASPECT_RATIO_OPTIONS,
-	NODE_CHAT_GEMINI_ASPECT_RATIO_OPTIONS,
-	NODE_CHAT_GEMINI_QUANTITY_OPTIONS,
 	NODE_CHAT_RESOLUTION_OPTIONS,
 	NODE_CHAT_QUANTITY_OPTIONS,
 	NODE_CHAT_VIDEO_MODE_OPTIONS,
@@ -986,6 +1065,12 @@ import {
 	NODE_CHAT_MESHY_POSE_MODE_OPTIONS,
 	NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
 	NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS,
+	GEMINI_QUANTITY_OPTIONS,
+	getGeminiImageSizeOptions,
+	getGeminiAspectRatioOptions,
+	getGeminiThinkingLevelOptions,
+	getDefaultGeminiImageSize,
+	supportsGeminiThinkingLevel,
 	getMeshyImageAspectRatioOptions,
 	getSeedreamResolutionOptions,
 	getSeedreamOutputFormatOptions,
@@ -1021,23 +1106,47 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 				next.geminiTextModelVersion = 'gemini-3.5-flash'
 			}
 			if (props.nodeType === 'image') {
-				if (!next.geminiImageModelVersion) {
-					next.geminiImageModelVersion = 'gemini-3.1-flash-image-preview'
+				const defaultModel = 'gemini-3.1-flash-image'
+				if (!next.geminiImageModelVersion || !String(next.geminiImageModelVersion).startsWith('gemini-')) {
+					next.geminiImageModelVersion = defaultModel
 				}
 				next.nanobananaModelVersion = next.geminiImageModelVersion
-				const allowedAspectRatios = NODE_CHAT_GEMINI_ASPECT_RATIO_OPTIONS.map(o => o.value)
-				if (!allowedAspectRatios.includes(String(next.aspectRatio))) {
-					next.aspectRatio = '1:1'
+				const modelVer = String(next.geminiImageModelVersion)
+				const allowedAspectRatios = getGeminiAspectRatioOptions(modelVer).map(o => o.value)
+				if (!allowedAspectRatios.includes(String(next.geminiAspectRatio))) {
+					next.geminiAspectRatio = '1:1'
 				}
-				if (!NODE_CHAT_GEMINI_QUANTITY_OPTIONS.includes(Number(next.quantity))) {
-					next.quantity = 1
+				const allowedSizes = getGeminiImageSizeOptions(modelVer).map(o => o.value)
+				if (!allowedSizes.includes(String(next.geminiImageSize))) {
+					next.geminiImageSize = getDefaultGeminiImageSize(modelVer)
 				}
+				if (!GEMINI_QUANTITY_OPTIONS.includes(Number(next.geminiQuantity))) {
+					next.geminiQuantity = 1
+				}
+				if (!supportsGeminiThinkingLevel(modelVer)) {
+					next.geminiThinkingLevel = 'minimal'
+				}
+				next.aspectRatio = next.geminiAspectRatio
+				next.quantity = next.geminiQuantity
 			}
 		}
 	}
 
 	if (key === 'geminiImageModelVersion' && typeof value === 'string') {
 		next.nanobananaModelVersion = value
+		const modelVer = value
+		const allowedAspectRatios = getGeminiAspectRatioOptions(modelVer).map(o => o.value)
+		if (!allowedAspectRatios.includes(String(next.geminiAspectRatio))) {
+			next.geminiAspectRatio = '1:1'
+		}
+		const allowedSizes = getGeminiImageSizeOptions(modelVer).map(o => o.value)
+		if (!allowedSizes.includes(String(next.geminiImageSize))) {
+			next.geminiImageSize = getDefaultGeminiImageSize(modelVer)
+		}
+		if (!supportsGeminiThinkingLevel(modelVer)) {
+			next.geminiThinkingLevel = 'minimal'
+		}
+		next.aspectRatio = next.geminiAspectRatio
 	}
 
 	if (key === 'seedreamModelVersion' && typeof value === 'string') {
@@ -1109,6 +1218,29 @@ const nanobananaModelVersionOptions = NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS
 const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
 const meshyImageOutputCountOptions = NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS
 const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
+const geminiQuantityOptions = GEMINI_QUANTITY_OPTIONS
+
+const geminiModelVersion = computed(() => {
+	return typeof props.params.geminiImageModelVersion === 'string'
+		? props.params.geminiImageModelVersion
+		: 'gemini-3.1-flash-image'
+})
+
+const currentGeminiImageSizeOptions = computed(() => {
+	return getGeminiImageSizeOptions(geminiModelVersion.value)
+})
+
+const currentGeminiAspectRatioOptions = computed(() => {
+	return getGeminiAspectRatioOptions(geminiModelVersion.value)
+})
+
+const currentGeminiThinkingLevelOptions = computed(() => {
+	return getGeminiThinkingLevelOptions(geminiModelVersion.value)
+})
+
+const showGeminiThinkingLevel = computed(() => {
+	return supportsGeminiThinkingLevel(geminiModelVersion.value)
+})
 
 const I18N_KEY_PREFIXES = ['aiConfig.', 'aichat.', 'common.']
 const isI18nKey = (label: string): boolean => I18N_KEY_PREFIXES.some(prefix => label.startsWith(prefix))
@@ -1145,16 +1277,10 @@ const isGeminiModel = computed(() => {
 })
 
 const currentAspectRatioOptions = computed(() => {
-	if (isGeminiModel.value) {
-		return NODE_CHAT_GEMINI_ASPECT_RATIO_OPTIONS
-	}
 	return NODE_CHAT_ASPECT_RATIO_OPTIONS
 })
 
 const currentQuantityOptions = computed(() => {
-	if (isGeminiModel.value) {
-		return NODE_CHAT_GEMINI_QUANTITY_OPTIONS
-	}
 	return NODE_CHAT_QUANTITY_OPTIONS
 })
 
@@ -1308,6 +1434,18 @@ const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
 	border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 65%, transparent);
 	color: var(--wf-primary, #1f9d84);
 	box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+}
+
+.bp-node-chat-param-badge {
+	display: inline-block;
+	margin-left: 4px;
+	padding: 1px 5px;
+	font-size: 9px;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+	border-radius: 2px;
+	color: var(--wf-primary, #1f9d84);
+	font-weight: 600;
+	letter-spacing: 0.5px;
 }
 
 .bp-node-chat-param-btn:disabled {
