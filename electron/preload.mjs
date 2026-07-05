@@ -433,6 +433,16 @@ contextBridge.exposeInMainWorld('dweb', {
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
 		balance: () => invoke('dweb:meshy:balance'),
 	},
+	// ===== Gemini 图片生成任务 =====
+	gemini: {
+		health: () => invoke('dweb:gemini:health'),
+		getTask: (payload) => invoke('dweb:gemini:get-task', payload || {}),
+		listTasks: (payload) => invoke('dweb:gemini:list-tasks', payload || {}),
+		cancel: (payload) => invoke('dweb:gemini:cancel', payload || {}),
+		deleteTask: (payload) => invoke('dweb:gemini:delete', payload || {}),
+		clearCompleted: (payload) => invoke('dweb:gemini:clear-completed', payload || {}),
+		getImagePath: (payload) => invoke('dweb:gemini:get-image-path', payload || {}),
+	},
 	// ===== Seedance 视频生成 =====
 	seedance: {
 		health: () => invoke('dweb:seedance:health'),

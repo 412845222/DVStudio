@@ -339,7 +339,7 @@
 						/>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
+				<div v-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'gemini' && params.model !== 'nanobanana'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.size') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -359,7 +359,7 @@
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
-							v-for="opt in aspectRatioOptions"
+							v-for="opt in currentAspectRatioOptions"
 							:key="opt.value"
 							type="button"
 							class="bp-node-chat-param-btn"
@@ -410,7 +410,7 @@
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
-							v-for="n in quantityOptions"
+							v-for="n in currentQuantityOptions"
 							:key="n"
 							type="button"
 							class="bp-node-chat-param-btn"
@@ -952,6 +952,8 @@ import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../..
 import type { InputParamPreviewRef } from './index'
 import {
 	NODE_CHAT_ASPECT_RATIO_OPTIONS,
+	NODE_CHAT_GEMINI_ASPECT_RATIO_OPTIONS,
+	NODE_CHAT_GEMINI_QUANTITY_OPTIONS,
 	NODE_CHAT_RESOLUTION_OPTIONS,
 	NODE_CHAT_QUANTITY_OPTIONS,
 	NODE_CHAT_VIDEO_MODE_OPTIONS,
@@ -1014,7 +1016,7 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 	const next: WorkflowNodeChatParamRecord = { ...props.params, [key]: value }
 
 	if (key === 'model') {
-		if (value === 'gemini') {
+		if (value === 'gemini' || value === 'nanobanana') {
 			if (props.nodeType === 'text' && !next.geminiTextModelVersion) {
 				next.geminiTextModelVersion = 'gemini-3.5-flash'
 			}
@@ -1023,6 +1025,13 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 					next.geminiImageModelVersion = 'gemini-3.1-flash-image-preview'
 				}
 				next.nanobananaModelVersion = next.geminiImageModelVersion
+				const allowedAspectRatios = NODE_CHAT_GEMINI_ASPECT_RATIO_OPTIONS.map(o => o.value)
+				if (!allowedAspectRatios.includes(String(next.aspectRatio))) {
+					next.aspectRatio = '1:1'
+				}
+				if (!NODE_CHAT_GEMINI_QUANTITY_OPTIONS.includes(Number(next.quantity))) {
+					next.quantity = 1
+				}
 			}
 		}
 	}
@@ -1129,6 +1138,24 @@ const currentMeshyAspectRatioOptions = computed(() => {
 			? props.params.meshyImageAiModel
 			: 'nano-banana'
 	return getMeshyImageAspectRatioOptions(modelVal)
+})
+
+const isGeminiModel = computed(() => {
+	return props.params.model === 'gemini' || props.params.model === 'nanobanana'
+})
+
+const currentAspectRatioOptions = computed(() => {
+	if (isGeminiModel.value) {
+		return NODE_CHAT_GEMINI_ASPECT_RATIO_OPTIONS
+	}
+	return NODE_CHAT_ASPECT_RATIO_OPTIONS
+})
+
+const currentQuantityOptions = computed(() => {
+	if (isGeminiModel.value) {
+		return NODE_CHAT_GEMINI_QUANTITY_OPTIONS
+	}
+	return NODE_CHAT_QUANTITY_OPTIONS
 })
 
 const seedreamVersion = computed(() => {

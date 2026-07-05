@@ -51,6 +51,8 @@ const form = reactive<ClientSettings>({
 	deepseekModel: FIXED_DEEPSEEK_MODEL,
 	geminiApiKey: '',
 	geminiModel: FIXED_GEMINI_MODEL,
+	geminiBaseUrl: '',
+	httpProxy: '',
 	bytedanceApiKey: '',
 	meshyApiKey: '',
 	githubToken: '',
@@ -157,6 +159,8 @@ function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettin
 		deepseekModel: FIXED_DEEPSEEK_MODEL,
 		geminiApiKey: form.geminiApiKey,
 		geminiModel: FIXED_GEMINI_MODEL,
+		geminiBaseUrl: String(form.geminiBaseUrl || '').trim(),
+		httpProxy: String(form.httpProxy || '').trim(),
 		bytedanceApiKey: form.bytedanceApiKey,
 		meshyApiKey: form.meshyApiKey,
 		githubToken: form.githubToken,
@@ -269,6 +273,19 @@ function handleResolutionChange() {
 	saveResolution()
 }
 
+async function saveNetworkSettings() {
+	if (saving.value) return
+	saving.value = true
+	try {
+		const r = await saveClientSettings(buildSavePayload())
+		if (r?.ok) showSaveMessage(t('settings.saveSuccess'))
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+	} finally {
+		saving.value = false
+	}
+}
+
 function openSource() {
 	if (!repoUrl) return
 	void openExternalUrl(repoUrl)
@@ -288,6 +305,8 @@ async function load() {
 	form.deepseekBaseUrl = FIXED_DEEPSEEK_BASE_URL
 	form.deepseekModel = FIXED_DEEPSEEK_MODEL
 	form.geminiModel = FIXED_GEMINI_MODEL
+	form.geminiBaseUrl = String(form.geminiBaseUrl || '')
+	form.httpProxy = String(form.httpProxy || '')
 	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken', 'anthropicApiKey'] as const) {
 		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
 	}
@@ -542,6 +561,52 @@ async function handleOpenOverlayCommunity() {
 							{{ t('settings.openCommunity') }}
 						</button>
 					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="settings-section">
+			<div class="section-head">
+				<h2 class="section-title">网络设置</h2>
+				<p class="section-desc">配置HTTP代理以访问需要科学上网的服务（如Google Gemini）。配置后立即生效，无需重启应用。</p>
+			</div>
+			<div class="network-card">
+				<div class="network-row">
+					<label class="network-label">
+						<span>HTTP代理地址</span>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">PandaFan/Clash等代理软件的HTTP端口，通常为 http://127.0.0.1:7890</small>
+					</label>
+					<input
+						v-model="form.httpProxy"
+						class="network-input"
+						type="text"
+						placeholder="http://127.0.0.1:7890"
+						autocomplete="off"
+						spellcheck="false"
+						@blur="saveNetworkSettings"
+					/>
+				</div>
+				<div class="network-row">
+					<label class="network-label">
+						<span>Gemini API Base URL</span>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">可选，自定义API端点（如使用中转服务），默认使用官方地址</small>
+					</label>
+					<input
+						v-model="form.geminiBaseUrl"
+						class="network-input"
+						type="text"
+						placeholder="https://generativelanguage.googleapis.com/v1beta"
+						autocomplete="off"
+						spellcheck="false"
+						@blur="saveNetworkSettings"
+					/>
+				</div>
+				<div class="network-tip" style="margin-top: 12px; padding: 12px; background: rgba(34,160,107,0.08); border-radius: 6px; font-size: 12px; color: var(--vscode-fg-muted); line-height: 1.6;">
+					<div style="font-weight: 600; color: #22a06b; margin-bottom: 6px;">💡 PandaFan/Clash 用户配置指南</div>
+					<div>1. 打开你的代理软件，找到「HTTP代理端口」设置（PandaFan通常在设置→代理设置中查看）</div>
+					<div>2. 将地址填入上方输入框，格式为：http://127.0.0.1:端口号</div>
+					<div>3. 输入框失焦后自动保存，下次发起Gemini请求时将使用该代理</div>
+					<div>4. 留空则不使用代理，直接连接（适合已有系统全局代理的环境）</div>
 				</div>
 			</div>
 		</section>
@@ -873,6 +938,51 @@ async function handleOpenOverlayCommunity() {
 }
 
 .resolution-select:focus {
+	border-color: var(--vscode-border-accent);
+}
+
+.network-card {
+	background: var(--dweb-defualt);
+	border: 1px solid var(--vscode-border);
+	border-radius: 10px;
+	padding: 20px;
+	max-width: 600px;
+}
+
+.network-row {
+	margin-bottom: 16px;
+}
+
+.network-row:last-child {
+	margin-bottom: 0;
+}
+
+.network-label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 8px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-fg);
+}
+
+.network-input {
+	width: 100%;
+	box-sizing: border-box;
+	appearance: none;
+	-webkit-appearance: none;
+	border: 1px solid var(--vscode-border);
+	background: var(--vscode-input-bg, var(--dweb-defualt-dark));
+	color: var(--vscode-fg);
+	font-size: 13px;
+	padding: 10px 12px;
+	border-radius: 6px;
+	outline: none;
+	font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.network-input:focus {
 	border-color: var(--vscode-border-accent);
 }
 

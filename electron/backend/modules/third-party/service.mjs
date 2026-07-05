@@ -2,10 +2,338 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import http from 'node:http'
+import https from 'node:https'
+import { fileURLToPath } from 'node:url'
+import { app } from 'electron'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import { internalError, invalidParamsError, upstreamError } from '../../core/errors.mjs'
 import { getHttpClient } from '../../core/http-client.mjs'
 import { getLocalDbFilePath } from '../../../localdb/db.mjs'
 import { getRepos } from '../../../localdb/index.mjs'
+import * as geminiTaskService from '../gemini/service.mjs'
+
+const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
+
+const defaultHttpsAgent = new https.Agent({
+	keepAlive: true,
+	keepAliveMsecs: 300 * 1000
+})
+
+const defaultHttpAgent = new http.Agent({
+	keepAlive: true,
+	keepAliveMsecs: 300 * 1000
+})
+
+function getProxyUrl() {
+	const settings = getClientSettings()
+	const configuredProxy = String(settings.httpProxy || '').trim()
+	if (configuredProxy) {
+		return configuredProxy
+	}
+	return process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy || ''
+}
+
+function getAgentForUrl(url) {
+	try {
+		const u = new URL(url)
+		const isHttps = u.protocol === 'https:'
+		const proxyUrl = getProxyUrl()
+
+		if (proxyUrl) {
+			console.log(`[gemini] Using proxy: ${proxyUrl}`)
+			return new HttpsProxyAgent(proxyUrl, {
+				keepAlive: true
+			})
+		}
+
+		return isHttps ? defaultHttpsAgent : defaultHttpAgent
+	} catch {
+		return defaultHttpsAgent
+	}
+}
+
+function getServiceRepoRoot() {
+	const here = path.dirname(fileURLToPath(import.meta.url))
+	return path.resolve(here, '..', '..', '..', '..')
+}
+
+function findNearestGitRoot(startDir) {
+	let current = path.resolve(startDir)
+	while (true) {
+		if (fs.existsSync(path.resolve(current, '.git'))) return current
+		const parent = path.dirname(current)
+		if (parent === current) return ''
+		current = parent
+	}
+}
+
+function getClientRootDir() {
+	if (app.isPackaged) return path.dirname(process.execPath)
+	const repoRoot = getServiceRepoRoot()
+	const gitRoot = findNearestGitRoot(repoRoot)
+	return gitRoot || repoRoot
+}
+
+function getDvsResourceDir() {
+	const envResourceDir = String(process.env.DWEB_RESOURCE_DIR || '').trim()
+	if (envResourceDir) return path.resolve(envResourceDir)
+	return path.resolve(getClientRootDir(), 'DVSResource')
+}
+
+function getUserSettingsDir() {
+	return path.resolve(getDvsResourceDir(), 'UserSettings')
+}
+
+function getUserSettingsFilePath() {
+	return path.resolve(getUserSettingsDir(), 'settings.json')
+}
+
+function getClientSettings() {
+	try {
+		const settingsPath = getUserSettingsFilePath()
+		console.log(`[gemini] Reading settings from: ${settingsPath}`)
+		if (fs.existsSync(settingsPath)) {
+			const raw = fs.readFileSync(settingsPath, 'utf-8')
+			const settings = JSON.parse(raw)
+			console.log(`[gemini] Settings loaded, httpProxy: ${settings.httpProxy || '(not set)'}, geminiBaseUrl: ${settings.geminiBaseUrl || '(default)'}`)
+			return settings
+		} else {
+			console.log(`[gemini] Settings file not found at: ${settingsPath}`)
+		}
+	} catch (err) {
+		console.error(`[gemini] Failed to read settings:`, err.message)
+	}
+	return {}
+}
+
+function getGeminiBaseUrl() {
+	const settings = getClientSettings()
+	const customUrl = String(settings.geminiBaseUrl || '').trim()
+	if (customUrl) {
+		return customUrl.replace(/\/+$/, '')
+	}
+	const envUrl = String(process.env.GEMINI_API_BASE || '').trim()
+	if (envUrl) {
+		return envUrl.replace(/\/+$/, '')
+	}
+	return GEMINI_DEFAULT_BASE_URL
+}
+
+function redactUrl(url) {
+	try {
+		const u = new URL(url)
+		if (u.searchParams.has('key')) {
+			u.searchParams.set('key', '***')
+		}
+		return u.toString()
+	} catch {
+		return String(url || '')
+	}
+}
+
+async function geminiFetch(url, options = {}) {
+	const method = options.method || 'GET'
+	const redactedUrl = redactUrl(url)
+	const proxyUrl = getProxyUrl()
+	console.log(`[gemini] ========== REQUEST START ==========`)
+	console.log(`[gemini] Method: ${method}`)
+	console.log(`[gemini] URL: ${redactedUrl}`)
+	console.log(`[gemini] Proxy: ${proxyUrl || 'direct (no proxy)'}`)
+	console.log(`[gemini] Environment proxy vars: HTTPS_PROXY=${process.env.HTTPS_PROXY || 'not set'}, HTTP_PROXY=${process.env.HTTP_PROXY || 'not set'}`)
+	if (options.body) {
+		try {
+			let bodyStr = options.body
+			if (typeof options.body === 'string') {
+				bodyStr = options.body
+			} else {
+				bodyStr = JSON.stringify(options.body, null, 2)
+			}
+			console.log(`[gemini] Request Body:`)
+			console.log(bodyStr.length > 2000 ? bodyStr.slice(0, 2000) + '\n... (truncated)' : bodyStr)
+		} catch (bodyErr) {
+			console.log(`[gemini] Could not log request body:`, bodyErr.message)
+		}
+	}
+
+	const headers = {
+		'User-Agent': 'DVSBackend/1.0 (Electron)',
+		...(options.headers || {})
+	}
+	console.log(`[gemini] Request Headers:`, JSON.stringify(headers, null, 2))
+	console.log(`[gemini] ========== SENDING REQUEST ==========`)
+
+	const u = new URL(url)
+	const isHttps = u.protocol === 'https:'
+	const agent = getAgentForUrl(url)
+
+	return new Promise((resolve, reject) => {
+		const reqOptions = {
+			hostname: u.hostname,
+			port: u.port || (isHttps ? 443 : 80),
+			path: u.pathname + u.search,
+			method,
+			headers,
+			agent
+		}
+
+		const req = (isHttps ? https : http).request(reqOptions, (res) => {
+			console.log(`[gemini] ========== RESPONSE RECEIVED ==========`)
+			console.log(`[gemini] Status: ${res.statusCode} ${res.statusMessage}`)
+			console.log(`[gemini] Response Headers:`)
+			for (const [key, value] of Object.entries(res.headers)) {
+				console.log(`[gemini]   ${key}: ${value}`)
+			}
+
+			const chunks = []
+			res.on('data', (chunk) => chunks.push(chunk))
+
+			res.on('end', () => {
+				const body = Buffer.concat(chunks)
+				const textBody = body.toString('utf-8')
+
+				const response = {
+					ok: res.statusCode >= 200 && res.statusCode < 300,
+					status: res.statusCode,
+					statusText: res.statusMessage,
+					headers: res.headers,
+					url,
+					text: async () => textBody,
+					json: async () => JSON.parse(textBody),
+					body: null
+				}
+
+				let streamController
+				const readableStream = new ReadableStream({
+					start(controller) {
+						streamController = controller
+						for (const chunk of chunks) {
+							controller.enqueue(new Uint8Array(chunk))
+						}
+						controller.close()
+					}
+				})
+				response.body = readableStream
+
+				resolve(response)
+			})
+		})
+
+		req.on('error', (err) => {
+			console.error(`[gemini] ========== FETCH ERROR ==========`)
+			console.error(`[gemini] Request failed for: ${redactedUrl}`)
+			console.error(`[gemini] Error name: ${err?.name}`)
+			console.error(`[gemini] Error message: ${err?.message}`)
+			console.error(`[gemini] Error stack:`, err?.stack)
+			reject(err)
+		})
+
+		if (options.body) {
+			const bodyBuffer = typeof options.body === 'string' ? Buffer.from(options.body) : options.body
+			req.write(bodyBuffer)
+		}
+		req.end()
+	})
+}
+
+async function geminiFetchStream(url, options = {}) {
+	const method = options.method || 'GET'
+	const redactedUrl = redactUrl(url)
+	const proxyUrl = getProxyUrl()
+	console.log(`[gemini:stream] ========== STREAM REQUEST START ==========`)
+	console.log(`[gemini:stream] Method: ${method}`)
+	console.log(`[gemini:stream] URL: ${redactedUrl}`)
+	console.log(`[gemini:stream] Proxy: ${proxyUrl || 'direct (no proxy)'}`)
+
+	const headers = {
+		'User-Agent': 'DVSBackend/1.0 (Electron)',
+		...(options.headers || {})
+	}
+
+	const u = new URL(url)
+	const isHttps = u.protocol === 'https:'
+	const agent = getAgentForUrl(url)
+
+	return new Promise((resolve, reject) => {
+		const reqOptions = {
+			hostname: u.hostname,
+			port: u.port || (isHttps ? 443 : 80),
+			path: u.pathname + u.search,
+			method,
+			headers,
+			agent
+		}
+
+		const req = (isHttps ? https : http).request(reqOptions, (res) => {
+			console.log(`[gemini:stream] ========== STREAM RESPONSE RECEIVED ==========`)
+			console.log(`[gemini:stream] Status: ${res.statusCode} ${res.statusMessage}`)
+
+			let streamController
+			const readableStream = new ReadableStream({
+				start(controller) {
+					streamController = controller
+				},
+				cancel() {
+					req.destroy()
+				}
+			})
+
+			const response = {
+				ok: res.statusCode >= 200 && res.statusCode < 300,
+				status: res.statusCode,
+				statusText: res.statusMessage,
+				headers: res.headers,
+				url,
+				body: readableStream
+			}
+
+			res.on('data', (chunk) => {
+				if (streamController) {
+					streamController.enqueue(new Uint8Array(chunk))
+				}
+			})
+
+			res.on('end', () => {
+				if (streamController) {
+					streamController.close()
+				}
+			})
+
+			res.on('error', (err) => {
+				console.error(`[gemini:stream] Response error:`, err)
+				if (streamController) {
+					streamController.error(err)
+				}
+				reject(err)
+			})
+
+			if (!response.ok) {
+				const chunks = []
+				res.on('data', (chunk) => chunks.push(chunk))
+				res.on('end', () => {
+					const errorBody = Buffer.concat(chunks).toString('utf-8')
+					response.text = async () => errorBody
+					resolve(response)
+				})
+			} else {
+				resolve(response)
+			}
+		})
+
+		req.on('error', (err) => {
+			console.error(`[gemini:stream] ========== STREAM FETCH ERROR ==========`)
+			console.error(`[gemini:stream] Request failed for: ${redactedUrl}`)
+			console.error(`[gemini:stream] Error:`, err)
+			reject(err)
+		})
+
+		if (options.body) {
+			const bodyBuffer = typeof options.body === 'string' ? Buffer.from(options.body) : options.body
+			req.write(bodyBuffer)
+		}
+		req.end()
+	})
+}
 
 function generateMsgId() {
 	return `m-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`
@@ -38,7 +366,11 @@ function wrapChatMsg(content) {
 	})
 }
 
-function wrapTaskStatusMsg(message, phase) {
+function wrapTaskStatusMsg(message, phase, extra = null) {
+	const payload = { phase: phase || 'streaming', message: String(message || '') }
+	if (extra && typeof extra === 'object') {
+		Object.assign(payload, extra)
+	}
 	return JSON.stringify({
 		type: 'msg',
 		message: {
@@ -46,7 +378,7 @@ function wrapTaskStatusMsg(message, phase) {
 			id: generateMsgId(),
 			createdAt: new Date().toISOString(),
 			type: 'agentToUi/taskStatus',
-			payload: { phase: phase || 'streaming', message: String(message || '') }
+			payload
 		}
 	})
 }
@@ -85,10 +417,28 @@ function wrapResultMsg(data) {
 	})
 }
 
+function wrapGeminiEvent(eventType, data) {
+	return JSON.stringify({
+		type: 'gemini_event',
+		eventType,
+		data
+	})
+}
+
+function getGeminiModelLabel(modelId) {
+	const modelMap = {
+		'gemini-3.1-flash-lite-image': 'Nano Banana Lite',
+		'gemini-2.5-flash-image': 'NanoBanana',
+		'gemini-3.1-flash-image-preview': 'Nano Banana 2',
+		'gemini-3-pro-image-preview': 'Nano Banana Pro'
+	}
+	const key = String(modelId || '').trim()
+	return modelMap[key] || key
+}
+
 const NANOBANANA_API_BASE = 'https://api.meshy.ai/openapi'
 const SEEDREAM_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 const JIMENG_API_BASE = 'https://visual.volcengineapi.com'
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 
 function convertMessagesToGemini(messages) {
 	const contents = []
@@ -967,8 +1317,9 @@ export async function* blueprintChatStream(ctx, payload) {
 		return ''
 	}
 
+	const geminiBaseUrl = getGeminiBaseUrl()
 	const providerConfigs = [
-		{ prov: 'gemini', names: ['gemini', 'GeminiApiKey', 'gemini_api_key'], baseUrl: GEMINI_API_BASE, model: 'gemini-3.5-flash', isNative: true },
+		{ prov: 'gemini', names: ['gemini', 'GeminiApiKey', 'gemini_api_key'], baseUrl: geminiBaseUrl, model: 'gemini-3.5-flash', isNative: true },
 		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream', 'bytedanceApiKey'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-0-pro-260215' },
 		{ prov: 'deepseek', names: ['deepseek', 'deepseekApiKey'], baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
 		{ prov: 'openai', names: ['openai'], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
@@ -1065,29 +1416,78 @@ export async function* blueprintChatStream(ctx, payload) {
 				geminiBody.systemInstruction = systemInstruction
 			}
 			const url = `${cfg.baseUrl}/models/${useModel}:streamGenerateContent?alt=sse&key=${apiKey}`
-			const stream = client.postStream(url, {
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(geminiBody),
-				timeout: 120000
-			})
-			for await (const rawLine of stream) {
-				const line = String(rawLine || '').trim()
-				if (!line.startsWith('data:')) continue
-				const data = line.slice(5).trim()
-				if (!data || data === '[DONE]') continue
+
+			const fetchOptions = {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Accept': 'text/event-stream'
+				},
+				body: JSON.stringify(geminiBody)
+			}
+
+			const response = await geminiFetchStream(url, fetchOptions)
+
+			if (!response.ok) {
+				let errBody = ''
 				try {
-					const parsed = JSON.parse(data)
-					const candidates = parsed?.candidates || []
-					for (const candidate of candidates) {
-						const parts = candidate?.content?.parts || []
-						for (const part of parts) {
-							if (part.text) {
-								fullContent += part.text
-								yield wrapTextMsg(part.text)
+					errBody = await response.text()
+				} catch (textErr) {
+					console.error('[gemini:chat] Failed to read error response body:', textErr)
+				}
+				console.error(`[gemini:chat] ========== HTTP ERROR RESPONSE BODY ==========`)
+				console.error(`[gemini:chat] Status: ${response.status} ${response.statusText}`)
+				console.error(`[gemini:chat] Full error body:`)
+				console.error(errBody)
+				console.error(`[gemini:chat] ========== END ERROR RESPONSE ==========`)
+				let detail = ''
+				try {
+					const parsed = JSON.parse(errBody)
+					detail = parsed?.error?.message || parsed?.message || JSON.stringify(parsed?.error || parsed, null, 2)
+				} catch {
+					detail = errBody
+				}
+				throw new Error(`Gemini API HTTP ${response.status}: ${detail}`)
+			}
+
+			if (!response.body) {
+				throw new Error('Response body is null')
+			}
+
+			const reader = response.body.getReader()
+			const decoder = new TextDecoder('utf-8')
+			let buffer = ''
+
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+
+				buffer += decoder.decode(value, { stream: true })
+				const lines = buffer.split(/\r?\n/)
+				buffer = lines.pop() || ''
+
+				for (const rawLine of lines) {
+					const line = String(rawLine || '').trim()
+					if (!line.startsWith('data:')) continue
+					const data = line.slice(5).trim()
+					if (!data || data === '[DONE]') continue
+					try {
+						const parsed = JSON.parse(data)
+						const candidates = parsed?.candidates || []
+						for (const candidate of candidates) {
+							const parts = candidate?.content?.parts || []
+							for (const part of parts) {
+								if (part.text) {
+									fullContent += part.text
+									yield wrapTextMsg(part.text)
+								}
 							}
 						}
+					} catch (parseErr) {
+						console.warn('[gemini:chat] Failed to parse SSE chunk:', parseErr?.message)
+						console.warn('[gemini:chat] Raw chunk data:', data?.slice(0, 500))
 					}
-				} catch {}
+				}
 			}
 		} else {
 			const stream = client.postStream(`${cfg.baseUrl}/chat/completions`, {
@@ -1147,8 +1547,9 @@ export async function blueprintChat(ctx, payload) {
 		return ''
 	}
 
+	const geminiBaseUrl = getGeminiBaseUrl()
 	const providerConfigs = [
-		{ prov: 'gemini', names: ['gemini', 'GeminiApiKey', 'gemini_api_key'], baseUrl: GEMINI_API_BASE, model: 'gemini-3.5-flash', isNative: true },
+		{ prov: 'gemini', names: ['gemini', 'GeminiApiKey', 'gemini_api_key'], baseUrl: geminiBaseUrl, model: 'gemini-3.5-flash', isNative: true },
 		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream', 'bytedanceApiKey'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-0-pro-260215' },
 		{ prov: 'deepseek', names: ['deepseek', 'deepseekApiKey'], baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
 		{ prov: 'openai', names: ['openai'], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
@@ -1219,17 +1620,36 @@ export async function blueprintChat(ctx, payload) {
 				geminiBody.systemInstruction = systemInstruction
 			}
 			const url = `${cfg.baseUrl}/models/${useModel}:generateContent?key=${cfg.apiKey}`
-			const res = await client.post(url, geminiBody, {
-				headers: { 'Content-Type': 'application/json' },
-				timeout: 120000
+
+			console.log('[gemini:chat:nonstream] Fetching from:', redactUrl(url))
+			const response = await geminiFetch(url, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'User-Agent': 'DVSBackend/1.0 (Electron)'
+				},
+				body: JSON.stringify(geminiBody)
 			})
-			if (!res.ok) {
-				const errMsg = typeof res.body === 'object' && res.body?.error
-					? String(res.body.error.message || JSON.stringify(res.body.error))
-					: `HTTP ${res.status}`
-				return { ok: false, error: errMsg, status: res.status }
+
+			let resBody = null
+			try {
+				resBody = await response.json()
+			} catch {
+				resBody = await response.text()
 			}
-			const candidates = res.body?.candidates || []
+
+			if (!response.ok) {
+				let errMsg = `HTTP ${response.status}`
+				if (typeof resBody === 'object' && resBody?.error) {
+					errMsg = String(resBody.error.message || JSON.stringify(resBody.error))
+				} else if (typeof resBody === 'string') {
+					errMsg = resBody.slice(0, 500)
+				}
+				console.error('[gemini:chat:nonstream] HTTP error:', response.status, errMsg)
+				return { ok: false, error: errMsg, status: response.status }
+			}
+
+			const candidates = resBody?.candidates || []
 			for (const candidate of candidates) {
 				const parts = candidate?.content?.parts || []
 				for (const part of parts) {
@@ -1273,7 +1693,13 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 	const aspectRatio = String(p.aspect_ratio || p.aspectRatio || '1:1').trim()
 	const numImages = Math.max(1, Math.min(4, Number(p.num_images || p.numImages || p.quantity || 1)))
 	const referenceImages = Array.isArray(p.reference_images) ? p.reference_images.filter(Boolean) : []
+	const refImages = Array.isArray(p.refImages) ? p.refImages.filter(Boolean) : []
+	const allRefImages = [...referenceImages]
+	for (const img of refImages) {
+		if (typeof img === 'string') allRefImages.push(img)
+	}
 	const modelId = String(p.modelId || p.model || 'gemini-3.1-flash-image-preview').trim()
+	const modelLabel = getGeminiModelLabel(modelId)
 
 	const repo = getApiKeyRepo(ctx)
 	function getKeyFor(name) {
@@ -1285,35 +1711,43 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 	}
 	const apiKey = getKeyFor('gemini') || getKeyFor('GeminiApiKey') || getKeyFor('gemini_api_key')
 	if (!apiKey) {
-		yield wrapStreamError('No Gemini API key configured')
+		yield wrapStreamError('No Gemini API key configured. Please configure it in Settings.')
 		return
 	}
 
-	const taskId = `gemini-img-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
-	const projectId = p.projectId ? Number(p.projectId) : null
+	const taskId = `gemini-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+	const projectId = p.projectId !== undefined && p.projectId !== null && p.projectId !== ''
+		? Number(p.projectId) || null
+		: null
 	const nodeId = String(p.nodeId || '').trim()
-	recordArkTask({
-		taskId,
-		provider: 'gemini',
-		apiType: 'imageGenerate',
-		apiAction: 'generate_image',
-		model: modelId,
-		status: 'queued',
-		prompt,
-		statusText: '正在调用Gemini图片模型…',
-		requestPayload: { modelId, prompt, aspectRatio, numImages, hasRefImages: referenceImages.length > 0 },
-		projectId,
-		nodeId
-	})
 
 	try {
-		const client = getHttpClient()
+		const taskRecord = geminiTaskService.createTaskRecord(ctx, {
+			taskId,
+			model: modelId,
+			modelLabel,
+			prompt,
+			negativePrompt,
+			aspectRatio,
+			numImages,
+			projectId,
+			nodeId,
+			statusText: '正在提交任务到Google Gemini...'
+		})
+
+		yield wrapTaskStatusMsg(`正在使用 ${modelLabel} 生成图片…`, 'generating', { taskId, progress: 10 })
+
 		const userParts = []
 
-		yield wrapTaskStatusMsg('正在生成图片…', 'generating')
+		geminiTaskService.updateTaskStatus(ctx, taskId, {
+			status: 'processing',
+			progress: 10,
+			statusText: '正在处理参考图片...'
+		})
+		yield wrapTaskStatusMsg('正在处理参考图片...', 'processing', { taskId, progress: 10 })
 
-		if (referenceImages.length > 0) {
-			for (const img of referenceImages) {
+		if (allRefImages.length > 0) {
+			for (const img of allRefImages) {
 				const imgStr = String(img)
 				if (imgStr.startsWith('data:')) {
 					const matches = imgStr.match(/^data:([^;]+);base64,(.+)$/)
@@ -1345,82 +1779,174 @@ export async function* geminiImageGenerateStream(ctx, payload) {
 		const geminiBody = {
 			contents: [{ role: 'user', parts: userParts }],
 			generationConfig: {
-				responseModalities: ['IMAGE', 'TEXT'],
+				responseModalities: ['image', 'text'],
+				candidateCount: numImages,
 				imageConfig: {
 					aspectRatio: aspectRatio
 				}
 			}
 		}
 
-		const url = `${GEMINI_API_BASE}/models/${modelId}:streamGenerateContent?alt=sse&key=${apiKey}`
-		const stream = client.postStream(url, {
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(geminiBody),
-			timeout: 180000
+		geminiTaskService.updateTaskStatus(ctx, taskId, {
+			progress: 20,
+			statusText: '正在调用Gemini API生成图片...'
 		})
+		yield wrapTaskStatusMsg('正在调用Gemini API生成图片...', 'processing', { taskId, progress: 20 })
+
+		const geminiBaseUrl = getGeminiBaseUrl()
+		const url = `${geminiBaseUrl}/models/${modelId}:streamGenerateContent?alt=sse&key=${apiKey}`
 
 		let generatedImages = []
 		let generatedText = ''
-		for await (const rawLine of stream) {
-			const line = String(rawLine || '').trim()
-			if (!line.startsWith('data:')) continue
-			const data = line.slice(5).trim()
-			if (!data || data === '[DONE]') continue
-			try {
-				const parsed = JSON.parse(data)
-				yield wrapTaskStatusMsg('正在处理图片…', 'streaming')
-				const candidates = parsed?.candidates || []
-				for (const candidate of candidates) {
-					const parts = candidate?.content?.parts || []
-					for (const part of parts) {
-						if (part.inlineData) {
-							const imgData = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`
-							generatedImages.push(imgData)
-							yield wrapChatMsg({ imageUrl: imgData })
+		let chunkCount = 0
+
+		try {
+			const fetchOptions = {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Accept': 'text/event-stream'
+				},
+				body: JSON.stringify(geminiBody)
+			}
+
+			const response = await geminiFetchStream(url, fetchOptions)
+
+			if (!response.ok) {
+				let errBody = ''
+				try {
+					errBody = await response.text()
+				} catch (textErr) {
+					console.error('[gemini] Failed to read error response body:', textErr)
+				}
+				console.error(`[gemini] ========== HTTP ERROR RESPONSE BODY ==========`)
+				console.error(`[gemini] Status: ${response.status} ${response.statusText}`)
+				console.error(`[gemini] Full error body:`)
+				console.error(errBody)
+				console.error(`[gemini] ========== END ERROR RESPONSE ==========`)
+				let detail = ''
+				try {
+					const parsed = JSON.parse(errBody)
+					detail = parsed?.error?.message || parsed?.message || JSON.stringify(parsed?.error || parsed, null, 2)
+				} catch {
+					detail = errBody
+				}
+				throw new Error(`Gemini API HTTP ${response.status}: ${detail}`)
+			}
+
+			if (!response.body) {
+				throw new Error('Response body is null')
+			}
+
+			const reader = response.body.getReader()
+			const decoder = new TextDecoder('utf-8')
+			let buffer = ''
+
+			while (true) {
+				const { done, value } = await reader.read()
+				if (done) break
+
+				buffer += decoder.decode(value, { stream: true })
+				const lines = buffer.split(/\r?\n/)
+				buffer = lines.pop() || ''
+
+				for (const rawLine of lines) {
+					const line = String(rawLine || '').trim()
+					if (!line.startsWith('data:')) continue
+					const data = line.slice(5).trim()
+					if (!data || data === '[DONE]') continue
+					try {
+						const parsed = JSON.parse(data)
+						chunkCount++
+
+						const progress = Math.min(90, 20 + chunkCount * 5)
+						geminiTaskService.updateTaskStatus(ctx, taskId, {
+							progress,
+							statusText: `正在接收图片数据... (${chunkCount} chunks)`
+						})
+
+						yield wrapTaskStatusMsg(`正在接收图片数据... (${chunkCount} chunks)`, 'streaming', { taskId, progress })
+						const candidates = parsed?.candidates || []
+						for (const candidate of candidates) {
+							const parts = candidate?.content?.parts || []
+							for (const part of parts) {
+								if (part.inlineData && part.inlineData.data) {
+									generatedImages.push({
+										mimeType: part.inlineData.mimeType || 'image/png',
+										data: part.inlineData.data
+									})
+								}
+								if (part.text) {
+									generatedText += part.text
+								}
+							}
 						}
-						if (part.text) {
-							generatedText += part.text
-						}
+					} catch (parseErr) {
+						console.warn('[gemini] Failed to parse SSE chunk:', parseErr?.message)
+						console.warn('[gemini] Raw chunk data:', data?.slice(0, 500))
 					}
 				}
-			} catch {}
+			}
+		} catch (fetchErr) {
+			console.error('[gemini] SSE stream processing error:', fetchErr)
+			throw fetchErr
 		}
 
 		if (generatedImages.length === 0 && generatedText) {
 			const imgRegex = /!\[.*?\]\((data:image\/[^)]+)\)/g
 			let match
 			while ((match = imgRegex.exec(generatedText)) !== null && generatedImages.length < numImages) {
-				generatedImages.push(match[1])
-				yield wrapChatMsg({ imageUrl: match[1] })
+				const dataUrl = match[1]
+				const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+				if (matches) {
+					generatedImages.push({
+						mimeType: matches[1] || 'image/png',
+						data: matches[2]
+					})
+				}
 			}
 		}
 
 		if (generatedImages.length === 0) {
+			geminiTaskService.failTask(ctx, taskId, 'No images were generated', 'NO_IMAGES')
 			yield wrapStreamError('No images were generated')
-			recordArkTask({
-				taskId,
-				status: 'failed',
-				errorMessage: 'No images returned from Gemini',
-				statusText: '图片生成失败'
-			})
+			yield wrapGeminiEvent('task_failed', { taskId, error: 'No images were generated' })
 			return
 		}
 
+		yield wrapTaskStatusMsg('正在保存图片到本地…', 'saving', { taskId, progress: 95 })
+
+		const completedTask = geminiTaskService.completeTask(ctx, taskId, generatedImages, {
+			generatedText,
+			chunkCount,
+			imageCount: generatedImages.length
+		})
+		yield wrapTaskStatusMsg('生成完成', 'completed', { taskId, progress: 100 })
+
+		for (const img of completedTask.resultImages) {
+			const imageUrl = img.dwebUrl || `file://${img.localPath.replace(/\\/g, '/')}`
+			yield wrapChatMsg({
+				imageUrl: imageUrl,
+				localPath: img.localPath,
+				filename: img.filename,
+				mimeType: img.mimeType,
+				dwebUrl: img.dwebUrl
+			})
+		}
+
+		yield wrapGeminiEvent('task_completed', {
+			taskId,
+			imageCount: completedTask.resultImages.length,
+			images: completedTask.resultImages
+		})
+
 		yield wrapDone()
-		recordArkTask({
-			taskId,
-			status: 'succeeded',
-			resultText: `生成${Math.min(generatedImages.length, numImages)}张图片`,
-			statusText: '图片生成完成',
-			responsePayload: { imageCount: Math.min(generatedImages.length, numImages) }
-		})
 	} catch (err) {
-		recordArkTask({
-			taskId,
-			status: 'failed',
-			errorMessage: String(err?.message || err),
-			statusText: '图片生成失败'
-		})
+		console.error('[gemini] Image generation error:', err)
+		try {
+			geminiTaskService.failTask(ctx, taskId, String(err?.message || err), 'STREAM_ERROR')
+		} catch {}
 		yield wrapStreamError(String(err?.message || err))
+		yield wrapGeminiEvent('task_failed', { taskId, error: String(err?.message || err) })
 	}
 }

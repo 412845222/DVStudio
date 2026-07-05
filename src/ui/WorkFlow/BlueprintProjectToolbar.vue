@@ -290,8 +290,6 @@
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
-						disabled
-						:title="t('aiworkflow.toolbar.geminiNotImplemented')"
 						@click="emitThenClose('open-gemini-task-panel')"
 					>
 						<span>Gemini</span>

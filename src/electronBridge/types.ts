@@ -95,6 +95,8 @@ export type ClientSettings = {
 	deepseekModel: string
 	geminiApiKey: string
 	geminiModel: string
+	geminiBaseUrl?: string
+	httpProxy?: string
 	bytedanceApiKey: string
 	meshyApiKey: string
 	githubToken: string

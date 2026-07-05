@@ -1270,6 +1270,30 @@ const runImageTask = async (
 		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAspectRatio', { ratio: geminiAspectRatio }))
 		if (geminiNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: geminiNegativePrompt.slice(0, 80) }))
 		if (geminiRefImages.length > 0) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(geminiRefImages.length) }))
+
+		// 记录完整提交参数（用于任务面板显示）
+		const submittedParams = {
+			model: model,
+			aspectRatio: geminiAspectRatio,
+			negativePrompt: geminiNegativePrompt || 'None',
+			outputCount: Math.min(4, Math.max(1, Math.floor(geminiQuantity))),
+			referenceImageCount: geminiRefImages.length,
+			submittedAt: new Date().toISOString()
+		}
+
+		// 标记图片节点的 imageGenerationSource 为 gemini，使任务面板能找到该节点
+		deps.store.commit('setNodeImageSettings', {
+			nodeId: payload.nodeId,
+			imageSettings: {
+				imageGenerationSource: 'gemini',
+				geminiImageSettings: {
+					taskStatus: 'submitting',
+					progress: 10,
+					statusText: t('aiworkflow.runtime.submittingTask'),
+					submittedParams
+				}
+			}
+		})
 	}
 
 	const stream =
@@ -1280,6 +1304,7 @@ const runImageTask = async (
 				: svc.seedreamGenerateStream(form)
 
 	let produced = 0
+	const geminiResultUrls: string[] = []
 	for await (const ev of stream) {
 		if (ev.type === 'done') break
 		if (ev.type === 'error') {
@@ -1287,6 +1312,30 @@ const runImageTask = async (
 			throw new Error(message)
 		}
 		const message = ev.message as Record<string, unknown>
+		if (message?.type === 'agentToUi/taskStatus' && kind === 'gemini') {
+			const statusPayload =
+				typeof message.payload === 'object' && message.payload
+					? (message.payload as Record<string, unknown>)
+					: {}
+			const line = String(statusPayload.message ?? statusPayload.phase ?? '')
+			if (line) appendDetail(deps, task.id, line)
+			const taskId = String(statusPayload.taskId ?? '')
+			const progress = Number(statusPayload.progress ?? 0)
+			if (taskId || progress > 0) {
+				deps.store.commit('setNodeImageSettings', {
+					nodeId: payload.nodeId,
+					imageSettings: {
+						geminiImageSettings: {
+							taskId: taskId || undefined,
+							taskStatus: progress >= 100 ? 'completed' : 'processing',
+							progress: Math.min(95, Math.max(10, progress)),
+							statusText: line || t('aiworkflow.runtime.callingImageModel', { kind: 'gemini' })
+						}
+					}
+				})
+			}
+			continue
+		}
 		if (message?.type === 'agentToUi/chatMessage') {
 			const msgPayload =
 				typeof message.payload === 'object' && message.payload
@@ -1313,6 +1362,7 @@ const runImageTask = async (
 					continue
 				}
 				const resolved = deps.resolveBackendUrl(sourceUrl)
+				geminiResultUrls.push(resolved)
 				appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
 				produced += 1
 				updateTask(deps, task.id, {
@@ -1338,11 +1388,40 @@ const runImageTask = async (
 					? (message.payload as Record<string, unknown>)
 					: {}
 			const line = String(payload.message ?? 'unknown')
+			if (kind === 'gemini') {
+				deps.store.commit('setNodeImageSettings', {
+					nodeId: payload.nodeId,
+					imageSettings: {
+						geminiImageSettings: {
+							taskStatus: 'failed',
+							progress: 0,
+							statusText: line,
+							errorMessage: line
+						}
+					}
+				})
+			}
 			throw new Error(line)
 		}
 	}
 
 	if (produced === 0) throw new Error(t('aiworkflow.runtime.noImagesReceived'))
+
+	if (kind === 'gemini') {
+		deps.store.commit('setNodeImageSettings', {
+			nodeId: payload.nodeId,
+			imageSettings: {
+				geminiImageSettings: {
+					taskStatus: 'completed',
+					progress: 100,
+					statusText: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),
+					imageUrls: geminiResultUrls,
+					thumbnailUrl: geminiResultUrls[0] || ''
+				}
+			}
+		})
+	}
+
 	updateTask(deps, task.id, {
 		status: 'completed',
 		statusText: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),

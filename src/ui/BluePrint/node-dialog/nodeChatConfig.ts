@@ -44,6 +44,16 @@ export const NODE_CHAT_ASPECT_RATIO_OPTIONS = [
 	{ value: '21:9', label: 'aiConfig.aspectRatio.ultrawide' }
 ]
 
+export const NODE_CHAT_GEMINI_ASPECT_RATIO_OPTIONS = [
+	{ value: '1:1', label: 'aiConfig.aspectRatio.square' },
+	{ value: '16:9', label: 'aiConfig.aspectRatio.widescreen' },
+	{ value: '9:16', label: 'aiConfig.aspectRatio.portrait' },
+	{ value: '4:3', label: 'aiConfig.aspectRatio.standard' },
+	{ value: '3:4', label: 'aiConfig.aspectRatio.portrait34' }
+]
+
+export const NODE_CHAT_GEMINI_QUANTITY_OPTIONS = [1, 2, 4]
+
 export const NODE_CHAT_RESOLUTION_OPTIONS = [
 	{ value: '512x512', label: '512×512' },
 	{ value: '768x768', label: '768×768' },

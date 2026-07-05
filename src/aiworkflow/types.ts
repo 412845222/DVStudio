@@ -58,7 +58,7 @@ export type WorkflowImageNodeSettings = {
 	/** crop rect in normalized source space */
 	crop?: WorkflowImageCrop
 	/** image generation source */
-	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy' | 'gemini'
 	/** last generated image URL */
 	lastGeneratedImageUrl?: string
 	/** Meshy image generation settings */
@@ -87,6 +87,24 @@ export type WorkflowImageNodeSettings = {
 			assetPath?: string
 			thumbnailUrl?: string
 		}
+	}
+	/** Gemini image generation settings */
+	geminiImageSettings?: {
+		prompt?: string
+		negativePrompt?: string
+		model?: string
+		modelLabel?: string
+		aspectRatio?: string
+		numImages?: number
+		outputCount?: number
+		taskId?: string
+		taskStatus?: 'idle' | 'submitting' | 'processing' | 'completed' | 'failed' | 'cancelled'
+		progress?: number
+		statusText?: string
+		errorMessage?: string
+		imageUrls?: string[]
+		thumbnailUrl?: string
+		submittedParams?: Record<string, unknown>
 	}
 }
 
