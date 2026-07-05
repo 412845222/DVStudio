@@ -1468,7 +1468,8 @@ const {
 	clearAll: clearAllCanvasScreenshots,
 	cancelPending: cancelCanvasWarmup,
 	loadScreenshot: loadScreenshotToCanvas,
-	dispose: disposeCanvasScreenshot
+	dispose: disposeCanvasScreenshot,
+	setActiveTheme: setCanvasActiveTheme
 } = useAIWorkflowCanvasScreenshot({
 	maxBitmapCount: 500,
 	maxMemoryMB: 200,
@@ -1499,6 +1500,9 @@ const canvasScreenshotPoolProvider = () => canvasScreenshotPool.value
 
 // 初始化Canvas截图池引用
 const initCanvasScreenshotPool = () => {
+	const currentTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.setActiveTheme(currentTheme)
+	setCanvasActiveTheme(currentTheme)
 	canvasScreenshotPool.value = {
 		getEntry: (nodeId: string, theme?: 'dark' | 'light') => {
 			const entry = getCanvasEntry(nodeId, theme)
@@ -1511,6 +1515,7 @@ const initCanvasScreenshotPool = () => {
 		},
 		setActiveTheme: (theme: 'dark' | 'light') => {
 			screenshotPool.setActiveTheme(theme)
+			setCanvasActiveTheme(theme)
 		}
 	}
 }
@@ -2110,6 +2115,10 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	console.log('[Screenshot Warmup] warmupAllNodeScreenshots called, forceRecapture:', forceRecapture, 'allNodes count:', allNodes.length, 'selectedNodeIds:', selectedNodeIds.value)
 	if (allNodes.length === 0) return
 
+	const currentTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.setActiveTheme(currentTheme)
+	setCanvasActiveTheme(currentTheme)
+
 	const validNodeIds = new Set(allNodes.map((n) => String(n.id)))
 	screenshotPool.pruneToValidNodes(validNodeIds)
 
@@ -2647,6 +2656,7 @@ watch(
 		if (fromTheme === toTheme) return
 
 		screenshotPool.setActiveTheme(toTheme)
+		setCanvasActiveTheme(toTheme)
 
 		nextTick(() => {
 			nodeCanvasLayerRef.value?.setTheme(toTheme)
@@ -2939,6 +2949,10 @@ const loadCachedScreenshotsToCanvas = async () => {
 		warmupMode = null
 		return
 	}
+
+	const currentTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.setActiveTheme(currentTheme)
+	setCanvasActiveTheme(currentTheme)
 
 	const validNodeIds = new Set(allNodes.map((n) => String(n.id)))
 	screenshotPool.pruneToValidNodes(validNodeIds)

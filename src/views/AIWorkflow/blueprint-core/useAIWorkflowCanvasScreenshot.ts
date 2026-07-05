@@ -296,6 +296,10 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		canvasPool.value?.setMaxMemoryMB(mb)
 	}
 
+	const setActiveTheme = (theme: 'dark' | 'light') => {
+		canvasPool.value?.setActiveTheme(theme)
+	}
+
 	// 取消所有待处理的预热
 	const cancelPending = () => {
 		warmupCoordinator?.cancelAllPending()
@@ -342,6 +346,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		// 配置
 		setMaxBitmapCount,
 		setMaxMemoryMB,
+		setActiveTheme,
 
 		// 控制
 		cancelPending,
