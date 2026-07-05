@@ -44,6 +44,16 @@ export const NODE_CHAT_ASPECT_RATIO_OPTIONS = [
 	{ value: '21:9', label: 'aiConfig.aspectRatio.ultrawide' }
 ]
 
+export const NODE_CHAT_GEMINI_ASPECT_RATIO_OPTIONS = [
+	{ value: '1:1', label: 'aiConfig.aspectRatio.square' },
+	{ value: '16:9', label: 'aiConfig.aspectRatio.widescreen' },
+	{ value: '9:16', label: 'aiConfig.aspectRatio.portrait' },
+	{ value: '4:3', label: 'aiConfig.aspectRatio.standard' },
+	{ value: '3:4', label: 'aiConfig.aspectRatio.portrait34' }
+]
+
+export const NODE_CHAT_GEMINI_QUANTITY_OPTIONS = [1, 2, 4]
+
 export const NODE_CHAT_RESOLUTION_OPTIONS = [
 	{ value: '512x512', label: '512×512' },
 	{ value: '768x768', label: '768×768' },
@@ -146,7 +156,8 @@ export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
 
 export const NODE_CHAT_TEXT_MODEL_OPTIONS = [
 	{ value: 'deepseek', label: 'aiConfig.textModel.deepseek' },
-	{ value: 'bytedance', label: 'aiConfig.textModel.bytedance' }
+	{ value: 'bytedance', label: 'aiConfig.textModel.bytedance' },
+	{ value: 'gemini', label: 'aiConfig.textModel.gemini' }
 ]
 
 export const NODE_CHAT_SEED_MODEL_VERSION_OPTIONS = [
@@ -175,15 +186,134 @@ export const NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS = [
 ]
 
 export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
-	{ value: 'nanobanana', label: 'aiConfig.imageModel.nanobanana' },
+	{ value: 'gemini', label: 'aiConfig.imageModel.gemini' },
 	{ value: 'seedream', label: 'aiConfig.imageModel.seedream' },
 	{ value: 'meshy', label: 'aiConfig.imageModel.meshy' }
 ]
 
-export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS = [
-	{ value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (NanoBanana)' },
-	{ value: 'gemini-3-pro-image', label: 'Gemini 3 Pro Image (NanoBanana2)' },
-	{ value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview' }
+export const NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS = [
+	{ value: 'gemini-3.1-flash-image', label: 'Nano Banana 2 (Gemini 3.1 Flash)', badge: '推荐', description: '通用主力 - 支持512px~4K分辨率，14张参考图' },
+	{ value: 'gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite)', description: '快速经济 - 仅1K，适合规模化场景' },
+	{ value: 'gemini-3-pro-image', label: 'Nano Banana Pro (Gemini 3 Pro)', badge: 'Pro', description: '专业质量 - 支持1K~4K，含思考流程' },
+	{ value: 'gemini-2.5-flash-image', label: 'Nano Banana (Gemini 2.5 Flash)', description: '旧版兼容 - 建议升级到Lite' }
+]
+
+export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS = NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS
+
+export const GEMINI_IMAGE_SIZE_OPTIONS: Record<string, Array<{ value: string; label: string; description: string; isDefault?: boolean }>> = {
+	'gemini-3.1-flash-image': [
+		{ value: '512px', label: '512px', description: '快速预览 (512×512~)' },
+		{ value: '1K', label: '1K', description: '标准 (1024×1024~)' },
+		{ value: '2K', label: '2K', description: '高清 (2048×2048~)', isDefault: true },
+		{ value: '4K', label: '4K', description: '超清 (4096×4096~)' }
+	],
+	'gemini-3.1-flash-lite-image': [
+		{ value: '1K', label: '1K', description: '标准 (1024×1024~)', isDefault: true }
+	],
+	'gemini-3-pro-image': [
+		{ value: '1K', label: '1K', description: '标准 (1024×1024~)' },
+		{ value: '2K', label: '2K', description: '高清 (2048×2048~)', isDefault: true },
+		{ value: '4K', label: '4K', description: '超清 (4096×4096~)' }
+	],
+	'gemini-2.5-flash-image': [
+		{ value: '1K', label: '1K', description: '标准 (1024×1024~)', isDefault: true }
+	]
+}
+
+export const GEMINI_ASPECT_RATIO_OPTIONS: Record<string, Array<{ value: string; label: string; labelZh: string }>> = {
+	'gemini-3.1-flash-image': [
+		{ value: '1:1', label: '1:1', labelZh: '方形' },
+		{ value: '16:9', label: '16:9', labelZh: '横屏' },
+		{ value: '9:16', label: '9:16', labelZh: '竖屏' },
+		{ value: '4:3', label: '4:3', labelZh: '标准横屏' },
+		{ value: '3:4', label: '3:4', labelZh: '标准竖屏' },
+		{ value: '3:2', label: '3:2', labelZh: '经典横屏' },
+		{ value: '2:3', label: '2:3', labelZh: '经典竖屏' },
+		{ value: '4:5', label: '4:5', labelZh: '社交竖屏' },
+		{ value: '5:4', label: '5:4', labelZh: '社交横屏' },
+		{ value: '21:9', label: '21:9', labelZh: '超宽屏' },
+		{ value: '1:4', label: '1:4', labelZh: '极竖屏' },
+		{ value: '4:1', label: '4:1', labelZh: '极横屏' },
+		{ value: '1:8', label: '1:8', labelZh: '超竖屏' },
+		{ value: '8:1', label: '8:1', labelZh: '超横屏' }
+	],
+	'gemini-3.1-flash-lite-image': [
+		{ value: '1:1', label: '1:1', labelZh: '方形' },
+		{ value: '16:9', label: '16:9', labelZh: '横屏' },
+		{ value: '9:16', label: '9:16', labelZh: '竖屏' },
+		{ value: '4:3', label: '4:3', labelZh: '标准横屏' },
+		{ value: '3:4', label: '3:4', labelZh: '标准竖屏' },
+		{ value: '3:2', label: '3:2', labelZh: '经典横屏' },
+		{ value: '2:3', label: '2:3', labelZh: '经典竖屏' },
+		{ value: '4:5', label: '4:5', labelZh: '社交竖屏' },
+		{ value: '5:4', label: '5:4', labelZh: '社交横屏' },
+		{ value: '21:9', label: '21:9', labelZh: '超宽屏' }
+	],
+	'gemini-3-pro-image': [
+		{ value: '1:1', label: '1:1', labelZh: '方形' },
+		{ value: '16:9', label: '16:9', labelZh: '横屏' },
+		{ value: '9:16', label: '9:16', labelZh: '竖屏' },
+		{ value: '4:3', label: '4:3', labelZh: '标准横屏' },
+		{ value: '3:4', label: '3:4', labelZh: '标准竖屏' },
+		{ value: '3:2', label: '3:2', labelZh: '经典横屏' },
+		{ value: '2:3', label: '2:3', labelZh: '经典竖屏' },
+		{ value: '4:5', label: '4:5', labelZh: '社交竖屏' },
+		{ value: '5:4', label: '5:4', labelZh: '社交横屏' },
+		{ value: '21:9', label: '21:9', labelZh: '超宽屏' }
+	],
+	'gemini-2.5-flash-image': [
+		{ value: '1:1', label: '1:1', labelZh: '方形' },
+		{ value: '16:9', label: '16:9', labelZh: '横屏' },
+		{ value: '9:16', label: '9:16', labelZh: '竖屏' },
+		{ value: '4:3', label: '4:3', labelZh: '标准横屏' },
+		{ value: '3:4', label: '3:4', labelZh: '标准竖屏' },
+		{ value: '3:2', label: '3:2', labelZh: '经典横屏' },
+		{ value: '2:3', label: '2:3', labelZh: '经典竖屏' },
+		{ value: '4:5', label: '4:5', labelZh: '社交竖屏' },
+		{ value: '5:4', label: '5:4', labelZh: '社交横屏' },
+		{ value: '21:9', label: '21:9', labelZh: '超宽屏' }
+	]
+}
+
+export const GEMINI_THINKING_LEVEL_OPTIONS: Record<string, Array<{ value: string; label: string; description: string }>> = {
+	'gemini-3.1-flash-image': [
+		{ value: 'minimal', label: '快速', description: '平衡速度与质量' },
+		{ value: 'high', label: '深度', description: '更高质量，较慢' }
+	]
+}
+
+export const GEMINI_QUANTITY_OPTIONS = [1, 2, 4]
+
+export const getGeminiImageSizeOptions = (modelVersion: string) => {
+	return GEMINI_IMAGE_SIZE_OPTIONS[modelVersion] || GEMINI_IMAGE_SIZE_OPTIONS['gemini-3.1-flash-image']
+}
+
+export const getGeminiAspectRatioOptions = (modelVersion: string) => {
+	return GEMINI_ASPECT_RATIO_OPTIONS[modelVersion] || GEMINI_ASPECT_RATIO_OPTIONS['gemini-3.1-flash-image']
+}
+
+export const getGeminiThinkingLevelOptions = (modelVersion: string) => {
+	return GEMINI_THINKING_LEVEL_OPTIONS[modelVersion] || []
+}
+
+export const getDefaultGeminiImageSize = (modelVersion: string): string => {
+	const options = getGeminiImageSizeOptions(modelVersion)
+	const defaultOpt = options.find(o => o.isDefault)
+	return defaultOpt?.value || '2K'
+}
+
+export const supportsGeminiThinkingLevel = (modelVersion: string): boolean => {
+	return modelVersion === 'gemini-3.1-flash-image'
+}
+
+export const NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS = [
+	{ value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (最新推荐)' },
+	{ value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite (高效低成本)' },
+	{ value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (长上下文)' },
+	{ value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (深度推理)' },
+	{ value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite (最快最省)' },
+	{ value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (预览版)' },
+	{ value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (预览版)' }
 ]
 
 export const NODE_CHAT_MESHY_IMAGE_ASPECT_RATIO_OPTIONS = {
@@ -335,8 +465,9 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 		case 'text':
 			return {
 				modelId: undefined,
-				model: 'bytedance',
-				textModelVersion: 'doubao-seed-2-0-pro-260215',
+				model: 'gemini',
+				textModelVersion: 'gemini-3.5-flash',
+				geminiTextModelVersion: 'gemini-3.5-flash',
 				speed: 'normal',
 				thinking: 'enabled',
 				responseFormat: 'text',
@@ -345,8 +476,14 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 		case 'image':
 			return {
 				modelId: undefined,
-				model: 'seedream',
-				nanobananaModelVersion: 'gemini-2.5-flash-image',
+				model: 'gemini',
+				geminiImageModelVersion: 'gemini-3.1-flash-image',
+				nanobananaModelVersion: 'gemini-3.1-flash-image',
+				geminiImageSize: '2K',
+				geminiAspectRatio: '1:1',
+				geminiQuantity: 1,
+				geminiThinkingLevel: 'minimal',
+				geminiNegativePrompt: '',
 				meshyImageAiModel: 'nano-banana',
 				meshyAspectRatio: '1:1',
 				meshyNegativePrompt: '',

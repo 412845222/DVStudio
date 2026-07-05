@@ -48,6 +48,20 @@ function getProviderConfig(provider, apiKey) {
 			apiKey: String(apiKey || '').trim()
 		}
 	}
+	if (p === 'gemini') {
+		return {
+			baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+			model: 'gemini-3.5-flash',
+			apiKey: String(apiKey || '').trim()
+		}
+	}
+	if (p === 'bytedance') {
+		return {
+			baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+			model: 'doubao-seed-2-0-pro-260215',
+			apiKey: String(apiKey || '').trim()
+		}
+	}
 	return {
 		baseUrl: 'https://api.deepseek.com/v1',
 		model: 'deepseek-chat',
@@ -62,14 +76,21 @@ function resolveProviderAndKey(ctx, requestedModel) {
 
 	const modelStr = String(requestedModel || '').trim().toLowerCase()
 	if (modelStr.startsWith('gpt-')) provider = 'openai'
+	else if (modelStr.startsWith('gemini-')) provider = 'gemini'
+	else if (modelStr.startsWith('doubao-') || modelStr.startsWith('glm-') || modelStr.startsWith('deepseek-') || modelStr.startsWith('kimi-') || modelStr.startsWith('qwen-')) provider = 'bytedance'
 
-	const providers = ['deepseek', 'openai']
+	const providers = ['gemini', 'bytedance', 'deepseek', 'openai']
 	for (const prov of providers) {
 		const result = keyRepo.getPlaintext(prov)
 		if (result.ok && result.plaintext && String(result.plaintext).trim()) {
 			apiKey = String(result.plaintext).trim()
 			provider = prov
-			if (modelStr && modelStr.startsWith('gpt-') && prov === 'openai') break
+			if (modelStr) {
+				if (modelStr.startsWith('gpt-') && prov === 'openai') break
+				if (modelStr.startsWith('gemini-') && prov === 'gemini') break
+				if ((modelStr.startsWith('doubao-') || modelStr.startsWith('glm-') || modelStr.startsWith('deepseek-') || modelStr.startsWith('kimi-') || modelStr.startsWith('qwen-')) && prov === 'bytedance') break
+				if (modelStr.startsWith('deepseek-') && prov === 'deepseek') break
+			}
 			if (!modelStr && prov === 'deepseek') break
 		}
 	}

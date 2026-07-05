@@ -203,6 +203,7 @@
 						@retry-meshy-fetch="onNodeRetryMeshyFetch(node.id)"
 						@open-meshy-task-panel="onOpenMeshyTaskPanel"
 						@open-ark-task-panel="onOpenArkTaskPanel"
+						@open-gemini-task-panel="onOpenGeminiTaskPanel"
 						@three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
 						@three-preview-ready="onNodeThreePreviewReady(node.id)"
 						@three-preview-error="onNodeThreePreviewError(node.id)"
@@ -382,7 +383,7 @@
 					@request-export-package="onRequestExportProjectPackage"
 					@open-meshy-task-panel="onOpenMeshyTaskPanel"
 					@open-ark-task-panel="onOpenArkTaskPanel"
-					@open-gemini-task-panel="() => {}"
+				@open-gemini-task-panel="onOpenGeminiTaskPanel"
 					@open-template-center="onOpenTemplateCenter"
 				/>
 
@@ -559,6 +560,23 @@
 					@refresh="onRefreshArkTaskPanel"
 					@preview-task="onPreviewArkTask"
 					@task-action="onArkTaskPanelAction"
+				/>
+
+				<GeminiTaskPanel
+					:open="geminiTaskDialogOpen"
+					:tasks="geminiTaskItems"
+					:configured="geminiConfigured"
+					:refresh-busy="geminiTaskLoading"
+					:detail-task-id="geminiTaskDetailTaskId"
+					:detail-task="geminiTaskDetail"
+					:detail-loading="geminiTaskDetailLoading"
+					:action-busy-task-id="geminiTaskActionBusyTaskId"
+					:action-busy-type="geminiTaskActionBusyType"
+					:data-status-text="geminiTaskPanelStatusText"
+					@close="closeGeminiTaskDialog"
+					@refresh="onRefreshGeminiTaskPanel"
+					@preview-task="onPreviewGeminiTask"
+					@task-action="onGeminiTaskPanelAction"
 				/>
 
 				<ToastStack :items="toasts" @close="removeToast" @hover="setToastHovering" />
@@ -826,6 +844,11 @@ import ArkTaskPanel, {
 	type ArkTaskPanelDetail,
 	type ArkTaskPanelItem
 } from '../../ui/WorkFlow/ArkTaskPanel.vue'
+import GeminiTaskPanel, {
+	type GeminiTaskPanelAction,
+	type GeminiTaskPanelDetail,
+	type GeminiTaskPanelItem
+} from '../../ui/WorkFlow/GeminiTaskPanel.vue'
 import WorkflowInspectorPanel from '../../ui/UIComponent/WorkflowInspectorPanel.vue'
 import BottomChatDock, {
 	type BottomChatMessage,
@@ -993,6 +1016,7 @@ import { useAIWorkflowMeshyTaskPanelController } from './node-business/meshy/use
 import { useAIWorkflowMeshyRuntime } from './node-business/meshy/useAIWorkflowMeshyRuntime'
 import { useAIWorkflowVideoTaskPanelController } from './node-business/chat/useAIWorkflowVideoTaskPanelController'
 import { useAIWorkflowArkTaskPanel } from './node-business/ark/useAIWorkflowArkTaskPanel'
+import { useAIWorkflowGeminiTaskPanelController } from './node-business/gemini/useAIWorkflowGeminiTaskPanelController'
 import {
 	fileExtensionFromUrl,
 	normalizeMeshyTaskStatus
@@ -3651,6 +3675,15 @@ const createImageNodeAtCenter = (url: string, name?: string): string | null => {
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
 		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		if (url) {
+			store.commit('setNodeImageSettings', {
+				nodeId: newNodeId,
+				imageSettings: {
+					imageUrl: url,
+					imageGenerationSource: 'gemini'
+				}
+			})
+		}
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
@@ -3668,6 +3701,15 @@ const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: s
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
 		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		if (url) {
+			store.commit('setNodeImageSettings', {
+				nodeId: newNodeId,
+				imageSettings: {
+					imageUrl: url,
+					imageGenerationSource: 'gemini'
+				}
+			})
+		}
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAt] 创建节点失败:', e)
@@ -9110,6 +9152,89 @@ const {
 		return nodeId
 	}
 })
+
+// ===== Google Gemini 图片任务面板 =====
+const getGeminiService = () => {
+	const dweb = (window as unknown as Record<string, unknown>).dweb
+	if (!isRecord(dweb) || !isRecord(dweb.gemini)) return null
+	return dweb.gemini as unknown as {
+		health: () => Promise<{ ok: boolean; configured?: boolean }>
+		getTask: (payload: { taskId: string }) => Promise<{ ok: boolean; task?: Record<string, unknown>; error?: string }>
+		listTasks: (payload?: { limit?: number; status?: string }) => Promise<{ ok: boolean; items?: Record<string, unknown>[]; error?: string }>
+		cancel: (payload: { taskId: string }) => Promise<{ ok: boolean; error?: string }>
+		deleteTask: (payload: { taskId: string }) => Promise<{ ok: boolean; error?: string }>
+		clearCompleted: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; deletedCount?: number; error?: string }>
+		getImagePath: (payload: { taskId: string; imageIndex?: number }) => Promise<{ ok: boolean; path?: string; filename?: string; mimeType?: string; error?: string }>
+	}
+}
+
+const {
+	geminiTaskDialogOpen,
+	geminiTaskItems,
+	geminiTaskPanelStatusText,
+	geminiConfigured,
+	geminiTaskLoaded,
+	geminiTaskLoading,
+	geminiTaskDetail,
+	geminiTaskDetailTaskId,
+	geminiTaskDetailLoading,
+	geminiTaskActionBusyTaskId,
+	geminiTaskActionBusyType,
+	openGeminiTaskDialog,
+	closeGeminiTaskDialog,
+	onRefreshGeminiTaskPanel,
+	onGeminiTaskPanelAction,
+	onPreviewGeminiTask,
+	refreshGeminiTasks,
+	checkGeminiHealth,
+	onGeminiTaskDialogOpenChanged
+} = useAIWorkflowGeminiTaskPanelController({
+	store,
+	renderNodes,
+	geminiService: {
+		health: async () => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.health()
+		},
+		getTask: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.getTask(payload)
+		},
+		listTasks: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.listTasks(payload)
+		},
+		cancel: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.cancel(payload)
+		},
+		deleteTask: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.deleteTask(payload)
+		},
+		clearCompleted: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.clearCompleted(payload)
+		},
+		getImagePath: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.getImagePath(payload)
+		}
+	},
+	pushToast: (message, tone) => pushToast(message, tone),
+	createImageNodeAtCenter
+})
+
+const onOpenGeminiTaskPanel = () => {
+	openGeminiTaskDialog()
+}
 
 async function onSeedanceTaskObserved(taskId: string, stage: 'created' | 'completed') {
 	const nextTaskId = String(taskId || '').trim()

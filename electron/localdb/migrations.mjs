@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 7
+const TARGET_VERSION = 8
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -336,6 +336,42 @@ function runV5(db) {
 }
 
 function runV6(db) {
+	// Gemini 图片生成任务表
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS gemini_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL UNIQUE,
+      model TEXT NOT NULL DEFAULT '',
+      model_label TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'submitting',
+      progress INTEGER NOT NULL DEFAULT 0,
+      prompt TEXT NOT NULL DEFAULT '',
+      negative_prompt TEXT NOT NULL DEFAULT '',
+      aspect_ratio TEXT NOT NULL DEFAULT '1:1',
+      num_images INTEGER NOT NULL DEFAULT 1,
+      result_images TEXT,
+      thumbnail_url TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      error_code TEXT NOT NULL DEFAULT '',
+      status_text TEXT NOT NULL DEFAULT '',
+      request_payload TEXT,
+      response_payload TEXT,
+      project_id INTEGER,
+      node_id TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      started_at TEXT,
+      completed_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_task_id ON gemini_tasks(task_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_project_id ON gemini_tasks(project_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_status ON gemini_tasks(status);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_updated_at ON gemini_tasks(updated_at DESC);`)
+}
+
+function runV7(db) {
 	db.exec(`
     CREATE TABLE IF NOT EXISTS aiworkflow_templates (
       id TEXT PRIMARY KEY,
@@ -355,11 +391,11 @@ function runV6(db) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_source ON aiworkflow_templates(source);`)
 }
 
-function runV7(db) {
+function runV8(db) {
 	db.exec(`ALTER TABLE aiworkflow_templates ADD COLUMN cover_path TEXT NOT NULL DEFAULT '';`)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7]
+const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)
