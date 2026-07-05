@@ -567,14 +567,14 @@ async function handleOpenOverlayCommunity() {
 
 		<section class="settings-section">
 			<div class="section-head">
-				<h2 class="section-title">网络设置</h2>
-				<p class="section-desc">配置HTTP代理以访问需要科学上网的服务（如Google Gemini）。配置后立即生效，无需重启应用。</p>
+				<h2 class="section-title">{{ t('settings.network.title') }}</h2>
+				<p class="section-desc">{{ t('settings.network.desc') }}</p>
 			</div>
 			<div class="network-card">
 				<div class="network-row">
 					<label class="network-label">
-						<span>HTTP代理地址</span>
-						<small style="color: var(--vscode-fg-muted); font-size: 11px;">本地代理软件的HTTP监听端口，通常为 http://127.0.0.1:7890</small>
+						<span>{{ t('settings.network.httpProxyLabel') }}</span>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">{{ t('settings.network.httpProxyHint') }}</small>
 					</label>
 					<input
 						v-model="form.httpProxy"
@@ -588,8 +588,8 @@ async function handleOpenOverlayCommunity() {
 				</div>
 				<div class="network-row">
 					<label class="network-label">
-						<span>Gemini API Base URL</span>
-						<small style="color: var(--vscode-fg-muted); font-size: 11px;">可选，自定义API端点（如使用中转服务），默认使用官方地址</small>
+						<span>{{ t('settings.network.geminiBaseUrlLabel') }}</span>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">{{ t('settings.network.geminiBaseUrlHint') }}</small>
 					</label>
 					<input
 						v-model="form.geminiBaseUrl"
@@ -602,11 +602,11 @@ async function handleOpenOverlayCommunity() {
 					/>
 				</div>
 				<div class="network-tip" style="margin-top: 12px; padding: 12px; background: rgba(34,160,107,0.08); border-radius: 6px; font-size: 12px; color: var(--vscode-fg-muted); line-height: 1.6;">
-					<div style="font-weight: 600; color: #22a06b; margin-bottom: 6px;">💡 代理软件用户配置指南</div>
-					<div>1. 打开你的代理软件，找到「HTTP代理端口」设置（通常在代理设置中查看）</div>
-					<div>2. 将地址填入上方输入框，格式为：http://127.0.0.1:端口号</div>
-					<div>3. 输入框失焦后自动保存，下次发起Gemini请求时将使用该代理</div>
-					<div>4. 留空则不使用代理，直接连接（适合已有系统全局代理的环境）</div>
+					<div style="font-weight: 600; color: #22a06b; margin-bottom: 6px;">{{ t('settings.network.proxyGuideTitle') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep1') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep2') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep3') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep4') }}</div>
 				</div>
 			</div>
 		</section>

@@ -77,5 +77,16 @@
   "settings.resolutions.1080p": "1920 × 1080",
   "settings.resolutions.720p": "1280 × 720",
   "settings.resolutions.portrait": "1080 × 1920",
-  "settings.resolutions.4k": "3840 × 2160"
+  "settings.resolutions.4k": "3840 × 2160",
+  "settings.network.title": "Network Settings",
+  "settings.network.desc": "Configure HTTP proxy to access services that require a proxy connection (such as Google Gemini). Takes effect immediately after saving, no restart needed.",
+  "settings.network.httpProxyLabel": "HTTP Proxy Address",
+  "settings.network.httpProxyHint": "HTTP listening port of local proxy software, typically http://127.0.0.1:7890",
+  "settings.network.geminiBaseUrlLabel": "Gemini API Base URL",
+  "settings.network.geminiBaseUrlHint": "Optional. Custom API endpoint (e.g., when using a relay service). Uses the official address by default.",
+  "settings.network.proxyGuideTitle": "💡 Proxy Configuration Guide",
+  "settings.network.proxyGuideStep1": "1. Open your proxy software and find the \"HTTP Proxy Port\" setting (usually found in proxy settings)",
+  "settings.network.proxyGuideStep2": "2. Enter the address in the input field above in the format: http://127.0.0.1:port",
+  "settings.network.proxyGuideStep3": "3. Settings are saved automatically when the input loses focus. The proxy will be used for subsequent Gemini requests.",
+  "settings.network.proxyGuideStep4": "4. Leave empty to connect directly (suitable for environments with system-wide global proxy already configured)"
 }
