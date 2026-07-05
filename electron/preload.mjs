@@ -287,6 +287,12 @@ contextBridge.exposeInMainWorld('dweb', {
 				getPlaintext: (payload) => invoke('dweb:localdb:apiKeys:getPlaintext', payload || {}),
 				remove: (payload) => invoke('dweb:localdb:apiKeys:remove', payload || {}),
 			},
+			templates: {
+				list: () => invoke('dweb:localdb:aiworkflowTemplates:list'),
+				getBlob: (payload) => invoke('dweb:localdb:aiworkflowTemplates:getBlob', payload || {}),
+				save: (payload) => invoke('dweb:localdb:aiworkflowTemplates:save', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:aiworkflowTemplates:remove', payload || {}),
+			},
 		},
 		projectAssets: {
 			repairAll: (payload) => invoke('dweb:aiworkflow:projectAssets:repairAll', payload || {}),

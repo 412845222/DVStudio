@@ -228,6 +228,31 @@ declare global {
 						}>
 						delete?(payload: { id: number }): Promise<unknown>
 					}
+					templates?: {
+						list?(): Promise<{ ok?: boolean; value?: Array<{
+							id: string
+							name: string
+							description: string
+							category: string
+							tags: string[]
+							nodeCount: number
+							source: string
+							filePath: string
+							createdAt: number
+							updatedAt: number
+						}>; error?: string }>
+						getBlob?(payload: { id: string }): Promise<{ ok?: boolean; buffer?: ArrayBuffer; error?: string }>
+						save?(payload: {
+							id?: string
+							name: string
+							description?: string
+							category?: string
+							tags?: string[]
+							nodeCount?: number
+							zipBuffer: ArrayBuffer | Uint8Array
+						}): Promise<{ ok?: boolean; template?: unknown; error?: string }>
+						remove?(payload: { id: string }): Promise<{ ok?: boolean; error?: string }>
+					}
 				}
 				diagnoseAsset(payload: {
 					projectId?: number

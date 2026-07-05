@@ -2014,6 +2014,36 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				if (node.resourceId === id) node.resourceId = null
 			}
 		},
+		mergeTemplateContent(
+			state,
+			payload: {
+				nodes: WorkflowNode[]
+				edges: WorkflowEdge[]
+				resources: WorkflowResource[]
+			}
+		) {
+			const newNodeIds: string[] = []
+			for (const res of payload.resources) {
+				if (!res || !res.id) continue
+				state.resourcesById[res.id] = res
+				if (!state.resourceOrder.includes(res.id)) state.resourceOrder.push(res.id)
+			}
+			for (const node of payload.nodes) {
+				if (!node || !node.id) continue
+				state.nodesById[node.id] = node
+				state.nodeOrder.push(node.id)
+				newNodeIds.push(node.id)
+			}
+			for (const edge of payload.edges) {
+				if (!edge || !edge.id) continue
+				if (!state.nodesById[edge.fromNodeId] || !state.nodesById[edge.toNodeId]) continue
+				state.edgesById[edge.id] = edge
+				state.edgeOrder.push(edge.id)
+			}
+			state.selectedNodeIds = newNodeIds
+			state.selectedNodeId = newNodeIds[0] ?? null
+			state.selectedEdgeId = null
+		},
 		setNodeAlias(state, payload: { nodeId: string; alias: string }) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return

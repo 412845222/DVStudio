@@ -383,6 +383,36 @@
 					@open-meshy-task-panel="onOpenMeshyTaskPanel"
 					@open-ark-task-panel="onOpenArkTaskPanel"
 					@open-gemini-task-panel="() => {}"
+					@open-template-center="onOpenTemplateCenter"
+				/>
+
+				<TemplateCenterDialog
+					v-model:open="templateCenterOpen"
+					@apply-template="onTemplateSelectForApply"
+					@delete-template="onDeleteTemplate"
+					@save-template="onSaveTemplateFromCenter"
+				/>
+
+				<TemplateApplyDialog
+					v-model:open="templateApplyDialogOpen"
+					:template="selectedTemplateForApply"
+					@confirm="onConfirmApplyTemplate"
+				/>
+
+				<SaveTemplateDialog
+					v-model:open="saveTemplateDialogOpen"
+					:scope="saveTemplateScope"
+					:node-ids="saveTemplateNodeIds"
+					:prefill-name="saveTemplatePrefillName"
+					@confirm="onConfirmSaveTemplate"
+				/>
+
+				<WorkflowSelectionToolbar
+					:visible="selectionToolbarVisible"
+					@copy="onCopySelectedNodes"
+					@paste="onPasteSelectedNodes"
+					@delete="onDeleteSelectedNodes"
+					@save-as-template="onSaveSelectionAsTemplate"
 				/>
 
 				<div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
@@ -763,6 +793,20 @@ import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, {
 	type BlueprintProjectListItem
 } from '../../ui/WorkFlow/BlueprintProjectToolbar.vue'
+import TemplateCenterDialog from '../../ui/WorkFlow/TemplateCenterDialog.vue'
+import TemplateApplyDialog from '../../ui/WorkFlow/TemplateApplyDialog.vue'
+import SaveTemplateDialog from '../../ui/WorkFlow/SaveTemplateDialog.vue'
+import WorkflowSelectionToolbar from '../../ui/WorkFlow/WorkflowSelectionToolbar.vue'
+import type { TemplateItem, TemplateApplyOptions, SaveTemplateOptions } from '../../aiworkflow/template/types'
+import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
+import {
+	buildSnapshotFromSelection,
+	buildFullSnapshot,
+	mergeTemplateSnapshot,
+	createTemplatePackageZip,
+	parseTemplatePackageBlob,
+	getViewportCenterInWorld
+} from '../../aiworkflow/template/useTemplateMerge'
 import MeshyTaskPanel, {
 	type MeshyTaskPanelAction,
 	type MeshyTaskPanelDetail,
@@ -6294,6 +6338,161 @@ const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
 }
 
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
+const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates } = useTemplateCenter()
+const templateCenterOpen = ref(false)
+const templateApplyDialogOpen = ref(false)
+const selectedTemplateForApply = ref<TemplateItem | null>(null)
+const saveTemplateDialogOpen = ref(false)
+const saveTemplateScope = ref<'full' | 'selection'>('full')
+const saveTemplateNodeIds = ref<string[]>([])
+const saveTemplatePrefillName = ref('')
+
+const selectionToolbarVisible = computed(() => {
+	return selectedNodeIds.value.length > 0
+})
+
+function onOpenTemplateCenter() {
+	void loadTemplates()
+	templateCenterOpen.value = true
+}
+
+function onTemplateSelectForApply(template: TemplateItem) {
+	selectedTemplateForApply.value = template
+	templateCenterOpen.value = false
+	templateApplyDialogOpen.value = true
+}
+
+async function onDeleteTemplate(template: TemplateItem) {
+	const confirmed = window.confirm(t('aiworkflow.templateCenter.deleteConfirm', { name: template.name }))
+	if (!confirmed) return
+	const ok = await deleteTemplate(template)
+	if (ok) {
+		pushToast(t('aiworkflow.templateCenter.templateDeleted'), 'info')
+	}
+}
+
+function onSaveTemplateFromCenter(options: { scope: 'full' | 'selection' }) {
+	saveTemplateScope.value = options.scope
+	saveTemplateNodeIds.value = []
+	saveTemplatePrefillName.value = currentProjectName.value || ''
+	templateCenterOpen.value = false
+	saveTemplateDialogOpen.value = true
+}
+
+function onSaveSelectionAsTemplate() {
+	if (selectedNodeIds.value.length === 0) return
+	saveTemplateScope.value = 'selection'
+	saveTemplateNodeIds.value = [...selectedNodeIds.value]
+	saveTemplatePrefillName.value = ''
+	saveTemplateDialogOpen.value = true
+}
+
+async function onConfirmSaveTemplate(options: SaveTemplateOptions) {
+	try {
+		let snapshot: AIWorkflowDraftSnapshot
+		if (options.scope === 'selection' && options.nodeIds && options.nodeIds.length > 0) {
+			snapshot = buildSnapshotFromSelection(store.state, options.nodeIds)
+		} else {
+			snapshot = buildFullSnapshot(store.state)
+		}
+
+		const nodeCount = snapshot.nodeOrder.length
+		const blob = await createTemplatePackageZip(snapshot, options.name)
+		const saved = await saveUserTemplateFromBlob({
+			name: options.name,
+			description: options.description,
+			category: options.category || 'other',
+			tags: options.tags,
+			blob,
+			nodeCount
+		})
+
+		if (saved) {
+			pushToast(t('aiworkflow.templateCenter.templateSaved'), 'info')
+			store.commit('clearSelection')
+		} else {
+			pushToast(t('aiworkflow.templateCenter.templateSaveFailed'), 'error')
+		}
+	} catch (err) {
+		pushToast(t('aiworkflow.templateCenter.templateSaveFailed'), 'error')
+	}
+}
+
+async function applyTemplateToCurrent(template: TemplateItem) {
+	const blob = await loadTemplatePackage(template)
+	if (!blob) {
+		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+		return
+	}
+
+	const snapshot = await parseTemplatePackageBlob(blob)
+	if (!snapshot) {
+		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+		return
+	}
+
+	const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
+	const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
+	const viewportCenter = getViewportCenterInWorld(store.state.viewport, canvasW, canvasH)
+
+	const existingNodeIds = new Set(Object.keys(store.state.nodesById))
+	const existingResourceIds = new Set(Object.keys(store.state.resourcesById))
+
+	const result = mergeTemplateSnapshot(snapshot, {
+		viewportCenter,
+		existingNodeIds,
+		existingResourceIds
+	})
+
+	store.commit('mergeTemplateContent', {
+		nodes: result.nodes,
+		edges: result.edges,
+		resources: result.resources
+	})
+
+	pushToast(t('aiworkflow.templateCenter.templateApplied'), 'info')
+}
+
+async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
+	templateApplyDialogOpen.value = false
+	const template = options.template
+	selectedTemplateForApply.value = null
+
+	if (options.target === 'current') {
+		await applyTemplateToCurrent(template)
+		return
+	}
+
+	if (options.target === 'new-project') {
+		const blob = await loadTemplatePackage(template)
+		if (!blob) {
+			pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+			return
+		}
+		const projectName = options.newProjectName || template.name || 'template'
+		const fileName = `${projectName}.zip`
+		const file = new File([blob], fileName, { type: 'application/zip' })
+		await onRequestImportProjectPackage({ file })
+	}
+}
+
+function onCopySelectedNodes() {
+	if (selectedNodeIds.value.length === 0) return
+	const primaryId = selectedNodeId.value
+	if (selectedNodeIds.value.length === 1) {
+		store.commit('copyNode', { nodeId: selectedNodeIds.value[0] })
+	} else {
+		store.commit('copyNode', { nodeId: primaryId || selectedNodeIds.value[0] })
+	}
+}
+
+function onPasteSelectedNodes() {
+	const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
+	const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
+	const center = getViewportCenterInWorld(store.state.viewport, canvasW, canvasH)
+	store.commit('pasteNode', { worldX: center.x, worldY: center.y })
+}
+
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')

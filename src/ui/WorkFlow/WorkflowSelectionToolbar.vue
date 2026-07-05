@@ -53,6 +53,13 @@
 			</svg>
 			{{ t('aiworkflow.selectionToolbar.paste') }}
 		</button>
+		<button class="wf-toolbar-btn wf-toolbar-btn--template" type="button" @click="emit('save-as-template')">
+			<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-toolbar-icon">
+				<path d="M2 3a1 1 0 0 1 1-1h7l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.2" />
+				<path d="M9 2v4h4" fill="none" stroke="currentColor" stroke-width="1.2" />
+			</svg>
+			{{ t('aiworkflow.toolbar.saveAsTemplate') }}
+		</button>
 		<button class="wf-toolbar-btn wf-toolbar-btn--danger" type="button" @click="emit('delete')">
 			<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-toolbar-icon">
 				<path d="M4 5h8l-1 9H5z" fill="none" stroke="currentColor" stroke-width="1.2" />
@@ -75,6 +82,7 @@ const emit = defineEmits<{
 	(e: 'copy'): void
 	(e: 'paste'): void
 	(e: 'delete'): void
+	(e: 'save-as-template'): void
 }>()
 </script>
 
@@ -156,6 +164,13 @@ const emit = defineEmits<{
 	background: color-mix(in srgb, #cf5a46 18%, transparent);
 	color: #cf5a46;
 	box-shadow: 0 0 10px color-mix(in srgb, #cf5a46 35%, transparent);
+}
+
+.wf-toolbar-btn--template:hover {
+	border-color: var(--wf-primary, #1f9d84);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+	color: #fff;
+	box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }
 
 .wf-toolbar-icon {

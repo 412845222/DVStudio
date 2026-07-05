@@ -17,6 +17,7 @@ import { createEditorComponentsRepo } from './repos/editorComponents.mjs'
 import { createComfyuiWorkflowsRepo } from './repos/comfyuiWorkflows.mjs'
 import { createComfyuiJobsRepo } from './repos/comfyuiJobs.mjs'
 import { createRefImageCacheRepo } from './repos/refImageCache.mjs'
+import { createAiworkflowTemplatesRepo } from './repos/aiworkflowTemplates.mjs'
 import fs from 'node:fs'
 import nodePath from 'node:path'
 import os from 'node:os'
@@ -60,7 +61,8 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 		const comfyuiWorkflows = createComfyuiWorkflowsRepo()
 		const comfyuiJobs = createComfyuiJobsRepo()
 		const refImageCache = createRefImageCacheRepo()
-		reposSnapshot = { projects, meshyTasks, videoTasks, arkTasks, apiKeys, chatConversations, exportJobs, editorComponents, comfyuiWorkflows, comfyuiJobs, refImageCache, dbFilePath, schemaInfo, tag }
+		const aiworkflowTemplates = createAiworkflowTemplatesRepo({ backendDataDir: baseDir })
+		reposSnapshot = { projects, meshyTasks, videoTasks, arkTasks, apiKeys, chatConversations, exportJobs, editorComponents, comfyuiWorkflows, comfyuiJobs, refImageCache, aiworkflowTemplates, dbFilePath, schemaInfo, tag }
 		lastInitError = null
 		return { ok: true, tag, dbFilePath, schemaInfo }
 	} catch (err) {

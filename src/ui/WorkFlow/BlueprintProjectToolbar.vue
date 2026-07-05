@@ -35,6 +35,19 @@
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 
+			<button
+				class="aiwf-floating-rail__btn is-primary"
+				type="button"
+				:title="t('aiworkflow.toolbar.templateCenter')"
+				@click.stop="$emit('open-template-center')"
+			>
+				<svg viewBox="0 0 16 16" aria-hidden="true">
+					<path d="M2 3h5v5H2zM9 3h5v5H9zM2 10h5v3H2zM9 8h5v5H9z" />
+					<path d="M4.5 5.5h0M11.5 5.5h0" />
+				</svg>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.templateCenter') }}</span>
+			</button>
+
 			<span class="aiwf-floating-rail__sep" aria-hidden="true"></span>
 
 			<button
@@ -461,6 +474,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	(e: 'quick-add', event: MouseEvent): void
+	(e: 'open-template-center'): void
 	(e: 'toggle-node-library'): void
 	(e: 'toggle-backend-log'): void
 	(e: 'open-resource-manager'): void
