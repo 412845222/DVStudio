@@ -253,10 +253,10 @@
 
 				<DwebCanvasNodeSearchMenu
 					:visible="nodeSearchMenuVisible"
-					:items="NEWUI2_NODE_CATALOG"
-					:categories="NEWUI2_NODE_CATALOG_CATEGORIES"
-					:top-categories="NEWUI2_NODE_TOP_CATEGORIES"
-					:special-groups="NEWUI2_NODE_SPECIAL_GROUPS"
+					:items="i18nCatalogItems"
+					:categories="i18nCategories"
+					:top-categories="i18nTopCategories"
+					:special-groups="i18nSpecialGroups"
 					@select="onNodeSearchMenuSelect"
 					@upload-file="onNodeSearchMenuUploadFile"
 					@close="closeNodeSearchMenu"
@@ -961,7 +961,7 @@ import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useA
 import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
 import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
 import { useAgentToolBridge, type ToolApprovalItem } from './node-business/chat/useAgentToolBridge'
-import { NEWUI2_NODE_CATALOG, NEWUI2_NODE_CATALOG_CATEGORIES, NEWUI2_NODE_TOP_CATEGORIES, NEWUI2_NODE_SPECIAL_GROUPS } from '../../aiworkflow/nodeLibrary'
+import { useNodeLibraryI18n } from '../../aiworkflow/useNodeLibraryI18n'
 import {
 	comfyOutputForAnchor,
 	type ComfyLocalizedOutput
@@ -1125,6 +1125,12 @@ const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
 const { t } = useI18n()
+const {
+	categories: i18nCategories,
+	topCategories: i18nTopCategories,
+	specialGroups: i18nSpecialGroups,
+	catalogItems: i18nCatalogItems,
+} = useNodeLibraryI18n()
 const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
 
@@ -7327,7 +7333,7 @@ const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupA
 	getAllEdges: () => renderEdges.value,
 	getNodeTypes: (category) => {
 		const cat = String(category || '').trim().toLowerCase()
-		return NEWUI2_NODE_CATALOG
+		return i18nCatalogItems.value
 			.filter((item) => {
 				if (!cat) return true
 				if (item.topCategoryId === cat) return true

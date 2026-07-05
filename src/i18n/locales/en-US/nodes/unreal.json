@@ -57,6 +57,7 @@
   "nodes.unreal.detailActivatingUpstream": "Activating scene layout preview...",
   "nodes.unreal.detailCreatingJob": "Creating export job...",
   "nodes.unreal.detailError": "An error occurred, please retry.",
+  "nodes.unreal.detailIdle": "Click \"Export Scene\" to start; the system will auto-detect, connect, and export.",
   "nodes.unreal.detailReady": "Click \"Export Scene\" to start; the system will auto-detect, connect, and export.",
   "nodes.unreal.processingProgress": "{stage} · {percent}%",
   "nodes.unreal.lastExportSuccess": "Last export completed successfully.",

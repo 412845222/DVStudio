@@ -331,10 +331,11 @@ const showConnectionGuide = computed(() => connectionStatus.value === 'waiting-c
 
 const showAssetPathSettings = computed(() => isConnected.value || connectionStatus.value === 'idle')
 
-const projectNameDisplay = computed(
-	() => String(settings.value?.connectedSession?.projectName ?? settings.value?.editorProcess?.projectName ?? '').trim() || '未连接'
+const projectNameRaw = computed(
+	() => String(settings.value?.connectedSession?.projectName ?? settings.value?.editorProcess?.projectName ?? '').trim()
 )
-const hasProjectName = computed(() => projectNameDisplay.value !== '未连接')
+const hasProjectName = computed(() => projectNameRaw.value !== '')
+const projectNameDisplay = computed(() => projectNameRaw.value)
 const projectNameDisplayText = computed(() => hasProjectName.value ? projectNameDisplay.value : t('nodes.unreal.notConnected'))
 
 const assetRootPathDisplay = computed(

@@ -7,7 +7,7 @@ export interface LocaleMeta {
 	flag: string
 }
 
-export type TranslateMessages = Record<string, string>
+export type TranslateMessages = Record<string, string | string[]>
 
 export interface LocalePackage {
 	meta: LocaleMeta
