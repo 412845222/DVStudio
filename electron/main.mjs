@@ -550,8 +550,15 @@ function getDefaultClientSettings() {
 		geminiModel: FIXED_GEMINI_MODEL,
 		bytedanceApiKey: '',
 		meshyApiKey: '',
+		githubToken: '',
+		anthropicApiKey: '',
 		ui: {
 			locale: '',
+		},
+		apiKeySecurityAgreement: {
+			accepted: false,
+			acceptedAt: 0,
+			acceptedVersion: '',
 		},
 	}
 }

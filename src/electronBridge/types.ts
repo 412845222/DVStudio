@@ -99,6 +99,14 @@ export type ClientSettings = {
 	meshyApiKey: string
 	githubToken: string
 	anthropicApiKey: string
+	ui?: {
+		locale?: string
+	}
+	apiKeySecurityAgreement?: {
+		accepted: boolean
+		acceptedAt?: number
+		acceptedVersion?: string
+	}
 }
 
 export type ClientSettingsResult = {

@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { getClientSettings, saveClientSettings, openExternalUrl } from '../electronBridge'
 import type { ClientSettings } from '../electronBridge/types'
-import { fetchUserAgreementMarkdown } from '../network/LegalDocService'
 import { saveEncryptedAICredentials } from '../network/AICredentialService'
 import ModalDialog from '../ui/UIComponent/ModalDialog.vue'
-import MarkdownViewer from '../ui/UIComponent/MarkdownViewer.vue'
 import { usePlatform } from '../platformBridge'
 import { useI18n } from '../i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const FIXED_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
+const API_KEY_AGREEMENT_VERSION = '1.0'
 
 type ClientSettingsKey = keyof ClientSettings
 
@@ -32,13 +31,14 @@ type ProviderConfig = {
 const loading = ref(false)
 const saving = ref(false)
 const saveMsg = ref('')
+const saveMsgTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const repoUrl = String(window.__DWEB_REPO_URL__ ?? '').trim()
 
-const agreementOpen = ref(false)
-const agreementChecked = ref(false)
-const agreementLoading = ref(false)
-const agreementMarkdown = ref('')
-const agreementError = ref('')
+const securityAgreementOpen = ref(false)
+const securityAgreementChecked = ref(false)
+const pendingProviderKey = ref<string | null>(null)
+const pendingFieldKey = ref<ClientSettingsKey | null>(null)
+const pendingFieldValue = ref('')
 
 const clearOpen = ref(false)
 const clearing = ref(false)
@@ -54,10 +54,22 @@ const form = reactive<ClientSettings>({
 	meshyApiKey: '',
 	githubToken: '',
 	anthropicApiKey: '',
+	ui: {
+		locale: '',
+	},
+	apiKeySecurityAgreement: {
+		accepted: false,
+		acceptedAt: 0,
+		acceptedVersion: '',
+	},
 })
 
 const activeProvider = ref<string | null>(null)
 const pendingForm = reactive<Partial<Record<ClientSettingsKey, string>>>({})
+
+const hasAcceptedAgreement = computed(() => {
+	return Boolean(form.apiKeySecurityAgreement?.accepted)
+})
 
 const providers = computed<ProviderConfig[]>(() => [
 	{
@@ -128,6 +140,45 @@ const providers = computed<ProviderConfig[]>(() => [
 	},
 ])
 
+function showSaveMessage(msg: string, duration = 3000) {
+	saveMsg.value = msg
+	if (saveMsgTimer.value) clearTimeout(saveMsgTimer.value)
+	saveMsgTimer.value = setTimeout(() => {
+		saveMsg.value = ''
+	}, duration)
+}
+
+function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettings {
+	const payload: ClientSettings = {
+		defaultResolution: form.defaultResolution,
+		deepseekApiKey: form.deepseekApiKey,
+		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
+		deepseekModel: FIXED_DEEPSEEK_MODEL,
+		geminiApiKey: form.geminiApiKey,
+		geminiModel: FIXED_GEMINI_MODEL,
+		bytedanceApiKey: form.bytedanceApiKey,
+		meshyApiKey: form.meshyApiKey,
+		githubToken: form.githubToken,
+		anthropicApiKey: form.anthropicApiKey,
+		ui: {
+			locale: form.ui?.locale || '',
+		},
+		apiKeySecurityAgreement: form.apiKeySecurityAgreement
+			? {
+					accepted: form.apiKeySecurityAgreement.accepted,
+					acceptedAt: form.apiKeySecurityAgreement.acceptedAt,
+					acceptedVersion: form.apiKeySecurityAgreement.acceptedVersion,
+				}
+			: {
+					accepted: false,
+					acceptedAt: 0,
+					acceptedVersion: '',
+				},
+		...overrides,
+	}
+	return payload
+}
+
 function getProvider(key: string | null) {
 	return providers.value.find((p) => p.key === key) || null
 }
@@ -150,15 +201,71 @@ function closeProvider() {
 	for (const k of Object.keys(pendingForm) as ClientSettingsKey[]) delete pendingForm[k]
 }
 
-function saveProvider() {
-	const key = activeProvider.value
-	const prov = providers.value.find((p) => p.key === key)
-	if (!prov) return
-	for (const f of prov.fields) {
-		form[f.key] = (pendingForm[f.key] || '') as ClientSettings[typeof f.key]
+function handleFieldInput(fieldKey: ClientSettingsKey) {
+	const value = String(pendingForm[fieldKey] || '')
+	if (!hasAcceptedAgreement.value && value.trim()) {
+		pendingProviderKey.value = activeProvider.value
+		pendingFieldKey.value = fieldKey
+		pendingFieldValue.value = value
+		securityAgreementOpen.value = true
+		securityAgreementChecked.value = false
+		return
 	}
-	saveMsg.value = t('settings.saveHint')
-	closeProvider()
+}
+
+async function saveProviderConfig() {
+	if (!activeProvider.value || saving.value) return
+	const prov = getProvider(activeProvider.value)
+	if (!prov) return
+
+	saving.value = true
+	try {
+		const keyPayload: Record<string, string> = {
+			deepseekApiKey: String(form.deepseekApiKey || ''),
+			geminiApiKey: String(form.geminiApiKey || ''),
+			bytedanceApiKey: String(form.bytedanceApiKey || ''),
+			meshyApiKey: String(form.meshyApiKey || ''),
+			githubToken: String(form.githubToken || ''),
+			anthropicApiKey: String(form.anthropicApiKey || ''),
+		}
+
+		for (const f of prov.fields) {
+			const val = String(pendingForm[f.key] || '').trim()
+			keyPayload[String(f.key)] = val
+			form[f.key] = val as ClientSettings[typeof f.key]
+		}
+
+		const keyRes = await saveEncryptedAICredentials(keyPayload as any)
+		if (!keyRes.ok) {
+			showSaveMessage(t('settings.saveFailed', { msg: keyRes.error || t('common.error') }))
+			return
+		}
+
+		await saveClientSettings(buildSavePayload())
+		showSaveMessage(t('settings.saveSuccess'))
+		closeProvider()
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+	} finally {
+		saving.value = false
+	}
+}
+
+async function saveResolution() {
+	if (saving.value) return
+	saving.value = true
+	try {
+		const r = await saveClientSettings(buildSavePayload())
+		if (r?.ok) showSaveMessage(t('settings.saveSuccess'))
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+	} finally {
+		saving.value = false
+	}
+}
+
+function handleResolutionChange() {
+	saveResolution()
 }
 
 function openSource() {
@@ -183,86 +290,46 @@ async function load() {
 	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken', 'anthropicApiKey'] as const) {
 		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
 	}
+	if (!form.ui) form.ui = { locale: '' }
+	if (!form.apiKeySecurityAgreement) {
+		form.apiKeySecurityAgreement = {
+			accepted: false,
+			acceptedAt: 0,
+			acceptedVersion: '',
+		}
+	}
 	loading.value = false
 }
 
-function needsAgreement() {
-	return Boolean(
-		String(form.deepseekApiKey || '').trim() ||
-			String(form.geminiApiKey || '').trim() ||
-			String(form.bytedanceApiKey || '').trim() ||
-			String(form.meshyApiKey || '').trim() ||
-			String(form.githubToken || '').trim() ||
-			String(form.anthropicApiKey || '').trim()
-	)
-}
+async function acceptSecurityAgreement() {
+	if (!securityAgreementChecked.value) return
 
-async function doSubmit() {
-	saving.value = true
-	saveMsg.value = ''
-
-	const keyPayload: {
-		deepseekApiKey: string
-		geminiApiKey: string
-		bytedanceApiKey: string
-		meshyApiKey: string
-		githubToken: string
-		anthropicApiKey: string
-	} = {
-		deepseekApiKey: String(form.deepseekApiKey || '').trim(),
-		geminiApiKey: String(form.geminiApiKey || '').trim(),
-		bytedanceApiKey: String(form.bytedanceApiKey || '').trim(),
-		meshyApiKey: String(form.meshyApiKey || '').trim(),
-		githubToken: String(form.githubToken || '').trim(),
-		anthropicApiKey: String(form.anthropicApiKey || '').trim(),
-	}
-	const keyRes = await saveEncryptedAICredentials(keyPayload)
-	if (!keyRes.ok) {
-		saveMsg.value = t('settings.saveFailed', { msg: keyRes.error || t('common.error') })
-		saving.value = false
-		return
+	form.apiKeySecurityAgreement = {
+		accepted: true,
+		acceptedAt: Date.now(),
+		acceptedVersion: API_KEY_AGREEMENT_VERSION,
 	}
 
-	const r = await saveClientSettings({
-		...form,
-		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
-		deepseekModel: FIXED_DEEPSEEK_MODEL,
-		geminiModel: FIXED_GEMINI_MODEL,
-	})
+	await saveClientSettings(buildSavePayload())
 
-	if (r?.ok) saveMsg.value = t('settings.saveSuccess')
-	else if (r === null) saveMsg.value = t('settings.saveSuccessLocal')
-	else saveMsg.value = t('settings.saveFailed', { msg: r?.error || t('common.unknown') })
+	securityAgreementOpen.value = false
 
-	saving.value = false
-}
-
-async function ensureAgreementMarkdownLoaded() {
-	if (agreementMarkdown.value || agreementLoading.value) return
-	agreementLoading.value = true
-	agreementError.value = ''
-	const r = await fetchUserAgreementMarkdown()
-	if (r.ok && typeof r.markdown === 'string') agreementMarkdown.value = r.markdown
-	else agreementError.value = r.error || t('settings.agreementLoadFailed')
-	agreementLoading.value = false
-}
-
-async function submit() {
-	if (saving.value) return
-	saveMsg.value = ''
-	if (needsAgreement()) {
-		agreementChecked.value = false
-		agreementOpen.value = true
-		await ensureAgreementMarkdownLoaded()
-		return
+	if (pendingFieldKey.value && pendingFieldValue.value !== undefined) {
+		pendingForm[pendingFieldKey.value] = pendingFieldValue.value
+		pendingFieldKey.value = null
+		pendingFieldValue.value = ''
+		pendingProviderKey.value = null
 	}
-	await doSubmit()
 }
 
-async function confirmAgreementAndSave() {
-	if (!agreementChecked.value) return
-	agreementOpen.value = false
-	await doSubmit()
+function cancelSecurityAgreement() {
+	securityAgreementOpen.value = false
+	if (pendingFieldKey.value) {
+		pendingForm[pendingFieldKey.value] = form[pendingFieldKey.value] || ''
+	}
+	pendingFieldKey.value = null
+	pendingFieldValue.value = ''
+	pendingProviderKey.value = null
 }
 
 async function confirmClearCredentials() {
@@ -274,20 +341,35 @@ async function confirmClearCredentials() {
 		geminiApiKey: '',
 		bytedanceApiKey: '',
 		meshyApiKey: '',
+		githubToken: '',
+		anthropicApiKey: '',
 	})
-	if (!r.ok) saveMsg.value = t('settings.clearFailed', { msg: r.error || t('common.error') })
-	else saveMsg.value = t('settings.clearedSuccess')
+	if (!r.ok) showSaveMessage(t('settings.clearFailed', { msg: r.error || t('common.error') }))
+	else {
+		form.deepseekApiKey = ''
+		form.geminiApiKey = ''
+		form.bytedanceApiKey = ''
+		form.meshyApiKey = ''
+		form.githubToken = ''
+		form.anthropicApiKey = ''
 
-	form.deepseekApiKey = ''
-	form.geminiApiKey = ''
-	form.bytedanceApiKey = ''
-	form.meshyApiKey = ''
+		await saveClientSettings(buildSavePayload())
+
+		showSaveMessage(t('settings.clearedSuccess'))
+	}
 	clearing.value = false
 	clearOpen.value = false
 }
 
 onMounted(() => {
 	load()
+})
+
+onUnmounted(() => {
+	if (saveMsgTimer.value) clearTimeout(saveMsgTimer.value)
+})
+
+watch(locale, () => {
 })
 
 const {
@@ -300,6 +382,12 @@ const {
 	overlayActive: platformOverlayActive,
 	overlayActivate,
 } = usePlatform()
+
+const agreementItemKeys = ['storage', 'risk', 'permission', 'transmission', 'disclaimer'] as const
+
+function getAgreementItemKey(itemKey: string, field: 'title' | 'desc') {
+	return `settings.securityAgreement.items.${itemKey}.${field}` as const
+}
 
 const platformStatusClass = computed(() => {
 	const s = platformStatus.value
@@ -374,9 +462,6 @@ async function handleOpenOverlayCommunity() {
 					>
 						{{ t('settings.clearAllCredentials') }}
 					</button>
-					<button class="btn btn-primary" type="button" :disabled="saving" @click="submit">
-						{{ saving ? t('settings.saving') : t('settings.saveAll') }}
-					</button>
 				</div>
 			</div>
 			<p v-if="saveMsg" class="settings-flash">{{ saveMsg }}</p>
@@ -390,7 +475,7 @@ async function handleOpenOverlayCommunity() {
 			<div class="resolution-card">
 				<div class="resolution-row">
 					<label class="resolution-label">{{ t('settings.defaultResolution') }}</label>
-					<select v-model="form.defaultResolution" class="resolution-select">
+					<select v-model="form.defaultResolution" class="resolution-select" @change="handleResolutionChange">
 						<option value="1920x1080">{{ t('settings.resolutions.1080p') }}</option>
 						<option value="1280x720">{{ t('settings.resolutions.720p') }}</option>
 						<option value="1080x1920">{{ t('settings.resolutions.portrait') }}</option>
@@ -462,9 +547,9 @@ async function handleOpenOverlayCommunity() {
 
 		<section class="settings-section">
 			<div class="section-head">
-				<h2 class="section-title">{{ t('settings.providerCredentials') }}</h2>
+				<h2 class="section-title">{{ t('settings.aiServices') }}</h2>
 				<p class="section-desc">
-					{{ t('settings.providerCredentialsDesc') }}
+					{{ t('settings.aiServicesDesc') }}
 				</p>
 			</div>
 
@@ -501,11 +586,12 @@ async function handleOpenOverlayCommunity() {
 		v-if="activeProvider"
 		:open="activeProvider !== null"
 		:title="(activeProviderConfig?.name || '') + ' · ' + t('settings.configCredentials')"
-		:confirm-text="t('settings.saveConfig')"
+		:show-confirm="true"
+		:confirm-text="t('settings.save')"
 		:close-text="t('common.cancel')"
 		:disable-confirm="saving"
 		@close="closeProvider"
-		@confirm="saveProvider"
+		@confirm="saveProviderConfig"
 	>
 		<template v-if="activeProviderConfig">
 			<div class="provider-modal-body">
@@ -540,6 +626,7 @@ async function handleOpenOverlayCommunity() {
 							:placeholder="f.placeholder"
 							autocomplete="off"
 							spellcheck="false"
+							@input="handleFieldInput(f.key)"
 						/>
 					</label>
 				</div>
@@ -557,22 +644,31 @@ async function handleOpenOverlayCommunity() {
 	</ModalDialog>
 
 	<ModalDialog
-		:open="agreementOpen"
-		:title="t('settings.userAgreementTitle')"
-		:confirm-text="t('settings.agreeAndSave')"
+		:open="securityAgreementOpen"
+		:title="t('settings.securityAgreement.title')"
+		:confirm-text="t('settings.securityAgreement.agree')"
 		:close-text="t('common.cancel')"
-		:disable-confirm="saving || !agreementChecked"
-		@close="agreementOpen = false"
-		@confirm="confirmAgreementAndSave"
+		:disable-confirm="!securityAgreementChecked"
+		@close="cancelSecurityAgreement"
+		@confirm="acceptSecurityAgreement"
 	>
 		<div class="agreement-body">
-			<div v-if="agreementLoading" class="agreement-loading">{{ t('settings.agreementLoading') }}</div>
-			<div v-else-if="agreementError" class="agreement-error">{{ agreementError }}</div>
-			<MarkdownViewer v-else :markdown="agreementMarkdown" />
+			<div class="agreement-content">
+				<div class="agreement-section">
+					<h3 class="agreement-h3">🔒 {{ t('settings.securityAgreement.title') }}</h3>
+					<p class="agreement-p">{{ t('settings.securityAgreement.intro') }}</p>
+					<ol class="agreement-list">
+						<li v-for="key in agreementItemKeys" :key="key">
+							<strong>{{ t(getAgreementItemKey(key, 'title')) }}</strong>{{ t(getAgreementItemKey(key, 'desc')) }}
+						</li>
+					</ol>
+					<p class="agreement-p">{{ t('settings.securityAgreement.conclusion') }}</p>
+				</div>
+			</div>
 
 			<label class="agreement-check">
-				<input v-model="agreementChecked" type="checkbox" class="agreement-checkbox" />
-				<span>{{ t('settings.agreementReadAndAgree') }}</span>
+				<input v-model="securityAgreementChecked" type="checkbox" class="agreement-checkbox" />
+				<span>{{ t('settings.securityAgreement.readAndAgree') }}</span>
 			</label>
 		</div>
 	</ModalDialog>
@@ -667,7 +763,7 @@ async function handleOpenOverlayCommunity() {
 .settings-flash {
 	margin: 12px 0 0;
 	font-size: 12px;
-	color: var(--vscode-fg-muted);
+	color: #22a06b;
 }
 
 .btn {
@@ -992,11 +1088,55 @@ async function handleOpenOverlayCommunity() {
 .agreement-body {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 16px;
 }
 
-.agreement-loading,
-.agreement-error {
+.agreement-content {
+	max-height: 400px;
+	overflow-y: auto;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	padding: 16px;
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--vscode-fg);
+}
+
+.agreement-section {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.agreement-h3 {
+	margin: 0;
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--theme-accent);
+}
+
+.agreement-p {
+	margin: 0;
+	color: var(--vscode-fg);
+}
+
+.agreement-list {
+	margin: 0;
+	padding-left: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.agreement-list li {
+	color: var(--vscode-fg-muted);
+}
+
+.agreement-list li strong {
+	color: var(--vscode-fg);
+}
+
+.agreement-loading {
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt-dark);
 	color: var(--vscode-fg-muted);
@@ -1007,15 +1147,20 @@ async function handleOpenOverlayCommunity() {
 
 .agreement-check {
 	display: flex;
-	align-items: center;
-	gap: 8px;
+	align-items: flex-start;
+	gap: 10px;
 	color: var(--vscode-fg);
-	font-size: 12.5px;
+	font-size: 13px;
+	cursor: pointer;
+	user-select: none;
 }
 
 .agreement-checkbox {
-	width: 14px;
-	height: 14px;
+	width: 16px;
+	height: 16px;
+	margin-top: 2px;
+	flex-shrink: 0;
+	cursor: pointer;
 }
 
 @media (max-width: 720px) {
