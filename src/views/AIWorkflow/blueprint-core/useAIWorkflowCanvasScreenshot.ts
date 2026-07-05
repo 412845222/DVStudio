@@ -272,8 +272,8 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 	}
 
 	// 使缓存失效
-	const invalidate = (nodeId: string) => {
-		canvasPool.value?.invalidate(nodeId)
+	const invalidate = (nodeId: string, theme?: 'dark' | 'light') => {
+		canvasPool.value?.invalidate(nodeId, theme)
 	}
 
 	// 清空所有缓存
@@ -295,6 +295,10 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 	// 设置最大内存占用
 	const setMaxMemoryMB = (mb: number) => {
 		canvasPool.value?.setMaxMemoryMB(mb)
+	}
+
+	const setActiveTheme = (theme: 'dark' | 'light') => {
+		canvasPool.value?.setActiveTheme(theme)
 	}
 
 	// 取消所有待处理的预热
@@ -343,6 +347,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		// 配置
 		setMaxBitmapCount,
 		setMaxMemoryMB,
+		setActiveTheme,
 
 		// 控制
 		cancelPending,

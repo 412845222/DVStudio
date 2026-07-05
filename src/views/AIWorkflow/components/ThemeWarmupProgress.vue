@@ -49,16 +49,16 @@ const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmu
 	align-items: flex-start;
 	gap: 10px;
 	padding: 12px 16px;
-	background: var(--bg-overlay, rgba(30, 34, 42, 0.92));
+	background: var(--theme-bg-elevated);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
-	border: 1px solid var(--border-secondary, rgba(120, 130, 150, 0.25));
+	border: 1px solid var(--theme-border-subtle);
 	border-radius: 10px;
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+	box-shadow: var(--theme-shadow-elevated);
 	min-width: 220px;
 	max-width: 320px;
 	pointer-events: none;
-	color: var(--text-primary, #e4e7ed);
+	color: var(--theme-text-primary);
 	font-size: 12px;
 }
 
@@ -67,7 +67,7 @@ const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmu
 	width: 16px;
 	height: 16px;
 	margin-top: 2px;
-	color: var(--accent, #1f9d84);
+	color: var(--theme-accent);
 }
 
 .twp-spin {
@@ -88,14 +88,14 @@ const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmu
 .twp-title {
 	font-weight: 500;
 	margin-bottom: 6px;
-	color: var(--text-primary, #e4e7ed);
+	color: var(--theme-text-primary);
 	font-size: 12px;
 }
 
 .twp-bar {
 	width: 100%;
 	height: 3px;
-	background: var(--bg-tertiary, rgba(255, 255, 255, 0.08));
+	background: var(--theme-bg-tertiary);
 	border-radius: 2px;
 	overflow: hidden;
 	margin-bottom: 4px;
@@ -103,14 +103,14 @@ const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmu
 
 .twp-bar-fill {
 	height: 100%;
-	background: linear-gradient(90deg, var(--accent, #1f9d84), var(--accent-light, #2fc9aa));
+	background: linear-gradient(90deg, var(--theme-accent), var(--theme-accent-hover));
 	border-radius: 2px;
 	transition: width 150ms ease-out;
 }
 
 .twp-detail {
 	font-size: 11px;
-	color: var(--text-secondary, #8892a6);
+	color: var(--theme-text-secondary);
 	line-height: 1.4;
 	word-break: break-word;
 }
@@ -124,24 +124,5 @@ const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmu
 .twp-fade-leave-to {
 	opacity: 0;
 	transform: translateY(8px);
-}
-
-:global([data-theme="light"]) .theme-warmup-progress {
-	background: var(--bg-overlay, rgba(255, 255, 255, 0.94));
-	border-color: var(--border-secondary, rgba(0, 0, 0, 0.08));
-	color: var(--text-primary, #1d2129);
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-}
-
-:global([data-theme="light"]) .twp-title {
-	color: var(--text-primary, #1d2129);
-}
-
-:global([data-theme="light"]) .twp-detail {
-	color: var(--text-secondary, #6b7785);
-}
-
-:global([data-theme="light"]) .twp-bar {
-	background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
 }
 </style>
