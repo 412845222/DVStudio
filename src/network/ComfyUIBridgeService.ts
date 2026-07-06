@@ -489,6 +489,14 @@ type Tripo3DBalanceResponse =
 	  }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
+type Tripo3DUploadFileResponse =
+	| {
+			ok: true
+			fileToken: string
+			raw?: Record<string, unknown>
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
 type JobResponse =
 	| {
 			ok: true
@@ -3148,6 +3156,47 @@ export class ComfyUIBridgeService {
 			}
 		}
 		return (await res.json()) as Tripo3DBalanceResponse
+	}
+
+	async tripo3dUploadFile(payload: {
+		fileData: string
+		fileName?: string
+		fileType?: string
+	}): Promise<Tripo3DUploadFileResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.uploadFile(payload)
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'tripo3d/upload-file failed via IPC'
+						}
+					}
+					return ipcResult as Tripo3DUploadFileResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DUploadFileResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/upload-file failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/upload-file'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload || {})
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/upload-file failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DUploadFileResponse
 	}
 
 	async cancel(comfyBaseUrl: string, promptId: string): Promise<CancelResponse> {

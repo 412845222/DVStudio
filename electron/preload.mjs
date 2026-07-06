@@ -456,6 +456,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		stop: (payload) => invoke('dweb:tripo3d:stop', payload || {}),
 		deleteTask: (payload) => invoke('dweb:tripo3d:delete', payload || {}),
 		balance: () => invoke('dweb:tripo3d:balance'),
+		uploadFile: (payload) => invoke('dweb:tripo3d:upload-file', payload || {}),
 	},
 	// ===== Gemini 图片生成任务 =====
 	gemini: {

@@ -1,7 +1,12 @@
 import { getHttpClient } from '../../core/http-client.mjs'
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
+import logger from '../../core/logger.mjs'
+import { Buffer } from 'node:buffer'
+import http from 'node:http'
+import https from 'node:https'
+import { URL } from 'node:url'
 
-const TRIPO3D_API_BASE = 'https://api.tripo3d.ai/v2/openapi'
+const TRIPO3D_API_BASE = 'https://openapi.tripo3d.com/v3'
 
 function getApiKey(ctx) {
   const repo = ctx.localdb?.apiKeys
@@ -11,6 +16,30 @@ function getApiKey(ctx) {
   const key = String(result.plaintext || '').trim()
   if (!key) throw invalidParamsError('tripo3d api key is not configured')
   return key
+}
+
+function tryGetApiKey(ctx) {
+  try {
+    const repo = ctx.localdb?.apiKeys
+    if (!repo) {
+      logger.warn('[tripo3d] apiKeys repo not available in context')
+      return { configured: false, available: false, apiKey: '' }
+    }
+    const result = repo.getPlaintext('tripo3d')
+    if (!result.ok) {
+      logger.warn('[tripo3d] failed to read api key from localdb:', result.error)
+      return { configured: false, available: false, apiKey: '', error: result.error }
+    }
+    const key = String(result.plaintext || '').trim()
+    if (!key) {
+      return { configured: false, available: false, apiKey: '' }
+    }
+    logger.info('[tripo3d] api key found in localdb, key prefix:', key.slice(0, 8) + '...')
+    return { configured: true, available: true, apiKey: key }
+  } catch (err) {
+    logger.error('[tripo3d] unexpected error reading api key:', err?.message || String(err))
+    return { configured: false, available: false, apiKey: '', error: err?.message || String(err) }
+  }
 }
 
 function normalizeTask(taskId, obj) {
@@ -30,13 +59,16 @@ function normalizeTask(taskId, obj) {
   const inputObj = obj.input && typeof obj.input === 'object' ? obj.input : {}
   const outputObj = obj.output && typeof obj.output === 'object' ? obj.output : {}
 
-  const thumbnailUrl = String(outputObj.thumbnail || outputObj.thumbnail_url || obj.thumbnail_url || '').trim()
+  const thumbnailUrl = String(outputObj.thumbnail || outputObj.thumbnail_url || outputObj.rendered_image_url || obj.thumbnail_url || '').trim()
   let modelUrl = ''
   if (outputObj.model && typeof outputObj.model === 'object') {
     modelUrl = String(outputObj.model.url || outputObj.model.glb || '').trim()
   }
   if (!modelUrl) {
     modelUrl = String(outputObj.model_url || outputObj.pbr_model_url || '').trim()
+  }
+  if (!modelUrl && Array.isArray(outputObj.model_urls) && outputObj.model_urls.length > 0) {
+    modelUrl = String(outputObj.model_urls[0] || '').trim()
   }
 
   const prompt = String(inputObj.prompt || obj.prompt || '').trim()
@@ -116,51 +148,104 @@ function buildCreatePayload(payload) {
 
   const prompt = String(payload.prompt || '').trim()
   const negativePrompt = String(payload.negative_prompt || payload.negativePrompt || '').trim()
-  const modelVersion = String(payload.model_version || payload.model || payload.modelVersion || 'v2.0-20240919').trim()
-  const faceLimit = Number(payload.face_limit || payload.faceLimit || 0)
-  const texture = payload.texture !== false
-  const pbr = payload.pbr === true
-  const enableImageAutofix = payload.enable_image_autofix !== false
+  const modelVersion = String(payload.model_version || payload.model || payload.modelVersion || 'v3.1-20260211').trim()
+
+  let faceLimit = Number(payload.face_limit || payload.faceLimit || 0)
+  let texture = payload.texture !== false
+  let pbr = payload.pbr !== false
+  const enableImageAutofix = payload.enable_image_autofix === true
   const textureAlignment = String(payload.texture_alignment || '').trim()
   const orientation = String(payload.orientation || '').trim()
-  const textureQuality = String(payload.texture_quality || '').trim()
-  const geometryQuality = String(payload.geometry_quality || '').trim()
-  const autoSize = payload.auto_size !== false
-  const quad = payload.quad === true
-  const smartLowPoly = payload.smart_low_poly === true
-  const generateParts = payload.generate_parts === true
-  const compress = String(payload.compress || '').trim()
-  const exportUv = payload.export_uv === true
+  let textureQuality = String(payload.texture_quality || 'standard').trim()
+  let geometryQuality = String(payload.geometry_quality || 'standard').trim()
+  let autoSize = payload.auto_size === true
+  let quad = payload.quad === true
+  let smartLowPoly = payload.smart_low_poly === true
+  let generateParts = payload.generate_parts === true
+  let compress = String(payload.compress || '').trim()
+  const exportUv = payload.export_uv !== false
+
+  const isPSeries = modelVersion.startsWith('P')
+  const isV3OrLater = modelVersion === 'v3.1-20260211' || modelVersion === 'v3.0-20250812'
+  const isV25 = modelVersion === 'v2.5-20250123'
+  const supportsAdvancedFeatures = isV3OrLater || isPSeries
+
+  if (isPSeries) {
+    smartLowPoly = false
+    generateParts = false
+    autoSize = false
+    compress = ''
+    geometryQuality = 'standard'
+  } else if (isV25) {
+    smartLowPoly = false
+    generateParts = false
+    autoSize = false
+    compress = ''
+    geometryQuality = 'standard'
+    quad = false
+  } else if (!isV3OrLater) {
+    smartLowPoly = false
+    generateParts = false
+    autoSize = false
+    compress = ''
+    geometryQuality = 'standard'
+    quad = false
+  }
+
+  if (generateParts) {
+    texture = false
+    pbr = false
+    quad = false
+    smartLowPoly = false
+  }
+
+  if (pbr) {
+    texture = true
+  }
+
+  if (smartLowPoly) {
+    quad = false
+  }
 
   if (mode === 'text_to_model') {
     if (!prompt) return [null, null, 'prompt is required for text_to_model mode']
     body.prompt = prompt
   } else if (mode === 'image_to_model') {
+    const fileToken = String(payload.fileToken || payload.file_token || '').trim()
     const inputUrl = String(payload.input || payload.image_url || payload.file?.url || '').trim()
     const fileData = payload.file
-    if (!inputUrl && (!fileData || !fileData.type || !fileData.data)) {
-      return [null, null, 'image_url or file is required for image_to_model mode']
+    if (!fileToken && !inputUrl && (!fileData || !fileData.type || !fileData.data)) {
+      return [null, null, 'fileToken, image_url or file is required for image_to_model mode']
     }
     if (prompt) body.prompt = prompt
-    if (fileData && fileData.type && fileData.data) {
+    if (fileToken) {
+      body.input = fileToken
+    } else if (fileData && fileData.type && fileData.data) {
       body.file = { type: fileData.type, data: fileData.data }
     } else {
-      body.file = { type: 'png', url: inputUrl }
+      body.input = inputUrl
     }
   } else if (mode === 'multiview_to_model') {
+    const fileTokens = payload.fileTokens || payload.file_tokens
     const inputs = payload.inputs
     const files = payload.files
-    if (Array.isArray(inputs) && inputs.length >= 2) {
-      body.files = inputs.map((item) => {
+    if (Array.isArray(fileTokens) && fileTokens.length >= 2) {
+      body.inputs = fileTokens.map((item) => {
+        if (typeof item === 'object' && item !== null) {
+          return item
+        }
+        return String(item)
+      })
+    } else if (Array.isArray(inputs) && inputs.length >= 2) {
+      body.inputs = inputs.map((item) => {
         if (typeof item === 'object' && item !== null) {
           if (item.url) {
-            return { type: item.type || 'png', url: item.url, view: item.view }
+            return item.url
           }
           const viewKey = Object.keys(item)[0]
-          const url = item[viewKey]
-          return { type: 'png', url, view: viewKey }
+          return item[viewKey]
         }
-        return { type: 'png', url: item }
+        return item
       })
     } else if (Array.isArray(files) && files.length >= 2) {
       body.files = files.map(f => ({
@@ -190,20 +275,39 @@ function buildCreatePayload(payload) {
 
   if (negativePrompt) body.negative_prompt = negativePrompt
   if (modelVersion) body.model_version = modelVersion
-  if (Number.isFinite(faceLimit) && faceLimit > 0) body.face_limit = Math.floor(faceLimit)
+
+  if (Number.isFinite(faceLimit) && faceLimit > 0) {
+    let minLimit = 1000
+    let maxLimit = 2000000
+    if (isPSeries) {
+      minLimit = 50
+      maxLimit = quad ? 10000 : 20000
+    } else if (smartLowPoly) {
+      minLimit = 500
+      maxLimit = quad ? 10000 : 20000
+    } else if (quad) {
+      minLimit = 1000
+      maxLimit = 150000
+    } else if (isV25) {
+      minLimit = 1000
+      maxLimit = 500000
+    }
+    body.face_limit = Math.max(minLimit, Math.min(maxLimit, Math.floor(faceLimit)))
+  }
+
   body.texture = texture
   body.pbr = pbr
-  body.enable_image_autofix = enableImageAutofix
+  if (enableImageAutofix) body.enable_image_autofix = true
   if (textureAlignment) body.texture_alignment = textureAlignment
-  if (orientation) body.orientation = orientation
+  if (orientation && texture) body.orientation = orientation
   if (textureQuality) body.texture_quality = textureQuality
-  if (geometryQuality) body.geometry_quality = geometryQuality
-  body.auto_size = autoSize
-  body.quad = quad
-  body.smart_low_poly = smartLowPoly
-  body.generate_parts = generateParts
-  if (compress) body.compress = compress
-  body.export_uv = exportUv
+  if (isV3OrLater && geometryQuality) body.geometry_quality = geometryQuality
+  if (isV3OrLater && autoSize) body.auto_size = true
+  if (supportsAdvancedFeatures && !generateParts && !smartLowPoly && quad) body.quad = true
+  if (isV3OrLater && !isPSeries && smartLowPoly) body.smart_low_poly = true
+  if (isV3OrLater && generateParts) body.generate_parts = true
+  if (isV3OrLater && compress) body.compress = compress
+  if (exportUv) body.export_uv = true
 
   if (typeof payload.model_seed === 'number' && Number.isFinite(payload.model_seed) && payload.model_seed >= 0) {
     body.model_seed = Math.floor(payload.model_seed)
@@ -226,9 +330,22 @@ export async function generateModel(ctx, payload) {
   const [mode, body, buildErr] = buildCreatePayload(payload || {})
   if (buildErr) throw invalidParamsError(buildErr)
 
+  if (body.model_version && !body.model) {
+    body.model = body.model_version
+    delete body.model_version
+  }
+
   console.log('[Tripo3D Backend] 构建的请求 body (mode=' + mode + '):', JSON.stringify(body, null, 2))
 
-  const url = `${TRIPO3D_API_BASE}/task`
+  const endpointMap = {
+    text_to_model: '/generation/text-to-model',
+    image_to_model: '/generation/image-to-model',
+    multiview_to_model: '/generation/multiview-to-model',
+    texture: '/generation/texture',
+    refine: '/generation/refine',
+  }
+  const endpoint = endpointMap[mode] || '/generation/text-to-model'
+  const url = `${TRIPO3D_API_BASE}${endpoint}`
 
   console.log('[Tripo3D Backend] 请求端点:', url)
 
@@ -296,7 +413,7 @@ export async function getTask(ctx, payload) {
   const taskId = String(payload?.taskId || payload?.task_id || payload?.id || '').trim()
   if (!taskId) throw invalidParamsError('taskId is required')
 
-  const url = `${TRIPO3D_API_BASE}/task/${encodeURIComponent(taskId)}`
+  const url = `${TRIPO3D_API_BASE}/tasks/${encodeURIComponent(taskId)}`
 
   const res = await client.get(url, {
     headers: { 'Authorization': `Bearer ${apiKey}` },
@@ -393,7 +510,7 @@ export async function stopTask(ctx, payload) {
   const taskId = String(payload?.taskId || payload?.task_id || '').trim()
   if (!taskId) throw invalidParamsError('taskId is required')
 
-  const url = `${TRIPO3D_API_BASE}/task/${encodeURIComponent(taskId)}/cancel`
+  const url = `${TRIPO3D_API_BASE}/tasks/${encodeURIComponent(taskId)}/cancel`
 
   let stopOk = true
   try {
@@ -433,17 +550,26 @@ export async function deleteTask(ctx, payload) {
 }
 
 export async function getBalance(ctx) {
-  const repo = ctx.localdb?.apiKeys
-  if (!repo) throw internalError('apiKeys repo not available')
+  logger.info('[tripo3d] getBalance called')
 
-  const keyResult = repo.getPlaintext('tripo3d')
-  if (!keyResult.ok || !keyResult.plaintext) {
-    return { ok: true, available: false, configured: false, displayText: '未配置Tripo3D API Key', detail: '' }
+  const keyInfo = tryGetApiKey(ctx)
+  if (!keyInfo.configured) {
+    const detail = keyInfo.error || ''
+    logger.info('[tripo3d] api key not configured, detail:', detail)
+    return {
+      ok: true,
+      available: false,
+      configured: false,
+      displayText: detail ? `API Key读取失败: ${detail.slice(0, 60)}` : '未配置Tripo3D API Key',
+      detail
+    }
   }
 
-  const apiKey = keyResult.plaintext
+  const apiKey = keyInfo.apiKey
   const client = getHttpClient()
-  const url = `${TRIPO3D_API_BASE}/user/balance`
+  const url = `${TRIPO3D_API_BASE}/account/balance`
+
+  logger.info('[tripo3d] fetching balance from:', url)
 
   try {
     const res = await client.get(url, {
@@ -451,8 +577,12 @@ export async function getBalance(ctx) {
       timeout: 10000,
     })
 
+    logger.info('[tripo3d] balance response status:', res.status, 'ok:', res.ok)
+
     if (!res.ok) {
-      return { ok: true, available: false, configured: true, displayText: '无法查询余额', detail: `HTTP ${res.status}` }
+      const detail = `HTTP ${res.status}`
+      logger.warn('[tripo3d] balance query failed:', detail)
+      return { ok: true, available: false, configured: true, displayText: '无法查询余额', detail }
     }
 
     let balanceData = res.body
@@ -461,16 +591,127 @@ export async function getBalance(ctx) {
     }
 
     const balanceValue = typeof balanceData === 'object' && balanceData !== null
-      ? (typeof balanceData.balance === 'number' ? balanceData.balance : (typeof balanceData.credits === 'number' ? balanceData.credits : null))
+      ? (typeof balanceData.balance === 'number' ? balanceData.balance : null)
+      : null
+    const frozenValue = typeof balanceData === 'object' && balanceData !== null
+      ? (typeof balanceData.frozen === 'number' ? balanceData.frozen : null)
       : null
     const displayText = balanceValue !== null
-      ? `余额: ${balanceValue} credits`
+      ? (frozenValue !== null && frozenValue > 0
+          ? `余额: ${balanceValue} credits（冻结 ${frozenValue}）`
+          : `余额: ${balanceValue} credits`)
       : '余额查询成功（无法解析余额数值）'
+
+    logger.info('[tripo3d] balance parsed:', balanceValue, 'displayText:', displayText)
 
     return { ok: true, available: true, configured: true, displayText, detail: balanceData }
   } catch (err) {
-    return { ok: true, available: false, configured: true, displayText: '余额查询失败', detail: err?.message || String(err) }
+    const detail = err?.message || String(err)
+    logger.error('[tripo3d] balance query error:', detail)
+    return { ok: true, available: false, configured: true, displayText: '余额查询失败', detail }
   }
+}
+
+export async function uploadFile(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const url = `${TRIPO3D_API_BASE}/files`
+
+  const fileName = String(payload?.fileName || payload?.name || 'upload.png').trim()
+  const fileData = payload?.fileData || payload?.data
+  const fileType = String(payload?.fileType || payload?.type || 'image/png').trim()
+
+  if (!fileData) {
+    throw invalidParamsError('fileData is required for file upload')
+  }
+
+  let buffer
+  if (Buffer.isBuffer(fileData)) {
+    buffer = fileData
+  } else if (typeof fileData === 'string') {
+    if (fileData.startsWith('data:')) {
+      const base64Match = fileData.match(/^data:[^;]+;base64,(.+)$/)
+      if (base64Match) {
+        buffer = Buffer.from(base64Match[1], 'base64')
+      } else {
+        throw invalidParamsError('invalid data URI format')
+      }
+    } else {
+      buffer = Buffer.from(fileData, 'base64')
+    }
+  } else if (fileData instanceof Uint8Array) {
+    buffer = Buffer.from(fileData)
+  } else {
+    throw invalidParamsError('unsupported fileData format')
+  }
+
+  const boundary = '----Tripo3DFileUpload' + Date.now().toString(16)
+  const CRLF = '\r\n'
+
+  const multipartBody = Buffer.concat([
+    Buffer.from(`--${boundary}${CRLF}`),
+    Buffer.from(`Content-Disposition: form-data; name="file"; filename="${fileName}"${CRLF}`),
+    Buffer.from(`Content-Type: ${fileType}${CRLF}${CRLF}`),
+    buffer,
+    Buffer.from(`${CRLF}--${boundary}--${CRLF}`),
+  ])
+
+  const parsedUrl = new URL(url)
+  const transport = parsedUrl.protocol === 'https:' ? https : http
+
+  return new Promise((resolve, reject) => {
+    const req = transport.request({
+      method: 'POST',
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || 443,
+      path: parsedUrl.pathname + parsedUrl.search,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': multipartBody.length,
+      },
+      timeout: 120000,
+    }, (res) => {
+      const chunks = []
+      res.on('data', chunk => chunks.push(chunk))
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf-8')
+        let parsedBody
+        try {
+          parsedBody = JSON.parse(body)
+        } catch {
+          parsedBody = body
+        }
+
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          const data = parsedBody?.data || {}
+          const fileToken = String(data.file_token || '').trim()
+          if (!fileToken) {
+            reject(upstreamError('tripo3d upload failed: no file_token in response'))
+            return
+          }
+          resolve({ ok: true, fileToken, raw: parsedBody })
+        } else {
+          let errMsg = `HTTP ${res.statusCode}`
+          if (typeof parsedBody === 'object' && parsedBody) {
+            errMsg = parsedBody.message || parsedBody.error || errMsg
+          }
+          reject(upstreamError(`tripo3d upload failed: ${errMsg}`))
+        }
+      })
+      res.on('error', reject)
+    })
+
+    req.on('error', (err) => {
+      reject(upstreamError(`tripo3d upload failed: ${err.message}`))
+    })
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Upload timeout'))
+    })
+
+    req.write(multipartBody)
+    req.end()
+  })
 }
 
 export async function health(ctx) {

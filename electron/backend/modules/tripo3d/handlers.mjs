@@ -31,3 +31,7 @@ export async function deleteTask(ctx, payload) {
 export async function balance(ctx) {
   return service.getBalance(ctx)
 }
+
+export async function uploadFile(ctx, payload) {
+  return service.uploadFile(ctx, payload)
+}

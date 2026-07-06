@@ -1144,9 +1144,19 @@
 								:min="tripo3dFaceLimitRange.min"
 								:max="tripo3dFaceLimitRange.max"
 								step="1"
-								:value="params.tripo3dFaceLimit === 0 ? tripo3dFaceLimitRange.default : params.tripo3dFaceLimit"
+								:value="localTripo3dFaceLimit"
 								:disabled="disabled"
-								@input="updateParam('tripo3dFaceLimit', parseInt(($event.target as HTMLInputElement).value))"
+								@mousedown.stop
+								@touchstart.stop
+								@mousemove.stop
+								@touchmove.stop
+								@mouseup.stop
+								@touchend.stop
+								@pointerdown.stop
+								@pointermove.stop
+								@pointerup.stop
+								@input="onTripo3dFaceLimitInput($event)"
+								@change="onTripo3dFaceLimitChange($event)"
 							/>
 							<input
 								type="number"
@@ -1154,9 +1164,12 @@
 								:min="tripo3dFaceLimitRange.min"
 								:max="tripo3dFaceLimitRange.max"
 								step="1"
-								:value="params.tripo3dFaceLimit"
+								:value="localTripo3dFaceLimit"
 								:disabled="disabled"
-								@input="updateParam('tripo3dFaceLimit', parseInt(($event.target as HTMLInputElement).value) || 0)"
+								@mousedown.stop
+								@touchstart.stop
+								@input="onTripo3dFaceLimitInput($event)"
+								@change="onTripo3dFaceLimitChange($event)"
 							/>
 						</div>
 						<div class="bp-node-chat-param-options bp-node-chat-param-presets">
@@ -1273,7 +1286,7 @@
 						<div v-show="!advancedCollapsed" class="bp-node-chat-param-advanced-body">
 							<div class="bp-node-chat-param-subsection">
 								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.qualitySettings') }}</span>
-								<div class="bp-node-chat-param-row">
+								<div v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-row">
 									<span class="bp-node-chat-param-sublabel">{{ t('aichat.nodeChatParams.geometryQuality') }}</span>
 									<div class="bp-node-chat-param-options">
 										<button
@@ -1310,7 +1323,7 @@
 							<div class="bp-node-chat-param-subsection">
 								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.topologySettings') }}</span>
 								<div class="bp-node-chat-param-advanced">
-									<label class="bp-node-chat-param-toggle">
+									<label v-if="tripo3dSupportsAdvancedFeatures" class="bp-node-chat-param-toggle">
 										<input
 											type="checkbox"
 											:checked="params.tripo3dQuad"
@@ -1319,7 +1332,7 @@
 										/>
 										<span>{{ t('aichat.nodeChatParams.quad') }}</span>
 									</label>
-									<label class="bp-node-chat-param-toggle">
+									<label v-if="tripo3dIsV3OrLater && !tripo3dIsPSeries" class="bp-node-chat-param-toggle">
 										<input
 											type="checkbox"
 											:checked="params.tripo3dSmartLowPoly"
@@ -1328,7 +1341,7 @@
 										/>
 										<span>{{ t('aichat.nodeChatParams.smartLowPoly') }}</span>
 									</label>
-									<label class="bp-node-chat-param-toggle">
+									<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
 										<input
 											type="checkbox"
 											:checked="params.tripo3dGenerateParts"
@@ -1342,7 +1355,7 @@
 							<div class="bp-node-chat-param-subsection">
 								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.otherOptions') }}</span>
 								<div class="bp-node-chat-param-advanced">
-									<label class="bp-node-chat-param-toggle">
+									<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
 										<input
 											type="checkbox"
 											:checked="params.tripo3dAutoSize"
@@ -1351,7 +1364,7 @@
 										/>
 										<span>{{ t('aichat.nodeChatParams.autoSize') }}</span>
 									</label>
-									<label class="bp-node-chat-param-toggle">
+									<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
 										<input
 											type="checkbox"
 											:checked="params.tripo3dCompress"
@@ -1438,7 +1451,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from '../../../i18n'
 import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord, WorkflowTripo3DView } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from './index'
@@ -1487,8 +1500,9 @@ import {
 	NODE_CHAT_TRIPO3D_ORIENTATION_OPTIONS,
 	NODE_CHAT_TRIPO3D_VIEW_OPTIONS,
 	getTripo3DFaceLimitRange,
-	isTripo3DHSeries,
+	isTripo3DPSeries,
 	isTripo3DV3OrLater,
+	normalizeTripo3DParams,
 	GEMINI_QUANTITY_OPTIONS,
 	getGeminiImageSizeOptions,
 	getGeminiAspectRatioOptions,
@@ -1514,6 +1528,26 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'update:params', params: WorkflowNodeChatParamRecord): void
 }>()
+
+const normalizeIfNeeded = () => {
+	if (props.nodeType !== 'model3d') return
+	if (props.params.provider !== 'tripo3d') return
+	const normalized = normalizeTripo3DParams(props.params)
+	let changed = false
+	for (const key of Object.keys(normalized)) {
+		if (props.params[key as keyof WorkflowNodeChatParamRecord] !== normalized[key as keyof WorkflowNodeChatParamRecord]) {
+			changed = true
+			break
+		}
+	}
+	if (changed) {
+		emit('update:params', normalized)
+	}
+}
+
+watch(() => [props.nodeType, props.params], () => {
+	normalizeIfNeeded()
+}, { immediate: true, deep: false })
 
 const collapsed = ref(false)
 
@@ -1623,48 +1657,11 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 		if (!validVersions.includes(currentVersion)) {
 			next.tripo3dModelVersion = newVersionOptions[0].value
 		}
-		next.tripo3dGenerateParts = false
-		next.tripo3dQuad = false
-		next.tripo3dSmartLowPoly = false
-		const range = getTripo3DFaceLimitRange(String(next.tripo3dModelVersion), false, false)
-		if (next.tripo3dModelSeries === 'h') {
-			next.tripo3dFaceLimit = range.default
-		} else {
-			next.tripo3dFaceLimit = range.default
-		}
 	}
 
-	if (key === 'tripo3dPbr' && value === true) {
-		next.tripo3dTexture = true
-	}
-
-	if (key === 'tripo3dGenerateParts' && value === true) {
-		next.tripo3dTexture = false
-		next.tripo3dPbr = false
-		next.tripo3dQuad = false
-	}
-
-	if (key === 'tripo3dQuad' && value === true) {
-		const range = getTripo3DFaceLimitRange(String(next.tripo3dModelVersion), true, false)
-		next.tripo3dFaceLimit = Math.min(Number(next.tripo3dFaceLimit) || range.default, range.max)
-	}
-
-	if (key === 'tripo3dSmartLowPoly' && value === true) {
-		const range = getTripo3DFaceLimitRange(String(next.tripo3dModelVersion), false, true)
-		next.tripo3dFaceLimit = Math.min(Math.max(Number(next.tripo3dFaceLimit) || range.default, range.min), range.max)
-		next.tripo3dQuad = false
-	}
-
-	if (key === 'tripo3dFaceLimit') {
-		const numValue = Number(value) || 0
-		const range = getTripo3DFaceLimitRange(
-			String(next.tripo3dModelVersion),
-			Boolean(next.tripo3dQuad),
-			Boolean(next.tripo3dSmartLowPoly)
-		)
-		if (numValue !== 0) {
-			next.tripo3dFaceLimit = Math.min(Math.max(numValue, range.min), range.max)
-		}
+	if (props.nodeType === 'model3d' && next.provider === 'tripo3d') {
+		const normalized = normalizeTripo3DParams(next)
+		Object.assign(next, normalized)
 	}
 
 	emit('update:params', next)
@@ -1722,6 +1719,18 @@ const tripo3dCurrentVersion = computed(() => {
 	return String(props.params.tripo3dModelVersion || 'v3.1-20260211')
 })
 
+const tripo3dIsPSeries = computed(() => {
+	return isTripo3DPSeries(tripo3dCurrentVersion.value)
+})
+
+const tripo3dIsV3OrLater = computed(() => {
+	return isTripo3DV3OrLater(tripo3dCurrentVersion.value)
+})
+
+const tripo3dSupportsAdvancedFeatures = computed(() => {
+	return tripo3dIsV3OrLater.value || tripo3dIsPSeries.value
+})
+
 const tripo3dCurrentVersionOptions = computed(() => {
 	return getTripo3DModelVersionOptions(tripo3dCurrentSeries.value)
 })
@@ -1775,8 +1784,31 @@ const tripo3dAvailablePresets = computed(() => {
 	})
 })
 
+const localTripo3dFaceLimit = ref<number>(Number(props.params.tripo3dFaceLimit) || 0)
+
+watch(() => props.params.tripo3dFaceLimit, (newVal: number | undefined) => {
+	localTripo3dFaceLimit.value = Number(newVal) || 0
+}, { immediate: true })
+
+const onTripo3dFaceLimitInput = (event: Event) => {
+	const input = event.target as HTMLInputElement
+	const value = parseInt(input.value) || 0
+	localTripo3dFaceLimit.value = value
+}
+
+const onTripo3dFaceLimitChange = (event: Event) => {
+	const input = event.target as HTMLInputElement
+	let value = parseInt(input.value) || 0
+	const range = tripo3dFaceLimitRange.value
+	if (value !== 0) {
+		value = Math.min(Math.max(value, range.min), range.max)
+	}
+	localTripo3dFaceLimit.value = value
+	updateParam('tripo3dFaceLimit', value)
+}
+
 const tripo3dFaceLimitDisplay = computed(() => {
-	const faceLimit = Number(props.params.tripo3dFaceLimit)
+	const faceLimit = Number(localTripo3dFaceLimit.value)
 	if (!faceLimit || faceLimit === 0) return t('aichat.nodeChatParams.faceLimitFaces', { count: 0 }).replace('0 面', '自适应')
 	return t('aichat.nodeChatParams.faceLimitFaces', { count: faceLimit })
 })
@@ -1957,6 +1989,8 @@ const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
 .bp-node-chat-param-panel {
 	border-top: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
 	padding: 4px 0;
+	overflow: visible;
+	max-height: none;
 }
 
 .bp-node-chat-param-header {

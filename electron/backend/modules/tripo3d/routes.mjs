@@ -9,4 +9,5 @@ export const routes = [
   { channel: 'dweb:tripo3d:stop',         handler: handlers.stop },
   { channel: 'dweb:tripo3d:delete',       handler: handlers.deleteTask },
   { channel: 'dweb:tripo3d:balance',      handler: handlers.balance },
+  { channel: 'dweb:tripo3d:upload-file',  handler: handlers.uploadFile },
 ]
