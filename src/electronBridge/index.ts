@@ -497,6 +497,19 @@ export async function toggleMaximizeWindow(): Promise<{
 	}
 }
 
+export async function isWindowMaximized(): Promise<{
+	ok: boolean
+	maximized?: boolean
+	error?: string
+}> {
+	if (!window?.dweb?.window?.isMaximized) return { ok: false, error: 'Not running in Electron.' }
+	try {
+		return (await window.dweb.window.isMaximized()) || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
 export async function closeWindow(): Promise<{ ok: boolean; error?: string }> {
 	if (!window?.dweb?.window?.close) return { ok: false, error: 'Not running in Electron.' }
 	try {
