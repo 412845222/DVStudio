@@ -15,7 +15,7 @@ const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 const API_KEY_AGREEMENT_VERSION = '1.0'
 
 type ClientSettingsKey = keyof ClientSettings
-type ApiKeyFieldKey = 'deepseekApiKey' | 'geminiApiKey' | 'bytedanceApiKey' | 'meshyApiKey' | 'githubToken' | 'anthropicApiKey'
+type ApiKeyFieldKey = 'deepseekApiKey' | 'geminiApiKey' | 'bytedanceApiKey' | 'meshyApiKey' | 'githubToken'
 
 type ProviderConfig = {
 	key: string
@@ -56,7 +56,6 @@ const form = reactive<ClientSettings>({
 	bytedanceApiKey: '',
 	meshyApiKey: '',
 	githubToken: '',
-	anthropicApiKey: '',
 	ui: {
 		locale: '',
 	},
@@ -130,17 +129,6 @@ const providers = computed<ProviderConfig[]>(() => [
 		formKey: 'githubToken',
 		formValue: (s: ClientSettings) => s.githubToken,
 	},
-	{
-		key: 'anthropic',
-		name: t('settings.providers.anthropic.name'),
-		descKey: 'settings.providers.anthropic.desc',
-		accent: '#cc785c',
-		icon: t('settings.providers.anthropic.icon'),
-		fields: [{ key: 'anthropicApiKey', label: t('settings.fields.apiKey'), placeholder: 'sk-ant-...', mask: true }],
-		docsUrl: 'https://console.anthropic.com/keys',
-		formKey: 'anthropicApiKey',
-		formValue: (s: ClientSettings) => s.anthropicApiKey,
-	},
 ])
 
 function showSaveMessage(msg: string, duration = 3000) {
@@ -164,7 +152,6 @@ function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettin
 		bytedanceApiKey: form.bytedanceApiKey,
 		meshyApiKey: form.meshyApiKey,
 		githubToken: form.githubToken,
-		anthropicApiKey: form.anthropicApiKey,
 		ui: {
 			locale: form.ui?.locale || '',
 		},
@@ -231,7 +218,6 @@ async function saveProviderConfig() {
 			bytedanceApiKey: String(form.bytedanceApiKey || ''),
 			meshyApiKey: String(form.meshyApiKey || ''),
 			githubToken: String(form.githubToken || ''),
-			anthropicApiKey: String(form.anthropicApiKey || ''),
 		}
 
 		for (const f of prov.fields) {
@@ -307,7 +293,7 @@ async function load() {
 	form.geminiModel = FIXED_GEMINI_MODEL
 	form.geminiBaseUrl = String(form.geminiBaseUrl || '')
 	form.httpProxy = String(form.httpProxy || '')
-	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken', 'anthropicApiKey'] as const) {
+	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken'] as const) {
 		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
 	}
 	if (!form.ui) form.ui = { locale: '' }
@@ -362,7 +348,6 @@ async function confirmClearCredentials() {
 		bytedanceApiKey: '',
 		meshyApiKey: '',
 		githubToken: '',
-		anthropicApiKey: '',
 	})
 	if (!r.ok) showSaveMessage(t('settings.clearFailed', { msg: r.error || t('common.error') }))
 	else {
@@ -371,7 +356,6 @@ async function confirmClearCredentials() {
 		form.bytedanceApiKey = ''
 		form.meshyApiKey = ''
 		form.githubToken = ''
-		form.anthropicApiKey = ''
 
 		await saveClientSettings(buildSavePayload())
 

@@ -8,7 +8,6 @@ export type CredentialProvidersStatus = {
 	bytedance: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	meshy: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	github: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
-	anthropic: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 }
 
 export type SaveCredentialRequest = {
@@ -17,7 +16,6 @@ export type SaveCredentialRequest = {
 	bytedanceApiKey?: string
 	meshyApiKey?: string
 	githubToken?: string
-	anthropicApiKey?: string
 }
 
 export type SaveCredentialResponse = {
@@ -52,7 +50,6 @@ const PROVIDER_FIELDS: Array<{ field: keyof SaveCredentialRequest; provider: str
 	{ field: 'bytedanceApiKey', provider: 'bytedance', statusKey: 'bytedance' },
 	{ field: 'meshyApiKey', provider: 'meshy', statusKey: 'meshy' },
 	{ field: 'githubToken', provider: 'github', statusKey: 'github' },
-	{ field: 'anthropicApiKey', provider: 'anthropic', statusKey: 'anthropic' },
 ]
 
 function emptyStatus(): CredentialProvidersStatus {
@@ -62,7 +59,6 @@ function emptyStatus(): CredentialProvidersStatus {
 		bytedance: { hasKey: false, fingerprint: '', updatedAt: null },
 		meshy: { hasKey: false, fingerprint: '', updatedAt: null },
 		github: { hasKey: false, fingerprint: '', updatedAt: null },
-		anthropic: { hasKey: false, fingerprint: '', updatedAt: null },
 	}
 }
 

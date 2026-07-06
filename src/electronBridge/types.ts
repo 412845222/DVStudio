@@ -100,7 +100,6 @@ export type ClientSettings = {
 	bytedanceApiKey: string
 	meshyApiKey: string
 	githubToken: string
-	anthropicApiKey: string
 	ui?: {
 		locale?: string
 	}

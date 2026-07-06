@@ -233,7 +233,6 @@
 								@change="onAgentBackendChange"
 							>
 								<option value="dvsagent">DVSAgent</option>
-								<option value="claude">Claude</option>
 								<option value="codex">Codex</option>
 								<option value="copilot">Copilot</option>
 							</select>
@@ -402,7 +401,7 @@ export type NanoBananaRefAnchor = {
 
 export type LocalExecSource = 'copilot-cli' | 'legacy-codex'
 
-export type AgentBackendType = 'dvsagent' | 'claude' | 'codex' | 'copilot'
+export type AgentBackendType = 'dvsagent' | 'codex' | 'copilot'
 export type AgentConversationMode = 'agent' | 'ask' | 'plan'
 
 export type LocalExecSessionItem = {
@@ -592,7 +591,7 @@ const agentBackend = computed<AgentBackendType>(() => {
 	const backend = String(props.agentBackend || '')
 		.trim()
 		.toLowerCase()
-	if (backend === 'dvsagent' || backend === 'claude' || backend === 'codex' || backend === 'copilot') {
+	if (backend === 'dvsagent' || backend === 'codex' || backend === 'copilot') {
 		return backend as AgentBackendType
 	}
 	return 'dvsagent'
@@ -1101,7 +1100,7 @@ const onAgentBackendChange = (e: Event) => {
 		.trim()
 		.toLowerCase()
 	let backend: AgentBackendType = 'dvsagent'
-	if (value === 'dvsagent' || value === 'claude' || value === 'codex' || value === 'copilot') {
+	if (value === 'dvsagent' || value === 'codex' || value === 'copilot') {
 		backend = value as AgentBackendType
 	}
 	emit('update:agentBackend', backend)

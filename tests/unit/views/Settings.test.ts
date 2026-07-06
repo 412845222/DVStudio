@@ -17,7 +17,6 @@ function buildSavePayload(form: ClientSettings, overrides: Partial<ClientSetting
 		bytedanceApiKey: form.bytedanceApiKey,
 		meshyApiKey: form.meshyApiKey,
 		githubToken: form.githubToken,
-		anthropicApiKey: form.anthropicApiKey,
 		ui: {
 			locale: form.ui?.locale || '',
 		},
@@ -48,7 +47,6 @@ function createDefaultForm(): ClientSettings {
 		bytedanceApiKey: '',
 		meshyApiKey: '',
 		githubToken: '',
-		anthropicApiKey: '',
 		ui: {
 			locale: '',
 		},

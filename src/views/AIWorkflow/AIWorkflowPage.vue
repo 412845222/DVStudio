@@ -582,6 +582,15 @@
 				<ToastStack :items="toasts" @close="removeToast" @hover="setToastHovering" />
 			</div>
 
+			<div class="aiwf-overlay-bottom-left">
+				<WorkflowMinimap
+					:nodes-by-id="store.state.nodesById"
+					:viewport="viewport"
+					:canvas-size="canvasViewportSize"
+					@update:viewport="onViewportUpdate"
+				/>
+			</div>
+
 			<div class="aiwf-overlay-alerts" :style="overlayAlertStyle">
 				<div v-if="importLimitAlertMessage" class="aiwf-import-limit-alert" @pointerdown.stop>
 					<div class="aiwf-import-limit-alert-title">{{ t('aiworkflow.page.importLimit.title') }}</div>
@@ -810,6 +819,7 @@ import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
 import NodeCanvasLayer from './components/NodeCanvasLayer.vue'
 import ThemeWarmupProgress from './components/ThemeWarmupProgress.vue'
 import CanvasAnchorLayer from './components/CanvasAnchorLayer.vue'
+import WorkflowMinimap from './components/WorkflowMinimap.vue'
 import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, {
 	type BlueprintProjectListItem
@@ -10353,6 +10363,7 @@ if (import.meta.env.DEV) {
 .aiwf-overlay-top-left,
 .aiwf-overlay-top-right,
 .aiwf-overlay-floating,
+.aiwf-overlay-bottom-left,
 .aiwf-overlay-alerts {
 	position: absolute;
 	inset: 0;
@@ -10375,6 +10386,10 @@ if (import.meta.env.DEV) {
 	z-index: var(--aiwf-overlay-utility-z-index, 80);
 }
 
+.aiwf-overlay-bottom-left {
+	z-index: var(--aiwf-chrome-z-index, 30);
+}
+
 .aiwf-overlay-alerts {
 	z-index: var(--aiwf-alert-z-index, 130);
 }
@@ -10382,8 +10397,16 @@ if (import.meta.env.DEV) {
 .aiwf-overlay-top-left > *,
 .aiwf-overlay-top-right > *,
 .aiwf-overlay-floating > *,
+.aiwf-overlay-bottom-left > *,
 .aiwf-overlay-alerts > * {
 	pointer-events: auto;
+}
+
+.aiwf-overlay-bottom-left {
+	display: flex;
+	align-items: flex-end;
+	justify-content: flex-start;
+	padding: 0 0 16px 16px;
 }
 
 .aiwf-chat-dock {
