@@ -73,6 +73,7 @@ export class ILLMProvider {
    * @param {object} [input.config] - 其他配置（thinkingEffort/apiKeys 等）
    * @yields {{ type: string, [key: string]: any }}
    */
+  // eslint-disable-next-line require-yield
   async *streamGenerate(sessionId, input) { throw new Error('streamGenerate must be implemented by subclass'); }
 
   /**
