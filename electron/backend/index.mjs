@@ -18,6 +18,7 @@ import { routes as mcpRoutes } from './modules/mcp/routes.mjs'
 import { routes as agentRoutes } from './modules/agent/routes.mjs'
 import { routes as cliAdapterRoutes } from './modules/cli-adapters/routes.mjs'
 import { routes as subtitleRoutes } from './modules/subtitle/routes.mjs'
+import { routes as cloudTemplatesRoutes } from './modules/cloud-templates/routes.mjs'
 import { startUnrealHttpServer, stopUnrealHttpServer } from './modules/agent-skills/service.mjs'
 import { setProjectRoot } from './projectAssetProtocol.mjs'
 import { getRepos } from '../localdb/index.mjs'
@@ -84,6 +85,7 @@ export function initBackend(mainWindow, deps = {}) {
     ...agentRoutes,
     ...cliAdapterRoutes,
     ...subtitleRoutes,
+    ...cloudTemplatesRoutes,
   ]
 
   _router = createRouter({

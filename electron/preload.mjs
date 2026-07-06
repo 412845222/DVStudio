@@ -602,4 +602,12 @@ contextBridge.exposeInMainWorld('dweb', {
 			return { ok: true }
 		},
 	},
+	cloudTemplates: {
+		getPlatform: () => invoke('dweb:cloud-templates:get-platform'),
+		getQuota: () => invoke('dweb:cloud-templates:get-quota'),
+		list: () => invoke('dweb:cloud-templates:list'),
+		upload: (payload) => invoke('dweb:cloud-templates:upload', payload || {}),
+		download: (payload) => invoke('dweb:cloud-templates:download', payload || {}),
+		delete: (payload) => invoke('dweb:cloud-templates:delete', payload || {}),
+	},
 })

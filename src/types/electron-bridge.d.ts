@@ -17,6 +17,15 @@ import type {
 	CleanupOldProjectResult,
 	DirectoryPickResult,
 	UploadedProjectAsset,
+	CloudTemplatesPlatformResult,
+	CloudTemplatesQuotaResult,
+	CloudTemplatesListResult,
+	CloudTemplatesUploadPayload,
+	CloudTemplatesUploadResult,
+	CloudTemplatesDownloadPayload,
+	CloudTemplatesDownloadResult,
+	CloudTemplatesDeletePayload,
+	CloudTemplatesDeleteResult,
 } from '../electronBridge/types'
 import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
 
@@ -372,6 +381,14 @@ declare global {
 				dlcGetInstalled(): Promise<DwebPlatformDlcInfo[]>
 				onEvent(handler: (payload: PlatformEventPayload) => void): number
 				offEvent(listenerId: number): { ok: boolean }
+			}
+			cloudTemplates: {
+				getPlatform(): Promise<CloudTemplatesPlatformResult>
+				getQuota(): Promise<CloudTemplatesQuotaResult>
+				list(): Promise<CloudTemplatesListResult>
+				upload(payload: CloudTemplatesUploadPayload): Promise<CloudTemplatesUploadResult>
+				download(payload: CloudTemplatesDownloadPayload): Promise<CloudTemplatesDownloadResult>
+				delete(payload: CloudTemplatesDeletePayload): Promise<CloudTemplatesDeleteResult>
 			}
 			meshy?: any
 			seedance?: any
