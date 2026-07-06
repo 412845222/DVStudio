@@ -146,11 +146,23 @@ ipcRenderer.on(RESOURCE_MANAGER_DATA_CHANNEL, (_event, payload) => {
 })
 
 // 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
-const BACKEND_BASE_URL = await invoke('dweb:getBackendBaseUrl')
-contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', BACKEND_BASE_URL)
+// 性能优化：IPC 模式下 baseUrl 总是空字符串，无需阻塞等待
+contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', '')
+contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL__', '')
 
-const CLIENT_SETTINGS = await invoke('dweb:settings:get')
-contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', CLIENT_SETTINGS?.ok ? CLIENT_SETTINGS.data : null)
+// Client settings: 不阻塞 preload，先设置 null，异步加载后更新
+contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', null)
+invoke('dweb:settings:get')
+	.then((result) => {
+		if (result?.ok && result.data) {
+			try {
+				const desc = Object.getOwnPropertyDescriptor(window, '__DWEB_CLIENT_SETTINGS')
+				const canAssign = !desc || ('writable' in desc ? Boolean(desc.writable) : typeof desc.set === 'function')
+				if (canAssign) window.__DWEB_CLIENT_SETTINGS = result.data
+			} catch {}
+		}
+	})
+	.catch(() => {})
 
 contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO', process.env.DWEB_AIWF_AUTO_HELLO || '')
 contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO_TEXT', process.env.DWEB_AIWF_AUTO_HELLO_TEXT || '')

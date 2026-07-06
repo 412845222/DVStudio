@@ -58,6 +58,19 @@ function serializeProjectRow(row) {
 	}
 }
 
+function serializeProjectSummary(row) {
+	if (!row) return null
+	return {
+		id: row.id,
+		name: row.name,
+		rootPath: row.root_path || '',
+		folderBacked: Boolean(row.root_path && String(row.root_path).trim()),
+		createdAt: isoToMs(row.created_at),
+		updatedAt: isoToMs(row.updated_at),
+		lastOpenedAt: isoToMs(row.last_opened_at)
+	}
+}
+
 function mediaRootFromBackendDir(backendDataDir) {
 	return path.resolve(String(backendDataDir || ''), 'media', 'blueprint_projects')
 }
@@ -178,7 +191,8 @@ export function createProjectsRepo({ backendDataDir }) {
 	const mediaRoot = mediaRootFromBackendDir(backendDataDir)
 	const db = getLocalDb()
 
-	const listStmt = db.prepare('SELECT * FROM projects ORDER BY updated_at DESC, id DESC')
+	const listStmt = db.prepare('SELECT id, name, root_path, created_at, updated_at, last_opened_at FROM projects ORDER BY updated_at DESC, id DESC')
+	const listFullStmt = db.prepare('SELECT * FROM projects ORDER BY updated_at DESC, id DESC')
 	const getByIdStmt = db.prepare('SELECT * FROM projects WHERE id = ?')
 	const getByRootPathStmt = db.prepare(
 		"SELECT * FROM projects WHERE root_path = ? AND root_path <> '' LIMIT 1"
@@ -196,6 +210,11 @@ export function createProjectsRepo({ backendDataDir }) {
 
 	function list() {
 		const rows = listStmt.all()
+		return rows.map(serializeProjectSummary)
+	}
+
+	function listFull() {
+		const rows = listFullStmt.all()
 		return rows.map(serializeProjectRow)
 	}
 

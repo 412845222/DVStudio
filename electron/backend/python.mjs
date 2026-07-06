@@ -3,6 +3,56 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { getStaticRuntimeDir, getPythonBridgeScriptsDir } from '../config.mjs'
 
+const PYTHON_DETECT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+let _pythonDetectCache = null
+let _customCacheDir = null
+
+export function setPythonDetectCacheDir(dir) {
+	_customCacheDir = dir
+}
+
+function _getCacheFilePath() {
+	try {
+		const baseDir = _customCacheDir || path.resolve(process.cwd(), 'DVSResource', 'BackendData')
+		fs.mkdirSync(baseDir, { recursive: true })
+		return path.join(baseDir, 'python-detect-cache.json')
+	} catch {
+		return null
+	}
+}
+
+function _loadCache() {
+	if (_pythonDetectCache) return _pythonDetectCache
+	try {
+		const cacheFile = _getCacheFilePath()
+		if (!cacheFile || !fs.existsSync(cacheFile)) return null
+		const raw = fs.readFileSync(cacheFile, 'utf8')
+		const cache = JSON.parse(raw)
+		if (!cache || typeof cache !== 'object') return null
+		const age = Date.now() - Number(cache.timestamp || 0)
+		if (age > PYTHON_DETECT_CACHE_TTL_MS) return null
+		_pythonDetectCache = cache.result
+		return _pythonDetectCache
+	} catch {
+		return null
+	}
+}
+
+function _saveCache(result) {
+	_pythonDetectCache = result
+	try {
+		const cacheFile = _getCacheFilePath()
+		if (!cacheFile) return
+		fs.mkdirSync(path.dirname(cacheFile), { recursive: true })
+		fs.writeFileSync(cacheFile, JSON.stringify({
+			timestamp: Date.now(),
+			platform: process.platform,
+			result
+		}, null, 2), 'utf8')
+	} catch {
+	}
+}
+
 function _getBundledPythonDir() {
 	return path.resolve(getStaticRuntimeDir(), 'python-win32-x64')
 }
@@ -94,16 +144,23 @@ function _parseVersion(v) {
 	}
 }
 
-export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
+export function detectPythonInfo({ minMajor = 3, minMinor = 11, useCache = true } = {}) {
+	if (useCache) {
+		const cached = _loadCache()
+		if (cached) return { ...cached, fromCache: true }
+	}
+
 	const found = detectPythonCommand()
 	if (!found) {
-		return {
+		const result = {
 			ok: false,
 			meetsRequirement: false,
 			recommended: false,
 			isBundled: false,
 			detail: '不存在 Python 环境（未检测到内置 Python 或系统 python/py 命令）。'
 		}
+		_saveCache(result)
+		return result
 	}
 
 	let detail = ''
@@ -118,7 +175,7 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 		detail = _firstLine(r.stdout || r.stderr) || ''
 		parsed = _parseVersion(detail)
 	} catch (e) {
-		return {
+		const result = {
 			ok: false,
 			meetsRequirement: false,
 			recommended: false,
@@ -127,6 +184,8 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 			argsPrefix: found.argsPrefix,
 			detail: `Python 版本检测失败：${String(e?.message || e)}`
 		}
+		_saveCache(result)
+		return result
 	}
 
 	let meetsRequirement = false
@@ -144,7 +203,7 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 	}
 
 	if (!parsed && !found.isBundled) {
-		return {
+		const result = {
 			ok: false,
 			meetsRequirement: false,
 			recommended: false,
@@ -153,9 +212,11 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 			argsPrefix: found.argsPrefix,
 			detail: `无法解析 Python 版本：${detail || 'unknown'}`
 		}
+		_saveCache(result)
+		return result
 	}
 
-	return {
+	const result = {
 		ok: true,
 		meetsRequirement,
 		recommended,
@@ -165,4 +226,6 @@ export function detectPythonInfo({ minMajor = 3, minMinor = 11 } = {}) {
 		version: parsed ? `${parsed.major}.${parsed.minor}.${parsed.patch}` : 'bundled',
 		detail: detail || `Python ${parsed?.major || 3}.${parsed?.minor || 11}.${parsed?.patch || 0}`
 	}
+	_saveCache(result)
+	return result
 }
