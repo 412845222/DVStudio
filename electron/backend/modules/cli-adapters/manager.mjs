@@ -4,14 +4,12 @@
  * 管理多个 CLI 适配器，提供统一的接口。
  */
 
-import { ClaudeCliAdapter } from './claudeCli.mjs';
 import { CodexCliAdapter } from './codexCli.mjs';
 import { CopilotCliAdapter } from './copilotCli.mjs';
 import { registerCLIAdapter, cliAdapterRegistry } from './base.mjs';
 import logger from '../../core/logger.mjs';
 
 // 注册默认适配器
-registerCLIAdapter('claude', ClaudeCliAdapter);
 registerCLIAdapter('codex', CodexCliAdapter);
 registerCLIAdapter('copilot', CopilotCliAdapter);
 

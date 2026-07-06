@@ -22,7 +22,8 @@
   "titlebar.devTools": "打开开发者工具",
   "titlebar.about": "关于",
   "titlebar.minimize": "最小化",
-  "titlebar.maximize": "最大化/还原",
+  "titlebar.maximize": "最大化",
+  "titlebar.restore": "还原",
   "titlebar.close": "关闭",
   "titlebar.language": "语言",
   "titlebar.windowControls": "窗口控制"

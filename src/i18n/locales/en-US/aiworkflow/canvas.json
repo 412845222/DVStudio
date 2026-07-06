@@ -9,5 +9,9 @@
   "aiworkflow.canvas.cancelSelection": "Cancel Selection",
   "aiworkflow.canvas.enterTagName": "Enter tag name...",
   "aiworkflow.canvas.save": "Save",
-  "aiworkflow.canvas.cancel": "Cancel"
+  "aiworkflow.canvas.cancel": "Cancel",
+  "aiworkflow.canvas.minimap": "Minimap",
+  "aiworkflow.canvas.minimapFitAll": "Fit all nodes",
+  "aiworkflow.canvas.minimapCollapse": "Collapse",
+  "aiworkflow.canvas.minimapExpand": "Expand minimap"
 }

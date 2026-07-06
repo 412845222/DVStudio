@@ -2,8 +2,7 @@
 	<div class="imp-root">
 		<div class="imp-toolbar">
 			<div class="imp-toolbar-left">
-				<span class="imp-title">图片预览与标记</span>
-				<span v-if="sourceName" class="imp-subtitle">{{ sourceName }}</span>
+				<span class="imp-subtitle" v-if="sourceName">{{ sourceName }}</span>
 			</div>
 			<div class="imp-toolbar-right">
 				<button
@@ -11,46 +10,46 @@
 					type="button"
 					:class="{ active: mode === 'view' }"
 					@click="setMode('view')"
-					title="浏览模式：拖拽移动"
+					:title="t('nodes.imageMarkup.browseMode')"
 				>
-					浏览
+					{{ t('nodes.imageMarkup.browse') }}
 				</button>
 				<button
 					class="imp-btn"
 					type="button"
 					:class="{ active: mode === 'brush' }"
 					@click="setMode('brush')"
-					title="画笔模式：红色画笔标记"
+					:title="t('nodes.imageMarkup.brushMode')"
 				>
-					画笔
+					{{ t('nodes.imageMarkup.brush') }}
 				</button>
 				<button
 					class="imp-btn"
 					type="button"
 					:class="{ active: mode === 'screenshot' }"
 					@click="setMode('screenshot')"
-					title="截图模式：框选区域截图"
+					:title="t('nodes.imageMarkup.screenshotMode')"
 				>
-					截图
+					{{ t('nodes.imageMarkup.screenshot') }}
 				</button>
 				<span class="imp-sep"></span>
-				<button class="imp-btn" type="button" @click="zoomBy(1.2)" title="放大">放大</button>
-				<button class="imp-btn" type="button" @click="zoomBy(1 / 1.2)" title="缩小">缩小</button>
-				<button class="imp-btn" type="button" @click="resetTransform" title="重置为原始大小">
-					重置
+				<button class="imp-btn" type="button" @click="zoomBy(1.2)" :title="t('nodes.imageMarkup.zoomIn')">{{ t('nodes.imageMarkup.zoomIn') }}</button>
+				<button class="imp-btn" type="button" @click="zoomBy(1 / 1.2)" :title="t('nodes.imageMarkup.zoomOut')">{{ t('nodes.imageMarkup.zoomOut') }}</button>
+				<button class="imp-btn" type="button" @click="resetTransform" :title="t('nodes.imageMarkup.resetTransform')">
+					{{ t('nodes.imageMarkup.reset') }}
 				</button>
-				<button class="imp-btn" type="button" @click="fitToView" title="适应窗口">适应</button>
+				<button class="imp-btn" type="button" @click="fitToView" :title="t('nodes.imageMarkup.fitToView')">{{ t('nodes.imageMarkup.fitToView') }}</button>
 				<span class="imp-sep"></span>
-				<button class="imp-btn" type="button" @click="rotateBy(-90)" title="向左旋转 90°">
-					左旋
+				<button class="imp-btn" type="button" @click="rotateBy(-90)" :title="t('nodes.imageMarkup.rotateLeft')">
+					{{ t('nodes.imageMarkup.rotateLeftShort') }}
 				</button>
-				<button class="imp-btn" type="button" @click="rotateBy(90)" title="向右旋转 90°">
-					右旋
+				<button class="imp-btn" type="button" @click="rotateBy(90)" :title="t('nodes.imageMarkup.rotateRight')">
+					{{ t('nodes.imageMarkup.rotateRightShort') }}
 				</button>
 				<template v-if="mode === 'brush'">
 					<span class="imp-sep"></span>
 					<label class="imp-brush-label">
-						画笔粗细：
+						{{ t('nodes.imageMarkup.brushSize') }}
 						<input
 							type="range"
 							min="1"
@@ -62,34 +61,33 @@
 						<span class="imp-brush-size">{{ brushSize }}px</span>
 					</label>
 					<span class="imp-sep"></span>
-					<button class="imp-btn" type="button" @click="clearBrush" title="清除所有画笔标记">
-						清除标记
+					<button class="imp-btn" type="button" @click="clearBrush" :title="t('nodes.imageMarkup.clearBrush')">
+						{{ t('nodes.imageMarkup.clearMarkup') }}
 					</button>
 					<button
 						class="imp-btn imp-btn-primary"
 						type="button"
 						@click="onExportMarkup"
-						title="导出带有标记的图像，作为新节点连入原图片节点下游"
+						:title="t('nodes.imageMarkup.exportMarkupTooltip')"
 					>
-						导出标记
+						{{ t('nodes.imageMarkup.exportMarkup') }}
 					</button>
 				</template>
 				<template v-if="mode === 'screenshot'">
 					<span class="imp-sep"></span>
-					<button class="imp-btn" type="button" @click="resetScreenshot" title="重置截图选框">
-						重置选框
+					<button class="imp-btn" type="button" @click="resetScreenshot" :title="t('nodes.imageMarkup.resetScreenshot')">
+						{{ t('nodes.imageMarkup.resetRect') }}
 					</button>
 					<button
 						class="imp-btn imp-btn-primary"
 						type="button"
 						:disabled="!screenshotRect"
 						@click="onExportScreenshot"
-						title="确认截图并导出为新节点"
+						:title="t('nodes.imageMarkup.confirmScreenshot')"
 					>
-						确认截图
+						{{ t('nodes.imageMarkup.confirmScreenshotShort') }}
 					</button>
 				</template>
-				<button class="imp-btn" type="button" @click="onClose" title="关闭窗口">关闭</button>
 			</div>
 		</div>
 
@@ -106,13 +104,13 @@
 			<canvas ref="canvasRef" class="imp-canvas" :style="canvasStyle"></canvas>
 			<canvas ref="overlayRef" class="imp-overlay" :style="canvasStyle"></canvas>
 			<div v-if="!imageLoaded" class="imp-loading">
-				<div class="imp-loading-text">图片加载中…</div>
+				<div class="imp-loading-text">{{ t('nodes.imageMarkup.loading') }}</div>
 			</div>
 			<div v-if="imageLoaded && naturalWidth" class="imp-info">
-				原始尺寸：{{ naturalWidth }} × {{ naturalHeight }} | 缩放：{{ Math.round(zoom * 100) }}% |
-				旋转：{{ rotation }}°
+				{{ t('nodes.imageMarkup.originalSize') }}：{{ naturalWidth }} × {{ naturalHeight }} | {{ t('nodes.imageMarkup.zoom') }}：{{ Math.round(zoom * 100) }}% |
+				{{ t('nodes.imageMarkup.rotation') }}：{{ rotation }}°
 				<span v-if="mode === 'screenshot' && screenshotRect">
-					| 截图区域：{{ Math.round(screenshotRect.w) }} × {{ Math.round(screenshotRect.h) }}
+					| {{ t('nodes.imageMarkup.screenshotArea') }}：{{ Math.round(screenshotRect.w) }} × {{ Math.round(screenshotRect.h) }}
 				</span>
 			</div>
 		</div>
@@ -121,6 +119,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, onMounted } from 'vue'
+import { useI18n } from '../i18n'
 
 type Mode = 'view' | 'brush' | 'screenshot'
 
@@ -139,6 +138,8 @@ type ImageMarkupDwebBridge = {
 		}
 	}
 }
+
+const { t } = useI18n()
 
 const viewportRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -499,13 +500,13 @@ const drawScreenshotOverlay = (ctx: CanvasRenderingContext2D, w: number, h: numb
 	ctx.fillRect(0, rect.y, rect.x, rect.h)
 	ctx.fillRect(rect.x + rect.w, rect.y, w - rect.x - rect.w, rect.h)
 
-	ctx.strokeStyle = '#4c9aff'
+	ctx.strokeStyle = 'var(--theme-accent, #4c9aff)'
 	ctx.lineWidth = 2
 	ctx.setLineDash([6, 4])
 	ctx.strokeRect(rect.x, rect.y, rect.w, rect.h)
 	ctx.setLineDash([])
 
-	ctx.fillStyle = '#4c9aff'
+	ctx.fillStyle = 'var(--theme-accent, #4c9aff)'
 	const handles: Array<[number, number]> = [
 		[rect.x, rect.y],
 		[rect.x + rect.w / 2, rect.y],
@@ -654,7 +655,7 @@ const onExportMarkup = async () => {
 	} catch (err) {
 		console.warn('[ImageMarkupPreview] export failed', err)
 	}
-	alert('当前环境不支持直接导出到原工作流。您仍可右键保存图像。')
+	alert(t('nodes.imageMarkup.exportNotSupported'))
 }
 
 const onExportScreenshot = async () => {
@@ -676,16 +677,7 @@ const onExportScreenshot = async () => {
 	} catch (err) {
 		console.warn('[ImageMarkupPreview] screenshot export failed', err)
 	}
-	alert('当前环境不支持直接导出到原工作流。')
-}
-
-const onClose = () => {
-	try {
-		if (typeof window.close === 'function') {
-			window.close()
-		}
-	} catch {
-	}
+	alert(t('nodes.imageMarkup.exportScreenshotNotSupported'))
 }
 
 const parseUrlQuery = (): { url: string; name: string } => {
@@ -701,7 +693,7 @@ const parseUrlQuery = (): { url: string; name: string } => {
 
 onMounted(async () => {
 	const { url, name } = parseUrlQuery()
-	sourceName.value = name || '图片预览'
+	sourceName.value = name || t('nodes.imageMarkup.defaultTitle')
 	document.title = `DVStudio · ${sourceName.value}`
 	if (url) {
 		try {
@@ -722,12 +714,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .imp-root {
-	position: fixed;
-	inset: 0;
+	width: 100%;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
-	background: #16181d;
-	color: #e6e6e6;
+	background: var(--theme-bg-primary);
+	color: var(--theme-text-primary);
 	font-family:
 		-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 	user-select: none;
@@ -738,8 +730,8 @@ onBeforeUnmount(() => {
 	align-items: center;
 	justify-content: space-between;
 	padding: 8px 12px;
-	border-bottom: 1px solid #2a2d33;
-	background: #1e1f22;
+	border-bottom: 1px solid var(--theme-border);
+	background: var(--theme-bg-secondary);
 	flex-wrap: wrap;
 	gap: 8px;
 }
@@ -757,7 +749,7 @@ onBeforeUnmount(() => {
 }
 .imp-subtitle {
 	font-size: 12px;
-	color: #a6a9af;
+	color: var(--theme-text-secondary);
 }
 
 .imp-toolbar-right {
@@ -770,9 +762,9 @@ onBeforeUnmount(() => {
 .imp-btn {
 	padding: 4px 10px;
 	border-radius: 4px;
-	border: 1px solid #3a3d42;
-	background: #2a2d33;
-	color: #e6e6e6;
+	border: 1px solid var(--theme-border);
+	background: var(--theme-bg-tertiary);
+	color: var(--theme-text-primary);
 	font-size: 12px;
 	cursor: pointer;
 	transition:
@@ -781,22 +773,22 @@ onBeforeUnmount(() => {
 		color 160ms ease;
 }
 .imp-btn:hover {
-	background: #353840;
-	border-color: #4a4d55;
+	background: var(--theme-hover-bg);
+	border-color: var(--theme-hover-border);
 }
 .imp-btn.active {
-	background: #3b5bdb;
-	border-color: #4c6ef5;
+	background: var(--theme-accent);
+	border-color: var(--theme-accent);
 	color: #ffffff;
 }
 .imp-btn-primary {
-	background: #2b8a3e;
-	border-color: #37b24d;
+	background: var(--theme-success);
+	border-color: var(--theme-success);
 	color: #ffffff;
 }
 .imp-btn-primary:hover {
-	background: #2f9e44;
-	border-color: #51cf66;
+	background: color-mix(in srgb, var(--theme-success) 85%, white);
+	border-color: color-mix(in srgb, var(--theme-success) 85%, white);
 }
 .imp-btn:disabled {
 	opacity: 0.5;
@@ -807,7 +799,7 @@ onBeforeUnmount(() => {
 	display: inline-block;
 	width: 1px;
 	height: 18px;
-	background: #3a3d42;
+	background: var(--theme-border);
 	margin: 0 4px;
 }
 
@@ -816,13 +808,13 @@ onBeforeUnmount(() => {
 	align-items: center;
 	gap: 8px;
 	font-size: 12px;
-	color: #bfc3cc;
+	color: var(--theme-text-secondary);
 }
 .imp-brush-range {
 	width: 120px;
 }
 .imp-brush-size {
-	color: #e6e6e6;
+	color: var(--theme-text-primary);
 	min-width: 32px;
 	text-align: right;
 }
@@ -832,11 +824,11 @@ onBeforeUnmount(() => {
 	flex: 1 1 auto;
 	overflow: hidden;
 	background:
-		linear-gradient(45deg, #1f2126 25%, transparent 25%) 0 0 / 20px 20px,
-		linear-gradient(-45deg, #1f2126 25%, transparent 25%) 0 10px / 20px 20px,
-		linear-gradient(45deg, transparent 75%, #1f2126 75%) 10px -10px / 20px 20px,
-		linear-gradient(-45deg, transparent 75%, #1f2126 75%) -10px 0 / 20px 20px,
-		#121317;
+		linear-gradient(45deg, color-mix(in srgb, var(--theme-bg-secondary) 50%, transparent) 25%, transparent 25%) 0 0 / 20px 20px,
+		linear-gradient(-45deg, color-mix(in srgb, var(--theme-bg-secondary) 50%, transparent) 25%, transparent 25%) 0 10px / 20px 20px,
+		linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--theme-bg-secondary) 50%, transparent) 75%) 10px -10px / 20px 20px,
+		linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--theme-bg-secondary) 50%, transparent) 75%) -10px 0 / 20px 20px,
+		var(--theme-bg-primary);
 }
 .imp-viewport.brush {
 	cursor: crosshair;
@@ -866,11 +858,11 @@ onBeforeUnmount(() => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(15, 16, 20, 0.55);
+	background: color-mix(in srgb, var(--theme-bg-primary) 75%, transparent);
 	z-index: 10;
 }
 .imp-loading-text {
-	color: #a6a9af;
+	color: var(--theme-text-secondary);
 	font-size: 13px;
 }
 
@@ -880,8 +872,8 @@ onBeforeUnmount(() => {
 	bottom: 10px;
 	padding: 4px 8px;
 	border-radius: 4px;
-	background: rgba(20, 22, 28, 0.75);
-	color: #bfc3cc;
+	background: color-mix(in srgb, var(--theme-bg-tertiary) 85%, transparent);
+	color: var(--theme-text-secondary);
 	font-size: 12px;
 	z-index: 10;
 	pointer-events: none;
