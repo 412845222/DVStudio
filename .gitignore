@@ -144,6 +144,20 @@ electron/platform/native/*/
 steam-pipe/
 
 # ============================================================
+# Steam local configuration & private implementation
+# ============================================================
+# steam.config.json contains the real Steam AppID (do NOT commit).
+# Use steam.config.example.json as a template.
+steam.config.json
+
+# Private platform/provider implementations (*.local.cjs / *.local.mjs)
+# contain sensitive integration details that must not be pushed to public repos.
+# The public stubs (e.g. steam.mjs) will gracefully fall back to disabled state
+# when the local implementation file is absent.
+*.local.cjs
+*.local.mjs
+
+# ============================================================
 # Admin Publisher Tool (NEVER commit this directory)
 # ============================================================
 # Official template publisher backend tool (operator-only).

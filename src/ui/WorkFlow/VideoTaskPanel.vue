@@ -164,11 +164,7 @@
 	</div>
 </template>
 
-<script setup lang="ts">
-import { useI18n } from '../../i18n'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type VideoTaskPanelItem = {
 	taskId: string
 	model: string
@@ -188,6 +184,12 @@ export type VideoTaskPanelItem = {
 	updatedAt: string
 	syncedAt?: string
 }
+</script>
+
+<script setup lang="ts">
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	open: boolean

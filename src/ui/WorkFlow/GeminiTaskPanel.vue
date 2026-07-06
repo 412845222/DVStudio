@@ -384,12 +384,7 @@
 	</teleport>
 </template>
 
-<script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useI18n } from '../../i18n'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type GeminiTaskPanelItem = {
 	id: string
 	nodeId?: string
@@ -444,6 +439,13 @@ export type GeminiTaskPanelDetail = {
 }
 
 export type GeminiTaskPanelAction = 'refresh' | 'delete' | 'import-output' | 'clear-completed'
+</script>
+
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	open: boolean

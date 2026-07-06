@@ -426,16 +426,7 @@
 	</div>
 </template>
 
-<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useI18n } from '../../i18n'
-import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
-import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
-import type { WorkflowResource } from '../../aiworkflow/resource/types'
-import type { WorkflowNode } from '../../aiworkflow/types'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type BlueprintProjectListItem = {
 	id: number
 	name: string
@@ -451,6 +442,17 @@ export type ToolbarResourceItem = WorkflowResource & {
 	usageCount?: number
 	usedBy?: Array<{ nodeId: string; nodeTitle: string; nodeType: string }>
 }
+</script>
+
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
+import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
+import type { WorkflowResource } from '../../aiworkflow/resource/types'
+import type { WorkflowNode } from '../../aiworkflow/types'
+
+const { t } = useI18n()
 
 type FloatingPanel = '' | 'project' | 'resources' | 'tasks'
 

@@ -105,10 +105,7 @@
 	</div>
 </template>
 
-<script setup lang="ts">
-import { computed, watch } from 'vue'
-import { NODE_CHAT_MESHY_IMAGE_OPTIONS, getMeshyImageAspectRatioOptions } from '../BluePrint/node-dialog/nodeChatConfig'
-
+<script lang="ts">
 export interface MeshyImageConfig {
 	prompt?: string
 	negativePrompt?: string
@@ -119,6 +116,11 @@ export interface MeshyImageConfig {
 	poseMode?: string
 	seed?: number
 }
+</script>
+
+<script setup lang="ts">
+import { computed, watch } from 'vue'
+import { NODE_CHAT_MESHY_IMAGE_OPTIONS, getMeshyImageAspectRatioOptions } from '../BluePrint/node-dialog/nodeChatConfig'
 
 const props = defineProps<{
 	config: MeshyImageConfig

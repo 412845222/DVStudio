@@ -3,18 +3,97 @@
 // - dev:electron / dev:electron:app 启动前也会再次触发
 // 核心：better-sqlite3 的原生 .node 文件必须与 Electron 内置 Node 的 NODE_MODULE_VERSION 一致，
 //      否则主进程里 require('better-sqlite3') 就会报 "was compiled against a different Node.js version..."。
+//
+// 性能优化：添加缓存机制，避免每次开发启动都启动 Electron 进程做 probe
 import { execSync, spawnSync } from 'node:child_process'
-import { existsSync, writeFileSync, mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, writeFileSync, mkdtempSync, rmSync, readdirSync, readFileSync, mkdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
+import crypto from 'node:crypto'
 
 const ROOT = process.cwd()
 const IS_WIN = process.platform === 'win32'
 const FAIL_ON_ERROR = process.env.DWEB_FAIL_ON_REBUILD_ERROR === '1'
+const CACHE_DIR = path.join(ROOT, 'node_modules', '.cache')
+const PROBE_CACHE_FILE = path.join(CACHE_DIR, 'dweb-bsqlite3-probe-cache.json')
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24小时缓存
 
 function fail(reason) {
 	console.error('[rebuild-better-sqlite3] 致命错误：' + reason)
 	process.exit(FAIL_ON_ERROR ? 2 : 0)
+}
+
+function getFileHash(filePath) {
+	try {
+		const stat = statSync(filePath)
+		return crypto.createHash('sha256').update(String(stat.mtimeMs) + stat.size).digest('hex')
+	} catch {
+		return null
+	}
+}
+
+function getBetterSqlite3BinariesHash() {
+	const binaries = enumerateBetterSqlite3Binaries()
+	const hashes = binaries.map((f) => path.basename(f) + ':' + (getFileHash(f) || '0'))
+	return crypto.createHash('sha256').update(hashes.join('|')).digest('hex')
+}
+
+function loadProbeCache() {
+	try {
+		if (!existsSync(PROBE_CACHE_FILE)) return null
+		const raw = readFileSync(PROBE_CACHE_FILE, 'utf8')
+		const cache = JSON.parse(raw)
+		if (!cache || typeof cache !== 'object') return null
+		if (!cache.electronVersion || !cache.binariesHash || !cache.timestamp) return null
+		const age = Date.now() - Number(cache.timestamp || 0)
+		if (age > CACHE_TTL_MS) return null
+		return cache
+	} catch {
+		return null
+	}
+}
+
+function saveProbeCache(electronVersion, binariesHash, ok) {
+	try {
+		mkdirSync(CACHE_DIR, { recursive: true })
+		writeFileSync(
+			PROBE_CACHE_FILE,
+			JSON.stringify(
+				{
+					electronVersion,
+					binariesHash,
+					ok: !!ok,
+					timestamp: Date.now(),
+					nodeVersion: process.version,
+					modulesVersion: process.versions.modules,
+				},
+				null,
+				2
+			),
+			'utf8'
+		)
+	} catch {
+		// ignore cache write errors
+	}
+}
+
+function quickAbiCheck(electronVersion) {
+	try {
+		const pkgPath = path.resolve(ROOT, 'node_modules', 'better-sqlite3', 'package.json')
+		if (!existsSync(pkgPath)) return false
+		const binaries = enumerateBetterSqlite3Binaries()
+		if (binaries.length === 0) return false
+		const bindingDir = path.dirname(binaries[0])
+		const configPath = path.join(bindingDir, 'binding.gyp')
+		if (!existsSync(configPath)) {
+			const parentDir = path.dirname(bindingDir)
+			const altConfig = path.join(parentDir, 'binding.gyp')
+			if (!existsSync(altConfig)) return true
+		}
+		return true
+	} catch {
+		return false
+	}
 }
 
 function readElectronVersion() {
@@ -195,17 +274,46 @@ if (!existsSync(pkgPath)) {
 	process.exit(0)
 }
 
-// Step 2: 权威 probe（Electron 进程里直接 require）
-// 注意：postinstall 阶段 electron 可能刚下载完成，node_modules/.bin/electron.cmd 可能还没创建，
-//      此时 probe 也会失败 —— 我们把"probe 失败"一律视为"需要重建"，最保守、最稳。
-console.log('[rebuild-better-sqlite3] 启动 Electron probe...')
-const electronProbe = probeInElectronProcess()
-console.log('[rebuild-better-sqlite3] electron-probe: ' + JSON.stringify(electronProbe))
+// Step 2: 快速检查 + 缓存验证（避免每次都启动 Electron 进程）
+const currentBinariesHash = getBetterSqlite3BinariesHash()
+const cachedResult = loadProbeCache()
+const quickOk = quickAbiCheck(electronVersion)
+
+let electronProbe = null
+let usedCache = false
+
+if (
+	quickOk &&
+	cachedResult &&
+	cachedResult.ok &&
+	cachedResult.electronVersion === electronVersion &&
+	cachedResult.binariesHash === currentBinariesHash
+) {
+	console.log('[rebuild-better-sqlite3] 缓存命中：better-sqlite3 已验证兼容，跳过 Electron probe')
+	electronProbe = { ok: true, fromCache: true }
+	usedCache = true
+} else {
+	// 缓存未命中或快速检查失败：执行权威 probe
+	if (cachedResult) {
+		console.log('[rebuild-better-sqlite3] 缓存未命中（版本或二进制变化），启动 Electron probe...')
+	} else {
+		console.log('[rebuild-better-sqlite3] 启动 Electron probe...')
+	}
+	electronProbe = probeInElectronProcess()
+	console.log('[rebuild-better-sqlite3] electron-probe: ' + JSON.stringify(electronProbe))
+	saveProbeCache(electronVersion, currentBinariesHash, electronProbe.ok)
+}
 
 if (electronProbe.ok) {
-	console.log(
-		'[rebuild-better-sqlite3] better-sqlite3 已与 Electron ' + electronVersion + ' 兼容，跳过重建。'
-	)
+	if (usedCache) {
+		console.log(
+			'[rebuild-better-sqlite3] better-sqlite3 已与 Electron ' + electronVersion + ' 兼容（来自缓存）。'
+		)
+	} else {
+		console.log(
+			'[rebuild-better-sqlite3] better-sqlite3 已与 Electron ' + electronVersion + ' 兼容，跳过重建。'
+		)
+	}
 	process.exit(0)
 }
 
@@ -226,6 +334,8 @@ if (rebuiltOk) {
 				JSON.stringify(enumerateBetterSqlite3Binaries()) +
 				')'
 		)
+		const newBinariesHash = getBetterSqlite3BinariesHash()
+		saveProbeCache(electronVersion, newBinariesHash, true)
 		process.exit(0)
 	}
 	console.warn(

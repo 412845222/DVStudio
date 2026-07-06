@@ -39,6 +39,45 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
+      watch: {
+        ignored: [
+          '**/release-*/**',
+          '**/release/**',
+          '**/steam-pipe/**',
+          '**/SteamworksSDK/**',
+          '**/DwebSteamJS/**',
+          '**/DVSResource/**',
+          '**/.electron-cache/**',
+          '**/dist/**',
+          '**/python-runtime/**',
+          '**/django-app/**',
+          '**/admin-publisher/**',
+          '**/html/**',
+          '**/AIPlan/**',
+          '**/agent_docs/**',
+          '**/samples/**',
+          '**/electron/static/runtime/**',
+          '**/node_modules/.cache/**',
+          '**/*.log',
+          '**/*.sqlite',
+          '**/*.sqlite3',
+          '**/*.db',
+          '**/.git/**',
+        ],
+      },
+      fs: {
+        deny: [
+          '**/release-*',
+          '**/steam-pipe',
+          '**/SteamworksSDK',
+          '**/DwebSteamJS',
+          '**/DVSResource',
+          '**/.electron-cache',
+          '**/python-runtime',
+          '**/django-app',
+          '**/admin-publisher',
+        ],
+      },
       proxy: {
         '/api': {
           target: VITE_BACKEND_BASE_URL,
@@ -105,6 +144,10 @@ export default defineConfig(({ mode }) => {
           proxyTimeout: 0,
         },
       },
+    },
+    optimizeDeps: {
+      entries: ['index.html', 'src/**/*.{vue,ts,tsx,js,jsx}'],
+      exclude: ['electron', '@modelcontextprotocol/sdk', 'better-sqlite3'],
     },
     plugins: [
       vue(),
