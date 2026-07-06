@@ -289,9 +289,13 @@ export class CloudTemplatesService {
         return this._getIndex()
     }
 
-    async listTemplates() {
+    async listTemplates(options = {}) {
         try {
-            await this.refreshIndex()
+            const { forceRefresh = false } = options
+            if (forceRefresh) {
+                console.log('[cloud-templates] Force refreshing index from cloud')
+                await this.refreshIndex()
+            }
             
             const adapter = this.getAdapter()
             console.log('[cloud-templates] listTemplates using adapter:', adapter?.getPlatformId?.(), 'available:', adapter?.isAvailable?.())
@@ -299,7 +303,7 @@ export class CloudTemplatesService {
             const { index } = await this._getIndex()
             const quotaResult = await this.getQuota()
 
-            console.log('[cloud-templates] Returning', index.templates?.length || 0, 'templates')
+            console.log('[cloud-templates] Returning', index.templates?.length || 0, 'templates, quota:', quotaResult.ok ? `${JSON.stringify(quotaResult.quota)}` : quotaResult.errMsg)
 
             return {
                 ok: true,

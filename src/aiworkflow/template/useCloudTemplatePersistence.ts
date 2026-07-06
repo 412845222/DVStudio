@@ -49,11 +49,18 @@ export function useCloudTemplatePersistence() {
 
 	async function loadCloudQuota(): Promise<boolean> {
 		try {
+			console.log('[cloud-templates] Loading cloud quota...')
 			const quota = await getCloudTemplatesQuota()
-			if (!quota?.ok || !quota.quota) return false
+			console.log('[cloud-templates] getCloudTemplatesQuota result:', quota)
+			if (!quota?.ok || !quota.quota) {
+				console.warn('[cloud-templates] Failed to get quota:', quota?.errMsg || 'invalid response')
+				return false
+			}
 			cloudQuotaState.value = quota.quota
+			console.log('[cloud-templates] Quota set:', JSON.stringify(quota.quota))
 			return true
-		} catch {
+		} catch (err) {
+			console.error('[cloud-templates] loadCloudQuota error:', err)
 			return false
 		}
 	}

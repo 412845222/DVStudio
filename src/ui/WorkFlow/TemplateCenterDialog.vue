@@ -282,22 +282,26 @@ const activeTab = ref<TabId>('user')
 
 function formatBytes(bytes: number): string {
 	if (!bytes || bytes <= 0) return '0 B'
-	const units = ['B', 'KB', 'MB', 'GB']
-	const i = Math.floor(Math.log(bytes) / Math.log(1024))
-	return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i]
+	const units = ['B', 'KB', 'MB', 'GB', 'TB']
+	const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+	const val = bytes / Math.pow(1024, i)
+	return val.toFixed(i > 0 ? (val < 10 ? 2 : val < 100 ? 1 : 0) : 0) + ' ' + units[i]
 }
 
 const cloudQuotaText = computed(() => {
-	if (!cloudAvailable.value || !cloudQuota.value) return ''
+	if (!cloudAvailable.value) return ''
+	if (!cloudQuota.value) return '...'
 	const q = cloudQuota.value
 	const used = q.totalBytes - q.availableBytes
-	return `${formatBytes(used)} / ${formatBytes(q.totalBytes)}`
+	const available = q.availableBytes
+	return `${t('aiworkflow.templateCenter.storageUsed')} ${formatBytes(used)} / ${formatBytes(q.totalBytes)} (${t('aiworkflow.templateCenter.storageFree')} ${formatBytes(available)})`
 })
 
 const cloudQuotaPercent = computed(() => {
 	if (!cloudQuota.value || cloudQuota.value.totalBytes <= 0) return 0
 	const used = cloudQuota.value.totalBytes - cloudQuota.value.availableBytes
-	return Math.min(100, Math.max(0, (used / cloudQuota.value.totalBytes) * 100))
+	const pct = (used / cloudQuota.value.totalBytes) * 100
+	return Math.min(100, Math.max(0.5, pct))
 })
 
 const tabs = computed(() => [

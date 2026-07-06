@@ -93,5 +93,7 @@
   "aiworkflow.templateCenter.uploadFailed": "上传失败，请检查 Steam 连接后重试",
   "aiworkflow.templateCenter.downloadSuccess": "模板已下载到本地",
   "aiworkflow.templateCenter.downloadFailed": "下载失败，请检查 Steam 连接后重试",
-  "aiworkflow.templateCenter.cloudStorage": "云存储空间"
+  "aiworkflow.templateCenter.cloudStorage": "云存储空间",
+  "aiworkflow.templateCenter.storageUsed": "已用",
+  "aiworkflow.templateCenter.storageFree": "剩余"
 }

@@ -93,5 +93,7 @@
   "aiworkflow.templateCenter.uploadFailed": "Upload failed, please check Steam connection and retry",
   "aiworkflow.templateCenter.downloadSuccess": "Template downloaded to local",
   "aiworkflow.templateCenter.downloadFailed": "Download failed, please check Steam connection and retry",
-  "aiworkflow.templateCenter.cloudStorage": "Cloud Storage"
+  "aiworkflow.templateCenter.cloudStorage": "Cloud Storage",
+  "aiworkflow.templateCenter.storageUsed": "Used",
+  "aiworkflow.templateCenter.storageFree": "Free"
 }

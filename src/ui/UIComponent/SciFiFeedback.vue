@@ -1,68 +1,68 @@
 <template>
-	<Teleport to="body">
-		<div class="scifi-toast-container" aria-live="polite">
-			<TransitionGroup name="scifi-toast" tag="div" class="scifi-toast-stack">
-				<div
-					v-for="toast in toasts"
-					:key="toast.id"
-					class="scifi-toast"
-					:class="[`scifi-toast--${toast.tone || 'info'}`, { 'scifi-toast--persistent': toast.persistent }]"
-					@mouseenter="onHover(true)"
-					@mouseleave="onHover(false)"
-				>
-					<div class="scifi-toast-border">
-						<span class="scifi-toast-corner scifi-toast-corner-tl"></span>
-						<span class="scifi-toast-corner scifi-toast-corner-tr"></span>
-						<span class="scifi-toast-corner scifi-toast-corner-bl"></span>
-						<span class="scifi-toast-corner scifi-toast-corner-br"></span>
-					</div>
-					<div class="scifi-toast-glow"></div>
-					<div class="scifi-toast-scanline"></div>
-					
-					<div class="scifi-toast-icon">
-						<svg v-if="toast.tone === 'success'" viewBox="0 0 16 16" width="16" height="16">
-							<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						</svg>
-						<svg v-else-if="toast.tone === 'error'" viewBox="0 0 16 16" width="16" height="16">
-							<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor"/>
-						</svg>
-						<svg v-else-if="toast.tone === 'warn'" viewBox="0 0 16 16" width="16" height="16">
-							<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor"/>
-						</svg>
-						<svg v-else viewBox="0 0 16 16" width="16" height="16">
-							<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
-							<path d="M8 5v4M8 11v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-						</svg>
-					</div>
-					
-					<div class="scifi-toast-content">
-						<div class="scifi-toast-message">{{ toast.message }}</div>
-						<div v-if="toast.actions && toast.actions.length > 0" class="scifi-toast-actions">
-							<button
-								v-for="(action, idx) in toast.actions"
-								:key="idx"
-								class="scifi-toast-action-btn"
-								@click="handleAction(toast, action)"
-							>
-								{{ action.label }}
-							</button>
+	<div class="scifi-feedback-root">
+		<Teleport to="body">
+			<div class="scifi-toast-container" aria-live="polite">
+				<TransitionGroup name="scifi-toast" tag="div" class="scifi-toast-stack">
+					<div
+						v-for="toast in toasts"
+						:key="toast.id"
+						class="scifi-toast"
+						:class="[`scifi-toast--${toast.tone || 'info'}`, { 'scifi-toast--persistent': toast.persistent }]"
+						@mouseenter="onHover(true)"
+						@mouseleave="onHover(false)"
+					>
+						<div class="scifi-toast-border">
+							<span class="scifi-toast-corner scifi-toast-corner-tl"></span>
+							<span class="scifi-toast-corner scifi-toast-corner-tr"></span>
+							<span class="scifi-toast-corner scifi-toast-corner-bl"></span>
+							<span class="scifi-toast-corner scifi-toast-corner-br"></span>
+						</div>
+						<div class="scifi-toast-glow"></div>
+						<div class="scifi-toast-scanline"></div>
+						
+						<div class="scifi-toast-icon">
+							<svg v-if="toast.tone === 'success'" viewBox="0 0 16 16" width="16" height="16">
+								<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+							<svg v-else-if="toast.tone === 'error'" viewBox="0 0 16 16" width="16" height="16">
+								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor"/>
+							</svg>
+							<svg v-else-if="toast.tone === 'warn'" viewBox="0 0 16 16" width="16" height="16">
+								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor"/>
+							</svg>
+							<svg v-else viewBox="0 0 16 16" width="16" height="16">
+								<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+								<path d="M8 5v4M8 11v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+							</svg>
+						</div>
+						
+						<div class="scifi-toast-content">
+							<div class="scifi-toast-message">{{ toast.message }}</div>
+							<div v-if="toast.actions && toast.actions.length > 0" class="scifi-toast-actions">
+								<button
+									v-for="(action, idx) in toast.actions"
+									:key="idx"
+									class="scifi-toast-action-btn"
+									@click="handleAction(toast, action)"
+								>
+									{{ action.label }}
+								</button>
+							</div>
+						</div>
+						
+						<button v-if="!toast.persistent || toast.showClose" class="scifi-toast-close" @click="removeToast(toast.id)" aria-label="Close">
+							<svg viewBox="0 0 16 16" width="12" height="12">
+								<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+							</svg>
+						</button>
+						
+						<div v-if="!toast.persistent" class="scifi-toast-progress">
+							<div class="scifi-toast-progress-fill" :style="{ animationDuration: `${toast.duration || 2600}ms`, animationPlayState: isHovering ? 'paused' : 'running' }"></div>
 						</div>
 					</div>
-					
-					<button v-if="!toast.persistent || toast.showClose" class="scifi-toast-close" @click="removeToast(toast.id)" aria-label="Close">
-						<svg viewBox="0 0 16 16" width="12" height="12">
-							<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-						</svg>
-					</button>
-					
-					<div v-if="!toast.persistent" class="scifi-toast-progress">
-						<div class="scifi-toast-progress-fill" :style="{ animationDuration: `${toast.duration || 2600}ms`, animationPlayState: isHovering ? 'paused' : 'running' }"></div>
-					</div>
-				</div>
-			</TransitionGroup>
-		</div>
-		
-		<Teleport to="body">
+				</TransitionGroup>
+			</div>
+			
 			<Transition name="scifi-modal">
 				<div v-if="activeModal" class="scifi-modal-mask" @click.self="handleModalCancel">
 					<div class="scifi-modal">
@@ -115,10 +115,10 @@
 				</div>
 			</Transition>
 		</Teleport>
-	</template>
+	</div>
+</template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useGlobalFeedback } from './useGlobalFeedback'
 
 const {
@@ -150,6 +150,11 @@ function handleModalCancel() {
 </script>
 
 <style scoped>
+/* ========== ROOT ========== */
+.scifi-feedback-root {
+	display: contents;
+}
+
 /* ========== TOAST STYLES ========== */
 .scifi-toast-container {
 	position: fixed;
