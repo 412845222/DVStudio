@@ -8,29 +8,10 @@ import type {
 	AgentBackendType
 } from '../../../../ui/UIComponent/BottomChatDock.vue'
 import type { WorkflowAnchorSpec, WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
-import type { BlueprintChatStreamEvent } from '../../../../network/ComfyUIBridgeService'
-import { agentStream, agentAbort, type AgentStreamChunk } from '../../../../network/AgentChatService'
-import { cliSendMessage, cliCancel, type CLIStreamChunk } from '../../../../network/CLIChatService'
+import { getAgentChatBridge } from '../../../../network/chat'
 import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/utils'
 import { getChatModelById } from '../../../../ai/models/chatModels'
 import { t } from '../../../../i18n'
-
-type LocalExecSessionCreateResult = {
-	id?: unknown
-	title?: unknown
-	status?: unknown
-	model_name?: unknown
-	error?: unknown
-}
-
-type LocalExecStreamEvent =
-	| { type: 'done' }
-	| { type: 'error'; error?: { message?: unknown } }
-	| {
-			type: 'event'
-			event?: unknown
-			data?: unknown
-	  }
 
 type CacheRefImagesResult = {
 	ok?: unknown
@@ -53,73 +34,25 @@ type ChatStreamResult = {
 	error?: unknown
 }
 
-export type ChatBridgeService = {
-	blueprintChatStream: (
-		payload: {
-			content: string
-			history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
-		},
-		signal?: AbortSignal
-	) => AsyncIterable<BlueprintChatStreamEvent>
-	localExecCreateSession?: (payload?: {
-		title?: string
-		cwd?: string
-		model?: string
-		projectId?: number | null
-	}) => Promise<LocalExecSessionCreateResult>
-	localExecStreamMessage?: (
-		sessionId: string,
-		payload: {
-			content: string
-			references?: Array<{ path: string; kind?: string; name?: string }>
-			projectId?: number | null
-			skillHints?: string[]
-			executionHints?: string[]
-			agentMode?: 'agent' | 'ask' | 'plan'
-			permissionProfile?: string
-		},
-		signal?: AbortSignal
-	) => AsyncIterable<LocalExecStreamEvent>
-	localExecListMessages?: (sessionId: string, projectId: number | null) => Promise<unknown>
-	localExecSubmitApproval?: (payload: {
-		sessionId: string
-		messageId: string
-		decision: 'accept' | 'decline'
-		projectId?: number | null
-	}) => Promise<unknown>
-	codexCreateSession: (payload?: {
-		title?: string
-		cwd?: string
-		model?: string
-		projectId?: number | null
-	}) => Promise<LocalExecSessionCreateResult>
-	codexStreamMessage: (
-		sessionId: string,
-		payload: {
-			content: string
-			references?: Array<{ path: string; kind?: string; name?: string }>
-			projectId?: number | null
-			skillHints?: string[]
-			executionHints?: string[]
-			agentMode?: 'agent' | 'ask' | 'plan'
-			permissionProfile?: string
-		},
-		signal?: AbortSignal
-	) => AsyncIterable<LocalExecStreamEvent>
-	codexListMessages: (sessionId: string, projectId: number | null) => Promise<unknown>
-	codexSubmitApproval: (payload: {
-		sessionId: string
-		messageId: string
-		decision: 'accept' | 'decline'
-		projectId?: number | null
-	}) => Promise<unknown>
+type MediaStreamMessage = {
+	type: string
+	payload?: unknown
+}
+
+type MediaStreamEvent = {
+	type?: 'done' | 'error' | 'msg'
+	error?: { message?: unknown }
+	message?: MediaStreamMessage
+}
+
+export type MediaGenerationService = {
 	nanoBananaCacheRefImages: (form: FormData) => Promise<CacheRefImagesResult>
 	seedreamCacheRefImages: (form: FormData) => Promise<CacheRefImagesResult>
-	nanoBananaGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
-	seedreamGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
-	jimengImageGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
-	jimengVideoGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
-	seedanceGenerateStream: (form: FormData) => AsyncIterable<BlueprintChatStreamEvent>
+	nanoBananaGenerateStream: (form: FormData) => AsyncIterable<MediaStreamEvent>
+	seedreamGenerateStream: (form: FormData) => AsyncIterable<MediaStreamEvent>
+	jimengImageGenerateStream: (form: FormData) => AsyncIterable<MediaStreamEvent>
+	jimengVideoGenerateStream: (form: FormData) => AsyncIterable<MediaStreamEvent>
+	seedanceGenerateStream: (form: FormData) => AsyncIterable<MediaStreamEvent>
 	meshyGenerate: (payload: Record<string, unknown>) => Promise<MeshyImageTaskResult>
 	meshyGenerateImage: (form: FormData) => Promise<MeshyImageTaskResult>
 	meshyTask: (taskId: string, mode: string) => Promise<MeshyImageTaskResult>
@@ -200,7 +133,7 @@ type ChatGenerationPayload = {
 		opts?: { projectId?: number | null }
 	) => Promise<{ url: string; absolutePath: string; projectRelativePath?: string }>
 	resolveBackendUrl: (value: string) => string
-	getChatService: () => ChatBridgeService
+	getMediaService: () => MediaGenerationService
 	onSeedanceTaskObserved?: (taskId: string, stage: 'created' | 'completed') => void
 	getSelectedNode?: () => WorkflowNode | null | undefined
 	getAllNodes?: () => WorkflowNode[]
@@ -452,236 +385,264 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		return result
 	}
 
-	const handleAgentStream = async (
+	const handleChatStream = async (
+		backend: AgentBackendType,
 		content: string,
-		history: Array<{ role: string; content: string }>,
+		sessionId: string,
 		assistantMsgId: string,
-		apiSource: string = 'deepseek',
-		thinkingEffort: 'disabled' | 'low' | 'medium' | 'high' = 'medium'
+		options: {
+			history?: Array<{ role: string; content: string }>
+			apiKeys?: Record<string, string>
+			apiSource?: string
+			model?: string
+			thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+			context?: unknown
+			skillHints?: string[]
+			executionHints?: string[]
+			agentMode?: 'agent' | 'ask' | 'plan'
+			permissionProfile?: string
+		} = {}
 	) => {
 		setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
-		let receivedDone = false
+		let receivedAnyContent = false
 		let receivedError = false
+		const signal = activeAbortController?.signal
 
-		const context = collectBlueprintContext()
+		const chatBridge = getAgentChatBridge()
 
-		const isCLIMode = ['codex', 'copilot'].includes(apiSource)
-		let apiKeys: Record<string, string> = {}
-		let resolvedApiSource = apiSource
-
-		if (!isCLIMode) {
-			const modelInfo = getChatModelById(payload.chatModelId.value)
-			if (modelInfo && modelInfo.apiSource) {
-				resolvedApiSource = modelInfo.apiSource
+		try {
+			for await (const ev of chatBridge.sendMessage(backend, sessionId, {
+				content,
+				model: options.model,
+				history: options.history?.map(h => ({
+					role: h.role as 'user' | 'assistant' | 'system',
+					content: h.content
+				})),
+				context: options.context,
+				apiKeys: options.apiKeys,
+				apiSource: options.apiSource,
+				thinkingEffort: options.thinkingEffort,
+				skillHints: options.skillHints,
+				executionHints: options.executionHints,
+				agentMode: options.agentMode,
+				permissionProfile: options.permissionProfile,
+			}, signal)) {
+				if (ev.type === 'done' || ev.type === 'turn_done') {
+					setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
+					break
+				}
+				if (ev.type === 'error') {
+					receivedError = true
+					payload.chatRunState.value = 'error'
+					setTaskStatus(t('aiworkflow.toast.aiTaskError'))
+					const errorKey = backend === 'copilot' ? 'aiworkflow.toast.copilotCliFailed' : 'aiworkflow.toast.agentChatFailed'
+					payload.pushToast(t(errorKey, { error: ev.message }), 'warn')
+					pushLocalExecFlow({
+						kind: 'error',
+						title: t('aiworkflow.toast.streamErrorTitle'),
+						detail: ev.message,
+						status: 'failed',
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					break
+				}
+				if (ev.type === 'text_delta') {
+					updateAssistantMessageContent(assistantMsgId, (prev) => prev + ev.content)
+					receivedAnyContent = true
+					setTaskStatus(backend === 'copilot'
+						? t('aiworkflow.toast.aiTaskCliGenerating')
+						: t('aiworkflow.toast.aiTaskGenerating'))
+					continue
+				}
+				if (ev.type === 'thinking_delta') {
+					updateAssistantMessageThinking(assistantMsgId, (prev) => prev + ev.content)
+					setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
+					continue
+				}
+				if (ev.type === 'thought') {
+					setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
+					continue
+				}
+				if (ev.type === 'context_usage') {
+					payload.chatContextUsage.value = ev
+					continue
+				}
+				if (ev.type === 'tool_call_start') {
+					const tcId = ev.toolCallId || `tool-${ev.tool}-${Date.now()}`
+					addToolCallToMessage(assistantMsgId, {
+						id: tcId,
+						name: ev.tool,
+						status: 'running',
+						args: ev.input
+					})
+					setTaskStatus(t('aiworkflow.toast.aiTaskCallingTool', { tool: ev.tool }))
+					pushAgentFlow({
+						id: tcId,
+						kind: 'skill',
+						title: `Tool · ${ev.tool}`,
+						detail: t('aiworkflow.toast.aiTaskToolCalling'),
+						status: 'pending',
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent',
+					})
+					continue
+				}
+				if (ev.type === 'tool_call_end') {
+					const tcId = ev.toolCallId || `tool-${ev.tool}-${Date.now()}`
+					updateToolCallInMessage(assistantMsgId, tcId, {
+						status: 'completed',
+						result: ev.output
+					})
+					pushAgentFlow({
+						id: tcId,
+						kind: 'skill',
+						title: `Tool · ${ev.tool}`,
+						detail: t('aiworkflow.toast.aiTaskToolComplete'),
+						status: 'completed',
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent',
+					})
+					continue
+				}
+				if (ev.type === 'tool_call_error') {
+					const tcId = ev.toolCallId || `tool-${ev.tool}-${Date.now()}`
+					updateToolCallInMessage(assistantMsgId, tcId, {
+						status: 'error',
+						error: ev.error
+					})
+					pushAgentFlow({
+						id: tcId,
+						kind: 'skill',
+						title: `Tool · ${ev.tool}`,
+						detail: t('aiworkflow.toast.aiTaskToolFailed'),
+						status: 'failed',
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent',
+					})
+					continue
+				}
+				if (ev.type === 'plan_update') {
+					pushLocalExecFlow({
+						kind: 'plan',
+						title: t('aiworkflow.toast.planUpdateTitle'),
+						detail: ev.explanation,
+						status: 'completed',
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					continue
+				}
+				if (ev.type === 'skill_call') {
+					const skillName = String(ev.name || 'skill').trim()
+					pushLocalExecFlow({
+						kind: 'skill',
+						title: `Skill · ${skillName}`,
+						detail: ev.description || '',
+						status: String(ev.status || 'completed').toLowerCase() === 'failed' ? 'failed' : 'completed',
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					continue
+				}
+				if (ev.type === 'runtime_context') {
+					setTaskStatus(t('aiworkflow.toast.aiTaskLoadingContext'))
+					pushLocalExecFlow({
+						kind: 'runtime',
+						title: t('aiworkflow.runtime.runtimeContextTitle'),
+						detail: `skills ${ev.skills.length} · mcp ${ev.mcpServers.length}`,
+						status: 'completed',
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					continue
+				}
+				if (ev.type === 'command_started') {
+					setTaskStatus(t('aiworkflow.toast.aiTaskCommand'))
+					pushLocalExecFlow({
+						kind: 'command',
+						title: t('aiworkflow.toast.commandStartTitle'),
+						detail: Array.isArray(ev.command) ? ev.command.join(' ') : String(ev.command || ''),
+						status: 'pending',
+						messageId: ev.messageId,
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					continue
+				}
+				if (ev.type === 'command_completed') {
+					setTaskStatus(t('aiworkflow.toast.aiTaskCommandComplete'))
+					pushLocalExecFlow({
+						kind: 'command',
+						title: t('aiworkflow.toast.commandCompleteTitle'),
+						detail: ev.status || 'completed',
+						status: String(ev.status || 'completed').toLowerCase() === 'completed' ? 'completed' : 'failed',
+						messageId: ev.messageId,
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					continue
+				}
+				if (ev.type === 'file_change_started') {
+					pushLocalExecFlow({
+						kind: 'fileChange',
+						title: t('aiworkflow.toast.fileChangePrepareTitle'),
+						detail: t('aiworkflow.toast.aiTaskFileChangeCount', { count: ev.changes.length }),
+						status: 'pending',
+						messageId: ev.messageId,
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					continue
+				}
+				if (ev.type === 'file_change_completed') {
+					pushLocalExecFlow({
+						kind: 'fileChange',
+						title: t('aiworkflow.toast.fileChangeTitle'),
+						detail: t('aiworkflow.toast.aiTaskFileChangeCount', { count: ev.changes.length }),
+						status: 'completed',
+						messageId: ev.messageId,
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					continue
+				}
+				if (ev.type === 'approval_requested') {
+					pushLocalExecFlow({
+						kind: 'approval',
+						title: t('aiworkflow.toast.approvalWaitTitle'),
+						detail: ev.requestId || 'request',
+						status: 'pending',
+						messageId: ev.messageId,
+						approvalRequestId: ev.requestId,
+						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+					})
+					continue
+				}
+				if (ev.type === 'assistant_done') {
+					receivedAnyContent = true
+					if (ev.content && ev.content.trim()) {
+						updateAssistantMessageContent(assistantMsgId, () => ev.content)
+					}
+					setTaskStatus(t('aiworkflow.toast.responseGenerated'))
+					continue
+				}
 			}
-
-			try {
-				apiKeys = await getDwebApiKeys()
-			} catch {
-				// 忽略前端获取 API Key 失败，后端会自行从 localdb 读取
-			}
-		}
-
-		for await (const chunk of agentStream({
-		prompt: content,
-		model: payload.chatModelId.value,
-		systemPrompt: history.find((h) => h.role === 'system')?.content,
-		context,
-		apiSource: resolvedApiSource,
-		apiKeys,
-		thinkingEffort,
-		history,
-	})) {
-			if (chunk.type === 'done') {
-				receivedDone = true
-				setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
-				break
-			}
-			if (chunk.type === 'error') {
-				receivedError = true
-				payload.chatRunState.value = 'error'
-				setTaskStatus(t('aiworkflow.toast.aiTaskError'))
-				payload.pushToast(t('aiworkflow.toast.agentChatFailed', { error: chunk.message }), 'warn')
-				break
-			}
-			if (chunk.type === 'text') {
-				updateAssistantMessageContent(assistantMsgId, (prev) => prev + chunk.content)
-				setTaskStatus(t('aiworkflow.toast.aiTaskGenerating'))
-				continue
-			}
-			if (chunk.type === 'thinking_delta') {
-				updateAssistantMessageThinking(assistantMsgId, (prev) => prev + chunk.content)
-				setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
-				continue
-			}
-			if (chunk.type === 'thought') {
-				setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
-				continue
-			}
-			if (chunk.type === 'context_usage') {
-				payload.chatContextUsage.value = chunk
-				continue
-			}
-			if (chunk.type === 'tool_call_start') {
-				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
-				addToolCallToMessage(assistantMsgId, {
-					id: tcId,
-					name: chunk.tool,
-					status: 'running',
-					args: chunk.input
-				})
-				setTaskStatus(t('aiworkflow.toast.aiTaskCallingTool', { tool: chunk.tool }))
-				pushAgentFlow({
-					id: tcId,
-					kind: 'skill',
-					title: `Tool · ${chunk.tool}`,
-					detail: t('aiworkflow.toast.aiTaskToolCalling'),
-					status: 'pending',
-					source: 'copilot-cli',
-				})
-				continue
-			}
-			if (chunk.type === 'tool_call_end') {
-				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
-				updateToolCallInMessage(assistantMsgId, tcId, {
-					status: 'completed',
-					result: chunk.output
-				})
-				pushAgentFlow({
-					id: tcId,
-					kind: 'skill',
-					title: `Tool · ${chunk.tool}`,
-					detail: t('aiworkflow.toast.aiTaskToolComplete'),
-					status: 'completed',
-					source: 'copilot-cli',
-				})
-				continue
-			}
-			if (chunk.type === 'tool_call_error') {
-				const tcId = chunk.toolCallId || `tool-${chunk.tool}-${Date.now()}`
-				updateToolCallInMessage(assistantMsgId, tcId, {
-					status: 'error',
-					error: chunk.error
-				})
-				pushAgentFlow({
-					id: tcId,
-					kind: 'skill',
-					title: `Tool · ${chunk.tool}`,
-					detail: t('aiworkflow.toast.aiTaskToolFailed'),
-					status: 'failed',
-					source: 'copilot-cli',
-				})
-				continue
-			}
-			if (chunk.type === 'tool_call') {
-				const tcId = `tool-${chunk.tool}-${Date.now()}`
-				addToolCallToMessage(assistantMsgId, {
-					id: tcId,
-					name: chunk.tool,
-					status: 'running',
-					args: chunk.input
-				})
-				setTaskStatus(t('aiworkflow.toast.aiTaskCallingTool', { tool: chunk.tool }))
-				pushAgentFlow({
-					id: tcId,
-					kind: 'skill',
-					title: `Tool · ${chunk.tool}`,
-					detail: t('aiworkflow.toast.aiTaskToolCalling'),
-					status: 'pending',
-					source: 'copilot-cli',
-				})
-				continue
-			}
-			if (chunk.type === 'tool_result') {
-				const tcId = `tool-${chunk.tool}-${Date.now()}`
-				updateToolCallInMessage(assistantMsgId, tcId, {
-					status: 'completed',
-					result: chunk.output
-				})
-				pushAgentFlow({
-					id: tcId,
-					kind: 'skill',
-					title: `Tool · ${chunk.tool}`,
-					detail: t('aiworkflow.toast.aiTaskToolComplete'),
-					status: 'completed',
-					source: 'copilot-cli',
-				})
-				continue
-			}
+		} catch (err: unknown) {
+			receivedError = true
+			const errMsg = normalizeChatErrorMessage(getErrorMessage(err))
+			payload.chatRunState.value = 'error'
+			setTaskStatus(t('aiworkflow.toast.aiTaskError'))
+			payload.pushToast(t('aiworkflow.toast.aiChatFailed', { error: errMsg }), 'warn')
+			pushLocalExecFlow({
+				kind: 'error',
+				title: t('aiworkflow.toast.execErrorTitle'),
+				detail: errMsg,
+				status: 'failed',
+				source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+			})
 		}
 
 		const finalText =
 			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
-		if (!String(finalText).trim() && !receivedError && !receivedDone) {
-			payload.pushToast(t('aiworkflow.toast.aiTaskEmptyResponse'), 'warn')
+		if (!String(finalText).trim() && !receivedError && !receivedAnyContent) {
+			const emptyKey = backend === 'copilot' ? 'aiworkflow.toast.copilotCliEmpty' : 'aiworkflow.toast.aiTaskEmptyResponse'
+			payload.pushToast(t(emptyKey), 'warn')
 		}
 		if (finalText) {
 			const choices = extractChoicesFromText(finalText)
 			if (choices.length > 0) {
 				setMessageUserChoices(assistantMsgId, choices)
 			}
-		}
-	}
-
-	const handleCLIStream = async (
-		content: string,
-		history: Array<{ role: string; content: string }>,
-		assistantMsgId: string
-	) => {
-		setTaskStatus(t('aiworkflow.toast.aiTaskCliExecuting'))
-		let receivedDone = false
-		let receivedError = false
-
-		for await (const chunk of cliSendMessage({
-			message: content,
-			context: history.map((h) => `${h.role}: ${h.content}`).join('\n'),
-		})) {
-			if (chunk.type === 'done') {
-				receivedDone = true
-				setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
-				break
-			}
-			if (chunk.type === 'error') {
-				receivedError = true
-				payload.chatRunState.value = 'error'
-				setTaskStatus(t('aiworkflow.toast.aiTaskError'))
-				payload.pushToast(t('aiworkflow.toast.cliChatFailed', { error: chunk.message }), 'warn')
-				break
-			}
-			if (chunk.type === 'text') {
-				updateAssistantMessageContent(assistantMsgId, (prev) => prev + chunk.content)
-				setTaskStatus(t('aiworkflow.toast.aiTaskCliGenerating'))
-				continue
-			}
-			if (chunk.type === 'tool_call') {
-				setTaskStatus(t('aiworkflow.toast.aiTaskCallingTool', { tool: chunk.tool }))
-				pushAgentFlow({
-					id: `cli-tool-${chunk.tool}-${Date.now()}`,
-					kind: 'skill',
-					title: `CLI Tool · ${chunk.tool}`,
-					detail: t('aiworkflow.toast.aiTaskToolCalling'),
-					status: 'pending',
-					source: 'copilot-cli',
-				})
-				continue
-			}
-			if (chunk.type === 'tool_result') {
-				pushAgentFlow({
-					id: `cli-tool-${chunk.tool}-${Date.now()}`,
-					kind: 'skill',
-					title: `CLI Tool · ${chunk.tool}`,
-					detail: t('aiworkflow.toast.aiTaskToolComplete'),
-					status: 'completed',
-					source: 'copilot-cli',
-				})
-				continue
-			}
-		}
-
-		const finalText =
-			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
-		if (!String(finalText).trim() && !receivedError && !receivedDone) {
-			payload.pushToast(t('aiworkflow.toast.cliEmptyResponse'), 'warn')
 		}
 	}
 
@@ -815,345 +776,112 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		payload.chatRunState.value = 'sending'
 		setTaskStatus(t('aiworkflow.toast.aiTaskPreparing'))
 		try {
-			const svc = payload.getChatService()
+			const backend = payload.agentBackend.value
 
-			if (payload.chatModelKey.value === 'codex') {
-				const backend = payload.agentBackend.value
-
-				if (backend === 'dvsagent') {
-					await handleAgentStream(content, history, assistantMsg.id, payload.agentBackend.value, payload.chatThinkingEffort.value)
-					payload.chatSending.value = false
-					payload.chatRunState.value = 'idle'
-					return
+			if (backend === 'dvsagent') {
+				const modelInfo = getChatModelById(payload.chatModelId.value)
+				let apiSource = modelInfo?.apiSource || 'deepseek'
+				let apiKeys: Record<string, string> = {}
+				try {
+					apiKeys = await getDwebApiKeys()
+				} catch {
+					// ignore frontend api key failure, backend reads from localdb
 				}
+				const context = collectBlueprintContext()
 
-				if (backend === 'copilot') {
-					let projectId = payload.currentProjectId.value
-					if (projectId == null && payload.ensureProjectId) {
-						projectId = await payload.ensureProjectId({ silent: true })
-					}
-					if (projectId == null) {
-						payload.pushToast(t('aiworkflow.toast.aiTaskAutoSaveFail'), 'warn')
-						payload.chatRunState.value = 'error'
-						setTaskStatus(t('aiworkflow.toast.aiTaskStartFailed'))
-						return
-					}
-
-					const parsed = parseLocalExecSlashCommand(content)
-					let sessionId = String(payload.codexActiveSessionId.value || '').trim()
-					const createSession = svc.localExecCreateSession ?? svc.codexCreateSession
-					const streamMessage = svc.localExecStreamMessage ?? svc.codexStreamMessage
-					if (!sessionId) {
-						setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
-						const created = await createSession({
-							title: content.slice(0, 24),
-							model: payload.chatModelId.value,
-							projectId
-						})
-						const createdError = getStringField(created, 'error')
-						if (createdError) {
-							throw new Error(createdError || 'create codex session failed')
-						}
-						sessionId = getStringField(created, 'id').trim()
-						if (!sessionId) throw new Error('create codex session returned empty id')
-						payload.codexActiveSessionId.value = sessionId
-						payload.codexSessions.value = [
-							{
-								id: sessionId,
-								title: getStringField(created, 'title').trim() || t('aiworkflow.toast.copilotSession'),
-								status: getStringField(created, 'status') || 'active',
-								modelName: getStringField(created, 'model_name') || payload.chatModelId.value || '',
-								source: 'copilot-cli'
-							},
-							...payload.codexSessions.value.filter((s) => s.id !== sessionId)
-						]
-					}
-
-					pushLocalExecFlow({
-						kind: 'session',
-						title: t('aiworkflow.toast.sessionReadyTitle'),
-						detail: sessionId,
-						status: 'completed',
-						source: 'copilot-cli'
-					})
-					setTaskStatus(t('aiworkflow.toast.aiTaskSessionReady'))
-
-					let receivedAssistantDone = false
-					let receivedTurnDone = false
-					let receivedError = false
-
-					for await (const ev of streamMessage(
-						sessionId,
-						{
-							content: parsed.content,
-							references: [],
-							projectId,
-							skillHints: parsed.skillHints,
-							executionHints: parsed.executionHints,
-							agentMode: payload.agentConversationMode.value,
-							permissionProfile: 'default'
-						},
-						abortController.signal
-					)) {
-						if (ev.type === 'done') break
-						if (ev.type === 'error') {
-							const errMsgRaw = String(ev.error?.message ?? 'unknown')
-							const isAborted = abortController.signal.aborted || /abort/i.test(errMsgRaw)
-							if (isAborted) {
-								setTaskStatus(t('aiworkflow.toast.aiTaskStopped'))
-								break
-							}
-							const errMsg = normalizeChatErrorMessage(errMsgRaw)
-							receivedError = true
-							payload.chatRunState.value = 'error'
-							setTaskStatus(t('aiworkflow.toast.aiTaskError'))
-							payload.pushToast(t('aiworkflow.toast.copilotCliFailed', { error: errMsg }), 'warn')
-							pushLocalExecFlow({
-								kind: 'error',
-								title: t('aiworkflow.toast.streamErrorTitle'),
-								detail: errMsg,
-								status: 'failed',
-								source: 'copilot-cli'
-							})
-							break
-						}
-
-						if (ev.type !== 'event') continue
-						const name = getStringField(ev, 'event')
-						const data = isRecord(ev.data) ? ev.data : {}
-
-						if (name === 'assistant_delta') {
-							const delta = getStringField(data, 'delta')
-							if (delta) {
-								updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
-							}
-							setTaskStatus(t('aiworkflow.toast.aiTaskGenerating'))
-							continue
-						}
-
-						if (name === 'assistant_done') {
-							receivedAssistantDone = true
-							const doneTextRaw = getStringField(data, 'content')
-							const doneText = doneTextRaw.trim()
-							if (doneText) {
-								updateAssistantMessageContent(assistantMsg.id, () => doneTextRaw)
-							}
-							setTaskStatus(t('aiworkflow.toast.responseGenerated'))
-							continue
-						}
-
-						if (name === 'plan_update') {
-							pushLocalExecFlow({
-								kind: 'plan',
-								title: t('aiworkflow.toast.planUpdateTitle'),
-								detail: getStringField(data, 'explanation'),
-								status: 'completed',
-								source: 'copilot-cli'
-							})
-							continue
-						}
-
-						if (name === 'runtime_context') {
-							const skills = getArrayField(data, 'skills', isUnknown)
-							const mcpServers = getArrayField(data, 'active_mcp_servers', isUnknown)
-							const skillCount = skills.length
-							const mcpCount = mcpServers.length
-							setTaskStatus(t('aiworkflow.toast.aiTaskLoadingContext'))
-							pushLocalExecFlow({
-								kind: 'runtime',
-								title:
-									payload.localExecStreamMode.value === 'mock' ? t('aiworkflow.toast.mockRuntimeContext') : t('aiworkflow.runtime.runtimeContextTitle'),
-								detail: `skills ${skillCount} · mcp ${mcpCount}`,
-								status: 'completed',
-								source: 'copilot-cli'
-							})
-							continue
-						}
-
-						if (name === 'skill_call') {
-							const skillName = getStringField(data, 'name').trim() || 'skill'
-							const skillStatusRaw = getStringField(data, 'status').trim().toLowerCase()
-							setTaskStatus(t('aiworkflow.toast.aiTaskSkill', { name: skillName }))
-							pushLocalExecFlow({
-								kind: 'skill',
-								title: `Skill · ${skillName}`,
-								detail: getStringField(data, 'description'),
-								status: skillStatusRaw === 'failed' ? 'failed' : 'completed',
-								source: 'copilot-cli',
-								payload: data
-							})
-							continue
-						}
-
-						if (name === 'command_started') {
-							const command = hasKey(data, 'command') ? data.command : ''
-							setTaskStatus(t('aiworkflow.toast.aiTaskCommand'))
-							pushLocalExecFlow({
-								kind: 'command',
-								title: t('aiworkflow.toast.commandStartTitle'),
-								detail: Array.isArray(command) ? command.join(' ') : String(command || ''),
-								status: 'pending',
-								messageId: getStringField(data, 'message_id'),
-								source: 'copilot-cli',
-								payload: data
-							})
-							continue
-						}
-
-						if (name === 'command_completed') {
-							setTaskStatus(t('aiworkflow.toast.aiTaskCommandComplete'))
-							const cmdStatus = getStringField(data, 'status')
-							pushLocalExecFlow({
-								kind: 'command',
-								title: t('aiworkflow.toast.commandCompleteTitle'),
-								detail: cmdStatus || 'completed',
-								status: cmdStatus.toLowerCase() === 'completed' ? 'completed' : 'failed',
-								messageId: getStringField(data, 'message_id'),
-								source: 'copilot-cli',
-								payload: data
-							})
-							continue
-						}
-
-						if (name === 'file_change_started') {
-							const changes = getArrayField(data, 'changes', isUnknown)
-							pushLocalExecFlow({
-								kind: 'fileChange',
-								title: t('aiworkflow.toast.fileChangePrepareTitle'),
-								detail: t('aiworkflow.toast.aiTaskFileChangeCount', { count: changes.length }),
-								status: 'pending',
-								messageId: getStringField(data, 'message_id'),
-								source: 'copilot-cli',
-								payload: data
-							})
-							continue
-						}
-
-						if (name === 'file_change_completed') {
-							const changes = getArrayField(data, 'changes', isUnknown)
-							pushLocalExecFlow({
-								kind: 'fileChange',
-								title: t('aiworkflow.toast.fileChangeTitle'),
-								detail: t('aiworkflow.toast.aiTaskFileChangeCount', { count: changes.length }),
-								status: 'completed',
-								messageId: getStringField(data, 'message_id'),
-								source: 'copilot-cli',
-								payload: data
-							})
-							continue
-						}
-
-						if (name === 'approval_requested') {
-							const requestId = getStringField(data, 'request_id')
-							pushLocalExecFlow({
-								kind: 'approval',
-								title: t('aiworkflow.toast.approvalWaitTitle'),
-								detail: requestId || 'request',
-								status: 'pending',
-								messageId: getStringField(data, 'message_id'),
-								approvalRequestId: requestId,
-								source: 'copilot-cli',
-								payload: data
-							})
-							continue
-						}
-
-						if (name === 'error') {
-							const errMsg = normalizeChatErrorMessage(getStringField(data, 'message') || 'unknown')
-							receivedError = true
-							payload.chatRunState.value = 'error'
-							setTaskStatus(t('aiworkflow.toast.aiTaskError'))
-							payload.pushToast(t('aiworkflow.toast.copilotCliFailed', { error: errMsg }), 'warn')
-							pushLocalExecFlow({
-								kind: 'error',
-								title: t('aiworkflow.toast.execErrorTitle'),
-								detail: errMsg,
-								status: 'failed',
-								source: 'copilot-cli'
-							})
-							continue
-						}
-
-						if (name === 'turn_done') {
-							receivedTurnDone = true
-							setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
-							continue
-						}
-					}
-
-					if (abortController.signal.aborted) {
-						setTaskStatus(t('aiworkflow.toast.aiTaskStopped'))
-						return
-					}
-
-					const finalAssistantText =
-						payload.chatMessages.value.find((message) => message.id === assistantMsg.id)?.content ||
-						''
-					if (!String(finalAssistantText).trim() && !receivedError) {
-						payload.pushToast(t('aiworkflow.toast.copilotCliEmpty'), 'warn')
-					}
-					return
-				}
-
-				if (backend === 'codex') {
-					await handleAgentStream(content, history, assistantMsg.id, backend)
-					payload.chatSending.value = false
-					payload.chatRunState.value = 'idle'
-					return
-				}
-
-				payload.pushToast(t('aiworkflow.toast.aiTaskUnknownBackend'), 'warn')
-				payload.chatSending.value = false
-				payload.chatRunState.value = 'idle'
+				const chatBridge = getAgentChatBridge()
+				setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
+				const session = await chatBridge.createSession('dvsagent', {
+					title: content.slice(0, 24),
+					model: payload.chatModelId.value,
+					cwd: undefined,
+					projectId: payload.currentProjectId.value
+				})
+				await handleChatStream('dvsagent', content, session.id, assistantMsg.id, {
+					history,
+					apiKeys,
+					apiSource,
+					model: payload.chatModelId.value,
+					thinkingEffort: payload.chatThinkingEffort.value,
+					context,
+				})
 				return
 			}
 
-			for await (const ev of svc.blueprintChatStream({ content, history }, activeAbortController?.signal)) {
-				if (ev.type === 'done') break
-				if (ev.type === 'error') {
+			if (backend === 'copilot') {
+				let projectId = payload.currentProjectId.value
+				if (projectId == null && payload.ensureProjectId) {
+					projectId = await payload.ensureProjectId({ silent: true })
+				}
+				if (projectId == null) {
+					payload.pushToast(t('aiworkflow.toast.aiTaskAutoSaveFail'), 'warn')
 					payload.chatRunState.value = 'error'
-					setTaskStatus(t('aiworkflow.toast.aiTaskError'))
-					payload.pushToast(t('aiworkflow.toast.aiChatFailed', { error: String(ev.error?.message ?? 'unknown') }), 'warn')
-					break
+					setTaskStatus(t('aiworkflow.toast.aiTaskStartFailed'))
+					return
 				}
-				if (ev.type === 'msg') {
-					const message = ev.message
-					if (message.type === 'agentToUi/text') {
-						const msgPayload = isRecord(message.payload) ? message.payload : {}
-						const delta = getStringField(msgPayload, 'text')
-						if (delta) {
-							updateAssistantMessageContent(assistantMsg.id, (prev) => prev + delta)
-						}
-						setTaskStatus(t('aiworkflow.toast.aiTaskGenerating'))
-						continue
-					}
-					if (message.type === 'agentToUi/taskStatus') {
-						const msgPayload = isRecord(message.payload) ? message.payload : {}
-						const phase = getStringField(msgPayload, 'phase')
-						const text = hasKey(msgPayload, 'message') ? msgPayload.message : ''
-						const progressText = String(typeof text === 'string' && text.trim() ? text.trim().slice(0, 40) : phase || '...')
-						setTaskStatus(t('aiworkflow.toast.aiTaskProgress', { text: progressText }))
-						continue
-					}
-					if (message.type === 'agentToUi/error') {
-						const msgPayload = isRecord(message.payload) ? message.payload : {}
-						const text = hasKey(msgPayload, 'message') ? msgPayload.message : 'unknown'
-						payload.chatRunState.value = 'error'
-						setTaskStatus(t('aiworkflow.toast.aiTaskError'))
-						payload.pushToast(
-							t('aiworkflow.toast.aiChatFailed', { error: String(typeof text === 'string' ? text : 'unknown') }),
-							'warn'
-						)
-						break
-					}
+
+				const parsed = parseLocalExecSlashCommand(content)
+				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
+
+				const chatBridge = getAgentChatBridge()
+				if (!sessionId) {
+					setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
+					const session = await chatBridge.createSession('copilot', {
+						title: content.slice(0, 24),
+						model: payload.chatModelId.value || 'auto',
+						projectId,
+					})
+					sessionId = session.id
+					payload.codexActiveSessionId.value = sessionId
+					payload.codexSessions.value = [
+						{
+							id: sessionId,
+							title: session.title || t('aiworkflow.toast.copilotSession'),
+							status: session.status || 'active',
+							modelName: session.model || payload.chatModelId.value || '',
+							source: 'copilot-cli'
+						},
+						...payload.codexSessions.value.filter((s) => s.id !== sessionId)
+					]
 				}
+
+				pushLocalExecFlow({
+					kind: 'session',
+					title: t('aiworkflow.toast.sessionReadyTitle'),
+					detail: sessionId,
+					status: 'completed',
+					source: 'copilot-cli'
+				})
+				setTaskStatus(t('aiworkflow.toast.aiTaskSessionReady'))
+
+				await handleChatStream('copilot', parsed.content, sessionId, assistantMsg.id, {
+					history,
+					model: payload.chatModelId.value || 'auto',
+					skillHints: parsed.skillHints,
+					executionHints: parsed.executionHints,
+					agentMode: payload.agentConversationMode.value,
+					permissionProfile: 'default',
+				})
+				return
 			}
 
-			const finalAssistantText =
-				payload.chatMessages.value.find((message) => message.id === assistantMsg.id)?.content || ''
-			if (!String(finalAssistantText).trim()) {
-				payload.pushToast(t('aiworkflow.toast.aiTaskEmptyResponse'), 'warn')
+			if (backend === 'codex') {
+				const chatBridge = getAgentChatBridge()
+				setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
+				const session = await chatBridge.createSession('codex', {
+					title: content.slice(0, 24),
+					model: payload.chatModelId.value,
+					projectId: payload.currentProjectId.value
+				})
+				await handleChatStream('codex', content, session.id, assistantMsg.id, {
+					history,
+					model: payload.chatModelId.value,
+				})
+				return
 			}
+
+			payload.pushToast(t('aiworkflow.toast.aiTaskUnknownBackend'), 'warn')
+			payload.chatRunState.value = 'error'
 		} catch (err: unknown) {
 			const errMsgRaw = getErrorMessage(err)
 			const aborted = abortController.signal.aborted || /abort/i.test(errMsgRaw)
@@ -1232,7 +960,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		payload.nanoPreviewLoadingStates.value = Array.from({ length: requestCount }, () => true)
 		payload.nanoStatus.value = t('aiworkflow.toast.aiTaskNanoConcurrency', { done: 0, total: requestCount })
 		try {
-			const svc = payload.getChatService()
+			const svc = payload.getMediaService()
 
 			const anchorIndexFromId = (id: string) => {
 				const m = String(id || '').match(/(\d+)/)
@@ -1731,6 +1459,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						}
 
 						const message = ev.message
+						if (!message) continue
 						if (message.type === 'agentToUi/chatMessage') {
 							const msgPayload = isRecord(message.payload) ? message.payload : {}
 							const content = getStringField(msgPayload, 'content')
@@ -1840,7 +1569,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		payload.nanoPreviewLoadingStates.value = [true]
 
 		try {
-			const svc = payload.getChatService()
+			const svc = payload.getMediaService()
 			const selectedModel = String(input?.config?.model ?? 'doubao-seedance-2-0-260128').trim()
 			const isJimengVideoModel = selectedModel.startsWith('jimeng-video-')
 			const videoEngineLabel = isJimengVideoModel ? t('aiworkflow.toast.engineJimengVideo') : 'Seedance'
@@ -2057,6 +1786,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					break
 				}
 				const message = ev.message
+				if (!message) continue
 				if (message.type === 'agentToUi/chatMessage') {
 					const msgPayload = isRecord(message.payload) ? message.payload : {}
 					const content = getStringField(msgPayload, 'content')

@@ -1,6 +1,7 @@
 import { isRecord, isString } from '../types/utils'
 import { getBackendBaseUrl } from './backendConfig'
 import { hasIpcApi, ipcOrHttp, unwrapIpcResult, type IpcResult } from './ipcClient'
+import type { EnvironmentCheckResult, CliModelInfo, CliAdapterSavedConfig, CliFixResult } from '../electronBridge/types'
 
 export type CLIAdapterInfo = {
   id: string
@@ -28,9 +29,12 @@ export type CLIStreamChunk =
 
 export type CLISendOptions = {
   sessionId?: string
-  adapterId?: string
-  message: string
+  adapter?: string
+  message?: string
+  content?: string
+  model?: string
   context?: string
+  options?: Record<string, unknown>
 }
 
 type CLIIpcBridge = {
@@ -44,6 +48,11 @@ type CLIIpcBridge = {
       cancel?: (payload: unknown) => Promise<unknown>
       getSession?: (payload: unknown) => Promise<unknown>
       listSessions?: () => Promise<unknown>
+      checkEnvironment?: (payload: unknown) => Promise<unknown>
+      listModels?: (payload: unknown) => Promise<unknown>
+      getConfig?: (payload: unknown) => Promise<unknown>
+      saveConfig?: (payload: unknown) => Promise<unknown>
+      runFix?: (payload: unknown) => Promise<unknown>
     }
   }
 }
@@ -52,14 +61,19 @@ function getIpcBridge(): CLIIpcBridge {
   return window as unknown as CLIIpcBridge
 }
 
-export async function cliCheckAvailability(adapterId?: string): Promise<IpcResult<{ available: boolean; reason?: string }>> {
+function toPlain<T>(value: T): T {
+  if (value === null || value === undefined) return value
+  return JSON.parse(JSON.stringify(value))
+}
+
+export async function cliCheckAvailability(name: string = 'all'): Promise<IpcResult<unknown>> {
   return ipcOrHttp(
-    () => getIpcBridge().dweb?.cli?.checkAvailability?.({ adapterId }) as Promise<IpcResult<{ available: boolean; reason?: string }>>,
+    () => getIpcBridge().dweb?.cli?.checkAvailability?.({ name }) as Promise<IpcResult<unknown>>,
     async () => {
       const res = await fetch(`${getBackendBaseUrl()}/api/cli/check-availability`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adapterId }),
+        body: JSON.stringify({ name }),
       })
       return res.json()
     }
@@ -76,23 +90,23 @@ export async function cliListAdapters(): Promise<IpcResult<{ adapters: CLIAdapte
   )
 }
 
-export async function cliStartSession(adapterId: string): Promise<IpcResult<{ sessionId: string; adapterId: string }>> {
+export async function cliStartSession(adapter: string): Promise<IpcResult<{ sessionId: string; adapter: string }>> {
   return ipcOrHttp(
-    () => getIpcBridge().dweb?.cli?.startSession?.({ adapterId }) as Promise<IpcResult<{ sessionId: string; adapterId: string }>>,
+    () => getIpcBridge().dweb?.cli?.startSession?.({ adapter }) as Promise<IpcResult<{ sessionId: string; adapter: string }>>,
     async () => {
       const res = await fetch(`${getBackendBaseUrl()}/api/cli/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adapterId }),
+        body: JSON.stringify({ adapter }),
       })
       return res.json()
     }
   )
 }
 
-export async function cliStopSession(sessionId: string): Promise<IpcResult<{ stopped: boolean }>> {
+export async function cliStopSession(sessionId: string): Promise<IpcResult<{ ok: boolean }>> {
   return ipcOrHttp(
-    () => getIpcBridge().dweb?.cli?.stopSession?.({ sessionId }) as Promise<IpcResult<{ stopped: boolean }>>,
+    () => getIpcBridge().dweb?.cli?.stopSession?.({ sessionId }) as Promise<IpcResult<{ ok: boolean }>>,
     async () => {
       const res = await fetch(`${getBackendBaseUrl()}/api/cli/sessions/${sessionId}/stop`, { method: 'POST' })
       return res.json()
@@ -100,9 +114,9 @@ export async function cliStopSession(sessionId: string): Promise<IpcResult<{ sto
   )
 }
 
-export async function cliCancel(sessionId: string): Promise<IpcResult<{ cancelled: boolean }>> {
+export async function cliCancel(sessionId: string): Promise<IpcResult<{ ok: boolean }>> {
   return ipcOrHttp(
-    () => getIpcBridge().dweb?.cli?.cancel?.({ sessionId }) as Promise<IpcResult<{ cancelled: boolean }>>,
+    () => getIpcBridge().dweb?.cli?.cancel?.({ sessionId }) as Promise<IpcResult<{ ok: boolean }>>,
     async () => {
       const res = await fetch(`${getBackendBaseUrl()}/api/cli/sessions/${sessionId}/cancel`, { method: 'POST' })
       return res.json()
@@ -110,9 +124,9 @@ export async function cliCancel(sessionId: string): Promise<IpcResult<{ cancelle
   )
 }
 
-export async function cliGetSession(sessionId: string): Promise<IpcResult<{ session: CLISessionInfo }>> {
+export async function cliGetSession(sessionId: string): Promise<IpcResult<{ found: boolean; sessionId: string; adapterName?: string }>> {
   return ipcOrHttp(
-    () => getIpcBridge().dweb?.cli?.getSession?.({ sessionId }) as Promise<IpcResult<{ session: CLISessionInfo }>>,
+    () => getIpcBridge().dweb?.cli?.getSession?.({ sessionId }) as Promise<IpcResult<{ found: boolean; sessionId: string; adapterName?: string }>>,
     async () => {
       const res = await fetch(`${getBackendBaseUrl()}/api/cli/sessions/${sessionId}`)
       return res.json()
@@ -130,12 +144,101 @@ export async function cliListSessions(): Promise<IpcResult<{ sessions: CLISessio
   )
 }
 
+export async function cliCheckEnvironment(
+  adapter: string
+): Promise<IpcResult<EnvironmentCheckResult>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.cli?.checkEnvironment?.({ adapter }) as Promise<IpcResult<EnvironmentCheckResult>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/cli/check-environment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adapter }),
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function cliListModels(
+  adapter: string,
+  forceRefresh = false
+): Promise<IpcResult<{ adapter: string; models: CliModelInfo[] }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.cli?.listModels?.({ adapter, forceRefresh }) as Promise<IpcResult<{ adapter: string; models: CliModelInfo[] }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/cli/models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adapter, forceRefresh }),
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function cliGetAdapterConfig(
+  adapter: string
+): Promise<IpcResult<{ adapter: string; config: CliAdapterSavedConfig | null }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.cli?.getConfig?.({ adapter }) as Promise<IpcResult<{ adapter: string; config: CliAdapterSavedConfig | null }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/cli/config/${adapter}`)
+      return res.json()
+    }
+  )
+}
+
+export async function cliSaveAdapterConfig(
+  adapter: string,
+  config: { enabled: boolean; models?: CliModelInfo[] }
+): Promise<IpcResult<{ ok: boolean; adapter: string; config: CliAdapterSavedConfig }>> {
+  const plainConfig = toPlain(config)
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.cli?.saveConfig?.({ adapter, config: plainConfig }) as Promise<IpcResult<{ ok: boolean; adapter: string; config: CliAdapterSavedConfig }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/cli/config/${adapter}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: plainConfig }),
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function cliRunFixCommand(
+  adapter: string,
+  checkKey: string
+): Promise<IpcResult<CliFixResult>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.cli?.runFix?.({ adapter, checkKey }) as Promise<IpcResult<CliFixResult>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/cli/fix/${adapter}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkKey }),
+      })
+      return res.json()
+    }
+  )
+}
+
 export async function* cliSendMessage(options: CLISendOptions): AsyncGenerator<CLIStreamChunk> {
   const bridge = getIpcBridge()
 
+  const payload = toPlain({
+    sessionId: options.sessionId,
+    content: options.message || options.content,
+    options: {
+      model: options.model,
+      ...(options.options || {})
+    }
+  })
+
   if (hasIpcApi() && bridge.dweb?.cli?.sendMessage) {
     try {
-      const gen = bridge.dweb.cli.sendMessage(options)
+      const gen = bridge.dweb.cli.sendMessage(payload)
       if (!gen || typeof gen[Symbol.asyncIterator] !== 'function') {
         yield { type: 'error', message: 'CLI stream not available via IPC' }
         return
@@ -155,7 +258,7 @@ export async function* cliSendMessage(options: CLISendOptions): AsyncGenerator<C
     const res = await fetch(`${getBackendBaseUrl()}/api/cli/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options),
+      body: JSON.stringify(payload),
     })
     if (!res.ok || !res.body) {
       yield { type: 'error', message: `HTTP ${res.status}` }
@@ -197,6 +300,10 @@ function normalizeCLIChunk(raw: unknown): CLIStreamChunk | null {
   }
   if (!isRecord(raw)) return null
   const type = String(raw.type || raw.event || '')
+  if (type === 'text_delta' || type === 'textDelta' || type === 'thinking_delta' || type === 'thinkingDelta') {
+    const content = String(raw.content || raw.text || raw.delta || '')
+    return content ? { type: 'text', content } : null
+  }
   if (type === 'text' || type === 'content' || type === 'output') {
     const content = String(raw.content || raw.text || raw.delta || raw.output || '')
     return content ? { type: 'text', content } : null

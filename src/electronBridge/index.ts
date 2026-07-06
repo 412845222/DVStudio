@@ -460,7 +460,8 @@ export async function saveClientSettings(
 	payload: ClientSettings
 ): Promise<ClientSettingsResult | null> {
 	if (!window?.dweb?.common?.saveClientSettings) return null
-	const r: ClientSettingsResult = await window.dweb.common.saveClientSettings(payload)
+	const plainPayload = JSON.parse(JSON.stringify(payload))
+	const r: ClientSettingsResult = await window.dweb.common.saveClientSettings(plainPayload)
 	if (r?.ok && r.data) {
 		clientSettingsCache = r.data
 		try {

@@ -6,7 +6,7 @@
  */
 
 import { spawn } from 'child_process';
-import { BaseCLIAdapter, CLIEventType, commandExists } from './base.mjs';
+import { BaseCLIAdapter, CLIEventType, commandExists, getProxyEnvVars } from './base.mjs';
 import logger from '../../core/logger.mjs';
 
 /**
@@ -31,11 +31,17 @@ const CodexMessageType = {
 export class CodexCliAdapter extends BaseCLIAdapter {
   constructor(cliConfig = {}) {
     super(cliConfig);
-    this.commandName = 'npx'; // Codex CLI 通过 npx @openai/codex 调用
-    this.displayName = 'OpenAI Codex';
     this.processes = new Map();
     this.pendingRequests = new Map();
     this.messageBuffer = '';
+  }
+
+  get commandName() {
+    return 'npx';
+  }
+
+  get displayName() {
+    return 'OpenAI Codex';
   }
 
   /**
@@ -83,9 +89,12 @@ export class CodexCliAdapter extends BaseCLIAdapter {
       '--stdio',
     ];
 
+    const proxyEnv = getProxyEnvVars();
+
     const proc = spawn(this.commandName, args, {
       env: { 
         ...process.env, 
+        ...proxyEnv,
         ...this.cliConfig.env,
         CODX_API_KEY: this.cliConfig.apiKey || process.env.OPENAI_API_KEY || '',
         CODX_BASE_URL: this.cliConfig.baseUrl || 'https://api.openai.com/v1',

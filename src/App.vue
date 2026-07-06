@@ -73,6 +73,7 @@ import AboutDialog from './ui/UIComponent/AboutDialog.vue'
 import { useStartupProgress } from './composables/useStartupProgress'
 import { usePlatform, useSteamEntry } from './platformBridge'
 import { useSteamPanel } from './composables/useSteamPanel'
+import { initCopilotConfig } from './ai/models/chatModels'
 
 provide(VideoStudioKey, VideoStudioStore)
 provide(TimelineKey, TimelineStore)
@@ -200,6 +201,7 @@ function onStorageChange(e: StorageEvent) {
 onMounted(() => {
 	ThemeStore.dispatch('initTheme')
 	void I18nStore.dispatch('initLocale')
+	void initCopilotConfig()
 	window.addEventListener('storage', onStorageChange)
 })
 

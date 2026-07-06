@@ -126,3 +126,109 @@ export async function cliGetSession(ctx, payload) {
 export async function cliListSessions(ctx, payload) {
   return { sessions: cliAdapterManager.listSessions() };
 }
+
+/**
+ * 执行完整环境检查
+ */
+export async function cliCheckEnvironment(ctx, payload) {
+  const p = payload || {};
+  const adapterName = String(p.adapter || '').trim();
+  const options = p.options || {};
+
+  if (!adapterName) {
+    throw invalidParamsError('adapter is required');
+  }
+
+  try {
+    return await cliAdapterManager.checkEnvironment(adapterName, options);
+  } catch (err) {
+    throw internalError(`Environment check failed: ${err.message}`);
+  }
+}
+
+/**
+ * 获取适配器模型列表
+ */
+export async function cliListModels(ctx, payload) {
+  const p = payload || {};
+  const adapterName = String(p.adapter || '').trim();
+  const forceRefresh = Boolean(p.forceRefresh);
+
+  if (!adapterName) {
+    throw invalidParamsError('adapter is required');
+  }
+
+  try {
+    const models = await cliAdapterManager.listModels(adapterName, { forceRefresh });
+    return { adapter: adapterName, models };
+  } catch (err) {
+    throw internalError(`Failed to list models: ${err.message}`);
+  }
+}
+
+/**
+ * 获取适配器持久化配置
+ */
+export async function cliGetConfig(ctx, payload) {
+  const p = payload || {};
+  const adapterName = String(p.adapter || '').trim();
+
+  if (!adapterName) {
+    throw invalidParamsError('adapter is required');
+  }
+
+  const config = await cliAdapterManager.getAdapterConfig(adapterName);
+  return { adapter: adapterName, config };
+}
+
+/**
+ * 保存适配器配置
+ */
+export async function cliSaveConfig(ctx, payload) {
+  const p = payload || {};
+  const adapterName = String(p.adapter || '').trim();
+  const config = JSON.parse(JSON.stringify(p.config || {}));
+
+  if (!adapterName) {
+    throw invalidParamsError('adapter is required');
+  }
+
+  try {
+    const saved = await cliAdapterManager.saveAdapterConfig(adapterName, config);
+    return { ok: true, adapter: adapterName, config: JSON.parse(JSON.stringify(saved)) };
+  } catch (err) {
+    throw internalError(`Failed to save config: ${err.message}`);
+  }
+}
+
+/**
+ * 执行环境检查修复操作
+ */
+export async function cliRunFix(ctx, payload) {
+  const p = payload || {};
+  const adapterName = String(p.adapter || '').trim();
+  const checkKey = String(p.checkKey || '').trim();
+
+  if (!adapterName) {
+    throw invalidParamsError('adapter is required');
+  }
+  if (!checkKey) {
+    throw invalidParamsError('checkKey is required');
+  }
+
+  const adapter = cliAdapterManager.getAdapter(adapterName);
+  if (!adapter) {
+    throw invalidParamsError(`Adapter not found: ${adapterName}`);
+  }
+
+  if (typeof adapter.runFixAction !== 'function') {
+    throw internalError(`Adapter "${adapterName}" does not support fix actions`);
+  }
+
+  try {
+    const result = await adapter.runFixAction(checkKey);
+    return { ok: true, adapter: adapterName, checkKey, ...result };
+  } catch (err) {
+    throw internalError(`Fix action failed: ${err.message}`);
+  }
+}
