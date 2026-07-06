@@ -22,7 +22,8 @@
   "titlebar.devTools": "Open DevTools",
   "titlebar.about": "About",
   "titlebar.minimize": "Minimize",
-  "titlebar.maximize": "Maximize/Restore",
+  "titlebar.maximize": "Maximize",
+  "titlebar.restore": "Restore",
   "titlebar.close": "Close",
   "titlebar.language": "Language",
   "titlebar.windowControls": "Window Controls"
