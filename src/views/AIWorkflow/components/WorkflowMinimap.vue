@@ -72,11 +72,24 @@ import { ThemeKey } from '../../../store/theme'
 import type { ThemeMode } from '../../../store/theme'
 import { useI18n } from '../../../i18n'
 import type { WorkflowNode, WorkflowViewport } from '../../../aiworkflow/types'
+import {
+	MINIMAP_WIDTH,
+	MINIMAP_HEIGHT,
+	computeWorldBounds,
+	computeMinimapScale,
+	computeMinimapOffset,
+	worldToMinimap as _worldToMinimap,
+	minimapToWorld as _minimapToWorld,
+	computeViewportInMinimap,
+	computePanForWorldPoint,
+	computeFitAllViewport,
+	computeWheelZoomViewport
+} from '../blueprint-core/minimapUtils'
 
 interface Props {
 	nodesById: Record<string, WorkflowNode>
 	viewport: WorkflowViewport
-	canvasSize: { width: number; height: number }
+	canvasSize?: { width: number; height: number }
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -92,10 +105,6 @@ const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 
 const isLight = computed(() => themeStore.state.mode === 'light')
 
-const MINIMAP_WIDTH = 200
-const MINIMAP_HEIGHT = 150
-const MINIMAP_PADDING = 8
-const DEFAULT_WORLD_BOUNDS = { x: -1000, y: -1000, width: 2000, height: 2000 }
 const NODE_TYPE_COLORS: Record<string, { dark: string; light: string }> = {
 	text: { dark: '#3f8cfc', light: '#2563eb' },
 	'text-merge': { dark: '#3f8cfc', light: '#2563eb' },
@@ -166,102 +175,21 @@ const nodesHash = computed(() => {
 	return nodes.map(n => `${n.id}:${n.worldX},${n.worldY},${n.width},${n.height}`).join('|')
 })
 
-const worldBounds = computed(() => {
-	const nodes = nodesList.value
-	if (nodes.length === 0) return DEFAULT_WORLD_BOUNDS
+const worldBounds = computed(() => computeWorldBounds(nodesList.value))
 
-	let minX = Infinity
-	let minY = Infinity
-	let maxX = -Infinity
-	let maxY = -Infinity
+const minimapScale = computed(() => computeMinimapScale(worldBounds.value))
 
-	for (const node of nodes) {
-		const wx = node.worldX ?? 0
-		const wy = node.worldY ?? 0
-		const nw = node.width ?? 200
-		const nh = node.height ?? 160
-		const halfW = nw / 2
-		const halfH = nh / 2
-		minX = Math.min(minX, wx - halfW)
-		minY = Math.min(minY, wy - halfH)
-		maxX = Math.max(maxX, wx + halfW)
-		maxY = Math.max(maxY, wy + halfH)
-	}
+const minimapOffset = computed(() => computeMinimapOffset(worldBounds.value, minimapScale.value))
 
-	if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
-		return DEFAULT_WORLD_BOUNDS
-	}
+const worldToMinimap = (wx: number, wy: number) =>
+	_worldToMinimap(wx, wy, worldBounds.value, minimapScale.value, minimapOffset.value)
 
-	const padding = 120
-	return {
-		x: minX - padding,
-		y: minY - padding,
-		width: (maxX - minX) + padding * 2,
-		height: (maxY - minY) + padding * 2
-	}
-})
+const minimapToWorld = (mx: number, my: number) =>
+	_minimapToWorld(mx, my, worldBounds.value, minimapScale.value, minimapOffset.value)
 
-const minimapScale = computed(() => {
-	const bounds = worldBounds.value
-	if (bounds.width <= 0 || bounds.height <= 0) return 0.08
-	const scaleX = (MINIMAP_WIDTH - MINIMAP_PADDING * 2) / bounds.width
-	const scaleY = (MINIMAP_HEIGHT - MINIMAP_PADDING * 2) / bounds.height
-	return Math.min(scaleX, scaleY)
-})
-
-const minimapOffset = computed(() => {
-	const bounds = worldBounds.value
-	const scale = minimapScale.value
-	const contentWidth = bounds.width * scale
-	const contentHeight = bounds.height * scale
-	return {
-		x: MINIMAP_PADDING + (MINIMAP_WIDTH - MINIMAP_PADDING * 2 - contentWidth) / 2,
-		y: MINIMAP_PADDING + (MINIMAP_HEIGHT - MINIMAP_PADDING * 2 - contentHeight) / 2
-	}
-})
-
-const worldToMinimap = (wx: number, wy: number) => {
-	const bounds = worldBounds.value
-	const scale = minimapScale.value
-	const offset = minimapOffset.value
-	return {
-		x: offset.x + (wx - bounds.x) * scale,
-		y: offset.y + (wy - bounds.y) * scale
-	}
-}
-
-const minimapToWorld = (mx: number, my: number) => {
-	const bounds = worldBounds.value
-	const scale = minimapScale.value
-	const offset = minimapOffset.value
-	return {
-		x: (mx - offset.x) / scale + bounds.x,
-		y: (my - offset.y) / scale + bounds.y
-	}
-}
-
-const viewportInMinimap = computed(() => {
-	const vp = props.viewport
-	const cs = props.canvasSize
-	const zoom = vp.zoom || 1
-	const panX = vp.panX || 0
-	const panY = vp.panY || 0
-
-	const centerWorldX = -panX / zoom
-	const centerWorldY = -panY / zoom
-	const halfWorldW = (cs.width / 2) / zoom
-	const halfWorldH = (cs.height / 2) / zoom
-
-	const tl = worldToMinimap(centerWorldX - halfWorldW, centerWorldY - halfWorldH)
-	const br = worldToMinimap(centerWorldX + halfWorldW, centerWorldY + halfWorldH)
-
-	return {
-		x: tl.x,
-		y: tl.y,
-		width: br.x - tl.x,
-		height: br.y - tl.y
-	}
-})
+const viewportInMinimap = computed(() =>
+	computeViewportInMinimap(props.viewport, props.canvasSize, worldBounds.value, minimapScale.value, minimapOffset.value)
+)
 
 const scheduleRender = () => {
 	if (rafId !== null) return
@@ -329,13 +257,6 @@ const toCanvasLocal = (e: PointerEvent) => {
 	}
 }
 
-const panToWorldPoint = (worldX: number, worldY: number) => {
-	const zoom = props.viewport.zoom || 1
-	const panX = -worldX * zoom
-	const panY = -worldY * zoom
-	emit('update:viewport', { zoom, panX, panY })
-}
-
 const onExpand = () => {
 	collapsed.value = false
 }
@@ -356,8 +277,7 @@ const onCanvasPointerDown = (e: PointerEvent) => {
 
 	const world = minimapToWorld(local.x, local.y)
 	const zoom = props.viewport.zoom || 1
-	const targetPanX = -world.x * zoom
-	const targetPanY = -world.y * zoom
+	const { panX: targetPanX, panY: targetPanY } = computePanForWorldPoint(world.x, world.y, zoom)
 	emit('update:viewport', { zoom, panX: targetPanX, panY: targetPanY })
 	isDraggingViewport = true
 	dragStartMinimap = local
@@ -403,38 +323,26 @@ const onCanvasWheel = (e: WheelEvent) => {
 	const canvas = canvasRef.value
 	if (!canvas) return
 
-	const zoom = props.viewport.zoom || 1
-	const z1 = Math.max(0.2, Math.min(6, zoom * (e.deltaY > 0 ? 0.92 : 1.08)))
-	if (Math.abs(z1 - zoom) < 1e-6) return
-
 	const rect = canvas.getBoundingClientRect()
 	const mx = e.clientX - rect.left
 	const my = e.clientY - rect.top
-	const anchorWorld = minimapToWorld(mx, my)
 
-	const panX = -anchorWorld.x * z1
-	const panY = -anchorWorld.y * z1
-	emit('update:viewport', { zoom: z1, panX, panY })
+	const result = computeWheelZoomViewport(
+		props.viewport,
+		props.canvasSize,
+		mx,
+		my,
+		worldBounds.value,
+		minimapScale.value,
+		minimapOffset.value,
+		e.deltaY
+	)
+	emit('update:viewport', result)
 }
 
 const fitToAllNodes = () => {
-	const nodes = nodesList.value
-	if (nodes.length === 0) {
-		emit('update:viewport', { zoom: 1, panX: 0, panY: 0 })
-		return
-	}
-
-	const bounds = worldBounds.value
-	const paddingRatio = 0.85
-	const cs = props.canvasSize
-	const scaleX = (cs.width * paddingRatio) / bounds.width
-	const scaleY = (cs.height * paddingRatio) / bounds.height
-	const zoom = Math.max(0.2, Math.min(6, Math.min(scaleX, scaleY)))
-	const centerWorldX = bounds.x + bounds.width / 2
-	const centerWorldY = bounds.y + bounds.height / 2
-	const panX = -centerWorldX * zoom
-	const panY = -centerWorldY * zoom
-	emit('update:viewport', { zoom, panX, panY })
+	const result = computeFitAllViewport(nodesList.value, props.canvasSize)
+	emit('update:viewport', result)
 }
 
 watch(
