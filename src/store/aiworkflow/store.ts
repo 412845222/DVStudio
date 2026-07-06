@@ -3327,6 +3327,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				state.selectedNodeIds = newIds
 				state.selectedNodeId = newIds[0] ?? null
 				state.selectedEdgeId = null
+				state.clipboardNodes = null
+				state.clipboardPrimaryNodeId = null
+				state.clipboardNode = null
 				return
 			}
 
@@ -3350,6 +3353,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.selectedNodeId = id
 			state.selectedNodeIds = [id]
 			state.selectedEdgeId = null
+			state.clipboardNode = null
+			state.clipboardNodes = null
+			state.clipboardPrimaryNodeId = null
 		},
 		clearSelection(state) {
 			state.selectedNodeId = null

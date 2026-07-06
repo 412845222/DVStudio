@@ -307,109 +307,6 @@ async function runStartupCheckSequence() {
 	startupProgress.show(t('projectList.startup.checkTitle'), null)
 	startupProgress.reset(t('projectList.startup.checkTitle'))
 
-	const withTimeout = <T,>(
-		label: string,
-		promiseFactory: () => Promise<T>,
-		ms = 8000
-	): Promise<T> => {
-		return new Promise<T>((resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error(t('projectList.startup.timeout', { label, ms }))), ms)
-			promiseFactory()
-				.then((v) => {
-					clearTimeout(timer)
-					resolve(v)
-				})
-				.catch((err) => {
-					clearTimeout(timer)
-					reject(err)
-				})
-		})
-	}
-
-	await startupProgress.runStep(
-		'localdb.init',
-		t('projectList.startup.initLocalDb'),
-		async () => {
-			const dbBridge = window.dweb?.aiworkflow?.db
-			if (!dbBridge) {
-				startupProgress.updateStep('localdb.init', {
-					status: 'warn',
-					detail: t('projectList.error.ipcUnavailable')
-				})
-				return 'fallback'
-			}
-			const initState = await withTimeout(
-				'localdb.init',
-				() =>
-					Promise.resolve(dbBridge._initState?.()).then((v) => v ?? { ok: false, error: t('projectList.error.notImplemented') }),
-				5000
-			)
-			if (initState?.ok) return t('projectList.startup.readyAt', { path: String(initState.dbFilePath || 'default') })
-			const retry = await withTimeout(
-				'localdb.ensureInitialized',
-				() =>
-					Promise.resolve(dbBridge._ensureInitialized?.({})).then(
-						(v) => v ?? { ok: false, error: t('projectList.error.notImplemented') }
-					),
-				5000
-			)
-			if (!retry?.ok) {
-				const errMsg = String(retry?.error || t('projectList.startup.dbInitFailed'))
-				startupProgress.updateStep('localdb.init', {
-					status: 'warn',
-					detail: errMsg + t('projectList.startup.fallbackToBackend')
-				})
-				return 'fallback'
-			}
-			return t('projectList.startup.initSuccess')
-		},
-		{ errorDetailOnFailure: true }
-	)
-
-	const dbOpenResult = await startupProgress.runStep(
-		'localdb.open',
-		t('projectList.startup.checkLocalDb'),
-		async () => {
-			const listFn = localDbBridge()
-			if (typeof listFn !== 'function') {
-				startupProgress.updateStep('localdb.open', {
-					status: 'warn',
-					detail: t('projectList.error.noIpcListInterface')
-				})
-				return -1
-			}
-			let rows: unknown
-			try {
-				rows = await withTimeout('localdb.projects.list', () => Promise.resolve(listFn()), 5000)
-			} catch (e: unknown) {
-				startupProgress.updateStep('localdb.open', {
-					status: 'warn',
-					detail: getErrorMessage(e) || t('projectList.error.dbCallFailed')
-				})
-				return -1
-			}
-			let arr: unknown[] = []
-			if (Array.isArray(rows)) {
-				arr = rows
-			} else if (rows != null && typeof rows === 'object') {
-				const obj = rows as { projects?: unknown; value?: unknown }
-				if (Array.isArray(obj.projects)) {
-					arr = obj.projects
-				} else if (Array.isArray(obj.value)) {
-					arr = obj.value
-				}
-			}
-			return arr.length
-		},
-		{ errorDetailOnFailure: true }
-	)
-	if (dbOpenResult.ok && typeof dbOpenResult.value === 'number' && dbOpenResult.value >= 0) {
-		startupProgress.updateStep('localdb.open', {
-			status: 'ok',
-			detail: t('projectList.startup.foundProjects', { count: dbOpenResult.value })
-		})
-	}
-
 	await startupProgress.runStep(
 		'localdb.projects',
 		t('projectList.startup.prepareProjectList'),
@@ -424,7 +321,7 @@ async function runStartupCheckSequence() {
 		status: 'ok',
 		detail: t('projectList.startup.totalProjects', { count: allProjects.value.length })
 	})
-	setTimeout(() => startupProgress.hide(), 2000)
+	setTimeout(() => startupProgress.hide(), 800)
 }
 
 const filteredProjects = computed<ProjectCardItem[]>(() => {
@@ -479,13 +376,30 @@ async function refreshProjects(silent = false) {
 		let usedLocal = false
 		if (isElectron() && typeof localDbBridge() === 'function') {
 			usedLocal = true
-			const raw = await localDbBridge()!.call(null)
+			let raw: unknown
+			try {
+				raw = await localDbBridge()!.call(null)
+			} catch (e) {
+				const dbBridge = window.dweb?.aiworkflow?.db
+				if (dbBridge?._ensureInitialized) {
+					const initResult = await dbBridge._ensureInitialized({})
+					if (initResult?.ok) {
+						raw = await localDbBridge()!.call(null)
+					} else {
+						throw e
+					}
+				} else {
+					throw e
+				}
+			}
 			if (Array.isArray(raw)) {
 				list = raw
 			} else if (raw != null && typeof raw === 'object') {
-				const obj = raw as { projects?: unknown; value?: unknown }
+				const obj = raw as { projects?: unknown; value?: unknown; ok?: boolean }
 				if (Array.isArray(obj.projects)) {
 					list = obj.projects
+				} else if (obj.ok && Array.isArray(obj.value)) {
+					list = obj.value
 				} else if (Array.isArray(obj.value)) {
 					list = obj.value
 				}

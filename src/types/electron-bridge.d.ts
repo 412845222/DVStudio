@@ -45,6 +45,24 @@ declare global {
 	const __DWEB_APP_VERSION__: string
 	const __DWEB_APP_NAME__: string
 	const __DWEB_APP_COPYRIGHT__: string
+	const __DWEB_HOMEPAGE_URL__: string
+	const __DWEB_BILIBILI_URL__: string
+	const __DWEB_ISSUES_URL__: string
+
+	type DwebUpdateCheckResult = {
+		ok: boolean
+		skipped?: boolean
+		reason?: string
+		hasUpdate?: boolean
+		currentVersion: string
+		latestVersion?: string
+		releaseUrl?: string
+		releaseNotes?: string
+		publishedAt?: string
+		isPrerelease?: boolean
+		isDraft?: boolean
+		error?: string
+	}
 
 	type DwebAppInfo = {
 		appName: string
@@ -54,6 +72,8 @@ declare global {
 		license: string
 		homepage: string
 		repoUrl: string
+		bilibiliUrl: string
+		issuesUrl: string
 	}
 
 	type PlatformEventName = 'disconnected' | 'user-changed' | 'overlay-activated' | 'overlay-deactivated' | 'status-changed'
@@ -100,6 +120,9 @@ declare global {
 		__DWEB_APP_VERSION__?: string
 		__DWEB_APP_NAME__?: string
 		__DWEB_APP_COPYRIGHT__?: string
+		__DWEB_HOMEPAGE_URL__?: string
+		__DWEB_BILIBILI_URL__?: string
+		__DWEB_ISSUES_URL__?: string
 		__DWEB_BACKEND_BASE_URL?: string
 		__DWEB_BACKEND_BASE_URL__?: string
 		__DWEB_BACKEND_MODE__?: 'normal' | 'migration'
@@ -118,6 +141,8 @@ declare global {
 		dweb?: {
 			common: {
 				getAppInfo?(): DwebAppInfo
+				checkForUpdate?(): Promise<DwebUpdateCheckResult>
+				isSteamVersion?(): Promise<{ ok: boolean; isSteam: boolean }>
 				getBackendBaseUrl(): Promise<string>
 				getBackendRuntimeState(): Promise<BackendRuntimeState>
 				onBackendRuntimeStateChanged(handler: (state: BackendRuntimeState) => void): number

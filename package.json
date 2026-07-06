@@ -1,7 +1,7 @@
 {
   "name": "dweb-video-studio",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "main": "electron/main.mjs",
   "description": "DVStudio - Vite + Vue 3 + TypeScript + WebGL2 视频动画模板/编辑器，支持时间轴关键帧与 AI 对话辅助生成/修改场景。",
   "license": "MPL-2.0",
