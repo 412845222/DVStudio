@@ -11,7 +11,12 @@ const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 
 const isCI = process.env.CI === 'true'
-const steamAppId = process.env.STEAM_APP_ID || '2475710'
+const steamAppId = process.env.STEAM_APP_ID || ''
+
+if (!steamAppId) {
+	process.stderr.write('[dist:steam:win] ERROR: Steam AppID is required. Set it in steam.config.json or STEAM_APP_ID env var.\n')
+	process.exit(1)
+}
 
 function run(cmd, args, { env, cwd } = {}) {
 	return new Promise((resolve) => {

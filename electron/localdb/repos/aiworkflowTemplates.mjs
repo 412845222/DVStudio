@@ -50,7 +50,7 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 	)
 	const getByIdStmt = db.prepare('SELECT * FROM aiworkflow_templates WHERE id = ?')
 	const insertStmt = db.prepare(
-		`INSERT INTO aiworkflow_templates
+		`INSERT OR REPLACE INTO aiworkflow_templates
 			(id, name, description, category, tags, node_count, source, file_path, cover_path, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	)
@@ -125,6 +125,9 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 		const nCount = Math.max(0, Number(nodeCount) || 0)
 		const now = Date.now()
 
+		const existing = getById(tid)
+		const createdAt = existing?.createdAt ? Number(existing.createdAt) : now
+
 		const filePath = resolveTemplateFilePath(tid)
 		if (!filePath) return { ok: false, error: 'templates directory not available' }
 		const coverPath = resolveCoverFilePath(tid)
@@ -142,7 +145,14 @@ export function createAiworkflowTemplatesRepo({ backendDataDir } = {}) {
 				try { if (fs.existsSync(coverPath)) fs.unlinkSync(coverPath) } catch {}
 			}
 
-			insertStmt.run(tid, nameText, desc, cat, tagsJson, nCount, 'user', filePath, finalCoverPath, now, now)
+			if (existing) {
+				const updateStmt = db.prepare(
+					`UPDATE aiworkflow_templates SET name=?, description=?, category=?, tags=?, node_count=?, file_path=?, cover_path=?, updated_at=? WHERE id=?`
+				)
+				updateStmt.run(nameText, desc, cat, tagsJson, nCount, filePath, finalCoverPath, now, tid)
+			} else {
+				insertStmt.run(tid, nameText, desc, cat, tagsJson, nCount, 'user', filePath, finalCoverPath, createdAt, now)
+			}
 			return getById(tid)
 		})
 

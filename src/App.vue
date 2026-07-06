@@ -164,7 +164,7 @@ function handleSteamPanelAction(actionId: string) {
 			break
 		case 'achievements':
 			overlayActivate('Achievements').catch(() => {
-				openExternalUrl('https://steamcommunity.com/my/stats/2475710/?tab=achievements')
+				openExternalUrl('https://steamcommunity.com/my/')
 			})
 			break
 		case 'open-panel':

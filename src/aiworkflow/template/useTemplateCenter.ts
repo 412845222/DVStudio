@@ -110,25 +110,24 @@ export function useTemplateCenter() {
 	}
 
 	function markSyncStatus() {
-		const userMap = new Map<string, TemplateItem>()
+		const cloudIdSet = new Set<string>()
 		templatesState.value.forEach((t) => {
-			if (t.source === 'user') {
-				userMap.set(t.id, t)
+			if (t.source === 'steam-user') {
+				t.cloudSyncStatus = 'synced'
+				cloudIdSet.add(t.id)
 			}
 		})
 
 		templatesState.value.forEach((t) => {
-			if (t.source === 'steam-user') {
-				if (userMap.has(t.id)) {
-					userMap.get(t.id)!.cloudSyncStatus = 'synced'
-					userMap.get(t.id)!.lastSyncAt = t.updatedAt
+			if (t.source === 'user') {
+				const hasCloudVersion = cloudIdSet.has(t.id)
+				t.cloudSyncStatus = hasCloudVersion ? 'synced' : 'local-only'
+				if (hasCloudVersion) {
+					const cloudVersion = templatesState.value.find((ct) => ct.source === 'steam-user' && ct.id === t.id)
+					t.lastSyncAt = cloudVersion?.updatedAt
+				} else {
+					t.lastSyncAt = undefined
 				}
-			} else if (t.source === 'user') {
-				const cloudVersion = templatesState.value.find(
-					(ct) => ct.source === 'steam-user' && ct.id === t.id
-				)
-				t.cloudSyncStatus = cloudVersion ? 'synced' : 'local-only'
-				t.lastSyncAt = cloudVersion?.updatedAt
 			}
 		})
 	}
@@ -288,18 +287,38 @@ export function useTemplateCenter() {
 		return saved
 	}
 
-	async function uploadToCloud(template: TemplateItem): Promise<boolean> {
-		if (template.source !== 'user') return false
+	async function uploadToCloud(template: TemplateItem): Promise<{ ok: boolean; errMsg?: string }> {
+		console.log('[template-center] uploadToCloud called for:', template.id, template.name, 'source:', template.source)
+		if (template.source !== 'user') {
+			console.warn('[template-center] Cannot upload: template source is not user:', template.source)
+			return { ok: false, errMsg: 'Only local templates can be uploaded' }
+		}
 
+		console.log('[template-center] Loading template blob...')
 		const zipBlob = await persistence.loadTemplateBlob(template.id)
-		if (!zipBlob) return false
+		if (!zipBlob) {
+			console.error('[template-center] Failed to load template blob for:', template.id)
+			return { ok: false, errMsg: 'Failed to load template data' }
+		}
+		console.log('[template-center] Template blob loaded, size:', zipBlob.size)
 
 		const coverBlob = await persistence.loadTemplateCoverBlob(template.id)
+		console.log('[template-center] Cover blob:', coverBlob ? 'loaded' : 'not found')
 		const ok = await cloudPersistence.uploadTemplateToCloud(template, zipBlob, coverBlob)
 		if (ok) {
-			await loadTemplates()
+			template.cloudSyncStatus = 'synced'
+			template.lastSyncAt = Date.now()
+			const newCloudTemplates = await cloudPersistence.loadCloudTemplates()
+			templatesState.value = [
+				...templatesState.value.filter((t) => t.source !== 'steam-user'),
+				...newCloudTemplates,
+			]
+			markSyncStatus()
+			console.log('[template-center] Upload successful')
+			return { ok: true }
 		}
-		return ok
+		console.error('[template-center] Upload failed')
+		return { ok: false, errMsg: 'Upload failed, check console for details' }
 	}
 
 	async function downloadFromCloud(template: TemplateItem): Promise<TemplateItem | null> {
@@ -309,6 +328,7 @@ export function useTemplateCenter() {
 		if (!result) return null
 
 		const saved = await persistence.saveUserTemplate({
+			id: result.meta.id,
 			name: result.meta.name,
 			description: result.meta.description,
 			category: result.meta.category,
@@ -318,7 +338,11 @@ export function useTemplateCenter() {
 			coverBlob: result.coverBlob,
 		})
 		if (saved) {
-			await addUserTemplate(saved)
+			saved.cloudSyncStatus = 'synced'
+			saved.lastSyncAt = result.meta.updatedAt
+			templatesState.value = templatesState.value.filter((t) => !(t.source === 'user' && t.id === saved.id))
+			templatesState.value = [saved, ...templatesState.value]
+			markSyncStatus()
 		}
 		return saved
 	}

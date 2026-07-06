@@ -14,6 +14,9 @@ import { execSync } from 'child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'url'
+import { loadSteamEnv } from './steam-env.mjs'
+
+loadSteamEnv()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -70,9 +73,15 @@ try {
 
 	const appidPath = path.join(REPO_ROOT, 'steam_appid.txt')
 	if (!fs.existsSync(appidPath)) {
-		fs.writeFileSync(appidPath, '2475710', 'utf8')
-		console.log('[setup-steam-dev] Created steam_appid.txt with AppID 2475710 (DVStudio)')
-		console.log('[setup-steam-dev] You can edit steam_appid.txt to use a different AppID (e.g., 480 for SpaceWar testing).')
+		const appId = process.env.STEAM_APP_ID
+		if (appId) {
+			fs.writeFileSync(appidPath, appId, 'utf8')
+			console.log(`[setup-steam-dev] Created steam_appid.txt with AppID ${appId}`)
+			console.log('[setup-steam-dev] You can edit steam_appid.txt to use a different AppID (e.g., 480 for SpaceWar testing).')
+		} else {
+			console.log('[setup-steam-dev] Warning: No Steam AppID configured, skipping steam_appid.txt creation')
+			console.log('[setup-steam-dev] Create steam.config.json with your appId first, or manually create steam_appid.txt')
+		}
 	} else {
 		console.log('[setup-steam-dev] steam_appid.txt already exists, skipping.')
 	}
@@ -81,8 +90,8 @@ try {
 	console.log('[setup-steam-dev] SUCCESS! dweb-steamjs is linked.')
 	console.log('')
 	console.log('Next steps:')
-	console.log('  1. Start Steam client and log in')
-	console.log('  2. Verify steam_appid.txt contains your AppID (default: 2475710)')
+	console.log('  1. Configure your Steam AppID in steam.config.json (copy from steam.config.example.json)')
+	console.log('  2. Start Steam client and log in')
 	console.log('  3. Run "npm run dev:electron" to start the app')
 	console.log('  4. Check console for "[platform:steam] initialized" message')
 	console.log('  5. Steam friends list should show you as in-game')

@@ -28,18 +28,6 @@ export class LocalCloudAdapter extends CloudAdapter {
 	isAvailable() { return true }
 
 	async getQuota() {
-		try {
-			const stat = await fs.statvfs?.(this._storageDir)
-			if (stat) {
-				return {
-					ok: true,
-					quota: {
-						totalBytes: stat.blocks * stat.frsize,
-						availableBytes: stat.bavail * stat.frsize,
-					},
-				}
-			}
-		} catch {}
 		return {
 			ok: true,
 			quota: {

@@ -80,5 +80,15 @@
   "aiworkflow.templateCenter.noCloudTemplates": "No cloud templates",
   "aiworkflow.templateCenter.workshopTitle": "Official Template Workshop",
   "aiworkflow.templateCenter.workshopDesc": "Browse and download curated workflow templates provided by DVStudio official team, get premium content from professional creators",
-  "aiworkflow.templateCenter.steamRequired": "Requires Steam client running and logged in"
+  "aiworkflow.templateCenter.steamRequired": "Requires Steam client running and logged in",
+  "aiworkflow.templateCenter.uploadToCloud": "Upload to Cloud",
+  "aiworkflow.templateCenter.downloadToLocal": "Download to Local",
+  "aiworkflow.templateCenter.uploading": "Uploading...",
+  "aiworkflow.templateCenter.downloading": "Downloading...",
+  "aiworkflow.templateCenter.syncedTag": "Synced",
+  "aiworkflow.templateCenter.syncedTooltip": "This template is synced with cloud",
+  "aiworkflow.templateCenter.uploadSuccess": "Template uploaded to cloud",
+  "aiworkflow.templateCenter.uploadFailed": "Upload failed, please check Steam connection and retry",
+  "aiworkflow.templateCenter.downloadSuccess": "Template downloaded to local",
+  "aiworkflow.templateCenter.downloadFailed": "Download failed, please check Steam connection and retry"
 }

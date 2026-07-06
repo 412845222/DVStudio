@@ -196,6 +196,8 @@
 								:template="template"
 								:selected="selectedTemplate?.id === template.id"
 								:size="cardSize"
+								:uploading="uploadingTemplateId === template.id"
+								:downloading="downloadingTemplateId === template.id"
 								@select="selectTemplate"
 								@preview="handlePreview"
 								@apply="handleApply"
@@ -219,7 +221,7 @@ import { buildSquareParticles } from '../../composables/useSquareParticles'
 import type { TemplateItem, SaveTemplateOptions, TemplateSource } from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
 
-type TabId = 'builtin' | 'user' | 'cloud' | 'workshop'
+type TabId = 'user' | 'cloud' | 'workshop'
 
 const props = defineProps<{
 	open: boolean
@@ -256,14 +258,9 @@ const {
 	downloadFromCloud,
 } = useTemplateCenter()
 
-const activeTab = ref<TabId>('builtin')
+const activeTab = ref<TabId>('user')
 
 const tabs = computed(() => [
-	{
-		id: 'builtin' as TabId,
-		label: t('aiworkflow.templateCenter.tabBuiltin'),
-		icon: { viewBox: '0 0 16 16', d: 'M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z' },
-	},
 	{
 		id: 'user' as TabId,
 		label: t('aiworkflow.templateCenter.tabUser'),
@@ -282,7 +279,6 @@ const tabs = computed(() => [
 ])
 
 const tabSourceMap: Record<TabId, TemplateSource | null> = {
-	builtin: 'builtin',
 	user: 'user',
 	cloud: 'steam-user',
 	workshop: null,
@@ -321,8 +317,6 @@ const displayTemplates = computed(() => {
 
 const currentTabEmptyText = computed(() => {
 	switch (activeTab.value) {
-		case 'builtin':
-			return t('aiworkflow.templateCenter.noBuiltinTemplates')
 		case 'user':
 			return t('aiworkflow.templateCenter.noUserTemplates')
 		case 'cloud':
@@ -370,11 +364,25 @@ function handleDelete(template: TemplateItem) {
 }
 
 async function handleUpload(template: TemplateItem) {
-	await uploadToCloud(template)
+	console.log('[template-center-dialog] handleUpload clicked for:', template.id, template.name)
+	const result = await uploadToCloud(template)
+	console.log('[template-center-dialog] upload result:', result)
+	if (result?.ok) {
+		window.alert(t('aiworkflow.templateCenter.uploadSuccess'))
+	} else {
+		window.alert(result?.errMsg || t('aiworkflow.templateCenter.uploadFailed'))
+	}
 }
 
 async function handleDownload(template: TemplateItem) {
-	await downloadFromCloud(template)
+	console.log('[template-center-dialog] handleDownload clicked for:', template.id, template.name)
+	const result = await downloadFromCloud(template)
+	console.log('[template-center-dialog] download result:', result ? 'success' : 'failed')
+	if (result) {
+		window.alert(t('aiworkflow.templateCenter.downloadSuccess'))
+	} else {
+		window.alert(t('aiworkflow.templateCenter.downloadFailed'))
+	}
 }
 </script>
 

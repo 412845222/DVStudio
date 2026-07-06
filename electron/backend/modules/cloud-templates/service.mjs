@@ -22,6 +22,7 @@ export class CloudTemplatesService {
         this._adapter = getActiveCloudAdapter(mgr, {
             pathPrefix: TEMPLATE_PATH_PREFIX,
         })
+        console.log('[cloud-templates] adapter initialized:', this._adapter?.getPlatformId?.(), 'available:', this._adapter?.isAvailable?.())
     }
 
     getAdapter() {
@@ -32,11 +33,13 @@ export class CloudTemplatesService {
     }
 
     getPlatformId() {
-        return this.getAdapter().getPlatformId()
+        const adapter = this.getAdapter()
+        return adapter.getPlatformId()
     }
 
     getPlatformName() {
-        return this.getAdapter().getPlatformName()
+        const adapter = this.getAdapter()
+        return adapter.getPlatformName()
     }
 
     async getQuota() {
@@ -71,17 +74,23 @@ export class CloudTemplatesService {
     async uploadTemplate(options) {
         const { id, name, description, category, tags, nodeCount, zipBuffer, coverBuffer } = options
 
+        console.log('[cloud-templates] service.uploadTemplate:', { id, name, zipSize: zipBuffer?.length, hasCover: !!(coverBuffer?.length) })
+
         const adapter = this.getAdapter()
+        console.log('[cloud-templates] using adapter:', adapter.getPlatformId(), adapter.getPlatformName())
 
         const packageFileName = `${TEMPLATE_PATH_PREFIX}${id}.zip`
         const coverFileName = coverBuffer ? `${TEMPLATE_PATH_PREFIX}${id}_cover.png` : ''
 
+        console.log('[cloud-templates] writing package file:', packageFileName)
         const writeResult = await adapter.fileWrite(packageFileName, zipBuffer)
         if (!writeResult.ok) {
+            console.error('[cloud-templates] failed to write package:', writeResult.errMsg)
             return { ok: false, errMsg: writeResult.errMsg || 'Failed to write template package' }
         }
 
         if (coverBuffer && coverBuffer.length > 0) {
+            console.log('[cloud-templates] writing cover file:', coverFileName)
             const coverResult = await adapter.fileWrite(coverFileName, coverBuffer)
             if (!coverResult.ok) {
                 console.warn('[cloud-templates] Failed to write cover:', coverResult.errMsg)
@@ -112,11 +121,14 @@ export class CloudTemplatesService {
         }
         index.lastSyncedAt = now
 
+        console.log('[cloud-templates] saving index, total templates:', index.templates.length)
         const indexResult = await this._saveIndex(index)
         if (!indexResult.ok) {
+            console.error('[cloud-templates] failed to save index:', indexResult.errMsg)
             return { ok: false, errMsg: 'Failed to update index' }
         }
 
+        console.log('[cloud-templates] upload complete for:', id)
         return { ok: true }
     }
 

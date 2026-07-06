@@ -185,7 +185,7 @@ async function main() {
 	const pkgPath = path.join(repoRoot, 'package.json')
 	const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
 
-	const steamAppId = resolveConfig('AppID', 'appid', 'STEAM_APP_ID', '2475710')
+	const steamAppId = resolveConfig('AppID', 'appid', 'STEAM_APP_ID', '')
 	const steamUsername = resolveConfig('Username', 'user', 'STEAM_USERNAME', '')
 	const steamPassword = resolveConfig('Password', 'pass', 'STEAM_PASSWORD', '')
 	const steamGuardCode = resolveConfig('GuardCode', 'guard', 'STEAM_GUARD_CODE', '')

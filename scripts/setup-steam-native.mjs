@@ -4,6 +4,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { loadSteamEnv } from './steam-env.mjs'
+
+loadSteamEnv()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -85,9 +88,15 @@ function main() {
     } else {
         const defaultAppIdPath = path.join(win32Dir, 'steam_appid.txt')
         if (!fs.existsSync(defaultAppIdPath)) {
-            fs.writeFileSync(defaultAppIdPath, '2475710', 'utf8')
-            console.log('[setup-steam-native] Created default steam_appid.txt (AppID 2475710)')
-            copiedCount++
+            const appId = process.env.STEAM_APP_ID
+            if (appId) {
+                fs.writeFileSync(defaultAppIdPath, appId, 'utf8')
+                console.log(`[setup-steam-native] Created steam_appid.txt (AppID ${appId})`)
+                copiedCount++
+            } else {
+                console.log('[setup-steam-native] Warning: No Steam AppID configured, skipping steam_appid.txt creation')
+                console.log('[setup-steam-native] Create steam.config.json with your appId, or place steam_appid.txt in project root')
+            }
         }
     }
 

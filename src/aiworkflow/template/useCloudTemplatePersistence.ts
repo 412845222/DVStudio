@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, toRaw } from 'vue'
 import type { TemplateItem, TemplateCategory, CloudSyncStatus } from './types'
 import {
 	getCloudTemplatesPlatform,
@@ -31,11 +31,18 @@ export function useCloudTemplatePersistence() {
 
 	async function ensureCloudAvailable(): Promise<boolean> {
 		try {
+			console.log('[cloud-templates] Checking cloud platform availability...')
 			const platform = await getCloudTemplatesPlatform()
-			if (!platform?.ok) return false
+			console.log('[cloud-templates] Platform result:', platform)
+			if (!platform?.ok) {
+				console.warn('[cloud-templates] Cloud platform not available:', platform?.errMsg || 'unknown error')
+				return false
+			}
 			cloudPlatformState.value = platform
+			console.log('[cloud-templates] Cloud platform available:', platform.platformId, platform.platformName)
 			return true
-		} catch {
+		} catch (err) {
+			console.error('[cloud-templates] ensureCloudAvailable error:', err)
 			return false
 		}
 	}
@@ -98,9 +105,14 @@ export function useCloudTemplatePersistence() {
 
 	async function uploadTemplateToCloud(template: TemplateItem, zipBlob: Blob, coverBlob?: Blob | null): Promise<boolean> {
 		uploadingTemplateId.value = template.id
+		const rawTemplate = toRaw(template)
+		console.log('[cloud-templates] Starting upload:', rawTemplate.id, rawTemplate.name, 'zipSize:', zipBlob.size, 'hasCover:', !!coverBlob)
 		try {
 			const available = await ensureCloudAvailable()
-			if (!available) return false
+			if (!available) {
+				console.error('[cloud-templates] Upload aborted: cloud not available')
+				return false
+			}
 
 			const zipData = await zipBlob.arrayBuffer()
 			let coverData: ArrayBuffer | null = null
@@ -108,22 +120,29 @@ export function useCloudTemplatePersistence() {
 				coverData = await coverBlob.arrayBuffer()
 			}
 
+			console.log('[cloud-templates] Sending upload request to backend...')
 			const result = await uploadCloudTemplate({
-				id: template.id,
-				name: template.name,
-				description: template.description,
-				category: template.category,
-				tags: template.tags,
-				nodeCount: template.nodeCount,
+				id: rawTemplate.id,
+				name: rawTemplate.name,
+				description: rawTemplate.description || '',
+				category: rawTemplate.category,
+				tags: [...(rawTemplate.tags || [])],
+				nodeCount: rawTemplate.nodeCount || 0,
 				zipData,
 				coverData,
 			})
 
-			if (!result?.ok) return false
+			console.log('[cloud-templates] Upload result:', result)
+			if (!result?.ok) {
+				console.error('[cloud-templates] Upload failed:', result?.errMsg || 'unknown error')
+				return false
+			}
 
 			await loadCloudTemplates()
+			console.log('[cloud-templates] Upload complete, templates reloaded')
 			return true
-		} catch {
+		} catch (err) {
+			console.error('[cloud-templates] uploadTemplateToCloud error:', err)
 			return false
 		} finally {
 			uploadingTemplateId.value = null
