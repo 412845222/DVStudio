@@ -4,6 +4,7 @@ import { t } from '../../../i18n'
 
 const GRID_CELL_SIZE = 1000
 const SPATIAL_INDEX_THRESHOLD = 80
+const MAX_SELECTED_NODES_FOR_FULL_RENDER = 40
 
 interface GridCell {
 	nodeIds: string[]
@@ -20,6 +21,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	viewportMotionActive?: Ref<boolean>
 	motionRecomputeMinIntervalMs?: number
 	forceRenderNodeIds?: Ref<Set<string>>
+	invalidateTick?: Ref<number>
 }) => {
 	const hiddenNodeIdSet = new Set(
 		(payload.hiddenNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)
@@ -52,6 +54,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	let lastSelectedCount = -1
 	let lastComputeAt = 0
 	let lastResultWasCapped = false
+	let lastInvalidateTick = -1
 
 	const gridIndex = new Map<string, GridCell>()
 	let lastGridHash = -1
@@ -201,6 +204,53 @@ export const useAIWorkflowNodeVisibility = (payload: {
 
 	const candidateIdBuf: string[] = []
 
+	const isNodeInViewport = (
+		node: WorkflowNode,
+		viewLeft: number,
+		viewTop: number,
+		viewRight: number,
+		viewBottom: number
+	) => {
+		const halfWidth = Math.max(0, Number(node.width) || 0) / 2
+		const halfHeight = Math.max(0, Number(node.height) || 0) / 2
+		const left = node.worldX - halfWidth
+		const right = node.worldX + halfWidth
+		const top = node.worldY - halfHeight
+		const bottom = node.worldY + halfHeight
+		return right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom
+	}
+
+	const addSelectedNodes = (
+		selectedIds: Set<string>,
+		nodesById: Map<string, WorkflowNode>,
+		viewLeft: number,
+		viewTop: number,
+		viewRight: number,
+		viewBottom: number,
+		out: string[]
+	) => {
+		const selectedCount = selectedIds.size
+		if (selectedCount <= MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+			selectedIds.forEach((id) => {
+				out.push(id)
+			})
+			return
+		}
+
+		let addedSelected = 0
+		const selectedInViewport: string[] = []
+		selectedIds.forEach((id) => {
+			const node = nodesById.get(id)
+			if (node && isNodeInViewport(node, viewLeft, viewTop, viewRight, viewBottom)) {
+				selectedInViewport.push(id)
+			}
+		})
+		for (let i = 0; i < selectedInViewport.length && addedSelected < MAX_SELECTED_NODES_FOR_FULL_RENDER; i++) {
+			out.push(selectedInViewport[i])
+			addedSelected++
+		}
+	}
+
 	const computeVisibleNodeIds = (
 		nodesForRender: WorkflowNode[],
 		viewLeft: number,
@@ -212,29 +262,27 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	) => {
 		out.length = 0
 
-		selectedIds.forEach((id) => {
-			out.push(id)
-		})
-
 		const nodeCount = nodesForRender.length
 
 		if (nodeCount <= SPATIAL_INDEX_THRESHOLD) {
+			const nodesById = new Map<string, WorkflowNode>()
+			for (let i = 0; i < nodeCount; i++) {
+				nodesById.set(nodesForRender[i].id, nodesForRender[i])
+			}
+			addSelectedNodes(selectedIds, nodesById, viewLeft, viewTop, viewRight, viewBottom, out)
+
 			for (let i = 0; i < nodeCount; i++) {
 				const node = nodesForRender[i]
 				const id = node.id
 				if (selectedIds.has(id)) continue
-				const halfWidth = Math.max(0, Number(node.width) || 0) / 2
-				const halfHeight = Math.max(0, Number(node.height) || 0) / 2
-				const left = node.worldX - halfWidth
-				const right = node.worldX + halfWidth
-				const top = node.worldY - halfHeight
-				const bottom = node.worldY + halfHeight
-				if (right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom) {
+				if (isNodeInViewport(node, viewLeft, viewTop, viewRight, viewBottom)) {
 					out.push(id)
 				}
 			}
 		} else {
 			const nodesById = buildGridIndex(nodesForRender)
+			addSelectedNodes(selectedIds, nodesById, viewLeft, viewTop, viewRight, viewBottom, out)
+
 			candidateIdBuf.length = 0
 			queryGridIndex(viewLeft, viewTop, viewRight, viewBottom, candidateIdBuf)
 
@@ -243,13 +291,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 				if (selectedIds.has(id)) continue
 				const node = nodesById.get(id)
 				if (!node) continue
-				const halfWidth = Math.max(0, Number(node.width) || 0) / 2
-				const halfHeight = Math.max(0, Number(node.height) || 0) / 2
-				const left = node.worldX - halfWidth
-				const right = node.worldX + halfWidth
-				const top = node.worldY - halfHeight
-				const bottom = node.worldY + halfHeight
-				if (right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom) {
+				if (isNodeInViewport(node, viewLeft, viewTop, viewRight, viewBottom)) {
 					out.push(id)
 				}
 			}
@@ -303,6 +345,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 		const viewRight = (viewportWidth - centerX - payload.viewport.value.panX) / zoom + worldMargin
 		const viewTop = (-centerY - payload.viewport.value.panY) / zoom - worldMargin
 		const viewBottom = (viewportHeight - centerY - payload.viewport.value.panY) / zoom + worldMargin
+		const currentInvalidateTick = payload.invalidateTick?.value ?? -1
 
 		const viewUnchanged =
 			lastVisibleIdArr.length > 0 &&
@@ -312,7 +355,8 @@ export const useAIWorkflowNodeVisibility = (payload: {
 			lastViewLeft === viewLeft &&
 			lastViewTop === viewTop &&
 			lastViewRight === viewRight &&
-			lastViewBottom === viewBottom
+			lastViewBottom === viewBottom &&
+			lastInvalidateTick === currentInvalidateTick
 
 		if (viewUnchanged) {
 			return lastVisibleIdSet
@@ -324,6 +368,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 			lastNodeCount === nodeCount &&
 			lastSelectedCount === selectedCount &&
 			Math.abs(lastZoom - zoom) < 0.001 &&
+			lastInvalidateTick === currentInvalidateTick &&
 			now - lastComputeAt < motionRecomputeMinIntervalMs
 		) {
 			return lastVisibleIdSet
@@ -358,6 +403,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 		lastViewRight = viewRight
 		lastViewBottom = viewBottom
 		lastComputeAt = now
+		lastInvalidateTick = currentInvalidateTick
 
 		return new Set(lastVisibleIdSet)
 	})

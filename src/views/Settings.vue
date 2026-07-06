@@ -17,7 +17,7 @@ const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 const API_KEY_AGREEMENT_VERSION = '1.0'
 
 type ClientSettingsKey = keyof ClientSettings
-type ApiKeyFieldKey = 'deepseekApiKey' | 'geminiApiKey' | 'bytedanceApiKey' | 'meshyApiKey'
+type ApiKeyFieldKey = 'deepseekApiKey' | 'geminiApiKey' | 'bytedanceApiKey' | 'meshyApiKey' | 'tripo3dApiKey' | 'githubToken'
 
 type ProviderType = 'apikey' | 'cli-check'
 
@@ -62,6 +62,7 @@ const form = reactive<ClientSettings>({
 	httpProxy: '',
 	bytedanceApiKey: '',
 	meshyApiKey: '',
+	tripo3dApiKey: '',
 	githubToken: '',
 	ui: {
 		locale: '',
@@ -139,6 +140,17 @@ const providers = computed<ProviderConfig[]>(() => [
 		formValue: (s: ClientSettings) => s.meshyApiKey,
 	},
 	{
+		key: 'tripo3d',
+		name: t('settings.providers.tripo3d.name'),
+		descKey: 'settings.providers.tripo3d.desc',
+		accent: '#06b6d4',
+		icon: t('settings.providers.tripo3d.icon'),
+		fields: [{ key: 'tripo3dApiKey', label: t('settings.fields.apiKey'), placeholder: 'tripo_...', mask: true }],
+		docsUrl: 'https://developers.tripo3d.com/zh/docs/quick-start',
+		formKey: 'tripo3dApiKey',
+		formValue: (s: ClientSettings) => s.tripo3dApiKey || '',
+	},
+	{
 		key: 'github',
 		name: 'GitHub Copilot',
 		descKey: 'settings.providers.github.desc',
@@ -171,6 +183,7 @@ function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettin
 		httpProxy: String(form.httpProxy || '').trim(),
 		bytedanceApiKey: form.bytedanceApiKey,
 		meshyApiKey: form.meshyApiKey,
+		tripo3dApiKey: form.tripo3dApiKey || '',
 		githubToken: form.githubToken,
 		ui: {
 			locale: form.ui?.locale || '',
@@ -383,12 +396,14 @@ async function saveProviderConfig() {
 			geminiApiKey: String(form.geminiApiKey || ''),
 			bytedanceApiKey: String(form.bytedanceApiKey || ''),
 			meshyApiKey: String(form.meshyApiKey || ''),
+			tripo3dApiKey: String(form.tripo3dApiKey || ''),
+			githubToken: String(form.githubToken || ''),
 		}
 
 		for (const f of prov.fields || []) {
 			const val = String(pendingForm[f.key] || '').trim()
 			keyPayload[String(f.key)] = val
-			form[f.key] = val as ClientSettings[typeof f.key]
+			;(form as unknown as Record<string, string>)[f.key] = val
 		}
 
 		const keyRes = await saveEncryptedAICredentials(keyPayload as any)
@@ -500,7 +515,7 @@ async function load() {
 	form.geminiModel = FIXED_GEMINI_MODEL
 	form.geminiBaseUrl = String(form.geminiBaseUrl || '')
 	form.httpProxy = String(form.httpProxy || '')
-	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey'] as const) {
+	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'tripo3dApiKey', 'githubToken'] as const) {
 		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
 	}
 	if (!form.ui) form.ui = { locale: '' }
@@ -555,6 +570,8 @@ async function confirmClearCredentials() {
 		geminiApiKey: '',
 		bytedanceApiKey: '',
 		meshyApiKey: '',
+		tripo3dApiKey: '',
+		githubToken: '',
 	})
 	if (!r.ok) showSaveMessage(t('settings.clearFailed', { msg: r.error || t('common.error') }), 'error')
 	else {
@@ -562,6 +579,8 @@ async function confirmClearCredentials() {
 		form.geminiApiKey = ''
 		form.bytedanceApiKey = ''
 		form.meshyApiKey = ''
+		form.tripo3dApiKey = ''
+		form.githubToken = ''
 
 		await saveClientSettings(buildSavePayload())
 

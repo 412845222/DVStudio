@@ -13,11 +13,13 @@ export const APP_ID = (() => {
 	return 'club.dweb.dvstudio'
 })()
 
-export const APP_VERSION = '0.1.1'
+export const APP_VERSION = '0.1.3'
 export const APP_COPYRIGHT = 'Copyright (c) 2026 DwebStudio'
 export const APP_LICENSE = 'MPL-2.0'
 export const APP_HOMEPAGE = 'https://www.dweb.club/'
 export const APP_REPO_URL = 'https://github.com/412845222/DVStudio'
+export const APP_BILIBILI_URL = 'https://space.bilibili.com/22690066'
+export const APP_ISSUES_URL = 'https://github.com/412845222/DVStudio/issues'
 
 let _isPackaged = false
 let _resourcesPath = ''

@@ -98,6 +98,16 @@ export function registerLocalDbIpc(ipcMain, initOptions = {}) {
 		'dweb:localdb:video:remove': safe((payload) =>
 			getRepos().videoTasks.remove(payload?.remoteTaskId)
 		),
+		// ---- tripo3d tasks ----
+		'dweb:localdb:tripo3d:list': safe((payload) =>
+			getRepos().tripo3dTasks.list({
+				projectId: payload?.projectId,
+				limit: payload?.limit
+			})
+		),
+		'dweb:localdb:tripo3d:get': safe((payload) => getRepos().tripo3dTasks.getByTaskId(payload?.taskId)),
+		'dweb:localdb:tripo3d:upsert': safe((payload) => getRepos().tripo3dTasks.upsert(payload)),
+		'dweb:localdb:tripo3d:remove': safe((payload) => getRepos().tripo3dTasks.remove(payload?.taskId)),
 		// ---- api keys ----
 		'dweb:localdb:apiKeys:list': safe(() => getRepos().apiKeys.list()),
 		'dweb:localdb:apiKeys:get': safe((payload) => getRepos().apiKeys.get(payload?.provider)),

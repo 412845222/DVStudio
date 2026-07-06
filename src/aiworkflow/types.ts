@@ -665,9 +665,112 @@ export type WorkflowMeshyModelSettings = {
 	previewTaskId?: string
 }
 
+export type WorkflowTripo3DTaskStatus = 'idle' | 'pending' | 'queued' | 'running' | 'success' | 'succeeded' | 'failed' | 'cancelled' | 'canceled'
+
+export type WorkflowTripo3DMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model' | 'texture' | 'refine'
+
+export type WorkflowTripo3DModelSeries = 'h' | 'p'
+
+export type WorkflowTripo3DView = 'front' | 'left' | 'back' | 'right'
+
+export type WorkflowTripo3DSelectedImage = {
+	nodeId: string
+	view: WorkflowTripo3DView
+	order: number
+}
+
+export type WorkflowTripo3DTextureQuality = 'standard' | 'detailed' | 'extreme'
+
+export type WorkflowTripo3DGeometryQuality = 'standard' | 'detailed'
+
+export type WorkflowTripo3DTextureAlignment = 'original_image' | 'geometry'
+
+export type WorkflowTripo3DOrientation = 'default' | 'align_image'
+
+export type WorkflowTripo3DRelationKind = 'model' | 'texture' | 'refine'
+
+export type WorkflowTripo3DInputSummary = {
+	promptSource?: 'linked' | 'manual' | 'none'
+	promptText?: string
+	imageCount?: number
+	modelInputConnected?: boolean
+	lastValidatedAt?: number
+}
+
+export type WorkflowTripo3DOutputSummary = {
+	outputKind?: '3d-model'
+	preferredUrl?: string
+	thumbnailUrl?: string
+	format?: string
+	assetUrl?: string
+	assetPath?: string
+}
+
+export type WorkflowTripo3DRelationSummary = {
+	relationKind?: WorkflowTripo3DRelationKind
+	rootTaskId?: string
+	parentTaskId?: string
+	effectiveTaskId?: string
+	effectiveRelationKind?: WorkflowTripo3DRelationKind
+	effectiveStatus?: string
+	effectiveProgress?: number
+	effectiveModelUrl?: string
+	effectiveLocalAssetUrl?: string
+	effectiveLocalAssetPath?: string
+	effectiveThumbnailUrl?: string
+}
+
+export type WorkflowTripo3DModelSettings = {
+	tripo3dEnabled?: boolean
+	tripo3dTaskFamily?: WorkflowTripo3DMode
+	tripo3dTaskId?: string
+	tripo3dTaskStatus?: WorkflowTripo3DTaskStatus
+	tripo3dProgress?: number
+	tripo3dStatusText?: string
+	tripo3dErrorMessage?: string
+	tripo3dPrompt?: string
+	tripo3dNegativePrompt?: string
+	tripo3dImageUrl?: string
+	tripo3dModelSeries?: WorkflowTripo3DModelSeries
+	tripo3dModelVersion?: string
+	tripo3dForceSingleImage?: boolean
+	tripo3dSelectedImages?: WorkflowTripo3DSelectedImage[]
+	tripo3dFaceLimit?: number
+	tripo3dTexture?: boolean
+	tripo3dPbr?: boolean
+	tripo3dEnableImageAutofix?: boolean
+	tripo3dTextureAlignment?: WorkflowTripo3DTextureAlignment
+	tripo3dOrientation?: WorkflowTripo3DOrientation
+	tripo3dTextureQuality?: WorkflowTripo3DTextureQuality
+	tripo3dGeometryQuality?: WorkflowTripo3DGeometryQuality
+	tripo3dAutoSize?: boolean
+	tripo3dQuad?: boolean
+	tripo3dSmartLowPoly?: boolean
+	tripo3dGenerateParts?: boolean
+	tripo3dCompress?: boolean
+	tripo3dExportUv?: boolean
+	tripo3dModelSeed?: number
+	tripo3dTextureSeed?: number
+	tripo3dModelTaskId?: string
+	tripo3dRootTaskId?: string
+	tripo3dParentTaskId?: string
+	tripo3dRelationKind?: WorkflowTripo3DRelationKind
+	tripo3dRelationSummary?: WorkflowTripo3DRelationSummary
+	tripo3dOutputSummary?: WorkflowTripo3DOutputSummary
+	tripo3dThumbnailUrl?: string
+	tripo3dOutputAssetUrl?: string
+	tripo3dOutputAssetPath?: string
+	tripo3dInputSummary?: WorkflowTripo3DInputSummary
+	tripo3dModelUrl?: string
+	tripo3dRequestPayload?: Record<string, unknown>
+	tripo3dResponsePayload?: Record<string, unknown>
+	tripo3dMode?: WorkflowTripo3DMode
+}
+
 export type WorkflowModel3DNodeSettings = {
-	modelGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	modelGenerationSource?: 'upload' | 'comfyui' | 'meshy' | 'tripo3d'
 	meshyModelSettings?: WorkflowMeshyModelSettings
+	tripo3dModelSettings?: WorkflowTripo3DModelSettings
 	modelUrl?: string
 	modelFormat?: WorkflowModelFormat
 	modelSourceName?: string
@@ -839,6 +942,7 @@ export type WorkflowNode = {
 	comfyuiSettings?: WorkflowComfyUINodeSettings
 	model3dSettings?: WorkflowModel3DNodeSettings
 	meshySettings?: WorkflowMeshyNodeSettings
+	tripo3dSettings?: WorkflowTripo3DModelSettings
 	/** For chat dialog: user-entered draft text */
 	nodeChatDraft?: string
 	/** For chat dialog: user-configured params */
@@ -935,7 +1039,27 @@ export type WorkflowNodeChatModel3DParams = {
 	tripoMode?: 'image-to-3d' | 'multi-image-to-3d' | 'retopo'
 	tripoOutputFormat?: 'fbx' | 'glb'
 	tripoTextureQuality?: 'standard' | 'detailed'
-	tripoModelVersion?: string
+	tripo3dModelSeries?: string
+	tripo3dModelVersion?: string
+	tripo3dForceSingleImage?: boolean
+	tripo3dSelectedImages?: WorkflowTripo3DSelectedImage[]
+	tripo3dFaceLimit?: number
+	tripo3dTexture?: boolean
+	tripo3dPbr?: boolean
+	tripo3dNegativePrompt?: string
+	tripo3dEnableImageAutofix?: boolean
+	tripo3dTextureAlignment?: string
+	tripo3dOrientation?: string
+	tripo3dTextureQuality?: string
+	tripo3dGeometryQuality?: string
+	tripo3dAutoSize?: boolean
+	tripo3dQuad?: boolean
+	tripo3dSmartLowPoly?: boolean
+	tripo3dGenerateParts?: boolean
+	tripo3dCompress?: boolean
+	tripo3dExportUv?: boolean
+	tripo3dModelSeed?: number
+	tripo3dTextureSeed?: number
 	meshyMode?: string
 	meshyAiModel?: string
 	meshyModelType?: string

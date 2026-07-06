@@ -36,6 +36,7 @@ import tasksVideo from './tasks/video.json'
 import tasksMeshy from './tasks/meshy.json'
 import tasksArk from './tasks/ark.json'
 import tasksGemini from './tasks/gemini.json'
+import tasksTripo3d from './tasks/tripo3d.json'
 import tasksLog from './tasks/log.json'
 import aiConfigNodeChat from './aiConfig/nodeChat.json'
 import nodesText from './nodes/text.json'
@@ -102,6 +103,7 @@ const messages = {
 	...tasksMeshy,
 	...tasksArk,
 	...tasksGemini,
+	...tasksTripo3d,
 	...tasksLog,
 	...aiConfigNodeChat,
 	...nodesText,

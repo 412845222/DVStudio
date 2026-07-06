@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { APP_NAME, APP_ID, APP_VERSION, APP_COPYRIGHT, APP_LICENSE, APP_HOMEPAGE, APP_REPO_URL } from './config.mjs'
+import { APP_NAME, APP_ID, APP_VERSION, APP_COPYRIGHT, APP_LICENSE, APP_HOMEPAGE, APP_REPO_URL, APP_BILIBILI_URL, APP_ISSUES_URL } from './config.mjs'
 
 function invoke(channel, payload) {
 	return ipcRenderer.invoke(channel, payload)
@@ -146,11 +146,23 @@ ipcRenderer.on(RESOURCE_MANAGER_DATA_CHANNEL, (_event, payload) => {
 })
 
 // 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
-const BACKEND_BASE_URL = await invoke('dweb:getBackendBaseUrl')
-contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', BACKEND_BASE_URL)
+// 性能优化：IPC 模式下 baseUrl 总是空字符串，无需阻塞等待
+contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', '')
+contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL__', '')
 
-const CLIENT_SETTINGS = await invoke('dweb:settings:get')
-contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', CLIENT_SETTINGS?.ok ? CLIENT_SETTINGS.data : null)
+// Client settings: 不阻塞 preload，先设置 null，异步加载后更新
+contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', null)
+invoke('dweb:settings:get')
+	.then((result) => {
+		if (result?.ok && result.data) {
+			try {
+				const desc = Object.getOwnPropertyDescriptor(window, '__DWEB_CLIENT_SETTINGS')
+				const canAssign = !desc || ('writable' in desc ? Boolean(desc.writable) : typeof desc.set === 'function')
+				if (canAssign) window.__DWEB_CLIENT_SETTINGS = result.data
+			} catch {}
+		}
+	})
+	.catch(() => {})
 
 contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO', process.env.DWEB_AIWF_AUTO_HELLO || '')
 contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO_TEXT', process.env.DWEB_AIWF_AUTO_HELLO_TEXT || '')
@@ -182,7 +194,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			license: APP_LICENSE,
 			homepage: APP_HOMEPAGE,
 			repoUrl: APP_REPO_URL,
+			bilibiliUrl: APP_BILIBILI_URL,
+			issuesUrl: APP_ISSUES_URL,
 		}),
+		checkForUpdate: () => invoke('dweb:system:check-update'),
+		isSteamVersion: () => invoke('dweb:system:is-steam'),
 		getBackendBaseUrl: () => invoke('dweb:getBackendBaseUrl'),
 		getBackendRuntimeState: () => invoke('dweb:backendRuntime:getState'),
 		onBackendRuntimeStateChanged: (handler) => {
@@ -279,6 +295,12 @@ contextBridge.exposeInMainWorld('dweb', {
 				get: (payload) => invoke('dweb:localdb:video:get', payload || {}),
 				upsert: (payload) => invoke('dweb:localdb:video:upsert', payload || {}),
 				remove: (payload) => invoke('dweb:localdb:video:remove', payload || {}),
+			},
+			tripo3d: {
+				list: (payload) => invoke('dweb:localdb:tripo3d:list', payload || {}),
+				get: (payload) => invoke('dweb:localdb:tripo3d:get', payload || {}),
+				upsert: (payload) => invoke('dweb:localdb:tripo3d:upsert', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:tripo3d:remove', payload || {}),
 			},
 			apiKeys: {
 				list: () => invoke('dweb:localdb:apiKeys:list'),
@@ -439,6 +461,18 @@ contextBridge.exposeInMainWorld('dweb', {
 		stop: (payload) => invoke('dweb:meshy:stop', payload || {}),
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
 		balance: () => invoke('dweb:meshy:balance'),
+	},
+	// ===== Tripo3D 3D 模型生成 =====
+	tripo3d: {
+		health: () => invoke('dweb:tripo3d:health'),
+		generate: (payload) => invoke('dweb:tripo3d:generate', payload || {}),
+		getTask: (payload) => invoke('dweb:tripo3d:get-task', payload || {}),
+		listTasks: (payload) => invoke('dweb:tripo3d:list-tasks', payload || {}),
+		taskDetail: (payload) => invoke('dweb:tripo3d:task-detail', payload || {}),
+		stop: (payload) => invoke('dweb:tripo3d:stop', payload || {}),
+		deleteTask: (payload) => invoke('dweb:tripo3d:delete', payload || {}),
+		balance: () => invoke('dweb:tripo3d:balance'),
+		uploadFile: (payload) => invoke('dweb:tripo3d:upload-file', payload || {}),
 	},
 	// ===== Gemini 图片生成任务 =====
 	gemini: {
