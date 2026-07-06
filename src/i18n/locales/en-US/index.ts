@@ -61,6 +61,7 @@ import aiConfigSceneElements from './aiConfig/sceneElements.json'
 import aiworkflowScenePreview from './aiworkflow/scenePreview.json'
 import aiworkflowRuntime from './aiworkflow/runtime.json'
 import aiworkflowPage from './aiworkflow/page.json'
+import aiworkflowTemplateCenter from './aiworkflow/templateCenter.json'
 
 const messages = {
 	...common,
@@ -125,6 +126,7 @@ const messages = {
 	...aiworkflowScenePreview,
 	...aiworkflowRuntime,
 	...aiworkflowPage,
+	...aiworkflowTemplateCenter,
 }
 
 const locale: LocalePackage = {

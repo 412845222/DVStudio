@@ -78,7 +78,7 @@
 					v-for="node in safeVisibleRenderNodes"
 					:key="node.id"
 					class="aiwf-node-host"
-					:class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots }"
+					:class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id)) }"
 					:ref="
 						(el: any) => {
 							if (el) nodeHostRefs.set(node.id, el as HTMLElement)
@@ -383,7 +383,40 @@
 					@request-export-package="onRequestExportProjectPackage"
 					@open-meshy-task-panel="onOpenMeshyTaskPanel"
 					@open-ark-task-panel="onOpenArkTaskPanel"
-					@open-gemini-task-panel="onOpenGeminiTaskPanel"
+				@open-gemini-task-panel="onOpenGeminiTaskPanel"
+					@open-template-center="onOpenTemplateCenter"
+				/>
+
+				<TemplateCenterDialog
+					v-model:open="templateCenterOpen"
+					@apply-template="onTemplateSelectForApply"
+					@delete-template="onDeleteTemplate"
+					@save-template="onSaveTemplateFromCenter"
+				/>
+
+				<TemplateApplyDialog
+					v-model:open="templateApplyDialogOpen"
+					:template="selectedTemplateForApply"
+					@confirm="onConfirmApplyTemplate"
+				/>
+
+				<SaveTemplateDialog
+					v-model:open="saveTemplateDialogOpen"
+					:scope="saveTemplateScope"
+					:node-ids="saveTemplateNodeIds"
+					:prefill-name="saveTemplatePrefillName"
+					:auto-cover-blob="saveTemplateAutoCoverBlob"
+					:saving="saveTemplateSaving"
+					:progress="saveTemplateProgress"
+					@confirm="onConfirmSaveTemplate"
+				/>
+
+				<WorkflowSelectionToolbar
+					:visible="selectionToolbarVisible"
+					@copy="onCopySelectedNodes"
+					@paste="onPasteSelectedNodes"
+					@delete="onDeleteSelectedNodes"
+					@save-as-template="onSaveSelectionAsTemplate"
 				/>
 
 				<div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
@@ -781,6 +814,26 @@ import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, {
 	type BlueprintProjectListItem
 } from '../../ui/WorkFlow/BlueprintProjectToolbar.vue'
+import TemplateCenterDialog from '../../ui/WorkFlow/TemplateCenterDialog.vue'
+import TemplateApplyDialog from '../../ui/WorkFlow/TemplateApplyDialog.vue'
+import SaveTemplateDialog from '../../ui/WorkFlow/SaveTemplateDialog.vue'
+import type { SaveTemplateConfirmPayload } from '../../ui/WorkFlow/SaveTemplateDialog.vue'
+import WorkflowSelectionToolbar from '../../ui/WorkFlow/WorkflowSelectionToolbar.vue'
+import type { TemplateItem, TemplateApplyOptions } from '../../aiworkflow/template/types'
+import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
+import {
+	buildSnapshotFromSelection,
+	buildFullSnapshot,
+	mergeTemplateSnapshot,
+	createTemplatePackageZip,
+	parseTemplatePackageBlob,
+	getViewportCenterInWorld,
+	calculateTemplatePlacement,
+	calculateNodeBounds,
+	captureNodesAsCoverBlob,
+	importTemplateAssetsToProject,
+	remapTemplateAssetUrls
+} from '../../aiworkflow/template/useTemplateMerge'
 import MeshyTaskPanel, {
 	type MeshyTaskPanelAction,
 	type MeshyTaskPanelDetail,
@@ -2632,6 +2685,250 @@ const waitForFrames = (count = 2): Promise<void> => {
 		}
 		requestAnimationFrame(tick)
 	})
+}
+
+function easeOutCubic(t: number): number {
+	return 1 - Math.pow(1 - t, 3)
+}
+
+let viewportAnimationRaf: number | null = null
+
+function animateViewportTo(
+	target: { panX?: number; panY?: number; zoom?: number },
+	duration = 350
+): Promise<void> {
+	return new Promise((resolve) => {
+		if (viewportAnimationRaf !== null) {
+			cancelAnimationFrame(viewportAnimationRaf)
+			viewportAnimationRaf = null
+		}
+
+		const startPanX = viewport.value.panX
+		const startPanY = viewport.value.panY
+		const startZoom = viewport.value.zoom
+		const endPanX = target.panX ?? startPanX
+		const endPanY = target.panY ?? startPanY
+		const endZoom = target.zoom ?? startZoom
+
+		const hasChange = Math.abs(endPanX - startPanX) > 0.5 ||
+			Math.abs(endPanY - startPanY) > 0.5 ||
+			Math.abs(endZoom - startZoom) > 0.001
+
+		if (!hasChange) {
+			resolve()
+			return
+		}
+
+		markViewportMotion()
+		const startTime = performance.now()
+
+		const step = (now: number) => {
+			const elapsed = now - startTime
+			const rawT = Math.min(1, elapsed / duration)
+			const t = easeOutCubic(rawT)
+
+			const curPanX = startPanX + (endPanX - startPanX) * t
+			const curPanY = startPanY + (endPanY - startPanY) * t
+			const curZoom = startZoom + (endZoom - startZoom) * t
+
+			onViewportUpdate({ panX: curPanX, panY: curPanY, zoom: curZoom })
+
+			if (rawT < 1) {
+				viewportAnimationRaf = requestAnimationFrame(step)
+			} else {
+				viewportAnimationRaf = null
+				forceEndViewportMotion()
+				resolve()
+			}
+		}
+
+		viewportAnimationRaf = requestAnimationFrame(step)
+	})
+}
+
+const warmupNewTemplateNodes = async (newNodeIds: string[]): Promise<void> => {
+	if (!newNodeIds || newNodeIds.length === 0) return
+
+	const newNodes = newNodeIds
+		.map((id) => store.state.nodesById[id])
+		.filter(Boolean) as WorkflowNode[]
+	if (newNodes.length === 0) return
+
+	isWarmingUpScreenshots.value = true
+	screenshotWarmupOpen.value = true
+	screenshotWarmupProgress.value = 0
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.templateNodes', { count: String(newNodes.length) })
+
+	warmupForceRenderNodeIds.value = new Set(newNodeIds)
+
+	await waitForFrames(2)
+
+	const newMap = new Map(nodeScreenshotMap.value)
+	const nodesNeedingCapture: WorkflowNode[] = []
+
+	for (const node of newNodes) {
+		const nodeId = String(node.id ?? '').trim()
+		if (!nodeId) continue
+		const version = getNodeScreenshotVersion(node)
+		if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
+			const cached = screenshotPool.getCachedScreenshot(nodeId, version)
+			if (cached) newMap.set(nodeId, cached)
+			continue
+		}
+		nodesNeedingCapture.push(node)
+	}
+
+	const total = nodesNeedingCapture.length
+	if (total === 0) {
+		nodeScreenshotMap.value = newMap
+		isWarmingUpScreenshots.value = false
+		warmupExitingFullRender.value = true
+		warmupForceRenderNodeIds.value = new Set()
+		await nextTick()
+		warmupExitingFullRender.value = false
+		await waitForFrames(1)
+		if (newMap.size > 0) {
+			await warmupCanvasAll(newMap)
+			initCanvasScreenshotPool()
+			refreshCanvasNodeLayer()
+		}
+		screenshotWarmupOpen.value = false
+		screenshotWarmupDetail.value = ''
+		return
+	}
+
+	screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
+	screenshotPool.setBurstMode(true)
+
+	screenshotWarmupProgress.value = 0.02
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
+
+	let screenshotStarted = 0
+	let screenshotCompleted = 0
+	const nodeElMap = new Map<string, HTMLElement>()
+	const startedSet = new Set<string>()
+	const promises: Promise<void>[] = []
+
+	const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement) => {
+		const nodeId = String(node.id ?? '').trim()
+		if (startedSet.has(nodeId)) return
+		startedSet.add(nodeId)
+		screenshotStarted++
+
+		const promise = (async () => {
+			let entry: ScreenshotCacheEntry | null = null
+			try {
+				const version = getNodeScreenshotVersion(node)
+				let el: HTMLElement | null = nodeEl
+				if (!el) {
+					let retries = 0
+					while (retries < 8 && !el) {
+						await nextTick()
+						await waitForFrames(2)
+						const hostEl = nodeHostRefs.get(nodeId)
+						if (hostEl) {
+							el = findNodeElementForScreenshot(hostEl)
+						}
+						retries++
+					}
+				}
+				if (el) {
+					const width = Math.max(80, Math.round(node.width) || 240)
+					const height = Math.max(80, Math.round(node.height) || 160)
+					entry = await screenshotPool.queueScreenshot(
+						nodeId,
+						el,
+						version,
+						width,
+						height,
+						SCREENSHOT_PADDING,
+						'high'
+					)
+					if (entry?.dataUrl) {
+						newMap.set(nodeId, entry)
+						const cacheCtx = getScreenshotCacheContext()
+						void saveScreenshotToDisk(
+							cacheCtx.projectId,
+							cacheCtx.blueprintId,
+							nodeId,
+							version,
+							entry.dataUrl,
+							entry.width,
+							entry.height
+						)
+					}
+				}
+			} catch (err) {
+				console.warn('[Template Warmup] failed for node:', nodeId, err)
+			}
+
+			screenshotCompleted++
+			screenshotWarmupProgress.value = screenshotCompleted / total
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.templateNodesProgress', { completed: String(screenshotCompleted), total: String(total) })
+		})()
+		promises.push(promise)
+	}
+
+	let waitFramesCount = 0
+	const MAX_WAIT_FRAMES = 30
+	while (screenshotStarted < total && waitFramesCount < MAX_WAIT_FRAMES) {
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+		waitFramesCount++
+
+		for (const node of nodesNeedingCapture) {
+			const nodeId = String(node.id ?? '').trim()
+			if (startedSet.has(nodeId)) continue
+			const hostEl = nodeHostRefs.get(nodeId)
+			if (hostEl) {
+				const nodeEl = findNodeElementForScreenshot(hostEl)
+				if (nodeEl) {
+					nodeElMap.set(nodeId, nodeEl)
+					startScreenshot(node, nodeEl)
+				}
+			}
+		}
+
+		if (screenshotCompleted === total) break
+
+		if (screenshotStarted === 0) {
+			screenshotWarmupProgress.value = 0.02 + (waitFramesCount / MAX_WAIT_FRAMES) * 0.08
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
+		} else {
+			const pending = screenshotStarted - screenshotCompleted
+			screenshotWarmupProgress.value =
+				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
+		}
+	}
+
+	for (const node of nodesNeedingCapture) {
+		const nodeId = String(node.id ?? '').trim()
+		if (startedSet.has(nodeId)) continue
+		const hostEl = nodeHostRefs.get(nodeId)
+		const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
+		startScreenshot(node, nodeEl as HTMLElement)
+	}
+
+	await Promise.all(promises)
+
+	screenshotPool.setBurstMode(false)
+	screenshotPool.resetConcurrency()
+
+	nodeScreenshotMap.value = newMap
+	isWarmingUpScreenshots.value = false
+	warmupExitingFullRender.value = true
+	warmupForceRenderNodeIds.value = new Set()
+	await nextTick()
+	warmupExitingFullRender.value = false
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
+	if (newMap.size > 0) {
+		await warmupCanvasAll(newMap)
+		initCanvasScreenshotPool()
+		refreshCanvasNodeLayer()
+	}
+	await waitForFrames(2)
+	screenshotWarmupOpen.value = false
+	screenshotWarmupDetail.value = ''
 }
 
 watch(
@@ -6336,6 +6633,418 @@ const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
 }
 
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
+const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates } = useTemplateCenter()
+const templateCenterOpen = ref(false)
+const templateApplyDialogOpen = ref(false)
+const selectedTemplateForApply = ref<TemplateItem | null>(null)
+const saveTemplateDialogOpen = ref(false)
+const saveTemplateFromCenter = ref(false)
+const saveTemplateScope = ref<'full' | 'selection'>('full')
+const saveTemplateNodeIds = ref<string[]>([])
+const saveTemplatePrefillName = ref('')
+const saveTemplateAutoCoverBlob = ref<Blob | null>(null)
+const saveTemplateSaving = ref(false)
+const saveTemplateProgress = ref(0)
+let saveTemplatePendingCoverGen: { nodeIds: string[] } | null = null
+
+const selectionToolbarVisible = computed(() => {
+	return selectedNodeIds.value.length > 0
+})
+
+function onOpenTemplateCenter() {
+	void loadTemplates()
+	templateCenterOpen.value = true
+}
+
+function onTemplateSelectForApply(template: TemplateItem) {
+	selectedTemplateForApply.value = template
+	templateCenterOpen.value = false
+	templateApplyDialogOpen.value = true
+}
+
+async function onDeleteTemplate(template: TemplateItem) {
+	const confirmed = window.confirm(t('aiworkflow.templateCenter.deleteConfirm', { name: template.name }))
+	if (!confirmed) return
+	const ok = await deleteTemplate(template)
+	if (ok) {
+		pushToast(t('aiworkflow.templateCenter.templateDeleted'), 'info')
+	}
+}
+
+async function generateAutoCoverForNodes(nodeIds: string[]): Promise<Blob | null> {
+	try {
+		const currentTheme = themeStore.state.mode as 'dark' | 'light'
+		const cachedScreenshots = screenshotPool.getAllCachedForTheme(currentTheme)
+		const screenshotMap = new Map<string, { nodeId: string; dataUrl: string; width: number; height: number; padding?: number }>()
+		for (const [nid, entry] of cachedScreenshots) {
+			if (nodeIds.includes(nid)) {
+				screenshotMap.set(nid, entry)
+			}
+		}
+		if (screenshotMap.size === 0) return null
+		const bgColor = currentTheme === 'dark' ? '#0f0f0f' : '#f5f5f5'
+		return await captureNodesAsCoverBlob(nodeIds, store.state.nodesById, screenshotMap, bgColor)
+	} catch {
+		return null
+	}
+}
+
+async function onSaveTemplateFromCenter(options: { scope: 'full' | 'selection' }) {
+	saveTemplateScope.value = options.scope
+	saveTemplateNodeIds.value = []
+	saveTemplatePrefillName.value = currentProjectName.value || ''
+	saveTemplateFromCenter.value = true
+	saveTemplateAutoCoverBlob.value = null
+	const allNodeIds = Object.keys(store.state.nodesById)
+	saveTemplatePendingCoverGen = { nodeIds: allNodeIds }
+	saveTemplateDialogOpen.value = true
+}
+
+async function onSaveSelectionAsTemplate() {
+	if (selectedNodeIds.value.length === 0) return
+	saveTemplateScope.value = 'selection'
+	saveTemplateNodeIds.value = [...selectedNodeIds.value]
+	saveTemplatePrefillName.value = ''
+	saveTemplateFromCenter.value = false
+	saveTemplateAutoCoverBlob.value = null
+	saveTemplatePendingCoverGen = { nodeIds: [...selectedNodeIds.value] }
+	saveTemplateDialogOpen.value = true
+}
+
+watch(saveTemplateDialogOpen, async (isOpen) => {
+	if (!isOpen) {
+		saveTemplatePendingCoverGen = null
+		saveTemplateAutoCoverBlob.value = null
+		if (saveTemplateFromCenter.value) {
+			saveTemplateFromCenter.value = false
+			await waitForFrames(2)
+			templateCenterOpen.value = true
+		}
+		return
+	}
+	if (!saveTemplatePendingCoverGen) return
+	const pendingIds = saveTemplatePendingCoverGen.nodeIds
+	saveTemplatePendingCoverGen = null
+	await waitForFrames(20)
+	const blob = await generateAutoCoverForNodes(pendingIds)
+	if (saveTemplateDialogOpen.value) {
+		saveTemplateAutoCoverBlob.value = blob
+	}
+})
+
+async function onConfirmSaveTemplate(options: SaveTemplateConfirmPayload) {
+	saveTemplateSaving.value = true
+	saveTemplateProgress.value = 0
+	try {
+		let snapshot: AIWorkflowDraftSnapshot
+		let nodeIdsForCover: string[]
+		if (options.scope === 'selection' && options.nodeIds && options.nodeIds.length > 0) {
+			snapshot = buildSnapshotFromSelection(store.state, options.nodeIds)
+			nodeIdsForCover = options.nodeIds
+		} else {
+			snapshot = buildFullSnapshot(store.state)
+			nodeIdsForCover = Array.isArray(snapshot.nodeOrder) ? snapshot.nodeOrder : Object.keys(snapshot.nodesById || {})
+		}
+
+		const nodeCount = snapshot.nodeOrder.length
+		let coverBlob = options.coverBlob
+		if (!coverBlob) {
+			saveTemplateProgress.value = 5
+			coverBlob = await generateAutoCoverForNodes(nodeIdsForCover)
+		}
+		saveTemplateProgress.value = 10
+		const blob = await createTemplatePackageZip(snapshot, options.name, coverBlob, undefined, (progress) => {
+			saveTemplateProgress.value = 10 + progress.percent * 0.85
+		})
+		saveTemplateProgress.value = 95
+		const saved = await saveUserTemplateFromBlob({
+			name: options.name,
+			description: options.description,
+			category: options.category || 'other',
+			tags: options.tags,
+			blob,
+			nodeCount,
+			coverBlob
+		})
+
+		saveTemplateProgress.value = 100
+		await waitForFrames(2)
+
+		if (saved) {
+			pushToast(t('aiworkflow.templateCenter.templateSaved'), 'info')
+			store.commit('clearSelection')
+			if (saveTemplateFromCenter.value) {
+				void loadTemplates()
+			}
+		} else {
+			pushToast(t('aiworkflow.templateCenter.templateSaveFailed'), 'error')
+		}
+		saveTemplateDialogOpen.value = false
+	} catch (err) {
+		console.error('[Template] Save failed:', err)
+		pushToast(t('aiworkflow.templateCenter.templateSaveFailed'), 'error')
+	} finally {
+		saveTemplateSaving.value = false
+		saveTemplateProgress.value = 0
+	}
+}
+
+async function applyTemplateToCurrent(template: TemplateItem) {
+	const blob = await loadTemplatePackage(template)
+	if (!blob) {
+		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+		return
+	}
+
+	const parsed = await parseTemplatePackageBlob(blob)
+	const snapshot = parsed.snapshot
+	if (!snapshot) {
+		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+		return
+	}
+
+	const templateNodeIds = Array.isArray(snapshot.nodeOrder) ? snapshot.nodeOrder : Object.keys(snapshot.nodesById || {})
+	const templateBounds = calculateNodeBounds(templateNodeIds, snapshot.nodesById)
+	if (!templateBounds) {
+		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+		return
+	}
+
+	const activeProjectId = currentProjectId.value
+	if (isElectron() && activeProjectId && parsed.assets.length > 0 && parsed.zip) {
+		try {
+			const importResult = await importTemplateAssetsToProject(
+				parsed,
+				activeProjectId,
+				async (pid, buffer, fileName, mimeType, subPath, bucket) => {
+					const res = await uploadProjectAsset({
+						projectId: pid,
+						kind: mimeType?.startsWith('image')
+							? 'image'
+							: mimeType?.startsWith('video')
+								? 'video'
+								: 'file',
+						name: fileName,
+						arrayBuffer: buffer,
+						contentType: mimeType,
+						subPath,
+						bucket
+					})
+					return res?.ok && res?.asset
+						? {
+							url: res.asset.url,
+							relativePath: res.asset.relativePath || '',
+							absolutePath: res.asset.absolutePath || res.asset.sourcePath || ''
+						}
+						: null
+				}
+			)
+			remapTemplateAssetUrls(snapshot, parsed.assets, importResult.fileUrlMap, importResult.filePathMap, importResult.fileAbsPathMap)
+		} catch (err) {
+			console.error('[AIWF] Failed to import template assets:', err)
+		}
+	}
+
+	const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
+	const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
+	const viewportCenter = getViewportCenterInWorld(store.state.viewport, canvasW, canvasH)
+	const offsetX = viewportCenter.x - templateBounds.centerX
+	const offsetY = viewportCenter.y - templateBounds.centerY
+
+	const existingNodeIds = new Set(Object.keys(store.state.nodesById))
+	const existingResourceIds = new Set(Object.keys(store.state.resourcesById))
+
+	const result = mergeTemplateSnapshot(snapshot, {
+		viewportCenter,
+		existingNodeIds,
+		existingResourceIds,
+		placementOffset: { x: offsetX, y: offsetY }
+	})
+
+	store.commit('mergeTemplateContent', {
+		nodes: result.nodes,
+		edges: result.edges,
+		resources: result.resources
+	})
+
+	const newNodeIds = result.nodes.map(n => n.id)
+	store.commit('setSelectedNodes', { nodeIds: newNodeIds })
+
+	await nextTick()
+	await waitForFrames(2)
+
+	const newBounds = calculateNodeBounds(newNodeIds, store.state.nodesById)
+	if (newBounds) {
+		const curZoom = store.state.viewport.zoom
+		const curPanX = store.state.viewport.panX
+		const curPanY = store.state.viewport.panY
+		const animCanvasW = canvasViewportSize.value?.width ?? window.innerWidth
+		const animCanvasH = canvasViewportSize.value?.height ?? window.innerHeight
+		const margin = 100
+		const scaleX = (animCanvasW - margin * 2) / newBounds.width
+		const scaleY = (animCanvasH - margin * 2) / newBounds.height
+		const fitZoom = Math.min(scaleX, scaleY) * curZoom
+		const maxZoom = curZoom > 1.5 ? curZoom : 1.5
+		let finalZoom: number
+		let needsZoomOut: boolean
+		if (fitZoom < curZoom * 0.9) {
+			finalZoom = Math.max(0.15, fitZoom)
+			needsZoomOut = true
+		} else {
+			finalZoom = curZoom
+			needsZoomOut = false
+		}
+		finalZoom = Math.min(finalZoom, maxZoom)
+		const targetPanX = -newBounds.centerX * finalZoom
+		const targetPanY = -newBounds.centerY * finalZoom
+		const panChanged = Math.abs(targetPanX - curPanX) > 15 || Math.abs(targetPanY - curPanY) > 15
+		if (needsZoomOut) {
+			await animateViewportTo({ zoom: finalZoom, panX: targetPanX, panY: targetPanY }, 400)
+		} else if (panChanged) {
+			await animateViewportTo({ panX: targetPanX, panY: targetPanY }, 350)
+		}
+		await waitForFrames(2)
+	}
+
+	void warmupNewTemplateNodes(newNodeIds)
+
+	pushToast(t('aiworkflow.templateCenter.templateApplied'), 'info')
+}
+
+async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
+	templateApplyDialogOpen.value = false
+	const template = options.template
+	selectedTemplateForApply.value = null
+
+	if (options.target === 'current') {
+		await applyTemplateToCurrent(template)
+		return
+	}
+
+	if (options.target === 'new-project') {
+		const projectName = (options.newProjectName || template.name || 'template').trim()
+		const rootPath = (options.newProjectPath || '').trim()
+
+		if (!projectName) {
+			pushToast(t('aiworkflow.templateCenter.nameRequired'), 'error')
+			return
+		}
+		if (!rootPath) {
+			pushToast(t('aiworkflow.templateCenter.pathRequired'), 'error')
+			return
+		}
+
+		const blob = await loadTemplatePackage(template)
+		if (!blob) {
+			pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+			return
+		}
+
+		const parsed = await parseTemplatePackageBlob(blob)
+		const templateCode = parsed.templateCode || ''
+		const subDir = templateCode ? `template/${templateCode}` : undefined
+
+		try {
+			cancelActiveRecoverySession()
+			store.commit('hydrateDraft', { snapshot: buildSnapshotFromState(createDefaultAIWorkflowState()) })
+			setUnsavedProject('')
+			reuseRecordConfirm.value = null
+			disposeComfyRuntime()
+			comfyAnchorAssignments.clear()
+			comfyAnchorLocalizedOutputs.clear()
+
+			const opened = await blueprintProjectService.openProjectFolder({
+				rootPath,
+				name: projectName,
+				create: true
+			}) as { ok: boolean; error?: string; project?: { id?: number; name?: string; rootPath?: string } }
+
+			if (!opened?.ok) {
+				pushToast(t('aiworkflow.toast.projectCreateFailed', { error: String(opened?.error || 'unknown') }), 'error')
+				return
+			}
+
+			const newProjectId = Number(opened.project?.id || 0)
+			if (!Number.isFinite(newProjectId) || newProjectId <= 0) {
+				pushToast(t('aiworkflow.runtime.newProjectInvalidId'), 'error')
+				return
+			}
+
+			await setSavedProject({
+				id: newProjectId,
+				name: opened.project?.name || projectName,
+				rootPath: opened.project?.rootPath || rootPath
+			}, projectName)
+
+			await recoverComfyUIRunStates({ silent: true })
+			await refreshProjectList()
+
+			const fileName = `${projectName}.zip`
+			const file = new File([blob], fileName, { type: 'application/zip' })
+			await onRequestImportProjectPackage({ file, templateCode, subPath: subDir })
+
+			await nextTick()
+			await waitForFrames(3)
+
+			const allNodeIds = store.state.nodeOrder.slice()
+			if (allNodeIds.length > 0) {
+				const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
+				const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
+				const newBounds = calculateNodeBounds(allNodeIds, store.state.nodesById)
+				if (newBounds) {
+					store.commit('setSelectedNodes', { nodeIds: allNodeIds })
+					const curZoom = store.state.viewport.zoom
+					const curPanX = store.state.viewport.panX
+					const curPanY = store.state.viewport.panY
+					const margin = 100
+					const scaleX = (canvasW - margin * 2) / newBounds.width
+					const scaleY = (canvasH - margin * 2) / newBounds.height
+					const fitZoom = Math.min(scaleX, scaleY) * curZoom
+					let finalZoom: number
+					let needsZoomOut: boolean
+					if (fitZoom < curZoom * 0.9) {
+						finalZoom = Math.max(0.15, fitZoom)
+						needsZoomOut = true
+					} else {
+						finalZoom = curZoom
+						needsZoomOut = false
+					}
+					finalZoom = Math.min(finalZoom, 1.5)
+					const targetPanX = canvasW / 2 - newBounds.centerX * finalZoom
+					const targetPanY = canvasH / 2 - newBounds.centerY * finalZoom
+					const panChanged = Math.abs(targetPanX - curPanX) > 15 || Math.abs(targetPanY - curPanY) > 15
+					if (needsZoomOut) {
+						await animateViewportTo({ zoom: finalZoom, panX: targetPanX, panY: targetPanY }, 400)
+					} else if (panChanged) {
+						await animateViewportTo({ panX: targetPanX, panY: targetPanY }, 350)
+					}
+				}
+			}
+
+			pushToast(t('aiworkflow.templateCenter.templateApplied'), 'info')
+		} catch (err: unknown) {
+			pushToast(t('aiworkflow.toast.projectCreateFailed', { error: getErrorMessage(err) || 'unknown' }), 'error')
+		}
+	}
+}
+
+function onCopySelectedNodes() {
+	if (selectedNodeIds.value.length === 0) return
+	const primaryId = selectedNodeId.value
+	if (selectedNodeIds.value.length === 1) {
+		store.commit('copyNode', { nodeId: selectedNodeIds.value[0] })
+	} else {
+		store.commit('copyNode', { nodeId: primaryId || selectedNodeIds.value[0] })
+	}
+}
+
+function onPasteSelectedNodes() {
+	const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
+	const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
+	const center = getViewportCenterInWorld(store.state.viewport, canvasW, canvasH)
+	store.commit('pasteNode', { worldX: center.x, worldY: center.y })
+}
+
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
@@ -7616,7 +8325,7 @@ const { onRequestImportProjectPackage, onRequestExportProject } = useAIWorkflowP
 			return null
 		}
 	},
-	importAssetFromBuffer: async (projectId, buffer, fileName, mimeType) => {
+	importAssetFromBuffer: async (projectId, buffer, fileName, mimeType, subPath, bucket) => {
 		if (!isElectron()) return null
 		try {
 			const result = await uploadProjectAsset({
@@ -7628,10 +8337,16 @@ const { onRequestImportProjectPackage, onRequestExportProject } = useAIWorkflowP
 						: 'file',
 				name: fileName,
 				arrayBuffer: buffer,
-				contentType: mimeType
+				contentType: mimeType,
+				subPath,
+				bucket
 			})
 			return result?.ok && result?.asset
-				? { url: result.asset.url, relativePath: result.asset.relativePath }
+				? {
+					url: result.asset.url,
+					relativePath: result.asset.relativePath || '',
+					absolutePath: result.asset.absolutePath || result.asset.sourcePath || ''
+				}
 				: null
 		} catch (err) {
 			console.error('[AIWF] importAssetFromBuffer failed:', err)
@@ -8696,8 +9411,10 @@ const onNodeOpenLibrary = (nodeId: string) => {
 	if (wrapEl) {
 		const rect = wrapEl.getBoundingClientRect()
 		const z = viewport.value.zoom
-		const screenX = node.worldX * z + viewport.value.panX + rect.left
-		const screenY = node.worldY * z + viewport.value.panY + rect.top
+		const cX = rect.width / 2
+		const cY = rect.height / 2
+		const screenX = cX + viewport.value.panX + node.worldX * z + rect.left
+		const screenY = cY + viewport.value.panY + node.worldY * z + rect.top
 		openNodeSearchMenu({
 			clientX: screenX,
 			clientY: screenY,

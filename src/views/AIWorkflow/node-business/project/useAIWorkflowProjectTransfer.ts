@@ -45,12 +45,14 @@ export const useAIWorkflowProjectTransfer = (payload: {
 		projectId: number,
 		buffer: ArrayBuffer,
 		fileName: string,
-		mimeType?: string
-	) => Promise<{ url: string; relativePath: string } | null>
+		mimeType?: string,
+		subPath?: string,
+		bucket?: string
+	) => Promise<{ url: string; relativePath: string; absolutePath?: string } | null>
 	sanitizeFileNamePart: (value: string) => string
 	recoverComfyUIRunStates: (opts?: { silent?: boolean }) => Promise<void>
 }) => {
-	const onRequestImportProjectPackage = async (request: { file: File }) => {
+	const onRequestImportProjectPackage = async (request: { file: File; templateCode?: string; subPath?: string }) => {
 		const file = request?.file
 		if (!file) return
 
@@ -90,6 +92,9 @@ export const useAIWorkflowProjectTransfer = (payload: {
 			const missingAssets: string[] = []
 			const assetList = Array.isArray(parsed.assets) ? parsed.assets : []
 
+			const resolvedSubPath = request.subPath || (parsed.templateCode ? `template/${parsed.templateCode}` : undefined)
+			const resolvedBucket = 'assets'
+
 			for (const asset of assetList) {
 				const rid = String(asset?.resourceId || '').trim()
 				const target = String(asset?.target || '').trim() as AIWorkflowProjectPackageAssetTarget
@@ -120,12 +125,14 @@ export const useAIWorkflowProjectTransfer = (payload: {
 				if (shouldPersistAsset) {
 					// ── 落盘路径：写入项目文件夹并通过 IPC 注册 dweb:// URL ──
 					const arrayBuffer = await blob.arrayBuffer()
-					const assetFileName = `${rid}-${target}.${guessExtFromBlob(blob, target)}`
+					const assetFileName = filePath.startsWith('assets/') ? filePath.slice(7) : `${rid}-${target}.${guessExtFromBlob(blob, target)}`
 					const imported = await payload.importAssetFromBuffer!(
 						activeProjectId!,
 						arrayBuffer,
 						assetFileName,
-						blob.type
+						blob.type,
+						resolvedSubPath,
+						resolvedBucket
 					)
 
 					if (target === 'snapshotField') {
@@ -161,9 +168,12 @@ export const useAIWorkflowProjectTransfer = (payload: {
 						payload.setObjectUrl(objectKey, resolvedUrl)
 						if (resource) {
 							resource[target] = resolvedUrl
-							resource.sourcePath = imported?.relativePath ?? undefined
-							resource.projectRelativePath = imported?.relativePath ?? undefined
-							resource.posterSourcePath = undefined
+							if (target === 'url') {
+								resource.sourcePath = imported?.absolutePath ?? imported?.relativePath ?? undefined
+								resource.projectRelativePath = imported?.relativePath ?? undefined
+							} else if (target === 'posterUrl') {
+								resource.posterSourcePath = imported?.absolutePath ?? imported?.relativePath ?? undefined
+							}
 							resource.localFileKey = undefined
 						}
 					}

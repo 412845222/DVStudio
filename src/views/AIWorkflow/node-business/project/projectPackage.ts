@@ -29,6 +29,7 @@ export type AIWorkflowProjectPackageV1 = {
 	projectName: string
 	snapshot: AIWorkflowDraftSnapshot
 	assets: AIWorkflowProjectPackageAssetEntry[]
+	templateCode?: string
 }
 
 export const AIWF_PROJECT_PACKAGE_ENTRY = 'aiwf-project-package.json'

@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 6
+const TARGET_VERSION = 8
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -371,7 +371,31 @@ function runV6(db) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_updated_at ON gemini_tasks(updated_at DESC);`)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6]
+function runV7(db) {
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS aiworkflow_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'other',
+      tags TEXT NOT NULL DEFAULT '[]',
+      node_count INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'user',
+      file_path TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_updated_at ON aiworkflow_templates(updated_at DESC);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_category ON aiworkflow_templates(category);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_source ON aiworkflow_templates(source);`)
+}
+
+function runV8(db) {
+	db.exec(`ALTER TABLE aiworkflow_templates ADD COLUMN cover_path TEXT NOT NULL DEFAULT '';`)
+}
+
+const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)
