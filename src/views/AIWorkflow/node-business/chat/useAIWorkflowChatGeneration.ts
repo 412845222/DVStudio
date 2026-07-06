@@ -465,7 +465,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 		const context = collectBlueprintContext()
 
-		const isCLIMode = ['claude', 'codex', 'copilot'].includes(apiSource)
+		const isCLIMode = ['codex', 'copilot'].includes(apiSource)
 		let apiKeys: Record<string, string> = {}
 		let resolvedApiSource = apiSource
 
@@ -1095,7 +1095,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					return
 				}
 
-				if (backend === 'claude' || backend === 'codex') {
+				if (backend === 'codex') {
 					await handleAgentStream(content, history, assistantMsg.id, backend)
 					payload.chatSending.value = false
 					payload.chatRunState.value = 'idle'
