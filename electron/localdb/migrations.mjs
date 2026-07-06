@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 8
+const TARGET_VERSION = 9
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -395,7 +395,44 @@ function runV8(db) {
 	db.exec(`ALTER TABLE aiworkflow_templates ADD COLUMN cover_path TEXT NOT NULL DEFAULT '';`)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8]
+function runV9(db) {
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS tripo3d_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL UNIQUE,
+      mode TEXT NOT NULL DEFAULT 'text_to_model',
+      status TEXT NOT NULL DEFAULT 'queued',
+      progress INTEGER NOT NULL DEFAULT 0,
+      prompt TEXT NOT NULL DEFAULT '',
+      negative_prompt TEXT NOT NULL DEFAULT '',
+      model_version TEXT NOT NULL DEFAULT '',
+      face_limit INTEGER NOT NULL DEFAULT 0,
+      texture INTEGER NOT NULL DEFAULT 1,
+      pbr INTEGER NOT NULL DEFAULT 1,
+      thumbnail_url TEXT NOT NULL DEFAULT '',
+      model_url TEXT NOT NULL DEFAULT '',
+      local_asset_url TEXT NOT NULL DEFAULT '',
+      local_asset_path TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      status_text TEXT NOT NULL DEFAULT '',
+      request_payload TEXT,
+      response_payload TEXT,
+      project_id INTEGER,
+      node_id TEXT NOT NULL DEFAULT '',
+      started_at TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_task_id ON tripo3d_tasks(task_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_project_id ON tripo3d_tasks(project_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_status ON tripo3d_tasks(status);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_updated_at ON tripo3d_tasks(updated_at DESC);`)
+}
+
+const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8, runV9]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)

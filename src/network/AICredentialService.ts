@@ -7,6 +7,7 @@ export type CredentialProvidersStatus = {
 	gemini: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	bytedance: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	meshy: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
+	tripo3d: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	github: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 }
 
@@ -15,6 +16,7 @@ export type SaveCredentialRequest = {
 	geminiApiKey?: string
 	bytedanceApiKey?: string
 	meshyApiKey?: string
+	tripo3dApiKey?: string
 	githubToken?: string
 }
 
@@ -49,6 +51,7 @@ const PROVIDER_FIELDS: Array<{ field: keyof SaveCredentialRequest; provider: str
 	{ field: 'geminiApiKey', provider: 'gemini', statusKey: 'gemini' },
 	{ field: 'bytedanceApiKey', provider: 'bytedance', statusKey: 'bytedance' },
 	{ field: 'meshyApiKey', provider: 'meshy', statusKey: 'meshy' },
+	{ field: 'tripo3dApiKey', provider: 'tripo3d', statusKey: 'tripo3d' },
 	{ field: 'githubToken', provider: 'github', statusKey: 'github' },
 ]
 
@@ -58,6 +61,7 @@ function emptyStatus(): CredentialProvidersStatus {
 		gemini: { hasKey: false, fingerprint: '', updatedAt: null },
 		bytedance: { hasKey: false, fingerprint: '', updatedAt: null },
 		meshy: { hasKey: false, fingerprint: '', updatedAt: null },
+		tripo3d: { hasKey: false, fingerprint: '', updatedAt: null },
 		github: { hasKey: false, fingerprint: '', updatedAt: null },
 	}
 }

@@ -859,6 +859,15 @@ export const runNodeGenerationTask = async (
 					mode: result.mode,
 					error: result.error
 				}
+			} else if (provider === 'tripo3d') {
+				const result = await runModel3dTripo3dTask(deps, task, payload)
+				return {
+					ok: result.ok,
+					taskId: result.taskId,
+					taskType: 'other',
+					mode: result.mode,
+					error: result.error
+				}
 			} else {
 				runModel3dStub(deps, task, payload)
 				return { ok: false, error: t('aiworkflow.runtime.unsupported3dProvider') }
@@ -2297,6 +2306,476 @@ const runModel3dMeshyTask = async (
 		})
 		return { ok: false, error: errMsg }
 	}
+}
+
+const runModel3dTripo3dTask = async (
+	deps: NodeGenerationApiDeps,
+	task: WorkflowNodeGenerationTask,
+	payload: WorkflowNodeChatSubmitPayload
+): Promise<{ ok: boolean; taskId?: string; mode?: string; error?: string }> => {
+	const svc = getComfyService(deps)
+	const params = payload.params ?? {}
+
+	const tripo3dModelVersion = String(params.tripo3dModelVersion || '').trim()
+	const tripo3dFaceLimit = Number(params.tripo3dFaceLimit ?? 0)
+	const tripo3dTexture = Boolean(params.tripo3dTexture ?? true)
+	const tripo3dPbr = Boolean(params.tripo3dPbr ?? false)
+	const tripo3dEnableImageAutofix = params.tripo3dEnableImageAutofix !== false
+	const tripo3dTextureAlignment = String(params.tripo3dTextureAlignment || '').trim()
+	const tripo3dOrientation = String(params.tripo3dOrientation || '').trim()
+	const tripo3dGeometryQuality = String(params.tripo3dGeometryQuality || '').trim()
+	const tripo3dTextureQuality = String(params.tripo3dTextureQuality || '').trim()
+	const tripo3dQuad = Boolean(params.tripo3dQuad ?? false)
+	const tripo3dSmartLowPoly = Boolean(params.tripo3dSmartLowPoly ?? false)
+	const tripo3dGenerateParts = Boolean(params.tripo3dGenerateParts ?? false)
+	const tripo3dAutoSize = params.tripo3dAutoSize !== false
+	const tripo3dCompress = String(params.tripo3dCompress || '').trim()
+	const tripo3dExportUv = Boolean(params.tripo3dExportUv ?? false)
+	const tripo3dModelSeed = Number(params.tripo3dModelSeed ?? -1)
+	const tripo3dTextureSeed = Number(params.tripo3dTextureSeed ?? -1)
+	const tripo3dNegativePrompt = String(params.tripo3dNegativePrompt || '').trim()
+	const tripo3dSelectedImages = Array.isArray(params.tripo3dSelectedImages) ? params.tripo3dSelectedImages : []
+	const tripo3dForceSingleImage = params.tripo3dForceSingleImage === true
+
+	updateTask(deps, task.id, {
+		status: 'running',
+		statusText: t('aiworkflow.runtime.creatingTripo3DTask', { mode: 'detecting' }),
+		progress: 10
+	})
+	if (tripo3dModelVersion) appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: tripo3dModelVersion }))
+	if (payload.prompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
+
+	try {
+		let refImages: Array<{ name: string; blob: Blob }> = []
+		let imageDataUris: string[] = []
+
+		const allRefImages = await collectReferenceImages(deps, payload.nodeId, 4)
+		const imageCount = allRefImages.length
+
+		let tripo3dMode: string
+		if (imageCount === 0) {
+			tripo3dMode = 'text_to_model'
+		} else if (imageCount === 1 || tripo3dForceSingleImage) {
+			tripo3dMode = 'image_to_model'
+			refImages = allRefImages.slice(0, 1)
+		} else {
+			tripo3dMode = 'multiview_to_model'
+			refImages = allRefImages
+		}
+
+		const isPostProcessMode = tripo3dMode === 'texture' || tripo3dMode === 'refine'
+
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailMode', { mode: tripo3dMode }))
+
+		const tripo3dPayload: Record<string, unknown> = {
+			mode: tripo3dMode
+		}
+
+		if (tripo3dModelVersion) {
+			tripo3dPayload.model_version = tripo3dModelVersion
+		}
+
+		if (payload.prompt) {
+			tripo3dPayload.prompt = payload.prompt
+		}
+
+		if (tripo3dNegativePrompt) {
+			tripo3dPayload.negative_prompt = tripo3dNegativePrompt
+		}
+
+		if (tripo3dFaceLimit > 0) tripo3dPayload.face_limit = tripo3dFaceLimit
+		tripo3dPayload.texture = tripo3dTexture
+		tripo3dPayload.pbr = tripo3dPbr
+		tripo3dPayload.enable_image_autofix = tripo3dEnableImageAutofix
+		if (tripo3dTextureAlignment) tripo3dPayload.texture_alignment = tripo3dTextureAlignment
+		if (tripo3dOrientation) tripo3dPayload.orientation = tripo3dOrientation
+		if (tripo3dGeometryQuality) tripo3dPayload.geometry_quality = tripo3dGeometryQuality
+		if (tripo3dTextureQuality) tripo3dPayload.texture_quality = tripo3dTextureQuality
+		tripo3dPayload.quad = tripo3dQuad
+		tripo3dPayload.smart_low_poly = tripo3dSmartLowPoly
+		tripo3dPayload.generate_parts = tripo3dGenerateParts
+		tripo3dPayload.auto_size = tripo3dAutoSize
+		if (tripo3dCompress) tripo3dPayload.compress = tripo3dCompress
+		tripo3dPayload.export_uv = tripo3dExportUv
+
+		if (tripo3dModelSeed > 0) tripo3dPayload.model_seed = tripo3dModelSeed
+		if (tripo3dTextureSeed > 0) tripo3dPayload.texture_seed = tripo3dTextureSeed
+
+		if (tripo3dMode === 'image_to_model') {
+			if (refImages.length === 0) {
+				throw new Error(t('aiworkflow.runtime.imageTo3dNeedImage'))
+			}
+
+			appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
+
+			const dataUri = await blobToBase64DataUri(refImages[0].blob)
+			if (!dataUri) {
+				throw new Error(t('aiworkflow.runtime.refImageReadFailed'))
+			}
+			imageDataUris.push(dataUri)
+
+			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.uploadingTripo3DImage'), progress: 12 })
+			appendDetail(deps, task.id, t('aiworkflow.runtime.uploadingImage'))
+
+			const uploadRes = await svc.tripo3dUploadFile({
+				fileData: dataUri,
+				fileName: `reference-${Date.now()}.png`,
+				fileType: 'image/png'
+			})
+
+			if (!uploadRes.ok) {
+				throw new Error(t('aiworkflow.runtime.tripo3dUploadFailed', { error: String(uploadRes.error || 'unknown') }))
+			}
+
+			const fileToken = String(uploadRes.fileToken || '').trim()
+			if (!fileToken) {
+				throw new Error(t('aiworkflow.runtime.tripo3dEmptyFileToken'))
+			}
+
+			appendDetail(deps, task.id, t('aiworkflow.runtime.detailFileToken', { token: fileToken }))
+			tripo3dPayload.fileToken = fileToken
+		} else if (tripo3dMode === 'multiview_to_model') {
+			if (refImages.length < 2) {
+				throw new Error(t('aiworkflow.runtime.multiImageTo3dNeedImages'))
+			}
+
+			appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
+
+			const fileTokens: string[] = []
+			for (let i = 0; i < refImages.length; i++) {
+				const ref = refImages[i]
+				try {
+					const dataUri = await blobToBase64DataUri(ref.blob)
+					if (dataUri) {
+						imageDataUris.push(dataUri)
+
+						updateTask(deps, task.id, {
+							statusText: t('aiworkflow.runtime.uploadingTripo3DImageIndexed', { index: String(i + 1), total: String(refImages.length) }),
+							progress: 8 + Math.floor((i + 1) / refImages.length * 10)
+						})
+						appendDetail(deps, task.id, t('aiworkflow.runtime.uploadingImageIndexed', { index: String(i + 1) }))
+
+						const uploadRes = await svc.tripo3dUploadFile({
+							fileData: dataUri,
+							fileName: `multiview-${i + 1}-${Date.now()}.png`,
+							fileType: 'image/png'
+						})
+
+						if (uploadRes.ok && uploadRes.fileToken) {
+							fileTokens.push(uploadRes.fileToken)
+							appendDetail(deps, task.id, t('aiworkflow.runtime.detailFileTokenIndexed', { index: String(i + 1), token: uploadRes.fileToken }))
+						} else {
+							const errMsg = !uploadRes.ok ? String(uploadRes.error || 'unknown') : 'no file token'
+							appendDetail(deps, task.id, t('aiworkflow.runtime.uploadImageFailed', { index: String(i + 1), error: errMsg }))
+						}
+					}
+				} catch {
+					// skip failed images
+				}
+			}
+
+			if (fileTokens.length < 2) {
+				throw new Error(t('aiworkflow.runtime.refImageReadFailed'))
+			}
+
+			tripo3dPayload.fileTokens = fileTokens
+		}
+
+		if (isPostProcessMode) {
+			const modelInput = await resolveModel3DInput(deps, payload.nodeId)
+			if (modelInput?.inputTaskId) {
+				tripo3dPayload.model_task_id = modelInput.inputTaskId
+				appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+			} else if (modelInput?.modelUrl) {
+				tripo3dPayload.model_url = modelInput.modelUrl
+				appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
+			} else {
+				const modeLabel = tripo3dMode === 'texture'
+					? t('aiworkflow.runtime.modeTexture')
+					: t('aiworkflow.runtime.modeRefine')
+				throw new Error(t('aiworkflow.runtime.postProcessNeedInput', { mode: modeLabel }))
+			}
+		}
+
+		updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.submittingTripo3DTask'), progress: 15 })
+
+		const createRes = await svc.tripo3dGenerate(tripo3dPayload)
+
+		if (!createRes.ok) {
+			throw new Error(String(createRes.error || t('aiworkflow.runtime.tripo3dTaskCreateFailed')))
+		}
+
+		const tripo3dTaskId = String(createRes.taskId || '').trim()
+		if (!tripo3dTaskId) throw new Error(t('aiworkflow.runtime.tripo3dEmptyTaskId'))
+
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailTaskCreated', { taskId: tripo3dTaskId }))
+
+		deps.store.commit('setNodeModel3DSettings', {
+			nodeId: payload.nodeId,
+			model3dSettings: {
+				modelGenerationSource: 'tripo3d',
+				tripo3dModelSettings: {
+					taskId: tripo3dTaskId,
+					taskStatus: 'pending',
+					taskFamily: tripo3dMode,
+					progress: 15,
+					statusText: t('aiworkflow.runtime.tripo3dTaskCreatedStatus', { mode: tripo3dMode }),
+					imageCount: refImages.length,
+					imageUrls: imageDataUris,
+					prompt: payload.prompt
+				}
+			}
+		})
+
+		updateTask(deps, task.id, {
+			status: 'running',
+			statusText: t('aiworkflow.runtime.tripo3dTaskSubmitted'),
+			progress: 15
+		})
+
+		void pollTripo3DTaskStatus(
+			deps,
+			svc,
+			tripo3dTaskId,
+			task.id,
+			payload.nodeId,
+			tripo3dMode
+		)
+
+		return { ok: true, taskId: tripo3dTaskId, mode: tripo3dMode }
+	} catch (err: unknown) {
+		const errMsg = getErrorMessage(err)
+		pushToast(deps, t('aiworkflow.runtime.tripo3dGenerateFailed', { error: errMsg }), 'error')
+		updateTask(deps, task.id, {
+			status: 'error',
+			statusText: t('aiworkflow.runtime.failedStatus', { message: errMsg }),
+			progress: 0,
+			finishedAt: Date.now()
+		})
+		return { ok: false, error: errMsg }
+	}
+}
+
+const pollTripo3DTaskStatus = async (
+	deps: NodeGenerationApiDeps,
+	svc: ComfyUIBridgeService,
+	taskId: string,
+	generationTaskId: string,
+	nodeId: string,
+	taskMode: string
+) => {
+	const maxPolls = 180
+	const pollInterval = 3000
+	let consecutiveErrors = 0
+
+	for (let i = 0; i < maxPolls; i++) {
+		await new Promise((r) => setTimeout(r, pollInterval))
+
+		try {
+			const taskRes = await svc.tripo3dTask(taskId)
+
+			consecutiveErrors = 0
+
+			if (!taskRes.ok) {
+				appendDetail(
+					deps,
+					generationTaskId,
+					t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) })
+				)
+				console.warn('[Tripo3D Poll] 轮询失败:', {
+					status: taskRes.status,
+					error: taskRes.error,
+					taskId,
+					taskMode
+				})
+				continue
+			}
+
+			const status = String(taskRes.status || '')
+				.trim()
+				.toLowerCase()
+			const progress = Number(taskRes.progress ?? 0)
+			const progressPct = status === 'success' || status === 'succeeded' || status === 'completed'
+				? 100
+				: Math.min(99, Math.max(10, progress))
+
+			const statusText = t('aiworkflow.runtime.tripo3dTaskStatus', { taskMode, status, progress: String(progress) })
+
+			updateTask(deps, generationTaskId, {
+				statusText,
+				progress: progressPct
+			})
+
+			const tripo3dStatus = (() => {
+				const s = status.toLowerCase()
+				if (s === 'succeeded' || s === 'success' || s === 'completed') return 'succeeded' as const
+				if (s === 'failed' || s === 'error') return 'failed' as const
+				if (s === 'cancelled' || s === 'canceled') return 'canceled' as const
+				if (s === 'pending' || s === 'queued') return 'pending' as const
+				return 'running' as const
+			})()
+
+			deps.store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: {
+					tripo3dModelSettings: {
+						taskId,
+						taskStatus: tripo3dStatus,
+						taskFamily: taskMode,
+						progress: progressPct,
+						statusText
+					}
+				}
+			})
+
+			if (status === 'success' || status === 'succeeded' || status === 'completed') {
+				const modelUrl = String(taskRes.modelUrl || '').trim()
+				const thumbnailUrl = String(taskRes.thumbnailUrl || '').trim()
+
+				let finalModelUrl = modelUrl
+				let finalFormat = 'glb'
+
+				if (!finalModelUrl) {
+					return throwFatal(t('aiworkflow.runtime.tripo3dNoModelUrl'))
+				}
+
+				const resolvedUrl = deps.resolveBackendUrl(finalModelUrl)
+
+				let persistedUrl = resolvedUrl
+				let persistedAssetPath = ''
+				let persistFailed = false
+
+				if (typeof deps.persistExternalAssetToProject === 'function') {
+					try {
+						const urlObj = finalModelUrl.split('?')[0]
+						const extMatch = urlObj.match(/\.[^.]+$/)
+						const ext = extMatch ? extMatch[0] : '.glb'
+						const fileName = `tripo3d-${taskId}${ext}`
+						const persisted = await deps.persistExternalAssetToProject({
+							kind: 'file',
+							name: fileName,
+							sourceUrl: resolvedUrl
+						})
+						if (persisted) {
+							persistedUrl = String(persisted.url || resolvedUrl)
+							persistedAssetPath = persisted.projectRelativePath || persisted.absolutePath || ''
+							console.log('[Tripo3D Poll] 资产已持久化:', { taskId, persistedUrl })
+						} else {
+							persistFailed = true
+						}
+					} catch (e) {
+						persistFailed = true
+						console.warn('[Tripo3D Poll] 资产持久化失败:', e)
+					}
+				}
+
+				let bound = true
+				if (typeof deps.bindModel3dResultToNode === 'function') {
+					try {
+						const bindRet = await deps.bindModel3dResultToNode(nodeId, persistedUrl, finalFormat)
+						bound = bindRet !== false
+					} catch (e) {
+						bound = false
+						console.warn('[Tripo3D Poll] 绑定模型到节点失败:', e)
+					}
+				}
+				if (bound) {
+					appendResult(deps, generationTaskId, {
+						kind: 'model3d',
+						url: persistedUrl,
+						label: t('aiworkflow.runtime.tripo3dModelLabel', { format: finalFormat })
+					})
+				}
+
+				if (thumbnailUrl) {
+					const resolvedThumb = deps.resolveBackendUrl(thumbnailUrl)
+					appendResult(deps, generationTaskId, {
+						kind: 'image',
+						url: resolvedThumb,
+						label: t('aiworkflow.runtime.modelPreviewLabel')
+					})
+				}
+
+				const fetchSucceeded = bound && !persistFailed
+
+				deps.store.commit('setNodeModel3DSettings', {
+					nodeId,
+					model3dSettings: {
+						modelGenerationSource: 'tripo3d',
+						modelUrl: fetchSucceeded ? persistedUrl : '',
+						modelAssetUrl: fetchSucceeded ? persistedUrl : '',
+						modelAssetPath: fetchSucceeded ? persistedAssetPath : '',
+						modelFormat: finalFormat,
+						tripo3dModelSettings: {
+							taskId,
+							taskStatus: fetchSucceeded ? 'succeeded' : 'fetch-failed',
+							taskFamily: taskMode,
+							progress: 100,
+							statusText: fetchSucceeded
+								? t('aiworkflow.runtime.tripo3dComplete')
+								: t('aiworkflow.runtime.tripo3dCompleteFetchFailed'),
+							errorMessage: fetchSucceeded
+								? ''
+								: t('aiworkflow.runtime.tripo3dFetchFailedMessage'),
+							outputSummary: {
+								preferredUrl: persistedUrl,
+								assetUrl: persistedUrl,
+								thumbnailUrl: deps.resolveBackendUrl(thumbnailUrl),
+								format: finalFormat
+							}
+						}
+					}
+				})
+
+				updateTask(deps, generationTaskId, {
+					status: fetchSucceeded ? 'completed' : 'completed',
+					statusText: fetchSucceeded
+						? t('aiworkflow.runtime.tripo3dComplete')
+						: t('aiworkflow.runtime.tripo3dCompleteFetchFailed'),
+					progress: 100,
+					finishedAt: Date.now()
+				})
+				return
+			}
+
+			if (status === 'failed' || status === 'error') {
+				const errorMsg = String(taskRes.errorMessage || taskRes.statusText || t('aiworkflow.runtime.unknownError'))
+				return throwFatal(t('aiworkflow.runtime.tripo3dTaskFailed', { error: errorMsg }))
+			}
+
+			if (status === 'cancelled' || status === 'canceled') {
+				return throwFatal(t('aiworkflow.runtime.tripo3dTaskCanceled'))
+			}
+		} catch (err: unknown) {
+			const errMsg = getErrorMessage(err)
+			if (isFatalError(err)) {
+				throw err
+			}
+
+			consecutiveErrors++
+			const errorDetails = {
+				message: errMsg,
+				taskId,
+				taskMode,
+				attempt: i + 1,
+				consecutiveErrors,
+				timestamp: Date.now()
+			}
+
+			appendDetail(
+				deps,
+				generationTaskId,
+				t('aiworkflow.runtime.pollException', { attempt: String(i + 1), consecutive: String(consecutiveErrors), error: errMsg })
+			)
+			console.error('[Tripo3D Poll] 轮询异常:', errorDetails)
+
+			if (consecutiveErrors >= 10) {
+				throw err
+			}
+		}
+	}
+
+	throwFatal(t('aiworkflow.runtime.tripo3dTaskTimeout'))
 }
 
 const runModel3dStub = (

@@ -145,6 +145,8 @@
   "aiworkflow.toast.meshyQueryFailed": "Meshy task query failed for node \"{name}\"",
   "aiworkflow.toast.meshyResumeFailed": "Meshy task resume failed for node \"{name}\"",
   "aiworkflow.toast.meshyRequestBuildFailed": "Meshy request build failed",
+  "aiworkflow.toast.tripo3dQueryFailed": "Tripo3D task query failed for node \"{name}\"",
+  "aiworkflow.toast.tripo3dResumeFailed": "Tripo3D task resume failed for node \"{name}\"",
   "aiworkflow.toast.projectExportDone": "Project package exported, {count} resources not packaged (original URLs preserved).",
   "aiworkflow.toast.resourceAutoFixFailed": "Auto-fix failed for some project resources ({count} items).",
   "aiworkflow.toast.invalidResourceDeleted": "Deleted invalid resource: {name}",

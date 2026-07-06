@@ -1,4 +1,4 @@
-import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 
 export const NODE_CHAT_TYPE_LABELS: Record<WorkflowNodeChatType, string> = {
 	text: 'aiConfig.nodeType.text',
@@ -447,7 +447,196 @@ export const supportsSeedreamOutputFormat = (modelVersion: string) => {
 
 export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [{ value: 'seedance', label: 'aiConfig.videoModel.seedance' }]
 
-export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [{ value: 'meshy' as const, label: 'aiConfig.model3dProvider.meshy' }]
+export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [
+	{ value: 'meshy' as const, label: 'aiConfig.model3dProvider.meshy' },
+	{ value: 'tripo3d' as const, label: 'aiConfig.model3dProvider.tripo3d' }
+]
+
+export const NODE_CHAT_TRIPO3D_MODEL_SERIES_OPTIONS = [
+	{ value: 'h', label: 'aiConfig.tripo3dModelSeries.h', icon: '✨', badge: 'aiConfig.common.recommended' },
+	{ value: 'p', label: 'aiConfig.tripo3dModelSeries.p', icon: '🎮', badge: 'aiConfig.tripo3dBadge.game' }
+]
+
+export const NODE_CHAT_TRIPO3D_H_MODEL_VERSION_OPTIONS = [
+	{ value: 'v3.1-20260211', label: 'v3.1', description: 'aiConfig.tripo3dModelVersion.v31', badge: 'aiConfig.common.recommended' },
+	{ value: 'v3.0-20250812', label: 'v3.0', description: 'aiConfig.tripo3dModelVersion.v30' },
+	{ value: 'v2.5-20250123', label: 'v2.5', description: 'aiConfig.tripo3dModelVersion.v25' }
+]
+
+export const NODE_CHAT_TRIPO3D_P_MODEL_VERSION_OPTIONS = [
+	{ value: 'P1-20260311', label: 'P1', description: 'aiConfig.tripo3dModelVersion.p1', badge: 'aiConfig.tripo3dBadge.game' }
+]
+
+export const NODE_CHAT_TRIPO3D_FACE_LIMIT_PRESETS = [
+	{ value: 10000, label: 'aiConfig.tripo3dFaceLimitPresets.mobile', description: 'aiConfig.tripo3dFaceLimitPresets.mobileDesc' },
+	{ value: 30000, label: 'aiConfig.tripo3dFaceLimitPresets.web', description: 'aiConfig.tripo3dFaceLimitPresets.webDesc' },
+	{ value: 80000, label: 'aiConfig.tripo3dFaceLimitPresets.game', description: 'aiConfig.tripo3dFaceLimitPresets.gameDesc' },
+	{ value: 500000, label: 'aiConfig.tripo3dFaceLimitPresets.film', description: 'aiConfig.tripo3dFaceLimitPresets.filmDesc' },
+	{ value: 2000000, label: 'aiConfig.tripo3dFaceLimitPresets.ultra', description: 'aiConfig.tripo3dFaceLimitPresets.ultraDesc', hSeriesOnly: true },
+	{ value: 0, label: 'aiConfig.tripo3dFaceLimitPresets.adaptive', description: 'aiConfig.tripo3dFaceLimitPresets.adaptiveDesc' }
+]
+
+export const NODE_CHAT_TRIPO3D_TEXTURE_QUALITY_OPTIONS = [
+	{ value: 'standard', label: 'aiConfig.tripo3dTextureQuality.standard' },
+	{ value: 'detailed', label: 'aiConfig.tripo3dTextureQuality.detailed' },
+	{ value: 'extreme', label: 'aiConfig.tripo3dTextureQuality.extreme', badge: 'aiConfig.tripo3dBadge.moreCredits' }
+]
+
+export const NODE_CHAT_TRIPO3D_GEOMETRY_QUALITY_OPTIONS = [
+	{ value: 'standard', label: 'aiConfig.tripo3dGeometryQuality.standard' },
+	{ value: 'detailed', label: 'aiConfig.tripo3dGeometryQuality.detailed' }
+]
+
+export const NODE_CHAT_TRIPO3D_TEXTURE_ALIGNMENT_OPTIONS = [
+	{ value: 'original_image', label: 'aiConfig.tripo3dTextureAlignment.originalImage' },
+	{ value: 'geometry', label: 'aiConfig.tripo3dTextureAlignment.geometry' }
+]
+
+export const NODE_CHAT_TRIPO3D_ORIENTATION_OPTIONS = [
+	{ value: 'default', label: 'aiConfig.tripo3dOrientation.default' },
+	{ value: 'align_image', label: 'aiConfig.tripo3dOrientation.alignImage' }
+]
+
+export const NODE_CHAT_TRIPO3D_VIEW_OPTIONS = [
+	{ key: 'front' as const, label: 'aiConfig.tripo3dViews.front', color: '#3b82f6', required: true, order: 1 },
+	{ key: 'left' as const, label: 'aiConfig.tripo3dViews.left', color: '#22c55e', required: false, order: 2 },
+	{ key: 'back' as const, label: 'aiConfig.tripo3dViews.back', color: '#f97316', required: false, order: 3 },
+	{ key: 'right' as const, label: 'aiConfig.tripo3dViews.right', color: '#a855f7', required: false, order: 4 }
+]
+
+export const getTripo3DModelVersionOptions = (series: 'h' | 'p') => {
+	return series === 'h' ? NODE_CHAT_TRIPO3D_H_MODEL_VERSION_OPTIONS : NODE_CHAT_TRIPO3D_P_MODEL_VERSION_OPTIONS
+}
+
+export const getTripo3DFaceLimitRange = (modelVersion: string, quad: boolean, smartLowPoly: boolean) => {
+	const isPSeries = modelVersion.startsWith('P')
+	const isV25 = modelVersion === 'v2.5-20250123'
+	const isV3OrLater = modelVersion === 'v3.1-20260211' || modelVersion === 'v3.0-20250812'
+
+	if (isPSeries) {
+		if (quad) {
+			return { min: 50, max: 10000, default: 10000 }
+		}
+		return { min: 50, max: 20000, default: 10000 }
+	}
+
+	if (isV25) {
+		return { min: 1000, max: 500000, default: 0 }
+	}
+
+	if (!isV3OrLater) {
+		return { min: 1000, max: 2000000, default: 0 }
+	}
+
+	if (smartLowPoly) {
+		if (quad) {
+			return { min: 500, max: 10000, default: 10000 }
+		}
+		return { min: 500, max: 20000, default: 10000 }
+	}
+
+	if (quad) {
+		return { min: 1000, max: 150000, default: 0 }
+	}
+
+	return { min: 1000, max: 2000000, default: 0 }
+}
+
+export const isTripo3DPSeries = (modelVersion: string) => {
+	return modelVersion.startsWith('P')
+}
+
+export const isTripo3DV3OrLater = (modelVersion: string) => {
+	return modelVersion === 'v3.1-20260211' || modelVersion === 'v3.0-20250812'
+}
+
+export const normalizeTripo3DParams = (params: Record<string, unknown>) => {
+	const next = { ...params }
+	const modelVersion = String(next.tripo3dModelVersion || 'v3.1-20260211')
+	const modelSeries = String(next.tripo3dModelSeries || (isTripo3DPSeries(modelVersion) ? 'p' : 'h'))
+	const isPSeries = isTripo3DPSeries(modelVersion)
+	const isV3OrLater = isTripo3DV3OrLater(modelVersion)
+	const isV25 = modelVersion === 'v2.5-20250123'
+	const supportsAdvanced = isV3OrLater || isPSeries
+
+	let quad = Boolean(next.tripo3dQuad)
+	let smartLowPoly = Boolean(next.tripo3dSmartLowPoly)
+	let generateParts = Boolean(next.tripo3dGenerateParts)
+	let texture = next.tripo3dTexture !== false
+	let pbr = next.tripo3dPbr !== false
+	let autoSize = Boolean(next.tripo3dAutoSize)
+	let compress = Boolean(next.tripo3dCompress)
+	let geometryQuality = String(next.tripo3dGeometryQuality || 'standard')
+	let faceLimit = Number(next.tripo3dFaceLimit) || 0
+
+	if (isPSeries) {
+		smartLowPoly = false
+		generateParts = false
+		autoSize = false
+		compress = false
+		geometryQuality = 'standard'
+	} else if (isV25) {
+		smartLowPoly = false
+		generateParts = false
+		autoSize = false
+		compress = false
+		geometryQuality = 'standard'
+		quad = false
+	} else if (!isV3OrLater) {
+		smartLowPoly = false
+		generateParts = false
+		autoSize = false
+		compress = false
+		geometryQuality = 'standard'
+		quad = false
+	}
+
+	if (generateParts) {
+		texture = false
+		pbr = false
+		quad = false
+		smartLowPoly = false
+	}
+
+	if (pbr) {
+		texture = true
+	}
+
+	if (smartLowPoly) {
+		quad = false
+	}
+
+	const range = getTripo3DFaceLimitRange(modelVersion, quad, smartLowPoly)
+	if (faceLimit !== 0) {
+		faceLimit = Math.min(Math.max(faceLimit, range.min), range.max)
+	} else {
+		faceLimit = 0
+	}
+
+	next.tripo3dModelSeries = modelSeries as 'h' | 'p'
+	next.tripo3dModelVersion = modelVersion
+	next.tripo3dQuad = supportsAdvanced && !generateParts && !smartLowPoly ? quad : false
+	next.tripo3dSmartLowPoly = isV3OrLater && !isPSeries ? smartLowPoly : false
+	next.tripo3dGenerateParts = isV3OrLater ? generateParts : false
+	next.tripo3dTexture = texture
+	next.tripo3dPbr = pbr
+	next.tripo3dAutoSize = isV3OrLater ? autoSize : false
+	next.tripo3dCompress = isV3OrLater ? compress : false
+	next.tripo3dGeometryQuality = isV3OrLater && geometryQuality ? geometryQuality : 'standard'
+	next.tripo3dFaceLimit = faceLimit
+	next.tripo3dTextureQuality = String(next.tripo3dTextureQuality || 'standard')
+	next.tripo3dTextureAlignment = String(next.tripo3dTextureAlignment || 'original_image')
+	next.tripo3dOrientation = String(next.tripo3dOrientation || 'default')
+	next.tripo3dEnableImageAutofix = Boolean(next.tripo3dEnableImageAutofix)
+	next.tripo3dExportUv = next.tripo3dExportUv !== false
+	next.tripo3dForceSingleImage = Boolean(next.tripo3dForceSingleImage)
+
+	if (!Array.isArray(next.tripo3dSelectedImages)) {
+		next.tripo3dSelectedImages = []
+	}
+
+	return next as WorkflowNodeChatParamRecord
+}
 
 export const NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS = [
 	{ value: 'doubao-seedance-2-0-260128', label: 'Seedance 2.0' },
@@ -540,7 +729,28 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 				meshyAlphaThumbnail: false,
 				meshyStyleSource: 'text',
 				meshyTextureImageUrl: '',
-				meshyTextureImageNodeId: ''
+				meshyTextureImageNodeId: '',
+				tripo3dModelSeries: 'h',
+				tripo3dModelVersion: 'v3.1-20260211',
+				tripo3dForceSingleImage: false,
+				tripo3dSelectedImages: [],
+				tripo3dFaceLimit: 0,
+				tripo3dTexture: true,
+				tripo3dPbr: true,
+				tripo3dNegativePrompt: '',
+				tripo3dEnableImageAutofix: false,
+				tripo3dTextureAlignment: 'original_image',
+				tripo3dOrientation: 'default',
+				tripo3dTextureQuality: 'standard',
+				tripo3dGeometryQuality: 'standard',
+				tripo3dAutoSize: false,
+				tripo3dQuad: false,
+				tripo3dSmartLowPoly: false,
+				tripo3dGenerateParts: false,
+				tripo3dCompress: false,
+				tripo3dExportUv: true,
+				tripo3dModelSeed: -1,
+				tripo3dTextureSeed: -1
 			}
 		default:
 			return {}

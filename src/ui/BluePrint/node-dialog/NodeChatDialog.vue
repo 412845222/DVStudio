@@ -131,10 +131,12 @@
 				</div>
 			</div>
 
+		<Transition :name="isTripo3D ? 'bp-dialog-fade' : 'bp-param-slide-h'">
 			<NodeChatParamPanel
 				v-if="showParams"
 				:key="`param-panel-${JSON.stringify(currentParams)}`"
 				class="bp-node-chat-param-popover"
+				:class="{ 'is-horizontal': !isTripo3D, 'is-vertical': isTripo3D }"
 				:node-type="nodeType"
 				:node-id="nodeId"
 				:params="currentParams"
@@ -142,6 +144,7 @@
 				:input-param-preview-refs="inputParamPreviewRefsResolved"
 				@update:params="onParamsUpdate"
 			/>
+		</Transition>
 		</div>
 	</Transition>
 </template>
@@ -215,6 +218,12 @@ const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
 const showInputParamRefs = computed(() => {
 	const type = props.nodeType
 	return type === 'image' || type === 'text' || type === 'video' || type === 'model3d'
+})
+
+const isTripo3D = computed(() => {
+	if (!props.nodeType || props.nodeType !== 'model3d') return false
+	const model3dParams = (props.params.model3d ?? {}) as any
+	return model3dParams.model === 'tripo3d'
 })
 
 const inputParamPreviewRefsResolved = computed(() => {
@@ -639,6 +648,81 @@ onBeforeUnmount(() => {
 		0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 18%, transparent),
 		0 0 22px color-mix(in srgb, var(--wf-primary, #1f9d84) 28%, transparent),
 		0 18px 40px rgba(0, 0, 0, 0.42);
+}
+
+.bp-node-chat-param-popover.is-horizontal {
+	left: calc(100% + 12px);
+	top: 0;
+	transform: none;
+	width: min(340px, calc(100vw - 48px));
+	max-height: none !important;
+	overflow: visible !important;
+}
+
+.bp-node-chat-param-popover.is-horizontal :deep(.bp-node-chat-param-panel) {
+	overflow: visible !important;
+	max-height: none !important;
+}
+
+.bp-node-chat-param-popover.is-horizontal :deep(.bp-node-chat-param-body) {
+	overflow: visible !important;
+	max-height: none !important;
+}
+
+.bp-node-chat-param-popover.is-horizontal::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: linear-gradient(
+		to bottom,
+		transparent,
+		var(--wf-primary, #1f9d84) 20%,
+		var(--wf-primary, #1f9d84) 80%,
+		transparent
+	);
+	box-shadow: 0 0 12px var(--wf-primary, #1f9d84);
+	pointer-events: none;
+}
+
+.bp-param-slide-h-enter-active,
+.bp-param-slide-h-leave-active {
+	transition:
+		opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+		transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+		filter 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+		box-shadow 0.28s ease;
+	transform-origin: left center;
+}
+
+.bp-param-slide-h-enter-active .bp-node-chat-param-panel {
+	animation: bp-param-glow-pulse 0.5s ease-out;
+}
+
+.bp-param-slide-h-enter-from {
+	opacity: 0;
+	transform: translateX(-12px) scaleX(0.92);
+	filter: blur(4px) brightness(1.5);
+}
+
+.bp-param-slide-h-leave-to {
+	opacity: 0;
+	transform: translateX(-8px) scaleX(0.95);
+	filter: blur(3px) brightness(1.2);
+}
+
+@keyframes bp-param-glow-pulse {
+	0% {
+		filter: brightness(1.2);
+	}
+	50% {
+		filter: brightness(1.4);
+	}
+	100% {
+		filter: brightness(1);
+	}
 }
 
 .bp-node-chat-btn {
