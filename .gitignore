@@ -148,3 +148,13 @@ electron/platform/native/*/
 # The entire steam-pipe/ directory is local-only (build outputs, credentials, logs).
 # VDF templates are inlined in scripts/upload-steam.mjs; do not track any files here.
 steam-pipe/
+
+# ============================================================
+# Admin Publisher Tool (NEVER commit this directory)
+# ============================================================
+# Official template publisher backend tool (operator-only).
+# Contains Steam publishing credentials and operational code that must not be leaked.
+admin-publisher/
+admin-publisher/node_modules/
+admin-publisher/dist/
+admin-publisher/.env
