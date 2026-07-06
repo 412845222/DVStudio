@@ -135,6 +135,8 @@
   "aiworkflow.page.warmup.waitingRender": "Waiting for nodes to render...",
   "aiworkflow.page.warmup.generatingPreviewPending": "Generating new node previews {completed}/{total} (rendering: {pending})...",
   "aiworkflow.page.warmup.newNodesDone": "New node warmup complete, {count} nodes total, loading Canvas screenshots...",
+  "aiworkflow.page.warmup.templateNodes": "Processing {count} template nodes...",
+  "aiworkflow.page.warmup.templateNodesProgress": "Generating template node previews {completed}/{total}...",
   "aiworkflow.page.themeWarmup.lightLabel": "Light",
   "aiworkflow.page.themeWarmup.darkLabel": "Dark",
   "aiworkflow.page.themeWarmup.title": "Warming up {theme} theme",

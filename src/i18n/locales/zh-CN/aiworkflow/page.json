@@ -135,6 +135,8 @@
   "aiworkflow.page.warmup.waitingRender": "正在等待节点渲染...",
   "aiworkflow.page.warmup.generatingPreviewPending": "正在生成新节点预览 {completed}/{total}（渲染中 {pending}）...",
   "aiworkflow.page.warmup.newNodesDone": "新节点预热完成，共 {count} 个节点，正在加载Canvas截图...",
+  "aiworkflow.page.warmup.templateNodes": "正在处理 {count} 个模板节点...",
+  "aiworkflow.page.warmup.templateNodesProgress": "正在生成模板节点预览 {completed}/{total}...",
   "aiworkflow.page.themeWarmup.lightLabel": "浅色",
   "aiworkflow.page.themeWarmup.darkLabel": "深色",
   "aiworkflow.page.themeWarmup.title": "{theme}主题预热中",
