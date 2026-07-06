@@ -5,6 +5,7 @@ import { routes as systemRoutes } from './modules/system/routes.mjs'
 import { routes as projectsRoutes } from './modules/projects/routes.mjs'
 import { routes as projectAssetsRoutes } from './modules/project-assets/routes.mjs'
 import { routes as meshyRoutes } from './modules/meshy/routes.mjs'
+import { routes as tripo3dRoutes } from './modules/tripo3d/routes.mjs'
 import { routes as seedanceRoutes } from './modules/seedance/routes.mjs'
 import { routes as arkRoutes } from './modules/ark/routes.mjs'
 import { routes as geminiRoutes } from './modules/gemini/routes.mjs'
@@ -71,6 +72,7 @@ export function initBackend(mainWindow, deps = {}) {
     ...projectsRoutes,
     ...projectAssetsRoutes,
     ...meshyRoutes,
+    ...tripo3dRoutes,
     ...seedanceRoutes,
     ...arkRoutes,
     ...geminiRoutes,

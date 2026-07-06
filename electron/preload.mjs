@@ -280,6 +280,12 @@ contextBridge.exposeInMainWorld('dweb', {
 				upsert: (payload) => invoke('dweb:localdb:video:upsert', payload || {}),
 				remove: (payload) => invoke('dweb:localdb:video:remove', payload || {}),
 			},
+			tripo3d: {
+				list: (payload) => invoke('dweb:localdb:tripo3d:list', payload || {}),
+				get: (payload) => invoke('dweb:localdb:tripo3d:get', payload || {}),
+				upsert: (payload) => invoke('dweb:localdb:tripo3d:upsert', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:tripo3d:remove', payload || {}),
+			},
 			apiKeys: {
 				list: () => invoke('dweb:localdb:apiKeys:list'),
 				get: (payload) => invoke('dweb:localdb:apiKeys:get', payload || {}),
@@ -439,6 +445,17 @@ contextBridge.exposeInMainWorld('dweb', {
 		stop: (payload) => invoke('dweb:meshy:stop', payload || {}),
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
 		balance: () => invoke('dweb:meshy:balance'),
+	},
+	// ===== Tripo3D 3D 模型生成 =====
+	tripo3d: {
+		health: () => invoke('dweb:tripo3d:health'),
+		generate: (payload) => invoke('dweb:tripo3d:generate', payload || {}),
+		getTask: (payload) => invoke('dweb:tripo3d:get-task', payload || {}),
+		listTasks: (payload) => invoke('dweb:tripo3d:list-tasks', payload || {}),
+		taskDetail: (payload) => invoke('dweb:tripo3d:task-detail', payload || {}),
+		stop: (payload) => invoke('dweb:tripo3d:stop', payload || {}),
+		deleteTask: (payload) => invoke('dweb:tripo3d:delete', payload || {}),
+		balance: () => invoke('dweb:tripo3d:balance'),
 	},
 	// ===== Gemini 图片生成任务 =====
 	gemini: {

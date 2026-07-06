@@ -204,6 +204,12 @@
 						@open-meshy-task-panel="onOpenMeshyTaskPanel"
 						@open-ark-task-panel="onOpenArkTaskPanel"
 						@open-gemini-task-panel="onOpenGeminiTaskPanel"
+						@open-tripo3d-task-panel="onOpenTripo3DTaskPanel"
+						@generate-tripo3d="onNodeGenerateTripo3D(node.id)"
+						@refresh-tripo3d-task="onNodeRefreshTripo3DTask(node.id)"
+						@pull-tripo3d-output="onNodePullTripo3DOutput(node.id)"
+						@stop-tripo3d-task="onNodeStopTripo3DTask(node.id)"
+						@delete-tripo3d-task="onNodeDeleteTripo3DTask(node.id)"
 						@three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
 						@three-preview-ready="onNodeThreePreviewReady(node.id)"
 						@three-preview-error="onNodeThreePreviewError(node.id)"
@@ -384,6 +390,7 @@
 					@open-meshy-task-panel="onOpenMeshyTaskPanel"
 					@open-ark-task-panel="onOpenArkTaskPanel"
 				@open-gemini-task-panel="onOpenGeminiTaskPanel"
+					@open-tripo3d-task-panel="onOpenTripo3DTaskPanel"
 					@open-template-center="onOpenTemplateCenter"
 				/>
 
@@ -529,6 +536,25 @@
 					@refresh="onRefreshMeshyTaskPanel"
 					@preview-task="onPreviewMeshyTask"
 					@task-action="onMeshyTaskPanelAction"
+				/>
+
+				<Tripo3DTaskPanel
+					:open="tripo3dTaskDialogOpen"
+					:tasks="tripo3dTaskItems"
+					:data-status-text="tripo3dTaskPanelStatusText"
+					:balance-text="tripo3dBalanceText"
+					:balance-detail="tripo3dBalanceDetail"
+					:balance-tone="tripo3dBalanceTone"
+					:refresh-busy="tripo3dTaskRemoteLoading"
+					:detail-task-id="tripo3dTaskDetailTaskId"
+					:detail-task="tripo3dTaskDetail"
+					:detail-loading="tripo3dTaskDetailLoading"
+					:action-busy-task-id="tripo3dTaskActionBusyTaskId"
+					:action-busy-type="tripo3dTaskActionBusyType"
+					@close="closeTripo3DTaskDialog"
+					@refresh="onRefreshTripo3DTaskPanel"
+					@preview-task="onPreviewTripo3DTask"
+					@task-action="onTripo3DTaskPanelAction"
 				/>
 
 				<VideoTaskPanel
@@ -839,6 +865,12 @@ import MeshyTaskPanel, {
 	type MeshyTaskPanelDetail,
 	type MeshyTaskPanelItem
 } from '../../ui/WorkFlow/MeshyTaskPanel.vue'
+import Tripo3DTaskPanel from '../../ui/WorkFlow/Tripo3DTaskPanel.vue'
+import type {
+	Tripo3DTaskPanelAction,
+	Tripo3DTaskPanelDetail,
+	Tripo3DTaskPanelItem
+} from './node-business/tripo3d/types'
 import VideoTaskPanel from '../../ui/WorkFlow/VideoTaskPanel.vue'
 import ArkTaskPanel, {
 	type ArkTaskPanelDetail,
@@ -1008,12 +1040,25 @@ import {
 	pickMeshyPreferredImageUrl,
 	pickMeshyPreferredModelUrl
 } from './node-business/meshy/useAIWorkflowMeshyAssets'
+import {
+	buildTripo3DNodePresentationSettings,
+	getTripo3DDisplayThumbnailUrl,
+	getTripo3DEffectiveModelSource,
+	isTripo3DRemoteUrl,
+	pickTripo3DEffectiveOutput,
+	pickTripo3DPreferredModelUrl
+} from './node-business/tripo3d/useAIWorkflowTripo3DAssets'
 import { useAIWorkflowMeshyDrop } from './node-business/meshy/useAIWorkflowMeshyDrop'
 import { useAIWorkflowMeshyCommands } from './node-business/meshy/useAIWorkflowMeshyCommands'
 import { useAIWorkflowMeshyInputResolver } from './node-business/meshy/useAIWorkflowMeshyInputResolver'
 import { useAIWorkflowMeshyRequest } from './node-business/meshy/useAIWorkflowMeshyRequest'
 import { useAIWorkflowMeshyTaskPanelController } from './node-business/meshy/useAIWorkflowMeshyTaskPanelController'
 import { useAIWorkflowMeshyRuntime } from './node-business/meshy/useAIWorkflowMeshyRuntime'
+import { useAIWorkflowTripo3DTaskPanelController } from './node-business/tripo3d/useAIWorkflowTripo3DTaskPanelController'
+import { useAIWorkflowTripo3DCommands } from './node-business/tripo3d/useAIWorkflowTripo3DCommands'
+import { useAIWorkflowTripo3DRuntime } from './node-business/tripo3d/useAIWorkflowTripo3DRuntime'
+import { useAIWorkflowTripo3DRequest } from './node-business/tripo3d/useAIWorkflowTripo3DRequest'
+import { useAIWorkflowTripo3DInputResolver } from './node-business/tripo3d/useAIWorkflowTripo3DInputResolver'
 import { useAIWorkflowVideoTaskPanelController } from './node-business/chat/useAIWorkflowVideoTaskPanelController'
 import { useAIWorkflowArkTaskPanel } from './node-business/ark/useAIWorkflowArkTaskPanel'
 import { useAIWorkflowGeminiTaskPanelController } from './node-business/gemini/useAIWorkflowGeminiTaskPanelController'
@@ -1021,6 +1066,7 @@ import {
 	fileExtensionFromUrl,
 	normalizeMeshyTaskStatus
 } from './node-business/meshy/meshyRuntimeUtils'
+import { normalizeTripo3DTaskStatus, fileExtensionFromUrl as tripo3dFileExtensionFromUrl } from './node-business/tripo3d/tripo3dRuntimeUtils'
 import {
 	AIWF_PROJECT_PACKAGE_ENTRY,
 	sanitizeFileNamePart,
@@ -5552,6 +5598,38 @@ const { buildMeshyRequestPayload } = useAIWorkflowMeshyRequest({
 	meshyImageOutputCount
 })
 
+const {
+	connectedTripo3DPrompt,
+	connectedTripo3DImageUrls,
+	connectedTripo3DImageInputs,
+	normalizeTripo3DImageInputValue,
+	buildTripo3DImageInputFromNode,
+	buildTripo3DModelInputFromNode,
+	connectedTripo3DModelInput,
+	hasConnectedTripo3DConsumer
+} = useAIWorkflowTripo3DInputResolver({
+	store,
+	getFirstIncomingEdge,
+	getIncomingEdges,
+	getOutgoingEdges,
+	hasOutgoingEdge,
+	getTextOutputForNode: (nodeId) => getTextOutputForNode(nodeId),
+	nodeResourceUrl,
+	getTripo3DEffectiveModelSource,
+	getTripo3DDisplayThumbnailUrl,
+	blobToDataUrl,
+	resolveBackendUrl
+})
+
+const { buildTripo3DRequestPayload } = useAIWorkflowTripo3DRequest({
+	connectedTripo3DPrompt,
+	connectedTripo3DImageInputs,
+	connectedTripo3DModelInput,
+	buildTripo3DImageInputFromNode,
+	normalizeTripo3DImageInputValue,
+	hasConnectedTripo3DConsumer
+})
+
 const syncModel3DInputFromUpstream = async (
 	nodeId: string,
 	opts?: { warn?: boolean; forceSceneLayoutExport?: boolean }
@@ -5602,6 +5680,54 @@ const syncModel3DInputFromUpstream = async (
 					modelAssetProjectRelativePath:
 						String(persisted?.projectRelativePath || '').trim() || undefined,
 					lastInputSignature: `${fromNode.id}:${String(settings.meshyTaskId ?? '')}:${sourceUrl}`,
+					lastInputNodeId: fromNode.id,
+					lastInputSourceUrl: sourceUrl,
+					lastInputSourcePath: effective.assetPath || undefined,
+					lastInputSourceName: name
+				}
+			})
+			return true
+		}
+
+		if (fromNode.type === 'model3d' && isRecord(fromNode.model3dSettings) && fromNode.model3dSettings.modelGenerationSource === 'tripo3d') {
+			const tripo3dSettings = fromNode.model3dSettings.tripo3dModelSettings as Record<string, unknown> | undefined
+			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
+			const effective = getTripo3DEffectiveModelSource(settings)
+			const sourceUrl = effective.preferredUrl || effective.assetUrl
+			if (!sourceUrl) continue
+			const format = effective.format
+			const taskIdVal = String(settings.taskId ?? settings.tripo3dTaskId ?? fromNode.id).trim() || fromNode.id
+			const name = `tripo3d_${taskIdVal}.${format}`
+			const persisted = (await persistExternalAssetToProject({
+				kind: 'file',
+				name,
+				sourceUrl,
+				sourcePath: effective.assetPath || undefined
+			})) as PersistedAsset | null
+			revokeNodeModel3DObjectUrl(nodeId)
+			const finalModelUrl = String(persisted?.url || effective.assetUrl || sourceUrl)
+			if (isTripo3DRemoteUrl(finalModelUrl)) {
+				console.warn(
+					'[DVS:syncModel3D] tripo3d asset not yet localized, skipping commit — node:',
+					nodeId
+				)
+				continue
+			}
+			store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: {
+					modelUrl: finalModelUrl,
+					modelFormat: format,
+					modelSourceName: name,
+					modelSourcePath:
+						String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
+					modelProjectRelativePath:
+						String(persisted?.projectRelativePath || '').trim() || undefined,
+					modelAssetUrl: String(persisted?.url || ''),
+					modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+					modelAssetProjectRelativePath:
+						String(persisted?.projectRelativePath || '').trim() || undefined,
+					lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
 					lastInputNodeId: fromNode.id,
 					lastInputSourceUrl: sourceUrl,
 					lastInputSourcePath: effective.assetPath || undefined,
@@ -7891,6 +8017,35 @@ const {
 	shouldRefreshMeshyTaskItems: () => meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value
 })
 
+const { stopTripo3DPoll, applyTripo3DTaskResult, startTripo3DPoll, recoverTripo3DTaskStates, clearTripo3DRuntime } =
+	useAIWorkflowTripo3DRuntime({
+		store,
+		getComfyService: () => comfyService,
+		pushToast: (message, tone) => pushToast(message, tone),
+		normalizeTripo3DTaskStatus,
+		pickTripo3DPreferredModelUrl,
+		fileExtensionFromUrl: tripo3dFileExtensionFromUrl,
+		persistExternalAssetToProject: (payload) => persistExternalAssetToProject(payload),
+		syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId),
+		refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
+		shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value
+	})
+
+const {
+	onNodeGenerateTripo3D,
+	onNodeRestartTripo3DTask
+} = useAIWorkflowTripo3DCommands({
+	store,
+	getComfyService: () => comfyService,
+	pushToast: (message, tone) => pushToast(message, tone),
+	stopTripo3DPoll,
+	startTripo3DPoll,
+	buildTripo3DRequestPayload,
+	normalizeTripo3DTaskStatus,
+	refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
+	shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value
+})
+
 const importLimitAlertMessage = ref('')
 const MAX_BATCH_IMPORT_MEDIA_COUNT = 100
 
@@ -9007,6 +9162,46 @@ const {
 
 const onOpenMeshyTaskPanel = () => {
 	openMeshyTaskDialog()
+}
+
+const {
+	tripo3dTaskDialogOpen,
+	tripo3dTaskItems,
+	tripo3dTaskPanelStatusText,
+	tripo3dBalanceText,
+	tripo3dBalanceDetail,
+	tripo3dBalanceTone,
+	tripo3dTaskRemoteLoading,
+	tripo3dTaskDetail,
+	tripo3dTaskDetailTaskId,
+	tripo3dTaskDetailLoading,
+	tripo3dTaskActionBusyTaskId,
+	tripo3dTaskActionBusyType,
+	openTripo3DTaskDialog,
+	closeTripo3DTaskDialog,
+	onRefreshTripo3DTaskPanel,
+	onPreviewTripo3DTask,
+	onTripo3DTaskPanelAction,
+	onNodeRefreshTripo3DTask,
+	onNodePullTripo3DOutput,
+	onNodeStopTripo3DTask,
+	onNodeDeleteTripo3DTask,
+	refreshTripo3DTaskItems,
+	refreshTripo3DBalance
+} = useAIWorkflowTripo3DTaskPanelController({
+	store,
+	renderNodes,
+	comfyService,
+	pushToast,
+	getTripo3DDisplayThumbnailUrl,
+	pickTripo3DEffectiveOutput,
+	applyTripo3DTaskResult,
+	stopTripo3DPoll,
+	createImageNodeAtCenter
+})
+
+const onOpenTripo3DTaskPanel = () => {
+	openTripo3DTaskDialog()
 }
 
 const onOpenArkTaskPanel = () => {

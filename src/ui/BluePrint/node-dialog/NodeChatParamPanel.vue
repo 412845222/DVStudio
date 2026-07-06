@@ -1021,6 +1021,417 @@
 						</div>
 					</div>
 				</template>
+				<template v-else-if="params.provider === 'tripo3d'">
+					<div class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.detectedMode') }}</span>
+						<div class="bp-node-chat-param-mode-display">
+							<span class="bp-node-chat-param-mode-badge" :class="'mode-' + tripo3dDetectedMode">
+								{{ t('aiConfig.tripo3dModes.' + (tripo3dDetectedMode === 'text_to_model' ? 'textToModel' : tripo3dDetectedMode === 'image_to_model' ? 'imageToModel' : 'multiviewToModel')) }}
+							</span>
+							<label v-if="tripo3dConnectedImages.length >= 2" class="bp-node-chat-param-toggle bp-node-chat-param-force-single">
+								<input
+									type="checkbox"
+									:checked="params.tripo3dForceSingleImage"
+									:disabled="disabled"
+									@change="updateParam('tripo3dForceSingleImage', ($event.target as HTMLInputElement).checked)"
+								/>
+								<span>{{ t('aichat.nodeChatParams.forceSingleImage') }}</span>
+							</label>
+						</div>
+					</div>
+					<div class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.modelSeries') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in tripo3dModelSeriesOptions"
+								:key="opt.value"
+								type="button"
+								class="bp-node-chat-param-btn bp-node-chat-param-btn-series"
+								:class="{ 'is-active': tripo3dCurrentSeries === opt.value }"
+								:disabled="disabled"
+								@click="updateParam('tripo3dModelSeries', opt.value)"
+							>
+								<span class="bp-node-chat-param-btn-icon">{{ opt.icon }}</span>
+								{{ t(opt.label) }}
+								<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
+							</button>
+						</div>
+					</div>
+					<div class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aiModel') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in tripo3dCurrentVersionOptions"
+								:key="opt.value"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': tripo3dCurrentVersion === opt.value }"
+								:disabled="disabled"
+								:title="opt.description ? t(opt.description) : ''"
+								@click="updateParam('tripo3dModelVersion', opt.value)"
+							>
+								{{ opt.label }}
+								<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
+							</button>
+						</div>
+					</div>
+					<template v-if="tripo3dDetectedMode !== 'text_to_model'">
+						<div class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.selectImages') }}
+								<span v-if="tripo3dDetectedMode === 'multiview_to_model'" class="bp-node-chat-param-hint-inline">
+									{{ t('aichat.nodeChatParams.viewProgress', { selected: tripo3dSelectedViewCount, total: tripo3dConnectedImages.length }) }}
+								</span>
+							</span>
+							<div v-if="tripo3dConnectedImages.length > 0" class="bp-node-chat-param-image-grid">
+								<div
+									v-for="img in tripo3dConnectedImages"
+									:key="img.nodeId"
+									class="bp-node-chat-param-image-item"
+								>
+									<div
+										class="bp-node-chat-param-thumb"
+										:class="{ 'is-selected': isTripo3DImageSelected(img.nodeId) }"
+										@click="selectTripo3DImage(img.nodeId)"
+									>
+										<img :src="img.thumb || img.url" :alt="img.name" />
+										<button
+											type="button"
+											class="bp-node-chat-param-thumb-remove"
+											:disabled="disabled"
+											@click.stop="removeTripo3DImage(img.nodeId)"
+										>
+											×
+										</button>
+										<div
+											v-if="tripo3dDetectedMode === 'multiview_to_model' && isTripo3DImageSelected(img.nodeId)"
+											class="bp-node-chat-param-view-badge"
+											:style="{ backgroundColor: tripo3dViewOptions.find(v => v.key === getTripo3DImageView(img.nodeId))?.color }"
+										>
+											{{ t('aiConfig.tripo3dViews.' + getTripo3DImageView(img.nodeId)) }}
+										</div>
+									</div>
+									<template v-if="tripo3dDetectedMode === 'multiview_to_model' && !isTripo3DImageSelected(img.nodeId)">
+										<div class="bp-node-chat-param-view-selector">
+											<button
+												v-for="view in tripo3dViewOptions"
+												:key="view.key"
+												type="button"
+												class="bp-node-chat-param-view-btn"
+												:class="{ 'is-required': view.required }"
+												:disabled="disabled || tripo3dSelectedImages.some(s => s.view === view.key)"
+												:style="tripo3dSelectedImages.some(s => s.view === view.key) ? {} : { '--view-color': view.color }"
+												@click="selectTripo3DImage(img.nodeId, view.key)"
+											>
+												{{ t('aiConfig.tripo3dViews.' + view.key) }}
+											</button>
+										</div>
+									</template>
+								</div>
+							</div>
+							<span v-else class="bp-node-chat-param-hint">{{ t('aichat.nodeChatParams.connectImageNode') }}</span>
+						</div>
+					</template>
+					<div class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.faceLimit') }}
+							<span class="bp-node-chat-param-face-count">{{ tripo3dFaceLimitDisplay }}</span>
+						</span>
+						<div class="bp-node-chat-param-slider-row">
+							<input
+								type="range"
+								class="bp-node-chat-param-slider"
+								:min="tripo3dFaceLimitRange.min"
+								:max="tripo3dFaceLimitRange.max"
+								step="1"
+								:value="params.tripo3dFaceLimit === 0 ? tripo3dFaceLimitRange.default : params.tripo3dFaceLimit"
+								:disabled="disabled"
+								@input="updateParam('tripo3dFaceLimit', parseInt(($event.target as HTMLInputElement).value))"
+							/>
+							<input
+								type="number"
+								class="bp-node-chat-param-number-input"
+								:min="tripo3dFaceLimitRange.min"
+								:max="tripo3dFaceLimitRange.max"
+								step="1"
+								:value="params.tripo3dFaceLimit"
+								:disabled="disabled"
+								@input="updateParam('tripo3dFaceLimit', parseInt(($event.target as HTMLInputElement).value) || 0)"
+							/>
+						</div>
+						<div class="bp-node-chat-param-options bp-node-chat-param-presets">
+							<button
+								v-for="preset in tripo3dAvailablePresets"
+								:key="preset.value"
+								type="button"
+								class="bp-node-chat-param-btn bp-node-chat-param-preset-btn"
+								:class="{ 'is-active': params.tripo3dFaceLimit === preset.value }"
+								:disabled="disabled"
+								:title="preset.description ? t(preset.description) : ''"
+								@click="updateParam('tripo3dFaceLimit', preset.value)"
+							>
+								{{ t(preset.label) }}
+							</button>
+						</div>
+					</div>
+					<div class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureOptions') }}</span>
+						<div class="bp-node-chat-param-advanced">
+							<label class="bp-node-chat-param-toggle">
+								<input
+									type="checkbox"
+									:checked="params.tripo3dTexture"
+									:disabled="disabled || params.tripo3dGenerateParts"
+									@change="updateParam('tripo3dTexture', ($event.target as HTMLInputElement).checked)"
+								/>
+								<span>{{ t('aichat.nodeChatParams.generateTexture') }}</span>
+							</label>
+							<label class="bp-node-chat-param-toggle">
+								<input
+									type="checkbox"
+									:checked="params.tripo3dPbr"
+									:disabled="disabled || !params.tripo3dTexture || params.tripo3dGenerateParts"
+									@change="updateParam('tripo3dPbr', ($event.target as HTMLInputElement).checked)"
+								/>
+								<span>{{ t('aichat.nodeChatParams.generatePbr') }}</span>
+							</label>
+						</div>
+					</div>
+					<template v-if="tripo3dDetectedMode !== 'text_to_model'">
+						<div class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.enableImageAutofix') }}</span>
+							<div class="bp-node-chat-param-options">
+								<button
+									type="button"
+									class="bp-node-chat-param-btn"
+									:class="{ 'is-active': !params.tripo3dEnableImageAutofix }"
+									:disabled="disabled"
+									@click="updateParam('tripo3dEnableImageAutofix', false)"
+								>
+									{{ t('aiConfig.common.off') }}
+								</button>
+								<button
+									type="button"
+									class="bp-node-chat-param-btn"
+									:class="{ 'is-active': params.tripo3dEnableImageAutofix === true }"
+									:disabled="disabled"
+									@click="updateParam('tripo3dEnableImageAutofix', true)"
+								>
+									{{ t('aiConfig.common.on') }}
+								</button>
+							</div>
+						</div>
+						<div class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureAlignment') }}</span>
+							<div class="bp-node-chat-param-options">
+								<button
+									v-for="opt in tripo3dTextureAlignmentOptions"
+									:key="opt.value"
+									type="button"
+									class="bp-node-chat-param-btn"
+									:class="{ 'is-active': params.tripo3dTextureAlignment === opt.value }"
+									:disabled="disabled"
+									@click="updateParam('tripo3dTextureAlignment', opt.value)"
+								>
+									{{ t(opt.label) }}
+								</button>
+							</div>
+						</div>
+						<div class="bp-node-chat-param-row">
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.orientation') }}</span>
+							<div class="bp-node-chat-param-options">
+								<button
+									v-for="opt in tripo3dOrientationOptions"
+									:key="opt.value"
+									type="button"
+									class="bp-node-chat-param-btn"
+									:class="{ 'is-active': params.tripo3dOrientation === opt.value }"
+									:disabled="disabled"
+									@click="updateParam('tripo3dOrientation', opt.value)"
+								>
+									{{ t(opt.label) }}
+								</button>
+							</div>
+						</div>
+					</template>
+					<div class="bp-node-chat-param-row">
+						<div class="bp-node-chat-param-advanced-header" @click="advancedCollapsed = !advancedCollapsed">
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedCollapsed') }}</span>
+							<svg
+								class="bp-node-chat-chevron"
+								:class="{ 'is-collapsed': advancedCollapsed }"
+								width="12"
+								height="12"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+							>
+								<polyline points="6 9 12 15 18 9" />
+							</svg>
+						</div>
+						<div v-show="!advancedCollapsed" class="bp-node-chat-param-advanced-body">
+							<div class="bp-node-chat-param-subsection">
+								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.qualitySettings') }}</span>
+								<div class="bp-node-chat-param-row">
+									<span class="bp-node-chat-param-sublabel">{{ t('aichat.nodeChatParams.geometryQuality') }}</span>
+									<div class="bp-node-chat-param-options">
+										<button
+											v-for="opt in tripo3dGeometryQualityOptions"
+											:key="opt.value"
+											type="button"
+											class="bp-node-chat-param-btn"
+											:class="{ 'is-active': params.tripo3dGeometryQuality === opt.value }"
+											:disabled="disabled"
+											@click="updateParam('tripo3dGeometryQuality', opt.value)"
+										>
+											{{ t(opt.label) }}
+										</button>
+									</div>
+								</div>
+								<div class="bp-node-chat-param-row">
+									<span class="bp-node-chat-param-sublabel">{{ t('aichat.nodeChatParams.textureQuality') }}</span>
+									<div class="bp-node-chat-param-options">
+										<button
+											v-for="opt in tripo3dTextureQualityOptions"
+											:key="opt.value"
+											type="button"
+											class="bp-node-chat-param-btn"
+											:class="{ 'is-active': params.tripo3dTextureQuality === opt.value }"
+											:disabled="disabled || !params.tripo3dTexture"
+											@click="updateParam('tripo3dTextureQuality', opt.value)"
+										>
+											{{ t(opt.label) }}
+											<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
+										</button>
+									</div>
+								</div>
+							</div>
+							<div class="bp-node-chat-param-subsection">
+								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.topologySettings') }}</span>
+								<div class="bp-node-chat-param-advanced">
+									<label class="bp-node-chat-param-toggle">
+										<input
+											type="checkbox"
+											:checked="params.tripo3dQuad"
+											:disabled="disabled || params.tripo3dGenerateParts || params.tripo3dSmartLowPoly"
+											@change="updateParam('tripo3dQuad', ($event.target as HTMLInputElement).checked)"
+										/>
+										<span>{{ t('aichat.nodeChatParams.quad') }}</span>
+									</label>
+									<label class="bp-node-chat-param-toggle">
+										<input
+											type="checkbox"
+											:checked="params.tripo3dSmartLowPoly"
+											:disabled="disabled || params.tripo3dQuad"
+											@change="updateParam('tripo3dSmartLowPoly', ($event.target as HTMLInputElement).checked)"
+										/>
+										<span>{{ t('aichat.nodeChatParams.smartLowPoly') }}</span>
+									</label>
+									<label class="bp-node-chat-param-toggle">
+										<input
+											type="checkbox"
+											:checked="params.tripo3dGenerateParts"
+											:disabled="disabled"
+											@change="updateParam('tripo3dGenerateParts', ($event.target as HTMLInputElement).checked)"
+										/>
+										<span>{{ t('aichat.nodeChatParams.generateParts') }}</span>
+									</label>
+								</div>
+							</div>
+							<div class="bp-node-chat-param-subsection">
+								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.otherOptions') }}</span>
+								<div class="bp-node-chat-param-advanced">
+									<label class="bp-node-chat-param-toggle">
+										<input
+											type="checkbox"
+											:checked="params.tripo3dAutoSize"
+											:disabled="disabled"
+											@change="updateParam('tripo3dAutoSize', ($event.target as HTMLInputElement).checked)"
+										/>
+										<span>{{ t('aichat.nodeChatParams.autoSize') }}</span>
+									</label>
+									<label class="bp-node-chat-param-toggle">
+										<input
+											type="checkbox"
+											:checked="params.tripo3dCompress"
+											:disabled="disabled"
+											@change="updateParam('tripo3dCompress', ($event.target as HTMLInputElement).checked)"
+										/>
+										<span>{{ t('aichat.nodeChatParams.compress') }}</span>
+									</label>
+									<label class="bp-node-chat-param-toggle">
+										<input
+											type="checkbox"
+											:checked="params.tripo3dExportUv"
+											:disabled="disabled"
+											@change="updateParam('tripo3dExportUv', ($event.target as HTMLInputElement).checked)"
+										/>
+										<span>{{ t('aichat.nodeChatParams.exportUv') }}</span>
+									</label>
+								</div>
+							</div>
+							<div class="bp-node-chat-param-subsection">
+								<div class="bp-node-chat-param-seed-group">
+									<div class="bp-node-chat-param-seed">
+										<label>{{ t('aichat.nodeChatParams.modelSeed') }}</label>
+										<input
+											type="number"
+											:value="params.tripo3dModelSeed"
+											:disabled="disabled"
+											:placeholder="t('aichat.nodeChatParams.seedRandom')"
+											@input="
+												updateParam(
+													'tripo3dModelSeed',
+													parseInt(($event.target as HTMLInputElement).value) || -1
+												)
+											"
+										/>
+										<button type="button" class="bp-node-chat-param-seed-random" :disabled="disabled" @click="randomizeSeed('tripo3dModelSeed')">
+											🎲
+										</button>
+									</div>
+									<div class="bp-node-chat-param-seed">
+										<label>{{ t('aichat.nodeChatParams.textureSeed') }}</label>
+										<input
+											type="number"
+											:value="params.tripo3dTextureSeed"
+											:disabled="disabled || !params.tripo3dTexture"
+											:placeholder="t('aichat.nodeChatParams.seedRandom')"
+											@input="
+												updateParam(
+													'tripo3dTextureSeed',
+													parseInt(($event.target as HTMLInputElement).value) || -1
+												)
+											"
+										/>
+										<button type="button" class="bp-node-chat-param-seed-random" :disabled="disabled || !params.tripo3dTexture" @click="randomizeSeed('tripo3dTextureSeed')">
+											🎲
+										</button>
+									</div>
+								</div>
+							</div>
+							<div class="bp-node-chat-param-subsection">
+								<span class="bp-node-chat-param-sublabel">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
+								<div class="bp-node-chat-param-input">
+									<input
+										type="text"
+										:value="params.tripo3dNegativePrompt"
+										:disabled="disabled"
+										:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
+										maxlength="255"
+										@input="
+											updateParam(
+												'tripo3dNegativePrompt',
+												($event.target as HTMLInputElement).value
+											)
+										"
+									/>
+								</div>
+							</div>
+						</div>
+					</div>
+				</template>
 			</template>
 		</div>
 	</div>
@@ -1029,7 +1440,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from '../../../i18n'
-import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord, WorkflowTripo3DView } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from './index'
 import {
 	NODE_CHAT_ASPECT_RATIO_OPTIONS,
@@ -1065,6 +1476,19 @@ import {
 	NODE_CHAT_MESHY_POSE_MODE_OPTIONS,
 	NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
 	NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS,
+	NODE_CHAT_TRIPO3D_MODEL_SERIES_OPTIONS,
+	NODE_CHAT_TRIPO3D_H_MODEL_VERSION_OPTIONS,
+	NODE_CHAT_TRIPO3D_P_MODEL_VERSION_OPTIONS,
+	getTripo3DModelVersionOptions,
+	NODE_CHAT_TRIPO3D_FACE_LIMIT_PRESETS,
+	NODE_CHAT_TRIPO3D_TEXTURE_QUALITY_OPTIONS,
+	NODE_CHAT_TRIPO3D_GEOMETRY_QUALITY_OPTIONS,
+	NODE_CHAT_TRIPO3D_TEXTURE_ALIGNMENT_OPTIONS,
+	NODE_CHAT_TRIPO3D_ORIENTATION_OPTIONS,
+	NODE_CHAT_TRIPO3D_VIEW_OPTIONS,
+	getTripo3DFaceLimitRange,
+	isTripo3DHSeries,
+	isTripo3DV3OrLater,
 	GEMINI_QUANTITY_OPTIONS,
 	getGeminiImageSizeOptions,
 	getGeminiAspectRatioOptions,
@@ -1183,6 +1607,66 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 		}
 	}
 
+	if (key === 'provider' && value === 'tripo3d') {
+		if (!next.tripo3dModelSeries) {
+			next.tripo3dModelSeries = 'h'
+		}
+		if (!next.tripo3dModelVersion) {
+			next.tripo3dModelVersion = 'v3.1-20260211'
+		}
+	}
+
+	if (key === 'tripo3dModelSeries' && typeof value === 'string') {
+		const newVersionOptions = getTripo3DModelVersionOptions(value as 'h' | 'p')
+		const currentVersion = String(next.tripo3dModelVersion || '')
+		const validVersions = newVersionOptions.map(o => o.value)
+		if (!validVersions.includes(currentVersion)) {
+			next.tripo3dModelVersion = newVersionOptions[0].value
+		}
+		next.tripo3dGenerateParts = false
+		next.tripo3dQuad = false
+		next.tripo3dSmartLowPoly = false
+		const range = getTripo3DFaceLimitRange(String(next.tripo3dModelVersion), false, false)
+		if (next.tripo3dModelSeries === 'h') {
+			next.tripo3dFaceLimit = range.default
+		} else {
+			next.tripo3dFaceLimit = range.default
+		}
+	}
+
+	if (key === 'tripo3dPbr' && value === true) {
+		next.tripo3dTexture = true
+	}
+
+	if (key === 'tripo3dGenerateParts' && value === true) {
+		next.tripo3dTexture = false
+		next.tripo3dPbr = false
+		next.tripo3dQuad = false
+	}
+
+	if (key === 'tripo3dQuad' && value === true) {
+		const range = getTripo3DFaceLimitRange(String(next.tripo3dModelVersion), true, false)
+		next.tripo3dFaceLimit = Math.min(Number(next.tripo3dFaceLimit) || range.default, range.max)
+	}
+
+	if (key === 'tripo3dSmartLowPoly' && value === true) {
+		const range = getTripo3DFaceLimitRange(String(next.tripo3dModelVersion), false, true)
+		next.tripo3dFaceLimit = Math.min(Math.max(Number(next.tripo3dFaceLimit) || range.default, range.min), range.max)
+		next.tripo3dQuad = false
+	}
+
+	if (key === 'tripo3dFaceLimit') {
+		const numValue = Number(value) || 0
+		const range = getTripo3DFaceLimitRange(
+			String(next.tripo3dModelVersion),
+			Boolean(next.tripo3dQuad),
+			Boolean(next.tripo3dSmartLowPoly)
+		)
+		if (numValue !== 0) {
+			next.tripo3dFaceLimit = Math.min(Math.max(numValue, range.min), range.max)
+		}
+	}
+
 	emit('update:params', next)
 }
 
@@ -1211,6 +1695,13 @@ const meshyOriginAtOptions = NODE_CHAT_MESHY_ORIGIN_AT_OPTIONS
 const meshyPoseModeOptions = NODE_CHAT_MESHY_POSE_MODE_OPTIONS
 const meshyOutputFormatOptions = NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS
 const meshyDecimationModeOptions = NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS
+const tripo3dModelSeriesOptions = NODE_CHAT_TRIPO3D_MODEL_SERIES_OPTIONS
+const tripo3dTextureQualityOptions = NODE_CHAT_TRIPO3D_TEXTURE_QUALITY_OPTIONS
+const tripo3dGeometryQualityOptions = NODE_CHAT_TRIPO3D_GEOMETRY_QUALITY_OPTIONS
+const tripo3dTextureAlignmentOptions = NODE_CHAT_TRIPO3D_TEXTURE_ALIGNMENT_OPTIONS
+const tripo3dOrientationOptions = NODE_CHAT_TRIPO3D_ORIENTATION_OPTIONS
+const tripo3dViewOptions = NODE_CHAT_TRIPO3D_VIEW_OPTIONS
+const tripo3dFaceLimitPresets = NODE_CHAT_TRIPO3D_FACE_LIMIT_PRESETS
 const seedreamModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
 const geminiTextModelVersionOptions = NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS
 const geminiImageModelVersionOptions = NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS
@@ -1219,6 +1710,124 @@ const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
 const meshyImageOutputCountOptions = NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS
 const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 const geminiQuantityOptions = GEMINI_QUANTITY_OPTIONS
+
+const advancedCollapsed = ref(true)
+
+const tripo3dCurrentSeries = computed<'h' | 'p'>(() => {
+	const series = props.params.tripo3dModelSeries
+	return series === 'p' ? 'p' : 'h'
+})
+
+const tripo3dCurrentVersion = computed(() => {
+	return String(props.params.tripo3dModelVersion || 'v3.1-20260211')
+})
+
+const tripo3dCurrentVersionOptions = computed(() => {
+	return getTripo3DModelVersionOptions(tripo3dCurrentSeries.value)
+})
+
+const tripo3dConnectedImages = computed<ConnectedImageInfo[]>(() => {
+	if (props.nodeType !== 'model3d' || props.params.provider !== 'tripo3d') return []
+	const refs = props.inputParamPreviewRefs ?? []
+	const results: ConnectedImageInfo[] = []
+	const seenNodeIds = new Set<string>()
+	for (const ref of refs) {
+		if (ref.kind !== 'image') continue
+		const url = ref.previewUrl || ''
+		const fromNodeId = ref.fromNodeId || ''
+		if (!url || !fromNodeId || seenNodeIds.has(fromNodeId)) continue
+		seenNodeIds.add(fromNodeId)
+		results.push({
+			url,
+			thumb: url,
+			name: ref.label || ref.name || t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
+			nodeId: fromNodeId
+		})
+	}
+	return results
+})
+
+const tripo3dDetectedMode = computed<'text_to_model' | 'image_to_model' | 'multiview_to_model'>(() => {
+	const imageCount = tripo3dConnectedImages.value.length
+	const forceSingle = props.params.tripo3dForceSingleImage === true
+	if (imageCount === 0) return 'text_to_model'
+	if (imageCount === 1 || forceSingle) return 'image_to_model'
+	return 'multiview_to_model'
+})
+
+const tripo3dSelectedImages = computed<Array<{ nodeId: string; view: WorkflowTripo3DView; order: number }>>(() => {
+	return (props.params.tripo3dSelectedImages as Array<{ nodeId: string; view: WorkflowTripo3DView; order: number }>) || []
+})
+
+const tripo3dFaceLimitRange = computed(() => {
+	return getTripo3DFaceLimitRange(
+		tripo3dCurrentVersion.value,
+		props.params.tripo3dQuad === true,
+		props.params.tripo3dSmartLowPoly === true
+	)
+})
+
+const tripo3dAvailablePresets = computed(() => {
+	return tripo3dFaceLimitPresets.filter(preset => {
+		if (preset.hSeriesOnly && tripo3dCurrentSeries.value !== 'h') return false
+		if (preset.value === 0) return true
+		return preset.value <= tripo3dFaceLimitRange.value.max && preset.value >= tripo3dFaceLimitRange.value.min
+	})
+})
+
+const tripo3dFaceLimitDisplay = computed(() => {
+	const faceLimit = Number(props.params.tripo3dFaceLimit)
+	if (!faceLimit || faceLimit === 0) return t('aichat.nodeChatParams.faceLimitFaces', { count: 0 }).replace('0 面', '自适应')
+	return t('aichat.nodeChatParams.faceLimitFaces', { count: faceLimit })
+})
+
+const tripo3dSelectedViewCount = computed(() => {
+	return tripo3dSelectedImages.value.length
+})
+
+const selectTripo3DImage = (nodeId: string, view?: WorkflowTripo3DView) => {
+	const currentSelected = [...tripo3dSelectedImages.value]
+	const existingIndex = currentSelected.findIndex(s => s.nodeId === nodeId)
+
+	if (tripo3dDetectedMode.value === 'image_to_model') {
+		if (existingIndex >= 0) {
+			updateParam('tripo3dSelectedImages', [])
+		} else {
+			updateParam('tripo3dSelectedImages', [{ nodeId, view: 'front', order: 1 }])
+		}
+	} else {
+		if (existingIndex >= 0) {
+			currentSelected.splice(existingIndex, 1)
+		} else if (view) {
+			const viewExists = currentSelected.find(s => s.view === view)
+			if (viewExists) return
+			currentSelected.push({
+				nodeId,
+				view,
+				order: tripo3dViewOptions.find(v => v.key === view)?.order || currentSelected.length + 1
+			})
+		}
+		currentSelected.sort((a, b) => a.order - b.order)
+		updateParam('tripo3dSelectedImages', currentSelected)
+	}
+}
+
+const removeTripo3DImage = (nodeId: string) => {
+	const currentSelected = tripo3dSelectedImages.value.filter(s => s.nodeId !== nodeId)
+	updateParam('tripo3dSelectedImages', currentSelected)
+}
+
+const isTripo3DImageSelected = (nodeId: string) => {
+	return tripo3dSelectedImages.value.some(s => s.nodeId === nodeId)
+}
+
+const getTripo3DImageView = (nodeId: string): WorkflowTripo3DView | undefined => {
+	return tripo3dSelectedImages.value.find(s => s.nodeId === nodeId)?.view
+}
+
+const randomizeSeed = (seedKey: 'tripo3dModelSeed' | 'tripo3dTextureSeed') => {
+	updateParam(seedKey, -1)
+}
 
 const geminiModelVersion = computed(() => {
 	return typeof props.params.geminiImageModelVersion === 'string'
@@ -1604,5 +2213,354 @@ const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
 	height: 100%;
 	object-fit: cover;
 	display: block;
+}
+
+.bp-node-chat-param-mode-display {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.bp-node-chat-param-mode-badge {
+	font-size: 11px;
+	font-weight: 600;
+	padding: 3px 8px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+	color: var(--wf-primary, #1f9d84);
+}
+
+.bp-node-chat-param-mode-badge.mode-text_to_model {
+	background: color-mix(in srgb, #6366f1 20%, transparent);
+	color: #818cf8;
+}
+
+.bp-node-chat-param-mode-badge.mode-image_to_model {
+	background: color-mix(in srgb, #f59e0b 20%, transparent);
+	color: #fbbf24;
+}
+
+.bp-node-chat-param-mode-badge.mode-multiview_to_model {
+	background: color-mix(in srgb, #10b981 20%, transparent);
+	color: #34d399;
+}
+
+.bp-node-chat-param-force-single {
+	margin-left: 8px;
+}
+
+.bp-node-chat-param-btn-series {
+	gap: 4px;
+}
+
+.bp-node-chat-param-btn-icon {
+	font-size: 14px;
+}
+
+.bp-node-chat-param-image-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+	gap: 8px;
+	width: 100%;
+}
+
+.bp-node-chat-param-image-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+}
+
+.bp-node-chat-param-thumb-remove {
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	border: none;
+	background: color-mix(in srgb, #ef4444 90%, transparent);
+	color: white;
+	font-size: 14px;
+	line-height: 1;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+.bp-node-chat-param-thumb:hover .bp-node-chat-param-thumb-remove {
+	opacity: 1;
+}
+
+.bp-node-chat-param-view-badge {
+	position: absolute;
+	bottom: 2px;
+	left: 2px;
+	font-size: 10px;
+	font-weight: 600;
+	padding: 1px 5px;
+	border-radius: 3px;
+	color: white;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.bp-node-chat-param-view-selector {
+	display: flex;
+	gap: 3px;
+	flex-wrap: wrap;
+	justify-content: center;
+}
+
+.bp-node-chat-param-view-btn {
+	font-size: 10px;
+	padding: 2px 5px;
+	border: 1px solid var(--view-color, var(--wf-primary, #1f9d84));
+	border-radius: 3px;
+	background: transparent;
+	color: var(--view-color, var(--wf-primary, #1f9d84));
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.bp-node-chat-param-view-btn:hover:not(:disabled) {
+	background: var(--view-color, var(--wf-primary, #1f9d84));
+	color: white;
+}
+
+.bp-node-chat-param-view-btn:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+.bp-node-chat-param-view-btn.is-required::after {
+	content: '*';
+	color: #ef4444;
+	margin-left: 1px;
+}
+
+.bp-node-chat-param-hint-inline {
+	font-size: 10px;
+	color: color-mix(in srgb, var(--wf-text, #edf2f4) 50%, transparent);
+	font-weight: normal;
+	margin-left: 6px;
+}
+
+.bp-node-chat-param-face-count {
+	font-size: 11px;
+	color: var(--wf-primary, #1f9d84);
+	font-weight: 600;
+	margin-left: 6px;
+}
+
+.bp-node-chat-param-slider-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+}
+
+.bp-node-chat-param-slider {
+	flex: 1;
+	height: 4px;
+	-webkit-appearance: none;
+	appearance: none;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+	border-radius: 2px;
+	outline: none;
+}
+
+.bp-node-chat-param-slider::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: var(--wf-primary, #1f9d84);
+	cursor: pointer;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+	transition: transform 0.15s ease;
+}
+
+.bp-node-chat-param-slider::-webkit-slider-thumb:hover {
+	transform: scale(1.15);
+}
+
+.bp-node-chat-param-slider::-moz-range-thumb {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: var(--wf-primary, #1f9d84);
+	cursor: pointer;
+	border: none;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.bp-node-chat-param-number-input {
+	width: 80px;
+	padding: 4px 6px;
+	font-size: 11px;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 92%, transparent);
+	color: var(--wf-text, #edf2f4);
+	font-family: inherit;
+	text-align: right;
+}
+
+.bp-node-chat-param-number-input:focus {
+	outline: none;
+	border-color: var(--wf-primary, #1f9d84);
+}
+
+.bp-node-chat-param-presets {
+	margin-top: 6px;
+}
+
+.bp-node-chat-param-preset-btn {
+	font-size: 11px;
+	padding: 3px 8px;
+}
+
+.bp-node-chat-param-textarea textarea {
+	width: 100%;
+	padding: 6px 8px;
+	font-size: 12px;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 92%, transparent);
+	color: var(--wf-text, #edf2f4);
+	font-family: inherit;
+	resize: vertical;
+	min-height: 60px;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bp-node-chat-param-textarea textarea:focus {
+	outline: none;
+	border-color: var(--wf-primary, #1f9d84);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--wf-primary, #1f9d84) 22%, transparent);
+}
+
+.bp-node-chat-param-textarea textarea::placeholder {
+	color: color-mix(in srgb, var(--wf-text, #edf2f4) 40%, transparent);
+}
+
+.bp-node-chat-param-advanced-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	cursor: pointer;
+	padding: 4px 0;
+	user-select: none;
+	width: 100%;
+}
+
+.bp-node-chat-param-advanced-header .bp-node-chat-param-label {
+	margin-bottom: 0;
+	cursor: pointer;
+}
+
+.bp-node-chat-chevron {
+	transition: transform 0.2s ease;
+	color: var(--wf-primary, #1f9d84);
+}
+
+.bp-node-chat-chevron.is-collapsed {
+	transform: rotate(-90deg);
+}
+
+.bp-node-chat-param-advanced-body {
+	margin-top: 8px;
+	padding-left: 4px;
+	border-left: 2px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+}
+
+.bp-node-chat-param-subsection {
+	margin-bottom: 10px;
+}
+
+.bp-node-chat-param-subtitle {
+	display: block;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--wf-primary, #1f9d84);
+	margin-bottom: 6px;
+	text-transform: uppercase;
+	letter-spacing: 0.3px;
+}
+
+.bp-node-chat-param-sublabel {
+	font-size: 11px;
+	color: color-mix(in srgb, var(--wf-text, #edf2f4) 70%, transparent);
+	margin-bottom: 4px;
+	display: block;
+}
+
+.bp-node-chat-param-seed-group {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+
+.bp-node-chat-param-seed {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.bp-node-chat-param-seed label {
+	font-size: 10px;
+	color: color-mix(in srgb, var(--wf-text, #edf2f4) 60%, transparent);
+	white-space: nowrap;
+	min-width: 40px;
+}
+
+.bp-node-chat-param-seed input {
+	flex: 1;
+	padding: 3px 6px;
+	font-size: 11px;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 92%, transparent);
+	color: var(--wf-text, #edf2f4);
+	font-family: inherit;
+	width: 60px;
+}
+
+.bp-node-chat-param-seed input:focus {
+	outline: none;
+	border-color: var(--wf-primary, #1f9d84);
+}
+
+.bp-node-chat-param-seed-random {
+	width: 24px;
+	height: 24px;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+	border-radius: 3px;
+	background: transparent;
+	cursor: pointer;
+	font-size: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.15s ease;
+}
+
+.bp-node-chat-param-seed-random:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+	border-color: var(--wf-primary, #1f9d84);
+}
+
+.bp-node-chat-param-seed-random:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.bp-node-chat-param-thumb {
+	position: relative;
 }
 </style>

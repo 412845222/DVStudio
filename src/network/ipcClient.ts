@@ -16,6 +16,7 @@ type DwebGlobal = {
     projects?: Record<string, unknown>
     projectAssets?: Record<string, unknown>
     meshy?: Record<string, unknown>
+    tripo3d?: Record<string, unknown>
     seedance?: Record<string, unknown>
     agentSkills?: Record<string, unknown>
     codex?: Record<string, unknown>
@@ -67,6 +68,7 @@ export function hasIpcModule(moduleName: string): boolean {
   }
   if (moduleName === 'aiworkflow') return typeof dweb.aiworkflow === 'object' && dweb.aiworkflow !== null
   if (moduleName === 'meshy') return typeof dweb.meshy === 'object' && dweb.meshy !== null
+  if (moduleName === 'tripo3d') return typeof dweb.tripo3d === 'object' && dweb.tripo3d !== null
   if (moduleName === 'seedance') return typeof dweb.seedance === 'object' && dweb.seedance !== null
   if (moduleName === 'agentSkills' || moduleName === 'agent-skills') {
     return typeof dweb.agentSkills === 'object' && dweb.agentSkills !== null

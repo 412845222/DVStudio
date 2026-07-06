@@ -308,13 +308,20 @@
 						<span>Gemini</span>
 					</button>
 					<button
-						class="aiwf-floating-rail-popover__item"
-						type="button"
-						@click="emitThenClose('open-ark-task-panel')"
-					>
-						<span>{{ t('tasks.ark.volcArk') }}</span>
-					</button>
-				</template>
+					class="aiwf-floating-rail-popover__item"
+					type="button"
+					@click="emitThenClose('open-ark-task-panel')"
+				>
+					<span>{{ t('tasks.ark.volcArk') }}</span>
+				</button>
+				<button
+					class="aiwf-floating-rail-popover__item"
+					type="button"
+					@click="emitThenClose('open-tripo3d-task-panel')"
+				>
+					<span>Tripo3D</span>
+				</button>
+			</template>
 			</section>
 		</Transition>
 
@@ -493,6 +500,7 @@ const emit = defineEmits<{
 	(e: 'open-meshy-task-panel'): void
 	(e: 'open-gemini-task-panel'): void
 	(e: 'open-ark-task-panel'): void
+	(e: 'open-tripo3d-task-panel'): void
 }>()
 
 const toolbarWrapRef = ref<HTMLElement | null>(null)
@@ -554,6 +562,7 @@ const emitThenClose = (
 		| 'open-meshy-task-panel'
 		| 'open-gemini-task-panel'
 		| 'open-ark-task-panel'
+		| 'open-tripo3d-task-panel'
 ) => {
 	;(emit as (event: typeof eventName) => void)(eventName)
 	activePanel.value = ''
