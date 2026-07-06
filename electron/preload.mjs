@@ -570,6 +570,11 @@ contextBridge.exposeInMainWorld('dweb', {
 		cancel: (payload) => invoke('dweb:cli:cancel', payload || {}),
 		getSession: (payload) => invoke('dweb:cli:get-session', payload || {}),
 		listSessions: () => invoke('dweb:cli:list-sessions'),
+		checkEnvironment: (payload) => invoke('dweb:cli:check-environment', payload || {}),
+		listModels: (payload) => invoke('dweb:cli:list-models', payload || {}),
+		getConfig: (payload) => invoke('dweb:cli:get-config', payload || {}),
+		saveConfig: (payload) => invoke('dweb:cli:save-config', payload || {}),
+		runFix: (payload) => invoke('dweb:cli:run-fix', payload || {}),
 	},
 	platform: {
 		getStatus: () => invoke('platform:get-status'),

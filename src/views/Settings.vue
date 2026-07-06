@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { getClientSettings, saveClientSettings, openExternalUrl } from '../electronBridge'
-import type { ClientSettings } from '../electronBridge/types'
+import type { ClientSettings, EnvironmentCheckResult, CliModelInfo, CheckStatus } from '../electronBridge/types'
 import { saveEncryptedAICredentials } from '../network/AICredentialService'
+import { cliCheckEnvironment, cliGetAdapterConfig, cliSaveAdapterConfig, cliRunFixCommand } from '../network/CLIChatService'
+import { setCopilotEnabled, setDynamicCopilotModels, convertCliModelsToCatalog, refreshChatModelCatalog } from '../ai/models/chatModels'
 import ModalDialog from '../ui/UIComponent/ModalDialog.vue'
 import { usePlatform } from '../platformBridge'
 import { useI18n } from '../i18n'
@@ -15,7 +17,9 @@ const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 const API_KEY_AGREEMENT_VERSION = '1.0'
 
 type ClientSettingsKey = keyof ClientSettings
-type ApiKeyFieldKey = 'deepseekApiKey' | 'geminiApiKey' | 'bytedanceApiKey' | 'meshyApiKey' | 'githubToken'
+type ApiKeyFieldKey = 'deepseekApiKey' | 'geminiApiKey' | 'bytedanceApiKey' | 'meshyApiKey'
+
+type ProviderType = 'apikey' | 'cli-check'
 
 type ProviderConfig = {
 	key: string
@@ -23,15 +27,18 @@ type ProviderConfig = {
 	descKey: string
 	accent: string
 	icon: string
-	fields: Array<{ key: ApiKeyFieldKey; label: string; placeholder: string; mask: boolean }>
-	docsUrl: string
-	formKey: ApiKeyFieldKey
-	formValue: (s: ClientSettings) => string
+	type: ProviderType
+	adapterName?: string
+	fields?: Array<{ key: ApiKeyFieldKey; label: string; placeholder: string; mask: boolean }>
+	docsUrl?: string
+	formKey?: ApiKeyFieldKey
+	formValue?: (s: ClientSettings) => string
 }
 
 const loading = ref(false)
 const saving = ref(false)
 const saveMsg = ref('')
+const saveMsgType = ref<'success' | 'error'>('success')
 const saveMsgTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const repoUrl = String(window.__DWEB_REPO_URL__ ?? '').trim()
 
@@ -64,10 +71,19 @@ const form = reactive<ClientSettings>({
 		acceptedAt: 0,
 		acceptedVersion: '',
 	},
+	cliAdapters: {},
 })
 
 const activeProvider = ref<string | null>(null)
 const pendingForm = reactive<Partial<Record<ApiKeyFieldKey, string>>>({})
+
+const copilotChecking = ref(false)
+const copilotCheckResult = ref<EnvironmentCheckResult | null>(null)
+const copilotCheckError = ref('')
+const copilotSavedConfig = ref<{ enabled: boolean; models?: CliModelInfo[] } | null>(null)
+const copilotModels = ref<CliModelInfo[]>([])
+const copilotFixingKey = ref<string | null>(null)
+const copilotFixMessage = ref<{ key: string; ok: boolean; msg: string } | null>(null)
 
 const hasAcceptedAgreement = computed(() => {
 	return Boolean(form.apiKeySecurityAgreement?.accepted)
@@ -80,6 +96,7 @@ const providers = computed<ProviderConfig[]>(() => [
 		descKey: 'settings.providers.deepseek.desc',
 		accent: '#4d6bfe',
 		icon: t('settings.providers.deepseek.icon'),
+		type: 'apikey',
 		fields: [{ key: 'deepseekApiKey', label: t('settings.fields.apiKey'), placeholder: 'sk-...', mask: true }],
 		docsUrl: 'https://platform.deepseek.com/api_keys',
 		formKey: 'deepseekApiKey',
@@ -91,6 +108,7 @@ const providers = computed<ProviderConfig[]>(() => [
 		descKey: 'settings.providers.gemini.desc',
 		accent: '#22a06b',
 		icon: t('settings.providers.gemini.icon'),
+		type: 'apikey',
 		fields: [{ key: 'geminiApiKey', label: t('settings.fields.apiKey'), placeholder: 'AIza...', mask: true }],
 		docsUrl: 'https://aistudio.google.com/apikey',
 		formKey: 'geminiApiKey',
@@ -102,6 +120,7 @@ const providers = computed<ProviderConfig[]>(() => [
 		descKey: 'settings.providers.bytedance.desc',
 		accent: '#1677ff',
 		icon: t('settings.providers.bytedance.icon'),
+		type: 'apikey',
 		fields: [{ key: 'bytedanceApiKey', label: t('settings.fields.apiKey'), placeholder: 'ark_...', mask: true }],
 		docsUrl: 'https://console.volcengine.com/ark/',
 		formKey: 'bytedanceApiKey',
@@ -113,6 +132,7 @@ const providers = computed<ProviderConfig[]>(() => [
 		descKey: 'settings.providers.meshy.desc',
 		accent: '#a855f7',
 		icon: t('settings.providers.meshy.icon'),
+		type: 'apikey',
 		fields: [{ key: 'meshyApiKey', label: t('settings.fields.apiKey'), placeholder: 'mshy_...', mask: true }],
 		docsUrl: 'https://docs.meshy.ai/reference/api-key',
 		formKey: 'meshyApiKey',
@@ -120,19 +140,19 @@ const providers = computed<ProviderConfig[]>(() => [
 	},
 	{
 		key: 'github',
-		name: t('settings.providers.github.name'),
+		name: 'GitHub Copilot',
 		descKey: 'settings.providers.github.desc',
 		accent: '#24292e',
-		icon: t('settings.providers.github.icon'),
-		fields: [{ key: 'githubToken', label: t('settings.fields.personalAccessToken'), placeholder: 'ghp_...', mask: true }],
-		docsUrl: 'https://github.com/settings/tokens',
-		formKey: 'githubToken',
-		formValue: (s: ClientSettings) => s.githubToken,
+		icon: 'CP',
+		type: 'cli-check',
+		adapterName: 'copilot',
+		docsUrl: 'https://cli.github.com/',
 	},
 ])
 
-function showSaveMessage(msg: string, duration = 3000) {
+function showSaveMessage(msg: string, type: 'success' | 'error' = 'success', duration = 3000) {
 	saveMsg.value = msg
+	saveMsgType.value = type
 	if (saveMsgTimer.value) clearTimeout(saveMsgTimer.value)
 	saveMsgTimer.value = setTimeout(() => {
 		saveMsg.value = ''
@@ -166,6 +186,7 @@ function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettin
 					acceptedAt: 0,
 					acceptedVersion: '',
 				},
+		cliAdapters: form.cliAdapters ? JSON.parse(JSON.stringify(form.cliAdapters)) : {},
 		...overrides,
 	}
 	return payload
@@ -177,20 +198,165 @@ function getProvider(key: string | null) {
 
 const hasPendingKey = (key: string) => {
 	const prov = providers.value.find((p) => p.key === key)
-	if (!prov) return false
+	if (!prov || prov.type !== 'apikey' || !prov.fields) return false
 	return prov.fields.some((f) => String(pendingForm[f.key] || '').trim())
+}
+
+function isCopilotConfigured() {
+	return Boolean(form.cliAdapters?.copilot?.enabled && form.cliAdapters?.copilot?.models?.length)
+}
+
+function getProviderStatus(prov: ProviderConfig) {
+	if (prov.type === 'cli-check') {
+		if (prov.key === 'github') return isCopilotConfigured()
+		return false
+	}
+	return prov.formValue ? !!prov.formValue(form) : false
+}
+
+async function runCopilotEnvironmentCheck() {
+	if (copilotChecking.value) return
+	copilotChecking.value = true
+	copilotCheckError.value = ''
+	copilotCheckResult.value = null
+	try {
+		const result = await cliCheckEnvironment('copilot')
+		const resultData = (result as any)?.value || (result as any)?.data
+		if (result?.ok && resultData) {
+			copilotCheckResult.value = resultData
+			if (resultData.models && resultData.models.length > 0) {
+				copilotModels.value = resultData.models
+			}
+		} else {
+			copilotCheckError.value = result?.error || t('copilot.checkFailed')
+		}
+	} catch (e: unknown) {
+		copilotCheckError.value = e instanceof Error ? e.message : String(e)
+	} finally {
+		copilotChecking.value = false
+	}
+}
+
+async function loadCopilotSavedConfig() {
+	try {
+		const result = await cliGetAdapterConfig('copilot')
+		const resultData = (result as any)?.value || (result as any)?.data
+		if (result?.ok && resultData?.config) {
+			copilotSavedConfig.value = resultData.config
+			if (resultData.config.models && resultData.config.models.length > 0) {
+				copilotModels.value = resultData.config.models
+			}
+		}
+	} catch {
+		copilotSavedConfig.value = null
+	}
+}
+
+async function enableCopilot() {
+	if (!copilotCheckResult.value?.allPassed) return
+	saving.value = true
+	try {
+		const models = copilotCheckResult.value.models || copilotModels.value
+		const saveRes = await cliSaveAdapterConfig('copilot', { enabled: true, models })
+		if (saveRes?.ok) {
+			if (!form.cliAdapters) form.cliAdapters = {}
+			form.cliAdapters.copilot = {
+				enabled: true,
+				configuredAt: new Date().toISOString(),
+				lastCheckedAt: copilotCheckResult.value.checkedAt,
+				version: copilotCheckResult.value.version,
+				models,
+			}
+			await saveClientSettings(buildSavePayload())
+			copilotSavedConfig.value = { enabled: true, models }
+			setCopilotEnabled(true)
+			if (models?.length) {
+				const catalogModels = convertCliModelsToCatalog(models)
+				setDynamicCopilotModels(catalogModels)
+			}
+			refreshChatModelCatalog()
+			showSaveMessage(t('settings.saveSuccess'))
+			closeProvider()
+		} else {
+			showSaveMessage(t('settings.saveFailed', { msg: saveRes?.error || t('common.error') }), 'error')
+		}
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }), 'error')
+	} finally {
+		saving.value = false
+	}
+}
+
+async function disableCopilot() {
+	saving.value = true
+	try {
+		const saveRes = await cliSaveAdapterConfig('copilot', { enabled: false })
+		if (saveRes?.ok) {
+			if (form.cliAdapters?.copilot) {
+				form.cliAdapters.copilot.enabled = false
+			}
+			await saveClientSettings(buildSavePayload())
+			copilotSavedConfig.value = { enabled: false, models: copilotSavedConfig.value?.models }
+			setCopilotEnabled(false)
+			setDynamicCopilotModels([])
+			refreshChatModelCatalog()
+			showSaveMessage(t('settings.saveSuccess'))
+		} else {
+			showSaveMessage(t('settings.saveFailed', { msg: saveRes?.error || t('common.error') }), 'error')
+		}
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }), 'error')
+	} finally {
+		saving.value = false
+	}
+}
+
+async function runCopilotFix(checkKey: string) {
+	copilotFixingKey.value = checkKey
+	copilotFixMessage.value = null
+	try {
+		const result = await cliRunFixCommand('copilot', checkKey)
+		const resultData = (result as any)?.value || (result as any)?.data
+		if (result?.ok && resultData) {
+			copilotFixMessage.value = { key: checkKey, ok: resultData.ok, msg: resultData.message || (resultData.ok ? '修复成功' : '修复失败') }
+			if (resultData.ok && !resultData.interactive) {
+				setTimeout(() => {
+					runCopilotEnvironmentCheck()
+				}, 800)
+			}
+		} else {
+			copilotFixMessage.value = { key: checkKey, ok: false, msg: result?.error || '修复命令执行失败' }
+		}
+	} catch (e: unknown) {
+		copilotFixMessage.value = { key: checkKey, ok: false, msg: String(e) }
+	} finally {
+		copilotFixingKey.value = null
+	}
 }
 
 function openProvider(key: string) {
 	const prov = providers.value.find((p) => p.key === key)
 	if (!prov) return
-	for (const f of prov.fields) pendingForm[f.key] = form[f.key] || ''
+	if (prov.type === 'apikey' && prov.fields) {
+		for (const f of prov.fields) pendingForm[f.key] = form[f.key] || ''
+	}
 	activeProvider.value = key
+
+	if (key === 'github') {
+		copilotCheckResult.value = null
+		copilotCheckError.value = ''
+		copilotModels.value = []
+		copilotFixMessage.value = null
+		loadCopilotSavedConfig()
+	}
 }
 
 function closeProvider() {
 	activeProvider.value = null
 	for (const k of Object.keys(pendingForm) as ApiKeyFieldKey[]) delete pendingForm[k]
+	copilotCheckResult.value = null
+	copilotCheckError.value = ''
+	copilotChecking.value = false
 }
 
 function handleFieldInput(fieldKey: ApiKeyFieldKey) {
@@ -208,7 +374,7 @@ function handleFieldInput(fieldKey: ApiKeyFieldKey) {
 async function saveProviderConfig() {
 	if (!activeProvider.value || saving.value) return
 	const prov = getProvider(activeProvider.value)
-	if (!prov) return
+	if (!prov || prov.type !== 'apikey') return
 
 	saving.value = true
 	try {
@@ -217,10 +383,9 @@ async function saveProviderConfig() {
 			geminiApiKey: String(form.geminiApiKey || ''),
 			bytedanceApiKey: String(form.bytedanceApiKey || ''),
 			meshyApiKey: String(form.meshyApiKey || ''),
-			githubToken: String(form.githubToken || ''),
 		}
 
-		for (const f of prov.fields) {
+		for (const f of prov.fields || []) {
 			const val = String(pendingForm[f.key] || '').trim()
 			keyPayload[String(f.key)] = val
 			form[f.key] = val as ClientSettings[typeof f.key]
@@ -228,7 +393,7 @@ async function saveProviderConfig() {
 
 		const keyRes = await saveEncryptedAICredentials(keyPayload as any)
 		if (!keyRes.ok) {
-			showSaveMessage(t('settings.saveFailed', { msg: keyRes.error || t('common.error') }))
+			showSaveMessage(t('settings.saveFailed', { msg: keyRes.error || t('common.error') }), 'error')
 			return
 		}
 
@@ -236,7 +401,7 @@ async function saveProviderConfig() {
 		showSaveMessage(t('settings.saveSuccess'))
 		closeProvider()
 	} catch (e: unknown) {
-		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }), 'error')
 	} finally {
 		saving.value = false
 	}
@@ -249,7 +414,7 @@ async function saveResolution() {
 		const r = await saveClientSettings(buildSavePayload())
 		if (r?.ok) showSaveMessage(t('settings.saveSuccess'))
 	} catch (e: unknown) {
-		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }), 'error')
 	} finally {
 		saving.value = false
 	}
@@ -266,7 +431,7 @@ async function saveNetworkSettings() {
 		const r = await saveClientSettings(buildSavePayload())
 		if (r?.ok) showSaveMessage(t('settings.saveSuccess'))
 	} catch (e: unknown) {
-		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }), 'error')
 	} finally {
 		saving.value = false
 	}
@@ -284,6 +449,48 @@ function openDocsForProvider(key: string | null) {
 	void openExternalUrl(prov.docsUrl)
 }
 
+function openHelpUrl(url?: string) {
+	if (!url) return
+	void openExternalUrl(url)
+}
+
+function getCheckStatusClass(status: CheckStatus) {
+	switch (status) {
+		case 'pass': return 'check-pass'
+		case 'fail': return 'check-fail'
+		case 'warn': return 'check-warn'
+		case 'skipped': return 'check-skipped'
+		case 'pending': return 'check-pending'
+		default: return 'check-pending'
+	}
+}
+
+function getCheckStatusIcon(status: CheckStatus) {
+	switch (status) {
+		case 'pass': return '✓'
+		case 'fail': return '✗'
+		case 'warn': return '⚠'
+		case 'skipped': return '○'
+		case 'pending': return '⋯'
+		default: return '⋯'
+	}
+}
+
+function getCheckStatusLabel(status: CheckStatus) {
+	switch (status) {
+		case 'pass': return t('copilot.checkPass')
+		case 'fail': return t('copilot.checkFail')
+		case 'warn': return t('copilot.checkWarn')
+		case 'skipped': return t('copilot.checkSkipped')
+		case 'pending': return t('copilot.checkPending')
+		default: return ''
+	}
+}
+
+function isAutoFixable(checkKey: string): boolean {
+	return checkKey === 'copilot_extension' || checkKey === 'gh_auth'
+}
+
 async function load() {
 	loading.value = true
 	const r = await getClientSettings()
@@ -293,7 +500,7 @@ async function load() {
 	form.geminiModel = FIXED_GEMINI_MODEL
 	form.geminiBaseUrl = String(form.geminiBaseUrl || '')
 	form.httpProxy = String(form.httpProxy || '')
-	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken'] as const) {
+	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey'] as const) {
 		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
 	}
 	if (!form.ui) form.ui = { locale: '' }
@@ -304,6 +511,7 @@ async function load() {
 			acceptedVersion: '',
 		}
 	}
+	if (!form.cliAdapters) form.cliAdapters = {}
 	loading.value = false
 }
 
@@ -347,15 +555,13 @@ async function confirmClearCredentials() {
 		geminiApiKey: '',
 		bytedanceApiKey: '',
 		meshyApiKey: '',
-		githubToken: '',
 	})
-	if (!r.ok) showSaveMessage(t('settings.clearFailed', { msg: r.error || t('common.error') }))
+	if (!r.ok) showSaveMessage(t('settings.clearFailed', { msg: r.error || t('common.error') }), 'error')
 	else {
 		form.deepseekApiKey = ''
 		form.geminiApiKey = ''
 		form.bytedanceApiKey = ''
 		form.meshyApiKey = ''
-		form.githubToken = ''
 
 		await saveClientSettings(buildSavePayload())
 
@@ -437,6 +643,14 @@ async function handleOpenOverlayCommunity() {
 	if (!platformOverlayEnabled.value) return
 	await overlayActivate('community')
 }
+
+const isActiveProviderCliCheck = computed(() => {
+	return activeProviderConfig.value?.type === 'cli-check'
+})
+
+const canEnableCopilot = computed(() => {
+	return copilotCheckResult.value?.allPassed === true && copilotModels.value.length > 0
+})
 </script>
 
 <template>
@@ -468,7 +682,7 @@ async function handleOpenOverlayCommunity() {
 					</button>
 				</div>
 			</div>
-			<p v-if="saveMsg" class="settings-flash">{{ saveMsg }}</p>
+			<p v-if="saveMsg" :class="['settings-flash', saveMsgType === 'error' ? 'settings-flash-error' : '']">{{ saveMsg }}</p>
 		</header>
 
 		<section class="settings-section">
@@ -618,8 +832,10 @@ async function handleOpenOverlayCommunity() {
 						<div class="provider-name">{{ prov.name }}</div>
 						<div class="provider-desc">{{ t(prov.descKey) }}</div>
 						<div class="provider-status">
-							<span class="status-dot" :class="{ configured: !!prov.formValue(form) }"></span>
-							<span class="status-text">{{ prov.formValue(form) ? t('settings.configured') : t('settings.notConfigured') }}</span>
+							<span class="status-dot" :class="{ configured: getProviderStatus(prov) }"></span>
+							<span class="status-text">
+								{{ getProviderStatus(prov) ? t('settings.configured') : t('settings.notConfigured') }}
+							</span>
 						</div>
 					</div>
 					<div class="provider-chev" aria-hidden="true">
@@ -633,8 +849,8 @@ async function handleOpenOverlayCommunity() {
 	</div>
 
 	<ModalDialog
-		v-if="activeProvider"
-		:open="activeProvider !== null"
+		v-if="activeProvider && !isActiveProviderCliCheck"
+		:open="activeProvider !== null && !isActiveProviderCliCheck"
 		:title="(activeProviderConfig?.name || '') + ' · ' + t('settings.configCredentials')"
 		:show-confirm="true"
 		:confirm-text="t('settings.save')"
@@ -643,7 +859,7 @@ async function handleOpenOverlayCommunity() {
 		@close="closeProvider"
 		@confirm="saveProviderConfig"
 	>
-		<template v-if="activeProviderConfig">
+		<template v-if="activeProviderConfig && activeProviderConfig.type === 'apikey'">
 			<div class="provider-modal-body">
 				<div
 					class="provider-modal-head"
@@ -689,6 +905,154 @@ async function handleOpenOverlayCommunity() {
 					@click="openDocsForProvider(activeProvider)"
 				>{{ t('settings.getFromConsole') }}</button>
 			</div>
+			</div>
+		</template>
+	</ModalDialog>
+
+	<ModalDialog
+		v-if="activeProvider && isActiveProviderCliCheck"
+		:open="activeProvider !== null && isActiveProviderCliCheck"
+		:title="activeProviderConfig?.name + ' · ' + t('copilot.envCheck')"
+		:show-confirm="canEnableCopilot"
+		:confirm-text="t('copilot.enable')"
+		:close-text="t('common.cancel')"
+		:disable-confirm="saving || !canEnableCopilot"
+		:wider="true"
+		@close="closeProvider"
+		@confirm="enableCopilot"
+	>
+		<template v-if="activeProviderConfig">
+			<div class="copilot-modal-body">
+				<div
+					class="provider-modal-head"
+					:style="{ '--accent': activeProviderConfig.accent }"
+				>
+					<div class="provider-badge-lg">
+						<span>{{ activeProviderConfig.icon }}</span>
+					</div>
+					<div>
+						<div class="provider-modal-name">
+							{{ activeProviderConfig.name }}
+						</div>
+						<div class="provider-modal-desc">
+							{{ t(activeProviderConfig.descKey) }}
+						</div>
+						<div v-if="copilotSavedConfig?.enabled" class="copilot-enabled-badge">
+							<span class="copilot-enabled-dot" />
+							{{ t('copilot.alreadyEnabled') }}
+						</div>
+					</div>
+				</div>
+
+				<div class="copilot-actions">
+					<button
+						class="btn btn-primary"
+						type="button"
+						:disabled="copilotChecking"
+						@click="runCopilotEnvironmentCheck"
+					>
+						<span v-if="copilotChecking" class="btn-spinner" />
+						{{ copilotChecking ? t('copilot.checking') : t('copilot.runCheck') }}
+					</button>
+					<button
+						v-if="copilotSavedConfig?.enabled"
+						class="btn btn-ghost"
+						type="button"
+						:disabled="saving"
+						@click="disableCopilot"
+					>
+						{{ t('copilot.disable') }}
+					</button>
+					<button
+						class="btn btn-ghost"
+						type="button"
+						@click="openDocsForProvider('github')"
+					>
+						{{ t('copilot.installGuide') }}
+					</button>
+				</div>
+
+				<div v-if="copilotCheckError" class="copilot-error">
+					<div class="copilot-error-title">{{ t('copilot.checkFailed') }}</div>
+					<div class="copilot-error-msg">{{ copilotCheckError }}</div>
+				</div>
+
+				<div v-if="!copilotCheckResult && !copilotChecking && !copilotCheckError" class="copilot-hint">
+					<div class="copilot-hint-title">{{ t('copilot.readyToCheck') }}</div>
+					<div class="copilot-hint-steps">
+						<div class="copilot-hint-step">1. {{ t('copilot.step1') }}</div>
+						<div class="copilot-hint-step">2. {{ t('copilot.step2') }}</div>
+						<div class="copilot-hint-step">3. {{ t('copilot.step3') }}</div>
+					</div>
+				</div>
+
+				<div v-if="copilotCheckResult" class="copilot-checks">
+					<div class="copilot-checks-header">
+						<span :class="['copilot-overall', copilotCheckResult.allPassed ? 'copilot-overall-pass' : 'copilot-overall-fail']">
+							{{ copilotCheckResult.allPassed ? t('copilot.allPassed') : t('copilot.hasIssues') }}
+						</span>
+						<span v-if="copilotCheckResult.version" class="copilot-version">
+							v{{ copilotCheckResult.version }}
+						</span>
+					</div>
+					<div class="copilot-check-list">
+						<div
+							v-for="check in copilotCheckResult.checks"
+							:key="check.key"
+							class="copilot-check-item"
+							:class="getCheckStatusClass(check.status)"
+						>
+							<div class="copilot-check-icon">{{ getCheckStatusIcon(check.status) }}</div>
+							<div class="copilot-check-body">
+								<div class="copilot-check-label">{{ check.label }}</div>
+								<div v-if="check.message" class="copilot-check-msg">{{ check.message }}</div>
+								<div v-if="check.action" class="copilot-check-action">
+									<span>{{ t('copilot.suggestedAction') }}:</span>
+									<code class="copilot-check-cmd">{{ check.action.command || check.action.label }}</code>
+									<button
+										v-if="check.status === 'fail' && isAutoFixable(check.key)"
+										class="copilot-fix-btn"
+										type="button"
+										:disabled="copilotFixingKey === check.key"
+										@click="runCopilotFix(check.key)"
+									>
+										<span v-if="copilotFixingKey === check.key" class="btn-spinner" />
+										{{ copilotFixingKey === check.key ? t('copilot.fixing') : t('copilot.fixNow') }}
+									</button>
+									<button
+										v-if="check.helpUrl"
+										class="copilot-check-link"
+										type="button"
+										@click="openHelpUrl(check.helpUrl)"
+									>
+										{{ check.action.label }} →
+									</button>
+								</div>
+								<div
+									v-if="copilotFixMessage && copilotFixMessage.key === check.key"
+									class="copilot-fix-result"
+									:class="copilotFixMessage.ok ? 'fix-ok' : 'fix-fail'"
+								>
+									{{ copilotFixMessage.msg }}
+								</div>
+							</div>
+							<div class="copilot-check-status-label">{{ getCheckStatusLabel(check.status) }}</div>
+						</div>
+					</div>
+
+					<div v-if="copilotModels.length > 0" class="copilot-models">
+						<div class="copilot-models-header">
+							{{ t('copilot.availableModels') }}
+							<span class="copilot-models-count">{{ copilotModels.length }}</span>
+						</div>
+						<div class="copilot-model-list">
+							<div v-for="m in copilotModels" :key="m.id" class="copilot-model-tag" :class="{ recommended: m.recommended }">
+								<span class="copilot-model-name">{{ m.label }}</span>
+								<span v-if="m.recommended" class="copilot-model-badge">{{ t('copilot.recommended') }}</span>
+							</div>
+						</div>
+					</div>
+				</div>
 			</div>
 		</template>
 	</ModalDialog>
@@ -816,6 +1180,10 @@ async function handleOpenOverlayCommunity() {
 	color: #22a06b;
 }
 
+.settings-flash-error {
+	color: #e5484d;
+}
+
 .btn {
 	appearance: none;
 	-webkit-appearance: none;
@@ -863,6 +1231,19 @@ async function handleOpenOverlayCommunity() {
 
 .btn-ghost {
 	background: transparent;
+}
+
+.btn-spinner {
+	width: 14px;
+	height: 14px;
+	border: 2px solid rgba(255,255,255,0.3);
+	border-top-color: #fff;
+	border-radius: 50%;
+	animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+	to { transform: rotate(360deg); }
 }
 
 .settings-section {
@@ -1256,6 +1637,385 @@ async function handleOpenOverlayCommunity() {
 	margin-top: 2px;
 	flex-shrink: 0;
 	cursor: pointer;
+}
+
+.copilot-modal-body {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	min-height: 0;
+}
+
+.copilot-checks {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+	overflow-y: auto;
+	padding-right: 4px;
+	max-height: 320px;
+}
+
+.copilot-enabled-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	font-size: 11.5px;
+	color: #22a06b;
+	background: rgba(34,160,107,0.1);
+	padding: 3px 8px;
+	border-radius: 3px;
+}
+
+.copilot-enabled-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #22a06b;
+}
+
+.copilot-actions {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.copilot-error {
+	padding: 12px;
+	background: rgba(248, 81, 73, 0.08);
+	border: 1px solid rgba(248, 81, 73, 0.25);
+	border-radius: 6px;
+}
+
+.copilot-error-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: #f85149;
+	margin-bottom: 4px;
+}
+
+.copilot-error-msg {
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	font-family: monospace;
+	word-break: break-all;
+}
+
+.copilot-hint {
+	padding: 16px;
+	background: var(--dweb-defualt-dark);
+	border: 1px dashed var(--vscode-border);
+	border-radius: 6px;
+}
+
+.copilot-hint-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--vscode-fg);
+	margin-bottom: 10px;
+}
+
+.copilot-hint-steps {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.copilot-hint-step {
+	font-size: 12.5px;
+	color: var(--vscode-fg-muted);
+	line-height: 1.5;
+}
+
+.copilot-checks-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 0 10px;
+	border-bottom: 1px solid var(--vscode-border);
+	position: sticky;
+	top: 0;
+	background: var(--wf-panel-bg-solid, var(--theme-bg-tertiary));
+	z-index: 1;
+}
+
+.copilot-overall {
+	font-size: 14px;
+	font-weight: 600;
+	padding: 4px 12px;
+	border-radius: 4px;
+}
+
+.copilot-overall-pass {
+	color: #22a06b;
+	background: rgba(34,160,107,0.1);
+}
+
+.copilot-overall-fail {
+	color: #f0ad4e;
+	background: rgba(240,173,78,0.1);
+}
+
+.copilot-version {
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	font-family: monospace;
+}
+
+.copilot-check-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.copilot-check-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 12px;
+	background: var(--dweb-defualt-dark);
+	border: 1px solid var(--vscode-border);
+	border-left-width: 3px;
+	border-radius: 4px;
+}
+
+.copilot-check-item.check-pass {
+	border-left-color: #22a06b;
+}
+
+.copilot-check-item.check-fail {
+	border-left-color: #f85149;
+}
+
+.copilot-check-item.check-warn {
+	border-left-color: #f0ad4e;
+}
+
+.copilot-check-item.check-skipped {
+	border-left-color: var(--vscode-fg-muted);
+	opacity: 0.6;
+}
+
+.copilot-check-item.check-pending {
+	border-left-color: var(--vscode-fg-muted);
+}
+
+.copilot-check-icon {
+	width: 22px;
+	height: 22px;
+	flex: 0 0 22px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 13px;
+	font-weight: 700;
+	border-radius: 50%;
+	margin-top: 1px;
+}
+
+.check-pass .copilot-check-icon {
+	color: #22a06b;
+	background: rgba(34,160,107,0.12);
+}
+
+.check-fail .copilot-check-icon {
+	color: #f85149;
+	background: rgba(248,81,73,0.12);
+}
+
+.check-warn .copilot-check-icon {
+	color: #f0ad4e;
+	background: rgba(240,173,78,0.12);
+}
+
+.check-skipped .copilot-check-icon,
+.check-pending .copilot-check-icon {
+	color: var(--vscode-fg-muted);
+	background: color-mix(in srgb, var(--vscode-fg-muted) 12%, transparent);
+}
+
+.copilot-check-body {
+	flex: 1;
+	min-width: 0;
+}
+
+.copilot-check-label {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-fg);
+}
+
+.copilot-check-msg {
+	font-size: 12px;
+	color: var(--vscode-fg-muted);
+	margin-top: 3px;
+	word-break: break-all;
+}
+
+.copilot-check-action {
+	font-size: 11.5px;
+	color: var(--vscode-fg-muted);
+	margin-top: 6px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.copilot-check-cmd {
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 11px;
+	padding: 2px 6px;
+	background: rgba(0,0,0,0.2);
+	border-radius: 3px;
+	color: var(--vscode-fg);
+}
+
+.copilot-check-link {
+	appearance: none;
+	-webkit-appearance: none;
+	background: transparent;
+	border: 0;
+	padding: 0;
+	font: inherit;
+	cursor: pointer;
+	color: var(--theme-accent);
+	font-size: 11.5px;
+	font-weight: 500;
+}
+
+.copilot-check-link:hover {
+	text-decoration: underline;
+}
+
+.copilot-fix-btn {
+	appearance: none;
+	-webkit-appearance: none;
+	border: 1px solid #22a06b;
+	background: rgba(34,160,107,0.12);
+	color: #22a06b;
+	font-size: 11px;
+	font-weight: 600;
+	padding: 3px 10px;
+	border-radius: 3px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	transition: background 120ms ease;
+}
+
+.copilot-fix-btn:hover:not(:disabled) {
+	background: rgba(34,160,107,0.25);
+}
+
+.copilot-fix-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.copilot-fix-result {
+	margin-top: 6px;
+	font-size: 11.5px;
+	padding: 4px 8px;
+	border-radius: 3px;
+}
+
+.copilot-fix-result.fix-ok {
+	color: #22a06b;
+	background: rgba(34,160,107,0.08);
+}
+
+.copilot-fix-result.fix-fail {
+	color: #f85149;
+	background: rgba(248,81,73,0.08);
+}
+
+.copilot-check-status-label {
+	flex: 0 0 auto;
+	font-size: 11px;
+	font-weight: 500;
+	padding: 2px 8px;
+	border-radius: 3px;
+	white-space: nowrap;
+}
+
+.check-pass .copilot-check-status-label {
+	color: #22a06b;
+	background: rgba(34,160,107,0.08);
+}
+
+.check-fail .copilot-check-status-label {
+	color: #f85149;
+	background: rgba(248,81,73,0.08);
+}
+
+.check-warn .copilot-check-status-label {
+	color: #f0ad4e;
+	background: rgba(240,173,78,0.08);
+}
+
+.check-skipped .copilot-check-status-label,
+.check-pending .copilot-check-status-label {
+	color: var(--vscode-fg-muted);
+	background: color-mix(in srgb, var(--vscode-fg-muted) 8%, transparent);
+}
+
+.copilot-models {
+	padding: 12px;
+	background: var(--dweb-defualt-dark);
+	border: 1px solid var(--vscode-border);
+	border-radius: 6px;
+}
+
+.copilot-models-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--vscode-fg);
+	margin-bottom: 10px;
+}
+
+.copilot-models-count {
+	font-size: 11px;
+	font-weight: 400;
+	color: var(--vscode-fg-muted);
+	background: color-mix(in srgb, var(--vscode-fg-muted) 12%, transparent);
+	padding: 1px 7px;
+	border-radius: 10px;
+}
+
+.copilot-model-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.copilot-model-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	font-size: 12px;
+	background: color-mix(in srgb, var(--vscode-fg-muted) 10%, transparent);
+	border: 1px solid var(--vscode-border);
+	border-radius: 4px;
+	color: var(--vscode-fg);
+}
+
+.copilot-model-tag.recommended {
+	border-color: rgba(34,160,107,0.4);
+	background: rgba(34,160,107,0.08);
+}
+
+.copilot-model-badge {
+	font-size: 10px;
+	color: #22a06b;
+	font-weight: 600;
 }
 
 @media (max-width: 720px) {

@@ -88,6 +88,57 @@ export type CleanupOldProjectResult = {
 	}>
 }
 
+export type CheckStatus = 'pending' | 'pass' | 'fail' | 'warn' | 'skipped'
+
+export type EnvironmentCheckItem = {
+	key: string
+	label: string
+	status: CheckStatus
+	message?: string
+	helpUrl?: string
+	action?: {
+		label: string
+		command?: string
+	}
+}
+
+export type CliModelInfo = {
+	id: string
+	label: string
+	vendor?: string
+	description?: string
+	capabilities?: string[]
+	recommended?: boolean
+}
+
+export type EnvironmentCheckResult = {
+	adapter: string
+	checkedAt: string
+	allPassed: boolean
+	checks: EnvironmentCheckItem[]
+	models?: CliModelInfo[]
+	version?: string
+	error?: string
+}
+
+export type CliAdapterSavedConfig = {
+	enabled: boolean
+	configuredAt?: string
+	lastCheckedAt?: string
+	version?: string
+	models?: CliModelInfo[]
+}
+
+export type CliFixResult = {
+	ok: boolean
+	adapter: string
+	checkKey: string
+	output?: string
+	interactive?: boolean
+	message: string
+	command?: string
+}
+
 export type ClientSettings = {
 	defaultResolution: string
 	deepseekApiKey: string
@@ -99,7 +150,7 @@ export type ClientSettings = {
 	httpProxy?: string
 	bytedanceApiKey: string
 	meshyApiKey: string
-	githubToken: string
+	githubToken?: string
 	ui?: {
 		locale?: string
 	}
@@ -107,6 +158,9 @@ export type ClientSettings = {
 		accepted: boolean
 		acceptedAt?: number
 		acceptedVersion?: string
+	}
+	cliAdapters?: {
+		[adapterName: string]: CliAdapterSavedConfig
 	}
 }
 

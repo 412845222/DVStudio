@@ -6215,6 +6215,18 @@ const comfyService = new ComfyUIBridgeService({
 	baseUrl: getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl()
 })
 const localExecChatService = createLocalExecChatService(comfyService)
+const mediaService = {
+	nanoBananaCacheRefImages: (form: FormData) => comfyService.nanoBananaCacheRefImages(form),
+	seedreamCacheRefImages: (form: FormData) => comfyService.seedreamCacheRefImages(form),
+	nanoBananaGenerateStream: (form: FormData) => comfyService.nanoBananaGenerateStream(form),
+	seedreamGenerateStream: (form: FormData) => comfyService.seedreamGenerateStream(form),
+	jimengImageGenerateStream: (form: FormData) => comfyService.jimengImageGenerateStream(form),
+	jimengVideoGenerateStream: (form: FormData) => comfyService.jimengVideoGenerateStream(form),
+	seedanceGenerateStream: (form: FormData) => comfyService.seedanceGenerateStream(form),
+	meshyGenerate: (payload: Record<string, unknown>) => comfyService.meshyGenerate(payload),
+	meshyGenerateImage: (form: FormData) => comfyService.meshyGenerateImage(form),
+	meshyTask: (taskId: string, mode: string) => comfyService.meshyTask(taskId, mode),
+}
 const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())
 localExecChatService.setLocalExecStreamMode(localExecStreamMode.value)
 watch(
@@ -8078,7 +8090,7 @@ const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate, handleUserChoi
 	fileFromUrl,
 	uploadLocalResourceAndGetUrl,
 	resolveBackendUrl,
-	getChatService: () => localExecChatService,
+	getMediaService: () => mediaService,
 	onSeedanceTaskObserved,
 	getSelectedNode: () => selectedNode.value,
 	getAllNodes: () => nodes.value,

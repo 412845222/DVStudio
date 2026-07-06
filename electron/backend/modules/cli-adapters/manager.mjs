@@ -7,63 +7,114 @@
 import { CodexCliAdapter } from './codexCli.mjs';
 import { CopilotCliAdapter } from './copilotCli.mjs';
 import { registerCLIAdapter, cliAdapterRegistry } from './base.mjs';
+import { cliConfigStore } from './cliConfigStore.mjs';
 import logger from '../../core/logger.mjs';
 
-// 注册默认适配器
 registerCLIAdapter('codex', CodexCliAdapter);
 registerCLIAdapter('copilot', CopilotCliAdapter);
 
-/**
- * CLI 适配器管理器
- */
 class CLIAdapterManager {
   constructor() {
-    /** @type {Map<string, {adapter: BaseCLIAdapter, config: object}>} */
     this.adapters = new Map();
-    
-    /** @type {Map<string, string>} sessionId -> adapterName */
     this.sessions = new Map();
   }
 
-  /**
-   * 获取或创建适配器
-   * @param {string} name 
-   * @param {object} config 
-   */
   getAdapter(name, config = {}) {
     if (!this.adapters.has(name)) {
       const AdapterClass = cliAdapterRegistry.get(name);
       if (!AdapterClass) {
         throw new Error(`CLI adapter not found: ${name}`);
       }
-      this.adapters.set(name, new AdapterClass(config));
+      const mergedConfig = { ...this.getStoredConfig(name), ...config };
+      this.adapters.set(name, { adapter: new AdapterClass(mergedConfig), config: mergedConfig });
     }
     return this.adapters.get(name).adapter;
   }
 
-  /**
-   * 获取适配器配置
-   * @param {string} name 
-   */
-  getAdapterConfig(name) {
+  getStoredConfig(name) {
+    try {
+      const stored = cliConfigStore.getAdapterConfig(name);
+      if (stored) {
+        return {
+          enabled: stored.enabled,
+          models: stored.models
+        };
+      }
+    } catch (err) {
+      logger.debug(`Failed to get stored config for ${name}: ${err.message}`);
+    }
+    return {};
+  }
+
+  getAdapterRuntimeConfig(name) {
     const entry = this.adapters.get(name);
     return entry ? entry.config : {};
   }
 
-  /**
-   * 检查 CLI 可用性
-   * @param {string} name 
-   * @param {object} config 
-   */
   async checkAvailability(name, config = {}) {
     const adapter = this.getAdapter(name, config);
     return await adapter.checkAvailable();
   }
 
-  /**
-   * 列出所有可用的 CLI
-   * @param {object} configs 
-   */
+  async checkEnvironment(adapterName, options = {}) {
+    const adapter = this.getAdapter(adapterName);
+    if (typeof adapter.checkEnvironment !== 'function') {
+      throw new Error(`Adapter ${adapterName} does not support environment check`);
+    }
+
+    const result = await adapter.checkEnvironment(options);
+
+    if (result.allPassed) {
+      await cliConfigStore.updateAdapterConfig(adapterName, {
+        lastCheckedAt: result.checkedAt,
+        version: result.version,
+        models: result.models
+      });
+    }
+
+    return result;
+  }
+
+  async listModels(adapterName, options = {}) {
+    const { forceRefresh = false } = options;
+
+    if (!forceRefresh) {
+      const config = await cliConfigStore.getAdapterConfig(adapterName);
+      if (config?.models && config.lastCheckedAt) {
+        const cacheAge = Date.now() - new Date(config.lastCheckedAt).getTime();
+        if (cacheAge < 60 * 60 * 1000) {
+          return config.models;
+        }
+      }
+    }
+
+    const adapter = this.getAdapter(adapterName);
+    if (typeof adapter.listModels !== 'function') {
+      throw new Error(`Adapter ${adapterName} does not support listModels`);
+    }
+
+    const models = await adapter.listModels();
+
+    await cliConfigStore.updateAdapterConfig(adapterName, { models });
+
+    return models;
+  }
+
+  async getAdapterConfig(adapterName) {
+    return await cliConfigStore.getAdapterConfig(adapterName);
+  }
+
+  async saveAdapterConfig(adapterName, config) {
+    return await cliConfigStore.updateAdapterConfig(adapterName, {
+      ...config,
+      configuredAt: new Date().toISOString()
+    });
+  }
+
+  isAdapterEnabled(adapterName) {
+    return cliConfigStore.isAdapterEnabled(adapterName);
+  }
+
   async listAvailable(configs = {}) {
     const results = [];
     
@@ -80,12 +131,6 @@ class CLIAdapterManager {
     return results;
   }
 
-  /**
-   * 开始会话
-   * @param {string} adapterName 
-   * @param {object} options 
-   * @param {object} config 
-   */
   async startSession(adapterName, options = {}, config = {}) {
     const adapter = this.getAdapter(adapterName, config);
     const sessionId = await adapter.startSession(options);
@@ -93,10 +138,6 @@ class CLIAdapterManager {
     return sessionId;
   }
 
-  /**
-   * 结束会话
-   * @param {string} sessionId 
-   */
   async stopSession(sessionId) {
     const adapterName = this.sessions.get(sessionId);
     if (!adapterName) {
@@ -109,12 +150,6 @@ class CLIAdapterManager {
     return { ok: true };
   }
 
-  /**
-   * 发送消息
-   * @param {string} sessionId 
-   * @param {string} content 
-   * @param {object} options 
-   */
   async *sendMessage(sessionId, content, options = {}) {
     const adapterName = this.sessions.get(sessionId);
     if (!adapterName) {
@@ -126,10 +161,6 @@ class CLIAdapterManager {
     yield* adapter.sendMessage(sessionId, content, options);
   }
 
-  /**
-   * 取消请求
-   * @param {string} sessionId 
-   */
   cancel(sessionId) {
     const adapterName = this.sessions.get(sessionId);
     if (!adapterName) return;
@@ -139,10 +170,6 @@ class CLIAdapterManager {
     this.sessions.delete(sessionId);
   }
 
-  /**
-   * 获取会话信息
-   * @param {string} sessionId 
-   */
   getSessionInfo(sessionId) {
     const adapterName = this.sessions.get(sessionId);
     if (!adapterName) {
@@ -155,9 +182,6 @@ class CLIAdapterManager {
     };
   }
 
-  /**
-   * 列出所有会话
-   */
   listSessions() {
     const sessions = [];
     for (const [sessionId, adapterName] of this.sessions) {
@@ -166,9 +190,6 @@ class CLIAdapterManager {
     return sessions;
   }
 
-  /**
-   * 清理所有会话
-   */
   dispose() {
     for (const [sessionId] of this.sessions) {
       this.cancel(sessionId);
@@ -187,5 +208,4 @@ class CLIAdapterManager {
   }
 }
 
-// 导出单例
 export const cliAdapterManager = new CLIAdapterManager();

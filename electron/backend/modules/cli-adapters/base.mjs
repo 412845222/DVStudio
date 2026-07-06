@@ -6,7 +6,66 @@
  */
 
 import { spawn, execSync } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { app } from 'electron';
 import logger from '../../core/logger.mjs';
+
+function getServiceRepoRoot() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(here, '..', '..', '..', '..');
+}
+
+function findNearestGitRoot(startDir) {
+  let current = path.resolve(startDir);
+  while (true) {
+    if (fs.existsSync(path.resolve(current, '.git'))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return '';
+    current = parent;
+  }
+}
+
+function getClientRootDir() {
+  if (app.isPackaged) return path.dirname(process.execPath);
+  const repoRoot = getServiceRepoRoot();
+  const gitRoot = findNearestGitRoot(repoRoot);
+  return gitRoot || repoRoot;
+}
+
+function getDvsResourceDir() {
+  const envResourceDir = String(process.env.DWEB_RESOURCE_DIR || '').trim();
+  if (envResourceDir) return path.resolve(envResourceDir);
+  return path.resolve(getClientRootDir(), 'DVSResource');
+}
+
+function getUserSettingsFilePath() {
+  return path.resolve(getDvsResourceDir(), 'UserSettings', 'settings.json');
+}
+
+export function getProxyEnvVars() {
+  try {
+    const settingsPath = getUserSettingsFilePath();
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, 'utf-8');
+      const settings = JSON.parse(raw);
+      const httpProxy = String(settings.httpProxy || '').trim();
+      if (httpProxy) {
+        logger.info(`[CLIAdapter] Using HTTP proxy from settings: ${httpProxy}`);
+        return {
+          HTTP_PROXY: httpProxy,
+          HTTPS_PROXY: httpProxy,
+          http_proxy: httpProxy,
+          https_proxy: httpProxy,
+        };
+      }
+    }
+  } catch (err) {
+    logger.error(`[CLIAdapter] Failed to read proxy settings: ${err.message}`);
+  }
+  return {};
+}
 
 /**
  * CLI 适配器事件类型
@@ -32,6 +91,17 @@ export const CLIAvailability = {
   VERSION_UNSUPPORTED: 'version_unsupported',
   AUTH_REQUIRED: 'auth_required',
   UNKNOWN: 'unknown',
+};
+
+/**
+ * 环境检查项状态
+ */
+export const CheckStatus = {
+  PENDING: 'pending',
+  PASS: 'pass',
+  FAIL: 'fail',
+  WARN: 'warn',
+  SKIPPED: 'skipped',
 };
 
 /**
@@ -97,12 +167,13 @@ export class BaseCLIAdapter {
     return new Promise((resolve, reject) => {
       const cmd = this.commandName;
       const timeout = options.timeout || 30000;
+      const proxyEnv = getProxyEnvVars();
       
       let stdout = '';
       let stderr = '';
 
       const proc = spawn(cmd, args, {
-        env: { ...process.env, ...this.cliConfig.env },
+        env: { ...process.env, ...proxyEnv, ...this.cliConfig.env },
         cwd: options.cwd || process.cwd(),
         shell: true,
       });
@@ -182,6 +253,37 @@ export class BaseCLIAdapter {
    */
   parseOutput(line) {
     throw new Error('parseOutput must be implemented by subclass');
+  }
+
+  /**
+   * 执行完整环境检查（可选实现）
+   * @returns {Promise<object>} EnvironmentCheckResult
+   */
+  async checkEnvironment() {
+    const available = await this.checkAvailable();
+    return {
+      adapter: this.commandName,
+      checkedAt: new Date().toISOString(),
+      allPassed: available.available,
+      checks: [
+        {
+          key: 'basic_available',
+          label: `${this.displayName} 可用`,
+          status: available.available ? CheckStatus.PASS : CheckStatus.FAIL,
+          message: available.version || available.error || '未知状态'
+        }
+      ],
+      models: undefined,
+      version: available.version
+    };
+  }
+
+  /**
+   * 获取可用模型列表（可选实现）
+   * @returns {Promise<Array>} CliModel[]
+   */
+  async listModels() {
+    return [];
   }
 
   /**
