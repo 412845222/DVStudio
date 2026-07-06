@@ -36,6 +36,17 @@
 				</button>
 				<span class="wf-sel-frame-count">{{ t('aiworkflow.canvas.nodesSelected', { count: nodeCount }) }}</span>
 				<button
+					class="wf-sel-frame-btn wf-sel-frame-template"
+					:title="t('aiworkflow.toolbar.saveAsTemplate')"
+					@click.stop="emit('save-template')"
+				>
+					<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-sel-frame-template-icon">
+						<path d="M2 3a1 1 0 0 1 1-1h7l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.2" />
+						<path d="M9 2v4h4" fill="none" stroke="currentColor" stroke-width="1.2" />
+					</svg>
+					{{ t('aiworkflow.toolbar.saveAsTemplate') }}
+				</button>
+				<button
 					class="wf-sel-frame-btn wf-sel-frame-delete"
 					:title="t('aiworkflow.canvas.cancelSelection')"
 					@click.stop="emit('delete')"
@@ -74,6 +85,7 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'tag-save', label: string): void
 	(e: 'delete'): void
+	(e: 'save-template'): void
 	(e: 'drag-start'): void
 	(e: 'drag-move', payload: { dx: number; dy: number }): void
 	(e: 'drag-end'): void
@@ -127,9 +139,11 @@ const onSave = () => {
 	isEditing.value = false
 }
 
+// 拖拽阈值（与画布框选逻辑保持一致）
+const DRAG_THRESHOLD_PX = 4
+
 // 拖拽状态
 const isDragging = ref(false)
-const dragStartClient = ref({ x: 0, y: 0 })
 
 // 拖拽区域 pointerdown 处理
 const onDragAreaPointerDown = (event: PointerEvent) => {
@@ -141,10 +155,10 @@ const onDragAreaPointerDown = (event: PointerEvent) => {
 	event.preventDefault()
 	event.stopPropagation()
 
-	isDragging.value = true
-	dragStartClient.value = { x: event.clientX, y: event.clientY }
-
-	emit('drag-start')
+	const startClient = { x: event.clientX, y: event.clientY }
+	let lastClient = { ...startClient }
+	let hasStartedDrag = false
+	isDragging.value = false
 
 	// 设置指针捕获
 	const target = event.currentTarget as HTMLElement | null
@@ -157,21 +171,30 @@ const onDragAreaPointerDown = (event: PointerEvent) => {
 	}
 
 	const onMove = (moveEvent: PointerEvent) => {
-		if (!isDragging.value) return
-		moveEvent.preventDefault()
+		const dx = moveEvent.clientX - startClient.x
+		const dy = moveEvent.clientY - startClient.y
 
-		const dx = moveEvent.clientX - dragStartClient.value.x
-		const dy = moveEvent.clientY - dragStartClient.value.y
-		dragStartClient.value = { x: moveEvent.clientX, y: moveEvent.clientY }
+		// 只有移动超过阈值才开始拖拽
+		if (!hasStartedDrag && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
+			hasStartedDrag = true
+			isDragging.value = true
+			lastClient = { x: moveEvent.clientX, y: moveEvent.clientY }
+			emit('drag-start')
+		}
 
-		emit('drag-move', { dx, dy })
+		if (hasStartedDrag) {
+			moveEvent.preventDefault()
+			const stepDx = moveEvent.clientX - lastClient.x
+			const stepDy = moveEvent.clientY - lastClient.y
+			lastClient = { x: moveEvent.clientX, y: moveEvent.clientY }
+			emit('drag-move', { dx: stepDx, dy: stepDy })
+		}
 	}
 
 	const onUp = (upEvent: PointerEvent) => {
-		isDragging.value = false
-		window.removeEventListener('pointermove', onMove)
-		window.removeEventListener('pointerup', onUp)
-		window.removeEventListener('pointercancel', onUp)
+		window.removeEventListener('pointermove', onMove, { capture: true } as AddEventListenerOptions)
+		window.removeEventListener('pointerup', onUp, true)
+		window.removeEventListener('pointercancel', onUp, true)
 		if (target?.releasePointerCapture && Number.isFinite(upEvent.pointerId)) {
 			try {
 				target.releasePointerCapture(upEvent.pointerId)
@@ -179,7 +202,15 @@ const onDragAreaPointerDown = (event: PointerEvent) => {
 				// ignore release failure
 			}
 		}
-		emit('drag-end')
+
+		if (hasStartedDrag) {
+			// 真正的拖拽结束
+			isDragging.value = false
+			emit('drag-end')
+		} else {
+			// 点击操作（未拖拽）：取消选择
+			emit('delete')
+		}
 	}
 
 	window.addEventListener('pointermove', onMove, { capture: true, passive: false })
@@ -317,6 +348,24 @@ const tagBarStyle = computed(() => {
 .wf-sel-frame-delete:hover {
 	background: rgba(239, 68, 68, 0.2);
 	color: #fca5a5;
+}
+
+.wf-sel-frame-template {
+	gap: 4px;
+	color: #fff;
+	background: #1f9d84;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-weight: 500;
+}
+
+.wf-sel-frame-template:hover {
+	background: #17806c;
+}
+
+.wf-sel-frame-template-icon {
+	width: 12px;
+	height: 12px;
 }
 
 .wf-sel-frame-edit-input {

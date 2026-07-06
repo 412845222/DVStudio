@@ -27,6 +27,7 @@
 			:canvasHeight="canvasSize.h"
 			@tag-save="(label: string) => emit('selection-frame-tag-save', label)"
 			@delete="emit('selection-frame-delete')"
+			@save-template="emit('selection-frame-save-template')"
 			@delete-nodes="emit('selection-frame-delete-selected')"
 			@drag-start="onOverlayDragStart"
 			@drag-move="onOverlayDragMove"
@@ -100,6 +101,7 @@ const emit = defineEmits<{
 	(e: 'canvas-panning-end'): void
 	(e: 'selection-frame-tag-save', label: string): void
 	(e: 'selection-frame-delete', payload?: { frameId?: string }): void
+	(e: 'selection-frame-save-template'): void
 	(e: 'selection-frame-drag-start', payload: { nodeIds: string[] }): void
 	(e: 'selection-frame-drag', payload: { dx: number; dy: number; nodeIds: string[] }): void
 	(e: 'selection-frame-drag-end', payload: { nodeIds: string[] }): void

@@ -36,6 +36,7 @@
 				@drop.prevent="onCanvasDrop"
 				@selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
 				@selection-frame-delete="onDeleteSelectionFrame"
+				@selection-frame-save-template="onSaveSelectionAsTemplate"
 				@selection-frame-drag-start="onSelectionFrameDragStart"
 				@selection-frame-drag="onSelectionFrameDrag"
 				@selection-frame-drag-end="onSelectionFrameDragEnd"
@@ -409,14 +410,6 @@
 					:saving="saveTemplateSaving"
 					:progress="saveTemplateProgress"
 					@confirm="onConfirmSaveTemplate"
-				/>
-
-				<WorkflowSelectionToolbar
-					:visible="selectionToolbarVisible"
-					@copy="onCopySelectedNodes"
-					@paste="onPasteSelectedNodes"
-					@delete="onDeleteSelectedNodes"
-					@save-as-template="onSaveSelectionAsTemplate"
 				/>
 
 				<div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
@@ -818,7 +811,6 @@ import TemplateCenterDialog from '../../ui/WorkFlow/TemplateCenterDialog.vue'
 import TemplateApplyDialog from '../../ui/WorkFlow/TemplateApplyDialog.vue'
 import SaveTemplateDialog from '../../ui/WorkFlow/SaveTemplateDialog.vue'
 import type { SaveTemplateConfirmPayload } from '../../ui/WorkFlow/SaveTemplateDialog.vue'
-import WorkflowSelectionToolbar from '../../ui/WorkFlow/WorkflowSelectionToolbar.vue'
 import type { TemplateItem, TemplateApplyOptions } from '../../aiworkflow/template/types'
 import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
 import {
@@ -1447,9 +1439,12 @@ const nearDragNodeIds = ref<Set<string>>(new Set())
 const panningFullRenderSnapshot = ref<Set<string> | null>(null)
 const selectionFrameDragging = ref(false)
 const selectionFrameDragNodeIds = ref<Set<string>>(new Set())
+const selectionDragFullRenderIds = ref<Set<string>>(new Set())
+const selectionDragMoveTick = ref(0)
 const stableLinkHoverNodeId = ref<string>('')
 let linkHoverStableTimer: ReturnType<typeof setTimeout> | null = null
 const LINK_HOVER_STABLE_DELAY_MS = 400
+const MAX_SELECTED_NODES_FOR_FULL_RENDER = 40
 
 const warmupConfirmDialogOpen = ref(false)
 
@@ -1510,7 +1505,8 @@ const {
 	compactZoomThreshold: compactThreshold,
 	screenMargin: 360,
 	motionRecomputeMinIntervalMs: 90,
-	forceRenderNodeIds: warmupForceRenderNodeIds
+	forceRenderNodeIds: warmupForceRenderNodeIds,
+	invalidateTick: selectionDragMoveTick
 })
 
 const safeVisibleSeenSet = new Set<string>()
@@ -1618,11 +1614,13 @@ let lastCanvasEntriesSignature = ''
 
 const buildCanvasNodeEntriesSignature = () => {
 	const fullRenderIds = Array.from(effectiveFullRenderNodeIds.value).sort().join('|')
-	return `${canvasScreenshotRefreshTick.value}:${fullRenderIds}:${renderNodes.value.length}:${canvasScreenshotEnabled.value}`
+	const dragIds = Array.from(selectionFrameDragNodeIds.value).sort().join('|')
+	return `${canvasScreenshotRefreshTick.value}:${fullRenderIds}:${renderNodes.value.length}:${canvasScreenshotEnabled.value}:${selectionDragMoveTick.value}:${dragIds}:${selectionFrameDragging.value ? '1' : '0'}`
 }
 
 const canvasNodeEntries = computed(() => {
 	void canvasScreenshotRefreshTick.value
+	void selectionDragMoveTick.value
 	if (!canvasScreenshotEnabled.value) return []
 
 	const signature = buildCanvasNodeEntriesSignature()
@@ -1632,12 +1630,39 @@ const canvasNodeEntries = computed(() => {
 
 	const allNodes = renderNodes.value
 	const fullRenderSet = effectiveFullRenderNodeIds.value
+	const dragNodeIds = selectionFrameDragNodeIds.value
+	const isDragging = selectionFrameDragging.value && dragNodeIds.size > 0
 	const result: typeof cachedCanvasNodeEntries = []
+
+	const vp = viewport.value
+	const vpWidth = canvasViewportSize.value.width
+	const vpHeight = canvasViewportSize.value.height
+	const zoom = Math.max(0.01, Number(vp.zoom) || 1)
+	const centerX = vpWidth / 2
+	const centerY = vpHeight / 2
+	const viewLeft = (-centerX - vp.panX) / zoom - 50 / zoom
+	const viewRight = (vpWidth - centerX - vp.panX) / zoom + 50 / zoom
+	const viewTop = (-centerY - vp.panY) / zoom - 50 / zoom
+	const viewBottom = (vpHeight - centerY - vp.panY) / zoom + 50 / zoom
+
+	const isInViewport = (node: WorkflowNode) => {
+		const halfW = Math.max(0, Number(node.width) || 240) / 2
+		const halfH = Math.max(0, Number(node.height) || 160) / 2
+		const nl = node.worldX - halfW
+		const nr = node.worldX + halfW
+		const nt = node.worldY - halfH
+		const nb = node.worldY + halfH
+		return nr >= viewLeft && nl <= viewRight && nb >= viewTop && nt <= viewBottom
+	}
 
 	for (const node of allNodes) {
 		const nodeId = String(node.id ?? '').trim()
 		if (!nodeId) continue
-		if (fullRenderSet.has(nodeId)) continue
+
+		const isDraggedNode = isDragging && dragNodeIds.has(nodeId)
+		const draggedNodeInViewport = isDraggedNode && isInViewport(node)
+
+		if (fullRenderSet.has(nodeId) && !draggedNodeInViewport) continue
 
 		result.push({
 			id: nodeId,
@@ -1833,9 +1858,24 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 			const nid = String(id ?? '').trim()
 			if (nid) snapshotWithPending.add(nid)
 		}
+		const nodesByIdForPan = store.state.nodesById as Record<string, WorkflowNode | undefined>
+		let selectedAddedForPan = 0
 		for (const id of selectedNodeIds.value) {
 			const nid = String(id ?? '').trim()
-			if (nid) snapshotWithPending.add(nid)
+			if (!nid) continue
+			if (snapshotWithPending.has(nid)) {
+				continue
+			}
+			if (selectedNodeIds.value.length > MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+				const node = nodesByIdForPan[nid]
+				if (!node || !isNodeInViewport(node)) {
+					continue
+				}
+			}
+			if (selectedAddedForPan < MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+				snapshotWithPending.add(nid)
+				selectedAddedForPan++
+			}
 		}
 		if (nodeChatDialog.value.visible && nodeChatDialog.value.nodeId) {
 			const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
@@ -1846,13 +1886,29 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 
 	// ==========================================
 	// Step 1: 核心激活节点（用户直接交互的节点）+ 预热强制渲染节点 + 待截图节点
-	// 这些节点无论是否在视口内，都必须完整渲染
+	// 选中节点超过40个时，仅激活视口内的节点且不超过40个，避免性能问题
 	// ==========================================
 	const coreIds = new Set<string>()
+	const nodesById = store.state.nodesById as Record<string, WorkflowNode | undefined>
 
-	for (const id of selectedNodeIds.value) {
-		const nid = String(id ?? '').trim()
-		if (nid) coreIds.add(nid)
+	if (selectedNodeIds.value.length <= MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+		for (const id of selectedNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (nid) coreIds.add(nid)
+		}
+	} else {
+		let selectedAdded = 0
+		for (const id of selectedNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (!nid) continue
+			const node = nodesById[nid]
+			if (node && isNodeInViewport(node)) {
+				if (selectedAdded < MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+					coreIds.add(nid)
+					selectedAdded++
+				}
+			}
+		}
 	}
 
 	for (const id of warmupForceRenderNodeIds.value) {
@@ -1885,7 +1941,6 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 	// Step 2: 直接邻居节点（仅一层，绝不传递）
 	// ==========================================
 	const result = new Set<string>(coreIds)
-	const nodesById = store.state.nodesById as Record<string, WorkflowNode | undefined>
 
 	for (const edge of edges.value) {
 		const fromId = String(edge?.fromNodeId ?? '').trim()
@@ -1912,6 +1967,8 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 // 节点拖拽优化：多选框拖拽时，将被拖拽节点切换为canvas轻量绘制模式
 const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
 	const baseIds = fullRenderNodeIds.value
+	const dragFullIds = selectionDragFullRenderIds.value
+
 	if (!selectionFrameDragging.value || selectionFrameDragNodeIds.value.size === 0) {
 		return baseIds
 	}
@@ -1919,18 +1976,22 @@ const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
 	// 拖拽期间，排除被拖拽的节点，但保留：
 	// - 有聊天对话框打开的节点
 	// - 待截图的节点
+	// - 视口内没有截图缓存需要临时完整渲染的节点
 	const chatNodeId = nodeChatDialog.value.visible ? String(nodeChatDialog.value.nodeId).trim() : ''
 	const pendingIds = pendingScreenshotNodeIds.value
 
 	const result = new Set<string>()
 	for (const id of baseIds) {
 		if (selectionFrameDragNodeIds.value.has(id)) {
-			if (id === chatNodeId || pendingIds.has(id)) {
+			if (id === chatNodeId || pendingIds.has(id) || dragFullIds.has(id)) {
 				result.add(id)
 			}
 		} else {
 			result.add(id)
 		}
+	}
+	for (const id of dragFullIds) {
+		result.add(id)
 	}
 	return result
 })
@@ -4687,114 +4748,116 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 	}
 
 	const items = Array.from(clipboardData.items ?? [])
-	const files: Array<{ file: ElectronFile; sourcePath: string }> = []
-
+	const files: File[] = []
 	for (const item of items) {
 		if (item.kind !== 'file') continue
-		const file = item.getAsFile() as ElectronFile | null
-		if (!file) continue
-		const sourcePath = typeof file.path === 'string' ? String(file.path).trim() : ''
-		files.push({ file, sourcePath })
+		const file = item.getAsFile()
+		if (file) files.push(file)
 	}
 
-	if (files.length > 0) {
-		const mediaFiles = files.filter((f) => {
-			const mime = String(f.file.type || '').toLowerCase()
-			if (mime.startsWith('image/') || mime.startsWith('video/')) return true
-			return !!inferMediaKindFromFileLocal(f.file)
-		})
+	const mediaFiles = files.filter((f) => {
+		const mime = String(f.type || '').toLowerCase()
+		if (mime.startsWith('image/') || mime.startsWith('video/')) return true
+		return !!inferMediaKindFromFileLocal(f)
+	})
 
-		if (mediaFiles.length > 0) {
-			const { worldX, worldY } = getCanvasCenterWorld()
-			const createdNodeIds: string[] = []
-			let offset = 0
+	if (mediaFiles.length > 0) {
+		const { worldX, worldY } = getCanvasCenterWorld()
+		const createdNodeIds: string[] = []
+		let offset = 0
 
-			for (const { file, sourcePath } of mediaFiles) {
-				const mime = String(file.type || '').toLowerCase()
-				let kind: 'image' | 'video' | null = null
-				if (mime.startsWith('image/')) kind = 'image'
-				if (mime.startsWith('video/')) kind = 'video'
-				if (!kind) kind = inferMediaKindFromFileLocal(file)
-				if (!kind) continue
+		for (const file of mediaFiles) {
+			const mime = String(file.type || '').toLowerCase()
+			let kind: 'image' | 'video' | null = null
+			if (mime.startsWith('image/')) kind = 'image'
+			if (mime.startsWith('video/')) kind = 'video'
+			if (!kind) kind = inferMediaKindFromFileLocal(file)
+			if (!kind) continue
 
-				const fileName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
+			let assetUrl = ''
+			let assetAbsPath = ''
+			let assetRelPath = ''
+			let displayName = ''
 
-				let created = false
-				let assetUrl = ''
-				let assetRelPath = ''
-				let assetAbsPath = ''
-
-				if (sourcePath && isElectron()) {
-					try {
-						const result = await copyFileToProjectRoot(projectId, sourcePath, fileName)
-						if (result && result.ok) {
-							assetRelPath = String(result.relativePath || '').trim()
-							assetAbsPath = String(result.absolutePath || '').trim()
-							assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
-							created = true
-						}
-					} catch {
-						// 失败则回退
-					}
-				}
-
-				if (!created && isElectron()) {
-					try {
-						const arrayBuffer = await file.arrayBuffer()
-						const uploaded = await uploadProjectAsset({
-							projectId,
-							kind,
-							name: fileName,
-							arrayBuffer,
-							contentType: file.type || (kind === 'image' ? 'image/png' : 'video/mp4')
-						})
-
-						if (uploaded && uploaded.ok && uploaded.asset) {
-							const asset = uploaded.asset
-							assetRelPath = String(asset.projectRelativePath || asset.relativePath || '').trim()
-							assetAbsPath = String(asset.absolutePath || '').trim()
-							assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
-							created = true
-						}
-					} catch {
-						// 上传失败
-					}
-				}
-
-				if (!created) {
-					assetUrl = URL.createObjectURL(file)
-					assetAbsPath = sourcePath
-				}
-
-				const finalDisplayUrl =
-					assetUrl && assetUrl.toLowerCase().startsWith('dweb://')
-						? resolveBackendUrl(assetUrl)
-						: assetUrl
-				store.commit('addNodeAt', {
-					worldX: worldX + offset,
-					worldY: worldY + offset,
-					title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-				})
-				const nodeId = store.state.selectedNodeId
-				if (nodeId) {
-					store.commit('setNodeType', { nodeId, type: kind })
-					bindMediaResourceToNode(nodeId, kind, finalDisplayUrl || assetUrl, fileName, {
-						sourcePath: assetAbsPath || undefined,
-						projectRelativePath: assetRelPath || undefined
+			try {
+				const fileBuffer = await file.arrayBuffer()
+				if (kind === 'image') {
+					const pngBuffer = await transcodeImageToPng(fileBuffer)
+					const finalBuffer = pngBuffer || fileBuffer
+					const finalFileName = generateUniqueMediaFileName('paste', 'png')
+					displayName = finalFileName
+					const uploaded = await uploadProjectAsset({
+						projectId,
+						kind: 'image',
+						name: finalFileName,
+						arrayBuffer: finalBuffer,
+						contentType: 'image/png'
 					})
-					autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, kind)
-					createdNodeIds.push(nodeId)
+					if (uploaded && uploaded.ok && uploaded.asset) {
+						assetRelPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+						assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
+						assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+					}
+				} else {
+					const videoMime = mime.startsWith('video/') ? mime : 'video/mp4'
+					let videoExt = 'mp4'
+					if (videoMime === 'video/webm') videoExt = 'webm'
+					else if (videoMime === 'video/quicktime') videoExt = 'mov'
+					else if (videoMime.startsWith('video/')) {
+						const extFromMime = videoMime.split('/')[1]
+						if (extFromMime && /^[a-z0-9]+$/.test(extFromMime)) videoExt = extFromMime
+					}
+					const finalFileName = generateUniqueMediaFileName('paste', videoExt)
+					displayName = finalFileName
+					const uploaded = await uploadProjectAsset({
+						projectId,
+						kind: 'video',
+						name: finalFileName,
+						arrayBuffer: fileBuffer,
+						contentType: videoMime
+					})
+					if (uploaded && uploaded.ok && uploaded.asset) {
+						assetRelPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+						assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
+						assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+					}
 				}
-				offset += 40
+			} catch {
+				// upload failed, fall through to object url
 			}
 
-			if (createdNodeIds.length > 0) {
-				store.commit('setSelectedNodes', {
-					nodeIds: createdNodeIds,
-					primaryNodeId: createdNodeIds[0]
-				})
-				return true
+			let finalUrl: string
+			if (assetUrl) {
+				finalUrl = resolveBackendUrl(assetUrl)
+			} else {
+				finalUrl = URL.createObjectURL(file)
+				displayName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
 			}
+
+			store.commit('addNodeAt', {
+				worldX: worldX + offset,
+				worldY: worldY + offset,
+				title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
+			})
+			const nodeId = store.state.selectedNodeId
+			if (nodeId) {
+				store.commit('setNodeType', { nodeId, type: kind })
+				bindMediaResourceToNode(nodeId, kind, finalUrl, displayName, {
+					sourcePath: assetAbsPath || undefined,
+					projectRelativePath: assetRelPath || undefined
+				})
+				autoSizeMediaNode(nodeId, finalUrl, kind)
+				createdNodeIds.push(nodeId)
+			}
+			offset += 40
+		}
+
+		if (createdNodeIds.length > 0) {
+			store.commit('setSelectedNodes', {
+				nodeIds: createdNodeIds,
+				primaryNodeId: createdNodeIds[0]
+			})
+			return true
 		}
 	}
 
@@ -4803,50 +4866,47 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 		clipboardData.getData('text/plain') ||
 		''
 	).trim()
-	if (urlText && /^https?:\/\//i.test(urlText)) {
-		const urlKind = inferMediaKindFromUrlOrName(urlText)
-		if (urlKind) {
+
+	if (urlText) {
+		const isRemote = urlText.startsWith('http://') || urlText.startsWith('https://') || urlText.startsWith('blob:') || urlText.startsWith('data:')
+		if (isRemote) {
+			const urlKind = urlText.startsWith('data:video/') || /\.(mp4|webm|mov|m4v|mkv|avi|flv|wmv)(\?|$)/i.test(urlText)
+				? 'video'
+				: 'image'
 			const center = getCanvasCenterWorld()
-			const fileName = `paste-${Date.now()}`
-			const pid = Number(currentProjectId.value ?? 0)
 
-			try {
-				const result = await downloadUrlToProjectRoot(pid, urlText, fileName)
-				if (result && result.ok) {
-					const relPath = String(result.relativePath || '').trim()
-					const absPath = String(result.absolutePath || '').trim()
-					const assetUrl = buildProjectAssetUrl(pid, relPath)
-					const finalDisplayUrl = assetUrl ? resolveBackendUrl(assetUrl) : ''
+			let assetUrl = urlText
+			let assetAbsPath = ''
+			let assetRelPath = ''
+			let displayName = ''
 
-					store.commit('addNodeAt', {
-						worldX: center.worldX,
-						worldY: center.worldY,
-						title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-					})
-					const nodeId = store.state.selectedNodeId
-					if (nodeId) {
-						store.commit('setNodeType', { nodeId, type: urlKind })
-						bindMediaResourceToNode(nodeId, urlKind, finalDisplayUrl || assetUrl, fileName, {
-							sourcePath: absPath || undefined,
-							projectRelativePath: relPath || undefined
-						})
-						autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, urlKind)
-						return true
-					}
-				}
-			} catch {
-				store.commit('addNodeAt', {
-					worldX: center.worldX,
-					worldY: center.worldY,
-					title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
+			const persisted = await persistBlobUrlToProject(urlText, urlKind as 'image' | 'video', 'paste')
+			if (persisted && persisted.url) {
+				assetUrl = persisted.url
+				assetAbsPath = persisted.sourcePath || ''
+				assetRelPath = persisted.projectRelativePath || ''
+				displayName = persisted.fileName || ''
+			}
+
+			const finalUrl = resolveBackendUrl(assetUrl)
+			const defaultName = urlKind === 'video'
+				? generateUniqueMediaFileName('paste', 'mp4')
+				: generateUniqueMediaFileName('paste', 'png')
+
+			store.commit('addNodeAt', {
+				worldX: center.worldX,
+				worldY: center.worldY,
+				title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
+			})
+			const nodeId = store.state.selectedNodeId
+			if (nodeId) {
+				store.commit('setNodeType', { nodeId, type: urlKind })
+				bindMediaResourceToNode(nodeId, urlKind as 'image' | 'video', finalUrl, displayName || defaultName, {
+					sourcePath: assetAbsPath || undefined,
+					projectRelativePath: assetRelPath || undefined
 				})
-				const nodeId = store.state.selectedNodeId
-				if (nodeId) {
-					store.commit('setNodeType', { nodeId, type: urlKind })
-					bindMediaResourceToNode(nodeId, urlKind, urlText, fileName)
-					autoSizeMediaNode(nodeId, urlText, urlKind)
-					return true
-				}
+				autoSizeMediaNode(nodeId, finalUrl, urlKind as 'image' | 'video')
+				return true
 			}
 		}
 	}
@@ -6647,10 +6707,6 @@ const saveTemplateSaving = ref(false)
 const saveTemplateProgress = ref(0)
 let saveTemplatePendingCoverGen: { nodeIds: string[] } | null = null
 
-const selectionToolbarVisible = computed(() => {
-	return selectedNodeIds.value.length > 0
-})
-
 function onOpenTemplateCenter() {
 	void loadTemplates()
 	templateCenterOpen.value = true
@@ -7029,13 +7085,9 @@ async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
 }
 
 function onCopySelectedNodes() {
-	if (selectedNodeIds.value.length === 0) return
-	const primaryId = selectedNodeId.value
-	if (selectedNodeIds.value.length === 1) {
-		store.commit('copyNode', { nodeId: selectedNodeIds.value[0] })
-	} else {
-		store.commit('copyNode', { nodeId: primaryId || selectedNodeIds.value[0] })
-	}
+	const ids = selectedNodeIds.value
+	if (ids.length === 0) return
+	store.commit('copyNode', { nodeId: ids[0] })
 }
 
 function onPasteSelectedNodes() {
@@ -7801,6 +7853,171 @@ const onNodeUpdateSceneLayoutModelBindings = (nodeId: string, bindings: Workflow
 	})
 }
 
+const generateUniqueMediaFileName = (prefix: string, ext: string): string => {
+	const rand = Math.random().toString(36).slice(2, 8)
+	const ts = Date.now().toString(36)
+	return `${prefix}_${ts}_${rand}.${ext}`
+}
+
+const arrayBufferFromBlobUrl = async (url: string): Promise<ArrayBuffer | null> => {
+	try {
+		const resp = await fetch(url)
+		if (resp.ok) {
+			const blob = await resp.blob()
+			return await blob.arrayBuffer()
+		}
+	} catch {
+		// ignore
+	}
+	return null
+}
+
+const transcodeImageToPng = async (sourceBuffer: ArrayBuffer): Promise<ArrayBuffer | null> => {
+	try {
+		const blob = new Blob([sourceBuffer], { type: 'image/*' })
+		const objectUrl = URL.createObjectURL(blob)
+		const pngBuffer = await new Promise<ArrayBuffer | null>((resolve) => {
+			const img = new Image()
+			img.onload = () => {
+				try {
+					const canvas = document.createElement('canvas')
+					canvas.width = img.naturalWidth || img.width
+					canvas.height = img.naturalHeight || img.height
+					const ctx = canvas.getContext('2d')
+					if (!ctx) {
+						resolve(null)
+						return
+					}
+					ctx.drawImage(img, 0, 0)
+					canvas.toBlob((pngBlob) => {
+						if (!pngBlob) {
+							resolve(null)
+							return
+						}
+						pngBlob.arrayBuffer().then((buf) => resolve(buf)).catch(() => resolve(null))
+					}, 'image/png')
+				} catch {
+					resolve(null)
+				}
+			}
+			img.onerror = () => resolve(null)
+			img.src = objectUrl
+		})
+		URL.revokeObjectURL(objectUrl)
+		return pngBuffer
+	} catch {
+		return null
+	}
+}
+
+const persistBlobUrlToProject = async (inputUrl: string, kind: 'image' | 'video', prefix = 'dragdrop'): Promise<{
+	url: string
+	sourcePath?: string
+	projectRelativePath?: string
+	fileName?: string
+} | null> => {
+	const url = String(inputUrl || '').trim()
+	if (!url) return null
+	const pid = Number(currentProjectId.value ?? 0)
+	if (!(pid > 0) || !isElectron()) return null
+
+	if (url.toLowerCase().startsWith('dweb://project-assets')) {
+		return null
+	}
+
+	let arrayBuffer: ArrayBuffer | null = null
+	let contentType = kind === 'video' ? 'video/mp4' : 'image/png'
+	let detectedMime = ''
+
+	try {
+		const isHttp = url.startsWith('http://') || url.startsWith('https://')
+		const isBlobOrData = url.startsWith('blob:') || url.startsWith('data:')
+
+		if (isHttp) {
+			const result = await fetchAsArrayBuffer(url)
+			if (result?.ok && result.buffer) {
+				arrayBuffer = result.buffer.buffer.slice(
+					result.buffer.byteOffset,
+					result.buffer.byteOffset + result.buffer.byteLength
+				) as ArrayBuffer
+				detectedMime = String(result.mime || '').toLowerCase()
+			}
+		} else if (isBlobOrData) {
+			arrayBuffer = await arrayBufferFromBlobUrl(url)
+			if (arrayBuffer) {
+				try {
+					const resp = await fetch(url)
+					if (resp.ok) {
+						const blob = await resp.blob()
+						detectedMime = String(blob.type || '').toLowerCase()
+					}
+				} catch {
+					// ignore mime detection failure
+				}
+			}
+		}
+
+		if (!arrayBuffer) return null
+
+		let finalExt = 'png'
+		if (kind === 'video') {
+			const videoMime = detectedMime && detectedMime.startsWith('video/') ? detectedMime : ''
+			if (videoMime === 'video/webm') finalExt = 'webm'
+			else if (videoMime === 'video/quicktime') finalExt = 'mov'
+			else if (videoMime) {
+				const extFromMime = videoMime.split('/')[1]
+				if (extFromMime && /^[a-z0-9]+$/.test(extFromMime)) finalExt = extFromMime
+				else finalExt = 'mp4'
+			} else {
+				finalExt = 'mp4'
+			}
+			contentType = `video/${finalExt}`
+		} else {
+			finalExt = 'png'
+			contentType = 'image/png'
+			const pngBuffer = await transcodeImageToPng(arrayBuffer)
+			if (pngBuffer) {
+				arrayBuffer = pngBuffer
+			}
+		}
+
+		const finalFileName = generateUniqueMediaFileName(prefix, finalExt)
+
+		const uploaded = await uploadProjectAsset({
+			projectId: pid,
+			kind,
+			name: finalFileName,
+			arrayBuffer,
+			contentType
+		})
+		if (uploaded && uploaded.ok && uploaded.asset) {
+			const relPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+			const absPath = String(uploaded.asset.absolutePath || '').trim()
+			const dwebUrl = buildProjectAssetUrl(pid, relPath)
+			if (dwebUrl) {
+				return {
+					url: dwebUrl,
+					sourcePath: absPath || undefined,
+					projectRelativePath: relPath || undefined,
+					fileName: finalFileName
+				}
+			}
+		}
+	} catch {
+		return null
+	}
+	return null
+}
+
+const fetchRemoteUrlAsArrayBuffer = async (url: string) => {
+	if (!isElectron()) return null
+	try {
+		return await fetchAsArrayBuffer(String(url || '').trim())
+	} catch {
+		return null
+	}
+}
+
 const {
 	createNodeFromDraggedResource,
 	createNodeFromNanoPreview,
@@ -7834,6 +8051,8 @@ const {
 	},
 	createBatchMediaNodesFromFiles: (payload) => createBatchMediaNodesFromFiles(payload),
 	createNodeFromDraggedMeshyTask: (payload) => createNodeFromDraggedMeshyTask(payload),
+	persistBlobUrlToProject,
+	fetchUrlAsArrayBuffer: fetchRemoteUrlAsArrayBuffer,
 	pushToast: (message, tone) => pushToast(message, tone)
 })
 
@@ -8406,6 +8625,9 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 	pasteMediaData: (clipboardData) => pasteMediaData(clipboardData),
 	copySelectedNodes: (primaryNodeId) => {
 		store.commit('copyNode', { nodeId: primaryNodeId })
+	},
+	hasClipboardNodes: () => {
+		return !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
 	},
 	undo: () => {
 		aiWorkflowHistory.undo()
@@ -10022,23 +10244,78 @@ const onCanvasNodePointerDown = (nodeId: string | null, _event: PointerEvent) =>
 	}
 }
 
+const MAX_DRAG_FULL_RENDER_NODES = 40
+let updateDragFullRenderRafId: number | null = null
+
+const updateSelectionDragFullRender = () => {
+	updateDragFullRenderRafId = null
+	if (!selectionFrameDragging.value || selectionFrameDragNodeIds.value.size === 0) {
+		if (selectionDragFullRenderIds.value.size > 0) {
+			selectionDragFullRenderIds.value = new Set()
+		}
+		return
+	}
+
+	const nextFullRender = new Set<string>()
+	let added = 0
+	const nodesById = store.state.nodesById as Record<string, WorkflowNode | undefined>
+
+	for (const id of selectionFrameDragNodeIds.value) {
+		if (added >= MAX_DRAG_FULL_RENDER_NODES) break
+		const node = nodesById[id]
+		if (!node) continue
+
+		if (!isNodeInViewport(node)) continue
+
+		const version = getNodeScreenshotVersion(node)
+		const hasCachedScreenshot = screenshotPool.getCachedScreenshot(id, version) != null
+		const hasBitmapScreenshot = hasBitmap(id)
+
+		if (!hasCachedScreenshot || !hasBitmapScreenshot) {
+			nextFullRender.add(id)
+			added++
+		}
+	}
+
+	selectionDragFullRenderIds.value = nextFullRender
+	refreshCanvasNodeLayer()
+}
+
+const scheduleUpdateDragFullRender = () => {
+	if (updateDragFullRenderRafId !== null) return
+	updateDragFullRenderRafId = requestAnimationFrame(() => {
+		updateSelectionDragFullRender()
+	})
+}
+
 const onSelectionFrameDragStart = (payload: { nodeIds: string[] }) => {
 	selectionFrameDragging.value = true
 	selectionFrameDragNodeIds.value = new Set(payload.nodeIds)
+	selectionDragFullRenderIds.value = new Set()
+	selectionDragMoveTick.value = 0
 	markViewportMotion()
+	scheduleUpdateDragFullRender()
 	refreshCanvasNodeLayer()
 }
 
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
 	store.dispatch('moveNodesBy', payload)
+	selectionDragMoveTick.value++
 	markViewportMotion()
 	scheduleAsyncEdgeRender()
+	scheduleUpdateDragFullRender()
 	refreshCanvasNodeLayer()
 }
 
 const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
 	selectionFrameDragging.value = false
 	selectionFrameDragNodeIds.value = new Set()
+	selectionDragFullRenderIds.value = new Set()
+	selectionDragMoveTick.value++
+	if (updateDragFullRenderRafId !== null) {
+		cancelAnimationFrame(updateDragFullRenderRafId)
+		updateDragFullRenderRafId = null
+	}
 	forceEndViewportMotion()
 	refreshCanvasNodeLayer()
 	scheduleVisibleNodeScreenshots()
