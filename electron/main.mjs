@@ -555,7 +555,6 @@ function getDefaultClientSettings() {
 		bytedanceApiKey: '',
 		meshyApiKey: '',
 		githubToken: '',
-		anthropicApiKey: '',
 		ui: {
 			locale: '',
 		},

@@ -106,22 +106,6 @@ const COPILOT_CLI_MODELS: ChatModelCatalogItem[] = [
 		vendor: 'Copilot CLI'
 	},
 	{
-		id: 'claude-sonnet-4.6',
-		label: 'Claude Sonnet 4.6',
-		needType: 'text',
-		apiSource: 'local-exec',
-		legacyModelKey: 'codex',
-		vendor: 'Copilot CLI'
-	},
-	{
-		id: 'claude-opus-4.6',
-		label: 'Claude Opus 4.6',
-		needType: 'text',
-		apiSource: 'local-exec',
-		legacyModelKey: 'codex',
-		vendor: 'Copilot CLI'
-	},
-	{
 		id: 'gemini-3-pro-preview',
 		label: 'Gemini 3 Pro Preview',
 		needType: 'text',
