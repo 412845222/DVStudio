@@ -9,5 +9,9 @@
   "aiworkflow.canvas.cancelSelection": "取消框选",
   "aiworkflow.canvas.enterTagName": "输入标签名称...",
   "aiworkflow.canvas.save": "保存",
-  "aiworkflow.canvas.cancel": "取消"
+  "aiworkflow.canvas.cancel": "取消",
+  "aiworkflow.canvas.minimap": "导航",
+  "aiworkflow.canvas.minimapFitAll": "适应全部节点",
+  "aiworkflow.canvas.minimapCollapse": "收起",
+  "aiworkflow.canvas.minimapExpand": "展开小地图"
 }
