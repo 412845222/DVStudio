@@ -145,6 +145,7 @@ const providers = computed<ProviderConfig[]>(() => [
 		descKey: 'settings.providers.tripo3d.desc',
 		accent: '#06b6d4',
 		icon: t('settings.providers.tripo3d.icon'),
+		type: 'apikey',
 		fields: [{ key: 'tripo3dApiKey', label: t('settings.fields.apiKey'), placeholder: 'tripo_...', mask: true }],
 		docsUrl: 'https://developers.tripo3d.com/zh/docs/quick-start',
 		formKey: 'tripo3dApiKey',
