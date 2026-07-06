@@ -69,6 +69,22 @@
 					</button>
 				</div>
 
+				<div v-if="cloudAvailable && activeTab === 'cloud'" class="tc-quota-bar-wrap">
+					<div class="tc-quota-bar-header">
+						<div class="tc-quota-label">
+							<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+								<path d="M2 8a6 6 0 0111.5-2.5A3.5 3.5 0 0113 12H3a3 3 0 01-.5-6z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+							</svg>
+							<span>{{ t('aiworkflow.templateCenter.cloudStorage') }}</span>
+						</div>
+						<div class="tc-quota-text">{{ cloudQuota ? cloudQuotaText : '...' }}</div>
+					</div>
+					<div class="tc-quota-bar">
+						<div v-if="cloudQuota" class="tc-quota-bar-fill" :style="{ width: cloudQuotaPercent + '%' }"></div>
+						<div v-else class="tc-quota-bar-loading"></div>
+					</div>
+				</div>
+
 				<div class="tc-toolbar">
 					<div class="tc-search-wrap">
 						<svg class="tc-search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -220,6 +236,7 @@ import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
 import { buildSquareParticles } from '../../composables/useSquareParticles'
 import type { TemplateItem, SaveTemplateOptions, TemplateSource } from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
+import { toastSuccess, toastError } from '../UIComponent/useGlobalFeedback'
 
 type TabId = 'user' | 'cloud' | 'workshop'
 
@@ -249,6 +266,8 @@ const {
 	templates,
 	cloudAvailable,
 	cloudPlatform,
+	cloudQuota,
+	cloudSyncing,
 	uploadingTemplateId,
 	downloadingTemplateId,
 	loadTemplates,
@@ -256,9 +275,30 @@ const {
 	setViewMode,
 	uploadToCloud,
 	downloadFromCloud,
+	refreshCloud,
 } = useTemplateCenter()
 
 const activeTab = ref<TabId>('user')
+
+function formatBytes(bytes: number): string {
+	if (!bytes || bytes <= 0) return '0 B'
+	const units = ['B', 'KB', 'MB', 'GB']
+	const i = Math.floor(Math.log(bytes) / Math.log(1024))
+	return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i]
+}
+
+const cloudQuotaText = computed(() => {
+	if (!cloudAvailable.value || !cloudQuota.value) return ''
+	const q = cloudQuota.value
+	const used = q.totalBytes - q.availableBytes
+	return `${formatBytes(used)} / ${formatBytes(q.totalBytes)}`
+})
+
+const cloudQuotaPercent = computed(() => {
+	if (!cloudQuota.value || cloudQuota.value.totalBytes <= 0) return 0
+	const used = cloudQuota.value.totalBytes - cloudQuota.value.availableBytes
+	return Math.min(100, Math.max(0, (used / cloudQuota.value.totalBytes) * 100))
+})
 
 const tabs = computed(() => [
 	{
@@ -331,6 +371,9 @@ const currentTabEmptyText = computed(() => {
 function switchTab(tabId: TabId) {
 	activeTab.value = tabId
 	selectTemplate(null)
+	if (tabId === 'cloud' && cloudAvailable.value) {
+		refreshCloud()
+	}
 }
 
 const particles = buildSquareParticles({ count: 12, seed: 999, baseOpacity: 0.35 })
@@ -368,9 +411,9 @@ async function handleUpload(template: TemplateItem) {
 	const result = await uploadToCloud(template)
 	console.log('[template-center-dialog] upload result:', result)
 	if (result?.ok) {
-		window.alert(t('aiworkflow.templateCenter.uploadSuccess'))
+		toastSuccess(t('aiworkflow.templateCenter.uploadSuccess'))
 	} else {
-		window.alert(result?.errMsg || t('aiworkflow.templateCenter.uploadFailed'))
+		toastError(result?.errMsg || t('aiworkflow.templateCenter.uploadFailed'))
 	}
 }
 
@@ -379,9 +422,9 @@ async function handleDownload(template: TemplateItem) {
 	const result = await downloadFromCloud(template)
 	console.log('[template-center-dialog] download result:', result ? 'success' : 'failed')
 	if (result) {
-		window.alert(t('aiworkflow.templateCenter.downloadSuccess'))
+		toastSuccess(t('aiworkflow.templateCenter.downloadSuccess'))
 	} else {
-		window.alert(t('aiworkflow.templateCenter.downloadFailed'))
+		toastError(t('aiworkflow.templateCenter.downloadFailed'))
 	}
 }
 </script>
@@ -716,6 +759,65 @@ async function handleDownload(template: TemplateItem) {
 	color: var(--tc-glow);
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
+}
+
+.tc-quota-bar-wrap {
+	padding: 10px 24px;
+	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 10%, transparent);
+	background: color-mix(in srgb, var(--tc-bg-1) 40%, transparent);
+}
+
+.tc-quota-bar-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 6px;
+}
+
+.tc-quota-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	color: var(--tc-fg-soft);
+	letter-spacing: 0.03em;
+}
+
+.tc-quota-text {
+	font-size: 11px;
+	color: var(--tc-glow);
+	font-family: monospace;
+}
+
+.tc-quota-bar {
+	height: 4px;
+	background: color-mix(in srgb, var(--tc-fg) 5%, transparent);
+	border-radius: 2px;
+	overflow: hidden;
+	position: relative;
+}
+
+.tc-quota-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, var(--tc-accent), var(--tc-cold));
+	border-radius: 2px;
+	transition: width 300ms ease;
+	box-shadow: 0 0 8px color-mix(in srgb, var(--tc-accent) 40%, transparent);
+}
+
+.tc-quota-bar-loading {
+	height: 100%;
+	width: 30%;
+	background: linear-gradient(90deg, transparent, var(--tc-accent), transparent);
+	background-size: 200% 100%;
+	border-radius: 2px;
+	animation: tc-quota-loading 1.2s ease-in-out infinite;
+	opacity: 0.6;
+}
+
+@keyframes tc-quota-loading {
+	0% { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
 }
 
 /* Workshop placeholder */
@@ -1122,6 +1224,22 @@ async function handleDownload(template: TemplateItem) {
 [data-theme='light'] .tc-loading,
 [data-theme='light'] .tc-empty {
 	color: #6b7280 !important;
+}
+[data-theme='light'] .tc-quota-bar-wrap {
+	background: rgba(255, 255, 255, 0.4) !important;
+	border-bottom-color: rgba(31, 157, 132, 0.1) !important;
+}
+[data-theme='light'] .tc-quota-label {
+	color: #4a5058 !important;
+}
+[data-theme='light'] .tc-quota-text {
+	color: #17806d !important;
+}
+[data-theme='light'] .tc-quota-bar {
+	background: rgba(0, 0, 0, 0.06) !important;
+}
+[data-theme='light'] .tc-quota-bar-fill {
+	box-shadow: 0 0 6px rgba(31, 157, 132, 0.3) !important;
 }
 [data-theme='light'] .tc-spinner {
 	border-color: rgba(31, 157, 132, 0.15) !important;

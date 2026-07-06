@@ -44,6 +44,8 @@
   "aiworkflow.templateCenter.templateSaveFailed": "Failed to save template",
   "aiworkflow.templateCenter.templateDeleted": "Template deleted",
   "aiworkflow.templateCenter.deleteConfirm": "Are you sure you want to delete template \"{name}\"?",
+  "aiworkflow.templateCenter.deleteConfirmTitle": "Delete \"{name}\"",
+  "aiworkflow.templateCenter.deleteConfirmMessage": "This action cannot be undone. Are you sure you want to delete this template?",
   "aiworkflow.templateCenter.cancel": "Cancel",
   "aiworkflow.templateCenter.confirm": "Confirm",
   "aiworkflow.templateCenter.save": "Save",
@@ -90,5 +92,6 @@
   "aiworkflow.templateCenter.uploadSuccess": "Template uploaded to cloud",
   "aiworkflow.templateCenter.uploadFailed": "Upload failed, please check Steam connection and retry",
   "aiworkflow.templateCenter.downloadSuccess": "Template downloaded to local",
-  "aiworkflow.templateCenter.downloadFailed": "Download failed, please check Steam connection and retry"
+  "aiworkflow.templateCenter.downloadFailed": "Download failed, please check Steam connection and retry",
+  "aiworkflow.templateCenter.cloudStorage": "Cloud Storage"
 }

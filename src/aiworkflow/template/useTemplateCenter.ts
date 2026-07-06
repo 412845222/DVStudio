@@ -3,6 +3,7 @@ import type { TemplateItem, TemplateCategory, TemplateSource, TemplateViewMode }
 import { getBuiltinTemplates, generateBuiltinTemplateBlob } from './builtinTemplates'
 import { useTemplatePersistence } from './useTemplatePersistence'
 import { useCloudTemplatePersistence } from './useCloudTemplatePersistence'
+import { parseTemplatePackageBlob, createCloudTemplatePackageZip } from './useTemplateMerge'
 
 export type TemplateSortBy = 'newest' | 'name'
 
@@ -248,8 +249,8 @@ export function useTemplateCenter() {
 			const ok = await persistence.deleteUserTemplate(template.id)
 			if (ok) {
 				revokeTemplateCover(template.id)
-				templatesState.value = templatesState.value.filter((t) => t.id !== template.id)
-				if (selectedTemplateState.value?.id === template.id) {
+				templatesState.value = templatesState.value.filter((t) => !(t.source === 'user' && t.id === template.id))
+				if (selectedTemplateState.value?.id === template.id && selectedTemplateState.value?.source === 'user') {
 					selectedTemplateState.value = null
 				}
 				markSyncStatus()
@@ -260,10 +261,11 @@ export function useTemplateCenter() {
 			const ok = await cloudPersistence.deleteCloudTemplate(template.id)
 			if (ok) {
 				revokeTemplateCover(template.id)
-				templatesState.value = templatesState.value.filter((t) => t.id !== template.id)
-				if (selectedTemplateState.value?.id === template.id) {
+				templatesState.value = templatesState.value.filter((t) => !(t.source === 'steam-user' && t.id === template.id))
+				if (selectedTemplateState.value?.id === template.id && selectedTemplateState.value?.source === 'steam-user') {
 					selectedTemplateState.value = null
 				}
+				await cloudPersistence.loadCloudQuota()
 				markSyncStatus()
 			}
 			return ok
@@ -295,16 +297,33 @@ export function useTemplateCenter() {
 		}
 
 		console.log('[template-center] Loading template blob...')
-		const zipBlob = await persistence.loadTemplateBlob(template.id)
-		if (!zipBlob) {
+		const localZipBlob = await persistence.loadTemplateBlob(template.id)
+		if (!localZipBlob) {
 			console.error('[template-center] Failed to load template blob for:', template.id)
 			return { ok: false, errMsg: 'Failed to load template data' }
 		}
-		console.log('[template-center] Template blob loaded, size:', zipBlob.size)
+		console.log('[template-center] Local template blob loaded, size:', localZipBlob.size)
 
 		const coverBlob = await persistence.loadTemplateCoverBlob(template.id)
 		console.log('[template-center] Cover blob:', coverBlob ? 'loaded' : 'not found')
-		const ok = await cloudPersistence.uploadTemplateToCloud(template, zipBlob, coverBlob)
+
+		console.log('[template-center] Parsing local template to extract blueprint...')
+		const parsed = await parseTemplatePackageBlob(localZipBlob)
+		if (!parsed.snapshot) {
+			console.error('[template-center] Failed to parse template package')
+			return { ok: false, errMsg: 'Failed to parse template data' }
+		}
+
+		console.log('[template-center] Creating cloud-optimized package (no assets)...')
+		const cloudZipBlob = await createCloudTemplatePackageZip(
+			parsed.snapshot,
+			template.name,
+			coverBlob,
+			parsed.templateCode || template.id
+		)
+		console.log('[template-center] Cloud package created, size:', cloudZipBlob.size, '(original:', localZipBlob.size, ')')
+
+		const ok = await cloudPersistence.uploadTemplateToCloud(template, cloudZipBlob, coverBlob)
 		if (ok) {
 			template.cloudSyncStatus = 'synced'
 			template.lastSyncAt = Date.now()

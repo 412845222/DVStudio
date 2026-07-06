@@ -3,116 +3,146 @@ import { CloudAdapter } from './base.mjs'
 export class SteamCloudAdapter extends CloudAdapter {
 	constructor(options = {}) {
 		super(options)
-		this._cloud = options.provider?.cloud || null
+		this._provider = options.provider || null
+	}
+
+	_getCloud() {
+		if (!this._provider || typeof this._provider.isInitialized !== 'function') return null
+		if (!this._provider.isInitialized()) return null
+		if (typeof this._provider.isLoggedIn === 'function' && !this._provider.isLoggedIn()) return null
+		return this._provider.cloud || null
 	}
 
 	getPlatformId() { return 'steam' }
 	getPlatformName() { return 'Steam Cloud' }
 
 	isAvailable() {
-		return !!this._cloud && typeof this._cloud.fileWrite === 'function'
+		const cloud = this._getCloud()
+		return !!cloud && typeof cloud.fileWrite === 'function'
 	}
 
 	async getQuota() {
-		if (!this.isAvailable()) {
+		const cloud = this._getCloud()
+		if (!cloud) {
 			return { ok: false, errMsg: 'Steam Cloud not available' }
 		}
 		try {
-			const result = this._cloud.getQuota()
-			if (!result.ok) {
-				return { ok: false, errMsg: result.errMsg }
+			console.log('[cloud-templates:steam] Calling cloud.getQuota()...')
+			const result = cloud.getQuota()
+			console.log('[cloud-templates:steam] getQuota raw result:', JSON.stringify(result))
+			if (!result) {
+				return { ok: false, errMsg: 'getQuota returned null/undefined' }
 			}
+			if (result.ok === false) {
+				return { ok: false, errMsg: result.errMsg || 'Failed to get quota' }
+			}
+			const totalBytes = result.totalBytes || result.bytesTotal || result.total || 0
+			const availableBytes = result.availableBytes || result.bytesAvailable || result.available || 0
+			console.log('[cloud-templates:steam] Parsed quota:', { totalBytes, availableBytes })
 			return {
 				ok: true,
 				quota: {
-					totalBytes: result.totalBytes || 0,
-					availableBytes: result.availableBytes || 0,
+					totalBytes,
+					availableBytes,
 				},
 			}
 		} catch (err) {
+			console.error('[cloud-templates:steam] getQuota error:', err)
 			return { ok: false, errMsg: err.message }
 		}
 	}
 
 	async fileWrite(fileName, buffer) {
-		if (!this.isAvailable()) {
-			return { ok: false, errMsg: 'Steam Cloud not available' }
+		const cloud = this._getCloud()
+		if (!cloud) {
+			return { ok: false, errMsg: 'Steam Cloud not available (not logged in)' }
 		}
 		try {
-			return this._cloud.fileWrite(fileName, buffer)
+			console.log('[cloud-templates:steam] fileWrite:', fileName, buffer.length, 'bytes')
+			const result = cloud.fileWrite(fileName, buffer)
+			console.log('[cloud-templates:steam] fileWrite result:', result)
+			return result
 		} catch (err) {
+			console.error('[cloud-templates:steam] fileWrite error:', err.message)
 			return { ok: false, errMsg: err.message }
 		}
 	}
 
 	async fileRead(fileName) {
-		if (!this.isAvailable()) {
+		const cloud = this._getCloud()
+		if (!cloud) {
 			return { ok: false, errMsg: 'Steam Cloud not available' }
 		}
 		try {
-			return this._cloud.fileRead(fileName)
+			return cloud.fileRead(fileName)
 		} catch (err) {
 			return { ok: false, errMsg: err.message }
 		}
 	}
 
 	async fileDelete(fileName) {
-		if (!this.isAvailable()) {
+		const cloud = this._getCloud()
+		if (!cloud) {
 			return { ok: false, errMsg: 'Steam Cloud not available' }
 		}
 		try {
-			return this._cloud.fileDelete(fileName)
+			return cloud.fileDelete(fileName)
 		} catch (err) {
 			return { ok: false, errMsg: err.message }
 		}
 	}
 
 	async fileExists(fileName) {
-		if (!this.isAvailable()) {
+		const cloud = this._getCloud()
+		if (!cloud) {
 			return { ok: false, exists: false }
 		}
 		try {
-			return this._cloud.fileExists(fileName)
+			return cloud.fileExists(fileName)
 		} catch {
 			return { ok: true, exists: false }
 		}
 	}
 
 	async getFileSize(fileName) {
-		if (!this.isAvailable()) {
+		const cloud = this._getCloud()
+		if (!cloud) {
 			return { ok: false, size: 0 }
 		}
 		try {
-			return this._cloud.getFileSize(fileName)
+			return cloud.getFileSize(fileName)
 		} catch {
 			return { ok: true, size: 0 }
 		}
 	}
 
 	async getFileTimestamp(fileName) {
-		if (!this.isAvailable()) {
+		const cloud = this._getCloud()
+		if (!cloud) {
 			return { ok: false, timestamp: 0 }
 		}
 		try {
-			return this._cloud.getFileTimestamp(fileName)
+			return cloud.getFileTimestamp(fileName)
 		} catch {
 			return { ok: true, timestamp: 0 }
 		}
 	}
 
 	getFileCount() {
-		if (!this.isAvailable()) return 0
+		const cloud = this._getCloud()
+		if (!cloud) return 0
 		try {
-			return this._cloud.getFileCount()
+			return cloud.getFileCount()
 		} catch {
 			return 0
 		}
 	}
 
 	getFileNameAndSize(index) {
-		if (!this.isAvailable()) return null
+		const cloud = this._getCloud()
+		if (!cloud) return null
 		try {
-			return this._cloud.getFileNameAndSize(index)
+			return cloud.getFileNameAndSize(index)
 		} catch {
 			return null
 		}
@@ -120,10 +150,15 @@ export class SteamCloudAdapter extends CloudAdapter {
 
 	async listFiles(prefix = '') {
 		try {
-			const count = this.getFileCount()
+			const cloud = this._getCloud()
+			if (!cloud) {
+				return { ok: false, items: [], errMsg: 'Steam Cloud not available' }
+			}
+			const count = cloud.getFileCount()
+			console.log('[cloud-templates:steam] fileCount:', count, 'prefix:', prefix)
 			const items = []
 			for (let i = 0; i < count; i++) {
-				const entry = this.getFileNameAndSize(i)
+				const entry = cloud.getFileNameAndSize(i)
 				if (entry && entry.name && (!prefix || entry.name.startsWith(prefix))) {
 					items.push({
 						name: entry.name,
@@ -132,6 +167,7 @@ export class SteamCloudAdapter extends CloudAdapter {
 					})
 				}
 			}
+			console.log('[cloud-templates:steam] listing', items.length, 'files with prefix', prefix)
 			return { ok: true, items }
 		} catch (err) {
 			return { ok: false, items: [], errMsg: err.message }

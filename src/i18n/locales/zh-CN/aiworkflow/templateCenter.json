@@ -44,6 +44,8 @@
   "aiworkflow.templateCenter.templateSaveFailed": "模板保存失败",
   "aiworkflow.templateCenter.templateDeleted": "模板已删除",
   "aiworkflow.templateCenter.deleteConfirm": "确定要删除模板「{name}」吗？",
+  "aiworkflow.templateCenter.deleteConfirmTitle": "删除「{name}」",
+  "aiworkflow.templateCenter.deleteConfirmMessage": "此操作不可撤销，确定要删除该模板吗？",
   "aiworkflow.templateCenter.cancel": "取消",
   "aiworkflow.templateCenter.confirm": "确认",
   "aiworkflow.templateCenter.save": "保存",
@@ -90,5 +92,6 @@
   "aiworkflow.templateCenter.uploadSuccess": "模板已上传到云端",
   "aiworkflow.templateCenter.uploadFailed": "上传失败，请检查 Steam 连接后重试",
   "aiworkflow.templateCenter.downloadSuccess": "模板已下载到本地",
-  "aiworkflow.templateCenter.downloadFailed": "下载失败，请检查 Steam 连接后重试"
+  "aiworkflow.templateCenter.downloadFailed": "下载失败，请检查 Steam 连接后重试",
+  "aiworkflow.templateCenter.cloudStorage": "云存储空间"
 }

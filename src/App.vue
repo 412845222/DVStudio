@@ -50,6 +50,7 @@
 			@action="handleSteamPanelAction"
 		/>
 		<AboutDialog />
+		<SciFiFeedback />
 	</div>
 </template>
 
@@ -70,6 +71,7 @@ import GlobalPageBackground from './ui/UIComponent/GlobalPageBackground.vue'
 import SteamEntryOverlay from './ui/UIComponent/SteamEntryOverlay.vue'
 import SteamPanel from './ui/Steam/SteamPanel.vue'
 import AboutDialog from './ui/UIComponent/AboutDialog.vue'
+import SciFiFeedback from './ui/UIComponent/SciFiFeedback.vue'
 import { useStartupProgress } from './composables/useStartupProgress'
 import { usePlatform, useSteamEntry } from './platformBridge'
 import { useSteamPanel } from './composables/useSteamPanel'

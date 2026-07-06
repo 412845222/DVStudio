@@ -983,6 +983,7 @@ import { useAIWorkflowPerfMonitor } from './blueprint-core/useAIWorkflowPerfMoni
 import { useAIWorkflowSelectionState } from './blueprint-core/useAIWorkflowSelectionState'
 import { useAIWorkflowThreejsLifecycleManager } from './blueprint-core/useAIWorkflowThreejsLifecycleManager'
 import { useAIWorkflowToastState } from './bridge/feedback/useAIWorkflowToastState'
+import { confirmDelete as sciFiConfirmDelete } from '../../ui/UIComponent/useGlobalFeedback'
 import { useAIWorkflowViewport } from './blueprint-core/useAIWorkflowViewport'
 import { useAIWorkflowContextMenu } from './bridge/component-events/useAIWorkflowContextMenu'
 import { useAIWorkflowKeyboardAndResize } from './bridge/component-events/useAIWorkflowKeyboardAndResize'
@@ -6729,7 +6730,14 @@ function onTemplateSelectForApply(template: TemplateItem) {
 }
 
 async function onDeleteTemplate(template: TemplateItem) {
-	const confirmed = window.confirm(t('aiworkflow.templateCenter.deleteConfirm', { name: template.name }))
+	const confirmed = await sciFiConfirmDelete(
+		t('aiworkflow.templateCenter.deleteConfirmTitle', { name: template.name }),
+		t('aiworkflow.templateCenter.deleteConfirmMessage'),
+		{
+			confirmText: t('aiworkflow.templateCenter.delete'),
+			cancelText: t('aiworkflow.templateCenter.cancel'),
+		}
+	)
 	if (!confirmed) return
 	const ok = await deleteTemplate(template)
 	if (ok) {
